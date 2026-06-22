@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from collections import deque
 from typing import cast
 
 import pygame
@@ -1067,32 +1068,34 @@ class RenderingMixin:
         ):
             return
         tx, ty = target
-        dx = tx - self.player.x
-        dy = ty - self.player.y
-        distance = math.hypot(dx, dy)
-        if distance < 0.8:
+        route = self.story_relic_guidance_route(target)
+        route_distance = self.route_distance(route)
+        if route_distance < 0.8:
             return
         accent = self.story_state.accent if self.story_state else self.theme.accent
         light = self.mix(accent, (255, 232, 142), 0.72)
         core = self.mix(light, (255, 255, 238), 0.55)
-        ux, uy = dx / distance, dy / distance
-        cue_count = min(7, max(3, int(distance // 2.1) + 1))
+        cue_count = min(7, max(3, int(route_distance // 2.1) + 1))
+        samples = self.sample_guidance_route(route, cue_count)
         screen_w, screen_h = self.screen.get_size()
         glow_layer = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
-        points: list[tuple[int, int, float]] = []
-        for index in range(cue_count):
-            step = min(distance - 0.45, 1.05 + index * min(1.85, distance / cue_count))
-            if step <= 0:
-                continue
-            wx = self.player.x + ux * step
-            wy = self.player.y + uy * step
-            if not self.dungeon.is_floor(wx, wy):
-                continue
-            sx, sy = self.world_to_screen(wx, wy)
-            points.append((sx, sy - int(9 * WORLD_SCALE), step))
+        screen_points = [
+            (sx, sy - int(9 * WORLD_SCALE))
+            for sx, sy in (self.world_to_screen(wx, wy) for wx, wy in samples)
+        ]
+        points: list[tuple[int, int, float, float]] = []
+        for index, (sx, sy) in enumerate(screen_points):
+            prev_x, prev_y = screen_points[max(0, index - 1)]
+            next_x, next_y = screen_points[min(len(screen_points) - 1, index + 1)]
+            tangent_x = next_x - prev_x
+            tangent_y = next_y - prev_y
+            tangent_len = math.hypot(tangent_x, tangent_y)
+            if tangent_len <= 0.001:
+                tangent_x, tangent_y, tangent_len = 1.0, 0.0, 1.0
+            points.append((sx, sy, tangent_x / tangent_len, tangent_y / tangent_len))
 
         if len(points) >= 2:
-            beam_points = [(sx, sy) for sx, sy, _step in points]
+            beam_points = [(sx, sy) for sx, sy, _dir_x, _dir_y in points]
             for width, alpha in (
                 (12 * WORLD_SCALE, 10),
                 (7 * WORLD_SCALE, 18),
@@ -1113,22 +1116,23 @@ class RenderingMixin:
                 max(1, 2 * WORLD_SCALE),
             )
 
-        for index, (sx, sy, _step) in enumerate(points):
+        for index, (sx, sy, dir_x, dir_y) in enumerate(points):
             shimmer = math.sin(self.elapsed * 5.2 + index * 1.15)
             drift = math.sin(self.elapsed * 2.4 + index) * 1.25 * WORLD_SCALE
-            glint_x = sx + int(-uy * drift)
-            glint_y = sy + int(ux * drift)
+            perp_x, perp_y = -dir_y, dir_x
+            glint_x = sx + int(perp_x * drift)
+            glint_y = sy + int(perp_y * drift)
             flame_tip = (
-                glint_x + int(ux * 9 * WORLD_SCALE),
-                glint_y + int(uy * 5 * WORLD_SCALE),
+                glint_x + int(dir_x * 10 * WORLD_SCALE),
+                glint_y + int(dir_y * 10 * WORLD_SCALE),
             )
             flame_left = (
-                glint_x - int(ux * 2 * WORLD_SCALE) - int(uy * 3 * WORLD_SCALE),
-                glint_y - int(uy * 1 * WORLD_SCALE) + int(ux * 2 * WORLD_SCALE),
+                glint_x - int(dir_x * 2 * WORLD_SCALE) + int(perp_x * 3 * WORLD_SCALE),
+                glint_y - int(dir_y * 2 * WORLD_SCALE) + int(perp_y * 3 * WORLD_SCALE),
             )
             flame_right = (
-                glint_x - int(ux * 2 * WORLD_SCALE) + int(uy * 3 * WORLD_SCALE),
-                glint_y - int(uy * 1 * WORLD_SCALE) - int(ux * 2 * WORLD_SCALE),
+                glint_x - int(dir_x * 2 * WORLD_SCALE) - int(perp_x * 3 * WORLD_SCALE),
+                glint_y - int(dir_y * 2 * WORLD_SCALE) - int(perp_y * 3 * WORLD_SCALE),
             )
             pygame.draw.polygon(
                 glow_layer,
@@ -1152,6 +1156,100 @@ class RenderingMixin:
             int((7 + relic_pulse * 3) * WORLD_SCALE),
         )
         self.screen.blit(glow_layer, (0, 0))
+
+    def story_relic_guidance_route(
+        self, target: tuple[float, float]
+    ) -> list[tuple[float, float]]:
+        start = (int(self.player.x), int(self.player.y))
+        goal = (int(target[0]), int(target[1]))
+
+        def walkable(tile: tuple[int, int]) -> bool:
+            x, y = tile
+            return (
+                self.dungeon.in_bounds(x, y) and self.dungeon.tiles[x][y] != Tile.WALL
+            )
+
+        if not walkable(start) or not walkable(goal):
+            return []
+        if start == goal:
+            return [(self.player.x, self.player.y), target]
+
+        frontier: deque[tuple[int, int]] = deque([start])
+        came_from: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
+        while frontier:
+            current = frontier.popleft()
+            if current == goal:
+                break
+            neighbors = [
+                (current[0] + 1, current[1]),
+                (current[0] - 1, current[1]),
+                (current[0], current[1] + 1),
+                (current[0], current[1] - 1),
+            ]
+            neighbors.sort(
+                key=lambda tile: abs(tile[0] - goal[0]) + abs(tile[1] - goal[1])
+            )
+            for neighbor in neighbors:
+                if neighbor in came_from or not walkable(neighbor):
+                    continue
+                came_from[neighbor] = current
+                frontier.append(neighbor)
+
+        if goal not in came_from:
+            return []
+
+        tile_path: list[tuple[int, int]] = []
+        current: tuple[int, int] | None = goal
+        while current is not None:
+            tile_path.append(current)
+            current = came_from[current]
+        tile_path.reverse()
+
+        route: list[tuple[float, float]] = [(self.player.x, self.player.y)]
+        route.extend((x + 0.5, y + 0.5) for x, y in tile_path[1:-1])
+        route.append(target)
+        return route
+
+    def route_distance(self, route: list[tuple[float, float]]) -> float:
+        return sum(
+            math.hypot(bx - ax, by - ay) for (ax, ay), (bx, by) in zip(route, route[1:])
+        )
+
+    def sample_guidance_route(
+        self, route: list[tuple[float, float]], sample_count: int
+    ) -> list[tuple[float, float]]:
+        total = self.route_distance(route)
+        if total <= 0.001 or len(route) < 2:
+            return route
+        start_distance = min(1.05, total * 0.35)
+        end_distance = max(start_distance, total - 0.45)
+        if sample_count <= 1 or end_distance <= start_distance:
+            distances = [end_distance]
+        else:
+            step = (end_distance - start_distance) / (sample_count - 1)
+            distances = [start_distance + index * step for index in range(sample_count)]
+
+        samples: list[tuple[float, float]] = []
+        segment_start_distance = 0.0
+        segment_index = 0
+        for distance in distances:
+            while segment_index < len(route) - 2:
+                ax, ay = route[segment_index]
+                bx, by = route[segment_index + 1]
+                segment_length = math.hypot(bx - ax, by - ay)
+                if segment_start_distance + segment_length >= distance:
+                    break
+                segment_start_distance += segment_length
+                segment_index += 1
+            ax, ay = route[segment_index]
+            bx, by = route[segment_index + 1]
+            segment_length = max(0.001, math.hypot(bx - ax, by - ay))
+            ratio = max(
+                0.0,
+                min(1.0, (distance - segment_start_distance) / segment_length),
+            )
+            samples.append((ax + (bx - ax) * ratio, ay + (by - ay) * ratio))
+        return samples
 
     def draw_story_relic(self, item: Item) -> None:
         sx, sy = self.world_to_screen(item.x, item.y)

@@ -353,6 +353,15 @@ class StoryMode20Tests(unittest.TestCase):
                                 for line in panel_lines
                             )
                         )
+                        route = game.story_relic_guidance_route((relic.x, relic.y))
+                        self.assertGreaterEqual(len(route), 2)
+                        self.assertTrue(
+                            all(game.dungeon.is_floor(x, y) for x, y in route)
+                        )
+                        samples = game.sample_guidance_route(route, 7)
+                        self.assertTrue(
+                            all(game.dungeon.is_floor(x, y) for x, y in samples)
+                        )
                     else:
                         self.assertTrue(
                             any("no guiding light" in line for line in panel_lines)
