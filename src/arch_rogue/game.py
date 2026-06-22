@@ -139,14 +139,18 @@ class Game:
     def __init__(self) -> None:
         pygame.init()
         pygame.display.set_caption("Arch Rogue - Prototype 3")
+        display_info = pygame.display.Info()
         self.screen = pygame.display.set_mode(
-            (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE
+            (display_info.current_w, display_info.current_h), pygame.NOFRAME
         )
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 24 * UI_SCALE)
         self.small_font = pygame.font.Font(None, 19 * UI_SCALE)
         self.big_font = pygame.font.Font(None, 56 * UI_SCALE)
         self.sprites = PixelSpriteAtlas()
+        self.tile_cache: dict[
+            tuple[str, int, int], tuple[pygame.Surface, int, int]
+        ] = {}
         self.rng = random.Random()
         self.running = True
         self.inventory_open = False
@@ -162,6 +166,7 @@ class Game:
         if archetype:
             self.selected_archetype = archetype
         self.theme = self.rng.choice(DUNGEON_THEMES)
+        self.tile_cache.clear()
         self.run_modifier = self.rng.choice(RUN_MODIFIERS)
         self.dungeon = Dungeon(self.rng)
         start_x, start_y = self.dungeon.rooms[0].center
@@ -1184,157 +1189,256 @@ class Game:
 
     def draw_tile(self, x: int, y: int, tile: Tile) -> None:
         sx, sy = self.world_to_screen(x + 0.5, y + 0.5)
+        seed = self.tile_seed(x, y)
+        surface, anchor_x, anchor_y = self.tile_surface(tile, seed)
+        self.screen.blit(surface, (sx - anchor_x, sy - anchor_y))
+
+    def tile_seed(self, x: int, y: int) -> int:
+        return (x * 1103515245 + y * 12345) & 31
+
+    def shade(self, color: Color, amount: int) -> Color:
+        return (
+            max(0, min(255, color[0] + amount)),
+            max(0, min(255, color[1] + amount)),
+            max(0, min(255, color[2] + amount)),
+        )
+
+    def mix(self, a: Color, b: Color, ratio: float) -> Color:
+        return (
+            int(a[0] * (1.0 - ratio) + b[0] * ratio),
+            int(a[1] * (1.0 - ratio) + b[1] * ratio),
+            int(a[2] * (1.0 - ratio) + b[2] * ratio),
+        )
+
+    def tile_surface(self, tile: Tile, seed: int) -> tuple[pygame.Surface, int, int]:
+        key = (self.theme.name, int(tile), seed)
+        cached = self.tile_cache.get(key)
+        if cached:
+            return cached
+
+        margin = 4 * WORLD_SCALE
+        wall_h = 48 * WORLD_SCALE if tile == Tile.WALL else 0
+        width = TILE_W + margin * 2
+        height = TILE_H + wall_h + margin * 2
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        anchor_x = width // 2
+        anchor_y = margin + wall_h + TILE_H // 2
+        sx, sy = anchor_x, anchor_y
         top = (sx, sy - TILE_H // 2)
         right = (sx + TILE_W // 2, sy)
         bottom = (sx, sy + TILE_H // 2)
         left = (sx - TILE_W // 2, sy)
 
         if tile == Tile.WALL:
-            wall_h = 36 * WORLD_SCALE
-            pygame.draw.polygon(
-                self.screen, self.theme.wall_top, [top, right, bottom, left]
+            self.draw_wall_tile_surface(
+                surface, sx, sy, top, right, bottom, left, wall_h, seed
             )
-            pygame.draw.polygon(
-                self.screen,
-                self.theme.wall_left,
-                [
-                    left,
-                    bottom,
-                    (bottom[0], bottom[1] + wall_h),
-                    (left[0], left[1] + wall_h),
-                ],
+        else:
+            self.draw_floor_tile_surface(
+                surface, sx, sy, top, right, bottom, left, tile, seed
             )
-            pygame.draw.polygon(
-                self.screen,
-                self.theme.wall_right,
-                [
-                    right,
-                    bottom,
-                    (bottom[0], bottom[1] + wall_h),
-                    (right[0], right[1] + wall_h),
-                ],
-            )
-            pygame.draw.lines(
-                self.screen,
-                self.theme.wall_edge,
-                True,
-                [top, right, bottom, left],
-                WORLD_SCALE,
-            )
-            seed = (x * 928371 + y * 364479) & 7
-            if seed in (1, 4, 6):
-                pygame.draw.line(
-                    self.screen,
-                    (69, 65, 76),
-                    (sx - 15 * WORLD_SCALE, sy - 9 * WORLD_SCALE),
-                    (sx - 4 * WORLD_SCALE, sy - 14 * WORLD_SCALE),
-                    WORLD_SCALE,
-                )
-                pygame.draw.line(
-                    self.screen,
-                    (22, 21, 28),
-                    (sx + 10 * WORLD_SCALE, sy + 18 * WORLD_SCALE),
-                    (sx + 2 * WORLD_SCALE, sy + wall_h - 5 * WORLD_SCALE),
-                    WORLD_SCALE,
-                )
-            if seed in (2, 5):
-                pygame.draw.rect(
-                    self.screen,
-                    (34, 54, 43),
-                    (
-                        sx - 24 * WORLD_SCALE,
-                        sy + 18 * WORLD_SCALE,
-                        6 * WORLD_SCALE,
-                        2 * WORLD_SCALE,
-                    ),
-                )
-                pygame.draw.rect(
-                    self.screen,
-                    (40, 68, 50),
-                    (
-                        sx + 13 * WORLD_SCALE,
-                        sy + 8 * WORLD_SCALE,
-                        5 * WORLD_SCALE,
-                        2 * WORLD_SCALE,
-                    ),
-                )
-            return
 
-        base = self.theme.floor if tile == Tile.FLOOR else self.theme.stair
-        edge = self.theme.floor_edge if tile == Tile.FLOOR else self.theme.accent
-        pygame.draw.polygon(self.screen, base, [top, right, bottom, left])
+        cached = (surface.convert_alpha(), anchor_x, anchor_y)
+        self.tile_cache[key] = cached
+        return cached
+
+    def draw_wall_tile_surface(
+        self,
+        surface: pygame.Surface,
+        sx: int,
+        sy: int,
+        top: tuple[int, int],
+        right: tuple[int, int],
+        bottom: tuple[int, int],
+        left: tuple[int, int],
+        wall_h: int,
+        seed: int,
+    ) -> None:
+        cap_top = (top[0], top[1] - wall_h)
+        cap_right = (right[0], right[1] - wall_h)
+        cap_bottom = (bottom[0], bottom[1] - wall_h)
+        cap_left = (left[0], left[1] - wall_h)
+
+        top_color = self.shade(self.theme.wall_top, 10 + seed % 7)
+        left_color = self.shade(self.theme.wall_left, -4)
+        right_color = self.shade(self.theme.wall_right, -20)
+        edge_color = self.shade(self.theme.wall_edge, 8)
+        mortar = self.mix(edge_color, (210, 205, 190), 0.18)
+        crack = self.shade(self.theme.wall_right, -32)
+        moss = self.mix(self.theme.accent, (35, 70, 43), 0.55)
+
+        # The tile diamond is the floor-plane footprint. Draw the wall upward from
+        # that footprint so actors read as moving between walls, not on top of them.
+        pygame.draw.polygon(surface, left_color, [cap_left, cap_bottom, bottom, left])
+        pygame.draw.polygon(surface, right_color, [cap_right, cap_bottom, bottom, right])
+        pygame.draw.polygon(surface, top_color, [cap_top, cap_right, cap_bottom, cap_left])
+
         pygame.draw.lines(
-            self.screen, edge, True, [top, right, bottom, left], WORLD_SCALE
+            surface, edge_color, True, [cap_top, cap_right, cap_bottom, cap_left], WORLD_SCALE
         )
-        seed = (x * 1103515245 + y * 12345) & 15
-        if seed in (0, 3, 7, 12):
+        pygame.draw.line(surface, self.shade(edge_color, -12), cap_left, left, WORLD_SCALE)
+        pygame.draw.line(surface, self.shade(edge_color, -28), cap_right, right, WORLD_SCALE)
+        pygame.draw.line(surface, self.shade(edge_color, -48), cap_bottom, bottom, WORLD_SCALE)
+        pygame.draw.line(surface, self.shade(edge_color, -42), left, bottom, WORLD_SCALE)
+        pygame.draw.line(surface, self.shade(edge_color, -54), bottom, right, WORLD_SCALE)
+
+        # Top cap seams stay high above the walking plane, avoiding the roof illusion.
+        pygame.draw.line(
+            surface,
+            mortar,
+            (sx - 28 * WORLD_SCALE, cap_bottom[1] - 5 * WORLD_SCALE),
+            (sx + 2 * WORLD_SCALE, cap_top[1] + 12 * WORLD_SCALE),
+            max(1, WORLD_SCALE),
+        )
+        pygame.draw.line(
+            surface,
+            mortar,
+            (sx - 2 * WORLD_SCALE, cap_top[1] + 12 * WORLD_SCALE),
+            (sx + 30 * WORLD_SCALE, cap_bottom[1] - 4 * WORLD_SCALE),
+            max(1, WORLD_SCALE),
+        )
+
+        # Face courses descend from the raised cap to the floor footprint.
+        face_start = cap_bottom[1] + 18 * WORLD_SCALE
+        for row, offset in enumerate((0, 28, 56)):
+            y_face = face_start + offset * WORLD_SCALE
+            if y_face >= bottom[1] - 4 * WORLD_SCALE:
+                continue
             pygame.draw.line(
-                self.screen,
-                (38, 35, 33),
-                (sx - 18 * WORLD_SCALE, sy - 2 * WORLD_SCALE),
-                (sx - 6 * WORLD_SCALE, sy + 4 * WORLD_SCALE),
-                WORLD_SCALE,
+                surface,
+                self.shade(mortar, -28),
+                (sx - 29 * WORLD_SCALE, y_face),
+                (sx, y_face + 14 * WORLD_SCALE),
+                max(1, WORLD_SCALE),
             )
-        if seed in (2, 8, 14):
+            pygame.draw.line(
+                surface,
+                self.shade(mortar, -40),
+                (sx, y_face + 14 * WORLD_SCALE),
+                (sx + 29 * WORLD_SCALE, y_face),
+                max(1, WORLD_SCALE),
+            )
+            joint = (-19 if (seed + row) & 1 else -8) * WORLD_SCALE
+            pygame.draw.line(
+                surface,
+                self.shade(mortar, -34),
+                (sx + joint, y_face - 8 * WORLD_SCALE),
+                (sx + joint + 9 * WORLD_SCALE, y_face - 3 * WORLD_SCALE),
+                max(1, WORLD_SCALE),
+            )
+            joint = (13 if (seed + row) & 2 else 23) * WORLD_SCALE
+            pygame.draw.line(
+                surface,
+                self.shade(mortar, -44),
+                (sx + joint, y_face - 2 * WORLD_SCALE),
+                (sx + joint - 9 * WORLD_SCALE, y_face + 3 * WORLD_SCALE),
+                max(1, WORLD_SCALE),
+            )
+
+        if seed & 3:
+            pygame.draw.line(
+                surface,
+                crack,
+                (sx + (8 - seed % 14) * WORLD_SCALE, cap_bottom[1] + 22 * WORLD_SCALE),
+                (sx + (2 - seed % 10) * WORLD_SCALE, cap_bottom[1] + 48 * WORLD_SCALE),
+                max(1, WORLD_SCALE),
+            )
+        if 8 <= seed <= 15 or seed > 27:
             pygame.draw.rect(
-                self.screen,
-                (71, 63, 54),
+                surface,
+                moss,
                 (
-                    sx + 8 * WORLD_SCALE,
-                    sy - 6 * WORLD_SCALE,
+                    sx - 27 * WORLD_SCALE,
+                    bottom[1] - 8 * WORLD_SCALE,
+                    (5 + seed % 5) * WORLD_SCALE,
+                    2 * WORLD_SCALE,
+                ),
+            )
+
+    def draw_floor_tile_surface(
+        self,
+        surface: pygame.Surface,
+        sx: int,
+        sy: int,
+        top: tuple[int, int],
+        right: tuple[int, int],
+        bottom: tuple[int, int],
+        left: tuple[int, int],
+        tile: Tile,
+        seed: int,
+    ) -> None:
+        is_stairs = tile == Tile.STAIRS
+        base = self.theme.stair if is_stairs else self.theme.floor
+        edge = self.theme.accent if is_stairs else self.theme.floor_edge
+        slab_color = self.shade(base, (seed % 7) - 3)
+        inner_edge = self.shade(edge, -18)
+        groove = self.shade(base, -24)
+        highlight = self.shade(base, 20)
+        pebble = self.mix(edge, base, 0.45)
+
+        pygame.draw.polygon(surface, slab_color, [top, right, bottom, left])
+        pygame.draw.lines(surface, edge, True, [top, right, bottom, left], WORLD_SCALE)
+
+        inset_top = (sx, sy - 20 * WORLD_SCALE)
+        inset_right = (sx + 40 * WORLD_SCALE, sy)
+        inset_bottom = (sx, sy + 20 * WORLD_SCALE)
+        inset_left = (sx - 40 * WORLD_SCALE, sy)
+        pygame.draw.lines(
+            surface,
+            inner_edge,
+            True,
+            [inset_top, inset_right, inset_bottom, inset_left],
+            max(1, WORLD_SCALE),
+        )
+        pygame.draw.line(
+            surface,
+            groove,
+            (sx - 28 * WORLD_SCALE, sy - 6 * WORLD_SCALE),
+            (sx + 6 * WORLD_SCALE, sy + 11 * WORLD_SCALE),
+            max(1, WORLD_SCALE),
+        )
+        pygame.draw.line(
+            surface,
+            self.shade(groove, 8),
+            (sx - 2 * WORLD_SCALE, sy - 15 * WORLD_SCALE),
+            (sx + 29 * WORLD_SCALE, sy + 1 * WORLD_SCALE),
+            max(1, WORLD_SCALE),
+        )
+        pygame.draw.line(
+            surface,
+            highlight,
+            (sx - 32 * WORLD_SCALE, sy - 2 * WORLD_SCALE),
+            (sx - 13 * WORLD_SCALE, sy - 11 * WORLD_SCALE),
+            max(1, WORLD_SCALE),
+        )
+
+        for index in range(2):
+            px = sx + (((seed >> (index * 2)) & 15) - 7) * 5 * WORLD_SCALE
+            py = sy + (((seed >> (index + 1)) & 7) - 3) * 4 * WORLD_SCALE
+            pygame.draw.rect(
+                surface,
+                self.shade(pebble, -8 + index * 10),
+                (px, py, max(1, 2 * WORLD_SCALE), max(1, WORLD_SCALE)),
+            )
+
+        if is_stairs:
+            for step, width in ((-2, 18), (5, 12), (12, 6)):
+                pygame.draw.line(
+                    surface,
+                    self.theme.stair,
+                    (sx - width * WORLD_SCALE, sy + step * WORLD_SCALE),
+                    (sx + width * WORLD_SCALE, sy + step * WORLD_SCALE),
                     3 * WORLD_SCALE,
-                    2 * WORLD_SCALE,
-                ),
-            )
-            pygame.draw.rect(
-                self.screen,
-                (43, 39, 36),
-                (
-                    sx + 15 * WORLD_SCALE,
-                    sy + 7 * WORLD_SCALE,
-                    2 * WORLD_SCALE,
-                    2 * WORLD_SCALE,
-                ),
-            )
-        if seed in (5, 10):
+                )
             pygame.draw.line(
-                self.screen,
-                (76, 68, 58),
-                (sx - 4 * WORLD_SCALE, sy - 10 * WORLD_SCALE),
-                (sx + 14 * WORLD_SCALE, sy - 2 * WORLD_SCALE),
-                WORLD_SCALE,
-            )
-        if tile == Tile.STAIRS:
-            pygame.draw.line(
-                self.screen,
-                self.theme.stair,
-                (sx - 18 * WORLD_SCALE, sy - 2 * WORLD_SCALE),
-                (sx + 18 * WORLD_SCALE, sy - 2 * WORLD_SCALE),
-                3 * WORLD_SCALE,
-            )
-            pygame.draw.line(
-                self.screen,
-                self.theme.stair,
-                (sx - 12 * WORLD_SCALE, sy + 5 * WORLD_SCALE),
-                (sx + 12 * WORLD_SCALE, sy + 5 * WORLD_SCALE),
-                3 * WORLD_SCALE,
-            )
-            pygame.draw.line(
-                self.screen,
-                self.theme.stair,
-                (sx - 6 * WORLD_SCALE, sy + 12 * WORLD_SCALE),
-                (sx + 6 * WORLD_SCALE, sy + 12 * WORLD_SCALE),
-                3 * WORLD_SCALE,
-            )
-            pygame.draw.line(
-                self.screen,
+                surface,
                 self.theme.accent,
                 (sx - 20 * WORLD_SCALE, sy - 8 * WORLD_SCALE),
                 (sx + 20 * WORLD_SCALE, sy - 8 * WORLD_SCALE),
                 WORLD_SCALE,
             )
             pygame.draw.circle(
-                self.screen,
+                surface,
                 self.theme.accent,
                 (sx, sy - 16 * WORLD_SCALE),
                 max(2, 2 * WORLD_SCALE),

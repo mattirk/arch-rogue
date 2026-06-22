@@ -144,42 +144,40 @@ Example categories:
 - Avoid overbuilding meta-progression before the core run loop is fun.
 - When choosing between authenticity to Rogue and modern playability, preserve the spirit of Rogue while modernizing the interface and moment-to-moment feel.
 
-## Initial Milestone Suggestion
+## Milestones
 
-### Prototype 1: Core Dungeon Loop
+### RC1: Core Run Stability
 
-Deliver a minimal playable loop with:
+Prepare the game for repeatable end-to-end runs:
 
-- One character archetype
-- One procedurally generated dungeon floor
-- Basic isometric movement
-- Basic melee and ranged enemy combat
-- Health, resource, and death states
-- A few lootable items
-- Simple inventory/equipment
-- Exit stairs or boss room objective
+- Stabilize the character select → dungeon run → boss → exit/death → new run loop.
+- Ensure all archetypes have distinct but viable starting stats and skill bonuses.
+- Balance baseline enemy damage, boss health, trap damage, potion drops, and early loot availability.
+- Improve input reliability for movement, aiming, interaction, inventory, and restart flow.
+- Add focused regression checks for dungeon generation, item pickup/equip/use, enemy death, boss gating, and run restart.
+- Keep performance at a stable 60+ FPS on typical dungeon layouts.
 
-### Prototype 2: Build and Loot Identity
+### RC2: Content and UX Completeness
 
-Expand with:
+Expand and polish the current feature set without overcomplicating architecture:
 
-- Multiple skills
-- Item affixes
-- More enemy types
-- Traps and shrines
-- Consumables and unidentified items
-- First unique items
+- Add more data-driven enemy, item, affix, shrine, secret, theme, and run modifier definitions.
+- Give each archetype clearer skill identity through tuned cooldowns, costs, and feedback.
+- Improve dungeon readability with better room variety, landmark placement, telegraphs, and visual hierarchy.
+- Polish inventory, equipment, objective, boss, and run-summary UI for clarity at different window sizes.
+- Add settings for audio/video/input basics once those systems exist.
+- Review accessibility basics: readable colors, scalable UI, clear interaction prompts, and avoid hidden critical information.
 
-### Prototype 3: Replayability
+### Beta: Feature Complete Public Test
 
-Implemented as a lightweight replayability layer:
+Reach a testable, content-complete version suitable for broad feedback:
 
-- Multiple dungeon themes with distinct tile palettes and atmosphere.
-- A final-room gate tyrant boss that must be defeated before stairs can be used.
-- Selectable Warden, Rogue, and Arcanist archetypes with different HP, mana, stamina, speed, and damage bonuses.
-- Random run modifiers that alter enemy pressure, traps, and loot rewards.
-- Discoverable secret caches, cursed reliquaries, and rare stashes.
-- Stronger run UI: archetype selection, run/theme/modifier header, boss health bar, and contextual objectives.
+- Lock the main gameplay loop and avoid major architectural rewrites except for critical issues.
+- Include enough themes, bosses, enemies, loot, secrets, and run modifiers to support repeated runs.
+- Add save/run-state handling if runs are expected to survive application restarts.
+- Add audio, options, title/menu flow, credits/about screen, and basic onboarding/help.
+- Run broad balance passes based on playtest data, especially difficulty spikes, loot pacing, and archetype viability.
+- Fix known crashes, softlocks, progression blockers, and severe performance issues before widening testing.
 
 ## Open Design Questions
 
