@@ -23,12 +23,17 @@ Analyze, write, and optimize game code to maintain a stable 60+ FPS while preser
 
 Keep the prototype architecture modular but intentionally small:
 
-- `src/arch_rogue/game.py` owns the main loop, input handling, gameplay orchestration, rendering order, UI, and the executable `main()` entry point.
+- `src/arch_rogue/game.py` owns the main loop, input handling, gameplay orchestration, combat/interactions, audio/options setup, and the executable `main()` entry point.
+- `src/arch_rogue/rendering.py` owns the `RenderingMixin` for dungeon, actor, effect, HUD, and menu-overlay drawing behavior used by `Game`.
+- `src/arch_rogue/save_system.py` owns the `SaveLoadMixin` for item serialization, run-state serialization/restoration, and save-file lifecycle behavior used by `Game`.
+- `src/arch_rogue/constants.py` owns shared gameplay/rendering constants and lightweight aliases.
+- `src/arch_rogue/content.py` owns prototype content tables such as archetypes, dungeon themes, run modifiers, enemy definitions, equipment definitions, traps, shrines, and secrets.
 - `src/arch_rogue/models.py` owns lightweight gameplay data models and shared simple types such as actors, items, projectiles, rooms, and tiles.
 - `src/arch_rogue/dungeon.py` owns procedural map generation and dungeon collision/floor queries.
 - `src/arch_rogue/sprites.py` owns procedural pixel-art sprite construction.
+- `src/arch_rogue/menus.py` owns reusable menu and overlay rendering helpers.
 
-Prefer expanding these existing modules until a new boundary is clearly justified. Avoid introducing many narrow submodules during prototype work.
+Prefer expanding these focused modules until a new boundary is clearly justified. Avoid introducing many narrow submodules during prototype work.
 
 ## Design Pillars
 
