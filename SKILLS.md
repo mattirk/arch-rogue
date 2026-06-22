@@ -152,20 +152,12 @@ Example categories:
 
 ## Milestones
 
-### 1.2: Systems Polish, Presentation, and Long-Term Structure
+### 2.0: Story Mode - Going Full RPG
 
-Build on the current run loop by improving usability, atmosphere, and maintainability while keeping the game fast to start and easy to play:
-
-- **Inventory and equipment polish:** improve inventory readability, sorting, dropping, comparison hints, consumable safeguards, equipment swapping, and item decision clarity without slowing down pickups or combat flow.
-- **Menu and UX refinement:** tighten title/options/about/archetype/inventory layouts, prevent text overlap, improve responsive scaling, and keep all menu actions clear at compact window sizes.
-- **Static menu audio and startup performance:** keep menu ambience subtle and fixed rather than procedurally generated at startup; ensure the first title frame appears quickly even when audio/music is enabled.
-- **Combat readability pass:** improve hit feedback, elite/miniboss tells, projectile clarity, melee arc readability, cooldown feedback, and player damage warnings.
-- **Dungeon event clarity:** make shrines, secrets, cursed bargains, traps, and rare events easier to understand through concise in-game prompts and distinct visual/audio cues.
-- **Skill upgrade presentation:** expose acquired class upgrades more clearly in HUD/inventory/help, and make upgrade effects easier to reason about during a run.
-- **Loot balance and item identity:** tune affix values, cursed tradeoffs, unique effects, drop rates, potion scarcity, and equipment comparison so loot choices feel meaningful but quick.
-- **Audio-visual atmosphere pass:** add cohesive static/menu ambience, subtle environmental animation, restrained impact cues, shrine cues, boss stingers, and clearer death/victory presentation.
-- **Accessibility and controls:** improve key clarity, color-safe indicators, UI scale behavior, pause/readability tools, and mouse/keyboard responsiveness; keep controller support as an evaluation item.
-- **Save compatibility and migration:** maintain safe run-state loading from older compatible saves, preserve actionable load/save errors, and avoid corrupting user progress on failed writes.
-- **Automated regression coverage:** expand tests for inventory/equipment behavior, UI rendering, save/load compatibility, skill upgrades, elite/miniboss state, projectiles, and repeated-run stability.
-- **Data-driven content direction:** continue moving suitable content definitions toward durable tables for items, affixes, enemies, skills, rooms, shrines, events, and audio profiles without committing to a public modding API yet.
-- **Performance hardening:** profile startup, menu transitions, procedural audio generation, dungeon population, rendering hot spots, and repeated-run memory behavior to preserve a responsive 60 FPS target.
+- plan and write full dark fantasy style corpus to which you can base the gameplay elements
+- create engine that can procedurally generate new stories out of the corpus
+- create RPG-style guests out of the stories that can be encountered and interact with during gameplay
+- create full procedurally generated storylines that align with the player's backstory
+- choices made during gameplay affect the story and dungeon generation
+- procedurally generated content is consistent and replayable
+- implement all of the above, test storylines, write clean code

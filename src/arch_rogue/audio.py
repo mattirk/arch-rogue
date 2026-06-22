@@ -135,18 +135,25 @@ class AudioSystem:
 
     def generate_run_track(self, profile: MusicProfile) -> pygame.mixer.Sound:
         rng = random.Random(self._profile_seed(profile))
-        tempo = rng.choice((118, 126, 132, 140, 148))
-        steps = rng.choice((48, 64))
+        depth = max(1, profile.depth)
+        metal = min(1.0, (depth - 1) / 9.0)
+        base_tempo = 112 + (profile.seed % 4) * 4
+        tempo = min(212, base_tempo + (depth - 1) * 9)
+        steps = 64
         step_seconds = 60.0 / tempo / 2.0
         total_samples = int(steps * step_seconds * SAMPLE_RATE)
         samples = [0] * total_samples
 
-        root = rng.choice((110.0, 123.47, 130.81, 146.83, 164.81))
+        root = rng.choice((82.41, 92.50, 98.0, 110.0, 123.47))
         scale = [0, 2, 3, 5, 7, 10, 12]
-        motif = [rng.choice(scale) + rng.choice((0, 12, 12, 24)) for _ in range(8)]
-        counter = [rng.choice(scale) + rng.choice((12, 24)) for _ in range(8)]
+        metal_scale = [0, 1, 3, 5, 6, 7, 10, 12]
+        lead_scale = metal_scale if metal >= 0.35 else scale
+        motif = [rng.choice(lead_scale) + rng.choice((0, 12, 12, 24)) for _ in range(8)]
+        counter = [rng.choice(lead_scale) + rng.choice((12, 24)) for _ in range(8)]
         bass = [0, 0, 7, 0, 10, 7, 3, 5]
+        metal_bass = [0, 0, 0, 6, 0, 0, 3, 1, 0, 0, 7, 6, 0, 3, 1, 0]
         duty = rng.choice((0.125, 0.25, 0.5))
+        riff_duty = 0.18 if metal < 0.65 else 0.12
 
         for step in range(steps):
             start = int(step * step_seconds * SAMPLE_RATE)
@@ -157,24 +164,26 @@ class AudioSystem:
                 12 if phrase % 4 == 3 and step % 4 == 0 else 0
             )
             harmony_degree = counter[(note_index + phrase) % 8]
-            bass_degree = bass[(step // 2) % len(bass)] - 12
+            bass_pattern = metal_bass if metal >= 0.28 else bass
+            bass_degree = bass_pattern[step % len(bass_pattern)] - 18
+            chug_degree = bass_pattern[step % len(bass_pattern)] - 24
 
-            if step % 2 == 0 or rng.random() < 0.35:
+            if step % 2 == 0 or rng.random() < 0.35 + metal * 0.25:
                 self._mix_square(
                     samples,
                     start,
                     length,
                     self._degree_to_freq(root, lead_degree),
-                    0.34,
+                    0.26 + metal * 0.08,
                     duty,
                 )
-            if step % 4 in (1, 3):
+            if step % 4 in (1, 3) or (metal > 0.55 and step % 4 == 2):
                 self._mix_square(
                     samples,
                     start,
                     length,
                     self._degree_to_freq(root, harmony_degree),
-                    0.18,
+                    0.14 + metal * 0.06,
                     0.25,
                 )
             if step % 2 == 0:
@@ -183,19 +192,60 @@ class AudioSystem:
                     start,
                     length * 2,
                     self._degree_to_freq(root, bass_degree),
-                    0.26,
+                    0.24 + metal * 0.08,
                 )
+            if metal > 0.15:
+                self._mix_overdriven_square(
+                    samples,
+                    start,
+                    max(1, int(length * (0.52 + metal * 0.22))),
+                    self._degree_to_freq(root, chug_degree),
+                    0.16 + metal * 0.19,
+                    riff_duty,
+                    drive=1.9 + metal * 2.2,
+                    release=0.18,
+                )
+                if metal > 0.52 and step % 4 in (0, 3):
+                    self._mix_overdriven_square(
+                        samples,
+                        start,
+                        max(1, int(length * 0.44)),
+                        self._degree_to_freq(root, chug_degree + 7),
+                        0.08 + metal * 0.08,
+                        0.14,
+                        drive=2.4 + metal * 2.0,
+                        release=0.14,
+                    )
             if step % 4 == 0:
                 self._mix_noise(
-                    samples, start, max(1, length // 3), 0.30, rng, low=True
+                    samples,
+                    start,
+                    max(1, length // 3),
+                    0.28 + metal * 0.18,
+                    rng,
+                    low=True,
                 )
             elif step % 4 == 2:
                 self._mix_noise(
-                    samples, start, max(1, length // 5), 0.18, rng, low=False
+                    samples,
+                    start,
+                    max(1, length // 5),
+                    0.18 + metal * 0.12,
+                    rng,
+                    low=False,
                 )
-            elif step % 2 == 1 and rng.random() < 0.55:
+            elif step % 2 == 1 and rng.random() < 0.45 + metal * 0.45:
                 self._mix_noise(
-                    samples, start, max(1, length // 8), 0.10, rng, low=False
+                    samples,
+                    start,
+                    max(1, length // 8),
+                    0.09 + metal * 0.10,
+                    rng,
+                    low=False,
+                )
+            if metal > 0.68 and step % 8 in (7,):
+                self._mix_noise(
+                    samples, start, max(1, length // 6), 0.24, rng, low=False
                 )
 
         frames = bytearray()
@@ -307,6 +357,29 @@ class AudioSystem:
             phase = (local * frequency / SAMPLE_RATE) % 1.0
             value = amplitude if phase < duty else -amplitude
             samples[index] += int(value * env)
+
+    def _mix_overdriven_square(
+        self,
+        samples: list[int],
+        start: int,
+        length: int,
+        frequency: float,
+        volume: float,
+        duty: float,
+        drive: float,
+        release: float,
+    ) -> None:
+        end = min(len(samples), start + length)
+        amplitude = MUSIC_AMPLITUDE * volume
+        for index in range(start, end):
+            local = index - start
+            env = self._pluck_envelope(local, length, release=release)
+            phase = (local * frequency / SAMPLE_RATE) % 1.0
+            raw = 1.0 if phase < duty else -1.0
+            octave_phase = (local * frequency * 2.0 / SAMPLE_RATE) % 1.0
+            overtone = 0.45 if octave_phase < duty else -0.45
+            value = math.tanh((raw + overtone) * drive)
+            samples[index] += int(value * amplitude * env)
 
     def _mix_triangle(
         self,
