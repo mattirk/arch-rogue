@@ -9,6 +9,7 @@ from typing import Any, NamedTuple, cast
 
 import pygame
 
+from . import __version__
 from .dungeon import MAP_H, MAP_W, Dungeon
 from .models import (
     Archetype,
@@ -309,16 +310,31 @@ class Game:
         save_path: str | Path | None = None,
     ) -> None:
         pygame.init()
-        pygame.display.set_caption("Arch Rogue - Beta")
+        pygame.display.set_caption(f"Arch Rogue {__version__}")
+        self.save_path = (
+            Path(save_path) if save_path else Path.home() / ".arch_rogue_run.json"
+        )
+        self.options_path = Path.home() / ".arch_rogue_options.json"
+        self.audio_enabled = True
+        self.music_enabled = False
+        self.fullscreen = False
+        self.ui_scale = UI_SCALE
+        self.last_save_error = ""
+        self.last_load_error = ""
+        self.load_options()
         if screen_size is None:
             display_info = pygame.display.Info()
             screen_size = (display_info.current_w, display_info.current_h)
-        flags = pygame.HIDDEN if headless else pygame.NOFRAME
+        flags = (
+            pygame.HIDDEN
+            if headless
+            else pygame.FULLSCREEN
+            if self.fullscreen
+            else pygame.NOFRAME
+        )
         self.screen = pygame.display.set_mode(screen_size, flags)
         self.clock = pygame.time.Clock()
-        self.font = pygame.font.Font(None, 24 * UI_SCALE)
-        self.small_font = pygame.font.Font(None, 19 * UI_SCALE)
-        self.big_font = pygame.font.Font(None, 56 * UI_SCALE)
+        self.rebuild_fonts()
         self.sprites = PixelSpriteAtlas()
         self.tile_cache: dict[
             tuple[str, int, int], tuple[pygame.Surface, int, int]
@@ -336,14 +352,48 @@ class Game:
         self.run_number = 0
         self.current_depth = 1
         self.state = "title"
-        self.save_path = (
-            Path(save_path) if save_path else Path.home() / ".arch_rogue_run.json"
-        )
-        self.audio_enabled = True
-        self.music_enabled = True
-        self.fullscreen = False
         self.audio_available = self.initialize_audio(headless)
         self.sound_cache: dict[str, pygame.mixer.Sound] = {}
+
+    def rebuild_fonts(self) -> None:
+        self.font = pygame.font.Font(None, 24 * self.ui_scale)
+        self.small_font = pygame.font.Font(None, 19 * self.ui_scale)
+        self.big_font = pygame.font.Font(None, 56 * self.ui_scale)
+
+    def options_to_dict(self) -> dict[str, Any]:
+        return {
+            "version": 1,
+            "audio_enabled": self.audio_enabled,
+            "music_enabled": self.music_enabled,
+            "fullscreen": self.fullscreen,
+            "ui_scale": self.ui_scale,
+        }
+
+    def load_options(self) -> bool:
+        try:
+            data = json.loads(self.options_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return False
+        try:
+            self.audio_enabled = bool(data.get("audio_enabled", True))
+            self.music_enabled = bool(data.get("music_enabled", False))
+            self.fullscreen = bool(data.get("fullscreen", False))
+            self.ui_scale = max(1, min(4, int(data.get("ui_scale", UI_SCALE))))
+        except (TypeError, ValueError):
+            return False
+        return True
+
+    def save_options(self) -> bool:
+        try:
+            self.options_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = Path(f"{self.options_path}.tmp")
+            tmp_path.write_text(
+                json.dumps(self.options_to_dict(), indent=2), encoding="utf-8"
+            )
+            tmp_path.replace(self.options_path)
+        except (OSError, TypeError, ValueError):
+            return False
+        return True
 
     def initialize_audio(self, headless: bool) -> bool:
         if headless:
@@ -430,7 +480,8 @@ class Game:
 
     def serialize_run_state(self) -> dict[str, Any]:
         return {
-            "version": 1,
+            "version": 2,
+            "release": __version__,
             "run_number": self.run_number,
             "current_depth": self.current_depth,
             "elapsed": self.elapsed,
@@ -565,24 +616,33 @@ class Game:
         self.state = "playing"
 
     def save_run(self) -> bool:
+        self.last_save_error = ""
         if self.state != "playing":
             return False
         try:
             self.save_path.parent.mkdir(parents=True, exist_ok=True)
-            self.save_path.write_text(
+            tmp_path = Path(f"{self.save_path}.tmp")
+            tmp_path.write_text(
                 json.dumps(self.serialize_run_state(), indent=2), encoding="utf-8"
             )
-        except (OSError, TypeError, ValueError):
+            tmp_path.replace(self.save_path)
+        except (OSError, TypeError, ValueError) as exc:
+            self.last_save_error = f"Could not save run: {exc}"
             return False
         return True
 
     def load_run(self) -> bool:
+        self.last_load_error = ""
         try:
             data = json.loads(self.save_path.read_text(encoding="utf-8"))
-            if int(data.get("version", 0)) != 1:
+            if int(data.get("version", 0)) not in (1, 2):
+                self.last_load_error = (
+                    "Saved run was created by an incompatible version."
+                )
                 return False
             self.restore_run_state(data)
-        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            self.last_load_error = f"Could not resume saved run: {exc}"
             return False
         self.play_sfx("start")
         return True
@@ -618,6 +678,7 @@ class Game:
             spell_bonus=self.selected_archetype.spell_bonus,
             armor_bonus=self.selected_archetype.armor_bonus,
         )
+        self.apply_starting_loadout()
         self.enemies: list[Enemy] = []
         self.items: list[Item] = []
         self.projectiles: list[Projectile] = []
@@ -682,11 +743,42 @@ class Game:
         self.play_sfx("stairs")
         self.save_run()
 
+    def apply_starting_loadout(self) -> None:
+        loadouts = {
+            "Warden": (
+                Item("Warden Arming Sword", "weapon", power=3, rarity="Common"),
+                Item("Warden Mail", "armor", defense=3, rarity="Common"),
+            ),
+            "Rogue": (
+                Item("Twin Fang Knife", "weapon", power=6, rarity="Common"),
+                Item("Shadow Jerkin", "armor", defense=1, rarity="Common"),
+            ),
+            "Arcanist": (
+                Item("Runed Wand", "weapon", power=1, rarity="Common"),
+                Item("Apprentice Mantle", "armor", defense=1, rarity="Common"),
+            ),
+            "Acolyte": (
+                Item("Pilgrim Censer", "weapon", power=2, rarity="Common"),
+                Item("Boneweave Mantle", "armor", defense=2, rarity="Common"),
+            ),
+            "Ranger": (
+                Item("Yew Longbow", "weapon", power=5, rarity="Common"),
+                Item("Trail Leathers", "armor", defense=2, rarity="Common"),
+            ),
+        }
+        weapon, armor = loadouts.get(self.player.class_name, loadouts["Warden"])
+        self.player.equipment["weapon"] = weapon
+        self.player.equipment["armor"] = armor
+
     def _populate_dungeon(self) -> None:
         final_room_index = len(self.dungeon.rooms) - 1
         for room_index, room in enumerate(self.dungeon.rooms[1:], start=1):
             is_final_room = room_index == final_room_index
             count = self.rng.randrange(1, 4)
+            if self.current_depth <= 2:
+                count = max(1, count - 1)
+            elif self.current_depth >= 7:
+                count += 1
             if is_final_room:
                 count += 1
             for _ in range(count):
@@ -708,8 +800,14 @@ class Game:
             ):
                 tx, ty = room.random_point(self.rng)
                 kind, min_damage, max_damage = self.rng.choice(TRAP_DEFINITIONS)
+                depth_damage = max(0, self.current_depth - 3)
                 self.traps.append(
-                    Trap(tx, ty, kind, self.rng.randrange(min_damage, max_damage + 1))
+                    Trap(
+                        tx,
+                        ty,
+                        kind,
+                        self.rng.randrange(min_damage, max_damage + 1) + depth_damage,
+                    )
                 )
             shrine_chance = 0.18 + (
                 0.08 if self.run_modifier.name == "Trap-Laced" else 0.0
@@ -742,9 +840,17 @@ class Game:
         )
 
     def _apply_run_modifier(self, enemy: Enemy) -> Enemy:
-        enemy.max_hp = max(1, int(enemy.max_hp * self.run_modifier.enemy_hp_multiplier))
+        depth_multiplier = 1.0 + max(0, self.current_depth - 1) * 0.045
+        enemy.max_hp = max(
+            1,
+            int(
+                enemy.max_hp * self.run_modifier.enemy_hp_multiplier * depth_multiplier
+            ),
+        )
         enemy.hp = enemy.max_hp
-        enemy.damage += self.run_modifier.enemy_damage_bonus
+        enemy.damage += (
+            self.run_modifier.enemy_damage_bonus + max(0, self.current_depth - 4) // 2
+        )
         enemy.aggro_range += self.run_modifier.enemy_aggro_bonus
         return enemy
 
@@ -954,14 +1060,25 @@ class Game:
                 elif self.state == "options":
                     if event.key == pygame.K_a:
                         self.audio_enabled = not self.audio_enabled
+                        self.save_options()
                     elif event.key == pygame.K_m:
                         self.music_enabled = not self.music_enabled
+                        self.save_options()
                     elif event.key == pygame.K_f:
                         self.fullscreen = not self.fullscreen
                         flags = pygame.FULLSCREEN if self.fullscreen else pygame.NOFRAME
                         self.screen = pygame.display.set_mode(
                             self.screen.get_size(), flags
                         )
+                        self.save_options()
+                    elif event.key in (pygame.K_EQUALS, pygame.K_PLUS):
+                        self.ui_scale = min(4, self.ui_scale + 1)
+                        self.rebuild_fonts()
+                        self.save_options()
+                    elif event.key in (pygame.K_MINUS, pygame.K_UNDERSCORE):
+                        self.ui_scale = max(1, self.ui_scale - 1)
+                        self.rebuild_fonts()
+                        self.save_options()
                     elif event.key in (pygame.K_RETURN, pygame.K_BACKSPACE, pygame.K_o):
                         self.state = "title"
                 elif self.state == "about":
@@ -1069,6 +1186,49 @@ class Game:
             self.player.facing_y = dy / distance
         return dx, dy
 
+    def melee_stamina_cost(self) -> int:
+        return 9 if self.player.class_name == "Rogue" else 12
+
+    def melee_cooldown(self) -> float:
+        return 0.30 if self.player.class_name == "Rogue" else 0.36
+
+    def bolt_mana_cost(self) -> int:
+        return 7 if self.player.class_name in ("Arcanist", "Ranger") else 10
+
+    def bolt_cooldown(self) -> float:
+        return 0.38 if self.player.class_name in ("Arcanist", "Ranger") else 0.48
+
+    def nova_mana_cost(self) -> int:
+        return 14 if self.player.class_name in ("Arcanist", "Acolyte") else 18
+
+    def nova_cooldown(self) -> float:
+        return 2.65 if self.player.class_name == "Arcanist" else 3.2
+
+    def dash_stamina_cost(self) -> int:
+        return 12 if self.player.class_name in ("Rogue", "Ranger") else 18
+
+    def dash_cooldown(self) -> float:
+        return 0.62 if self.player.class_name == "Ranger" else 0.85
+
+    def take_player_damage(self, raw_damage: int, source: str = "hit") -> int:
+        if self.player.class_name == "Rogue" and self.rng.random() < 0.12:
+            self.floaters.append(
+                FloatingText(
+                    "Evaded", self.player.x, self.player.y - 0.2, (170, 220, 170)
+                )
+            )
+            return 0
+        armor_bonus = (
+            2 if self.player.class_name == "Warden" and source == "melee" else 0
+        )
+        amount = max(1, raw_damage - self.player.armor() - armor_bonus)
+        if self.player.class_name == "Acolyte" and self.player.mana >= 4:
+            self.player.mana -= 4
+            amount = max(1, amount - 3)
+        self.player.hp -= amount
+        self.run_stats.damage_taken += amount
+        return amount
+
     def update_player(self, dt: float) -> None:
         self.player.moving = False
         if pygame.mouse.get_pressed()[0]:
@@ -1087,10 +1247,12 @@ class Game:
         self.player.bolt_timer = max(0.0, self.player.bolt_timer - dt)
         self.player.dash_timer = max(0.0, self.player.dash_timer - dt)
         self.player.nova_timer = max(0.0, self.player.nova_timer - dt)
+        stamina_regen = 38 if self.player.class_name == "Ranger" else 30
+        mana_regen = 8 if self.player.class_name == "Arcanist" else 5
         self.player.stamina = min(
-            self.player.max_stamina, self.player.stamina + 30 * dt
+            self.player.max_stamina, self.player.stamina + stamina_regen * dt
         )
-        self.player.mana = min(self.player.max_mana, self.player.mana + 5 * dt)
+        self.player.mana = min(self.player.max_mana, self.player.mana + mana_regen * dt)
 
     def move_actor(self, actor: Player | Enemy, dx: float, dy: float) -> None:
         old_x, old_y = actor.x, actor.y
@@ -1207,9 +1369,7 @@ class Game:
     def enemy_melee(self, enemy: Enemy) -> None:
         enemy.attack_timer = enemy.attack_cooldown
         raw = enemy.damage + self.rng.randrange(-2, 3)
-        amount = max(1, raw - self.player.armor())
-        self.player.hp -= amount
-        self.run_stats.damage_taken += amount
+        amount = self.take_player_damage(raw, source="melee")
         self.floaters.append(
             FloatingText(
                 f"-{amount}", self.player.x, self.player.y - 0.2, (235, 90, 80)
@@ -1263,9 +1423,9 @@ class Game:
                     )
                     < ENEMY_PROJECTILE_HIT_RADIUS
                 ):
-                    amount = max(1, projectile.damage - self.player.armor())
-                    self.player.hp -= amount
-                    self.run_stats.damage_taken += amount
+                    amount = self.take_player_damage(
+                        projectile.damage, source="projectile"
+                    )
                     self.floaters.append(
                         FloatingText(
                             f"-{amount}",
@@ -1285,10 +1445,8 @@ class Game:
             if math.hypot(trap.x - self.player.x, trap.y - self.player.y) > 0.55:
                 continue
             trap.active = False
-            amount = max(1, trap.damage - self.player.armor())
-            self.player.hp -= amount
+            amount = self.take_player_damage(trap.damage, source="trap")
             self.run_stats.traps_triggered += 1
-            self.run_stats.damage_taken += amount
             self.floaters.append(
                 FloatingText(
                     f"{trap.kind}! -{amount}",
@@ -1321,10 +1479,11 @@ class Game:
         self.floaters = [floater for floater in self.floaters if floater.ttl > 0]
 
     def player_melee_attack(self) -> None:
-        if self.player.melee_timer > 0 or self.player.stamina < 12:
+        stamina_cost = self.melee_stamina_cost()
+        if self.player.melee_timer > 0 or self.player.stamina < stamina_cost:
             return
-        self.player.melee_timer = 0.36
-        self.player.stamina -= 12
+        self.player.melee_timer = self.melee_cooldown()
+        self.player.stamina -= stamina_cost
         target = self.enemy_in_melee_arc()
         if target:
             tx = (self.player.x + target.x) * 0.5
@@ -1335,41 +1494,61 @@ class Game:
         self.slashes.append((tx, ty, 0.18, self.player.facing_x, self.player.facing_y))
         if target:
             damage = self.player.melee_damage() + self.rng.randrange(-3, 5)
+            if self.player.class_name == "Rogue" and self.rng.random() < 0.22:
+                damage = int(damage * 1.75)
+                self.floaters.append(
+                    FloatingText("Critical", target.x, target.y - 0.45, (255, 225, 120))
+                )
             self.damage_enemy(
                 target,
                 damage,
                 knockback_from=(self.player.facing_x, self.player.facing_y),
             )
+            if self.player.class_name == "Acolyte":
+                self.player.hp = min(self.player.max_hp, self.player.hp + 2)
 
     def player_cast_bolt(self) -> None:
-        if self.player.bolt_timer > 0 or self.player.mana < 10:
+        mana_cost = self.bolt_mana_cost()
+        if self.player.bolt_timer > 0 or self.player.mana < mana_cost:
             return
-        self.player.bolt_timer = 0.48
-        self.player.mana -= 10
-        self.projectiles.append(
-            Projectile(
-                self.player.x,
-                self.player.y,
-                self.player.facing_x * 9.0,
-                self.player.facing_y * 9.0,
-                14 + self.player.level * 2 + self.player.spell_bonus,
-                "player",
-                (70, 165, 255),
-                ttl=1.4,
+        self.player.bolt_timer = self.bolt_cooldown()
+        self.player.mana -= mana_cost
+        damage = 14 + self.player.level * 2 + self.player.spell_bonus
+        angles = [0.0]
+        if self.player.class_name == "Ranger":
+            angles = [-0.12, 0.0, 0.12]
+        for angle in angles:
+            dx = self.player.facing_x * math.cos(
+                angle
+            ) - self.player.facing_y * math.sin(angle)
+            dy = self.player.facing_x * math.sin(
+                angle
+            ) + self.player.facing_y * math.cos(angle)
+            self.projectiles.append(
+                Projectile(
+                    self.player.x,
+                    self.player.y,
+                    dx * 9.0,
+                    dy * 9.0,
+                    damage if angle == 0.0 else max(1, damage - 5),
+                    "player",
+                    (70, 165, 255),
+                    ttl=1.4,
+                )
             )
-        )
 
     def player_cast_nova(self) -> None:
-        if self.player.nova_timer > 0 or self.player.mana < 18:
+        mana_cost = self.nova_mana_cost()
+        if self.player.nova_timer > 0 or self.player.mana < mana_cost:
             return
-        self.player.nova_timer = 3.2
-        self.player.mana -= 18
+        self.player.nova_timer = self.nova_cooldown()
+        self.player.mana -= mana_cost
         hits = 0
         for enemy in list(self.enemies):
             dx = enemy.x - self.player.x
             dy = enemy.y - self.player.y
             distance = math.hypot(dx, dy)
-            if distance <= 2.45:
+            if distance <= (2.85 if self.player.class_name == "Arcanist" else 2.45):
                 hits += 1
                 damage = (
                     10
@@ -1404,11 +1583,13 @@ class Game:
             )
 
     def player_dash(self) -> None:
-        if self.player.dash_timer > 0 or self.player.stamina < 18:
+        stamina_cost = self.dash_stamina_cost()
+        if self.player.dash_timer > 0 or self.player.stamina < stamina_cost:
             return
-        self.player.dash_timer = 0.85
-        self.player.stamina -= 18
-        for _ in range(8):
+        self.player.dash_timer = self.dash_cooldown()
+        self.player.stamina -= stamina_cost
+        steps = 11 if self.player.class_name == "Ranger" else 8
+        for _ in range(steps):
             self.move_actor(
                 self.player,
                 self.player.facing_x * 0.20,
@@ -2960,7 +3141,7 @@ class Game:
             )
 
     def ui(self, value: int) -> int:
-        return value * UI_SCALE
+        return value * self.ui_scale
 
     def draw_ui(self) -> None:
         width, height = self.screen.get_size()
@@ -3199,7 +3380,7 @@ class Game:
             else "L/R: Resume saved run (none found)"
         )
         self.draw_centered_menu_lines(
-            "Arch Rogue Beta",
+            f"Arch Rogue {__version__}",
             [
                 "N/Enter: New run",
                 load_line,
@@ -3208,7 +3389,7 @@ class Game:
                 "",
                 "Explore 10 depths, build around loot, break the gate tyrant's seal.",
             ],
-            footer="Beta public-test build — Esc quits, Backspace returns from submenus",
+            footer="1.0 public release — Esc quits, Backspace returns from submenus",
         )
 
     def draw_options_menu(self) -> None:
@@ -3218,9 +3399,10 @@ class Game:
                 f"A: Audio cues {'On' if self.audio_enabled else 'Off'}",
                 f"M: Music {'On' if self.music_enabled else 'Off'} (reserved for soundtrack)",
                 f"F: Fullscreen {'On' if self.fullscreen else 'Off'}",
+                f"+/-: UI scale {self.ui_scale}x",
                 "Enter/O/Backspace: Return to title",
                 "",
-                "Settings are intentionally lightweight for the Beta test loop.",
+                "Settings persist to ~/.arch_rogue_options.json.",
             ],
             footer="Audio falls back silently if no mixer device is available",
         )
@@ -3229,7 +3411,7 @@ class Game:
         self.draw_centered_menu_lines(
             "About / Onboarding",
             [
-                "Arch Rogue is a Rogue-inspired isometric ARPG public-test Beta.",
+                f"Arch Rogue {__version__} is a Rogue-inspired isometric ARPG.",
                 "Goal: descend, survive, defeat the final-depth tyrant, then use the stairs.",
                 "Combat: left mouse moves/aims; Space slashes; F bolts; C novas; Shift dashes.",
                 "Loot: E picks up/interacts; I opens inventory; 1-9 equips/uses; Q drinks potion.",
