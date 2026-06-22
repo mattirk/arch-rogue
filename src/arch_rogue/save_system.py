@@ -54,6 +54,8 @@ class SaveLoadMixin:
             "release": __version__,
             "run_number": self.run_number,
             "current_depth": self.current_depth,
+            "run_music_seed": self.run_music_seed,
+            "run_music_theme": self.run_music_theme,
             "elapsed": self.elapsed,
             "selected_archetype": self.selected_archetype.name,
             "theme": self.theme.name,
@@ -103,7 +105,14 @@ class SaveLoadMixin:
     def restore_run_state(self, data: dict[str, Any]) -> None:
         self.run_number = int(data.get("run_number", 1))
         self.current_depth = int(data.get("current_depth", 1))
+        self.run_music_seed = int(
+            data.get(
+                "run_music_seed",
+                max(1, self.run_number * 65537 + self.current_depth * 4099),
+            )
+        )
         self.elapsed = float(data.get("elapsed", 0.0))
+        self.run_music_theme = str(data.get("run_music_theme", data.get("theme", "")))
         archetype_name = str(data.get("selected_archetype", ARCHETYPES[0].name))
         self.selected_archetype = next(
             (archetype for archetype in ARCHETYPES if archetype.name == archetype_name),
@@ -214,6 +223,7 @@ class SaveLoadMixin:
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             self.last_load_error = f"Could not resume saved run: {exc}"
             return False
+        self.sync_music()
         self.play_sfx("start")
         return True
 

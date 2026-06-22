@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 import math
 import random
-import struct
 from pathlib import Path
 from typing import Any
 
 import pygame
 
 from . import __version__
+from .audio import AudioSystem, MusicProfile
 from .constants import (
     BOSS_HIT_RADIUS,
     DUNGEON_DEPTH,
@@ -107,8 +107,10 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.run_number = 0
         self.current_depth = 1
         self.state = "title"
-        self.audio_available = self.initialize_audio(headless)
-        self.sound_cache: dict[str, pygame.mixer.Sound] = {}
+        self.run_music_seed = 0
+        self.run_music_theme = ""
+        self.audio = AudioSystem()
+        self.audio_available = self.audio.initialize(headless)
         self.menus = MenuRenderer(self, ARCHETYPES, DUNGEON_DEPTH)
 
     def display_size(self) -> tuple[int, int]:
@@ -173,49 +175,23 @@ class Game(SaveLoadMixin, RenderingMixin):
             return False
         return True
 
-    def initialize_audio(self, headless: bool) -> bool:
-        if headless:
-            return False
-        try:
-            if not pygame.mixer.get_init():
-                pygame.mixer.init(frequency=22050, size=-16, channels=1)
-        except pygame.error:
-            return False
-        return True
+    def current_music_profile(self) -> MusicProfile | None:
+        if self.state not in ("playing", "dead", "victory") or self.run_music_seed <= 0:
+            return None
+        return MusicProfile(
+            self.run_music_seed,
+            self.selected_archetype.name,
+            self.run_music_theme or self.theme.name,
+            self.run_modifier.name,
+        )
+
+    def sync_music(self) -> None:
+        self.audio_available = self.audio.sync_music(
+            self.current_music_profile(), self.music_enabled
+        )
 
     def play_sfx(self, name: str) -> None:
-        if not self.audio_enabled or not self.audio_available:
-            return
-        try:
-            sound = self.sound_cache.get(name)
-            if sound is None:
-                frequency = {
-                    "start": 330,
-                    "pickup": 660,
-                    "hit": 190,
-                    "shrine": 520,
-                    "stairs": 430,
-                    "victory": 784,
-                    "death": 120,
-                }.get(name, 440)
-                sound = self.make_tone(frequency, 0.08)
-                self.sound_cache[name] = sound
-            sound.play()
-        except pygame.error:
-            self.audio_available = False
-
-    def make_tone(self, frequency: int, duration: float) -> pygame.mixer.Sound:
-        sample_rate = 22050
-        amplitude = 3600
-        sample_count = max(1, int(sample_rate * duration))
-        frames = bytearray()
-        for index in range(sample_count):
-            fade = 1.0 - index / sample_count
-            value = int(
-                math.sin(math.tau * frequency * index / sample_rate) * amplitude * fade
-            )
-            frames.extend(struct.pack("<h", value))
-        return pygame.mixer.Sound(buffer=bytes(frames))
+        self.audio_available = self.audio.play_sfx(name, self.audio_enabled)
 
     def save_exists(self) -> bool:
         return self.save_path.exists()
@@ -225,8 +201,10 @@ class Game(SaveLoadMixin, RenderingMixin):
         if archetype:
             self.selected_archetype = archetype
         self.current_depth = 1
+        self.run_music_seed = self.rng.randrange(1, 2**31)
         self.run_modifier = self.rng.choice(RUN_MODIFIERS)
         self.theme = self.rng.choice(DUNGEON_THEMES)
+        self.run_music_theme = self.theme.name
         self.tile_cache.clear()
         self.dungeon = Dungeon(self.rng)
         start_x, start_y = self.dungeon.rooms[0].center
@@ -260,12 +238,14 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.elapsed = 0.0
         self.state = "playing"
         self._populate_dungeon()
+        self.sync_music()
         self.play_sfx("start")
         self.save_run()
 
     def descend_to_next_depth(self) -> None:
         if self.current_depth >= DUNGEON_DEPTH:
             self.state = "victory"
+            self.audio.stop_music()
             self.play_sfx("victory")
             self.delete_save()
             return
@@ -307,6 +287,7 @@ class Game(SaveLoadMixin, RenderingMixin):
                 ttl=1.5,
             )
         )
+        self.sync_music()
         self.play_sfx("stairs")
         self.save_run()
 
@@ -635,6 +616,7 @@ class Game(SaveLoadMixin, RenderingMixin):
                         self.save_options()
                     elif event.key == pygame.K_m:
                         self.music_enabled = not self.music_enabled
+                        self.sync_music()
                         self.save_options()
                     elif event.key == pygame.K_f:
                         if not self.fullscreen:
@@ -733,6 +715,7 @@ class Game(SaveLoadMixin, RenderingMixin):
 
         if self.player.hp <= 0 and self.state == "playing":
             self.state = "dead"
+            self.audio.stop_music()
             self.play_sfx("death")
             self.delete_save()
 
@@ -1338,6 +1321,7 @@ class Game(SaveLoadMixin, RenderingMixin):
                 )
                 return
             self.state = "victory"
+            self.audio.stop_music()
             self.play_sfx("victory")
             self.delete_save()
             return
