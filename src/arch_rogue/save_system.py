@@ -9,6 +9,7 @@ from . import __version__
 from .content import ARCHETYPES, DUNGEON_THEMES, RUN_MODIFIERS
 from .dungeon import Dungeon
 from .models import Enemy, Item, Player, Room, RunStats, SecretCache, Shrine, Tile, Trap
+from .quest_assets import ActiveQuestCutscene
 from .story import (
     StoryEngine,
     story_guest_from_dict,
@@ -68,6 +69,9 @@ class SaveLoadMixin:
             "story_seed": self.story_seed,
             "story_state": story_state_to_dict(self.story_state),
             "story_intro_pending": self.story_intro_pending,
+            "active_cutscene": self.active_cutscene.to_dict()
+            if self.active_cutscene is not None
+            else None,
             "story_relic_depth": self.story_relic_depth,
             "story_relic_choice_key": self.story_relic_choice_key,
             "story_relic_position": list(self.story_relic_position)
@@ -246,6 +250,17 @@ class SaveLoadMixin:
         self.story_guests = [
             story_guest_from_dict(guest) for guest in data.get("story_guests", [])
         ]
+        self.active_cutscene = ActiveQuestCutscene.from_dict(
+            data.get("active_cutscene")
+        )
+        active_asset = self.active_cutscene_asset() if self.active_cutscene else None
+        active_node = self.active_cutscene_node() if self.active_cutscene else None
+        if active_asset is None or active_node is None:
+            self.active_cutscene = None
+        if self.story_intro_pending and self.active_cutscene is None:
+            guest = self.current_story_guest_for_depth()
+            if guest is not None:
+                self.start_quest_cutscene("story_guest_omen", guest)
         self.projectiles = []
         self.floaters = []
         self.slashes = []

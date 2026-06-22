@@ -22,6 +22,11 @@ from .models import (
     Tile,
     Trap,
 )
+from .quest_assets import (
+    CutsceneActorAsset,
+    SpriteAnimationFrameAsset,
+    format_asset_text,
+)
 
 
 class RenderingMixin:
@@ -55,7 +60,9 @@ class RenderingMixin:
         self.draw_dungeon()
         self.draw_world_objects()
         self.draw_ui()
-        if self.story_intro_pending:
+        if self.active_cutscene is not None:
+            self.draw_quest_cutscene_overlay()
+        elif self.story_intro_pending:
             self.draw_story_intro_overlay()
         if self.inventory_open:
             self.draw_inventory()
@@ -1637,6 +1644,932 @@ class RenderingMixin:
                 cursor_y += line_h
                 rendered += 1
         self.screen.blit(surface, rect)
+
+    def draw_quest_cutscene_overlay(self) -> None:
+        asset = self.active_cutscene_asset()
+        node = self.active_cutscene_node()
+        if asset is None or node is None:
+            return
+        width, height = self.screen.get_size()
+        dim = pygame.Surface((width, height), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 142))
+        self.screen.blit(dim, (0, 0))
+
+        accent = self.story_state.accent if self.story_state else self.theme.accent
+        panel_w = min(width - self.ui(42), self.ui(880))
+        panel_h = min(height - self.ui(30), self.ui(560))
+        if panel_w < self.ui(320) or panel_h < self.ui(300):
+            return
+        rect = pygame.Rect(
+            (width - panel_w) // 2,
+            max(self.ui(20), (height - panel_h) // 2),
+            panel_w,
+            panel_h,
+        )
+        surface = pygame.Surface(rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(
+            surface, (10, 8, 14, 246), surface.get_rect(), border_radius=self.ui(13)
+        )
+        pygame.draw.rect(
+            surface,
+            (*accent, 220),
+            surface.get_rect(),
+            self.ui(2),
+            border_radius=self.ui(13),
+        )
+
+        pad = self.ui(16)
+        title_text = asset.title
+        if self.story_intro_pending:
+            title_text = f"{asset.title} · Depth {self.current_depth}/{DUNGEON_DEPTH}"
+        title = self.font.render(title_text, True, accent)
+        surface.blit(title, (pad, pad))
+        node_label = self.small_font.render(
+            node.id.replace("_", " ").title(), True, (170, 165, 180)
+        )
+        surface.blit(
+            node_label, (panel_w - pad - node_label.get_width(), pad + self.ui(4))
+        )
+
+        stage_h = max(self.ui(58), min(self.ui(112), int(panel_h * 0.24)))
+        stage_rect = pygame.Rect(
+            pad,
+            pad + title.get_height() + self.ui(10),
+            panel_w - pad * 2,
+            stage_h,
+        )
+        self.draw_cutscene_stage(surface, stage_rect, node.animation, accent)
+
+        choices = self.active_cutscene_choices()
+        choice_gap = self.ui(4)
+        choice_h = max(self.ui(30), self.small_font.get_height() * 2 + self.ui(4))
+        choices_to_draw = choices[: min(9, len(choices))]
+        choices_block_h = (
+            len(choices_to_draw) * choice_h
+            + max(0, len(choices_to_draw) - 1) * choice_gap
+        )
+        footer_h = self.small_font.get_height()
+        choices_start = panel_h - pad - footer_h - self.ui(10) - choices_block_h
+        y = stage_rect.bottom + self.ui(10)
+        speaker = self.active_cutscene_speaker_name()
+        speaker_text = self.small_font.render(speaker, True, (246, 235, 210))
+        surface.blit(speaker_text, (pad, y))
+        pygame.draw.line(
+            surface,
+            (*accent, 130),
+            (
+                pad + speaker_text.get_width() + self.ui(8),
+                y + speaker_text.get_height() // 2,
+            ),
+            (panel_w - pad, y + speaker_text.get_height() // 2),
+            self.ui(1),
+        )
+        y += speaker_text.get_height() + self.ui(6)
+
+        text_bottom = max(y + self.small_font.get_height(), choices_start - self.ui(8))
+        line_h = max(self.small_font.get_height() + self.ui(2), self.ui(17))
+        body_lines: list[str] = []
+        for paragraph in self.active_cutscene_text().splitlines() or [""]:
+            body_lines.extend(
+                self.wrap_ui_text(paragraph, self.small_font, panel_w - pad * 2)
+            )
+        max_body_lines = max(1, (text_bottom - y) // line_h)
+        for index, text_line in enumerate(body_lines[:max_body_lines]):
+            color = (225, 218, 202)
+            if index == 0 and self.story_intro_pending:
+                color = (238, 218, 164)
+            text = self.small_font.render(text_line, True, color)
+            surface.blit(text, (pad, y))
+            y += line_h
+        if len(body_lines) > max_body_lines and y + line_h <= choices_start:
+            text = self.small_font.render("…", True, (170, 165, 155))
+            surface.blit(text, (pad, y))
+
+        y = max(choices_start, stage_rect.bottom + self.ui(8))
+        for index, choice in enumerate(choices_to_draw):
+            choice_rect = pygame.Rect(pad, y, panel_w - pad * 2, choice_h)
+            pygame.draw.rect(
+                surface,
+                (24, 19, 31, 240),
+                choice_rect,
+                border_radius=self.ui(8),
+            )
+            pygame.draw.rect(
+                surface,
+                (*accent, 155),
+                choice_rect,
+                self.ui(1),
+                border_radius=self.ui(8),
+            )
+            key_rect = pygame.Rect(
+                choice_rect.x + self.ui(8),
+                choice_rect.y + self.ui(8),
+                self.ui(34),
+                choice_rect.height - self.ui(16),
+            )
+            pygame.draw.rect(
+                surface,
+                (*self.shade(accent, -55), 238),
+                key_rect,
+                border_radius=self.ui(6),
+            )
+            self.draw_cutscene_choice_glyph(
+                surface,
+                key_rect.center,
+                choice.choice_key,
+                max(self.ui(8), min(key_rect.width, key_rect.height) // 3),
+                alpha=92,
+            )
+            key = self.font.render(str(index + 1), True, accent)
+            surface.blit(key, key.get_rect(center=key_rect.center))
+            label = self.small_font.render(choice.label, True, (246, 235, 210))
+            text_x = choice_rect.x + self.ui(52)
+            label_y = choice_rect.y + self.ui(4)
+            surface.blit(label, (text_x, label_y))
+            detail_color = (184, 178, 168)
+            detail_lines = self.wrap_ui_text(
+                choice.detail, self.small_font, choice_rect.width - self.ui(62)
+            )[:1]
+            if detail_lines:
+                detail = self.small_font.render(detail_lines[0], True, detail_color)
+                surface.blit(detail, (text_x, label_y + self.small_font.get_height()))
+            y += choice_h + choice_gap
+
+        footer_text = (
+            "Press 1-3 to choose a dialogue response."
+            if len(choices_to_draw) >= 3
+            else "Press Enter/E to advance, Esc to close non-blocking dialogue."
+        )
+        if self.story_intro_pending:
+            footer_text = "Press 1-3 to confirm the guest dialog, place the relic, and begin this level."
+        footer = self.small_font.render(footer_text, True, (205, 185, 225))
+        surface.blit(footer, (pad, panel_h - pad - footer.get_height()))
+        self.screen.blit(surface, rect)
+
+    def draw_cutscene_stage(
+        self,
+        surface: pygame.Surface,
+        stage_rect: pygame.Rect,
+        animation_id: str,
+        accent: Color,
+    ) -> None:
+        pygame.draw.rect(
+            surface, (15, 13, 21, 245), stage_rect, border_radius=self.ui(10)
+        )
+        pygame.draw.rect(
+            surface, (*accent, 125), stage_rect, self.ui(1), border_radius=self.ui(10)
+        )
+        self.draw_cutscene_story_backdrop(surface, stage_rect, accent)
+        horizon_y = stage_rect.y + int(stage_rect.height * 0.62)
+        pygame.draw.line(
+            surface,
+            (*self.shade(accent, -25), 76),
+            (stage_rect.x + self.ui(10), horizon_y),
+            (stage_rect.right - self.ui(10), horizon_y),
+            self.ui(1),
+        )
+        self.draw_cutscene_choice_tableau(surface, stage_rect, accent)
+        for index in range(9):
+            phase = self.elapsed * (0.45 + index * 0.035) + index * 1.7
+            mote_x = stage_rect.x + int(
+                (0.08 + (index * 0.11) % 0.86) * stage_rect.width
+            )
+            mote_y = stage_rect.y + int(
+                (0.22 + 0.18 * math.sin(phase)) * stage_rect.height
+            )
+            pygame.draw.circle(surface, (*accent, 54), (mote_x, mote_y), self.ui(1))
+        asset = self.active_cutscene_asset()
+        if asset is None:
+            return
+        for actor in asset.actors.values():
+            self.draw_cutscene_actor(surface, stage_rect, actor, animation_id, accent)
+
+    def draw_cutscene_story_backdrop(
+        self, surface: pygame.Surface, stage_rect: pygame.Rect, accent: Color
+    ) -> None:
+        theme = self.theme
+        base = self.shade(theme.floor, -42)
+        far = self.mix(base, self.shade(accent, -65), 0.35)
+        for band in range(6):
+            amount = band / 5
+            color = self.mix(far, self.shade(theme.wall_top, -18), amount * 0.45)
+            y = stage_rect.y + int(stage_rect.height * band / 6)
+            h = max(1, stage_rect.height // 6 + 1)
+            pygame.draw.rect(
+                surface,
+                (*color, 52 + band * 16),
+                (stage_rect.x + self.ui(2), y, stage_rect.width - self.ui(4), h),
+            )
+        text = self.cutscene_story_text().lower()
+        self.draw_cutscene_theme_motifs(surface, stage_rect, accent, text)
+        self.draw_cutscene_faction_sigil(surface, stage_rect, accent)
+        beat = self.current_story_beat()
+        story = self.story_state
+        tags = [beat.theme_name if beat else self.theme.name]
+        if story is not None:
+            tags.extend([story.relic_name, story.antagonist])
+        tag_x = stage_rect.x + self.ui(8)
+        tag_y = stage_rect.y + self.ui(5)
+        for tag in tags[:3]:
+            rendered = self.small_font.render(tag[:32], True, (205, 198, 188))
+            rendered.set_alpha(112)
+            surface.blit(rendered, (tag_x, tag_y))
+            tag_y += max(self.ui(10), rendered.get_height() - self.ui(4))
+
+    def draw_cutscene_theme_motifs(
+        self, surface: pygame.Surface, stage_rect: pygame.Rect, accent: Color, text: str
+    ) -> None:
+        if any(
+            term in text
+            for term in ("ash", "ember", "flame", "fire", "forge", "foundry")
+        ):
+            for index in range(14):
+                phase = self.elapsed * (1.4 + index * 0.05) + index
+                x = stage_rect.x + int(
+                    (0.08 + (index * 0.071) % 0.88) * stage_rect.width
+                )
+                y = (
+                    stage_rect.bottom
+                    - self.ui(12)
+                    - int((math.sin(phase) * 0.5 + 0.5) * stage_rect.height * 0.55)
+                )
+                pygame.draw.circle(
+                    surface, (245, 126, 64, 92), (x, y), max(1, self.ui(1))
+                )
+        if any(
+            term in text
+            for term in ("frozen", "moon", "water", "aquifer", "sunken", "river")
+        ):
+            for index in range(4):
+                y = stage_rect.y + int(stage_rect.height * (0.42 + index * 0.11))
+                wave = []
+                for step in range(9):
+                    x = stage_rect.x + int(stage_rect.width * step / 8)
+                    wy = y + int(
+                        math.sin(self.elapsed * 1.2 + step + index) * self.ui(3)
+                    )
+                    wave.append((x, wy))
+                pygame.draw.lines(
+                    surface, (*self.shade(accent, 35), 58), False, wave, self.ui(1)
+                )
+        if any(term in text for term in ("thorn", "root", "forest", "vine", "wilder")):
+            for index in range(5):
+                x = stage_rect.x + int(stage_rect.width * (0.1 + index * 0.19))
+                points = []
+                for step in range(5):
+                    points.append(
+                        (
+                            x + int(math.sin(step + index) * self.ui(5)),
+                            stage_rect.bottom - self.ui(5 + step * 12),
+                        )
+                    )
+                pygame.draw.lines(surface, (68, 142, 86, 84), False, points, self.ui(1))
+                for px, py in points[1::2]:
+                    pygame.draw.circle(surface, (98, 176, 94, 82), (px, py), self.ui(2))
+        if any(
+            term in text
+            for term in ("crypt", "grave", "bone", "dead", "ossuary", "coffin")
+        ):
+            for index in range(4):
+                x = stage_rect.x + int(stage_rect.width * (0.18 + index * 0.2))
+                y = stage_rect.bottom - self.ui(13 + (index % 2) * 7)
+                pygame.draw.line(
+                    surface,
+                    (198, 190, 172, 72),
+                    (x - self.ui(5), y),
+                    (x + self.ui(5), y),
+                    self.ui(1),
+                )
+                pygame.draw.line(
+                    surface,
+                    (198, 190, 172, 72),
+                    (x, y - self.ui(5)),
+                    (x, y + self.ui(5)),
+                    self.ui(1),
+                )
+        if any(
+            term in text
+            for term in ("star", "mirror", "choir", "veil", "reliquary", "dream")
+        ):
+            for index in range(12):
+                x = stage_rect.x + int(
+                    stage_rect.width * (0.07 + (index * 0.083) % 0.86)
+                )
+                y = stage_rect.y + int(
+                    stage_rect.height * (0.12 + (index * 0.137) % 0.42)
+                )
+                pulse = 0.5 + 0.5 * math.sin(self.elapsed * 2.2 + index)
+                pygame.draw.circle(
+                    surface,
+                    (*self.shade(accent, 45), int(42 + pulse * 62)),
+                    (x, y),
+                    max(1, self.ui(1)),
+                )
+        if any(term in text for term in ("blood", "curse", "sin", "price", "debt")):
+            for index in range(5):
+                x = stage_rect.x + int(stage_rect.width * (0.32 + index * 0.09))
+                y = stage_rect.y + int(stage_rect.height * (0.18 + (index % 3) * 0.13))
+                pygame.draw.circle(surface, (180, 45, 68, 72), (x, y), self.ui(2))
+                pygame.draw.polygon(
+                    surface,
+                    (180, 45, 68, 62),
+                    [(x, y - self.ui(5)), (x - self.ui(2), y), (x + self.ui(2), y)],
+                )
+
+    def draw_cutscene_faction_sigil(
+        self, surface: pygame.Surface, stage_rect: pygame.Rect, accent: Color
+    ) -> None:
+        if self.story_state is None:
+            return
+        seed = sum(ord(char) for char in self.story_state.faction)
+        center = (stage_rect.right - self.ui(34), stage_rect.y + self.ui(34))
+        radius = self.ui(18)
+        sides = 5 + seed % 4
+        points = []
+        for index in range(sides):
+            angle = -math.pi / 2 + math.tau * index / sides + self.elapsed * 0.08
+            wobble = 0.78 + 0.22 * ((seed >> index) & 1)
+            points.append(
+                (
+                    center[0] + int(math.cos(angle) * radius * wobble),
+                    center[1] + int(math.sin(angle) * radius * wobble),
+                )
+            )
+        pygame.draw.polygon(surface, (*self.shade(accent, -35), 54), points)
+        pygame.draw.polygon(surface, (*accent, 116), points, self.ui(1))
+        initials = "".join(
+            part[0] for part in self.story_state.faction.split()[:2]
+        ).upper()
+        label = self.small_font.render(initials[:2], True, self.shade(accent, 50))
+        label.set_alpha(126)
+        surface.blit(label, label.get_rect(center=center))
+
+    def draw_cutscene_choice_tableau(
+        self, surface: pygame.Surface, stage_rect: pygame.Rect, accent: Color
+    ) -> None:
+        choices = self.active_cutscene_choices()
+        if not choices:
+            return
+        asset = self.active_cutscene_asset()
+        source = None
+        if asset is not None:
+            source = asset.actors.get("relic") or asset.actors.get("guest")
+        if source is not None:
+            source_x = stage_rect.x + int(source.x * stage_rect.width)
+            source_y = stage_rect.y + int(source.y * stage_rect.height)
+        else:
+            source_x, source_y = stage_rect.center
+        count = min(3, len(choices))
+        for index, choice in enumerate(choices[:count]):
+            center = (
+                stage_rect.x + int(stage_rect.width * (0.34 + index * 0.16)),
+                stage_rect.bottom - self.ui(18),
+            )
+            color = self.cutscene_choice_color(choice.choice_key, accent)
+            pulse = 0.5 + 0.5 * math.sin(self.elapsed * 2.8 + index * 1.7)
+            pygame.draw.line(
+                surface,
+                (*color, int(36 + pulse * 56)),
+                (source_x, source_y),
+                center,
+                self.ui(1),
+            )
+            self.draw_cutscene_choice_glyph(
+                surface,
+                center,
+                choice.choice_key,
+                self.ui(10),
+                alpha=int(86 + pulse * 92),
+            )
+
+    def draw_cutscene_choice_glyph(
+        self,
+        surface: pygame.Surface,
+        center: tuple[int, int],
+        choice_key: str,
+        radius: int,
+        alpha: int = 180,
+    ) -> None:
+        color = self.cutscene_choice_color(
+            choice_key,
+            self.story_state.accent if self.story_state else self.theme.accent,
+        )
+        cx, cy = center
+        pygame.draw.circle(
+            surface,
+            (*self.shade(color, -55), max(18, alpha // 3)),
+            center,
+            radius + self.ui(3),
+        )
+        pygame.draw.circle(surface, (*color, alpha), center, radius, self.ui(1))
+        if choice_key == "aid":
+            shield = [
+                (cx, cy - radius),
+                (cx + radius, cy - radius // 3),
+                (cx + radius // 2, cy + radius),
+                (cx, cy + radius + self.ui(2)),
+                (cx - radius // 2, cy + radius),
+                (cx - radius, cy - radius // 3),
+            ]
+            pygame.draw.polygon(surface, (*color, alpha), shield, self.ui(1))
+            pygame.draw.line(
+                surface,
+                (*color, alpha),
+                (cx, cy - radius // 2),
+                (cx, cy + radius // 2),
+                self.ui(1),
+            )
+            pygame.draw.line(
+                surface,
+                (*color, alpha),
+                (cx - radius // 2, cy),
+                (cx + radius // 2, cy),
+                self.ui(1),
+            )
+        elif choice_key == "bargain":
+            diamond = [
+                (cx, cy - radius),
+                (cx + radius, cy),
+                (cx, cy + radius),
+                (cx - radius, cy),
+            ]
+            pygame.draw.polygon(surface, (*color, alpha), diamond, self.ui(1))
+            pygame.draw.circle(
+                surface,
+                (*color, alpha),
+                (cx - radius // 2, cy - radius // 3),
+                max(1, radius // 4),
+                self.ui(1),
+            )
+            pygame.draw.circle(
+                surface,
+                (190, 45, 70, alpha),
+                (cx + radius // 2, cy + radius // 3),
+                max(1, radius // 4),
+            )
+        elif choice_key == "defy":
+            pygame.draw.line(
+                surface,
+                (*color, alpha),
+                (cx - radius, cy + radius),
+                (cx + radius, cy - radius),
+                self.ui(2),
+            )
+            pygame.draw.line(
+                surface,
+                (*color, alpha),
+                (cx - radius, cy - radius // 2),
+                (cx + radius, cy + radius // 2),
+                self.ui(1),
+            )
+            pygame.draw.polygon(
+                surface,
+                (*color, alpha),
+                [
+                    (cx + radius, cy - radius),
+                    (cx + radius // 2, cy - radius // 2),
+                    (cx + radius // 4, cy - radius),
+                ],
+                0,
+            )
+        else:
+            pygame.draw.circle(surface, (*color, alpha), center, max(1, radius // 3))
+
+    def cutscene_choice_color(self, choice_key: str, accent: Color) -> Color:
+        if choice_key == "aid":
+            return (108, 218, 156)
+        if choice_key == "bargain":
+            return (213, 165, 72)
+        if choice_key == "defy":
+            return (232, 83, 74)
+        return accent
+
+    def cutscene_story_text(self) -> str:
+        parts = [self.active_cutscene_text()]
+        if self.story_state is not None:
+            parts.extend(
+                [
+                    self.story_state.title,
+                    self.story_state.objective,
+                    self.story_state.faction,
+                    self.story_state.relic_name,
+                    self.story_state.relic_form,
+                    self.story_state.relic_temptation,
+                ]
+            )
+        beat = self.current_story_beat()
+        if beat is not None:
+            parts.extend(
+                [
+                    beat.title,
+                    beat.summary,
+                    beat.theme_name,
+                    beat.guest_role,
+                    beat.guest_motive,
+                ]
+            )
+        return " ".join(parts)
+
+    def draw_cutscene_actor(
+        self,
+        surface: pygame.Surface,
+        stage_rect: pygame.Rect,
+        actor: CutsceneActorAsset,
+        animation_id: str,
+        accent: Color,
+    ) -> None:
+        dx, dy, frame_scale, alpha, pose = self.cutscene_actor_frame(
+            actor.id, animation_id
+        )
+        color = self.cutscene_actor_color(actor, accent)
+        x = stage_rect.x + int((actor.x + dx) * stage_rect.width)
+        y = stage_rect.y + int((actor.y + dy) * stage_rect.height)
+        shadow_w = int(54 * actor.scale * frame_scale)
+        shadow_h = max(6, int(14 * actor.scale * frame_scale))
+        shadow = pygame.Surface((shadow_w, shadow_h), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow, (0, 0, 0, 92), shadow.get_rect())
+        surface.blit(shadow, shadow.get_rect(center=(x, y + self.ui(20))))
+
+        node = self.active_cutscene_node()
+        if node is not None and node.speaker == actor.id:
+            glow_radius = int(42 * actor.scale * frame_scale)
+            glow = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
+            pygame.draw.circle(
+                glow,
+                (*color, 38 + int(22 * (0.5 + 0.5 * math.sin(self.elapsed * 3.6)))),
+                (glow_radius, glow_radius),
+                glow_radius,
+            )
+            surface.blit(glow, glow.get_rect(center=(x, y - self.ui(18))))
+
+        sprite = self.cutscene_actor_surface(actor, color, pose)
+        scale = actor.scale * frame_scale * (1.0 + max(0, self.ui_scale - 1) * 0.16)
+        sprite_w = max(1, int(sprite.get_width() * scale))
+        sprite_h = max(1, int(sprite.get_height() * scale))
+        sprite = pygame.transform.scale(sprite, (sprite_w, sprite_h))
+        sprite.set_alpha(max(0, min(255, int(255 * alpha))))
+        surface.blit(sprite, sprite.get_rect(midbottom=(x, y + self.ui(16))))
+        self.draw_cutscene_actor_pose_effects(
+            surface, x, y, sprite_w, sprite_h, actor, pose, color, accent
+        )
+
+        label_text = self.cutscene_actor_label(actor)
+        if label_text:
+            label = self.small_font.render(label_text, True, color)
+            surface.blit(label, label.get_rect(center=(x, y - sprite_h - self.ui(3))))
+
+    def cutscene_actor_frame(
+        self, actor_id: str, animation_id: str
+    ) -> tuple[float, float, float, float, str]:
+        asset = self.active_cutscene_asset()
+        if asset is None or self.active_cutscene is None:
+            return 0.0, 0.0, 1.0, 1.0, "idle"
+        animation = asset.animations.get(animation_id)
+        if animation is None:
+            return 0.0, 0.0, 1.0, 1.0, "idle"
+        frames = [frame for frame in animation.frames if frame.actor == actor_id]
+        if not frames:
+            return 0.0, 0.0, 1.0, 1.0, "idle"
+        duration = sum(frame.duration for frame in frames)
+        if duration <= 0:
+            return 0.0, 0.0, 1.0, 1.0, "idle"
+        t = self.active_cutscene.node_elapsed
+        if animation.loop:
+            t %= duration
+        else:
+            t = min(t, duration - 0.001)
+        elapsed = 0.0
+        for index, frame in enumerate(frames):
+            if t <= elapsed + frame.duration:
+                next_frame: SpriteAnimationFrameAsset
+                if index + 1 < len(frames):
+                    next_frame = frames[index + 1]
+                elif animation.loop:
+                    next_frame = frames[0]
+                else:
+                    next_frame = frame
+                phase = 0.0 if frame.duration <= 0 else (t - elapsed) / frame.duration
+                phase = max(0.0, min(1.0, phase))
+                return (
+                    frame.dx + (next_frame.dx - frame.dx) * phase,
+                    frame.dy + (next_frame.dy - frame.dy) * phase,
+                    frame.scale + (next_frame.scale - frame.scale) * phase,
+                    frame.alpha + (next_frame.alpha - frame.alpha) * phase,
+                    frame.pose,
+                )
+            elapsed += frame.duration
+        frame = frames[-1]
+        return frame.dx, frame.dy, frame.scale, frame.alpha, frame.pose
+
+    def cutscene_actor_surface(
+        self, actor: CutsceneActorAsset, color: Color, pose: str = "idle"
+    ) -> pygame.Surface:
+        if actor.sprite == "player":
+            sprite = self.sprites.player_sprites.get(
+                self.player.class_name, self.sprites.player
+            ).copy()
+            if pose in ("vow", "guard", "defy"):
+                pygame.draw.line(
+                    sprite,
+                    (245, 236, 190),
+                    (sprite.get_width() // 2, 8),
+                    (sprite.get_width() // 2 + 12, 2),
+                    max(1, self.ui_scale),
+                )
+            return sprite
+        if actor.sprite == "relic":
+            return self.cutscene_relic_surface(color, pose)
+        if actor.sprite == "story_guest":
+            return self.cutscene_guest_surface(color, pose)
+        if actor.sprite == "enemy":
+            return self.sprites.enemies.get("Gate Warden") or next(
+                iter(self.sprites.enemies.values())
+            )
+        return self.cutscene_guest_surface(color, pose)
+
+    def cutscene_guest_surface(
+        self, color: Color, pose: str = "idle"
+    ) -> pygame.Surface:
+        sprite = pygame.Surface((54, 76), pygame.SRCALPHA)
+        pygame.draw.ellipse(sprite, (*color, 44), (5, 51, 44, 18))
+        sway = 2 if pose in ("shudder", "warn") else 0
+        cloak = [(27 + sway, 7), (8, 58), (46, 58)]
+        pygame.draw.polygon(sprite, self.shade(color, -62), cloak)
+        pygame.draw.polygon(sprite, color, cloak, 2)
+        pygame.draw.circle(sprite, self.shade(color, 35), (27 + sway // 2, 21), 10)
+        pygame.draw.circle(sprite, (245, 236, 205), (24 + sway // 2, 20), 2)
+        pygame.draw.circle(sprite, (245, 236, 205), (30 + sway // 2, 20), 2)
+        if pose in ("plead", "reach", "warn"):
+            left_hand = (12, 31 if pose == "warn" else 24)
+            right_hand = (42, 25 if pose == "reach" else 32)
+            pygame.draw.line(sprite, self.shade(color, 28), (20, 35), left_hand, 3)
+            pygame.draw.line(sprite, self.shade(color, 28), (34, 35), right_hand, 3)
+            pygame.draw.circle(sprite, (235, 218, 190), left_hand, 3)
+            pygame.draw.circle(sprite, (235, 218, 190), right_hand, 3)
+        else:
+            pygame.draw.line(sprite, self.shade(color, 18), (18, 39), (12, 51), 3)
+            pygame.draw.line(sprite, self.shade(color, 18), (36, 39), (42, 51), 3)
+        mouth_y = 42 if pose in ("plead", "warn") else 41
+        pygame.draw.line(
+            sprite, (*self.shade(color, 25), 180), (17, mouth_y), (37, mouth_y), 2
+        )
+        return sprite
+
+    def cutscene_relic_surface(
+        self, color: Color, pose: str = "idle"
+    ) -> pygame.Surface:
+        sprite = pygame.Surface((54, 72), pygame.SRCALPHA)
+        pulse = 0.5 + 0.5 * math.sin(self.elapsed * 4.0)
+        ring_alpha = int(44 + 44 * pulse)
+        if pose in ("reveal", "surge", "pulse"):
+            ring_alpha = min(140, ring_alpha + 42)
+        pygame.draw.circle(sprite, (*color, ring_alpha), (27, 34), 24)
+        diamond = [(27, 6), (44, 34), (27, 62), (10, 34)]
+        pygame.draw.polygon(sprite, self.shade(color, -45), diamond)
+        pygame.draw.polygon(sprite, color, diamond, 2)
+        pygame.draw.line(sprite, self.shade(color, 45), (27, 13), (27, 55), 2)
+        pygame.draw.line(sprite, self.shade(color, 28), (16, 34), (38, 34), 2)
+        aspect = self.cutscene_relic_aspect()
+        if aspect == "blade":
+            pygame.draw.line(sprite, (246, 236, 196), (19, 52), (36, 17), 3)
+            pygame.draw.polygon(sprite, (246, 236, 196), [(36, 17), (35, 27), (42, 21)])
+        elif aspect == "mirror":
+            pygame.draw.ellipse(sprite, (235, 229, 245), (18, 20, 18, 26), 2)
+            pygame.draw.line(sprite, (235, 229, 245), (27, 46), (27, 56), 2)
+        elif aspect == "crown":
+            pygame.draw.polygon(
+                sprite,
+                (242, 211, 94),
+                [(16, 28), (21, 18), (27, 28), (34, 18), (39, 28), (39, 36), (16, 36)],
+                2,
+            )
+        elif aspect == "key":
+            pygame.draw.circle(sprite, (234, 218, 154), (22, 28), 5, 2)
+            pygame.draw.line(sprite, (234, 218, 154), (27, 28), (40, 42), 2)
+            pygame.draw.line(sprite, (234, 218, 154), (35, 37), (40, 34), 2)
+        elif aspect == "bell":
+            pygame.draw.arc(
+                sprite, (236, 218, 138), (17, 20, 22, 28), math.pi, math.tau, 2
+            )
+            pygame.draw.line(sprite, (236, 218, 138), (18, 34), (36, 34), 2)
+            pygame.draw.circle(sprite, (236, 218, 138), (27, 39), 3)
+        elif aspect == "blood":
+            pygame.draw.circle(sprite, (192, 46, 70), (27, 34), 6)
+            pygame.draw.polygon(sprite, (192, 46, 70), [(27, 18), (20, 35), (34, 35)])
+        else:
+            pygame.draw.circle(sprite, self.shade(color, 50), (27, 34), 6, 2)
+            pygame.draw.circle(sprite, self.shade(color, 50), (27, 34), 2)
+        return sprite
+
+    def draw_cutscene_actor_pose_effects(
+        self,
+        surface: pygame.Surface,
+        x: int,
+        y: int,
+        sprite_w: int,
+        sprite_h: int,
+        actor: CutsceneActorAsset,
+        pose: str,
+        color: Color,
+        accent: Color,
+    ) -> None:
+        top = y + self.ui(16) - sprite_h
+        if actor.id == "guest":
+            self.draw_cutscene_guest_prop(
+                surface, x + sprite_w // 3, top + self.ui(12), color
+            )
+            if pose in ("plead", "reach", "warn"):
+                for index in range(3):
+                    phase = self.elapsed * 2.4 + index * 1.1
+                    mote = (
+                        x - self.ui(22 - index * 9),
+                        top
+                        + self.ui(12 + index * 5)
+                        + int(math.sin(phase) * self.ui(3)),
+                    )
+                    pygame.draw.circle(
+                        surface, (*color, 96 - index * 18), mote, self.ui(2)
+                    )
+            if pose == "shudder":
+                pygame.draw.line(
+                    surface,
+                    (190, 45, 70, 110),
+                    (x - self.ui(13), top),
+                    (x + self.ui(11), top + self.ui(24)),
+                    self.ui(1),
+                )
+        elif actor.id == "player":
+            if pose in ("vow", "guard"):
+                shield = pygame.Surface((self.ui(42), self.ui(42)), pygame.SRCALPHA)
+                pygame.draw.circle(
+                    shield,
+                    (108, 218, 156, 52),
+                    shield.get_rect().center,
+                    self.ui(20),
+                    self.ui(2),
+                )
+                surface.blit(shield, shield.get_rect(center=(x, top + self.ui(24))))
+            elif pose == "defy":
+                pygame.draw.line(
+                    surface,
+                    (232, 83, 74, 150),
+                    (x - self.ui(17), top + self.ui(36)),
+                    (x + self.ui(19), top + self.ui(10)),
+                    self.ui(2),
+                )
+                pygame.draw.line(
+                    surface,
+                    (245, 228, 170, 120),
+                    (x - self.ui(11), top + self.ui(12)),
+                    (x + self.ui(23), top + self.ui(33)),
+                    self.ui(1),
+                )
+            elif pose == "price":
+                pygame.draw.circle(
+                    surface,
+                    (190, 45, 70, 120),
+                    (x + self.ui(16), top + self.ui(21)),
+                    self.ui(3),
+                )
+        elif actor.id == "relic":
+            pulse = 0.5 + 0.5 * math.sin(self.elapsed * 5.0)
+            for index in range(2):
+                radius = self.ui(18 + index * 11) + int(pulse * self.ui(6))
+                pygame.draw.circle(
+                    surface,
+                    (*accent, 44 - index * 12),
+                    (x, top + sprite_h // 2),
+                    radius,
+                    self.ui(1),
+                )
+            if pose in ("surge", "reveal"):
+                for angle_index in range(6):
+                    angle = self.elapsed * 0.8 + math.tau * angle_index / 6
+                    start = (
+                        x + int(math.cos(angle) * self.ui(15)),
+                        top + sprite_h // 2 + int(math.sin(angle) * self.ui(12)),
+                    )
+                    end = (
+                        x + int(math.cos(angle) * self.ui(29)),
+                        top + sprite_h // 2 + int(math.sin(angle) * self.ui(23)),
+                    )
+                    pygame.draw.line(surface, (*accent, 118), start, end, self.ui(1))
+
+    def draw_cutscene_guest_prop(
+        self, surface: pygame.Surface, x: int, y: int, color: Color
+    ) -> None:
+        text = self.cutscene_story_text().lower()
+        if any(term in text for term in ("bell", "toll", "priest", "acolyte")):
+            pygame.draw.arc(
+                surface,
+                (236, 218, 138, 150),
+                (x - self.ui(6), y, self.ui(12), self.ui(14)),
+                math.pi,
+                math.tau,
+                self.ui(1),
+            )
+            pygame.draw.line(
+                surface,
+                (236, 218, 138, 150),
+                (x - self.ui(6), y + self.ui(8)),
+                (x + self.ui(6), y + self.ui(8)),
+                self.ui(1),
+            )
+        elif any(
+            term in text for term in ("lock", "key", "thief", "rogue", "cartographer")
+        ):
+            pygame.draw.circle(
+                surface,
+                (234, 218, 154, 150),
+                (x, y + self.ui(5)),
+                self.ui(4),
+                self.ui(1),
+            )
+            pygame.draw.line(
+                surface,
+                (234, 218, 154, 150),
+                (x + self.ui(4), y + self.ui(5)),
+                (x + self.ui(12), y + self.ui(13)),
+                self.ui(1),
+            )
+        elif any(term in text for term in ("grave", "dead", "bone", "coffin", "crypt")):
+            pygame.draw.circle(
+                surface,
+                (220, 212, 190, 145),
+                (x, y + self.ui(6)),
+                self.ui(5),
+                self.ui(1),
+            )
+            pygame.draw.line(
+                surface,
+                (220, 212, 190, 145),
+                (x - self.ui(5), y + self.ui(14)),
+                (x + self.ui(5), y + self.ui(14)),
+                self.ui(1),
+            )
+        elif any(term in text for term in ("star", "mirror", "dream", "veil")):
+            pygame.draw.circle(
+                surface,
+                (*self.shade(color, 45), 140),
+                (x, y + self.ui(7)),
+                self.ui(7),
+                self.ui(1),
+            )
+            pygame.draw.circle(
+                surface, (*self.shade(color, 45), 140), (x, y + self.ui(7)), self.ui(2)
+            )
+        else:
+            pygame.draw.rect(
+                surface,
+                (224, 206, 168, 130),
+                (x - self.ui(5), y, self.ui(10), self.ui(14)),
+                self.ui(1),
+            )
+            pygame.draw.line(
+                surface,
+                (224, 206, 168, 130),
+                (x - self.ui(3), y + self.ui(4)),
+                (x + self.ui(3), y + self.ui(4)),
+                self.ui(1),
+            )
+
+    def cutscene_relic_aspect(self) -> str:
+        text = self.cutscene_story_text().lower()
+        if any(term in text for term in ("blade", "sword", "knife", "fang", "weapon")):
+            return "blade"
+        if any(term in text for term in ("mirror", "lens", "face", "reflection")):
+            return "mirror"
+        if any(term in text for term in ("crown", "tyrant", "king", "warden")):
+            return "crown"
+        if any(term in text for term in ("key", "lock", "gate", "door")):
+            return "key"
+        if any(term in text for term in ("bell", "toll", "chime")):
+            return "bell"
+        if any(term in text for term in ("blood", "sin", "curse", "wound")):
+            return "blood"
+        return "eye"
+
+    def cutscene_actor_color(self, actor: CutsceneActorAsset, accent: Color) -> Color:
+        role = actor.color.lower()
+        if role == "accent":
+            return accent
+        if role == "player":
+            return (226, 222, 205)
+        if role == "danger":
+            return (235, 95, 84)
+        if role.startswith("#") and len(role) == 7:
+            try:
+                return (int(role[1:3], 16), int(role[3:5], 16), int(role[5:7], 16))
+            except ValueError:
+                return accent
+        return accent
+
+    def cutscene_actor_label(self, actor: CutsceneActorAsset) -> str:
+        if self.active_cutscene is None:
+            return ""
+        context = {**self.quest_cutscene_context(self.active_cutscene_guest())}
+        context.update(self.active_cutscene.context)
+        return format_asset_text(actor.name, context)[:32]
 
     def draw_story_intro_overlay(self) -> None:
         lines = self.story_intro_lines()

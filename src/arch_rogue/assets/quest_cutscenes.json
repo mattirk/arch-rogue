@@ -1,0 +1,323 @@
+{
+  "schema_version": 1,
+  "cutscenes": [
+    {
+      "id": "story_guest_omen",
+      "title": "Guest Relic Omen",
+      "trigger": "level_intro",
+      "actors": [
+        {
+          "id": "player",
+          "name": "{player_class}",
+          "sprite": "player",
+          "x": 0.18,
+          "y": 0.68,
+          "scale": 1.08,
+          "color": "player"
+        },
+        {
+          "id": "relic",
+          "name": "{relic_name}",
+          "sprite": "relic",
+          "x": 0.5,
+          "y": 0.38,
+          "scale": 1.0,
+          "color": "accent"
+        },
+        {
+          "id": "guest",
+          "name": "{guest_name}",
+          "sprite": "story_guest",
+          "x": 0.8,
+          "y": 0.62,
+          "scale": 1.12,
+          "color": "accent"
+        }
+      ],
+      "animations": [
+        {
+          "id": "omen_idle",
+          "loop": true,
+          "frames": [
+            {
+              "actor": "player",
+              "duration": 0.22,
+              "dx": 0.0,
+              "dy": 0.01,
+              "scale": 0.98,
+              "alpha": 0.94,
+              "pose": "listen"
+            },
+            {
+              "actor": "player",
+              "duration": 0.34,
+              "dx": 0.02,
+              "dy": -0.006,
+              "scale": 1.02,
+              "alpha": 1.0,
+              "pose": "guard"
+            },
+            {
+              "actor": "player",
+              "duration": 0.28,
+              "dx": 0.034,
+              "dy": -0.016,
+              "scale": 1.04,
+              "alpha": 1.0,
+              "pose": "vow"
+            },
+            {
+              "actor": "player",
+              "duration": 0.24,
+              "dx": 0.01,
+              "dy": 0.004,
+              "scale": 1.0,
+              "alpha": 0.97,
+              "pose": "listen"
+            },
+
+            {
+              "actor": "guest",
+              "duration": 0.18,
+              "dx": 0.0,
+              "dy": 0.018,
+              "scale": 0.96,
+              "alpha": 0.78,
+              "pose": "shudder"
+            },
+            {
+              "actor": "guest",
+              "duration": 0.24,
+              "dx": -0.018,
+              "dy": -0.02,
+              "scale": 1.02,
+              "alpha": 0.94,
+              "pose": "plead"
+            },
+            {
+              "actor": "guest",
+              "duration": 0.3,
+              "dx": -0.05,
+              "dy": -0.042,
+              "scale": 1.08,
+              "alpha": 1.0,
+              "pose": "reach"
+            },
+            {
+              "actor": "guest",
+              "duration": 0.22,
+              "dx": -0.026,
+              "dy": -0.014,
+              "scale": 1.04,
+              "alpha": 0.96,
+              "pose": "warn"
+            },
+            {
+              "actor": "guest",
+              "duration": 0.24,
+              "dx": 0.0,
+              "dy": 0.002,
+              "scale": 1.0,
+              "alpha": 0.88,
+              "pose": "plead"
+            },
+
+            {
+              "actor": "relic",
+              "duration": 0.14,
+              "dx": 0.0,
+              "dy": 0.04,
+              "scale": 0.78,
+              "alpha": 0.52,
+              "pose": "pulse"
+            },
+            {
+              "actor": "relic",
+              "duration": 0.18,
+              "dx": -0.034,
+              "dy": -0.022,
+              "scale": 1.05,
+              "alpha": 0.88,
+              "pose": "surge"
+            },
+            {
+              "actor": "relic",
+              "duration": 0.2,
+              "dx": 0.04,
+              "dy": -0.05,
+              "scale": 1.24,
+              "alpha": 1.0,
+              "pose": "reveal"
+            },
+            {
+              "actor": "relic",
+              "duration": 0.18,
+              "dx": 0.012,
+              "dy": -0.02,
+              "scale": 1.1,
+              "alpha": 0.92,
+              "pose": "pulse"
+            },
+            {
+              "actor": "relic",
+              "duration": 0.16,
+              "dx": 0.0,
+              "dy": 0.006,
+              "scale": 0.92,
+              "alpha": 0.7,
+              "pose": "idle"
+            }
+          ]
+        }
+      ],
+      "dialogue": {
+        "start": "relic_choice",
+        "nodes": [
+          {
+            "id": "relic_choice",
+            "speaker": "guest",
+            "animation": "omen_idle",
+            "text": "{story_title}\n{objective}\n\nDepth {depth}: {beat_title}\n{beat_summary}\n\n{beat_dialogue}\n\nBefore the level begins, choose how {guest_name}'s relic echo should surface.",
+            "choice_source": "story_relic_options"
+          }
+        ]
+      }
+    },
+    {
+      "id": "story_guest_dialogue",
+      "title": "Quest Dialogue",
+      "trigger": "story_guest_interact",
+      "actors": [
+        {
+          "id": "player",
+          "name": "{player_class}",
+          "sprite": "player",
+          "x": 0.2,
+          "y": 0.66,
+          "scale": 1.05,
+          "color": "player"
+        },
+        {
+          "id": "guest",
+          "name": "{guest_name}",
+          "sprite": "story_guest",
+          "x": 0.76,
+          "y": 0.58,
+          "scale": 1.16,
+          "color": "accent"
+        }
+      ],
+      "animations": [
+        {
+          "id": "dialogue_idle",
+          "loop": true,
+          "frames": [
+            {
+              "actor": "player",
+              "duration": 0.22,
+              "dx": 0.0,
+              "dy": 0.006,
+              "scale": 0.98,
+              "alpha": 1.0,
+              "pose": "listen"
+            },
+            {
+              "actor": "player",
+              "duration": 0.3,
+              "dx": 0.018,
+              "dy": -0.006,
+              "scale": 1.02,
+              "alpha": 1.0,
+              "pose": "guard"
+            },
+            {
+              "actor": "player",
+              "duration": 0.26,
+              "dx": 0.03,
+              "dy": -0.014,
+              "scale": 1.03,
+              "alpha": 1.0,
+              "pose": "vow"
+            },
+            {
+              "actor": "player",
+              "duration": 0.22,
+              "dx": -0.006,
+              "dy": 0.004,
+              "scale": 1.0,
+              "alpha": 0.96,
+              "pose": "price"
+            },
+            {
+              "actor": "player",
+              "duration": 0.2,
+              "dx": 0.01,
+              "dy": -0.004,
+              "scale": 1.03,
+              "alpha": 1.0,
+              "pose": "defy"
+            },
+
+            {
+              "actor": "guest",
+              "duration": 0.18,
+              "dx": 0.0,
+              "dy": 0.014,
+              "scale": 0.96,
+              "alpha": 0.82,
+              "pose": "shudder"
+            },
+            {
+              "actor": "guest",
+              "duration": 0.24,
+              "dx": -0.016,
+              "dy": -0.02,
+              "scale": 1.04,
+              "alpha": 0.96,
+              "pose": "plead"
+            },
+            {
+              "actor": "guest",
+              "duration": 0.24,
+              "dx": -0.036,
+              "dy": -0.034,
+              "scale": 1.08,
+              "alpha": 1.0,
+              "pose": "reach"
+            },
+            {
+              "actor": "guest",
+              "duration": 0.22,
+              "dx": -0.012,
+              "dy": -0.012,
+              "scale": 1.03,
+              "alpha": 0.98,
+              "pose": "warn"
+            },
+            {
+              "actor": "guest",
+              "duration": 0.24,
+              "dx": 0.006,
+              "dy": 0.004,
+              "scale": 1.0,
+              "alpha": 0.9,
+              "pose": "plead"
+            }
+          ]
+        }
+      ],
+      "dialogue": {
+        "start": "choice",
+        "nodes": [
+          {
+            "id": "choice",
+            "speaker": "guest",
+            "animation": "dialogue_idle",
+            "text": "{guest_dialogue}\n\n{guest_name}, {guest_role}, {guest_motive}. Choose how this quest resolves.",
+            "choice_source": "story_guest_choices"
+          }
+        ]
+      }
+    }
+  ]
+}

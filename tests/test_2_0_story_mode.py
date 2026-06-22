@@ -19,6 +19,7 @@ import arch_rogue
 from arch_rogue.constants import DUNGEON_DEPTH
 from arch_rogue.content import STORY_CORPUS
 from arch_rogue.game import ARCHETYPES, Game
+from arch_rogue.quest_assets import load_quest_cutscene_library
 from arch_rogue.story import StoryEngine, story_state_to_dict
 
 
@@ -523,6 +524,99 @@ class StoryMode20Tests(unittest.TestCase):
                 game.current_depth = 2
                 second_depth_options = game.story_relic_choice_options()
                 self.assertNotEqual(first_options, second_depth_options)
+            finally:
+                pygame.quit()
+
+    def test_quest_cutscene_assets_bind_generated_story_choices(self) -> None:
+        library = load_quest_cutscene_library()
+        self.assertIn("story_guest_omen", library)
+        self.assertIn("story_guest_dialogue", library)
+        self.assertEqual(
+            library["story_guest_omen"]
+            .nodes[library["story_guest_omen"].start_node]
+            .choice_source,
+            "story_relic_options",
+        )
+        omen_poses = {
+            frame.pose
+            for frame in library["story_guest_omen"].animations["omen_idle"].frames
+        }
+        dialogue_poses = {
+            frame.pose
+            for frame in library["story_guest_dialogue"]
+            .animations["dialogue_idle"]
+            .frames
+        }
+        self.assertLessEqual(
+            {"guard", "plead", "reach", "reveal", "shudder", "surge", "warn"},
+            omen_poses,
+        )
+        self.assertLessEqual(
+            {"defy", "guard", "plead", "price", "reach", "vow", "warn"},
+            dialogue_poses,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=2301)
+            try:
+                self.assertTrue(game.story_intro_pending)
+                self.assertIsNotNone(game.active_cutscene)
+                assert game.active_cutscene is not None
+                self.assertEqual(game.active_cutscene.asset_id, "story_guest_omen")
+                choices = game.active_cutscene_choices()
+                self.assertEqual(len(choices), 3)
+                self.assertEqual(
+                    [choice.choice_key for choice in choices],
+                    [key for key, _label, _detail in game.story_relic_choice_options()],
+                )
+                self.assertTrue(game.choose_active_cutscene_option(0))
+                self.assertFalse(game.story_intro_pending)
+                self.assertIsNone(game.active_cutscene)
+            finally:
+                pygame.quit()
+
+    def test_active_cutscene_persists_and_guest_dialogue_tree_resolves(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=2302)
+            try:
+                self.assertIsNotNone(game.active_cutscene)
+                self.assertTrue(game.save_run())
+                saved = json.loads(game.save_path.read_text(encoding="utf-8"))
+                self.assertEqual(
+                    saved["active_cutscene"]["asset_id"], "story_guest_omen"
+                )
+
+                loaded = Game(
+                    screen_size=(820, 540),
+                    headless=True,
+                    save_path=game.save_path,
+                )
+                self.assertTrue(loaded.load_run(), loaded.last_load_error)
+                self.assertTrue(loaded.story_intro_pending)
+                self.assertIsNotNone(loaded.active_cutscene)
+                assert loaded.active_cutscene is not None
+                self.assertEqual(loaded.active_cutscene.asset_id, "story_guest_omen")
+                self.assertTrue(loaded.choose_active_cutscene_option(1))
+
+                guest = loaded.story_guests[0]
+                loaded.player.x = guest.x
+                loaded.player.y = guest.y
+                loaded.interact()
+                self.assertIsNotNone(loaded.active_cutscene)
+                assert loaded.active_cutscene is not None
+                self.assertEqual(
+                    loaded.active_cutscene.asset_id, "story_guest_dialogue"
+                )
+                choices = loaded.active_cutscene_choices()
+                self.assertEqual(
+                    [choice.choice_key for choice in choices],
+                    ["aid", "bargain", "defy"],
+                )
+                self.assertTrue(loaded.choose_active_cutscene_option(2))
+                self.assertTrue(guest.resolved)
+                self.assertEqual(guest.resolved_choice, "defy")
+                self.assertEqual(loaded.run_stats.story_choices, 1)
+                self.assertIsNone(loaded.active_cutscene)
             finally:
                 pygame.quit()
 

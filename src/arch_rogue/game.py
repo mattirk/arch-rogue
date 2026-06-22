@@ -69,6 +69,12 @@ from .models import (
     StoryState,
     Trap,
 )
+from .quest_assets import (
+    ActiveQuestCutscene,
+    RuntimeDialogueChoice,
+    format_asset_text,
+    load_quest_cutscene_library,
+)
 from .rendering import RenderingMixin
 from .save_system import SaveLoadMixin
 from .sprites import PixelSpriteAtlas
@@ -114,6 +120,8 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.clock = pygame.time.Clock()
         self.rebuild_fonts()
         self.sprites = PixelSpriteAtlas()
+        self.quest_cutscenes = load_quest_cutscene_library()
+        self.active_cutscene: ActiveQuestCutscene | None = None
         self.tile_cache: dict[
             tuple[str, int, int], tuple[pygame.Surface, int, int]
         ] = {}
@@ -443,6 +451,208 @@ class Game(SaveLoadMixin, RenderingMixin):
         ]
         return " · ".join(entries) + " · E hear plea"
 
+    def quest_cutscene_context(self, guest: StoryGuest | None = None) -> dict[str, str]:
+        beat = self.current_story_beat()
+        story = self.story_state
+        active_guest = guest or self.current_story_guest_for_depth()
+        if active_guest is None:
+            active_guest = self.nearby_story_guest()
+        context = {
+            "depth": str(self.current_depth),
+            "player_class": getattr(
+                self.player, "class_name", self.selected_archetype.name
+            ),
+            "story_title": story.title if story else "Unwritten Descent",
+            "objective": story.objective if story else "Survive the dungeon.",
+            "antagonist": story.antagonist if story else "Gate Tyrant",
+            "faction": story.faction if story else "the dungeon",
+            "rival_faction": story.rival_faction if story else "the rival faction",
+            "relic_name": story.relic_name if story else "Nameless Relic",
+            "relic_form": story.relic_form if story else "a relic",
+            "relic_temptation": story.relic_temptation
+            if story
+            else "it wants to be used",
+            "beat_title": beat.title if beat else "Unwritten Beat",
+            "beat_summary": beat.summary if beat else "The floor waits in silence.",
+            "beat_dialogue": beat.dialogue
+            if beat
+            else "The guest waits for an answer.",
+            "guest_name": active_guest.name if active_guest else "Unknown Guest",
+            "guest_role": active_guest.role if active_guest else "Guest",
+            "guest_motive": active_guest.motive
+            if active_guest
+            else "waits for a choice",
+            "guest_dialogue": active_guest.dialogue
+            if active_guest
+            else (beat.dialogue if beat else "The guest waits for an answer."),
+        }
+        return {key: " ".join(value.split()) for key, value in context.items()}
+
+    def start_quest_cutscene(
+        self, asset_id: str, guest: StoryGuest | None = None
+    ) -> bool:
+        asset = self.quest_cutscenes.get(asset_id)
+        if asset is None:
+            return False
+        active_guest = guest or self.current_story_guest_for_depth()
+        self.active_cutscene = ActiveQuestCutscene(
+            asset_id=asset.id,
+            node_id=asset.start_node,
+            guest_depth=active_guest.depth if active_guest else self.current_depth,
+            guest_beat_index=active_guest.beat_index if active_guest else -1,
+            context=self.quest_cutscene_context(active_guest),
+        )
+        return True
+
+    def close_active_cutscene(self) -> None:
+        self.active_cutscene = None
+
+    def active_cutscene_asset(self) -> Any:
+        if self.active_cutscene is None:
+            return None
+        return self.quest_cutscenes.get(self.active_cutscene.asset_id)
+
+    def active_cutscene_node(self) -> Any:
+        asset = self.active_cutscene_asset()
+        if asset is None or self.active_cutscene is None:
+            return None
+        return asset.nodes.get(self.active_cutscene.node_id)
+
+    def active_cutscene_guest(self) -> StoryGuest | None:
+        if self.active_cutscene is None:
+            return None
+        if self.active_cutscene.guest_beat_index >= 0:
+            for guest in self.story_guests:
+                if (
+                    guest.depth == self.active_cutscene.guest_depth
+                    and guest.beat_index == self.active_cutscene.guest_beat_index
+                ):
+                    return guest
+        return self.nearby_story_guest() or self.current_story_guest_for_depth()
+
+    def active_cutscene_text(self) -> str:
+        node = self.active_cutscene_node()
+        if node is None or self.active_cutscene is None:
+            return ""
+        context = {**self.quest_cutscene_context(self.active_cutscene_guest())}
+        context.update(self.active_cutscene.context)
+        return format_asset_text(node.text, context)
+
+    def active_cutscene_speaker_name(self) -> str:
+        asset = self.active_cutscene_asset()
+        node = self.active_cutscene_node()
+        if asset is None or node is None or self.active_cutscene is None:
+            return "Narrator"
+        if node.speaker == "narrator":
+            return "Narrator"
+        actor = asset.actors.get(node.speaker)
+        if actor is None:
+            return node.speaker.title()
+        context = {**self.quest_cutscene_context(self.active_cutscene_guest())}
+        context.update(self.active_cutscene.context)
+        return format_asset_text(actor.name, context)
+
+    def active_cutscene_choices(self) -> list[RuntimeDialogueChoice]:
+        node = self.active_cutscene_node()
+        if node is None:
+            return []
+        if node.choice_source == "story_relic_options":
+            return [
+                RuntimeDialogueChoice(
+                    label=label,
+                    detail=detail,
+                    action="choose_story_relic_path",
+                    choice_key=choice_key,
+                    source_index=index,
+                )
+                for index, (choice_key, label, detail) in enumerate(
+                    self.story_relic_choice_options()
+                )
+            ]
+        if node.choice_source == "story_guest_choices":
+            guest = self.active_cutscene_guest()
+            if guest is None:
+                return []
+            return [
+                RuntimeDialogueChoice(
+                    label=choice.label,
+                    detail=f"{choice.intent} ({self.story_choice_preview(choice.key)})",
+                    action="resolve_story_choice",
+                    choice_key=choice.key,
+                    source_index=index,
+                )
+                for index, choice in enumerate(guest.choices[:3])
+            ]
+        context = (
+            {**self.active_cutscene.context}
+            if self.active_cutscene is not None
+            else self.quest_cutscene_context()
+        )
+        return [
+            RuntimeDialogueChoice(
+                label=format_asset_text(choice.label, context),
+                detail=format_asset_text(choice.detail, context),
+                next_node=choice.next_node,
+                action=choice.action,
+                choice_key=choice.choice_key,
+                source_index=index,
+            )
+            for index, choice in enumerate(node.choices)
+        ]
+
+    def set_active_cutscene_node(self, node_id: str) -> bool:
+        asset = self.active_cutscene_asset()
+        if asset is None or self.active_cutscene is None or node_id not in asset.nodes:
+            return False
+        self.active_cutscene.node_id = node_id
+        self.active_cutscene.node_elapsed = 0.0
+        self.active_cutscene.context = self.quest_cutscene_context(
+            self.active_cutscene_guest()
+        )
+        return True
+
+    def advance_active_cutscene(self) -> bool:
+        if self.active_cutscene is None:
+            return False
+        choices = self.active_cutscene_choices()
+        if len(choices) == 1 and choices[0].next_node and not choices[0].action:
+            return self.set_active_cutscene_node(choices[0].next_node)
+        if not choices:
+            self.close_active_cutscene()
+            return True
+        return False
+
+    def choose_active_cutscene_option(self, choice_index: int) -> bool:
+        if self.active_cutscene is None:
+            return False
+        choices = self.active_cutscene_choices()
+        if not (0 <= choice_index < len(choices)):
+            return False
+        choice = choices[choice_index]
+        if choice.action == "choose_story_relic_path":
+            return self.choose_story_relic_path(choice.source_index)
+        if choice.action == "resolve_story_choice":
+            guest = self.active_cutscene_guest()
+            if guest is None:
+                return False
+            resolved = self.resolve_story_choice(guest, choice.source_index)
+            if resolved:
+                self.close_active_cutscene()
+            return resolved
+        if choice.action == "close":
+            self.close_active_cutscene()
+            return True
+        if choice.next_node:
+            return self.set_active_cutscene_node(choice.next_node)
+        self.close_active_cutscene()
+        return True
+
+    def update_active_cutscene(self, dt: float) -> None:
+        if self.active_cutscene is None:
+            return
+        self.active_cutscene.elapsed += dt
+        self.active_cutscene.node_elapsed += dt
+
     def story_relic_choice_options(self) -> list[tuple[str, str, str]]:
         beat = self.current_story_beat()
         if self.story_state is None or beat is None:
@@ -681,6 +891,10 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.story_relic_guarded = False
         self.items = [item for item in self.items if item.slot != "story_relic"]
         self.story_intro_pending = beat is not None and guest is not None
+        if self.story_intro_pending:
+            self.start_quest_cutscene("story_guest_omen", guest)
+        else:
+            self.close_active_cutscene()
 
     def story_intro_lines(self) -> list[str]:
         if self.story_state is None:
@@ -749,6 +963,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         if guarded:
             self.spawn_story_relic_guard(relic_x, relic_y)
         self.story_intro_pending = False
+        self.close_active_cutscene()
         if self.story_state is not None:
             self.story_state.flags.append(f"{self.current_depth}:relic:{choice_key}")
             self.story_state.log.append(
@@ -1027,6 +1242,8 @@ class Game(SaveLoadMixin, RenderingMixin):
 
     def talk_to_story_guest(self, guest: StoryGuest) -> None:
         self.mark_story_guest_met(guest)
+        if self.start_quest_cutscene("story_guest_dialogue", guest):
+            return
         self.floaters.append(
             FloatingText(
                 f"{guest.role}: choose 1-3",
@@ -1069,6 +1286,12 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.add_impact(
             guest.x, guest.y, guest.color, ttl=0.58, radius=0.7, kind="burst"
         )
+        if (
+            self.active_cutscene is not None
+            and self.active_cutscene.guest_depth == guest.depth
+            and self.active_cutscene.guest_beat_index == guest.beat_index
+        ):
+            self.close_active_cutscene()
         self.play_sfx("shrine")
         self.save_run()
         return True
@@ -1732,7 +1955,13 @@ class Game(SaveLoadMixin, RenderingMixin):
                     elif event.key in (pygame.K_n, pygame.K_ESCAPE, pygame.K_BACKSPACE):
                         self.cancel_exit_confirmation()
                 elif event.key == pygame.K_ESCAPE:
-                    if self.state in ("options", "about"):
+                    if (
+                        self.state == "playing"
+                        and self.active_cutscene is not None
+                        and not self.story_intro_pending
+                    ):
+                        self.close_active_cutscene()
+                    elif self.state in ("options", "about"):
                         self.state = "title"
                     else:
                         self.request_exit_confirmation()
@@ -1798,6 +2027,22 @@ class Game(SaveLoadMixin, RenderingMixin):
                             self.selected_archetype = ARCHETYPES[index]
                         elif event.key == pygame.K_RETURN:
                             self.restart(self.selected_archetype)
+                elif self.state == "playing" and self.active_cutscene is not None:
+                    if pygame.K_1 <= event.key <= pygame.K_9:
+                        self.choose_active_cutscene_option(event.key - pygame.K_1)
+                    elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_e):
+                        if not self.advance_active_cutscene():
+                            self.floaters.append(
+                                FloatingText(
+                                    "Choose 1-3 to answer the dialogue",
+                                    self.player.x,
+                                    self.player.y - 0.5,
+                                    self.story_state.accent
+                                    if self.story_state
+                                    else self.theme.accent,
+                                    ttl=1.0,
+                                )
+                            )
                 elif self.state == "playing" and self.story_intro_pending:
                     if pygame.K_1 <= event.key <= pygame.K_3:
                         self.choose_story_relic_path(event.key - pygame.K_1)
@@ -1866,6 +2111,7 @@ class Game(SaveLoadMixin, RenderingMixin):
             elif (
                 event.type == pygame.MOUSEBUTTONDOWN
                 and self.state == "playing"
+                and self.active_cutscene is None
                 and not self.story_intro_pending
             ):
                 if event.button == 1:
@@ -1875,6 +2121,11 @@ class Game(SaveLoadMixin, RenderingMixin):
 
     def update(self, dt: float) -> None:
         self.elapsed += dt
+        if self.active_cutscene is not None:
+            self.update_active_cutscene(dt)
+            self.update_floaters(dt)
+            self.screen_flash_ttl = max(0.0, self.screen_flash_ttl - dt)
+            return
         if self.story_intro_pending:
             self.update_floaters(dt)
             self.screen_flash_ttl = max(0.0, self.screen_flash_ttl - dt)

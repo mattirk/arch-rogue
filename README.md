@@ -8,8 +8,9 @@ Explore a 10-depth procedural dungeon, choose one of five distinct archetypes, f
 
 - Procedural story mode generates an archetype-aligned backstory, faction conflict, rival faction, cursed relic, ten floor beats, and one story guest dilemma per depth.
 - A dark fantasy story corpus now drives backstories, factions, relics, guests, dilemmas, and dungeon-location motifs.
-- Story guests appear in-world as non-hostile NPCs. Press `E` to hear their plea, then choose `1` Aid, `2` Bargain, or `3` Defy.
+- Story guests appear in-world as non-hostile NPCs. Press `E` to open their quest cutscene dialogue, then choose `1` Aid, `2` Bargain, or `3` Defy.
 - Story choices persist in the run log and affect future dungeon generation: enemy pressure, loot richness, trap density, shrine/secret odds, curse pressure, XP, and final boss strength.
+- Quest cutscenes are driven by packaged JSON assets that define dialogue nodes, dynamic story-choice bindings, actors, and sprite animation tracks.
 - Dungeon themes now align to the generated storyline while still preserving procedural layouts, loot, enemies, shrines, traps, and secrets.
 - Story state and guests are saved in versioned run saves, while older compatible saves still load with a generated fallback storyline.
 - Presentation and UI copy now surface story status in the run header, help overlay, and summary screens.
@@ -52,9 +53,9 @@ arch-rogue
 | `F` | Cast ranged bolt |
 | `C` | Cast arc nova |
 | `Shift` | Dash toward aim direction |
-| `E` | Pick up nearby loot / use shrine / open secret / use exit stairs / hear a nearby story guest |
+| `E` | Pick up nearby loot / use shrine / open secret / use exit stairs / open nearby story guest dialogue |
 | `I` | Toggle inventory |
-| `1` / `2` / `3` near story guest | Choose Aid / Bargain / Defy, shaping future story and dungeon generation |
+| `1` / `2` / `3` in quest cutscenes or near story guest | Choose Aid / Bargain / Defy, shaping future story and dungeon generation |
 | `1`-`9` | Equip/use inventory item shown in that slot |
 | `Tab` / `S` while inventory is open | Cycle/sort inventory by type, rarity, or power |
 | `Shift` + `1`-`9` while inventory is open | Drop the matching inventory item near the player |
@@ -78,7 +79,7 @@ In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from t
 
 ## Known Issues in 2.0
 
-- Story mode is procedural text and systemic choice pressure; there is no bespoke quest cutscene or dialogue tree asset pipeline yet.
+- Quest cutscenes use packaged JSON dialogue-tree and sprite-animation assets; authored content coverage is still intentionally compact for the milestone.
 - Run music and sound effects are still lightweight procedural/static cues; there is no hand-authored soundtrack asset pipeline yet.
 - Controls are keyboard/mouse only; gamepad support is not implemented.
 - Visuals and audio remain procedural prototype assets, now tuned for a cohesive milestone look rather than final art quality.
