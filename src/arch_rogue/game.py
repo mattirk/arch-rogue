@@ -60,19 +60,64 @@ class Item:
     power: int = 0
     defense: int = 0
     heal: int = 0
+    mana: int = 0
     rarity: str = "Common"
     x: float = 0.0
     y: float = 0.0
+    affixes: list[str] = field(default_factory=list)
+    unidentified: bool = False
+    unique_effect: str = ""
+
+    @property
+    def display_name(self) -> str:
+        if self.unidentified and self.slot in ("weapon", "armor"):
+            return (
+                "Unidentified Weapon" if self.slot == "weapon" else "Unidentified Armor"
+            )
+        return self.name
+
+    @property
+    def visible_rarity(self) -> str:
+        return "Unidentified" if self.unidentified else self.rarity
 
     @property
     def label(self) -> str:
         if self.slot == "potion":
-            return f"{self.name} (+{self.heal} HP)"
+            return f"{self.display_name} (+{self.heal} HP)"
+        if self.slot == "mana_potion":
+            return f"{self.display_name} (+{self.mana} Mana)"
+        if self.slot == "identify":
+            return self.display_name
         if self.slot == "weapon":
-            return f"{self.name} (+{self.power} dmg)"
-        if self.slot == "armor":
-            return f"{self.name} (+{self.defense} armor)"
-        return self.name
+            text = f"{self.display_name} (+{self.power} dmg)"
+        elif self.slot == "armor":
+            text = f"{self.display_name} (+{self.defense} armor)"
+        else:
+            text = self.display_name
+        if self.unidentified:
+            return f"{self.display_name} (unknown)"
+        if self.affixes:
+            text += f" — {', '.join(self.affixes)}"
+        if self.unique_effect:
+            text += f" — {self.unique_effect}"
+        return text
+
+
+@dataclass
+class Trap:
+    x: float
+    y: float
+    kind: str
+    damage: int
+    active: bool = True
+
+
+@dataclass
+class Shrine:
+    x: float
+    y: float
+    kind: str
+    used: bool = False
 
 
 @dataclass
@@ -157,6 +202,8 @@ class Player:
     anim_time: float = 0.0
     melee_timer: float = 0.0
     bolt_timer: float = 0.0
+    dash_timer: float = 0.0
+    nova_timer: float = 0.0
     inventory: list[Item] = field(default_factory=list)
     equipment: dict[str, Item | None] = field(
         default_factory=lambda: {"weapon": None, "armor": None}
@@ -164,11 +211,13 @@ class Player:
 
     def melee_damage(self) -> int:
         weapon = self.equipment.get("weapon")
-        return 12 + self.level * 2 + (weapon.power if weapon else 0)
+        unique_bonus = 4 if weapon and weapon.unique_effect == "embers on hit" else 0
+        return 12 + self.level * 2 + unique_bonus + (weapon.power if weapon else 0)
 
     def armor(self) -> int:
         armor = self.equipment.get("armor")
-        return armor.defense if armor else 0
+        unique_bonus = 2 if armor and armor.unique_effect == "steadfast bulwark" else 0
+        return unique_bonus + (armor.defense if armor else 0)
 
     def gain_xp(self, amount: int) -> bool:
         self.xp += amount
@@ -280,6 +329,9 @@ class PixelSpriteAtlas:
             "Cultist": self._scale(self._cultist()),
             "Gate Warden": self._scale(self._gate_warden()),
         }
+        self.enemies["Bone Imp"] = self.enemies["Cultist"].copy()
+        self.enemies["Crypt Brute"] = self.enemies["Gate Warden"].copy()
+        self.enemies["Venom Skitter"] = self.enemies["Ghoul"].copy()
         self.items = {
             "potion": self._scale(self._potion()),
             "weapon": self._scale(self._weapon()),
@@ -571,7 +623,7 @@ class PixelSpriteAtlas:
 class Game:
     def __init__(self) -> None:
         pygame.init()
-        pygame.display.set_caption("Arch Rogue - Prototype 1")
+        pygame.display.set_caption("Arch Rogue - Prototype 2")
         self.screen = pygame.display.set_mode(
             (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE
         )
@@ -594,6 +646,8 @@ class Game:
         self.enemies: list[Enemy] = []
         self.items: list[Item] = []
         self.projectiles: list[Projectile] = []
+        self.traps: list[Trap] = []
+        self.shrines: list[Shrine] = []
         self.floaters: list[FloatingText] = []
         self.slashes: list[tuple[float, float, float]] = []
         self.inventory_open = False
@@ -606,78 +660,200 @@ class Game:
             if room_index == len(self.dungeon.rooms) - 1:
                 count += 2
             for _ in range(count):
-                x, y = room.random_point(self.rng)
-                if (
-                    room_index == len(self.dungeon.rooms) - 1
-                    and self.rng.random() < 0.45
-                ):
-                    enemy = Enemy(
-                        "Gate Warden",
-                        "melee",
-                        x,
-                        y,
-                        72,
-                        72,
-                        2.1,
-                        14,
-                        34,
-                        1.2,
-                        1.0,
-                        color=(190, 92, 54),
+                self.enemies.append(
+                    self._make_enemy(
+                        *room.random_point(self.rng),
+                        final_room=room_index == len(self.dungeon.rooms) - 1,
                     )
-                elif self.rng.random() < 0.35:
-                    enemy = Enemy(
-                        "Cultist",
-                        "ranged",
-                        x,
-                        y,
-                        34,
-                        34,
-                        2.0,
-                        8,
-                        18,
-                        5.4,
-                        1.45,
-                        color=(125, 75, 170),
-                    )
-                else:
-                    enemy = Enemy(
-                        "Ghoul",
-                        "melee",
-                        x,
-                        y,
-                        42,
-                        42,
-                        2.7,
-                        10,
-                        20,
-                        1.05,
-                        0.95,
-                        color=(160, 68, 68),
-                    )
-                self.enemies.append(enemy)
+                )
 
             if self.rng.random() < 0.7:
                 self.items.append(self._make_loot(*room.random_point(self.rng)))
+            if room_index > 1 and self.rng.random() < 0.28:
+                tx, ty = room.random_point(self.rng)
+                self.traps.append(
+                    Trap(
+                        tx,
+                        ty,
+                        self.rng.choice(["Spike Trap", "Rune Trap"]),
+                        self.rng.randrange(14, 23),
+                    )
+                )
+            if room_index > 2 and self.rng.random() < 0.18:
+                sx, sy = room.random_point(self.rng)
+                self.shrines.append(
+                    Shrine(
+                        sx,
+                        sy,
+                        self.rng.choice(
+                            ["Mending Shrine", "Insight Shrine", "War Shrine"]
+                        ),
+                    )
+                )
 
         sx, sy = self.dungeon.rooms[0].random_point(self.rng)
         self.items.append(
             Item("Minor Healing Potion", "potion", heal=35, rarity="Common", x=sx, y=sy)
         )
 
+    def _make_enemy(self, x: float, y: float, final_room: bool = False) -> Enemy:
+        if final_room and self.rng.random() < 0.45:
+            return Enemy(
+                "Gate Warden",
+                "melee",
+                x,
+                y,
+                72,
+                72,
+                2.1,
+                14,
+                34,
+                1.2,
+                1.0,
+                color=(190, 92, 54),
+            )
+        roll = self.rng.random()
+        if roll < 0.24:
+            return Enemy(
+                "Cultist",
+                "ranged",
+                x,
+                y,
+                34,
+                34,
+                2.0,
+                8,
+                18,
+                5.4,
+                1.45,
+                color=(125, 75, 170),
+            )
+        if roll < 0.42:
+            return Enemy(
+                "Bone Imp",
+                "ranged",
+                x,
+                y,
+                26,
+                26,
+                3.0,
+                6,
+                16,
+                4.6,
+                1.0,
+                color=(190, 130, 215),
+            )
+        if roll < 0.58:
+            return Enemy(
+                "Venom Skitter",
+                "melee",
+                x,
+                y,
+                30,
+                30,
+                3.6,
+                7,
+                15,
+                0.95,
+                0.72,
+                aggro_range=9.5,
+                color=(110, 185, 95),
+            )
+        if roll < 0.72:
+            return Enemy(
+                "Crypt Brute",
+                "melee",
+                x,
+                y,
+                82,
+                82,
+                1.75,
+                17,
+                32,
+                1.35,
+                1.35,
+                color=(155, 105, 74),
+            )
+        return Enemy(
+            "Ghoul", "melee", x, y, 42, 42, 2.7, 10, 20, 1.05, 0.95, color=(160, 68, 68)
+        )
+
     def _make_loot(self, x: float, y: float) -> Item:
         roll = self.rng.random()
-        if roll < 0.30:
+        if roll < 0.24:
             return Item(
                 "Minor Healing Potion", "potion", heal=35, rarity="Common", x=x, y=y
             )
-        if roll < 0.50:
-            return Item("Iron Sword", "weapon", power=6, rarity="Magic", x=x, y=y)
-        if roll < 0.68:
-            return Item("Hunter Axe", "weapon", power=9, rarity="Rare", x=x, y=y)
-        if roll < 0.84:
-            return Item("Leather Jerkin", "armor", defense=3, rarity="Common", x=x, y=y)
-        return Item("Warden Mail", "armor", defense=6, rarity="Magic", x=x, y=y)
+        if roll < 0.34:
+            return Item(
+                "Lesser Mana Potion", "mana_potion", mana=24, rarity="Common", x=x, y=y
+            )
+        if roll < 0.42:
+            return Item("Scroll of Identify", "identify", rarity="Common", x=x, y=y)
+        if roll > 0.96:
+            return self._make_unique(x, y)
+        slot = "weapon" if roll < 0.70 else "armor"
+        rarity = "Rare" if self.rng.random() < 0.34 else "Magic"
+        if self.rng.random() < 0.20:
+            rarity = "Common"
+        return self._make_equipment(slot, rarity, x, y)
+
+    def _make_equipment(self, slot: str, rarity: str, x: float, y: float) -> Item:
+        if slot == "weapon":
+            name, base_power = self.rng.choice(
+                [("Iron Sword", 5), ("Hunter Axe", 7), ("Runed Saber", 6)]
+            )
+            item = Item(name, "weapon", power=base_power, rarity=rarity, x=x, y=y)
+        else:
+            name, base_defense = self.rng.choice(
+                [("Leather Jerkin", 2), ("Warden Mail", 4), ("Chain Vest", 3)]
+            )
+            item = Item(name, "armor", defense=base_defense, rarity=rarity, x=x, y=y)
+        self._apply_affixes(
+            item, 0 if rarity == "Common" else 1 if rarity == "Magic" else 2
+        )
+        item.unidentified = rarity != "Common" and self.rng.random() < 0.45
+        return item
+
+    def _apply_affixes(self, item: Item, count: int) -> None:
+        weapon_affixes = [("Serrated", 3, 0), ("Cruel", 5, 0), ("Balanced", 2, 0)]
+        armor_affixes = [("Reinforced", 0, 2), ("Stalwart", 0, 3), ("Light", 0, 1)]
+        utility_affixes = [
+            ("of the Fox", 1, 1),
+            ("of Warding", 0, 2),
+            ("of Force", 2, 0),
+        ]
+        pool = weapon_affixes if item.slot == "weapon" else armor_affixes
+        pool = pool + utility_affixes
+        for name, power, defense in self.rng.sample(pool, k=min(count, len(pool))):
+            item.affixes.append(name)
+            item.power += power
+            item.defense += defense
+
+    def _make_unique(self, x: float, y: float) -> Item:
+        if self.rng.random() < 0.55:
+            return Item(
+                "Emberbrand",
+                "weapon",
+                power=12,
+                rarity="Unique",
+                x=x,
+                y=y,
+                affixes=["Serrated", "of Force"],
+                unidentified=self.rng.random() < 0.35,
+                unique_effect="embers on hit",
+            )
+        return Item(
+            "Bulwark of the First Gate",
+            "armor",
+            defense=8,
+            rarity="Unique",
+            x=x,
+            y=y,
+            affixes=["Reinforced", "of Warding"],
+            unidentified=self.rng.random() < 0.35,
+            unique_effect="steadfast bulwark",
+        )
 
     def run(self) -> None:
         while self.running:
@@ -707,6 +883,13 @@ class Game:
                     self.player_melee_attack()
                 elif event.key == pygame.K_f and self.state == "playing":
                     self.player_cast_bolt()
+                elif event.key == pygame.K_c and self.state == "playing":
+                    self.player_cast_nova()
+                elif (
+                    event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT)
+                    and self.state == "playing"
+                ):
+                    self.player_dash()
                 elif pygame.K_1 <= event.key <= pygame.K_9 and self.state == "playing":
                     self.use_inventory_slot(event.key - pygame.K_1)
             elif event.type == pygame.MOUSEBUTTONDOWN and self.state == "playing":
@@ -721,6 +904,7 @@ class Game:
         self.update_player(dt)
         self.update_enemies(dt)
         self.update_projectiles(dt)
+        self.update_traps(dt)
         self.update_floaters(dt)
         self.slashes = [(x, y, ttl - dt) for x, y, ttl in self.slashes if ttl - dt > 0]
 
@@ -728,23 +912,19 @@ class Game:
             self.state = "dead"
 
     def update_player_aim(self) -> None:
-        wx, wy = self.screen_to_world(*pygame.mouse.get_pos())
-        dx = wx - self.player.x
-        dy = wy - self.player.y
-        length = math.hypot(dx, dy)
-        if length > 0.001:
+        keys = pygame.key.get_pressed()
+        dx = float(keys[pygame.K_RIGHT]) - float(keys[pygame.K_LEFT])
+        dy = float(keys[pygame.K_DOWN]) - float(keys[pygame.K_UP])
+        if dx or dy:
+            length = math.hypot(dx, dy)
             self.player.facing_x = dx / length
             self.player.facing_y = dy / length
 
     def update_player(self, dt: float) -> None:
         self.player.moving = False
         keys = pygame.key.get_pressed()
-        dx = float(keys[pygame.K_d] or keys[pygame.K_RIGHT]) - float(
-            keys[pygame.K_a] or keys[pygame.K_LEFT]
-        )
-        dy = float(keys[pygame.K_s] or keys[pygame.K_DOWN]) - float(
-            keys[pygame.K_w] or keys[pygame.K_UP]
-        )
+        dx = float(keys[pygame.K_d]) - float(keys[pygame.K_a])
+        dy = float(keys[pygame.K_s]) - float(keys[pygame.K_w])
         if dx or dy:
             length = math.hypot(dx, dy)
             dx /= length
@@ -755,6 +935,8 @@ class Game:
 
         self.player.melee_timer = max(0.0, self.player.melee_timer - dt)
         self.player.bolt_timer = max(0.0, self.player.bolt_timer - dt)
+        self.player.dash_timer = max(0.0, self.player.dash_timer - dt)
+        self.player.nova_timer = max(0.0, self.player.nova_timer - dt)
         self.player.stamina = min(
             self.player.max_stamina, self.player.stamina + 30 * dt
         )
@@ -868,6 +1050,25 @@ class Game:
             kept.append(projectile)
         self.projectiles = kept
 
+    def update_traps(self, _dt: float) -> None:
+        for trap in self.traps:
+            if not trap.active:
+                continue
+            if math.hypot(trap.x - self.player.x, trap.y - self.player.y) > 0.55:
+                continue
+            trap.active = False
+            amount = max(1, trap.damage - self.player.armor())
+            self.player.hp -= amount
+            self.floaters.append(
+                FloatingText(
+                    f"{trap.kind}! -{amount}",
+                    self.player.x,
+                    self.player.y - 0.2,
+                    (245, 95, 70),
+                    ttl=1.2,
+                )
+            )
+
     def update_floaters(self, dt: float) -> None:
         for floater in self.floaters:
             floater.update(dt)
@@ -905,6 +1106,60 @@ class Game:
                 "player",
                 (70, 165, 255),
                 ttl=1.4,
+            )
+        )
+
+    def player_cast_nova(self) -> None:
+        if self.player.nova_timer > 0 or self.player.mana < 18:
+            return
+        self.player.nova_timer = 3.2
+        self.player.mana -= 18
+        hits = 0
+        for enemy in list(self.enemies):
+            dx = enemy.x - self.player.x
+            dy = enemy.y - self.player.y
+            distance = math.hypot(dx, dy)
+            if distance <= 2.45:
+                hits += 1
+                damage = 10 + self.player.level * 2 + self.rng.randrange(0, 5)
+                direction = (
+                    (dx / distance, dy / distance)
+                    if distance > 0.001
+                    else (self.player.facing_x, self.player.facing_y)
+                )
+                self.damage_enemy(enemy, damage, knockback_from=direction)
+        self.floaters.append(
+            FloatingText(
+                f"Arc Nova{f' x{hits}' if hits else ''}",
+                self.player.x,
+                self.player.y - 0.5,
+                (120, 210, 255),
+                ttl=0.9,
+            )
+        )
+        for angle in (0.0, math.pi / 2, math.pi, math.pi * 1.5):
+            self.slashes.append(
+                (
+                    self.player.x + math.cos(angle) * 0.9,
+                    self.player.y + math.sin(angle) * 0.9,
+                    0.18,
+                )
+            )
+
+    def player_dash(self) -> None:
+        if self.player.dash_timer > 0 or self.player.stamina < 18:
+            return
+        self.player.dash_timer = 0.85
+        self.player.stamina -= 18
+        for _ in range(8):
+            self.move_actor(
+                self.player,
+                self.player.facing_x * 0.20,
+                self.player.facing_y * 0.20,
+            )
+        self.floaters.append(
+            FloatingText(
+                "Dash", self.player.x, self.player.y - 0.4, (235, 210, 120), ttl=0.45
             )
         )
 
@@ -972,6 +1227,10 @@ class Game:
         ):
             self.state = "victory"
             return
+        shrine = self.nearby_shrine()
+        if shrine:
+            self.activate_shrine(shrine)
+            return
         nearest = self.nearby_item()
         if nearest:
             if len(self.player.inventory) >= MAX_INVENTORY:
@@ -988,7 +1247,7 @@ class Game:
             self.player.inventory.append(nearest)
             self.floaters.append(
                 FloatingText(
-                    f"Picked up {nearest.name}",
+                    f"Picked up {nearest.display_name}",
                     self.player.x,
                     self.player.y - 0.4,
                     (210, 230, 180),
@@ -1008,6 +1267,44 @@ class Game:
             default=None,
         )
 
+    def nearby_shrine(self) -> Shrine | None:
+        nearby = [
+            shrine
+            for shrine in self.shrines
+            if not shrine.used
+            and math.hypot(shrine.x - self.player.x, shrine.y - self.player.y) < 1.15
+        ]
+        return min(
+            nearby,
+            key=lambda shrine: math.hypot(
+                shrine.x - self.player.x, shrine.y - self.player.y
+            ),
+            default=None,
+        )
+
+    def activate_shrine(self, shrine: Shrine) -> None:
+        shrine.used = True
+        if shrine.kind == "Mending Shrine":
+            self.player.hp = self.player.max_hp
+            self.player.mana = self.player.max_mana
+            message = "Shrine restored you"
+        elif shrine.kind == "Insight Shrine":
+            identified = self.identify_all_items()
+            message = (
+                f"Shrine revealed {identified} item{'s' if identified != 1 else ''}"
+            )
+        else:
+            leveled = self.player.gain_xp(25)
+            self.player.stamina = self.player.max_stamina
+            message = "War Shrine grants focus"
+            if leveled:
+                message = "War Shrine grants a level"
+        self.floaters.append(
+            FloatingText(
+                message, self.player.x, self.player.y - 0.5, (245, 215, 120), ttl=1.3
+            )
+        )
+
     def use_inventory_slot(self, index: int) -> None:
         if index >= len(self.player.inventory):
             return
@@ -1015,13 +1312,30 @@ class Game:
         if item.slot == "potion":
             self.drink_potion(item)
             return
+        if item.slot == "mana_potion":
+            self.drink_mana_potion(item)
+            return
+        if item.slot == "identify":
+            self.identify_first_item()
+            return
+        if item.unidentified:
+            item.unidentified = False
+            self.floaters.append(
+                FloatingText(
+                    f"Identified {item.name}",
+                    self.player.x,
+                    self.player.y - 0.4,
+                    (160, 220, 255),
+                    ttl=1.2,
+                )
+            )
         old = self.player.equipment.get(item.slot)
         self.player.equipment[item.slot] = item
         if old and len(self.player.inventory) < MAX_INVENTORY:
             self.player.inventory.append(old)
         self.floaters.append(
             FloatingText(
-                f"Equipped {item.name}",
+                f"Equipped {item.display_name}",
                 self.player.x,
                 self.player.y - 0.4,
                 (160, 220, 255),
@@ -1050,6 +1364,46 @@ class Game:
                 f"+{healed}", self.player.x, self.player.y - 0.4, (105, 230, 125)
             )
         )
+
+    def drink_mana_potion(self, item: Item) -> None:
+        old_mana = self.player.mana
+        self.player.mana = min(self.player.max_mana, self.player.mana + item.mana)
+        restored = int(self.player.mana - old_mana)
+        self.floaters.append(
+            FloatingText(
+                f"+{restored} mana", self.player.x, self.player.y - 0.4, (105, 165, 255)
+            )
+        )
+
+    def identify_first_item(self) -> None:
+        for item in self.player.inventory:
+            if item.unidentified:
+                item.unidentified = False
+                self.floaters.append(
+                    FloatingText(
+                        f"Identified {item.name}",
+                        self.player.x,
+                        self.player.y - 0.4,
+                        (160, 220, 255),
+                    )
+                )
+                return
+        self.floaters.append(
+            FloatingText(
+                "Nothing to identify",
+                self.player.x,
+                self.player.y - 0.4,
+                (235, 210, 120),
+            )
+        )
+
+    def identify_all_items(self) -> int:
+        count = 0
+        for item in self.player.inventory:
+            if item.unidentified:
+                item.unidentified = False
+                count += 1
+        return count
 
     def world_to_iso(self, x: float, y: float) -> tuple[float, float]:
         return (x - y) * TILE_W / 2, (x + y) * TILE_H / 2
@@ -1259,6 +1613,10 @@ class Game:
         drawables: list[tuple[float, str, object]] = []
         for item in self.items:
             drawables.append((item.x + item.y, "item", item))
+        for trap in self.traps:
+            drawables.append((trap.x + trap.y - 0.02, "trap", trap))
+        for shrine in self.shrines:
+            drawables.append((shrine.x + shrine.y, "shrine", shrine))
         for projectile in self.projectiles:
             drawables.append((projectile.x + projectile.y, "projectile", projectile))
         for enemy in self.enemies:
@@ -1267,9 +1625,15 @@ class Game:
         for x, y, ttl in self.slashes:
             drawables.append((x + y + 0.05, "slash", (x, y, ttl)))
 
+        self.draw_aim_cone()
+
         for _depth, kind, obj in sorted(drawables, key=lambda entry: entry[0]):
             if kind == "item":
                 self.draw_item(cast(Item, obj))
+            elif kind == "trap":
+                self.draw_trap(cast(Trap, obj))
+            elif kind == "shrine":
+                self.draw_shrine(cast(Shrine, obj))
             elif kind == "projectile":
                 self.draw_projectile(cast(Projectile, obj))
             elif kind == "enemy":
@@ -1413,34 +1777,45 @@ class Game:
         self.draw_sprite_direction_cue(
             sx, sy - bob * WORLD_SCALE, cue_dx, cue_dy, (92, 170, 255)
         )
-        self.draw_pixel_aim_marker(
-            sx, sy - bob * WORLD_SCALE, player.facing_x, player.facing_y
-        )
 
-    def draw_pixel_aim_marker(self, sx: int, sy: int, dx: float, dy: float) -> None:
-        # A tiny blocky weapon glint indicates facing without replacing the sprite art.
-        end_x = sx + int(dx * 22 * WORLD_SCALE)
-        end_y = sy - 34 * WORLD_SCALE + int(dy * 12 * WORLD_SCALE)
-        pygame.draw.rect(
-            self.screen,
-            (238, 230, 190),
-            (
-                end_x - 2 * WORLD_SCALE,
-                end_y - 2 * WORLD_SCALE,
-                4 * WORLD_SCALE,
-                4 * WORLD_SCALE,
-            ),
+    def draw_aim_cone(self) -> None:
+        sx, sy = self.world_to_screen(self.player.x, self.player.y)
+        vx, vy = self.iso_screen_direction(self.player.facing_x, self.player.facing_y)
+        px, py = -vy, vx
+        origin = (
+            sx + int(vx * 14 * WORLD_SCALE),
+            sy - 8 * WORLD_SCALE + int(vy * 6 * WORLD_SCALE),
         )
-        pygame.draw.rect(
-            self.screen,
-            (86, 91, 103),
-            (
-                end_x - WORLD_SCALE,
-                end_y - WORLD_SCALE,
-                2 * WORLD_SCALE,
-                2 * WORLD_SCALE,
-            ),
+        tip = (
+            origin[0] + int(vx * 108 * WORLD_SCALE),
+            origin[1] + int(vy * 108 * WORLD_SCALE),
         )
+        left = (
+            origin[0] + int(vx * 74 * WORLD_SCALE + px * 36 * WORLD_SCALE),
+            origin[1] + int(vy * 74 * WORLD_SCALE + py * 36 * WORLD_SCALE),
+        )
+        right = (
+            origin[0] + int(vx * 74 * WORLD_SCALE - px * 36 * WORLD_SCALE),
+            origin[1] + int(vy * 74 * WORLD_SCALE - py * 36 * WORLD_SCALE),
+        )
+        points = [origin, left, tip, right]
+        min_x = min(point[0] for point in points) - 6 * WORLD_SCALE
+        max_x = max(point[0] for point in points) + 6 * WORLD_SCALE
+        min_y = min(point[1] for point in points) - 6 * WORLD_SCALE
+        max_y = max(point[1] for point in points) + 6 * WORLD_SCALE
+        overlay = pygame.Surface((max_x - min_x, max_y - min_y), pygame.SRCALPHA)
+        local_points = [(x - min_x, y - min_y) for x, y in points]
+        pygame.draw.polygon(overlay, (92, 170, 255, 46), local_points)
+        pygame.draw.lines(
+            overlay, (118, 196, 255, 150), True, local_points, max(2, WORLD_SCALE)
+        )
+        local_origin = (origin[0] - min_x, origin[1] - min_y)
+        local_tip = (tip[0] - min_x, tip[1] - min_y)
+        pygame.draw.line(
+            overlay, (225, 245, 255, 180), local_origin, local_tip, max(2, WORLD_SCALE)
+        )
+        pygame.draw.circle(overlay, (225, 245, 255, 210), local_tip, 3 * WORLD_SCALE)
+        self.screen.blit(overlay, (min_x, min_y))
 
     def draw_enemy(self, enemy: Enemy) -> None:
         sprite = self.sprites.enemies.get(enemy.name, self.sprites.enemies["Ghoul"])
@@ -1478,7 +1853,9 @@ class Game:
             "Common": (210, 205, 180),
             "Magic": (105, 165, 255),
             "Rare": (245, 210, 80),
-        }.get(item.rarity, (220, 220, 220))
+            "Unique": (240, 145, 65),
+            "Unidentified": (170, 170, 185),
+        }.get(item.visible_rarity, (220, 220, 220))
         sprite = self.sprites.items.get(item.slot, self.sprites.items["potion"])
         pulse = 0.65 + 0.35 * math.sin(self.elapsed * 4.0 + item.x + item.y)
         glow = pygame.Surface((38 * WORLD_SCALE, 18 * WORLD_SCALE), pygame.SRCALPHA)
@@ -1490,10 +1867,60 @@ class Game:
         rect = sprite.get_rect(midbottom=(sx, sy + 4 * WORLD_SCALE - bob))
         self.screen.blit(sprite, rect)
         if math.hypot(item.x - self.player.x, item.y - self.player.y) < 1.0:
-            label = self.small_font.render(f"E: {item.name}", True, rarity_color)
+            label = self.small_font.render(
+                f"E: {item.display_name}", True, rarity_color
+            )
             self.screen.blit(
                 label, label.get_rect(center=(sx, rect.top - 10 * WORLD_SCALE))
             )
+
+    def draw_trap(self, trap: Trap) -> None:
+        if not trap.active:
+            return
+        sx, sy = self.world_to_screen(trap.x, trap.y)
+        color = (205, 75, 58) if trap.kind == "Spike Trap" else (160, 86, 230)
+        points = [
+            (sx, sy - 10 * WORLD_SCALE),
+            (sx + 16 * WORLD_SCALE, sy),
+            (sx, sy + 10 * WORLD_SCALE),
+            (sx - 16 * WORLD_SCALE, sy),
+        ]
+        pygame.draw.lines(self.screen, color, True, points, max(1, WORLD_SCALE))
+        pygame.draw.circle(self.screen, color, (sx, sy), max(2, 2 * WORLD_SCALE))
+
+    def draw_shrine(self, shrine: Shrine) -> None:
+        sx, sy = self.world_to_screen(shrine.x, shrine.y)
+        color = (92, 92, 100) if shrine.used else (235, 205, 110)
+        pulse = 0.6 + 0.4 * math.sin(self.elapsed * 3.0 + shrine.x)
+        glow = pygame.Surface((42 * WORLD_SCALE, 24 * WORLD_SCALE), pygame.SRCALPHA)
+        pygame.draw.ellipse(glow, (*color, int(42 + 48 * pulse)), glow.get_rect())
+        self.screen.blit(glow, glow.get_rect(center=(sx, sy)))
+        pygame.draw.rect(
+            self.screen,
+            (48, 42, 50),
+            (
+                sx - 7 * WORLD_SCALE,
+                sy - 24 * WORLD_SCALE,
+                14 * WORLD_SCALE,
+                25 * WORLD_SCALE,
+            ),
+        )
+        pygame.draw.rect(
+            self.screen,
+            color,
+            (
+                sx - 4 * WORLD_SCALE,
+                sy - 19 * WORLD_SCALE,
+                8 * WORLD_SCALE,
+                6 * WORLD_SCALE,
+            ),
+        )
+        if (
+            not shrine.used
+            and math.hypot(shrine.x - self.player.x, shrine.y - self.player.y) < 1.15
+        ):
+            label = self.small_font.render(f"E: {shrine.kind}", True, color)
+            self.screen.blit(label, label.get_rect(center=(sx, sy - 38 * WORLD_SCALE)))
 
     def draw_projectile(self, projectile: Projectile) -> None:
         sx, sy = self.world_to_screen(projectile.x, projectile.y)
@@ -1613,6 +2040,7 @@ class Game:
             )
 
         objective = "Objective: reach the stairs and press E"
+        nearby_shrine = self.nearby_shrine()
         if (
             math.hypot(
                 self.player.x - self.dungeon.stairs[0] - 0.5,
@@ -1621,13 +2049,19 @@ class Game:
             < 1.0
         ):
             objective = "E: Descend the stairs"
+        elif nearby_shrine:
+            objective = f"E: Use {nearby_shrine.kind}"
         text = self.font.render(objective, True, (235, 205, 120))
         self.screen.blit(
             text, (width - text.get_width() - self.ui(24), height - self.ui(98))
         )
+        skill_line = (
+            f"Skills: Space Slash | F Bolt {self.player.bolt_timer:.1f}s | "
+            f"C Nova {self.player.nova_timer:.1f}s | Shift Dash {self.player.dash_timer:.1f}s"
+        )
         control_lines = [
-            "WASD move | Mouse aim | LMB/Space melee | RMB/F bolt",
-            "E interact | I inventory | Q potion | R restart",
+            "WASD move | Arrow keys aim | E interact | I inventory | Q potion",
+            skill_line,
         ]
         for i, controls in enumerate(control_lines):
             text = self.small_font.render(controls, True, (170, 165, 155))
@@ -1675,9 +2109,11 @@ class Game:
                 "Common": (215, 210, 190),
                 "Magic": (115, 175, 255),
                 "Rare": (245, 215, 90),
-            }.get(item.rarity, (220, 220, 220))
+                "Unique": (240, 145, 65),
+                "Unidentified": (170, 170, 185),
+            }.get(item.visible_rarity, (220, 220, 220))
             text = self.small_font.render(
-                f"{index + 1}. [{item.rarity}] {item.label}", True, color
+                f"{index + 1}. [{item.visible_rarity}] {item.label}", True, color
             )
             self.screen.blit(text, (box.x + self.ui(20), y))
         equipment = [
