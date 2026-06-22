@@ -33,6 +33,8 @@ class SystemsPolish12Tests(unittest.TestCase):
         game.options_path = Path(tmpdir) / "options.json"
         game.rng.seed(seed)
         game.restart(ARCHETYPES[1])
+        if game.story_intro_pending:
+            game.choose_story_relic_path(0)
         return game
 
     def test_1_2_metadata_content_profiles_and_save_version(self) -> None:

@@ -24,6 +24,12 @@ BASE_STORY_EFFECTS: dict[str, float] = {
     "curse_bonus": 0.0,
     "xp_bonus": 0.0,
     "boss_pressure": 0.0,
+    "damage_resist": 0.0,
+    "healing_echo": 0.0,
+    "relic_power": 0.0,
+    "blood_price": 0.0,
+    "damage_bonus": 0.0,
+    "hunter_pressure": 0.0,
 }
 
 
@@ -67,9 +73,11 @@ class StoryEngine:
                     dilemma.aid,
                     f"{dilemma.aid_outcome}; {rival.name} loses a little ground.",
                     {
-                        "enemy_pressure": -0.035 - depth_scale,
-                        "shrine_bonus": 0.035 + depth_scale,
-                        "secret_bonus": 0.015 + depth_scale / 2,
+                        "enemy_pressure": -0.055 - depth_scale,
+                        "shrine_bonus": 0.050 + depth_scale,
+                        "secret_bonus": 0.030 + depth_scale / 2,
+                        "damage_resist": 0.035 + depth_scale / 2,
+                        "healing_echo": 0.025 + depth_scale / 2,
                     },
                     ["mercy", "witness"],
                 ),
@@ -79,9 +87,11 @@ class StoryEngine:
                     dilemma.bargain,
                     f"{dilemma.bargain_outcome}; {faction.name} marks the bargain.",
                     {
-                        "loot_bonus": 0.055 + depth_scale,
-                        "trap_bonus": 0.035 + depth_scale / 2,
-                        "curse_bonus": 0.025 + depth_scale / 2,
+                        "loot_bonus": 0.075 + depth_scale,
+                        "trap_bonus": 0.045 + depth_scale / 2,
+                        "curse_bonus": 0.035 + depth_scale / 2,
+                        "relic_power": 0.040 + depth_scale / 2,
+                        "blood_price": 0.025 + depth_scale / 2,
                     },
                     ["bargain", "marked"],
                 ),
@@ -91,20 +101,24 @@ class StoryEngine:
                     dilemma.defy,
                     f"{dilemma.defy_outcome}; the gate tyrant hears the insult.",
                     {
-                        "enemy_pressure": 0.055 + depth_scale,
-                        "xp_bonus": 0.035 + depth_scale / 2,
-                        "boss_pressure": 0.025 + depth_scale / 2,
+                        "enemy_pressure": 0.075 + depth_scale,
+                        "xp_bonus": 0.055 + depth_scale / 2,
+                        "boss_pressure": 0.040 + depth_scale / 2,
+                        "damage_bonus": 0.045 + depth_scale / 2,
+                        "hunter_pressure": 0.045 + depth_scale / 2,
                     },
                     ["defiance", "wrath"],
                 ),
             ]
             summary = (
                 f"Among {motif.image}, a {guest_template.role.lower()} {motive}; "
-                f"{dilemma.setup} while {faction.epithet} advance their design."
+                f"{dilemma.setup} while {faction.epithet} advance their design. "
+                f"The chamber remembers the {backstory.title.lower()}: {backstory.wound}"
             )
             dialogue = (
                 f"{guest_name} speaks in a {guest_template.voice} voice: "
-                f"'{backstory.secret}; {relic.temptation}.'"
+                f"'{backstory.secret}; {relic.temptation}. Choose, and the next halls "
+                f"will answer in steel, mercy, or debt.'"
             )
             beats.append(
                 StoryBeat(
@@ -232,12 +246,42 @@ def record_story_choice(story: StoryState, depth: int, choice: StoryChoice) -> N
     if beat is not None:
         beat.resolved_choice = choice.key
         beat.outcome = choice.outcome
-    for key, value in choice.effects.items():
-        story.effects[key] = round(story.effects.get(key, 0.0) + float(value), 4)
+    _add_story_effects(story, choice.effects)
     for flag in choice.flags:
         story.flags.append(f"{depth}:{flag}")
     story.log.append(f"Depth {depth}: {choice.label} — {choice.outcome}")
     del story.log[:-12]
+
+
+def record_unanswered_story_beat(story: StoryState, depth: int) -> bool:
+    beat = story_beat_for_depth(story, depth)
+    if beat is None or beat.resolved_choice:
+        return False
+    beat.resolved_choice = "unanswered"
+    beat.outcome = (
+        f"{beat.guest_name}'s plea went unanswered; the dungeon takes the silence "
+        "as permission to harden its next rooms."
+    )
+    _add_story_effects(
+        story,
+        {
+            "enemy_pressure": 0.045,
+            "trap_bonus": 0.035,
+            "curse_bonus": 0.015,
+            "boss_pressure": 0.025,
+            "hunter_pressure": 0.040,
+        },
+    )
+    story.flags.append(f"{depth}:unanswered")
+    story.flags.append(f"{depth}:forsaken")
+    story.log.append(f"Depth {depth}: Unanswered — {beat.outcome}")
+    del story.log[:-12]
+    return True
+
+
+def _add_story_effects(story: StoryState, effects: dict[str, float]) -> None:
+    for key, value in effects.items():
+        story.effects[key] = round(story.effects.get(key, 0.0) + float(value), 4)
 
 
 def story_effect(story: StoryState | None, key: str) -> float:

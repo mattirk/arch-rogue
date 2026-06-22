@@ -25,6 +25,10 @@ class Rc1RegressionTests(unittest.TestCase):
         game.rng.seed(seed)
         return game
 
+    def confirm_story_intro(self, game: Game) -> None:
+        if game.story_intro_pending:
+            self.assertTrue(game.choose_story_relic_path(0))
+
     def tearDown(self) -> None:
         pygame.quit()
 
@@ -92,6 +96,7 @@ class Rc1RegressionTests(unittest.TestCase):
         game = self.make_game()
         try:
             game.restart(ARCHETYPES[0])
+            self.confirm_story_intro(game)
             game.items.clear()
             px, py = game.player.x, game.player.y
 
@@ -195,6 +200,7 @@ class Rc1RegressionTests(unittest.TestCase):
             self.assertFalse(game.boss_alive())
 
             for expected_depth in range(2, DUNGEON_DEPTH + 1):
+                self.confirm_story_intro(game)
                 stair_x, stair_y = (
                     game.dungeon.stairs[0] + 0.5,
                     game.dungeon.stairs[1] + 0.5,
@@ -206,6 +212,7 @@ class Rc1RegressionTests(unittest.TestCase):
                 self.assertEqual(game.current_depth, expected_depth)
                 self.assertTrue(game.dungeon.is_floor(game.player.x, game.player.y))
 
+            self.confirm_story_intro(game)
             self.assertTrue(game.boss_alive())
             stair_x, stair_y = (
                 game.dungeon.stairs[0] + 0.5,

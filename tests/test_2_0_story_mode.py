@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import tempfile
@@ -36,6 +37,10 @@ class StoryMode20Tests(unittest.TestCase):
         game.restart(ARCHETYPES[2])
         return game
 
+    def confirm_story_intro(self, game: Game, choice_index: int = 0) -> None:
+        if game.story_intro_pending:
+            self.assertTrue(game.choose_story_relic_path(choice_index))
+
     def test_story_corpus_and_engine_are_deterministic_and_backstory_aligned(
         self,
     ) -> None:
@@ -69,6 +74,15 @@ class StoryMode20Tests(unittest.TestCase):
                 self.assertEqual(game.story_seed, game.story_state.seed)
                 self.assertEqual(len(game.story_state.beats), DUNGEON_DEPTH)
                 self.assertTrue(game.story_guests)
+                self.assertTrue(game.story_intro_pending)
+                pending_hint = game.current_interaction_hint()
+                self.assertIsNotNone(pending_hint)
+                assert pending_hint is not None
+                self.assertEqual(pending_hint[0], "1-3")
+                self.assertIn("Guest dialog", pending_hint[1])
+                self.assertTrue(game.choose_story_relic_path(2))
+                self.assertFalse(game.story_intro_pending)
+
                 guest = game.story_guests[0]
                 game.player.x = guest.x
                 game.player.y = guest.y
@@ -79,6 +93,7 @@ class StoryMode20Tests(unittest.TestCase):
                 self.assertEqual(hint[0], "1-3")
                 self.assertIn("Aid", hint[2])
                 self.assertIn("Bargain", hint[2])
+                self.assertIn("relic power", hint[2])
                 self.assertIn("Defy", hint[2])
 
                 game.interact()
@@ -94,7 +109,14 @@ class StoryMode20Tests(unittest.TestCase):
                 self.assertEqual(game.run_stats.story_choices, 1)
                 self.assertGreater(game.story_effect_value("loot_bonus"), 0)
                 self.assertGreater(game.story_effect_value("trap_bonus"), 0)
+                self.assertGreater(game.story_effect_value("relic_power"), 0)
+                self.assertGreater(game.story_effect_value("blood_price"), 0)
+                self.assertGreater(game.run_stats.damage_taken, 0)
                 self.assertGreater(len(game.items), item_count)
+                bargain_items = game.items[item_count:]
+                self.assertTrue(
+                    any("Relic-Touched" in item.affixes for item in bargain_items)
+                )
 
                 saved = json.loads(game.save_path.read_text(encoding="utf-8"))
                 self.assertEqual(saved["version"], 4)
@@ -110,6 +132,7 @@ class StoryMode20Tests(unittest.TestCase):
             game = self.make_game(tmpdir, seed=2102)
             try:
                 assert game.story_state is not None
+                self.confirm_story_intro(game)
                 first_guest = game.story_guests[0]
                 game.player.x = first_guest.x
                 game.player.y = first_guest.y
@@ -121,6 +144,7 @@ class StoryMode20Tests(unittest.TestCase):
                 game.player.y = game.dungeon.stairs[1] + 0.5
                 game.interact()
                 self.assertEqual(game.current_depth, 2)
+                self.assertTrue(game.story_intro_pending)
                 self.assertEqual(game.theme.name, next_theme_name)
                 self.assertTrue(game.story_guests)
                 self.assertEqual(game.story_guests[0].depth, 2)
@@ -135,6 +159,7 @@ class StoryMode20Tests(unittest.TestCase):
                 self.assertIsNotNone(loaded.story_state)
                 assert loaded.story_state is not None
                 self.assertEqual(loaded.current_depth, 2)
+                self.assertTrue(loaded.story_intro_pending)
                 self.assertGreater(loaded.story_effect_value("enemy_pressure"), 0)
                 self.assertEqual(loaded.run_stats.story_choices, 1)
                 self.assertTrue(
@@ -143,14 +168,272 @@ class StoryMode20Tests(unittest.TestCase):
             finally:
                 pygame.quit()
 
+    def test_story_effects_directly_modify_combat_resources_and_hunters(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=2302)
+            try:
+                assert game.story_state is not None
+                game.story_state.effects["damage_resist"] = 0.30
+                raw_damage = 40
+                baseline = max(1, raw_damage - game.player.armor())
+                taken = game.take_player_damage(raw_damage, source="trap")
+                self.assertLess(taken, baseline)
+
+                game.player.hp = game.player.max_hp
+                game.player.mana = game.player.max_mana
+                game.projectiles.clear()
+                game.story_state.effects["damage_bonus"] = 0.20
+                game.story_state.effects["relic_power"] = 0.20
+                game.story_state.effects["blood_price"] = 0.25
+                base_bolt_damage = 14 + game.player.level * 2 + game.player.spell_bonus
+                before_hp = game.player.hp
+                game.player_cast_bolt()
+                self.assertTrue(game.projectiles)
+                self.assertGreater(
+                    max(projectile.damage for projectile in game.projectiles),
+                    base_bolt_damage,
+                )
+                self.assertLess(game.player.hp, before_hp)
+
+                self.assertTrue(game.enemies)
+                game.story_state.effects["healing_echo"] = 1.0
+                game.player.hp = game.player.max_hp - 20
+                before_heal = game.player.hp
+                game.kill_enemy(game.enemies[0])
+                self.assertGreater(game.player.hp, before_heal)
+            finally:
+                pygame.quit()
+
+    def test_unanswered_story_guest_hardens_next_floor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=2402)
+            try:
+                assert game.story_state is not None
+                beat = game.story_state.beats[0]
+                self.assertEqual(beat.resolved_choice, "")
+
+                game.descend_to_next_depth()
+
+                self.assertEqual(game.current_depth, 2)
+                self.assertEqual(beat.resolved_choice, "unanswered")
+                self.assertGreater(game.story_effect_value("hunter_pressure"), 0)
+                self.assertGreater(game.story_effect_value("boss_pressure"), 0)
+                self.assertTrue(
+                    any(
+                        "Hunter" in enemy.name or "Story-Marked" in enemy.name
+                        for enemy in game.enemies
+                    )
+                )
+                self.assertEqual(game.run_stats.story_choices, 0)
+            finally:
+                pygame.quit()
+
+    def test_level_intro_blocks_gameplay_until_story_relic_is_chosen(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=2502)
+            try:
+                self.assertEqual(game.state, "playing")
+                self.assertTrue(game.story_intro_pending)
+                starting_depth = game.current_depth
+                game.player.x = game.dungeon.stairs[0] + 0.5
+                game.player.y = game.dungeon.stairs[1] + 0.5
+                game.interact()
+                self.assertEqual(game.current_depth, starting_depth)
+                self.assertTrue(game.story_intro_pending)
+                self.assertTrue(
+                    any("Choose 1-3" in floater.text for floater in game.floaters)
+                )
+
+                guest = game.current_story_guest_for_depth()
+                self.assertIsNotNone(guest)
+                assert guest is not None
+                self.assertTrue(game.choose_story_relic_path(0))
+                self.assertFalse(game.story_intro_pending)
+                relic = game.current_story_relic()
+                self.assertIsNotNone(relic)
+                assert relic is not None
+                self.assertEqual(relic.slot, "story_relic")
+                self.assertEqual(game.story_relic_choice_key, "aid")
+                self.assertTrue(game.story_relic_guidance_enabled)
+                self.assertFalse(game.story_relic_guarded)
+                self.assertFalse(
+                    any(
+                        enemy.elite_modifier == "Relic Guardian"
+                        for enemy in game.enemies
+                    )
+                )
+                self.assertLess(math.hypot(relic.x - guest.x, relic.y - guest.y), 3.0)
+                self.assertTrue(
+                    any(
+                        "follow the guiding light" in line
+                        for line in game.story_panel_lines()
+                    )
+                )
+
+                game.player.x = relic.x
+                game.player.y = relic.y
+                game.interact()
+                self.assertIsNone(game.current_story_relic())
+                self.assertTrue(game.story_relic_collected)
+                self.assertIsNone(game.story_relic_target_position())
+            finally:
+                pygame.quit()
+
+    def test_story_relic_choices_change_location_render_cues_and_persist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            positions: dict[str, tuple[float, float]] = {}
+            expected_traits = {
+                "aid": (True, False),
+                "bargain": (True, True),
+                "defy": (False, True),
+            }
+            for index, expected_key in enumerate(("aid", "bargain", "defy")):
+                game = self.make_game(tmpdir, seed=2602)
+                try:
+                    self.assertTrue(game.story_intro_pending)
+                    guest = game.current_story_guest_for_depth()
+                    self.assertIsNotNone(guest)
+                    assert guest is not None
+                    final_room = game.dungeon.rooms[-1]
+                    final_x, final_y = (
+                        final_room.center[0] + 0.5,
+                        final_room.center[1] + 0.5,
+                    )
+
+                    self.assertTrue(game.choose_story_relic_path(index))
+                    expected_guidance, expected_guarded = expected_traits[expected_key]
+                    self.assertEqual(game.story_relic_choice_key, expected_key)
+                    self.assertEqual(
+                        game.story_relic_guidance_enabled, expected_guidance
+                    )
+                    self.assertEqual(game.story_relic_guarded, expected_guarded)
+                    relic = game.current_story_relic()
+                    self.assertIsNotNone(relic)
+                    assert relic is not None
+                    positions[expected_key] = (round(relic.x, 2), round(relic.y, 2))
+
+                    guardians = [
+                        enemy
+                        for enemy in game.enemies
+                        if enemy.elite_modifier == "Relic Guardian"
+                    ]
+                    self.assertEqual(bool(guardians), expected_guarded)
+                    if expected_guarded:
+                        guardian = guardians[0]
+                        self.assertLess(
+                            math.hypot(guardian.x - relic.x, guardian.y - relic.y), 3.0
+                        )
+                        self.assertGreater(guardian.max_hp, 40)
+
+                    if expected_key == "aid":
+                        self.assertLess(
+                            math.hypot(relic.x - guest.x, relic.y - guest.y), 3.0
+                        )
+                    elif expected_key == "bargain" and game.secrets:
+                        self.assertTrue(any(secret.revealed for secret in game.secrets))
+                    elif expected_key == "defy":
+                        relic_to_final = math.hypot(
+                            relic.x - final_x, relic.y - final_y
+                        )
+                        guest_to_final = math.hypot(
+                            guest.x - final_x, guest.y - final_y
+                        )
+                        self.assertLess(relic_to_final, guest_to_final)
+
+                    self.assertEqual(
+                        game.story_relic_target_position(), (relic.x, relic.y)
+                    )
+                    panel_lines = game.story_panel_lines()
+                    if expected_guidance:
+                        self.assertTrue(
+                            any(
+                                "follow the guiding light" in line
+                                for line in panel_lines
+                            )
+                        )
+                    else:
+                        self.assertTrue(
+                            any("no guiding light" in line for line in panel_lines)
+                        )
+                    if expected_guarded:
+                        self.assertTrue(
+                            any(
+                                "guarded by a relic guardian" in line
+                                for line in panel_lines
+                            )
+                        )
+                    game.draw()
+                    saved = json.loads(game.save_path.read_text(encoding="utf-8"))
+                    self.assertFalse(saved["story_intro_pending"])
+                    self.assertEqual(saved["story_relic_choice_key"], expected_key)
+                    self.assertEqual(saved["story_relic_position"], [relic.x, relic.y])
+                    self.assertEqual(
+                        saved["story_relic_guidance_enabled"], expected_guidance
+                    )
+                    self.assertEqual(saved["story_relic_guarded"], expected_guarded)
+
+                    loaded = Game(
+                        screen_size=(820, 540),
+                        headless=True,
+                        save_path=game.save_path,
+                    )
+                    self.assertTrue(loaded.load_run(), loaded.last_load_error)
+                    self.assertFalse(loaded.story_intro_pending)
+                    self.assertEqual(loaded.story_relic_choice_key, expected_key)
+                    self.assertEqual(loaded.story_relic_position, (relic.x, relic.y))
+                    self.assertEqual(
+                        loaded.story_relic_guidance_enabled, expected_guidance
+                    )
+                    self.assertEqual(loaded.story_relic_guarded, expected_guarded)
+                    self.assertIsNotNone(loaded.current_story_relic())
+                finally:
+                    pygame.quit()
+            self.assertGreater(len(set(positions.values())), 1)
+
+    def test_story_intro_overlay_renders_all_three_opening_choices(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(640, 480),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+            )
+            game.options_path = Path(tmpdir) / "options.json"
+            game.rng.seed(2702)
+            game.restart(ARCHETYPES[2])
+            try:
+                self.assertTrue(game.story_intro_pending)
+                original_rect = pygame.draw.rect
+                choice_boxes: list[pygame.Rect] = []
+
+                def record_rect(surface, color, rect, *args, **kwargs):
+                    if color == (24, 19, 30, 238):
+                        choice_boxes.append(pygame.Rect(rect))
+                    return original_rect(surface, color, rect, *args, **kwargs)
+
+                pygame.draw.rect = record_rect
+                try:
+                    game.draw_story_intro_overlay()
+                finally:
+                    pygame.draw.rect = original_rect
+                self.assertEqual(len(choice_boxes), 3)
+            finally:
+                pygame.quit()
+
     def test_story_guest_and_menus_are_renderable(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, seed=2202)
             try:
                 self.assertTrue(game.story_guests)
+                assert game.story_state is not None
                 guest = game.story_guests[0]
                 game.player.x = guest.x
                 game.player.y = guest.y
+                game.story_state.effects["damage_resist"] = 0.10
+                panel_lines = game.story_panel_lines()
+                self.assertTrue(any(line.startswith("Goal:") for line in panel_lines))
+                self.assertTrue(any("Story forces:" in line for line in panel_lines))
                 game.draw_help_overlay()
                 game.draw()
                 game.state = "title"

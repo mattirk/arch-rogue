@@ -54,6 +54,8 @@ class RenderingMixin:
         self.draw_dungeon()
         self.draw_world_objects()
         self.draw_ui()
+        if self.story_intro_pending:
+            self.draw_story_intro_overlay()
         if self.inventory_open:
             self.draw_inventory()
         if self.show_help:
@@ -372,6 +374,7 @@ class RenderingMixin:
             drawables.append((effect.x + effect.y + 0.08, "impact", effect))
 
         self.draw_aim_cone()
+        self.draw_story_relic_guidance()
 
         for _depth, kind, obj in sorted(drawables, key=lambda entry: entry[0]):
             if kind == "item":
@@ -994,6 +997,9 @@ class RenderingMixin:
             self.screen.blit(aura, aura.get_rect(center=(sx, sy - 18 * WORLD_SCALE)))
 
     def draw_item(self, item: Item) -> None:
+        if item.slot == "story_relic":
+            self.draw_story_relic(item)
+            return
         sx, sy = self.world_to_screen(item.x, item.y)
         rarity_color = self.rarity_color(item.visible_rarity)
         rarity_icon = self.rarity_icon(item.visible_rarity)
@@ -1051,6 +1057,143 @@ class RenderingMixin:
             self.screen.blit(
                 label, label.get_rect(center=(sx, rect.top - 10 * WORLD_SCALE))
             )
+
+    def draw_story_relic_guidance(self) -> None:
+        target = self.story_relic_target_position()
+        if (
+            target is None
+            or self.story_intro_pending
+            or not self.story_relic_guidance_enabled
+        ):
+            return
+        tx, ty = target
+        dx = tx - self.player.x
+        dy = ty - self.player.y
+        distance = math.hypot(dx, dy)
+        if distance < 0.8:
+            return
+        accent = self.story_state.accent if self.story_state else self.theme.accent
+        light = self.mix(accent, (255, 232, 142), 0.72)
+        core = self.mix(light, (255, 255, 238), 0.55)
+        ux, uy = dx / distance, dy / distance
+        cue_count = min(7, max(3, int(distance // 2.1) + 1))
+        screen_w, screen_h = self.screen.get_size()
+        glow_layer = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
+        points: list[tuple[int, int, float]] = []
+        for index in range(cue_count):
+            step = min(distance - 0.45, 1.05 + index * min(1.85, distance / cue_count))
+            if step <= 0:
+                continue
+            wx = self.player.x + ux * step
+            wy = self.player.y + uy * step
+            if not self.dungeon.is_floor(wx, wy):
+                continue
+            sx, sy = self.world_to_screen(wx, wy)
+            points.append((sx, sy - int(9 * WORLD_SCALE), step))
+
+        if len(points) >= 2:
+            beam_points = [(sx, sy) for sx, sy, _step in points]
+            for width, alpha in (
+                (12 * WORLD_SCALE, 10),
+                (7 * WORLD_SCALE, 18),
+                (3 * WORLD_SCALE, 34),
+            ):
+                pygame.draw.lines(
+                    glow_layer,
+                    (*light, alpha),
+                    False,
+                    beam_points,
+                    max(1, width),
+                )
+            pygame.draw.lines(
+                glow_layer,
+                (*core, 48),
+                False,
+                beam_points,
+                max(1, 2 * WORLD_SCALE),
+            )
+
+        for index, (sx, sy, _step) in enumerate(points):
+            shimmer = math.sin(self.elapsed * 5.2 + index * 1.15)
+            drift = math.sin(self.elapsed * 2.4 + index) * 1.25 * WORLD_SCALE
+            glint_x = sx + int(-uy * drift)
+            glint_y = sy + int(ux * drift)
+            flame_tip = (
+                glint_x + int(ux * 9 * WORLD_SCALE),
+                glint_y + int(uy * 5 * WORLD_SCALE),
+            )
+            flame_left = (
+                glint_x - int(ux * 2 * WORLD_SCALE) - int(uy * 3 * WORLD_SCALE),
+                glint_y - int(uy * 1 * WORLD_SCALE) + int(ux * 2 * WORLD_SCALE),
+            )
+            flame_right = (
+                glint_x - int(ux * 2 * WORLD_SCALE) + int(uy * 3 * WORLD_SCALE),
+                glint_y - int(uy * 1 * WORLD_SCALE) - int(ux * 2 * WORLD_SCALE),
+            )
+            pygame.draw.polygon(
+                glow_layer,
+                (*self.mix(light, accent, 0.35), int(38 + shimmer * 14)),
+                [flame_tip, flame_left, flame_right],
+            )
+
+        target_sx, target_sy = self.world_to_screen(tx, ty)
+        target_center = (target_sx, target_sy - int(12 * WORLD_SCALE))
+        relic_pulse = 0.5 + 0.5 * math.sin(self.elapsed * 4.0)
+        pygame.draw.circle(
+            glow_layer,
+            (*light, int(24 + relic_pulse * 20)),
+            target_center,
+            int((20 + relic_pulse * 5) * WORLD_SCALE),
+        )
+        pygame.draw.circle(
+            glow_layer,
+            (*core, int(54 + relic_pulse * 46)),
+            target_center,
+            int((7 + relic_pulse * 3) * WORLD_SCALE),
+        )
+        self.screen.blit(glow_layer, (0, 0))
+
+    def draw_story_relic(self, item: Item) -> None:
+        sx, sy = self.world_to_screen(item.x, item.y)
+        accent = self.story_state.accent if self.story_state else self.theme.accent
+        pulse = 0.5 + 0.5 * math.sin(self.elapsed * 5.2 + item.x)
+        glow = pygame.Surface((58 * WORLD_SCALE, 34 * WORLD_SCALE), pygame.SRCALPHA)
+        pygame.draw.ellipse(glow, (*accent, int(54 + pulse * 70)), glow.get_rect())
+        pygame.draw.ellipse(
+            glow,
+            (*self.shade(accent, 50), int(28 + pulse * 44)),
+            glow.get_rect().inflate(-glow.get_width() // 3, -glow.get_height() // 3),
+        )
+        self.screen.blit(glow, glow.get_rect(center=(sx, sy)))
+        bob = int(math.sin(self.elapsed * 3.5 + item.y) * 3 * WORLD_SCALE)
+        points = [
+            (sx, sy - 21 * WORLD_SCALE + bob),
+            (sx + 12 * WORLD_SCALE, sy - 5 * WORLD_SCALE + bob),
+            (sx, sy + 9 * WORLD_SCALE + bob),
+            (sx - 12 * WORLD_SCALE, sy - 5 * WORLD_SCALE + bob),
+        ]
+        pygame.draw.polygon(self.screen, self.shade(accent, -45), points)
+        pygame.draw.polygon(
+            self.screen, self.shade(accent, 42), points, max(1, WORLD_SCALE)
+        )
+        pygame.draw.circle(
+            self.screen,
+            (245, 238, 210),
+            (sx, sy - 5 * WORLD_SCALE + bob),
+            max(2, 3 * WORLD_SCALE),
+        )
+        for index in range(4):
+            angle = self.elapsed * 2.2 + index * math.tau / 4
+            mote = (
+                sx + int(math.cos(angle) * 20 * WORLD_SCALE),
+                sy - int((10 + math.sin(angle) * 8) * WORLD_SCALE) + bob,
+            )
+            pygame.draw.circle(
+                self.screen, self.shade(accent, 55), mote, max(1, WORLD_SCALE)
+            )
+        if math.hypot(item.x - self.player.x, item.y - self.player.y) < 1.0:
+            label = self.small_font.render(f"E: {item.display_name}", True, accent)
+            self.screen.blit(label, label.get_rect(center=(sx, sy - 36 * WORLD_SCALE)))
 
     def draw_trap(self, trap: Trap) -> None:
         if not trap.active:
@@ -1315,6 +1458,201 @@ class RenderingMixin:
     def ui(self, value: int) -> int:
         return value * self.ui_scale
 
+    def wrap_ui_text(
+        self, text: str, font: pygame.font.Font, max_width: int
+    ) -> list[str]:
+        lines: list[str] = []
+        for paragraph in text.splitlines() or [""]:
+            words = paragraph.split()
+            if not words:
+                lines.append("")
+                continue
+            current = words[0]
+            for word in words[1:]:
+                candidate = f"{current} {word}"
+                if font.size(candidate)[0] <= max_width:
+                    current = candidate
+                else:
+                    lines.append(current)
+                    current = word
+            lines.append(current)
+        return lines
+
+    def draw_story_panel(self) -> None:
+        lines = self.story_panel_lines()
+        if not lines:
+            return
+        width, height = self.screen.get_size()
+        bottom_panel_top = height - self.ui(112)
+        x = self.ui(20)
+        y = self.ui(98)
+        panel_w = min(width - self.ui(40), self.ui(620))
+        max_h = min(self.ui(182), bottom_panel_top - y - self.ui(12))
+        if panel_w <= self.ui(220) or max_h < self.ui(84):
+            return
+        accent = self.story_state.accent if self.story_state else self.theme.accent
+        rect = pygame.Rect(x, y, panel_w, max_h)
+        surface = pygame.Surface(rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(
+            surface, (10, 9, 13, 218), surface.get_rect(), border_radius=self.ui(9)
+        )
+        pygame.draw.rect(
+            surface,
+            (*accent, 155),
+            surface.get_rect(),
+            self.ui(1),
+            border_radius=self.ui(9),
+        )
+        pad = self.ui(10)
+        title = lines[0]
+        title_surface = self.small_font.render(title, True, (244, 232, 214))
+        surface.blit(title_surface, (pad, pad))
+        pygame.draw.line(
+            surface,
+            (*accent, 120),
+            (pad, pad + title_surface.get_height() + self.ui(4)),
+            (panel_w - pad, pad + title_surface.get_height() + self.ui(4)),
+            self.ui(1),
+        )
+        cursor_y = pad + title_surface.get_height() + self.ui(9)
+        line_h = max(self.small_font.get_height() + self.ui(1), self.ui(16))
+        max_lines = max(2, (max_h - cursor_y - pad) // line_h)
+        rendered = 0
+        for raw_line in lines[1:]:
+            color = (
+                (205, 185, 225)
+                if raw_line.startswith("Story forces:")
+                else (210, 205, 192)
+            )
+            if raw_line.startswith("Depth ") or raw_line.startswith("Outcome:"):
+                color = (238, 218, 164)
+            for wrapped in self.wrap_ui_text(
+                raw_line, self.small_font, panel_w - pad * 2
+            ):
+                if rendered >= max_lines:
+                    ellipsis = self.small_font.render("…", True, (170, 165, 155))
+                    surface.blit(ellipsis, (pad, cursor_y))
+                    self.screen.blit(surface, rect)
+                    return
+                text = self.small_font.render(wrapped, True, color)
+                surface.blit(text, (pad, cursor_y))
+                cursor_y += line_h
+                rendered += 1
+        self.screen.blit(surface, rect)
+
+    def draw_story_intro_overlay(self) -> None:
+        lines = self.story_intro_lines()
+        if not lines:
+            return
+        width, height = self.screen.get_size()
+        dim = pygame.Surface((width, height), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 116))
+        self.screen.blit(dim, (0, 0))
+
+        accent = self.story_state.accent if self.story_state else self.theme.accent
+        panel_w = min(width - self.ui(48), self.ui(760))
+        panel_h = min(height - self.ui(72), self.ui(410))
+        rect = pygame.Rect(
+            (width - panel_w) // 2,
+            max(self.ui(28), (height - panel_h) // 2 - self.ui(18)),
+            panel_w,
+            panel_h,
+        )
+        surface = pygame.Surface(rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(
+            surface, (11, 9, 15, 244), surface.get_rect(), border_radius=self.ui(12)
+        )
+        pygame.draw.rect(
+            surface,
+            (*accent, 210),
+            surface.get_rect(),
+            self.ui(2),
+            border_radius=self.ui(12),
+        )
+        pad = self.ui(18)
+        title = self.font.render("Guest Relic Omen", True, accent)
+        surface.blit(title, (pad, pad))
+        y = pad + title.get_height() + self.ui(8)
+        available_w = panel_w - pad * 2
+        options = self.story_relic_choice_options()
+        line_h = max(self.small_font.get_height() + self.ui(2), self.ui(18))
+        choice_h = max(self.ui(50), self.small_font.get_height() * 2 + self.ui(12))
+        choice_gap = self.ui(6)
+        footer_h = self.small_font.get_height()
+        footer_gap = self.ui(10)
+        choices_block_h = (
+            len(options) * choice_h + max(0, len(options) - 1) * choice_gap
+        )
+        choices_start_limit = panel_h - pad - footer_h - footer_gap - choices_block_h
+
+        body_lines: list[tuple[str, Color]] = []
+        for index, line in enumerate(lines):
+            color = (244, 232, 214) if index == 0 else (214, 207, 196)
+            if line.startswith("Depth "):
+                color = (238, 218, 164)
+            for wrapped in self.wrap_ui_text(line, self.small_font, available_w):
+                body_lines.append((wrapped, color))
+        body_bottom = max(y + line_h, choices_start_limit - self.ui(8))
+        max_body_lines = max(1, (body_bottom - y) // line_h)
+        for text_line, color in body_lines[:max_body_lines]:
+            text = self.small_font.render(text_line, True, color)
+            surface.blit(text, (pad, y))
+            y += line_h
+        if len(
+            body_lines
+        ) > max_body_lines and y + line_h <= choices_start_limit - self.ui(4):
+            text = self.small_font.render("…", True, (170, 165, 155))
+            surface.blit(text, (pad, y))
+            y += line_h
+
+        y = max(y + self.ui(8), choices_start_limit)
+        for index, (_key, label, detail) in enumerate(options):
+            choice_rect = pygame.Rect(pad, y, available_w, choice_h)
+            pygame.draw.rect(
+                surface,
+                (24, 19, 30, 238),
+                choice_rect,
+                border_radius=self.ui(8),
+            )
+            pygame.draw.rect(
+                surface,
+                (*accent, 150),
+                choice_rect,
+                self.ui(1),
+                border_radius=self.ui(8),
+            )
+            key_rect = pygame.Rect(
+                choice_rect.x + self.ui(8),
+                choice_rect.y + self.ui(8),
+                self.ui(36),
+                choice_rect.height - self.ui(16),
+            )
+            pygame.draw.rect(
+                surface,
+                (*self.shade(accent, -50), 235),
+                key_rect,
+                border_radius=self.ui(6),
+            )
+            key = self.font.render(str(index + 1), True, accent)
+            surface.blit(key, key.get_rect(center=key_rect.center))
+            label_text = self.small_font.render(label, True, (246, 235, 210))
+            surface.blit(
+                label_text, (choice_rect.x + self.ui(54), choice_rect.y + self.ui(8))
+            )
+            detail_text = self.small_font.render(detail, True, (178, 174, 164))
+            surface.blit(
+                detail_text, (choice_rect.x + self.ui(54), choice_rect.y + self.ui(30))
+            )
+            y += choice_h + choice_gap
+
+        footer = self.small_font.render(
+            "Press 1-3 to confirm the guest dialog, place the relic, and begin this level.",
+            True,
+            (205, 185, 225),
+        )
+        surface.blit(footer, (pad, panel_h - pad - footer.get_height()))
+        self.screen.blit(surface, rect)
+
     def draw_ui(self) -> None:
         width, height = self.screen.get_size()
         panel_h = self.ui(112)
@@ -1383,6 +1721,7 @@ class RenderingMixin:
             )
 
         self.draw_run_header()
+        self.draw_story_panel()
         self.draw_boss_bar()
 
         objective = (

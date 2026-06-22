@@ -75,6 +75,7 @@ from .story import (
     StoryEngine,
     clamp_story_effect,
     record_story_choice,
+    record_unanswered_story_beat,
     story_beat_for_depth,
     story_beat_index_for_depth,
     story_effect,
@@ -135,6 +136,13 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.story_seed = 0
         self.story_state: StoryState | None = None
         self.story_guests: list[StoryGuest] = []
+        self.story_intro_pending = False
+        self.story_relic_depth = 0
+        self.story_relic_choice_key = ""
+        self.story_relic_position: tuple[float, float] | None = None
+        self.story_relic_collected = False
+        self.story_relic_guidance_enabled = False
+        self.story_relic_guarded = False
         self.impact_effects: list[ImpactEffect] = []
         self.audio = AudioSystem()
         self.audio_available = self.audio.initialize(headless)
@@ -266,6 +274,8 @@ class Game(SaveLoadMixin, RenderingMixin):
         ]
 
     def item_decision_summary(self, item: Item) -> str:
+        if item.slot == "story_relic":
+            return "Story relic · collect it to clarify the guest's plea"
         if item.slot == "potion":
             missing = max(0, self.player.max_hp - self.player.hp)
             return f"Restores {item.heal} HP" + (
@@ -299,6 +309,21 @@ class Game(SaveLoadMixin, RenderingMixin):
         return "Use from inventory"
 
     def current_interaction_hint(self) -> tuple[str, str, str, Color] | None:
+        if self.story_intro_pending:
+            return (
+                "1-3",
+                "Guest dialog awaits",
+                "Choose a story path to place the guest relic and begin the level.",
+                self.story_state.accent if self.story_state else self.theme.accent,
+            )
+        story_relic = self.nearby_story_relic()
+        if story_relic is not None:
+            return (
+                "E",
+                f"Recover {story_relic.display_name}",
+                self.item_decision_summary(story_relic),
+                self.story_state.accent if self.story_state else self.theme.accent,
+            )
         if self.player_near_stairs():
             if self.current_depth < DUNGEON_DEPTH:
                 return (
@@ -402,12 +427,379 @@ class Game(SaveLoadMixin, RenderingMixin):
         status = "resolved" if beat.resolved_choice else "unresolved"
         return f"Story: {self.story_state.title} · {beat.title} ({status})"
 
+    def story_choice_preview(self, choice_key: str) -> str:
+        previews = {
+            "aid": "mercy wards, heals, and reveals",
+            "bargain": "relic power for blood and curses",
+            "defy": "damage, XP, and hunters",
+        }
+        return previews.get(choice_key, "the dungeon answers")
+
     def story_choices_hint(self, guest: StoryGuest) -> str:
         entries = [
-            f"{index + 1} {choice.label}"
+            f"{index + 1} {choice.label}: {self.story_choice_preview(choice.key)}"
             for index, choice in enumerate(guest.choices[:3])
         ]
         return " · ".join(entries) + " · E hear plea"
+
+    def story_relic_choice_options(self) -> list[tuple[str, str, str]]:
+        return [
+            (
+                "aid",
+                "Accept the guest's lantern",
+                "guiding light shown · relic is unguarded near the guest",
+            ),
+            (
+                "bargain",
+                "Trade safety for a hidden beacon",
+                "guiding light shown · a powerful guardian wakes near the relic",
+            ),
+            (
+                "defy",
+                "Walk without the guest's light",
+                "no guiding light · relic is guarded deeper in the dungeon",
+            ),
+        ]
+
+    def story_relic_choice_traits(self, choice_key: str) -> tuple[bool, bool]:
+        traits = {
+            "aid": (True, False),
+            "bargain": (True, True),
+            "defy": (False, True),
+        }
+        return traits.get(choice_key, (True, False))
+
+    def story_relic_choice_label(self) -> str:
+        for key, label, _detail in self.story_relic_choice_options():
+            if key == self.story_relic_choice_key:
+                return label
+        return "unbound"
+
+    def current_story_guest_for_depth(self) -> StoryGuest | None:
+        return next(
+            (
+                guest
+                for guest in self.story_guests
+                if guest.depth == self.current_depth and not guest.resolved
+            ),
+            None,
+        )
+
+    def current_story_relic(self) -> Item | None:
+        return next((item for item in self.items if item.slot == "story_relic"), None)
+
+    def story_relic_target_position(self) -> tuple[float, float] | None:
+        relic = self.current_story_relic()
+        if relic is not None:
+            return relic.x, relic.y
+        if not self.story_relic_collected:
+            return self.story_relic_position
+        return None
+
+    def begin_story_level_intro(self) -> None:
+        beat = self.current_story_beat()
+        guest = self.current_story_guest_for_depth()
+        self.story_relic_depth = self.current_depth
+        self.story_relic_choice_key = ""
+        self.story_relic_position = None
+        self.story_relic_collected = False
+        self.story_relic_guidance_enabled = False
+        self.story_relic_guarded = False
+        self.items = [item for item in self.items if item.slot != "story_relic"]
+        self.story_intro_pending = beat is not None and guest is not None
+
+    def story_intro_lines(self) -> list[str]:
+        if self.story_state is None:
+            return []
+        beat = self.current_story_beat()
+        guest = self.current_story_guest_for_depth()
+        lines = [self.story_state.title, self.story_state.objective]
+        if beat is not None:
+            lines.extend(
+                [
+                    f"Depth {beat.depth}: {beat.title}",
+                    beat.summary,
+                    beat.dialogue,
+                ]
+            )
+        if guest is not None:
+            lines.append(
+                f"{guest.name}, {guest.role}, waits somewhere ahead. Before the level begins, choose how their relic echo should surface."
+            )
+            lines.append(
+                "Your answer decides whether a guiding light appears and whether a powerful guardian binds itself to the relic."
+            )
+        return lines
+
+    def choose_story_relic_path(self, choice_index: int) -> bool:
+        options = self.story_relic_choice_options()
+        if not self.story_intro_pending or not (0 <= choice_index < len(options)):
+            return False
+        choice_key, choice_label, _detail = options[choice_index]
+        guidance_enabled, guarded = self.story_relic_choice_traits(choice_key)
+        guest = self.current_story_guest_for_depth()
+        if guest is None:
+            self.story_intro_pending = False
+            return False
+        relic_x, relic_y = self.story_relic_location_for_choice(choice_key, guest)
+        self.items = [item for item in self.items if item.slot != "story_relic"]
+        relic_name = (
+            f"{guest.name}'s Echo of {self.story_state.relic_name}"
+            if self.story_state is not None
+            else "Guest Relic Echo"
+        )
+        self.items.append(
+            Item(
+                relic_name,
+                "story_relic",
+                rarity="Unique",
+                x=relic_x,
+                y=relic_y,
+                affixes=[
+                    "Story Relic",
+                    choice_label,
+                    "Guiding Light" if guidance_enabled else "No Guiding Light",
+                    "Guarded" if guarded else "Unguarded",
+                ],
+                unique_effect="guides the guest's plea"
+                if guidance_enabled
+                else "the guest's light has gone silent",
+            )
+        )
+        self.story_relic_depth = self.current_depth
+        self.story_relic_choice_key = choice_key
+        self.story_relic_position = (relic_x, relic_y)
+        self.story_relic_collected = False
+        self.story_relic_guidance_enabled = guidance_enabled
+        self.story_relic_guarded = guarded
+        if guarded:
+            self.spawn_story_relic_guard(relic_x, relic_y)
+        self.story_intro_pending = False
+        if self.story_state is not None:
+            self.story_state.flags.append(f"{self.current_depth}:relic:{choice_key}")
+            self.story_state.log.append(
+                f"Depth {self.current_depth}: {choice_label} — the guest relic surfaced"
+                f" {'with a guiding light' if guidance_enabled else 'without a guiding light'}"
+                f" {'and a guardian' if guarded else 'and no guardian'}."
+            )
+            del self.story_state.log[:-12]
+        self.floaters.append(
+            FloatingText(
+                f"{choice_label}: "
+                f"{'follow the relic trail' if guidance_enabled else 'find the relic without a trail'}",
+                self.player.x,
+                self.player.y - 0.6,
+                self.story_state.accent if self.story_state else self.theme.accent,
+                ttl=1.8,
+            )
+        )
+        self.play_sfx("shrine")
+        self.save_run()
+        return True
+
+    def story_relic_location_for_choice(
+        self, choice_key: str, guest: StoryGuest
+    ) -> tuple[float, float]:
+        if choice_key == "aid":
+            return self.drop_position_near(guest.x, guest.y)
+        if choice_key == "bargain":
+            if self.secrets:
+                secret = min(
+                    self.secrets,
+                    key=lambda candidate: math.hypot(
+                        candidate.x - guest.x, candidate.y - guest.y
+                    ),
+                )
+                secret.revealed = True
+                return self.drop_position_near(secret.x, secret.y)
+            side_rooms = self.dungeon.rooms[2:-1] or self.dungeon.rooms[1:]
+            room = max(
+                side_rooms,
+                key=lambda candidate: math.hypot(
+                    candidate.center[0] + 0.5 - self.player.x,
+                    candidate.center[1] + 0.5 - self.player.y,
+                ),
+            )
+            x, y = room.random_point(self.rng)
+            return self.drop_position_near(x, y)
+        final_room = self.dungeon.rooms[-1]
+        x, y = final_room.random_point(self.rng)
+        return self.drop_position_near(x, y)
+
+    def spawn_story_relic_guard(self, relic_x: float, relic_y: float) -> None:
+        offsets = (
+            (1.8, 0.0),
+            (-1.8, 0.0),
+            (0.0, 1.8),
+            (0.0, -1.8),
+            (1.4, 1.4),
+            (-1.4, 1.4),
+            (1.4, -1.4),
+            (-1.4, -1.4),
+        )
+        guard_x, guard_y = relic_x, relic_y
+        for ox, oy in offsets:
+            candidate_x, candidate_y = relic_x + ox, relic_y + oy
+            if not self.dungeon.blocked_for_radius(
+                candidate_x, candidate_y, radius=0.28
+            ):
+                guard_x, guard_y = candidate_x, candidate_y
+                break
+        guard = self._make_story_hunter(guard_x, guard_y, prefix="Relic Guardian")
+        guard.kind = "miniboss"
+        guard.name = f"Relic Guardian {guard.name.split(' ', 2)[-1]}"
+        guard.elite_modifier = "Relic Guardian"
+        guard.telegraph = "bound to the guest relic by the opening story choice"
+        guard.max_hp = max(1, int(guard.max_hp * 1.45))
+        guard.hp = guard.max_hp
+        guard.damage += 3 + self.current_depth // 2
+        guard.xp += 24 + self.current_depth * 2
+        guard.aggro_range += 3.0
+        guard.color = self.story_state.accent if self.story_state else self.theme.accent
+        self.enemies.append(guard)
+
+    def story_mechanics_summary(self) -> str:
+        if self.story_state is None:
+            return ""
+        forces: list[str] = []
+        resist = self.story_effect_value("damage_resist", 0.0, 0.35)
+        if resist > 0:
+            forces.append(f"Mercy ward -{int(round(resist * 100))}% damage")
+        healing = self.story_effect_value("healing_echo", 0.0, 1.0)
+        if healing > 0:
+            forces.append(f"Echo heals {int(round(min(1.0, healing) * 100))}% on kills")
+        relic = self.story_effect_value("relic_power", 0.0, 0.35)
+        if relic > 0:
+            forces.append(f"Relic power +{int(round(relic * 100))}% spell force")
+        blood = self.story_effect_value("blood_price", 0.0, 0.35)
+        if blood > 0:
+            forces.append("Blood price drains HP on spells")
+        damage = self.story_effect_value("damage_bonus", 0.0, 0.35)
+        if damage > 0:
+            forces.append(f"Defiance +{int(round(damage * 100))}% damage")
+        hunters = self.story_effect_value("hunter_pressure", 0.0, 0.35)
+        if hunters > 0:
+            forces.append("Hunters stalk each new floor")
+        pressure = self.story_effect_value("enemy_pressure", -0.35, 0.45)
+        if abs(pressure) >= 0.01:
+            direction = "more" if pressure > 0 else "fewer"
+            forces.append(f"{direction} enemies {int(round(abs(pressure) * 100))}%")
+        loot = self.story_effect_value("loot_bonus", 0.0, 0.35)
+        if loot > 0:
+            forces.append(f"loot +{int(round(loot * 100))}%")
+        traps = self.story_effect_value("trap_bonus", 0.0, 0.28)
+        if traps > 0:
+            forces.append(f"traps +{int(round(traps * 100))}%")
+        return " · ".join(forces[:7])
+
+    def story_panel_lines(self) -> list[str]:
+        if self.story_state is None:
+            return []
+        lines = [
+            self.story_state.title,
+            f"Goal: {self.story_state.objective}",
+        ]
+        beat = self.current_story_beat()
+        if beat is not None:
+            status = beat.resolved_choice or "awaiting choice"
+            lines.append(f"Depth {beat.depth}: {beat.title} — {status}")
+            lines.append(beat.summary)
+            if beat.outcome:
+                lines.append(f"Outcome: {beat.outcome}")
+            else:
+                lines.append(beat.dialogue)
+                guest = self.nearby_story_guest()
+                if guest is not None:
+                    choice_details = [
+                        f"{index + 1} {choice.label}: {choice.intent} ({self.story_choice_preview(choice.key)})"
+                        for index, choice in enumerate(guest.choices[:3])
+                    ]
+                    lines.append("Choices: " + " · ".join(choice_details))
+        mechanics = self.story_mechanics_summary()
+        if self.story_intro_pending:
+            lines.append(
+                "Guest relic: choose 1-3 to bind its first location before the level begins."
+            )
+        elif self.story_relic_choice_key and not self.story_relic_collected:
+            cues = (
+                "follow the guiding light"
+                if self.story_relic_guidance_enabled
+                else "no guiding light; search from the choice clue"
+            )
+            guard = (
+                "guarded by a relic guardian"
+                if self.story_relic_guarded
+                else "unguarded"
+            )
+            lines.append(
+                f"Guest relic: {self.story_relic_choice_label()} — {cues}; {guard}."
+            )
+        elif self.story_relic_collected:
+            lines.append("Guest relic: recovered; the guest's plea is clearer.")
+        if mechanics:
+            lines.append(f"Story forces: {mechanics}")
+        elif self.story_state.log:
+            lines.append(self.story_state.log[-1])
+        return lines
+
+    def story_player_damage_bonus(self, spell: bool = False) -> float:
+        damage = self.story_effect_value("damage_bonus", 0.0, 0.35)
+        relic = self.story_effect_value("relic_power", 0.0, 0.35)
+        relic_weight = 1.0 if spell else 0.6
+        return min(0.55, damage + relic * relic_weight)
+
+    def apply_story_player_damage(self, damage: int, spell: bool = False) -> int:
+        bonus = self.story_player_damage_bonus(spell=spell)
+        if bonus <= 0:
+            return max(1, damage)
+        return max(1, int(round(damage * (1.0 + bonus))))
+
+    def apply_story_blood_price(self, reason: str) -> int:
+        price = self.story_effect_value("blood_price", 0.0, 0.35)
+        if price <= 0 or self.player.hp <= 1:
+            return 0
+        cost = max(
+            1,
+            min(10, int(round(self.player.max_hp * (0.015 + price * 0.18)))),
+        )
+        actual = min(cost, self.player.hp - 1)
+        if actual <= 0:
+            return 0
+        self.player.hp -= actual
+        self.run_stats.damage_taken += actual
+        self.floaters.append(
+            FloatingText(
+                f"{reason.title()} blood price -{actual}",
+                self.player.x,
+                self.player.y - 0.55,
+                self.story_state.accent if self.story_state else (190, 60, 85),
+                ttl=1.0,
+            )
+        )
+        self.add_impact(
+            self.player.x,
+            self.player.y,
+            self.story_state.accent if self.story_state else (190, 60, 85),
+            ttl=0.36,
+            radius=0.42,
+            kind="blood",
+        )
+        return actual
+
+    def resolve_unanswered_story_beat(self) -> str:
+        if self.story_state is None:
+            return ""
+        beat_index = story_beat_index_for_depth(self.story_state, self.current_depth)
+        beat = self.current_story_beat()
+        if beat is None or beat_index is None or beat.resolved_choice:
+            return ""
+        if not record_unanswered_story_beat(self.story_state, self.current_depth):
+            return ""
+        for guest in self.story_guests:
+            if guest.depth == self.current_depth and guest.beat_index == beat_index:
+                guest.resolved = True
+                guest.resolved_choice = "unanswered"
+        return f"{beat.guest_name} was forsaken; hunters stir below"
 
     def _apply_story_theme_for_current_depth(self) -> None:
         beat = self.current_story_beat()
@@ -510,32 +902,57 @@ class Game(SaveLoadMixin, RenderingMixin):
     def _apply_story_choice_reward(self, guest: StoryGuest, choice_key: str) -> None:
         if choice_key == "aid":
             self.player.hp = min(
-                self.player.max_hp, self.player.hp + max(10, self.player.max_hp // 8)
+                self.player.max_hp, self.player.hp + max(16, self.player.max_hp // 5)
             )
             self.player.mana = min(
                 self.player.max_mana,
-                self.player.mana + max(6, self.player.max_mana // 8),
+                self.player.mana + max(10, self.player.max_mana // 4),
             )
-            if self.rng.random() < 0.45:
-                self.shrines.append(Shrine(guest.x, guest.y, "Insight Shrine"))
-        elif choice_key == "bargain":
-            self.player.hp = max(1, self.player.hp - max(5, self.player.max_hp // 12))
-            self.items.append(
-                self._make_equipment(
-                    self.rng.choice(("weapon", "armor")),
-                    "Rare",
-                    guest.x,
-                    guest.y,
+            self.player.stamina = self.player.max_stamina
+            revealed = 0
+            for secret in sorted(
+                self.secrets,
+                key=lambda secret: math.hypot(secret.x - guest.x, secret.y - guest.y),
+            ):
+                if secret.opened or secret.revealed:
+                    continue
+                if math.hypot(secret.x - guest.x, secret.y - guest.y) > 7.0:
+                    continue
+                secret.revealed = True
+                revealed += 1
+                if revealed >= 2:
+                    break
+            if revealed == 0:
+                cache_x, cache_y = self.drop_position_near(guest.x, guest.y)
+                self.secrets.append(
+                    SecretCache(cache_x, cache_y, "Mercy-Sealed Cache", revealed=True)
                 )
+            self.shrines.append(Shrine(guest.x, guest.y, "Mending Shrine"))
+        elif choice_key == "bargain":
+            blood_price = self.story_effect_value("blood_price", 0.0, 0.35)
+            cost = max(
+                6,
+                min(22, int(round(self.player.max_hp * (0.08 + blood_price * 0.45)))),
             )
+            previous_hp = self.player.hp
+            self.player.hp = max(1, self.player.hp - cost)
+            self.run_stats.damage_taken += previous_hp - self.player.hp
+            item = self._make_equipment(
+                self.rng.choice(("weapon", "armor")),
+                "Rare",
+                guest.x,
+                guest.y,
+            )
+            self._empower_story_relic_item(item, guaranteed=True)
+            self.items.append(item)
         elif choice_key == "defy":
-            leveled = self.player.gain_xp(18 + self.current_depth * 2)
+            leveled = self.player.gain_xp(24 + self.current_depth * 3)
             if leveled:
                 self.grant_skill_upgrade(reason="story defiance")
             spawn_x, spawn_y = self.drop_position_near(guest.x, guest.y)
-            enemy = self._make_enemy(spawn_x, spawn_y, final_room=True)
-            enemy.name = f"Story-Marked {enemy.name}"
-            self.enemies.append(enemy)
+            self.enemies.append(
+                self._make_story_hunter(spawn_x, spawn_y, prefix="Story-Marked")
+            )
 
     def restart(self, archetype: Archetype | None = None) -> None:
         self.run_number += 1
@@ -583,6 +1000,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.elapsed = 0.0
         self.state = "playing"
         self._populate_dungeon()
+        self.begin_story_level_intro()
         self.sync_music()
         self.play_sfx("start")
         self.save_run()
@@ -594,6 +1012,7 @@ class Game(SaveLoadMixin, RenderingMixin):
             self.play_sfx("victory")
             self.delete_save()
             return
+        unanswered_message = self.resolve_unanswered_story_beat()
         self.current_depth += 1
         self.theme = self.rng.choice(DUNGEON_THEMES)
         self._apply_story_theme_for_current_depth()
@@ -627,6 +1046,17 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.inventory_open = False
         self.show_help = False
         self._populate_dungeon()
+        self.begin_story_level_intro()
+        if unanswered_message:
+            self.floaters.append(
+                FloatingText(
+                    unanswered_message,
+                    self.player.x,
+                    self.player.y - 0.85,
+                    self.story_state.accent if self.story_state else self.theme.accent,
+                    ttl=2.0,
+                )
+            )
         self.floaters.append(
             FloatingText(
                 f"Depth {self.current_depth}/{DUNGEON_DEPTH}",
@@ -674,6 +1104,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         trap_bonus = self.story_effect_value("trap_bonus", -0.1, 0.28)
         shrine_bonus = self.story_effect_value("shrine_bonus", -0.1, 0.28)
         secret_bonus = self.story_effect_value("secret_bonus", -0.1, 0.28)
+        hunter_pressure = self.story_effect_value("hunter_pressure", 0.0, 0.35)
         for room_index, room in enumerate(self.dungeon.rooms[1:], start=1):
             is_final_room = room_index == final_room_index
             count = self.rng.randrange(1, 4)
@@ -758,6 +1189,16 @@ class Game(SaveLoadMixin, RenderingMixin):
             room = self.rng.choice(self.dungeon.rooms[2:-1])
             cx, cy = room.random_point(self.rng)
             self.secrets.append(SecretCache(cx, cy, "Lost Cartographer's Stash"))
+
+        if hunter_pressure > 0 and len(self.dungeon.rooms) > 2:
+            hunter_rooms = self.dungeon.rooms[2:-1] or self.dungeon.rooms[1:]
+            hunter_count = min(4, 1 + int(hunter_pressure / 0.14))
+            if self.rng.random() < min(0.75, hunter_pressure * 1.5):
+                hunter_count += 1
+            for _ in range(hunter_count):
+                room = self.rng.choice(hunter_rooms)
+                hx, hy = room.random_point(self.rng)
+                self.enemies.append(self._make_story_hunter(hx, hy))
 
         sx, sy = self.dungeon.rooms[0].random_point(self.rng)
         self.items.append(
@@ -874,6 +1315,24 @@ class Game(SaveLoadMixin, RenderingMixin):
         enemy.color = self.theme.accent
         return enemy
 
+    def _make_story_hunter(
+        self, x: float, y: float, prefix: str | None = None
+    ) -> Enemy:
+        enemy = self._make_enemy(x, y, final_room=True)
+        story_prefix = prefix or "Story-Marked"
+        if self.story_state is not None and prefix is None:
+            story_prefix = f"{self.story_state.antagonist} Hunter"
+        enemy.name = f"{story_prefix} {enemy.name}"
+        enemy.elite_modifier = enemy.elite_modifier or "Story-Marked"
+        enemy.telegraph = "drawn by unresolved oaths and defiant story choices"
+        enemy.max_hp = max(1, int(enemy.max_hp * 1.28))
+        enemy.hp = enemy.max_hp
+        enemy.damage += max(1, self.current_depth // 2)
+        enemy.xp += 14 + self.current_depth * 2
+        enemy.aggro_range += 2.5
+        enemy.color = self.story_state.accent if self.story_state else self.theme.accent
+        return enemy
+
     def _make_boss(self, x: float, y: float) -> Enemy:
         boss_titles = {
             "Crypt of Ash": "Ashen Gate Tyrant",
@@ -965,8 +1424,27 @@ class Game(SaveLoadMixin, RenderingMixin):
                 item.power += 4
             else:
                 item.defense += 3
+        self._empower_story_relic_item(item)
         item.unidentified = rarity != "Common" and self.rng.random() < 0.45
         return item
+
+    def _empower_story_relic_item(self, item: Item, guaranteed: bool = False) -> None:
+        relic_power = self.story_effect_value("relic_power", 0.0, 0.35)
+        if relic_power <= 0 or item.slot not in ("weapon", "armor"):
+            return
+        if "Relic-Touched" in item.affixes:
+            return
+        if not guaranteed and self.rng.random() > min(0.45, relic_power * 1.35):
+            return
+        bonus = max(2, int(round(2 + relic_power * 14)))
+        if item.slot == "weapon":
+            item.power += bonus
+        else:
+            item.defense += max(2, bonus // 2 + 1)
+        if "Relic-Touched" not in item.affixes:
+            item.affixes.append("Relic-Touched")
+        if self.story_state is not None and not item.unique_effect:
+            item.unique_effect = f"echo of {self.story_state.relic_name}"
 
     def _apply_affixes(self, item: Item, count: int) -> None:
         weapon_affixes = [
@@ -1146,6 +1624,21 @@ class Game(SaveLoadMixin, RenderingMixin):
                             self.selected_archetype = ARCHETYPES[index]
                         elif event.key == pygame.K_RETURN:
                             self.restart(self.selected_archetype)
+                elif self.state == "playing" and self.story_intro_pending:
+                    if pygame.K_1 <= event.key <= pygame.K_3:
+                        self.choose_story_relic_path(event.key - pygame.K_1)
+                    elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_e):
+                        self.floaters.append(
+                            FloatingText(
+                                "Choose 1-3 to bind the guest relic",
+                                self.player.x,
+                                self.player.y - 0.5,
+                                self.story_state.accent
+                                if self.story_state
+                                else self.theme.accent,
+                                ttl=1.0,
+                            )
+                        )
                 elif (
                     event.key in (pygame.K_h, pygame.K_SLASH)
                     and self.state != "archetype_select"
@@ -1196,7 +1689,11 @@ class Game(SaveLoadMixin, RenderingMixin):
                         self.drop_inventory_slot(index)
                     else:
                         self.use_inventory_slot(index)
-            elif event.type == pygame.MOUSEBUTTONDOWN and self.state == "playing":
+            elif (
+                event.type == pygame.MOUSEBUTTONDOWN
+                and self.state == "playing"
+                and not self.story_intro_pending
+            ):
                 if event.button == 1:
                     self.face_player_toward_screen_point(*event.pos)
                     if self.enemy_in_melee_arc():
@@ -1204,6 +1701,10 @@ class Game(SaveLoadMixin, RenderingMixin):
 
     def update(self, dt: float) -> None:
         self.elapsed += dt
+        if self.story_intro_pending:
+            self.update_floaters(dt)
+            self.screen_flash_ttl = max(0.0, self.screen_flash_ttl - dt)
+            return
         self.update_player_aim()
         self.update_player(dt)
         self.update_enemies(dt)
@@ -1366,6 +1867,22 @@ class Game(SaveLoadMixin, RenderingMixin):
             amount = max(
                 1, amount - (5 if self.player.has_upgrade("acolyte_veil") else 3)
             )
+        resist = self.story_effect_value("damage_resist", 0.0, 0.35)
+        if resist > 0:
+            before_resist = amount
+            amount = max(1, int(round(amount * (1.0 - resist))))
+            if amount < before_resist:
+                self.floaters.append(
+                    FloatingText(
+                        f"Story ward -{before_resist - amount}",
+                        self.player.x,
+                        self.player.y - 0.45,
+                        self.story_state.accent
+                        if self.story_state
+                        else (190, 150, 245),
+                        ttl=0.9,
+                    )
+                )
         self.player.hp -= amount
         self.run_stats.damage_taken += amount
         flash = (160, 35, 32) if amount >= self.player.max_hp * 0.18 else (105, 24, 28)
@@ -1720,6 +2237,7 @@ class Game(SaveLoadMixin, RenderingMixin):
                     )
                 if self.player.class_name == "Warden":
                     enemy.attack_timer = max(enemy.attack_timer, 0.35)
+                damage = self.apply_story_player_damage(damage)
                 self.damage_enemy(
                     enemy,
                     damage,
@@ -1738,6 +2256,8 @@ class Game(SaveLoadMixin, RenderingMixin):
         damage = 14 + self.player.level * 2 + self.player.spell_bonus
         if self.player.class_name == "Acolyte":
             damage += max(0, self.player.max_hp - self.player.hp) // 12
+        damage = self.apply_story_player_damage(damage, spell=True)
+        self.apply_story_blood_price("bolt")
         angles = [0.0]
         if self.player.class_name == "Ranger":
             angles = (
@@ -1777,6 +2297,7 @@ class Game(SaveLoadMixin, RenderingMixin):
             return
         self.player.nova_timer = self.nova_cooldown()
         self.player.mana -= mana_cost
+        self.apply_story_blood_price("nova")
         hits = 0
         for enemy in list(self.enemies):
             dx = enemy.x - self.player.x
@@ -1801,6 +2322,7 @@ class Game(SaveLoadMixin, RenderingMixin):
                 if self.player.class_name == "Acolyte":
                     leech = 5 if self.player.has_upgrade("acolyte_sanguine") else 3
                     self.player.hp = min(self.player.max_hp, self.player.hp + leech)
+                damage = self.apply_story_player_damage(damage, spell=True)
                 direction = (
                     (dx / distance, dy / distance)
                     if distance > 0.001
@@ -1952,6 +2474,29 @@ class Game(SaveLoadMixin, RenderingMixin):
                     ttl=1.4,
                 )
             )
+        healing_echo = self.story_effect_value("healing_echo", 0.0, 1.0)
+        if (
+            healing_echo > 0
+            and self.player.hp < self.player.max_hp
+            and self.rng.random() < min(1.0, healing_echo)
+        ):
+            healed = min(
+                self.player.max_hp - self.player.hp,
+                max(2, int(enemy.xp * 0.12) + self.current_depth // 2),
+            )
+            self.player.hp += healed
+            self.player.mana = min(
+                self.player.max_mana, self.player.mana + max(1, healed // 2)
+            )
+            self.floaters.append(
+                FloatingText(
+                    f"Story echo +{healed}",
+                    self.player.x,
+                    self.player.y - 0.55,
+                    self.story_state.accent if self.story_state else (170, 225, 190),
+                    ttl=1.0,
+                )
+            )
         if self.rng.random() < 0.45:
             drop_x, drop_y = self.drop_position_near(enemy.x, enemy.y)
             self.items.append(self._make_loot(drop_x, drop_y))
@@ -1988,6 +2533,21 @@ class Game(SaveLoadMixin, RenderingMixin):
         )
 
     def interact(self) -> None:
+        if self.story_intro_pending:
+            self.floaters.append(
+                FloatingText(
+                    "Choose 1-3 to answer the guest first",
+                    self.player.x,
+                    self.player.y - 0.5,
+                    self.story_state.accent if self.story_state else self.theme.accent,
+                    ttl=1.1,
+                )
+            )
+            return
+        story_relic = self.nearby_story_relic()
+        if story_relic is not None:
+            self.collect_story_relic(story_relic)
+            return
         if self.player_near_stairs():
             if self.current_depth < DUNGEON_DEPTH:
                 self.descend_to_next_depth()
@@ -2022,6 +2582,9 @@ class Game(SaveLoadMixin, RenderingMixin):
             return
         nearest = self.nearby_item()
         if nearest:
+            if nearest.slot == "story_relic":
+                self.collect_story_relic(nearest)
+                return
             if len(self.player.inventory) >= MAX_INVENTORY:
                 self.floaters.append(
                     FloatingText(
@@ -2047,11 +2610,60 @@ class Game(SaveLoadMixin, RenderingMixin):
             self.play_sfx("pickup")
             self.save_run()
 
+    def collect_story_relic(self, relic: Item) -> None:
+        if relic in self.items:
+            self.items.remove(relic)
+        self.story_relic_collected = True
+        self.story_relic_position = None
+        guest = self.current_story_guest_for_depth()
+        message = "Guest relic recovered"
+        if guest is not None:
+            message = f"Relic points to {guest.name}"
+        self.player.mana = min(self.player.max_mana, self.player.mana + 6)
+        self.player.stamina = min(self.player.max_stamina, self.player.stamina + 12)
+        self.floaters.append(
+            FloatingText(
+                message,
+                self.player.x,
+                self.player.y - 0.5,
+                self.story_state.accent if self.story_state else self.theme.accent,
+                ttl=1.4,
+            )
+        )
+        self.add_impact(
+            relic.x,
+            relic.y,
+            self.story_state.accent if self.story_state else self.theme.accent,
+            ttl=0.62,
+            radius=0.62,
+            kind="burst",
+        )
+        if self.story_state is not None:
+            self.story_state.log.append(
+                f"Depth {self.current_depth}: Guest relic recovered — {message}."
+            )
+            del self.story_state.log[:-12]
+        self.play_sfx("pickup")
+        self.save_run()
+
     def nearby_item(self) -> Item | None:
         nearby = [
             item
             for item in self.items
             if math.hypot(item.x - self.player.x, item.y - self.player.y) < 1.0
+        ]
+        return min(
+            nearby,
+            key=lambda item: math.hypot(item.x - self.player.x, item.y - self.player.y),
+            default=None,
+        )
+
+    def nearby_story_relic(self) -> Item | None:
+        nearby = [
+            item
+            for item in self.items
+            if item.slot == "story_relic"
+            and math.hypot(item.x - self.player.x, item.y - self.player.y) < 1.0
         ]
         return min(
             nearby,

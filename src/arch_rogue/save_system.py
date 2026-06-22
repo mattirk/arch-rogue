@@ -67,6 +67,15 @@ class SaveLoadMixin:
             "run_music_theme": self.run_music_theme,
             "story_seed": self.story_seed,
             "story_state": story_state_to_dict(self.story_state),
+            "story_intro_pending": self.story_intro_pending,
+            "story_relic_depth": self.story_relic_depth,
+            "story_relic_choice_key": self.story_relic_choice_key,
+            "story_relic_position": list(self.story_relic_position)
+            if self.story_relic_position is not None
+            else None,
+            "story_relic_collected": self.story_relic_collected,
+            "story_relic_guidance_enabled": self.story_relic_guidance_enabled,
+            "story_relic_guarded": self.story_relic_guarded,
             "elapsed": self.elapsed,
             "selected_archetype": self.selected_archetype.name,
             "theme": self.theme.name,
@@ -156,6 +165,23 @@ class SaveLoadMixin:
                 self.theme.name,
                 self.run_modifier.name,
             )
+        self.story_intro_pending = bool(data.get("story_intro_pending", False))
+        self.story_relic_depth = int(data.get("story_relic_depth", 0))
+        self.story_relic_choice_key = str(data.get("story_relic_choice_key", ""))
+        position_data = data.get("story_relic_position")
+        self.story_relic_position = (
+            (float(position_data[0]), float(position_data[1]))
+            if isinstance(position_data, (list, tuple)) and len(position_data) >= 2
+            else None
+        )
+        self.story_relic_collected = bool(data.get("story_relic_collected", False))
+        self.story_relic_guidance_enabled = bool(
+            data.get(
+                "story_relic_guidance_enabled",
+                bool(self.story_relic_choice_key and not self.story_relic_collected),
+            )
+        )
+        self.story_relic_guarded = bool(data.get("story_relic_guarded", False))
 
         dungeon_data = data["dungeon"]
         self.dungeon = Dungeon(self.rng)
