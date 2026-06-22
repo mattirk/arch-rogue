@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.0 — Systems Polish, Presentation, and Long-Term Structure
+
+Milestone 1.2 sharpens usability, presentation, and maintainability while preserving the fast-starting 10-depth run loop.
+
+### Added
+
+- Atmospheric static/menu presentation pass with an animated dark backdrop, stronger panels, rarity icons, impact bursts, screen damage flash, low-health warnings, boss stingers, and clearer death/victory treatment.
+- Contextual interaction hints for stairs, sealed gates, items, shrines, secrets, traps, cursed bargains, and class upgrade opportunities.
+- Shared data-driven rarity profiles and event hint tables for items, shrines, secrets, and traps.
+- Inventory decision summaries for comparisons, consumable safeguards, unidentified gear, curses, and latest acquired skill upgrade display.
+- Regression tests for 1.2 metadata, save versioning/compatibility, interaction hints, visual effect lifecycle, inventory summaries, and compact UI renderability.
+
+### Changed
+
+- Projectile, melee, elite/miniboss, trap, shrine, secret, and boss feedback is more legible through color-safe cues and restrained visual effects.
+- Menu music remains a fixed lightweight ambience loop and is synchronized after the first visible frame to protect startup responsiveness.
+- Run saves now write version 3 metadata while continuing to accept older compatible versions.
+
 ## 1.1.0 — Depth, Build Variety, and Run Replayability
 
 Milestone 1.1 expands the 1.0 run loop with more variety, build growth, and clearer risk/reward systems while preserving save compatibility.

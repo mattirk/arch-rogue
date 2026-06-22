@@ -12,6 +12,18 @@ from .models import (
 )
 
 
+class InteractionHint(NamedTuple):
+    title: str
+    detail: str
+    color: Color
+
+
+class RarityProfile(NamedTuple):
+    color: Color
+    icon: str
+    weight: int
+
+
 class EnemyDefinition(NamedTuple):
     name: str
     kind: str
@@ -108,6 +120,70 @@ SECRET_TYPES = (
     "Forgotten Skill Altar",
     "Moonlit Bargain",
 )
+
+RARITY_PROFILES: dict[str, RarityProfile] = {
+    "Common": RarityProfile((215, 210, 190), "·", 100),
+    "Magic": RarityProfile((115, 175, 255), "✦", 52),
+    "Rare": RarityProfile((245, 215, 90), "◆", 26),
+    "Unique": RarityProfile((240, 145, 65), "✹", 4),
+    "Cursed": RarityProfile((214, 92, 150), "!", 10),
+    "Unidentified": RarityProfile((170, 170, 185), "?", 18),
+}
+
+SHRINE_HINTS: dict[str, InteractionHint] = {
+    "Mending Shrine": InteractionHint(
+        "Mending Shrine", "Restores health and mana.", (105, 230, 125)
+    ),
+    "Insight Shrine": InteractionHint(
+        "Insight Shrine", "Reveals unidentified inventory gear.", (145, 205, 255)
+    ),
+    "War Shrine": InteractionHint(
+        "War Shrine", "Grants combat focus and XP.", (245, 170, 90)
+    ),
+    "Haste Shrine": InteractionHint(
+        "Haste Shrine", "Refreshes stamina and quickens movement.", (235, 220, 95)
+    ),
+    "Fortune Shrine": InteractionHint(
+        "Fortune Shrine", "Spills extra offerings and loot.", (245, 215, 90)
+    ),
+    "Oath Shrine": InteractionHint(
+        "Oath Shrine", "Attempts to grant a class upgrade.", (190, 150, 245)
+    ),
+    "Twilight Shrine": InteractionHint(
+        "Twilight Shrine", "Trades blood for a unique relic.", (214, 92, 150)
+    ),
+}
+
+SECRET_HINTS: dict[str, InteractionHint] = {
+    "Hidden Cache": InteractionHint(
+        "Hidden Cache", "Open for a concealed reward.", (235, 205, 120)
+    ),
+    "Cursed Reliquary": InteractionHint(
+        "Cursed Reliquary", "May awaken a guardian for reward.", (214, 92, 150)
+    ),
+    "Sealed Armory": InteractionHint(
+        "Sealed Armory", "Contains equipment choices.", (245, 215, 90)
+    ),
+    "Forgotten Skill Altar": InteractionHint(
+        "Forgotten Skill Altar", "Deepens your class build.", (145, 205, 255)
+    ),
+    "Moonlit Bargain": InteractionHint(
+        "Moonlit Bargain", "Costs blood for rare gear.", (214, 92, 150)
+    ),
+}
+
+TRAP_HINTS: dict[str, InteractionHint] = {
+    "Spike Trap": InteractionHint(
+        "Spike Trap", "Pressure plate; step away fast.", (245, 95, 70)
+    ),
+    "Rune Trap": InteractionHint(
+        "Rune Trap", "Arcane sigil; avoid the glow.", (180, 120, 245)
+    ),
+    "Poison Needle": InteractionHint(
+        "Poison Needle", "Needle trigger; keep distance.", (120, 210, 110)
+    ),
+}
+
 HUMANOID_ENEMY_NAMES = (
     "Bone Imp",
     "Cultist",

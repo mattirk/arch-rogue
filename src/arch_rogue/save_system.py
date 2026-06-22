@@ -52,7 +52,7 @@ class SaveLoadMixin:
 
     def serialize_run_state(self) -> dict[str, Any]:
         return {
-            "version": 2,
+            "version": 3,
             "release": __version__,
             "run_number": self.run_number,
             "current_depth": self.current_depth,
@@ -195,6 +195,8 @@ class SaveLoadMixin:
         self.projectiles = []
         self.floaters = []
         self.slashes = []
+        self.impact_effects = []
+        self.screen_flash_ttl = 0.0
         self.run_stats = RunStats(**data.get("run_stats", {}))
         self.inventory_open = False
         self.show_help = False

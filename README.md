@@ -1,30 +1,20 @@
 # Arch Rogue
 
-Arch Rogue is a 1.1 milestone release of a modernized Rogue-inspired isometric action RPG built with Python and Pygame CE.
+Arch Rogue is a 1.2 milestone release of a modernized Rogue-inspired isometric action RPG built with Python and Pygame CE.
 
 Explore a 10-depth procedural dungeon, choose one of five distinct archetypes, identify loot, survive traps and shrines, defeat the final gate tyrant, and start a fresh run after victory or death.
 
-## 1.1 Release Highlights
+## 1.2 Release Highlights
 
-- More detailed procedural sprites for players, enemies, consumables, scrolls, weapons, armor, projectiles, and attack effects.
-- Expanded enemy roster including Ash Hounds, Rune Sentinels, Plague Toads, and Hollow Knights.
-- Five playable archetypes with differentiated starting equipment and signature skill behavior:
-  - **Warden:** durable melee fighter with cleaving shield bashes and stronger guard value.
-  - **Rogue:** fast striker with cheaper slashes, crits, and evasion.
-  - **Arcanist:** fragile spellcaster with arcing bolts, wider nova, and better mana recovery.
-  - **Acolyte:** dark priest that spends mana to blunt damage and steals life through blood rites.
-  - **Ranger:** mobile marksman with faster stamina recovery, cheaper vaults, multishot, and snares.
-- 10-depth procedural dungeon run with room/corridor layouts, expanded visual themes, secrets, shrines, traps, run modifiers, and rare risk/reward events.
-- Depth pacing pass: early floors are safer, late floors add sustained enemy pressure and stronger hazards.
-- Final-depth boss gate with theme-influenced tyrant names, boss health UI, gate sealing, loot reward, and victory summary.
-- Loot-driven progression with weapons, armor, expanded affixes, cursed tradeoffs, unidentified equipment, uniques, healing potions, mana potions, identify scrolls, and clearer inventory comparison hints.
-- Overhauled title/options/about/help/archetype/inventory/summary menus with consistent alignment, key badges, responsive panels, and wrapped/clipped text to avoid overflow.
-- Title/menu flow with new run, resume, options, about/credits, onboarding/help, death summary, victory summary, and 1.1 tracking for elites, minibosses, and skill growth.
-- Versioned JSON run-state save/resume with atomic writes and safe deletion after death or victory.
-- Persistent options for audio, fullscreen, and UI scale.
-- Basic audio cue system and procedural run/menu music with safe fallback when no mixer device is available.
-- Lightweight in-run archetype growth: class-specific upgrades are granted at run start, on level-up, and through some shrines/secrets.
-- Elite and miniboss variety with readable visual markers, stronger rewards, and new run modifiers that can emphasize dangerous encounters.
+- Presentation polish pass with atmospheric menu backdrops, stronger panel treatment, rarity icons, impact bursts, screen damage flash, boss stingers, shrine/secret/trap cues, and clearer death/victory overlays.
+- Inventory readability improvements: item rows now show rarity markers, comparison summaries, consumable safeguards, drop/sort controls, equipped gear, and the latest acquired skill upgrade.
+- Contextual interaction prompts explain pickups, shrines, secrets, traps, stairs, sealed gates, and cursed bargains without interrupting combat flow.
+- Combat readability pass with clearer projectile colors, melee/impact effects, low-health warnings, boss/elite tell markers, and more legible hit feedback.
+- Menu and UX refinements across title/options/about/help/archetype/inventory screens, with more compact copy and a cohesive dark fantasy look.
+- Static lightweight menu ambience remains fixed and is synchronized after the first drawn frame so startup stays responsive when music is enabled.
+- Save compatibility is preserved for older compatible run saves while 1.2 writes versioned run-state metadata.
+- Data-driven content direction expanded with shared rarity profiles and event hint tables for items, shrines, secrets, and traps.
+- Regression coverage now checks 1.2 save metadata, interaction hints, visual effects cleanup, inventory summaries, UI renderability, and old-save loading.
 
 ## Requirements
 
@@ -75,7 +65,7 @@ arch-rogue
 | `O` | Options from title screen |
 | `A` / `C` / `H` / `?` | About, credits, and onboarding from title screen |
 | `1`-`5` / Arrow keys / `Enter` | Choose an archetype from character select |
-| `A` / `M` / `F` / `+` / `-` | Toggle audio, music placeholder, fullscreen, or UI scale in options |
+| `A` / `M` / `F` / `+` / `-` | Toggle audio cues, static music, fullscreen, or UI scale in options |
 | `Backspace` | Return from character select/options/about to title |
 | `R` | Return to character select after death or victory |
 | `Esc` | Save active run and quit |
@@ -86,11 +76,11 @@ Explore 10 dungeon depths, survive enemies and traps, identify and equip loot, u
 
 In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from the title screen. Death and victory clear the saved run. Options are saved to `~/.arch_rogue_options.json`.
 
-## Known Issues in 1.1
+## Known Issues in 1.2
 
-- Music is procedurally generated; there is no hand-authored soundtrack asset pipeline yet.
+- Run music and sound effects are still lightweight procedural/static cues; there is no hand-authored soundtrack asset pipeline yet.
 - Controls are keyboard/mouse only; gamepad support is not implemented.
-- Visuals and audio are procedural placeholders intended to be cohesive enough for the 1.0 public release, not final hand-authored assets.
+- Visuals and audio remain procedural prototype assets, now tuned for a more cohesive milestone look rather than final art quality.
 - Save files are local JSON and are not cloud-synced.
 
 ## Credits

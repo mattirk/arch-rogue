@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from .models import Color
-
 SCREEN_WIDTH = 2560
 SCREEN_HEIGHT = 1440
 FPS = 60

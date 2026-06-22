@@ -37,13 +37,18 @@ from .content import (
     ELITE_MODIFIERS,
     ENEMY_DEFINITIONS,
     FINAL_ROOM_ENEMY_DEFINITIONS,
+    RARITY_PROFILES,
     RUN_MODIFIERS,
+    SECRET_HINTS,
     SECRET_TYPES,
+    SHRINE_HINTS,
     SHRINE_TYPES,
     SKILL_UPGRADES,
     TRAP_DEFINITIONS,
+    TRAP_HINTS,
     WEAPON_DEFINITIONS,
     EnemyDefinition,
+    InteractionHint,
 )
 from .dungeon import MAP_H, MAP_W, Dungeon
 from .menus import MenuRenderer
@@ -52,6 +57,7 @@ from .models import (
     Color,
     Enemy,
     FloatingText,
+    ImpactEffect,
     Item,
     Player,
     Projectile,
@@ -84,6 +90,8 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.ui_scale = UI_SCALE
         self.last_save_error = ""
         self.last_load_error = ""
+        self.screen_flash_ttl = 0.0
+        self.screen_flash_color: Color = (0, 0, 0)
         self.load_options()
         if screen_size is None:
             display_info = pygame.display.Info()
@@ -110,8 +118,10 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.run_number = 0
         self.current_depth = 1
         self.state = "title"
+        self.exit_previous_state = "title"
         self.run_music_seed = 0
         self.run_music_theme = ""
+        self.impact_effects: list[ImpactEffect] = []
         self.audio = AudioSystem()
         self.audio_available = self.audio.initialize(headless)
         self.menus = MenuRenderer(self, ARCHETYPES, DUNGEON_DEPTH)
@@ -179,7 +189,13 @@ class Game(SaveLoadMixin, RenderingMixin):
         return True
 
     def current_music_profile(self) -> MusicProfile | None:
-        if self.state in ("title", "options", "about", "archetype_select"):
+        if self.state in (
+            "title",
+            "options",
+            "about",
+            "archetype_select",
+            "confirm_exit",
+        ):
             return MusicProfile(
                 0xA11CE,
                 "Menu",
@@ -205,6 +221,127 @@ class Game(SaveLoadMixin, RenderingMixin):
 
     def play_sfx(self, name: str) -> None:
         self.audio_available = self.audio.play_sfx(name, self.audio_enabled)
+
+    def trigger_screen_flash(self, color: Color, ttl: float = 0.22) -> None:
+        self.screen_flash_color = color
+        self.screen_flash_ttl = max(self.screen_flash_ttl, ttl)
+
+    def add_impact(
+        self,
+        x: float,
+        y: float,
+        color: Color,
+        ttl: float = 0.38,
+        radius: float = 0.35,
+        kind: str = "spark",
+    ) -> None:
+        self.impact_effects.append(ImpactEffect(x, y, color, ttl, radius, kind, ttl))
+
+    def rarity_color(self, rarity: str) -> Color:
+        return RARITY_PROFILES.get(rarity, RARITY_PROFILES["Common"]).color
+
+    def rarity_icon(self, rarity: str) -> str:
+        return RARITY_PROFILES.get(rarity, RARITY_PROFILES["Common"]).icon
+
+    def acquired_skill_upgrades(self) -> list[tuple[str, str]]:
+        by_key = {upgrade.key: upgrade for upgrade in SKILL_UPGRADES}
+        return [
+            (by_key[key].name, by_key[key].description)
+            for key in self.player.skill_upgrades
+            if key in by_key
+        ]
+
+    def item_decision_summary(self, item: Item) -> str:
+        if item.slot == "potion":
+            missing = max(0, self.player.max_hp - self.player.hp)
+            return f"Restores {item.heal} HP" + (
+                f" · missing {missing}" if missing else " · save for later"
+            )
+        if item.slot == "mana_potion":
+            missing = max(0, int(self.player.max_mana - self.player.mana))
+            return f"Restores {item.mana} mana" + (
+                f" · missing {missing}" if missing else " · save for later"
+            )
+        if item.slot == "identify":
+            unidentified = sum(
+                1 for entry in self.player.inventory if entry.unidentified
+            )
+            return "Reveals best unknown item" + (
+                f" · {unidentified} unknown" if unidentified else " · none unknown"
+            )
+        if item.unidentified:
+            return "Unknown stats · use to reveal or identify safely"
+        if item.slot in ("weapon", "armor"):
+            equipped = self.player.equipment.get(item.slot)
+            current = 0
+            incoming = item.power if item.slot == "weapon" else item.defense
+            if equipped:
+                current = equipped.power if item.slot == "weapon" else equipped.defense
+            delta = incoming - current
+            stat = "damage" if item.slot == "weapon" else "armor"
+            tradeoff = " · cursed power" if item.cursed else ""
+            sign = "+" if delta > 0 else ""
+            return f"{sign}{delta} {stat} vs equipped{tradeoff}"
+        return "Use from inventory"
+
+    def current_interaction_hint(self) -> tuple[str, str, str, Color] | None:
+        if self.player_near_stairs():
+            if self.current_depth < DUNGEON_DEPTH:
+                return (
+                    "E",
+                    f"Descend to depth {self.current_depth + 1}/{DUNGEON_DEPTH}",
+                    "Stairs are safe only when you choose to leave.",
+                    self.theme.stair,
+                )
+            if self.boss_alive():
+                return (
+                    "!",
+                    "Gate sealed",
+                    "Defeat the gate tyrant before using the final stairs.",
+                    (245, 95, 70),
+                )
+            return (
+                "E",
+                "Complete the run",
+                "The tyrant is dead; descend to claim victory.",
+                self.theme.stair,
+            )
+        secret = self.nearby_secret()
+        if secret:
+            hint = SECRET_HINTS.get(
+                secret.kind,
+                InteractionHint(
+                    secret.kind, "Open the revealed secret.", self.theme.accent
+                ),
+            )
+            return ("E", hint.title, hint.detail, hint.color)
+        shrine = self.nearby_shrine()
+        if shrine:
+            hint = SHRINE_HINTS.get(
+                shrine.kind,
+                InteractionHint(
+                    shrine.kind, "Use the shrine's bargain.", self.theme.accent
+                ),
+            )
+            return ("E", hint.title, hint.detail, hint.color)
+        item = self.nearby_item()
+        if item:
+            return (
+                "E",
+                f"Pick up {item.display_name}",
+                self.item_decision_summary(item),
+                self.rarity_color(item.visible_rarity),
+            )
+        trap = self.nearby_trap_warning()
+        if trap:
+            hint = TRAP_HINTS.get(
+                trap.kind,
+                InteractionHint(
+                    trap.kind, "Dangerous floor trigger nearby.", (245, 95, 70)
+                ),
+            )
+            return ("!", hint.title, hint.detail, hint.color)
+        return None
 
     def save_exists(self) -> bool:
         return self.save_path.exists()
@@ -245,6 +382,8 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.secrets: list[SecretCache] = []
         self.floaters: list[FloatingText] = []
         self.slashes: list[SlashEffect] = []
+        self.impact_effects = []
+        self.screen_flash_ttl = 0.0
         self.run_stats = RunStats()
         self.inventory_open = False
         self.show_help = False
@@ -288,6 +427,8 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.secrets = []
         self.floaters = []
         self.slashes = []
+        self.impact_effects = []
+        self.screen_flash_ttl = 0.0
         self.inventory_open = False
         self.show_help = False
         self._populate_dungeon()
@@ -670,23 +811,40 @@ class Game(SaveLoadMixin, RenderingMixin):
             self.draw()
         pygame.quit()
 
+    def request_exit_confirmation(self) -> None:
+        if self.state != "confirm_exit":
+            self.exit_previous_state = self.state
+        self.show_help = False
+        self.state = "confirm_exit"
+
+    def cancel_exit_confirmation(self) -> None:
+        self.state = self.exit_previous_state or "title"
+
+    def confirm_exit(self) -> None:
+        if self.exit_previous_state == "playing":
+            self.save_run()
+        self.running = False
+
     def handle_events(self) -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                self.running = False
+                self.request_exit_confirmation()
             elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
                 self.windowed_size = (max(640, event.w), max(480, event.h))
                 self.screen = pygame.display.set_mode(
                     self.windowed_size, pygame.RESIZABLE
                 )
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
+                if self.state == "confirm_exit":
+                    if event.key in (pygame.K_y, pygame.K_RETURN):
+                        self.confirm_exit()
+                    elif event.key in (pygame.K_n, pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                        self.cancel_exit_confirmation()
+                elif event.key == pygame.K_ESCAPE:
                     if self.state in ("options", "about"):
                         self.state = "title"
                     else:
-                        if self.state == "playing":
-                            self.save_run()
-                        self.running = False
+                        self.request_exit_confirmation()
                 elif self.state == "title":
                     if event.key in (pygame.K_RETURN, pygame.K_n):
                         self.state = "archetype_select"
@@ -811,6 +969,12 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.update_traps(dt)
         self.update_secrets()
         self.update_floaters(dt)
+        for effect in self.impact_effects:
+            effect.update(dt)
+        self.impact_effects = [
+            effect for effect in self.impact_effects if effect.ttl > 0
+        ]
+        self.screen_flash_ttl = max(0.0, self.screen_flash_ttl - dt)
         self.slashes = [
             (x, y, ttl - dt, dx, dy)
             for x, y, ttl, dx, dy in self.slashes
@@ -962,6 +1126,28 @@ class Game(SaveLoadMixin, RenderingMixin):
             )
         self.player.hp -= amount
         self.run_stats.damage_taken += amount
+        flash = (160, 35, 32) if amount >= self.player.max_hp * 0.18 else (105, 24, 28)
+        self.trigger_screen_flash(
+            flash, 0.18 if amount < self.player.max_hp * 0.18 else 0.30
+        )
+        self.add_impact(
+            self.player.x,
+            self.player.y,
+            (245, 95, 70),
+            ttl=0.34,
+            radius=0.42,
+            kind="blood",
+        )
+        if self.player.hp > 0 and self.player.hp <= self.player.max_hp * 0.25:
+            self.floaters.append(
+                FloatingText(
+                    "Low health",
+                    self.player.x,
+                    self.player.y - 0.7,
+                    (245, 95, 70),
+                    ttl=1.0,
+                )
+            )
         return amount
 
     def update_player(self, dt: float) -> None:
@@ -1107,6 +1293,7 @@ class Game(SaveLoadMixin, RenderingMixin):
 
     def enemy_melee(self, enemy: Enemy) -> None:
         enemy.attack_timer = enemy.attack_cooldown
+        enemy.telegraph = "melee"
         raw = enemy.damage + self.rng.randrange(-2, 3)
         amount = self.take_player_damage(raw, source="melee")
         self.floaters.append(
@@ -1123,9 +1310,21 @@ class Game(SaveLoadMixin, RenderingMixin):
                 enemy.facing_y,
             )
         )
+        self.add_impact(
+            (enemy.x + self.player.x) * 0.5,
+            (enemy.y + self.player.y) * 0.5,
+            (255, 180, 130),
+            ttl=0.26,
+            radius=0.34,
+            kind="slash",
+        )
 
     def enemy_cast(self, enemy: Enemy, nx: float, ny: float) -> None:
         enemy.attack_timer = enemy.attack_cooldown
+        enemy.telegraph = "cast"
+        projectile_color = (245, 100, 235) if enemy.elite_modifier else (180, 80, 220)
+        if enemy.kind in ("boss", "miniboss"):
+            projectile_color = self.theme.accent
         self.projectiles.append(
             Projectile(
                 enemy.x,
@@ -1134,7 +1333,7 @@ class Game(SaveLoadMixin, RenderingMixin):
                 ny * 6.0,
                 enemy.damage,
                 "enemy",
-                (180, 80, 220),
+                projectile_color,
                 ttl=1.8,
             )
         )
@@ -1149,6 +1348,14 @@ class Game(SaveLoadMixin, RenderingMixin):
                     projectile.x, projectile.y, PLAYER_PROJECTILE_HIT_RADIUS
                 )
                 if hit:
+                    self.add_impact(
+                        projectile.x,
+                        projectile.y,
+                        projectile.color,
+                        ttl=0.32,
+                        radius=0.38,
+                        kind="burst",
+                    )
                     self.damage_enemy(
                         hit,
                         projectile.damage,
@@ -1173,6 +1380,14 @@ class Game(SaveLoadMixin, RenderingMixin):
                             (235, 90, 80),
                         )
                     )
+                    self.add_impact(
+                        projectile.x,
+                        projectile.y,
+                        projectile.color,
+                        ttl=0.34,
+                        radius=0.42,
+                        kind="burst",
+                    )
                     continue
             kept.append(projectile)
         self.projectiles = kept
@@ -1195,6 +1410,10 @@ class Game(SaveLoadMixin, RenderingMixin):
                     ttl=1.2,
                 )
             )
+            self.add_impact(
+                trap.x, trap.y, (245, 95, 70), ttl=0.46, radius=0.58, kind="burst"
+            )
+            self.play_sfx("trap")
 
     def update_secrets(self) -> None:
         for secret in self.secrets:
@@ -1423,8 +1642,17 @@ class Game(SaveLoadMixin, RenderingMixin):
         self, enemy: Enemy, amount: int, knockback_from: tuple[float, float]
     ) -> None:
         enemy.hp -= amount
+        hit_color = self.theme.accent if enemy.kind == "boss" else (255, 210, 120)
         self.floaters.append(
-            FloatingText(f"-{amount}", enemy.x, enemy.y - 0.2, (255, 210, 120))
+            FloatingText(f"-{amount}", enemy.x, enemy.y - 0.2, hit_color)
+        )
+        self.add_impact(
+            enemy.x,
+            enemy.y,
+            hit_color,
+            ttl=0.32 if enemy.kind != "boss" else 0.46,
+            radius=0.36 if enemy.kind != "boss" else 0.58,
+            kind="hit",
         )
         kx, ky = knockback_from
         length = math.hypot(kx, ky)
@@ -1453,6 +1681,11 @@ class Game(SaveLoadMixin, RenderingMixin):
                     ttl=1.6,
                 )
             )
+            self.trigger_screen_flash(self.theme.accent, 0.36)
+            self.add_impact(
+                enemy.x, enemy.y, self.theme.accent, ttl=0.72, radius=0.9, kind="burst"
+            )
+            self.play_sfx("boss")
         elif enemy.kind == "miniboss":
             self.run_stats.minibosses_killed += 1
             drop_x, drop_y = self.drop_position_near(enemy.x, enemy.y)
@@ -1577,6 +1810,19 @@ class Game(SaveLoadMixin, RenderingMixin):
             default=None,
         )
 
+    def nearby_trap_warning(self) -> Trap | None:
+        nearby = [
+            trap
+            for trap in self.traps
+            if trap.active
+            and math.hypot(trap.x - self.player.x, trap.y - self.player.y) < 1.35
+        ]
+        return min(
+            nearby,
+            key=lambda trap: math.hypot(trap.x - self.player.x, trap.y - self.player.y),
+            default=None,
+        )
+
     def nearby_secret(self) -> SecretCache | None:
         nearby = [
             secret
@@ -1625,10 +1871,14 @@ class Game(SaveLoadMixin, RenderingMixin):
                 else:
                     self.items.append(self._make_loot(secret.x, secret.y))
             message = f"Opened {secret.kind}"
+        color = SECRET_HINTS.get(
+            secret.kind, InteractionHint(secret.kind, message, self.theme.accent)
+        ).color
         self.floaters.append(
-            FloatingText(message, secret.x, secret.y - 0.3, self.theme.accent, ttl=1.4)
+            FloatingText(message, secret.x, secret.y - 0.3, color, ttl=1.4)
         )
-        self.play_sfx("pickup")
+        self.add_impact(secret.x, secret.y, color, ttl=0.52, radius=0.62, kind="burst")
+        self.play_sfx("secret")
         self.save_run()
 
     def boss_alive(self) -> bool:
@@ -1692,11 +1942,13 @@ class Game(SaveLoadMixin, RenderingMixin):
                 self._make_loot(self.player.x + 0.25, self.player.y + 0.25)
             )
             message = "Fortune Shrine spills offerings"
+        color = SHRINE_HINTS.get(
+            shrine.kind, InteractionHint(shrine.kind, message, (245, 215, 120))
+        ).color
         self.floaters.append(
-            FloatingText(
-                message, self.player.x, self.player.y - 0.5, (245, 215, 120), ttl=1.3
-            )
+            FloatingText(message, self.player.x, self.player.y - 0.5, color, ttl=1.3)
         )
+        self.add_impact(shrine.x, shrine.y, color, ttl=0.58, radius=0.68, kind="burst")
         self.play_sfx("shrine")
         self.save_run()
 

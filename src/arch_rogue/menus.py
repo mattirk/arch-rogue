@@ -117,6 +117,49 @@ class MenuRenderer:
             y += line_gap
         return y
 
+    def draw_menu_backdrop(self) -> None:
+        width, height = self.screen.get_size()
+        accent = self.accent()
+
+        # Keep the title/menu background intentionally clean and static. Earlier
+        # animated gradients, scanlines, and grid lines could produce shimmering
+        # horizontal artifacts on scaled SDL backends. This version avoids any
+        # line-based or per-row drawing on the main menu surface.
+        self.screen.fill((9, 9, 14))
+
+        backdrop = pygame.Surface((width, height), pygame.SRCALPHA)
+        pygame.draw.ellipse(
+            backdrop,
+            (*self.shade(accent, -92), 34),
+            pygame.Rect(-width // 4, -height // 5, width * 3 // 4, height * 3 // 4),
+        )
+        pygame.draw.ellipse(
+            backdrop,
+            (*self.shade(accent, -118), 28),
+            pygame.Rect(width // 2, height // 8, width * 2 // 3, height * 2 // 3),
+        )
+        pygame.draw.ellipse(
+            backdrop,
+            (0, 0, 0, 74),
+            pygame.Rect(-width // 5, height * 2 // 3, width * 7 // 5, height // 2),
+        )
+
+        diamond_color = (*self.shade(accent, -120), 24)
+        for center_x, center_y, size in (
+            (width // 5, height * 3 // 5, max(70, width // 9)),
+            (width * 4 // 5, height * 7 // 12, max(90, width // 8)),
+            (width // 2, height * 4 // 5, max(120, width // 6)),
+        ):
+            points = [
+                (center_x, center_y - size // 2),
+                (center_x + size, center_y),
+                (center_x, center_y + size // 2),
+                (center_x - size, center_y),
+            ]
+            pygame.draw.polygon(backdrop, diamond_color, points)
+
+        self.screen.blit(backdrop, (0, 0))
+
     def panel(
         self, rect: pygame.Rect, accent: Color | None = None, alpha: int = 245
     ) -> None:
@@ -139,12 +182,21 @@ class MenuRenderer:
             (rect.right - self.u(18), rect.y + self.u(18)),
             max(1, self.u(1)),
         )
+        for corner in (
+            rect.topleft,
+            (rect.right, rect.y),
+            (rect.x, rect.bottom),
+            rect.bottomright,
+        ):
+            pygame.draw.circle(
+                self.screen, self.shade(accent, 22), corner, max(2, self.u(2))
+            )
 
     def menu_frame(
         self, title: str, subtitle: str = ""
     ) -> tuple[pygame.Rect, pygame.Rect]:
         width, height = self.screen.get_size()
-        self.screen.fill(self.BG)
+        self.draw_menu_backdrop()
         title_y = max(38, int(height * 0.13))
         self.draw_text(
             title,
@@ -263,7 +315,7 @@ class MenuRenderer:
     def draw_title_menu(self) -> None:
         panel, content = self.menu_frame(
             f"Arch Rogue {__version__}",
-            "10-depth roguelike ARPG run · loot, shrines, secrets, and the gate tyrant",
+            "Milestone 1.2 · systems polish, readable loot, sharper combat feedback",
         )
         resume_value = "Ready" if self.g.save_exists() else "None"
         rows: list[MenuRow] = [
@@ -277,18 +329,39 @@ class MenuRenderer:
             content.x, content.bottom - self.u(72), content.width, self.u(60)
         )
         self.draw_wrapped_text(
-            "Choose an archetype, explore ten depths, build around what the dungeon gives you, and break the gate tyrant's seal.",
+            "Choose an archetype, read the dungeon at a glance, build around quick loot choices, and break the gate tyrant's seal.",
             self.g.small_font,
             self.MUTED,
             note_rect,
         )
-        self.draw_footer(panel, "Esc quits · Backspace returns from submenus")
+        self.draw_footer(
+            panel, "Esc asks before quitting · Backspace returns from submenus"
+        )
+
+    def draw_exit_confirmation(self) -> None:
+        panel, content = self.menu_frame("Exit Arch Rogue?", "Confirm before closing")
+        from_run = self.g.exit_previous_state == "playing"
+        rows: list[MenuRow] = [
+            ("Y / Enter", "Exit game", "Save run" if from_run else "Close"),
+            ("N / Esc / Backspace", "Cancel and return", "Safe"),
+        ]
+        self.draw_menu_rows(rows, content)
+        note_rect = pygame.Rect(
+            content.x, content.bottom - self.u(92), content.width, self.u(78)
+        )
+        note = (
+            "Your current run will be saved before the game closes. Choose Cancel to keep playing."
+            if from_run
+            else "No run is active. Choose Exit to close the game, or Cancel to return to the menu."
+        )
+        self.draw_wrapped_text(note, self.g.small_font, self.MUTED, note_rect)
+        self.draw_footer(panel, "Y confirms · N cancels")
 
     def draw_options_menu(self) -> None:
         panel, content = self.menu_frame("Options", "Settings are saved automatically")
         rows: list[MenuRow] = [
             ("A", "Audio cues", "On" if self.g.audio_enabled else "Off"),
-            ("M", "Music", "On" if self.g.music_enabled else "Off"),
+            ("M", "Static menu/run music", "On" if self.g.music_enabled else "Off"),
             ("F", "Fullscreen", "On" if self.g.fullscreen else "Off"),
             ("+ / -", "UI scale", f"{self.g.ui_scale}x"),
             ("Enter / O / Backspace", "Return to title", ""),
@@ -298,7 +371,7 @@ class MenuRenderer:
             content.x, content.bottom - self.u(60), content.width, self.u(48)
         )
         self.draw_wrapped_text(
-            "Audio falls back silently if no mixer device is available. Options persist to ~/.arch_rogue_options.json.",
+            "Menu ambience uses a fixed lightweight loop and starts after the first frame. Options persist to ~/.arch_rogue_options.json.",
             self.g.small_font,
             self.MUTED,
             note_rect,
@@ -307,13 +380,13 @@ class MenuRenderer:
 
     def draw_about_screen(self) -> None:
         panel, content = self.menu_frame(
-            "About / Onboarding", "Arch Rogue public release"
+            "About / Onboarding", "Arch Rogue milestone 1.2"
         )
         paragraphs = [
-            f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs.",
+            f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs with milestone 1.2 polish.",
             "Goal: descend through ten depths, survive escalating encounters, defeat the final-depth gate tyrant, then use the stairs to complete the run.",
             "Combat: hold left mouse to move and aim. Space uses your class melee skill, F casts your bolt skill, C uses your nova skill, and Shift uses your movement skill.",
-            "Loot and discovery: press E for pickups, shrines, secrets, and stairs. Use I for inventory, 1-9 to equip/use, and Q for your first potion.",
+            "Loot and discovery: press E for pickups, shrines, secrets, and stairs. Interaction prompts explain risks, and inventory rows summarize upgrades, curses, and comparisons.",
             "Credits: design, code, procedural art, and procedural audio by the Arch Rogue project.",
         ]
         y = content.y
@@ -390,7 +463,7 @@ class MenuRenderer:
 
     def draw_archetype_select(self) -> None:
         width, height = self.screen.get_size()
-        self.screen.fill(self.BG)
+        self.draw_menu_backdrop()
         selected = self.g.selected_archetype
         accent = self.archetype_accent(selected.name)
 
@@ -722,8 +795,8 @@ class MenuRenderer:
 
     def draw_inventory(self) -> None:
         width, height = self.screen.get_size()
-        box_w = min(max(430, self.u(470)), width - 48)
-        box_h = min(max(350, self.u(360)), height - 80)
+        box_w = min(max(470, self.u(520)), width - 48)
+        box_h = min(max(420, self.u(470)), height - 56)
         box = pygame.Rect(width - box_w - 24, 32, box_w, box_h)
         self.panel(box, (105, 90, 68), alpha=246)
         inner = box.inflate(-self.u(34), -self.u(34))
@@ -744,9 +817,9 @@ class MenuRenderer:
             pygame.Rect(inner.x, inner.y + self.u(4), inner.width, subtitle_h),
             align="right",
         )
-        row_h = max(self.g.small_font.get_height() + self.u(6), self.u(25))
+        row_h = max(self.g.small_font.get_height() * 2 + self.u(8), self.u(44))
         y = inner.y + max(title_h, subtitle_h) + self.u(16)
-        footer_h = row_h * 4 + self.u(14)
+        footer_h = max(self.u(128), self.g.small_font.get_height() * 5 + self.u(22))
         list_bottom = inner.bottom - footer_h
         if not self.g.player.inventory:
             self.draw_text(
@@ -760,24 +833,61 @@ class MenuRenderer:
                 break
             color = self.item_color(item)
             row = pygame.Rect(inner.x, y, inner.width, row_h)
-            pygame.draw.rect(self.screen, self.PANEL_2, row, border_radius=self.u(3))
-            slot_rect = pygame.Rect(row.x + self.u(5), row.y, self.u(28), row.h)
-            self.draw_text(
-                str(index + 1),
-                self.g.small_font,
+            pygame.draw.rect(self.screen, self.PANEL_2, row, border_radius=self.u(5))
+            pygame.draw.rect(
+                self.screen,
+                (*color, 70),
+                row,
+                max(1, self.u(1)),
+                border_radius=self.u(5),
+            )
+            slot_rect = pygame.Rect(
+                row.x + self.u(5), row.y + self.u(6), self.u(32), row.h - self.u(12)
+            )
+            pygame.draw.rect(
+                self.screen, (15, 14, 18), slot_rect, border_radius=self.u(4)
+            )
+            pygame.draw.rect(
+                self.screen,
                 color,
                 slot_rect,
+                max(1, self.u(1)),
+                border_radius=self.u(4),
+            )
+            icon = self.g.rarity_icon(item.visible_rarity)
+            self.draw_text(
+                f"{index + 1}{icon}",
+                self.g.small_font,
+                color,
+                slot_rect.inflate(-self.u(2), 0),
                 align="center",
                 valign="center",
+            )
+            name_rect = pygame.Rect(
+                row.x + self.u(44),
+                row.y + self.u(4),
+                row.width - self.u(50),
+                self.g.small_font.get_height(),
+            )
+            detail_rect = pygame.Rect(
+                row.x + self.u(44),
+                name_rect.bottom + self.u(2),
+                row.width - self.u(50),
+                self.g.small_font.get_height(),
             )
             self.draw_text(
                 f"[{item.visible_rarity}] {item.label}{self.compare_hint(item)}",
                 self.g.small_font,
                 color,
-                pygame.Rect(row.x + self.u(38), row.y, row.width - self.u(43), row.h),
-                valign="center",
+                name_rect,
             )
-            y += row_h + self.u(3)
+            self.draw_text(
+                self.g.item_decision_summary(item),
+                self.g.small_font,
+                self.MUTED,
+                detail_rect,
+            )
+            y += row_h + self.u(4)
         equipment_y = list_bottom + self.u(8)
         self.draw_text(
             "Equipped",
@@ -805,14 +915,44 @@ class MenuRenderer:
             f"Armor: {armor}",
             self.g.small_font,
             self.TEXT,
-            pygame.Rect(inner.x, equipment_y + row_h * 2, inner.width, row_h),
+            pygame.Rect(
+                inner.x,
+                equipment_y + self.g.small_font.get_height() * 2 + self.u(4),
+                inner.width,
+                self.g.small_font.get_height(),
+            ),
         )
-        controls_y = equipment_y + row_h * 3 + self.u(6)
+        upgrades = self.g.acquired_skill_upgrades()
+        upgrade_y = equipment_y + self.g.small_font.get_height() * 3 + self.u(8)
+        if upgrades:
+            name, detail = upgrades[-1]
+            self.draw_text(
+                f"Latest upgrade: {name}",
+                self.g.small_font,
+                self.g.skill_color(),
+                pygame.Rect(
+                    inner.x, upgrade_y, inner.width, self.g.small_font.get_height()
+                ),
+            )
+            self.draw_text(
+                detail,
+                self.g.small_font,
+                self.MUTED,
+                pygame.Rect(
+                    inner.x,
+                    upgrade_y + self.g.small_font.get_height(),
+                    inner.width,
+                    self.g.small_font.get_height(),
+                ),
+            )
+        controls_y = inner.bottom - self.g.small_font.get_height()
         self.draw_text(
-            "1-9 use/equip · Shift+1-9 drop · S sort",
+            "1-9 use/equip · Shift+1-9 drop · Tab/S sort",
             self.g.small_font,
             self.MUTED,
-            pygame.Rect(inner.x, controls_y, inner.width, row_h),
+            pygame.Rect(
+                inner.x, controls_y, inner.width, self.g.small_font.get_height()
+            ),
             align="center",
         )
 
@@ -832,14 +972,7 @@ class MenuRenderer:
         return f" ({sign}{delta} {stat})"
 
     def item_color(self, item: Item) -> Color:
-        return {
-            "Common": (215, 210, 190),
-            "Magic": (115, 175, 255),
-            "Rare": (245, 215, 90),
-            "Unique": (240, 145, 65),
-            "Cursed": (214, 92, 150),
-            "Unidentified": (170, 170, 185),
-        }.get(item.visible_rarity, (220, 220, 220))
+        return self.g.rarity_color(item.visible_rarity)
 
     def draw_state_overlay(self) -> None:
         width, height = self.screen.get_size()

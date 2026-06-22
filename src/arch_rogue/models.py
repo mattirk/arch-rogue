@@ -214,6 +214,24 @@ class FloatingText:
 
 
 @dataclass
+class ImpactEffect:
+    x: float
+    y: float
+    color: Color
+    ttl: float = 0.38
+    radius: float = 0.35
+    kind: str = "spark"
+    max_ttl: float = 0.38
+
+    def update(self, dt: float) -> None:
+        self.ttl -= dt
+
+    @property
+    def progress(self) -> float:
+        return 1.0 - max(0.0, min(1.0, self.ttl / max(0.01, self.max_ttl)))
+
+
+@dataclass
 class Projectile:
     x: float
     y: float

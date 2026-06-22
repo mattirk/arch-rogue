@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "1.1.0"
-description = "Public 1.1 release of a modern isometric Rogue-inspired ARPG."
+version = "1.2.0"
+description = "Milestone 1.2 release of a modern isometric Rogue-inspired ARPG."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

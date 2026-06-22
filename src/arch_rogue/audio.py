@@ -63,12 +63,17 @@ class AudioSystem:
                     "start": 330,
                     "pickup": 660,
                     "hit": 190,
+                    "damage": 150,
+                    "trap": 96,
+                    "secret": 612,
                     "shrine": 520,
+                    "boss": 88,
                     "stairs": 430,
                     "victory": 784,
                     "death": 120,
                 }.get(name, 440)
-                sound = self.make_tone(frequency, 0.08)
+                duration = 0.16 if name in {"boss", "victory", "death"} else 0.08
+                sound = self.make_tone(frequency, duration)
                 self.sfx_cache[name] = sound
             sound.play()
         except pygame.error:
@@ -212,7 +217,7 @@ class AudioSystem:
         total_samples = int(steps * step_seconds * SAMPLE_RATE)
         samples = [0] * total_samples
 
-        root = 98.0
+        root = 110.0
         chord_degrees = (
             (0, 3, 7),
             (-2, 3, 7),
@@ -220,7 +225,7 @@ class AudioSystem:
             (-4, 2, 7),
         )
         bass_degrees = (-12, -14, -12, -16)
-        bell_degrees = (19, 15, 22, 17, 15, 12, 17, 10)
+        bell_degrees = (17, 15, 19, 17, 15, 12, 17, 10)
 
         for step in range(steps):
             start = int(step * step_seconds * SAMPLE_RATE)
