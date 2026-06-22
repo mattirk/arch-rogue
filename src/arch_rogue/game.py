@@ -66,11 +66,32 @@ ARCHETYPES = (
     Archetype(
         "Arcanist",
         "Fragile caster with stronger bolts and novas.",
-        max_hp=82,
-        max_mana=72,
-        max_stamina=92,
+        max_hp=86,
+        max_mana=78,
+        max_stamina=94,
         speed=4.35,
-        spell_bonus=8,
+        spell_bonus=9,
+    ),
+    Archetype(
+        "Acolyte",
+        "Dark priest with balanced defenses and potent rites.",
+        max_hp=102,
+        max_mana=62,
+        max_stamina=98,
+        speed=4.4,
+        melee_bonus=1,
+        spell_bonus=5,
+        armor_bonus=1,
+    ),
+    Archetype(
+        "Ranger",
+        "Mobile marksman with strong stamina and hybrid damage.",
+        max_hp=98,
+        max_mana=48,
+        max_stamina=120,
+        speed=4.95,
+        melee_bonus=3,
+        spell_bonus=2,
     ),
 )
 
@@ -146,13 +167,18 @@ RUN_MODIFIERS = (
 
 
 class Game:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        screen_size: tuple[int, int] | None = None,
+        headless: bool = False,
+    ) -> None:
         pygame.init()
         pygame.display.set_caption("Arch Rogue - Prototype 3")
-        display_info = pygame.display.Info()
-        self.screen = pygame.display.set_mode(
-            (display_info.current_w, display_info.current_h), pygame.NOFRAME
-        )
+        if screen_size is None:
+            display_info = pygame.display.Info()
+            screen_size = (display_info.current_w, display_info.current_h)
+        flags = pygame.HIDDEN if headless else pygame.NOFRAME
+        self.screen = pygame.display.set_mode(screen_size, flags)
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 24 * UI_SCALE)
         self.small_font = pygame.font.Font(None, 19 * UI_SCALE)
@@ -204,6 +230,7 @@ class Game:
         self.floaters: list[FloatingText] = []
         self.slashes: list[SlashEffect] = []
         self.inventory_open = False
+        self.elapsed = 0.0
         self.state = "playing"
         self._populate_dungeon()
 
@@ -500,8 +527,19 @@ class Game:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
                 elif self.state == "archetype_select":
-                    if pygame.K_1 <= event.key <= pygame.K_3:
+                    select_limit = min(len(ARCHETYPES), 9)
+                    if pygame.K_1 <= event.key < pygame.K_1 + select_limit:
                         self.restart(ARCHETYPES[event.key - pygame.K_1])
+                    elif event.key in (pygame.K_RIGHT, pygame.K_DOWN):
+                        index = (ARCHETYPES.index(self.selected_archetype) + 1) % len(
+                            ARCHETYPES
+                        )
+                        self.selected_archetype = ARCHETYPES[index]
+                    elif event.key in (pygame.K_LEFT, pygame.K_UP):
+                        index = (ARCHETYPES.index(self.selected_archetype) - 1) % len(
+                            ARCHETYPES
+                        )
+                        self.selected_archetype = ARCHETYPES[index]
                     elif event.key == pygame.K_RETURN:
                         self.restart(self.selected_archetype)
                 elif event.key == pygame.K_i and self.state == "playing":
@@ -953,7 +991,8 @@ class Game:
             return
         self.enemies.remove(enemy)
         if enemy.kind == "boss":
-            self.items.append(self._make_unique(enemy.x, enemy.y))
+            drop_x, drop_y = self.drop_position_near(enemy.x, enemy.y)
+            self.items.append(self._make_unique(drop_x, drop_y))
             self.floaters.append(
                 FloatingText(
                     "Gate seal broken",
@@ -974,16 +1013,41 @@ class Game:
                 )
             )
         if self.rng.random() < 0.45:
-            self.items.append(self._make_loot(enemy.x, enemy.y))
+            drop_x, drop_y = self.drop_position_near(enemy.x, enemy.y)
+            self.items.append(self._make_loot(drop_x, drop_y))
 
-    def interact(self) -> None:
-        if (
+    def drop_position_near(self, x: float, y: float) -> tuple[float, float]:
+        offsets = (
+            (0.0, 0.0),
+            (1.15, 0.0),
+            (-1.15, 0.0),
+            (0.0, 1.15),
+            (0.0, -1.15),
+            (1.15, 1.15),
+            (-1.15, 1.15),
+            (1.15, -1.15),
+            (-1.15, -1.15),
+        )
+        stair_x, stair_y = self.dungeon.stairs[0] + 0.5, self.dungeon.stairs[1] + 0.5
+        for ox, oy in offsets:
+            px, py = x + ox, y + oy
+            if math.hypot(px - stair_x, py - stair_y) < 1.05:
+                continue
+            if not self.dungeon.blocked_for_radius(px, py, radius=0.22):
+                return px, py
+        return x, y
+
+    def player_near_stairs(self) -> bool:
+        return (
             math.hypot(
                 self.player.x - self.dungeon.stairs[0] - 0.5,
                 self.player.y - self.dungeon.stairs[1] - 0.5,
             )
             < 1.0
-        ):
+        )
+
+    def interact(self) -> None:
+        if self.player_near_stairs():
             if self.boss_alive():
                 self.floaters.append(
                     FloatingText(
@@ -2030,13 +2094,7 @@ class Game:
         objective = "Objective: defeat the gate tyrant, then reach the stairs"
         nearby_shrine = self.nearby_shrine()
         nearby_secret = self.nearby_secret()
-        if (
-            math.hypot(
-                self.player.x - self.dungeon.stairs[0] - 0.5,
-                self.player.y - self.dungeon.stairs[1] - 0.5,
-            )
-            < 1.0
-        ):
+        if self.player_near_stairs():
             objective = (
                 "Gate sealed: defeat the tyrant"
                 if self.boss_alive()
@@ -2157,23 +2215,32 @@ class Game:
             (195, 190, 180),
         )
         self.screen.blit(subtitle, subtitle.get_rect(center=(width // 2, self.ui(205))))
-        card_w = self.ui(390)
-        card_h = self.ui(250)
+        columns = min(3, len(ARCHETYPES))
         gap = self.ui(32)
-        total_w = card_w * len(ARCHETYPES) + gap * (len(ARCHETYPES) - 1)
+        card_w = min(
+            self.ui(390), (width - self.ui(80) - gap * (columns - 1)) // columns
+        )
+        card_h = self.ui(210)
+        total_w = card_w * columns + gap * (columns - 1)
         start_x = (width - total_w) // 2
-        y = self.ui(295)
+        start_y = self.ui(270)
+        row_gap = self.ui(30)
         for index, archetype in enumerate(ARCHETYPES):
-            x = start_x + index * (card_w + gap)
+            row = index // columns
+            col = index % columns
+            x = start_x + col * (card_w + gap)
+            y = start_y + row * (card_h + row_gap)
             box = pygame.Rect(x, y, card_w, card_h)
+            is_selected = archetype == self.selected_archetype
+            border = self.theme.accent if is_selected else (105, 90, 68)
             pygame.draw.rect(self.screen, (18, 17, 22), box)
-            pygame.draw.rect(self.screen, (105, 90, 68), box, self.ui(2))
+            pygame.draw.rect(self.screen, border, box, self.ui(3 if is_selected else 2))
             name = self.font.render(
                 f"{index + 1}. {archetype.name}", True, (235, 220, 180)
             )
-            self.screen.blit(name, (x + self.ui(20), y + self.ui(22)))
+            self.screen.blit(name, (x + self.ui(18), y + self.ui(18)))
             desc = self.small_font.render(archetype.description, True, (190, 185, 175))
-            self.screen.blit(desc, (x + self.ui(20), y + self.ui(66)))
+            self.screen.blit(desc, (x + self.ui(18), y + self.ui(58)))
             stats = [
                 f"HP {archetype.max_hp}  Mana {archetype.max_mana}",
                 f"Stamina {archetype.max_stamina}  Speed {archetype.speed:.2f}",
@@ -2183,9 +2250,13 @@ class Game:
                 text = self.small_font.render(stat, True, (220, 215, 200))
                 self.screen.blit(
                     text,
-                    (x + self.ui(20), y + self.ui(118) + line_index * self.ui(32)),
+                    (x + self.ui(18), y + self.ui(102) + line_index * self.ui(28)),
                 )
-        prompt = self.font.render("Press 1-3 to begin", True, (235, 205, 120))
+        prompt = self.font.render(
+            f"Press 1-{min(len(ARCHETYPES), 9)} or Enter to begin",
+            True,
+            (235, 205, 120),
+        )
         self.screen.blit(
             prompt, prompt.get_rect(center=(width // 2, height - self.ui(150)))
         )

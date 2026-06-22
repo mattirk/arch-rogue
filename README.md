@@ -4,7 +4,7 @@ Prototype 2: Build and Loot Identity for a modernized Rogue-inspired isometric A
 
 ## Implemented Prototype 2 Features
 
-- One playable archetype: **Warden**
+- Five playable archetypes: **Warden**, **Rogue**, **Arcanist**, **Acolyte**, and **Ranger**
 - Procedurally generated dungeon floor with rooms and corridors
 - Isometric tile rendering at a 2x world visual scale
 - Procedural JRPG-style pixel sprites for player, enemies, loot, projectiles, and attack effects, scaled 2x from the initial prototype size
@@ -52,7 +52,8 @@ arch-rogue
 | `I` | Toggle inventory |
 | `1`-`9` | Equip/use inventory item shown in that slot |
 | `Q` | Use first potion in inventory |
-| `R` | Restart after death or victory |
+| `1`-`5` / Arrow keys / `Enter` | Choose an archetype from the character select screen |
+| `R` | Return to character select after death or victory |
 | `Esc` | Quit |
 
 ## Goal
