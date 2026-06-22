@@ -13,11 +13,22 @@ Arch Rogue is a modernized take on the classic Rogue formula: a dark, dangerous,
 - **Session Style:** Replayable runs with meaningful progression, procedural maps, unpredictable loot, and high-stakes decisions
 
 ## Optimization
-Analyze, write, and optimize game code to maintain a stable 60+ FPS while
+Analyze, write, and optimize game code to maintain a stable 60+ FPS while preserving readability, input responsiveness, and clear combat feedback.
 
 ## Technology
 - **Programming Language:** Python
 - **Game Engine:** Pygame CE: https://pypi.org/project/pygame-ce/ 
+
+## Current Code Organization
+
+Keep the prototype architecture modular but intentionally small:
+
+- `src/arch_rogue/game.py` owns the main loop, input handling, gameplay orchestration, rendering order, UI, and the executable `main()` entry point.
+- `src/arch_rogue/models.py` owns lightweight gameplay data models and shared simple types such as actors, items, projectiles, rooms, and tiles.
+- `src/arch_rogue/dungeon.py` owns procedural map generation and dungeon collision/floor queries.
+- `src/arch_rogue/sprites.py` owns procedural pixel-art sprite construction.
+
+Prefer expanding these existing modules until a new boundary is clearly justified. Avoid introducing many narrow submodules during prototype work.
 
 ## Design Pillars
 

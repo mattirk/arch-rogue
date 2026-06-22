@@ -1,0 +1,224 @@
+from __future__ import annotations
+
+import random
+from dataclasses import dataclass, field
+from enum import IntEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .dungeon import Dungeon
+
+Color = tuple[int, int, int]
+
+
+class Tile(IntEnum):
+    WALL = 0
+    FLOOR = 1
+    STAIRS = 2
+
+
+@dataclass(frozen=True)
+class Room:
+    x: int
+    y: int
+    w: int
+    h: int
+
+    @property
+    def center(self) -> tuple[int, int]:
+        return self.x + self.w // 2, self.y + self.h // 2
+
+    def intersects(self, other: "Room", padding: int = 1) -> bool:
+        return not (
+            self.x + self.w + padding < other.x
+            or other.x + other.w + padding < self.x
+            or self.y + self.h + padding < other.y
+            or other.y + other.h + padding < self.y
+        )
+
+    def random_point(self, rng: random.Random) -> tuple[float, float]:
+        return rng.randrange(self.x + 1, self.x + self.w - 1) + 0.5, rng.randrange(
+            self.y + 1, self.y + self.h - 1
+        ) + 0.5
+
+
+@dataclass
+class Item:
+    name: str
+    slot: str
+    power: int = 0
+    defense: int = 0
+    heal: int = 0
+    mana: int = 0
+    rarity: str = "Common"
+    x: float = 0.0
+    y: float = 0.0
+    affixes: list[str] = field(default_factory=list)
+    unidentified: bool = False
+    unique_effect: str = ""
+
+    @property
+    def display_name(self) -> str:
+        if self.unidentified and self.slot in ("weapon", "armor"):
+            return (
+                "Unidentified Weapon" if self.slot == "weapon" else "Unidentified Armor"
+            )
+        return self.name
+
+    @property
+    def visible_rarity(self) -> str:
+        return "Unidentified" if self.unidentified else self.rarity
+
+    @property
+    def label(self) -> str:
+        if self.slot == "potion":
+            return f"{self.display_name} (+{self.heal} HP)"
+        if self.slot == "mana_potion":
+            return f"{self.display_name} (+{self.mana} Mana)"
+        if self.slot == "identify":
+            return self.display_name
+        if self.slot == "weapon":
+            text = f"{self.display_name} (+{self.power} dmg)"
+        elif self.slot == "armor":
+            text = f"{self.display_name} (+{self.defense} armor)"
+        else:
+            text = self.display_name
+        if self.unidentified:
+            return f"{self.display_name} (unknown)"
+        if self.affixes:
+            text += f" — {', '.join(self.affixes)}"
+        if self.unique_effect:
+            text += f" — {self.unique_effect}"
+        return text
+
+
+@dataclass
+class Trap:
+    x: float
+    y: float
+    kind: str
+    damage: int
+    active: bool = True
+
+
+@dataclass
+class Shrine:
+    x: float
+    y: float
+    kind: str
+    used: bool = False
+
+
+@dataclass
+class FloatingText:
+    text: str
+    x: float
+    y: float
+    color: Color
+    ttl: float = 0.9
+
+    def update(self, dt: float) -> None:
+        self.ttl -= dt
+        self.y -= dt * 0.8
+
+
+@dataclass
+class Projectile:
+    x: float
+    y: float
+    vx: float
+    vy: float
+    damage: int
+    owner: str
+    color: Color
+    ttl: float = 1.6
+    radius: float = 0.18
+
+    def update(self, dt: float, dungeon: "Dungeon") -> bool:
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        self.ttl -= dt
+        return self.ttl > 0 and dungeon.is_floor(self.x, self.y)
+
+
+@dataclass
+class Enemy:
+    name: str
+    kind: str
+    x: float
+    y: float
+    max_hp: int
+    hp: int
+    speed: float
+    damage: int
+    xp: int
+    attack_range: float
+    attack_cooldown: float
+    attack_timer: float = 0.0
+    aggro_range: float = 8.0
+    color: Color = (170, 70, 65)
+    facing_x: float = 1.0
+    facing_y: float = 0.0
+    moving: bool = False
+    move_x: float = 1.0
+    move_y: float = 0.0
+    anim_time: float = 0.0
+
+    @property
+    def alive(self) -> bool:
+        return self.hp > 0
+
+
+@dataclass
+class Player:
+    x: float
+    y: float
+    max_hp: int = 110
+    hp: int = 110
+    max_mana: int = 45
+    mana: float = 45
+    max_stamina: int = 100
+    stamina: float = 100
+    speed: float = 4.6
+    level: int = 1
+    xp: int = 0
+    next_xp: int = 60
+    facing_x: float = 1.0
+    facing_y: float = 0.0
+    moving: bool = False
+    move_x: float = 1.0
+    move_y: float = 0.0
+    anim_time: float = 0.0
+    melee_timer: float = 0.0
+    bolt_timer: float = 0.0
+    dash_timer: float = 0.0
+    nova_timer: float = 0.0
+    inventory: list[Item] = field(default_factory=list)
+    equipment: dict[str, Item | None] = field(
+        default_factory=lambda: {"weapon": None, "armor": None}
+    )
+
+    def melee_damage(self) -> int:
+        weapon = self.equipment.get("weapon")
+        unique_bonus = 4 if weapon and weapon.unique_effect == "embers on hit" else 0
+        return 12 + self.level * 2 + unique_bonus + (weapon.power if weapon else 0)
+
+    def armor(self) -> int:
+        armor = self.equipment.get("armor")
+        unique_bonus = 2 if armor and armor.unique_effect == "steadfast bulwark" else 0
+        return unique_bonus + (armor.defense if armor else 0)
+
+    def gain_xp(self, amount: int) -> bool:
+        self.xp += amount
+        if self.xp < self.next_xp:
+            return False
+        self.xp -= self.next_xp
+        self.level += 1
+        self.next_xp = int(self.next_xp * 1.45)
+        self.max_hp += 12
+        self.hp = self.max_hp
+        self.max_mana += 5
+        self.mana = self.max_mana
+        self.max_stamina += 5
+        self.stamina = self.max_stamina
+        return True
