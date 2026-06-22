@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import random
+import re
 from pathlib import Path
 from typing import Any
 
@@ -443,23 +444,196 @@ class Game(SaveLoadMixin, RenderingMixin):
         return " · ".join(entries) + " · E hear plea"
 
     def story_relic_choice_options(self) -> list[tuple[str, str, str]]:
+        beat = self.current_story_beat()
+        if self.story_state is None or beat is None:
+            return self.default_story_relic_choice_options()
+        base_seed = self.story_relic_choice_text_seed(beat)
+        key_salts = {"aid": 11_117, "bargain": 65_537, "defy": 104_729}
+        return [
+            self.story_relic_choice_option_for_key(
+                key, beat, random.Random(base_seed + key_salts[key])
+            )
+            for key in self.story_relic_choice_key_order(beat)
+        ]
+
+    def story_relic_choice_key_order(self, beat: Any) -> list[str]:
+        keys = ["aid", "bargain", "defy"]
+        rng = random.Random(self.story_relic_choice_text_seed(beat) ^ 0xA511E9B3)
+        rng.shuffle(keys)
+        if keys == ["aid", "bargain", "defy"]:
+            keys = ["bargain", "defy", "aid"]
+        return keys
+
+    def default_story_relic_choice_options(self) -> list[tuple[str, str, str]]:
         return [
             (
                 "aid",
-                "Accept the guest's lantern",
-                "guiding light shown · relic is unguarded near the guest",
+                "Offer a gentle vow",
+                "promise to carry the guest's burden before your own",
             ),
             (
                 "bargain",
-                "Trade safety for a hidden beacon",
-                "guiding light shown · a powerful guardian wakes near the relic",
+                "Whisper a hidden bargain",
+                "ask the dungeon to answer in riddles, debts, and signs",
             ),
             (
                 "defy",
-                "Walk without the guest's light",
-                "no guiding light · relic is guarded deeper in the dungeon",
+                "Refuse the omen",
+                "turn from the guest's terms and trust your own path",
             ),
         ]
+
+    def story_relic_choice_text_seed(self, beat: Any) -> int:
+        parts = [
+            str(self.story_seed),
+            str(self.run_number),
+            str(self.current_depth),
+            beat.title,
+            beat.guest_name,
+            beat.guest_role,
+        ]
+        if self.story_state is not None:
+            parts.extend(
+                (
+                    self.story_state.title,
+                    self.story_state.faction,
+                    self.story_state.rival_faction,
+                    self.story_state.relic_name,
+                )
+            )
+        seed = 2_166_136_261
+        for char in "|".join(parts):
+            seed ^= ord(char)
+            seed = (seed * 16_777_619) & 0xFFFFFFFF
+        return seed
+
+    def story_relic_choice_option_for_key(
+        self, choice_key: str, beat: Any, rng: random.Random
+    ) -> tuple[str, str, str]:
+        choice = next(
+            (candidate for candidate in beat.choices if candidate.key == choice_key),
+            None,
+        )
+        if choice is None:
+            return next(
+                option
+                for option in self.default_story_relic_choice_options()
+                if option[0] == choice_key
+            )
+        guest = self.story_choice_short_name(beat.guest_name)
+        role = self.safe_story_choice_text(beat.guest_role.lower(), "guest")
+        relic = self.safe_story_choice_text(
+            self.story_state.relic_name
+            if self.story_state is not None
+            else "the relic",
+            "the relic",
+        )
+        faction = self.safe_story_choice_text(
+            self.story_state.faction if self.story_state is not None else "the dungeon",
+            "the dungeon",
+        )
+        antagonist = self.safe_story_choice_text(
+            self.story_state.antagonist
+            if self.story_state is not None
+            else "the tyrant",
+            "the tyrant",
+        )
+        motive = self.short_story_choice_clause(beat.guest_motive, 36)
+        title = self.safe_story_choice_text(beat.title, "this omen")
+        intent = self.short_story_choice_clause(choice.intent, 48)
+        label_templates = {
+            "aid": (
+                "Keep {guest}'s vow",
+                "Mercy for the {role}",
+                "Answer {guest} kindly",
+                "Carry {guest}'s plea",
+                "Honor the {role}",
+            ),
+            "bargain": (
+                "Name {guest}'s price",
+                "Trade a sealed vow",
+                "Speak in owed terms",
+                "Bind {relic}'s debt",
+                "Ask the {role}'s price",
+            ),
+            "defy": (
+                "Refuse {guest}'s terms",
+                "Break the old demand",
+                "Challenge {antagonist}'s claim",
+                "Trust your own oath",
+                "Deny the {role}'s omen",
+            ),
+        }
+        detail_templates = {
+            "aid": (
+                "{intent}; remember {motive}",
+                "answer {guest} as {role}: {intent}",
+                "set {relic} toward mercy: {intent}",
+                "let {title} end in witness: {intent}",
+            ),
+            "bargain": (
+                "{intent}; weigh it against {faction}",
+                "answer {guest} with measured terms: {intent}",
+                "bind {relic} to a price: {intent}",
+                "let {title} become debt: {intent}",
+            ),
+            "defy": (
+                "{intent}; keep {relic} in your own hands",
+                "answer {guest} with iron restraint: {intent}",
+                "set your oath against {antagonist}: {intent}",
+                "let {title} break before you: {intent}",
+            ),
+        }
+        format_values = {
+            "guest": guest,
+            "role": role,
+            "relic": relic,
+            "faction": faction,
+            "antagonist": antagonist,
+            "motive": motive,
+            "title": title,
+            "intent": intent,
+        }
+        label = rng.choice(label_templates[choice_key]).format(**format_values)
+        detail = rng.choice(detail_templates[choice_key]).format(**format_values)
+        return (
+            choice_key,
+            self.short_story_choice_clause(label, 34),
+            self.short_story_choice_clause(detail, 92),
+        )
+
+    def story_choice_short_name(self, name: str) -> str:
+        safe_name = self.safe_story_choice_text(name, "the guest")
+        parts = safe_name.split()
+        if len(parts) > 2:
+            safe_name = " ".join(parts[:2])
+        return safe_name
+
+    def safe_story_choice_text(self, text: str, fallback: str) -> str:
+        result = " ".join(str(text).replace("\n", " ").split())
+        replacements = {
+            "unguarded": "alone",
+            "guarded": "watched",
+            "guardian": "warden",
+            "guidance": "counsel",
+            "guiding": "veiled",
+            "guide": "shape",
+            "light": "sign",
+            "beacon": "sign",
+            "lantern": "taper",
+            "trail": "trace",
+        }
+        for term, replacement in replacements.items():
+            result = re.sub(term, replacement, result, flags=re.IGNORECASE)
+        result = " ".join(result.split()).strip(" ;:,.—")
+        return result or fallback
+
+    def short_story_choice_clause(self, text: str, limit: int) -> str:
+        safe = self.safe_story_choice_text(text, "the guest's plea")
+        if len(safe) <= limit:
+            return safe
+        shortened = safe[: max(1, limit - 1)].rsplit(" ", 1)[0].strip(" ;:,.—")
+        return f"{shortened}…" if shortened else safe[:limit]
 
     def story_relic_choice_traits(self, choice_key: str) -> tuple[bool, bool]:
         traits = {
@@ -527,7 +701,7 @@ class Game(SaveLoadMixin, RenderingMixin):
                 f"{guest.name}, {guest.role}, waits somewhere ahead. Before the level begins, choose how their relic echo should surface."
             )
             lines.append(
-                "Your answer decides whether a guiding light appears and whether a powerful guardian binds itself to the relic."
+                "Your answer will shape how the relic stirs, but the dungeon will not reveal the cost until the level begins."
             )
         return lines
 

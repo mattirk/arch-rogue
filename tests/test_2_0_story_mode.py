@@ -41,6 +41,15 @@ class StoryMode20Tests(unittest.TestCase):
         if game.story_intro_pending:
             self.assertTrue(game.choose_story_relic_path(choice_index))
 
+    def story_relic_option_index(self, game: Game, choice_key: str) -> int:
+        for index, (key, _label, _detail) in enumerate(
+            game.story_relic_choice_options()
+        ):
+            if key == choice_key:
+                return index
+        self.fail(f"story relic choice {choice_key!r} was not available")
+        return -1
+
     def test_story_corpus_and_engine_are_deterministic_and_backstory_aligned(
         self,
     ) -> None:
@@ -249,7 +258,11 @@ class StoryMode20Tests(unittest.TestCase):
                 guest = game.current_story_guest_for_depth()
                 self.assertIsNotNone(guest)
                 assert guest is not None
-                self.assertTrue(game.choose_story_relic_path(0))
+                self.assertTrue(
+                    game.choose_story_relic_path(
+                        self.story_relic_option_index(game, "aid")
+                    )
+                )
                 self.assertFalse(game.story_intro_pending)
                 relic = game.current_story_relic()
                 self.assertIsNotNone(relic)
@@ -289,7 +302,7 @@ class StoryMode20Tests(unittest.TestCase):
                 "bargain": (True, True),
                 "defy": (False, True),
             }
-            for index, expected_key in enumerate(("aid", "bargain", "defy")):
+            for expected_key in ("aid", "bargain", "defy"):
                 game = self.make_game(tmpdir, seed=2602)
                 try:
                     self.assertTrue(game.story_intro_pending)
@@ -302,7 +315,11 @@ class StoryMode20Tests(unittest.TestCase):
                         final_room.center[1] + 0.5,
                     )
 
-                    self.assertTrue(game.choose_story_relic_path(index))
+                    self.assertTrue(
+                        game.choose_story_relic_path(
+                            self.story_relic_option_index(game, expected_key)
+                        )
+                    )
                     expected_guidance, expected_guarded = expected_traits[expected_key]
                     self.assertEqual(game.story_relic_choice_key, expected_key)
                     self.assertEqual(
@@ -413,6 +430,23 @@ class StoryMode20Tests(unittest.TestCase):
             game.restart(ARCHETYPES[2])
             try:
                 self.assertTrue(game.story_intro_pending)
+                hidden_terms = (
+                    "guiding",
+                    "light",
+                    "guardian",
+                    "guarded",
+                    "unguarded",
+                )
+                consequence_hint = game.story_intro_lines()[-1].lower()
+                self.assertFalse(any(term in consequence_hint for term in hidden_terms))
+                options = game.story_relic_choice_options()
+                self.assertEqual(len(options), 3)
+                option_keys = [key for key, _label, _detail in options]
+                self.assertCountEqual(option_keys, ["aid", "bargain", "defy"])
+                self.assertNotEqual(option_keys, ["aid", "bargain", "defy"])
+                for _key, label, detail in options:
+                    visible_text = f"{label} {detail}".lower()
+                    self.assertFalse(any(term in visible_text for term in hidden_terms))
                 original_rect = pygame.draw.rect
                 choice_boxes: list[pygame.Rect] = []
 
@@ -427,6 +461,68 @@ class StoryMode20Tests(unittest.TestCase):
                 finally:
                     pygame.draw.rect = original_rect
                 self.assertEqual(len(choice_boxes), 3)
+            finally:
+                pygame.quit()
+
+    def test_story_intro_choices_are_dynamic_stable_and_corpus_based(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=2802)
+            try:
+                assert game.story_state is not None
+                beat = game.current_story_beat()
+                self.assertIsNotNone(beat)
+                assert beat is not None
+
+                first_options = game.story_relic_choice_options()
+                self.assertEqual(len(first_options), 3)
+                first_keys = [key for key, _label, _detail in first_options]
+                self.assertCountEqual(first_keys, ["aid", "bargain", "defy"])
+                self.assertNotEqual(first_keys, ["aid", "bargain", "defy"])
+                self.assertEqual(first_options, game.story_relic_choice_options())
+                self.assertCountEqual(
+                    [key for key, _label, _detail in first_options],
+                    [choice.key for choice in beat.choices[:3]],
+                )
+
+                visible_text = " ".join(
+                    f"{label} {detail}" for _key, label, detail in first_options
+                ).lower()
+                story_terms = []
+                for source in (
+                    beat.guest_name,
+                    beat.guest_role,
+                    beat.title,
+                    game.story_state.relic_name,
+                ):
+                    for token in (
+                        game.safe_story_choice_text(source, "").lower().split()
+                    ):
+                        token = token.strip("'s;:,.—")
+                        if len(token) >= 4:
+                            story_terms.append(token)
+                corpus_terms = []
+                for choice in beat.choices[:3]:
+                    for token in (
+                        game.safe_story_choice_text(choice.intent, "").lower().split()
+                    ):
+                        token = token.strip("'s;:,.—")
+                        if len(token) >= 5:
+                            corpus_terms.append(token)
+                self.assertTrue(any(term in visible_text for term in story_terms))
+                self.assertTrue(any(term in visible_text for term in corpus_terms))
+
+                self.assertTrue(game.save_run())
+                loaded = Game(
+                    screen_size=(820, 540),
+                    headless=True,
+                    save_path=game.save_path,
+                )
+                self.assertTrue(loaded.load_run(), loaded.last_load_error)
+                self.assertEqual(first_options, loaded.story_relic_choice_options())
+
+                game.current_depth = 2
+                second_depth_options = game.story_relic_choice_options()
+                self.assertNotEqual(first_options, second_depth_options)
             finally:
                 pygame.quit()
 
