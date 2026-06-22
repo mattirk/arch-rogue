@@ -172,14 +172,14 @@ Expand with:
 
 ### Prototype 3: Replayability
 
-Expand with:
+Implemented as a lightweight replayability layer:
 
-- Multiple dungeon themes
-- Boss encounters
-- Character archetypes
-- Run modifiers
-- Secrets and rare events
-- Stronger UI/UX polish
+- Multiple dungeon themes with distinct tile palettes and atmosphere.
+- A final-room gate tyrant boss that must be defeated before stairs can be used.
+- Selectable Warden, Rogue, and Arcanist archetypes with different HP, mana, stamina, speed, and damage bonuses.
+- Random run modifiers that alter enemy pressure, traps, and loot rewards.
+- Discoverable secret caches, cursed reliquaries, and rare stashes.
+- Stronger run UI: archetype selection, run/theme/modifier header, boss health bar, and contextual objectives.
 
 ## Open Design Questions
 

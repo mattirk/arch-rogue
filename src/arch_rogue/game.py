@@ -8,12 +8,16 @@ import pygame
 
 from .dungeon import MAP_H, MAP_W, Dungeon
 from .models import (
+    Archetype,
     Color,
+    DungeonTheme,
     Enemy,
     FloatingText,
     Item,
     Player,
     Projectile,
+    RunModifier,
+    SecretCache,
     Shrine,
     Tile,
     Trap,
@@ -29,11 +33,112 @@ TILE_H = 32 * WORLD_SCALE
 MAX_INVENTORY = 9
 UI_SCALE = 2
 
+ARCHETYPES = (
+    Archetype(
+        "Warden",
+        "Durable melee fighter with reliable armor and stamina.",
+        max_hp=120,
+        max_mana=38,
+        max_stamina=112,
+        speed=4.45,
+        melee_bonus=3,
+        armor_bonus=2,
+    ),
+    Archetype(
+        "Rogue",
+        "Fast striker who trades durability for speed and burst damage.",
+        max_hp=92,
+        max_mana=42,
+        max_stamina=126,
+        speed=5.25,
+        melee_bonus=5,
+    ),
+    Archetype(
+        "Arcanist",
+        "Fragile caster with stronger bolts and novas.",
+        max_hp=82,
+        max_mana=72,
+        max_stamina=92,
+        speed=4.35,
+        spell_bonus=8,
+    ),
+)
+
+DUNGEON_THEMES = (
+    DungeonTheme(
+        "Crypt of Ash",
+        "charred halls and emberlit stairs",
+        floor=(52, 47, 42),
+        floor_edge=(72, 66, 60),
+        wall_top=(45, 42, 49),
+        wall_left=(31, 29, 36),
+        wall_right=(24, 23, 30),
+        wall_edge=(58, 55, 66),
+        stair=(230, 188, 90),
+        accent=(240, 145, 65),
+    ),
+    DungeonTheme(
+        "Fungal Catacombs",
+        "damp stone, pale spores, and hidden growths",
+        floor=(42, 53, 42),
+        floor_edge=(65, 82, 59),
+        wall_top=(34, 51, 45),
+        wall_left=(24, 38, 34),
+        wall_right=(20, 31, 32),
+        wall_edge=(60, 84, 70),
+        stair=(166, 210, 116),
+        accent=(110, 185, 95),
+    ),
+    DungeonTheme(
+        "Violet Reliquary",
+        "occult vaults humming with void rites",
+        floor=(45, 39, 58),
+        floor_edge=(78, 65, 103),
+        wall_top=(42, 34, 58),
+        wall_left=(30, 24, 44),
+        wall_right=(25, 20, 38),
+        wall_edge=(76, 60, 112),
+        stair=(205, 140, 235),
+        accent=(160, 86, 230),
+    ),
+)
+
+RUN_MODIFIERS = (
+    RunModifier(
+        "Blood Moon",
+        "Enemies are tougher and hit harder, but loot is richer.",
+        1.18,
+        2,
+        1.0,
+        0.07,
+    ),
+    RunModifier(
+        "Restless Depths", "More enemies wake from farther away.", 1.08, 1, 2.0, 0.02
+    ),
+    RunModifier(
+        "Treasure Draught",
+        "The dungeon yields more equipment and rare caches.",
+        1.0,
+        0,
+        0.0,
+        0.14,
+    ),
+    RunModifier(
+        "Trap-Laced",
+        "Hazards are more common, but shrines answer more often.",
+        1.0,
+        0,
+        0.5,
+        0.05,
+        0.16,
+    ),
+)
+
 
 class Game:
     def __init__(self) -> None:
         pygame.init()
-        pygame.display.set_caption("Arch Rogue - Prototype 2")
+        pygame.display.set_caption("Arch Rogue - Prototype 3")
         self.screen = pygame.display.set_mode(
             (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE
         )
@@ -45,19 +150,42 @@ class Game:
         self.rng = random.Random()
         self.running = True
         self.inventory_open = False
-        self.state = "playing"
+        self.state = "archetype_select"
         self.elapsed = 0.0
-        self.restart()
+        self.selected_archetype = ARCHETYPES[0]
+        self.theme = DUNGEON_THEMES[0]
+        self.run_modifier = RUN_MODIFIERS[0]
+        self.run_number = 0
 
-    def restart(self) -> None:
+    def restart(self, archetype: Archetype | None = None) -> None:
+        self.run_number += 1
+        if archetype:
+            self.selected_archetype = archetype
+        self.theme = self.rng.choice(DUNGEON_THEMES)
+        self.run_modifier = self.rng.choice(RUN_MODIFIERS)
         self.dungeon = Dungeon(self.rng)
         start_x, start_y = self.dungeon.rooms[0].center
-        self.player = Player(start_x + 0.5, start_y + 0.5)
+        self.player = Player(
+            start_x + 0.5,
+            start_y + 0.5,
+            class_name=self.selected_archetype.name,
+            max_hp=self.selected_archetype.max_hp,
+            hp=self.selected_archetype.max_hp,
+            max_mana=self.selected_archetype.max_mana,
+            mana=self.selected_archetype.max_mana,
+            max_stamina=self.selected_archetype.max_stamina,
+            stamina=self.selected_archetype.max_stamina,
+            speed=self.selected_archetype.speed,
+            melee_bonus=self.selected_archetype.melee_bonus,
+            spell_bonus=self.selected_archetype.spell_bonus,
+            armor_bonus=self.selected_archetype.armor_bonus,
+        )
         self.enemies: list[Enemy] = []
         self.items: list[Item] = []
         self.projectiles: list[Projectile] = []
         self.traps: list[Trap] = []
         self.shrines: list[Shrine] = []
+        self.secrets: list[SecretCache] = []
         self.floaters: list[FloatingText] = []
         self.slashes: list[tuple[float, float, float]] = []
         self.inventory_open = False
@@ -65,21 +193,29 @@ class Game:
         self._populate_dungeon()
 
     def _populate_dungeon(self) -> None:
+        final_room_index = len(self.dungeon.rooms) - 1
         for room_index, room in enumerate(self.dungeon.rooms[1:], start=1):
+            is_final_room = room_index == final_room_index
             count = self.rng.randrange(1, 4)
-            if room_index == len(self.dungeon.rooms) - 1:
-                count += 2
+            if is_final_room:
+                count += 1
             for _ in range(count):
                 self.enemies.append(
                     self._make_enemy(
-                        *room.random_point(self.rng),
-                        final_room=room_index == len(self.dungeon.rooms) - 1,
+                        *room.random_point(self.rng), final_room=is_final_room
                     )
                 )
 
-            if self.rng.random() < 0.7:
+            if is_final_room:
+                bx, by = room.center
+                self.enemies.append(self._make_boss(bx + 0.5, by + 0.5))
+
+            if self.rng.random() < 0.68 + self.run_modifier.loot_bonus:
                 self.items.append(self._make_loot(*room.random_point(self.rng)))
-            if room_index > 1 and self.rng.random() < 0.28:
+            if (
+                room_index > 1
+                and self.rng.random() < 0.24 + self.run_modifier.trap_bonus
+            ):
                 tx, ty = room.random_point(self.rng)
                 self.traps.append(
                     Trap(
@@ -89,7 +225,10 @@ class Game:
                         self.rng.randrange(14, 23),
                     )
                 )
-            if room_index > 2 and self.rng.random() < 0.18:
+            shrine_chance = 0.18 + (
+                0.08 if self.run_modifier.name == "Trap-Laced" else 0.0
+            )
+            if room_index > 2 and self.rng.random() < shrine_chance:
                 sx, sy = room.random_point(self.rng)
                 self.shrines.append(
                     Shrine(
@@ -100,31 +239,58 @@ class Game:
                         ),
                     )
                 )
+            if (
+                room_index > 2
+                and not is_final_room
+                and self.rng.random() < 0.16 + self.run_modifier.loot_bonus
+            ):
+                cx, cy = room.random_point(self.rng)
+                self.secrets.append(
+                    SecretCache(
+                        cx,
+                        cy,
+                        self.rng.choice(["Hidden Cache", "Cursed Reliquary"]),
+                    )
+                )
+
+        if self.rng.random() < 0.45 + self.run_modifier.loot_bonus:
+            room = self.rng.choice(self.dungeon.rooms[2:-1])
+            cx, cy = room.random_point(self.rng)
+            self.secrets.append(SecretCache(cx, cy, "Lost Cartographer's Stash"))
 
         sx, sy = self.dungeon.rooms[0].random_point(self.rng)
         self.items.append(
             Item("Minor Healing Potion", "potion", heal=35, rarity="Common", x=sx, y=sy)
         )
 
+    def _apply_run_modifier(self, enemy: Enemy) -> Enemy:
+        enemy.max_hp = max(1, int(enemy.max_hp * self.run_modifier.enemy_hp_multiplier))
+        enemy.hp = enemy.max_hp
+        enemy.damage += self.run_modifier.enemy_damage_bonus
+        enemy.aggro_range += self.run_modifier.enemy_aggro_bonus
+        return enemy
+
     def _make_enemy(self, x: float, y: float, final_room: bool = False) -> Enemy:
-        if final_room and self.rng.random() < 0.45:
-            return Enemy(
-                "Gate Warden",
-                "melee",
-                x,
-                y,
-                72,
-                72,
-                2.1,
-                14,
-                34,
-                1.2,
-                1.0,
-                color=(190, 92, 54),
+        if final_room and self.rng.random() < 0.35:
+            return self._apply_run_modifier(
+                Enemy(
+                    "Gate Warden",
+                    "melee",
+                    x,
+                    y,
+                    72,
+                    72,
+                    2.1,
+                    14,
+                    34,
+                    1.2,
+                    1.0,
+                    color=(190, 92, 54),
+                )
             )
         roll = self.rng.random()
         if roll < 0.24:
-            return Enemy(
+            enemy = Enemy(
                 "Cultist",
                 "ranged",
                 x,
@@ -138,8 +304,8 @@ class Game:
                 1.45,
                 color=(125, 75, 170),
             )
-        if roll < 0.42:
-            return Enemy(
+        elif roll < 0.42:
+            enemy = Enemy(
                 "Bone Imp",
                 "ranged",
                 x,
@@ -153,8 +319,8 @@ class Game:
                 1.0,
                 color=(190, 130, 215),
             )
-        if roll < 0.58:
-            return Enemy(
+        elif roll < 0.58:
+            enemy = Enemy(
                 "Venom Skitter",
                 "melee",
                 x,
@@ -169,8 +335,8 @@ class Game:
                 aggro_range=9.5,
                 color=(110, 185, 95),
             )
-        if roll < 0.72:
-            return Enemy(
+        elif roll < 0.72:
+            enemy = Enemy(
                 "Crypt Brute",
                 "melee",
                 x,
@@ -184,8 +350,45 @@ class Game:
                 1.35,
                 color=(155, 105, 74),
             )
-        return Enemy(
-            "Ghoul", "melee", x, y, 42, 42, 2.7, 10, 20, 1.05, 0.95, color=(160, 68, 68)
+        else:
+            enemy = Enemy(
+                "Ghoul",
+                "melee",
+                x,
+                y,
+                42,
+                42,
+                2.7,
+                10,
+                20,
+                1.05,
+                0.95,
+                color=(160, 68, 68),
+            )
+        return self._apply_run_modifier(enemy)
+
+    def _make_boss(self, x: float, y: float) -> Enemy:
+        boss_titles = {
+            "Crypt of Ash": "Ashen Gate Tyrant",
+            "Fungal Catacombs": "Mycelial Gate Tyrant",
+            "Violet Reliquary": "Voidbound Gate Tyrant",
+        }
+        return self._apply_run_modifier(
+            Enemy(
+                boss_titles.get(self.theme.name, "Dread Gate Tyrant"),
+                "boss",
+                x,
+                y,
+                210,
+                210,
+                1.65,
+                18,
+                90,
+                1.45,
+                1.15,
+                aggro_range=12.0,
+                color=self.theme.accent,
+            )
         )
 
     def _make_loot(self, x: float, y: float) -> Item:
@@ -200,7 +403,7 @@ class Game:
             )
         if roll < 0.42:
             return Item("Scroll of Identify", "identify", rarity="Common", x=x, y=y)
-        if roll > 0.96:
+        if roll > 0.96 - self.run_modifier.loot_bonus:
             return self._make_unique(x, y)
         slot = "weapon" if roll < 0.70 else "armor"
         rarity = "Rare" if self.rng.random() < 0.34 else "Magic"
@@ -281,10 +484,15 @@ class Game:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
-                elif event.key == pygame.K_i:
+                elif self.state == "archetype_select":
+                    if pygame.K_1 <= event.key <= pygame.K_3:
+                        self.restart(ARCHETYPES[event.key - pygame.K_1])
+                    elif event.key == pygame.K_RETURN:
+                        self.restart(self.selected_archetype)
+                elif event.key == pygame.K_i and self.state == "playing":
                     self.inventory_open = not self.inventory_open
                 elif event.key == pygame.K_r and self.state != "playing":
-                    self.restart()
+                    self.state = "archetype_select"
                 elif event.key == pygame.K_e and self.state == "playing":
                     self.interact()
                 elif event.key == pygame.K_q and self.state == "playing":
@@ -318,6 +526,7 @@ class Game:
         self.update_enemies(dt)
         self.update_projectiles(dt)
         self.update_traps(dt)
+        self.update_secrets()
         self.update_floaters(dt)
         self.slashes = [(x, y, ttl - dt) for x, y, ttl in self.slashes if ttl - dt > 0]
 
@@ -400,7 +609,14 @@ class Game:
                 enemy.facing_x = nx
                 enemy.facing_y = ny
 
-            if enemy.kind == "ranged":
+            if enemy.kind == "boss":
+                if distance > enemy.attack_range:
+                    self.move_actor(enemy, nx * enemy.speed * dt, ny * enemy.speed * dt)
+                if 2.0 < distance <= 6.0 and enemy.attack_timer <= 0:
+                    self.enemy_cast(enemy, nx, ny)
+                elif distance <= enemy.attack_range and enemy.attack_timer <= 0:
+                    self.enemy_melee(enemy)
+            elif enemy.kind == "ranged":
                 if 3.5 < distance:
                     self.move_actor(enemy, nx * enemy.speed * dt, ny * enemy.speed * dt)
                 elif distance < 2.5:
@@ -495,6 +711,22 @@ class Game:
                 )
             )
 
+    def update_secrets(self) -> None:
+        for secret in self.secrets:
+            if secret.revealed or secret.opened:
+                continue
+            if math.hypot(secret.x - self.player.x, secret.y - self.player.y) < 1.55:
+                secret.revealed = True
+                self.floaters.append(
+                    FloatingText(
+                        "Secret found",
+                        secret.x,
+                        secret.y - 0.3,
+                        self.theme.accent,
+                        ttl=1.2,
+                    )
+                )
+
     def update_floaters(self, dt: float) -> None:
         for floater in self.floaters:
             floater.update(dt)
@@ -528,7 +760,7 @@ class Game:
                 self.player.y,
                 self.player.facing_x * 9.0,
                 self.player.facing_y * 9.0,
-                14 + self.player.level * 2,
+                14 + self.player.level * 2 + self.player.spell_bonus,
                 "player",
                 (70, 165, 255),
                 ttl=1.4,
@@ -547,7 +779,12 @@ class Game:
             distance = math.hypot(dx, dy)
             if distance <= 2.45:
                 hits += 1
-                damage = 10 + self.player.level * 2 + self.rng.randrange(0, 5)
+                damage = (
+                    10
+                    + self.player.level * 2
+                    + self.player.spell_bonus
+                    + self.rng.randrange(0, 5)
+                )
                 direction = (
                     (dx / distance, dy / distance)
                     if distance > 0.001
@@ -630,6 +867,17 @@ class Game:
         if enemy not in self.enemies:
             return
         self.enemies.remove(enemy)
+        if enemy.kind == "boss":
+            self.items.append(self._make_unique(enemy.x, enemy.y))
+            self.floaters.append(
+                FloatingText(
+                    "Gate seal broken",
+                    enemy.x,
+                    enemy.y - 0.5,
+                    self.theme.accent,
+                    ttl=1.6,
+                )
+            )
         if self.player.gain_xp(enemy.xp):
             self.floaters.append(
                 FloatingText(
@@ -651,7 +899,22 @@ class Game:
             )
             < 1.0
         ):
+            if self.boss_alive():
+                self.floaters.append(
+                    FloatingText(
+                        "The gate is sealed by its tyrant",
+                        self.player.x,
+                        self.player.y - 0.5,
+                        self.theme.accent,
+                        ttl=1.2,
+                    )
+                )
+                return
             self.state = "victory"
+            return
+        secret = self.nearby_secret()
+        if secret:
+            self.open_secret(secret)
             return
         shrine = self.nearby_shrine()
         if shrine:
@@ -692,6 +955,42 @@ class Game:
             key=lambda item: math.hypot(item.x - self.player.x, item.y - self.player.y),
             default=None,
         )
+
+    def nearby_secret(self) -> SecretCache | None:
+        nearby = [
+            secret
+            for secret in self.secrets
+            if secret.revealed
+            and not secret.opened
+            and math.hypot(secret.x - self.player.x, secret.y - self.player.y) < 1.1
+        ]
+        return min(
+            nearby,
+            key=lambda secret: math.hypot(
+                secret.x - self.player.x, secret.y - self.player.y
+            ),
+            default=None,
+        )
+
+    def open_secret(self, secret: SecretCache) -> None:
+        secret.opened = True
+        if secret.kind == "Cursed Reliquary" and self.rng.random() < 0.55:
+            self.enemies.append(self._make_enemy(secret.x + 0.3, secret.y + 0.3))
+            message = "Reliquary wakes a guardian"
+        else:
+            drops = 2 if "Stash" in secret.kind else 1
+            for _ in range(drops):
+                self.items.append(self._make_loot(secret.x, secret.y))
+            message = f"Opened {secret.kind}"
+        self.floaters.append(
+            FloatingText(message, secret.x, secret.y - 0.3, self.theme.accent, ttl=1.4)
+        )
+
+    def boss_alive(self) -> bool:
+        return any(enemy.kind == "boss" for enemy in self.enemies)
+
+    def boss_enemy(self) -> Enemy | None:
+        return next((enemy for enemy in self.enemies if enemy.kind == "boss"), None)
 
     def nearby_shrine(self) -> Shrine | None:
         nearby = [
@@ -862,6 +1161,10 @@ class Game:
 
     def draw(self) -> None:
         self.screen.fill((10, 10, 14))
+        if self.state == "archetype_select":
+            self.draw_archetype_select()
+            pygame.display.flip()
+            return
         self.draw_dungeon()
         self.draw_world_objects()
         self.draw_ui()
@@ -888,10 +1191,12 @@ class Game:
 
         if tile == Tile.WALL:
             wall_h = 36 * WORLD_SCALE
-            pygame.draw.polygon(self.screen, (45, 42, 49), [top, right, bottom, left])
+            pygame.draw.polygon(
+                self.screen, self.theme.wall_top, [top, right, bottom, left]
+            )
             pygame.draw.polygon(
                 self.screen,
-                (31, 29, 36),
+                self.theme.wall_left,
                 [
                     left,
                     bottom,
@@ -901,7 +1206,7 @@ class Game:
             )
             pygame.draw.polygon(
                 self.screen,
-                (24, 23, 30),
+                self.theme.wall_right,
                 [
                     right,
                     bottom,
@@ -911,7 +1216,7 @@ class Game:
             )
             pygame.draw.lines(
                 self.screen,
-                (58, 55, 66),
+                self.theme.wall_edge,
                 True,
                 [top, right, bottom, left],
                 WORLD_SCALE,
@@ -955,8 +1260,8 @@ class Game:
                 )
             return
 
-        base = (52, 47, 42) if tile == Tile.FLOOR else (76, 58, 36)
-        edge = (72, 66, 60) if tile == Tile.FLOOR else (210, 150, 70)
+        base = self.theme.floor if tile == Tile.FLOOR else self.theme.stair
+        edge = self.theme.floor_edge if tile == Tile.FLOOR else self.theme.accent
         pygame.draw.polygon(self.screen, base, [top, right, bottom, left])
         pygame.draw.lines(
             self.screen, edge, True, [top, right, bottom, left], WORLD_SCALE
@@ -1002,35 +1307,35 @@ class Game:
         if tile == Tile.STAIRS:
             pygame.draw.line(
                 self.screen,
-                (230, 188, 90),
+                self.theme.stair,
                 (sx - 18 * WORLD_SCALE, sy - 2 * WORLD_SCALE),
                 (sx + 18 * WORLD_SCALE, sy - 2 * WORLD_SCALE),
                 3 * WORLD_SCALE,
             )
             pygame.draw.line(
                 self.screen,
-                (230, 188, 90),
+                self.theme.stair,
                 (sx - 12 * WORLD_SCALE, sy + 5 * WORLD_SCALE),
                 (sx + 12 * WORLD_SCALE, sy + 5 * WORLD_SCALE),
                 3 * WORLD_SCALE,
             )
             pygame.draw.line(
                 self.screen,
-                (230, 188, 90),
+                self.theme.stair,
                 (sx - 6 * WORLD_SCALE, sy + 12 * WORLD_SCALE),
                 (sx + 6 * WORLD_SCALE, sy + 12 * WORLD_SCALE),
                 3 * WORLD_SCALE,
             )
             pygame.draw.line(
                 self.screen,
-                (255, 225, 132),
+                self.theme.accent,
                 (sx - 20 * WORLD_SCALE, sy - 8 * WORLD_SCALE),
                 (sx + 20 * WORLD_SCALE, sy - 8 * WORLD_SCALE),
                 WORLD_SCALE,
             )
             pygame.draw.circle(
                 self.screen,
-                (255, 214, 105),
+                self.theme.accent,
                 (sx, sy - 16 * WORLD_SCALE),
                 max(2, 2 * WORLD_SCALE),
             )
@@ -1043,6 +1348,9 @@ class Game:
             drawables.append((trap.x + trap.y - 0.02, "trap", trap))
         for shrine in self.shrines:
             drawables.append((shrine.x + shrine.y, "shrine", shrine))
+        for secret in self.secrets:
+            if secret.revealed and not secret.opened:
+                drawables.append((secret.x + secret.y, "secret", secret))
         for projectile in self.projectiles:
             drawables.append((projectile.x + projectile.y, "projectile", projectile))
         for enemy in self.enemies:
@@ -1060,6 +1368,8 @@ class Game:
                 self.draw_trap(cast(Trap, obj))
             elif kind == "shrine":
                 self.draw_shrine(cast(Shrine, obj))
+            elif kind == "secret":
+                self.draw_secret(cast(SecretCache, obj))
             elif kind == "projectile":
                 self.draw_projectile(cast(Projectile, obj))
             elif kind == "enemy":
@@ -1249,8 +1559,15 @@ class Game:
         self.screen.blit(overlay, (min_x, min_y))
 
     def draw_enemy(self, enemy: Enemy) -> None:
-        sprite = self.sprites.enemies.get(enemy.name, self.sprites.enemies["Ghoul"])
-        shadow_w = 38 if enemy.name == "Gate Warden" else 32
+        fallback = (
+            self.sprites.enemies["Gate Warden"]
+            if enemy.kind == "boss"
+            else self.sprites.enemies["Ghoul"]
+        )
+        sprite = self.sprites.enemies.get(enemy.name, fallback)
+        shadow_w = (
+            44 if enemy.kind == "boss" else 38 if enemy.name == "Gate Warden" else 32
+        )
         sway, bob = self.walk_offsets(enemy)
         self.draw_shadow(enemy.x, enemy.y, shadow_w, 12, moving=enemy.moving)
         self.draw_movement_trail(enemy, (120, 84, 68), size=2)
@@ -1267,7 +1584,9 @@ class Game:
         self.draw_sprite_direction_cue(
             sx, sy - bob * WORLD_SCALE, cue_dx, cue_dy, (245, 92, 76), hostile=True
         )
-        bar_w = (34 if enemy.name == "Gate Warden" else 28) * WORLD_SCALE
+        bar_w = (
+            46 if enemy.kind == "boss" else 34 if enemy.name == "Gate Warden" else 28
+        ) * WORLD_SCALE
         fill_w = int(bar_w * max(0, enemy.hp) / enemy.max_hp)
         bar_h = 4 * WORLD_SCALE
         bar_y = sy - sprite.get_height() - 2 * WORLD_SCALE
@@ -1318,6 +1637,38 @@ class Game:
         ]
         pygame.draw.lines(self.screen, color, True, points, max(1, WORLD_SCALE))
         pygame.draw.circle(self.screen, color, (sx, sy), max(2, 2 * WORLD_SCALE))
+
+    def draw_secret(self, secret: SecretCache) -> None:
+        sx, sy = self.world_to_screen(secret.x, secret.y)
+        color = self.theme.accent
+        pulse = 0.55 + 0.45 * math.sin(self.elapsed * 5.0 + secret.x)
+        glow = pygame.Surface((34 * WORLD_SCALE, 18 * WORLD_SCALE), pygame.SRCALPHA)
+        pygame.draw.ellipse(glow, (*color, int(34 + 46 * pulse)), glow.get_rect())
+        self.screen.blit(glow, glow.get_rect(center=(sx, sy + 2 * WORLD_SCALE)))
+        pygame.draw.rect(
+            self.screen,
+            (35, 28, 24),
+            (
+                sx - 8 * WORLD_SCALE,
+                sy - 8 * WORLD_SCALE,
+                16 * WORLD_SCALE,
+                10 * WORLD_SCALE,
+            ),
+        )
+        pygame.draw.rect(
+            self.screen,
+            color,
+            (
+                sx - 8 * WORLD_SCALE,
+                sy - 8 * WORLD_SCALE,
+                16 * WORLD_SCALE,
+                10 * WORLD_SCALE,
+            ),
+            max(1, WORLD_SCALE),
+        )
+        if math.hypot(secret.x - self.player.x, secret.y - self.player.y) < 1.1:
+            label = self.small_font.render(f"E: {secret.kind}", True, color)
+            self.screen.blit(label, label.get_rect(center=(sx, sy - 25 * WORLD_SCALE)))
 
     def draw_shrine(self, shrine: Shrine) -> None:
         sx, sy = self.world_to_screen(shrine.x, shrine.y)
@@ -1459,7 +1810,7 @@ class Game:
             else "Cloth"
         )
         lines = [
-            "Warden",
+            self.player.class_name,
             f"Level {self.player.level}  XP {self.player.xp}/{self.player.next_xp}",
             f"Weapon: {weapon}  Damage: {self.player.melee_damage()}",
             f"Armor: {armor}  DR: {self.player.armor()}",
@@ -1470,8 +1821,12 @@ class Game:
                 text, (self.ui(280), height - self.ui(100) + i * self.ui(24))
             )
 
-        objective = "Objective: reach the stairs and press E"
+        self.draw_run_header()
+        self.draw_boss_bar()
+
+        objective = "Objective: defeat the gate tyrant, then reach the stairs"
         nearby_shrine = self.nearby_shrine()
+        nearby_secret = self.nearby_secret()
         if (
             math.hypot(
                 self.player.x - self.dungeon.stairs[0] - 0.5,
@@ -1479,10 +1834,16 @@ class Game:
             )
             < 1.0
         ):
-            objective = "E: Descend the stairs"
+            objective = (
+                "Gate sealed: defeat the tyrant"
+                if self.boss_alive()
+                else "E: Descend the stairs"
+            )
+        elif nearby_secret:
+            objective = f"E: Open {nearby_secret.kind}"
         elif nearby_shrine:
             objective = f"E: Use {nearby_shrine.kind}"
-        text = self.font.render(objective, True, (235, 205, 120))
+        text = self.font.render(objective, True, self.theme.accent)
         self.screen.blit(
             text, (width - text.get_width() - self.ui(24), height - self.ui(98))
         )
@@ -1503,6 +1864,32 @@ class Game:
                     height - self.ui(54) + i * self.ui(22),
                 ),
             )
+
+    def draw_run_header(self) -> None:
+        title = f"Run {self.run_number}: {self.theme.name}"
+        modifier = (
+            f"Modifier: {self.run_modifier.name} — {self.run_modifier.description}"
+        )
+        title_surface = self.font.render(title, True, self.theme.accent)
+        modifier_surface = self.small_font.render(modifier, True, (205, 200, 190))
+        self.screen.blit(title_surface, (self.ui(20), self.ui(18)))
+        self.screen.blit(modifier_surface, (self.ui(20), self.ui(48)))
+
+    def draw_boss_bar(self) -> None:
+        boss = self.boss_enemy()
+        if not boss:
+            return
+        width, _height = self.screen.get_size()
+        bar_w = self.ui(520)
+        bar_h = self.ui(16)
+        x = (width - bar_w) // 2
+        y = self.ui(22)
+        fill = int(bar_w * max(0, boss.hp) / boss.max_hp)
+        pygame.draw.rect(self.screen, (28, 10, 14), (x, y, bar_w, bar_h))
+        pygame.draw.rect(self.screen, self.theme.accent, (x, y, fill, bar_h))
+        pygame.draw.rect(self.screen, (190, 160, 115), (x, y, bar_w, bar_h), self.ui(1))
+        label = self.small_font.render(boss.name, True, (245, 235, 215))
+        self.screen.blit(label, label.get_rect(center=(width // 2, y - self.ui(9))))
 
     def draw_bar(
         self,
@@ -1557,6 +1944,49 @@ class Game:
                 text, (box.x + self.ui(20), box.y + self.ui(250) + i * self.ui(26))
             )
 
+    def draw_archetype_select(self) -> None:
+        width, height = self.screen.get_size()
+        title = self.big_font.render("Choose Your Archetype", True, (235, 220, 180))
+        self.screen.blit(title, title.get_rect(center=(width // 2, self.ui(145))))
+        subtitle = self.font.render(
+            "Each new run rolls a dungeon theme, modifier, boss, secrets, and loot.",
+            True,
+            (195, 190, 180),
+        )
+        self.screen.blit(subtitle, subtitle.get_rect(center=(width // 2, self.ui(205))))
+        card_w = self.ui(390)
+        card_h = self.ui(250)
+        gap = self.ui(32)
+        total_w = card_w * len(ARCHETYPES) + gap * (len(ARCHETYPES) - 1)
+        start_x = (width - total_w) // 2
+        y = self.ui(295)
+        for index, archetype in enumerate(ARCHETYPES):
+            x = start_x + index * (card_w + gap)
+            box = pygame.Rect(x, y, card_w, card_h)
+            pygame.draw.rect(self.screen, (18, 17, 22), box)
+            pygame.draw.rect(self.screen, (105, 90, 68), box, self.ui(2))
+            name = self.font.render(
+                f"{index + 1}. {archetype.name}", True, (235, 220, 180)
+            )
+            self.screen.blit(name, (x + self.ui(20), y + self.ui(22)))
+            desc = self.small_font.render(archetype.description, True, (190, 185, 175))
+            self.screen.blit(desc, (x + self.ui(20), y + self.ui(66)))
+            stats = [
+                f"HP {archetype.max_hp}  Mana {archetype.max_mana}",
+                f"Stamina {archetype.max_stamina}  Speed {archetype.speed:.2f}",
+                f"Melee +{archetype.melee_bonus}  Spell +{archetype.spell_bonus}  DR +{archetype.armor_bonus}",
+            ]
+            for line_index, stat in enumerate(stats):
+                text = self.small_font.render(stat, True, (220, 215, 200))
+                self.screen.blit(
+                    text,
+                    (x + self.ui(20), y + self.ui(118) + line_index * self.ui(32)),
+                )
+        prompt = self.font.render("Press 1-3 to begin", True, (235, 205, 120))
+        self.screen.blit(
+            prompt, prompt.get_rect(center=(width // 2, height - self.ui(150)))
+        )
+
     def draw_state_overlay(self) -> None:
         width, height = self.screen.get_size()
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
@@ -1564,11 +1994,11 @@ class Game:
         self.screen.blit(overlay, (0, 0))
         if self.state == "victory":
             title = "Dungeon Cleared"
-            subtitle = "You found the exit stairs. Press R to generate a new run."
+            subtitle = "The tyrant is dead and the stairs are open. Press R to choose a new run."
             color = (235, 205, 120)
         else:
             title = "You Died"
-            subtitle = "The dungeon claims another Warden. Press R to try again."
+            subtitle = f"The dungeon claims another {self.player.class_name}. Press R to choose again."
             color = (225, 75, 65)
         title_surface = self.big_font.render(title, True, color)
         subtitle_surface = self.font.render(subtitle, True, (230, 225, 210))

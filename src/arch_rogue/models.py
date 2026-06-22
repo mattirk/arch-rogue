@@ -11,6 +11,44 @@ if TYPE_CHECKING:
 Color = tuple[int, int, int]
 
 
+@dataclass(frozen=True)
+class Archetype:
+    name: str
+    description: str
+    max_hp: int
+    max_mana: int
+    max_stamina: int
+    speed: float
+    melee_bonus: int = 0
+    spell_bonus: int = 0
+    armor_bonus: int = 0
+
+
+@dataclass(frozen=True)
+class DungeonTheme:
+    name: str
+    subtitle: str
+    floor: Color
+    floor_edge: Color
+    wall_top: Color
+    wall_left: Color
+    wall_right: Color
+    wall_edge: Color
+    stair: Color
+    accent: Color
+
+
+@dataclass(frozen=True)
+class RunModifier:
+    name: str
+    description: str
+    enemy_hp_multiplier: float = 1.0
+    enemy_damage_bonus: int = 0
+    enemy_aggro_bonus: float = 0.0
+    loot_bonus: float = 0.0
+    trap_bonus: float = 0.0
+
+
 class Tile(IntEnum):
     WALL = 0
     FLOOR = 1
@@ -110,6 +148,15 @@ class Shrine:
 
 
 @dataclass
+class SecretCache:
+    x: float
+    y: float
+    kind: str
+    revealed: bool = False
+    opened: bool = False
+
+
+@dataclass
 class FloatingText:
     text: str
     x: float
@@ -173,6 +220,7 @@ class Enemy:
 class Player:
     x: float
     y: float
+    class_name: str = "Warden"
     max_hp: int = 110
     hp: int = 110
     max_mana: int = 45
@@ -180,6 +228,9 @@ class Player:
     max_stamina: int = 100
     stamina: float = 100
     speed: float = 4.6
+    melee_bonus: int = 0
+    spell_bonus: int = 0
+    armor_bonus: int = 0
     level: int = 1
     xp: int = 0
     next_xp: int = 60
@@ -201,12 +252,18 @@ class Player:
     def melee_damage(self) -> int:
         weapon = self.equipment.get("weapon")
         unique_bonus = 4 if weapon and weapon.unique_effect == "embers on hit" else 0
-        return 12 + self.level * 2 + unique_bonus + (weapon.power if weapon else 0)
+        return (
+            12
+            + self.level * 2
+            + self.melee_bonus
+            + unique_bonus
+            + (weapon.power if weapon else 0)
+        )
 
     def armor(self) -> int:
         armor = self.equipment.get("armor")
         unique_bonus = 2 if armor and armor.unique_effect == "steadfast bulwark" else 0
-        return unique_bonus + (armor.defense if armor else 0)
+        return self.armor_bonus + unique_bonus + (armor.defense if armor else 0)
 
     def gain_xp(self, amount: int) -> bool:
         self.xp += amount
