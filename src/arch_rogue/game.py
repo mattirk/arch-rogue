@@ -64,11 +64,22 @@ from .models import (
     RunStats,
     SecretCache,
     Shrine,
+    StoryGuest,
+    StoryState,
     Trap,
 )
 from .rendering import RenderingMixin
 from .save_system import SaveLoadMixin
 from .sprites import PixelSpriteAtlas
+from .story import (
+    StoryEngine,
+    clamp_story_effect,
+    record_story_choice,
+    story_beat_for_depth,
+    story_beat_index_for_depth,
+    story_effect,
+    story_guest_from_beat,
+)
 
 
 class Game(SaveLoadMixin, RenderingMixin):
@@ -121,6 +132,9 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.exit_previous_state = "title"
         self.run_music_seed = 0
         self.run_music_theme = ""
+        self.story_seed = 0
+        self.story_state: StoryState | None = None
+        self.story_guests: list[StoryGuest] = []
         self.impact_effects: list[ImpactEffect] = []
         self.audio = AudioSystem()
         self.audio_available = self.audio.initialize(headless)
@@ -306,6 +320,14 @@ class Game(SaveLoadMixin, RenderingMixin):
                 "The tyrant is dead; descend to claim victory.",
                 self.theme.stair,
             )
+        guest = self.nearby_story_guest()
+        if guest:
+            return (
+                "1-3",
+                f"{guest.name}, {guest.role}",
+                self.story_choices_hint(guest),
+                guest.color,
+            )
         secret = self.nearby_secret()
         if secret:
             hint = SECRET_HINTS.get(
@@ -346,6 +368,175 @@ class Game(SaveLoadMixin, RenderingMixin):
     def save_exists(self) -> bool:
         return self.save_path.exists()
 
+    def theme_by_name(self, name: str) -> Any:
+        return next(
+            (theme for theme in DUNGEON_THEMES if theme.name == name), self.theme
+        )
+
+    def start_story_mode(self) -> None:
+        self.story_seed = self.rng.randrange(1, 2**31)
+        self.story_state = StoryEngine.generate(
+            self.story_seed,
+            self.selected_archetype.name,
+            self.run_number,
+            self.theme.name,
+            self.run_modifier.name,
+        )
+        self.story_guests = []
+        self._apply_story_theme_for_current_depth()
+
+    def current_story_beat(self) -> Any:
+        return story_beat_for_depth(self.story_state, self.current_depth)
+
+    def story_effect_value(
+        self, key: str, minimum: float = -1.0, maximum: float = 1.0
+    ) -> float:
+        return clamp_story_effect(story_effect(self.story_state, key), minimum, maximum)
+
+    def story_header_line(self) -> str:
+        if self.story_state is None:
+            return "Story: unwritten"
+        beat = self.current_story_beat()
+        if beat is None:
+            return f"Story: {self.story_state.title}"
+        status = "resolved" if beat.resolved_choice else "unresolved"
+        return f"Story: {self.story_state.title} · {beat.title} ({status})"
+
+    def story_choices_hint(self, guest: StoryGuest) -> str:
+        entries = [
+            f"{index + 1} {choice.label}"
+            for index, choice in enumerate(guest.choices[:3])
+        ]
+        return " · ".join(entries) + " · E hear plea"
+
+    def _apply_story_theme_for_current_depth(self) -> None:
+        beat = self.current_story_beat()
+        if beat is not None:
+            self.theme = self.theme_by_name(beat.theme_name)
+            self.run_music_theme = self.theme.name
+
+    def _populate_story_guest(self) -> None:
+        if self.story_state is None:
+            return
+        beat_index = story_beat_index_for_depth(self.story_state, self.current_depth)
+        if beat_index is None:
+            return
+        beat = self.story_state.beats[beat_index]
+        if beat.resolved_choice:
+            return
+        if any(
+            guest.depth == self.current_depth and guest.beat_index == beat_index
+            for guest in self.story_guests
+        ):
+            return
+        available_rooms = self.dungeon.rooms[1:-1] or self.dungeon.rooms[:1]
+        if not available_rooms:
+            return
+        room = available_rooms[(self.current_depth + beat_index) % len(available_rooms)]
+        x, y = room.random_point(self.rng)
+        self.story_guests.append(
+            story_guest_from_beat(self.story_state, beat_index, x, y)
+        )
+
+    def nearby_story_guest(self) -> StoryGuest | None:
+        nearby = [
+            guest
+            for guest in self.story_guests
+            if not guest.resolved
+            and guest.depth == self.current_depth
+            and math.hypot(guest.x - self.player.x, guest.y - self.player.y) < 1.25
+        ]
+        return min(
+            nearby,
+            key=lambda guest: math.hypot(
+                guest.x - self.player.x, guest.y - self.player.y
+            ),
+            default=None,
+        )
+
+    def mark_story_guest_met(self, guest: StoryGuest) -> None:
+        if not guest.met:
+            guest.met = True
+            self.run_stats.guests_met += 1
+
+    def talk_to_story_guest(self, guest: StoryGuest) -> None:
+        self.mark_story_guest_met(guest)
+        self.floaters.append(
+            FloatingText(
+                f"{guest.role}: choose 1-3",
+                guest.x,
+                guest.y - 0.55,
+                guest.color,
+                ttl=1.4,
+            )
+        )
+        self.floaters.append(
+            FloatingText(
+                guest.motive[:42],
+                guest.x,
+                guest.y - 0.2,
+                (225, 215, 190),
+                ttl=1.4,
+            )
+        )
+
+    def resolve_story_choice(self, guest: StoryGuest, choice_index: int) -> bool:
+        if guest.resolved or not (0 <= choice_index < len(guest.choices)):
+            return False
+        choice = guest.choices[choice_index]
+        self.mark_story_guest_met(guest)
+        guest.resolved = True
+        guest.resolved_choice = choice.key
+        if self.story_state is not None:
+            record_story_choice(self.story_state, guest.depth, choice)
+        self.run_stats.story_choices += 1
+        self._apply_story_choice_reward(guest, choice.key)
+        self.floaters.append(
+            FloatingText(
+                f"{choice.label}: story changed",
+                guest.x,
+                guest.y - 0.65,
+                guest.color,
+                ttl=1.5,
+            )
+        )
+        self.add_impact(
+            guest.x, guest.y, guest.color, ttl=0.58, radius=0.7, kind="burst"
+        )
+        self.play_sfx("shrine")
+        self.save_run()
+        return True
+
+    def _apply_story_choice_reward(self, guest: StoryGuest, choice_key: str) -> None:
+        if choice_key == "aid":
+            self.player.hp = min(
+                self.player.max_hp, self.player.hp + max(10, self.player.max_hp // 8)
+            )
+            self.player.mana = min(
+                self.player.max_mana,
+                self.player.mana + max(6, self.player.max_mana // 8),
+            )
+            if self.rng.random() < 0.45:
+                self.shrines.append(Shrine(guest.x, guest.y, "Insight Shrine"))
+        elif choice_key == "bargain":
+            self.player.hp = max(1, self.player.hp - max(5, self.player.max_hp // 12))
+            self.items.append(
+                self._make_equipment(
+                    self.rng.choice(("weapon", "armor")),
+                    "Rare",
+                    guest.x,
+                    guest.y,
+                )
+            )
+        elif choice_key == "defy":
+            leveled = self.player.gain_xp(18 + self.current_depth * 2)
+            if leveled:
+                self.grant_skill_upgrade(reason="story defiance")
+            spawn_x, spawn_y = self.drop_position_near(guest.x, guest.y)
+            enemy = self._make_enemy(spawn_x, spawn_y, final_room=True)
+            enemy.name = f"Story-Marked {enemy.name}"
+            self.enemies.append(enemy)
+
     def restart(self, archetype: Archetype | None = None) -> None:
         self.run_number += 1
         if archetype:
@@ -355,6 +546,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.run_modifier = self.rng.choice(RUN_MODIFIERS)
         self.theme = self.rng.choice(DUNGEON_THEMES)
         self.run_music_theme = self.theme.name
+        self.start_story_mode()
         self.tile_cache.clear()
         self.dungeon = Dungeon(self.rng)
         start_x, start_y = self.dungeon.rooms[0].center
@@ -380,6 +572,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.traps: list[Trap] = []
         self.shrines: list[Shrine] = []
         self.secrets: list[SecretCache] = []
+        self.story_guests = []
         self.floaters: list[FloatingText] = []
         self.slashes: list[SlashEffect] = []
         self.impact_effects = []
@@ -403,6 +596,7 @@ class Game(SaveLoadMixin, RenderingMixin):
             return
         self.current_depth += 1
         self.theme = self.rng.choice(DUNGEON_THEMES)
+        self._apply_story_theme_for_current_depth()
         self.tile_cache.clear()
         self.dungeon = Dungeon(self.rng)
         start_x, start_y = self.dungeon.rooms[0].center
@@ -425,6 +619,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.traps = []
         self.shrines = []
         self.secrets = []
+        self.story_guests = []
         self.floaters = []
         self.slashes = []
         self.impact_effects = []
@@ -474,6 +669,11 @@ class Game(SaveLoadMixin, RenderingMixin):
 
     def _populate_dungeon(self) -> None:
         final_room_index = len(self.dungeon.rooms) - 1
+        enemy_pressure = self.story_effect_value("enemy_pressure", -0.35, 0.45)
+        loot_bonus = self.story_effect_value("loot_bonus", -0.2, 0.35)
+        trap_bonus = self.story_effect_value("trap_bonus", -0.1, 0.28)
+        shrine_bonus = self.story_effect_value("shrine_bonus", -0.1, 0.28)
+        secret_bonus = self.story_effect_value("secret_bonus", -0.1, 0.28)
         for room_index, room in enumerate(self.dungeon.rooms[1:], start=1):
             is_final_room = room_index == final_room_index
             count = self.rng.randrange(1, 4)
@@ -481,6 +681,10 @@ class Game(SaveLoadMixin, RenderingMixin):
                 count = max(1, count - 1)
             elif self.current_depth >= 7:
                 count += 1
+            if enemy_pressure > 0 and self.rng.random() < enemy_pressure:
+                count += 1
+            elif enemy_pressure < 0 and self.rng.random() < abs(enemy_pressure):
+                count = max(1, count - 1)
             if is_final_room:
                 count += 1
             for _ in range(count):
@@ -494,7 +698,10 @@ class Game(SaveLoadMixin, RenderingMixin):
                 bx, by = room.center
                 self.enemies.append(self._make_boss(bx + 0.5, by + 0.5))
 
-            if self.rng.random() < max(0.25, 0.68 + self.run_modifier.loot_bonus):
+            loot_chance = max(
+                0.18, min(0.88, 0.68 + self.run_modifier.loot_bonus + loot_bonus)
+            )
+            if self.rng.random() < loot_chance:
                 self.items.append(self._make_loot(*room.random_point(self.rng)))
             if (
                 room_index > 3
@@ -503,9 +710,8 @@ class Game(SaveLoadMixin, RenderingMixin):
             ):
                 mx, my = room.random_point(self.rng)
                 self.enemies.append(self._make_miniboss(mx, my))
-            if (
-                room_index > 1
-                and self.rng.random() < 0.24 + self.run_modifier.trap_bonus
+            if room_index > 1 and self.rng.random() < max(
+                0.04, min(0.58, 0.24 + self.run_modifier.trap_bonus + trap_bonus)
             ):
                 tx, ty = room.random_point(self.rng)
                 kind, min_damage, max_damage = self.rng.choice(TRAP_DEFINITIONS)
@@ -518,16 +724,24 @@ class Game(SaveLoadMixin, RenderingMixin):
                         self.rng.randrange(min_damage, max_damage + 1) + depth_damage,
                     )
                 )
-            shrine_chance = 0.18 + (
-                0.08 if self.run_modifier.name == "Trap-Laced" else 0.0
+            shrine_chance = (
+                0.18
+                + (0.08 if self.run_modifier.name == "Trap-Laced" else 0.0)
+                + shrine_bonus
             )
-            if room_index > 2 and self.rng.random() < shrine_chance:
+            if room_index > 2 and self.rng.random() < max(
+                0.04, min(0.46, shrine_chance)
+            ):
                 sx, sy = room.random_point(self.rng)
                 self.shrines.append(Shrine(sx, sy, self.rng.choice(SHRINE_TYPES)))
             if (
                 room_index > 2
                 and not is_final_room
-                and self.rng.random() < 0.16 + self.run_modifier.loot_bonus
+                and self.rng.random()
+                < max(
+                    0.03,
+                    min(0.42, 0.16 + self.run_modifier.loot_bonus + secret_bonus),
+                )
             ):
                 cx, cy = room.random_point(self.rng)
                 self.secrets.append(
@@ -538,7 +752,9 @@ class Game(SaveLoadMixin, RenderingMixin):
                     )
                 )
 
-        if self.rng.random() < 0.45 + self.run_modifier.loot_bonus:
+        if self.rng.random() < max(
+            0.12, min(0.72, 0.45 + self.run_modifier.loot_bonus + secret_bonus)
+        ):
             room = self.rng.choice(self.dungeon.rooms[2:-1])
             cx, cy = room.random_point(self.rng)
             self.secrets.append(SecretCache(cx, cy, "Lost Cartographer's Stash"))
@@ -547,20 +763,36 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.items.append(
             Item("Minor Healing Potion", "potion", heal=35, rarity="Common", x=sx, y=sy)
         )
+        self._populate_story_guest()
 
     def _apply_run_modifier(self, enemy: Enemy) -> Enemy:
         depth_multiplier = 1.0 + max(0, self.current_depth - 1) * 0.045
+        story_pressure = self.story_effect_value("enemy_pressure", -0.25, 0.35)
+        story_multiplier = 1.0 + max(-0.12, min(0.22, story_pressure * 0.55))
+        if enemy.kind == "boss":
+            story_multiplier += self.story_effect_value("boss_pressure", 0.0, 0.35)
         enemy.max_hp = max(
             1,
             int(
-                enemy.max_hp * self.run_modifier.enemy_hp_multiplier * depth_multiplier
+                enemy.max_hp
+                * self.run_modifier.enemy_hp_multiplier
+                * depth_multiplier
+                * story_multiplier
             ),
         )
         enemy.hp = enemy.max_hp
         enemy.damage += (
             self.run_modifier.enemy_damage_bonus + max(0, self.current_depth - 4) // 2
         )
-        enemy.aggro_range += self.run_modifier.enemy_aggro_bonus
+        if story_pressure > 0:
+            enemy.damage += int(story_pressure * 8)
+        if enemy.kind == "boss":
+            enemy.damage += int(
+                self.story_effect_value("boss_pressure", 0.0, 0.35) * 10
+            )
+        enemy.aggro_range += self.run_modifier.enemy_aggro_bonus + max(
+            0.0, story_pressure
+        )
         return enemy
 
     def _weighted_enemy_definition(self, final_room: bool = False) -> EnemyDefinition:
@@ -653,9 +885,12 @@ class Game(SaveLoadMixin, RenderingMixin):
             "Moonlit Aquifer": "Moon-Drowned Gate Tyrant",
             "Thornbound Vault": "Thorn-Crowned Gate Tyrant",
         }
+        boss_name = boss_titles.get(self.theme.name, "Dread Gate Tyrant")
+        if self.story_state is not None:
+            boss_name = f"{self.story_state.antagonist} {boss_name}"
         return self._apply_run_modifier(
             Enemy(
-                boss_titles.get(self.theme.name, "Dread Gate Tyrant"),
+                boss_name,
                 "boss",
                 x,
                 y,
@@ -683,7 +918,9 @@ class Game(SaveLoadMixin, RenderingMixin):
             )
         if roll < 0.42:
             return Item("Scroll of Identify", "identify", rarity="Common", x=x, y=y)
-        if roll > 0.96 - self.run_modifier.loot_bonus:
+        if roll > 0.96 - self.run_modifier.loot_bonus - self.story_effect_value(
+            "loot_bonus", 0.0, 0.25
+        ):
             return self._make_unique(x, y)
         slot = "weapon" if roll < 0.70 else "armor"
         rarity = "Rare" if self.rng.random() < 0.34 else "Magic"
@@ -715,8 +952,10 @@ class Game(SaveLoadMixin, RenderingMixin):
         self._apply_affixes(
             item, 0 if rarity == "Common" else 1 if rarity == "Magic" else 2
         )
-        curse_chance = 0.08 + (
-            0.08 if self.run_modifier.name == "Cursed Bargains" else 0.0
+        curse_chance = (
+            0.08
+            + (0.08 if self.run_modifier.name == "Cursed Bargains" else 0.0)
+            + self.story_effect_value("curse_bonus", 0.0, 0.18)
         )
         if rarity != "Common" and self.rng.random() < curse_chance:
             item.cursed = True
@@ -950,7 +1189,10 @@ class Game(SaveLoadMixin, RenderingMixin):
                     self.player_dash()
                 elif pygame.K_1 <= event.key <= pygame.K_9 and self.state == "playing":
                     index = event.key - pygame.K_1
-                    if self.inventory_open and event.mod & pygame.KMOD_SHIFT:
+                    guest = None if self.inventory_open else self.nearby_story_guest()
+                    if guest and index < len(guest.choices):
+                        self.resolve_story_choice(guest, index)
+                    elif self.inventory_open and event.mod & pygame.KMOD_SHIFT:
                         self.drop_inventory_slot(index)
                     else:
                         self.use_inventory_slot(index)
@@ -1696,7 +1938,10 @@ class Game(SaveLoadMixin, RenderingMixin):
             )
         elif enemy.elite_modifier:
             self.run_stats.elites_killed += 1
-        if self.player.gain_xp(enemy.xp):
+        xp_gain = max(
+            1, int(enemy.xp * (1.0 + self.story_effect_value("xp_bonus", 0.0, 0.35)))
+        )
+        if self.player.gain_xp(xp_gain):
             upgraded = self.grant_skill_upgrade(reason="level up")
             self.floaters.append(
                 FloatingText(
@@ -1762,6 +2007,10 @@ class Game(SaveLoadMixin, RenderingMixin):
             self.audio.stop_music()
             self.play_sfx("victory")
             self.delete_save()
+            return
+        guest = self.nearby_story_guest()
+        if guest:
+            self.talk_to_story_guest(guest)
             return
         secret = self.nearby_secret()
         if secret:

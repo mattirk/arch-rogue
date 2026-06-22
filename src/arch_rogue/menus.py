@@ -315,7 +315,7 @@ class MenuRenderer:
     def draw_title_menu(self) -> None:
         panel, content = self.menu_frame(
             f"Arch Rogue {__version__}",
-            "Milestone 1.2 · systems polish, readable loot, sharper combat feedback",
+            "Milestone 2.0 · procedural story mode, guests, and choice-shaped runs",
         )
         resume_value = "Ready" if self.g.save_exists() else "None"
         rows: list[MenuRow] = [
@@ -329,7 +329,7 @@ class MenuRenderer:
             content.x, content.bottom - self.u(72), content.width, self.u(60)
         )
         self.draw_wrapped_text(
-            "Choose an archetype, read the dungeon at a glance, build around quick loot choices, and break the gate tyrant's seal.",
+            "Choose an archetype, follow a seeded dark-fantasy storyline, meet story guests, shape future floors with choices, and break the gate tyrant's seal.",
             self.g.small_font,
             self.MUTED,
             note_rect,
@@ -380,14 +380,15 @@ class MenuRenderer:
 
     def draw_about_screen(self) -> None:
         panel, content = self.menu_frame(
-            "About / Onboarding", "Arch Rogue milestone 1.2"
+            "About / Onboarding", "Arch Rogue milestone 2.0"
         )
         paragraphs = [
-            f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs with milestone 1.2 polish.",
-            "Goal: descend through ten depths, survive escalating encounters, defeat the final-depth gate tyrant, then use the stairs to complete the run.",
+            f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs and a new procedural story mode.",
+            "Goal: descend through ten depths, survive escalating encounters, resolve story guest dilemmas, defeat the final-depth gate tyrant, then use the stairs to complete the run.",
             "Combat: hold left mouse to move and aim. Space uses your class melee skill, F casts your bolt skill, C uses your nova skill, and Shift uses your movement skill.",
+            "Story: every run generates an archetype-aligned backstory, factions, relic, guests, and floor beats. Near a story guest, press E to hear their plea or 1-3 to choose Aid, Bargain, or Defy.",
             "Loot and discovery: press E for pickups, shrines, secrets, and stairs. Interaction prompts explain risks, and inventory rows summarize upgrades, curses, and comparisons.",
-            "Credits: design, code, procedural art, and procedural audio by the Arch Rogue project.",
+            "Credits: design, code, procedural art, procedural audio, and procedural story corpus by the Arch Rogue project.",
         ]
         y = content.y
         gap = max(self.u(10), 10)
@@ -426,6 +427,7 @@ class MenuRenderer:
             "Goal: defeat the gate tyrant in the final room, then press E on the stairs.",
             "Movement: hold left mouse to move and aim. Arrow keys can aim without moving.",
             "Class skills: level ups, Oath Shrines, and skill altars can add class-specific upgrades.",
+            "Story guests: press E to hear their plea; press 1 Aid, 2 Bargain, or 3 Defy to shape future floors.",
             "Elites/minibosses: named foes have brighter telegraphs, more danger, and better rewards.",
             "Resources: stamina powers melee and movement skills; mana powers bolt and nova skills.",
             "Inventory: E picks up; I opens inventory; 1-9 uses/equips; Shift+1-9 drops; Tab/S sorts.",

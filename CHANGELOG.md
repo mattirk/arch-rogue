@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.0.0 — Story Mode: Going Full RPG
+
+Milestone 2.0 adds a deterministic procedural story layer that binds player backstory, guests, choices, and dungeon generation together without replacing the compact run loop.
+
+### Added
+
+- Dark fantasy story corpus with archetype backstories, factions, relics, guest templates, dilemmas, and dungeon-location motifs.
+- Deterministic `StoryEngine` that generates a ten-depth storyline from the story seed, archetype, run modifier, and starting dungeon theme.
+- Story guests placed in dungeon floors with `Aid`, `Bargain`, and `Defy` choices available through nearby `1`-`3` input.
+- Choice effects that alter future dungeon generation: enemy pressure, loot odds, trap density, shrine/secret chances, curse pressure, XP, and boss pressure.
+- Story-aware run header, help/about copy, summary stats, and in-world guest rendering.
+- Version 4 run saves that persist story state, story guests, effects, logs, and choices while generating fallback stories for older compatible saves.
+- Regression coverage for story corpus completeness, deterministic generation, guest interaction, choice-effect persistence, story-aligned floor themes, and UI rendering.
+
+### Changed
+
+- Package metadata, menus, README, and save release strings now target `2.0.0`.
+- Final boss names now reflect the active generated story faction.
+
 ## 1.2.0 — Systems Polish, Presentation, and Long-Term Structure
 
 Milestone 1.2 sharpens usability, presentation, and maintainability while preserving the fast-starting 10-depth run loop.

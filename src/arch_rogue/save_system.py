@@ -9,6 +9,13 @@ from . import __version__
 from .content import ARCHETYPES, DUNGEON_THEMES, RUN_MODIFIERS
 from .dungeon import Dungeon
 from .models import Enemy, Item, Player, Room, RunStats, SecretCache, Shrine, Tile, Trap
+from .story import (
+    StoryEngine,
+    story_guest_from_dict,
+    story_guest_to_dict,
+    story_state_from_dict,
+    story_state_to_dict,
+)
 
 
 class SaveLoadMixin:
@@ -52,12 +59,14 @@ class SaveLoadMixin:
 
     def serialize_run_state(self) -> dict[str, Any]:
         return {
-            "version": 3,
+            "version": 4,
             "release": __version__,
             "run_number": self.run_number,
             "current_depth": self.current_depth,
             "run_music_seed": self.run_music_seed,
             "run_music_theme": self.run_music_theme,
+            "story_seed": self.story_seed,
+            "story_state": story_state_to_dict(self.story_state),
             "elapsed": self.elapsed,
             "selected_archetype": self.selected_archetype.name,
             "theme": self.theme.name,
@@ -102,6 +111,7 @@ class SaveLoadMixin:
             "traps": [trap.__dict__ for trap in self.traps],
             "shrines": [shrine.__dict__ for shrine in self.shrines],
             "secrets": [secret.__dict__ for secret in self.secrets],
+            "story_guests": [story_guest_to_dict(guest) for guest in self.story_guests],
             "run_stats": self.run_stats.__dict__,
         }
 
@@ -116,6 +126,12 @@ class SaveLoadMixin:
         )
         self.elapsed = float(data.get("elapsed", 0.0))
         self.run_music_theme = str(data.get("run_music_theme", data.get("theme", "")))
+        self.story_seed = int(
+            data.get(
+                "story_seed",
+                max(1, self.run_music_seed * 17 + self.run_number * 7919),
+            )
+        )
         archetype_name = str(data.get("selected_archetype", ARCHETYPES[0].name))
         self.selected_archetype = next(
             (archetype for archetype in ARCHETYPES if archetype.name == archetype_name),
@@ -131,6 +147,15 @@ class SaveLoadMixin:
             (modifier for modifier in RUN_MODIFIERS if modifier.name == modifier_name),
             RUN_MODIFIERS[0],
         )
+        self.story_state = story_state_from_dict(data.get("story_state"))
+        if self.story_state is None:
+            self.story_state = StoryEngine.generate(
+                self.story_seed,
+                self.selected_archetype.name,
+                self.run_number,
+                self.theme.name,
+                self.run_modifier.name,
+            )
 
         dungeon_data = data["dungeon"]
         self.dungeon = Dungeon(self.rng)
@@ -192,6 +217,9 @@ class SaveLoadMixin:
         self.traps = [Trap(**trap) for trap in data.get("traps", [])]
         self.shrines = [Shrine(**shrine) for shrine in data.get("shrines", [])]
         self.secrets = [SecretCache(**secret) for secret in data.get("secrets", [])]
+        self.story_guests = [
+            story_guest_from_dict(guest) for guest in data.get("story_guests", [])
+        ]
         self.projectiles = []
         self.floaters = []
         self.slashes = []
@@ -222,7 +250,7 @@ class SaveLoadMixin:
         self.last_load_error = ""
         try:
             data = json.loads(self.save_path.read_text(encoding="utf-8"))
-            if int(data.get("version", 0)) not in (1, 2, 3):
+            if int(data.get("version", 0)) not in (1, 2, 3, 4):
                 self.last_load_error = (
                     "Saved run was created by an incompatible version."
                 )

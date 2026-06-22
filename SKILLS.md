@@ -27,9 +27,10 @@ Keep the prototype architecture modular but intentionally small:
 - `src/arch_rogue/rendering.py` owns the `RenderingMixin` for dungeon, actor, effect, HUD, and menu-overlay drawing behavior used by `Game`.
 - `src/arch_rogue/audio.py` owns mixer setup, procedural sound effects, and per-run procedural NES-style background music generation.
 - `src/arch_rogue/save_system.py` owns the `SaveLoadMixin` for item serialization, run-state serialization/restoration, and save-file lifecycle behavior used by `Game`.
+- `src/arch_rogue/story.py` owns deterministic story generation, story-state serialization helpers, guest construction, and choice-effect aggregation used by `Game` and saves.
 - `src/arch_rogue/constants.py` owns shared gameplay/rendering constants and lightweight aliases.
-- `src/arch_rogue/content.py` owns prototype content tables such as archetypes, dungeon themes, run modifiers, enemy definitions, equipment definitions, traps, shrines, and secrets.
-- `src/arch_rogue/models.py` owns lightweight gameplay data models and shared simple types such as actors, items, projectiles, rooms, and tiles.
+- `src/arch_rogue/content.py` owns prototype content tables such as archetypes, dungeon themes, run modifiers, enemy definitions, equipment definitions, traps, shrines, secrets, and the dark fantasy story corpus.
+- `src/arch_rogue/models.py` owns lightweight gameplay data models and shared simple types such as actors, items, projectiles, rooms, tiles, story beats, and guests.
 - `src/arch_rogue/dungeon.py` owns procedural map generation and dungeon collision/floor queries.
 - `src/arch_rogue/sprites.py` owns procedural pixel-art sprite construction.
 - `src/arch_rogue/menus.py` owns reusable menu and overlay rendering helpers.

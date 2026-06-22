@@ -1,20 +1,19 @@
 # Arch Rogue
 
-Arch Rogue is a 1.2 milestone release of a modernized Rogue-inspired isometric action RPG built with Python and Pygame CE.
+Arch Rogue is a 2.0 milestone release of a modernized Rogue-inspired isometric action RPG built with Python and Pygame CE.
 
-Explore a 10-depth procedural dungeon, choose one of five distinct archetypes, identify loot, survive traps and shrines, defeat the final gate tyrant, and start a fresh run after victory or death.
+Explore a 10-depth procedural dungeon, choose one of five distinct archetypes, follow a seeded dark-fantasy storyline, meet story guests, make choices that reshape future floors, identify loot, survive traps and shrines, defeat the final gate tyrant, and start a fresh run after victory or death.
 
-## 1.2 Release Highlights
+## 2.0 Release Highlights
 
-- Presentation polish pass with atmospheric menu backdrops, stronger panel treatment, rarity icons, impact bursts, screen damage flash, boss stingers, shrine/secret/trap cues, and clearer death/victory overlays.
-- Inventory readability improvements: item rows now show rarity markers, comparison summaries, consumable safeguards, drop/sort controls, equipped gear, and the latest acquired skill upgrade.
-- Contextual interaction prompts explain pickups, shrines, secrets, traps, stairs, sealed gates, and cursed bargains without interrupting combat flow.
-- Combat readability pass with clearer projectile colors, melee/impact effects, low-health warnings, boss/elite tell markers, and more legible hit feedback.
-- Menu and UX refinements across title/options/about/help/archetype/inventory screens, with more compact copy and a cohesive dark fantasy look.
-- Static lightweight menu ambience remains fixed and is synchronized after the first drawn frame so startup stays responsive when music is enabled.
-- Save compatibility is preserved for older compatible run saves while 1.2 writes versioned run-state metadata.
-- Data-driven content direction expanded with shared rarity profiles and event hint tables for items, shrines, secrets, and traps.
-- Regression coverage now checks 1.2 save metadata, interaction hints, visual effects cleanup, inventory summaries, UI renderability, and old-save loading.
+- Procedural story mode generates an archetype-aligned backstory, faction conflict, rival faction, cursed relic, ten floor beats, and one story guest dilemma per depth.
+- A dark fantasy story corpus now drives backstories, factions, relics, guests, dilemmas, and dungeon-location motifs.
+- Story guests appear in-world as non-hostile NPCs. Press `E` to hear their plea, then choose `1` Aid, `2` Bargain, or `3` Defy.
+- Story choices persist in the run log and affect future dungeon generation: enemy pressure, loot richness, trap density, shrine/secret odds, curse pressure, XP, and final boss strength.
+- Dungeon themes now align to the generated storyline while still preserving procedural layouts, loot, enemies, shrines, traps, and secrets.
+- Story state and guests are saved in versioned run saves, while older compatible saves still load with a generated fallback storyline.
+- Presentation and UI copy now surface story status in the run header, help overlay, and summary screens.
+- Regression coverage now checks deterministic story generation, story guest interaction, choice effects, save/load persistence, and renderability.
 
 ## Requirements
 
@@ -53,8 +52,9 @@ arch-rogue
 | `F` | Cast ranged bolt |
 | `C` | Cast arc nova |
 | `Shift` | Dash toward aim direction |
-| `E` | Pick up nearby loot / use shrine / open secret / use exit stairs |
+| `E` | Pick up nearby loot / use shrine / open secret / use exit stairs / hear a nearby story guest |
 | `I` | Toggle inventory |
+| `1` / `2` / `3` near story guest | Choose Aid / Bargain / Defy, shaping future story and dungeon generation |
 | `1`-`9` | Equip/use inventory item shown in that slot |
 | `Tab` / `S` while inventory is open | Cycle/sort inventory by type, rarity, or power |
 | `Shift` + `1`-`9` while inventory is open | Drop the matching inventory item near the player |
@@ -72,20 +72,21 @@ arch-rogue
 
 ## Goal
 
-Explore 10 dungeon depths, survive enemies and traps, identify and equip loot, use shrines wisely, and reach the exit stairs. Press `E` on stairs to descend. On depth 10, defeat the gate tyrant before using the stairs to complete the run.
+Explore 10 dungeon depths, survive enemies and traps, identify and equip loot, use shrines wisely, resolve or ignore story guest dilemmas, and reach the exit stairs. Press `E` on stairs to descend. On depth 10, defeat the story-marked gate tyrant before using the stairs to complete the run.
 
 In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from the title screen. Death and victory clear the saved run. Options are saved to `~/.arch_rogue_options.json`.
 
-## Known Issues in 1.2
+## Known Issues in 2.0
 
+- Story mode is procedural text and systemic choice pressure; there is no bespoke quest cutscene or dialogue tree asset pipeline yet.
 - Run music and sound effects are still lightweight procedural/static cues; there is no hand-authored soundtrack asset pipeline yet.
 - Controls are keyboard/mouse only; gamepad support is not implemented.
-- Visuals and audio remain procedural prototype assets, now tuned for a more cohesive milestone look rather than final art quality.
+- Visuals and audio remain procedural prototype assets, now tuned for a cohesive milestone look rather than final art quality.
 - Save files are local JSON and are not cloud-synced.
 
 ## Credits
 
-Design, code, procedural art, and procedural audio by the Arch Rogue project. Built with Python and [Pygame CE](https://pyga.me/).
+Design, code, procedural story corpus, procedural art, and procedural audio by the Arch Rogue project. Built with Python and [Pygame CE](https://pyga.me/).
 
 ## Changelog
 

@@ -39,7 +39,7 @@ class SystemsPolish12Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
-                self.assertEqual(arch_rogue.__version__, "1.2.0")
+                self.assertEqual(arch_rogue.__version__, "2.0.0")
                 self.assertIn("Cursed", RARITY_PROFILES)
                 self.assertIn("Twilight Shrine", SHRINE_HINTS)
                 self.assertIn("Moonlit Bargain", SECRET_HINTS)
@@ -47,8 +47,8 @@ class SystemsPolish12Tests(unittest.TestCase):
 
                 self.assertTrue(game.save_run())
                 saved = json.loads(game.save_path.read_text(encoding="utf-8"))
-                self.assertEqual(saved["version"], 3)
-                self.assertEqual(saved["release"], "1.2.0")
+                self.assertEqual(saved["version"], 4)
+                self.assertEqual(saved["release"], "2.0.0")
             finally:
                 pygame.quit()
 

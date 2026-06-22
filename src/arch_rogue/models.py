@@ -88,6 +88,8 @@ class RunStats:
     elites_killed: int = 0
     minibosses_killed: int = 0
     upgrades_chosen: int = 0
+    story_choices: int = 0
+    guests_met: int = 0
 
 
 class Tile(IntEnum):
@@ -198,6 +200,67 @@ class SecretCache:
     kind: str
     revealed: bool = False
     opened: bool = False
+
+
+@dataclass(frozen=True)
+class StoryChoice:
+    key: str
+    label: str
+    intent: str
+    outcome: str
+    effects: dict[str, float] = field(default_factory=dict)
+    flags: list[str] = field(default_factory=list)
+
+
+@dataclass
+class StoryBeat:
+    depth: int
+    title: str
+    summary: str
+    theme_name: str
+    guest_name: str
+    guest_role: str
+    guest_motive: str
+    dialogue: str
+    choices: list[StoryChoice]
+    resolved_choice: str = ""
+    outcome: str = ""
+
+
+@dataclass
+class StoryState:
+    seed: int
+    title: str
+    player_backstory: str
+    objective: str
+    antagonist: str
+    faction: str
+    rival_faction: str
+    relic_name: str
+    relic_form: str
+    relic_temptation: str
+    beats: list[StoryBeat]
+    accent: Color = (190, 150, 245)
+    flags: list[str] = field(default_factory=list)
+    effects: dict[str, float] = field(default_factory=dict)
+    log: list[str] = field(default_factory=list)
+
+
+@dataclass
+class StoryGuest:
+    x: float
+    y: float
+    depth: int
+    beat_index: int
+    name: str
+    role: str
+    motive: str
+    dialogue: str
+    choices: list[StoryChoice]
+    color: Color = (190, 150, 245)
+    resolved: bool = False
+    resolved_choice: str = ""
+    met: bool = False
 
 
 @dataclass

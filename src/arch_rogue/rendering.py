@@ -17,6 +17,7 @@ from .models import (
     Projectile,
     SecretCache,
     Shrine,
+    StoryGuest,
     Tile,
     Trap,
 )
@@ -357,6 +358,8 @@ class RenderingMixin:
         for secret in self.secrets:
             if secret.revealed and not secret.opened:
                 drawables.append((secret.x + secret.y, "secret", secret))
+        for guest in self.story_guests:
+            drawables.append((guest.x + guest.y, "story_guest", guest))
         for projectile in self.projectiles:
             drawables.append((projectile.x + projectile.y, "projectile", projectile))
         for enemy in self.enemies:
@@ -379,6 +382,8 @@ class RenderingMixin:
                 self.draw_shrine(cast(Shrine, obj))
             elif kind == "secret":
                 self.draw_secret(cast(SecretCache, obj))
+            elif kind == "story_guest":
+                self.draw_story_guest(cast(StoryGuest, obj))
             elif kind == "projectile":
                 self.draw_projectile(cast(Projectile, obj))
             elif kind == "enemy":
@@ -1117,6 +1122,49 @@ class RenderingMixin:
                 sublabel, sublabel.get_rect(center=(sx, sy - 18 * WORLD_SCALE))
             )
 
+    def draw_story_guest(self, guest: StoryGuest) -> None:
+        sx, sy = self.world_to_screen(guest.x, guest.y)
+        color = guest.color if not guest.resolved else self.shade(guest.color, -60)
+        self.draw_shadow(guest.x, guest.y, 24, 10)
+        pulse = 0.55 + 0.45 * math.sin(self.elapsed * 4.0 + guest.depth)
+        if not guest.resolved:
+            ring = pygame.Surface((42 * WORLD_SCALE, 22 * WORLD_SCALE), pygame.SRCALPHA)
+            pygame.draw.ellipse(
+                ring,
+                (*color, int(24 + 36 * pulse)),
+                ring.get_rect(),
+                max(1, WORLD_SCALE),
+            )
+            self.screen.blit(ring, ring.get_rect(center=(sx, sy + 4 * WORLD_SCALE)))
+        cloak = [
+            (sx, sy - 26 * WORLD_SCALE),
+            (sx - 13 * WORLD_SCALE, sy + 5 * WORLD_SCALE),
+            (sx + 13 * WORLD_SCALE, sy + 5 * WORLD_SCALE),
+        ]
+        pygame.draw.polygon(self.screen, self.shade(color, -55), cloak)
+        pygame.draw.polygon(self.screen, color, cloak, max(1, WORLD_SCALE))
+        pygame.draw.circle(
+            self.screen,
+            self.shade(color, 35),
+            (sx, sy - 18 * WORLD_SCALE),
+            6 * WORLD_SCALE,
+        )
+        marker = "✓" if guest.resolved else "?"
+        marker_surface = self.small_font.render(marker, True, (245, 236, 205))
+        self.screen.blit(
+            marker_surface, marker_surface.get_rect(center=(sx, sy - 19 * WORLD_SCALE))
+        )
+        if (
+            not guest.resolved
+            and math.hypot(guest.x - self.player.x, guest.y - self.player.y) < 1.25
+        ):
+            label = self.small_font.render(f"1-3: {guest.name}", True, color)
+            sublabel = self.small_font.render(guest.role, True, (205, 200, 185))
+            self.screen.blit(label, label.get_rect(center=(sx, sy - 43 * WORLD_SCALE)))
+            self.screen.blit(
+                sublabel, sublabel.get_rect(center=(sx, sy - 30 * WORLD_SCALE))
+            )
+
     def draw_shrine(self, shrine: Shrine) -> None:
         sx, sy = self.world_to_screen(shrine.x, shrine.y)
         color = (92, 92, 100) if shrine.used else (235, 205, 110)
@@ -1425,10 +1473,15 @@ class RenderingMixin:
         modifier = (
             f"Modifier: {self.run_modifier.name} — {self.run_modifier.description}"
         )
+        story = self.story_header_line()
+        if len(story) > 112:
+            story = story[:109] + "..."
         title_surface = self.font.render(title, True, self.theme.accent)
         modifier_surface = self.small_font.render(modifier, True, (205, 200, 190))
+        story_surface = self.small_font.render(story, True, (205, 185, 225))
         self.screen.blit(title_surface, (self.ui(20), self.ui(18)))
         self.screen.blit(modifier_surface, (self.ui(20), self.ui(48)))
+        self.screen.blit(story_surface, (self.ui(20), self.ui(72)))
 
     def draw_boss_bar(self) -> None:
         boss = self.boss_enemy()
@@ -1497,6 +1550,6 @@ class RenderingMixin:
             f"Time {minutes:02d}:{seconds:02d}  Depth {self.current_depth}/{DUNGEON_DEPTH}  Modifier {self.run_modifier.name}",
             f"Kills {self.run_stats.kills}  Boss {'defeated' if self.run_stats.boss_killed else 'alive'}  Damage taken {self.run_stats.damage_taken}",
             f"Loot {self.run_stats.loot_picked_up}  Potions {self.run_stats.potions_used}  Shrines {self.run_stats.shrines_used}",
-            f"Secrets {self.run_stats.secrets_opened}  Traps triggered {self.run_stats.traps_triggered}",
+            f"Secrets {self.run_stats.secrets_opened}  Traps triggered {self.run_stats.traps_triggered}  Story choices {self.run_stats.story_choices}",
             f"Elites {self.run_stats.elites_killed}  Minibosses {self.run_stats.minibosses_killed}  Upgrades {self.run_stats.upgrades_chosen}",
         ]
