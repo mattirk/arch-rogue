@@ -164,22 +164,25 @@ class MenuRenderer:
         self, rect: pygame.Rect, accent: Color | None = None, alpha: int = 245
     ) -> None:
         accent = accent or self.accent()
+        radius = self.u(10)
         shadow = rect.move(max(2, self.u(3)), max(3, self.u(4)))
-        pygame.draw.rect(self.screen, (3, 3, 6), shadow, border_radius=self.u(8))
+        pygame.draw.rect(self.screen, (3, 3, 6), shadow, border_radius=radius)
         if alpha < 255:
             surface = pygame.Surface(rect.size, pygame.SRCALPHA)
-            surface.fill((*self.PANEL, alpha))
+            pygame.draw.rect(
+                surface, (*self.PANEL, alpha), surface.get_rect(), border_radius=radius
+            )
             self.screen.blit(surface, rect)
         else:
-            pygame.draw.rect(self.screen, self.PANEL, rect, border_radius=self.u(8))
+            pygame.draw.rect(self.screen, self.PANEL, rect, border_radius=radius)
         pygame.draw.rect(
-            self.screen, accent, rect, max(1, self.u(2)), border_radius=self.u(8)
+            self.screen, accent, rect, max(1, self.u(2)), border_radius=radius
         )
         pygame.draw.line(
             self.screen,
             self.shade(accent, 36),
-            (rect.x + self.u(18), rect.y + self.u(18)),
-            (rect.right - self.u(18), rect.y + self.u(18)),
+            (rect.x + self.u(22), rect.y + self.u(22)),
+            (rect.right - self.u(22), rect.y + self.u(22)),
             max(1, self.u(1)),
         )
         for corner in (
@@ -197,16 +200,19 @@ class MenuRenderer:
     ) -> tuple[pygame.Rect, pygame.Rect]:
         width, height = self.screen.get_size()
         self.draw_menu_backdrop()
-        title_y = max(38, int(height * 0.13))
+        title_font = self.g.title_font if height >= self.u(360) else self.g.big_font
+        subtitle_font = self.g.small_font
+        side_margin = max(self.u(24), 32)
+        title_y = max(self.u(30), int(height * 0.12))
         self.draw_text(
             title,
-            self.g.big_font,
+            title_font,
             self.TITLE,
             pygame.Rect(
-                32,
-                title_y - self.g.big_font.get_height() // 2,
-                width - 64,
-                self.g.big_font.get_height(),
+                side_margin,
+                title_y - title_font.get_height() // 2,
+                width - side_margin * 2,
+                title_font.get_height(),
             ),
             align="center",
             valign="center",
@@ -214,39 +220,52 @@ class MenuRenderer:
         if subtitle:
             self.draw_text(
                 subtitle,
-                self.g.small_font,
+                subtitle_font,
                 self.MUTED,
                 pygame.Rect(
-                    40, title_y + self.u(44), width - 80, self.g.small_font.get_height()
+                    side_margin,
+                    title_y + title_font.get_height() // 2 + self.u(8),
+                    width - side_margin * 2,
+                    subtitle_font.get_height(),
                 ),
                 align="center",
             )
 
-        top = title_y + self.u(78)
-        footer_space = max(44, self.u(42))
+        top = title_y + title_font.get_height() // 2 + self.u(48)
+        footer_space = max(self.g.small_font.get_height() + self.u(18), self.u(42))
+        panel_w = min(width - side_margin * 2, self.u(860))
         rect = pygame.Rect(
-            max(28, width // 2 - min(width - 64, self.u(860)) // 2),
+            (width - panel_w) // 2,
             top,
-            min(width - 64, self.u(860)),
-            max(220, height - top - footer_space - 20),
+            panel_w,
+            max(self.u(110), height - top - footer_space - self.u(10)),
         )
         self.panel(rect)
-        content = rect.inflate(-self.u(48), -self.u(46))
-        content.y += self.u(18)
-        content.h -= self.u(8)
+        content_pad_x = max(self.u(22), 28)
+        content_pad_y = max(self.u(20), 24)
+        content = rect.inflate(-content_pad_x * 2, -content_pad_y * 2)
+        content.y += self.u(8)
+        content.h -= self.u(4)
         return rect, content
 
     def draw_footer(self, panel: pygame.Rect, text: str) -> None:
         width, height = self.screen.get_size()
+        margin = max(self.u(18), 28)
         rect = pygame.Rect(
-            32, min(height - 32, panel.bottom + self.u(14)), width - 64, 28
+            margin,
+            min(
+                height - self.g.small_font.get_height() - self.u(10),
+                panel.bottom + self.u(14),
+            ),
+            width - margin * 2,
+            self.g.small_font.get_height() + self.u(4),
         )
         self.draw_text(text, self.g.small_font, self.MUTED, rect, align="center")
 
     def draw_menu_rows(self, rows: Sequence[MenuRow], rect: pygame.Rect) -> None:
-        key_w = min(max(self.u(132), 112), max(118, rect.width // 3))
-        row_h = max(self.g.font.get_height() + self.u(13), self.u(42))
-        gap = max(5, self.u(5))
+        key_w = min(max(self.u(108), 108), max(self.u(96), rect.width // 3))
+        row_h = max(self.g.font.get_height() + self.u(18), self.u(44))
+        gap = max(self.u(7), 7)
         y = rect.y
         for key, label, value in rows:
             if y + row_h > rect.bottom:
@@ -410,16 +429,18 @@ class MenuRenderer:
     def draw_help_overlay(self) -> None:
         width, height = self.screen.get_size()
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 90))
+        overlay.fill((0, 0, 0, 118))
         self.screen.blit(overlay, (0, 0))
-        box_w = min(width - 48, self.u(760))
-        box_h = min(height - 72, self.u(430))
-        box = pygame.Rect(24, 36, box_w, box_h)
-        self.panel(box, alpha=236)
+        margin = max(self.u(20), 28)
+        box_w = min(width - margin * 2, self.u(760))
+        box_h = min(height - margin * 2, self.u(430))
+        box = pygame.Rect((width - box_w) // 2, (height - box_h) // 2, box_w, box_h)
+        self.panel(box, alpha=238)
+        pad = max(self.u(22), 26)
         title_rect = pygame.Rect(
-            box.x + self.u(24),
-            box.y + self.u(24),
-            box.width - self.u(48),
+            box.x + pad,
+            box.y + pad,
+            box.width - pad * 2,
             self.g.font.get_height(),
         )
         self.draw_text("Run Guide", self.g.font, self.accent(), title_rect)
@@ -427,27 +448,27 @@ class MenuRenderer:
             "Goal: defeat the gate tyrant in the final room, then press E on the stairs.",
             "Movement: hold left mouse to move and aim. Arrow keys can aim without moving.",
             "Class skills: level ups, Oath Shrines, and skill altars can add class-specific upgrades.",
-            "Story guests: press E to hear their plea; press 1 Aid, 2 Bargain, or 3 Defy to shape future floors.",
+            "Story guests: press E to hear their plea; press 1 Aid, 2 Bargain, or 3 Defy to shape future floors. Q toggles quest HUD info.",
             "Elites/minibosses: named foes have brighter telegraphs, more danger, and better rewards.",
             "Resources: stamina powers melee and movement skills; mana powers bolt and nova skills.",
-            "Inventory: E picks up; I opens inventory; 1-9 uses/equips; Shift+1-9 drops; Tab/S sorts.",
+            "Inventory: E picks up; I opens inventory; R drinks a health potion; 1-9 uses/equips; Shift+1-9 drops; Tab/S sorts.",
             "Discovery: unidentified gear needs scrolls, Insight Shrines, or equipping to reveal.",
             "Hazards: traps are single-use but dangerous; shrines and secrets can swing a run.",
         ]
-        y = title_rect.bottom + self.u(16)
+        y = title_rect.bottom + self.u(18)
         for line in lines:
             y = self.draw_wrapped_text(
                 line,
                 self.g.small_font,
                 self.TEXT,
                 pygame.Rect(
-                    box.x + self.u(24),
+                    box.x + pad,
                     y,
-                    box.width - self.u(48),
-                    box.bottom - y - self.u(18),
+                    box.width - pad * 2,
+                    box.bottom - y - self.u(26),
                 ),
-                max(self.g.small_font.get_height() + 3, self.u(18)),
-            ) + self.u(7)
+                max(self.g.small_font.get_height() + self.u(2), self.u(18)),
+            ) + self.u(8)
             if y >= box.bottom:
                 break
         self.draw_text(
@@ -455,10 +476,10 @@ class MenuRenderer:
             self.g.small_font,
             self.MUTED,
             pygame.Rect(
-                box.x + self.u(24),
-                box.bottom - self.u(28),
-                box.width - self.u(48),
-                self.u(20),
+                box.x + pad,
+                box.bottom - self.g.small_font.get_height() - self.u(12),
+                box.width - pad * 2,
+                self.g.small_font.get_height(),
             ),
             align="right",
         )
@@ -469,10 +490,10 @@ class MenuRenderer:
         selected = self.g.selected_archetype
         accent = self.archetype_accent(selected.name)
 
-        title_font = pygame.font.Font(None, 124 if height >= 650 else 96)
-        subtitle_font = pygame.font.Font(None, 60 if height >= 650 else 52)
+        title_font = self.g.title_font if height >= self.u(330) else self.g.big_font
+        subtitle_font = self.g.font
         title_h = title_font.get_height()
-        top_margin = 26 if height >= 650 else 18
+        top_margin = max(self.u(12), int(height * 0.04))
         self.draw_text(
             "Choose Your Archetype",
             title_font,
@@ -480,7 +501,7 @@ class MenuRenderer:
             pygame.Rect(28, top_margin, width - 56, title_h),
             align="center",
         )
-        subtitle_y = top_margin + title_h + 8
+        subtitle_y = top_margin + title_h + self.u(5)
         self.draw_text(
             "Arrow keys select · Enter begins · Backspace returns",
             subtitle_font,
@@ -489,36 +510,44 @@ class MenuRenderer:
             align="center",
         )
 
-        footer_h = 38
-        content_top = (
-            subtitle_y + subtitle_font.get_height() + (24 if height >= 650 else 18)
-        )
+        footer_h = max(self.u(30), self.g.small_font.get_height() + self.u(14))
+        content_top = subtitle_y + subtitle_font.get_height() + self.u(14)
+        content_margin = max(self.u(14), 18)
         content = pygame.Rect(
-            24, content_top, width - 48, height - content_top - footer_h - 14
+            content_margin,
+            content_top,
+            max(1, width - content_margin * 2),
+            max(1, height - content_top - footer_h - self.u(8)),
         )
         if content.height < 230:
             content.y = max(86, content.y - (230 - content.height))
-            content.height = min(230, height - content.y - footer_h - 10)
+            content.height = max(1, min(230, height - content.y - footer_h - 10))
 
-        compact = width < 560
-        gap = 18 if width >= 760 else 14
-        base_list_w = min(260, max(205, int(content.width * 0.36)))
-        preview_min_w = min(260, max(190, int(content.width * 0.24)))
+        compact = width < max(620, self.u(360)) or content.width < self.u(360)
+        gap = max(self.u(8), 12)
+        base_list_w = min(self.u(250), max(self.u(180), int(content.width * 0.36)))
+        preview_min_w = min(self.u(250), max(self.u(180), int(content.width * 0.28)))
         list_w = (
             min(base_list_w * 4, max(base_list_w, content.width - gap - preview_min_w))
             if not compact
             else content.width
         )
         if compact:
-            list_rect = pygame.Rect(
-                content.x, content.y, content.width, min(210, content.height // 2)
+            min_preview_h = min(max(self.u(110), 110), max(1, content.height - gap - 1))
+            preferred_list_h = min(
+                max(self.u(128), content.height // 2), content.height
             )
-            preview_rect = pygame.Rect(
-                content.x,
-                list_rect.bottom + gap,
-                content.width,
-                content.bottom - list_rect.bottom - gap,
-            )
+            if content.height > gap + min_preview_h:
+                list_h = min(preferred_list_h, content.height - gap - min_preview_h)
+                list_h = max(1, list_h)
+                preview_y = content.y + list_h + gap
+                preview_h = max(1, content.bottom - preview_y)
+            else:
+                list_h = max(1, content.height // 2)
+                preview_y = content.y + list_h
+                preview_h = max(1, content.bottom - preview_y)
+            list_rect = pygame.Rect(content.x, content.y, content.width, list_h)
+            preview_rect = pygame.Rect(content.x, preview_y, content.width, preview_h)
         else:
             list_rect = pygame.Rect(content.x, content.y, list_w, content.height)
             preview_rect = pygame.Rect(
@@ -531,16 +560,16 @@ class MenuRenderer:
         self.panel(list_rect, accent, alpha=248)
         self.panel(preview_rect, accent, alpha=248)
         preview_header_cover = pygame.Rect(
-            preview_rect.x + 12,
-            preview_rect.y + 8,
-            preview_rect.width - 24,
-            58,
+            preview_rect.x + self.u(6),
+            preview_rect.y + self.u(4),
+            preview_rect.width - self.u(12),
+            self.g.big_font.get_height() + self.u(16),
         )
         pygame.draw.rect(self.screen, self.PANEL, preview_header_cover)
         self.draw_archetype_list(list_rect, selected)
         self.draw_archetype_preview(preview_rect, selected)
 
-        footer_font = pygame.font.Font(None, 56 if height >= 650 else 52)
+        footer_font = self.g.small_font
         self.draw_text(
             f"Press 1-{min(len(self.archetypes), 9)} to jump directly to a class",
             footer_font,
@@ -551,16 +580,16 @@ class MenuRenderer:
         )
 
     def draw_archetype_list(self, rect: pygame.Rect, selected: Archetype) -> None:
-        compact_fonts = rect.height < 390
-        heading_font = pygame.font.Font(None, 68 if compact_fonts else 76)
-        name_font_large = pygame.font.Font(None, 62 if compact_fonts else 68)
-        row_font = pygame.font.Font(None, 50 if compact_fonts else 54)
-        inner = rect.inflate(-22, -22)
+        compact_fonts = rect.height < self.u(190)
+        heading_font = self.g.font if compact_fonts else self.g.heading_font
+        name_font_large = self.g.font
+        row_font = self.g.small_font
+        inner = rect.inflate(-self.u(22), -self.u(22))
         header_rect = pygame.Rect(
             inner.x,
-            inner.y - 4,
+            inner.y - self.u(2),
             inner.width,
-            heading_font.get_height() + 18,
+            heading_font.get_height() + self.u(10),
         )
         pygame.draw.rect(self.screen, self.PANEL, header_rect)
         self.draw_text(
@@ -569,7 +598,7 @@ class MenuRenderer:
             self.TITLE,
             pygame.Rect(inner.x, inner.y, inner.width, heading_font.get_height()),
         )
-        header_line_y = inner.y + heading_font.get_height() + 8
+        header_line_y = inner.y + heading_font.get_height() + self.u(6)
         pygame.draw.line(
             self.screen,
             self.shade(self.archetype_accent(selected.name), 18),
@@ -577,12 +606,15 @@ class MenuRenderer:
             (inner.right, header_line_y),
             max(1, self.u(1)),
         )
-        list_top = header_line_y + 16
-        gap = 7
+        list_top = header_line_y + self.u(10)
+        gap = max(self.u(4), 5)
         available_rows_h = max(
             1, inner.bottom - list_top - gap * (len(self.archetypes) - 1)
         )
-        row_h = max(30, min(128, available_rows_h // len(self.archetypes)))
+        row_h = max(
+            self.g.small_font.get_height() + self.u(18),
+            min(self.u(74), available_rows_h // len(self.archetypes)),
+        )
         y = list_top
         for index, archetype in enumerate(self.archetypes):
             row = pygame.Rect(inner.x, y, inner.width, row_h)
@@ -590,20 +622,28 @@ class MenuRenderer:
             row_accent = self.archetype_accent(archetype.name)
             fill = self.shade(row_accent, -92) if is_selected else self.PANEL_2
             border = row_accent if is_selected else (58, 52, 62)
-            pygame.draw.rect(self.screen, fill, row, border_radius=10)
+            radius = self.u(7)
+            pygame.draw.rect(self.screen, fill, row, border_radius=radius)
             pygame.draw.rect(
-                self.screen, border, row, max(1, self.u(1)), border_radius=10
+                self.screen, border, row, max(1, self.u(1)), border_radius=radius
             )
             if is_selected:
-                strip = pygame.Rect(row.x, row.y + 5, 5, row.height - 10)
-                pygame.draw.rect(self.screen, row_accent, strip, border_radius=3)
-            badge_size = min(44, row_h - 12)
+                strip = pygame.Rect(
+                    row.x, row.y + self.u(4), self.u(4), row.height - self.u(8)
+                )
+                pygame.draw.rect(
+                    self.screen, row_accent, strip, border_radius=self.u(3)
+                )
+            badge_size = min(self.u(34), row_h - self.u(10))
             badge = pygame.Rect(
-                row.x + 12, row.y + (row_h - badge_size) // 2, badge_size, badge_size
+                row.x + self.u(10),
+                row.y + (row_h - badge_size) // 2,
+                badge_size,
+                badge_size,
             )
-            pygame.draw.rect(self.screen, (38, 34, 45), badge, border_radius=7)
+            pygame.draw.rect(self.screen, (38, 34, 45), badge, border_radius=self.u(5))
             pygame.draw.rect(
-                self.screen, border, badge, max(1, self.u(1)), border_radius=7
+                self.screen, border, badge, max(1, self.u(1)), border_radius=self.u(5)
             )
             self.draw_text(
                 str(index + 1),
@@ -614,9 +654,9 @@ class MenuRenderer:
                 valign="center",
             )
             name_rect = pygame.Rect(
-                badge.right + 28,
-                row.y + 3,
-                row.width - badge.width - 44,
+                badge.right + self.u(14),
+                row.y + self.u(3),
+                row.width - badge.width - self.u(28),
                 max(1, row_h // 2 - 2),
             )
             name_font = name_font_large if row_h >= 46 else row_font
@@ -628,9 +668,9 @@ class MenuRenderer:
                 valign="center",
             )
             role_rect = pygame.Rect(
-                badge.right + 28,
-                row.centery + 4,
-                row.width - badge.width - 44,
+                badge.right + self.u(14),
+                row.centery + self.u(2),
+                row.width - badge.width - self.u(28),
                 max(1, row_h // 2 - 6),
             )
             self.draw_text(
@@ -643,14 +683,16 @@ class MenuRenderer:
             y += row_h + gap
 
     def draw_archetype_preview(self, rect: pygame.Rect, archetype: Archetype) -> None:
-        compact_fonts = rect.height < 390
+        compact_fonts = rect.height < self.u(190)
         accent = self.archetype_accent(archetype.name)
-        name_font = pygame.font.Font(None, 76 if compact_fonts else 92)
-        detail_font = pygame.font.Font(None, 52 if compact_fonts else 56)
-        inner = rect.inflate(-30, -26)
+        name_font = self.g.heading_font if compact_fonts else self.g.big_font
+        detail_font = self.g.small_font if compact_fonts else self.g.font
+        inner = rect.inflate(-self.u(28), -self.u(24))
         name_h = name_font.get_height()
-        name_rect = pygame.Rect(inner.x, inner.y + 8, inner.width, name_h + 10)
-        pygame.draw.rect(self.screen, self.PANEL, name_rect.inflate(0, 10))
+        name_rect = pygame.Rect(
+            inner.x, inner.y + self.u(5), inner.width, name_h + self.u(8)
+        )
+        pygame.draw.rect(self.screen, self.PANEL, name_rect.inflate(0, self.u(6)))
         self.draw_text(
             archetype.name,
             name_font,
@@ -660,7 +702,7 @@ class MenuRenderer:
             valign="center",
         )
         skill_names = self.skill_names_for(archetype.name)
-        skills_y = name_rect.bottom + 14
+        skills_y = name_rect.bottom + self.u(8)
         self.draw_text(
             " · ".join(skill_names),
             detail_font,
@@ -668,7 +710,7 @@ class MenuRenderer:
             pygame.Rect(inner.x, skills_y, inner.width, detail_font.get_height()),
             align="center",
         )
-        divider_y = skills_y + detail_font.get_height() + 18
+        divider_y = skills_y + detail_font.get_height() + self.u(12)
         pygame.draw.line(
             self.screen,
             self.shade(accent, -16),
@@ -693,8 +735,8 @@ class MenuRenderer:
                 max(1, int(sprite.get_height() * scale)),
             ),
         )
-        sprite_y = divider_y + 10
-        pedestal = pygame.Rect(0, 0, preview.get_width() + 64, 28)
+        sprite_y = divider_y + self.u(8)
+        pedestal = pygame.Rect(0, 0, preview.get_width() + self.u(40), self.u(18))
         pedestal.center = (inner.centerx, sprite_y + preview.get_height() + 8)
         glow = pygame.Surface((pedestal.width, pedestal.height), pygame.SRCALPHA)
         pygame.draw.ellipse(glow, (*accent, 72), glow.get_rect())
@@ -703,9 +745,8 @@ class MenuRenderer:
             preview, preview.get_rect(midbottom=(inner.centerx, pedestal.centery + 2))
         )
 
-        text_top = pedestal.bottom + 14
-        stat_font_size = 96 if compact_fonts else 108
-        stat_h = max(180, stat_font_size * 2 + 18)
+        text_top = pedestal.bottom + self.u(10)
+        stat_h = max(self.u(96), self.g.small_font.get_height() * 4 + self.u(22))
         desc_rect = pygame.Rect(
             inner.x,
             text_top,
@@ -717,7 +758,7 @@ class MenuRenderer:
             detail_font,
             self.TEXT,
             desc_rect,
-            max(detail_font.get_height() + 4, 20),
+            max(detail_font.get_height() + self.u(2), self.u(18)),
         )
 
         stats = [
@@ -734,11 +775,11 @@ class MenuRenderer:
         )
 
     def draw_stat_grid(self, stats: list[tuple[str, str]], rect: pygame.Rect) -> None:
-        stat_font = pygame.font.Font(None, 96 if rect.height < 220 else 108)
-        columns = 4 if rect.width >= 360 else 3
-        gap = 6
+        stat_font = self.g.small_font
+        columns = 4 if rect.width >= self.u(260) else 3
+        gap = max(self.u(4), 5)
         cell_w = (rect.width - gap * (columns - 1)) // columns
-        cell_h = max(stat_font.get_height() + 4, (rect.height - gap) // 2)
+        cell_h = max(stat_font.get_height() + self.u(12), (rect.height - gap) // 2)
         for index, (label, value) in enumerate(stats):
             row = index // columns
             col = index % columns
@@ -750,20 +791,28 @@ class MenuRenderer:
                 cell_w,
                 cell_h,
             )
-            pygame.draw.rect(self.screen, self.PANEL_2, cell, border_radius=6)
-            pygame.draw.rect(self.screen, (58, 52, 62), cell, 1, border_radius=6)
+            pygame.draw.rect(self.screen, self.PANEL_2, cell, border_radius=self.u(5))
+            pygame.draw.rect(
+                self.screen,
+                (58, 52, 62),
+                cell,
+                max(1, self.u(1)),
+                border_radius=self.u(5),
+            )
             self.draw_text(
                 label,
                 stat_font,
                 self.MUTED,
-                pygame.Rect(cell.x + 8, cell.y, cell.width // 2, cell.height),
+                pygame.Rect(cell.x + self.u(7), cell.y, cell.width // 2, cell.height),
                 valign="center",
             )
             self.draw_text(
                 value,
                 stat_font,
                 self.WARNING,
-                pygame.Rect(cell.centerx, cell.y, cell.width // 2 - 8, cell.height),
+                pygame.Rect(
+                    cell.centerx, cell.y, cell.width // 2 - self.u(7), cell.height
+                ),
                 align="right",
                 valign="center",
             )
@@ -797,13 +846,15 @@ class MenuRenderer:
 
     def draw_inventory(self) -> None:
         width, height = self.screen.get_size()
-        box_w = min(max(470, self.u(520)), width - 48)
-        box_h = min(max(420, self.u(470)), height - 56)
-        box = pygame.Rect(width - box_w - 24, 32, box_w, box_h)
+        margin = max(self.u(18), 24)
+        box_w = min(max(self.u(420), int(width * 0.58)), width - margin * 2)
+        box_h = min(max(self.u(360), int(height * 0.72)), height - margin * 2)
+        box = pygame.Rect(width - box_w - margin, (height - box_h) // 2, box_w, box_h)
         self.panel(box, (105, 90, 68), alpha=246)
-        inner = box.inflate(-self.u(34), -self.u(34))
-        inner.y += self.u(18)
-        inner.h -= self.u(8)
+        pad = max(self.u(18), 24)
+        inner = box.inflate(-pad * 2, -pad * 2)
+        inner.y += self.u(8)
+        inner.h -= self.u(4)
         title_h = self.g.font.get_height()
         subtitle_h = self.g.small_font.get_height()
         header_rect = pygame.Rect(inner.x, inner.y, inner.width, title_h)
@@ -816,12 +867,17 @@ class MenuRenderer:
             subtitle,
             self.g.small_font,
             self.MUTED,
-            pygame.Rect(inner.x, inner.y + self.u(4), inner.width, subtitle_h),
+            pygame.Rect(
+                inner.x + inner.width // 3,
+                inner.y + self.u(3),
+                inner.width * 2 // 3,
+                subtitle_h,
+            ),
             align="right",
         )
-        row_h = max(self.g.small_font.get_height() * 2 + self.u(8), self.u(44))
-        y = inner.y + max(title_h, subtitle_h) + self.u(16)
-        footer_h = max(self.u(128), self.g.small_font.get_height() * 5 + self.u(22))
+        row_h = max(self.g.small_font.get_height() * 2 + self.u(14), self.u(46))
+        y = inner.y + max(title_h, subtitle_h) + self.u(20)
+        footer_h = max(self.u(116), self.g.small_font.get_height() * 5 + self.u(30))
         list_bottom = inner.bottom - footer_h
         if not self.g.player.inventory:
             self.draw_text(
@@ -835,7 +891,7 @@ class MenuRenderer:
                 break
             color = self.item_color(item)
             row = pygame.Rect(inner.x, y, inner.width, row_h)
-            pygame.draw.rect(self.screen, self.PANEL_2, row, border_radius=self.u(5))
+            pygame.draw.rect(self.screen, self.PANEL_2, row, border_radius=self.u(7))
             pygame.draw.rect(
                 self.screen,
                 (*color, 70),

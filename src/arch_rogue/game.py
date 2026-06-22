@@ -130,6 +130,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.inventory_open = False
         self.inventory_sort_mode = "type"
         self.show_help = False
+        self.quest_info_visible = True
         self.run_stats = RunStats()
         self.state = "archetype_select"
         self.elapsed = 0.0
@@ -180,9 +181,12 @@ class Game(SaveLoadMixin, RenderingMixin):
         return pygame.display.set_mode(self.windowed_size, pygame.RESIZABLE)
 
     def rebuild_fonts(self) -> None:
-        self.font = pygame.font.Font(None, 24 * self.ui_scale)
-        self.small_font = pygame.font.Font(None, 19 * self.ui_scale)
-        self.big_font = pygame.font.Font(None, 56 * self.ui_scale)
+        self.tiny_font = pygame.font.Font(None, 14 * self.ui_scale)
+        self.small_font = pygame.font.Font(None, 16 * self.ui_scale)
+        self.font = pygame.font.Font(None, 22 * self.ui_scale)
+        self.heading_font = pygame.font.Font(None, 32 * self.ui_scale)
+        self.big_font = pygame.font.Font(None, 48 * self.ui_scale)
+        self.title_font = pygame.font.Font(None, 62 * self.ui_scale)
 
     def options_to_dict(self) -> dict[str, Any]:
         return {
@@ -2084,6 +2088,8 @@ class Game(SaveLoadMixin, RenderingMixin):
                 elif event.key == pygame.K_e and self.state == "playing":
                     self.interact()
                 elif event.key == pygame.K_q and self.state == "playing":
+                    self.toggle_quest_info_visibility()
+                elif event.key == pygame.K_r and self.state == "playing":
                     self.use_first_potion()
                 elif event.key == pygame.K_SPACE and self.state == "playing":
                     self.update_player_aim()
@@ -3374,6 +3380,18 @@ class Game(SaveLoadMixin, RenderingMixin):
         )
         self.play_sfx("pickup")
         self.save_run()
+
+    def toggle_quest_info_visibility(self) -> None:
+        self.quest_info_visible = not self.quest_info_visible
+        label = "Quest info shown" if self.quest_info_visible else "Quest info hidden"
+        color = (
+            self.story_state.accent
+            if self.story_state is not None and self.quest_info_visible
+            else (170, 165, 155)
+        )
+        self.floaters.append(
+            FloatingText(label, self.player.x, self.player.y - 0.4, color, ttl=0.9)
+        )
 
     def use_first_potion(self) -> None:
         if self.player.hp >= self.player.max_hp:

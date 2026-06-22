@@ -150,6 +150,32 @@ class Rc1RegressionTests(unittest.TestCase):
         finally:
             pygame.quit()
 
+    def test_q_toggles_quest_hud_and_r_uses_health_potion(self) -> None:
+        game = self.make_game()
+        try:
+            game.restart(ARCHETYPES[0])
+            self.confirm_story_intro(game)
+            game.player.hp = 10
+            game.player.inventory = [Item("Minor Healing Potion", "potion", heal=35)]
+
+            self.assertTrue(game.quest_info_visible)
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_q, mod=0))
+            game.handle_events()
+            self.assertFalse(game.quest_info_visible)
+            self.assertEqual(game.player.hp, 10)
+            self.assertEqual(len(game.player.inventory), 1)
+
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_q, mod=0))
+            game.handle_events()
+            self.assertTrue(game.quest_info_visible)
+
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_r, mod=0))
+            game.handle_events()
+            self.assertEqual(game.player.hp, 45)
+            self.assertEqual(game.player.inventory, [])
+        finally:
+            pygame.quit()
+
     def test_modern_inventory_sort_drop_and_safe_consumables(self) -> None:
         game = self.make_game()
         try:
