@@ -125,6 +125,10 @@ class Enemy:
     color: Color = (170, 70, 65)
     facing_x: float = 1.0
     facing_y: float = 0.0
+    moving: bool = False
+    move_x: float = 1.0
+    move_y: float = 0.0
+    anim_time: float = 0.0
 
     @property
     def alive(self) -> bool:
@@ -147,6 +151,10 @@ class Player:
     next_xp: int = 60
     facing_x: float = 1.0
     facing_y: float = 0.0
+    moving: bool = False
+    move_x: float = 1.0
+    move_y: float = 0.0
+    anim_time: float = 0.0
     melee_timer: float = 0.0
     bolt_timer: float = 0.0
     inventory: list[Item] = field(default_factory=list)
@@ -291,6 +299,18 @@ class PixelSpriteAtlas:
     ) -> None:
         pygame.draw.rect(surface, color, (x, y, w, h))
 
+    def _dot(self, surface: pygame.Surface, x: int, y: int, color: Color) -> None:
+        self._rect(surface, x, y, 1, 1, color)
+
+    def _line(
+        self,
+        surface: pygame.Surface,
+        start: tuple[int, int],
+        end: tuple[int, int],
+        color: Color,
+    ) -> None:
+        pygame.draw.line(surface, color, start, end)
+
     def _scale(
         self, surface: pygame.Surface, scale: int | None = None
     ) -> pygame.Surface:
@@ -327,6 +347,19 @@ class PixelSpriteAtlas:
         self._rect(s, 10, 19, 3, 3, leather)
         self._rect(s, 4, 22, 4, 2, outline)
         self._rect(s, 10, 22, 4, 2, outline)
+        self._rect(s, 7, 6, 1, 1, (40, 35, 32))
+        self._rect(s, 10, 6, 1, 1, (40, 35, 32))
+        self._rect(s, 8, 8, 2, 1, (170, 105, 78))
+        self._rect(s, 5, 10, 8, 1, (108, 82, 50))
+        self._rect(s, 4, 15, 10, 1, (30, 58, 116))
+        self._rect(s, 6, 16, 6, 1, (235, 205, 112))
+        self._rect(s, 4, 18, 2, 1, steel_hi)
+        self._rect(s, 12, 18, 2, 1, steel_hi)
+        self._rect(s, 8, 20, 2, 2, outline)
+        self._rect(s, 3, 13, 1, 3, steel_hi)
+        self._rect(s, 14, 13, 1, 3, (86, 91, 103))
+        self._rect(s, 15, 9, 1, 8, (96, 104, 112))
+        self._dot(s, 16, 7, steel_hi)
         return s
 
     def _ghoul(self) -> pygame.Surface:
@@ -351,6 +384,18 @@ class PixelSpriteAtlas:
         self._rect(s, 10, 18, 3, 3, cloth)
         self._rect(s, 4, 21, 4, 1, outline)
         self._rect(s, 10, 21, 4, 1, outline)
+        self._rect(s, 6, 6, 1, 1, eye)
+        self._rect(s, 11, 6, 1, 1, eye)
+        self._rect(s, 8, 8, 3, 1, (50, 29, 32))
+        self._rect(s, 5, 12, 2, 1, flesh_hi)
+        self._rect(s, 9, 13, 3, 1, (72, 102, 70))
+        self._rect(s, 4, 14, 1, 4, (64, 102, 70))
+        self._rect(s, 13, 14, 1, 4, (64, 102, 70))
+        self._rect(s, 2, 17, 2, 1, (202, 202, 162))
+        self._rect(s, 14, 17, 2, 1, (202, 202, 162))
+        self._rect(s, 7, 16, 1, 2, (56, 35, 38))
+        self._rect(s, 10, 16, 1, 2, (56, 35, 38))
+        self._dot(s, 12, 10, rot)
         return s
 
     def _cultist(self) -> pygame.Surface:
@@ -373,6 +418,18 @@ class PixelSpriteAtlas:
         self._rect(s, 14, 8, 1, 4, flame)
         self._rect(s, 13, 10, 3, 2, flame)
         self._rect(s, 4, 20, 10, 2, outline)
+        self._rect(s, 5, 4, 1, 4, (54, 31, 92))
+        self._rect(s, 12, 4, 1, 4, (42, 25, 70))
+        self._rect(s, 8, 7, 2, 1, (184, 138, 218))
+        self._rect(s, 8, 12, 2, 2, trim)
+        self._rect(s, 6, 15, 1, 4, trim)
+        self._rect(s, 11, 15, 1, 4, (63, 39, 105))
+        self._rect(s, 3, 17, 12, 1, (47, 32, 82))
+        self._rect(s, 14, 6, 1, 2, (255, 175, 255))
+        self._dot(s, 15, 8, (255, 220, 255))
+        self._dot(s, 13, 9, (255, 220, 255))
+        self._rect(s, 4, 21, 3, 1, trim)
+        self._rect(s, 11, 21, 3, 1, trim)
         return s
 
     def _gate_warden(self) -> pygame.Surface:
@@ -399,6 +456,19 @@ class PixelSpriteAtlas:
         self._rect(s, 11, 19, 3, 4, dark)
         self._rect(s, 5, 23, 5, 2, outline)
         self._rect(s, 10, 23, 5, 2, outline)
+        self._rect(s, 5, 1, 3, 2, brass_hi)
+        self._rect(s, 12, 1, 3, 2, brass_hi)
+        self._rect(s, 7, 6, 6, 1, (98, 48, 34))
+        self._rect(s, 6, 10, 8, 1, (210, 148, 70))
+        self._rect(s, 6, 14, 8, 1, (91, 98, 98))
+        self._rect(s, 9, 12, 2, 3, (255, 202, 90))
+        self._rect(s, 3, 16, 4, 2, (78, 84, 86))
+        self._rect(s, 13, 16, 4, 2, (78, 84, 86))
+        self._rect(s, 1, 11, 3, 5, dark)
+        self._rect(s, 16, 12, 3, 5, brass)
+        self._rect(s, 17, 13, 1, 3, brass_hi)
+        self._dot(s, 9, 4, eye)
+        self._dot(s, 11, 4, eye)
         return s
 
     def _potion(self) -> pygame.Surface:
@@ -414,6 +484,11 @@ class PixelSpriteAtlas:
         self._rect(s, 4, 5, 4, 3, glass)
         self._rect(s, 4, 8, 4, 4, liquid)
         self._rect(s, 5, 6, 1, 2, shine)
+        self._rect(s, 6, 2, 1, 2, (82, 49, 27))
+        self._rect(s, 4, 7, 4, 1, (205, 238, 245))
+        self._rect(s, 5, 10, 2, 1, (248, 96, 116))
+        self._rect(s, 4, 12, 4, 1, (125, 28, 52))
+        self._dot(s, 8, 6, shine)
         return s
 
     def _weapon(self) -> pygame.Surface:
@@ -427,6 +502,12 @@ class PixelSpriteAtlas:
         self._rect(s, 6, 8, 6, 2, guard)
         self._rect(s, 8, 10, 2, 3, grip)
         self._rect(s, 7, 13, 4, 1, guard)
+        self._rect(s, 9, 1, 1, 7, (248, 252, 242))
+        self._rect(s, 6, 4, 1, 3, blade)
+        self._rect(s, 5, 8, 1, 1, (230, 178, 78))
+        self._rect(s, 11, 8, 1, 1, (230, 178, 78))
+        self._rect(s, 9, 11, 1, 2, (130, 82, 48))
+        self._dot(s, 8, 12, (230, 178, 78))
         return s
 
     def _armor(self) -> pygame.Surface:
@@ -441,20 +522,34 @@ class PixelSpriteAtlas:
         self._rect(s, 5, 5, 4, 5, plate)
         self._rect(s, 6, 5, 2, 2, hi)
         self._rect(s, 3, 12, 8, 1, outline)
+        self._rect(s, 4, 4, 1, 7, (60, 42, 34))
+        self._rect(s, 9, 4, 1, 7, (63, 50, 44))
+        self._rect(s, 5, 8, 4, 1, (95, 102, 106))
+        self._rect(s, 6, 10, 2, 1, (200, 160, 80))
+        self._dot(s, 4, 6, hi)
+        self._dot(s, 9, 7, (82, 88, 94))
         return s
 
     def _blue_bolt(self) -> pygame.Surface:
-        s = self._surface(10, 10)
-        self._rect(s, 4, 0, 2, 10, (68, 170, 255))
-        self._rect(s, 2, 3, 6, 4, (86, 215, 255))
-        self._rect(s, 4, 4, 2, 2, (240, 250, 255))
+        s = self._surface(14, 10)
+        self._rect(s, 2, 4, 9, 2, (68, 170, 255))
+        self._rect(s, 5, 2, 5, 6, (86, 215, 255))
+        self._rect(s, 10, 3, 3, 4, (68, 170, 255))
+        self._rect(s, 8, 4, 3, 2, (240, 250, 255))
+        self._rect(s, 0, 3, 3, 1, (36, 92, 190))
+        self._rect(s, 0, 6, 3, 1, (36, 92, 190))
+        self._dot(s, 12, 5, (240, 250, 255))
         return s
 
     def _void_bolt(self) -> pygame.Surface:
-        s = self._surface(10, 10)
-        self._rect(s, 4, 0, 2, 10, (119, 54, 184))
-        self._rect(s, 2, 3, 6, 4, (210, 83, 238))
-        self._rect(s, 4, 4, 2, 2, (255, 190, 255))
+        s = self._surface(14, 10)
+        self._rect(s, 2, 4, 9, 2, (119, 54, 184))
+        self._rect(s, 5, 2, 5, 6, (210, 83, 238))
+        self._rect(s, 10, 3, 3, 4, (119, 54, 184))
+        self._rect(s, 8, 4, 3, 2, (255, 190, 255))
+        self._rect(s, 0, 3, 3, 1, (54, 30, 102))
+        self._rect(s, 0, 6, 3, 1, (54, 30, 102))
+        self._dot(s, 12, 5, (255, 220, 255))
         return s
 
     def _slash(self) -> pygame.Surface:
@@ -466,6 +561,10 @@ class PixelSpriteAtlas:
         self._rect(s, 8, 3, 4, 2, pale)
         self._rect(s, 11, 2, 3, 2, gold)
         self._rect(s, 14, 1, 2, 1, pale)
+        self._rect(s, 3, 8, 5, 1, (146, 90, 42))
+        self._rect(s, 6, 6, 7, 1, (255, 252, 210))
+        self._dot(s, 13, 4, pale)
+        self._dot(s, 16, 2, (255, 252, 210))
         return s
 
 
@@ -485,6 +584,7 @@ class Game:
         self.running = True
         self.inventory_open = False
         self.state = "playing"
+        self.elapsed = 0.0
         self.restart()
 
     def restart(self) -> None:
@@ -616,6 +716,7 @@ class Game:
                     self.player_cast_bolt()
 
     def update(self, dt: float) -> None:
+        self.elapsed += dt
         self.update_player_aim()
         self.update_player(dt)
         self.update_enemies(dt)
@@ -636,6 +737,7 @@ class Game:
             self.player.facing_y = dy / length
 
     def update_player(self, dt: float) -> None:
+        self.player.moving = False
         keys = pygame.key.get_pressed()
         dx = float(keys[pygame.K_d] or keys[pygame.K_RIGHT]) - float(
             keys[pygame.K_a] or keys[pygame.K_LEFT]
@@ -659,6 +761,7 @@ class Game:
         self.player.mana = min(self.player.max_mana, self.player.mana + 5 * dt)
 
     def move_actor(self, actor: Player | Enemy, dx: float, dy: float) -> None:
+        old_x, old_y = actor.x, actor.y
         new_x = actor.x + dx
         if not self.dungeon.blocked_for_radius(new_x, actor.y):
             actor.x = new_x
@@ -666,8 +769,18 @@ class Game:
         if not self.dungeon.blocked_for_radius(actor.x, new_y):
             actor.y = new_y
 
+        actual_dx = actor.x - old_x
+        actual_dy = actor.y - old_y
+        distance = math.hypot(actual_dx, actual_dy)
+        if distance > 0.0001:
+            actor.moving = True
+            actor.move_x = actual_dx / distance
+            actor.move_y = actual_dy / distance
+            actor.anim_time += distance * 4.8
+
     def update_enemies(self, dt: float) -> None:
         for enemy in self.enemies:
+            enemy.moving = False
             enemy.attack_timer = max(0.0, enemy.attack_timer - dt)
             dx = self.player.x - enemy.x
             dy = self.player.y - enemy.y
@@ -1023,6 +1136,43 @@ class Game:
                 [top, right, bottom, left],
                 WORLD_SCALE,
             )
+            seed = (x * 928371 + y * 364479) & 7
+            if seed in (1, 4, 6):
+                pygame.draw.line(
+                    self.screen,
+                    (69, 65, 76),
+                    (sx - 15 * WORLD_SCALE, sy - 9 * WORLD_SCALE),
+                    (sx - 4 * WORLD_SCALE, sy - 14 * WORLD_SCALE),
+                    WORLD_SCALE,
+                )
+                pygame.draw.line(
+                    self.screen,
+                    (22, 21, 28),
+                    (sx + 10 * WORLD_SCALE, sy + 18 * WORLD_SCALE),
+                    (sx + 2 * WORLD_SCALE, sy + wall_h - 5 * WORLD_SCALE),
+                    WORLD_SCALE,
+                )
+            if seed in (2, 5):
+                pygame.draw.rect(
+                    self.screen,
+                    (34, 54, 43),
+                    (
+                        sx - 24 * WORLD_SCALE,
+                        sy + 18 * WORLD_SCALE,
+                        6 * WORLD_SCALE,
+                        2 * WORLD_SCALE,
+                    ),
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    (40, 68, 50),
+                    (
+                        sx + 13 * WORLD_SCALE,
+                        sy + 8 * WORLD_SCALE,
+                        5 * WORLD_SCALE,
+                        2 * WORLD_SCALE,
+                    ),
+                )
             return
 
         base = (52, 47, 42) if tile == Tile.FLOOR else (76, 58, 36)
@@ -1031,6 +1181,44 @@ class Game:
         pygame.draw.lines(
             self.screen, edge, True, [top, right, bottom, left], WORLD_SCALE
         )
+        seed = (x * 1103515245 + y * 12345) & 15
+        if seed in (0, 3, 7, 12):
+            pygame.draw.line(
+                self.screen,
+                (38, 35, 33),
+                (sx - 18 * WORLD_SCALE, sy - 2 * WORLD_SCALE),
+                (sx - 6 * WORLD_SCALE, sy + 4 * WORLD_SCALE),
+                WORLD_SCALE,
+            )
+        if seed in (2, 8, 14):
+            pygame.draw.rect(
+                self.screen,
+                (71, 63, 54),
+                (
+                    sx + 8 * WORLD_SCALE,
+                    sy - 6 * WORLD_SCALE,
+                    3 * WORLD_SCALE,
+                    2 * WORLD_SCALE,
+                ),
+            )
+            pygame.draw.rect(
+                self.screen,
+                (43, 39, 36),
+                (
+                    sx + 15 * WORLD_SCALE,
+                    sy + 7 * WORLD_SCALE,
+                    2 * WORLD_SCALE,
+                    2 * WORLD_SCALE,
+                ),
+            )
+        if seed in (5, 10):
+            pygame.draw.line(
+                self.screen,
+                (76, 68, 58),
+                (sx - 4 * WORLD_SCALE, sy - 10 * WORLD_SCALE),
+                (sx + 14 * WORLD_SCALE, sy - 2 * WORLD_SCALE),
+                WORLD_SCALE,
+            )
         if tile == Tile.STAIRS:
             pygame.draw.line(
                 self.screen,
@@ -1052,6 +1240,19 @@ class Game:
                 (sx - 6 * WORLD_SCALE, sy + 12 * WORLD_SCALE),
                 (sx + 6 * WORLD_SCALE, sy + 12 * WORLD_SCALE),
                 3 * WORLD_SCALE,
+            )
+            pygame.draw.line(
+                self.screen,
+                (255, 225, 132),
+                (sx - 20 * WORLD_SCALE, sy - 8 * WORLD_SCALE),
+                (sx + 20 * WORLD_SCALE, sy - 8 * WORLD_SCALE),
+                WORLD_SCALE,
+            )
+            pygame.draw.circle(
+                self.screen,
+                (255, 214, 105),
+                (sx, sy - 16 * WORLD_SCALE),
+                max(2, 2 * WORLD_SCALE),
             )
 
     def draw_world_objects(self) -> None:
@@ -1087,14 +1288,93 @@ class Game:
                 surface, surface.get_rect(center=(sx, sy - 34 * WORLD_SCALE))
             )
 
-    def draw_shadow(self, x: float, y: float, width: int, height: int) -> None:
+    def draw_shadow(
+        self, x: float, y: float, width: int, height: int, moving: bool = False
+    ) -> None:
         sx, sy = self.world_to_screen(x, y)
-        scaled_w = width * WORLD_SCALE
-        scaled_h = height * WORLD_SCALE
-        pygame.draw.ellipse(
+        squash = 1 + int(moving and math.sin(self.elapsed * 18.0) > 0)
+        scaled_w = (width + squash * 2) * WORLD_SCALE
+        scaled_h = max(1, (height - squash) * WORLD_SCALE)
+        shadow = pygame.Surface((scaled_w, scaled_h), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow, (0, 0, 0, 95), shadow.get_rect())
+        self.screen.blit(
+            shadow,
+            shadow.get_rect(center=(sx, sy + 10 * WORLD_SCALE)),
+        )
+
+    def walk_offsets(self, actor: Player | Enemy) -> tuple[int, int]:
+        if not actor.moving:
+            return 0, 0
+        bob = int(abs(math.sin(actor.anim_time * math.tau)) * 3)
+        sway = int(math.sin(actor.anim_time * math.tau) * 2)
+        return sway, bob
+
+    def iso_screen_direction(self, dx: float, dy: float) -> tuple[float, float]:
+        screen_dx = (dx - dy) * TILE_W / 2
+        screen_dy = (dx + dy) * TILE_H / 2
+        length = math.hypot(screen_dx, screen_dy)
+        if length <= 0.001:
+            return 1.0, 0.0
+        return screen_dx / length, screen_dy / length
+
+    def draw_movement_trail(
+        self, actor: Player | Enemy, color: Color, size: int = 2
+    ) -> None:
+        if not actor.moving:
+            return
+        sx, sy = self.world_to_screen(actor.x, actor.y)
+        vx, vy = self.iso_screen_direction(actor.move_x, actor.move_y)
+        phase = abs(math.sin(actor.anim_time * math.tau))
+        for step, alpha in ((1, 86), (2, 48)):
+            px = sx - int(vx * (7 + step * 8) * WORLD_SCALE)
+            py = sy + int(8 * WORLD_SCALE) - int(vy * (3 + step * 5) * WORLD_SCALE)
+            dust = pygame.Surface(
+                (size * 5 * WORLD_SCALE, size * 2 * WORLD_SCALE), pygame.SRCALPHA
+            )
+            pygame.draw.rect(
+                dust,
+                (*color, int(alpha * (0.55 + phase * 0.45))),
+                dust.get_rect(),
+            )
+            self.screen.blit(dust, dust.get_rect(center=(px, py)))
+
+    def draw_sprite_direction_cue(
+        self,
+        sx: int,
+        sy: int,
+        dx: float,
+        dy: float,
+        color: Color,
+        hostile: bool = False,
+    ) -> None:
+        vx, vy = self.iso_screen_direction(dx, dy)
+        scale = WORLD_SCALE
+        chest_x = sx + int(vx * 12 * scale)
+        chest_y = sy - 42 * scale + int(vy * 5 * scale)
+        foot_x = sx + int(vx * 10 * scale)
+        foot_y = sy - 9 * scale + int(vy * 4 * scale)
+        dark = (30, 24, 30) if hostile else (25, 33, 44)
+        pygame.draw.rect(
             self.screen,
-            (0, 0, 0, 90),
-            (sx - scaled_w // 2, sy + 6 * WORLD_SCALE, scaled_w, scaled_h),
+            dark,
+            (chest_x - 3 * scale, chest_y - 3 * scale, 6 * scale, 6 * scale),
+        )
+        pygame.draw.rect(
+            self.screen,
+            color,
+            (chest_x - 2 * scale, chest_y - 2 * scale, 4 * scale, 4 * scale),
+        )
+        pygame.draw.line(
+            self.screen,
+            color,
+            (sx, sy - 20 * scale),
+            (foot_x, foot_y),
+            max(1, scale),
+        )
+        pygame.draw.rect(
+            self.screen,
+            color,
+            (foot_x - 2 * scale, foot_y - scale, 4 * scale, 2 * scale),
         )
 
     def blit_sprite(
@@ -1104,25 +1384,38 @@ class Game:
         y: float,
         y_offset: int = 0,
         facing_x: float = 1.0,
+        x_offset: int = 0,
     ) -> tuple[int, int]:
         sx, sy = self.world_to_screen(x, y)
         turned_sprite = (
             pygame.transform.flip(sprite, True, False) if facing_x < 0 else sprite
         )
-        rect = turned_sprite.get_rect(midbottom=(sx, sy + y_offset * WORLD_SCALE))
+        rect = turned_sprite.get_rect(
+            midbottom=(sx + x_offset * WORLD_SCALE, sy + y_offset * WORLD_SCALE)
+        )
         self.screen.blit(turned_sprite, rect)
-        return sx, sy
+        return rect.centerx, sy
 
     def draw_player(self, player: Player) -> None:
-        self.draw_shadow(player.x, player.y, 34, 13)
+        sway, bob = self.walk_offsets(player)
+        self.draw_shadow(player.x, player.y, 34, 13, moving=player.moving)
+        self.draw_movement_trail(player, (145, 130, 98), size=2)
         sx, sy = self.blit_sprite(
             self.sprites.player,
             player.x,
             player.y,
-            y_offset=6,
+            y_offset=6 - bob,
             facing_x=player.facing_x,
+            x_offset=sway,
         )
-        self.draw_pixel_aim_marker(sx, sy, player.facing_x, player.facing_y)
+        cue_dx = player.move_x if player.moving else player.facing_x
+        cue_dy = player.move_y if player.moving else player.facing_y
+        self.draw_sprite_direction_cue(
+            sx, sy - bob * WORLD_SCALE, cue_dx, cue_dy, (92, 170, 255)
+        )
+        self.draw_pixel_aim_marker(
+            sx, sy - bob * WORLD_SCALE, player.facing_x, player.facing_y
+        )
 
     def draw_pixel_aim_marker(self, sx: int, sy: int, dx: float, dy: float) -> None:
         # A tiny blocky weapon glint indicates facing without replacing the sprite art.
@@ -1152,9 +1445,21 @@ class Game:
     def draw_enemy(self, enemy: Enemy) -> None:
         sprite = self.sprites.enemies.get(enemy.name, self.sprites.enemies["Ghoul"])
         shadow_w = 38 if enemy.name == "Gate Warden" else 32
-        self.draw_shadow(enemy.x, enemy.y, shadow_w, 12)
+        sway, bob = self.walk_offsets(enemy)
+        self.draw_shadow(enemy.x, enemy.y, shadow_w, 12, moving=enemy.moving)
+        self.draw_movement_trail(enemy, (120, 84, 68), size=2)
         sx, sy = self.blit_sprite(
-            sprite, enemy.x, enemy.y, y_offset=6, facing_x=enemy.facing_x
+            sprite,
+            enemy.x,
+            enemy.y,
+            y_offset=6 - bob,
+            facing_x=enemy.facing_x,
+            x_offset=sway,
+        )
+        cue_dx = enemy.move_x if enemy.moving else enemy.facing_x
+        cue_dy = enemy.move_y if enemy.moving else enemy.facing_y
+        self.draw_sprite_direction_cue(
+            sx, sy - bob * WORLD_SCALE, cue_dx, cue_dy, (245, 92, 76), hostile=True
         )
         bar_w = (34 if enemy.name == "Gate Warden" else 28) * WORLD_SCALE
         fill_w = int(bar_w * max(0, enemy.hp) / enemy.max_hp)
@@ -1175,10 +1480,14 @@ class Game:
             "Rare": (245, 210, 80),
         }.get(item.rarity, (220, 220, 220))
         sprite = self.sprites.items.get(item.slot, self.sprites.items["potion"])
-        glow = pygame.Surface((34 * WORLD_SCALE, 16 * WORLD_SCALE), pygame.SRCALPHA)
-        pygame.draw.ellipse(glow, (*rarity_color, 65), glow.get_rect())
+        pulse = 0.65 + 0.35 * math.sin(self.elapsed * 4.0 + item.x + item.y)
+        glow = pygame.Surface((38 * WORLD_SCALE, 18 * WORLD_SCALE), pygame.SRCALPHA)
+        pygame.draw.ellipse(
+            glow, (*rarity_color, int(55 + 45 * pulse)), glow.get_rect()
+        )
         self.screen.blit(glow, glow.get_rect(center=(sx, sy + WORLD_SCALE)))
-        rect = sprite.get_rect(midbottom=(sx, sy + 4 * WORLD_SCALE))
+        bob = int(math.sin(self.elapsed * 3.2 + item.x * 0.7) * 2 * WORLD_SCALE)
+        rect = sprite.get_rect(midbottom=(sx, sy + 4 * WORLD_SCALE - bob))
         self.screen.blit(sprite, rect)
         if math.hypot(item.x - self.player.x, item.y - self.player.y) < 1.0:
             label = self.small_font.render(f"E: {item.name}", True, rarity_color)
@@ -1191,19 +1500,46 @@ class Game:
         sprite = self.sprites.projectiles.get(
             projectile.owner, self.sprites.projectiles["enemy"]
         )
-        if abs(projectile.vx) > abs(projectile.vy):
-            sprite = pygame.transform.flip(sprite, projectile.vx < 0, False)
+        vx, vy = self.iso_screen_direction(projectile.vx, projectile.vy)
+        color = (70, 165, 255) if projectile.owner == "player" else (210, 83, 238)
+        for step, alpha in ((1, 120), (2, 72), (3, 38)):
+            trail = pygame.Surface((8 * WORLD_SCALE, 4 * WORLD_SCALE), pygame.SRCALPHA)
+            pygame.draw.rect(trail, (*color, alpha), trail.get_rect())
+            self.screen.blit(
+                trail,
+                trail.get_rect(
+                    center=(
+                        sx - int(vx * step * 9 * WORLD_SCALE),
+                        sy - 12 * WORLD_SCALE - int(vy * step * 9 * WORLD_SCALE),
+                    )
+                ),
+            )
+        angle = -math.degrees(math.atan2(vy, vx))
+        sprite = pygame.transform.rotate(sprite, angle)
         rect = sprite.get_rect(center=(sx, sy - 12 * WORLD_SCALE))
         self.screen.blit(sprite, rect)
 
     def draw_slash(self, slash: tuple[float, float, float]) -> None:
         x, y, ttl = slash
         sx, sy = self.world_to_screen(x, y)
+        life = max(0.0, min(1.0, ttl / 0.16))
         sprite = self.sprites.slash.copy()
         if self.player.facing_x < 0:
             sprite = pygame.transform.flip(sprite, True, False)
-        sprite.set_alpha(max(0, min(255, int(255 * ttl / 0.16))))
-        rect = sprite.get_rect(center=(sx, sy - 18 * WORLD_SCALE))
+        if life < 0.7:
+            grow = 1.0 + (0.7 - life) * 0.25
+            sprite = pygame.transform.scale(
+                sprite,
+                (int(sprite.get_width() * grow), int(sprite.get_height() * grow)),
+            )
+        sprite.set_alpha(max(0, min(255, int(255 * life))))
+        vx, vy = self.iso_screen_direction(self.player.facing_x, self.player.facing_y)
+        rect = sprite.get_rect(
+            center=(
+                sx + int(vx * (1.0 - life) * 12 * WORLD_SCALE),
+                sy - 18 * WORLD_SCALE + int(vy * (1.0 - life) * 6 * WORLD_SCALE),
+            )
+        )
         self.screen.blit(sprite, rect)
 
     def ui(self, value: int) -> int:
