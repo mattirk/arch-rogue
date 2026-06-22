@@ -340,14 +340,8 @@ class Game:
         if screen_size is None:
             display_info = pygame.display.Info()
             screen_size = (display_info.current_w, display_info.current_h)
-        flags = (
-            pygame.HIDDEN
-            if headless
-            else pygame.FULLSCREEN
-            if self.fullscreen
-            else pygame.NOFRAME
-        )
-        self.screen = pygame.display.set_mode(screen_size, flags)
+        self.windowed_size = screen_size
+        self.screen = self.apply_display_mode(headless=headless)
         self.clock = pygame.time.Clock()
         self.rebuild_fonts()
         self.sprites = PixelSpriteAtlas()
@@ -370,6 +364,28 @@ class Game:
         self.audio_available = self.initialize_audio(headless)
         self.sound_cache: dict[str, pygame.mixer.Sound] = {}
         self.menus = MenuRenderer(self, ARCHETYPES, DUNGEON_DEPTH)
+
+    def display_size(self) -> tuple[int, int]:
+        try:
+            sizes = pygame.display.get_desktop_sizes()
+            if sizes:
+                return sizes[0]
+        except pygame.error:
+            pass
+        display_info = pygame.display.Info()
+        return display_info.current_w, display_info.current_h
+
+    def apply_display_mode(self, headless: bool = False) -> pygame.Surface:
+        if headless:
+            return pygame.display.set_mode(self.windowed_size, pygame.HIDDEN)
+        if self.fullscreen:
+            # Use SDL's scaled fullscreen path so the game surface is expanded to
+            # the actual monitor instead of being placed unscaled in the top-left
+            # when the requested logical size differs from the desktop mode.
+            return pygame.display.set_mode(
+                (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN | pygame.SCALED
+            )
+        return pygame.display.set_mode(self.windowed_size, pygame.RESIZABLE)
 
     def rebuild_fonts(self) -> None:
         self.font = pygame.font.Font(None, 24 * self.ui_scale)
@@ -1054,6 +1070,11 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+            elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
+                self.windowed_size = (max(640, event.w), max(480, event.h))
+                self.screen = pygame.display.set_mode(
+                    self.windowed_size, pygame.RESIZABLE
+                )
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     if self.state in ("options", "about"):
@@ -1081,11 +1102,10 @@ class Game:
                         self.music_enabled = not self.music_enabled
                         self.save_options()
                     elif event.key == pygame.K_f:
+                        if not self.fullscreen:
+                            self.windowed_size = self.screen.get_size()
                         self.fullscreen = not self.fullscreen
-                        flags = pygame.FULLSCREEN if self.fullscreen else pygame.NOFRAME
-                        self.screen = pygame.display.set_mode(
-                            self.screen.get_size(), flags
-                        )
+                        self.screen = self.apply_display_mode()
                         self.save_options()
                     elif event.key in (pygame.K_EQUALS, pygame.K_PLUS):
                         self.ui_scale = min(4, self.ui_scale + 1)
