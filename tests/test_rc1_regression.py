@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pygame
 
 from arch_rogue.dungeon import Dungeon
-from arch_rogue.game import ARCHETYPES, MAX_INVENTORY, Game
+from arch_rogue.game import ARCHETYPES, DUNGEON_DEPTH, MAX_INVENTORY, Game
 from arch_rogue.models import FloatingText, Item, Projectile, Tile
 
 
@@ -69,8 +69,9 @@ class Rc1RegressionTests(unittest.TestCase):
                 self.assertEqual(game.player.melee_bonus, archetype.melee_bonus)
                 self.assertEqual(game.player.spell_bonus, archetype.spell_bonus)
                 self.assertEqual(game.player.armor_bonus, archetype.armor_bonus)
+                self.assertEqual(game.current_depth, 1)
                 self.assertTrue(game.dungeon.is_floor(game.player.x, game.player.y))
-                self.assertEqual(sum(enemy.kind == "boss" for enemy in game.enemies), 1)
+                self.assertEqual(sum(enemy.kind == "boss" for enemy in game.enemies), 0)
                 self.assertTrue(any(item.slot == "potion" for item in game.items))
                 seen_profiles.add(
                     (
@@ -144,17 +145,32 @@ class Rc1RegressionTests(unittest.TestCase):
         finally:
             pygame.quit()
 
-    def test_enemy_death_boss_gating_and_victory_flow(self) -> None:
+    def test_stairs_advance_until_depth_ten_then_boss_gates_victory(self) -> None:
         game = self.make_game()
         try:
             game.restart(ARCHETYPES[0])
+            self.assertEqual(game.current_depth, 1)
+            self.assertFalse(game.boss_alive())
+
+            for expected_depth in range(2, DUNGEON_DEPTH + 1):
+                stair_x, stair_y = (
+                    game.dungeon.stairs[0] + 0.5,
+                    game.dungeon.stairs[1] + 0.5,
+                )
+                game.player.x = stair_x
+                game.player.y = stair_y
+                game.interact()
+                self.assertEqual(game.state, "playing")
+                self.assertEqual(game.current_depth, expected_depth)
+                self.assertTrue(game.dungeon.is_floor(game.player.x, game.player.y))
+
+            self.assertTrue(game.boss_alive())
             stair_x, stair_y = (
                 game.dungeon.stairs[0] + 0.5,
                 game.dungeon.stairs[1] + 0.5,
             )
             game.player.x = stair_x
             game.player.y = stair_y
-
             game.interact()
             self.assertEqual(game.state, "playing")
             self.assertTrue(any("sealed" in floater.text for floater in game.floaters))
@@ -202,6 +218,7 @@ class Rc1RegressionTests(unittest.TestCase):
 
             game.restart(ARCHETYPES[-1])
             self.assertEqual(game.run_number, first_run + 1)
+            self.assertEqual(game.current_depth, 1)
             self.assertEqual(game.state, "playing")
             self.assertFalse(game.inventory_open)
             self.assertEqual(game.elapsed, 0.0)

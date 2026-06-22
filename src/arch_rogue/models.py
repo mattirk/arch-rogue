@@ -49,6 +49,18 @@ class RunModifier:
     trap_bonus: float = 0.0
 
 
+@dataclass
+class RunStats:
+    kills: int = 0
+    loot_picked_up: int = 0
+    potions_used: int = 0
+    shrines_used: int = 0
+    secrets_opened: int = 0
+    traps_triggered: int = 0
+    damage_taken: int = 0
+    boss_killed: bool = False
+
+
 class Tile(IntEnum):
     WALL = 0
     FLOOR = 1
