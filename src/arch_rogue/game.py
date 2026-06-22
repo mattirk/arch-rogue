@@ -1825,14 +1825,7 @@ class Game:
 
         glow = pygame.Surface(overlay.get_size(), pygame.SRCALPHA)
         pygame.draw.polygon(glow, (92, 170, 255, 24), local_points)
-        pygame.draw.lines(
-            glow, (118, 196, 255, 46), True, local_points, 8 * WORLD_SCALE
-        )
-        local_origin = (origin[0] - min_x, origin[1] - min_y)
         local_tip = (tip[0] - min_x, tip[1] - min_y)
-        pygame.draw.line(
-            glow, (225, 245, 255, 56), local_origin, local_tip, 5 * WORLD_SCALE
-        )
         blur_size = (
             max(1, glow.get_width() // 4),
             max(1, glow.get_height() // 4),
@@ -1842,13 +1835,7 @@ class Game:
         overlay.blit(glow, (0, 0))
 
         pygame.draw.polygon(overlay, (92, 170, 255, 34), local_points)
-        pygame.draw.lines(
-            overlay, (118, 196, 255, 105), True, local_points, max(2, WORLD_SCALE)
-        )
-        pygame.draw.line(
-            overlay, (225, 245, 255, 135), local_origin, local_tip, max(2, WORLD_SCALE)
-        )
-        pygame.draw.circle(overlay, (225, 245, 255, 170), local_tip, 3 * WORLD_SCALE)
+        pygame.draw.circle(overlay, (225, 245, 255, 120), local_tip, 2 * WORLD_SCALE)
         self.screen.blit(overlay, (min_x, min_y))
 
     def draw_enemy(self, enemy: Enemy) -> None:
