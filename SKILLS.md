@@ -185,4 +185,3 @@ Reach a testable, content-complete version suitable for broad feedback:
 - How far should the left-mouse movement and keyboard-skill control scheme be expanded for controller support?
 - Should the game be single-player only initially, or architected with future co-op in mind?
 - How close should itemization stay to Diablo II versus a leaner roguelike inventory model?
-- Should levels be fully procedural, handcrafted room chunks, or a hybrid?

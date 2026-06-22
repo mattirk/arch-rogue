@@ -32,6 +32,16 @@ TILE_W = 64 * WORLD_SCALE
 TILE_H = 32 * WORLD_SCALE
 MAX_INVENTORY = 9
 UI_SCALE = 2
+PLAYER_HIT_RADIUS = 0.42
+ENEMY_HIT_RADIUS = 0.42
+LARGE_ENEMY_HIT_RADIUS = 0.52
+BOSS_HIT_RADIUS = 0.64
+PLAYER_MELEE_RANGE = 1.55
+PLAYER_MELEE_ARC_DOT = 0.05
+PLAYER_PROJECTILE_HIT_RADIUS = 0.54
+ENEMY_PROJECTILE_HIT_RADIUS = 0.52
+
+SlashEffect = tuple[float, float, float, float, float]
 
 ARCHETYPES = (
     Archetype(
@@ -192,7 +202,7 @@ class Game:
         self.shrines: list[Shrine] = []
         self.secrets: list[SecretCache] = []
         self.floaters: list[FloatingText] = []
-        self.slashes: list[tuple[float, float, float]] = []
+        self.slashes: list[SlashEffect] = []
         self.inventory_open = False
         self.state = "playing"
         self._populate_dungeon()
@@ -533,7 +543,11 @@ class Game:
         self.update_traps(dt)
         self.update_secrets()
         self.update_floaters(dt)
-        self.slashes = [(x, y, ttl - dt) for x, y, ttl in self.slashes if ttl - dt > 0]
+        self.slashes = [
+            (x, y, ttl - dt, dx, dy)
+            for x, y, ttl, dx, dy in self.slashes
+            if ttl - dt > 0
+        ]
 
         if self.player.hp <= 0:
             self.state = "dead"
@@ -590,6 +604,7 @@ class Game:
         new_y = actor.y + dy
         if not self.dungeon.blocked_for_radius(actor.x, new_y):
             actor.y = new_y
+        self.resolve_actor_contacts(actor)
 
         actual_dx = actor.x - old_x
         actual_dy = actor.y - old_y
@@ -599,6 +614,53 @@ class Game:
             actor.move_x = actual_dx / distance
             actor.move_y = actual_dy / distance
             actor.anim_time += distance * 4.8
+
+    def actor_hit_radius(self, actor: Player | Enemy) -> float:
+        if isinstance(actor, Player):
+            return PLAYER_HIT_RADIUS
+        return self.enemy_hit_radius(actor)
+
+    def enemy_hit_radius(self, enemy: Enemy) -> float:
+        if enemy.kind == "boss":
+            return BOSS_HIT_RADIUS
+        if enemy.name in ("Gate Warden", "Crypt Brute"):
+            return LARGE_ENEMY_HIT_RADIUS
+        return ENEMY_HIT_RADIUS
+
+    def contact_distance(self, enemy: Enemy) -> float:
+        return PLAYER_HIT_RADIUS + self.enemy_hit_radius(enemy)
+
+    def resolve_actor_contacts(self, actor: Player | Enemy) -> None:
+        others: list[Player | Enemy]
+        if isinstance(actor, Player):
+            others = list(self.enemies)
+        else:
+            others = [
+                self.player,
+                *(enemy for enemy in self.enemies if enemy is not actor),
+            ]
+
+        for other in others:
+            dx = actor.x - other.x
+            dy = actor.y - other.y
+            distance = math.hypot(dx, dy)
+            min_distance = self.actor_hit_radius(actor) + self.actor_hit_radius(other)
+            if distance >= min_distance:
+                continue
+
+            if distance > 0.001:
+                nx, ny = dx / distance, dy / distance
+            else:
+                nx, ny = -actor.facing_x, -actor.facing_y
+                if math.hypot(nx, ny) <= 0.001:
+                    nx, ny = 1.0, 0.0
+
+            target_x = other.x + nx * min_distance
+            target_y = other.y + ny * min_distance
+            if not self.dungeon.blocked_for_radius(target_x, actor.y):
+                actor.x = target_x
+            if not self.dungeon.blocked_for_radius(actor.x, target_y):
+                actor.y = target_y
 
     def update_enemies(self, dt: float) -> None:
         for enemy in self.enemies:
@@ -646,6 +708,15 @@ class Game:
                 f"-{amount}", self.player.x, self.player.y - 0.2, (235, 90, 80)
             )
         )
+        self.slashes.append(
+            (
+                (enemy.x + self.player.x) * 0.5,
+                (enemy.y + self.player.y) * 0.5,
+                0.14,
+                enemy.facing_x,
+                enemy.facing_y,
+            )
+        )
 
     def enemy_cast(self, enemy: Enemy, nx: float, ny: float) -> None:
         enemy.attack_timer = enemy.attack_cooldown
@@ -668,7 +739,9 @@ class Game:
             if not projectile.update(dt, self.dungeon):
                 continue
             if projectile.owner == "player":
-                hit = self.first_enemy_near(projectile.x, projectile.y, 0.42)
+                hit = self.first_enemy_near(
+                    projectile.x, projectile.y, PLAYER_PROJECTILE_HIT_RADIUS
+                )
                 if hit:
                     self.damage_enemy(
                         hit,
@@ -681,7 +754,7 @@ class Game:
                     math.hypot(
                         projectile.x - self.player.x, projectile.y - self.player.y
                     )
-                    < 0.45
+                    < ENEMY_PROJECTILE_HIT_RADIUS
                 ):
                     amount = max(1, projectile.damage - self.player.armor())
                     self.player.hp -= amount
@@ -742,10 +815,14 @@ class Game:
             return
         self.player.melee_timer = 0.36
         self.player.stamina -= 12
-        tx = self.player.x + self.player.facing_x * 0.9
-        ty = self.player.y + self.player.facing_y * 0.9
-        self.slashes.append((tx, ty, 0.16))
         target = self.enemy_in_melee_arc()
+        if target:
+            tx = (self.player.x + target.x) * 0.5
+            ty = (self.player.y + target.y) * 0.5
+        else:
+            tx = self.player.x + self.player.facing_x * 0.9
+            ty = self.player.y + self.player.facing_y * 0.9
+        self.slashes.append((tx, ty, 0.18, self.player.facing_x, self.player.facing_y))
         if target:
             damage = self.player.melee_damage() + self.rng.randrange(-3, 5)
             self.damage_enemy(
@@ -811,6 +888,8 @@ class Game:
                     self.player.x + math.cos(angle) * 0.9,
                     self.player.y + math.sin(angle) * 0.9,
                     0.18,
+                    math.cos(angle),
+                    math.sin(angle),
                 )
             )
 
@@ -838,19 +917,20 @@ class Game:
             dx = enemy.x - self.player.x
             dy = enemy.y - self.player.y
             distance = math.hypot(dx, dy)
-            if distance > 1.35 or distance < 0.001:
+            if distance > PLAYER_MELEE_RANGE or distance < 0.001:
                 continue
             dot = (dx / distance) * self.player.facing_x + (
                 dy / distance
             ) * self.player.facing_y
-            if dot > 0.25 and distance < best_distance:
+            if dot > PLAYER_MELEE_ARC_DOT and distance < best_distance:
                 best = enemy
                 best_distance = distance
         return best
 
     def first_enemy_near(self, x: float, y: float, radius: float) -> Enemy | None:
         for enemy in self.enemies:
-            if math.hypot(enemy.x - x, enemy.y - y) <= radius:
+            hit_radius = radius + self.enemy_hit_radius(enemy) - ENEMY_HIT_RADIUS
+            if math.hypot(enemy.x - x, enemy.y - y) <= hit_radius:
                 return enemy
         return None
 
@@ -1270,17 +1350,35 @@ class Game:
         # The tile diamond is the floor-plane footprint. Draw the wall upward from
         # that footprint so actors read as moving between walls, not on top of them.
         pygame.draw.polygon(surface, left_color, [cap_left, cap_bottom, bottom, left])
-        pygame.draw.polygon(surface, right_color, [cap_right, cap_bottom, bottom, right])
-        pygame.draw.polygon(surface, top_color, [cap_top, cap_right, cap_bottom, cap_left])
+        pygame.draw.polygon(
+            surface, right_color, [cap_right, cap_bottom, bottom, right]
+        )
+        pygame.draw.polygon(
+            surface, top_color, [cap_top, cap_right, cap_bottom, cap_left]
+        )
 
         pygame.draw.lines(
-            surface, edge_color, True, [cap_top, cap_right, cap_bottom, cap_left], WORLD_SCALE
+            surface,
+            edge_color,
+            True,
+            [cap_top, cap_right, cap_bottom, cap_left],
+            WORLD_SCALE,
         )
-        pygame.draw.line(surface, self.shade(edge_color, -12), cap_left, left, WORLD_SCALE)
-        pygame.draw.line(surface, self.shade(edge_color, -28), cap_right, right, WORLD_SCALE)
-        pygame.draw.line(surface, self.shade(edge_color, -48), cap_bottom, bottom, WORLD_SCALE)
-        pygame.draw.line(surface, self.shade(edge_color, -42), left, bottom, WORLD_SCALE)
-        pygame.draw.line(surface, self.shade(edge_color, -54), bottom, right, WORLD_SCALE)
+        pygame.draw.line(
+            surface, self.shade(edge_color, -12), cap_left, left, WORLD_SCALE
+        )
+        pygame.draw.line(
+            surface, self.shade(edge_color, -28), cap_right, right, WORLD_SCALE
+        )
+        pygame.draw.line(
+            surface, self.shade(edge_color, -48), cap_bottom, bottom, WORLD_SCALE
+        )
+        pygame.draw.line(
+            surface, self.shade(edge_color, -42), left, bottom, WORLD_SCALE
+        )
+        pygame.draw.line(
+            surface, self.shade(edge_color, -54), bottom, right, WORLD_SCALE
+        )
 
         # Top cap seams stay high above the walking plane, avoiding the roof illusion.
         pygame.draw.line(
@@ -1460,8 +1558,9 @@ class Game:
         for enemy in self.enemies:
             drawables.append((enemy.x + enemy.y, "enemy", enemy))
         drawables.append((self.player.x + self.player.y, "player", self.player))
-        for x, y, ttl in self.slashes:
-            drawables.append((x + y + 0.05, "slash", (x, y, ttl)))
+        for slash in self.slashes:
+            x, y, _ttl, _dx, _dy = slash
+            drawables.append((x + y + 0.05, "slash", slash))
 
         self.draw_aim_cone()
 
@@ -1481,7 +1580,7 @@ class Game:
             elif kind == "player":
                 self.draw_player(cast(Player, obj))
             elif kind == "slash":
-                self.draw_slash(cast(tuple[float, float, float], obj))
+                self.draw_slash(cast(SlashEffect, obj))
 
         for floater in self.floaters:
             sx, sy = self.world_to_screen(floater.x, floater.y)
@@ -1832,12 +1931,12 @@ class Game:
         rect = sprite.get_rect(center=(sx, sy - 12 * WORLD_SCALE))
         self.screen.blit(sprite, rect)
 
-    def draw_slash(self, slash: tuple[float, float, float]) -> None:
-        x, y, ttl = slash
+    def draw_slash(self, slash: SlashEffect) -> None:
+        x, y, ttl, dx, dy = slash
         sx, sy = self.world_to_screen(x, y)
-        life = max(0.0, min(1.0, ttl / 0.16))
+        life = max(0.0, min(1.0, ttl / 0.18))
         sprite = self.sprites.slash.copy()
-        if self.player.facing_x < 0:
+        if dx < 0:
             sprite = pygame.transform.flip(sprite, True, False)
         if life < 0.7:
             grow = 1.0 + (0.7 - life) * 0.25
@@ -1846,7 +1945,7 @@ class Game:
                 (int(sprite.get_width() * grow), int(sprite.get_height() * grow)),
             )
         sprite.set_alpha(max(0, min(255, int(255 * life))))
-        vx, vy = self.iso_screen_direction(self.player.facing_x, self.player.facing_y)
+        vx, vy = self.iso_screen_direction(dx, dy)
         rect = sprite.get_rect(
             center=(
                 sx + int(vx * (1.0 - life) * 12 * WORLD_SCALE),
