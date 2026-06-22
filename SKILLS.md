@@ -146,37 +146,20 @@ Example categories:
 
 ## Milestones
 
-### Beta: Feature Complete Public Test
+### 1.1: Depth, Build Variety, and Run Replayability
 
-Reach a testable, content-complete version suitable for broad feedback:
+Expand the 1.0 foundation with more meaningful run variety, stronger archetype identity, and clearer long-term direction without destabilizing the core loop:
 
-- Lock the main gameplay loop and avoid major architectural rewrites except for critical issues.
-- Include enough themes, bosses, enemies, loot, secrets, and run modifiers to support repeated runs.
-- Add save/run-state handling if runs are expected to survive application restarts.
-- Add audio, options, title/menu flow, credits/about screen, and basic onboarding/help.
-- Run broad balance passes based on playtest data, especially difficulty spikes, loot pacing, and archetype viability.
-- Fix known crashes, softlocks, progression blockers, and severe performance issues before widening testing.
-
-### 1.0: Public Release
-
-Ship a polished, replayable single-player release built around the current 10-depth run structure rather than a major redesign:
-
-- **Release-quality run loop:** preserve the locked Beta flow of title/menu → archetype selection → dungeon run → final boss gate → victory/death summary → new run/resume, with no known progression blockers, resume corruption, or restart softlocks.
-- **Archetype identity pass:** give Warden, Rogue, Arcanist, Acolyte, and Ranger clearly differentiated moment-to-moment play through tuned stats, cooldowns, resource costs, starting equipment, and at least one signature-feeling skill or passive advantage each.
-- **Depth pacing and encounter variety:** tune the 10-depth arc so early floors teach safely, middle floors introduce sharper enemy/trap/shrine decisions, and final floors create sustained pressure before the gate tyrant.
-- **Boss and elite encounters:** add enough boss/elite variation for repeated runs, including theme-influenced final boss names, attack patterns, readable telegraphs, and loot rewards without making the final gate feel random or unfair.
-- **Loot and identification polish:** refine item rarity, affixes, unidentified gear, uniques, consumables, and equipment comparisons so pickups are readable, tempting, and build-shaping without overwhelming the compact inventory model.
-- **Dungeon readability:** improve room landmarks, secret hints, trap visibility, shrine presentation, stairs/boss-gate messaging, and isometric collision clarity so failure feels tactical rather than visually confusing.
-- **Save/resume robustness:** harden JSON run-state handling with versioning, graceful failure messages, atomic writes, safe deletion on run completion, and tests for inventory/equipment/enemy/dungeon restoration.
-- **Audio and feedback pass:** replace placeholder tones with cohesive menu, pickup, hit, skill, shrine, trap, stairs, boss, death, and victory cues; ensure audio can be disabled and fails silently on unsupported systems.
-- **Options and accessibility:** support persistent options for audio, fullscreen/windowed display, readable UI scale, color-safe feedback, help/onboarding access, and remappable core keyboard controls where practical.
-- **Balance and telemetry from playtests:** use public-test feedback to adjust enemy damage, potion scarcity, trap punishment, XP pacing, loot rarity, boss health, class viability, and run modifier extremes.
-- **Performance and stability target:** maintain stable 60+ FPS on representative dungeon layouts, keep memory usage bounded across repeated runs, and add regression tests for crashes, softlocks, save/load, dungeon generation, combat, loot, and UI render paths.
-- **Distribution readiness:** provide clear install/run instructions, version metadata, changelog/release notes, packaged entry point verification, credits/about text, and a concise known-issues list appropriate for a 1.0 public release.
-
-## Open Design Questions
-
-- Should death be full permadeath, soft permadeath, or run-based with account/meta progression?
-- How far should the left-mouse movement and keyboard-skill control scheme be expanded for controller support?
-- Should the game be single-player only initially, or architected with future co-op in mind?
-- How close should itemization stay to Diablo II versus a leaner roguelike inventory model?
+- **Expanded dungeon themes:** add additional floor themes with distinct room dressing, hazards, shrine variants, enemy mixes, loot flavor, and lighting palettes so repeated 10-depth runs feel less predictable.
+- **Archetype skill growth:** give each core archetype a small set of upgrade choices during a run, including active skill modifiers and passive perks that support multiple builds without requiring a large permanent skill tree.
+- **Elite and miniboss variety:** introduce more elite modifiers, miniboss encounters, and theme-linked enemy behaviors with readable telegraphs, meaningful rewards, and tactical counterplay.
+- **Richer loot decisions:** add more build-defining affixes, cursed item tradeoffs, unique item effects, and clearer equipment comparison feedback while keeping inventory management fast and readable.
+- **Run modifiers and events:** add optional run mutators, rare dungeon events, cursed bargains, hidden rooms, and risk/reward encounters that create memorable stories without overwhelming new players.
+- **Meta progression prototype:** explore lightweight account-level unlocks such as cosmetic titles, lore journal entries, optional starting loadout variants, or challenge modifiers; avoid upgrades that remove run tension.
+- **Improved onboarding and help:** expand in-game guidance for controls, identification, shrines, traps, skills, resistances, and death/victory summaries so players can learn systems without external documentation.
+- **Accessibility and control polish:** improve remapping, UI scale behavior, color-safe indicators, pause/readability tools, and mouse/keyboard responsiveness; evaluate controller support if the input layer is ready.
+- **Audio-visual atmosphere pass:** add more cohesive ambience, impact sounds, item pickup feedback, shrine cues, boss stingers, death/victory presentation, and subtle environmental animation.
+- **Save compatibility and migration:** maintain save/run-state versioning from 1.0, add migration handling where practical, and ensure failed loads produce safe, actionable messages.
+- **Balance pass from player feedback:** tune enemy pressure, potion scarcity, XP pacing, trap damage, shrine rewards, class viability, elite modifiers, boss health, loot rarity, and run modifier extremes using playtest notes.
+- **Technical hardening:** improve automated regression coverage for dungeon generation, save/load, inventory/equipment, skills, projectiles, enemy AI, UI rendering, and repeated-run memory/performance stability.
+- **Modding/data direction:** begin moving suitable content definitions toward data-driven tables for items, affixes, enemies, skills, rooms, shrines, and events, but avoid a full modding API until the core data model stabilizes.
