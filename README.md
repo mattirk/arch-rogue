@@ -6,16 +6,19 @@ Explore a 10-depth procedural dungeon, choose one of five distinct archetypes, i
 
 ## 1.0 Release Highlights
 
-- Five playable archetypes with differentiated starting equipment and signature advantages:
-  - **Warden:** durable melee fighter with stronger guard value and armor.
+- More detailed procedural sprites for players, enemies, consumables, scrolls, weapons, armor, projectiles, and attack effects.
+- Expanded enemy roster including Ash Hounds, Rune Sentinels, Plague Toads, and Hollow Knights.
+- Five playable archetypes with differentiated starting equipment and signature skill behavior:
+  - **Warden:** durable melee fighter with cleaving shield bashes and stronger guard value.
   - **Rogue:** fast striker with cheaper slashes, crits, and evasion.
-  - **Arcanist:** fragile spellcaster with cheaper/faster bolts, wider nova, and better mana recovery.
-  - **Acolyte:** dark priest that spends mana to blunt damage and steals small amounts of life in melee.
-  - **Ranger:** mobile marksman with faster stamina recovery, cheaper dash, and multishot bolts.
+  - **Arcanist:** fragile spellcaster with arcing bolts, wider nova, and better mana recovery.
+  - **Acolyte:** dark priest that spends mana to blunt damage and steals life through blood rites.
+  - **Ranger:** mobile marksman with faster stamina recovery, cheaper vaults, multishot, and snares.
 - 10-depth procedural dungeon run with room/corridor layouts, multiple visual themes, secrets, shrines, traps, and run modifiers.
 - Depth pacing pass: early floors are safer, late floors add sustained enemy pressure and stronger hazards.
 - Final-depth boss gate with theme-influenced tyrant names, boss health UI, gate sealing, loot reward, and victory summary.
 - Loot-driven progression with weapons, armor, affixes, unidentified equipment, uniques, healing potions, mana potions, and identify scrolls.
+- Overhauled title/options/about/help/archetype/inventory/summary menus with consistent alignment, key badges, responsive panels, and wrapped/clipped text to avoid overflow.
 - Title/menu flow with new run, resume, options, about/credits, onboarding/help, death summary, and victory summary.
 - Versioned JSON run-state save/resume with atomic writes and safe deletion after death or victory.
 - Persistent options for audio, fullscreen, and UI scale.

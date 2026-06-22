@@ -11,6 +11,7 @@ import pygame
 
 from . import __version__
 from .dungeon import MAP_H, MAP_W, Dungeon
+from .menus import MenuRenderer
 from .models import (
     Archetype,
     Color,
@@ -91,6 +92,18 @@ ENEMY_DEFINITIONS = (
     EnemyDefinition(
         "Grave Archer", "ranged", 38, 2.25, 9, 21, 5.8, 1.35, 9.0, (120, 145, 105), 8
     ),
+    EnemyDefinition(
+        "Ash Hound", "melee", 34, 3.35, 9, 19, 0.95, 0.82, 9.0, (185, 86, 54), 14
+    ),
+    EnemyDefinition(
+        "Rune Sentinel", "ranged", 66, 1.55, 13, 30, 5.2, 1.7, 8.5, (116, 220, 245), 8
+    ),
+    EnemyDefinition(
+        "Plague Toad", "ranged", 54, 1.9, 11, 25, 4.2, 1.55, 7.5, (144, 172, 86), 10
+    ),
+    EnemyDefinition(
+        "Hollow Knight", "melee", 58, 2.45, 13, 29, 1.15, 1.05, 8.5, (126, 132, 128), 9
+    ),
 )
 
 FINAL_ROOM_ENEMY_DEFINITIONS = ENEMY_DEFINITIONS + (
@@ -135,6 +148,8 @@ HUMANOID_ENEMY_NAMES = (
     "Gate Warden",
     "Ghoul",
     "Grave Archer",
+    "Rune Sentinel",
+    "Hollow Knight",
 )
 
 ARCHETYPES = (
@@ -354,6 +369,7 @@ class Game:
         self.state = "title"
         self.audio_available = self.initialize_audio(headless)
         self.sound_cache: dict[str, pygame.mixer.Sound] = {}
+        self.menus = MenuRenderer(self, ARCHETYPES, DUNGEON_DEPTH)
 
     def rebuild_fonts(self) -> None:
         self.font = pygame.font.Font(None, 24 * self.ui_scale)
@@ -1186,6 +1202,26 @@ class Game:
             self.player.facing_y = dy / distance
         return dx, dy
 
+    def skill_names(self) -> tuple[str, str, str, str]:
+        names = {
+            "Warden": ("Shield Bash", "Guard Bolt", "Bulwark Wave", "Guard Step"),
+            "Rogue": ("Backstab", "Knife Fan", "Smoke Burst", "Shadow Dash"),
+            "Arcanist": ("Mage Strike", "Arc Bolt", "Frost Nova", "Blink"),
+            "Acolyte": ("Blood Rite", "Spirit Bolt", "Blood Nova", "Dark Step"),
+            "Ranger": ("Hawk Slash", "Multishot", "Snare Nova", "Vault"),
+        }
+        return names.get(self.player.class_name, ("Slash", "Bolt", "Nova", "Dash"))
+
+    def skill_color(self) -> Color:
+        colors = {
+            "Warden": (235, 205, 120),
+            "Rogue": (170, 230, 150),
+            "Arcanist": (120, 210, 255),
+            "Acolyte": (220, 95, 140),
+            "Ranger": (150, 215, 105),
+        }
+        return colors.get(self.player.class_name, (120, 210, 255))
+
     def melee_stamina_cost(self) -> int:
         return 9 if self.player.class_name == "Rogue" else 12
 
@@ -1493,19 +1529,29 @@ class Game:
             ty = self.player.y + self.player.facing_y * 0.9
         self.slashes.append((tx, ty, 0.18, self.player.facing_x, self.player.facing_y))
         if target:
-            damage = self.player.melee_damage() + self.rng.randrange(-3, 5)
-            if self.player.class_name == "Rogue" and self.rng.random() < 0.22:
-                damage = int(damage * 1.75)
-                self.floaters.append(
-                    FloatingText("Critical", target.x, target.y - 0.45, (255, 225, 120))
+            targets = [target]
+            if self.player.class_name == "Warden":
+                targets = self.enemies_in_melee_arc(reach_bonus=0.18)[:3]
+            for index, enemy in enumerate(list(targets)):
+                damage = self.player.melee_damage() + self.rng.randrange(-3, 5)
+                if index > 0:
+                    damage = max(1, int(damage * 0.62))
+                if self.player.class_name == "Rogue" and self.rng.random() < 0.22:
+                    damage = int(damage * 1.75)
+                    self.floaters.append(
+                        FloatingText(
+                            "Critical", enemy.x, enemy.y - 0.45, (255, 225, 120)
+                        )
+                    )
+                if self.player.class_name == "Warden":
+                    enemy.attack_timer = max(enemy.attack_timer, 0.35)
+                self.damage_enemy(
+                    enemy,
+                    damage,
+                    knockback_from=(self.player.facing_x, self.player.facing_y),
                 )
-            self.damage_enemy(
-                target,
-                damage,
-                knockback_from=(self.player.facing_x, self.player.facing_y),
-            )
-            if self.player.class_name == "Acolyte":
-                self.player.hp = min(self.player.max_hp, self.player.hp + 2)
+                if self.player.class_name == "Acolyte":
+                    self.player.hp = min(self.player.max_hp, self.player.hp + 2)
 
     def player_cast_bolt(self) -> None:
         mana_cost = self.bolt_mana_cost()
@@ -1514,9 +1560,13 @@ class Game:
         self.player.bolt_timer = self.bolt_cooldown()
         self.player.mana -= mana_cost
         damage = 14 + self.player.level * 2 + self.player.spell_bonus
+        if self.player.class_name == "Acolyte":
+            damage += max(0, self.player.max_hp - self.player.hp) // 12
         angles = [0.0]
         if self.player.class_name == "Ranger":
-            angles = [-0.12, 0.0, 0.12]
+            angles = [-0.16, 0.0, 0.16]
+        elif self.player.class_name == "Arcanist":
+            angles = [-0.06, 0.06]
         for angle in angles:
             dx = self.player.facing_x * math.cos(
                 angle
@@ -1530,7 +1580,7 @@ class Game:
                     self.player.y,
                     dx * 9.0,
                     dy * 9.0,
-                    damage if angle == 0.0 else max(1, damage - 5),
+                    damage if abs(angle) <= 0.001 else max(1, damage - 4),
                     "player",
                     (70, 165, 255),
                     ttl=1.4,
@@ -1556,6 +1606,10 @@ class Game:
                     + self.player.spell_bonus
                     + self.rng.randrange(0, 5)
                 )
+                if self.player.class_name == "Ranger":
+                    enemy.attack_timer = max(enemy.attack_timer, 0.8)
+                if self.player.class_name == "Acolyte":
+                    self.player.hp = min(self.player.max_hp, self.player.hp + 3)
                 direction = (
                     (dx / distance, dy / distance)
                     if distance > 0.001
@@ -1564,10 +1618,10 @@ class Game:
                 self.damage_enemy(enemy, damage, knockback_from=direction)
         self.floaters.append(
             FloatingText(
-                f"Arc Nova{f' x{hits}' if hits else ''}",
+                f"{self.skill_names()[2]}{f' x{hits}' if hits else ''}",
                 self.player.x,
                 self.player.y - 0.5,
-                (120, 210, 255),
+                self.skill_color(),
                 ttl=0.9,
             )
         )
@@ -1597,26 +1651,34 @@ class Game:
             )
         self.floaters.append(
             FloatingText(
-                "Dash", self.player.x, self.player.y - 0.4, (235, 210, 120), ttl=0.45
+                self.skill_names()[3],
+                self.player.x,
+                self.player.y - 0.4,
+                self.skill_color(),
+                ttl=0.45,
             )
         )
 
-    def enemy_in_melee_arc(self) -> Enemy | None:
-        best: Enemy | None = None
-        best_distance = 999.0
+    def enemies_in_melee_arc(self, reach_bonus: float = 0.0) -> list[Enemy]:
+        candidates: list[tuple[float, Enemy]] = []
         for enemy in self.enemies:
             dx = enemy.x - self.player.x
             dy = enemy.y - self.player.y
             distance = math.hypot(dx, dy)
-            if distance > PLAYER_MELEE_RANGE or distance < 0.001:
+            if distance > PLAYER_MELEE_RANGE + reach_bonus or distance < 0.001:
                 continue
             dot = (dx / distance) * self.player.facing_x + (
                 dy / distance
             ) * self.player.facing_y
-            if dot > PLAYER_MELEE_ARC_DOT and distance < best_distance:
-                best = enemy
-                best_distance = distance
-        return best
+            if dot > PLAYER_MELEE_ARC_DOT:
+                candidates.append((distance, enemy))
+        return [
+            enemy for _distance, enemy in sorted(candidates, key=lambda entry: entry[0])
+        ]
+
+    def enemy_in_melee_arc(self) -> Enemy | None:
+        enemies = self.enemies_in_melee_arc()
+        return enemies[0] if enemies else None
 
     def first_enemy_near(self, x: float, y: float, radius: float) -> Enemy | None:
         for enemy in self.enemies:
@@ -2488,6 +2550,18 @@ class Game:
         palettes: dict[str, tuple[Color, Color, Color, Color]] = {
             "Cultist": ((78, 44, 132), (184, 138, 218), (38, 28, 54), (22, 18, 33)),
             "Grave Archer": ((86, 116, 72), (145, 164, 98), (58, 43, 31), (26, 31, 25)),
+            "Rune Sentinel": (
+                (88, 98, 112),
+                (142, 155, 168),
+                (42, 46, 56),
+                (28, 30, 38),
+            ),
+            "Hollow Knight": (
+                (74, 78, 86),
+                (182, 178, 160),
+                (42, 38, 42),
+                (24, 22, 24),
+            ),
             "Gate Warden": (
                 (171, 105, 48),
                 (126, 132, 128),
@@ -2746,11 +2820,12 @@ class Game:
 
     def draw_player(self, player: Player) -> None:
         sway, bob, lean, stretch = self.actor_animation(player)
+        sprite = self.sprites.player_sprites.get(player.class_name, self.sprites.player)
         self.draw_shadow(player.x, player.y, 34, 13, moving=player.moving, lift=bob)
         self.draw_movement_trail(player, (145, 130, 98), size=2)
         if player.moving:
             self.blit_sprite(
-                self.sprites.player,
+                sprite,
                 player.x - player.move_x * 0.035,
                 player.y - player.move_y * 0.035,
                 y_offset=8 - bob,
@@ -2761,7 +2836,7 @@ class Game:
                 alpha=52,
             )
         sx, sy = self.blit_sprite(
-            self.sprites.player,
+            sprite,
             player.x,
             player.y,
             y_offset=6.0 - bob,
@@ -3242,9 +3317,10 @@ class Game:
         self.screen.blit(
             text, (width - text.get_width() - self.ui(24), height - self.ui(98))
         )
+        melee_name, bolt_name, nova_name, dash_name = self.skill_names()
         skill_line = (
-            f"Skills: Space Slash | F Bolt {self.player.bolt_timer:.1f}s | "
-            f"C Nova {self.player.nova_timer:.1f}s | Shift Dash {self.player.dash_timer:.1f}s"
+            f"Skills: Space {melee_name} | F {bolt_name} {self.player.bolt_timer:.1f}s | "
+            f"C {nova_name} {self.player.nova_timer:.1f}s | Shift {dash_name} {self.player.dash_timer:.1f}s"
         )
         control_lines = [
             "Hold Left Mouse to move/aim and slash nearby enemies | E interact | I inventory | Q potion | H help",
@@ -3307,238 +3383,25 @@ class Game:
         self.screen.blit(text, text.get_rect(center=(x + w // 2, y + h // 2)))
 
     def draw_inventory(self) -> None:
-        width, _height = self.screen.get_size()
-        box = pygame.Rect(width - self.ui(430), self.ui(40), self.ui(390), self.ui(320))
-        pygame.draw.rect(self.screen, (18, 17, 22), box)
-        pygame.draw.rect(self.screen, (105, 90, 68), box, self.ui(2))
-        title = self.font.render("Inventory (1-9 equip/use)", True, (235, 220, 180))
-        self.screen.blit(title, (box.x + self.ui(18), box.y + self.ui(16)))
-        if not self.player.inventory:
-            empty = self.small_font.render("Empty", True, (170, 165, 155))
-            self.screen.blit(empty, (box.x + self.ui(20), box.y + self.ui(58)))
-        for index, item in enumerate(self.player.inventory):
-            y = box.y + self.ui(58) + index * self.ui(28)
-            color = {
-                "Common": (215, 210, 190),
-                "Magic": (115, 175, 255),
-                "Rare": (245, 215, 90),
-                "Unique": (240, 145, 65),
-                "Unidentified": (170, 170, 185),
-            }.get(item.visible_rarity, (220, 220, 220))
-            text = self.small_font.render(
-                f"{index + 1}. [{item.visible_rarity}] {item.label}", True, color
-            )
-            self.screen.blit(text, (box.x + self.ui(20), y))
-        equipment = [
-            f"Weapon: {self.player.equipment['weapon'].label if self.player.equipment['weapon'] else 'Training Sword (+0 dmg)'}",
-            f"Armor: {self.player.equipment['armor'].label if self.player.equipment['armor'] else 'Cloth (+0 armor)'}",
-        ]
-        for i, line in enumerate(equipment):
-            text = self.small_font.render(line, True, (210, 205, 190))
-            self.screen.blit(
-                text, (box.x + self.ui(20), box.y + self.ui(250) + i * self.ui(26))
-            )
-
-    def draw_centered_menu_lines(
-        self,
-        title: str,
-        lines: list[str],
-        accent: Color | None = None,
-        footer: str = "Esc to quit",
-    ) -> None:
-        width, height = self.screen.get_size()
-        accent = accent or self.theme.accent
-        title_surface = self.big_font.render(title, True, (235, 220, 180))
-        self.screen.blit(
-            title_surface, title_surface.get_rect(center=(width // 2, self.ui(135)))
-        )
-        panel_w = min(self.ui(760), width - self.ui(80))
-        panel_h = self.ui(360)
-        box = pygame.Rect((width - panel_w) // 2, self.ui(220), panel_w, panel_h)
-        pygame.draw.rect(self.screen, (18, 17, 22), box)
-        pygame.draw.rect(self.screen, accent, box, self.ui(2))
-        for index, line in enumerate(lines):
-            color = (
-                accent
-                if line.startswith(("N", "L", "O", "A", "C", "H", "Esc"))
-                else (222, 218, 205)
-            )
-            text = self.font.render(line, True, color)
-            self.screen.blit(
-                text, (box.x + self.ui(34), box.y + self.ui(34) + index * self.ui(42))
-            )
-        footer_surface = self.small_font.render(footer, True, (170, 165, 155))
-        self.screen.blit(
-            footer_surface,
-            footer_surface.get_rect(center=(width // 2, box.bottom + self.ui(42))),
-        )
+        self.menus.draw_inventory()
 
     def draw_title_menu(self) -> None:
-        load_line = (
-            "L/R: Resume saved run"
-            if self.save_exists()
-            else "L/R: Resume saved run (none found)"
-        )
-        self.draw_centered_menu_lines(
-            f"Arch Rogue {__version__}",
-            [
-                "N/Enter: New run",
-                load_line,
-                "O: Options",
-                "A/C/H/?: Credits, about, and quick help",
-                "",
-                "Explore 10 depths, build around loot, break the gate tyrant's seal.",
-            ],
-            footer="1.0 public release — Esc quits, Backspace returns from submenus",
-        )
+        self.menus.draw_title_menu()
 
     def draw_options_menu(self) -> None:
-        self.draw_centered_menu_lines(
-            "Options",
-            [
-                f"A: Audio cues {'On' if self.audio_enabled else 'Off'}",
-                f"M: Music {'On' if self.music_enabled else 'Off'} (reserved for soundtrack)",
-                f"F: Fullscreen {'On' if self.fullscreen else 'Off'}",
-                f"+/-: UI scale {self.ui_scale}x",
-                "Enter/O/Backspace: Return to title",
-                "",
-                "Settings persist to ~/.arch_rogue_options.json.",
-            ],
-            footer="Audio falls back silently if no mixer device is available",
-        )
+        self.menus.draw_options_menu()
 
     def draw_about_screen(self) -> None:
-        self.draw_centered_menu_lines(
-            "About / Onboarding",
-            [
-                f"Arch Rogue {__version__} is a Rogue-inspired isometric ARPG.",
-                "Goal: descend, survive, defeat the final-depth tyrant, then use the stairs.",
-                "Combat: left mouse moves/aims; Space slashes; F bolts; C novas; Shift dashes.",
-                "Loot: E picks up/interacts; I opens inventory; 1-9 equips/uses; Q drinks potion.",
-                "Discovery: shrines, traps, secrets, unidentified gear, and run modifiers change each run.",
-                "Credits: design/code/art/audio prototype by the Arch Rogue project.",
-            ],
-            footer="Enter/Backspace returns to title",
-        )
+        self.menus.draw_about_screen()
 
     def draw_help_overlay(self) -> None:
-        width, height = self.screen.get_size()
-        box = pygame.Rect(
-            self.ui(42),
-            self.ui(90),
-            min(self.ui(620), width - self.ui(84)),
-            self.ui(390),
-        )
-        panel = pygame.Surface(box.size, pygame.SRCALPHA)
-        panel.fill((12, 12, 18, 226))
-        self.screen.blit(panel, box)
-        pygame.draw.rect(self.screen, self.theme.accent, box, self.ui(2))
-        lines = [
-            "Run Guide (H to close)",
-            "Goal: defeat the gate tyrant in the final room, then use E on the stairs.",
-            "Mouse: hold left button to move and aim; slash triggers when enemies are close.",
-            "Skills: Space slash, F bolt, C arc nova, Shift dash.",
-            "Resources: stamina powers slash/dash; mana powers bolt/nova and regenerates slowly.",
-            "Inventory: E picks up; I opens inventory; 1-9 equips or uses listed items; Q drinks a potion.",
-            "Discovery: unidentified gear needs scrolls, Insight Shrines, or equipping to reveal.",
-            "Hazards: traps are single-use but dangerous; shrines and secrets can swing a run.",
-        ]
-        for index, line in enumerate(lines):
-            font = self.font if index == 0 else self.small_font
-            color = self.theme.accent if index == 0 else (222, 218, 205)
-            text = font.render(line, True, color)
-            self.screen.blit(
-                text, (box.x + self.ui(22), box.y + self.ui(20) + index * self.ui(42))
-            )
+        self.menus.draw_help_overlay()
 
     def draw_archetype_select(self) -> None:
-        width, height = self.screen.get_size()
-        title = self.big_font.render("Choose Your Archetype", True, (235, 220, 180))
-        self.screen.blit(title, title.get_rect(center=(width // 2, self.ui(145))))
-        subtitle = self.font.render(
-            "Each new run rolls a dungeon theme, modifier, boss, secrets, and loot.",
-            True,
-            (195, 190, 180),
-        )
-        self.screen.blit(subtitle, subtitle.get_rect(center=(width // 2, self.ui(205))))
-        columns = min(3, len(ARCHETYPES))
-        gap = self.ui(32)
-        card_w = min(
-            self.ui(390), (width - self.ui(80) - gap * (columns - 1)) // columns
-        )
-        card_h = self.ui(210)
-        total_w = card_w * columns + gap * (columns - 1)
-        start_x = (width - total_w) // 2
-        start_y = self.ui(270)
-        row_gap = self.ui(30)
-        for index, archetype in enumerate(ARCHETYPES):
-            row = index // columns
-            col = index % columns
-            x = start_x + col * (card_w + gap)
-            y = start_y + row * (card_h + row_gap)
-            box = pygame.Rect(x, y, card_w, card_h)
-            is_selected = archetype == self.selected_archetype
-            border = self.theme.accent if is_selected else (105, 90, 68)
-            pygame.draw.rect(self.screen, (18, 17, 22), box)
-            pygame.draw.rect(self.screen, border, box, self.ui(3 if is_selected else 2))
-            name = self.font.render(
-                f"{index + 1}. {archetype.name}", True, (235, 220, 180)
-            )
-            self.screen.blit(name, (x + self.ui(18), y + self.ui(18)))
-            desc = self.small_font.render(archetype.description, True, (190, 185, 175))
-            self.screen.blit(desc, (x + self.ui(18), y + self.ui(58)))
-            stats = [
-                f"HP {archetype.max_hp}  Mana {archetype.max_mana}",
-                f"Stamina {archetype.max_stamina}  Speed {archetype.speed:.2f}",
-                f"Melee +{archetype.melee_bonus}  Spell +{archetype.spell_bonus}  DR +{archetype.armor_bonus}",
-            ]
-            for line_index, stat in enumerate(stats):
-                text = self.small_font.render(stat, True, (220, 215, 200))
-                self.screen.blit(
-                    text,
-                    (x + self.ui(18), y + self.ui(102) + line_index * self.ui(28)),
-                )
-        prompt = self.font.render(
-            f"Press 1-{min(len(ARCHETYPES), 9)} or Enter to begin",
-            True,
-            (235, 205, 120),
-        )
-        self.screen.blit(
-            prompt, prompt.get_rect(center=(width // 2, height - self.ui(150)))
-        )
+        self.menus.draw_archetype_select()
 
     def draw_state_overlay(self) -> None:
-        width, height = self.screen.get_size()
-        overlay = pygame.Surface((width, height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 165))
-        self.screen.blit(overlay, (0, 0))
-        if self.state == "victory":
-            title = "Dungeon Cleared"
-            subtitle = f"You survived all {DUNGEON_DEPTH} depths and broke the gate. Press R to choose a new run."
-            color = (235, 205, 120)
-        else:
-            title = "You Died"
-            subtitle = f"The dungeon claims another {self.player.class_name}. Press R to choose again."
-            color = (225, 75, 65)
-        title_surface = self.big_font.render(title, True, color)
-        subtitle_surface = self.font.render(subtitle, True, (230, 225, 210))
-        center_y = height // 2 - self.ui(68)
-        self.screen.blit(
-            title_surface, title_surface.get_rect(center=(width // 2, center_y))
-        )
-        self.screen.blit(
-            subtitle_surface,
-            subtitle_surface.get_rect(center=(width // 2, center_y + self.ui(58))),
-        )
-        summary_lines = self.run_summary_lines()
-        for index, line in enumerate(summary_lines):
-            text = self.small_font.render(line, True, (212, 207, 190))
-            self.screen.blit(
-                text,
-                text.get_rect(
-                    center=(width // 2, center_y + self.ui(112) + index * self.ui(28))
-                ),
-            )
+        self.menus.draw_state_overlay()
 
     def run_summary_lines(self) -> list[str]:
         minutes = int(self.elapsed // 60)

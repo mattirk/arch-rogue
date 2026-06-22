@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pygame
 
 import arch_rogue
-from arch_rogue.game import ARCHETYPES, Game
+from arch_rogue.game import ARCHETYPES, ENEMY_DEFINITIONS, Game
 
 
 class PublicReleaseMilestoneTests(unittest.TestCase):
@@ -72,6 +72,69 @@ class PublicReleaseMilestoneTests(unittest.TestCase):
                 self.assertLess(profiles["Acolyte"][4], profiles["Warden"][4])
                 self.assertLess(profiles["Ranger"][5], profiles["Warden"][5])
                 self.assertEqual(len(set(profiles.values())), len(ARCHETYPES))
+            finally:
+                pygame.quit()
+
+    def test_new_enemy_roster_has_unique_sprites(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            try:
+                enemy_names = {definition.name for definition in ENEMY_DEFINITIONS}
+                for name in {
+                    "Ash Hound",
+                    "Rune Sentinel",
+                    "Plague Toad",
+                    "Hollow Knight",
+                }:
+                    self.assertIn(name, enemy_names)
+                    self.assertIn(name, game.sprites.enemies)
+                self.assertGreaterEqual(len(game.sprites.enemies), len(enemy_names))
+            finally:
+                pygame.quit()
+
+    def test_skill_variation_and_compact_menus_render(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(640, 480),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+            )
+            game.options_path = Path(tmpdir) / "options.json"
+            try:
+                skill_profiles = set()
+                for archetype in ARCHETYPES:
+                    game.restart(archetype)
+                    skill_profiles.add(game.skill_names())
+                self.assertEqual(len(skill_profiles), len(ARCHETYPES))
+
+                game.state = "title"
+                game.draw_title_menu()
+                game.state = "options"
+                game.draw_options_menu()
+                game.state = "about"
+                game.draw_about_screen()
+                fresh_game = Game(
+                    screen_size=(640, 480),
+                    headless=True,
+                    save_path=Path(tmpdir) / "fresh_run.json",
+                )
+                fresh_game.state = "archetype_select"
+                fresh_game.draw_archetype_select()
+
+                game.state = "archetype_select"
+                for archetype in ARCHETYPES:
+                    self.assertIn(archetype.name, game.sprites.player_sprites)
+                    sprite = game.sprites.player_sprites[archetype.name]
+                    self.assertGreater(sprite.get_width(), 0)
+                    self.assertGreater(sprite.get_height(), 0)
+                    game.selected_archetype = archetype
+                    game.draw_archetype_select()
+                game.show_help = True
+                game.draw_help_overlay()
+                game.inventory_open = True
+                game.draw_inventory()
+                game.state = "dead"
+                game.draw_state_overlay()
             finally:
                 pygame.quit()
 
