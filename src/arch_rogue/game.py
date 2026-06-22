@@ -880,8 +880,10 @@ class Game:
                 elif event.key == pygame.K_q and self.state == "playing":
                     self.use_first_potion()
                 elif event.key == pygame.K_SPACE and self.state == "playing":
+                    self.update_player_aim()
                     self.player_melee_attack()
                 elif event.key == pygame.K_f and self.state == "playing":
+                    self.update_player_aim()
                     self.player_cast_bolt()
                 elif event.key == pygame.K_c and self.state == "playing":
                     self.player_cast_nova()
@@ -889,14 +891,15 @@ class Game:
                     event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT)
                     and self.state == "playing"
                 ):
+                    self.update_player_aim()
                     self.player_dash()
                 elif pygame.K_1 <= event.key <= pygame.K_9 and self.state == "playing":
                     self.use_inventory_slot(event.key - pygame.K_1)
             elif event.type == pygame.MOUSEBUTTONDOWN and self.state == "playing":
                 if event.button == 1:
-                    self.player_melee_attack()
-                elif event.button == 3:
-                    self.player_cast_bolt()
+                    self.face_player_toward_screen_point(*event.pos)
+                    if self.enemy_in_melee_arc():
+                        self.player_melee_attack()
 
     def update(self, dt: float) -> None:
         self.elapsed += dt
@@ -919,19 +922,32 @@ class Game:
             length = math.hypot(dx, dy)
             self.player.facing_x = dx / length
             self.player.facing_y = dy / length
+        else:
+            self.face_player_toward_screen_point(*pygame.mouse.get_pos())
+
+    def face_player_toward_screen_point(self, sx: int, sy: int) -> tuple[float, float]:
+        target_x, target_y = self.screen_to_world(sx, sy)
+        dx = target_x - self.player.x
+        dy = target_y - self.player.y
+        distance = math.hypot(dx, dy)
+        if distance > 0.05:
+            self.player.facing_x = dx / distance
+            self.player.facing_y = dy / distance
+        return dx, dy
 
     def update_player(self, dt: float) -> None:
         self.player.moving = False
-        keys = pygame.key.get_pressed()
-        dx = float(keys[pygame.K_d]) - float(keys[pygame.K_a])
-        dy = float(keys[pygame.K_s]) - float(keys[pygame.K_w])
-        if dx or dy:
-            length = math.hypot(dx, dy)
-            dx /= length
-            dy /= length
-            self.move_actor(
-                self.player, dx * self.player.speed * dt, dy * self.player.speed * dt
-            )
+        if pygame.mouse.get_pressed()[0]:
+            dx, dy = self.face_player_toward_screen_point(*pygame.mouse.get_pos())
+            distance = math.hypot(dx, dy)
+            if distance > 0.18:
+                self.move_actor(
+                    self.player,
+                    (dx / distance) * self.player.speed * dt,
+                    (dy / distance) * self.player.speed * dt,
+                )
+            if self.enemy_in_melee_arc():
+                self.player_melee_attack()
 
         self.player.melee_timer = max(0.0, self.player.melee_timer - dt)
         self.player.bolt_timer = max(0.0, self.player.bolt_timer - dt)
@@ -1799,22 +1815,40 @@ class Game:
             origin[1] + int(vy * 74 * WORLD_SCALE - py * 36 * WORLD_SCALE),
         )
         points = [origin, left, tip, right]
-        min_x = min(point[0] for point in points) - 6 * WORLD_SCALE
-        max_x = max(point[0] for point in points) + 6 * WORLD_SCALE
-        min_y = min(point[1] for point in points) - 6 * WORLD_SCALE
-        max_y = max(point[1] for point in points) + 6 * WORLD_SCALE
+        blur_pad = 14 * WORLD_SCALE
+        min_x = min(point[0] for point in points) - blur_pad
+        max_x = max(point[0] for point in points) + blur_pad
+        min_y = min(point[1] for point in points) - blur_pad
+        max_y = max(point[1] for point in points) + blur_pad
         overlay = pygame.Surface((max_x - min_x, max_y - min_y), pygame.SRCALPHA)
         local_points = [(x - min_x, y - min_y) for x, y in points]
-        pygame.draw.polygon(overlay, (92, 170, 255, 46), local_points)
+
+        glow = pygame.Surface(overlay.get_size(), pygame.SRCALPHA)
+        pygame.draw.polygon(glow, (92, 170, 255, 24), local_points)
         pygame.draw.lines(
-            overlay, (118, 196, 255, 150), True, local_points, max(2, WORLD_SCALE)
+            glow, (118, 196, 255, 46), True, local_points, 8 * WORLD_SCALE
         )
         local_origin = (origin[0] - min_x, origin[1] - min_y)
         local_tip = (tip[0] - min_x, tip[1] - min_y)
         pygame.draw.line(
-            overlay, (225, 245, 255, 180), local_origin, local_tip, max(2, WORLD_SCALE)
+            glow, (225, 245, 255, 56), local_origin, local_tip, 5 * WORLD_SCALE
         )
-        pygame.draw.circle(overlay, (225, 245, 255, 210), local_tip, 3 * WORLD_SCALE)
+        blur_size = (
+            max(1, glow.get_width() // 4),
+            max(1, glow.get_height() // 4),
+        )
+        glow = pygame.transform.smoothscale(glow, blur_size)
+        glow = pygame.transform.smoothscale(glow, overlay.get_size())
+        overlay.blit(glow, (0, 0))
+
+        pygame.draw.polygon(overlay, (92, 170, 255, 34), local_points)
+        pygame.draw.lines(
+            overlay, (118, 196, 255, 105), True, local_points, max(2, WORLD_SCALE)
+        )
+        pygame.draw.line(
+            overlay, (225, 245, 255, 135), local_origin, local_tip, max(2, WORLD_SCALE)
+        )
+        pygame.draw.circle(overlay, (225, 245, 255, 170), local_tip, 3 * WORLD_SCALE)
         self.screen.blit(overlay, (min_x, min_y))
 
     def draw_enemy(self, enemy: Enemy) -> None:
@@ -2060,7 +2094,7 @@ class Game:
             f"C Nova {self.player.nova_timer:.1f}s | Shift Dash {self.player.dash_timer:.1f}s"
         )
         control_lines = [
-            "WASD move | Arrow keys aim | E interact | I inventory | Q potion",
+            "Hold Left Mouse to move/aim and slash nearby enemies | E interact | I inventory | Q potion",
             skill_line,
         ]
         for i, controls in enumerate(control_lines):

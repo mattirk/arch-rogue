@@ -8,7 +8,7 @@ Prototype 2: Build and Loot Identity for a modernized Rogue-inspired isometric A
 - Procedurally generated dungeon floor with rooms and corridors
 - Isometric tile rendering at a 2x world visual scale
 - Procedural JRPG-style pixel sprites for player, enemies, loot, projectiles, and attack effects, scaled 2x from the initial prototype size
-- Real-time WASD movement with wall collision
+- Real-time left-mouse movement with wall collision
 - Multiple player skills: melee slash, ranged bolt, arc nova, and stamina dash
 - Expanded enemy roster with melee, ranged, fast skirmisher, brute, and final-room threats
 - Health, mana, stamina, death, restart, and victory states
@@ -42,10 +42,10 @@ arch-rogue
 
 | Control | Action |
 | --- | --- |
-| `WASD` | Move |
-| Arrow keys | Aim / face direction |
-| Left Mouse / `Space` | Melee slash in aimed direction |
-| Right Mouse / `F` | Cast ranged bolt in aimed direction |
+| Hold Left Mouse | Move toward / aim at the cursor; slash nearby enemies |
+| `Space` | Melee slash in aimed direction |
+| Arrow keys | Optional keyboard aim / face direction |
+| `F` | Cast ranged bolt in aimed direction |
 | `C` | Cast arc nova |
 | `Shift` | Dash toward aim direction |
 | `E` | Pick up nearby loot / use shrine / use exit stairs |
