@@ -1,6 +1,6 @@
 [project]
 name = "arch-rogue"
-version = "0.1.0"
+version = "Beta"
 description = "Prototype 2 build and loot identity for a modern isometric Rogue-inspired ARPG."
 readme = "README.md"
 requires-python = ">=3.11"

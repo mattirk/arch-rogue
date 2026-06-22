@@ -146,28 +146,6 @@ Example categories:
 
 ## Milestones
 
-### RC1: Core Run Stability
-
-Prepare the game for repeatable end-to-end runs:
-
-- Stabilize the character select → dungeon run → boss → exit/death → new run loop.
-- Ensure all archetypes have distinct but viable starting stats and skill bonuses.
-- Balance baseline enemy damage, boss health, trap damage, potion drops, and early loot availability.
-- Improve input reliability for movement, aiming, interaction, inventory, and restart flow.
-- Add focused regression checks for dungeon generation, item pickup/equip/use, enemy death, boss gating, and run restart.
-- Keep performance at a stable 60+ FPS on typical dungeon layouts.
-
-### RC2: Content and UX Completeness
-
-Expand and polish the current feature set without overcomplicating architecture:
-
-- Add more data-driven enemy, item, affix, shrine, secret, theme, and run modifier definitions.
-- Give each archetype clearer skill identity through tuned cooldowns, costs, and feedback.
-- Improve dungeon readability with better room variety, landmark placement, telegraphs, and visual hierarchy.
-- Polish inventory, equipment, objective, boss, and run-summary UI for clarity at different window sizes.
-- Add settings for audio/video/input basics once those systems exist.
-- Review accessibility basics: readable colors, scalable UI, clear interaction prompts, and avoid hidden critical information.
-
 ### Beta: Feature Complete Public Test
 
 Reach a testable, content-complete version suitable for broad feedback:
@@ -178,6 +156,23 @@ Reach a testable, content-complete version suitable for broad feedback:
 - Add audio, options, title/menu flow, credits/about screen, and basic onboarding/help.
 - Run broad balance passes based on playtest data, especially difficulty spikes, loot pacing, and archetype viability.
 - Fix known crashes, softlocks, progression blockers, and severe performance issues before widening testing.
+
+### 1.0: Public Release
+
+Ship a polished, replayable single-player release built around the current 10-depth run structure rather than a major redesign:
+
+- **Release-quality run loop:** preserve the locked Beta flow of title/menu → archetype selection → dungeon run → final boss gate → victory/death summary → new run/resume, with no known progression blockers, resume corruption, or restart softlocks.
+- **Archetype identity pass:** give Warden, Rogue, Arcanist, Acolyte, and Ranger clearly differentiated moment-to-moment play through tuned stats, cooldowns, resource costs, starting equipment, and at least one signature-feeling skill or passive advantage each.
+- **Depth pacing and encounter variety:** tune the 10-depth arc so early floors teach safely, middle floors introduce sharper enemy/trap/shrine decisions, and final floors create sustained pressure before the gate tyrant.
+- **Boss and elite encounters:** add enough boss/elite variation for repeated runs, including theme-influenced final boss names, attack patterns, readable telegraphs, and loot rewards without making the final gate feel random or unfair.
+- **Loot and identification polish:** refine item rarity, affixes, unidentified gear, uniques, consumables, and equipment comparisons so pickups are readable, tempting, and build-shaping without overwhelming the compact inventory model.
+- **Dungeon readability:** improve room landmarks, secret hints, trap visibility, shrine presentation, stairs/boss-gate messaging, and isometric collision clarity so failure feels tactical rather than visually confusing.
+- **Save/resume robustness:** harden JSON run-state handling with versioning, graceful failure messages, atomic writes, safe deletion on run completion, and tests for inventory/equipment/enemy/dungeon restoration.
+- **Audio and feedback pass:** replace placeholder tones with cohesive menu, pickup, hit, skill, shrine, trap, stairs, boss, death, and victory cues; ensure audio can be disabled and fails silently on unsupported systems.
+- **Options and accessibility:** support persistent options for audio, fullscreen/windowed display, readable UI scale, color-safe feedback, help/onboarding access, and remappable core keyboard controls where practical.
+- **Balance and telemetry from playtests:** use public-test feedback to adjust enemy damage, potion scarcity, trap punishment, XP pacing, loot rarity, boss health, class viability, and run modifier extremes.
+- **Performance and stability target:** maintain stable 60+ FPS on representative dungeon layouts, keep memory usage bounded across repeated runs, and add regression tests for crashes, softlocks, save/load, dungeon generation, combat, loot, and UI render paths.
+- **Distribution readiness:** provide clear install/run instructions, version metadata, changelog/release notes, packaged entry point verification, credits/about text, and a concise known-issues list appropriate for a 1.0 public release.
 
 ## Open Design Questions
 

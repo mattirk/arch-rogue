@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import math
 import random
-from typing import NamedTuple, cast
+import struct
+from pathlib import Path
+from typing import Any, NamedTuple, cast
 
 import pygame
 
@@ -16,6 +19,7 @@ from .models import (
     Item,
     Player,
     Projectile,
+    Room,
     RunModifier,
     RunStats,
     SecretCache,
@@ -302,9 +306,10 @@ class Game:
         self,
         screen_size: tuple[int, int] | None = None,
         headless: bool = False,
+        save_path: str | Path | None = None,
     ) -> None:
         pygame.init()
-        pygame.display.set_caption("Arch Rogue - Prototype 3")
+        pygame.display.set_caption("Arch Rogue - Beta")
         if screen_size is None:
             display_info = pygame.display.Info()
             screen_size = (display_info.current_w, display_info.current_h)
@@ -330,6 +335,263 @@ class Game:
         self.run_modifier = RUN_MODIFIERS[0]
         self.run_number = 0
         self.current_depth = 1
+        self.state = "title"
+        self.save_path = (
+            Path(save_path) if save_path else Path.home() / ".arch_rogue_run.json"
+        )
+        self.audio_enabled = True
+        self.music_enabled = True
+        self.fullscreen = False
+        self.audio_available = self.initialize_audio(headless)
+        self.sound_cache: dict[str, pygame.mixer.Sound] = {}
+
+    def initialize_audio(self, headless: bool) -> bool:
+        if headless:
+            return False
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init(frequency=22050, size=-16, channels=1)
+        except pygame.error:
+            return False
+        return True
+
+    def play_sfx(self, name: str) -> None:
+        if not self.audio_enabled or not self.audio_available:
+            return
+        try:
+            sound = self.sound_cache.get(name)
+            if sound is None:
+                frequency = {
+                    "start": 330,
+                    "pickup": 660,
+                    "hit": 190,
+                    "shrine": 520,
+                    "stairs": 430,
+                    "victory": 784,
+                    "death": 120,
+                }.get(name, 440)
+                sound = self.make_tone(frequency, 0.08)
+                self.sound_cache[name] = sound
+            sound.play()
+        except pygame.error:
+            self.audio_available = False
+
+    def make_tone(self, frequency: int, duration: float) -> pygame.mixer.Sound:
+        sample_rate = 22050
+        amplitude = 3600
+        sample_count = max(1, int(sample_rate * duration))
+        frames = bytearray()
+        for index in range(sample_count):
+            fade = 1.0 - index / sample_count
+            value = int(
+                math.sin(math.tau * frequency * index / sample_rate) * amplitude * fade
+            )
+            frames.extend(struct.pack("<h", value))
+        return pygame.mixer.Sound(buffer=bytes(frames))
+
+    def save_exists(self) -> bool:
+        return self.save_path.exists()
+
+    def item_to_dict(self, item: Item | None) -> dict[str, Any] | None:
+        if item is None:
+            return None
+        return {
+            "name": item.name,
+            "slot": item.slot,
+            "power": item.power,
+            "defense": item.defense,
+            "heal": item.heal,
+            "mana": item.mana,
+            "rarity": item.rarity,
+            "x": item.x,
+            "y": item.y,
+            "affixes": list(item.affixes),
+            "unidentified": item.unidentified,
+            "unique_effect": item.unique_effect,
+        }
+
+    def item_from_dict(self, data: dict[str, Any] | None) -> Item | None:
+        if data is None:
+            return None
+        return Item(
+            str(data["name"]),
+            str(data["slot"]),
+            power=int(data.get("power", 0)),
+            defense=int(data.get("defense", 0)),
+            heal=int(data.get("heal", 0)),
+            mana=int(data.get("mana", 0)),
+            rarity=str(data.get("rarity", "Common")),
+            x=float(data.get("x", 0.0)),
+            y=float(data.get("y", 0.0)),
+            affixes=[str(affix) for affix in data.get("affixes", [])],
+            unidentified=bool(data.get("unidentified", False)),
+            unique_effect=str(data.get("unique_effect", "")),
+        )
+
+    def serialize_run_state(self) -> dict[str, Any]:
+        return {
+            "version": 1,
+            "run_number": self.run_number,
+            "current_depth": self.current_depth,
+            "elapsed": self.elapsed,
+            "selected_archetype": self.selected_archetype.name,
+            "theme": self.theme.name,
+            "run_modifier": self.run_modifier.name,
+            "dungeon": {
+                "tiles": [
+                    [int(tile) for tile in column] for column in self.dungeon.tiles
+                ],
+                "rooms": [room.__dict__ for room in self.dungeon.rooms],
+                "stairs": list(self.dungeon.stairs),
+            },
+            "player": {
+                "x": self.player.x,
+                "y": self.player.y,
+                "class_name": self.player.class_name,
+                "max_hp": self.player.max_hp,
+                "hp": self.player.hp,
+                "max_mana": self.player.max_mana,
+                "mana": self.player.mana,
+                "max_stamina": self.player.max_stamina,
+                "stamina": self.player.stamina,
+                "speed": self.player.speed,
+                "melee_bonus": self.player.melee_bonus,
+                "spell_bonus": self.player.spell_bonus,
+                "armor_bonus": self.player.armor_bonus,
+                "level": self.player.level,
+                "xp": self.player.xp,
+                "next_xp": self.player.next_xp,
+                "facing_x": self.player.facing_x,
+                "facing_y": self.player.facing_y,
+                "inventory": [
+                    self.item_to_dict(item) for item in self.player.inventory
+                ],
+                "equipment": {
+                    slot: self.item_to_dict(item)
+                    for slot, item in self.player.equipment.items()
+                },
+            },
+            "enemies": [enemy.__dict__ for enemy in self.enemies],
+            "items": [self.item_to_dict(item) for item in self.items],
+            "traps": [trap.__dict__ for trap in self.traps],
+            "shrines": [shrine.__dict__ for shrine in self.shrines],
+            "secrets": [secret.__dict__ for secret in self.secrets],
+            "run_stats": self.run_stats.__dict__,
+        }
+
+    def restore_run_state(self, data: dict[str, Any]) -> None:
+        self.run_number = int(data.get("run_number", 1))
+        self.current_depth = int(data.get("current_depth", 1))
+        self.elapsed = float(data.get("elapsed", 0.0))
+        archetype_name = str(data.get("selected_archetype", ARCHETYPES[0].name))
+        self.selected_archetype = next(
+            (archetype for archetype in ARCHETYPES if archetype.name == archetype_name),
+            ARCHETYPES[0],
+        )
+        theme_name = str(data.get("theme", DUNGEON_THEMES[0].name))
+        self.theme = next(
+            (theme for theme in DUNGEON_THEMES if theme.name == theme_name),
+            DUNGEON_THEMES[0],
+        )
+        modifier_name = str(data.get("run_modifier", RUN_MODIFIERS[0].name))
+        self.run_modifier = next(
+            (modifier for modifier in RUN_MODIFIERS if modifier.name == modifier_name),
+            RUN_MODIFIERS[0],
+        )
+
+        dungeon_data = data["dungeon"]
+        self.dungeon = Dungeon(self.rng)
+        self.dungeon.tiles = [
+            [Tile(int(tile)) for tile in column] for column in dungeon_data["tiles"]
+        ]
+        self.dungeon.rooms = [Room(**room) for room in dungeon_data["rooms"]]
+        sx, sy = dungeon_data["stairs"]
+        self.dungeon.stairs = (int(sx), int(sy))
+        self.tile_cache.clear()
+
+        player_data = data["player"]
+        self.player = Player(
+            float(player_data["x"]),
+            float(player_data["y"]),
+            class_name=str(player_data.get("class_name", self.selected_archetype.name)),
+            max_hp=int(player_data.get("max_hp", self.selected_archetype.max_hp)),
+            hp=int(player_data.get("hp", self.selected_archetype.max_hp)),
+            max_mana=int(player_data.get("max_mana", self.selected_archetype.max_mana)),
+            mana=float(player_data.get("mana", self.selected_archetype.max_mana)),
+            max_stamina=int(
+                player_data.get("max_stamina", self.selected_archetype.max_stamina)
+            ),
+            stamina=float(
+                player_data.get("stamina", self.selected_archetype.max_stamina)
+            ),
+            speed=float(player_data.get("speed", self.selected_archetype.speed)),
+            melee_bonus=int(player_data.get("melee_bonus", 0)),
+            spell_bonus=int(player_data.get("spell_bonus", 0)),
+            armor_bonus=int(player_data.get("armor_bonus", 0)),
+            level=int(player_data.get("level", 1)),
+            xp=int(player_data.get("xp", 0)),
+            next_xp=int(player_data.get("next_xp", 60)),
+            facing_x=float(player_data.get("facing_x", 1.0)),
+            facing_y=float(player_data.get("facing_y", 0.0)),
+        )
+        self.player.inventory = [
+            item
+            for item in (
+                self.item_from_dict(item) for item in player_data.get("inventory", [])
+            )
+            if item is not None
+        ]
+        equipment = player_data.get("equipment", {})
+        self.player.equipment = {
+            "weapon": self.item_from_dict(equipment.get("weapon")),
+            "armor": self.item_from_dict(equipment.get("armor")),
+        }
+
+        self.enemies = [Enemy(**enemy) for enemy in data.get("enemies", [])]
+        self.items = [
+            item
+            for item in (self.item_from_dict(item) for item in data.get("items", []))
+            if item is not None
+        ]
+        self.traps = [Trap(**trap) for trap in data.get("traps", [])]
+        self.shrines = [Shrine(**shrine) for shrine in data.get("shrines", [])]
+        self.secrets = [SecretCache(**secret) for secret in data.get("secrets", [])]
+        self.projectiles = []
+        self.floaters = []
+        self.slashes = []
+        self.run_stats = RunStats(**data.get("run_stats", {}))
+        self.inventory_open = False
+        self.show_help = False
+        self.state = "playing"
+
+    def save_run(self) -> bool:
+        if self.state != "playing":
+            return False
+        try:
+            self.save_path.parent.mkdir(parents=True, exist_ok=True)
+            self.save_path.write_text(
+                json.dumps(self.serialize_run_state(), indent=2), encoding="utf-8"
+            )
+        except (OSError, TypeError, ValueError):
+            return False
+        return True
+
+    def load_run(self) -> bool:
+        try:
+            data = json.loads(self.save_path.read_text(encoding="utf-8"))
+            if int(data.get("version", 0)) != 1:
+                return False
+            self.restore_run_state(data)
+        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return False
+        self.play_sfx("start")
+        return True
+
+    def delete_save(self) -> None:
+        try:
+            self.save_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
     def restart(self, archetype: Archetype | None = None) -> None:
         self.run_number += 1
@@ -370,10 +632,14 @@ class Game:
         self.elapsed = 0.0
         self.state = "playing"
         self._populate_dungeon()
+        self.play_sfx("start")
+        self.save_run()
 
     def descend_to_next_depth(self) -> None:
         if self.current_depth >= DUNGEON_DEPTH:
             self.state = "victory"
+            self.play_sfx("victory")
+            self.delete_save()
             return
         self.current_depth += 1
         self.theme = self.rng.choice(DUNGEON_THEMES)
@@ -413,6 +679,8 @@ class Game:
                 ttl=1.5,
             )
         )
+        self.play_sfx("stairs")
+        self.save_run()
 
     def _populate_dungeon(self) -> None:
         final_room_index = len(self.dungeon.rooms) - 1
@@ -666,23 +934,63 @@ class Game:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    self.running = False
+                    if self.state in ("options", "about"):
+                        self.state = "title"
+                    else:
+                        if self.state == "playing":
+                            self.save_run()
+                        self.running = False
+                elif self.state == "title":
+                    if event.key in (pygame.K_RETURN, pygame.K_n):
+                        self.state = "archetype_select"
+                    elif event.key in (pygame.K_l, pygame.K_r) and self.save_exists():
+                        self.load_run()
+                    elif event.key == pygame.K_o:
+                        self.state = "options"
+                    elif event.key in (pygame.K_a, pygame.K_c):
+                        self.state = "about"
+                    elif event.key in (pygame.K_h, pygame.K_SLASH):
+                        self.state = "about"
+                elif self.state == "options":
+                    if event.key == pygame.K_a:
+                        self.audio_enabled = not self.audio_enabled
+                    elif event.key == pygame.K_m:
+                        self.music_enabled = not self.music_enabled
+                    elif event.key == pygame.K_f:
+                        self.fullscreen = not self.fullscreen
+                        flags = pygame.FULLSCREEN if self.fullscreen else pygame.NOFRAME
+                        self.screen = pygame.display.set_mode(
+                            self.screen.get_size(), flags
+                        )
+                    elif event.key in (pygame.K_RETURN, pygame.K_BACKSPACE, pygame.K_o):
+                        self.state = "title"
+                elif self.state == "about":
+                    if event.key in (
+                        pygame.K_RETURN,
+                        pygame.K_BACKSPACE,
+                        pygame.K_a,
+                        pygame.K_h,
+                    ):
+                        self.state = "title"
                 elif self.state == "archetype_select":
-                    select_limit = min(len(ARCHETYPES), 9)
-                    if pygame.K_1 <= event.key < pygame.K_1 + select_limit:
-                        self.restart(ARCHETYPES[event.key - pygame.K_1])
-                    elif event.key in (pygame.K_RIGHT, pygame.K_DOWN):
-                        index = (ARCHETYPES.index(self.selected_archetype) + 1) % len(
-                            ARCHETYPES
-                        )
-                        self.selected_archetype = ARCHETYPES[index]
-                    elif event.key in (pygame.K_LEFT, pygame.K_UP):
-                        index = (ARCHETYPES.index(self.selected_archetype) - 1) % len(
-                            ARCHETYPES
-                        )
-                        self.selected_archetype = ARCHETYPES[index]
-                    elif event.key == pygame.K_RETURN:
-                        self.restart(self.selected_archetype)
+                    if event.key == pygame.K_BACKSPACE:
+                        self.state = "title"
+                    else:
+                        select_limit = min(len(ARCHETYPES), 9)
+                        if pygame.K_1 <= event.key < pygame.K_1 + select_limit:
+                            self.restart(ARCHETYPES[event.key - pygame.K_1])
+                        elif event.key in (pygame.K_RIGHT, pygame.K_DOWN):
+                            index = (
+                                ARCHETYPES.index(self.selected_archetype) + 1
+                            ) % len(ARCHETYPES)
+                            self.selected_archetype = ARCHETYPES[index]
+                        elif event.key in (pygame.K_LEFT, pygame.K_UP):
+                            index = (
+                                ARCHETYPES.index(self.selected_archetype) - 1
+                            ) % len(ARCHETYPES)
+                            self.selected_archetype = ARCHETYPES[index]
+                        elif event.key == pygame.K_RETURN:
+                            self.restart(self.selected_archetype)
                 elif (
                     event.key in (pygame.K_h, pygame.K_SLASH)
                     and self.state != "archetype_select"
@@ -735,8 +1043,10 @@ class Game:
             if ttl - dt > 0
         ]
 
-        if self.player.hp <= 0:
+        if self.player.hp <= 0 and self.state == "playing":
             self.state = "dead"
+            self.play_sfx("death")
+            self.delete_save()
 
     def update_player_aim(self) -> None:
         keys = pygame.key.get_pressed()
@@ -1147,6 +1457,8 @@ class Game:
             self.move_actor(enemy, (kx / length) * 0.16, (ky / length) * 0.16)
         if enemy.hp <= 0:
             self.kill_enemy(enemy)
+        else:
+            self.play_sfx("hit")
 
     def kill_enemy(self, enemy: Enemy) -> None:
         if enemy not in self.enemies:
@@ -1179,6 +1491,7 @@ class Game:
         if self.rng.random() < 0.45:
             drop_x, drop_y = self.drop_position_near(enemy.x, enemy.y)
             self.items.append(self._make_loot(drop_x, drop_y))
+        self.save_run()
 
     def drop_position_near(self, x: float, y: float) -> tuple[float, float]:
         offsets = (
@@ -1227,6 +1540,8 @@ class Game:
                 )
                 return
             self.state = "victory"
+            self.play_sfx("victory")
+            self.delete_save()
             return
         secret = self.nearby_secret()
         if secret:
@@ -1260,6 +1575,8 @@ class Game:
                     ttl=1.2,
                 )
             )
+            self.play_sfx("pickup")
+            self.save_run()
 
     def nearby_item(self) -> Item | None:
         nearby = [
@@ -1313,6 +1630,8 @@ class Game:
         self.floaters.append(
             FloatingText(message, secret.x, secret.y - 0.3, self.theme.accent, ttl=1.4)
         )
+        self.play_sfx("pickup")
+        self.save_run()
 
     def boss_alive(self) -> bool:
         return any(enemy.kind == "boss" for enemy in self.enemies)
@@ -1369,6 +1688,8 @@ class Game:
                 message, self.player.x, self.player.y - 0.5, (245, 215, 120), ttl=1.3
             )
         )
+        self.play_sfx("shrine")
+        self.save_run()
 
     def use_inventory_slot(self, index: int) -> None:
         if index >= len(self.player.inventory):
@@ -1382,6 +1703,7 @@ class Game:
             return
         if item.slot == "identify":
             self.identify_first_item()
+            self.save_run()
             return
         if item.unidentified:
             item.unidentified = False
@@ -1407,6 +1729,8 @@ class Game:
                 ttl=1.2,
             )
         )
+        self.play_sfx("pickup")
+        self.save_run()
 
     def use_first_potion(self) -> None:
         for index, item in enumerate(self.player.inventory):
@@ -1430,6 +1754,8 @@ class Game:
                 f"+{healed}", self.player.x, self.player.y - 0.4, (105, 230, 125)
             )
         )
+        self.play_sfx("pickup")
+        self.save_run()
 
     def drink_mana_potion(self, item: Item) -> None:
         self.run_stats.potions_used += 1
@@ -1441,6 +1767,8 @@ class Game:
                 f"+{restored} mana", self.player.x, self.player.y - 0.4, (105, 165, 255)
             )
         )
+        self.play_sfx("pickup")
+        self.save_run()
 
     def identify_first_item(self) -> None:
         for item in self.player.inventory:
@@ -1503,6 +1831,18 @@ class Game:
 
     def draw(self) -> None:
         self.screen.fill((10, 10, 14))
+        if self.state == "title":
+            self.draw_title_menu()
+            pygame.display.flip()
+            return
+        if self.state == "options":
+            self.draw_options_menu()
+            pygame.display.flip()
+            return
+        if self.state == "about":
+            self.draw_about_screen()
+            pygame.display.flip()
+            return
         if self.state == "archetype_select":
             self.draw_archetype_select()
             pygame.display.flip()
@@ -2817,6 +3157,87 @@ class Game:
             self.screen.blit(
                 text, (box.x + self.ui(20), box.y + self.ui(250) + i * self.ui(26))
             )
+
+    def draw_centered_menu_lines(
+        self,
+        title: str,
+        lines: list[str],
+        accent: Color | None = None,
+        footer: str = "Esc to quit",
+    ) -> None:
+        width, height = self.screen.get_size()
+        accent = accent or self.theme.accent
+        title_surface = self.big_font.render(title, True, (235, 220, 180))
+        self.screen.blit(
+            title_surface, title_surface.get_rect(center=(width // 2, self.ui(135)))
+        )
+        panel_w = min(self.ui(760), width - self.ui(80))
+        panel_h = self.ui(360)
+        box = pygame.Rect((width - panel_w) // 2, self.ui(220), panel_w, panel_h)
+        pygame.draw.rect(self.screen, (18, 17, 22), box)
+        pygame.draw.rect(self.screen, accent, box, self.ui(2))
+        for index, line in enumerate(lines):
+            color = (
+                accent
+                if line.startswith(("N", "L", "O", "A", "C", "H", "Esc"))
+                else (222, 218, 205)
+            )
+            text = self.font.render(line, True, color)
+            self.screen.blit(
+                text, (box.x + self.ui(34), box.y + self.ui(34) + index * self.ui(42))
+            )
+        footer_surface = self.small_font.render(footer, True, (170, 165, 155))
+        self.screen.blit(
+            footer_surface,
+            footer_surface.get_rect(center=(width // 2, box.bottom + self.ui(42))),
+        )
+
+    def draw_title_menu(self) -> None:
+        load_line = (
+            "L/R: Resume saved run"
+            if self.save_exists()
+            else "L/R: Resume saved run (none found)"
+        )
+        self.draw_centered_menu_lines(
+            "Arch Rogue Beta",
+            [
+                "N/Enter: New run",
+                load_line,
+                "O: Options",
+                "A/C/H/?: Credits, about, and quick help",
+                "",
+                "Explore 10 depths, build around loot, break the gate tyrant's seal.",
+            ],
+            footer="Beta public-test build — Esc quits, Backspace returns from submenus",
+        )
+
+    def draw_options_menu(self) -> None:
+        self.draw_centered_menu_lines(
+            "Options",
+            [
+                f"A: Audio cues {'On' if self.audio_enabled else 'Off'}",
+                f"M: Music {'On' if self.music_enabled else 'Off'} (reserved for soundtrack)",
+                f"F: Fullscreen {'On' if self.fullscreen else 'Off'}",
+                "Enter/O/Backspace: Return to title",
+                "",
+                "Settings are intentionally lightweight for the Beta test loop.",
+            ],
+            footer="Audio falls back silently if no mixer device is available",
+        )
+
+    def draw_about_screen(self) -> None:
+        self.draw_centered_menu_lines(
+            "About / Onboarding",
+            [
+                "Arch Rogue is a Rogue-inspired isometric ARPG public-test Beta.",
+                "Goal: descend, survive, defeat the final-depth tyrant, then use the stairs.",
+                "Combat: left mouse moves/aims; Space slashes; F bolts; C novas; Shift dashes.",
+                "Loot: E picks up/interacts; I opens inventory; 1-9 equips/uses; Q drinks potion.",
+                "Discovery: shrines, traps, secrets, unidentified gear, and run modifiers change each run.",
+                "Credits: design/code/art/audio prototype by the Arch Rogue project.",
+            ],
+            footer="Enter/Backspace returns to title",
+        )
 
     def draw_help_overlay(self) -> None:
         width, height = self.screen.get_size()
