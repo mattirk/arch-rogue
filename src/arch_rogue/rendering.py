@@ -27,18 +27,22 @@ class RenderingMixin:
         if self.state == "title":
             self.draw_title_menu()
             pygame.display.flip()
+            self.sync_music()
             return
         if self.state == "options":
             self.draw_options_menu()
             pygame.display.flip()
+            self.sync_music()
             return
         if self.state == "about":
             self.draw_about_screen()
             pygame.display.flip()
+            self.sync_music()
             return
         if self.state == "archetype_select":
             self.draw_archetype_select()
             pygame.display.flip()
+            self.sync_music()
             return
         self.draw_dungeon()
         self.draw_world_objects()
@@ -50,6 +54,7 @@ class RenderingMixin:
         if self.state != "playing":
             self.draw_state_overlay()
         pygame.display.flip()
+        self.sync_music()
 
     def draw_dungeon(self) -> None:
         min_x, max_x, min_y, max_y = self.visible_bounds()
@@ -854,6 +859,8 @@ class RenderingMixin:
         if enemy.kind == "boss":
             stretch += math.sin(self.elapsed * 3.4) * 0.025
             lean += math.sin(self.elapsed * 2.1) * 1.0
+        elif enemy.elite_modifier or enemy.kind == "miniboss":
+            stretch += math.sin(self.elapsed * 5.0) * 0.015
         self.draw_shadow(enemy.x, enemy.y, shadow_w, 12, moving=enemy.moving, lift=bob)
         self.draw_movement_trail(enemy, (120, 84, 68), size=2)
         if enemy.moving:
@@ -890,6 +897,24 @@ class RenderingMixin:
         pygame.draw.rect(
             self.screen, (215, 62, 52), (sx - bar_w // 2, bar_y, fill_w, bar_h)
         )
+        if enemy.elite_modifier or enemy.kind == "miniboss":
+            pulse = 0.5 + 0.5 * math.sin(self.elapsed * 5.2)
+            marker = pygame.Surface(
+                (42 * WORLD_SCALE, 18 * WORLD_SCALE), pygame.SRCALPHA
+            )
+            pygame.draw.ellipse(
+                marker,
+                (*enemy.color, int(20 + pulse * 38)),
+                marker.get_rect(),
+                max(1, WORLD_SCALE),
+            )
+            self.screen.blit(
+                marker, marker.get_rect(center=(sx, sy - 14 * WORLD_SCALE))
+            )
+            label = self.small_font.render(enemy.elite_modifier, True, enemy.color)
+            self.screen.blit(
+                label, label.get_rect(center=(sx, bar_y - 8 * WORLD_SCALE))
+            )
         if enemy.kind == "boss":
             pulse = 0.5 + 0.5 * math.sin(self.elapsed * 4.2)
             aura = pygame.Surface((70 * WORLD_SCALE, 28 * WORLD_SCALE), pygame.SRCALPHA)
@@ -1225,7 +1250,7 @@ class RenderingMixin:
         )
         lines = [
             self.player.class_name,
-            f"Level {self.player.level}  XP {self.player.xp}/{self.player.next_xp}",
+            f"Level {self.player.level}  XP {self.player.xp}/{self.player.next_xp}  Upgrades {len(self.player.skill_upgrades)}",
             f"Weapon: {weapon}  Damage: {self.player.melee_damage()}",
             f"Armor: {armor}  DR: {self.player.armor()}",
         ]
@@ -1361,4 +1386,5 @@ class RenderingMixin:
             f"Kills {self.run_stats.kills}  Boss {'defeated' if self.run_stats.boss_killed else 'alive'}  Damage taken {self.run_stats.damage_taken}",
             f"Loot {self.run_stats.loot_picked_up}  Potions {self.run_stats.potions_used}  Shrines {self.run_stats.shrines_used}",
             f"Secrets {self.run_stats.secrets_opened}  Traps triggered {self.run_stats.traps_triggered}",
+            f"Elites {self.run_stats.elites_killed}  Minibosses {self.run_stats.minibosses_killed}  Upgrades {self.run_stats.upgrades_chosen}",
         ]

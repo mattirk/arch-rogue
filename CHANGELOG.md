@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0 — Depth, Build Variety, and Run Replayability
+
+Milestone 1.1 expands the 1.0 run loop with more variety, build growth, and clearer risk/reward systems while preserving save compatibility.
+
+### Added
+
+- New dungeon themes: Obsidian Foundry, Moonlit Aquifer, and Thornbound Vault.
+- Lightweight in-run archetype upgrades granted at run start, level-up, Oath Shrines, and forgotten skill altars.
+- Elite enemy modifiers and miniboss encounters with visible markers, stronger stats, better XP, and reward drops.
+- Additional run modifiers for elite-focused runs and cursed-bargain loot/event pressure.
+- Cursed gear tradeoffs, extra affixes, inventory comparison hints, and richer event/shrine variants.
+- Compatible run saves persist skill upgrades, cursed items, and elite/miniboss state while continuing to accept 1.0-era saves.
+- Expanded in-game help and run summaries for elites, minibosses, and skill upgrades.
+- Subtle, slow procedural menu music profile for title/options/about/archetype screens.
+
 ## 1.0.0 — Public Release
 
 Arch Rogue 1.0 stabilizes the existing 10-depth single-player run loop for public release.

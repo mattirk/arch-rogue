@@ -352,9 +352,10 @@ class MenuRenderer:
         lines = [
             "Goal: defeat the gate tyrant in the final room, then press E on the stairs.",
             "Movement: hold left mouse to move and aim. Arrow keys can aim without moving.",
-            "Class skills: Warden bashes, Rogue crits, Arcanist arcs, Acolyte drains, Ranger controls.",
+            "Class skills: level ups, Oath Shrines, and skill altars can add class-specific upgrades.",
+            "Elites/minibosses: named foes have brighter telegraphs, more danger, and better rewards.",
             "Resources: stamina powers melee and movement skills; mana powers bolt and nova skills.",
-            "Inventory: E picks up and interacts; I opens inventory; 1-9 equips/uses; Q drinks a potion.",
+            "Inventory: E picks up; I opens inventory; 1-9 uses/equips; Shift+1-9 drops; Tab/S sorts.",
             "Discovery: unidentified gear needs scrolls, Insight Shrines, or equipping to reveal.",
             "Hazards: traps are single-use but dangerous; shrines and secrets can swing a run.",
         ]
@@ -721,26 +722,32 @@ class MenuRenderer:
 
     def draw_inventory(self) -> None:
         width, height = self.screen.get_size()
-        box_w = min(max(360, self.u(390)), width - 48)
-        box_h = min(max(320, self.u(320)), height - 80)
+        box_w = min(max(430, self.u(470)), width - 48)
+        box_h = min(max(350, self.u(360)), height - 80)
         box = pygame.Rect(width - box_w - 24, 32, box_w, box_h)
         self.panel(box, (105, 90, 68), alpha=246)
-        inner = box.inflate(-self.u(34), -self.u(30))
+        inner = box.inflate(-self.u(34), -self.u(34))
+        inner.y += self.u(18)
+        inner.h -= self.u(8)
+        title_h = self.g.font.get_height()
+        subtitle_h = self.g.small_font.get_height()
+        header_rect = pygame.Rect(inner.x, inner.y, inner.width, title_h)
+        self.draw_text("Inventory", self.g.font, self.TITLE, header_rect)
+        upgrade_names = self.g.player.skill_upgrades
+        subtitle = f"Sort: {self.g.inventory_sort_mode} · Tab cycle"
+        if upgrade_names:
+            subtitle = f"Upgrades {len(upgrade_names)} · {subtitle}"
         self.draw_text(
-            "Inventory",
-            self.g.font,
-            self.TITLE,
-            pygame.Rect(inner.x, inner.y, inner.width, self.g.font.get_height()),
-        )
-        self.draw_text(
-            "1-9 equip/use",
+            subtitle,
             self.g.small_font,
             self.MUTED,
-            pygame.Rect(inner.x, inner.y, inner.width, self.g.small_font.get_height()),
+            pygame.Rect(inner.x, inner.y + self.u(4), inner.width, subtitle_h),
             align="right",
         )
-        y = inner.y + self.u(42)
         row_h = max(self.g.small_font.get_height() + self.u(6), self.u(25))
+        y = inner.y + max(title_h, subtitle_h) + self.u(16)
+        footer_h = row_h * 4 + self.u(14)
+        list_bottom = inner.bottom - footer_h
         if not self.g.player.inventory:
             self.draw_text(
                 "Empty",
@@ -749,7 +756,7 @@ class MenuRenderer:
                 pygame.Rect(inner.x, y, inner.width, row_h),
             )
         for index, item in enumerate(self.g.player.inventory):
-            if y + row_h > inner.bottom - self.u(66):
+            if y + row_h > list_bottom:
                 break
             color = self.item_color(item)
             row = pygame.Rect(inner.x, y, inner.width, row_h)
@@ -764,14 +771,14 @@ class MenuRenderer:
                 valign="center",
             )
             self.draw_text(
-                f"[{item.visible_rarity}] {item.label}",
+                f"[{item.visible_rarity}] {item.label}{self.compare_hint(item)}",
                 self.g.small_font,
                 color,
                 pygame.Rect(row.x + self.u(38), row.y, row.width - self.u(43), row.h),
                 valign="center",
             )
             y += row_h + self.u(3)
-        equipment_y = inner.bottom - self.u(58)
+        equipment_y = list_bottom + self.u(8)
         self.draw_text(
             "Equipped",
             self.g.small_font,
@@ -800,6 +807,29 @@ class MenuRenderer:
             self.TEXT,
             pygame.Rect(inner.x, equipment_y + row_h * 2, inner.width, row_h),
         )
+        controls_y = equipment_y + row_h * 3 + self.u(6)
+        self.draw_text(
+            "1-9 use/equip · Shift+1-9 drop · S sort",
+            self.g.small_font,
+            self.MUTED,
+            pygame.Rect(inner.x, controls_y, inner.width, row_h),
+            align="center",
+        )
+
+    def compare_hint(self, item: Item) -> str:
+        if item.unidentified or item.slot not in ("weapon", "armor"):
+            return ""
+        equipped = self.g.player.equipment.get(item.slot)
+        current = 0
+        incoming = item.power if item.slot == "weapon" else item.defense
+        if equipped:
+            current = equipped.power if item.slot == "weapon" else equipped.defense
+        delta = incoming - current
+        if delta == 0:
+            return ""
+        stat = "dmg" if item.slot == "weapon" else "arm"
+        sign = "+" if delta > 0 else ""
+        return f" ({sign}{delta} {stat})"
 
     def item_color(self, item: Item) -> Color:
         return {
@@ -807,6 +837,7 @@ class MenuRenderer:
             "Magic": (115, 175, 255),
             "Rare": (245, 215, 90),
             "Unique": (240, 145, 65),
+            "Cursed": (214, 92, 150),
             "Unidentified": (170, 170, 185),
         }.get(item.visible_rarity, (220, 220, 220))
 

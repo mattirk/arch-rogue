@@ -19,6 +19,7 @@ class MusicProfile:
     theme_name: str
     modifier_name: str
     depth: int = 1
+    mood: str = "run"
 
 
 class AudioSystem:
@@ -92,18 +93,23 @@ class AudioSystem:
             self.stop_music()
             return self.available
         try:
-            if self.current_music_seed == profile.seed and self.music_channel:
+            music_key = self._profile_seed(profile)
+            if self.current_music_seed == music_key and self.music_channel:
                 if self.music_channel.get_busy():
                     return self.available
-            sound = self.music_cache.get(profile.seed)
+            sound = self.music_cache.get(music_key)
             if sound is None:
-                sound = self.generate_run_track(profile)
-                self.music_cache[profile.seed] = sound
+                sound = (
+                    self.generate_static_menu_track()
+                    if profile.mood == "menu"
+                    else self.generate_run_track(profile)
+                )
+                self.music_cache[music_key] = sound
             channel = self.music_channel or sound.play(loops=-1)
             if self.music_channel:
-                self.music_channel.play(sound, loops=-1, fade_ms=350)
+                self.music_channel.play(sound, loops=-1, fade_ms=650)
             self.music_channel = channel
-            self.current_music_seed = profile.seed
+            self.current_music_seed = music_key
         except pygame.error:
             self.available = False
         return self.available
@@ -199,8 +205,77 @@ class AudioSystem:
             frames.extend(struct.pack("<h", clipped))
         return pygame.mixer.Sound(buffer=bytes(frames))
 
+    def generate_static_menu_track(self) -> pygame.mixer.Sound:
+        tempo = 58
+        steps = 16
+        step_seconds = 60.0 / tempo
+        total_samples = int(steps * step_seconds * SAMPLE_RATE)
+        samples = [0] * total_samples
+
+        root = 98.0
+        chord_degrees = (
+            (0, 3, 7),
+            (-2, 3, 7),
+            (0, 5, 10),
+            (-4, 2, 7),
+        )
+        bass_degrees = (-12, -14, -12, -16)
+        bell_degrees = (19, 15, 22, 17, 15, 12, 17, 10)
+
+        for step in range(steps):
+            start = int(step * step_seconds * SAMPLE_RATE)
+            length = int(step_seconds * SAMPLE_RATE)
+            phrase = step // 4
+            chord = chord_degrees[phrase % len(chord_degrees)]
+
+            if step % 4 == 0:
+                self._mix_triangle(
+                    samples,
+                    start,
+                    length * 4,
+                    self._degree_to_freq(
+                        root, bass_degrees[phrase % len(bass_degrees)]
+                    ),
+                    0.10,
+                )
+            if step % 4 in (0, 2):
+                for degree in chord:
+                    self._mix_sine(
+                        samples,
+                        start,
+                        length * 4,
+                        self._degree_to_freq(root, degree),
+                        0.045,
+                        release=0.95,
+                    )
+            if step % 4 == 2:
+                self._mix_sine(
+                    samples,
+                    start,
+                    length * 2,
+                    self._degree_to_freq(
+                        root, bell_degrees[(step // 4) % len(bell_degrees)]
+                    ),
+                    0.04,
+                    release=0.70,
+                )
+            if step == 12:
+                self._mix_static_hiss(samples, start, length, 0.018)
+
+        frames = bytearray()
+        fade_samples = min(total_samples // 10, SAMPLE_RATE)
+        for index, value in enumerate(samples):
+            fade = 1.0
+            if index < fade_samples:
+                fade = index / fade_samples
+            elif index > total_samples - fade_samples:
+                fade = (total_samples - index) / fade_samples
+            clipped = max(-32767, min(32767, int(value * fade)))
+            frames.extend(struct.pack("<h", clipped))
+        return pygame.mixer.Sound(buffer=bytes(frames))
+
     def _profile_seed(self, profile: MusicProfile) -> int:
-        text = f"{profile.seed}:{profile.archetype_name}:{profile.theme_name}:{profile.modifier_name}:{profile.depth}"
+        text = f"{profile.seed}:{profile.archetype_name}:{profile.theme_name}:{profile.modifier_name}:{profile.depth}:{profile.mood}"
         value = 2166136261
         for char in text:
             value ^= ord(char)
@@ -244,6 +319,36 @@ class AudioSystem:
             phase = (local * frequency / SAMPLE_RATE) % 1.0
             value = 4.0 * abs(phase - 0.5) - 1.0
             samples[index] += int(value * amplitude * env)
+
+    def _mix_sine(
+        self,
+        samples: list[int],
+        start: int,
+        length: int,
+        frequency: float,
+        volume: float,
+        release: float = 0.75,
+    ) -> None:
+        end = min(len(samples), start + length)
+        amplitude = MUSIC_AMPLITUDE * volume
+        for index in range(start, end):
+            local = index - start
+            env = self._pluck_envelope(local, length, release=release)
+            value = math.sin(math.tau * frequency * index / SAMPLE_RATE)
+            samples[index] += int(value * amplitude * env)
+
+    def _mix_static_hiss(
+        self, samples: list[int], start: int, length: int, volume: float
+    ) -> None:
+        end = min(len(samples), start + length)
+        amplitude = MUSIC_AMPLITUDE * volume
+        value = 0.0
+        for index in range(start, end):
+            local = index - start
+            if local % 16 == 0:
+                value = amplitude if (local // 16) % 2 == 0 else -amplitude
+            env = 1.0 - local / max(1, length)
+            samples[index] += int(value * env)
 
     def _mix_noise(
         self,

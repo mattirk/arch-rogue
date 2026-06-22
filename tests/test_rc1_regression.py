@@ -145,6 +145,48 @@ class Rc1RegressionTests(unittest.TestCase):
         finally:
             pygame.quit()
 
+    def test_modern_inventory_sort_drop_and_safe_consumables(self) -> None:
+        game = self.make_game()
+        try:
+            game.restart(ARCHETYPES[0])
+            game.player.inventory = [
+                Item("Minor Healing Potion", "potion", heal=35),
+                Item("Rare Axe", "weapon", power=9, rarity="Rare"),
+                Item("Lesser Mana Potion", "mana_potion", mana=24),
+                Item("Common Vest", "armor", defense=2, rarity="Common"),
+            ]
+
+            game.sort_inventory()
+            self.assertEqual(
+                [item.slot for item in game.player.inventory[:4]],
+                ["weapon", "armor", "potion", "mana_potion"],
+            )
+
+            game.cycle_inventory_sort_mode()
+            self.assertEqual(game.inventory_sort_mode, "rarity")
+            self.assertEqual(game.player.inventory[0].name, "Rare Axe")
+
+            dropped = game.player.inventory[0]
+            game.drop_inventory_slot(0)
+            self.assertNotIn(dropped, game.player.inventory)
+            self.assertIn(dropped, game.items)
+            self.assertTrue(game.dungeon.is_floor(dropped.x, dropped.y))
+
+            potion_count = len(game.player.inventory)
+            potion_index = next(
+                index
+                for index, item in enumerate(game.player.inventory)
+                if item.slot == "potion"
+            )
+            game.player.hp = game.player.max_hp
+            game.use_inventory_slot(potion_index)
+            self.assertEqual(len(game.player.inventory), potion_count)
+            self.assertTrue(
+                any(item.slot == "potion" for item in game.player.inventory)
+            )
+        finally:
+            pygame.quit()
+
     def test_stairs_advance_until_depth_ten_then_boss_gates_victory(self) -> None:
         game = self.make_game()
         try:

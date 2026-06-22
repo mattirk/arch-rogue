@@ -34,11 +34,13 @@ from .content import (
     ARCHETYPES,
     ARMOR_DEFINITIONS,
     DUNGEON_THEMES,
+    ELITE_MODIFIERS,
     ENEMY_DEFINITIONS,
     FINAL_ROOM_ENEMY_DEFINITIONS,
     RUN_MODIFIERS,
     SECRET_TYPES,
     SHRINE_TYPES,
+    SKILL_UPGRADES,
     TRAP_DEFINITIONS,
     WEAPON_DEFINITIONS,
     EnemyDefinition,
@@ -97,6 +99,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.rng = random.Random()
         self.running = True
         self.inventory_open = False
+        self.inventory_sort_mode = "type"
         self.show_help = False
         self.run_stats = RunStats()
         self.state = "archetype_select"
@@ -176,6 +179,15 @@ class Game(SaveLoadMixin, RenderingMixin):
         return True
 
     def current_music_profile(self) -> MusicProfile | None:
+        if self.state in ("title", "options", "about", "archetype_select"):
+            return MusicProfile(
+                0xA11CE,
+                "Menu",
+                "Main Menu",
+                "Quiet",
+                depth=0,
+                mood="menu",
+            )
         if self.state not in ("playing", "dead", "victory") or self.run_music_seed <= 0:
             return None
         return MusicProfile(
@@ -183,6 +195,7 @@ class Game(SaveLoadMixin, RenderingMixin):
             self.selected_archetype.name,
             self.run_music_theme or self.theme.name,
             self.run_modifier.name,
+            depth=self.current_depth,
         )
 
     def sync_music(self) -> None:
@@ -343,6 +356,13 @@ class Game(SaveLoadMixin, RenderingMixin):
             if self.rng.random() < max(0.25, 0.68 + self.run_modifier.loot_bonus):
                 self.items.append(self._make_loot(*room.random_point(self.rng)))
             if (
+                room_index > 3
+                and not is_final_room
+                and self.rng.random() < self.miniboss_chance()
+            ):
+                mx, my = room.random_point(self.rng)
+                self.enemies.append(self._make_miniboss(mx, my))
+            if (
                 room_index > 1
                 and self.rng.random() < 0.24 + self.run_modifier.trap_bonus
             ):
@@ -415,23 +435,71 @@ class Game(SaveLoadMixin, RenderingMixin):
 
     def _make_enemy(self, x: float, y: float, final_room: bool = False) -> Enemy:
         definition = self._weighted_enemy_definition(final_room)
-        return self._apply_run_modifier(
-            Enemy(
-                definition.name,
-                definition.kind,
-                x,
-                y,
-                definition.max_hp,
-                definition.max_hp,
-                definition.speed,
-                definition.damage,
-                definition.xp,
-                definition.attack_range,
-                definition.attack_cooldown,
-                aggro_range=definition.aggro_range,
-                color=definition.color,
-            )
+        enemy = Enemy(
+            definition.name,
+            definition.kind,
+            x,
+            y,
+            definition.max_hp,
+            definition.max_hp,
+            definition.speed,
+            definition.damage,
+            definition.xp,
+            definition.attack_range,
+            definition.attack_cooldown,
+            aggro_range=definition.aggro_range,
+            color=definition.color,
         )
+        enemy = self._apply_run_modifier(enemy)
+        if enemy.kind != "boss" and self.rng.random() < self.elite_chance():
+            self._apply_elite_modifier(enemy)
+        return enemy
+
+    def elite_chance(self) -> float:
+        base = 0.06 + self.current_depth * 0.006
+        if self.run_modifier.name == "Elite Hunt":
+            base += 0.08
+        return min(0.24, base)
+
+    def miniboss_chance(self) -> float:
+        base = 0.015 + self.current_depth * 0.006
+        if self.run_modifier.name == "Elite Hunt":
+            base += 0.035
+        return min(0.12, base)
+
+    def _shift_color(self, color: Color, shift: Color) -> Color:
+        return (
+            max(35, min(255, color[0] + shift[0])),
+            max(35, min(255, color[1] + shift[1])),
+            max(35, min(255, color[2] + shift[2])),
+        )
+
+    def _apply_elite_modifier(self, enemy: Enemy) -> None:
+        modifier = self.rng.choice(ELITE_MODIFIERS)
+        enemy.name = f"{modifier.name} {enemy.name}"
+        enemy.elite_modifier = modifier.name
+        enemy.telegraph = modifier.description
+        enemy.max_hp = max(1, int(enemy.max_hp * modifier.hp_multiplier))
+        enemy.hp = enemy.max_hp
+        enemy.damage += modifier.damage_bonus
+        enemy.speed *= modifier.speed_multiplier
+        enemy.xp += modifier.xp_bonus
+        enemy.aggro_range += 1.0 if modifier.name == "Runed" else 0.0
+        enemy.color = self._shift_color(enemy.color, modifier.color_shift)
+
+    def _make_miniboss(self, x: float, y: float) -> Enemy:
+        enemy = self._make_enemy(x, y, final_room=True)
+        enemy.name = f"Oathbound {enemy.name}"
+        enemy.kind = "miniboss"
+        enemy.elite_modifier = enemy.elite_modifier or "Oathbound"
+        enemy.telegraph = "large readable windups and guaranteed reward"
+        enemy.max_hp = int(enemy.max_hp * 1.85)
+        enemy.hp = enemy.max_hp
+        enemy.damage += 3
+        enemy.xp += 34
+        enemy.aggro_range += 2.0
+        enemy.color = self.theme.accent
+        return enemy
 
     def _make_boss(self, x: float, y: float) -> Enemy:
         boss_titles = {
@@ -440,6 +508,9 @@ class Game(SaveLoadMixin, RenderingMixin):
             "Violet Reliquary": "Voidbound Gate Tyrant",
             "Sunken Bastion": "Drowned Gate Tyrant",
             "Frozen Ossuary": "Rimebound Gate Tyrant",
+            "Obsidian Foundry": "Forgeheart Gate Tyrant",
+            "Moonlit Aquifer": "Moon-Drowned Gate Tyrant",
+            "Thornbound Vault": "Thorn-Crowned Gate Tyrant",
         }
         return self._apply_run_modifier(
             Enemy(
@@ -503,6 +574,17 @@ class Game(SaveLoadMixin, RenderingMixin):
         self._apply_affixes(
             item, 0 if rarity == "Common" else 1 if rarity == "Magic" else 2
         )
+        curse_chance = 0.08 + (
+            0.08 if self.run_modifier.name == "Cursed Bargains" else 0.0
+        )
+        if rarity != "Common" and self.rng.random() < curse_chance:
+            item.cursed = True
+            item.rarity = "Cursed"
+            item.affixes.append("Tempting Curse")
+            if item.slot == "weapon":
+                item.power += 4
+            else:
+                item.defense += 3
         item.unidentified = rarity != "Common" and self.rng.random() < 0.45
         return item
 
@@ -513,6 +595,8 @@ class Game(SaveLoadMixin, RenderingMixin):
             ("Balanced", 2, 0),
             ("Frostbitten", 4, 0),
             ("Zealous", 3, 1),
+            ("Vampiric", 4, 0),
+            ("Storm-Touched", 5, 0),
         ]
         armor_affixes = [
             ("Reinforced", 0, 2),
@@ -520,6 +604,8 @@ class Game(SaveLoadMixin, RenderingMixin):
             ("Light", 0, 1),
             ("Sealed", 0, 4),
             ("Thorned", 1, 2),
+            ("Grounded", 0, 4),
+            ("Regal", 1, 3),
         ]
         utility_affixes = [
             ("of the Fox", 1, 1),
@@ -527,6 +613,8 @@ class Game(SaveLoadMixin, RenderingMixin):
             ("of Force", 2, 0),
             ("of the Deep", 0, 3),
             ("of Ember", 3, 0),
+            ("of Cinders", 4, -1),
+            ("of the Moon", 1, 3),
         ]
         pool = weapon_affixes if item.slot == "weapon" else armor_affixes
         pool = pool + utility_affixes
@@ -668,6 +756,18 @@ class Game(SaveLoadMixin, RenderingMixin):
                     self.show_help = not self.show_help
                 elif event.key == pygame.K_i and self.state == "playing":
                     self.inventory_open = not self.inventory_open
+                elif (
+                    event.key == pygame.K_TAB
+                    and self.state == "playing"
+                    and self.inventory_open
+                ):
+                    self.cycle_inventory_sort_mode()
+                elif (
+                    event.key == pygame.K_s
+                    and self.state == "playing"
+                    and self.inventory_open
+                ):
+                    self.sort_inventory()
                 elif event.key == pygame.K_r and self.state != "playing":
                     self.show_help = False
                     self.inventory_open = False
@@ -691,7 +791,11 @@ class Game(SaveLoadMixin, RenderingMixin):
                     self.update_player_aim()
                     self.player_dash()
                 elif pygame.K_1 <= event.key <= pygame.K_9 and self.state == "playing":
-                    self.use_inventory_slot(event.key - pygame.K_1)
+                    index = event.key - pygame.K_1
+                    if self.inventory_open and event.mod & pygame.KMOD_SHIFT:
+                        self.drop_inventory_slot(index)
+                    else:
+                        self.use_inventory_slot(index)
             elif event.type == pygame.MOUSEBUTTONDOWN and self.state == "playing":
                 if event.button == 1:
                     self.face_player_toward_screen_point(*event.pos)
@@ -760,32 +864,85 @@ class Game(SaveLoadMixin, RenderingMixin):
         }
         return colors.get(self.player.class_name, (120, 210, 255))
 
+    def grant_skill_upgrade(self, reason: str = "level up") -> bool:
+        choices = [
+            upgrade
+            for upgrade in SKILL_UPGRADES
+            if upgrade.archetype == self.player.class_name
+            and upgrade.key not in self.player.skill_upgrades
+        ]
+        if not choices:
+            return False
+        upgrade = self.rng.choice(choices)
+        self.player.skill_upgrades.append(upgrade.key)
+        self.player.melee_bonus += upgrade.melee_bonus
+        self.player.spell_bonus += upgrade.spell_bonus
+        self.player.armor_bonus += upgrade.armor_bonus
+        self.player.max_hp += upgrade.max_hp_bonus
+        self.player.hp = min(self.player.max_hp, self.player.hp + upgrade.max_hp_bonus)
+        self.player.max_mana += upgrade.max_mana_bonus
+        self.player.mana = min(
+            self.player.max_mana, self.player.mana + upgrade.max_mana_bonus
+        )
+        self.player.max_stamina += upgrade.max_stamina_bonus
+        self.player.stamina = min(
+            self.player.max_stamina, self.player.stamina + upgrade.max_stamina_bonus
+        )
+        self.player.speed += upgrade.speed_bonus
+        self.run_stats.upgrades_chosen += 1
+        self.floaters.append(
+            FloatingText(
+                f"{upgrade.name}: {reason}",
+                self.player.x,
+                self.player.y - 0.65,
+                self.skill_color(),
+                ttl=1.8,
+            )
+        )
+        return True
+
     def melee_stamina_cost(self) -> int:
-        return 9 if self.player.class_name == "Rogue" else 12
+        cost = 9 if self.player.class_name == "Rogue" else 12
+        if self.player.has_upgrade("rogue_precision"):
+            cost -= 2
+        return max(5, cost)
 
     def melee_cooldown(self) -> float:
-        return 0.30 if self.player.class_name == "Rogue" else 0.36
+        cooldown = 0.30 if self.player.class_name == "Rogue" else 0.36
+        if self.player.has_upgrade("warden_bulwark"):
+            cooldown += 0.02
+        return cooldown
 
     def bolt_mana_cost(self) -> int:
-        return 7 if self.player.class_name in ("Arcanist", "Ranger") else 10
+        cost = 7 if self.player.class_name in ("Arcanist", "Ranger") else 10
+        if self.player.has_upgrade("arcanist_focus"):
+            cost -= 1
+        return max(4, cost)
 
     def bolt_cooldown(self) -> float:
         return 0.38 if self.player.class_name in ("Arcanist", "Ranger") else 0.48
 
     def nova_mana_cost(self) -> int:
-        return 14 if self.player.class_name in ("Arcanist", "Acolyte") else 18
+        cost = 14 if self.player.class_name in ("Arcanist", "Acolyte") else 18
+        if self.player.has_upgrade("acolyte_veil"):
+            cost -= 2
+        return max(8, cost)
 
     def nova_cooldown(self) -> float:
         return 2.65 if self.player.class_name == "Arcanist" else 3.2
 
     def dash_stamina_cost(self) -> int:
-        return 12 if self.player.class_name in ("Rogue", "Ranger") else 18
+        cost = 12 if self.player.class_name in ("Rogue", "Ranger") else 18
+        if self.player.has_upgrade("rogue_smoke"):
+            cost -= 2
+        return max(8, cost)
 
     def dash_cooldown(self) -> float:
         return 0.62 if self.player.class_name == "Ranger" else 0.85
 
     def take_player_damage(self, raw_damage: int, source: str = "hit") -> int:
-        if self.player.class_name == "Rogue" and self.rng.random() < 0.12:
+        rogue_evade = 0.18 if self.player.has_upgrade("rogue_smoke") else 0.12
+        if self.player.class_name == "Rogue" and self.rng.random() < rogue_evade:
             self.floaters.append(
                 FloatingText(
                     "Evaded", self.player.x, self.player.y - 0.2, (170, 220, 170)
@@ -796,9 +953,13 @@ class Game(SaveLoadMixin, RenderingMixin):
             2 if self.player.class_name == "Warden" and source == "melee" else 0
         )
         amount = max(1, raw_damage - self.player.armor() - armor_bonus)
+        if self.player.has_upgrade("warden_riposte") and source == "melee":
+            amount = max(1, amount - 2)
         if self.player.class_name == "Acolyte" and self.player.mana >= 4:
             self.player.mana -= 4
-            amount = max(1, amount - 3)
+            amount = max(
+                1, amount - (5 if self.player.has_upgrade("acolyte_veil") else 3)
+            )
         self.player.hp -= amount
         self.run_stats.damage_taken += amount
         return amount
@@ -823,6 +984,10 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.player.nova_timer = max(0.0, self.player.nova_timer - dt)
         stamina_regen = 38 if self.player.class_name == "Ranger" else 30
         mana_regen = 8 if self.player.class_name == "Arcanist" else 5
+        if self.player.has_upgrade("arcanist_focus"):
+            mana_regen += 3
+        if self.player.has_upgrade("ranger_snare"):
+            stamina_regen += 4
         self.player.stamina = min(
             self.player.max_stamina, self.player.stamina + stamina_regen * dt
         )
@@ -1069,13 +1234,24 @@ class Game(SaveLoadMixin, RenderingMixin):
         if target:
             targets = [target]
             if self.player.class_name == "Warden":
-                targets = self.enemies_in_melee_arc(reach_bonus=0.18)[:3]
+                reach = 0.35 if self.player.has_upgrade("warden_bulwark") else 0.18
+                limit = 4 if self.player.has_upgrade("warden_bulwark") else 3
+                targets = self.enemies_in_melee_arc(reach_bonus=reach)[:limit]
             for index, enemy in enumerate(list(targets)):
                 damage = self.player.melee_damage() + self.rng.randrange(-3, 5)
                 if index > 0:
                     damage = max(1, int(damage * 0.62))
-                if self.player.class_name == "Rogue" and self.rng.random() < 0.22:
-                    damage = int(damage * 1.75)
+                crit_chance = (
+                    0.30 if self.player.has_upgrade("rogue_precision") else 0.22
+                )
+                if (
+                    self.player.class_name == "Rogue"
+                    and self.rng.random() < crit_chance
+                ):
+                    damage = int(
+                        damage
+                        * (1.95 if self.player.has_upgrade("rogue_precision") else 1.75)
+                    )
                     self.floaters.append(
                         FloatingText(
                             "Critical", enemy.x, enemy.y - 0.45, (255, 225, 120)
@@ -1089,7 +1265,8 @@ class Game(SaveLoadMixin, RenderingMixin):
                     knockback_from=(self.player.facing_x, self.player.facing_y),
                 )
                 if self.player.class_name == "Acolyte":
-                    self.player.hp = min(self.player.max_hp, self.player.hp + 2)
+                    leech = 4 if self.player.has_upgrade("acolyte_sanguine") else 2
+                    self.player.hp = min(self.player.max_hp, self.player.hp + leech)
 
     def player_cast_bolt(self) -> None:
         mana_cost = self.bolt_mana_cost()
@@ -1102,9 +1279,17 @@ class Game(SaveLoadMixin, RenderingMixin):
             damage += max(0, self.player.max_hp - self.player.hp) // 12
         angles = [0.0]
         if self.player.class_name == "Ranger":
-            angles = [-0.16, 0.0, 0.16]
+            angles = (
+                [-0.28, -0.12, 0.0, 0.12, 0.28]
+                if self.player.has_upgrade("ranger_volley")
+                else [-0.16, 0.0, 0.16]
+            )
         elif self.player.class_name == "Arcanist":
-            angles = [-0.06, 0.06]
+            angles = (
+                [-0.12, 0.0, 0.12]
+                if self.player.has_upgrade("arcanist_splinter")
+                else [-0.06, 0.06]
+            )
         for angle in angles:
             dx = self.player.facing_x * math.cos(
                 angle
@@ -1121,7 +1306,7 @@ class Game(SaveLoadMixin, RenderingMixin):
                     damage if abs(angle) <= 0.001 else max(1, damage - 4),
                     "player",
                     (70, 165, 255),
-                    ttl=1.4,
+                    ttl=1.55 if self.player.has_upgrade("arcanist_splinter") else 1.4,
                 )
             )
 
@@ -1136,7 +1321,10 @@ class Game(SaveLoadMixin, RenderingMixin):
             dx = enemy.x - self.player.x
             dy = enemy.y - self.player.y
             distance = math.hypot(dx, dy)
-            if distance <= (2.85 if self.player.class_name == "Arcanist" else 2.45):
+            radius = 2.85 if self.player.class_name == "Arcanist" else 2.45
+            if self.player.has_upgrade("arcanist_focus"):
+                radius += 0.35
+            if distance <= radius:
                 hits += 1
                 damage = (
                     10
@@ -1145,9 +1333,13 @@ class Game(SaveLoadMixin, RenderingMixin):
                     + self.rng.randrange(0, 5)
                 )
                 if self.player.class_name == "Ranger":
-                    enemy.attack_timer = max(enemy.attack_timer, 0.8)
+                    snare_time = (
+                        1.25 if self.player.has_upgrade("ranger_snare") else 0.8
+                    )
+                    enemy.attack_timer = max(enemy.attack_timer, snare_time)
                 if self.player.class_name == "Acolyte":
-                    self.player.hp = min(self.player.max_hp, self.player.hp + 3)
+                    leech = 5 if self.player.has_upgrade("acolyte_sanguine") else 3
+                    self.player.hp = min(self.player.max_hp, self.player.hp + leech)
                 direction = (
                     (dx / distance, dy / distance)
                     if distance > 0.001
@@ -1181,6 +1373,8 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.player.dash_timer = self.dash_cooldown()
         self.player.stamina -= stamina_cost
         steps = 11 if self.player.class_name == "Ranger" else 8
+        if self.player.has_upgrade("rogue_smoke"):
+            steps += 2
         for _ in range(steps):
             self.move_actor(
                 self.player,
@@ -1259,10 +1453,21 @@ class Game(SaveLoadMixin, RenderingMixin):
                     ttl=1.6,
                 )
             )
+        elif enemy.kind == "miniboss":
+            self.run_stats.minibosses_killed += 1
+            drop_x, drop_y = self.drop_position_near(enemy.x, enemy.y)
+            self.items.append(
+                self._make_equipment(
+                    self.rng.choice(("weapon", "armor")), "Rare", drop_x, drop_y
+                )
+            )
+        elif enemy.elite_modifier:
+            self.run_stats.elites_killed += 1
         if self.player.gain_xp(enemy.xp):
+            upgraded = self.grant_skill_upgrade(reason="level up")
             self.floaters.append(
                 FloatingText(
-                    "LEVEL UP",
+                    "LEVEL UP" if not upgraded else "LEVEL UP · SKILL GROWN",
                     self.player.x,
                     self.player.y - 0.6,
                     (120, 230, 150),
@@ -1391,9 +1596,20 @@ class Game(SaveLoadMixin, RenderingMixin):
     def open_secret(self, secret: SecretCache) -> None:
         secret.opened = True
         self.run_stats.secrets_opened += 1
-        if secret.kind == "Cursed Reliquary" and self.rng.random() < 0.55:
-            self.enemies.append(self._make_enemy(secret.x + 0.3, secret.y + 0.3))
-            message = "Reliquary wakes a guardian"
+        if secret.kind == "Forgotten Skill Altar":
+            self.grant_skill_upgrade(reason="forgotten altar")
+            message = "Forgotten altar deepens your build"
+        elif secret.kind == "Moonlit Bargain":
+            self.player.hp = max(1, self.player.hp - max(6, self.player.max_hp // 8))
+            self.items.append(
+                self._make_equipment(
+                    self.rng.choice(("weapon", "armor")), "Rare", secret.x, secret.y
+                )
+            )
+            message = "Moonlit bargain takes blood for gear"
+        elif secret.kind == "Cursed Reliquary" and self.rng.random() < 0.55:
+            self.enemies.append(self._make_miniboss(secret.x + 0.3, secret.y + 0.3))
+            message = "Reliquary wakes a sworn guardian"
         else:
             drops = 2 if "Stash" in secret.kind or secret.kind == "Sealed Armory" else 1
             for _ in range(drops):
@@ -1459,6 +1675,17 @@ class Game(SaveLoadMixin, RenderingMixin):
             self.player.dash_timer = 0.0
             self.player.speed += 0.18
             message = "Haste Shrine quickens your stride"
+        elif shrine.kind == "Oath Shrine":
+            granted = self.grant_skill_upgrade(reason="oath shrine")
+            message = (
+                "Oath Shrine grants a new technique"
+                if granted
+                else "Oath Shrine finds no path left"
+            )
+        elif shrine.kind == "Twilight Shrine":
+            self.player.hp = max(1, self.player.hp - max(5, self.player.max_hp // 10))
+            self.items.append(self._make_unique(self.player.x, self.player.y))
+            message = "Twilight Shrine trades blood for a relic"
         else:
             self.items.append(self._make_loot(self.player.x, self.player.y))
             self.items.append(
@@ -1473,15 +1700,111 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.play_sfx("shrine")
         self.save_run()
 
+    def inventory_category(self, item: Item) -> int:
+        order = {
+            "weapon": 0,
+            "armor": 1,
+            "potion": 2,
+            "mana_potion": 3,
+            "identify": 4,
+        }
+        return order.get(item.slot, 9)
+
+    def inventory_power_score(self, item: Item) -> int:
+        if item.slot == "weapon":
+            return item.power
+        if item.slot == "armor":
+            return item.defense
+        if item.slot == "potion":
+            return item.heal
+        if item.slot == "mana_potion":
+            return item.mana
+        return 0
+
+    def inventory_rarity_rank(self, item: Item) -> int:
+        return {
+            "Common": 0,
+            "Magic": 1,
+            "Rare": 2,
+            "Cursed": 3,
+            "Unique": 4,
+            "Unidentified": 5,
+        }.get(item.visible_rarity, 0)
+
+    def inventory_sort_key(self, item: Item) -> tuple[int, int, int, str]:
+        if self.inventory_sort_mode == "rarity":
+            return (
+                -self.inventory_rarity_rank(item),
+                self.inventory_category(item),
+                -self.inventory_power_score(item),
+                item.display_name,
+            )
+        if self.inventory_sort_mode == "power":
+            return (
+                self.inventory_category(item),
+                -self.inventory_power_score(item),
+                -self.inventory_rarity_rank(item),
+                item.display_name,
+            )
+        return (
+            self.inventory_category(item),
+            -self.inventory_rarity_rank(item),
+            -self.inventory_power_score(item),
+            item.display_name,
+        )
+
+    def sort_inventory(self) -> None:
+        self.player.inventory.sort(key=self.inventory_sort_key)
+        self.floaters.append(
+            FloatingText(
+                f"Inventory sorted by {self.inventory_sort_mode}",
+                self.player.x,
+                self.player.y - 0.4,
+                (210, 220, 235),
+                ttl=0.9,
+            )
+        )
+        self.save_run()
+
+    def cycle_inventory_sort_mode(self) -> None:
+        modes = ("type", "rarity", "power")
+        current = (
+            modes.index(self.inventory_sort_mode)
+            if self.inventory_sort_mode in modes
+            else 0
+        )
+        self.inventory_sort_mode = modes[(current + 1) % len(modes)]
+        self.sort_inventory()
+
+    def drop_inventory_slot(self, index: int) -> None:
+        if index < 0 or index >= len(self.player.inventory):
+            return
+        item = self.player.inventory.pop(index)
+        item.x, item.y = self.drop_position_near(self.player.x, self.player.y)
+        self.items.append(item)
+        self.floaters.append(
+            FloatingText(
+                f"Dropped {item.display_name}",
+                self.player.x,
+                self.player.y - 0.4,
+                (235, 210, 120),
+                ttl=1.0,
+            )
+        )
+        self.play_sfx("pickup")
+        self.save_run()
+
     def use_inventory_slot(self, index: int) -> None:
-        if index >= len(self.player.inventory):
+        if index < 0 or index >= len(self.player.inventory):
             return
         item = self.player.inventory.pop(index)
         if item.slot == "potion":
-            self.drink_potion(item)
+            if not self.drink_potion(item):
+                self.player.inventory.insert(index, item)
             return
         if item.slot == "mana_potion":
-            self.drink_mana_potion(item)
+            if not self.drink_mana_potion(item):
+                self.player.inventory.insert(index, item)
             return
         if item.slot == "identify":
             self.identify_first_item()
@@ -1515,18 +1838,44 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.save_run()
 
     def use_first_potion(self) -> None:
-        for index, item in enumerate(self.player.inventory):
-            if item.slot == "potion":
-                _ = self.player.inventory.pop(index)
-                self.drink_potion(item)
-                return
+        if self.player.hp >= self.player.max_hp:
+            self.floaters.append(
+                FloatingText(
+                    "Already at full health",
+                    self.player.x,
+                    self.player.y - 0.4,
+                    (235, 210, 120),
+                )
+            )
+            return
+        potions = [
+            (index, item)
+            for index, item in enumerate(self.player.inventory)
+            if item.slot == "potion"
+        ]
+        if potions:
+            missing = self.player.max_hp - self.player.hp
+            index, item = min(potions, key=lambda entry: abs(entry[1].heal - missing))
+            _ = self.player.inventory.pop(index)
+            self.drink_potion(item)
+            return
         self.floaters.append(
             FloatingText(
                 "No potion", self.player.x, self.player.y - 0.4, (235, 210, 120)
             )
         )
 
-    def drink_potion(self, item: Item) -> None:
+    def drink_potion(self, item: Item) -> bool:
+        if self.player.hp >= self.player.max_hp:
+            self.floaters.append(
+                FloatingText(
+                    "Already at full health",
+                    self.player.x,
+                    self.player.y - 0.4,
+                    (235, 210, 120),
+                )
+            )
+            return False
         self.run_stats.potions_used += 1
         old_hp = self.player.hp
         self.player.hp = min(self.player.max_hp, self.player.hp + item.heal)
@@ -1538,8 +1887,19 @@ class Game(SaveLoadMixin, RenderingMixin):
         )
         self.play_sfx("pickup")
         self.save_run()
+        return True
 
-    def drink_mana_potion(self, item: Item) -> None:
+    def drink_mana_potion(self, item: Item) -> bool:
+        if self.player.mana >= self.player.max_mana:
+            self.floaters.append(
+                FloatingText(
+                    "Already at full mana",
+                    self.player.x,
+                    self.player.y - 0.4,
+                    (235, 210, 120),
+                )
+            )
+            return False
         self.run_stats.potions_used += 1
         old_mana = self.player.mana
         self.player.mana = min(self.player.max_mana, self.player.mana + item.mana)
@@ -1551,20 +1911,29 @@ class Game(SaveLoadMixin, RenderingMixin):
         )
         self.play_sfx("pickup")
         self.save_run()
+        return True
 
     def identify_first_item(self) -> None:
-        for item in self.player.inventory:
-            if item.unidentified:
-                item.unidentified = False
-                self.floaters.append(
-                    FloatingText(
-                        f"Identified {item.name}",
-                        self.player.x,
-                        self.player.y - 0.4,
-                        (160, 220, 255),
-                    )
+        unidentified = [item for item in self.player.inventory if item.unidentified]
+        if unidentified:
+            item = max(
+                unidentified,
+                key=lambda entry: (
+                    self.inventory_rarity_rank(entry),
+                    self.inventory_power_score(entry),
+                    entry.display_name,
+                ),
+            )
+            item.unidentified = False
+            self.floaters.append(
+                FloatingText(
+                    f"Identified {item.name}",
+                    self.player.x,
+                    self.player.y - 0.4,
+                    (160, 220, 255),
                 )
-                return
+            )
+            return
         self.floaters.append(
             FloatingText(
                 "Nothing to identify",

@@ -152,20 +152,20 @@ Example categories:
 
 ## Milestones
 
-### 1.1: Depth, Build Variety, and Run Replayability
+### 1.2: Systems Polish, Presentation, and Long-Term Structure
 
-Expand the 1.0 foundation with more meaningful run variety, stronger archetype identity, and clearer long-term direction without destabilizing the core loop:
+Build on the current run loop by improving usability, atmosphere, and maintainability while keeping the game fast to start and easy to play:
 
-- **Expanded dungeon themes:** add additional floor themes with distinct room dressing, hazards, shrine variants, enemy mixes, loot flavor, and lighting palettes so repeated 10-depth runs feel less predictable.
-- **Archetype skill growth:** give each core archetype a small set of upgrade choices during a run, including active skill modifiers and passive perks that support multiple builds without requiring a large permanent skill tree.
-- **Elite and miniboss variety:** introduce more elite modifiers, miniboss encounters, and theme-linked enemy behaviors with readable telegraphs, meaningful rewards, and tactical counterplay.
-- **Richer loot decisions:** add more build-defining affixes, cursed item tradeoffs, unique item effects, and clearer equipment comparison feedback while keeping inventory management fast and readable.
-- **Run modifiers and events:** add optional run mutators, rare dungeon events, cursed bargains, hidden rooms, and risk/reward encounters that create memorable stories without overwhelming new players.
-- **Meta progression prototype:** explore lightweight account-level unlocks such as cosmetic titles, lore journal entries, optional starting loadout variants, or challenge modifiers; avoid upgrades that remove run tension.
-- **Improved onboarding and help:** expand in-game guidance for controls, identification, shrines, traps, skills, resistances, and death/victory summaries so players can learn systems without external documentation.
-- **Accessibility and control polish:** improve remapping, UI scale behavior, color-safe indicators, pause/readability tools, and mouse/keyboard responsiveness; evaluate controller support if the input layer is ready.
-- **Audio-visual atmosphere pass:** add more cohesive ambience, impact sounds, item pickup feedback, shrine cues, boss stingers, death/victory presentation, and subtle environmental animation.
-- **Save compatibility and migration:** maintain save/run-state versioning from 1.0, add migration handling where practical, and ensure failed loads produce safe, actionable messages.
-- **Balance pass from player feedback:** tune enemy pressure, potion scarcity, XP pacing, trap damage, shrine rewards, class viability, elite modifiers, boss health, loot rarity, and run modifier extremes using playtest notes.
-- **Technical hardening:** improve automated regression coverage for dungeon generation, save/load, inventory/equipment, skills, projectiles, enemy AI, UI rendering, and repeated-run memory/performance stability.
-- **Modding/data direction:** begin moving suitable content definitions toward data-driven tables for items, affixes, enemies, skills, rooms, shrines, and events, but avoid a full modding API until the core data model stabilizes.
+- **Inventory and equipment polish:** improve inventory readability, sorting, dropping, comparison hints, consumable safeguards, equipment swapping, and item decision clarity without slowing down pickups or combat flow.
+- **Menu and UX refinement:** tighten title/options/about/archetype/inventory layouts, prevent text overlap, improve responsive scaling, and keep all menu actions clear at compact window sizes.
+- **Static menu audio and startup performance:** keep menu ambience subtle and fixed rather than procedurally generated at startup; ensure the first title frame appears quickly even when audio/music is enabled.
+- **Combat readability pass:** improve hit feedback, elite/miniboss tells, projectile clarity, melee arc readability, cooldown feedback, and player damage warnings.
+- **Dungeon event clarity:** make shrines, secrets, cursed bargains, traps, and rare events easier to understand through concise in-game prompts and distinct visual/audio cues.
+- **Skill upgrade presentation:** expose acquired class upgrades more clearly in HUD/inventory/help, and make upgrade effects easier to reason about during a run.
+- **Loot balance and item identity:** tune affix values, cursed tradeoffs, unique effects, drop rates, potion scarcity, and equipment comparison so loot choices feel meaningful but quick.
+- **Audio-visual atmosphere pass:** add cohesive static/menu ambience, subtle environmental animation, restrained impact cues, shrine cues, boss stingers, and clearer death/victory presentation.
+- **Accessibility and controls:** improve key clarity, color-safe indicators, UI scale behavior, pause/readability tools, and mouse/keyboard responsiveness; keep controller support as an evaluation item.
+- **Save compatibility and migration:** maintain safe run-state loading from older compatible saves, preserve actionable load/save errors, and avoid corrupting user progress on failed writes.
+- **Automated regression coverage:** expand tests for inventory/equipment behavior, UI rendering, save/load compatibility, skill upgrades, elite/miniboss state, projectiles, and repeated-run stability.
+- **Data-driven content direction:** continue moving suitable content definitions toward durable tables for items, affixes, enemies, skills, rooms, shrines, events, and audio profiles without committing to a public modding API yet.
+- **Performance hardening:** profile startup, menu transitions, procedural audio generation, dungeon population, rendering hot spots, and repeated-run memory behavior to preserve a responsive 60 FPS target.

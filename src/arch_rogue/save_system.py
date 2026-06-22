@@ -28,6 +28,7 @@ class SaveLoadMixin:
             "affixes": list(item.affixes),
             "unidentified": item.unidentified,
             "unique_effect": item.unique_effect,
+            "cursed": item.cursed,
         }
 
     def item_from_dict(self, data: dict[str, Any] | None) -> Item | None:
@@ -46,6 +47,7 @@ class SaveLoadMixin:
             affixes=[str(affix) for affix in data.get("affixes", [])],
             unidentified=bool(data.get("unidentified", False)),
             unique_effect=str(data.get("unique_effect", "")),
+            cursed=bool(data.get("cursed", False)),
         )
 
     def serialize_run_state(self) -> dict[str, Any]:
@@ -93,6 +95,7 @@ class SaveLoadMixin:
                     slot: self.item_to_dict(item)
                     for slot, item in self.player.equipment.items()
                 },
+                "skill_upgrades": list(self.player.skill_upgrades),
             },
             "enemies": [enemy.__dict__ for enemy in self.enemies],
             "items": [self.item_to_dict(item) for item in self.items],
@@ -164,6 +167,9 @@ class SaveLoadMixin:
             facing_x=float(player_data.get("facing_x", 1.0)),
             facing_y=float(player_data.get("facing_y", 0.0)),
         )
+        self.player.skill_upgrades = [
+            str(upgrade) for upgrade in player_data.get("skill_upgrades", [])
+        ]
         self.player.inventory = [
             item
             for item in (
@@ -214,7 +220,7 @@ class SaveLoadMixin:
         self.last_load_error = ""
         try:
             data = json.loads(self.save_path.read_text(encoding="utf-8"))
-            if int(data.get("version", 0)) not in (1, 2):
+            if int(data.get("version", 0)) not in (1, 2, 3):
                 self.last_load_error = (
                     "Saved run was created by an incompatible version."
                 )

@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-from .models import Archetype, Color, DungeonTheme, RunModifier
+from .models import (
+    Archetype,
+    Color,
+    DungeonTheme,
+    EliteModifier,
+    RunModifier,
+    SkillUpgrade,
+)
+
 
 class EnemyDefinition(NamedTuple):
     name: str
@@ -90,8 +98,16 @@ SHRINE_TYPES = (
     "War Shrine",
     "Haste Shrine",
     "Fortune Shrine",
+    "Oath Shrine",
+    "Twilight Shrine",
 )
-SECRET_TYPES = ("Hidden Cache", "Cursed Reliquary", "Sealed Armory")
+SECRET_TYPES = (
+    "Hidden Cache",
+    "Cursed Reliquary",
+    "Sealed Armory",
+    "Forgotten Skill Altar",
+    "Moonlit Bargain",
+)
 HUMANOID_ENEMY_NAMES = (
     "Bone Imp",
     "Cultist",
@@ -216,6 +232,42 @@ DUNGEON_THEMES = (
         stair=(168, 215, 235),
         accent=(128, 206, 242),
     ),
+    DungeonTheme(
+        "Obsidian Foundry",
+        "molten channels, hammering echoes, and ember-lit machinery",
+        floor=(55, 43, 38),
+        floor_edge=(92, 62, 48),
+        wall_top=(49, 38, 35),
+        wall_left=(34, 25, 25),
+        wall_right=(28, 21, 22),
+        wall_edge=(118, 68, 44),
+        stair=(245, 132, 72),
+        accent=(245, 104, 52),
+    ),
+    DungeonTheme(
+        "Moonlit Aquifer",
+        "silver pools, echoing wells, and pale drowned altars",
+        floor=(37, 49, 62),
+        floor_edge=(62, 82, 106),
+        wall_top=(35, 45, 59),
+        wall_left=(24, 33, 46),
+        wall_right=(19, 28, 39),
+        wall_edge=(84, 116, 150),
+        stair=(176, 206, 232),
+        accent=(145, 184, 232),
+    ),
+    DungeonTheme(
+        "Thornbound Vault",
+        "root-split masonry, green witchlight, and hungry brambles",
+        floor=(41, 50, 38),
+        floor_edge=(62, 82, 52),
+        wall_top=(38, 47, 35),
+        wall_left=(26, 34, 25),
+        wall_right=(22, 29, 21),
+        wall_edge=(78, 103, 64),
+        stair=(158, 214, 106),
+        accent=(126, 214, 92),
+    ),
 )
 
 RUN_MODIFIERS = (
@@ -264,5 +316,147 @@ RUN_MODIFIERS = (
         -0.5,
         -0.08,
         0.0,
+    ),
+    RunModifier(
+        "Elite Hunt",
+        "More elites and minibosses stalk the halls, carrying better spoils.",
+        1.10,
+        1,
+        1.0,
+        0.10,
+        0.02,
+    ),
+    RunModifier(
+        "Cursed Bargains",
+        "Cursed gear and risky events are more common, but rewards spike higher.",
+        1.04,
+        0,
+        0.5,
+        0.16,
+        0.04,
+    ),
+)
+
+SKILL_UPGRADES = (
+    SkillUpgrade(
+        "warden_bulwark",
+        "Warden",
+        "Bulwark Training",
+        "Melee bashes cleave wider and armor improves.",
+        melee_bonus=1,
+        armor_bonus=2,
+        max_hp_bonus=10,
+    ),
+    SkillUpgrade(
+        "warden_riposte",
+        "Warden",
+        "Riposte Guard",
+        "Taking melee hits costs less health and fuels counterattacks.",
+        melee_bonus=2,
+        armor_bonus=1,
+    ),
+    SkillUpgrade(
+        "rogue_precision",
+        "Rogue",
+        "Killing Precision",
+        "Crits are deadlier and quick strikes cost less stamina.",
+        melee_bonus=3,
+        max_stamina_bonus=8,
+    ),
+    SkillUpgrade(
+        "rogue_smoke",
+        "Rogue",
+        "Smoke Step",
+        "Evasion improves after using movement skills.",
+        speed_bonus=0.15,
+        max_stamina_bonus=10,
+    ),
+    SkillUpgrade(
+        "arcanist_splinter",
+        "Arcanist",
+        "Splintered Arcana",
+        "Arc Bolt throws an extra shard.",
+        spell_bonus=3,
+        max_mana_bonus=10,
+    ),
+    SkillUpgrade(
+        "arcanist_focus",
+        "Arcanist",
+        "Deep Focus",
+        "Mana recovers faster and novas reach farther.",
+        spell_bonus=2,
+        max_mana_bonus=14,
+    ),
+    SkillUpgrade(
+        "acolyte_sanguine",
+        "Acolyte",
+        "Sanguine Rite",
+        "Blood skills leech more life at close range.",
+        melee_bonus=1,
+        spell_bonus=2,
+        max_hp_bonus=8,
+    ),
+    SkillUpgrade(
+        "acolyte_veil",
+        "Acolyte",
+        "Veil of Ash",
+        "Mana shields blunt harsher blows.",
+        armor_bonus=1,
+        max_mana_bonus=8,
+    ),
+    SkillUpgrade(
+        "ranger_snare",
+        "Ranger",
+        "Barbed Snares",
+        "Control skills delay enemies longer.",
+        spell_bonus=2,
+        max_stamina_bonus=8,
+    ),
+    SkillUpgrade(
+        "ranger_volley",
+        "Ranger",
+        "Volley Drills",
+        "Multishot spreads into a wider fan.",
+        melee_bonus=1,
+        spell_bonus=2,
+    ),
+)
+
+ELITE_MODIFIERS = (
+    EliteModifier(
+        "Frenzied",
+        "fast attacks with a red warning flash",
+        hp_multiplier=1.25,
+        damage_bonus=2,
+        speed_multiplier=1.18,
+        xp_bonus=12,
+        color_shift=(45, -10, -10),
+    ),
+    EliteModifier(
+        "Ironbound",
+        "slow, armored pressure with a bronze tell",
+        hp_multiplier=1.65,
+        damage_bonus=1,
+        speed_multiplier=0.86,
+        xp_bonus=16,
+        color_shift=(35, 24, -8),
+    ),
+    EliteModifier(
+        "Venomous",
+        "poisoned strikes and sickly green tells",
+        hp_multiplier=1.20,
+        damage_bonus=4,
+        speed_multiplier=1.0,
+        xp_bonus=14,
+        color_shift=(-20, 42, -16),
+    ),
+    EliteModifier(
+        "Runed",
+        "longer aggro and brighter spell telegraphs",
+        hp_multiplier=1.35,
+        damage_bonus=3,
+        speed_multiplier=1.0,
+        xp_bonus=18,
+        color_shift=(-18, 30, 48),
     ),
 )

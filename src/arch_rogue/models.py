@@ -49,6 +49,32 @@ class RunModifier:
     trap_bonus: float = 0.0
 
 
+@dataclass(frozen=True)
+class SkillUpgrade:
+    key: str
+    archetype: str
+    name: str
+    description: str
+    melee_bonus: int = 0
+    spell_bonus: int = 0
+    armor_bonus: int = 0
+    max_hp_bonus: int = 0
+    max_mana_bonus: int = 0
+    max_stamina_bonus: int = 0
+    speed_bonus: float = 0.0
+
+
+@dataclass(frozen=True)
+class EliteModifier:
+    name: str
+    description: str
+    hp_multiplier: float = 1.0
+    damage_bonus: int = 0
+    speed_multiplier: float = 1.0
+    xp_bonus: int = 0
+    color_shift: Color = (0, 0, 0)
+
+
 @dataclass
 class RunStats:
     kills: int = 0
@@ -59,6 +85,9 @@ class RunStats:
     traps_triggered: int = 0
     damage_taken: int = 0
     boss_killed: bool = False
+    elites_killed: int = 0
+    minibosses_killed: int = 0
+    upgrades_chosen: int = 0
 
 
 class Tile(IntEnum):
@@ -106,6 +135,7 @@ class Item:
     affixes: list[str] = field(default_factory=list)
     unidentified: bool = False
     unique_effect: str = ""
+    cursed: bool = False
 
     @property
     def display_name(self) -> str:
@@ -139,6 +169,8 @@ class Item:
             text += f" — {', '.join(self.affixes)}"
         if self.unique_effect:
             text += f" — {self.unique_effect}"
+        if self.cursed:
+            text += " — cursed bargain"
         return text
 
 
@@ -222,6 +254,8 @@ class Enemy:
     move_x: float = 1.0
     move_y: float = 0.0
     anim_time: float = 0.0
+    elite_modifier: str = ""
+    telegraph: str = ""
 
     @property
     def alive(self) -> bool:
@@ -260,22 +294,35 @@ class Player:
     equipment: dict[str, Item | None] = field(
         default_factory=lambda: {"weapon": None, "armor": None}
     )
+    skill_upgrades: list[str] = field(default_factory=list)
+
+    def has_upgrade(self, key: str) -> bool:
+        return key in self.skill_upgrades
 
     def melee_damage(self) -> int:
         weapon = self.equipment.get("weapon")
         unique_bonus = 4 if weapon and weapon.unique_effect == "embers on hit" else 0
+        curse_bonus = 3 if weapon and weapon.cursed else 0
         return (
             12
             + self.level * 2
             + self.melee_bonus
             + unique_bonus
+            + curse_bonus
             + (weapon.power if weapon else 0)
         )
 
     def armor(self) -> int:
         armor = self.equipment.get("armor")
         unique_bonus = 2 if armor and armor.unique_effect == "steadfast bulwark" else 0
-        return self.armor_bonus + unique_bonus + (armor.defense if armor else 0)
+        curse_penalty = 1 if armor and armor.cursed else 0
+        return max(
+            0,
+            self.armor_bonus
+            + unique_bonus
+            - curse_penalty
+            + (armor.defense if armor else 0),
+        )
 
     def gain_xp(self, amount: int) -> bool:
         self.xp += amount
