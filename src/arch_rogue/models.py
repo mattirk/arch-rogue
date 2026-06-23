@@ -90,6 +90,30 @@ class RunStats:
     upgrades_chosen: int = 0
     story_choices: int = 0
     guests_met: int = 0
+    floors_cleared: int = 0
+    challenge_rooms_cleared: int = 0
+    cause_of_death: str = ""
+    defeated_bosses: list[str] = field(default_factory=list)
+    notable_loot: list[str] = field(default_factory=list)
+    discoveries: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class FloorPlan:
+    depth: int
+    theme_name: str
+    threat_level: int
+    encounter_key: str
+    risk_tags: tuple[str, ...]
+    reward_hint: str
+    boss_key: str = ""
+
+    @property
+    def preview(self) -> str:
+        risks = ", ".join(self.risk_tags) if self.risk_tags else "unknown risks"
+        reward = f" · reward: {self.reward_hint}" if self.reward_hint else ""
+        boss = " · boss sign" if self.boss_key else ""
+        return f"Threat {self.threat_level}: {risks}{boss}{reward}"
 
 
 class Tile(IntEnum):

@@ -34,10 +34,12 @@ from .constants import (
 from .content import (
     ARCHETYPES,
     ARMOR_DEFINITIONS,
+    BOSS_DEFINITIONS,
     DEFAULT_DIFFICULTY_NAME,
     DIFFICULTY_PROFILES,
     DUNGEON_THEMES,
     ELITE_MODIFIERS,
+    ENCOUNTER_TEMPLATES,
     ENEMY_DEFINITIONS,
     FINAL_ROOM_ENEMY_DEFINITIONS,
     HELL_DIFFICULTY_NAME,
@@ -52,7 +54,9 @@ from .content import (
     TRAP_DEFINITIONS,
     TRAP_HINTS,
     WEAPON_DEFINITIONS,
+    BossDefinition,
     DifficultyProfile,
+    EncounterTemplate,
     EnemyDefinition,
     InteractionHint,
 )
@@ -63,6 +67,7 @@ from .models import (
     Color,
     Enemy,
     FloatingText,
+    FloorPlan,
     ImpactEffect,
     Item,
     Player,
@@ -115,6 +120,8 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.difficulty_name = DEFAULT_DIFFICULTY_NAME
         self.hell_unlocked = False
         self.hell_unlocked_this_run = False
+        self.meta_progress: dict[str, Any] = self.default_meta_progress()
+        self.run_history: list[dict[str, Any]] = []
         self.last_save_error = ""
         self.last_load_error = ""
         self.screen_flash_ttl = 0.0
@@ -154,6 +161,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.exit_previous_state = "title"
         self.run_music_seed = 0
         self.run_music_theme = ""
+        self.floor_plan: list[FloorPlan] = []
         self.story_seed = 0
         self.story_state: StoryState | None = None
         self.story_guests: list[StoryGuest] = []
@@ -255,15 +263,51 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.save_options()
         return True
 
+    def default_meta_progress(self) -> dict[str, Any]:
+        return {
+            "runs_started": 0,
+            "clears": 0,
+            "best_depth": 0,
+            "bosses_defeated": [],
+            "themes_seen": [],
+            "modifiers_seen": [],
+            "legendary_loot_seen": [],
+        }
+
+    def normalize_meta_progress(self, data: Any) -> dict[str, Any]:
+        progress = self.default_meta_progress()
+        if not isinstance(data, dict):
+            return progress
+        for key in ("runs_started", "clears", "best_depth"):
+            try:
+                progress[key] = max(0, int(data.get(key, progress[key])))
+            except (TypeError, ValueError):
+                progress[key] = 0
+        for key in (
+            "bosses_defeated",
+            "themes_seen",
+            "modifiers_seen",
+            "legendary_loot_seen",
+        ):
+            values = data.get(key, [])
+            if isinstance(values, list):
+                progress[key] = sorted({str(value) for value in values if str(value)})[
+                    :80
+                ]
+        return progress
+
     def options_to_dict(self) -> dict[str, Any]:
         return {
             "version": 1,
+            "schema_version": 2,
             "audio_enabled": self.audio_enabled,
             "music_enabled": self.music_enabled,
             "fullscreen": self.fullscreen,
             "ui_scale": self.ui_scale,
             "difficulty": self.difficulty_profile().name,
             "hell_unlocked": self.hell_unlocked,
+            "meta_progress": self.meta_progress,
+            "run_history": self.run_history[-12:],
         }
 
     def load_options(self) -> bool:
@@ -277,6 +321,9 @@ class Game(SaveLoadMixin, RenderingMixin):
             self.fullscreen = bool(data.get("fullscreen", False))
             self.ui_scale = max(1, min(4, int(data.get("ui_scale", UI_SCALE))))
             self.hell_unlocked = bool(data.get("hell_unlocked", False))
+            self.meta_progress = self.normalize_meta_progress(data.get("meta_progress"))
+            history = data.get("run_history", [])
+            self.run_history = history[-12:] if isinstance(history, list) else []
             self.difficulty_name = self.sanitize_difficulty_name(
                 str(data.get("difficulty", DEFAULT_DIFFICULTY_NAME))
             )
@@ -453,10 +500,16 @@ class Game(SaveLoadMixin, RenderingMixin):
             )
         if self.player_near_stairs():
             if self.current_depth < DUNGEON_DEPTH:
+                next_plan = self.next_floor_plan()
+                detail = (
+                    f"Next: {next_plan.theme_name} — {self.floor_plan_summary(next_plan)}"
+                    if next_plan is not None
+                    else "Stairs are safe only when you choose to leave."
+                )
                 return (
                     "E",
                     f"Descend to depth {self.current_depth + 1}/{DUNGEON_DEPTH}",
-                    "Stairs are safe only when you choose to leave.",
+                    detail,
                     self.theme.stair,
                 )
             if self.boss_alive():
@@ -524,6 +577,186 @@ class Game(SaveLoadMixin, RenderingMixin):
         return next(
             (theme for theme in DUNGEON_THEMES if theme.name == name), self.theme
         )
+
+    def encounter_template_by_key(self, key: str) -> EncounterTemplate:
+        return next(
+            (template for template in ENCOUNTER_TEMPLATES if template.key == key),
+            ENCOUNTER_TEMPLATES[0],
+        )
+
+    def boss_definition_by_key(self, key: str) -> BossDefinition | None:
+        return next((boss for boss in BOSS_DEFINITIONS if boss.key == key), None)
+
+    def floor_plan_to_dict(self, plan: FloorPlan) -> dict[str, Any]:
+        return {
+            "depth": plan.depth,
+            "theme_name": plan.theme_name,
+            "threat_level": plan.threat_level,
+            "encounter_key": plan.encounter_key,
+            "risk_tags": list(plan.risk_tags),
+            "reward_hint": plan.reward_hint,
+            "boss_key": plan.boss_key,
+        }
+
+    def floor_plan_from_dict(self, data: Any) -> FloorPlan | None:
+        if not isinstance(data, dict):
+            return None
+        try:
+            return FloorPlan(
+                depth=int(data.get("depth", 1)),
+                theme_name=str(data.get("theme_name", self.theme.name)),
+                threat_level=max(1, int(data.get("threat_level", 1))),
+                encounter_key=str(data.get("encounter_key", "standard")),
+                risk_tags=tuple(str(tag) for tag in data.get("risk_tags", [])),
+                reward_hint=str(data.get("reward_hint", "steady loot")),
+                boss_key=str(data.get("boss_key", "")),
+            )
+        except (TypeError, ValueError):
+            return None
+
+    def generate_floor_plan(self) -> list[FloorPlan]:
+        plan: list[FloorPlan] = []
+        previous_theme = self.theme.name
+        story_theme_by_depth: dict[int, str] = {}
+        if self.story_state is not None:
+            story_theme_by_depth = {
+                beat.depth: beat.theme_name for beat in self.story_state.beats
+            }
+        boss_depths = {3, 6, 9, DUNGEON_DEPTH}
+        encounter_pool = [template for template in ENCOUNTER_TEMPLATES if template.key]
+        mini_bosses = [boss for boss in BOSS_DEFINITIONS if not boss.final_boss]
+        for depth in range(1, DUNGEON_DEPTH + 1):
+            theme_name = story_theme_by_depth.get(depth, "")
+            if not theme_name:
+                choices = [
+                    theme for theme in DUNGEON_THEMES if theme.name != previous_theme
+                ]
+                theme_name = self.rng.choice(choices or list(DUNGEON_THEMES)).name
+            previous_theme = theme_name
+            if depth == 1:
+                encounter = self.encounter_template_by_key("standard")
+            elif depth in boss_depths and depth != DUNGEON_DEPTH:
+                encounter = self.encounter_template_by_key("challenge_room")
+            else:
+                encounter = self.rng.choice(encounter_pool)
+            threat = 1 + depth // 2
+            risk_tags = [encounter.risk]
+            if depth >= 5:
+                risk_tags.append("escalating damage")
+            if self.run_modifier.trap_bonus > 0.08 or encounter.trap_bonus > 0.12:
+                risk_tags.append("heavy traps")
+            if self.run_modifier.name == "Elite Hunt" or encounter.elite_bonus >= 0.12:
+                risk_tags.append("elite pressure")
+            boss_key = ""
+            reward_hint = encounter.reward
+            if depth in boss_depths:
+                if depth == DUNGEON_DEPTH:
+                    boss_key = "gate_tyrant"
+                    reward_hint = "gate relic and clear record"
+                    risk_tags.append("final boss")
+                else:
+                    themed_bosses = [
+                        boss for boss in mini_bosses if theme_name in boss.theme_names
+                    ]
+                    boss = self.rng.choice(themed_bosses or mini_bosses)
+                    boss_key = boss.key
+                    reward_hint = boss.loot_hook
+                    risk_tags.append(boss.subtitle)
+                    threat += 1
+            plan.append(
+                FloorPlan(
+                    depth=depth,
+                    theme_name=theme_name,
+                    threat_level=min(10, threat),
+                    encounter_key=encounter.key,
+                    risk_tags=tuple(risk_tags[:5]),
+                    reward_hint=reward_hint,
+                    boss_key=boss_key,
+                )
+            )
+        return plan
+
+    def current_floor_plan(self) -> FloorPlan | None:
+        return next(
+            (plan for plan in self.floor_plan if plan.depth == self.current_depth), None
+        )
+
+    def next_floor_plan(self) -> FloorPlan | None:
+        return next(
+            (plan for plan in self.floor_plan if plan.depth == self.current_depth + 1),
+            None,
+        )
+
+    def floor_plan_summary(self, plan: FloorPlan | None = None) -> str:
+        plan = plan or self.current_floor_plan()
+        if plan is None:
+            return "Uncharted depth"
+        encounter = self.encounter_template_by_key(plan.encounter_key)
+        return f"{encounter.title} · {plan.preview}"
+
+    def apply_floor_plan_for_current_depth(self) -> None:
+        plan = self.current_floor_plan()
+        if plan is None:
+            return
+        self.theme = self.theme_by_name(plan.theme_name)
+        self.run_music_theme = self.theme.name
+
+    def record_meta_discovery(self, key: str, value: str) -> None:
+        if not value:
+            return
+        current = list(self.meta_progress.get(key, []))
+        if value not in current:
+            current.append(value)
+            self.meta_progress[key] = sorted(current)[-80:]
+
+    def record_run_start_meta(self) -> None:
+        self.meta_progress["runs_started"] = (
+            int(self.meta_progress.get("runs_started", 0)) + 1
+        )
+        self.record_meta_discovery("themes_seen", self.theme.name)
+        self.record_meta_discovery("modifiers_seen", self.run_modifier.name)
+        self.save_options()
+
+    def record_notable_loot(self, item: Item) -> None:
+        if (
+            item.rarity not in ("Rare", "Unique", "Legendary", "Cursed")
+            and not item.cursed
+        ):
+            return
+        label = f"{item.visible_rarity} {item.display_name}"
+        if label not in self.run_stats.notable_loot:
+            self.run_stats.notable_loot.append(label)
+            del self.run_stats.notable_loot[:-8]
+        if item.rarity in ("Unique", "Legendary"):
+            self.record_meta_discovery("legendary_loot_seen", item.name)
+
+    def finalize_run(self, outcome: str) -> None:
+        progress = self.meta_progress
+        progress["best_depth"] = max(
+            int(progress.get("best_depth", 0)), self.current_depth
+        )
+        if outcome == "victory":
+            progress["clears"] = int(progress.get("clears", 0)) + 1
+        for boss_name in self.run_stats.defeated_bosses:
+            self.record_meta_discovery("bosses_defeated", boss_name)
+        for plan in self.floor_plan:
+            if plan.depth <= self.current_depth:
+                self.record_meta_discovery("themes_seen", plan.theme_name)
+        record = {
+            "outcome": outcome,
+            "class": self.player.class_name,
+            "depth": self.current_depth,
+            "time": int(self.elapsed),
+            "difficulty": self.difficulty_profile().name,
+            "modifier": self.run_modifier.name,
+            "kills": self.run_stats.kills,
+            "bosses": list(self.run_stats.defeated_bosses[-4:]),
+            "notable_loot": list(self.run_stats.notable_loot[-4:]),
+            "cause": self.run_stats.cause_of_death,
+        }
+        self.run_history.append(record)
+        del self.run_history[:-12]
+        self.save_options()
 
     def start_story_mode(self) -> None:
         self.story_seed = self.rng.randrange(1, 2**31)
@@ -1578,6 +1811,10 @@ class Game(SaveLoadMixin, RenderingMixin):
         return f"{beat.guest_name} was forsaken; hunters stir below"
 
     def _apply_story_theme_for_current_depth(self) -> None:
+        plan = self.current_floor_plan()
+        if plan is not None:
+            self.apply_floor_plan_for_current_depth()
+            return
         beat = self.current_story_beat()
         if beat is not None:
             self.theme = self.theme_by_name(beat.theme_name)
@@ -1749,7 +1986,11 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.run_modifier = self.rng.choice(RUN_MODIFIERS)
         self.theme = self.rng.choice(DUNGEON_THEMES)
         self.run_music_theme = self.theme.name
+        self.floor_plan = []
         self.start_story_mode()
+        self.floor_plan = self.generate_floor_plan()
+        self.apply_floor_plan_for_current_depth()
+        self.record_run_start_meta()
         self.tile_cache.clear()
         self.dungeon = Dungeon(self.rng)
         start_x, start_y = self.dungeon.rooms[0].center
@@ -1797,15 +2038,21 @@ class Game(SaveLoadMixin, RenderingMixin):
 
     def descend_to_next_depth(self) -> None:
         if self.current_depth >= DUNGEON_DEPTH:
+            self.run_stats.floors_cleared = max(
+                self.run_stats.floors_cleared, DUNGEON_DEPTH
+            )
             self.state = "victory"
             self.unlock_hell_difficulty()
+            self.finalize_run("victory")
             self.audio.stop_music()
             self.play_sfx("victory")
             self.delete_save()
             return
         unanswered_message = self.resolve_unanswered_story_beat()
+        self.run_stats.floors_cleared = max(
+            self.run_stats.floors_cleared, self.current_depth
+        )
         self.current_depth += 1
-        self.theme = self.rng.choice(DUNGEON_THEMES)
         self._apply_story_theme_for_current_depth()
         self.tile_cache.clear()
         self.dungeon = Dungeon(self.rng)
@@ -1894,6 +2141,10 @@ class Game(SaveLoadMixin, RenderingMixin):
 
     def _populate_dungeon(self) -> None:
         final_room_index = len(self.dungeon.rooms) - 1
+        floor_plan = self.current_floor_plan()
+        encounter = self.encounter_template_by_key(
+            floor_plan.encounter_key if floor_plan is not None else "standard"
+        )
         difficulty = self.difficulty_profile()
         enemy_pressure = self.story_effect_value("enemy_pressure", -0.35, 0.45)
         loot_bonus = self.story_effect_value("loot_bonus", -0.2, 0.35)
@@ -1914,19 +2165,26 @@ class Game(SaveLoadMixin, RenderingMixin):
                 count = max(1, count - 1)
             if is_final_room:
                 count += 1
-            count = max(1, count + difficulty.enemy_count_bonus)
+            count = max(1, count + difficulty.enemy_count_bonus + encounter.enemy_bonus)
             if self.rng.random() < difficulty.enemy_extra_chance:
                 count += 1
             for _ in range(count):
                 self.enemies.append(
                     self._make_enemy(
-                        *room.random_point(self.rng), final_room=is_final_room
+                        *room.random_point(self.rng),
+                        final_room=is_final_room,
+                        elite_bonus=encounter.elite_bonus,
                     )
                 )
 
-            if is_final_room and self.current_depth == DUNGEON_DEPTH:
+            if is_final_room and floor_plan is not None and floor_plan.boss_key:
                 bx, by = room.center
-                self.enemies.append(self._make_boss(bx + 0.5, by + 0.5))
+                if self.current_depth == DUNGEON_DEPTH:
+                    self.enemies.append(self._make_boss(bx + 0.5, by + 0.5))
+                else:
+                    self.enemies.append(
+                        self._make_floor_boss(floor_plan.boss_key, bx + 0.5, by + 0.5)
+                    )
 
             loot_chance = max(
                 0.12,
@@ -1935,7 +2193,8 @@ class Game(SaveLoadMixin, RenderingMixin):
                     0.68
                     + self.run_modifier.loot_bonus
                     + loot_bonus
-                    + difficulty.loot_chance_bonus,
+                    + difficulty.loot_chance_bonus
+                    + encounter.loot_bonus,
                 ),
             )
             if self.rng.random() < loot_chance:
@@ -1954,7 +2213,8 @@ class Game(SaveLoadMixin, RenderingMixin):
                     0.24
                     + self.run_modifier.trap_bonus
                     + trap_bonus
-                    + difficulty.trap_chance_bonus,
+                    + difficulty.trap_chance_bonus
+                    + encounter.trap_bonus,
                 ),
             ):
                 tx, ty = room.random_point(self.rng)
@@ -1991,7 +2251,13 @@ class Game(SaveLoadMixin, RenderingMixin):
                 and self.rng.random()
                 < max(
                     0.03,
-                    min(0.42, 0.16 + self.run_modifier.loot_bonus + secret_bonus),
+                    min(
+                        0.48,
+                        0.16
+                        + self.run_modifier.loot_bonus
+                        + secret_bonus
+                        + encounter.secret_bonus,
+                    ),
                 )
             ):
                 cx, cy = room.random_point(self.rng)
@@ -2002,6 +2268,20 @@ class Game(SaveLoadMixin, RenderingMixin):
                         self.rng.choice(SECRET_TYPES),
                     )
                 )
+
+        if (
+            encounter.guaranteed_miniboss
+            and (floor_plan is None or not floor_plan.boss_key)
+            and len(self.dungeon.rooms) > 3
+        ):
+            room = self.rng.choice(self.dungeon.rooms[2:-1] or self.dungeon.rooms[1:])
+            mx, my = room.random_point(self.rng)
+            miniboss = self._make_miniboss(mx, my)
+            miniboss.role = "challenge_boss"
+            miniboss.telegraph = (
+                "optional challenge room guardian with guaranteed reward"
+            )
+            self.enemies.append(miniboss)
 
         if self.rng.random() < max(
             0.10,
@@ -2085,7 +2365,9 @@ class Game(SaveLoadMixin, RenderingMixin):
                 return definition
         return definitions[-1]
 
-    def _make_enemy(self, x: float, y: float, final_room: bool = False) -> Enemy:
+    def _make_enemy(
+        self, x: float, y: float, final_room: bool = False, elite_bonus: float = 0.0
+    ) -> Enemy:
         definition = self._weighted_enemy_definition(final_room)
         enemy = Enemy(
             definition.name,
@@ -2104,7 +2386,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         )
         self._assign_enemy_combat_traits(enemy)
         enemy = self._apply_run_modifier(enemy)
-        if enemy.kind != "boss" and self.rng.random() < self.elite_chance():
+        if enemy.kind != "boss" and self.rng.random() < self.elite_chance(elite_bonus):
             self._apply_elite_modifier(enemy)
         return enemy
 
@@ -2140,12 +2422,12 @@ class Game(SaveLoadMixin, RenderingMixin):
         enemy.damage_type = damage_type
         enemy.resistances = dict(resistances)
 
-    def elite_chance(self) -> float:
+    def elite_chance(self, bonus: float = 0.0) -> float:
         difficulty = self.difficulty_profile()
-        base = 0.06 + self.current_depth * 0.006 + difficulty.elite_bonus
+        base = 0.06 + self.current_depth * 0.006 + difficulty.elite_bonus + bonus
         if self.run_modifier.name == "Elite Hunt":
             base += 0.08
-        return max(0.0, min(0.42, base))
+        return max(0.0, min(0.55, base))
 
     def miniboss_chance(self) -> float:
         difficulty = self.difficulty_profile()
@@ -2206,6 +2488,43 @@ class Game(SaveLoadMixin, RenderingMixin):
         enemy.color = self.theme.accent
         return enemy
 
+    def _make_floor_boss(self, boss_key: str, x: float, y: float) -> Enemy:
+        definition = self.boss_definition_by_key(boss_key)
+        if definition is None or definition.final_boss:
+            return self._make_miniboss(x, y)
+        name = definition.name
+        if self.story_state is not None:
+            name = f"{self.story_state.antagonist} {name}"
+        boss = Enemy(
+            name,
+            "miniboss",
+            x,
+            y,
+            definition.max_hp,
+            definition.max_hp,
+            definition.speed,
+            definition.damage,
+            definition.xp,
+            definition.attack_range,
+            definition.attack_cooldown,
+            aggro_range=definition.aggro_range,
+            color=definition.color,
+            elite_modifier="Floor Boss",
+            telegraph=definition.telegraph,
+            role="floor_boss",
+            damage_type=definition.damage_type,
+            resistances={
+                definition.damage_type: 0.34,
+                "physical": 0.14,
+                "holy" if definition.damage_type != "holy" else "shadow": -0.12,
+            },
+        )
+        boss = self._apply_run_modifier(boss)
+        boss.max_hp = int(boss.max_hp * 1.22)
+        boss.hp = boss.max_hp
+        boss.damage += 2
+        return boss
+
     def _make_story_hunter(
         self, x: float, y: float, prefix: str | None = None
     ) -> Enemy:
@@ -2235,26 +2554,29 @@ class Game(SaveLoadMixin, RenderingMixin):
             "Moonlit Aquifer": "Moon-Drowned Gate Tyrant",
             "Thornbound Vault": "Thorn-Crowned Gate Tyrant",
         }
+        definition = self.boss_definition_by_key("gate_tyrant")
         boss_name = boss_titles.get(self.theme.name, "Dread Gate Tyrant")
         if self.story_state is not None:
             boss_name = f"{self.story_state.antagonist} {boss_name}"
+        base_hp = definition.max_hp if definition is not None else 245
         boss = Enemy(
             boss_name,
             "boss",
             x,
             y,
-            210,
-            210,
-            1.65,
-            18,
-            90,
-            1.45,
-            1.15,
-            aggro_range=12.0,
+            base_hp,
+            base_hp,
+            definition.speed if definition is not None else 1.65,
+            definition.damage if definition is not None else 21,
+            definition.xp if definition is not None else 120,
+            definition.attack_range if definition is not None else 1.45,
+            definition.attack_cooldown if definition is not None else 1.08,
+            aggro_range=definition.aggro_range if definition is not None else 13.0,
             color=self.theme.accent,
+            telegraph=definition.telegraph if definition is not None else "gate strike",
             role="boss",
             damage_type="shadow"
-            if self.theme.name == "Violet Reliquary"
+            if self.theme.name in ("Violet Reliquary", "Thornbound Vault")
             else "physical",
             resistances={"physical": 0.18, "shadow": 0.22, "holy": -0.10},
         )
@@ -2717,6 +3039,9 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.update_floaters(dt)
 
         if self.player.hp <= 0 and self.state == "playing":
+            if not self.run_stats.cause_of_death:
+                self.run_stats.cause_of_death = "unknown dungeon violence"
+            self.finalize_run("death")
             self.state = "dead"
             self.audio.stop_music()
             self.play_sfx("death")
@@ -2880,7 +3205,12 @@ class Game(SaveLoadMixin, RenderingMixin):
         rogue_evade = 0.18 if self.player.has_upgrade("rogue_smoke") else 0.12
         if self.player_status("smoke") > 0:
             rogue_evade += 0.22
-        if self.player.class_name == "Rogue" and self.rng.random() < rogue_evade:
+        can_evade = source != "trap"
+        if (
+            can_evade
+            and self.player.class_name == "Rogue"
+            and self.rng.random() < rogue_evade
+        ):
             self.floaters.append(
                 FloatingText(
                     "Evaded", self.player.x, self.player.y - 0.2, (170, 220, 170)
@@ -2949,6 +3279,8 @@ class Game(SaveLoadMixin, RenderingMixin):
         ):
             amount += 1 if damage_type in ("shadow", "poison") else 0
         self.player.hp -= amount
+        if self.player.hp <= 0 and not self.run_stats.cause_of_death:
+            self.run_stats.cause_of_death = f"{source} {damage_type} damage"
         self.run_stats.damage_taken += amount
         flash = (160, 35, 32) if amount >= self.player.max_hp * 0.18 else (105, 24, 28)
         self.player_hit_flash = max(
@@ -3003,6 +3335,8 @@ class Game(SaveLoadMixin, RenderingMixin):
             if tick <= 0:
                 poison_damage = max(1, self.current_depth // 3 + 1)
                 self.player.hp -= poison_damage
+                if self.player.hp <= 0 and not self.run_stats.cause_of_death:
+                    self.run_stats.cause_of_death = "poisoned by lingering venom"
                 self.run_stats.damage_taken += poison_damage
                 tick += 1.0
                 self.floaters.append(
@@ -3762,8 +4096,12 @@ class Game(SaveLoadMixin, RenderingMixin):
             )
         if enemy.kind == "boss":
             self.run_stats.boss_killed = True
+            if enemy.name not in self.run_stats.defeated_bosses:
+                self.run_stats.defeated_bosses.append(enemy.name)
             drop_x, drop_y = self.drop_position_near(enemy.x, enemy.y)
-            self.items.append(self._make_unique(drop_x, drop_y))
+            unique = self._make_unique(drop_x, drop_y)
+            self.items.append(unique)
+            self.record_notable_loot(unique)
             self.floaters.append(
                 FloatingText(
                     "Gate seal broken",
@@ -3780,12 +4118,18 @@ class Game(SaveLoadMixin, RenderingMixin):
             self.play_sfx("boss")
         elif enemy.kind == "miniboss":
             self.run_stats.minibosses_killed += 1
+            if enemy.role in ("floor_boss", "challenge_boss"):
+                if enemy.name not in self.run_stats.defeated_bosses:
+                    self.run_stats.defeated_bosses.append(enemy.name)
+                plan = self.current_floor_plan()
+                if plan is not None and plan.encounter_key == "challenge_room":
+                    self.run_stats.challenge_rooms_cleared += 1
             drop_x, drop_y = self.drop_position_near(enemy.x, enemy.y)
-            self.items.append(
-                self._make_equipment(
-                    self.rng.choice(("weapon", "armor")), "Rare", drop_x, drop_y
-                )
+            rare = self._make_equipment(
+                self.rng.choice(("weapon", "armor")), "Rare", drop_x, drop_y
             )
+            self.items.append(rare)
+            self.record_notable_loot(rare)
         elif enemy.elite_modifier:
             self.run_stats.elites_killed += 1
         xp_gain = max(
@@ -3847,7 +4191,9 @@ class Game(SaveLoadMixin, RenderingMixin):
             )
         if self.rng.random() < 0.45:
             drop_x, drop_y = self.drop_position_near(enemy.x, enemy.y)
-            self.items.append(self._make_loot(drop_x, drop_y))
+            loot = self._make_loot(drop_x, drop_y)
+            self.items.append(loot)
+            self.record_notable_loot(loot)
         self.save_run()
 
     def drop_position_near(self, x: float, y: float) -> tuple[float, float]:
@@ -3911,7 +4257,12 @@ class Game(SaveLoadMixin, RenderingMixin):
                     )
                 )
                 return
+            self.run_stats.floors_cleared = max(
+                self.run_stats.floors_cleared, DUNGEON_DEPTH
+            )
             self.state = "victory"
+            self.unlock_hell_difficulty()
+            self.finalize_run("victory")
             self.audio.stop_music()
             self.play_sfx("victory")
             self.delete_save()
@@ -3946,6 +4297,7 @@ class Game(SaveLoadMixin, RenderingMixin):
             self.items.remove(nearest)
             self.player.inventory.append(nearest)
             self.run_stats.loot_picked_up += 1
+            self.record_notable_loot(nearest)
             self.floaters.append(
                 FloatingText(
                     f"Picked up {nearest.display_name}",
@@ -4051,6 +4403,9 @@ class Game(SaveLoadMixin, RenderingMixin):
     def open_secret(self, secret: SecretCache) -> None:
         secret.opened = True
         self.run_stats.secrets_opened += 1
+        if secret.kind not in self.run_stats.discoveries:
+            self.run_stats.discoveries.append(secret.kind)
+            del self.run_stats.discoveries[:-8]
         if secret.kind == "Forgotten Skill Altar":
             self.grant_skill_upgrade(reason="forgotten altar")
             message = "Forgotten altar deepens your build"
@@ -4092,6 +4447,14 @@ class Game(SaveLoadMixin, RenderingMixin):
 
     def boss_alive(self) -> bool:
         return any(enemy.kind == "boss" for enemy in self.enemies)
+
+    def floor_guardian_alive(self) -> bool:
+        plan = self.current_floor_plan()
+        if plan is None or not plan.boss_key or self.current_depth >= DUNGEON_DEPTH:
+            return False
+        return any(
+            enemy.kind == "boss" or enemy.role == "floor_boss" for enemy in self.enemies
+        )
 
     def boss_enemy(self) -> Enemy | None:
         return next((enemy for enemy in self.enemies if enemy.kind == "boss"), None)

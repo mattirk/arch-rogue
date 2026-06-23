@@ -1662,7 +1662,7 @@ class MenuRenderer:
             else f"The dungeon claims another {self.g.player.class_name}. Press R to choose again."
         )
         panel_w = min(width - 64, self.u(820))
-        panel_h = min(height - 80, self.u(390))
+        panel_h = min(height - 80, self.u(470))
         panel = pygame.Rect(
             (width - panel_w) // 2, (height - panel_h) // 2, panel_w, panel_h
         )

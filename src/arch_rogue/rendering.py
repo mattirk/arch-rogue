@@ -4222,10 +4222,14 @@ class RenderingMixin:
         width, _height = self.screen.get_size()
         title = f"Run {self.run_number}: Depth {self.current_depth}/{DUNGEON_DEPTH} — {self.theme.name}"
         difficulty = self.difficulty_profile()
+        floor_plan = self.current_floor_plan()
+        floor_summary = self.floor_plan_summary(floor_plan)
         modifier = (
             f"Difficulty: {difficulty.name} · Modifier: "
             f"{self.run_modifier.name} — {self.run_modifier.description}"
         )
+        if floor_plan is not None:
+            modifier = f"{modifier} · {floor_summary}"
         quest_info_visible = getattr(self, "quest_info_visible", True)
         story = (
             self.story_header_line()
@@ -4370,6 +4374,13 @@ class RenderingMixin:
     def run_summary_lines(self) -> list[str]:
         minutes = int(self.elapsed // 60)
         seconds = int(self.elapsed % 60)
+        bosses = ", ".join(self.run_stats.defeated_bosses[-3:]) or (
+            "Gate defeated" if self.run_stats.boss_killed else "none"
+        )
+        notable = ", ".join(self.run_stats.notable_loot[-3:]) or "none"
+        discoveries = ", ".join(self.run_stats.discoveries[-3:]) or "none"
+        cause = self.run_stats.cause_of_death or "survived"
+        progress = self.meta_progress
         return [
             (
                 f"Time {minutes:02d}:{seconds:02d}  "
@@ -4377,8 +4388,10 @@ class RenderingMixin:
                 f"Difficulty {self.difficulty_profile().name}  "
                 f"Modifier {self.run_modifier.name}"
             ),
-            f"Kills {self.run_stats.kills}  Boss {'defeated' if self.run_stats.boss_killed else 'alive'}  Damage taken {self.run_stats.damage_taken}",
-            f"Loot {self.run_stats.loot_picked_up}  Potions {self.run_stats.potions_used}  Shrines {self.run_stats.shrines_used}",
-            f"Secrets {self.run_stats.secrets_opened}  Traps triggered {self.run_stats.traps_triggered}  Story choices {self.run_stats.story_choices}",
-            f"Elites {self.run_stats.elites_killed}  Minibosses {self.run_stats.minibosses_killed}  Upgrades {self.run_stats.upgrades_chosen}",
+            f"Kills {self.run_stats.kills}  Boss {'defeated' if self.run_stats.boss_killed else 'alive'}  Damage taken {self.run_stats.damage_taken}  Cause {cause}",
+            f"Loot {self.run_stats.loot_picked_up}  Potions {self.run_stats.potions_used}  Shrines {self.run_stats.shrines_used}  Notable {notable}",
+            f"Secrets {self.run_stats.secrets_opened} ({discoveries})  Traps triggered {self.run_stats.traps_triggered}  Story choices {self.run_stats.story_choices}",
+            f"Elites {self.run_stats.elites_killed}  Minibosses {self.run_stats.minibosses_killed}  Challenge rooms {self.run_stats.challenge_rooms_cleared}  Upgrades {self.run_stats.upgrades_chosen}",
+            f"Bosses defeated {bosses}",
+            f"Mastery: best depth {progress.get('best_depth', 0)}  clears {progress.get('clears', 0)}  known bosses {len(progress.get('bosses_defeated', []))}",
         ]

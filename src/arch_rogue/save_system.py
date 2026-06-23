@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+from .constants import DUNGEON_DEPTH
 from .content import (
     ARCHETYPES,
     DUNGEON_THEMES,
@@ -78,6 +79,7 @@ class SaveLoadMixin:
             "difficulty": self.difficulty_name,
             "run_music_seed": self.run_music_seed,
             "run_music_theme": self.run_music_theme,
+            "floor_plan": [self.floor_plan_to_dict(plan) for plan in self.floor_plan],
             "story_seed": self.story_seed,
             "story_state": story_state_to_dict(self.story_state),
             "story_intro_pending": self.story_intro_pending,
@@ -156,6 +158,14 @@ class SaveLoadMixin:
         )
         self.elapsed = float(data.get("elapsed", 0.0))
         self.run_music_theme = str(data.get("run_music_theme", data.get("theme", "")))
+        self.floor_plan = [
+            plan
+            for plan in (
+                self.floor_plan_from_dict(plan_data)
+                for plan_data in data.get("floor_plan", [])
+            )
+            if plan is not None
+        ]
         self.story_seed = int(
             data.get(
                 "story_seed",
@@ -186,6 +196,9 @@ class SaveLoadMixin:
                 self.theme.name,
                 self.run_modifier.name,
             )
+        if len(self.floor_plan) != DUNGEON_DEPTH:
+            self.floor_plan = self.generate_floor_plan()
+        self.apply_floor_plan_for_current_depth()
         self.story_intro_pending = bool(data.get("story_intro_pending", False))
         self.story_relic_depth = int(data.get("story_relic_depth", 0))
         self.story_relic_choice_key = str(data.get("story_relic_choice_key", ""))

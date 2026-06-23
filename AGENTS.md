@@ -154,14 +154,10 @@ Example categories:
 
 ## Next Milestone
 
-### 2.4: Content Depth, Presentation, and Accessibility Pass
+### 2.4: HUD polish
 
-- Expand biome, room, enemy, boss, loot, shrine, trap, and story-event variety so repeated runs produce more distinct tactical and narrative situations.
-- Add richer dungeon presentation with stronger biome palettes, landmark rooms, environmental storytelling props, improved boss arenas, and clearer danger silhouettes.
-- Improve accessibility and readability through configurable keybindings, scalable UI refinements, colorblind-safe combat cues, clearer status explanations, and stronger controller affordances.
-- Deepen audio and feedback with biome-specific music motifs, boss stingers, loot rarity sounds, low-resource warnings, and more readable hit, block, dodge, and proc confirmation.
-- Add stronger player guidance through an optional codex, discovery log, run-history records, boss bestiary entries, and concise explanations for unlocked systems.
-- Expand meta-progression cautiously with discovery-based unlocks, cosmetic or option-expanding rewards, and challenge modifiers that preserve per-run danger.
-- Improve content authoring quality with validation for content tables, duplicate names, unreachable event hooks, invalid affixes, boss definitions, and save-compatible unlock data.
-- Strengthen performance and memory profiling for long sessions, repeated restarts, dense effects, large inventories, and multi-floor save/load cycles.
-- Add regression tests and deterministic simulations for accessibility options, content-table validity, presentation scaling, codex/unlock persistence, and run-history summaries.
+- Add skill icons on the bottom of HUD, pay attention to alignment and spacing
+- Make the skill icons panel look pleasing
+- Include hotkey indicators in the skill icons
+- Combine skill icons with cooldown indicators and remove other cooldown indicators
+- Add health and mana potion drinking icons alongside the skill icons with hotkey indicators
