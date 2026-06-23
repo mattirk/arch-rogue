@@ -139,19 +139,6 @@ Example categories:
 
 ## Current Milestone
 
-### 2.2: Combat, Skills, and Loot Synergy Pass
-
-- Deepen each archetype with a small but distinct set of active skills, passive modifiers, cooldowns, resource costs, and tactical tradeoffs.
-- Expand enemy behavior with clearer roles, resistances, elite variants, status interactions, and story/theme-driven encounter modifiers.
-- Improve loot generation with more build-defining affixes, cursed tradeoffs, unique item hooks, relic interactions, and rarity-specific presentation.
-- Connect story choices to mechanical outcomes such as dungeon hazards, enemy factions, shrine effects, loot biases, curses, blessings, and guest follow-ups.
-- Add clearer combat readability through telegraphs, damage typing, status icons, skill feedback, and improved hit confirmation.
-- Tune progression pacing so levels, equipment, consumables, and skills create meaningful decisions without trivializing run danger.
-- Add focused regression tests or deterministic simulation checks for skills, loot generation, story-choice effects, and combat calculations.
-- Profile and optimize high-traffic combat, AI, projectile, and rendering paths to preserve 60+ FPS during dense encounters.
-
-## Next Milestone
-
 ### 2.3: Run Structure, Bosses, and Long-Term Replayability
 
 - Add stronger floor-to-floor run pacing with meaningful transitions, escalating threat, biome/theme variety, and previewable risks before descending.
@@ -161,5 +148,20 @@ Example categories:
 - Add lightweight meta-progression that unlocks options, records discoveries, and rewards mastery without reducing the danger of individual runs.
 - Build out end-of-run summaries with cause of death, notable loot, defeated bosses, story choices, discovered secrets, and performance stats.
 - Strengthen save/load and run-resume coverage for multi-floor progression, boss states, discovered lore, unlocked options, and active modifiers.
-- Add deterministic validation checks for run generation, boss encounters, floor transitions, save restoration, and replayability-critical content tables.
+- Add more monsters with varying attack patterns, loot hooks, and story/theme ties
+- Add more player skill upgrades with distinct skill trees, passive modifiers, and active skill effects.
 - Profile dense boss and encounter scenarios to preserve 60+ FPS with clear input response, combat readability, and stable procedural generation costs.
+
+## Next Milestone
+
+### 2.4: Content Depth, Presentation, and Accessibility Pass
+
+- Expand biome, room, enemy, boss, loot, shrine, trap, and story-event variety so repeated runs produce more distinct tactical and narrative situations.
+- Add richer dungeon presentation with stronger biome palettes, landmark rooms, environmental storytelling props, improved boss arenas, and clearer danger silhouettes.
+- Improve accessibility and readability through configurable keybindings, scalable UI refinements, colorblind-safe combat cues, clearer status explanations, and stronger controller affordances.
+- Deepen audio and feedback with biome-specific music motifs, boss stingers, loot rarity sounds, low-resource warnings, and more readable hit, block, dodge, and proc confirmation.
+- Add stronger player guidance through an optional codex, discovery log, run-history records, boss bestiary entries, and concise explanations for unlocked systems.
+- Expand meta-progression cautiously with discovery-based unlocks, cosmetic or option-expanding rewards, and challenge modifiers that preserve per-run danger.
+- Improve content authoring quality with validation for content tables, duplicate names, unreachable event hooks, invalid affixes, boss definitions, and save-compatible unlock data.
+- Strengthen performance and memory profiling for long sessions, repeated restarts, dense effects, large inventories, and multi-floor save/load cycles.
+- Add regression tests and deterministic simulations for accessibility options, content-table validity, presentation scaling, codex/unlock persistence, and run-history summaries.
