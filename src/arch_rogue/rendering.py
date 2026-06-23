@@ -3850,8 +3850,10 @@ class RenderingMixin:
     def draw_run_header(self) -> None:
         width, _height = self.screen.get_size()
         title = f"Run {self.run_number}: Depth {self.current_depth}/{DUNGEON_DEPTH} — {self.theme.name}"
+        difficulty = self.difficulty_profile()
         modifier = (
-            f"Modifier: {self.run_modifier.name} — {self.run_modifier.description}"
+            f"Difficulty: {difficulty.name} · Modifier: "
+            f"{self.run_modifier.name} — {self.run_modifier.description}"
         )
         quest_info_visible = getattr(self, "quest_info_visible", True)
         story = (
@@ -3995,7 +3997,12 @@ class RenderingMixin:
         minutes = int(self.elapsed // 60)
         seconds = int(self.elapsed % 60)
         return [
-            f"Time {minutes:02d}:{seconds:02d}  Depth {self.current_depth}/{DUNGEON_DEPTH}  Modifier {self.run_modifier.name}",
+            (
+                f"Time {minutes:02d}:{seconds:02d}  "
+                f"Depth {self.current_depth}/{DUNGEON_DEPTH}  "
+                f"Difficulty {self.difficulty_profile().name}  "
+                f"Modifier {self.run_modifier.name}"
+            ),
             f"Kills {self.run_stats.kills}  Boss {'defeated' if self.run_stats.boss_killed else 'alive'}  Damage taken {self.run_stats.damage_taken}",
             f"Loot {self.run_stats.loot_picked_up}  Potions {self.run_stats.potions_used}  Shrines {self.run_stats.shrines_used}",
             f"Secrets {self.run_stats.secrets_opened}  Traps triggered {self.run_stats.traps_triggered}  Story choices {self.run_stats.story_choices}",

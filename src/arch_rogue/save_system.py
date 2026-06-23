@@ -6,7 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .content import ARCHETYPES, DUNGEON_THEMES, RUN_MODIFIERS
+from .content import (
+    ARCHETYPES,
+    DUNGEON_THEMES,
+    HELL_DIFFICULTY_NAME,
+    RUN_MODIFIERS,
+)
 from .dungeon import Dungeon
 from .models import Enemy, Item, Player, Room, RunStats, SecretCache, Shrine, Tile, Trap
 from .quest_assets import ActiveQuestCutscene
@@ -64,6 +69,7 @@ class SaveLoadMixin:
             "release": __version__,
             "run_number": self.run_number,
             "current_depth": self.current_depth,
+            "difficulty": self.difficulty_name,
             "run_music_seed": self.run_music_seed,
             "run_music_theme": self.run_music_theme,
             "story_seed": self.story_seed,
@@ -131,6 +137,10 @@ class SaveLoadMixin:
     def restore_run_state(self, data: dict[str, Any]) -> None:
         self.run_number = int(data.get("run_number", 1))
         self.current_depth = int(data.get("current_depth", 1))
+        saved_difficulty = str(data.get("difficulty", self.difficulty_name))
+        if saved_difficulty == HELL_DIFFICULTY_NAME:
+            self.hell_unlocked = True
+        self.difficulty_name = self.sanitize_difficulty_name(saved_difficulty)
         self.run_music_seed = int(
             data.get(
                 "run_music_seed",

@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pygame
 
 import arch_rogue
-from arch_rogue.game import ARCHETYPES, ENEMY_DEFINITIONS, Game
+from arch_rogue.game import ARCHETYPES, DUNGEON_DEPTH, ENEMY_DEFINITIONS, Game
 
 
 class PublicReleaseMilestoneTests(unittest.TestCase):
@@ -145,6 +145,8 @@ class PublicReleaseMilestoneTests(unittest.TestCase):
                 game.audio_enabled = False
                 game.fullscreen = True
                 game.ui_scale = 3
+                game.difficulty_name = "Hard"
+                game.hell_unlocked = False
                 self.assertTrue(game.save_options())
 
                 loaded_options = json.loads(
@@ -154,13 +156,49 @@ class PublicReleaseMilestoneTests(unittest.TestCase):
                 self.assertFalse(loaded_options["audio_enabled"])
                 self.assertTrue(loaded_options["fullscreen"])
                 self.assertEqual(loaded_options["ui_scale"], 3)
+                self.assertEqual(loaded_options["difficulty"], "Hard")
+                self.assertFalse(loaded_options["hell_unlocked"])
 
                 game.restart(ARCHETYPES[0])
                 self.assertTrue(game.save_run())
                 saved_run = json.loads(game.save_path.read_text(encoding="utf-8"))
                 self.assertEqual(saved_run["version"], 4)
                 self.assertEqual(saved_run["release"], "2.0.0")
+                self.assertEqual(saved_run["difficulty"], "Hard")
                 self.assertFalse(Path(f"{game.save_path}.tmp").exists())
+            finally:
+                pygame.quit()
+
+    def test_difficulty_cycles_and_hell_unlocks_after_first_clear(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=1017)
+            try:
+                game.difficulty_name = "Hard"
+                game.hell_unlocked = False
+                self.assertEqual(game.difficulty_profile().name, "Hard")
+
+                game.cycle_difficulty()
+                self.assertEqual(game.difficulty_profile().name, "Easy")
+                game.cycle_difficulty()
+                self.assertEqual(game.difficulty_profile().name, "Medium")
+                game.cycle_difficulty()
+                self.assertEqual(game.difficulty_profile().name, "Hard")
+                game.cycle_difficulty()
+                self.assertEqual(game.difficulty_profile().name, "Easy")
+
+                game.difficulty_name = "Hard"
+                game.restart(ARCHETYPES[0])
+                game.current_depth = DUNGEON_DEPTH
+                game.descend_to_next_depth()
+
+                self.assertEqual(game.state, "victory")
+                self.assertTrue(game.hell_unlocked)
+                self.assertTrue(game.hell_unlocked_this_run)
+                options = json.loads(game.options_path.read_text(encoding="utf-8"))
+                self.assertTrue(options["hell_unlocked"])
+
+                game.cycle_difficulty()
+                self.assertEqual(game.difficulty_profile().name, "Hell")
             finally:
                 pygame.quit()
 

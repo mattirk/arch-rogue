@@ -379,10 +379,14 @@ class MenuRenderer:
 
     def draw_options_menu(self) -> None:
         panel, content = self.menu_frame("Options", "Settings are saved automatically")
+        difficulty_value = self.g.difficulty_profile().name
+        if not self.g.hell_unlocked:
+            difficulty_value = f"{difficulty_value} · Hell locked"
         rows: list[MenuRow] = [
             ("A", "Audio cues", "On" if self.g.audio_enabled else "Off"),
             ("M", "Static menu/run music", "On" if self.g.music_enabled else "Off"),
             ("F", "Fullscreen", "On" if self.g.fullscreen else "Off"),
+            ("D", "Difficulty", difficulty_value),
             ("+ / -", "UI scale", f"{self.g.ui_scale}x"),
             ("Enter / O / Backspace", "Return to title", ""),
         ]
@@ -391,7 +395,9 @@ class MenuRenderer:
             content.x, content.bottom - self.u(60), content.width, self.u(48)
         )
         self.draw_wrapped_text(
-            "Menu ambience uses a fixed lightweight loop and starts after the first frame. Options persist to ~/.arch_rogue_options.json.",
+            "Difficulty defaults to Hard. Cycle Easy, Medium, and Hard here; "
+            "Hell appears after your first clear. Options persist to "
+            "~/.arch_rogue_options.json.",
             self.g.small_font,
             self.MUTED,
             note_rect,
@@ -406,6 +412,7 @@ class MenuRenderer:
             f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs and a new procedural story mode.",
             "Goal: descend through ten depths, survive escalating encounters, resolve story guest dilemmas, defeat the final-depth gate tyrant, then use the stairs to complete the run.",
             "Combat: hold left mouse to move and aim. Space uses your class melee skill, F casts your bolt skill, C uses your nova skill, and Left Ctrl uses your movement skill.",
+            "Difficulty: Options cycle Easy, Medium, and Hard; Hard is the default, and Hell unlocks after your first complete clear.",
             "Story: every run generates an archetype-aligned backstory, factions, relic, guests, and floor beats. Near a story guest, press E to hear their plea or 1-3 to choose Aid, Bargain, or Defy.",
             "Loot and discovery: press E for pickups, shrines, secrets, and stairs. Interaction prompts explain risks, and inventory rows summarize upgrades, curses, and comparisons.",
             "Credits: design, code, procedural art, procedural audio, and procedural story corpus by the Arch Rogue project.",
@@ -451,6 +458,7 @@ class MenuRenderer:
             "Class skills: level ups, Oath Shrines, and skill altars can add class-specific upgrades.",
             "Story guests: press E to hear their plea; press 1 Aid, 2 Bargain, or 3 Defy to shape future floors. Q toggles quest HUD info.",
             "Elites/minibosses: named foes have brighter telegraphs, more danger, and better rewards.",
+            f"Difficulty: {self.g.difficulty_profile().name} — change it from Options; Hell unlocks after one clear.",
             "Resources: stamina powers melee and movement skills; mana powers bolt and nova skills. Left Ctrl uses your movement skill.",
             "Inventory: E picks up; I opens inventory; R drinks a health potion; 1-9 uses/equips; Shift+1-9 drops; Tab/S sorts.",
             "Discovery: unidentified gear needs scrolls, Insight Shrines, or equipping to reveal.",
@@ -1459,8 +1467,14 @@ class MenuRenderer:
         victory = self.g.state == "victory"
         color = (235, 205, 120) if victory else (225, 75, 65)
         title = "Dungeon Cleared" if victory else "You Died"
+        unlock_note = (
+            " Hell difficulty is now unlocked in Options."
+            if victory and getattr(self.g, "hell_unlocked_this_run", False)
+            else ""
+        )
         subtitle = (
-            f"You survived all {self.dungeon_depth} depths and broke the gate. Press R to choose a new run."
+            f"You survived all {self.dungeon_depth} depths and broke the gate."
+            f"{unlock_note} Press R to choose a new run."
             if victory
             else f"The dungeon claims another {self.g.player.class_name}. Press R to choose again."
         )

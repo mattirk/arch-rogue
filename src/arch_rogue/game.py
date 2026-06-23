@@ -34,10 +34,13 @@ from .constants import (
 from .content import (
     ARCHETYPES,
     ARMOR_DEFINITIONS,
+    DEFAULT_DIFFICULTY_NAME,
+    DIFFICULTY_PROFILES,
     DUNGEON_THEMES,
     ELITE_MODIFIERS,
     ENEMY_DEFINITIONS,
     FINAL_ROOM_ENEMY_DEFINITIONS,
+    HELL_DIFFICULTY_NAME,
     RARITY_PROFILES,
     RUN_MODIFIERS,
     SECRET_HINTS,
@@ -49,6 +52,7 @@ from .content import (
     TRAP_DEFINITIONS,
     TRAP_HINTS,
     WEAPON_DEFINITIONS,
+    DifficultyProfile,
     EnemyDefinition,
     InteractionHint,
 )
@@ -108,6 +112,9 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.music_enabled = False
         self.fullscreen = False
         self.ui_scale = UI_SCALE
+        self.difficulty_name = DEFAULT_DIFFICULTY_NAME
+        self.hell_unlocked = False
+        self.hell_unlocked_this_run = False
         self.last_save_error = ""
         self.last_load_error = ""
         self.screen_flash_ttl = 0.0
@@ -191,6 +198,57 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.big_font = pygame.font.Font(None, 48 * self.ui_scale)
         self.title_font = pygame.font.Font(None, 62 * self.ui_scale)
 
+    def available_difficulty_profiles(self) -> tuple[DifficultyProfile, ...]:
+        return tuple(
+            profile
+            for profile in DIFFICULTY_PROFILES
+            if self.hell_unlocked or profile.name != HELL_DIFFICULTY_NAME
+        )
+
+    def sanitize_difficulty_name(self, name: str) -> str:
+        available_names = {
+            profile.name for profile in self.available_difficulty_profiles()
+        }
+        if name in available_names:
+            return name
+        return DEFAULT_DIFFICULTY_NAME
+
+    def difficulty_profile(self) -> DifficultyProfile:
+        difficulty_name = self.sanitize_difficulty_name(self.difficulty_name)
+        if difficulty_name != self.difficulty_name:
+            self.difficulty_name = difficulty_name
+        return next(
+            profile
+            for profile in DIFFICULTY_PROFILES
+            if profile.name == self.difficulty_name
+        )
+
+    def cycle_difficulty(self) -> None:
+        profiles = self.available_difficulty_profiles()
+        if not profiles:
+            self.difficulty_name = DEFAULT_DIFFICULTY_NAME
+            self.save_options()
+            return
+        current_name = self.sanitize_difficulty_name(self.difficulty_name)
+        current_index = next(
+            (
+                index
+                for index, profile in enumerate(profiles)
+                if profile.name == current_name
+            ),
+            0,
+        )
+        self.difficulty_name = profiles[(current_index + 1) % len(profiles)].name
+        self.save_options()
+
+    def unlock_hell_difficulty(self) -> bool:
+        if self.hell_unlocked:
+            return False
+        self.hell_unlocked = True
+        self.hell_unlocked_this_run = True
+        self.save_options()
+        return True
+
     def options_to_dict(self) -> dict[str, Any]:
         return {
             "version": 1,
@@ -198,6 +256,8 @@ class Game(SaveLoadMixin, RenderingMixin):
             "music_enabled": self.music_enabled,
             "fullscreen": self.fullscreen,
             "ui_scale": self.ui_scale,
+            "difficulty": self.difficulty_profile().name,
+            "hell_unlocked": self.hell_unlocked,
         }
 
     def load_options(self) -> bool:
@@ -210,6 +270,10 @@ class Game(SaveLoadMixin, RenderingMixin):
             self.music_enabled = bool(data.get("music_enabled", False))
             self.fullscreen = bool(data.get("fullscreen", False))
             self.ui_scale = max(1, min(4, int(data.get("ui_scale", UI_SCALE))))
+            self.hell_unlocked = bool(data.get("hell_unlocked", False))
+            self.difficulty_name = self.sanitize_difficulty_name(
+                str(data.get("difficulty", DEFAULT_DIFFICULTY_NAME))
+            )
         except (TypeError, ValueError):
             return False
         return True
@@ -1478,6 +1542,8 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.run_number += 1
         if archetype:
             self.selected_archetype = archetype
+        self.difficulty_name = self.sanitize_difficulty_name(self.difficulty_name)
+        self.hell_unlocked_this_run = False
         self.current_depth = 1
         self.run_music_seed = self.rng.randrange(1, 2**31)
         self.run_modifier = self.rng.choice(RUN_MODIFIERS)
@@ -1530,6 +1596,7 @@ class Game(SaveLoadMixin, RenderingMixin):
     def descend_to_next_depth(self) -> None:
         if self.current_depth >= DUNGEON_DEPTH:
             self.state = "victory"
+            self.unlock_hell_difficulty()
             self.audio.stop_music()
             self.play_sfx("victory")
             self.delete_save()
@@ -1623,6 +1690,7 @@ class Game(SaveLoadMixin, RenderingMixin):
 
     def _populate_dungeon(self) -> None:
         final_room_index = len(self.dungeon.rooms) - 1
+        difficulty = self.difficulty_profile()
         enemy_pressure = self.story_effect_value("enemy_pressure", -0.35, 0.45)
         loot_bonus = self.story_effect_value("loot_bonus", -0.2, 0.35)
         trap_bonus = self.story_effect_value("trap_bonus", -0.1, 0.28)
@@ -1642,6 +1710,9 @@ class Game(SaveLoadMixin, RenderingMixin):
                 count = max(1, count - 1)
             if is_final_room:
                 count += 1
+            count = max(1, count + difficulty.enemy_count_bonus)
+            if self.rng.random() < difficulty.enemy_extra_chance:
+                count += 1
             for _ in range(count):
                 self.enemies.append(
                     self._make_enemy(
@@ -1654,7 +1725,14 @@ class Game(SaveLoadMixin, RenderingMixin):
                 self.enemies.append(self._make_boss(bx + 0.5, by + 0.5))
 
             loot_chance = max(
-                0.18, min(0.88, 0.68 + self.run_modifier.loot_bonus + loot_bonus)
+                0.12,
+                min(
+                    0.88,
+                    0.68
+                    + self.run_modifier.loot_bonus
+                    + loot_bonus
+                    + difficulty.loot_chance_bonus,
+                ),
             )
             if self.rng.random() < loot_chance:
                 self.items.append(self._make_loot(*room.random_point(self.rng)))
@@ -1666,23 +1744,37 @@ class Game(SaveLoadMixin, RenderingMixin):
                 mx, my = room.random_point(self.rng)
                 self.enemies.append(self._make_miniboss(mx, my))
             if room_index > 1 and self.rng.random() < max(
-                0.04, min(0.58, 0.24 + self.run_modifier.trap_bonus + trap_bonus)
+                0.04,
+                min(
+                    0.70,
+                    0.24
+                    + self.run_modifier.trap_bonus
+                    + trap_bonus
+                    + difficulty.trap_chance_bonus,
+                ),
             ):
                 tx, ty = room.random_point(self.rng)
                 kind, min_damage, max_damage = self.rng.choice(TRAP_DEFINITIONS)
                 depth_damage = max(0, self.current_depth - 3)
+                raw_damage = (
+                    self.rng.randrange(min_damage, max_damage + 1) + depth_damage
+                )
                 self.traps.append(
                     Trap(
                         tx,
                         ty,
                         kind,
-                        self.rng.randrange(min_damage, max_damage + 1) + depth_damage,
+                        max(
+                            1,
+                            int(round(raw_damage * difficulty.trap_damage_multiplier)),
+                        ),
                     )
                 )
             shrine_chance = (
                 0.18
                 + (0.08 if self.run_modifier.name == "Trap-Laced" else 0.0)
                 + shrine_bonus
+                + difficulty.shrine_chance_bonus
             )
             if room_index > 2 and self.rng.random() < max(
                 0.04, min(0.46, shrine_chance)
@@ -1708,7 +1800,14 @@ class Game(SaveLoadMixin, RenderingMixin):
                 )
 
         if self.rng.random() < max(
-            0.12, min(0.72, 0.45 + self.run_modifier.loot_bonus + secret_bonus)
+            0.10,
+            min(
+                0.72,
+                0.45
+                + self.run_modifier.loot_bonus
+                + secret_bonus
+                + difficulty.loot_chance_bonus * 0.5,
+            ),
         ):
             room = self.rng.choice(self.dungeon.rooms[2:-1])
             cx, cy = room.random_point(self.rng)
@@ -1731,6 +1830,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self._populate_story_guest()
 
     def _apply_run_modifier(self, enemy: Enemy) -> Enemy:
+        difficulty = self.difficulty_profile()
         depth_multiplier = 1.0 + max(0, self.current_depth - 1) * 0.045
         story_pressure = self.story_effect_value("enemy_pressure", -0.25, 0.35)
         story_multiplier = 1.0 + max(-0.12, min(0.22, story_pressure * 0.55))
@@ -1743,20 +1843,30 @@ class Game(SaveLoadMixin, RenderingMixin):
                 * self.run_modifier.enemy_hp_multiplier
                 * depth_multiplier
                 * story_multiplier
+                * difficulty.enemy_hp_multiplier
             ),
         )
         enemy.hp = enemy.max_hp
-        enemy.damage += (
-            self.run_modifier.enemy_damage_bonus + max(0, self.current_depth - 4) // 2
-        )
+        damage = enemy.damage + self.run_modifier.enemy_damage_bonus
+        damage += max(0, self.current_depth - 4) // 2
         if story_pressure > 0:
-            enemy.damage += int(story_pressure * 8)
+            damage += int(story_pressure * 8)
         if enemy.kind == "boss":
-            enemy.damage += int(
-                self.story_effect_value("boss_pressure", 0.0, 0.35) * 10
-            )
-        enemy.aggro_range += self.run_modifier.enemy_aggro_bonus + max(
-            0.0, story_pressure
+            damage += int(self.story_effect_value("boss_pressure", 0.0, 0.35) * 10)
+        enemy.damage = max(
+            1,
+            int(round(damage * difficulty.enemy_damage_multiplier))
+            + difficulty.enemy_damage_bonus,
+        )
+        enemy.speed *= difficulty.enemy_speed_multiplier
+        enemy.attack_cooldown = max(
+            0.35,
+            enemy.attack_cooldown * difficulty.enemy_attack_cooldown_multiplier,
+        )
+        enemy.aggro_range += (
+            self.run_modifier.enemy_aggro_bonus
+            + max(0.0, story_pressure)
+            + difficulty.enemy_aggro_bonus
         )
         return enemy
 
@@ -1794,16 +1904,18 @@ class Game(SaveLoadMixin, RenderingMixin):
         return enemy
 
     def elite_chance(self) -> float:
-        base = 0.06 + self.current_depth * 0.006
+        difficulty = self.difficulty_profile()
+        base = 0.06 + self.current_depth * 0.006 + difficulty.elite_bonus
         if self.run_modifier.name == "Elite Hunt":
             base += 0.08
-        return min(0.24, base)
+        return max(0.0, min(0.42, base))
 
     def miniboss_chance(self) -> float:
-        base = 0.015 + self.current_depth * 0.006
+        difficulty = self.difficulty_profile()
+        base = 0.015 + self.current_depth * 0.006 + difficulty.miniboss_bonus
         if self.run_modifier.name == "Elite Hunt":
             base += 0.035
-        return min(0.12, base)
+        return max(0.0, min(0.22, base))
 
     def _shift_color(self, color: Color, shift: Color) -> Color:
         return (
@@ -2119,6 +2231,8 @@ class Game(SaveLoadMixin, RenderingMixin):
                         self.fullscreen = not self.fullscreen
                         self.screen = self.apply_display_mode()
                         self.save_options()
+                    elif event.key == pygame.K_d:
+                        self.cycle_difficulty()
                     elif event.key in (pygame.K_EQUALS, pygame.K_PLUS):
                         self.ui_scale = min(4, self.ui_scale + 1)
                         self.rebuild_fonts()
