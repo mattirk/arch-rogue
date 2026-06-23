@@ -4415,8 +4415,14 @@ class RenderingMixin:
 
     def draw_ui(self) -> None:
         width, height = self.screen.get_size()
-        panel_h = self.hud_panel_height()
+        reserved_h = self.hud_panel_height()
         accent = self.theme.accent
+        outer = max(self.ui(14), 18)
+        gap = max(self.ui(8), 12)
+        action_gap = max(self.ui(8), 8)
+        reserved_inner_h = max(1, reserved_h - self.ui(24))
+        action_h = max(self.ui(54), min(self.ui(70), int(reserved_inner_h * 0.46)))
+        panel_h = max(1, reserved_h - action_h - action_gap)
         panel = pygame.Rect(0, height - panel_h, width, panel_h)
         dock = pygame.Surface(panel.size, pygame.SRCALPHA)
         pygame.draw.rect(dock, (12, 12, 17, 238), dock.get_rect())
@@ -4432,20 +4438,15 @@ class RenderingMixin:
         )
         self.screen.blit(dock, panel)
 
-        outer = max(self.ui(14), 18)
-        gap = max(self.ui(8), 12)
         inner = pygame.Rect(
             outer,
             panel.y + self.ui(12),
             max(1, width - outer * 2),
             max(1, panel_h - self.ui(24)),
         )
-        action_gap = max(self.ui(8), 8)
-        action_h = max(self.ui(54), min(self.ui(70), int(inner.height * 0.46)))
-        top_h = max(1, inner.height - action_h - action_gap)
-        top_area = pygame.Rect(inner.x, inner.y, inner.width, top_h)
+        top_area = pygame.Rect(inner.x, inner.y, inner.width, inner.height)
         action_bar = pygame.Rect(
-            inner.x, top_area.bottom + action_gap, inner.width, action_h
+            inner.x, panel.y - action_gap - action_h, inner.width, action_h
         )
         left_w = max(170, min(max(self.ui(120), 190), int(top_area.width * 0.29)))
         center_w = max(190, min(max(self.ui(150), 230), int(top_area.width * 0.33)))
