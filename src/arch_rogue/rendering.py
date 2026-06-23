@@ -1323,21 +1323,6 @@ class RenderingMixin:
         slots = self.hud_action_slots()
         if not slots or rect.width < self.ui(210) or rect.height < self.ui(42):
             return
-        accent = self.theme.accent
-        self.draw_translucent_panel(
-            self.screen,
-            rect,
-            (15, 14, 20, 236),
-            (*self.shade(accent, -10), 150),
-            radius=self.ui(10),
-        )
-        pygame.draw.line(
-            self.screen,
-            (255, 245, 210, 22),
-            (rect.x + self.ui(14), rect.y + self.ui(5)),
-            (rect.right - self.ui(14), rect.y + self.ui(5)),
-            max(1, self.ui(1)),
-        )
         inner = rect.inflate(-max(self.ui(12), 12), -max(self.ui(8), 8))
         gap = max(self.ui(6), 6)
         icon_size = min(
