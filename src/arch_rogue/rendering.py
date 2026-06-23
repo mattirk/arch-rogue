@@ -1202,6 +1202,380 @@ class RenderingMixin:
             text = self.tiny_font.render(key, True, (226, 220, 210))
             self.screen.blit(text, text.get_rect(center=(cx, cy)))
 
+    def inventory_count_for_slot(self, slot: str) -> int:
+        return sum(1 for item in self.player.inventory if item.slot == slot)
+
+    def hud_action_slots(self) -> list[dict[str, object]]:
+        melee_name, bolt_name, nova_name, dash_name = self.skill_names()
+        class_color = self.skill_color()
+        return [
+            {
+                "kind": "melee",
+                "icon": "melee",
+                "hotkey": "Space",
+                "label": melee_name,
+                "timer": self.player.melee_timer,
+                "cooldown": self.melee_cooldown(),
+                "cost": self.melee_stamina_cost(),
+                "resource": self.player.stamina,
+                "resource_name": "ST",
+                "color": self.mix((255, 226, 150), class_color, 0.18),
+            },
+            {
+                "kind": "bolt",
+                "icon": "bolt",
+                "hotkey": "F",
+                "label": bolt_name,
+                "timer": self.player.bolt_timer,
+                "cooldown": self.bolt_cooldown(),
+                "cost": self.bolt_mana_cost(),
+                "resource": self.player.mana,
+                "resource_name": "MP",
+                "color": self.mix((96, 190, 255), class_color, 0.24),
+            },
+            {
+                "kind": "nova",
+                "icon": "nova",
+                "hotkey": "V",
+                "label": nova_name,
+                "timer": self.player.nova_timer,
+                "cooldown": self.nova_cooldown(),
+                "cost": self.nova_mana_cost(),
+                "resource": self.player.mana,
+                "resource_name": "MP",
+                "color": self.mix((185, 125, 255), class_color, 0.24),
+            },
+            {
+                "kind": "dash",
+                "icon": "dash",
+                "hotkey": "Ctrl",
+                "label": dash_name,
+                "timer": self.player.dash_timer,
+                "cooldown": self.dash_cooldown(),
+                "cost": self.dash_stamina_cost(),
+                "resource": self.player.stamina,
+                "resource_name": "ST",
+                "color": self.mix((225, 184, 82), class_color, 0.18),
+            },
+            {
+                "kind": "health_potion",
+                "icon": "health_potion",
+                "hotkey": "R",
+                "label": "Health",
+                "timer": 0.0,
+                "cooldown": 0.0,
+                "cost": 0,
+                "resource": self.player.hp,
+                "resource_name": "HP",
+                "count": self.inventory_count_for_slot("potion"),
+                "color": (220, 66, 70),
+            },
+            {
+                "kind": "mana_potion",
+                "icon": "mana_potion",
+                "hotkey": "T",
+                "label": "Mana",
+                "timer": 0.0,
+                "cooldown": 0.0,
+                "cost": 0,
+                "resource": self.player.mana,
+                "resource_name": "MP",
+                "count": self.inventory_count_for_slot("mana_potion"),
+                "color": (76, 128, 230),
+            },
+        ]
+
+    def hud_action_slot_status(self, slot: dict[str, object]) -> str:
+        kind = str(slot.get("kind", ""))
+        if kind == "health_potion":
+            count = int(slot.get("count", 0))
+            if count <= 0:
+                return "EMPTY"
+            return "FULL" if self.player.hp >= self.player.max_hp else f"x{count}"
+        if kind == "mana_potion":
+            count = int(slot.get("count", 0))
+            if count <= 0:
+                return "EMPTY"
+            return "FULL" if self.player.mana >= self.player.max_mana else f"x{count}"
+        timer = float(slot.get("timer", 0.0))
+        if timer > 0.001:
+            return f"{timer:.1f}s"
+        resource = float(slot.get("resource", 0.0))
+        cost = float(slot.get("cost", 0.0))
+        if resource < cost:
+            return str(slot.get("resource_name", "RES"))
+        return "READY"
+
+    def hud_action_slot_ready(self, slot: dict[str, object]) -> bool:
+        kind = str(slot.get("kind", ""))
+        if kind == "health_potion":
+            return int(slot.get("count", 0)) > 0 and self.player.hp < self.player.max_hp
+        if kind == "mana_potion":
+            return (
+                int(slot.get("count", 0)) > 0
+                and self.player.mana < self.player.max_mana
+            )
+        return float(slot.get("timer", 0.0)) <= 0.001 and float(
+            slot.get("resource", 0.0)
+        ) >= float(slot.get("cost", 0.0))
+
+    def draw_hud_action_bar(self, rect: pygame.Rect) -> None:
+        slots = self.hud_action_slots()
+        if not slots or rect.width < self.ui(210) or rect.height < self.ui(42):
+            return
+        accent = self.theme.accent
+        self.draw_translucent_panel(
+            self.screen,
+            rect,
+            (15, 14, 20, 236),
+            (*self.shade(accent, -10), 150),
+            radius=self.ui(10),
+        )
+        pygame.draw.line(
+            self.screen,
+            (255, 245, 210, 22),
+            (rect.x + self.ui(14), rect.y + self.ui(5)),
+            (rect.right - self.ui(14), rect.y + self.ui(5)),
+            max(1, self.ui(1)),
+        )
+        inner = rect.inflate(-max(self.ui(12), 12), -max(self.ui(8), 8))
+        gap = max(self.ui(6), 6)
+        icon_size = min(
+            max(self.ui(40), 40),
+            inner.height,
+            max(28, (inner.width - gap * (len(slots) - 1)) // len(slots)),
+        )
+        if icon_size < 30:
+            gap = max(3, self.ui(3))
+            icon_size = max(24, (inner.width - gap * (len(slots) - 1)) // len(slots))
+        total_w = icon_size * len(slots) + gap * (len(slots) - 1)
+        x = inner.centerx - total_w // 2
+        y = inner.centery - icon_size // 2
+        for slot in slots:
+            self.draw_hud_action_icon(slot, pygame.Rect(x, y, icon_size, icon_size))
+            x += icon_size + gap
+
+    def draw_hud_action_icon(self, slot: dict[str, object], rect: pygame.Rect) -> None:
+        color = cast(Color, slot.get("color", self.theme.accent))
+        ready = self.hud_action_slot_ready(slot)
+        status = self.hud_action_slot_status(slot)
+        timer = float(slot.get("timer", 0.0))
+        cooldown = float(slot.get("cooldown", 0.0))
+        remaining = self.cooldown_ratio(timer, cooldown)
+        border = color if ready or timer > 0.001 else (92, 86, 94)
+        fill = self.shade(color, -112 if ready else -136)
+        pygame.draw.rect(self.screen, fill, rect, border_radius=self.ui(8))
+        pygame.draw.rect(
+            self.screen, border, rect, max(1, self.ui(1)), border_radius=self.ui(8)
+        )
+        shine = pygame.Rect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height // 3)
+        shine_surface = pygame.Surface(shine.size, pygame.SRCALPHA)
+        pygame.draw.rect(
+            shine_surface,
+            (255, 255, 255, 18 if ready else 9),
+            shine_surface.get_rect(),
+            border_radius=self.ui(7),
+        )
+        self.screen.blit(shine_surface, shine)
+
+        glyph_rect = rect.inflate(-self.ui(13), -self.ui(14))
+        glyph_rect.y += self.ui(3)
+        glyph_rect.height = max(8, glyph_rect.height - self.tiny_font.get_height() // 2)
+        self.draw_hud_action_glyph(str(slot.get("icon", "")), glyph_rect, color, ready)
+
+        label_rect = pygame.Rect(
+            rect.x + self.ui(3),
+            rect.bottom - self.tiny_font.get_height() - self.ui(2),
+            rect.width - self.ui(6),
+            self.tiny_font.get_height(),
+        )
+        self.draw_ui_text(
+            self.screen,
+            str(slot.get("label", "")),
+            self.tiny_font,
+            (224, 218, 205) if ready else (162, 158, 152),
+            label_rect,
+            align="center",
+        )
+
+        hotkey = str(slot.get("hotkey", ""))
+        key_w = min(
+            rect.width - self.ui(4),
+            max(self.ui(16), self.tiny_font.size(hotkey)[0] + self.ui(6)),
+        )
+        key_rect = pygame.Rect(
+            rect.x + self.ui(3), rect.y + self.ui(3), key_w, self.ui(14)
+        )
+        pygame.draw.rect(self.screen, (9, 8, 12), key_rect, border_radius=self.ui(4))
+        pygame.draw.rect(
+            self.screen,
+            (*border, 255),
+            key_rect,
+            max(1, self.ui(1)),
+            border_radius=self.ui(4),
+        )
+        self.draw_ui_text(
+            self.screen,
+            hotkey,
+            self.tiny_font,
+            (245, 238, 218),
+            key_rect.inflate(-self.ui(2), 0),
+            align="center",
+            valign="center",
+        )
+
+        if "count" in slot:
+            count_text = str(slot.get("count", 0))
+            count_size = max(
+                self.ui(15), self.tiny_font.size(count_text)[0] + self.ui(6)
+            )
+            count_rect = pygame.Rect(0, 0, count_size, self.ui(15))
+            count_rect.bottomright = (rect.right - self.ui(3), rect.bottom - self.ui(3))
+            pygame.draw.rect(
+                self.screen, (8, 8, 12), count_rect, border_radius=self.ui(7)
+            )
+            pygame.draw.rect(
+                self.screen,
+                color,
+                count_rect,
+                max(1, self.ui(1)),
+                border_radius=self.ui(7),
+            )
+            self.draw_ui_text(
+                self.screen,
+                count_text,
+                self.tiny_font,
+                (245, 238, 218),
+                count_rect.inflate(-self.ui(2), 0),
+                align="center",
+                valign="center",
+            )
+
+        if remaining > 0.001:
+            overlay_h = max(1, int(rect.height * remaining))
+            overlay = pygame.Surface((rect.width, overlay_h), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 142))
+            self.screen.blit(overlay, (rect.x, rect.y))
+            progress = 1.0 - remaining
+            pygame.draw.arc(
+                self.screen,
+                color,
+                rect.inflate(-self.ui(4), -self.ui(4)),
+                -math.pi / 2,
+                -math.pi / 2 + math.tau * progress,
+                max(2, self.ui(2)),
+            )
+        elif not ready:
+            overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 90))
+            self.screen.blit(overlay, rect)
+
+        if status != "READY" and not ("count" in slot and status.startswith("x")):
+            status_rect = pygame.Rect(
+                rect.x + self.ui(4),
+                rect.centery - self.tiny_font.get_height() // 2,
+                rect.width - self.ui(8),
+                self.tiny_font.get_height(),
+            )
+            text_color = (250, 230, 170) if timer > 0.001 else (218, 204, 176)
+            self.draw_ui_text(
+                self.screen,
+                status,
+                self.tiny_font,
+                text_color,
+                status_rect,
+                align="center",
+                valign="center",
+            )
+
+    def draw_hud_action_glyph(
+        self, icon: str, rect: pygame.Rect, color: Color, ready: bool
+    ) -> None:
+        color = color if ready else self.shade(color, -48)
+        cx, cy = rect.center
+        line_w = max(2, self.ui(2))
+        if icon == "melee":
+            pygame.draw.line(
+                self.screen,
+                (24, 22, 28),
+                (rect.left, rect.bottom),
+                (rect.right, rect.top),
+                line_w + max(1, self.ui(1)),
+            )
+            pygame.draw.line(
+                self.screen,
+                color,
+                (rect.left, rect.bottom),
+                (rect.right, rect.top),
+                line_w,
+            )
+            pygame.draw.line(
+                self.screen,
+                self.shade(color, 34),
+                (cx - rect.width // 5, cy + rect.height // 5),
+                (cx + rect.width // 5, cy + rect.height // 5),
+                line_w,
+            )
+        elif icon == "bolt":
+            points = [
+                (cx - rect.width // 5, rect.top),
+                (cx + rect.width // 8, cy - rect.height // 8),
+                (cx - rect.width // 10, cy),
+                (cx + rect.width // 5, rect.bottom),
+            ]
+            pygame.draw.lines(self.screen, (24, 22, 28), False, points, line_w + 2)
+            pygame.draw.lines(self.screen, color, False, points, line_w)
+        elif icon == "nova":
+            radius = max(5, min(rect.width, rect.height) // 3)
+            pygame.draw.circle(self.screen, color, (cx, cy), radius, line_w)
+            for angle in (0.0, math.pi / 2, math.pi, math.pi * 1.5):
+                pygame.draw.line(
+                    self.screen,
+                    self.shade(color, 24),
+                    (
+                        cx + int(math.cos(angle) * radius * 0.45),
+                        cy + int(math.sin(angle) * radius * 0.45),
+                    ),
+                    (
+                        cx + int(math.cos(angle) * radius * 1.55),
+                        cy + int(math.sin(angle) * radius * 1.55),
+                    ),
+                    max(1, self.ui(1)),
+                )
+        elif icon == "dash":
+            for offset in (-rect.width // 7, rect.width // 7):
+                points = [
+                    (cx + offset - rect.width // 6, rect.top + rect.height // 5),
+                    (cx + offset + rect.width // 7, cy),
+                    (cx + offset - rect.width // 6, rect.bottom - rect.height // 5),
+                ]
+                pygame.draw.lines(self.screen, color, False, points, line_w)
+        else:
+            bottle = pygame.Rect(
+                0, 0, max(8, rect.width // 2), max(12, rect.height * 2 // 3)
+            )
+            bottle.center = (cx, cy + rect.height // 10)
+            neck = pygame.Rect(
+                0, 0, max(4, bottle.width // 2), max(4, bottle.height // 4)
+            )
+            neck.midbottom = (bottle.centerx, bottle.y + self.ui(3))
+            liquid = self.shade(color, 18 if icon == "mana_potion" else 8)
+            pygame.draw.rect(self.screen, (28, 26, 32), neck, border_radius=self.ui(2))
+            pygame.draw.rect(
+                self.screen, (28, 26, 32), bottle, border_radius=self.ui(5)
+            )
+            fill = bottle.inflate(-self.ui(3), -self.ui(3))
+            fill.y += fill.height // 3
+            fill.height = max(2, fill.height * 2 // 3)
+            pygame.draw.rect(self.screen, liquid, fill, border_radius=self.ui(4))
+            pygame.draw.rect(
+                self.screen,
+                self.shade(color, 52),
+                bottle,
+                max(1, self.ui(1)),
+                border_radius=self.ui(5),
+            )
+
     def draw_player(self, player: Player) -> None:
         sway, bob, lean, stretch = self.actor_animation(player)
         state = self.player_visual_state(player)
@@ -2040,10 +2414,10 @@ class RenderingMixin:
     def hud_panel_height(self) -> int:
         _width, height = self.screen.get_size()
         desired = (
-            self.font.get_height() + self.small_font.get_height() * 3 + self.ui(42)
+            self.font.get_height() + self.small_font.get_height() * 3 + self.ui(74)
         )
-        minimum = min(self.ui(92), max(118, int(height * 0.28)))
-        maximum = max(minimum, int(height * 0.36))
+        minimum = min(self.ui(112), max(132, int(height * 0.30)))
+        maximum = max(minimum, int(height * 0.38))
         return min(max(desired, minimum), maximum)
 
     def ellipsize_ui_text(
@@ -4066,15 +4440,26 @@ class RenderingMixin:
             max(1, width - outer * 2),
             max(1, panel_h - self.ui(24)),
         )
-        left_w = max(170, min(max(self.ui(120), 190), int(inner.width * 0.29)))
-        center_w = max(190, min(max(self.ui(150), 230), int(inner.width * 0.33)))
-        if inner.width - left_w - center_w - gap * 2 < 170:
-            left_w = max(150, int(inner.width * 0.30))
-            center_w = max(170, int(inner.width * 0.32))
-        right_w = max(1, inner.width - left_w - center_w - gap * 2)
-        resources = pygame.Rect(inner.x, inner.y, left_w, inner.height)
-        character = pygame.Rect(resources.right + gap, inner.y, center_w, inner.height)
-        mission = pygame.Rect(character.right + gap, inner.y, right_w, inner.height)
+        action_gap = max(self.ui(8), 8)
+        action_h = max(self.ui(54), min(self.ui(70), int(inner.height * 0.46)))
+        top_h = max(1, inner.height - action_h - action_gap)
+        top_area = pygame.Rect(inner.x, inner.y, inner.width, top_h)
+        action_bar = pygame.Rect(
+            inner.x, top_area.bottom + action_gap, inner.width, action_h
+        )
+        left_w = max(170, min(max(self.ui(120), 190), int(top_area.width * 0.29)))
+        center_w = max(190, min(max(self.ui(150), 230), int(top_area.width * 0.33)))
+        if top_area.width - left_w - center_w - gap * 2 < 170:
+            left_w = max(150, int(top_area.width * 0.30))
+            center_w = max(170, int(top_area.width * 0.32))
+        right_w = max(1, top_area.width - left_w - center_w - gap * 2)
+        resources = pygame.Rect(top_area.x, top_area.y, left_w, top_area.height)
+        character = pygame.Rect(
+            resources.right + gap, top_area.y, center_w, top_area.height
+        )
+        mission = pygame.Rect(
+            character.right + gap, top_area.y, right_w, top_area.height
+        )
         hud_cards: tuple[tuple[pygame.Rect, Color], ...] = (
             (resources, (118, 94, 72)),
             (character, accent),
@@ -4152,9 +4537,12 @@ class RenderingMixin:
         )
         char_y = text_rect.y + self.font.get_height() + self.ui(5)
         potion_count = sum(1 for item in self.player.inventory if item.slot == "potion")
+        mana_potion_count = sum(
+            1 for item in self.player.inventory if item.slot == "mana_potion"
+        )
         stat_lines = [
             f"Level {self.player.level} · XP {self.player.xp}/{self.player.next_xp}",
-            f"Upgrades {len(self.player.skill_upgrades)} · Potions {potion_count}",
+            f"Upgrades {len(self.player.skill_upgrades)} · Potions {potion_count}/{mana_potion_count}",
             f"{weapon} · DMG {self.player.melee_damage()}",
             f"{armor} · DR {self.player.armor()}",
         ]
@@ -4169,7 +4557,6 @@ class RenderingMixin:
                 pygame.Rect(text_rect.x, char_y, text_rect.width, line_h),
             )
             char_y += line_h
-        self.draw_hud_cooldown_pips(text_rect)
 
         hint = self.current_interaction_hint()
         objective = (
@@ -4216,17 +4603,6 @@ class RenderingMixin:
                 mission_y += line_h
         self.draw_interaction_prompt(hint)
 
-        melee_name, bolt_name, nova_name, dash_name = self.skill_names()
-
-        def ready_text(timer: float) -> str:
-            return "READY" if timer <= 0.001 else f"{timer:.1f}s"
-
-        skill_line = (
-            f"Space {melee_name} {ready_text(self.player.melee_timer)} · "
-            f"F {bolt_name} {ready_text(self.player.bolt_timer)} · "
-            f"V {nova_name} {ready_text(self.player.nova_timer)} · "
-            f"Ctrl {dash_name} {ready_text(self.player.dash_timer)}"
-        )
         quest_control = (
             "Q hide quest"
             if getattr(self, "quest_info_visible", True)
@@ -4238,8 +4614,7 @@ class RenderingMixin:
             else " · Ctrl+Shift+D dark"
         )
         control_lines = [
-            f"Mouse/aim · E interact · I inventory · C character · {quest_control} · R potion · H help{debug_dark}",
-            skill_line,
+            f"Mouse/aim · E interact · I inventory · C character · {quest_control} · R health · T mana · H help{debug_dark}",
         ]
         control_y = max(
             mission_y + self.ui(4),
@@ -4264,6 +4639,7 @@ class RenderingMixin:
                 )
                 control_y += tiny_h
 
+        self.draw_hud_action_bar(action_bar)
         self.draw_run_header()
         self.draw_story_panel()
         self.draw_boss_bar()

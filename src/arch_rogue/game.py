@@ -3083,6 +3083,8 @@ class Game(SaveLoadMixin, RenderingMixin):
                     self.toggle_quest_info_visibility()
                 elif event.key == pygame.K_r and self.state == "playing":
                     self.use_first_potion()
+                elif event.key == pygame.K_t and self.state == "playing":
+                    self.use_first_mana_potion()
                 elif event.key == pygame.K_SPACE and self.state == "playing":
                     self.update_player_aim()
                     self.player_melee_attack()
@@ -4851,6 +4853,37 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.floaters.append(
             FloatingText(
                 "No potion", self.player.x, self.player.y - 0.4, (235, 210, 120)
+            )
+        )
+
+    def use_first_mana_potion(self) -> None:
+        if self.player.mana >= self.player.max_mana:
+            self.floaters.append(
+                FloatingText(
+                    "Already at full mana",
+                    self.player.x,
+                    self.player.y - 0.4,
+                    (235, 210, 120),
+                )
+            )
+            return
+        potions = [
+            (index, item)
+            for index, item in enumerate(self.player.inventory)
+            if item.slot == "mana_potion"
+        ]
+        if potions:
+            missing = self.player.max_mana - self.player.mana
+            index, item = min(potions, key=lambda entry: abs(entry[1].mana - missing))
+            _ = self.player.inventory.pop(index)
+            self.drink_mana_potion(item)
+            return
+        self.floaters.append(
+            FloatingText(
+                "No mana potion",
+                self.player.x,
+                self.player.y - 0.4,
+                (235, 210, 120),
             )
         )
 

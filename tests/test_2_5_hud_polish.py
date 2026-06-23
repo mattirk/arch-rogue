@@ -1,0 +1,136 @@
+from __future__ import annotations
+
+import hashlib
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+import pygame
+
+from arch_rogue.content import ARCHETYPES
+from arch_rogue.game import Game
+from arch_rogue.models import Item
+
+
+class HudPolish25Tests(unittest.TestCase):
+    def tearDown(self) -> None:
+        pygame.quit()
+
+    def make_game(self, tmpdir: str, seed: int = 2505) -> Game:
+        game = Game(
+            screen_size=(900, 540),
+            headless=True,
+            save_path=Path(tmpdir) / "run.json",
+        )
+        game.options_path = Path(tmpdir) / "options.json"
+        game.ui_scale = 1
+        game.rebuild_fonts()
+        game.rng.seed(seed)
+        game.restart(ARCHETYPES[2])
+        if game.story_intro_pending:
+            self.assertTrue(game.choose_story_relic_path(0))
+        game.active_cutscene = None
+        return game
+
+    def surface_signature(self, surface: pygame.Surface) -> str:
+        rgba = pygame.image.tobytes(surface, "RGBA")
+        digest = hashlib.blake2s(rgba, digest_size=16).hexdigest()
+        return f"{surface.get_width()}x{surface.get_height()}:{digest}"
+
+    def test_2_5_hud_action_slots_include_skill_and_potion_hotkeys(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            try:
+                game.player.inventory = [
+                    Item("Minor Healing Potion", "potion", heal=35),
+                    Item("Lesser Mana Potion", "mana_potion", mana=24),
+                ]
+                game.player.hp = game.player.max_hp - 12
+                game.player.mana = game.player.max_mana - 10
+                game.player.bolt_timer = game.bolt_cooldown() * 0.5
+
+                slots = game.hud_action_slots()
+                self.assertEqual(
+                    [slot["hotkey"] for slot in slots],
+                    ["Space", "F", "V", "Ctrl", "R", "T"],
+                )
+                self.assertEqual(
+                    [slot["kind"] for slot in slots],
+                    [
+                        "melee",
+                        "bolt",
+                        "nova",
+                        "dash",
+                        "health_potion",
+                        "mana_potion",
+                    ],
+                )
+                self.assertEqual(slots[-2]["count"], 1)
+                self.assertEqual(slots[-1]["count"], 1)
+                self.assertIn("s", game.hud_action_slot_status(slots[1]))
+                self.assertEqual(game.hud_action_slot_status(slots[-2]), "x1")
+                self.assertEqual(game.hud_action_slot_status(slots[-1]), "x1")
+            finally:
+                pygame.quit()
+
+    def test_2_5_bottom_action_bar_renders_icons_and_cooldown_overlays(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            try:
+                game.player.inventory = [
+                    Item("Minor Healing Potion", "potion", heal=35),
+                    Item("Lesser Mana Potion", "mana_potion", mana=24),
+                ]
+                game.player.hp = game.player.max_hp - 20
+                game.player.mana = game.player.max_mana - 14
+                game.player.nova_timer = game.nova_cooldown() * 0.4
+                rect = pygame.Rect(70, 440, 760, 70)
+
+                game.screen.fill((11, 12, 16))
+                before = self.surface_signature(game.screen)
+                game.draw_hud_action_bar(rect)
+                after_ready = self.surface_signature(game.screen)
+                self.assertNotEqual(before, after_ready)
+
+                game.screen.fill((11, 12, 16))
+                game.player.nova_timer = 0.0
+                game.draw_hud_action_bar(rect)
+                after_no_cooldown = self.surface_signature(game.screen)
+                self.assertNotEqual(after_ready, after_no_cooldown)
+            finally:
+                pygame.quit()
+
+    def test_2_5_t_hotkey_drinks_mana_potion_without_using_health_potion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            try:
+                game.player.hp = game.player.max_hp - 30
+                game.player.mana = game.player.max_mana - 20
+                game.player.inventory = [
+                    Item("Minor Healing Potion", "potion", heal=35),
+                    Item("Lesser Mana Potion", "mana_potion", mana=24),
+                ]
+
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_t, mod=0)
+                )
+                game.handle_events()
+
+                self.assertEqual(game.player.hp, game.player.max_hp - 30)
+                self.assertEqual(game.player.mana, game.player.max_mana)
+                self.assertEqual(
+                    [item.slot for item in game.player.inventory], ["potion"]
+                )
+            finally:
+                pygame.quit()
+
+
+if __name__ == "__main__":
+    unittest.main()

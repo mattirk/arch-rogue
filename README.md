@@ -82,15 +82,17 @@ Notes:
 | `Space` | Melee slash in aimed direction |
 | Arrow keys | Optional keyboard aim / face direction |
 | `F` | Cast ranged bolt |
-| `C` | Cast arc nova |
-| `Shift` | Dash toward aim direction |
+| `V` | Cast arc nova |
+| `Left Ctrl` | Dash/movement skill toward aim direction |
 | `E` | Pick up nearby loot / use shrine / open secret / use exit stairs / open nearby story guest dialogue |
 | `I` | Toggle inventory |
 | `1` / `2` / `3` in quest cutscenes or near story guest | Choose Aid / Bargain / Defy, shaping future story and dungeon generation |
 | `1`-`9` | Equip/use inventory item shown in that slot |
 | `Tab` / `S` while inventory is open | Cycle/sort inventory by type, rarity, or power |
 | `Shift` + `1`-`9` while inventory is open | Drop the matching inventory item near the player |
-| `Q` | Use first potion in inventory |
+| `Q` | Toggle quest HUD info |
+| `R` | Drink the best matching health potion in inventory |
+| `T` | Drink the best matching mana potion in inventory |
 | `H` or `?` | Toggle the in-run help overlay |
 | `N` / `Enter` | Start new run flow from title screen |
 | `L` / `R` | Resume saved run from title screen, if one exists |
@@ -99,7 +101,7 @@ Notes:
 | `1`-`5` / Arrow keys / `Enter` | Choose an archetype from character select |
 | `A` / `M` / `F` / `+` / `-` | Toggle audio cues, static music, fullscreen, or UI scale in options |
 | `Backspace` | Return from character select/options/about to title |
-| `R` | Return to character select after death or victory |
+| `R` | Return to character select after death or victory; resume from title when a save exists |
 | `Esc` | Save active run and quit |
 
 ## Goal
