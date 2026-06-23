@@ -139,16 +139,27 @@ Example categories:
 
 ## Current Milestone
 
-### 2.0: Story Mode - Going Full RPG
+### 2.1: Graphics and Animations Overhaul
 
-- plan and write full dark fantasy style corpus to which you can base the gameplay elements
-- create engine that can procedurally generate new stories out of the corpus
-- create RPG-style guests out of the stories that can be encountered and interact with during gameplay
-- create full procedurally generated storylines that align with the player's backstory
-- choices made during gameplay affect the story and dungeon generation
-- procedurally generated content is consistent and replayable
-- implement all of the above, test storylines, write clean code
+- Establish a stronger isometric visual language for dungeon floors, walls, doors, stairs, hazards, shrines, loot, NPCs, and enemies.
+- Improve procedural pixel-art sprites with clearer silhouettes, class identity, enemy readability, rarity cues, and dark fantasy atmosphere.
+- Add lightweight animation states for the player, enemies, projectiles, loot, traps, shrines, and interactable story guests.
+- Add combat feedback animations: hit flashes, impact bursts, damage direction cues, death effects, status effects, telegraphs, and cooldown/readiness indicators.
+- Improve dungeon rendering polish with tile variation, biome/theme-specific palettes, ambient details, shadows, fog, lighting, and depth layering.
+- Make story encounters visually distinct through guest portraits, faction colors, encounter icons, dialogue presentation, and choice-result feedback.
+- Keep all rendering changes performant enough to sustain 60+ FPS, using cached/generated surfaces where appropriate.
+- Preserve the compact prototype architecture by expanding `rendering.py`, `sprites.py`, `menus.py`, and content tables before introducing new rendering modules.
+- Validate visual changes across common resolutions and both keyboard/mouse and controller-oriented UI flows.
 
 ## Next Milestone
 
-### 2.1: Graphics and menus visual overhaul
+### 2.2: Combat, Skills, and Loot Synergy Pass
+
+- Deepen each archetype with a small but distinct set of active skills, passive modifiers, cooldowns, resource costs, and tactical tradeoffs.
+- Expand enemy behavior with clearer roles, resistances, elite variants, status interactions, and story/theme-driven encounter modifiers.
+- Improve loot generation with more build-defining affixes, cursed tradeoffs, unique item hooks, relic interactions, and rarity-specific presentation.
+- Connect story choices to mechanical outcomes such as dungeon hazards, enemy factions, shrine effects, loot biases, curses, blessings, and guest follow-ups.
+- Add clearer combat readability through telegraphs, damage typing, status icons, skill feedback, and improved hit confirmation.
+- Tune progression pacing so levels, equipment, consumables, and skills create meaningful decisions without trivializing run danger.
+- Add focused regression tests or deterministic simulation checks for skills, loot generation, story-choice effects, and combat calculations.
+- Profile and optimize high-traffic combat, AI, projectile, and rendering paths to preserve 60+ FPS during dense encounters.

@@ -164,6 +164,11 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.story_relic_guidance_enabled = False
         self.story_relic_guarded = False
         self.impact_effects: list[ImpactEffect] = []
+        self.enemy_hit_flashes: dict[int, float] = {}
+        self.player_hit_flash = 0.0
+        self.player_action_state = ""
+        self.player_action_ttl = 0.0
+        self.ambient_overlay_cache: dict[tuple[int, int, str, int], pygame.Surface] = {}
         self.audio = AudioSystem()
         self.audio_available = self.audio.initialize(headless)
         self.menus = MenuRenderer(self, ARCHETYPES, DUNGEON_DEPTH)
@@ -338,6 +343,39 @@ class Game(SaveLoadMixin, RenderingMixin):
         kind: str = "spark",
     ) -> None:
         self.impact_effects.append(ImpactEffect(x, y, color, ttl, radius, kind, ttl))
+
+    def set_player_action_visual(self, state: str, ttl: float = 0.18) -> None:
+        self.player_action_state = state
+        self.player_action_ttl = max(self.player_action_ttl, ttl)
+
+    def reset_transient_visuals(self) -> None:
+        self.enemy_hit_flashes = {}
+        self.player_hit_flash = 0.0
+        self.player_action_state = ""
+        self.player_action_ttl = 0.0
+
+    def update_visual_effects(self, dt: float) -> None:
+        for effect in self.impact_effects:
+            effect.update(dt)
+        self.impact_effects = [
+            effect for effect in self.impact_effects if effect.ttl > 0
+        ]
+        self.screen_flash_ttl = max(0.0, self.screen_flash_ttl - dt)
+        self.player_hit_flash = max(0.0, self.player_hit_flash - dt)
+        self.player_action_ttl = max(0.0, self.player_action_ttl - dt)
+        if self.player_action_ttl <= 0:
+            self.player_action_state = ""
+        alive_enemy_ids = {id(enemy) for enemy in self.enemies}
+        self.enemy_hit_flashes = {
+            enemy_id: max(0.0, ttl - dt)
+            for enemy_id, ttl in self.enemy_hit_flashes.items()
+            if ttl - dt > 0 and enemy_id in alive_enemy_ids
+        }
+        self.slashes = [
+            (x, y, ttl - dt, dx, dy)
+            for x, y, ttl, dx, dy in self.slashes
+            if ttl - dt > 0
+        ]
 
     def rarity_color(self, rarity: str) -> Color:
         return RARITY_PROFILES.get(rarity, RARITY_PROFILES["Common"]).color
@@ -1580,6 +1618,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.slashes: list[SlashEffect] = []
         self.impact_effects = []
         self.screen_flash_ttl = 0.0
+        self.reset_transient_visuals()
         self.run_stats = RunStats()
         self.inventory_open = False
         self.inventory_cursor = 0
@@ -1632,6 +1671,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.slashes = []
         self.impact_effects = []
         self.screen_flash_ttl = 0.0
+        self.reset_transient_visuals()
         self.inventory_open = False
         self.inventory_cursor = 0
         self.inventory_scroll = 0
@@ -2379,14 +2419,13 @@ class Game(SaveLoadMixin, RenderingMixin):
 
     def update(self, dt: float) -> None:
         self.elapsed += dt
+        self.update_visual_effects(dt)
         if self.active_cutscene is not None:
             self.update_active_cutscene(dt)
             self.update_floaters(dt)
-            self.screen_flash_ttl = max(0.0, self.screen_flash_ttl - dt)
             return
         if self.story_intro_pending:
             self.update_floaters(dt)
-            self.screen_flash_ttl = max(0.0, self.screen_flash_ttl - dt)
             return
         self.update_player_aim()
         self.update_player(dt)
@@ -2395,17 +2434,6 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.update_traps(dt)
         self.update_secrets()
         self.update_floaters(dt)
-        for effect in self.impact_effects:
-            effect.update(dt)
-        self.impact_effects = [
-            effect for effect in self.impact_effects if effect.ttl > 0
-        ]
-        self.screen_flash_ttl = max(0.0, self.screen_flash_ttl - dt)
-        self.slashes = [
-            (x, y, ttl - dt, dx, dy)
-            for x, y, ttl, dx, dy in self.slashes
-            if ttl - dt > 0
-        ]
 
         if self.player.hp <= 0 and self.state == "playing":
             self.state = "dead"
@@ -2569,6 +2597,9 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.player.hp -= amount
         self.run_stats.damage_taken += amount
         flash = (160, 35, 32) if amount >= self.player.max_hp * 0.18 else (105, 24, 28)
+        self.player_hit_flash = max(
+            self.player_hit_flash, 0.22 if amount < self.player.max_hp * 0.18 else 0.32
+        )
         self.trigger_screen_flash(
             flash, 0.18 if amount < self.player.max_hp * 0.18 else 0.30
         )
@@ -2767,6 +2798,9 @@ class Game(SaveLoadMixin, RenderingMixin):
         projectile_color = (245, 100, 235) if enemy.elite_modifier else (180, 80, 220)
         if enemy.kind in ("boss", "miniboss"):
             projectile_color = self.theme.accent
+        self.add_impact(
+            enemy.x, enemy.y, projectile_color, ttl=0.28, radius=0.36, kind="cast"
+        )
         self.projectiles.append(
             Projectile(
                 enemy.x,
@@ -2884,6 +2918,7 @@ class Game(SaveLoadMixin, RenderingMixin):
             return
         self.player.melee_timer = self.melee_cooldown()
         self.player.stamina -= stamina_cost
+        self.set_player_action_visual("attack", 0.20)
         target = self.enemy_in_melee_arc()
         if target:
             tx = (self.player.x + target.x) * 0.5
@@ -2936,6 +2971,15 @@ class Game(SaveLoadMixin, RenderingMixin):
             return
         self.player.bolt_timer = self.bolt_cooldown()
         self.player.mana -= mana_cost
+        self.set_player_action_visual("cast", 0.24)
+        self.add_impact(
+            self.player.x,
+            self.player.y,
+            self.skill_color(),
+            ttl=0.28,
+            radius=0.34,
+            kind="cast",
+        )
         damage = 14 + self.player.level * 2 + self.player.spell_bonus
         if self.player.class_name == "Acolyte":
             damage += max(0, self.player.max_hp - self.player.hp) // 12
@@ -2980,6 +3024,15 @@ class Game(SaveLoadMixin, RenderingMixin):
             return
         self.player.nova_timer = self.nova_cooldown()
         self.player.mana -= mana_cost
+        self.set_player_action_visual("cast", 0.32)
+        self.add_impact(
+            self.player.x,
+            self.player.y,
+            self.skill_color(),
+            ttl=0.48,
+            radius=0.82,
+            kind="cast",
+        )
         self.apply_story_blood_price("nova")
         hits = 0
         for enemy in list(self.enemies):
@@ -3038,6 +3091,11 @@ class Game(SaveLoadMixin, RenderingMixin):
             return
         self.player.dash_timer = self.dash_cooldown()
         self.player.stamina -= stamina_cost
+        start_x, start_y = self.player.x, self.player.y
+        self.set_player_action_visual("dash", 0.22)
+        self.add_impact(
+            start_x, start_y, self.skill_color(), ttl=0.24, radius=0.34, kind="dash"
+        )
         steps = 11 if self.player.class_name == "Ranger" else 8
         if self.player.has_upgrade("rogue_smoke"):
             steps += 2
@@ -3047,6 +3105,14 @@ class Game(SaveLoadMixin, RenderingMixin):
                 self.player.facing_x * 0.20,
                 self.player.facing_y * 0.20,
             )
+        self.add_impact(
+            self.player.x,
+            self.player.y,
+            self.skill_color(),
+            ttl=0.26,
+            radius=0.42,
+            kind="dash",
+        )
         self.floaters.append(
             FloatingText(
                 self.skill_names()[3],
@@ -3089,6 +3155,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self, enemy: Enemy, amount: int, knockback_from: tuple[float, float]
     ) -> None:
         enemy.hp -= amount
+        self.enemy_hit_flashes[id(enemy)] = 0.22 if enemy.kind != "boss" else 0.32
         hit_color = self.theme.accent if enemy.kind == "boss" else (255, 210, 120)
         self.floaters.append(
             FloatingText(f"-{amount}", enemy.x, enemy.y - 0.2, hit_color)
@@ -3114,7 +3181,28 @@ class Game(SaveLoadMixin, RenderingMixin):
         if enemy not in self.enemies:
             return
         self.enemies.remove(enemy)
+        self.enemy_hit_flashes.pop(id(enemy), None)
         self.run_stats.kills += 1
+        death_color = (
+            self.theme.accent if enemy.kind in ("boss", "miniboss") else enemy.color
+        )
+        self.add_impact(
+            enemy.x,
+            enemy.y,
+            death_color,
+            ttl=0.58 if enemy.kind != "boss" else 0.82,
+            radius=0.56 if enemy.kind != "boss" else 1.05,
+            kind="death",
+        )
+        if enemy.elite_modifier or enemy.kind in ("boss", "miniboss"):
+            self.add_impact(
+                enemy.x,
+                enemy.y,
+                death_color,
+                ttl=0.48,
+                radius=0.66 if enemy.kind != "boss" else 1.15,
+                kind="burst",
+            )
         if enemy.kind == "boss":
             self.run_stats.boss_killed = True
             drop_x, drop_y = self.drop_position_near(enemy.x, enemy.y)

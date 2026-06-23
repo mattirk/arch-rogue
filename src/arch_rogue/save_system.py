@@ -276,6 +276,7 @@ class SaveLoadMixin:
         self.slashes = []
         self.impact_effects = []
         self.screen_flash_ttl = 0.0
+        self.reset_transient_visuals()
         self.run_stats = RunStats(**data.get("run_stats", {}))
         self.inventory_open = False
         self.show_help = False

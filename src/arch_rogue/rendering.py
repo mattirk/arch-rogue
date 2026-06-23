@@ -59,6 +59,7 @@ class RenderingMixin:
             return
         self.draw_dungeon()
         self.draw_world_objects()
+        self.draw_ambient_depth_overlay()
         self.draw_ui()
         if self.active_cutscene is not None:
             self.draw_quest_cutscene_overlay()
@@ -81,6 +82,73 @@ class RenderingMixin:
                 y = s - x
                 if min_y <= y <= max_y and self.dungeon.in_bounds(x, y):
                     self.draw_tile(x, y, self.dungeon.tiles[x][y])
+
+    def ambient_overlay_surface(self) -> pygame.Surface:
+        width, height = self.screen.get_size()
+        key = (width, height, self.theme.name, self.ui_scale)
+        cache: dict[tuple[int, int, str, int], pygame.Surface] = getattr(
+            self, "ambient_overlay_cache", {}
+        )
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+
+        overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+        depth_tint = self.mix((8, 9, 14), self.theme.accent, 0.14)
+        overlay.fill((*depth_tint, 18))
+        layers = 9
+        for index in range(layers):
+            ratio = index / max(1, layers - 1)
+            alpha = int(22 + (1.0 - ratio) * 54)
+            inset_x = int(width * ratio * 0.07)
+            inset_y = int(height * ratio * 0.08)
+            rect = pygame.Rect(
+                inset_x, inset_y, width - inset_x * 2, height - inset_y * 2
+            )
+            pygame.draw.rect(overlay, (0, 0, 0, alpha), rect, max(1, self.ui(4)))
+
+        # Deterministic wisps: cached, subtle, and theme-colored so floors feel
+        # ancient without per-frame noise generation.
+        fog_color = self.mix(self.theme.accent, (38, 40, 50), 0.72)
+        for index in range(9):
+            seed = (index * 92821 + len(self.theme.name) * 31337) & 0xFFFF
+            wx = int((seed % 997) / 997 * width)
+            wy = int(
+                ((seed // 7) % 991) / 991 * max(1, height - self.hud_panel_height())
+            )
+            fog_w = int((110 + seed % 140) * WORLD_SCALE)
+            fog_h = int((22 + (seed // 13) % 34) * WORLD_SCALE)
+            alpha = 7 + seed % 12
+            pygame.draw.ellipse(
+                overlay,
+                (*fog_color, alpha),
+                pygame.Rect(wx - fog_w // 2, wy - fog_h // 2, fog_w, fog_h),
+            )
+
+        try:
+            overlay = overlay.convert_alpha()
+        except pygame.error:
+            pass
+        cache[key] = overlay
+        self.ambient_overlay_cache = cache
+        return overlay
+
+    def draw_ambient_depth_overlay(self) -> None:
+        if self.state not in ("playing", "dead", "victory"):
+            return
+        self.screen.blit(self.ambient_overlay_surface(), (0, 0))
+        # A faint breathing light around the player preserves readability under
+        # the vignette without requiring expensive light masks.
+        sx, sy = self.world_to_screen(self.player.x, self.player.y)
+        pulse = 0.5 + 0.5 * math.sin(self.elapsed * 2.3)
+        radius = int((58 + pulse * 10) * WORLD_SCALE)
+        light = pygame.Surface((radius * 2, radius), pygame.SRCALPHA)
+        pygame.draw.ellipse(
+            light,
+            (*self.mix(self.theme.accent, (235, 220, 170), 0.35), int(10 + pulse * 8)),
+            light.get_rect(),
+        )
+        self.screen.blit(light, light.get_rect(center=(sx, sy - 7 * WORLD_SCALE)))
 
     def draw_tile(self, x: int, y: int, tile: Tile) -> None:
         sx, sy = self.world_to_screen(x + 0.5, y + 0.5)
@@ -422,36 +490,134 @@ class RenderingMixin:
         radius = max(
             2, int((effect.radius + progress * effect.radius * 1.4) * 28 * WORLD_SCALE)
         )
-        alpha = max(0, min(210, int(190 * life)))
-        overlay = pygame.Surface((radius * 2 + 8, radius + 12), pygame.SRCALPHA)
+        alpha = max(0, min(230, int(205 * life)))
+        overlay = pygame.Surface((radius * 2 + 18, radius * 2 + 18), pygame.SRCALPHA)
         center = (overlay.get_width() // 2, overlay.get_height() // 2)
+        bright = self.shade(effect.color, 48)
+        dark = self.shade(effect.color, -64)
+
+        ground_rect = pygame.Rect(0, 0, radius * 2, max(4, radius // 2))
+        ground_rect.center = (center[0], center[1] + radius // 3)
         pygame.draw.ellipse(
             overlay,
-            (*effect.color, int(alpha * 0.35)),
-            overlay.get_rect().inflate(-4, -overlay.get_height() // 3),
+            (*effect.color, int(alpha * (0.16 if effect.kind == "death" else 0.30))),
+            ground_rect,
             max(1, WORLD_SCALE),
         )
-        pygame.draw.circle(overlay, (*effect.color, alpha), center, max(2, radius // 5))
-        spoke_count = 8 if effect.kind == "burst" else 5
-        for index in range(spoke_count):
-            angle = index * math.tau / spoke_count + progress * 0.8
-            inner = radius * (0.12 + progress * 0.15)
-            outer = radius * (0.35 + progress * 0.52)
-            start = (
-                center[0] + int(math.cos(angle) * inner),
-                center[1] + int(math.sin(angle) * inner * 0.55),
+
+        if effect.kind == "blood":
+            pygame.draw.circle(
+                overlay, (*effect.color, alpha), center, max(2, radius // 6)
             )
-            end = (
-                center[0] + int(math.cos(angle) * outer),
-                center[1] + int(math.sin(angle) * outer * 0.55),
-            )
-            pygame.draw.line(
+            for index in range(7):
+                angle = -math.pi * 0.85 + index * math.pi / 3.0 + progress * 0.35
+                drop_len = radius * (0.28 + index % 3 * 0.08 + progress * 0.30)
+                end = (
+                    center[0] + int(math.cos(angle) * drop_len),
+                    center[1] + int(math.sin(angle) * drop_len * 0.62),
+                )
+                pygame.draw.circle(
+                    overlay,
+                    (*self.shade(effect.color, -15), int(alpha * 0.84)),
+                    end,
+                    max(1, radius // 13),
+                )
+        elif effect.kind == "death":
+            ring_radius = max(2, int(radius * (0.32 + progress * 0.58)))
+            pygame.draw.circle(
                 overlay,
-                (*self.shade(effect.color, 45), alpha),
-                start,
-                end,
+                (*dark, int(alpha * 0.46)),
+                center,
+                ring_radius,
                 max(1, WORLD_SCALE),
             )
+            pygame.draw.circle(
+                overlay,
+                (*bright, int(alpha * 0.34)),
+                center,
+                max(2, ring_radius // 2),
+                max(1, WORLD_SCALE),
+            )
+            for index in range(10):
+                angle = index * math.tau / 10 + progress * 1.2
+                smoke_radius = radius * (0.22 + progress * 0.55 + (index % 2) * 0.06)
+                puff = (
+                    center[0] + int(math.cos(angle) * smoke_radius),
+                    center[1]
+                    + int(math.sin(angle) * smoke_radius * 0.55)
+                    - int(progress * 10),
+                )
+                pygame.draw.circle(
+                    overlay,
+                    (*self.mix(dark, bright, 0.28), int(alpha * 0.22)),
+                    puff,
+                    max(2, radius // 9),
+                )
+        elif effect.kind == "cast":
+            ring_radius = max(3, int(radius * (0.42 + progress * 0.48)))
+            pygame.draw.circle(
+                overlay,
+                (*effect.color, int(alpha * 0.36)),
+                center,
+                ring_radius,
+                max(1, WORLD_SCALE),
+            )
+            for index in range(6):
+                angle = index * math.tau / 6 - progress * 0.9
+                rune = (
+                    center[0] + int(math.cos(angle) * ring_radius),
+                    center[1] + int(math.sin(angle) * ring_radius * 0.55),
+                )
+                pygame.draw.rect(
+                    overlay,
+                    (*bright, int(alpha * 0.72)),
+                    (
+                        rune[0] - WORLD_SCALE,
+                        rune[1] - WORLD_SCALE,
+                        WORLD_SCALE * 2,
+                        WORLD_SCALE * 2,
+                    ),
+                )
+            pygame.draw.circle(
+                overlay, (*bright, int(alpha * 0.62)), center, max(2, radius // 7)
+            )
+        elif effect.kind == "dash":
+            for index in range(4):
+                streak_alpha = int(alpha * (0.55 - index * 0.10))
+                length = int(radius * (0.8 + progress * 0.8 + index * 0.25))
+                y_offset = int((index - 1.5) * 3 * WORLD_SCALE)
+                pygame.draw.line(
+                    overlay,
+                    (*bright, max(0, streak_alpha)),
+                    (center[0] - length, center[1] + y_offset),
+                    (center[0] + length // 2, center[1] + y_offset // 2),
+                    max(1, WORLD_SCALE),
+                )
+        else:
+            pygame.draw.circle(
+                overlay, (*effect.color, alpha), center, max(2, radius // 5)
+            )
+            spoke_count = 9 if effect.kind in ("burst", "hit") else 6
+            for index in range(spoke_count):
+                angle = index * math.tau / spoke_count + progress * 0.8
+                inner = radius * (0.12 + progress * 0.15)
+                outer = radius * (0.35 + progress * 0.52)
+                start = (
+                    center[0] + int(math.cos(angle) * inner),
+                    center[1] + int(math.sin(angle) * inner * 0.55),
+                )
+                end = (
+                    center[0] + int(math.cos(angle) * outer),
+                    center[1] + int(math.sin(angle) * outer * 0.55),
+                )
+                pygame.draw.line(
+                    overlay,
+                    (*bright, alpha),
+                    start,
+                    end,
+                    max(1, WORLD_SCALE),
+                )
+
         self.screen.blit(overlay, overlay.get_rect(center=(sx, sy - 12 * WORLD_SCALE)))
 
     def draw_shadow(
@@ -492,14 +658,12 @@ class RenderingMixin:
             phase = actor.anim_time * math.tau
             footfall = 0.5 - 0.5 * math.cos(phase * 2.0)
             stride = math.sin(phase)
-            bob = 0.8 + footfall * 2.4
-            sway = stride * 1.45
-            forward_lean = 1.25 if actor.speed >= 3.0 else 0.85
-            lean = forward_lean + math.sin(phase - 0.35) * 0.35
-            stretch = 1.0 + footfall * 0.012
-            return sway, bob, lean, stretch
+            bob = 0.45 + footfall * 1.15
+            sway = stride * 0.55
+            lean = 0.18 + math.sin(phase - 0.35) * 0.10
+            return sway, bob, lean, 1.0
         idle = math.sin(self.elapsed * 2.2 + actor.x * 0.7 + actor.y * 0.4)
-        return 0.0, idle * 0.8, idle * 0.35, 1.0
+        return 0.0, idle * 0.32, idle * 0.08, 1.0
 
     def iso_screen_direction(self, dx: float, dy: float) -> tuple[float, float]:
         screen_dx = (dx - dy) * TILE_W / 2
@@ -839,23 +1003,127 @@ class RenderingMixin:
         self.screen.blit(turned_sprite, rect)
         return rect.centerx, sy
 
+    def player_visual_state(self, player: Player) -> str:
+        if getattr(self, "player_hit_flash", 0.0) > 0.0:
+            return "hit"
+        action_state = getattr(self, "player_action_state", "")
+        if getattr(self, "player_action_ttl", 0.0) > 0.0 and action_state:
+            return action_state
+        return "run" if player.moving else "idle"
+
+    def enemy_visual_state(self, enemy: Enemy) -> str:
+        if getattr(self, "enemy_hit_flashes", {}).get(id(enemy), 0.0) > 0.0:
+            return "hit"
+        just_attacked = enemy.attack_timer > max(0.0, enemy.attack_cooldown - 0.22)
+        if just_attacked and enemy.telegraph == "cast":
+            return "cast"
+        if just_attacked and enemy.telegraph == "melee":
+            return "attack"
+        return "run" if enemy.moving else "idle"
+
+    def draw_hit_flash_overlay(
+        self, sx: int, sy: int, width: int, height: int, ttl: float, color: Color
+    ) -> None:
+        if ttl <= 0:
+            return
+        life = max(0.0, min(1.0, ttl / 0.22))
+        overlay = pygame.Surface(
+            (width + 12 * WORLD_SCALE, height + 10 * WORLD_SCALE), pygame.SRCALPHA
+        )
+        rect = overlay.get_rect()
+        pygame.draw.ellipse(
+            overlay,
+            (*self.shade(color, 55), int(70 * life)),
+            rect.inflate(-rect.width // 5, -rect.height // 7),
+            max(1, WORLD_SCALE),
+        )
+        for index in range(4):
+            angle = self.elapsed * 9.0 + index * math.tau / 4
+            start = (rect.centerx, rect.centery)
+            end = (
+                rect.centerx + int(math.cos(angle) * rect.width * 0.36),
+                rect.centery + int(math.sin(angle) * rect.height * 0.28),
+            )
+            pygame.draw.line(
+                overlay, (*color, int(96 * life)), start, end, max(1, WORLD_SCALE)
+            )
+        self.screen.blit(overlay, overlay.get_rect(center=(sx, sy - height // 2)))
+
+    def cooldown_ratio(self, timer: float, cooldown: float) -> float:
+        if cooldown <= 0.001:
+            return 0.0
+        return max(0.0, min(1.0, timer / cooldown))
+
+    def draw_hud_cooldown_pips(self, bounds: pygame.Rect) -> None:
+        timers = (
+            ("M", self.player.melee_timer, self.melee_cooldown(), (255, 226, 150)),
+            ("B", self.player.bolt_timer, self.bolt_cooldown(), (96, 190, 255)),
+            ("N", self.player.nova_timer, self.nova_cooldown(), (185, 125, 255)),
+            ("D", self.player.dash_timer, self.dash_cooldown(), (225, 184, 82)),
+        )
+        active = [entry for entry in timers if entry[1] > 0.001 and entry[2] > 0.001]
+        if not active:
+            return
+
+        radius = max(self.ui(7), min(self.ui(12), bounds.height // 8))
+        spacing = radius * 2 + self.ui(7)
+        total_w = spacing * (len(active) - 1) + radius * 2
+        base_x = bounds.right - total_w + radius
+        center_y = bounds.y + radius + self.ui(2)
+        line_w = max(1, self.ui(1))
+        label = self.tiny_font.render("CD", True, (154, 148, 138))
+        label_rect = label.get_rect(
+            right=max(bounds.x, base_x - radius - self.ui(6)), centery=center_y
+        )
+        self.screen.blit(label, label_rect)
+
+        for index, (key, timer, cooldown, color) in enumerate(active):
+            cx = base_x + index * spacing
+            cy = center_y
+            remaining = self.cooldown_ratio(timer, cooldown)
+            progress = 1.0 - remaining
+            outer_rect = pygame.Rect(0, 0, radius * 2, radius * 2)
+            outer_rect.center = (cx, cy)
+
+            pygame.draw.circle(self.screen, (14, 13, 18), (cx, cy), radius)
+            pygame.draw.circle(
+                self.screen,
+                (74, 70, 82),
+                (cx, cy),
+                max(1, radius - self.ui(2)),
+                line_w,
+            )
+            fill_h = max(1, int((radius * 1.45) * progress))
+            fill_rect = pygame.Rect(
+                cx - radius // 2,
+                cy + radius // 2 - fill_h,
+                radius,
+                fill_h,
+            )
+            pygame.draw.rect(self.screen, (*self.shade(color, -38), 165), fill_rect)
+
+            if progress > 0.0:
+                start = -math.pi / 2
+                end = start + math.tau * progress
+                pygame.draw.arc(
+                    self.screen,
+                    color,
+                    outer_rect.inflate(-self.ui(1), -self.ui(1)),
+                    start,
+                    end,
+                    max(2, line_w + 1),
+                )
+            text = self.tiny_font.render(key, True, (226, 220, 210))
+            self.screen.blit(text, text.get_rect(center=(cx, cy)))
+
     def draw_player(self, player: Player) -> None:
         sway, bob, lean, stretch = self.actor_animation(player)
-        sprite = self.sprites.player_sprites.get(player.class_name, self.sprites.player)
+        state = self.player_visual_state(player)
+        sprite = self.sprites.player_frame(
+            player.class_name, state, player.anim_time, self.elapsed
+        )
         self.draw_shadow(player.x, player.y, 34, 13, moving=player.moving, lift=bob)
         self.draw_movement_trail(player, (145, 130, 98), size=2)
-        if player.moving:
-            self.blit_sprite(
-                sprite,
-                player.x - player.move_x * 0.035,
-                player.y - player.move_y * 0.035,
-                y_offset=8 - bob,
-                facing_x=player.facing_x,
-                x_offset=sway,
-                stretch=1.0,
-                lean=0.0,
-                alpha=52,
-            )
         sx, sy = self.blit_sprite(
             sprite,
             player.x,
@@ -863,8 +1131,16 @@ class RenderingMixin:
             y_offset=6.0 - bob,
             facing_x=player.facing_x,
             x_offset=sway,
-            stretch=1.0,
-            lean=0.0,
+            stretch=stretch,
+            lean=lean * 0.12,
+        )
+        self.draw_hit_flash_overlay(
+            sx,
+            sy,
+            sprite.get_width(),
+            sprite.get_height(),
+            getattr(self, "player_hit_flash", 0.0),
+            (255, 110, 90),
         )
 
     def draw_aim_cone(self) -> None:
@@ -912,35 +1188,24 @@ class RenderingMixin:
         self.screen.blit(overlay, (min_x, min_y))
 
     def draw_enemy(self, enemy: Enemy) -> None:
-        fallback = (
-            self.sprites.enemies["Gate Warden"]
-            if enemy.kind == "boss"
-            else self.sprites.enemies["Ghoul"]
+        base_name = self.sprites.enemy_key(enemy.name, enemy.kind)
+        state = self.enemy_visual_state(enemy)
+        sprite = self.sprites.enemy_frame(
+            enemy.name, enemy.kind, state, enemy.anim_time, self.elapsed
         )
-        sprite = self.sprites.enemies.get(enemy.name, fallback)
         shadow_w = (
-            44 if enemy.kind == "boss" else 38 if enemy.name == "Gate Warden" else 32
+            44 if enemy.kind == "boss" else 38 if base_name == "Gate Warden" else 32
         )
         sway, bob, lean, stretch = self.actor_animation(enemy)
         if enemy.kind == "boss":
-            stretch += math.sin(self.elapsed * 3.4) * 0.025
-            lean += math.sin(self.elapsed * 2.1) * 1.0
+            stretch += math.sin(self.elapsed * 3.4) * 0.010
+            lean += math.sin(self.elapsed * 2.1) * 0.25
         elif enemy.elite_modifier or enemy.kind == "miniboss":
-            stretch += math.sin(self.elapsed * 5.0) * 0.015
+            stretch += math.sin(self.elapsed * 5.0) * 0.006
         self.draw_shadow(enemy.x, enemy.y, shadow_w, 12, moving=enemy.moving, lift=bob)
-        self.draw_movement_trail(enemy, (120, 84, 68), size=2)
-        if enemy.moving:
-            self.blit_sprite(
-                sprite,
-                enemy.x - enemy.move_x * 0.03,
-                enemy.y - enemy.move_y * 0.03,
-                y_offset=8.0 - bob,
-                facing_x=enemy.facing_x,
-                x_offset=sway,
-                stretch=1.0,
-                lean=0.0,
-                alpha=42,
-            )
+        trail_color = self.mix(enemy.color, (120, 84, 68), 0.45)
+        self.draw_movement_trail(enemy, trail_color, size=2)
+
         sx, sy = self.blit_sprite(
             sprite,
             enemy.x,
@@ -948,11 +1213,19 @@ class RenderingMixin:
             y_offset=6.0 - bob,
             facing_x=enemy.facing_x,
             x_offset=sway,
-            stretch=1.0,
-            lean=0.0,
+            stretch=stretch,
+            lean=lean * 0.12,
+        )
+        self.draw_hit_flash_overlay(
+            sx,
+            sy,
+            sprite.get_width(),
+            sprite.get_height(),
+            getattr(self, "enemy_hit_flashes", {}).get(id(enemy), 0.0),
+            enemy.color,
         )
         bar_w = (
-            46 if enemy.kind == "boss" else 34 if enemy.name == "Gate Warden" else 28
+            46 if enemy.kind == "boss" else 34 if base_name == "Gate Warden" else 28
         ) * WORLD_SCALE
         fill_w = int(bar_w * max(0, enemy.hp) / enemy.max_hp)
         bar_h = 4 * WORLD_SCALE
@@ -966,13 +1239,20 @@ class RenderingMixin:
         if enemy.elite_modifier or enemy.kind == "miniboss":
             pulse = 0.5 + 0.5 * math.sin(self.elapsed * 5.2)
             marker = pygame.Surface(
-                (42 * WORLD_SCALE, 18 * WORLD_SCALE), pygame.SRCALPHA
+                (46 * WORLD_SCALE, 20 * WORLD_SCALE), pygame.SRCALPHA
             )
             pygame.draw.ellipse(
                 marker,
-                (*enemy.color, int(20 + pulse * 38)),
+                (*enemy.color, int(28 + pulse * 48)),
                 marker.get_rect(),
                 max(1, WORLD_SCALE),
+            )
+            pygame.draw.ellipse(
+                marker,
+                (*self.shade(enemy.color, 45), int(16 + pulse * 30)),
+                marker.get_rect().inflate(
+                    -marker.get_width() // 3, -marker.get_height() // 3
+                ),
             )
             self.screen.blit(
                 marker, marker.get_rect(center=(sx, sy - 14 * WORLD_SCALE))
@@ -984,23 +1264,47 @@ class RenderingMixin:
         if enemy.attack_timer <= 0.28 and enemy.kind in ("boss", "miniboss", "ranged"):
             tell_color = self.theme.accent if enemy.kind == "boss" else enemy.color
             pulse = 0.55 + 0.45 * math.sin(self.elapsed * 18.0)
+            telegraph = pygame.Surface(
+                (42 * WORLD_SCALE, 42 * WORLD_SCALE), pygame.SRCALPHA
+            )
             pygame.draw.circle(
-                self.screen,
-                (*tell_color, int(90 + 90 * pulse)),
-                (sx, sy - 18 * WORLD_SCALE),
-                max(3, int(5 * WORLD_SCALE + pulse * 2 * WORLD_SCALE)),
+                telegraph,
+                (*tell_color, int(82 + 92 * pulse)),
+                telegraph.get_rect().center,
+                max(3, int(5 * WORLD_SCALE + pulse * 3 * WORLD_SCALE)),
                 max(1, WORLD_SCALE),
             )
+            self.screen.blit(
+                telegraph, telegraph.get_rect(center=(sx, sy - 18 * WORLD_SCALE))
+            )
             label = self.small_font.render("!", True, tell_color)
-            self.screen.blit(label, label.get_rect(center=(sx, sy - 34 * WORLD_SCALE)))
+            self.screen.blit(label, label.get_rect(center=(sx, sy - 35 * WORLD_SCALE)))
+        if state == "cast":
+            cast_color = (
+                self.theme.accent if enemy.kind in ("boss", "miniboss") else enemy.color
+            )
+            pygame.draw.circle(
+                self.screen,
+                (*cast_color, 112),
+                (sx, sy - 24 * WORLD_SCALE),
+                max(3, 4 * WORLD_SCALE),
+                max(1, WORLD_SCALE),
+            )
         if enemy.kind == "boss":
             pulse = 0.5 + 0.5 * math.sin(self.elapsed * 4.2)
-            aura = pygame.Surface((70 * WORLD_SCALE, 28 * WORLD_SCALE), pygame.SRCALPHA)
+            aura = pygame.Surface((74 * WORLD_SCALE, 30 * WORLD_SCALE), pygame.SRCALPHA)
             pygame.draw.ellipse(
                 aura,
-                (*self.theme.accent, int(26 + pulse * 34)),
+                (*self.theme.accent, int(30 + pulse * 42)),
                 aura.get_rect(),
                 max(1, WORLD_SCALE),
+            )
+            pygame.draw.ellipse(
+                aura,
+                (*self.shade(self.theme.accent, 55), int(15 + pulse * 22)),
+                aura.get_rect().inflate(
+                    -aura.get_width() // 3, -aura.get_height() // 3
+                ),
             )
             self.screen.blit(aura, aura.get_rect(center=(sx, sy - 18 * WORLD_SCALE)))
 
@@ -1011,7 +1315,9 @@ class RenderingMixin:
         sx, sy = self.world_to_screen(item.x, item.y)
         rarity_color = self.rarity_color(item.visible_rarity)
         rarity_icon = self.rarity_icon(item.visible_rarity)
-        sprite = self.sprites.items.get(item.slot, self.sprites.items["potion"])
+        sprite = self.sprites.item_frame(
+            item.slot, self.elapsed + item.x * 0.31 + item.y * 0.17, item.visible_rarity
+        )
         pulse = 0.65 + 0.35 * math.sin(self.elapsed * 4.0 + item.x + item.y)
         rare_scale = 1.25 if item.visible_rarity in ("Rare", "Unique") else 1.0
         glow = pygame.Surface(
@@ -1328,6 +1634,8 @@ class RenderingMixin:
         pygame.draw.circle(
             self.screen, self.shade(color, 45), (sx, sy), max(1, WORLD_SCALE)
         )
+        sprite = self.sprites.trap_frame(trap.kind, self.elapsed + trap.x * 0.5)
+        self.screen.blit(sprite, sprite.get_rect(center=(sx, sy - 2 * WORLD_SCALE)))
         if math.hypot(trap.x - self.player.x, trap.y - self.player.y) < 1.35:
             label = self.small_font.render(f"! {trap.kind}", True, color)
             self.screen.blit(label, label.get_rect(center=(sx, sy - 24 * WORLD_SCALE)))
@@ -1360,6 +1668,8 @@ class RenderingMixin:
             ),
             max(1, WORLD_SCALE),
         )
+        sprite = self.sprites.secret_frame(self.elapsed + secret.x * 0.33)
+        self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 4 * WORLD_SCALE)))
         if math.hypot(secret.x - self.player.x, secret.y - self.player.y) < 1.1:
             hint = self.current_interaction_hint()
             detail = hint[2] if hint else "Open secret"
@@ -1373,34 +1683,53 @@ class RenderingMixin:
     def draw_story_guest(self, guest: StoryGuest) -> None:
         sx, sy = self.world_to_screen(guest.x, guest.y)
         color = guest.color if not guest.resolved else self.shade(guest.color, -60)
-        self.draw_shadow(guest.x, guest.y, 24, 10)
+        self.draw_shadow(guest.x, guest.y, 26, 11)
         pulse = 0.55 + 0.45 * math.sin(self.elapsed * 4.0 + guest.depth)
+        ring = pygame.Surface((48 * WORLD_SCALE, 25 * WORLD_SCALE), pygame.SRCALPHA)
+        ring_alpha = int(
+            (18 if guest.resolved else 34) + (18 if guest.resolved else 46) * pulse
+        )
+        pygame.draw.ellipse(
+            ring, (*color, ring_alpha), ring.get_rect(), max(1, WORLD_SCALE)
+        )
         if not guest.resolved:
-            ring = pygame.Surface((42 * WORLD_SCALE, 22 * WORLD_SCALE), pygame.SRCALPHA)
             pygame.draw.ellipse(
                 ring,
-                (*color, int(24 + 36 * pulse)),
-                ring.get_rect(),
-                max(1, WORLD_SCALE),
+                (*self.shade(color, 55), int(14 + 30 * pulse)),
+                ring.get_rect().inflate(
+                    -ring.get_width() // 3, -ring.get_height() // 3
+                ),
             )
-            self.screen.blit(ring, ring.get_rect(center=(sx, sy + 4 * WORLD_SCALE)))
-        cloak = [
-            (sx, sy - 26 * WORLD_SCALE),
-            (sx - 13 * WORLD_SCALE, sy + 5 * WORLD_SCALE),
-            (sx + 13 * WORLD_SCALE, sy + 5 * WORLD_SCALE),
-        ]
-        pygame.draw.polygon(self.screen, self.shade(color, -55), cloak)
-        pygame.draw.polygon(self.screen, color, cloak, max(1, WORLD_SCALE))
+        self.screen.blit(ring, ring.get_rect(center=(sx, sy + 4 * WORLD_SCALE)))
+
+        sprite = self.sprites.story_guest_frame(
+            self.elapsed + guest.depth, guest.resolved
+        )
+        sprite = sprite.copy()
+        sprite.fill(
+            (*color, 36 if not guest.resolved else 18),
+            special_flags=pygame.BLEND_RGBA_ADD,
+        )
+        self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 5 * WORLD_SCALE)))
+
+        portrait_radius = 10 * WORLD_SCALE
+        portrait_y = sy - 34 * WORLD_SCALE
+        pygame.draw.circle(self.screen, (15, 12, 18), (sx, portrait_y), portrait_radius)
+        pygame.draw.circle(
+            self.screen, color, (sx, portrait_y), portrait_radius, max(1, WORLD_SCALE)
+        )
         pygame.draw.circle(
             self.screen,
-            self.shade(color, 35),
-            (sx, sy - 18 * WORLD_SCALE),
-            6 * WORLD_SCALE,
+            (*self.shade(color, 45), int(35 + pulse * 50)),
+            (sx, portrait_y),
+            max(3, int(5 * WORLD_SCALE)),
         )
         marker = "✓" if guest.resolved else "?"
-        marker_surface = self.small_font.render(marker, True, (245, 236, 205))
+        role_glyph = (guest.role[:1] or "G").upper()
+        glyph = marker if not guest.met or guest.resolved else role_glyph
+        marker_surface = self.small_font.render(glyph, True, (245, 236, 205))
         self.screen.blit(
-            marker_surface, marker_surface.get_rect(center=(sx, sy - 19 * WORLD_SCALE))
+            marker_surface, marker_surface.get_rect(center=(sx, portrait_y))
         )
         if (
             not guest.resolved
@@ -1408,9 +1737,9 @@ class RenderingMixin:
         ):
             label = self.small_font.render(f"1-3: {guest.name}", True, color)
             sublabel = self.small_font.render(guest.role, True, (205, 200, 185))
-            self.screen.blit(label, label.get_rect(center=(sx, sy - 43 * WORLD_SCALE)))
+            self.screen.blit(label, label.get_rect(center=(sx, sy - 55 * WORLD_SCALE)))
             self.screen.blit(
-                sublabel, sublabel.get_rect(center=(sx, sy - 30 * WORLD_SCALE))
+                sublabel, sublabel.get_rect(center=(sx, sy - 42 * WORLD_SCALE))
             )
 
     def draw_shrine(self, shrine: Shrine) -> None:
@@ -1456,6 +1785,10 @@ class RenderingMixin:
                 6 * WORLD_SCALE,
             ),
         )
+        sprite = self.sprites.shrine_frame(
+            shrine.kind, self.elapsed + shrine.x, shrine.used
+        )
+        self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 2 * WORLD_SCALE)))
         if (
             not shrine.used
             and math.hypot(shrine.x - self.player.x, shrine.y - self.player.y) < 1.15
@@ -1471,8 +1804,8 @@ class RenderingMixin:
 
     def draw_projectile(self, projectile: Projectile) -> None:
         sx, sy = self.world_to_screen(projectile.x, projectile.y)
-        sprite = self.sprites.projectiles.get(
-            projectile.owner, self.sprites.projectiles["enemy"]
+        sprite = self.sprites.projectile_frame(
+            projectile.owner, self.elapsed + projectile.x * 0.2 + projectile.y * 0.15
         )
         vx, vy = self.iso_screen_direction(projectile.vx, projectile.vy)
         color = projectile.color or (
@@ -3695,6 +4028,7 @@ class RenderingMixin:
                 pygame.Rect(text_rect.x, char_y, text_rect.width, line_h),
             )
             char_y += line_h
+        self.draw_hud_cooldown_pips(text_rect)
 
         hint = self.current_interaction_hint()
         objective = (
@@ -3742,9 +4076,15 @@ class RenderingMixin:
         self.draw_interaction_prompt(hint)
 
         melee_name, bolt_name, nova_name, dash_name = self.skill_names()
+
+        def ready_text(timer: float) -> str:
+            return "READY" if timer <= 0.001 else f"{timer:.1f}s"
+
         skill_line = (
-            f"Space {melee_name} · F {bolt_name} {self.player.bolt_timer:.1f}s · "
-            f"C {nova_name} {self.player.nova_timer:.1f}s · Shift {dash_name} {self.player.dash_timer:.1f}s"
+            f"Space {melee_name} {ready_text(self.player.melee_timer)} · "
+            f"F {bolt_name} {ready_text(self.player.bolt_timer)} · "
+            f"C {nova_name} {ready_text(self.player.nova_timer)} · "
+            f"Ctrl {dash_name} {ready_text(self.player.dash_timer)}"
         )
         quest_control = (
             "Q hide quest"
