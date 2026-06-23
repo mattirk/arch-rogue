@@ -2,12 +2,12 @@
 
 ## Project Vision
 
-Arch Rogue is a modernized take on the classic Rogue formula: a dark, dangerous, replayable dungeon crawler presented as an isometric action RPG inspired by Diablo II. The game should preserve Rogue's procedural depth, permanent consequences, discovery, and tension while introducing modern combat feel, progression systems, accessibility, and presentation.
+Arch Rogue is a modernized take on the classic Rogue formula: a dark, dangerous, replayable dungeon crawler presented as a grim isometric action RPG. The game should preserve Rogue's procedural depth, permanent consequences, discovery, and tension while introducing modern combat feel, progression systems, accessibility, and presentation.
 
 ## Core Pitch
 
 - **Genre:** Isometric action RPG / roguelike dungeon crawler
-- **Inspirations:** Rogue, Diablo II, classic dark fantasy dungeon crawlers, modern ARPG quality-of-life systems
+- **Inspirations:** Rogue, classic dark fantasy dungeon crawlers, modern ARPG quality-of-life systems
 - **Camera:** Fixed or semi-fixed isometric perspective
 - **Theme:** Grim fantasy, ancient ruins, cursed depths, occult treasures, hostile wilderness, and underground labyrinths
 - **Session Style:** Replayable runs with meaningful progression, procedural maps, unpredictable loot, and high-stakes decisions
@@ -82,7 +82,7 @@ Prefer expanding these focused modules until a new boundary is clearly justified
    - Permanent or semi-permanent consequences
    - Emergent problem solving over scripted solutions
 
-2. **Diablo II-Style Game Feel**
+2. **Dark Fantasy Action-RPG Feel**
    - Real-time combat with pause option
    - Distinct character archetypes
    - Loot-driven progression
@@ -188,11 +188,6 @@ Example categories:
 - Profile dense boss and encounter scenarios to preserve 60+ FPS with clear input response, combat readability, and stable procedural generation costs.
 
 ## Next Milestones
-
-### 2.4: General fixes
-- Remove mentions of Diablo 2
-- Make player light source focused on aim cone, while still emitting faint light behind the player
-- Make constant dark levels togglable in settings
 
 ### 3.0: Shops and allies along the way
 - Add shopkeepers and allied NPCs that buy and sell items
