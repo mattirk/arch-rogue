@@ -152,9 +152,17 @@ Example categories:
 - Add more player skill upgrades with distinct skill trees, passive modifiers, and active skill effects.
 - Profile dense boss and encounter scenarios to preserve 60+ FPS with clear input response, combat readability, and stable procedural generation costs.
 
-## Next Milestone
+## Next Milestones
 
-### 2.4: HUD polish
+### 2.4: Dark levels
+- Make some levels below level 5 dark
+- Between levels 5 and 10, at least 3 levels are dark
+- After level 10, there is 50% chance of level being dark
+- On dark level, player can only see 4 tiles around them
+- Create light/dark effects that look visually pleasing
+- Monsters can navigate perfectly in the dark
+
+### 2.5: HUD polish
 
 - Add skill icons on the bottom of HUD, pay attention to alignment and spacing
 - Make the skill icons panel look pleasing

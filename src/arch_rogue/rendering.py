@@ -1150,43 +1150,69 @@ class RenderingMixin:
         vx, vy = self.iso_screen_direction(self.player.facing_x, self.player.facing_y)
         px, py = -vy, vx
         origin = (
-            sx + int(vx * 14 * WORLD_SCALE),
-            sy - 8 * WORLD_SCALE + int(vy * 6 * WORLD_SCALE),
+            sx + vx * 14 * WORLD_SCALE,
+            sy - 8 * WORLD_SCALE + vy * 6 * WORLD_SCALE,
         )
-        tip = (
-            origin[0] + int(vx * 108 * WORLD_SCALE),
-            origin[1] + int(vy * 108 * WORLD_SCALE),
-        )
-        left = (
-            origin[0] + int(vx * 74 * WORLD_SCALE + px * 36 * WORLD_SCALE),
-            origin[1] + int(vy * 74 * WORLD_SCALE + py * 36 * WORLD_SCALE),
-        )
-        right = (
-            origin[0] + int(vx * 74 * WORLD_SCALE - px * 36 * WORLD_SCALE),
-            origin[1] + int(vy * 74 * WORLD_SCALE - py * 36 * WORLD_SCALE),
-        )
-        points = [origin, left, tip, right]
-        blur_pad = 14 * WORLD_SCALE
-        min_x = min(point[0] for point in points) - blur_pad
-        max_x = max(point[0] for point in points) + blur_pad
-        min_y = min(point[1] for point in points) - blur_pad
-        max_y = max(point[1] for point in points) + blur_pad
-        overlay = pygame.Surface((max_x - min_x, max_y - min_y), pygame.SRCALPHA)
-        local_points = [(x - min_x, y - min_y) for x, y in points]
+        aim_blue = self.mix((92, 170, 255), self.theme.accent, 0.18)
 
-        glow = pygame.Surface(overlay.get_size(), pygame.SRCALPHA)
-        pygame.draw.polygon(glow, (92, 170, 255, 24), local_points)
-        local_tip = (tip[0] - min_x, tip[1] - min_y)
-        blur_size = (
-            max(1, glow.get_width() // 4),
-            max(1, glow.get_height() // 4),
-        )
-        glow = pygame.transform.smoothscale(glow, blur_size)
-        glow = pygame.transform.smoothscale(glow, overlay.get_size())
-        overlay.blit(glow, (0, 0))
+        def arc_points(
+            length: float, half_angle: float, samples: int = 24
+        ) -> list[tuple[float, float]]:
+            radius = length * WORLD_SCALE
+            points: list[tuple[float, float]] = []
+            for index in range(samples + 1):
+                angle = half_angle - (half_angle * 2.0 * index / samples)
+                forward = math.cos(angle)
+                side = math.sin(angle)
+                points.append(
+                    (
+                        origin[0] + (vx * forward + px * side) * radius,
+                        origin[1] + (vy * forward + py * side) * radius,
+                    )
+                )
+            return points
 
-        pygame.draw.polygon(overlay, (92, 170, 255, 34), local_points)
-        pygame.draw.circle(overlay, (225, 245, 255, 120), local_tip, 2 * WORLD_SCALE)
+        def cone_points(
+            length: float, half_angle: float, samples: int = 24
+        ) -> list[tuple[float, float]]:
+            return [origin] + arc_points(length, half_angle, samples)
+
+        bounds_points = cone_points(122.0, 0.42, 28)
+        pad = 18 * WORLD_SCALE
+        min_x = math.floor(min(point[0] for point in bounds_points) - pad)
+        max_x = math.ceil(max(point[0] for point in bounds_points) + pad)
+        min_y = math.floor(min(point[1] for point in bounds_points) - pad)
+        max_y = math.ceil(max(point[1] for point in bounds_points) + pad)
+        width = max(1, max_x - min_x)
+        height = max(1, max_y - min_y)
+        supersample = 3
+        overlay = pygame.Surface(
+            (width * supersample, height * supersample), pygame.SRCALPHA
+        )
+
+        def localize(points: list[tuple[float, float]]) -> list[tuple[int, int]]:
+            return [
+                (
+                    int(round((x - min_x) * supersample)),
+                    int(round((y - min_y) * supersample)),
+                )
+                for x, y in points
+            ]
+
+        # Layer several translucent curved sectors instead of one hard polygon; the
+        # supersampled draw keeps the rim and diagonal edges smooth at low UI scales.
+        for length, angle, alpha in (
+            (121.0, 0.42, 18),
+            (110.0, 0.36, 32),
+            (88.0, 0.25, 24),
+        ):
+            pygame.draw.polygon(
+                overlay,
+                (*aim_blue, alpha),
+                localize(cone_points(length, angle, 30)),
+            )
+
+        overlay = pygame.transform.smoothscale(overlay, (width, height))
         self.screen.blit(overlay, (min_x, min_y))
 
     def draw_enemy(self, enemy: Enemy) -> None:
