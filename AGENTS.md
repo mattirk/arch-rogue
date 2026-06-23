@@ -189,4 +189,14 @@ Example categories:
 
 ## Next Milestones
 
-### 2.4: ???
+### 2.4: General fixes
+- Remove mentions of Diablo 2
+- Make player light source focused on aim cone, while still emitting faint light behind the player
+- Make constant dark levels togglable in settings
+
+### 3.0: Shops and allies along the way
+- Add shopkeepers and allied NPCs that buy and sell items
+- Shopkeepers are generated inside a shop room that has a door
+- Implement doors as a prerequisite for accessing shop rooms
+- Dungeon level has 75% chance of generating a shop room with a door
+- Doors can be opened by pressing E
