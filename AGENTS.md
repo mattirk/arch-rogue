@@ -189,19 +189,4 @@ Example categories:
 
 ## Next Milestones
 
-### 2.4: Dark levels
-- Make some levels below level 5 dark
-- Between levels 5 and 10, at least 3 levels are dark
-- After level 10, there is 50% chance of level being dark
-- On dark level, player can only see 4 tiles around them
-- Create light/dark effects that look visually pleasing
-- Monsters can navigate perfectly in the dark
-- Key combination Control+Shift+D toggles dark/light mode on level (this will be removed later)
-
-### 2.5: HUD polish
-
-- Add skill icons on the bottom of HUD in a panel, pay attention to alignment and spacing
-- Make the skill icons panel look pleasing
-- Include hotkey indicators in the skill icons
-- Combine skill icons with cooldown indicators and remove other cooldown indicators
-- Add health and mana potion drinking icons alongside the skill icons with hotkey indicators
+### 2.4: ???
