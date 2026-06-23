@@ -16,6 +16,9 @@ Explore a 10-depth procedural dungeon, choose one of five distinct archetypes, f
 - Presentation and UI copy now surface story status in the run header, help overlay, and summary screens.
 - Regression coverage now checks deterministic story generation, story guest interaction, choice effects, save/load persistence, and renderability.
 
+## Architecture
+This project uses vibe architecture. Module structure is changed when new features require it or game.py gets bloated.
+
 ## Requirements
 
 - Python 3.11 or newer

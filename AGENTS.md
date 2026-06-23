@@ -54,6 +54,8 @@ Notes for agents:
 
 ## Current Code Organization
 
+NOTE: This project uses vibe architecture. Module structure is changed when new features require it or game.py gets bloated.
+
 Keep the prototype architecture modular but intentionally small:
 
 - `src/arch_rogue/game.py` owns the main loop, input handling, gameplay orchestration, combat/interactions, audio/options setup, and the executable `main()` entry point.
