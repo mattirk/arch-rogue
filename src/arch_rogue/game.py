@@ -130,6 +130,8 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.running = True
         self.inventory_open = False
         self.inventory_sort_mode = "type"
+        self.inventory_cursor = 0
+        self.inventory_scroll = 0
         self.show_help = False
         self.quest_info_visible = True
         self.run_stats = RunStats()
@@ -1514,6 +1516,8 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.screen_flash_ttl = 0.0
         self.run_stats = RunStats()
         self.inventory_open = False
+        self.inventory_cursor = 0
+        self.inventory_scroll = 0
         self.show_help = False
         self.elapsed = 0.0
         self.state = "playing"
@@ -1562,6 +1566,8 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.impact_effects = []
         self.screen_flash_ttl = 0.0
         self.inventory_open = False
+        self.inventory_cursor = 0
+        self.inventory_scroll = 0
         self.show_help = False
         self._populate_dungeon()
         self.begin_story_level_intro()
@@ -2076,7 +2082,9 @@ class Game(SaveLoadMixin, RenderingMixin):
                     elif event.key in (pygame.K_n, pygame.K_ESCAPE, pygame.K_BACKSPACE):
                         self.cancel_exit_confirmation()
                 elif event.key == pygame.K_ESCAPE:
-                    if (
+                    if self.state == "playing" and self.inventory_open:
+                        self.inventory_open = False
+                    elif (
                         self.state == "playing"
                         and self.active_cutscene is not None
                         and not self.story_intro_pending
@@ -2186,18 +2194,34 @@ class Game(SaveLoadMixin, RenderingMixin):
                     self.show_help = not self.show_help
                 elif event.key == pygame.K_i and self.state == "playing":
                     self.inventory_open = not self.inventory_open
-                elif (
-                    event.key == pygame.K_TAB
-                    and self.state == "playing"
-                    and self.inventory_open
-                ):
-                    self.cycle_inventory_sort_mode()
-                elif (
-                    event.key == pygame.K_s
-                    and self.state == "playing"
-                    and self.inventory_open
-                ):
-                    self.sort_inventory()
+                    self.clamp_inventory_selection()
+                elif self.state == "playing" and self.inventory_open:
+                    if event.key == pygame.K_TAB:
+                        self.cycle_inventory_sort_mode()
+                    elif event.key == pygame.K_s:
+                        self.sort_inventory()
+                    elif event.key in (pygame.K_UP, pygame.K_w):
+                        self.move_inventory_selection(-1)
+                    elif event.key in (pygame.K_DOWN, pygame.K_x):
+                        self.move_inventory_selection(1)
+                    elif event.key == pygame.K_PAGEUP:
+                        self.move_inventory_selection(-5)
+                    elif event.key == pygame.K_PAGEDOWN:
+                        self.move_inventory_selection(5)
+                    elif event.key == pygame.K_HOME:
+                        self.set_inventory_selection(0)
+                    elif event.key == pygame.K_END:
+                        self.set_inventory_selection(len(self.player.inventory) - 1)
+                    elif event.key in (pygame.K_RETURN, pygame.K_e):
+                        self.use_selected_inventory_slot()
+                    elif event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
+                        self.drop_selected_inventory_slot()
+                    elif pygame.K_1 <= event.key <= pygame.K_9:
+                        index = event.key - pygame.K_1
+                        if event.mod & pygame.KMOD_SHIFT:
+                            self.drop_inventory_slot(index)
+                        else:
+                            self.use_inventory_slot(index)
                 elif event.key == pygame.K_r and self.state != "playing":
                     self.show_help = False
                     self.inventory_open = False
@@ -3411,8 +3435,56 @@ class Game(SaveLoadMixin, RenderingMixin):
             item.display_name,
         )
 
+    def clamp_inventory_selection(self) -> None:
+        count = len(self.player.inventory)
+        if count <= 0:
+            self.inventory_cursor = 0
+            self.inventory_scroll = 0
+            return
+        self.inventory_cursor = max(0, min(self.inventory_cursor, count - 1))
+        self.inventory_scroll = max(0, min(self.inventory_scroll, count - 1))
+
+    def ensure_inventory_cursor_visible(self, visible_rows: int) -> None:
+        self.clamp_inventory_selection()
+        count = len(self.player.inventory)
+        if count <= 0 or visible_rows <= 0:
+            self.inventory_scroll = 0
+            return
+        visible_rows = max(1, min(visible_rows, count))
+        if self.inventory_cursor < self.inventory_scroll:
+            self.inventory_scroll = self.inventory_cursor
+        elif self.inventory_cursor >= self.inventory_scroll + visible_rows:
+            self.inventory_scroll = self.inventory_cursor - visible_rows + 1
+        max_scroll = max(0, count - visible_rows)
+        self.inventory_scroll = max(0, min(self.inventory_scroll, max_scroll))
+
+    def set_inventory_selection(self, index: int, visible_rows: int = 0) -> None:
+        if not self.player.inventory:
+            self.inventory_cursor = 0
+            self.inventory_scroll = 0
+            return
+        self.inventory_cursor = max(0, min(index, len(self.player.inventory) - 1))
+        if visible_rows > 0:
+            self.ensure_inventory_cursor_visible(visible_rows)
+        else:
+            self.clamp_inventory_selection()
+
+    def move_inventory_selection(self, delta: int, visible_rows: int = 0) -> None:
+        self.set_inventory_selection(self.inventory_cursor + delta, visible_rows)
+
+    def use_selected_inventory_slot(self) -> None:
+        self.clamp_inventory_selection()
+        if self.player.inventory:
+            self.use_inventory_slot(self.inventory_cursor)
+
+    def drop_selected_inventory_slot(self) -> None:
+        self.clamp_inventory_selection()
+        if self.player.inventory:
+            self.drop_inventory_slot(self.inventory_cursor)
+
     def sort_inventory(self) -> None:
         self.player.inventory.sort(key=self.inventory_sort_key)
+        self.clamp_inventory_selection()
         self.floaters.append(
             FloatingText(
                 f"Inventory sorted by {self.inventory_sort_mode}",
@@ -3450,6 +3522,7 @@ class Game(SaveLoadMixin, RenderingMixin):
             )
         )
         self.play_sfx("pickup")
+        self.clamp_inventory_selection()
         self.save_run()
 
     def use_inventory_slot(self, index: int) -> None:
@@ -3459,13 +3532,16 @@ class Game(SaveLoadMixin, RenderingMixin):
         if item.slot == "potion":
             if not self.drink_potion(item):
                 self.player.inventory.insert(index, item)
+            self.clamp_inventory_selection()
             return
         if item.slot == "mana_potion":
             if not self.drink_mana_potion(item):
                 self.player.inventory.insert(index, item)
+            self.clamp_inventory_selection()
             return
         if item.slot == "identify":
             self.identify_first_item()
+            self.clamp_inventory_selection()
             self.save_run()
             return
         if item.unidentified:
@@ -3493,6 +3569,7 @@ class Game(SaveLoadMixin, RenderingMixin):
             )
         )
         self.play_sfx("pickup")
+        self.clamp_inventory_selection()
         self.save_run()
 
     def toggle_quest_info_visibility(self) -> None:

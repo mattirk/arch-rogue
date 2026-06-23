@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pygame
 
 import arch_rogue
+from arch_rogue.constants import MAX_INVENTORY
 from arch_rogue.content import RARITY_PROFILES, SECRET_HINTS, SHRINE_HINTS, TRAP_HINTS
 from arch_rogue.game import ARCHETYPES, Game
 from arch_rogue.models import Item, SecretCache, Shrine, Trap
@@ -160,6 +161,145 @@ class SystemsPolish12Tests(unittest.TestCase):
                 game.draw_title_menu()
                 game.state = "options"
                 game.draw_options_menu()
+            finally:
+                pygame.quit()
+
+    def test_inventory_hud_layout_controls_and_sort_cues_are_readable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(640, 480),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+            )
+            game.options_path = Path(tmpdir) / "options.json"
+            game.rng.seed(1212)
+            game.restart(ARCHETYPES[1])
+            if game.story_intro_pending:
+                game.choose_story_relic_path(0)
+            try:
+                game.player.inventory = [
+                    Item(f"Pack Blade {index}", "weapon", power=index, rarity="Magic")
+                    if index % 4 == 0
+                    else Item(
+                        f"Pack Vest {index}", "armor", defense=index, rarity="Rare"
+                    )
+                    if index % 4 == 1
+                    else Item(f"Health Draught {index}", "potion", heal=20 + index)
+                    if index % 4 == 2
+                    else Item(f"Mana Draught {index}", "mana_potion", mana=12 + index)
+                    for index in range(MAX_INVENTORY)
+                ]
+                game.inventory_open = True
+                game.inventory_cursor = len(game.player.inventory) - 1
+
+                layout = game.menus.inventory_layout()
+                box = layout["box"]
+                for key in ("header", "sort", "content", "list", "details", "controls"):
+                    self.assertTrue(box.contains(layout[key]), key)
+                title_h = game.font.get_height()
+                subtitle_h = game.small_font.get_height()
+                top_pad = max(game.ui(10), 10)
+                line_gap = max(game.ui(10), 10)
+                header_text_bottom = (
+                    layout["header"].y + top_pad + title_h + line_gap + subtitle_h
+                )
+                self.assertLess(header_text_bottom, layout["header"].bottom)
+                self.assertGreaterEqual(
+                    layout["header"].bottom - header_text_bottom, max(game.ui(12), 12)
+                )
+                self.assertGreaterEqual(
+                    layout["sort"].y - layout["header"].bottom, game.ui(8)
+                )
+                sort_vertical_pad = (
+                    layout["sort"].height - game.small_font.get_height()
+                ) // 2
+                self.assertGreaterEqual(sort_vertical_pad, max(game.ui(10), 10))
+                self.assertLessEqual(layout["header"].bottom, layout["sort"].y)
+                self.assertLessEqual(layout["sort"].bottom, layout["content"].y)
+                self.assertLessEqual(layout["content"].bottom, layout["controls"].y)
+                self.assertFalse(layout["list"].colliderect(layout["details"]))
+                self.assertEqual(layout["list"].y, layout["details"].y)
+                self.assertEqual(layout["list"].bottom, layout["details"].bottom)
+                _row_h, _row_gap, visible_rows = game.menus.inventory_row_metrics(
+                    layout["list"]
+                )
+                self.assertGreaterEqual(visible_rows, 1)
+
+                captured: list[str] = []
+                original_draw_text = game.menus.draw_text
+
+                def capture_draw_text(text, font, color, rect, *args, **kwargs):
+                    captured.append(text)
+                    return original_draw_text(text, font, color, rect, *args, **kwargs)
+
+                game.menus.draw_text = capture_draw_text
+                game.draw_inventory()
+
+                self.assertIn("Inventory", captured)
+                self.assertIn("Type", captured)
+                self.assertIn("Rarity", captured)
+                self.assertIn("Power", captured)
+                self.assertIn("Up/Down select", captured)
+                self.assertIn("Enter/E use", captured)
+                self.assertIn("Tab sort mode", captured)
+                self.assertIn("Shift+1-9 drop", captured)
+                self.assertGreater(game.inventory_scroll, 0)
+            finally:
+                pygame.quit()
+
+    def test_inventory_keyboard_navigation_selected_actions_and_sorting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=1213)
+            try:
+                drop_item = Item("Drop Test Potion", "potion", heal=20)
+                weapon = Item("Navigation Axe", "weapon", power=9, rarity="Rare")
+                armor = Item("Navigation Vest", "armor", defense=4, rarity="Magic")
+                game.player.inventory = [drop_item, weapon, armor]
+                game.inventory_open = True
+                game.inventory_cursor = 0
+                game.inventory_scroll = 0
+
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN, mod=0)
+                )
+                game.handle_events()
+                self.assertEqual(game.inventory_cursor, 1)
+
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, mod=0)
+                )
+                game.handle_events()
+                self.assertIs(game.player.equipment["weapon"], weapon)
+                self.assertNotIn(weapon, game.player.inventory)
+                self.assertLess(game.inventory_cursor, len(game.player.inventory))
+
+                game.set_inventory_selection(0)
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DELETE, mod=0)
+                )
+                game.handle_events()
+                self.assertNotIn(drop_item, game.player.inventory)
+                self.assertIn(drop_item, game.items)
+                self.assertLess(game.inventory_cursor, len(game.player.inventory))
+
+                game.player.inventory = [
+                    Item("Common Vest", "armor", defense=1, rarity="Common"),
+                    Item("Rare Blade", "weapon", power=4, rarity="Rare"),
+                    Item("Magic Blade", "weapon", power=8, rarity="Magic"),
+                ]
+                game.inventory_cursor = 0
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_TAB, mod=0)
+                )
+                game.handle_events()
+                self.assertEqual(game.inventory_sort_mode, "rarity")
+                self.assertEqual(game.player.inventory[0].name, "Rare Blade")
+
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE, mod=0)
+                )
+                game.handle_events()
+                self.assertFalse(game.inventory_open)
             finally:
                 pygame.quit()
 

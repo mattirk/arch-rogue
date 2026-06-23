@@ -5,6 +5,7 @@ from typing import Any, Sequence
 import pygame
 
 from . import __version__
+from .constants import MAX_INVENTORY
 from .models import Archetype, Color, Item
 
 MenuRow = tuple[str, str, str]
@@ -844,175 +845,593 @@ class MenuRenderer:
             "Ranger": ("Hawk Slash", "Multishot", "Snare Nova", "Vault"),
         }.get(name, ("Slash", "Bolt", "Nova", "Dash"))
 
+    def inventory_layout(self) -> dict[str, pygame.Rect]:
+        width, height = self.screen.get_size()
+        margin = max(self.u(16), 18)
+        box_w = min(max(self.u(620), int(width * 0.78)), width - margin * 2)
+        box_h = min(max(self.u(440), int(height * 0.86)), height - margin * 2)
+        box = pygame.Rect((width - box_w) // 2, (height - box_h) // 2, box_w, box_h)
+        pad = max(self.u(16), 18)
+        inner = box.inflate(-pad * 2, -pad * 2)
+        gap = max(self.u(8), 8)
+        header_h = max(
+            self.g.font.get_height()
+            + self.g.small_font.get_height()
+            + max(self.u(10), 10)
+            + max(self.u(22), 22),
+            72,
+        )
+        sort_h = max(self.g.small_font.get_height() + max(self.u(20), 20), 42)
+        controls_h = max(
+            self.g.tiny_font.get_height() * 3 + 34,
+            90,
+        )
+        header = pygame.Rect(inner.x, inner.y, inner.width, header_h)
+        sort = pygame.Rect(inner.x, header.bottom + gap, inner.width, sort_h)
+        controls = pygame.Rect(
+            inner.x,
+            inner.bottom - controls_h,
+            inner.width,
+            controls_h,
+        )
+        content_y = sort.bottom + gap
+        content_h = max(1, controls.y - gap - content_y)
+        content = pygame.Rect(inner.x, content_y, inner.width, content_h)
+        column_gap = max(self.u(10), 10)
+        details_w = max(self.u(190), min(int(content.width * 0.38), self.u(300)))
+        list_w = content.width - column_gap - details_w
+        min_list_w = min(self.u(330), max(self.u(240), int(content.width * 0.55)))
+        if list_w < min_list_w:
+            list_w = min_list_w
+            details_w = max(1, content.width - column_gap - list_w)
+        list_rect = pygame.Rect(content.x, content.y, list_w, content.height)
+        details_rect = pygame.Rect(
+            list_rect.right + column_gap,
+            content.y,
+            max(1, content.right - list_rect.right - column_gap),
+            content.height,
+        )
+        return {
+            "box": box,
+            "inner": inner,
+            "header": header,
+            "sort": sort,
+            "content": content,
+            "list": list_rect,
+            "details": details_rect,
+            "controls": controls,
+        }
+
+    def inventory_row_metrics(self, list_rect: pygame.Rect) -> tuple[int, int, int]:
+        row_gap = max(self.u(5), 5)
+        row_h = max(self.g.small_font.get_height() * 2 + self.u(18), self.u(56))
+        visible_rows = max(1, (list_rect.height + row_gap) // (row_h + row_gap))
+        return row_h, row_gap, visible_rows
+
+    def inventory_category_label(self, item: Item) -> str:
+        return {
+            "weapon": "Weapon",
+            "armor": "Armor",
+            "potion": "Health",
+            "mana_potion": "Mana",
+            "identify": "Identify",
+        }.get(item.slot, item.slot.replace("_", " ").title())
+
+    def inventory_action_label(self, item: Item) -> str:
+        if item.slot in ("weapon", "armor"):
+            return "Equip" if not item.unidentified else "Identify"
+        if item.slot in ("potion", "mana_potion"):
+            return "Drink"
+        if item.slot == "identify":
+            return "Read"
+        return "Use"
+
     def draw_inventory(self) -> None:
         width, height = self.screen.get_size()
-        margin = max(self.u(18), 24)
-        box_w = min(max(self.u(420), int(width * 0.58)), width - margin * 2)
-        box_h = min(max(self.u(360), int(height * 0.72)), height - margin * 2)
-        box = pygame.Rect(width - box_w - margin, (height - box_h) // 2, box_w, box_h)
-        self.panel(box, (105, 90, 68), alpha=246)
-        pad = max(self.u(18), 24)
-        inner = box.inflate(-pad * 2, -pad * 2)
-        inner.y += self.u(8)
-        inner.h -= self.u(4)
+        dim = pygame.Surface((width, height), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 86))
+        self.screen.blit(dim, (0, 0))
+
+        layout = self.inventory_layout()
+        box = layout["box"]
+        header = layout["header"]
+        sort_rect = layout["sort"]
+        list_rect = layout["list"]
+        details_rect = layout["details"]
+        controls_rect = layout["controls"]
+        self.panel(box, (105, 90, 68), alpha=252)
+
+        row_h, row_gap, visible_rows = self.inventory_row_metrics(list_rect)
+        self.g.ensure_inventory_cursor_visible(visible_rows)
+        self.draw_inventory_header(header)
+        self.draw_inventory_sort_bar(sort_rect)
+        self.draw_inventory_list(list_rect, row_h, row_gap, visible_rows)
+        self.draw_inventory_details(details_rect)
+        self.draw_inventory_controls(controls_rect)
+
+    def draw_inventory_header(self, rect: pygame.Rect) -> None:
+        top_pad = max(self.u(10), 10)
+        line_gap = max(self.u(10), 10)
         title_h = self.g.font.get_height()
         subtitle_h = self.g.small_font.get_height()
-        header_rect = pygame.Rect(inner.x, inner.y, inner.width, title_h)
-        self.draw_text("Inventory", self.g.font, self.TITLE, header_rect)
-        upgrade_names = self.g.player.skill_upgrades
-        subtitle = f"Sort: {self.g.inventory_sort_mode} · Tab cycle"
-        if upgrade_names:
-            subtitle = f"Upgrades {len(upgrade_names)} · {subtitle}"
+        title_y = rect.y + top_pad
+        subtitle_y = title_y + title_h + line_gap
+        capacity = f"{len(self.g.player.inventory)}/{MAX_INVENTORY} slots"
+        close_text = "I or Esc closes"
+        meta_w = min(
+            rect.width // 2,
+            max(self.u(150), self.g.small_font.size(capacity)[0] + self.u(24)),
+        )
+        meta_rect = pygame.Rect(
+            rect.right - meta_w,
+            title_y + max(0, (title_h - self.g.small_font.get_height()) // 2),
+            meta_w,
+            self.g.small_font.get_height(),
+        )
+        title_rect = pygame.Rect(
+            rect.x,
+            title_y,
+            max(1, meta_rect.x - rect.x - self.u(12)),
+            title_h,
+        )
+        self.draw_text("Inventory", self.g.font, self.TITLE, title_rect)
         self.draw_text(
-            subtitle,
-            self.g.small_font,
+            capacity, self.g.small_font, self.WARNING, meta_rect, align="right"
+        )
+        upgrade_names = self.g.player.skill_upgrades
+        subtitle = "Select an item for details, compare, use, or drop."
+        if upgrade_names:
+            subtitle = f"{len(upgrade_names)} upgrades learned · {subtitle}"
+        close_w = min(
+            max(self.g.tiny_font.size(close_text)[0] + self.u(8), self.u(112)),
+            rect.width // 3,
+        )
+        close_rect = pygame.Rect(
+            rect.right - close_w,
+            subtitle_y + max(0, (subtitle_h - self.g.tiny_font.get_height()) // 2),
+            close_w,
+            self.g.tiny_font.get_height(),
+        )
+        subtitle_rect = pygame.Rect(
+            rect.x,
+            subtitle_y,
+            max(1, close_rect.x - rect.x - self.u(12)),
+            subtitle_h,
+        )
+        self.draw_text(subtitle, self.g.small_font, self.MUTED, subtitle_rect)
+        self.draw_text(
+            close_text,
+            self.g.tiny_font,
             self.MUTED,
-            pygame.Rect(
-                inner.x + inner.width // 3,
-                inner.y + self.u(3),
-                inner.width * 2 // 3,
-                subtitle_h,
-            ),
+            close_rect,
             align="right",
         )
-        row_h = max(self.g.small_font.get_height() * 2 + self.u(14), self.u(46))
-        y = inner.y + max(title_h, subtitle_h) + self.u(20)
-        footer_h = max(self.u(116), self.g.small_font.get_height() * 5 + self.u(30))
-        list_bottom = inner.bottom - footer_h
-        if not self.g.player.inventory:
-            self.draw_text(
-                "Empty",
-                self.g.small_font,
-                self.MUTED,
-                pygame.Rect(inner.x, y, inner.width, row_h),
-            )
-        for index, item in enumerate(self.g.player.inventory):
-            if y + row_h > list_bottom:
-                break
-            color = self.item_color(item)
-            row = pygame.Rect(inner.x, y, inner.width, row_h)
-            pygame.draw.rect(self.screen, self.PANEL_2, row, border_radius=self.u(7))
-            pygame.draw.rect(
-                self.screen,
-                (*color, 70),
-                row,
-                max(1, self.u(1)),
-                border_radius=self.u(5),
-            )
-            slot_rect = pygame.Rect(
-                row.x + self.u(5), row.y + self.u(6), self.u(32), row.h - self.u(12)
-            )
-            pygame.draw.rect(
-                self.screen, (15, 14, 18), slot_rect, border_radius=self.u(4)
-            )
+
+    def draw_inventory_sort_bar(self, rect: pygame.Rect) -> None:
+        pygame.draw.rect(self.screen, self.PANEL_2, rect, border_radius=self.u(8))
+        pygame.draw.rect(
+            self.screen,
+            (62, 55, 66),
+            rect,
+            max(1, self.u(1)),
+            border_radius=self.u(8),
+        )
+        pad = max(self.u(10), 10)
+        label_w = min(max(self.u(42), 42), rect.width // 5)
+        self.draw_text(
+            "Sort",
+            self.g.small_font,
+            self.MUTED,
+            pygame.Rect(rect.x + pad, rect.y, label_w, rect.height),
+            valign="center",
+        )
+        modes = (("type", "Type"), ("rarity", "Rarity"), ("power", "Power"))
+        chip_gap = max(self.u(5), 5)
+        x = rect.x + pad + label_w + chip_gap
+        hint_w = min(max(self.u(116), 104), max(0, rect.right - x) // 3)
+        chip_w = max(1, (rect.right - x - hint_w - chip_gap * 3 - pad) // 3)
+        chip_h = rect.height - pad * 2
+        for mode, label in modes:
+            active = self.g.inventory_sort_mode == mode
+            chip = pygame.Rect(x, rect.y + pad, chip_w, chip_h)
+            color = self.WARNING if active else (80, 72, 86)
+            fill = self.shade(color, -52) if active else (30, 28, 36)
+            pygame.draw.rect(self.screen, fill, chip, border_radius=self.u(7))
             pygame.draw.rect(
                 self.screen,
                 color,
-                slot_rect,
+                chip,
                 max(1, self.u(1)),
-                border_radius=self.u(4),
+                border_radius=self.u(7),
             )
-            icon = self.g.rarity_icon(item.visible_rarity)
             self.draw_text(
-                f"{index + 1}{icon}",
-                self.g.small_font,
-                color,
-                slot_rect.inflate(-self.u(2), 0),
+                label,
+                self.g.tiny_font,
+                color if active else self.MUTED,
+                chip.inflate(-self.u(6), 0),
                 align="center",
                 valign="center",
             )
-            name_rect = pygame.Rect(
-                row.x + self.u(44),
-                row.y + self.u(4),
-                row.width - self.u(50),
-                self.g.small_font.get_height(),
-            )
-            detail_rect = pygame.Rect(
-                row.x + self.u(44),
-                name_rect.bottom + self.u(2),
-                row.width - self.u(50),
-                self.g.small_font.get_height(),
-            )
+            x += chip_w + chip_gap
+        hint_rect = pygame.Rect(x, rect.y, max(1, rect.right - x - pad), rect.height)
+        self.draw_text(
+            "Tab cycles · S re-sorts",
+            self.g.tiny_font,
+            self.MUTED,
+            hint_rect,
+            align="right",
+            valign="center",
+        )
+
+    def draw_inventory_list(
+        self, list_rect: pygame.Rect, row_h: int, row_gap: int, visible_rows: int
+    ) -> None:
+        pygame.draw.rect(self.screen, (14, 13, 18), list_rect, border_radius=self.u(9))
+        pygame.draw.rect(
+            self.screen,
+            (55, 50, 62),
+            list_rect,
+            max(1, self.u(1)),
+            border_radius=self.u(9),
+        )
+        header_h = max(self.g.small_font.get_height() + self.u(12), self.u(30))
+        header_rect = pygame.Rect(list_rect.x, list_rect.y, list_rect.width, header_h)
+        self.draw_text(
+            "Items",
+            self.g.small_font,
+            self.WARNING,
+            header_rect.inflate(-self.u(12), 0),
+            valign="center",
+        )
+        count_text = f"{len(self.g.player.inventory)} carried"
+        self.draw_text(
+            count_text,
+            self.g.tiny_font,
+            self.MUTED,
+            header_rect.inflate(-self.u(12), 0),
+            align="right",
+            valign="center",
+        )
+        rows_rect = pygame.Rect(
+            list_rect.x + self.u(8),
+            header_rect.bottom + self.u(4),
+            list_rect.width - self.u(16),
+            max(1, list_rect.bottom - header_rect.bottom - self.u(12)),
+        )
+        if not self.g.player.inventory:
             self.draw_text(
-                f"[{item.visible_rarity}] {item.label}{self.compare_hint(item)}",
-                self.g.small_font,
-                color,
-                name_rect,
-            )
-            self.draw_text(
-                self.g.item_decision_summary(item),
+                "Empty pack",
                 self.g.small_font,
                 self.MUTED,
-                detail_rect,
+                rows_rect,
+                align="center",
+                valign="center",
             )
-            y += row_h + self.u(4)
-        equipment_y = list_bottom + self.u(8)
+            return
+        _, _, rows_available = self.inventory_row_metrics(rows_rect)
+        visible_rows = max(1, min(visible_rows, rows_available))
+        self.g.ensure_inventory_cursor_visible(visible_rows)
+        start = self.g.inventory_scroll
+        end = min(len(self.g.player.inventory), start + visible_rows)
+        y = rows_rect.y
+        row_w = rows_rect.width - (
+            self.u(8) if len(self.g.player.inventory) > visible_rows else 0
+        )
+        for index in range(start, end):
+            row = pygame.Rect(rows_rect.x, y, row_w, row_h)
+            self.draw_inventory_item_row(
+                self.g.player.inventory[index],
+                index,
+                row,
+                index == self.g.inventory_cursor,
+            )
+            y += row_h + row_gap
+        self.draw_inventory_scrollbar(rows_rect, visible_rows)
+
+    def draw_inventory_item_row(
+        self, item: Item, index: int, row: pygame.Rect, selected: bool
+    ) -> None:
+        color = self.item_color(item)
+        fill = (38, 34, 45) if selected else self.PANEL_2
+        border = self.WARNING if selected else color
+        pygame.draw.rect(self.screen, fill, row, border_radius=self.u(7))
+        pygame.draw.rect(
+            self.screen,
+            border,
+            row,
+            max(1, self.u(2) if selected else self.u(1)),
+            border_radius=self.u(7),
+        )
+        if selected:
+            marker = pygame.Rect(
+                row.x, row.y + self.u(5), self.u(4), row.height - self.u(10)
+            )
+            pygame.draw.rect(self.screen, self.WARNING, marker, border_radius=self.u(3))
+        slot_size = min(self.u(38), row.height - self.u(14))
+        slot_rect = pygame.Rect(
+            row.x + self.u(9),
+            row.y + (row.height - slot_size) // 2,
+            slot_size,
+            slot_size,
+        )
+        pygame.draw.rect(self.screen, (13, 12, 17), slot_rect, border_radius=self.u(5))
+        pygame.draw.rect(
+            self.screen, color, slot_rect, max(1, self.u(1)), border_radius=self.u(5)
+        )
+        icon = self.g.rarity_icon(item.visible_rarity)
+        shortcut = str(index + 1) if index < 9 else f"{index + 1}"
+        self.draw_text(
+            f"{shortcut}{icon}",
+            self.g.tiny_font,
+            color,
+            slot_rect.inflate(-self.u(2), 0),
+            align="center",
+            valign="center",
+        )
+        tag = self.inventory_category_label(item)
+        tag_w = min(
+            max(self.g.tiny_font.size(tag)[0] + self.u(16), self.u(62)),
+            max(self.u(58), row.width // 4),
+        )
+        tag_rect = pygame.Rect(
+            row.right - tag_w - self.u(8),
+            row.y + self.u(8),
+            tag_w,
+            self.g.tiny_font.get_height() + self.u(8),
+        )
+        pygame.draw.rect(self.screen, (18, 17, 23), tag_rect, border_radius=self.u(5))
+        self.draw_text(
+            tag,
+            self.g.tiny_font,
+            self.MUTED,
+            tag_rect.inflate(-self.u(6), 0),
+            align="center",
+            valign="center",
+        )
+        text_x = slot_rect.right + self.u(10)
+        text_w = max(1, tag_rect.x - text_x - self.u(8))
+        name_rect = pygame.Rect(
+            text_x, row.y + self.u(7), text_w, self.g.small_font.get_height()
+        )
+        detail_rect = pygame.Rect(
+            text_x,
+            name_rect.bottom + self.u(3),
+            max(1, row.right - text_x - self.u(10)),
+            self.g.tiny_font.get_height(),
+        )
+        name = f"{item.visible_rarity} · {item.display_name}{self.compare_hint(item)}"
+        self.draw_text(name, self.g.small_font, color, name_rect)
+        self.draw_text(
+            self.g.item_decision_summary(item),
+            self.g.tiny_font,
+            self.MUTED,
+            detail_rect,
+        )
+
+    def draw_inventory_scrollbar(
+        self, rows_rect: pygame.Rect, visible_rows: int
+    ) -> None:
+        count = len(self.g.player.inventory)
+        if count <= visible_rows:
+            return
+        track = pygame.Rect(
+            rows_rect.right - self.u(5), rows_rect.y, self.u(4), rows_rect.height
+        )
+        pygame.draw.rect(self.screen, (34, 31, 39), track, border_radius=self.u(3))
+        thumb_h = max(self.u(18), int(track.height * visible_rows / count))
+        max_scroll = max(1, count - visible_rows)
+        travel = max(1, track.height - thumb_h)
+        thumb_y = track.y + int(travel * self.g.inventory_scroll / max_scroll)
+        thumb = pygame.Rect(track.x, thumb_y, track.width, thumb_h)
+        pygame.draw.rect(self.screen, self.WARNING, thumb, border_radius=self.u(3))
+
+    def draw_inventory_details(self, rect: pygame.Rect) -> None:
+        gap = max(self.u(8), 8)
+        equipment_h = min(
+            max(self.u(116), rect.height // 3),
+            max(self.u(92), rect.height - self.u(128)),
+        )
+        item_h = max(self.u(110), rect.height - equipment_h - gap)
+        item_rect = pygame.Rect(rect.x, rect.y, rect.width, item_h)
+        equipment_rect = pygame.Rect(
+            rect.x,
+            item_rect.bottom + gap,
+            rect.width,
+            max(1, rect.bottom - item_rect.bottom - gap),
+        )
+        self.draw_inventory_selected_card(item_rect)
+        self.draw_inventory_equipment(equipment_rect)
+
+    def draw_inventory_selected_card(self, rect: pygame.Rect) -> None:
+        pygame.draw.rect(self.screen, self.PANEL_2, rect, border_radius=self.u(9))
+        pygame.draw.rect(
+            self.screen, (58, 52, 66), rect, max(1, self.u(1)), border_radius=self.u(9)
+        )
+        pad = max(self.u(10), 10)
+        title_rect = pygame.Rect(
+            rect.x + pad,
+            rect.y + pad,
+            rect.width - pad * 2,
+            self.g.small_font.get_height(),
+        )
+        self.draw_text("Selected", self.g.small_font, self.WARNING, title_rect)
+        if not self.g.player.inventory:
+            self.draw_text(
+                "No item selected",
+                self.g.small_font,
+                self.MUTED,
+                rect.inflate(-pad * 2, -pad * 2),
+                align="center",
+                valign="center",
+            )
+            return
+        self.g.clamp_inventory_selection()
+        item = self.g.player.inventory[self.g.inventory_cursor]
+        color = self.item_color(item)
+        y = title_rect.bottom + self.u(8)
+        self.draw_text(
+            item.display_name,
+            self.g.small_font,
+            color,
+            pygame.Rect(
+                rect.x + pad, y, rect.width - pad * 2, self.g.small_font.get_height()
+            ),
+        )
+        y += self.g.small_font.get_height() + self.u(5)
+        meta = f"{item.visible_rarity} {self.inventory_category_label(item)} · {self.inventory_action_label(item)}"
+        self.draw_text(
+            meta,
+            self.g.tiny_font,
+            self.MUTED,
+            pygame.Rect(
+                rect.x + pad, y, rect.width - pad * 2, self.g.tiny_font.get_height()
+            ),
+        )
+        y += self.g.tiny_font.get_height() + self.u(8)
+        y = self.draw_wrapped_text(
+            self.g.item_decision_summary(item),
+            self.g.tiny_font,
+            self.TEXT,
+            pygame.Rect(rect.x + pad, y, rect.width - pad * 2, rect.bottom - y - pad),
+            max(self.g.tiny_font.get_height() + self.u(3), self.u(16)),
+        ) + self.u(6)
+        extra_lines: list[str] = []
+        if item.unidentified and item.slot in ("weapon", "armor"):
+            extra_lines.append("Stats hidden until identified or equipped.")
+        elif item.affixes:
+            extra_lines.append(f"Affixes: {', '.join(item.affixes)}")
+        if item.unique_effect:
+            extra_lines.append(f"Effect: {item.unique_effect}")
+        if item.cursed:
+            extra_lines.append("Cursed bargain: powerful, but costly.")
+        extra_lines.append("Enter/E use · Del drop")
+        for line in extra_lines:
+            if y + self.g.tiny_font.get_height() > rect.bottom - pad:
+                break
+            self.draw_text(
+                line,
+                self.g.tiny_font,
+                self.MUTED,
+                pygame.Rect(
+                    rect.x + pad, y, rect.width - pad * 2, self.g.tiny_font.get_height()
+                ),
+            )
+            y += self.g.tiny_font.get_height() + self.u(3)
+
+    def draw_inventory_equipment(self, rect: pygame.Rect) -> None:
+        pygame.draw.rect(self.screen, self.PANEL_2, rect, border_radius=self.u(9))
+        pygame.draw.rect(
+            self.screen, (58, 52, 66), rect, max(1, self.u(1)), border_radius=self.u(9)
+        )
+        pad = max(self.u(10), 10)
+        title_h = self.g.small_font.get_height()
         self.draw_text(
             "Equipped",
             self.g.small_font,
             self.WARNING,
-            pygame.Rect(inner.x, equipment_y, inner.width, row_h),
+            pygame.Rect(rect.x + pad, rect.y + pad, rect.width - pad * 2, title_h),
         )
-        weapon = (
-            self.g.player.equipment["weapon"].label
-            if self.g.player.equipment["weapon"]
-            else "Training Sword (+0 dmg)"
-        )
-        armor = (
-            self.g.player.equipment["armor"].label
-            if self.g.player.equipment["armor"]
-            else "Cloth (+0 armor)"
-        )
-        self.draw_text(
-            f"Weapon: {weapon}",
-            self.g.small_font,
-            self.TEXT,
-            pygame.Rect(inner.x, equipment_y + row_h, inner.width, row_h),
-        )
-        self.draw_text(
-            f"Armor: {armor}",
-            self.g.small_font,
-            self.TEXT,
-            pygame.Rect(
-                inner.x,
-                equipment_y + self.g.small_font.get_height() * 2 + self.u(4),
-                inner.width,
-                self.g.small_font.get_height(),
-            ),
-        )
-        upgrades = self.g.acquired_skill_upgrades()
-        upgrade_y = equipment_y + self.g.small_font.get_height() * 3 + self.u(8)
-        if upgrades:
-            name, detail = upgrades[-1]
-            self.draw_text(
-                f"Latest upgrade: {name}",
-                self.g.small_font,
-                self.g.skill_color(),
-                pygame.Rect(
-                    inner.x, upgrade_y, inner.width, self.g.small_font.get_height()
-                ),
+        card_gap = max(self.u(6), 6)
+        card_h = max(self.g.tiny_font.get_height() * 2 + self.u(12), self.u(42))
+        y = rect.y + pad + title_h + self.u(8)
+        available_h = rect.bottom - y - pad
+        if available_h < card_h * 2 + card_gap:
+            card_h = max(
+                self.g.tiny_font.get_height() + self.u(10),
+                (available_h - card_gap) // 2,
             )
-            self.draw_text(
-                detail,
-                self.g.small_font,
-                self.MUTED,
-                pygame.Rect(
-                    inner.x,
-                    upgrade_y + self.g.small_font.get_height(),
-                    inner.width,
-                    self.g.small_font.get_height(),
-                ),
-            )
-        controls_y = inner.bottom - self.g.small_font.get_height()
+        weapon = self.g.player.equipment["weapon"]
+        armor = self.g.player.equipment["armor"]
+        self.draw_equipment_card(
+            pygame.Rect(rect.x + pad, y, rect.width - pad * 2, card_h),
+            "Weapon",
+            weapon.label if weapon else "Training Sword (+0 dmg)",
+            self.item_color(weapon) if weapon else self.MUTED,
+        )
+        y += card_h + card_gap
+        self.draw_equipment_card(
+            pygame.Rect(rect.x + pad, y, rect.width - pad * 2, card_h),
+            "Armor",
+            armor.label if armor else "Cloth (+0 armor)",
+            self.item_color(armor) if armor else self.MUTED,
+        )
+
+    def draw_equipment_card(
+        self, rect: pygame.Rect, label: str, value: str, color: Color
+    ) -> None:
+        pygame.draw.rect(self.screen, (16, 15, 20), rect, border_radius=self.u(6))
+        pygame.draw.rect(
+            self.screen, color, rect, max(1, self.u(1)), border_radius=self.u(6)
+        )
         self.draw_text(
-            "1-9 use/equip · Shift+1-9 drop · Tab/S sort",
-            self.g.small_font,
+            label,
+            self.g.tiny_font,
             self.MUTED,
             pygame.Rect(
-                inner.x, controls_y, inner.width, self.g.small_font.get_height()
+                rect.x + self.u(8),
+                rect.y + self.u(4),
+                rect.width - self.u(16),
+                self.g.tiny_font.get_height(),
             ),
-            align="center",
         )
+        self.draw_text(
+            value,
+            self.g.tiny_font,
+            color,
+            pygame.Rect(
+                rect.x + self.u(8),
+                rect.y + self.u(4) + self.g.tiny_font.get_height(),
+                rect.width - self.u(16),
+                self.g.tiny_font.get_height(),
+            ),
+        )
+
+    def draw_inventory_controls(self, rect: pygame.Rect) -> None:
+        pygame.draw.rect(self.screen, (16, 15, 20), rect, border_radius=self.u(9))
+        pygame.draw.rect(
+            self.screen, (58, 52, 66), rect, max(1, self.u(1)), border_radius=self.u(9)
+        )
+        entries = [
+            "Up/Down select",
+            "Enter/E use",
+            "Del drop",
+            "Tab sort mode",
+            "S re-sort",
+            "Shift+1-9 drop",
+            "1-9 quick use",
+            "I/Esc close",
+        ]
+        pad = 7
+        gap = 5
+        font = self.g.tiny_font
+        pill_h = max(font.get_height() + 8, 22)
+        x = rect.x + pad
+        y = rect.y + pad
+        for entry in entries:
+            pill_w = min(max(font.size(entry)[0] + 16, 68), rect.width - pad * 2)
+            if x + pill_w > rect.right - pad:
+                x = rect.x + pad
+                y += pill_h + gap
+            if y + pill_h > rect.bottom - pad:
+                break
+            pill = pygame.Rect(x, y, pill_w, pill_h)
+            pygame.draw.rect(self.screen, (27, 25, 33), pill, border_radius=self.u(6))
+            pygame.draw.rect(
+                self.screen,
+                (78, 70, 86),
+                pill,
+                max(1, self.u(1)),
+                border_radius=self.u(6),
+            )
+            self.draw_text(
+                entry,
+                font,
+                self.MUTED,
+                pill.inflate(-6, 0),
+                align="center",
+                valign="center",
+            )
+            x += pill_w + gap
 
     def compare_hint(self, item: Item) -> str:
         if item.unidentified or item.slot not in ("weapon", "armor"):
