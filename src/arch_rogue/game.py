@@ -3106,6 +3106,22 @@ class Game(SaveLoadMixin, RenderingMixin):
                     guest = None if self.inventory_open else self.nearby_story_guest()
                     if guest and index < len(guest.choices):
                         self.resolve_story_choice(guest, index)
+                    elif index == 0:
+                        self.update_player_aim()
+                        self.player_melee_attack()
+                    elif index == 1:
+                        self.update_player_aim()
+                        self.player_cast_bolt()
+                    elif index == 2:
+                        self.update_player_aim()
+                        self.player_cast_nova()
+                    elif index == 3:
+                        self.update_player_aim()
+                        self.player_dash()
+                    elif index == 4:
+                        self.use_first_potion()
+                    elif index == 5:
+                        self.use_first_mana_potion()
                     elif self.inventory_open and event.mod & pygame.KMOD_SHIFT:
                         self.drop_inventory_slot(index)
                     else:

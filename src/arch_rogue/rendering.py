@@ -1212,7 +1212,7 @@ class RenderingMixin:
             {
                 "kind": "melee",
                 "icon": "melee",
-                "hotkey": "Space",
+                "hotkey": "1",
                 "label": melee_name,
                 "timer": self.player.melee_timer,
                 "cooldown": self.melee_cooldown(),
@@ -1224,7 +1224,7 @@ class RenderingMixin:
             {
                 "kind": "bolt",
                 "icon": "bolt",
-                "hotkey": "F",
+                "hotkey": "2",
                 "label": bolt_name,
                 "timer": self.player.bolt_timer,
                 "cooldown": self.bolt_cooldown(),
@@ -1236,7 +1236,7 @@ class RenderingMixin:
             {
                 "kind": "nova",
                 "icon": "nova",
-                "hotkey": "V",
+                "hotkey": "3",
                 "label": nova_name,
                 "timer": self.player.nova_timer,
                 "cooldown": self.nova_cooldown(),
@@ -1248,7 +1248,7 @@ class RenderingMixin:
             {
                 "kind": "dash",
                 "icon": "dash",
-                "hotkey": "Ctrl",
+                "hotkey": "4",
                 "label": dash_name,
                 "timer": self.player.dash_timer,
                 "cooldown": self.dash_cooldown(),
@@ -1260,7 +1260,7 @@ class RenderingMixin:
             {
                 "kind": "health_potion",
                 "icon": "health_potion",
-                "hotkey": "R",
+                "hotkey": "5",
                 "label": "Health",
                 "timer": 0.0,
                 "cooldown": 0.0,
@@ -1273,7 +1273,7 @@ class RenderingMixin:
             {
                 "kind": "mana_potion",
                 "icon": "mana_potion",
-                "hotkey": "T",
+                "hotkey": "6",
                 "label": "Mana",
                 "timer": 0.0,
                 "cooldown": 0.0,
@@ -4600,7 +4600,7 @@ class RenderingMixin:
             else " · Ctrl+Shift+D dark"
         )
         control_lines = [
-            f"Mouse/aim · E interact · I inventory · C character · {quest_control} · R health · T mana · H help{debug_dark}",
+            f"Mouse/aim · 1-6 actions · E interact · I inventory · C character · {quest_control} · H help{debug_dark}",
         ]
         control_y = max(
             mission_y + self.ui(4),

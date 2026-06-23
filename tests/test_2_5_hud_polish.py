@@ -59,7 +59,7 @@ class HudPolish25Tests(unittest.TestCase):
                 slots = game.hud_action_slots()
                 self.assertEqual(
                     [slot["hotkey"] for slot in slots],
-                    ["Space", "F", "V", "Ctrl", "R", "T"],
+                    ["1", "2", "3", "4", "5", "6"],
                 )
                 self.assertEqual(
                     [slot["kind"] for slot in slots],
@@ -107,7 +107,7 @@ class HudPolish25Tests(unittest.TestCase):
             finally:
                 pygame.quit()
 
-    def test_2_5_t_hotkey_drinks_mana_potion_without_using_health_potion(self) -> None:
+    def test_2_5_6_hotkey_drinks_mana_potion_without_using_health_potion(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
@@ -119,7 +119,7 @@ class HudPolish25Tests(unittest.TestCase):
                 ]
 
                 pygame.event.post(
-                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_t, mod=0)
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_6, mod=0)
                 )
                 game.handle_events()
 
