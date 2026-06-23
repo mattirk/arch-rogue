@@ -1711,6 +1711,83 @@ class RenderingMixin:
                 rendered += 1
         self.screen.blit(surface, rect)
 
+    def cutscene_response_text_width(self, choice_width: int) -> int:
+        key_size = self.ui(36)
+        return max(1, choice_width - self.ui(7) - key_size - self.ui(9) - self.ui(8))
+
+    def cutscene_response_lines(
+        self, label: str, detail: str, text_width: int
+    ) -> tuple[list[str], list[str]]:
+        label_lines = self.wrap_ui_text(label, self.small_font, text_width) or [""]
+        detail_lines = (
+            self.wrap_ui_text(detail, self.tiny_font, text_width) if detail else []
+        )
+        return label_lines, detail_lines
+
+    def cutscene_response_height(
+        self, label: str, detail: str, choice_width: int
+    ) -> int:
+        text_width = self.cutscene_response_text_width(choice_width)
+        label_lines, detail_lines = self.cutscene_response_lines(
+            label, detail, text_width
+        )
+        text_h = len(label_lines) * self.small_font.get_height()
+        if detail_lines:
+            text_h += self.ui(3) + len(detail_lines) * self.tiny_font.get_height()
+        return max(self.ui(44), text_h + self.ui(16))
+
+    def cutscene_response_rects(
+        self,
+        entries: list[tuple[str, str]],
+        x: int,
+        y: int,
+        width: int,
+        gap: int,
+    ) -> list[pygame.Rect]:
+        rects: list[pygame.Rect] = []
+        cursor_y = y
+        for label, detail in entries:
+            rect_h = self.cutscene_response_height(label, detail, width)
+            rects.append(pygame.Rect(x, cursor_y, width, rect_h))
+            cursor_y += rect_h + gap
+        return rects
+
+    def draw_cutscene_response_text(
+        self,
+        surface: pygame.Surface,
+        label: str,
+        detail: str,
+        text_rect: pygame.Rect,
+    ) -> None:
+        label_lines, detail_lines = self.cutscene_response_lines(
+            label, detail, text_rect.width
+        )
+        cursor_y = text_rect.y
+        for line in label_lines:
+            self.draw_ui_text(
+                surface,
+                line,
+                self.small_font,
+                (246, 235, 210),
+                pygame.Rect(
+                    text_rect.x, cursor_y, text_rect.width, self.small_font.get_height()
+                ),
+            )
+            cursor_y += self.small_font.get_height()
+        if detail_lines:
+            cursor_y += self.ui(3)
+        for line in detail_lines:
+            self.draw_ui_text(
+                surface,
+                line,
+                self.tiny_font,
+                (184, 178, 168),
+                pygame.Rect(
+                    text_rect.x, cursor_y, text_rect.width, self.tiny_font.get_height()
+                ),
+            )
+            cursor_y += self.tiny_font.get_height()
+
     def draw_quest_cutscene_overlay(self) -> None:
         asset = self.active_cutscene_asset()
         node = self.active_cutscene_node()
@@ -1718,7 +1795,7 @@ class RenderingMixin:
             return
         width, height = self.screen.get_size()
         dim = pygame.Surface((width, height), pygame.SRCALPHA)
-        dim.fill((0, 0, 0, 164))
+        dim.fill((0, 0, 0, 255))
         self.screen.blit(dim, (0, 0))
 
         accent = self.story_state.accent if self.story_state else self.theme.accent
@@ -1756,47 +1833,55 @@ class RenderingMixin:
         header_h = max(self.font.get_height(), self.small_font.get_height()) + self.ui(
             8
         )
-        self.draw_ui_text(
-            surface,
-            title_text,
-            self.font,
-            accent,
-            pygame.Rect(pad, pad, panel_w - pad * 2, self.font.get_height()),
+        header_meta = node.id.replace("_", " ").title()
+        meta_w = min(
+            self.small_font.size(header_meta)[0] + self.ui(8),
+            max(self.ui(96), (panel_w - pad * 2) // 3),
         )
+        meta_x = panel_w - pad - meta_w
+        title_rect = pygame.Rect(
+            pad,
+            pad,
+            max(1, meta_x - pad - self.ui(10)),
+            self.font.get_height(),
+        )
+        meta_rect = pygame.Rect(
+            meta_x,
+            pad + (self.font.get_height() - self.small_font.get_height()) // 2,
+            meta_w,
+            self.small_font.get_height(),
+        )
+        self.draw_ui_text(surface, title_text, self.font, accent, title_rect)
         self.draw_ui_text(
             surface,
-            node.id.replace("_", " ").title(),
+            header_meta,
             self.small_font,
-            (170, 165, 180),
-            pygame.Rect(
-                pad, pad + self.ui(4), panel_w - pad * 2, self.small_font.get_height()
-            ),
+            (196, 188, 204),
+            meta_rect,
             align="right",
         )
 
+        narration_complete = self.active_cutscene_narration_complete()
         choices = self.active_cutscene_choices()
-        choices_to_draw = choices[: min(9, len(choices))]
+        choices_to_draw = choices[: min(9, len(choices))] if narration_complete else []
         choice_gap = max(self.ui(4), 6)
-        choice_h = max(
-            self.small_font.get_height() + self.tiny_font.get_height() + self.ui(10),
-            self.ui(28),
-        )
-        choices_in_row = 1 < len(choices_to_draw) <= 3
+        choice_w = panel_w - pad * 2
         footer_h = self.small_font.get_height()
-        if choices_in_row:
-            choices_block_h = choice_h
-        else:
-            choices_block_h = (
-                len(choices_to_draw) * choice_h
-                + max(0, len(choices_to_draw) - 1) * choice_gap
-            )
+        choice_entries = [(choice.label, choice.detail) for choice in choices_to_draw]
+        choice_heights = [
+            self.cutscene_response_height(label, detail, choice_w)
+            for label, detail in choice_entries
+        ]
+        choices_block_h = (
+            sum(choice_heights) + max(0, len(choice_heights) - 1) * choice_gap
+        )
         choices_start = panel_h - pad - footer_h - self.ui(10) - choices_block_h
 
         stage_top = pad + header_h + self.ui(12)
         available_for_stage = max(
             self.ui(54), choices_start - stage_top - self.small_font.get_height() * 3
         )
-        stage_h = max(self.ui(58), min(int(panel_h * 0.30), available_for_stage))
+        stage_h = max(self.ui(74), min(int(panel_h * 0.38), available_for_stage))
         stage_rect = pygame.Rect(
             pad,
             stage_top,
@@ -1822,20 +1907,49 @@ class RenderingMixin:
             (panel_w - pad, line_y),
             self.ui(1),
         )
-        y += self.small_font.get_height() + self.ui(7)
+        y += self.small_font.get_height() + self.ui(5)
+        progress = self.active_cutscene_narration_progress()
+        progress_rect = pygame.Rect(pad, y, panel_w - pad * 2, max(self.ui(3), 3))
+        pygame.draw.rect(
+            surface, (33, 25, 43, 210), progress_rect, border_radius=self.ui(2)
+        )
+        pygame.draw.rect(
+            surface,
+            (*accent, 170),
+            (
+                progress_rect.x,
+                progress_rect.y,
+                int(progress_rect.width * progress),
+                progress_rect.height,
+            ),
+            border_radius=self.ui(2),
+        )
+        y += progress_rect.height + self.ui(8)
 
         text_bottom = max(y + self.small_font.get_height(), choices_start - self.ui(10))
         line_h = max(self.small_font.get_height() + self.ui(3), self.ui(18))
         body_lines: list[str] = []
-        for paragraph in self.active_cutscene_text().splitlines() or [""]:
+        visible_text = self.active_cutscene_visible_text()
+        if not visible_text:
+            visible_text = " "
+        for paragraph in visible_text.splitlines() or [""]:
             body_lines.extend(
                 self.wrap_ui_text(paragraph, self.small_font, panel_w - pad * 2)
             )
+        if not narration_complete and body_lines and int(self.elapsed * 2.0) % 2 == 0:
+            body_lines[-1] = f"{body_lines[-1]} |"
         max_body_lines = max(1, (text_bottom - y) // line_h)
-        for index, text_line in enumerate(body_lines[:max_body_lines]):
+        omitted_lines = max(0, len(body_lines) - max_body_lines)
+        visible_lines = body_lines[-max_body_lines:]
+        if omitted_lines and visible_lines:
+            visible_lines[0] = "… " + visible_lines[0]
+        for index, text_line in enumerate(visible_lines):
             color = (225, 218, 202)
-            if index == 0 and self.story_intro_pending:
+            is_current_line = index == len(visible_lines) - 1 and not narration_complete
+            if index == 0 and self.story_intro_pending and not omitted_lines:
                 color = (238, 218, 164)
+            elif is_current_line:
+                color = self.mix((238, 218, 164), accent, 0.22)
             self.draw_ui_text(
                 surface,
                 text_line,
@@ -1844,37 +1958,10 @@ class RenderingMixin:
                 pygame.Rect(pad, y, panel_w - pad * 2, line_h),
             )
             y += line_h
-        if len(body_lines) > max_body_lines and y + line_h <= choices_start:
-            self.draw_ui_text(
-                surface,
-                "…",
-                self.small_font,
-                (170, 165, 155),
-                pygame.Rect(pad, y, panel_w - pad * 2, line_h),
-            )
 
-        if choices_in_row:
-            count = len(choices_to_draw)
-            choice_w = (panel_w - pad * 2 - choice_gap * (count - 1)) // count
-            choice_rects = [
-                pygame.Rect(
-                    pad + index * (choice_w + choice_gap),
-                    choices_start,
-                    choice_w,
-                    choice_h,
-                )
-                for index in range(count)
-            ]
-        else:
-            choice_rects = [
-                pygame.Rect(
-                    pad,
-                    choices_start + index * (choice_h + choice_gap),
-                    panel_w - pad * 2,
-                    choice_h,
-                )
-                for index in range(len(choices_to_draw))
-            ]
+        choice_rects = self.cutscene_response_rects(
+            choice_entries, pad, choices_start, choice_w, choice_gap
+        )
         for index, (choice, choice_rect) in enumerate(
             zip(choices_to_draw, choice_rects)
         ):
@@ -1922,36 +2009,26 @@ class RenderingMixin:
                 valign="center",
             )
             text_x = key_rect.right + self.ui(9)
-            text_w = max(1, choice_rect.right - text_x - self.ui(8))
-            label_y = choice_rect.y + self.ui(7)
-            self.draw_ui_text(
-                surface,
-                choice.label,
-                self.small_font,
-                (246, 235, 210),
-                pygame.Rect(text_x, label_y, text_w, self.small_font.get_height()),
+            text_rect = pygame.Rect(
+                text_x,
+                choice_rect.y + self.ui(7),
+                max(1, choice_rect.right - text_x - self.ui(8)),
+                choice_rect.height - self.ui(14),
             )
-            detail_lines = self.wrap_ui_text(choice.detail, self.tiny_font, text_w)[:1]
-            if detail_lines:
-                self.draw_ui_text(
-                    surface,
-                    detail_lines[0],
-                    self.tiny_font,
-                    (184, 178, 168),
-                    pygame.Rect(
-                        text_x,
-                        label_y + self.small_font.get_height() + self.ui(2),
-                        text_w,
-                        self.tiny_font.get_height(),
-                    ),
-                )
+            self.draw_cutscene_response_text(
+                surface, choice.label, choice.detail, text_rect
+            )
 
         footer_text = (
-            "Press 1-3 to choose a dialogue response."
-            if len(choices_to_draw) >= 3
-            else "Press Enter/E to advance, Esc to close non-blocking dialogue."
+            "Narrator speaking… Press Enter/E/Space to reveal the full line."
+            if not narration_complete
+            else (
+                "Press 1-3 to choose a dialogue response."
+                if len(choices_to_draw) >= 3
+                else "Press Enter/E to advance, Esc to close non-blocking dialogue."
+            )
         )
-        if self.story_intro_pending:
+        if self.story_intro_pending and narration_complete:
             footer_text = "Press 1-3 to confirm the guest dialog, place the relic, and begin this level."
         self.draw_ui_text(
             surface,
@@ -1976,6 +2053,7 @@ class RenderingMixin:
             surface, (*accent, 125), stage_rect, self.ui(1), border_radius=self.ui(10)
         )
         self.draw_cutscene_story_backdrop(surface, stage_rect, accent)
+        self.draw_cutscene_memory_ribbon(surface, stage_rect, accent)
         horizon_y = stage_rect.y + int(stage_rect.height * 0.62)
         pygame.draw.line(
             surface,
@@ -1999,6 +2077,60 @@ class RenderingMixin:
             return
         for actor in asset.actors.values():
             self.draw_cutscene_actor(surface, stage_rect, actor, animation_id, accent)
+        self.draw_cutscene_letterbox(surface, stage_rect)
+
+    def draw_cutscene_letterbox(
+        self, surface: pygame.Surface, stage_rect: pygame.Rect
+    ) -> None:
+        bar_h = max(2, self.ui(5))
+        pygame.draw.rect(
+            surface,
+            (0, 0, 0, 74),
+            (stage_rect.x, stage_rect.y, stage_rect.width, bar_h),
+        )
+        pygame.draw.rect(
+            surface,
+            (0, 0, 0, 74),
+            (stage_rect.x, stage_rect.bottom - bar_h, stage_rect.width, bar_h),
+        )
+
+    def draw_cutscene_memory_ribbon(
+        self, surface: pygame.Surface, stage_rect: pygame.Rect, accent: Color
+    ) -> None:
+        asset = self.active_cutscene_asset()
+        if asset is None:
+            return
+        actor_order = ("player", "relic", "guest", "antagonist")
+        points: list[tuple[int, int]] = []
+        for actor_id in actor_order:
+            actor = asset.actors.get(actor_id)
+            if actor is None:
+                continue
+            points.append(
+                (
+                    stage_rect.x + int(actor.x * stage_rect.width),
+                    stage_rect.y + int(actor.y * stage_rect.height),
+                )
+            )
+        if len(points) < 2:
+            return
+        for start, end in zip(points, points[1:]):
+            pygame.draw.line(surface, (*accent, 42), start, end, self.ui(1))
+        progress = self.active_cutscene_narration_progress()
+        scaled = progress * (len(points) - 1)
+        segment_index = min(len(points) - 2, int(scaled))
+        segment_t = scaled - segment_index
+        start = points[segment_index]
+        end = points[segment_index + 1]
+        pulse = 0.5 + 0.5 * math.sin(self.elapsed * 5.0)
+        marker = (
+            int(start[0] + (end[0] - start[0]) * segment_t),
+            int(start[1] + (end[1] - start[1]) * segment_t),
+        )
+        pygame.draw.circle(
+            surface, (*self.shade(accent, 42), int(92 + pulse * 86)), marker, self.ui(4)
+        )
+        pygame.draw.circle(surface, (*accent, 76), marker, self.ui(10), self.ui(1))
 
     def draw_cutscene_story_backdrop(
         self, surface: pygame.Surface, stage_rect: pygame.Rect, accent: Color
@@ -2017,7 +2149,10 @@ class RenderingMixin:
                 (stage_rect.x + self.ui(2), y, stage_rect.width - self.ui(4), h),
             )
         text = self.cutscene_story_text().lower()
-        self.draw_cutscene_theme_motifs(surface, stage_rect, accent, text)
+        current_sentence = self.active_cutscene_current_sentence_text().lower()
+        scene_text = f"{text} {current_sentence}"
+        self.draw_cutscene_theme_motifs(surface, stage_rect, accent, scene_text)
+        self.draw_cutscene_relic_silhouette(surface, stage_rect, accent)
         self.draw_cutscene_faction_sigil(surface, stage_rect, accent)
         beat = self.current_story_beat()
         story = self.story_state
@@ -2131,6 +2266,314 @@ class RenderingMixin:
                     (180, 45, 68, 62),
                     [(x, y - self.ui(5)), (x - self.ui(2), y), (x + self.ui(2), y)],
                 )
+        if any(term in text for term in ("gate", "door", "threshold", "lock", "key")):
+            door_w = max(self.ui(26), stage_rect.width // 9)
+            door_h = max(self.ui(46), int(stage_rect.height * 0.46))
+            door_rect = pygame.Rect(0, 0, door_w, door_h)
+            door_rect.midbottom = (stage_rect.centerx, stage_rect.bottom - self.ui(8))
+            pulse = 0.5 + 0.5 * math.sin(self.elapsed * 2.2)
+            pygame.draw.rect(
+                surface, (20, 15, 25, 150), door_rect, border_radius=self.ui(5)
+            )
+            pygame.draw.rect(
+                surface,
+                (*accent, int(82 + pulse * 76)),
+                door_rect,
+                self.ui(1),
+                border_radius=self.ui(5),
+            )
+            crack_x = door_rect.centerx + int(math.sin(self.elapsed * 0.8) * self.ui(2))
+            pygame.draw.line(
+                surface,
+                (*self.shade(accent, 55), 95),
+                (crack_x, door_rect.y + self.ui(6)),
+                (crack_x, door_rect.bottom - self.ui(4)),
+                self.ui(1),
+            )
+        if any(
+            term in text for term in ("bell", "toll", "chant", "choir", "song", "voice")
+        ):
+            center = (
+                stage_rect.x + int(stage_rect.width * 0.24),
+                stage_rect.y + int(stage_rect.height * 0.28),
+            )
+            for index in range(3):
+                radius = self.ui(18 + index * 13) + int(
+                    math.sin(self.elapsed * 2.1 + index) * self.ui(2)
+                )
+                pygame.draw.arc(
+                    surface,
+                    (236, 218, 138, 68 - index * 12),
+                    (center[0] - radius, center[1] - radius, radius * 2, radius * 2),
+                    -0.7,
+                    0.7,
+                    self.ui(1),
+                )
+        if any(
+            term in text for term in ("map", "road", "path", "route", "cartographer")
+        ):
+            path_points = []
+            for index in range(6):
+                path_points.append(
+                    (
+                        stage_rect.x + int(stage_rect.width * (0.12 + index * 0.15)),
+                        stage_rect.bottom - self.ui(12 + (index % 2) * 12),
+                    )
+                )
+            pygame.draw.lines(
+                surface, (224, 206, 150, 78), False, path_points, self.ui(1)
+            )
+            for point in path_points[1::2]:
+                pygame.draw.circle(surface, (224, 206, 150, 86), point, self.ui(2))
+        if any(
+            term in text for term in ("chain", "pulley", "machine", "engine", "gear")
+        ):
+            for index in range(5):
+                rect = pygame.Rect(
+                    stage_rect.right - self.ui(42),
+                    stage_rect.y + self.ui(18 + index * 16),
+                    self.ui(14),
+                    self.ui(9),
+                )
+                pygame.draw.ellipse(surface, (198, 170, 126, 78), rect, self.ui(1))
+            gear_center = (
+                stage_rect.right - self.ui(30),
+                stage_rect.bottom - self.ui(28),
+            )
+            for spoke in range(8):
+                angle = self.elapsed * 0.45 + math.tau * spoke / 8
+                pygame.draw.line(
+                    surface,
+                    (198, 170, 126, 74),
+                    gear_center,
+                    (
+                        gear_center[0] + int(math.cos(angle) * self.ui(16)),
+                        gear_center[1] + int(math.sin(angle) * self.ui(16)),
+                    ),
+                    self.ui(1),
+                )
+            pygame.draw.circle(
+                surface, (198, 170, 126, 78), gear_center, self.ui(15), self.ui(1)
+            )
+        if any(
+            term in text
+            for term in ("antler", "hunter", "beast", "stag", "predator", "prey")
+        ):
+            base = (
+                stage_rect.x + int(stage_rect.width * 0.72),
+                stage_rect.y + int(stage_rect.height * 0.28),
+            )
+            for side in (-1, 1):
+                trunk_end = (base[0] + side * self.ui(18), base[1] - self.ui(24))
+                pygame.draw.line(
+                    surface, (214, 212, 192, 78), base, trunk_end, self.ui(1)
+                )
+                for branch in range(3):
+                    start = (
+                        base[0] + side * self.ui(8 + branch * 5),
+                        base[1] - self.ui(8 + branch * 6),
+                    )
+                    end = (start[0] + side * self.ui(9), start[1] - self.ui(8))
+                    pygame.draw.line(
+                        surface, (214, 212, 192, 70), start, end, self.ui(1)
+                    )
+        if any(
+            term in text for term in ("coin", "auction", "broker", "payment", "marked")
+        ):
+            for index in range(6):
+                center = (
+                    stage_rect.x + int(stage_rect.width * (0.18 + index * 0.09)),
+                    stage_rect.bottom - self.ui(10 + (index % 3) * 5),
+                )
+                pygame.draw.circle(
+                    surface, (213, 165, 72, 82), center, self.ui(4), self.ui(1)
+                )
+                pygame.draw.circle(surface, (213, 165, 72, 46), center, self.ui(1))
+        if any(
+            term in text for term in ("mirror", "mask", "reflection", "glass", "face")
+        ):
+            for index in range(4):
+                cx = stage_rect.x + int(stage_rect.width * (0.42 + index * 0.08))
+                cy = stage_rect.y + int(stage_rect.height * (0.18 + (index % 2) * 0.1))
+                shard = [
+                    (cx, cy - self.ui(9)),
+                    (cx + self.ui(8), cy),
+                    (cx - self.ui(3), cy + self.ui(11)),
+                ]
+                pygame.draw.polygon(surface, (218, 232, 245, 54), shard)
+                pygame.draw.polygon(
+                    surface, (*self.shade(accent, 42), 72), shard, self.ui(1)
+                )
+
+    def draw_cutscene_relic_silhouette(
+        self, surface: pygame.Surface, stage_rect: pygame.Rect, accent: Color
+    ) -> None:
+        center = (stage_rect.centerx, stage_rect.y + int(stage_rect.height * 0.36))
+        progress = self.active_cutscene_narration_progress()
+        pulse = 0.5 + 0.5 * math.sin(self.elapsed * 3.4)
+        radius = self.ui(20) + int(self.ui(12) * progress + self.ui(5) * pulse)
+        pygame.draw.circle(surface, (*self.shade(accent, -25), 34), center, radius)
+        pygame.draw.circle(surface, (*accent, 64), center, radius, self.ui(1))
+        aspect = self.cutscene_relic_aspect()
+        color = (*self.shade(accent, 52), 118)
+        if aspect == "bell":
+            rect = pygame.Rect(0, 0, self.ui(30), self.ui(30))
+            rect.center = center
+            pygame.draw.arc(surface, color, rect, math.pi, math.tau, self.ui(2))
+            pygame.draw.line(
+                surface,
+                color,
+                (rect.x, center[1] + self.ui(6)),
+                (rect.right, center[1] + self.ui(6)),
+                self.ui(2),
+            )
+        elif aspect == "lantern":
+            rect = pygame.Rect(
+                center[0] - self.ui(13),
+                center[1] - self.ui(18),
+                self.ui(26),
+                self.ui(34),
+            )
+            pygame.draw.rect(surface, color, rect, self.ui(2), border_radius=self.ui(3))
+            pygame.draw.line(
+                surface,
+                color,
+                (center[0] - self.ui(8), rect.y),
+                (center[0], rect.y - self.ui(8)),
+                self.ui(1),
+            )
+            pygame.draw.line(
+                surface,
+                color,
+                (center[0] + self.ui(8), rect.y),
+                (center[0], rect.y - self.ui(8)),
+                self.ui(1),
+            )
+            pygame.draw.circle(surface, (245, 174, 92, 86), center, self.ui(7))
+        elif aspect == "key":
+            pygame.draw.circle(
+                surface,
+                color,
+                (center[0] - self.ui(8), center[1] - self.ui(4)),
+                self.ui(7),
+                self.ui(2),
+            )
+            pygame.draw.line(
+                surface,
+                color,
+                (center[0], center[1]),
+                (center[0] + self.ui(20), center[1] + self.ui(14)),
+                self.ui(2),
+            )
+            pygame.draw.line(
+                surface,
+                color,
+                (center[0] + self.ui(14), center[1] + self.ui(10)),
+                (center[0] + self.ui(20), center[1] + self.ui(5)),
+                self.ui(1),
+            )
+        elif aspect == "crown":
+            crown = [
+                (center[0] - self.ui(20), center[1] + self.ui(9)),
+                (center[0] - self.ui(12), center[1] - self.ui(10)),
+                (center[0], center[1] + self.ui(3)),
+                (center[0] + self.ui(12), center[1] - self.ui(10)),
+                (center[0] + self.ui(20), center[1] + self.ui(9)),
+            ]
+            pygame.draw.lines(surface, color, False, crown, self.ui(2))
+        elif aspect == "mirror":
+            pygame.draw.ellipse(
+                surface,
+                color,
+                (
+                    center[0] - self.ui(13),
+                    center[1] - self.ui(18),
+                    self.ui(26),
+                    self.ui(34),
+                ),
+                self.ui(2),
+            )
+            pygame.draw.line(
+                surface,
+                color,
+                (center[0], center[1] + self.ui(16)),
+                (center[0], center[1] + self.ui(28)),
+                self.ui(2),
+            )
+        elif aspect == "chain":
+            for index in range(3):
+                rect = pygame.Rect(
+                    center[0] - self.ui(20) + index * self.ui(14),
+                    center[1] - self.ui(7),
+                    self.ui(18),
+                    self.ui(12),
+                )
+                pygame.draw.ellipse(surface, color, rect, self.ui(2))
+        elif aspect == "map":
+            rect = pygame.Rect(
+                center[0] - self.ui(18),
+                center[1] - self.ui(13),
+                self.ui(36),
+                self.ui(26),
+            )
+            pygame.draw.rect(surface, color, rect, self.ui(1), border_radius=self.ui(2))
+            pygame.draw.line(
+                surface,
+                color,
+                (rect.x + self.ui(6), rect.y + self.ui(18)),
+                (rect.right - self.ui(5), rect.y + self.ui(7)),
+                self.ui(1),
+            )
+        elif aspect == "vessel":
+            urn = [
+                (center[0] - self.ui(14), center[1] - self.ui(9)),
+                (center[0] - self.ui(8), center[1] + self.ui(17)),
+                (center[0] + self.ui(8), center[1] + self.ui(17)),
+                (center[0] + self.ui(14), center[1] - self.ui(9)),
+            ]
+            pygame.draw.polygon(surface, color, urn, self.ui(2))
+            pygame.draw.line(
+                surface,
+                (*self.shade(accent, 70), 92),
+                (center[0] - self.ui(10), center[1]),
+                (center[0] + self.ui(10), center[1]),
+                self.ui(1),
+            )
+        elif aspect == "seed":
+            pygame.draw.ellipse(
+                surface,
+                color,
+                (
+                    center[0] - self.ui(10),
+                    center[1] - self.ui(17),
+                    self.ui(20),
+                    self.ui(34),
+                ),
+                self.ui(2),
+            )
+            pygame.draw.line(
+                surface,
+                color,
+                (center[0], center[1] - self.ui(12)),
+                (center[0], center[1] + self.ui(12)),
+                self.ui(1),
+            )
+        elif aspect == "spike":
+            spike = [
+                (center[0], center[1] - self.ui(24)),
+                (center[0] + self.ui(9), center[1] + self.ui(20)),
+                (center[0] - self.ui(9), center[1] + self.ui(20)),
+            ]
+            pygame.draw.polygon(surface, color, spike, self.ui(2))
+        else:
+            pygame.draw.line(
+                surface,
+                color,
+                (center[0], center[1] - self.ui(22)),
+                (center[0], center[1] + self.ui(22)),
+                self.ui(2),
+            )
+            pygame.draw.circle(surface, color, center, self.ui(6), self.ui(1))
 
     def draw_cutscene_faction_sigil(
         self, surface: pygame.Surface, stage_rect: pygame.Rect, accent: Color
@@ -2163,6 +2606,9 @@ class RenderingMixin:
     def draw_cutscene_choice_tableau(
         self, surface: pygame.Surface, stage_rect: pygame.Rect, accent: Color
     ) -> None:
+        if not self.active_cutscene_narration_complete():
+            self.draw_cutscene_narrator_wave(surface, stage_rect, accent)
+            return
         choices = self.active_cutscene_choices()
         if not choices:
             return
@@ -2196,6 +2642,32 @@ class RenderingMixin:
                 choice.choice_key,
                 self.ui(10),
                 alpha=int(86 + pulse * 92),
+            )
+
+    def draw_cutscene_narrator_wave(
+        self, surface: pygame.Surface, stage_rect: pygame.Rect, accent: Color
+    ) -> None:
+        source = (stage_rect.x + self.ui(20), stage_rect.y + self.ui(24))
+        target = (stage_rect.centerx, stage_rect.y + int(stage_rect.height * 0.34))
+        node = self.active_cutscene_node()
+        asset = self.active_cutscene_asset()
+        if node is not None and asset is not None and node.speaker in asset.actors:
+            actor = asset.actors[node.speaker]
+            target = (
+                stage_rect.x + int(actor.x * stage_rect.width),
+                stage_rect.y + int(actor.y * stage_rect.height),
+            )
+        progress = self.active_cutscene_narration_progress()
+        for index in range(4):
+            t = (progress + index * 0.18 + self.elapsed * 0.08) % 1.0
+            x = int(source[0] + (target[0] - source[0]) * t)
+            y = int(source[1] + (target[1] - source[1]) * t)
+            wobble = int(math.sin(self.elapsed * 4.0 + index) * self.ui(3))
+            pygame.draw.circle(
+                surface,
+                (*self.shade(accent, 48), 80 - index * 10),
+                (x, y + wobble),
+                max(1, self.ui(2)),
             )
 
     def draw_cutscene_choice_glyph(
@@ -2509,6 +2981,36 @@ class RenderingMixin:
             )
             pygame.draw.line(sprite, (236, 218, 138), (18, 34), (36, 34), 2)
             pygame.draw.circle(sprite, (236, 218, 138), (27, 39), 3)
+        elif aspect == "lantern":
+            pygame.draw.rect(
+                sprite, (245, 196, 108), (18, 20, 18, 28), 2, border_radius=3
+            )
+            pygame.draw.line(sprite, (245, 196, 108), (20, 20), (27, 12), 1)
+            pygame.draw.line(sprite, (245, 196, 108), (34, 20), (27, 12), 1)
+            pygame.draw.circle(sprite, (245, 124, 72), (27, 35), 5)
+        elif aspect == "chain":
+            for index in range(3):
+                pygame.draw.ellipse(
+                    sprite, (216, 194, 156), (15 + index * 8, 28, 14, 9), 2
+                )
+        elif aspect == "map":
+            pygame.draw.rect(
+                sprite, (228, 208, 162), (15, 23, 24, 24), 1, border_radius=2
+            )
+            pygame.draw.line(sprite, (228, 208, 162), (19, 40), (36, 28), 1)
+            pygame.draw.circle(sprite, (228, 208, 162), (22, 37), 1)
+        elif aspect == "vessel":
+            pygame.draw.polygon(
+                sprite, (170, 210, 232), [(18, 25), (23, 49), (31, 49), (36, 25)], 2
+            )
+            pygame.draw.line(sprite, (170, 210, 232), (21, 34), (33, 34), 1)
+        elif aspect == "seed":
+            pygame.draw.ellipse(sprite, (126, 214, 92), (19, 19, 16, 31), 2)
+            pygame.draw.line(sprite, (126, 214, 92), (27, 24), (27, 45), 1)
+        elif aspect == "spike":
+            pygame.draw.polygon(
+                sprite, (220, 210, 190), [(27, 15), (36, 52), (18, 52)], 2
+            )
         elif aspect == "blood":
             pygame.draw.circle(sprite, (192, 46, 70), (27, 34), 6)
             pygame.draw.polygon(sprite, (192, 46, 70), [(27, 18), (20, 35), (34, 35)])
@@ -2610,6 +3112,31 @@ class RenderingMixin:
                         top + sprite_h // 2 + int(math.sin(angle) * self.ui(23)),
                     )
                     pygame.draw.line(surface, (*accent, 118), start, end, self.ui(1))
+        elif actor.id == "antagonist":
+            pulse = 0.5 + 0.5 * math.sin(self.elapsed * 2.8)
+            crown_y = top + self.ui(8)
+            pygame.draw.circle(
+                surface,
+                (232, 83, 74, int(42 + pulse * 42)),
+                (x, top + sprite_h // 2),
+                self.ui(28),
+                self.ui(1),
+            )
+            for side in (-1, 1):
+                pygame.draw.line(
+                    surface,
+                    (232, 83, 74, 104),
+                    (x, crown_y),
+                    (x + side * self.ui(20), crown_y - self.ui(12)),
+                    self.ui(1),
+                )
+                pygame.draw.line(
+                    surface,
+                    (232, 83, 74, 72),
+                    (x + side * self.ui(12), crown_y + self.ui(4)),
+                    (x + side * self.ui(28), crown_y + self.ui(18)),
+                    self.ui(1),
+                )
 
     def draw_cutscene_guest_prop(
         self, surface: pygame.Surface, x: int, y: int, color: Color
@@ -2691,13 +3218,30 @@ class RenderingMixin:
 
     def cutscene_relic_aspect(self) -> str:
         text = self.cutscene_story_text().lower()
-        if any(term in text for term in ("blade", "sword", "knife", "fang", "weapon")):
-            return "blade"
-        if any(term in text for term in ("mirror", "lens", "face", "reflection")):
+        if any(
+            term in text
+            for term in ("spike", "nail", "blade", "sword", "knife", "fang", "weapon")
+        ):
+            return (
+                "spike" if any(term in text for term in ("spike", "nail")) else "blade"
+            )
+        if any(
+            term in text for term in ("mirror", "lens", "face", "reflection", "psalter")
+        ):
             return "mirror"
-        if any(term in text for term in ("crown", "tyrant", "king", "warden")):
+        if any(term in text for term in ("crown", "antler")):
             return "crown"
-        if any(term in text for term in ("key", "lock", "gate", "door")):
+        if any(term in text for term in ("chain", "oath-eater")):
+            return "chain"
+        if any(term in text for term in ("map", "vellum", "road", "cartographer")):
+            return "map"
+        if any(term in text for term in ("lantern", "lamp")):
+            return "lantern"
+        if any(term in text for term in ("urn", "vessel", "rain", "water")):
+            return "vessel"
+        if any(term in text for term in ("seed", "heartseed", "reliquary", "heart")):
+            return "seed"
+        if any(term in text for term in ("key", "cinder-key")):
             return "key"
         if any(term in text for term in ("bell", "toll", "chime")):
             return "bell"
@@ -2733,7 +3277,7 @@ class RenderingMixin:
             return
         width, height = self.screen.get_size()
         dim = pygame.Surface((width, height), pygame.SRCALPHA)
-        dim.fill((0, 0, 0, 150))
+        dim.fill((0, 0, 0, 255))
         self.screen.blit(dim, (0, 0))
 
         accent = self.story_state.accent if self.story_state else self.theme.accent
@@ -2771,40 +3315,48 @@ class RenderingMixin:
         header_h = max(self.font.get_height(), self.small_font.get_height()) + self.ui(
             8
         )
-        self.draw_ui_text(
-            surface,
-            title_text,
-            self.font,
-            accent,
-            pygame.Rect(pad, pad, available_w, self.font.get_height()),
+        meta_w = min(
+            self.small_font.size(depth_text)[0] + self.ui(8),
+            max(self.ui(96), available_w // 3),
         )
+        meta_x = pad + available_w - meta_w
+        title_rect = pygame.Rect(
+            pad,
+            pad,
+            max(1, meta_x - pad - self.ui(10)),
+            self.font.get_height(),
+        )
+        meta_rect = pygame.Rect(
+            meta_x,
+            pad + (self.font.get_height() - self.small_font.get_height()) // 2,
+            meta_w,
+            self.small_font.get_height(),
+        )
+        self.draw_ui_text(surface, title_text, self.font, accent, title_rect)
         self.draw_ui_text(
             surface,
             depth_text,
             self.small_font,
-            (170, 165, 180),
-            pygame.Rect(
-                pad, pad + self.ui(4), available_w, self.small_font.get_height()
-            ),
+            (196, 188, 204),
+            meta_rect,
             align="right",
         )
 
         options = self.story_relic_choice_options()
         options_to_draw = options[: min(3, len(options))]
         choice_gap = max(self.ui(4), 6)
-        choice_h = max(
-            self.small_font.get_height() + self.tiny_font.get_height() + self.ui(10),
-            self.ui(28),
-        )
         footer_h = self.small_font.get_height()
-        choices_in_row = 1 < len(options_to_draw) <= 3
-        if choices_in_row:
-            choices_block_h = choice_h
-        else:
-            choices_block_h = (
-                len(options_to_draw) * choice_h
-                + max(0, len(options_to_draw) - 1) * choice_gap
-            )
+        choice_w = available_w
+        option_entries = [
+            (label, detail) for _choice_key, label, detail in options_to_draw
+        ]
+        option_heights = [
+            self.cutscene_response_height(label, detail, choice_w)
+            for label, detail in option_entries
+        ]
+        choices_block_h = (
+            sum(option_heights) + max(0, len(option_heights) - 1) * choice_gap
+        )
         choices_start = panel_h - pad - footer_h - self.ui(10) - choices_block_h
 
         stage_top = pad + header_h + self.ui(12)
@@ -2844,28 +3396,9 @@ class RenderingMixin:
                 pygame.Rect(pad, y, available_w, line_h),
             )
 
-        if choices_in_row:
-            count = len(options_to_draw)
-            choice_w = (available_w - choice_gap * (count - 1)) // count
-            choice_rects = [
-                pygame.Rect(
-                    pad + index * (choice_w + choice_gap),
-                    choices_start,
-                    choice_w,
-                    choice_h,
-                )
-                for index in range(count)
-            ]
-        else:
-            choice_rects = [
-                pygame.Rect(
-                    pad,
-                    choices_start + index * (choice_h + choice_gap),
-                    available_w,
-                    choice_h,
-                )
-                for index in range(len(options_to_draw))
-            ]
+        choice_rects = self.cutscene_response_rects(
+            option_entries, pad, choices_start, choice_w, choice_gap
+        )
         for index, ((choice_key, label, detail), choice_rect) in enumerate(
             zip(options_to_draw, choice_rects)
         ):
@@ -2913,29 +3446,13 @@ class RenderingMixin:
                 valign="center",
             )
             text_x = key_rect.right + self.ui(9)
-            text_w = max(1, choice_rect.right - text_x - self.ui(8))
-            label_y = choice_rect.y + self.ui(7)
-            self.draw_ui_text(
-                surface,
-                label,
-                self.small_font,
-                (246, 235, 210),
-                pygame.Rect(text_x, label_y, text_w, self.small_font.get_height()),
+            text_rect = pygame.Rect(
+                text_x,
+                choice_rect.y + self.ui(7),
+                max(1, choice_rect.right - text_x - self.ui(8)),
+                choice_rect.height - self.ui(14),
             )
-            detail_lines = self.wrap_ui_text(detail, self.tiny_font, text_w)[:1]
-            if detail_lines:
-                self.draw_ui_text(
-                    surface,
-                    detail_lines[0],
-                    self.tiny_font,
-                    (184, 178, 168),
-                    pygame.Rect(
-                        text_x,
-                        label_y + self.small_font.get_height() + self.ui(2),
-                        text_w,
-                        self.tiny_font.get_height(),
-                    ),
-                )
+            self.draw_cutscene_response_text(surface, label, detail, text_rect)
 
         footer = "Press 1-3 to confirm the guest dialog, place the relic, and begin this level."
         self.draw_ui_text(

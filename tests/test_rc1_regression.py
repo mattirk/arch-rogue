@@ -176,6 +176,32 @@ class Rc1RegressionTests(unittest.TestCase):
         finally:
             pygame.quit()
 
+    def test_left_control_uses_dash_and_left_shift_does_not(self) -> None:
+        game = self.make_game()
+        try:
+            game.restart(ARCHETYPES[0])
+            self.confirm_story_intro(game)
+            game.active_cutscene = None
+            game.player.dash_timer = 0.0
+            game.player.stamina = game.player.max_stamina
+            starting_stamina = game.player.stamina
+
+            pygame.event.post(
+                pygame.event.Event(pygame.KEYDOWN, key=pygame.K_LSHIFT, mod=0)
+            )
+            game.handle_events()
+            self.assertEqual(game.player.dash_timer, 0.0)
+            self.assertEqual(game.player.stamina, starting_stamina)
+
+            pygame.event.post(
+                pygame.event.Event(pygame.KEYDOWN, key=pygame.K_LCTRL, mod=0)
+            )
+            game.handle_events()
+            self.assertGreater(game.player.dash_timer, 0.0)
+            self.assertLess(game.player.stamina, starting_stamina)
+        finally:
+            pygame.quit()
+
     def test_modern_inventory_sort_drop_and_safe_consumables(self) -> None:
         game = self.make_game()
         try:

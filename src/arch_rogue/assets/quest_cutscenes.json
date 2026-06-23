@@ -32,6 +32,15 @@
           "y": 0.62,
           "scale": 1.12,
           "color": "accent"
+        },
+        {
+          "id": "antagonist",
+          "name": "{antagonist}",
+          "sprite": "enemy",
+          "x": 0.58,
+          "y": 0.66,
+          "scale": 0.94,
+          "color": "danger"
         }
       ],
       "animations": [
@@ -166,6 +175,43 @@
               "scale": 0.92,
               "alpha": 0.7,
               "pose": "idle"
+            },
+
+            {
+              "actor": "antagonist",
+              "duration": 0.4,
+              "dx": 0.04,
+              "dy": 0.02,
+              "scale": 0.82,
+              "alpha": 0.22,
+              "pose": "watch"
+            },
+            {
+              "actor": "antagonist",
+              "duration": 0.34,
+              "dx": 0.0,
+              "dy": -0.012,
+              "scale": 0.98,
+              "alpha": 0.46,
+              "pose": "loom"
+            },
+            {
+              "actor": "antagonist",
+              "duration": 0.28,
+              "dx": -0.026,
+              "dy": -0.02,
+              "scale": 1.04,
+              "alpha": 0.58,
+              "pose": "threaten"
+            },
+            {
+              "actor": "antagonist",
+              "duration": 0.32,
+              "dx": 0.016,
+              "dy": 0.0,
+              "scale": 0.9,
+              "alpha": 0.34,
+              "pose": "watch"
             }
           ]
         }
@@ -175,9 +221,9 @@
         "nodes": [
           {
             "id": "relic_choice",
-            "speaker": "guest",
+            "speaker": "narrator",
             "animation": "omen_idle",
-            "text": "{story_title}\n{objective}\n\nDepth {depth}: {beat_title}\n{beat_summary}\n\n{beat_dialogue}\n\nBefore the level begins, choose how {guest_name}'s relic echo should surface.",
+            "text": "{story_title}\n\n{player_backstory}\n\nObjective: {objective}\n\nDepth {depth}: {beat_title}\n{cinematic_narration}\n\nThe narrator lowers their voice: three omens gather around {guest_name}'s relic echo. Choose which omen becomes real before this level begins.",
             "choice_source": "story_relic_options"
           }
         ]
@@ -204,6 +250,15 @@
           "x": 0.76,
           "y": 0.58,
           "scale": 1.16,
+          "color": "accent"
+        },
+        {
+          "id": "relic",
+          "name": "{relic_name}",
+          "sprite": "relic",
+          "x": 0.5,
+          "y": 0.36,
+          "scale": 0.9,
           "color": "accent"
         }
       ],
@@ -311,9 +366,9 @@
         "nodes": [
           {
             "id": "choice",
-            "speaker": "guest",
+            "speaker": "narrator",
             "animation": "dialogue_idle",
-            "text": "{guest_dialogue}\n\n{guest_name}, {guest_role}, {guest_motive}. Choose how this quest resolves.",
+            "text": "The narrator follows {guest_name}'s shadow through {location_image}. {location_danger}.\n\n{guest_dialogue}\n\nThe {relic_name} stirs: {relic_temptation}. {guest_name}, {guest_role}, {guest_motive}. Choose how this quest resolves.",
             "choice_source": "story_guest_choices"
           }
         ]

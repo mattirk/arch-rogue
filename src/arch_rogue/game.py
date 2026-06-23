@@ -45,6 +45,7 @@ from .content import (
     SHRINE_HINTS,
     SHRINE_TYPES,
     SKILL_UPGRADES,
+    STORY_LOCATION_MOTIFS,
     TRAP_DEFINITIONS,
     TRAP_HINTS,
     WEAPON_DEFINITIONS,
@@ -461,12 +462,48 @@ class Game(SaveLoadMixin, RenderingMixin):
         active_guest = guest or self.current_story_guest_for_depth()
         if active_guest is None:
             active_guest = self.nearby_story_guest()
+        motif = next(
+            (
+                candidate
+                for candidate in STORY_LOCATION_MOTIFS
+                if beat is not None and candidate.theme_name == beat.theme_name
+            ),
+            None,
+        )
+        location_image = (
+            motif.image
+            if motif is not None
+            else (beat.theme_name.lower() if beat is not None else "unlit stone")
+        )
+        location_danger = (
+            motif.danger if motif is not None else "the dungeon listens for hesitation"
+        )
+        guest_name = active_guest.name if active_guest else "Unknown Guest"
+        guest_role = active_guest.role if active_guest else "Guest"
+        guest_motive = active_guest.motive if active_guest else "waits for a choice"
+        guest_dialogue = (
+            active_guest.dialogue
+            if active_guest
+            else (beat.dialogue if beat else "The guest waits for an answer.")
+        )
+        cinematic_narration = "The dungeon waits in silence."
+        if story is not None and beat is not None:
+            cinematic_narration = (
+                f"The narrator's candle reveals {location_image}. "
+                f"Here, {location_danger}. {beat.summary} "
+                f"{guest_name}, {guest_role}, {guest_motive}. "
+                f"The relic glimmers as {story.relic_form}; {story.relic_temptation}. "
+                f"{guest_dialogue}"
+            )
         context = {
             "depth": str(self.current_depth),
             "player_class": getattr(
                 self.player, "class_name", self.selected_archetype.name
             ),
             "story_title": story.title if story else "Unwritten Descent",
+            "player_backstory": story.player_backstory
+            if story
+            else "An unnamed exile descends.",
             "objective": story.objective if story else "Survive the dungeon.",
             "antagonist": story.antagonist if story else "Gate Tyrant",
             "faction": story.faction if story else "the dungeon",
@@ -476,21 +513,20 @@ class Game(SaveLoadMixin, RenderingMixin):
             "relic_temptation": story.relic_temptation
             if story
             else "it wants to be used",
+            "location_image": location_image,
+            "location_danger": location_danger,
+            "cinematic_narration": cinematic_narration,
             "beat_title": beat.title if beat else "Unwritten Beat",
             "beat_summary": beat.summary if beat else "The floor waits in silence.",
             "beat_dialogue": beat.dialogue
             if beat
             else "The guest waits for an answer.",
-            "guest_name": active_guest.name if active_guest else "Unknown Guest",
-            "guest_role": active_guest.role if active_guest else "Guest",
-            "guest_motive": active_guest.motive
-            if active_guest
-            else "waits for a choice",
-            "guest_dialogue": active_guest.dialogue
-            if active_guest
-            else (beat.dialogue if beat else "The guest waits for an answer."),
+            "guest_name": guest_name,
+            "guest_role": guest_role,
+            "guest_motive": guest_motive,
+            "guest_dialogue": guest_dialogue,
         }
-        return {key: " ".join(value.split()) for key, value in context.items()}
+        return {key: " ".join(str(value).split()) for key, value in context.items()}
 
     def start_quest_cutscene(
         self, asset_id: str, guest: StoryGuest | None = None
@@ -541,6 +577,84 @@ class Game(SaveLoadMixin, RenderingMixin):
         context = {**self.quest_cutscene_context(self.active_cutscene_guest())}
         context.update(self.active_cutscene.context)
         return format_asset_text(node.text, context)
+
+    def cutscene_narration_char_delay(self, char: str) -> float:
+        if char == "\n":
+            return 0.18
+        if char in ".!?":
+            return 0.25
+        if char in ";:":
+            return 0.16
+        if char in ",—":
+            return 0.10
+        if char.isspace():
+            return 0.012
+        return 0.026
+
+    def active_cutscene_narration_duration(self, text: str | None = None) -> float:
+        narration = self.active_cutscene_text() if text is None else text
+        if not narration:
+            return 0.0
+        return sum(self.cutscene_narration_char_delay(char) for char in narration)
+
+    def active_cutscene_narration_char_count(self, text: str | None = None) -> int:
+        if self.active_cutscene is None:
+            return 0
+        narration = self.active_cutscene_text() if text is None else text
+        if not narration:
+            return 0
+        elapsed = max(0.0, self.active_cutscene.node_elapsed)
+        spoken_time = 0.0
+        for index, char in enumerate(narration):
+            spoken_time += self.cutscene_narration_char_delay(char)
+            if spoken_time > elapsed:
+                return index
+        return len(narration)
+
+    def active_cutscene_visible_text(self) -> str:
+        narration = self.active_cutscene_text()
+        return narration[: self.active_cutscene_narration_char_count(narration)]
+
+    def active_cutscene_narration_complete(self) -> bool:
+        narration = self.active_cutscene_text()
+        return self.active_cutscene_narration_char_count(narration) >= len(narration)
+
+    def active_cutscene_narration_progress(self) -> float:
+        narration = self.active_cutscene_text()
+        if not narration:
+            return 1.0
+        return min(
+            1.0, self.active_cutscene_narration_char_count(narration) / len(narration)
+        )
+
+    def active_cutscene_current_sentence_text(self) -> str:
+        narration = self.active_cutscene_text()
+        if not narration:
+            return ""
+        char_count = self.active_cutscene_narration_char_count(narration)
+        if char_count <= 0:
+            return ""
+        cursor = min(char_count, len(narration))
+        start = 0
+        for mark in (". ", "! ", "? ", "\n"):
+            found = narration.rfind(mark, 0, cursor)
+            if found >= 0:
+                start = max(start, found + len(mark))
+        end_candidates = [
+            found
+            for mark in (".", "!", "?", "\n")
+            if (found := narration.find(mark, cursor)) >= 0
+        ]
+        end = min(end_candidates) if end_candidates else len(narration)
+        return narration[start:end].strip()
+
+    def reveal_active_cutscene_narration(self) -> None:
+        if self.active_cutscene is None:
+            return
+        self.active_cutscene.node_elapsed = max(
+            self.active_cutscene.node_elapsed,
+            self.active_cutscene_narration_duration() + 0.05,
+        )
 
     def active_cutscene_speaker_name(self) -> str:
         asset = self.active_cutscene_asset()
@@ -618,6 +732,9 @@ class Game(SaveLoadMixin, RenderingMixin):
     def advance_active_cutscene(self) -> bool:
         if self.active_cutscene is None:
             return False
+        if not self.active_cutscene_narration_complete():
+            self.reveal_active_cutscene_narration()
+            return True
         choices = self.active_cutscene_choices()
         if len(choices) == 1 and choices[0].next_node and not choices[0].action:
             return self.set_active_cutscene_node(choices[0].next_node)
@@ -2099,10 +2216,7 @@ class Game(SaveLoadMixin, RenderingMixin):
                     self.player_cast_bolt()
                 elif event.key == pygame.K_c and self.state == "playing":
                     self.player_cast_nova()
-                elif (
-                    event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT)
-                    and self.state == "playing"
-                ):
+                elif event.key == pygame.K_LCTRL and self.state == "playing":
                     self.update_player_aim()
                     self.player_dash()
                 elif pygame.K_1 <= event.key <= pygame.K_9 and self.state == "playing":

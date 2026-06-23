@@ -19,7 +19,7 @@ import arch_rogue
 from arch_rogue.constants import DUNGEON_DEPTH
 from arch_rogue.content import STORY_CORPUS
 from arch_rogue.game import ARCHETYPES, Game
-from arch_rogue.quest_assets import load_quest_cutscene_library
+from arch_rogue.quest_assets import RuntimeDialogueChoice, load_quest_cutscene_library
 from arch_rogue.story import StoryEngine, story_state_to_dict
 
 
@@ -462,6 +462,150 @@ class StoryMode20Tests(unittest.TestCase):
                 finally:
                     pygame.draw.rect = original_rect
                 self.assertEqual(len(choice_boxes), 3)
+            finally:
+                pygame.quit()
+
+    def test_cutscene_response_layout_expands_for_wrapped_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(640, 480),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+            )
+            game.options_path = Path(tmpdir) / "options.json"
+            game.rng.seed(2703)
+            game.restart(ARCHETYPES[2])
+            try:
+                width, _height = game.screen.get_size()
+                panel_w = min(width - game.ui(28), game.ui(920))
+                pad = max(game.ui(14), 18)
+                choice_w = panel_w - pad * 2
+                text_width = game.cutscene_response_text_width(choice_w)
+                label = "Swear the lantern-oath before the drowned archive"
+                detail = (
+                    "Promise blood, memory, and every unquiet name you carry so the "
+                    "guest can open a hidden road through the ruins without silencing "
+                    "the warning bells behind you."
+                )
+
+                label_lines, detail_lines = game.cutscene_response_lines(
+                    label, detail, text_width
+                )
+                height = game.cutscene_response_height(label, detail, choice_w)
+                required_height = (
+                    len(label_lines) * game.small_font.get_height()
+                    + game.ui(3)
+                    + len(detail_lines) * game.tiny_font.get_height()
+                    + game.ui(16)
+                )
+
+                self.assertGreater(len(detail_lines), 1)
+                self.assertGreater(height, game.ui(44))
+                self.assertGreaterEqual(height, required_height)
+            finally:
+                pygame.quit()
+
+    def test_active_cutscene_overlay_draws_full_wrapped_response_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(640, 480),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+            )
+            game.options_path = Path(tmpdir) / "options.json"
+            game.rng.seed(2704)
+            game.restart(ARCHETYPES[2])
+            try:
+                self.assertIsNotNone(game.active_cutscene)
+                game.reveal_active_cutscene_narration()
+                long_detail = (
+                    "The guest answers with a cinematic vow about ash, bells, "
+                    "bloodlit stairs, and a relic shadow that must remain visible "
+                    "across several wrapped response lines."
+                )
+                choices = [
+                    RuntimeDialogueChoice(
+                        label="Accept the vow",
+                        detail=long_detail,
+                        choice_key="aid",
+                    )
+                ]
+                game.active_cutscene_choices = lambda: choices
+
+                width, _height = game.screen.get_size()
+                panel_w = min(width - game.ui(28), game.ui(920))
+                pad = max(game.ui(14), 18)
+                choice_w = panel_w - pad * 2
+                text_width = game.cutscene_response_text_width(choice_w)
+                expected_detail_lines = game.wrap_ui_text(
+                    long_detail, game.tiny_font, text_width
+                )
+                self.assertGreater(len(expected_detail_lines), 1)
+
+                captured: list[str] = []
+                original_draw_ui_text = game.draw_ui_text
+
+                def capture_draw_ui_text(
+                    surface, text, font, color, rect, *args, **kwargs
+                ):
+                    captured.append(text)
+                    return original_draw_ui_text(
+                        surface, text, font, color, rect, *args, **kwargs
+                    )
+
+                game.draw_ui_text = capture_draw_ui_text
+                game.draw_quest_cutscene_overlay()
+
+                for line in expected_detail_lines:
+                    self.assertIn(line, captured)
+            finally:
+                pygame.quit()
+
+    def test_story_intro_overlay_draws_full_wrapped_response_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(640, 480),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+            )
+            game.options_path = Path(tmpdir) / "options.json"
+            game.rng.seed(2705)
+            game.restart(ARCHETYPES[2])
+            try:
+                long_detail = (
+                    "Choose a path described by the narrator with enough omen, "
+                    "consequence, hidden architecture, and relic imagery to wrap "
+                    "through multiple readable response lines."
+                )
+                options = [("aid", "Lift the lantern", long_detail)]
+                game.story_relic_choice_options = lambda: options
+
+                width, _height = game.screen.get_size()
+                panel_w = min(width - game.ui(28), game.ui(900))
+                pad = max(game.ui(14), 18)
+                choice_w = panel_w - pad * 2
+                text_width = game.cutscene_response_text_width(choice_w)
+                expected_detail_lines = game.wrap_ui_text(
+                    long_detail, game.tiny_font, text_width
+                )
+                self.assertGreater(len(expected_detail_lines), 1)
+
+                captured: list[str] = []
+                original_draw_ui_text = game.draw_ui_text
+
+                def capture_draw_ui_text(
+                    surface, text, font, color, rect, *args, **kwargs
+                ):
+                    captured.append(text)
+                    return original_draw_ui_text(
+                        surface, text, font, color, rect, *args, **kwargs
+                    )
+
+                game.draw_ui_text = capture_draw_ui_text
+                game.draw_story_intro_overlay()
+
+                for line in expected_detail_lines:
+                    self.assertIn(line, captured)
             finally:
                 pygame.quit()
 

@@ -1,4 +1,4 @@
-# Arch Rogue — Project Skill Brief
+# Arch Rogue — Agent Brief
 
 ## Project Vision
 
@@ -101,7 +101,7 @@ Prefer expanding these focused modules until a new boundary is clearly justified
 - Support affixes inspired by ARPGs: damage types, resistances, lifesteal, cast speed, movement speed, thorns, proc effects, summons, and skill modifiers.
 - Cursed items should be tempting, not merely bad.
 
-## Candidate Character Archetypes
+## Character Archetypes
 
 - **Warden:** Durable melee fighter with shields, counters, guard breaks, and armor mastery.
 - **Rogue:** Fast striker using daggers, bows, traps, poison, evasion, and critical hits.
@@ -129,20 +129,6 @@ Example categories:
 - Lore should be discoverable through items, shrines, enemy factions, environmental storytelling, and rare NPC encounters.
 - Avoid excessive exposition during gameplay; preserve mystery.
 
-## Systems to Consider Early
-
-- Procedural dungeon generation
-- Character controller and isometric movement
-- Combat interaction model
-- Entity/component or similar gameplay architecture
-- Inventory and equipment system
-- Item generation and affix database
-- Skill and effect system
-- Enemy AI and behavior trees/state machines
-- Save/run state model
-- UI framework
-- Input abstraction for keyboard/mouse and controller
-
 ## Development Guidelines
 
 - Build systems modularly so procedural content, combat, items, and skills can evolve independently.
@@ -151,7 +137,7 @@ Example categories:
 - Avoid overbuilding meta-progression before the core run loop is fun.
 - When choosing between authenticity to Rogue and modern playability, preserve the spirit of Rogue while modernizing the interface and moment-to-moment feel.
 
-## Milestones
+## Current Milestone
 
 ### 2.0: Story Mode - Going Full RPG
 
@@ -162,3 +148,7 @@ Example categories:
 - choices made during gameplay affect the story and dungeon generation
 - procedurally generated content is consistent and replayable
 - implement all of the above, test storylines, write clean code
+
+## Next Milestone
+
+### 2.1: Graphics and menus visual overhaul

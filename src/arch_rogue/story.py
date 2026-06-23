@@ -111,14 +111,18 @@ class StoryEngine:
                 ),
             ]
             summary = (
-                f"Among {motif.image}, a {guest_template.role.lower()} {motive}; "
-                f"{dilemma.setup} while {faction.epithet} advance their design. "
-                f"The chamber remembers the {backstory.title.lower()}: {backstory.wound}"
+                f"Among {motif.image}, where {motif.danger}, the air tightens around "
+                f"a {guest_template.role.lower()} who {motive}. {dilemma.setup.capitalize()} "
+                f"as {faction.epithet} advance their design and {rival.name} shadows "
+                f"the edges of the room. The chamber remembers the {backstory.title.lower()}: "
+                f"{backstory.wound}. Every torch leans toward {relic.name}, {relic.form}."
             )
             dialogue = (
                 f"{guest_name} speaks in a {guest_template.voice} voice: "
-                f"'{backstory.secret}; {relic.temptation}. Choose, and the next halls "
-                f"will answer in steel, mercy, or debt.'"
+                f"'{backstory.secret}. {relic.temptation}. If mercy guides you, "
+                f"{dilemma.aid}; if hunger answers, {dilemma.bargain}; if wrath takes "
+                f"the floor, {dilemma.defy}. Choose, and the next halls will answer "
+                f"in steel, mercy, or debt.'"
             )
             beats.append(
                 StoryBeat(

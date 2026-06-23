@@ -404,7 +404,7 @@ class MenuRenderer:
         paragraphs = [
             f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs and a new procedural story mode.",
             "Goal: descend through ten depths, survive escalating encounters, resolve story guest dilemmas, defeat the final-depth gate tyrant, then use the stairs to complete the run.",
-            "Combat: hold left mouse to move and aim. Space uses your class melee skill, F casts your bolt skill, C uses your nova skill, and Shift uses your movement skill.",
+            "Combat: hold left mouse to move and aim. Space uses your class melee skill, F casts your bolt skill, C uses your nova skill, and Left Ctrl uses your movement skill.",
             "Story: every run generates an archetype-aligned backstory, factions, relic, guests, and floor beats. Near a story guest, press E to hear their plea or 1-3 to choose Aid, Bargain, or Defy.",
             "Loot and discovery: press E for pickups, shrines, secrets, and stairs. Interaction prompts explain risks, and inventory rows summarize upgrades, curses, and comparisons.",
             "Credits: design, code, procedural art, procedural audio, and procedural story corpus by the Arch Rogue project.",
@@ -450,7 +450,7 @@ class MenuRenderer:
             "Class skills: level ups, Oath Shrines, and skill altars can add class-specific upgrades.",
             "Story guests: press E to hear their plea; press 1 Aid, 2 Bargain, or 3 Defy to shape future floors. Q toggles quest HUD info.",
             "Elites/minibosses: named foes have brighter telegraphs, more danger, and better rewards.",
-            "Resources: stamina powers melee and movement skills; mana powers bolt and nova skills.",
+            "Resources: stamina powers melee and movement skills; mana powers bolt and nova skills. Left Ctrl uses your movement skill.",
             "Inventory: E picks up; I opens inventory; R drinks a health potion; 1-9 uses/equips; Shift+1-9 drops; Tab/S sorts.",
             "Discovery: unidentified gear needs scrolls, Insight Shrines, or equipping to reveal.",
             "Hazards: traps are single-use but dangerous; shrines and secrets can swing a run.",
