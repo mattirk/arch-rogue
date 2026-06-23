@@ -93,7 +93,10 @@ class RenderingMixin:
                 if min_y <= y <= max_y and self.dungeon.in_bounds(x, y):
                     if self.tile_visibility_alpha(x, y) <= 0:
                         continue
-                    self.draw_tile(x, y, self.dungeon.tiles[x][y])
+                    tile = self.dungeon.tiles[x][y]
+                    if tile == Tile.WALL:
+                        continue
+                    self.draw_tile(x, y, tile)
 
     def ambient_overlay_surface(self) -> pygame.Surface:
         width, height = self.screen.get_size()
@@ -491,6 +494,17 @@ class RenderingMixin:
         def visible(x: float, y: float, margin: float = 0.35) -> bool:
             return self.can_see_world_position(x, y, margin)
 
+        min_x, max_x, min_y, max_y = self.visible_bounds()
+        for s in range(min_x + min_y, max_x + max_y + 1):
+            for x in range(min_x, max_x + 1):
+                y = s - x
+                if min_y <= y <= max_y and self.dungeon.in_bounds(x, y):
+                    if self.dungeon.tiles[x][y] != Tile.WALL:
+                        continue
+                    if self.tile_visibility_alpha(x, y) <= 0:
+                        continue
+                    drawables.append((x + y + 1.02, "wall_tile", (x, y)))
+
         for item in self.items:
             if visible(item.x, item.y, 0.45):
                 drawables.append((item.x + item.y, "item", item))
@@ -537,7 +551,10 @@ class RenderingMixin:
             self.draw_story_relic_guidance()
 
         for _depth, kind, obj in sorted(drawables, key=lambda entry: entry[0]):
-            if kind == "item":
+            if kind == "wall_tile":
+                x, y = cast(tuple[int, int], obj)
+                self.draw_tile(x, y, Tile.WALL)
+            elif kind == "item":
                 self.draw_item(cast(Item, obj))
             elif kind == "trap":
                 self.draw_trap(cast(Trap, obj))
