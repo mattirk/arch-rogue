@@ -762,6 +762,25 @@ class Game(SaveLoadMixin, RenderingMixin):
             return True
         return self.light_distance_to_player(x, y) <= DARK_LEVEL_LIGHT_RADIUS + margin
 
+    def has_line_of_sight(self, ax: float, ay: float, bx: float, by: float) -> bool:
+        distance = math.hypot(bx - ax, by - ay)
+        if distance <= 0.001:
+            return True
+        steps = max(1, int(distance * 8))
+        for step in range(1, steps):
+            ratio = step / steps
+            x = ax + (bx - ax) * ratio
+            y = ay + (by - ay) * ratio
+            tx, ty = int(x), int(y)
+            if not self.dungeon.in_bounds(tx, ty):
+                return False
+            if not self.dungeon.is_floor(x, y):
+                return False
+        return True
+
+    def has_line_of_sight_to_player(self, x: float, y: float) -> bool:
+        return self.has_line_of_sight(self.player.x, self.player.y, x, y)
+
     def tile_visibility_alpha(self, x: int, y: int) -> int:
         if not self.is_current_floor_dark():
             return 255

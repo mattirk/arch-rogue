@@ -516,7 +516,9 @@ class RenderingMixin:
                     (projectile.x + projectile.y, "projectile", projectile)
                 )
         for enemy in self.enemies:
-            if visible(enemy.x, enemy.y, 0.65):
+            if visible(enemy.x, enemy.y, 0.65) and self.has_line_of_sight_to_player(
+                enemy.x, enemy.y
+            ):
                 drawables.append((enemy.x + enemy.y, "enemy", enemy))
         drawables.append((self.player.x + self.player.y, "player", self.player))
         for slash in self.slashes:

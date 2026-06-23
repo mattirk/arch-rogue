@@ -16,6 +16,7 @@ import pygame
 from arch_rogue.constants import DARK_LEVEL_LIGHT_RADIUS, DUNGEON_DEPTH
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
+from arch_rogue.models import Tile
 
 
 class DarkLevels24Tests(unittest.TestCase):
@@ -87,6 +88,50 @@ class DarkLevels24Tests(unittest.TestCase):
                     self.assertEqual(loaded.is_current_floor_dark(), saved_dark)
                 finally:
                     pygame.quit()
+            finally:
+                pygame.quit()
+
+    def test_2_4_monsters_behind_walls_are_hidden_in_light_and_dark_modes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=2421)
+            try:
+                for x, column in enumerate(game.dungeon.tiles):
+                    for y in range(len(column)):
+                        game.dungeon.tiles[x][y] = Tile.FLOOR
+                game.dungeon.tiles[4][2] = Tile.WALL
+                game.player.x = 2.5
+                game.player.y = 2.5
+                enemy = game.enemies[0]
+                enemy.x = 6.5
+                enemy.y = 2.5
+                game.enemies = [enemy]
+                game.items = []
+                game.traps = []
+                game.shrines = []
+                game.secrets = []
+                game.story_guests = []
+                game.projectiles = []
+                game.slashes = []
+                game.impact_effects = []
+                game.floaters = []
+
+                drawn: list[str] = []
+                game.draw_enemy = lambda hidden_enemy: drawn.append(hidden_enemy.name)  # type: ignore[method-assign]
+
+                for dark in (False, True):
+                    game.set_current_floor_dark(dark)
+                    drawn.clear()
+                    game.draw_world_objects()
+                    self.assertEqual(drawn, [])
+                    self.assertFalse(game.has_line_of_sight_to_player(enemy.x, enemy.y))
+
+                    enemy.x = 3.5
+                    drawn.clear()
+                    game.draw_world_objects()
+                    self.assertEqual(drawn, [enemy.name])
+                    self.assertTrue(game.has_line_of_sight_to_player(enemy.x, enemy.y))
+
+                    enemy.x = 6.5
             finally:
                 pygame.quit()
 
