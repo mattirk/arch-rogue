@@ -415,6 +415,7 @@ class MenuRenderer:
             "Difficulty: Options cycle Easy, Medium, and Hard; Hard is the default, and Hell unlocks after your first complete clear.",
             "Story: every run generates an archetype-aligned backstory, factions, relic, guests, and floor beats. Near a story guest, press E to hear their plea or 1-3 to choose Aid, Bargain, or Defy.",
             "Loot and discovery: press E for pickups, shrines, secrets, and stairs. Interaction prompts explain risks, and inventory rows summarize upgrades, curses, and comparisons.",
+            "Dark floors: some depths limit sight to a small light radius while monsters still navigate the dungeon perfectly.",
             "Credits: design, code, procedural art, procedural audio, and procedural story corpus by the Arch Rogue project.",
         ]
         y = content.y
@@ -462,6 +463,7 @@ class MenuRenderer:
             "Resources: stamina powers melee and movement skills; mana powers bolt and nova skills. V uses nova; Left Ctrl uses your movement skill.",
             "Inventory and HUD: E picks up; I opens inventory; C opens character; R drinks a health potion; 1-9 uses/equips; Shift+1-9 drops; Tab/S sorts.",
             "Discovery: unidentified gear needs scrolls, Insight Shrines, or equipping to reveal.",
+            "Dark floors: sight is limited to 4 tiles; monsters navigate normally. Temporary debug: Ctrl+Shift+D toggles darkness on the current level.",
             "Hazards: traps are single-use but dangerous; shrines and secrets can swing a run.",
         ]
         y = title_rect.bottom + self.u(18)

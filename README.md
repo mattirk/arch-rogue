@@ -28,7 +28,7 @@ From a checkout of this repository:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .
+python -m pip install -e .
 ```
 
 ## Run
@@ -42,6 +42,34 @@ or, after install:
 ```bash
 arch-rogue
 ```
+
+## Compile and Test
+
+Run development commands from the repository root after installing the editable package in a virtual environment.
+
+Compile/syntax-check the source and tests with Python bytecode compilation:
+
+```bash
+python -m compileall src tests
+```
+
+Run the full automated test suite with `unittest`:
+
+```bash
+python -m unittest discover tests
+```
+
+Run a focused milestone test module while iterating on a specific change:
+
+```bash
+python -m unittest tests.test_2_4_dark_levels
+```
+
+Notes:
+
+- The project uses Python's built-in `unittest`; `pytest` is not required.
+- Test modules configure dummy SDL video/audio drivers for headless Pygame runs.
+- Prefer running the focused test module for your change first, then the full suite before submitting.
 
 ## Controls
 

@@ -7,7 +7,14 @@ from typing import cast
 
 import pygame
 
-from .constants import DUNGEON_DEPTH, TILE_H, TILE_W, WORLD_SCALE, SlashEffect
+from .constants import (
+    DARK_LEVEL_LIGHT_RADIUS,
+    DUNGEON_DEPTH,
+    TILE_H,
+    TILE_W,
+    WORLD_SCALE,
+    SlashEffect,
+)
 from .content import HUMANOID_ENEMY_NAMES
 from .models import (
     Color,
@@ -60,6 +67,7 @@ class RenderingMixin:
         self.draw_dungeon()
         self.draw_world_objects()
         self.draw_ambient_depth_overlay()
+        self.draw_darkness_overlay()
         self.draw_ui()
         if self.active_cutscene is not None:
             self.draw_quest_cutscene_overlay()
@@ -83,6 +91,8 @@ class RenderingMixin:
             for x in range(min_x, max_x + 1):
                 y = s - x
                 if min_y <= y <= max_y and self.dungeon.in_bounds(x, y):
+                    if self.tile_visibility_alpha(x, y) <= 0:
+                        continue
                     self.draw_tile(x, y, self.dungeon.tiles[x][y])
 
     def ambient_overlay_surface(self) -> pygame.Surface:
@@ -138,12 +148,15 @@ class RenderingMixin:
     def draw_ambient_depth_overlay(self) -> None:
         if self.state not in ("playing", "dead", "victory"):
             return
-        self.screen.blit(self.ambient_overlay_surface(), (0, 0))
+        if not self.is_current_floor_dark():
+            self.screen.blit(self.ambient_overlay_surface(), (0, 0))
         # A faint breathing light around the player preserves readability under
         # the vignette without requiring expensive light masks.
         sx, sy = self.world_to_screen(self.player.x, self.player.y)
         pulse = 0.5 + 0.5 * math.sin(self.elapsed * 2.3)
-        radius = int((58 + pulse * 10) * WORLD_SCALE)
+        radius = int(
+            ((88 if self.is_current_floor_dark() else 58) + pulse * 10) * WORLD_SCALE
+        )
         light = pygame.Surface((radius * 2, radius), pygame.SRCALPHA)
         pygame.draw.ellipse(
             light,
@@ -152,10 +165,55 @@ class RenderingMixin:
         )
         self.screen.blit(light, light.get_rect(center=(sx, sy - 7 * WORLD_SCALE)))
 
+    def draw_darkness_overlay(self) -> None:
+        if self.state not in ("playing", "dead", "victory"):
+            return
+        if not self.is_current_floor_dark():
+            return
+        sx, sy = self.world_to_screen(self.player.x, self.player.y)
+        pulse = 0.5 + 0.5 * math.sin(self.elapsed * 2.0)
+        radius_x = int(DARK_LEVEL_LIGHT_RADIUS * TILE_W * (1.02 + pulse * 0.025))
+        radius_y = int(DARK_LEVEL_LIGHT_RADIUS * TILE_H * (1.18 + pulse * 0.035))
+        pad = int(42 * WORLD_SCALE)
+        surface = pygame.Surface(
+            (radius_x * 2 + pad * 2, radius_y * 2 + pad * 2), pygame.SRCALPHA
+        )
+        center = (surface.get_width() // 2, surface.get_height() // 2)
+
+        glow_color = self.mix(self.theme.accent, (235, 218, 165), 0.35)
+        warm_rect = pygame.Rect(0, 0, int(radius_x * 1.45), int(radius_y * 0.78))
+        warm_rect.center = (center[0], center[1] + int(14 * WORLD_SCALE))
+        pygame.draw.ellipse(surface, (*glow_color, int(34 + pulse * 18)), warm_rect)
+        pygame.draw.ellipse(
+            surface,
+            (*self.shade(glow_color, 36), int(20 + pulse * 22)),
+            warm_rect.inflate(-warm_rect.width // 2, -warm_rect.height // 2),
+        )
+
+        for layer in range(6):
+            ratio = layer / 5
+            ring = pygame.Rect(0, 0, radius_x * 2, radius_y * 2)
+            ring.inflate_ip(
+                int(-ratio * radius_x * 0.42), int(-ratio * radius_y * 0.42)
+            )
+            ring.center = center
+            alpha = int(76 - ratio * 42)
+            width = max(2, int((18 - ratio * 9) * WORLD_SCALE))
+            pygame.draw.ellipse(surface, (0, 0, 0, alpha), ring, width)
+
+        self.screen.blit(
+            surface,
+            surface.get_rect(center=(sx, sy - int(8 * WORLD_SCALE))),
+        )
+
     def draw_tile(self, x: int, y: int, tile: Tile) -> None:
         sx, sy = self.world_to_screen(x + 0.5, y + 0.5)
         seed = self.tile_seed(x, y)
         surface, anchor_x, anchor_y = self.tile_surface(tile, seed)
+        alpha = self.tile_visibility_alpha(x, y)
+        if alpha < 255:
+            surface = surface.copy()
+            surface.set_alpha(alpha)
         self.screen.blit(surface, (sx - anchor_x, sy - anchor_y))
 
     def tile_seed(self, x: int, y: int) -> int:
@@ -429,30 +487,52 @@ class RenderingMixin:
 
     def draw_world_objects(self) -> None:
         drawables: list[tuple[float, str, object]] = []
+
+        def visible(x: float, y: float, margin: float = 0.35) -> bool:
+            return self.can_see_world_position(x, y, margin)
+
         for item in self.items:
-            drawables.append((item.x + item.y, "item", item))
+            if visible(item.x, item.y, 0.45):
+                drawables.append((item.x + item.y, "item", item))
         for trap in self.traps:
-            drawables.append((trap.x + trap.y - 0.02, "trap", trap))
+            if visible(trap.x, trap.y, 0.20):
+                drawables.append((trap.x + trap.y - 0.02, "trap", trap))
         for shrine in self.shrines:
-            drawables.append((shrine.x + shrine.y, "shrine", shrine))
+            if visible(shrine.x, shrine.y, 0.55):
+                drawables.append((shrine.x + shrine.y, "shrine", shrine))
         for secret in self.secrets:
-            if secret.revealed and not secret.opened:
+            if (
+                secret.revealed
+                and not secret.opened
+                and visible(secret.x, secret.y, 0.45)
+            ):
                 drawables.append((secret.x + secret.y, "secret", secret))
         for guest in self.story_guests:
-            drawables.append((guest.x + guest.y, "story_guest", guest))
+            if visible(guest.x, guest.y, 0.55):
+                drawables.append((guest.x + guest.y, "story_guest", guest))
         for projectile in self.projectiles:
-            drawables.append((projectile.x + projectile.y, "projectile", projectile))
+            if visible(projectile.x, projectile.y, 0.55):
+                drawables.append(
+                    (projectile.x + projectile.y, "projectile", projectile)
+                )
         for enemy in self.enemies:
-            drawables.append((enemy.x + enemy.y, "enemy", enemy))
+            if visible(enemy.x, enemy.y, 0.65):
+                drawables.append((enemy.x + enemy.y, "enemy", enemy))
         drawables.append((self.player.x + self.player.y, "player", self.player))
         for slash in self.slashes:
             x, y, _ttl, _dx, _dy = slash
-            drawables.append((x + y + 0.05, "slash", slash))
+            if visible(x, y, 0.55):
+                drawables.append((x + y + 0.05, "slash", slash))
         for effect in self.impact_effects:
-            drawables.append((effect.x + effect.y + 0.08, "impact", effect))
+            if visible(effect.x, effect.y, max(0.35, effect.radius)):
+                drawables.append((effect.x + effect.y + 0.08, "impact", effect))
 
         self.draw_aim_cone()
-        self.draw_story_relic_guidance()
+        relic_target = self.story_relic_target_position()
+        if not self.is_current_floor_dark() or (
+            relic_target is not None and visible(relic_target[0], relic_target[1], 0.65)
+        ):
+            self.draw_story_relic_guidance()
 
         for _depth, kind, obj in sorted(drawables, key=lambda entry: entry[0]):
             if kind == "item":
@@ -477,6 +557,8 @@ class RenderingMixin:
                 self.draw_impact(cast(ImpactEffect, obj))
 
         for floater in self.floaters:
+            if not visible(floater.x, floater.y, 0.8):
+                continue
             sx, sy = self.world_to_screen(floater.x, floater.y)
             alpha = max(0, min(255, int(255 * floater.ttl)))
             surface = self.font.render(floater.text, True, floater.color)
@@ -4148,8 +4230,13 @@ class RenderingMixin:
             if getattr(self, "quest_info_visible", True)
             else "Q show quest"
         )
+        debug_dark = (
+            " · Ctrl+Shift+D light"
+            if self.is_current_floor_dark()
+            else " · Ctrl+Shift+D dark"
+        )
         control_lines = [
-            f"Mouse/aim · E interact · I inventory · C character · {quest_control} · R potion · H help",
+            f"Mouse/aim · E interact · I inventory · C character · {quest_control} · R potion · H help{debug_dark}",
             skill_line,
         ]
         control_y = max(
@@ -4246,7 +4333,8 @@ class RenderingMixin:
 
     def draw_run_header(self) -> None:
         width, _height = self.screen.get_size()
-        title = f"Run {self.run_number}: Depth {self.current_depth}/{DUNGEON_DEPTH} — {self.theme.name}"
+        darkness = " — Dark" if self.is_current_floor_dark() else ""
+        title = f"Run {self.run_number}: Depth {self.current_depth}/{DUNGEON_DEPTH} — {self.theme.name}{darkness}"
         difficulty = self.difficulty_profile()
         floor_plan = self.current_floor_plan()
         floor_summary = self.floor_plan_summary(floor_plan)

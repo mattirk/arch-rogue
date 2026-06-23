@@ -19,6 +19,39 @@ Analyze, write, and optimize game code to maintain a stable 60+ FPS while preser
 - **Programming Language:** Python
 - **Game Engine:** Pygame CE: https://pypi.org/project/pygame-ce/ 
 
+## Development Commands
+
+Run commands from the repository root (`arch-rogue/`). Use a local virtual environment for development:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+```
+
+Compile/syntax-check the project with Python bytecode compilation:
+
+```bash
+python -m compileall src tests
+```
+
+Run the full automated test suite with `unittest`:
+
+```bash
+python -m unittest discover tests
+```
+
+Run one milestone test module when iterating on a focused change:
+
+```bash
+python -m unittest tests.test_2_4_dark_levels
+```
+
+Notes for agents:
+- The project currently uses `unittest`; `pytest` is not required.
+- Test modules configure dummy SDL video/audio drivers for headless Pygame runs.
+- Prefer running the focused test module for the code you changed, then `python -m unittest discover tests` before finalizing broader changes.
+
 ## Current Code Organization
 
 Keep the prototype architecture modular but intentionally small:
@@ -161,10 +194,11 @@ Example categories:
 - On dark level, player can only see 4 tiles around them
 - Create light/dark effects that look visually pleasing
 - Monsters can navigate perfectly in the dark
+- Key combination Control+Shift+D toggles dark/light mode on level (this will be removed later)
 
 ### 2.5: HUD polish
 
-- Add skill icons on the bottom of HUD, pay attention to alignment and spacing
+- Add skill icons on the bottom of HUD in a panel, pay attention to alignment and spacing
 - Make the skill icons panel look pleasing
 - Include hotkey indicators in the skill icons
 - Combine skill icons with cooldown indicators and remove other cooldown indicators

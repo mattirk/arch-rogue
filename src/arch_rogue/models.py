@@ -107,13 +107,15 @@ class FloorPlan:
     risk_tags: tuple[str, ...]
     reward_hint: str
     boss_key: str = ""
+    dark: bool = False
 
     @property
     def preview(self) -> str:
         risks = ", ".join(self.risk_tags) if self.risk_tags else "unknown risks"
         reward = f" · reward: {self.reward_hint}" if self.reward_hint else ""
         boss = " · boss sign" if self.boss_key else ""
-        return f"Threat {self.threat_level}: {risks}{boss}{reward}"
+        darkness = " · dark level" if self.dark else ""
+        return f"Threat {self.threat_level}: {risks}{boss}{darkness}{reward}"
 
 
 class Tile(IntEnum):

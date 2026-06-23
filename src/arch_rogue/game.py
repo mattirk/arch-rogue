@@ -4,6 +4,7 @@ import json
 import math
 import random
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,7 @@ from . import __version__
 from .audio import AudioSystem, MusicProfile
 from .constants import (
     BOSS_HIT_RADIUS,
+    DARK_LEVEL_LIGHT_RADIUS,
     DUNGEON_DEPTH,
     ENEMY_HIT_RADIUS,
     ENEMY_PROJECTILE_HIT_RADIUS,
@@ -596,6 +598,7 @@ class Game(SaveLoadMixin, RenderingMixin):
             "risk_tags": list(plan.risk_tags),
             "reward_hint": plan.reward_hint,
             "boss_key": plan.boss_key,
+            "dark": plan.dark,
         }
 
     def floor_plan_from_dict(self, data: Any) -> FloorPlan | None:
@@ -610,13 +613,31 @@ class Game(SaveLoadMixin, RenderingMixin):
                 risk_tags=tuple(str(tag) for tag in data.get("risk_tags", [])),
                 reward_hint=str(data.get("reward_hint", "steady loot")),
                 boss_key=str(data.get("boss_key", "")),
+                dark=bool(data.get("dark", False)),
             )
         except (TypeError, ValueError):
             return None
 
+    def dark_depths_for_run(self) -> set[int]:
+        dark_depths: set[int] = set()
+        early_candidates = list(range(2, min(4, DUNGEON_DEPTH) + 1))
+        if not early_candidates and DUNGEON_DEPTH >= 1:
+            early_candidates = [1]
+        if early_candidates:
+            dark_depths.add(self.rng.choice(early_candidates))
+
+        mid_candidates = list(range(5, min(10, DUNGEON_DEPTH) + 1))
+        dark_depths.update(self.rng.sample(mid_candidates, min(3, len(mid_candidates))))
+
+        for depth in range(11, DUNGEON_DEPTH + 1):
+            if self.rng.random() < 0.5:
+                dark_depths.add(depth)
+        return dark_depths
+
     def generate_floor_plan(self) -> list[FloorPlan]:
         plan: list[FloorPlan] = []
         previous_theme = self.theme.name
+        dark_depths = self.dark_depths_for_run()
         story_theme_by_depth: dict[int, str] = {}
         if self.story_state is not None:
             story_theme_by_depth = {
@@ -640,7 +661,10 @@ class Game(SaveLoadMixin, RenderingMixin):
             else:
                 encounter = self.rng.choice(encounter_pool)
             threat = 1 + depth // 2
+            is_dark = depth in dark_depths
             risk_tags = [encounter.risk]
+            if is_dark:
+                risk_tags.append("darkness")
             if depth >= 5:
                 risk_tags.append("escalating damage")
             if self.run_modifier.trap_bonus > 0.08 or encounter.trap_bonus > 0.12:
@@ -672,6 +696,7 @@ class Game(SaveLoadMixin, RenderingMixin):
                     risk_tags=tuple(risk_tags[:5]),
                     reward_hint=reward_hint,
                     boss_key=boss_key,
+                    dark=is_dark,
                 )
             )
         return plan
@@ -700,6 +725,55 @@ class Game(SaveLoadMixin, RenderingMixin):
             return
         self.theme = self.theme_by_name(plan.theme_name)
         self.run_music_theme = self.theme.name
+
+    def is_current_floor_dark(self) -> bool:
+        plan = self.current_floor_plan()
+        return bool(plan and plan.dark)
+
+    def set_current_floor_dark(self, dark: bool) -> None:
+        self.floor_plan = [
+            replace(plan, dark=dark) if plan.depth == self.current_depth else plan
+            for plan in self.floor_plan
+        ]
+
+    def toggle_current_floor_dark(self) -> bool:
+        dark = not self.is_current_floor_dark()
+        self.set_current_floor_dark(dark)
+        if hasattr(self, "floaters") and hasattr(self, "player"):
+            self.floaters.append(
+                FloatingText(
+                    "Darkness falls" if dark else "Light returns",
+                    self.player.x,
+                    self.player.y - 0.55,
+                    self.theme.accent if dark else (235, 220, 170),
+                    ttl=1.3,
+                )
+            )
+        self.trigger_screen_flash((12, 16, 28) if dark else (235, 220, 170), ttl=0.18)
+        if self.state == "playing":
+            self.save_run()
+        return dark
+
+    def light_distance_to_player(self, x: float, y: float) -> float:
+        return math.hypot(x - self.player.x, y - self.player.y)
+
+    def can_see_world_position(self, x: float, y: float, margin: float = 0.0) -> bool:
+        if not self.is_current_floor_dark():
+            return True
+        return self.light_distance_to_player(x, y) <= DARK_LEVEL_LIGHT_RADIUS + margin
+
+    def tile_visibility_alpha(self, x: int, y: int) -> int:
+        if not self.is_current_floor_dark():
+            return 255
+        distance = self.light_distance_to_player(x + 0.5, y + 0.5)
+        fade_start = max(0.0, DARK_LEVEL_LIGHT_RADIUS - 1.1)
+        fade_end = DARK_LEVEL_LIGHT_RADIUS + 0.65
+        if distance <= fade_start:
+            return 255
+        if distance > fade_end:
+            return 0
+        ratio = (fade_end - distance) / max(0.01, fade_end - fade_start)
+        return max(34, min(255, int(255 * ratio)))
 
     def record_meta_discovery(self, key: str, value: str) -> None:
         if not value:
@@ -2840,6 +2914,13 @@ class Game(SaveLoadMixin, RenderingMixin):
                         self.state = "title"
                     else:
                         self.request_exit_confirmation()
+                elif (
+                    self.state == "playing"
+                    and event.key == pygame.K_d
+                    and event.mod & pygame.KMOD_CTRL
+                    and event.mod & pygame.KMOD_SHIFT
+                ):
+                    self.toggle_current_floor_dark()
                 elif self.state == "title":
                     if event.key in (pygame.K_RETURN, pygame.K_n):
                         self.state = "archetype_select"
