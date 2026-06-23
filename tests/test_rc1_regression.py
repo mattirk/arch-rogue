@@ -176,6 +176,46 @@ class Rc1RegressionTests(unittest.TestCase):
         finally:
             pygame.quit()
 
+    def test_c_toggles_character_menu_and_v_uses_nova(self) -> None:
+        game = self.make_game()
+        try:
+            game.restart(ARCHETYPES[0])
+            self.confirm_story_intro(game)
+            game.active_cutscene = None
+            game.player.nova_timer = 0.0
+            game.player.mana = game.player.max_mana
+            starting_mana = game.player.mana
+
+            self.assertFalse(game.character_menu_open)
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_c, mod=0))
+            game.handle_events()
+            self.assertTrue(game.character_menu_open)
+            self.assertEqual(game.player.nova_timer, 0.0)
+            self.assertEqual(game.player.mana, starting_mana)
+            game.draw_character_menu()
+
+            pygame.event.post(
+                pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE, mod=0)
+            )
+            game.handle_events()
+            self.assertFalse(game.character_menu_open)
+
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_c, mod=0))
+            game.handle_events()
+            self.assertTrue(game.character_menu_open)
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_i, mod=0))
+            game.handle_events()
+            self.assertTrue(game.inventory_open)
+            self.assertFalse(game.character_menu_open)
+
+            game.inventory_open = False
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_v, mod=0))
+            game.handle_events()
+            self.assertGreater(game.player.nova_timer, 0.0)
+            self.assertLess(game.player.mana, starting_mana)
+        finally:
+            pygame.quit()
+
     def test_left_control_uses_dash_and_left_shift_does_not(self) -> None:
         game = self.make_game()
         try:
@@ -301,6 +341,7 @@ class Rc1RegressionTests(unittest.TestCase):
             game.restart(ARCHETYPES[0])
             first_run = game.run_number
             game.inventory_open = True
+            game.character_menu_open = True
             game.elapsed = 99.0
             game.state = "dead"
             game.projectiles.append(
@@ -322,6 +363,7 @@ class Rc1RegressionTests(unittest.TestCase):
             self.assertEqual(game.current_depth, 1)
             self.assertEqual(game.state, "playing")
             self.assertFalse(game.inventory_open)
+            self.assertFalse(game.character_menu_open)
             self.assertEqual(game.elapsed, 0.0)
             self.assertEqual(game.projectiles, [])
             self.assertEqual(game.floaters, [])

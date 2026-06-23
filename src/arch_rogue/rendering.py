@@ -67,6 +67,8 @@ class RenderingMixin:
             self.draw_story_intro_overlay()
         if self.inventory_open:
             self.draw_inventory()
+        if self.character_menu_open:
+            self.draw_character_menu()
         if self.show_help:
             self.draw_help_overlay()
         if self.state != "playing":
@@ -4112,7 +4114,7 @@ class RenderingMixin:
         skill_line = (
             f"Space {melee_name} {ready_text(self.player.melee_timer)} · "
             f"F {bolt_name} {ready_text(self.player.bolt_timer)} · "
-            f"C {nova_name} {ready_text(self.player.nova_timer)} · "
+            f"V {nova_name} {ready_text(self.player.nova_timer)} · "
             f"Ctrl {dash_name} {ready_text(self.player.dash_timer)}"
         )
         quest_control = (
@@ -4121,7 +4123,7 @@ class RenderingMixin:
             else "Q show quest"
         )
         control_lines = [
-            f"Mouse/aim · E interact · I inventory · {quest_control} · R potion · H help",
+            f"Mouse/aim · E interact · I inventory · C character · {quest_control} · R potion · H help",
             skill_line,
         ]
         control_y = max(
@@ -4340,6 +4342,9 @@ class RenderingMixin:
 
     def draw_inventory(self) -> None:
         self.menus.draw_inventory()
+
+    def draw_character_menu(self) -> None:
+        self.menus.draw_character_menu()
 
     def draw_title_menu(self) -> None:
         self.menus.draw_title_menu()

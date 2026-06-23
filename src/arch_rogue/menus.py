@@ -411,7 +411,7 @@ class MenuRenderer:
         paragraphs = [
             f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs and a new procedural story mode.",
             "Goal: descend through ten depths, survive escalating encounters, resolve story guest dilemmas, defeat the final-depth gate tyrant, then use the stairs to complete the run.",
-            "Combat: hold left mouse to move and aim. Space uses your class melee skill, F casts your bolt skill, C uses your nova skill, and Left Ctrl uses your movement skill.",
+            "Combat: hold left mouse to move and aim. Space uses your class melee skill, F casts your bolt skill, V uses your nova skill, Left Ctrl uses your movement skill, and C opens the character sheet.",
             "Difficulty: Options cycle Easy, Medium, and Hard; Hard is the default, and Hell unlocks after your first complete clear.",
             "Story: every run generates an archetype-aligned backstory, factions, relic, guests, and floor beats. Near a story guest, press E to hear their plea or 1-3 to choose Aid, Bargain, or Defy.",
             "Loot and discovery: press E for pickups, shrines, secrets, and stairs. Interaction prompts explain risks, and inventory rows summarize upgrades, curses, and comparisons.",
@@ -459,8 +459,8 @@ class MenuRenderer:
             "Story guests: press E to hear their plea; press 1 Aid, 2 Bargain, or 3 Defy to shape future floors. Q toggles quest HUD info.",
             "Elites/minibosses: named foes have brighter telegraphs, more danger, and better rewards.",
             f"Difficulty: {self.g.difficulty_profile().name} — change it from Options; Hell unlocks after one clear.",
-            "Resources: stamina powers melee and movement skills; mana powers bolt and nova skills. Left Ctrl uses your movement skill.",
-            "Inventory: E picks up; I opens inventory; R drinks a health potion; 1-9 uses/equips; Shift+1-9 drops; Tab/S sorts.",
+            "Resources: stamina powers melee and movement skills; mana powers bolt and nova skills. V uses nova; Left Ctrl uses your movement skill.",
+            "Inventory and HUD: E picks up; I opens inventory; C opens character; R drinks a health potion; 1-9 uses/equips; Shift+1-9 drops; Tab/S sorts.",
             "Discovery: unidentified gear needs scrolls, Insight Shrines, or equipping to reveal.",
             "Hazards: traps are single-use but dangerous; shrines and secrets can swing a run.",
         ]
@@ -852,6 +852,189 @@ class MenuRenderer:
             "Acolyte": ("Blood Rite", "Spirit Bolt", "Blood Nova", "Dark Step"),
             "Ranger": ("Hawk Slash", "Multishot", "Snare Nova", "Vault"),
         }.get(name, ("Slash", "Bolt", "Nova", "Dash"))
+
+    def draw_character_menu(self) -> None:
+        width, height = self.screen.get_size()
+        dim = pygame.Surface((width, height), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 92))
+        self.screen.blit(dim, (0, 0))
+
+        margin = max(self.u(18), 20)
+        box_w = min(max(self.u(560), int(width * 0.72)), width - margin * 2)
+        box_h = min(max(self.u(400), int(height * 0.82)), height - margin * 2)
+        box = pygame.Rect((width - box_w) // 2, (height - box_h) // 2, box_w, box_h)
+        self.panel(box, self.accent(), alpha=250)
+
+        pad = max(self.u(16), 18)
+        gap = max(self.u(8), 10)
+        inner = box.inflate(-pad * 2, -pad * 2)
+        player = self.g.player
+        title_h = self.g.font.get_height()
+        small_h = self.g.small_font.get_height()
+        tiny_h = self.g.tiny_font.get_height()
+
+        close_w = min(
+            max(self.u(130), self.g.small_font.size("C or Esc closes")[0] + self.u(20)),
+            inner.width // 2,
+        )
+        self.draw_text(
+            "Character",
+            self.g.font,
+            self.accent(),
+            pygame.Rect(inner.x, inner.y, inner.width - close_w - gap, title_h),
+        )
+        close_rect = pygame.Rect(inner.right - close_w, inner.y, close_w, title_h)
+        pygame.draw.rect(self.screen, (30, 27, 36), close_rect, border_radius=self.u(6))
+        pygame.draw.rect(
+            self.screen,
+            (78, 70, 86),
+            close_rect,
+            max(1, self.u(1)),
+            border_radius=self.u(6),
+        )
+        self.draw_text(
+            "C or Esc closes",
+            self.g.small_font,
+            self.MUTED,
+            close_rect.inflate(-self.u(8), 0),
+            align="center",
+            valign="center",
+        )
+
+        subtitle_y = inner.y + title_h + self.u(5)
+        self.draw_text(
+            f"{player.class_name} · Level {player.level} · XP {player.xp}/{player.next_xp}",
+            self.g.small_font,
+            self.TEXT,
+            pygame.Rect(inner.x, subtitle_y, inner.width, small_h),
+        )
+
+        stats_y = subtitle_y + small_h + gap
+        stats_h = max(self.u(72), small_h * 2 + self.u(24))
+        stats = [
+            ("HP", f"{int(player.hp)}/{player.max_hp}"),
+            ("Mana", f"{int(player.mana)}/{player.max_mana}"),
+            ("Stamina", f"{int(player.stamina)}/{player.max_stamina}"),
+            ("Speed", f"{player.speed:.1f}"),
+            ("Melee", str(player.melee_damage())),
+            ("Armor", str(player.armor())),
+            ("Weapon", self.g.weapon_damage_type().title()),
+            ("Nova", self.g.nova_damage_type().title()),
+        ]
+        self.draw_stat_grid(stats, pygame.Rect(inner.x, stats_y, inner.width, stats_h))
+
+        content_y = stats_y + stats_h + gap
+        content_h = max(1, inner.bottom - content_y)
+        columns = 2 if inner.width >= self.u(420) else 1
+        rows = 2 if columns == 2 else 4
+        card_gap = gap
+        card_w = (inner.width - card_gap * (columns - 1)) // columns
+        card_h = (content_h - card_gap * (rows - 1)) // rows
+
+        def card_rect(index: int) -> pygame.Rect:
+            col = index % columns
+            row = index // columns
+            return pygame.Rect(
+                inner.x + col * (card_w + card_gap),
+                content_y + row * (card_h + card_gap),
+                card_w,
+                max(1, card_h),
+            )
+
+        def draw_card(
+            rect: pygame.Rect,
+            title: str,
+            lines: Sequence[tuple[str, Color]],
+            accent: Color | None = None,
+        ) -> None:
+            accent = accent or self.accent()
+            pygame.draw.rect(self.screen, self.PANEL_2, rect, border_radius=self.u(8))
+            pygame.draw.rect(
+                self.screen,
+                accent,
+                rect,
+                max(1, self.u(1)),
+                border_radius=self.u(8),
+            )
+            card_pad = max(self.u(9), 9)
+            self.draw_text(
+                title,
+                self.g.small_font,
+                self.WARNING,
+                pygame.Rect(
+                    rect.x + card_pad,
+                    rect.y + card_pad,
+                    rect.width - card_pad * 2,
+                    small_h,
+                ),
+            )
+            y = rect.y + card_pad + small_h + self.u(6)
+            line_h = max(tiny_h + self.u(3), self.u(15))
+            for line, color in lines:
+                if y + line_h > rect.bottom - card_pad:
+                    break
+                self.draw_text(
+                    line,
+                    self.g.tiny_font,
+                    color,
+                    pygame.Rect(
+                        rect.x + card_pad, y, rect.width - card_pad * 2, line_h
+                    ),
+                )
+                y += line_h
+
+        melee_name, bolt_name, nova_name, dash_name = self.g.skill_names()
+        skill_lines = [
+            (f"Space {melee_name} · {self.g.melee_stamina_cost()} stamina", self.TEXT),
+            (f"F {bolt_name} · {self.g.bolt_mana_cost()} mana", self.TEXT),
+            (f"V {nova_name} · {self.g.nova_mana_cost()} mana", self.TEXT),
+            (f"Ctrl {dash_name} · {self.g.dash_stamina_cost()} stamina", self.TEXT),
+        ]
+
+        weapon = player.equipment.get("weapon")
+        armor = player.equipment.get("armor")
+        equipment_lines = [
+            (
+                weapon.label if weapon else "Weapon: Training Sword (+0 dmg)",
+                self.item_color(weapon) if weapon else self.MUTED,
+            ),
+            (
+                armor.label if armor else "Armor: Cloth (+0 armor)",
+                self.item_color(armor) if armor else self.MUTED,
+            ),
+            (f"Bolt type: {self.g.bolt_damage_type().title()}", self.MUTED),
+        ]
+
+        upgrades = self.g.acquired_skill_upgrades()
+        upgrade_lines = (
+            [(name, self.TEXT) for name, _description in upgrades[:4]]
+            if upgrades
+            else [("No skill upgrades yet", self.MUTED)]
+        )
+
+        status_lines: list[tuple[str, Color]] = []
+        active_statuses = [
+            f"{name.title()} {ttl:.1f}s"
+            for name, ttl in player.status_effects.items()
+            if ttl > 0
+        ]
+        status_lines.extend((line, self.TEXT) for line in active_statuses[:2])
+        for item in (weapon, armor):
+            if item is None or item.unidentified:
+                continue
+            if item.skill_bonus:
+                status_lines.append((f"Skill: {item.skill_bonus}", self.WARNING))
+            if item.proc_effect:
+                status_lines.append((f"Proc: {item.proc_effect}", self.WARNING))
+            if item.cursed:
+                status_lines.append(("Cursed bargain active", (220, 95, 140)))
+        if not status_lines:
+            status_lines.append(("No active statuses or procs", self.MUTED))
+
+        draw_card(card_rect(0), "Skills", skill_lines, self.g.skill_color())
+        draw_card(card_rect(1), "Equipment", equipment_lines, self.accent())
+        draw_card(card_rect(2), "Upgrades", upgrade_lines, self.g.skill_color())
+        draw_card(card_rect(3), "Status & Procs", status_lines[:4], self.accent())
 
     def inventory_layout(self) -> dict[str, pygame.Rect]:
         width, height = self.screen.get_size()

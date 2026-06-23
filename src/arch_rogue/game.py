@@ -139,6 +139,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.inventory_sort_mode = "type"
         self.inventory_cursor = 0
         self.inventory_scroll = 0
+        self.character_menu_open = False
         self.show_help = False
         self.quest_info_visible = False
         self.run_stats = RunStats()
@@ -1784,6 +1785,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.inventory_open = False
         self.inventory_cursor = 0
         self.inventory_scroll = 0
+        self.character_menu_open = False
         self.show_help = False
         self.elapsed = 0.0
         self.state = "playing"
@@ -1836,6 +1838,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.inventory_open = False
         self.inventory_cursor = 0
         self.inventory_scroll = 0
+        self.character_menu_open = False
         self.show_help = False
         self._populate_dungeon()
         self.begin_story_level_intro()
@@ -2474,6 +2477,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         if self.state != "confirm_exit":
             self.exit_previous_state = self.state
         self.show_help = False
+        self.character_menu_open = False
         self.state = "confirm_exit"
 
     def cancel_exit_confirmation(self) -> None:
@@ -2500,7 +2504,9 @@ class Game(SaveLoadMixin, RenderingMixin):
                     elif event.key in (pygame.K_n, pygame.K_ESCAPE, pygame.K_BACKSPACE):
                         self.cancel_exit_confirmation()
                 elif event.key == pygame.K_ESCAPE:
-                    if self.state == "playing" and self.inventory_open:
+                    if self.state == "playing" and self.character_menu_open:
+                        self.character_menu_open = False
+                    elif self.state == "playing" and self.inventory_open:
                         self.inventory_open = False
                     elif (
                         self.state == "playing"
@@ -2614,6 +2620,8 @@ class Game(SaveLoadMixin, RenderingMixin):
                     self.show_help = not self.show_help
                 elif event.key == pygame.K_i and self.state == "playing":
                     self.inventory_open = not self.inventory_open
+                    if self.inventory_open:
+                        self.character_menu_open = False
                     self.clamp_inventory_selection()
                 elif self.state == "playing" and self.inventory_open:
                     if event.key == pygame.K_TAB:
@@ -2645,6 +2653,7 @@ class Game(SaveLoadMixin, RenderingMixin):
                 elif event.key == pygame.K_r and self.state != "playing":
                     self.show_help = False
                     self.inventory_open = False
+                    self.character_menu_open = False
                     self.state = "archetype_select"
                 elif event.key == pygame.K_e and self.state == "playing":
                     self.interact()
@@ -2659,6 +2668,11 @@ class Game(SaveLoadMixin, RenderingMixin):
                     self.update_player_aim()
                     self.player_cast_bolt()
                 elif event.key == pygame.K_c and self.state == "playing":
+                    self.character_menu_open = not self.character_menu_open
+                    if self.character_menu_open:
+                        self.inventory_open = False
+                elif event.key == pygame.K_v and self.state == "playing":
+                    self.update_player_aim()
                     self.player_cast_nova()
                 elif event.key == pygame.K_LCTRL and self.state == "playing":
                     self.update_player_aim()
