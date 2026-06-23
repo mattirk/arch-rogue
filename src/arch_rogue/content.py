@@ -268,6 +268,7 @@ RARITY_PROFILES: dict[str, RarityProfile] = {
     "Magic": RarityProfile((115, 175, 255), "✦", 52),
     "Rare": RarityProfile((245, 215, 90), "◆", 26),
     "Unique": RarityProfile((240, 145, 65), "✹", 4),
+    "Legendary": RarityProfile((255, 112, 82), "✷", 2),
     "Cursed": RarityProfile((214, 92, 150), "!", 10),
     "Unidentified": RarityProfile((170, 170, 185), "?", 18),
 }
@@ -1061,6 +1062,14 @@ SKILL_UPGRADES = (
         armor_bonus=1,
     ),
     SkillUpgrade(
+        "warden_aegis",
+        "Warden",
+        "Aegis Discipline",
+        "Guard Step briefly hardens the Warden and Shield Bash staggers enemies.",
+        armor_bonus=1,
+        max_stamina_bonus=8,
+    ),
+    SkillUpgrade(
         "rogue_precision",
         "Rogue",
         "Killing Precision",
@@ -1077,6 +1086,14 @@ SKILL_UPGRADES = (
         max_stamina_bonus=10,
     ),
     SkillUpgrade(
+        "rogue_venom",
+        "Rogue",
+        "Venomcraft",
+        "Backstabs and knife fans poison wounded targets.",
+        melee_bonus=1,
+        max_stamina_bonus=6,
+    ),
+    SkillUpgrade(
         "arcanist_splinter",
         "Arcanist",
         "Splintered Arcana",
@@ -1091,6 +1108,14 @@ SKILL_UPGRADES = (
         "Mana recovers faster and novas reach farther.",
         spell_bonus=2,
         max_mana_bonus=14,
+    ),
+    SkillUpgrade(
+        "arcanist_permafrost",
+        "Arcanist",
+        "Permafrost Sigils",
+        "Frost Nova chills longer and Arc Bolt exploits chilled foes.",
+        spell_bonus=2,
+        max_mana_bonus=8,
     ),
     SkillUpgrade(
         "acolyte_sanguine",
@@ -1110,6 +1135,15 @@ SKILL_UPGRADES = (
         max_mana_bonus=8,
     ),
     SkillUpgrade(
+        "acolyte_gravebind",
+        "Acolyte",
+        "Gravebind Covenant",
+        "Blood Nova binds enemies and kills echo more life into the Acolyte.",
+        spell_bonus=2,
+        max_hp_bonus=6,
+        max_mana_bonus=6,
+    ),
+    SkillUpgrade(
         "ranger_snare",
         "Ranger",
         "Barbed Snares",
@@ -1124,6 +1158,15 @@ SKILL_UPGRADES = (
         "Multishot spreads into a wider fan.",
         melee_bonus=1,
         spell_bonus=2,
+    ),
+    SkillUpgrade(
+        "ranger_beastmark",
+        "Ranger",
+        "Beastmark Pursuit",
+        "Vault refreshes momentum and marked shots hit controlled enemies harder.",
+        melee_bonus=1,
+        speed_bonus=0.12,
+        max_stamina_bonus=6,
     ),
 )
 

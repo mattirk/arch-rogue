@@ -139,20 +139,6 @@ Example categories:
 
 ## Current Milestone
 
-### 2.1: Graphics and Animations Overhaul
-
-- Establish a stronger isometric visual language for dungeon floors, walls, doors, stairs, hazards, shrines, loot, NPCs, and enemies.
-- Improve procedural pixel-art sprites with clearer silhouettes, class identity, enemy readability, rarity cues, and dark fantasy atmosphere.
-- Add lightweight animation states for the player, enemies, projectiles, loot, traps, shrines, and interactable story guests.
-- Add combat feedback animations: hit flashes, impact bursts, damage direction cues, death effects, status effects, telegraphs, and cooldown/readiness indicators.
-- Improve dungeon rendering polish with tile variation, biome/theme-specific palettes, ambient details, shadows, fog, lighting, and depth layering.
-- Make story encounters visually distinct through guest portraits, faction colors, encounter icons, dialogue presentation, and choice-result feedback.
-- Keep all rendering changes performant enough to sustain 60+ FPS, using cached/generated surfaces where appropriate.
-- Preserve the compact prototype architecture by expanding `rendering.py`, `sprites.py`, `menus.py`, and content tables before introducing new rendering modules.
-- Validate visual changes across common resolutions and both keyboard/mouse and controller-oriented UI flows.
-
-## Next Milestone
-
 ### 2.2: Combat, Skills, and Loot Synergy Pass
 
 - Deepen each archetype with a small but distinct set of active skills, passive modifiers, cooldowns, resource costs, and tactical tradeoffs.
@@ -163,3 +149,17 @@ Example categories:
 - Tune progression pacing so levels, equipment, consumables, and skills create meaningful decisions without trivializing run danger.
 - Add focused regression tests or deterministic simulation checks for skills, loot generation, story-choice effects, and combat calculations.
 - Profile and optimize high-traffic combat, AI, projectile, and rendering paths to preserve 60+ FPS during dense encounters.
+
+## Next Milestone
+
+### 2.3: Run Structure, Bosses, and Long-Term Replayability
+
+- Add stronger floor-to-floor run pacing with meaningful transitions, escalating threat, biome/theme variety, and previewable risks before descending.
+- Introduce memorable mini-bosses and floor bosses with distinct silhouettes, attack patterns, telegraphs, loot hooks, and story/theme ties.
+- Expand procedural encounter composition with faction mixes, elite packs, ambushes, environmental hazards, treasure rooms, and rare event templates.
+- Improve run identity through modifier combinations, cursed bargains, branching objectives, optional challenge rooms, and discoverable secrets.
+- Add lightweight meta-progression that unlocks options, records discoveries, and rewards mastery without reducing the danger of individual runs.
+- Build out end-of-run summaries with cause of death, notable loot, defeated bosses, story choices, discovered secrets, and performance stats.
+- Strengthen save/load and run-resume coverage for multi-floor progression, boss states, discovered lore, unlocked options, and active modifiers.
+- Add deterministic validation checks for run generation, boss encounters, floor transitions, save restoration, and replayability-critical content tables.
+- Profile dense boss and encounter scenarios to preserve 60+ FPS with clear input response, combat readability, and stable procedural generation costs.

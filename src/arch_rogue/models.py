@@ -138,6 +138,9 @@ class Item:
     unidentified: bool = False
     unique_effect: str = ""
     cursed: bool = False
+    damage_type: str = "physical"
+    skill_bonus: str = ""
+    proc_effect: str = ""
 
     @property
     def display_name(self) -> str:
@@ -169,6 +172,12 @@ class Item:
             return f"{self.display_name} (unknown)"
         if self.affixes:
             text += f" — {', '.join(self.affixes)}"
+        if self.damage_type and self.damage_type != "physical":
+            text += f" — {self.damage_type}"
+        if self.skill_bonus:
+            text += f" — {self.skill_bonus}"
+        if self.proc_effect:
+            text += f" — {self.proc_effect}"
         if self.unique_effect:
             text += f" — {self.unique_effect}"
         if self.cursed:
@@ -305,6 +314,9 @@ class Projectile:
     color: Color
     ttl: float = 1.6
     radius: float = 0.18
+    damage_type: str = "physical"
+    status_effect: str = ""
+    status_duration: float = 0.0
 
     def update(self, dt: float, dungeon: "Dungeon") -> bool:
         self.x += self.vx * dt
@@ -337,6 +349,10 @@ class Enemy:
     anim_time: float = 0.0
     elite_modifier: str = ""
     telegraph: str = ""
+    role: str = "bruiser"
+    damage_type: str = "physical"
+    resistances: dict[str, float] = field(default_factory=dict)
+    statuses: dict[str, float] = field(default_factory=dict)
 
     @property
     def alive(self) -> bool:
@@ -376,6 +392,7 @@ class Player:
         default_factory=lambda: {"weapon": None, "armor": None}
     )
     skill_upgrades: list[str] = field(default_factory=list)
+    status_effects: dict[str, float] = field(default_factory=dict)
 
     def has_upgrade(self, key: str) -> bool:
         return key in self.skill_upgrades

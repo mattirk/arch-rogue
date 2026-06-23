@@ -42,6 +42,9 @@ class SaveLoadMixin:
             "unidentified": item.unidentified,
             "unique_effect": item.unique_effect,
             "cursed": item.cursed,
+            "damage_type": item.damage_type,
+            "skill_bonus": item.skill_bonus,
+            "proc_effect": item.proc_effect,
         }
 
     def item_from_dict(self, data: dict[str, Any] | None) -> Item | None:
@@ -61,6 +64,9 @@ class SaveLoadMixin:
             unidentified=bool(data.get("unidentified", False)),
             unique_effect=str(data.get("unique_effect", "")),
             cursed=bool(data.get("cursed", False)),
+            damage_type=str(data.get("damage_type", "physical")),
+            skill_bonus=str(data.get("skill_bonus", "")),
+            proc_effect=str(data.get("proc_effect", "")),
         )
 
     def serialize_run_state(self) -> dict[str, Any]:
@@ -124,6 +130,7 @@ class SaveLoadMixin:
                     for slot, item in self.player.equipment.items()
                 },
                 "skill_upgrades": list(self.player.skill_upgrades),
+                "status_effects": dict(self.player.status_effects),
             },
             "enemies": [enemy.__dict__ for enemy in self.enemies],
             "items": [self.item_to_dict(item) for item in self.items],
@@ -235,6 +242,10 @@ class SaveLoadMixin:
         self.player.skill_upgrades = [
             str(upgrade) for upgrade in player_data.get("skill_upgrades", [])
         ]
+        self.player.status_effects = {
+            str(status): float(ttl)
+            for status, ttl in player_data.get("status_effects", {}).items()
+        }
         self.player.inventory = [
             item
             for item in (

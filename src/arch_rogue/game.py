@@ -140,7 +140,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.inventory_cursor = 0
         self.inventory_scroll = 0
         self.show_help = False
-        self.quest_info_visible = True
+        self.quest_info_visible = False
         self.run_stats = RunStats()
         self.state = "archetype_select"
         self.elapsed = 0.0
@@ -422,8 +422,16 @@ class Game(SaveLoadMixin, RenderingMixin):
             delta = incoming - current
             stat = "damage" if item.slot == "weapon" else "armor"
             tradeoff = " · cursed power" if item.cursed else ""
+            tags: list[str] = []
+            if item.damage_type and item.damage_type != "physical":
+                tags.append(item.damage_type)
+            if item.skill_bonus:
+                tags.append(item.skill_bonus)
+            if item.proc_effect:
+                tags.append(item.proc_effect)
+            detail = f" · {' · '.join(tags)}" if tags else ""
             sign = "+" if delta > 0 else ""
-            return f"{sign}{delta} {stat} vs equipped{tradeoff}"
+            return f"{sign}{delta} {stat} vs equipped{tradeoff}{detail}"
         return "Use from inventory"
 
     def current_interaction_hint(self) -> tuple[str, str, str, Color] | None:
@@ -1368,6 +1376,159 @@ class Game(SaveLoadMixin, RenderingMixin):
             return max(1, damage)
         return max(1, int(round(damage * (1.0 + bonus))))
 
+    def damage_type_color(self, damage_type: str) -> Color:
+        return {
+            "physical": (255, 210, 120),
+            "fire": (255, 132, 74),
+            "frost": (126, 206, 242),
+            "poison": (126, 214, 92),
+            "arcane": (160, 118, 245),
+            "holy": (235, 205, 120),
+            "shadow": (214, 92, 150),
+        }.get(damage_type, (255, 210, 120))
+
+    def weapon_damage_type(self) -> str:
+        weapon = self.player.equipment.get("weapon")
+        if weapon and weapon.damage_type:
+            return weapon.damage_type
+        if self.player.class_name == "Arcanist":
+            return "arcane"
+        if self.player.class_name == "Acolyte":
+            return "shadow"
+        return "physical"
+
+    def bolt_damage_type(self) -> str:
+        weapon = self.player.equipment.get("weapon")
+        if weapon and weapon.damage_type in (
+            "fire",
+            "frost",
+            "poison",
+            "arcane",
+            "shadow",
+        ):
+            return weapon.damage_type
+        return {
+            "Warden": "holy",
+            "Rogue": "poison" if self.player.has_upgrade("rogue_venom") else "physical",
+            "Arcanist": "arcane",
+            "Acolyte": "shadow",
+            "Ranger": "physical",
+        }.get(self.player.class_name, "arcane")
+
+    def nova_damage_type(self) -> str:
+        return {
+            "Warden": "holy",
+            "Rogue": "poison",
+            "Arcanist": "frost",
+            "Acolyte": "shadow",
+            "Ranger": "physical",
+        }.get(self.player.class_name, "arcane")
+
+    def equipment_affix_count(self, name: str) -> int:
+        return sum(
+            1
+            for item in self.player.equipment.values()
+            if item is not None and name in item.affixes
+        )
+
+    def equipment_skill_bonus(self, text: str) -> bool:
+        return any(
+            item is not None and text in item.skill_bonus
+            for item in self.player.equipment.values()
+        )
+
+    def equipped_proc_effect(self, effect: str) -> bool:
+        return any(
+            item is not None and item.proc_effect == effect
+            for item in self.player.equipment.values()
+        )
+
+    def equipped_unique_effect(self, effect: str) -> bool:
+        return any(
+            item is not None and item.unique_effect == effect
+            for item in self.player.equipment.values()
+        )
+
+    def player_status(self, name: str) -> float:
+        return float(self.player.status_effects.get(name, 0.0))
+
+    def set_player_status(self, name: str, duration: float) -> None:
+        self.player.status_effects[name] = max(
+            self.player.status_effects.get(name, 0.0), duration
+        )
+
+    def apply_enemy_status(self, enemy: Enemy, status: str, duration: float) -> None:
+        if duration <= 0:
+            return
+        if status == "poisoned" and enemy.resistances.get("poison", 0.0) >= 0.55:
+            duration *= 0.55
+        enemy.statuses[status] = max(enemy.statuses.get(status, 0.0), duration)
+        self.floaters.append(
+            FloatingText(
+                status.title(),
+                enemy.x,
+                enemy.y - 0.45,
+                self.damage_type_color(
+                    "poison"
+                    if status == "poisoned"
+                    else "frost"
+                    if status == "chilled"
+                    else "shadow"
+                    if status == "bound"
+                    else "holy"
+                ),
+                ttl=0.65,
+            )
+        )
+
+    def enemy_speed_multiplier(self, enemy: Enemy) -> float:
+        multiplier = 1.0
+        if enemy.statuses.get("chilled", 0.0) > 0:
+            multiplier *= 0.58
+        if enemy.statuses.get("snared", 0.0) > 0:
+            multiplier *= 0.45
+        if enemy.statuses.get("bound", 0.0) > 0:
+            multiplier *= 0.62
+        return multiplier
+
+    def mitigate_enemy_damage(self, enemy: Enemy, amount: int, damage_type: str) -> int:
+        resistance = max(-0.35, min(0.70, enemy.resistances.get(damage_type, 0.0)))
+        adjusted = int(round(amount * (1.0 - resistance)))
+        if enemy.statuses.get("chilled", 0.0) > 0 and damage_type == "arcane":
+            adjusted = int(round(adjusted * 1.18))
+        if enemy.statuses.get("snared", 0.0) > 0 and self.player.has_upgrade(
+            "ranger_beastmark"
+        ):
+            adjusted = int(round(adjusted * 1.22))
+        return max(1, adjusted)
+
+    def update_enemy_statuses(self, dt: float) -> None:
+        for enemy in list(self.enemies):
+            if not enemy.statuses:
+                continue
+            if enemy.statuses.get("poisoned", 0.0) > 0:
+                tick = enemy.statuses.get("_poison_tick", 1.0) - dt
+                if tick <= 0:
+                    enemy.hp -= max(1, int(2 + self.player.level * 0.35))
+                    tick += 1.0
+                    if enemy.hp <= 0:
+                        self.kill_enemy(enemy)
+                        continue
+                enemy.statuses["_poison_tick"] = tick
+            expired: list[str] = []
+            for status, ttl in list(enemy.statuses.items()):
+                if status.startswith("_"):
+                    continue
+                ttl -= dt
+                if ttl <= 0:
+                    expired.append(status)
+                else:
+                    enemy.statuses[status] = ttl
+            if "poisoned" in expired:
+                enemy.statuses.pop("_poison_tick", None)
+            for status in expired:
+                enemy.statuses.pop(status, None)
+
     def apply_story_blood_price(self, reason: str) -> int:
         price = self.story_effect_value("blood_price", 0.0, 0.35)
         if price <= 0 or self.player.hp <= 1:
@@ -1938,10 +2099,43 @@ class Game(SaveLoadMixin, RenderingMixin):
             aggro_range=definition.aggro_range,
             color=definition.color,
         )
+        self._assign_enemy_combat_traits(enemy)
         enemy = self._apply_run_modifier(enemy)
         if enemy.kind != "boss" and self.rng.random() < self.elite_chance():
             self._apply_elite_modifier(enemy)
         return enemy
+
+    def _assign_enemy_combat_traits(self, enemy: Enemy) -> None:
+        base_name = enemy.name
+        for prefix in ("Venomous", "Runed", "Ironbound", "Frenzied", "Oathbound"):
+            base_name = base_name.replace(f"{prefix} ", "")
+        traits: dict[str, tuple[str, str, dict[str, float]]] = {
+            "Cultist": ("caster", "arcane", {"arcane": 0.24, "shadow": 0.12}),
+            "Bone Imp": ("skirmisher", "frost", {"frost": 0.22, "holy": -0.10}),
+            "Venom Skitter": ("flanker", "poison", {"poison": 0.45, "fire": -0.18}),
+            "Crypt Brute": ("bruiser", "physical", {"physical": 0.24, "arcane": -0.10}),
+            "Ghoul": ("mauler", "shadow", {"shadow": 0.18, "holy": -0.15}),
+            "Grave Archer": (
+                "marksman",
+                "physical",
+                {"physical": 0.10, "poison": -0.08},
+            ),
+            "Ash Hound": ("flanker", "fire", {"fire": 0.34, "frost": -0.18}),
+            "Rune Sentinel": ("sentinel", "arcane", {"arcane": 0.38, "physical": 0.10}),
+            "Plague Toad": ("artillery", "poison", {"poison": 0.38, "fire": -0.12}),
+            "Hollow Knight": ("guard", "physical", {"physical": 0.18, "shadow": 0.12}),
+            "Gate Warden": (
+                "guard",
+                "holy",
+                {"physical": 0.20, "holy": 0.28, "shadow": -0.12},
+            ),
+        }
+        role, damage_type, resistances = traits.get(
+            base_name, ("bruiser", "physical", {"physical": 0.08})
+        )
+        enemy.role = role
+        enemy.damage_type = damage_type
+        enemy.resistances = dict(resistances)
 
     def elite_chance(self) -> float:
         difficulty = self.difficulty_profile()
@@ -1975,6 +2169,24 @@ class Game(SaveLoadMixin, RenderingMixin):
         enemy.speed *= modifier.speed_multiplier
         enemy.xp += modifier.xp_bonus
         enemy.aggro_range += 1.0 if modifier.name == "Runed" else 0.0
+        if modifier.name == "Venomous":
+            enemy.damage_type = "poison"
+            enemy.resistances["poison"] = max(
+                enemy.resistances.get("poison", 0.0), 0.40
+            )
+            enemy.role = "flanker"
+        elif modifier.name == "Runed":
+            enemy.damage_type = "arcane"
+            enemy.resistances["arcane"] = max(
+                enemy.resistances.get("arcane", 0.0), 0.34
+            )
+        elif modifier.name == "Ironbound":
+            enemy.resistances["physical"] = max(
+                enemy.resistances.get("physical", 0.0), 0.32
+            )
+            enemy.role = "guard"
+        elif modifier.name == "Frenzied":
+            enemy.role = "flanker"
         enemy.color = self._shift_color(enemy.color, modifier.color_shift)
 
     def _make_miniboss(self, x: float, y: float) -> Enemy:
@@ -2023,23 +2235,27 @@ class Game(SaveLoadMixin, RenderingMixin):
         boss_name = boss_titles.get(self.theme.name, "Dread Gate Tyrant")
         if self.story_state is not None:
             boss_name = f"{self.story_state.antagonist} {boss_name}"
-        return self._apply_run_modifier(
-            Enemy(
-                boss_name,
-                "boss",
-                x,
-                y,
-                210,
-                210,
-                1.65,
-                18,
-                90,
-                1.45,
-                1.15,
-                aggro_range=12.0,
-                color=self.theme.accent,
-            )
+        boss = Enemy(
+            boss_name,
+            "boss",
+            x,
+            y,
+            210,
+            210,
+            1.65,
+            18,
+            90,
+            1.45,
+            1.15,
+            aggro_range=12.0,
+            color=self.theme.accent,
+            role="boss",
+            damage_type="shadow"
+            if self.theme.name == "Violet Reliquary"
+            else "physical",
+            resistances={"physical": 0.18, "shadow": 0.22, "holy": -0.10},
         )
+        return self._apply_run_modifier(boss)
 
     def _make_loot(self, x: float, y: float) -> Item:
         roll = self.rng.random()
@@ -2053,9 +2269,13 @@ class Game(SaveLoadMixin, RenderingMixin):
             )
         if roll < 0.42:
             return Item("Scroll of Identify", "identify", rarity="Common", x=x, y=y)
-        if roll > 0.96 - self.run_modifier.loot_bonus - self.story_effect_value(
+        loot_bonus = self.run_modifier.loot_bonus + self.story_effect_value(
             "loot_bonus", 0.0, 0.25
-        ):
+        )
+        if roll > 0.985 - loot_bonus * 0.5:
+            slot = "weapon" if self.rng.random() < 0.58 else "armor"
+            return self._make_equipment(slot, "Legendary", x, y)
+        if roll > 0.96 - loot_bonus:
             return self._make_unique(x, y)
         slot = "weapon" if roll < 0.70 else "armor"
         rarity = "Rare" if self.rng.random() < 0.34 else "Magic"
@@ -2084,9 +2304,26 @@ class Game(SaveLoadMixin, RenderingMixin):
                 x=x,
                 y=y,
             )
-        self._apply_affixes(
-            item, 0 if rarity == "Common" else 1 if rarity == "Magic" else 2
+        affix_count = (
+            0
+            if rarity == "Common"
+            else 1
+            if rarity == "Magic"
+            else 3
+            if rarity == "Legendary"
+            else 2
         )
+        self._apply_affixes(item, affix_count)
+        if rarity == "Legendary":
+            if item.slot == "weapon":
+                item.power += 4
+                item.proc_effect = item.proc_effect or "ignite"
+                item.damage_type = (
+                    item.damage_type if item.damage_type != "physical" else "fire"
+                )
+            else:
+                item.defense += 3
+                item.skill_bonus = item.skill_bonus or "Dash guard"
         curse_chance = (
             0.08
             + (0.08 if self.run_modifier.name == "Cursed Bargains" else 0.0)
@@ -2156,6 +2393,26 @@ class Game(SaveLoadMixin, RenderingMixin):
             item.affixes.append(name)
             item.power += power
             item.defense += defense
+            if name in ("Frostbitten", "of the Moon"):
+                item.damage_type = "frost"
+                item.proc_effect = item.proc_effect or "chill"
+            elif name in ("of Ember", "of Cinders"):
+                item.damage_type = "fire"
+                item.proc_effect = item.proc_effect or "ignite"
+            elif name == "Storm-Touched":
+                item.damage_type = "arcane"
+                item.skill_bonus = item.skill_bonus or "Bolt +1 shard"
+            elif name == "Vampiric":
+                item.damage_type = "shadow"
+                item.proc_effect = item.proc_effect or "lifesteal"
+            elif name == "Thorned":
+                item.proc_effect = item.proc_effect or "thorns"
+            elif name in ("Grounded", "Sealed"):
+                item.skill_bonus = item.skill_bonus or "Nova ward"
+            elif name in ("Balanced", "Light", "of the Fox"):
+                item.skill_bonus = item.skill_bonus or "Dash tempo"
+            elif name in ("Zealous", "Regal", "of Force"):
+                item.skill_bonus = item.skill_bonus or "Melee force"
 
     def _make_unique(self, x: float, y: float) -> Item:
         unique_roll = self.rng.random()
@@ -2170,6 +2427,9 @@ class Game(SaveLoadMixin, RenderingMixin):
                 affixes=["Serrated", "of Force"],
                 unidentified=self.rng.random() < 0.35,
                 unique_effect="embers on hit",
+                damage_type="fire",
+                skill_bonus="Melee force",
+                proc_effect="ignite",
             )
         if unique_roll < 0.72:
             return Item(
@@ -2182,6 +2442,9 @@ class Game(SaveLoadMixin, RenderingMixin):
                 affixes=["Frostbitten", "Balanced"],
                 unidentified=self.rng.random() < 0.35,
                 unique_effect="chill on hit",
+                damage_type="frost",
+                skill_bonus="Bolt +1 shard",
+                proc_effect="chill",
             )
         return Item(
             "Bulwark of the First Gate",
@@ -2193,6 +2456,9 @@ class Game(SaveLoadMixin, RenderingMixin):
             affixes=["Reinforced", "of Warding"],
             unidentified=self.rng.random() < 0.35,
             unique_effect="steadfast bulwark",
+            damage_type="holy",
+            skill_bonus="Dash guard",
+            proc_effect="thorns",
         )
 
     def run(self) -> None:
@@ -2429,6 +2695,7 @@ class Game(SaveLoadMixin, RenderingMixin):
             return
         self.update_player_aim()
         self.update_player(dt)
+        self.update_enemy_statuses(dt)
         self.update_enemies(dt)
         self.update_projectiles(dt)
         self.update_traps(dt)
@@ -2523,43 +2790,82 @@ class Game(SaveLoadMixin, RenderingMixin):
         cost = 9 if self.player.class_name == "Rogue" else 12
         if self.player.has_upgrade("rogue_precision"):
             cost -= 2
+        if self.equipment_skill_bonus("Melee"):
+            cost -= 1
+        if any(
+            item is not None and item.cursed for item in self.player.equipment.values()
+        ):
+            cost += 1
         return max(5, cost)
 
     def melee_cooldown(self) -> float:
         cooldown = 0.30 if self.player.class_name == "Rogue" else 0.36
         if self.player.has_upgrade("warden_bulwark"):
             cooldown += 0.02
-        return cooldown
+        if self.equipment_skill_bonus("Melee"):
+            cooldown -= 0.03
+        return max(0.24, cooldown)
 
     def bolt_mana_cost(self) -> int:
         cost = 7 if self.player.class_name in ("Arcanist", "Ranger") else 10
         if self.player.has_upgrade("arcanist_focus"):
             cost -= 1
+        if self.equipment_skill_bonus("Bolt"):
+            cost -= 1
+        if any(
+            item is not None and item.cursed for item in self.player.equipment.values()
+        ):
+            cost += 1
         return max(4, cost)
 
     def bolt_cooldown(self) -> float:
-        return 0.38 if self.player.class_name in ("Arcanist", "Ranger") else 0.48
+        cooldown = 0.38 if self.player.class_name in ("Arcanist", "Ranger") else 0.48
+        if self.equipment_skill_bonus("Bolt"):
+            cooldown -= 0.04
+        return max(0.28, cooldown)
 
     def nova_mana_cost(self) -> int:
         cost = 14 if self.player.class_name in ("Arcanist", "Acolyte") else 18
         if self.player.has_upgrade("acolyte_veil"):
             cost -= 2
+        if self.equipment_skill_bonus("Nova"):
+            cost -= 1
+        if any(
+            item is not None and item.cursed for item in self.player.equipment.values()
+        ):
+            cost += 2
         return max(8, cost)
 
     def nova_cooldown(self) -> float:
-        return 2.65 if self.player.class_name == "Arcanist" else 3.2
+        cooldown = 2.65 if self.player.class_name == "Arcanist" else 3.2
+        if self.equipment_skill_bonus("Nova"):
+            cooldown -= 0.18
+        return max(2.25, cooldown)
 
     def dash_stamina_cost(self) -> int:
         cost = 12 if self.player.class_name in ("Rogue", "Ranger") else 18
         if self.player.has_upgrade("rogue_smoke"):
             cost -= 2
+        if self.equipment_skill_bonus("Dash"):
+            cost -= 2
         return max(8, cost)
 
     def dash_cooldown(self) -> float:
-        return 0.62 if self.player.class_name == "Ranger" else 0.85
+        cooldown = 0.62 if self.player.class_name == "Ranger" else 0.85
+        if self.equipment_skill_bonus("Dash tempo"):
+            cooldown -= 0.08
+        return max(0.48, cooldown)
 
-    def take_player_damage(self, raw_damage: int, source: str = "hit") -> int:
+    def take_player_damage(
+        self,
+        raw_damage: int,
+        source: str = "hit",
+        damage_type: str = "physical",
+        attacker: Enemy | None = None,
+    ) -> int:
         rogue_evade = 0.18 if self.player.has_upgrade("rogue_smoke") else 0.12
+        if self.player_status("smoke") > 0:
+            rogue_evade += 0.22
         if self.player.class_name == "Rogue" and self.rng.random() < rogue_evade:
             self.floaters.append(
                 FloatingText(
@@ -2570,7 +2876,21 @@ class Game(SaveLoadMixin, RenderingMixin):
         armor_bonus = (
             2 if self.player.class_name == "Warden" and source == "melee" else 0
         )
+        armor = self.player.equipment.get("armor")
+        typed_resist = 0.0
+        if armor is not None:
+            typed_resist += armor.defense * 0.006
+            if armor.damage_type and armor.damage_type == damage_type:
+                typed_resist += 0.08
+            if "Grounded" in armor.affixes and damage_type == "arcane":
+                typed_resist += 0.12
+            if "Sealed" in armor.affixes and damage_type in ("shadow", "poison"):
+                typed_resist += 0.10
+        if self.player_status("aegis") > 0:
+            typed_resist += 0.24
         amount = max(1, raw_damage - self.player.armor() - armor_bonus)
+        if typed_resist > 0:
+            amount = max(1, int(round(amount * (1.0 - min(0.45, typed_resist)))))
         if self.player.has_upgrade("warden_riposte") and source == "melee":
             amount = max(1, amount - 2)
         if self.player.class_name == "Acolyte" and self.player.mana >= 4:
@@ -2594,6 +2914,26 @@ class Game(SaveLoadMixin, RenderingMixin):
                         ttl=0.9,
                     )
                 )
+        if (
+            attacker is not None
+            and self.player.has_upgrade("warden_riposte")
+            and source == "melee"
+        ):
+            counter = max(2, self.player.level + self.player.armor_bonus)
+            self.damage_enemy(
+                attacker,
+                counter,
+                knockback_from=(self.player.facing_x, self.player.facing_y),
+                damage_type="holy",
+                status_effect="stunned"
+                if self.player.has_upgrade("warden_aegis")
+                else "",
+                status_duration=0.35,
+            )
+        if any(
+            item is not None and item.cursed for item in self.player.equipment.values()
+        ):
+            amount += 1 if damage_type in ("shadow", "poison") else 0
         self.player.hp -= amount
         self.run_stats.damage_taken += amount
         flash = (160, 35, 32) if amount >= self.player.max_hp * 0.18 else (105, 24, 28)
@@ -2629,10 +2969,13 @@ class Game(SaveLoadMixin, RenderingMixin):
             dx, dy = self.face_player_toward_screen_point(*pygame.mouse.get_pos())
             distance = math.hypot(dx, dy)
             if distance > 0.18:
+                move_speed = self.player.speed * (
+                    0.82 if self.player_status("chilled") > 0 else 1.0
+                )
                 self.move_actor(
                     self.player,
-                    (dx / distance) * self.player.speed * dt,
-                    (dy / distance) * self.player.speed * dt,
+                    (dx / distance) * move_speed * dt,
+                    (dy / distance) * move_speed * dt,
                 )
             if self.enemy_in_melee_arc():
                 self.player_melee_attack()
@@ -2641,6 +2984,34 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.player.bolt_timer = max(0.0, self.player.bolt_timer - dt)
         self.player.dash_timer = max(0.0, self.player.dash_timer - dt)
         self.player.nova_timer = max(0.0, self.player.nova_timer - dt)
+        if self.player_status("poisoned") > 0:
+            tick = self.player.status_effects.get("_poison_tick", 1.0) - dt
+            if tick <= 0:
+                poison_damage = max(1, self.current_depth // 3 + 1)
+                self.player.hp -= poison_damage
+                self.run_stats.damage_taken += poison_damage
+                tick += 1.0
+                self.floaters.append(
+                    FloatingText(
+                        f"Poison -{poison_damage}",
+                        self.player.x,
+                        self.player.y - 0.55,
+                        self.damage_type_color("poison"),
+                        ttl=0.75,
+                    )
+                )
+            self.player.status_effects["_poison_tick"] = tick
+        next_statuses: dict[str, float] = {}
+        for status, ttl in self.player.status_effects.items():
+            if status.startswith("_"):
+                next_statuses[status] = ttl
+                continue
+            ttl -= dt
+            if ttl > 0:
+                next_statuses[status] = ttl
+        if "poisoned" not in next_statuses:
+            next_statuses.pop("_poison_tick", None)
+        self.player.status_effects = next_statuses
         stamina_regen = 38 if self.player.class_name == "Ranger" else 30
         mana_regen = 8 if self.player.class_name == "Arcanist" else 5
         if self.player.has_upgrade("arcanist_focus"):
@@ -2737,30 +3108,32 @@ class Game(SaveLoadMixin, RenderingMixin):
             distance = math.hypot(dx, dy)
             if distance > enemy.aggro_range:
                 continue
+            if enemy.statuses.get("stunned", 0.0) > 0:
+                enemy.telegraph = "stunned"
+                continue
             nx, ny = (dx / distance, dy / distance) if distance > 0.001 else (0.0, 0.0)
+            move_speed = enemy.speed * self.enemy_speed_multiplier(enemy)
             if distance > 0.001:
                 enemy.facing_x = nx
                 enemy.facing_y = ny
 
             if enemy.kind == "boss":
                 if distance > enemy.attack_range:
-                    self.move_actor(enemy, nx * enemy.speed * dt, ny * enemy.speed * dt)
+                    self.move_actor(enemy, nx * move_speed * dt, ny * move_speed * dt)
                 if 2.0 < distance <= 6.0 and enemy.attack_timer <= 0:
                     self.enemy_cast(enemy, nx, ny)
                 elif distance <= enemy.attack_range and enemy.attack_timer <= 0:
                     self.enemy_melee(enemy)
             elif enemy.kind == "ranged":
                 if 3.5 < distance:
-                    self.move_actor(enemy, nx * enemy.speed * dt, ny * enemy.speed * dt)
+                    self.move_actor(enemy, nx * move_speed * dt, ny * move_speed * dt)
                 elif distance < 2.5:
-                    self.move_actor(
-                        enemy, -nx * enemy.speed * dt, -ny * enemy.speed * dt
-                    )
+                    self.move_actor(enemy, -nx * move_speed * dt, -ny * move_speed * dt)
                 if distance <= enemy.attack_range and enemy.attack_timer <= 0:
                     self.enemy_cast(enemy, nx, ny)
             else:
                 if distance > enemy.attack_range:
-                    self.move_actor(enemy, nx * enemy.speed * dt, ny * enemy.speed * dt)
+                    self.move_actor(enemy, nx * move_speed * dt, ny * move_speed * dt)
                 elif enemy.attack_timer <= 0:
                     self.enemy_melee(enemy)
 
@@ -2768,10 +3141,19 @@ class Game(SaveLoadMixin, RenderingMixin):
         enemy.attack_timer = enemy.attack_cooldown
         enemy.telegraph = "melee"
         raw = enemy.damage + self.rng.randrange(-2, 3)
-        amount = self.take_player_damage(raw, source="melee")
+        amount = self.take_player_damage(
+            raw, source="melee", damage_type=enemy.damage_type, attacker=enemy
+        )
+        if enemy.damage_type == "poison" and amount > 0:
+            self.set_player_status("poisoned", 1.4)
+        elif enemy.damage_type == "frost" and amount > 0:
+            self.set_player_status("chilled", 0.9)
         self.floaters.append(
             FloatingText(
-                f"-{amount}", self.player.x, self.player.y - 0.2, (235, 90, 80)
+                f"-{amount}",
+                self.player.x,
+                self.player.y - 0.2,
+                self.damage_type_color(enemy.damage_type),
             )
         )
         self.slashes.append(
@@ -2795,7 +3177,9 @@ class Game(SaveLoadMixin, RenderingMixin):
     def enemy_cast(self, enemy: Enemy, nx: float, ny: float) -> None:
         enemy.attack_timer = enemy.attack_cooldown
         enemy.telegraph = "cast"
-        projectile_color = (245, 100, 235) if enemy.elite_modifier else (180, 80, 220)
+        projectile_color = self.damage_type_color(enemy.damage_type)
+        if enemy.elite_modifier:
+            projectile_color = self.mix(projectile_color, (245, 100, 235), 0.35)
         if enemy.kind in ("boss", "miniboss"):
             projectile_color = self.theme.accent
         self.add_impact(
@@ -2811,6 +3195,9 @@ class Game(SaveLoadMixin, RenderingMixin):
                 "enemy",
                 projectile_color,
                 ttl=1.8,
+                damage_type=enemy.damage_type,
+                status_effect="chilled" if enemy.damage_type == "frost" else "",
+                status_duration=0.9,
             )
         )
 
@@ -2836,6 +3223,9 @@ class Game(SaveLoadMixin, RenderingMixin):
                         hit,
                         projectile.damage,
                         knockback_from=(projectile.vx, projectile.vy),
+                        damage_type=projectile.damage_type,
+                        status_effect=projectile.status_effect,
+                        status_duration=projectile.status_duration,
                     )
                     continue
             else:
@@ -2846,8 +3236,12 @@ class Game(SaveLoadMixin, RenderingMixin):
                     < ENEMY_PROJECTILE_HIT_RADIUS
                 ):
                     amount = self.take_player_damage(
-                        projectile.damage, source="projectile"
+                        projectile.damage,
+                        source="projectile",
+                        damage_type=projectile.damage_type,
                     )
+                    if projectile.status_effect == "chilled" and amount > 0:
+                        self.set_player_status("chilled", projectile.status_duration)
                     self.floaters.append(
                         FloatingText(
                             f"-{amount}",
@@ -2935,18 +3329,28 @@ class Game(SaveLoadMixin, RenderingMixin):
                 targets = self.enemies_in_melee_arc(reach_bonus=reach)[:limit]
             for index, enemy in enumerate(list(targets)):
                 damage = self.player.melee_damage() + self.rng.randrange(-3, 5)
+                damage_type = self.weapon_damage_type()
+                status_effect = ""
+                status_duration = 0.0
+                if self.equipment_skill_bonus("Melee"):
+                    damage += 2
                 if index > 0:
                     damage = max(1, int(damage * 0.62))
                 crit_chance = (
                     0.30 if self.player.has_upgrade("rogue_precision") else 0.22
                 )
-                if (
+                rogue_crit = (
                     self.player.class_name == "Rogue"
                     and self.rng.random() < crit_chance
-                ):
+                )
+                if rogue_crit:
                     damage = int(
                         damage
                         * (1.95 if self.player.has_upgrade("rogue_precision") else 1.75)
+                    )
+                    status_effect = "poisoned"
+                    status_duration = (
+                        2.2 if self.player.has_upgrade("rogue_venom") else 1.2
                     )
                     self.floaters.append(
                         FloatingText(
@@ -2955,11 +3359,33 @@ class Game(SaveLoadMixin, RenderingMixin):
                     )
                 if self.player.class_name == "Warden":
                     enemy.attack_timer = max(enemy.attack_timer, 0.35)
+                    if self.player.has_upgrade("warden_aegis"):
+                        damage_type = "holy"
+                        status_effect = "stunned"
+                        status_duration = 0.35
+                elif self.player.class_name == "Arcanist" and self.player.has_upgrade(
+                    "arcanist_permafrost"
+                ):
+                    status_effect = "chilled"
+                    status_duration = 1.0
+                elif self.player.class_name == "Acolyte" and self.player.has_upgrade(
+                    "acolyte_gravebind"
+                ):
+                    status_effect = "bound"
+                    status_duration = 1.1
+                elif self.player.class_name == "Ranger" and self.player.has_upgrade(
+                    "ranger_beastmark"
+                ):
+                    status_effect = "snared"
+                    status_duration = 1.15
                 damage = self.apply_story_player_damage(damage)
                 self.damage_enemy(
                     enemy,
                     damage,
                     knockback_from=(self.player.facing_x, self.player.facing_y),
+                    damage_type=damage_type,
+                    status_effect=status_effect,
+                    status_duration=status_duration,
                 )
                 if self.player.class_name == "Acolyte":
                     leech = 4 if self.player.has_upgrade("acolyte_sanguine") else 2
@@ -2980,7 +3406,10 @@ class Game(SaveLoadMixin, RenderingMixin):
             radius=0.34,
             kind="cast",
         )
+        damage_type = self.bolt_damage_type()
         damage = 14 + self.player.level * 2 + self.player.spell_bonus
+        if self.equipment_skill_bonus("Bolt"):
+            damage += 2
         if self.player.class_name == "Acolyte":
             damage += max(0, self.player.max_hp - self.player.hp) // 12
         damage = self.apply_story_player_damage(damage, spell=True)
@@ -2998,6 +3427,22 @@ class Game(SaveLoadMixin, RenderingMixin):
                 if self.player.has_upgrade("arcanist_splinter")
                 else [-0.06, 0.06]
             )
+        if self.equipment_skill_bonus("Bolt") and len(angles) < 5:
+            angles = sorted({*angles, -0.18, 0.18})
+        status_effect = ""
+        status_duration = 0.0
+        if damage_type == "poison" or self.player.has_upgrade("rogue_venom"):
+            status_effect = "poisoned"
+            status_duration = 2.0
+        elif damage_type == "frost" or self.player.has_upgrade("arcanist_permafrost"):
+            status_effect = "chilled"
+            status_duration = 1.4
+        elif self.player.has_upgrade("acolyte_gravebind"):
+            status_effect = "bound"
+            status_duration = 1.2
+        elif self.player.has_upgrade("ranger_snare"):
+            status_effect = "snared"
+            status_duration = 1.1
         for angle in angles:
             dx = self.player.facing_x * math.cos(
                 angle
@@ -3013,8 +3458,11 @@ class Game(SaveLoadMixin, RenderingMixin):
                     dy * 9.0,
                     damage if abs(angle) <= 0.001 else max(1, damage - 4),
                     "player",
-                    (70, 165, 255),
+                    self.damage_type_color(damage_type),
                     ttl=1.55 if self.player.has_upgrade("arcanist_splinter") else 1.4,
+                    damage_type=damage_type,
+                    status_effect=status_effect,
+                    status_duration=status_duration,
                 )
             )
 
@@ -3042,6 +3490,8 @@ class Game(SaveLoadMixin, RenderingMixin):
             radius = 2.85 if self.player.class_name == "Arcanist" else 2.45
             if self.player.has_upgrade("arcanist_focus"):
                 radius += 0.35
+            if self.equipment_skill_bonus("Nova"):
+                radius += 0.25
             if distance <= radius:
                 hits += 1
                 damage = (
@@ -3050,21 +3500,55 @@ class Game(SaveLoadMixin, RenderingMixin):
                     + self.player.spell_bonus
                     + self.rng.randrange(0, 5)
                 )
-                if self.player.class_name == "Ranger":
+                damage_type = self.nova_damage_type()
+                status_effect = ""
+                status_duration = 0.0
+                if self.equipment_skill_bonus("Nova"):
+                    damage += 2
+                if self.player.class_name == "Warden":
+                    status_effect = "stunned"
+                    status_duration = (
+                        0.35 if self.player.has_upgrade("warden_aegis") else 0.2
+                    )
+                    enemy.attack_timer = max(enemy.attack_timer, 0.45)
+                elif self.player.class_name == "Rogue":
+                    status_effect = "poisoned"
+                    status_duration = (
+                        2.4 if self.player.has_upgrade("rogue_venom") else 1.4
+                    )
+                    self.set_player_status("smoke", 0.65)
+                elif self.player.class_name == "Arcanist":
+                    status_effect = "chilled"
+                    status_duration = (
+                        1.9 if self.player.has_upgrade("arcanist_permafrost") else 1.2
+                    )
+                elif self.player.class_name == "Ranger":
                     snare_time = (
                         1.25 if self.player.has_upgrade("ranger_snare") else 0.8
                     )
                     enemy.attack_timer = max(enemy.attack_timer, snare_time)
+                    status_effect = "snared"
+                    status_duration = snare_time
                 if self.player.class_name == "Acolyte":
                     leech = 5 if self.player.has_upgrade("acolyte_sanguine") else 3
                     self.player.hp = min(self.player.max_hp, self.player.hp + leech)
+                    if self.player.has_upgrade("acolyte_gravebind"):
+                        status_effect = "bound"
+                        status_duration = 1.6
                 damage = self.apply_story_player_damage(damage, spell=True)
                 direction = (
                     (dx / distance, dy / distance)
                     if distance > 0.001
                     else (self.player.facing_x, self.player.facing_y)
                 )
-                self.damage_enemy(enemy, damage, knockback_from=direction)
+                self.damage_enemy(
+                    enemy,
+                    damage,
+                    knockback_from=direction,
+                    damage_type=damage_type,
+                    status_effect=status_effect,
+                    status_duration=status_duration,
+                )
         self.floaters.append(
             FloatingText(
                 f"{self.skill_names()[2]}{f' x{hits}' if hits else ''}",
@@ -3099,6 +3583,8 @@ class Game(SaveLoadMixin, RenderingMixin):
         steps = 11 if self.player.class_name == "Ranger" else 8
         if self.player.has_upgrade("rogue_smoke"):
             steps += 2
+        if self.equipment_skill_bonus("Dash"):
+            steps += 1
         for _ in range(steps):
             self.move_actor(
                 self.player,
@@ -3113,6 +3599,18 @@ class Game(SaveLoadMixin, RenderingMixin):
             radius=0.42,
             kind="dash",
         )
+        if self.player.class_name == "Rogue" and self.player.has_upgrade("rogue_smoke"):
+            self.set_player_status("smoke", 0.9)
+        if self.player.class_name == "Warden" and (
+            self.player.has_upgrade("warden_aegis")
+            or self.equipment_skill_bonus("Dash guard")
+        ):
+            self.set_player_status("aegis", 0.85)
+        if self.player.class_name == "Ranger" and self.player.has_upgrade(
+            "ranger_beastmark"
+        ):
+            self.player.stamina = min(self.player.max_stamina, self.player.stamina + 8)
+            self.player.bolt_timer = min(self.player.bolt_timer, 0.12)
         self.floaters.append(
             FloatingText(
                 self.skill_names()[3],
@@ -3152,13 +3650,58 @@ class Game(SaveLoadMixin, RenderingMixin):
         return None
 
     def damage_enemy(
-        self, enemy: Enemy, amount: int, knockback_from: tuple[float, float]
+        self,
+        enemy: Enemy,
+        amount: int,
+        knockback_from: tuple[float, float],
+        damage_type: str = "physical",
+        status_effect: str = "",
+        status_duration: float = 0.0,
     ) -> None:
-        enemy.hp -= amount
+        amount = self.mitigate_enemy_damage(enemy, amount, damage_type)
+        proc_damage = 0
+        weapon = self.player.equipment.get("weapon")
+        if (
+            self.equipped_unique_effect("embers on hit")
+            or self.equipped_proc_effect("ignite")
+            or (weapon is not None and weapon.proc_effect == "ignite")
+        ) and damage_type != "fire":
+            proc_damage += max(1, self.player.level // 2 + 2)
+            self.apply_enemy_status(enemy, "burning", 1.1)
+        if (
+            self.equipped_unique_effect("chill on hit")
+            or self.equipped_proc_effect("chill")
+            or status_effect == "chilled"
+        ):
+            self.apply_enemy_status(enemy, "chilled", max(status_duration, 1.0))
+        if self.equipped_proc_effect("lifesteal"):
+            healed = min(
+                self.player.max_hp - self.player.hp, 2 + self.player.level // 3
+            )
+            if healed > 0:
+                self.player.hp += healed
+                self.floaters.append(
+                    FloatingText(
+                        f"+{healed}",
+                        self.player.x,
+                        self.player.y - 0.45,
+                        (214, 92, 150),
+                    )
+                )
+        if status_effect and status_effect != "chilled":
+            self.apply_enemy_status(enemy, status_effect, status_duration)
+        if enemy.statuses.get("burning", 0.0) > 0 and damage_type == "fire":
+            proc_damage += max(1, self.player.level // 3 + 1)
+        total = max(1, amount + proc_damage)
+        enemy.hp -= total
         self.enemy_hit_flashes[id(enemy)] = 0.22 if enemy.kind != "boss" else 0.32
-        hit_color = self.theme.accent if enemy.kind == "boss" else (255, 210, 120)
+        hit_color = (
+            self.theme.accent
+            if enemy.kind == "boss"
+            else self.damage_type_color(damage_type)
+        )
         self.floaters.append(
-            FloatingText(f"-{amount}", enemy.x, enemy.y - 0.2, hit_color)
+            FloatingText(f"-{total}", enemy.x, enemy.y - 0.2, hit_color)
         )
         self.add_impact(
             enemy.x,
@@ -3234,6 +3777,26 @@ class Game(SaveLoadMixin, RenderingMixin):
         xp_gain = max(
             1, int(enemy.xp * (1.0 + self.story_effect_value("xp_bonus", 0.0, 0.35)))
         )
+        if (
+            self.player.class_name == "Acolyte"
+            and self.player.has_upgrade("acolyte_gravebind")
+            and enemy.statuses.get("bound", 0.0) > 0
+        ):
+            echo_heal = min(
+                self.player.max_hp - self.player.hp, 4 + self.current_depth // 2
+            )
+            if echo_heal > 0:
+                self.player.hp += echo_heal
+                self.player.mana = min(self.player.max_mana, self.player.mana + 2)
+                self.floaters.append(
+                    FloatingText(
+                        f"Grave echo +{echo_heal}",
+                        self.player.x,
+                        self.player.y - 0.5,
+                        self.damage_type_color("shadow"),
+                        ttl=0.85,
+                    )
+                )
         if self.player.gain_xp(xp_gain):
             upgraded = self.grant_skill_upgrade(reason="level up")
             self.floaters.append(

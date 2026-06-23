@@ -1236,6 +1236,31 @@ class RenderingMixin:
         pygame.draw.rect(
             self.screen, (215, 62, 52), (sx - bar_w // 2, bar_y, fill_w, bar_h)
         )
+        status_entries = [
+            status
+            for status, ttl in getattr(enemy, "statuses", {}).items()
+            if ttl > 0 and not status.startswith("_")
+        ]
+        if status_entries:
+            status_colors = {
+                "poisoned": (126, 214, 92),
+                "burning": (255, 132, 74),
+                "chilled": (126, 206, 242),
+                "snared": (150, 215, 105),
+                "bound": (214, 92, 150),
+                "stunned": (235, 205, 120),
+            }
+            pip_y = bar_y - 5 * WORLD_SCALE
+            pip_spacing = 7 * WORLD_SCALE
+            start_x = sx - ((len(status_entries) - 1) * pip_spacing) // 2
+            for index, status in enumerate(status_entries[:5]):
+                color = status_colors.get(status, enemy.color)
+                pygame.draw.circle(
+                    self.screen,
+                    color,
+                    (start_x + index * pip_spacing, pip_y),
+                    max(2, 3 * WORLD_SCALE),
+                )
         if enemy.elite_modifier or enemy.kind == "miniboss":
             pulse = 0.5 + 0.5 * math.sin(self.elapsed * 5.2)
             marker = pygame.Surface(
@@ -1262,7 +1287,11 @@ class RenderingMixin:
                 label, label.get_rect(center=(sx, bar_y - 8 * WORLD_SCALE))
             )
         if enemy.attack_timer <= 0.28 and enemy.kind in ("boss", "miniboss", "ranged"):
-            tell_color = self.theme.accent if enemy.kind == "boss" else enemy.color
+            tell_color = (
+                self.theme.accent
+                if enemy.kind == "boss"
+                else self.damage_type_color(getattr(enemy, "damage_type", "physical"))
+            )
             pulse = 0.55 + 0.45 * math.sin(self.elapsed * 18.0)
             telegraph = pygame.Surface(
                 (42 * WORLD_SCALE, 42 * WORLD_SCALE), pygame.SRCALPHA
