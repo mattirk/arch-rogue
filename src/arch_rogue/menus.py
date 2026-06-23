@@ -335,7 +335,7 @@ class MenuRenderer:
     def draw_title_menu(self) -> None:
         panel, content = self.menu_frame(
             f"Arch Rogue {__version__}",
-            "Milestone 2.0 · procedural story mode, guests, and choice-shaped runs",
+            "Milestone 2.5 · dark-level cleanup, boss runs, and choice-shaped stories",
         )
         resume_value = "Ready" if self.g.save_exists() else "None"
         rows: list[MenuRow] = [
@@ -406,10 +406,10 @@ class MenuRenderer:
 
     def draw_about_screen(self) -> None:
         panel, content = self.menu_frame(
-            "About / Onboarding", "Arch Rogue milestone 2.0"
+            "About / Onboarding", "Arch Rogue milestone 2.5"
         )
         paragraphs = [
-            f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs and a new procedural story mode.",
+            f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs, procedural stories, and dark-level exploration.",
             "Goal: descend through ten depths, survive escalating encounters, resolve story guest dilemmas, defeat the final-depth gate tyrant, then use the stairs to complete the run.",
             "Combat: hold left mouse to move and aim. Space uses your class melee skill, F casts your bolt skill, V uses your nova skill, Left Ctrl uses your movement skill, and C opens the character sheet. The bottom HUD action bar shows hotkeys, cooldowns, and potion counts.",
             "Difficulty: Options cycle Easy, Medium, and Hard; Hard is the default, and Hell unlocks after your first complete clear.",

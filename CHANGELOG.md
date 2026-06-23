@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.5.0 — General Cleanup
+
+Milestone 2.5 focuses on repository version hygiene, dark-level presentation cleanup, and small regression coverage without broad architecture changes.
+
+### Changed
+
+- Package metadata, title/about copy, README, and save release strings now target `2.5.0`.
+- Dark floors no longer draw extra player-centered ellipse and ring overlays; visibility is handled by tile/object sight checks for a cleaner light-source presentation.
+
+### Added
+
+- Regression coverage for 2.5 release metadata and the dark-floor light-overlay cleanup.
+
 ## 2.0.0 — Story Mode: Going Full RPG
 
 Milestone 2.0 adds a deterministic procedural story layer that binds player backstory, guests, choices, and dungeon generation together without replacing the compact run loop.

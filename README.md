@@ -1,10 +1,10 @@
 # Arch Rogue
 
-Arch Rogue is a 2.3 milestone release of a modernized Rogue-inspired isometric action RPG built with Python and Pygame CE.
+Arch Rogue is a 2.5 milestone release of a modernized Rogue-inspired isometric action RPG built with Python and Pygame CE.
 
 Explore a 10-depth procedural dungeon, choose one of five distinct archetypes, follow a seeded dark-fantasy storyline, preview each descent's risks, survive faction-shaped encounters, defeat floor bosses and the final gate tyrant, and start a fresh run after victory or death.
 
-## 2.3 Release Highlights
+## 2.5 Release Highlights
 
 - Floor plans now pace the full run with escalating threat, biome/theme variety, previewable descent risks, dark-level flags, encounter templates, and boss signposting.
 - Distinct floor bosses appear at milestone depths with themed attack patterns, readable telegraphs, persistent AI state, and notable loot hooks.
@@ -13,7 +13,7 @@ Explore a 10-depth procedural dungeon, choose one of five distinct archetypes, f
 - Class upgrades now carry tree/tier metadata so level-ups, Oath Shrines, and skill altars build toward readable archetype paths.
 - End-of-run summaries cover cause of death, notable loot, defeated bosses, secrets, story choices, challenge rooms, and mastery progress.
 - Versioned run saves persist floor plans, active modifiers, story state, boss/enemy state, discoveries, and run statistics for reliable resume.
-- Regression coverage now checks run pacing, floor-plan save/load, boss rewards/mastery, boss AI save/load, and dense encounter update budget.
+- Regression coverage checks run pacing, floor-plan save/load, boss rewards/mastery, boss AI save/load, dark-level visibility, and the 2.5 cleanup pass.
 
 ## Architecture
 This project uses vibe architecture. Module structure is changed when new features require it or game.py gets bloated.
@@ -64,7 +64,7 @@ python -m unittest discover tests
 Run a focused milestone test module while iterating on a specific change:
 
 ```bash
-python -m unittest tests.test_2_3_run_structure_bosses_replayability
+python -m unittest tests.test_2_5_general_cleanup
 ```
 
 Notes:
@@ -109,12 +109,12 @@ Explore 10 dungeon depths, survive enemies and traps, identify and equip loot, u
 
 In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from the title screen. Death and victory clear the saved run. Options are saved to `~/.arch_rogue_options.json`.
 
-## Known Issues in 2.3
+## Known Issues in 2.5
 
 - Quest cutscenes use packaged JSON dialogue-tree and sprite-animation assets; authored content coverage is still intentionally compact for the milestone.
 - Run music and sound effects are still lightweight procedural/static cues; there is no hand-authored soundtrack asset pipeline yet.
 - Controls are keyboard/mouse only; gamepad support is not implemented.
-- Visuals and audio remain procedural prototype assets, now tuned for a cohesive milestone look rather than final art quality.
+- Visuals and audio remain procedural prototype assets, now tuned for a cleaner milestone look rather than final art quality.
 - Save files are local JSON and are not cloud-synced.
 
 ## Credits

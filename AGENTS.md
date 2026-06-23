@@ -174,18 +174,12 @@ Example categories:
 
 ## Current Milestone
 
-### 2.3: Run Structure, Bosses, and Long-Term Replayability
+### 2.5: General cleanup
 
-- Add stronger floor-to-floor run pacing with meaningful transitions, escalating threat, biome/theme variety, and previewable risks before descending.
-- Introduce memorable mini-bosses and floor bosses with distinct silhouettes, attack patterns, telegraphs, loot hooks, and story/theme ties.
-- Expand procedural encounter composition with faction mixes, elite packs, ambushes, environmental hazards, treasure rooms, and rare event templates.
-- Improve run identity through modifier combinations, cursed bargains, branching objectives, optional challenge rooms, and discoverable secrets.
-- Add lightweight meta-progression that unlocks options, records discoveries, and rewards mastery without reducing the danger of individual runs.
-- Build out end-of-run summaries with cause of death, notable loot, defeated bosses, story choices, discovered secrets, and performance stats.
-- Strengthen save/load and run-resume coverage for multi-floor progression, boss states, discovered lore, unlocked options, and active modifiers.
-- Add more monsters with varying attack patterns, loot hooks, and story/theme ties
-- Add more player skill upgrades with distinct skill trees, passive modifiers, and active skill effects.
-- Profile dense boss and encounter scenarios to preserve 60+ FPS with clear input response, combat readability, and stable procedural generation costs.
+- Clean up unnecessary vectors and visual artifacts around player as a light source when in dark levels
+- Validate versioning in repository, update current version to 2.5 and update changelog
+- Do a general code cleanup, no big architecture changes
+
 
 ## Next Milestones
 
