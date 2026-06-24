@@ -90,7 +90,7 @@ class RenderingMixin:
                     if self.tile_visibility_alpha(x, y) <= 0:
                         continue
                     tile = self.dungeon.tiles[x][y]
-                    if tile == Tile.WALL:
+                    if tile in (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
                         continue
                     self.draw_tile(x, y, tile)
 
@@ -204,7 +204,11 @@ class RenderingMixin:
             return cached
 
         margin = 4 * WORLD_SCALE
-        wall_h = 48 * WORLD_SCALE if tile == Tile.WALL else 0
+        wall_h = (
+            48 * WORLD_SCALE
+            if tile in (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR)
+            else 0
+        )
         width = TILE_W + margin * 2
         height = TILE_H + wall_h + margin * 2
         surface = pygame.Surface((width, height), pygame.SRCALPHA)
@@ -219,6 +223,20 @@ class RenderingMixin:
         if tile == Tile.WALL:
             self.draw_wall_tile_surface(
                 surface, sx, sy, top, right, bottom, left, wall_h, seed
+            )
+        elif tile in (Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
+            self.draw_door_tile_surface(
+                surface,
+                sx,
+                sy,
+                top,
+                right,
+                bottom,
+                left,
+                wall_h,
+                seed,
+                tile == Tile.OPEN_DOOR,
+                "right",
             )
         else:
             self.draw_floor_tile_surface(
@@ -468,7 +486,7 @@ class RenderingMixin:
                     elif tile in (Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
                         if self.tile_visibility_alpha(x, y) <= 0:
                             continue
-                        drawables.append((x + y + 0.72, "door", (x, y, tile)))
+                        drawables.append((x + y + 1.02, "door", (x, y, tile)))
 
         for item in self.items:
             if visible(item.x, item.y, 0.45):
@@ -561,102 +579,226 @@ class RenderingMixin:
                 surface, surface.get_rect(center=(sx, sy - 34 * WORLD_SCALE))
             )
 
-    def draw_door(self, x: int, y: int, tile: Tile) -> None:
-        sx, sy = self.world_to_screen(x + 0.5, y + 0.5)
+    def draw_door_tile_surface(
+        self,
+        surface: pygame.Surface,
+        sx: int,
+        sy: int,
+        top: tuple[int, int],
+        right: tuple[int, int],
+        bottom: tuple[int, int],
+        left: tuple[int, int],
+        wall_h: int,
+        seed: int,
+        open_door: bool,
+        face: str,
+    ) -> None:
+        self.draw_wall_tile_surface(
+            surface, sx, sy, top, right, bottom, left, wall_h, seed
+        )
+
         scale = WORLD_SCALE
-        seed = self.tile_seed(x, y)
-        open_door = tile == Tile.OPEN_DOOR
+        cap_left = (left[0], left[1] - wall_h)
+        cap_right = (right[0], right[1] - wall_h)
+        cap_bottom = (bottom[0], bottom[1] - wall_h)
+        edge_color = self.shade(self.theme.wall_edge, 8)
+        left_color = self.shade(self.theme.wall_left, -4)
+        right_color = self.shade(self.theme.wall_right, -20)
+        void = self.shade(self.theme.wall_right, -54)
+        wood = self.mix(self.theme.wall_left, (100, 62, 36), 0.42)
+        wood_dark = self.shade(wood, -36)
+        metal = self.mix(self.theme.wall_edge, self.theme.accent, 0.16)
 
-        top = (sx, sy - TILE_H // 2)
-        right = (sx + TILE_W // 2, sy)
-        bottom = (sx, sy + TILE_H // 2)
-        left = (sx - TILE_W // 2, sy)
-        floor = self.shade(self.theme.floor, (seed % 7) - 3)
-        floor_edge = self.shade(self.theme.floor_edge, -8)
-        pygame.draw.polygon(self.screen, floor, [top, right, bottom, left])
-        pygame.draw.lines(
-            self.screen, floor_edge, True, [top, right, bottom, left], scale
-        )
+        def lerp(a: tuple[int, int], b: tuple[int, int], t: float) -> tuple[int, int]:
+            return (int(a[0] + (b[0] - a[0]) * t), int(a[1] + (b[1] - a[1]) * t))
 
-        threshold = [
-            (sx - 24 * scale, sy - 3 * scale),
-            (sx + 2 * scale, sy - 15 * scale),
-            (sx + 24 * scale, sy - 3 * scale),
-            (sx - 2 * scale, sy + 10 * scale),
+        def face_point(u: float, v: float) -> tuple[int, int]:
+            if face == "left":
+                upper = lerp(cap_left, cap_bottom, u)
+                lower = lerp(left, bottom, u)
+            else:
+                upper = lerp(cap_bottom, cap_right, u)
+                lower = lerp(bottom, right, u)
+            return lerp(upper, lower, v)
+
+        opening = [
+            face_point(0.12, 0.16),
+            face_point(0.88, 0.16),
+            face_point(0.88, 0.98),
+            face_point(0.12, 0.98),
         ]
-        pygame.draw.polygon(
-            self.screen, self.shade(self.theme.wall_right, -20), threshold
+        inset = [
+            face_point(0.19, 0.24),
+            face_point(0.81, 0.24),
+            face_point(0.81, 0.94),
+            face_point(0.19, 0.94),
+        ]
+        frame_color = self.mix(
+            left_color if face == "left" else right_color, edge_color, 0.30
         )
-        pygame.draw.lines(
-            self.screen, self.shade(self.theme.wall_edge, -10), True, threshold, scale
-        )
+        pygame.draw.polygon(surface, self.shade(frame_color, -30), opening)
+        pygame.draw.polygon(surface, void, inset)
+        pygame.draw.lines(surface, edge_color, True, opening, max(1, scale))
 
-        stone = self.mix(self.theme.wall_top, self.theme.wall_edge, 0.32)
-        stone_dark = self.shade(self.theme.wall_right, -18)
-        wood = self.mix(self.theme.floor_edge, (94, 60, 38), 0.45)
-        wood_dark = self.shade(wood, -34)
-        metal = self.mix(self.theme.wall_edge, self.theme.accent, 0.20)
-
-        left_jamb = pygame.Rect(0, 0, 6 * scale, 34 * scale)
-        right_jamb = pygame.Rect(0, 0, 6 * scale, 34 * scale)
-        left_jamb.midbottom = (sx - 17 * scale, sy + 5 * scale)
-        right_jamb.midbottom = (sx + 17 * scale, sy + 5 * scale)
-        lintel = pygame.Rect(0, 0, 42 * scale, 7 * scale)
-        lintel.midbottom = (sx, sy - 25 * scale)
-        for rect in (left_jamb, right_jamb, lintel):
-            pygame.draw.rect(
-                self.screen, stone_dark, rect.inflate(2 * scale, 2 * scale)
-            )
-            pygame.draw.rect(self.screen, stone, rect)
+        for u in (0.12, 0.88):
             pygame.draw.line(
-                self.screen,
-                self.shade(self.theme.wall_edge, 10),
-                rect.topleft,
-                rect.topright,
+                surface,
+                self.shade(edge_color, -18),
+                face_point(u, 0.17),
+                face_point(u, 0.98),
                 max(1, scale),
             )
+        pygame.draw.line(
+            surface,
+            self.shade(edge_color, 8),
+            face_point(0.11, 0.16),
+            face_point(0.89, 0.16),
+            max(2, 2 * scale),
+        )
+        pygame.draw.line(
+            surface,
+            self.shade(edge_color, -24),
+            face_point(0.09, 0.99),
+            face_point(0.91, 0.99),
+            max(1, scale),
+        )
 
         if open_door:
+            hinge_u = 0.24 if face == "right" else 0.76
+            swing_u = 0.03 if face == "right" else 0.97
             panel = [
-                (sx - 14 * scale, sy - 22 * scale),
-                (sx - 2 * scale, sy - 17 * scale),
-                (sx - 4 * scale, sy + 9 * scale),
-                (sx - 18 * scale, sy + 14 * scale),
+                face_point(hinge_u, 0.31),
+                face_point(swing_u, 0.39),
+                face_point(swing_u, 0.92),
+                face_point(hinge_u, 0.88),
             ]
-            pygame.draw.polygon(self.screen, wood_dark, panel)
+            pygame.draw.polygon(surface, wood_dark, panel)
             pygame.draw.lines(
-                self.screen, self.shade(metal, -18), True, panel, max(1, scale)
+                surface, self.shade(metal, -18), True, panel, max(1, scale)
             )
-            for offset in (-10, 1):
+            for v in (0.48, 0.66, 0.82):
                 pygame.draw.line(
-                    self.screen,
-                    self.shade(wood, 8),
-                    (sx - 14 * scale, sy + offset * scale),
-                    (sx - 5 * scale, sy + (offset + 4) * scale),
+                    surface,
+                    self.shade(wood, 10),
+                    face_point(hinge_u, v),
+                    face_point(swing_u, v + 0.04),
                     max(1, scale),
                 )
         else:
-            panel = pygame.Rect(0, 0, 27 * scale, 33 * scale)
-            panel.midbottom = (sx, sy + 7 * scale)
-            pygame.draw.rect(
-                self.screen, wood_dark, panel.inflate(2 * scale, 2 * scale)
+            panel = [
+                face_point(0.22, 0.27),
+                face_point(0.78, 0.27),
+                face_point(0.78, 0.94),
+                face_point(0.22, 0.94),
+            ]
+            pygame.draw.polygon(
+                surface,
+                wood_dark,
+                [
+                    face_point(0.18, 0.26),
+                    face_point(0.82, 0.26),
+                    face_point(0.82, 0.96),
+                    face_point(0.18, 0.96),
+                ],
             )
-            pygame.draw.rect(self.screen, wood, panel)
-            pygame.draw.rect(self.screen, self.shade(metal, -14), panel, max(1, scale))
-            for offset in (-8, 3):
+            pygame.draw.polygon(surface, wood, panel)
+            pygame.draw.lines(
+                surface, self.shade(metal, -18), True, panel, max(1, scale)
+            )
+            for v in (0.48, 0.66, 0.82):
                 pygame.draw.line(
-                    self.screen,
-                    self.shade(wood, 14),
-                    (panel.left + 4 * scale, panel.centery + offset * scale),
-                    (panel.right - 4 * scale, panel.centery + offset * scale),
+                    surface,
+                    self.shade(wood, 12),
+                    face_point(0.26, v),
+                    face_point(0.74, v),
                     max(1, scale),
                 )
+            pygame.draw.line(
+                surface,
+                self.shade(wood, -18),
+                face_point(0.50, 0.30),
+                face_point(0.50, 0.93),
+                max(1, scale),
+            )
             pygame.draw.circle(
-                self.screen,
+                surface,
                 self.shade(metal, 18),
-                (panel.right - 7 * scale, panel.centery + 2 * scale),
+                face_point(0.70, 0.63),
                 max(2, 2 * scale),
             )
+
+    def door_render_face(self, x: int, y: int) -> str:
+        doorish = (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR)
+        x_axis = (
+            self.dungeon.in_bounds(x - 1, y)
+            and self.dungeon.in_bounds(x + 1, y)
+            and self.dungeon.tiles[x - 1][y] in doorish
+            and self.dungeon.tiles[x + 1][y] in doorish
+        )
+        y_axis = (
+            self.dungeon.in_bounds(x, y - 1)
+            and self.dungeon.in_bounds(x, y + 1)
+            and self.dungeon.tiles[x][y - 1] in doorish
+            and self.dungeon.tiles[x][y + 1] in doorish
+        )
+        if x_axis and not y_axis:
+            return "left"
+        if y_axis and not x_axis:
+            return "right"
+        return "left"
+
+    def door_tile_surface(
+        self, tile: Tile, seed: int, face: str
+    ) -> tuple[pygame.Surface, int, int]:
+        key = (self.theme.name, int(tile), seed, face)
+        cache: dict[tuple[str, int, int, str], tuple[pygame.Surface, int, int]] = (
+            getattr(self, "door_tile_cache", {})
+        )
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+
+        margin = 4 * WORLD_SCALE
+        wall_h = 48 * WORLD_SCALE
+        width = TILE_W + margin * 2
+        height = TILE_H + wall_h + margin * 2
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        anchor_x = width // 2
+        anchor_y = margin + wall_h + TILE_H // 2
+        local_sx, local_sy = anchor_x, anchor_y
+        top = (local_sx, local_sy - TILE_H // 2)
+        right = (local_sx + TILE_W // 2, local_sy)
+        bottom = (local_sx, local_sy + TILE_H // 2)
+        left = (local_sx - TILE_W // 2, local_sy)
+        self.draw_door_tile_surface(
+            surface,
+            local_sx,
+            local_sy,
+            top,
+            right,
+            bottom,
+            left,
+            wall_h,
+            seed,
+            tile == Tile.OPEN_DOOR,
+            face,
+        )
+        cached = (surface.convert_alpha(), anchor_x, anchor_y)
+        cache[key] = cached
+        self.door_tile_cache = cache
+        return cached
+
+    def draw_door(self, x: int, y: int, tile: Tile) -> None:
+        sx, sy = self.world_to_screen(x + 0.5, y + 0.5)
+        seed = self.tile_seed(x, y)
+        surface, anchor_x, anchor_y = self.door_tile_surface(
+            tile, seed, self.door_render_face(x, y)
+        )
+        alpha = self.tile_visibility_alpha(x, y)
+        if alpha < 255:
+            surface = surface.copy()
+            surface.set_alpha(alpha)
+        self.screen.blit(surface, (sx - anchor_x, sy - anchor_y))
 
     def draw_shopkeeper(self, shopkeeper: Shopkeeper) -> None:
         self.draw_shadow(shopkeeper.x, shopkeeper.y, 18, 8)
