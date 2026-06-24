@@ -122,6 +122,8 @@ class Tile(IntEnum):
     WALL = 0
     FLOOR = 1
     STAIRS = 2
+    CLOSED_DOOR = 3
+    OPEN_DOOR = 4
 
 
 @dataclass(frozen=True)
@@ -226,6 +228,18 @@ class Shrine:
     y: float
     kind: str
     used: bool = False
+
+
+@dataclass
+class Shopkeeper:
+    x: float
+    y: float
+    name: str
+    role: str
+    inventory: list[Item] = field(default_factory=list)
+    buy_multiplier: float = 0.45
+    sell_multiplier: float = 1.15
+    met: bool = False
 
 
 @dataclass
@@ -419,6 +433,7 @@ class Player:
     )
     skill_upgrades: list[str] = field(default_factory=list)
     status_effects: dict[str, float] = field(default_factory=dict)
+    gold: int = 40
 
     def has_upgrade(self, key: str) -> bool:
         return key in self.skill_upgrades

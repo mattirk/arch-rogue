@@ -74,8 +74,10 @@ from .models import (
     Item,
     Player,
     Projectile,
+    Room,
     RunStats,
     SecretCache,
+    Shopkeeper,
     Shrine,
     StoryGuest,
     StoryState,
@@ -149,6 +151,10 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.inventory_cursor = 0
         self.inventory_scroll = 0
         self.character_menu_open = False
+        self.shop_open = False
+        self.active_shopkeeper: Shopkeeper | None = None
+        self.shop_mode = "buy"
+        self.shop_cursor = 0
         self.show_help = False
         self.quest_info_visible = False
         self.run_stats = RunStats()
@@ -499,6 +505,22 @@ class Game(SaveLoadMixin, RenderingMixin):
                 f"Recover {story_relic.display_name}",
                 self.item_decision_summary(story_relic),
                 self.story_state.accent if self.story_state else self.theme.accent,
+            )
+        door = self.nearby_closed_door()
+        if door is not None:
+            return (
+                "E",
+                "Open door",
+                "Doors gate shops and side rooms.",
+                self.theme.accent,
+            )
+        shopkeeper = self.nearby_shopkeeper()
+        if shopkeeper is not None:
+            return (
+                "E",
+                f"Trade with {shopkeeper.name}",
+                f"{shopkeeper.role} · buy and sell supplies · {self.player.gold} gold",
+                (225, 190, 92),
             )
         if self.player_near_stairs():
             if self.current_depth < DUNGEON_DEPTH:
@@ -2105,6 +2127,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.apply_starting_loadout()
         self.enemies: list[Enemy] = []
         self.items: list[Item] = []
+        self.shopkeepers: list[Shopkeeper] = []
         self.projectiles: list[Projectile] = []
         self.traps: list[Trap] = []
         self.shrines: list[Shrine] = []
@@ -2120,6 +2143,10 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.inventory_cursor = 0
         self.inventory_scroll = 0
         self.character_menu_open = False
+        self.shop_open = False
+        self.active_shopkeeper = None
+        self.shop_mode = "buy"
+        self.shop_cursor = 0
         self.show_help = False
         self.elapsed = 0.0
         self.state = "playing"
@@ -2165,6 +2192,7 @@ class Game(SaveLoadMixin, RenderingMixin):
         )
         self.enemies = []
         self.items = []
+        self.shopkeepers = []
         self.projectiles = []
         self.traps = []
         self.shrines = []
@@ -2179,6 +2207,10 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.inventory_cursor = 0
         self.inventory_scroll = 0
         self.character_menu_open = False
+        self.shop_open = False
+        self.active_shopkeeper = None
+        self.shop_mode = "buy"
+        self.shop_cursor = 0
         self.show_help = False
         self._populate_dungeon()
         self.begin_story_level_intro()
@@ -2404,7 +2436,79 @@ class Game(SaveLoadMixin, RenderingMixin):
         self.items.append(
             Item("Minor Healing Potion", "potion", heal=35, rarity="Common", x=sx, y=sy)
         )
+        self._populate_shop_room()
         self._populate_story_guest()
+
+    def _populate_shop_room(self) -> None:
+        shop_index = self.dungeon.shop_room_index
+        if shop_index is None or not (0 <= shop_index < len(self.dungeon.rooms)):
+            return
+        room = self.dungeon.rooms[shop_index]
+        keeper_names = (
+            "Mirel Coin-Candle",
+            "Old Brass Venn",
+            "Sister Ledger",
+            "Korrin the Barter-Saint",
+            "Pell of the Locked Shelf",
+        )
+        x, y = room.center
+        shopkeeper = Shopkeeper(
+            x + 0.5,
+            y + 0.5,
+            self.rng.choice(keeper_names),
+            "Allied Shopkeeper",
+            inventory=self._make_shop_inventory(room),
+        )
+        self.shopkeepers.append(shopkeeper)
+        # Shop rooms should feel like a temporary refuge rather than another ambush.
+        self.enemies = [
+            enemy
+            for enemy in self.enemies
+            if not (
+                room.x <= enemy.x < room.x + room.w
+                and room.y <= enemy.y < room.y + room.h
+            )
+        ]
+        self.traps = [
+            trap
+            for trap in self.traps
+            if not (
+                room.x <= trap.x < room.x + room.w
+                and room.y <= trap.y < room.y + room.h
+            )
+        ]
+        self.items.append(
+            Item(
+                "Shop Sign: Press E to trade",
+                "shop_sign",
+                rarity="Common",
+                x=shopkeeper.x + 0.9,
+                y=shopkeeper.y,
+            )
+        )
+
+    def _make_shop_inventory(self, room: Room) -> list[Item]:
+        stock: list[Item] = [
+            Item("Minor Healing Potion", "potion", heal=35, rarity="Common"),
+            Item("Lesser Mana Potion", "mana_potion", mana=24, rarity="Common"),
+            Item("Scroll of Identify", "identify", rarity="Common"),
+        ]
+        stock.append(
+            self._make_equipment(
+                "weapon", "Magic", room.center[0] + 0.5, room.center[1] + 0.5
+            )
+        )
+        stock.append(
+            self._make_equipment(
+                "armor", "Magic", room.center[0] + 0.5, room.center[1] + 0.5
+            )
+        )
+        if self.current_depth >= 3 or self.rng.random() < 0.35:
+            stock.append(self._make_loot(room.center[0] + 0.5, room.center[1] + 0.5))
+        for item in stock:
+            item.x = 0.0
+            item.y = 0.0
+        return stock
 
     def _apply_run_modifier(self, enemy: Enemy) -> Enemy:
         difficulty = self.difficulty_profile()
@@ -2919,7 +3023,9 @@ class Game(SaveLoadMixin, RenderingMixin):
                     elif event.key in (pygame.K_n, pygame.K_ESCAPE, pygame.K_BACKSPACE):
                         self.cancel_exit_confirmation()
                 elif event.key == pygame.K_ESCAPE:
-                    if self.state == "playing" and self.character_menu_open:
+                    if self.state == "playing" and self.shop_open:
+                        self.close_shop()
+                    elif self.state == "playing" and self.character_menu_open:
                         self.character_menu_open = False
                     elif self.state == "playing" and self.inventory_open:
                         self.inventory_open = False
@@ -3040,10 +3146,22 @@ class Game(SaveLoadMixin, RenderingMixin):
                     and self.state != "archetype_select"
                 ):
                     self.show_help = not self.show_help
+                elif self.state == "playing" and self.shop_open:
+                    if event.key == pygame.K_TAB:
+                        self.cycle_shop_mode()
+                    elif event.key in (pygame.K_UP, pygame.K_w):
+                        self.move_shop_selection(-1)
+                    elif event.key in (pygame.K_DOWN, pygame.K_s, pygame.K_x):
+                        self.move_shop_selection(1)
+                    elif event.key in (pygame.K_RETURN, pygame.K_e):
+                        self.transact_shop_selection()
+                    elif event.key in (pygame.K_BACKSPACE, pygame.K_q):
+                        self.close_shop()
                 elif event.key == pygame.K_i and self.state == "playing":
                     self.inventory_open = not self.inventory_open
                     if self.inventory_open:
                         self.character_menu_open = False
+                        self.close_shop()
                     self.clamp_inventory_selection()
                 elif self.state == "playing" and self.inventory_open:
                     if event.key == pygame.K_TAB:
@@ -3095,6 +3213,7 @@ class Game(SaveLoadMixin, RenderingMixin):
                     self.character_menu_open = not self.character_menu_open
                     if self.character_menu_open:
                         self.inventory_open = False
+                        self.close_shop()
                 elif event.key == pygame.K_v and self.state == "playing":
                     self.update_player_aim()
                     self.player_cast_nova()
@@ -3144,6 +3263,18 @@ class Game(SaveLoadMixin, RenderingMixin):
             self.update_active_cutscene(dt)
             self.update_floaters(dt)
             return
+        if self.shop_open:
+            if self.active_shopkeeper not in self.shopkeepers:
+                self.close_shop()
+            elif (
+                self.active_shopkeeper is not None
+                and math.hypot(
+                    self.active_shopkeeper.x - self.player.x,
+                    self.active_shopkeeper.y - self.player.y,
+                )
+                > 2.6
+            ):
+                self.close_shop()
         if self.story_intro_pending:
             self.update_floaters(dt)
             return
@@ -3534,20 +3665,26 @@ class Game(SaveLoadMixin, RenderingMixin):
         return PLAYER_HIT_RADIUS + self.enemy_hit_radius(enemy)
 
     def resolve_actor_contacts(self, actor: Player | Enemy) -> None:
-        others: list[Player | Enemy]
+        others: list[Player | Enemy | Shopkeeper]
         if isinstance(actor, Player):
-            others = list(self.enemies)
+            others = [*self.enemies, *self.shopkeepers]
         else:
             others = [
                 self.player,
                 *(enemy for enemy in self.enemies if enemy is not actor),
+                *self.shopkeepers,
             ]
 
         for other in others:
             dx = actor.x - other.x
             dy = actor.y - other.y
             distance = math.hypot(dx, dy)
-            min_distance = self.actor_hit_radius(actor) + self.actor_hit_radius(other)
+            other_radius = (
+                self.actor_hit_radius(other)
+                if isinstance(other, (Player, Enemy))
+                else 0.34
+            )
+            min_distance = self.actor_hit_radius(actor) + other_radius
             if distance >= min_distance:
                 continue
 
@@ -4312,6 +4449,15 @@ class Game(SaveLoadMixin, RenderingMixin):
             loot = self._make_loot(drop_x, drop_y)
             self.items.append(loot)
             self.record_notable_loot(loot)
+        gold = self.rng.randrange(4, 11) + self.current_depth * 2
+        if enemy.elite_modifier:
+            gold += 8
+        if enemy.kind in ("boss", "miniboss"):
+            gold += 18
+        self.player.gold += gold
+        self.floaters.append(
+            FloatingText(f"+{gold} gold", enemy.x, enemy.y - 0.55, (225, 190, 92))
+        )
         self.save_run()
 
     def drop_position_near(self, x: float, y: float) -> tuple[float, float]:
@@ -4334,6 +4480,33 @@ class Game(SaveLoadMixin, RenderingMixin):
             if not self.dungeon.blocked_for_radius(px, py, radius=0.22):
                 return px, py
         return x, y
+
+    def nearby_closed_door(self) -> tuple[int, int] | None:
+        return self.dungeon.nearby_closed_door(self.player.x, self.player.y)
+
+    def open_nearby_door(self) -> bool:
+        door = self.nearby_closed_door()
+        if door is None:
+            return False
+        if not self.dungeon.open_door(*door):
+            return False
+        self.tile_cache.clear()
+        self.floaters.append(
+            FloatingText(
+                "Door opened", door[0] + 0.5, door[1] + 0.1, self.theme.accent, ttl=1.0
+            )
+        )
+        self.add_impact(
+            door[0] + 0.5,
+            door[1] + 0.5,
+            self.theme.accent,
+            ttl=0.28,
+            radius=0.36,
+            kind="spark",
+        )
+        self.play_sfx("pickup")
+        self.save_run()
+        return True
 
     def player_near_stairs(self) -> bool:
         return (
@@ -4359,6 +4532,12 @@ class Game(SaveLoadMixin, RenderingMixin):
         story_relic = self.nearby_story_relic()
         if story_relic is not None:
             self.collect_story_relic(story_relic)
+            return
+        if self.open_nearby_door():
+            return
+        shopkeeper = self.nearby_shopkeeper()
+        if shopkeeper is not None:
+            self.open_shop(shopkeeper)
             return
         if self.player_near_stairs():
             if self.current_depth < DUNGEON_DEPTH:
@@ -4401,6 +4580,11 @@ class Game(SaveLoadMixin, RenderingMixin):
         if nearest:
             if nearest.slot == "story_relic":
                 self.collect_story_relic(nearest)
+                return
+            if nearest.slot == "shop_sign":
+                shopkeeper = self.nearby_shopkeeper(radius=2.2)
+                if shopkeeper is not None:
+                    self.open_shop(shopkeeper)
                 return
             if len(self.player.inventory) >= MAX_INVENTORY:
                 self.floaters.append(
@@ -4463,6 +4647,165 @@ class Game(SaveLoadMixin, RenderingMixin):
             del self.story_state.log[:-12]
         self.play_sfx("pickup")
         self.save_run()
+
+    def nearby_shopkeeper(self, radius: float = 1.35) -> Shopkeeper | None:
+        nearby = [
+            shopkeeper
+            for shopkeeper in self.shopkeepers
+            if math.hypot(shopkeeper.x - self.player.x, shopkeeper.y - self.player.y)
+            < radius
+        ]
+        return min(
+            nearby,
+            key=lambda shopkeeper: math.hypot(
+                shopkeeper.x - self.player.x, shopkeeper.y - self.player.y
+            ),
+            default=None,
+        )
+
+    def item_value(self, item: Item) -> int:
+        if item.slot == "potion":
+            return max(8, item.heal // 2)
+        if item.slot == "mana_potion":
+            return max(8, item.mana // 2)
+        if item.slot == "identify":
+            return 18
+        rarity_bonus = {
+            "Common": 0,
+            "Magic": 18,
+            "Rare": 42,
+            "Unique": 80,
+            "Legendary": 125,
+            "Cursed": 56,
+        }.get(item.rarity, 0)
+        return max(
+            5,
+            12
+            + rarity_bonus
+            + item.power * 5
+            + item.defense * 6
+            + len(item.affixes) * 7,
+        )
+
+    def shop_price(self, shopkeeper: Shopkeeper, item: Item) -> int:
+        return max(1, int(round(self.item_value(item) * shopkeeper.sell_multiplier)))
+
+    def shop_buyback_value(self, shopkeeper: Shopkeeper, item: Item) -> int:
+        return max(1, int(round(self.item_value(item) * shopkeeper.buy_multiplier)))
+
+    def open_shop(self, shopkeeper: Shopkeeper) -> None:
+        shopkeeper.met = True
+        self.active_shopkeeper = shopkeeper
+        self.shop_open = True
+        self.shop_mode = "buy"
+        self.shop_cursor = 0
+        self.inventory_open = False
+        self.character_menu_open = False
+        self.floaters.append(
+            FloatingText(
+                f"{shopkeeper.name}: trade",
+                shopkeeper.x,
+                shopkeeper.y - 0.55,
+                (225, 190, 92),
+                ttl=1.0,
+            )
+        )
+
+    def close_shop(self) -> None:
+        self.shop_open = False
+        self.active_shopkeeper = None
+        self.shop_cursor = 0
+
+    def shop_entries(self) -> list[Item]:
+        if self.active_shopkeeper is None:
+            return []
+        return (
+            self.active_shopkeeper.inventory
+            if self.shop_mode == "buy"
+            else self.player.inventory
+        )
+
+    def clamp_shop_cursor(self) -> None:
+        entries = self.shop_entries()
+        if not entries:
+            self.shop_cursor = 0
+        else:
+            self.shop_cursor = max(0, min(self.shop_cursor, len(entries) - 1))
+
+    def cycle_shop_mode(self) -> None:
+        self.shop_mode = "sell" if self.shop_mode == "buy" else "buy"
+        self.shop_cursor = 0
+
+    def move_shop_selection(self, delta: int) -> None:
+        entries = self.shop_entries()
+        if not entries:
+            self.shop_cursor = 0
+            return
+        self.shop_cursor = (self.shop_cursor + delta) % len(entries)
+
+    def transact_shop_selection(self) -> bool:
+        shopkeeper = self.active_shopkeeper
+        if shopkeeper is None:
+            return False
+        entries = self.shop_entries()
+        if not entries:
+            return False
+        self.clamp_shop_cursor()
+        item = entries[self.shop_cursor]
+        if self.shop_mode == "buy":
+            price = self.shop_price(shopkeeper, item)
+            if self.player.gold < price:
+                self.floaters.append(
+                    FloatingText(
+                        "Need more gold",
+                        self.player.x,
+                        self.player.y - 0.45,
+                        (235, 210, 120),
+                        ttl=1.0,
+                    )
+                )
+                return False
+            if len(self.player.inventory) >= MAX_INVENTORY:
+                self.floaters.append(
+                    FloatingText(
+                        "Inventory full",
+                        self.player.x,
+                        self.player.y - 0.45,
+                        (235, 210, 120),
+                        ttl=1.0,
+                    )
+                )
+                return False
+            shopkeeper.inventory.remove(item)
+            self.player.inventory.append(item)
+            self.player.gold -= price
+            self.floaters.append(
+                FloatingText(
+                    f"Bought {item.display_name}",
+                    self.player.x,
+                    self.player.y - 0.45,
+                    (210, 230, 180),
+                    ttl=1.0,
+                )
+            )
+        else:
+            value = self.shop_buyback_value(shopkeeper, item)
+            self.player.inventory.remove(item)
+            shopkeeper.inventory.append(item)
+            self.player.gold += value
+            self.floaters.append(
+                FloatingText(
+                    f"Sold {item.display_name}",
+                    self.player.x,
+                    self.player.y - 0.45,
+                    (225, 190, 92),
+                    ttl=1.0,
+                )
+            )
+        self.clamp_shop_cursor()
+        self.play_sfx("pickup")
+        self.save_run()
+        return True
 
     def nearby_item(self) -> Item | None:
         nearby = [

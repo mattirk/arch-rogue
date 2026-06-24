@@ -14,7 +14,18 @@ from .content import (
     RUN_MODIFIERS,
 )
 from .dungeon import Dungeon
-from .models import Enemy, Item, Player, Room, RunStats, SecretCache, Shrine, Tile, Trap
+from .models import (
+    Enemy,
+    Item,
+    Player,
+    Room,
+    RunStats,
+    SecretCache,
+    Shopkeeper,
+    Shrine,
+    Tile,
+    Trap,
+)
 from .quest_assets import ActiveQuestCutscene
 from .story import (
     StoryEngine,
@@ -70,6 +81,37 @@ class SaveLoadMixin:
             proc_effect=str(data.get("proc_effect", "")),
         )
 
+    def shopkeeper_to_dict(self, shopkeeper: Shopkeeper) -> dict[str, Any]:
+        return {
+            "x": shopkeeper.x,
+            "y": shopkeeper.y,
+            "name": shopkeeper.name,
+            "role": shopkeeper.role,
+            "inventory": [self.item_to_dict(item) for item in shopkeeper.inventory],
+            "buy_multiplier": shopkeeper.buy_multiplier,
+            "sell_multiplier": shopkeeper.sell_multiplier,
+            "met": shopkeeper.met,
+        }
+
+    def shopkeeper_from_dict(self, data: dict[str, Any]) -> Shopkeeper:
+        return Shopkeeper(
+            float(data.get("x", 0.0)),
+            float(data.get("y", 0.0)),
+            str(data.get("name", "Dungeon Trader")),
+            str(data.get("role", "Allied Shopkeeper")),
+            inventory=[
+                item
+                for item in (
+                    self.item_from_dict(item_data)
+                    for item_data in data.get("inventory", [])
+                )
+                if item is not None
+            ],
+            buy_multiplier=float(data.get("buy_multiplier", 0.45)),
+            sell_multiplier=float(data.get("sell_multiplier", 1.15)),
+            met=bool(data.get("met", False)),
+        )
+
     def serialize_run_state(self) -> dict[str, Any]:
         return {
             "version": 4,
@@ -104,6 +146,7 @@ class SaveLoadMixin:
                 ],
                 "rooms": [room.__dict__ for room in self.dungeon.rooms],
                 "stairs": list(self.dungeon.stairs),
+                "shop_room_index": self.dungeon.shop_room_index,
             },
             "player": {
                 "x": self.player.x,
@@ -133,9 +176,13 @@ class SaveLoadMixin:
                 },
                 "skill_upgrades": list(self.player.skill_upgrades),
                 "status_effects": dict(self.player.status_effects),
+                "gold": self.player.gold,
             },
             "enemies": [enemy.__dict__ for enemy in self.enemies],
             "items": [self.item_to_dict(item) for item in self.items],
+            "shopkeepers": [
+                self.shopkeeper_to_dict(shopkeeper) for shopkeeper in self.shopkeepers
+            ],
             "traps": [trap.__dict__ for trap in self.traps],
             "shrines": [shrine.__dict__ for shrine in self.shrines],
             "secrets": [secret.__dict__ for secret in self.secrets],
@@ -225,6 +272,10 @@ class SaveLoadMixin:
         self.dungeon.rooms = [Room(**room) for room in dungeon_data["rooms"]]
         sx, sy = dungeon_data["stairs"]
         self.dungeon.stairs = (int(sx), int(sy))
+        saved_shop_index = dungeon_data.get("shop_room_index")
+        self.dungeon.shop_room_index = (
+            int(saved_shop_index) if saved_shop_index is not None else None
+        )
         self.tile_cache.clear()
 
         player_data = data["player"]
@@ -259,6 +310,7 @@ class SaveLoadMixin:
             str(status): float(ttl)
             for status, ttl in player_data.get("status_effects", {}).items()
         }
+        self.player.gold = int(player_data.get("gold", 40))
         self.player.inventory = [
             item
             for item in (
@@ -277,6 +329,10 @@ class SaveLoadMixin:
             item
             for item in (self.item_from_dict(item) for item in data.get("items", []))
             if item is not None
+        ]
+        self.shopkeepers = [
+            self.shopkeeper_from_dict(shopkeeper)
+            for shopkeeper in data.get("shopkeepers", [])
         ]
         self.traps = [Trap(**trap) for trap in data.get("traps", [])]
         self.shrines = [Shrine(**shrine) for shrine in data.get("shrines", [])]
@@ -303,6 +359,10 @@ class SaveLoadMixin:
         self.reset_transient_visuals()
         self.run_stats = RunStats(**data.get("run_stats", {}))
         self.inventory_open = False
+        self.shop_open = False
+        self.active_shopkeeper = None
+        self.shop_mode = "buy"
+        self.shop_cursor = 0
         self.show_help = False
         self.state = "playing"
 

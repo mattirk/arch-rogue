@@ -17,6 +17,7 @@ from .models import (
     Player,
     Projectile,
     SecretCache,
+    Shopkeeper,
     Shrine,
     StoryGuest,
     Tile,
@@ -68,6 +69,8 @@ class RenderingMixin:
             self.draw_story_intro_overlay()
         if self.inventory_open:
             self.draw_inventory()
+        if self.shop_open:
+            self.draw_shop_overlay()
         if self.character_menu_open:
             self.draw_character_menu()
         if self.show_help:
@@ -457,11 +460,15 @@ class RenderingMixin:
             for x in range(min_x, max_x + 1):
                 y = s - x
                 if min_y <= y <= max_y and self.dungeon.in_bounds(x, y):
-                    if self.dungeon.tiles[x][y] != Tile.WALL:
-                        continue
-                    if self.tile_visibility_alpha(x, y) <= 0:
-                        continue
-                    drawables.append((x + y + 1.02, "wall_tile", (x, y)))
+                    tile = self.dungeon.tiles[x][y]
+                    if tile == Tile.WALL:
+                        if self.tile_visibility_alpha(x, y) <= 0:
+                            continue
+                        drawables.append((x + y + 1.02, "wall_tile", (x, y)))
+                    elif tile in (Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
+                        if self.tile_visibility_alpha(x, y) <= 0:
+                            continue
+                        drawables.append((x + y + 0.72, "door", (x, y, tile)))
 
         for item in self.items:
             if visible(item.x, item.y, 0.45):
@@ -482,6 +489,11 @@ class RenderingMixin:
         for guest in self.story_guests:
             if visible(guest.x, guest.y, 0.55):
                 drawables.append((guest.x + guest.y, "story_guest", guest))
+        for shopkeeper in self.shopkeepers:
+            if visible(shopkeeper.x, shopkeeper.y, 0.55):
+                drawables.append(
+                    (shopkeeper.x + shopkeeper.y, "shopkeeper", shopkeeper)
+                )
         for projectile in self.projectiles:
             if visible(projectile.x, projectile.y, 0.55):
                 drawables.append(
@@ -522,6 +534,11 @@ class RenderingMixin:
                 self.draw_secret(cast(SecretCache, obj))
             elif kind == "story_guest":
                 self.draw_story_guest(cast(StoryGuest, obj))
+            elif kind == "shopkeeper":
+                self.draw_shopkeeper(cast(Shopkeeper, obj))
+            elif kind == "door":
+                x, y, tile = cast(tuple[int, int, Tile], obj)
+                self.draw_door(x, y, tile)
             elif kind == "projectile":
                 self.draw_projectile(cast(Projectile, obj))
             elif kind == "enemy":
@@ -543,6 +560,129 @@ class RenderingMixin:
             self.screen.blit(
                 surface, surface.get_rect(center=(sx, sy - 34 * WORLD_SCALE))
             )
+
+    def draw_door(self, x: int, y: int, tile: Tile) -> None:
+        sx, sy = self.world_to_screen(x + 0.5, y + 0.5)
+        scale = WORLD_SCALE
+        seed = self.tile_seed(x, y)
+        open_door = tile == Tile.OPEN_DOOR
+
+        top = (sx, sy - TILE_H // 2)
+        right = (sx + TILE_W // 2, sy)
+        bottom = (sx, sy + TILE_H // 2)
+        left = (sx - TILE_W // 2, sy)
+        floor = self.shade(self.theme.floor, (seed % 7) - 3)
+        floor_edge = self.shade(self.theme.floor_edge, -8)
+        pygame.draw.polygon(self.screen, floor, [top, right, bottom, left])
+        pygame.draw.lines(
+            self.screen, floor_edge, True, [top, right, bottom, left], scale
+        )
+
+        threshold = [
+            (sx - 24 * scale, sy - 3 * scale),
+            (sx + 2 * scale, sy - 15 * scale),
+            (sx + 24 * scale, sy - 3 * scale),
+            (sx - 2 * scale, sy + 10 * scale),
+        ]
+        pygame.draw.polygon(
+            self.screen, self.shade(self.theme.wall_right, -20), threshold
+        )
+        pygame.draw.lines(
+            self.screen, self.shade(self.theme.wall_edge, -10), True, threshold, scale
+        )
+
+        stone = self.mix(self.theme.wall_top, self.theme.wall_edge, 0.32)
+        stone_dark = self.shade(self.theme.wall_right, -18)
+        wood = self.mix(self.theme.floor_edge, (94, 60, 38), 0.45)
+        wood_dark = self.shade(wood, -34)
+        metal = self.mix(self.theme.wall_edge, self.theme.accent, 0.20)
+
+        left_jamb = pygame.Rect(0, 0, 6 * scale, 34 * scale)
+        right_jamb = pygame.Rect(0, 0, 6 * scale, 34 * scale)
+        left_jamb.midbottom = (sx - 17 * scale, sy + 5 * scale)
+        right_jamb.midbottom = (sx + 17 * scale, sy + 5 * scale)
+        lintel = pygame.Rect(0, 0, 42 * scale, 7 * scale)
+        lintel.midbottom = (sx, sy - 25 * scale)
+        for rect in (left_jamb, right_jamb, lintel):
+            pygame.draw.rect(
+                self.screen, stone_dark, rect.inflate(2 * scale, 2 * scale)
+            )
+            pygame.draw.rect(self.screen, stone, rect)
+            pygame.draw.line(
+                self.screen,
+                self.shade(self.theme.wall_edge, 10),
+                rect.topleft,
+                rect.topright,
+                max(1, scale),
+            )
+
+        if open_door:
+            panel = [
+                (sx - 14 * scale, sy - 22 * scale),
+                (sx - 2 * scale, sy - 17 * scale),
+                (sx - 4 * scale, sy + 9 * scale),
+                (sx - 18 * scale, sy + 14 * scale),
+            ]
+            pygame.draw.polygon(self.screen, wood_dark, panel)
+            pygame.draw.lines(
+                self.screen, self.shade(metal, -18), True, panel, max(1, scale)
+            )
+            for offset in (-10, 1):
+                pygame.draw.line(
+                    self.screen,
+                    self.shade(wood, 8),
+                    (sx - 14 * scale, sy + offset * scale),
+                    (sx - 5 * scale, sy + (offset + 4) * scale),
+                    max(1, scale),
+                )
+        else:
+            panel = pygame.Rect(0, 0, 27 * scale, 33 * scale)
+            panel.midbottom = (sx, sy + 7 * scale)
+            pygame.draw.rect(
+                self.screen, wood_dark, panel.inflate(2 * scale, 2 * scale)
+            )
+            pygame.draw.rect(self.screen, wood, panel)
+            pygame.draw.rect(self.screen, self.shade(metal, -14), panel, max(1, scale))
+            for offset in (-8, 3):
+                pygame.draw.line(
+                    self.screen,
+                    self.shade(wood, 14),
+                    (panel.left + 4 * scale, panel.centery + offset * scale),
+                    (panel.right - 4 * scale, panel.centery + offset * scale),
+                    max(1, scale),
+                )
+            pygame.draw.circle(
+                self.screen,
+                self.shade(metal, 18),
+                (panel.right - 7 * scale, panel.centery + 2 * scale),
+                max(2, 2 * scale),
+            )
+
+    def draw_shopkeeper(self, shopkeeper: Shopkeeper) -> None:
+        self.draw_shadow(shopkeeper.x, shopkeeper.y, 18, 8)
+        sx, sy = self.world_to_screen(shopkeeper.x, shopkeeper.y)
+        scale = WORLD_SCALE
+        robe = (116, 77, 42)
+        trim = (225, 190, 92)
+        face = (190, 146, 104)
+        outline = (30, 24, 20)
+        body = pygame.Rect(0, 0, 18 * scale, 28 * scale)
+        body.midbottom = (sx, sy + 4 * scale)
+        pygame.draw.rect(
+            self.screen,
+            outline,
+            body.inflate(4 * scale, 4 * scale),
+            border_radius=3 * scale,
+        )
+        pygame.draw.rect(self.screen, robe, body, border_radius=3 * scale)
+        pygame.draw.line(self.screen, trim, body.midtop, body.midbottom, max(1, scale))
+        pygame.draw.circle(self.screen, outline, (sx, body.top - 5 * scale), 8 * scale)
+        pygame.draw.circle(self.screen, face, (sx, body.top - 5 * scale), 6 * scale)
+        pygame.draw.circle(
+            self.screen, trim, (sx + 11 * scale, body.top + 6 * scale), 4 * scale
+        )
+        label = self.tiny_font.render("SHOP", True, trim)
+        self.screen.blit(label, label.get_rect(center=(sx, body.top - 18 * scale)))
 
     def draw_impact(self, effect: ImpactEffect) -> None:
         sx, sy = self.world_to_screen(effect.x, effect.y)
@@ -1260,23 +1400,31 @@ class RenderingMixin:
             },
         ]
 
+    def hud_slot_int(self, slot: dict[str, object], key: str, default: int = 0) -> int:
+        return int(cast(int | float | str, slot.get(key, default)))
+
+    def hud_slot_float(
+        self, slot: dict[str, object], key: str, default: float = 0.0
+    ) -> float:
+        return float(cast(int | float | str, slot.get(key, default)))
+
     def hud_action_slot_status(self, slot: dict[str, object]) -> str:
         kind = str(slot.get("kind", ""))
         if kind == "health_potion":
-            count = int(slot.get("count", 0))
+            count = self.hud_slot_int(slot, "count")
             if count <= 0:
                 return "EMPTY"
             return "FULL" if self.player.hp >= self.player.max_hp else f"x{count}"
         if kind == "mana_potion":
-            count = int(slot.get("count", 0))
+            count = self.hud_slot_int(slot, "count")
             if count <= 0:
                 return "EMPTY"
             return "FULL" if self.player.mana >= self.player.max_mana else f"x{count}"
-        timer = float(slot.get("timer", 0.0))
+        timer = self.hud_slot_float(slot, "timer")
         if timer > 0.001:
             return f"{timer:.1f}s"
-        resource = float(slot.get("resource", 0.0))
-        cost = float(slot.get("cost", 0.0))
+        resource = self.hud_slot_float(slot, "resource")
+        cost = self.hud_slot_float(slot, "cost")
         if resource < cost:
             return str(slot.get("resource_name", "RES"))
         return "READY"
@@ -1284,15 +1432,18 @@ class RenderingMixin:
     def hud_action_slot_ready(self, slot: dict[str, object]) -> bool:
         kind = str(slot.get("kind", ""))
         if kind == "health_potion":
-            return int(slot.get("count", 0)) > 0 and self.player.hp < self.player.max_hp
+            return (
+                self.hud_slot_int(slot, "count") > 0
+                and self.player.hp < self.player.max_hp
+            )
         if kind == "mana_potion":
             return (
-                int(slot.get("count", 0)) > 0
+                self.hud_slot_int(slot, "count") > 0
                 and self.player.mana < self.player.max_mana
             )
-        return float(slot.get("timer", 0.0)) <= 0.001 and float(
-            slot.get("resource", 0.0)
-        ) >= float(slot.get("cost", 0.0))
+        return self.hud_slot_float(slot, "timer") <= 0.001 and self.hud_slot_float(
+            slot, "resource"
+        ) >= self.hud_slot_float(slot, "cost")
 
     def draw_hud_action_bar(self, rect: pygame.Rect) -> None:
         slots = self.hud_action_slots()
@@ -1319,8 +1470,8 @@ class RenderingMixin:
         color = cast(Color, slot.get("color", self.theme.accent))
         ready = self.hud_action_slot_ready(slot)
         status = self.hud_action_slot_status(slot)
-        timer = float(slot.get("timer", 0.0))
-        cooldown = float(slot.get("cooldown", 0.0))
+        timer = self.hud_slot_float(slot, "timer")
+        cooldown = self.hud_slot_float(slot, "cooldown")
         remaining = self.cooldown_ratio(timer, cooldown)
         border = color if ready or timer > 0.001 else (92, 86, 94)
         fill = self.shade(color, -112 if ready else -136)
@@ -4799,6 +4950,94 @@ class RenderingMixin:
 
     def draw_inventory(self) -> None:
         self.menus.draw_inventory()
+
+    def draw_shop_overlay(self) -> None:
+        shopkeeper = self.active_shopkeeper
+        if shopkeeper is None:
+            return
+        width, height = self.screen.get_size()
+        panel_w = min(self.ui(620), width - self.ui(48))
+        panel_h = min(self.ui(430), height - self.ui(70))
+        rect = pygame.Rect(0, 0, panel_w, panel_h)
+        rect.center = (width // 2, height // 2)
+        overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 118))
+        self.screen.blit(overlay, (0, 0))
+        pygame.draw.rect(self.screen, (20, 18, 22), rect, border_radius=self.ui(10))
+        pygame.draw.rect(
+            self.screen, (225, 190, 92), rect, self.ui(2), border_radius=self.ui(10)
+        )
+
+        title = self.heading_font.render(shopkeeper.name, True, (245, 232, 194))
+        self.screen.blit(
+            title, title.get_rect(x=rect.x + self.ui(18), y=rect.y + self.ui(14))
+        )
+        subtitle = self.small_font.render(
+            f"{shopkeeper.role} · {self.player.gold} gold · Tab {('Sell' if self.shop_mode == 'buy' else 'Buy')} · E trade · Esc close",
+            True,
+            (184, 174, 145),
+        )
+        self.screen.blit(
+            subtitle, subtitle.get_rect(x=rect.x + self.ui(18), y=rect.y + self.ui(48))
+        )
+
+        mode_text = "BUY STOCK" if self.shop_mode == "buy" else "SELL INVENTORY"
+        mode = self.font.render(mode_text, True, (225, 190, 92))
+        self.screen.blit(
+            mode, mode.get_rect(x=rect.x + self.ui(18), y=rect.y + self.ui(82))
+        )
+
+        entries = self.shop_entries()
+        self.clamp_shop_cursor()
+        list_top = rect.y + self.ui(112)
+        row_h = self.ui(34)
+        max_rows = max(1, (rect.bottom - list_top - self.ui(22)) // row_h)
+        start = 0
+        if self.shop_cursor >= max_rows:
+            start = self.shop_cursor - max_rows + 1
+        visible_entries = entries[start : start + max_rows]
+        if not visible_entries:
+            empty = self.font.render(
+                "No wares here." if self.shop_mode == "buy" else "Nothing to sell.",
+                True,
+                (184, 174, 145),
+            )
+            self.screen.blit(empty, empty.get_rect(x=rect.x + self.ui(24), y=list_top))
+            return
+
+        for offset, item in enumerate(visible_entries):
+            index = start + offset
+            y = list_top + offset * row_h
+            row = pygame.Rect(
+                rect.x + self.ui(16), y, rect.w - self.ui(32), row_h - self.ui(4)
+            )
+            selected = index == self.shop_cursor
+            if selected:
+                pygame.draw.rect(
+                    self.screen, (55, 45, 36), row, border_radius=self.ui(5)
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    (225, 190, 92),
+                    row,
+                    self.ui(1),
+                    border_radius=self.ui(5),
+                )
+            price = (
+                self.shop_price(shopkeeper, item)
+                if self.shop_mode == "buy"
+                else self.shop_buyback_value(shopkeeper, item)
+            )
+            label_color = self.rarity_color(item.visible_rarity)
+            label = self.small_font.render(item.label, True, label_color)
+            self.screen.blit(
+                label, label.get_rect(x=row.x + self.ui(8), centery=row.centery)
+            )
+            price_text = self.small_font.render(f"{price}g", True, (225, 190, 92))
+            self.screen.blit(
+                price_text,
+                price_text.get_rect(right=row.right - self.ui(10), centery=row.centery),
+            )
 
     def draw_character_menu(self) -> None:
         self.menus.draw_character_menu()
