@@ -174,18 +174,18 @@ Example categories:
 
 ## Current Milestone
 
-### 2.5: General cleanup
-
-- Clean up unnecessary vectors and visual artifacts around player as a light source when in dark levels
-- Validate versioning in repository, update current version to 2.5 and update changelog
-- Do a general code cleanup, no big architecture changes
-
-
-## Next Milestones
-
 ### 3.0: Shops and allies along the way
 - Add shopkeepers and allied NPCs that buy and sell items
 - Shopkeepers are generated inside a shop room that has a door
 - Implement doors as a prerequisite for accessing shop rooms
+- Other rooms besides shop rooms may also have doors
 - Dungeon level has 75% chance of generating a shop room with a door
 - Doors can be opened by pressing E
+
+## Next Milestones
+
+### 3.1: Skill tree refinement
+- More variety and depth in skill tree
+- Player gets to choose different routes on skill tree when leveling up and gaining new skills
+- Create separate tab on character sheet (opened via C hotkey) for skill tree
+- Skill tree should have depth of 3 levels
