@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 import random
 import re
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +13,6 @@ from .audio import AudioSystem
 from .camera import CameraMixin
 from .constants import (
     BOSS_HIT_RADIUS,
-    DARK_LEVEL_LIGHT_RADIUS,
     DUNGEON_DEPTH,
     ENEMY_HIT_RADIUS,
     ENEMY_PROJECTILE_HIT_RADIUS,
@@ -26,39 +24,72 @@ from .constants import (
     PLAYER_PROJECTILE_HIT_RADIUS,
     UI_SCALE,
     WALK_ANIMATION_RATE,
-    SlashEffect,
+)
+from .constants import (
+    DARK_LEVEL_LIGHT_RADIUS as DARK_LEVEL_LIGHT_RADIUS,
 )
 from .constants import (
     MAX_INVENTORY as MAX_INVENTORY,
 )
+from .constants import (
+    SlashEffect as SlashEffect,
+)
 from .content import (
     ARCHETYPES,
-    ARMOR_DEFINITIONS,
-    BOSS_DEFINITIONS,
     DEFAULT_DIFFICULTY_NAME,
     DUNGEON_THEMES,
-    ELITE_MODIFIERS,
-    ENCOUNTER_TEMPLATES,
-    ENEMY_DEFINITIONS,
-    FINAL_ROOM_ENEMY_DEFINITIONS,
     RARITY_PROFILES,
     RUN_MODIFIERS,
-    SECRET_TYPES,
-    SHRINE_TYPES,
     SKILL_UPGRADES,
     STORY_LOCATION_MOTIFS,
-    TRAP_DEFINITIONS,
-    WEAPON_DEFINITIONS,
-    BossDefinition,
-    EncounterTemplate,
-    EnemyDefinition,
 )
-from .dungeon import Dungeon
+from .content import (
+    ARMOR_DEFINITIONS as ARMOR_DEFINITIONS,
+)
+from .content import (
+    BOSS_DEFINITIONS as BOSS_DEFINITIONS,
+)
+from .content import (
+    ELITE_MODIFIERS as ELITE_MODIFIERS,
+)
+from .content import (
+    ENCOUNTER_TEMPLATES as ENCOUNTER_TEMPLATES,
+)
+from .content import (
+    ENEMY_DEFINITIONS as ENEMY_DEFINITIONS,
+)
+from .content import (
+    FINAL_ROOM_ENEMY_DEFINITIONS as FINAL_ROOM_ENEMY_DEFINITIONS,
+)
+from .content import (
+    SECRET_TYPES as SECRET_TYPES,
+)
+from .content import (
+    SHRINE_TYPES as SHRINE_TYPES,
+)
+from .content import (
+    TRAP_DEFINITIONS as TRAP_DEFINITIONS,
+)
+from .content import (
+    WEAPON_DEFINITIONS as WEAPON_DEFINITIONS,
+)
+from .content import (
+    BossDefinition as BossDefinition,
+)
+from .content import (
+    EncounterTemplate as EncounterTemplate,
+)
+from .content import (
+    EnemyDefinition as EnemyDefinition,
+)
+from .dungeon import Dungeon as Dungeon
 from .interactions import InteractionMixin
 from .inventory import InventoryMixin
 from .menus import MenuRenderer
 from .models import (
-    Archetype,
+    Archetype as Archetype,
+)
+from .models import (
     Color,
     Enemy,
     FloatingText,
@@ -67,16 +98,21 @@ from .models import (
     Item,
     Player,
     Projectile,
-    Room,
     RunStats,
     SecretCache,
     Shopkeeper,
     Shrine,
     StoryGuest,
     StoryState,
-    Trap,
+)
+from .models import (
+    Room as Room,
+)
+from .models import (
+    Trap as Trap,
 )
 from .options import OptionsMixin
+from .population import PopulationMixin
 from .quest_assets import (
     ActiveQuestCutscene,
     RuntimeDialogueChoice,
@@ -84,6 +120,7 @@ from .quest_assets import (
     load_quest_cutscene_library,
 )
 from .rendering import RenderingMixin
+from .run_flow import RunFlowMixin
 from .save_system import SaveLoadMixin
 from .shop import ShopMixin
 from .sprites import PixelSpriteAtlas
@@ -103,6 +140,8 @@ class Game(
     SaveLoadMixin,
     RenderingMixin,
     OptionsMixin,
+    RunFlowMixin,
+    PopulationMixin,
     InventoryMixin,
     ShopMixin,
     InteractionMixin,
@@ -254,285 +293,6 @@ class Game(
             for key in self.player.skill_upgrades
             if key in by_key
         ]
-
-    def save_exists(self) -> bool:
-        return self.save_path.exists()
-
-    def theme_by_name(self, name: str) -> Any:
-        return next(
-            (theme for theme in DUNGEON_THEMES if theme.name == name), self.theme
-        )
-
-    def encounter_template_by_key(self, key: str) -> EncounterTemplate:
-        return next(
-            (template for template in ENCOUNTER_TEMPLATES if template.key == key),
-            ENCOUNTER_TEMPLATES[0],
-        )
-
-    def boss_definition_by_key(self, key: str) -> BossDefinition | None:
-        return next((boss for boss in BOSS_DEFINITIONS if boss.key == key), None)
-
-    def floor_plan_to_dict(self, plan: FloorPlan) -> dict[str, Any]:
-        return {
-            "depth": plan.depth,
-            "theme_name": plan.theme_name,
-            "threat_level": plan.threat_level,
-            "encounter_key": plan.encounter_key,
-            "risk_tags": list(plan.risk_tags),
-            "reward_hint": plan.reward_hint,
-            "boss_key": plan.boss_key,
-            "dark": plan.dark,
-        }
-
-    def floor_plan_from_dict(self, data: Any) -> FloorPlan | None:
-        if not isinstance(data, dict):
-            return None
-        try:
-            return FloorPlan(
-                depth=int(data.get("depth", 1)),
-                theme_name=str(data.get("theme_name", self.theme.name)),
-                threat_level=max(1, int(data.get("threat_level", 1))),
-                encounter_key=str(data.get("encounter_key", "standard")),
-                risk_tags=tuple(str(tag) for tag in data.get("risk_tags", [])),
-                reward_hint=str(data.get("reward_hint", "steady loot")),
-                boss_key=str(data.get("boss_key", "")),
-                dark=bool(data.get("dark", False)),
-            )
-        except (TypeError, ValueError):
-            return None
-
-    def dark_depths_for_run(self) -> set[int]:
-        dark_depths: set[int] = set()
-        early_candidates = list(range(2, min(4, DUNGEON_DEPTH) + 1))
-        if not early_candidates and DUNGEON_DEPTH >= 1:
-            early_candidates = [1]
-        if early_candidates:
-            dark_depths.add(self.rng.choice(early_candidates))
-
-        mid_candidates = list(range(5, min(10, DUNGEON_DEPTH) + 1))
-        dark_depths.update(self.rng.sample(mid_candidates, min(3, len(mid_candidates))))
-
-        for depth in range(11, DUNGEON_DEPTH + 1):
-            if self.rng.random() < 0.5:
-                dark_depths.add(depth)
-        return dark_depths
-
-    def generate_floor_plan(self) -> list[FloorPlan]:
-        plan: list[FloorPlan] = []
-        previous_theme = self.theme.name
-        dark_depths = self.dark_depths_for_run()
-        story_theme_by_depth: dict[int, str] = {}
-        if self.story_state is not None:
-            story_theme_by_depth = {
-                beat.depth: beat.theme_name for beat in self.story_state.beats
-            }
-        boss_depths = {3, 6, 9, DUNGEON_DEPTH}
-        encounter_pool = [template for template in ENCOUNTER_TEMPLATES if template.key]
-        mini_bosses = [boss for boss in BOSS_DEFINITIONS if not boss.final_boss]
-        for depth in range(1, DUNGEON_DEPTH + 1):
-            theme_name = story_theme_by_depth.get(depth, "")
-            if not theme_name:
-                choices = [
-                    theme for theme in DUNGEON_THEMES if theme.name != previous_theme
-                ]
-                theme_name = self.rng.choice(choices or list(DUNGEON_THEMES)).name
-            previous_theme = theme_name
-            if depth == 1:
-                encounter = self.encounter_template_by_key("standard")
-            elif depth in boss_depths and depth != DUNGEON_DEPTH:
-                encounter = self.encounter_template_by_key("challenge_room")
-            else:
-                encounter = self.rng.choice(encounter_pool)
-            threat = 1 + depth // 2
-            is_dark = depth in dark_depths
-            risk_tags = [encounter.risk]
-            if is_dark:
-                risk_tags.append("darkness")
-            if depth >= 5:
-                risk_tags.append("escalating damage")
-            if self.run_modifier.trap_bonus > 0.08 or encounter.trap_bonus > 0.12:
-                risk_tags.append("heavy traps")
-            if self.run_modifier.name == "Elite Hunt" or encounter.elite_bonus >= 0.12:
-                risk_tags.append("elite pressure")
-            boss_key = ""
-            reward_hint = encounter.reward
-            if depth in boss_depths:
-                if depth == DUNGEON_DEPTH:
-                    boss_key = "gate_tyrant"
-                    reward_hint = "gate relic and clear record"
-                    risk_tags.append("final boss")
-                else:
-                    themed_bosses = [
-                        boss for boss in mini_bosses if theme_name in boss.theme_names
-                    ]
-                    boss = self.rng.choice(themed_bosses or mini_bosses)
-                    boss_key = boss.key
-                    reward_hint = boss.loot_hook
-                    risk_tags.append(boss.subtitle)
-                    threat += 1
-            plan.append(
-                FloorPlan(
-                    depth=depth,
-                    theme_name=theme_name,
-                    threat_level=min(10, threat),
-                    encounter_key=encounter.key,
-                    risk_tags=tuple(risk_tags[:5]),
-                    reward_hint=reward_hint,
-                    boss_key=boss_key,
-                    dark=is_dark,
-                )
-            )
-        return plan
-
-    def current_floor_plan(self) -> FloorPlan | None:
-        return next(
-            (plan for plan in self.floor_plan if plan.depth == self.current_depth), None
-        )
-
-    def next_floor_plan(self) -> FloorPlan | None:
-        return next(
-            (plan for plan in self.floor_plan if plan.depth == self.current_depth + 1),
-            None,
-        )
-
-    def floor_plan_summary(self, plan: FloorPlan | None = None) -> str:
-        plan = plan or self.current_floor_plan()
-        if plan is None:
-            return "Uncharted depth"
-        encounter = self.encounter_template_by_key(plan.encounter_key)
-        return f"{encounter.title} · {plan.preview}"
-
-    def apply_floor_plan_for_current_depth(self) -> None:
-        plan = self.current_floor_plan()
-        if plan is None:
-            return
-        self.theme = self.theme_by_name(plan.theme_name)
-        self.run_music_theme = self.theme.name
-
-    def is_current_floor_dark(self) -> bool:
-        plan = self.current_floor_plan()
-        return bool(plan and plan.dark)
-
-    def set_current_floor_dark(self, dark: bool) -> None:
-        self.floor_plan = [
-            replace(plan, dark=dark) if plan.depth == self.current_depth else plan
-            for plan in self.floor_plan
-        ]
-
-    def toggle_current_floor_dark(self) -> bool:
-        dark = not self.is_current_floor_dark()
-        self.set_current_floor_dark(dark)
-        if hasattr(self, "floaters") and hasattr(self, "player"):
-            self.floaters.append(
-                FloatingText(
-                    "Darkness falls" if dark else "Light returns",
-                    self.player.x,
-                    self.player.y - 0.55,
-                    self.theme.accent if dark else (235, 220, 170),
-                    ttl=1.3,
-                )
-            )
-        self.trigger_screen_flash((12, 16, 28) if dark else (235, 220, 170), ttl=0.18)
-        if self.state == "playing":
-            self.save_run()
-        return dark
-
-    def light_distance_to_player(self, x: float, y: float) -> float:
-        return math.hypot(x - self.player.x, y - self.player.y)
-
-    def can_see_world_position(self, x: float, y: float, margin: float = 0.0) -> bool:
-        if not self.is_current_floor_dark():
-            return True
-        return self.light_distance_to_player(x, y) <= DARK_LEVEL_LIGHT_RADIUS + margin
-
-    def has_line_of_sight(self, ax: float, ay: float, bx: float, by: float) -> bool:
-        distance = math.hypot(bx - ax, by - ay)
-        if distance <= 0.001:
-            return True
-        steps = max(1, int(distance * 8))
-        for step in range(1, steps):
-            ratio = step / steps
-            x = ax + (bx - ax) * ratio
-            y = ay + (by - ay) * ratio
-            tx, ty = int(x), int(y)
-            if not self.dungeon.in_bounds(tx, ty):
-                return False
-            if not self.dungeon.is_floor(x, y):
-                return False
-        return True
-
-    def has_line_of_sight_to_player(self, x: float, y: float) -> bool:
-        return self.has_line_of_sight(self.player.x, self.player.y, x, y)
-
-    def tile_visibility_alpha(self, x: int, y: int) -> int:
-        if not self.is_current_floor_dark():
-            return 255
-        distance = self.light_distance_to_player(x + 0.5, y + 0.5)
-        fade_start = max(0.0, DARK_LEVEL_LIGHT_RADIUS - 1.1)
-        fade_end = DARK_LEVEL_LIGHT_RADIUS + 0.65
-        if distance <= fade_start:
-            return 255
-        if distance > fade_end:
-            return 0
-        ratio = (fade_end - distance) / max(0.01, fade_end - fade_start)
-        return max(34, min(255, int(255 * ratio)))
-
-    def record_meta_discovery(self, key: str, value: str) -> None:
-        if not value:
-            return
-        current = list(self.meta_progress.get(key, []))
-        if value not in current:
-            current.append(value)
-            self.meta_progress[key] = sorted(current)[-80:]
-
-    def record_run_start_meta(self) -> None:
-        self.meta_progress["runs_started"] = (
-            int(self.meta_progress.get("runs_started", 0)) + 1
-        )
-        self.record_meta_discovery("themes_seen", self.theme.name)
-        self.record_meta_discovery("modifiers_seen", self.run_modifier.name)
-        self.save_options()
-
-    def record_notable_loot(self, item: Item) -> None:
-        if (
-            item.rarity not in ("Rare", "Unique", "Legendary", "Cursed")
-            and not item.cursed
-        ):
-            return
-        label = f"{item.visible_rarity} {item.display_name}"
-        if label not in self.run_stats.notable_loot:
-            self.run_stats.notable_loot.append(label)
-            del self.run_stats.notable_loot[:-8]
-        if item.rarity in ("Unique", "Legendary"):
-            self.record_meta_discovery("legendary_loot_seen", item.name)
-
-    def finalize_run(self, outcome: str) -> None:
-        progress = self.meta_progress
-        progress["best_depth"] = max(
-            int(progress.get("best_depth", 0)), self.current_depth
-        )
-        if outcome == "victory":
-            progress["clears"] = int(progress.get("clears", 0)) + 1
-        for boss_name in self.run_stats.defeated_bosses:
-            self.record_meta_discovery("bosses_defeated", boss_name)
-        for plan in self.floor_plan:
-            if plan.depth <= self.current_depth:
-                self.record_meta_discovery("themes_seen", plan.theme_name)
-        record = {
-            "outcome": outcome,
-            "class": self.player.class_name,
-            "depth": self.current_depth,
-            "time": int(self.elapsed),
-            "difficulty": self.difficulty_profile().name,
-            "modifier": self.run_modifier.name,
-            "kills": self.run_stats.kills,
-            "bosses": list(self.run_stats.defeated_bosses[-4:]),
-            "notable_loot": list(self.run_stats.notable_loot[-4:]),
-            "cause": self.run_stats.cause_of_death,
-        }
-        self.run_history.append(record)
-        del self.run_history[:-12]
-        self.save_options()
 
     def start_story_mode(self) -> None:
         self.story_seed = self.rng.randrange(1, 2**31)
@@ -1750,899 +1510,6 @@ class Game(
             self.enemies.append(
                 self._make_story_hunter(spawn_x, spawn_y, prefix="Story-Marked")
             )
-
-    def restart(self, archetype: Archetype | None = None) -> None:
-        self.run_number += 1
-        if archetype:
-            self.selected_archetype = archetype
-        self.difficulty_name = self.sanitize_difficulty_name(self.difficulty_name)
-        self.hell_unlocked_this_run = False
-        self.current_depth = 1
-        self.run_music_seed = self.rng.randrange(1, 2**31)
-        self.run_modifier = self.rng.choice(RUN_MODIFIERS)
-        self.theme = self.rng.choice(DUNGEON_THEMES)
-        self.run_music_theme = self.theme.name
-        self.floor_plan = []
-        self.start_story_mode()
-        self.floor_plan = self.generate_floor_plan()
-        self.apply_floor_plan_for_current_depth()
-        self.record_run_start_meta()
-        self.tile_cache.clear()
-        self.dungeon = Dungeon(self.rng)
-        start_x, start_y = self.dungeon.rooms[0].center
-        self.player = Player(
-            start_x + 0.5,
-            start_y + 0.5,
-            class_name=self.selected_archetype.name,
-            max_hp=self.selected_archetype.max_hp,
-            hp=self.selected_archetype.max_hp,
-            max_mana=self.selected_archetype.max_mana,
-            mana=self.selected_archetype.max_mana,
-            max_stamina=self.selected_archetype.max_stamina,
-            stamina=self.selected_archetype.max_stamina,
-            speed=self.selected_archetype.speed,
-            melee_bonus=self.selected_archetype.melee_bonus,
-            spell_bonus=self.selected_archetype.spell_bonus,
-            armor_bonus=self.selected_archetype.armor_bonus,
-        )
-        self.apply_starting_loadout()
-        self.enemies: list[Enemy] = []
-        self.items: list[Item] = []
-        self.shopkeepers: list[Shopkeeper] = []
-        self.projectiles: list[Projectile] = []
-        self.traps: list[Trap] = []
-        self.shrines: list[Shrine] = []
-        self.secrets: list[SecretCache] = []
-        self.story_guests = []
-        self.floaters: list[FloatingText] = []
-        self.slashes: list[SlashEffect] = []
-        self.impact_effects = []
-        self.screen_flash_ttl = 0.0
-        self.reset_transient_visuals()
-        self.run_stats = RunStats()
-        self.inventory_open = False
-        self.inventory_cursor = 0
-        self.inventory_scroll = 0
-        self.character_menu_open = False
-        self.shop_open = False
-        self.active_shopkeeper = None
-        self.shop_mode = "buy"
-        self.shop_cursor = 0
-        self.show_help = False
-        self.elapsed = 0.0
-        self.state = "playing"
-        self._populate_dungeon()
-        self.begin_story_level_intro()
-        self.sync_music()
-        self.play_sfx("start")
-        self.save_run()
-
-    def descend_to_next_depth(self) -> None:
-        if self.current_depth >= DUNGEON_DEPTH:
-            self.run_stats.floors_cleared = max(
-                self.run_stats.floors_cleared, DUNGEON_DEPTH
-            )
-            self.state = "victory"
-            self.unlock_hell_difficulty()
-            self.finalize_run("victory")
-            self.audio.stop_music()
-            self.play_sfx("victory")
-            self.delete_save()
-            return
-        unanswered_message = self.resolve_unanswered_story_beat()
-        self.run_stats.floors_cleared = max(
-            self.run_stats.floors_cleared, self.current_depth
-        )
-        self.current_depth += 1
-        self._apply_story_theme_for_current_depth()
-        self.tile_cache.clear()
-        self.dungeon = Dungeon(self.rng)
-        start_x, start_y = self.dungeon.rooms[0].center
-        self.player.x = start_x + 0.5
-        self.player.y = start_y + 0.5
-        self.player.melee_timer = 0.0
-        self.player.bolt_timer = 0.0
-        self.player.dash_timer = 0.0
-        self.player.nova_timer = 0.0
-        self.player.stamina = min(
-            self.player.max_stamina,
-            self.player.stamina + self.player.max_stamina * 0.25,
-        )
-        self.player.mana = min(
-            self.player.max_mana, self.player.mana + self.player.max_mana * 0.25
-        )
-        self.enemies = []
-        self.items = []
-        self.shopkeepers = []
-        self.projectiles = []
-        self.traps = []
-        self.shrines = []
-        self.secrets = []
-        self.story_guests = []
-        self.floaters = []
-        self.slashes = []
-        self.impact_effects = []
-        self.screen_flash_ttl = 0.0
-        self.reset_transient_visuals()
-        self.inventory_open = False
-        self.inventory_cursor = 0
-        self.inventory_scroll = 0
-        self.character_menu_open = False
-        self.shop_open = False
-        self.active_shopkeeper = None
-        self.shop_mode = "buy"
-        self.shop_cursor = 0
-        self.show_help = False
-        self._populate_dungeon()
-        self.begin_story_level_intro()
-        if unanswered_message:
-            self.floaters.append(
-                FloatingText(
-                    unanswered_message,
-                    self.player.x,
-                    self.player.y - 0.85,
-                    self.story_state.accent if self.story_state else self.theme.accent,
-                    ttl=2.0,
-                )
-            )
-        self.floaters.append(
-            FloatingText(
-                f"Depth {self.current_depth}/{DUNGEON_DEPTH}",
-                self.player.x,
-                self.player.y - 0.5,
-                self.theme.accent,
-                ttl=1.5,
-            )
-        )
-        self.sync_music()
-        self.play_sfx("stairs")
-        self.save_run()
-
-    def apply_starting_loadout(self) -> None:
-        loadouts = {
-            "Warden": (
-                Item("Warden Arming Sword", "weapon", power=3, rarity="Common"),
-                Item("Warden Mail", "armor", defense=3, rarity="Common"),
-            ),
-            "Rogue": (
-                Item("Twin Fang Knife", "weapon", power=6, rarity="Common"),
-                Item("Shadow Jerkin", "armor", defense=1, rarity="Common"),
-            ),
-            "Arcanist": (
-                Item("Runed Wand", "weapon", power=1, rarity="Common"),
-                Item("Apprentice Mantle", "armor", defense=1, rarity="Common"),
-            ),
-            "Acolyte": (
-                Item("Pilgrim Censer", "weapon", power=2, rarity="Common"),
-                Item("Boneweave Mantle", "armor", defense=2, rarity="Common"),
-            ),
-            "Ranger": (
-                Item("Yew Longbow", "weapon", power=5, rarity="Common"),
-                Item("Trail Leathers", "armor", defense=2, rarity="Common"),
-            ),
-        }
-        weapon, armor = loadouts.get(self.player.class_name, loadouts["Warden"])
-        self.player.equipment["weapon"] = weapon
-        self.player.equipment["armor"] = armor
-
-    def _populate_dungeon(self) -> None:
-        final_room_index = len(self.dungeon.rooms) - 1
-        floor_plan = self.current_floor_plan()
-        encounter = self.encounter_template_by_key(
-            floor_plan.encounter_key if floor_plan is not None else "standard"
-        )
-        difficulty = self.difficulty_profile()
-        enemy_pressure = self.story_effect_value("enemy_pressure", -0.35, 0.45)
-        loot_bonus = self.story_effect_value("loot_bonus", -0.2, 0.35)
-        trap_bonus = self.story_effect_value("trap_bonus", -0.1, 0.28)
-        shrine_bonus = self.story_effect_value("shrine_bonus", -0.1, 0.28)
-        secret_bonus = self.story_effect_value("secret_bonus", -0.1, 0.28)
-        hunter_pressure = self.story_effect_value("hunter_pressure", 0.0, 0.35)
-        for room_index, room in enumerate(self.dungeon.rooms[1:], start=1):
-            is_final_room = room_index == final_room_index
-            count = self.rng.randrange(1, 4)
-            if self.current_depth <= 2:
-                count = max(1, count - 1)
-            elif self.current_depth >= 7:
-                count += 1
-            if enemy_pressure > 0 and self.rng.random() < enemy_pressure:
-                count += 1
-            elif enemy_pressure < 0 and self.rng.random() < abs(enemy_pressure):
-                count = max(1, count - 1)
-            if is_final_room:
-                count += 1
-            count = max(1, count + difficulty.enemy_count_bonus + encounter.enemy_bonus)
-            if self.rng.random() < difficulty.enemy_extra_chance:
-                count += 1
-            for _ in range(count):
-                self.enemies.append(
-                    self._make_enemy(
-                        *room.random_point(self.rng),
-                        final_room=is_final_room,
-                        elite_bonus=encounter.elite_bonus,
-                    )
-                )
-
-            if is_final_room and floor_plan is not None and floor_plan.boss_key:
-                bx, by = room.center
-                if self.current_depth == DUNGEON_DEPTH:
-                    self.enemies.append(self._make_boss(bx + 0.5, by + 0.5))
-                else:
-                    self.enemies.append(
-                        self._make_floor_boss(floor_plan.boss_key, bx + 0.5, by + 0.5)
-                    )
-
-            loot_chance = max(
-                0.12,
-                min(
-                    0.88,
-                    0.68
-                    + self.run_modifier.loot_bonus
-                    + loot_bonus
-                    + difficulty.loot_chance_bonus
-                    + encounter.loot_bonus,
-                ),
-            )
-            if self.rng.random() < loot_chance:
-                self.items.append(self._make_loot(*room.random_point(self.rng)))
-            if (
-                room_index > 3
-                and not is_final_room
-                and self.rng.random() < self.miniboss_chance()
-            ):
-                mx, my = room.random_point(self.rng)
-                self.enemies.append(self._make_miniboss(mx, my))
-            if room_index > 1 and self.rng.random() < max(
-                0.04,
-                min(
-                    0.70,
-                    0.24
-                    + self.run_modifier.trap_bonus
-                    + trap_bonus
-                    + difficulty.trap_chance_bonus
-                    + encounter.trap_bonus,
-                ),
-            ):
-                tx, ty = room.random_point(self.rng)
-                kind, min_damage, max_damage = self.rng.choice(TRAP_DEFINITIONS)
-                depth_damage = max(0, self.current_depth - 3)
-                raw_damage = (
-                    self.rng.randrange(min_damage, max_damage + 1) + depth_damage
-                )
-                self.traps.append(
-                    Trap(
-                        tx,
-                        ty,
-                        kind,
-                        max(
-                            1,
-                            int(round(raw_damage * difficulty.trap_damage_multiplier)),
-                        ),
-                    )
-                )
-            shrine_chance = (
-                0.18
-                + (0.08 if self.run_modifier.name == "Trap-Laced" else 0.0)
-                + shrine_bonus
-                + difficulty.shrine_chance_bonus
-            )
-            if room_index > 2 and self.rng.random() < max(
-                0.04, min(0.46, shrine_chance)
-            ):
-                sx, sy = room.random_point(self.rng)
-                self.shrines.append(Shrine(sx, sy, self.rng.choice(SHRINE_TYPES)))
-            if (
-                room_index > 2
-                and not is_final_room
-                and self.rng.random()
-                < max(
-                    0.03,
-                    min(
-                        0.48,
-                        0.16
-                        + self.run_modifier.loot_bonus
-                        + secret_bonus
-                        + encounter.secret_bonus,
-                    ),
-                )
-            ):
-                cx, cy = room.random_point(self.rng)
-                self.secrets.append(
-                    SecretCache(
-                        cx,
-                        cy,
-                        self.rng.choice(SECRET_TYPES),
-                    )
-                )
-
-        if (
-            encounter.guaranteed_miniboss
-            and (floor_plan is None or not floor_plan.boss_key)
-            and len(self.dungeon.rooms) > 3
-        ):
-            room = self.rng.choice(self.dungeon.rooms[2:-1] or self.dungeon.rooms[1:])
-            mx, my = room.random_point(self.rng)
-            miniboss = self._make_miniboss(mx, my)
-            miniboss.role = "challenge_boss"
-            miniboss.telegraph = (
-                "optional challenge room guardian with guaranteed reward"
-            )
-            self.enemies.append(miniboss)
-
-        if self.rng.random() < max(
-            0.10,
-            min(
-                0.72,
-                0.45
-                + self.run_modifier.loot_bonus
-                + secret_bonus
-                + difficulty.loot_chance_bonus * 0.5,
-            ),
-        ):
-            room = self.rng.choice(self.dungeon.rooms[2:-1])
-            cx, cy = room.random_point(self.rng)
-            self.secrets.append(SecretCache(cx, cy, "Lost Cartographer's Stash"))
-
-        if hunter_pressure > 0 and len(self.dungeon.rooms) > 2:
-            hunter_rooms = self.dungeon.rooms[2:-1] or self.dungeon.rooms[1:]
-            hunter_count = min(4, 1 + int(hunter_pressure / 0.14))
-            if self.rng.random() < min(0.75, hunter_pressure * 1.5):
-                hunter_count += 1
-            for _ in range(hunter_count):
-                room = self.rng.choice(hunter_rooms)
-                hx, hy = room.random_point(self.rng)
-                self.enemies.append(self._make_story_hunter(hx, hy))
-
-        sx, sy = self.dungeon.rooms[0].random_point(self.rng)
-        self.items.append(
-            Item("Minor Healing Potion", "potion", heal=35, rarity="Common", x=sx, y=sy)
-        )
-        self._populate_shop_room()
-        self._populate_story_guest()
-
-    def _populate_shop_room(self) -> None:
-        shop_index = self.dungeon.shop_room_index
-        if shop_index is None or not (0 <= shop_index < len(self.dungeon.rooms)):
-            return
-        room = self.dungeon.rooms[shop_index]
-        keeper_names = (
-            "Mirel Coin-Candle",
-            "Old Brass Venn",
-            "Sister Ledger",
-            "Korrin the Barter-Saint",
-            "Pell of the Locked Shelf",
-        )
-        x, y = room.center
-        shopkeeper = Shopkeeper(
-            x + 0.5,
-            y + 0.5,
-            self.rng.choice(keeper_names),
-            "Allied Shopkeeper",
-            inventory=self._make_shop_inventory(room),
-        )
-        self.shopkeepers.append(shopkeeper)
-        # Shop rooms should feel like a temporary refuge rather than another ambush.
-        self.enemies = [
-            enemy
-            for enemy in self.enemies
-            if not (
-                room.x <= enemy.x < room.x + room.w
-                and room.y <= enemy.y < room.y + room.h
-            )
-        ]
-        self.traps = [
-            trap
-            for trap in self.traps
-            if not (
-                room.x <= trap.x < room.x + room.w
-                and room.y <= trap.y < room.y + room.h
-            )
-        ]
-        self.items.append(
-            Item(
-                "Shop Sign: Press E to trade",
-                "shop_sign",
-                rarity="Common",
-                x=shopkeeper.x + 0.9,
-                y=shopkeeper.y,
-            )
-        )
-
-    def _make_shop_inventory(self, room: Room) -> list[Item]:
-        stock: list[Item] = [
-            Item("Minor Healing Potion", "potion", heal=35, rarity="Common"),
-            Item("Lesser Mana Potion", "mana_potion", mana=24, rarity="Common"),
-            Item("Scroll of Identify", "identify", rarity="Common"),
-        ]
-        stock.append(
-            self._make_equipment(
-                "weapon", "Magic", room.center[0] + 0.5, room.center[1] + 0.5
-            )
-        )
-        stock.append(
-            self._make_equipment(
-                "armor", "Magic", room.center[0] + 0.5, room.center[1] + 0.5
-            )
-        )
-        if self.current_depth >= 3 or self.rng.random() < 0.35:
-            stock.append(self._make_loot(room.center[0] + 0.5, room.center[1] + 0.5))
-        for item in stock:
-            item.x = 0.0
-            item.y = 0.0
-        return stock
-
-    def _apply_run_modifier(self, enemy: Enemy) -> Enemy:
-        difficulty = self.difficulty_profile()
-        depth_multiplier = 1.0 + max(0, self.current_depth - 1) * 0.045
-        story_pressure = self.story_effect_value("enemy_pressure", -0.25, 0.35)
-        story_multiplier = 1.0 + max(-0.12, min(0.22, story_pressure * 0.55))
-        if enemy.kind == "boss":
-            story_multiplier += self.story_effect_value("boss_pressure", 0.0, 0.35)
-        enemy.max_hp = max(
-            1,
-            int(
-                enemy.max_hp
-                * self.run_modifier.enemy_hp_multiplier
-                * depth_multiplier
-                * story_multiplier
-                * difficulty.enemy_hp_multiplier
-            ),
-        )
-        enemy.hp = enemy.max_hp
-        damage = enemy.damage + self.run_modifier.enemy_damage_bonus
-        damage += max(0, self.current_depth - 4) // 2
-        if story_pressure > 0:
-            damage += int(story_pressure * 8)
-        if enemy.kind == "boss":
-            damage += int(self.story_effect_value("boss_pressure", 0.0, 0.35) * 10)
-        enemy.damage = max(
-            1,
-            int(round(damage * difficulty.enemy_damage_multiplier))
-            + difficulty.enemy_damage_bonus,
-        )
-        enemy.speed *= difficulty.enemy_speed_multiplier
-        enemy.attack_cooldown = max(
-            0.35,
-            enemy.attack_cooldown * difficulty.enemy_attack_cooldown_multiplier,
-        )
-        enemy.aggro_range += (
-            self.run_modifier.enemy_aggro_bonus
-            + max(0.0, story_pressure)
-            + difficulty.enemy_aggro_bonus
-        )
-        return enemy
-
-    def _weighted_enemy_definition(self, final_room: bool = False) -> EnemyDefinition:
-        definitions = FINAL_ROOM_ENEMY_DEFINITIONS if final_room else ENEMY_DEFINITIONS
-        total_weight = sum(definition.weight for definition in definitions)
-        roll = self.rng.randrange(total_weight)
-        current = 0
-        for definition in definitions:
-            current += definition.weight
-            if roll < current:
-                return definition
-        return definitions[-1]
-
-    def _make_enemy(
-        self, x: float, y: float, final_room: bool = False, elite_bonus: float = 0.0
-    ) -> Enemy:
-        definition = self._weighted_enemy_definition(final_room)
-        enemy = Enemy(
-            definition.name,
-            definition.kind,
-            x,
-            y,
-            definition.max_hp,
-            definition.max_hp,
-            definition.speed,
-            definition.damage,
-            definition.xp,
-            definition.attack_range,
-            definition.attack_cooldown,
-            aggro_range=definition.aggro_range,
-            color=definition.color,
-        )
-        self._assign_enemy_combat_traits(enemy)
-        enemy = self._apply_run_modifier(enemy)
-        if enemy.kind != "boss" and self.rng.random() < self.elite_chance(elite_bonus):
-            self._apply_elite_modifier(enemy)
-        return enemy
-
-    def _assign_enemy_combat_traits(self, enemy: Enemy) -> None:
-        base_name = enemy.name
-        for prefix in ("Venomous", "Runed", "Ironbound", "Frenzied", "Oathbound"):
-            base_name = base_name.replace(f"{prefix} ", "")
-        traits: dict[str, tuple[str, str, dict[str, float]]] = {
-            "Cultist": ("caster", "arcane", {"arcane": 0.24, "shadow": 0.12}),
-            "Bone Imp": ("skirmisher", "frost", {"frost": 0.22, "holy": -0.10}),
-            "Venom Skitter": ("flanker", "poison", {"poison": 0.45, "fire": -0.18}),
-            "Crypt Brute": ("bruiser", "physical", {"physical": 0.24, "arcane": -0.10}),
-            "Ghoul": ("mauler", "shadow", {"shadow": 0.18, "holy": -0.15}),
-            "Grave Archer": (
-                "marksman",
-                "physical",
-                {"physical": 0.10, "poison": -0.08},
-            ),
-            "Ash Hound": ("flanker", "fire", {"fire": 0.34, "frost": -0.18}),
-            "Rune Sentinel": ("sentinel", "arcane", {"arcane": 0.38, "physical": 0.10}),
-            "Plague Toad": ("artillery", "poison", {"poison": 0.38, "fire": -0.12}),
-            "Hollow Knight": ("guard", "physical", {"physical": 0.18, "shadow": 0.12}),
-            "Gate Warden": (
-                "guard",
-                "holy",
-                {"physical": 0.20, "holy": 0.28, "shadow": -0.12},
-            ),
-        }
-        role, damage_type, resistances = traits.get(
-            base_name, ("bruiser", "physical", {"physical": 0.08})
-        )
-        enemy.role = role
-        enemy.damage_type = damage_type
-        enemy.resistances = dict(resistances)
-
-    def elite_chance(self, bonus: float = 0.0) -> float:
-        difficulty = self.difficulty_profile()
-        base = 0.06 + self.current_depth * 0.006 + difficulty.elite_bonus + bonus
-        if self.run_modifier.name == "Elite Hunt":
-            base += 0.08
-        return max(0.0, min(0.55, base))
-
-    def miniboss_chance(self) -> float:
-        difficulty = self.difficulty_profile()
-        base = 0.015 + self.current_depth * 0.006 + difficulty.miniboss_bonus
-        if self.run_modifier.name == "Elite Hunt":
-            base += 0.035
-        return max(0.0, min(0.22, base))
-
-    def _shift_color(self, color: Color, shift: Color) -> Color:
-        return (
-            max(35, min(255, color[0] + shift[0])),
-            max(35, min(255, color[1] + shift[1])),
-            max(35, min(255, color[2] + shift[2])),
-        )
-
-    def _apply_elite_modifier(self, enemy: Enemy) -> None:
-        modifier = self.rng.choice(ELITE_MODIFIERS)
-        enemy.name = f"{modifier.name} {enemy.name}"
-        enemy.elite_modifier = modifier.name
-        enemy.telegraph = modifier.description
-        enemy.max_hp = max(1, int(enemy.max_hp * modifier.hp_multiplier))
-        enemy.hp = enemy.max_hp
-        enemy.damage += modifier.damage_bonus
-        enemy.speed *= modifier.speed_multiplier
-        enemy.xp += modifier.xp_bonus
-        enemy.aggro_range += 1.0 if modifier.name == "Runed" else 0.0
-        if modifier.name == "Venomous":
-            enemy.damage_type = "poison"
-            enemy.resistances["poison"] = max(
-                enemy.resistances.get("poison", 0.0), 0.40
-            )
-            enemy.role = "flanker"
-        elif modifier.name == "Runed":
-            enemy.damage_type = "arcane"
-            enemy.resistances["arcane"] = max(
-                enemy.resistances.get("arcane", 0.0), 0.34
-            )
-        elif modifier.name == "Ironbound":
-            enemy.resistances["physical"] = max(
-                enemy.resistances.get("physical", 0.0), 0.32
-            )
-            enemy.role = "guard"
-        elif modifier.name == "Frenzied":
-            enemy.role = "flanker"
-        enemy.color = self._shift_color(enemy.color, modifier.color_shift)
-
-    def _make_miniboss(self, x: float, y: float) -> Enemy:
-        enemy = self._make_enemy(x, y, final_room=True)
-        enemy.name = f"Oathbound {enemy.name}"
-        enemy.kind = "miniboss"
-        enemy.elite_modifier = enemy.elite_modifier or "Oathbound"
-        enemy.telegraph = "large readable windups and guaranteed reward"
-        enemy.max_hp = int(enemy.max_hp * 1.85)
-        enemy.hp = enemy.max_hp
-        enemy.damage += 3
-        enemy.xp += 34
-        enemy.aggro_range += 2.0
-        enemy.color = self.theme.accent
-        return enemy
-
-    def _make_floor_boss(self, boss_key: str, x: float, y: float) -> Enemy:
-        definition = self.boss_definition_by_key(boss_key)
-        if definition is None or definition.final_boss:
-            return self._make_miniboss(x, y)
-        name = definition.name
-        if self.story_state is not None:
-            name = f"{self.story_state.antagonist} {name}"
-        boss = Enemy(
-            name,
-            "miniboss",
-            x,
-            y,
-            definition.max_hp,
-            definition.max_hp,
-            definition.speed,
-            definition.damage,
-            definition.xp,
-            definition.attack_range,
-            definition.attack_cooldown,
-            aggro_range=definition.aggro_range,
-            color=definition.color,
-            elite_modifier="Floor Boss",
-            telegraph=definition.telegraph,
-            role="floor_boss",
-            damage_type=definition.damage_type,
-            resistances={
-                definition.damage_type: 0.34,
-                "physical": 0.14,
-                "holy" if definition.damage_type != "holy" else "shadow": -0.12,
-            },
-        )
-        boss = self._apply_run_modifier(boss)
-        boss.max_hp = int(boss.max_hp * 1.22)
-        boss.hp = boss.max_hp
-        boss.damage += 2
-        return boss
-
-    def _make_story_hunter(
-        self, x: float, y: float, prefix: str | None = None
-    ) -> Enemy:
-        enemy = self._make_enemy(x, y, final_room=True)
-        story_prefix = prefix or "Story-Marked"
-        if self.story_state is not None and prefix is None:
-            story_prefix = f"{self.story_state.antagonist} Hunter"
-        enemy.name = f"{story_prefix} {enemy.name}"
-        enemy.elite_modifier = enemy.elite_modifier or "Story-Marked"
-        enemy.telegraph = "drawn by unresolved oaths and defiant story choices"
-        enemy.max_hp = max(1, int(enemy.max_hp * 1.28))
-        enemy.hp = enemy.max_hp
-        enemy.damage += max(1, self.current_depth // 2)
-        enemy.xp += 14 + self.current_depth * 2
-        enemy.aggro_range += 2.5
-        enemy.color = self.story_state.accent if self.story_state else self.theme.accent
-        return enemy
-
-    def _make_boss(self, x: float, y: float) -> Enemy:
-        boss_titles = {
-            "Crypt of Ash": "Ashen Gate Tyrant",
-            "Fungal Catacombs": "Mycelial Gate Tyrant",
-            "Violet Reliquary": "Voidbound Gate Tyrant",
-            "Sunken Bastion": "Drowned Gate Tyrant",
-            "Frozen Ossuary": "Rimebound Gate Tyrant",
-            "Obsidian Foundry": "Forgeheart Gate Tyrant",
-            "Moonlit Aquifer": "Moon-Drowned Gate Tyrant",
-            "Thornbound Vault": "Thorn-Crowned Gate Tyrant",
-        }
-        definition = self.boss_definition_by_key("gate_tyrant")
-        boss_name = boss_titles.get(self.theme.name, "Dread Gate Tyrant")
-        if self.story_state is not None:
-            boss_name = f"{self.story_state.antagonist} {boss_name}"
-        base_hp = definition.max_hp if definition is not None else 245
-        boss = Enemy(
-            boss_name,
-            "boss",
-            x,
-            y,
-            base_hp,
-            base_hp,
-            definition.speed if definition is not None else 1.65,
-            definition.damage if definition is not None else 21,
-            definition.xp if definition is not None else 120,
-            definition.attack_range if definition is not None else 1.45,
-            definition.attack_cooldown if definition is not None else 1.08,
-            aggro_range=definition.aggro_range if definition is not None else 13.0,
-            color=self.theme.accent,
-            telegraph=definition.telegraph if definition is not None else "gate strike",
-            role="boss",
-            damage_type="shadow"
-            if self.theme.name in ("Violet Reliquary", "Thornbound Vault")
-            else "physical",
-            resistances={"physical": 0.18, "shadow": 0.22, "holy": -0.10},
-        )
-        return self._apply_run_modifier(boss)
-
-    def _make_loot(self, x: float, y: float) -> Item:
-        roll = self.rng.random()
-        if roll < 0.24:
-            return Item(
-                "Minor Healing Potion", "potion", heal=35, rarity="Common", x=x, y=y
-            )
-        if roll < 0.34:
-            return Item(
-                "Lesser Mana Potion", "mana_potion", mana=24, rarity="Common", x=x, y=y
-            )
-        if roll < 0.42:
-            return Item("Scroll of Identify", "identify", rarity="Common", x=x, y=y)
-        loot_bonus = self.run_modifier.loot_bonus + self.story_effect_value(
-            "loot_bonus", 0.0, 0.25
-        )
-        if roll > 0.985 - loot_bonus * 0.5:
-            slot = "weapon" if self.rng.random() < 0.58 else "armor"
-            return self._make_equipment(slot, "Legendary", x, y)
-        if roll > 0.96 - loot_bonus:
-            return self._make_unique(x, y)
-        slot = "weapon" if roll < 0.70 else "armor"
-        rarity = "Rare" if self.rng.random() < 0.34 else "Magic"
-        if self.rng.random() < 0.20:
-            rarity = "Common"
-        return self._make_equipment(slot, rarity, x, y)
-
-    def _make_equipment(self, slot: str, rarity: str, x: float, y: float) -> Item:
-        if slot == "weapon":
-            definition = self.rng.choice(WEAPON_DEFINITIONS)
-            item = Item(
-                definition.name,
-                "weapon",
-                power=definition.value,
-                rarity=rarity,
-                x=x,
-                y=y,
-            )
-        else:
-            definition = self.rng.choice(ARMOR_DEFINITIONS)
-            item = Item(
-                definition.name,
-                "armor",
-                defense=definition.value,
-                rarity=rarity,
-                x=x,
-                y=y,
-            )
-        affix_count = (
-            0
-            if rarity == "Common"
-            else 1
-            if rarity == "Magic"
-            else 3
-            if rarity == "Legendary"
-            else 2
-        )
-        self._apply_affixes(item, affix_count)
-        if rarity == "Legendary":
-            if item.slot == "weapon":
-                item.power += 4
-                item.proc_effect = item.proc_effect or "ignite"
-                item.damage_type = (
-                    item.damage_type if item.damage_type != "physical" else "fire"
-                )
-            else:
-                item.defense += 3
-                item.skill_bonus = item.skill_bonus or "Dash guard"
-        curse_chance = (
-            0.08
-            + (0.08 if self.run_modifier.name == "Cursed Bargains" else 0.0)
-            + self.story_effect_value("curse_bonus", 0.0, 0.18)
-        )
-        if rarity != "Common" and self.rng.random() < curse_chance:
-            item.cursed = True
-            item.rarity = "Cursed"
-            item.affixes.append("Tempting Curse")
-            if item.slot == "weapon":
-                item.power += 4
-            else:
-                item.defense += 3
-        self._empower_story_relic_item(item)
-        item.unidentified = rarity != "Common" and self.rng.random() < 0.45
-        return item
-
-    def _empower_story_relic_item(self, item: Item, guaranteed: bool = False) -> None:
-        relic_power = self.story_effect_value("relic_power", 0.0, 0.35)
-        if relic_power <= 0 or item.slot not in ("weapon", "armor"):
-            return
-        if "Relic-Touched" in item.affixes:
-            return
-        if not guaranteed and self.rng.random() > min(0.45, relic_power * 1.35):
-            return
-        bonus = max(2, int(round(2 + relic_power * 14)))
-        if item.slot == "weapon":
-            item.power += bonus
-        else:
-            item.defense += max(2, bonus // 2 + 1)
-        if "Relic-Touched" not in item.affixes:
-            item.affixes.append("Relic-Touched")
-        if self.story_state is not None and not item.unique_effect:
-            item.unique_effect = f"echo of {self.story_state.relic_name}"
-
-    def _apply_affixes(self, item: Item, count: int) -> None:
-        weapon_affixes = [
-            ("Serrated", 3, 0),
-            ("Cruel", 5, 0),
-            ("Balanced", 2, 0),
-            ("Frostbitten", 4, 0),
-            ("Zealous", 3, 1),
-            ("Vampiric", 4, 0),
-            ("Storm-Touched", 5, 0),
-        ]
-        armor_affixes = [
-            ("Reinforced", 0, 2),
-            ("Stalwart", 0, 3),
-            ("Light", 0, 1),
-            ("Sealed", 0, 4),
-            ("Thorned", 1, 2),
-            ("Grounded", 0, 4),
-            ("Regal", 1, 3),
-        ]
-        utility_affixes = [
-            ("of the Fox", 1, 1),
-            ("of Warding", 0, 2),
-            ("of Force", 2, 0),
-            ("of the Deep", 0, 3),
-            ("of Ember", 3, 0),
-            ("of Cinders", 4, -1),
-            ("of the Moon", 1, 3),
-        ]
-        pool = weapon_affixes if item.slot == "weapon" else armor_affixes
-        pool = pool + utility_affixes
-        for name, power, defense in self.rng.sample(pool, k=min(count, len(pool))):
-            item.affixes.append(name)
-            item.power += power
-            item.defense += defense
-            if name in ("Frostbitten", "of the Moon"):
-                item.damage_type = "frost"
-                item.proc_effect = item.proc_effect or "chill"
-            elif name in ("of Ember", "of Cinders"):
-                item.damage_type = "fire"
-                item.proc_effect = item.proc_effect or "ignite"
-            elif name == "Storm-Touched":
-                item.damage_type = "arcane"
-                item.skill_bonus = item.skill_bonus or "Bolt +1 shard"
-            elif name == "Vampiric":
-                item.damage_type = "shadow"
-                item.proc_effect = item.proc_effect or "lifesteal"
-            elif name == "Thorned":
-                item.proc_effect = item.proc_effect or "thorns"
-            elif name in ("Grounded", "Sealed"):
-                item.skill_bonus = item.skill_bonus or "Nova ward"
-            elif name in ("Balanced", "Light", "of the Fox"):
-                item.skill_bonus = item.skill_bonus or "Dash tempo"
-            elif name in ("Zealous", "Regal", "of Force"):
-                item.skill_bonus = item.skill_bonus or "Melee force"
-
-    def _make_unique(self, x: float, y: float) -> Item:
-        unique_roll = self.rng.random()
-        if unique_roll < 0.42:
-            return Item(
-                "Emberbrand",
-                "weapon",
-                power=12,
-                rarity="Unique",
-                x=x,
-                y=y,
-                affixes=["Serrated", "of Force"],
-                unidentified=self.rng.random() < 0.35,
-                unique_effect="embers on hit",
-                damage_type="fire",
-                skill_bonus="Melee force",
-                proc_effect="ignite",
-            )
-        if unique_roll < 0.72:
-            return Item(
-                "Frostwake",
-                "weapon",
-                power=10,
-                rarity="Unique",
-                x=x,
-                y=y,
-                affixes=["Frostbitten", "Balanced"],
-                unidentified=self.rng.random() < 0.35,
-                unique_effect="chill on hit",
-                damage_type="frost",
-                skill_bonus="Bolt +1 shard",
-                proc_effect="chill",
-            )
-        return Item(
-            "Bulwark of the First Gate",
-            "armor",
-            defense=8,
-            rarity="Unique",
-            x=x,
-            y=y,
-            affixes=["Reinforced", "of Warding"],
-            unidentified=self.rng.random() < 0.35,
-            unique_effect="steadfast bulwark",
-            damage_type="holy",
-            skill_bonus="Dash guard",
-            proc_effect="thorns",
-        )
 
     def run(self) -> None:
         while self.running:
@@ -4120,27 +2987,6 @@ class Game(
             FloatingText(f"+{gold} gold", enemy.x, enemy.y - 0.55, (225, 190, 92))
         )
         self.save_run()
-
-    def drop_position_near(self, x: float, y: float) -> tuple[float, float]:
-        offsets = (
-            (0.0, 0.0),
-            (1.15, 0.0),
-            (-1.15, 0.0),
-            (0.0, 1.15),
-            (0.0, -1.15),
-            (1.15, 1.15),
-            (-1.15, 1.15),
-            (1.15, -1.15),
-            (-1.15, -1.15),
-        )
-        stair_x, stair_y = self.dungeon.stairs[0] + 0.5, self.dungeon.stairs[1] + 0.5
-        for ox, oy in offsets:
-            px, py = x + ox, y + oy
-            if math.hypot(px - stair_x, py - stair_y) < 1.05:
-                continue
-            if not self.dungeon.blocked_for_radius(px, py, radius=0.22):
-                return px, py
-        return x, y
 
 
 def main() -> None:

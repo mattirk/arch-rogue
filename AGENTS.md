@@ -200,12 +200,12 @@ Refactor `game.py`, `rendering.py`, and related oversized modules into clearer b
   - `src/arch_rogue/interactions.py` for interaction prompts, doors, stairs, nearby world objects, secrets, shrines, and story relic pickup.
 - Preserve direct `Game` method access through mixin inheritance or compatible wrappers.
 
-#### 3.1.2 Run flow, floor planning, and population
+#### 3.1.2 Run flow, floor planning, and population - done
 - Extract run lifecycle and floor-plan behavior into a focused runtime module such as `src/arch_rogue/run_flow.py`.
 - Extract dungeon population, enemy creation, boss/miniboss creation, shop inventory generation, loot generation, equipment affixes, and unique item creation into `src/arch_rogue/population.py`.
 - Preserve floor-plan save/load schema and deterministic run generation expectations.
 
-#### 3.1.3 Combat, skills, and actor updates
+#### 3.1.3 Combat, skills, and actor updates - done
 - Extract combat and actor simulation into `src/arch_rogue/combat.py`.
 - Include player update, enemy update, movement, collisions, projectile updates, trap updates, melee/bolt/nova/dash abilities, damage resolution, kill rewards, status effects, resistances, and skill cooldown/cost helpers.
 - Keep this phase behavior-preserving so milestone 3.2 skill-tree work can build on cleaner seams.
