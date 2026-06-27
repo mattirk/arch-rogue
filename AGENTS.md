@@ -227,7 +227,7 @@ Refactor `game.py`, `rendering.py`, and related oversized modules into clearer b
   - `src/arch_rogue/rendering/story_overlays.py` for story panels, quest cutscene overlays, cutscene stages, cutscene actors, relic visuals, and story intro overlays.
 - Keep rendering changes mechanical first; avoid changing visual style unless required to preserve current output.
 
-#### 3.1.6 Menu and UI cleanup
+#### 3.1.6 Menu and UI cleanup - done
 - Keep `src/arch_rogue/menus.py` stable until rendering and game runtime extraction are complete.
 - After that, split menus only if useful for maintainability or milestone 3.2 skill-tree work.
 - Potential package shape:
