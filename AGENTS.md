@@ -210,7 +210,7 @@ Refactor `game.py`, `rendering.py`, and related oversized modules into clearer b
 - Include player update, enemy update, movement, collisions, projectile updates, trap updates, melee/bolt/nova/dash abilities, damage resolution, kill rewards, status effects, resistances, and skill cooldown/cost helpers.
 - Keep this phase behavior-preserving so milestone 3.2 skill-tree work can build on cleaner seams.
 
-#### 3.1.4 Story runtime and quest cutscenes
+#### 3.1.4 Story runtime and quest cutscenes - done
 - Extract runtime story handling into `src/arch_rogue/story_runtime.py` while keeping `src/arch_rogue/story.py` focused on deterministic story generation and serialization helpers.
 - Move story mode start, current beat helpers, story effects, story guest interactions, relic choices, relic placement, cutscene state helpers, cutscene choices, and story reward application.
 - Preserve active cutscene save/load compatibility and all story-mode tests.
