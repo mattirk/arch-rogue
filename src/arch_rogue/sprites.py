@@ -159,6 +159,10 @@ class PixelSpriteAtlas:
             )
             for state, sprite in self.story_guest_sprites.items()
         }
+        self.shopkeeper_sprite = self._scale_actor(self._shopkeeper())
+        self.shopkeeper_animation_frames = self._actor_animation_frames(
+            self.shopkeeper_sprite, (245, 205, 92)
+        )
 
     def _surface(self, w: int, h: int) -> pygame.Surface:
         return pygame.Surface((w, h), pygame.SRCALPHA)
@@ -626,6 +630,11 @@ class PixelSpriteAtlas:
         state = "resolved" if resolved else "active"
         states = self.story_guest_animation_frames[state]
         return self._frame_from(states["idle"], elapsed, rate=3.2)
+
+    def shopkeeper_frame(self, elapsed: float) -> pygame.Surface:
+        return self._frame_from(
+            self.shopkeeper_animation_frames["idle"], elapsed, rate=3.0
+        )
 
     def _shade(self, color: Color, amount: int) -> Color:
         return (
@@ -1305,6 +1314,52 @@ class PixelSpriteAtlas:
         self._rect(s, 7, 6, 2, 3, gold)
         self._rect(s, 3, 10, 10, 1, dark)
         self._dot(s, 11, 6, (235, 205, 120))
+        return s
+
+    def _shopkeeper(self) -> pygame.Surface:
+        s = self._humanoid_base(
+            (205, 150, 104),
+            (84, 52, 32),
+            (138, 88, 42),
+            (235, 190, 82),
+            (24, 18, 15),
+            (255, 235, 150),
+        )
+        gold = (245, 205, 92)
+        dark_gold = (148, 98, 40)
+        parchment = (226, 202, 142)
+        wood = (92, 58, 34)
+        beard = (84, 52, 36)
+        apron = (48, 66, 72)
+        blue_hi = (86, 116, 124)
+        red = (158, 54, 42)
+        self._rect(s, 5, 2, 8, 2, (70, 48, 32))
+        self._rect(s, 4, 4, 10, 1, gold)
+        self._rect(s, 6, 6, 6, 1, beard)
+        self._rect(s, 7, 7, 4, 2, beard)
+        self._rect(s, 4, 9, 10, 1, dark_gold)
+        self._rect(s, 5, 10, 8, 1, gold)
+        self._rect(s, 6, 11, 6, 6, apron)
+        self._rect(s, 7, 12, 1, 4, blue_hi)
+        self._rect(s, 10, 12, 1, 4, (32, 48, 54))
+        self._rect(s, 8, 13, 2, 2, gold)
+        self._dot(s, 9, 14, (255, 238, 150))
+        self._rect(s, 6, 16, 6, 1, gold)
+        self._rect(s, 2, 11, 4, 5, (58, 36, 26))
+        self._rect(s, 12, 11, 4, 5, (58, 36, 26))
+        self._rect(s, 3, 13, 2, 2, red)
+        self._rect(s, 13, 13, 2, 2, red)
+        self._dot(s, 4, 12, gold)
+        self._dot(s, 13, 12, gold)
+        self._rect(s, 13, 6, 4, 4, wood)
+        self._rect(s, 14, 7, 2, 2, parchment)
+        self._dot(s, 15, 8, gold)
+        self._rect(s, 2, 16, 3, 3, (68, 42, 26))
+        self._dot(s, 3, 17, gold)
+        self._dot(s, 4, 17, (255, 238, 150))
+        self._rect(s, 4, 18, 10, 1, (72, 42, 28))
+        self._rect(s, 5, 19, 3, 1, gold)
+        self._rect(s, 10, 19, 3, 1, gold)
         return s
 
     def _story_guest(self, active: bool = True) -> pygame.Surface:

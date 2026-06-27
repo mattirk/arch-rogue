@@ -173,7 +173,9 @@ class RenderingMixin:
     def draw_tile(self, x: int, y: int, tile: Tile) -> None:
         sx, sy = self.world_to_screen(x + 0.5, y + 0.5)
         seed = self.tile_seed(x, y)
-        surface, anchor_x, anchor_y = self.tile_surface(tile, seed)
+        surface, anchor_x, anchor_y = self.tile_surface(
+            tile, seed, self.is_shop_floor_tile(x, y)
+        )
         alpha = self.tile_visibility_alpha(x, y)
         if alpha < 255:
             surface = surface.copy()
@@ -197,8 +199,19 @@ class RenderingMixin:
             int(a[2] * (1.0 - ratio) + b[2] * ratio),
         )
 
-    def tile_surface(self, tile: Tile, seed: int) -> tuple[pygame.Surface, int, int]:
-        key = (self.theme.name, int(tile), seed)
+    def is_shop_floor_tile(self, x: int, y: int) -> bool:
+        shop_index = self.dungeon.shop_room_index
+        if shop_index is None or not (0 <= shop_index < len(self.dungeon.rooms)):
+            return False
+        if self.dungeon.tiles[x][y] not in (Tile.FLOOR, Tile.STAIRS):
+            return False
+        room = self.dungeon.rooms[shop_index]
+        return room.x < x < room.x + room.w - 1 and room.y < y < room.y + room.h - 1
+
+    def tile_surface(
+        self, tile: Tile, seed: int, shop_floor: bool = False
+    ) -> tuple[pygame.Surface, int, int]:
+        key = (self.theme.name, int(tile), seed, shop_floor)
         cached = self.tile_cache.get(key)
         if cached:
             return cached
@@ -240,7 +253,7 @@ class RenderingMixin:
             )
         else:
             self.draw_floor_tile_surface(
-                surface, sx, sy, top, right, bottom, left, tile, seed
+                surface, sx, sy, top, right, bottom, left, tile, seed, shop_floor
             )
 
         cached = (surface.convert_alpha(), anchor_x, anchor_y)
@@ -389,6 +402,7 @@ class RenderingMixin:
         left: tuple[int, int],
         tile: Tile,
         seed: int,
+        shop_floor: bool = False,
     ) -> None:
         is_stairs = tile == Tile.STAIRS
         base = self.theme.stair if is_stairs else self.theme.floor
@@ -443,6 +457,57 @@ class RenderingMixin:
                 self.shade(pebble, -8 + index * 10),
                 (px, py, max(1, 2 * WORLD_SCALE), max(1, WORLD_SCALE)),
             )
+
+        if shop_floor and not is_stairs:
+            gold = self.mix((218, 164, 62), self.theme.floor, 0.35)
+            dark_gold = self.mix((126, 82, 34), self.theme.floor, 0.30)
+            glow = self.mix((245, 205, 92), self.theme.floor, 0.42)
+            pygame.draw.lines(
+                surface,
+                self.shade(dark_gold, -8),
+                True,
+                [inset_top, inset_right, inset_bottom, inset_left],
+                max(1, WORLD_SCALE),
+            )
+            pygame.draw.line(
+                surface,
+                gold,
+                (sx - 24 * WORLD_SCALE, sy),
+                (sx, sy - 12 * WORLD_SCALE),
+                max(1, WORLD_SCALE),
+            )
+            pygame.draw.line(
+                surface,
+                self.shade(gold, -16),
+                (sx, sy - 12 * WORLD_SCALE),
+                (sx + 24 * WORLD_SCALE, sy),
+                max(1, WORLD_SCALE),
+            )
+            pygame.draw.line(
+                surface,
+                self.shade(gold, -22),
+                (sx - 20 * WORLD_SCALE, sy + 8 * WORLD_SCALE),
+                (sx + 20 * WORLD_SCALE, sy + 8 * WORLD_SCALE),
+                max(1, WORLD_SCALE),
+            )
+            if seed & 1:
+                pygame.draw.circle(
+                    surface,
+                    glow,
+                    (sx + ((seed % 5) - 2) * 9 * WORLD_SCALE, sy + 2 * WORLD_SCALE),
+                    max(1, WORLD_SCALE),
+                )
+            else:
+                pygame.draw.rect(
+                    surface,
+                    self.shade(glow, -10),
+                    (
+                        sx - 3 * WORLD_SCALE,
+                        sy - 3 * WORLD_SCALE,
+                        6 * WORLD_SCALE,
+                        max(1, WORLD_SCALE),
+                    ),
+                )
 
         if is_stairs:
             for step, width in ((-2, 18), (5, 12), (12, 6)):
@@ -801,30 +866,23 @@ class RenderingMixin:
         self.screen.blit(surface, (sx - anchor_x, sy - anchor_y))
 
     def draw_shopkeeper(self, shopkeeper: Shopkeeper) -> None:
-        self.draw_shadow(shopkeeper.x, shopkeeper.y, 18, 8)
+        self.draw_shadow(shopkeeper.x, shopkeeper.y, 32, 12)
         sx, sy = self.world_to_screen(shopkeeper.x, shopkeeper.y)
         scale = WORLD_SCALE
-        robe = (116, 77, 42)
-        trim = (225, 190, 92)
-        face = (190, 146, 104)
-        outline = (30, 24, 20)
-        body = pygame.Rect(0, 0, 18 * scale, 28 * scale)
-        body.midbottom = (sx, sy + 4 * scale)
-        pygame.draw.rect(
-            self.screen,
-            outline,
-            body.inflate(4 * scale, 4 * scale),
-            border_radius=3 * scale,
+        gold = (245, 205, 92)
+        pulse = 0.5 + 0.5 * math.sin(self.elapsed * 4.0 + shopkeeper.x + shopkeeper.y)
+
+        ring = pygame.Surface((28 * scale, 12 * scale), pygame.SRCALPHA)
+        pygame.draw.ellipse(
+            ring,
+            (*gold, int(55 + 45 * pulse)),
+            ring.get_rect(),
+            max(1, scale),
         )
-        pygame.draw.rect(self.screen, robe, body, border_radius=3 * scale)
-        pygame.draw.line(self.screen, trim, body.midtop, body.midbottom, max(1, scale))
-        pygame.draw.circle(self.screen, outline, (sx, body.top - 5 * scale), 8 * scale)
-        pygame.draw.circle(self.screen, face, (sx, body.top - 5 * scale), 6 * scale)
-        pygame.draw.circle(
-            self.screen, trim, (sx + 11 * scale, body.top + 6 * scale), 4 * scale
-        )
-        label = self.tiny_font.render("SHOP", True, trim)
-        self.screen.blit(label, label.get_rect(center=(sx, body.top - 18 * scale)))
+        self.screen.blit(ring, ring.get_rect(center=(sx, sy + 5 * scale)))
+
+        sprite = self.sprites.shopkeeper_frame(self.elapsed + shopkeeper.x * 0.17)
+        self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 6 * scale)))
 
     def draw_impact(self, effect: ImpactEffect) -> None:
         sx, sy = self.world_to_screen(effect.x, effect.y)
