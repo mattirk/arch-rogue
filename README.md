@@ -16,7 +16,17 @@ Explore a 10-depth procedural dungeon, choose one of five distinct archetypes, f
 - Regression coverage checks run pacing, floor-plan save/load, boss rewards/mastery, boss AI save/load, dark-level visibility, and the 2.5 cleanup pass.
 
 ## Architecture
-This project uses vibe architecture. Module structure is changed when new features require it or game.py gets bloated.
+
+This project uses vibe architecture: module boundaries stay intentionally small and evolve when new features or file size make a seam worthwhile. The 3.1 refactor preserves `arch_rogue.game.Game`, `arch_rogue.game:main`, `arch_rogue.rendering.RenderingMixin`, `arch_rogue.menus.MenuRenderer`, and `arch_rogue.content` as stable public import points while splitting large implementation files into focused modules.
+
+Current ownership:
+
+- `src/arch_rogue/game.py` owns `Game` construction, high-level app state, main loop wiring, and `main()`.
+- Runtime behavior is composed through mixins: `camera.py`, `options.py`, `run_flow.py`, `population.py`, `combat.py`, `story_runtime.py`, `inventory.py`, `shop.py`, `interactions.py`, and `save_system.py`.
+- `src/arch_rogue/rendering/` owns world, actor, effects, HUD, and story/cutscene drawing behind the compatible `RenderingMixin` export.
+- `src/arch_rogue/menus/` owns reusable title/options/character/inventory/state overlay rendering behind the compatible `MenuRenderer` export.
+- `src/arch_rogue/content/` owns content-table modules for definitions, archetypes, enemies, equipment, difficulty, interactables, progression, and story corpus behind the compatible `arch_rogue.content` facade.
+- `src/arch_rogue/story.py`, `dungeon.py`, `audio.py`, `sprites.py`, `models.py`, and `constants.py` remain focused support modules.
 
 ## Requirements
 

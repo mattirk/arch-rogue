@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.1.0 — Architecture Refactor
+
+Milestone 3.1 breaks up oversized modules into focused runtime, rendering, menu, and content packages while preserving gameplay behavior, save compatibility, and public imports.
+
+### Changed
+
+- `game.py` is now a compact orchestration shell composed from focused runtime mixins for camera/options, run flow, population, combat, story runtime, inventory, shop, interactions, and save/load behavior.
+- `rendering.py` was split into the `arch_rogue.rendering` package while preserving `from arch_rogue.rendering import RenderingMixin` compatibility.
+- `menus.py` was split into the `arch_rogue.menus` package while preserving `from arch_rogue.menus import MenuRenderer` compatibility.
+- `content.py` was split into the `arch_rogue.content` package facade over focused content-table modules for definitions, archetypes, enemies, equipment, difficulty, interactables, progression, and story corpus.
+- Architecture documentation now describes the post-refactor module ownership and stable public entry points.
+
+### Validation
+
+- Full bytecode compilation and the complete `unittest` suite passed after the refactor.
+
 ## 2.5.0 — General Cleanup
 
 Milestone 2.5 focuses on repository version hygiene, dark-level presentation cleanup, and small regression coverage without broad architecture changes.
