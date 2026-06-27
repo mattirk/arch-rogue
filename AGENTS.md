@@ -240,7 +240,7 @@ Refactor `game.py`, `rendering.py`, and related oversized modules into clearer b
   - `src/arch_rogue/menus/state_overlay.py`
 - Prepare the character menu boundary for the 3.2 skill-tree tab.
 
-#### 3.1.7 Content, sprites, imports, and dead code
+#### 3.1.7 Content, sprites, imports, and dead code - done
 - Leave `content.py` and `sprites.py` mostly intact during earlier phases unless imports require small updates.
 - Later, consider turning `content.py` into a compatibility facade over focused content-table modules for archetypes, enemies, items, bosses, encounters, shrines, traps, difficulty, and story corpus.
 - Split `sprites.py` only if sprite work becomes difficult; it is large but currently cohesive.
@@ -251,6 +251,7 @@ Refactor `game.py`, `rendering.py`, and related oversized modules into clearer b
 - Run focused tests for changed systems while iterating.
 - Run `python -m unittest discover tests` before closing milestone 3.1.
 - Update README or architecture notes if public module ownership changes materially.
+- Update changelog with summary of changes for milestone 3.1.
 
 ## Next Milestones
 
