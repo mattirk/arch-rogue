@@ -215,7 +215,7 @@ Refactor `game.py`, `rendering.py`, and related oversized modules into clearer b
 - Move story mode start, current beat helpers, story effects, story guest interactions, relic choices, relic placement, cutscene state helpers, cutscene choices, and story reward application.
 - Preserve active cutscene save/load compatibility and all story-mode tests.
 
-#### 3.1.5 Rendering package split
+#### 3.1.5 Rendering package split - done
 - Split the oversized `src/arch_rogue/rendering.py` into a rendering package while preserving `from arch_rogue.rendering import RenderingMixin` compatibility.
 - Proposed package shape:
   - `src/arch_rogue/rendering/__init__.py` re-exports `RenderingMixin`.
