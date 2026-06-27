@@ -174,17 +174,87 @@ Example categories:
 
 ## Current Milestone
 
-### 3.0: Shops and allies along the way
-- Add shopkeepers and allied NPCs that buy and sell items
-- Shopkeepers are generated inside a shop room that has a door
-- Implement doors as a prerequisite for accessing shop rooms
-- Other rooms besides shop rooms may also have doors
-- Dungeon level has 75% chance of generating a shop room with a door
-- Doors can be opened by pressing E
+### 3.1 Refactor modules
+
+Refactor `game.py`, `rendering.py`, and related oversized modules into clearer boundaries while preserving current gameplay behavior, save compatibility, public imports, and test coverage. Treat this milestone as architecture cleanup first; avoid gameplay tuning unless required to keep existing behavior working.
+
+- Preserve `arch_rogue.game.Game` and `arch_rogue.game:main` as stable public entry points.
+- Keep method names on `Game` stable during the first pass by using mixins or compatible delegation.
+- Prefer mechanical extraction before deeper rewrites.
+- Remove unnecessary imports and dead code only after behavior-preserving moves are validated.
+- Prompt the user before starting each code-moving phase.
+- Validate focused changes with `python -m compileall src tests`, relevant milestone tests, and eventually `python -m unittest discover tests`.
+
+#### 3.1.0 Baseline and plan
+- Measure current module sizes and identify natural extraction seams in `game.py`, `rendering.py`, `menus.py`, `content.py`, and `sprites.py`.
+- Run the current compile/test baseline and record any pre-existing failures.
+- Confirm the planned module boundaries before moving code.
+
+#### 3.1.1 Game shell and low-risk runtime mixins - done
+- Keep `src/arch_rogue/game.py` as the small orchestration root for initialization, main loop wiring, and `main()`.
+- Extract low-risk helpers from `Game` into focused modules such as:
+  - `src/arch_rogue/camera.py` for coordinate transforms and visible bounds.
+  - `src/arch_rogue/options.py` for display/options, difficulty selection, meta-progress defaults, and audio sync helpers.
+  - `src/arch_rogue/inventory.py` for inventory sorting, selection, equipment/use/drop, consumables, identification, and item summaries.
+  - `src/arch_rogue/shop.py` for shopkeeper proximity, pricing, cursor movement, and buy/sell transactions.
+  - `src/arch_rogue/interactions.py` for interaction prompts, doors, stairs, nearby world objects, secrets, shrines, and story relic pickup.
+- Preserve direct `Game` method access through mixin inheritance or compatible wrappers.
+
+#### 3.1.2 Run flow, floor planning, and population
+- Extract run lifecycle and floor-plan behavior into a focused runtime module such as `src/arch_rogue/run_flow.py`.
+- Extract dungeon population, enemy creation, boss/miniboss creation, shop inventory generation, loot generation, equipment affixes, and unique item creation into `src/arch_rogue/population.py`.
+- Preserve floor-plan save/load schema and deterministic run generation expectations.
+
+#### 3.1.3 Combat, skills, and actor updates
+- Extract combat and actor simulation into `src/arch_rogue/combat.py`.
+- Include player update, enemy update, movement, collisions, projectile updates, trap updates, melee/bolt/nova/dash abilities, damage resolution, kill rewards, status effects, resistances, and skill cooldown/cost helpers.
+- Keep this phase behavior-preserving so milestone 3.2 skill-tree work can build on cleaner seams.
+
+#### 3.1.4 Story runtime and quest cutscenes
+- Extract runtime story handling into `src/arch_rogue/story_runtime.py` while keeping `src/arch_rogue/story.py` focused on deterministic story generation and serialization helpers.
+- Move story mode start, current beat helpers, story effects, story guest interactions, relic choices, relic placement, cutscene state helpers, cutscene choices, and story reward application.
+- Preserve active cutscene save/load compatibility and all story-mode tests.
+
+#### 3.1.5 Rendering package split
+- Split the oversized `src/arch_rogue/rendering.py` into a rendering package while preserving `from arch_rogue.rendering import RenderingMixin` compatibility.
+- Proposed package shape:
+  - `src/arch_rogue/rendering/__init__.py` re-exports `RenderingMixin`.
+  - `src/arch_rogue/rendering/base.py` for draw orchestration, color helpers, UI scaling, panels, and text helpers.
+  - `src/arch_rogue/rendering/world.py` for dungeon tiles, walls, floors, doors, visible world ordering, and tile caches.
+  - `src/arch_rogue/rendering/actors.py` for player, enemies, shopkeepers, animation states, humanoid limb drawing, hit flashes, and sprite blitting.
+  - `src/arch_rogue/rendering/effects.py` for shadows, impact effects, movement trails, items, traps, secrets, shrines, projectiles, slashes, ambient overlays, and darkness behavior.
+  - `src/arch_rogue/rendering/hud.py` for action bar, cooldown pips, HUD, interaction prompts, run header, boss bar, screen flash, bars, and run summaries.
+  - `src/arch_rogue/rendering/story_overlays.py` for story panels, quest cutscene overlays, cutscene stages, cutscene actors, relic visuals, and story intro overlays.
+- Keep rendering changes mechanical first; avoid changing visual style unless required to preserve current output.
+
+#### 3.1.6 Menu and UI cleanup
+- Keep `src/arch_rogue/menus.py` stable until rendering and game runtime extraction are complete.
+- After that, split menus only if useful for maintainability or milestone 3.2 skill-tree work.
+- Potential package shape:
+  - `src/arch_rogue/menus/__init__.py`
+  - `src/arch_rogue/menus/base.py`
+  - `src/arch_rogue/menus/title.py`
+  - `src/arch_rogue/menus/options.py`
+  - `src/arch_rogue/menus/character.py`
+  - `src/arch_rogue/menus/inventory.py`
+  - `src/arch_rogue/menus/state_overlay.py`
+- Prepare the character menu boundary for the 3.2 skill-tree tab.
+
+#### 3.1.7 Content, sprites, imports, and dead code
+- Leave `content.py` and `sprites.py` mostly intact during earlier phases unless imports require small updates.
+- Later, consider turning `content.py` into a compatibility facade over focused content-table modules for archetypes, enemies, items, bosses, encounters, shrines, traps, difficulty, and story corpus.
+- Split `sprites.py` only if sprite work becomes difficult; it is large but currently cohesive.
+- Remove unused imports, obsolete wrappers, duplicate helpers, and dead code after all behavior-preserving extraction phases pass.
+
+#### 3.1.8 Final validation and documentation
+- Run `python -m compileall src tests`.
+- Run focused tests for changed systems while iterating.
+- Run `python -m unittest discover tests` before closing milestone 3.1.
+- Update README or architecture notes if public module ownership changes materially.
 
 ## Next Milestones
 
-### 3.1: Skill tree refinement
+### 3.2: Skill tree refinement
 - More variety and depth in skill tree
 - Player gets to choose different routes on skill tree when leveling up and gaining new skills
 - Create separate tab on character sheet (opened via C hotkey) for skill tree

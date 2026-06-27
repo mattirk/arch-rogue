@@ -1,0 +1,459 @@
+# pyright: reportAttributeAccessIssue=false
+from __future__ import annotations
+
+import math
+
+from .constants import DUNGEON_DEPTH, MAX_INVENTORY
+from .content import SECRET_HINTS, SHRINE_HINTS, TRAP_HINTS, InteractionHint
+from .models import Color, Enemy, FloatingText, Item, SecretCache, Shrine, Trap
+
+
+class InteractionMixin:
+    def current_interaction_hint(self) -> tuple[str, str, str, Color] | None:
+        if self.story_intro_pending:
+            return (
+                "1-3",
+                "Guest dialog awaits",
+                "Choose a story path to place the guest relic and begin the level.",
+                self.story_state.accent if self.story_state else self.theme.accent,
+            )
+        story_relic = self.nearby_story_relic()
+        if story_relic is not None:
+            return (
+                "E",
+                f"Recover {story_relic.display_name}",
+                self.item_decision_summary(story_relic),
+                self.story_state.accent if self.story_state else self.theme.accent,
+            )
+        door = self.nearby_closed_door()
+        if door is not None:
+            return (
+                "E",
+                "Open door",
+                "Doors gate shops and side rooms.",
+                self.theme.accent,
+            )
+        shopkeeper = self.nearby_shopkeeper()
+        if shopkeeper is not None:
+            return (
+                "E",
+                f"Trade with {shopkeeper.name}",
+                f"{shopkeeper.role} · buy and sell supplies · {self.player.gold} gold",
+                (225, 190, 92),
+            )
+        if self.player_near_stairs():
+            if self.current_depth < DUNGEON_DEPTH:
+                next_plan = self.next_floor_plan()
+                detail = (
+                    f"Next: {next_plan.theme_name} — {self.floor_plan_summary(next_plan)}"
+                    if next_plan is not None
+                    else "Stairs are safe only when you choose to leave."
+                )
+                return (
+                    "E",
+                    f"Descend to depth {self.current_depth + 1}/{DUNGEON_DEPTH}",
+                    detail,
+                    self.theme.stair,
+                )
+            if self.boss_alive():
+                return (
+                    "!",
+                    "Gate sealed",
+                    "Defeat the gate tyrant before using the final stairs.",
+                    (245, 95, 70),
+                )
+            return (
+                "E",
+                "Complete the run",
+                "The tyrant is dead; descend to claim victory.",
+                self.theme.stair,
+            )
+        guest = self.nearby_story_guest()
+        if guest:
+            return (
+                "1-3",
+                f"{guest.name}, {guest.role}",
+                self.story_choices_hint(guest),
+                guest.color,
+            )
+        secret = self.nearby_secret()
+        if secret:
+            hint = SECRET_HINTS.get(
+                secret.kind,
+                InteractionHint(
+                    secret.kind, "Open the revealed secret.", self.theme.accent
+                ),
+            )
+            return ("E", hint.title, hint.detail, hint.color)
+        shrine = self.nearby_shrine()
+        if shrine:
+            hint = SHRINE_HINTS.get(
+                shrine.kind,
+                InteractionHint(
+                    shrine.kind, "Use the shrine's bargain.", self.theme.accent
+                ),
+            )
+            return ("E", hint.title, hint.detail, hint.color)
+        item = self.nearby_item()
+        if item:
+            return (
+                "E",
+                f"Pick up {item.display_name}",
+                self.item_decision_summary(item),
+                self.rarity_color(item.visible_rarity),
+            )
+        trap = self.nearby_trap_warning()
+        if trap:
+            hint = TRAP_HINTS.get(
+                trap.kind,
+                InteractionHint(
+                    trap.kind, "Dangerous floor trigger nearby.", (245, 95, 70)
+                ),
+            )
+            return ("!", hint.title, hint.detail, hint.color)
+        return None
+
+    def nearby_closed_door(self) -> tuple[int, int] | None:
+        return self.dungeon.nearby_closed_door(self.player.x, self.player.y)
+
+    def open_nearby_door(self) -> bool:
+        door = self.nearby_closed_door()
+        if door is None:
+            return False
+        if not self.dungeon.open_door(*door):
+            return False
+        self.tile_cache.clear()
+        self.floaters.append(
+            FloatingText(
+                "Door opened", door[0] + 0.5, door[1] + 0.1, self.theme.accent, ttl=1.0
+            )
+        )
+        self.add_impact(
+            door[0] + 0.5,
+            door[1] + 0.5,
+            self.theme.accent,
+            ttl=0.28,
+            radius=0.36,
+            kind="spark",
+        )
+        self.play_sfx("pickup")
+        self.save_run()
+        return True
+
+    def player_near_stairs(self) -> bool:
+        return (
+            math.hypot(
+                self.player.x - self.dungeon.stairs[0] - 0.5,
+                self.player.y - self.dungeon.stairs[1] - 0.5,
+            )
+            < 1.0
+        )
+
+    def interact(self) -> None:
+        if self.story_intro_pending:
+            self.floaters.append(
+                FloatingText(
+                    "Choose 1-3 to answer the guest first",
+                    self.player.x,
+                    self.player.y - 0.5,
+                    self.story_state.accent if self.story_state else self.theme.accent,
+                    ttl=1.1,
+                )
+            )
+            return
+        story_relic = self.nearby_story_relic()
+        if story_relic is not None:
+            self.collect_story_relic(story_relic)
+            return
+        if self.open_nearby_door():
+            return
+        shopkeeper = self.nearby_shopkeeper()
+        if shopkeeper is not None:
+            self.open_shop(shopkeeper)
+            return
+        if self.player_near_stairs():
+            if self.current_depth < DUNGEON_DEPTH:
+                self.descend_to_next_depth()
+                return
+            if self.boss_alive():
+                self.floaters.append(
+                    FloatingText(
+                        "The gate is sealed by its tyrant",
+                        self.player.x,
+                        self.player.y - 0.5,
+                        self.theme.accent,
+                        ttl=1.2,
+                    )
+                )
+                return
+            self.run_stats.floors_cleared = max(
+                self.run_stats.floors_cleared, DUNGEON_DEPTH
+            )
+            self.state = "victory"
+            self.unlock_hell_difficulty()
+            self.finalize_run("victory")
+            self.audio.stop_music()
+            self.play_sfx("victory")
+            self.delete_save()
+            return
+        guest = self.nearby_story_guest()
+        if guest:
+            self.talk_to_story_guest(guest)
+            return
+        secret = self.nearby_secret()
+        if secret:
+            self.open_secret(secret)
+            return
+        shrine = self.nearby_shrine()
+        if shrine:
+            self.activate_shrine(shrine)
+            return
+        nearest = self.nearby_item()
+        if nearest:
+            if nearest.slot == "story_relic":
+                self.collect_story_relic(nearest)
+                return
+            if nearest.slot == "shop_sign":
+                shopkeeper = self.nearby_shopkeeper(radius=2.2)
+                if shopkeeper is not None:
+                    self.open_shop(shopkeeper)
+                return
+            if len(self.player.inventory) >= MAX_INVENTORY:
+                self.floaters.append(
+                    FloatingText(
+                        "Inventory full",
+                        self.player.x,
+                        self.player.y - 0.4,
+                        (235, 210, 120),
+                    )
+                )
+                return
+            self.items.remove(nearest)
+            self.player.inventory.append(nearest)
+            self.run_stats.loot_picked_up += 1
+            self.record_notable_loot(nearest)
+            self.floaters.append(
+                FloatingText(
+                    f"Picked up {nearest.display_name}",
+                    self.player.x,
+                    self.player.y - 0.4,
+                    (210, 230, 180),
+                    ttl=1.2,
+                )
+            )
+            self.play_sfx("pickup")
+            self.save_run()
+
+    def collect_story_relic(self, relic: Item) -> None:
+        if relic in self.items:
+            self.items.remove(relic)
+        self.story_relic_collected = True
+        self.story_relic_position = None
+        guest = self.current_story_guest_for_depth()
+        message = "Guest relic recovered"
+        if guest is not None:
+            message = f"Relic points to {guest.name}"
+        self.player.mana = min(self.player.max_mana, self.player.mana + 6)
+        self.player.stamina = min(self.player.max_stamina, self.player.stamina + 12)
+        self.floaters.append(
+            FloatingText(
+                message,
+                self.player.x,
+                self.player.y - 0.5,
+                self.story_state.accent if self.story_state else self.theme.accent,
+                ttl=1.4,
+            )
+        )
+        self.add_impact(
+            relic.x,
+            relic.y,
+            self.story_state.accent if self.story_state else self.theme.accent,
+            ttl=0.62,
+            radius=0.62,
+            kind="burst",
+        )
+        if self.story_state is not None:
+            self.story_state.log.append(
+                f"Depth {self.current_depth}: Guest relic recovered — {message}."
+            )
+            del self.story_state.log[:-12]
+        self.play_sfx("pickup")
+        self.save_run()
+
+    def nearby_item(self) -> Item | None:
+        nearby = [
+            item
+            for item in self.items
+            if math.hypot(item.x - self.player.x, item.y - self.player.y) < 1.0
+        ]
+        return min(
+            nearby,
+            key=lambda item: math.hypot(item.x - self.player.x, item.y - self.player.y),
+            default=None,
+        )
+
+    def nearby_story_relic(self) -> Item | None:
+        nearby = [
+            item
+            for item in self.items
+            if item.slot == "story_relic"
+            and math.hypot(item.x - self.player.x, item.y - self.player.y) < 1.0
+        ]
+        return min(
+            nearby,
+            key=lambda item: math.hypot(item.x - self.player.x, item.y - self.player.y),
+            default=None,
+        )
+
+    def nearby_trap_warning(self) -> Trap | None:
+        nearby = [
+            trap
+            for trap in self.traps
+            if trap.active
+            and math.hypot(trap.x - self.player.x, trap.y - self.player.y) < 1.35
+        ]
+        return min(
+            nearby,
+            key=lambda trap: math.hypot(trap.x - self.player.x, trap.y - self.player.y),
+            default=None,
+        )
+
+    def nearby_secret(self) -> SecretCache | None:
+        nearby = [
+            secret
+            for secret in self.secrets
+            if secret.revealed
+            and not secret.opened
+            and math.hypot(secret.x - self.player.x, secret.y - self.player.y) < 1.1
+        ]
+        return min(
+            nearby,
+            key=lambda secret: math.hypot(
+                secret.x - self.player.x, secret.y - self.player.y
+            ),
+            default=None,
+        )
+
+    def open_secret(self, secret: SecretCache) -> None:
+        secret.opened = True
+        self.run_stats.secrets_opened += 1
+        if secret.kind not in self.run_stats.discoveries:
+            self.run_stats.discoveries.append(secret.kind)
+            del self.run_stats.discoveries[:-8]
+        if secret.kind == "Forgotten Skill Altar":
+            self.grant_skill_upgrade(reason="forgotten altar")
+            message = "Forgotten altar deepens your build"
+        elif secret.kind == "Moonlit Bargain":
+            self.player.hp = max(1, self.player.hp - max(6, self.player.max_hp // 8))
+            self.items.append(
+                self._make_equipment(
+                    self.rng.choice(("weapon", "armor")), "Rare", secret.x, secret.y
+                )
+            )
+            message = "Moonlit bargain takes blood for gear"
+        elif secret.kind == "Cursed Reliquary" and self.rng.random() < 0.55:
+            self.enemies.append(self._make_miniboss(secret.x + 0.3, secret.y + 0.3))
+            message = "Reliquary wakes a sworn guardian"
+        else:
+            drops = 2 if "Stash" in secret.kind or secret.kind == "Sealed Armory" else 1
+            for _ in range(drops):
+                if secret.kind == "Sealed Armory":
+                    self.items.append(
+                        self._make_equipment(
+                            self.rng.choice(("weapon", "armor")),
+                            "Magic",
+                            secret.x,
+                            secret.y,
+                        )
+                    )
+                else:
+                    self.items.append(self._make_loot(secret.x, secret.y))
+            message = f"Opened {secret.kind}"
+        color = SECRET_HINTS.get(
+            secret.kind, InteractionHint(secret.kind, message, self.theme.accent)
+        ).color
+        self.floaters.append(
+            FloatingText(message, secret.x, secret.y - 0.3, color, ttl=1.4)
+        )
+        self.add_impact(secret.x, secret.y, color, ttl=0.52, radius=0.62, kind="burst")
+        self.play_sfx("secret")
+        self.save_run()
+
+    def boss_alive(self) -> bool:
+        return any(enemy.kind == "boss" for enemy in self.enemies)
+
+    def floor_guardian_alive(self) -> bool:
+        plan = self.current_floor_plan()
+        if plan is None or not plan.boss_key or self.current_depth >= DUNGEON_DEPTH:
+            return False
+        return any(
+            enemy.kind == "boss" or enemy.role == "floor_boss" for enemy in self.enemies
+        )
+
+    def boss_enemy(self) -> Enemy | None:
+        return next((enemy for enemy in self.enemies if enemy.kind == "boss"), None)
+
+    def nearby_shrine(self) -> Shrine | None:
+        nearby = [
+            shrine
+            for shrine in self.shrines
+            if not shrine.used
+            and math.hypot(shrine.x - self.player.x, shrine.y - self.player.y) < 1.15
+        ]
+        return min(
+            nearby,
+            key=lambda shrine: math.hypot(
+                shrine.x - self.player.x, shrine.y - self.player.y
+            ),
+            default=None,
+        )
+
+    def activate_shrine(self, shrine: Shrine) -> None:
+        shrine.used = True
+        self.run_stats.shrines_used += 1
+        if shrine.kind == "Mending Shrine":
+            self.player.hp = self.player.max_hp
+            self.player.mana = self.player.max_mana
+            message = "Shrine restored you"
+        elif shrine.kind == "Insight Shrine":
+            identified = self.identify_all_items()
+            message = (
+                f"Shrine revealed {identified} item{'s' if identified != 1 else ''}"
+            )
+        elif shrine.kind == "War Shrine":
+            leveled = self.player.gain_xp(25)
+            self.player.stamina = self.player.max_stamina
+            message = "War Shrine grants focus"
+            if leveled:
+                message = "War Shrine grants a level"
+        elif shrine.kind == "Haste Shrine":
+            self.player.stamina = self.player.max_stamina
+            self.player.dash_timer = 0.0
+            self.player.speed += 0.18
+            message = "Haste Shrine quickens your stride"
+        elif shrine.kind == "Oath Shrine":
+            granted = self.grant_skill_upgrade(reason="oath shrine")
+            message = (
+                "Oath Shrine grants a new technique"
+                if granted
+                else "Oath Shrine finds no path left"
+            )
+        elif shrine.kind == "Twilight Shrine":
+            self.player.hp = max(1, self.player.hp - max(5, self.player.max_hp // 10))
+            self.items.append(self._make_unique(self.player.x, self.player.y))
+            message = "Twilight Shrine trades blood for a relic"
+        else:
+            self.items.append(self._make_loot(self.player.x, self.player.y))
+            self.items.append(
+                self._make_loot(self.player.x + 0.25, self.player.y + 0.25)
+            )
+            message = "Fortune Shrine spills offerings"
+        color = SHRINE_HINTS.get(
+            shrine.kind, InteractionHint(shrine.kind, message, (245, 215, 120))
+        ).color
+        self.floaters.append(
+            FloatingText(message, self.player.x, self.player.y - 0.5, color, ttl=1.3)
+        )
+        self.add_impact(shrine.x, shrine.y, color, ttl=0.58, radius=0.68, kind="burst")
+        self.play_sfx("shrine")
+        self.save_run()
