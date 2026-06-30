@@ -255,6 +255,7 @@ class Game(
         self.run_stats = RunStats()
         self.state = "archetype_select"
         self.elapsed = 0.0
+        self.title_selection = 0
         self.selected_archetype = ARCHETYPES[0]
         self.theme = DUNGEON_THEMES[0]
         self.run_modifier = RUN_MODIFIERS[0]
@@ -411,7 +412,15 @@ class Game(
                 ):
                     self.toggle_current_floor_dark()
                 elif self.state == "title":
-                    if event.key in (pygame.K_RETURN, pygame.K_n):
+                    # Four title rows: 0=New, 1=Resume, 2=Options, 3=About.
+                    # Resume is only selectable when a save exists.
+                    if event.key in (pygame.K_DOWN, pygame.K_RIGHT, pygame.K_s):
+                        self.title_selection = self._next_title_selection(1)
+                    elif event.key in (pygame.K_UP, pygame.K_LEFT, pygame.K_w):
+                        self.title_selection = self._next_title_selection(-1)
+                    elif event.key == pygame.K_RETURN:
+                        self._activate_title_selection()
+                    elif event.key == pygame.K_n:
                         self.state = "archetype_select"
                     elif event.key in (pygame.K_l, pygame.K_r) and self.save_exists():
                         self.load_run()

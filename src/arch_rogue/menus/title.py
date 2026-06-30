@@ -14,10 +14,7 @@ MenuRow = tuple[str, str, str]
 
 class MenuTitleMixin:
     def draw_title_menu(self) -> None:
-        panel, content = self.menu_frame(
-            f"Arch Rogue {__version__}",
-            "Milestone 2.5 · dark-level cleanup, boss runs, and choice-shaped stories",
-        )
+        panel, content = self.menu_frame("Arch Rogue")
         resume_value = "Ready" if self.g.save_exists() else "None"
         rows: list[MenuRow] = [
             ("N / Enter", "Begin a new descent", ""),
@@ -25,7 +22,7 @@ class MenuTitleMixin:
             ("O", "Options", ""),
             ("A / C / H / ?", "About, credits, and quick help", ""),
         ]
-        self.draw_menu_rows(rows, content)
+        self.draw_menu_rows(rows, content, selected_index=self.g.title_selection)
         note_rect = pygame.Rect(
             content.x, content.bottom - self.u(72), content.width, self.u(60)
         )
@@ -34,7 +31,8 @@ class MenuTitleMixin:
             "Choose an archetype, follow a seeded dark-fantasy storyline, meet story guests, shape future floors with choices, and break the gate tyrant's seal.",
         )
         self.draw_footer(
-            panel, "Esc asks before quitting · Backspace returns from submenus"
+            panel,
+            "Arrows select · Enter confirms · Esc asks before quitting · Backspace returns from submenus",
         )
 
     def _draw_parchment_note(self, rect: pygame.Rect, text: str) -> None:

@@ -187,7 +187,7 @@ Example categories:
 Expand class progression from the current flat upgrade pool into a readable, route-based skill tree while preserving existing save compatibility and the fast run loop.
 
 - Add more variety and depth to archetype skill progression.
-- Give each archetype a skill tree with 3 levels of depth.
+- Give each archetype a skill tree with 4 levels of depth.
 - Let players choose different routes through the tree when leveling up or gaining new skills from shrines/altars/story rewards.
 - Add a separate skill-tree tab to the character sheet opened with the `C` hotkey.
 - Keep existing `player.skill_upgrades` saves compatible; migrate or interpret older upgrade keys without breaking run resume.

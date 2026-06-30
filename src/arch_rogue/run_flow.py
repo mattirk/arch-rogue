@@ -35,6 +35,41 @@ class RunFlowMixin:
     def save_exists(self) -> bool:
         return self.save_path.exists()
 
+    # --- Title menu navigation -------------------------------------------
+    # Title rows: 0=New descent, 1=Resume, 2=Options, 3=About. Resume (1) is
+    # only selectable when a save exists, so arrow navigation skips it.
+    TITLE_ROW_COUNT = 4
+    TITLE_RESUME_ROW = 1
+
+    def _title_row_enabled(self, index: int) -> bool:
+        if index == self.TITLE_RESUME_ROW:
+            return self.save_exists()
+        return True
+
+    def _next_title_selection(self, direction: int) -> int:
+        count = self.TITLE_ROW_COUNT
+        if count <= 0:
+            return 0
+        index = self.title_selection % count
+        for _ in range(count):
+            index = (index + direction) % count
+            if self._title_row_enabled(index):
+                return index
+        return self.title_selection
+
+    def _activate_title_selection(self) -> None:
+        index = self.title_selection % self.TITLE_ROW_COUNT
+        if not self._title_row_enabled(index):
+            return
+        if index == 0:
+            self.state = "archetype_select"
+        elif index == self.TITLE_RESUME_ROW:
+            self.load_run()
+        elif index == 2:
+            self.state = "options"
+        elif index == 3:
+            self.state = "about"
+
     def theme_by_name(self, name: str) -> Any:
         return next(
             (theme for theme in DUNGEON_THEMES if theme.name == name), self.theme
@@ -484,4 +519,3 @@ class RunFlowMixin:
         weapon, armor = loadouts.get(self.player.class_name, loadouts["Warden"])
         self.player.equipment["weapon"] = weapon
         self.player.equipment["armor"] = armor
-

@@ -445,7 +445,7 @@ class MenuBaseMixin:
                 align="center",
             )
 
-        top = title_y + title_font.get_height() // 2 + self.u(48)
+        top = title_y + title_font.get_height() // 2 + self.u(72)
         footer_space = max(self.g.small_font.get_height() + self.u(18), self.u(42))
         panel_w = min(width - side_margin * 2, self.u(860))
         rect = pygame.Rect(
@@ -466,7 +466,7 @@ class MenuBaseMixin:
     def _draw_title_ornament(self, title_y: int, title_h: int, accent: Color) -> None:
         width, _height = self.screen.get_size()
         cx = width // 2
-        rule_y = title_y + title_h // 2 + self.u(2)
+        rule_y = title_y + title_h // 2 + self.u(18)
         half_w = min(width // 2 - self.u(40), self.u(280))
         if half_w <= self.u(20):
             return
@@ -533,22 +533,38 @@ class MenuBaseMixin:
         )
         self.draw_text(text, self.g.small_font, self.MUTED, rect, align="center")
 
-    def draw_menu_rows(self, rows: Sequence[MenuRow], rect: pygame.Rect) -> None:
+    def draw_menu_rows(
+        self,
+        rows: Sequence[MenuRow],
+        rect: pygame.Rect,
+        selected_index: int = -1,
+    ) -> None:
         key_w = min(max(self.u(108), 108), max(self.u(96), rect.width // 3))
         row_h = max(self.g.font.get_height() + self.u(18), self.u(44))
         gap = max(self.u(7), 7)
         y = rect.y
-        for key, label, value in rows:
+        accent = self.accent()
+        for index, (key, label, value) in enumerate(rows):
             if y + row_h > rect.bottom:
                 break
             row_rect = pygame.Rect(rect.x, y, rect.width, row_h)
+            is_selected = index == selected_index
             # Recessed row plate with a faint top highlight.
-            pygame.draw.rect(
-                self.screen, self.PANEL_INK, row_rect, border_radius=self.u(5)
-            )
+            plate_fill = self.shade(accent, -100) if is_selected else self.PANEL_INK
+            pygame.draw.rect(self.screen, plate_fill, row_rect, border_radius=self.u(5))
+            if is_selected:
+                glow = pygame.Surface(row_rect.size, pygame.SRCALPHA)
+                pygame.draw.rect(
+                    glow,
+                    (*accent, 32),
+                    glow.get_rect(),
+                    border_radius=self.u(5),
+                )
+                self.screen.blit(glow, row_rect)
+            border_color = accent if is_selected else self.PANEL_2
             pygame.draw.rect(
                 self.screen,
-                self.PANEL_2,
+                border_color,
                 row_rect,
                 max(1, self.u(1)),
                 border_radius=self.u(5),
@@ -560,6 +576,17 @@ class MenuBaseMixin:
                 (row_rect.right - self.u(6), row_rect.y + self.u(1)),
                 max(1, self.u(1)),
             )
+            if is_selected:
+                strip = pygame.Rect(
+                    row_rect.x, row_rect.y + self.u(4), self.u(4), row_h - self.u(8)
+                )
+                pygame.draw.rect(self.screen, accent, strip, border_radius=self.u(3))
+                pygame.draw.rect(
+                    self.screen,
+                    self.shade(accent, 40),
+                    strip,
+                    border_radius=self.u(3),
+                )
 
             # Key badge — iron plate with gold trim.
             key_rect = pygame.Rect(
