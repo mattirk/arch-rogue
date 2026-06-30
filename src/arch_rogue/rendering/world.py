@@ -61,9 +61,15 @@ class RenderingWorldMixin:
         )
         if self._frame_dark:  # set at start of draw_world_objects/draw_dungeon
             alpha = self.tile_visibility_alpha(x, y)
-            if alpha < 255:
-                surface = surface.copy()
-                surface.set_alpha(alpha)
+            # Walls and doors are occluders: never render them translucent, or
+            # the player can see floor/objects drawn behind them. Either draw
+            # them fully opaque (within/just past the light radius) or skip
+            # them entirely (handled by the cull in draw_world_objects). Only
+            # floor tiles get the soft light-radius falloff.
+            if tile not in (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
+                if alpha < 255:
+                    surface = surface.copy()
+                    surface.set_alpha(alpha)
         self.screen.blit(surface, (sx - anchor_x, sy - anchor_y))
 
     def tile_seed(self, x: int, y: int) -> int:
@@ -700,8 +706,7 @@ class RenderingWorldMixin:
         surface, anchor_x, anchor_y = self.door_tile_surface(
             tile, seed, self.door_render_face(x, y)
         )
-        alpha = self.tile_visibility_alpha(x, y)
-        if alpha < 255:
-            surface = surface.copy()
-            surface.set_alpha(alpha)
+        # Doors are tall occluders like walls; never render them translucent in
+        # dark mode or the player can see through them. Culling beyond the
+        # light radius is handled in draw_world_objects.
         self.screen.blit(surface, (sx - anchor_x, sy - anchor_y))
