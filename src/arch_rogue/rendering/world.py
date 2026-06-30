@@ -155,21 +155,22 @@ class RenderingWorldMixin:
         wall_h: int,
         seed: int,
     ) -> None:
+        scale = WORLD_SCALE
         cap_top = (top[0], top[1] - wall_h)
         cap_right = (right[0], right[1] - wall_h)
         cap_bottom = (bottom[0], bottom[1] - wall_h)
         cap_left = (left[0], left[1] - wall_h)
 
-        top_color = self.shade(self.theme.wall_top, 10 + seed % 7)
-        left_color = self.shade(self.theme.wall_left, -4)
-        right_color = self.shade(self.theme.wall_right, -20)
-        edge_color = self.shade(self.theme.wall_edge, 8)
-        mortar = self.mix(edge_color, (210, 205, 190), 0.18)
-        crack = self.shade(self.theme.wall_right, -32)
-        moss = self.mix(self.theme.accent, (35, 70, 43), 0.55)
+        # Consistent palette: top is brightest (lit from above), left face is
+        # mid-tone, right face is deepest shadow. A single seed-driven tint
+        # gives gentle per-tile variation without noisy speckle.
+        tint = (seed % 5) - 2
+        top_color = self.shade(self.theme.wall_top, 14 + tint)
+        left_color = self.shade(self.theme.wall_left, tint)
+        right_color = self.shade(self.theme.wall_right, tint)
+        edge = self.shade(self.theme.wall_edge, 6)
 
-        # The tile diamond is the floor-plane footprint. Draw the wall upward from
-        # that footprint so actors read as moving between walls, not on top of them.
+        # --- Body: three clean polygons ---
         pygame.draw.polygon(surface, left_color, [cap_left, cap_bottom, bottom, left])
         pygame.draw.polygon(
             surface, right_color, [cap_right, cap_bottom, bottom, right]
@@ -178,100 +179,68 @@ class RenderingWorldMixin:
             surface, top_color, [cap_top, cap_right, cap_bottom, cap_left]
         )
 
+        # --- Smooth vertical gradient on each face: just two soft bands —
+        # a lighter upper third and a darker lower third. Keeps the sculpted
+        # look without visible banding clutter.
+        for t0, t1, shade in ((0.0, 0.35, 10), (0.65, 1.0, -12)):
+            # left face band
+            ly0 = int(cap_left[1] + (left[1] - cap_left[1]) * t0)
+            ly1 = int(cap_left[1] + (left[1] - cap_left[1]) * t1)
+            lx0 = int(cap_left[0] + (left[0] - cap_left[0]) * t0)
+            lx1 = int(cap_left[0] + (left[0] - cap_left[0]) * t1)
+            by0 = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t0)
+            by1 = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t1)
+            pygame.draw.polygon(
+                surface,
+                self.shade(left_color, shade),
+                [(lx0, ly0), (by0, ly0), (by1, ly1), (lx1, ly1)],
+            )
+            # right face band
+            ry0 = int(cap_right[1] + (right[1] - cap_right[1]) * t0)
+            ry1 = int(cap_right[1] + (right[1] - cap_right[1]) * t1)
+            rx0 = int(cap_right[0] + (right[0] - cap_right[0]) * t0)
+            rx1 = int(cap_right[0] + (right[0] - cap_right[0]) * t1)
+            by0r = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t0)
+            by1r = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t1)
+            pygame.draw.polygon(
+                surface,
+                self.shade(right_color, shade),
+                [(by0r, ry0), (rx0, ry0), (rx1, ry1), (by1r, ry1)],
+            )
+
+        # --- Cap highlight: a single bright rim along the top-left edge only
+        # (the lit edge). One line, not two. ---
+        pygame.draw.line(
+            surface, self.shade(top_color, 30), cap_top, cap_left, max(1, scale)
+        )
+
+        # --- Clean silhouette edges ---
         pygame.draw.lines(
-            surface,
-            edge_color,
-            True,
-            [cap_top, cap_right, cap_bottom, cap_left],
-            WORLD_SCALE,
+            surface, edge, True, [cap_top, cap_right, cap_bottom, cap_left], scale
         )
-        pygame.draw.line(
-            surface, self.shade(edge_color, -12), cap_left, left, WORLD_SCALE
-        )
-        pygame.draw.line(
-            surface, self.shade(edge_color, -28), cap_right, right, WORLD_SCALE
-        )
-        pygame.draw.line(
-            surface, self.shade(edge_color, -48), cap_bottom, bottom, WORLD_SCALE
-        )
-        pygame.draw.line(
-            surface, self.shade(edge_color, -42), left, bottom, WORLD_SCALE
-        )
-        pygame.draw.line(
-            surface, self.shade(edge_color, -54), bottom, right, WORLD_SCALE
-        )
+        pygame.draw.line(surface, self.shade(edge, -14), cap_left, left, scale)
+        pygame.draw.line(surface, self.shade(edge, -30), cap_right, right, scale)
+        pygame.draw.line(surface, self.shade(edge, -50), cap_bottom, bottom, scale)
+        pygame.draw.line(surface, self.shade(edge, -44), left, bottom, scale)
+        pygame.draw.line(surface, self.shade(edge, -56), bottom, right, scale)
 
-        # Top cap seams stay high above the walking plane, avoiding the roof illusion.
-        pygame.draw.line(
-            surface,
-            mortar,
-            (sx - 28 * WORLD_SCALE, cap_bottom[1] - 5 * WORLD_SCALE),
-            (sx + 2 * WORLD_SCALE, cap_top[1] + 12 * WORLD_SCALE),
-            max(1, WORLD_SCALE),
-        )
-        pygame.draw.line(
-            surface,
-            mortar,
-            (sx - 2 * WORLD_SCALE, cap_top[1] + 12 * WORLD_SCALE),
-            (sx + 30 * WORLD_SCALE, cap_bottom[1] - 4 * WORLD_SCALE),
-            max(1, WORLD_SCALE),
-        )
-
-        # Face courses descend from the raised cap to the floor footprint.
-        face_start = cap_bottom[1] + 18 * WORLD_SCALE
-        for row, offset in enumerate((0, 28, 56)):
-            y_face = face_start + offset * WORLD_SCALE
-            if y_face >= bottom[1] - 4 * WORLD_SCALE:
-                continue
+        # --- One clean course line on the faces, roughly mid-height. Just
+        # one, not two or three. ---
+        y_face = cap_bottom[1] + 32 * scale
+        if y_face < bottom[1] - 8 * scale:
             pygame.draw.line(
                 surface,
-                self.shade(mortar, -28),
-                (sx - 29 * WORLD_SCALE, y_face),
-                (sx, y_face + 14 * WORLD_SCALE),
-                max(1, WORLD_SCALE),
+                self.shade(edge, -38),
+                (sx - 29 * scale, y_face),
+                (sx, y_face + 14 * scale),
+                max(1, scale),
             )
             pygame.draw.line(
                 surface,
-                self.shade(mortar, -40),
-                (sx, y_face + 14 * WORLD_SCALE),
-                (sx + 29 * WORLD_SCALE, y_face),
-                max(1, WORLD_SCALE),
-            )
-            joint = (-19 if (seed + row) & 1 else -8) * WORLD_SCALE
-            pygame.draw.line(
-                surface,
-                self.shade(mortar, -34),
-                (sx + joint, y_face - 8 * WORLD_SCALE),
-                (sx + joint + 9 * WORLD_SCALE, y_face - 3 * WORLD_SCALE),
-                max(1, WORLD_SCALE),
-            )
-            joint = (13 if (seed + row) & 2 else 23) * WORLD_SCALE
-            pygame.draw.line(
-                surface,
-                self.shade(mortar, -44),
-                (sx + joint, y_face - 2 * WORLD_SCALE),
-                (sx + joint - 9 * WORLD_SCALE, y_face + 3 * WORLD_SCALE),
-                max(1, WORLD_SCALE),
-            )
-
-        if seed & 3:
-            pygame.draw.line(
-                surface,
-                crack,
-                (sx + (8 - seed % 14) * WORLD_SCALE, cap_bottom[1] + 22 * WORLD_SCALE),
-                (sx + (2 - seed % 10) * WORLD_SCALE, cap_bottom[1] + 48 * WORLD_SCALE),
-                max(1, WORLD_SCALE),
-            )
-        if 8 <= seed <= 15 or seed > 27:
-            pygame.draw.rect(
-                surface,
-                moss,
-                (
-                    sx - 27 * WORLD_SCALE,
-                    bottom[1] - 8 * WORLD_SCALE,
-                    (5 + seed % 5) * WORLD_SCALE,
-                    2 * WORLD_SCALE,
-                ),
+                self.shade(edge, -46),
+                (sx, y_face + 14 * scale),
+                (sx + 29 * scale, y_face),
+                max(1, scale),
             )
 
     def draw_floor_tile_surface(
@@ -288,131 +257,114 @@ class RenderingWorldMixin:
         shop_floor: bool = False,
     ) -> None:
         is_stairs = tile == Tile.STAIRS
+        scale = WORLD_SCALE
         base = self.theme.stair if is_stairs else self.theme.floor
         edge = self.theme.accent if is_stairs else self.theme.floor_edge
-        slab_color = self.shade(base, (seed % 7) - 3)
-        inner_edge = self.shade(edge, -18)
-        groove = self.shade(base, -24)
-        highlight = self.shade(base, 20)
-        pebble = self.mix(edge, base, 0.45)
 
-        pygame.draw.polygon(surface, slab_color, [top, right, bottom, left])
-        pygame.draw.lines(surface, edge, True, [top, right, bottom, left], WORLD_SCALE)
+        # Gentle per-tile tint for natural variation (not noisy speckle).
+        tint = (seed % 7) - 3
+        slab = self.shade(base, tint)
+        slab_hi = self.shade(slab, 18)
+        slab_lo = self.shade(slab, -22)
+        edge_lo = self.shade(edge, -16)
 
-        inset_top = (sx, sy - 20 * WORLD_SCALE)
-        inset_right = (sx + 40 * WORLD_SCALE, sy)
-        inset_bottom = (sx, sy + 20 * WORLD_SCALE)
-        inset_left = (sx - 40 * WORLD_SCALE, sy)
+        # --- Base diamond ---
+        pygame.draw.polygon(surface, slab, [top, right, bottom, left])
+
+        # --- Smooth radial gradient: lighten the center, darken the edges.
+        # Drawn as nested diamonds shrinking toward the center. This gives
+        # a soft, sculpted flagstone without harsh lines.
+        for i, (frac, shade) in enumerate(((0.82, -8), (0.62, 6), (0.40, 14))):
+            hw = int(TILE_W * 0.5 * frac)
+            hh = int(TILE_H * 0.5 * frac)
+            pts = [(sx, sy - hh), (sx + hw, sy), (sx, sy + hh), (sx - hw, sy)]
+            pygame.draw.polygon(surface, self.shade(slab, shade), pts)
+
+        # --- Clean inset bevel: one highlight edge (top-left) and one shadow
+        # edge (bottom-right). This reads as a cut slab edge. ---
+        inset_hw = int(TILE_W * 0.31)
+        inset_hh = int(TILE_H * 0.31)
+        inset_top = (sx, sy - inset_hh)
+        inset_right = (sx + inset_hw, sy)
+        inset_bottom = (sx, sy + inset_hh)
+        inset_left = (sx - inset_hw, sy)
+        # shadow edge (bottom-right)
+        pygame.draw.line(surface, slab_lo, inset_right, inset_bottom, max(1, scale))
+        pygame.draw.line(
+            surface, self.shade(slab_lo, -10), inset_bottom, inset_left, max(1, scale)
+        )
+        # highlight edge (top-left)
+        pygame.draw.line(surface, slab_hi, inset_left, inset_top, max(1, scale))
+        pygame.draw.line(
+            surface, self.shade(slab_hi, 8), inset_top, inset_right, max(1, scale)
+        )
+
+        # --- A single clean seam across the slab on some tiles (not every
+        # tile, and never more than one). Subtle, follows the iso diagonal. ---
+        if seed % 3 == 0:
+            seam = self.shade(slab, -16)
+            pygame.draw.line(
+                surface,
+                seam,
+                (sx - 24 * scale, sy - 4 * scale),
+                (sx + 4 * scale, sy + 10 * scale),
+                max(1, scale),
+            )
+
+        # --- Outer diamond edge: clean and consistent ---
+        pygame.draw.lines(surface, edge, True, [top, right, bottom, left], scale)
+        # subtle inner edge just inside the outer edge for depth
         pygame.draw.lines(
             surface,
-            inner_edge,
+            edge_lo,
             True,
-            [inset_top, inset_right, inset_bottom, inset_left],
-            max(1, WORLD_SCALE),
-        )
-        pygame.draw.line(
-            surface,
-            groove,
-            (sx - 28 * WORLD_SCALE, sy - 6 * WORLD_SCALE),
-            (sx + 6 * WORLD_SCALE, sy + 11 * WORLD_SCALE),
-            max(1, WORLD_SCALE),
-        )
-        pygame.draw.line(
-            surface,
-            self.shade(groove, 8),
-            (sx - 2 * WORLD_SCALE, sy - 15 * WORLD_SCALE),
-            (sx + 29 * WORLD_SCALE, sy + 1 * WORLD_SCALE),
-            max(1, WORLD_SCALE),
-        )
-        pygame.draw.line(
-            surface,
-            highlight,
-            (sx - 32 * WORLD_SCALE, sy - 2 * WORLD_SCALE),
-            (sx - 13 * WORLD_SCALE, sy - 11 * WORLD_SCALE),
-            max(1, WORLD_SCALE),
+            [
+                (sx, sy - TILE_H // 2 + scale),
+                (sx + TILE_W // 2 - scale, sy),
+                (sx, sy + TILE_H // 2 - scale),
+                (sx - TILE_W // 2 + scale, sy),
+            ],
+            max(1, scale),
         )
 
-        for index in range(2):
-            px = sx + (((seed >> (index * 2)) & 15) - 7) * 5 * WORLD_SCALE
-            py = sy + (((seed >> (index + 1)) & 7) - 3) * 4 * WORLD_SCALE
-            pygame.draw.rect(
-                surface,
-                self.shade(pebble, -8 + index * 10),
-                (px, py, max(1, 2 * WORLD_SCALE), max(1, WORLD_SCALE)),
-            )
-
+        # --- Shop floor: elegant gilded inlay, kept clean ---
         if shop_floor and not is_stairs:
-            gold = self.mix((218, 164, 62), self.theme.floor, 0.35)
-            dark_gold = self.mix((126, 82, 34), self.theme.floor, 0.30)
-            glow = self.mix((245, 205, 92), self.theme.floor, 0.42)
+            gold = self.mix((218, 164, 62), base, 0.4)
+            gold_hi = self.mix((245, 215, 120), base, 0.3)
             pygame.draw.lines(
                 surface,
-                self.shade(dark_gold, -8),
+                gold,
                 True,
                 [inset_top, inset_right, inset_bottom, inset_left],
-                max(1, WORLD_SCALE),
+                max(1, scale),
             )
-            pygame.draw.line(
-                surface,
-                gold,
-                (sx - 24 * WORLD_SCALE, sy),
-                (sx, sy - 12 * WORLD_SCALE),
-                max(1, WORLD_SCALE),
-            )
-            pygame.draw.line(
-                surface,
-                self.shade(gold, -16),
-                (sx, sy - 12 * WORLD_SCALE),
-                (sx + 24 * WORLD_SCALE, sy),
-                max(1, WORLD_SCALE),
-            )
-            pygame.draw.line(
-                surface,
-                self.shade(gold, -22),
-                (sx - 20 * WORLD_SCALE, sy + 8 * WORLD_SCALE),
-                (sx + 20 * WORLD_SCALE, sy + 8 * WORLD_SCALE),
-                max(1, WORLD_SCALE),
-            )
-            if seed & 1:
-                pygame.draw.circle(
-                    surface,
-                    glow,
-                    (sx + ((seed % 5) - 2) * 9 * WORLD_SCALE, sy + 2 * WORLD_SCALE),
-                    max(1, WORLD_SCALE),
-                )
-            else:
-                pygame.draw.rect(
-                    surface,
-                    self.shade(glow, -10),
-                    (
-                        sx - 3 * WORLD_SCALE,
-                        sy - 3 * WORLD_SCALE,
-                        6 * WORLD_SCALE,
-                        max(1, WORLD_SCALE),
-                    ),
-                )
+            pygame.draw.line(surface, gold_hi, inset_left, inset_top, max(1, scale))
+            pygame.draw.line(surface, gold_hi, inset_top, inset_right, max(1, scale))
+            # central sigil
+            pygame.draw.circle(surface, gold, (sx, sy), max(2, 2 * scale))
+            pygame.draw.circle(surface, gold_hi, (sx, sy), max(1, scale))
 
         if is_stairs:
             for step, width in ((-2, 18), (5, 12), (12, 6)):
                 pygame.draw.line(
                     surface,
                     self.theme.stair,
-                    (sx - width * WORLD_SCALE, sy + step * WORLD_SCALE),
-                    (sx + width * WORLD_SCALE, sy + step * WORLD_SCALE),
-                    3 * WORLD_SCALE,
+                    (sx - width * scale, sy + step * scale),
+                    (sx + width * scale, sy + step * scale),
+                    3 * scale,
                 )
             pygame.draw.line(
                 surface,
                 self.theme.accent,
-                (sx - 20 * WORLD_SCALE, sy - 8 * WORLD_SCALE),
-                (sx + 20 * WORLD_SCALE, sy - 8 * WORLD_SCALE),
-                WORLD_SCALE,
+                (sx - 20 * scale, sy - 8 * scale),
+                (sx + 20 * scale, sy - 8 * scale),
+                scale,
             )
             pygame.draw.circle(
                 surface,
                 self.theme.accent,
-                (sx, sy - 16 * WORLD_SCALE),
-                max(2, 2 * WORLD_SCALE),
+                (sx, sy - 16 * scale),
+                max(2, 2 * scale),
             )
 
     def draw_world_objects(self) -> None:
