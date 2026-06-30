@@ -65,6 +65,33 @@ class SkillUpgrade:
 
 
 @dataclass(frozen=True)
+class SkillNode:
+    """A route-based skill tree node.
+
+    `tier` is 1..5 (depth from the root). `branch` names the route the node
+    belongs to (e.g. "Bulwark" vs "Riposte" on the Warden). `prerequisites`
+    lists node keys that must already be acquired before this node can be
+    chosen; an empty tuple means the node is open at tier 1. Bonus fields mirror
+    `SkillUpgrade` so the derived flat upgrade table stays in sync.
+    """
+
+    key: str
+    archetype: str
+    name: str
+    description: str
+    tier: int = 1
+    branch: str = ""
+    prerequisites: tuple[str, ...] = ()
+    melee_bonus: int = 0
+    spell_bonus: int = 0
+    armor_bonus: int = 0
+    max_hp_bonus: int = 0
+    max_mana_bonus: int = 0
+    max_stamina_bonus: int = 0
+    speed_bonus: float = 0.0
+
+
+@dataclass(frozen=True)
 class EliteModifier:
     name: str
     description: str

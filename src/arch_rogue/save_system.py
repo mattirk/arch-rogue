@@ -12,6 +12,7 @@ from .content import (
     DUNGEON_THEMES,
     HELL_DIFFICULTY_NAME,
     RUN_MODIFIERS,
+    migrate_skill_keys,
 )
 from .dungeon import Dungeon
 from .models import (
@@ -303,9 +304,9 @@ class SaveLoadMixin:
             facing_x=float(player_data.get("facing_x", 1.0)),
             facing_y=float(player_data.get("facing_y", 0.0)),
         )
-        self.player.skill_upgrades = [
-            str(upgrade) for upgrade in player_data.get("skill_upgrades", [])
-        ]
+        self.player.skill_upgrades = migrate_skill_keys(
+            [str(upgrade) for upgrade in player_data.get("skill_upgrades", [])]
+        )
         self.player.status_effects = {
             str(status): float(ttl)
             for status, ttl in player_data.get("status_effects", {}).items()

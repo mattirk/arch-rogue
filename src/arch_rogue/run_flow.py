@@ -399,6 +399,7 @@ class RunFlowMixin:
         self.inventory_cursor = 0
         self.inventory_scroll = 0
         self.character_menu_open = False
+        self.character_menu_tab = "overview"
         self.shop_open = False
         self.active_shopkeeper = None
         self.shop_mode = "buy"
@@ -463,6 +464,7 @@ class RunFlowMixin:
         self.inventory_cursor = 0
         self.inventory_scroll = 0
         self.character_menu_open = False
+        self.character_menu_tab = "overview"
         self.shop_open = False
         self.active_shopkeeper = None
         self.shop_mode = "buy"

@@ -95,6 +95,8 @@ Notes:
 | `Left Ctrl` | Dash/movement skill toward aim direction |
 | `E` | Pick up nearby loot / use shrine / open secret / use exit stairs / open nearby story guest dialogue |
 | `I` | Toggle inventory |
+| `C` | Toggle character sheet (overview + skill tree tabs) |
+| `Tab` / `1` / `2` / Arrows while character sheet is open | Switch between Overview and Skill Tree tabs |
 | `1` / `2` / `3` in quest cutscenes or near story guest | Choose Aid / Bargain / Defy, shaping future story and dungeon generation |
 | `1`-`9` | Equip/use inventory item shown in that slot |
 | `Tab` / `S` while inventory is open | Cycle/sort inventory by type, rarity, or power |

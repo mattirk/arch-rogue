@@ -16,7 +16,12 @@ from .constants import (
     PLAYER_PROJECTILE_HIT_RADIUS,
     WALK_ANIMATION_RATE,
 )
-from .content import SKILL_UPGRADES
+from .content import (
+    SKILL_NODES,
+    SKILL_UPGRADES,
+    skill_node_by_key,
+    skill_nodes_for_archetype,
+)
 from .models import Color, Enemy, FloatingText, Player, Projectile, Shopkeeper
 
 
@@ -215,41 +220,97 @@ class CombatMixin:
         }
         return colors.get(self.player.class_name, (120, 210, 255))
 
-    def grant_skill_upgrade(self, reason: str = "level up") -> bool:
-        choices = [
-            upgrade
-            for upgrade in SKILL_UPGRADES
-            if upgrade.archetype == self.player.class_name
-            and upgrade.key not in self.player.skill_upgrades
-        ]
-        if not choices:
+    def available_skill_choices(self) -> list:
+        """Skill nodes the player can choose right now.
+
+        A node is available when it belongs to the player's archetype, is not
+        yet acquired, and every prerequisite node has already been acquired.
+        Tier-1 nodes have no prerequisites and are always available until taken.
+        """
+        acquired = set(self.player.skill_upgrades)
+        choices: list = []
+        for node in skill_nodes_for_archetype(self.player.class_name):
+            if node.key in acquired:
+                continue
+            if all(prereq in acquired for prereq in node.prerequisites):
+                choices.append(node)
+        return choices
+
+    def skill_node_state(self, node) -> str:
+        """Return "chosen", "available", or "locked" for menu rendering."""
+        acquired = set(self.player.skill_upgrades)
+        if node.key in acquired:
+            return "chosen"
+        if all(prereq in acquired for prereq in node.prerequisites):
+            return "available"
+        return "locked"
+
+    def choose_skill_upgrade(self, key: str, reason: str = "chosen") -> bool:
+        """Apply a specific skill node by key if it is currently available."""
+        node = skill_node_by_key(key)
+        if node is None or node.archetype != self.player.class_name:
             return False
-        upgrade = self.rng.choice(choices)
-        self.player.skill_upgrades.append(upgrade.key)
-        self.player.melee_bonus += upgrade.melee_bonus
-        self.player.spell_bonus += upgrade.spell_bonus
-        self.player.armor_bonus += upgrade.armor_bonus
-        self.player.max_hp += upgrade.max_hp_bonus
-        self.player.hp = min(self.player.max_hp, self.player.hp + upgrade.max_hp_bonus)
-        self.player.max_mana += upgrade.max_mana_bonus
+        if node.key in self.player.skill_upgrades:
+            return False
+        if not all(
+            prereq in self.player.skill_upgrades for prereq in node.prerequisites
+        ):
+            return False
+        self._apply_skill_node(node, reason)
+        return True
+
+    def _apply_skill_node(self, node, reason: str) -> None:
+        self.player.skill_upgrades.append(node.key)
+        self.player.melee_bonus += node.melee_bonus
+        self.player.spell_bonus += node.spell_bonus
+        self.player.armor_bonus += node.armor_bonus
+        self.player.max_hp += node.max_hp_bonus
+        self.player.hp = min(self.player.max_hp, self.player.hp + node.max_hp_bonus)
+        self.player.max_mana += node.max_mana_bonus
         self.player.mana = min(
-            self.player.max_mana, self.player.mana + upgrade.max_mana_bonus
+            self.player.max_mana, self.player.mana + node.max_mana_bonus
         )
-        self.player.max_stamina += upgrade.max_stamina_bonus
+        self.player.max_stamina += node.max_stamina_bonus
         self.player.stamina = min(
-            self.player.max_stamina, self.player.stamina + upgrade.max_stamina_bonus
+            self.player.max_stamina, self.player.stamina + node.max_stamina_bonus
         )
-        self.player.speed += upgrade.speed_bonus
+        self.player.speed += node.speed_bonus
         self.run_stats.upgrades_chosen += 1
         self.floaters.append(
             FloatingText(
-                f"{upgrade.name}: {reason}",
+                f"{node.name}: {reason}",
                 self.player.x,
                 self.player.y - 0.65,
                 self.skill_color(),
                 ttl=1.8,
             )
         )
+
+    def grant_skill_upgrade(self, reason: str = "level up") -> bool:
+        """Grant a random available skill node, respecting tree prerequisites.
+
+        Falls back to the flat `SKILL_UPGRADES` pool only if the tree yields no
+        available nodes (e.g. an older save with deprecated keys); this keeps
+        level-up moments rewarding even when the tree is exhausted.
+        """
+        choices = self.available_skill_choices()
+        if not choices:
+            legacy_choices = [
+                upgrade
+                for upgrade in SKILL_UPGRADES
+                if upgrade.archetype == self.player.class_name
+                and upgrade.key not in self.player.skill_upgrades
+            ]
+            if not legacy_choices:
+                return False
+            upgrade = self.rng.choice(legacy_choices)
+            node = skill_node_by_key(upgrade.key)
+            if node is not None:
+                self._apply_skill_node(node, reason)
+                return True
+            return False
+        node = self.rng.choice(choices)
+        self._apply_skill_node(node, reason)
         return True
 
     def melee_stamina_cost(self) -> int:
@@ -1316,4 +1377,3 @@ class CombatMixin:
             FloatingText(f"+{gold} gold", enemy.x, enemy.y - 0.55, (225, 190, 92))
         )
         self.save_run()
-

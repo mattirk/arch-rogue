@@ -58,7 +58,9 @@ from .content import (
     DUNGEON_THEMES,
     RARITY_PROFILES,
     RUN_MODIFIERS,
+    SKILL_NODES,
     SKILL_UPGRADES,
+    skill_node_by_key,
 )
 from .content import (
     ARMOR_DEFINITIONS as ARMOR_DEFINITIONS,
@@ -246,6 +248,7 @@ class Game(
         self.inventory_cursor = 0
         self.inventory_scroll = 0
         self.character_menu_open = False
+        self.character_menu_tab = "overview"
         self.shop_open = False
         self.active_shopkeeper: Shopkeeper | None = None
         self.shop_mode = "buy"
@@ -341,12 +344,17 @@ class Game(
         return RARITY_PROFILES.get(rarity, RARITY_PROFILES["Common"]).icon
 
     def acquired_skill_upgrades(self) -> list[tuple[str, str]]:
-        by_key = {upgrade.key: upgrade for upgrade in SKILL_UPGRADES}
+        by_key = {node.key: node for node in SKILL_NODES}
         return [
             (by_key[key].name, by_key[key].description)
             for key in self.player.skill_upgrades
             if key in by_key
         ]
+
+    def acquired_skill_nodes(self) -> list:
+        """Acquired `SkillNode` objects in purchase order (for the skill tree tab)."""
+        by_key = {node.key: node for node in SKILL_NODES}
+        return [by_key[key] for key in self.player.skill_upgrades if key in by_key]
 
     def run(self) -> None:
         while self.running:
@@ -587,6 +595,30 @@ class Game(
                     if self.character_menu_open:
                         self.inventory_open = False
                         self.close_shop()
+                elif (
+                    self.state == "playing"
+                    and self.character_menu_open
+                    and event.key
+                    in (
+                        pygame.K_TAB,
+                        pygame.K_LEFT,
+                        pygame.K_RIGHT,
+                        pygame.K_a,
+                        pygame.K_d,
+                        pygame.K_1,
+                        pygame.K_2,
+                    )
+                ):
+                    if event.key == pygame.K_TAB:
+                        self.character_menu_tab = (
+                            "skill_tree"
+                            if self.character_menu_tab == "overview"
+                            else "overview"
+                        )
+                    elif event.key in (pygame.K_LEFT, pygame.K_a, pygame.K_1):
+                        self.character_menu_tab = "overview"
+                    else:
+                        self.character_menu_tab = "skill_tree"
                 elif event.key == pygame.K_v and self.state == "playing":
                     self.update_player_aim()
                     self.player_cast_nova()

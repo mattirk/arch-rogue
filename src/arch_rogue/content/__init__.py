@@ -16,7 +16,11 @@ from .definitions import (
     StoryLocationMotif,
     StoryRelic,
 )
-from .difficulty import DEFAULT_DIFFICULTY_NAME, DIFFICULTY_PROFILES, HELL_DIFFICULTY_NAME
+from .difficulty import (
+    DEFAULT_DIFFICULTY_NAME,
+    DIFFICULTY_PROFILES,
+    HELL_DIFFICULTY_NAME,
+)
 from .enemies import (
     BOSS_DEFINITIONS,
     ENCOUNTER_TEMPLATES,
@@ -33,7 +37,18 @@ from .interactables import (
     TRAP_DEFINITIONS,
     TRAP_HINTS,
 )
-from .progression import ELITE_MODIFIERS, RUN_MODIFIERS, SKILL_UPGRADES
+from .progression import (
+    ELITE_MODIFIERS,
+    LEGACY_SKILL_KEYS,
+    RUN_MODIFIERS,
+    SKILL_NODES,
+    SKILL_UPGRADES,
+    migrate_skill_keys,
+    skill_branches_for_archetype,
+    skill_node_by_key,
+    skill_nodes_for_archetype,
+    skill_tree_max_tier,
+)
 from .story_corpus import (
     STORY_BACKSTORIES,
     STORY_CORPUS,
@@ -63,6 +78,7 @@ __all__ = [
     "HELL_DIFFICULTY_NAME",
     "HUMANOID_ENEMY_NAMES",
     "InteractionHint",
+    "LEGACY_SKILL_KEYS",
     "RARITY_PROFILES",
     "RUN_MODIFIERS",
     "RarityProfile",
@@ -71,6 +87,7 @@ __all__ = [
     "SHRINE_HINTS",
     "SHRINE_TYPES",
     "SKILL_UPGRADES",
+    "SKILL_NODES",
     "STORY_BACKSTORIES",
     "STORY_CORPUS",
     "STORY_DILEMMAS",
@@ -84,6 +101,11 @@ __all__ = [
     "StoryGuestTemplate",
     "StoryLocationMotif",
     "StoryRelic",
+    "migrate_skill_keys",
+    "skill_branches_for_archetype",
+    "skill_node_by_key",
+    "skill_nodes_for_archetype",
+    "skill_tree_max_tier",
     "TRAP_DEFINITIONS",
     "TRAP_HINTS",
     "WEAPON_DEFINITIONS",

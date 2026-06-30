@@ -474,7 +474,11 @@ class MenuCharacterMixin:
         tiny_h = self.g.tiny_font.get_height()
 
         close_w = min(
-            max(self.u(130), self.g.small_font.size("C or Esc closes")[0] + self.u(20)),
+            max(
+                self.u(150),
+                self.g.small_font.size("C/Esc closes · Tab switches tabs")[0]
+                + self.u(20),
+            ),
             inner.width // 2,
         )
         self.draw_text(
@@ -495,7 +499,7 @@ class MenuCharacterMixin:
             border_radius=self.u(6),
         )
         self.draw_text(
-            "C or Esc closes",
+            "C/Esc closes · Tab switches tabs",
             self.g.small_font,
             self.MUTED,
             close_rect.inflate(-self.u(8), 0),
@@ -511,7 +515,30 @@ class MenuCharacterMixin:
             pygame.Rect(inner.x, subtitle_y, inner.width, small_h),
         )
 
-        stats_y = subtitle_y + small_h + gap
+        # Tab strip — Overview and Skill Tree. Tab/Left/Right switch while the
+        # menu is open. The active tab is highlighted; the inactive one dims.
+        tab_y = subtitle_y + small_h + self.u(4)
+        tab_h = max(self.u(22), small_h + self.u(6))
+        tab_gap = self.u(6)
+        tab_w = (inner.width - tab_gap) // 2
+        overview_tab = pygame.Rect(inner.x, tab_y, tab_w, tab_h)
+        tree_tab = pygame.Rect(inner.x + tab_w + tab_gap, tab_y, tab_w, tab_h)
+        active_tab = self.g.character_menu_tab
+        self._draw_character_tab(overview_tab, "Overview (1)", active_tab == "overview")
+        self._draw_character_tab(tree_tab, "Skill Tree (2)", active_tab == "skill_tree")
+
+        stats_y = tab_y + tab_h + gap
+        content_top = stats_y
+        content_bottom = inner.bottom
+
+        if active_tab == "skill_tree":
+            self._draw_character_skill_tree(
+                pygame.Rect(
+                    inner.x, content_top, inner.width, content_bottom - content_top
+                )
+            )
+            return
+
         stats_h = max(self.u(72), small_h * 2 + self.u(24))
         stats = [
             ("HP", f"{int(player.hp)}/{player.max_hp}"),
@@ -656,3 +683,301 @@ class MenuCharacterMixin:
         draw_card(card_rect(1), "Equipment", equipment_lines, self.accent())
         draw_card(card_rect(2), "Upgrades", upgrade_lines, self.g.skill_color())
         draw_card(card_rect(3), "Status & Procs", status_lines[:4], self.accent())
+
+    def _draw_character_tab(self, rect: pygame.Rect, label: str, active: bool) -> None:
+        accent = self.g.skill_color() if active else self.IRON
+        fill = self.PANEL_2 if active else self.PANEL_INK
+        pygame.draw.rect(self.screen, fill, rect, border_radius=self.u(6))
+        pygame.draw.rect(
+            self.screen,
+            accent,
+            rect,
+            max(1, self.u(1)),
+            border_radius=self.u(6),
+        )
+        if active:
+            strip = pygame.Rect(
+                rect.x + self.u(6),
+                rect.bottom - self.u(3),
+                rect.width - self.u(12),
+                self.u(2),
+            )
+            pygame.draw.rect(
+                self.screen, self.shade(accent, 30), strip, border_radius=self.u(1)
+            )
+        self.draw_text(
+            label,
+            self.g.small_font,
+            self.TEXT if active else self.MUTED,
+            rect.inflate(-self.u(10), 0),
+            align="center",
+            valign="center",
+        )
+
+    def _draw_character_skill_tree(self, rect: pygame.Rect) -> None:
+        """Render the archetype skill tree as a tier x branch grid.
+
+        Each row is a tier (1..5, top to bottom). Each column is a branch route.
+        Nodes are drawn as small cards with state-tinted borders:
+            chosen   — gold border, filled
+            available — accent border, ready to pick on level-up/shrine
+            locked   — iron border, prerequisites unmet
+        A legend and a hint line explain the colors and how to gain nodes.
+        """
+        from ..content import (
+            skill_branches_for_archetype,
+            skill_nodes_for_archetype,
+            skill_tree_max_tier,
+        )
+
+        player = self.g.player
+        archetype = player.class_name
+        nodes = skill_nodes_for_archetype(archetype)
+        branches = skill_branches_for_archetype(archetype)
+        max_tier = skill_tree_max_tier(archetype)
+        if not nodes or not branches or max_tier <= 0:
+            self.draw_text(
+                "No skill tree defined for this archetype.",
+                self.g.small_font,
+                self.MUTED,
+                rect,
+                align="center",
+                valign="center",
+            )
+            return
+
+        # Index nodes by (tier, branch). A branch may have at most one node
+        # per tier in the current tree definition.
+        grid: dict[tuple[int, str], object] = {}
+        for node in nodes:
+            grid[(node.tier, node.branch)] = node
+
+        tiny_h = self.g.tiny_font.get_height()
+        small_h = self.g.small_font.get_height()
+        pad = max(self.u(10), 10)
+        gap = self.u(6)
+
+        # Header: branch names across the top.
+        header_h = small_h + self.u(6)
+        # Footer: legend + hint.
+        legend_h = tiny_h + self.u(8)
+        hint_h = tiny_h + self.u(6)
+        footer_h = legend_h + hint_h
+        grid_rect = pygame.Rect(
+            rect.x,
+            rect.y + header_h,
+            rect.width,
+            max(1, rect.height - header_h - footer_h - gap),
+        )
+
+        # Row layout — tier label gutter on the left, columns to its right.
+        tier_label_w = max(self.u(28), self.g.tiny_font.size("Tier 5")[0] + self.u(6))
+        rows_area = pygame.Rect(
+            grid_rect.x + tier_label_w,
+            grid_rect.y,
+            max(1, grid_rect.width - tier_label_w),
+            grid_rect.height,
+        )
+        # Column layout — columns live inside `rows_area` (after the tier-label
+        # gutter), so size them from `rows_area.width` to avoid overflowing the
+        # container's right edge.
+        col_gap = self.u(6)
+        col_w = max(
+            1, (rows_area.width - col_gap * (len(branches) - 1)) // len(branches)
+        )
+        row_h = max(1, (rows_area.height - gap * (max_tier - 1)) // max_tier)
+
+        # Branch headers.
+        for col, branch in enumerate(branches):
+            col_x = rows_area.x + col * (col_w + col_gap)
+            self.draw_text(
+                branch,
+                self.g.small_font,
+                self.WARNING,
+                pygame.Rect(col_x, rect.y, col_w, header_h),
+                align="center",
+                valign="center",
+            )
+
+        # Tier rows.
+        for tier in range(1, max_tier + 1):
+            row_y = rows_area.y + (tier - 1) * (row_h + gap)
+            # Tier label in the gutter.
+            self.draw_text(
+                f"Tier {tier}",
+                self.g.tiny_font,
+                self.MUTED,
+                pygame.Rect(grid_rect.x, row_y, tier_label_w, row_h),
+                align="left",
+                valign="center",
+            )
+            for col, branch in enumerate(branches):
+                node = grid.get((tier, branch))
+                col_x = rows_area.x + col * (col_w + col_gap)
+                cell = pygame.Rect(col_x, row_y, col_w, row_h)
+                if node is None:
+                    # Empty cell — a faint placeholder keeps the grid aligned.
+                    pygame.draw.rect(
+                        self.screen,
+                        self.PANEL_INK,
+                        cell,
+                        border_radius=self.u(6),
+                    )
+                    pygame.draw.rect(
+                        self.screen,
+                        self.IRON_DARK,
+                        cell,
+                        max(1, self.u(1)),
+                        border_radius=self.u(6),
+                    )
+                    continue
+                self._draw_skill_node_cell(node, cell, pad, tiny_h, small_h)
+
+        # Legend + hint footer.
+        legend_y = grid_rect.bottom + gap
+        legend_rect = pygame.Rect(rect.x, legend_y, rect.width, legend_h)
+        sw_h = max(self.u(10), tiny_h)
+        sw_gap = self.u(6)
+        x = legend_rect.x
+        samples = (
+            (self.WARNING, "Chosen"),
+            (self.g.skill_color(), "Available"),
+            (self.IRON, "Locked"),
+        )
+        for color, label in samples:
+            sw_rect = pygame.Rect(x, legend_rect.y, sw_h, sw_h)
+            pygame.draw.rect(
+                self.screen, self.PANEL_INK, sw_rect, border_radius=self.u(2)
+            )
+            pygame.draw.rect(
+                self.screen, color, sw_rect, max(1, self.u(1)), border_radius=self.u(2)
+            )
+            text_rect = pygame.Rect(
+                x + sw_h + sw_gap,
+                legend_rect.y,
+                self.g.tiny_font.size(label)[0],
+                sw_h,
+            )
+            self.draw_text(
+                label, self.g.tiny_font, self.TEXT, text_rect, valign="center"
+            )
+            x = text_rect.right + self.u(16)
+        # Available count on the right of the legend.
+        available = self.g.available_skill_choices()
+        count_text = f"{len(available)} path{'s' if len(available) != 1 else ''} ready"
+        count_w = self.g.tiny_font.size(count_text)[0]
+        self.draw_text(
+            count_text,
+            self.g.tiny_font,
+            self.g.skill_color() if available else self.MUTED,
+            pygame.Rect(legend_rect.right - count_w, legend_rect.y, count_w, sw_h),
+            valign="center",
+        )
+
+        hint_y = legend_y + legend_h
+        hint_rect = pygame.Rect(rect.x, hint_y, rect.width, hint_h)
+        self.draw_text(
+            "Level-ups, Oath Shrines, and Forgotten Altars may grant an available node.",
+            self.g.tiny_font,
+            self.MUTED,
+            hint_rect,
+            align="center",
+            valign="center",
+        )
+
+    def _draw_skill_node_cell(
+        self,
+        node,
+        cell: pygame.Rect,
+        pad: int,
+        tiny_h: int,
+        small_h: int,
+    ) -> None:
+        state = self.g.skill_node_state(node)
+        if state == "chosen":
+            border = self.WARNING
+            fill = self.PANEL_2
+            name_color = self.WARNING
+        elif state == "available":
+            border = self.g.skill_color()
+            fill = self.PANEL_2
+            name_color = self.TEXT
+        else:
+            border = self.IRON
+            fill = self.PANEL_INK
+            name_color = self.MUTED
+
+        pygame.draw.rect(self.screen, fill, cell, border_radius=self.u(6))
+        # Soft state-tinted wash.
+        wash = pygame.Surface(cell.size, pygame.SRCALPHA)
+        wash_alpha = 36 if state == "chosen" else (22 if state == "available" else 0)
+        if wash_alpha:
+            pygame.draw.rect(
+                wash,
+                (*border, wash_alpha),
+                wash.get_rect(),
+                border_radius=self.u(6),
+            )
+            self.screen.blit(wash, cell)
+        pygame.draw.rect(
+            self.screen,
+            border,
+            cell,
+            max(1, self.u(1)),
+            border_radius=self.u(6),
+        )
+
+        inner = cell.inflate(-pad * 2, -pad)
+        if inner.height < tiny_h:
+            # Cell too short for text — just show the name ellipsized.
+            self.draw_text(
+                self.ellipsize(node.name, self.g.tiny_font, inner.width),
+                self.g.tiny_font,
+                name_color,
+                inner,
+                align="center",
+                valign="center",
+            )
+            return
+
+        name_rect = pygame.Rect(inner.x, inner.y, inner.width, small_h)
+        self.draw_text(
+            self.ellipsize(node.name, self.g.small_font, name_rect.width),
+            self.g.small_font,
+            name_color,
+            name_rect,
+            align="center",
+            valign="center",
+        )
+        desc_rect = pygame.Rect(
+            inner.x,
+            name_rect.bottom + self.u(2),
+            inner.width,
+            inner.bottom - name_rect.bottom - self.u(2),
+        )
+        # Wrap the description into the remaining space; show as many lines as fit.
+        lines = self.wrap_text(node.description, self.g.tiny_font, desc_rect.width)
+        line_h = tiny_h + self.u(2)
+        y = desc_rect.y
+        shown = 0
+        max_lines = max(1, desc_rect.height // line_h)
+        for line in lines[:max_lines]:
+            self.draw_text(
+                line,
+                self.g.tiny_font,
+                self.TEXT if state != "locked" else self.MUTED,
+                pygame.Rect(desc_rect.x, y, desc_rect.width, line_h),
+                align="center",
+                valign="top",
+            )
+            y += line_h
+            shown += 1
+        if shown == 0:
+            self.draw_text(
+                self.ellipsize(node.description, self.g.tiny_font, desc_rect.width),
+                self.g.tiny_font,
+                self.MUTED,
+                desc_rect,
+                align="center",
+                valign="center",
+            )
