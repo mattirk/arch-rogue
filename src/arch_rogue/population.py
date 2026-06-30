@@ -518,7 +518,7 @@ class PopulationMixin:
             y,
             base_hp,
             base_hp,
-            definition.speed if definition is not None else 1.65,
+            definition.speed if definition is not None else 1.32,
             definition.damage if definition is not None else 21,
             definition.xp if definition is not None else 120,
             definition.attack_range if definition is not None else 1.45,
@@ -758,4 +758,3 @@ class PopulationMixin:
             if not self.dungeon.blocked_for_radius(px, py, radius=0.22):
                 return px, py
         return x, y
-

@@ -15,6 +15,12 @@ LARGE_ENEMY_HIT_RADIUS = 0.52
 BOSS_HIT_RADIUS = 0.64
 PLAYER_MELEE_RANGE = 1.55
 PLAYER_MELEE_ARC_DOT = 0.05
+# Fixed player movement speed in tiles per second. Decoupled from the
+# `player.speed` stat so movement is always constant regardless of archetype,
+# skill-tree speed bonuses, or Haste Shrine buffs. `player.speed` is retained
+# as a character stat for future affix-driven movement bonuses (milestone 3.4)
+# but no longer drives base locomotion or the run-cycle animation rate.
+PLAYER_MOVE_SPEED = 2.8
 PLAYER_PROJECTILE_HIT_RADIUS = 0.54
 ENEMY_PROJECTILE_HIT_RADIUS = 0.52
 WALK_ANIMATION_RATE = 0.8

@@ -13,6 +13,7 @@ from .constants import (
     PLAYER_HIT_RADIUS,
     PLAYER_MELEE_ARC_DOT,
     PLAYER_MELEE_RANGE,
+    PLAYER_MOVE_SPEED,
     PLAYER_PROJECTILE_HIT_RADIUS,
     WALK_ANIMATION_RATE,
 )
@@ -509,7 +510,7 @@ class CombatMixin:
         kbd_dy = float(keys[pygame.K_DOWN] or keys[pygame.K_s]) - float(
             keys[pygame.K_UP] or keys[pygame.K_w]
         )
-        move_speed = self.player.speed * (
+        move_speed = PLAYER_MOVE_SPEED * (
             0.82 if self.player_status("chilled") > 0 else 1.0
         )
         if kbd_dx or kbd_dy:
@@ -625,7 +626,7 @@ class CombatMixin:
         # The rate scales with the actor's speed so faster units cycle faster.
         anim_dt = dt
         if self.player.moving:
-            self.player.anim_time += anim_dt * WALK_ANIMATION_RATE * self.player.speed
+            self.player.anim_time += anim_dt * WALK_ANIMATION_RATE * PLAYER_MOVE_SPEED
         for enemy in self.enemies:
             if enemy.moving:
                 enemy.anim_time += anim_dt * WALK_ANIMATION_RATE * enemy.speed
