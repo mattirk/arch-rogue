@@ -7,7 +7,14 @@ from typing import cast
 
 import pygame
 
-from ..constants import DUNGEON_DEPTH, TILE_H, TILE_W, WORLD_SCALE, SlashEffect
+from ..constants import (
+    DARK_LEVEL_LIGHT_RADIUS,
+    DUNGEON_DEPTH,
+    TILE_H,
+    TILE_W,
+    WORLD_SCALE,
+    SlashEffect,
+)
 from ..content import HUMANOID_ENEMY_NAMES
 from ..models import (
     Color,
@@ -33,11 +40,13 @@ from ..quest_assets import (
 class RenderingWorldMixin:
     def draw_dungeon(self) -> None:
         min_x, max_x, min_y, max_y = self.visible_bounds()
+        self._frame_dark = self.is_current_floor_dark()
+        dark = self._frame_dark
         for s in range(min_x + min_y, max_x + max_y + 1):
             for x in range(min_x, max_x + 1):
                 y = s - x
                 if min_y <= y <= max_y and self.dungeon.in_bounds(x, y):
-                    if self.tile_visibility_alpha(x, y) <= 0:
+                    if dark and self.tile_visibility_alpha(x, y) <= 0:
                         continue
                     tile = self.dungeon.tiles[x][y]
                     if tile in (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
@@ -50,23 +59,37 @@ class RenderingWorldMixin:
         surface, anchor_x, anchor_y = self.tile_surface(
             tile, seed, self.is_shop_floor_tile(x, y)
         )
-        alpha = self.tile_visibility_alpha(x, y)
-        if alpha < 255:
-            surface = surface.copy()
-            surface.set_alpha(alpha)
+        if self._frame_dark:  # set at start of draw_world_objects/draw_dungeon
+            alpha = self.tile_visibility_alpha(x, y)
+            if alpha < 255:
+                surface = surface.copy()
+                surface.set_alpha(alpha)
         self.screen.blit(surface, (sx - anchor_x, sy - anchor_y))
 
     def tile_seed(self, x: int, y: int) -> int:
         return (x * 1103515245 + y * 12345) & 31
 
     def is_shop_floor_tile(self, x: int, y: int) -> bool:
+        shop_room = self._shop_room_bounds()
+        if shop_room is None:
+            return False
+        rx, ry, rw, rh = shop_room
+        if not (rx < x < rx + rw - 1 and ry < y < ry + rh - 1):
+            return False
+        return self.dungeon.tiles[x][y] in (Tile.FLOOR, Tile.STAIRS)
+
+    def _shop_room_bounds(self) -> tuple[int, int, int, int] | None:
+        cache = getattr(self, "_frame_cache", None)
+        if cache is not None and "shop_room_bounds" in cache:
+            return cache["shop_room_bounds"]  # type: ignore[no-any-return]
         shop_index = self.dungeon.shop_room_index
-        if shop_index is None or not (0 <= shop_index < len(self.dungeon.rooms)):
-            return False
-        if self.dungeon.tiles[x][y] not in (Tile.FLOOR, Tile.STAIRS):
-            return False
-        room = self.dungeon.rooms[shop_index]
-        return room.x < x < room.x + room.w - 1 and room.y < y < room.y + room.h - 1
+        result: tuple[int, int, int, int] | None = None
+        if shop_index is not None and 0 <= shop_index < len(self.dungeon.rooms):
+            room = self.dungeon.rooms[shop_index]
+            result = (room.x, room.y, room.w, room.h)
+        if cache is not None:
+            cache["shop_room_bounds"] = result
+        return result
 
     def tile_surface(
         self, tile: Tile, seed: int, shop_floor: bool = False
@@ -394,9 +417,15 @@ class RenderingWorldMixin:
 
     def draw_world_objects(self) -> None:
         drawables: list[tuple[float, str, object]] = []
+        self._frame_dark = self.is_current_floor_dark()
+        dark = self._frame_dark
 
         def visible(x: float, y: float, margin: float = 0.35) -> bool:
-            return self.can_see_world_position(x, y, margin)
+            if not dark:
+                return True
+            return (
+                self.light_distance_to_player(x, y) <= DARK_LEVEL_LIGHT_RADIUS + margin
+            )
 
         min_x, max_x, min_y, max_y = self.visible_bounds()
         for s in range(min_x + min_y, max_x + max_y + 1):
@@ -405,11 +434,11 @@ class RenderingWorldMixin:
                 if min_y <= y <= max_y and self.dungeon.in_bounds(x, y):
                     tile = self.dungeon.tiles[x][y]
                     if tile == Tile.WALL:
-                        if self.tile_visibility_alpha(x, y) <= 0:
+                        if dark and self.tile_visibility_alpha(x, y) <= 0:
                             continue
                         drawables.append((x + y + 1.02, "wall_tile", (x, y)))
                     elif tile in (Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
-                        if self.tile_visibility_alpha(x, y) <= 0:
+                        if dark and self.tile_visibility_alpha(x, y) <= 0:
                             continue
                         drawables.append((x + y + 1.02, "door", (x, y, tile)))
 
@@ -458,7 +487,7 @@ class RenderingWorldMixin:
 
         self.draw_aim_cone()
         relic_target = self.story_relic_target_position()
-        if not self.is_current_floor_dark() or (
+        if not dark or (
             relic_target is not None and visible(relic_target[0], relic_target[1], 0.65)
         ):
             self.draw_story_relic_guidance()
@@ -724,4 +753,3 @@ class RenderingWorldMixin:
             surface = surface.copy()
             surface.set_alpha(alpha)
         self.screen.blit(surface, (sx - anchor_x, sy - anchor_y))
-

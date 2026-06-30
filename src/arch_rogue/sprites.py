@@ -1,21 +1,42 @@
 from __future__ import annotations
 
+import math
+
 import pygame
 
+from .constants import TILE_H
 from .models import Color
+
+bone_color = (214, 202, 176)
 
 
 class PixelSpriteAtlas:
     """Procedural pixel-art sprites and cached animation frames.
 
-    The prototype still keeps its art source in code so it can run without an
-    external asset pipeline. Sprites are authored at tiny resolutions, outlined,
-    then scaled with nearest-neighbor filtering for a chunky dark-fantasy look.
-    Runtime code should use the frame helpers for animated actors/objects while
-    the legacy dictionaries remain available for static call sites and tests.
+    The prototype keeps its art source in code so it can run without an
+    external asset pipeline. Sprites are authored at a higher detail
+    resolution (more sub-pixel shading, rim light, eye glow, armor plates),
+    outlined, then scaled with nearest-neighbor filtering for a chunky
+    dark-fantasy look.
+
+    Sprite scale is grounded in dungeon geometry: actors target an on-screen
+    height of roughly ``ACTOR_TARGET_H`` pixels (tied to ``TILE_H``) so they
+    read correctly against the isometric floor diamond instead of dwarfing it.
+    Runtime code should use the frame helpers for animated actors/objects
+    while the legacy dictionaries remain available for static call sites and
+    tests.
     """
 
-    SCALE = 6
+    # On-screen target height for a standing humanoid, tied to tile geometry.
+    # TILE_H is the iso floor diamond height; a humanoid ~1.15x that reads
+    # as standing on the tile without towering over the dungeon.
+    ACTOR_TARGET_H = round(TILE_H * 1.15)
+    # Raw actor art is authored at 26x34; scale lands it near the target.
+    RAW_ACTOR_W = 26
+    RAW_ACTOR_H = 34
+    ACTOR_SCALE = max(2, round(ACTOR_TARGET_H / RAW_ACTOR_H))
+    # Props (items, traps, bolts) are smaller and use a separate scale.
+    PROP_SCALE = max(2, round(TILE_H / 32))
 
     PLAYER_ACCENTS: dict[str, Color] = {
         "Warden": (235, 205, 120),
@@ -164,6 +185,9 @@ class PixelSpriteAtlas:
             self.shopkeeper_sprite, (245, 205, 92)
         )
 
+    # ------------------------------------------------------------------
+    # Low-level surface helpers
+    # ------------------------------------------------------------------
     def _surface(self, w: int, h: int) -> pygame.Surface:
         return pygame.Surface((w, h), pygame.SRCALPHA)
 
@@ -175,6 +199,16 @@ class PixelSpriteAtlas:
     def _dot(self, surface: pygame.Surface, x: int, y: int, color: Color) -> None:
         self._rect(surface, x, y, 1, 1, color)
 
+    def _hline(
+        self, surface: pygame.Surface, x: int, y: int, w: int, color: Color
+    ) -> None:
+        self._rect(surface, x, y, w, 1, color)
+
+    def _vline(
+        self, surface: pygame.Surface, x: int, y: int, h: int, color: Color
+    ) -> None:
+        self._rect(surface, x, y, 1, h, color)
+
     def _outline_surface(
         self, surface: pygame.Surface, outline: Color = (11, 10, 14)
     ) -> pygame.Surface:
@@ -183,10 +217,11 @@ class PixelSpriteAtlas:
             source = surface.convert_alpha()
         except pygame.error:
             source = surface.copy()
-        outlined = self._surface(source.get_width() + 2, source.get_height() + 2)
+        w, h = source.get_width(), source.get_height()
+        outlined = self._surface(w + 2, h + 2)
         outline_rgba = (*outline, 255)
-        for x in range(source.get_width()):
-            for y in range(source.get_height()):
+        for x in range(w):
+            for y in range(h):
                 if source.get_at((x, y)).a <= 0:
                     continue
                 for ox, oy in (
@@ -201,15 +236,16 @@ class PixelSpriteAtlas:
                 ):
                     px = x + 1 + ox
                     py = y + 1 + oy
-                    if outlined.get_at((px, py)).a == 0:
-                        outlined.set_at((px, py), outline_rgba)
+                    if 0 <= px < w + 2 and 0 <= py < h + 2:
+                        if outlined.get_at((px, py)).a == 0:
+                            outlined.set_at((px, py), outline_rgba)
         outlined.blit(source, (1, 1))
         return outlined
 
     def _scale(
         self, surface: pygame.Surface, scale: int | None = None
     ) -> pygame.Surface:
-        factor = scale or self.SCALE
+        factor = scale or self.ACTOR_SCALE
         scaled = pygame.transform.scale(
             surface, (surface.get_width() * factor, surface.get_height() * factor)
         )
@@ -219,11 +255,16 @@ class PixelSpriteAtlas:
             return scaled
 
     def _scale_actor(self, surface: pygame.Surface) -> pygame.Surface:
-        return self._scale(self._outline_surface(surface))
+        return self._scale(self._outline_surface(surface), self.ACTOR_SCALE)
 
     def _scale_prop(self, surface: pygame.Surface) -> pygame.Surface:
-        return self._scale(self._outline_surface(surface, (18, 14, 20)))
+        return self._scale(
+            self._outline_surface(surface, (18, 14, 20)), self.PROP_SCALE
+        )
 
+    # ------------------------------------------------------------------
+    # Frame composition helpers
+    # ------------------------------------------------------------------
     def _frame_surface(
         self,
         sprite: pygame.Surface,
@@ -289,7 +330,7 @@ class PixelSpriteAtlas:
         color: Color,
         alpha: int = 255,
     ) -> None:
-        unit = self.SCALE
+        unit = self.ACTOR_SCALE
         rect = pygame.Rect(
             origin[0] + round(x * unit),
             origin[1] + round(y * unit),
@@ -302,6 +343,24 @@ class PixelSpriteAtlas:
         patch = pygame.Surface(rect.size, pygame.SRCALPHA)
         patch.fill((*color, alpha))
         surface.blit(patch, rect)
+
+    # ------------------------------------------------------------------
+    # Multi-band pose animation
+    # ------------------------------------------------------------------
+    # The pose system slices each actor sprite into five vertical bands
+    # (cap, head, torso, hip, legs, feet) and offsets them per-frame to
+    # produce richer movement: breathing, stride sway, footfall lift,
+    # attack windup/recoil, cast levitation, hit stagger, dash lean.
+    # Band boundaries are expressed as fractions of sprite height so the
+    # same pose code works for humanoids and non-humanoids alike.
+    BAND_FRAC = (
+        0.00,  # cap (hair/helmet top)
+        0.16,  # head
+        0.34,  # torso
+        0.58,  # hip
+        0.82,  # legs
+        1.00,  # feet
+    )
 
     def _actor_pose_frame(
         self,
@@ -330,25 +389,19 @@ class PixelSpriteAtlas:
             )
             pygame.draw.ellipse(frame, (*glow_color, glow_alpha), glow_rect)
 
-        unit = self.SCALE
         width = sprite.get_width()
         height = sprite.get_height()
-        raw_w = max(1, width // unit)
-        raw_h = max(1, height // unit)
-        head_y = round(height * 0.34)
-        hip_y = round(height * 0.72)
-        foot_y = round(height * 0.88)
         base_x = side_pad
         base_y = top_pad
-        origin = (base_x, base_y)
         hand_light = self._shade(accent, 70)
 
+        # Band boundaries in pixels.
+        bands = [round(height * f) for f in self.BAND_FRAC]
+        # bands: [cap_end, head_end, torso_end, hip_end, legs_end, feet_end]
+        # Slice indices: 0..cap, cap..head, head..torso, torso..hip, hip..legs, legs..feet
+
         def blit_band(
-            y0: int,
-            y1: int,
-            dx: int = 0,
-            dy: int = 0,
-            alpha: int = 255,
+            y0: int, y1: int, dx: int = 0, dy: int = 0, alpha: int = 255
         ) -> None:
             if y1 <= y0:
                 return
@@ -363,81 +416,160 @@ class PixelSpriteAtlas:
 
         def blit_pose(
             *,
+            cap_dx: int = 0,
+            cap_dy: int = 0,
             head_dx: int = 0,
             head_dy: int = 0,
             torso_dx: int = 0,
             torso_dy: int = 0,
             hip_dx: int = 0,
             hip_dy: int = 0,
-            foot_dx: int = 0,
-            foot_dy: int = 0,
+            legs_dx: int = 0,
+            legs_dy: int = 0,
+            feet_dx: int = 0,
+            feet_dy: int = 0,
         ) -> None:
-            blit_band(0, head_y, head_dx, head_dy)
-            blit_band(head_y, hip_y, torso_dx, torso_dy)
-            blit_band(hip_y, foot_y, hip_dx, hip_dy)
-            blit_band(foot_y, height, foot_dx, foot_dy)
+            blit_band(0, bands[0], cap_dx, cap_dy)
+            blit_band(bands[0], bands[1], head_dx, head_dy)
+            blit_band(bands[1], bands[2], torso_dx, torso_dy)
+            blit_band(bands[2], bands[3], hip_dx, hip_dy)
+            blit_band(bands[3], bands[4], legs_dx, legs_dy)
+            blit_band(bands[4], height, feet_dx, feet_dy)
 
         if state == "idle":
-            breath = (0, -1, -1, 0)[index % 4]
-            blit_pose(torso_dy=breath, hip_dy=breath, foot_dy=breath)
+            # 6-frame breathing: chest expands/contracts, shoulders rise/fall,
+            # subtle head bob, feet planted.
+            breath = (0, -1, -2, -1, 0, 1)[index % 6]
+            chest = (0, 1, 2, 1, 0, -1)[index % 6]
+            blit_pose(
+                cap_dy=breath,
+                head_dy=round(breath * 0.7),
+                torso_dy=chest,
+                hip_dy=round(breath * 0.4),
+                legs_dy=round(breath * 0.15),
+            )
 
         elif state == "run":
-            body_shift = (-2, -1, 1, 2, 1, -1)[index % 6]
-            lower_shift = (3, 2, -1, -3, -2, 1)[index % 6]
-            lift = (0, -2, -3, 0, -2, -3)[index % 6]
+            # 12-frame run cycle: stride sway, footfall lift, counter-rotation
+            # between upper and lower body, head stabilizer. More frames than
+            # the old 8-frame cycle so motion reads smoothly at 60fps.
+            n = 12
+            i = index % n
+            stride = math.sin(i / n * math.tau)  # -1..1 forward/back sway
+            footfall = 0.5 - 0.5 * math.cos(i / n * math.tau)  # 0..1 lift pulse
+            counter = -stride
+            lift = round(footfall * 3.0)
             blit_pose(
-                head_dx=round(body_shift * 0.45),
-                torso_dx=body_shift,
-                hip_dx=round(lower_shift * 0.65),
-                hip_dy=round(lift * 0.45),
-                foot_dx=lower_shift,
-                foot_dy=lift,
+                cap_dx=round(stride * 0.5),
+                cap_dy=-round(footfall * 1.0),
+                head_dx=round(stride * 0.7),
+                head_dy=-round(footfall * 1.5),
+                torso_dx=round(stride * 1.2),
+                torso_dy=-round(footfall * 1.0),
+                hip_dx=round(counter * 1.0),
+                hip_dy=round(lift * 0.4),
+                legs_dx=round(counter * 1.6),
+                legs_dy=round(lift * 0.6),
+                feet_dx=round(stride * 2.2),
+                feet_dy=-lift,
             )
 
         elif state == "attack":
-            windup = (-2, 2, 4, 1)[index % 4]
-            recoil = (1, -1, -2, 0)[index % 4]
-            blit_pose(
-                head_dx=round(windup * 0.35),
-                torso_dx=windup,
-                torso_dy=-1 if index in (1, 2) else 0,
-                hip_dx=recoil,
-                foot_dx=-recoil,
-            )
+            # 6-frame: anticipation (lean back), strike (lunge forward),
+            # recovery (settle). Torso leads, hips trail, feet brace.
+            phase = (0, 1, 2, 3, 4, 5)[index % 6]
+            if phase <= 1:
+                # windup: lean back, raise weapon
+                wind = -2 - phase
+                blit_pose(
+                    cap_dx=round(wind * 0.4),
+                    head_dx=round(wind * 0.6),
+                    torso_dx=wind,
+                    torso_dy=-1,
+                    hip_dx=round(-wind * 0.3),
+                    feet_dx=round(-wind * 0.5),
+                )
+            elif phase <= 3:
+                # strike: lunge forward
+                strike = (phase - 1) * 3
+                blit_pose(
+                    cap_dx=round(strike * 0.5),
+                    head_dx=round(strike * 0.7),
+                    torso_dx=strike,
+                    torso_dy=1 if phase == 3 else 0,
+                    hip_dx=round(strike * 0.4),
+                    legs_dx=round(strike * 0.3),
+                    feet_dx=round(-strike * 0.2),
+                )
+            else:
+                # recovery: settle back
+                rec = 2 - (phase - 3)
+                blit_pose(
+                    cap_dx=round(rec * 0.4),
+                    head_dx=round(rec * 0.6),
+                    torso_dx=rec,
+                    hip_dx=round(-rec * 0.3),
+                    feet_dx=round(-rec * 0.4),
+                )
 
         elif state == "cast":
-            pulse = (0, -1, -2, -1)[index % 4]
-            blit_pose(head_dy=pulse, torso_dy=pulse, hip_dy=round(pulse * 0.45))
-            cast_lift = (0.0, -0.75, -1.25, -0.55)[index % 4]
-
+            # 6-frame: levitate, arms raise, hands glow. Whole body rises
+            # smoothly; cap/head lift most, feet barely leave ground.
+            n = 6
+            i = index % n
+            lev = (0, -1, -2, -3, -2, -1)[i]
+            pulse = (0.0, -0.5, -1.0, -1.25, -0.75, -0.25)[i]
+            blit_pose(
+                cap_dy=lev,
+                head_dy=round(lev * 0.9),
+                torso_dy=round(lev * 0.7),
+                hip_dy=round(lev * 0.4),
+                legs_dy=round(lev * 0.15),
+                feet_dy=round(lev * 0.05),
+            )
+            raw_w = max(1, width // self.ACTOR_SCALE)
+            raw_h = max(1, height // self.ACTOR_SCALE)
             self._draw_scaled_rect(
                 frame,
-                origin,
+                (base_x, base_y),
                 raw_w * 0.36,
-                raw_h * 0.36 + cast_lift,
+                raw_h * 0.30 + pulse,
                 5.2,
-                0.45,
+                0.55,
                 hand_light,
-                82,
+                90,
             )
+
         elif state == "hit":
-            recoil = (-3, 2, 0)[index % 3]
+            # 4-frame stagger: recoil backward, head whips, torso follows,
+            # feet brace against the blow.
+            recoil = (-4, 3, 1, 0)[index % 4]
             blit_pose(
-                head_dx=round(recoil * 0.65),
+                cap_dx=round(recoil * 0.7),
+                cap_dy=1 if index % 4 == 0 else 0,
+                head_dx=round(recoil * 0.9),
+                head_dy=1 if index % 4 == 0 else 0,
                 torso_dx=recoil,
-                hip_dx=round(recoil * 0.45),
-                foot_dx=round(-recoil * 0.25),
+                hip_dx=round(recoil * 0.5),
+                legs_dx=round(-recoil * 0.3),
+                feet_dx=round(-recoil * 0.2),
             )
 
         elif state == "dash":
-            dash_shift = (4, 6, 2)[index % 3]
+            # 4-frame: strong forward lean, body stretches, feet kick back.
+            lean = (3, 5, 4, 2)[index % 4]
             blit_pose(
-                head_dx=round(dash_shift * 0.45),
-                torso_dx=dash_shift,
-                hip_dx=round(dash_shift * 0.70),
-                foot_dx=round(dash_shift * 0.90),
+                cap_dx=round(lean * 0.6),
+                cap_dy=-1,
+                head_dx=round(lean * 0.8),
+                head_dy=-1,
+                torso_dx=lean,
                 torso_dy=-1,
+                hip_dx=round(lean * 0.7),
                 hip_dy=-1,
+                legs_dx=round(lean * 0.5),
+                feet_dx=round(-lean * 0.4),
+                feet_dy=1,
             )
 
         else:
@@ -463,11 +595,11 @@ class PixelSpriteAtlas:
         return {
             "idle": [
                 self._actor_pose_frame(sprite, accent, "idle", frame, hostile=hostile)
-                for frame in range(4)
+                for frame in range(6)
             ],
             "run": [
                 self._actor_pose_frame(sprite, accent, "run", frame, hostile=hostile)
-                for frame in range(6)
+                for frame in range(12)
             ],
             "attack": [
                 self._actor_pose_frame(
@@ -476,9 +608,9 @@ class PixelSpriteAtlas:
                     "attack",
                     frame,
                     hostile=hostile,
-                    tint=(accent, 10 + frame * 6),
+                    tint=(accent, 8 + frame * 5),
                 )
-                for frame in range(4)
+                for frame in range(6)
             ],
             "cast": [
                 self._actor_pose_frame(
@@ -489,10 +621,10 @@ class PixelSpriteAtlas:
                     hostile=hostile,
                     top_pad=cast_top_pad,
                     side_pad=cast_side_pad,
-                    tint=(cast_glow, (18, 34, 46, 22)[frame]),
-                    glow=(cast_glow, (34, 56, 76, 42)[frame]),
+                    tint=(cast_glow, (16, 30, 42, 22, 16, 8)[frame]),
+                    glow=(cast_glow, (30, 50, 70, 90, 60, 36)[frame]),
                 )
-                for frame in range(4)
+                for frame in range(6)
             ],
             "hit": [
                 self._actor_pose_frame(
@@ -501,9 +633,9 @@ class PixelSpriteAtlas:
                     "hit",
                     frame,
                     hostile=hostile,
-                    tint=(hit_color, (72, 48, 26)[frame]),
+                    tint=(hit_color, (80, 56, 30, 14)[frame]),
                 )
-                for frame in range(3)
+                for frame in range(4)
             ],
             "dash": [
                 self._actor_pose_frame(
@@ -512,9 +644,9 @@ class PixelSpriteAtlas:
                     "dash",
                     frame,
                     hostile=hostile,
-                    tint=(accent, (34, 44, 25)[frame]),
+                    tint=(accent, (30, 40, 24, 16)[frame]),
                 )
-                for frame in range(3)
+                for frame in range(4)
             ],
         }
 
@@ -522,8 +654,10 @@ class PixelSpriteAtlas:
         return [
             self._frame_surface(sprite, stretch=1.0),
             self._frame_surface(sprite, stretch=1.04, tilt=-2.0),
-            self._frame_surface(sprite, stretch=1.0),
+            self._frame_surface(sprite, stretch=1.02, tilt=1.0),
             self._frame_surface(sprite, stretch=0.98, tilt=2.0),
+            self._frame_surface(sprite, stretch=1.0, tilt=-1.0),
+            self._frame_surface(sprite, stretch=1.03, tilt=1.5),
         ]
 
     def _projectile_animation_frames(
@@ -531,19 +665,22 @@ class PixelSpriteAtlas:
     ) -> list[pygame.Surface]:
         return [
             self._frame_surface(sprite, stretch=1.0),
-            self._frame_surface(sprite, stretch=1.04, tint=((120, 220, 255), 28)),
-            self._frame_surface(sprite, stretch=0.98),
+            self._frame_surface(sprite, stretch=1.06, tint=((120, 220, 255), 32)),
+            self._frame_surface(sprite, stretch=0.96),
+            self._frame_surface(sprite, stretch=1.04, tint=((180, 240, 255), 20)),
         ]
 
     def _prop_animation_frames(
         self, sprite: pygame.Surface, glow: Color | None = None
     ) -> list[pygame.Surface]:
-        glow_data = (glow, 34) if glow is not None else None
+        glow_data = (glow, 36) if glow is not None else None
         return [
             self._frame_surface(sprite, stretch=1.0, glow=glow_data),
             self._frame_surface(sprite, stretch=1.02, tilt=-1.5, glow=glow_data),
             self._frame_surface(sprite, stretch=1.0, glow=glow_data),
-            self._frame_surface(sprite, stretch=0.99, tilt=1.5, glow=glow_data),
+            self._frame_surface(sprite, stretch=1.01, tilt=1.0, glow=glow_data),
+            self._frame_surface(sprite, stretch=0.99, tilt=-1.0, glow=glow_data),
+            self._frame_surface(sprite, stretch=1.02, tilt=1.5, glow=glow_data),
         ]
 
     def _frame_from(
@@ -636,6 +773,9 @@ class PixelSpriteAtlas:
             self.shopkeeper_animation_frames["idle"], elapsed, rate=3.0
         )
 
+    # ------------------------------------------------------------------
+    # Color helpers
+    # ------------------------------------------------------------------
     def _shade(self, color: Color, amount: int) -> Color:
         return (
             max(0, min(255, color[0] + amount)),
@@ -650,6 +790,11 @@ class PixelSpriteAtlas:
             int(a[2] * (1.0 - ratio) + b[2] * ratio),
         )
 
+    # ------------------------------------------------------------------
+    # Detailed humanoid base
+    # ------------------------------------------------------------------
+    # Authored at 26x34 (vs the old 18x24). The extra pixels buy rim light,
+    # armor plate shading, eye glow, belt/strap detail, and boot definition.
     def _humanoid_base(
         self,
         head: Color,
@@ -660,82 +805,133 @@ class PixelSpriteAtlas:
         eye: Color,
         weapon: Color | None = None,
     ) -> pygame.Surface:
-        s = self._surface(18, 24)
+        s = self._surface(self.RAW_ACTOR_W, self.RAW_ACTOR_H)
         leather = (70, 48, 40)
         shadow = (38, 30, 36)
-        self._rect(s, 5, 2, 8, 7, outline)
-        self._rect(s, 6, 3, 6, 6, head)
-        self._rect(s, 6, 5, 1, 1, eye)
-        self._rect(s, 11, 5, 1, 1, eye)
-        self._rect(s, 7, 7, 4, 1, shadow)
-        self._rect(s, 2, 10, 4, 8, outline)
-        self._rect(s, 12, 10, 4, 8, outline)
-        self._rect(s, 3, 11, 3, 6, self._shade(body, -22))
-        self._rect(s, 12, 11, 3, 6, self._shade(body, -28))
-        self._rect(s, 3, 16, 2, 3, trim)
-        self._rect(s, 13, 16, 2, 3, trim)
-        self._rect(s, 3, 18, 2, 2, head)
-        self._rect(s, 13, 18, 2, 2, self._shade(head, -12))
-        self._rect(s, 4, 19, 1, 1, self._shade(head, 20))
-        self._rect(s, 13, 19, 1, 1, self._shade(head, 10))
-        self._rect(s, 3, 9, 12, 10, outline)
-        self._rect(s, 5, 9, 8, 10, body)
-        self._rect(s, 7, 10, 4, 7, body_hi)
-        self._rect(s, 4, 11, 2, 6, trim)
-        self._rect(s, 12, 11, 2, 6, trim)
-        self._rect(s, 5, 19, 3, 3, leather)
-        self._rect(s, 10, 19, 3, 3, leather)
-        self._rect(s, 4, 22, 4, 2, outline)
-        self._rect(s, 10, 22, 4, 2, outline)
-        self._rect(s, 5, 10, 8, 1, trim)
-        self._rect(s, 6, 16, 6, 1, trim)
-        self._dot(s, 8, 13, (235, 210, 120))
-        self._dot(s, 9, 13, (235, 210, 120))
-        self._dot(s, 7, 4, self._shade(head, 22))
-        self._rect(s, 8, 6, 2, 1, self._shade(head, -26))
-        self._rect(s, 4, 9, 3, 2, self._shade(trim, -24))
-        self._rect(s, 11, 9, 3, 2, self._shade(trim, -24))
-        self._rect(s, 5, 11, 1, 5, self._shade(body, -34))
-        self._rect(s, 12, 11, 1, 5, self._shade(body, -34))
-        self._rect(s, 7, 11, 1, 5, self._shade(body_hi, 28))
-        self._rect(s, 10, 11, 1, 5, self._shade(body, -18))
-        self._rect(s, 6, 18, 6, 1, self._shade(trim, -18))
-        self._rect(s, 5, 20, 3, 1, self._shade(leather, 28))
-        self._rect(s, 10, 20, 3, 1, self._shade(leather, 18))
-        self._rect(s, 4, 23, 3, 1, self._shade(outline, 28))
-        self._rect(s, 11, 23, 3, 1, self._shade(outline, 28))
+        body_lo = self._shade(body, -34)
+        body_dk = self._shade(body, -52)
+        head_hi = self._shade(head, 26)
+        head_lo = self._shade(head, -22)
+        trim_hi = self._shade(trim, 30)
+        trim_lo = self._shade(trim, -28)
+
+        # --- Head/helmet block ---
+        self._rect(s, 8, 2, 10, 9, outline)
+        self._rect(s, 9, 3, 8, 8, head)
+        self._rect(s, 9, 3, 8, 1, head_hi)  # helmet rim light
+        self._rect(s, 9, 10, 8, 1, head_lo)  # jaw shadow
+        # eyes (glowing)
+        self._rect(s, 10, 6, 2, 1, eye)
+        self._rect(s, 14, 6, 2, 1, eye)
+        self._dot(s, 10, 6, self._shade(eye, 60))
+        self._dot(s, 14, 6, self._shade(eye, 60))
+        # brow shadow
+        self._hline(s, 9, 5, 8, shadow)
+        # nose/mouth hint
+        self._vline(s, 12, 8, 2, head_lo)
+
+        # --- Torso (chest plate) ---
+        self._rect(s, 6, 11, 14, 12, outline)
+        self._rect(s, 7, 11, 12, 12, body)
+        self._rect(s, 8, 12, 10, 10, body_hi)  # lit chest
+        self._rect(s, 7, 11, 12, 1, trim_hi)  # shoulder yoke
+        self._rect(s, 7, 22, 12, 1, trim_lo)  # belt line
+        # center seam / sternum
+        self._vline(s, 12, 12, 10, body_lo)
+        # side shading
+        self._vline(s, 7, 12, 10, body_dk)
+        self._vline(s, 18, 12, 10, body_dk)
+        # strap detail
+        self._vline(s, 10, 12, 10, trim)
+        self._vline(s, 15, 12, 10, trim_lo)
+        # chest emblem dot
+        self._dot(s, 12, 16, trim_hi)
+        self._dot(s, 13, 16, trim_hi)
+
+        # --- Arms (upper, along torso sides) ---
+        self._rect(s, 4, 12, 3, 9, outline)
+        self._rect(s, 19, 12, 3, 9, outline)
+        self._rect(s, 5, 12, 2, 9, body_lo)
+        self._rect(s, 19, 12, 2, 9, body_dk)
+        # gauntlet cuffs
+        self._rect(s, 4, 19, 3, 2, trim)
+        self._rect(s, 19, 19, 3, 2, trim_lo)
+        # hands
+        self._rect(s, 5, 21, 2, 2, head)
+        self._rect(s, 19, 21, 2, 2, head_lo)
+
+        # --- Hips / belt ---
+        self._rect(s, 7, 23, 12, 3, outline)
+        self._rect(s, 8, 23, 10, 3, leather)
+        self._rect(s, 8, 23, 10, 1, self._shade(leather, 28))
+        self._rect(s, 12, 23, 2, 3, trim_hi)  # buckle
+
+        # --- Legs ---
+        self._rect(s, 7, 26, 4, 6, outline)
+        self._rect(s, 15, 26, 4, 6, outline)
+        self._rect(s, 8, 26, 3, 6, body_lo)
+        self._rect(s, 15, 26, 3, 6, body_dk)
+        # knee plate
+        self._rect(s, 8, 28, 3, 1, trim)
+        self._rect(s, 15, 28, 3, 1, trim_lo)
+
+        # --- Boots ---
+        self._rect(s, 7, 32, 5, 2, outline)
+        self._rect(s, 14, 32, 5, 2, outline)
+        self._rect(s, 8, 32, 4, 2, leather)
+        self._rect(s, 15, 32, 4, 2, self._shade(leather, -12))
+        self._hline(s, 8, 33, 4, self._shade(leather, 24))
+        self._hline(s, 15, 33, 4, self._shade(leather, 12))
+
+        # --- Cape/cloak hint behind shoulders ---
+        self._rect(s, 5, 11, 2, 10, self._shade(outline, 18))
+        self._rect(s, 19, 11, 2, 10, self._shade(outline, 8))
+
         if weapon:
-            self._rect(s, 14, 7, 1, 11, weapon)
-            self._rect(s, 15, 5, 1, 4, weapon)
-            self._rect(s, 13, 15, 3, 1, weapon)
+            # sword held in right hand, pointing up
+            self._vline(s, 21, 6, 14, weapon)
+            self._vline(s, 22, 6, 14, self._shade(weapon, 30))
+            self._hline(s, 20, 19, 4, self._shade(weapon, -20))  # crossguard
+            self._dot(s, 21, 5, self._shade(weapon, 60))  # pommel
         return s
 
+    # ------------------------------------------------------------------
+    # Player archetypes
+    # ------------------------------------------------------------------
     def _warden(self) -> pygame.Surface:
         s = self._humanoid_base(
-            (215, 158, 105),
-            (45, 93, 164),
-            (76, 140, 220),
-            (154, 168, 178),
+            (215, 158, 105),  # head/helmet bronze
+            (45, 93, 164),  # body blue
+            (76, 140, 220),  # body_hi
+            (154, 168, 178),  # trim steel
             (19, 24, 35),
             (40, 35, 32),
-            (220, 226, 218),
+            (220, 226, 218),  # weapon silver
         )
-        self._rect(s, 6, 2, 6, 2, (62, 43, 35))
-        self._rect(s, 5, 10, 8, 1, (108, 82, 50))
-        self._rect(s, 4, 15, 10, 1, (30, 58, 116))
-        self._rect(s, 6, 16, 6, 1, (235, 205, 112))
-        self._rect(s, 1, 11, 5, 8, (35, 43, 56))
-        self._rect(s, 2, 12, 4, 6, (96, 104, 112))
-        self._rect(s, 3, 13, 2, 4, (220, 226, 218))
-        self._dot(s, 3, 12, (245, 238, 180))
-        self._rect(s, 6, 1, 6, 1, (112, 122, 132))
-        self._rect(s, 7, 2, 4, 1, (216, 226, 222))
-        self._rect(s, 4, 8, 3, 1, (235, 205, 112))
-        self._rect(s, 11, 8, 3, 1, (235, 205, 112))
-        self._rect(s, 2, 10, 4, 1, (148, 156, 160))
-        self._rect(s, 2, 16, 4, 1, (54, 64, 78))
-        self._rect(s, 14, 6, 1, 10, (128, 141, 148))
-        self._rect(s, 15, 4, 1, 3, (248, 252, 242))
+        # Warden flourishes: full helm visor, shield on left arm, gold trim
+        steel = (154, 168, 178)
+        steel_hi = (205, 214, 220)
+        gold = (235, 205, 112)
+        blue = (30, 58, 116)
+        # visor slit
+        self._hline(s, 10, 6, 6, (12, 14, 20))
+        # shield on left arm
+        self._rect(s, 2, 14, 4, 8, (35, 43, 56))
+        self._rect(s, 3, 15, 3, 6, steel)
+        self._rect(s, 3, 15, 3, 1, steel_hi)
+        self._rect(s, 4, 17, 1, 3, gold)
+        self._dot(s, 4, 16, gold)
+        # shoulder pauldrons
+        self._rect(s, 5, 11, 3, 2, steel)
+        self._rect(s, 18, 11, 3, 2, self._shade(steel, -20))
+        self._dot(s, 6, 11, steel_hi)
+        self._dot(s, 19, 11, steel)
+        # gold belt buckle
+        self._rect(s, 12, 23, 2, 2, gold)
+        # blue tabard
+        self._rect(s, 9, 12, 6, 11, blue)
+        self._vline(s, 11, 12, 11, self._shade(blue, 30))
+        self._hline(s, 9, 22, 6, gold)
         return s
 
     def _rogue_player(self) -> pygame.Surface:
@@ -746,27 +942,29 @@ class PixelSpriteAtlas:
             (92, 170, 118),
             (17, 20, 22),
             (210, 245, 185),
+            (205, 210, 198),
         )
-        self._rect(s, 5, 2, 8, 3, (35, 38, 42))
-        self._rect(s, 4, 5, 10, 2, (24, 26, 30))
-        self._rect(s, 3, 9, 2, 8, (24, 26, 30))
-        self._rect(s, 13, 9, 2, 8, (24, 26, 30))
-        self._rect(s, 2, 11, 4, 2, (80, 94, 88))
-        self._rect(s, 12, 11, 4, 2, (80, 94, 88))
-        self._rect(s, 2, 14, 4, 1, (205, 210, 198))
-        self._rect(s, 12, 14, 4, 1, (205, 210, 198))
-        self._rect(s, 6, 16, 6, 1, (92, 170, 118))
-        self._dot(s, 8, 12, (235, 215, 130))
-        self._dot(s, 11, 12, (210, 245, 185))
-        self._rect(s, 6, 3, 6, 1, (58, 62, 66))
-        self._rect(s, 7, 4, 4, 1, (18, 20, 24))
-        self._rect(s, 5, 17, 8, 2, (28, 32, 32))
-        self._rect(s, 4, 18, 3, 1, (92, 170, 118))
-        self._rect(s, 11, 18, 3, 1, (92, 170, 118))
-        self._rect(s, 2, 13, 4, 1, (232, 232, 216))
-        self._rect(s, 12, 13, 4, 1, (232, 232, 216))
-        self._dot(s, 4, 12, (170, 230, 150))
-        self._dot(s, 13, 12, (170, 230, 150))
+        dark = (24, 26, 30)
+        green = (92, 170, 118)
+        # hood cowl
+        self._rect(s, 8, 2, 10, 4, dark)
+        self._rect(s, 9, 3, 8, 2, (35, 38, 42))
+        self._hline(s, 9, 5, 8, green)
+        # mask band
+        self._hline(s, 9, 7, 8, dark)
+        # dagger sheaths
+        self._vline(s, 4, 14, 6, (116, 74, 39))
+        self._vline(s, 21, 14, 6, (116, 74, 39))
+        self._dot(s, 4, 13, (205, 210, 198))
+        self._dot(s, 21, 13, (205, 210, 198))
+        # leather straps across chest
+        self._hline(s, 7, 14, 12, (58, 62, 66))
+        self._hline(s, 7, 18, 12, (58, 62, 66))
+        # green sash
+        self._hline(s, 7, 23, 12, green)
+        # belt pouches
+        self._rect(s, 9, 24, 2, 2, (58, 62, 66))
+        self._rect(s, 15, 24, 2, 2, (58, 62, 66))
         return s
 
     def _arcanist_player(self) -> pygame.Surface:
@@ -779,22 +977,31 @@ class PixelSpriteAtlas:
             (170, 235, 255),
             (116, 220, 245),
         )
-        self._rect(s, 4, 2, 10, 2, (52, 42, 130))
-        self._rect(s, 5, 1, 8, 1, (116, 220, 245))
-        self._rect(s, 15, 6, 1, 12, (88, 62, 138))
-        self._rect(s, 14, 5, 3, 2, (116, 220, 245))
-        self._dot(s, 16, 4, (240, 255, 255))
-        self._rect(s, 7, 13, 4, 4, (92, 125, 230))
-        self._dot(s, 9, 14, (240, 255, 255))
-        self._dot(s, 4, 10, (92, 210, 250))
-        self._dot(s, 13, 17, (92, 210, 250))
-        self._rect(s, 4, 18, 10, 1, (32, 36, 92))
-        self._rect(s, 6, 11, 1, 4, (116, 220, 245))
-        self._rect(s, 11, 11, 1, 4, (80, 170, 230))
-        self._dot(s, 8, 16, (170, 235, 255))
-        self._dot(s, 10, 16, (170, 235, 255))
-        self._rect(s, 14, 4, 3, 1, (240, 255, 255))
-        self._dot(s, 15, 8, (170, 235, 255))
+        arcane = (116, 220, 245)
+        arcane_hi = (200, 245, 255)
+        dark = (32, 36, 92)
+        # pointed hat
+        self._rect(s, 9, 0, 8, 3, dark)
+        self._rect(s, 10, 0, 6, 2, arcane)
+        self._dot(s, 13, 0, arcane_hi)
+        # hat brim
+        self._hline(s, 7, 3, 12, dark)
+        # robe lower (longer than base legs)
+        self._rect(s, 6, 26, 14, 6, dark)
+        self._rect(s, 7, 26, 12, 6, (52, 42, 130))
+        self._vline(s, 12, 26, 6, arcane)
+        # glowing runes on robe
+        self._dot(s, 9, 28, arcane_hi)
+        self._dot(s, 15, 28, arcane_hi)
+        self._dot(s, 12, 30, arcane_hi)
+        # staff with crystal
+        self._vline(s, 22, 4, 26, (88, 62, 138))
+        self._rect(s, 21, 2, 4, 3, arcane)
+        self._dot(s, 22, 2, arcane_hi)
+        self._dot(s, 23, 3, arcane_hi)
+        # arcane orb in left hand
+        self._dot(s, 5, 21, arcane_hi)
+        self._dot(s, 6, 22, arcane)
         return s
 
     def _acolyte_player(self) -> pygame.Surface:
@@ -807,22 +1014,29 @@ class PixelSpriteAtlas:
             (255, 160, 190),
             (210, 84, 116),
         )
-        self._rect(s, 5, 2, 8, 3, (42, 18, 34))
-        self._rect(s, 6, 3, 6, 1, (210, 84, 116))
-        self._rect(s, 3, 15, 12, 2, (48, 18, 34))
-        self._rect(s, 8, 11, 2, 5, (235, 195, 150))
-        self._rect(s, 8, 10, 2, 1, (210, 84, 116))
-        self._rect(s, 14, 8, 1, 10, (120, 74, 52))
-        self._rect(s, 13, 7, 3, 2, (210, 84, 116))
-        self._rect(s, 13, 15, 3, 3, (62, 26, 38))
-        self._dot(s, 15, 6, (255, 190, 210))
-        self._dot(s, 14, 16, (255, 95, 130))
-        self._rect(s, 4, 17, 10, 2, (62, 20, 38))
-        self._rect(s, 6, 18, 2, 1, (210, 84, 116))
-        self._rect(s, 10, 18, 2, 1, (210, 84, 116))
-        self._rect(s, 7, 12, 4, 1, (255, 196, 150))
-        self._dot(s, 7, 14, (255, 95, 130))
-        self._rect(s, 13, 13, 3, 1, (184, 74, 94))
+        blood = (210, 84, 116)
+        blood_hi = (255, 95, 130)
+        dark = (42, 18, 34)
+        # hood
+        self._rect(s, 8, 2, 10, 4, dark)
+        self._rect(s, 9, 3, 8, 2, (62, 26, 38))
+        self._hline(s, 9, 5, 8, blood)
+        # face markings (blood streak)
+        self._vline(s, 12, 6, 4, blood_hi)
+        # robe lower
+        self._rect(s, 6, 26, 14, 6, dark)
+        self._rect(s, 7, 26, 12, 6, (62, 26, 38))
+        self._vline(s, 12, 26, 6, blood)
+        # sacrificial dagger
+        self._vline(s, 21, 12, 10, (120, 74, 52))
+        self._dot(s, 21, 11, blood_hi)
+        # blood chalice in left hand
+        self._rect(s, 4, 20, 3, 3, (120, 74, 52))
+        self._dot(s, 5, 21, blood_hi)
+        # bone rosary
+        self._dot(s, 9, 14, (235, 225, 200))
+        self._dot(s, 11, 15, (235, 225, 200))
+        self._dot(s, 13, 14, (235, 225, 200))
         return s
 
     def _ranger_player(self) -> pygame.Surface:
@@ -833,26 +1047,32 @@ class PixelSpriteAtlas:
             (176, 138, 70),
             (20, 28, 22),
             (225, 240, 175),
+            (216, 226, 222),
         )
-        self._rect(s, 5, 2, 8, 2, (70, 50, 34))
-        self._rect(s, 4, 4, 10, 1, (94, 68, 40))
-        self._rect(s, 14, 5, 1, 14, (116, 74, 39))
-        self._rect(s, 15, 6, 1, 2, (216, 226, 222))
-        self._rect(s, 15, 16, 1, 2, (216, 226, 222))
-        self._rect(s, 3, 12, 3, 1, (116, 74, 39))
-        self._rect(s, 11, 12, 4, 1, (116, 74, 39))
-        self._rect(s, 7, 16, 4, 1, (176, 138, 70))
-        self._rect(s, 2, 8, 1, 6, (68, 44, 28))
-        self._dot(s, 12, 11, (225, 240, 175))
-        self._rect(s, 4, 3, 10, 1, (116, 90, 48))
-        self._rect(s, 15, 8, 1, 7, (230, 226, 190))
-        self._rect(s, 13, 4, 2, 7, (52, 64, 38))
-        self._rect(s, 12, 5, 1, 1, (225, 240, 175))
-        self._rect(s, 5, 15, 3, 1, (176, 138, 70))
-        self._rect(s, 10, 15, 3, 1, (176, 138, 70))
-        self._dot(s, 3, 7, (150, 215, 105))
+        leather = (116, 74, 39)
+        green = (88, 145, 72)
+        # hood
+        self._rect(s, 8, 2, 10, 4, (70, 50, 34))
+        self._rect(s, 9, 3, 8, 2, (94, 68, 40))
+        self._hline(s, 9, 5, 8, green)
+        # quiver on back
+        self._rect(s, 4, 12, 3, 6, leather)
+        self._vline(s, 5, 10, 4, (216, 226, 222))
+        self._vline(s, 6, 10, 4, (216, 226, 222))
+        # bow in right hand
+        self._vline(s, 22, 6, 16, leather)
+        self._vline(s, 23, 8, 12, (216, 226, 222))  # bowstring
+        # leather chest straps
+        self._hline(s, 7, 15, 12, leather)
+        self._hline(s, 7, 19, 12, leather)
+        # boot toe caps
+        self._hline(s, 7, 33, 3, leather)
+        self._hline(s, 16, 33, 3, leather)
         return s
 
+    # ------------------------------------------------------------------
+    # Enemies
+    # ------------------------------------------------------------------
     def _ghoul(self) -> pygame.Surface:
         s = self._humanoid_base(
             (118, 154, 94),
@@ -862,18 +1082,29 @@ class PixelSpriteAtlas:
             (31, 20, 22),
             (238, 226, 126),
         )
-        self._rect(s, 2, 17, 2, 1, (202, 202, 162))
-        self._rect(s, 14, 17, 2, 1, (202, 202, 162))
-        self._rect(s, 7, 16, 1, 2, (56, 35, 38))
-        self._rect(s, 10, 16, 1, 2, (56, 35, 38))
-        self._dot(s, 12, 10, (95, 54, 59))
-        self._dot(s, 5, 6, (205, 236, 116))
-        self._rect(s, 6, 11, 1, 5, (78, 112, 70))
-        self._rect(s, 11, 11, 1, 5, (78, 112, 70))
-        self._rect(s, 4, 16, 3, 1, (202, 202, 162))
-        self._rect(s, 12, 16, 3, 1, (202, 202, 162))
-        self._dot(s, 7, 12, (205, 236, 116))
-        self._dot(s, 10, 14, (95, 54, 59))
+        flesh = (161, 189, 116)
+        flesh_lo = (78, 112, 70)
+        blood = (95, 54, 59)
+        # tattered hood
+        self._rect(s, 8, 2, 10, 3, flesh_lo)
+        # sunken eyes (bigger, glowing)
+        self._rect(s, 10, 6, 2, 1, (238, 226, 126))
+        self._rect(s, 14, 6, 2, 1, (238, 226, 126))
+        # jagged mouth
+        self._hline(s, 10, 9, 6, blood)
+        self._vline(s, 11, 9, 1, flesh)
+        self._vline(s, 13, 9, 1, flesh)
+        self._vline(s, 15, 9, 1, flesh)
+        # exposed ribs
+        self._vline(s, 9, 14, 5, flesh_lo)
+        self._vline(s, 12, 14, 5, flesh_lo)
+        self._vline(s, 15, 14, 5, flesh_lo)
+        # clawed hands
+        self._vline(s, 4, 22, 2, blood)
+        self._vline(s, 21, 22, 2, blood)
+        # bloody feet
+        self._hline(s, 7, 33, 4, blood)
+        self._hline(s, 15, 33, 4, blood)
         return s
 
     def _cultist(self) -> pygame.Surface:
@@ -886,17 +1117,27 @@ class PixelSpriteAtlas:
             (255, 190, 255),
             (205, 79, 230),
         )
-        self._rect(s, 5, 4, 1, 4, (54, 31, 92))
-        self._rect(s, 12, 4, 1, 4, (42, 25, 70))
-        self._rect(s, 5, 18, 8, 2, (42, 25, 70))
-        self._dot(s, 15, 8, (255, 220, 255))
-        self._dot(s, 13, 9, (255, 220, 255))
-        self._rect(s, 6, 2, 6, 1, (184, 138, 218))
-        self._rect(s, 7, 6, 4, 1, (22, 18, 33))
-        self._rect(s, 4, 17, 10, 2, (38, 28, 54))
-        self._dot(s, 8, 13, (255, 190, 255))
-        self._dot(s, 10, 13, (205, 79, 230))
-        self._rect(s, 14, 12, 2, 1, (255, 190, 255))
+        purple = (205, 79, 230)
+        purple_hi = (255, 190, 255)
+        dark = (22, 18, 33)
+        # hood
+        self._rect(s, 8, 2, 10, 5, dark)
+        self._rect(s, 9, 3, 8, 3, (42, 25, 70))
+        self._hline(s, 9, 5, 8, purple)
+        # glowing eyes
+        self._dot(s, 11, 6, purple_hi)
+        self._dot(s, 15, 6, purple_hi)
+        # robe lower
+        self._rect(s, 6, 26, 14, 6, dark)
+        self._rect(s, 7, 26, 12, 6, (42, 25, 70))
+        self._vline(s, 12, 26, 6, purple)
+        # sigil on chest
+        self._dot(s, 12, 16, purple_hi)
+        self._dot(s, 11, 17, purple)
+        self._dot(s, 13, 17, purple)
+        # dagger
+        self._vline(s, 21, 12, 8, (120, 74, 52))
+        self._dot(s, 21, 11, purple_hi)
         return s
 
     def _bone_imp(self) -> pygame.Surface:
@@ -909,86 +1150,140 @@ class PixelSpriteAtlas:
             (120, 245, 255),
             (210, 160, 230),
         )
-        self._rect(s, 4, 2, 2, 3, (214, 202, 176))
-        self._rect(s, 12, 2, 2, 3, (214, 202, 176))
-        self._rect(s, 6, 8, 6, 1, (62, 42, 76))
-        self._rect(s, 2, 10, 3, 2, (96, 60, 118))
-        self._rect(s, 13, 10, 3, 2, (96, 60, 118))
-        self._rect(s, 2, 6, 2, 2, (94, 60, 122))
-        self._rect(s, 14, 6, 2, 2, (94, 60, 122))
-        self._rect(s, 3, 5, 2, 1, (214, 202, 176))
-        self._rect(s, 13, 5, 2, 1, (214, 202, 176))
-        self._dot(s, 7, 12, (120, 245, 255))
-        self._dot(s, 10, 12, (120, 245, 255))
-        self._rect(s, 4, 18, 3, 1, (64, 42, 76))
-        self._rect(s, 11, 18, 3, 1, (64, 42, 76))
+        bone = (214, 202, 176)
+        bone_lo = (160, 148, 124)
+        purple = (190, 130, 215)
+        glow = (120, 245, 255)
+        # horned skull
+        self._rect(s, 7, 0, 3, 3, bone)
+        self._rect(s, 16, 0, 3, 3, bone)
+        self._dot(s, 8, 0, bone_lo)
+        self._dot(s, 17, 0, bone_lo)
+        # eye sockets (deep glow)
+        self._rect(s, 10, 5, 2, 2, (30, 22, 36))
+        self._rect(s, 14, 5, 2, 2, (30, 22, 36))
+        self._dot(s, 10, 5, glow)
+        self._dot(s, 14, 5, glow)
+        # rib cage
+        self._hline(s, 8, 14, 10, bone_lo)
+        self._hline(s, 8, 17, 10, bone_lo)
+        self._hline(s, 8, 20, 10, bone_lo)
+        self._vline(s, 12, 13, 9, bone)
+        # bony claws
+        self._vline(s, 4, 21, 3, bone)
+        self._vline(s, 21, 21, 3, bone)
+        # spiky tail
+        self._vline(s, 22, 24, 6, purple)
+        self._dot(s, 22, 30, glow)
         return s
 
     def _crypt_brute(self) -> pygame.Surface:
-        s = self._surface(21, 25)
+        s = self._surface(30, 36)
         outline = (29, 23, 22)
         hide = (155, 105, 74)
         hide_hi = (198, 143, 94)
+        hide_lo = (98, 66, 52)
         iron = (126, 132, 128)
+        iron_hi = (170, 176, 172)
         dark = (58, 46, 43)
         eye = (250, 110, 70)
-        self._rect(s, 5, 2, 10, 7, outline)
-        self._rect(s, 6, 3, 8, 6, hide)
-        self._rect(s, 7, 5, 2, 1, eye)
-        self._rect(s, 12, 5, 2, 1, eye)
-        self._rect(s, 2, 9, 17, 10, outline)
-        self._rect(s, 4, 9, 13, 10, hide)
-        self._rect(s, 7, 10, 7, 6, hide_hi)
-        self._rect(s, 3, 11, 4, 7, iron)
-        self._rect(s, 14, 11, 4, 7, iron)
-        self._rect(s, 6, 19, 4, 4, dark)
-        self._rect(s, 11, 19, 4, 4, dark)
-        self._rect(s, 5, 23, 5, 2, outline)
-        self._rect(s, 11, 23, 5, 2, outline)
-        self._rect(s, 7, 13, 7, 1, (98, 66, 52))
-        self._rect(s, 9, 15, 3, 2, iron)
-        self._rect(s, 1, 12, 2, 4, (98, 66, 52))
-        self._rect(s, 18, 12, 2, 4, (98, 66, 52))
-        self._rect(s, 6, 2, 9, 1, (92, 62, 48))
-        self._rect(s, 5, 8, 11, 1, (78, 52, 42))
-        self._rect(s, 6, 11, 2, 6, iron)
-        self._rect(s, 13, 11, 2, 6, self._shade(iron, -28))
-        self._rect(s, 8, 17, 5, 1, (216, 166, 112))
-        self._dot(s, 10, 12, (238, 190, 128))
-        self._dot(s, 12, 15, eye)
+        # massive head
+        self._rect(s, 8, 2, 14, 10, outline)
+        self._rect(s, 9, 3, 12, 9, hide)
+        self._rect(s, 9, 3, 12, 1, hide_hi)
+        # horns
+        self._rect(s, 6, 0, 3, 4, dark)
+        self._rect(s, 21, 0, 3, 4, dark)
+        self._dot(s, 7, 0, hide_lo)
+        self._dot(s, 22, 0, hide_lo)
+        # eyes
+        self._rect(s, 11, 6, 3, 2, eye)
+        self._rect(s, 16, 6, 3, 2, eye)
+        self._dot(s, 11, 6, self._shade(eye, 60))
+        self._dot(s, 16, 6, self._shade(eye, 60))
+        # tusks
+        self._vline(s, 11, 10, 3, bone_color)
+        self._vline(s, 18, 10, 3, bone_color)
+        # broad torso
+        self._rect(s, 4, 12, 22, 14, outline)
+        self._rect(s, 6, 12, 18, 14, hide)
+        self._rect(s, 8, 13, 14, 12, hide_hi)
+        # iron shoulder plates
+        self._rect(s, 3, 12, 4, 4, iron)
+        self._rect(s, 23, 12, 4, 4, self._shade(iron, -28))
+        self._dot(s, 4, 13, iron_hi)
+        self._dot(s, 24, 13, iron)
+        # chest straps
+        self._hline(s, 6, 18, 18, dark)
+        self._hline(s, 6, 22, 18, dark)
+        # gut plate
+        self._rect(s, 11, 20, 8, 4, iron)
+        self._dot(s, 14, 22, iron_hi)
+        # arms
+        self._rect(s, 1, 13, 4, 10, outline)
+        self._rect(s, 25, 13, 4, 10, outline)
+        self._rect(s, 2, 13, 3, 10, hide_lo)
+        self._rect(s, 25, 13, 3, 10, self._shade(hide_lo, -16))
+        # clawed hands
+        self._rect(s, 1, 22, 4, 3, dark)
+        self._rect(s, 25, 22, 4, 3, dark)
+        self._vline(s, 2, 24, 2, eye)
+        self._vline(s, 27, 24, 2, eye)
+        # legs
+        self._rect(s, 8, 26, 6, 8, outline)
+        self._rect(s, 16, 26, 6, 8, outline)
+        self._rect(s, 9, 26, 4, 8, hide_lo)
+        self._rect(s, 17, 26, 4, 8, self._shade(hide_lo, -16))
+        # feet
+        self._rect(s, 7, 34, 7, 2, outline)
+        self._rect(s, 16, 34, 7, 2, outline)
         return s
 
     def _venom_skitter(self) -> pygame.Surface:
-        s = self._surface(20, 16)
+        s = self._surface(28, 22)
         outline = (24, 40, 24)
         body = (74, 138, 72)
         hi = (128, 218, 104)
+        lo = (44, 95, 54)
         venom = (192, 246, 88)
         eye = (255, 236, 120)
-        self._rect(s, 5, 5, 10, 6, outline)
-        self._rect(s, 6, 5, 8, 6, body)
-        self._rect(s, 8, 6, 4, 3, hi)
-        for x1, x2, y in (
-            (3, 6, 5),
-            (2, 6, 8),
-            (3, 6, 11),
-            (14, 17, 5),
-            (14, 18, 8),
-            (14, 17, 11),
-        ):
-            self._rect(s, min(x1, x2), y, abs(x2 - x1) + 1, 1, outline)
-        self._rect(s, 7, 4, 2, 1, eye)
-        self._rect(s, 11, 4, 2, 1, eye)
-        self._rect(s, 9, 10, 2, 3, venom)
-        self._dot(s, 4, 7, venom)
-        self._dot(s, 16, 7, venom)
-        self._dot(s, 9, 5, (225, 255, 150))
-        self._rect(s, 6, 10, 8, 1, (44, 95, 54))
-        self._rect(s, 8, 4, 4, 1, (192, 246, 88))
-        self._rect(s, 4, 12, 3, 1, venom)
-        self._rect(s, 13, 12, 3, 1, venom)
-        self._dot(s, 7, 7, (225, 255, 150))
-        self._dot(s, 12, 7, (225, 255, 150))
+        # abdomen
+        self._rect(s, 8, 6, 14, 10, outline)
+        self._rect(s, 9, 6, 12, 10, body)
+        self._rect(s, 11, 7, 8, 5, hi)
+        self._hline(s, 9, 14, 12, lo)
+        # cephalothorax
+        self._rect(s, 4, 8, 6, 6, outline)
+        self._rect(s, 5, 8, 5, 6, body)
+        # eyes (cluster)
+        self._dot(s, 5, 9, eye)
+        self._dot(s, 7, 9, eye)
+        self._dot(s, 6, 10, eye)
+        self._dot(s, 8, 10, eye)
+        # fangs
+        self._vline(s, 4, 13, 3, venom)
+        self._vline(s, 6, 13, 3, venom)
+        # legs (8, jointed)
+        leg_pts = [
+            (3, 7, 1, 4),
+            (3, 9, 0, 7),
+            (3, 11, 1, 10),
+            (4, 13, 2, 13),
+            (22, 7, 26, 4),
+            (22, 9, 27, 7),
+            (22, 11, 26, 10),
+            (21, 13, 25, 13),
+        ]
+        for x1, y1, x2, y2 in leg_pts:
+            pygame.draw.line(s, outline, (x1, y1), (x2, y2), 1)
+            pygame.draw.line(s, lo, (x1, y1), (x2, y2), 1)
+        # venom drip
+        self._vline(s, 14, 16, 3, venom)
+        self._dot(s, 14, 19, venom)
+        # abdomen markings
+        self._dot(s, 12, 9, venom)
+        self._dot(s, 16, 11, venom)
+        self._dot(s, 14, 12, eye)
         return s
 
     def _grave_archer(self) -> pygame.Surface:
@@ -999,109 +1294,162 @@ class PixelSpriteAtlas:
             (58, 43, 31),
             (26, 31, 25),
             (225, 218, 145),
+            (216, 226, 222),
         )
-        self._rect(s, 14, 6, 1, 13, (116, 74, 39))
-        self._rect(s, 15, 7, 1, 2, (216, 226, 222))
-        self._rect(s, 15, 16, 1, 2, (216, 226, 222))
-        self._rect(s, 3, 14, 3, 1, (116, 74, 39))
-        self._rect(s, 2, 9, 1, 6, (58, 43, 31))
-        self._dot(s, 9, 12, (235, 210, 120))
-        self._rect(s, 6, 4, 6, 1, (58, 43, 31))
-        self._rect(s, 4, 17, 9, 1, (48, 52, 38))
-        self._rect(s, 15, 9, 1, 7, (225, 218, 145))
-        self._rect(s, 12, 6, 3, 1, (145, 164, 98))
-        self._dot(s, 5, 13, (225, 218, 145))
+        leather = (116, 74, 39)
+        cloth = (58, 43, 31)
+        # hood
+        self._rect(s, 8, 2, 10, 4, cloth)
+        self._rect(s, 9, 3, 8, 2, (94, 68, 40))
+        # bandit mask
+        self._hline(s, 9, 7, 8, cloth)
+        # bow
+        self._vline(s, 22, 6, 18, leather)
+        self._vline(s, 23, 8, 14, (216, 226, 222))
+        # quiver
+        self._rect(s, 4, 12, 3, 6, leather)
+        self._vline(s, 5, 10, 4, (216, 226, 222))
+        # tattered cloak
+        self._rect(s, 5, 11, 2, 12, self._shade(cloth, 12))
+        self._rect(s, 19, 11, 2, 12, self._shade(cloth, 6))
+        # arrow nocked
+        self._vline(s, 21, 10, 10, (216, 226, 222))
+        self._dot(s, 21, 9, (225, 218, 145))
         return s
 
     def _ash_hound(self) -> pygame.Surface:
-        s = self._surface(21, 15)
+        s = self._surface(30, 20)
         outline = (30, 22, 20)
         fur = (112, 62, 46)
+        fur_hi = (165, 92, 64)
+        fur_lo = (74, 40, 30)
         ash = (185, 86, 54)
         ember = (255, 160, 66)
         eye = (255, 224, 120)
-        self._rect(s, 4, 5, 11, 6, outline)
-        self._rect(s, 5, 5, 9, 5, fur)
-        self._rect(s, 12, 3, 5, 5, outline)
-        self._rect(s, 13, 4, 4, 4, fur)
-        self._rect(s, 16, 5, 1, 1, eye)
-        self._rect(s, 2, 6, 3, 3, outline)
-        self._rect(s, 1, 7, 2, 1, ash)
-        self._rect(s, 6, 10, 2, 4, outline)
-        self._rect(s, 12, 10, 2, 4, outline)
-        self._rect(s, 6, 11, 2, 2, fur)
-        self._rect(s, 12, 11, 2, 2, fur)
-        self._rect(s, 8, 4, 4, 1, ash)
-        self._dot(s, 8, 7, ember)
-        self._dot(s, 11, 8, ember)
-        self._rect(s, 15, 2, 2, 1, ash)
-        self._dot(s, 6, 4, ember)
-        self._rect(s, 5, 4, 8, 1, (185, 86, 54))
-        self._rect(s, 2, 5, 2, 1, ember)
-        self._rect(s, 15, 8, 3, 1, (255, 160, 66))
-        self._rect(s, 6, 13, 2, 1, ember)
-        self._rect(s, 12, 13, 2, 1, ember)
-        self._dot(s, 10, 6, (255, 224, 120))
+        # body
+        self._rect(s, 6, 7, 16, 8, outline)
+        self._rect(s, 7, 7, 14, 8, fur)
+        self._rect(s, 8, 7, 12, 2, fur_hi)
+        self._hline(s, 7, 14, 14, fur_lo)
+        # head
+        self._rect(s, 18, 4, 8, 8, outline)
+        self._rect(s, 19, 4, 7, 8, fur)
+        self._rect(s, 19, 4, 7, 1, fur_hi)
+        # ears (pointed, ash)
+        self._rect(s, 18, 2, 2, 3, ash)
+        self._rect(s, 24, 2, 2, 3, ash)
+        # eye
+        self._rect(s, 22, 6, 2, 1, eye)
+        self._dot(s, 22, 6, self._shade(eye, 60))
+        # snout
+        self._rect(s, 25, 8, 2, 2, fur_lo)
+        # fangs
+        self._vline(s, 24, 10, 2, ember)
+        self._vline(s, 26, 10, 2, ember)
+        # legs
+        self._rect(s, 7, 14, 3, 5, outline)
+        self._rect(s, 12, 14, 3, 5, outline)
+        self._rect(s, 16, 14, 3, 5, outline)
+        self._rect(s, 20, 14, 3, 5, outline)
+        self._rect(s, 8, 14, 2, 5, fur_lo)
+        self._rect(s, 13, 14, 2, 5, fur_lo)
+        self._rect(s, 17, 14, 2, 5, fur_lo)
+        self._rect(s, 21, 14, 2, 5, fur_lo)
+        # tail (curled, ember-tipped)
+        self._vline(s, 4, 6, 4, fur)
+        self._vline(s, 3, 4, 3, fur_lo)
+        self._dot(s, 3, 3, ember)
+        # ember cracks along body
+        self._dot(s, 10, 9, ember)
+        self._dot(s, 14, 11, ember)
+        self._dot(s, 18, 9, ember)
         return s
 
     def _rune_sentinel(self) -> pygame.Surface:
-        s = self._surface(20, 24)
+        s = self._surface(28, 34)
         outline = (28, 30, 38)
         stone = (88, 98, 112)
         stone_hi = (142, 155, 168)
+        stone_lo = (54, 62, 76)
         rune = (116, 220, 245)
+        rune_hi = (200, 245, 255)
         dark = (42, 46, 56)
-        self._rect(s, 6, 2, 8, 6, outline)
-        self._rect(s, 7, 3, 6, 5, stone)
-        self._rect(s, 8, 5, 4, 1, rune)
-        self._rect(s, 3, 9, 14, 10, outline)
-        self._rect(s, 5, 9, 10, 10, stone)
-        self._rect(s, 7, 10, 6, 7, stone_hi)
-        self._rect(s, 2, 11, 4, 6, dark)
-        self._rect(s, 14, 11, 4, 6, dark)
-        self._rect(s, 7, 19, 3, 4, dark)
-        self._rect(s, 11, 19, 3, 4, dark)
-        self._rect(s, 6, 23, 4, 1, outline)
-        self._rect(s, 11, 23, 4, 1, outline)
-        self._rect(s, 9, 12, 2, 4, rune)
-        self._dot(s, 7, 14, rune)
-        self._dot(s, 12, 14, rune)
-        self._rect(s, 4, 7, 12, 1, (42, 46, 56))
-        self._rect(s, 6, 8, 8, 1, (56, 62, 74))
-        self._rect(s, 5, 13, 2, 4, (116, 220, 245))
-        self._rect(s, 13, 13, 2, 4, self._shade(rune, -42))
-        self._rect(s, 8, 18, 4, 1, (42, 46, 56))
-        self._dot(s, 10, 4, (236, 255, 255))
-        self._dot(s, 9, 15, (236, 255, 255))
+        # head (stone block)
+        self._rect(s, 9, 2, 10, 8, outline)
+        self._rect(s, 10, 3, 8, 7, stone)
+        self._rect(s, 10, 3, 8, 1, stone_hi)
+        # glowing rune-face
+        self._hline(s, 12, 6, 4, rune)
+        self._vline(s, 13, 5, 3, rune)
+        self._dot(s, 12, 6, rune_hi)
+        self._dot(s, 15, 6, rune_hi)
+        # shoulders (broad slab)
+        self._rect(s, 4, 10, 20, 4, outline)
+        self._rect(s, 6, 10, 16, 4, stone)
+        self._rect(s, 6, 10, 16, 1, stone_hi)
+        # torso pillar
+        self._rect(s, 7, 14, 14, 12, outline)
+        self._rect(s, 8, 14, 12, 12, stone)
+        self._rect(s, 9, 14, 10, 12, stone_hi)
+        # central rune groove
+        self._vline(s, 13, 15, 10, rune)
+        self._dot(s, 13, 17, rune_hi)
+        self._dot(s, 13, 22, rune_hi)
+        # side runes
+        self._vline(s, 10, 16, 6, rune)
+        self._vline(s, 17, 16, 6, self._shade(rune, -42))
+        # arms (slabs)
+        self._rect(s, 2, 14, 4, 10, outline)
+        self._rect(s, 22, 14, 4, 10, outline)
+        self._rect(s, 3, 14, 3, 10, dark)
+        self._rect(s, 23, 14, 3, 10, dark)
+        # legs (pillars)
+        self._rect(s, 8, 26, 5, 8, outline)
+        self._rect(s, 15, 26, 5, 8, outline)
+        self._rect(s, 9, 26, 4, 8, stone_lo)
+        self._rect(s, 16, 26, 4, 8, dark)
+        # base
+        self._rect(s, 7, 33, 7, 1, outline)
+        self._rect(s, 15, 33, 7, 1, outline)
         return s
 
     def _plague_toad(self) -> pygame.Surface:
-        s = self._surface(21, 17)
+        s = self._surface(30, 24)
         outline = (24, 38, 30)
         body = (84, 132, 66)
+        body_hi = (128, 172, 88)
         belly = (144, 172, 86)
         spot = (192, 226, 74)
         eye = (236, 210, 96)
-        self._rect(s, 4, 5, 13, 8, outline)
-        self._rect(s, 5, 5, 11, 7, body)
-        self._rect(s, 7, 8, 7, 4, belly)
-        self._rect(s, 5, 3, 4, 4, outline)
-        self._rect(s, 12, 3, 4, 4, outline)
-        self._rect(s, 6, 4, 2, 2, eye)
-        self._rect(s, 13, 4, 2, 2, eye)
-        self._rect(s, 2, 11, 4, 2, outline)
-        self._rect(s, 15, 11, 4, 2, outline)
-        self._dot(s, 9, 6, spot)
-        self._dot(s, 13, 8, spot)
-        self._dot(s, 6, 10, spot)
-        self._dot(s, 15, 10, spot)
-        self._rect(s, 8, 14, 5, 1, outline)
-        self._rect(s, 6, 6, 9, 1, self._shade(body, 24))
-        self._rect(s, 3, 12, 4, 1, spot)
-        self._rect(s, 14, 12, 4, 1, spot)
-        self._dot(s, 8, 5, (255, 236, 140))
-        self._dot(s, 12, 5, (255, 236, 140))
-        self._dot(s, 11, 10, (88, 118, 58))
+        # body (squat)
+        self._rect(s, 5, 8, 20, 12, outline)
+        self._rect(s, 6, 8, 18, 12, body)
+        self._rect(s, 7, 8, 16, 3, body_hi)
+        self._rect(s, 9, 14, 12, 5, belly)
+        # eye stalks
+        self._rect(s, 7, 3, 4, 6, outline)
+        self._rect(s, 19, 3, 4, 6, outline)
+        self._rect(s, 8, 4, 2, 3, eye)
+        self._rect(s, 20, 4, 2, 3, eye)
+        self._dot(s, 8, 4, (255, 236, 140))
+        self._dot(s, 20, 4, (255, 236, 140))
+        # warts (spots)
+        self._dot(s, 10, 10, spot)
+        self._dot(s, 14, 9, spot)
+        self._dot(s, 18, 11, spot)
+        self._dot(s, 12, 12, spot)
+        self._dot(s, 16, 13, spot)
+        # legs
+        self._rect(s, 3, 16, 5, 4, outline)
+        self._rect(s, 22, 16, 5, 4, outline)
+        self._rect(s, 4, 16, 4, 4, body)
+        self._rect(s, 23, 16, 4, 4, body)
+        # webbed feet
+        self._hline(s, 2, 20, 6, outline)
+        self._hline(s, 22, 20, 6, outline)
+        # poison drip from mouth
+        self._vline(s, 14, 20, 3, spot)
+        self._dot(s, 14, 23, spot)
         return s
 
     def _hollow_knight(self) -> pygame.Surface:
@@ -1114,206 +1462,353 @@ class PixelSpriteAtlas:
             (120, 245, 255),
             (216, 226, 222),
         )
-        self._rect(s, 4, 2, 2, 2, (216, 226, 222))
-        self._rect(s, 12, 2, 2, 2, (216, 226, 222))
-        self._rect(s, 6, 5, 6, 1, (120, 245, 255))
-        self._rect(s, 3, 12, 12, 1, (32, 34, 42))
-        self._rect(s, 7, 15, 4, 2, (190, 92, 54))
-        self._rect(s, 14, 7, 1, 12, (216, 226, 222))
-        self._rect(s, 5, 3, 8, 1, (182, 178, 160))
-        self._rect(s, 4, 8, 10, 1, (42, 38, 42))
-        self._rect(s, 6, 11, 1, 5, (182, 178, 160))
-        self._rect(s, 11, 11, 1, 5, (94, 92, 92))
-        self._rect(s, 15, 10, 1, 7, (248, 252, 242))
-        self._dot(s, 9, 13, (120, 245, 255))
+        steel = (126, 132, 128)
+        steel_hi = (182, 178, 160)
+        rust = (190, 92, 54)
+        glow = (120, 245, 255)
+        # great helm (no visor slit, just eye glow)
+        self._rect(s, 8, 2, 10, 8, (24, 22, 24))
+        self._rect(s, 9, 3, 8, 7, steel)
+        self._rect(s, 9, 3, 8, 1, steel_hi)
+        # glowing visor slit
+        self._hline(s, 10, 6, 6, glow)
+        self._dot(s, 10, 6, self._shade(glow, 60))
+        self._dot(s, 15, 6, self._shade(glow, 60))
+        # plume
+        self._vline(s, 12, 0, 2, rust)
+        self._vline(s, 13, 0, 3, rust)
+        # breastplate
+        self._rect(s, 7, 11, 12, 12, (32, 34, 42))
+        self._rect(s, 8, 11, 10, 12, steel)
+        self._rect(s, 9, 11, 8, 12, steel_hi)
+        # rust streaks
+        self._vline(s, 10, 14, 6, rust)
+        self._vline(s, 15, 16, 5, self._shade(rust, -20))
+        # tattered cloak
+        self._rect(s, 5, 11, 2, 14, (42, 38, 42))
+        self._rect(s, 19, 11, 2, 14, (32, 30, 34))
+        # rusted greaves
+        self._rect(s, 7, 26, 4, 6, (32, 34, 42))
+        self._rect(s, 15, 26, 4, 6, (32, 34, 42))
+        self._rect(s, 8, 26, 3, 6, self._shade(steel, -20))
+        self._rect(s, 16, 26, 3, 6, self._shade(steel, -30))
+        # greatsword
+        self._vline(s, 22, 4, 22, steel_hi)
+        self._vline(s, 23, 4, 22, steel)
+        self._hline(s, 20, 25, 6, (190, 132, 58))
         return s
 
     def _gate_warden(self) -> pygame.Surface:
         s = self._crypt_brute()
-        self._rect(s, 7, 3, 7, 5, (171, 105, 48))
-        self._rect(s, 8, 4, 5, 2, (230, 156, 72))
-        self._rect(s, 8, 5, 5, 1, (235, 65, 48))
-        self._rect(s, 8, 11, 6, 5, (171, 105, 48))
-        self._rect(s, 9, 12, 4, 3, (255, 202, 90))
-        self._rect(s, 17, 4, 1, 14, (230, 156, 72))
-        self._rect(s, 18, 3, 1, 3, (255, 202, 90))
-        self._rect(s, 6, 9, 9, 1, (255, 202, 90))
-        self._rect(s, 7, 14, 6, 1, (230, 156, 72))
-        self._rect(s, 16, 7, 3, 2, (255, 202, 90))
-        self._rect(s, 16, 15, 3, 1, (235, 65, 48))
-        self._dot(s, 10, 13, (255, 235, 150))
+        gold = (255, 202, 90)
+        gold_hi = (255, 235, 150)
+        gold_lo = (171, 105, 48)
+        red = (235, 65, 48)
+        # gilded helm
+        self._rect(s, 9, 3, 12, 2, gold)
+        self._rect(s, 9, 3, 12, 1, gold_hi)
+        # crown horns
+        self._rect(s, 6, 0, 3, 4, gold_lo)
+        self._rect(s, 21, 0, 3, 4, gold_lo)
+        self._dot(s, 7, 0, gold_hi)
+        self._dot(s, 22, 0, gold_hi)
+        # glowing rage eyes
+        self._rect(s, 11, 6, 3, 2, red)
+        self._rect(s, 16, 6, 3, 2, red)
+        # gilded chest plate
+        self._rect(s, 8, 13, 14, 2, gold)
+        self._rect(s, 11, 20, 8, 4, gold_lo)
+        self._rect(s, 12, 20, 6, 4, gold)
+        self._dot(s, 14, 22, gold_hi)
+        # gilded shoulders
+        self._rect(s, 3, 12, 4, 4, gold_lo)
+        self._rect(s, 23, 12, 4, 4, gold_lo)
+        self._dot(s, 4, 13, gold_hi)
+        self._dot(s, 24, 13, gold)
+        # gilded weapon (greataxe)
+        self._vline(s, 27, 4, 18, gold_lo)
+        self._rect(s, 24, 6, 4, 8, gold)
+        self._rect(s, 25, 6, 2, 8, gold_hi)
         return s
 
+    # ------------------------------------------------------------------
+    # Items
+    # ------------------------------------------------------------------
     def _potion(self) -> pygame.Surface:
-        s = self._surface(12, 14)
+        s = self._surface(16, 20)
         outline = (32, 22, 30)
         glass = (154, 210, 222)
+        glass_hi = (205, 238, 245)
         liquid = (210, 54, 82)
+        liquid_hi = (245, 110, 130)
         cork = (116, 74, 39)
+        cork_hi = (160, 110, 60)
         shine = (238, 235, 208)
-        self._rect(s, 5, 1, 2, 3, cork)
-        self._rect(s, 4, 4, 4, 1, outline)
-        self._rect(s, 3, 5, 6, 8, outline)
-        self._rect(s, 4, 5, 4, 3, glass)
-        self._rect(s, 4, 8, 4, 4, liquid)
-        self._rect(s, 5, 6, 1, 2, shine)
-        self._rect(s, 4, 7, 4, 1, (205, 238, 245))
-        self._dot(s, 8, 6, shine)
+        # cork
+        self._rect(s, 6, 1, 4, 3, cork)
+        self._hline(s, 6, 1, 4, cork_hi)
+        # neck
+        self._rect(s, 5, 4, 6, 2, outline)
+        self._rect(s, 6, 4, 4, 2, glass)
+        # body
+        self._rect(s, 3, 6, 10, 12, outline)
+        self._rect(s, 4, 6, 8, 12, glass)
+        self._rect(s, 4, 10, 8, 8, liquid)
+        self._rect(s, 4, 10, 8, 1, liquid_hi)
+        # shine
+        self._vline(s, 5, 7, 4, shine)
+        self._dot(s, 10, 7, glass_hi)
         return s
 
     def _mana_potion(self) -> pygame.Surface:
         s = self._potion()
-        self._rect(s, 4, 8, 4, 4, (54, 102, 210))
-        self._rect(s, 5, 10, 2, 1, (105, 165, 255))
+        liquid = (54, 102, 210)
+        liquid_hi = (105, 165, 255)
+        self._rect(s, 4, 10, 8, 8, liquid)
+        self._rect(s, 4, 10, 8, 1, liquid_hi)
         return s
 
     def _scroll(self) -> pygame.Surface:
-        s = self._surface(14, 12)
+        s = self._surface(18, 16)
         paper = (224, 207, 166)
+        paper_hi = (245, 235, 200)
         edge = (132, 91, 52)
+        edge_lo = (90, 60, 34)
         rune = (92, 70, 145)
-        self._rect(s, 2, 2, 10, 8, edge)
-        self._rect(s, 3, 2, 8, 8, paper)
-        self._rect(s, 1, 3, 2, 6, edge)
-        self._rect(s, 11, 3, 2, 6, edge)
-        self._rect(s, 5, 4, 4, 1, rune)
-        self._rect(s, 4, 6, 6, 1, rune)
-        self._rect(s, 6, 8, 3, 1, rune)
+        rune_hi = (160, 130, 220)
+        # rolled ends
+        self._rect(s, 1, 3, 3, 10, edge)
+        self._rect(s, 14, 3, 3, 10, edge)
+        self._vline(s, 1, 3, 10, edge_lo)
+        self._vline(s, 16, 3, 10, edge_lo)
+        # paper
+        self._rect(s, 3, 4, 12, 8, paper)
+        self._hline(s, 3, 4, 12, paper_hi)
+        # runes
+        self._hline(s, 6, 6, 6, rune)
+        self._hline(s, 5, 9, 8, rune)
+        self._hline(s, 7, 11, 4, rune)
+        self._dot(s, 6, 6, rune_hi)
+        self._dot(s, 11, 9, rune_hi)
         return s
 
     def _weapon(self) -> pygame.Surface:
-        s = self._surface(14, 14)
+        s = self._surface(16, 18)
         blade = (216, 226, 222)
-        shade = (128, 141, 148)
+        blade_hi = (248, 252, 242)
+        blade_lo = (128, 141, 148)
         guard = (190, 132, 58)
+        guard_hi = (235, 178, 78)
         grip = (78, 46, 32)
-        self._rect(s, 8, 1, 2, 7, blade)
-        self._rect(s, 7, 3, 1, 5, shade)
-        self._rect(s, 6, 8, 6, 2, guard)
-        self._rect(s, 8, 10, 2, 3, grip)
-        self._rect(s, 7, 13, 4, 1, guard)
-        self._rect(s, 9, 1, 1, 7, (248, 252, 242))
-        self._rect(s, 6, 4, 1, 3, blade)
-        self._dot(s, 8, 12, (230, 178, 78))
+        # blade
+        self._rect(s, 8, 1, 2, 9, blade)
+        self._vline(s, 9, 1, 9, blade_hi)
+        self._vline(s, 7, 2, 8, blade_lo)
+        self._hline(s, 7, 1, 4, blade_hi)  # tip
+        # crossguard
+        self._rect(s, 5, 9, 8, 2, guard)
+        self._hline(s, 5, 9, 8, guard_hi)
+        # grip
+        self._rect(s, 8, 11, 2, 5, grip)
+        self._vline(s, 8, 11, 5, self._shade(grip, 20))
+        # pommel
+        self._rect(s, 7, 16, 4, 1, guard)
+        self._dot(s, 8, 16, guard_hi)
         return s
 
     def _armor(self) -> pygame.Surface:
-        s = self._surface(14, 14)
+        s = self._surface(16, 18)
         outline = (36, 36, 42)
         leather = (99, 66, 46)
         plate = (145, 155, 160)
-        hi = (205, 214, 210)
-        self._rect(s, 3, 2, 8, 2, outline)
-        self._rect(s, 2, 4, 10, 8, outline)
-        self._rect(s, 4, 4, 6, 8, leather)
-        self._rect(s, 5, 5, 4, 5, plate)
-        self._rect(s, 6, 5, 2, 2, hi)
-        self._rect(s, 3, 12, 8, 1, outline)
-        self._rect(s, 5, 8, 4, 1, (95, 102, 106))
-        self._dot(s, 4, 6, hi)
+        plate_hi = (205, 214, 210)
+        plate_lo = (95, 102, 106)
+        # shoulders
+        self._rect(s, 3, 2, 10, 3, outline)
+        self._rect(s, 4, 2, 8, 3, leather)
+        self._hline(s, 4, 2, 8, self._shade(leather, 28))
+        # chestplate
+        self._rect(s, 2, 5, 12, 10, outline)
+        self._rect(s, 3, 5, 10, 10, plate)
+        self._rect(s, 4, 5, 8, 10, plate_hi)
+        # center seam
+        self._vline(s, 7, 6, 8, plate_lo)
+        # fluting
+        self._vline(s, 5, 6, 8, plate_lo)
+        self._vline(s, 10, 6, 8, plate_lo)
+        # belt
+        self._rect(s, 3, 14, 10, 2, outline)
+        self._rect(s, 4, 14, 8, 2, leather)
+        self._dot(s, 7, 14, plate_hi)
         return s
 
     def _blue_bolt(self) -> pygame.Surface:
-        s = self._surface(14, 10)
-        self._rect(s, 2, 4, 9, 2, (68, 170, 255))
-        self._rect(s, 5, 2, 5, 6, (86, 215, 255))
-        self._rect(s, 10, 3, 3, 4, (68, 170, 255))
-        self._rect(s, 8, 4, 3, 2, (240, 250, 255))
-        self._rect(s, 0, 3, 3, 1, (36, 92, 190))
-        self._rect(s, 0, 6, 3, 1, (36, 92, 190))
-        self._dot(s, 12, 5, (240, 250, 255))
+        s = self._surface(16, 12)
+        core = (240, 250, 255)
+        mid = (86, 215, 255)
+        outer = (68, 170, 255)
+        tail = (36, 92, 190)
+        # tail
+        self._rect(s, 0, 5, 4, 2, tail)
+        self._dot(s, 0, 4, tail)
+        self._dot(s, 0, 7, tail)
+        # outer
+        self._rect(s, 3, 4, 10, 4, outer)
+        # mid
+        self._rect(s, 5, 3, 7, 6, mid)
+        # core
+        self._rect(s, 7, 4, 4, 4, core)
+        self._dot(s, 12, 5, core)
+        self._dot(s, 13, 6, mid)
         return s
 
     def _void_bolt(self) -> pygame.Surface:
-        s = self._surface(14, 10)
-        self._rect(s, 2, 4, 9, 2, (119, 54, 184))
-        self._rect(s, 5, 2, 5, 6, (210, 83, 238))
-        self._rect(s, 10, 3, 3, 4, (119, 54, 184))
-        self._rect(s, 8, 4, 3, 2, (255, 190, 255))
-        self._rect(s, 0, 3, 3, 1, (54, 30, 102))
-        self._rect(s, 0, 6, 3, 1, (54, 30, 102))
-        self._dot(s, 12, 5, (255, 220, 255))
+        s = self._surface(16, 12)
+        core = (255, 220, 255)
+        mid = (210, 83, 238)
+        outer = (119, 54, 184)
+        tail = (54, 30, 102)
+        self._rect(s, 0, 5, 4, 2, tail)
+        self._dot(s, 0, 4, tail)
+        self._dot(s, 0, 7, tail)
+        self._rect(s, 3, 4, 10, 4, outer)
+        self._rect(s, 5, 3, 7, 6, mid)
+        self._rect(s, 7, 4, 4, 4, core)
+        self._dot(s, 12, 5, core)
+        self._dot(s, 13, 6, mid)
         return s
 
     def _slash(self) -> pygame.Surface:
-        s = self._surface(18, 12)
-        pale = (255, 240, 174)
-        gold = (225, 174, 74)
-        self._rect(s, 2, 7, 4, 2, gold)
-        self._rect(s, 5, 5, 4, 2, pale)
-        self._rect(s, 8, 3, 4, 2, pale)
-        self._rect(s, 11, 2, 3, 2, gold)
-        self._rect(s, 14, 1, 2, 1, pale)
-        self._rect(s, 3, 8, 5, 1, (146, 90, 42))
-        self._rect(s, 6, 6, 7, 1, (255, 252, 210))
+        s = self._surface(22, 14)
+        pale = (255, 252, 210)
+        gold = (235, 174, 74)
+        gold_hi = (255, 240, 174)
+        dark = (146, 90, 42)
+        # arc trail
+        self._rect(s, 2, 9, 4, 2, dark)
+        self._rect(s, 5, 7, 4, 2, gold)
+        self._rect(s, 8, 5, 4, 2, pale)
+        self._rect(s, 11, 3, 4, 2, gold_hi)
+        self._rect(s, 14, 2, 3, 2, pale)
+        self._rect(s, 17, 1, 2, 1, gold_hi)
+        # bright core
+        self._hline(s, 6, 8, 9, pale)
         self._dot(s, 13, 4, pale)
-        self._dot(s, 16, 2, (255, 252, 210))
+        self._dot(s, 18, 2, pale)
         return s
 
+    # ------------------------------------------------------------------
+    # Traps
+    # ------------------------------------------------------------------
     def _spike_trap(self) -> pygame.Surface:
-        s = self._surface(18, 12)
+        s = self._surface(20, 14)
         dark = (35, 26, 28)
         iron = (128, 132, 130)
+        iron_hi = (180, 184, 182)
         edge = (205, 75, 58)
-        self._rect(s, 3, 4, 12, 5, dark)
-        self._rect(s, 4, 5, 10, 3, (58, 48, 48))
-        for x in (4, 8, 12):
-            pygame.draw.polygon(s, iron, [(x, 4), (x + 2, 1), (x + 4, 4)])
-        self._rect(s, 5, 8, 8, 1, edge)
+        # base plate
+        self._rect(s, 3, 6, 14, 6, dark)
+        self._rect(s, 4, 7, 12, 4, (58, 48, 48))
+        self._hline(s, 3, 6, 14, edge)
+        # spikes (triangles)
+        for x in (4, 9, 14):
+            pygame.draw.polygon(s, iron, [(x, 6), (x + 2, 1), (x + 4, 6)])
+            pygame.draw.polygon(s, iron_hi, [(x + 1, 6), (x + 2, 2), (x + 3, 6)])
+        # blood
+        self._dot(s, 6, 5, edge)
+        self._dot(s, 11, 5, edge)
+        self._dot(s, 16, 5, edge)
         return s
 
     def _rune_trap(self) -> pygame.Surface:
-        s = self._surface(18, 12)
+        s = self._surface(20, 14)
         dark = (28, 23, 36)
         rune = (174, 108, 245)
-        self._rect(s, 3, 4, 12, 5, dark)
-        self._rect(s, 5, 5, 8, 3, (44, 35, 62))
-        self._rect(s, 7, 4, 4, 1, rune)
-        self._rect(s, 8, 5, 2, 3, rune)
-        self._dot(s, 5, 6, (230, 190, 255))
-        self._dot(s, 12, 6, (230, 190, 255))
+        rune_hi = (220, 160, 255)
+        self._rect(s, 3, 6, 14, 6, dark)
+        self._rect(s, 5, 7, 10, 4, (44, 35, 62))
+        # central sigil
+        self._vline(s, 9, 3, 6, rune)
+        self._hline(s, 7, 5, 6, rune)
+        self._dot(s, 9, 5, rune_hi)
+        self._dot(s, 7, 8, rune_hi)
+        self._dot(s, 12, 8, rune_hi)
         return s
 
     def _poison_trap(self) -> pygame.Surface:
-        s = self._surface(18, 12)
+        s = self._surface(20, 14)
         dark = (24, 38, 30)
         poison = (130, 220, 90)
-        self._rect(s, 3, 4, 12, 5, dark)
-        self._rect(s, 4, 5, 10, 3, (42, 70, 42))
-        for x in (5, 9, 13):
-            self._rect(s, x, 2, 1, 5, (150, 158, 136))
-            self._dot(s, x, 1, poison)
-        self._dot(s, 8, 8, poison)
-        self._dot(s, 11, 8, poison)
+        poison_hi = (192, 246, 88)
+        needle = (150, 158, 136)
+        self._rect(s, 3, 6, 14, 6, dark)
+        self._rect(s, 4, 7, 12, 4, (42, 70, 42))
+        # needles
+        for x in (5, 10, 15):
+            self._vline(s, x, 2, 6, needle)
+            self._dot(s, x, 1, poison_hi)
+        # puddles
+        self._dot(s, 7, 11, poison)
+        self._dot(s, 12, 11, poison)
+        self._dot(s, 10, 12, poison_hi)
         return s
 
+    # ------------------------------------------------------------------
+    # Props
+    # ------------------------------------------------------------------
     def _shrine(self, active: bool = True) -> pygame.Surface:
-        s = self._surface(16, 20)
+        s = self._surface(20, 26)
         stone = (66, 60, 70) if active else (54, 54, 60)
+        stone_hi = (110, 100, 116) if active else (78, 78, 84)
         edge = (235, 205, 110) if active else (116, 116, 124)
         glow = (255, 235, 158) if active else (96, 96, 106)
-        self._rect(s, 5, 4, 6, 13, (28, 25, 31))
-        self._rect(s, 6, 5, 4, 11, stone)
-        self._rect(s, 4, 16, 8, 2, (34, 30, 36))
-        self._rect(s, 5, 3, 6, 2, edge)
-        self._rect(s, 7, 8, 2, 4, edge)
-        self._dot(s, 8, 7, glow)
+        # base
+        self._rect(s, 3, 20, 14, 4, (28, 25, 31))
+        self._rect(s, 4, 20, 12, 4, stone)
+        self._hline(s, 4, 20, 12, stone_hi)
+        # pillar
+        self._rect(s, 7, 6, 6, 16, (28, 25, 31))
+        self._rect(s, 8, 6, 4, 16, stone)
+        self._vline(s, 8, 6, 16, stone_hi)
+        # capital
+        self._rect(s, 5, 4, 10, 3, edge)
+        self._hline(s, 5, 4, 10, self._shade(edge, 30))
+        # offering bowl
+        self._rect(s, 8, 8, 4, 2, edge)
+        self._dot(s, 9, 8, glow)
+        self._dot(s, 10, 8, glow)
         if active:
-            self._dot(s, 3, 7, glow)
-            self._dot(s, 12, 11, glow)
+            # floating glow motes
+            self._dot(s, 6, 10, glow)
+            self._dot(s, 13, 12, glow)
+            self._dot(s, 9, 14, glow)
         return s
 
     def _secret_cache(self) -> pygame.Surface:
-        s = self._surface(16, 13)
+        s = self._surface(18, 16)
         wood = (90, 56, 34)
+        wood_hi = (130, 84, 50)
         gold = (210, 162, 74)
+        gold_hi = (245, 205, 120)
         dark = (30, 22, 20)
-        self._rect(s, 3, 5, 10, 6, dark)
-        self._rect(s, 4, 5, 8, 5, wood)
-        self._rect(s, 4, 4, 8, 2, gold)
-        self._rect(s, 7, 6, 2, 3, gold)
-        self._rect(s, 3, 10, 10, 1, dark)
-        self._dot(s, 11, 6, (235, 205, 120))
+        # chest body
+        self._rect(s, 2, 7, 14, 8, dark)
+        self._rect(s, 3, 7, 12, 8, wood)
+        self._hline(s, 3, 7, 12, wood_hi)
+        # lid
+        self._rect(s, 2, 4, 14, 4, dark)
+        self._rect(s, 3, 4, 12, 4, wood)
+        self._hline(s, 3, 4, 12, wood_hi)
+        # bands
+        self._vline(s, 5, 4, 11, dark)
+        self._vline(s, 12, 4, 11, dark)
+        # lock
+        self._rect(s, 8, 8, 2, 3, gold)
+        self._dot(s, 8, 8, gold_hi)
+        # gold spilling
+        self._dot(s, 6, 6, gold_hi)
+        self._dot(s, 11, 6, gold)
+        self._dot(s, 9, 3, gold_hi)
         return s
 
     def _shopkeeper(self) -> pygame.Surface:
@@ -1326,58 +1821,79 @@ class PixelSpriteAtlas:
             (255, 235, 150),
         )
         gold = (245, 205, 92)
+        gold_hi = (255, 235, 150)
         dark_gold = (148, 98, 40)
-        parchment = (226, 202, 142)
         wood = (92, 58, 34)
         beard = (84, 52, 36)
         apron = (48, 66, 72)
         blue_hi = (86, 116, 124)
         red = (158, 54, 42)
-        self._rect(s, 5, 2, 8, 2, (70, 48, 32))
-        self._rect(s, 4, 4, 10, 1, gold)
-        self._rect(s, 6, 6, 6, 1, beard)
-        self._rect(s, 7, 7, 4, 2, beard)
-        self._rect(s, 4, 9, 10, 1, dark_gold)
-        self._rect(s, 5, 10, 8, 1, gold)
-        self._rect(s, 6, 11, 6, 6, apron)
-        self._rect(s, 7, 12, 1, 4, blue_hi)
-        self._rect(s, 10, 12, 1, 4, (32, 48, 54))
-        self._rect(s, 8, 13, 2, 2, gold)
-        self._dot(s, 9, 14, (255, 238, 150))
-        self._rect(s, 6, 16, 6, 1, gold)
-        self._rect(s, 2, 11, 4, 5, (58, 36, 26))
-        self._rect(s, 12, 11, 4, 5, (58, 36, 26))
-        self._rect(s, 3, 13, 2, 2, red)
-        self._rect(s, 13, 13, 2, 2, red)
-        self._dot(s, 4, 12, gold)
-        self._dot(s, 13, 12, gold)
-        self._rect(s, 13, 6, 4, 4, wood)
-        self._rect(s, 14, 7, 2, 2, parchment)
-        self._dot(s, 15, 8, gold)
-        self._rect(s, 2, 16, 3, 3, (68, 42, 26))
-        self._dot(s, 3, 17, gold)
-        self._dot(s, 4, 17, (255, 238, 150))
-        self._rect(s, 4, 18, 10, 1, (72, 42, 28))
-        self._rect(s, 5, 19, 3, 1, gold)
-        self._rect(s, 10, 19, 3, 1, gold)
+        # cap
+        self._rect(s, 8, 1, 10, 3, dark_gold)
+        self._hline(s, 8, 1, 10, gold)
+        self._dot(s, 12, 1, gold_hi)
+        # brim
+        self._hline(s, 7, 4, 12, dark_gold)
+        # beard (bushy)
+        self._rect(s, 9, 7, 8, 4, beard)
+        self._hline(s, 9, 7, 8, self._shade(beard, 20))
+        self._vline(s, 12, 10, 3, beard)
+        # gold-trimmed coat
+        self._hline(s, 7, 12, 12, gold)
+        self._hline(s, 7, 22, 12, gold)
+        # apron
+        self._rect(s, 8, 14, 10, 8, apron)
+        self._vline(s, 12, 14, 8, blue_hi)
+        # pouches
+        self._rect(s, 7, 16, 2, 3, wood)
+        self._rect(s, 17, 16, 2, 3, wood)
+        self._dot(s, 8, 16, gold)
+        self._dot(s, 18, 16, gold)
+        # coin purse
+        self._rect(s, 4, 18, 3, 3, red)
+        self._dot(s, 5, 18, gold_hi)
+        # walking staff
+        self._vline(s, 22, 6, 22, wood)
+        self._rect(s, 21, 4, 4, 3, gold)
+        self._dot(s, 22, 4, gold_hi)
         return s
 
     def _story_guest(self, active: bool = True) -> pygame.Surface:
-        s = self._surface(18, 24)
+        s = self._surface(self.RAW_ACTOR_W, self.RAW_ACTOR_H)
         outline = (22, 16, 28)
         cloak = (86, 56, 120) if active else (62, 58, 70)
         cloak_hi = (132, 88, 180) if active else (94, 90, 104)
+        cloak_lo = (54, 36, 80) if active else (42, 40, 50)
         face = (206, 168, 128) if active else (142, 132, 122)
+        face_lo = (150, 116, 88) if active else (100, 92, 86)
         sigil = (220, 190, 255) if active else (138, 136, 146)
-        self._rect(s, 5, 3, 8, 7, outline)
-        self._rect(s, 6, 4, 6, 5, face)
-        self._rect(s, 4, 8, 10, 13, outline)
-        self._rect(s, 5, 8, 8, 12, cloak)
-        self._rect(s, 7, 10, 4, 8, cloak_hi)
-        self._rect(s, 3, 14, 3, 6, outline)
-        self._rect(s, 12, 14, 3, 6, outline)
-        self._rect(s, 6, 2, 6, 3, cloak)
-        self._dot(s, 8, 13, sigil)
-        self._dot(s, 9, 13, sigil)
-        self._rect(s, 6, 21, 6, 2, outline)
+        sigil_hi = (245, 220, 255) if active else (160, 158, 168)
+        # hood
+        self._rect(s, 7, 2, 12, 8, outline)
+        self._rect(s, 8, 3, 10, 7, cloak_lo)
+        self._rect(s, 9, 3, 8, 2, cloak_hi)
+        # face shadow
+        self._rect(s, 9, 5, 8, 5, face)
+        self._hline(s, 9, 9, 8, face_lo)
+        # glowing eyes
+        self._dot(s, 11, 6, sigil_hi)
+        self._dot(s, 15, 6, sigil_hi)
+        # cloak body
+        self._rect(s, 5, 10, 16, 16, outline)
+        self._rect(s, 6, 10, 14, 16, cloak)
+        self._rect(s, 8, 10, 10, 16, cloak_hi)
+        self._vline(s, 12, 10, 16, cloak_lo)
+        # clasp
+        self._dot(s, 12, 11, sigil)
+        self._dot(s, 11, 12, sigil_hi)
+        self._dot(s, 13, 12, sigil_hi)
+        # robe lower
+        self._rect(s, 5, 26, 16, 8, outline)
+        self._rect(s, 6, 26, 14, 8, cloak_lo)
+        self._vline(s, 12, 26, 8, cloak)
+        # sleeves
+        self._rect(s, 3, 12, 3, 10, outline)
+        self._rect(s, 20, 12, 3, 10, outline)
+        self._rect(s, 4, 12, 2, 10, cloak_lo)
+        self._rect(s, 21, 12, 2, 10, cloak_lo)
         return s

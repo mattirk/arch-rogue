@@ -483,71 +483,92 @@ class RenderingActorMixin:
         sx, sy = self.world_to_screen(self.player.x, self.player.y)
         vx, vy = self.iso_screen_direction(self.player.facing_x, self.player.facing_y)
         px, py = -vy, vx
-        origin = (
-            sx + vx * 14 * WORLD_SCALE,
-            sy - 8 * WORLD_SCALE + vy * 6 * WORLD_SCALE,
-        )
         aim_blue = self.mix((92, 170, 255), self.theme.accent, 0.18)
 
-        def arc_points(
-            length: float, half_angle: float, samples: int = 24
-        ) -> list[tuple[float, float]]:
-            radius = length * WORLD_SCALE
-            points: list[tuple[float, float]] = []
-            for index in range(samples + 1):
-                angle = half_angle - (half_angle * 2.0 * index / samples)
-                forward = math.cos(angle)
-                side = math.sin(angle)
-                points.append(
-                    (
-                        origin[0] + (vx * forward + px * side) * radius,
-                        origin[1] + (vy * forward + py * side) * radius,
+        # The cone overlay surface only depends on facing direction, so cache
+        # it persistently (across frames) by quantized facing and reposition
+        # the blit each frame. The supersampled polygon draw + smoothscale is
+        # the expensive part.
+        if not hasattr(self, "_aim_cone_cache"):
+            self._aim_cone_cache: dict[tuple[float, float], tuple] = {}
+        cone_key = (round(vx, 3), round(vy, 3))
+        cached = self._aim_cone_cache.get(cone_key)
+
+        if cached is None:
+            # Build the cone in a facing-local space (origin at 0,0) so the
+            # same surface is reusable across player positions.
+            local_origin = (0.0, 0.0)
+
+            def arc_points(
+                length: float, half_angle: float, samples: int = 24
+            ) -> list[tuple[float, float]]:
+                radius = length * WORLD_SCALE
+                points: list[tuple[float, float]] = []
+                for index in range(samples + 1):
+                    angle = half_angle - (half_angle * 2.0 * index / samples)
+                    forward = math.cos(angle)
+                    side = math.sin(angle)
+                    points.append(
+                        (
+                            local_origin[0] + (vx * forward + px * side) * radius,
+                            local_origin[1] + (vy * forward + py * side) * radius,
+                        )
                     )
-                )
-            return points
+                return points
 
-        def cone_points(
-            length: float, half_angle: float, samples: int = 24
-        ) -> list[tuple[float, float]]:
-            return [origin] + arc_points(length, half_angle, samples)
+            def cone_points(
+                length: float, half_angle: float, samples: int = 24
+            ) -> list[tuple[float, float]]:
+                return [local_origin] + arc_points(length, half_angle, samples)
 
-        bounds_points = cone_points(122.0, 0.42, 28)
-        pad = 18 * WORLD_SCALE
-        min_x = math.floor(min(point[0] for point in bounds_points) - pad)
-        max_x = math.ceil(max(point[0] for point in bounds_points) + pad)
-        min_y = math.floor(min(point[1] for point in bounds_points) - pad)
-        max_y = math.ceil(max(point[1] for point in bounds_points) + pad)
-        width = max(1, max_x - min_x)
-        height = max(1, max_y - min_y)
-        supersample = 3
-        overlay = pygame.Surface(
-            (width * supersample, height * supersample), pygame.SRCALPHA
-        )
-
-        def localize(points: list[tuple[float, float]]) -> list[tuple[int, int]]:
-            return [
-                (
-                    int(round((x - min_x) * supersample)),
-                    int(round((y - min_y) * supersample)),
-                )
-                for x, y in points
-            ]
-
-        # Layer several translucent curved sectors instead of one hard polygon; the
-        # supersampled draw keeps the rim and diagonal edges smooth at low UI scales.
-        for length, angle, alpha in (
-            (121.0, 0.42, 18),
-            (110.0, 0.36, 32),
-            (88.0, 0.25, 24),
-        ):
-            pygame.draw.polygon(
-                overlay,
-                (*aim_blue, alpha),
-                localize(cone_points(length, angle, 30)),
+            bounds_points = cone_points(122.0, 0.42, 28)
+            pad = 18 * WORLD_SCALE
+            min_x = math.floor(min(point[0] for point in bounds_points) - pad)
+            max_x = math.ceil(max(point[0] for point in bounds_points) + pad)
+            min_y = math.floor(min(point[1] for point in bounds_points) - pad)
+            max_y = math.ceil(max(point[1] for point in bounds_points) + pad)
+            width = max(1, max_x - min_x)
+            height = max(1, max_y - min_y)
+            supersample = 3
+            overlay = pygame.Surface(
+                (width * supersample, height * supersample), pygame.SRCALPHA
             )
 
-        overlay = pygame.transform.smoothscale(overlay, (width, height))
-        self.screen.blit(overlay, (min_x, min_y))
+            def localize(points: list[tuple[float, float]]) -> list[tuple[int, int]]:
+                return [
+                    (
+                        int(round((x - min_x) * supersample)),
+                        int(round((y - min_y) * supersample)),
+                    )
+                    for x, y in points
+                ]
+
+            for length, angle, alpha in (
+                (121.0, 0.42, 18),
+                (110.0, 0.36, 32),
+                (88.0, 0.25, 24),
+            ):
+                pygame.draw.polygon(
+                    overlay,
+                    (*aim_blue, alpha),
+                    localize(cone_points(length, angle, 30)),
+                )
+
+            overlay = pygame.transform.smoothscale(overlay, (width, height))
+            # Anchor: the local origin (0,0) maps to pixel (-min_x, -min_y)
+            # within the surface. Store that anchor so the blit can place it
+            # relative to the player's screen position.
+            anchor_x = -min_x
+            anchor_y = -min_y
+            cached = (overlay, anchor_x, anchor_y, width, height)
+            self._aim_cone_cache[cone_key] = cached
+
+        overlay, anchor_x, anchor_y, _w, _h = cached
+        # Player screen position offset by the same origin offset used in the
+        # original absolute-space cone (vx*14*WORLD_SCALE, -8*WORLD_SCALE+vy*6).
+        blit_x = int(sx + vx * 14 * WORLD_SCALE - anchor_x)
+        blit_y = int(sy - 8 * WORLD_SCALE + vy * 6 * WORLD_SCALE - anchor_y)
+        self.screen.blit(overlay, (blit_x, blit_y))
 
     def draw_enemy(self, enemy: Enemy) -> None:
         base_name = self.sprites.enemy_key(enemy.name, enemy.kind)
@@ -698,4 +719,3 @@ class RenderingActorMixin:
                 ),
             )
             self.screen.blit(aura, aura.get_rect(center=(sx, sy - 18 * WORLD_SCALE)))
-

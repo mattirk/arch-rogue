@@ -691,6 +691,7 @@ class Game(
         self.update_traps(dt)
         self.update_secrets()
         self.update_floaters(dt)
+        self.advance_animation_phases(dt)
 
         if self.player.hp <= 0 and self.state == "playing":
             if not self.run_stats.cause_of_death:

@@ -197,6 +197,17 @@ class RunFlowMixin:
         return plan
 
     def current_floor_plan(self) -> FloorPlan | None:
+        cache = getattr(self, "_frame_cache", None)
+        if cache is not None:
+            cached = cache.get("current_floor_plan")
+            if cached is not None:
+                return cached if cached is not False else None
+            plan = next(
+                (plan for plan in self.floor_plan if plan.depth == self.current_depth),
+                None,
+            )
+            cache["current_floor_plan"] = plan if plan is not None else False
+            return plan
         return next(
             (plan for plan in self.floor_plan if plan.depth == self.current_depth), None
         )
@@ -222,6 +233,14 @@ class RunFlowMixin:
         self.run_music_theme = self.theme.name
 
     def is_current_floor_dark(self) -> bool:
+        cache = getattr(self, "_frame_cache", None)
+        if cache is not None:
+            if "is_current_floor_dark" in cache:
+                return bool(cache["is_current_floor_dark"])
+            plan = self.current_floor_plan()
+            dark = bool(plan and plan.dark)
+            cache["is_current_floor_dark"] = dark
+            return dark
         plan = self.current_floor_plan()
         return bool(plan and plan.dark)
 
@@ -274,19 +293,33 @@ class RunFlowMixin:
         return True
 
     def has_line_of_sight_to_player(self, x: float, y: float) -> bool:
+        cache = getattr(self, "_frame_cache", None)
+        if cache is not None:
+            key = (
+                "los",
+                round(x, 2),
+                round(y, 2),
+                round(self.player.x, 2),
+                round(self.player.y, 2),
+            )
+            if key in cache:
+                return bool(cache[key])
+            result = self.has_line_of_sight(self.player.x, self.player.y, x, y)
+            cache[key] = result
+            return result
         return self.has_line_of_sight(self.player.x, self.player.y, x, y)
 
     def tile_visibility_alpha(self, x: int, y: int) -> int:
         if not self.is_current_floor_dark():
             return 255
-        distance = self.light_distance_to_player(x + 0.5, y + 0.5)
-        fade_start = max(0.0, DARK_LEVEL_LIGHT_RADIUS - 1.1)
-        fade_end = DARK_LEVEL_LIGHT_RADIUS + 0.65
-        if distance <= fade_start:
+        px = self.player.x
+        py = self.player.y
+        distance = math.hypot(x + 0.5 - px, y + 0.5 - py)
+        if distance <= DARK_LEVEL_LIGHT_RADIUS - 1.1:
             return 255
-        if distance > fade_end:
+        if distance > DARK_LEVEL_LIGHT_RADIUS + 0.65:
             return 0
-        ratio = (fade_end - distance) / max(0.01, fade_end - fade_start)
+        ratio = (DARK_LEVEL_LIGHT_RADIUS + 0.65 - distance) / 1.75
         return max(34, min(255, int(255 * ratio)))
 
     def record_meta_discovery(self, key: str, value: str) -> None:

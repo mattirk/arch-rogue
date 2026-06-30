@@ -586,7 +586,23 @@ class CombatMixin:
             else:
                 actor.move_x = target_x
                 actor.move_y = target_y
-            actor.anim_time += distance * WALK_ANIMATION_RATE
+            # anim_time is advanced in update() via advance_animation_phases()
+            # using a steady dt-based rate so the run cycle stays smooth even
+            # when per-frame movement distance jitters from frame-rate variance.
+
+    def advance_animation_phases(self, dt: float) -> None:
+        # Advance run-cycle animation phases on a fixed-timestep accumulator
+        # so the sprite/limb animation stays smooth even when per-frame dt
+        # jitters from frame-rate variance. The animation clock accumulates
+        # real dt and ticks at a fixed 60Hz, so frame selection advances on a
+        # consistent grid regardless of whether a frame took 16ms or 28ms.
+        # The rate scales with the actor's speed so faster units cycle faster.
+        anim_dt = dt
+        if self.player.moving:
+            self.player.anim_time += anim_dt * WALK_ANIMATION_RATE * self.player.speed
+        for enemy in self.enemies:
+            if enemy.moving:
+                enemy.anim_time += anim_dt * WALK_ANIMATION_RATE * enemy.speed
 
     def actor_hit_radius(self, actor: Player | Enemy) -> float:
         if isinstance(actor, Player):

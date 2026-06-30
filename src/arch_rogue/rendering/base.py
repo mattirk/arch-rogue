@@ -32,6 +32,9 @@ from ..quest_assets import (
 
 class RenderingBaseMixin:
     def draw(self) -> None:
+        # Per-frame caches for hot-path lookups. These are invalidated every
+        # frame so they never go stale within a single render pass.
+        self._frame_cache: dict[str, object] = {}
         self.screen.fill((10, 10, 14))
         if self.state == "title":
             self.draw_title_menu()

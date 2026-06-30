@@ -366,6 +366,18 @@ class RenderingEffectsMixin:
                 label, label.get_rect(center=(sx, rect.top - 10 * WORLD_SCALE))
             )
 
+    def _guidance_glow_layer(self, w: int, h: int) -> pygame.Surface:
+        # Reuse a persistent full-screen alpha layer instead of allocating
+        # one every frame; clear it before each use.
+        if not hasattr(self, "_guidance_glow_surface"):
+            self._guidance_glow_surface = pygame.Surface((w, h), pygame.SRCALPHA)
+        surf = self._guidance_glow_surface
+        if surf.get_size() != (w, h):
+            surf = pygame.Surface((w, h), pygame.SRCALPHA)
+            self._guidance_glow_surface = surf
+        surf.fill((0, 0, 0, 0))
+        return surf
+
     def draw_story_relic_guidance(self) -> None:
         target = self.story_relic_target_position()
         if (
@@ -384,8 +396,8 @@ class RenderingEffectsMixin:
         core = self.mix(light, (255, 255, 238), 0.55)
         cue_count = min(7, max(3, int(route_distance // 2.1) + 1))
         samples = self.sample_guidance_route(route, cue_count)
-        screen_w, screen_h = self.screen.get_size()
-        glow_layer = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
+        screen_w, screen_h = self._screen_size()
+        glow_layer = self._guidance_glow_layer(screen_w, screen_h)
         screen_points = [
             (sx, sy - int(9 * WORLD_SCALE))
             for sx, sy in (self.world_to_screen(wx, wy) for wx, wy in samples)
@@ -470,6 +482,17 @@ class RenderingEffectsMixin:
         start = (int(self.player.x), int(self.player.y))
         goal = (int(target[0]), int(target[1]))
 
+        # Cache the route by quantized start/goal; the BFS only needs to
+        # re-run when the player or target changes tile.
+        if not hasattr(self, "_guidance_route_cache"):
+            self._guidance_route_cache: dict[
+                tuple[tuple[int, int], tuple[int, int]], list[tuple[float, float]]
+            ] = {}
+        route_key = (start, goal)
+        cached_route = self._guidance_route_cache.get(route_key)
+        if cached_route is not None:
+            return cached_route
+
         def walkable(tile: tuple[int, int]) -> bool:
             x, y = tile
             return (
@@ -477,9 +500,12 @@ class RenderingEffectsMixin:
             )
 
         if not walkable(start) or not walkable(goal):
+            self._guidance_route_cache[route_key] = []
             return []
         if start == goal:
-            return [(self.player.x, self.player.y), target]
+            result = [(self.player.x, self.player.y), target]
+            self._guidance_route_cache[route_key] = result
+            return result
 
         frontier: deque[tuple[int, int]] = deque([start])
         came_from: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
@@ -503,6 +529,7 @@ class RenderingEffectsMixin:
                 frontier.append(neighbor)
 
         if goal not in came_from:
+            self._guidance_route_cache[route_key] = []
             return []
 
         tile_path: list[tuple[int, int]] = []
@@ -515,6 +542,7 @@ class RenderingEffectsMixin:
         route: list[tuple[float, float]] = [(self.player.x, self.player.y)]
         route.extend((x + 0.5, y + 0.5) for x, y in tile_path[1:-1])
         route.append(target)
+        self._guidance_route_cache[route_key] = route
         return route
 
     def route_distance(self, route: list[tuple[float, float]]) -> float:
@@ -886,4 +914,3 @@ class RenderingEffectsMixin:
                 ),
                 max(1, WORLD_SCALE),
             )
-
