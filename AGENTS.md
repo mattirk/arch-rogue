@@ -182,28 +182,28 @@ Example categories:
 
 ## Current Milestone
 
-### 3.2 Skill tree refinement
+### 3.3 Controller, Input, and Accessibility Polish
 
-Expand class progression from the current flat upgrade pool into a readable, route-based skill tree while preserving existing save compatibility and the fast run loop.
+Modernize the control layer so keyboard/mouse remains responsive while gamepad and accessibility options become first-class across gameplay and menus.
 
-- Add more variety and depth to archetype skill progression.
-- Give each archetype a skill tree with 5 levels of depth.
-- Let players choose different routes through the tree when leveling up or gaining new skills from shrines/altars/story rewards.
-- Add a separate skill-tree tab to the character sheet opened with the `C` hotkey.
-- Keep existing `player.skill_upgrades` saves compatible; migrate or interpret older upgrade keys without breaking run resume.
-- Prefer data-driven skill definitions in content/progression tables so future archetype skills can be expanded without bloating combat or menu code.
-- Make skill choices readable in the HUD/character menu, including requirements, unlocked state, and route tradeoffs.
-- Validate with focused character menu, combat skill, save/load, and full-suite tests.
+- Add a small input abstraction (`input.py`) that maps keyboard, mouse, and controller events to shared gameplay/menu commands (move, aim, ability, interact, navigate, confirm, back, tab) without ripping out the existing `Game.handle_events` flow.
+- Add controller support via `pygame.joystick` for movement, aiming, combat abilities, interaction, inventory/shop navigation, character sheet tabs, and story choices; auto-detect connect/disconnect and persist the last-used device.
+- Improve menu navigation consistency across title, options, archetype select, inventory, shop, character sheet, and run-state overlays so every navigable menu supports the same directional/confirm/back bindings on both keyboard and gamepad.
+- Add configurable accessibility options to `options.py` and the options menu: aim-assist strength, screen-flash reduction toggle, persistent tooltip toggle, and high-contrast interaction cues; persist them in the existing options file with a backward-compatible schema bump.
+- Preserve current keyboard/mouse bindings, run-save compatibility, and the stable `Game`/`main` entry points; keep `arch_rogue.game.Game` and `arch_rogue.game:main` unchanged in name.
+- Keep the run loop at 60+ FPS: input sampling must stay cheap, and any per-frame controller polling must avoid allocations in the hot path.
+- Validate with a new `tests/test_3_3_input_accessibility.py` covering input mapping, controller-to-command translation, options persistence/migration, and menu navigation, plus the full `unittest discover tests` regression suite.
 
 ## Next Milestones
 
-### 3.3 Controller, input, and accessibility polish
+### 3.4 Build Diversity and Affix Depth
 
-Draft goal: modernize the control layer so keyboard/mouse remains responsive while gamepad and accessibility options become first-class.
+Draft goal: deepen loot-driven build variety by expanding affix pools, item interactions, and skill/affix synergies so each run can commit to a distinct build identity.
 
-- Add a small input abstraction that maps keyboard, mouse, and controller actions to common gameplay/menu commands.
-- Add controller support for movement, aiming, combat abilities, interaction, inventory/shop navigation, character sheet tabs, and story choices.
-- Improve menu navigation consistency across title, options, archetype select, inventory, shop, character sheet, and run-state overlays.
-- Add configurable input/accessibility options such as aim assist strength, screen flash reduction, persistent tooltips, and clearer high-contrast interaction cues.
-- Preserve current keyboard/mouse bindings and save/options compatibility.
-- Validate with headless input-mapping tests, menu navigation tests, and focused gameplay regression coverage.
+- Expand the affix table in `content/equipment.py` with new damage types, cast/attack speed, movement speed, thorns, proc effects, and skill-modifier affixes, plus balanced roll ranges per rarity tier.
+- Add a small affix-synergy layer in `combat.py` so tagged affixes (e.g. lifesteal, proc-on-hit, cast speed) actually modify player attack/spell resolution, not just stat totals.
+- Introduce a few build-defining unique items per archetype in `population.py` that interact with the new affixes and the 3.2 skill tree branches.
+- Make cursed items tempting rather than purely punishing: pair each curse with a meaningful upside and surface the tradeoff clearly in the inventory comparison summary.
+- Improve loot readability in the HUD/inventory: affix tooltips, tag icons, and a one-line build-relevance hint comparing drops to the player's current build.
+- Preserve save compatibility: existing item/affix saves must still load; new affixes default to no-op on older saves.
+- Validate with a new `tests/test_3_4_affix_builds.py` covering affix roll ranges, synergy resolution in combat, unique-item generation, cursed-item tradeoffs, and save migration, plus the full `unittest discover tests` regression suite.
