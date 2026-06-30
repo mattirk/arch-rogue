@@ -206,7 +206,7 @@ class MenuCharacterMixin:
             self.draw_text(
                 str(index + 1),
                 row_font,
-                self.TITLE if is_selected else border,
+                self.TITLE if is_selected else self.IRON_LIGHT,
                 badge,
                 align="center",
                 valign="center",
