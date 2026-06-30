@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from ..models import Archetype, DungeonTheme
 
-
 ARCHETYPES = (
     Archetype(
         "Warden",
@@ -10,7 +9,7 @@ ARCHETYPES = (
         max_hp=120,
         max_mana=38,
         max_stamina=112,
-        speed=4.45,
+        speed=3.35,
         melee_bonus=3,
         armor_bonus=2,
     ),
@@ -20,7 +19,7 @@ ARCHETYPES = (
         max_hp=92,
         max_mana=42,
         max_stamina=126,
-        speed=5.25,
+        speed=3.95,
         melee_bonus=5,
     ),
     Archetype(
@@ -29,7 +28,7 @@ ARCHETYPES = (
         max_hp=86,
         max_mana=78,
         max_stamina=94,
-        speed=4.35,
+        speed=3.25,
         spell_bonus=9,
     ),
     Archetype(
@@ -38,7 +37,7 @@ ARCHETYPES = (
         max_hp=102,
         max_mana=62,
         max_stamina=98,
-        speed=4.4,
+        speed=3.30,
         melee_bonus=1,
         spell_bonus=5,
         armor_bonus=1,
@@ -49,7 +48,7 @@ ARCHETYPES = (
         max_hp=98,
         max_mana=48,
         max_stamina=120,
-        speed=4.95,
+        speed=3.70,
         melee_bonus=3,
         spell_bonus=2,
     ),
@@ -153,4 +152,3 @@ DUNGEON_THEMES = (
         accent=(126, 214, 92),
     ),
 )
-

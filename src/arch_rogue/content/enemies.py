@@ -2,43 +2,42 @@ from __future__ import annotations
 
 from .definitions import BossDefinition, EncounterTemplate, EnemyDefinition
 
-
 ENEMY_DEFINITIONS = (
     EnemyDefinition(
-        "Cultist", "ranged", 34, 2.0, 8, 18, 5.4, 1.45, 8.0, (125, 75, 170), 22
+        "Cultist", "ranged", 34, 1.45, 8, 18, 5.4, 1.45, 8.0, (125, 75, 170), 22
     ),
     EnemyDefinition(
-        "Bone Imp", "ranged", 26, 3.0, 6, 16, 4.6, 1.0, 8.0, (190, 130, 215), 18
+        "Bone Imp", "ranged", 26, 2.15, 6, 16, 4.6, 1.0, 8.0, (190, 130, 215), 18
     ),
     EnemyDefinition(
-        "Venom Skitter", "melee", 30, 3.6, 7, 15, 0.95, 0.72, 9.5, (110, 185, 95), 16
+        "Venom Skitter", "melee", 30, 2.6, 7, 15, 0.95, 0.72, 9.5, (110, 185, 95), 16
     ),
     EnemyDefinition(
-        "Crypt Brute", "melee", 82, 1.75, 17, 32, 1.35, 1.35, 8.0, (155, 105, 74), 14
+        "Crypt Brute", "melee", 82, 1.25, 17, 32, 1.35, 1.35, 8.0, (155, 105, 74), 14
     ),
     EnemyDefinition(
-        "Ghoul", "melee", 42, 2.7, 10, 20, 1.05, 0.95, 8.0, (160, 68, 68), 22
+        "Ghoul", "melee", 42, 1.95, 10, 20, 1.05, 0.95, 8.0, (160, 68, 68), 22
     ),
     EnemyDefinition(
-        "Grave Archer", "ranged", 38, 2.25, 9, 21, 5.8, 1.35, 9.0, (120, 145, 105), 8
+        "Grave Archer", "ranged", 38, 1.6, 9, 21, 5.8, 1.35, 9.0, (120, 145, 105), 8
     ),
     EnemyDefinition(
-        "Ash Hound", "melee", 34, 3.35, 9, 19, 0.95, 0.82, 9.0, (185, 86, 54), 14
+        "Ash Hound", "melee", 34, 2.4, 9, 19, 0.95, 0.82, 9.0, (185, 86, 54), 14
     ),
     EnemyDefinition(
-        "Rune Sentinel", "ranged", 66, 1.55, 13, 30, 5.2, 1.7, 8.5, (116, 220, 245), 8
+        "Rune Sentinel", "ranged", 66, 1.1, 13, 30, 5.2, 1.7, 8.5, (116, 220, 245), 8
     ),
     EnemyDefinition(
-        "Plague Toad", "ranged", 54, 1.9, 11, 25, 4.2, 1.55, 7.5, (144, 172, 86), 10
+        "Plague Toad", "ranged", 54, 1.35, 11, 25, 4.2, 1.55, 7.5, (144, 172, 86), 10
     ),
     EnemyDefinition(
-        "Hollow Knight", "melee", 58, 2.45, 13, 29, 1.15, 1.05, 8.5, (126, 132, 128), 9
+        "Hollow Knight", "melee", 58, 1.75, 13, 29, 1.15, 1.05, 8.5, (126, 132, 128), 9
     ),
 )
 
 FINAL_ROOM_ENEMY_DEFINITIONS = ENEMY_DEFINITIONS + (
     EnemyDefinition(
-        "Gate Warden", "melee", 72, 2.1, 14, 34, 1.2, 1.0, 8.0, (190, 92, 54), 24
+        "Gate Warden", "melee", 72, 1.5, 14, 34, 1.2, 1.0, 8.0, (190, 92, 54), 24
     ),
 )
 
@@ -107,7 +106,7 @@ BOSS_DEFINITIONS = (
         ("Crypt of Ash", "Obsidian Foundry"),
         "fire",
         132,
-        1.82,
+        1.30,
         17,
         62,
         1.35,
@@ -124,7 +123,7 @@ BOSS_DEFINITIONS = (
         ("Fungal Catacombs", "Thornbound Vault"),
         "poison",
         122,
-        1.64,
+        1.18,
         15,
         58,
         4.9,
@@ -141,7 +140,7 @@ BOSS_DEFINITIONS = (
         ("Frozen Ossuary", "Moonlit Aquifer"),
         "frost",
         118,
-        1.72,
+        1.24,
         14,
         60,
         5.2,
@@ -158,7 +157,7 @@ BOSS_DEFINITIONS = (
         ("Violet Reliquary", "Sunken Bastion"),
         "arcane",
         150,
-        1.38,
+        1.00,
         18,
         68,
         5.4,
@@ -175,7 +174,7 @@ BOSS_DEFINITIONS = (
         (),
         "shadow",
         245,
-        1.65,
+        1.18,
         21,
         120,
         1.45,
@@ -199,4 +198,3 @@ HUMANOID_ENEMY_NAMES = (
     "Rune Sentinel",
     "Hollow Knight",
 )
-
