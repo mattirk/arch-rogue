@@ -97,7 +97,7 @@ class MenuInventoryMixin:
     def draw_inventory(self) -> None:
         width, height = self.screen.get_size()
         dim = pygame.Surface((width, height), pygame.SRCALPHA)
-        dim.fill((0, 0, 0, 86))
+        dim.fill((0, 0, 0, 108))
         self.screen.blit(dim, (0, 0))
 
         layout = self.inventory_layout()
@@ -107,7 +107,7 @@ class MenuInventoryMixin:
         list_rect = layout["list"]
         details_rect = layout["details"]
         controls_rect = layout["controls"]
-        self.panel(box, (105, 90, 68), alpha=252)
+        self.panel(box, (150, 120, 70), alpha=252)
 
         row_h, row_gap, visible_rows = self.inventory_row_metrics(list_rect)
         self.g.ensure_inventory_cursor_visible(visible_rows)
@@ -176,10 +176,10 @@ class MenuInventoryMixin:
         )
 
     def draw_inventory_sort_bar(self, rect: pygame.Rect) -> None:
-        pygame.draw.rect(self.screen, self.PANEL_2, rect, border_radius=self.u(8))
+        pygame.draw.rect(self.screen, self.PANEL_INK, rect, border_radius=self.u(8))
         pygame.draw.rect(
             self.screen,
-            (62, 55, 66),
+            self.STONE_LIGHT,
             rect,
             max(1, self.u(1)),
             border_radius=self.u(8),
@@ -202,9 +202,23 @@ class MenuInventoryMixin:
         for mode, label in modes:
             active = self.g.inventory_sort_mode == mode
             chip = pygame.Rect(x, rect.y + pad, chip_w, chip_h)
-            color = self.WARNING if active else (80, 72, 86)
-            fill = self.shade(color, -52) if active else (30, 28, 36)
-            pygame.draw.rect(self.screen, fill, chip, border_radius=self.u(7))
+            color = self.WARNING if active else self.IRON
+            if active:
+                # Active chip: gold fill with a soft glow.
+                fill = self.shade(color, -64)
+                pygame.draw.rect(self.screen, fill, chip, border_radius=self.u(7))
+                glow = pygame.Surface(chip.size, pygame.SRCALPHA)
+                pygame.draw.rect(
+                    glow,
+                    (*color, 40),
+                    glow.get_rect(),
+                    border_radius=self.u(7),
+                )
+                self.screen.blit(glow, chip)
+            else:
+                pygame.draw.rect(
+                    self.screen, self.PANEL_INK, chip, border_radius=self.u(7)
+                )
             pygame.draw.rect(
                 self.screen,
                 color,
@@ -234,16 +248,27 @@ class MenuInventoryMixin:
     def draw_inventory_list(
         self, list_rect: pygame.Rect, row_h: int, row_gap: int, visible_rows: int
     ) -> None:
-        pygame.draw.rect(self.screen, (14, 13, 18), list_rect, border_radius=self.u(9))
+        pygame.draw.rect(
+            self.screen, self.PANEL_INK, list_rect, border_radius=self.u(9)
+        )
         pygame.draw.rect(
             self.screen,
-            (55, 50, 62),
+            self.STONE_LIGHT,
             list_rect,
             max(1, self.u(1)),
             border_radius=self.u(9),
         )
         header_h = max(self.g.small_font.get_height() + self.u(12), self.u(30))
         header_rect = pygame.Rect(list_rect.x, list_rect.y, list_rect.width, header_h)
+        # Parchment-tinted header band.
+        band = pygame.Surface(header_rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(
+            band,
+            (214, 196, 150, 22),
+            band.get_rect(),
+            border_radius=self.u(9),
+        )
+        self.screen.blit(band, header_rect)
         self.draw_text(
             "Items",
             self.g.small_font,
@@ -300,9 +325,19 @@ class MenuInventoryMixin:
         self, item: Item, index: int, row: pygame.Rect, selected: bool
     ) -> None:
         color = self.item_color(item)
-        fill = (38, 34, 45) if selected else self.PANEL_2
-        border = self.WARNING if selected else color
+        # Recessed plate; selected rows get a gold inner glow.
+        fill = self.PANEL_2 if selected else self.PANEL_INK
         pygame.draw.rect(self.screen, fill, row, border_radius=self.u(7))
+        if selected:
+            glow = pygame.Surface(row.size, pygame.SRCALPHA)
+            pygame.draw.rect(
+                glow,
+                (*self.WARNING, 36),
+                glow.get_rect(),
+                border_radius=self.u(7),
+            )
+            self.screen.blit(glow, row)
+        border = self.WARNING if selected else self.STONE_LIGHT
         pygame.draw.rect(
             self.screen,
             border,
@@ -315,6 +350,13 @@ class MenuInventoryMixin:
                 row.x, row.y + self.u(5), self.u(4), row.height - self.u(10)
             )
             pygame.draw.rect(self.screen, self.WARNING, marker, border_radius=self.u(3))
+            pygame.draw.rect(
+                self.screen,
+                self.shade(self.WARNING, 40),
+                marker,
+                border_radius=self.u(3),
+            )
+        # Gem-style rarity slot — faceted look with a highlight.
         slot_size = min(self.u(38), row.height - self.u(14))
         slot_rect = pygame.Rect(
             row.x + self.u(9),
@@ -322,16 +364,27 @@ class MenuInventoryMixin:
             slot_size,
             slot_size,
         )
-        pygame.draw.rect(self.screen, (13, 12, 17), slot_rect, border_radius=self.u(5))
+        pygame.draw.rect(self.screen, self.BG_DEEP, slot_rect, border_radius=self.u(5))
+        # Faceted gem: darker base, lighter top-left triangle.
+        gem = slot_rect.inflate(-self.u(6), -self.u(6))
         pygame.draw.rect(
-            self.screen, color, slot_rect, max(1, self.u(1)), border_radius=self.u(5)
+            self.screen, self.shade(color, -60), gem, border_radius=self.u(4)
+        )
+        tri = [
+            (gem.x, gem.y),
+            (gem.right, gem.y),
+            (gem.x, gem.bottom),
+        ]
+        pygame.draw.polygon(self.screen, self.shade(color, 30), tri)
+        pygame.draw.rect(
+            self.screen, color, gem, max(1, self.u(1)), border_radius=self.u(4)
         )
         icon = self.g.rarity_icon(item.visible_rarity)
         shortcut = str(index + 1) if index < 9 else f"{index + 1}"
         self.draw_text(
             f"{shortcut}{icon}",
             self.g.tiny_font,
-            color,
+            self.shade(color, 60),
             slot_rect.inflate(-self.u(2), 0),
             align="center",
             valign="center",
@@ -347,7 +400,10 @@ class MenuInventoryMixin:
             tag_w,
             self.g.tiny_font.get_height() + self.u(8),
         )
-        pygame.draw.rect(self.screen, (18, 17, 23), tag_rect, border_radius=self.u(5))
+        pygame.draw.rect(self.screen, self.PANEL_INK, tag_rect, border_radius=self.u(5))
+        pygame.draw.rect(
+            self.screen, self.IRON, tag_rect, max(1, self.u(1)), border_radius=self.u(5)
+        )
         self.draw_text(
             tag,
             self.g.tiny_font,
@@ -385,13 +441,23 @@ class MenuInventoryMixin:
         track = pygame.Rect(
             rows_rect.right - self.u(5), rows_rect.y, self.u(4), rows_rect.height
         )
-        pygame.draw.rect(self.screen, (34, 31, 39), track, border_radius=self.u(3))
+        pygame.draw.rect(self.screen, self.PANEL_INK, track, border_radius=self.u(3))
+        pygame.draw.rect(
+            self.screen,
+            self.IRON_DARK,
+            track,
+            max(1, self.u(1)),
+            border_radius=self.u(3),
+        )
         thumb_h = max(self.u(18), int(track.height * visible_rows / count))
         max_scroll = max(1, count - visible_rows)
         travel = max(1, track.height - thumb_h)
         thumb_y = track.y + int(travel * self.g.inventory_scroll / max_scroll)
         thumb = pygame.Rect(track.x, thumb_y, track.width, thumb_h)
         pygame.draw.rect(self.screen, self.WARNING, thumb, border_radius=self.u(3))
+        pygame.draw.rect(
+            self.screen, self.shade(self.WARNING, 40), thumb, border_radius=self.u(3)
+        )
 
     def draw_inventory_details(self, rect: pygame.Rect) -> None:
         gap = max(self.u(8), 8)
@@ -411,9 +477,13 @@ class MenuInventoryMixin:
         self.draw_inventory_equipment(equipment_rect)
 
     def draw_inventory_selected_card(self, rect: pygame.Rect) -> None:
-        pygame.draw.rect(self.screen, self.PANEL_2, rect, border_radius=self.u(9))
+        pygame.draw.rect(self.screen, self.PANEL_INK, rect, border_radius=self.u(9))
         pygame.draw.rect(
-            self.screen, (58, 52, 66), rect, max(1, self.u(1)), border_radius=self.u(9)
+            self.screen,
+            self.STONE_LIGHT,
+            rect,
+            max(1, self.u(1)),
+            border_radius=self.u(9),
         )
         pad = max(self.u(10), 10)
         title_rect = pygame.Rect(
@@ -487,9 +557,13 @@ class MenuInventoryMixin:
             y += self.g.tiny_font.get_height() + self.u(3)
 
     def draw_inventory_equipment(self, rect: pygame.Rect) -> None:
-        pygame.draw.rect(self.screen, self.PANEL_2, rect, border_radius=self.u(9))
+        pygame.draw.rect(self.screen, self.PANEL_INK, rect, border_radius=self.u(9))
         pygame.draw.rect(
-            self.screen, (58, 52, 66), rect, max(1, self.u(1)), border_radius=self.u(9)
+            self.screen,
+            self.STONE_LIGHT,
+            rect,
+            max(1, self.u(1)),
+            border_radius=self.u(9),
         )
         pad = max(self.u(10), 10)
         title_h = self.g.small_font.get_height()
@@ -527,10 +601,17 @@ class MenuInventoryMixin:
     def draw_equipment_card(
         self, rect: pygame.Rect, label: str, value: str, color: Color
     ) -> None:
-        pygame.draw.rect(self.screen, (16, 15, 20), rect, border_radius=self.u(6))
+        pygame.draw.rect(self.screen, self.BG_DEEP, rect, border_radius=self.u(6))
         pygame.draw.rect(
-            self.screen, color, rect, max(1, self.u(1)), border_radius=self.u(6)
+            self.screen,
+            self.IRON_DARK,
+            rect,
+            max(1, self.u(1)),
+            border_radius=self.u(6),
         )
+        # Left accent strip tinted to the rarity color.
+        strip = pygame.Rect(rect.x, rect.y, self.u(3), rect.height)
+        pygame.draw.rect(self.screen, color, strip, border_radius=self.u(2))
         self.draw_text(
             label,
             self.g.tiny_font,
@@ -555,9 +636,13 @@ class MenuInventoryMixin:
         )
 
     def draw_inventory_controls(self, rect: pygame.Rect) -> None:
-        pygame.draw.rect(self.screen, (16, 15, 20), rect, border_radius=self.u(9))
+        pygame.draw.rect(self.screen, self.PANEL_INK, rect, border_radius=self.u(9))
         pygame.draw.rect(
-            self.screen, (58, 52, 66), rect, max(1, self.u(1)), border_radius=self.u(9)
+            self.screen,
+            self.STONE_LIGHT,
+            rect,
+            max(1, self.u(1)),
+            border_radius=self.u(9),
         )
         entries = [
             "Up/Down select",
@@ -583,10 +668,10 @@ class MenuInventoryMixin:
             if y + pill_h > rect.bottom - pad:
                 break
             pill = pygame.Rect(x, y, pill_w, pill_h)
-            pygame.draw.rect(self.screen, (27, 25, 33), pill, border_radius=self.u(6))
+            pygame.draw.rect(self.screen, self.PANEL_2, pill, border_radius=self.u(6))
             pygame.draw.rect(
                 self.screen,
-                (78, 70, 86),
+                self.IRON,
                 pill,
                 max(1, self.u(1)),
                 border_radius=self.u(6),
@@ -618,4 +703,3 @@ class MenuInventoryMixin:
 
     def item_color(self, item: Item) -> Color:
         return self.g.rarity_color(item.visible_rarity)
-

@@ -182,3 +182,95 @@ class RenderingBaseMixin:
             lines.append(current)
         return lines
 
+    # --- Gothic HUD helpers -------------------------------------------------
+    # Shared palette tokens for the in-world HUD. Kept here so the HUD and the
+    # menu renderer speak the same visual language without import cycles.
+    HUD_INK = (12, 11, 16)
+    HUD_PANEL = (18, 17, 24)
+    HUD_STONE_LIGHT = (54, 49, 58)
+    HUD_STONE_SHADOW = (8, 7, 11)
+    HUD_IRON = (74, 70, 82)
+    HUD_IRON_LIGHT = (118, 110, 128)
+    HUD_IRON_DARK = (32, 30, 38)
+    HUD_GOLD = (214, 168, 92)
+    HUD_GOLD_BRIGHT = (236, 214, 168)
+    HUD_PARCHMENT = (224, 214, 196)
+    HUD_BONE = (210, 204, 190)
+    HUD_MUTED = (148, 138, 124)
+
+    def draw_ornate_hud_panel(
+        self,
+        surface: pygame.Surface,
+        rect: pygame.Rect,
+        fill: tuple[int, int, int, int],
+        border: tuple[int, int, int, int],
+        radius: int | None = None,
+        width: int | None = None,
+        studs: bool = False,
+    ) -> None:
+        """A translucent stone panel with a chiseled bevel and optional iron studs."""
+        radius = self.ui(9) if radius is None else radius
+        width = self.ui(1) if width is None else width
+        panel = pygame.Surface(rect.size, pygame.SRCALPHA)
+        panel_rect = panel.get_rect()
+        pygame.draw.rect(panel, fill, panel_rect, border_radius=radius)
+        # Inner bevel — dark rim then a faint light rim.
+        pygame.draw.rect(
+            panel,
+            (*self.HUD_STONE_SHADOW, fill[3] // 2 + 40),
+            panel_rect,
+            max(1, self.ui(2)),
+            border_radius=radius,
+        )
+        inner = panel_rect.inflate(-self.ui(2), -self.ui(2))
+        pygame.draw.rect(
+            panel,
+            (*self.HUD_STONE_LIGHT, fill[3] // 2 + 30),
+            inner,
+            max(1, self.ui(1)),
+            border_radius=max(1, radius - self.ui(1)),
+        )
+        # Gold inner trim.
+        trim = inner.inflate(-self.ui(4), -self.ui(4))
+        pygame.draw.rect(
+            panel,
+            (*self.shade(self.HUD_GOLD, -40), fill[3] // 2 + 20),
+            trim,
+            max(1, self.ui(1)),
+            border_radius=max(1, radius - self.ui(2)),
+        )
+        # Outer accent border (caller-supplied color).
+        pygame.draw.rect(panel, border, panel_rect, width, border_radius=radius)
+        if studs:
+            stud_r = max(2, self.ui(3))
+            inset = self.ui(7)
+            for corner in (
+                (inset, inset),
+                (panel_rect.width - inset, inset),
+                (inset, panel_rect.height - inset),
+                (panel_rect.width - inset, panel_rect.height - inset),
+            ):
+                pygame.draw.circle(panel, self.HUD_IRON_DARK, corner, stud_r + 1)
+                pygame.draw.circle(panel, self.HUD_IRON, corner, stud_r)
+                pygame.draw.circle(
+                    panel,
+                    self.HUD_IRON_LIGHT,
+                    (corner[0] - 1, corner[1] - 1),
+                    max(1, stud_r - 1),
+                )
+        surface.blit(panel, rect)
+
+    def draw_hud_divider(
+        self, surface: pygame.Surface, x1: int, y: int, x2: int, color: Color
+    ) -> None:
+        """An ornamental gold rule with a center diamond."""
+        pygame.draw.line(
+            surface, self.shade(color, -40), (x1, y), (x2, y), max(1, self.ui(1))
+        )
+        cx = (x1 + x2) // 2
+        dr = self.ui(2)
+        pygame.draw.polygon(
+            surface,
+            color,
+            [(cx, y - dr), (cx + dr, y), (cx, y + dr), (cx - dr, y)],
+        )

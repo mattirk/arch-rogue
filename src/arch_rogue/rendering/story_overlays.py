@@ -48,26 +48,23 @@ class RenderingStoryOverlayMixin:
         accent = self.story_state.accent if self.story_state else self.theme.accent
         rect = pygame.Rect(x, y, panel_w, max_h)
         surface = pygame.Surface(rect.size, pygame.SRCALPHA)
-        pygame.draw.rect(
-            surface, (10, 9, 13, 218), surface.get_rect(), border_radius=self.ui(9)
-        )
-        pygame.draw.rect(
+        self.draw_ornate_hud_panel(
             surface,
-            (*accent, 155),
             surface.get_rect(),
-            self.ui(1),
-            border_radius=self.ui(9),
+            (10, 9, 13, 220),
+            (*accent, 165),
+            radius=self.ui(9),
         )
         pad = self.ui(12)
         title = lines[0]
         title_surface = self.small_font.render(title, True, (244, 232, 214))
         surface.blit(title_surface, (pad, pad))
-        pygame.draw.line(
+        self.draw_hud_divider(
             surface,
-            (*accent, 120),
-            (pad, pad + title_surface.get_height() + self.ui(4)),
-            (panel_w - pad, pad + title_surface.get_height() + self.ui(4)),
-            self.ui(1),
+            pad,
+            pad + title_surface.get_height() + self.ui(4),
+            panel_w - pad,
+            accent,
         )
         cursor_y = pad + title_surface.get_height() + self.ui(9)
         line_h = max(self.small_font.get_height() + self.ui(3), self.ui(18))
@@ -1948,4 +1945,3 @@ class RenderingStoryOverlayMixin:
         label = self.tiny_font.render(label_text, True, color)
         label.set_alpha(168)
         surface.blit(label, label.get_rect(center=(x, y - sprite_h - self.ui(2))))
-

@@ -120,7 +120,7 @@ class MenuCharacterMixin:
             inner.width,
             heading_font.get_height() + self.u(10),
         )
-        pygame.draw.rect(self.screen, self.PANEL, header_rect)
+        pygame.draw.rect(self.screen, self.PANEL_INK, header_rect)
         self.draw_text(
             "Classes",
             heading_font,
@@ -149,10 +149,24 @@ class MenuCharacterMixin:
             row = pygame.Rect(inner.x, y, inner.width, row_h)
             is_selected = archetype == selected
             row_accent = self.archetype_accent(archetype.name)
-            fill = self.shade(row_accent, -92) if is_selected else self.PANEL_2
-            border = row_accent if is_selected else (58, 52, 62)
+            if is_selected:
+                # Selected: gold-tinted plate with a soft inner glow.
+                fill = self.shade(row_accent, -100)
+                pygame.draw.rect(self.screen, fill, row, border_radius=self.u(7))
+                glow = pygame.Surface(row.size, pygame.SRCALPHA)
+                pygame.draw.rect(
+                    glow,
+                    (*row_accent, 36),
+                    glow.get_rect(),
+                    border_radius=self.u(7),
+                )
+                self.screen.blit(glow, row)
+            else:
+                pygame.draw.rect(
+                    self.screen, self.PANEL_INK, row, border_radius=self.u(7)
+                )
+            border = row_accent if is_selected else self.IRON
             radius = self.u(7)
-            pygame.draw.rect(self.screen, fill, row, border_radius=radius)
             pygame.draw.rect(
                 self.screen, border, row, max(1, self.u(1)), border_radius=radius
             )
@@ -163,6 +177,13 @@ class MenuCharacterMixin:
                 pygame.draw.rect(
                     self.screen, row_accent, strip, border_radius=self.u(3)
                 )
+                pygame.draw.rect(
+                    self.screen,
+                    self.shade(row_accent, 40),
+                    strip,
+                    border_radius=self.u(3),
+                )
+            # Sigil badge — iron plate with the class number etched in gold.
             badge_size = min(self.u(34), row_h - self.u(10))
             badge = pygame.Rect(
                 row.x + self.u(10),
@@ -170,14 +191,22 @@ class MenuCharacterMixin:
                 badge_size,
                 badge_size,
             )
-            pygame.draw.rect(self.screen, (38, 34, 45), badge, border_radius=self.u(5))
+            pygame.draw.rect(
+                self.screen, self.IRON_DARK, badge, border_radius=self.u(5)
+            )
+            pygame.draw.rect(
+                self.screen,
+                self.IRON,
+                badge.inflate(-self.u(2), -self.u(2)),
+                border_radius=self.u(4),
+            )
             pygame.draw.rect(
                 self.screen, border, badge, max(1, self.u(1)), border_radius=self.u(5)
             )
             self.draw_text(
                 str(index + 1),
                 row_font,
-                border,
+                self.TITLE if is_selected else border,
                 badge,
                 align="center",
                 valign="center",
@@ -221,7 +250,22 @@ class MenuCharacterMixin:
         name_rect = pygame.Rect(
             inner.x, inner.y + self.u(5), inner.width, name_h + self.u(8)
         )
-        pygame.draw.rect(self.screen, self.PANEL, name_rect.inflate(0, self.u(6)))
+        # Parchment name plaque.
+        plaque = pygame.Surface(name_rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(
+            plaque,
+            (214, 196, 150, 24),
+            plaque.get_rect(),
+            border_radius=self.u(6),
+        )
+        pygame.draw.rect(
+            plaque,
+            (*accent, 90),
+            plaque.get_rect(),
+            max(1, self.u(1)),
+            border_radius=self.u(6),
+        )
+        self.screen.blit(plaque, name_rect)
         self.draw_text(
             archetype.name,
             name_font,
@@ -240,12 +284,25 @@ class MenuCharacterMixin:
             align="center",
         )
         divider_y = skills_y + detail_font.get_height() + self.u(12)
+        # Ornamental divider — thin line with a center diamond.
         pygame.draw.line(
             self.screen,
             self.shade(accent, -16),
             (inner.x + 8, divider_y),
             (inner.right - 8, divider_y),
             max(1, self.u(1)),
+        )
+        cx = inner.centerx
+        dr = self.u(3)
+        pygame.draw.polygon(
+            self.screen,
+            accent,
+            [
+                (cx, divider_y - dr),
+                (cx + dr, divider_y),
+                (cx, divider_y + dr),
+                (cx - dr, divider_y),
+            ],
         )
 
         sprite = self.g.sprites.player_sprites.get(
@@ -267,9 +324,24 @@ class MenuCharacterMixin:
         sprite_y = divider_y + self.u(8)
         pedestal = pygame.Rect(0, 0, preview.get_width() + self.u(40), self.u(18))
         pedestal.center = (inner.centerx, sprite_y + preview.get_height() + 8)
-        glow = pygame.Surface((pedestal.width, pedestal.height), pygame.SRCALPHA)
-        pygame.draw.ellipse(glow, (*accent, 72), glow.get_rect())
-        self.screen.blit(glow, pedestal)
+        # Pedestal glow — a soft elliptical halo in the class accent.
+        glow = pygame.Surface((pedestal.width, pedestal.height * 2), pygame.SRCALPHA)
+        for i in range(3):
+            alpha = 60 - i * 16
+            pygame.draw.ellipse(
+                glow,
+                (*accent, alpha),
+                glow.get_rect().inflate(-i * self.u(6), -i * self.u(4)),
+            )
+        self.screen.blit(glow, glow.get_rect(center=pedestal.center))
+        # Pedestal base — a thin stone slab.
+        pygame.draw.ellipse(self.screen, self.STONE_SHADOW, pedestal)
+        pygame.draw.ellipse(
+            self.screen,
+            self.STONE_LIGHT,
+            pedestal,
+            max(1, self.u(1)),
+        )
         self.screen.blit(
             preview, preview.get_rect(midbottom=(inner.centerx, pedestal.centery + 2))
         )
@@ -320,13 +392,21 @@ class MenuCharacterMixin:
                 cell_w,
                 cell_h,
             )
-            pygame.draw.rect(self.screen, self.PANEL_2, cell, border_radius=self.u(5))
+            # Recessed stat cell with a faint top highlight.
+            pygame.draw.rect(self.screen, self.PANEL_INK, cell, border_radius=self.u(5))
             pygame.draw.rect(
                 self.screen,
-                (58, 52, 62),
+                self.STONE_LIGHT,
                 cell,
                 max(1, self.u(1)),
                 border_radius=self.u(5),
+            )
+            pygame.draw.line(
+                self.screen,
+                self.IRON,
+                (cell.x + self.u(4), cell.y + self.u(1)),
+                (cell.right - self.u(4), cell.y + self.u(1)),
+                max(1, self.u(1)),
             )
             self.draw_text(
                 label,
@@ -404,10 +484,12 @@ class MenuCharacterMixin:
             pygame.Rect(inner.x, inner.y, inner.width - close_w - gap, title_h),
         )
         close_rect = pygame.Rect(inner.right - close_w, inner.y, close_w, title_h)
-        pygame.draw.rect(self.screen, (30, 27, 36), close_rect, border_radius=self.u(6))
+        pygame.draw.rect(
+            self.screen, self.PANEL_INK, close_rect, border_radius=self.u(6)
+        )
         pygame.draw.rect(
             self.screen,
-            (78, 70, 86),
+            self.IRON,
             close_rect,
             max(1, self.u(1)),
             border_radius=self.u(6),
@@ -468,13 +550,32 @@ class MenuCharacterMixin:
             accent: Color | None = None,
         ) -> None:
             accent = accent or self.accent()
-            pygame.draw.rect(self.screen, self.PANEL_2, rect, border_radius=self.u(8))
+            pygame.draw.rect(self.screen, self.PANEL_INK, rect, border_radius=self.u(8))
+            # Soft accent-tinted wash to distinguish cards.
+            wash = pygame.Surface(rect.size, pygame.SRCALPHA)
+            pygame.draw.rect(
+                wash,
+                (*accent, 18),
+                wash.get_rect(),
+                border_radius=self.u(8),
+            )
+            self.screen.blit(wash, rect)
             pygame.draw.rect(
                 self.screen,
                 accent,
                 rect,
                 max(1, self.u(1)),
                 border_radius=self.u(8),
+            )
+            # Top accent strip — a thin gold band on the card header.
+            strip = pygame.Rect(
+                rect.x + self.u(8),
+                rect.y + self.u(4),
+                rect.width - self.u(16),
+                self.u(2),
+            )
+            pygame.draw.rect(
+                self.screen, self.shade(accent, 30), strip, border_radius=self.u(1)
             )
             card_pad = max(self.u(9), 9)
             self.draw_text(
@@ -555,4 +656,3 @@ class MenuCharacterMixin:
         draw_card(card_rect(1), "Equipment", equipment_lines, self.accent())
         draw_card(card_rect(2), "Upgrades", upgrade_lines, self.g.skill_color())
         draw_card(card_rect(3), "Status & Procs", status_lines[:4], self.accent())
-

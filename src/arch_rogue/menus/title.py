@@ -20,8 +20,8 @@ class MenuTitleMixin:
         )
         resume_value = "Ready" if self.g.save_exists() else "None"
         rows: list[MenuRow] = [
-            ("N / Enter", "Start a new run", ""),
-            ("L / R", "Resume saved run", resume_value),
+            ("N / Enter", "Begin a new descent", ""),
+            ("L / R", "Resume a saved run", resume_value),
             ("O", "Options", ""),
             ("A / C / H / ?", "About, credits, and quick help", ""),
         ]
@@ -29,14 +29,44 @@ class MenuTitleMixin:
         note_rect = pygame.Rect(
             content.x, content.bottom - self.u(72), content.width, self.u(60)
         )
-        self.draw_wrapped_text(
-            "Choose an archetype, follow a seeded dark-fantasy storyline, meet story guests, shape future floors with choices, and break the gate tyrant's seal.",
-            self.g.small_font,
-            self.MUTED,
+        self._draw_parchment_note(
             note_rect,
+            "Choose an archetype, follow a seeded dark-fantasy storyline, meet story guests, shape future floors with choices, and break the gate tyrant's seal.",
         )
         self.draw_footer(
             panel, "Esc asks before quitting · Backspace returns from submenus"
+        )
+
+    def _draw_parchment_note(self, rect: pygame.Rect, text: str) -> None:
+        """A small aged-parchment plaque for flavor text."""
+        plaque = pygame.Surface(rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(
+            plaque,
+            (208, 188, 142, 38),
+            plaque.get_rect(),
+            border_radius=self.u(6),
+        )
+        pygame.draw.rect(
+            plaque,
+            (180, 152, 96, 90),
+            plaque.get_rect(),
+            max(1, self.u(1)),
+            border_radius=self.u(6),
+        )
+        # Subtle inner shadow line at the top.
+        pygame.draw.line(
+            plaque,
+            (90, 70, 40, 60),
+            (self.u(6), self.u(2)),
+            (rect.width - self.u(6), self.u(2)),
+            max(1, self.u(1)),
+        )
+        self.screen.blit(plaque, rect)
+        self.draw_wrapped_text(
+            text,
+            self.g.small_font,
+            (228, 214, 178),
+            rect.inflate(-self.u(16), -self.u(10)),
         )
 
     def draw_exit_confirmation(self) -> None:
@@ -57,7 +87,6 @@ class MenuTitleMixin:
         )
         self.draw_wrapped_text(note, self.g.small_font, self.MUTED, note_rect)
         self.draw_footer(panel, "Y confirms · N cancels")
-
 
     def draw_about_screen(self) -> None:
         panel, content = self.menu_frame(
@@ -149,4 +178,3 @@ class MenuTitleMixin:
             ),
             align="right",
         )
-
