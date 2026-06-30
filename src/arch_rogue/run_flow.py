@@ -414,6 +414,7 @@ class RunFlowMixin:
             armor_bonus=self.selected_archetype.armor_bonus,
         )
         self.apply_starting_loadout()
+        self.snap_camera_to_player()
         self.enemies: list[Enemy] = []
         self.items: list[Item] = []
         self.shopkeepers: list[Shopkeeper] = []
@@ -469,6 +470,7 @@ class RunFlowMixin:
         start_x, start_y = self.dungeon.rooms[0].center
         self.player.x = start_x + 0.5
         self.player.y = start_y + 0.5
+        self.snap_camera_to_player()
         self.player.melee_timer = 0.0
         self.player.bolt_timer = 0.0
         self.player.dash_timer = 0.0

@@ -6,6 +6,12 @@ from .dungeon import MAP_H, MAP_W
 
 
 class CameraMixin:
+    # Smoothing factor for camera follow. Higher = snappier, lower = smoother.
+    # Frame-rate independent: combined with dt in update_camera().
+    # 14.0 ~ 70ms time constant: tight follow with a small ease to absorb
+    # collision jitter and per-frame movement variance.
+    CAMERA_SMOOTHNESS = 14.0
+
     def world_to_iso(self, x: float, y: float) -> tuple[float, float]:
         return (x - y) * TILE_W / 2, (x + y) * TILE_H / 2
 
@@ -13,10 +19,39 @@ class CameraMixin:
         cache = getattr(self, "_frame_cache", None)
         if cache is not None and "camera_iso" in cache:
             return cache["camera_iso"]  # type: ignore[no-any-return]
-        iso = self.world_to_iso(self.player.x, self.player.y)
+        # Use the smoothed camera position if it has been initialized;
+        # otherwise (first frame / after restart) snap directly to the
+        # player so the camera never starts mid-lerp.
+        if getattr(self, "_cam_iso", None) is None:
+            iso = self.world_to_iso(self.player.x, self.player.y)
+            self._cam_iso = iso
+        else:
+            iso = self._cam_iso
         if cache is not None:
             cache["camera_iso"] = iso
         return iso
+
+    def update_camera(self, dt: float) -> None:
+        """Advance the smoothed camera toward the player's iso position.
+
+        Uses an exponential lerp (frame-rate independent) so the camera
+        eases toward the player instead of hard-locking. This eliminates
+        the micro-jitter from collision resolution and per-frame movement
+        variance that made the view feel janky.
+        """
+        target = self.world_to_iso(self.player.x, self.player.y)
+        if getattr(self, "_cam_iso", None) is None:
+            self._cam_iso = target
+            return
+        # Exponential smoothing: t in [0,1], approaches 1 as dt grows.
+        # 1 - exp(-k*dt) is the standard frame-rate-independent lerp.
+        t = 1.0 - pow(2.718281828459045, -self.CAMERA_SMOOTHNESS * dt)
+        cx, cy = self._cam_iso
+        self._cam_iso = (cx + (target[0] - cx) * t, cy + (target[1] - cy) * t)
+
+    def snap_camera_to_player(self) -> None:
+        """Hard-reset the smoothed camera to the player (used on restart/teleport)."""
+        self._cam_iso = self.world_to_iso(self.player.x, self.player.y)
 
     def world_to_screen(self, x: float, y: float) -> tuple[int, int]:
         iso_x, iso_y = self.world_to_iso(x, y)

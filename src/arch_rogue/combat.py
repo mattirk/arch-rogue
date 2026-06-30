@@ -499,13 +499,33 @@ class CombatMixin:
 
     def update_player(self, dt: float) -> None:
         self.player.moving = False
-        if pygame.mouse.get_pressed()[0]:
+        # Keyboard movement (WASD + arrows) takes priority so the game is
+        # playable without holding the mouse. Mouse-hold-to-walk remains as
+        # a fallback for players who prefer click-to-move style.
+        keys = pygame.key.get_pressed()
+        kbd_dx = float(keys[pygame.K_RIGHT] or keys[pygame.K_d]) - float(
+            keys[pygame.K_LEFT] or keys[pygame.K_a]
+        )
+        kbd_dy = float(keys[pygame.K_DOWN] or keys[pygame.K_s]) - float(
+            keys[pygame.K_UP] or keys[pygame.K_w]
+        )
+        move_speed = self.player.speed * (
+            0.82 if self.player_status("chilled") > 0 else 1.0
+        )
+        if kbd_dx or kbd_dy:
+            length = math.hypot(kbd_dx, kbd_dy)
+            if length > 0.0:
+                # Normalize so diagonal isn't faster than cardinal.
+                nx, ny = kbd_dx / length, kbd_dy / length
+                self.player.facing_x = nx
+                self.player.facing_y = ny
+                self.move_actor(self.player, nx * move_speed * dt, ny * move_speed * dt)
+            if self.enemy_in_melee_arc():
+                self.player_melee_attack()
+        elif pygame.mouse.get_pressed()[0]:
             dx, dy = self.face_player_toward_screen_point(*pygame.mouse.get_pos())
             distance = math.hypot(dx, dy)
-            if distance > 0.18:
-                move_speed = self.player.speed * (
-                    0.82 if self.player_status("chilled") > 0 else 1.0
-                )
+            if distance > 0.12:
                 self.move_actor(
                     self.player,
                     (dx / distance) * move_speed * dt,
@@ -576,7 +596,13 @@ class CombatMixin:
             actor.moving = True
             target_x = actual_dx / distance
             target_y = actual_dy / distance
-            blend = 0.38
+            # Frame-rate-independent exponential smoothing. The old fixed
+            # blend=0.38 per frame made facing/lean ease twice as fast at
+            # 120fps as at 30fps; normalizing to dt keeps the feel stable
+            # across frame rates. k~=4.77 reproduces 0.38/frame at 60fps.
+            dt = getattr(self, "_last_dt", 1.0 / 60.0)
+            blend = 1.0 - pow(2.718281828459045, -4.77 * dt)
+            blend = 0.999 if blend > 0.999 else blend
             smoothed_x = actor.move_x * (1.0 - blend) + target_x * blend
             smoothed_y = actor.move_y * (1.0 - blend) + target_y * blend
             smoothed_length = math.hypot(smoothed_x, smoothed_y)

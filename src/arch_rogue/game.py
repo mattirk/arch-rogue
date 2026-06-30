@@ -663,6 +663,7 @@ class Game(
 
     def update(self, dt: float) -> None:
         self.elapsed += dt
+        self._last_dt = dt
         self.update_visual_effects(dt)
         if self.active_cutscene is not None:
             self.update_active_cutscene(dt)
@@ -685,6 +686,7 @@ class Game(
             return
         self.update_player_aim()
         self.update_player(dt)
+        self.update_camera(dt)
         self.update_enemy_statuses(dt)
         self.update_enemies(dt)
         self.update_projectiles(dt)
