@@ -223,6 +223,134 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         spell_bonus=3,
         max_stamina_bonus=10,
     ),
+    # --- Warden: Vow branch (holy smite and oath magic) ---
+    SkillNode(
+        "warden_smite",
+        "Warden",
+        "Smite Oath",
+        "Guard Bolt flares with holy light and burns the undead.",
+        tier=1,
+        branch="Vow",
+        prerequisites=(),
+        spell_bonus=2,
+        max_mana_bonus=8,
+        tags=("Holy",),
+    ),
+    SkillNode(
+        "warden_ward",
+        "Warden",
+        "Warding Oath",
+        "A protective ward absorbs the next hit and costs less mana.",
+        tier=1,
+        branch="Fortress",
+        prerequisites=(),
+        armor_bonus=2,
+        max_hp_bonus=8,
+        tags=("Ward",),
+    ),
+    SkillNode(
+        "warden_judgment",
+        "Warden",
+        "Judgment",
+        "Smite chains to a second foe and marks them for counters.",
+        tier=2,
+        branch="Vow",
+        prerequisites=("warden_smite",),
+        spell_bonus=3,
+        max_mana_bonus=8,
+        tags=("Holy",),
+    ),
+    SkillNode(
+        "warden_bulwark_wave",
+        "Warden",
+        "Bulwark Wave",
+        "Bulwark Wave knocks foes back and raises a brief stone ring.",
+        tier=2,
+        branch="Fortress",
+        prerequisites=("warden_ward",),
+        armor_bonus=2,
+        max_stamina_bonus=8,
+        tags=("Ward",),
+    ),
+    SkillNode(
+        "warden_consecrate",
+        "Warden",
+        "Consecration",
+        "Holy ground burns foes that stand in the Warden's wake.",
+        tier=3,
+        branch="Vow",
+        prerequisites=("warden_judgment",),
+        spell_bonus=4,
+        max_mana_bonus=10,
+        tags=("Holy",),
+    ),
+    SkillNode(
+        "warden_stone_aegis",
+        "Warden",
+        "Stone Aegis",
+        "The ward hardens into stone, reducing trap and ranged damage.",
+        tier=3,
+        branch="Fortress",
+        prerequisites=("warden_bulwark_wave",),
+        armor_bonus=3,
+        max_hp_bonus=12,
+        tags=("Ward",),
+    ),
+    SkillNode(
+        "warden_divine_wrath",
+        "Warden",
+        "Divine Wrath",
+        "Smite erupts in a holy nova that stuns nearby foes.",
+        tier=4,
+        branch="Vow",
+        prerequisites=("warden_consecrate",),
+        spell_bonus=5,
+        max_mana_bonus=12,
+        tags=("Holy",),
+        # Deep Holy pick that amplifies Counter-tagged riposte skills.
+        cross_branch_tags=("Counter",),
+        cross_branch_bonus_spell=1,
+    ),
+    SkillNode(
+        "warden_unyielding",
+        "Warden",
+        "Unyielding Stone",
+        "Below half health the stone ring reforms and slows nearby foes.",
+        tier=4,
+        branch="Fortress",
+        prerequisites=("warden_stone_aegis",),
+        armor_bonus=4,
+        max_hp_bonus=16,
+        max_stamina_bonus=10,
+        tags=("Ward",),
+        # Deep Ward pick that amplifies Guard-tagged bulwark skills.
+        cross_branch_tags=("Guard",),
+        cross_branch_bonus_melee=1,
+    ),
+    SkillNode(
+        "warden_avatar_of_light",
+        "Warden",
+        "Avatar of Light",
+        "The Warden becomes a beacon: smites heal allies and blind foes.",
+        tier=5,
+        branch="Vow",
+        prerequisites=("warden_divine_wrath",),
+        spell_bonus=6,
+        max_mana_bonus=16,
+        max_hp_bonus=12,
+    ),
+    SkillNode(
+        "warden_eternal_wall",
+        "Warden",
+        "Eternal Wall",
+        "The stone ring persists and the Warden cannot be moved by foes.",
+        tier=5,
+        branch="Fortress",
+        prerequisites=("warden_unyielding",),
+        armor_bonus=5,
+        max_hp_bonus=24,
+        max_stamina_bonus=12,
+    ),
     # === Rogue ===
     SkillNode(
         "rogue_precision",
@@ -347,6 +475,135 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("rogue_phantom",),
         speed_bonus=0.14,
         max_stamina_bonus=12,
+    ),
+    # --- Rogue: Traps branch (engineer and poison traps) ---
+    SkillNode(
+        "rogue_trap_craft",
+        "Rogue",
+        "Trap Craft",
+        "Traps arm faster and bite harder.",
+        tier=1,
+        branch="Traps",
+        prerequisites=(),
+        melee_bonus=2,
+        spell_bonus=1,
+        max_stamina_bonus=6,
+        tags=("Trap",),
+    ),
+    SkillNode(
+        "rogue_marksman",
+        "Rogue",
+        "Marksman",
+        "Knife Fan reaches farther and crits from range.",
+        tier=1,
+        branch="Marksman",
+        prerequisites=(),
+        melee_bonus=2,
+        max_stamina_bonus=8,
+        tags=("Aim",),
+    ),
+    SkillNode(
+        "rogue_venom_trap",
+        "Rogue",
+        "Venom Trap",
+        "A poison trap coats foes in lingering toxins.",
+        tier=2,
+        branch="Traps",
+        prerequisites=("rogue_trap_craft",),
+        spell_bonus=2,
+        max_stamina_bonus=6,
+        tags=("Trap",),
+    ),
+    SkillNode(
+        "rogue_sharpshot",
+        "Rogue",
+        "Sharpshot",
+        "Backstabs from range deal bonus damage and refund stamina.",
+        tier=2,
+        branch="Marksman",
+        prerequisites=("rogue_marksman",),
+        melee_bonus=3,
+        max_stamina_bonus=8,
+        tags=("Aim",),
+    ),
+    SkillNode(
+        "rogue_bear_trap",
+        "Rogue",
+        "Iron Maw",
+        "A heavy trap roots and bleeds the first foe to spring it.",
+        tier=3,
+        branch="Traps",
+        prerequisites=("rogue_venom_trap",),
+        melee_bonus=3,
+        spell_bonus=2,
+        max_stamina_bonus=6,
+        tags=("Trap",),
+    ),
+    SkillNode(
+        "rogue_deadeye",
+        "Rogue",
+        "Deadeye",
+        "Crits from range pierce and apply a stacking mark.",
+        tier=3,
+        branch="Marksman",
+        prerequisites=("rogue_sharpshot",),
+        melee_bonus=4,
+        max_stamina_bonus=6,
+        tags=("Aim",),
+    ),
+    SkillNode(
+        "rogue_trap_master",
+        "Rogue",
+        "Trap Master",
+        "Traps chain to nearby foes and reset on kill.",
+        tier=4,
+        branch="Traps",
+        prerequisites=("rogue_bear_trap",),
+        melee_bonus=4,
+        spell_bonus=3,
+        max_stamina_bonus=8,
+        tags=("Trap",),
+        # Deep Trap pick that amplifies Critical-tagged precision skills.
+        cross_branch_tags=("Critical",),
+        cross_branch_bonus_melee=1,
+    ),
+    SkillNode(
+        "rogue_eagle_eye",
+        "Rogue",
+        "Eagle Eye",
+        "Marked foes take extra crit damage and reveal hidden secrets.",
+        tier=4,
+        branch="Marksman",
+        prerequisites=("rogue_deadeye",),
+        melee_bonus=5,
+        max_stamina_bonus=8,
+        tags=("Aim",),
+        # Deep Aim pick that amplifies Stealth-tagged shadow skills.
+        cross_branch_tags=("Stealth",),
+        cross_branch_bonus_melee=1,
+    ),
+    SkillNode(
+        "rogue_ambush_engineer",
+        "Rogue",
+        "Ambush Engineer",
+        "Traps prime themselves and the Rogue gains a third trap charge.",
+        tier=5,
+        branch="Traps",
+        prerequisites=("rogue_trap_master",),
+        melee_bonus=5,
+        spell_bonus=4,
+        max_stamina_bonus=10,
+    ),
+    SkillNode(
+        "rogue_assassin",
+        "Rogue",
+        "Assassin",
+        "Marked foes die to a single perfect shot from any range.",
+        tier=5,
+        branch="Marksman",
+        prerequisites=("rogue_eagle_eye",),
+        melee_bonus=6,
+        max_stamina_bonus=10,
     ),
     # === Arcanist ===
     SkillNode(
@@ -473,6 +730,135 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         spell_bonus=6,
         max_mana_bonus=14,
     ),
+    # --- Arcanist: Storm branch (lightning and chain magic) ---
+    SkillNode(
+        "arcanist_charge",
+        "Arcanist",
+        "Static Charge",
+        "Arc Bolt builds a charge that discharges on the next cast.",
+        tier=1,
+        branch="Storm",
+        prerequisites=(),
+        spell_bonus=2,
+        max_mana_bonus=10,
+        tags=("Storm",),
+    ),
+    SkillNode(
+        "arcanist_ward",
+        "Arcanist",
+        "Arcane Ward",
+        "A mana shield absorbs hits and reflects arcane damage.",
+        tier=1,
+        branch="Ward",
+        prerequisites=(),
+        armor_bonus=1,
+        max_mana_bonus=12,
+        tags=("Shield",),
+    ),
+    SkillNode(
+        "arcanist_chain_lightning",
+        "Arcanist",
+        "Chain Lightning",
+        "Bolts arc between up to three foes, weakening each.",
+        tier=2,
+        branch="Storm",
+        prerequisites=("arcanist_charge",),
+        spell_bonus=3,
+        max_mana_bonus=8,
+        tags=("Storm",),
+    ),
+    SkillNode(
+        "arcanist_ward_mend",
+        "Arcanist",
+        "Warding Mend",
+        "The ward heals the Arcanist when it absorbs a hit.",
+        tier=2,
+        branch="Ward",
+        prerequisites=("arcanist_ward",),
+        armor_bonus=2,
+        max_mana_bonus=10,
+        max_hp_bonus=8,
+        tags=("Shield",),
+    ),
+    SkillNode(
+        "arcanist_tempest",
+        "Arcanist",
+        "Tempest",
+        "A storm front lingers, repeatedly striking foes in range.",
+        tier=3,
+        branch="Storm",
+        prerequisites=("arcanist_chain_lightning",),
+        spell_bonus=4,
+        max_mana_bonus=10,
+        tags=("Storm",),
+    ),
+    SkillNode(
+        "arcanist_ward_overload",
+        "Arcanist",
+        "Ward Overload",
+        "A depleted ward detonates, damaging nearby foes.",
+        tier=3,
+        branch="Ward",
+        prerequisites=("arcanist_ward_mend",),
+        armor_bonus=2,
+        spell_bonus=2,
+        max_mana_bonus=12,
+        tags=("Shield",),
+    ),
+    SkillNode(
+        "arcanist_storm_caller",
+        "Arcanist",
+        "Stormcaller",
+        "Tempests grow into a full storm that hunts elites.",
+        tier=4,
+        branch="Storm",
+        prerequisites=("arcanist_tempest",),
+        spell_bonus=5,
+        max_mana_bonus=12,
+        tags=("Storm",),
+        # Deep Storm pick that amplifies Frost-tagged nova skills.
+        cross_branch_tags=("Frost",),
+        cross_branch_bonus_spell=1,
+    ),
+    SkillNode(
+        "arcanist_aegis",
+        "Arcanist",
+        "Arcane Aegis",
+        "The ward becomes permanent and reflects spells.",
+        tier=4,
+        branch="Ward",
+        prerequisites=("arcanist_ward_overload",),
+        armor_bonus=3,
+        max_mana_bonus=14,
+        max_hp_bonus=10,
+        tags=("Shield",),
+        # Deep Shield pick that amplifies Arcane-tagged bolt skills.
+        cross_branch_tags=("Arcane",),
+        cross_branch_bonus_spell=1,
+    ),
+    SkillNode(
+        "arcanist_world_storm",
+        "Arcanist",
+        "World Storm",
+        "The storm engulfs the floor, striking every foe each beat.",
+        tier=5,
+        branch="Storm",
+        prerequisites=("arcanist_storm_caller",),
+        spell_bonus=6,
+        max_mana_bonus=16,
+    ),
+    SkillNode(
+        "arcanist_eternal_aegis",
+        "Arcanist",
+        "Eternal Aegis",
+        "The aegis cannot be broken and shields allies near the Arcanist.",
+        tier=5,
+        branch="Ward",
+        prerequisites=("arcanist_aegis",),
+        armor_bonus=4,
+        max_mana_bonus=18,
+        max_hp_bonus=14,
+    ),
     # === Acolyte ===
     SkillNode(
         "acolyte_sanguine",
@@ -485,6 +871,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         melee_bonus=1,
         spell_bonus=2,
         max_hp_bonus=8,
+        tags=("Blood",),
     ),
     SkillNode(
         "acolyte_veil",
@@ -496,6 +883,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=(),
         armor_bonus=1,
         max_mana_bonus=8,
+        tags=("Veil",),
     ),
     SkillNode(
         "acolyte_gravebind",
@@ -508,6 +896,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         spell_bonus=2,
         max_hp_bonus=6,
         max_mana_bonus=6,
+        tags=("Blood",),
     ),
     SkillNode(
         "acolyte_ashen",
@@ -519,6 +908,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("acolyte_veil",),
         armor_bonus=2,
         max_mana_bonus=10,
+        tags=("Veil",),
     ),
     SkillNode(
         "acolyte_blood_pact",
@@ -530,6 +920,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("acolyte_gravebind",),
         spell_bonus=3,
         max_hp_bonus=10,
+        tags=("Blood",),
     ),
     SkillNode(
         "acolyte_spirit_host",
@@ -541,6 +932,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("acolyte_ashen",),
         spell_bonus=3,
         max_mana_bonus=10,
+        tags=("Veil",),
     ),
     SkillNode(
         "acolyte_crimson_maw",
@@ -553,6 +945,10 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         spell_bonus=4,
         max_hp_bonus=14,
         melee_bonus=2,
+        tags=("Blood",),
+        # Deep Blood pick that amplifies Veil-tagged shield skills.
+        cross_branch_tags=("Veil",),
+        cross_branch_bonus_spell=1,
     ),
     SkillNode(
         "acolyte_grave_chorus",
@@ -565,6 +961,10 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         spell_bonus=4,
         max_mana_bonus=14,
         armor_bonus=2,
+        tags=("Veil",),
+        # Deep Veil pick that amplifies Blood-tagged rite skills.
+        cross_branch_tags=("Blood",),
+        cross_branch_bonus_spell=1,
     ),
     SkillNode(
         "acolyte_sanguine_ascendant",
@@ -577,6 +977,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         spell_bonus=5,
         max_hp_bonus=20,
         melee_bonus=3,
+        tags=("Blood",),
     ),
     SkillNode(
         "acolyte_undying_veil",
@@ -589,6 +990,135 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         spell_bonus=5,
         max_mana_bonus=16,
         armor_bonus=3,
+        tags=("Veil",),
+    ),
+    # --- Acolyte: Spirit branch (summoning and wraith control) ---
+    SkillNode(
+        "acolyte_spirit_call",
+        "Acolyte",
+        "Spirit Call",
+        "Spirit Bolt summons a fleeting wraith that harries foes.",
+        tier=1,
+        branch="Spirit",
+        prerequisites=(),
+        spell_bonus=2,
+        max_mana_bonus=8,
+        tags=("Spirit",),
+    ),
+    SkillNode(
+        "acolyte_curse",
+        "Acolyte",
+        "Hex",
+        "Spirit Bolt curses foes, weakening their attacks.",
+        tier=1,
+        branch="Curse",
+        prerequisites=(),
+        spell_bonus=2,
+        max_mana_bonus=8,
+        tags=("Curse",),
+    ),
+    SkillNode(
+        "acolyte_wraith_host",
+        "Acolyte",
+        "Wraith Host",
+        "Summoned wraiths persist and drain life into the Acolyte.",
+        tier=2,
+        branch="Spirit",
+        prerequisites=("acolyte_spirit_call",),
+        spell_bonus=3,
+        max_mana_bonus=8,
+        tags=("Spirit",),
+    ),
+    SkillNode(
+        "acolyte_decay",
+        "Acolyte",
+        "Decay",
+        "Cursed foes rot, losing health each second.",
+        tier=2,
+        branch="Curse",
+        prerequisites=("acolyte_curse",),
+        spell_bonus=3,
+        max_mana_bonus=8,
+        tags=("Curse",),
+    ),
+    SkillNode(
+        "acolyte_bone_legion",
+        "Acolyte",
+        "Bone Legion",
+        "Wraiths raise skeletal allies that fight beside the Acolyte.",
+        tier=3,
+        branch="Spirit",
+        prerequisites=("acolyte_wraith_host",),
+        spell_bonus=4,
+        max_mana_bonus=10,
+        melee_bonus=2,
+        tags=("Spirit",),
+    ),
+    SkillNode(
+        "acolyte_fragility",
+        "Acolyte",
+        "Fragility",
+        "Cursed foes take increased damage from all sources.",
+        tier=3,
+        branch="Curse",
+        prerequisites=("acolyte_decay",),
+        spell_bonus=4,
+        max_mana_bonus=10,
+        tags=("Curse",),
+    ),
+    SkillNode(
+        "acolyte_wraith_lord",
+        "Acolyte",
+        "Wraith Lord",
+        "A permanent wraith champion guards the Acolyte and taunts foes.",
+        tier=4,
+        branch="Spirit",
+        prerequisites=("acolyte_bone_legion",),
+        spell_bonus=5,
+        max_mana_bonus=12,
+        melee_bonus=3,
+        tags=("Spirit",),
+        # Deep Spirit pick that amplifies Curse-tagged debuff skills.
+        cross_branch_tags=("Curse",),
+        cross_branch_bonus_spell=1,
+    ),
+    SkillNode(
+        "acolyte_doom",
+        "Acolyte",
+        "Doom",
+        "Cursed foes are marked for death, exploding on death.",
+        tier=4,
+        branch="Curse",
+        prerequisites=("acolyte_fragility",),
+        spell_bonus=5,
+        max_mana_bonus=12,
+        tags=("Curse",),
+        # Deep Curse pick that amplifies Spirit-tagged summon skills.
+        cross_branch_tags=("Spirit",),
+        cross_branch_bonus_spell=1,
+    ),
+    SkillNode(
+        "acolyte_legion_eternal",
+        "Acolyte",
+        "Legion Eternal",
+        "The wraith champion becomes unkillable and raises the fallen.",
+        tier=5,
+        branch="Spirit",
+        prerequisites=("acolyte_wraith_lord",),
+        spell_bonus=6,
+        max_mana_bonus=16,
+        melee_bonus=4,
+    ),
+    SkillNode(
+        "acolyte_eternal_doom",
+        "Acolyte",
+        "Eternal Doom",
+        "Doom spreads to nearby foes on death, cursing the survivors.",
+        tier=5,
+        branch="Curse",
+        prerequisites=("acolyte_doom",),
+        spell_bonus=6,
+        max_mana_bonus=16,
     ),
     # === Ranger ===
     SkillNode(
@@ -601,6 +1131,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=(),
         spell_bonus=2,
         max_stamina_bonus=8,
+        tags=("Control",),
     ),
     SkillNode(
         "ranger_volley",
@@ -612,6 +1143,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=(),
         melee_bonus=1,
         spell_bonus=2,
+        tags=("Volley",),
     ),
     SkillNode(
         "ranger_beastmark",
@@ -624,6 +1156,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         melee_bonus=1,
         speed_bonus=0.12,
         max_stamina_bonus=6,
+        tags=("Control",),
     ),
     SkillNode(
         "ranger_rapid",
@@ -636,6 +1169,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         melee_bonus=2,
         spell_bonus=2,
         max_stamina_bonus=6,
+        tags=("Volley",),
     ),
     SkillNode(
         "ranger_thornfield",
@@ -647,6 +1181,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("ranger_beastmark",),
         spell_bonus=3,
         max_stamina_bonus=8,
+        tags=("Control",),
     ),
     SkillNode(
         "ranger_piercing_volley",
@@ -658,6 +1193,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("ranger_rapid",),
         melee_bonus=3,
         spell_bonus=3,
+        tags=("Volley",),
     ),
     SkillNode(
         "ranger_hunter_drive",
@@ -670,6 +1206,10 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         speed_bonus=0.14,
         max_stamina_bonus=12,
         melee_bonus=2,
+        tags=("Control",),
+        # Deep Control pick that amplifies Beast-tagged companion skills.
+        cross_branch_tags=("Beast",),
+        cross_branch_bonus_melee=1,
     ),
     SkillNode(
         "ranger_storm_volley",
@@ -682,6 +1222,10 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         melee_bonus=4,
         spell_bonus=4,
         max_stamina_bonus=8,
+        tags=("Volley",),
+        # Deep Volley pick that amplifies Survival-tagged field skills.
+        cross_branch_tags=("Survival",),
+        cross_branch_bonus_melee=1,
     ),
     SkillNode(
         "ranger_wild_domination",
@@ -694,6 +1238,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         spell_bonus=5,
         max_stamina_bonus=14,
         speed_bonus=0.10,
+        tags=("Control",),
     ),
     SkillNode(
         "ranger_sky_quiver",
@@ -706,6 +1251,136 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         melee_bonus=5,
         spell_bonus=5,
         max_stamina_bonus=10,
+        tags=("Volley",),
+    ),
+    # --- Ranger: Beast branch (companion taming and pack tactics) ---
+    SkillNode(
+        "ranger_beast_bond",
+        "Ranger",
+        "Beast Bond",
+        "A wolf companion joins the Ranger and harries foes.",
+        tier=1,
+        branch="Beast",
+        prerequisites=(),
+        melee_bonus=2,
+        max_stamina_bonus=8,
+        tags=("Beast",),
+    ),
+    SkillNode(
+        "ranger_survival",
+        "Ranger",
+        "Survivalist",
+        "The Ranger regenerates stamina faster and resists traps.",
+        tier=1,
+        branch="Survival",
+        prerequisites=(),
+        max_hp_bonus=8,
+        max_stamina_bonus=10,
+        tags=("Survival",),
+    ),
+    SkillNode(
+        "ranger_pack_tactics",
+        "Ranger",
+        "Pack Tactics",
+        "The companion strikes marked foes and shares dodge chance.",
+        tier=2,
+        branch="Beast",
+        prerequisites=("ranger_beast_bond",),
+        melee_bonus=3,
+        max_stamina_bonus=6,
+        tags=("Beast",),
+    ),
+    SkillNode(
+        "ranger_camouflage",
+        "Ranger",
+        "Camouflage",
+        "Standing still grants stealth and a guaranteed first strike.",
+        tier=2,
+        branch="Survival",
+        prerequisites=("ranger_survival",),
+        speed_bonus=0.10,
+        max_stamina_bonus=8,
+        tags=("Survival",),
+    ),
+    SkillNode(
+        "ranger_alpha",
+        "Ranger",
+        "Alpha",
+        "The companion becomes a dire wolf that knocks foes back.",
+        tier=3,
+        branch="Beast",
+        prerequisites=("ranger_pack_tactics",),
+        melee_bonus=4,
+        max_stamina_bonus=8,
+        tags=("Beast",),
+    ),
+    SkillNode(
+        "ranger_pathfinder",
+        "Ranger",
+        "Pathfinder",
+        "The Ranger reveals secrets and shrines on the floor.",
+        tier=3,
+        branch="Survival",
+        prerequisites=("ranger_camouflage",),
+        spell_bonus=2,
+        max_stamina_bonus=10,
+        tags=("Survival",),
+    ),
+    SkillNode(
+        "ranger_spirit_companion",
+        "Ranger",
+        "Spirit Companion",
+        "The dire wolf becomes a spirit beast that strikes through foes.",
+        tier=4,
+        branch="Beast",
+        prerequisites=("ranger_alpha",),
+        melee_bonus=5,
+        spell_bonus=2,
+        max_stamina_bonus=10,
+        tags=("Beast",),
+        # Deep Beast pick that amplifies Volley-tagged ranged skills.
+        cross_branch_tags=("Volley",),
+        cross_branch_bonus_melee=1,
+    ),
+    SkillNode(
+        "ranger_ambush",
+        "Ranger",
+        "Ambush",
+        "First strikes from stealth deal massive bonus damage.",
+        tier=4,
+        branch="Survival",
+        prerequisites=("ranger_pathfinder",),
+        melee_bonus=4,
+        speed_bonus=0.12,
+        max_stamina_bonus=12,
+        tags=("Survival",),
+        # Deep Survival pick that amplifies Control-tagged snare skills.
+        cross_branch_tags=("Control",),
+        cross_branch_bonus_melee=1,
+    ),
+    SkillNode(
+        "ranger_primal_lord",
+        "Ranger",
+        "Primal Lord",
+        "The spirit beast becomes a primal champion that mauls elites.",
+        tier=5,
+        branch="Beast",
+        prerequisites=("ranger_spirit_companion",),
+        melee_bonus=6,
+        spell_bonus=3,
+        max_stamina_bonus=12,
+    ),
+    SkillNode(
+        "ranger_ghost_step",
+        "Ranger",
+        "Ghost Step",
+        "The Ranger becomes untargetable while moving and dodges traps.",
+        tier=5,
+        branch="Survival",
+        prerequisites=("ranger_ambush",),
+        speed_bonus=0.16,
+        max_stamina_bonus=14,
+        max_hp_bonus=10,
     ),
 )
 
@@ -764,10 +1439,16 @@ def skill_tree_max_tier(archetype: str) -> int:
 
 # --- Milestone 3.3: skill points, cross-branch tags, and combo bonuses -------
 #
-# Combo bonuses reward committing to multiple branches on the same archetype
-# tree. A branch is "completed" when every node in that branch has been
-# acquired. Completing 2+ branches grants a cumulative combo bonus on top of
-# the per-node effects; the bonus scales by the number of completed branches.
+# Two layers of bonus reward committing to a skill tree:
+#
+# 1. Completed-branch bonus (depth): finishing any single branch grants a flat
+#    bonus per completed branch. This rewards going deep into a route, even if
+#    the player only commits to one path.
+#
+# 2. Combo bonus (breadth): completing 2+ branches grants a cumulative combo
+#    bonus on top of the per-node effects; the bonus scales by the number of
+#    completed branches beyond the first. With four branches per archetype the
+#    combo can reach three steps.
 #
 # Cross-branch interactions let one branch's nodes modify skills in another
 # branch via shared tags. Acquiring a node with `cross_branch_tags` boosts the
@@ -776,9 +1457,16 @@ def skill_tree_max_tier(archetype: str) -> int:
 # All lookups here are O(nodes) with no per-frame allocations: callers pass the
 # player's acquired-key set once and receive plain ints/tuples back.
 
+# Completed-branch bonus: a flat reward per finished branch (depth). Applied
+# once per completed branch, so finishing two branches grants twice this.
+COMPLETED_BRANCH_BONUS_MELEE: int = 1
+COMPLETED_BRANCH_BONUS_SPELL: int = 1
+COMPLETED_BRANCH_BONUS_MAX_HP: int = 6
+
 # Combo bonus per completed branch beyond the first. Two completed branches
-# grant one step; three grant two steps; and so on. Each step adds this much
-# melee and spell bonus on top of the per-node totals.
+# grant one step; three grant two steps; four grant three steps. Each step adds
+# this much melee and spell bonus on top of the per-node and completed-branch
+# totals.
 COMBO_BONUS_PER_STEP_MELEE: int = 2
 COMBO_BONUS_PER_STEP_SPELL: int = 2
 # Each completed branch also grants a small flat max-HP bonus so tankier builds
@@ -810,21 +1498,52 @@ def combo_bonus_steps(completed_count: int) -> int:
 
     Two completed branches yield one step; each additional completed branch
     adds another step. Fewer than two completed branches yields no combo.
+    With four branches per archetype the combo can reach three steps.
     """
     if completed_count < 2:
         return 0
     return completed_count - 1
 
 
-def combo_bonus(acquired: set[str], archetype: str) -> tuple[int, int, int]:
-    """Return (melee, spell, max_hp) combo bonus for the acquired node set."""
-    steps = combo_bonus_steps(len(completed_branches(acquired, archetype)))
-    if steps <= 0:
+def completed_branch_bonus(acquired: set[str], archetype: str) -> tuple[int, int, int]:
+    """Return (melee, spell, max_hp) bonus for completing individual branches.
+
+    This is the depth reward: a flat bonus per finished branch, applied even if
+    only one branch is complete. Distinct from the combo bonus (breadth).
+    """
+    count = len(completed_branches(acquired, archetype))
+    if count <= 0:
         return (0, 0, 0)
     return (
-        steps * COMBO_BONUS_PER_STEP_MELEE,
-        steps * COMBO_BONUS_PER_STEP_SPELL,
-        steps * COMBO_BONUS_PER_STEP_MAX_HP,
+        count * COMPLETED_BRANCH_BONUS_MELEE,
+        count * COMPLETED_BRANCH_BONUS_SPELL,
+        count * COMPLETED_BRANCH_BONUS_MAX_HP,
+    )
+
+
+def combo_bonus(acquired: set[str], archetype: str) -> tuple[int, int, int]:
+    """Return (melee, spell, max_hp) combo bonus for the acquired node set.
+
+    Combines the completed-branch depth bonus and the multi-branch combo
+    breadth bonus into a single total so callers apply one delta.
+    """
+    completed = completed_branches(acquired, archetype)
+    count = len(completed)
+    if count <= 0:
+        return (0, 0, 0)
+    depth_melee, depth_spell, depth_hp = (
+        count * COMPLETED_BRANCH_BONUS_MELEE,
+        count * COMPLETED_BRANCH_BONUS_SPELL,
+        count * COMPLETED_BRANCH_BONUS_MAX_HP,
+    )
+    steps = combo_bonus_steps(count)
+    combo_melee = steps * COMBO_BONUS_PER_STEP_MELEE
+    combo_spell = steps * COMBO_BONUS_PER_STEP_SPELL
+    combo_hp = steps * COMBO_BONUS_PER_STEP_MAX_HP
+    return (
+        depth_melee + combo_melee,
+        depth_spell + combo_spell,
+        depth_hp + combo_hp,
     )
 
 

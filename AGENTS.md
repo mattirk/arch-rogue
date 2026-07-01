@@ -182,6 +182,8 @@ Example categories:
 
 ## Current Milestone
 
+Always update CHANGELOG.md when completing milestones!
+
 ### 3.3 Skill Point Progression and Combo Trees
 
 Let the player choose which skills to advance using earned skill points, and make skill trees interact with each other so committing to multiple branches yields cumulative "combo" bonuses.

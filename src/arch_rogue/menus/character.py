@@ -775,8 +775,27 @@ class MenuCharacterMixin:
         # Combo state — completed branches and current bonus. Surfaced in a
         # strip above the grid so the player can see their commitment payoff.
         completed, combo_melee, combo_spell, combo_hp = self.g.combo_state()
-        combo_active = len(completed) >= 2
-        combo_strip_h = small_h + self.u(4) if combo_active or completed else 0
+        completed_count = len(completed)
+        combo_active = completed_count >= 2
+        # The combo_state total combines the per-branch depth bonus and the
+        # multi-branch combo breadth bonus. Show the breakdown when both apply.
+        from ..content import (
+            COMBO_BONUS_PER_STEP_MAX_HP,
+            COMBO_BONUS_PER_STEP_MELEE,
+            COMBO_BONUS_PER_STEP_SPELL,
+            COMPLETED_BRANCH_BONUS_MAX_HP,
+            COMPLETED_BRANCH_BONUS_MELEE,
+            COMPLETED_BRANCH_BONUS_SPELL,
+        )
+
+        depth_melee = completed_count * COMPLETED_BRANCH_BONUS_MELEE
+        depth_spell = completed_count * COMPLETED_BRANCH_BONUS_SPELL
+        depth_hp = completed_count * COMPLETED_BRANCH_BONUS_MAX_HP
+        steps = max(0, completed_count - 1) if completed_count >= 2 else 0
+        breadth_melee = steps * COMBO_BONUS_PER_STEP_MELEE
+        breadth_spell = steps * COMBO_BONUS_PER_STEP_SPELL
+        breadth_hp = steps * COMBO_BONUS_PER_STEP_MAX_HP
+        combo_strip_h = small_h + self.u(4) if completed_count else 0
 
         # Header: branch names across the top.
         header_h = small_h + self.u(6)
@@ -801,15 +820,19 @@ class MenuCharacterMixin:
             )
             if combo_active:
                 label = (
-                    f"Combo x{len(completed)}: +{combo_melee} melee "
-                    f"+{combo_spell} spell +{combo_hp} HP"
+                    f"{completed_count} branch complete: "
+                    f"depth +{depth_melee}m/+{depth_spell}s/+{depth_hp}hp"
+                    f" · combo x{completed_count} +{breadth_melee}m/"
+                    f"+{breadth_spell}s/+{breadth_hp}hp"
                 )
                 color = self.WARNING
             else:
                 label = (
-                    f"{len(completed)} branch complete · commit to 2 for a combo bonus"
+                    f"{completed_count} branch complete: "
+                    f"depth +{depth_melee}m/+{depth_spell}s/+{depth_hp}hp"
+                    f" · commit to 2 for a combo bonus"
                 )
-                color = self.MUTED
+                color = self.TEXT
             self.draw_text(
                 label,
                 self.g.small_font,
@@ -839,7 +862,7 @@ class MenuCharacterMixin:
         # Branch headers.
         for col, branch in enumerate(branches):
             col_x = rows_area.x + col * (col_w + col_gap)
-            header_color = self.WARNING if branch in completed else self.WARNING
+            header_color = self.WARNING if branch in completed else self.MUTED
             self.draw_text(
                 branch,
                 self.g.small_font,
