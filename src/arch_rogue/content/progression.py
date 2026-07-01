@@ -101,6 +101,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         melee_bonus=1,
         armor_bonus=2,
         max_hp_bonus=10,
+        tags=("Guard",),
     ),
     SkillNode(
         "warden_riposte",
@@ -112,6 +113,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=(),
         melee_bonus=2,
         armor_bonus=1,
+        tags=("Counter",),
     ),
     # Tier 2 — branch commitments.
     SkillNode(
@@ -124,6 +126,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("warden_bulwark",),
         armor_bonus=1,
         max_stamina_bonus=8,
+        tags=("Guard",),
     ),
     SkillNode(
         "warden_counter",
@@ -135,6 +138,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("warden_riposte",),
         melee_bonus=2,
         max_stamina_bonus=6,
+        tags=("Counter",),
     ),
     # Tier 3 — cross-branch specialist nodes.
     SkillNode(
@@ -147,6 +151,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("warden_aegis",),
         armor_bonus=2,
         max_hp_bonus=12,
+        tags=("Guard",),
     ),
     SkillNode(
         "warden_riposte_edge",
@@ -158,8 +163,11 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("warden_counter",),
         melee_bonus=3,
         armor_bonus=1,
+        tags=("Counter",),
     ),
-    # Tier 4 — keystone choices.
+    # Tier 4 — keystone choices. These are the cross-branch modifier nodes:
+    # committing deep into one branch amplifies the other branch's tagged
+    # skills, so a hybrid Warden feels the synergy.
     SkillNode(
         "warden_iron_vow",
         "Warden",
@@ -171,6 +179,9 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         armor_bonus=3,
         max_stamina_bonus=12,
         max_hp_bonus=14,
+        tags=("Guard",),
+        cross_branch_tags=("Counter",),
+        cross_branch_bonus_melee=1,
     ),
     SkillNode(
         "warden_reckoning",
@@ -183,6 +194,9 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         melee_bonus=4,
         spell_bonus=2,
         max_mana_bonus=10,
+        tags=("Counter",),
+        cross_branch_tags=("Guard",),
+        cross_branch_bonus_melee=1,
     ),
     # Tier 5 — capstone.
     SkillNode(
@@ -220,6 +234,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=(),
         melee_bonus=3,
         max_stamina_bonus=8,
+        tags=("Critical",),
     ),
     SkillNode(
         "rogue_smoke",
@@ -231,6 +246,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=(),
         speed_bonus=0.15,
         max_stamina_bonus=10,
+        tags=("Stealth",),
     ),
     SkillNode(
         "rogue_venom",
@@ -242,6 +258,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("rogue_precision",),
         melee_bonus=1,
         max_stamina_bonus=6,
+        tags=("Critical",),
     ),
     SkillNode(
         "rogue_shadowstep",
@@ -253,6 +270,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("rogue_smoke",),
         speed_bonus=0.10,
         max_stamina_bonus=8,
+        tags=("Stealth",),
     ),
     SkillNode(
         "rogue_executioner",
@@ -264,6 +282,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("rogue_venom",),
         melee_bonus=4,
         max_stamina_bonus=6,
+        tags=("Critical",),
     ),
     SkillNode(
         "rogue_night_veil",
@@ -275,6 +294,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("rogue_shadowstep",),
         speed_bonus=0.08,
         max_stamina_bonus=12,
+        tags=("Stealth",),
     ),
     SkillNode(
         "rogue_crimson_edge",
@@ -286,6 +306,11 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("rogue_executioner",),
         melee_bonus=5,
         max_hp_bonus=10,
+        tags=("Critical",),
+        # A deep Precision pick that amplifies Stealth-tagged skills, so a
+        # hybrid Rogue feels the cross-branch payoff.
+        cross_branch_tags=("Stealth",),
+        cross_branch_bonus_melee=1,
     ),
     SkillNode(
         "rogue_phantom",
@@ -297,6 +322,9 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("rogue_night_veil",),
         speed_bonus=0.12,
         max_stamina_bonus=10,
+        tags=("Stealth",),
+        cross_branch_tags=("Critical",),
+        cross_branch_bonus_melee=1,
     ),
     SkillNode(
         "rogue_deathmark",
@@ -331,6 +359,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=(),
         spell_bonus=3,
         max_mana_bonus=10,
+        tags=("Arcane",),
     ),
     SkillNode(
         "arcanist_focus",
@@ -342,6 +371,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=(),
         spell_bonus=2,
         max_mana_bonus=14,
+        tags=("Frost",),
     ),
     SkillNode(
         "arcanist_permafrost",
@@ -353,6 +383,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("arcanist_focus",),
         spell_bonus=2,
         max_mana_bonus=8,
+        tags=("Frost",),
     ),
     SkillNode(
         "arcanist_overload",
@@ -364,6 +395,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("arcanist_splinter",),
         spell_bonus=3,
         max_mana_bonus=8,
+        tags=("Arcane",),
     ),
     SkillNode(
         "arcanist_glacial",
@@ -375,6 +407,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("arcanist_permafrost",),
         spell_bonus=3,
         max_mana_bonus=10,
+        tags=("Frost",),
     ),
     SkillNode(
         "arcanist_pierce",
@@ -386,6 +419,7 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("arcanist_overload",),
         spell_bonus=4,
         max_mana_bonus=8,
+        tags=("Arcane",),
     ),
     SkillNode(
         "arcanist_blizzard",
@@ -398,6 +432,10 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         spell_bonus=4,
         max_mana_bonus=14,
         armor_bonus=1,
+        tags=("Frost",),
+        # Deep Frost pick that amplifies Arcane-tagged bolt skills.
+        cross_branch_tags=("Arcane",),
+        cross_branch_bonus_spell=1,
     ),
     SkillNode(
         "arcanist_storm",
@@ -409,6 +447,9 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         prerequisites=("arcanist_pierce",),
         spell_bonus=5,
         max_mana_bonus=12,
+        tags=("Arcane",),
+        cross_branch_tags=("Frost",),
+        cross_branch_bonus_spell=1,
     ),
     SkillNode(
         "arcanist_absolute_zero",
@@ -719,6 +760,116 @@ def skill_tree_max_tier(archetype: str) -> int:
         (node.tier for node in SKILL_NODES if node.archetype == archetype),
         default=0,
     )
+
+
+# --- Milestone 3.3: skill points, cross-branch tags, and combo bonuses -------
+#
+# Combo bonuses reward committing to multiple branches on the same archetype
+# tree. A branch is "completed" when every node in that branch has been
+# acquired. Completing 2+ branches grants a cumulative combo bonus on top of
+# the per-node effects; the bonus scales by the number of completed branches.
+#
+# Cross-branch interactions let one branch's nodes modify skills in another
+# branch via shared tags. Acquiring a node with `cross_branch_tags` boosts the
+# effective rank of every acquired node carrying one of those tags.
+#
+# All lookups here are O(nodes) with no per-frame allocations: callers pass the
+# player's acquired-key set once and receive plain ints/tuples back.
+
+# Combo bonus per completed branch beyond the first. Two completed branches
+# grant one step; three grant two steps; and so on. Each step adds this much
+# melee and spell bonus on top of the per-node totals.
+COMBO_BONUS_PER_STEP_MELEE: int = 2
+COMBO_BONUS_PER_STEP_SPELL: int = 2
+# Each completed branch also grants a small flat max-HP bonus so tankier builds
+# that commit to two defensive branches feel the combo payoff.
+COMBO_BONUS_PER_STEP_MAX_HP: int = 8
+
+
+def skill_branch_nodes(archetype: str, branch: str) -> tuple[SkillNode, ...]:
+    """All nodes belonging to a specific (archetype, branch) pair."""
+    return tuple(
+        node
+        for node in SKILL_NODES
+        if node.archetype == archetype and node.branch == branch
+    )
+
+
+def completed_branches(acquired: set[str], archetype: str) -> tuple[str, ...]:
+    """Branch names whose every node has been acquired, in first-seen order."""
+    done: list[str] = []
+    for branch in skill_branches_for_archetype(archetype):
+        nodes = skill_branch_nodes(archetype, branch)
+        if nodes and all(node.key in acquired for node in nodes):
+            done.append(branch)
+    return tuple(done)
+
+
+def combo_bonus_steps(completed_count: int) -> int:
+    """Number of combo bonus steps for a completed-branch count.
+
+    Two completed branches yield one step; each additional completed branch
+    adds another step. Fewer than two completed branches yields no combo.
+    """
+    if completed_count < 2:
+        return 0
+    return completed_count - 1
+
+
+def combo_bonus(acquired: set[str], archetype: str) -> tuple[int, int, int]:
+    """Return (melee, spell, max_hp) combo bonus for the acquired node set."""
+    steps = combo_bonus_steps(len(completed_branches(acquired, archetype)))
+    if steps <= 0:
+        return (0, 0, 0)
+    return (
+        steps * COMBO_BONUS_PER_STEP_MELEE,
+        steps * COMBO_BONUS_PER_STEP_SPELL,
+        steps * COMBO_BONUS_PER_STEP_MAX_HP,
+    )
+
+
+def combo_bonus_preview(
+    acquired: set[str], archetype: str, pending_node_key: str
+) -> tuple[int, int, int]:
+    """Combo bonus if `pending_node_key` were also acquired.
+
+    Used by the character sheet to preview the next combo tier when the player
+    hovers a node that would complete another branch.
+    """
+    if pending_node_key in acquired:
+        return combo_bonus(acquired, archetype)
+    preview = set(acquired)
+    preview.add(pending_node_key)
+    return combo_bonus(preview, archetype)
+
+
+def cross_branch_tag_bonus(acquired: set[str]) -> tuple[int, int]:
+    """Total (melee, spell) bonus from acquired cross-branch modifier nodes.
+
+    A node with `cross_branch_tags` boosts every acquired node carrying one of
+    those tags. The bonus is applied once per matching (modifier node, tag)
+    pair against each acquired node that carries the tag, so committing to a
+    tag across branches compounds.
+    """
+    by_key = {node.key: node for node in SKILL_NODES}
+    acquired_nodes = [by_key[k] for k in acquired if k in by_key]
+    # Map tag -> list of (melee, spell) bonuses from acquired modifier nodes.
+    tag_modifiers: dict[str, list[tuple[int, int]]] = {}
+    for node in acquired_nodes:
+        for tag in node.cross_branch_tags:
+            tag_modifiers.setdefault(tag, []).append(
+                (node.cross_branch_bonus_melee, node.cross_branch_bonus_spell)
+            )
+    if not tag_modifiers:
+        return (0, 0)
+    total_melee = 0
+    total_spell = 0
+    for node in acquired_nodes:
+        for tag in node.tags:
+            for melee, spell in tag_modifiers.get(tag, ()):
+                total_melee += melee
+                total_spell += spell
+    return (total_melee, total_spell)
 
 
 # Backwards-compatible flat upgrade table derived from the skill tree. Existing

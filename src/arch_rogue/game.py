@@ -249,6 +249,13 @@ class Game(
         self.inventory_scroll = 0
         self.character_menu_open = False
         self.character_menu_tab = "overview"
+        # Milestone 3.3: hovered skill node key in the character sheet's skill
+        # tree tab (set by mouse motion, read by the renderer for combo
+        # preview). None when nothing is hovered.
+        self.character_menu_hovered_node: str | None = None
+        # Populated by the character sheet renderer each frame so mouse motion
+        # can map screen positions to skill node keys without duplicating layout.
+        self._skill_node_cells: dict[str, object] = {}
         self.shop_open = False
         self.active_shopkeeper: Shopkeeper | None = None
         self.shop_mode = "buy"
@@ -657,9 +664,33 @@ class Game(
                 and not self.story_intro_pending
             ):
                 if event.button == 1:
-                    self.face_player_toward_screen_point(*event.pos)
-                    if self.enemy_in_melee_arc():
-                        self.player_melee_attack()
+                    # Milestone 3.3: clicking an available skill node in the
+                    # character sheet spends a skill point to acquire it.
+                    if (
+                        self.character_menu_open
+                        and self.character_menu_tab == "skill_tree"
+                        and self.character_menu_hovered_node
+                    ):
+                        self.choose_skill_upgrade(self.character_menu_hovered_node)
+                    else:
+                        self.face_player_toward_screen_point(*event.pos)
+                        if self.enemy_in_melee_arc():
+                            self.player_melee_attack()
+            elif (
+                event.type == pygame.MOUSEMOTION
+                and self.state == "playing"
+                and self.character_menu_open
+                and self.character_menu_tab == "skill_tree"
+            ):
+                # The renderer populates `_skill_node_cells` each frame with
+                # {node_key: pygame.Rect}; mouse motion updates the hovered
+                # key so the renderer can show a combo preview next frame.
+                self.character_menu_hovered_node = None
+                cells = getattr(self, "_skill_node_cells", {})
+                for node_key, cell in cells.items():
+                    if cell.collidepoint(event.pos):
+                        self.character_menu_hovered_node = node_key
+                        break
 
     def update(self, dt: float) -> None:
         self.elapsed += dt

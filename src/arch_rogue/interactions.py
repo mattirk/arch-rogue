@@ -425,7 +425,7 @@ class InteractionMixin:
             self.player.stamina = self.player.max_stamina
             message = "War Shrine grants focus"
             if leveled:
-                message = "War Shrine grants a level"
+                message = "War Shrine grants a level and skill point"
         elif shrine.kind == "Haste Shrine":
             self.player.stamina = self.player.max_stamina
             self.player.dash_timer = 0.0

@@ -176,6 +176,7 @@ class SaveLoadMixin:
                     for slot, item in self.player.equipment.items()
                 },
                 "skill_upgrades": list(self.player.skill_upgrades),
+                "skill_points": int(self.player.skill_points),
                 "status_effects": dict(self.player.status_effects),
                 "gold": self.player.gold,
             },
@@ -307,6 +308,20 @@ class SaveLoadMixin:
         self.player.skill_upgrades = migrate_skill_keys(
             [str(upgrade) for upgrade in player_data.get("skill_upgrades", [])]
         )
+        # Milestone 3.3: skill points default to 0 on older saves so existing
+        # runs resume without a free point windfall.
+        self.player.skill_points = int(player_data.get("skill_points", 0))
+        # Seed the combo-bonus baseline so future node picks only apply the
+        # delta. The restored stat totals already reflect whatever combo bonus
+        # was applied during the original run (3.3+ saves), and pre-3.3 saves
+        # default to no combo bonus — matching the "new combo fields default to
+        # no-op on older saves" contract.
+        from .content import combo_bonus
+
+        melee, spell, max_hp = combo_bonus(
+            set(self.player.skill_upgrades), self.player.class_name
+        )
+        self.player._combo_applied = (melee, spell, max_hp)
         self.player.status_effects = {
             str(status): float(ttl)
             for status, ttl in player_data.get("status_effects", {}).items()

@@ -18,8 +18,10 @@ from .constants import (
     WALK_ANIMATION_RATE,
 )
 from .content import (
-    SKILL_NODES,
     SKILL_UPGRADES,
+    combo_bonus,
+    completed_branches,
+    cross_branch_tag_bonus,
     skill_node_by_key,
     skill_nodes_for_archetype,
 )
@@ -247,7 +249,12 @@ class CombatMixin:
         return "locked"
 
     def choose_skill_upgrade(self, key: str, reason: str = "chosen") -> bool:
-        """Apply a specific skill node by key if it is currently available."""
+        """Apply a specific skill node by key, spending one skill point.
+
+        Returns False (without spending a point) if the node is unknown, belongs
+        to another archetype, is already acquired, has unmet prerequisites, or
+        the player has no skill points to spend.
+        """
         node = skill_node_by_key(key)
         if node is None or node.archetype != self.player.class_name:
             return False
@@ -257,8 +264,27 @@ class CombatMixin:
             prereq in self.player.skill_upgrades for prereq in node.prerequisites
         ):
             return False
+        if self.player.skill_points <= 0:
+            return False
+        self.player.skill_points -= 1
         self._apply_skill_node(node, reason)
+        self._apply_combo_bonus_delta(node)
         return True
+
+    def grant_skill_point(self, amount: int = 1, reason: str = "reward") -> None:
+        """Award skill points from run rewards (shrines, altars, story)."""
+        if amount <= 0:
+            return
+        self.player.skill_points += amount
+        self.floaters.append(
+            FloatingText(
+                f"+{amount} Skill Point{'s' if amount != 1 else ''}",
+                self.player.x,
+                self.player.y - 0.6,
+                self.skill_color(),
+                ttl=1.6,
+            )
+        )
 
     def _apply_skill_node(self, node, reason: str) -> None:
         self.player.skill_upgrades.append(node.key)
@@ -287,12 +313,58 @@ class CombatMixin:
             )
         )
 
+    def _apply_combo_bonus_delta(self, node) -> None:
+        """Apply the combo-bonus delta caused by acquiring `node`.
+
+        Called after a node is chosen. If the acquisition completed a new
+        branch and pushed the player into a higher combo tier, the delta is
+        applied to the player's derived stats so the bonus is felt immediately.
+        """
+        acquired = set(self.player.skill_upgrades)
+        melee, spell, max_hp = combo_bonus(acquired, self.player.class_name)
+        # Track the cumulative combo bonus already applied so we only apply the
+        # delta on changes. Stored on the player as a private attribute.
+        prev = getattr(self.player, "_combo_applied", (0, 0, 0))
+        d_melee = melee - prev[0]
+        d_spell = spell - prev[1]
+        d_hp = max_hp - prev[2]
+        if d_melee or d_spell or d_hp:
+            self.player.melee_bonus += d_melee
+            self.player.spell_bonus += d_spell
+            self.player.max_hp += d_hp
+            self.player.hp = min(self.player.max_hp, self.player.hp + d_hp)
+        self.player._combo_applied = (melee, spell, max_hp)
+
+    def combo_state(self) -> tuple[tuple[str, ...], int, int, int]:
+        """Return (completed_branches, melee_bonus, spell_bonus, max_hp_bonus).
+
+        Cheap O(nodes) lookup with no per-frame allocations beyond the returned
+        tuple; safe to call from the hot path or the character sheet.
+        """
+        acquired = set(self.player.skill_upgrades)
+        done = completed_branches(acquired, self.player.class_name)
+        melee, spell, max_hp = combo_bonus(acquired, self.player.class_name)
+        return (done, melee, spell, max_hp)
+
+    def cross_branch_bonus_state(self) -> tuple[int, int]:
+        """Return (melee, spell) bonus from acquired cross-branch modifiers."""
+        return cross_branch_tag_bonus(set(self.player.skill_upgrades))
+
+    def combo_preview(self, node) -> tuple[int, int, int]:
+        """Combo bonus if `node` were acquired next (for sheet hover preview)."""
+        from .content import combo_bonus_preview
+
+        return combo_bonus_preview(
+            set(self.player.skill_upgrades), self.player.class_name, node.key
+        )
+
     def grant_skill_upgrade(self, reason: str = "level up") -> bool:
         """Grant a random available skill node, respecting tree prerequisites.
 
-        Falls back to the flat `SKILL_UPGRADES` pool only if the tree yields no
-        available nodes (e.g. an older save with deprecated keys); this keeps
-        level-up moments rewarding even when the tree is exhausted.
+        Used by shrines/altars/story rewards. These are bonus grants that do
+        NOT spend the player's banked skill points (level-up points are spent
+        by the player via `choose_skill_upgrade`). Falls back to the flat
+        `SKILL_UPGRADES` pool only if the tree yields no available nodes.
         """
         choices = self.available_skill_choices()
         if not choices:
@@ -308,10 +380,12 @@ class CombatMixin:
             node = skill_node_by_key(upgrade.key)
             if node is not None:
                 self._apply_skill_node(node, reason)
+                self._apply_combo_bonus_delta(node)
                 return True
             return False
         node = self.rng.choice(choices)
         self._apply_skill_node(node, reason)
+        self._apply_combo_bonus_delta(node)
         return True
 
     def melee_stamina_cost(self) -> int:
@@ -1372,10 +1446,13 @@ class CombatMixin:
                     )
                 )
         if self.player.gain_xp(xp_gain):
-            upgraded = self.grant_skill_upgrade(reason="level up")
+            # Milestone 3.3: level-ups award a skill point (handled inside
+            # `gain_xp`) instead of auto-granting a node. The player spends
+            # the point in the character sheet. Surface the banked point so the
+            # player knows to open the sheet.
             self.floaters.append(
                 FloatingText(
-                    "LEVEL UP" if not upgraded else "LEVEL UP · SKILL GROWN",
+                    "LEVEL UP · SKILL POINT",
                     self.player.x,
                     self.player.y - 0.6,
                     (120, 230, 150),

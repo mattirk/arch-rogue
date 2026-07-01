@@ -100,6 +100,9 @@ class SkillTree32Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             try:
+                # Milestone 3.3: choosing nodes now spends skill points, so
+                # bank enough points to exercise the tree.
+                game.player.skill_points = 10
                 # Initially only tier-1 nodes are available.
                 available = game.available_skill_choices()
                 self.assertTrue(available)
@@ -125,6 +128,7 @@ class SkillTree32Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)  # Warden
             try:
+                game.player.skill_points = 10
                 # Rogue node cannot be chosen by a Warden.
                 self.assertFalse(game.choose_skill_upgrade("rogue_precision"))
                 self.assertNotIn("rogue_precision", game.player.skill_upgrades)
@@ -173,6 +177,7 @@ class SkillTree32Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             try:
+                game.player.skill_points = 1
                 node = skill_node_by_key("warden_bulwark")
                 assert node is not None
                 before_hp = game.player.max_hp
@@ -199,12 +204,15 @@ class SkillTree32Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=1, seed=3241)  # Rogue
             try:
+                game.player.skill_points = 2
                 game.choose_skill_upgrade("rogue_precision")
                 game.choose_skill_upgrade("rogue_venom")
                 self.assertEqual(
                     game.player.skill_upgrades,
                     ["rogue_precision", "rogue_venom"],
                 )
+                # Skill points are spent on save.
+                self.assertEqual(game.player.skill_points, 0)
                 game.save_run()
 
                 game2 = Game(
@@ -302,6 +310,7 @@ class SkillTree32Tests(unittest.TestCase):
                 game.draw_character_menu()
                 # Render skill tree tab with some acquired nodes.
                 game.character_menu_tab = "skill_tree"
+                game.player.skill_points = 2
                 game.choose_skill_upgrade("acolyte_sanguine")
                 game.choose_skill_upgrade("acolyte_gravebind")
                 game.draw_character_menu()
@@ -327,6 +336,7 @@ class SkillTree32Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0, seed=3281)
             try:
+                game.player.skill_points = 1
                 bulwark = skill_node_by_key("warden_bulwark")
                 aegis = skill_node_by_key("warden_aegis")
                 iron_vow = skill_node_by_key("warden_iron_vow")

@@ -508,10 +508,23 @@ class MenuCharacterMixin:
         )
 
         subtitle_y = inner.y + title_h + self.u(5)
+        # Milestone 3.3: surface unspent skill points in the subtitle so the
+        # player knows to open the skill tree tab and spend them.
+        skill_points = self.g.player.skill_points
+        point_text = (
+            f" · {skill_points} Skill Point{'s' if skill_points != 1 else ''}"
+            if skill_points > 0
+            else ""
+        )
+        subtitle = (
+            f"{player.class_name} · Level {player.level} · "
+            f"XP {player.xp}/{player.next_xp}{point_text}"
+        )
+        subtitle_color = self.WARNING if skill_points > 0 else self.TEXT
         self.draw_text(
-            f"{player.class_name} · Level {player.level} · XP {player.xp}/{player.next_xp}",
+            subtitle,
             self.g.small_font,
-            self.TEXT,
+            subtitle_color,
             pygame.Rect(inner.x, subtitle_y, inner.width, small_h),
         )
 
@@ -722,7 +735,9 @@ class MenuCharacterMixin:
             chosen   — gold border, filled
             available — accent border, ready to pick on level-up/shrine
             locked   — iron border, prerequisites unmet
-        A legend and a hint line explain the colors and how to gain nodes.
+        A legend, a combo-state strip, and a hint line explain the colors, the
+        current combo bonus, and how to gain nodes. Hovering an available node
+        with the mouse previews the combo tier it would unlock.
         """
         from ..content import (
             skill_branches_for_archetype,
@@ -757,6 +772,12 @@ class MenuCharacterMixin:
         pad = max(self.u(10), 10)
         gap = self.u(6)
 
+        # Combo state — completed branches and current bonus. Surfaced in a
+        # strip above the grid so the player can see their commitment payoff.
+        completed, combo_melee, combo_spell, combo_hp = self.g.combo_state()
+        combo_active = len(completed) >= 2
+        combo_strip_h = small_h + self.u(4) if combo_active or completed else 0
+
         # Header: branch names across the top.
         header_h = small_h + self.u(6)
         # Footer: legend + hint.
@@ -765,10 +786,38 @@ class MenuCharacterMixin:
         footer_h = legend_h + hint_h
         grid_rect = pygame.Rect(
             rect.x,
-            rect.y + header_h,
+            rect.y + header_h + combo_strip_h,
             rect.width,
-            max(1, rect.height - header_h - footer_h - gap),
+            max(
+                1,
+                rect.height - header_h - combo_strip_h - footer_h - gap * 2,
+            ),
         )
+
+        # Combo strip — only drawn when there is something to show.
+        if combo_strip_h:
+            combo_rect = pygame.Rect(
+                rect.x, rect.y + header_h, rect.width, combo_strip_h
+            )
+            if combo_active:
+                label = (
+                    f"Combo x{len(completed)}: +{combo_melee} melee "
+                    f"+{combo_spell} spell +{combo_hp} HP"
+                )
+                color = self.WARNING
+            else:
+                label = (
+                    f"{len(completed)} branch complete · commit to 2 for a combo bonus"
+                )
+                color = self.MUTED
+            self.draw_text(
+                label,
+                self.g.small_font,
+                color,
+                combo_rect,
+                align="center",
+                valign="center",
+            )
 
         # Row layout — tier label gutter on the left, columns to its right.
         tier_label_w = max(self.u(28), self.g.tiny_font.size("Tier 5")[0] + self.u(6))
@@ -790,14 +839,19 @@ class MenuCharacterMixin:
         # Branch headers.
         for col, branch in enumerate(branches):
             col_x = rows_area.x + col * (col_w + col_gap)
+            header_color = self.WARNING if branch in completed else self.WARNING
             self.draw_text(
                 branch,
                 self.g.small_font,
-                self.WARNING,
+                header_color,
                 pygame.Rect(col_x, rect.y, col_w, header_h),
                 align="center",
                 valign="center",
             )
+
+        # Reset the mouse-hover cell map; repopulated as nodes are drawn so
+        # `handle_events` can map mouse positions to node keys next frame.
+        self.g._skill_node_cells = {}
 
         # Tier rows.
         for tier in range(1, max_tier + 1):
@@ -832,6 +886,17 @@ class MenuCharacterMixin:
                     )
                     continue
                 self._draw_skill_node_cell(node, cell, pad, tiny_h, small_h)
+                self.g._skill_node_cells[node.key] = cell
+                # Hover highlight — a bright outline around the cell the mouse
+                # is over, so the player can see which node the preview refers to.
+                if self.g.character_menu_hovered_node == node.key:
+                    pygame.draw.rect(
+                        self.screen,
+                        self.TEXT,
+                        cell,
+                        max(1, self.u(2)),
+                        border_radius=self.u(6),
+                    )
 
         # Legend + hint footer.
         legend_y = grid_rect.bottom + gap
@@ -876,10 +941,42 @@ class MenuCharacterMixin:
 
         hint_y = legend_y + legend_h
         hint_rect = pygame.Rect(rect.x, hint_y, rect.width, hint_h)
+        # Milestone 3.3: if the player is hovering an available node, preview
+        # the combo tier it would unlock; otherwise show the skill-point spend
+        # hint so the player knows how to acquire nodes.
+        hovered_key = self.g.character_menu_hovered_node
+        hint_text = (
+            "Level-ups award skill points · click an available node to spend one."
+        )
+        hint_color = self.MUTED
+        if hovered_key:
+            from ..content import skill_node_by_key
+
+            hovered = skill_node_by_key(hovered_key)
+            if hovered is not None:
+                state = self.g.skill_node_state(hovered)
+                if state == "available":
+                    p_melee, p_spell, p_hp = self.g.combo_preview(hovered)
+                    _, c_melee, c_spell, c_hp = self.g.combo_state()
+                    if (p_melee, p_spell, p_hp) != (c_melee, c_spell, c_hp):
+                        hint_text = (
+                            f"{hovered.name} → combo +{p_melee} melee "
+                            f"+{p_spell} spell +{p_hp} HP"
+                        )
+                        hint_color = self.WARNING
+                    elif self.g.player.skill_points > 0:
+                        hint_text = f"{hovered.name} · click to spend 1 skill point"
+                        hint_color = self.g.skill_color()
+                    else:
+                        hint_text = f"{hovered.name} · no skill points available"
+                elif state == "chosen":
+                    hint_text = f"{hovered.name} · acquired"
+                else:
+                    hint_text = f"{hovered.name} · locked"
         self.draw_text(
-            "Level-ups, Oath Shrines, and Forgotten Altars may grant an available node.",
+            hint_text,
             self.g.tiny_font,
-            self.MUTED,
+            hint_color,
             hint_rect,
             align="center",
             valign="center",

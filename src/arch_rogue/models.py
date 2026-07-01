@@ -73,6 +73,16 @@ class SkillNode:
     lists node keys that must already be acquired before this node can be
     chosen; an empty tuple means the node is open at tier 1. Bonus fields mirror
     `SkillUpgrade` so the derived flat upgrade table stays in sync.
+
+    Milestone 3.3 — skill points and combo trees:
+      * `tags` labels the node for cross-branch interactions (e.g. "Frost",
+        "Stealth", "Critical"). A node may carry tags that other branches'
+        modifier nodes key off of.
+      * `cross_branch_tags` lists tags this node boosts when acquired. Acquiring
+        a node with `cross_branch_tags=("Frost",)` increases the effective rank
+        of every acquired node that carries the "Frost" tag, regardless of which
+        branch owns it. `cross_branch_bonus_melee` / `cross_branch_bonus_spell`
+        are the per-tag bonuses applied to matching nodes.
     """
 
     key: str
@@ -89,6 +99,10 @@ class SkillNode:
     max_mana_bonus: int = 0
     max_stamina_bonus: int = 0
     speed_bonus: float = 0.0
+    tags: tuple[str, ...] = ()
+    cross_branch_tags: tuple[str, ...] = ()
+    cross_branch_bonus_melee: int = 0
+    cross_branch_bonus_spell: int = 0
 
 
 @dataclass(frozen=True)
@@ -459,6 +473,11 @@ class Player:
         default_factory=lambda: {"weapon": None, "armor": None}
     )
     skill_upgrades: list[str] = field(default_factory=list)
+    skill_points: int = 0
+    # Runtime cache of the combo bonus already applied to derived stats, so
+    # `_apply_combo_bonus_delta` only applies the delta on changes. Not saved;
+    # restored by `restore_run_state` / seeded to zero on a fresh player.
+    _combo_applied: tuple[int, int, int] = (0, 0, 0)
     status_effects: dict[str, float] = field(default_factory=dict)
     gold: int = 40
 
@@ -503,4 +522,8 @@ class Player:
         self.mana = self.max_mana
         self.max_stamina += 5
         self.stamina = self.max_stamina
+        # Milestone 3.3: level-ups award a skill point the player spends in the
+        # character sheet, rather than auto-granting a node. This keeps build
+        # choice in the player's hands.
+        self.skill_points += 1
         return True
