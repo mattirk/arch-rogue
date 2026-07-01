@@ -182,9 +182,21 @@ Example categories:
 
 ## Current Milestone
 
-Always update CHANGELOG.md when completing milestones!
+Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 3.5 Controller, Input, and Accessibility Polish
+### 3.5 Movement animation polish
+
+Player movement currently looks very "wobblish". Like a ghost floating. We need to polish the movement animation to make it feel more natural.
+
+- Create distinct movable parts for player character sprites e.g head, torso, arms, legs
+- Make it so that legs move independently of the torso
+- Make the walking animation adapt natuarlly to the direction the player character is moving
+- Make the character's head and torso rotate to face the direction they are moving
+- Make sure all sprite animation parts move smoothly and harmoniously together
+
+## Next Milestones
+
+### 3.6 Controller, Input, and Accessibility Polish
 
 Modernize the control layer so keyboard/mouse remains responsive while gamepad and accessibility options become first-class across gameplay and menus.
 
@@ -196,20 +208,7 @@ Modernize the control layer so keyboard/mouse remains responsive while gamepad a
 - Keep the run loop at 60+ FPS: input sampling must stay cheap, and any per-frame controller polling must avoid allocations in the hot path.
 - Validate with a new `tests/test_3_5_input_accessibility.py` covering input mapping, controller-to-command translation, options persistence/migration, and menu navigation, plus the full `unittest discover tests` regression suite.
 
-## Completed Milestones
-
-### 3.4 Story Cutscene Refactor (complete)
-
-Refactored the story cutscene runtime so quest cutscenes, dialogue choices, guest interactions, and story rewards are driven by a single data-driven pipeline that is cheaper to extend, easier to test in isolation, and free of per-frame allocations in the hot path.
-
-- Complete rewrite of quest cutscene handling to use a data-driven `StageAsset` pipeline (schema_version 2) instead of ad-hoc string keys and dicts; schema_version 1 assets still load with default dressing.
-- Redesigned stage element on cutscenes to look like a real-world stage with props, lighting, and ambient effects: curtains (dusty accent-tinted tapestry that starts closed and pulls open with the narration, with shaded folds, iron tie-backs, scalloped valances), worn-stone-and-iron proscenium arch, iron footlights with spectral ember bulbs, perspective floorboards, painted backdrop, volumetric spotlights, and ambient particles. All stage drawing is confined to the stage rect so it never overlaps the narrator card, and the palette is consistent with the dungeon HUD.
-- Kept the narrator functionality that scrolls the text as story is told; the text card is now a polished parchment bill with a gilded divider, glowing progress edge, and blinking quill caret.
-- Performance stays well above 60 FPS (~87 FPS at 1280x720) via per-(asset, size, accent) caching of static stage layers.
-
-## Next Milestones
-
-### 3.6 Build Diversity and Affix Depth
+### 3.7 Build Diversity and Affix Depth
 
 Draft goal: deepen loot-driven build variety by expanding affix pools, item interactions, and skill/affix synergies so each run can commit to a distinct build identity.
 
