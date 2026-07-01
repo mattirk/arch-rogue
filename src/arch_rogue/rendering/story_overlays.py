@@ -24,8 +24,13 @@ from ..models import (
     Trap,
 )
 from ..quest_assets import (
+    AmbientEffectAsset,
+    CurtainAsset,
     CutsceneActorAsset,
     SpriteAnimationFrameAsset,
+    StageAsset,
+    StageLightAsset,
+    StagePropAsset,
     format_asset_text,
 )
 
@@ -273,20 +278,81 @@ class RenderingStoryOverlayMixin:
 
         y = stage_rect.bottom + self.ui(12)
         speaker = self.active_cutscene_speaker_name()
+        # Polished narrator card: a parchment panel with an ornate header,
+        # a speaker label, a gilded progress rule, and the scrolling text.
+        text_bottom = max(
+            y + self.small_font.get_height() * 2,
+            choices_start - self.ui(10),
+        )
+        card_rect = pygame.Rect(
+            pad - self.ui(4),
+            y - self.ui(6),
+            panel_w - pad * 2 + self.ui(8),
+            text_bottom - y + self.ui(12),
+        )
+        card = pygame.Surface(card_rect.size, pygame.SRCALPHA)
+        self.draw_ornate_hud_panel(
+            card,
+            card.get_rect(),
+            (24, 18, 28, 235),
+            (*self.shade(accent, -30), 180),
+            radius=self.ui(8),
+            width=self.ui(1),
+        )
+        # Parchment inner trim
+        inner = card.get_rect().inflate(-self.ui(6), -self.ui(6))
+        pygame.draw.rect(
+            card,
+            (*self.HUD_GOLD, 90),
+            inner,
+            max(1, self.ui(1)),
+            border_radius=max(1, self.ui(6)),
+        )
+        surface.blit(card, card_rect)
+
         speaker_rect = pygame.Rect(
             pad, y, panel_w - pad * 2, self.small_font.get_height()
         )
-        self.draw_ui_text(
-            surface, speaker, self.small_font, (246, 235, 210), speaker_rect
+        # Speaker label with a small accent dot like a stage bill.
+        speaker_color = (246, 235, 210)
+        pygame.draw.circle(
+            surface,
+            (*accent, 220),
+            (pad + self.ui(3), speaker_rect.centery),
+            self.ui(2),
         )
-        speaker_w = min(self.small_font.size(speaker)[0], speaker_rect.width)
+        self.draw_ui_text(
+            surface,
+            speaker.upper(),
+            self.small_font,
+            speaker_color,
+            pygame.Rect(
+                pad + self.ui(10),
+                y,
+                panel_w - pad * 2 - self.ui(10),
+                self.small_font.get_height(),
+            ),
+        )
+        speaker_w = min(self.small_font.size(speaker.upper())[0], speaker_rect.width)
         line_y = y + self.small_font.get_height() // 2
         pygame.draw.line(
             surface,
-            (*accent, 130),
-            (pad + speaker_w + self.ui(10), line_y),
+            (*self.HUD_GOLD, 140),
+            (pad + self.ui(10) + speaker_w + self.ui(8), line_y),
             (panel_w - pad, line_y),
             self.ui(1),
+        )
+        # Center diamond ornament on the rule.
+        rule_cx = (pad + self.ui(10) + speaker_w + self.ui(8) + panel_w - pad) // 2
+        pygame.draw.polygon(
+            surface,
+            (*self.HUD_GOLD, 180),
+            [
+                (rule_cx, line_y - self.ui(2)),
+                (rule_cx + self.ui(2), line_y),
+                (rule_cx, line_y + self.ui(2)),
+                (rule_cx - self.ui(2), line_y),
+            ],
         )
         y += self.small_font.get_height() + self.ui(5)
         progress = self.active_cutscene_narration_progress()
@@ -305,9 +371,16 @@ class RenderingStoryOverlayMixin:
             ),
             border_radius=self.ui(2),
         )
+        # Glowing leading edge on the progress bar while narrating.
+        if not narration_complete and progress > 0:
+            edge_x = progress_rect.x + int(progress_rect.width * progress)
+            edge = pygame.Surface((self.ui(6), self.ui(6)), pygame.SRCALPHA)
+            pygame.draw.circle(
+                edge, (*self.shade(accent, 60), 200), edge.get_rect().center, self.ui(3)
+            )
+            surface.blit(edge, edge.get_rect(center=(edge_x, progress_rect.centery)))
         y += progress_rect.height + self.ui(8)
 
-        text_bottom = max(y + self.small_font.get_height(), choices_start - self.ui(10))
         line_h = max(self.small_font.get_height() + self.ui(3), self.ui(18))
         body_lines: list[str] = []
         visible_text = self.active_cutscene_visible_text()
@@ -317,15 +390,17 @@ class RenderingStoryOverlayMixin:
             body_lines.extend(
                 self.wrap_ui_text(paragraph, self.small_font, panel_w - pad * 2)
             )
-        if not narration_complete and body_lines and int(self.elapsed * 2.0) % 2 == 0:
-            body_lines[-1] = f"{body_lines[-1]} |"
+        if not narration_complete and body_lines:
+            # Blinking quill caret at the end of the spoken line.
+            if int(self.elapsed * 2.4) % 2 == 0:
+                body_lines[-1] = f"{body_lines[-1]} \u2588"
         max_body_lines = max(1, (text_bottom - y) // line_h)
         omitted_lines = max(0, len(body_lines) - max_body_lines)
         visible_lines = body_lines[-max_body_lines:]
         if omitted_lines and visible_lines:
-            visible_lines[0] = "… " + visible_lines[0]
+            visible_lines[0] = "\u2026 " + visible_lines[0]
         for index, text_line in enumerate(visible_lines):
-            color = (225, 218, 202)
+            color = (228, 220, 204)
             is_current_line = index == len(visible_lines) - 1 and not narration_complete
             if index == 0 and self.story_intro_pending and not omitted_lines:
                 color = (238, 218, 164)
@@ -420,60 +495,530 @@ class RenderingStoryOverlayMixin:
         )
         self.screen.blit(surface, rect)
 
-    def draw_cutscene_stage(
-        self,
-        surface: pygame.Surface,
-        stage_rect: pygame.Rect,
-        animation_id: str,
-        accent: Color,
-    ) -> None:
-        pygame.draw.rect(
-            surface, (15, 13, 21, 245), stage_rect, border_radius=self.ui(10)
-        )
-        pygame.draw.rect(
-            surface, (*accent, 125), stage_rect, self.ui(1), border_radius=self.ui(10)
-        )
-        self.draw_cutscene_story_backdrop(surface, stage_rect, accent)
-        self.draw_cutscene_memory_ribbon(surface, stage_rect, accent)
-        horizon_y = stage_rect.y + int(stage_rect.height * 0.62)
-        pygame.draw.line(
-            surface,
-            (*self.shade(accent, -25), 76),
-            (stage_rect.x + self.ui(10), horizon_y),
-            (stage_rect.right - self.ui(10), horizon_y),
-            self.ui(1),
-        )
-        self.draw_cutscene_choice_tableau(surface, stage_rect, accent)
-        for index in range(9):
-            phase = self.elapsed * (0.45 + index * 0.035) + index * 1.7
-            mote_x = stage_rect.x + int(
-                (0.08 + (index * 0.11) % 0.86) * stage_rect.width
-            )
-            mote_y = stage_rect.y + int(
-                (0.22 + 0.18 * math.sin(phase)) * stage_rect.height
-            )
-            pygame.draw.circle(surface, (*accent, 54), (mote_x, mote_y), self.ui(1))
+    # ------------------------------------------------------------------
+    # Milestone 3.4 cutscene stage — "cursed theater" overhaul
+    #
+    # The stage is a single cohesive dark-fantasy set rendered entirely
+    # inside ``stage_rect`` (panel-surface coordinates are offset by
+    # ``stage_rect.topleft`` everywhere, so nothing leaks onto the title
+    # or narrator card). The look is worn stone, iron, and dusty
+    # accent-tinted tapestry — no bright velvet or gold marble — so it
+    # matches the dungeon HUD palette. Static layers (back wall, floor,
+    # proscenium frame) are cached per (asset, size, accent); only the
+    # animated overlays (curtain open, lights, ambient motes, spectral
+    # flames) are redrawn each frame.
+    #
+    # Curtains start CLOSED and pull open as the narrator speaks, driven
+    # by ``active_cutscene_narration_progress()``. Once open they stay
+    # gathered at the sides, framing the scene instead of covering it.
+
+    _STAGE_CACHE: dict[tuple, pygame.Surface] = {}
+
+    STAGE_STONE = (54, 49, 58)
+    STAGE_STONE_DARK = (28, 25, 32)
+    STAGE_STONE_LIGHT = (78, 72, 84)
+    STAGE_IRON = (74, 70, 82)
+    STAGE_IRON_LIGHT = (118, 110, 128)
+    STAGE_IRON_DARK = (32, 30, 38)
+    STAGE_TAPESTRY = (60, 36, 52)
+    STAGE_TAPESTRY_DARK = (32, 18, 30)
+    STAGE_FLAME = (208, 138, 74)
+    STAGE_FLAME_CORE = (244, 212, 156)
+
+    def _stage_cache_key(self, asset_id, layer, size, accent, extra=()):
+        return (asset_id, layer, size, accent, extra)
+
+    def _cached_stage_layer(self, key, size, painter):
+        cached = self._STAGE_CACHE.get(key)
+        if cached is not None and cached.get_size() == size:
+            return cached
+        surface = pygame.Surface(size, pygame.SRCALPHA)
+        painter(surface)
+        self._STAGE_CACHE[key] = surface
+        return surface
+
+    def stage_role_color(self, role, accent):
+        role = role.lower()
+        if role in ("accent", "spot", "tint"):
+            return accent
+        if role == "player":
+            return (226, 222, 205)
+        if role == "danger":
+            return (235, 95, 84)
+        if role == "warm":
+            return self.STAGE_FLAME
+        if role == "gold":
+            return self.HUD_GOLD
+        if role == "velvet":
+            return self.STAGE_TAPESTRY
+        if role == "stone":
+            return self.STAGE_STONE
+        if role == "stage_floor":
+            return (38, 30, 42)
+        if role.startswith("#") and len(role) == 7:
+            try:
+                return (int(role[1:3], 16), int(role[3:5], 16), int(role[5:7], 16))
+            except ValueError:
+                return accent
+        return accent
+
+    def _curtain_open_amount(self, curtain):
+        progress = self.active_cutscene_narration_progress()
+        eased = progress * progress * (3.0 - 2.0 * progress)
+        return max(0.0, min(1.0, eased))
+
+    def draw_cutscene_stage(self, surface, stage_rect, animation_id, accent):
         asset = self.active_cutscene_asset()
-        if asset is None:
-            return
-        for actor in asset.actors.values():
-            self.draw_cutscene_actor(surface, stage_rect, actor, animation_id, accent)
+        stage = asset.stage if asset is not None else StageAsset()
+        pygame.draw.rect(surface, self.STAGE_STONE_DARK, stage_rect, border_radius=self.ui(10))
+        self.draw_stage_backdrop(surface, stage_rect, stage, accent)
+        self.draw_stage_floor(surface, stage_rect, stage, accent)
+        self.draw_stage_props(surface, stage_rect, stage, accent)
+        self.draw_cutscene_memory_ribbon(surface, stage_rect, accent)
+        self.draw_cutscene_choice_tableau(surface, stage_rect, accent)
+        if asset is not None:
+            for actor in asset.actors.values():
+                self.draw_cutscene_actor(surface, stage_rect, actor, animation_id, accent)
+        self.draw_stage_lights(surface, stage_rect, stage, accent)
+        self.draw_stage_ambient(surface, stage_rect, stage, accent)
+        if stage.footlights:
+            self.draw_stage_footlights(surface, stage_rect, stage, accent)
+        if stage.proscenium:
+            self.draw_stage_proscenium(surface, stage_rect, stage, accent)
+        self.draw_stage_curtain(surface, stage_rect, stage, accent)
         self.draw_cutscene_letterbox(surface, stage_rect)
 
-    def draw_cutscene_letterbox(
-        self, surface: pygame.Surface, stage_rect: pygame.Rect
-    ) -> None:
-        bar_h = max(2, self.ui(5))
-        pygame.draw.rect(
-            surface,
-            (0, 0, 0, 74),
-            (stage_rect.x, stage_rect.y, stage_rect.width, bar_h),
-        )
-        pygame.draw.rect(
-            surface,
-            (0, 0, 0, 74),
-            (stage_rect.x, stage_rect.bottom - bar_h, stage_rect.width, bar_h),
-        )
+    def draw_cutscene_letterbox(self, surface, stage_rect):
+        bar_h = max(2, self.ui(4))
+        pygame.draw.rect(surface, (0, 0, 0, 90), (stage_rect.x, stage_rect.y, stage_rect.width, bar_h))
+        pygame.draw.rect(surface, (0, 0, 0, 90), (stage_rect.x, stage_rect.bottom - bar_h, stage_rect.width, bar_h))
+
+    def draw_stage_backdrop(self, surface, stage_rect, stage, accent):
+        asset = self.active_cutscene_asset()
+        asset_id = asset.id if asset is not None else "_default"
+        key = self._stage_cache_key(asset_id, "backdrop", stage_rect.size, accent, (stage.backdrop,))
+
+        def paint(layer):
+            w, h = layer.get_size()
+            theme = self.theme
+            base = self.shade(theme.floor, -52)
+            far = self.mix(base, self.shade(accent, -75), 0.45)
+            bands = 8
+            for band in range(bands):
+                amount = band / (bands - 1)
+                color = self.mix(far, self.shade(theme.wall_top, -28), amount * 0.5)
+                y = int(h * band / bands)
+                bh = max(1, h // bands + 1)
+                pygame.draw.rect(layer, (*color, 255), (0, y, w, bh))
+            vignette = pygame.Surface((w, h), pygame.SRCALPHA)
+            for ring in range(6):
+                radius = int(max(w, h) * (0.7 - ring * 0.08))
+                pygame.draw.circle(vignette, (0, 0, 0, 16 + ring * 7), (w // 2, int(h * 0.45)), radius)
+            layer.blit(vignette, (0, 0))
+            horizon_y = int(h * 0.62)
+            pygame.draw.line(layer, (*self.shade(accent, -35), 90), (self.ui(8), horizon_y), (w - self.ui(8), horizon_y), self.ui(1))
+            text = self.cutscene_story_text().lower()
+            current = self.active_cutscene_current_sentence_text().lower()
+            scene_text = f"{text} {current}"
+            self.draw_cutscene_theme_motifs(layer, layer.get_rect(), accent, scene_text)
+            self.draw_cutscene_relic_silhouette(layer, layer.get_rect(), accent)
+            self.draw_cutscene_faction_sigil(layer, layer.get_rect(), accent)
+
+        layer = self._cached_stage_layer(key, stage_rect.size, paint)
+        surface.blit(layer, stage_rect.topleft)
+
+    def draw_stage_floor(self, surface, stage_rect, stage, accent):
+        asset = self.active_cutscene_asset()
+        asset_id = asset.id if asset is not None else "_default"
+        key = self._stage_cache_key(asset_id, "floor", stage_rect.size, accent, (stage.floor_color,))
+
+        def paint(layer):
+            w, h = layer.get_size()
+            floor_top = int(h * 0.62)
+            floor_h = h - floor_top
+            floor_color = self.stage_role_color(stage.floor_color, accent)
+            planks = 9
+            for index in range(planks):
+                t = index / max(1, planks - 1)
+                front_half = w * (0.18 + 0.42 * t)
+                back_half = w * (0.18 + 0.42 * (t - 1.0 / planks))
+                y_front = floor_top + int(floor_h * (t + 1.0 / planks))
+                y_back = floor_top + int(floor_h * t)
+                shade = -32 + int(t * 36)
+                color = self.shade(floor_color, shade)
+                poly = [
+                    (w // 2 - back_half, y_back),
+                    (w // 2 + back_half, y_back),
+                    (w // 2 + front_half, y_front),
+                    (w // 2 - front_half, y_front),
+                ]
+                pygame.draw.polygon(layer, (*color, 255), poly)
+                pygame.draw.polygon(layer, (*self.shade(color, -22), 140), poly, 1)
+            pygame.draw.line(layer, (*self.shade(accent, -45), 110), (self.ui(6), h - self.ui(3)), (w - self.ui(6), h - self.ui(3)), self.ui(1))
+
+        layer = self._cached_stage_layer(key, stage_rect.size, paint)
+        surface.blit(layer, stage_rect.topleft)
+
+    def draw_stage_props(self, surface, stage_rect, stage, accent):
+        for prop in stage.props:
+            painter = self._stage_prop_painter(prop.kind)
+            if painter is None:
+                continue
+            x = stage_rect.x + int(prop.x * stage_rect.width)
+            y = stage_rect.y + int(prop.y * stage_rect.height)
+            color = self.stage_role_color(prop.color, accent)
+            sway = 0.0
+            if prop.amplitude > 0:
+                sway = math.sin(self.elapsed * 1.6 + prop.phase) * prop.amplitude
+            painter(surface, x, y, prop.scale, color, prop.phase, sway)
+
+    def _stage_prop_painter(self, kind):
+        return {
+            "pillar": self._paint_prop_pillar,
+            "altar": self._paint_prop_altar,
+            "lectern": self._paint_prop_lectern,
+            "candelabra": self._paint_prop_candelabra,
+            "banner": self._paint_prop_banner,
+            "brazier": self._paint_prop_brazier,
+            "throne": self._paint_prop_throne,
+            "crate": self._paint_prop_crate,
+        }.get(kind)
+
+    def _paint_prop_pillar(self, surface, x, y, scale, color, phase, sway):
+        w = max(self.ui(14), int(self.ui(22) * scale))
+        h = max(self.ui(60), int(self.ui(96) * scale))
+        rect = pygame.Rect(0, 0, w, h)
+        rect.midbottom = (x, y + self.ui(8))
+        stone = self.STAGE_STONE
+        pygame.draw.rect(surface, (*self.shade(stone, -18), 255), rect)
+        pygame.draw.rect(surface, (*self.shade(stone, 22), 200), (rect.x, rect.y, self.ui(3), rect.h))
+        pygame.draw.rect(surface, (*self.shade(stone, -42), 220), (rect.right - self.ui(3), rect.y, self.ui(3), rect.h))
+        for cy in range(rect.y + self.ui(10), rect.bottom - self.ui(8), self.ui(18)):
+            pygame.draw.line(surface, (*self.shade(stone, -50), 160), (rect.centerx, cy), (rect.centerx + self.ui(2), cy + self.ui(6)), 1)
+        cap = pygame.Rect(rect.x - self.ui(4), rect.y - self.ui(6), rect.w + self.ui(8), self.ui(8))
+        pygame.draw.rect(surface, (*self.shade(stone, 8), 255), cap)
+        pygame.draw.rect(surface, (*self.shade(stone, -32), 220), cap, 1)
+        base = pygame.Rect(rect.x - self.ui(5), rect.bottom - self.ui(4), rect.w + self.ui(10), self.ui(8))
+        pygame.draw.rect(surface, (*self.shade(stone, -12), 255), base)
+        pygame.draw.rect(surface, (*self.shade(stone, -42), 220), base, 1)
+
+    def _paint_prop_altar(self, surface, x, y, scale, color, phase, sway):
+        stone = self.STAGE_STONE
+        w = max(self.ui(40), int(self.ui(64) * scale))
+        h = max(self.ui(20), int(self.ui(30) * scale))
+        rect = pygame.Rect(0, 0, w, h)
+        rect.midbottom = (x, y + self.ui(8))
+        pygame.draw.rect(surface, (*self.shade(stone, -10), 255), rect, border_radius=self.ui(3))
+        pygame.draw.rect(surface, (*self.shade(stone, 18), 200), rect, 1, border_radius=self.ui(3))
+        top = pygame.Rect(rect.x - self.ui(6), rect.y - self.ui(6), rect.w + self.ui(12), self.ui(8))
+        pygame.draw.rect(surface, (*self.shade(stone, 12), 255), top, border_radius=self.ui(2))
+        pygame.draw.rect(surface, (*self.shade(stone, -32), 220), top, 1, border_radius=self.ui(2))
+        glow = 0.5 + 0.5 * math.sin(self.elapsed * 2.0 + phase)
+        accent = self.story_state.accent if self.story_state else self.theme.accent
+        pygame.draw.circle(surface, (*accent, int(60 + glow * 80)), (rect.centerx, rect.centery), self.ui(4))
+        pygame.draw.circle(surface, (*self.shade(accent, 40), 160), (rect.centerx, rect.centery), self.ui(2))
+
+    def _paint_prop_lectern(self, surface, x, y, scale, color, phase, sway):
+        stone = self.STAGE_STONE
+        w = max(self.ui(20), int(self.ui(30) * scale))
+        h = max(self.ui(40), int(self.ui(56) * scale))
+        rect = pygame.Rect(0, 0, w, h)
+        rect.midbottom = (x, y + self.ui(8))
+        pygame.draw.polygon(surface, (*self.shade(stone, -8), 255), [(rect.x, rect.bottom), (rect.right, rect.bottom), (rect.right - self.ui(4), rect.y), (rect.x + self.ui(2), rect.y)])
+        ledge = pygame.Rect(rect.x - self.ui(2), rect.y - self.ui(4), rect.w + self.ui(4), self.ui(5))
+        pygame.draw.rect(surface, (*self.shade(stone, 16), 255), ledge)
+        pygame.draw.rect(surface, (*self.shade(stone, -32), 220), ledge, 1)
+
+    def _paint_prop_candelabra(self, surface, x, y, scale, color, phase, sway):
+        iron = self.STAGE_IRON
+        h = max(self.ui(40), int(self.ui(58) * scale))
+        stem_top = (x, y - h + self.ui(8))
+        stem_bottom = (x, y + self.ui(6))
+        pygame.draw.line(surface, (*self.shade(iron, -20), 255), stem_top, stem_bottom, self.ui(3))
+        pygame.draw.rect(surface, (*self.shade(iron, -30), 255), (x - self.ui(7), y + self.ui(2), self.ui(14), self.ui(5)), border_radius=self.ui(2))
+        accent = self.story_state.accent if self.story_state else self.theme.accent
+        flame_color = self.mix(self.STAGE_FLAME, accent, 0.35)
+        for side in (-1, 0, 1):
+            arm_y = y - h + self.ui(10) + side * self.ui(6)
+            arm_end = (x + side * self.ui(10), arm_y)
+            pygame.draw.line(surface, (*self.shade(iron, -10), 255), (x, arm_y + self.ui(4)), arm_end, self.ui(2))
+            candle = pygame.Rect(arm_end[0] - self.ui(2), arm_end[1] - self.ui(8), self.ui(4), self.ui(8))
+            pygame.draw.rect(surface, (220, 210, 188, 240), candle)
+            flick = 0.7 + 0.3 * math.sin(self.elapsed * 9.0 + phase + side * 1.3)
+            flame_y = candle.y - self.ui(3) - int(flick * self.ui(2))
+            pygame.draw.polygon(surface, (*flame_color, int(200 * flick)), [(candle.centerx, flame_y - self.ui(4)), (candle.centerx - self.ui(2), flame_y), (candle.centerx + self.ui(2), flame_y)])
+            pygame.draw.circle(surface, (*self.STAGE_FLAME_CORE, int(150 * flick)), (candle.centerx, flame_y), self.ui(1))
+            halo = pygame.Surface((self.ui(20), self.ui(20)), pygame.SRCALPHA)
+            pygame.draw.circle(halo, (*flame_color, int(24 * flick)), halo.get_rect().center, self.ui(9))
+            surface.blit(halo, halo.get_rect(center=(candle.centerx, flame_y)))
+
+    def _paint_prop_banner(self, surface, x, y, scale, color, phase, sway):
+        w = max(self.ui(14), int(self.ui(20) * scale))
+        h = max(self.ui(40), int(self.ui(60) * scale))
+        top = (x, y)
+        bottom_y = y + h
+        sway_x = int(sway * self.ui(4))
+        pts = [(top[0] - w // 2, top[1]), (top[0] + w // 2, top[1]), (top[0] + w // 2 + sway_x, bottom_y), (top[0] - w // 2 + sway_x, bottom_y)]
+        pygame.draw.polygon(surface, (*self.shade(color, -25), 235), pts)
+        pygame.draw.polygon(surface, (*self.shade(color, 18), 200), pts, 1)
+        for fx in range(3):
+            cx = pts[2][0] + (pts[3][0] - pts[2][0]) * (fx + 1) / 4
+            pygame.draw.line(surface, (*self.shade(color, 10), 200), (cx, bottom_y), (cx, bottom_y + self.ui(4)), self.ui(1))
+        pygame.draw.rect(surface, (*self.shade(self.STAGE_IRON, 6), 255), (top[0] - w // 2 - self.ui(2), top[1] - self.ui(3), w + self.ui(4), self.ui(4)), border_radius=self.ui(1))
+
+    def _paint_prop_brazier(self, surface, x, y, scale, color, phase, sway):
+        iron = self.STAGE_IRON
+        w = max(self.ui(18), int(self.ui(26) * scale))
+        h = max(self.ui(16), int(self.ui(22) * scale))
+        rect = pygame.Rect(0, 0, w, h)
+        rect.midbottom = (x, y + self.ui(8))
+        pygame.draw.ellipse(surface, (*self.shade(iron, -10), 255), rect)
+        pygame.draw.ellipse(surface, (*self.shade(iron, 22), 200), rect, 1)
+        accent = self.story_state.accent if self.story_state else self.theme.accent
+        ember = self.mix(self.STAGE_FLAME, accent, 0.4)
+        for index in range(5):
+            t = (self.elapsed * 1.4 + index * 0.4 + phase) % 1.0
+            ey = rect.y - int(t * self.ui(18))
+            ex = rect.centerx + int(math.sin(t * 6 + index) * self.ui(4))
+            alpha = int(180 * (1.0 - t))
+            pygame.draw.circle(surface, (*ember, alpha), (ex, ey), self.ui(1))
+
+    def _paint_prop_throne(self, surface, x, y, scale, color, phase, sway):
+        stone = self.STAGE_STONE
+        w = max(self.ui(40), int(self.ui(56) * scale))
+        h = max(self.ui(60), int(self.ui(84) * scale))
+        rect = pygame.Rect(0, 0, w, h)
+        rect.midbottom = (x, y + self.ui(8))
+        pygame.draw.rect(surface, (*self.shade(stone, -16), 255), rect, border_radius=self.ui(4))
+        pygame.draw.rect(surface, (*self.shade(stone, 22), 200), rect, 1, border_radius=self.ui(4))
+        seat = pygame.Rect(rect.x - self.ui(4), rect.centery, rect.w + self.ui(8), self.ui(10))
+        pygame.draw.rect(surface, (*self.shade(stone, 4), 255), seat, border_radius=self.ui(2))
+        for side in (-1, 1):
+            pygame.draw.polygon(surface, (*self.shade(stone, 26), 230), [(rect.x + (rect.w if side > 0 else 0), rect.y), (rect.x + (rect.w if side > 0 else 0) + side * self.ui(4), rect.y - self.ui(10)), (rect.x + (rect.w if side > 0 else 0) + side * self.ui(8), rect.y)])
+
+    def _paint_prop_crate(self, surface, x, y, scale, color, phase, sway):
+        wood = (78, 60, 44)
+        w = max(self.ui(20), int(self.ui(28) * scale))
+        h = max(self.ui(18), int(self.ui(24) * scale))
+        rect = pygame.Rect(0, 0, w, h)
+        rect.midbottom = (x, y + self.ui(8))
+        pygame.draw.rect(surface, (*wood, 255), rect)
+        pygame.draw.rect(surface, (*self.shade(wood, 22), 200), rect, 1)
+        pygame.draw.line(surface, (*self.shade(wood, -30), 200), (rect.x, rect.y), (rect.right, rect.bottom), 1)
+        pygame.draw.line(surface, (*self.shade(wood, -30), 200), (rect.right, rect.y), (rect.x, rect.bottom), 1)
+
+    def draw_stage_lights(self, surface, stage_rect, stage, accent):
+        if not stage.lights:
+            return
+        for light in stage.lights:
+            self._draw_stage_light(surface, stage_rect, light, accent)
+
+    def _draw_stage_light(self, surface, stage_rect, light, accent):
+        tint = self.stage_role_color(light.tint, accent)
+        sway_x = math.sin(self.elapsed * 0.8 + light.phase) * light.sway * 0.02
+        sway_y = math.cos(self.elapsed * 0.6 + light.phase) * light.sway * 0.01
+        tx = stage_rect.x + int((light.target_x + sway_x) * stage_rect.width)
+        ty = stage_rect.y + int((light.target_y + sway_y) * stage_rect.height)
+        sx = stage_rect.x + int(light.source_x * stage_rect.width)
+        sy = stage_rect.y + int(light.source_y * stage_rect.height)
+        radius = max(self.ui(8), int(light.radius * stage_rect.width))
+        intensity = light.intensity
+        if light.kind == "spot":
+            glow = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+            for ring in range(4):
+                r = int(radius * (1.0 - ring * 0.22))
+                a = int(50 * intensity * (1.0 - ring * 0.2))
+                pygame.draw.circle(glow, (*tint, a), (radius, radius), r)
+            surface.blit(glow, glow.get_rect(center=(tx, ty)))
+            beam = pygame.Surface(stage_rect.size, pygame.SRCALPHA)
+            beam_pts = [(sx - stage_rect.x - self.ui(3), sy - stage_rect.y), (sx - stage_rect.x + self.ui(3), sy - stage_rect.y), (tx - stage_rect.x + radius, ty - stage_rect.y), (tx - stage_rect.x - radius, ty - stage_rect.y)]
+            pygame.draw.polygon(beam, (*tint, int(20 * intensity)), beam_pts)
+            surface.blit(beam, stage_rect.topleft)
+        elif light.kind == "cone":
+            beam = pygame.Surface(stage_rect.size, pygame.SRCALPHA)
+            pygame.draw.polygon(beam, (*tint, int(36 * intensity)), [(sx - stage_rect.x - self.ui(2), sy - stage_rect.y), (sx - stage_rect.x + self.ui(2), sy - stage_rect.y), (tx - stage_rect.x + radius, ty - stage_rect.y), (tx - stage_rect.x - radius, ty - stage_rect.y)])
+            surface.blit(beam, stage_rect.topleft)
+        elif light.kind == "wash":
+            glow = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+            pygame.draw.circle(glow, (*tint, int(32 * intensity)), (radius, radius), radius)
+            surface.blit(glow, glow.get_rect(center=(tx, ty)))
+        elif light.kind == "beam":
+            pygame.draw.line(surface, (*tint, int(70 * intensity)), (sx, sy), (tx, ty), max(1, self.ui(2)))
+
+    def draw_stage_ambient(self, surface, stage_rect, stage, accent):
+        for effect in stage.ambient:
+            painter = self._ambient_painter(effect.kind)
+            if painter is None:
+                continue
+            color = self.stage_role_color(effect.color, accent)
+            painter(surface, stage_rect, effect, color)
+
+    def _ambient_painter(self, kind):
+        return {"mote": self._paint_ambient_mote, "dust": self._paint_ambient_dust, "ember": self._paint_ambient_ember, "spark": self._paint_ambient_spark, "leaf": self._paint_ambient_leaf, "snow": self._paint_ambient_snow, "ash": self._paint_ambient_ash}.get(kind)
+
+    def _ambient_particle_pos(self, stage_rect, effect, index, vertical=False):
+        seed_phase = effect.phase + index * 0.83
+        t = (self.elapsed * effect.speed * 0.18 + seed_phase) % 1.0
+        base_x = (index * 0.137 + seed_phase * 0.31) % 1.0
+        base_y = (index * 0.211 + seed_phase * 0.19) % 1.0
+        if vertical:
+            y = (1.0 - t) * 1.05 - 0.025
+            x = (base_x + math.sin(self.elapsed * 0.7 + seed_phase) * effect.drift) % 1.0
+        else:
+            y = base_y + math.sin(self.elapsed * 0.5 + seed_phase) * 0.06
+            x = (t + base_x * 0.4) % 1.0
+        px = stage_rect.x + int(x * stage_rect.width)
+        py = stage_rect.y + int(y * stage_rect.height)
+        return px, py, t
+
+    def _paint_ambient_mote(self, surface, stage_rect, effect, color):
+        for index in range(effect.count):
+            px, py, t = self._ambient_particle_pos(stage_rect, effect, index)
+            alpha = int(50 + 50 * (0.5 + 0.5 * math.sin(t * math.tau)))
+            pygame.draw.circle(surface, (*color, alpha), (px, py), self.ui(1))
+
+    def _paint_ambient_dust(self, surface, stage_rect, effect, color):
+        for index in range(effect.count):
+            px, py, t = self._ambient_particle_pos(stage_rect, effect, index, vertical=True)
+            alpha = int(36 + 44 * (1.0 - t))
+            pygame.draw.circle(surface, (*self.shade(color, 30), alpha), (px, py), max(1, self.ui(1)))
+
+    def _paint_ambient_ember(self, surface, stage_rect, effect, color):
+        ember = self.mix(self.STAGE_FLAME, color, 0.4)
+        for index in range(effect.count):
+            px, py, t = self._ambient_particle_pos(stage_rect, effect, index, vertical=True)
+            alpha = int(110 * (1.0 - t))
+            pygame.draw.circle(surface, (*ember, alpha), (px, py), self.ui(1))
+            if alpha > 60:
+                pygame.draw.circle(surface, (*self.STAGE_FLAME_CORE, min(255, alpha + 40)), (px, py), max(1, self.ui(1) // 2))
+
+    def _paint_ambient_spark(self, surface, stage_rect, effect, color):
+        for index in range(effect.count):
+            px, py, t = self._ambient_particle_pos(stage_rect, effect, index)
+            flick = 0.5 + 0.5 * math.sin(self.elapsed * 8.0 + index * 2.1)
+            alpha = int(70 + 110 * flick)
+            pygame.draw.line(surface, (*color, alpha), (px, py), (px, py - self.ui(3)), 1)
+
+    def _paint_ambient_leaf(self, surface, stage_rect, effect, color):
+        for index in range(effect.count):
+            px, py, t = self._ambient_particle_pos(stage_rect, effect, index, vertical=True)
+            alpha = int(70 + 50 * (1.0 - t))
+            sway_x = int(math.sin(self.elapsed * 2.0 + index) * self.ui(3))
+            pygame.draw.polygon(surface, (*self.shade(color, 20), alpha), [(px + sway_x, py - self.ui(2)), (px + sway_x + self.ui(2), py), (px + sway_x, py + self.ui(2)), (px + sway_x - self.ui(2), py)])
+
+    def _paint_ambient_snow(self, surface, stage_rect, effect, color):
+        for index in range(effect.count):
+            px, py, t = self._ambient_particle_pos(stage_rect, effect, index, vertical=True)
+            alpha = int(110 + 70 * (1.0 - t))
+            pygame.draw.circle(surface, (220, 226, 238, alpha), (px, py), self.ui(1))
+
+    def _paint_ambient_ash(self, surface, stage_rect, effect, color):
+        for index in range(effect.count):
+            px, py, t = self._ambient_particle_pos(stage_rect, effect, index, vertical=True)
+            alpha = int(50 + 50 * (1.0 - t))
+            pygame.draw.circle(surface, (*self.shade(color, 40), alpha), (px, py), self.ui(1))
+
+    def draw_stage_proscenium(self, surface, stage_rect, stage, accent):
+        asset = self.active_cutscene_asset()
+        asset_id = asset.id if asset is not None else "_default"
+        key = self._stage_cache_key(asset_id, "proscenium", stage_rect.size, accent, ())
+
+        def paint(layer):
+            w, h = layer.get_size()
+            stone = self.STAGE_STONE
+            iron = self.STAGE_IRON
+            arch_h = max(self.ui(12), int(h * 0.10))
+            side_w = max(self.ui(10), int(w * 0.045))
+            pygame.draw.rect(layer, (*self.shade(stone, -8), 255), (0, 0, w, arch_h))
+            pygame.draw.rect(layer, (*self.shade(stone, 22), 220), (0, 0, w, arch_h), 1)
+            pygame.draw.line(layer, (*self.shade(iron, 8), 220), (self.ui(4), arch_h - self.ui(2)), (w - self.ui(4), arch_h - self.ui(2)), self.ui(1))
+            for side in (0, w - side_w):
+                pygame.draw.rect(layer, (*self.shade(stone, -4), 255), (side, 0, side_w, h))
+                pygame.draw.rect(layer, (*self.shade(stone, 24), 220), (side, 0, side_w, h), 1)
+                pygame.draw.line(layer, (*self.shade(iron, -10), 200), (side + side_w // 2, arch_h), (side + side_w // 2, h - self.ui(6)), 1)
+            for cx in (side_w // 2, w - side_w // 2):
+                pygame.draw.circle(layer, (*self.shade(stone, 28), 240), (cx, arch_h // 2), self.ui(4))
+                pygame.draw.circle(layer, (*self.shade(iron, 12), 220), (cx, arch_h // 2), self.ui(4), 1)
+                pygame.draw.circle(layer, (*accent, 150), (cx, arch_h // 2), self.ui(2))
+
+        layer = self._cached_stage_layer(key, stage_rect.size, paint)
+        surface.blit(layer, stage_rect.topleft)
+
+    def draw_stage_curtain(self, surface, stage_rect, stage, accent):
+        curtain = stage.curtain
+        tapestry = self.stage_role_color(curtain.color, accent)
+        sides = ("left", "right") if curtain.side == "both" else (curtain.side,)
+        open_amount = self._curtain_open_amount(curtain)
+        for side in sides:
+            self._draw_curtain_panel(surface, stage_rect, side, curtain, tapestry, accent, open_amount)
+
+    def _draw_curtain_panel(self, surface, stage_rect, side, curtain, tapestry, accent, open_amount):
+        ox, oy = stage_rect.topleft
+        w = stage_rect.width
+        h = stage_rect.height
+        rest_half = curtain.gather * 0.5
+        closed_half = 0.5
+        half = closed_half + (rest_half - closed_half) * open_amount
+        panel_w = max(self.ui(18), int(w * half))
+        base_x = ox if side == "left" else ox + w - panel_w
+        top_y = oy
+        folds = 6
+        fold_w = panel_w / folds
+        top_pts = []
+        bottom_pts = []
+        for index in range(folds + 1):
+            fx = base_x + index * fold_w
+            sway = math.sin(self.elapsed * 1.0 + curtain.phase + index * 0.9) * curtain.sway * self.ui(2)
+            top_pts.append((int(fx + sway), top_y))
+            bottom_pts.append((int(fx + sway), top_y + h))
+        outline = top_pts + list(reversed(bottom_pts))
+        pygame.draw.polygon(surface, (*self.shade(tapestry, -28), 250), outline)
+        for index in range(folds):
+            x0 = top_pts[index][0]
+            x1 = top_pts[index + 1][0]
+            shade_amt = -46 + (index % 2) * 38
+            stripe = [(x0, top_y), (x1, top_y), (bottom_pts[index + 1][0], top_y + h), (bottom_pts[index][0], top_y + h)]
+            pygame.draw.polygon(surface, (*self.shade(tapestry, shade_amt), 220), stripe)
+        inner_x = base_x + panel_w if side == "left" else base_x
+        pygame.draw.line(surface, (*self.shade(accent, -20), 160), (inner_x, top_y), (inner_x, top_y + h), self.ui(1))
+        tie_y = top_y + int(h * 0.42)
+        if side == "left":
+            ring_x = base_x + panel_w
+            anchor_x = ox
+        else:
+            ring_x = base_x
+            anchor_x = ox + w
+        pygame.draw.line(surface, (*self.shade(self.STAGE_IRON, 6), 220), (ring_x, tie_y), (anchor_x, tie_y - self.ui(8)), self.ui(1))
+        pygame.draw.circle(surface, (*self.shade(self.STAGE_IRON, 14), 240), (ring_x, tie_y), self.ui(3))
+        pygame.draw.circle(surface, (*self.shade(self.STAGE_IRON, -20), 220), (ring_x, tie_y), self.ui(3), 1)
+        for tx in range(-2, 3):
+            pygame.draw.line(surface, (*self.shade(self.STAGE_IRON, -10), 200), (ring_x + tx, tie_y + self.ui(2)), (ring_x + tx, tie_y + self.ui(7)), 1)
+        valance_h = max(self.ui(7), int(h * 0.07))
+        valance_pts = [top_pts[0]]
+        for index in range(folds):
+            mid_x = (top_pts[index][0] + top_pts[index + 1][0]) // 2
+            valance_pts.append((top_pts[index][0], top_y + valance_h))
+            valance_pts.append((mid_x, top_y + valance_h // 2))
+        valance_pts.append((top_pts[-1][0], top_y + valance_h))
+        valance_pts.append((top_pts[-1][0], top_y))
+        pygame.draw.polygon(surface, (*self.shade(tapestry, 14), 250), valance_pts)
+        pygame.draw.polygon(surface, (*self.shade(self.STAGE_IRON, -10), 200), valance_pts, 1)
+
+    def draw_stage_footlights(self, surface, stage_rect, stage, accent):
+        count = max(5, stage_rect.width // self.ui(28))
+        ember = self.mix(self.STAGE_FLAME, accent, 0.35)
+        y = stage_rect.bottom - self.ui(4)
+        for index in range(count):
+            t = (index + 0.5) / count
+            x = stage_rect.x + int(t * stage_rect.width)
+            flick = 0.7 + 0.3 * math.sin(self.elapsed * 6.0 + index * 1.7)
+            pygame.draw.circle(surface, (*ember, int(190 * flick)), (x, y), self.ui(2))
+            glow = pygame.Surface((self.ui(24), self.ui(16)), pygame.SRCALPHA)
+            pygame.draw.circle(glow, (*ember, int(26 * flick)), (glow.get_width() // 2, glow.get_height()), self.ui(10))
+            surface.blit(glow, glow.get_rect(midbottom=(x, y)))
+        pygame.draw.rect(surface, (*self.shade(self.STAGE_IRON, -16), 240), (stage_rect.x, y, stage_rect.width, self.ui(3)))
+        pygame.draw.line(surface, (*self.shade(self.STAGE_IRON, 18), 200), (stage_rect.x, y), (stage_rect.right, y), 1)
+
 
     def draw_cutscene_memory_ribbon(
         self, surface: pygame.Surface, stage_rect: pygame.Rect, accent: Color

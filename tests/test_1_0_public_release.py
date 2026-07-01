@@ -36,10 +36,10 @@ class PublicReleaseMilestoneTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
-                self.assertEqual(arch_rogue.__version__, "2.5.0")
+                self.assertEqual(arch_rogue.__version__, "3.4.0")
                 self.assertEqual(game.state, "title")
                 self.assertIn(
-                    "2.5.0",
+                    "3.4.0",
                     game.options_to_dict().get("version", 1) and arch_rogue.__version__,
                 )
             finally:
@@ -163,7 +163,7 @@ class PublicReleaseMilestoneTests(unittest.TestCase):
                 self.assertTrue(game.save_run())
                 saved_run = json.loads(game.save_path.read_text(encoding="utf-8"))
                 self.assertEqual(saved_run["version"], 4)
-                self.assertEqual(saved_run["release"], "2.5.0")
+                self.assertEqual(saved_run["release"], "3.4.0")
                 self.assertEqual(saved_run["difficulty"], "Hard")
                 self.assertFalse(Path(f"{game.save_path}.tmp").exists())
             finally:

@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "cutscenes": [
     {
       "id": "story_guest_omen",
@@ -84,7 +84,6 @@
               "alpha": 0.97,
               "pose": "listen"
             },
-
             {
               "actor": "guest",
               "duration": 0.18,
@@ -130,7 +129,6 @@
               "alpha": 0.88,
               "pose": "plead"
             },
-
             {
               "actor": "relic",
               "duration": 0.14,
@@ -176,7 +174,6 @@
               "alpha": 0.7,
               "pose": "idle"
             },
-
             {
               "actor": "antagonist",
               "duration": 0.4,
@@ -216,6 +213,157 @@
           ]
         }
       ],
+      "stage": {
+        "backdrop": "omen",
+        "proscenium": true,
+        "footlights": true,
+        "floor_color": "stage_floor",
+        "curtain": {
+          "side": "both",
+          "gather": 0.34,
+          "sway": 1.0,
+          "color": "velvet",
+          "phase": 0.0
+        },
+        "props": [
+          {
+            "id": "left_pillar",
+            "kind": "pillar",
+            "x": 0.06,
+            "y": 0.42,
+            "scale": 1.0,
+            "color": "stone"
+          },
+          {
+            "id": "right_pillar",
+            "kind": "pillar",
+            "x": 0.94,
+            "y": 0.42,
+            "scale": 1.0,
+            "color": "stone"
+          },
+          {
+            "id": "altar",
+            "kind": "altar",
+            "x": 0.5,
+            "y": 0.78,
+            "scale": 1.0,
+            "color": "stone"
+          },
+          {
+            "id": "candelabra_left",
+            "kind": "candelabra",
+            "x": 0.14,
+            "y": 0.74,
+            "scale": 0.9,
+            "color": "gold",
+            "phase": 0.0,
+            "amplitude": 1.0
+          },
+          {
+            "id": "candelabra_right",
+            "kind": "candelabra",
+            "x": 0.86,
+            "y": 0.74,
+            "scale": 0.9,
+            "color": "gold",
+            "phase": 1.7,
+            "amplitude": 1.0
+          },
+          {
+            "id": "banner_left",
+            "kind": "banner",
+            "x": 0.1,
+            "y": 0.22,
+            "scale": 0.9,
+            "color": "accent",
+            "phase": 0.6,
+            "amplitude": 0.6
+          },
+          {
+            "id": "banner_right",
+            "kind": "banner",
+            "x": 0.9,
+            "y": 0.22,
+            "scale": 0.9,
+            "color": "accent",
+            "phase": 2.3,
+            "amplitude": 0.6
+          }
+        ],
+        "lights": [
+          {
+            "id": "spot_relic",
+            "kind": "spot",
+            "source_x": 0.5,
+            "source_y": 0.0,
+            "target_x": 0.5,
+            "target_y": 0.4,
+            "radius": 0.22,
+            "intensity": 0.7,
+            "tint": "accent",
+            "sway": 0.4,
+            "phase": 0.0
+          },
+          {
+            "id": "spot_player",
+            "kind": "spot",
+            "source_x": 0.18,
+            "source_y": 0.0,
+            "target_x": 0.2,
+            "target_y": 0.66,
+            "radius": 0.18,
+            "intensity": 0.5,
+            "tint": "warm",
+            "sway": 0.3,
+            "phase": 1.1
+          },
+          {
+            "id": "spot_guest",
+            "kind": "spot",
+            "source_x": 0.82,
+            "source_y": 0.0,
+            "target_x": 0.8,
+            "target_y": 0.6,
+            "radius": 0.18,
+            "intensity": 0.55,
+            "tint": "accent",
+            "sway": 0.3,
+            "phase": 2.2
+          },
+          {
+            "id": "wash_antagonist",
+            "kind": "wash",
+            "source_x": 0.58,
+            "source_y": 0.0,
+            "target_x": 0.58,
+            "target_y": 0.66,
+            "radius": 0.24,
+            "intensity": 0.32,
+            "tint": "danger",
+            "sway": 0.5,
+            "phase": 3.3
+          }
+        ],
+        "ambient": [
+          {
+            "kind": "dust",
+            "count": 14,
+            "color": "accent",
+            "speed": 0.6,
+            "drift": 0.2,
+            "phase": 0.0
+          },
+          {
+            "kind": "ember",
+            "count": 8,
+            "color": "warm",
+            "speed": 1.0,
+            "drift": 0.0,
+            "phase": 1.5
+          }
+        ]
+      },
       "dialogue": {
         "start": "relic_choice",
         "nodes": [
@@ -312,7 +460,6 @@
               "alpha": 1.0,
               "pose": "defy"
             },
-
             {
               "actor": "guest",
               "duration": 0.18,
@@ -361,6 +508,116 @@
           ]
         }
       ],
+      "stage": {
+        "backdrop": "dialogue",
+        "proscenium": true,
+        "footlights": true,
+        "floor_color": "stage_floor",
+        "curtain": {
+          "side": "both",
+          "gather": 0.42,
+          "sway": 0.8,
+          "color": "velvet",
+          "phase": 0.5
+        },
+        "props": [
+          {
+            "id": "left_pillar",
+            "kind": "pillar",
+            "x": 0.07,
+            "y": 0.44,
+            "scale": 0.95,
+            "color": "stone"
+          },
+          {
+            "id": "right_pillar",
+            "kind": "pillar",
+            "x": 0.93,
+            "y": 0.44,
+            "scale": 0.95,
+            "color": "stone"
+          },
+          {
+            "id": "lectern",
+            "kind": "lectern",
+            "x": 0.5,
+            "y": 0.82,
+            "scale": 0.85,
+            "color": "stone"
+          },
+          {
+            "id": "candelabra_left",
+            "kind": "candelabra",
+            "x": 0.16,
+            "y": 0.76,
+            "scale": 0.85,
+            "color": "gold",
+            "phase": 0.4,
+            "amplitude": 1.0
+          },
+          {
+            "id": "candelabra_right",
+            "kind": "candelabra",
+            "x": 0.84,
+            "y": 0.76,
+            "scale": 0.85,
+            "color": "gold",
+            "phase": 2.1,
+            "amplitude": 1.0
+          }
+        ],
+        "lights": [
+          {
+            "id": "spot_guest",
+            "kind": "spot",
+            "source_x": 0.76,
+            "source_y": 0.0,
+            "target_x": 0.76,
+            "target_y": 0.58,
+            "radius": 0.2,
+            "intensity": 0.65,
+            "tint": "accent",
+            "sway": 0.35,
+            "phase": 0.0
+          },
+          {
+            "id": "spot_player",
+            "kind": "spot",
+            "source_x": 0.2,
+            "source_y": 0.0,
+            "target_x": 0.22,
+            "target_y": 0.66,
+            "radius": 0.18,
+            "intensity": 0.5,
+            "tint": "warm",
+            "sway": 0.3,
+            "phase": 1.4
+          },
+          {
+            "id": "spot_relic",
+            "kind": "spot",
+            "source_x": 0.5,
+            "source_y": 0.0,
+            "target_x": 0.5,
+            "target_y": 0.36,
+            "radius": 0.16,
+            "intensity": 0.6,
+            "tint": "accent",
+            "sway": 0.5,
+            "phase": 2.6
+          }
+        ],
+        "ambient": [
+          {
+            "kind": "dust",
+            "count": 10,
+            "color": "accent",
+            "speed": 0.5,
+            "drift": 0.15,
+            "phase": 0.0
+          }
+        ]
+      },
       "dialogue": {
         "start": "choice",
         "nodes": [

@@ -184,21 +184,7 @@ Example categories:
 
 Always update CHANGELOG.md when completing milestones!
 
-### 3.3 Skill Point Progression and Combo Trees
-
-Let the player choose which skills to advance using earned skill points, and make skill trees interact with each other so committing to multiple branches yields cumulative "combo" bonuses.
-
-- Add a skill-point budget to the player progression system (earned on level-up and from select run rewards) and a spend flow in the character sheet so players choose which skills to advance rather than auto-unlocking on level alone.
-- Make skill trees affect each other: advancing one branch can unlock modifiers, prerequisites, or scaling tags that change the behavior of skills in other branches (e.g. a Frost branch node that boosts Frost-tagged skills from the Arcanist tree, or a Stealth node that amplifies critical-hit skills from the Rogue tree).
-- Implement cumulative "combo" bonuses for committing to multiple branches on the same tree: completing 2 or more branches grants an extra bonus on top of the per-node effects, with the bonus scaling by number of completed branches.
-- Surface the combo state clearly in the character sheet: show completed-branch count, current combo bonus, and a preview of the next combo tier when the player hovers a node that would complete another branch.
-- Preserve save compatibility: existing skill/progression saves must still load; unspent skill points default to 0 on older saves and new combo fields default to no-op.
-- Keep the run loop at 60+ FPS: skill resolution and combo bonus lookups must stay cheap, with no per-frame allocations in the hot path.
-- Validate with a new `tests/test_3_3_skill_points.py` covering skill-point earning and spending, cross-branch skill interactions, combo bonus scaling at 2+ completed branches, save migration, plus the full `unittest discover tests` regression suite.
-
-## Next Milestones
-
-### 3.4 Controller, Input, and Accessibility Polish
+### 3.5 Controller, Input, and Accessibility Polish
 
 Modernize the control layer so keyboard/mouse remains responsive while gamepad and accessibility options become first-class across gameplay and menus.
 
@@ -208,9 +194,22 @@ Modernize the control layer so keyboard/mouse remains responsive while gamepad a
 - Add configurable accessibility options to `options.py` and the options menu: aim-assist strength, screen-flash reduction toggle, persistent tooltip toggle, and high-contrast interaction cues; persist them in the existing options file with a backward-compatible schema bump.
 - Preserve current keyboard/mouse bindings, run-save compatibility, and the stable `Game`/`main` entry points; keep `arch_rogue.game.Game` and `arch_rogue.game:main` unchanged in name.
 - Keep the run loop at 60+ FPS: input sampling must stay cheap, and any per-frame controller polling must avoid allocations in the hot path.
-- Validate with a new `tests/test_3_4_input_accessibility.py` covering input mapping, controller-to-command translation, options persistence/migration, and menu navigation, plus the full `unittest discover tests` regression suite.
+- Validate with a new `tests/test_3_5_input_accessibility.py` covering input mapping, controller-to-command translation, options persistence/migration, and menu navigation, plus the full `unittest discover tests` regression suite.
 
-### 3.5 Build Diversity and Affix Depth
+## Completed Milestones
+
+### 3.4 Story Cutscene Refactor (complete)
+
+Refactored the story cutscene runtime so quest cutscenes, dialogue choices, guest interactions, and story rewards are driven by a single data-driven pipeline that is cheaper to extend, easier to test in isolation, and free of per-frame allocations in the hot path.
+
+- Complete rewrite of quest cutscene handling to use a data-driven `StageAsset` pipeline (schema_version 2) instead of ad-hoc string keys and dicts; schema_version 1 assets still load with default dressing.
+- Redesigned stage element on cutscenes to look like a real-world stage with props, lighting, and ambient effects: curtains (dusty accent-tinted tapestry that starts closed and pulls open with the narration, with shaded folds, iron tie-backs, scalloped valances), worn-stone-and-iron proscenium arch, iron footlights with spectral ember bulbs, perspective floorboards, painted backdrop, volumetric spotlights, and ambient particles. All stage drawing is confined to the stage rect so it never overlaps the narrator card, and the palette is consistent with the dungeon HUD.
+- Kept the narrator functionality that scrolls the text as story is told; the text card is now a polished parchment bill with a gilded divider, glowing progress edge, and blinking quill caret.
+- Performance stays well above 60 FPS (~87 FPS at 1280x720) via per-(asset, size, accent) caching of static stage layers.
+
+## Next Milestones
+
+### 3.6 Build Diversity and Affix Depth
 
 Draft goal: deepen loot-driven build variety by expanding affix pools, item interactions, and skill/affix synergies so each run can commit to a distinct build identity.
 
@@ -220,4 +219,4 @@ Draft goal: deepen loot-driven build variety by expanding affix pools, item inte
 - Make cursed items tempting rather than purely punishing: pair each curse with a meaningful upside and surface the tradeoff clearly in the inventory comparison summary.
 - Improve loot readability in the HUD/inventory: affix tooltips, tag icons, and a one-line build-relevance hint comparing drops to the player's current build.
 - Preserve save compatibility: existing item/affix saves must still load; new affixes default to no-op on older saves.
-- Validate with a new `tests/test_3_5_affix_builds.py` covering affix roll ranges, synergy resolution in combat, unique-item generation, cursed-item tradeoffs, and save migration, plus the full `unittest discover tests` regression suite.
+- Validate with a new `tests/test_3_6_affix_builds.py` covering affix roll ranges, synergy resolution in combat, unique-item generation, cursed-item tradeoffs, and save migration, plus the full `unittest discover tests` regression suite.

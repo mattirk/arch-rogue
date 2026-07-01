@@ -6,6 +6,16 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
+# ---------------------------------------------------------------------------
+# Cutscene asset dataclasses
+#
+# The milestone 3.4 pipeline is fully data-driven: every visual element of the
+# stage (curtains, proscenium, footlights, props, spotlights, ambient motes,
+# backdrop bands) is described by a frozen dataclass populated from JSON at
+# load time. The renderer reads these structures directly so the hot path
+# never rebuilds dicts or parses strings per frame.
+# ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class CutsceneActorAsset:
@@ -59,6 +69,103 @@ class DialogueNodeAsset:
     choices: tuple[DialogueChoiceAsset, ...] = ()
 
 
+# --- Stage definition (milestone 3.4) --------------------------------------
+
+
+@dataclass(frozen=True)
+class StagePropAsset:
+    """A static or gently animated prop placed on the stage.
+
+    Props are drawn behind actors and described entirely by data so new
+    cutscenes can dress the stage without code changes. ``kind`` selects a
+    procedural pixel-art routine in the renderer; ``x``/``y`` are normalized
+    stage coordinates (0..1).
+    """
+
+    id: str
+    kind: str
+    x: float
+    y: float
+    scale: float = 1.0
+    color: str = "accent"
+    phase: float = 0.0
+    amplitude: float = 0.0
+
+
+@dataclass(frozen=True)
+class StageLightAsset:
+    """A spotlight or ambient light cone aimed at the stage.
+
+    ``target`` is a normalized stage position the light points at; ``tint``
+    is a color role name resolved by the renderer. Lights sway subtly using
+    a sine phase so the stage feels alive without per-frame allocation.
+    """
+
+    id: str
+    kind: str
+    source_x: float
+    source_y: float
+    target_x: float
+    target_y: float
+    radius: float = 0.18
+    intensity: float = 0.6
+    tint: str = "accent"
+    sway: float = 0.0
+    phase: float = 0.0
+
+
+@dataclass(frozen=True)
+class AmbientEffectAsset:
+    """Repeating ambient particle/effect generator for the stage.
+
+    ``kind`` selects the particle routine (mote, ember, dust, spark, leaf,
+    snow). ``count`` particles are simulated each frame from deterministic
+    per-index phases so the look is stable and allocation-free.
+    """
+
+    kind: str
+    count: int = 12
+    color: str = "accent"
+    speed: float = 1.0
+    drift: float = 0.0
+    phase: float = 0.0
+
+
+@dataclass(frozen=True)
+class CurtainAsset:
+    """Theatrical curtain drape framing the stage.
+
+    ``side`` is ``"left"``, ``"right"`` or ``"both"``. ``gather`` (0..1)
+    controls how tightly the curtain is pulled open; ``sway`` controls the
+    idle ripple amplitude. Color is a role name resolved by the renderer.
+    """
+
+    side: str = "both"
+    gather: float = 0.32
+    sway: float = 1.0
+    color: str = "velvet"
+    phase: float = 0.0
+
+
+@dataclass(frozen=True)
+class StageAsset:
+    """Full stage dressing for a cutscene.
+
+    All fields default to empty tuples so older schema_version 1 cutscenes
+    (which have no ``stage`` block) load cleanly and render with the
+    built-in default dressing synthesized by the renderer.
+    """
+
+    backdrop: str = "dungeon"
+    curtain: CurtainAsset = field(default_factory=CurtainAsset)
+    props: tuple[StagePropAsset, ...] = ()
+    lights: tuple[StageLightAsset, ...] = ()
+    ambient: tuple[AmbientEffectAsset, ...] = ()
+    floor_color: str = "stage_floor"
+    proscenium: bool = True
+    footlights: bool = True
+
+
 @dataclass(frozen=True)
 class QuestCutsceneAsset:
     id: str
@@ -68,6 +175,7 @@ class QuestCutsceneAsset:
     actors: dict[str, CutsceneActorAsset]
     animations: dict[str, SpriteAnimationAsset]
     nodes: dict[str, DialogueNodeAsset]
+    stage: StageAsset = field(default_factory=StageAsset)
 
 
 @dataclass(frozen=True)
@@ -140,9 +248,11 @@ def load_quest_cutscene_library(
 ) -> dict[str, QuestCutsceneAsset]:
     """Load and validate quest cutscene assets.
 
-    The built-in pipeline is intentionally JSON-based so authored quest scenes can be
-    edited without touching gameplay code. Validation happens at load time to keep
-    broken dialogue links or animation references from failing mid-run.
+    The built-in pipeline is intentionally JSON-based so authored quest scenes
+    can be edited without touching gameplay code. Validation happens at load
+    time to keep broken dialogue links or animation references from failing
+    mid-run. Schema version 2 adds the optional ``stage`` block; version 1
+    assets are still accepted and fall back to default stage dressing.
     """
 
     if asset_path is None:
@@ -156,7 +266,8 @@ def load_quest_cutscene_library(
     raw = json.loads(asset_text)
     if not isinstance(raw, dict):
         raise ValueError("Quest cutscene asset root must be an object")
-    if int(raw.get("schema_version", 0)) != 1:
+    schema_version = int(raw.get("schema_version", 0))
+    if schema_version not in (1, 2):
         raise ValueError("Unsupported quest cutscene schema_version")
     cutscene_values = raw.get("cutscenes", [])
     if not isinstance(cutscene_values, list):
@@ -231,6 +342,8 @@ def _parse_cutscene(data: Any) -> QuestCutsceneAsset:
                     f"Cutscene {cutscene_id} node {node.id} links to missing node {choice.next_node}"
                 )
 
+    stage = _parse_stage(data.get("stage"), cutscene_id)
+
     return QuestCutsceneAsset(
         id=cutscene_id,
         title=title,
@@ -239,6 +352,7 @@ def _parse_cutscene(data: Any) -> QuestCutsceneAsset:
         actors=actors,
         animations=animations,
         nodes=nodes,
+        stage=stage,
     )
 
 
@@ -327,6 +441,146 @@ def _parse_choice(data: Any, cutscene_id: str) -> DialogueChoiceAsset:
         next_node=str(data.get("next", "")),
         action=str(data.get("action", "")),
         choice_key=str(data.get("choice_key", "")),
+    )
+
+
+def _parse_stage(data: Any, cutscene_id: str) -> StageAsset:
+    """Parse the optional ``stage`` block.
+
+    Missing or non-dict stage data yields a default ``StageAsset`` so legacy
+    schema_version 1 cutscenes keep working. Every nested list is validated
+    and converted to a tuple so the resulting asset is fully immutable and
+    safe to share across frames.
+    """
+
+    if data is None:
+        return StageAsset()
+    if not isinstance(data, dict):
+        raise ValueError(f"Cutscene {cutscene_id} stage must be an object")
+
+    curtain = _parse_curtain(data.get("curtain"), cutscene_id)
+
+    props_data = data.get("props", [])
+    if not isinstance(props_data, list):
+        raise ValueError(f"Cutscene {cutscene_id} stage props must be a list")
+    props = tuple(_parse_prop(prop, cutscene_id) for prop in props_data)
+
+    lights_data = data.get("lights", [])
+    if not isinstance(lights_data, list):
+        raise ValueError(f"Cutscene {cutscene_id} stage lights must be a list")
+    lights = tuple(_parse_light(light, cutscene_id) for light in lights_data)
+
+    ambient_data = data.get("ambient", [])
+    if not isinstance(ambient_data, list):
+        raise ValueError(f"Cutscene {cutscene_id} stage ambient must be a list")
+    ambient = tuple(_parse_ambient(effect, cutscene_id) for effect in ambient_data)
+
+    return StageAsset(
+        backdrop=str(data.get("backdrop", "dungeon")),
+        curtain=curtain,
+        props=props,
+        lights=lights,
+        ambient=ambient,
+        floor_color=str(data.get("floor_color", "stage_floor")),
+        proscenium=bool(data.get("proscenium", True)),
+        footlights=bool(data.get("footlights", True)),
+    )
+
+
+def _parse_curtain(data: Any, cutscene_id: str) -> CurtainAsset:
+    if data is None:
+        return CurtainAsset()
+    if not isinstance(data, dict):
+        raise ValueError(f"Cutscene {cutscene_id} curtain must be an object")
+    side = str(data.get("side", "both"))
+    if side not in ("left", "right", "both"):
+        raise ValueError(
+            f"Cutscene {cutscene_id} curtain side must be left, right, or both"
+        )
+    return CurtainAsset(
+        side=side,
+        gather=_normalized_float(
+            data.get("gather", 0.32), "curtain gather", cutscene_id
+        ),
+        sway=max(0.0, float(data.get("sway", 1.0))),
+        color=str(data.get("color", "velvet")),
+        phase=float(data.get("phase", 0.0)),
+    )
+
+
+def _parse_prop(data: Any, cutscene_id: str) -> StagePropAsset:
+    if not isinstance(data, dict):
+        raise ValueError(f"Cutscene {cutscene_id} stage prop must be an object")
+    kind = str(data.get("kind", "pillar"))
+    if kind not in (
+        "pillar",
+        "altar",
+        "lectern",
+        "candelabra",
+        "banner",
+        "brazier",
+        "throne",
+        "crate",
+    ):
+        raise ValueError(f"Cutscene {cutscene_id} stage prop kind {kind!r} is unknown")
+    return StagePropAsset(
+        id=_required_str(data, "id", cutscene_id),
+        kind=str(data.get("kind", "pillar")),
+        x=_normalized_float(data.get("x", 0.5), "prop x", cutscene_id),
+        y=_normalized_float(data.get("y", 0.5), "prop y", cutscene_id),
+        scale=max(0.1, float(data.get("scale", 1.0))),
+        color=str(data.get("color", "accent")),
+        phase=float(data.get("phase", 0.0)),
+        amplitude=max(0.0, float(data.get("amplitude", 0.0))),
+    )
+
+
+def _parse_light(data: Any, cutscene_id: str) -> StageLightAsset:
+    if not isinstance(data, dict):
+        raise ValueError(f"Cutscene {cutscene_id} stage light must be an object")
+    kind = str(data.get("kind", "spot"))
+    if kind not in ("spot", "cone", "wash", "beam"):
+        raise ValueError(
+            f"Cutscene {cutscene_id} stage light kind must be spot, cone, wash, or beam"
+        )
+    return StageLightAsset(
+        id=_required_str(data, "id", cutscene_id),
+        kind=kind,
+        source_x=_normalized_float(
+            data.get("source_x", 0.5), "light source_x", cutscene_id
+        ),
+        source_y=_normalized_float(
+            data.get("source_y", 0.0), "light source_y", cutscene_id
+        ),
+        target_x=_normalized_float(
+            data.get("target_x", 0.5), "light target_x", cutscene_id
+        ),
+        target_y=_normalized_float(
+            data.get("target_y", 0.5), "light target_y", cutscene_id
+        ),
+        radius=max(0.02, float(data.get("radius", 0.18))),
+        intensity=max(0.0, min(1.0, float(data.get("intensity", 0.6)))),
+        tint=str(data.get("tint", "accent")),
+        sway=float(data.get("sway", 0.0)),
+        phase=float(data.get("phase", 0.0)),
+    )
+
+
+def _parse_ambient(data: Any, cutscene_id: str) -> AmbientEffectAsset:
+    if not isinstance(data, dict):
+        raise ValueError(f"Cutscene {cutscene_id} ambient effect must be an object")
+    kind = str(data.get("kind", "mote"))
+    if kind not in ("mote", "ember", "dust", "spark", "leaf", "snow", "ash"):
+        raise ValueError(
+            f"Cutscene {cutscene_id} ambient kind must be mote, ember, dust, spark, leaf, snow, ash"
+        )
+    return AmbientEffectAsset(
+        kind=kind,
+        count=max(0, min(64, int(data.get("count", 12)))),
+        color=str(data.get("color", "accent")),
+        speed=max(0.0, float(data.get("speed", 1.0))),
+        drift=float(data.get("drift", 0.0)),
+        phase=float(data.get("phase", 0.0)),
     )
 
 

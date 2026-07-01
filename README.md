@@ -121,9 +121,9 @@ Explore 10 dungeon depths, survive enemies and traps, identify and equip loot, u
 
 In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from the title screen. Death and victory clear the saved run. Options are saved to `~/.arch_rogue_options.json`.
 
-## Known Issues in 2.5
+## Known Issues in 3.4
 
-- Quest cutscenes use packaged JSON dialogue-tree and sprite-animation assets; authored content coverage is still intentionally compact for the milestone.
+- Quest cutscenes use a packaged JSON dialogue-tree, sprite-animation, and stage-dressing asset pipeline; authored content coverage is still intentionally compact for the milestone.
 - Run music and sound effects are still lightweight procedural/static cues; there is no hand-authored soundtrack asset pipeline yet.
 - Controls are keyboard/mouse only; gamepad support is not implemented.
 - Visuals and audio remain procedural prototype assets, now tuned for a cleaner milestone look rather than final art quality.
