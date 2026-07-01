@@ -220,7 +220,7 @@
         "floor_color": "stage_floor",
         "curtain": {
           "side": "both",
-          "gather": 0.34,
+          "gather": 0.18,
           "sway": 1.0,
           "color": "velvet",
           "phase": 0.0
@@ -348,17 +348,17 @@
         "ambient": [
           {
             "kind": "dust",
-            "count": 14,
+            "count": 10,
             "color": "accent",
-            "speed": 0.6,
-            "drift": 0.2,
+            "speed": 0.35,
+            "drift": 0.12,
             "phase": 0.0
           },
           {
             "kind": "ember",
-            "count": 8,
+            "count": 5,
             "color": "warm",
-            "speed": 1.0,
+            "speed": 0.6,
             "drift": 0.0,
             "phase": 1.5
           }
@@ -515,7 +515,7 @@
         "floor_color": "stage_floor",
         "curtain": {
           "side": "both",
-          "gather": 0.42,
+          "gather": 0.22,
           "sway": 0.8,
           "color": "velvet",
           "phase": 0.5
@@ -610,10 +610,10 @@
         "ambient": [
           {
             "kind": "dust",
-            "count": 10,
+            "count": 8,
             "color": "accent",
-            "speed": 0.5,
-            "drift": 0.15,
+            "speed": 0.3,
+            "drift": 0.1,
             "phase": 0.0
           }
         ]
