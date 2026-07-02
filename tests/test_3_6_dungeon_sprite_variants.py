@@ -218,6 +218,48 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
             finally:
                 pygame.quit()
 
+    def test_floor_detail_is_carved_groove_not_flat_scratch(self) -> None:
+        # The variant surface detail must read as a carved groove with real
+        # form (a shadowed recess AND a lit lip), not a single flat scratch,
+        # and must stay inside the slab diamond so no joint pokes into the
+        # transparent tile margin. Variant 0 stays a flat premium slab.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            try:
+                for v in range(DUNGEON_FLOOR_VARIANTS):
+                    surf, ax, ay = game.tile_surface(Tile.FLOOR, v, False)
+                    slab = sum(game.shade(game.theme.floor, v * 2 - 3))
+                    shadow = lip = outside = 0
+                    for x in range(surf.get_width()):
+                        for y in range(surf.get_height()):
+                            p = surf.get_at((x, y))
+                            if p[3] < 200:
+                                continue
+                            dx = abs(x - ax) / (TILE_W / 2)
+                            dy = abs(y - ay) / (TILE_H / 2)
+                            if dx + dy > 1.0:
+                                outside += 1
+                            b = sum(p[:3])
+                            if b < slab - 2:
+                                shadow += 1
+                            elif b > slab + 2:
+                                lip += 1
+                    if v == 0:
+                        self.assertEqual(shadow, 0, "variant 0 must stay flat")
+                        self.assertEqual(lip, 0, "variant 0 must stay flat")
+                    else:
+                        self.assertGreater(
+                            shadow, 0, f"variant {v} groove has no shadow recess"
+                        )
+                        self.assertGreater(lip, 0, f"variant {v} groove has no lit lip")
+                    self.assertEqual(
+                        outside,
+                        0,
+                        f"variant {v} detail pokes outside the slab diamond",
+                    )
+            finally:
+                pygame.quit()
+
     def test_stairs_keep_descent_motif_across_variants(self) -> None:
         # Stairs ignore the seam/crack/cobble detail and always render the step
         # motif, so the descent reads clearly regardless of variant.

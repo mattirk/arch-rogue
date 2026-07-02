@@ -374,6 +374,31 @@ class RenderingWorldMixin:
         pygame.draw.line(surface, self.shade(edge, -44), left, bottom, scale)
         pygame.draw.line(surface, self.shade(edge, -56), bottom, right, scale)
 
+    def _floor_groove(
+        self,
+        surface: pygame.Surface,
+        points: list[tuple[float, float]],
+        slab: Color,
+        thick: bool = False,
+    ) -> None:
+        # Render a flagstone joint or fracture as a carved groove rather than a
+        # flat scratch: a soft shadowed recess with a faint lit lip on the
+        # upper side (the floor is lit from above). Anti-aliased so the line
+        # stays crisp without jagged aliasing, and low-contrast so the detail
+        # reads as elegant tooling instead of a bold drawn-on mark. Drawing a
+        # shadow core plus a one-pixel-up lit lip gives the joint real form
+        # (a beveled recess), which is what separates high-end from cheap.
+        if len(points) < 2:
+            return
+        shadow = self.shade(slab, -24)
+        lip = self.shade(slab, 16)
+        pygame.draw.aalines(surface, shadow, False, points)
+        if thick:
+            down = [(p[0], p[1] + 1) for p in points]
+            pygame.draw.aalines(surface, shadow, False, down)
+        up = [(p[0], p[1] - 1) for p in points]
+        pygame.draw.aalines(surface, lip, False, up)
+
     def draw_floor_tile_surface(
         self,
         surface: pygame.Surface,
@@ -390,126 +415,103 @@ class RenderingWorldMixin:
         is_stairs = tile == Tile.STAIRS
         scale = WORLD_SCALE
         base = self.theme.stair if is_stairs else self.theme.floor
-        edge = self.theme.accent if is_stairs else self.theme.floor_edge
 
-        # Four coherent floor variants share the slab palette, radial
-        # gradient, inset bevel, and outer edge; they differ only in surface
-        # detail (seam / crack / cobble), so they read as the same flagstone
-        # with small, distinct character.
+        # Four coherent floor variants share a flat slab palette and differ
+        # only in surface detail (seam / crack / cobble), so they read as one
+        # continuous flagstone plane with scattered cracks rather than a grid
+        # of beveled slabs. The old radial gradient + diamond outline darkened
+        # every tile edge, which made the tile grid the dominant feature; a flat
+        # fill lets adjacent tiles merge into a single stone surface.
         variant = seed % DUNGEON_FLOOR_VARIANTS
         tint = variant * 2 - 3
         slab = self.shade(base, tint)
-        slab_hi = self.shade(slab, 18)
-        slab_lo = self.shade(slab, -22)
-        edge_lo = self.shade(edge, -16)
-        detail = self.shade(slab, -18)
 
-        # --- Base diamond ---
+        # --- Flat slab fill. No centered gradient, no inset bevel, no outline,
+        # so neighboring tiles blend into a single continuous stone surface.
+        # The per-variant tint (step 2, range -3..+3) gives gentle natural
+        # mottling between adjacent different-variant tiles without drawing a
+        # grid. ---
         pygame.draw.polygon(surface, slab, [top, right, bottom, left])
 
-        # --- Smooth radial gradient: lighten the center, darken the edges.
-        # Drawn as nested diamonds shrinking toward the center for a soft,
-        # sculpted flagstone without harsh lines.
-        for frac, shade in ((0.82, -8), (0.62, 6), (0.40, 14)):
-            hw = int(TILE_W * 0.5 * frac)
-            hh = int(TILE_H * 0.5 * frac)
-            pts = [(sx, sy - hh), (sx + hw, sy), (sx, sy + hh), (sx - hw, sy)]
-            pygame.draw.polygon(surface, self.shade(slab, shade), pts)
-
-        # --- Clean inset bevel: one highlight edge (top-left) and one shadow
-        # edge (bottom-right). Reads as a cut slab edge. ---
-        inset_hw = int(TILE_W * 0.31)
-        inset_hh = int(TILE_H * 0.31)
-        inset_top = (sx, sy - inset_hh)
-        inset_right = (sx + inset_hw, sy)
-        inset_bottom = (sx, sy + inset_hh)
-        inset_left = (sx - inset_hw, sy)
-        # shadow edge (bottom-right)
-        pygame.draw.line(surface, slab_lo, inset_right, inset_bottom, max(1, scale))
-        pygame.draw.line(
-            surface, self.shade(slab_lo, -10), inset_bottom, inset_left, max(1, scale)
-        )
-        # highlight edge (top-left)
-        pygame.draw.line(surface, slab_hi, inset_left, inset_top, max(1, scale))
-        pygame.draw.line(
-            surface, self.shade(slab_hi, 8), inset_top, inset_right, max(1, scale)
-        )
-
-        # --- Variant surface detail: small, distinct, in-family. Stairs keep
+        # --- Variant surface detail, rendered as carved grooves (shadowed
+        # recess + lit lip, anti-aliased) rather than flat scratches, so the
+        # tooling reads as high-end masonry. All joint coordinates are kept
+        # inside the slab diamond (boundary |dx|/32s + |dy|/16s <= 1) so the
+        # grooves never poke into the transparent tile margin. Stairs keep
         # their step motif instead so the descent reads clearly. ---
         if not is_stairs:
             if variant == 1:
-                # Single diagonal seam following the iso axis.
-                pygame.draw.line(
+                # A single hand-cut grout joint along the iso diagonal, gently
+                # undulated so it does not look like a ruler-drawn scratch.
+                self._floor_groove(
                     surface,
-                    detail,
-                    (sx - 22 * scale, sy - 3 * scale),
-                    (sx + 6 * scale, sy + 9 * scale),
-                    max(1, scale),
+                    [
+                        (sx - 14 * scale, sy - 6 * scale),
+                        (sx - 5 * scale, sy - 3 * scale),
+                        (sx + 5 * scale, sy + 2 * scale),
+                        (sx + 14 * scale, sy + 7 * scale),
+                    ],
+                    slab,
                 )
             elif variant == 2:
-                # Short jagged crack from the upper-left edge toward center.
-                pygame.draw.lines(
+                # An organic fracture with a short branch, smoother than the
+                # old 4-segment zigzag so it reads as a real crack in the stone.
+                self._floor_groove(
                     surface,
-                    detail,
-                    False,
                     [
-                        (sx - 26 * scale, sy - 6 * scale),
-                        (sx - 15 * scale, sy - 2 * scale),
-                        (sx - 9 * scale, sy + 3 * scale),
-                        (sx - 2 * scale, sy + 1 * scale),
+                        (sx - 16 * scale, sy - 6 * scale),
+                        (sx - 10 * scale, sy - 2 * scale),
+                        (sx - 5 * scale, sy + 1 * scale),
+                        (sx + 2 * scale, sy - 1 * scale),
+                        (sx + 9 * scale, sy + 3 * scale),
                     ],
-                    max(1, scale),
+                    slab,
+                )
+                self._floor_groove(
+                    surface,
+                    [
+                        (sx - 5 * scale, sy + 1 * scale),
+                        (sx - 2 * scale, sy + 7 * scale),
+                    ],
+                    slab,
                 )
             elif variant == 3:
-                # Twin seams dividing the slab into sub-slabs (cobble read).
-                pygame.draw.line(
+                # Two parallel grout courses along the iso diagonal, offset
+                # from the centerline, dividing the slab into laid-stone panels
+                # (intentional masonry, not a random cross).
+                self._floor_groove(
                     surface,
-                    detail,
-                    (sx - 22 * scale, sy - 3 * scale),
-                    (sx + 6 * scale, sy + 9 * scale),
-                    max(1, scale),
+                    [
+                        (sx - 14 * scale, sy - 2 * scale),
+                        (sx - 6 * scale, sy + 2 * scale),
+                        (sx + 2 * scale, sy + 6 * scale),
+                        (sx + 10 * scale, sy + 10 * scale),
+                    ],
+                    slab,
+                    thick=True,
                 )
-                pygame.draw.line(
+                self._floor_groove(
                     surface,
-                    detail,
-                    (sx + 22 * scale, sy - 3 * scale),
-                    (sx - 6 * scale, sy + 9 * scale),
-                    max(1, scale),
+                    [
+                        (sx - 10 * scale, sy - 10 * scale),
+                        (sx - 2 * scale, sy - 6 * scale),
+                        (sx + 6 * scale, sy - 2 * scale),
+                        (sx + 14 * scale, sy + 2 * scale),
+                    ],
+                    slab,
+                    thick=True,
                 )
-            # variant 0: smooth slab, no extra detail.
+            # variant 0: smooth premium slab, no extra detail.
 
-        # --- Outer diamond edge: clean and consistent ---
-        pygame.draw.lines(surface, edge, True, [top, right, bottom, left], scale)
-        # subtle inner edge just inside the outer edge for depth
-        pygame.draw.lines(
-            surface,
-            edge_lo,
-            True,
-            [
-                (sx, sy - TILE_H // 2 + scale),
-                (sx + TILE_W // 2 - scale, sy),
-                (sx, sy + TILE_H // 2 - scale),
-                (sx - TILE_W // 2 + scale, sy),
-            ],
-            max(1, scale),
-        )
-
-        # --- Shop floor: elegant gilded inlay, kept clean ---
-        if shop_floor and not is_stairs:
+        # --- Shop floor: a single gilded medallion at the tile center, no
+        # diamond frame, so the shop floor stays continuous and reads as a field
+        # of scattered sigils rather than a tiled grid. Only the smooth-slab
+        # variant carries a medallion so they read as occasional inlays. ---
+        if shop_floor and not is_stairs and variant == 0:
             gold = self.mix((218, 164, 62), base, 0.4)
             gold_hi = self.mix((245, 215, 120), base, 0.3)
-            pygame.draw.lines(
-                surface,
-                gold,
-                True,
-                [inset_top, inset_right, inset_bottom, inset_left],
-                max(1, scale),
-            )
-            pygame.draw.line(surface, gold_hi, inset_left, inset_top, max(1, scale))
-            pygame.draw.line(surface, gold_hi, inset_top, inset_right, max(1, scale))
-            # central sigil
-            pygame.draw.circle(surface, gold, (sx, sy), max(2, 2 * scale))
+            pygame.draw.circle(surface, gold, (sx, sy), max(3, 3 * scale))
+            pygame.draw.circle(surface, gold_hi, (sx, sy), max(2, 2 * scale))
             pygame.draw.circle(surface, gold_hi, (sx, sy), max(1, scale))
 
         if is_stairs:
