@@ -414,7 +414,11 @@ class RenderingWorldMixin:
     ) -> None:
         is_stairs = tile == Tile.STAIRS
         scale = WORLD_SCALE
-        base = self.theme.stair if is_stairs else self.theme.floor
+        # Stairs sit in the same flagstone slab as the surrounding floor (same
+        # base color + per-variant tint) so the stairwell reads as an opening
+        # cut into the continuous floor plane rather than a contrasting patch.
+        # The spiral itself is drawn on top in the theme's stair color.
+        base = self.theme.floor
 
         # Four coherent floor variants share a flat slab palette and differ
         # only in surface detail (seam / crack / cobble), so they read as one
@@ -425,17 +429,13 @@ class RenderingWorldMixin:
         variant = seed % DUNGEON_FLOOR_VARIANTS
         tint = variant * 2 - 3
         slab = self.shade(base, tint)
-        if is_stairs:
-            # The stairwell sits in a recessed stone frame slightly darker
-            # than the surrounding floor, so the round shaft reads as an
-            # opening cut into the floor rather than a bright slab.
-            slab = self.shade(self.theme.floor, -16)
 
         # --- Flat slab fill. No centered gradient, no inset bevel, no outline,
         # so neighboring tiles blend into a single continuous stone surface.
         # The per-variant tint (step 2, range -3..+3) gives gentle natural
         # mottling between adjacent different-variant tiles without drawing a
-        # grid. ---
+        # grid. For stairs this same floor slab opaquely fills the area outside
+        # the stairwell circle, so the tile integrates with the floor plane. ---
         pygame.draw.polygon(surface, slab, [top, right, bottom, left])
 
         # --- Variant surface detail, rendered as carved grooves (shadowed
