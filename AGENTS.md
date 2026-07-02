@@ -186,10 +186,6 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 
 ### 3.7 Guiding light update
 
-- Guiding light is now a constant line between player quest relic
-- Make the guiding light a nice looking lamp sprite that hovers a short distance from the player
-- The lamp shows the direction towards quest relic taking into account dungeon walls and tunnels, basically showing the same direction as current implementation of guiding light
-- When lamp implementation is done, make sure the constant "guiding light line" is not drawn anymore
 
 
 ## Next Milestones

@@ -330,89 +330,147 @@ class RenderingEffectsMixin:
         route_distance = self.route_distance(route)
         if route_distance < 0.8:
             return
+        # The guidance uses the same carved-groove language as the floor's
+        # own variant cracks (`_floor_groove`: shadowed recess + lit lip,
+        # anti-aliased) and the same slab color (`theme.floor`), so it reads
+        # as a fracture in the flagstone rather than a painted-on line. The
+        # only colored cue is a faint warm seep welling up from the bottom of
+        # the recess, kept low-contrast so it never reads as a glowing beam.
+        # It pulses on a coarse ~3Hz clock so it steps a few times a second
+        # instead of shimmering every frame.
+        slab = self.theme.floor
         accent = self.story_state.accent if self.story_state else self.theme.accent
-        light = self.mix(accent, (255, 232, 142), 0.72)
-        core = self.mix(light, (255, 255, 238), 0.55)
-        cue_count = min(7, max(3, int(route_distance // 2.1) + 1))
-        samples = self.sample_guidance_route(route, cue_count)
+        warm = self.mix(accent, (255, 232, 142), 0.5)
+        phase = math.floor(self.elapsed * 3.0) / 3.0
+        pulse = 0.5 + 0.5 * math.sin(phase * 2.6)
+
         screen_w, screen_h = self._screen_size()
         glow_layer = self._guidance_glow_layer(screen_w, screen_h)
-        screen_points = [
-            (sx, sy - int(9 * WORLD_SCALE))
-            for sx, sy in (self.world_to_screen(wx, wy) for wx, wy in samples)
-        ]
-        points: list[tuple[int, int, float, float]] = []
-        for index, (sx, sy) in enumerate(screen_points):
-            prev_x, prev_y = screen_points[max(0, index - 1)]
-            next_x, next_y = screen_points[min(len(screen_points) - 1, index + 1)]
+
+        # Follow the route's actual waypoints (trimmed a little in from the
+        # player and the relic) so the crack bends with the corridor instead
+        # of cutting a straight line across wall corners between sparse
+        # samples.
+        total = route_distance
+        start_distance = min(1.05, total * 0.35)
+        end_distance = max(start_distance, total - 0.45)
+        crack_world = self._guidance_crack_polyline(route, start_distance, end_distance)
+        if len(crack_world) < 2:
+            return
+
+        def open_tile(tix: int, tiy: int) -> bool:
+            if not self.dungeon.in_bounds(tix, tiy):
+                return False
+            t = self.dungeon.tiles[tix][tiy]
+            return t != Tile.WALL and t != Tile.CLOSED_DOOR
+
+        raw_screen = [self.world_to_screen(wx, wy) for wx, wy in crack_world]
+        crack_points: list[tuple[float, float]] = []
+        can_fracture: list[bool] = []
+        for index, (wx, wy) in enumerate(crack_world):
+            sx, sy = raw_screen[index]
+            prev_x, prev_y = raw_screen[max(0, index - 1)]
+            next_x, next_y = raw_screen[min(len(raw_screen) - 1, index + 1)]
             tangent_x = next_x - prev_x
             tangent_y = next_y - prev_y
             tangent_len = math.hypot(tangent_x, tangent_y)
             if tangent_len <= 0.001:
                 tangent_x, tangent_y, tangent_len = 1.0, 0.0, 1.0
-            points.append((sx, sy, tangent_x / tangent_len, tangent_y / tangent_len))
-
-        if len(points) >= 2:
-            beam_points = [(sx, sy) for sx, sy, _dir_x, _dir_y in points]
-            for width, alpha in (
-                (12 * WORLD_SCALE, 10),
-                (7 * WORLD_SCALE, 18),
-                (3 * WORLD_SCALE, 34),
-            ):
-                pygame.draw.lines(
-                    glow_layer,
-                    (*light, alpha),
-                    False,
-                    beam_points,
-                    max(1, width),
-                )
-            pygame.draw.lines(
-                glow_layer,
-                (*core, 48),
-                False,
-                beam_points,
-                max(1, 2 * WORLD_SCALE),
-            )
-
-        for index, (sx, sy, dir_x, dir_y) in enumerate(points):
-            shimmer = math.sin(self.elapsed * 5.2 + index * 1.15)
-            drift = math.sin(self.elapsed * 2.4 + index) * 1.25 * WORLD_SCALE
+            dir_x = tangent_x / tangent_len
+            dir_y = tangent_y / tangent_len
             perp_x, perp_y = -dir_y, dir_x
-            glint_x = sx + int(perp_x * drift)
-            glint_y = sy + int(perp_y * drift)
-            flame_tip = (
-                glint_x + int(dir_x * 10 * WORLD_SCALE),
-                glint_y + int(dir_y * 10 * WORLD_SCALE),
+            stx, sty = int(wx), int(wy)
+            # Only jag when the sample sits in open floor (every orthogonal
+            # neighbor walkable); in corridors the crack runs straight so it
+            # can never drift into a wall tile and read as overlapping it.
+            open_area = (
+                open_tile(stx + 1, sty)
+                and open_tile(stx - 1, sty)
+                and open_tile(stx, sty + 1)
+                and open_tile(stx, sty - 1)
             )
-            flame_left = (
-                glint_x - int(dir_x * 2 * WORLD_SCALE) + int(perp_x * 3 * WORLD_SCALE),
-                glint_y - int(dir_y * 2 * WORLD_SCALE) + int(perp_y * 3 * WORLD_SCALE),
-            )
-            flame_right = (
-                glint_x - int(dir_x * 2 * WORLD_SCALE) - int(perp_x * 3 * WORLD_SCALE),
-                glint_y - int(dir_y * 2 * WORLD_SCALE) - int(perp_y * 3 * WORLD_SCALE),
-            )
-            pygame.draw.polygon(
-                glow_layer,
-                (*self.mix(light, accent, 0.35), int(38 + shimmer * 14)),
-                [flame_tip, flame_left, flame_right],
-            )
+            can_fracture.append(open_area)
+            if index == 0 or index == len(raw_screen) - 1 or not open_area:
+                offset = 0.0
+            else:
+                jag = ((index * 37) ^ (index << 1)) % 5 - 2  # -2..2 px
+                sign = -1.0 if index % 2 else 1.0
+                offset = (jag + sign) * WORLD_SCALE
+            crack_points.append((sx + perp_x * offset, sy + perp_y * offset))
 
+        # Carved recess + lit lip, identical recipe to the floor's own variant
+        # grooves so the guidance crack is the same masonry.
+        self._floor_groove(glow_layer, crack_points, slab)
+        # Faint warm seep at the bottom of the recess; the only colored cue,
+        # low-contrast so it stays a hint rather than a beam.
+        seep_points = [(p[0], p[1] + 1) for p in crack_points]
+        pygame.draw.lines(
+            glow_layer,
+            (*warm, int(45 + pulse * 35)),
+            False,
+            seep_points,
+            1,
+        )
+        # Short branch stubs at a couple of interior points (only in open
+        # floor) so it reads as a real fracture rather than a drawn line.
+        for branch_index in (1, len(crack_points) - 2):
+            if branch_index < 1 or branch_index >= len(crack_points) - 1:
+                continue
+            if not can_fracture[branch_index]:
+                continue
+            bx, by = crack_points[branch_index]
+            prev_x, prev_y = raw_screen[branch_index - 1]
+            next_x, next_y = raw_screen[branch_index + 1]
+            tn_x = next_x - prev_x
+            tn_y = next_y - prev_y
+            tn_len = math.hypot(tn_x, tn_y) or 1.0
+            perp_x, perp_y = -tn_y / tn_len, tn_x / tn_len
+            stub_len = 5 * WORLD_SCALE
+            tip = (bx + perp_x * stub_len, by + perp_y * stub_len)
+            self._floor_groove(glow_layer, [(bx, by), tip], slab)
+
+        # Target: a small worn ring groove lying flat on the iso floor (y
+        # squashed to match the floor plane) in the same carved language, with
+        # a faint warm pinprick at its center — a marked split in the stone,
+        # not a beacon halo. Clipped to the relic's own floor tile diamond so
+        # it can't spill over an adjacent wall.
+        shadow = self.shade(slab, -24)
+        lip = self.shade(slab, 16)
         target_sx, target_sy = self.world_to_screen(tx, ty)
-        target_center = (target_sx, target_sy - int(12 * WORLD_SCALE))
-        relic_pulse = 0.5 + 0.5 * math.sin(self.elapsed * 4.0)
-        pygame.draw.circle(
-            glow_layer,
-            (*light, int(24 + relic_pulse * 20)),
-            target_center,
-            int((20 + relic_pulse * 5) * WORLD_SCALE),
-        )
-        pygame.draw.circle(
-            glow_layer,
-            (*core, int(54 + relic_pulse * 46)),
-            target_center,
-            int((7 + relic_pulse * 3) * WORLD_SCALE),
-        )
+        ring_cx = float(target_sx)
+        ring_cy = float(target_sy - int(4 * WORLD_SCALE))
+        ring_radius = 7.0 * WORLD_SCALE
+        r_tile_x, r_tile_y = int(tx), int(ty)
+        tcx, tcy = self.world_to_screen(r_tile_x + 0.5, r_tile_y + 0.5)
+        half_w = TILE_W / 2
+        half_h = TILE_H / 2
+
+        def in_diamond(px: float, py: float) -> bool:
+            return (abs(px - tcx) / half_w + abs(py - tcy) / half_h) <= 0.97
+
+        segs = 22
+        for i in range(segs):
+            a0 = i * (2 * math.pi / segs)
+            a1 = (i + 1) * (2 * math.pi / segs)
+            p0 = (
+                ring_cx + math.cos(a0) * ring_radius,
+                ring_cy + math.sin(a0) * ring_radius * 0.5,
+            )
+            p1 = (
+                ring_cx + math.cos(a1) * ring_radius,
+                ring_cy + math.sin(a1) * ring_radius * 0.5,
+            )
+            if not (in_diamond(p0[0], p0[1]) and in_diamond(p1[0], p1[1])):
+                continue
+            pygame.draw.aaline(glow_layer, shadow, p0, p1)
+            pygame.draw.aaline(glow_layer, lip, (p0[0], p0[1] - 1), (p1[0], p1[1] - 1))
+        if in_diamond(ring_cx, ring_cy):
+            pygame.draw.circle(
+                glow_layer,
+                (*warm, int(40 + pulse * 45)),
+                (int(ring_cx), int(ring_cy)),
+                max(1, int(2 * WORLD_SCALE)),
+            )
         self.screen.blit(glow_layer, (0, 0))
 
     def story_relic_guidance_route(
@@ -524,6 +582,45 @@ class RenderingEffectsMixin:
             )
             samples.append((ax + (bx - ax) * ratio, ay + (by - ay) * ratio))
         return samples
+
+    def _guidance_crack_polyline(
+        self,
+        route: list[tuple[float, float]],
+        start_distance: float,
+        end_distance: float,
+    ) -> list[tuple[float, float]]:
+        # Build the crack polyline by following the route's actual waypoints
+        # (trimmed a little in from the player and the relic) rather than
+        # sparse evenly-spaced samples. Following every waypoint means the
+        # crack bends with the corridor and can never cut a straight line
+        # across a wall corner between two samples.
+        if len(route) < 2:
+            return []
+        cum = [0.0]
+        for (ax, ay), (bx, by) in zip(route, route[1:]):
+            cum.append(cum[-1] + math.hypot(bx - ax, by - ay))
+        total = cum[-1]
+        if total <= 0.001 or end_distance <= start_distance:
+            return []
+        start_distance = max(0.0, min(start_distance, total))
+        end_distance = max(start_distance, min(end_distance, total))
+
+        def point_at(dist: float) -> tuple[float, float]:
+            for i in range(len(route) - 1):
+                if cum[i + 1] >= dist:
+                    seg_len = cum[i + 1] - cum[i]
+                    r = 0.0 if seg_len <= 0.001 else (dist - cum[i]) / seg_len
+                    ax, ay = route[i]
+                    bx, by = route[i + 1]
+                    return (ax + (bx - ax) * r, ay + (by - ay) * r)
+            return route[-1]
+
+        points: list[tuple[float, float]] = [point_at(start_distance)]
+        for i in range(1, len(route) - 1):
+            if start_distance < cum[i] < end_distance:
+                points.append(route[i])
+        points.append(point_at(end_distance))
+        return points
 
     def draw_story_relic(self, item: Item) -> None:
         sx, sy = self.world_to_screen(item.x, item.y)
