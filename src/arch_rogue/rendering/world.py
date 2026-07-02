@@ -571,7 +571,12 @@ class RenderingWorldMixin:
         glow = self.mix((4, 3, 6), (255, 210, 130), 0.18)
         pygame.draw.ellipse(surface, glow, (cx - rx_i, cy - ry_i, rx_i * 2, ry_i * 2))
 
-        # --- Treads: partial arc, painted deepest-first for correct occlusion. ---
+        # --- Treads are drawn onto a separate layer and clipped to the
+        # stairwell ellipse, so the z-shifted steps can never poke outside the
+        # opening onto the floor -- you only see the stairs through the hole.
+        # Painted deepest-first for correct occlusion. ---
+        size = surface.get_size()
+        layer = pygame.Surface(size, pygame.SRCALPHA)
         outer_t = [j / 6 for j in range(7)]
         inner_t = [j / 6 for j in range(6, -1, -1)]
         for i in reversed(range(visible)):
@@ -588,9 +593,7 @@ class RenderingWorldMixin:
             tread = self.mix(tread_dark, tread_light, b)
             # riser face under the leading (outer) edge
             outer_bot = [(x, y + riser_h) for (x, y) in outer]
-            pygame.draw.polygon(
-                surface, self.shade(tread, -55), outer + outer_bot[::-1]
-            )
+            pygame.draw.polygon(layer, self.shade(tread, -55), outer + outer_bot[::-1])
             # inner side face (the wall toward the central shaft)
             side = [
                 inner[0],
@@ -598,18 +601,24 @@ class RenderingWorldMixin:
                 (outer[0][0], outer[0][1] + riser_h),
                 (inner[0][0], inner[0][1] + riser_h),
             ]
-            pygame.draw.polygon(surface, self.shade(tread, -26), side)
+            pygame.draw.polygon(layer, self.shade(tread, -26), side)
             # tread top + lit lip + inner shadow
-            pygame.draw.polygon(surface, tread, outer + inner)
-            pygame.draw.lines(
-                surface, self.shade(tread, 42), False, outer, max(2, scale)
-            )
-            pygame.draw.lines(surface, self.shade(tread, -28), False, inner, 1)
+            pygame.draw.polygon(layer, tread, outer + inner)
+            pygame.draw.lines(layer, self.shade(tread, 42), False, outer, max(2, scale))
+            pygame.draw.lines(layer, self.shade(tread, -28), False, inner, 1)
             # specular highlight on the two nearest (entry) steps
             if i < 2:
                 pygame.draw.lines(
-                    surface, self.shade(tread_light, 50), False, outer, max(1, scale)
+                    layer, self.shade(tread_light, 50), False, outer, max(1, scale)
                 )
+        # Clip the tread layer to the stairwell opening (opaque ellipse mask,
+        # alpha-multiplied), then composite it over the shaft.
+        mask = pygame.Surface(size, pygame.SRCALPHA)
+        pygame.draw.ellipse(
+            mask, (255, 255, 255, 255), (cx - rx_o, cy - ry_o, rx_o * 2, ry_o * 2)
+        )
+        layer.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        surface.blit(layer, (0, 0))
 
         # --- Lit outer rim: the stone lip of the stairwell, bright on the
         # camera-facing side, shadowed at the back. ---

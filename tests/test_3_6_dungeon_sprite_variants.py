@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import sys
 import tempfile
@@ -301,6 +302,31 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                         if found:
                             break
                     self.assertTrue(found, f"stairs variant {v} lost its tread")
+                    # The z-shifted treads must be clipped to the stairwell
+                    # opening: no stair-colored tread pixel may appear outside
+                    # the ring (r > 1.15 in ellipse-normalized coords), or the
+                    # stairs would leak onto the floor frame.
+                    rx_o = 21 * WORLD_SCALE
+                    ry_o = 10 * WORLD_SCALE
+                    leaked = False
+                    for py in range(0, surf.get_height(), 2):
+                        for px_x in range(0, surf.get_width(), 2):
+                            p = surf.get_at((px_x, py))
+                            if p[3] < 40:
+                                continue
+                            dx = px_x - ax
+                            dy = py - ay
+                            if math.hypot(dx / rx_o, dy / ry_o) <= 1.15:
+                                continue
+                            c = p[:3]
+                            if max(abs(c[i] - stair[i]) for i in range(3)) <= 18:
+                                leaked = True
+                                break
+                        if leaked:
+                            break
+                    self.assertFalse(
+                        leaked, f"stairs variant {v} leaks treads outside the ring"
+                    )
                     rendered_any_step = True
                 self.assertTrue(rendered_any_step)
             finally:
