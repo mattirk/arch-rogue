@@ -344,6 +344,23 @@ class RenderingEffectsMixin:
         phase = math.floor(self.elapsed * 3.0) / 3.0
         pulse = 0.5 + 0.5 * math.sin(phase * 2.6)
 
+        # The guiding light is only a faint hint while the player is moving
+        # and comes alive (pulsating) when the player stands still, so the
+        # floor around the character stays calm during traversal. The carved
+        # groove (the crack structure) and the warm seep (the light) both dim
+        # while moving and breathe with pulse while idle.
+        moving = bool(getattr(self.player, "moving", False))
+        if moving:
+            groove_alpha = 55
+            seep_alpha = 20
+            ring_groove_alpha = 45
+            ring_light_alpha = 20
+        else:
+            groove_alpha = int(140 + 70 * pulse)
+            seep_alpha = int(50 + 70 * pulse)
+            ring_groove_alpha = int(85 + 70 * pulse)
+            ring_light_alpha = int(40 + 55 * pulse)
+
         screen_w, screen_h = self._screen_size()
         glow_layer = self._guidance_glow_layer(screen_w, screen_h)
 
@@ -398,19 +415,22 @@ class RenderingEffectsMixin:
                 offset = (jag + sign) * WORLD_SCALE
             crack_points.append((sx + perp_x * offset, sy + perp_y * offset))
 
-        # Carved recess + lit lip, identical recipe to the floor's own variant
-        # grooves so the guidance crack is the same masonry.
-        self._floor_groove(glow_layer, crack_points, slab)
-        # Faint warm seep at the bottom of the recess; the only colored cue,
-        # low-contrast so it stays a hint rather than a beam.
-        seep_points = [(p[0], p[1] + 1) for p in crack_points]
-        pygame.draw.lines(
+        # Carved recess + lit lip, same recipe as the floor's own variant
+        # grooves (`_floor_groove`), but drawn with a dimming alpha so the
+        # whole guiding light reads very faint while the player moves and
+        # pulsates when the player stands still.
+        shadow = self.shade(slab, -24)
+        lip = self.shade(slab, 16)
+        pygame.draw.aalines(glow_layer, (*shadow, groove_alpha), False, crack_points)
+        pygame.draw.aalines(
             glow_layer,
-            (*warm, int(45 + pulse * 35)),
+            (*lip, groove_alpha),
             False,
-            seep_points,
-            1,
+            [(p[0], p[1] - 1) for p in crack_points],
         )
+        # Faint warm seep at the bottom of the recess; the only colored cue.
+        seep_points = [(p[0], p[1] + 1) for p in crack_points]
+        pygame.draw.lines(glow_layer, (*warm, seep_alpha), False, seep_points, 1)
         # Short branch stubs at a couple of interior points (only in open
         # floor) so it reads as a real fracture rather than a drawn line.
         for branch_index in (1, len(crack_points) - 2):
@@ -427,15 +447,19 @@ class RenderingEffectsMixin:
             perp_x, perp_y = -tn_y / tn_len, tn_x / tn_len
             stub_len = 5 * WORLD_SCALE
             tip = (bx + perp_x * stub_len, by + perp_y * stub_len)
-            self._floor_groove(glow_layer, [(bx, by), tip], slab)
+            pygame.draw.aaline(glow_layer, (*shadow, groove_alpha), (bx, by), tip)
+            pygame.draw.aaline(
+                glow_layer,
+                (*lip, groove_alpha),
+                (bx, by - 1),
+                (tip[0], tip[1] - 1),
+            )
 
         # Target: a small worn ring groove lying flat on the iso floor (y
         # squashed to match the floor plane) in the same carved language, with
-        # a faint warm pinprick at its center — a marked split in the stone,
-        # not a beacon halo. Clipped to the relic's own floor tile diamond so
-        # it can't spill over an adjacent wall.
-        shadow = self.shade(slab, -24)
-        lip = self.shade(slab, 16)
+        # a faint warm pinprick at its center. Clipped to the relic's own
+        # floor tile diamond so it can't spill over an adjacent wall; like the
+        # crack it dims while moving and pulsates when idle.
         target_sx, target_sy = self.world_to_screen(tx, ty)
         ring_cx = float(target_sx)
         ring_cy = float(target_sy - int(4 * WORLD_SCALE))
@@ -462,12 +486,17 @@ class RenderingEffectsMixin:
             )
             if not (in_diamond(p0[0], p0[1]) and in_diamond(p1[0], p1[1])):
                 continue
-            pygame.draw.aaline(glow_layer, shadow, p0, p1)
-            pygame.draw.aaline(glow_layer, lip, (p0[0], p0[1] - 1), (p1[0], p1[1] - 1))
+            pygame.draw.aaline(glow_layer, (*shadow, ring_groove_alpha), p0, p1)
+            pygame.draw.aaline(
+                glow_layer,
+                (*lip, ring_groove_alpha),
+                (p0[0], p0[1] - 1),
+                (p1[0], p1[1] - 1),
+            )
         if in_diamond(ring_cx, ring_cy):
             pygame.draw.circle(
                 glow_layer,
-                (*warm, int(40 + pulse * 45)),
+                (*warm, ring_light_alpha),
                 (int(ring_cx), int(ring_cy)),
                 max(1, int(2 * WORLD_SCALE)),
             )
