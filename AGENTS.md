@@ -184,22 +184,15 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 3.6 Dungeon sprites polish
-
-- Dungeon wall textures have too repeating look, we need to create more varied wall textures and use them consistently
-- Make the dungeon floor and wall textures look more modern and detailed, but with good retro taste
-- Add slight procedurally generated variations to dungeon sprites (e.g. random wall texture choices, floor patterns)
-- Pay special attention to the selection of variable sprites, they need to be similar with each other and only have small but distinct differences
-- Pre-generate 3-4 dungeon sprite variants per tile seed to avoid per-frame recomputation
-
-## Next Milestones
-
 ### 3.7 Guiding light update
 
 - Guiding light is now a constant line between player quest relic
 - Make the guiding light a nice looking lamp sprite that hovers a short distance from the player
 - The lamp shows the direction towards quest relic taking into account dungeon walls and tunnels, basically showing the same direction as current implementation of guiding light
 - When lamp implementation is done, make sure the constant "guiding light line" is not drawn anymore
+
+
+## Next Milestones
 
 ### 3.8 Controller, Input, and Accessibility Polish
 
@@ -224,3 +217,7 @@ Draft goal: deepen loot-driven build variety by expanding affix pools, item inte
 - Improve loot readability in the HUD/inventory: affix tooltips, tag icons, and a one-line build-relevance hint comparing drops to the player's current build.
 - Preserve save compatibility: existing item/affix saves must still load; new affixes default to no-op on older saves.
 - Validate with a new `tests/test_3_6_affix_builds.py` covering affix roll ranges, synergy resolution in combat, unique-item generation, cursed-item tradeoffs, and save migration, plus the full `unittest discover tests` regression suite.
+
+### 3.10 Additional sprite fixes
+
+- Make a new sprite for shop sign
