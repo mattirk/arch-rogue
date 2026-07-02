@@ -87,18 +87,6 @@ class RenderingEffectsMixin:
         if self.is_current_floor_dark():
             return
         self.screen.blit(self.ambient_overlay_surface(), (0, 0))
-        # A faint breathing light around the player preserves readability under
-        # the normal-floor vignette without requiring expensive light masks.
-        sx, sy = self.world_to_screen(self.player.x, self.player.y)
-        pulse = 0.5 + 0.5 * math.sin(self.elapsed * 2.3)
-        radius = int((58 + pulse * 10) * WORLD_SCALE)
-        light = pygame.Surface((radius * 2, radius), pygame.SRCALPHA)
-        pygame.draw.ellipse(
-            light,
-            (*self.mix(self.theme.accent, (235, 220, 170), 0.35), int(10 + pulse * 8)),
-            light.get_rect(),
-        )
-        self.screen.blit(light, light.get_rect(center=(sx, sy - 7 * WORLD_SCALE)))
 
     def draw_darkness_overlay(self) -> None:
         # Dark floors are now communicated by tile/object visibility itself.
