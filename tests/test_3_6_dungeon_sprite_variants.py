@@ -261,8 +261,8 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                 pygame.quit()
 
     def test_stairs_keep_descent_motif_across_variants(self) -> None:
-        # Stairs ignore the seam/crack/cobble detail and always render the step
-        # motif, so the descent reads clearly regardless of variant.
+        # The spiral staircase carves a dark central shaft (the descent void)
+        # and lays stair-colored tread wedges around it, regardless of variant.
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
@@ -270,15 +270,37 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                 rendered_any_step = False
                 for v in range(DUNGEON_FLOOR_VARIANTS):
                     surf, ax, ay = game.tile_surface(Tile.STAIRS, v, False)
-                    # The step lines run horizontally through the slab center;
-                    # at least one center-row pixel must match the stair color.
-                    found = False
-                    for dx in range(-20 * WORLD_SCALE, 20 * WORLD_SCALE, WORLD_SCALE):
-                        px = surf.get_at((ax + dx, ay))[:3]
-                        if max(abs(px[i] - stair[i]) for i in range(3)) <= 12:
-                            found = True
+                    # The spiral's dark central shaft (the void you look down)
+                    # sits at the tile center; the deepest back tread can cover
+                    # the exact center pixel, so assert a dark well pixel within
+                    # a small iso-disk around the center instead.
+                    found_shaft = False
+                    R = 8 * WORLD_SCALE
+                    for ry in range(-R, R + 1, WORLD_SCALE):
+                        for rx in range(-R, R + 1, WORLD_SCALE):
+                            if rx * rx + 4 * ry * ry > R * R * 2:
+                                continue
+                            px = surf.get_at((ax + rx, ay + ry))[:3]
+                            if sum(px) < sum(stair) - 200:
+                                found_shaft = True
+                                break
+                        if found_shaft:
                             break
-                    self.assertTrue(found, f"stairs variant {v} lost its step motif")
+                    self.assertTrue(
+                        found_shaft, f"stairs variant {v} lost its dark shaft"
+                    )
+                    # A stair-colored tread sits in the camera-facing (lower)
+                    # half of the tile so the descent reads clearly.
+                    found = False
+                    for ry in range(2 * WORLD_SCALE, 11 * WORLD_SCALE, WORLD_SCALE):
+                        for rx in range(-8 * WORLD_SCALE, 8 * WORLD_SCALE, WORLD_SCALE):
+                            px = surf.get_at((ax + rx, ay + ry))[:3]
+                            if max(abs(px[i] - stair[i]) for i in range(3)) <= 18:
+                                found = True
+                                break
+                        if found:
+                            break
+                    self.assertTrue(found, f"stairs variant {v} lost its tread")
                     rendered_any_step = True
                 self.assertTrue(rendered_any_step)
             finally:

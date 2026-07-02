@@ -425,6 +425,11 @@ class RenderingWorldMixin:
         variant = seed % DUNGEON_FLOOR_VARIANTS
         tint = variant * 2 - 3
         slab = self.shade(base, tint)
+        if is_stairs:
+            # The stairwell sits in a recessed stone frame slightly darker
+            # than the surrounding floor, so the round shaft reads as an
+            # opening cut into the floor rather than a bright slab.
+            slab = self.shade(self.theme.floor, -16)
 
         # --- Flat slab fill. No centered gradient, no inset bevel, no outline,
         # so neighboring tiles blend into a single continuous stone surface.
@@ -515,26 +520,111 @@ class RenderingWorldMixin:
             pygame.draw.circle(surface, gold_hi, (sx, sy), max(1, scale))
 
         if is_stairs:
-            for step, width in ((-2, 18), (5, 12), (12, 6)):
-                pygame.draw.line(
-                    surface,
-                    self.theme.stair,
-                    (sx - width * scale, sy + step * scale),
-                    (sx + width * scale, sy + step * scale),
-                    3 * scale,
+            self._draw_spiral_staircase(surface, sx, sy, scale)
+
+    def _draw_spiral_staircase(
+        self, surface: pygame.Surface, cx: int, cy: int, scale: int
+    ) -> None:
+        # Spiral staircase descending into a round stone shaft. Each tread is a
+        # FLAT block at its own height z = rise * i (clean discrete steps), and
+        # only a PARTIAL arc of the helix is drawn (visible = total - 2) so the
+        # deepest tread never sits adjacent to the entry tread -- that avoids
+        # the seam where the next-loop-down step overlapped the top. The open
+        # wedge is the shaft you look down into. Treads are painted deepest-first
+        # so nearer/higher steps correctly occlude deeper ones. The recessed
+        # stone frame is already painted by the slab fill.
+        stair = self.theme.stair
+        accent = self.theme.accent
+        rx_o, ry_o = 21 * scale, 10 * scale
+        rx_i, ry_i = 6 * scale, 3 * scale
+        total = 12
+        visible = total - 2  # partial arc; the missing wedge is the open shaft
+        da = 2 * math.pi / total
+        twist = da * 0.30  # rotate the inner ring so treads read as swept blades
+        rise = int(1.2 * scale)  # per-tread vertical drop
+        riser_h = int(2.6 * scale)  # height of the visible step lip
+        front = math.pi / 2  # screen-down: the entry step faces the camera
+        direction = -1  # wind clockwise from the entry step
+        tread_dark = self.mix((14, 10, 16), stair, 0.18)
+        tread_light = stair
+        dim = 0.5
+
+        def P(rx: int, ry: int, base_y: int, ang: float) -> tuple[int, int]:
+            return (int(cx + rx * math.cos(ang)), int(base_y + ry * math.sin(ang)))
+
+        # --- Shaft: radial gradient darker toward the center (deeper), with a
+        # faint warm glow at the bottom (the landing far below) for depth. ---
+        well_outer = self.mix((10, 8, 12), stair, 0.10)
+        well_inner = self.mix((4, 3, 6), stair, 0.05)
+        for r in range(8, 0, -1):
+            t = r / 8
+            pygame.draw.ellipse(
+                surface,
+                self.mix(well_inner, well_outer, t),
+                (
+                    cx - int(rx_o * t),
+                    cy - int(ry_o * t),
+                    int(rx_o * t * 2),
+                    int(ry_o * t * 2),
+                ),
+            )
+        glow = self.mix((4, 3, 6), (255, 210, 130), 0.18)
+        pygame.draw.ellipse(surface, glow, (cx - rx_i, cy - ry_i, rx_i * 2, ry_i * 2))
+
+        # --- Treads: partial arc, painted deepest-first for correct occlusion. ---
+        outer_t = [j / 6 for j in range(7)]
+        inner_t = [j / 6 for j in range(6, -1, -1)]
+        for i in reversed(range(visible)):
+            c = front + direction * i * da
+            z = rise * i
+            a0, a1 = c - da / 2, c + da / 2
+            base_y = cy + z
+            outer = [P(rx_o, ry_o, base_y, a0 + (a1 - a0) * t) for t in outer_t]
+            inner = [
+                P(rx_i, ry_i, base_y, (a1 + twist) + ((a0 + twist) - (a1 + twist)) * t)
+                for t in inner_t
+            ]
+            b = 1.0 - (i / (visible - 1)) * dim
+            tread = self.mix(tread_dark, tread_light, b)
+            # riser face under the leading (outer) edge
+            outer_bot = [(x, y + riser_h) for (x, y) in outer]
+            pygame.draw.polygon(
+                surface, self.shade(tread, -55), outer + outer_bot[::-1]
+            )
+            # inner side face (the wall toward the central shaft)
+            side = [
+                inner[0],
+                outer[0],
+                (outer[0][0], outer[0][1] + riser_h),
+                (inner[0][0], inner[0][1] + riser_h),
+            ]
+            pygame.draw.polygon(surface, self.shade(tread, -26), side)
+            # tread top + lit lip + inner shadow
+            pygame.draw.polygon(surface, tread, outer + inner)
+            pygame.draw.lines(
+                surface, self.shade(tread, 42), False, outer, max(2, scale)
+            )
+            pygame.draw.lines(surface, self.shade(tread, -28), False, inner, 1)
+            # specular highlight on the two nearest (entry) steps
+            if i < 2:
+                pygame.draw.lines(
+                    surface, self.shade(tread_light, 50), False, outer, max(1, scale)
                 )
+
+        # --- Lit outer rim: the stone lip of the stairwell, bright on the
+        # camera-facing side, shadowed at the back. ---
+        n = 48
+        for k in range(n):
+            a0 = 2 * math.pi * k / n
+            a1 = 2 * math.pi * (k + 1) / n
+            lit = (math.sin((a0 + a1) / 2 - front) + 1) / 2
+            col = self.mix(self.shade(accent, -50), self.shade(accent, 55), lit)
             pygame.draw.line(
                 surface,
-                self.theme.accent,
-                (sx - 20 * scale, sy - 8 * scale),
-                (sx + 20 * scale, sy - 8 * scale),
-                scale,
-            )
-            pygame.draw.circle(
-                surface,
-                self.theme.accent,
-                (sx, sy - 16 * scale),
-                max(2, 2 * scale),
+                col,
+                P(rx_o, ry_o, cy, a0),
+                P(rx_o, ry_o, cy, a1),
+                max(2, scale),
             )
 
     def draw_world_objects(self) -> None:
