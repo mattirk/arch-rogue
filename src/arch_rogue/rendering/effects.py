@@ -271,37 +271,6 @@ class RenderingEffectsMixin:
             shadow.get_rect(center=(sx, sy + 10 * WORLD_SCALE)),
         )
 
-    def draw_movement_trail(
-        self, actor: Player | Enemy, color: Color, size: int = 2
-    ) -> None:
-        if not actor.moving:
-            return
-        sx, sy = self.world_to_screen(actor.x, actor.y)
-        vx, vy = self.iso_screen_direction(actor.move_x, actor.move_y)
-        phase = abs(math.sin(actor.anim_time * math.tau))
-        px_perp = -vy
-        for step, alpha in ((1, 92), (2, 58), (3, 30)):
-            offset = math.sin(actor.anim_time * math.tau + step) * 3 * WORLD_SCALE
-            px = sx - int(vx * (7 + step * 8) * WORLD_SCALE + px_perp * offset)
-            py = sy + int(8 * WORLD_SCALE) - int(vy * (3 + step * 5) * WORLD_SCALE)
-            dust = pygame.Surface(
-                (size * (5 + step) * WORLD_SCALE, size * 2 * WORLD_SCALE),
-                pygame.SRCALPHA,
-            )
-            pygame.draw.ellipse(
-                dust,
-                (*color, int(alpha * (0.55 + phase * 0.45))),
-                dust.get_rect(),
-            )
-            pygame.draw.rect(
-                dust,
-                (*self.shade(color, 35), max(18, alpha // 3)),
-                dust.get_rect().inflate(
-                    -dust.get_width() // 2, -dust.get_height() // 2
-                ),
-            )
-            self.screen.blit(dust, dust.get_rect(center=(px, py)))
-
     def draw_item(self, item: Item) -> None:
         if item.slot == "story_relic":
             self.draw_story_relic(item)

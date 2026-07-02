@@ -108,37 +108,6 @@ class RenderingActorMixin:
             return 1.0, 0.0
         return screen_dx / length, screen_dy / length
 
-    def draw_movement_trail(
-        self, actor: Player | Enemy, color: Color, size: int = 2
-    ) -> None:
-        if not actor.moving:
-            return
-        sx, sy = self.world_to_screen(actor.x, actor.y)
-        vx, vy = self.iso_screen_direction(actor.move_x, actor.move_y)
-        phase = abs(math.sin(actor.anim_time * math.tau))
-        px_perp = -vy
-        for step, alpha in ((1, 92), (2, 58), (3, 30)):
-            offset = math.sin(actor.anim_time * math.tau + step) * 3 * WORLD_SCALE
-            px = sx - int(vx * (7 + step * 8) * WORLD_SCALE + px_perp * offset)
-            py = sy + int(8 * WORLD_SCALE) - int(vy * (3 + step * 5) * WORLD_SCALE)
-            dust = pygame.Surface(
-                (size * (5 + step) * WORLD_SCALE, size * 2 * WORLD_SCALE),
-                pygame.SRCALPHA,
-            )
-            pygame.draw.ellipse(
-                dust,
-                (*color, int(alpha * (0.55 + phase * 0.45))),
-                dust.get_rect(),
-            )
-            pygame.draw.rect(
-                dust,
-                (*self.shade(color, 35), max(18, alpha // 3)),
-                dust.get_rect().inflate(
-                    -dust.get_width() // 2, -dust.get_height() // 2
-                ),
-            )
-            self.screen.blit(dust, dust.get_rect(center=(px, py)))
-
     def is_humanoid(self, actor: Player | Enemy) -> bool:
         if isinstance(actor, Player):
             return True
@@ -490,7 +459,6 @@ class RenderingActorMixin:
             player.class_name, state, player.anim_time, self.elapsed
         )
         self.draw_shadow(player.x, player.y, 34, 13, moving=player.moving, lift=bob)
-        self.draw_movement_trail(player, (145, 130, 98), size=2)
         sx, sy = self.blit_sprite(
             sprite,
             player.x,
@@ -617,9 +585,6 @@ class RenderingActorMixin:
             stretch += math.sin(self.elapsed * 5.0) * 0.006
             lean += math.sin(self.elapsed * 5.0) * 0.6
         self.draw_shadow(enemy.x, enemy.y, shadow_w, 12, moving=enemy.moving, lift=bob)
-        trail_color = self.mix(enemy.color, (120, 84, 68), 0.45)
-        self.draw_movement_trail(enemy, trail_color, size=2)
-
         sx, sy = self.blit_sprite(
             sprite,
             enemy.x,
