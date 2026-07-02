@@ -77,6 +77,8 @@ class PopulationMixin:
                     + encounter.loot_bonus,
                 ),
             )
+            # Loot is twice as rare: halve the final spawn probability.
+            loot_chance *= 0.5
             if self.rng.random() < loot_chance:
                 self.items.append(self._make_loot(*room.random_point(self.rng)))
             if (
