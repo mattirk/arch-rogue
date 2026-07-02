@@ -55,24 +55,6 @@ class RenderingEffectsMixin:
             )
             pygame.draw.rect(overlay, (0, 0, 0, alpha), rect, max(1, self.ui(4)))
 
-        # Deterministic wisps: cached, subtle, and theme-colored so floors feel
-        # ancient without per-frame noise generation.
-        fog_color = self.mix(self.theme.accent, (38, 40, 50), 0.72)
-        for index in range(9):
-            seed = (index * 92821 + len(self.theme.name) * 31337) & 0xFFFF
-            wx = int((seed % 997) / 997 * width)
-            wy = int(
-                ((seed // 7) % 991) / 991 * max(1, height - self.hud_panel_height())
-            )
-            fog_w = int((110 + seed % 140) * WORLD_SCALE)
-            fog_h = int((22 + (seed // 13) % 34) * WORLD_SCALE)
-            alpha = 7 + seed % 12
-            pygame.draw.ellipse(
-                overlay,
-                (*fog_color, alpha),
-                pygame.Rect(wx - fog_w // 2, wy - fog_h // 2, fog_w, fog_h),
-            )
-
         try:
             overlay = overlay.convert_alpha()
         except pygame.error:
