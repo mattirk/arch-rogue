@@ -1,5 +1,30 @@
 # Changelog
 
+## 3.6.0 — Dungeon Sprites Polish
+
+Milestone 3.6 retires the single repeating wall/floor stamp and replaces it with a small, coherent family of pre-generated texture variants so the dungeon reads as hand-laid masonry instead of copypasted tiles. The old `tile_seed` returned a 0..31 tint bucket that only nudged brightness, so every wall looked like the same course-less block with a faint color wash. Walls now pick one of four cut-stone masonry patterns (ashlar, running bond, large blocks, weathered) and floors pick one of four flagstone surfaces (smooth, single seam, crack, cobble), each sharing palette, lighting, bevel, and silhouette so they read as the same stone with small, distinct character.
+
+### Added
+
+- Shared `DUNGEON_WALL_VARIANTS` / `DUNGEON_FLOOR_VARIANTS` constants (4 each) describing the bounded, coherent texture family per tile type.
+- `prewarm_tile_cache()` on the world renderer: eagerly pre-generates every wall/floor/stairs variant (shop + non-shop) for the current theme whenever the floor changes, so the first frame after a transition never pays the procedural-draw cost and the hot render loop only ever blits cached surfaces.
+- `_wall_face_parallelogram` / `_draw_wall_masonry` face-agnostic helpers that draw horizontal course lines and per-gap vertical joints on either iso wall face from a single description, so a variant's masonry wraps the pillar consistently.
+- Four coherent wall variants (ashlar with aligned center joint, running bond with a staggered middle row, large blocks with one tall course, weathered ashlar with a patched lower row and a short jagged crack) and four coherent floor variants (smooth slab, single diagonal seam, jagged crack, twin cobble seams). Stairs keep their step motif across all variants so the descent still reads clearly.
+- Focused `tests/test_3_6_dungeon_sprite_variants.py` (11 tests) covering seed bounding/determinism/coverage and axis-streak avoidance, prewarm population and cache bounds, the no-recompute-after-prewarm guarantee, the shared-family-but-distinct-detail property for both walls and floors (cap/slab color stays close while full-sprite bytes differ), the stairs-motif invariant, floor-transition and door-open rewarm, and the surface dimension/anchor contract.
+
+### Changed
+
+- `tile_seed` (rendering/world.py) now returns a bounded variant index via a mixing hash `(x*73856093) ^ (y*19349663) % max(variants)` instead of the old `(x*1103515245 + y*12345) & 31`, which left visible axis streaks; the cache is now bounded to 4 wall + 4 floor×2(shop) + 4 stairs×2(shop) surfaces per theme.
+- `draw_wall_tile_surface` was rewritten: variant-driven masonry (courses + per-gap joints mirrored onto both faces, a faint cut-lip highlight along the top course, and a weathered crack on variant 3) replaces the old single mid-height course line, while the shared palette, vertical face gradient, cap highlight, and silhouette edges are preserved so the family stays coherent.
+- `draw_floor_tile_surface` was rewritten: variant-driven surface detail (seam / crack / cobble, skipped for stairs) replaces the old `seed % 3` single-seam, while the radial gradient, inset bevel, outer/inner edges, and shop gilded inlay are preserved.
+- `run_flow.py` (`restart`, `descend_to_next_depth`), `save_system.py` (`restore_run_state`), and `interactions.py` (`open_nearby_door`) now call `prewarm_tile_cache()` after every `tile_cache.clear()` so cache rebuilds are always eager and frame-hitch-free.
+- `game.py` `tile_cache` type annotation corrected to the actual 4-tuple key `(theme, tile, seed, shop_floor)`.
+- Package metadata, `__version__`, save release strings, and version-current tests now target `3.6.0`.
+
+### Validation
+
+- Bytecode compilation and the full `unittest` suite (144 tests) pass, including 11 new milestone 3.6 tests. The per-frame render loop adds no new tile-cache entries after prewarm.
+
 ## 3.5.0 — Movement Animation Polish
 
 Milestone 3.5 polishes the player's movement animation so it reads as a grounded, direction-aware walk in the spirit of Chrono Trigger / Sea of Stars instead of the previous "wobblish ghost-float". The root cause was a phase mismatch: the cached 12-frame run pose cycled at one frequency while the whole-body bob cycled at 3x that frequency, and the bob was always positive (the body never dipped below its anchor), so the upper body floated up and down independently of the legs. There was also no directional lean — the lean value sat far below the rotation threshold, so the sprite never tilted into its movement direction.

@@ -123,6 +123,7 @@ class InteractionMixin:
         if not self.dungeon.open_door(*door):
             return False
         self.tile_cache.clear()
+        self.prewarm_tile_cache()
         self.floaters.append(
             FloatingText(
                 "Door opened", door[0] + 0.5, door[1] + 0.1, self.theme.accent, ttl=1.0

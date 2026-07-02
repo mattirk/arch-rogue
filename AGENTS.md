@@ -184,17 +184,24 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 3.5 Movement animation polish
+### 3.6 Dungeon sprites polish
 
-Player movement currently looks very "wobblish". Like a ghost floating. We need to polish the movement animation to make it feel more natural.
-
-- Make the sprites and animations look like Chrono Trigger or Sea Of Stars games
-- Make the walking animation adapt natuarlly to the direction the player character is moving
-- Make sure all sprite animation parts move smoothly and harmoniously together
+- Dungeon wall textures have too repeating look, we need to create more varied wall textures and use them consistently
+- Make the dungeon floor and wall textures look more modern and detailed, but with good retro taste
+- Add slight procedurally generated variations to dungeon sprites (e.g. random wall texture choices, floor patterns)
+- Pay special attention to the selection of variable sprites, they need to be similar with each other and only have small but distinct differences
+- Pre-generate 3-4 dungeon sprite variants per tile seed to avoid per-frame recomputation
 
 ## Next Milestones
 
-### 3.6 Controller, Input, and Accessibility Polish
+### 3.7 Guiding light update
+
+- Guiding light is now a constant line between player quest relic
+- Make the guiding light a nice looking lamp sprite that hovers a short distance from the player
+- The lamp shows the direction towards quest relic taking into account dungeon walls and tunnels, basically showing the same direction as current implementation of guiding light
+- When lamp implementation is done, make sure the constant "guiding light line" is not drawn anymore
+
+### 3.8 Controller, Input, and Accessibility Polish
 
 Modernize the control layer so keyboard/mouse remains responsive while gamepad and accessibility options become first-class across gameplay and menus.
 
@@ -206,7 +213,7 @@ Modernize the control layer so keyboard/mouse remains responsive while gamepad a
 - Keep the run loop at 60+ FPS: input sampling must stay cheap, and any per-frame controller polling must avoid allocations in the hot path.
 - Validate with a new `tests/test_3_5_input_accessibility.py` covering input mapping, controller-to-command translation, options persistence/migration, and menu navigation, plus the full `unittest discover tests` regression suite.
 
-### 3.7 Build Diversity and Affix Depth
+### 3.9 Build Diversity and Affix Depth
 
 Draft goal: deepen loot-driven build variety by expanding affix pools, item interactions, and skill/affix synergies so each run can commit to a distinct build identity.
 

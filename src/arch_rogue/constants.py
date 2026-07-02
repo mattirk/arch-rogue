@@ -37,5 +37,14 @@ RUN_FRAME_RATE = 8.0
 # don't blur. Effective range gives ~1.2..1.9 stride cycles per second.
 WALK_ANIM_SPEED_FLOOR = 2.2
 WALK_ANIM_SPEED_CEIL = 3.6
+# Dungeon tile texture variants. A small, coherent family of pre-generated
+# wall/floor textures picked deterministically per tile so the dungeon reads
+# as hand-laid masonry instead of a single repeating stamp. Bounded set keeps
+# the tile cache tiny and guarantees no per-frame texture recomputation. The
+# four variants in each family share palette, lighting, and silhouette and
+# differ only in masonry joints / surface detail, so they read as the same
+# stone with small, distinct character.
+DUNGEON_WALL_VARIANTS = 4
+DUNGEON_FLOOR_VARIANTS = 4
 
 SlashEffect = tuple[float, float, float, float, float]

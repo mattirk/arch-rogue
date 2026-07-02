@@ -10,6 +10,8 @@ import pygame
 from ..constants import (
     DARK_LEVEL_LIGHT_RADIUS,
     DUNGEON_DEPTH,
+    DUNGEON_FLOOR_VARIANTS,
+    DUNGEON_WALL_VARIANTS,
     TILE_H,
     TILE_W,
     WORLD_SCALE,
@@ -73,7 +75,26 @@ class RenderingWorldMixin:
         self.screen.blit(surface, (sx - anchor_x, sy - anchor_y))
 
     def tile_seed(self, x: int, y: int) -> int:
-        return (x * 1103515245 + y * 12345) & 31
+        # Deterministic per-tile texture-variant index in
+        # [0, max(DUNGEON_WALL_VARIANTS, DUNGEON_FLOOR_VARIANTS)). A mixing hash
+        # avoids the visible axis streaks a naive `& 31` produces, and folding
+        # into a tiny bounded range keeps the pre-generated tile cache small.
+        h = (x * 73856093) ^ (y * 19349663)
+        return h % max(DUNGEON_WALL_VARIANTS, DUNGEON_FLOOR_VARIANTS)
+
+    def prewarm_tile_cache(self) -> None:
+        # Pre-generate every wall/floor/shop texture variant for the current
+        # theme so the first frame after a floor transition never pays the
+        # procedural-draw cost, and the hot render loop only ever blits cached
+        # surfaces. Called whenever the floor (and thus the theme) changes.
+        for tile in (Tile.WALL, Tile.FLOOR, Tile.STAIRS):
+            variants = (
+                DUNGEON_WALL_VARIANTS if tile == Tile.WALL else DUNGEON_FLOOR_VARIANTS
+            )
+            for seed in range(variants):
+                self.tile_surface(tile, seed, shop_floor=False)
+                if tile in (Tile.FLOOR, Tile.STAIRS):
+                    self.tile_surface(tile, seed, shop_floor=True)
 
     def is_shop_floor_tile(self, x: int, y: int) -> bool:
         shop_room = self._shop_room_bounds()
@@ -149,6 +170,52 @@ class RenderingWorldMixin:
         self.tile_cache[key] = cached
         return cached
 
+    def _wall_face_parallelogram(self, cap_a, cap_b, base_a, base_b):
+        # Returns (top_left, top_right, bot_left, bot_right) describing a wall
+        # side face as a parallelogram with a top edge (cap_a->cap_b) and a
+        # bottom edge (base_a->base_b), ordered left-to-right so course/joint
+        # interpolation is face-agnostic. The left face is built from
+        # (cap_left, cap_bottom, left, bottom); the right face from
+        # (cap_bottom, cap_right, bottom, right).
+        return cap_a, cap_b, base_a, base_b
+
+    def _draw_wall_masonry(
+        self,
+        surface: pygame.Surface,
+        top_left,
+        top_right,
+        bot_left,
+        bot_right,
+        courses,
+        joints_per_gap,
+        color,
+        scale: int,
+    ) -> None:
+        # Draw horizontal course lines at fractions `courses` (0 = cap edge,
+        # 1 = base) and vertical joints within each gap between consecutive
+        # course lines (and the cap edge / base). `joints_per_gap` has one
+        # joint-fraction list per gap (len = len(courses) + 1).
+        bounds = [0.0, *courses, 1.0]
+
+        def course_pts(t: float):
+            ax = top_left[0] + (bot_left[0] - top_left[0]) * t
+            ay = top_left[1] + (bot_left[1] - top_left[1]) * t
+            bx = top_right[0] + (bot_right[0] - top_right[0]) * t
+            by = top_right[1] + (bot_right[1] - top_right[1]) * t
+            return (ax, ay), (bx, by)
+
+        for t in courses:
+            a, b = course_pts(t)
+            pygame.draw.line(surface, color, a, b, max(1, scale))
+        for gi in range(len(bounds) - 1):
+            t0, t1 = bounds[gi], bounds[gi + 1]
+            a0, b0 = course_pts(t0)
+            a1, b1 = course_pts(t1)
+            for s in joints_per_gap[gi]:
+                p0 = (a0[0] + (b0[0] - a0[0]) * s, a0[1] + (b0[1] - a0[1]) * s)
+                p1 = (a1[0] + (b1[0] - a1[0]) * s, a1[1] + (b1[1] - a1[1]) * s)
+                pygame.draw.line(surface, color, p0, p1, max(1, scale))
+
     def draw_wall_tile_surface(
         self,
         surface: pygame.Surface,
@@ -167,14 +234,19 @@ class RenderingWorldMixin:
         cap_bottom = (bottom[0], bottom[1] - wall_h)
         cap_left = (left[0], left[1] - wall_h)
 
-        # Consistent palette: top is brightest (lit from above), left face is
-        # mid-tone, right face is deepest shadow. A single seed-driven tint
-        # gives gentle per-tile variation without noisy speckle.
-        tint = (seed % 5) - 2
+        # Four coherent wall variants sharing palette, lighting, and
+        # silhouette; they differ only in masonry pattern, so they read as the
+        # same cut-stone wall with small, distinct character.
+        variant = seed % DUNGEON_WALL_VARIANTS
+        # Per-variant tint: a gentle tonal nudge aligned with the variant so
+        # adjacent different-variant tiles also separate slightly in color.
+        tint = variant * 2 - 3
         top_color = self.shade(self.theme.wall_top, 14 + tint)
         left_color = self.shade(self.theme.wall_left, tint)
         right_color = self.shade(self.theme.wall_right, tint)
         edge = self.shade(self.theme.wall_edge, 6)
+        course_color = self.shade(edge, -34)
+        course_hi = self.shade(course_color, 16)
 
         # --- Body: three clean polygons ---
         pygame.draw.polygon(surface, left_color, [cap_left, cap_bottom, bottom, left])
@@ -185,11 +257,9 @@ class RenderingWorldMixin:
             surface, top_color, [cap_top, cap_right, cap_bottom, cap_left]
         )
 
-        # --- Smooth vertical gradient on each face: just two soft bands —
-        # a lighter upper third and a darker lower third. Keeps the sculpted
-        # look without visible banding clutter.
+        # --- Smooth vertical gradient on each face: a lighter upper third and
+        # a darker lower third. Keeps the sculpted look without banding clutter.
         for t0, t1, shade in ((0.0, 0.35, 10), (0.65, 1.0, -12)):
-            # left face band
             ly0 = int(cap_left[1] + (left[1] - cap_left[1]) * t0)
             ly1 = int(cap_left[1] + (left[1] - cap_left[1]) * t1)
             lx0 = int(cap_left[0] + (left[0] - cap_left[0]) * t0)
@@ -201,7 +271,6 @@ class RenderingWorldMixin:
                 self.shade(left_color, shade),
                 [(lx0, ly0), (by0, ly0), (by1, ly1), (lx1, ly1)],
             )
-            # right face band
             ry0 = int(cap_right[1] + (right[1] - cap_right[1]) * t0)
             ry1 = int(cap_right[1] + (right[1] - cap_right[1]) * t1)
             rx0 = int(cap_right[0] + (right[0] - cap_right[0]) * t0)
@@ -214,11 +283,86 @@ class RenderingWorldMixin:
                 [(by0r, ry0), (rx0, ry0), (rx1, ry1), (by1r, ry1)],
             )
 
-        # --- Cap highlight: a single bright rim along the top-left edge only
-        # (the lit edge). One line, not two. ---
+        # --- Cap highlight: a single bright rim along the lit top-left edge.
         pygame.draw.line(
             surface, self.shade(top_color, 30), cap_top, cap_left, max(1, scale)
         )
+
+        # --- Masonry pattern: variant-driven courses + joints on both faces.
+        # The same pattern is mirrored onto the left and right faces so the
+        # wall reads as one continuous stone course wrapping the pillar.
+        if variant == 0:
+            # Ashlar: two regular courses, single aligned center joint.
+            courses = (0.34, 0.66)
+            joints = ([0.5], [0.5], [0.5])
+        elif variant == 1:
+            # Running bond: two courses, the middle row's joint offset to
+            # stagger the brick seams.
+            courses = (0.34, 0.66)
+            joints = ([0.5], [0.28, 0.72], [0.5])
+        elif variant == 2:
+            # Large blocks: one tall course, single center joint per row.
+            courses = (0.5,)
+            joints = ([0.5], [0.5])
+        else:
+            # Weathered ashlar: same courses as variant 0, with an extra
+            # off-center joint in the lower row suggesting a patched block.
+            courses = (0.34, 0.66)
+            joints = ([0.5], [0.5], [0.35, 0.7])
+
+        left_face = self._wall_face_parallelogram(cap_left, cap_bottom, left, bottom)
+        right_face = self._wall_face_parallelogram(cap_bottom, cap_right, bottom, right)
+        self._draw_wall_masonry(
+            surface, *left_face, courses, joints, course_color, scale
+        )
+        self._draw_wall_masonry(
+            surface, *right_face, courses, joints, course_color, scale
+        )
+        # Faint highlight along the top course line to read as a cut lip.
+        for face in (left_face, right_face):
+            top_left, top_right, bot_left, bot_right = face
+            for t in courses:
+                ax = top_left[0] + (bot_left[0] - top_left[0]) * t
+                ay = top_left[1] + (bot_left[1] - top_left[1]) * t
+                bx = top_right[0] + (bot_right[0] - top_right[0]) * t
+                by = top_right[1] + (bot_right[1] - top_right[1]) * t
+                pygame.draw.line(
+                    surface,
+                    course_hi,
+                    (ax, ay - scale),
+                    (bx, by - scale),
+                    max(1, scale),
+                )
+
+        # --- Weathered variant: a short jagged crack down the left face for
+        # ancient, broken character. Subtle and single so it stays in-family.
+        if variant == 3:
+            top_left, top_right, bot_left, bot_right = left_face
+            crack = [
+                (
+                    top_left[0] + (top_right[0] - top_left[0]) * 0.78,
+                    top_left[1] + (top_right[1] - top_left[1]) * 0.78,
+                ),
+                (
+                    top_left[0]
+                    + (bot_left[0] - top_left[0]) * 0.42
+                    + (top_right[0] - top_left[0]) * 0.2,
+                    top_left[1]
+                    + (bot_left[1] - top_left[1]) * 0.42
+                    + (top_right[1] - top_left[1]) * 0.2,
+                ),
+                (
+                    top_left[0]
+                    + (bot_left[0] - top_left[0]) * 0.62
+                    + (top_right[0] - top_left[0]) * 0.12,
+                    top_left[1]
+                    + (bot_left[1] - top_left[1]) * 0.62
+                    + (top_right[1] - top_left[1]) * 0.12,
+                ),
+            ]
+            pygame.draw.lines(
+                surface, self.shade(course_color, -18), False, crack, max(1, scale)
+            )
 
         # --- Clean silhouette edges ---
         pygame.draw.lines(
@@ -229,25 +373,6 @@ class RenderingWorldMixin:
         pygame.draw.line(surface, self.shade(edge, -50), cap_bottom, bottom, scale)
         pygame.draw.line(surface, self.shade(edge, -44), left, bottom, scale)
         pygame.draw.line(surface, self.shade(edge, -56), bottom, right, scale)
-
-        # --- One clean course line on the faces, roughly mid-height. Just
-        # one, not two or three. ---
-        y_face = cap_bottom[1] + 32 * scale
-        if y_face < bottom[1] - 8 * scale:
-            pygame.draw.line(
-                surface,
-                self.shade(edge, -38),
-                (sx - 29 * scale, y_face),
-                (sx, y_face + 14 * scale),
-                max(1, scale),
-            )
-            pygame.draw.line(
-                surface,
-                self.shade(edge, -46),
-                (sx, y_face + 14 * scale),
-                (sx + 29 * scale, y_face),
-                max(1, scale),
-            )
 
     def draw_floor_tile_surface(
         self,
@@ -267,27 +392,32 @@ class RenderingWorldMixin:
         base = self.theme.stair if is_stairs else self.theme.floor
         edge = self.theme.accent if is_stairs else self.theme.floor_edge
 
-        # Gentle per-tile tint for natural variation (not noisy speckle).
-        tint = (seed % 7) - 3
+        # Four coherent floor variants share the slab palette, radial
+        # gradient, inset bevel, and outer edge; they differ only in surface
+        # detail (seam / crack / cobble), so they read as the same flagstone
+        # with small, distinct character.
+        variant = seed % DUNGEON_FLOOR_VARIANTS
+        tint = variant * 2 - 3
         slab = self.shade(base, tint)
         slab_hi = self.shade(slab, 18)
         slab_lo = self.shade(slab, -22)
         edge_lo = self.shade(edge, -16)
+        detail = self.shade(slab, -18)
 
         # --- Base diamond ---
         pygame.draw.polygon(surface, slab, [top, right, bottom, left])
 
         # --- Smooth radial gradient: lighten the center, darken the edges.
-        # Drawn as nested diamonds shrinking toward the center. This gives
-        # a soft, sculpted flagstone without harsh lines.
-        for i, (frac, shade) in enumerate(((0.82, -8), (0.62, 6), (0.40, 14))):
+        # Drawn as nested diamonds shrinking toward the center for a soft,
+        # sculpted flagstone without harsh lines.
+        for frac, shade in ((0.82, -8), (0.62, 6), (0.40, 14)):
             hw = int(TILE_W * 0.5 * frac)
             hh = int(TILE_H * 0.5 * frac)
             pts = [(sx, sy - hh), (sx + hw, sy), (sx, sy + hh), (sx - hw, sy)]
             pygame.draw.polygon(surface, self.shade(slab, shade), pts)
 
         # --- Clean inset bevel: one highlight edge (top-left) and one shadow
-        # edge (bottom-right). This reads as a cut slab edge. ---
+        # edge (bottom-right). Reads as a cut slab edge. ---
         inset_hw = int(TILE_W * 0.31)
         inset_hh = int(TILE_H * 0.31)
         inset_top = (sx, sy - inset_hh)
@@ -305,17 +435,49 @@ class RenderingWorldMixin:
             surface, self.shade(slab_hi, 8), inset_top, inset_right, max(1, scale)
         )
 
-        # --- A single clean seam across the slab on some tiles (not every
-        # tile, and never more than one). Subtle, follows the iso diagonal. ---
-        if seed % 3 == 0:
-            seam = self.shade(slab, -16)
-            pygame.draw.line(
-                surface,
-                seam,
-                (sx - 24 * scale, sy - 4 * scale),
-                (sx + 4 * scale, sy + 10 * scale),
-                max(1, scale),
-            )
+        # --- Variant surface detail: small, distinct, in-family. Stairs keep
+        # their step motif instead so the descent reads clearly. ---
+        if not is_stairs:
+            if variant == 1:
+                # Single diagonal seam following the iso axis.
+                pygame.draw.line(
+                    surface,
+                    detail,
+                    (sx - 22 * scale, sy - 3 * scale),
+                    (sx + 6 * scale, sy + 9 * scale),
+                    max(1, scale),
+                )
+            elif variant == 2:
+                # Short jagged crack from the upper-left edge toward center.
+                pygame.draw.lines(
+                    surface,
+                    detail,
+                    False,
+                    [
+                        (sx - 26 * scale, sy - 6 * scale),
+                        (sx - 15 * scale, sy - 2 * scale),
+                        (sx - 9 * scale, sy + 3 * scale),
+                        (sx - 2 * scale, sy + 1 * scale),
+                    ],
+                    max(1, scale),
+                )
+            elif variant == 3:
+                # Twin seams dividing the slab into sub-slabs (cobble read).
+                pygame.draw.line(
+                    surface,
+                    detail,
+                    (sx - 22 * scale, sy - 3 * scale),
+                    (sx + 6 * scale, sy + 9 * scale),
+                    max(1, scale),
+                )
+                pygame.draw.line(
+                    surface,
+                    detail,
+                    (sx + 22 * scale, sy - 3 * scale),
+                    (sx - 6 * scale, sy + 9 * scale),
+                    max(1, scale),
+                )
+            # variant 0: smooth slab, no extra detail.
 
         # --- Outer diamond edge: clean and consistent ---
         pygame.draw.lines(surface, edge, True, [top, right, bottom, left], scale)

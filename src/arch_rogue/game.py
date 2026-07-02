@@ -239,7 +239,7 @@ class Game(
         self.quest_cutscenes = load_quest_cutscene_library()
         self.active_cutscene: ActiveQuestCutscene | None = None
         self.tile_cache: dict[
-            tuple[str, int, int], tuple[pygame.Surface, int, int]
+            tuple[str, int, int, bool], tuple[pygame.Surface, int, int]
         ] = {}
         self.rng = random.Random()
         self.running = True

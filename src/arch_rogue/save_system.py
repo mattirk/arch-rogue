@@ -279,6 +279,7 @@ class SaveLoadMixin:
             int(saved_shop_index) if saved_shop_index is not None else None
         )
         self.tile_cache.clear()
+        self.prewarm_tile_cache()
 
         player_data = data["player"]
         self.player = Player(
