@@ -7,7 +7,15 @@ from typing import cast
 
 import pygame
 
-from ..constants import DUNGEON_DEPTH, TILE_H, TILE_W, WORLD_SCALE, SlashEffect
+from ..constants import (
+    DUNGEON_DEPTH,
+    RUN_CYCLE_FRAMES,
+    RUN_FRAME_RATE,
+    TILE_H,
+    TILE_W,
+    WORLD_SCALE,
+    SlashEffect,
+)
 from ..content import HUMANOID_ENEMY_NAMES
 from ..models import (
     Color,
@@ -54,17 +62,41 @@ class RenderingActorMixin:
         sway, bob, _lean, _stretch = self.actor_animation(actor)
         return round(sway), round(bob)
 
+    def run_cycle_position(self, anim_time: float) -> float:
+        """Continuous 0..1 position within the run stride cycle.
+
+        This is derived from the *exact* same expression the sprite atlas uses
+        to pick the displayed run frame (``anim_time * RUN_FRAME_RATE`` mod
+        ``RUN_CYCLE_FRAMES``), so the whole-body bob/sway/lean advance in lock
+        step with the cached frame instead of running at an unrelated frequency.
+        """
+        return (anim_time * RUN_FRAME_RATE) % RUN_CYCLE_FRAMES / RUN_CYCLE_FRAMES
+
     def actor_animation(
         self, actor: Player | Enemy
     ) -> tuple[float, float, float, float]:
         if actor.moving:
-            phase = actor.anim_time * math.tau
-            footfall = 0.5 - 0.5 * math.cos(phase * 2.0)
+            cycle_t = self.run_cycle_position(actor.anim_time)
+            phase = cycle_t * math.tau
+            footfall = 0.5 - 0.5 * math.cos(phase)
             stride = math.sin(phase)
-            bob = 0.45 + footfall * 1.15
+            # Grounded bob: signed around zero so the body dips at foot-plant
+            # (footfall 0) and rises at mid-lift (footfall 1), reading as
+            # weighted walking instead of a constant upward float.
+            bob = (footfall - 0.5) * 1.2
             sway = stride * 0.55
-            lean = 0.18 + math.sin(phase - 0.35) * 0.10
-            return sway, bob, lean, 1.0
+            # Directional lean: tilt the top of the sprite a few degrees toward
+            # the screen-space facing direction so the character leans into its
+            # run. The lean follows the facing vector (which snaps to the
+            # input/aim direction every frame) rather than the gameplay-smoothed
+            # move vector, so it changes consistently and immediately on a
+            # direction change instead of easing slowly or stalling against a wall.
+            vx, vy = self.iso_screen_direction(actor.facing_x, actor.facing_y)
+            lean = max(-5.0, min(5.0, vx * 4.0))
+            # Subtle vertical stretch: moving up-screen stretches slightly,
+            # moving down-screen squashes slightly, for a natural feel.
+            stretch = max(0.97, min(1.03, 1.0 + (-vy) * 0.02))
+            return sway, bob, lean, stretch
         idle = math.sin(self.elapsed * 2.2 + actor.x * 0.7 + actor.y * 0.4)
         return 0.0, idle * 0.32, idle * 0.08, 1.0
 
@@ -372,16 +404,13 @@ class RenderingActorMixin:
         x: float,
         y: float,
         y_offset: float = 0.0,
-        facing_x: float = 1.0,
         x_offset: float = 0.0,
         stretch: float = 1.0,
         lean: float = 0.0,
         alpha: int = 255,
     ) -> tuple[int, int]:
         sx, sy = self.world_to_screen(x, y)
-        turned_sprite = (
-            pygame.transform.flip(sprite, True, False) if facing_x < 0 else sprite
-        )
+        turned_sprite = sprite
         if abs(stretch - 1.0) > 0.018:
             turned_sprite = pygame.transform.scale(
                 turned_sprite,
@@ -390,10 +419,12 @@ class RenderingActorMixin:
                     max(1, round(turned_sprite.get_height() * stretch)),
                 ),
             )
-        if abs(lean) > 1.85:
-            turned_sprite = pygame.transform.rotate(
-                turned_sprite, -lean if facing_x >= 0 else lean
-            )
+        if abs(lean) > 1.0:
+            # ``lean`` is signed by the screen-space movement direction
+            # (positive = moving screen-right); a consistent rotation tilts
+            # the top toward where the character is running. The sprite is
+            # never mirror-flipped on facing changes.
+            turned_sprite = pygame.transform.rotate(turned_sprite, -lean)
         if alpha < 255:
             turned_sprite = turned_sprite.copy()
             turned_sprite.set_alpha(alpha)
@@ -465,10 +496,9 @@ class RenderingActorMixin:
             player.x,
             player.y,
             y_offset=6.0 - bob,
-            facing_x=player.facing_x,
             x_offset=sway,
             stretch=stretch,
-            lean=lean * 0.12,
+            lean=lean,
         )
         self.draw_hit_flash_overlay(
             sx,
@@ -582,9 +612,10 @@ class RenderingActorMixin:
         sway, bob, lean, stretch = self.actor_animation(enemy)
         if enemy.kind == "boss":
             stretch += math.sin(self.elapsed * 3.4) * 0.010
-            lean += math.sin(self.elapsed * 2.1) * 0.25
+            lean += math.sin(self.elapsed * 2.1) * 1.5
         elif enemy.elite_modifier or enemy.kind == "miniboss":
             stretch += math.sin(self.elapsed * 5.0) * 0.006
+            lean += math.sin(self.elapsed * 5.0) * 0.6
         self.draw_shadow(enemy.x, enemy.y, shadow_w, 12, moving=enemy.moving, lift=bob)
         trail_color = self.mix(enemy.color, (120, 84, 68), 0.45)
         self.draw_movement_trail(enemy, trail_color, size=2)
@@ -594,10 +625,9 @@ class RenderingActorMixin:
             enemy.x,
             enemy.y,
             y_offset=6.0 - bob,
-            facing_x=enemy.facing_x,
             x_offset=sway,
             stretch=stretch,
-            lean=lean * 0.12,
+            lean=lean,
         )
         self.draw_hit_flash_overlay(
             sx,

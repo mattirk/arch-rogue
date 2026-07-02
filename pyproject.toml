@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.4.0"
-description = "Milestone 3.4 story cutscene refactor of a modern isometric Rogue-inspired ARPG."
+version = "3.5.0"
+description = "Milestone 3.5 movement animation polish for a modern isometric Rogue-inspired ARPG."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

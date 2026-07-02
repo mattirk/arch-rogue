@@ -44,11 +44,11 @@ class GeneralCleanup25Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
-                self.assertEqual(arch_rogue.__version__, "3.4.0")
+                self.assertEqual(arch_rogue.__version__, "3.5.0")
                 self.assertTrue(game.save_run())
                 saved = json.loads(game.save_path.read_text(encoding="utf-8"))
                 self.assertEqual(saved["version"], 4)
-                self.assertEqual(saved["release"], "3.4.0")
+                self.assertEqual(saved["release"], "3.5.0")
             finally:
                 pygame.quit()
 

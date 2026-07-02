@@ -188,10 +188,8 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 
 Player movement currently looks very "wobblish". Like a ghost floating. We need to polish the movement animation to make it feel more natural.
 
-- Create distinct movable parts for player character sprites e.g head, torso, arms, legs
-- Make it so that legs move independently of the torso
+- Make the sprites and animations look like Chrono Trigger or Sea Of Stars games
 - Make the walking animation adapt natuarlly to the direction the player character is moving
-- Make the character's head and torso rotate to face the direction they are moving
 - Make sure all sprite animation parts move smoothly and harmoniously together
 
 ## Next Milestones

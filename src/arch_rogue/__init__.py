@@ -1,4 +1,4 @@
 """Arch Rogue public release package."""
 
 __all__ = ["__version__"]
-__version__ = "3.4.0"
+__version__ = "3.5.0"

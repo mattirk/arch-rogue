@@ -4,7 +4,7 @@ import math
 
 import pygame
 
-from .constants import TILE_H
+from .constants import RUN_CYCLE_FRAMES, RUN_FRAME_RATE, TILE_H
 from .models import Color
 
 bone_color = (214, 202, 176)
@@ -450,27 +450,27 @@ class PixelSpriteAtlas:
             )
 
         elif state == "run":
-            # 12-frame run cycle: stride sway, footfall lift, counter-rotation
-            # between upper and lower body, head stabilizer. More frames than
-            # the old 8-frame cycle so motion reads smoothly at 60fps.
-            n = 12
+            # 12-frame grounded walk cycle. The upper body (cap/head/torso)
+            # stays stable and leads subtly into the stride while the hips and
+            # legs drive the motion: feet swing forward and lift on the footfall
+            # pulse, hips counter-rotate against the torso, and the whole pose
+            # stays planted instead of floating. Offsets are kept small and
+            # phase-locked to the whole-body bob in RenderingActorMixin.
+            n = RUN_CYCLE_FRAMES
             i = index % n
             stride = math.sin(i / n * math.tau)  # -1..1 forward/back sway
             footfall = 0.5 - 0.5 * math.cos(i / n * math.tau)  # 0..1 lift pulse
-            counter = -stride
-            lift = round(footfall * 3.0)
+            lift = round(footfall * 2.4)
             blit_pose(
-                cap_dx=round(stride * 0.5),
-                cap_dy=-round(footfall * 1.0),
-                head_dx=round(stride * 0.7),
-                head_dy=-round(footfall * 1.5),
-                torso_dx=round(stride * 1.2),
-                torso_dy=-round(footfall * 1.0),
-                hip_dx=round(counter * 1.0),
-                hip_dy=round(lift * 0.4),
-                legs_dx=round(counter * 1.6),
-                legs_dy=round(lift * 0.6),
-                feet_dx=round(stride * 2.2),
+                cap_dx=round(stride * 0.25),
+                head_dx=round(stride * 0.35),
+                torso_dx=round(stride * 0.6),
+                torso_dy=round(-footfall * 0.3),
+                hip_dx=round(-stride * 0.5),
+                hip_dy=round(lift * 0.3),
+                legs_dx=round(-stride * 1.2),
+                legs_dy=round(lift * 0.5),
+                feet_dx=round(stride * 1.8),
                 feet_dy=-lift,
             )
 
@@ -599,7 +599,7 @@ class PixelSpriteAtlas:
             ],
             "run": [
                 self._actor_pose_frame(sprite, accent, "run", frame, hostile=hostile)
-                for frame in range(12)
+                for frame in range(RUN_CYCLE_FRAMES)
             ],
             "attack": [
                 self._actor_pose_frame(
@@ -697,7 +697,7 @@ class PixelSpriteAtlas:
             class_name, self.player_animation_frames["Warden"]
         )
         frames = states.get(state, states["idle"])
-        phase = anim_time * 8.0 if state == "run" else elapsed * 5.0
+        phase = anim_time * RUN_FRAME_RATE if state == "run" else elapsed * 5.0
         if state in ("attack", "cast", "hit", "dash"):
             phase = elapsed * 14.0
         return self._frame_from(frames, phase)
@@ -721,7 +721,7 @@ class PixelSpriteAtlas:
         )
         frames = states.get(state, states["idle"])
         phase = (
-            anim_time * 8.0
+            anim_time * RUN_FRAME_RATE
             if state == "run"
             else elapsed * (4.3 if kind == "boss" else 5.0)
         )

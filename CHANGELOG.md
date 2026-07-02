@@ -1,5 +1,30 @@
 # Changelog
 
+## 3.5.0 — Movement Animation Polish
+
+Milestone 3.5 polishes the player's movement animation so it reads as a grounded, direction-aware walk in the spirit of Chrono Trigger / Sea of Stars instead of the previous "wobblish ghost-float". The root cause was a phase mismatch: the cached 12-frame run pose cycled at one frequency while the whole-body bob cycled at 3x that frequency, and the bob was always positive (the body never dipped below its anchor), so the upper body floated up and down independently of the legs. There was also no directional lean — the lean value sat far below the rotation threshold, so the sprite never tilted into its movement direction.
+
+### Added
+
+- Shared run-cycle tuning constants (`RUN_CYCLE_FRAMES`, `RUN_FRAME_RATE`) in `constants.py` so the sprite atlas and the renderer derive the run phase from one expression.
+- `run_cycle_position` helper on the renderer: a continuous 0..1 stride-cycle position computed from the exact same `anim_time * RUN_FRAME_RATE mod RUN_CYCLE_FRAMES` expression used to pick the displayed run frame, guaranteeing the whole-body motion is phase-locked to the cached frame.
+- Focused `tests/test_3_5_movement_animation_polish.py` (10 tests) covering cycle/frame phase-locking, grounded signed bob, one-bob-cycle-per-stride (the regression guard against the old 3x wobble), bob/footfall alignment, directional lean sign/magnitude/clamp, run-pose upper-body stability vs feet lift, eight-direction rendering, the run-lean forward-tilt regression guard, the facing-driven lean consistency guard, the slow-enemy cadence floor guard, and dt-jitter advancement.
+
+### Changed
+
+- `actor_animation` (rendering/actors.py) now derives `stride`, `footfall`, `sway`, and `bob` from `run_cycle_position` so the whole body bobs in lockstep with the displayed run frame. The bob is now signed (`(footfall - 0.5) * 1.2`), dipping below the anchor at foot-plant and rising at mid-lift, so the walk reads as weighted and grounded rather than a constant upward float. A directional lean in degrees tilts the sprite top toward the screen-space movement direction (clamped to ±5°), and a subtle vertical stretch responds to up/down screen movement. The shadow now correctly spreads when the body lifts and contracts when it plants because the signed bob feeds `draw_shadow`.
+- The `run` band-pose in `sprites.py` was rewritten to keep the cap/head/torso stable (subtle lead into the stride, no vertical float) while the hips, legs, and feet drive the motion with counter-rotation and a footfall lift, harmonizing the internal pose with the phase-locked external bob.
+- `blit_sprite` rotation threshold lowered from 1.85° to 1.0° so the new degree-sized directional leans actually rotate the sprite; `draw_player` and `draw_enemy` now pass the lean directly instead of scaling it to zero. The rotation always uses `-lean` (tilting the top toward the screen-space movement direction). Boss/elite lean wobble magnitudes were rescaled to degree units.
+- The directional lean and vertical stretch now follow the actor's `facing` vector instead of the gameplay-smoothed `move` vector. `facing` snaps to the input/aim direction every frame, so the lean changes consistently and immediately on a direction change instead of easing slowly over several frames (or not changing at all when the actor is blocked against a wall and `move` stops updating).
+- The horizontal mirror-flip on facing changes was removed entirely: `blit_sprite` no longer flips the sprite art based on `facing_x`, and the `facing_x`/`x_scale` parameters and the `smoothed_facing`/`turn_squash`/`turn_factor` turn-pivot machinery (added to mask the flip) were removed. The sprite now always renders in its authored orientation, so there is no flip wobble on quick direction changes; the directional lean still indicates movement direction.
+- Run-frame count and frame-selection phase in `sprites.py` now use the shared `RUN_CYCLE_FRAMES` / `RUN_FRAME_RATE` constants.
+- `advance_animation_phases` (combat.py) now clamps the per-actor walk-cycle cadence to a floor/ceiling (`WALK_ANIM_SPEED_FLOOR` / `WALK_ANIM_SPEED_CEIL`). The cycle still scales with movement speed, but slow enemies (speed as low as 0.88) no longer cycle so slowly that the 12 discrete run frames are each held for ~9 render frames and stutter; they now stride at a readable minimum cadence. The ceiling keeps very fast units (elites, haste) from blurring.
+- Package metadata, `__version__`, save release strings, and version-current tests now target `3.5.0`.
+
+### Validation
+
+- Bytecode compilation and the full `unittest` suite (133 tests) pass, including 10 new milestone 3.5 tests. The run cycle still advances monotonically under frame-rate jitter.
+
 ## 3.4.0 — Story Cutscene Refactor
 
 Milestone 3.4 rebuilds the story cutscene runtime around a single data-driven pipeline. Quest cutscenes, dialogue choices, guest interactions, and story rewards are now described by a schema_version 2 asset that also dresses a real theatrical stage with curtains, a proscenium arch, footlights, props, volumetric lighting, and ambient particles. The narrator text card was polished into a parchment bill, and static stage layers are cached so the hot path stays allocation-free and well above 60 FPS.

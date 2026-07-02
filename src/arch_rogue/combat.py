@@ -15,6 +15,8 @@ from .constants import (
     PLAYER_MELEE_RANGE,
     PLAYER_MOVE_SPEED,
     PLAYER_PROJECTILE_HIT_RADIUS,
+    WALK_ANIM_SPEED_CEIL,
+    WALK_ANIM_SPEED_FLOOR,
     WALK_ANIMATION_RATE,
 )
 from .content import (
@@ -694,16 +696,30 @@ class CombatMixin:
     def advance_animation_phases(self, dt: float) -> None:
         # Advance run-cycle animation phases on a fixed-timestep accumulator
         # so the sprite/limb animation stays smooth even when per-frame dt
-        # jitters from frame-rate variance. The animation clock accumulates
-        # real dt and ticks at a fixed 60Hz, so frame selection advances on a
-        # consistent grid regardless of whether a frame took 16ms or 28ms.
-        # The rate scales with the actor's speed so faster units cycle faster.
+        # jitters from frame-rate variance. The rate scales with the actor's
+        # speed so faster units take faster steps, but is clamped to a
+        # floor/ceiling (WALK_ANIM_SPEED_FLOOR/CEIL): without the floor, slow
+        # enemies cycle so slowly that the 12 discrete run frames are each
+        # held for many render frames, producing a visible stutter; the
+        # ceiling keeps very fast units (elites, haste) from blurring.
         anim_dt = dt
         if self.player.moving:
-            self.player.anim_time += anim_dt * WALK_ANIMATION_RATE * PLAYER_MOVE_SPEED
+            self.player.anim_time += anim_dt * WALK_ANIMATION_RATE * self._anim_speed(
+                PLAYER_MOVE_SPEED
+            )
         for enemy in self.enemies:
             if enemy.moving:
-                enemy.anim_time += anim_dt * WALK_ANIMATION_RATE * enemy.speed
+                enemy.anim_time += anim_dt * WALK_ANIMATION_RATE * self._anim_speed(
+                    enemy.speed
+                )
+
+    @staticmethod
+    def _anim_speed(speed: float) -> float:
+        if speed < WALK_ANIM_SPEED_FLOOR:
+            return WALK_ANIM_SPEED_FLOOR
+        if speed > WALK_ANIM_SPEED_CEIL:
+            return WALK_ANIM_SPEED_CEIL
+        return speed
 
     def actor_hit_radius(self, actor: Player | Enemy) -> float:
         if isinstance(actor, Player):
