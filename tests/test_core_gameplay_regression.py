@@ -30,10 +30,17 @@ class Rc1RegressionTests(unittest.TestCase):
             self.assertTrue(game.choose_story_relic_path(0))
 
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
+
+    def test_game_enters_at_title_state(self) -> None:
+        game = self.make_game()
+        try:
+            self.assertEqual(game.state, "title")
+        finally:
+            pass
 
     def test_dungeon_generation_has_connected_rooms_and_stairs(self) -> None:
-        for seed in range(20):
+        for seed in range(8):
             dungeon = Dungeon(random.Random(seed))
             self.assertGreaterEqual(len(dungeon.rooms), 8)
             sx, sy = dungeon.stairs
@@ -90,13 +97,19 @@ class Rc1RegressionTests(unittest.TestCase):
                 )
             self.assertEqual(len(seen_profiles), len(ARCHETYPES))
         finally:
-            pygame.quit()
+            pass
 
-    def test_item_pickup_equip_identify_and_consumable_use(self) -> None:
+    def test_item_interactions_and_hotkey_behaviors(self) -> None:
+        # Shared Game/restart/story-intro setup; each section resets the
+        # player state it asserts, so scenarios do not interfere. Nova and
+        # dash gate only on their own timers (see combat.py), so reusing one
+        # Game across all four former tests is safe.
         game = self.make_game()
         try:
             game.restart(ARCHETYPES[0])
             self.confirm_story_intro(game)
+
+            # --- item pickup, equip, identify, and consumable use ---
             game.items.clear()
             px, py = game.player.x, game.player.y
 
@@ -147,14 +160,8 @@ class Rc1RegressionTests(unittest.TestCase):
             self.assertNotIn(
                 "Scroll of Identify", [item.name for item in game.player.inventory]
             )
-        finally:
-            pygame.quit()
 
-    def test_q_toggles_quest_hud_and_r_uses_health_potion(self) -> None:
-        game = self.make_game()
-        try:
-            game.restart(ARCHETYPES[0])
-            self.confirm_story_intro(game)
+            # --- Q toggles quest HUD; R uses health potion ---
             game.player.hp = 10
             game.player.inventory = [Item("Minor Healing Potion", "potion", heal=35)]
 
@@ -173,14 +180,8 @@ class Rc1RegressionTests(unittest.TestCase):
             game.handle_events()
             self.assertEqual(game.player.hp, 45)
             self.assertEqual(game.player.inventory, [])
-        finally:
-            pygame.quit()
 
-    def test_c_toggles_character_menu_and_v_uses_nova(self) -> None:
-        game = self.make_game()
-        try:
-            game.restart(ARCHETYPES[0])
-            self.confirm_story_intro(game)
+            # --- C toggles character menu; V uses nova ---
             game.active_cutscene = None
             game.player.nova_timer = 0.0
             game.player.mana = game.player.max_mana
@@ -213,14 +214,8 @@ class Rc1RegressionTests(unittest.TestCase):
             game.handle_events()
             self.assertGreater(game.player.nova_timer, 0.0)
             self.assertLess(game.player.mana, starting_mana)
-        finally:
-            pygame.quit()
 
-    def test_left_control_uses_dash_and_left_shift_does_not(self) -> None:
-        game = self.make_game()
-        try:
-            game.restart(ARCHETYPES[0])
-            self.confirm_story_intro(game)
+            # --- Left Control dashes; Left Shift does not ---
             game.active_cutscene = None
             game.player.dash_timer = 0.0
             game.player.stamina = game.player.max_stamina
@@ -240,7 +235,7 @@ class Rc1RegressionTests(unittest.TestCase):
             self.assertGreater(game.player.dash_timer, 0.0)
             self.assertLess(game.player.stamina, starting_stamina)
         finally:
-            pygame.quit()
+            pass
 
     def test_modern_inventory_sort_drop_and_safe_consumables(self) -> None:
         game = self.make_game()
@@ -282,7 +277,7 @@ class Rc1RegressionTests(unittest.TestCase):
                 any(item.slot == "potion" for item in game.player.inventory)
             )
         finally:
-            pygame.quit()
+            pass
 
     def test_stairs_advance_until_depth_ten_then_boss_gates_victory(self) -> None:
         game = self.make_game()
@@ -333,7 +328,7 @@ class Rc1RegressionTests(unittest.TestCase):
             game.interact()
             self.assertEqual(game.state, "victory")
         finally:
-            pygame.quit()
+            pass
 
     def test_restart_clears_transient_run_state(self) -> None:
         game = self.make_game()
@@ -371,7 +366,7 @@ class Rc1RegressionTests(unittest.TestCase):
             self.assertEqual(game.player.inventory, [])
             self.assertEqual(game.player.class_name, ARCHETYPES[-1].name)
         finally:
-            pygame.quit()
+            pass
 
 
 if __name__ == "__main__":

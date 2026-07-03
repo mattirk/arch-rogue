@@ -21,7 +21,7 @@ from arch_rogue.models import Item
 
 class HudPolish25Tests(unittest.TestCase):
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
     def make_game(self, tmpdir: str, seed: int = 2505) -> Game:
         game = Game(
@@ -44,10 +44,11 @@ class HudPolish25Tests(unittest.TestCase):
         digest = hashlib.blake2s(rgba, digest_size=16).hexdigest()
         return f"{surface.get_width()}x{surface.get_height()}:{digest}"
 
-    def test_2_5_hud_action_slots_include_skill_and_potion_hotkeys(self) -> None:
+    def test_hud_action_slots_action_bar_and_mana_hotkey(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
+                # --- action slots include skill and potion hotkeys ---
                 game.player.inventory = [
                     Item("Minor Healing Potion", "potion", heal=35),
                     Item("Lesser Mana Potion", "mana_potion", mana=24),
@@ -77,13 +78,8 @@ class HudPolish25Tests(unittest.TestCase):
                 self.assertIn("s", game.hud_action_slot_status(slots[1]))
                 self.assertEqual(game.hud_action_slot_status(slots[-2]), "x1")
                 self.assertEqual(game.hud_action_slot_status(slots[-1]), "x1")
-            finally:
-                pygame.quit()
 
-    def test_2_5_bottom_action_bar_renders_icons_and_cooldown_overlays(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
+                # --- bottom action bar renders icons and cooldown overlays ---
                 game.player.inventory = [
                     Item("Minor Healing Potion", "potion", heal=35),
                     Item("Lesser Mana Potion", "mana_potion", mana=24),
@@ -104,13 +100,8 @@ class HudPolish25Tests(unittest.TestCase):
                 game.draw_hud_action_bar(rect)
                 after_no_cooldown = self.surface_signature(game.screen)
                 self.assertNotEqual(after_ready, after_no_cooldown)
-            finally:
-                pygame.quit()
 
-    def test_2_5_6_hotkey_drinks_mana_potion_without_using_health_potion(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
+                # --- 6 hotkey drinks mana potion without using health potion ---
                 game.player.hp = game.player.max_hp - 30
                 game.player.mana = game.player.max_mana - 20
                 game.player.inventory = [
@@ -129,7 +120,7 @@ class HudPolish25Tests(unittest.TestCase):
                     [item.slot for item in game.player.inventory], ["potion"]
                 )
             finally:
-                pygame.quit()
+                pass
 
 
 if __name__ == "__main__":

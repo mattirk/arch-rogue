@@ -11,7 +11,6 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import pygame
 
 from arch_rogue.constants import DUNGEON_DEPTH
 from arch_rogue.content import ARCHETYPES, BOSS_DEFINITIONS, ENCOUNTER_TEMPLATES
@@ -21,7 +20,7 @@ from arch_rogue.game import Game
 
 class RunStructureBossesReplayability23Tests(unittest.TestCase):
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
     def make_game(self, tmpdir: str, seed: int = 2303) -> Game:
         game = Game(
@@ -39,7 +38,7 @@ class RunStructureBossesReplayability23Tests(unittest.TestCase):
         game.active_cutscene = None
         return game
 
-    def test_2_3_floor_plan_paces_depths_with_previewable_boss_risks(self) -> None:
+    def test_floor_plan_paces_depths_and_survives_save_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
@@ -74,13 +73,8 @@ class RunStructureBossesReplayability23Tests(unittest.TestCase):
                 self.assertIsNotNone(hint)
                 assert hint is not None
                 self.assertIn("Next:", hint[2])
-            finally:
-                pygame.quit()
 
-    def test_2_3_floor_plan_survives_run_save_roundtrip(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, seed=2311)
-            try:
+                # --- floor plan survives run save roundtrip ---
                 game.current_depth = 6
                 game.apply_floor_plan_for_current_depth()
                 saved_plan = [game.floor_plan_to_dict(plan) for plan in game.floor_plan]
@@ -107,11 +101,11 @@ class RunStructureBossesReplayability23Tests(unittest.TestCase):
                     self.assertEqual(loaded.theme.name, loaded_current_plan.theme_name)
                     self.assertTrue(loaded.floor_plan_summary())
                 finally:
-                    pygame.quit()
+                    pass
             finally:
-                pygame.quit()
+                pass
 
-    def test_2_3_floor_bosses_drop_notable_rewards_and_record_mastery(self) -> None:
+    def test_floor_bosses_drop_notable_rewards_and_record_mastery(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, seed=2323)
             try:
@@ -156,7 +150,7 @@ class RunStructureBossesReplayability23Tests(unittest.TestCase):
                 self.assertTrue(any("Bosses defeated" in line for line in summary))
                 self.assertTrue(any("Mastery:" in line for line in summary))
             finally:
-                pygame.quit()
+                pass
 
 
 if __name__ == "__main__":

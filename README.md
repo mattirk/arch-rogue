@@ -71,10 +71,10 @@ Run the full automated test suite with `unittest`:
 python -m unittest discover tests
 ```
 
-Run a focused milestone test module while iterating on a specific change:
+Run a focused test module while iterating on a specific change:
 
 ```bash
-python -m unittest tests.test_2_5_general_cleanup
+python -m unittest tests.test_dark_floor_overlays
 ```
 
 Notes:

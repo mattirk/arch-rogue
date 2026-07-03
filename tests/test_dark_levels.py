@@ -21,7 +21,7 @@ from arch_rogue.models import Tile
 
 class DarkLevels24Tests(unittest.TestCase):
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
     def make_game(self, tmpdir: str, seed: int = 2404) -> Game:
         game = Game(
@@ -39,10 +39,11 @@ class DarkLevels24Tests(unittest.TestCase):
         game.active_cutscene = None
         return game
 
-    def test_2_4_floor_plan_includes_required_dark_depths(self) -> None:
+    def test_floor_plan_darkness_toggle_and_save_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
+            game = self.make_game(tmpdir, seed=2411)
             try:
+                # Floor plan includes required dark depths.
                 dark_depths = {plan.depth for plan in game.floor_plan if plan.dark}
                 self.assertTrue(any(depth < 5 for depth in dark_depths))
                 mid_depths = {depth for depth in dark_depths if 5 <= depth <= 10}
@@ -53,13 +54,8 @@ class DarkLevels24Tests(unittest.TestCase):
                     if plan.dark:
                         self.assertIn("darkness", plan.risk_tags)
                         self.assertIn("dark level", plan.preview)
-            finally:
-                pygame.quit()
 
-    def test_2_4_darkness_toggle_and_save_roundtrip(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, seed=2411)
-            try:
+                # Darkness toggle round-trips through save/load.
                 game.current_depth = 2
                 before = game.is_current_floor_dark()
                 pygame.event.post(
@@ -87,60 +83,15 @@ class DarkLevels24Tests(unittest.TestCase):
                     self.assertEqual(loaded.current_depth, 2)
                     self.assertEqual(loaded.is_current_floor_dark(), saved_dark)
                 finally:
-                    pygame.quit()
+                    pass
             finally:
-                pygame.quit()
+                pass
 
-    def test_2_4_monsters_behind_walls_are_hidden_in_light_and_dark_modes(self) -> None:
+    def test_dark_visibility_enemy_navigation_and_wall_hiding(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, seed=2421)
             try:
-                for x, column in enumerate(game.dungeon.tiles):
-                    for y in range(len(column)):
-                        game.dungeon.tiles[x][y] = Tile.FLOOR
-                game.dungeon.tiles[4][2] = Tile.WALL
-                game.player.x = 2.5
-                game.player.y = 2.5
-                enemy = game.enemies[0]
-                enemy.x = 6.5
-                enemy.y = 2.5
-                game.enemies = [enemy]
-                game.items = []
-                game.traps = []
-                game.shrines = []
-                game.secrets = []
-                game.story_guests = []
-                game.projectiles = []
-                game.slashes = []
-                game.impact_effects = []
-                game.floaters = []
-
-                drawn: list[str] = []
-                game.draw_enemy = lambda hidden_enemy: drawn.append(hidden_enemy.name)  # type: ignore[method-assign]
-
-                for dark in (False, True):
-                    game.set_current_floor_dark(dark)
-                    drawn.clear()
-                    game.draw_world_objects()
-                    self.assertEqual(drawn, [])
-                    self.assertFalse(game.has_line_of_sight_to_player(enemy.x, enemy.y))
-
-                    enemy.x = 3.5
-                    drawn.clear()
-                    game.draw_world_objects()
-                    self.assertEqual(drawn, [enemy.name])
-                    self.assertTrue(game.has_line_of_sight_to_player(enemy.x, enemy.y))
-
-                    enemy.x = 6.5
-            finally:
-                pygame.quit()
-
-    def test_2_4_dark_visibility_limits_player_sight_but_not_enemy_navigation(
-        self,
-    ) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, seed=2423)
-            try:
+                # Dark visibility limits player sight but not enemy navigation.
                 game.set_current_floor_dark(True)
                 self.assertTrue(
                     game.can_see_world_position(game.player.x, game.player.y)
@@ -194,8 +145,46 @@ class DarkLevels24Tests(unittest.TestCase):
                 self.assertTrue(enemy.moving)
 
                 game.draw()
+
+                # Monsters behind walls are hidden in both light and dark modes.
+                for x, column in enumerate(game.dungeon.tiles):
+                    for y in range(len(column)):
+                        game.dungeon.tiles[x][y] = Tile.FLOOR
+                game.dungeon.tiles[4][2] = Tile.WALL
+                game.player.x = 2.5
+                game.player.y = 2.5
+                enemy.x = 6.5
+                enemy.y = 2.5
+                game.enemies = [enemy]
+                game.items = []
+                game.traps = []
+                game.shrines = []
+                game.secrets = []
+                game.story_guests = []
+                game.projectiles = []
+                game.slashes = []
+                game.impact_effects = []
+                game.floaters = []
+
+                drawn: list[str] = []
+                game.draw_enemy = lambda hidden_enemy: drawn.append(hidden_enemy.name)  # type: ignore[method-assign]
+
+                for dark in (False, True):
+                    game.set_current_floor_dark(dark)
+                    drawn.clear()
+                    game.draw_world_objects()
+                    self.assertEqual(drawn, [])
+                    self.assertFalse(game.has_line_of_sight_to_player(enemy.x, enemy.y))
+
+                    enemy.x = 3.5
+                    drawn.clear()
+                    game.draw_world_objects()
+                    self.assertEqual(drawn, [enemy.name])
+                    self.assertTrue(game.has_line_of_sight_to_player(enemy.x, enemy.y))
+
+                    enemy.x = 6.5
             finally:
-                pygame.quit()
+                pass
 
 
 if __name__ == "__main__":

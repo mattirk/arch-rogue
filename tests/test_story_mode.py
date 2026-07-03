@@ -25,7 +25,7 @@ from arch_rogue.story import StoryEngine, story_state_to_dict
 
 class StoryMode20Tests(unittest.TestCase):
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
     def make_game(self, tmpdir: str, seed: int = 2002) -> Game:
         game = Game(
@@ -135,7 +135,7 @@ class StoryMode20Tests(unittest.TestCase):
                 self.assertIn("story_guests", saved)
                 self.assertEqual(saved["run_stats"]["story_choices"], 1)
             finally:
-                pygame.quit()
+                pass
 
     def test_story_effects_persist_and_future_depth_uses_story_theme(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -176,7 +176,7 @@ class StoryMode20Tests(unittest.TestCase):
                     any("Defy" in entry for entry in loaded.story_state.log)
                 )
             finally:
-                pygame.quit()
+                pass
 
     def test_story_effects_directly_modify_combat_resources_and_hunters(
         self,
@@ -214,7 +214,7 @@ class StoryMode20Tests(unittest.TestCase):
                 game.kill_enemy(game.enemies[0])
                 self.assertGreater(game.player.hp, before_heal)
             finally:
-                pygame.quit()
+                pass
 
     def test_unanswered_story_guest_hardens_next_floor(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -238,7 +238,7 @@ class StoryMode20Tests(unittest.TestCase):
                 )
                 self.assertEqual(game.run_stats.story_choices, 0)
             finally:
-                pygame.quit()
+                pass
 
     def test_level_intro_blocks_gameplay_until_story_relic_is_chosen(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -293,9 +293,16 @@ class StoryMode20Tests(unittest.TestCase):
                 self.assertTrue(game.story_relic_collected)
                 self.assertIsNone(game.story_relic_target_position())
             finally:
-                pygame.quit()
+                pass
 
     def test_story_relic_choices_change_location_render_cues_and_persist(self) -> None:
+        # The three relic choices need isolated pre-choice run state, but each
+        # iteration reproduces an identical make_game(seed=2602) run. Reusing one
+        # Game via re-seed+restart (resetting run_number first) and one reload
+        # Game via repeated load_run() avoids 4 redundant Game(...) constructions
+        # while keeping per-choice isolation: restart() calls begin_story_level_intro()
+        # which resets every story_relic_* field, and restore_run_state() fully
+        # overwrites the reload Game's state from each fresh save.
         with tempfile.TemporaryDirectory() as tmpdir:
             positions: dict[str, tuple[float, float]] = {}
             expected_traits = {
@@ -303,9 +310,24 @@ class StoryMode20Tests(unittest.TestCase):
                 "bargain": (True, True),
                 "defy": (False, True),
             }
-            for expected_key in ("aid", "bargain", "defy"):
-                game = self.make_game(tmpdir, seed=2602)
-                try:
+            save_path = Path(tmpdir) / "run.json"
+            game = Game(
+                screen_size=(820, 540),
+                headless=True,
+                save_path=save_path,
+            )
+            game.options_path = Path(tmpdir) / "options.json"
+            loaded = Game(
+                screen_size=(820, 540),
+                headless=True,
+                save_path=save_path,
+            )
+            try:
+                for expected_key in ("aid", "bargain", "defy"):
+                    game.run_number = 0
+                    game.rng.seed(2602)
+                    game.restart(ARCHETYPES[2])
+
                     self.assertTrue(game.story_intro_pending)
                     guest = game.current_story_guest_for_depth()
                     self.assertIsNotNone(guest)
@@ -392,7 +414,8 @@ class StoryMode20Tests(unittest.TestCase):
                             )
                         )
                     game.draw()
-                    saved = json.loads(game.save_path.read_text(encoding="utf-8"))
+                    self.assertTrue(game.save_run())
+                    saved = json.loads(save_path.read_text(encoding="utf-8"))
                     self.assertFalse(saved["story_intro_pending"])
                     self.assertEqual(saved["story_relic_choice_key"], expected_key)
                     self.assertEqual(saved["story_relic_position"], [relic.x, relic.y])
@@ -401,11 +424,6 @@ class StoryMode20Tests(unittest.TestCase):
                     )
                     self.assertEqual(saved["story_relic_guarded"], expected_guarded)
 
-                    loaded = Game(
-                        screen_size=(820, 540),
-                        headless=True,
-                        save_path=game.save_path,
-                    )
                     self.assertTrue(loaded.load_run(), loaded.last_load_error)
                     self.assertFalse(loaded.story_intro_pending)
                     self.assertEqual(loaded.story_relic_choice_key, expected_key)
@@ -415,8 +433,8 @@ class StoryMode20Tests(unittest.TestCase):
                     )
                     self.assertEqual(loaded.story_relic_guarded, expected_guarded)
                     self.assertIsNotNone(loaded.current_story_relic())
-                finally:
-                    pygame.quit()
+            finally:
+                pass
             self.assertGreater(len(set(positions.values())), 1)
 
     def test_story_intro_overlay_renders_all_three_opening_choices(self) -> None:
@@ -463,49 +481,13 @@ class StoryMode20Tests(unittest.TestCase):
                     pygame.draw.rect = original_rect
                 self.assertEqual(len(choice_boxes), 3)
             finally:
-                pygame.quit()
+                pass
 
-    def test_cutscene_response_layout_expands_for_wrapped_text(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = Game(
-                screen_size=(640, 480),
-                headless=True,
-                save_path=Path(tmpdir) / "run.json",
-            )
-            game.options_path = Path(tmpdir) / "options.json"
-            game.rng.seed(2703)
-            game.restart(ARCHETYPES[2])
-            try:
-                width, _height = game.screen.get_size()
-                panel_w = min(width - game.ui(28), game.ui(920))
-                pad = max(game.ui(14), 18)
-                choice_w = panel_w - pad * 2
-                text_width = game.cutscene_response_text_width(choice_w)
-                label = "Swear the lantern-oath before the drowned archive"
-                detail = (
-                    "Promise blood, memory, and every unquiet name you carry so the "
-                    "guest can open a hidden road through the ruins without silencing "
-                    "the warning bells behind you."
-                )
-
-                label_lines, detail_lines = game.cutscene_response_lines(
-                    label, detail, text_width
-                )
-                height = game.cutscene_response_height(label, detail, choice_w)
-                required_height = (
-                    len(label_lines) * game.small_font.get_height()
-                    + game.ui(3)
-                    + len(detail_lines) * game.tiny_font.get_height()
-                    + game.ui(16)
-                )
-
-                self.assertGreater(len(detail_lines), 1)
-                self.assertGreater(height, game.ui(44))
-                self.assertGreaterEqual(height, required_height)
-            finally:
-                pygame.quit()
-
-    def test_active_cutscene_overlay_draws_full_wrapped_response_text(self) -> None:
+    def test_overlay_wraps_long_response_detail_text(self) -> None:
+        # One Game construction covers three wrapped-response scenarios:
+        #   1. cutscene_response_lines/height expand to fit wrapped text
+        #   2. the active cutscene overlay draws every wrapped detail line
+        #   3. the story intro overlay draws every wrapped detail line
         with tempfile.TemporaryDirectory() as tmpdir:
             game = Game(
                 screen_size=(640, 480),
@@ -515,99 +497,103 @@ class StoryMode20Tests(unittest.TestCase):
             game.options_path = Path(tmpdir) / "options.json"
             game.rng.seed(2704)
             game.restart(ARCHETYPES[2])
+            original_draw_ui_text = game.draw_ui_text
             try:
+                width, _height = game.screen.get_size()
+                pad = max(game.ui(14), 18)
+                # The active cutscene overlay and layout helpers cap at ui(920);
+                # the story intro overlay caps at ui(900). Match each pass.
+                cutscene_choice_w = min(width - game.ui(28), game.ui(920)) - pad * 2
+                cutscene_text_width = game.cutscene_response_text_width(
+                    cutscene_choice_w
+                )
+                intro_choice_w = min(width - game.ui(28), game.ui(900)) - pad * 2
+                intro_text_width = game.cutscene_response_text_width(intro_choice_w)
+
+                # 1. Layout helpers expand to fit wrapped response text.
+                layout_label = "Swear the lantern-oath before the drowned archive"
+                layout_detail = (
+                    "Promise blood, memory, and every unquiet name you carry so the "
+                    "guest can open a hidden road through the ruins without silencing "
+                    "the warning bells behind you."
+                )
+                label_lines, detail_lines = game.cutscene_response_lines(
+                    layout_label, layout_detail, cutscene_text_width
+                )
+                height = game.cutscene_response_height(
+                    layout_label, layout_detail, cutscene_choice_w
+                )
+                required_height = (
+                    len(label_lines) * game.small_font.get_height()
+                    + game.ui(3)
+                    + len(detail_lines) * game.tiny_font.get_height()
+                    + game.ui(16)
+                )
+                self.assertGreater(len(detail_lines), 1)
+                self.assertGreater(height, game.ui(44))
+                self.assertGreaterEqual(height, required_height)
+
+                # 2. Active cutscene overlay draws every wrapped response detail line.
                 self.assertIsNotNone(game.active_cutscene)
                 game.reveal_active_cutscene_narration()
-                long_detail = (
+                active_detail = (
                     "The guest answers with a cinematic vow about ash, bells, "
                     "bloodlit stairs, and a relic shadow that must remain visible "
                     "across several wrapped response lines."
                 )
-                choices = [
+                active_choices = [
                     RuntimeDialogueChoice(
                         label="Accept the vow",
-                        detail=long_detail,
+                        detail=active_detail,
                         choice_key="aid",
                     )
                 ]
-                game.active_cutscene_choices = lambda: choices
-
-                width, _height = game.screen.get_size()
-                panel_w = min(width - game.ui(28), game.ui(920))
-                pad = max(game.ui(14), 18)
-                choice_w = panel_w - pad * 2
-                text_width = game.cutscene_response_text_width(choice_w)
-                expected_detail_lines = game.wrap_ui_text(
-                    long_detail, game.tiny_font, text_width
+                game.active_cutscene_choices = lambda: active_choices
+                expected_active_lines = game.wrap_ui_text(
+                    active_detail, game.tiny_font, cutscene_text_width
                 )
-                self.assertGreater(len(expected_detail_lines), 1)
+                self.assertGreater(len(expected_active_lines), 1)
+                captured_active: list[str] = []
 
-                captured: list[str] = []
-                original_draw_ui_text = game.draw_ui_text
-
-                def capture_draw_ui_text(
-                    surface, text, font, color, rect, *args, **kwargs
-                ):
-                    captured.append(text)
+                def capture_active(surface, text, font, color, rect, *args, **kwargs):
+                    captured_active.append(text)
                     return original_draw_ui_text(
                         surface, text, font, color, rect, *args, **kwargs
                     )
 
-                game.draw_ui_text = capture_draw_ui_text
+                game.draw_ui_text = capture_active
                 game.draw_quest_cutscene_overlay()
+                game.draw_ui_text = original_draw_ui_text
+                for line in expected_active_lines:
+                    self.assertIn(line, captured_active)
 
-                for line in expected_detail_lines:
-                    self.assertIn(line, captured)
-            finally:
-                pygame.quit()
-
-    def test_story_intro_overlay_draws_full_wrapped_response_text(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = Game(
-                screen_size=(640, 480),
-                headless=True,
-                save_path=Path(tmpdir) / "run.json",
-            )
-            game.options_path = Path(tmpdir) / "options.json"
-            game.rng.seed(2705)
-            game.restart(ARCHETYPES[2])
-            try:
-                long_detail = (
+                # 3. Story intro overlay draws every wrapped response detail line.
+                intro_detail = (
                     "Choose a path described by the narrator with enough omen, "
                     "consequence, hidden architecture, and relic imagery to wrap "
                     "through multiple readable response lines."
                 )
-                options = [("aid", "Lift the lantern", long_detail)]
-                game.story_relic_choice_options = lambda: options
-
-                width, _height = game.screen.get_size()
-                panel_w = min(width - game.ui(28), game.ui(900))
-                pad = max(game.ui(14), 18)
-                choice_w = panel_w - pad * 2
-                text_width = game.cutscene_response_text_width(choice_w)
-                expected_detail_lines = game.wrap_ui_text(
-                    long_detail, game.tiny_font, text_width
+                intro_options = [("aid", "Lift the lantern", intro_detail)]
+                game.story_relic_choice_options = lambda: intro_options
+                expected_intro_lines = game.wrap_ui_text(
+                    intro_detail, game.tiny_font, intro_text_width
                 )
-                self.assertGreater(len(expected_detail_lines), 1)
+                self.assertGreater(len(expected_intro_lines), 1)
+                captured_intro: list[str] = []
 
-                captured: list[str] = []
-                original_draw_ui_text = game.draw_ui_text
-
-                def capture_draw_ui_text(
-                    surface, text, font, color, rect, *args, **kwargs
-                ):
-                    captured.append(text)
+                def capture_intro(surface, text, font, color, rect, *args, **kwargs):
+                    captured_intro.append(text)
                     return original_draw_ui_text(
                         surface, text, font, color, rect, *args, **kwargs
                     )
 
-                game.draw_ui_text = capture_draw_ui_text
+                game.draw_ui_text = capture_intro
                 game.draw_story_intro_overlay()
-
-                for line in expected_detail_lines:
-                    self.assertIn(line, captured)
+                game.draw_ui_text = original_draw_ui_text
+                for line in expected_intro_lines:
+                    self.assertIn(line, captured_intro)
             finally:
-                pygame.quit()
+                pass
 
     def test_story_intro_choices_are_dynamic_stable_and_corpus_based(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -669,9 +655,14 @@ class StoryMode20Tests(unittest.TestCase):
                 second_depth_options = game.story_relic_choice_options()
                 self.assertNotEqual(first_options, second_depth_options)
             finally:
-                pygame.quit()
+                pass
 
-    def test_quest_cutscene_assets_bind_generated_story_choices(self) -> None:
+    def test_quest_cutscene_assets_and_guest_dialogue_lifecycle(self) -> None:
+        # One Arcanist run exercises both the cutscene asset binding (intro omen)
+        # and the full guest dialogue-tree lifecycle (save -> load -> resolve).
+        # The dialogue lifecycle saves+loads before the intro is dismissed, so the
+        # asset-binding section's non-mutating assertions run first; the intro is
+        # only dismissed at the end on the original (un-saved) game.
         library = load_quest_cutscene_library()
         self.assertIn("story_guest_omen", library)
         self.assertIn("story_guest_dialogue", library)
@@ -701,8 +692,9 @@ class StoryMode20Tests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, seed=2301)
+            game = self.make_game(tmpdir, seed=2302)
             try:
+                # --- Cutscene asset binding (intro omen) ---
                 self.assertTrue(game.story_intro_pending)
                 self.assertIsNotNone(game.active_cutscene)
                 assert game.active_cutscene is not None
@@ -713,17 +705,8 @@ class StoryMode20Tests(unittest.TestCase):
                     [choice.choice_key for choice in choices],
                     [key for key, _label, _detail in game.story_relic_choice_options()],
                 )
-                self.assertTrue(game.choose_active_cutscene_option(0))
-                self.assertFalse(game.story_intro_pending)
-                self.assertIsNone(game.active_cutscene)
-            finally:
-                pygame.quit()
 
-    def test_active_cutscene_persists_and_guest_dialogue_tree_resolves(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, seed=2302)
-            try:
-                self.assertIsNotNone(game.active_cutscene)
+                # --- Guest dialogue-tree lifecycle (save before dismissing) ---
                 self.assertTrue(game.save_run())
                 saved = json.loads(game.save_path.read_text(encoding="utf-8"))
                 self.assertEqual(
@@ -751,9 +734,9 @@ class StoryMode20Tests(unittest.TestCase):
                 self.assertEqual(
                     loaded.active_cutscene.asset_id, "story_guest_dialogue"
                 )
-                choices = loaded.active_cutscene_choices()
+                dialogue_choices = loaded.active_cutscene_choices()
                 self.assertEqual(
-                    [choice.choice_key for choice in choices],
+                    [choice.choice_key for choice in dialogue_choices],
                     ["aid", "bargain", "defy"],
                 )
                 self.assertTrue(loaded.choose_active_cutscene_option(2))
@@ -761,8 +744,13 @@ class StoryMode20Tests(unittest.TestCase):
                 self.assertEqual(guest.resolved_choice, "defy")
                 self.assertEqual(loaded.run_stats.story_choices, 1)
                 self.assertIsNone(loaded.active_cutscene)
+
+                # --- Dismiss the intro on the original (un-saved) game ---
+                self.assertTrue(game.choose_active_cutscene_option(0))
+                self.assertFalse(game.story_intro_pending)
+                self.assertIsNone(game.active_cutscene)
             finally:
-                pygame.quit()
+                pass
 
     def test_story_guest_and_menus_are_renderable(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -784,7 +772,7 @@ class StoryMode20Tests(unittest.TestCase):
                 game.state = "about"
                 game.draw_about_screen()
             finally:
-                pygame.quit()
+                pass
 
 
 if __name__ == "__main__":

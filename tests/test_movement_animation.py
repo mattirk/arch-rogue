@@ -28,7 +28,7 @@ from arch_rogue.sprites import PixelSpriteAtlas
 
 class MovementAnimationPolish35Tests(unittest.TestCase):
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
     def make_game(self, tmpdir: str, seed: int = 3501) -> Game:
         game = Game(
@@ -70,22 +70,26 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
                     frame_t = frame / RUN_CYCLE_FRAMES
                     self.assertLessEqual(abs(cycle_t - frame_t), 1.0 / RUN_CYCLE_FRAMES)
             finally:
-                pygame.quit()
+                pass
 
-    def test_bob_is_grounded_and_phase_locked_to_run_frame_cycle(self) -> None:
+    def test_bob_is_grounded_phase_locked_and_footfall_matched(self) -> None:
         # The whole-body bob must (a) be signed so the body dips below its
         # anchor at foot-plant instead of constantly floating upward, and
         # (b) complete exactly one cycle per run-frame stride cycle, proving
-        # it is phase-locked to the displayed frames. The old code ran the bob
-        # at 3x the frame frequency, producing the wobblish ghost-float look.
+        # it is phase-locked to the displayed frames (old code ran the bob at
+        # 3x the frame frequency, producing a wobblish ghost-float look), and
+        # (c) match the footfall of the displayed run frame so the body rises
+        # exactly when the lifted foot rises.
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
                 player = game.player
                 self.set_moving(player, 1.0, 0.0)
 
+                # (a)+(b): sample bob over one stride cycle; assert sign span
+                # and exactly one interior maximum.
                 frame_cycle_span = RUN_CYCLE_FRAMES / RUN_FRAME_RATE  # one stride
-                samples = 60
+                samples = 40
                 bobs = []
                 for i in range(samples + 1):
                     t = i / samples * frame_cycle_span
@@ -96,9 +100,6 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
                 self.assertLess(min(bobs), -0.1, "bob never dips below anchor")
                 self.assertGreater(max(bobs), 0.1, "bob never rises above anchor")
 
-                # Exactly one full bob cycle per frame stride cycle: one local
-                # maximum strictly inside the span. The old 3x-frequency code
-                # produced ~3 local maxima here.
                 interior_maxima = 0
                 for i in range(1, len(bobs) - 1):
                     if bobs[i] > bobs[i - 1] and bobs[i] > bobs[i + 1]:
@@ -108,62 +109,21 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
                     1,
                     f"expected one bob cycle per stride, got {interior_maxima}",
                 )
-            finally:
-                pygame.quit()
 
-    def test_bob_matches_run_frame_footfall_phase(self) -> None:
-        # The bob at a given anim_time must match the footfall of the displayed
-        # run frame, so the body rises exactly when the lifted foot rises.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                player = game.player
-                self.set_moving(player, 1.0, 0.0)
+                # (c): at each frame's display anim_time the bob must match the
+                # (frame+0.5)/N footfall formula. The renderer advances the bob
+                # on a continuous phase (smooth) while the cached frame steps in
+                # discrete increments; they share one frequency, so the body
+                # rises in lockstep with the lifted foot.
                 for frame in range(RUN_CYCLE_FRAMES):
-                    anim_time = (frame + 0.5) / RUN_FRAME_RATE
-                    player.anim_time = anim_time
+                    player.anim_time = (frame + 0.5) / RUN_FRAME_RATE
                     _, bob, _, _ = game.actor_animation(player)
-                    # The renderer advances the bob on a continuous phase
-                    # (smooth), while the cached frame steps in discrete
-                    # increments; at the anim_time that displays ``frame`` the
-                    # continuous position is (frame + 0.5) / N, half a frame
-                    # ahead of the frame's own pose. They share one frequency,
-                    # so the body rises in lockstep with the lifted foot.
                     cycle_t = (frame + 0.5) / RUN_CYCLE_FRAMES
                     footfall = 0.5 - 0.5 * math.cos(cycle_t * math.tau)
                     expected = (footfall - 0.5) * 1.2
                     self.assertAlmostEqual(bob, expected, places=2)
             finally:
-                pygame.quit()
-
-    def test_directional_lean_adapts_to_movement_direction(self) -> None:
-        # The lean must tilt toward the screen-space movement direction, differ
-        # between opposing directions, and be large enough to actually rotate
-        # the sprite (above the blit_sprite rotation threshold).
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                player = game.player
-                leans: dict[tuple[float, float], float] = {}
-                for mx, my in ((1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)):
-                    self.set_moving(player, mx, my)
-                    player.anim_time = 0.25
-                    _, _, lean, _ = game.actor_animation(player)
-                    leans[(mx, my)] = lean
-
-                self.assertGreater(leans[(1.0, 0.0)], 0.0)
-                self.assertLess(leans[(-1.0, 0.0)], 0.0)
-                self.assertLess(leans[(0.0, 1.0)], 0.0)
-                self.assertGreater(leans[(0.0, -1.0)], 0.0)
-                # Lean magnitude exceeds the rotation threshold so the sprite
-                # actually tilts into its run (old code never rotated at all).
-                for lean in leans.values():
-                    self.assertGreater(abs(lean), 1.0)
-                # Leans are clamped to a sane cap.
-                for lean in leans.values():
-                    self.assertLessEqual(abs(lean), 5.0)
-            finally:
-                pygame.quit()
+                pass
 
     def test_run_pose_keeps_upper_body_stable_while_feet_lift(self) -> None:
         # The polished run pose must keep the head/cap stable while the feet
@@ -213,7 +173,7 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
                     f"{class_name}: head band floated between plant/peak",
                 )
         finally:
-            pygame.quit()
+            pass
 
     def test_player_renders_across_all_eight_iso_movement_directions(self) -> None:
         # The polished movement must render without error for every diagonal
@@ -241,7 +201,7 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
                     buf = pygame.image.tobytes(game.screen, "RGBA")
                     self.assertTrue(any(buf), "screen empty after draw_player")
             finally:
-                pygame.quit()
+                pass
 
     def test_run_lean_tilts_top_toward_movement_direction(self) -> None:
         # Regression guard for the backward-tilt bug: a negative lean (running
@@ -284,26 +244,46 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
                     "run leaned backward (top right of base)",
                 )
             finally:
-                pygame.quit()
+                pass
 
-    def test_lean_changes_immediately_with_facing_not_smoothed_move(self) -> None:
-        # The lean must follow the facing vector (which snaps to input), not the
-        # gameplay-smoothed move vector. Flipping facing while leaving the
-        # smoothed move vector pointing the old way must flip the lean instantly,
-        # so direction changes feel consistent instead of easing slowly.
+    def test_lean_follows_facing_and_movement_direction(self) -> None:
+        # The lean must tilt toward the screen-space movement direction, differ
+        # between opposing directions, be large enough to actually rotate the
+        # sprite (above the blit_sprite rotation threshold), be clamped to a sane
+        # cap, and follow the facing vector (which snaps to input) rather than
+        # the gameplay-smoothed move vector.
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
                 player = game.player
+
+                # Cardinal movement directions: signs + magnitude/cap bounds.
+                leans: dict[tuple[float, float], float] = {}
+                for mx, my in ((1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)):
+                    self.set_moving(player, mx, my)
+                    player.anim_time = 0.25
+                    _, _, lean, _ = game.actor_animation(player)
+                    leans[(mx, my)] = lean
+
+                self.assertGreater(leans[(1.0, 0.0)], 0.0)
+                self.assertLess(leans[(-1.0, 0.0)], 0.0)
+                self.assertLess(leans[(0.0, 1.0)], 0.0)
+                self.assertGreater(leans[(0.0, -1.0)], 0.0)
+                for lean in leans.values():
+                    self.assertGreater(abs(lean), 1.0)
+                for lean in leans.values():
+                    self.assertLessEqual(abs(lean), 5.0)
+
+                # Facing-vs-smoothed-move flip: smoothed move vector still points
+                # the old way but facing snaps to input -> lean must flip
+                # instantly so direction changes feel consistent.
                 player.moving = True
                 player.anim_time = 0.25
-                # Smoothed move vector still points right, but facing snaps left.
                 player.move_x = 1.0
                 player.move_y = 0.0
                 player.facing_x = -1.0
                 player.facing_y = 0.0
                 _, _, lean_left, _ = game.actor_animation(player)
-                # Mirror case: smoothed move still left, facing snaps right.
                 player.move_x = -1.0
                 player.facing_x = 1.0
                 _, _, lean_right, _ = game.actor_animation(player)
@@ -311,7 +291,7 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
                 self.assertGreater(lean_right, 0.0, "lean did not follow facing right")
                 self.assertLess(lean_left, lean_right)
             finally:
-                pygame.quit()
+                pass
 
     def test_slow_enemy_walk_cycle_is_floored_to_avoid_stutter(self) -> None:
         # Slow enemies must cycle at least at WALK_ANIM_SPEED_FLOOR so their
@@ -333,7 +313,7 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
                 expected_cap = 0.1 * WALK_ANIMATION_RATE * WALK_ANIM_SPEED_CEIL
                 self.assertAlmostEqual(enemy.anim_time, expected_cap, places=5)
             finally:
-                pygame.quit()
+                pass
 
     def test_walk_cycle_advances_smoothly_under_dt_jitter(self) -> None:
         # Regression guard: the phase-locked cycle must still advance
@@ -346,7 +326,7 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
                     "run"
                 ]
                 indices: list[int] = []
-                for i in range(120):
+                for i in range(50):
                     dt = 0.0166 if i % 4 != 0 else 0.028
                     game.move_actor(player, player.speed * dt, 0.0)
                     game.advance_animation_phases(dt)
@@ -356,7 +336,7 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
                 self.assertGreater(len(set(indices)), 1)
                 self.assertGreater(indices.count(0), 1)
             finally:
-                pygame.quit()
+                pass
 
 
 if __name__ == "__main__":

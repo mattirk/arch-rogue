@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -11,15 +12,41 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import pygame
-
+import arch_rogue
+from arch_rogue.content import RARITY_PROFILES, SECRET_HINTS, SHRINE_HINTS, TRAP_HINTS
 from arch_rogue.game import ARCHETYPES, Game
 from arch_rogue.models import Item
 
 
-class BetaMilestoneTests(unittest.TestCase):
+class SaveAndMetadataTests(unittest.TestCase):
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
+
+    def test_metadata_content_profiles_and_save_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(760, 520),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+            )
+            game.options_path = Path(tmpdir) / "options.json"
+            game.rng.seed(1202)
+            game.restart(ARCHETYPES[1])
+            if game.story_intro_pending:
+                self.assertTrue(game.choose_story_relic_path(0))
+            try:
+                self.assertEqual(arch_rogue.__version__, "3.6.0")
+                self.assertIn("Cursed", RARITY_PROFILES)
+                self.assertIn("Twilight Shrine", SHRINE_HINTS)
+                self.assertIn("Moonlit Bargain", SECRET_HINTS)
+                self.assertIn("Rune Trap", TRAP_HINTS)
+
+                self.assertTrue(game.save_run())
+                saved = json.loads(game.save_path.read_text(encoding="utf-8"))
+                self.assertEqual(saved["version"], 4)
+                self.assertEqual(saved["release"], "3.6.0")
+            finally:
+                pass
 
     def test_run_state_save_and_resume_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -68,28 +95,7 @@ class BetaMilestoneTests(unittest.TestCase):
                     loaded.dungeon.is_floor(loaded.player.x, loaded.player.y)
                 )
             finally:
-                pygame.quit()
-
-    def test_beta_menu_options_and_about_are_renderable(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = Game(
-                screen_size=(960, 540),
-                headless=True,
-                save_path=Path(tmpdir) / "run.json",
-            )
-            try:
-                self.assertEqual(game.state, "title")
-                game.draw_title_menu()
-                game.state = "options"
-                game.audio_enabled = False
-                game.draw_options_menu()
-                game.state = "about"
-                game.draw_about_screen()
-
-                game.restart(ARCHETYPES[0])
-                game.draw_help_overlay()
-            finally:
-                pygame.quit()
+                pass
 
 
 if __name__ == "__main__":

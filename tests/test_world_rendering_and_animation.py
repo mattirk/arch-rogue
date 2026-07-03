@@ -29,7 +29,7 @@ from arch_rogue.sprites import PixelSpriteAtlas
 
 class GraphicsAnimation21Tests(unittest.TestCase):
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
     def make_game(self, tmpdir: str, seed: int = 2101) -> Game:
         game = Game(
@@ -55,7 +55,7 @@ class GraphicsAnimation21Tests(unittest.TestCase):
     def opaque_pixels(self, surface: pygame.Surface) -> int:
         return pygame.mask.from_surface(surface).count()
 
-    def test_sprite_atlas_exposes_cached_animation_frames_for_milestone_2_1(
+    def test_sprite_atlas_exposes_cached_animation_frames(
         self,
     ) -> None:
         pygame.init()
@@ -113,7 +113,7 @@ class GraphicsAnimation21Tests(unittest.TestCase):
         self.assert_surface(atlas.secret_frame(0.2))
         self.assert_surface(atlas.story_guest_frame(0.2))
 
-    def test_milestone_2_1_world_rendering_handles_animated_visual_states(self) -> None:
+    def test_world_rendering_handles_animated_visual_states(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
@@ -212,13 +212,12 @@ class GraphicsAnimation21Tests(unittest.TestCase):
                 )
 
                 game.draw()
-            finally:
-                pygame.quit()
 
-    def test_player_cooldown_pips_only_draw_active_progress(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
+                # Cooldown pips must only draw active progress: an all-zero
+                # state leaves the HUD region untouched, while partial progress
+                # paints visible pips. Reuses the same Game/floor since the pip
+                # renderer only reads player timers and establishes its own
+                # screen-fill baseline.
                 game.screen.fill((17, 19, 23))
                 before = self.surface_bytes(game.screen)
 
@@ -235,13 +234,23 @@ class GraphicsAnimation21Tests(unittest.TestCase):
                 game.draw_hud_cooldown_pips(hud_bounds)
                 self.assertNotEqual(before, self.surface_bytes(game.screen))
             finally:
-                pygame.quit()
+                pass
 
     def test_visual_effect_timers_cleanup_without_save_schema_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
+                # Enemy run animation must advance via the dedicated phase
+                # accumulator rather than the old distance-based advance.
                 enemy = game.enemies[0]
+                enemy.moving = True
+                enemy.anim_time = 0.0
+                before = enemy.anim_time
+                game.advance_animation_phases(0.0166)
+                self.assertGreater(enemy.anim_time, before)
+
+                # Visual effect timers must all decay and clear together without
+                # touching the save schema.
                 game.enemy_hit_flashes[id(enemy)] = 0.05
                 game.player_hit_flash = 0.05
                 game.set_player_action_visual("attack", 0.05)
@@ -259,7 +268,7 @@ class GraphicsAnimation21Tests(unittest.TestCase):
                 self.assertEqual(game.slashes, [])
                 self.assertEqual(game.impact_effects, [])
             finally:
-                pygame.quit()
+                pass
 
     def test_run_animation_advances_smoothly_under_dt_jitter(self) -> None:
         # The run cycle must advance monotonically without skipping frames
@@ -303,22 +312,7 @@ class GraphicsAnimation21Tests(unittest.TestCase):
                 # And it must cycle around (visit frame 0 more than once).
                 self.assertGreater(indices.count(0), 1)
             finally:
-                pygame.quit()
-
-    def test_enemy_run_animation_advances_with_steady_phase(self) -> None:
-        # Enemy run animation must also advance smoothly via the dedicated
-        # phase accumulator rather than the old distance-based advance.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                enemy = game.enemies[0]
-                enemy.moving = True
-                enemy.anim_time = 0.0
-                before = enemy.anim_time
-                game.advance_animation_phases(0.0166)
-                self.assertGreater(enemy.anim_time, before)
-            finally:
-                pygame.quit()
+                pass
 
 
 if __name__ == "__main__":

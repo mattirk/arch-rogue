@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import sys
 import tempfile
@@ -15,14 +14,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import pygame
 
-import arch_rogue
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 
 
 class GeneralCleanup25Tests(unittest.TestCase):
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
     def make_game(self, tmpdir: str, seed: int = 2505) -> Game:
         game = Game(
@@ -40,19 +38,7 @@ class GeneralCleanup25Tests(unittest.TestCase):
         game.active_cutscene = None
         return game
 
-    def test_2_5_metadata_and_save_release_are_current(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                self.assertEqual(arch_rogue.__version__, "3.6.0")
-                self.assertTrue(game.save_run())
-                saved = json.loads(game.save_path.read_text(encoding="utf-8"))
-                self.assertEqual(saved["version"], 4)
-                self.assertEqual(saved["release"], "3.6.0")
-            finally:
-                pygame.quit()
-
-    def test_2_5_dark_floor_draws_no_player_light_artifact_overlays(self) -> None:
+    def test_dark_floor_draws_no_player_light_artifact_overlays(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
@@ -77,7 +63,7 @@ class GeneralCleanup25Tests(unittest.TestCase):
                     game.can_see_world_position(game.player.x, game.player.y)
                 )
             finally:
-                pygame.quit()
+                pass
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -23,7 +24,6 @@ from arch_rogue.content import (
     COMPLETED_BRANCH_BONUS_SPELL,
     SKILL_NODES,
     combo_bonus,
-    combo_bonus_preview,
     combo_bonus_steps,
     completed_branch_bonus,
     completed_branches,
@@ -37,7 +37,7 @@ from arch_rogue.game import Game
 
 class SkillPointProgression33Tests(unittest.TestCase):
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
     def make_game(
         self, tmpdir: str, archetype_index: int = 0, seed: int = 3301
@@ -57,33 +57,21 @@ class SkillPointProgression33Tests(unittest.TestCase):
 
     # --- Skill point earning ------------------------------------------------
 
-    def test_player_starts_with_zero_skill_points(self) -> None:
+    def test_skill_point_earning(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             try:
+                # Players start a run with zero banked skill points.
                 self.assertEqual(game.player.skill_points, 0)
-            finally:
-                pygame.quit()
-
-    def test_level_up_awards_one_skill_point(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=0)
-            try:
                 # Force a level-up by feeding enough XP. gain_xp returns True
-                # when a level boundary is crossed.
+                # when a level boundary is crossed and awards exactly one point.
                 before_level = game.player.level
                 before_points = game.player.skill_points
                 leveled = game.player.gain_xp(game.player.next_xp + 1)
                 self.assertTrue(leveled)
                 self.assertEqual(game.player.level, before_level + 1)
                 self.assertEqual(game.player.skill_points, before_points + 1)
-            finally:
-                pygame.quit()
-
-    def test_grant_skill_point_awards_points_and_floater(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=0)
-            try:
+                # Explicit grants award points and surface a floater.
                 before = game.player.skill_points
                 before_floaters = len(game.floaters)
                 game.grant_skill_point(amount=2, reason="test reward")
@@ -95,46 +83,31 @@ class SkillPointProgression33Tests(unittest.TestCase):
                 game.grant_skill_point(amount=-3)
                 self.assertEqual(game.player.skill_points, before + 2)
             finally:
-                pygame.quit()
+                pass
 
     # --- Skill point spending -----------------------------------------------
 
-    def test_choose_skill_upgrade_spends_a_point(self) -> None:
+    def test_choose_skill_upgrade_spending_rules(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             try:
+                # No points banked — the choice is rejected without spending.
+                self.assertEqual(game.player.skill_points, 0)
+                self.assertFalse(game.choose_skill_upgrade("warden_bulwark"))
+                self.assertEqual(game.player.skill_points, 0)
+                self.assertNotIn("warden_bulwark", game.player.skill_upgrades)
+                # Bank one point: the first valid spend succeeds.
                 game.player.skill_points = 1
                 self.assertTrue(game.choose_skill_upgrade("warden_bulwark"))
                 self.assertEqual(game.player.skill_points, 0)
                 self.assertIn("warden_bulwark", game.player.skill_upgrades)
-            finally:
-                pygame.quit()
-
-    def test_choose_skill_upgrade_rejects_without_skill_points(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=0)
-            try:
-                self.assertEqual(game.player.skill_points, 0)
-                # No points banked — the choice is rejected without spending.
-                self.assertFalse(game.choose_skill_upgrade("warden_bulwark"))
-                self.assertEqual(game.player.skill_points, 0)
-                self.assertNotIn("warden_bulwark", game.player.skill_upgrades)
-            finally:
-                pygame.quit()
-
-    def test_choose_skill_upgrade_does_not_overspend(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=0)
-            try:
-                game.player.skill_points = 1
-                # First spend succeeds.
-                self.assertTrue(game.choose_skill_upgrade("warden_bulwark"))
-                # Second spend fails (no points left) even if the node is valid.
+                # A second spend fails (no points left) even if the node is
+                # valid — the spender never goes negative.
                 self.assertFalse(game.choose_skill_upgrade("warden_riposte"))
                 self.assertEqual(game.player.skill_points, 0)
                 self.assertNotIn("warden_riposte", game.player.skill_upgrades)
             finally:
-                pygame.quit()
+                pass
 
     def test_grant_skill_upgrade_does_not_spend_points(self) -> None:
         """Shrine/altar bonus grants must not consume banked skill points."""
@@ -148,7 +121,7 @@ class SkillPointProgression33Tests(unittest.TestCase):
                 # Points are untouched — bonus grants are free.
                 self.assertEqual(game.player.skill_points, 3)
             finally:
-                pygame.quit()
+                pass
 
     # --- Cross-branch tag interactions --------------------------------------
 
@@ -171,7 +144,7 @@ class SkillPointProgression33Tests(unittest.TestCase):
         assert reckoning is not None
         self.assertIn("Guard", reckoning.cross_branch_tags)
 
-    def test_cross_branch_tag_bonus_only_applies_when_both_halves_acquired(self):
+    def test_cross_branch_tag_bonus_rules(self) -> None:
         # Acquiring only the modifier node (no matching tagged nodes) yields no
         # cross-branch bonus.
         only_modifier = {"warden_iron_vow"}  # boosts Counter, but no Counter nodes
@@ -179,8 +152,6 @@ class SkillPointProgression33Tests(unittest.TestCase):
         # Acquiring only tagged nodes (no modifier) yields no bonus either.
         only_tagged = {"warden_bulwark", "warden_riposte"}  # Guard + Counter tags
         self.assertEqual(cross_branch_tag_bonus(only_tagged), (0, 0))
-
-    def test_cross_branch_tag_bonus_compounds_across_branches(self) -> None:
         # Acquiring Iron Vow (boosts Counter) plus Counter-tagged nodes applies
         # Iron Vow's melee bonus once per Counter-tagged acquired node. Note
         # that warden_reckoning is itself a Counter-tagged modifier that boosts
@@ -221,69 +192,53 @@ class SkillPointProgression33Tests(unittest.TestCase):
                     cross_branch_tag_bonus(set(game.player.skill_upgrades)),
                 )
             finally:
-                pygame.quit()
+                pass
 
     # --- Combo bonus scaling -------------------------------------------------
 
-    def test_combo_bonus_steps_requires_two_completed_branches(self) -> None:
+    def test_combo_bonus_scaling_and_completed_branch_bonus(self) -> None:
+        from arch_rogue.content import skill_branches_for_archetype
+
+        warden_nodes = skill_nodes_for_archetype("Warden")
+        branches = skill_branches_for_archetype("Warden")
+        # The Warden tree exposes four distinct branches.
+        self.assertGreaterEqual(len(branches), 4)
+        branch_keys = [{n.key for n in warden_nodes if n.branch == b} for b in branches]
+        # combo_bonus_steps table for 0..4 completed branches.
         self.assertEqual(combo_bonus_steps(0), 0)
         self.assertEqual(combo_bonus_steps(1), 0)
         self.assertEqual(combo_bonus_steps(2), 1)
         self.assertEqual(combo_bonus_steps(3), 2)
-
-    def test_combo_bonus_zero_below_two_completed_branches(self) -> None:
-        warden_nodes = skill_nodes_for_archetype("Warden")
-        branches = [n.branch for n in warden_nodes]
-        unique_branches = list(dict.fromkeys(branches))
-        self.assertGreaterEqual(len(unique_branches), 4)
-        # Completing zero branches yields no bonus at all.
-        melee, spell, hp = combo_bonus(set(), "Warden")
-        self.assertEqual((melee, spell, hp), (0, 0, 0))
-        # Completing exactly one branch (Bulwark) yields the depth bonus only
-        # (no combo breadth bonus yet).
-        bulwark_keys = {n.key for n in warden_nodes if n.branch == "Bulwark"}
-        self.assertTrue(bulwark_keys)
-        melee, spell, hp = combo_bonus(bulwark_keys, "Warden")
-        self.assertEqual(melee, COMPLETED_BRANCH_BONUS_MELEE)
-        self.assertEqual(spell, COMPLETED_BRANCH_BONUS_SPELL)
-        self.assertEqual(hp, COMPLETED_BRANCH_BONUS_MAX_HP)
-
-    def test_combo_bonus_scales_with_completed_branch_count(self) -> None:
-        warden_nodes = skill_nodes_for_archetype("Warden")
-        all_keys = {n.key for n in warden_nodes}
-        # Completing all four Warden branches yields the depth bonus (4x) plus
-        # the combo breadth bonus (3 steps, since 4 completed - 1 = 3 steps).
-        melee, spell, hp = combo_bonus(all_keys, "Warden")
-        expected_melee = (
-            4 * COMPLETED_BRANCH_BONUS_MELEE + 3 * COMBO_BONUS_PER_STEP_MELEE
-        )
-        expected_spell = (
-            4 * COMPLETED_BRANCH_BONUS_SPELL + 3 * COMBO_BONUS_PER_STEP_SPELL
-        )
-        expected_hp = (
-            4 * COMPLETED_BRANCH_BONUS_MAX_HP + 3 * COMBO_BONUS_PER_STEP_MAX_HP
-        )
-        self.assertEqual(melee, expected_melee)
-        self.assertEqual(spell, expected_spell)
-        self.assertEqual(hp, expected_hp)
-
-    def test_completed_branch_bonus_is_depth_only(self) -> None:
-        # The completed-branch bonus is the depth layer alone, with no combo
-        # breadth component. One finished branch yields one depth step.
-        warden_nodes = skill_nodes_for_archetype("Warden")
-        bulwark_keys = {n.key for n in warden_nodes if n.branch == "Bulwark"}
-        melee, spell, hp = completed_branch_bonus(bulwark_keys, "Warden")
-        self.assertEqual(melee, COMPLETED_BRANCH_BONUS_MELEE)
-        self.assertEqual(spell, COMPLETED_BRANCH_BONUS_SPELL)
-        self.assertEqual(hp, COMPLETED_BRANCH_BONUS_MAX_HP)
-        # Two finished branches yield two depth steps (combo breadth is
-        # separate, exercised via combo_bonus).
-        riposte_keys = {n.key for n in warden_nodes if n.branch == "Riposte"}
-        two = bulwark_keys | riposte_keys
-        melee, spell, hp = completed_branch_bonus(two, "Warden")
-        self.assertEqual(melee, 2 * COMPLETED_BRANCH_BONUS_MELEE)
-        self.assertEqual(spell, 2 * COMPLETED_BRANCH_BONUS_SPELL)
-        self.assertEqual(hp, 2 * COMPLETED_BRANCH_BONUS_MAX_HP)
+        self.assertEqual(combo_bonus_steps(4), 3)
+        # Loop over 0..4 completed branches and check both the depth-only
+        # completed_branch_bonus and the depth+breadth combo_bonus, plus the
+        # breadth delta separating the two layers.
+        for c in range(0, 5):
+            keys: set[str] = set()
+            for i in range(c):
+                keys |= branch_keys[i]
+            steps = max(0, c - 1)
+            depth_melee, depth_spell, depth_hp = completed_branch_bonus(keys, "Warden")
+            self.assertEqual(depth_melee, c * COMPLETED_BRANCH_BONUS_MELEE)
+            self.assertEqual(depth_spell, c * COMPLETED_BRANCH_BONUS_SPELL)
+            self.assertEqual(depth_hp, c * COMPLETED_BRANCH_BONUS_MAX_HP)
+            melee, spell, hp = combo_bonus(keys, "Warden")
+            self.assertEqual(
+                melee,
+                c * COMPLETED_BRANCH_BONUS_MELEE + steps * COMBO_BONUS_PER_STEP_MELEE,
+            )
+            self.assertEqual(
+                spell,
+                c * COMPLETED_BRANCH_BONUS_SPELL + steps * COMBO_BONUS_PER_STEP_SPELL,
+            )
+            self.assertEqual(
+                hp,
+                c * COMPLETED_BRANCH_BONUS_MAX_HP + steps * COMBO_BONUS_PER_STEP_MAX_HP,
+            )
+            # combo_bonus - completed_branch_bonus isolates the breadth layer.
+            self.assertEqual(melee - depth_melee, steps * COMBO_BONUS_PER_STEP_MELEE)
+            self.assertEqual(spell - depth_spell, steps * COMBO_BONUS_PER_STEP_SPELL)
+            self.assertEqual(hp - depth_hp, steps * COMBO_BONUS_PER_STEP_MAX_HP)
 
     def test_completed_branches_reports_all_when_tree_finished(self) -> None:
         warden_nodes = skill_nodes_for_archetype("Warden")
@@ -296,7 +251,7 @@ class SkillPointProgression33Tests(unittest.TestCase):
             self.assertTrue(branch_nodes)
             self.assertTrue(all(n.key in all_keys for n in branch_nodes))
 
-    def test_combo_bonus_applied_to_player_stats_on_branch_completion(self):
+    def test_combo_bonus_applied_and_save_consistent_on_full_tree(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             try:
@@ -345,8 +300,29 @@ class SkillPointProgression33Tests(unittest.TestCase):
                 self.assertEqual(c_melee, expected_bonus_melee)
                 self.assertEqual(c_spell, expected_bonus_spell)
                 self.assertEqual(c_hp, expected_bonus_hp)
+                game.save_run()
+
+                game2 = Game(
+                    screen_size=(960, 600),
+                    headless=True,
+                    save_path=Path(tmpdir) / "run.json",
+                )
+                game2.options_path = Path(tmpdir) / "options.json"
+                game2.rng.seed(4242)
+                self.assertTrue(game2.load_run())
+                # Combo baseline reflects the completed branches after restore.
+                _, c2_melee, c2_spell, c2_hp = game2.combo_state()
+                self.assertEqual(c2_melee, expected_bonus_melee)
+                self.assertEqual(c2_spell, expected_bonus_spell)
+                self.assertEqual(c2_hp, expected_bonus_hp)
+                # The combo bonus is not double-applied on restore: the stored
+                # stat totals already include it, and the baseline matches.
+                self.assertEqual(
+                    getattr(game2.player, "_combo_applied", (0, 0, 0)),
+                    (c2_melee, c2_spell, c2_hp),
+                )
             finally:
-                pygame.quit()
+                pass
 
     def test_combo_preview_shows_next_tier_for_completing_node(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -395,41 +371,11 @@ class SkillPointProgression33Tests(unittest.TestCase):
                     4 * COMPLETED_BRANCH_BONUS_MAX_HP + 3 * COMBO_BONUS_PER_STEP_MAX_HP,
                 )
             finally:
-                pygame.quit()
+                pass
 
     # --- Save migration -----------------------------------------------------
 
-    def test_older_save_without_skill_points_defaults_to_zero(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=0)
-            try:
-                game.player.skill_points = 2
-                game.choose_skill_upgrade("warden_bulwark")
-                game.save_run()
-                save_path = Path(tmpdir) / "run.json"
-                import json
-
-                data = json.loads(save_path.read_text())
-                # Simulate a pre-3.3 save by stripping skill_points.
-                data["player"].pop("skill_points", None)
-                save_path.write_text(json.dumps(data))
-
-                game2 = Game(
-                    screen_size=(960, 600),
-                    headless=True,
-                    save_path=save_path,
-                )
-                game2.options_path = Path(tmpdir) / "options.json"
-                game2.rng.seed(7777)
-                self.assertTrue(game2.load_run())
-                # Older saves default to 0 skill points (no free windfall).
-                self.assertEqual(game2.player.skill_points, 0)
-                # The acquired node is preserved.
-                self.assertIn("warden_bulwark", game2.player.skill_upgrades)
-            finally:
-                pygame.quit()
-
-    def test_save_and_restore_preserves_skill_points_and_combo_baseline(self):
+    def test_save_and_restore_preserves_skill_points_and_migrates_missing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             try:
@@ -438,12 +384,16 @@ class SkillPointProgression33Tests(unittest.TestCase):
                 game.choose_skill_upgrade("warden_riposte")
                 # 3 points remain banked.
                 self.assertEqual(game.player.skill_points, 3)
+                save_path = Path(tmpdir) / "run.json"
                 game.save_run()
 
+                # Case 1: a normal restore preserves banked points, acquired
+                # upgrades, and the combo baseline (seeded so future picks only
+                # apply a delta).
                 game2 = Game(
                     screen_size=(960, 600),
                     headless=True,
-                    save_path=Path(tmpdir) / "run.json",
+                    save_path=save_path,
                 )
                 game2.options_path = Path(tmpdir) / "options.json"
                 game2.rng.seed(9999)
@@ -453,62 +403,32 @@ class SkillPointProgression33Tests(unittest.TestCase):
                     game2.player.skill_upgrades,
                     ["warden_bulwark", "warden_riposte"],
                 )
-                # Combo baseline is seeded so a future pick only applies delta.
                 self.assertEqual(
                     getattr(game2.player, "_combo_applied", None), (0, 0, 0)
                 )
-            finally:
-                pygame.quit()
 
-    def test_save_restore_with_completed_branches_keeps_combo_consistent(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=0)
-            try:
-                game.player.skill_points = 100
-                warden_nodes = sorted(
-                    skill_nodes_for_archetype("Warden"), key=lambda n: n.tier
-                )
-                for node in warden_nodes:
-                    self.assertTrue(game.choose_skill_upgrade(node.key))
-                # All four branches complete → depth (4x) + combo (3 steps).
-                expected_melee = (
-                    4 * COMPLETED_BRANCH_BONUS_MELEE + 3 * COMBO_BONUS_PER_STEP_MELEE
-                )
-                expected_spell = (
-                    4 * COMPLETED_BRANCH_BONUS_SPELL + 3 * COMBO_BONUS_PER_STEP_SPELL
-                )
-                expected_hp = (
-                    4 * COMPLETED_BRANCH_BONUS_MAX_HP + 3 * COMBO_BONUS_PER_STEP_MAX_HP
-                )
-                _, c_melee, _, _ = game.combo_state()
-                self.assertEqual(c_melee, expected_melee)
-                game.save_run()
+                # Case 2: a pre-3.3 save stripped of skill_points migrates to
+                # zero (no free windfall) while preserving acquired nodes.
+                data = json.loads(save_path.read_text())
+                data["player"].pop("skill_points", None)
+                save_path.write_text(json.dumps(data))
 
-                game2 = Game(
+                game3 = Game(
                     screen_size=(960, 600),
                     headless=True,
-                    save_path=Path(tmpdir) / "run.json",
+                    save_path=save_path,
                 )
-                game2.options_path = Path(tmpdir) / "options.json"
-                game2.rng.seed(4242)
-                self.assertTrue(game2.load_run())
-                # Combo baseline reflects the completed branches.
-                _, c2_melee, c2_spell, c2_hp = game2.combo_state()
-                self.assertEqual(c2_melee, expected_melee)
-                self.assertEqual(c2_spell, expected_spell)
-                self.assertEqual(c2_hp, expected_hp)
-                # The combo bonus is not double-applied on restore: the stored
-                # stat totals already include it, and the baseline matches.
-                self.assertEqual(
-                    getattr(game2.player, "_combo_applied", (0, 0, 0)),
-                    (c2_melee, c2_spell, c2_hp),
-                )
+                game3.options_path = Path(tmpdir) / "options.json"
+                game3.rng.seed(7777)
+                self.assertTrue(game3.load_run())
+                self.assertEqual(game3.player.skill_points, 0)
+                self.assertIn("warden_bulwark", game3.player.skill_upgrades)
             finally:
-                pygame.quit()
+                pass
 
     # --- Four-branch tree expansion ----------------------------------------
 
-    def test_every_archetype_has_four_branches_and_twenty_nodes(self) -> None:
+    def test_skill_tree_shape_four_branches_twenty_nodes_tier4_modifiers(self) -> None:
         from arch_rogue.content import skill_branches_for_archetype
 
         for archetype in ARCHETYPES:
@@ -534,15 +454,10 @@ class SkillPointProgression33Tests(unittest.TestCase):
                 )
                 tiers = {n.tier for n in branch_nodes}
                 self.assertEqual(tiers, set(range(1, 6)))
-
-    def test_every_branch_has_a_tier4_cross_branch_modifier(self) -> None:
-        # Each archetype's four tier-4 keystones carry cross_branch_tags so
-        # committing deep into one branch amplifies another branch's tagged
-        # skills. This is the cross-branch interaction contract.
-        for archetype in ARCHETYPES:
-            tier4 = [
-                n for n in skill_nodes_for_archetype(archetype.name) if n.tier == 4
-            ]
+            # Each archetype's four tier-4 keystones carry cross_branch_tags so
+            # committing deep into one branch amplifies another branch's tagged
+            # skills. This is the cross-branch interaction contract.
+            tier4 = [n for n in nodes if n.tier == 4]
             self.assertEqual(len(tier4), 4)
             modifiers = [n for n in tier4 if n.cross_branch_tags]
             self.assertEqual(
@@ -552,70 +467,8 @@ class SkillPointProgression33Tests(unittest.TestCase):
                 "modifiers",
             )
 
-    def test_combo_bonus_steps_scales_to_four_branches(self) -> None:
-        # With four branches, the combo can reach three steps.
-        self.assertEqual(combo_bonus_steps(0), 0)
-        self.assertEqual(combo_bonus_steps(1), 0)
-        self.assertEqual(combo_bonus_steps(2), 1)
-        self.assertEqual(combo_bonus_steps(3), 2)
-        self.assertEqual(combo_bonus_steps(4), 3)
-
-    def test_combo_bonus_for_two_completed_branches(self) -> None:
-        # Two completed branches: 2 depth steps + 1 combo step.
-        warden_nodes = skill_nodes_for_archetype("Warden")
-        bulwark = {n.key for n in warden_nodes if n.branch == "Bulwark"}
-        riposte = {n.key for n in warden_nodes if n.branch == "Riposte"}
-        two = bulwark | riposte
-        melee, spell, hp = combo_bonus(two, "Warden")
-        self.assertEqual(
-            melee,
-            2 * COMPLETED_BRANCH_BONUS_MELEE + COMBO_BONUS_PER_STEP_MELEE,
-        )
-        self.assertEqual(
-            spell,
-            2 * COMPLETED_BRANCH_BONUS_SPELL + COMBO_BONUS_PER_STEP_SPELL,
-        )
-        self.assertEqual(
-            hp,
-            2 * COMPLETED_BRANCH_BONUS_MAX_HP + COMBO_BONUS_PER_STEP_MAX_HP,
-        )
-
-    def test_combo_bonus_for_three_completed_branches(self) -> None:
-        # Three completed branches: 3 depth steps + 2 combo steps.
-        warden_nodes = skill_nodes_for_archetype("Warden")
-        branches = ["Bulwark", "Riposte", "Vow"]
-        keys: set[str] = set()
-        for branch in branches:
-            keys |= {n.key for n in warden_nodes if n.branch == branch}
-        melee, spell, hp = combo_bonus(keys, "Warden")
-        self.assertEqual(
-            melee,
-            3 * COMPLETED_BRANCH_BONUS_MELEE + 2 * COMBO_BONUS_PER_STEP_MELEE,
-        )
-        self.assertEqual(
-            spell,
-            3 * COMPLETED_BRANCH_BONUS_SPELL + 2 * COMBO_BONUS_PER_STEP_SPELL,
-        )
-        self.assertEqual(
-            hp,
-            3 * COMPLETED_BRANCH_BONUS_MAX_HP + 2 * COMBO_BONUS_PER_STEP_MAX_HP,
-        )
-
-    def test_completed_branch_bonus_separate_from_combo(self) -> None:
-        # completed_branch_bonus reports only the depth layer; combo_bonus
-        # reports depth + breadth. The difference is the combo breadth bonus.
-        warden_nodes = skill_nodes_for_archetype("Warden")
-        all_keys = {n.key for n in warden_nodes}
-        depth = completed_branch_bonus(all_keys, "Warden")
-        total = combo_bonus(all_keys, "Warden")
-        combo_only = (total[0] - depth[0], total[1] - depth[1], total[2] - depth[2])
-        # Four branches → 3 combo steps.
-        self.assertEqual(combo_only[0], 3 * COMBO_BONUS_PER_STEP_MELEE)
-        self.assertEqual(combo_only[1], 3 * COMBO_BONUS_PER_STEP_SPELL)
-        self.assertEqual(combo_only[2], 3 * COMBO_BONUS_PER_STEP_MAX_HP)
-
-    def test_new_warden_cross_branch_modifiers_amplify_opposite_tags(self) -> None:
-        # The new Vow/Fortress tier-4 keystones boost Counter/Guard tags.
+    def test_new_cross_branch_modifiers_reference_existing_tags(self) -> None:
+        # The new Warden Vow/Fortress tier-4 keystones boost Counter/Guard tags.
         divine_wrath = skill_node_by_key("warden_divine_wrath")
         unyielding = skill_node_by_key("warden_unyielding")
         self.assertIsNotNone(divine_wrath)
@@ -623,8 +476,6 @@ class SkillPointProgression33Tests(unittest.TestCase):
         assert divine_wrath is not None and unyielding is not None
         self.assertIn("Counter", divine_wrath.cross_branch_tags)
         self.assertIn("Guard", unyielding.cross_branch_tags)
-
-    def test_new_ranger_cross_branch_modifiers_reference_existing_tags(self) -> None:
         # The Ranger's new Beast/Survival tier-4 keystones boost the existing
         # Volley/Control tags, tying new branches to the original two.
         spirit_companion = skill_node_by_key("ranger_spirit_companion")
@@ -658,7 +509,7 @@ class SkillPointProgression33Tests(unittest.TestCase):
                 self.assertGreaterEqual(len(done), 4)
                 self.assertGreater(melee, 0)
             finally:
-                pygame.quit()
+                pass
 
     def test_hover_preview_populates_skill_node_cells(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -692,7 +543,7 @@ class SkillPointProgression33Tests(unittest.TestCase):
                 self.assertIn("warden_bulwark", game.player.skill_upgrades)
                 self.assertEqual(game.player.skill_points, 0)
             finally:
-                pygame.quit()
+                pass
 
     # --- Hot-path performance ---------------------------------------------
 

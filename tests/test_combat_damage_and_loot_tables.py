@@ -11,16 +11,15 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import pygame
 
 from arch_rogue.content import ARCHETYPES, RARITY_PROFILES, SKILL_UPGRADES
-from arch_rogue.game import Game
+from arch_rogue.game import ENEMY_DEFINITIONS, Game
 from arch_rogue.models import Enemy, Item
 
 
 class CombatSkillsLoot22Tests(unittest.TestCase):
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
     def make_game(
         self, tmpdir: str, archetype_index: int = 0, seed: int = 2202
@@ -38,12 +37,17 @@ class CombatSkillsLoot22Tests(unittest.TestCase):
         game.active_cutscene = None
         return game
 
-    def test_2_2_content_tables_expose_synergy_hooks_and_item_save_roundtrip(
+    def test_content_tables_enemy_traits_and_player_resist_save_roundtrip(
         self,
     ) -> None:
+        # Merged from three tests sharing an identical Game fixture
+        # (archetype_index=0, seed=2202): content-table / item-save roundtrip,
+        # enemy role/resistance/status-speed determinism, and player-resist
+        # damage interaction plus saved status/equipment roundtrip.
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
+                # --- content tables expose synergy hooks ---
                 self.assertIn("Legendary", RARITY_PROFILES)
                 upgrade_keys = {upgrade.key for upgrade in SKILL_UPGRADES}
                 self.assertTrue(
@@ -56,6 +60,7 @@ class CombatSkillsLoot22Tests(unittest.TestCase):
                     }.issubset(upgrade_keys)
                 )
 
+                # --- item save roundtrip with synergy fields ---
                 item = Item(
                     "Synergy Blade",
                     "weapon",
@@ -77,15 +82,8 @@ class CombatSkillsLoot22Tests(unittest.TestCase):
                 self.assertEqual(restored.damage_type, "arcane")
                 self.assertEqual(restored.skill_bonus, "Bolt +1 shard")
                 self.assertEqual(restored.proc_effect, "lifesteal")
-            finally:
-                pygame.quit()
 
-    def test_2_2_enemy_roles_resistances_and_status_speed_are_deterministic(
-        self,
-    ) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
+                # --- enemy roles / resistances / status speed determinism ---
                 enemy = Enemy(
                     "Venom Skitter",
                     "melee",
@@ -114,10 +112,44 @@ class CombatSkillsLoot22Tests(unittest.TestCase):
                 self.assertIn("chilled", enemy.statuses)
                 game.update_enemy_statuses(0.7)
                 self.assertNotIn("chilled", enemy.statuses)
-            finally:
-                pygame.quit()
 
-    def test_2_2_bolt_projectiles_carry_damage_types_statuses_and_skill_bonus_shards(
+                # --- player resists interact with damage type, statuses persist ---
+                game.enemies = []
+                game.player.equipment["armor"] = Item(
+                    "Grounded Mail",
+                    "armor",
+                    defense=6,
+                    rarity="Rare",
+                    affixes=["Grounded"],
+                    damage_type="arcane",
+                    skill_bonus="Nova ward",
+                    proc_effect="thorns",
+                )
+                arcane_taken = game.take_player_damage(
+                    30, source="projectile", damage_type="arcane"
+                )
+                physical_taken = game.take_player_damage(
+                    30, source="projectile", damage_type="physical"
+                )
+                self.assertLess(arcane_taken, physical_taken)
+
+                game.player.status_effects["aegis"] = 0.5
+                self.assertTrue(game.save_run())
+                loaded = Game(
+                    screen_size=(820, 540),
+                    headless=True,
+                    save_path=game.save_path,
+                )
+                self.assertTrue(loaded.load_run(), loaded.last_load_error)
+                self.assertIn("aegis", loaded.player.status_effects)
+                loaded_armor = loaded.player.equipment["armor"]
+                self.assertIsNotNone(loaded_armor)
+                assert loaded_armor is not None
+                self.assertEqual(loaded_armor.proc_effect, "thorns")
+            finally:
+                pass
+
+    def test_bolt_projectiles_carry_damage_types_statuses_and_skill_bonus_shards(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -161,9 +193,9 @@ class CombatSkillsLoot22Tests(unittest.TestCase):
                     )
                 )
             finally:
-                pygame.quit()
+                pass
 
-    def test_2_2_damage_enemy_applies_resistance_status_and_lifesteal_proc(
+    def test_damage_enemy_applies_resistance_status_and_lifesteal_proc(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -213,47 +245,24 @@ class CombatSkillsLoot22Tests(unittest.TestCase):
                 )
                 self.assertLessEqual(enemy.hp, 46)
             finally:
-                pygame.quit()
+                pass
 
-    def test_2_2_enemy_damage_type_interacts_with_player_resists_and_saved_statuses(
-        self,
-    ) -> None:
+    def test_new_enemy_roster_has_unique_sprites(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
-                game.player.equipment["armor"] = Item(
-                    "Grounded Mail",
-                    "armor",
-                    defense=6,
-                    rarity="Rare",
-                    affixes=["Grounded"],
-                    damage_type="arcane",
-                    skill_bonus="Nova ward",
-                    proc_effect="thorns",
-                )
-                arcane_taken = game.take_player_damage(
-                    30, source="projectile", damage_type="arcane"
-                )
-                physical_taken = game.take_player_damage(
-                    30, source="projectile", damage_type="physical"
-                )
-                self.assertLess(arcane_taken, physical_taken)
-
-                game.player.status_effects["aegis"] = 0.5
-                self.assertTrue(game.save_run())
-                loaded = Game(
-                    screen_size=(820, 540),
-                    headless=True,
-                    save_path=game.save_path,
-                )
-                self.assertTrue(loaded.load_run(), loaded.last_load_error)
-                self.assertIn("aegis", loaded.player.status_effects)
-                loaded_armor = loaded.player.equipment["armor"]
-                self.assertIsNotNone(loaded_armor)
-                assert loaded_armor is not None
-                self.assertEqual(loaded_armor.proc_effect, "thorns")
+                enemy_names = {definition.name for definition in ENEMY_DEFINITIONS}
+                for name in {
+                    "Ash Hound",
+                    "Rune Sentinel",
+                    "Plague Toad",
+                    "Hollow Knight",
+                }:
+                    self.assertIn(name, enemy_names)
+                    self.assertIn(name, game.sprites.enemies)
+                self.assertGreaterEqual(len(game.sprites.enemies), len(enemy_names))
             finally:
-                pygame.quit()
+                pass
 
 
 if __name__ == "__main__":

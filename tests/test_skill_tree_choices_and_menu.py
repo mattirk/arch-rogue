@@ -28,7 +28,7 @@ from arch_rogue.game import Game
 
 class SkillTree32Tests(unittest.TestCase):
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
     def make_game(
         self, tmpdir: str, archetype_index: int = 0, seed: int = 3201
@@ -48,15 +48,15 @@ class SkillTree32Tests(unittest.TestCase):
 
     # --- Content table shape -------------------------------------------------
 
-    def test_each_archetype_has_a_five_tier_two_branch_tree(self) -> None:
+    def test_skill_tree_content_table_shape(self) -> None:
+        # Every archetype has a 5-tier, >=2-branch tree with sane prerequisites.
         for archetype in ARCHETYPES:
             nodes = skill_nodes_for_archetype(archetype.name)
             self.assertGreaterEqual(
                 len(nodes), 10, f"{archetype.name} should have >=10 nodes"
             )
-            tiers = {node.tier for node in nodes}
             self.assertEqual(
-                tiers,
+                {node.tier for node in nodes},
                 set(range(1, 6)),
                 f"{archetype.name} must cover tiers 1..5",
             )
@@ -65,7 +65,8 @@ class SkillTree32Tests(unittest.TestCase):
             self.assertGreaterEqual(
                 len(branches), 2, f"{archetype.name} needs >=2 branches"
             )
-            # Tier 1 nodes are open (no prerequisites).
+            # Tier 1 nodes are open (no prerequisites); higher tiers require
+            # an earlier-tier prerequisite of the same branch.
             for node in nodes:
                 if node.tier == 1:
                     self.assertEqual(
@@ -78,7 +79,6 @@ class SkillTree32Tests(unittest.TestCase):
                         node.prerequisites,
                         f"{node.key} tier-{node.tier} must require something",
                     )
-                    # Prerequisites must be earlier tiers of the same branch.
                     for prereq_key in node.prerequisites:
                         prereq = skill_node_by_key(prereq_key)
                         self.assertIsNotNone(prereq)
@@ -86,19 +86,18 @@ class SkillTree32Tests(unittest.TestCase):
                         self.assertEqual(prereq.archetype, archetype.name)
                         self.assertLess(prereq.tier, node.tier)
 
-    def test_skill_upgrades_table_is_derived_from_skill_nodes(self) -> None:
+        # SKILL_UPGRADES is derived 1:1 from SKILL_NODES and every key resolves.
         node_keys = {node.key for node in SKILL_NODES}
         upgrade_keys = {upgrade.key for upgrade in SKILL_UPGRADES}
         self.assertEqual(node_keys, upgrade_keys)
-        # Every node key resolves through the helper.
         for node in SKILL_NODES:
             self.assertIs(skill_node_by_key(node.key), node)
 
     # --- Combat grant logic --------------------------------------------------
 
-    def test_available_skill_choices_respect_prerequisites(self) -> None:
+    def test_skill_choice_prerequisites_and_rejection_rules(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=0)
+            game = self.make_game(tmpdir, archetype_index=0)  # Warden
             try:
                 # Milestone 3.3: choosing nodes now spends skill points, so
                 # bank enough points to exercise the tree.
@@ -108,8 +107,15 @@ class SkillTree32Tests(unittest.TestCase):
                 self.assertTrue(available)
                 self.assertTrue(all(node.tier == 1 for node in available))
 
+                # Rogue node cannot be chosen by a Warden.
+                self.assertFalse(game.choose_skill_upgrade("rogue_precision"))
+                self.assertNotIn("rogue_precision", game.player.skill_upgrades)
+
                 # Acquire a tier-1 Bulwark node; its tier-2 child unlocks.
                 self.assertTrue(game.choose_skill_upgrade("warden_bulwark"))
+                # Duplicate acquisition is rejected.
+                self.assertFalse(game.choose_skill_upgrade("warden_bulwark"))
+
                 available = game.available_skill_choices()
                 keys = {node.key for node in available}
                 self.assertIn("warden_aegis", keys)
@@ -122,24 +128,9 @@ class SkillTree32Tests(unittest.TestCase):
                 self.assertFalse(game.choose_skill_upgrade("warden_bulwark_ward"))
                 self.assertFalse(game.choose_skill_upgrade("warden_iron_vow"))
             finally:
-                pygame.quit()
+                pass
 
-    def test_choose_skill_upgrade_rejects_wrong_archetype_and_duplicates(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=0)  # Warden
-            try:
-                game.player.skill_points = 10
-                # Rogue node cannot be chosen by a Warden.
-                self.assertFalse(game.choose_skill_upgrade("rogue_precision"))
-                self.assertNotIn("rogue_precision", game.player.skill_upgrades)
-
-                self.assertTrue(game.choose_skill_upgrade("warden_bulwark"))
-                # Duplicate acquisition is rejected.
-                self.assertFalse(game.choose_skill_upgrade("warden_bulwark"))
-            finally:
-                pygame.quit()
-
-    def test_grant_skill_upgrade_only_picks_available_nodes(self) -> None:
+    def test_grant_skill_upgrade_picks_available_and_fails_when_exhausted(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=2, seed=3222)  # Arcanist
             try:
@@ -157,21 +148,21 @@ class SkillTree32Tests(unittest.TestCase):
                     # The granted node must have had its prerequisites met.
                     for prereq in node.prerequisites:
                         self.assertIn(prereq, game.player.skill_upgrades)
-            finally:
-                pygame.quit()
 
-    def test_grant_skill_upgrade_returns_false_when_tree_exhausted(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=0, seed=3233)
-            try:
-                # Force-acquire every Warden node.
+                # Restart as Warden, force-acquire every node, then confirm
+                # grant returns False once the tree is exhausted.
+                game.rng.seed(3233)
+                game.restart(ARCHETYPES[0])
+                if game.story_intro_pending:
+                    self.assertTrue(game.choose_story_relic_path(0))
+                game.active_cutscene = None
                 warden_nodes = skill_nodes_for_archetype("Warden")
                 # Acquire in tier order so prerequisites hold.
                 for node in sorted(warden_nodes, key=lambda n: n.tier):
                     game.player.skill_upgrades.append(node.key)
                 self.assertFalse(game.grant_skill_upgrade(reason="test"))
             finally:
-                pygame.quit()
+                pass
 
     def test_choose_skill_upgrade_applies_stat_bonuses(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -188,7 +179,7 @@ class SkillTree32Tests(unittest.TestCase):
                     game.player.armor_bonus, before_armor + node.armor_bonus
                 )
             finally:
-                pygame.quit()
+                pass
 
     # --- Save compatibility ---------------------------------------------------
 
@@ -200,7 +191,7 @@ class SkillTree32Tests(unittest.TestCase):
             ["warden_bulwark"],
         )
 
-    def test_save_and_restore_preserves_skill_tree_progress(self) -> None:
+    def test_save_restore_preserves_progress_and_drops_unknown_keys(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=1, seed=3241)  # Rogue
             try:
@@ -236,36 +227,34 @@ class SkillTree32Tests(unittest.TestCase):
                     game2.skill_node_state(skill_node_by_key("rogue_executioner")),
                     "available",
                 )
-            finally:
-                pygame.quit()
 
-    def test_restore_drops_unknown_keys_without_breaking_run(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=0, seed=3251)
-            try:
-                # Inject an obsolete/unknown key plus a valid one.
-                game.player.skill_upgrades = ["warden_bulwark", "obsolete_node_key"]
-                game.save_run()
+                # Inject an obsolete/unknown key into the restored run, re-save,
+                # and reload to confirm migration drops it without breaking play.
+                game2.player.skill_upgrades.append("obsolete_node_key")
+                game2.save_run()
 
-                game2 = Game(
+                game3 = Game(
                     screen_size=(960, 600),
                     headless=True,
                     save_path=Path(tmpdir) / "run.json",
                 )
-                game2.options_path = Path(tmpdir) / "options.json"
-                game2.rng.seed(7777)
-                self.assertTrue(game2.load_run())
-                self.assertEqual(game2.player.skill_upgrades, ["warden_bulwark"])
+                game3.options_path = Path(tmpdir) / "options.json"
+                game3.rng.seed(7777)
+                self.assertTrue(game3.load_run())
+                self.assertEqual(
+                    game3.player.skill_upgrades,
+                    ["rogue_precision", "rogue_venom"],
+                )
                 # The run is still playable and the tree offers valid choices.
-                self.assertTrue(game2.available_skill_choices())
+                self.assertTrue(game3.available_skill_choices())
             finally:
-                pygame.quit()
+                pass
 
     # --- Character menu tabs --------------------------------------------------
 
-    def test_character_menu_has_overview_and_skill_tree_tabs(self) -> None:
+    def test_character_menu_tabs_toggle_and_render(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=0, seed=3261)
+            game = self.make_game(tmpdir, archetype_index=3, seed=3271)  # Acolyte
             try:
                 self.assertEqual(game.character_menu_tab, "overview")
                 # Toggle open, then switch tabs via Tab key.
@@ -297,14 +286,7 @@ class SkillTree32Tests(unittest.TestCase):
                 )
                 game.handle_events()
                 self.assertEqual(game.character_menu_tab, "skill_tree")
-            finally:
-                pygame.quit()
 
-    def test_character_menu_renders_both_tabs_without_error(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=3, seed=3271)  # Acolyte
-            try:
-                game.character_menu_open = True
                 # Render overview tab.
                 game.character_menu_tab = "overview"
                 game.draw_character_menu()
@@ -330,7 +312,7 @@ class SkillTree32Tests(unittest.TestCase):
                 compact.character_menu_tab = "skill_tree"
                 compact.draw_character_menu()
             finally:
-                pygame.quit()
+                pass
 
     def test_skill_node_state_reports_chosen_available_locked(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -348,7 +330,7 @@ class SkillTree32Tests(unittest.TestCase):
                 self.assertEqual(game.skill_node_state(aegis), "available")
                 self.assertEqual(game.skill_node_state(iron_vow), "locked")
             finally:
-                pygame.quit()
+                pass
 
 
 if __name__ == "__main__":

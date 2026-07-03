@@ -10,7 +10,6 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import pygame
 
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
@@ -25,15 +24,16 @@ class ShopsAndAlliesMilestoneTests(unittest.TestCase):
             game.restart(ARCHETYPES[0])
             if game.shopkeepers:
                 return game
-            pygame.quit()
+            pass
         self.fail("Expected at least one deterministic seed to generate a shop")
 
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
-    def test_shop_room_has_allied_shopkeeper_stock_and_closed_door(self) -> None:
+    def test_shop_room_doors_and_transactions(self) -> None:
         game = self.make_game_with_shop()
         try:
+            # --- shop room has allied shopkeeper, stock, and closed door ---
             shop_index = game.dungeon.shop_room_index
             self.assertIsNotNone(shop_index)
             assert shop_index is not None
@@ -76,12 +76,8 @@ class ShopsAndAlliesMilestoneTests(unittest.TestCase):
                 self.assertTrue(
                     all(game.dungeon.tiles[x][y] == Tile.WALL for x, y in side_walls)
                 )
-        finally:
-            pygame.quit()
 
-    def test_doors_open_with_interact_and_become_walkable(self) -> None:
-        game = self.make_game_with_shop()
-        try:
+            # --- doors open with interact and become walkable ---
             door = next(
                 (x, y)
                 for x, column in enumerate(game.dungeon.tiles)
@@ -94,13 +90,8 @@ class ShopsAndAlliesMilestoneTests(unittest.TestCase):
             self.assertTrue(game.open_nearby_door())
             self.assertEqual(game.dungeon.tiles[door[0]][door[1]], Tile.OPEN_DOOR)
             self.assertTrue(game.dungeon.is_floor(door[0] + 0.5, door[1] + 0.5))
-        finally:
-            pygame.quit()
 
-    def test_shopkeeper_buys_and_sells_items_for_gold(self) -> None:
-        game = self.make_game_with_shop()
-        try:
-            shopkeeper = game.shopkeepers[0]
+            # --- shopkeeper buys and sells items for gold ---
             game.player.x = shopkeeper.x
             game.player.y = shopkeeper.y + 0.8
             game.open_shop(shopkeeper)
@@ -124,7 +115,7 @@ class ShopsAndAlliesMilestoneTests(unittest.TestCase):
             self.assertIn(sell_item, shopkeeper.inventory)
             self.assertNotIn(sell_item, game.player.inventory)
         finally:
-            pygame.quit()
+            pass
 
 
 if __name__ == "__main__":

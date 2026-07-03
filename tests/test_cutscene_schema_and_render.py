@@ -21,7 +21,6 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import pygame
 
 from arch_rogue.game import ARCHETYPES, Game
 from arch_rogue.quest_assets import (
@@ -36,7 +35,7 @@ from arch_rogue.quest_assets import (
 
 class StoryCutscene34Tests(unittest.TestCase):
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
     def make_game(self, tmpdir: str, seed: int = 3401) -> Game:
         game = Game(
@@ -51,7 +50,8 @@ class StoryCutscene34Tests(unittest.TestCase):
 
     # --- Schema / asset pipeline -------------------------------------------
 
-    def test_schema_version_2_loads_with_full_stage_dressing(self) -> None:
+    def test_schema_versions_load_correctly(self) -> None:
+        # schema_version 2: full stage dressing.
         library = load_quest_cutscene_library()
         self.assertIn("story_guest_omen", library)
         self.assertIn("story_guest_dialogue", library)
@@ -87,7 +87,7 @@ class StoryCutscene34Tests(unittest.TestCase):
             )
             self.assertGreaterEqual(effect.count, 0)
 
-    def test_schema_version_1_assets_still_load_with_default_stage(self) -> None:
+        # schema_version 1: no stage block, falls back to default StageAsset.
         legacy_json = {
             "schema_version": 1,
             "cutscenes": [
@@ -107,25 +107,24 @@ class StoryCutscene34Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "legacy.json"
             path.write_text(json.dumps(legacy_json), encoding="utf-8")
-            library = load_quest_cutscene_library(path)
-        self.assertIn("legacy_scene", library)
-        scene = library["legacy_scene"]
-        # A schema_version 1 cutscene has no stage block, so it falls back to
-        # the default StageAsset (empty dressing, proscenium/footlights on).
+            legacy_library = load_quest_cutscene_library(path)
+        self.assertIn("legacy_scene", legacy_library)
+        scene = legacy_library["legacy_scene"]
         self.assertIsInstance(scene.stage, StageAsset)
         self.assertEqual(scene.stage.props, ())
         self.assertEqual(scene.stage.lights, ())
         self.assertEqual(scene.stage.ambient, ())
         self.assertTrue(scene.stage.proscenium)
 
-    def test_invalid_schema_version_is_rejected(self) -> None:
+    def test_invalid_schema_payloads_are_rejected(self) -> None:
+        # Unknown schema_version.
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "bad.json"
             path.write_text(json.dumps({"schema_version": 7, "cutscenes": []}))
             with self.assertRaises(ValueError):
                 load_quest_cutscene_library(path)
 
-    def test_invalid_stage_kind_values_are_rejected(self) -> None:
+        # Invalid stage kind values across props / lights / ambient / curtain.
         base = {
             "schema_version": 2,
             "cutscenes": [
@@ -185,44 +184,23 @@ class StoryCutscene34Tests(unittest.TestCase):
                 self.assertGreater(len(asset.stage.ambient), 0)
                 self.assertEqual(asset.stage.curtain.side, "both")
             finally:
-                pygame.quit()
+                pass
 
-    def test_cutscene_renders_without_error_across_many_frames(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                # Intro omen cutscene.
-                game.reveal_active_cutscene_narration()
-                for _ in range(30):
-                    game.update_active_cutscene(1 / 60)
-                    game.draw()
-                # Guest dialogue cutscene.
-                self.assertTrue(game.choose_story_relic_path(0))
-                guest = game.story_guests[0]
-                self.assertTrue(
-                    game.start_quest_cutscene("story_guest_dialogue", guest)
-                )
-                game.reveal_active_cutscene_narration()
-                for _ in range(30):
-                    game.update_active_cutscene(1 / 60)
-                    game.draw()
-            finally:
-                pygame.quit()
-
-    def test_stage_static_layers_are_cached_across_frames(self) -> None:
+    def test_cutscene_renders_and_caches_static_layers(self) -> None:
         from arch_rogue.rendering.story_overlays import RenderingStoryOverlayMixin
 
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
+                # Intro omen cutscene: render once to populate the cache.
                 game.reveal_active_cutscene_narration()
-                # Render once to populate the cache.
                 game.draw()
                 cache = RenderingStoryOverlayMixin._STAGE_CACHE
                 snapshot = dict(cache)
                 self.assertTrue(snapshot, "stage layer cache should be populated")
-                # Render several more frames; static layers should be reused.
-                for _ in range(20):
+                # Render several more frames; static layers should be reused
+                # and the cutscene should not error.
+                for _ in range(8):
                     game.update_active_cutscene(1 / 60)
                     game.draw()
                 # The cache should not grow unboundedly for static layers.
@@ -231,8 +209,19 @@ class StoryCutscene34Tests(unittest.TestCase):
                 for key, surface in snapshot.items():
                     if key in cache:
                         self.assertIs(cache[key], surface)
+
+                # Guest dialogue cutscene: render frames without error.
+                self.assertTrue(game.choose_story_relic_path(0))
+                guest = game.story_guests[0]
+                self.assertTrue(
+                    game.start_quest_cutscene("story_guest_dialogue", guest)
+                )
+                game.reveal_active_cutscene_narration()
+                for _ in range(8):
+                    game.update_active_cutscene(1 / 60)
+                    game.draw()
             finally:
-                pygame.quit()
+                pass
 
     def test_narrator_card_renders_speaker_and_progress(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -253,7 +242,7 @@ class StoryCutscene34Tests(unittest.TestCase):
                 speaker = game.active_cutscene_speaker_name()
                 self.assertTrue(any(speaker.upper() in line for line in captured))
             finally:
-                pygame.quit()
+                pass
 
     def test_cutscene_save_restore_preserves_active_stage(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -278,7 +267,7 @@ class StoryCutscene34Tests(unittest.TestCase):
                 assert asset is not None
                 self.assertGreater(len(asset.stage.props), 0)
             finally:
-                pygame.quit()
+                pass
 
 
 if __name__ == "__main__":

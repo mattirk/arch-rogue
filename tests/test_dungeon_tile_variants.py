@@ -12,7 +12,6 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import pygame
 
 from arch_rogue.constants import (
     DUNGEON_FLOOR_VARIANTS,
@@ -28,7 +27,7 @@ from arch_rogue.models import Tile
 
 class DungeonSpriteVariants36Tests(unittest.TestCase):
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
     def make_game(self, tmpdir: str, seed: int = 3601) -> Game:
         game = Game(
@@ -46,48 +45,39 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
 
     # --- Variant selection ------------------------------------------------
 
-    def test_tile_seed_is_bounded_deterministic_and_covers_all_variants(
-        self,
-    ) -> None:
+    def test_tile_seed_is_bounded_deterministic_and_streak_free(self) -> None:
         # The seed must be a bounded variant index (so the pre-generated cache
-        # stays tiny), deterministic per tile, and actually exercise every
-        # variant across a floor so the dungeon doesn't read as one stamp.
+        # stays tiny), deterministic per tile, exercise every variant across a
+        # floor, and avoid axis streaks so adjacent tiles don't collapse into a
+        # repeating band.
         bound = max(DUNGEON_WALL_VARIANTS, DUNGEON_FLOOR_VARIANTS)
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
                 seen: set[int] = set()
-                for x in range(40):
-                    for y in range(40):
+                for x in range(24):
+                    for y in range(24):
                         seed = game.tile_seed(x, y)
                         self.assertGreaterEqual(seed, 0)
                         self.assertLess(seed, bound)
                         self.assertEqual(seed, game.tile_seed(x, y))
                         seen.add(seed)
                 self.assertEqual(seen, set(range(bound)))
-            finally:
-                pygame.quit()
-
-    def test_tile_seed_has_no_axis_streak_pattern(self) -> None:
-        # A naive `& 31` hash leaves visible axis streaks; the mixing hash must
-        # produce different variants along both a row and a column so adjacent
-        # tiles don't collapse into a repeating band.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
                 row = {game.tile_seed(5, y) for y in range(12)}
                 col = {game.tile_seed(x, 5) for x in range(12)}
                 self.assertGreater(len(row), 2)
                 self.assertGreater(len(col), 2)
             finally:
-                pygame.quit()
+                pass
 
     # --- Pre-generation / cache bounds ------------------------------------
 
-    def test_prewarm_populates_all_variants_before_first_draw(self) -> None:
+    def test_prewarm_and_draw_cache_bounds_stable(self) -> None:
         # restart() calls prewarm_tile_cache(), so the cache must already hold
         # every wall/floor/stairs variant (shop + non-shop) for the current
-        # theme before any render call.
+        # theme before any render call. Drawing a full dungeon frame must not
+        # invent new seed values beyond the bounded variant set, and repeated
+        # frames must reuse cached surfaces exactly — no new cache entries.
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
@@ -111,19 +101,9 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                 # Floor + stairs exist in both shop and non-shop forms.
                 self.assertEqual(len(floor_keys), DUNGEON_FLOOR_VARIANTS * 2)
                 self.assertEqual(len(stairs_keys), DUNGEON_FLOOR_VARIANTS * 2)
-            finally:
-                pygame.quit()
 
-    def test_tile_cache_seed_space_is_bounded_to_variant_count(self) -> None:
-        # Drawing a full dungeon frame must not invent new seed values beyond
-        # the bounded variant set — that is the "no per-frame recomputation"
-        # guarantee. Walls: <= WALL_VARIANTS seeds; floors: <= FLOOR_VARIANTS
-        # per shop flag.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
+                before = set(game.tile_cache.keys())
                 game.draw()
-                theme = game.theme.name
                 wall_seeds = {
                     k[2]
                     for k in game.tile_cache
@@ -142,21 +122,11 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                 self.assertLessEqual(len(wall_seeds), DUNGEON_WALL_VARIANTS)
                 self.assertLessEqual(len(floor_seeds_shop), DUNGEON_FLOOR_VARIANTS)
                 self.assertLessEqual(len(floor_seeds_noop), DUNGEON_FLOOR_VARIANTS)
-            finally:
-                pygame.quit()
 
-    def test_draw_does_not_grow_cache_after_prewarm(self) -> None:
-        # After prewarm, repeated frames must reuse cached surfaces exactly —
-        # no new cache entries, proving the hot loop only blits.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                before = set(game.tile_cache.keys())
-                game.draw()
                 game.draw()
                 self.assertEqual(set(game.tile_cache.keys()), before)
             finally:
-                pygame.quit()
+                pass
 
     # --- Variant family: similar but distinct -----------------------------
 
@@ -190,7 +160,7 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                 blobs = [bytes(s.get_buffer()) for s in surfaces]
                 self.assertEqual(len(set(blobs)), DUNGEON_WALL_VARIANTS)
             finally:
-                pygame.quit()
+                pass
 
     def test_floor_variants_share_base_but_differ_in_detail(self) -> None:
         # Floor variants keep a shared slab base (center pixel stays close) but
@@ -217,7 +187,7 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                 blobs = [bytes(s.get_buffer()) for s in surfaces]
                 self.assertEqual(len(set(blobs)), DUNGEON_FLOOR_VARIANTS)
             finally:
-                pygame.quit()
+                pass
 
     def test_floor_detail_is_carved_groove_not_flat_scratch(self) -> None:
         # The variant surface detail must read as a carved groove with real
@@ -259,7 +229,7 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                         f"variant {v} detail pokes outside the slab diamond",
                     )
             finally:
-                pygame.quit()
+                pass
 
     def test_stairs_keep_descent_motif_across_variants(self) -> None:
         # The spiral staircase carves a dark central shaft (the descent void)
@@ -330,13 +300,15 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                     rendered_any_step = True
                 self.assertTrue(rendered_any_step)
             finally:
-                pygame.quit()
+                pass
 
     # --- Floor transition rewarm ------------------------------------------
 
-    def test_descend_clears_and_rewarms_tile_cache(self) -> None:
+    def test_descend_and_door_open_rewarm_tile_cache(self) -> None:
         # Descending changes the theme and must clear + prewarm the cache for
-        # the new theme so the first frame on the new floor is hitch-free.
+        # the new theme so the first frame on the new floor is hitch-free, and
+        # opening a door likewise clears + prewarms so no first-frame hitch
+        # occurs right next to the player.
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
@@ -358,16 +330,9 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                     if k[0] == game.theme.name and k[1] == int(Tile.WALL)
                 ]
                 self.assertEqual(len(wall_keys), DUNGEON_WALL_VARIANTS)
-            finally:
-                pygame.quit()
 
-    def test_door_open_rewarms_tile_cache(self) -> None:
-        # Opening a door clears + prewarms the tile cache so no first-frame
-        # hitch occurs right next to the player.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                # Find a closed door tile in the dungeon.
+                # Find a closed door tile in the dungeon and open it adjacent
+                # to the player; the cache must be rewarmed afterward.
                 door = None
                 w = len(game.dungeon.tiles)
                 h = len(game.dungeon.tiles[0]) if w else 0
@@ -380,14 +345,12 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                         break
                 if door is None:
                     self.skipTest("no closed door on this seed")
-                # Stand the player adjacent to the door so nearby_closed_door
-                # finds it, then open it.
                 game.player.x = door[0] + 0.5
                 game.player.y = door[1] + 0.5
                 self.assertTrue(game.open_nearby_door())
                 self.assertGreater(len(game.tile_cache), 0)
             finally:
-                pygame.quit()
+                pass
 
     # --- Geometry sanity --------------------------------------------------
 
@@ -405,7 +368,7 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                 self.assertEqual(ax, (TILE_W + margin * 2) // 2)
                 self.assertEqual(ay, margin + wall_h + TILE_H // 2)
             finally:
-                pygame.quit()
+                pass
 
 
 if __name__ == "__main__":

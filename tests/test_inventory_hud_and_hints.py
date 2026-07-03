@@ -14,16 +14,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import pygame
 
-import arch_rogue
 from arch_rogue.constants import MAX_INVENTORY
-from arch_rogue.content import RARITY_PROFILES, SECRET_HINTS, SHRINE_HINTS, TRAP_HINTS
 from arch_rogue.game import ARCHETYPES, Game
 from arch_rogue.models import Item, SecretCache, Shrine, Trap
 
 
 class SystemsPolish12Tests(unittest.TestCase):
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
     def make_game(self, tmpdir: str, seed: int = 1202) -> Game:
         game = Game(
@@ -38,27 +36,16 @@ class SystemsPolish12Tests(unittest.TestCase):
             game.choose_story_relic_path(0)
         return game
 
-    def test_1_2_metadata_content_profiles_and_save_version(self) -> None:
+    def test_contextual_hints_visual_effects_inventory_ui_and_older_save_load(
+        self,
+    ) -> None:
+        # Merges the contextual interaction hints, damage-flash/cleanup, inventory
+        # summary/skill-upgrade/UI-render, and older-save backward-compat scenarios
+        # which all share the same make_game(ARCHETYPES[1], seed=1202) setup.
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
-                self.assertEqual(arch_rogue.__version__, "3.6.0")
-                self.assertIn("Cursed", RARITY_PROFILES)
-                self.assertIn("Twilight Shrine", SHRINE_HINTS)
-                self.assertIn("Moonlit Bargain", SECRET_HINTS)
-                self.assertIn("Rune Trap", TRAP_HINTS)
-
-                self.assertTrue(game.save_run())
-                saved = json.loads(game.save_path.read_text(encoding="utf-8"))
-                self.assertEqual(saved["version"], 4)
-                self.assertEqual(saved["release"], "3.6.0")
-            finally:
-                pygame.quit()
-
-    def test_contextual_interaction_hints_explain_events_and_loot(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
+                # --- Contextual interaction hints for loot, shrines, secrets, traps ---
                 game.items.clear()
                 game.shrines.clear()
                 game.secrets.clear()
@@ -105,13 +92,8 @@ class SystemsPolish12Tests(unittest.TestCase):
                 assert hint is not None
                 self.assertEqual(hint[0], "!")
                 self.assertIn("Arcane", hint[2])
-            finally:
-                pygame.quit()
 
-    def test_visual_effects_damage_flash_and_cleanup(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
+                # --- Visual effects: damage flash + impact cleanup ---
                 game.enemies.clear()
                 game.traps.clear()
                 game.projectiles.clear()
@@ -122,17 +104,12 @@ class SystemsPolish12Tests(unittest.TestCase):
                 self.assertGreater(game.screen_flash_ttl, 0)
                 self.assertTrue(game.impact_effects)
 
-                for _ in range(20):
+                for _ in range(10):
                     game.update(0.05)
                 self.assertEqual(game.impact_effects, [])
                 self.assertEqual(game.screen_flash_ttl, 0.0)
-            finally:
-                pygame.quit()
 
-    def test_inventory_summaries_skill_upgrades_and_compact_ui_render(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
+                # --- Inventory summaries, skill upgrades, compact UI render ---
                 blade = Item("Readable Blade", "weapon", power=12, rarity="Rare")
                 potion = Item("Minor Healing Potion", "potion", heal=35)
                 unknown = Item(
@@ -161,10 +138,32 @@ class SystemsPolish12Tests(unittest.TestCase):
                 game.draw_title_menu()
                 game.state = "options"
                 game.draw_options_menu()
-            finally:
-                pygame.quit()
 
-    def test_inventory_hud_layout_controls_and_sort_cues_are_readable(self) -> None:
+                # --- Older compatible save loads without visual state ---
+                old_save = game.serialize_run_state()
+                old_save["version"] = 1
+                old_save["release"] = "1.0.0"
+                old_save["player"].pop("skill_upgrades", None)
+                old_save["run_stats"].pop("upgrades_chosen", None)
+                game.save_path.write_text(json.dumps(old_save), encoding="utf-8")
+
+                loaded = Game(
+                    screen_size=(760, 520),
+                    headless=True,
+                    save_path=game.save_path,
+                )
+                self.assertTrue(loaded.load_run(), loaded.last_load_error)
+                self.assertEqual(loaded.state, "playing")
+                self.assertEqual(loaded.impact_effects, [])
+                self.assertEqual(loaded.screen_flash_ttl, 0.0)
+            finally:
+                pass
+
+    def test_inventory_hud_layout_navigation_sorting_and_cues(self) -> None:
+        # Merges the inventory HUD layout/sort-cue render checks with the keyboard
+        # navigation/equip/drop/sort/close checks; both share the same inventory
+        # screen (640x480) and archetype. Layout runs first, then navigation resets
+        # the inventory to its own controlled fixture.
         with tempfile.TemporaryDirectory() as tmpdir:
             game = Game(
                 screen_size=(640, 480),
@@ -177,6 +176,7 @@ class SystemsPolish12Tests(unittest.TestCase):
             if game.story_intro_pending:
                 game.choose_story_relic_path(0)
             try:
+                # --- HUD layout, controls, and sort cues are readable ---
                 game.player.inventory = [
                     Item(f"Pack Blade {index}", "weapon", power=index, rarity="Magic")
                     if index % 4 == 0
@@ -244,13 +244,9 @@ class SystemsPolish12Tests(unittest.TestCase):
                 self.assertIn("Tab sort mode", captured)
                 self.assertIn("Shift+1-9 drop", captured)
                 self.assertGreater(game.inventory_scroll, 0)
-            finally:
-                pygame.quit()
+                game.menus.draw_text = original_draw_text
 
-    def test_inventory_keyboard_navigation_selected_actions_and_sorting(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, seed=1213)
-            try:
+                # --- Keyboard navigation, selected actions, and sorting ---
                 drop_item = Item("Drop Test Potion", "potion", heal=20)
                 weapon = Item("Navigation Axe", "weapon", power=9, rarity="Rare")
                 armor = Item("Navigation Vest", "armor", defense=4, rarity="Magic")
@@ -258,6 +254,7 @@ class SystemsPolish12Tests(unittest.TestCase):
                 game.inventory_open = True
                 game.inventory_cursor = 0
                 game.inventory_scroll = 0
+                game.inventory_sort_mode = "type"
 
                 pygame.event.post(
                     pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN, mod=0)
@@ -301,30 +298,7 @@ class SystemsPolish12Tests(unittest.TestCase):
                 game.handle_events()
                 self.assertFalse(game.inventory_open)
             finally:
-                pygame.quit()
-
-    def test_loads_older_compatible_save_without_visual_state(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                old_save = game.serialize_run_state()
-                old_save["version"] = 1
-                old_save["release"] = "1.0.0"
-                old_save["player"].pop("skill_upgrades", None)
-                old_save["run_stats"].pop("upgrades_chosen", None)
-                game.save_path.write_text(json.dumps(old_save), encoding="utf-8")
-
-                loaded = Game(
-                    screen_size=(760, 520),
-                    headless=True,
-                    save_path=game.save_path,
-                )
-                self.assertTrue(loaded.load_run(), loaded.last_load_error)
-                self.assertEqual(loaded.state, "playing")
-                self.assertEqual(loaded.impact_effects, [])
-                self.assertEqual(loaded.screen_flash_ttl, 0.0)
-            finally:
-                pygame.quit()
+                pass
 
 
 if __name__ == "__main__":

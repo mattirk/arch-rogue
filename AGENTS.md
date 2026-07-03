@@ -44,7 +44,7 @@ python -m unittest discover tests
 Run one milestone test module when iterating on a focused change:
 
 ```bash
-python -m unittest tests.test_2_4_dark_levels
+python -m unittest tests.test_dark_levels
 ```
 
 Notes for agents:

@@ -10,7 +10,6 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import pygame
 
 from arch_rogue.game import (
     ARCHETYPES,
@@ -34,7 +33,7 @@ class Rc2ContentUxTests(unittest.TestCase):
         return game
 
     def tearDown(self) -> None:
-        pygame.quit()
+        pass
 
     def test_expanded_content_tables_are_valid(self) -> None:
         self.assertGreaterEqual(len(DUNGEON_THEMES), 5)
@@ -53,9 +52,10 @@ class Rc2ContentUxTests(unittest.TestCase):
             self.assertGreater(definition.weight, 0)
             self.assertIn(definition.kind, {"melee", "ranged"})
 
-    def test_new_shrine_effects_update_stats_and_rewards(self) -> None:
+    def test_new_shrine_and_secret_effects_then_summary_render(self) -> None:
         game = self.make_game()
         try:
+            # --- new shrine effects update stats and rewards ---
             base_speed = game.player.speed
             haste = Shrine(game.player.x, game.player.y, "Haste Shrine")
             game.activate_shrine(haste)
@@ -70,12 +70,8 @@ class Rc2ContentUxTests(unittest.TestCase):
             self.assertTrue(fortune.used)
             self.assertEqual(game.run_stats.shrines_used, 2)
             self.assertGreaterEqual(len(game.items), item_count + 2)
-        finally:
-            pygame.quit()
 
-    def test_sealed_armory_secret_drops_equipment_and_updates_stats(self) -> None:
-        game = self.make_game()
-        try:
+            # --- sealed armory secret drops equipment and updates stats ---
             game.items.clear()
             secret = SecretCache(
                 game.player.x, game.player.y, "Sealed Armory", revealed=True
@@ -87,12 +83,8 @@ class Rc2ContentUxTests(unittest.TestCase):
             self.assertTrue(
                 all(item.slot in {"weapon", "armor"} for item in game.items)
             )
-        finally:
-            pygame.quit()
 
-    def test_run_summary_and_help_overlay_are_renderable(self) -> None:
-        game = self.make_game()
-        try:
+            # --- run summary and help overlay are renderable ---
             game.elapsed = 125.0
             game.run_stats = RunStats(
                 kills=7,
@@ -146,7 +138,7 @@ class Rc2ContentUxTests(unittest.TestCase):
             game.show_help = True
             game.draw()
         finally:
-            pygame.quit()
+            pass
 
 
 if __name__ == "__main__":
