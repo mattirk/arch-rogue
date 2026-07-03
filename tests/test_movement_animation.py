@@ -338,6 +338,56 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
             finally:
                 pass
 
+    def test_idle_pose_stays_seamless_across_band_boundaries(self) -> None:
+        # Regression guard for the idle-seam bug: the breathing animation
+        # slices the sprite into vertical bands and offsets each band by a
+        # small per-frame dy. Without the band-overlap fill, adjacent bands
+        # that separate vertically leave transparent seams between sprite
+        # sections (very visible while standing still, masked while moving).
+        # Every idle frame must therefore retain nearly the full base
+        # silhouette: the only legitimate opaque-pixel loss is the body
+        # shifting up/down by a couple of pixels at the very top/bottom edge,
+        # never a full-width seam punched across an internal band boundary.
+        pygame.init()
+        pygame.display.set_mode((64, 64), pygame.HIDDEN)
+        atlas = PixelSpriteAtlas()
+        self.assertGreaterEqual(atlas.BAND_OVERLAP, 1)
+
+        frame_sets = {
+            name: atlas.player_animation_frames[name]
+            for name in atlas.player_animation_frames
+        }
+        frame_sets.update(atlas.enemy_animation_frames)
+        frame_sets["shopkeeper"] = atlas.shopkeeper_animation_frames
+        bases = {
+            name: atlas.player_sprites.get(name)
+            or atlas.enemies.get(name)
+            or atlas.shopkeeper_sprite
+            for name in frame_sets
+        }
+
+        for name, states in frame_sets.items():
+            base = bases[name]
+            width = base.get_width()
+            base_count = pygame.mask.from_surface(base).count()
+            idle = states["idle"]
+            self.assertGreaterEqual(len(idle), 6)
+            for frame in idle:
+                self.assertEqual(frame.get_size(), base.get_size())
+                count = pygame.mask.from_surface(frame).count()
+                # Breathing only shifts the body by a couple of pixels; the
+                # band-overlap fills internal seams. The only legitimate loss
+                # is the silhouette sliding a hair at the top/bottom edge, so
+                # anything beyond ~0.9px of full-width loss means a seam
+                # reopened at a band boundary (the overlap fill was dropped or a
+                # pose offset exceeded the BAND_OVERLAP budget).
+                self.assertLess(
+                    base_count - count,
+                    round(width * 0.9),
+                    f"{name}: idle frame lost too much silhouette ({base_count - count} "
+                    f"opaque px) vs base ({base_count}); a band seam reopened",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

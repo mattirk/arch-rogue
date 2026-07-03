@@ -369,6 +369,14 @@ class PixelSpriteAtlas:
         0.82,  # legs
         1.00,  # feet
     )
+    # Each band borrows this many source rows from the band below it when it
+    # is blitted, so a small per-band vertical offset (breathing, walk lift)
+    # never reveals a transparent seam between the sliced sections. Actor art is
+    # nearest-neighbour scaled, so every pixel is fully opaque or fully
+    # transparent: the borrowed rows are idempotent when adjacent bands are
+    # aligned and only fill the gap when they separate. Keep this >= the max
+    # adjacent-band dy delta used by any pose below.
+    BAND_OVERLAP = 1
 
     def _actor_pose_frame(
         self,
@@ -409,11 +417,21 @@ class PixelSpriteAtlas:
         # Slice indices: 0..cap, cap..head, head..torso, torso..hip, hip..legs, legs..feet
 
         def blit_band(
-            y0: int, y1: int, dx: int = 0, dy: int = 0, alpha: int = 255
+            y0: int,
+            y1: int,
+            dx: int = 0,
+            dy: int = 0,
+            alpha: int = 255,
+            overlap: int = 0,
         ) -> None:
             if y1 <= y0:
                 return
-            rect = pygame.Rect(0, y0, width, y1 - y0)
+            # Extend the source downward by ``overlap`` rows (clamped to the
+            # sprite) so a band that sits above the next band after a vertical
+            # offset still draws the neighbor's top pixels into the seam
+            # instead of leaving transparent gaps.
+            src_y1 = min(y1 + overlap, height)
+            rect = pygame.Rect(0, y0, width, src_y1 - y0)
             if alpha >= 255:
                 frame.blit(sprite, (base_x + dx, base_y + y0 + dy), rect)
                 return
@@ -437,24 +455,31 @@ class PixelSpriteAtlas:
             feet_dx: int = 0,
             feet_dy: int = 0,
         ) -> None:
-            blit_band(0, bands[0], cap_dx, cap_dy)
-            blit_band(bands[0], bands[1], head_dx, head_dy)
-            blit_band(bands[1], bands[2], torso_dx, torso_dy)
-            blit_band(bands[2], bands[3], hip_dx, hip_dy)
-            blit_band(bands[3], bands[4], legs_dx, legs_dy)
+            blit_band(0, bands[0], cap_dx, cap_dy, overlap=self.BAND_OVERLAP)
+            blit_band(bands[0], bands[1], head_dx, head_dy, overlap=self.BAND_OVERLAP)
+            blit_band(bands[1], bands[2], torso_dx, torso_dy, overlap=self.BAND_OVERLAP)
+            blit_band(bands[2], bands[3], hip_dx, hip_dy, overlap=self.BAND_OVERLAP)
+            blit_band(bands[3], bands[4], legs_dx, legs_dy, overlap=self.BAND_OVERLAP)
             blit_band(bands[4], height, feet_dx, feet_dy)
 
         if state == "idle":
-            # 6-frame breathing: chest expands/contracts, shoulders rise/fall,
-            # subtle head bob, feet planted.
-            breath = (0, -1, -2, -1, 0, 1)[index % 6]
-            chest = (0, 1, 2, 1, 0, -1)[index % 6]
+            # 6-frame breathing: a gentle unified vertical bob of the upper
+            # body (cap/head/torso/hip rise and fall together) with a subtle
+            # 1px chest counter-motion, while the legs lag a hair and the feet
+            # stay planted. Adjacent bands never separate by more than one
+            # pixel, so ``BAND_OVERLAP`` hides the seam entirely and the sliced
+            # sprite reads as one continuous body while standing still.
+            i = index % 6
+            bob = (0, -1, -2, -1, 0, 1)
+            chest = (0, 0, 1, 0, 0, -1)
+            legs_lag = (0, 0, -1, 0, 0, 1)
             blit_pose(
-                cap_dy=breath,
-                head_dy=round(breath * 0.7),
-                torso_dy=chest,
-                hip_dy=round(breath * 0.4),
-                legs_dy=round(breath * 0.15),
+                cap_dy=bob[i],
+                head_dy=bob[i],
+                torso_dy=bob[i] + chest[i],
+                hip_dy=bob[i],
+                legs_dy=legs_lag[i],
+                feet_dy=0,
             )
 
         elif state == "run":
