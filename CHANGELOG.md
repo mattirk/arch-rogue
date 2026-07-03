@@ -1,5 +1,67 @@
 # Changelog
 
+## 3.7.3 — Adaptive Browser Resolution
+
+The browser build now renders at the browser's full available viewport size and re-adapts when the window is resized, instead of a fixed 2560×1440 internal surface letterboxed by pygbag.
+
+### Added
+
+- Browser-aware sizing in `web/main.py`: `browser_window_size()` queries the Pyodide `js` bridge (`js.window.innerWidth/innerHeight`) for the viewport in CSS pixels; `make_game(screen_size=None)` now defaults the display surface to that size (falling back to the `SCREEN_WIDTH×SCREEN_HEIGHT` constants off-browser, so desktop/unit tests are unchanged). `maybe_resize_to_browser(game)` runs at the top of every `run_frame`: when the viewport size differs from the current surface (and is at least 320×240) it calls `pygame.display.set_mode(size, pygame.RESIZABLE)` to resize the backing surface and re-triggers pygbag's CSS fitter (`js.window_resize()`) so the canvas re-fills the window. Off-browser (no `js` module) both helpers are no-ops, so the desktop driver and tests are unaffected.
+- The `js` bridge reference is cached (`_get_js()`) so the per-frame sizing probe stays cheap (no per-frame import, one JS attribute read).
+- `tests/test_web_server.py` (now 29 tests, +6): `browser_window_size()` is None off-browser; `maybe_resize_to_browser` is a no-op without a browser; resizes to a provider-supplied size (updates `screen` and `windowed_size`); skips unchanged sizes; rejects too-small sizes; `make_game` honors an explicit `screen_size`.
+
+### Why
+
+pygbag fits the canvas CSS to the window while preserving the **backing** surface's aspect ratio (`canvas.width/canvas.height`, set by `pygame.display.set_mode`). With a fixed 2560×1440 (16:9) backing, a non-16:9 window letterboxes. Matching the backing to the window size makes the canvas fill the whole viewport, and resizing the backing on window change keeps it filled.
+
+### Changed
+
+- Version metadata (`__version__`, `pyproject.toml`) and the four release-string-asserting tests now target `3.7.3`. The save schema `version` is unchanged (4).
+
+### Validation
+
+- Bytecode compilation and the full `unittest discover tests` suite (134 tests) pass, including the 6 new resize tests. The rebuilt `assets/main.py` packages the sizing helpers (verified by content check). No `arch_rogue.*` source was modified.
+
+## 3.7.2 — Fully-Vendored Web Build (fixes cross-origin / 404 errors)
+
+The pygbag browser build now runs **fully self-contained and same-origin**: every runtime asset (the `pythons.js` bootstrap, the CPython/Pyodide interpreter `main.js`+`main.data`+`main.wasm`, the vt/vtx/xterm terminals, and static assets) is vendored locally, and the generated `index.html` is rewritten to load from the local `/cdn/0.9.3/...` path instead of the remote `https://pygame-web.github.io/cdn/0.9.3/` CDN. This eliminates the cross-origin-request errors and the `arch_rogue/` + `browserfs.min.js` 404s.
+
+### Added
+
+- `web/vendor_runtime.py`: downloads the complete pygbag/pygame-web runtime tree from the CDN into `web/vendor/cdn/...` (mirroring the CDN path layout) on a one-time ~21 MB pull. Manifest: `pythons.js`, `empty.html`, `empty.ogg`, `cpythonrc.py`, `cpython312/main.js|main.data|main.wasm`, `vt.js`, `vtx.js`, `vt/xterm.js|xterm.css|xterm-addon-image.js`, `cdn/lib/index.html`. Two dead template references (`browserfs.min.js`, `pygbag0.9.3.js`) that 404 even on the official CDN are written as empty local stubs so the `<script>` tags resolve instead of producing console 404s (BrowserFS is not used by the tarball-based app flow). Idempotent (skips existing files), `--force` re-downloads, verifies Content-Length.
+- `build.py` now: (1) ensures the vendored runtime is present, (2) runs `pygbag --build`, (3) `rewrite_index_html_local()` replaces every `https://pygame-web.github.io/cdn/0.9.3/` reference with `/cdn/0.9.3/`, (4) `merge_vendor_runtime()` copies `web/vendor/cdn/` into `web/dist/cdn/` so the runtime is served same-origin. New `--no-vendor` / `--force-vendor` flags. `rewrite_index_html_local` and `merge_vendor_runtime` are exposed for testing.
+- Repo-root `pygbag.ini` excluding `/.venv`, `/web`, `/tests`, `__pycache__` from the app tarball. Without it pygbag packaged the entire virtualenv + the vendored runtime + the test suite into a **108 MB** tarball; it is now ~220 KB of just the game source.
+- **src-layout path bootstrap in `web/main.py`** (fixes the grey screen / `https://pypi.org/simple/arch_rogue/` request): pygbag's tarball flow extracts the app to `<appdir>/assets` and runs `assets/main.py` without putting the project's `assets/src` on `sys.path`. Because Arch Rogue uses a `src/`-layout, `from arch_rogue.game import Game` failed to find the package locally, so Pyodide's PEP-723 auto-installer (`pep0723.py`) fell back to installing `arch_rogue` from PyPI (which 404s) and the canvas stayed grey. `web/main.py` now runs a `resolve_src_paths`/`_bootstrap_arch_rogue_path` hook before importing `arch_rogue`, inserting `assets/src` (resolved from `__file__`, then `cwd`, then the hardcoded pygbag extraction path `/data/data/arch-rogue/assets/src`) onto `sys.path`. The hook is a pure, unit-tested helper so it can be validated without a Pyodide runtime.
+- `tests/test_web_server.py` (now 23 tests, +13): vendor `_local_path` mirroring, stub creation without network, force re-run, full manifest completeness (when `web/vendor` is present), `index.html` rewrite (remote→local, no `pygame-web.github.io` left), missing-index, vendor merge into `dist/cdn`, missing-vendor, the `pygbag.ini` exclusion list, the src-path resolver (next-to-main, cwd fallback, dedup), and a build-artifact check that the built tarball's `assets/main.py` contains the bootstrap and that `assets/src/arch_rogue/__init__.py` is packaged.
+- `.gitignore` now ignores `web/vendor/` and `web/dist/` (build artifacts; `web/vendor` can be `git add`-ed to commit a fully offline-capable repo).
+
+### Changed
+
+- `web/README.md` rewritten to document the vendored build flow, the `--force` re-vendor path, the troubleshooting section (root causes of the cross-origin/404 errors and how vendoring fixes them), and the tarball-exclusion note.
+- Version metadata (`__version__`, `pyproject.toml`) and the four release-string-asserting tests now target `3.7.2`. The save schema `version` is unchanged (4).
+
+### Validation
+
+- Built and served the site: `/`, `/cdn/0.9.3/pythons.js`, `/cdn/0.9.3/cpython312/main.js|main.data|main.wasm`, `/cdn/vt/xterm.js`, `/cdn/0.9.3/browserfs.min.js`, and `/arch-rogue.tar.gz` all return 200 with correct MIME types (`application/wasm`, `application/javascript`, `application/gzip`) and the COOP/COEP isolation headers. No `pygame-web.github.io` references remain in `dist/index.html`.
+- Bytecode compilation and the full `unittest discover tests` suite (124 tests) pass, including the 9 new vendor/build tests.
+
+## 3.7.1 — Web Build Target (pygame-web / pygbag)
+
+Arch Rogue can now run in a browser. A new `web/` package adds the pygame-web (pygbag) packaging target and a static host server, without touching `arch_rogue.game.Game`, `arch_rogue.game:main`, the save schema, or the desktop control scheme.
+
+### Added
+
+- `web/main.py`: an async Pyodide entry point that reproduces `Game.run()`'s loop body but `await asyncio.sleep(0)`s after every frame so the browser/Pyodide event loop can pump input and rendering. Exposes `make_game(headless=...)`, `run_frame(game)`, and `main()` for reuse/testing; forces fullscreen off and redirects saves/options to a writable in-browser-FS path (`_writable_home` falls back from `Path.home()` to `/tmp` to `cwd`).
+- `web/server.py`: a stdlib `ThreadingHTTPServer` static host that serves the pygbag-built site with the cross-origin-isolation headers Pyodide's threaded runtime needs (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy`, `Cross-Origin-Resource-Policy: same-origin`) and correct MIME types for `.wasm`/`.js`/`.data`/`.symbols` (stdlib `mimetypes` returns generic octet-stream for these, which makes Pyodide refuse to instantiate `.wasm`). The COEP policy defaults to `credentialless` (configurable via `--coep`): unlike the stricter `require-corp`, `credentialless` keeps the cross-origin isolation that grants `SharedArrayBuffer` while still permitting cross-origin resources that have not opted into CORP — this is what fixes the "cross-origin request blocked" error on pygbag builds that fetch the Pyodide runtime/fonts from a CDN. `--no-isolation` was replaced by `--coep ""`. CLI: `python web/server.py --directory web/dist --port 8000`.
+- `web/build.py`: orchestrator that runs `pygbag --build` against the repo, stages the produced site into `web/dist/`, and optionally starts the server. It temporarily copies `web/main.py` to a repo-root `main.py` (the entry pygbag requires) inside a `finally` block, refuses to clobber an existing `main.py`, and searches for the produced `index.html` across pygbag's varying output layouts.
+- `web/README.md`: setup, build, serve, and limitations (fullscreen disabled in-browser, saves are session-scoped until an IDBFS store is mounted, audio is best-effort, pygbag is build-time only).
+- Optional `[project.optional-dependencies] web = ["pygbag"]` extra in `pyproject.toml` so the web packaging tool is installable on demand without adding it to runtime dependencies.
+- `tests/test_web_server.py` (10 tests): server MIME types (`application/wasm`, `application/javascript`), COOP/COEP/CORP headers with the `credentialless` default, the `require-corp` opt-in, COEP-off behavior, invalid-coep validation, index.html serving, plus the async driver's `_writable_home`, `make_game(headless=True)` (forces fullscreen off, correct 2560×1440 surface), and a single `run_frame` tick.
+
+### Validation
+
+- Bytecode compilation and the full `unittest discover tests` suite (113 tests) pass, including the 8 new web tests. Desktop behavior and save compatibility are unchanged: no `arch_rogue.*` source was modified.
+
 ## 3.7.0 — Skill-Path Variability Update
 
 Milestone 3.7 forces meaningful specialization: a run may commit to at most two skill-tree branches, and each branch now changes how an ability *plays* rather than just bumping its damage. Base (un-upgraded) abilities are deliberately weaker so committing to a path feels essential, and branch capstones deliver a marquee mechanical flourish (homing bolts, piercing shots, chain lightning).

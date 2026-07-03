@@ -5,6 +5,8 @@ __pycache__/
 *.dist-info/
 build/
 dist/
+web/vendor/
+web/dist/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
