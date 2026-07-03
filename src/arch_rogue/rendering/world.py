@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import random
 from collections import deque
 from typing import cast
 
@@ -399,6 +400,64 @@ class RenderingWorldMixin:
         up = [(p[0], p[1] - 1) for p in points]
         pygame.draw.aalines(surface, lip, False, up)
 
+    def _draw_shop_checker_floor(self, surface, top, right, bottom, left, scale):
+        # Polished checker-tile shop floor. A grout-colored diamond base shows
+        # in the gaps; a 4x2 grid of 80px square tiles (two warm stone tones,
+        # set in a checker) is clipped to the diamond, with per-cell top/bottom
+        # shading and a global lit-from-above pass. The 80px cell size divides
+        # both iso neighbor offsets (TILE_W/2=160, TILE_H/2=80), so the same
+        # cached surface tiles seamlessly across adjacent shop floor diamonds.
+        grout = (62, 54, 44)
+        grout_edge = (40, 34, 28)
+        tile_a = (138, 120, 96)
+        tile_b = (118, 102, 80)
+        diamond = [top, right, bottom, left]
+        pygame.draw.polygon(surface, grout, diamond)
+        pattern = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        cols, rows = 4, 2
+        cw = TILE_W / cols
+        ch = TILE_H / rows
+        inset = 3
+        bx, by = left[0], top[1]
+        for i in range(cols):
+            for j in range(rows):
+                x0 = bx + i * cw
+                y0 = by + j * ch
+                color = tile_a if (i + j) % 2 == 0 else tile_b
+                rect = pygame.Rect(
+                    int(x0 + inset),
+                    int(y0 + inset),
+                    int(cw - 2 * inset),
+                    int(ch - 2 * inset),
+                )
+                pygame.draw.rect(pattern, color, rect)
+                pygame.draw.line(
+                    pattern,
+                    self.shade(color, 18),
+                    (rect.x, rect.y),
+                    (rect.right - 1, rect.y),
+                    2,
+                )
+                pygame.draw.line(
+                    pattern,
+                    self.shade(color, -22),
+                    (rect.x, rect.bottom - 1),
+                    (rect.right - 1, rect.bottom - 1),
+                    2,
+                )
+        mask = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        pygame.draw.polygon(mask, (255, 255, 255, 255), diamond)
+        pattern.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+        surface.blit(pattern, (0, 0))
+        pygame.draw.polygon(surface, grout_edge, diamond, max(2, scale // 2))
+        shade_surf = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        pygame.draw.line(shade_surf, (255, 255, 255, 28), top, left, max(2, scale))
+        pygame.draw.line(shade_surf, (255, 255, 255, 18), top, right, max(2, scale))
+        pygame.draw.line(shade_surf, (0, 0, 0, 38), left, bottom, max(2, scale))
+        pygame.draw.line(shade_surf, (0, 0, 0, 28), right, bottom, max(2, scale))
+        shade_surf.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+        surface.blit(shade_surf, (0, 0))
+
     def draw_floor_tile_surface(
         self,
         surface: pygame.Surface,
@@ -414,6 +473,12 @@ class RenderingWorldMixin:
     ) -> None:
         is_stairs = tile == Tile.STAIRS
         scale = WORLD_SCALE
+        # Shop floor: a polished checker-tile floor instead of the flagstone
+        # slab, so the shop reads as a distinct tiled refuge. Stairs keep the
+        # normal slab so the stairwell still integrates with the floor plane.
+        if shop_floor and not is_stairs:
+            self._draw_shop_checker_floor(surface, top, right, bottom, left, scale)
+            return
         # Stairs sit in the same flagstone slab as the surrounding floor (same
         # base color + per-variant tint) so the stairwell reads as an opening
         # cut into the continuous floor plane rather than a contrasting patch.
@@ -508,16 +573,9 @@ class RenderingWorldMixin:
                 )
             # variant 0: smooth premium slab, no extra detail.
 
-        # --- Shop floor: a single gilded medallion at the tile center, no
-        # diamond frame, so the shop floor stays continuous and reads as a field
-        # of scattered sigils rather than a tiled grid. Only the smooth-slab
-        # variant carries a medallion so they read as occasional inlays. ---
-        if shop_floor and not is_stairs and variant == 0:
-            gold = self.mix((218, 164, 62), base, 0.4)
-            gold_hi = self.mix((245, 215, 120), base, 0.3)
-            pygame.draw.circle(surface, gold, (sx, sy), max(3, 3 * scale))
-            pygame.draw.circle(surface, gold_hi, (sx, sy), max(2, 2 * scale))
-            pygame.draw.circle(surface, gold_hi, (sx, sy), max(1, scale))
+        # Gold-coin visuals now live on the shop floor as stacked-coin props
+        # (see _gold_stack / draw_gold_stack), not as a per-tile inlay, so the
+        # shop floor stays a continuous stone surface.
 
         if is_stairs:
             self._draw_spiral_staircase(surface, sx, sy, scale)
@@ -687,6 +745,7 @@ class RenderingWorldMixin:
                 drawables.append(
                     (shopkeeper.x + shopkeeper.y, "shopkeeper", shopkeeper)
                 )
+        self._append_gold_stack_drawables(drawables, visible)
         for projectile in self.projectiles:
             if visible(projectile.x, projectile.y, 0.55):
                 drawables.append(
@@ -729,6 +788,9 @@ class RenderingWorldMixin:
                 self.draw_story_guest(cast(StoryGuest, obj))
             elif kind == "shopkeeper":
                 self.draw_shopkeeper(cast(Shopkeeper, obj))
+            elif kind == "gold_stack":
+                gx, gy, gsize = cast(tuple[int, int, int], obj)
+                self.draw_gold_stack(gx, gy, gsize)
             elif kind == "door":
                 x, y, tile = cast(tuple[int, int, Tile], obj)
                 self.draw_door(x, y, tile)
@@ -753,6 +815,63 @@ class RenderingWorldMixin:
             self.screen.blit(
                 surface, surface.get_rect(center=(sx, sy - 34 * WORLD_SCALE))
             )
+
+    def _append_gold_stack_drawables(self, drawables, visible) -> None:
+        # Scattered gold-coin stacks on the shop floor. Placements are stable
+        # for a given shop room (seeded from the room bounds) and cached per
+        # frame so the scatter never flickers between frames.
+        for gx, gy, gsize in self._shop_gold_stack_placements():
+            if visible(gx + 0.5, gy + 0.5, 0.45):
+                drawables.append((gx + gy + 0.5, "gold_stack", (gx, gy, gsize)))
+
+    def _shop_gold_stack_placements(self) -> list[tuple[int, int, int]]:
+        cache = getattr(self, "_frame_cache", None)
+        if cache is not None and "gold_stack_placements" in cache:
+            return cache["gold_stack_placements"]  # type: ignore[no-any-return]
+        placements: list[tuple[int, int, int]] = []
+        shop = self._shop_room_bounds()
+        if shop is not None:
+            rx, ry, rw, rh = shop
+            avoid: set[tuple[int, int]] = set()
+            for keeper in self.shopkeepers:
+                avoid.add((int(keeper.x), int(keeper.y)))
+            for it in self.items:
+                if it.slot == "shop_sign":
+                    avoid.add((int(it.x), int(it.y)))
+            interior: list[tuple[int, int]] = []
+            for x in range(rx + 1, rx + rw - 1):
+                for y in range(ry + 1, ry + rh - 1):
+                    if not self.dungeon.in_bounds(x, y):
+                        continue
+                    if self.dungeon.tiles[x][y] in (Tile.FLOOR, Tile.STAIRS):
+                        if (x, y) not in avoid:
+                            interior.append((x, y))
+            if interior:
+                interior.sort()
+                seed = (
+                    (rx * 73856093)
+                    ^ (ry * 19349663)
+                    ^ (rw * 83492791)
+                    ^ (rh * 22345761)
+                )
+                rng = random.Random(seed)
+                count = max(3, min(8, len(interior) // 3))
+                stride = max(1, len(interior) // count)
+                start = rng.randrange(stride) if stride else 0
+                chosen = interior[start::stride][:count]
+                sizes = [2, 1, 3, 2, 1, 3, 2, 1]
+                rng.shuffle(sizes)
+                for i, (tx, ty) in enumerate(chosen):
+                    placements.append((tx, ty, sizes[i % len(sizes)]))
+        if cache is not None:
+            cache["gold_stack_placements"] = placements
+        return placements
+
+    def draw_gold_stack(self, x: int, y: int, size: int) -> None:
+        sx, sy = self.world_to_screen(x + 0.5, y + 0.5)
+        sprite = self.sprites.gold_stack_sprite(size)
+        rect = sprite.get_rect(midbottom=(sx, sy + 2 * WORLD_SCALE))
+        self.screen.blit(sprite, rect)
 
     def draw_door_tile_surface(
         self,

@@ -245,6 +245,9 @@ class RenderingEffectsMixin:
         if item.slot == "story_relic":
             self.draw_story_relic(item)
             return
+        if item.slot == "shop_sign":
+            self.draw_shop_sign_item(item)
+            return
         sx, sy = self.world_to_screen(item.x, item.y)
         rarity_color = self.rarity_color(item.visible_rarity)
         rarity_icon = self.rarity_icon(item.visible_rarity)
@@ -300,6 +303,30 @@ class RenderingEffectsMixin:
         if math.hypot(item.x - self.player.x, item.y - self.player.y) < 1.0:
             label = self.small_font.render(
                 f"E {rarity_icon} {item.display_name}", True, rarity_color
+            )
+            self.screen.blit(
+                label, label.get_rect(center=(sx, rect.top - 10 * WORLD_SCALE))
+            )
+
+    def draw_shop_sign_item(self, item: Item) -> None:
+        # The shop sign is a mounted hanging sign (built procedurally in the
+        # sprite atlas), not a generic loot item — render the shop_sign sprite
+        # with a soft gold glow and the trade prompt label.
+        sx, sy = self.world_to_screen(item.x, item.y)
+        gold = (245, 205, 92)
+        pulse = 0.65 + 0.35 * math.sin(self.elapsed * 4.0 + item.x + item.y)
+        glow = pygame.Surface((42 * WORLD_SCALE, 20 * WORLD_SCALE), pygame.SRCALPHA)
+        pygame.draw.ellipse(glow, (*gold, int(40 + 35 * pulse)), glow.get_rect())
+        self.screen.blit(glow, glow.get_rect(center=(sx, sy + WORLD_SCALE)))
+        bob = int(math.sin(self.elapsed * 3.2 + item.x * 0.7) * 2 * WORLD_SCALE)
+        sign = self.sprites.shop_sign_sprite
+        rect = sign.get_rect(midbottom=(sx, sy + 4 * WORLD_SCALE - bob))
+        self.screen.blit(sign, rect)
+        if math.hypot(item.x - self.player.x, item.y - self.player.y) < 1.0:
+            label = self.small_font.render(
+                f"E {self.rarity_icon(item.visible_rarity)} {item.display_name}",
+                True,
+                gold,
             )
             self.screen.blit(
                 label, label.get_rect(center=(sx, rect.top - 10 * WORLD_SCALE))

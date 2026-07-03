@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import random
 
 import pygame
 
@@ -184,6 +185,13 @@ class PixelSpriteAtlas:
         self.shopkeeper_animation_frames = self._actor_animation_frames(
             self.shopkeeper_sprite, (245, 205, 92)
         )
+        self.shop_sign_sprite = self._scale_prop(self._shop_sign())
+        # Gold-coin stack props scattered on the shop floor (size 1-3). Each
+        # size is seeded to match the approved preview sprites so the in-game
+        # look is identical to the reviewed gold_stacks PNGs.
+        self.gold_stack_sprites = {
+            size: self._scale_prop(self._gold_stack(size)) for size in (1, 2, 3)
+        }
 
     # ------------------------------------------------------------------
     # Low-level surface helpers
@@ -1858,6 +1866,45 @@ class PixelSpriteAtlas:
         self._dot(s, 22, 4, gold_hi)
         return s
 
+    def _shop_sign(self) -> pygame.Surface:
+        # Hanging coin shop sign: a wooden plank suspended by two short
+        # chains from a bracket beam, with a gold merchant coin in relief.
+        s = self._surface(20, 26)
+        wood = (110, 78, 50)
+        wood_hi = (150, 110, 72)
+        wood_dark = (74, 50, 34)
+        wood_edge = (40, 26, 18)
+        chain = (170, 165, 158)
+        chain_dark = (90, 86, 80)
+        gold = (245, 205, 92)
+        gold_hi = (255, 232, 150)
+        gold_dark = (180, 140, 50)
+        # bracket beam above the board
+        self._rect(s, 3, 2, 14, 2, wood_dark)
+        self._hline(s, 3, 2, 14, wood)
+        # two short chains down to the board
+        for cx in (6, 13):
+            self._dot(s, cx, 4, chain)
+            self._dot(s, cx, 5, chain_dark)
+            self._dot(s, cx, 6, chain)
+        # wooden plank board with beveled edges
+        bx, by, bw, bh = 3, 7, 14, 15
+        self._rect(s, bx, by, bw, bh, wood)
+        self._hline(s, bx, by, bw, wood_hi)
+        self._hline(s, bx, by + bh - 1, bw, wood_edge)
+        self._vline(s, bx, by, bh, wood_edge)
+        self._vline(s, bx + bw - 1, by, bh, wood_edge)
+        # gold coin motif in relief
+        cx, cy = bx + bw // 2, by + bh // 2
+        pygame.draw.circle(s, gold_dark, (cx, cy), 5)
+        pygame.draw.circle(s, gold, (cx, cy), 4)
+        pygame.draw.circle(s, gold_hi, (cx - 1, cy - 1), 2)
+        # merchant mark glyph
+        self._hline(s, cx - 3, cy - 1, 6, gold_dark)
+        self._hline(s, cx - 3, cy + 1, 6, gold_dark)
+        self._dot(s, cx, cy, gold_hi)
+        return s
+
     def _story_guest(self, active: bool = True) -> pygame.Surface:
         s = self._surface(self.RAW_ACTOR_W, self.RAW_ACTOR_H)
         outline = (22, 16, 28)
@@ -1897,3 +1944,125 @@ class PixelSpriteAtlas:
         self._rect(s, 4, 12, 2, 10, cloak_lo)
         self._rect(s, 21, 12, 2, 10, cloak_lo)
         return s
+
+    # ------------------------------------------------------------------
+    # Gold-coin stack prop (shop floor scatter)
+    # ------------------------------------------------------------------
+    _GOLD_STACK_SEEDS: dict[int, int] = {1: 101, 2: 505, 3: 808}
+
+    def _gold_stack(self, size: int) -> pygame.Surface:
+        """Procedural gold-coin stack prop (size 1=small, 2=medium, 3=large).
+
+        Coins are layered with a struck rim, lit rim ring, inset face with an
+        upper highlight crescent and a central emblem so each disc reads as a
+        distinct coin. A ground-contact shadow grounds the stack on the shop
+        floor. Each size is seeded to reproduce the reviewed preview sprite
+        exactly (see gold_stacks/gold_stack_0{1,5,8}_size{1,2,3}.png).
+        """
+        rim_lo = (74, 48, 10)
+        rim = (108, 74, 18)
+        rim_ring = (168, 120, 30)
+        face = (224, 176, 52)
+        face_lo = (170, 124, 36)
+        face_hi = (252, 224, 124)
+        shine = (255, 248, 206)
+        emblem = (255, 240, 170)
+        base_shadow = (28, 20, 14)
+
+        rng = random.Random(self._GOLD_STACK_SEEDS.get(size, 101))
+
+        if size == 1:
+            stack_coins = rng.randint(2, 3)
+            coin_w, coin_h = 7, 3
+            canvas_w, canvas_h = 16, 14
+            scatter = 0
+        elif size == 2:
+            stack_coins = rng.randint(3, 4)
+            coin_w, coin_h = 9, 4
+            canvas_w, canvas_h = 20, 16
+            scatter = rng.choice([0, 1])
+        else:  # size == 3
+            stack_coins = rng.randint(5, 6)
+            coin_w, coin_h = 11, 5
+            canvas_w, canvas_h = 24, 22
+            scatter = rng.choice([1, 2])
+
+        s = self._surface(canvas_w, canvas_h)
+
+        def coin(cx: int, cy: int, w: int, h: int) -> None:
+            rect = pygame.Rect(cx - w // 2, cy - h // 2, w, h)
+            pygame.draw.ellipse(s, rim_lo, rect.inflate(2, 2))
+            pygame.draw.ellipse(s, rim, rect)
+            pygame.draw.ellipse(s, rim_ring, rect.inflate(-1, -1))
+            face_rect = rect.inflate(-3, -3)
+            if face_rect.w <= 0 or face_rect.h <= 0:
+                return
+            pygame.draw.ellipse(s, face_lo, face_rect)
+            hi_rect = pygame.Rect(
+                face_rect.x, face_rect.y, face_rect.w, max(1, (face_rect.h + 1) // 2)
+            )
+            pygame.draw.ellipse(s, face, hi_rect)
+            top_rect = pygame.Rect(
+                face_rect.x + 1,
+                face_rect.y,
+                max(1, face_rect.w - 2),
+                max(1, face_rect.h // 2),
+            )
+            pygame.draw.ellipse(s, face_hi, top_rect)
+            if w >= 9 and face_rect.h >= 3:
+                ex, ey = face_rect.centerx, face_rect.centery
+                pygame.draw.rect(s, emblem, (ex, ey - 1, 1, 2))
+                pygame.draw.rect(s, emblem, (ex - 1, ey, 1, 1))
+                pygame.draw.rect(s, emblem, (ex + 1, ey, 1, 1))
+            elif face_rect.w >= 3:
+                pygame.draw.rect(
+                    s, emblem, (face_rect.centerx, face_rect.centery, 1, 1)
+                )
+
+        def sparkle(x: int, y: int) -> None:
+            pygame.draw.rect(s, shine, (x, y, 1, 1))
+            pygame.draw.rect(s, shine, (x - 1, y, 1, 1))
+            pygame.draw.rect(s, shine, (x + 1, y, 1, 1))
+            pygame.draw.rect(s, shine, (x, y - 1, 1, 1))
+            pygame.draw.rect(s, shine, (x, y + 1, 1, 1))
+
+        base_cx = canvas_w // 2
+        base_y = canvas_h - 3
+        shadow_w = coin_w + 2 + scatter * 2
+        pygame.draw.ellipse(
+            s, base_shadow, pygame.Rect(base_cx - shadow_w // 2, base_y, shadow_w, 2)
+        )
+
+        # Stack coins bottom-up, spaced ~half a face height so the dark rim of
+        # each lower coin shows as a crisp separator band.
+        coin_thickness = max(1, round(coin_h * 0.5))
+        top_cy = base_y - 1
+        for i in range(stack_coins):
+            cy = base_y - 1 - i * coin_thickness
+            jitter = rng.randint(-1, 1) if size >= 2 else 0
+            cx = base_cx + jitter
+            coin(cx, cy, coin_w, coin_h)
+            sep_w = coin_w - 2
+            pygame.draw.rect(s, rim_lo, (cx - sep_w // 2, cy + coin_h // 2, sep_w, 1))
+            if i < stack_coins - 1:
+                pygame.draw.rect(
+                    s, rim_ring, (cx - sep_w // 2, cy - coin_h // 2, sep_w, 1)
+                )
+            top_cy = cy
+
+        # Top coin gets a brighter face + sparkle to read as the stack top.
+        coin(base_cx, top_cy, coin_w, coin_h)
+        sparkle(base_cx - coin_w // 4, top_cy - coin_h // 2 - 1)
+
+        # Larger tiers scatter a few fallen coins for silhouette variety.
+        for _ in range(scatter):
+            side = rng.choice([-1, 1])
+            fx = base_cx + side * (coin_w // 2 + rng.randint(1, 2))
+            fy = base_y - rng.randint(0, 1)
+            coin(fx, fy, coin_w - 2, max(2, coin_h - 1))
+            sparkle(fx - 1, fy - 1)
+
+        return s
+
+    def gold_stack_sprite(self, size: int) -> pygame.Surface:
+        return self.gold_stack_sprites.get(size, self.gold_stack_sprites[1])
