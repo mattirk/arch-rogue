@@ -14,7 +14,7 @@ from .content import (
     BossDefinition,
     EncounterTemplate,
 )
-from .dungeon import Dungeon
+from .dungeon import MAP_H, MAP_W, Dungeon, Tile
 from .models import (
     Archetype,
     Enemy,
@@ -277,19 +277,37 @@ class RunFlowMixin:
         return self.light_distance_to_player(x, y) <= DARK_LEVEL_LIGHT_RADIUS + margin
 
     def has_line_of_sight(self, ax: float, ay: float, bx: float, by: float) -> bool:
-        distance = math.hypot(bx - ax, by - ay)
-        if distance <= 0.001:
+        # Integer Bresenham walk over the cells between (ax,ay) and (bx,by):
+        # one cell per step instead of the old 8x-oversampled float walk, with
+        # the bounds/floor check inlined (no per-step method calls). A wall or
+        # closed door on any intermediate cell blocks sight; the endpoints are
+        # excluded (matching the previous `steps 1..steps-1` semantics).
+        x0, y0 = int(ax), int(ay)
+        x1, y1 = int(bx), int(by)
+        if x0 == x1 and y0 == y1:
             return True
-        steps = max(1, int(distance * 8))
-        for step in range(1, steps):
-            ratio = step / steps
-            x = ax + (bx - ax) * ratio
-            y = ay + (by - ay) * ratio
-            tx, ty = int(x), int(y)
-            if not self.dungeon.in_bounds(tx, ty):
-                return False
-            if not self.dungeon.is_floor(x, y):
-                return False
+        tiles = self.dungeon.tiles
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        sx = 1 if x1 > x0 else -1
+        sy = 1 if y1 > y0 else -1
+        err = dx - dy
+        x, y = x0, y0
+        while True:
+            if (x, y) != (x0, y0) and (x, y) != (x1, y1):
+                if not (0 <= x < MAP_W and 0 <= y < MAP_H):
+                    return False
+                if tiles[x][y] not in (Tile.FLOOR, Tile.STAIRS, Tile.OPEN_DOOR):
+                    return False
+            if x == x1 and y == y1:
+                break
+            e2 = err << 1
+            if e2 > -dy:
+                err -= dy
+                x += sx
+            if e2 < dx:
+                err += dx
+                y += sy
         return True
 
     def has_line_of_sight_to_player(self, x: float, y: float) -> bool:

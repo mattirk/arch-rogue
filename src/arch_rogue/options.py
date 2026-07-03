@@ -47,6 +47,9 @@ class OptionsMixin:
         self.heading_font = pygame.font.Font(None, 32 * self.ui_scale)
         self.big_font = pygame.font.Font(None, 48 * self.ui_scale)
         self.title_font = pygame.font.Font(None, 62 * self.ui_scale)
+        # Clear the cached font.size() results: the Font objects are replaced, so
+        # keys based on id(font) would otherwise collide with the new fonts.
+        self._text_size_cache = {}
 
     def available_difficulty_profiles(self) -> tuple[DifficultyProfile, ...]:
         return tuple(

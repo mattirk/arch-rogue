@@ -1,5 +1,49 @@
 # Changelog
 
+## 3.7.5 — Per-Frame Hot-Path Optimizations (browser FPS at full window)
+
+The browser build was unplayable at full-window resolution (`?maxw=1980`) because the per-frame work — running under Pyodide, which is slower than native Python and pays per Python→C call — was too heavy. This release optimizes the profiled hot paths (driven by a `cProfile` harness at 1920×1080 in playing state) without changing gameplay or visuals.
+
+### Changed (optimizations)
+
+- **Line of sight** (`run_flow.has_line_of_sight`): replaced the 8x-oversampled float walk (which called `in_bounds` + `is_floor` ~80 times per query) with a single-cell-per-step integer Bresenham walk that inlines the bounds and passable-tile check. Same blocked-by-wall/closed-door semantics (verified by `test_dark_levels`); ~8x fewer per-query cell checks. `has_line_of_sight_to_player` was already per-frame cached.
+- **`Dungeon.is_floor`** (called hundreds of thousands of times per frame): inlined the bounds check (dropping the `in_bounds` method call) and uses a module-level `_PASSABLE_TILES` tuple for the membership test.
+- **Floor tile rendering** (`rendering/world.py`): `draw_dungeon` now collects every visible floor/stairs blit into one `Surface.blits()` call instead of ~250 individual `blit()` calls — identical pixels/positions, but one Python→C call instead of ~250 (the big win for call-bound Pyodide), with a defensive loop fallback if `blits` is unavailable. Walls/doors (drawn depth-sorted in `draw_world_objects`) still blit individually, but there are far fewer.
+- **Off-screen tile cull**: `draw_tile`/`_tile_blit_entry` skip tiles whose center is outside the viewport, so the `visible_bounds` safety-padding ring no longer pays a blit + tile_seed/tile_surface/shop lookup for off-screen tiles.
+- **Dark-floor alpha** (`_alpha_tile_surface`): the dark-floor light falloff previously did `surface.copy(); surface.set_alpha(alpha)` per tile per frame (~289 fresh surface allocations/frame). It now quantizes alpha into 8 buckets and caches one `set_alpha` copy per (surface, bucket), cleared on floor/theme change (`prewarm_tile_cache`). Same falloff look; no per-frame allocations.
+- **`font.size` caching** (`rendering/base._text_size`): HUD text wrapping/ellipsizing re-measured the same labels every frame. Now cached by (font, text) with an 8192-entry cap, cleared in `rebuild_fonts` (Font objects are replaced, so `id(font)` keys would otherwise collide). The char-by-char truncation loop stays uncached (its strings are unique).
+
+### Result
+
+- Desktop headless frame at 1920×1080: ~9.2 ms → ~7.6 ms (≈17% faster), with total function calls per run dropping from ~8.27M to ~5.39M (≈35% fewer) — the call reduction matters most under Pyodide, where each Python→C call is the expensive part. Full `unittest discover tests` (141 tests) passes; rendering/LOS/dark-floor behavior is unchanged.
+
+### Validation
+
+- `python -m compileall src web` clean; `python -m unittest discover tests` → 141/141 pass. The rebuilt `assets/main.py` and game source package the optimizations (verified by content check).
+
+### Changed (metadata)
+
+- Version metadata (`__version__`, `pyproject.toml`) and the four release-string-asserting tests now target `3.7.5`. The save schema `version` is unchanged (4). `web/README.md` notes the optimizations and that `?maxw=1980` should now be playable.
+
+## 3.7.4 — Browser Performance: Capped Render Resolution
+
+Browser FPS was poor because the build rendered at the full browser viewport (1920×1080 / 4K), which is the dominant per-frame cost under Pyodide (slower-than-native Python + WASM SDL). pygbag upscales the canvas via CSS for free, so the web build now renders at a **capped internal resolution** that preserves the window's aspect ratio (the canvas still fills the window, no letterboxing) and lets the browser GPU scale it up.
+
+### Added
+
+- Capped render resolution in `web/main.py`: `cap_render_size(w, h, max_long, max_px)` preserves aspect while capping the longer side (default `DEFAULT_MAX_RENDER_LONG_SIDE = 1280`) and total pixels (default `DEFAULT_MAX_RENDER_PIXELS = 1_300_000`), with `MIN_RENDER_W/H = 320/240` floors. `browser_render_size()` returns the capped size (or `None` off-browser); `make_game()` and `maybe_resize_to_browser()` now use it instead of the raw viewport, so the canvas fills the window at a manageable pixel budget. This also cuts the number of dungeon tiles drawn each frame (the camera derives the visible-tile radius from screen size, floored at a small radius).
+- URL tuning via `web_config()` (cached): `?maxw=` overrides the long-side cap and `?maxpx=` the pixel cap (e.g. `?maxw=960` for slower devices, `?maxw=99999` to disable the cap and render the full window). Defaults keep a good balance of FPS and readability.
+- Throttled the per-frame resize probe: `run_frame` only calls `maybe_resize_to_browser` every 10th frame (resize detection at ~10 Hz is plenty), avoiding a Pyodide↔JS bridge call every frame.
+- `tests/test_web_server.py` (now 36 tests, +7): `web_config` defaults off-browser; `cap_render_size` caps the long side preserving aspect (2560×1440→1280×720, 1366×768→1280×720), leaves sub-cap sizes untouched (1024×768, 960×540), clamps to the minimum (200×200→320×240), engages the area cap (2000×2000), disables when both caps are 0, and `browser_render_size` is `None` off-browser.
+
+### Validation
+
+- Bytecode compilation and the full `unittest discover tests` suite (141 tests) pass, including the 7 new render-cap tests. The rebuilt `assets/main.py` packages the cap logic (verified by content check). No `arch_rogue.*` source was modified.
+
+### Changed
+
+- Version metadata (`__version__`, `pyproject.toml`) and the four release-string-asserting tests now target `3.7.4`. The save schema `version` is unchanged (4). `web/README.md` gains a “Performance: capped internal render resolution” section with the `?maxw=` / `?maxpx=` tuning table.
+
 ## 3.7.3 — Adaptive Browser Resolution
 
 The browser build now renders at the browser's full available viewport size and re-adapts when the window is resized, instead of a fixed 2560×1440 internal surface letterboxed by pygbag.

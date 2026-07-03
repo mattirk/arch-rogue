@@ -110,11 +110,29 @@ class RenderingBaseMixin:
         maximum = max(minimum, int(height * 0.38))
         return min(max(desired, minimum), maximum)
 
+    def _text_size(self, font: pygame.font.Font, text: str) -> tuple[int, int]:
+        # font.size() is a hot per-frame call (HUD text wrapping/ellipsizing).
+        # Cache by (font, text) so repeated labels (ability names, HP headers,
+        # cooldown counts, ...) don't re-measure every frame. Cleared in
+        # rebuild_fonts (Font objects are replaced, so id(font) keys would collide).
+        cache = getattr(self, "_text_size_cache", None)
+        if cache is None:
+            cache = {}
+            self._text_size_cache = cache
+        key = (id(font), text)
+        v = cache.get(key)
+        if v is None:
+            v = font.size(text)
+            if len(cache) >= 8192:
+                cache.clear()
+            cache[key] = v
+        return v
+
     def ellipsize_ui_text(
         self, text: str, font: pygame.font.Font, max_width: int
     ) -> str:
         max_width = max(1, max_width)
-        if font.size(text)[0] <= max_width:
+        if self._text_size(font, text)[0] <= max_width:
             return text
         suffix = "…"
         while text and font.size(text + suffix)[0] > max_width:
@@ -177,7 +195,7 @@ class RenderingBaseMixin:
             current = self.ellipsize_ui_text(words[0], font, max_width)
             for word in words[1:]:
                 candidate = f"{current} {word}"
-                if font.size(candidate)[0] <= max_width:
+                if self._text_size(font, candidate)[0] <= max_width:
                     current = candidate
                 else:
                     lines.append(current)

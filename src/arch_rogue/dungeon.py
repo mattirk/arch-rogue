@@ -7,6 +7,10 @@ from .models import Room, Tile
 MAP_W = 72
 MAP_H = 72
 
+# Passable tile kinds (used by the hot `is_floor` path). Module-level so the
+# membership test avoids rebuilding a tuple each call.
+_PASSABLE_TILES = (Tile.FLOOR, Tile.STAIRS, Tile.OPEN_DOOR)
+
 
 class Dungeon:
     def __init__(self, rng: random.Random) -> None:
@@ -200,12 +204,13 @@ class Dungeon:
         return 0 <= x < MAP_W and 0 <= y < MAP_H
 
     def is_floor(self, x: float, y: float) -> bool:
+        # Hot path (called many times per frame for LOS/movement/collision):
+        # inline the bounds check to avoid the `in_bounds` method call, and use
+        # a module-level tuple for the passable-tile membership test.
         tx, ty = int(x), int(y)
-        return self.in_bounds(tx, ty) and self.tiles[tx][ty] in (
-            Tile.FLOOR,
-            Tile.STAIRS,
-            Tile.OPEN_DOOR,
-        )
+        if not (0 <= tx < MAP_W and 0 <= ty < MAP_H):
+            return False
+        return self.tiles[tx][ty] in _PASSABLE_TILES
 
     def blocked_for_radius(self, x: float, y: float, radius: float = 0.27) -> bool:
         for ox in (-radius, radius):

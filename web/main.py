@@ -141,6 +141,79 @@ def _notify_pygbag_refit() -> None:
         pass
 
 
+# ---- Browser performance: capped internal render resolution ------------------
+# Rendering at the full browser viewport (e.g. 1920x1080 / 4K) is the dominant
+# per-frame cost under Pyodide (slower-than-native Python + WASM SDL). pygbag
+# upscales the canvas via CSS for free, so we render at a capped internal
+# resolution that preserves the window's aspect ratio (so the canvas still
+# fills the window with no letterboxing) and let the browser scale it up. The
+# cap can be tuned / disabled with the ?maxw= and ?maxpx= URL query params.
+DEFAULT_MAX_RENDER_LONG_SIDE = 1280
+DEFAULT_MAX_RENDER_PIXELS = 1_300_000
+MIN_RENDER_W = 320
+MIN_RENDER_H = 240
+
+_WEB_CONFIG = None
+
+
+def web_config() -> dict:
+    """Return cached browser render-cap config, honoring ?maxw= / ?maxpx= URLs.
+
+    ``maxw`` caps the longer render side; ``maxpx`` caps total render pixels.
+    A very large ``maxw`` (e.g. ``?maxw=99999``) effectively disables the cap for
+    users who want the full window resolution and have the CPU for it.
+    """
+    global _WEB_CONFIG
+    if _WEB_CONFIG is None:
+        cfg = {
+            "maxw": DEFAULT_MAX_RENDER_LONG_SIDE,
+            "maxpx": DEFAULT_MAX_RENDER_PIXELS,
+        }
+        js = _get_js()
+        if js is not None:
+            try:
+                from urllib.parse import parse_qs
+
+                search = str(getattr(js.location, "search", "") or "")
+                qs = parse_qs(search.lstrip("?"))
+                if "maxw" in qs:
+                    cfg["maxw"] = max(0, int(qs["maxw"][0]))
+                if "maxpx" in qs:
+                    cfg["maxpx"] = max(0, int(qs["maxpx"][0]))
+            except Exception:
+                pass
+        _WEB_CONFIG = cfg
+    return _WEB_CONFIG
+
+
+def cap_render_size(
+    w: int, h: int, max_long: int | None = None, max_px: int | None = None
+):
+    """Cap a render size, preserving aspect ratio, to a max long side and max
+    pixel area. Pure helper so the cap is unit-testable without a browser."""
+    if max_long is None:
+        max_long = web_config()["maxw"]
+    if max_px is None:
+        max_px = web_config()["maxpx"]
+    if max_long and max(w, h) > max_long:
+        s = max_long / max(w, h)
+        w = round(w * s)
+        h = round(h * s)
+    if max_px and w * h > max_px:
+        s = (max_px / (w * h)) ** 0.5
+        w = int(w * s)
+        h = int(h * s)
+    return max(MIN_RENDER_W, int(w)), max(MIN_RENDER_H, int(h))
+
+
+def browser_render_size():
+    """Return the capped browser render size, or None off-browser."""
+    win = browser_window_size()
+    if win is None:
+        return None
+    return cap_render_size(win[0], win[1])
+
+
 def maybe_resize_to_browser(
     game: Game,
     size_provider=None,
@@ -152,7 +225,7 @@ def maybe_resize_to_browser(
     :func:`browser_window_size`) is a parameter so the logic is unit-testable
     without a real Pyodide runtime.
     """
-    provider = size_provider if size_provider is not None else browser_window_size
+    provider = size_provider if size_provider is not None else browser_render_size
     size = provider()
     if size is None or size[0] < 320 or size[1] < 240:
         return False
@@ -180,7 +253,7 @@ def make_game(
     expects.
     """
     if screen_size is None:
-        screen_size = browser_window_size() or (SCREEN_WIDTH, SCREEN_HEIGHT)
+        screen_size = browser_render_size() or (SCREEN_WIDTH, SCREEN_HEIGHT)
     home = _writable_home()
     game = Game(
         screen_size=screen_size,
@@ -195,11 +268,19 @@ def make_game(
     return game
 
 
+_FRAME = 0
+
+
 async def run_frame(game: Game) -> None:
     """Advance one game frame and yield to the browser event loop."""
-    # Keep the backing surface matched to the browser viewport so the canvas
-    # fills the whole window as the user resizes it (no-op off-browser).
-    maybe_resize_to_browser(game)
+    global _FRAME
+    _FRAME += 1
+    # Keep the backing surface matched to the (capped) browser render size so the
+    # canvas fills the window as the user resizes it. The probe crosses the
+    # Pyodide<->JS bridge, so only run it every few frames (resize detection at
+    # ~10 Hz is plenty); it is a no-op off-browser.
+    if _FRAME == 1 or _FRAME % 10 == 0:
+        maybe_resize_to_browser(game)
     dt = min(game.clock.tick(FPS) / 1000.0, 0.05)
     game.handle_events()
     if game.state == "playing":

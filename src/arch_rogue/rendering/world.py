@@ -45,6 +45,7 @@ class RenderingWorldMixin:
         min_x, max_x, min_y, max_y = self.visible_bounds()
         self._frame_dark = self.is_current_floor_dark()
         dark = self._frame_dark
+        entries: list[tuple[pygame.Surface, tuple[int, int]]] = []
         for s in range(min_x + min_y, max_x + max_y + 1):
             for x in range(min_x, max_x + 1):
                 y = s - x
@@ -54,10 +55,28 @@ class RenderingWorldMixin:
                     tile = self.dungeon.tiles[x][y]
                     if tile in (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
                         continue
-                    self.draw_tile(x, y, tile)
+                    entry = self._tile_blit_entry(x, y, tile)
+                    if entry is not None:
+                        entries.append(entry)
+        if entries:
+            blits = getattr(self.screen, "blits", None)
+            if blits is not None:
+                blits(entries)
+            else:
+                for src, dest in entries:
+                    self.screen.blit(src, dest)
 
-    def draw_tile(self, x: int, y: int, tile: Tile) -> None:
+    def _tile_blit_entry(
+        self, x: int, y: int, tile: Tile
+    ) -> tuple[pygame.Surface, tuple[int, int]] | None:
         sx, sy = self.world_to_screen(x + 0.5, y + 0.5)
+        # Cull tiles whose center is off-screen. `visible_bounds` pads the tile
+        # radius for camera-smoothing safety, so the box corners sit outside the
+        # viewport; skipping them avoids the tile_seed/tile_surface/shop work and
+        # a blit for tiles the player never sees.
+        sw, sh = self._screen_size()
+        if sx < -TILE_W or sx > sw + TILE_W or sy < -TILE_H or sy > sh + TILE_H:
+            return None
         seed = self.tile_seed(x, y)
         surface, anchor_x, anchor_y = self.tile_surface(
             tile, seed, self.is_shop_floor_tile(x, y)
@@ -70,10 +89,39 @@ class RenderingWorldMixin:
             # them entirely (handled by the cull in draw_world_objects). Only
             # floor tiles get the soft light-radius falloff.
             if tile not in (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
+                if alpha <= 0:
+                    return None
                 if alpha < 255:
-                    surface = surface.copy()
-                    surface.set_alpha(alpha)
-        self.screen.blit(surface, (sx - anchor_x, sy - anchor_y))
+                    surface = self._alpha_tile_surface(surface, alpha)
+        return (surface, (sx - anchor_x, sy - anchor_y))
+
+    def draw_tile(self, x: int, y: int, tile: Tile) -> None:
+        # Used by draw_world_objects for depth-sorted walls/doors (few of them);
+        # the flat floor is batched in draw_dungeon via _tile_blit_entry.
+        entry = self._tile_blit_entry(x, y, tile)
+        if entry is not None:
+            self.screen.blit(entry[0], entry[1])
+
+    def _alpha_tile_surface(self, base: pygame.Surface, alpha: int) -> pygame.Surface:
+        # Dark-floor light falloff: previously every frame did
+        # `surface.copy(); surface.set_alpha(alpha)` per tile, allocating a fresh
+        # surface ~289x/frame. Instead quantize alpha into a small set of buckets
+        # and cache one set_alpha copy per (surface, bucket) so the hot loop only
+        # blits. The cache is cleared on floor/theme change (prewarm_tile_cache).
+        if alpha >= 255:
+            return base
+        cache = getattr(self, "_alpha_tile_cache", None)
+        if cache is None:
+            cache = {}
+            self._alpha_tile_cache = cache
+        bucket = min(7, alpha >> 5)  # 8 buckets over [0,255)
+        key = (id(base), bucket)
+        cached = cache.get(key)
+        if cached is None:
+            cached = base.copy()
+            cached.set_alpha(bucket * 32 + 16)
+            cache[key] = cached
+        return cached
 
     def tile_seed(self, x: int, y: int) -> int:
         # Deterministic per-tile texture-variant index in
@@ -88,6 +136,9 @@ class RenderingWorldMixin:
         # theme so the first frame after a floor transition never pays the
         # procedural-draw cost, and the hot render loop only ever blits cached
         # surfaces. Called whenever the floor (and thus the theme) changes.
+        # Also drop the dark-floor alpha-bucket cache since its keyed surfaces
+        # belong to the previous theme.
+        self._alpha_tile_cache = {}
         for tile in (Tile.WALL, Tile.FLOOR, Tile.STAIRS):
             variants = (
                 DUNGEON_WALL_VARIANTS if tile == Tile.WALL else DUNGEON_FLOOR_VARIANTS

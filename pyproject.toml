@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.7.3"
-description = "3.7.3 makes the browser build adapt the game surface to the browser's full available viewport size and resize with the window, on top of the fully-vendored, same-origin pygame-web build and the 3.7 skill-path variability mechanics."
+version = "3.7.5"
+description = "3.7.5 optimizes the per-frame hot path (Bresenham line-of-sight, inlined floor checks, screen-space tile cull, cached font metrics, batched floor blits, and cached dark-floor alpha) so the browser build stays smooth at full-window resolution, alongside the 3.7 skill-path variability mechanics."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

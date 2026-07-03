@@ -413,5 +413,50 @@ class BrowserResizeTests(unittest.TestCase):
                 pygame.quit()
 
 
+class RenderCapTests(unittest.TestCase):
+    def test_web_config_defaults_off_browser(self) -> None:
+        # Reset cache so the off-browser default path is exercised.
+        web_main._WEB_CONFIG = None
+        cfg = web_main.web_config()
+        self.assertEqual(cfg["maxw"], web_main.DEFAULT_MAX_RENDER_LONG_SIDE)
+        self.assertEqual(cfg["maxpx"], web_main.DEFAULT_MAX_RENDER_PIXELS)
+
+    def test_cap_render_size_caps_long_side_preserving_aspect(self) -> None:
+        self.assertEqual(
+            web_main.cap_render_size(2560, 1440, 1280, 1_300_000), (1280, 720)
+        )
+        self.assertEqual(
+            web_main.cap_render_size(1366, 768, 1280, 1_300_000), (1280, 720)
+        )
+
+    def test_cap_render_size_leaves_below_cap_untouched(self) -> None:
+        self.assertEqual(
+            web_main.cap_render_size(1024, 768, 1280, 1_300_000), (1024, 768)
+        )
+        self.assertEqual(
+            web_main.cap_render_size(960, 540, 1280, 1_300_000), (960, 540)
+        )
+
+    def test_cap_render_size_clamps_to_minimum(self) -> None:
+        self.assertEqual(
+            web_main.cap_render_size(200, 200, 1280, 1_300_000), (320, 240)
+        )
+
+    def test_cap_render_size_area_cap_engages(self) -> None:
+        # 2000x2000: long-side cap -> 1280x1280 (1.64M px) which exceeds maxpx,
+        # so the area cap must shrink it below maxpx while staying above the min.
+        rw, rh = web_main.cap_render_size(2000, 2000, 1280, 1_300_000)
+        self.assertLessEqual(rw * rh, 1_300_000)
+        self.assertLess(max(rw, rh), 1280)
+        self.assertGreaterEqual(rw, web_main.MIN_RENDER_W)
+
+    def test_cap_render_size_disables_when_max_long_zero(self) -> None:
+        # maxw=0 (or very large) disables the long-side cap; only the area cap (if any) applies.
+        self.assertEqual(web_main.cap_render_size(2560, 1440, 0, 0), (2560, 1440))
+
+    def test_browser_render_size_none_off_browser(self) -> None:
+        self.assertIsNone(web_main.browser_render_size())
+
+
 if __name__ == "__main__":
     unittest.main()
