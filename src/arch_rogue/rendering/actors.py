@@ -515,11 +515,23 @@ class RenderingActorMixin:
                 return points
 
             def cone_points(
-                length: float, half_angle: float, samples: int = 24
+                length: float,
+                half_angle: float,
+                start_length: float = 0.0,
+                samples: int = 24,
             ) -> list[tuple[float, float]]:
-                return [local_origin] + arc_points(length, half_angle, samples)
+                # Truncated cone: when start_length > 0 the apex is cut away so
+                # the overlay no longer originates straight from the player.
+                if start_length <= 0.0:
+                    return [local_origin] + arc_points(length, half_angle, samples)
+                far = arc_points(length, half_angle, samples)
+                near = arc_points(start_length, half_angle, samples)
+                return far + near[::-1]
 
-            bounds_points = cone_points(122.0, 0.42, 28)
+            # Halved cone size (0.5x) with a forward cutout so it starts away
+            # from the player body instead of at the player origin.
+            cutout = 16.0
+            bounds_points = cone_points(61.0, 0.21, cutout, 28)
             pad = 18 * WORLD_SCALE
             min_x = math.floor(min(point[0] for point in bounds_points) - pad)
             max_x = math.ceil(max(point[0] for point in bounds_points) + pad)
@@ -541,17 +553,19 @@ class RenderingActorMixin:
                     for x, y in points
                 ]
 
-            for length, angle, alpha in (
-                (121.0, 0.42, 18),
-                (110.0, 0.36, 32),
-                (88.0, 0.25, 24),
-            ):
+            for length, angle, alpha, start in ((60.5, 0.21, 14, cutout),):
                 pygame.draw.polygon(
                     overlay,
                     (*aim_blue, alpha),
-                    localize(cone_points(length, angle, 30)),
+                    localize(cone_points(length, angle, start, 30)),
                 )
 
+            overlay = pygame.transform.smoothscale(overlay, (width, height))
+            # Soft blur pass: downscale then upscale to feather the edges and
+            # make the cone read as a subtle glow rather than a hard shape.
+            blur_w = max(1, width // 3)
+            blur_h = max(1, height // 3)
+            overlay = pygame.transform.smoothscale(overlay, (blur_w, blur_h))
             overlay = pygame.transform.smoothscale(overlay, (width, height))
             # Anchor: the local origin (0,0) maps to pixel (-min_x, -min_y)
             # within the surface. Store that anchor so the blit can place it
