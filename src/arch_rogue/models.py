@@ -398,6 +398,17 @@ class Projectile:
     damage_type: str = "physical"
     status_effect: str = ""
     status_duration: float = 0.0
+    # Milestone 3.7 — branch-progression projectile mechanics:
+    #   * `pierce` is the number of additional enemies a projectile may pass
+    #     through before expiring. 0 means it dies on the first hit.
+    #   * `homing` in 0..1 steers the projectile toward the nearest enemy each
+    #     frame (0 disables homing). Applied by the combat loop, not here, so
+    #     the model stays free of enemy-list references.
+    pierce: int = 0
+    homing: float = 0.0
+    # Enemy ids already damaged by this projectile so a piercing bolt does not
+    # hit the same foe twice. Lazily populated by the combat loop.
+    hit_enemies: set = field(default_factory=set)
 
     def update(self, dt: float, dungeon: "Dungeon") -> bool:
         self.x += self.vx * dt

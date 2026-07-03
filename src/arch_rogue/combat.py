@@ -24,6 +24,7 @@ from .content import (
     combo_bonus,
     completed_branches,
     cross_branch_tag_bonus,
+    is_branch_locked,
     skill_node_by_key,
     skill_nodes_for_archetype,
 )
@@ -229,23 +230,34 @@ class CombatMixin:
         """Skill nodes the player can choose right now.
 
         A node is available when it belongs to the player's archetype, is not
-        yet acquired, and every prerequisite node has already been acquired.
-        Tier-1 nodes have no prerequisites and are always available until taken.
+        yet acquired, every prerequisite node has already been acquired, and
+        its branch has not been locked by the two-branch commitment limit
+        (Milestone 3.7). Tier-1 nodes are always available until taken, unless
+        their branch is locked.
         """
         acquired = set(self.player.skill_upgrades)
         choices: list = []
         for node in skill_nodes_for_archetype(self.player.class_name):
             if node.key in acquired:
                 continue
+            if is_branch_locked(acquired, node.archetype, node.branch):
+                continue
             if all(prereq in acquired for prereq in node.prerequisites):
                 choices.append(node)
         return choices
 
     def skill_node_state(self, node) -> str:
-        """Return "chosen", "available", or "locked" for menu rendering."""
+        """Return one of "chosen", "available", "branch_locked", "locked".
+
+        "branch_locked" (Milestone 3.7) marks nodes whose branch is sealed by
+        the two-branch commitment limit and is distinct from "locked" so the
+        menu can render the two reasons differently.
+        """
         acquired = set(self.player.skill_upgrades)
         if node.key in acquired:
             return "chosen"
+        if is_branch_locked(acquired, node.archetype, node.branch):
+            return "branch_locked"
         if all(prereq in acquired for prereq in node.prerequisites):
             return "available"
         return "locked"
@@ -254,8 +266,9 @@ class CombatMixin:
         """Apply a specific skill node by key, spending one skill point.
 
         Returns False (without spending a point) if the node is unknown, belongs
-        to another archetype, is already acquired, has unmet prerequisites, or
-        the player has no skill points to spend.
+        to another archetype, is already acquired, has unmet prerequisites, is
+        in a branch locked by the commitment limit, or the player has no skill
+        points to spend.
         """
         node = skill_node_by_key(key)
         if node is None or node.archetype != self.player.class_name:
@@ -264,6 +277,10 @@ class CombatMixin:
             return False
         if not all(
             prereq in self.player.skill_upgrades for prereq in node.prerequisites
+        ):
+            return False
+        if is_branch_locked(
+            set(self.player.skill_upgrades), node.archetype, node.branch
         ):
             return False
         if self.player.skill_points <= 0:
@@ -704,13 +721,13 @@ class CombatMixin:
         # ceiling keeps very fast units (elites, haste) from blurring.
         anim_dt = dt
         if self.player.moving:
-            self.player.anim_time += anim_dt * WALK_ANIMATION_RATE * self._anim_speed(
-                PLAYER_MOVE_SPEED
+            self.player.anim_time += (
+                anim_dt * WALK_ANIMATION_RATE * self._anim_speed(PLAYER_MOVE_SPEED)
             )
         for enemy in self.enemies:
             if enemy.moving:
-                enemy.anim_time += anim_dt * WALK_ANIMATION_RATE * self._anim_speed(
-                    enemy.speed
+                enemy.anim_time += (
+                    anim_dt * WALK_ANIMATION_RATE * self._anim_speed(enemy.speed)
                 )
 
     @staticmethod
@@ -879,13 +896,17 @@ class CombatMixin:
     def update_projectiles(self, dt: float) -> None:
         kept: list[Projectile] = []
         for projectile in self.projectiles:
+            # Milestone 3.7 — homing bolts (e.g. Arc Tyrant / Sky Quiver
+            # capstones) steer toward the nearest enemy before moving.
+            if projectile.owner == "player" and projectile.homing > 0.0:
+                self._steer_homing_projectile(projectile, dt)
             if not projectile.update(dt, self.dungeon):
                 continue
             if projectile.owner == "player":
                 hit = self.first_enemy_near(
                     projectile.x, projectile.y, PLAYER_PROJECTILE_HIT_RADIUS
                 )
-                if hit:
+                if hit is not None and id(hit) not in projectile.hit_enemies:
                     self.add_impact(
                         projectile.x,
                         projectile.y,
@@ -902,6 +923,16 @@ class CombatMixin:
                         status_effect=projectile.status_effect,
                         status_duration=projectile.status_duration,
                     )
+                    # Milestone 3.7 — Storm-branch chain lightning arcs from
+                    # the struck foe to a nearby second target.
+                    self._maybe_chain_lightning(projectile, hit)
+                    projectile.hit_enemies.add(id(hit))
+                    if projectile.pierce > 0:
+                        projectile.pierce -= 1
+                        # Piercing bolts deal reduced damage to subsequent foes.
+                        projectile.damage = max(1, int(projectile.damage * 0.7))
+                        kept.append(projectile)
+                        continue
                     continue
             else:
                 if (
@@ -936,6 +967,109 @@ class CombatMixin:
                     continue
             kept.append(projectile)
         self.projectiles = kept
+
+    def _steer_homing_projectile(self, projectile: Projectile, dt: float) -> None:
+        """Gently turn a homing projectile toward the nearest enemy.
+
+        Cheap O(enemies) per homing bolt; homing bolts are rare (capstone-only)
+        so this stays off the hot path for builds that did not pick the seeking
+        capstone.
+        """
+        nearest = None
+        best_dist = 6.5
+        for enemy in self.enemies:
+            dist = math.hypot(enemy.x - projectile.x, enemy.y - projectile.y)
+            if dist < best_dist:
+                best_dist = dist
+                nearest = enemy
+        if nearest is None:
+            return
+        speed = math.hypot(projectile.vx, projectile.vy)
+        if speed < 0.001:
+            return
+        desired_x = nearest.x - projectile.x
+        desired_y = nearest.y - projectile.y
+        desired_len = math.hypot(desired_x, desired_y)
+        if desired_len < 0.001:
+            return
+        turn = projectile.homing * dt * 6.0
+        cur_dx = projectile.vx / speed
+        cur_dy = projectile.vy / speed
+        new_dx = cur_dx + (desired_x / desired_len - cur_dx) * turn
+        new_dy = cur_dy + (desired_y / desired_len - cur_dy) * turn
+        new_len = math.hypot(new_dx, new_dy)
+        if new_len > 0.001:
+            new_dx /= new_len
+            new_dy /= new_len
+        projectile.vx = new_dx * speed
+        projectile.vy = new_dy * speed
+
+    def _maybe_chain_lightning(self, projectile: Projectile, primary: Enemy) -> None:
+        """Storm-branch chain lightning: arc from a struck foe to a neighbour.
+
+        Triggered by the Arcanist Storm branch (arcanist_chain_lightning and
+        deeper). The chain hits one extra foe near the primary for partial
+        damage, giving the Storm path a distinct bolt behavior versus the Bolt
+        path's pierce/homing.
+        """
+        if not self.player.has_upgrade("arcanist_chain_lightning"):
+            return
+        if projectile.owner != "player":
+            return
+        best = None
+        best_dist = 2.6
+        for enemy in self.enemies:
+            if enemy is primary or id(enemy) in projectile.hit_enemies:
+                continue
+            dist = math.hypot(enemy.x - primary.x, enemy.y - primary.y)
+            if dist < best_dist:
+                best_dist = dist
+                best = enemy
+        if best is None:
+            return
+        chain_damage = max(1, int(projectile.damage * 0.6))
+        self.add_impact(
+            best.x, best.y, projectile.color, ttl=0.22, radius=0.3, kind="burst"
+        )
+        self.damage_enemy(
+            best,
+            chain_damage,
+            knockback_from=(best.x - primary.x, best.y - primary.y),
+            damage_type=projectile.damage_type,
+            status_effect=projectile.status_effect,
+            status_duration=projectile.status_duration * 0.7,
+        )
+        projectile.hit_enemies.add(id(best))
+
+    def _acolyte_melee_leech(self) -> int:
+        # Milestone 3.7 refinement: ramp one step per Blood tier; 0 until Blood
+        # is committed.
+        if self.player.has_upgrade("acolyte_sanguine_ascendant"):
+            return 6
+        if self.player.has_upgrade("acolyte_crimson_maw"):
+            return 5
+        if self.player.has_upgrade("acolyte_blood_pact"):
+            return 4
+        if self.player.has_upgrade("acolyte_gravebind"):
+            return 3
+        if self.player.has_upgrade("acolyte_sanguine"):
+            return 2
+        return 0
+
+    def _acolyte_nova_leech(self) -> int:
+        # Milestone 3.7 refinement: ramp one step per Blood tier; 0 until Blood
+        # is committed.
+        if self.player.has_upgrade("acolyte_sanguine_ascendant"):
+            return 8
+        if self.player.has_upgrade("acolyte_crimson_maw"):
+            return 7
+        if self.player.has_upgrade("acolyte_blood_pact"):
+            return 5
+        if self.player.has_upgrade("acolyte_gravebind"):
+            return 4
+        if self.player.has_upgrade("acolyte_sanguine"):
+            return 3
+        return 0
 
     def update_traps(self, _dt: float) -> None:
         for trap in self.traps:
@@ -978,9 +1112,17 @@ class CombatMixin:
         if target:
             targets = [target]
             if self.player.class_name == "Warden":
-                reach = 0.35 if self.player.has_upgrade("warden_bulwark") else 0.18
-                limit = 4 if self.player.has_upgrade("warden_bulwark") else 3
-                targets = self.enemies_in_melee_arc(reach_bonus=reach)[:limit]
+                # Milestone 3.7 — base Shield Bash hits a single foe; the
+                # Bulwark branch's first node unlocks the cleave arc so the
+                # branch choice changes how melee plays, not just its damage.
+                if self.player.has_upgrade("warden_bulwark_ward"):
+                    targets = self.enemies_in_melee_arc(reach_bonus=0.35)[:4]
+                elif self.player.has_upgrade("warden_aegis"):
+                    targets = self.enemies_in_melee_arc(reach_bonus=0.28)[:3]
+                elif self.player.has_upgrade("warden_bulwark"):
+                    targets = self.enemies_in_melee_arc(reach_bonus=0.22)[:2]
+                else:
+                    targets = [target]
             for index, enemy in enumerate(list(targets)):
                 damage = self.player.melee_damage() + self.rng.randrange(-3, 5)
                 damage_type = self.weapon_damage_type()
@@ -990,18 +1132,33 @@ class CombatMixin:
                     damage += 2
                 if index > 0:
                     damage = max(1, int(damage * 0.62))
-                crit_chance = (
-                    0.30 if self.player.has_upgrade("rogue_precision") else 0.22
-                )
+                # Milestone 3.7 — Rogue crits are gated behind the Precision
+                # branch; base backstabs never crit, so committing to Precision
+                # feels essential to the crit playstyle.
+                if self.player.has_upgrade("rogue_deathmark"):
+                    crit_chance = 0.40
+                    crit_mult = 2.25
+                elif self.player.has_upgrade("rogue_crimson_edge"):
+                    crit_chance = 0.34
+                    crit_mult = 2.10
+                elif self.player.has_upgrade("rogue_executioner"):
+                    crit_chance = 0.28
+                    crit_mult = 1.95
+                elif self.player.has_upgrade("rogue_venom"):
+                    crit_chance = 0.20
+                    crit_mult = 1.75
+                elif self.player.has_upgrade("rogue_precision"):
+                    crit_chance = 0.15
+                    crit_mult = 1.60
+                else:
+                    crit_chance = 0.0
+                    crit_mult = 1.0
                 rogue_crit = (
                     self.player.class_name == "Rogue"
                     and self.rng.random() < crit_chance
                 )
                 if rogue_crit:
-                    damage = int(
-                        damage
-                        * (1.95 if self.player.has_upgrade("rogue_precision") else 1.75)
-                    )
+                    damage = int(damage * crit_mult)
                     status_effect = "poisoned"
                     status_duration = (
                         2.2 if self.player.has_upgrade("rogue_venom") else 1.2
@@ -1042,8 +1199,12 @@ class CombatMixin:
                     status_duration=status_duration,
                 )
                 if self.player.class_name == "Acolyte":
-                    leech = 4 if self.player.has_upgrade("acolyte_sanguine") else 2
-                    self.player.hp = min(self.player.max_hp, self.player.hp + leech)
+                    # Milestone 3.7 — Blood Rite's leech is gated behind the
+                    # Blood branch; base melee drains nothing until the Acolyte
+                    # commits to Blood.
+                    leech = self._acolyte_melee_leech()
+                    if leech:
+                        self.player.hp = min(self.player.max_hp, self.player.hp + leech)
 
     def player_cast_bolt(self) -> None:
         mana_cost = self.bolt_mana_cost()
@@ -1069,18 +1230,25 @@ class CombatMixin:
         damage = self.apply_story_player_damage(damage, spell=True)
         self.apply_story_blood_price("bolt")
         angles = [0.0]
+        # Milestone 3.7 refinement — the bolt ability is a single shot by
+        # default and gains one projectile per branch tier rather than jumping
+        # straight to a full fan, so each upgrade feels like a step.
         if self.player.class_name == "Ranger":
-            angles = (
-                [-0.28, -0.12, 0.0, 0.12, 0.28]
-                if self.player.has_upgrade("ranger_volley")
-                else [-0.16, 0.0, 0.16]
-            )
+            if self.player.has_upgrade("ranger_storm_volley"):
+                angles = [-0.28, -0.12, 0.0, 0.12, 0.28]  # 5-arrow storm cone
+            elif self.player.has_upgrade("ranger_rapid"):
+                angles = [-0.20, -0.06, 0.06, 0.20]  # 4 arrows (extra arrow)
+            elif self.player.has_upgrade("ranger_volley"):
+                angles = [-0.16, 0.0, 0.16]  # 3-arrow fan
+            else:
+                angles = [0.0]  # 1 arrow
         elif self.player.class_name == "Arcanist":
-            angles = (
-                [-0.12, 0.0, 0.12]
-                if self.player.has_upgrade("arcanist_splinter")
-                else [-0.06, 0.06]
-            )
+            if self.player.has_upgrade("arcanist_overload"):
+                angles = [-0.12, 0.0, 0.12]  # 3 bolts (split on impact)
+            elif self.player.has_upgrade("arcanist_splinter"):
+                angles = [-0.06, 0.06]  # 2 bolts (one extra shard)
+            else:
+                angles = [0.0]  # 1 bolt
         if self.equipment_skill_bonus("Bolt") and len(angles) < 5:
             angles = sorted({*angles, -0.18, 0.18})
         status_effect = ""
@@ -1097,6 +1265,24 @@ class CombatMixin:
         elif self.player.has_upgrade("ranger_snare"):
             status_effect = "snared"
             status_duration = 1.1
+        # Milestone 3.7 refinement — branch-progression projectile mechanics
+        # ramp one step per tier. Bolt path (Arcanist): pierce climbs 0->1->2
+        # and the capstone adds homing. Volley path (Ranger): piercing unlocks
+        # at the piercing tier and the capstone adds homing.
+        pierce = 0
+        homing = 0.0
+        if self.player.class_name == "Arcanist":
+            if self.player.has_upgrade("arcanist_pierce"):
+                pierce = 2
+            elif self.player.has_upgrade("arcanist_overload"):
+                pierce = 1
+            if self.player.has_upgrade("arcanist_arc_tyrant"):
+                homing = 0.85
+        elif self.player.class_name == "Ranger":
+            if self.player.has_upgrade("ranger_piercing_volley"):
+                pierce = 1
+            if self.player.has_upgrade("ranger_sky_quiver"):
+                homing = 0.75
         for angle in angles:
             dx = self.player.facing_x * math.cos(
                 angle
@@ -1117,6 +1303,8 @@ class CombatMixin:
                     damage_type=damage_type,
                     status_effect=status_effect,
                     status_duration=status_duration,
+                    pierce=pierce,
+                    homing=homing,
                 )
             )
 
@@ -1141,9 +1329,20 @@ class CombatMixin:
             dx = enemy.x - self.player.x
             dy = enemy.y - self.player.y
             distance = math.hypot(dx, dy)
-            radius = 2.85 if self.player.class_name == "Arcanist" else 2.45
-            if self.player.has_upgrade("arcanist_focus"):
-                radius += 0.35
+            radius = 2.45
+            # Milestone 3.7 refinement - Frost Nova radius ramps one step per
+            # Nova tier so each pick reaches farther, instead of one big jump.
+            if self.player.class_name == "Arcanist":
+                if self.player.has_upgrade("arcanist_absolute_zero"):
+                    radius += 1.05
+                elif self.player.has_upgrade("arcanist_blizzard"):
+                    radius += 0.85
+                elif self.player.has_upgrade("arcanist_glacial"):
+                    radius += 0.65
+                elif self.player.has_upgrade("arcanist_permafrost"):
+                    radius += 0.45
+                elif self.player.has_upgrade("arcanist_focus"):
+                    radius += 0.25
             if self.equipment_skill_bonus("Nova"):
                 radius += 0.25
             if distance <= radius:
@@ -1184,8 +1383,11 @@ class CombatMixin:
                     status_effect = "snared"
                     status_duration = snare_time
                 if self.player.class_name == "Acolyte":
-                    leech = 5 if self.player.has_upgrade("acolyte_sanguine") else 3
-                    self.player.hp = min(self.player.max_hp, self.player.hp + leech)
+                    # Milestone 3.7 - Blood Nova's leech is gated behind the
+                    # Blood branch; base nova drains nothing.
+                    leech = self._acolyte_nova_leech()
+                    if leech:
+                        self.player.hp = min(self.player.max_hp, self.player.hp + leech)
                     if self.player.has_upgrade("acolyte_gravebind"):
                         status_effect = "bound"
                         status_duration = 1.6

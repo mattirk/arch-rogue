@@ -156,6 +156,10 @@ class CombatSkillsLoot22Tests(unittest.TestCase):
             game = self.make_game(tmpdir, archetype_index=2)
             try:
                 game.projectiles.clear()
+                # Milestone 3.7: Arc Bolt is a single shot unless the Bolt
+                # branch is committed; grant the branch entry node so the
+                # multi-bolt fan (plus the equipment shard bonus) is exercised.
+                game.player.skill_upgrades.append("arcanist_splinter")
                 game.player.skill_upgrades.append("arcanist_permafrost")
                 game.player.equipment["weapon"] = Item(
                     "Frost Test Wand",

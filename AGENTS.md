@@ -184,9 +184,13 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 3.7 Guiding light update
+### 3.7 Skill upgrades variability update
 
-
+- Only 2 skill paths can be chosen out of 2, after choosing skill from 2 paths, remaining paths become locked
+- Upgrades within skill paths need to make the skill noticably different to in mechanics. This forces the player to choose a specialization and a play style
+  - Current mechanics does not make it relevant which paths are chosen, nerf skills that have not been upgraded and make path progress more noticable
+  - For example make arc bolt so that it's always only single bolt if arc path not chosen. Then it evolves into a multi-bolt arc shot when arc path is chosen, final skill path unlock makes the bolts a homing arc shots
+- Implement similar mechanics to other skills and archetypes
 
 ## Next Milestones
 

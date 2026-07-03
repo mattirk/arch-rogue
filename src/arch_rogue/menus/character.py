@@ -740,6 +740,9 @@ class MenuCharacterMixin:
         with the mouse previews the combo tier it would unlock.
         """
         from ..content import (
+            MAX_COMMITTED_BRANCHES,
+            committed_branches,
+            is_branch_locked,
             skill_branches_for_archetype,
             skill_nodes_for_archetype,
             skill_tree_max_tier,
@@ -772,6 +775,9 @@ class MenuCharacterMixin:
         pad = max(self.u(10), 10)
         gap = self.u(6)
 
+        # Acquired-node set, reused by the combo strip and the branch headers.
+        acquired = set(player.skill_upgrades)
+
         # Combo state — completed branches and current bonus. Surfaced in a
         # strip above the grid so the player can see their commitment payoff.
         completed, combo_melee, combo_spell, combo_hp = self.g.combo_state()
@@ -795,7 +801,9 @@ class MenuCharacterMixin:
         breadth_melee = steps * COMBO_BONUS_PER_STEP_MELEE
         breadth_spell = steps * COMBO_BONUS_PER_STEP_SPELL
         breadth_hp = steps * COMBO_BONUS_PER_STEP_MAX_HP
-        combo_strip_h = small_h + self.u(4) if completed_count else 0
+        # Milestone 3.7 - always show a commitment strip so the player can see
+        # how many of the MAX_COMMITTED_BRANCHES paths they have committed to.
+        combo_strip_h = small_h + self.u(4)
 
         # Header: branch names across the top.
         header_h = small_h + self.u(6)
@@ -814,33 +822,38 @@ class MenuCharacterMixin:
         )
 
         # Combo strip — only drawn when there is something to show.
-        if combo_strip_h:
-            combo_rect = pygame.Rect(
-                rect.x, rect.y + header_h, rect.width, combo_strip_h
+        combo_rect = pygame.Rect(rect.x, rect.y + header_h, rect.width, combo_strip_h)
+        committed_count = len(committed_branches(acquired, archetype))
+        if completed_count and combo_active:
+            label = (
+                f"Committed {committed_count}/{MAX_COMMITTED_BRANCHES} paths "
+                f"· {completed_count} complete: "
+                f"depth +{depth_melee}m/+{depth_spell}s/+{depth_hp}hp"
+                f" · combo +{breadth_melee}m/+{breadth_spell}s/+{breadth_hp}hp"
             )
-            if combo_active:
-                label = (
-                    f"{completed_count} branch complete: "
-                    f"depth +{depth_melee}m/+{depth_spell}s/+{depth_hp}hp"
-                    f" · combo x{completed_count} +{breadth_melee}m/"
-                    f"+{breadth_spell}s/+{breadth_hp}hp"
-                )
-                color = self.WARNING
-            else:
-                label = (
-                    f"{completed_count} branch complete: "
-                    f"depth +{depth_melee}m/+{depth_spell}s/+{depth_hp}hp"
-                    f" · commit to 2 for a combo bonus"
-                )
-                color = self.TEXT
-            self.draw_text(
-                label,
-                self.g.small_font,
-                color,
-                combo_rect,
-                align="center",
-                valign="center",
+            color = self.WARNING
+        elif completed_count:
+            label = (
+                f"Committed {committed_count}/{MAX_COMMITTED_BRANCHES} paths "
+                f"· {completed_count} complete: "
+                f"depth +{depth_melee}m/+{depth_spell}s/+{depth_hp}hp"
+                f" · commit to 2 for a combo bonus"
             )
+            color = self.TEXT
+        else:
+            label = (
+                f"Committed {committed_count}/{MAX_COMMITTED_BRANCHES} paths "
+                f"· pick a node to commit to a route"
+            )
+            color = self.MUTED
+        self.draw_text(
+            label,
+            self.g.small_font,
+            color,
+            combo_rect,
+            align="center",
+            valign="center",
+        )
 
         # Row layout — tier label gutter on the left, columns to its right.
         tier_label_w = max(self.u(28), self.g.tiny_font.size("Tier 5")[0] + self.u(6))
@@ -859,12 +872,25 @@ class MenuCharacterMixin:
         )
         row_h = max(1, (rows_area.height - gap * (max_tier - 1)) // max_tier)
 
-        # Branch headers.
+        # Branch headers. Locked branches (Milestone 3.7 two-branch
+        # commitment limit) are dimmed and tagged with a lock glyph so the
+        # player can see which routes are sealed.
+        committed = committed_branches(acquired, archetype)
         for col, branch in enumerate(branches):
             col_x = rows_area.x + col * (col_w + col_gap)
-            header_color = self.WARNING if branch in completed else self.MUTED
+            if branch in completed:
+                header_color = self.WARNING
+            elif branch in committed:
+                header_color = self.TEXT
+            elif is_branch_locked(acquired, archetype, branch):
+                header_color = self.MUTED
+            else:
+                header_color = self.MUTED
+            label = branch
+            if is_branch_locked(acquired, archetype, branch):
+                label = f"[lock] {branch}"
             self.draw_text(
-                branch,
+                label,
                 self.g.small_font,
                 header_color,
                 pygame.Rect(col_x, rect.y, col_w, header_h),
@@ -931,6 +957,7 @@ class MenuCharacterMixin:
             (self.WARNING, "Chosen"),
             (self.g.skill_color(), "Available"),
             (self.IRON, "Locked"),
+            ((132, 74, 74), "Sealed"),
         )
         for color, label in samples:
             sw_rect = pygame.Rect(x, legend_rect.y, sw_h, sw_h)
@@ -994,6 +1021,11 @@ class MenuCharacterMixin:
                         hint_text = f"{hovered.name} · no skill points available"
                 elif state == "chosen":
                     hint_text = f"{hovered.name} · acquired"
+                elif state == "branch_locked":
+                    hint_text = (
+                        f"{hovered.name} · branch sealed "
+                        f"(max {MAX_COMMITTED_BRANCHES} paths)"
+                    )
                 else:
                     hint_text = f"{hovered.name} · locked"
         self.draw_text(
@@ -1014,6 +1046,10 @@ class MenuCharacterMixin:
         small_h: int,
     ) -> None:
         state = self.g.skill_node_state(node)
+        # Milestone 3.7 - "branch_locked" nodes are sealed by the two-branch
+        # commitment limit and render with a dim red wash so they read as a
+        # deliberate specialization seal rather than a prereq gate.
+        sealed = (132, 74, 74)
         if state == "chosen":
             border = self.WARNING
             fill = self.PANEL_2
@@ -1022,6 +1058,10 @@ class MenuCharacterMixin:
             border = self.g.skill_color()
             fill = self.PANEL_2
             name_color = self.TEXT
+        elif state == "branch_locked":
+            border = sealed
+            fill = self.PANEL_INK
+            name_color = self.MUTED
         else:
             border = self.IRON
             fill = self.PANEL_INK

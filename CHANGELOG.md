@@ -1,5 +1,32 @@
 # Changelog
 
+## 3.7.0 — Skill-Path Variability Update
+
+Milestone 3.7 forces meaningful specialization: a run may commit to at most two skill-tree branches, and each branch now changes how an ability *plays* rather than just bumping its damage. Base (un-upgraded) abilities are deliberately weaker so committing to a path feels essential, and branch capstones deliver a marquee mechanical flourish (homing bolts, piercing shots, chain lightning).
+
+### Added
+
+- Two-branch commitment limit. New `content/progression.py` helpers — `MAX_COMMITTED_BRANCHES` (=2), `committed_branches(acquired, archetype)`, `is_branch_locked(acquired, archetype, branch)`, and `branch_progress(acquired, archetype, branch)` — derive commitment purely from acquired node keys, so no save-schema change is needed (committed branches are recomputed from `player.skill_upgrades`). Exported through the `arch_rogue.content` facade.
+- Branch-locking in the combat layer: `available_skill_choices()` excludes nodes in sealed branches, `choose_skill_upgrade()` rejects them, and `skill_node_state()` returns a new `"branch_locked"` state (distinct from prereq-`"locked"`) so the menu can render the two reasons differently. Already-committed branches keep progressing even if a legacy save pre-dating the limit acquired nodes in 3+ branches; only *new* commitments are blocked.
+- Projectile mechanics for branch progression: `models.Projectile` gained `pierce` (extra enemies a bolt passes through, damage ×0.7 to subsequent foes), `homing` (0..1 steering toward the nearest enemy each frame), and a `hit_enemies` set so a piercing bolt never double-hits one foe. `combat.py` `update_projectiles` steers homing bolts, applies pierce, and arcs Storm-branch chain lightning from a struck foe to a nearby second target.
+- Character-sheet rendering of the commitment system: a always-on commitment strip (`Committed X/2 paths`), branch headers dimmed and `[lock]`-tagged for sealed routes, a `"Sealed"` legend swatch with a dim-red node wash, and a hover hint explaining the branch seal.
+- Focused `tests/test_3_7_skill_path_variability.py` (13 tests) covering the helper math, the choose/state enforcement, the Arcanist Arc Bolt single→multi→pierce→homing progression, Ranger Multishot single→fan→homing, projectile pierce pass-through, Warden cleave gating, Rogue crit gating, Acolyte lifesteal gating, and Arcanist Frost Nova radius gating.
+
+### Changed
+
+- **Arcanist Arc Bolt** is the flagship rework and now ramps gradually: a single bolt by default; `arcanist_splinter` (Bolt t1) adds one shard (2 bolts); `arcanist_overload` (Bolt t2) splits into a 3-bolt fan and grants pierce 1; `arcanist_pierce` (Bolt t3) ramps pierce to 2; `arcanist_arc_tyrant` (Bolt capstone) makes bolts homing (seek nearest foe); `arcanist_chain_lightning` (Storm t2) arcs a chain to a second target on hit. The old always-on 2-bolt base was removed so the Bolt path is what makes Arc Bolt multi-shot, and each tier adds one projectile/pierce step instead of jumping straight to the final form.
+- **Ranger Multishot** ramps gradually: a single arrow by default; `ranger_volley` (Volley t1) opens a 3-arrow fan; `ranger_rapid` (Volley t2) adds a fourth arrow; `ranger_piercing_volley` (Volley t3) grants pierce 1; `ranger_storm_volley` (Volley t4) widens to the 5-arrow storm cone; `ranger_sky_quiver` (Volley capstone) makes arrows homing. The old always-on 3-arrow base was removed.
+- **Warden Shield Bash** ramps gradually: base melee hits a single foe; `warden_bulwark` (Bulwark t1) cleaves 2 foes (reach +0.22); `warden_aegis` (Bulwark t2) cleaves 3 (reach +0.28); `warden_bulwark_ward` (Bulwark t3) cleaves 4 (reach +0.35). The old always-on 3-target cleave was removed.
+- **Rogue backstab** ramps gradually: base crit chance is 0 (no crits); `rogue_precision` (Precision t1) enables crits at 0.15 / 1.60×; `rogue_venom`/`rogue_executioner`/`rogue_crimson_edge`/`rogue_deathmark` raise both crit chance (0.20 / 0.28 / 0.34 / 0.40) and multiplier (1.75 / 1.95 / 2.10 / 2.25) one step per tier.
+- **Acolyte Blood Rite** ramps gradually via `_acolyte_melee_leech` / `_acolyte_nova_leech`: melee/nova leech 0 by default; `acolyte_sanguine` (Blood t1) leeches 2/3; `acolyte_gravebind`/`acolyte_blood_pact`/`acolyte_crimson_maw`/`acolyte_sanguine_ascendant` raise melee (3/4/5/6) and nova (4/5/7/8) one step per tier.
+- **Arcanist Frost Nova** radius ramps gradually: base 2.45 (parity with other archetypes); `arcanist_focus` (Nova t1) +0.25; `arcanist_permafrost`/`arcanist_glacial`/`arcanist_blizzard`/`arcanist_absolute_zero` add +0.45/+0.65/+0.85/+1.05 one step per tier, so the Nova path widens the burst incrementally.
+- Existing milestone-3.3 combo tests that acquired the full four-branch tree were updated to the new two-branch ceiling (2 depth steps + 1 combo step), and the bolt-projectile test grants the Bolt branch entry node since the multi-shot fan is now branch-gated. The combo-bonus helper math itself is unchanged and still supports 3+ completed branches for legacy saves.
+- Package metadata, `__version__`, and the save `release` string now target `3.7.0`. The save schema `version` stays 4 (no migration needed; commitment is derived from existing `skill_upgrades`).
+
+### Validation
+
+- Bytecode compilation and the full `unittest discover tests` suite (105 tests) pass, including the 13 new milestone 3.7 tests. Save compatibility is preserved: the run-state schema is unchanged and older saves resume with their already-acquired branches still progressable.
+
 ## Unreleased — Dungeon Sprites Polish (post-fixes)
 
 ### Changed

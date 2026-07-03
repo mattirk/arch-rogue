@@ -255,27 +255,29 @@ class SkillPointProgression33Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             try:
-                # Bank enough points to buy the whole Warden tree (4 branches).
+                # Bank enough points to buy two Warden branches (Milestone 3.7 limit).
                 game.player.skill_points = 100
                 warden_nodes = sorted(
                     skill_nodes_for_archetype("Warden"), key=lambda n: n.tier
                 )
+                # Milestone 3.7: commit to at most two branches (Bulwark + Riposte).
+                warden_nodes = [
+                    n for n in warden_nodes if n.branch in ("Bulwark", "Riposte")
+                ]
                 before_melee = game.player.melee_bonus
                 before_spell = game.player.spell_bonus
                 before_hp = game.player.max_hp
                 for node in warden_nodes:
                     self.assertTrue(game.choose_skill_upgrade(node.key))
-                # After finishing all four branches, the depth bonus (4x) plus
-                # the combo breadth bonus (3 steps) should be reflected in
-                # derived stats.
+                # Two completed branches: 2 depth steps plus 1 combo step.
                 expected_bonus_melee = (
-                    4 * COMPLETED_BRANCH_BONUS_MELEE + 3 * COMBO_BONUS_PER_STEP_MELEE
+                    2 * COMPLETED_BRANCH_BONUS_MELEE + 1 * COMBO_BONUS_PER_STEP_MELEE
                 )
                 expected_bonus_spell = (
-                    4 * COMPLETED_BRANCH_BONUS_SPELL + 3 * COMBO_BONUS_PER_STEP_SPELL
+                    2 * COMPLETED_BRANCH_BONUS_SPELL + 1 * COMBO_BONUS_PER_STEP_SPELL
                 )
                 expected_bonus_hp = (
-                    4 * COMPLETED_BRANCH_BONUS_MAX_HP + 3 * COMBO_BONUS_PER_STEP_MAX_HP
+                    2 * COMPLETED_BRANCH_BONUS_MAX_HP + 1 * COMBO_BONUS_PER_STEP_MAX_HP
                 )
                 self.assertEqual(
                     game.player.melee_bonus,
@@ -332,43 +334,46 @@ class SkillPointProgression33Tests(unittest.TestCase):
                 warden_nodes = sorted(
                     skill_nodes_for_archetype("Warden"), key=lambda n: n.tier
                 )
-                # Acquire all but the final Riposte capstone. With four
-                # branches, this leaves Bulwark/Vow/Fortress complete (3
-                # branches) and Riposte one node short.
+                # Milestone 3.7: commit to at most two branches. Acquire all of
+                # Bulwark plus all of Riposte except the final capstone, leaving
+                # one branch complete and Riposte one node short.
+                warden_nodes = [
+                    n for n in warden_nodes if n.branch in ("Bulwark", "Riposte")
+                ]
                 for node in warden_nodes:
                     if node.key == "warden_final_reckoning":
                         continue
                     self.assertTrue(game.choose_skill_upgrade(node.key))
-                # Three branches complete: 3 depth steps + 2 combo steps.
+                # One branch complete: 1 depth step, no combo yet.
                 _, c_melee, c_spell, c_hp = game.combo_state()
                 self.assertEqual(
                     c_melee,
-                    3 * COMPLETED_BRANCH_BONUS_MELEE + 2 * COMBO_BONUS_PER_STEP_MELEE,
+                    1 * COMPLETED_BRANCH_BONUS_MELEE + 0 * COMBO_BONUS_PER_STEP_MELEE,
                 )
                 self.assertEqual(
                     c_spell,
-                    3 * COMPLETED_BRANCH_BONUS_SPELL + 2 * COMBO_BONUS_PER_STEP_SPELL,
+                    1 * COMPLETED_BRANCH_BONUS_SPELL + 0 * COMBO_BONUS_PER_STEP_SPELL,
                 )
                 self.assertEqual(
                     c_hp,
-                    3 * COMPLETED_BRANCH_BONUS_MAX_HP + 2 * COMBO_BONUS_PER_STEP_MAX_HP,
+                    1 * COMPLETED_BRANCH_BONUS_MAX_HP + 0 * COMBO_BONUS_PER_STEP_MAX_HP,
                 )
                 # Hovering the capstone previews the combo tier it would unlock:
-                # four branches complete → 4 depth + 3 combo steps.
+                # two branches complete -> 2 depth + 1 combo step.
                 capstone = skill_node_by_key("warden_final_reckoning")
                 assert capstone is not None
                 p_melee, p_spell, p_hp = game.combo_preview(capstone)
                 self.assertEqual(
                     p_melee,
-                    4 * COMPLETED_BRANCH_BONUS_MELEE + 3 * COMBO_BONUS_PER_STEP_MELEE,
+                    2 * COMPLETED_BRANCH_BONUS_MELEE + 1 * COMBO_BONUS_PER_STEP_MELEE,
                 )
                 self.assertEqual(
                     p_spell,
-                    4 * COMPLETED_BRANCH_BONUS_SPELL + 3 * COMBO_BONUS_PER_STEP_SPELL,
+                    2 * COMPLETED_BRANCH_BONUS_SPELL + 1 * COMBO_BONUS_PER_STEP_SPELL,
                 )
                 self.assertEqual(
                     p_hp,
-                    4 * COMPLETED_BRANCH_BONUS_MAX_HP + 3 * COMBO_BONUS_PER_STEP_MAX_HP,
+                    2 * COMPLETED_BRANCH_BONUS_MAX_HP + 1 * COMBO_BONUS_PER_STEP_MAX_HP,
                 )
             finally:
                 pass
@@ -497,16 +502,19 @@ class SkillPointProgression33Tests(unittest.TestCase):
                 game.character_menu_tab = "skill_tree"
                 # Renders without error and surfaces the banked points.
                 game.draw_character_menu()
-                # Completing all four branches surfaces the combo strip.
+                # Completing two branches surfaces the combo strip (Milestone 3.7
+                # caps commitment at two paths).
                 game.player.skill_points = 100
                 for node in sorted(
                     skill_nodes_for_archetype("Warden"), key=lambda n: n.tier
                 ):
+                    if node.branch not in ("Bulwark", "Riposte"):
+                        continue
                     if node.key not in game.player.skill_upgrades:
                         self.assertTrue(game.choose_skill_upgrade(node.key))
                 game.draw_character_menu()
                 done, melee, spell, hp = game.combo_state()
-                self.assertGreaterEqual(len(done), 4)
+                self.assertGreaterEqual(len(done), 2)
                 self.assertGreater(melee, 0)
             finally:
                 pass

@@ -1437,6 +1437,55 @@ def skill_tree_max_tier(archetype: str) -> int:
     )
 
 
+# --- Milestone 3.7: branch commitment limit ---------------------------------
+#
+# A player may commit to at most MAX_COMMITTED_BRANCHES skill-tree branches per
+# run. Committing to a branch means acquiring any node in it (in practice the
+# tier-1 entry node, since higher tiers chain from it). Once the limit is hit,
+# every node in the remaining uncommitted branches becomes locked so the player
+# is forced to specialize into two routes. Already-committed branches keep
+# progressing even if an older save somehow acquired nodes in 3+ branches; the
+# lock only blocks *new* commitments.
+
+#: Maximum number of branches a single run may commit to.
+MAX_COMMITTED_BRANCHES: int = 2
+
+
+def committed_branches(acquired: set[str], archetype: str) -> tuple[str, ...]:
+    """Branch names the player has acquired at least one node in.
+
+    Order follows `skill_branches_for_archetype` so the result is stable for
+    rendering and save comparisons.
+    """
+    committed: list[str] = []
+    for branch in skill_branches_for_archetype(archetype):
+        nodes = skill_branch_nodes(archetype, branch)
+        if any(node.key in acquired for node in nodes):
+            committed.append(branch)
+    return tuple(committed)
+
+
+def is_branch_locked(acquired: set[str], archetype: str, branch: str) -> bool:
+    """True if `branch` cannot receive new nodes under the commitment limit.
+
+    A branch is locked when the player has already committed to
+    `MAX_COMMITTED_BRANCHES` branches and `branch` is not one of them. Branches
+    the player has already started remain open regardless of how many there
+    are, so legacy saves that pre-date the limit can still progress their
+    existing routes.
+    """
+    committed = committed_branches(acquired, archetype)
+    if len(committed) < MAX_COMMITTED_BRANCHES:
+        return False
+    return branch not in committed
+
+
+def branch_progress(acquired: set[str], archetype: str, branch: str) -> int:
+    """Number of nodes acquired in a single branch (0 if none)."""
+    nodes = skill_branch_nodes(archetype, branch)
+    return sum(1 for node in nodes if node.key in acquired)
+
+
 # --- Milestone 3.3: skill points, cross-branch tags, and combo bonuses -------
 #
 # Two layers of bonus reward committing to a skill tree:
