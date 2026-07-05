@@ -214,6 +214,45 @@ class RenderingEffectsMixin:
 
         self.screen.blit(overlay, overlay.get_rect(center=(sx, sy - 12 * WORLD_SCALE)))
 
+    def _soft_shadow_template(self, size: int) -> pygame.Surface:
+        # Cached radial-alpha square: center peaks at full opacity, edges fade
+        # to transparent. Built once per quantized size and reused across every
+        # entity so the hot path only pays for a smoothscale + blit.
+        cache: dict[int, pygame.Surface] = getattr(
+            self, "_soft_shadow_template_cache", {}
+        )
+        # Quantize to a 4px bucket so lift/bob jitter across frames does not
+        # fragment the cache; the visual difference is sub-pixel after scaling.
+        size = max(8, (size // 4) * 4)
+        surf = cache.get(size)
+        if surf is not None:
+            return surf
+        surf = pygame.Surface((size, size), pygame.SRCALPHA)
+        surf.fill((0, 0, 0, 0))
+        steps = max(6, size // 2)
+        # pygame.draw overwrites destination alpha (no source-over blending),
+        # so draw concentric ellipses outer-first with alpha rising toward the
+        # center: each smaller ellipse replaces the core with a higher alpha,
+        # leaving the outer ring at the lowest alpha for a smooth radial edge.
+        peak_alpha = 140
+        cx = cy = size / 2.0
+        for i in range(steps):
+            ratio = 1.0 - i / steps  # 1.0 outer -> 0.0 inner
+            radius = (size / 2.0) * ratio
+            if radius < 0.5:
+                break
+            alpha = int(peak_alpha * (i / max(1, steps - 1)))
+            rect = pygame.Rect(0, 0, int(radius * 2), int(radius * 2))
+            rect.center = (int(cx), int(cy))
+            pygame.draw.ellipse(surf, (0, 0, 0, alpha), rect)
+        try:
+            surf = surf.convert_alpha()
+        except pygame.error:
+            pass
+        cache[size] = surf
+        self._soft_shadow_template_cache = cache
+        return surf
+
     def draw_shadow(
         self,
         x: float,
@@ -228,14 +267,18 @@ class RenderingEffectsMixin:
         squash = pulse * 1.4 if moving else 0.0
         scaled_w = max(1, round((width + squash * 3 + lift) * WORLD_SCALE))
         scaled_h = max(1, round((height - squash - lift * 0.32) * WORLD_SCALE))
-        shadow = pygame.Surface((scaled_w, scaled_h), pygame.SRCALPHA)
-        alpha = 92 if moving else 78
-        pygame.draw.ellipse(shadow, (0, 0, 0, alpha), shadow.get_rect())
-        pygame.draw.ellipse(
-            shadow,
-            (0, 0, 0, alpha // 2),
-            shadow.get_rect().inflate(-scaled_w // 4, -scaled_h // 3),
-        )
+        # Soft contact shadow: a cached radial-alpha template, scaled per entity
+        # size and squashed by the iso projection (height < width) so actors
+        # read as grounded on the floor diamond instead of floating above it.
+        # The template internally quantizes its cache key so lift/bob jitter
+        # across frames does not fragment the cache.
+        template = self._soft_shadow_template(max(8, max(scaled_w, scaled_h)))
+        shadow = pygame.transform.smoothscale(template, (scaled_w, scaled_h))
+        # set_alpha acts as a global multiplier on per-pixel-alpha surfaces in
+        # pygame-ce, so motion/lift modulation costs nothing per frame.
+        opacity = 210 if moving else 175
+        opacity = max(0, min(255, int(opacity - lift * 6.0)))
+        shadow.set_alpha(opacity)
         self.screen.blit(
             shadow,
             shadow.get_rect(center=(sx, sy + 10 * WORLD_SCALE)),
@@ -249,6 +292,10 @@ class RenderingEffectsMixin:
             self.draw_shop_sign_item(item)
             return
         sx, sy = self.world_to_screen(item.x, item.y)
+        bob = int(math.sin(self.elapsed * 3.2 + item.x * 0.7) * 2 * WORLD_SCALE)
+        # Soft contact shadow grounds the floating loot bob on the floor
+        # diamond; lift fades/shrinks the patch as the item rises.
+        self.draw_shadow(item.x, item.y, 22, 9, lift=bob / WORLD_SCALE)
         rarity_color = self.rarity_color(item.visible_rarity)
         rarity_icon = self.rarity_icon(item.visible_rarity)
         sprite = self.sprites.item_frame(
@@ -269,7 +316,6 @@ class RenderingEffectsMixin:
             glow.get_rect().inflate(-glow.get_width() // 3, -glow.get_height() // 3),
         )
         self.screen.blit(glow, glow.get_rect(center=(sx, sy + WORLD_SCALE)))
-        bob = int(math.sin(self.elapsed * 3.2 + item.x * 0.7) * 2 * WORLD_SCALE)
         if item.visible_rarity in ("Magic", "Rare", "Unique", "Unidentified"):
             for index in range(3 if item.visible_rarity == "Unique" else 2):
                 angle = (
@@ -724,6 +770,7 @@ class RenderingEffectsMixin:
         if not trap.active:
             return
         sx, sy = self.world_to_screen(trap.x, trap.y)
+        self.draw_shadow(trap.x, trap.y, 28, 11)
         color = {
             "Spike Trap": (205, 75, 58),
             "Rune Trap": (160, 86, 230),
@@ -756,6 +803,7 @@ class RenderingEffectsMixin:
 
     def draw_secret(self, secret: SecretCache) -> None:
         sx, sy = self.world_to_screen(secret.x, secret.y)
+        self.draw_shadow(secret.x, secret.y, 26, 11)
         color = self.theme.accent
         pulse = 0.55 + 0.45 * math.sin(self.elapsed * 5.0 + secret.x)
         glow = pygame.Surface((34 * WORLD_SCALE, 18 * WORLD_SCALE), pygame.SRCALPHA)
@@ -858,6 +906,7 @@ class RenderingEffectsMixin:
 
     def draw_shrine(self, shrine: Shrine) -> None:
         sx, sy = self.world_to_screen(shrine.x, shrine.y)
+        self.draw_shadow(shrine.x, shrine.y, 30, 12)
         color = (92, 92, 100) if shrine.used else (235, 205, 110)
         pulse = 0.6 + 0.4 * math.sin(self.elapsed * 3.0 + shrine.x)
         glow = pygame.Surface((50 * WORLD_SCALE, 28 * WORLD_SCALE), pygame.SRCALPHA)
