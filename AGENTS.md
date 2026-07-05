@@ -184,17 +184,23 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 3.7 Skill upgrades variability update
+### 3.8 Graphics Upgrade
 
-- Only 2 skill paths can be chosen out of 2, after choosing skill from 2 paths, remaining paths become locked
-- Upgrades within skill paths need to make the skill noticably different to in mechanics. This forces the player to choose a specialization and a play style
-  - Current mechanics does not make it relevant which paths are chosen, nerf skills that have not been upgraded and make path progress more noticable
-  - For example make arc bolt so that it's always only single bolt if arc path not chosen. Then it evolves into a multi-bolt arc shot when arc path is chosen, final skill path unlock makes the bolts a homing arc shots
-- Implement similar mechanics to other skills and archetypes
+Upgrade the presentation layer so the prototype reads as a moody, modern dark-fantasy ARPG rather than clean pixel art, via a small set of shared post-processing and atmosphere primitives. All upgrades must preserve the 60+ FPS target on desktop and the browser build, keep `arch_rogue.game.Game` and `arch_rogue.game:main` stable, and keep run-save/options compatibility backward-compatible.
+
+- Add a shared emissive/light layer and a cheap bloom pass in `rendering/base.py` (or a new `rendering/post.py`): collect emissive sources (story relic, shrines, boss aura, projectiles, magic casts, torches, lava/hazard tiles, player lantern) into a half-res emissive surface, downscale→upscale blur (reuse the existing aim-cone blur pattern), and additive-blit back over the scene after `draw_world_objects`. Cache the scratch surfaces by screen size and avoid per-frame allocations in the hot path.
+- Replace the rectangle-inset `draw_ambient_depth_overlay` with a cached radial vignette overlay: precompute a per-(screen size, theme, ui_scale) radial alpha falloff surface, blit once per frame. Keep the dark-floor skip behavior and the existing cache signature pattern.
+- Upgrade `draw_shadow` in `rendering/effects.py` to soft contact shadows: use a cached radial-alpha shadow surface, scaled per entity size and squashed by the iso projection, replacing the hard ellipse. Apply consistently to player, enemies, bosses, shopkeeper, props, and loot so actors read as grounded on the floor diamond.
+- Add light pools on dark floors: an additive soft radial gradient centered on each actual light emitter (player lantern, shrines, torches, glowing enemies, story relic) drawn on the dark-floor pass, so dark floors feel lit by the world instead of revealed by a UI mask. Reuse the emissive layer or a parallel additive light layer; keep the existing tile-visibility system as the source of truth for what is revealed.
+- Add a small pooled particle system (new `src/arch_rogue/particles.py` or a focused section inside `rendering/effects.py`): ambient embers/dust motes drifting near light sources in dungeons, and short-lived blood-mist/ember bursts lingering after combat impacts and kills. Pool a fixed cap of particles, avoid per-frame allocations, and integrate via `update_particles(dt)` / `draw_particles()` in the run loop.
+- Add screen shake and hitstop for combat weight: a decaying camera offset in `camera.py` triggered by heavy hits, boss slams, and explosions; a brief 30–60ms `elapsed`/simulation freeze (hitstop) on kills, parries, and big impacts. Add a graphics option to disable screen shake (accessibility) and clamp the shake amplitude so it never obscures gameplay. Keep the camera offset inside the existing smoothed-camera pipeline so culling and `world_to_screen` stay consistent.
+- Gate the new post/atmosphere work behind a backward-compatible options schema bump in `options.py`: add a `graphics_quality` field (e.g. `low`/`medium`/`high`) controlling bloom, vignette, soft shadows, light pools, and particles, plus an explicit `screen_shake_enabled` toggle. Persist in the existing options file with a schema bump and safe defaults so older saves load unchanged; low/medium must keep the browser build at 60+ FPS.
+- Preserve save compatibility, run-save compatibility, stable `Game`/`main` entry points, and the `RenderingMixin` / `MenuRenderer` package facades; do not rename existing render entry points.
+- Validate with a new `tests/test_3_8_graphics.py` covering: emissive-layer collection and bloom blit, vignette cache key and dark-floor skip, soft-shadow surface caching and per-entity scaling, light-pool draw on dark floors, particle pool cap and update/draw behavior, screen-shake decay and hitstop freeze, options schema migration and `graphics_quality`/`screen_shake_enabled` persistence, plus the full `python -m unittest discover tests` regression suite. Keep headless-safe SDL dummy drivers.
 
 ## Next Milestones
 
-### 3.8 Controller, Input, and Accessibility Polish
+### 3.9 Controller, Input, and Accessibility Polish
 
 Modernize the control layer so keyboard/mouse remains responsive while gamepad and accessibility options become first-class across gameplay and menus.
 
@@ -206,7 +212,7 @@ Modernize the control layer so keyboard/mouse remains responsive while gamepad a
 - Keep the run loop at 60+ FPS: input sampling must stay cheap, and any per-frame controller polling must avoid allocations in the hot path.
 - Validate with a new `tests/test_3_5_input_accessibility.py` covering input mapping, controller-to-command translation, options persistence/migration, and menu navigation, plus the full `unittest discover tests` regression suite.
 
-### 3.9 Build Diversity and Affix Depth
+### 3.10 Build Diversity and Affix Depth
 
 Draft goal: deepen loot-driven build variety by expanding affix pools, item interactions, and skill/affix synergies so each run can commit to a distinct build identity.
 
@@ -217,7 +223,3 @@ Draft goal: deepen loot-driven build variety by expanding affix pools, item inte
 - Improve loot readability in the HUD/inventory: affix tooltips, tag icons, and a one-line build-relevance hint comparing drops to the player's current build.
 - Preserve save compatibility: existing item/affix saves must still load; new affixes default to no-op on older saves.
 - Validate with a new `tests/test_3_6_affix_builds.py` covering affix roll ranges, synergy resolution in combat, unique-item generation, cursed-item tradeoffs, and save migration, plus the full `unittest discover tests` regression suite.
-
-### 3.10 Additional sprite fixes
-
-- Make a new sprite for shop sign
