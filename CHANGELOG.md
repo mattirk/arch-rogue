@@ -1,5 +1,34 @@
 # Changelog
 
+## 3.8.4 — Archetype-Specific Bolt & Nova Graphics
+
+Bolt and nova cast effects were a single generic arcane ring for every class. The emanation graphic and the bolt projectile are now themed per archetype so each class reads distinctly the moment a skill fires.
+
+### Added
+- `ImpactEffect.archetype` and `Projectile.archetype` fields tag the class that produced a cast impact / player bolt so the renderer can theme them without branching on ownership.
+- Per-archetype player bolt sprites in `sprites.py`: Warden `_guard_bolt` (holy hammer of light), Rogue `_throwing_dagger` (poisoned blade), Acolyte `_spirit_bolt` (wraith-skull bolt), Ranger `_arrow_bolt` (feathered arrow). Arcanist reuses the existing arcane `_blue_bolt`. `projectile_frame(owner, elapsed, archetype=...)` selects the class sprite for player bolts and falls back to the owner-keyed sprite otherwise.
+- `_draw_cast_emanation` dispatcher plus four new emanation renderers in `rendering/effects.py`:
+  - **Warden** — `_draw_cast_warden`: expanding golden bulwark wave, radiating light rays, holy sigil core.
+  - **Rogue** — `_draw_cast_rogue`: smoke/poison burst of expanding puffs with poison wisps (no clean ring).
+  - **Acolyte** — `_draw_cast_acolyte`: dark crimson ring, blood droplets radiating outward, shadowed blood-heart core.
+  - **Ranger** — `_draw_cast_ranger`: green snare-vine ring with thorn/leaf accents and rooting lines spreading outward.
+  - **Arcanist** (default) — unchanged magical ring with orbiting runes.
+
+### Changed
+- `CombatMixin.player_cast_bolt` / `player_cast_nova` now pass `archetype=self.player.class_name` into the cast `ImpactEffect`, and `player_cast_bolt` tags each `Projectile` with the class so the bolt sprite matches.
+- `Game.add_impact` accepts an `archetype` keyword and forwards it to `ImpactEffect`.
+- `draw_projectile` forwards `projectile.archetype` to `sprites.projectile_frame`.
+- Nova impacts already use a larger radius/ttl than bolt, so the new emanations scale up automatically for nova and down for bolt without per-class tuning.
+- Removed the four generic directional `SlashEffect`s `player_cast_nova` used to spawn around the player. They were the old placeholder nova sweep visual and are now superseded by the per-archetype emanation ring, so nova no longer doubles up two overlapping effects. The slash system itself is unchanged (melee still uses it).
+- Keyboard/mouse bindings, run-save compatibility, and the stable `Game` / `main` entry points are unchanged. The new model fields default to empty strings so older saves / impacts keep rendering via the Arcanist/default path.
+- Version metadata (`__version__`, `pyproject.toml`) bumped to `3.8.4`.
+
+### Validation
+- `python -m compileall src` clean.
+- `python -m unittest tests.test_world_rendering_and_animation tests.test_combat_damage_and_loot_tables tests.test_3_8_graphics` — 11 tests pass.
+- `python -m unittest discover tests` — 154 tests pass.
+- Headless render harness cycled bolt + nova casts for all five archetypes (Warden, Rogue, Arcanist, Acolyte, Ranger) and confirmed each archetype-specific emanation and bolt sprite draws without errors.
+
 ## 3.8.3 — Enemy Line-of-Sight Fix
 
 Enemies were aggroing and attacking the player purely on Euclidean distance, so a foe on the far side of a wall could melee or cast through it. Combat now requires an unobstructed line of sight before an enemy may attack.

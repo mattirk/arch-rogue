@@ -92,6 +92,16 @@ class PixelSpriteAtlas:
             "player": self._blue_bolt(),
             "enemy": self._void_bolt(),
         }
+        # Per-archetype player bolt sprites so each class fires a distinct
+        # projectile shape (arrows for Ranger, daggers for Rogue, etc.). The
+        # Arcanist reuses the default arcane bolt.
+        raw_player_bolts = {
+            "Warden": self._guard_bolt(),
+            "Rogue": self._throwing_dagger(),
+            "Arcanist": self._blue_bolt(),
+            "Acolyte": self._spirit_bolt(),
+            "Ranger": self._arrow_bolt(),
+        }
         raw_traps = {
             "Spike Trap": self._spike_trap(),
             "Rune Trap": self._rune_trap(),
@@ -111,6 +121,10 @@ class PixelSpriteAtlas:
         self.projectiles = {
             owner: self._scale_prop(surface)
             for owner, surface in raw_projectiles.items()
+        }
+        self.player_bolts = {
+            name: self._scale_prop(surface)
+            for name, surface in raw_player_bolts.items()
         }
         self.slash = self._scale_prop(self._slash())
 
@@ -146,6 +160,10 @@ class PixelSpriteAtlas:
         self.projectile_animation_frames = {
             owner: self._projectile_animation_frames(sprite)
             for owner, sprite in self.projectiles.items()
+        }
+        self.player_bolt_animation_frames = {
+            name: self._projectile_animation_frames(sprite)
+            for name, sprite in self.player_bolts.items()
         }
 
         self.trap_sprites = {
@@ -771,7 +789,12 @@ class PixelSpriteAtlas:
         )
         return self._frame_from(frames, elapsed, rate=2.2)
 
-    def projectile_frame(self, owner: str, elapsed: float) -> pygame.Surface:
+    def projectile_frame(
+        self, owner: str, elapsed: float, archetype: str = ""
+    ) -> pygame.Surface:
+        if owner == "player" and archetype in self.player_bolt_animation_frames:
+            frames = self.player_bolt_animation_frames[archetype]
+            return self._frame_from(frames, elapsed, rate=12.0)
         frames = self.projectile_animation_frames.get(
             owner, self.projectile_animation_frames["enemy"]
         )
@@ -1709,6 +1732,113 @@ class PixelSpriteAtlas:
         self._rect(s, 7, 4, 4, 4, core)
         self._dot(s, 12, 5, core)
         self._dot(s, 13, 6, mid)
+        return s
+
+    def _guard_bolt(self) -> pygame.Surface:
+        # Warden — a holy hammer of light with a bright leading head and a
+        # golden trailing shaft.
+        s = self._surface(16, 12)
+        core = (255, 250, 220)
+        mid = (255, 220, 130)
+        outer = (235, 180, 80)
+        tail = (160, 120, 50)
+        # shaft trail
+        self._rect(s, 0, 5, 8, 2, tail)
+        self._rect(s, 3, 5, 5, 2, outer)
+        self._rect(s, 5, 5, 3, 2, mid)
+        self._dot(s, 0, 4, tail)
+        self._dot(s, 0, 7, tail)
+        # shield/hammer head
+        self._rect(s, 8, 3, 5, 6, outer)
+        self._rect(s, 9, 4, 4, 4, mid)
+        self._rect(s, 10, 5, 3, 2, core)
+        self._dot(s, 13, 5, core)
+        self._dot(s, 13, 6, core)
+        # holy glints above/below the head
+        self._dot(s, 11, 3, core)
+        self._dot(s, 11, 8, core)
+        return s
+
+    def _throwing_dagger(self) -> pygame.Surface:
+        # Rogue — a slim throwing dagger with a poisoned blade.
+        s = self._surface(16, 12)
+        steel = (220, 225, 230)
+        steel_hi = (245, 248, 252)
+        steel_lo = (150, 155, 160)
+        handle = (90, 60, 40)
+        poison = (150, 220, 110)
+        # handle (left)
+        self._rect(s, 2, 5, 5, 2, handle)
+        self._dot(s, 1, 5, handle)
+        self._dot(s, 1, 6, handle)
+        # guard
+        self._vline(s, 6, 4, 4, handle)
+        self._dot(s, 6, 3, handle)
+        # blade (right, pointing)
+        self._rect(s, 7, 5, 7, 2, steel)
+        self._rect(s, 7, 4, 5, 1, steel_hi)
+        self._rect(s, 7, 7, 5, 1, steel_lo)
+        self._rect(s, 12, 5, 2, 2, steel_hi)
+        self._dot(s, 14, 5, steel_hi)
+        self._dot(s, 14, 6, steel_hi)
+        # poison glint on the blade
+        self._dot(s, 10, 5, poison)
+        self._dot(s, 9, 6, poison)
+        return s
+
+    def _spirit_bolt(self) -> pygame.Surface:
+        # Acolyte — a dark wraith bolt with a skull-like leading head and
+        # trailing shadow wisps.
+        s = self._surface(16, 12)
+        core = (255, 210, 230)
+        mid = (210, 83, 238)
+        outer = (119, 54, 184)
+        tail = (54, 30, 102)
+        shadow = (30, 18, 40)
+        blood = (220, 80, 110)
+        # trailing wisps
+        self._rect(s, 0, 5, 8, 2, tail)
+        self._rect(s, 2, 4, 4, 1, outer)
+        self._rect(s, 2, 7, 4, 1, outer)
+        self._dot(s, 0, 4, tail)
+        self._dot(s, 0, 7, tail)
+        # skull head
+        self._rect(s, 8, 3, 6, 6, outer)
+        self._rect(s, 9, 4, 5, 4, mid)
+        self._rect(s, 10, 5, 4, 2, core)
+        # eye sockets
+        self._dot(s, 11, 5, shadow)
+        self._dot(s, 12, 5, shadow)
+        # crimson veins
+        self._dot(s, 13, 4, blood)
+        self._dot(s, 13, 7, blood)
+        return s
+
+    def _arrow_bolt(self) -> pygame.Surface:
+        # Ranger — a feathered arrow with a steel head.
+        s = self._surface(16, 12)
+        tip = (220, 225, 230)
+        tip_hi = (245, 248, 252)
+        shaft = (150, 110, 70)
+        shaft_hi = (180, 140, 90)
+        fletch = (180, 215, 130)
+        fletch_lo = (120, 170, 80)
+        # fletching (left)
+        self._rect(s, 0, 4, 4, 1, fletch)
+        self._rect(s, 0, 7, 4, 1, fletch)
+        self._rect(s, 1, 5, 3, 1, fletch_lo)
+        self._rect(s, 1, 6, 3, 1, fletch_lo)
+        self._dot(s, 0, 5, fletch)
+        self._dot(s, 0, 6, fletch)
+        # shaft
+        self._rect(s, 3, 5, 9, 2, shaft)
+        self._hline(s, 3, 5, 9, shaft_hi)
+        # arrowhead (right)
+        self._rect(s, 11, 4, 2, 1, tip)
+        self._rect(s, 11, 7, 2, 1, tip)
+        self._rect(s, 12, 5, 2, 2, tip)
+        self._dot(s, 14, 5, tip_hi)
+        self._dot(s, 14, 6, tip_hi)
         return s
 
     def _slash(self) -> pygame.Surface:

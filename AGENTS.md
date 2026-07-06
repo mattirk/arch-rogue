@@ -211,4 +211,4 @@ Draft goal: deepen loot-driven build variety by expanding affix pools, item inte
 - Validate with a new `tests/test_3_6_affix_builds.py` covering affix roll ranges, synergy resolution in combat, unique-item generation, cursed-item tradeoffs, and save migration, plus the full `unittest discover tests` regression suite.
 
 ### Stash
-- enemies can now "see through walls" or at least they attack the player from the other side. fix this
+- make bosses bigger -> 4 tiles. make them a lot harder. draw bigger health bar. close all doors in room when boss battle starts. make nice looking sprite graphics for bosses.

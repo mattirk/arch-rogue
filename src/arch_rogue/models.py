@@ -375,6 +375,9 @@ class ImpactEffect:
     radius: float = 0.35
     kind: str = "spark"
     max_ttl: float = 0.38
+    # Archetype that produced this effect so cast/nova emanation graphics can
+    # be themed per class (e.g. Arcanist's arcane ring vs Warden's bulwark wave).
+    archetype: str = ""
 
     def update(self, dt: float) -> None:
         self.ttl -= dt
@@ -398,6 +401,9 @@ class Projectile:
     damage_type: str = "physical"
     status_effect: str = ""
     status_duration: float = 0.0
+    # Archetype that fired this player projectile so the bolt sprite can be
+    # themed per class (arrows for Ranger, daggers for Rogue, etc.).
+    archetype: str = ""
     # Milestone 3.7 — branch-progression projectile mechanics:
     #   * `pierce` is the number of additional enemies a projectile may pass
     #     through before expiring. 0 means it dies on the first hit.

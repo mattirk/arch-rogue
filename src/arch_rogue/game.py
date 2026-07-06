@@ -312,8 +312,11 @@ class Game(
         ttl: float = 0.38,
         radius: float = 0.35,
         kind: str = "spark",
+        archetype: str = "",
     ) -> None:
-        self.impact_effects.append(ImpactEffect(x, y, color, ttl, radius, kind, ttl))
+        self.impact_effects.append(
+            ImpactEffect(x, y, color, ttl, radius, kind, ttl, archetype)
+        )
 
     def set_player_action_visual(self, state: str, ttl: float = 0.18) -> None:
         self.player_action_state = state

@@ -148,32 +148,8 @@ class RenderingEffectsMixin:
                     max(2, radius // 9),
                 )
         elif effect.kind == "cast":
-            ring_radius = max(3, int(radius * (0.42 + progress * 0.48)))
-            pygame.draw.circle(
-                overlay,
-                (*effect.color, int(alpha * 0.36)),
-                center,
-                ring_radius,
-                max(1, WORLD_SCALE),
-            )
-            for index in range(6):
-                angle = index * math.tau / 6 - progress * 0.9
-                rune = (
-                    center[0] + int(math.cos(angle) * ring_radius),
-                    center[1] + int(math.sin(angle) * ring_radius * 0.55),
-                )
-                pygame.draw.rect(
-                    overlay,
-                    (*bright, int(alpha * 0.72)),
-                    (
-                        rune[0] - WORLD_SCALE,
-                        rune[1] - WORLD_SCALE,
-                        WORLD_SCALE * 2,
-                        WORLD_SCALE * 2,
-                    ),
-                )
-            pygame.draw.circle(
-                overlay, (*bright, int(alpha * 0.62)), center, max(2, radius // 7)
+            self._draw_cast_emanation(
+                overlay, center, radius, alpha, bright, dark, progress, life, effect
             )
         elif effect.kind == "dash":
             for index in range(4):
@@ -213,6 +189,355 @@ class RenderingEffectsMixin:
                 )
 
         self.screen.blit(overlay, overlay.get_rect(center=(sx, sy - 12 * WORLD_SCALE)))
+
+    def _draw_cast_emanation(
+        self,
+        overlay: pygame.Surface,
+        center: tuple[int, int],
+        radius: int,
+        alpha: int,
+        bright: Color,
+        dark: Color,
+        progress: float,
+        life: float,
+        effect: ImpactEffect,
+    ) -> None:
+        """Archetype-themed emanation for bolt/nova cast impacts.
+
+        The Arcanist keeps the classic arcane ring with orbiting runes. The
+        other archetypes get distinct visuals that match their damage type and
+        fantasy: Warden's holy bulwark wave, Rogue's smoke/poison burst,
+        Acolyte's blood nova, and Ranger's snare-vine ring. Nova impacts use a
+        larger radius/ttl so the same routine scales up automatically.
+        """
+        archetype = getattr(effect, "archetype", "")
+        if archetype == "Warden":
+            self._draw_cast_warden(
+                overlay, center, radius, alpha, bright, dark, progress
+            )
+        elif archetype == "Rogue":
+            self._draw_cast_rogue(
+                overlay, center, radius, alpha, bright, dark, progress
+            )
+        elif archetype == "Acolyte":
+            self._draw_cast_acolyte(
+                overlay, center, radius, alpha, bright, dark, progress
+            )
+        elif archetype == "Ranger":
+            self._draw_cast_ranger(
+                overlay, center, radius, alpha, bright, dark, progress
+            )
+        else:
+            # Arcanist (default): the classic magical ring with orbiting runes
+            # and a bright arcane core.
+            ring_radius = max(3, int(radius * (0.42 + progress * 0.48)))
+            pygame.draw.circle(
+                overlay,
+                (*effect.color, int(alpha * 0.36)),
+                center,
+                ring_radius,
+                max(1, WORLD_SCALE),
+            )
+            for index in range(6):
+                angle = index * math.tau / 6 - progress * 0.9
+                rune = (
+                    center[0] + int(math.cos(angle) * ring_radius),
+                    center[1] + int(math.sin(angle) * ring_radius * 0.55),
+                )
+                pygame.draw.rect(
+                    overlay,
+                    (*bright, int(alpha * 0.72)),
+                    (
+                        rune[0] - WORLD_SCALE,
+                        rune[1] - WORLD_SCALE,
+                        WORLD_SCALE * 2,
+                        WORLD_SCALE * 2,
+                    ),
+                )
+            pygame.draw.circle(
+                overlay, (*bright, int(alpha * 0.62)), center, max(2, radius // 7)
+            )
+
+    def _draw_cast_warden(
+        self,
+        overlay: pygame.Surface,
+        center: tuple[int, int],
+        radius: int,
+        alpha: int,
+        bright: Color,
+        dark: Color,
+        progress: float,
+    ) -> None:
+        # Holy bulwark wave: an expanding golden shield-disc front, radiating
+        # light rays, and a holy sigil at the center.
+        holy = bright
+        ring_radius = max(3, int(radius * (0.40 + progress * 0.55)))
+        # inner shield face (fades as the wave expands)
+        face_alpha = int(alpha * 0.22 * (1.0 - progress))
+        if face_alpha > 0:
+            pygame.draw.circle(
+                overlay, (*holy, face_alpha), center, max(2, ring_radius - 2)
+            )
+        # expanding wave front (thicker golden ring)
+        pygame.draw.circle(
+            overlay,
+            (*holy, int(alpha * 0.55)),
+            center,
+            ring_radius,
+            max(2, WORLD_SCALE * 2),
+        )
+        pygame.draw.circle(
+            overlay,
+            (*self.shade(holy, 40), int(alpha * 0.30)),
+            center,
+            max(2, ring_radius - 3),
+            max(1, WORLD_SCALE),
+        )
+        # radiating light rays
+        ray_count = 8
+        for index in range(ray_count):
+            angle = index * math.tau / ray_count + progress * 0.4
+            inner = ring_radius * 0.18
+            outer = ring_radius * (0.95 + progress * 0.15)
+            start = (
+                center[0] + int(math.cos(angle) * inner),
+                center[1] + int(math.sin(angle) * inner * 0.55),
+            )
+            end = (
+                center[0] + int(math.cos(angle) * outer),
+                center[1] + int(math.sin(angle) * outer * 0.55),
+            )
+            pygame.draw.line(
+                overlay,
+                (*bright, int(alpha * 0.45 * (1.0 - progress))),
+                start,
+                end,
+                max(1, WORLD_SCALE),
+            )
+        # holy sigil core: a small diamond
+        sigil_r = max(2, radius // 6)
+        sigil_pts = [
+            (center[0], center[1] - sigil_r),
+            (center[0] + sigil_r, center[1]),
+            (center[0], center[1] + sigil_r),
+            (center[0] - sigil_r, center[1]),
+        ]
+        pygame.draw.polygon(overlay, (*bright, int(alpha * 0.78)), sigil_pts)
+        pygame.draw.circle(
+            overlay, (*self.shade(holy, 60), alpha), center, max(1, sigil_r // 2)
+        )
+
+    def _draw_cast_rogue(
+        self,
+        overlay: pygame.Surface,
+        center: tuple[int, int],
+        radius: int,
+        alpha: int,
+        bright: Color,
+        dark: Color,
+        progress: float,
+    ) -> None:
+        # Smoke/poison burst: no clean ring — expanding puffs of smoke with
+        # poison-green wisps that dissipate outward.
+        smoke = self.shade(dark, 20)
+        poison = bright
+        # central smoke puff
+        core_r = max(2, int(radius * (0.30 - progress * 0.18)))
+        if core_r > 0:
+            pygame.draw.circle(overlay, (*smoke, int(alpha * 0.6)), center, core_r)
+            pygame.draw.circle(
+                overlay, (*poison, int(alpha * 0.5)), center, max(1, core_r // 3)
+            )
+        # expanding smoke puffs
+        puff_count = 9
+        for index in range(puff_count):
+            angle = index * math.tau / puff_count + progress * 1.6
+            dist = radius * (0.30 + progress * 0.75 + (index % 2) * 0.05)
+            puff = (
+                center[0] + int(math.cos(angle) * dist),
+                center[1] + int(math.sin(angle) * dist * 0.55) - int(progress * 6),
+            )
+            puff_r = max(
+                2, int(radius * (0.16 + (index % 3) * 0.04) * (1.0 - progress * 0.4))
+            )
+            puff_alpha = int(alpha * (0.5 - progress * 0.4))
+            if puff_alpha <= 0:
+                continue
+            pygame.draw.circle(overlay, (*smoke, puff_alpha), puff, puff_r)
+            # poison wisp inside each puff
+            pygame.draw.circle(
+                overlay,
+                (*poison, int(puff_alpha * 0.6)),
+                puff,
+                max(1, puff_r // 3),
+            )
+        # trailing poison wisps
+        for index in range(5):
+            angle = index * math.tau / 5 - progress * 2.2
+            dist = radius * (0.55 + progress * 0.4)
+            wisp = (
+                center[0] + int(math.cos(angle) * dist),
+                center[1] + int(math.sin(angle) * dist * 0.55),
+            )
+            pygame.draw.circle(
+                overlay,
+                (*self.shade(poison, 30), int(alpha * 0.35)),
+                wisp,
+                max(1, radius // 11),
+            )
+
+    def _draw_cast_acolyte(
+        self,
+        overlay: pygame.Surface,
+        center: tuple[int, int],
+        radius: int,
+        alpha: int,
+        bright: Color,
+        dark: Color,
+        progress: float,
+    ) -> None:
+        # Blood nova: a dark crimson ring with blood droplets radiating outward,
+        # dark tendrils, and a shadowed crimson core.
+        blood = bright
+        shadow = self.shade(dark, -30)
+        ring_radius = max(3, int(radius * (0.40 + progress * 0.55)))
+        # dark tendrils from center to ring
+        tendril_count = 8
+        for index in range(tendril_count):
+            angle = index * math.tau / tendril_count - progress * 0.6
+            end = (
+                center[0] + int(math.cos(angle) * ring_radius),
+                center[1] + int(math.sin(angle) * ring_radius * 0.55),
+            )
+            pygame.draw.line(
+                overlay,
+                (*shadow, int(alpha * 0.4 * (1.0 - progress * 0.6))),
+                center,
+                end,
+                max(1, WORLD_SCALE),
+            )
+        # crimson ring
+        pygame.draw.circle(
+            overlay,
+            (*blood, int(alpha * 0.45)),
+            center,
+            ring_radius,
+            max(1, WORLD_SCALE),
+        )
+        pygame.draw.circle(
+            overlay,
+            (*shadow, int(alpha * 0.30)),
+            center,
+            max(2, ring_radius - 2),
+            max(1, WORLD_SCALE),
+        )
+        # radiating blood droplets that elongate outward
+        drop_count = 10
+        for index in range(drop_count):
+            angle = index * math.tau / drop_count + progress * 0.5
+            dist = ring_radius * (0.65 + progress * 0.45)
+            drop = (
+                center[0] + int(math.cos(angle) * dist),
+                center[1] + int(math.sin(angle) * dist * 0.55),
+            )
+            drop_r = max(1, int(radius * (0.06 + progress * 0.05)))
+            pygame.draw.circle(
+                overlay, (*self.shade(blood, -25), int(alpha * 0.7)), drop, drop_r
+            )
+        # shadowed crimson core (the blood heart)
+        core_r = max(2, int(radius * (0.18 + progress * 0.10)))
+        pygame.draw.circle(overlay, (*shadow, int(alpha * 0.7)), center, core_r)
+        pygame.draw.circle(
+            overlay, (*blood, int(alpha * 0.85)), center, max(1, core_r // 2)
+        )
+
+    def _draw_cast_ranger(
+        self,
+        overlay: pygame.Surface,
+        center: tuple[int, int],
+        radius: int,
+        alpha: int,
+        bright: Color,
+        dark: Color,
+        progress: float,
+    ) -> None:
+        # Snare-vine ring: an expanding green bramble ring with thorn/leaf
+        # accents and rooting lines spreading outward.
+        vine = bright
+        vine_lo = self.shade(vine, -40)
+        ring_radius = max(3, int(radius * (0.40 + progress * 0.55)))
+        # rooting lines spreading outward (the snare)
+        root_count = 8
+        for index in range(root_count):
+            angle = index * math.tau / root_count + progress * 0.3
+            inner = ring_radius * 0.20
+            outer = ring_radius * (1.0 + progress * 0.20)
+            start = (
+                center[0] + int(math.cos(angle) * inner),
+                center[1] + int(math.sin(angle) * inner * 0.55),
+            )
+            end = (
+                center[0] + int(math.cos(angle) * outer),
+                center[1] + int(math.sin(angle) * outer * 0.55),
+            )
+            pygame.draw.line(
+                overlay,
+                (*vine_lo, int(alpha * 0.4 * (1.0 - progress * 0.5))),
+                start,
+                end,
+                max(1, WORLD_SCALE),
+            )
+        # vine ring
+        pygame.draw.circle(
+            overlay,
+            (*vine, int(alpha * 0.50)),
+            center,
+            ring_radius,
+            max(1, WORLD_SCALE),
+        )
+        pygame.draw.circle(
+            overlay,
+            (*vine_lo, int(alpha * 0.30)),
+            center,
+            max(2, ring_radius - 2),
+            max(1, WORLD_SCALE),
+        )
+        # thorn/leaf accents on the ring
+        thorn_count = 10
+        for index in range(thorn_count):
+            angle = index * math.tau / thorn_count - progress * 0.8
+            px = center[0] + int(math.cos(angle) * ring_radius)
+            py = center[1] + int(math.sin(angle) * ring_radius * 0.55)
+            thorn_len = max(2, int(radius * 0.10))
+            tip = (
+                px + int(math.cos(angle) * thorn_len),
+                py + int(math.sin(angle) * thorn_len * 0.55),
+            )
+            pygame.draw.line(
+                overlay,
+                (*self.shade(vine, 30), int(alpha * 0.7)),
+                (px, py),
+                tip,
+                max(1, WORLD_SCALE),
+            )
+            pygame.draw.circle(
+                overlay, (*vine, int(alpha * 0.6)), (px, py), max(1, radius // 12)
+            )
+        # leaf-like core
+        core_r = max(2, radius // 7)
+        leaf_pts = [
+            (center[0], center[1] - core_r),
+            (center[0] + core_r, center[1]),
+            (center[0], center[1] + core_r),
+            (center[0] - core_r, center[1]),
+        ]
+        pygame.draw.polygon(overlay, (*vine, int(alpha * 0.7)), leaf_pts)
+        pygame.draw.circle(
+            overlay,
+            (*self.shade(vine, 40), int(alpha * 0.9)),
+            center,
+            max(1, core_r // 2),
+        )
 
     def _soft_shadow_template(self, size: int) -> pygame.Surface:
         # Cached radial-alpha square: center peaks at full opacity, edges fade
@@ -968,7 +1293,9 @@ class RenderingEffectsMixin:
     def draw_projectile(self, projectile: Projectile) -> None:
         sx, sy = self.world_to_screen(projectile.x, projectile.y)
         sprite = self.sprites.projectile_frame(
-            projectile.owner, self.elapsed + projectile.x * 0.2 + projectile.y * 0.15
+            projectile.owner,
+            self.elapsed + projectile.x * 0.2 + projectile.y * 0.15,
+            archetype=getattr(projectile, "archetype", ""),
         )
         vx, vy = self.iso_screen_direction(projectile.vx, projectile.vy)
         color = projectile.color or (

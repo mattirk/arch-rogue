@@ -1236,6 +1236,7 @@ class CombatMixin:
             ttl=0.28,
             radius=0.34,
             kind="cast",
+            archetype=self.player.class_name,
         )
         damage_type = self.bolt_damage_type()
         damage = 14 + self.player.level * 2 + self.player.spell_bonus
@@ -1321,6 +1322,7 @@ class CombatMixin:
                     status_duration=status_duration,
                     pierce=pierce,
                     homing=homing,
+                    archetype=self.player.class_name,
                 )
             )
 
@@ -1338,6 +1340,7 @@ class CombatMixin:
             ttl=0.48,
             radius=0.82,
             kind="cast",
+            archetype=self.player.class_name,
         )
         self.apply_story_blood_price("nova")
         hits = 0
@@ -1430,16 +1433,6 @@ class CombatMixin:
                 ttl=0.9,
             )
         )
-        for angle in (0.0, math.pi / 2, math.pi, math.pi * 1.5):
-            self.slashes.append(
-                (
-                    self.player.x + math.cos(angle) * 0.9,
-                    self.player.y + math.sin(angle) * 0.9,
-                    0.18,
-                    math.cos(angle),
-                    math.sin(angle),
-                )
-            )
 
     def player_dash(self) -> None:
         stamina_cost = self.dash_stamina_cost()
