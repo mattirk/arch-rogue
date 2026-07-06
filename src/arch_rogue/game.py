@@ -12,155 +12,78 @@ from .audio import AudioSystem
 from .camera import CameraMixin
 from .combat import CombatMixin
 from .constants import (
-    BOSS_HIT_RADIUS as BOSS_HIT_RADIUS,
-)
-from .constants import (
-    DARK_LEVEL_LIGHT_RADIUS as DARK_LEVEL_LIGHT_RADIUS,
-)
-from .constants import (
+    BOSS_HIT_RADIUS,
+    DARK_LEVEL_LIGHT_RADIUS,
     DUNGEON_DEPTH,
+    ENEMY_HIT_RADIUS,
+    ENEMY_PROJECTILE_HIT_RADIUS,
     FPS,
+    LARGE_ENEMY_HIT_RADIUS,
+    MAX_INVENTORY,
+    PLAYER_HIT_RADIUS,
+    PLAYER_MELEE_ARC_DOT,
+    PLAYER_MELEE_RANGE,
+    PLAYER_PROJECTILE_HIT_RADIUS,
     UI_SCALE,
-)
-from .constants import (
-    ENEMY_HIT_RADIUS as ENEMY_HIT_RADIUS,
-)
-from .constants import (
-    ENEMY_PROJECTILE_HIT_RADIUS as ENEMY_PROJECTILE_HIT_RADIUS,
-)
-from .constants import (
-    LARGE_ENEMY_HIT_RADIUS as LARGE_ENEMY_HIT_RADIUS,
-)
-from .constants import (
-    MAX_INVENTORY as MAX_INVENTORY,
-)
-from .constants import (
-    PLAYER_HIT_RADIUS as PLAYER_HIT_RADIUS,
-)
-from .constants import (
-    PLAYER_MELEE_ARC_DOT as PLAYER_MELEE_ARC_DOT,
-)
-from .constants import (
-    PLAYER_MELEE_RANGE as PLAYER_MELEE_RANGE,
-)
-from .constants import (
-    PLAYER_PROJECTILE_HIT_RADIUS as PLAYER_PROJECTILE_HIT_RADIUS,
-)
-from .constants import (
-    WALK_ANIMATION_RATE as WALK_ANIMATION_RATE,
-)
-from .constants import (
-    SlashEffect as SlashEffect,
+    WALK_ANIMATION_RATE,
+    SlashEffect,
 )
 from .content import (
     ARCHETYPES,
+    ARMOR_DEFINITIONS,
+    BOSS_DEFINITIONS,
     DEFAULT_DIFFICULTY_NAME,
     DUNGEON_THEMES,
+    ELITE_MODIFIERS,
+    ENCOUNTER_TEMPLATES,
+    ENEMY_DEFINITIONS,
+    FINAL_ROOM_ENEMY_DEFINITIONS,
     RARITY_PROFILES,
     RUN_MODIFIERS,
+    SECRET_TYPES,
+    SHRINE_TYPES,
     SKILL_NODES,
     SKILL_UPGRADES,
+    STORY_LOCATION_MOTIFS,
+    TRAP_DEFINITIONS,
+    WEAPON_DEFINITIONS,
+    BossDefinition,
+    EncounterTemplate,
+    EnemyDefinition,
     skill_node_by_key,
 )
-from .content import (
-    ARMOR_DEFINITIONS as ARMOR_DEFINITIONS,
-)
-from .content import (
-    BOSS_DEFINITIONS as BOSS_DEFINITIONS,
-)
-from .content import (
-    ELITE_MODIFIERS as ELITE_MODIFIERS,
-)
-from .content import (
-    ENCOUNTER_TEMPLATES as ENCOUNTER_TEMPLATES,
-)
-from .content import (
-    ENEMY_DEFINITIONS as ENEMY_DEFINITIONS,
-)
-from .content import (
-    FINAL_ROOM_ENEMY_DEFINITIONS as FINAL_ROOM_ENEMY_DEFINITIONS,
-)
-from .content import (
-    SECRET_TYPES as SECRET_TYPES,
-)
-from .content import (
-    SHRINE_TYPES as SHRINE_TYPES,
-)
-from .content import (
-    STORY_LOCATION_MOTIFS as STORY_LOCATION_MOTIFS,
-)
-from .content import (
-    TRAP_DEFINITIONS as TRAP_DEFINITIONS,
-)
-from .content import (
-    WEAPON_DEFINITIONS as WEAPON_DEFINITIONS,
-)
-from .content import (
-    BossDefinition as BossDefinition,
-)
-from .content import (
-    EncounterTemplate as EncounterTemplate,
-)
-from .content import (
-    EnemyDefinition as EnemyDefinition,
-)
-from .dungeon import Dungeon as Dungeon
-from .input import InputMixin
-from .input import key_command as key_command
+from .dungeon import Dungeon
+from .input import InputMixin, key_command
 from .interactions import InteractionMixin
 from .inventory import InventoryMixin
 from .menus import MenuRenderer
 from .models import (
-    Archetype as Archetype,
-)
-from .models import (
+    Archetype,
     Color,
+    Enemy,
     FloatingText,
     FloorPlan,
     ImpactEffect,
+    Item,
+    Player,
+    Projectile,
+    Room,
     RunStats,
+    SecretCache,
     Shopkeeper,
+    Shrine,
     StoryGuest,
     StoryState,
-)
-from .models import (
-    Enemy as Enemy,
-)
-from .models import (
-    Item as Item,
-)
-from .models import (
-    Player as Player,
-)
-from .models import (
-    Projectile as Projectile,
-)
-from .models import (
-    Room as Room,
-)
-from .models import (
-    SecretCache as SecretCache,
-)
-from .models import (
-    Shrine as Shrine,
-)
-from .models import (
-    Tile as Tile,
-)
-from .models import (
-    Trap as Trap,
+    Tile,
+    Trap,
 )
 from .options import OptionsMixin
 from .population import PopulationMixin
 from .quest_assets import (
     ActiveQuestCutscene,
+    RuntimeDialogueChoice,
+    format_asset_text,
     load_quest_cutscene_library,
-)
-from .quest_assets import (
-    RuntimeDialogueChoice as RuntimeDialogueChoice,
-)
-from .quest_assets import (
-    format_asset_text as format_asset_text,
 )
 from .rendering import RenderingMixin
 from .run_flow import RunFlowMixin
@@ -168,30 +91,107 @@ from .save_system import SaveLoadMixin
 from .shop import ShopMixin
 from .sprites import PixelSpriteAtlas
 from .story import (
-    StoryEngine as StoryEngine,
-)
-from .story import (
-    clamp_story_effect as clamp_story_effect,
-)
-from .story import (
-    record_story_choice as record_story_choice,
-)
-from .story import (
-    record_unanswered_story_beat as record_unanswered_story_beat,
-)
-from .story import (
-    story_beat_for_depth as story_beat_for_depth,
-)
-from .story import (
-    story_beat_index_for_depth as story_beat_index_for_depth,
-)
-from .story import (
-    story_effect as story_effect,
-)
-from .story import (
-    story_guest_from_beat as story_guest_from_beat,
+    StoryEngine,
+    clamp_story_effect,
+    record_story_choice,
+    record_unanswered_story_beat,
+    story_beat_for_depth,
+    story_beat_index_for_depth,
+    story_effect,
+    story_guest_from_beat,
 )
 from .story_runtime import StoryRuntimeMixin
+
+# Keep compatibility with scripts/tests that imported data tables and models from
+# the earlier monolithic game module, while keeping the imports above idiomatic.
+__all__ = (
+    "ARCHETYPES",
+    "ARMOR_DEFINITIONS",
+    "ActiveQuestCutscene",
+    "Archetype",
+    "AudioSystem",
+    "BOSS_DEFINITIONS",
+    "BOSS_HIT_RADIUS",
+    "BossDefinition",
+    "CameraMixin",
+    "Color",
+    "CombatMixin",
+    "DARK_LEVEL_LIGHT_RADIUS",
+    "DEFAULT_DIFFICULTY_NAME",
+    "DUNGEON_DEPTH",
+    "DUNGEON_THEMES",
+    "Dungeon",
+    "ELITE_MODIFIERS",
+    "ENCOUNTER_TEMPLATES",
+    "ENEMY_DEFINITIONS",
+    "ENEMY_HIT_RADIUS",
+    "ENEMY_PROJECTILE_HIT_RADIUS",
+    "EncounterTemplate",
+    "Enemy",
+    "EnemyDefinition",
+    "FINAL_ROOM_ENEMY_DEFINITIONS",
+    "FPS",
+    "FloatingText",
+    "FloorPlan",
+    "Game",
+    "ImpactEffect",
+    "InputMixin",
+    "InteractionMixin",
+    "InventoryMixin",
+    "Item",
+    "LARGE_ENEMY_HIT_RADIUS",
+    "MAX_INVENTORY",
+    "MenuRenderer",
+    "OptionsMixin",
+    "PLAYER_HIT_RADIUS",
+    "PLAYER_MELEE_ARC_DOT",
+    "PLAYER_MELEE_RANGE",
+    "PLAYER_PROJECTILE_HIT_RADIUS",
+    "PixelSpriteAtlas",
+    "Player",
+    "PopulationMixin",
+    "Projectile",
+    "RARITY_PROFILES",
+    "RUN_MODIFIERS",
+    "RenderingMixin",
+    "Room",
+    "RunFlowMixin",
+    "RunStats",
+    "RuntimeDialogueChoice",
+    "SECRET_TYPES",
+    "SHRINE_TYPES",
+    "SKILL_NODES",
+    "SKILL_UPGRADES",
+    "SaveLoadMixin",
+    "SecretCache",
+    "ShopMixin",
+    "Shopkeeper",
+    "Shrine",
+    "SlashEffect",
+    "STORY_LOCATION_MOTIFS",
+    "TRAP_DEFINITIONS",
+    "StoryEngine",
+    "StoryGuest",
+    "StoryRuntimeMixin",
+    "StoryState",
+    "Tile",
+    "Trap",
+    "UI_SCALE",
+    "WALK_ANIMATION_RATE",
+    "WEAPON_DEFINITIONS",
+    "clamp_story_effect",
+    "format_asset_text",
+    "key_command",
+    "load_quest_cutscene_library",
+    "main",
+    "record_story_choice",
+    "record_unanswered_story_beat",
+    "skill_node_by_key",
+    "story_beat_for_depth",
+    "story_beat_index_for_depth",
+    "story_effect",
+    "story_guest_from_beat",
+)
 
 
 class Game(
