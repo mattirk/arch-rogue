@@ -1,6 +1,6 @@
 [project]
 name = "arch-rogue"
-version = "3.8.5"
+version = "3.9.0"
 description = "3.8.3 fixes enemies attacking the player through walls by gating melee/cast on a line-of-sight check.",
 readme = "README.md"
 requires-python = ">=3.11"

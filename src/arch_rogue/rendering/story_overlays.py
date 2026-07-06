@@ -427,17 +427,27 @@ class RenderingStoryOverlayMixin:
             zip(choices_to_draw, choice_rects)
         ):
             choice_color = self.cutscene_choice_color(choice.choice_key, accent)
+            is_selected = index == getattr(self, "cutscene_cursor", 0)
             pygame.draw.rect(
                 surface,
-                (24, 19, 31, 240),
+                (34, 25, 45, 248) if is_selected else (24, 19, 31, 240),
                 choice_rect,
                 border_radius=self.ui(9),
             )
+            if is_selected:
+                glow = pygame.Surface(choice_rect.size, pygame.SRCALPHA)
+                pygame.draw.rect(
+                    glow,
+                    (*choice_color, 42),
+                    glow.get_rect(),
+                    border_radius=self.ui(9),
+                )
+                surface.blit(glow, choice_rect)
             pygame.draw.rect(
                 surface,
-                (*choice_color, 170),
+                (*choice_color, 235 if is_selected else 170),
                 choice_rect,
-                self.ui(1),
+                max(self.ui(2), 2) if is_selected else self.ui(1),
                 border_radius=self.ui(9),
             )
             key_size = min(self.ui(36), choice_rect.height - self.ui(12))
@@ -481,16 +491,18 @@ class RenderingStoryOverlayMixin:
             )
 
         footer_text = (
-            "Narrator speaking… Press Enter/E/Space to reveal the full line."
+            "Narrator speaking… Enter/E/Space or gamepad A reveals the full line."
             if not narration_complete
             else (
-                "Press 1-3 to choose a dialogue response."
+                "Press 1-3 or D-pad + A to choose. Gamepad B skips/closes."
                 if len(choices_to_draw) >= 3
-                else "Press Enter/E to advance, Esc to close non-blocking dialogue."
+                else "Enter/E or gamepad A advances. Esc/B closes non-blocking dialogue."
             )
         )
         if self.story_intro_pending and narration_complete:
-            footer_text = "Press 1-3 to confirm the guest dialog, place the relic, and begin this level."
+            footer_text = (
+                "Choose 1-3 or D-pad + A to bind the guest relic and begin this level."
+            )
         self.draw_ui_text(
             surface,
             footer_text,

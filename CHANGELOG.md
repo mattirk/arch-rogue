@@ -1,5 +1,30 @@
 # Changelog
 
+## 3.9.0 — Controller, Input, and Accessibility Polish
+
+The control layer was keyboard-and-mouse only. Gamepad support is now first-class across gameplay and every menu, keyboard and controller share the same navigation bindings, and the last-used controller is remembered across sessions.
+
+### Added
+- New `src/arch_rogue/input.py` input abstraction: a `Command` vocabulary (move, aim, ability, interact, navigate, confirm, back, tab), keyboard/gamepad-to-command mapping tables, and a `ControllerManager` owning joystick lifecycle, hot-plug, device selection, and allocation-free per-frame axis polling.
+- Full `pygame.joystick` controller support: left stick movement, right stick aiming, context-aware button maps for combat abilities (A/X/Y/LT/LB/RB/RT), D-pad and face-button menu navigation, interaction, inventory/shop/character-sheet navigation, tab cycling, and story-relic/cutscene choices.
+- Auto-detect gamepad connect/disconnect (`JOYDEVICEADDED` / `JOYDEVICEREMOVED`) with the last-used device persisted by GUID to `~/.arch_rogue_options.json` and reclaimed when it hot-plugs back in.
+- Unified menu navigation: every navigable menu (title, options, archetype select, inventory, shop, character sheet, run-state overlays) supports the same directional/confirm/back/tab bindings on both keyboard and gamepad via a single `_dispatch_command` path.
+- Options menu gained a cursor (arrow keys / D-pad move focus, Enter activates, Left/Right adjust), a Controls & gamepad mapping page, and a Controller row to enable/disable gamepad input; legacy direct keys (A/M/F/D/+/-/O) still work.
+- Analog movement: stick deflection past the radial deadzone scales movement speed (creep vs. sprint) while keyboard diagonals stay full speed.
+- Robust stick/trigger detection: rest-value sampling distinguishes analog sticks from triggers, so right-stick aim and LT/RT actions read correctly across Xbox-raw, Stadia/PS, and 4-axis layouts without relying on the SDL controller DB.
+
+### Changed
+- `combat.py` `update_player` / `update_player_aim` merge controller axes into the existing keyboard/mouse polling; keyboard and mouse behavior is unchanged when no controller is connected.
+- `Game.handle_events` routes joystick events through `InputMixin.handle_controller_event`; keyboard KEYDOWN handling is otherwise untouched so all legacy bindings persist.
+- Options schema bumped to v3 (adds `controller_enabled` and `last_controller_guid`); older v2 saves load with safe defaults (controller on, no preferred device).
+- Options menu: Enter now activates the focused row (consistent confirm); Backspace / O / Esc still return to title.
+- Controller buttons are now context-sensitive: A confirms in menus/cutscenes but attacks in gameplay; X/Y select skills in gameplay and quick-pick story choices in cutscenes; B skips/closes cutscenes and mandatory story intro selects the highlighted/default relic option.
+
+### Validation
+- `python -m compileall src tests` passes.
+- New `tests/test_3_9_input_accessibility.py` (44 tests) covers input mapping, controller axis/trigger layout and deadzone, contextual button maps, hot-plug and GUID preference, unified command dispatch across all menus, gameplay ability wiring, cutscene selection/skip, analog movement/aim integration, controls page rendering, and options persistence/migration.
+- `python -m unittest discover tests` — 205 tests pass.
+
 ## 3.8.5 — Big Bosses: 4-Tile Gatekeepers, Sealed Arenas, Boss Bar
 
 Bosses were single-tile enemies with a tougher stat block and a generic sprite. The final gate tyrant and named floor guardians are now hulking 4-tile set-piece encounters that lock the room down when you enter and only reopen the doors when the boss is dead.

@@ -18,15 +18,23 @@ class MenuOptionsMixin:
         difficulty_value = self.g.difficulty_profile().name
         if not self.g.hell_unlocked:
             difficulty_value = f"{difficulty_value} · Hell locked"
+        if self.g.input.has_controller():
+            controller_value = self.g.input.active_name() or "On"
+        elif not self.g.controller_enabled:
+            controller_value = "Off"
+        else:
+            controller_value = "None connected"
         rows: list[MenuRow] = [
             ("A", "Audio cues", "On" if self.g.audio_enabled else "Off"),
             ("M", "Static menu/run music", "On" if self.g.music_enabled else "Off"),
             ("F", "Fullscreen", "On" if self.g.fullscreen else "Off"),
             ("D", "Difficulty", difficulty_value),
             ("+ / -", "UI scale", f"{self.g.ui_scale}x"),
+            ("Enter", "Controls & gamepad mapping", ""),
+            ("Gamepad", "Controller", controller_value),
             ("Enter / O / Backspace", "Return to title", ""),
         ]
-        self.draw_menu_rows(rows, content)
+        self.draw_menu_rows(rows, content, selected_index=self.g.options_cursor)
         note_rect = pygame.Rect(
             content.x, content.bottom - self.u(60), content.width, self.u(48)
         )
@@ -38,5 +46,7 @@ class MenuOptionsMixin:
             self.MUTED,
             note_rect,
         )
-        self.draw_footer(panel, "Use the highlighted keys to change settings")
-
+        self.draw_footer(
+            panel,
+            "Arrow keys / D-pad navigate · Enter activates · Backspace returns",
+        )

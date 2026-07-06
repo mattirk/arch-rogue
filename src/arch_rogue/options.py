@@ -138,7 +138,7 @@ class OptionsMixin:
     def options_to_dict(self) -> dict[str, Any]:
         return {
             "version": 1,
-            "schema_version": 2,
+            "schema_version": 3,
             "audio_enabled": self.audio_enabled,
             "music_enabled": self.music_enabled,
             "fullscreen": self.fullscreen,
@@ -147,6 +147,8 @@ class OptionsMixin:
             "hell_unlocked": self.hell_unlocked,
             "meta_progress": self.meta_progress,
             "run_history": self.run_history[-12:],
+            "controller_enabled": getattr(self, "controller_enabled", True),
+            "last_controller_guid": getattr(self, "last_controller_guid", ""),
         }
 
     def load_options(self) -> bool:
@@ -166,6 +168,10 @@ class OptionsMixin:
             self.difficulty_name = self.sanitize_difficulty_name(
                 str(data.get("difficulty", DEFAULT_DIFFICULTY_NAME))
             )
+            # Schema v3 (milestone 3.9): controller prefs. Missing on older
+            # saves -> safe defaults (controller on, no preferred device).
+            self.controller_enabled = bool(data.get("controller_enabled", True))
+            self.last_controller_guid = str(data.get("last_controller_guid", ""))
         except (TypeError, ValueError):
             return False
         return True
@@ -186,6 +192,7 @@ class OptionsMixin:
         if self.state in (
             "title",
             "options",
+            "controls",
             "about",
             "archetype_select",
             "confirm_exit",

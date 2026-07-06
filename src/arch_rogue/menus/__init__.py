@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .base import MenuBaseMixin, MenuRow
 from .character import MenuCharacterMixin
+from .controls import MenuControlsMixin
 from .inventory import MenuInventoryMixin
 from .options import MenuOptionsMixin
 from .state_overlay import MenuStateOverlayMixin
@@ -12,6 +13,7 @@ class MenuRenderer(
     MenuBaseMixin,
     MenuTitleMixin,
     MenuOptionsMixin,
+    MenuControlsMixin,
     MenuCharacterMixin,
     MenuInventoryMixin,
     MenuStateOverlayMixin,

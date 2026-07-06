@@ -182,7 +182,7 @@ Example categories:
 - Avoid overbuilding meta-progression before the core run loop is fun.
 - When choosing between authenticity to Rogue and modern playability, preserve the spirit of Rogue while modernizing the interface and moment-to-moment feel.
 
-## Current Milestone
+## Milestones / Versions
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
@@ -211,4 +211,3 @@ Draft goal: deepen loot-driven build variety by expanding affix pools, item inte
 - Validate with a new `tests/test_3_6_affix_builds.py` covering affix roll ranges, synergy resolution in combat, unique-item generation, cursed-item tradeoffs, and save migration, plus the full `unittest discover tests` regression suite.
 
 ### Stash
-- make bosses bigger -> 4 tiles. make them a lot harder. draw bigger health bar. close all doors in room when boss battle starts. make nice looking sprite graphics for bosses.

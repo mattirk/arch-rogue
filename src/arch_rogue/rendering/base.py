@@ -46,6 +46,11 @@ class RenderingBaseMixin:
             pygame.display.flip()
             self.sync_music()
             return
+        if self.state == "controls":
+            self.draw_controls_menu()
+            pygame.display.flip()
+            self.sync_music()
+            return
         if self.state == "about":
             self.draw_about_screen()
             pygame.display.flip()

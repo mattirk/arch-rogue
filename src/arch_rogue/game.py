@@ -105,6 +105,8 @@ from .content import (
     EnemyDefinition as EnemyDefinition,
 )
 from .dungeon import Dungeon as Dungeon
+from .input import InputMixin
+from .input import key_command as key_command
 from .interactions import InteractionMixin
 from .inventory import InventoryMixin
 from .menus import MenuRenderer
@@ -203,6 +205,7 @@ class Game(
     InventoryMixin,
     ShopMixin,
     InteractionMixin,
+    InputMixin,
     CameraMixin,
 ):
     def __init__(
@@ -221,6 +224,8 @@ class Game(
         self.music_enabled = False
         self.fullscreen = False
         self.ui_scale = UI_SCALE
+        self.controller_enabled = True
+        self.last_controller_guid = ""
         self.difficulty_name = DEFAULT_DIFFICULTY_NAME
         self.hell_unlocked = False
         self.hell_unlocked_this_run = False
@@ -308,6 +313,7 @@ class Game(
         self.audio = AudioSystem()
         self.audio_available = self.audio.initialize(headless)
         self.menus = MenuRenderer(self, ARCHETYPES, DUNGEON_DEPTH)
+        self.init_input()
 
     def trigger_screen_flash(self, color: Color, ttl: float = 0.22) -> None:
         self.screen_flash_color = color
@@ -412,6 +418,8 @@ class Game(
                 self.screen = pygame.display.set_mode(
                     self.windowed_size, pygame.RESIZABLE
                 )
+            elif self.handle_controller_event(event):
+                continue
             elif event.type == pygame.KEYDOWN:
                 if self.state == "confirm_exit":
                     if event.key in (pygame.K_y, pygame.K_RETURN):
@@ -433,6 +441,8 @@ class Game(
                         self.close_active_cutscene()
                     elif self.state in ("options", "about"):
                         self.state = "title"
+                    elif self.state == "controls":
+                        self.state = "options"
                     else:
                         self.request_exit_confirmation()
                 elif (
@@ -463,30 +473,38 @@ class Game(
                         self.state = "about"
                 elif self.state == "options":
                     if event.key == pygame.K_a:
+                        self.options_cursor = self.OPTIONS_ROW_AUDIO
                         self.audio_enabled = not self.audio_enabled
                         self.save_options()
                     elif event.key == pygame.K_m:
+                        self.options_cursor = self.OPTIONS_ROW_MUSIC
                         self.music_enabled = not self.music_enabled
                         self.sync_music()
                         self.save_options()
                     elif event.key == pygame.K_f:
+                        self.options_cursor = self.OPTIONS_ROW_FULLSCREEN
                         if not self.fullscreen:
                             self.windowed_size = self.screen.get_size()
                         self.fullscreen = not self.fullscreen
                         self.screen = self.apply_display_mode()
                         self.save_options()
                     elif event.key == pygame.K_d:
+                        self.options_cursor = self.OPTIONS_ROW_DIFFICULTY
                         self.cycle_difficulty()
                     elif event.key in (pygame.K_EQUALS, pygame.K_PLUS):
-                        self.ui_scale = min(4, self.ui_scale + 1)
-                        self.rebuild_fonts()
-                        self.save_options()
+                        self.options_cursor = self.OPTIONS_ROW_UI_SCALE
+                        self._activate_options_row(self.OPTIONS_ROW_UI_SCALE, True)
                     elif event.key in (pygame.K_MINUS, pygame.K_UNDERSCORE):
-                        self.ui_scale = max(1, self.ui_scale - 1)
-                        self.rebuild_fonts()
-                        self.save_options()
-                    elif event.key in (pygame.K_RETURN, pygame.K_BACKSPACE, pygame.K_o):
+                        self.options_cursor = self.OPTIONS_ROW_UI_SCALE
+                        self._activate_options_row(self.OPTIONS_ROW_UI_SCALE, False)
+                    elif event.key == pygame.K_RETURN:
+                        self._activate_options_row(self.options_cursor, True)
+                    elif event.key in (pygame.K_BACKSPACE, pygame.K_o):
                         self.state = "title"
+                    else:
+                        cmd = key_command(event.key, event.mod)
+                        if cmd is not None:
+                            self._dispatch_command(cmd)
                 elif self.state == "about":
                     if event.key in (
                         pygame.K_RETURN,
@@ -495,6 +513,9 @@ class Game(
                         pygame.K_h,
                     ):
                         self.state = "title"
+                elif self.state == "controls":
+                    # Any key returns to the options menu (Esc is handled above).
+                    self.state = "options"
                 elif self.state == "archetype_select":
                     if event.key == pygame.K_BACKSPACE:
                         self.state = "title"
@@ -695,6 +716,15 @@ class Game(
     def update(self, dt: float) -> None:
         self.elapsed += dt
         self._last_dt = dt
+        # Sample gamepad axes once per frame into cached floats so the
+        # movement/aim hot path stays allocation-free. Cheap when no
+        # controller is connected (early-outs in ControllerManager).
+        self.input.poll_axes()
+        # Dispatch trigger-press commands (LT dash / RT interact) queued during
+        # this frame's axis poll. _dispatch_command no-ops them outside base
+        # gameplay, so they are safe to drain unconditionally here.
+        for cmd in self.input.drain_trigger_commands():
+            self._dispatch_command(cmd)
         self.update_visual_effects(dt)
         if self.active_cutscene is not None:
             self.update_active_cutscene(dt)

@@ -188,6 +188,15 @@ class CombatMixin:
                 enemy.statuses.pop(status, None)
 
     def update_player_aim(self) -> None:
+        # Right stick (controller) takes priority for analog aiming, then
+        # arrow keys, then the mouse cursor as a fallback.
+        rx, ry = self.input.right_vec()
+        if rx or ry:
+            length = math.hypot(rx, ry)
+            if length > 0.0:
+                self.player.facing_x = rx / length
+                self.player.facing_y = ry / length
+            return
         keys = pygame.key.get_pressed()
         dx = float(keys[pygame.K_RIGHT]) - float(keys[pygame.K_LEFT])
         dy = float(keys[pygame.K_DOWN]) - float(keys[pygame.K_UP])
@@ -605,17 +614,29 @@ class CombatMixin:
         kbd_dy = float(keys[pygame.K_DOWN] or keys[pygame.K_s]) - float(
             keys[pygame.K_UP] or keys[pygame.K_w]
         )
+        # Analog controller movement overrides the keyboard vector when the
+        # stick is deflected past the deadzone, giving precise speed control.
+        cx, cy = self.input.left_vec()
+        if cx or cy:
+            kbd_dx, kbd_dy = cx, cy
         move_speed = PLAYER_MOVE_SPEED * (
             0.82 if self.player_status("chilled") > 0 else 1.0
         )
         if kbd_dx or kbd_dy:
             length = math.hypot(kbd_dx, kbd_dy)
             if length > 0.0:
-                # Normalize so diagonal isn't faster than cardinal.
+                # Unit direction for facing; magnitude preserves analog stick
+                # deflection (clamped to 1.0) so keyboard diagonals stay full
+                # speed while controllers get partial-speed creeping.
                 nx, ny = kbd_dx / length, kbd_dy / length
                 self.player.facing_x = nx
                 self.player.facing_y = ny
-                self.move_actor(self.player, nx * move_speed * dt, ny * move_speed * dt)
+                magnitude = min(1.0, length)
+                self.move_actor(
+                    self.player,
+                    nx * magnitude * move_speed * dt,
+                    ny * magnitude * move_speed * dt,
+                )
             if self.enemy_in_melee_arc():
                 self.player_melee_attack()
         elif pygame.mouse.get_pressed()[0]:

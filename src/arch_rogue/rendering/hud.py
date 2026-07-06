@@ -1329,6 +1329,9 @@ class RenderingHudMixin:
     def draw_options_menu(self) -> None:
         self.menus.draw_options_menu()
 
+    def draw_controls_menu(self) -> None:
+        self.menus.draw_controls_menu()
+
     def draw_about_screen(self) -> None:
         self.menus.draw_about_screen()
 

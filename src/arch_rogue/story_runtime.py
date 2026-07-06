@@ -152,10 +152,13 @@ class StoryRuntimeMixin:
             guest_beat_index=active_guest.beat_index if active_guest else -1,
             context=self.quest_cutscene_context(active_guest),
         )
+        # Reset the gamepad choice highlight when a new cutscene begins.
+        self.cutscene_cursor = 0
         return True
 
     def close_active_cutscene(self) -> None:
         self.active_cutscene = None
+        self.cutscene_cursor = 0
 
     def active_cutscene_asset(self) -> Any:
         if self.active_cutscene is None:
