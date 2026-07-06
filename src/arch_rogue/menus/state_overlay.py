@@ -47,7 +47,7 @@ class MenuStateOverlayMixin:
             if victory
             else f"The dungeon claims another {self.g.player.class_name}."
         )
-        prompt = "Press R to choose a new run"
+        prompt = "Press R or Pause / Back to choose a new run"
 
         panel_w = min(width - 64, self.u(820))
         panel_h = min(height - 80, self.u(520))

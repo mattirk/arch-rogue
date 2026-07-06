@@ -299,9 +299,13 @@ def joybutton_command_for_state(button: int, context: str) -> str | None:
 def mapped_joybutton_command(
     button: int, context: str, mapping: dict[str, dict[int, str] | list[str]]
 ) -> str | None:
-    if context == "gameplay":
-        buttons = mapping.get("gameplay_buttons", {})
-        return buttons.get(button) if isinstance(buttons, dict) else None
+    gameplay_buttons = mapping.get("gameplay_buttons", {})
+    if isinstance(gameplay_buttons, dict):
+        cmd = gameplay_buttons.get(button)
+        if cmd == Command.BACK:
+            return Command.BACK
+        if context == "gameplay":
+            return cmd
     if context == "cutscene":
         buttons = mapping.get("cutscene_buttons", {})
         return buttons.get(button) if isinstance(buttons, dict) else None
@@ -854,6 +858,12 @@ class InputMixin:
             return True
         if self.state in ("options", "about"):
             self.state = "title"
+            return True
+        if self.state in ("dead", "victory"):
+            self.show_help = False
+            self.inventory_open = False
+            self.character_menu_open = False
+            self.state = "archetype_select"
             return True
         if self.state == "archetype_select":
             self.state = "title"

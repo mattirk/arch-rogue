@@ -168,6 +168,11 @@ class InputMappingTests(unittest.TestCase):
         )
         self.assertEqual(mapped_joybutton_command(0, "menu", mapping), Command.CONFIRM)
 
+    def test_remapped_back_button_applies_in_menu_context(self) -> None:
+        mapping = normalize_gamepad_mapping({"gameplay_buttons": {"7": Command.BACK}})
+        self.assertEqual(mapped_joybutton_command(7, "menu", mapping), Command.BACK)
+        self.assertEqual(mapped_joybutton_command(7, "cutscene", mapping), Command.BACK)
+
     def test_duplicate_saved_trigger_binding_is_cleared_when_button_exists(
         self,
     ) -> None:
@@ -624,6 +629,29 @@ class CommandDispatchTests(unittest.TestCase):
             self.assertFalse(game.inventory_open)
             game._dispatch_command(Command.CHARACTER)
             self.assertTrue(game.character_menu_open)
+
+    def test_controller_back_starts_new_run_flow_after_death(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.state = "dead"
+            game.show_help = True
+            game.inventory_open = True
+            game.character_menu_open = True
+            game._dispatch_command(Command.BACK)
+            self.assertEqual(game.state, "archetype_select")
+            self.assertFalse(game.show_help)
+            self.assertFalse(game.inventory_open)
+            self.assertFalse(game.character_menu_open)
+
+    def test_remapped_back_button_starts_new_run_flow_after_death(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.gamepad_mapping = default_gamepad_mapping()
+            game._assign_gamepad_button(7, Command.BACK)
+            game.state = "dead"
+            event = SimpleNamespace(type=pygame.JOYBUTTONDOWN, joy=999, button=7)
+            self.assertTrue(game.handle_controller_event(event))
+            self.assertEqual(game.state, "archetype_select")
 
 
 class CombatAxisIntegrationTests(unittest.TestCase):
