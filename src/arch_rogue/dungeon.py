@@ -7,6 +7,16 @@ from .models import Room, Tile
 
 MAP_W = 72
 MAP_H = 72
+MIN_ROOM_COUNT = 8
+MAX_ROOM_COUNT = 14
+# Large boss floors reserve the final room as a real arena. The regular room
+# generator can produce 6x6 rooms; those are fine for exploration, but a 2x2
+# boss plus a sealed entrance needs enough interior tiles for collision-safe
+# repositioning and readable combat spacing.
+BOSS_ARENA_MIN_W = 10
+BOSS_ARENA_MIN_H = 10
+BOSS_ARENA_MAX_W = 14
+BOSS_ARENA_MAX_H = 13
 
 # Passable tile kinds (used by the hot `is_floor` path). Module-level so the
 # membership test avoids rebuilding a tuple each call.
@@ -14,8 +24,9 @@ _PASSABLE_TILES = (Tile.FLOOR, Tile.STAIRS, Tile.OPEN_DOOR)
 
 
 class Dungeon:
-    def __init__(self, rng: random.Random) -> None:
+    def __init__(self, rng: random.Random, boss_arena: bool = False) -> None:
         self.rng = rng
+        self.boss_arena = boss_arena
         self.tiles: list[list[Tile]] = []
         self.rooms: list[Room] = []
         self.stairs: tuple[int, int] = (0, 0)
@@ -23,12 +34,21 @@ class Dungeon:
         self.generate()
 
     def generate(self) -> None:
-        for _ in range(20):
+        retries = 30 if self.boss_arena else 20
+        attempts = 260 if self.boss_arena else 180
+        for _ in range(retries):
             self.tiles = [[Tile.WALL for _ in range(MAP_H)] for _ in range(MAP_W)]
             self.rooms = []
-            for _attempt in range(180):
-                w = self.rng.randrange(6, 13)
-                h = self.rng.randrange(6, 12)
+            for _attempt in range(attempts):
+                reserving_final_arena = (
+                    self.boss_arena and len(self.rooms) >= MIN_ROOM_COUNT - 1
+                )
+                if reserving_final_arena:
+                    w = self.rng.randrange(BOSS_ARENA_MIN_W, BOSS_ARENA_MAX_W + 1)
+                    h = self.rng.randrange(BOSS_ARENA_MIN_H, BOSS_ARENA_MAX_H + 1)
+                else:
+                    w = self.rng.randrange(6, 13)
+                    h = self.rng.randrange(6, 12)
                 x = self.rng.randrange(2, MAP_W - w - 2)
                 y = self.rng.randrange(2, MAP_H - h - 2)
                 room = Room(x, y, w, h)
@@ -38,15 +58,25 @@ class Dungeon:
                 if self.rooms:
                     self._connect(self.rooms[-1].center, room.center)
                 self.rooms.append(room)
-                if len(self.rooms) >= 14:
+                if self.boss_arena:
+                    if len(self.rooms) >= MIN_ROOM_COUNT and self._room_is_boss_arena(
+                        room
+                    ):
+                        break
+                elif len(self.rooms) >= MAX_ROOM_COUNT:
                     break
-            if len(self.rooms) >= 8:
+            if len(self.rooms) >= MIN_ROOM_COUNT:
+                if self.boss_arena and not self._room_is_boss_arena(self.rooms[-1]):
+                    continue
                 self.stairs = self.rooms[-1].center
                 sx, sy = self.stairs
                 self.tiles[sx][sy] = Tile.STAIRS
                 self._place_doors()
                 return
         raise RuntimeError("Could not generate a valid dungeon")
+
+    def _room_is_boss_arena(self, room: Room) -> bool:
+        return room.w >= BOSS_ARENA_MIN_W and room.h >= BOSS_ARENA_MIN_H
 
     def _carve_room(self, room: Room) -> None:
         for x in range(room.x, room.x + room.w):
@@ -212,15 +242,7 @@ class Dungeon:
                 return room
         return None
 
-    def seal_room_openings(self, room: Room) -> list[tuple[int, int, Tile]]:
-        """Close every passable opening on the room's perimeter so nothing can leave.
-
-        Used to lock a boss arena when the encounter engages. Perimeter tiles that
-        are floor or open doors become closed doors; the previous tile kind is
-        returned so the caller can restore them when the boss dies. Stairs and
-        walls are left untouched.
-        """
-        sealed: list[tuple[int, int, Tile]] = []
+    def _room_perimeter(self, room: Room) -> list[tuple[int, int]]:
         perimeter: list[tuple[int, int]] = []
         for x in range(room.x, room.x + room.w):
             perimeter.append((x, room.y))
@@ -228,13 +250,56 @@ class Dungeon:
         for y in range(room.y + 1, room.y + room.h - 1):
             perimeter.append((room.x, y))
             perimeter.append((room.x + room.w - 1, y))
+        return perimeter
+
+    def seal_room_openings(self, room: Room) -> list[tuple[int, int, Tile]]:
+        """Close actual exits on the room perimeter so nothing can leave.
+
+        Boss arenas should not lose an entire one-tile ring of walkable space when
+        the fight starts; that could trap a player who entered through a doorway.
+        We therefore seal detected corridor openings plus any existing door tiles,
+        recording the previous tile kind so the caller can restore the room when
+        the boss dies. A rare fallback seals the passable perimeter only if no
+        entrance can be detected, preserving the encounter lock over perfect shape.
+        """
+        sealed: list[tuple[int, int, Tile]] = []
+        seen: set[tuple[int, int]] = set()
+
+        def seal_tile(x: int, y: int) -> None:
+            if (x, y) in seen or not self.in_bounds(x, y):
+                return
+            tile = self.tiles[x][y]
+            if tile in (Tile.FLOOR, Tile.OPEN_DOOR, Tile.CLOSED_DOOR):
+                seen.add((x, y))
+                sealed.append((x, y, tile))
+                self.tiles[x][y] = Tile.CLOSED_DOOR
+
+        def outside_room(nx: int, ny: int) -> bool:
+            return not (
+                room.x <= nx < room.x + room.w and room.y <= ny < room.y + room.h
+            )
+
+        def has_passable_outside_neighbor(x: int, y: int) -> bool:
+            for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                if not self.in_bounds(nx, ny) or not outside_room(nx, ny):
+                    continue
+                if self.tiles[nx][ny] in _PASSABLE_TILES:
+                    return True
+            return False
+
+        perimeter = self._room_perimeter(room)
         for x, y in perimeter:
             if not self.in_bounds(x, y):
                 continue
             tile = self.tiles[x][y]
-            if tile in (Tile.FLOOR, Tile.OPEN_DOOR):
-                sealed.append((x, y, tile))
-                self.tiles[x][y] = Tile.CLOSED_DOOR
+            if tile in (Tile.OPEN_DOOR, Tile.CLOSED_DOOR) or (
+                tile == Tile.FLOOR and has_passable_outside_neighbor(x, y)
+            ):
+                seal_tile(x, y)
+
+        if not sealed:
+            for x, y in perimeter:
+                seal_tile(x, y)
         return sealed
 
     def restore_tiles(self, sealed: list[tuple[int, int, Tile]]) -> None:

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import math
 import os
+import random
 import sys
 import tempfile
 import unittest
+from collections import deque
 from pathlib import Path
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -11,9 +14,9 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from arch_rogue.constants import DUNGEON_DEPTH
+from arch_rogue.constants import DUNGEON_DEPTH, PLAYER_HIT_RADIUS
 from arch_rogue.content import ARCHETYPES
-from arch_rogue.dungeon import Dungeon, Tile
+from arch_rogue.dungeon import BOSS_ARENA_MIN_H, BOSS_ARENA_MIN_W, Dungeon, Tile
 from arch_rogue.game import Game
 
 
@@ -40,7 +43,9 @@ class BigBossesTests(unittest.TestCase):
     def populate_floor(self, game: Game, depth: int) -> None:
         game.current_depth = depth
         game.apply_floor_plan_for_current_depth()
-        game.dungeon = Dungeon(game.rng)
+        game.dungeon = Dungeon(
+            game.rng, boss_arena=game.current_floor_needs_boss_arena()
+        )
         game.enemies.clear()
         game.items.clear()
         game.traps.clear()
@@ -98,6 +103,8 @@ class BigBossesTests(unittest.TestCase):
             room = game.dungeon.room_at(fb.x, fb.y)
             self.assertIsNotNone(room)
             assert room is not None
+            self.assertGreaterEqual(room.w, BOSS_ARENA_MIN_W)
+            self.assertGreaterEqual(room.h, BOSS_ARENA_MIN_H)
             # Player outside the boss room: no seal yet.
             game.player.x = game.dungeon.rooms[0].center[0] + 0.5
             game.player.y = game.dungeon.rooms[0].center[1] + 0.5
@@ -119,6 +126,84 @@ class BigBossesTests(unittest.TestCase):
             game.update_boss_encounter()
             self.assertFalse(game.boss_engaged)
             self.assertEqual(len(game.boss_sealed_tiles), 0)
+
+    def test_boss_arena_seals_all_corridor_exits(self) -> None:
+        for seed in (0, 1, 2, 9, 14):
+            dungeon = Dungeon(random.Random(seed), boss_arena=True)
+            room = dungeon.rooms[-1]
+            sealed = dungeon.seal_room_openings(room)
+            self.assertGreater(len(sealed), 0)
+            perimeter = dungeon._room_perimeter(room)
+            self.assertLess(len({(x, y) for x, y, _tile in sealed}), len(perimeter))
+
+            start = room.center
+            reachable = {start}
+            frontier: deque[tuple[int, int]] = deque([start])
+            escaped = False
+            while frontier:
+                x, y = frontier.popleft()
+                if not (
+                    room.x <= x < room.x + room.w and room.y <= y < room.y + room.h
+                ):
+                    escaped = True
+                    break
+                for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                    if (nx, ny) in reachable or not dungeon.in_bounds(nx, ny):
+                        continue
+                    if dungeon.tiles[nx][ny] in (Tile.WALL, Tile.CLOSED_DOOR):
+                        continue
+                    reachable.add((nx, ny))
+                    frontier.append((nx, ny))
+            self.assertFalse(escaped, f"boss arena leaked on seed {seed}")
+
+    def test_boss_seal_repositions_player_from_doorway(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            self.populate_floor(game, 3)
+            fb = next(e for e in game.enemies if e.role == "floor_boss")
+            room = game.dungeon.room_at(fb.x, fb.y)
+            self.assertIsNotNone(room)
+            assert room is not None
+            doorways = game.dungeon._door_candidates_for_room(room)
+            self.assertGreater(len(doorways), 0)
+            door_x, door_y = doorways[0]
+            game.player.x = door_x + 0.5
+            game.player.y = door_y + 0.5
+            self.assertFalse(
+                game.dungeon.blocked_for_radius(
+                    game.player.x, game.player.y, PLAYER_HIT_RADIUS
+                )
+            )
+
+            game.update_boss_encounter()
+
+            self.assertTrue(game.boss_engaged)
+            self.assertEqual(game.dungeon.tiles[door_x][door_y], Tile.CLOSED_DOOR)
+            sealed = {(x, y) for x, y, _tile in game.boss_sealed_tiles}
+            self.assertNotIn((int(game.player.x), int(game.player.y)), sealed)
+            self.assertFalse(
+                game.dungeon.blocked_for_radius(
+                    game.player.x, game.player.y, PLAYER_HIT_RADIUS
+                )
+            )
+            self.assertGreaterEqual(
+                math.hypot(game.player.x - fb.x, game.player.y - fb.y),
+                game.boss_arena_player_clearance(fb),
+            )
+
+            perimeter = [
+                (x, y)
+                for x in range(room.x, room.x + room.w)
+                for y in range(room.y, room.y + room.h)
+                if x in (room.x, room.x + room.w - 1)
+                or y in (room.y, room.y + room.h - 1)
+            ]
+            still_walkable_perimeter = [
+                (x, y)
+                for x, y in perimeter
+                if (x, y) not in sealed and game.dungeon.tiles[x][y] == Tile.FLOOR
+            ]
+            self.assertGreater(len(still_walkable_perimeter), 0)
 
     def test_boss_cast_fires_three_bolt_fan(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -184,7 +269,7 @@ class BigBossesTests(unittest.TestCase):
 
     def test_enemy_size_field_loads_from_old_save(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
+            self.make_game(tmpdir)
             # Simulate an old save dict that omits the new `size` field.
             old_enemy = {
                 "name": "Ghoul",

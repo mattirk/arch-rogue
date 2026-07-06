@@ -9,6 +9,7 @@ from .constants import (
     DARK_LEVEL_LIGHT_RADIUS,
     DUNGEON_DEPTH,
     LIGHT_LEVEL_SIGHT_RADIUS,
+    PLAYER_HIT_RADIUS,
     SlashEffect,
 )
 from .content import (
@@ -207,13 +208,17 @@ class RunFlowMixin:
     def current_floor_plan(self) -> FloorPlan | None:
         cache = getattr(self, "_frame_cache", None)
         if cache is not None:
-            cached = cache.get("current_floor_plan")
-            if cached is not None:
+            if (
+                cache.get("current_floor_plan_depth") == self.current_depth
+                and "current_floor_plan" in cache
+            ):
+                cached = cache["current_floor_plan"]
                 return cached if cached is not False else None
             plan = next(
                 (plan for plan in self.floor_plan if plan.depth == self.current_depth),
                 None,
             )
+            cache["current_floor_plan_depth"] = self.current_depth
             cache["current_floor_plan"] = plan if plan is not None else False
             return plan
         return next(
@@ -225,6 +230,10 @@ class RunFlowMixin:
             (plan for plan in self.floor_plan if plan.depth == self.current_depth + 1),
             None,
         )
+
+    def current_floor_needs_boss_arena(self) -> bool:
+        plan = self.current_floor_plan()
+        return bool(plan and plan.boss_key)
 
     def floor_plan_summary(self, plan: FloorPlan | None = None) -> str:
         plan = plan or self.current_floor_plan()
@@ -243,10 +252,14 @@ class RunFlowMixin:
     def is_current_floor_dark(self) -> bool:
         cache = getattr(self, "_frame_cache", None)
         if cache is not None:
-            if "is_current_floor_dark" in cache:
+            if (
+                cache.get("is_current_floor_dark_depth") == self.current_depth
+                and "is_current_floor_dark" in cache
+            ):
                 return bool(cache["is_current_floor_dark"])
             plan = self.current_floor_plan()
             dark = bool(plan and plan.dark)
+            cache["is_current_floor_dark_depth"] = self.current_depth
             cache["is_current_floor_dark"] = dark
             return dark
         plan = self.current_floor_plan()
@@ -470,7 +483,9 @@ class RunFlowMixin:
         self.record_run_start_meta()
         self.tile_cache.clear()
         self.prewarm_tile_cache()
-        self.dungeon = Dungeon(self.rng)
+        self.dungeon = Dungeon(
+            self.rng, boss_arena=self.current_floor_needs_boss_arena()
+        )
         start_x, start_y = self.dungeon.rooms[0].center
         self.player = Player(
             start_x + 0.5,
@@ -546,7 +561,9 @@ class RunFlowMixin:
         self._apply_story_theme_for_current_depth()
         self.tile_cache.clear()
         self.prewarm_tile_cache()
-        self.dungeon = Dungeon(self.rng)
+        self.dungeon = Dungeon(
+            self.rng, boss_arena=self.current_floor_needs_boss_arena()
+        )
         start_x, start_y = self.dungeon.rooms[0].center
         self.player.x = start_x + 0.5
         self.player.y = start_y + 0.5
@@ -649,10 +666,104 @@ class RunFlowMixin:
             # up stale seals before engaging the new arena.
             self.unseal_boss_room()
 
+    def boss_arena_enemy_radius(self, enemy: Enemy) -> float:
+        try:
+            return float(self.enemy_hit_radius(enemy))
+        except AttributeError:
+            return 0.92 if enemy.size >= 2 else 0.42
+
+    def boss_arena_player_clearance(self, boss: Enemy) -> float:
+        return PLAYER_HIT_RADIUS + self.boss_arena_enemy_radius(boss) + 0.12
+
+    def find_safe_boss_arena_player_position(
+        self,
+        room,
+        boss: Enemy,
+        from_x: float,
+        from_y: float,
+        min_boss_gap: float,
+        avoid_other_enemies: bool = True,
+    ) -> tuple[float, float] | None:
+        other_enemies = [
+            enemy
+            for enemy in self.enemies
+            if enemy is not boss
+            and enemy.alive
+            and self.dungeon.room_at(enemy.x, enemy.y) is room
+        ]
+        center_x, center_y = room.center
+        candidates: list[tuple[float, float, float, float, float]] = []
+        for tx in range(room.x + 1, room.x + room.w - 1):
+            for ty in range(room.y + 1, room.y + room.h - 1):
+                px, py = tx + 0.5, ty + 0.5
+                if self.dungeon.blocked_for_radius(px, py, PLAYER_HIT_RADIUS):
+                    continue
+                boss_distance = math.hypot(px - boss.x, py - boss.y)
+                if boss_distance < min_boss_gap:
+                    continue
+                if avoid_other_enemies:
+                    blocked_by_enemy = False
+                    for enemy in other_enemies:
+                        enemy_gap = (
+                            PLAYER_HIT_RADIUS
+                            + self.boss_arena_enemy_radius(enemy)
+                            + 0.12
+                        )
+                        if math.hypot(px - enemy.x, py - enemy.y) < enemy_gap:
+                            blocked_by_enemy = True
+                            break
+                    if blocked_by_enemy:
+                        continue
+                from_distance = math.hypot(px - from_x, py - from_y)
+                center_distance = math.hypot(
+                    px - (center_x + 0.5), py - (center_y + 0.5)
+                )
+                candidates.append(
+                    (from_distance, -boss_distance, center_distance, px, py)
+                )
+        if not candidates:
+            return None
+        candidates.sort()
+        return candidates[0][3], candidates[0][4]
+
+    def ensure_player_safe_in_boss_arena(
+        self, room, boss: Enemy, from_x: float, from_y: float
+    ) -> bool:
+        boss_gap = self.boss_arena_player_clearance(boss)
+        player_blocked = self.dungeon.blocked_for_radius(
+            self.player.x, self.player.y, PLAYER_HIT_RADIUS
+        )
+        too_close_to_boss = (
+            math.hypot(self.player.x - boss.x, self.player.y - boss.y) < boss_gap
+        )
+        if not player_blocked and not too_close_to_boss:
+            return False
+
+        for gap, avoid_other_enemies in (
+            (boss_gap + 0.75, True),
+            (boss_gap + 0.35, True),
+            (boss_gap, True),
+            (boss_gap, False),
+        ):
+            spot = self.find_safe_boss_arena_player_position(
+                room, boss, from_x, from_y, gap, avoid_other_enemies
+            )
+            if spot is None:
+                continue
+            old_x, old_y = self.player.x, self.player.y
+            self.player.x, self.player.y = spot
+            if math.hypot(self.player.x - old_x, self.player.y - old_y) > 1.0:
+                self.snap_camera_to_player()
+            self.update_revealed_tiles()
+            return True
+        return False
+
     def seal_boss_room(self, room, room_index: int, boss: Enemy) -> None:
+        player_x, player_y = self.player.x, self.player.y
         self.boss_sealed_tiles = self.dungeon.seal_room_openings(room)
         self.boss_sealed_room_index = room_index
         self.boss_engaged = True
+        self.ensure_player_safe_in_boss_arena(room, boss, player_x, player_y)
         self.tile_cache.clear()
         self.prewarm_tile_cache()
         self.play_sfx("boss")
