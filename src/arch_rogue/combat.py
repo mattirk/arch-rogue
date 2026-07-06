@@ -192,6 +192,7 @@ class CombatMixin:
         # arrow keys, then the mouse cursor as a fallback.
         rx, ry = self.input.right_vec()
         if rx or ry:
+            self.aim_input_mode = "controller"
             length = math.hypot(rx, ry)
             if length > 0.0:
                 self.player.facing_x = rx / length
@@ -201,10 +202,11 @@ class CombatMixin:
         dx = float(keys[pygame.K_RIGHT]) - float(keys[pygame.K_LEFT])
         dy = float(keys[pygame.K_DOWN]) - float(keys[pygame.K_UP])
         if dx or dy:
+            self.aim_input_mode = "keyboard"
             length = math.hypot(dx, dy)
             self.player.facing_x = dx / length
             self.player.facing_y = dy / length
-        else:
+        elif getattr(self, "aim_input_mode", "mouse") != "controller":
             self.face_player_toward_screen_point(*pygame.mouse.get_pos())
 
     def face_player_toward_screen_point(self, sx: int, sy: int) -> tuple[float, float]:
@@ -617,7 +619,9 @@ class CombatMixin:
         # Analog controller movement overrides the keyboard vector when the
         # stick is deflected past the deadzone, giving precise speed control.
         cx, cy = self.input.left_vec()
-        if cx or cy:
+        controller_moving = bool(cx or cy)
+        if controller_moving:
+            self.aim_input_mode = "controller"
             kbd_dx, kbd_dy = cx, cy
         move_speed = PLAYER_MOVE_SPEED * (
             0.82 if self.player_status("chilled") > 0 else 1.0

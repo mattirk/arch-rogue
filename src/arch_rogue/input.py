@@ -715,6 +715,7 @@ class InputMixin:
         )
         self.controls_cursor = 0
         self.controls_capture_command: str | None = None
+        self.aim_input_mode = "mouse"
         # Only persist a detected device on first run (no prior preference).
         # If the player's last-used pad is not currently connected we keep the
         # saved GUID so it reclaims active when it hot-plugs back in.
@@ -748,6 +749,7 @@ class InputMixin:
         if event.type == pygame.JOYBUTTONDOWN:
             # Pressing a button on a gamepad makes it the active device so the
             # last-used controller sticks across multi-device setups.
+            self.aim_input_mode = "controller"
             if event.joy in self.input._joysticks:
                 joy = self.input._joysticks[event.joy]
                 self.input._active_id = event.joy
@@ -770,6 +772,7 @@ class InputMixin:
                 self._dispatch_command(cmd)
                 return True
         if event.type == pygame.JOYHATMOTION:
+            self.aim_input_mode = "controller"
             if self.state == "controls" and self.controls_capture_command:
                 return True
             for cmd in hat_commands(event):

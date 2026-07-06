@@ -691,6 +691,7 @@ class Game(
                 and self.active_cutscene is None
                 and not self.story_intro_pending
             ):
+                self.aim_input_mode = "mouse"
                 if event.button == 1:
                     # Milestone 3.3: clicking an available skill node in the
                     # character sheet spends a skill point to acquire it.
@@ -704,12 +705,13 @@ class Game(
                         self.face_player_toward_screen_point(*event.pos)
                         if self.enemy_in_melee_arc():
                             self.player_melee_attack()
-            elif (
-                event.type == pygame.MOUSEMOTION
-                and self.state == "playing"
-                and self.character_menu_open
-                and self.character_menu_tab == "skill_tree"
-            ):
+            elif event.type == pygame.MOUSEMOTION and self.state == "playing":
+                if getattr(event, "rel", (0, 0)) != (0, 0):
+                    self.aim_input_mode = "mouse"
+                if not (
+                    self.character_menu_open and self.character_menu_tab == "skill_tree"
+                ):
+                    continue
                 # The renderer populates `_skill_node_cells` each frame with
                 # {node_key: pygame.Rect}; mouse motion updates the hovered
                 # key so the renderer can show a combo preview next frame.

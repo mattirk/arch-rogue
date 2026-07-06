@@ -697,6 +697,20 @@ class CombatAxisIntegrationTests(unittest.TestCase):
             self.assertAlmostEqual(game.player.facing_x, 0.0, places=4)
             self.assertAlmostEqual(game.player.facing_y, 1.0, places=4)
 
+    def test_controller_aim_direction_latches_when_movement_stops(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.input._right_vec = (0.0, 0.0)
+            game.input._left_vec = (1.0, 0.0)  # movement aims right
+            game.update_player_aim()
+            game.update_player(0.1)
+            self.assertAlmostEqual(game.player.facing_x, 1.0, places=4)
+            self.assertAlmostEqual(game.player.facing_y, 0.0, places=4)
+            game.input._left_vec = (0.0, 0.0)  # stop moving; keep aim cone
+            game.update_player_aim()
+            self.assertAlmostEqual(game.player.facing_x, 1.0, places=4)
+            self.assertAlmostEqual(game.player.facing_y, 0.0, places=4)
+
     def test_controller_bolt_uses_right_stick_aim_while_moving(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_game(tmpdir)
