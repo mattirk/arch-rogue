@@ -551,6 +551,82 @@ class CombatAxisIntegrationTests(unittest.TestCase):
             self.assertAlmostEqual(game.player.facing_x, 0.0, places=4)
             self.assertAlmostEqual(game.player.facing_y, 1.0, places=4)
 
+    def test_right_stick_aim_survives_left_stick_movement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.input._right_vec = (0.0, 1.0)  # aim down
+            game.input._left_vec = (1.0, 0.0)  # move right
+            game.update_player_aim()
+            game.update_player(0.1)
+            self.assertAlmostEqual(game.player.facing_x, 0.0, places=4)
+            self.assertAlmostEqual(game.player.facing_y, 1.0, places=4)
+
+    def test_controller_bolt_uses_right_stick_aim_while_moving(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.input._right_vec = (0.0, 1.0)  # aim down
+            game.input._left_vec = (1.0, 0.0)  # move right
+            game.update_player_aim()
+            game.update_player(0.1)
+            game.player.mana = 100
+            game.player.bolt_timer = 0.0
+            before = len(game.projectiles)
+            game._dispatch_command(Command.ABILITY_2)
+            self.assertEqual(len(game.projectiles), before + 1)
+            bolt = game.projectiles[-1]
+            self.assertAlmostEqual(bolt.vx, 0.0, places=4)
+            self.assertGreater(bolt.vy, 0.0)
+
+    def test_controller_bolt_uses_existing_aim_cone_when_stick_neutral(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.input._right_vec = (0.0, 0.0)
+            # The visible aim cone is represented by player.facing_x/y.
+            game.player.facing_x = 0.0
+            game.player.facing_y = 1.0
+            game.player.mana = 100
+            game.player.bolt_timer = 0.0
+            before = len(game.projectiles)
+            game._dispatch_command(Command.ABILITY_2)
+            self.assertEqual(len(game.projectiles), before + 1)
+            bolt = game.projectiles[-1]
+            self.assertAlmostEqual(bolt.vx, 0.0, places=4)
+            self.assertGreater(bolt.vy, 0.0)
+
+    def test_controller_button_fire_polls_fresh_right_stick_aim(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            fake = FakeJoystick(99, num_axes=4, axes_rest=(0, 0, 0, 0))
+            game.input._joysticks[fake.get_instance_id()] = fake
+            game.input._axis_layout[fake.get_instance_id()] = (
+                game.input._compute_layout(fake)
+            )
+            game.input._trigger_layout[fake.get_instance_id()] = (
+                game.input._compute_triggers(fake)
+            )
+            # Move the stick after rest layout detection, like a real controller.
+            fake.set_axis(2, 0.0)
+            fake.set_axis(3, 1.0)  # right stick down
+            game.input._active_id = fake.get_instance_id()
+            game.input._layout_id = None
+            game.input._right_vec = (0.0, 0.0)  # stale aim before the button press
+            game.player.facing_x = 1.0
+            game.player.facing_y = 0.0
+            game.player.mana = 100
+            game.player.bolt_timer = 0.0
+
+            event = SimpleNamespace(
+                type=pygame.JOYBUTTONDOWN,
+                joy=fake.get_instance_id(),
+                button=2,  # X -> bolt in gameplay context
+            )
+            game.handle_controller_event(event)
+
+            self.assertGreater(len(game.projectiles), 0)
+            bolt = game.projectiles[-1]
+            self.assertAlmostEqual(bolt.vx, 0.0, places=4)
+            self.assertGreater(bolt.vy, 0.0)
+
 
 class OptionsPersistenceTests(unittest.TestCase):
     def test_controller_prefs_round_trip(self) -> None:

@@ -582,6 +582,10 @@ class InputMixin:
                 self.input._active_id = event.joy
                 self.input._last_guid = self.input._guid(joy)
                 self.last_controller_guid = self.input._last_guid
+            # Button events are processed before Game.update() samples axes for
+            # the frame. Poll once here so firing/casting uses the right-stick
+            # direction the player sees in the aim cone, not last frame's aim.
+            self.input.poll_axes()
             cmd = joybutton_command_for_state(event.button, self._input_context())
             if cmd is not None:
                 self._dispatch_command(cmd)
@@ -929,6 +933,21 @@ class InputMixin:
             return True
         return False
 
+    def _sync_controller_action_aim(self) -> None:
+        """Refresh facing from right stick only when it is actively aiming.
+
+        Controller actions must launch in the direction of the visible aim cone.
+        The cone is stored in `player.facing_x/y`; falling back to mouse aim here
+        would silently rotate the shot away from what gamepad players see.
+        """
+        rx, ry = self.input.right_vec()
+        if not (rx or ry):
+            return
+        length = (rx * rx + ry * ry) ** 0.5
+        if length > 0.0:
+            self.player.facing_x = rx / length
+            self.player.facing_y = ry / length
+
     def _dispatch_gameplay(self, cmd: str) -> bool:
         if cmd == Command.INTERACT:
             self.interact()
@@ -940,19 +959,19 @@ class InputMixin:
             self.show_help = not self.show_help
             return True
         if cmd == Command.ABILITY_1:
-            self.update_player_aim()
+            self._sync_controller_action_aim()
             self.player_melee_attack()
             return True
         if cmd == Command.ABILITY_2:
-            self.update_player_aim()
+            self._sync_controller_action_aim()
             self.player_cast_bolt()
             return True
         if cmd == Command.ABILITY_3:
-            self.update_player_aim()
+            self._sync_controller_action_aim()
             self.player_cast_nova()
             return True
         if cmd == Command.ABILITY_4:
-            self.update_player_aim()
+            self._sync_controller_action_aim()
             self.player_dash()
             return True
         if cmd == Command.ABILITY_5:

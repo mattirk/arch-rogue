@@ -22,8 +22,8 @@ The control layer was keyboard-and-mouse only. Gamepad support is now first-clas
 
 ### Validation
 - `python -m compileall src tests` passes.
-- New `tests/test_3_9_input_accessibility.py` (44 tests) covers input mapping, controller axis/trigger layout and deadzone, contextual button maps, hot-plug and GUID preference, unified command dispatch across all menus, gameplay ability wiring, cutscene selection/skip, analog movement/aim integration, controls page rendering, and options persistence/migration.
-- `python -m unittest discover tests` — 205 tests pass.
+- New `tests/test_3_9_input_accessibility.py` (48 tests) covers input mapping, controller axis/trigger layout and deadzone, contextual button maps, hot-plug and GUID preference, unified command dispatch across all menus, gameplay ability wiring, fresh right-stick projectile aim, existing aim-cone projectile aim when the stick is neutral, right-stick aim preservation while moving, cutscene selection/skip, analog movement/aim integration, controls page rendering, and options persistence/migration.
+- `python -m unittest discover tests` — 209 tests pass.
 
 ## 3.8.5 — Big Bosses: 4-Tile Gatekeepers, Sealed Arenas, Boss Bar
 

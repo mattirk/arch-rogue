@@ -625,12 +625,16 @@ class CombatMixin:
         if kbd_dx or kbd_dy:
             length = math.hypot(kbd_dx, kbd_dy)
             if length > 0.0:
-                # Unit direction for facing; magnitude preserves analog stick
+                # Unit direction for movement; magnitude preserves analog stick
                 # deflection (clamped to 1.0) so keyboard diagonals stay full
-                # speed while controllers get partial-speed creeping.
+                # speed while controllers get partial-speed creeping. When the
+                # right stick is actively aiming, keep facing locked to that aim
+                # vector so the aim cone and projectiles do not snap to movement.
                 nx, ny = kbd_dx / length, kbd_dy / length
-                self.player.facing_x = nx
-                self.player.facing_y = ny
+                aim_x, aim_y = self.input.right_vec()
+                if not (aim_x or aim_y):
+                    self.player.facing_x = nx
+                    self.player.facing_y = ny
                 magnitude = min(1.0, length)
                 self.move_actor(
                     self.player,
