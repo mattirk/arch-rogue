@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import random
 
 from .models import Room, Tile
@@ -218,3 +219,23 @@ class Dungeon:
                 if not self.is_floor(x + ox, y + oy):
                     return True
         return False
+
+    def line_of_sight(self, x0: float, y0: float, x1: float, y1: float) -> bool:
+        # Trace the straight line between two world points and return False if a
+        # wall/closed door blocks it. Endpoints are skipped so actors standing on
+        # floor are not treated as blocking themselves. Sampling step is small
+        # enough (<= 0.25 tile) that no 1-tile wall can be jumped between samples.
+        dx = x1 - x0
+        dy = y1 - y0
+        distance = math.hypot(dx, dy)
+        if distance < 1e-3:
+            return True
+        steps = int(distance / 0.25)
+        if steps <= 1:
+            return True
+        inv = 1.0 / steps
+        for i in range(1, steps):
+            t = i * inv
+            if not self.is_floor(x0 + dx * t, y0 + dy * t):
+                return False
+        return True

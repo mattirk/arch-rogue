@@ -809,24 +809,40 @@ class CombatMixin:
                 enemy.facing_x = nx
                 enemy.facing_y = ny
 
+            # Enemies must actually see the player to attack; without this they
+            # melee/cast through walls when adjacent on the far side of a wall.
+            # Movement is intentionally not gated so pursuit around corners still
+            # works once an enemy has aggro'd.
+            has_los = self.dungeon.line_of_sight(
+                enemy.x, enemy.y, self.player.x, self.player.y
+            )
+
             if enemy.kind == "boss":
                 if distance > enemy.attack_range:
                     self.move_actor(enemy, nx * move_speed * dt, ny * move_speed * dt)
-                if 2.0 < distance <= 6.0 and enemy.attack_timer <= 0:
+                if 2.0 < distance <= 6.0 and enemy.attack_timer <= 0 and has_los:
                     self.enemy_cast(enemy, nx, ny)
-                elif distance <= enemy.attack_range and enemy.attack_timer <= 0:
+                elif (
+                    distance <= enemy.attack_range
+                    and enemy.attack_timer <= 0
+                    and has_los
+                ):
                     self.enemy_melee(enemy)
             elif enemy.kind == "ranged":
                 if 3.5 < distance:
                     self.move_actor(enemy, nx * move_speed * dt, ny * move_speed * dt)
                 elif distance < 2.5:
                     self.move_actor(enemy, -nx * move_speed * dt, -ny * move_speed * dt)
-                if distance <= enemy.attack_range and enemy.attack_timer <= 0:
+                if (
+                    distance <= enemy.attack_range
+                    and enemy.attack_timer <= 0
+                    and has_los
+                ):
                     self.enemy_cast(enemy, nx, ny)
             else:
                 if distance > enemy.attack_range:
                     self.move_actor(enemy, nx * move_speed * dt, ny * move_speed * dt)
-                elif enemy.attack_timer <= 0:
+                elif enemy.attack_timer <= 0 and has_los:
                     self.enemy_melee(enemy)
 
     def enemy_melee(self, enemy: Enemy) -> None:

@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.8.3 — Enemy Line-of-Sight Fix
+
+Enemies were aggroing and attacking the player purely on Euclidean distance, so a foe on the far side of a wall could melee or cast through it. Combat now requires an unobstructed line of sight before an enemy may attack.
+
+### Added
+- `Dungeon.line_of_sight(x0, y0, x1, y1)` traces the straight line between two world points and returns `False` when a wall / closed door blocks it. Sampling step is <= 0.25 tile so no 1-tile wall can be skipped between samples; endpoints are excluded so actors do not block themselves.
+
+### Changed
+- `CombatMixin.update_enemies` now computes `has_los` per enemy per frame and gates every attack branch on it: boss melee/cast, ranged cast, and standard melee. Movement is intentionally not gated so pursuit around corners still works once an enemy has aggro'd.
+- Projectiles already collided with walls, so ranged bolts were not changed; only the cast trigger is now LOS-gated.
+- Version metadata (`__version__`, `pyproject.toml`) bumped to `3.8.3`.
+
+### Validation
+- `python -m compileall src tests` clean.
+- `python -m unittest tests.test_enemy_los_walls` — 3 new tests cover `line_of_sight` blocked/clear, melee-through-wall blocked, and ranged-cast-through-wall blocked.
+- `python -m unittest discover tests` — 154 tests pass.
+
 ## 3.8.2 — Pause on Inventory / Character Sheet
 
 Opening the inventory or character sheet now pauses the run so players can inspect their build without being attacked or sliding around.

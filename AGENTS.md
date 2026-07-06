@@ -56,6 +56,8 @@ Notes for agents:
 
 NOTE: This project uses vibe architecture. Module structure is changed when new features require it or game.py gets bloated.
 
+There is an experimental web build in `src/arch_rogue/web` and some specific tests related to it. Do not run web tests by default.
+
 Keep the prototype architecture modular but intentionally small:
 
 - `src/arch_rogue/game.py` owns `Game` construction, high-level app state, main loop wiring, and the executable `main()` entry point. Keep `arch_rogue.game.Game` and `arch_rogue.game:main` stable.
@@ -209,6 +211,4 @@ Draft goal: deepen loot-driven build variety by expanding affix pools, item inte
 - Validate with a new `tests/test_3_6_affix_builds.py` covering affix roll ranges, synergy resolution in combat, unique-item generation, cursed-item tradeoffs, and save migration, plus the full `unittest discover tests` regression suite.
 
 ### Stash
-- remove other hotkeys from skills / potions except for number keys
-- pause and disable movement when opening character info or inventory
 - enemies can now "see through walls" or at least they attack the player from the other side. fix this

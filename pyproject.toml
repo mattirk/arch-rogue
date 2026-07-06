@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.8.2"
-description = "3.8.2 pauses the run (player movement, enemies, projectiles, traps) while the inventory or character sheet is open so players can inspect their build safely.",
+version = "3.8.3"
+description = "3.8.3 fixes enemies attacking the player through walls by gating melee/cast on a line-of-sight check.",
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
