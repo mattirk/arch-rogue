@@ -38,10 +38,10 @@ class RenderingHudMixin:
 
     def draw_hud_cooldown_pips(self, bounds: pygame.Rect) -> None:
         timers = (
-            ("M", self.player.melee_timer, self.melee_cooldown(), (255, 226, 150)),
-            ("B", self.player.bolt_timer, self.bolt_cooldown(), (96, 190, 255)),
-            ("N", self.player.nova_timer, self.nova_cooldown(), (185, 125, 255)),
-            ("D", self.player.dash_timer, self.dash_cooldown(), (225, 184, 82)),
+            ("1", self.player.melee_timer, self.melee_cooldown(), (255, 226, 150)),
+            ("2", self.player.bolt_timer, self.bolt_cooldown(), (96, 190, 255)),
+            ("3", self.player.nova_timer, self.nova_cooldown(), (185, 125, 255)),
+            ("4", self.player.dash_timer, self.dash_cooldown(), (225, 184, 82)),
         )
         active = [entry for entry in timers if entry[1] > 0.001 and entry[2] > 0.001]
         if not active:

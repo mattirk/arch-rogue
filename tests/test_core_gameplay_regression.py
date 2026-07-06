@@ -161,7 +161,7 @@ class Rc1RegressionTests(unittest.TestCase):
                 "Scroll of Identify", [item.name for item in game.player.inventory]
             )
 
-            # --- Q toggles quest HUD; R uses health potion ---
+            # --- Q toggles quest HUD; 5 uses health potion ---
             game.player.hp = 10
             game.player.inventory = [Item("Minor Healing Potion", "potion", heal=35)]
 
@@ -176,12 +176,12 @@ class Rc1RegressionTests(unittest.TestCase):
             game.handle_events()
             self.assertFalse(game.quest_info_visible)
 
-            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_r, mod=0))
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_5, mod=0))
             game.handle_events()
             self.assertEqual(game.player.hp, 45)
             self.assertEqual(game.player.inventory, [])
 
-            # --- C toggles character menu; V uses nova ---
+            # --- C toggles character menu; 3 uses nova ---
             game.active_cutscene = None
             game.player.nova_timer = 0.0
             game.player.mana = game.player.max_mana
@@ -210,12 +210,12 @@ class Rc1RegressionTests(unittest.TestCase):
             self.assertFalse(game.character_menu_open)
 
             game.inventory_open = False
-            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_v, mod=0))
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_3, mod=0))
             game.handle_events()
             self.assertGreater(game.player.nova_timer, 0.0)
             self.assertLess(game.player.mana, starting_mana)
 
-            # --- Left Control dashes; Left Shift does not ---
+            # --- 4 dashes; Left Shift does not ---
             game.active_cutscene = None
             game.player.dash_timer = 0.0
             game.player.stamina = game.player.max_stamina
@@ -228,9 +228,7 @@ class Rc1RegressionTests(unittest.TestCase):
             self.assertEqual(game.player.dash_timer, 0.0)
             self.assertEqual(game.player.stamina, starting_stamina)
 
-            pygame.event.post(
-                pygame.event.Event(pygame.KEYDOWN, key=pygame.K_LCTRL, mod=0)
-            )
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_4, mod=0))
             game.handle_events()
             self.assertGreater(game.player.dash_timer, 0.0)
             self.assertLess(game.player.stamina, starting_stamina)

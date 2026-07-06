@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.8.0"
-description = "3.8.0 makes darkness the default dungeon state: most floors are dark, while a spread of light floors use fog-of-war memory so explored terrain stays revealed, alongside the 3.7 skill-path variability mechanics.",
+version = "3.8.1"
+description = "3.8.1 consolidates skill and potion hotkeys onto the number keys (1-6) so the action bar is the single source of truth for combat inputs, alongside the 3.8 dark-default dungeon lighting.",
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

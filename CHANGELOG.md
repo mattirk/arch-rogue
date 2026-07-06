@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.8.1 — Number-Only Skill/Potion Hotkeys
+
+Consolidates combat inputs so skills and potions are triggered exclusively through the number keys that the HUD action bar already advertises, removing the legacy duplicate hotkeys.
+
+### Changed
+- `Game.handle_events` no longer binds skill/potion actions to `Space` (melee), `F` (bolt), `V` (nova), `Left Ctrl` (dash), `R` (health potion), or `T` (mana potion) during play. These are now reachable only via the action bar's number keys: `1` melee, `2` bolt, `3` nova, `4` dash, `5` health potion, `6` mana potion.
+- Non-skill bindings (`E` interact, `Q` quest HUD, `C` character sheet, `R` return-to-archetype outside play, `I` inventory, `H`/`?` help) are unchanged.
+- Character sheet skill legend (`menus/character.py`) now lists `1/2/3/4` instead of `Space/F/V/Ctrl`.
+- Help overlay and About screen (`menus/title.py`) updated to describe the number-key combat bindings and dropped the `R`/`T` potion references.
+- HUD cooldown pips (`rendering/hud.py`) now label skills `1/2/3/4` to match the action-bar hotkeys instead of the old `M/B/N/D` letters.
+- Version metadata (`__version__`, `pyproject.toml`) bumped to `3.8.1`.
+
+### Validation
+- `python -m compileall src tests` clean.
+- `python -m unittest tests.test_core_gameplay_regression` — hotkey behaviors updated to drive nova via `3`, dash via `4`, and health potion via `5`.
+- `python -m unittest discover tests` — 147 tests pass.
+
 ## 3.8.0 — Graphics Upgrade: Lighting
 
 Milestone 3.8 makes darkness the default dungeon state and adds fog-of-war memory to the light floors that remain, so exploration feels like a dark-fantasy crawl instead of a fully-lit map.

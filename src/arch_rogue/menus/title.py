@@ -93,7 +93,7 @@ class MenuTitleMixin:
         paragraphs = [
             f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs, procedural stories, and dark-level exploration.",
             "Goal: descend through ten depths, survive escalating encounters, resolve story guest dilemmas, defeat the final-depth gate tyrant, then use the stairs to complete the run.",
-            "Combat: hold left mouse to move and aim. Space uses your class melee skill, F casts your bolt skill, V uses your nova skill, Left Ctrl uses your movement skill, and C opens the character sheet. The bottom HUD action bar shows hotkeys, cooldowns, and potion counts.",
+            "Combat: hold left mouse to move and aim. Number keys trigger skills and potions: 1 melee, 2 bolt, 3 nova, 4 movement skill, 5 health potion, 6 mana potion. C opens the character sheet. The bottom HUD action bar shows hotkeys, cooldowns, and potion counts.",
             "Difficulty: Options cycle Easy, Medium, and Hard; Hard is the default, and Hell unlocks after your first complete clear.",
             "Story: every run generates an archetype-aligned backstory, factions, relic, guests, and floor beats. Near a story guest, press E to hear their plea or 1-3 to choose Aid, Bargain, or Defy.",
             "Loot and discovery: press E for pickups, shrines, secrets, and stairs. Interaction prompts explain risks, and inventory rows summarize upgrades, curses, and comparisons.",
@@ -143,7 +143,7 @@ class MenuTitleMixin:
             "Elites/minibosses: named foes have brighter telegraphs, more danger, and better rewards.",
             f"Difficulty: {self.g.difficulty_profile().name} — change it from Options; Hell unlocks after one clear.",
             "Resources: stamina powers melee and movement skills; mana powers bolt and nova skills. The bottom action bar combines skill icons, hotkeys, and cooldowns.",
-            "Inventory and HUD: E picks up; I opens inventory; C opens character; R drinks health, T drinks mana; 1-9 uses/equips; Shift+1-9 drops; Tab/S sorts.",
+            "Inventory and HUD: E picks up; I opens inventory; C opens character; 1-9 triggers skills/potions and uses/equips inventory; Shift+1-9 drops; Tab/S sorts.",
             "Discovery: unidentified gear needs scrolls, Insight Shrines, or equipping to reveal.",
             "Dark floors: sight is limited to 4 tiles; monsters navigate normally. Temporary debug: Ctrl+Shift+D toggles darkness on the current level.",
             "Hazards: traps are single-use but dangerous; shrines and secrets can swing a run.",

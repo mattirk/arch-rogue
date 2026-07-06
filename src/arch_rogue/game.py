@@ -591,16 +591,6 @@ class Game(
                     self.interact()
                 elif event.key == pygame.K_q and self.state == "playing":
                     self.toggle_quest_info_visibility()
-                elif event.key == pygame.K_r and self.state == "playing":
-                    self.use_first_potion()
-                elif event.key == pygame.K_t and self.state == "playing":
-                    self.use_first_mana_potion()
-                elif event.key == pygame.K_SPACE and self.state == "playing":
-                    self.update_player_aim()
-                    self.player_melee_attack()
-                elif event.key == pygame.K_f and self.state == "playing":
-                    self.update_player_aim()
-                    self.player_cast_bolt()
                 elif event.key == pygame.K_c and self.state == "playing":
                     self.character_menu_open = not self.character_menu_open
                     if self.character_menu_open:
@@ -630,12 +620,6 @@ class Game(
                         self.character_menu_tab = "overview"
                     else:
                         self.character_menu_tab = "skill_tree"
-                elif event.key == pygame.K_v and self.state == "playing":
-                    self.update_player_aim()
-                    self.player_cast_nova()
-                elif event.key == pygame.K_LCTRL and self.state == "playing":
-                    self.update_player_aim()
-                    self.player_dash()
                 elif pygame.K_1 <= event.key <= pygame.K_9 and self.state == "playing":
                     index = event.key - pygame.K_1
                     guest = None if self.inventory_open else self.nearby_story_guest()

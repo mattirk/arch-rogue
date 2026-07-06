@@ -646,10 +646,10 @@ class MenuCharacterMixin:
 
         melee_name, bolt_name, nova_name, dash_name = self.g.skill_names()
         skill_lines = [
-            (f"Space {melee_name} · {self.g.melee_stamina_cost()} stamina", self.TEXT),
-            (f"F {bolt_name} · {self.g.bolt_mana_cost()} mana", self.TEXT),
-            (f"V {nova_name} · {self.g.nova_mana_cost()} mana", self.TEXT),
-            (f"Ctrl {dash_name} · {self.g.dash_stamina_cost()} stamina", self.TEXT),
+            (f"1 {melee_name} · {self.g.melee_stamina_cost()} stamina", self.TEXT),
+            (f"2 {bolt_name} · {self.g.bolt_mana_cost()} mana", self.TEXT),
+            (f"3 {nova_name} · {self.g.nova_mana_cost()} mana", self.TEXT),
+            (f"4 {dash_name} · {self.g.dash_stamina_cost()} stamina", self.TEXT),
         ]
 
         weapon = player.equipment.get("weapon")

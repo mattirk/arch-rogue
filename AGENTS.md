@@ -211,3 +211,4 @@ Draft goal: deepen loot-driven build variety by expanding affix pools, item inte
 ### Stash
 - remove other hotkeys from skills / potions except for number keys
 - pause and disable movement when opening character info or inventory
+- enemies can now "see through walls" or at least they attack the player from the other side. fix this
