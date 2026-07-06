@@ -815,6 +815,8 @@ class InputMixin:
             if self.character_menu_open:
                 self.inventory_open = False
                 self.close_shop()
+                if self.character_menu_tab == "skill_tree":
+                    self._ensure_skill_tree_cursor()
             return True
 
         # Overlay sub-menus.
@@ -921,17 +923,92 @@ class InputMixin:
         return False
 
     def _dispatch_character(self, cmd: str) -> bool:
-        if cmd in (Command.TAB, Command.RIGHT, Command.NEXT):
+        if cmd in (Command.TAB, Command.TAB_PREV, Command.NEXT, Command.PREV):
             self.character_menu_tab = (
                 "skill_tree" if self.character_menu_tab == "overview" else "overview"
             )
+            if self.character_menu_tab == "skill_tree":
+                self._ensure_skill_tree_cursor()
             return True
-        if cmd in (Command.TAB_PREV, Command.LEFT, Command.PREV):
-            self.character_menu_tab = (
-                "skill_tree" if self.character_menu_tab == "overview" else "overview"
-            )
+        if self.character_menu_tab != "skill_tree":
+            if cmd in (Command.LEFT, Command.RIGHT):
+                self.character_menu_tab = "skill_tree"
+                self._ensure_skill_tree_cursor()
+                return True
+            return False
+        if cmd in (Command.UP, Command.DOWN, Command.LEFT, Command.RIGHT):
+            self._move_skill_tree_cursor(cmd)
+            return True
+        if cmd == Command.CONFIRM:
+            self._activate_skill_tree_cursor()
             return True
         return False
+
+    def _skill_tree_grid(self):
+        from .content import skill_branches_for_archetype, skill_nodes_for_archetype
+
+        archetype = self.player.class_name
+        branches = list(skill_branches_for_archetype(archetype))
+        nodes = list(skill_nodes_for_archetype(archetype))
+        branch_index = {branch: index for index, branch in enumerate(branches)}
+        by_key = {node.key: node for node in nodes}
+        by_pos = {(node.tier, branch_index.get(node.branch, 0)): node for node in nodes}
+        ordered = sorted(
+            nodes, key=lambda node: (node.tier, branch_index.get(node.branch, 0))
+        )
+        return branches, by_key, by_pos, ordered
+
+    def _ensure_skill_tree_cursor(self) -> None:
+        branches, by_key, _by_pos, ordered = self._skill_tree_grid()
+        del branches
+        current = self.character_menu_hovered_node
+        if current in by_key:
+            return
+        available = self.available_skill_choices()
+        if available:
+            self.character_menu_hovered_node = available[0].key
+        elif ordered:
+            self.character_menu_hovered_node = ordered[0].key
+        else:
+            self.character_menu_hovered_node = None
+
+    def _move_skill_tree_cursor(self, cmd: str) -> None:
+        branches, by_key, by_pos, ordered = self._skill_tree_grid()
+        if not ordered or not branches:
+            self.character_menu_hovered_node = None
+            return
+        self._ensure_skill_tree_cursor()
+        current = by_key.get(self.character_menu_hovered_node or "") or ordered[0]
+        branch_index = {branch: index for index, branch in enumerate(branches)}
+        tier = current.tier
+        col = branch_index.get(current.branch, 0)
+        max_tier = max(node.tier for node in ordered)
+        max_col = len(branches) - 1
+        if cmd == Command.LEFT:
+            col = max(0, col - 1)
+        elif cmd == Command.RIGHT:
+            col = min(max_col, col + 1)
+        elif cmd == Command.UP:
+            tier = max(1, tier - 1)
+        elif cmd == Command.DOWN:
+            tier = min(max_tier, tier + 1)
+        target = by_pos.get((tier, col))
+        if target is None:
+            # Sparse-tree fallback: choose nearest node to the desired grid cell.
+            target = min(
+                ordered,
+                key=lambda node: (
+                    abs(node.tier - tier) + abs(branch_index.get(node.branch, 0) - col),
+                    node.tier,
+                    branch_index.get(node.branch, 0),
+                ),
+            )
+        self.character_menu_hovered_node = target.key
+
+    def _activate_skill_tree_cursor(self) -> None:
+        self._ensure_skill_tree_cursor()
+        if self.character_menu_hovered_node:
+            self.choose_skill_upgrade(self.character_menu_hovered_node)
 
     def _sync_controller_action_aim(self) -> None:
         """Refresh facing from right stick only when it is actively aiming.

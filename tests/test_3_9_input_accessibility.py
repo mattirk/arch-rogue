@@ -454,10 +454,30 @@ class CommandDispatchTests(unittest.TestCase):
             game.character_menu_tab = "overview"
             game._dispatch_command(Command.TAB)
             self.assertEqual(game.character_menu_tab, "skill_tree")
-            game._dispatch_command(Command.RIGHT)
+            self.assertIsNotNone(game.character_menu_hovered_node)
+            game._dispatch_command(Command.TAB)
             self.assertEqual(game.character_menu_tab, "overview")
             game._dispatch_command(Command.BACK)
             self.assertFalse(game.character_menu_open)
+
+    def test_character_skill_tree_cursor_moves_and_confirm_upgrades(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.character_menu_open = True
+            game.character_menu_tab = "skill_tree"
+            game.player.skill_points = 1
+            choices = game.available_skill_choices()
+            self.assertGreater(len(choices), 0)
+            game.character_menu_hovered_node = choices[0].key
+            before = set(game.player.skill_upgrades)
+            game._dispatch_command(Command.RIGHT)
+            self.assertIsNotNone(game.character_menu_hovered_node)
+            # Put the cursor back on an available node and press A/confirm.
+            game.character_menu_hovered_node = choices[0].key
+            game._dispatch_command(Command.CONFIRM)
+            self.assertIn(choices[0].key, game.player.skill_upgrades)
+            self.assertEqual(game.player.skill_points, 0)
+            self.assertNotEqual(before, set(game.player.skill_upgrades))
 
     def test_gameplay_ability_commands_fire_actions(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

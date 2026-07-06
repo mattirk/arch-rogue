@@ -10,6 +10,7 @@ The control layer was keyboard-and-mouse only. Gamepad support is now first-clas
 - Auto-detect gamepad connect/disconnect (`JOYDEVICEADDED` / `JOYDEVICEREMOVED`) with the last-used device persisted by GUID to `~/.arch_rogue_options.json` and reclaimed when it hot-plugs back in.
 - Unified menu navigation: every navigable menu (title, options, archetype select, inventory, shop, character sheet, run-state overlays) supports the same directional/confirm/back/tab bindings on both keyboard and gamepad via a single `_dispatch_command` path.
 - Options menu gained a cursor (arrow keys / D-pad move focus, Enter activates, Left/Right adjust), a Controls & gamepad mapping page, and a Controller row to enable/disable gamepad input; legacy direct keys (A/M/F/D/+/-/O) still work.
+- Character skill-tree controller cursor: D-pad/left stick navigates nodes, the selected node reuses the existing hover preview/highlight, and A/confirm spends a skill point on an available node.
 - Analog movement: stick deflection past the radial deadzone scales movement speed (creep vs. sprint) while keyboard diagonals stay full speed.
 - Robust stick/trigger detection: rest-value sampling distinguishes analog sticks from triggers, so right-stick aim and LT/RT actions read correctly across Xbox-raw, Stadia/PS, and 4-axis layouts without relying on the SDL controller DB.
 
@@ -22,8 +23,8 @@ The control layer was keyboard-and-mouse only. Gamepad support is now first-clas
 
 ### Validation
 - `python -m compileall src tests` passes.
-- New `tests/test_3_9_input_accessibility.py` (48 tests) covers input mapping, controller axis/trigger layout and deadzone, contextual button maps, hot-plug and GUID preference, unified command dispatch across all menus, gameplay ability wiring, fresh right-stick projectile aim, existing aim-cone projectile aim when the stick is neutral, right-stick aim preservation while moving, cutscene selection/skip, analog movement/aim integration, controls page rendering, and options persistence/migration.
-- `python -m unittest discover tests` — 209 tests pass.
+- New `tests/test_3_9_input_accessibility.py` (49 tests) covers input mapping, controller axis/trigger layout and deadzone, contextual button maps, hot-plug and GUID preference, unified command dispatch across all menus, character skill-tree cursor/upgrade, gameplay ability wiring, fresh right-stick projectile aim, existing aim-cone projectile aim when the stick is neutral, right-stick aim preservation while moving, cutscene selection/skip, analog movement/aim integration, controls page rendering, and options persistence/migration.
+- `python -m unittest discover tests` — 210 tests pass.
 
 ## 3.8.5 — Big Bosses: 4-Tile Gatekeepers, Sealed Arenas, Boss Bar
 

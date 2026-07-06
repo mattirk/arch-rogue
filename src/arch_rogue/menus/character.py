@@ -995,9 +995,7 @@ class MenuCharacterMixin:
         # the combo tier it would unlock; otherwise show the skill-point spend
         # hint so the player knows how to acquire nodes.
         hovered_key = self.g.character_menu_hovered_node
-        hint_text = (
-            "Level-ups award skill points · click an available node to spend one."
-        )
+        hint_text = "Level-ups award skill points · click or press A on an available node to spend one."
         hint_color = self.MUTED
         if hovered_key:
             from ..content import skill_node_by_key
@@ -1015,7 +1013,9 @@ class MenuCharacterMixin:
                         )
                         hint_color = self.WARNING
                     elif self.g.player.skill_points > 0:
-                        hint_text = f"{hovered.name} · click to spend 1 skill point"
+                        hint_text = (
+                            f"{hovered.name} · click or press A to spend 1 skill point"
+                        )
                         hint_color = self.g.skill_color()
                     else:
                         hint_text = f"{hovered.name} · no skill points available"
