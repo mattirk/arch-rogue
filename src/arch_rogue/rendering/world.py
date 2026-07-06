@@ -9,7 +9,6 @@ from typing import cast
 import pygame
 
 from ..constants import (
-    DARK_LEVEL_LIGHT_RADIUS,
     DUNGEON_DEPTH,
     DUNGEON_FLOOR_VARIANTS,
     DUNGEON_WALL_VARIANTS,
@@ -44,13 +43,12 @@ class RenderingWorldMixin:
     def draw_dungeon(self) -> None:
         min_x, max_x, min_y, max_y = self.visible_bounds()
         self._frame_dark = self.is_current_floor_dark()
-        dark = self._frame_dark
         entries: list[tuple[pygame.Surface, tuple[int, int]]] = []
         for s in range(min_x + min_y, max_x + max_y + 1):
             for x in range(min_x, max_x + 1):
                 y = s - x
                 if min_y <= y <= max_y and self.dungeon.in_bounds(x, y):
-                    if dark and self.tile_visibility_alpha(x, y) <= 0:
+                    if self.tile_visibility_alpha(x, y) <= 0:
                         continue
                     tile = self.dungeon.tiles[x][y]
                     if tile in (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
@@ -748,14 +746,12 @@ class RenderingWorldMixin:
     def draw_world_objects(self) -> None:
         drawables: list[tuple[float, str, object]] = []
         self._frame_dark = self.is_current_floor_dark()
-        dark = self._frame_dark
 
         def visible(x: float, y: float, margin: float = 0.35) -> bool:
-            if not dark:
-                return True
-            return (
-                self.light_distance_to_player(x, y) <= DARK_LEVEL_LIGHT_RADIUS + margin
-            )
+            # Live-object sight gate. On dark floors this is the lantern radius;
+            # on light floors it is the fog-of-war sight radius (objects are not
+            # remembered, only terrain is).
+            return self.can_see_world_position(x, y, margin)
 
         min_x, max_x, min_y, max_y = self.visible_bounds()
         for s in range(min_x + min_y, max_x + max_y + 1):
@@ -764,11 +760,11 @@ class RenderingWorldMixin:
                 if min_y <= y <= max_y and self.dungeon.in_bounds(x, y):
                     tile = self.dungeon.tiles[x][y]
                     if tile == Tile.WALL:
-                        if dark and self.tile_visibility_alpha(x, y) <= 0:
+                        if self.tile_visibility_alpha(x, y) <= 0:
                             continue
                         drawables.append((x + y + 1.02, "wall_tile", (x, y)))
                     elif tile in (Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
-                        if dark and self.tile_visibility_alpha(x, y) <= 0:
+                        if self.tile_visibility_alpha(x, y) <= 0:
                             continue
                         drawables.append((x + y + 1.02, "door", (x, y, tile)))
 
@@ -818,9 +814,7 @@ class RenderingWorldMixin:
 
         self.draw_aim_cone()
         relic_target = self.story_relic_target_position()
-        if not dark or (
-            relic_target is not None and visible(relic_target[0], relic_target[1], 0.65)
-        ):
+        if relic_target is not None and visible(relic_target[0], relic_target[1], 0.65):
             self.draw_story_relic_guidance()
 
         for _depth, kind, obj in sorted(drawables, key=lambda entry: entry[0]):

@@ -5,7 +5,12 @@ import math
 from dataclasses import replace
 from typing import Any
 
-from .constants import DARK_LEVEL_LIGHT_RADIUS, DUNGEON_DEPTH, SlashEffect
+from .constants import (
+    DARK_LEVEL_LIGHT_RADIUS,
+    DUNGEON_DEPTH,
+    LIGHT_LEVEL_SIGHT_RADIUS,
+    SlashEffect,
+)
 from .content import (
     BOSS_DEFINITIONS,
     DUNGEON_THEMES,
@@ -113,26 +118,29 @@ class RunFlowMixin:
         except (TypeError, ValueError):
             return None
 
-    def dark_depths_for_run(self) -> set[int]:
-        dark_depths: set[int] = set()
-        early_candidates = list(range(2, min(4, DUNGEON_DEPTH) + 1))
-        if not early_candidates and DUNGEON_DEPTH >= 1:
-            early_candidates = [1]
-        if early_candidates:
-            dark_depths.add(self.rng.choice(early_candidates))
-
-        mid_candidates = list(range(5, min(10, DUNGEON_DEPTH) + 1))
-        dark_depths.update(self.rng.sample(mid_candidates, min(3, len(mid_candidates))))
-
-        for depth in range(11, DUNGEON_DEPTH + 1):
-            if self.rng.random() < 0.5:
-                dark_depths.add(depth)
-        return dark_depths
+    def light_depths_for_run(self) -> set[int]:
+        # Milestone 3.8: floors are dark by default; this selects the light
+        # exceptions with a depth-driven probability ramp so the run eases in
+        # and darkens as it deepens:
+        #   depths 1-3  -> always light (gentle opening)
+        #   depths 4-6  -> 50% chance of being dark (so 50% light)
+        #   depths 7+   -> 75% chance of being dark (so 25% light)
+        light: set[int] = set()
+        for depth in range(1, DUNGEON_DEPTH + 1):
+            if depth <= 3:
+                light.add(depth)
+            elif depth <= 6:
+                if self.rng.random() < 0.5:
+                    light.add(depth)
+            else:
+                if self.rng.random() < 0.25:
+                    light.add(depth)
+        return light
 
     def generate_floor_plan(self) -> list[FloorPlan]:
         plan: list[FloorPlan] = []
         previous_theme = self.theme.name
-        dark_depths = self.dark_depths_for_run()
+        light_depths = self.light_depths_for_run()
         story_theme_by_depth: dict[int, str] = {}
         if self.story_state is not None:
             story_theme_by_depth = {
@@ -156,7 +164,7 @@ class RunFlowMixin:
             else:
                 encounter = self.rng.choice(encounter_pool)
             threat = 1 + depth // 2
-            is_dark = depth in dark_depths
+            is_dark = depth not in light_depths
             risk_tags = [encounter.risk]
             if is_dark:
                 risk_tags.append("darkness")
@@ -249,6 +257,11 @@ class RunFlowMixin:
             replace(plan, dark=dark) if plan.depth == self.current_depth else plan
             for plan in self.floor_plan
         ]
+        # Fog-of-war memory only makes sense on light floors; reset it whenever
+        # the floor's darkness state changes so a freshly-lit floor starts
+        # from the player's current sight instead of stale memory.
+        self.reset_revealed_tiles()
+        self.update_revealed_tiles()
 
     def toggle_current_floor_dark(self) -> bool:
         dark = not self.is_current_floor_dark()
@@ -272,9 +285,49 @@ class RunFlowMixin:
         return math.hypot(x - self.player.x, y - self.player.y)
 
     def can_see_world_position(self, x: float, y: float, margin: float = 0.0) -> bool:
-        if not self.is_current_floor_dark():
-            return True
-        return self.light_distance_to_player(x, y) <= DARK_LEVEL_LIGHT_RADIUS + margin
+        # Whether a live actor/object at (x, y) is currently in the player's
+        # sight. On dark floors this is the lantern radius; on light floors it is
+        # the wider fog-of-war sight radius. Terrain memory (revealed_tiles) is
+        # separate: a tile can be remembered but no longer currently visible.
+        radius = (
+            DARK_LEVEL_LIGHT_RADIUS
+            if self.is_current_floor_dark()
+            else LIGHT_LEVEL_SIGHT_RADIUS
+        )
+        return self.light_distance_to_player(x, y) <= radius + margin
+
+    def reset_revealed_tiles(self) -> None:
+        # Drop all fog-of-war memory for the current floor. Called on floor
+        # changes and whenever a floor's darkness state is toggled.
+        self.revealed_tiles = set()
+
+    def is_tile_revealed(self, x: int, y: int) -> bool:
+        return (x, y) in self.revealed_tiles
+
+    def update_revealed_tiles(self) -> None:
+        # Fog-of-war reveal pass for light floors. Tiles within the sight radius
+        # are remembered forever; dark floors keep their lantern-only model
+        # (explored areas stay dark) and never build memory. Distance-based
+        # reveal mirrors the dark-floor lantern model and keeps the hot path
+        # cheap (no per-tile line-of-sight walk).
+        if self.is_current_floor_dark():
+            return
+        px = self.player.x
+        py = self.player.y
+        radius = LIGHT_LEVEL_SIGHT_RADIUS
+        min_x = max(0, int(px - radius) - 1)
+        max_x = min(MAP_W - 1, int(px + radius) + 1)
+        min_y = max(0, int(py - radius) - 1)
+        max_y = min(MAP_H - 1, int(py + radius) + 1)
+        r2 = radius * radius
+        revealed = self.revealed_tiles
+        for x in range(min_x, max_x + 1):
+            dx = x + 0.5 - px
+            dx2 = dx * dx
+            for y in range(min_y, max_y + 1):
+                dy = y + 0.5 - py
+                if dx2 + dy * dy <= r2:
+                    revealed.add((x, y))
 
     def has_line_of_sight(self, ax: float, ay: float, bx: float, by: float) -> bool:
         # Integer Bresenham walk over the cells between (ax,ay) and (bx,by):
@@ -329,7 +382,9 @@ class RunFlowMixin:
 
     def tile_visibility_alpha(self, x: int, y: int) -> int:
         if not self.is_current_floor_dark():
-            return 255
+            # Light floor: fog of war. Revealed terrain persists at full
+            # opacity; anything never explored stays black.
+            return 255 if (x, y) in self.revealed_tiles else 0
         px = self.player.x
         py = self.player.y
         distance = math.hypot(x + 0.5 - px, y + 0.5 - py)
@@ -434,6 +489,8 @@ class RunFlowMixin:
         )
         self.apply_starting_loadout()
         self.snap_camera_to_player()
+        self.revealed_tiles = set()
+        self.update_revealed_tiles()
         self.enemies: list[Enemy] = []
         self.items: list[Item] = []
         self.shopkeepers: list[Shopkeeper] = []
@@ -491,6 +548,8 @@ class RunFlowMixin:
         self.player.x = start_x + 0.5
         self.player.y = start_y + 0.5
         self.snap_camera_to_player()
+        self.revealed_tiles = set()
+        self.update_revealed_tiles()
         self.player.melee_timer = 0.0
         self.player.bolt_timer = 0.0
         self.player.dash_timer = 0.0

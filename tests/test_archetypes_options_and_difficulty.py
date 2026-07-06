@@ -96,8 +96,8 @@ class PublicReleaseMilestoneTests(unittest.TestCase):
                 game.restart(ARCHETYPES[0])
                 self.assertTrue(game.save_run())
                 saved_run = json.loads(game.save_path.read_text(encoding="utf-8"))
-                self.assertEqual(saved_run["version"], 4)
-                self.assertEqual(saved_run["release"], "3.7.5")
+                self.assertEqual(saved_run["version"], 5)
+                self.assertEqual(saved_run["release"], "3.8.0")
                 self.assertEqual(saved_run["difficulty"], "Hard")
                 self.assertFalse(Path(f"{game.save_path}.tmp").exists())
             finally:

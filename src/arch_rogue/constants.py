@@ -25,6 +25,11 @@ PLAYER_PROJECTILE_HIT_RADIUS = 0.54
 ENEMY_PROJECTILE_HIT_RADIUS = 0.52
 WALK_ANIMATION_RATE = 0.8
 DARK_LEVEL_LIGHT_RADIUS = 4.0
+# Milestone 3.8 — light (non-dark) floors use fog of war: terrain stays
+# revealed once explored. The live sight radius matches the dark floor's
+# lantern radius so both floor types share the same visibility reach; the
+# difference is memory, not range.
+LIGHT_LEVEL_SIGHT_RADIUS = DARK_LEVEL_LIGHT_RADIUS
 # Run-cycle tuning shared by the sprite atlas and the renderer so the cached
 # run frames, the whole-body bob, and the directional lean all advance on the
 # exact same phase. RUN_FRAME_RATE converts anim_time into run-frame units;

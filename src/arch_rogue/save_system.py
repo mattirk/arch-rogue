@@ -115,7 +115,7 @@ class SaveLoadMixin:
 
     def serialize_run_state(self) -> dict[str, Any]:
         return {
-            "version": 4,
+            "version": 5,
             "release": __version__,
             "run_number": self.run_number,
             "current_depth": self.current_depth,
@@ -123,6 +123,9 @@ class SaveLoadMixin:
             "run_music_seed": self.run_music_seed,
             "run_music_theme": self.run_music_theme,
             "floor_plan": [self.floor_plan_to_dict(plan) for plan in self.floor_plan],
+            # Milestone 3.8: fog-of-war memory for light floors. Stored as a
+            # flat [x, y] pair list so the save stays compact and version-agnostic.
+            "revealed_tiles": [[x, y] for (x, y) in sorted(self.revealed_tiles)],
             "story_seed": self.story_seed,
             "story_state": story_state_to_dict(self.story_state),
             "story_intro_pending": self.story_intro_pending,
@@ -281,6 +284,18 @@ class SaveLoadMixin:
         self.tile_cache.clear()
         self.prewarm_tile_cache()
 
+        # Milestone 3.8: restore fog-of-war memory for the current floor. Older
+        # saves (pre-5) have no memory; the per-frame reveal pass will repopulate
+        # around the player on the next update so the floor is never blank.
+        revealed = set()
+        for pair in data.get("revealed_tiles", []):
+            if isinstance(pair, (list, tuple)) and len(pair) == 2:
+                try:
+                    revealed.add((int(pair[0]), int(pair[1])))
+                except (TypeError, ValueError):
+                    continue
+        self.revealed_tiles = revealed
+
         player_data = data["player"]
         self.player = Player(
             float(player_data["x"]),
@@ -403,7 +418,7 @@ class SaveLoadMixin:
         self.last_load_error = ""
         try:
             data = json.loads(self.save_path.read_text(encoding="utf-8"))
-            if int(data.get("version", 0)) not in (1, 2, 3, 4):
+            if int(data.get("version", 0)) not in (1, 2, 3, 4, 5):
                 self.last_load_error = (
                     "Saved run was created by an incompatible version."
                 )

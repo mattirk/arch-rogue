@@ -1,5 +1,28 @@
 # Changelog
 
+## 3.8.0 — Graphics Upgrade: Lighting
+
+Milestone 3.8 makes darkness the default dungeon state and adds fog-of-war memory to the light floors that remain, so exploration feels like a dark-fantasy crawl instead of a fully-lit map.
+
+### Added
+- `LIGHT_LEVEL_SIGHT_RADIUS` constant (7.0) — the live sight radius on light floors, wider than the dark-floor lantern radius (`DARK_LEVEL_LIGHT_RADIUS` 4.0) so light floors stay forgiving to explore.
+- Fog-of-war tile memory in `run_flow.py` (`revealed_tiles`, `reset_revealed_tiles`, `update_revealed_tiles`, `is_tile_revealed`). On light floors, tiles within the sight radius are remembered for the rest of the floor; terrain stays revealed after the player moves away. Dark floors keep their lantern-only model and never build memory (explored areas stay dark).
+- `Game.update()` now runs the per-frame reveal pass so a freshly-entered light floor is populated immediately and memory grows as the player explores.
+
+### Changed
+- `generate_floor_plan` now treats floors as dark by default. `light_depths_for_run` selects the light exceptions via a depth-driven probability ramp so the run eases in and darkens as it deepens: depths 1-3 are always light (gentle opening), depths 4-6 are 50% dark, and depths 7+ are 75% dark.
+- `can_see_world_position` now gates live objects on both floor types: the lantern radius on dark floors and the wider sight radius on light floors. Terrain memory (`revealed_tiles`) is separate from live-object sight, so a remembered tile no longer shows the enemies/items that were there.
+- `tile_visibility_alpha` returns 255 for revealed light-floor terrain and 0 for unrevealed terrain (dark floors keep the soft lantern falloff).
+- `set_current_floor_dark`/`toggle_current_floor_dark` reset and re-reveal fog-of-war memory so a freshly-toggled light floor starts from the player's current sight instead of stale memory.
+- Rendering (`rendering/world.py`) culls unrevealed terrain on light floors the same way it culled beyond-lantern terrain on dark floors, and gates objects/relic guidance through the shared sight check. The now-unused `dark` locals and `DARK_LEVEL_LIGHT_RADIUS` import were removed.
+- Run saves now write schema `version` 5 with a compact `revealed_tiles` `[x, y]` pair list. Older saves (1–4) still load; missing memory is repopulated by the next reveal pass so a resumed light floor is never blank.
+- Version metadata (`__version__`, `pyproject.toml`) and the release-string-asserting tests now target `3.8.0`.
+
+### Validation
+- `python -m compileall src tests` clean.
+- `python -m unittest tests.test_dark_levels` — dark-by-default distribution, toggle save roundtrip, dark visibility/enemy navigation/wall hiding, light-floor fog-of-war memory, dark-floor no-memory, and revealed-tiles save roundtrip.
+- `python -m unittest discover tests` — 147 tests pass.
+
 ## 3.7.5 — Per-Frame Hot-Path Optimizations (browser FPS at full window)
 
 The browser build was unplayable at full-window resolution (`?maxw=1980`) because the per-frame work — running under Pyodide, which is slower than native Python and pays per Python→C call — was too heavy. This release optimizes the profiled hot paths (driven by a `cProfile` harness at 1920×1080 in playing state) without changing gameplay or visuals.

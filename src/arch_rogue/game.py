@@ -276,6 +276,10 @@ class Game(
         self.run_music_seed = 0
         self.run_music_theme = ""
         self.floor_plan: list[FloorPlan] = []
+        # Milestone 3.8: per-floor fog-of-war memory for light (non-dark) floors.
+        # Tiles within the sight radius are remembered for the rest of the floor;
+        # dark floors ignore this and keep their lantern-only visibility model.
+        self.revealed_tiles: set[tuple[int, int]] = set()
         self.story_seed = 0
         self.story_state: StoryState | None = None
         self.story_guests: list[StoryGuest] = []
@@ -718,6 +722,7 @@ class Game(
         self.update_player_aim()
         self.update_player(dt)
         self.update_camera(dt)
+        self.update_revealed_tiles()
         self.update_enemy_statuses(dt)
         self.update_enemies(dt)
         self.update_projectiles(dt)

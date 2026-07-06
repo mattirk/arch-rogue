@@ -13,7 +13,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import pygame
 
-from arch_rogue.constants import DARK_LEVEL_LIGHT_RADIUS, DUNGEON_DEPTH
+from arch_rogue.constants import (
+    DARK_LEVEL_LIGHT_RADIUS,
+    DUNGEON_DEPTH,
+    LIGHT_LEVEL_SIGHT_RADIUS,
+)
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.models import Tile
@@ -39,53 +43,69 @@ class DarkLevels24Tests(unittest.TestCase):
         game.active_cutscene = None
         return game
 
-    def test_floor_plan_darkness_toggle_and_save_roundtrip(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, seed=2411)
-            try:
-                # Floor plan includes required dark depths.
-                dark_depths = {plan.depth for plan in game.floor_plan if plan.dark}
-                self.assertTrue(any(depth < 5 for depth in dark_depths))
-                mid_depths = {depth for depth in dark_depths if 5 <= depth <= 10}
-                self.assertGreaterEqual(
-                    len(mid_depths), min(3, max(0, DUNGEON_DEPTH - 4))
-                )
+    def test_floor_plan_darkness_ramp_and_toggle_roundtrip(self) -> None:
+        # Depth-driven darkness ramp (milestone 3.8):
+        #   1-3  always light
+        #   4-6  50% dark
+        #   7+   75% dark
+        # The guaranteed part (depths 1-3 light) is asserted for every seed; the
+        # probabilistic part is checked across many seeds so the test stays
+        # deterministic rather than flaky.
+        for seed in (2411, 2505, 999, 1, 424242):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                game = self.make_game(tmpdir, seed=seed)
+                light_depths = {plan.depth for plan in game.floor_plan if not plan.dark}
+                for d in (1, 2, 3):
+                    if d <= DUNGEON_DEPTH:
+                        self.assertIn(d, light_depths)
                 for plan in game.floor_plan:
                     if plan.dark:
                         self.assertIn("darkness", plan.risk_tags)
                         self.assertIn("dark level", plan.preview)
+                    else:
+                        self.assertNotIn("darkness", plan.risk_tags)
+                        self.assertNotIn("dark level", plan.preview)
 
-                # Darkness toggle round-trips through save/load.
-                game.current_depth = 2
-                before = game.is_current_floor_dark()
-                pygame.event.post(
-                    pygame.event.Event(
-                        pygame.KEYDOWN,
-                        key=pygame.K_d,
-                        mod=pygame.KMOD_CTRL | pygame.KMOD_SHIFT,
-                    )
-                )
-                game.handle_events()
-                self.assertNotEqual(game.is_current_floor_dark(), before)
-                saved_dark = game.is_current_floor_dark()
-                self.assertTrue(game.save_run())
+        # Across many seeds the deep floors (7+) are overwhelmingly dark, so at
+        # least one run must produce a dark floor beyond depth 6.
+        saw_deep_dark = False
+        for seed in range(100):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                game = self.make_game(tmpdir, seed=seed)
+                if any(p.dark and p.depth >= 7 for p in game.floor_plan):
+                    saw_deep_dark = True
+                    break
+        self.assertTrue(saw_deep_dark)
 
-                loaded = Game(
-                    screen_size=(820, 540),
-                    headless=True,
-                    save_path=Path(tmpdir) / "run.json",
+        # Darkness toggle round-trips through save/load (depth 2 is always light,
+        # so toggling flips it to dark).
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=2411)
+            game.current_depth = 2
+            self.assertFalse(game.is_current_floor_dark())
+            pygame.event.post(
+                pygame.event.Event(
+                    pygame.KEYDOWN,
+                    key=pygame.K_d,
+                    mod=pygame.KMOD_CTRL | pygame.KMOD_SHIFT,
                 )
-                loaded.options_path = Path(tmpdir) / "options.json"
-                loaded.meta_progress = loaded.default_meta_progress()
-                loaded.run_history = []
-                self.assertTrue(loaded.load_run(), loaded.last_load_error)
-                try:
-                    self.assertEqual(loaded.current_depth, 2)
-                    self.assertEqual(loaded.is_current_floor_dark(), saved_dark)
-                finally:
-                    pass
-            finally:
-                pass
+            )
+            game.handle_events()
+            self.assertTrue(game.is_current_floor_dark())
+            saved_dark = game.is_current_floor_dark()
+            self.assertTrue(game.save_run())
+
+            loaded = Game(
+                screen_size=(820, 540),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+            )
+            loaded.options_path = Path(tmpdir) / "options.json"
+            loaded.meta_progress = loaded.default_meta_progress()
+            loaded.run_history = []
+            self.assertTrue(loaded.load_run(), loaded.last_load_error)
+            self.assertEqual(loaded.current_depth, 2)
+            self.assertEqual(loaded.is_current_floor_dark(), saved_dark)
 
     def test_dark_visibility_enemy_navigation_and_wall_hiding(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -183,6 +203,110 @@ class DarkLevels24Tests(unittest.TestCase):
                     self.assertTrue(game.has_line_of_sight_to_player(enemy.x, enemy.y))
 
                     enemy.x = 6.5
+            finally:
+                pass
+
+    def test_light_floor_fog_of_war_remembers_explored_terrain(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=2431)
+            try:
+                # Force a light floor and start on a clean, open grid.
+                game.set_current_floor_dark(False)
+                for x, column in enumerate(game.dungeon.tiles):
+                    for y in range(len(column)):
+                        game.dungeon.tiles[x][y] = Tile.FLOOR
+                game.player.x = 2.5
+                game.player.y = 2.5
+                game.enemies = []
+                game.items = []
+                game.traps = []
+                game.shrines = []
+                game.secrets = []
+                game.story_guests = []
+                game.projectiles = []
+                game.floaters = []
+                game.revealed_tiles = set()
+                game.update_revealed_tiles()
+
+                # The player's own tile and nearby tiles are revealed.
+                self.assertTrue(
+                    game.is_tile_revealed(int(game.player.x), int(game.player.y))
+                )
+                near_x = int(game.player.x) + 1
+                near_y = int(game.player.y)
+                self.assertTrue(game.is_tile_revealed(near_x, near_y))
+                # Revealed tiles render at full opacity; far unrevealed tiles are black.
+                self.assertEqual(game.tile_visibility_alpha(near_x, near_y), 255)
+                far_x = int(game.player.x) + int(LIGHT_LEVEL_SIGHT_RADIUS) + 3
+                far_y = int(game.player.y)
+                self.assertEqual(game.tile_visibility_alpha(far_x, far_y), 0)
+                self.assertFalse(game.is_tile_revealed(far_x, far_y))
+
+                # Move the player far away; previously-revealed terrain stays
+                # revealed (fog-of-war memory persists on light floors).
+                game.player.x = far_x + 0.5
+                game.update_revealed_tiles()
+                self.assertTrue(game.is_tile_revealed(near_x, near_y))
+                self.assertEqual(game.tile_visibility_alpha(near_x, near_y), 255)
+                self.assertTrue(game.is_tile_revealed(far_x, far_y))
+
+                # Live objects are only visible while currently in sight, not just
+                # because the tile is remembered.
+                self.assertFalse(
+                    game.can_see_world_position(near_x + 0.5, near_y + 0.5)
+                )
+                self.assertTrue(
+                    game.can_see_world_position(game.player.x, game.player.y)
+                )
+            finally:
+                pass
+
+    def test_dark_floor_does_not_remember_explored_area(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=2441)
+            try:
+                game.set_current_floor_dark(True)
+                game.player.x = 2.5
+                game.player.y = 2.5
+                game.update_revealed_tiles()
+                # Dark floors keep their lantern-only model: no fog-of-war memory
+                # is ever built, and tiles beyond the lantern radius stay dark.
+                self.assertEqual(game.revealed_tiles, set())
+                far_x = int(game.player.x) + int(DARK_LEVEL_LIGHT_RADIUS) + 3
+                self.assertEqual(
+                    game.tile_visibility_alpha(far_x, int(game.player.y)), 0
+                )
+
+                # Walking away does not reveal/remember the old neighbourhood.
+                game.player.x = far_x + 0.5
+                game.update_revealed_tiles()
+                self.assertEqual(game.revealed_tiles, set())
+            finally:
+                pass
+
+    def test_revealed_tiles_roundtrip_through_save(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=2451)
+            try:
+                game.set_current_floor_dark(False)
+                game.player.x = 2.5
+                game.player.y = 2.5
+                game.revealed_tiles = set()
+                game.update_revealed_tiles()
+                before = set(game.revealed_tiles)
+                self.assertGreater(len(before), 0)
+                self.assertTrue(game.save_run())
+
+                loaded = Game(
+                    screen_size=(820, 540),
+                    headless=True,
+                    save_path=Path(tmpdir) / "run.json",
+                )
+                loaded.options_path = Path(tmpdir) / "options.json"
+                loaded.meta_progress = loaded.default_meta_progress()
+                loaded.run_history = []
+                self.assertTrue(loaded.load_run(), loaded.last_load_error)
+                self.assertEqual(loaded.revealed_tiles, before)
             finally:
                 pass
 
