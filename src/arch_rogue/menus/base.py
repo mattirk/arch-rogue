@@ -540,8 +540,19 @@ class MenuBaseMixin:
         selected_index: int = -1,
     ) -> None:
         key_w = min(max(self.u(108), 108), max(self.u(96), rect.width // 3))
-        row_h = max(self.g.font.get_height() + self.u(18), self.u(44))
-        gap = max(self.u(7), 7)
+        row_count = max(1, len(rows))
+        base_gap = max(self.u(7), 7)
+        base_row_h = max(self.g.font.get_height() + self.u(18), self.u(44))
+        available_h = max(1, rect.height)
+        if row_count * base_row_h + (row_count - 1) * base_gap > available_h:
+            gap = max(1, min(base_gap, self.u(3)))
+            row_h = max(
+                self.g.font.get_height() + self.u(8),
+                (available_h - gap * (row_count - 1)) // row_count,
+            )
+        else:
+            row_h = base_row_h
+            gap = base_gap
         y = rect.y
         accent = self.accent()
         for index, (key, label, value) in enumerate(rows):

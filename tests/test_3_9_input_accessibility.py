@@ -22,10 +22,13 @@ from arch_rogue.input import (  # noqa: E402
     GAMEPLAY_BUTTON_COMMANDS,
     Command,
     ControllerManager,
+    default_gamepad_mapping,
     hat_commands,
     joybutton_command,
     joybutton_command_for_state,
     key_command,
+    mapped_joybutton_command,
+    normalize_gamepad_mapping,
 )
 from arch_rogue.quest_assets import ActiveQuestCutscene  # noqa: E402
 
@@ -152,6 +155,36 @@ class InputMappingTests(unittest.TestCase):
     def test_default_button_map_is_unique(self) -> None:
         commands = list(DEFAULT_JOY_BUTTON_COMMANDS.values())
         self.assertEqual(len(commands), len(set(commands)))
+
+    def test_custom_gameplay_button_map_overrides_default(self) -> None:
+        mapping = normalize_gamepad_mapping(
+            {"gameplay_buttons": {"0": Command.ABILITY_2, "2": Command.ABILITY_1}}
+        )
+        self.assertEqual(
+            mapped_joybutton_command(0, "gameplay", mapping), Command.ABILITY_2
+        )
+        self.assertEqual(
+            mapped_joybutton_command(2, "gameplay", mapping), Command.ABILITY_1
+        )
+        self.assertEqual(mapped_joybutton_command(0, "menu", mapping), Command.CONFIRM)
+
+    def test_duplicate_saved_trigger_binding_is_cleared_when_button_exists(
+        self,
+    ) -> None:
+        mapping = normalize_gamepad_mapping(
+            {
+                "gameplay_buttons": {"0": Command.ABILITY_4},
+                "triggers": [Command.ABILITY_4, Command.INTERACT],
+            }
+        )
+        self.assertEqual(mapping["gameplay_buttons"][0], Command.ABILITY_4)
+        self.assertEqual(mapping["triggers"][0], "")
+        self.assertEqual(mapping["triggers"][1], Command.INTERACT)
+
+    def test_saved_trigger_blanks_do_not_shift_slots(self) -> None:
+        mapping = normalize_gamepad_mapping({"triggers": ["", Command.ABILITY_6]})
+        self.assertEqual(mapping["triggers"][0], "")
+        self.assertEqual(mapping["triggers"][1], Command.ABILITY_6)
 
     def test_hat_commands_translate_dpad(self) -> None:
         up = SimpleNamespace(type=pygame.JOYHATMOTION, joy=0, hat=0, value=(0, 1))
@@ -381,6 +414,61 @@ class CommandDispatchTests(unittest.TestCase):
             self.assertEqual(game.state, "controls")
             game._dispatch_command(Command.BACK)
             self.assertEqual(game.state, "options")
+
+    def test_controls_menu_remaps_selected_gamepad_button(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.state = "controls"
+            game.controls_cursor = 1  # ability 2 / bolt
+            game._dispatch_command(Command.CONFIRM)
+            self.assertEqual(game.controls_capture_command, Command.ABILITY_2)
+            event = SimpleNamespace(type=pygame.JOYBUTTONDOWN, joy=999, button=0)
+            self.assertTrue(game.handle_controller_event(event))
+            self.assertIsNone(game.controls_capture_command)
+            self.assertEqual(
+                game.gamepad_mapping["gameplay_buttons"][0], Command.ABILITY_2
+            )
+
+    def test_controls_menu_remaps_trigger_slot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.state = "controls"
+            game.controls_capture_command = Command.INTERACT
+            game.assign_gamepad_trigger_slot(0, Command.INTERACT)
+            self.assertEqual(game.gamepad_mapping["triggers"][0], Command.INTERACT)
+            self.assertEqual(game.input.trigger_commands[0], Command.INTERACT)
+
+    def test_button_remap_clears_same_action_from_triggers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.gamepad_mapping = default_gamepad_mapping()
+            game.input.trigger_commands = list(game.gamepad_mapping["triggers"])
+            # Dash starts on LT by default. Moving Dash to a button must clear LT,
+            # otherwise pressing the trigger still dashes even though the menu
+            # shows the new button binding.
+            self.assertEqual(game.gamepad_mapping["triggers"][0], Command.ABILITY_4)
+            game._assign_gamepad_button(0, Command.ABILITY_4)
+            self.assertEqual(
+                game.gamepad_mapping["gameplay_buttons"][0], Command.ABILITY_4
+            )
+            self.assertEqual(game.gamepad_mapping["triggers"][0], "")
+            self.assertEqual(game.input.trigger_commands[0], "")
+
+    def test_trigger_remap_clears_same_action_from_buttons(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.gamepad_mapping = default_gamepad_mapping()
+            # Potion starts on LB/button 4. Moving Potion to LT must clear LB so
+            # one action does not live on multiple physical controls.
+            self.assertEqual(
+                game.gamepad_mapping["gameplay_buttons"][4], Command.ABILITY_5
+            )
+            self.assertEqual(
+                game.gamepad_mapping["gameplay_buttons"][4], Command.ABILITY_5
+            )
+            game.assign_gamepad_trigger_slot(0, Command.ABILITY_5)
+            self.assertEqual(game.gamepad_mapping["triggers"][0], Command.ABILITY_5)
+            self.assertNotIn(4, game.gamepad_mapping["gameplay_buttons"])
 
     def test_archetype_select_left_right_and_confirm(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -613,6 +701,33 @@ class CombatAxisIntegrationTests(unittest.TestCase):
             self.assertAlmostEqual(bolt.vx, 0.0, places=4)
             self.assertGreater(bolt.vy, 0.0)
 
+    def test_button_axis_overlap_does_not_also_fire_trigger_dash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            fake = FakeJoystick(44, num_axes=6, axes_rest=(0, 0, 0, 0, -1, -1))
+            game.input._joysticks[fake.get_instance_id()] = fake
+            game.input._axis_layout[fake.get_instance_id()] = (
+                game.input._compute_layout(fake)
+            )
+            game.input._trigger_layout[fake.get_instance_id()] = (
+                game.input._compute_triggers(fake)
+            )
+            game.input._active_id = fake.get_instance_id()
+            game.input._layout_id = None
+            # Simulate a controller that reports LB as button 4 and also moves the
+            # first trigger-like axis. The button is mapped to potion, so this must
+            # not queue the default dash trigger command.
+            fake.set_axis(4, 1.0)
+            event = SimpleNamespace(
+                type=pygame.JOYBUTTONDOWN,
+                joy=fake.get_instance_id(),
+                button=4,
+            )
+            game.handle_controller_event(event)
+            self.assertEqual(game.input.drain_trigger_commands(), [])
+            game.input.poll_axes()
+            self.assertEqual(game.input.drain_trigger_commands(), [])
+
     def test_controller_button_fire_polls_fresh_right_stick_aim(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_game(tmpdir)
@@ -659,7 +774,9 @@ class OptionsPersistenceTests(unittest.TestCase):
             self.assertTrue(loaded)
             self.assertFalse(game.controller_enabled)
             self.assertEqual(game.last_controller_guid, "abc-123")
-            self.assertEqual(game.options_to_dict()["schema_version"], 3)
+            data = game.options_to_dict()
+            self.assertEqual(data["schema_version"], 3)
+            self.assertIn("gamepad_mapping", data)
 
     def test_old_schema_v2_loads_with_safe_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

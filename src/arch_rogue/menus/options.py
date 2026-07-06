@@ -34,9 +34,16 @@ class MenuOptionsMixin:
             ("Gamepad", "Controller", controller_value),
             ("Enter / O / Backspace", "Return to title", ""),
         ]
-        self.draw_menu_rows(rows, content, selected_index=self.g.options_cursor)
+        note_h = max(self.u(54), self.g.small_font.get_height() * 3 + self.u(8))
+        row_rect = pygame.Rect(
+            content.x,
+            content.y,
+            content.width,
+            max(self.u(120), content.height - note_h - self.u(10)),
+        )
+        self.draw_menu_rows(rows, row_rect, selected_index=self.g.options_cursor)
         note_rect = pygame.Rect(
-            content.x, content.bottom - self.u(60), content.width, self.u(48)
+            content.x, row_rect.bottom + self.u(10), content.width, note_h
         )
         self.draw_wrapped_text(
             "Difficulty defaults to Hard. Cycle Easy, Medium, and Hard here; "

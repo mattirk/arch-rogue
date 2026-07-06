@@ -4,11 +4,10 @@ from __future__ import annotations
 import pygame
 
 from ..input import (
-    CUTSCENE_BUTTON_COMMANDS,
-    DEFAULT_JOY_BUTTON_COMMANDS,
-    GAMEPLAY_BUTTON_COMMANDS,
-    TRIGGER_COMMANDS,
+    REMAPPABLE_GAMEPAD_COMMANDS,
     Command,
+    button_for_command,
+    trigger_slot_for_command,
 )
 
 MenuRow = tuple[str, str, str]
@@ -63,26 +62,29 @@ KEYBOARD_ROWS: list[MenuRow] = [
 
 
 class MenuControlsMixin:
-    def _gameplay_pad_rows(self) -> list[MenuRow]:
-        """Build gamepad rows from the live button/trigger maps so the page
-        never drifts from the actual input code."""
-        rows: list[MenuRow] = [
-            ("L stick", "Move", ""),
-            ("R stick", "Aim", ""),
-            ("D-pad", "Navigate menus / move", ""),
-        ]
-        # Sort buttons by index for a stable, predictable listing.
-        for button in sorted(GAMEPLAY_BUTTON_COMMANDS):
-            name = BUTTON_NAMES.get(button, f"Btn {button}")
-            label = COMMAND_LABELS.get(
-                GAMEPLAY_BUTTON_COMMANDS[button], GAMEPLAY_BUTTON_COMMANDS[button]
-            )
-            rows.append((name, label, ""))
-        # Triggers: LT (first) = dash, RT (second) = interact.
-        trigger_names = ("LT", "RT")
-        for slot, cmd in enumerate(TRIGGER_COMMANDS):
-            name = trigger_names[slot] if slot < len(trigger_names) else f"Trig {slot}"
-            rows.append((name, COMMAND_LABELS.get(cmd, cmd), ""))
+    def _binding_name_for_command(self, command: str) -> str:
+        mapping = self.g.gamepad_mapping
+        buttons = mapping.get("gameplay_buttons", {})
+        if isinstance(buttons, dict):
+            button = button_for_command(buttons, command)
+            if button is not None:
+                return BUTTON_NAMES.get(button, f"Btn {button}")
+        triggers = mapping.get("triggers", [])
+        if isinstance(triggers, list):
+            slot = trigger_slot_for_command(triggers, command)
+            if slot is not None:
+                names = ("LT", "RT")
+                return names[slot] if slot < len(names) else f"Trig {slot}"
+        return "Unbound"
+
+    def _gamepad_mapping_rows(self) -> list[MenuRow]:
+        rows: list[MenuRow] = []
+        capture = self.g.controls_capture_command
+        for command in REMAPPABLE_GAMEPAD_COMMANDS:
+            label = COMMAND_LABELS.get(command, command)
+            binding = self._binding_name_for_command(command)
+            value = "Press button/trigger" if capture == command else binding
+            rows.append(("Map", label, value))
         return rows
 
     def draw_controls_menu(self) -> None:
@@ -91,18 +93,19 @@ class MenuControlsMixin:
         )
         header_h = self.u(30)
         gap = self.u(10)
-        # Split the content area into a keyboard section and a gamepad section.
-        half = content.height // 2
-        kb_header = pygame.Rect(content.x, content.y, content.width, header_h)
-        kb_rect = pygame.Rect(
-            content.x, kb_header.bottom + gap, content.width, half - header_h - gap
-        )
-        pad_header = pygame.Rect(content.x, content.y + half, content.width, header_h)
-        pad_rect = pygame.Rect(
-            content.x, pad_header.bottom + gap, content.width, half - header_h - gap
+        col_gap = self.u(18)
+        left_w = int(content.width * 0.43)
+        right_w = content.width - left_w - col_gap
+        left = pygame.Rect(content.x, content.y, left_w, content.height)
+        right = pygame.Rect(
+            content.x + left_w + col_gap, content.y, right_w, content.height
         )
 
         accent = self.accent()
+        kb_header = pygame.Rect(left.x, left.y, left.width, header_h)
+        kb_rect = pygame.Rect(
+            left.x, kb_header.bottom + gap, left.width, left.height - header_h - gap
+        )
         self.draw_text("Keyboard & Mouse", self.g.heading_font, accent, kb_header)
         self.draw_menu_rows(KEYBOARD_ROWS, kb_rect)
 
@@ -111,12 +114,32 @@ class MenuControlsMixin:
             if self.g.input.has_controller()
             else ("Disabled" if not self.g.controller_enabled else "None connected")
         )
-        self.draw_text(
-            f"Gamepad — {pad_status}",
-            self.g.heading_font,
-            accent,
-            pad_header,
+        capture = self.g.controls_capture_command
+        subtitle = "press any controller button/trigger" if capture else pad_status
+        pad_header = pygame.Rect(right.x, right.y, right.width, header_h)
+        pad_rect = pygame.Rect(
+            right.x,
+            pad_header.bottom + gap,
+            right.width,
+            right.height - header_h - gap - self.u(42),
         )
-        self.draw_menu_rows(self._gameplay_pad_rows(), pad_rect)
+        self.draw_text(f"Gamepad — {subtitle}", self.g.heading_font, accent, pad_header)
+        self.draw_menu_rows(
+            self._gamepad_mapping_rows(),
+            pad_rect,
+            selected_index=self.g.controls_cursor,
+        )
+        hint_rect = pygame.Rect(
+            right.x, pad_rect.bottom + self.u(8), right.width, self.u(34)
+        )
+        hint = (
+            "Back cancels mapping"
+            if capture
+            else "Up/down select · Enter/A remaps · Esc/Back returns"
+        )
+        self.draw_wrapped_text(hint, self.g.small_font, self.MUTED, hint_rect)
 
-        self.draw_footer(panel, "Esc / Back / any key returns to Options")
+        self.draw_footer(
+            panel,
+            "Controller mappings affect gameplay actions; menu confirm/back stay fixed",
+        )

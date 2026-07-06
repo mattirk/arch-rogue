@@ -15,6 +15,7 @@ from .content import (
     HELL_DIFFICULTY_NAME,
     DifficultyProfile,
 )
+from .input import normalize_gamepad_mapping, serialize_gamepad_mapping
 
 
 class OptionsMixin:
@@ -149,6 +150,9 @@ class OptionsMixin:
             "run_history": self.run_history[-12:],
             "controller_enabled": getattr(self, "controller_enabled", True),
             "last_controller_guid": getattr(self, "last_controller_guid", ""),
+            "gamepad_mapping": serialize_gamepad_mapping(
+                normalize_gamepad_mapping(getattr(self, "gamepad_mapping", None))
+            ),
         }
 
     def load_options(self) -> bool:
@@ -172,6 +176,9 @@ class OptionsMixin:
             # saves -> safe defaults (controller on, no preferred device).
             self.controller_enabled = bool(data.get("controller_enabled", True))
             self.last_controller_guid = str(data.get("last_controller_guid", ""))
+            self.gamepad_mapping = normalize_gamepad_mapping(
+                data.get("gamepad_mapping")
+            )
         except (TypeError, ValueError):
             return False
         return True

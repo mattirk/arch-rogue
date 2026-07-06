@@ -14,7 +14,7 @@ state flips, so the run loop stays cheap.
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Any, Iterable
 
 import pygame
 
@@ -152,6 +152,131 @@ CUTSCENE_BUTTON_COMMANDS: dict[int, str] = {
 TRIGGER_COMMANDS: tuple[str, ...] = (Command.ABILITY_4, Command.INTERACT)
 TRIGGER_PRESS_THRESHOLD = 0.25
 
+REMAPPABLE_GAMEPAD_COMMANDS: tuple[str, ...] = (
+    Command.ABILITY_1,
+    Command.ABILITY_2,
+    Command.ABILITY_3,
+    Command.ABILITY_4,
+    Command.ABILITY_5,
+    Command.ABILITY_6,
+    Command.INTERACT,
+    Command.INVENTORY,
+    Command.CHARACTER,
+    Command.BACK,
+)
+
+
+def default_gamepad_mapping() -> dict[str, dict[int, str] | list[str]]:
+    return {
+        "menu_buttons": dict(DEFAULT_JOY_BUTTON_COMMANDS),
+        "gameplay_buttons": dict(GAMEPLAY_BUTTON_COMMANDS),
+        "cutscene_buttons": dict(CUTSCENE_BUTTON_COMMANDS),
+        "triggers": list(TRIGGER_COMMANDS),
+    }
+
+
+def normalize_gamepad_mapping(data: object) -> dict[str, dict[int, str] | list[str]]:
+    mapping = default_gamepad_mapping()
+    if not isinstance(data, dict):
+        return mapping
+    valid = set(REMAPPABLE_GAMEPAD_COMMANDS) | {
+        Command.CONFIRM,
+        Command.HELP,
+        Command.TAB,
+        Command.TAB_PREV,
+    }
+    raw_buttons = data.get("gameplay_buttons", {})
+    has_raw_buttons = "gameplay_buttons" in data and isinstance(raw_buttons, dict)
+    raw_triggers = data.get("triggers", [])
+    has_raw_triggers = "triggers" in data and isinstance(raw_triggers, list)
+    if has_raw_buttons:
+        buttons: dict[int, str] = {}
+        for raw_button, raw_cmd in raw_buttons.items():
+            try:
+                button = int(raw_button)
+            except (TypeError, ValueError):
+                continue
+            cmd = str(raw_cmd)
+            if 0 <= button <= 31 and cmd in valid:
+                buttons[button] = cmd
+        if buttons:
+            mapping["gameplay_buttons"] = buttons
+    if has_raw_triggers:
+        triggers: list[str] = []
+        for raw_cmd in raw_triggers[:4]:
+            cmd = str(raw_cmd)
+            triggers.append(cmd if cmd in valid else "")
+        if triggers:
+            mapping["triggers"] = triggers
+    if has_raw_buttons and has_raw_triggers:
+        _dedupe_gamepad_mapping(mapping, buttons_win=True)
+    elif has_raw_buttons:
+        _dedupe_gamepad_mapping(mapping, buttons_win=True)
+    elif has_raw_triggers:
+        _dedupe_gamepad_mapping(mapping, buttons_win=False)
+    return mapping
+
+
+def _dedupe_gamepad_mapping(
+    mapping: dict[str, dict[int, str] | list[str]], buttons_win: bool = True
+) -> None:
+    """Keep one physical binding per command, repairing older duplicate saves.
+
+    Buttons win over triggers when loading full old saves because the previous UI
+    would show the button binding first while the hidden default trigger binding
+    still fired. Trigger-only partial data instead wins over default buttons.
+    Within triggers, the first slot wins and later duplicates are cleared.
+    """
+    buttons = mapping.get("gameplay_buttons", {})
+    triggers = mapping.get("triggers", [])
+    if not isinstance(buttons, dict) or not isinstance(triggers, list):
+        return
+    seen_triggers: set[str] = set()
+    trigger_commands = {cmd for cmd in triggers if cmd}
+    if not buttons_win:
+        for button, cmd in list(buttons.items()):
+            if cmd in trigger_commands:
+                del buttons[button]
+    button_commands = set(buttons.values())
+    for index, cmd in enumerate(list(triggers)):
+        if not cmd:
+            continue
+        if (buttons_win and cmd in button_commands) or cmd in seen_triggers:
+            triggers[index] = ""
+        else:
+            seen_triggers.add(cmd)
+
+
+def serialize_gamepad_mapping(
+    mapping: dict[str, dict[int, str] | list[str]],
+) -> dict[str, dict[str, str] | list[str]]:
+    buttons = mapping.get("gameplay_buttons", {})
+    triggers = mapping.get("triggers", [])
+    return {
+        "gameplay_buttons": {
+            str(button): cmd
+            for button, cmd in sorted(buttons.items())
+            if isinstance(button, int) and isinstance(cmd, str)
+        }
+        if isinstance(buttons, dict)
+        else {},
+        "triggers": list(triggers) if isinstance(triggers, list) else [],
+    }
+
+
+def button_for_command(mapping: dict[int, str], command: str) -> int | None:
+    for button, cmd in sorted(mapping.items()):
+        if cmd == command:
+            return button
+    return None
+
+
+def trigger_slot_for_command(commands: list[str], command: str) -> int | None:
+    for slot, cmd in enumerate(commands):
+        if cmd == command:
+            return slot
+    return None
+
 
 def joybutton_command(button: int) -> str | None:
     return DEFAULT_JOY_BUTTON_COMMANDS.get(button)
@@ -169,6 +294,19 @@ def joybutton_command_for_state(button: int, context: str) -> str | None:
     if context == "cutscene":
         return CUTSCENE_BUTTON_COMMANDS.get(button)
     return DEFAULT_JOY_BUTTON_COMMANDS.get(button)
+
+
+def mapped_joybutton_command(
+    button: int, context: str, mapping: dict[str, dict[int, str] | list[str]]
+) -> str | None:
+    if context == "gameplay":
+        buttons = mapping.get("gameplay_buttons", {})
+        return buttons.get(button) if isinstance(buttons, dict) else None
+    if context == "cutscene":
+        buttons = mapping.get("cutscene_buttons", {})
+        return buttons.get(button) if isinstance(buttons, dict) else None
+    buttons = mapping.get("menu_buttons", {})
+    return buttons.get(button) if isinstance(buttons, dict) else None
 
 
 class ControllerManager:
@@ -191,7 +329,7 @@ class ControllerManager:
     def __init__(self, last_guid: str = "", enabled: bool = True) -> None:
         self.enabled = enabled
         self._last_guid = last_guid or ""
-        self._joysticks: dict[int, pygame.joystick.Joystick] = {}
+        self._joysticks: dict[int, Any] = {}
         self._active_id: int | None = None
         # Per-device (left_axes, right_axes) layout, computed once at connect
         # time from rest axis values so the hot path never recomputes it.
@@ -208,6 +346,8 @@ class ControllerManager:
         # and a queue of commands emitted by rising-edge presses this frame.
         self._trigger_pressed: dict[int, bool] = {}
         self._queued_commands: list[str] = []
+        self._queued_trigger_slots: list[int] = []
+        self.trigger_commands = list(TRIGGER_COMMANDS)
         # Cached axis state. Updated in-place by poll_axes(); the returned
         # tuples are only rebuilt when the deadzone crossing changes so the
         # per-frame hot path avoids allocations.
@@ -243,13 +383,13 @@ class ControllerManager:
         self._layout_id = None
         self._active_triggers = []
 
-    def _guid(self, joy: pygame.joystick.Joystick) -> str:
+    def _guid(self, joy: Any) -> str:
         try:
             return joy.get_guid()
         except (AttributeError, pygame.error):
             return ""
 
-    def _add_device(self, device_index: int) -> pygame.joystick.Joystick | None:
+    def _add_device(self, device_index: int) -> Any | None:
         try:
             joy = pygame.joystick.Joystick(device_index)
         except pygame.error:
@@ -302,7 +442,7 @@ class ControllerManager:
 
     # --- Selection -------------------------------------------------------
 
-    def active(self) -> pygame.joystick.Joystick | None:
+    def active(self) -> Any | None:
         if self._active_id is None:
             return None
         return self._joysticks.get(self._active_id)
@@ -341,7 +481,7 @@ class ControllerManager:
     # --- Axis polling (hot path) ----------------------------------------
 
     def _compute_layout(
-        self, joy: pygame.joystick.Joystick
+        self, joy: Any
     ) -> tuple[tuple[int, int] | None, tuple[int, int] | None]:
         """Identify left/right stick axis indices for a freshly-connected device.
 
@@ -371,7 +511,7 @@ class ControllerManager:
         right = (stick_axes[2], stick_axes[3]) if len(stick_axes) >= 4 else None
         return (left, right)
 
-    def _compute_triggers(self, joy: pygame.joystick.Joystick) -> list[int]:
+    def _compute_triggers(self, joy: Any) -> list[int]:
         """Return trigger axis indices (axes resting far from 0), ascending."""
         try:
             num_axes = joy.get_numaxes()
@@ -404,12 +544,14 @@ class ControllerManager:
             self._active_triggers = triggers
             self._layout_id = joy_id
 
-    def poll_axes(self) -> None:
+    def poll_axes(self, emit_trigger_commands: bool = True) -> None:
         """Read left/right sticks for the active device into cached floats.
 
         Cheap by design: no dict/list allocation, just float writes. The public
         ``left_vec``/``right_vec`` rebuild their tuple only when the deadzone
-        crossing changes.
+        crossing changes. ``emit_trigger_commands`` is disabled while handling
+        button events so controllers that also report bumpers as axes do not fire
+        stale trigger bindings in addition to the remapped button command.
         """
         joy = self.active()
         if joy is None:
@@ -442,7 +584,7 @@ class ControllerManager:
         self._right_x = rx
         self._right_y = ry
         self._refresh_vecs()
-        self._poll_triggers(joy)
+        self._poll_triggers(joy, emit_trigger_commands)
 
     def _reset_axes(self) -> None:
         if self._left_x or self._left_y or self._right_x or self._right_y:
@@ -457,11 +599,14 @@ class ControllerManager:
         if right != self._right_vec:
             self._right_vec = right
 
-    def _poll_triggers(self, joy: pygame.joystick.Joystick) -> None:
+    def _poll_triggers(self, joy: Any, emit_commands: bool = True) -> None:
         """Detect rising-edge trigger presses and queue their commands.
 
         Triggers are analog axes, so we treat them as buttons by thresholding.
         Only a fresh press (rising edge) emits a command, mirroring a key press.
+        When ``emit_commands`` is false we still update pressed state, which
+        prevents button-like bumper axes from emitting a stale trigger command on
+        the following frame.
         """
         if not self._active_triggers:
             return
@@ -472,8 +617,13 @@ class ControllerManager:
                 continue
             pressed = value > TRIGGER_PRESS_THRESHOLD
             if pressed and not self._trigger_pressed.get(axis, False):
-                if len(TRIGGER_COMMANDS) > slot:
-                    self._queued_commands.append(TRIGGER_COMMANDS[slot])
+                if emit_commands:
+                    self._queued_trigger_slots.append(slot)
+                    if (
+                        len(self.trigger_commands) > slot
+                        and self.trigger_commands[slot]
+                    ):
+                        self._queued_commands.append(self.trigger_commands[slot])
             self._trigger_pressed[axis] = pressed
 
     def drain_trigger_commands(self) -> list[str]:
@@ -483,6 +633,14 @@ class ControllerManager:
         cmds = self._queued_commands
         self._queued_commands = []
         return cmds
+
+    def drain_trigger_slots(self) -> list[int]:
+        """Return and clear trigger slots pressed this frame for remapping UI."""
+        if not self._queued_trigger_slots:
+            return []
+        slots = self._queued_trigger_slots
+        self._queued_trigger_slots = []
+        return slots
 
     def _apply_deadzone(self, x: float, y: float) -> tuple[float, float]:
         # Radial deadzone: drop the whole stick if inside the circle, then
@@ -544,6 +702,15 @@ class InputMixin:
             enabled=getattr(self, "controller_enabled", True),
         )
         self.input.initialize()
+        self.gamepad_mapping = normalize_gamepad_mapping(
+            getattr(self, "gamepad_mapping", None)
+        )
+        triggers = self.gamepad_mapping.get("triggers", list(TRIGGER_COMMANDS))
+        self.input.trigger_commands = (
+            list(triggers) if isinstance(triggers, list) else list(TRIGGER_COMMANDS)
+        )
+        self.controls_cursor = 0
+        self.controls_capture_command: str | None = None
         # Only persist a detected device on first run (no prior preference).
         # If the player's last-used pad is not currently connected we keep the
         # saved GUID so it reclaims active when it hot-plugs back in.
@@ -585,12 +752,22 @@ class InputMixin:
             # Button events are processed before Game.update() samples axes for
             # the frame. Poll once here so firing/casting uses the right-stick
             # direction the player sees in the aim cone, not last frame's aim.
-            self.input.poll_axes()
-            cmd = joybutton_command_for_state(event.button, self._input_context())
+            # Do not emit trigger commands from this poll: some controllers expose
+            # bumpers as both buttons and axes, and remapped bumpers must not also
+            # fire the trigger action.
+            self.input.poll_axes(emit_trigger_commands=False)
+            if self.state == "controls" and self.controls_capture_command:
+                self._assign_gamepad_button(event.button, self.controls_capture_command)
+                return True
+            cmd = mapped_joybutton_command(
+                event.button, self._input_context(), self.gamepad_mapping
+            )
             if cmd is not None:
                 self._dispatch_command(cmd)
                 return True
         if event.type == pygame.JOYHATMOTION:
+            if self.state == "controls" and self.controls_capture_command:
+                return True
             for cmd in hat_commands(event):
                 self._dispatch_command(cmd)
             return True
@@ -623,18 +800,7 @@ class InputMixin:
         if self.state == "options":
             return self._dispatch_options(cmd)
         if self.state == "controls":
-            # Any confirm/back/directional returns to the options menu.
-            if cmd in (
-                Command.CONFIRM,
-                Command.BACK,
-                Command.UP,
-                Command.DOWN,
-                Command.LEFT,
-                Command.RIGHT,
-            ):
-                self.state = "options"
-                return True
-            return False
+            return self._dispatch_controls(cmd)
         if self.state == "about":
             if cmd in (
                 Command.CONFIRM,
@@ -681,7 +847,10 @@ class InputMixin:
             self.request_exit_confirmation()
             return True
         if self.state == "controls":
-            self.state = "options"
+            if self.controls_capture_command:
+                self.controls_capture_command = None
+            else:
+                self.state = "options"
             return True
         if self.state in ("options", "about"):
             self.state = "title"
@@ -780,8 +949,81 @@ class InputMixin:
             self.save_options()
         elif row == self.OPTIONS_ROW_CONTROLS:
             self.state = "controls"
+            self.controls_cursor = 0
+            self.controls_capture_command = None
         elif row == self.OPTIONS_ROW_BACK:
             self.state = "title"
+
+    def _dispatch_controls(self, cmd: str) -> bool:
+        if self.controls_capture_command:
+            if cmd == Command.BACK:
+                self.controls_capture_command = None
+                return True
+            return True
+        count = len(REMAPPABLE_GAMEPAD_COMMANDS)
+        if cmd == Command.UP:
+            self.controls_cursor = (self.controls_cursor - 1) % count
+            return True
+        if cmd == Command.DOWN:
+            self.controls_cursor = (self.controls_cursor + 1) % count
+            return True
+        if cmd in (Command.LEFT, Command.RIGHT):
+            step = -1 if cmd == Command.LEFT else 1
+            self.controls_cursor = (self.controls_cursor + step) % count
+            return True
+        if cmd == Command.CONFIRM:
+            self.controls_capture_command = REMAPPABLE_GAMEPAD_COMMANDS[
+                self.controls_cursor
+            ]
+            return True
+        return False
+
+    def _gamepad_button_map(self) -> dict[int, str]:
+        buttons = self.gamepad_mapping.get("gameplay_buttons", {})
+        if not isinstance(buttons, dict):
+            buttons = {}
+            self.gamepad_mapping["gameplay_buttons"] = buttons
+        return buttons
+
+    def _gamepad_trigger_map(self) -> list[str]:
+        triggers = self.gamepad_mapping.get("triggers", [])
+        if not isinstance(triggers, list):
+            triggers = []
+            self.gamepad_mapping["triggers"] = triggers
+        return triggers
+
+    def _clear_gamepad_command_bindings(
+        self,
+        command: str,
+        keep_button: int | None = None,
+        keep_trigger_slot: int | None = None,
+    ) -> None:
+        buttons = self._gamepad_button_map()
+        for mapped_button, mapped_command in list(buttons.items()):
+            if mapped_command == command and mapped_button != keep_button:
+                del buttons[mapped_button]
+        triggers = self._gamepad_trigger_map()
+        for index, mapped_command in enumerate(list(triggers)):
+            if mapped_command == command and index != keep_trigger_slot:
+                triggers[index] = ""
+
+    def _assign_gamepad_button(self, button: int, command: str) -> None:
+        buttons = self._gamepad_button_map()
+        self._clear_gamepad_command_bindings(command, keep_button=int(button))
+        buttons[int(button)] = command
+        self.input.trigger_commands = list(self._gamepad_trigger_map())
+        self.controls_capture_command = None
+        self.save_options()
+
+    def assign_gamepad_trigger_slot(self, slot: int, command: str) -> None:
+        triggers = self._gamepad_trigger_map()
+        while len(triggers) <= slot:
+            triggers.append("")
+        self._clear_gamepad_command_bindings(command, keep_trigger_slot=slot)
+        triggers[slot] = command
+        self.input.trigger_commands = list(triggers)
+        self.controls_capture_command = None
+        self.save_options()
 
     def _dispatch_playing(self, cmd: str) -> bool:
         # Active cutscenes get the full controller path (D-pad cursor, A confirm,

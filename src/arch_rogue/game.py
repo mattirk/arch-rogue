@@ -514,8 +514,15 @@ class Game(
                     ):
                         self.state = "title"
                 elif self.state == "controls":
-                    # Any key returns to the options menu (Esc is handled above).
-                    self.state = "options"
+                    if event.key in (pygame.K_BACKSPACE, pygame.K_o):
+                        if self.controls_capture_command:
+                            self.controls_capture_command = None
+                        else:
+                            self.state = "options"
+                    else:
+                        cmd = key_command(event.key, event.mod)
+                        if cmd is not None:
+                            self._dispatch_command(cmd)
                 elif self.state == "archetype_select":
                     if event.key == pygame.K_BACKSPACE:
                         self.state = "title"
@@ -720,11 +727,17 @@ class Game(
         # movement/aim hot path stays allocation-free. Cheap when no
         # controller is connected (early-outs in ControllerManager).
         self.input.poll_axes()
-        # Dispatch trigger-press commands (LT dash / RT interact) queued during
-        # this frame's axis poll. _dispatch_command no-ops them outside base
-        # gameplay, so they are safe to drain unconditionally here.
-        for cmd in self.input.drain_trigger_commands():
-            self._dispatch_command(cmd)
+        # Dispatch trigger-press commands queued during this frame's axis poll.
+        # In the controls screen, trigger edges are captured as bindings instead.
+        if self.state == "controls" and self.controls_capture_command:
+            for slot in self.input.drain_trigger_slots():
+                self.assign_gamepad_trigger_slot(slot, self.controls_capture_command)
+                break
+            self.input.drain_trigger_commands()
+        else:
+            self.input.drain_trigger_slots()
+            for cmd in self.input.drain_trigger_commands():
+                self._dispatch_command(cmd)
         self.update_visual_effects(dt)
         if self.active_cutscene is not None:
             self.update_active_cutscene(dt)
