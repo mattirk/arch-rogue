@@ -1266,19 +1266,19 @@ class InputMixin:
             self.choose_skill_upgrade(self.character_menu_hovered_node)
 
     def _sync_controller_action_aim(self) -> None:
-        """Refresh facing from right stick only when it is actively aiming.
+        """Refresh facing from right stick, then apply controller aim assist.
 
         Controller actions must launch in the direction of the visible aim cone.
         The cone is stored in `player.facing_x/y`; falling back to mouse aim here
         would silently rotate the shot away from what gamepad players see.
         """
         rx, ry = self.input.right_vec()
-        if not (rx or ry):
-            return
-        length = (rx * rx + ry * ry) ** 0.5
-        if length > 0.0:
-            self.player.facing_x = rx / length
-            self.player.facing_y = ry / length
+        if rx or ry:
+            length = (rx * rx + ry * ry) ** 0.5
+            if length > 0.0:
+                self.player.facing_x = rx / length
+                self.player.facing_y = ry / length
+        self.snap_controller_aim_to_enemy()
 
     def _dispatch_gameplay(self, cmd: str) -> bool:
         if cmd == Command.INTERACT:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import sys
 import tempfile
@@ -30,6 +31,7 @@ from arch_rogue.input import (  # noqa: E402
     mapped_joybutton_command,
     normalize_gamepad_mapping,
 )
+from arch_rogue.models import Enemy, Tile  # noqa: E402
 from arch_rogue.quest_assets import ActiveQuestCutscene  # noqa: E402
 
 
@@ -341,6 +343,44 @@ def make_game(tmpdir: str) -> Game:
         game.choose_story_relic_path(0)
     game.active_cutscene = None
     return game
+
+
+def attach_fake_controller(game: Game, instance_id: int = 123) -> FakeJoystick:
+    fake = FakeJoystick(instance_id, num_axes=4, axes_rest=(0, 0, 0, 0))
+    game.input._joysticks[fake.get_instance_id()] = fake
+    game.input._axis_layout[fake.get_instance_id()] = game.input._compute_layout(fake)
+    game.input._trigger_layout[fake.get_instance_id()] = game.input._compute_triggers(
+        fake
+    )
+    game.input._active_id = fake.get_instance_id()
+    game.input._layout_id = None
+    return fake
+
+
+def open_floor_band_to_target(game: Game, target_x: float, target_y: float) -> None:
+    min_x = max(0, int(min(game.player.x, target_x)) - 1)
+    max_x = min(len(game.dungeon.tiles) - 1, int(max(game.player.x, target_x)) + 2)
+    min_y = max(0, int(min(game.player.y, target_y)) - 1)
+    max_y = min(len(game.dungeon.tiles[0]) - 1, int(max(game.player.y, target_y)) + 2)
+    for x in range(min_x, max_x + 1):
+        for y in range(min_y, max_y + 1):
+            game.dungeon.tiles[x][y] = Tile.FLOOR
+
+
+def make_target_enemy(x: float, y: float) -> Enemy:
+    return Enemy(
+        name="Aim Dummy",
+        kind="melee",
+        x=x,
+        y=y,
+        max_hp=40,
+        hp=40,
+        speed=0.0,
+        damage=0,
+        xp=0,
+        attack_range=1.0,
+        attack_cooldown=1.0,
+    )
 
 
 class CommandDispatchTests(unittest.TestCase):
@@ -686,6 +726,74 @@ class CombatAxisIntegrationTests(unittest.TestCase):
             game.update_player_aim()
             self.assertAlmostEqual(game.player.facing_x, 0.0, places=4)
             self.assertAlmostEqual(game.player.facing_y, 1.0, places=4)
+
+    def test_controller_aim_helper_snaps_to_visible_enemy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            attach_fake_controller(game)
+            px, py = game.player.x, game.player.y
+            target = make_target_enemy(px + 3.0, py + 0.7)
+            open_floor_band_to_target(game, target.x, target.y)
+            game.enemies = [target]
+            game.input._right_vec = (1.0, 0.0)  # close to the target line
+
+            game.update_player_aim()
+
+            length = math.hypot(target.x - px, target.y - py)
+            self.assertAlmostEqual(
+                game.player.facing_x, (target.x - px) / length, places=4
+            )
+            self.assertAlmostEqual(
+                game.player.facing_y, (target.y - py) / length, places=4
+            )
+
+    def test_controller_aim_helper_requires_enabled_active_controller(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            px, py = game.player.x, game.player.y
+            target = make_target_enemy(px + 3.0, py + 0.7)
+            open_floor_band_to_target(game, target.x, target.y)
+            game.enemies = [target]
+            game.input._joysticks.clear()
+            game.input._active_id = None
+            game.input._right_vec = (1.0, 0.0)
+
+            game.update_player_aim()
+
+            self.assertAlmostEqual(game.player.facing_x, 1.0, places=4)
+            self.assertAlmostEqual(game.player.facing_y, 0.0, places=4)
+
+            attach_fake_controller(game)
+            game.controller_enabled = False
+            game.input.set_enabled(False)
+            game.player.facing_x = 0.0
+            game.player.facing_y = 1.0
+            game.input._right_vec = (1.0, 0.0)
+            game.update_player_aim()
+
+            self.assertAlmostEqual(game.player.facing_x, 1.0, places=4)
+            self.assertAlmostEqual(game.player.facing_y, 0.0, places=4)
+
+    def test_controller_bolt_uses_snapped_enemy_aim(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            attach_fake_controller(game)
+            px, py = game.player.x, game.player.y
+            target = make_target_enemy(px + 3.0, py + 0.7)
+            open_floor_band_to_target(game, target.x, target.y)
+            game.enemies = [target]
+            game.aim_input_mode = "controller"
+            game.input._right_vec = (1.0, 0.0)
+            game.player.mana = 100
+            game.player.bolt_timer = 0.0
+
+            game._dispatch_command(Command.ABILITY_2)
+
+            self.assertGreater(len(game.projectiles), 0)
+            bolt = game.projectiles[-1]
+            expected_y = (target.y - py) / math.hypot(target.x - px, target.y - py)
+            self.assertGreater(bolt.vy, 0.0)
+            self.assertAlmostEqual(bolt.vy / 9.0, expected_y, places=4)
 
     def test_right_stick_aim_survives_left_stick_movement(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
