@@ -703,6 +703,13 @@ class Game(
         if self.story_intro_pending:
             self.update_floaters(dt)
             return
+        # Opening the character sheet or inventory pauses the run: enemies,
+        # projectiles, traps, and player movement stay frozen while the
+        # overlay is up so players can inspect their build safely.
+        if self.inventory_open or self.character_menu_open:
+            self.update_floaters(dt)
+            self.advance_animation_phases(dt)
+            return
         self.update_player_aim()
         self.update_player(dt)
         self.update_camera(dt)

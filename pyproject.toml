@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.8.1"
-description = "3.8.1 consolidates skill and potion hotkeys onto the number keys (1-6) so the action bar is the single source of truth for combat inputs, alongside the 3.8 dark-default dungeon lighting.",
+version = "3.8.2"
+description = "3.8.2 pauses the run (player movement, enemies, projectiles, traps) while the inventory or character sheet is open so players can inspect their build safely.",
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

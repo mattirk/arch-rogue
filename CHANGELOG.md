@@ -1,5 +1,20 @@
 # Changelog
 
+## 3.8.2 — Pause on Inventory / Character Sheet
+
+Opening the inventory or character sheet now pauses the run so players can inspect their build without being attacked or sliding around.
+
+### Changed
+- `Game.update` now early-returns (after floaters and animation-phase tick) when `inventory_open` or `character_menu_open` is set, skipping `update_player_aim`, `update_player`, `update_camera`, `update_revealed_tiles`, `update_enemy_statuses`, `update_enemies`, `update_projectiles`, `update_traps`, and `update_secrets`.
+- Visual floaters and animation phases still advance so the overlay does not look frozen, mirroring the existing `story_intro_pending` pause path.
+- Keyboard/mouse bindings, run-save compatibility, and the stable `Game` / `main` entry points are unchanged.
+- Version metadata (`__version__`, `pyproject.toml`) bumped to `3.8.2`.
+
+### Validation
+- `python -m compileall src tests` clean.
+- `python -m unittest tests.test_pause_on_menus` — 4 new tests cover inventory pause, character-sheet pause, projectile freeze, and resume-after-close.
+- `python -m unittest discover tests` — 151 tests pass.
+
 ## 3.8.1 — Number-Only Skill/Potion Hotkeys
 
 Consolidates combat inputs so skills and potions are triggered exclusively through the number keys that the HUD action bar already advertises, removing the legacy duplicate hotkeys.
