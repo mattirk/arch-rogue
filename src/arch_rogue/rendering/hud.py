@@ -940,19 +940,68 @@ class RenderingHudMixin:
         )
         self.screen.blit(surface, rect)
 
-    def draw_boss_bar(self) -> None:
+    def run_header_bottom(self) -> int:
+        """Bottom y of the top-left run header panel (mirrors draw_run_header)."""
+        pad = self.ui(10)
+        line_h = max(self.small_font.get_height() + self.ui(3), self.ui(18))
+        header_h = pad * 2 + self.font.get_height() + line_h * 2 + self.ui(4)
+        return self.ui(14) + header_h
+
+    def boss_bar_metrics(self) -> tuple[pygame.Rect, pygame.Rect, bool] | None:
+        """Compute the boss bar + plaque rects so the HUD can avoid overlapping it.
+
+        The bar is placed lower than the old top-of-screen position so it no
+        longer overlaps the run header: the name plaque sits just below the run
+        header and the bar sits below the plaque. If that would crash into the
+        bottom HUD panel (short windows), it falls back to anchoring just above
+        the bottom panel. Returns (bar_rect, plaque_rect, big) or None."""
         boss = self.boss_enemy()
         if not boss:
-            return
-        width, _height = self.screen.get_size()
+            return None
+        width, height = self.screen.get_size()
         margin = self.ui(18)
-        bar_w = min(width - margin * 2, self.ui(520))
-        bar_h = max(self.ui(12), self.small_font.get_height() // 2 + self.ui(4))
-        x = (width - bar_w) // 2
-        y = self.ui(22)
+        big = boss.size >= 2
+        bar_w = min(width - margin * 2, self.ui(640 if big else 520))
+        bar_h = max(
+            self.ui(20 if big else 12),
+            self.small_font.get_height() // 2 + self.ui(4),
+        )
+        plaque_h = self.ui(24 if big else 20)
+        bottom_panel_top = height - self.hud_panel_height()
+        bar_x = (width - bar_w) // 2
+        # Preferred: plaque below the run header, bar below the plaque.
+        plaque_top = self.run_header_bottom() + self.ui(8)
+        bar_y = plaque_top + plaque_h + self.ui(4)
+        # If that pushes the bar into the bottom HUD panel, anchor above it.
+        if bar_y + bar_h > bottom_panel_top - self.ui(6):
+            bar_y = bottom_panel_top - bar_h - self.ui(8)
+            plaque_top = bar_y - plaque_h - self.ui(2)
+        bar_rect = pygame.Rect(bar_x, bar_y, bar_w, bar_h)
+        plaque = pygame.Rect(0, 0, bar_w, plaque_h)
+        plaque.center = (width // 2, plaque_top + plaque_h // 2)
+        return bar_rect, plaque, big
+
+    def boss_bar_top(self) -> int | None:
+        """Topmost y the boss bar cluster occupies, or None."""
+        metrics = self.boss_bar_metrics()
+        if metrics is None:
+            return None
+        _bar_rect, plaque_rect, _big = metrics
+        return plaque_rect.top
+
+    def draw_boss_bar(self) -> None:
+        metrics = self.boss_bar_metrics()
+        if metrics is None:
+            return
+        rect, plaque, big = metrics
+        boss = self.boss_enemy()
+        assert boss is not None
+        width, _height = self.screen.get_size()
+        bar_w = rect.width
+        bar_h = rect.height
+        x, y = rect.x, rect.y
         ratio = max(0.0, min(1.0, boss.hp / boss.max_hp))
         fill = int(bar_w * ratio)
-        rect = pygame.Rect(x, y, bar_w, bar_h)
         # Boss name plaque above the bar.
         label = self.small_font.render(
             self.ellipsize_ui_text(boss.name, self.small_font, bar_w),
@@ -960,8 +1009,8 @@ class RenderingHudMixin:
             self.HUD_GOLD_BRIGHT,
         )
         plaque_w = label.get_width() + self.ui(28)
-        plaque = pygame.Rect(0, 0, plaque_w, self.ui(20))
-        plaque.center = (width // 2, y - self.ui(12))
+        plaque.size = (plaque_w, plaque.height)
+        plaque.center = (width // 2, plaque.centery)
         plaque_surf = pygame.Surface(plaque.size, pygame.SRCALPHA)
         pygame.draw.rect(
             plaque_surf,
@@ -978,6 +1027,11 @@ class RenderingHudMixin:
         )
         self.screen.blit(plaque_surf, plaque)
         self.screen.blit(label, label.get_rect(center=plaque.center))
+        if big and boss.elite_modifier:
+            # Subtitle role tag (e.g. "Floor Boss") under the name plaque.
+            sub = self.small_font.render(boss.elite_modifier, True, self.theme.accent)
+            sub_rect = sub.get_rect(midtop=(plaque.centerx, plaque.bottom + self.ui(1)))
+            self.screen.blit(sub, sub_rect)
         # Blood trough — deep red recessed bar.
         pygame.draw.rect(
             self.screen, self.HUD_STONE_SHADOW, rect, border_radius=self.ui(5)
@@ -1041,6 +1095,25 @@ class RenderingHudMixin:
                 (sx - 1, rect.centery - 1),
                 max(1, self.ui(2)),
             )
+        # Quarter tick marks on big boss bars so the player can read phase
+        # transitions and chunked health at a glance.
+        if big:
+            for frac in (0.25, 0.5, 0.75):
+                tx = rect.x + int(bar_w * frac)
+                pygame.draw.line(
+                    self.screen,
+                    (12, 8, 12),
+                    (tx, rect.y + self.ui(1)),
+                    (tx, rect.bottom - self.ui(1)),
+                    max(1, self.ui(1)),
+                )
+                pygame.draw.line(
+                    self.screen,
+                    self.HUD_IRON_DARK,
+                    (tx, rect.y + self.ui(2)),
+                    (tx, rect.bottom - self.ui(2)),
+                    max(1, self.ui(1)),
+                )
 
     def draw_bar(
         self,

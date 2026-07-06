@@ -491,6 +491,9 @@ class RunFlowMixin:
         self.snap_camera_to_player()
         self.revealed_tiles = set()
         self.update_revealed_tiles()
+        self.boss_engaged = False
+        self.boss_sealed_room_index = None
+        self.boss_sealed_tiles = []
         self.enemies: list[Enemy] = []
         self.items: list[Item] = []
         self.shopkeepers: list[Shopkeeper] = []
@@ -550,6 +553,9 @@ class RunFlowMixin:
         self.snap_camera_to_player()
         self.revealed_tiles = set()
         self.update_revealed_tiles()
+        self.boss_engaged = False
+        self.boss_sealed_room_index = None
+        self.boss_sealed_tiles = []
         self.player.melee_timer = 0.0
         self.player.bolt_timer = 0.0
         self.player.dash_timer = 0.0
@@ -608,6 +614,85 @@ class RunFlowMixin:
         self.sync_music()
         self.play_sfx("stairs")
         self.save_run()
+
+    # ------------------------------------------------------------------
+    # Boss arena: seal the room when the player enters a boss encounter and
+    # reopen it once the boss is dead. Only the final boss and named floor
+    # guardians (4-tile encounters) lock the doors; challenge-room minibosses
+    # stay open so the player can always disengage from optional fights.
+    def active_boss(self) -> Enemy | None:
+        return next(
+            (
+                enemy
+                for enemy in self.enemies
+                if enemy.is_boss_encounter and enemy.alive
+            ),
+            None,
+        )
+
+    def update_boss_encounter(self) -> None:
+        boss = self.active_boss()
+        if boss is None:
+            if self.boss_engaged:
+                self.unseal_boss_room()
+            return
+        boss_room = self.dungeon.room_at(boss.x, boss.y)
+        if boss_room is None:
+            return
+        boss_room_index = self.dungeon.rooms.index(boss_room)
+        if not self.boss_engaged:
+            player_room = self.dungeon.room_at(self.player.x, self.player.y)
+            if player_room is boss_room:
+                self.seal_boss_room(boss_room, boss_room_index, boss)
+        elif self.boss_sealed_room_index != boss_room_index:
+            # Boss moved/replaced on a different floor than the sealed one: clean
+            # up stale seals before engaging the new arena.
+            self.unseal_boss_room()
+
+    def seal_boss_room(self, room, room_index: int, boss: Enemy) -> None:
+        self.boss_sealed_tiles = self.dungeon.seal_room_openings(room)
+        self.boss_sealed_room_index = room_index
+        self.boss_engaged = True
+        self.tile_cache.clear()
+        self.prewarm_tile_cache()
+        self.play_sfx("boss")
+        self.floaters.append(
+            FloatingText(
+                "The doors seal!",
+                self.player.x,
+                self.player.y - 0.55,
+                self.theme.accent,
+                ttl=1.6,
+            )
+        )
+        self.floaters.append(
+            FloatingText(
+                boss.name,
+                boss.x,
+                boss.y - 1.1,
+                self.theme.accent,
+                ttl=2.2,
+            )
+        )
+
+    def unseal_boss_room(self) -> None:
+        if not self.boss_engaged and not self.boss_sealed_tiles:
+            return
+        self.dungeon.restore_tiles(self.boss_sealed_tiles)
+        self.boss_sealed_tiles = []
+        self.boss_sealed_room_index = None
+        self.boss_engaged = False
+        self.tile_cache.clear()
+        self.prewarm_tile_cache()
+        self.floaters.append(
+            FloatingText(
+                "The doors grind open.",
+                self.player.x,
+                self.player.y - 0.55,
+                self.theme.accent,
+                ttl=1.6,
+            )
+        )
 
     def apply_starting_loadout(self) -> None:
         loadouts = {

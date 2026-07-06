@@ -58,6 +58,19 @@ class PixelSpriteAtlas:
         "Plague Toad": (192, 226, 74),
         "Hollow Knight": (120, 245, 255),
         "Gate Warden": (255, 202, 90),
+        "Gate Tyrant": (190, 120, 240),
+    }
+    # Boss encounter accents drive the eye/rune glow tint on the gate tyrant
+    # sprite. Keyed by damage type so each floor guardian gets a distinct hue
+    # while the final boss uses the dungeon theme accent.
+    BOSS_ACCENTS: dict[str, Color] = {
+        "fire": (255, 132, 74),
+        "frost": (150, 220, 250),
+        "poison": (148, 226, 96),
+        "arcane": (172, 130, 246),
+        "shadow": (196, 110, 168),
+        "holy": (252, 232, 150),
+        "physical": (235, 188, 120),
     }
 
     def __init__(self) -> None:
@@ -80,6 +93,7 @@ class PixelSpriteAtlas:
             "Plague Toad": self._plague_toad(),
             "Hollow Knight": self._hollow_knight(),
             "Gate Warden": self._gate_warden(),
+            "Gate Tyrant": self._gate_tyrant(),
         }
         raw_items = {
             "potion": self._potion(),
@@ -760,8 +774,13 @@ class PixelSpriteAtlas:
             if name.endswith(candidate):
                 return candidate
         if kind == "boss":
-            return "Gate Warden"
+            return "Gate Tyrant"
         return "Ghoul"
+
+    def boss_sprite_key(self, damage_type: str = "") -> str:
+        """Unused placeholder for future per-theme boss sprite variants; today all
+        4-tile bosses share the Gate Tyrant silhouette and are tinted via aura."""
+        return "Gate Tyrant"
 
     def enemy_frame(
         self, name: str, kind: str, state: str, anim_time: float, elapsed: float
@@ -776,6 +795,17 @@ class PixelSpriteAtlas:
             if state == "run"
             else elapsed * (4.3 if kind == "boss" else 5.0)
         )
+        if state in ("attack", "cast", "hit"):
+            phase = elapsed * 13.0
+        return self._frame_from(frames, phase)
+
+    def boss_frame(
+        self, state: str, anim_time: float, elapsed: float
+    ) -> pygame.Surface:
+        """Animation frame for the shared 4-tile Gate Tyrant boss sprite."""
+        states = self.enemy_animation_frames["Gate Tyrant"]
+        frames = states.get(state, states["idle"])
+        phase = anim_time * RUN_FRAME_RATE if state == "run" else elapsed * 4.3
         if state in ("attack", "cast", "hit"):
             phase = elapsed * 13.0
         return self._frame_from(frames, phase)
@@ -1585,6 +1615,157 @@ class PixelSpriteAtlas:
         self._vline(s, 27, 4, 18, gold_lo)
         self._rect(s, 24, 6, 4, 8, gold)
         self._rect(s, 25, 6, 2, 8, gold_hi)
+        return s
+
+    def _gate_tyrant(self) -> pygame.Surface:
+        """A towering 4-tile boss: crowned helm, plague horns, rune-glow eyes,
+        segmented plate, a dragging greatblade, and a tattered cloak. Authored
+        at 40x52 (roughly 1.5x a normal actor) so the scaled sprite reads as a
+        hulking gatekeeper towering over regular enemies."""
+        s = self._surface(40, 52)
+        outline = (15, 11, 14)
+        plate = (74, 70, 84)
+        plate_hi = (122, 116, 134)
+        plate_lo = (44, 40, 54)
+        plate_dk = (28, 24, 34)
+        iron = (96, 92, 104)
+        iron_hi = (160, 154, 168)
+        gold = (212, 168, 84)
+        gold_hi = (250, 220, 132)
+        gold_lo = (140, 102, 44)
+        cloak = (54, 36, 52)
+        cloak_hi = (78, 52, 74)
+        bone = bone_color
+        # eye/rune glow is painted with the boss accent at tint time, but a
+        # default arcane violet reads well untinted.
+        glow = (180, 120, 240)
+        glow_hi = (220, 170, 255)
+
+        # --- Tattered cloak behind the body ---
+        self._rect(s, 4, 18, 32, 22, outline)
+        self._rect(s, 5, 19, 30, 20, cloak)
+        self._rect(s, 6, 19, 28, 3, cloak_hi)  # cloak shoulder light
+        # ragged hem
+        for x in range(5, 35, 3):
+            self._rect(s, x, 38, 2, 3, cloak_hi)
+            self._dot(s, x, 41, outline)
+
+        # --- Head: crowned great-helm ---
+        self._rect(s, 13, 2, 14, 12, outline)
+        self._rect(s, 14, 3, 12, 11, plate)
+        self._rect(s, 14, 3, 12, 2, plate_hi)  # helm rim light
+        self._rect(s, 14, 13, 12, 1, plate_lo)  # jaw guard
+        # brow visor slit
+        self._hline(s, 14, 8, 12, plate_dk)
+        # glowing eyes through the visor
+        self._rect(s, 16, 9, 3, 2, glow)
+        self._rect(s, 21, 9, 3, 2, glow)
+        self._dot(s, 16, 9, glow_hi)
+        self._dot(s, 21, 9, glow_hi)
+        # crown / plague horns
+        self._rect(s, 10, 0, 3, 5, gold_lo)
+        self._rect(s, 27, 0, 3, 5, gold_lo)
+        self._rect(s, 11, 0, 1, 4, gold)
+        self._rect(s, 28, 0, 1, 4, gold)
+        self._dot(s, 11, 0, gold_hi)
+        self._dot(s, 28, 0, gold_hi)
+        # central crown spike
+        self._rect(s, 19, 0, 2, 3, gold)
+        self._dot(s, 19, 0, gold_hi)
+        # cheek tusk bones
+        self._vline(s, 13, 11, 3, bone)
+        self._vline(s, 27, 11, 3, bone)
+
+        # --- Torso: segmented plate ---
+        self._rect(s, 9, 14, 22, 18, outline)
+        self._rect(s, 10, 15, 20, 17, plate)
+        self._rect(s, 12, 16, 16, 14, plate_hi)  # lit chest
+        self._rect(s, 10, 15, 20, 1, iron_hi)  # shoulder yoke
+        self._rect(s, 10, 31, 20, 1, plate_dk)  # belt shadow
+        # center seam + runic brand
+        self._vline(s, 19, 16, 14, plate_lo)
+        self._rect(s, 17, 20, 6, 3, plate_dk)  # rune recess
+        self._rect(s, 18, 21, 4, 1, glow)  # glowing rune
+        self._dot(s, 19, 21, glow_hi)
+        # side shading
+        self._vline(s, 10, 16, 14, plate_dk)
+        self._vline(s, 29, 16, 14, plate_dk)
+        # chest emblem (gold sigil)
+        self._rect(s, 17, 25, 6, 3, gold_lo)
+        self._rect(s, 18, 25, 4, 3, gold)
+        self._dot(s, 19, 26, gold_hi)
+        self._dot(s, 20, 26, gold_hi)
+        # strap detail
+        self._vline(s, 13, 16, 14, iron)
+        self._vline(s, 26, 16, 14, plate_lo)
+
+        # --- Pauldrons (big spiked shoulders) ---
+        self._rect(s, 5, 14, 6, 6, outline)
+        self._rect(s, 29, 14, 6, 6, outline)
+        self._rect(s, 6, 15, 5, 5, iron)
+        self._rect(s, 29, 15, 5, 5, plate_lo)
+        self._dot(s, 7, 16, iron_hi)
+        self._dot(s, 30, 16, iron)
+        # shoulder spikes
+        self._vline(s, 7, 11, 4, gold_lo)
+        self._vline(s, 32, 11, 4, gold_lo)
+        self._dot(s, 7, 11, gold_hi)
+        self._dot(s, 32, 11, gold_hi)
+
+        # --- Arms ---
+        self._rect(s, 4, 20, 4, 12, outline)
+        self._rect(s, 32, 20, 4, 12, outline)
+        self._rect(s, 5, 20, 3, 12, plate_lo)
+        self._rect(s, 33, 20, 3, 12, plate_dk)
+        # gauntlet cuffs
+        self._rect(s, 4, 29, 4, 3, gold_lo)
+        self._rect(s, 32, 29, 4, 3, gold_lo)
+        self._hline(s, 4, 30, 4, gold)
+        self._hline(s, 32, 30, 4, gold)
+        # clawed hands
+        self._rect(s, 4, 32, 4, 3, outline)
+        self._rect(s, 32, 32, 4, 3, outline)
+        self._vline(s, 5, 34, 2, glow)
+        self._vline(s, 34, 34, 2, glow)
+
+        # --- Hips / belt ---
+        self._rect(s, 10, 32, 20, 4, outline)
+        self._rect(s, 11, 33, 18, 3, plate_dk)
+        self._rect(s, 11, 33, 18, 1, plate_lo)
+        self._rect(s, 18, 33, 4, 3, gold)  # buckle
+        self._dot(s, 19, 34, gold_hi)
+
+        # --- Legs (greaves) ---
+        self._rect(s, 11, 36, 7, 12, outline)
+        self._rect(s, 22, 36, 7, 12, outline)
+        self._rect(s, 12, 36, 6, 12, plate_lo)
+        self._rect(s, 22, 36, 6, 12, plate_dk)
+        # knee plates
+        self._rect(s, 12, 40, 6, 2, iron)
+        self._rect(s, 22, 40, 6, 2, plate_lo)
+        self._dot(s, 14, 41, iron_hi)
+        self._dot(s, 24, 41, iron)
+        # shin runic glow
+        self._vline(s, 14, 43, 4, glow)
+        self._vline(s, 25, 43, 4, glow)
+
+        # --- Boots ---
+        self._rect(s, 10, 48, 8, 4, outline)
+        self._rect(s, 22, 48, 8, 4, outline)
+        self._rect(s, 11, 48, 6, 4, plate_dk)
+        self._rect(s, 23, 48, 6, 4, cloak)
+        self._hline(s, 11, 50, 6, plate_lo)
+        self._hline(s, 23, 50, 6, plate_dk)
+
+        # --- Greatblade (dragged in right hand, towering above the helm) ---
+        self._vline(s, 38, 4, 36, iron)  # shaft
+        self._vline(s, 37, 4, 36, plate_lo)
+        self._rect(s, 35, 6, 5, 16, outline)  # blade
+        self._rect(s, 36, 6, 3, 16, iron_hi)
+        self._rect(s, 36, 6, 1, 16, glow_hi)  # edge gleam
+        self._hline(s, 34, 22, 7, gold_lo)  # crossguard
+        self._hline(s, 34, 23, 7, gold)
+        self._dot(s, 38, 24, gold_hi)  # pommel
         return s
 
     # ------------------------------------------------------------------

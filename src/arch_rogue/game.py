@@ -143,6 +143,9 @@ from .models import (
     Shrine as Shrine,
 )
 from .models import (
+    Tile as Tile,
+)
+from .models import (
     Trap as Trap,
 )
 from .options import OptionsMixin
@@ -280,6 +283,12 @@ class Game(
         # Tiles within the sight radius are remembered for the rest of the floor;
         # dark floors ignore this and keep their lantern-only visibility model.
         self.revealed_tiles: set[tuple[int, int]] = set()
+        # Boss arena state: when the player enters the room containing a 4-tile
+        # boss, the doors seal shut and only reopen once the boss is dead. The
+        # sealed-tile list records originals so the floor can be restored exactly.
+        self.boss_engaged: bool = False
+        self.boss_sealed_room_index: int | None = None
+        self.boss_sealed_tiles: list[tuple[int, int, Tile]] = []
         self.story_seed = 0
         self.story_state: StoryState | None = None
         self.story_guests: list[StoryGuest] = []
@@ -722,6 +731,7 @@ class Game(
         self.update_projectiles(dt)
         self.update_traps(dt)
         self.update_secrets()
+        self.update_boss_encounter()
         self.update_floaters(dt)
         self.advance_animation_phases(dt)
 

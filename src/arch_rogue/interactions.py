@@ -27,6 +27,19 @@ class InteractionMixin:
             )
         door = self.nearby_closed_door()
         if door is not None:
+            # While a boss arena is sealed, the doors are locked; surface that
+            # clearly instead of the normal "Open door" prompt.
+            sealed = getattr(self, "boss_engaged", False) and any(
+                dx == door[0] and dy == door[1]
+                for dx, dy, _tile in self.boss_sealed_tiles
+            )
+            if sealed:
+                return (
+                    "",
+                    "Sealed by the boss",
+                    "Slay the guardian to open the doors.",
+                    self.theme.accent,
+                )
             return (
                 "E",
                 "Open door",
@@ -119,6 +132,21 @@ class InteractionMixin:
     def open_nearby_door(self) -> bool:
         door = self.nearby_closed_door()
         if door is None:
+            return False
+        # Boss-arena seals lock the doors shut until the boss dies; the player
+        # cannot simply pull them open to flee the encounter.
+        if getattr(self, "boss_engaged", False) and any(
+            dx == door[0] and dy == door[1] for dx, dy, _tile in self.boss_sealed_tiles
+        ):
+            self.floaters.append(
+                FloatingText(
+                    "Sealed by the boss",
+                    door[0] + 0.5,
+                    door[1] + 0.1,
+                    self.theme.accent,
+                    ttl=1.0,
+                )
+            )
             return False
         if not self.dungeon.open_door(*door):
             return False
@@ -392,7 +420,16 @@ class InteractionMixin:
         )
 
     def boss_enemy(self) -> Enemy | None:
-        return next((enemy for enemy in self.enemies if enemy.kind == "boss"), None)
+        """Active named boss for the top-of-screen health bar: the final gate
+        tyrant or the current floor guardian (4-tile encounters only)."""
+        return next(
+            (
+                enemy
+                for enemy in self.enemies
+                if enemy.is_boss_encounter and enemy.alive
+            ),
+            None,
+        )
 
     def nearby_shrine(self) -> Shrine | None:
         nearby = [

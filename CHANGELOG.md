@@ -1,5 +1,38 @@
 # Changelog
 
+## 3.8.5 — Big Bosses: 4-Tile Gatekeepers, Sealed Arenas, Boss Bar
+
+Bosses were single-tile enemies with a tougher stat block and a generic sprite. The final gate tyrant and named floor guardians are now hulking 4-tile set-piece encounters that lock the room down when you enter and only reopen the doors when the boss is dead.
+
+### Added
+- `Enemy.size` field (tile footprint side; 1 = normal, 2 = 2x2 / 4-tile boss) plus `Enemy.is_boss_encounter` (final boss or `floor_boss` role). `size` defaults to 1 so existing saves load unchanged.
+- `BOSS_FOOTPRINT`, `BOSS_FOOTPRINT_HIT_RADIUS` (0.92), and `BOSS_FOOTPRINT_MOVE_RADIUS` (0.82) constants for the larger silhouette.
+- `Dungeon.room_at(x, y)`, `Dungeon.seal_room_openings(room)`, and `Dungeon.restore_tiles(sealed)` helpers for the boss-arena door logic.
+- `RunFlowMixin.active_boss`, `update_boss_encounter`, `seal_boss_room`, and `unseal_boss_room` plus `boss_engaged` / `boss_sealed_room_index` / `boss_sealed_tiles` game state: entering the boss room seals every perimeter opening into a closed door, killing the boss restores the originals exactly.
+- A dedicated large boss sprite `_gate_tyrant` in `sprites.py` (40x52 raw): crowned great-helm with plague horns, rune-glow visor eyes, segmented plate with a glowing chest rune, spiked pauldrons, tattered cloak, greaves with shin-glow, and a towering greatblade. Registered as the `"Gate Tyrant"` enemy with its own animation frames and selected via the new `sprites.boss_frame(...)` helper.
+- `tests/test_3_9_big_bosses.py` covering boss size/hit-radius, harder stat blocks, extended melee reach, door seal/unseal, the 3-bolt fan, challenge-miniboss exclusion, and old-save compatibility.
+
+### Changed
+- Floor guardians (`_make_floor_boss`) and the final tyrant (`_make_boss`) are now `size=2` with much higher HP (~1.85x / ~2.4x), heavier hits (+6 / +9), faster cooldowns, longer reach, wider aggro, and stronger resistances so each boss fight is a real gate-seal encounter.
+- `CombatMixin.enemy_hit_radius` returns `BOSS_FOOTPRINT_HIT_RADIUS` for `size >= 2` actors.
+- `CombatMixin.move_actor` probes collision with `BOSS_FOOTPRINT_MOVE_RADIUS` for big bosses so they don't clip walls; other actors keep the tight default.
+- `CombatMixin.enemies_in_melee_arc` extends melee reach by the enemy's extra hit radius so a 4-tile boss is hittable from its silhouette edge, not just its center.
+- `CombatMixin.update_enemies` routes `is_boss_encounter` enemies through the boss combat pattern (close, cast fan at mid-range, crush with melee up close).
+- `CombatMixin.enemy_cast` fires a 3-bolt fan for `size >= 2` bosses instead of a single projectile, forcing lateral dodges.
+- `CombatMixin.kill_enemy` scales death/burst impact radii with `size` and adds a screen flash + "Guardian fallen" floater + boss sfx for floor-guardian takedowns.
+- `rendering/actors.py` `draw_enemy`: big bosses use the Gate Tyrant sprite scaled up further, a 78px shadow, a 96px gilded floating health bar, a 132x52 aura, and larger telegraph/elite markers.
+- `rendering/hud.py` `draw_boss_bar`: wider/taller banner bar (640px) for 4-tile bosses with a role subtitle and quarter tick marks; the bar now targets floor guardians too.
+- `interactions.boss_enemy()` returns the active floor guardian or final boss (was final boss only).
+- `sprites.enemy_key` routes `kind == "boss"` to `"Gate Tyrant"` (was `"Gate Warden"`).
+- Keyboard/mouse bindings, run-save compatibility, and the stable `Game` / `main` entry points are unchanged. The new `Enemy.size` field defaults to 1 so older run saves restore without migration.
+- Version metadata (`__version__`, `pyproject.toml`) bumped to `3.8.5`.
+
+### Validation
+- `python -m compileall src` clean.
+- `python -m unittest tests.test_3_9_big_bosses` — 6 tests pass.
+- `python -m unittest discover tests` — 160 tests pass.
+- Headless smoke harness confirmed: floor guardian and final boss spawn at size 2, doors seal (34 perimeter tiles → CLOSED_DOOR) on room entry, doors restore on boss death, and the boss cast spawns a 3-projectile fan.
+
 ## 3.8.4 — Archetype-Specific Bolt & Nova Graphics
 
 Bolt and nova cast effects were a single generic arcane ring for every class. The emanation graphic and the bolt projectile are now themed per archetype so each class reads distinctly the moment a skill fires.

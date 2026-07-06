@@ -13,3 +13,5 @@ web/dist/
 .DS_Store
 stairs/
 stairs_preview.py
+# Manual play-test harness for boss encounters (not a unit test).
+test_boss.py

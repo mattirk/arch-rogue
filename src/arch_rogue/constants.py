@@ -13,6 +13,11 @@ PLAYER_HIT_RADIUS = 0.42
 ENEMY_HIT_RADIUS = 0.42
 LARGE_ENEMY_HIT_RADIUS = 0.52
 BOSS_HIT_RADIUS = 0.64
+# 4-tile bosses (2x2 footprint) use a much larger body radius so melee swings,
+# projectiles, and movement collision all respect the hulking silhouette.
+BOSS_FOOTPRINT = 2
+BOSS_FOOTPRINT_HIT_RADIUS = 0.92
+BOSS_FOOTPRINT_MOVE_RADIUS = 0.82
 PLAYER_MELEE_RANGE = 1.55
 PLAYER_MELEE_ARC_DOT = 0.05
 # Fixed player movement speed in tiles per second. Decoupled from the

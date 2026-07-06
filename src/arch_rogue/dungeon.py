@@ -204,6 +204,44 @@ class Dungeon:
     def in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < MAP_W and 0 <= y < MAP_H
 
+    def room_at(self, x: float, y: float) -> Room | None:
+        """Return the room whose interior contains the given world point, if any."""
+        tx, ty = int(x), int(y)
+        for room in self.rooms:
+            if room.x <= tx < room.x + room.w and room.y <= ty < room.y + room.h:
+                return room
+        return None
+
+    def seal_room_openings(self, room: Room) -> list[tuple[int, int, Tile]]:
+        """Close every passable opening on the room's perimeter so nothing can leave.
+
+        Used to lock a boss arena when the encounter engages. Perimeter tiles that
+        are floor or open doors become closed doors; the previous tile kind is
+        returned so the caller can restore them when the boss dies. Stairs and
+        walls are left untouched.
+        """
+        sealed: list[tuple[int, int, Tile]] = []
+        perimeter: list[tuple[int, int]] = []
+        for x in range(room.x, room.x + room.w):
+            perimeter.append((x, room.y))
+            perimeter.append((x, room.y + room.h - 1))
+        for y in range(room.y + 1, room.y + room.h - 1):
+            perimeter.append((room.x, y))
+            perimeter.append((room.x + room.w - 1, y))
+        for x, y in perimeter:
+            if not self.in_bounds(x, y):
+                continue
+            tile = self.tiles[x][y]
+            if tile in (Tile.FLOOR, Tile.OPEN_DOOR):
+                sealed.append((x, y, tile))
+                self.tiles[x][y] = Tile.CLOSED_DOOR
+        return sealed
+
+    def restore_tiles(self, sealed: list[tuple[int, int, Tile]]) -> None:
+        for x, y, tile in sealed:
+            if self.in_bounds(x, y):
+                self.tiles[x][y] = tile
+
     def is_floor(self, x: float, y: float) -> bool:
         # Hot path (called many times per frame for LOS/movement/collision):
         # inline the bounds check to avoid the `in_bounds` method call, and use

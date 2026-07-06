@@ -6,6 +6,8 @@ import math
 import pygame
 
 from .constants import (
+    BOSS_FOOTPRINT_HIT_RADIUS,
+    BOSS_FOOTPRINT_MOVE_RADIUS,
     BOSS_HIT_RADIUS,
     ENEMY_HIT_RADIUS,
     ENEMY_PROJECTILE_HIT_RADIUS,
@@ -675,11 +677,17 @@ class CombatMixin:
 
     def move_actor(self, actor: Player | Enemy, dx: float, dy: float) -> None:
         old_x, old_y = actor.x, actor.y
+        # Big bosses (2x2 footprint) need a wider collision probe so they don't
+        # clip into walls; regular actors keep the tight default radius.
+        if isinstance(actor, Enemy) and actor.size >= 2:
+            radius = BOSS_FOOTPRINT_MOVE_RADIUS
+        else:
+            radius = 0.27
         new_x = actor.x + dx
-        if not self.dungeon.blocked_for_radius(new_x, actor.y):
+        if not self.dungeon.blocked_for_radius(new_x, actor.y, radius):
             actor.x = new_x
         new_y = actor.y + dy
-        if not self.dungeon.blocked_for_radius(actor.x, new_y):
+        if not self.dungeon.blocked_for_radius(actor.x, new_y, radius):
             actor.y = new_y
         self.resolve_actor_contacts(actor)
 
@@ -744,6 +752,8 @@ class CombatMixin:
         return self.enemy_hit_radius(actor)
 
     def enemy_hit_radius(self, enemy: Enemy) -> float:
+        if enemy.size >= 2:
+            return BOSS_FOOTPRINT_HIT_RADIUS
         if enemy.kind == "boss":
             return BOSS_HIT_RADIUS
         if enemy.name in ("Gate Warden", "Crypt Brute"):
@@ -817,7 +827,10 @@ class CombatMixin:
                 enemy.x, enemy.y, self.player.x, self.player.y
             )
 
-            if enemy.kind == "boss":
+            if enemy.kind == "boss" or enemy.is_boss_encounter:
+                # 4-tile boss encounters (final tyrant + floor guardians) use the
+                # same pressure pattern: close the gap, cast a bolt fan at mid
+                # range, and crush with melee up close.
                 if distance > enemy.attack_range:
                     self.move_actor(enemy, nx * move_speed * dt, ny * move_speed * dt)
                 if 2.0 < distance <= 6.0 and enemy.attack_timer <= 0 and has_los:
@@ -893,21 +906,29 @@ class CombatMixin:
         self.add_impact(
             enemy.x, enemy.y, projectile_color, ttl=0.28, radius=0.36, kind="cast"
         )
-        self.projectiles.append(
-            Projectile(
-                enemy.x,
-                enemy.y,
-                nx * 6.0,
-                ny * 6.0,
-                enemy.damage,
-                "enemy",
-                projectile_color,
-                ttl=1.8,
-                damage_type=enemy.damage_type,
-                status_effect="chilled" if enemy.damage_type == "frost" else "",
-                status_duration=0.9,
+        # 4-tile bosses are serious threats: they fire a 3-bolt fan instead of a
+        # single projectile so the player has to dodge laterally, not just step.
+        spreads = (-0.28, 0.0, 0.28) if enemy.size >= 2 else (0.0,)
+        # perpendicular vector for fanning the spread
+        px, py = -ny, nx
+        for spread in spreads:
+            vx = nx * 6.0 + px * spread * 6.0
+            vy = ny * 6.0 + py * spread * 6.0
+            self.projectiles.append(
+                Projectile(
+                    enemy.x,
+                    enemy.y,
+                    vx,
+                    vy,
+                    enemy.damage,
+                    "enemy",
+                    projectile_color,
+                    ttl=1.8,
+                    damage_type=enemy.damage_type,
+                    status_effect="chilled" if enemy.damage_type == "frost" else "",
+                    status_duration=0.9,
+                )
             )
-        )
 
     def update_projectiles(self, dt: float) -> None:
         kept: list[Projectile] = []
@@ -1492,7 +1513,14 @@ class CombatMixin:
             dx = enemy.x - self.player.x
             dy = enemy.y - self.player.y
             distance = math.hypot(dx, dy)
-            if distance > PLAYER_MELEE_RANGE + reach_bonus or distance < 0.001:
+            # Oversized bosses have a much larger body; let melee reach extend
+            # past the default arc range by the enemy's extra radius so a 4-tile
+            # boss is hittable from its silhouette edge, not just its center.
+            extra_reach = max(0.0, self.enemy_hit_radius(enemy) - ENEMY_HIT_RADIUS)
+            if (
+                distance > PLAYER_MELEE_RANGE + reach_bonus + extra_reach
+                or distance < 0.001
+            ):
                 continue
             dot = (dx / distance) * self.player.facing_x + (
                 dy / distance
@@ -1594,12 +1622,15 @@ class CombatMixin:
         death_color = (
             self.theme.accent if enemy.kind in ("boss", "miniboss") else enemy.color
         )
+        # 4-tile bosses get a much larger death burst so the kill reads as a
+        # real milestone.
+        big = enemy.size >= 2
         self.add_impact(
             enemy.x,
             enemy.y,
             death_color,
             ttl=0.58 if enemy.kind != "boss" else 0.82,
-            radius=0.56 if enemy.kind != "boss" else 1.05,
+            radius=0.86 if big else (0.56 if enemy.kind != "boss" else 1.05),
             kind="death",
         )
         if enemy.elite_modifier or enemy.kind in ("boss", "miniboss"):
@@ -1608,7 +1639,7 @@ class CombatMixin:
                 enemy.y,
                 death_color,
                 ttl=0.48,
-                radius=0.66 if enemy.kind != "boss" else 1.15,
+                radius=0.96 if big else (0.66 if enemy.kind != "boss" else 1.15),
                 kind="burst",
             )
         if enemy.kind == "boss":
@@ -1647,6 +1678,27 @@ class CombatMixin:
             )
             self.items.append(rare)
             self.record_notable_loot(rare)
+            if big:
+                # Floor guardian takedown: flash and a victory-style burst.
+                self.trigger_screen_flash(self.theme.accent, 0.28)
+                self.add_impact(
+                    enemy.x,
+                    enemy.y,
+                    self.theme.accent,
+                    ttl=0.66,
+                    radius=0.82,
+                    kind="burst",
+                )
+                self.floaters.append(
+                    FloatingText(
+                        "Guardian fallen",
+                        enemy.x,
+                        enemy.y - 0.5,
+                        self.theme.accent,
+                        ttl=1.6,
+                    )
+                )
+                self.play_sfx("boss")
         elif enemy.elite_modifier:
             self.run_stats.elites_killed += 1
         xp_gain = max(

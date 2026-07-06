@@ -585,25 +585,52 @@ class RenderingActorMixin:
     def draw_enemy(self, enemy: Enemy) -> None:
         base_name = self.sprites.enemy_key(enemy.name, enemy.kind)
         state = self.enemy_visual_state(enemy)
-        sprite = self.sprites.enemy_frame(
-            enemy.name, enemy.kind, state, enemy.anim_time, self.elapsed
-        )
+        big_boss = enemy.is_boss_encounter and enemy.size >= 2
+        if big_boss:
+            sprite = self.sprites.boss_frame(state, enemy.anim_time, self.elapsed)
+        else:
+            sprite = self.sprites.enemy_frame(
+                enemy.name, enemy.kind, state, enemy.anim_time, self.elapsed
+            )
+        if big_boss:
+            # Scale the already-scaled tyrant sprite up a notch further so it
+            # reads as a true 4-tile hulk next to regular enemies.
+            sprite = pygame.transform.smoothscale(
+                sprite,
+                (int(sprite.get_width() * 1.18), int(sprite.get_height() * 1.18)),
+            )
         shadow_w = (
-            44 if enemy.kind == "boss" else 38 if base_name == "Gate Warden" else 32
+            78
+            if big_boss
+            else 44
+            if enemy.kind == "boss"
+            else 38
+            if base_name == "Gate Warden"
+            else 32
         )
         sway, bob, lean, stretch = self.actor_animation(enemy)
-        if enemy.kind == "boss":
+        if big_boss or enemy.kind == "boss":
             stretch += math.sin(self.elapsed * 3.4) * 0.010
             lean += math.sin(self.elapsed * 2.1) * 1.5
         elif enemy.elite_modifier or enemy.kind == "miniboss":
             stretch += math.sin(self.elapsed * 5.0) * 0.006
             lean += math.sin(self.elapsed * 5.0) * 0.6
-        self.draw_shadow(enemy.x, enemy.y, shadow_w, 12, moving=enemy.moving, lift=bob)
+        self.draw_shadow(
+            enemy.x,
+            enemy.y,
+            shadow_w,
+            18 if big_boss else 12,
+            moving=enemy.moving,
+            lift=bob,
+        )
+        # Big bosses sit a little lower in their footprint so the sprite base
+        # lands near the center of the 2x2 block instead of the center tile.
+        y_off = (10.0 if big_boss else 6.0) - bob
         sx, sy = self.blit_sprite(
             sprite,
             enemy.x,
             enemy.y,
-            y_offset=6.0 - bob,
+            y_offset=y_off,
             x_offset=sway,
             stretch=stretch,
             lean=lean,
@@ -617,17 +644,32 @@ class RenderingActorMixin:
             enemy.color,
         )
         bar_w = (
-            46 if enemy.kind == "boss" else 34 if base_name == "Gate Warden" else 28
+            96
+            if big_boss
+            else 46
+            if enemy.kind == "boss"
+            else 34
+            if base_name == "Gate Warden"
+            else 28
         ) * WORLD_SCALE
         fill_w = int(bar_w * max(0, enemy.hp) / enemy.max_hp)
-        bar_h = 4 * WORLD_SCALE
-        bar_y = sy - sprite.get_height() - 2 * WORLD_SCALE
+        bar_h = (7 if big_boss else 4) * WORLD_SCALE
+        bar_y = sy - sprite.get_height() - (4 if big_boss else 2) * WORLD_SCALE
         pygame.draw.rect(
             self.screen, (40, 10, 10), (sx - bar_w // 2, bar_y, bar_w, bar_h)
         )
         pygame.draw.rect(
             self.screen, (215, 62, 52), (sx - bar_w // 2, bar_y, fill_w, bar_h)
         )
+        if big_boss:
+            # Gilded frame around the boss's floating health bar so it reads as
+            # a named encounter, not just a tougher enemy.
+            pygame.draw.rect(
+                self.screen,
+                self.theme.accent,
+                (sx - bar_w // 2, bar_y, bar_w, bar_h),
+                max(1, WORLD_SCALE),
+            )
         status_entries = [
             status
             for status, ttl in getattr(enemy, "statuses", {}).items()
@@ -655,9 +697,9 @@ class RenderingActorMixin:
                 )
         if enemy.elite_modifier or enemy.kind == "miniboss":
             pulse = 0.5 + 0.5 * math.sin(self.elapsed * 5.2)
-            marker = pygame.Surface(
-                (46 * WORLD_SCALE, 20 * WORLD_SCALE), pygame.SRCALPHA
-            )
+            marker_w = (96 if big_boss else 46) * WORLD_SCALE
+            marker_h = (34 if big_boss else 20) * WORLD_SCALE
+            marker = pygame.Surface((marker_w, marker_h), pygame.SRCALPHA)
             pygame.draw.ellipse(
                 marker,
                 (*enemy.color, int(28 + pulse * 48)),
@@ -672,34 +714,51 @@ class RenderingActorMixin:
                 ),
             )
             self.screen.blit(
-                marker, marker.get_rect(center=(sx, sy - 14 * WORLD_SCALE))
+                marker,
+                marker.get_rect(
+                    center=(sx, sy - (22 if big_boss else 14) * WORLD_SCALE)
+                ),
             )
-            label = self.small_font.render(enemy.elite_modifier, True, enemy.color)
+            label_color = self.theme.accent if big_boss else enemy.color
+            label_font = self.small_font
+            label = label_font.render(enemy.elite_modifier, True, label_color)
             self.screen.blit(
                 label, label.get_rect(center=(sx, bar_y - 8 * WORLD_SCALE))
             )
-        if enemy.attack_timer <= 0.28 and enemy.kind in ("boss", "miniboss", "ranged"):
+        if enemy.attack_timer <= 0.28 and (
+            enemy.kind in ("boss", "miniboss", "ranged") or big_boss
+        ):
             tell_color = (
                 self.theme.accent
-                if enemy.kind == "boss"
+                if enemy.kind == "boss" or big_boss
                 else self.damage_type_color(getattr(enemy, "damage_type", "physical"))
             )
             pulse = 0.55 + 0.45 * math.sin(self.elapsed * 18.0)
-            telegraph = pygame.Surface(
-                (42 * WORLD_SCALE, 42 * WORLD_SCALE), pygame.SRCALPHA
-            )
+            tell_size = (64 if big_boss else 42) * WORLD_SCALE
+            telegraph = pygame.Surface((tell_size, tell_size), pygame.SRCALPHA)
             pygame.draw.circle(
                 telegraph,
                 (*tell_color, int(82 + 92 * pulse)),
                 telegraph.get_rect().center,
-                max(3, int(5 * WORLD_SCALE + pulse * 3 * WORLD_SCALE)),
+                max(
+                    3,
+                    int((7 if big_boss else 5) * WORLD_SCALE + pulse * 3 * WORLD_SCALE),
+                ),
                 max(1, WORLD_SCALE),
             )
             self.screen.blit(
-                telegraph, telegraph.get_rect(center=(sx, sy - 18 * WORLD_SCALE))
+                telegraph,
+                telegraph.get_rect(
+                    center=(sx, sy - (28 if big_boss else 18) * WORLD_SCALE)
+                ),
             )
             label = self.small_font.render("!", True, tell_color)
-            self.screen.blit(label, label.get_rect(center=(sx, sy - 35 * WORLD_SCALE)))
+            self.screen.blit(
+                label,
+                label.get_rect(
+                    center=(sx, sy - (52 if big_boss else 35) * WORLD_SCALE)
+                ),
+            )
         if state == "cast":
             cast_color = (
                 self.theme.accent if enemy.kind in ("boss", "miniboss") else enemy.color
@@ -711,9 +770,11 @@ class RenderingActorMixin:
                 max(3, 4 * WORLD_SCALE),
                 max(1, WORLD_SCALE),
             )
-        if enemy.kind == "boss":
+        if enemy.kind == "boss" or big_boss:
             pulse = 0.5 + 0.5 * math.sin(self.elapsed * 4.2)
-            aura = pygame.Surface((74 * WORLD_SCALE, 30 * WORLD_SCALE), pygame.SRCALPHA)
+            aura_w = (132 if big_boss else 74) * WORLD_SCALE
+            aura_h = (52 if big_boss else 30) * WORLD_SCALE
+            aura = pygame.Surface((aura_w, aura_h), pygame.SRCALPHA)
             pygame.draw.ellipse(
                 aura,
                 (*self.theme.accent, int(30 + pulse * 42)),
@@ -727,4 +788,7 @@ class RenderingActorMixin:
                     -aura.get_width() // 3, -aura.get_height() // 3
                 ),
             )
-            self.screen.blit(aura, aura.get_rect(center=(sx, sy - 18 * WORLD_SCALE)))
+            self.screen.blit(
+                aura,
+                aura.get_rect(center=(sx, sy - (28 if big_boss else 18) * WORLD_SCALE)),
+            )

@@ -467,16 +467,23 @@ class PopulationMixin:
             telegraph=definition.telegraph,
             role="floor_boss",
             damage_type=definition.damage_type,
+            size=2,
             resistances={
-                definition.damage_type: 0.34,
-                "physical": 0.14,
-                "holy" if definition.damage_type != "holy" else "shadow": -0.12,
+                definition.damage_type: 0.45,
+                "physical": 0.25,
+                "holy" if definition.damage_type != "holy" else "shadow": -0.15,
             },
         )
         boss = self._apply_run_modifier(boss)
-        boss.max_hp = int(boss.max_hp * 1.22)
+        # Floor bosses are now hulking 4-tile gatekeepers: far more HP, harder
+        # hits, faster recovery, and longer reach so they control the room.
+        boss.max_hp = int(boss.max_hp * 1.85)
         boss.hp = boss.max_hp
-        boss.damage += 2
+        boss.damage += 6
+        boss.attack_cooldown = max(0.55, boss.attack_cooldown * 0.82)
+        boss.attack_range = max(boss.attack_range, 1.85)
+        boss.aggro_range += 3.0
+        boss.speed = max(boss.speed, 1.05)
         return boss
 
     def _make_story_hunter(
@@ -532,9 +539,21 @@ class PopulationMixin:
             damage_type="shadow"
             if self.theme.name in ("Violet Reliquary", "Thornbound Vault")
             else "physical",
-            resistances={"physical": 0.18, "shadow": 0.22, "holy": -0.10},
+            size=2,
+            resistances={"physical": 0.30, "shadow": 0.34, "holy": -0.15},
         )
-        return self._apply_run_modifier(boss)
+        boss = self._apply_run_modifier(boss)
+        # Final boss is a towering 4-tile tyrant: roughly triple the old HP,
+        # much heavier hits, faster cooldowns, longer reach, and full room aggro
+        # so the climactic fight is a real gate-seal encounter.
+        boss.max_hp = int(boss.max_hp * 2.4)
+        boss.hp = boss.max_hp
+        boss.damage += 9
+        boss.attack_cooldown = max(0.6, boss.attack_cooldown * 0.8)
+        boss.attack_range = max(boss.attack_range, 1.9)
+        boss.aggro_range = 16.0
+        boss.speed = max(boss.speed, 1.15)
+        return boss
 
     def _make_loot(self, x: float, y: float) -> Item:
         roll = self.rng.random()

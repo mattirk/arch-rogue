@@ -48,6 +48,11 @@ class RenderingStoryOverlayMixin:
         y = self.ui(104)
         panel_w = min(width - self.ui(36), self.ui(620))
         max_h = min(self.ui(190), bottom_panel_top - y - self.ui(16))
+        # When a boss bar is on screen (anchored above the bottom HUD panel),
+        # cap the story panel so it never overlaps the boss bar cluster.
+        boss_top = self.boss_bar_top()
+        if boss_top is not None:
+            max_h = min(max_h, max(0, boss_top - y - self.ui(8)))
         if panel_w <= self.ui(220) or max_h < self.ui(84):
             return
         accent = self.story_state.accent if self.story_state else self.theme.accent

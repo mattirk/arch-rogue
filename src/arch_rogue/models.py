@@ -449,12 +449,21 @@ class Enemy:
     telegraph: str = ""
     role: str = "bruiser"
     damage_type: str = "physical"
+    # Tile footprint side length for oversized actors. 1 = a normal single-tile
+    # enemy; 2 = a 2x2 (4-tile) boss. Drives hit radius, collision radius, and
+    # the on-screen sprite scale so bosses read as large, hulking threats.
+    size: int = 1
     resistances: dict[str, float] = field(default_factory=dict)
     statuses: dict[str, float] = field(default_factory=dict)
 
     @property
     def alive(self) -> bool:
         return self.hp > 0
+
+    @property
+    def is_boss_encounter(self) -> bool:
+        """True for the final boss and named floor guardians (not challenge-room minibosses)."""
+        return self.kind == "boss" or self.role == "floor_boss"
 
 
 @dataclass
