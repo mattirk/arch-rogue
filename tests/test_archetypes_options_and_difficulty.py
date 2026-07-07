@@ -60,18 +60,6 @@ class PublicReleaseMilestoneTests(unittest.TestCase):
             finally:
                 pass
 
-    def test_skill_names_are_distinct_per_archetype(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                skill_profiles = set()
-                for archetype in ARCHETYPES:
-                    game.restart(archetype)
-                    skill_profiles.add(game.skill_names())
-                self.assertEqual(len(skill_profiles), len(ARCHETYPES))
-            finally:
-                pass
-
     def test_options_and_run_save_are_versioned_and_persistent(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)

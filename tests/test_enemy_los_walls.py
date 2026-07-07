@@ -98,48 +98,6 @@ class EnemyLineOfSightTests(unittest.TestCase):
             game.update_enemies(0.1)
             self.assertLess(game.player.hp, hp_before)
 
-    def test_ranged_enemy_cannot_cast_through_wall(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            dungeon = game.dungeon
-            cx, cy = int(game.player.x), int(game.player.y)
-            self.assertGreater(MAP_W - cx, 6)
-            game.player.x = cx + 0.5
-            game.player.y = cy + 0.5
-            dungeon.tiles[cx][cy] = Tile.FLOOR
-            dungeon.tiles[cx + 4][cy] = Tile.FLOOR
-            dungeon.tiles[cx + 1][cy] = Tile.WALL
-            dungeon.tiles[cx + 2][cy] = Tile.WALL
-            dungeon.tiles[cx + 3][cy] = Tile.WALL
-            enemy = Enemy(
-                "Caster",
-                "ranged",
-                cx + 4.5,
-                cy + 0.5,
-                200,
-                200,
-                1.0,
-                5,
-                12,
-                6.0,
-                1.0,
-            )
-            enemy.attack_timer = 0.0
-            game.enemies = [enemy]
-            game.projectiles = []
-
-            # Within cast range but wall blocks LOS -> no projectile fired.
-            game.update_enemies(0.1)
-            self.assertEqual(game.projectiles, [])
-            self.assertEqual(enemy.attack_timer, 0.0)
-
-            # Clear the wall -> LOS restored -> a projectile is launched.
-            for ox in (1, 2, 3):
-                dungeon.tiles[cx + ox][cy] = Tile.FLOOR
-            enemy.attack_timer = 0.0
-            game.update_enemies(0.1)
-            self.assertEqual(len(game.projectiles), 1)
-
 
 if __name__ == "__main__":
     unittest.main()

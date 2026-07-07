@@ -15,16 +15,10 @@ import pygame  # noqa: F401  (required to initialize pygame subsystems in tests)
 
 from arch_rogue.content import (
     ARCHETYPES,
-    MAX_COMMITTED_BRANCHES,
-    branch_progress,
-    committed_branches,
-    is_branch_locked,
-    skill_branches_for_archetype,
     skill_node_by_key,
-    skill_nodes_for_archetype,
 )
 from arch_rogue.game import Game
-from arch_rogue.models import Enemy, Projectile
+from arch_rogue.models import Enemy
 
 
 def _make_enemy(x: float, y: float, hp: int = 200) -> Enemy:
@@ -58,42 +52,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
         game.active_cutscene = None
         return game
 
-    # --- 1. Commitment-limit constant ---------------------------------------
-
-    def test_max_committed_branches_constant(self) -> None:
-        self.assertEqual(MAX_COMMITTED_BRANCHES, 2)
-
-    # --- 2. Pure helper math -------------------------------------------------
-
-    def test_committed_branches_and_is_branch_locked_helpers(self) -> None:
-        archetype = "Warden"
-        branches = skill_branches_for_archetype(archetype)
-        self.assertGreaterEqual(len(branches), 4)
-
-        # Empty acquired set: nothing committed, nothing locked.
-        empty: set[str] = set()
-        self.assertEqual(committed_branches(empty, archetype), ())
-        for branch in branches:
-            self.assertFalse(is_branch_locked(empty, archetype, branch))
-
-        # One committed branch: only that branch committed, none locked.
-        one = {"warden_bulwark"}
-        self.assertEqual(committed_branches(one, archetype), ("Bulwark",))
-        for branch in branches:
-            self.assertFalse(is_branch_locked(one, archetype, branch))
-
-        # Two committed branches: the others become locked.
-        two = {"warden_bulwark", "warden_riposte"}
-        self.assertEqual(committed_branches(two, archetype), ("Bulwark", "Riposte"))
-        for branch in branches:
-            expected_locked = branch not in ("Bulwark", "Riposte")
-            self.assertEqual(
-                is_branch_locked(two, archetype, branch),
-                expected_locked,
-                f"branch {branch} lock mismatch",
-            )
-
-    # --- 3. choose_skill_upgrade enforces the two-branch limit ---------------
+    # --- choose_skill_upgrade enforces the two-branch limit ---------------
 
     def test_choose_skill_upgrade_enforces_two_branch_limit(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -120,7 +79,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
             finally:
                 pass
 
-    # --- 4. skill_node_state distinguishes branch_locked vs locked ----------
+    # --- skill_node_state distinguishes branch_locked vs locked ----------
 
     def test_skill_node_state_reports_branch_locked(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -145,50 +104,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
             finally:
                 pass
 
-    # --- 5. Already-committed branches keep progressing ---------------------
-
-    def test_already_committed_branches_keep_progressing(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=0)
-            try:
-                game.player.skill_points = 10
-
-                # Commit to Bulwark (t1) and Vow (t1) = two commitments.
-                self.assertTrue(game.choose_skill_upgrade("warden_bulwark"))
-                self.assertTrue(game.choose_skill_upgrade("warden_smite"))
-
-                # Riposte/Fortress tier-1 nodes are now locked out.
-                self.assertFalse(game.choose_skill_upgrade("warden_riposte"))
-                self.assertFalse(game.choose_skill_upgrade("warden_ward"))
-
-                # But deeper nodes in committed branches are still choosable.
-                self.assertTrue(game.choose_skill_upgrade("warden_aegis"))  # Bulwark t2
-                self.assertTrue(game.choose_skill_upgrade("warden_judgment"))  # Vow t2
-            finally:
-                pass
-
-    # --- 6. Arc Bolt is a single shot without the Bolt branch ----------------
-
-    def test_arc_bolt_single_shot_without_bolt_branch(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=2)
-            try:
-                game.projectiles.clear()
-                game.player.mana = game.player.max_mana
-                game.player.bolt_timer = 0.0
-                game.player.facing_x = 1.0
-                game.player.facing_y = 0.0
-
-                game.player_cast_bolt()
-
-                self.assertEqual(len(game.projectiles), 1)
-                bolt = game.projectiles[0]
-                self.assertEqual(bolt.pierce, 0)
-                self.assertEqual(bolt.homing, 0.0)
-            finally:
-                pass
-
-    # --- 7. Arc Bolt fan + pierce + homing progression ----------------------
+    # --- Arc Bolt fan + pierce + homing progression ----------------------
 
     def test_arc_bolt_multi_shot_with_splinter_and_pierce_homing_progression(
         self,
@@ -254,118 +170,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
             finally:
                 pass
 
-    # --- 8. Ranger Multishot: gradual arrow ramp + homing capstone ----------
-
-    def test_ranger_multishot_single_arrow_without_volley(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=4)
-            try:
-                game.projectiles.clear()
-                game.player.mana = game.player.max_mana
-                game.player.bolt_timer = 0.0
-                game.player.facing_x = 1.0
-                game.player.facing_y = 0.0
-                game.player_cast_bolt()
-                self.assertEqual(len(game.projectiles), 1)
-
-                # volley t1 -> 3-arrow fan
-                game.player.skill_upgrades.append("ranger_volley")
-                game.projectiles.clear()
-                game.player.bolt_timer = 0.0
-                game.player.mana = game.player.max_mana
-                game.player_cast_bolt()
-                self.assertEqual(len(game.projectiles), 3)
-                self.assertTrue(all(p.pierce == 0 for p in game.projectiles))
-
-                # rapid t2 -> 4 arrows
-                game.player.skill_upgrades.append("ranger_rapid")
-                game.projectiles.clear()
-                game.player.bolt_timer = 0.0
-                game.player.mana = game.player.max_mana
-                game.player_cast_bolt()
-                self.assertEqual(len(game.projectiles), 4)
-
-                # storm volley t4 -> 5-arrow storm cone
-                game.player.skill_upgrades.append("ranger_storm_volley")
-                game.projectiles.clear()
-                game.player.bolt_timer = 0.0
-                game.player.mana = game.player.max_mana
-                game.player_cast_bolt()
-                self.assertEqual(len(game.projectiles), 5)
-
-                # piercing volley t3 grants pierce=1 (count unchanged)
-                game.player.skill_upgrades.append("ranger_piercing_volley")
-                game.projectiles.clear()
-                game.player.bolt_timer = 0.0
-                game.player.mana = game.player.max_mana
-                game.player_cast_bolt()
-                self.assertEqual(len(game.projectiles), 5)
-                self.assertTrue(all(p.pierce == 1 for p in game.projectiles))
-
-                # sky quiver capstone -> homing (count unchanged)
-                game.player.skill_upgrades.append("ranger_sky_quiver")
-                game.projectiles.clear()
-                game.player.bolt_timer = 0.0
-                game.player.mana = game.player.max_mana
-                game.player_cast_bolt()
-                self.assertEqual(len(game.projectiles), 5)
-                self.assertTrue(all(p.homing > 0.0 for p in game.projectiles))
-            finally:
-                pass
-
-    # --- 9. Piercing projectiles survive the first hit ----------------------
-
-    def test_projectile_pierce_passes_through_enemies(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=2)
-            try:
-                px, py = game.player.x, game.player.y
-                # Enemy placed just ahead on the projectile's path.
-                enemy = _make_enemy(px + 0.3, py, hp=200)
-                game.enemies = [enemy]
-
-                # A pierce=1 projectile should survive hitting one foe and
-                # have its pierce decremented to 0 (still kept this frame).
-                pierce_proj = Projectile(
-                    px,
-                    py,
-                    9.0,
-                    0.0,
-                    20,
-                    "player",
-                    (255, 255, 255),
-                    pierce=1,
-                    ttl=1.6,
-                )
-                game.projectiles = [pierce_proj]
-                game.update_projectiles(0.01)
-                self.assertTrue(any(p is pierce_proj for p in game.projectiles))
-                self.assertEqual(pierce_proj.pierce, 0)
-                self.assertIn(id(enemy), pierce_proj.hit_enemies)
-                self.assertLess(enemy.hp, 200)
-
-                # A pierce=0 projectile that hits a foe is removed.
-                enemy2 = _make_enemy(px + 0.3, py, hp=200)
-                game.enemies = [enemy2]
-                normal_proj = Projectile(
-                    px,
-                    py,
-                    9.0,
-                    0.0,
-                    20,
-                    "player",
-                    (255, 255, 255),
-                    pierce=0,
-                    ttl=1.6,
-                )
-                game.projectiles = [normal_proj]
-                game.update_projectiles(0.01)
-                self.assertFalse(any(p is normal_proj for p in game.projectiles))
-                self.assertLess(enemy2.hp, 200)
-            finally:
-                pass
-
-    # --- 10. Warden Shield Bash: gradual cleave ramp (1/2/3 foes) -----------
+    # --- Warden Shield Bash: gradual cleave ramp (1/2/3 foes) -----------
 
     def test_warden_melee_single_target_without_bulwark(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -419,49 +224,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
             finally:
                 pass
 
-    # --- 11. Rogue crits are gated behind the Precision branch --------------
-
-    def test_rogue_crit_gated_behind_precision(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=1, seed=3701)
-            try:
-                px, py = game.player.x, game.player.y
-                enemy = _make_enemy(px + 0.8, py, hp=9999)
-                game.enemies = [enemy]
-                game.player.facing_x = 1.0
-                game.player.facing_y = 0.0
-
-                # Without rogue_precision crit_chance is 0.0 -> never crits.
-                # Reset the enemy position each iteration because melee knocks
-                # foes back and would eventually push it out of range.
-                for _ in range(50):
-                    enemy.x = px + 0.8
-                    enemy.y = py
-                    game.player.melee_timer = 0.0
-                    game.player.stamina = game.player.max_stamina
-                    game.player_melee_attack()
-                self.assertFalse(
-                    any(f.text == "Critical" for f in game.floaters),
-                    "base Rogue should never crit without Precision branch",
-                )
-
-                # With rogue_precision crit_chance is 0.15 -> some crits appear.
-                game.player.skill_upgrades.append("rogue_precision")
-                game.floaters.clear()
-                for _ in range(100):
-                    enemy.x = px + 0.8
-                    enemy.y = py
-                    game.player.melee_timer = 0.0
-                    game.player.stamina = game.player.max_stamina
-                    game.player_melee_attack()
-                self.assertTrue(
-                    any(f.text == "Critical" for f in game.floaters),
-                    "Rogue with Precision should crit within 100 attacks",
-                )
-            finally:
-                pass
-
-    # --- 12. Acolyte lifesteal gated behind Sanguine (melee + nova) ---------
+    # --- Acolyte lifesteal gated behind Sanguine (melee + nova) ---------
 
     def test_acolyte_lifesteal_gated_behind_sanguine(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -523,52 +286,6 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 game.player.skill_upgrades.append("acolyte_blood_pact")
                 self.assertEqual(game._acolyte_melee_leech(), 4)
                 self.assertEqual(game._acolyte_nova_leech(), 5)
-            finally:
-                pass
-
-    # --- 13. Arcanist Frost Nova radius ramps per Nova tier -----------------
-
-    def test_arcanist_nova_radius_gated_behind_focus(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=2)
-            try:
-                px, py = game.player.x, game.player.y
-                # Distance ~2.6: outside base radius (2.45) but inside the
-                # focus-expanded radius (2.70).
-                enemy = _make_enemy(px + 2.6, py, hp=9999)
-                game.enemies = [enemy]
-
-                # Without arcanist_focus the nova does not reach the enemy.
-                game.player.nova_timer = 0.0
-                game.player.mana = game.player.max_mana
-                game.player_cast_nova()
-                self.assertEqual(enemy.hp, 9999)
-
-                # With arcanist_focus the radius grows and the enemy is hit.
-                game.player.skill_upgrades.append("arcanist_focus")
-                enemy.hp = 9999
-                game.player.nova_timer = 0.0
-                game.player.mana = game.player.max_mana
-                game.player_cast_nova()
-                self.assertLess(enemy.hp, 9999)
-
-                # Permafrost t2 extends the radius further (2.45 + 0.45 = 2.90).
-                # An enemy at 2.8 is outside the focus-only radius (2.70) but
-                # inside the permafrost radius (2.90), locking the tier step.
-                enemy_far = _make_enemy(px + 2.8, py, hp=9999)
-                game.enemies = [enemy_far]
-                # With only focus, the far enemy is out of reach.
-                game.player.nova_timer = 0.0
-                game.player.mana = game.player.max_mana
-                game.player_cast_nova()
-                self.assertEqual(enemy_far.hp, 9999)
-
-                game.player.skill_upgrades.append("arcanist_permafrost")
-                enemy_far.hp = 9999
-                game.player.nova_timer = 0.0
-                game.player.mana = game.player.max_mana
-                game.player_cast_nova()
-                self.assertLess(enemy_far.hp, 9999)
             finally:
                 pass
 

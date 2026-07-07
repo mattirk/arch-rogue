@@ -32,13 +32,6 @@ class Rc1RegressionTests(unittest.TestCase):
     def tearDown(self) -> None:
         pass
 
-    def test_game_enters_at_title_state(self) -> None:
-        game = self.make_game()
-        try:
-            self.assertEqual(game.state, "title")
-        finally:
-            pass
-
     def test_dungeon_generation_has_connected_rooms_and_stairs(self) -> None:
         for seed in range(8):
             dungeon = Dungeon(random.Random(seed))
@@ -62,42 +55,6 @@ class Rc1RegressionTests(unittest.TestCase):
             for room in dungeon.rooms:
                 self.assertIn(room.center, reachable)
             self.assertIn(dungeon.stairs, reachable)
-
-    def test_restart_initializes_each_archetype_with_boss_and_start_resources(
-        self,
-    ) -> None:
-        game = self.make_game()
-        try:
-            seen_profiles: set[tuple[int, int, int, float, int, int, int]] = set()
-            for archetype in ARCHETYPES:
-                game.restart(archetype)
-                self.assertEqual(game.state, "playing")
-                self.assertEqual(game.player.class_name, archetype.name)
-                self.assertEqual(game.player.max_hp, archetype.max_hp)
-                self.assertEqual(game.player.max_mana, archetype.max_mana)
-                self.assertEqual(game.player.max_stamina, archetype.max_stamina)
-                self.assertEqual(game.player.speed, archetype.speed)
-                self.assertEqual(game.player.melee_bonus, archetype.melee_bonus)
-                self.assertEqual(game.player.spell_bonus, archetype.spell_bonus)
-                self.assertEqual(game.player.armor_bonus, archetype.armor_bonus)
-                self.assertEqual(game.current_depth, 1)
-                self.assertTrue(game.dungeon.is_floor(game.player.x, game.player.y))
-                self.assertEqual(sum(enemy.kind == "boss" for enemy in game.enemies), 0)
-                self.assertTrue(any(item.slot == "potion" for item in game.items))
-                seen_profiles.add(
-                    (
-                        archetype.max_hp,
-                        archetype.max_mana,
-                        archetype.max_stamina,
-                        archetype.speed,
-                        archetype.melee_bonus,
-                        archetype.spell_bonus,
-                        archetype.armor_bonus,
-                    )
-                )
-            self.assertEqual(len(seen_profiles), len(ARCHETYPES))
-        finally:
-            pass
 
     def test_item_interactions_and_hotkey_behaviors(self) -> None:
         # Shared Game/restart/story-intro setup; each section resets the
@@ -232,48 +189,6 @@ class Rc1RegressionTests(unittest.TestCase):
             game.handle_events()
             self.assertGreater(game.player.dash_timer, 0.0)
             self.assertLess(game.player.stamina, starting_stamina)
-        finally:
-            pass
-
-    def test_modern_inventory_sort_drop_and_safe_consumables(self) -> None:
-        game = self.make_game()
-        try:
-            game.restart(ARCHETYPES[0])
-            game.player.inventory = [
-                Item("Minor Healing Potion", "potion", heal=35),
-                Item("Rare Axe", "weapon", power=9, rarity="Rare"),
-                Item("Lesser Mana Potion", "mana_potion", mana=24),
-                Item("Common Vest", "armor", defense=2, rarity="Common"),
-            ]
-
-            game.sort_inventory()
-            self.assertEqual(
-                [item.slot for item in game.player.inventory[:4]],
-                ["weapon", "armor", "potion", "mana_potion"],
-            )
-
-            game.cycle_inventory_sort_mode()
-            self.assertEqual(game.inventory_sort_mode, "rarity")
-            self.assertEqual(game.player.inventory[0].name, "Rare Axe")
-
-            dropped = game.player.inventory[0]
-            game.drop_inventory_slot(0)
-            self.assertNotIn(dropped, game.player.inventory)
-            self.assertIn(dropped, game.items)
-            self.assertTrue(game.dungeon.is_floor(dropped.x, dropped.y))
-
-            potion_count = len(game.player.inventory)
-            potion_index = next(
-                index
-                for index, item in enumerate(game.player.inventory)
-                if item.slot == "potion"
-            )
-            game.player.hp = game.player.max_hp
-            game.use_inventory_slot(potion_index)
-            self.assertEqual(len(game.player.inventory), potion_count)
-            self.assertTrue(
-                any(item.slot == "potion" for item in game.player.inventory)
-            )
         finally:
             pass
 

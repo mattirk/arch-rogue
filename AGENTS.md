@@ -219,4 +219,3 @@ Draft goal: complement the 3.10 player-side build diversity with enemy-side vari
 - Validate with a new `tests/test_3_11_encounter_depth.py` covering faction stat leanings and affix pools, elite-pack generation and retinue sizing, enemy-affix combat resolution (thorns/lifesteal/aura/summon), elite telegraph marker behavior, sealed-vault-encounter interaction, kill-reward scaling, and old-save compatibility, plus the full `unittest discover tests` regression suite.
 
 ### Stash
-- remove unnecessary tests such as test_shops (now test_special_rooms) and others

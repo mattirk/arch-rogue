@@ -77,53 +77,6 @@ class SoftShadow38Tests(unittest.TestCase):
             finally:
                 pass
 
-    def test_draw_shadow_blits_soft_patch_scaled_per_entity(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                # draw_shadow must reuse the radial template cache rather than
-                # allocate a fresh ellipse surface each call.
-                cache_before = len(getattr(game, "_soft_shadow_template_cache", {}))
-                game.draw_shadow(game.player.x, game.player.y, 34, 13)
-                cache_after = len(getattr(game, "_soft_shadow_template_cache", {}))
-                self.assertGreaterEqual(cache_after, cache_before)
-                self.assertGreater(cache_after, 0)
-
-                # Per-entity scaling: a wider entity darkens a pixel that the
-                # narrow shadow cannot reach. Sample along the foot row at a
-                # horizontal offset inside the wide patch but outside the
-                # narrow one.
-                px, py = game.player.x, game.player.y
-                sx, sy = game.world_to_screen(px, py)
-                foot_y = sy + 10 * 5  # WORLD_SCALE
-                sample_x = sx + 90
-
-                game.screen.fill((255, 255, 255))
-                game.draw_shadow(px, py, 24, 10, moving=False, lift=0.0)
-                narrow_color = game.screen.get_at((sample_x, foot_y))
-
-                game.screen.fill((255, 255, 255))
-                game.draw_shadow(px, py, 48, 10, moving=False, lift=0.0)
-                wide_color = game.screen.get_at((sample_x, foot_y))
-
-                # Narrow patch (half-width ~60) does not reach sample_x=+90, so
-                # it stays white; wide patch (half-width ~120) does, so it
-                # darkens the sample.
-                self.assertEqual(narrow_color[0], 255)
-                self.assertLess(wide_color[0], 255)
-
-                # Lift reduces opacity: a lifted shadow darkens the center less
-                # than a grounded one.
-                game.screen.fill((255, 255, 255))
-                game.draw_shadow(px, py, 34, 13, moving=False, lift=0.0)
-                grounded = game.screen.get_at((sx, foot_y))[0]
-                game.screen.fill((255, 255, 255))
-                game.draw_shadow(px, py, 34, 13, moving=False, lift=4.0)
-                lifted = game.screen.get_at((sx, foot_y))[0]
-                self.assertGreater(lifted, grounded)
-            finally:
-                pass
-
     def test_draw_shadow_applied_consistently_to_all_actors_and_props(
         self,
     ) -> None:

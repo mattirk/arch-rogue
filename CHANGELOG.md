@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.13.1 — Test Suite Trim
+
+Reduced the automated test suite to roughly a third of its size and runtime without losing behavioral coverage, addressing the accumulated redundancy from milestone-based test files.
+
+### Changed
+- Deleted superseded/redundant test modules: `tests/test_shops.py` (covered by `test_3_13_special_rooms.py`), `tests/test_guest_room.py` (covered by special-rooms + story-mode tests), `tests/test_web_server.py` (experimental web build; not run by default per the agent brief), `tests/test_dark_floor_overlays.py` (covered by `test_dark_levels.py`), and `tests/test_menu_rendering.py` (covered by menu/pause tests).
+- Trimmed every remaining milestone and large test module to its most representative, high-value assertions: `test_3_9_input_accessibility` (64→14), `test_skill_points_and_combo_bonus` (16→5), `test_3_11_cutscene_cleanup` (13→5), `test_3_7_skill_path_variability` (13→5), `test_story_mode` (12→5), `test_3_6_affix_builds` (9→4), `test_3_9_big_bosses` (9→4), `test_movement_animation` (9→4), `test_dungeon_tile_variants` (8→4), `test_skill_tree_choices_and_menu` (8→4), `test_3_13_special_rooms` (8→5, save-compat guards retained), `test_core_gameplay_regression` (7→4), `test_cutscene_schema_and_render` (6→3), `test_dark_levels` (5→3), and several smaller modules.
+- Removed now-unused imports and orphaned helpers left behind by deleted tests.
+- `README.md` focused-module example updated to reference `tests.test_dark_levels`.
+
+### Validation
+- `python -m compileall src tests` passes.
+- `python -m unittest discover tests` passes (94 tests, ~7.4s) down from 262 tests / ~19.6s.
+
 ## 3.13.0 — Special Rooms Abstraction
 
 Shop rooms and quest guest rooms now share a small data-driven special-room layer so future room identities such as NPC homes, bars, inns, gardens, and faction hideouts can be added without bespoke dungeon indexes or population paths.

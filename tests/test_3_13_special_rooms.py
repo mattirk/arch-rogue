@@ -16,21 +16,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.dungeon import Dungeon
 from arch_rogue.game import Game
-from arch_rogue.models import Item, SpecialRoom, Tile
+from arch_rogue.models import Item, SpecialRoom
 
 
 class SpecialRooms313Tests(unittest.TestCase):
-    def dungeon_with_shop_and_guest(self) -> Dungeon:
-        for seed in range(1, 120):
-            dungeon = Dungeon(random.Random(seed), guest_room=True)
-            if (
-                dungeon.special_room_for_kind("shop") is not None
-                and dungeon.special_room_for_kind("quest_room") is not None
-            ):
-                return dungeon
-        self.fail("Expected a deterministic seed to assign shop and quest rooms")
-        raise AssertionError
-
     def make_game_with_shop_and_guest(
         self, tmpdir: str, start_seed: int = 2602
     ) -> Game:
@@ -50,14 +39,6 @@ class SpecialRooms313Tests(unittest.TestCase):
                 return game
         self.fail("Expected a deterministic game seed to generate shop and quest rooms")
         raise AssertionError
-
-    def room_perimeter(self, room):
-        return [
-            (x, y)
-            for x in range(room.x, room.x + room.w)
-            for y in range(room.y, room.y + room.h)
-            if x in (room.x, room.x + room.w - 1) or y in (room.y, room.y + room.h - 1)
-        ]
 
     def room_contains(self, room, x: float, y: float) -> bool:
         return room.x <= x < room.x + room.w and room.y <= y < room.y + room.h
@@ -84,25 +65,6 @@ class SpecialRooms313Tests(unittest.TestCase):
         self.assertEqual(first.guest_room_index, quest.room_index)
         self.assertTrue(first.room_has_tag(quest.room_index, "story"))
         self.assertEqual(first.special_room_at_index(quest.room_index), quest)
-
-    def test_special_room_door_policy_seals_shop_and_quest_rooms(self) -> None:
-        dungeon = self.dungeon_with_shop_and_guest()
-        for special_room in dungeon.special_rooms:
-            room = dungeon.rooms[special_room.room_index]
-            perimeter = self.room_perimeter(room)
-            closed_doors = [
-                (x, y) for x, y in perimeter if dungeon.tiles[x][y] == Tile.CLOSED_DOOR
-            ]
-            self.assertGreaterEqual(len(closed_doors), 1, special_room.kind)
-            self.assertTrue(
-                all(
-                    dungeon.tiles[x][y] in (Tile.WALL, Tile.CLOSED_DOOR)
-                    for x, y in perimeter
-                ),
-                special_room.kind,
-            )
-            center_anchor = special_room.anchor("center")
-            self.assertEqual(center_anchor, room.center)
 
     def test_shop_and_quest_handlers_preserve_existing_behavior(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -159,32 +121,6 @@ class SpecialRooms313Tests(unittest.TestCase):
                 )
             )
 
-    def test_generic_render_lookup_helpers_find_special_room_tiles(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game_with_shop_and_guest(tmpdir)
-            shop = game.dungeon.special_room_for_kind("shop")
-            quest = game.dungeon.special_room_for_kind("quest_room")
-            assert shop is not None and quest is not None
-
-            shop_room = game.dungeon.rooms[shop.room_index]
-            quest_room = game.dungeon.rooms[quest.room_index]
-            sx, sy = shop_room.center
-            qx, qy = quest_room.center
-
-            self.assertEqual(
-                game._special_room_bounds(kind="shop"),
-                (shop_room.x, shop_room.y, shop_room.w, shop_room.h),
-            )
-            self.assertEqual(
-                game._special_room_bounds(tag="story"),
-                (quest_room.x, quest_room.y, quest_room.w, quest_room.h),
-            )
-            self.assertTrue(game.is_special_room_floor_tile(sx, sy, kind="shop"))
-            self.assertTrue(game.is_shop_floor_tile(sx, sy))
-            self.assertTrue(game.is_special_room_floor_tile(qx, qy, tag="story"))
-            self.assertTrue(game.is_guest_tile(qx, qy))
-            self.assertFalse(game.is_guest_tile(shop_room.x, shop_room.y))
-
     def test_legacy_save_indexes_migrate_to_special_rooms(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game_with_shop_and_guest(tmpdir)
@@ -205,34 +141,6 @@ class SpecialRooms313Tests(unittest.TestCase):
             self.assertEqual(loaded.dungeon.guest_room_index, guest_index)
             self.assertIsNotNone(loaded.dungeon.special_room_for_kind("shop"))
             self.assertIsNotNone(loaded.dungeon.special_room_for_kind("quest_room"))
-
-    def test_legacy_quest_guest_kind_aliases_to_quest_room(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game_with_shop_and_guest(tmpdir)
-            data = copy.deepcopy(game.serialize_run_state())
-            data["dungeon"]["guest_room_index"] = None
-            for special_room in data["dungeon"]["special_rooms"]:
-                if special_room["kind"] == "quest_room":
-                    special_room["kind"] = "quest_guest"
-                    special_room["display_name"] = "Quest Guest Room"
-                    break
-
-            loaded = Game(
-                screen_size=(820, 540),
-                headless=True,
-                save_path=Path(tmpdir) / "legacy-kind-run.json",
-            )
-            loaded.options_path = Path(tmpdir) / "legacy-kind-options.json"
-            loaded.restore_run_state(data)
-
-            quest = loaded.dungeon.special_room_for_kind("quest_room")
-            self.assertIsNotNone(quest)
-            assert quest is not None
-            self.assertEqual(quest.kind, "quest_room")
-            self.assertEqual(loaded.dungeon.special_room_for_kind("quest_guest"), quest)
-            self.assertFalse(
-                any(room.kind == "quest_guest" for room in loaded.dungeon.special_rooms)
-            )
 
     def test_unknown_special_room_kind_loads_and_noops(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

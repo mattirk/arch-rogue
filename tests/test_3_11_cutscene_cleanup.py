@@ -95,100 +95,7 @@ class CutsceneCleanup311Tests(unittest.TestCase):
             self.assertGreater(front, mid)
             self.assertGreater(mid, back)
 
-    def test_player_depth_scale_exceeds_relic(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            game.reveal_active_cutscene_narration()
-            game.draw()
-            asset = game.active_cutscene_asset()
-            self.assertIsNotNone(asset)
-            assert asset is not None
-            relic = asset.actors["relic"]
-            player = asset.actors["player"]
-            # The relic sits above the floor plane (back of stage) and the
-            # player stands near the front; the player's depth scale must be
-            # larger so the stage reads with perspective.
-            self.assertGreater(
-                game._stage_actor_depth_scale(player.y),
-                game._stage_actor_depth_scale(relic.y),
-            )
-
-    def test_stage_lighting_draws_no_ellipses_or_circles(self) -> None:
-        # The simplified stage-lights effect must use only gradient bands and
-        # line work — no transparent ellipse/circle blobs on the stage.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            asset = game.active_cutscene_asset()
-            self.assertIsNotNone(asset)
-            assert asset is not None
-            stage = asset.stage
-            accent = game.story_state.accent if game.story_state else game.theme.accent
-            stage_rect = pygame.Rect(20, 20, 600, 220)
-            surf = pygame.Surface((640, 260), pygame.SRCALPHA)
-
-            ellipse_calls = {"n": 0}
-            circle_calls = {"n": 0}
-            real_ellipse = pygame.draw.ellipse
-            real_circle = pygame.draw.circle
-
-            def count_ellipse(*args, **kwargs):
-                ellipse_calls["n"] += 1
-                return real_ellipse(*args, **kwargs)
-
-            def count_circle(*args, **kwargs):
-                circle_calls["n"] += 1
-                return real_circle(*args, **kwargs)
-
-            pygame.draw.ellipse = count_ellipse
-            pygame.draw.circle = count_circle
-            try:
-                game.draw_stage_lighting(surf, stage_rect, stage, accent)
-            finally:
-                pygame.draw.ellipse = real_ellipse
-                pygame.draw.circle = real_circle
-            self.assertEqual(ellipse_calls["n"], 0)
-            self.assertEqual(circle_calls["n"], 0)
-
-    def test_stage_lighting_caches_static_layer(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            asset = game.active_cutscene_asset()
-            assert asset is not None
-            stage = asset.stage
-            accent = game.story_state.accent if game.story_state else game.theme.accent
-            stage_rect = pygame.Rect(20, 20, 600, 220)
-            surf = pygame.Surface((640, 260), pygame.SRCALPHA)
-            game.draw_stage_lighting(surf, stage_rect, stage, accent)
-            before = dict(RenderingStoryOverlayMixin._STAGE_CACHE)
-            game.draw_stage_lighting(surf, stage_rect, stage, accent)
-            after = RenderingStoryOverlayMixin._STAGE_CACHE
-            # Static lighting layer is reused, not rebuilt.
-            self.assertLessEqual(len(after), len(before))
-
     # --- Duel choreography -----------------------------------------------
-
-    def test_duel_state_none_without_antagonist(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            self.assertTrue(game.choose_story_relic_path(0))
-            guest = game.story_guests[0]
-            self.assertTrue(game.start_quest_cutscene("story_guest_dialogue", guest))
-            self.assertIsNone(game._cutscene_duel_state())
-
-    def test_duel_state_present_for_omen(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            self.assertIsNotNone(game.active_cutscene)
-            duel = game._cutscene_duel_state()
-            self.assertIsNotNone(duel)
-            assert duel is not None
-            self.assertIn("player", duel)
-            self.assertIn("antagonist", duel)
-            self.assertIn("clash", duel)
-            # Per-actor tuples are (dx, dy, pose, alpha, frame_scale).
-            for key in ("player", "antagonist"):
-                self.assertEqual(len(duel[key]), 5)
-            self.assertEqual(len(duel["clash"]), 2)
 
     def test_duel_approach_clash_retreat_rest(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -205,8 +112,9 @@ class CutsceneCleanup311Tests(unittest.TestCase):
             self.assertIsNotNone(obstacle)
             assert obstacle is not None
             obs_x, obs_y = obstacle
-            clash_y = min(obs_y + game.STAGE_DUEL_DETOUR_FORWARD,
-                          game.STAGE_DUEL_DETOUR_MAX_Y)
+            clash_y = min(
+                obs_y + game.STAGE_DUEL_DETOUR_FORWARD, game.STAGE_DUEL_DETOUR_MAX_Y
+            )
             meet_p = (obs_x - game.STAGE_DUEL_OBSTACLE_CLEAR, clash_y)
             meet_a = (obs_x + game.STAGE_DUEL_OBSTACLE_CLEAR, clash_y)
 
@@ -270,59 +178,6 @@ class CutsceneCleanup311Tests(unittest.TestCase):
             self.assertLess(a_ret[1], a_clash[1])
             self.assertEqual(p_ret[2], "guard")
             self.assertEqual(a_ret[2], "watch")
-
-    def test_duel_never_crosses_altar_obstacle(self) -> None:
-        # Sampling across the whole cycle, the duelers must stay on their own
-        # sides of the altar and never pass through its footprint.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            asset = game.active_cutscene_asset()
-            assert asset is not None
-            player = asset.actors["player"]
-            antagonist = asset.actors["antagonist"]
-            obstacle = game._cutscene_duel_obstacle(asset, player, antagonist)
-            assert obstacle is not None
-            obs_x = obstacle[0]
-            period = game.STAGE_DUEL_PERIOD
-            for index in range(48):
-                game.elapsed = index * period / 48
-                duel = game._cutscene_duel_state()
-                assert duel is not None
-                px = player.x + duel["player"][0]
-                ax = antagonist.x + duel["antagonist"][0]
-                self.assertLess(px, obs_x, "player crossed the altar")
-                self.assertGreater(ax, obs_x, "antagonist crossed the altar")
-
-    def test_duel_loops_on_period(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            period = game.STAGE_DUEL_PERIOD
-            base_t = 0.37 * period
-            game.elapsed = base_t
-            first = game._cutscene_duel_state()
-            game.elapsed = base_t + period
-            second = game._cutscene_duel_state()
-            self.assertEqual(first, second)
-
-    def test_duel_clash_flash_safe_outside_clash(self) -> None:
-        # The clash flash must early-out cleanly when no duel is active and
-        # must not raise during the rest phase.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            period = game.STAGE_DUEL_PERIOD
-            stage = pygame.Rect(40, 40, 600, 220)
-            surf = pygame.Surface((680, 300), pygame.SRCALPHA)
-            game._frame_duel_state = None
-            game._draw_duel_clash_flash(surf, stage)  # no duel -> no-op
-            game._frame_duel_state = game._cutscene_duel_state()
-            rest_t = (
-                game.STAGE_DUEL_PHASE_APPROACH
-                + game.STAGE_DUEL_PHASE_CLASH
-                + game.STAGE_DUEL_PHASE_RETREAT
-                + 0.02
-            ) * period
-            game.elapsed = rest_t
-            game._draw_duel_clash_flash(surf, stage)
 
     # --- Narration speed -------------------------------------------------
 

@@ -116,75 +116,7 @@ class StoryCutscene34Tests(unittest.TestCase):
         self.assertEqual(scene.stage.ambient, ())
         self.assertTrue(scene.stage.proscenium)
 
-    def test_invalid_schema_payloads_are_rejected(self) -> None:
-        # Unknown schema_version.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "bad.json"
-            path.write_text(json.dumps({"schema_version": 7, "cutscenes": []}))
-            with self.assertRaises(ValueError):
-                load_quest_cutscene_library(path)
-
-        # Invalid stage kind values across props / lights / ambient / curtain.
-        base = {
-            "schema_version": 2,
-            "cutscenes": [
-                {
-                    "id": "s",
-                    "title": "S",
-                    "trigger": "manual",
-                    "actors": [{"id": "player", "name": "P", "sprite": "player"}],
-                    "animations": [],
-                    "dialogue": {
-                        "start": "n",
-                        "nodes": [{"id": "n", "speaker": "narrator", "text": "x"}],
-                    },
-                }
-            ],
-        }
-        for bad_stage in (
-            {"stage": {"props": [{"id": "p", "kind": "fountain", "x": 0.5, "y": 0.5}]}},
-            {
-                "stage": {
-                    "lights": [
-                        {
-                            "id": "l",
-                            "kind": "flood",
-                            "source_x": 0.5,
-                            "source_y": 0.0,
-                            "target_x": 0.5,
-                            "target_y": 0.5,
-                        }
-                    ]
-                }
-            },
-            {"stage": {"ambient": [{"kind": "rain"}]}},
-            {"stage": {"curtain": {"side": "top"}}},
-        ):
-            payload = json.loads(json.dumps(base))
-            payload["cutscenes"][0].update(bad_stage)
-            with tempfile.TemporaryDirectory() as tmpdir:
-                path = Path(tmpdir) / "bad.json"
-                path.write_text(json.dumps(payload), encoding="utf-8")
-                with self.assertRaises(ValueError):
-                    load_quest_cutscene_library(path)
-
     # --- Runtime pipeline --------------------------------------------------
-
-    def test_active_cutscene_exposes_data_driven_stage(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                self.assertTrue(game.story_intro_pending)
-                self.assertIsNotNone(game.active_cutscene)
-                asset = game.active_cutscene_asset()
-                self.assertIsNotNone(asset)
-                assert asset is not None
-                self.assertGreater(len(asset.stage.props), 0)
-                self.assertGreater(len(asset.stage.lights), 0)
-                self.assertGreater(len(asset.stage.ambient), 0)
-                self.assertEqual(asset.stage.curtain.side, "both")
-            finally:
-                pass
 
     def test_cutscene_renders_and_caches_static_layers(self) -> None:
         from arch_rogue.rendering.story_overlays import RenderingStoryOverlayMixin
@@ -220,27 +152,6 @@ class StoryCutscene34Tests(unittest.TestCase):
                 for _ in range(8):
                     game.update_active_cutscene(1 / 60)
                     game.draw()
-            finally:
-                pass
-
-    def test_narrator_card_renders_speaker_and_progress(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                captured: list[str] = []
-                original = game.draw_ui_text
-
-                def capture(surface, text, font, color, rect, *args, **kwargs):
-                    captured.append(str(text))
-                    return original(surface, text, font, color, rect, *args, **kwargs)
-
-                game.draw_ui_text = capture
-                try:
-                    game.draw_quest_cutscene_overlay()
-                finally:
-                    game.draw_ui_text = original
-                speaker = game.active_cutscene_speaker_name()
-                self.assertTrue(any(speaker.upper() in line for line in captured))
             finally:
                 pass
 

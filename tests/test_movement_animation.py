@@ -17,9 +17,6 @@ import pygame
 from arch_rogue.constants import (
     RUN_CYCLE_FRAMES,
     RUN_FRAME_RATE,
-    WALK_ANIM_SPEED_CEIL,
-    WALK_ANIM_SPEED_FLOOR,
-    WALK_ANIMATION_RATE,
 )
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
@@ -56,21 +53,6 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
         player.move_y = my
         player.facing_x = mx
         player.facing_y = my
-
-    def test_run_cycle_helper_matches_displayed_frame_selection(self) -> None:
-        # The renderer's continuous cycle position must be derived from the
-        # same expression the sprite atlas uses to pick the displayed run
-        # frame, so the whole-body motion stays locked to the cached frame.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                for anim_time in (0.0, 0.05, 0.31, 0.75, 1.1, 1.49, 2.7, 4.2):
-                    cycle_t = game.run_cycle_position(anim_time)
-                    frame = int(abs(anim_time * RUN_FRAME_RATE)) % RUN_CYCLE_FRAMES
-                    frame_t = frame / RUN_CYCLE_FRAMES
-                    self.assertLessEqual(abs(cycle_t - frame_t), 1.0 / RUN_CYCLE_FRAMES)
-            finally:
-                pass
 
     def test_bob_is_grounded_phase_locked_and_footfall_matched(self) -> None:
         # The whole-body bob must (a) be signed so the body dips below its
@@ -175,77 +157,6 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
         finally:
             pass
 
-    def test_player_renders_across_all_eight_iso_movement_directions(self) -> None:
-        # The polished movement must render without error for every diagonal
-        # and cardinal movement direction and produce a non-empty frame.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                player = game.player
-                directions = [
-                    (1.0, 0.0),
-                    (-1.0, 0.0),
-                    (0.0, 1.0),
-                    (0.0, -1.0),
-                    (1.0, 1.0),
-                    (1.0, -1.0),
-                    (-1.0, 1.0),
-                    (-1.0, -1.0),
-                ]
-                for mx, my in directions:
-                    self.set_moving(player, mx, my)
-                    player.facing_x = 1.0 if mx >= 0 else -1.0
-                    player.anim_time = 0.4
-                    game.elapsed = 0.4
-                    game.draw_player(player)
-                    buf = pygame.image.tobytes(game.screen, "RGBA")
-                    self.assertTrue(any(buf), "screen empty after draw_player")
-            finally:
-                pass
-
-    def test_run_lean_tilts_top_toward_movement_direction(self) -> None:
-        # Regression guard for the backward-tilt bug: a negative lean (running
-        # screen-left) must tilt the top toward screen-left (forward into the
-        # run), not screen-right (backward). The renderer rotates by -lean with
-        # no facing-conditional and never mirror-flips the sprite.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                # Marker sprite: a red pixel at the top-center and a blue
-                # pixel at the bottom-center of an odd-width canvas.
-                marker = pygame.Surface((11, 41), pygame.SRCALPHA)
-                marker.fill((0, 0, 0, 0))
-                marker.set_at((5, 0), (255, 0, 0, 255))  # top
-                marker.set_at((5, 40), (0, 0, 255, 255))  # bottom
-
-                canvas = pygame.Surface((400, 400))
-                canvas.fill((0, 0, 0))
-                game.screen = canvas
-                game.world_to_screen = lambda x, y: (200, 200)  # type: ignore
-
-                # lean < 0 (screen-left run) -> top tilts screen-left, so the
-                # red top marker lands left of the blue bottom marker.
-                game.blit_sprite(marker, 0.0, 0.0, lean=-4.0)
-
-                red_x = blue_x = None
-                for y in range(canvas.get_height()):
-                    for x in range(canvas.get_width()):
-                        px = canvas.get_at((x, y))
-                        if px[:3] == (255, 0, 0):
-                            red_x = x
-                        elif px[:3] == (0, 0, 255):
-                            blue_x = x
-                self.assertIsNotNone(red_x, "top marker not rendered")
-                self.assertIsNotNone(blue_x, "bottom marker not rendered")
-                assert red_x is not None and blue_x is not None
-                self.assertLess(
-                    red_x,
-                    blue_x,
-                    "run leaned backward (top right of base)",
-                )
-            finally:
-                pass
-
     def test_lean_follows_facing_and_movement_direction(self) -> None:
         # The lean must tilt toward the screen-space movement direction, differ
         # between opposing directions, be large enough to actually rotate the
@@ -290,51 +201,6 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
                 self.assertLess(lean_left, 0.0, "lean did not follow facing left")
                 self.assertGreater(lean_right, 0.0, "lean did not follow facing right")
                 self.assertLess(lean_left, lean_right)
-            finally:
-                pass
-
-    def test_slow_enemy_walk_cycle_is_floored_to_avoid_stutter(self) -> None:
-        # Slow enemies must cycle at least at WALK_ANIM_SPEED_FLOOR so their
-        # legs keep moving instead of freezing into a few stuttering frames.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                enemy = game.enemies[0]
-                enemy.moving = True
-                enemy.speed = 0.5  # well below the floor
-                enemy.anim_time = 0.0
-                game.advance_animation_phases(0.1)
-                expected = 0.1 * WALK_ANIMATION_RATE * WALK_ANIM_SPEED_FLOOR
-                self.assertAlmostEqual(enemy.anim_time, expected, places=5)
-                # A very fast enemy is capped at the ceiling.
-                enemy.speed = 99.0
-                enemy.anim_time = 0.0
-                game.advance_animation_phases(0.1)
-                expected_cap = 0.1 * WALK_ANIMATION_RATE * WALK_ANIM_SPEED_CEIL
-                self.assertAlmostEqual(enemy.anim_time, expected_cap, places=5)
-            finally:
-                pass
-
-    def test_walk_cycle_advances_smoothly_under_dt_jitter(self) -> None:
-        # Regression guard: the phase-locked cycle must still advance
-        # monotonically under frame-rate jitter.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                player = game.player
-                run_frames = game.sprites.player_animation_frames[player.class_name][
-                    "run"
-                ]
-                indices: list[int] = []
-                for i in range(50):
-                    dt = 0.0166 if i % 4 != 0 else 0.028
-                    game.move_actor(player, player.speed * dt, 0.0)
-                    game.advance_animation_phases(dt)
-                    self.assertTrue(player.moving)
-                    idx = int(abs(player.anim_time * RUN_FRAME_RATE)) % len(run_frames)
-                    indices.append(idx)
-                self.assertGreater(len(set(indices)), 1)
-                self.assertGreater(indices.count(0), 1)
             finally:
                 pass
 

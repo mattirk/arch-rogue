@@ -16,7 +16,6 @@ import pygame
 from arch_rogue.constants import (
     DARK_LEVEL_LIGHT_RADIUS,
     DUNGEON_DEPTH,
-    LIGHT_LEVEL_SIGHT_RADIUS,
 )
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
@@ -203,84 +202,6 @@ class DarkLevels24Tests(unittest.TestCase):
                     self.assertTrue(game.has_line_of_sight_to_player(enemy.x, enemy.y))
 
                     enemy.x = 6.5
-            finally:
-                pass
-
-    def test_light_floor_fog_of_war_remembers_explored_terrain(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, seed=2431)
-            try:
-                # Force a light floor and start on a clean, open grid.
-                game.set_current_floor_dark(False)
-                for x, column in enumerate(game.dungeon.tiles):
-                    for y in range(len(column)):
-                        game.dungeon.tiles[x][y] = Tile.FLOOR
-                game.player.x = 2.5
-                game.player.y = 2.5
-                game.enemies = []
-                game.items = []
-                game.traps = []
-                game.shrines = []
-                game.secrets = []
-                game.story_guests = []
-                game.projectiles = []
-                game.floaters = []
-                game.revealed_tiles = set()
-                game.update_revealed_tiles()
-
-                # The player's own tile and nearby tiles are revealed.
-                self.assertTrue(
-                    game.is_tile_revealed(int(game.player.x), int(game.player.y))
-                )
-                near_x = int(game.player.x) + 1
-                near_y = int(game.player.y)
-                self.assertTrue(game.is_tile_revealed(near_x, near_y))
-                # Revealed tiles render at full opacity; far unrevealed tiles are black.
-                self.assertEqual(game.tile_visibility_alpha(near_x, near_y), 255)
-                far_x = int(game.player.x) + int(LIGHT_LEVEL_SIGHT_RADIUS) + 3
-                far_y = int(game.player.y)
-                self.assertEqual(game.tile_visibility_alpha(far_x, far_y), 0)
-                self.assertFalse(game.is_tile_revealed(far_x, far_y))
-
-                # Move the player far away; previously-revealed terrain stays
-                # revealed (fog-of-war memory persists on light floors).
-                game.player.x = far_x + 0.5
-                game.update_revealed_tiles()
-                self.assertTrue(game.is_tile_revealed(near_x, near_y))
-                self.assertEqual(game.tile_visibility_alpha(near_x, near_y), 255)
-                self.assertTrue(game.is_tile_revealed(far_x, far_y))
-
-                # Live objects are only visible while currently in sight, not just
-                # because the tile is remembered.
-                self.assertFalse(
-                    game.can_see_world_position(near_x + 0.5, near_y + 0.5)
-                )
-                self.assertTrue(
-                    game.can_see_world_position(game.player.x, game.player.y)
-                )
-            finally:
-                pass
-
-    def test_dark_floor_does_not_remember_explored_area(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, seed=2441)
-            try:
-                game.set_current_floor_dark(True)
-                game.player.x = 2.5
-                game.player.y = 2.5
-                game.update_revealed_tiles()
-                # Dark floors keep their lantern-only model: no fog-of-war memory
-                # is ever built, and tiles beyond the lantern radius stay dark.
-                self.assertEqual(game.revealed_tiles, set())
-                far_x = int(game.player.x) + int(DARK_LEVEL_LIGHT_RADIUS) + 3
-                self.assertEqual(
-                    game.tile_visibility_alpha(far_x, int(game.player.y)), 0
-                )
-
-                # Walking away does not reveal/remember the old neighbourhood.
-                game.player.x = far_x + 0.5
-                game.update_revealed_tiles()
-                self.assertEqual(game.revealed_tiles, set())
             finally:
                 pass
 

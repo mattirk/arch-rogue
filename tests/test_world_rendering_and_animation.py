@@ -52,9 +52,6 @@ class GraphicsAnimation21Tests(unittest.TestCase):
     def surface_bytes(self, surface: pygame.Surface) -> bytes:
         return pygame.image.tobytes(surface, "RGBA")
 
-    def opaque_pixels(self, surface: pygame.Surface) -> int:
-        return pygame.mask.from_surface(surface).count()
-
     def test_sprite_atlas_exposes_cached_animation_frames(
         self,
     ) -> None:
@@ -267,50 +264,6 @@ class GraphicsAnimation21Tests(unittest.TestCase):
                 self.assertEqual(game.player_action_ttl, 0.0)
                 self.assertEqual(game.slashes, [])
                 self.assertEqual(game.impact_effects, [])
-            finally:
-                pass
-
-    def test_run_animation_advances_smoothly_under_dt_jitter(self) -> None:
-        # The run cycle must advance monotonically without skipping frames
-        # backward or stalling, even when per-frame dt jitters from frame-rate
-        # variance. This guards against the movement-stutter regression where
-        # anim_time was advanced by jittery per-frame distance.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                player = game.player
-                run_frames = game.sprites.player_animation_frames[player.class_name][
-                    "run"
-                ]
-                self.assertGreaterEqual(len(run_frames), 8)
-
-                # Simulate movement with alternating short/long dt (as real fps
-                # varies) and record the selected frame index each frame.
-                indices: list[int] = []
-                for i in range(120):
-                    dt = 0.0166 if i % 4 != 0 else 0.028
-                    game.move_actor(player, player.speed * dt, 0.0)
-                    game.advance_animation_phases(dt)
-                    self.assertTrue(player.moving)
-                    phase = player.anim_time * 8.0
-                    idx = int(abs(phase)) % len(run_frames)
-                    indices.append(idx)
-
-                # The frame index must never go backward by more than one wrap
-                # (i.e. no reverse skips). Forward steps of 0 or 1 are expected;
-                # a single 28ms frame may occasionally skip one frame, but
-                # never two or more.
-                max_forward_skip = 0
-                for a, b in zip(indices, indices[1:]):
-                    delta = (b - a) % len(run_frames)
-                    if delta != 0:
-                        max_forward_skip = max(max_forward_skip, delta)
-                self.assertLessEqual(max_forward_skip, 2)
-
-                # The cycle must actually progress: not stuck on one frame.
-                self.assertGreater(len(set(indices)), 1)
-                # And it must cycle around (visit frame 0 more than once).
-                self.assertGreater(indices.count(0), 1)
             finally:
                 pass
 

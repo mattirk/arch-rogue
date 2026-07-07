@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import os
 import sys
 import tempfile
@@ -138,67 +137,6 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
             finally:
                 pass
 
-    # --- Variant family: similar but distinct -----------------------------
-
-    def test_wall_variants_share_cap_palette_but_differ_in_detail(self) -> None:
-        # The four wall variants must be the same stone family: the lit top
-        # cap color stays close across variants, yet the full sprite differs
-        # (masonry pattern changes), so they read as small, distinct variants
-        # rather than four unrelated walls.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                surfaces = []
-                for v in range(DUNGEON_WALL_VARIANTS):
-                    surf, ax, ay = game.tile_surface(Tile.WALL, v, False)
-                    surfaces.append(surf)
-                # Cap face center sits at (anchor_x, anchor_y - wall_h).
-                wall_h = 48 * WORLD_SCALE
-                cx, cy = ax, ay - wall_h
-                cap_colors = [s.get_at((cx, cy))[:3] for s in surfaces]
-                for a, b in (
-                    (cap_colors[0], cap_colors[1]),
-                    (cap_colors[0], cap_colors[2]),
-                    (cap_colors[0], cap_colors[3]),
-                ):
-                    self.assertLessEqual(
-                        max(abs(a[i] - b[i]) for i in range(3)),
-                        16,
-                        "wall variants drifted outside the shared family tint",
-                    )
-                # Full-sprite bytes must not all be identical.
-                blobs = [bytes(s.get_buffer()) for s in surfaces]
-                self.assertEqual(len(set(blobs)), DUNGEON_WALL_VARIANTS)
-            finally:
-                pass
-
-    def test_floor_variants_share_base_but_differ_in_detail(self) -> None:
-        # Floor variants keep a shared slab base (center pixel stays close) but
-        # differ in surface detail (seam/crack/cobble), so they read as one
-        # flagstone family with small, distinct character.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                surfaces = []
-                for v in range(DUNGEON_FLOOR_VARIANTS):
-                    surf, ax, ay = game.tile_surface(Tile.FLOOR, v, False)
-                    surfaces.append(surf)
-                center = [s.get_at((ax, ay))[:3] for s in surfaces]
-                for a, b in (
-                    (center[0], center[1]),
-                    (center[0], center[2]),
-                    (center[0], center[3]),
-                ):
-                    self.assertLessEqual(
-                        max(abs(a[i] - b[i]) for i in range(3)),
-                        16,
-                        "floor variants drifted outside the shared family tint",
-                    )
-                blobs = [bytes(s.get_buffer()) for s in surfaces]
-                self.assertEqual(len(set(blobs)), DUNGEON_FLOOR_VARIANTS)
-            finally:
-                pass
-
     def test_floor_detail_is_carved_groove_not_flat_scratch(self) -> None:
         # The variant surface detail must read as a carved groove with real
         # form (a shadowed recess AND a lit lip), not a single flat scratch,
@@ -238,77 +176,6 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                         0,
                         f"variant {v} detail pokes outside the slab diamond",
                     )
-            finally:
-                pass
-
-    def test_stairs_keep_descent_motif_across_variants(self) -> None:
-        # The spiral staircase carves a dark central shaft (the descent void)
-        # and lays stair-colored tread wedges around it, regardless of variant.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                stair = game.theme.stair
-                rendered_any_step = False
-                for v in range(DUNGEON_FLOOR_VARIANTS):
-                    surf, ax, ay = game.tile_surface(Tile.STAIRS, v, False)
-                    # The spiral's dark central shaft (the void you look down)
-                    # sits at the tile center; the deepest back tread can cover
-                    # the exact center pixel, so assert a dark well pixel within
-                    # a small iso-disk around the center instead.
-                    found_shaft = False
-                    R = 8 * WORLD_SCALE
-                    for ry in range(-R, R + 1, WORLD_SCALE):
-                        for rx in range(-R, R + 1, WORLD_SCALE):
-                            if rx * rx + 4 * ry * ry > R * R * 2:
-                                continue
-                            px = surf.get_at((ax + rx, ay + ry))[:3]
-                            if sum(px) < sum(stair) - 200:
-                                found_shaft = True
-                                break
-                        if found_shaft:
-                            break
-                    self.assertTrue(
-                        found_shaft, f"stairs variant {v} lost its dark shaft"
-                    )
-                    # A stair-colored tread sits in the camera-facing (lower)
-                    # half of the tile so the descent reads clearly.
-                    found = False
-                    for ry in range(2 * WORLD_SCALE, 11 * WORLD_SCALE, WORLD_SCALE):
-                        for rx in range(-8 * WORLD_SCALE, 8 * WORLD_SCALE, WORLD_SCALE):
-                            px = surf.get_at((ax + rx, ay + ry))[:3]
-                            if max(abs(px[i] - stair[i]) for i in range(3)) <= 18:
-                                found = True
-                                break
-                        if found:
-                            break
-                    self.assertTrue(found, f"stairs variant {v} lost its tread")
-                    # The z-shifted treads must be clipped to the stairwell
-                    # opening: no stair-colored tread pixel may appear outside
-                    # the ring (r > 1.15 in ellipse-normalized coords), or the
-                    # stairs would leak onto the floor frame.
-                    rx_o = 21 * WORLD_SCALE
-                    ry_o = 10 * WORLD_SCALE
-                    leaked = False
-                    for py in range(0, surf.get_height(), 2):
-                        for px_x in range(0, surf.get_width(), 2):
-                            p = surf.get_at((px_x, py))
-                            if p[3] < 40:
-                                continue
-                            dx = px_x - ax
-                            dy = py - ay
-                            if math.hypot(dx / rx_o, dy / ry_o) <= 1.15:
-                                continue
-                            c = p[:3]
-                            if max(abs(c[i] - stair[i]) for i in range(3)) <= 18:
-                                leaked = True
-                                break
-                        if leaked:
-                            break
-                    self.assertFalse(
-                        leaked, f"stairs variant {v} leaks treads outside the ring"
-                    )
-                    rendered_any_step = True
-                self.assertTrue(rendered_any_step)
             finally:
                 pass
 
@@ -359,24 +226,6 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                 game.player.y = door[1] + 0.5
                 self.assertTrue(game.open_nearby_door())
                 self.assertGreater(len(game.tile_cache), 0)
-            finally:
-                pass
-
-    # --- Geometry sanity --------------------------------------------------
-
-    def test_tile_surface_dimensions_match_tile_and_wall_height(self) -> None:
-        # The cached surface must keep the documented anchor/dimension contract
-        # so isometric stacking is unaffected by the variant rewrite.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                margin = 4 * WORLD_SCALE
-                wall_h = 48 * WORLD_SCALE
-                surf, ax, ay = game.tile_surface(Tile.WALL, 0, False)
-                self.assertEqual(surf.get_width(), TILE_W + margin * 2)
-                self.assertEqual(surf.get_height(), TILE_H + wall_h + margin * 2)
-                self.assertEqual(ax, (TILE_W + margin * 2) // 2)
-                self.assertEqual(ay, margin + wall_h + TILE_H // 2)
             finally:
                 pass
 

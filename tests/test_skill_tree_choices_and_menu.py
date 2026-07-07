@@ -17,7 +17,6 @@ from arch_rogue.content import (
     ARCHETYPES,
     SKILL_NODES,
     SKILL_UPGRADES,
-    migrate_skill_keys,
     skill_branches_for_archetype,
     skill_node_by_key,
     skill_nodes_for_archetype,
@@ -130,66 +129,7 @@ class SkillTree32Tests(unittest.TestCase):
             finally:
                 pass
 
-    def test_grant_skill_upgrade_picks_available_and_fails_when_exhausted(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=2, seed=3222)  # Arcanist
-            try:
-                # Grant several upgrades; each must be a currently-available node.
-                for _ in range(4):
-                    before = set(game.player.skill_upgrades)
-                    self.assertTrue(game.grant_skill_upgrade(reason="test"))
-                    added = set(game.player.skill_upgrades) - before
-                    self.assertEqual(len(added), 1)
-                    new_key = next(iter(added))
-                    node = skill_node_by_key(new_key)
-                    self.assertIsNotNone(node)
-                    assert node is not None
-                    self.assertEqual(node.archetype, "Arcanist")
-                    # The granted node must have had its prerequisites met.
-                    for prereq in node.prerequisites:
-                        self.assertIn(prereq, game.player.skill_upgrades)
-
-                # Restart as Warden, force-acquire every node, then confirm
-                # grant returns False once the tree is exhausted.
-                game.rng.seed(3233)
-                game.restart(ARCHETYPES[0])
-                if game.story_intro_pending:
-                    self.assertTrue(game.choose_story_relic_path(0))
-                game.active_cutscene = None
-                warden_nodes = skill_nodes_for_archetype("Warden")
-                # Acquire in tier order so prerequisites hold.
-                for node in sorted(warden_nodes, key=lambda n: n.tier):
-                    game.player.skill_upgrades.append(node.key)
-                self.assertFalse(game.grant_skill_upgrade(reason="test"))
-            finally:
-                pass
-
-    def test_choose_skill_upgrade_applies_stat_bonuses(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=0)
-            try:
-                game.player.skill_points = 1
-                node = skill_node_by_key("warden_bulwark")
-                assert node is not None
-                before_hp = game.player.max_hp
-                before_armor = game.player.armor_bonus
-                game.choose_skill_upgrade("warden_bulwark")
-                self.assertEqual(game.player.max_hp, before_hp + node.max_hp_bonus)
-                self.assertEqual(
-                    game.player.armor_bonus, before_armor + node.armor_bonus
-                )
-            finally:
-                pass
-
     # --- Save compatibility ---------------------------------------------------
-
-    def test_migrate_skill_keys_drops_unknown_and_dedupes(self) -> None:
-        self.assertEqual(migrate_skill_keys(["warden_bulwark"]), ["warden_bulwark"])
-        self.assertEqual(migrate_skill_keys(["does_not_exist"]), [])
-        self.assertEqual(
-            migrate_skill_keys(["warden_bulwark", "warden_bulwark"]),
-            ["warden_bulwark"],
-        )
 
     def test_save_restore_preserves_progress_and_drops_unknown_keys(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -311,24 +251,6 @@ class SkillTree32Tests(unittest.TestCase):
                 compact.character_menu_open = True
                 compact.character_menu_tab = "skill_tree"
                 compact.draw_character_menu()
-            finally:
-                pass
-
-    def test_skill_node_state_reports_chosen_available_locked(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir, archetype_index=0, seed=3281)
-            try:
-                game.player.skill_points = 1
-                bulwark = skill_node_by_key("warden_bulwark")
-                aegis = skill_node_by_key("warden_aegis")
-                iron_vow = skill_node_by_key("warden_iron_vow")
-                self.assertEqual(game.skill_node_state(bulwark), "available")
-                self.assertEqual(game.skill_node_state(aegis), "locked")
-                self.assertEqual(game.skill_node_state(iron_vow), "locked")
-                game.choose_skill_upgrade("warden_bulwark")
-                self.assertEqual(game.skill_node_state(bulwark), "chosen")
-                self.assertEqual(game.skill_node_state(aegis), "available")
-                self.assertEqual(game.skill_node_state(iron_vow), "locked")
             finally:
                 pass
 

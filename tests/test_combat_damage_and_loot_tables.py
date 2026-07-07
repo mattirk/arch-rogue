@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 
 from arch_rogue.content import ARCHETYPES, RARITY_PROFILES, SKILL_UPGRADES
-from arch_rogue.game import ENEMY_DEFINITIONS, Game
+from arch_rogue.game import Game
 from arch_rogue.models import Enemy, Item
 
 
@@ -248,23 +248,6 @@ class CombatSkillsLoot22Tests(unittest.TestCase):
                     enemy, 20, knockback_from=(1.0, 0.0), damage_type="shadow"
                 )
                 self.assertLessEqual(enemy.hp, 46)
-            finally:
-                pass
-
-    def test_new_enemy_roster_has_unique_sprites(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                enemy_names = {definition.name for definition in ENEMY_DEFINITIONS}
-                for name in {
-                    "Ash Hound",
-                    "Rune Sentinel",
-                    "Plague Toad",
-                    "Hollow Knight",
-                }:
-                    self.assertIn(name, enemy_names)
-                    self.assertIn(name, game.sprites.enemies)
-                self.assertGreaterEqual(len(game.sprites.enemies), len(enemy_names))
             finally:
                 pass
 
