@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.12.0 — Relic & Guest Rooms, Game Logo
+
+The story-relic and quest-NPC sprites were rebuilt as detailed procedural templates, story floors now reserve a dedicated guest room (mirroring shop rooms) where the NPC and relic always spawn at the center, and the octahedron relic became the game's logo/icon.
+
+### Changed
+- Story relic sprite replaced with a faceted octahedron cut-gem, authored at low resolution in `sprites.py::_story_relic` and routed through the shared prop pipeline (outline + nearest-neighbor upscale + animation frames). `draw_story_relic` now blits the atlas frame recolored with the per-story accent via an additive blend, with bob/tilt, an accent floor glow, a contact shadow, and attendant motes. The old inline flat-diamond + status-sigil drawing was removed.
+- Quest NPC (`_story_guest`) rebuilt as a detailed humanoid template: wide-brimmed hat with a gold band, distinct face with glowing sigil eyes, separate arms with hands, two distinct legs with knee patches, and boots — authored on the shared 26x34 actor canvas. The palette was desaturated from neon violet to a muted dusty-mauve traveler's robe, and `draw_story_guest` no longer applies the additive full-sprite tint or the bright pulsing floor halo that made the guest glow; it now renders like a normal actor with only a faint floor marker.
+- On every story-beat floor, `Dungeon` reserves a dedicated `guest_room_index` (mirroring `shop_room_index`): an eligible room is sealed with doors via `_seal_room_with_doors` regardless of the random door chance. `run_flow` passes `guest_room=story_beat_index_for_depth(...) is not None` to `Dungeon`.
+- New distinct guest-room art in `rendering/world.py`: `is_guest_tile`/`_guest_room_bounds` (interior floor only, cached per frame) plus `guest_wall_faces` (which visible side face of a perimeter wall borders the room interior) route floor and wall tiles to new `_draw_guest_floor` (a dim consecrated slab with a low-contrast accent-diamond insignia and lit lip) and a per-face wall treatment (cooler/darker stone with a carved accent band). The distinct wall art now appears **only on the interior face** of perimeter walls (north walls show it on the left/+y face, west walls on the right/+x face); the cap and outside faces stay normal stone so the markings never show on the room's exterior. `tile_surface` cache key extended to a 6-tuple `(theme, tile, seed, shop_floor, guest, wall_guest_face)`; `prewarm_tile_cache` also pre-generates both wall face variants ("left"/"right") and the guest floor.
+- `_populate_story_guest` places the guest at the guest-room center, and `story_relic_location_for_choice` always places the relic adjacent to the guest-room center (never stacking on the NPC) for all three choices; fallbacks preserved for non-guest floors. `drop_position_near` gained `exclude_origin` so the aid relic lands on an adjacent tile.
+- The guiding-light crack is now per-tile visibility-clipped so it never paints over dark/unrevealed floor, and renders whenever a relic target exists (the previous sight-radius gate kept it from drawing when the relic was far away, defeating its purpose).
+- The guest's floating "?" portrait badge (which sat on top of the co-located relic on aid floors) was removed; the floor ring, sprite, and proximity label still identify the guest.
+### Added
+- Game logo/icon: the octahedron relic rendered natively at sizes 16/32/64/128/256/512 into `src/arch_rogue/assets/icons/` (via `gen_icon_assets.py`), bundled as package data. `arch_rogue/icon.py` loads them via `importlib.resources` (works under install and pygbag). `Game.__init__` sets the window/taskbar icon (`pygame.display.set_icon`); the title-screen ornament now uses the octahedron logo as its center crest across all menus (with a small-diamond fallback if assets are missing).
+### Validation
+- `tests/test_guest_room.py` (new) covers guest-room sealing, `is_guest_tile` markers, guest-at-center, relic-near-center after aid, guest tile surfaces, and save roundtrip.
+- `tests/test_dungeon_tile_variants.py` prewarm counts updated (walls x2, floors x3, stairs x2) for the new guest variants.
+- `tests/test_story_mode.py` relic-choice test updated for the new guest-room-center placement (defy no longer sends the relic to the final room; the guidance route crosses the sealed guest-room door).
+- `python -m compileall src tests` and `python -m unittest discover tests` pass (254 tests). Save schema `version` is unchanged (5); `guest_room_index` defaults to `None` on old saves.
+- Package metadata, `__version__`, save release strings, and version-current tests now target `3.12.0`.
+
 ## 3.11.0 — Cutscene Cleanup
 
 The quest cutscene stage was visually cluttered and its actors were mis-sized: transparent overlay blobs stacked on the set, player/enemy sprites dwarfed the stage, and the "depth" of the scene read flat. The stage is now a cleaner cursed-theater set with real perspective and a choreographed duel.

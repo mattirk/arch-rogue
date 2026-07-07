@@ -91,8 +91,13 @@ class RenderingWorldMixin:
         if sx < -TILE_W or sx > sw + TILE_W or sy < -TILE_H or sy > sh + TILE_H:
             return None
         seed = self.tile_seed(x, y)
+        wall_guest_face = self.guest_wall_faces(x, y) if tile == Tile.WALL else None
         surface, anchor_x, anchor_y = self.tile_surface(
-            tile, seed, self.is_shop_floor_tile(x, y), self.is_guest_tile(x, y)
+            tile,
+            seed,
+            self.is_shop_floor_tile(x, y),
+            self.is_guest_tile(x, y),
+            wall_guest_face,
         )
         if self._frame_dark:  # set at start of draw_world_objects/draw_dungeon
             alpha = self.tile_visibility_alpha(x, y)
@@ -161,7 +166,14 @@ class RenderingWorldMixin:
                 if tile in (Tile.FLOOR, Tile.STAIRS):
                     self.tile_surface(tile, seed, shop_floor=True)
                 if tile == Tile.WALL:
-                    self.tile_surface(tile, seed, shop_floor=False, guest=True)
+                    # Guest-room perimeter walls render the distinct art on one
+                    # interior side face only; prewarm both face options.
+                    self.tile_surface(
+                        tile, seed, shop_floor=False, wall_guest_face="left"
+                    )
+                    self.tile_surface(
+                        tile, seed, shop_floor=False, wall_guest_face="right"
+                    )
                 elif tile == Tile.FLOOR:
                     self.tile_surface(tile, seed, shop_floor=False, guest=True)
 
@@ -175,13 +187,44 @@ class RenderingWorldMixin:
         return self.dungeon.tiles[x][y] in (Tile.FLOOR, Tile.STAIRS)
 
     def is_guest_tile(self, x: int, y: int) -> bool:
+        # Interior guest-room floor only (not walls). Walls are handled per-face
+        # by guest_wall_faces so the distinct wall art appears only on the
+        # face that borders the room interior, not on the outside.
         bounds = self._guest_room_bounds()
         if bounds is None:
             return False
         rx, ry, rw, rh = bounds
-        if not (rx <= x <= rx + rw - 1 and ry <= y <= ry + rh - 1):
+        if not (rx < x < rx + rw - 1 and ry < y < ry + rh - 1):
             return False
-        return self.dungeon.tiles[x][y] in (Tile.FLOOR, Tile.STAIRS, Tile.WALL)
+        return self.dungeon.tiles[x][y] in (Tile.FLOOR, Tile.STAIRS)
+
+    def _guest_interior_floor(self, x: int, y: int) -> bool:
+        # Whether (x, y) is a walkable tile strictly inside the guest room.
+        bounds = self._guest_room_bounds()
+        if bounds is None:
+            return False
+        rx, ry, rw, rh = bounds
+        if not (rx < x < rx + rw - 1 and ry < y < ry + rh - 1):
+            return False
+        if not self.dungeon.in_bounds(x, y):
+            return False
+        return self.dungeon.tiles[x][y] in (Tile.FLOOR, Tile.STAIRS)
+
+    def guest_wall_faces(self, x: int, y: int) -> str | None:
+        # For a wall tile on the guest-room perimeter, return which visible side
+        # face borders the room interior: "left" (the +y face), "right" (the +x
+        # face), or None. Only that face gets the distinct guest wall art, so the
+        # markings never appear on the room's outside. Walls not on the guest
+        # perimeter return None.
+        if self.dungeon.tiles[x][y] != Tile.WALL:
+            return None
+        left_interior = self._guest_interior_floor(x, y + 1)
+        right_interior = self._guest_interior_floor(x + 1, y)
+        if left_interior:
+            return "left"
+        if right_interior:
+            return "right"
+        return None
 
     def _shop_room_bounds(self) -> tuple[int, int, int, int] | None:
         cache = getattr(self, "_frame_cache", None)
@@ -210,9 +253,24 @@ class RenderingWorldMixin:
         return result
 
     def tile_surface(
-        self, tile: Tile, seed: int, shop_floor: bool = False, guest: bool = False
+        self,
+        tile: Tile,
+        seed: int,
+        shop_floor: bool = False,
+        guest: bool = False,
+        wall_guest_face: str | None = None,
     ) -> tuple[pygame.Surface, int, int]:
-        key = (self.theme.name, int(tile), seed, shop_floor, guest)
+        # ``wall_guest_face`` selects which side face of a WALL tile gets the
+        # distinct guest-room wall art ("left"/"right"/None). Ignored for
+        # non-wall tiles; floors/stairs use the ``guest`` flag instead.
+        key = (
+            self.theme.name,
+            int(tile),
+            seed,
+            shop_floor,
+            guest,
+            wall_guest_face,
+        )
         cached = self.tile_cache.get(key)
         if cached:
             return cached
@@ -236,7 +294,16 @@ class RenderingWorldMixin:
 
         if tile == Tile.WALL:
             self.draw_wall_tile_surface(
-                surface, sx, sy, top, right, bottom, left, wall_h, seed, guest=guest
+                surface,
+                sx,
+                sy,
+                top,
+                right,
+                bottom,
+                left,
+                wall_h,
+                seed,
+                guest_face=wall_guest_face,
             )
         elif tile in (Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
             self.draw_door_tile_surface(
@@ -328,13 +395,10 @@ class RenderingWorldMixin:
         left: tuple[int, int],
         wall_h: int,
         seed: int,
-        guest: bool = False,
+        guest_face: str | None = None,
     ) -> None:
-        if guest:
-            self._draw_guest_wall_surface(
-                surface, sx, sy, top, right, bottom, left, wall_h, seed
-            )
-            return
+        left_guest = guest_face == "left"
+        right_guest = guest_face == "right"
         scale = WORLD_SCALE
         cap_top = (top[0], top[1] - wall_h)
         cap_right = (right[0], right[1] - wall_h)
@@ -345,101 +409,76 @@ class RenderingWorldMixin:
         # silhouette; they differ only in masonry pattern, so they read as the
         # same cut-stone wall with small, distinct character.
         variant = seed % DUNGEON_WALL_VARIANTS
-        # Per-variant tint: a gentle tonal nudge aligned with the variant so
-        # adjacent different-variant tiles also separate slightly in color.
         tint = variant * 2 - 3
         top_color = self.shade(self.theme.wall_top, 14 + tint)
         left_color = self.shade(self.theme.wall_left, tint)
         right_color = self.shade(self.theme.wall_right, tint)
+        # Guest-room interior faces use a cooler/darker stone so the consecrated
+        # chamber reads distinctly only on the inside; the outside stays normal.
+        guest_left_color = self.shade(self.theme.wall_left, -6 + tint)
+        guest_right_color = self.shade(self.theme.wall_right, -10 + tint)
+        accent = (
+            self.story_state.accent
+            if getattr(self, "story_state", None) is not None
+            else self.theme.accent
+        )
         edge = self.shade(self.theme.wall_edge, 6)
         course_color = self.shade(edge, -34)
         course_hi = self.shade(course_color, 16)
 
-        # --- Body: three clean polygons ---
-        pygame.draw.polygon(surface, left_color, [cap_left, cap_bottom, bottom, left])
-        pygame.draw.polygon(
-            surface, right_color, [cap_right, cap_bottom, bottom, right]
-        )
-        pygame.draw.polygon(
-            surface, top_color, [cap_top, cap_right, cap_bottom, cap_left]
-        )
-
-        # --- Smooth vertical gradient on each face: a lighter upper third and
-        # a darker lower third. Keeps the sculpted look without banding clutter.
-        for t0, t1, shade in ((0.0, 0.35, 10), (0.65, 1.0, -12)):
-            ly0 = int(cap_left[1] + (left[1] - cap_left[1]) * t0)
-            ly1 = int(cap_left[1] + (left[1] - cap_left[1]) * t1)
-            lx0 = int(cap_left[0] + (left[0] - cap_left[0]) * t0)
-            lx1 = int(cap_left[0] + (left[0] - cap_left[0]) * t1)
-            by0 = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t0)
-            by1 = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t1)
-            pygame.draw.polygon(
-                surface,
-                self.shade(left_color, shade),
-                [(lx0, ly0), (by0, ly0), (by1, ly1), (lx1, ly1)],
-            )
-            ry0 = int(cap_right[1] + (right[1] - cap_right[1]) * t0)
-            ry1 = int(cap_right[1] + (right[1] - cap_right[1]) * t1)
-            rx0 = int(cap_right[0] + (right[0] - cap_right[0]) * t0)
-            rx1 = int(cap_right[0] + (right[0] - cap_right[0]) * t1)
-            by0r = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t0)
-            by1r = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t1)
-            pygame.draw.polygon(
-                surface,
-                self.shade(right_color, shade),
-                [(by0r, ry0), (rx0, ry0), (rx1, ry1), (by1r, ry1)],
-            )
-
-        # --- Cap highlight: a single bright rim along the lit top-left edge.
-        pygame.draw.line(
-            surface, self.shade(top_color, 30), cap_top, cap_left, max(1, scale)
-        )
-
-        # --- Masonry pattern: variant-driven courses + joints on both faces.
-        # The same pattern is mirrored onto the left and right faces so the
-        # wall reads as one continuous stone course wrapping the pillar.
+        # Masonry pattern: variant-driven courses + joints, mirrored on both
+        # faces so the wall reads as one continuous stone course wrapping the
+        # pillar.
         if variant == 0:
-            # Ashlar: two regular courses, single aligned center joint.
             courses = (0.34, 0.66)
             joints = ([0.5], [0.5], [0.5])
         elif variant == 1:
-            # Running bond: two courses, the middle row's joint offset to
-            # stagger the brick seams.
             courses = (0.34, 0.66)
             joints = ([0.5], [0.28, 0.72], [0.5])
         elif variant == 2:
-            # Large blocks: one tall course, single center joint per row.
             courses = (0.5,)
             joints = ([0.5], [0.5])
         else:
-            # Weathered ashlar: same courses as variant 0, with an extra
-            # off-center joint in the lower row suggesting a patched block.
             courses = (0.34, 0.66)
             joints = ([0.5], [0.5], [0.35, 0.7])
 
         left_face = self._wall_face_parallelogram(cap_left, cap_bottom, left, bottom)
         right_face = self._wall_face_parallelogram(cap_bottom, cap_right, bottom, right)
-        self._draw_wall_masonry(
-            surface, *left_face, courses, joints, course_color, scale
+        # Side faces first (each in normal or guest style), then the cap on top.
+        # The cap is always normal stone — the distinct guest art is for the
+        # interior side faces only, never the top visible from outside.
+        self._draw_wall_side_face(
+            surface,
+            left_face,
+            guest_left_color if left_guest else left_color,
+            courses,
+            joints,
+            course_color,
+            course_hi,
+            scale,
+            guest=left_guest,
+            accent=accent,
         )
-        self._draw_wall_masonry(
-            surface, *right_face, courses, joints, course_color, scale
+        self._draw_wall_side_face(
+            surface,
+            right_face,
+            guest_right_color if right_guest else right_color,
+            courses,
+            joints,
+            course_color,
+            course_hi,
+            scale,
+            guest=right_guest,
+            accent=accent,
         )
-        # Faint highlight along the top course line to read as a cut lip.
-        for face in (left_face, right_face):
-            top_left, top_right, bot_left, bot_right = face
-            for t in courses:
-                ax = top_left[0] + (bot_left[0] - top_left[0]) * t
-                ay = top_left[1] + (bot_left[1] - top_left[1]) * t
-                bx = top_right[0] + (bot_right[0] - top_right[0]) * t
-                by = top_right[1] + (bot_right[1] - top_right[1]) * t
-                pygame.draw.line(
-                    surface,
-                    course_hi,
-                    (ax, ay - scale),
-                    (bx, by - scale),
-                    max(1, scale),
-                )
+        pygame.draw.polygon(
+            surface, top_color, [cap_top, cap_right, cap_bottom, cap_left]
+        )
+
+        # --- Cap highlight: a single bright rim along the lit top-left edge.
+        pygame.draw.line(
+            surface, self.shade(top_color, 30), cap_top, cap_left, max(1, scale)
+        )
 
         # --- Weathered variant: a short jagged crack down the left face for
         # ancient, broken character. Subtle and single so it stays in-family.
@@ -480,6 +519,70 @@ class RenderingWorldMixin:
         pygame.draw.line(surface, self.shade(edge, -50), cap_bottom, bottom, scale)
         pygame.draw.line(surface, self.shade(edge, -44), left, bottom, scale)
         pygame.draw.line(surface, self.shade(edge, -56), bottom, right, scale)
+
+    def _draw_wall_side_face(
+        self,
+        surface: pygame.Surface,
+        face_quad: tuple[
+            tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]
+        ],
+        base_color: Color,
+        courses: tuple[float, ...],
+        joints: tuple,
+        course_color: Color,
+        course_hi: Color,
+        scale: int,
+        *,
+        guest: bool = False,
+        accent: Color | None = None,
+    ) -> None:
+        # Draw one side face of a wall (base fill + vertical gradient + masonry
+        # + course lip), and when ``guest`` add the carved accent band so the
+        # distinct consecrated-chamber wall art appears only on this (interior)
+        # face. ``face_quad`` is (top_left, top_right, bot_left, bot_right).
+        top_left, top_right, bot_left, bot_right = face_quad
+        pygame.draw.polygon(
+            surface, base_color, [top_left, top_right, bot_right, bot_left]
+        )
+        # Smooth vertical gradient: lighter upper third, darker lower third.
+        for t0, t1, sh in ((0.0, 0.35, 10), (0.65, 1.0, -12)):
+            lx0 = top_left[0] + (bot_left[0] - top_left[0]) * t0
+            ly0 = top_left[1] + (bot_left[1] - top_left[1]) * t0
+            lx1 = top_left[0] + (bot_left[0] - top_left[0]) * t1
+            ly1 = top_left[1] + (bot_left[1] - top_left[1]) * t1
+            rx0 = top_right[0] + (bot_right[0] - top_right[0]) * t0
+            ry0 = top_right[1] + (bot_right[1] - top_right[1]) * t0
+            rx1 = top_right[0] + (bot_right[0] - top_right[0]) * t1
+            ry1 = top_right[1] + (bot_right[1] - top_right[1]) * t1
+            pygame.draw.polygon(
+                surface,
+                self.shade(base_color, sh),
+                [(lx0, ly0), (rx0, ry0), (rx1, ry1), (lx1, ly1)],
+            )
+        self._draw_wall_masonry(
+            surface, *face_quad, courses, joints, course_color, scale
+        )
+        # Faint highlight along each top course line to read as a cut lip.
+        for t in courses:
+            ax = top_left[0] + (bot_left[0] - top_left[0]) * t
+            ay = top_left[1] + (bot_left[1] - top_left[1]) * t
+            bx = top_right[0] + (bot_right[0] - top_right[0]) * t
+            by = top_right[1] + (bot_right[1] - top_right[1]) * t
+            pygame.draw.line(
+                surface, course_hi, (ax, ay - scale), (bx, by - scale), max(1, scale)
+            )
+        # Carved accent band near the top of the face — guest/interior only.
+        if guest and accent is not None:
+            band_t = 0.22
+            band_color = self.shade(accent, -34)
+            ax = top_left[0] + (bot_left[0] - top_left[0]) * band_t
+            ay = top_left[1] + (bot_left[1] - top_left[1]) * band_t
+            bx = top_right[0] + (bot_right[0] - top_right[0]) * band_t
+            by = top_right[1] + (bot_right[1] - top_right[1]) * band_t
+            pygame.draw.line(surface, band_color, (ax, ay), (bx, by), max(1, scale))
+            pygame.draw.aalines(
+                surface, self.shade(band_color, 14), False, [(ax, ay - 1), (bx, by - 1)]
+            )
 
     def _floor_groove(
         self,
@@ -596,144 +699,15 @@ class RenderingWorldMixin:
             surface,
             self.shade(insignia_color, -10),
             True,
-            [(cx, cy - ih // 2), (cx + iw // 2, cy), (cx, cy + ih // 2), (cx - iw // 2, cy)],
+            [
+                (cx, cy - ih // 2),
+                (cx + iw // 2, cy),
+                (cx, cy + ih // 2),
+                (cx - iw // 2, cy),
+            ],
         )
         # Crisp lit lip along the top-left edge.
         pygame.draw.aalines(surface, self.shade(base, 18), False, [top, left])
-
-    def _draw_guest_wall_surface(
-        self,
-        surface: pygame.Surface,
-        sx: int,
-        sy: int,
-        top: tuple[int, int],
-        right: tuple[int, int],
-        bottom: tuple[int, int],
-        left: tuple[int, int],
-        wall_h: int,
-        seed: int,
-    ) -> None:
-        # Ceremonial chamber wall: same three-polygon geometry as the normal
-        # wall but with cooler/darker stone tones and a carved accent band
-        # near the top of each face.
-        scale = WORLD_SCALE
-        cap_top = (top[0], top[1] - wall_h)
-        cap_right = (right[0], right[1] - wall_h)
-        cap_bottom = (bottom[0], bottom[1] - wall_h)
-        cap_left = (left[0], left[1] - wall_h)
-        accent = (
-            self.story_state.accent
-            if getattr(self, "story_state", None) is not None
-            else self.theme.accent
-        )
-        variant = seed % DUNGEON_WALL_VARIANTS
-        tint = variant * 2 - 3
-        top_color = self.shade(self.theme.wall_top, 6 + tint)
-        left_color = self.shade(self.theme.wall_left, -6 + tint)
-        right_color = self.shade(self.theme.wall_right, -10 + tint)
-        edge = self.shade(self.theme.wall_edge, 0)
-        course_color = self.shade(edge, -34)
-        course_hi = self.shade(course_color, 16)
-
-        pygame.draw.polygon(surface, left_color, [cap_left, cap_bottom, bottom, left])
-        pygame.draw.polygon(
-            surface, right_color, [cap_right, cap_bottom, bottom, right]
-        )
-        pygame.draw.polygon(
-            surface, top_color, [cap_top, cap_right, cap_bottom, cap_left]
-        )
-
-        # Smooth vertical gradient on each face.
-        for t0, t1, shade in ((0.0, 0.35, 10), (0.65, 1.0, -12)):
-            ly0 = int(cap_left[1] + (left[1] - cap_left[1]) * t0)
-            ly1 = int(cap_left[1] + (left[1] - cap_left[1]) * t1)
-            lx0 = int(cap_left[0] + (left[0] - cap_left[0]) * t0)
-            lx1 = int(cap_left[0] + (left[0] - cap_left[0]) * t1)
-            by0 = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t0)
-            by1 = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t1)
-            pygame.draw.polygon(
-                surface,
-                self.shade(left_color, shade),
-                [(lx0, ly0), (by0, ly0), (by1, ly1), (lx1, ly1)],
-            )
-            ry0 = int(cap_right[1] + (right[1] - cap_right[1]) * t0)
-            ry1 = int(cap_right[1] + (right[1] - cap_right[1]) * t1)
-            rx0 = int(cap_right[0] + (right[0] - cap_right[0]) * t0)
-            rx1 = int(cap_right[0] + (right[0] - cap_right[0]) * t1)
-            by0r = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t0)
-            by1r = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t1)
-            pygame.draw.polygon(
-                surface,
-                self.shade(right_color, shade),
-                [(by0r, ry0), (rx0, ry0), (rx1, ry1), (by1r, ry1)],
-            )
-
-        # Cap highlight.
-        pygame.draw.line(
-            surface, self.shade(top_color, 30), cap_top, cap_left, max(1, scale)
-        )
-
-        # Masonry pattern (same variants as the normal wall).
-        if variant == 0:
-            courses = (0.34, 0.66)
-            joints = ([0.5], [0.5], [0.5])
-        elif variant == 1:
-            courses = (0.34, 0.66)
-            joints = ([0.5], [0.28, 0.72], [0.5])
-        elif variant == 2:
-            courses = (0.5,)
-            joints = ([0.5], [0.5])
-        else:
-            courses = (0.34, 0.66)
-            joints = ([0.5], [0.5], [0.35, 0.7])
-
-        left_face = self._wall_face_parallelogram(cap_left, cap_bottom, left, bottom)
-        right_face = self._wall_face_parallelogram(cap_bottom, cap_right, bottom, right)
-        self._draw_wall_masonry(
-            surface, *left_face, courses, joints, course_color, scale
-        )
-        self._draw_wall_masonry(
-            surface, *right_face, courses, joints, course_color, scale
-        )
-        for face in (left_face, right_face):
-            top_left, top_right, bot_left, bot_right = face
-            for t in courses:
-                ax = top_left[0] + (bot_left[0] - top_left[0]) * t
-                ay = top_left[1] + (bot_left[1] - top_left[1]) * t
-                bx = top_right[0] + (bot_right[0] - top_right[0]) * t
-                by = top_right[1] + (bot_right[1] - top_right[1]) * t
-                pygame.draw.line(
-                    surface,
-                    course_hi,
-                    (ax, ay - scale),
-                    (bx, by - scale),
-                    max(1, scale),
-                )
-
-        # Carved accent band near the top of each face: a horizontal accent-
-        # colored groove running across the upper third of both side faces.
-        band_t = 0.22
-        band_color = self.shade(accent, -34)
-        for face in (left_face, right_face):
-            top_left, top_right, bot_left, bot_right = face
-            ax = top_left[0] + (bot_left[0] - top_left[0]) * band_t
-            ay = top_left[1] + (bot_left[1] - top_left[1]) * band_t
-            bx = top_right[0] + (bot_right[0] - top_right[0]) * band_t
-            by = top_right[1] + (bot_right[1] - top_right[1]) * band_t
-            pygame.draw.line(surface, band_color, (ax, ay), (bx, by), max(1, scale))
-            pygame.draw.aalines(
-                surface, self.shade(band_color, 14), False, [(ax, ay - 1), (bx, by - 1)]
-            )
-
-        # Clean silhouette edges.
-        pygame.draw.lines(
-            surface, edge, True, [cap_top, cap_right, cap_bottom, cap_left], scale
-        )
-        pygame.draw.line(surface, self.shade(edge, -14), cap_left, left, scale)
-        pygame.draw.line(surface, self.shade(edge, -30), cap_right, right, scale)
-        pygame.draw.line(surface, self.shade(edge, -50), cap_bottom, bottom, scale)
-        pygame.draw.line(surface, self.shade(edge, -44), left, bottom, scale)
-        pygame.draw.line(surface, self.shade(edge, -56), bottom, right, scale)
 
     def draw_floor_tile_surface(
         self,

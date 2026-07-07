@@ -68,6 +68,7 @@ from .content import (
     skill_node_by_key,
 )
 from .dungeon import Dungeon
+from .icon import load_icon
 from .input import InputMixin, key_command
 from .interactions import InteractionMixin
 from .inventory import InventoryMixin
@@ -256,6 +257,14 @@ class Game(
             screen_size = (display_info.current_w, display_info.current_h)
         self.windowed_size = screen_size
         self.screen = self.apply_display_mode(headless=headless)
+        # Branded window/taskbar icon: the octahedron relic logo. Best-effort —
+        # headless/dummy drivers and platforms without bundled assets quietly skip.
+        icon_surface = load_icon(64)
+        if icon_surface is not None:
+            try:
+                pygame.display.set_icon(icon_surface)
+            except pygame.error:
+                pass
         self.clock = pygame.time.Clock()
         self.rebuild_fonts()
         self.sprites = PixelSpriteAtlas()

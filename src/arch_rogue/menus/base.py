@@ -796,19 +796,45 @@ class MenuBaseMixin:
                 (cx + half_w, rule_y + offset),
                 max(1, self.u(1)),
             )
-        # Center diamond crest.
-        crest_r = self.u(5)
-        crest = [
-            (cx, rule_y - crest_r),
-            (cx + crest_r, rule_y),
-            (cx, rule_y + crest_r),
-            (cx - crest_r, rule_y),
-        ]
-        pygame.draw.polygon(self.screen, gold, crest)
-        pygame.draw.polygon(
-            self.screen, self.shade(accent, -40), crest, max(1, self.u(1))
-        )
-        pygame.draw.circle(self.screen, self.BG_DEEP, (cx, rule_y), max(1, self.u(1)))
+        # Center crest: the octahedron relic logo (the game's brand mark),
+        # sized to sit between the two gold rules. Falls back to a small
+        # diamond if the bundled icon assets are unavailable.
+        crest_h = self.u(26)
+        logo = self._title_logo(crest_h)
+        if logo is not None:
+            self.screen.blit(logo, logo.get_rect(center=(cx, rule_y)))
+        else:
+            crest_r = self.u(5)
+            crest = [
+                (cx, rule_y - crest_r),
+                (cx + crest_r, rule_y),
+                (cx, rule_y + crest_r),
+                (cx - crest_r, rule_y),
+            ]
+            pygame.draw.polygon(self.screen, gold, crest)
+            pygame.draw.polygon(
+                self.screen, self.shade(accent, -40), crest, max(1, self.u(1))
+            )
+            pygame.draw.circle(
+                self.screen, self.BG_DEEP, (cx, rule_y), max(1, self.u(1))
+            )
+
+    def _title_logo(self, height: int) -> pygame.Surface | None:
+        # Cached octahedron logo scaled to the requested height. Cached on the
+        # Game so a UI-scale change (which changes self.u) rebuilds once.
+        cache = getattr(self.g, "_title_logo_cache", None)
+        if cache is None:
+            cache = {}
+            self.g._title_logo_cache = cache
+        surf = cache.get(height)
+        if surf is not None:
+            return surf
+        from ..icon import title_logo
+
+        surf = title_logo(height)
+        if surf is not None:
+            cache[height] = surf
+        return surf
 
     def _draw_parchment_header(self, rect: pygame.Rect, title: str) -> None:
         """A thin aged-parchment band across the top of a panel, with a gold rule."""

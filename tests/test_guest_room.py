@@ -73,13 +73,24 @@ class GuestRoomTests(unittest.TestCase):
                 )
                 cx, cy = room.center
                 self.assertTrue(game.is_guest_tile(cx, cy))
-                # A perimeter wall corner should also register as a guest tile.
+                # Perimeter walls are NOT whole-guest tiles; instead each wall
+                # reports which visible face borders the room interior
+                # ("left" = +y face, "right" = +x face). At least one
+                # perimeter wall has an interior guest face; corners have none.
+                wall_faces = [
+                    game.guest_wall_faces(x, y)
+                    for x, y in perimeter
+                    if game.dungeon.tiles[x][y] == Tile.WALL
+                ]
+                self.assertTrue(any(f in ("left", "right") for f in wall_faces))
+                self.assertIsNone(game.guest_wall_faces(room.x, room.y))
+                # A perimeter wall is not flagged as a whole guest tile.
                 wall_tile = next(
                     (x, y)
                     for x, y in perimeter
                     if game.dungeon.tiles[x][y] == Tile.WALL
                 )
-                self.assertTrue(game.is_guest_tile(*wall_tile))
+                self.assertFalse(game.is_guest_tile(*wall_tile))
             finally:
                 pass
 
@@ -138,26 +149,36 @@ class GuestRoomTests(unittest.TestCase):
                 self.assertGreater(floor_surf.get_width(), 0)
                 self.assertGreater(floor_surf.get_height(), 0)
                 wall_surf, wax, way = game.tile_surface(
-                    Tile.WALL, 0, shop_floor=False, guest=True
+                    Tile.WALL, 0, shop_floor=False, wall_guest_face="left"
                 )
                 self.assertIsNotNone(wall_surf)
                 self.assertGreater(wall_surf.get_width(), 0)
                 self.assertGreater(wall_surf.get_height(), 0)
-                # Cached under the guest key.
-                self.assertIn((theme, int(Tile.FLOOR), 0, False, True), game.tile_cache)
-                self.assertIn((theme, int(Tile.WALL), 0, False, True), game.tile_cache)
-                # Prewarm populated the full guest variant set.
+                # Cached under the guest key (6-tuple: the wall face mask is
+                # the last element; floors use the ``guest`` flag).
+                self.assertIn(
+                    (theme, int(Tile.FLOOR), 0, False, True, None),
+                    game.tile_cache,
+                )
+                self.assertIn(
+                    (theme, int(Tile.WALL), 0, False, False, "left"),
+                    game.tile_cache,
+                )
+                # Prewarm populated the full guest variant set: walls for both
+                # interior face options, floors in one guest form.
                 guest_walls = [
                     k
                     for k in game.tile_cache
-                    if k[0] == theme and k[1] == int(Tile.WALL) and k[4]
+                    if k[0] == theme
+                    and k[1] == int(Tile.WALL)
+                    and k[5] in ("left", "right")
                 ]
                 guest_floors = [
                     k
                     for k in game.tile_cache
                     if k[0] == theme and k[1] == int(Tile.FLOOR) and k[4]
                 ]
-                self.assertEqual(len(guest_walls), DUNGEON_WALL_VARIANTS)
+                self.assertEqual(len(guest_walls), DUNGEON_WALL_VARIANTS * 2)
                 self.assertEqual(len(guest_floors), DUNGEON_FLOOR_VARIANTS)
             finally:
                 pass

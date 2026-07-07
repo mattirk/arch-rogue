@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.11.0"
-description = "3.11.0 cleans up the cutscene stage: removes unused overlay clutter, fixes sprite depth and sizing, and adds a player/antagonist duel."
+version = "3.12.0"
+description = "3.12.0 replaces the story-relic and guest-NPC sprites, adds dedicated guest rooms with distinct floor/wall art, and introduces the octahedron game logo/icon."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
@@ -29,4 +29,4 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-arch_rogue = ["assets/*.json"]
+arch_rogue = ["assets/*.json", "assets/icons/*.png"]
