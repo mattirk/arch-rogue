@@ -85,21 +85,6 @@ class CombatMixin:
             "Ranger": "physical",
         }.get(self.player.class_name, "arcane")
 
-    def equipment_affix_count(self, name: str) -> int:
-        return sum(
-            1
-            for item in self.player.equipment.values()
-            if item is not None and name in item.affixes
-        )
-
-    def equipment_affix_tag_count(self, tag: str) -> int:
-        normalized = tag.lower()
-        return sum(
-            1
-            for item in self.player.equipment.values()
-            if item is not None and normalized in item.affix_tags
-        )
-
     def equipment_stat_total(self, stat: str) -> float:
         return sum(
             float(getattr(item, stat, 0.0))
@@ -143,6 +128,8 @@ class CombatMixin:
         ratio = self.equipment_stat_total("lifesteal")
         if self.equipped_proc_effect("lifesteal") and ratio <= 0.0:
             ratio = 0.08
+        if self.equipped_unique_effect("sanguine echo"):
+            ratio += 0.06
         if self.player.has_upgrade("acolyte_blood_pact"):
             ratio += 0.03
         return max(0.0, min(0.24, ratio))
@@ -151,6 +138,8 @@ class CombatMixin:
         thorns = int(self.equipment_stat_total("thorns"))
         if self.equipped_proc_effect("thorns") and thorns <= 0:
             thorns = 3
+        if self.equipped_unique_effect("grave chorus"):
+            thorns += 2
         if thorns <= 0:
             return 0
         return max(1, thorns + damage_taken // 8)
@@ -646,6 +635,10 @@ class CombatMixin:
                 typed_resist += 0.12
             if "Sealed" in armor.affixes and damage_type in ("shadow", "poison"):
                 typed_resist += 0.10
+        if self.equipped_unique_effect("glacial ward") and damage_type == "frost":
+            typed_resist += 0.15
+        if self.equipped_unique_effect("oathwall aegis"):
+            typed_resist += 0.06
         if self.player_status("aegis") > 0:
             typed_resist += 0.24
         amount = max(1, raw_damage - self.player.armor() - armor_bonus)
@@ -680,6 +673,8 @@ class CombatMixin:
             and source == "melee"
         ):
             counter = max(2, self.player.level + self.player.armor_bonus)
+            if self.equipped_unique_effect("counter smite"):
+                counter += max(3, self.player.level // 2 + 2)
             self.damage_enemy(
                 attacker,
                 counter,
@@ -698,6 +693,10 @@ class CombatMixin:
             reflected = self.equipment_thorns_damage(amount)
             if reflected > 0:
                 self._reflect_thorns(attacker, reflected)
+            if self.equipped_unique_effect("glacial ward"):
+                self.apply_enemy_status(attacker, "chilled", 1.2)
+            if self.equipped_unique_effect("pack pursuit"):
+                self.apply_enemy_status(attacker, "snared", 1.0)
         self.player.hp -= amount
         if self.player.hp <= 0 and not self.run_stats.cause_of_death:
             self.run_stats.cause_of_death = f"{source} {damage_type} damage"
@@ -1382,6 +1381,21 @@ class CombatMixin:
                     self.player.class_name == "Rogue"
                     and self.rng.random() < crit_chance
                 )
+                if (
+                    not rogue_crit
+                    and self.equipped_unique_effect("smoke crits")
+                    and self.player_status("smoke") > 0
+                    and self.rng.random() < 0.30
+                ):
+                    rogue_crit = True
+                    crit_mult = 1.80
+                    status_effect = "poisoned"
+                    status_duration = 1.4
+                    self.floaters.append(
+                        FloatingText(
+                            "Smoke Crit", enemy.x, enemy.y - 0.45, (255, 225, 120)
+                        )
+                    )
                 if rogue_crit:
                     damage = int(damage * crit_mult)
                     status_effect = "poisoned"
@@ -1477,6 +1491,10 @@ class CombatMixin:
                 angles = [0.0]  # 1 bolt
         if self.equipment_skill_bonus("Bolt") and len(angles) < 5:
             angles = sorted({*angles, -0.18, 0.18})
+        if self.equipped_unique_effect("splinter storm") and len(angles) < 5:
+            angles = sorted({*angles, -0.10, 0.10})
+        if self.equipped_unique_effect("sky volley") and len(angles) < 5:
+            angles = sorted({*angles, -0.22, 0.22})
         status_effect = ""
         status_duration = 0.0
         if damage_type == "poison" or self.player.has_upgrade("rogue_venom"):
@@ -1679,6 +1697,8 @@ class CombatMixin:
         )
         if self.player.class_name == "Rogue" and self.player.has_upgrade("rogue_smoke"):
             self.set_player_status("smoke", 0.9)
+        if self.equipped_unique_effect("vanish on dash"):
+            self.set_player_status("smoke", 0.8)
         if self.player.class_name == "Warden" and (
             self.player.has_upgrade("warden_aegis")
             or self.equipment_skill_bonus("Dash guard")
@@ -1762,6 +1782,8 @@ class CombatMixin:
             self.apply_enemy_status(enemy, "poisoned", max(status_duration, 1.4))
         if self.roll_equipped_proc("snare"):
             self.apply_enemy_status(enemy, "snared", max(status_duration, 1.0))
+        if self.roll_equipped_proc("smoke"):
+            self.set_player_status("smoke", 0.5)
         if self.roll_equipped_proc("smite"):
             proc_damage += max(2, self.player.level + self.player.spell_bonus // 3)
         if status_effect and status_effect != "chilled":

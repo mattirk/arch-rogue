@@ -323,6 +323,153 @@ class AffixBuild310Tests(unittest.TestCase):
             game.inventory_open = True
             game.draw_inventory()
 
+    def test_all_unique_effects_and_proc_effects_are_wired_into_combat(self) -> None:
+        # Every unique_effect and proc_effect defined on an item must have a
+        # gameplay hook in combat — no orphan flavor text.
+        unique_effects = {
+            definition.unique_effect
+            for definition in UNIQUE_ITEM_DEFINITIONS
+            if definition.unique_effect
+        }
+        proc_effects = {
+            affix.proc_effect for affix in AFFIX_DEFINITIONS if affix.proc_effect
+        }
+        proc_effects |= {
+            definition.proc_effect
+            for definition in UNIQUE_ITEM_DEFINITIONS
+            if definition.proc_effect
+        }
+
+        import inspect
+
+        import arch_rogue.combat as combat_module
+
+        # Gather all method source text for a thorough search.
+        methods_text = "\n".join(
+            inspect.getsource(method)
+            for _name, method in inspect.getmembers(
+                combat_module.CombatMixin, predicate=inspect.isfunction
+            )
+        )
+        # Also check Player model for unique-effect armor/melee hooks.
+        import arch_rogue.models as models_module
+
+        player_source = inspect.getsource(models_module.Player)
+        full_text = methods_text + player_source
+
+        for effect in unique_effects:
+            self.assertIn(
+                effect,
+                full_text,
+                f"unique_effect '{effect}' has no combat hook",
+            )
+        for proc in proc_effects:
+            self.assertIn(
+                proc,
+                full_text,
+                f"proc_effect '{proc}' has no combat hook",
+            )
+
+    def test_unique_effects_produce_tangible_gameplay_effects(self) -> None:
+        # Spot-check that equipping archetype uniques actually changes combat
+        # outcomes versus baseline.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0, seed=3111)
+            game.player.equipment["weapon"] = None
+            game.player.equipment["armor"] = None
+            base_armor = game.player.armor()
+
+            # Oathwall Carapace — armor unique bonus.
+            oathwall = game._make_unique_from_definition(
+                next(
+                    u
+                    for u in UNIQUE_ITEM_DEFINITIONS
+                    if u.unique_effect == "oathwall aegis"
+                ),
+                0.0,
+                0.0,
+            )
+            game.player.equipment["armor"] = oathwall
+            self.assertGreater(game.player.armor(), base_armor + oathwall.defense)
+
+            # Splinter Storm — extra bolt angles.
+            game.player.equipment["weapon"] = game._make_unique_from_definition(
+                next(
+                    u
+                    for u in UNIQUE_ITEM_DEFINITIONS
+                    if u.unique_effect == "splinter storm"
+                ),
+                0.0,
+                0.0,
+            )
+            game.player.equipment["armor"] = None
+            game.player.mana = game.player.max_mana
+            game.player.bolt_timer = 0.0
+            game.projectiles.clear()
+            game.player_cast_bolt()
+            self.assertGreaterEqual(len(game.projectiles), 3)
+
+            # Vanish on Dash — grants smoke status.
+            game.player.equipment["armor"] = game._make_unique_from_definition(
+                next(
+                    u
+                    for u in UNIQUE_ITEM_DEFINITIONS
+                    if u.unique_effect == "vanish on dash"
+                ),
+                0.0,
+                0.0,
+            )
+            game.player.equipment["weapon"] = None
+            game.player.stamina = game.player.max_stamina
+            game.player.dash_timer = 0.0
+            game.player.status_effects.clear()
+            game.player_dash()
+            self.assertGreater(game.player_status("smoke"), 0)
+
+            # Sanguine Echo — boosts lifesteal ratio.
+            game.player.equipment["weapon"] = game._make_unique_from_definition(
+                next(
+                    u
+                    for u in UNIQUE_ITEM_DEFINITIONS
+                    if u.unique_effect == "sanguine echo"
+                ),
+                0.0,
+                0.0,
+            )
+            game.player.equipment["armor"] = None
+            ratio = game.equipment_lifesteal_ratio()
+            self.assertGreater(ratio, 0.06)  # base lifesteal + sanguine echo bonus
+
+            # Counter Smite — boosts riposte counter damage.
+            game.player.equipment["weapon"] = game._make_unique_from_definition(
+                next(
+                    u
+                    for u in UNIQUE_ITEM_DEFINITIONS
+                    if u.unique_effect == "counter smite"
+                ),
+                0.0,
+                0.0,
+            )
+            game.player.equipment["armor"] = None
+            game.player.skill_upgrades.append("warden_riposte")
+            enemy = Enemy(
+                "Counter Target",
+                "melee",
+                game.player.x + 1.0,
+                game.player.y,
+                200,
+                200,
+                1.0,
+                5,
+                10,
+                1.0,
+                1.0,
+            )
+            game.enemies = [enemy]
+            enemy_hp_before = enemy.hp
+            game.take_player_damage(5, source="melee", attacker=enemy)
+            self.assertLess(enemy.hp, enemy_hp_before - 5)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -550,7 +550,12 @@ class Player:
 
     def armor(self) -> int:
         armor = self.equipment.get("armor")
-        unique_bonus = 2 if armor and armor.unique_effect == "steadfast bulwark" else 0
+        unique_bonus = 0
+        if armor:
+            if armor.unique_effect == "steadfast bulwark":
+                unique_bonus += 2
+            if armor.unique_effect == "oathwall aegis":
+                unique_bonus += 3
         curse_penalty = 1 if armor and armor.cursed else 0
         return max(
             0,

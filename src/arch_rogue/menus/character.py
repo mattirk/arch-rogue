@@ -685,7 +685,26 @@ class MenuCharacterMixin:
             if item.skill_bonus:
                 status_lines.append((f"Skill: {item.skill_bonus}", self.WARNING))
             if item.proc_effect:
-                status_lines.append((f"Proc: {item.proc_effect}", self.WARNING))
+                chance = (
+                    f" {int(round(item.proc_chance * 100))}%"
+                    if 0.0 < item.proc_chance < 1.0
+                    else ""
+                )
+                status_lines.append((f"Proc: {item.proc_effect}{chance}", self.WARNING))
+            if item.unique_effect:
+                status_lines.append((f"Unique: {item.unique_effect}", self.TITLE))
+            if item.attack_speed:
+                status_lines.append(
+                    (f"{item.attack_speed:+.0%} attack speed", self.TEXT)
+                )
+            if item.cast_speed:
+                status_lines.append((f"{item.cast_speed:+.0%} cast speed", self.TEXT))
+            if item.move_speed:
+                status_lines.append((f"{item.move_speed:+.0%} movement", self.TEXT))
+            if item.thorns:
+                status_lines.append((f"{item.thorns} thorns", self.TEXT))
+            if item.lifesteal:
+                status_lines.append((f"{item.lifesteal:.0%} lifesteal", self.TEXT))
             if item.cursed:
                 status_lines.append(("Cursed bargain active", (220, 95, 140)))
         if not status_lines:

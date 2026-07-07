@@ -186,17 +186,16 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 3.10 Build Diversity and Affix Depth
+### 3.11 Cutscene cleanup
 
-Draft goal: deepen loot-driven build variety by expanding affix pools, item interactions, and skill/affix synergies so each run can commit to a distinct build identity.
+- There are lots of "transparent ellipses" drawn on top of stage, they are a bit too unclean looking. Remove most of them, use good taste.
+- Player and enemy sprites are too big on stage and depth effect does not work properly, fix that
+- Make player and enemy sprites "fight each other" -> they run towards each other and attack when close enough, then retreat and start again
+- Pay special attention to the "depth" effect of the stage and all sprites / entities on it
+- Write clean code, remove unused functions and other unnecessary code
 
-- Expand the affix table in `content/equipment.py` with new damage types, cast/attack speed, movement speed, thorns, proc effects, and skill-modifier affixes, plus balanced roll ranges per rarity tier.
-- Add a small affix-synergy layer in `combat.py` so tagged affixes (e.g. lifesteal, proc-on-hit, cast speed) actually modify player attack/spell resolution, not just stat totals.
-- Introduce a few build-defining unique items per archetype in `population.py` that interact with the new affixes and the skill tree branches/paths.
-- Improve loot readability in the HUD/inventory: affix tooltips, tag icons, and a one-line build-relevance hint comparing drops to the player's current build.
-- Validate with a new `tests/test_3_6_affix_builds.py` covering affix roll ranges, synergy resolution in combat, unique-item generation, cursed-item tradeoffs, and save migration, plus the full `unittest discover tests` regression suite.
 
-### 3.11 Encounter Depth: Elite Packs, Enemy Affixes, and Faction Variety
+### 3.12 Encounter Depth: Elite Packs, Enemy Affixes, and Faction Variety
 
 Draft goal: complement the 3.10 player-side build diversity with enemy-side variety so each run tests builds against a meaningfully different threat landscape rather than a flat stat curve.
 
