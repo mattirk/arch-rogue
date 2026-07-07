@@ -958,40 +958,47 @@ class RenderingWorldMixin:
         # Crisp lit lip along the top-left edge.
         pygame.draw.aalines(surface, self.shade(wood_base, 18), False, [top, left])
 
-    def _draw_garden_floor(self, surface, top, right, bottom, left, scale):
-        # Overgrown garden floor: mossy flagstone with patches of green turf and
-        # scattered low plants. Reads as reclaimed ruins, not a tended lawn.
+    def _draw_garden_floor(self, surface, top, right, bottom, left, scale, seed=0):
+        # Overgrown garden floor: stone barely visible under dense ivy and
+        # wandering vines. Reads as ruins reclaimed by growth rather than a
+        # tended lawn. ``seed`` drives a per-tile ivy pattern so each garden
+        # tile varies while staying deterministic and bounded to
+        # DUNGEON_FLOOR_VARIANTS cache entries.
         diamond = [top, right, bottom, left]
-        stone = self.mix(self.theme.floor, (90, 110, 84), 0.30)
-        turf = self.mix(stone, (78, 116, 70), 0.55)
+        stone = self.mix(self.theme.floor, (70, 80, 64), 0.20)
         pygame.draw.polygon(surface, stone, diamond)
-        cx = (top[0] + bottom[0]) // 2
-        cy = (top[1] + bottom[1]) // 2
-        # Two turf patches (grass overgrowing the stone) near opposite corners of
-        # the diamond, soft-edged via small overlapping ellipses.
-        for px, py, rx, ry in (
-            (cx - 12 * scale, cy + 4 * scale, 14 * scale, 7 * scale),
-            (cx + 10 * scale, cy - 3 * scale, 10 * scale, 5 * scale),
-        ):
-            pygame.draw.ellipse(
-                surface, turf, (int(px - rx), int(py - ry), int(rx * 2), int(ry * 2))
-            )
-            pygame.draw.ellipse(
-                surface,
-                self.shade(turf, 12),
-                (int(px - rx * 0.6), int(py - ry * 0.6), int(rx * 1.2), int(ry * 1.2)),
-            )
-        # A few low plant motes scattered across the slab (deterministic by
-        # position so cached surfaces stay stable).
-        plant = self.shade(turf, 18)
-        for mx, my in (
-            (cx - 2 * scale, cy - 5 * scale),
-            (cx + 6 * scale, cy + 6 * scale),
-            (cx - 9 * scale, cy - 1 * scale),
-        ):
-            pygame.draw.circle(surface, plant, (int(mx), int(my)), max(1, scale))
+        ivy = (62, 94, 52)
+        ivy_hi = (90, 124, 70)
+        ivy_lo = (40, 70, 38)
+        rng = random.Random(int(seed) * 0x1000193 + 0x9E3779B1)
+        pat = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        # Wandering vine stems across the slab.
+        for _ in range(5):
+            sx = rng.randint(left[0] + 6 * scale, right[0] - 6 * scale)
+            sy = rng.randint(top[1] + 4 * scale, bottom[1] - 4 * scale)
+            pts: list[tuple[int, int]] = [(sx, sy)]
+            x, y = sx, sy
+            for _ in range(5):
+                x += rng.randint(-18, 18)
+                y += rng.randint(-10, 10)
+                pts.append((x, y))
+            pygame.draw.lines(pat, ivy_lo, False, pts, max(2, scale))
+            pygame.draw.aalines(pat, ivy, False, pts)
+        # Dense ivy leaves (small clustered circles) covering most of the slab.
+        for _ in range(120):
+            lx = rng.randint(left[0] + 4 * scale, right[0] - 4 * scale)
+            ly = rng.randint(top[1] + 3 * scale, bottom[1] - 3 * scale)
+            r = rng.randint(2, 4)
+            col = rng.choice((ivy, ivy_hi, ivy_lo))
+            pygame.draw.circle(pat, col, (lx, ly), r)
+        # Clip the organic detail to the diamond so leaves never bleed into the
+        # transparent tile margin (and thus onto neighboring tiles).
+        mask = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        pygame.draw.polygon(mask, (255, 255, 255, 255), diamond)
+        pat.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+        surface.blit(pat, (0, 0))
         # Crisp lit lip along the top-left edge.
-        pygame.draw.aalines(surface, self.shade(stone, 18), False, [top, left])
+        pygame.draw.aalines(surface, self.shade(ivy, 24), False, [top, left])
 
     def draw_floor_tile_surface(
         self,
@@ -1024,7 +1031,7 @@ class RenderingWorldMixin:
             self._draw_bar_floor(surface, top, right, bottom, left, scale)
             return
         if garden_floor and not is_stairs:
-            self._draw_garden_floor(surface, top, right, bottom, left, scale)
+            self._draw_garden_floor(surface, top, right, bottom, left, scale, seed)
             return
         # Stairs sit in the same flagstone slab as the surrounding floor (same
         # base color + per-variant tint) so the stairwell reads as an opening
