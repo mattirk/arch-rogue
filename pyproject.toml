@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.12.0"
-description = "3.12.0 replaces the story-relic and guest-NPC sprites, adds dedicated guest rooms with distinct floor/wall art, and introduces the octahedron game logo/icon."
+version = "3.13.0"
+description = "3.13.0 introduces a data-driven special-room abstraction for shops, quest guests, and future scripted room types."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

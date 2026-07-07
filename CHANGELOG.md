@@ -1,5 +1,29 @@
 # Changelog
 
+## 3.13.0 — Special Rooms Abstraction
+
+Shop rooms and quest guest rooms now share a small data-driven special-room layer so future room identities such as NPC homes, bars, inns, gardens, and faction hideouts can be added without bespoke dungeon indexes or population paths.
+
+### Added
+- `SpecialRoomDefinition` and `SpecialRoom` models in `models.py` capture room kind, display name, tags, door/spawn policies, depth constraints, reserved tiles, anchors, and primitive state in a save-friendly format.
+- `Dungeon.special_rooms` is now the primary special-room API, with helper lookups for kind, index, and tags. Legacy `shop_room_index` and `guest_room_index` properties remain as compatibility shims backed by the new collection.
+- A special-room planner in `dungeon.py` assigns initial `shop` and `quest_guest` rooms once per floor, enforces non-overlap, avoids start/stairs rooms, keeps deterministic guest-room selection, and applies per-room door policies.
+- `population.py` now dispatches special-room population through registered handlers keyed by room kind. Built-in handlers cover `shop` and `quest_guest`, and future room kinds can register a handler without changing dungeon generation.
+- Generic rendering helpers in `rendering/world.py` resolve special-room bounds and floor tiles by kind/tag while preserving existing shop floor tint/gold scatter and guest-room floor/wall presentation.
+- Save/load now serializes `special_rooms`, migrates old saves containing only `shop_room_index` / `guest_room_index`, and tolerates unknown special-room kinds as no-op data.
+- New `tests/test_3_13_special_rooms.py` covers deterministic assignment, non-overlap, door policies, shop/quest behavior parity, generic lookup helpers, legacy-save migration, unknown-kind no-op loading, and stub future-room handler extensibility.
+
+### Changed
+- Shop and quest guest rooms both use the special-room handler path for occupant placement, hostile/trap cleanup, anchors, and room-specific dressing.
+- Door interaction copy now refers to generic special rooms rather than shop-specific side rooms.
+- Package metadata, `__version__`, save release strings, and version-current tests now target `3.13.0`. Save schema `version` remains `5` because the new room collection is additive and old saves migrate defensively.
+
+### Validation
+- `python -m compileall src tests` passes.
+- `python -m unittest tests.test_3_13_special_rooms` passes (7 tests).
+- `python -m unittest tests.test_shops tests.test_guest_room tests.test_story_mode tests.test_dungeon_tile_variants` passes (26 tests).
+- `python -m unittest discover tests` passes (261 tests).
+
 ## 3.12.0 — Relic & Guest Rooms, Game Logo
 
 The story-relic and quest-NPC sprites were rebuilt as detailed procedural templates, story floors now reserve a dedicated guest room (mirroring shop rooms) where the NPC and relic always spawn at the center, and the octahedron relic became the game's logo/icon.

@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 import random
 
-from .models import Room, Tile
+from .models import Room, SpecialRoom, SpecialRoomDefinition, Tile
 
 MAP_W = 72
 MAP_H = 72
@@ -37,6 +37,26 @@ BOSS_ARENA_MAX_H = 13
 # membership test avoids rebuilding a tuple each call.
 _PASSABLE_TILES = (Tile.FLOOR, Tile.STAIRS, Tile.OPEN_DOOR)
 
+SHOP_ROOM_KIND = "shop"
+QUEST_GUEST_ROOM_KIND = "quest_guest"
+
+SPECIAL_ROOM_DEFINITIONS: dict[str, SpecialRoomDefinition] = {
+    SHOP_ROOM_KIND: SpecialRoomDefinition(
+        kind=SHOP_ROOM_KIND,
+        display_name="Dungeon Shop",
+        tags=("shop", "merchant", "refuge"),
+        door_policy="sealed",
+        spawn_policy="safe",
+    ),
+    QUEST_GUEST_ROOM_KIND: SpecialRoomDefinition(
+        kind=QUEST_GUEST_ROOM_KIND,
+        display_name="Quest Guest Room",
+        tags=("quest", "guest", "story", "refuge"),
+        door_policy="sealed",
+        spawn_policy="safe",
+    ),
+}
+
 
 class Dungeon:
     def __init__(
@@ -48,9 +68,69 @@ class Dungeon:
         self.tiles: list[list[Tile]] = []
         self.rooms: list[Room] = []
         self.stairs: tuple[int, int] = (0, 0)
-        self.shop_room_index: int | None = None
-        self.guest_room_index: int | None = None
+        self.special_rooms: list[SpecialRoom] = []
         self.generate()
+
+    @property
+    def shop_room_index(self) -> int | None:
+        room = self.special_room_for_kind(SHOP_ROOM_KIND)
+        return room.room_index if room is not None else None
+
+    @shop_room_index.setter
+    def shop_room_index(self, room_index: int | None) -> None:
+        self._set_legacy_special_room(SHOP_ROOM_KIND, room_index)
+
+    @property
+    def guest_room_index(self) -> int | None:
+        room = self.special_room_for_kind(QUEST_GUEST_ROOM_KIND)
+        return room.room_index if room is not None else None
+
+    @guest_room_index.setter
+    def guest_room_index(self, room_index: int | None) -> None:
+        self._set_legacy_special_room(QUEST_GUEST_ROOM_KIND, room_index)
+
+    def _set_legacy_special_room(self, kind: str, room_index: int | None) -> None:
+        self.special_rooms = [room for room in self.special_rooms if room.kind != kind]
+        if room_index is None:
+            return
+        try:
+            index = int(room_index)
+        except (TypeError, ValueError):
+            return
+        if not (0 <= index < len(self.rooms)):
+            return
+        self._add_special_room(kind, index)
+
+    def special_room_for_kind(self, kind: str) -> SpecialRoom | None:
+        return next((room for room in self.special_rooms if room.kind == kind), None)
+
+    def special_room_at_index(self, room_index: int) -> SpecialRoom | None:
+        return next(
+            (room for room in self.special_rooms if room.room_index == room_index), None
+        )
+
+    def special_rooms_with_tag(self, tag: str) -> list[SpecialRoom]:
+        return [room for room in self.special_rooms if room.has_tag(tag)]
+
+    def room_has_tag(self, room_index: int, tag: str) -> bool:
+        return any(
+            room.room_index == room_index and room.has_tag(tag)
+            for room in self.special_rooms
+        )
+
+    def _add_special_room(self, kind: str, room_index: int) -> SpecialRoom | None:
+        definition = SPECIAL_ROOM_DEFINITIONS.get(kind)
+        if definition is None or not (0 <= room_index < len(self.rooms)):
+            return None
+        cx, cy = self.rooms[room_index].center
+        room = SpecialRoom.from_definition(
+            room_index,
+            definition,
+            reserved_tiles=[[cx, cy]],
+            anchor_points={"center": [cx, cy]},
+        )
+        self.special_rooms.append(room)
+        return room
 
     def generate(self) -> None:
         retries = 30 if self.boss_arena else 20
@@ -58,6 +138,7 @@ class Dungeon:
         for _ in range(retries):
             self.tiles = [[Tile.WALL for _ in range(MAP_H)] for _ in range(MAP_W)]
             self.rooms = []
+            self.special_rooms = []
             for _attempt in range(attempts):
                 reserving_final_arena = (
                     self.boss_arena and len(self.rooms) >= MIN_ROOM_COUNT - 1
@@ -207,6 +288,49 @@ class Dungeon:
             for x in (room.x, room.x + room.w - 1):
                 self.tiles[x][y] = Tile.CLOSED_DOOR if (x, y) in door_set else Tile.WALL
 
+    def _plan_special_rooms(
+        self,
+        eligible_rooms: list[int],
+        doorways_by_room: dict[int, list[tuple[int, int]]],
+    ) -> None:
+        self.special_rooms = []
+        if eligible_rooms and self.rng.random() < 0.75:
+            self._add_special_room(SHOP_ROOM_KIND, self.rng.choice(eligible_rooms))
+
+        if self.guest_room:
+            occupied = {room.room_index for room in self.special_rooms}
+            guest_candidates = [
+                idx
+                for idx in eligible_rooms
+                if idx not in occupied and idx not in (0, len(self.rooms) - 1)
+            ]
+            if guest_candidates:
+                # Pick with a local RNG seeded from the dungeon layout so the
+                # shared `self.rng` stream (and thus population determinism) is
+                # preserved across story-beat floors.
+                guest_seed = (
+                    (self.stairs[0] * 73856093)
+                    ^ (self.stairs[1] * 19349663)
+                    ^ len(self.rooms)
+                )
+                guest_rng = random.Random(guest_seed)
+                self._add_special_room(
+                    QUEST_GUEST_ROOM_KIND, guest_rng.choice(guest_candidates)
+                )
+
+        # Room definitions own mandatory gating. Apply those gates before the
+        # ordinary optional-door pass so sealed special rooms stay closed even if
+        # their random side-room roll below fails.
+        for special_room in self.special_rooms:
+            if special_room.door_policy != "sealed":
+                continue
+            room_index = special_room.room_index
+            if room_index not in doorways_by_room:
+                continue
+            self._seal_room_with_doors(
+                self.rooms[room_index], doorways_by_room[room_index]
+            )
+
     def _place_doors(self) -> None:
         if len(self.rooms) < 3:
             return
@@ -214,36 +338,16 @@ class Dungeon:
             room_index: self._doorways_for_room(room)
             for room_index, room in enumerate(self.rooms[1:-1], start=1)
         }
-        eligible_shop_rooms = [
+        eligible_rooms = [
             room_index for room_index, doorways in doorways_by_room.items() if doorways
         ]
-        if eligible_shop_rooms and self.rng.random() < 0.75:
-            self.shop_room_index = self.rng.choice(eligible_shop_rooms)
-        if self.guest_room:
-            guest_candidates = [
-                idx
-                for idx in eligible_shop_rooms
-                if idx != self.shop_room_index and idx not in (0, len(self.rooms) - 1)
-            ]
-            if guest_candidates:
-                # Pick with a local RNG seeded from the dungeon layout so the
-                # shared `self.rng` stream (and thus population determinism) is
-                # preserved across story-beat floors.
-                guest_seed = (self.stairs[0] * 73856093) ^ (
-                    self.stairs[1] * 19349663
-                ) ^ len(self.rooms)
-                guest_rng = random.Random(guest_seed)
-                self.guest_room_index = guest_rng.choice(guest_candidates)
-                guest_room = self.rooms[self.guest_room_index]
-                self._seal_room_with_doors(
-                    guest_room, doorways_by_room[self.guest_room_index]
-                )
+        self._plan_special_rooms(eligible_rooms, doorways_by_room)
         for room_index, room in enumerate(self.rooms[1:-1], start=1):
             doorways = doorways_by_room[room_index]
             if not doorways:
                 continue
             should_have_door = (
-                room_index == self.shop_room_index or self.rng.random() < 0.24
+                self.room_has_tag(room_index, "shop") or self.rng.random() < 0.24
             )
             if should_have_door:
                 self._seal_room_with_doors(room, doorways)

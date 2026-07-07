@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 from .constants import DUNGEON_DEPTH
 from .content import (
@@ -36,7 +37,19 @@ from .content import (
     EnemyDefinition,
     UniqueItemDefinition,
 )
-from .models import Color, Enemy, Item, Room, SecretCache, Shopkeeper, Shrine, Trap
+from .models import (
+    Color,
+    Enemy,
+    Item,
+    Room,
+    SecretCache,
+    Shopkeeper,
+    Shrine,
+    SpecialRoom,
+    Trap,
+)
+
+SpecialRoomHandler = Callable[[SpecialRoom, Room], None]
 
 
 class PopulationMixin:
@@ -214,14 +227,71 @@ class PopulationMixin:
         self.items.append(
             Item("Minor Healing Potion", "potion", heal=35, rarity="Common", x=sx, y=sy)
         )
-        self._populate_shop_room()
+        self._populate_special_rooms()
+        # Fallback for story floors generated without an assignable quest room.
+        # If the quest-room handler already placed the guest, this is a no-op.
         self._populate_story_guest()
 
+    def _special_room_handlers(self) -> dict[str, SpecialRoomHandler]:
+        handlers = getattr(self, "_special_room_population_handlers", None)
+        if handlers is None:
+            handlers = {
+                "shop": self._populate_shop_special_room,
+                "quest_guest": self._populate_quest_guest_special_room,
+            }
+            self._special_room_population_handlers = handlers
+        return handlers
+
+    def register_special_room_handler(
+        self, kind: str, handler: SpecialRoomHandler
+    ) -> None:
+        self._special_room_handlers()[kind] = handler
+
+    def _populate_special_rooms(self) -> None:
+        for special_room in list(getattr(self.dungeon, "special_rooms", [])):
+            if not (0 <= special_room.room_index < len(self.dungeon.rooms)):
+                continue
+            handler = self._special_room_handlers().get(special_room.kind)
+            if handler is None:
+                continue
+            handler(special_room, self.dungeon.rooms[special_room.room_index])
+
+    def _room_contains_world_point(self, room: Room, x: float, y: float) -> bool:
+        return room.x <= x < room.x + room.w and room.y <= y < room.y + room.h
+
+    def _clear_room_hostiles_and_traps(self, room: Room) -> None:
+        self.enemies = [
+            enemy
+            for enemy in self.enemies
+            if not self._room_contains_world_point(room, enemy.x, enemy.y)
+        ]
+        self.traps = [
+            trap
+            for trap in self.traps
+            if not self._room_contains_world_point(room, trap.x, trap.y)
+        ]
+
+    def _reserve_special_room_anchor(
+        self, special_room: SpecialRoom, key: str, x: int, y: int
+    ) -> None:
+        special_room.anchor_points[key] = [int(x), int(y)]
+        tile = [int(x), int(y)]
+        if tile not in special_room.reserved_tiles:
+            special_room.reserved_tiles.append(tile)
+
     def _populate_shop_room(self) -> None:
-        shop_index = self.dungeon.shop_room_index
-        if shop_index is None or not (0 <= shop_index < len(self.dungeon.rooms)):
+        special_room = self.dungeon.special_room_for_kind("shop")
+        if special_room is None:
             return
-        room = self.dungeon.rooms[shop_index]
+        if not (0 <= special_room.room_index < len(self.dungeon.rooms)):
+            return
+        self._populate_shop_special_room(
+            special_room, self.dungeon.rooms[special_room.room_index]
+        )
+
+    def _populate_shop_special_room(
+        self, special_room: SpecialRoom, room: Room
+    ) -> None:
         keeper_names = (
             "Mirel Coin-Candle",
             "Old Brass Venn",
@@ -230,6 +300,12 @@ class PopulationMixin:
             "Pell of the Locked Shelf",
         )
         x, y = room.center
+        if any(
+            self._room_contains_world_point(room, keeper.x, keeper.y)
+            for keeper in self.shopkeepers
+        ):
+            return
+        self._reserve_special_room_anchor(special_room, "shopkeeper", x, y)
         shopkeeper = Shopkeeper(
             x + 0.5,
             y + 0.5,
@@ -239,22 +315,7 @@ class PopulationMixin:
         )
         self.shopkeepers.append(shopkeeper)
         # Shop rooms should feel like a temporary refuge rather than another ambush.
-        self.enemies = [
-            enemy
-            for enemy in self.enemies
-            if not (
-                room.x <= enemy.x < room.x + room.w
-                and room.y <= enemy.y < room.y + room.h
-            )
-        ]
-        self.traps = [
-            trap
-            for trap in self.traps
-            if not (
-                room.x <= trap.x < room.x + room.w
-                and room.y <= trap.y < room.y + room.h
-            )
-        ]
+        self._clear_room_hostiles_and_traps(room)
         self.items.append(
             Item(
                 "Shop Sign: Press E to trade",
@@ -264,6 +325,17 @@ class PopulationMixin:
                 y=shopkeeper.y,
             )
         )
+        self._reserve_special_room_anchor(
+            special_room, "shop_sign", int(shopkeeper.x + 0.9), int(shopkeeper.y)
+        )
+
+    def _populate_quest_guest_special_room(
+        self, special_room: SpecialRoom, room: Room
+    ) -> None:
+        cx, cy = room.center
+        self._reserve_special_room_anchor(special_room, "guest", cx, cy)
+        self._clear_room_hostiles_and_traps(room)
+        self._populate_story_guest(special_room, room)
 
     def _make_shop_inventory(self, room: Room) -> list[Item]:
         stock: list[Item] = [

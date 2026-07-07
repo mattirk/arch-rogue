@@ -29,7 +29,12 @@ from .content import (
     RUN_MODIFIERS,
     migrate_skill_keys,
 )
-from .dungeon import Dungeon
+from .dungeon import (
+    QUEST_GUEST_ROOM_KIND,
+    SHOP_ROOM_KIND,
+    SPECIAL_ROOM_DEFINITIONS,
+    Dungeon,
+)
 from .models import (
     Enemy,
     Item,
@@ -39,6 +44,7 @@ from .models import (
     SecretCache,
     Shopkeeper,
     Shrine,
+    SpecialRoom,
     Tile,
     Trap,
 )
@@ -142,6 +148,74 @@ class SaveLoadMixin:
             met=bool(data.get("met", False)),
         )
 
+    def special_room_to_dict(self, special_room: SpecialRoom) -> dict[str, Any]:
+        return special_room.to_dict()
+
+    def _legacy_special_room(self, kind: str, room_index: Any) -> SpecialRoom | None:
+        try:
+            index = int(room_index)
+        except (TypeError, ValueError):
+            return None
+        if not (0 <= index < len(self.dungeon.rooms)):
+            return None
+        definition = SPECIAL_ROOM_DEFINITIONS.get(kind)
+        if definition is None:
+            return None
+        cx, cy = self.dungeon.rooms[index].center
+        return SpecialRoom.from_definition(
+            index,
+            definition,
+            reserved_tiles=[[cx, cy]],
+            anchor_points={"center": [cx, cy]},
+        )
+
+    def _append_legacy_special_room_if_missing(
+        self, rooms: list[SpecialRoom], kind: str, room_index: Any
+    ) -> None:
+        if any(room.kind == kind for room in rooms):
+            return
+        special_room = self._legacy_special_room(kind, room_index)
+        if special_room is None:
+            return
+        if any(room.room_index == special_room.room_index for room in rooms):
+            return
+        rooms.append(special_room)
+
+    def special_rooms_from_dungeon_data(
+        self, dungeon_data: dict[str, Any]
+    ) -> list[SpecialRoom]:
+        raw_rooms = dungeon_data.get("special_rooms")
+        if isinstance(raw_rooms, list):
+            parsed: list[SpecialRoom] = []
+            seen: set[tuple[str, int]] = set()
+            for raw_room in raw_rooms:
+                special_room = SpecialRoom.from_dict(raw_room)
+                if special_room is None:
+                    continue
+                if not (0 <= special_room.room_index < len(self.dungeon.rooms)):
+                    continue
+                key = (special_room.kind, special_room.room_index)
+                if key in seen:
+                    continue
+                seen.add(key)
+                parsed.append(special_room)
+            self._append_legacy_special_room_if_missing(
+                parsed, SHOP_ROOM_KIND, dungeon_data.get("shop_room_index")
+            )
+            self._append_legacy_special_room_if_missing(
+                parsed, QUEST_GUEST_ROOM_KIND, dungeon_data.get("guest_room_index")
+            )
+            return parsed
+
+        migrated: list[SpecialRoom] = []
+        self._append_legacy_special_room_if_missing(
+            migrated, SHOP_ROOM_KIND, dungeon_data.get("shop_room_index")
+        )
+        self._append_legacy_special_room_if_missing(
+            migrated, QUEST_GUEST_ROOM_KIND, dungeon_data.get("guest_room_index")
+        )
+        return migrated
+
     def serialize_run_state(self) -> dict[str, Any]:
         return {
             "version": 5,
@@ -179,6 +253,11 @@ class SaveLoadMixin:
                 ],
                 "rooms": [room.__dict__ for room in self.dungeon.rooms],
                 "stairs": list(self.dungeon.stairs),
+                "special_rooms": [
+                    self.special_room_to_dict(room)
+                    for room in self.dungeon.special_rooms
+                ],
+                # Legacy index mirrors stay in the save during the migration window.
                 "shop_room_index": self.dungeon.shop_room_index,
                 "guest_room_index": self.dungeon.guest_room_index,
             },
@@ -307,14 +386,7 @@ class SaveLoadMixin:
         self.dungeon.rooms = [Room(**room) for room in dungeon_data["rooms"]]
         sx, sy = dungeon_data["stairs"]
         self.dungeon.stairs = (int(sx), int(sy))
-        saved_shop_index = dungeon_data.get("shop_room_index")
-        self.dungeon.shop_room_index = (
-            int(saved_shop_index) if saved_shop_index is not None else None
-        )
-        saved_guest_index = dungeon_data.get("guest_room_index")
-        self.dungeon.guest_room_index = (
-            int(saved_guest_index) if saved_guest_index is not None else None
-        )
+        self.dungeon.special_rooms = self.special_rooms_from_dungeon_data(dungeon_data)
         self.tile_cache.clear()
         self.prewarm_tile_cache()
 

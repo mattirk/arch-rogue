@@ -22,7 +22,15 @@ import re
 from typing import Any
 
 from .content import STORY_LOCATION_MOTIFS
-from .models import FloatingText, Item, SecretCache, Shrine, StoryGuest
+from .models import (
+    FloatingText,
+    Item,
+    Room,
+    SecretCache,
+    Shrine,
+    SpecialRoom,
+    StoryGuest,
+)
 from .quest_assets import ActiveQuestCutscene, RuntimeDialogueChoice, format_asset_text
 from .story import (
     StoryEngine,
@@ -743,9 +751,11 @@ class StoryRuntimeMixin:
     def story_relic_location_for_choice(
         self, choice_key: str, guest: StoryGuest
     ) -> tuple[float, float]:
-        guest_index = self.dungeon.guest_room_index
-        if guest_index is not None and 0 <= guest_index < len(self.dungeon.rooms):
-            cx, cy = self.dungeon.rooms[guest_index].center
+        quest_room = self.dungeon.special_room_for_kind("quest_guest")
+        if quest_room is not None and 0 <= quest_room.room_index < len(
+            self.dungeon.rooms
+        ):
+            cx, cy = self.dungeon.rooms[quest_room.room_index].center
             return self.drop_position_near(cx + 0.5, cy + 0.5, exclude_origin=True)
         if choice_key == "aid":
             # Place the relic on an adjacent tile to the quest NPC, not on the
@@ -960,7 +970,11 @@ class StoryRuntimeMixin:
             self.theme = self.theme_by_name(beat.theme_name)
             self.run_music_theme = self.theme.name
 
-    def _populate_story_guest(self) -> None:
+    def _populate_story_guest(
+        self,
+        special_room: SpecialRoom | None = None,
+        room: Room | None = None,
+    ) -> None:
         if self.story_state is None:
             return
         beat_index = story_beat_index_for_depth(self.story_state, self.current_depth)
@@ -977,15 +991,25 @@ class StoryRuntimeMixin:
         available_rooms = self.dungeon.rooms[1:-1] or self.dungeon.rooms[:1]
         if not available_rooms:
             return
-        guest_index = self.dungeon.guest_room_index
-        if guest_index is not None and 0 <= guest_index < len(self.dungeon.rooms):
-            cx, cy = self.dungeon.rooms[guest_index].center
+        if room is None:
+            special_room = self.dungeon.special_room_for_kind("quest_guest")
+            if special_room is not None and 0 <= special_room.room_index < len(
+                self.dungeon.rooms
+            ):
+                room = self.dungeon.rooms[special_room.room_index]
+        if room is not None:
+            cx, cy = room.center
             x, y = cx + 0.5, cy + 0.5
         else:
-            room = available_rooms[
+            fallback_room = available_rooms[
                 (self.current_depth + beat_index) % len(available_rooms)
             ]
-            x, y = room.random_point(self.rng)
+            x, y = fallback_room.random_point(self.rng)
+        if special_room is not None:
+            special_room.anchor_points["guest"] = [int(x), int(y)]
+            tile = [int(x), int(y)]
+            if tile not in special_room.reserved_tiles:
+                special_room.reserved_tiles.append(tile)
         self.story_guests.append(
             story_guest_from_beat(self.story_state, beat_index, x, y)
         )

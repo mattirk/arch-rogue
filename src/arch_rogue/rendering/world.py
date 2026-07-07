@@ -178,29 +178,22 @@ class RenderingWorldMixin:
                     self.tile_surface(tile, seed, shop_floor=False, guest=True)
 
     def is_shop_floor_tile(self, x: int, y: int) -> bool:
-        shop_room = self._shop_room_bounds()
-        if shop_room is None:
-            return False
-        rx, ry, rw, rh = shop_room
-        if not (rx < x < rx + rw - 1 and ry < y < ry + rh - 1):
-            return False
-        return self.dungeon.tiles[x][y] in (Tile.FLOOR, Tile.STAIRS)
+        return self.is_special_room_floor_tile(x, y, kind="shop")
 
     def is_guest_tile(self, x: int, y: int) -> bool:
         # Interior guest-room floor only (not walls). Walls are handled per-face
         # by guest_wall_faces so the distinct wall art appears only on the
         # face that borders the room interior, not on the outside.
-        bounds = self._guest_room_bounds()
-        if bounds is None:
-            return False
-        rx, ry, rw, rh = bounds
-        if not (rx < x < rx + rw - 1 and ry < y < ry + rh - 1):
-            return False
-        return self.dungeon.tiles[x][y] in (Tile.FLOOR, Tile.STAIRS)
+        return self.is_special_room_floor_tile(x, y, kind="quest_guest")
 
-    def _guest_interior_floor(self, x: int, y: int) -> bool:
-        # Whether (x, y) is a walkable tile strictly inside the guest room.
-        bounds = self._guest_room_bounds()
+    def is_special_room_floor_tile(
+        self,
+        x: int,
+        y: int,
+        kind: str | None = None,
+        tag: str | None = None,
+    ) -> bool:
+        bounds = self._special_room_bounds(kind=kind, tag=tag)
         if bounds is None:
             return False
         rx, ry, rw, rh = bounds
@@ -210,6 +203,19 @@ class RenderingWorldMixin:
             return False
         return self.dungeon.tiles[x][y] in (Tile.FLOOR, Tile.STAIRS)
 
+    def _special_room_interior_floor(
+        self,
+        x: int,
+        y: int,
+        kind: str | None = None,
+        tag: str | None = None,
+    ) -> bool:
+        return self.is_special_room_floor_tile(x, y, kind=kind, tag=tag)
+
+    def _guest_interior_floor(self, x: int, y: int) -> bool:
+        # Compatibility wrapper for tests and old render helpers.
+        return self._special_room_interior_floor(x, y, kind="quest_guest")
+
     def guest_wall_faces(self, x: int, y: int) -> str | None:
         # For a wall tile on the guest-room perimeter, return which visible side
         # face borders the room interior: "left" (the +y face), "right" (the +x
@@ -218,39 +224,47 @@ class RenderingWorldMixin:
         # perimeter return None.
         if self.dungeon.tiles[x][y] != Tile.WALL:
             return None
-        left_interior = self._guest_interior_floor(x, y + 1)
-        right_interior = self._guest_interior_floor(x + 1, y)
+        left_interior = self._special_room_interior_floor(x, y + 1, kind="quest_guest")
+        right_interior = self._special_room_interior_floor(x + 1, y, kind="quest_guest")
         if left_interior:
             return "left"
         if right_interior:
             return "right"
         return None
 
-    def _shop_room_bounds(self) -> tuple[int, int, int, int] | None:
+    def _special_room_bounds(
+        self,
+        kind: str | None = None,
+        tag: str | None = None,
+        room_index: int | None = None,
+    ) -> tuple[int, int, int, int] | None:
         cache = getattr(self, "_frame_cache", None)
-        if cache is not None and "shop_room_bounds" in cache:
-            return cache["shop_room_bounds"]  # type: ignore[no-any-return]
-        shop_index = self.dungeon.shop_room_index
+        cache_key = ("special_room_bounds", kind, tag, room_index)
+        if cache is not None and cache_key in cache:
+            return cache[cache_key]  # type: ignore[no-any-return]
+        special_room = None
+        if room_index is not None:
+            special_room = self.dungeon.special_room_at_index(room_index)
+        elif kind is not None:
+            special_room = self.dungeon.special_room_for_kind(kind)
+        elif tag is not None:
+            rooms = self.dungeon.special_rooms_with_tag(tag)
+            special_room = rooms[0] if rooms else None
         result: tuple[int, int, int, int] | None = None
-        if shop_index is not None and 0 <= shop_index < len(self.dungeon.rooms):
-            room = self.dungeon.rooms[shop_index]
+        if special_room is not None and 0 <= special_room.room_index < len(
+            self.dungeon.rooms
+        ):
+            room = self.dungeon.rooms[special_room.room_index]
             result = (room.x, room.y, room.w, room.h)
         if cache is not None:
-            cache["shop_room_bounds"] = result
+            cache[cache_key] = result
         return result
 
+    def _shop_room_bounds(self) -> tuple[int, int, int, int] | None:
+        return self._special_room_bounds(kind="shop")
+
     def _guest_room_bounds(self) -> tuple[int, int, int, int] | None:
-        cache = getattr(self, "_frame_cache", None)
-        if cache is not None and "guest_room_bounds" in cache:
-            return cache["guest_room_bounds"]  # type: ignore[no-any-return]
-        guest_index = self.dungeon.guest_room_index
-        result: tuple[int, int, int, int] | None = None
-        if guest_index is not None and 0 <= guest_index < len(self.dungeon.rooms):
-            room = self.dungeon.rooms[guest_index]
-            result = (room.x, room.y, room.w, room.h)
-        if cache is not None:
-            cache["guest_room_bounds"] = result
-        return result
+        return self._special_room_bounds(kind="quest_guest")
 
     def tile_surface(
         self,

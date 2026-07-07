@@ -18,7 +18,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .dungeon import Dungeon
@@ -205,6 +205,160 @@ class Room:
         return rng.randrange(self.x + 1, self.x + self.w - 1) + 0.5, rng.randrange(
             self.y + 1, self.y + self.h - 1
         ) + 0.5
+
+
+PrimitiveValue = str | int | float | bool | None
+
+
+@dataclass(frozen=True)
+class SpecialRoomDefinition:
+    kind: str
+    display_name: str
+    tags: tuple[str, ...] = ()
+    door_policy: str = "random"
+    spawn_policy: str = "normal"
+    min_depth: int = 1
+    max_depth: int = 0
+
+
+@dataclass
+class SpecialRoom:
+    room_index: int
+    kind: str
+    display_name: str = ""
+    tags: list[str] = field(default_factory=list)
+    door_policy: str = "random"
+    spawn_policy: str = "normal"
+    min_depth: int = 1
+    max_depth: int = 0
+    reserved_tiles: list[list[int]] = field(default_factory=list)
+    anchor_points: dict[str, list[int]] = field(default_factory=dict)
+    state: dict[str, PrimitiveValue] = field(default_factory=dict)
+
+    @classmethod
+    def from_definition(
+        cls,
+        room_index: int,
+        definition: SpecialRoomDefinition,
+        reserved_tiles: list[list[int]] | None = None,
+        anchor_points: dict[str, list[int]] | None = None,
+        state: dict[str, PrimitiveValue] | None = None,
+    ) -> "SpecialRoom":
+        return cls(
+            room_index=room_index,
+            kind=definition.kind,
+            display_name=definition.display_name,
+            tags=list(definition.tags),
+            door_policy=definition.door_policy,
+            spawn_policy=definition.spawn_policy,
+            min_depth=definition.min_depth,
+            max_depth=definition.max_depth,
+            reserved_tiles=[list(tile[:2]) for tile in (reserved_tiles or [])],
+            anchor_points={
+                str(key): list(value[:2])
+                for key, value in (anchor_points or {}).items()
+            },
+            state=dict(state or {}),
+        )
+
+    @classmethod
+    def from_dict(cls, data: Any) -> "SpecialRoom | None":
+        if not isinstance(data, dict):
+            return None
+        raw_room_index = data.get("room_index")
+        if raw_room_index is None:
+            return None
+        try:
+            room_index = int(raw_room_index)
+        except (TypeError, ValueError):
+            return None
+        kind = str(data.get("kind", "")).strip()
+        if not kind:
+            return None
+
+        def pairs(value: Any) -> list[list[int]]:
+            result: list[list[int]] = []
+            if not isinstance(value, list):
+                return result
+            for pair in value:
+                if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+                    continue
+                try:
+                    result.append([int(pair[0]), int(pair[1])])
+                except (TypeError, ValueError):
+                    continue
+            return result
+
+        anchors: dict[str, list[int]] = {}
+        raw_anchors = data.get("anchor_points", {})
+        if isinstance(raw_anchors, dict):
+            for key, value in raw_anchors.items():
+                parsed = pairs([value])
+                if parsed:
+                    anchors[str(key)] = parsed[0]
+
+        raw_state = data.get("state", {})
+        state: dict[str, PrimitiveValue] = {}
+        if isinstance(raw_state, dict):
+            for key, value in raw_state.items():
+                if value is None or isinstance(value, (str, int, float, bool)):
+                    state[str(key)] = value
+
+        def int_field(name: str, default: int) -> int:
+            try:
+                return int(data.get(name, default))
+            except (TypeError, ValueError):
+                return default
+
+        raw_tags = data.get("tags", [])
+        tags = (
+            [str(tag) for tag in raw_tags if str(tag)]
+            if isinstance(raw_tags, list)
+            else []
+        )
+
+        return cls(
+            room_index=room_index,
+            kind=kind,
+            display_name=str(data.get("display_name", kind.replace("_", " ").title())),
+            tags=tags,
+            door_policy=str(data.get("door_policy", "random")),
+            spawn_policy=str(data.get("spawn_policy", "normal")),
+            min_depth=int_field("min_depth", 1),
+            max_depth=int_field("max_depth", 0),
+            reserved_tiles=pairs(data.get("reserved_tiles", [])),
+            anchor_points=anchors,
+            state=state,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "room_index": self.room_index,
+            "kind": self.kind,
+            "display_name": self.display_name,
+            "tags": list(self.tags),
+            "door_policy": self.door_policy,
+            "spawn_policy": self.spawn_policy,
+            "min_depth": self.min_depth,
+            "max_depth": self.max_depth,
+            "reserved_tiles": [list(tile[:2]) for tile in self.reserved_tiles],
+            "anchor_points": {
+                key: list(value[:2]) for key, value in self.anchor_points.items()
+            },
+            "state": dict(self.state),
+        }
+
+    def has_tag(self, tag: str) -> bool:
+        needle = tag.lower()
+        return any(candidate.lower() == needle for candidate in self.tags)
+
+    def anchor(
+        self, key: str, default: tuple[int, int] | None = None
+    ) -> tuple[int, int] | None:
+        value = self.anchor_points.get(key)
+        if value is None or len(value) < 2:
+            return default
+        return int(value[0]), int(value[1])
 
 
 @dataclass

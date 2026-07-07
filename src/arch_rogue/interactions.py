@@ -58,7 +58,7 @@ class InteractionMixin:
             return (
                 "E",
                 "Open door",
-                "Doors gate shops and side rooms.",
+                "Doors gate special rooms and side rooms.",
                 self.theme.accent,
             )
         shopkeeper = self.nearby_shopkeeper()

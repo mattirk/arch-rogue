@@ -88,6 +88,8 @@ from .models import (
     SecretCache,
     Shopkeeper,
     Shrine,
+    SpecialRoom,
+    SpecialRoomDefinition,
     StoryGuest,
     StoryState,
     Tile,
@@ -184,6 +186,8 @@ __all__ = (
     "Shopkeeper",
     "Shrine",
     "SlashEffect",
+    "SpecialRoom",
+    "SpecialRoomDefinition",
     "STORY_LOCATION_MOTIFS",
     "TRAP_DEFINITIONS",
     "StoryEngine",
@@ -271,7 +275,8 @@ class Game(
         self.quest_cutscenes = load_quest_cutscene_library()
         self.active_cutscene: ActiveQuestCutscene | None = None
         self.tile_cache: dict[
-            tuple[str, int, int, bool], tuple[pygame.Surface, int, int]
+            tuple[str, int, int, bool, bool, str | None],
+            tuple[pygame.Surface, int, int],
         ] = {}
         self.rng = random.Random()
         self.running = True
