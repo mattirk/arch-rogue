@@ -186,28 +186,29 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 3.9 Controller, Input, and Accessibility Polish
-
-Modernize the control layer so keyboard/mouse remains responsive while gamepad and accessibility options become first-class across gameplay and menus.
-
-- Add a small input abstraction (`input.py`) that maps keyboard, mouse, and controller events to shared gameplay/menu commands (move, aim, ability, interact, navigate, confirm, back, tab) without ripping out the existing `Game.handle_events` flow.
-- Add controller support via `pygame.joystick` for movement, aiming, combat abilities, interaction, inventory/shop navigation, character sheet tabs, and story choices; auto-detect connect/disconnect and persist the last-used device.
-- Improve menu navigation consistency across title, options, archetype select, inventory, shop, character sheet, and run-state overlays so every navigable menu supports the same directional/confirm/back bindings on both keyboard and gamepad.
-- Add configurable accessibility options to `options.py` and the options menu: aim-assist strength, screen-flash reduction toggle, persistent tooltip toggle, and high-contrast interaction cues; persist them in the existing options file with a backward-compatible schema bump.
-- Preserve current keyboard/mouse bindings, run-save compatibility, and the stable `Game`/`main` entry points; keep `arch_rogue.game.Game` and `arch_rogue.game:main` unchanged in name.
-- Keep the run loop at 60+ FPS: input sampling must stay cheap, and any per-frame controller polling must avoid allocations in the hot path.
-- Validate with a new `tests/test_3_5_input_accessibility.py` covering input mapping, controller-to-command translation, options persistence/migration, and menu navigation, plus the full `unittest discover tests` regression suite.
-
 ### 3.10 Build Diversity and Affix Depth
 
 Draft goal: deepen loot-driven build variety by expanding affix pools, item interactions, and skill/affix synergies so each run can commit to a distinct build identity.
 
 - Expand the affix table in `content/equipment.py` with new damage types, cast/attack speed, movement speed, thorns, proc effects, and skill-modifier affixes, plus balanced roll ranges per rarity tier.
 - Add a small affix-synergy layer in `combat.py` so tagged affixes (e.g. lifesteal, proc-on-hit, cast speed) actually modify player attack/spell resolution, not just stat totals.
-- Introduce a few build-defining unique items per archetype in `population.py` that interact with the new affixes and the 3.2 skill tree branches.
-- Make cursed items tempting rather than purely punishing: pair each curse with a meaningful upside and surface the tradeoff clearly in the inventory comparison summary.
+- Introduce a few build-defining unique items per archetype in `population.py` that interact with the new affixes and the skill tree branches/paths.
 - Improve loot readability in the HUD/inventory: affix tooltips, tag icons, and a one-line build-relevance hint comparing drops to the player's current build.
-- Preserve save compatibility: existing item/affix saves must still load; new affixes default to no-op on older saves.
 - Validate with a new `tests/test_3_6_affix_builds.py` covering affix roll ranges, synergy resolution in combat, unique-item generation, cursed-item tradeoffs, and save migration, plus the full `unittest discover tests` regression suite.
+
+### 3.11 Encounter Depth: Elite Packs, Enemy Affixes, and Faction Variety
+
+Draft goal: complement the 3.10 player-side build diversity with enemy-side variety so each run tests builds against a meaningfully different threat landscape rather than a flat stat curve.
+
+- Introduce elite/champion enemy packs in `population.py` that spawn in deeper floors and themed regions: a pack leader plus 2–4 retinue, scaled HP/damage, and a shared faction tag that gates which enemy affixes may roll.
+- Add an enemy-affix layer in `combat.py` mirroring the player affix vocabulary where it makes sense (e.g. extra damage type, fast/cast speed, thorns, lifesteal, teleport/blink, summon retinue, aura-boosted allies) and gating each affix behind a faction/elite tier so basic trash stays readable.
+- Define a small set of enemy factions in `content/enemies.py` (e.g. Cursed Knights, Plague Cult, Hollow Beasts, Vault Constructs) with distinct stat leanings, resistances, preferred affix pools, and biome affinity so floor populations read as themed rather than random.
+- Make elite telegraphs readable: a faction-colored aura, an affix tag row under the health bar (reusing the 3.10 tag-icon vocabulary), and a pack-leader marker distinct from the existing floor-guardian/boss bar.
+- Add a few faction-specific encounter scripts in `population.py` (ambush patrols, patrolling elites, sealed vault guardians) that interact with the 3.8.5 sealed-arena logic without re-triggering the boss bar.
+- Tune kill rewards so elite packs drop meaningfully better loot and a small meta-currency bump on first kill per pack per floor, encouraging engagement without forcing grind.
+- Preserve save compatibility: existing enemy saves must still load; enemy-affix and faction fields default to no-op/`None` on older saves and never block population.
+- Keep the run loop at 60+ FPS: faction/affix resolution must stay O(pack) on spawn and O(enemy) per frame with no per-frame allocations in the hot path.
+- Preserve keyboard/mouse bindings, controller bindings, run-save compatibility, and the stable `Game`/`main` entry points.
+- Validate with a new `tests/test_3_11_encounter_depth.py` covering faction stat leanings and affix pools, elite-pack generation and retinue sizing, enemy-affix combat resolution (thorns/lifesteal/aura/summon), elite telegraph marker behavior, sealed-vault-encounter interaction, kill-reward scaling, and old-save compatibility, plus the full `unittest discover tests` regression suite.
 
 ### Stash
