@@ -1,19 +1,41 @@
 # Arch Rogue
 
-Arch Rogue is a 2.5 milestone release of a modernized Rogue-inspired isometric action RPG built with Python and Pygame CE.
+Arch Rogue is a modernized take on the classic Rogue formula: a grim, replayable isometric action-RPG dungeon crawler built with Python and Pygame CE. Procedural dungeons, permanent consequences, scarce resources, and unidentified treasure meet real-time combat, loot-driven builds, and a seeded dark-fantasy storyline.
 
-Explore a 10-depth procedural dungeon, choose one of five distinct archetypes, follow a seeded dark-fantasy storyline, preview each descent's risks, survive faction-shaped encounters, defeat floor bosses and the final gate tyrant, and start a fresh run after victory or death.
+## Features
 
-## 2.5 Release Highlights
+**Dungeon & exploration**
+- 10-depth procedural dungeon with rooms, corridors, chokepoints, secrets, traps, and themed biomes.
+- Floor plans pace the whole run: escalating threat, biome variety, elites and bosses
+- Dark floors lit only by your lantern, normal floors revealed as you explore
+- Data-driven special rooms (shops, quest-guest rooms) with a pluggable handler model for future room types.
 
-- Floor plans now pace the full run with escalating threat, biome/theme variety, previewable descent risks, dark-level flags, encounter templates, and boss signposting.
-- Distinct floor bosses appear at milestone depths with themed attack patterns, readable telegraphs, persistent AI state, and notable loot hooks.
-- Encounter templates influence faction mixes, elite pressure, ambushes, hazard caches, guarded reliquaries, challenge seals, secrets, traps, and rewards.
-- Lightweight meta-progression records best depth, clears, discoveries, defeated bosses, notable loot, and unlocks such as Hell difficulty without removing run danger.
-- Class upgrades now carry tree/tier metadata so level-ups, Oath Shrines, and skill altars build toward readable archetype paths.
-- End-of-run summaries cover cause of death, notable loot, defeated bosses, secrets, story choices, challenge rooms, and mastery progress.
-- Versioned run saves persist floor plans, active modifiers, story state, boss/enemy state, discoveries, and run statistics for reliable resume.
-- Regression coverage checks run pacing, floor-plan save/load, boss rewards/mastery, boss AI save/load, dark-level visibility, and the 2.5 cleanup pass.
+**Combat**
+- Real-time isometric combat with melee arcs, ranged bolts, arc novas, and a dash, plus stamina/mana/cooldowns and readable enemy telegraphs.
+- Enemy elites with named modifiers and distinct telegraphs, Oathbound minibosses, and floor bosses (Ash Gallows Knight, Mycelial Matron, Rime Chanter, Voidbound Rune Sentinel) culminating in the Dread Gate Tyrant.
+- Encounter templates shape each floor: elite packs, ruin ambushes, treasure rooms, and optional challenge rooms.
+
+**Progression & loot**
+- Five archetypes: Warden, Rogue, Arcanist, Acolyte, and Ranger.
+- Skill system with active abilities, passive talents, branch commitment, combo bonuses, Oath Shrines, and Forgotten Skill Altars.
+- Loot rarity tiers (Common, Magic, Rare, Legendary, Unique, Cursed) with an ARPG-style affix vocabulary — damage types, resistances, lifesteal, thorns, proc effects, attack/cast/move speed, and skill bonuses.
+- Unidentified items, tempting cursed bargains, and unique items with special effects.
+
+**Story & world**
+- Seeded dark-fantasy storyline with story guests, Aid/Bargain/Defy relic choices, and quest cutscenes driven by a dialogue-tree asset pipeline.
+- Shrines (Mending, Insight, War, Haste, Fortune, Oath, Twilight) and secrets (Hidden Cache, Cursed Reliquary, Sealed Armory, Moonlit Bargain, and more).
+- Discoverable lore through items, shrines, enemy factions, and rare encounters.
+
+**Run lifecycle**
+- Four difficulty levels — Easy, Medium, Hard (default), and Hell (unlocked after a clear).
+- Lightweight meta-progression (best depth, clears, discoveries, defeated bosses, notable loot, unlocks) that opens options without removing run tension.
+- Versioned run saves with resume from the title screen, plus persistent options.
+- End-of-run summaries covering cause of death, loot, bosses, secrets, story choices, and mastery.
+
+**Presentation & input**
+- Procedural pixel-art sprites and procedural NES-style music and sound effects.
+- Keyboard/mouse and full gamepad support with remappable bindings, deadzones, and hot-plug.
+- Accessibility touches: aim assist, adjustable UI scale, and an in-run help overlay.
 
 ## Architecture
 
@@ -85,35 +107,93 @@ Notes:
 
 ## Controls
 
+Arch Rogue supports keyboard/mouse and gamepad. Gamepad bindings can be remapped from the Controls menu (Options → Controls).
+
+### Gameplay
+
 | Control | Action |
 | --- | --- |
-| Hold Left Mouse | Move toward / aim at the cursor; slash nearby enemies |
-| `Space` | Melee slash in aimed direction |
-| Arrow keys | Optional keyboard aim / face direction |
-| `F` | Cast ranged bolt |
-| `V` | Cast arc nova |
-| `Left Ctrl` | Dash/movement skill toward aim direction |
-| `E` | Pick up nearby loot / use shrine / open secret / use exit stairs / open nearby story guest dialogue |
+| Hold Left Mouse | Move toward / aim at the cursor; slash enemies in the melee arc |
+| Left Click | Face the cursor and slash if an enemy is in the melee arc |
+| Arrow Keys | Keyboard aim / face direction |
+| `1` | Melee slash |
+| `2` | Cast ranged bolt |
+| `3` | Cast arc nova |
+| `4` | Dash toward aim direction |
+| `5` | Drink best matching health potion |
+| `6` | Drink best matching mana potion |
+| `7`-`9` | Use / equip inventory slot 7-9 |
+| `E` | Interact: pick up loot, use shrine, reveal secret, descend stairs, open story guest dialogue |
 | `I` | Toggle inventory |
-| `C` | Toggle character sheet (overview + skill tree tabs) |
-| `Tab` / `1` / `2` / Arrows while character sheet is open | Switch between Overview and Skill Tree tabs |
-| `1` / `2` / `3` in quest cutscenes or near story guest | Choose Aid / Bargain / Defy, shaping future story and dungeon generation |
-| `1`-`9` | Equip/use inventory item shown in that slot |
-| `Tab` / `S` while inventory is open | Cycle/sort inventory by type, rarity, or power |
-| `Shift` + `1`-`9` while inventory is open | Drop the matching inventory item near the player |
+| `C` | Toggle character sheet (Overview + Skill Tree tabs) |
 | `Q` | Toggle quest HUD info |
-| `R` | Drink the best matching health potion in inventory |
-| `T` | Drink the best matching mana potion in inventory |
-| `H` or `?` | Toggle the in-run help overlay |
-| `N` / `Enter` | Start new run flow from title screen |
-| `L` / `R` | Resume saved run from title screen, if one exists |
-| `O` | Options from title screen |
-| `A` / `C` / `H` / `?` | About, credits, and onboarding from title screen |
-| `1`-`5` / Arrow keys / `Enter` | Choose an archetype from character select |
-| `A` / `M` / `F` / `+` / `-` | Toggle audio cues, static music, fullscreen, or UI scale in options |
-| `Backspace` | Return from character select/options/about to title |
-| `R` | Return to character select after death or victory; resume from title when a save exists |
-| `Esc` | Save active run and quit |
+| `H` or `?` | Toggle in-run help overlay |
+| `Esc` | Close overlays, or save and quit from gameplay |
+
+### Inventory (while open)
+
+| Control | Action |
+| --- | --- |
+| `Up` / `W`, `Down` / `X` | Move selection |
+| `Tab` | Cycle sort mode |
+| `S` | Sort inventory |
+| `PageUp` / `PageDown` | Jump selection by a page |
+| `Home` / `End` | Jump to first / last slot |
+| `Return` / `E` | Use selected slot |
+| `Delete` / `Backspace` | Drop selected slot |
+| `1`-`9` | Use slot 1-9 |
+| `Shift` + `1`-`9` | Drop slot 1-9 |
+
+### Character sheet (while open)
+
+| Control | Action |
+| --- | --- |
+| `Tab` / `1` / `2` / `←` / `→` | Switch Overview and Skill Tree tabs |
+| Click skill node (Skill Tree) | Spend a skill point to acquire it |
+
+### Shop (while open)
+
+| Control | Action |
+| --- | --- |
+| `Tab` | Cycle buy / sell mode |
+| `Up` / `W`, `Down` / `S` / `X` | Move selection |
+| `Return` / `E` | Buy / sell selected |
+| `Backspace` / `Q` | Close shop |
+
+### Story & cutscenes
+
+| Control | Action |
+| --- | --- |
+| `1`-`3` | Choose Aid / Bargain / Defy (bind the guest relic) |
+| `1`-`9` | Choose a dialogue option |
+| `Return` / `Space` / `E` | Advance narration |
+
+### Title & menus
+
+| Control | Action |
+| --- | --- |
+| `↑` / `↓` / `←` / `→` / `W` / `S` | Navigate title and lists |
+| `Return` | Activate selection |
+| `N` | New run |
+| `L` / `R` | Resume saved run |
+| `O` | Options |
+| `A` / `C` / `H` / `?` | About / help |
+| `1`-`5` / `←` / `→` | Choose archetype |
+| `Backspace` | Back to title |
+| `Esc` | Quit |
+
+### Options
+
+| Control | Action |
+| --- | --- |
+| `A` / `M` / `F` / `D` | Toggle audio, music, fullscreen, or cycle difficulty |
+| `+` / `-` | Adjust UI scale |
+| `Return` | Toggle the selected row |
+| `Backspace` / `O` | Back to title |
+
+### Gamepad
+
+Left stick or D-pad moves, the right stick aims, face buttons trigger combat abilities, and the triggers handle dash and interact. Menu navigation, inventory, shop, character sheet, and cutscene selection all work on pad. Bindings are remappable from the Controls menu, with deadzone and hot-plug support.
 
 ## Goal
 
@@ -121,13 +201,14 @@ Explore 10 dungeon depths, survive enemies and traps, identify and equip loot, u
 
 In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from the title screen. Death and victory clear the saved run. Options are saved to `~/.arch_rogue_options.json`.
 
-## Known Issues in 3.4
+## Known Issues
 
-- Quest cutscenes use a packaged JSON dialogue-tree, sprite-animation, and stage-dressing asset pipeline; authored content coverage is still intentionally compact for the milestone.
-- Run music and sound effects are still lightweight procedural/static cues; there is no hand-authored soundtrack asset pipeline yet.
-- Controls are keyboard/mouse only; gamepad support is not implemented.
-- Visuals and audio remain procedural prototype assets, now tuned for a cleaner milestone look rather than final art quality.
+- Quest cutscene and story-corpus content is intentionally compact for the prototype; more authored beats will land over time.
+- Music and sound effects are procedural/static cues; there is no hand-authored soundtrack asset pipeline yet.
+- Visuals are procedural pixel-art prototype assets tuned for a clean look - issue or feature?
 - Save files are local JSON and are not cloud-synced.
+- Single-player only; there is no multiplayer.
+- The experimental web build exists in `src/arch_rogue/web` but is not part of the default test run.
 
 ## License
 
