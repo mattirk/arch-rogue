@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.11.0 — Cutscene Cleanup
+
+The quest cutscene stage was visually cluttered and its actors were mis-sized: transparent overlay blobs stacked on the set, player/enemy sprites dwarfed the stage, and the "depth" of the scene read flat. The stage is now a cleaner cursed-theater set with real perspective and a choreographed duel.
+
+### Changed
+- Removed the unused stage-overlay rendering functions in `rendering/story_overlays.py` (`draw_cutscene_memory_ribbon`, `draw_cutscene_story_backdrop`, `draw_cutscene_theme_motifs`, `draw_cutscene_relic_silhouette`, `draw_cutscene_faction_sigil`, `draw_cutscene_choice_tableau`, `draw_cutscene_narrator_wave`). These were never called from the active render path but carried most of the transparent ellipse/circle/polygon clutter drawn on top of the stage; deleting them removes that dead code and its visual noise.
+- Stage actors are now sized by perspective, not by a flat UI-scale multiplier. A new `_stage_actor_depth_scale(y)` maps each actor's normalized stage y onto the floor plane (`STAGE_FLOOR_TOP`..1.0) so figures near the back wall render smaller and figures near the front render larger. Sprite height is grounded in `stage_rect.height * STAGE_ACTOR_HEIGHT_FRAC` so sprites never tower over the stage at any UI scale, fixing the oversized-sprite problem.
+- Cutscene actors are now depth-sorted back-to-front by stage y (plus animation dy) before drawing, so nearer figures correctly occlude further ones and the perspective reads.
+- Ground shadows are cleaned up: the relic (a floating echo) casts no shadow, and the remaining ground shadows are a single subtle ellipse scaled to the (now depth-correct) sprite instead of a fixed large alpha-92 blob per actor. The cloak-hem ellipse inside the guest sprite was also removed.
+- The player and antagonist now duel on the omen stage. When a cutscene casts both a `player` and an `antagonist` actor, `_cutscene_duel_state()` choreographs a looping cycle (approach -> clash -> retreat -> rest) on its own clock, independent of narration progress: they run at each other, clash in the middle with a spark/cross-slash flash (`_draw_duel_clash_flash`), retreat to their marks, pause, and repeat. The antagonist is made clearly visible during the duel. Cutscenes without an antagonist (e.g. `story_guest_dialogue`) are unaffected.
+- `draw_cutscene_actor` was refactored to resolve the animation frame plus duel override once, then delegate to a new `_render_cutscene_actor` helper shared with the depth-sorted stage path.
+- `draw_intro_stage_actor` (story intro panel) received the same depth/sizing and shadow cleanup so the intro tableau matches the main stage.
+- Package metadata, `__version__`, save release strings, and version-current tests now target `3.11.0`. The save schema `version` is unchanged (5).
+
+### Validation
+- `tests/test_3_11_cutscene_cleanup.py` (new) covers removal of the unused overlay functions, the depth-scale perspective curve, the duel state being absent without an antagonist, the approach/clash/retreat/rest choreography and meeting-point math, duel loop periodicity, clash-flash safety outside the clash window, and a full render pass across a duel cycle with a bounded stage cache.
+- `python -m compileall src tests` and `python -m unittest discover tests` pass (the one remaining `test_story_mode` failure is pre-existing on `master` and unrelated to this milestone).
+
 ## 3.10.0 — Build Diversity and Affix Depth
 
 Loot rolls now carry clearer build identities: speed, proc, sustain, thorns, damage-type, and skill-modifier affixes are data-driven, affect combat resolution, and surface readable hints in the inventory.

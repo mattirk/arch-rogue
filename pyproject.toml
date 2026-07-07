@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.10.0"
-description = "3.10.0 deepens loot-driven build variety with expanded affixes, combat synergies, archetype uniques, and clearer inventory hints."
+version = "3.11.0"
+description = "3.11.0 cleans up the cutscene stage: removes unused overlay clutter, fixes sprite depth and sizing, and adds a player/antagonist duel."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
