@@ -186,16 +186,24 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 3.11 Cutscene cleanup
+### 3.13 Special rooms abstraction
 
-- There are lots of "transparent ellipses" drawn on top of stage, they are a bit too unclean looking. Remove most of them, use good taste.
-- Player and enemy sprites are too big on stage and depth effect does not work properly, fix that
-- Make player and enemy sprites "fight each other" -> they run towards each other and attack when close enough, then retreat and start again
-- Pay special attention to the "depth" effect of the stage and all sprites / entities on it
-- Write clean code, remove unused functions and other unnecessary code
+Draft goal: replace the current one-off shop/quest room wiring with a small, data-driven special-room abstraction that can support future room identities such as NPC homes, bars, inns, gardens, faction hideouts, and other non-combat or scripted spaces without adding another bespoke index and population path each time.
 
+- Introduce a lightweight special-room model in `models.py` (or an existing content-adjacent module if cleaner) that records stable room identity: room index, room kind/key, display name, tags, door/seal policy, spawn policy, floor/depth constraints, reserved tiles/anchor points, and optional state needed by interactions. Keep it serializable with primitive fields.
+- Replace `Dungeon.shop_room_index` and `Dungeon.guest_room_index` as the primary API with a `special_rooms` collection plus helper queries such as `special_room_for_kind()`, `special_room_at_index()`, and `room_has_tag()`. Preserve legacy properties or compatibility shims during the migration so old call sites and saves keep working until they are updated.
+- Move special-room selection out of hardcoded shop/guest branches in `dungeon.py` into a planner/assignment pass that chooses eligible interior rooms once, enforces exclusivity, reserves start/stairs/boss rooms, applies deterministic seeded selection for story/quest rooms, and then seals or doors rooms according to each room definition.
+- Define initial room kinds for `shop` and `quest_guest` using the new abstraction, matching current behavior exactly: shop rooms remain common gated refuge rooms with shopkeeper/sign/loot dressing, while quest guest rooms are deterministic story-beat rooms that avoid the shop and preserve population determinism.
+- Refactor `population.py` from `_populate_shop_room()` / `_populate_story_guest()` toward room-handler dispatch keyed by special-room kind. Each handler should receive the room definition and `Room`, own its NPC/items/cleanup rules, and share utilities for clearing hostile spawns/traps, placing signs, reserving anchor tiles, and adding ambient dressing.
+- Refactor rendering room lookups in `rendering/world.py` from `_shop_room_bounds()` / `_guest_room_bounds()` into generic cached special-room bounds and tile-tag helpers. Keep shop floor tint/gold scatter and quest room presentation visually unchanged while making future room dressing opt-in by room kind/tag.
+- Update interaction hints and interaction routing so room occupants/features drive behavior rather than the room index itself: shopkeepers still open trade, story guests still open quest choice/cutscene flows, and future NPC homes/bars/inns/gardens can register their own occupant or feature interaction without changing the dungeon generator.
+- Update save/load compatibility in `save_system.py`: serialize the new `special_rooms` collection, restore it defensively, and migrate older saves that only contain `shop_room_index`/`guest_room_index` into equivalent `shop`/`quest_guest` special-room entries. Missing or unknown room kinds should safely no-op rather than block loading.
+- Keep the abstraction intentionally small and prototype-friendly: no broad plugin framework, no excessive class hierarchy, and no per-frame room-definition allocation. Room assignment should be O(room count) during floor generation, while runtime/rendering lookups should use cached maps or simple list scans at current scale.
+- Add focused tests in a new `tests/test_3_13_special_rooms.py` covering deterministic assignment, non-overlap between shop and quest rooms, door/seal policies, shop/quest behavior parity, generic room lookup helpers, old-save migration, unknown-kind no-op behavior, and room-handler extensibility with a stub future room kind.
+- Preserve keyboard/mouse bindings, controller bindings, run-save compatibility, the stable `arch_rogue.game.Game` / `arch_rogue.game:main` entry points, and the existing quest-room and shop-room gameplay behavior.
+- Validate with `python -m compileall src tests`, `python -m unittest tests.test_3_13_special_rooms`, relevant existing shop/story room tests, and the full `python -m unittest discover tests` regression suite. Do not run experimental web tests by default.
 
-### 3.12 Encounter Depth: Elite Packs, Enemy Affixes, and Faction Variety
+### 3.14 Encounter Depth: Elite Packs, Enemy Affixes, and Faction Variety
 
 Draft goal: complement the 3.10 player-side build diversity with enemy-side variety so each run tests builds against a meaningfully different threat landscape rather than a flat stat curve.
 
@@ -211,3 +219,4 @@ Draft goal: complement the 3.10 player-side build diversity with enemy-side vari
 - Validate with a new `tests/test_3_11_encounter_depth.py` covering faction stat leanings and affix pools, elite-pack generation and retinue sizing, enemy-affix combat resolution (thorns/lifesteal/aura/summon), elite telegraph marker behavior, sealed-vault-encounter interaction, kill-reward scaling, and old-save compatibility, plus the full `unittest discover tests` regression suite.
 
 ### Stash
+- remove unnecessary tests such as test_shops (now test_special_rooms) and others
