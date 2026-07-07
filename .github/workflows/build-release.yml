@@ -1,0 +1,184 @@
+name: Build & Release
+
+# On every push to master: run the test suite, build standalone Windows and
+# Linux binaries with PyInstaller, and publish both artifacts to a GitHub
+# Release tagged `v<version>-<short-sha>`, where <version> comes from
+# pyproject.toml. Each commit therefore gets its own uniquely-tagged release
+# whose name carries the current project version.
+
+"on":
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: "3.11"
+  # Headless SDL drivers so the unittest suite can run Pygame on CI runners
+  # with no display server.
+  SDL_VIDEODRIVER: dummy
+  SDL_AUDIODRIVER: dummy
+
+jobs:
+  test:
+    name: Test (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Compile-check sources
+        run: python -m compileall src tests
+
+      - name: Run test suite
+        run: python -m unittest discover tests
+
+  build:
+    name: Build (${{ matrix.asset_suffix }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            exe_name: arch-rogue
+            artifact_name: arch-rogue-linux-x64
+            asset_suffix: linux-x64
+            windowed_flag: ""
+          - os: windows-latest
+            platform: windows
+            exe_name: arch-rogue
+            artifact_name: arch-rogue-windows-x64.exe
+            asset_suffix: windows-x64
+            windowed_flag: "--windowed"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pyinstaller
+
+      - name: Read version
+        id: version
+        shell: python
+        run: |
+          import tomllib, os
+          with open("pyproject.toml", "rb") as f:
+              data = tomllib.load(f)
+          version = data["project"]["version"]
+          print(f"version={version}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"version={version}\n")
+
+      - name: Short SHA
+        id: sha
+        shell: bash
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build with PyInstaller
+        shell: bash
+        run: |
+          python -m PyInstaller \
+            --noconfirm \
+            --onefile \
+            ${{ matrix.windowed_flag }} \
+            --name "${{ matrix.exe_name }}" \
+            --collect-all arch_rogue \
+            --collect-all pygame \
+            --hidden-import=pygame \
+            --hidden-import=pygame._sdl2 \
+            --hidden-import=pygame.base \
+            --hidden-import=pygame.font \
+            --hidden-import=pygame.mixer \
+            src/arch_rogue/__main__.py
+
+      - name: Rename artifact
+        shell: bash
+        run: |
+          mkdir -p dist/final
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sha.outputs.short }}"
+          FINAL="arch-rogue-v${VERSION}-${SHA}-${{ matrix.asset_suffix }}"
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            mv "dist/${{ matrix.exe_name }}.exe" "dist/final/${FINAL}.exe"
+          else
+            mv "dist/${{ matrix.exe_name }}" "dist/final/${FINAL}"
+          fi
+          ls -la dist/final
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/final/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        shell: python
+        run: |
+          import tomllib, os
+          with open("pyproject.toml", "rb") as f:
+              data = tomllib.load(f)
+          version = data["project"]["version"]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"version={version}\n")
+
+      - name: Short SHA
+        id: sha
+        shell: bash
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List release assets
+        run: ls -la release-assets
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}
+          name: Arch Rogue v${{ steps.version.outputs.version }} (${{ steps.sha.outputs.short }})
+          body: |
+            Automated bleeding-edge build from `master` commit ${{ steps.sha.outputs.short }}.
+
+            - Version: ${{ steps.version.outputs.version }}
+            - Commit: ${{ github.sha }}
+
+            Assets:
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-windows-x64.exe` — standalone Windows executable
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-linux-x64` — standalone Linux binary
+          files: release-assets/*
+          prerelease: true
+          make_latest: "false"
