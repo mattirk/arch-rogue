@@ -744,7 +744,9 @@ class StoryRuntimeMixin:
         self, choice_key: str, guest: StoryGuest
     ) -> tuple[float, float]:
         if choice_key == "aid":
-            return self.drop_position_near(guest.x, guest.y)
+            # Place the relic on an adjacent tile to the quest NPC, not on the
+            # NPC's own tile, so the two sprites never stack.
+            return self.drop_position_near(guest.x, guest.y, exclude_origin=True)
         if choice_key == "bargain":
             if self.secrets:
                 secret = min(

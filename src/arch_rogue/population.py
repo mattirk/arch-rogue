@@ -783,7 +783,9 @@ class PopulationMixin:
             proc_chance=definition.proc_chance,
         )
 
-    def drop_position_near(self, x: float, y: float) -> tuple[float, float]:
+    def drop_position_near(
+        self, x: float, y: float, exclude_origin: bool = False
+    ) -> tuple[float, float]:
         offsets = (
             (0.0, 0.0),
             (1.15, 0.0),
@@ -797,6 +799,10 @@ class PopulationMixin:
         )
         stair_x, stair_y = self.dungeon.stairs[0] + 0.5, self.dungeon.stairs[1] + 0.5
         for ox, oy in offsets:
+            if exclude_origin and ox == 0.0 and oy == 0.0:
+                # The caller wants the drop on an adjacent tile, not the origin
+                # tile (e.g. the story relic must not stack on the quest NPC).
+                continue
             px, py = x + ox, y + oy
             if math.hypot(px - stair_x, py - stair_y) < 1.05:
                 continue

@@ -1108,6 +1108,8 @@ class RenderingEffectsMixin:
         sx, sy = self.world_to_screen(item.x, item.y)
         accent = self.story_state.accent if self.story_state else self.theme.accent
         pulse = 0.5 + 0.5 * math.sin(self.elapsed * 5.2 + item.x)
+        # Floor glow: a soft accent ellipse so the relic reads as lit from
+        # beneath, same idiom as other loot. Breathes with pulse.
         glow = pygame.Surface((58 * WORLD_SCALE, 34 * WORLD_SCALE), pygame.SRCALPHA)
         pygame.draw.ellipse(glow, (*accent, int(54 + pulse * 70)), glow.get_rect())
         pygame.draw.ellipse(
@@ -1116,51 +1118,32 @@ class RenderingEffectsMixin:
             glow.get_rect().inflate(-glow.get_width() // 3, -glow.get_height() // 3),
         )
         self.screen.blit(glow, glow.get_rect(center=(sx, sy)))
+        # Contact shadow grounds the bobbing gem on the floor diamond.
         bob = int(math.sin(self.elapsed * 3.5 + item.y) * 3 * WORLD_SCALE)
-        points = [
-            (sx, sy - 21 * WORLD_SCALE + bob),
-            (sx + 12 * WORLD_SCALE, sy - 5 * WORLD_SCALE + bob),
-            (sx, sy + 9 * WORLD_SCALE + bob),
-            (sx - 12 * WORLD_SCALE, sy - 5 * WORLD_SCALE + bob),
-        ]
-        # Gem body: dark accent fill with a lit lip, drawn as a flat iso
-        # diamond so it reads as a cut stone lying on the floor.
-        gem_face = self.shade(accent, -45)
-        gem_rim = self.shade(accent, 42)
-        pygame.draw.polygon(self.screen, gem_face, points)
-        pygame.draw.polygon(self.screen, gem_rim, points, max(1, WORLD_SCALE))
+        self.draw_shadow(item.x, item.y, 26, 11, lift=bob / WORLD_SCALE)
 
-        # Subtle status sigil at the gem's heart: a thin accent-tinted ring
-        # with a faint warm pinprick at its center, alpha-blended onto a tiny
-        # SRCALPHA patch so it reads as a soft inscription on the gem face
-        # rather than a flat opaque badge pasted on top. It breathes with the
-        # same pulse as the surrounding glow so the relic stays calm.
-        sigil_size = 14 * WORLD_SCALE
-        sigil = pygame.Surface((sigil_size, sigil_size), pygame.SRCALPHA)
-        scx = scy = sigil_size // 2
-        ring_radius = max(2, 3 * WORLD_SCALE)
-        pygame.draw.circle(
-            sigil,
-            (*gem_rim, int(60 + pulse * 35)),
-            (scx, scy),
-            ring_radius,
-            max(1, WORLD_SCALE),
+        # The gem itself is the cached octahedron sprite from the atlas
+        # (sprites._story_relic), pulled as the un-tinted base frame and recolored
+        # here with the per-story accent via an additive blend so the same art
+        # recolors for every story. A slow tilt + bob give it a floating, alive
+        # read; the atlas already outlined + upscaled it for the chunky look.
+        sprite = self.sprites.item_frame(
+            "story_relic",
+            self.elapsed + item.x * 0.31 + item.y * 0.17,
+            "Common",
         )
-        pygame.draw.circle(
-            sigil,
-            (245, 238, 210, int(90 + pulse * 55)),
-            (scx, scy),
-            max(1, WORLD_SCALE),
-        )
+        sprite = sprite.copy()
+        sprite.fill((*accent, 40), special_flags=pygame.BLEND_RGBA_ADD)
+        tilt = math.sin(self.elapsed * 2.8 + item.y) * 3.0
+        if abs(tilt) > 0.1:
+            sprite = pygame.transform.rotate(sprite, tilt)
         self.screen.blit(
-            sigil,
-            sigil.get_rect(center=(sx, sy - 5 * WORLD_SCALE + bob)),
+            sprite, sprite.get_rect(midbottom=(sx, sy + 4 * WORLD_SCALE - bob))
         )
 
         # Orbiting motes around the relic, drawn on top of the gem so they
         # read as attendant sparks circling the stone. Kept small and
-        # accent-tinted so they don't compete with the sigil as a second
-        # status ring.
+        # accent-tinted so they stay a secondary cue.
         for index in range(4):
             angle = self.elapsed * 2.2 + index * math.tau / 4
             mote = (
@@ -1255,31 +1238,22 @@ class RenderingEffectsMixin:
         color = guest.color if not guest.resolved else self.shade(guest.color, -60)
         self.draw_shadow(guest.x, guest.y, 26, 11)
         pulse = 0.55 + 0.45 * math.sin(self.elapsed * 4.0 + guest.depth)
+        # Subtle floor marker (a faint accent ring) so the quest NPC is still
+        # distinguishable from a generic traveler, but without the bright
+        # pulsing aura that made it read as a glowing quest beacon.
         ring = pygame.Surface((48 * WORLD_SCALE, 25 * WORLD_SCALE), pygame.SRCALPHA)
-        ring_alpha = int(
-            (18 if guest.resolved else 34) + (18 if guest.resolved else 46) * pulse
-        )
+        ring_alpha = int(20 + 12 * pulse) if not guest.resolved else 14
         pygame.draw.ellipse(
             ring, (*color, ring_alpha), ring.get_rect(), max(1, WORLD_SCALE)
         )
-        if not guest.resolved:
-            pygame.draw.ellipse(
-                ring,
-                (*self.shade(color, 55), int(14 + 30 * pulse)),
-                ring.get_rect().inflate(
-                    -ring.get_width() // 3, -ring.get_height() // 3
-                ),
-            )
         self.screen.blit(ring, ring.get_rect(center=(sx, sy + 4 * WORLD_SCALE)))
 
         sprite = self.sprites.story_guest_frame(
             self.elapsed + guest.depth, guest.resolved
         )
-        sprite = sprite.copy()
-        sprite.fill(
-            (*color, 36 if not guest.resolved else 18),
-            special_flags=pygame.BLEND_RGBA_ADD,
-        )
+        # Drawn as-is, like every other actor. The previous additive tint over
+        # the whole sprite is what made the guest glow; normal humanoids are not
+        # tinted at draw time.
         self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 5 * WORLD_SCALE)))
 
         # The floating portrait badge (a dark disc with a "?"/role/"✓" glyph)

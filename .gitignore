@@ -15,3 +15,7 @@ stairs/
 stairs_preview.py
 # Manual play-test harness for boss encounters (not a unit test).
 test_boss.py
+gen_relic_previews.py
+guest_template_active.png
+guest_template_resolved.png
+relic_previews/

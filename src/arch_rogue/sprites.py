@@ -116,6 +116,7 @@ class PixelSpriteAtlas:
             "identify": self._scroll(),
             "weapon": self._weapon(),
             "armor": self._armor(),
+            "story_relic": self._story_relic(),
         }
         raw_projectiles = {
             "player": self._blue_bolt(),
@@ -1894,6 +1895,35 @@ class PixelSpriteAtlas:
         self._dot(s, 7, 14, plate_hi)
         return s
 
+    def _story_relic(self) -> pygame.Surface:
+        # The story relic: an octahedron cut gem (top + bottom pyramids meeting
+        # at a visible equator) with four facet zones shaded lit-to-dark so it
+        # reads as a faceted stone rather than a flat diamond. Authored at low
+        # resolution in a neutral stone-gem palette; the atlas adds the dark
+        # silhouette outline and nearest-neighbor upscale, and the live renderer
+        # tint it with the per-story accent (see draw_story_relic) so the same
+        # sprite recolors for each story without re-authoring art.
+        s = self._surface(18, 24)
+        top = (9, 1)
+        left = (1, 12)
+        right = (17, 12)
+        bottom = (9, 23)
+        center = (9, 12)
+        facet_ul = (202, 199, 188)  # lit upper-left
+        facet_ur = (150, 148, 140)  # mid upper-right
+        facet_bl = (115, 113, 108)  # mid-dark lower-left
+        facet_br = (84, 83, 79)  # darkest lower-right
+        pygame.draw.polygon(s, facet_ul, [top, left, center])
+        pygame.draw.polygon(s, facet_ur, [top, center, right])
+        pygame.draw.polygon(s, facet_bl, [center, left, bottom])
+        pygame.draw.polygon(s, facet_br, [center, bottom, right])
+        # Bright lit ridge along the upper-left edge — the gem's specular edge.
+        pygame.draw.line(s, (246, 240, 220), top, left)
+        # Specular pinpricks on the lit facet.
+        self._dot(s, 6, 8, (255, 251, 232))
+        self._dot(s, 7, 7, (255, 251, 232))
+        return s
+
     def _blue_bolt(self) -> pygame.Surface:
         s = self._surface(16, 12)
         core = (240, 250, 255)
@@ -2257,43 +2287,114 @@ class PixelSpriteAtlas:
         return s
 
     def _story_guest(self, active: bool = True) -> pygame.Surface:
+        # Quest NPC template: a wide-brimmed traveler's hat, distinct head/face
+        # with glowing sigil eyes, a separate torso cloak with a clasp, arms
+        # drawn as distinct sleeves with hands (not merged into the body), two
+        # separate legs, and boots. Authored at the shared 26x34 actor canvas
+        # so it scales and outlines alongside the player/enemy humanoids.
+        # `active` is the violet quest-giver palette; `resolved` desaturates to
+        # grey so a settled guest reads as spent.
         s = self._surface(self.RAW_ACTOR_W, self.RAW_ACTOR_H)
-        outline = (22, 16, 28)
-        cloak = (86, 56, 120) if active else (62, 58, 70)
-        cloak_hi = (132, 88, 180) if active else (94, 90, 104)
-        cloak_lo = (54, 36, 80) if active else (42, 40, 50)
+        outline = (22, 16, 28) if active else (24, 20, 26)
+        # Muted traveler-robe palette (dusty mauve) so the guest reads as a
+        # normal humanoid NPC, not a neon-glowing quest marker. The faint
+        # violet sigil eyes are the only magical cue, kept dim.
+        hat = (58, 48, 76) if active else (52, 48, 56)
+        hat_hi = (92, 78, 116) if active else (82, 78, 88)
+        hat_lo = (40, 32, 56) if active else (34, 32, 38)
+        band = (200, 168, 92) if active else (150, 140, 120)  # gold hat band
+        band_hi = (235, 200, 120) if active else (180, 170, 150)
         face = (206, 168, 128) if active else (142, 132, 122)
+        face_hi = (232, 196, 156) if active else (170, 158, 148)
         face_lo = (150, 116, 88) if active else (100, 92, 86)
-        sigil = (220, 190, 255) if active else (138, 136, 146)
-        sigil_hi = (245, 220, 255) if active else (160, 158, 168)
-        # hood
-        self._rect(s, 7, 2, 12, 8, outline)
-        self._rect(s, 8, 3, 10, 7, cloak_lo)
-        self._rect(s, 9, 3, 8, 2, cloak_hi)
-        # face shadow
-        self._rect(s, 9, 5, 8, 5, face)
-        self._hline(s, 9, 9, 8, face_lo)
-        # glowing eyes
-        self._dot(s, 11, 6, sigil_hi)
-        self._dot(s, 15, 6, sigil_hi)
-        # cloak body
-        self._rect(s, 5, 10, 16, 16, outline)
-        self._rect(s, 6, 10, 14, 16, cloak)
-        self._rect(s, 8, 10, 10, 16, cloak_hi)
-        self._vline(s, 12, 10, 16, cloak_lo)
-        # clasp
-        self._dot(s, 12, 11, sigil)
-        self._dot(s, 11, 12, sigil_hi)
-        self._dot(s, 13, 12, sigil_hi)
-        # robe lower
-        self._rect(s, 5, 26, 16, 8, outline)
-        self._rect(s, 6, 26, 14, 8, cloak_lo)
-        self._vline(s, 12, 26, 8, cloak)
-        # sleeves
-        self._rect(s, 3, 12, 3, 10, outline)
-        self._rect(s, 20, 12, 3, 10, outline)
-        self._rect(s, 4, 12, 2, 10, cloak_lo)
-        self._rect(s, 21, 12, 2, 10, cloak_lo)
+        cloak = (78, 64, 96) if active else (62, 58, 70)
+        cloak_hi = (116, 98, 138) if active else (94, 90, 104)
+        cloak_lo = (54, 44, 70) if active else (42, 40, 50)
+        trim = (154, 168, 178) if active else (110, 110, 120)
+        trim_hi = (205, 214, 220) if active else (150, 150, 160)
+        sigil = (170, 150, 200) if active else (138, 136, 146)
+        sigil_hi = (200, 180, 225) if active else (160, 158, 168)
+        leather = (70, 48, 40)
+        shadow = (38, 30, 36)
+
+        # --- Hat: wide brim + crown + band ---
+        # Crown rises above the brim.
+        self._rect(s, 9, 0, 8, 5, outline)
+        self._rect(s, 10, 1, 6, 4, hat)
+        self._rect(s, 10, 1, 6, 1, hat_hi)  # lit crown top
+        # Brim (wider than the head so it reads as a hat, not a helm).
+        self._rect(s, 3, 4, 20, 2, outline)
+        self._rect(s, 4, 4, 18, 1, hat_hi)  # lit brim top
+        self._rect(s, 4, 5, 18, 1, hat_lo)  # brim underside shadow
+        # Band around the crown base, with a small buckle.
+        self._rect(s, 10, 3, 6, 1, band)
+        self._dot(s, 12, 3, band_hi)
+        self._dot(s, 13, 3, band_hi)
+
+        # --- Head / face ---
+        self._rect(s, 8, 6, 10, 6, outline)
+        self._rect(s, 9, 6, 8, 6, face)
+        self._rect(s, 9, 6, 8, 1, face_hi)  # brow lit
+        self._hline(s, 9, 7, 8, shadow)  # brow shadow under hat
+        # glowing sigil eyes
+        self._dot(s, 11, 8, sigil_hi)
+        self._dot(s, 15, 8, sigil_hi)
+        self._dot(s, 11, 8, sigil)
+        self._dot(s, 15, 8, sigil)
+        # nose / mouth hint
+        self._vline(s, 12, 9, 2, face_lo)
+        # jaw shadow
+        self._hline(s, 9, 11, 8, face_lo)
+
+        # --- Torso (cloak chest) ---
+        self._rect(s, 6, 12, 14, 11, outline)
+        self._rect(s, 7, 12, 12, 11, cloak)
+        self._rect(s, 8, 13, 10, 10, cloak_hi)  # lit chest
+        self._vline(s, 12, 13, 10, cloak_lo)  # center seam
+        self._vline(s, 7, 13, 10, cloak_lo)  # side shade
+        self._vline(s, 18, 13, 10, cloak_lo)  # side shade
+        # shoulder yoke + belt line
+        self._hline(s, 7, 12, 12, trim_hi)
+        self._hline(s, 7, 22, 12, trim)
+        # clasp / sigil at the collar
+        self._dot(s, 12, 13, sigil)
+        self._dot(s, 11, 14, sigil_hi)
+        self._dot(s, 13, 14, sigil_hi)
+
+        # --- Arms: distinct sleeves beside the torso, with hands ---
+        self._rect(s, 3, 13, 4, 9, outline)
+        self._rect(s, 19, 13, 4, 9, outline)
+        self._rect(s, 4, 13, 3, 9, cloak_lo)
+        self._rect(s, 20, 13, 3, 9, cloak_lo)
+        # cuffs
+        self._rect(s, 3, 20, 4, 2, trim)
+        self._rect(s, 19, 20, 4, 2, trim)
+        # hands
+        self._rect(s, 4, 22, 2, 2, face)
+        self._rect(s, 20, 22, 2, 2, face_lo)
+
+        # --- Hips / belt ---
+        self._rect(s, 7, 23, 12, 2, outline)
+        self._rect(s, 8, 23, 10, 2, leather)
+        self._hline(s, 8, 23, 10, self._shade(leather, 28))
+        self._dot(s, 12, 23, band_hi)  # buckle
+
+        # --- Legs: two distinct legs with a gap between them ---
+        self._rect(s, 8, 25, 4, 6, outline)
+        self._rect(s, 14, 25, 4, 6, outline)
+        self._rect(s, 9, 25, 3, 6, cloak_lo)
+        self._rect(s, 15, 25, 3, 6, cloak_lo)
+        # knee patches
+        self._rect(s, 9, 27, 3, 1, trim)
+        self._rect(s, 15, 27, 3, 1, trim)
+
+        # --- Boots ---
+        self._rect(s, 7, 31, 5, 2, outline)
+        self._rect(s, 14, 31, 5, 2, outline)
+        self._rect(s, 8, 31, 4, 2, leather)
+        self._rect(s, 15, 31, 4, 2, self._shade(leather, -12))
+        self._hline(s, 8, 32, 4, self._shade(leather, 24))
+        self._hline(s, 15, 32, 4, self._shade(leather, 12))
         return s
 
     # ------------------------------------------------------------------
