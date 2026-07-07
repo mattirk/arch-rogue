@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.10.0 — Build Diversity and Affix Depth
+
+Loot rolls now carry clearer build identities: speed, proc, sustain, thorns, damage-type, and skill-modifier affixes are data-driven, affect combat resolution, and surface readable hints in the inventory.
+
+### Added
+- Expanded `src/arch_rogue/content/equipment.py` with data-driven `AffixDefinition` and `UniqueItemDefinition` tables, rarity-scaled affix roll ranges, speed/proc/lifesteal/thorns fields, and archetype-specific unique chase items for Warden, Rogue, Arcanist, Acolyte, and Ranger builds.
+- Combat synergy hooks in `src/arch_rogue/combat.py`: attack speed and cast speed reduce action cooldowns, movement speed affects traversal, lifesteal heals from damage dealt, proc-on-hit rolls ignite/chill/poison/snare/smite/chain effects, Bolt/Nova modifiers change spell resolution, and thorns reflect melee damage.
+- Inventory readability in `src/arch_rogue/inventory.py` and `src/arch_rogue/menus/inventory.py`: one-line build relevance hints, tag-icon tooltip rows, expanded affix/stat tooltips, and Legendary-aware sorting.
+- Save migration for expanded item fields (`affix_tags`, speed stats, thorns, lifesteal, proc chance) with no-op defaults for older saves.
+- New `tests/test_3_6_affix_builds.py` coverage for affix roll ranges, combat synergy, unique-item generation, cursed tradeoffs, inventory hints, and old-save migration.
+
+### Changed
+- `population.py` equipment generation now consumes the affix/unique tables instead of hardcoded inline affix tuples, keeping loot tuning centralized and easier to expand.
+- Cursed equipment remains tempting but now has explicit handling tradeoffs alongside its hotter stat rolls.
+- Package metadata bumped to `3.10.0`.
+
+### Validation
+- `python -m compileall src tests` passes.
+- `python -m unittest tests.test_3_6_affix_builds` passes (6 tests).
+- `python -m unittest discover tests` passes (233 tests).
+
 ## 3.9.0 — Controller, Input, and Accessibility Polish
 
 The control layer was keyboard-and-mouse only. Gamepad support is now first-class across gameplay and every menu, keyboard and controller share the same navigation bindings, and the last-used controller is remembered across sessions.

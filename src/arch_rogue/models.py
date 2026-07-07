@@ -210,6 +210,13 @@ class Item:
     damage_type: str = "physical"
     skill_bonus: str = ""
     proc_effect: str = ""
+    affix_tags: list[str] = field(default_factory=list)
+    attack_speed: float = 0.0
+    cast_speed: float = 0.0
+    move_speed: float = 0.0
+    thorns: int = 0
+    lifesteal: float = 0.0
+    proc_chance: float = 0.0
 
     @property
     def display_name(self) -> str:
@@ -246,7 +253,25 @@ class Item:
         if self.skill_bonus:
             text += f" — {self.skill_bonus}"
         if self.proc_effect:
-            text += f" — {self.proc_effect}"
+            chance = (
+                f" {int(round(self.proc_chance * 100))}%"
+                if self.proc_chance > 0 and self.proc_chance < 1.0
+                else ""
+            )
+            text += f" — {self.proc_effect}{chance}"
+        speed_bits: list[str] = []
+        if self.attack_speed:
+            speed_bits.append(f"{self.attack_speed:+.0%} atk")
+        if self.cast_speed:
+            speed_bits.append(f"{self.cast_speed:+.0%} cast")
+        if self.move_speed:
+            speed_bits.append(f"{self.move_speed:+.0%} move")
+        if speed_bits:
+            text += f" — {' / '.join(speed_bits)}"
+        if self.thorns:
+            text += f" — {self.thorns} thorns"
+        if self.lifesteal:
+            text += f" — {self.lifesteal:.0%} leech"
         if self.unique_effect:
             text += f" — {self.unique_effect}"
         if self.cursed:

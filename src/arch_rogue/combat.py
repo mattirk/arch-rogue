@@ -92,6 +92,21 @@ class CombatMixin:
             if item is not None and name in item.affixes
         )
 
+    def equipment_affix_tag_count(self, tag: str) -> int:
+        normalized = tag.lower()
+        return sum(
+            1
+            for item in self.player.equipment.values()
+            if item is not None and normalized in item.affix_tags
+        )
+
+    def equipment_stat_total(self, stat: str) -> float:
+        return sum(
+            float(getattr(item, stat, 0.0))
+            for item in self.player.equipment.values()
+            if item is not None
+        )
+
     def equipment_skill_bonus(self, text: str) -> bool:
         return any(
             item is not None and text in item.skill_bonus
@@ -99,16 +114,46 @@ class CombatMixin:
         )
 
     def equipped_proc_effect(self, effect: str) -> bool:
+        normalized = effect.lower()
         return any(
-            item is not None and item.proc_effect == effect
+            item is not None
+            and (item.proc_effect == effect or normalized in item.affix_tags)
             for item in self.player.equipment.values()
         )
+
+    def roll_equipped_proc(self, effect: str) -> bool:
+        normalized = effect.lower()
+        for item in self.player.equipment.values():
+            if item is None:
+                continue
+            if item.proc_effect != effect and normalized not in item.affix_tags:
+                continue
+            chance = float(item.proc_chance)
+            if chance <= 0.0 or chance >= 1.0 or self.rng.random() < chance:
+                return True
+        return False
 
     def equipped_unique_effect(self, effect: str) -> bool:
         return any(
             item is not None and item.unique_effect == effect
             for item in self.player.equipment.values()
         )
+
+    def equipment_lifesteal_ratio(self) -> float:
+        ratio = self.equipment_stat_total("lifesteal")
+        if self.equipped_proc_effect("lifesteal") and ratio <= 0.0:
+            ratio = 0.08
+        if self.player.has_upgrade("acolyte_blood_pact"):
+            ratio += 0.03
+        return max(0.0, min(0.24, ratio))
+
+    def equipment_thorns_damage(self, damage_taken: int) -> int:
+        thorns = int(self.equipment_stat_total("thorns"))
+        if self.equipped_proc_effect("thorns") and thorns <= 0:
+            thorns = 3
+        if thorns <= 0:
+            return 0
+        return max(1, thorns + damage_taken // 8)
 
     def player_status(self, name: str) -> float:
         return float(self.player.status_effects.get(name, 0.0))
@@ -508,7 +553,9 @@ class CombatMixin:
             cooldown += 0.02
         if self.equipment_skill_bonus("Melee"):
             cooldown -= 0.03
-        return max(0.24, cooldown)
+        attack_speed = max(-0.20, min(0.35, self.equipment_stat_total("attack_speed")))
+        cooldown *= 1.0 - attack_speed
+        return max(0.20, cooldown)
 
     def bolt_mana_cost(self) -> int:
         cost = 7 if self.player.class_name in ("Arcanist", "Ranger") else 10
@@ -526,7 +573,9 @@ class CombatMixin:
         cooldown = 0.38 if self.player.class_name in ("Arcanist", "Ranger") else 0.48
         if self.equipment_skill_bonus("Bolt"):
             cooldown -= 0.04
-        return max(0.28, cooldown)
+        cast_speed = max(-0.20, min(0.35, self.equipment_stat_total("cast_speed")))
+        cooldown *= 1.0 - cast_speed
+        return max(0.22, cooldown)
 
     def nova_mana_cost(self) -> int:
         cost = 14 if self.player.class_name in ("Arcanist", "Acolyte") else 18
@@ -544,7 +593,9 @@ class CombatMixin:
         cooldown = 2.65 if self.player.class_name == "Arcanist" else 3.2
         if self.equipment_skill_bonus("Nova"):
             cooldown -= 0.18
-        return max(2.25, cooldown)
+        cast_speed = max(-0.20, min(0.35, self.equipment_stat_total("cast_speed")))
+        cooldown *= 1.0 - cast_speed * 0.75
+        return max(1.85, cooldown)
 
     def dash_stamina_cost(self) -> int:
         cost = 12 if self.player.class_name in ("Rogue", "Ranger") else 18
@@ -643,6 +694,10 @@ class CombatMixin:
             item is not None and item.cursed for item in self.player.equipment.values()
         ):
             amount += 1 if damage_type in ("shadow", "poison") else 0
+        if attacker is not None and attacker.alive and source == "melee" and amount > 0:
+            reflected = self.equipment_thorns_damage(amount)
+            if reflected > 0:
+                self._reflect_thorns(attacker, reflected)
         self.player.hp -= amount
         if self.player.hp <= 0 and not self.run_stats.cause_of_death:
             self.run_stats.cause_of_death = f"{source} {damage_type} damage"
@@ -674,6 +729,31 @@ class CombatMixin:
             )
         return amount
 
+    def _reflect_thorns(self, attacker: Enemy, amount: int) -> None:
+        attacker.hp -= amount
+        self.enemy_hit_flashes[id(attacker)] = max(
+            self.enemy_hit_flashes.get(id(attacker), 0.0), 0.18
+        )
+        self.floaters.append(
+            FloatingText(
+                f"Thorns -{amount}",
+                attacker.x,
+                attacker.y - 0.35,
+                self.damage_type_color(attacker.damage_type),
+                ttl=0.7,
+            )
+        )
+        self.add_impact(
+            attacker.x,
+            attacker.y,
+            self.damage_type_color("physical"),
+            ttl=0.26,
+            radius=0.30,
+            kind="hit",
+        )
+        if attacker.hp <= 0:
+            self.kill_enemy(attacker)
+
     def update_player(self, dt: float) -> None:
         self.player.moving = False
         # Keyboard movement (WASD + arrows) takes priority so the game is
@@ -693,8 +773,11 @@ class CombatMixin:
         if controller_moving:
             self.aim_input_mode = "controller"
             kbd_dx, kbd_dy = cx, cy
-        move_speed = PLAYER_MOVE_SPEED * (
-            0.82 if self.player_status("chilled") > 0 else 1.0
+        equipment_move = max(-0.25, min(0.30, self.equipment_stat_total("move_speed")))
+        move_speed = (
+            PLAYER_MOVE_SPEED
+            * (1.0 + equipment_move)
+            * (0.82 if self.player_status("chilled") > 0 else 1.0)
         )
         if kbd_dx or kbd_dy:
             length = math.hypot(kbd_dx, kbd_dy)
@@ -1192,6 +1275,8 @@ class CombatMixin:
             return 3
         if self.player.has_upgrade("acolyte_sanguine"):
             return 2
+        if self.equipment_skill_bonus("Blood leech"):
+            return 1
         return 0
 
     def _acolyte_nova_leech(self) -> int:
@@ -1207,6 +1292,8 @@ class CombatMixin:
             return 4
         if self.player.has_upgrade("acolyte_sanguine"):
             return 3
+        if self.equipment_skill_bonus("Blood leech"):
+            return 1
         return 0
 
     def update_traps(self, _dt: float) -> None:
@@ -1422,6 +1509,8 @@ class CombatMixin:
                 pierce = 1
             if self.player.has_upgrade("ranger_sky_quiver"):
                 homing = 0.75
+        if self.equipment_skill_bonus("Bolt pierce"):
+            pierce = max(pierce, 1)
         for angle in angles:
             dx = self.player.facing_x * math.cos(
                 angle
@@ -1486,6 +1575,8 @@ class CombatMixin:
                     radius += 0.25
             if self.equipment_skill_bonus("Nova"):
                 radius += 0.25
+            if self.equipment_skill_bonus("Nova radius"):
+                radius += 0.35
             if distance <= radius:
                 hits += 1
                 damage = (
@@ -1654,34 +1745,25 @@ class CombatMixin:
     ) -> None:
         amount = self.mitigate_enemy_damage(enemy, amount, damage_type)
         proc_damage = 0
-        weapon = self.player.equipment.get("weapon")
-        if (
-            self.equipped_unique_effect("embers on hit")
-            or self.equipped_proc_effect("ignite")
-            or (weapon is not None and weapon.proc_effect == "ignite")
-        ) and damage_type != "fire":
+        ignite_proc = self.equipped_unique_effect(
+            "embers on hit"
+        ) or self.roll_equipped_proc("ignite")
+        if ignite_proc and damage_type != "fire":
             proc_damage += max(1, self.player.level // 2 + 2)
             self.apply_enemy_status(enemy, "burning", 1.1)
-        if (
+        chill_proc = (
             self.equipped_unique_effect("chill on hit")
-            or self.equipped_proc_effect("chill")
+            or self.roll_equipped_proc("chill")
             or status_effect == "chilled"
-        ):
+        )
+        if chill_proc:
             self.apply_enemy_status(enemy, "chilled", max(status_duration, 1.0))
-        if self.equipped_proc_effect("lifesteal"):
-            healed = min(
-                self.player.max_hp - self.player.hp, 2 + self.player.level // 3
-            )
-            if healed > 0:
-                self.player.hp += healed
-                self.floaters.append(
-                    FloatingText(
-                        f"+{healed}",
-                        self.player.x,
-                        self.player.y - 0.45,
-                        (214, 92, 150),
-                    )
-                )
+        if self.roll_equipped_proc("poison") or self.roll_equipped_proc("bleed"):
+            self.apply_enemy_status(enemy, "poisoned", max(status_duration, 1.4))
+        if self.roll_equipped_proc("snare"):
+            self.apply_enemy_status(enemy, "snared", max(status_duration, 1.0))
+        if self.roll_equipped_proc("smite"):
+            proc_damage += max(2, self.player.level + self.player.spell_bonus // 3)
         if status_effect and status_effect != "chilled":
             self.apply_enemy_status(enemy, status_effect, status_duration)
         if enemy.statuses.get("burning", 0.0) > 0 and damage_type == "fire":
@@ -1705,6 +1787,9 @@ class CombatMixin:
             radius=0.36 if enemy.kind != "boss" else 0.58,
             kind="hit",
         )
+        if self.roll_equipped_proc("chain"):
+            self._apply_chain_proc(enemy, max(1, total // 3))
+        self._apply_player_lifesteal(total)
         kx, ky = knockback_from
         length = math.hypot(kx, ky)
         if length > 0.001:
@@ -1713,6 +1798,61 @@ class CombatMixin:
             self.kill_enemy(enemy)
         else:
             self.play_sfx("hit")
+
+    def _apply_player_lifesteal(self, damage_done: int) -> None:
+        ratio = self.equipment_lifesteal_ratio()
+        if ratio <= 0.0 or damage_done <= 0:
+            return
+        healed = min(
+            self.player.max_hp - self.player.hp, max(1, int(damage_done * ratio))
+        )
+        if healed <= 0:
+            return
+        self.player.hp += healed
+        self.floaters.append(
+            FloatingText(
+                f"+{healed}",
+                self.player.x,
+                self.player.y - 0.45,
+                (214, 92, 150),
+            )
+        )
+
+    def _apply_chain_proc(self, source: Enemy, damage: int) -> None:
+        target = None
+        best_distance = 3.75
+        for enemy in self.enemies:
+            if enemy is source or not enemy.alive:
+                continue
+            distance = math.hypot(enemy.x - source.x, enemy.y - source.y)
+            if distance < best_distance:
+                best_distance = distance
+                target = enemy
+        if target is None:
+            return
+        target.hp -= damage
+        self.enemy_hit_flashes[id(target)] = max(
+            self.enemy_hit_flashes.get(id(target), 0.0), 0.18
+        )
+        self.floaters.append(
+            FloatingText(
+                f"Arc -{damage}",
+                target.x,
+                target.y - 0.35,
+                self.damage_type_color("arcane"),
+                ttl=0.65,
+            )
+        )
+        self.add_impact(
+            target.x,
+            target.y,
+            self.damage_type_color("arcane"),
+            ttl=0.24,
+            radius=0.30,
+            kind="burst",
+        )
+        if target.hp <= 0:
+            self.kill_enemy(target)
 
     def kill_enemy(self, enemy: Enemy) -> None:
         if enemy not in self.enemies:

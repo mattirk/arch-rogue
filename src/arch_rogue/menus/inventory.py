@@ -1,13 +1,10 @@
 # pyright: reportAttributeAccessIssue=false, reportUnusedImport=false
 from __future__ import annotations
 
-from typing import Any, Sequence
-
 import pygame
 
-from .. import __version__
 from ..constants import MAX_INVENTORY
-from ..models import Archetype, Color, Item
+from ..models import Color, Item
 
 MenuRow = tuple[str, str, str]
 
@@ -533,15 +530,11 @@ class MenuInventoryMixin:
             pygame.Rect(rect.x + pad, y, rect.width - pad * 2, rect.bottom - y - pad),
             max(self.g.tiny_font.get_height() + self.u(3), self.u(16)),
         ) + self.u(6)
-        extra_lines: list[str] = []
-        if item.unidentified and item.slot in ("weapon", "armor"):
-            extra_lines.append("Stats hidden until identified or equipped.")
-        elif item.affixes:
-            extra_lines.append(f"Affixes: {', '.join(item.affixes)}")
+        extra_lines: list[str] = self.g.item_affix_tooltip_lines(item)
         if item.unique_effect:
             extra_lines.append(f"Effect: {item.unique_effect}")
         if item.cursed:
-            extra_lines.append("Cursed bargain: powerful, but costly.")
+            extra_lines.append("Cursed bargain: hotter rolls, slower handling.")
         extra_lines.append("Enter/E use · Del drop")
         for line in extra_lines:
             if y + self.g.tiny_font.get_height() > rect.bottom - pad:

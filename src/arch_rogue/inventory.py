@@ -2,7 +2,41 @@
 from __future__ import annotations
 
 from .constants import MAX_INVENTORY
+from .content import skill_node_by_key
 from .models import FloatingText, Item
+
+ARCHETYPE_BUILD_TAGS: dict[str, tuple[str, ...]] = {
+    "Warden": ("melee", "guard", "ward", "holy", "thorns"),
+    "Rogue": ("critical", "poison", "stealth", "dash", "attack_speed"),
+    "Arcanist": ("arcane", "bolt", "nova", "frost", "cast_speed"),
+    "Acolyte": ("shadow", "blood", "lifesteal", "spirit", "curse"),
+    "Ranger": ("volley", "control", "beast", "movement", "attack_speed"),
+}
+
+AFFIX_TAG_LABELS: dict[str, tuple[str, str]] = {
+    "attack_speed": ("⚔", "attack speed"),
+    "cast_speed": ("✦", "cast speed"),
+    "movement": ("➤", "movement"),
+    "lifesteal": ("♥", "lifesteal"),
+    "thorns": ("✹", "thorns"),
+    "proc": ("✧", "proc"),
+    "fire": ("🔥", "fire"),
+    "frost": ("❄", "frost"),
+    "poison": ("☠", "poison"),
+    "arcane": ("✦", "arcane"),
+    "shadow": ("☾", "shadow"),
+    "holy": ("✚", "holy"),
+    "bolt": ("➵", "bolt"),
+    "nova": ("○", "nova"),
+    "dash": ("➤", "dash"),
+    "guard": ("▣", "guard"),
+    "critical": ("✦", "crit"),
+    "volley": ("➵", "volley"),
+    "control": ("⌁", "control"),
+    "blood": ("♥", "blood"),
+    "curse": ("☾", "curse"),
+    "beast": ("♞", "beast"),
+}
 
 
 class InventoryMixin:
@@ -44,10 +78,122 @@ class InventoryMixin:
                 tags.append(item.skill_bonus)
             if item.proc_effect:
                 tags.append(item.proc_effect)
+            if item.attack_speed:
+                tags.append(f"{item.attack_speed:+.0%} attack")
+            if item.cast_speed:
+                tags.append(f"{item.cast_speed:+.0%} cast")
+            if item.move_speed:
+                tags.append(f"{item.move_speed:+.0%} move")
+            if item.thorns:
+                tags.append(f"{item.thorns} thorns")
+            if item.lifesteal:
+                tags.append(f"{item.lifesteal:.0%} leech")
+            build_hint = self.item_build_relevance_hint(item)
+            if build_hint:
+                tags.append(build_hint)
             detail = f" · {' · '.join(tags)}" if tags else ""
             sign = "+" if delta > 0 else ""
             return f"{sign}{delta} {stat} vs equipped{tradeoff}{detail}"
         return "Use from inventory"
+
+    def item_build_tags(self, item: Item) -> set[str]:
+        tags = {tag.lower() for tag in item.affix_tags}
+        if item.damage_type and item.damage_type != "physical":
+            tags.add(item.damage_type.lower())
+        if item.proc_effect:
+            tags.add(item.proc_effect.lower())
+            tags.add("proc")
+        if item.attack_speed:
+            tags.add("attack_speed")
+        if item.cast_speed:
+            tags.add("cast_speed")
+        if item.move_speed:
+            tags.add("movement")
+        if item.thorns:
+            tags.add("thorns")
+        if item.lifesteal:
+            tags.add("lifesteal")
+        skill_text = item.skill_bonus.lower()
+        for keyword, tag in (
+            ("bolt", "bolt"),
+            ("nova", "nova"),
+            ("dash", "dash"),
+            ("melee", "melee"),
+            ("blood", "blood"),
+            ("ward", "ward"),
+            ("guard", "guard"),
+        ):
+            if keyword in skill_text:
+                tags.add(tag)
+        return tags
+
+    def player_build_tags(self) -> set[str]:
+        tags = set(ARCHETYPE_BUILD_TAGS.get(self.player.class_name, ()))
+        for key in self.player.skill_upgrades:
+            node = skill_node_by_key(key)
+            if node is None:
+                continue
+            if node.branch:
+                tags.add(node.branch.lower())
+            tags.update(tag.lower() for tag in node.tags)
+        return tags
+
+    def item_build_relevance_hint(self, item: Item) -> str:
+        if item.unidentified or item.slot not in ("weapon", "armor"):
+            return ""
+        item_tags = self.item_build_tags(item)
+        if not item_tags:
+            return ""
+        matches = sorted(item_tags & self.player_build_tags())
+        if matches:
+            labels = [AFFIX_TAG_LABELS.get(tag, ("", tag))[1] for tag in matches[:2]]
+            return f"Build: supports {'/'.join(labels)}"
+        equipped = self.player.equipment.get(item.slot)
+        current = 0
+        incoming = item.power if item.slot == "weapon" else item.defense
+        if equipped is not None:
+            current = equipped.power if item.slot == "weapon" else equipped.defense
+        if incoming >= current + (5 if item.slot == "weapon" else 3):
+            return "Build: raw-stat upgrade"
+        return "Build: off-path tech"
+
+    def item_affix_tooltip_lines(self, item: Item) -> list[str]:
+        if item.unidentified and item.slot in ("weapon", "armor"):
+            return ["Affixes hidden until identified."]
+        lines: list[str] = []
+        tags = sorted(self.item_build_tags(item))
+        if tags:
+            chips = [
+                f"{AFFIX_TAG_LABELS.get(tag, ('•', tag))[0]} {AFFIX_TAG_LABELS.get(tag, ('•', tag))[1]}"
+                for tag in tags[:6]
+            ]
+            lines.append(f"Tags: {' · '.join(chips)}")
+        if item.affixes:
+            lines.append(f"Affixes: {', '.join(item.affixes)}")
+        stat_bits: list[str] = []
+        if item.attack_speed:
+            stat_bits.append(f"{item.attack_speed:+.0%} attack speed")
+        if item.cast_speed:
+            stat_bits.append(f"{item.cast_speed:+.0%} cast speed")
+        if item.move_speed:
+            stat_bits.append(f"{item.move_speed:+.0%} movement")
+        if item.thorns:
+            stat_bits.append(f"{item.thorns} thorns")
+        if item.lifesteal:
+            stat_bits.append(f"{item.lifesteal:.0%} lifesteal")
+        if item.proc_effect:
+            chance = (
+                f" {int(round(item.proc_chance * 100))}%"
+                if 0.0 < item.proc_chance < 1.0
+                else ""
+            )
+            stat_bits.append(f"{item.proc_effect}{chance}")
+        if stat_bits:
+            lines.append("Stats: " + " · ".join(stat_bits))
+        hint = self.item_build_relevance_hint(item)
+        if hint:
+            lines.append(hint)
+        return lines
 
     def inventory_category(self, item: Item) -> int:
         order = {
@@ -77,7 +223,8 @@ class InventoryMixin:
             "Rare": 2,
             "Cursed": 3,
             "Unique": 4,
-            "Unidentified": 5,
+            "Legendary": 5,
+            "Unidentified": 6,
         }.get(item.visible_rarity, 0)
 
     def inventory_sort_key(self, item: Item) -> tuple[int, int, int, str]:

@@ -28,7 +28,17 @@ from .enemies import (
     FINAL_ROOM_ENEMY_DEFINITIONS,
     HUMANOID_ENEMY_NAMES,
 )
-from .equipment import ARMOR_DEFINITIONS, RARITY_PROFILES, WEAPON_DEFINITIONS
+from .equipment import (
+    AFFIX_DEFINITIONS,
+    ARMOR_DEFINITIONS,
+    RARITY_AFFIX_COUNTS,
+    RARITY_AFFIX_ROLL_RANGES,
+    RARITY_PROFILES,
+    UNIQUE_ITEM_DEFINITIONS,
+    WEAPON_DEFINITIONS,
+    AffixDefinition,
+    UniqueItemDefinition,
+)
 from .interactables import (
     SECRET_HINTS,
     SECRET_TYPES,
@@ -77,8 +87,10 @@ from .story_corpus import (
 )
 
 __all__ = [
+    "AFFIX_DEFINITIONS",
     "ARCHETYPES",
     "ARMOR_DEFINITIONS",
+    "AffixDefinition",
     "BOSS_DEFINITIONS",
     "BossDefinition",
     "DEFAULT_DIFFICULTY_NAME",
@@ -103,6 +115,8 @@ __all__ = [
     "InteractionHint",
     "LEGACY_SKILL_KEYS",
     "MAX_COMMITTED_BRANCHES",
+    "RARITY_AFFIX_COUNTS",
+    "RARITY_AFFIX_ROLL_RANGES",
     "RARITY_PROFILES",
     "RUN_MODIFIERS",
     "RarityProfile",
@@ -142,5 +156,7 @@ __all__ = [
     "skill_tree_max_tier",
     "TRAP_DEFINITIONS",
     "TRAP_HINTS",
+    "UNIQUE_ITEM_DEFINITIONS",
+    "UniqueItemDefinition",
     "WEAPON_DEFINITIONS",
 ]

@@ -58,6 +58,13 @@ class SaveLoadMixin:
             "damage_type": item.damage_type,
             "skill_bonus": item.skill_bonus,
             "proc_effect": item.proc_effect,
+            "affix_tags": list(item.affix_tags),
+            "attack_speed": item.attack_speed,
+            "cast_speed": item.cast_speed,
+            "move_speed": item.move_speed,
+            "thorns": item.thorns,
+            "lifesteal": item.lifesteal,
+            "proc_chance": item.proc_chance,
         }
 
     def item_from_dict(self, data: dict[str, Any] | None) -> Item | None:
@@ -80,6 +87,13 @@ class SaveLoadMixin:
             damage_type=str(data.get("damage_type", "physical")),
             skill_bonus=str(data.get("skill_bonus", "")),
             proc_effect=str(data.get("proc_effect", "")),
+            affix_tags=[str(tag) for tag in data.get("affix_tags", [])],
+            attack_speed=float(data.get("attack_speed", 0.0)),
+            cast_speed=float(data.get("cast_speed", 0.0)),
+            move_speed=float(data.get("move_speed", 0.0)),
+            thorns=int(data.get("thorns", 0)),
+            lifesteal=float(data.get("lifesteal", 0.0)),
+            proc_chance=float(data.get("proc_chance", 0.0)),
         )
 
     def shopkeeper_to_dict(self, shopkeeper: Shopkeeper) -> dict[str, Any]:

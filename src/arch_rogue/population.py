@@ -5,15 +5,21 @@ import math
 
 from .constants import DUNGEON_DEPTH
 from .content import (
+    AFFIX_DEFINITIONS,
     ARMOR_DEFINITIONS,
     ELITE_MODIFIERS,
     ENEMY_DEFINITIONS,
     FINAL_ROOM_ENEMY_DEFINITIONS,
+    RARITY_AFFIX_COUNTS,
+    RARITY_AFFIX_ROLL_RANGES,
     SECRET_TYPES,
     SHRINE_TYPES,
     TRAP_DEFINITIONS,
+    UNIQUE_ITEM_DEFINITIONS,
     WEAPON_DEFINITIONS,
+    AffixDefinition,
     EnemyDefinition,
+    UniqueItemDefinition,
 )
 from .models import Color, Enemy, Item, Room, SecretCache, Shopkeeper, Shrine, Trap
 
@@ -602,39 +608,28 @@ class PopulationMixin:
                 x=x,
                 y=y,
             )
-        affix_count = (
-            0
-            if rarity == "Common"
-            else 1
-            if rarity == "Magic"
-            else 3
-            if rarity == "Legendary"
-            else 2
-        )
-        self._apply_affixes(item, affix_count)
+        self._apply_affixes(item, RARITY_AFFIX_COUNTS.get(rarity, 1), rarity)
         if rarity == "Legendary":
             if item.slot == "weapon":
                 item.power += 4
                 item.proc_effect = item.proc_effect or "ignite"
+                item.proc_chance = max(item.proc_chance, 0.35)
                 item.damage_type = (
                     item.damage_type if item.damage_type != "physical" else "fire"
                 )
+                self._add_item_tags(item, ("legendary", "proc"))
             else:
                 item.defense += 3
                 item.skill_bonus = item.skill_bonus or "Dash guard"
+                item.thorns += 2
+                self._add_item_tags(item, ("legendary", "guard", "thorns"))
         curse_chance = (
             0.08
             + (0.08 if self.run_modifier.name == "Cursed Bargains" else 0.0)
             + self.story_effect_value("curse_bonus", 0.0, 0.18)
         )
         if rarity != "Common" and self.rng.random() < curse_chance:
-            item.cursed = True
-            item.rarity = "Cursed"
-            item.affixes.append("Tempting Curse")
-            if item.slot == "weapon":
-                item.power += 4
-            else:
-                item.defense += 3
+            self._apply_cursed_bargain(item)
         self._empower_story_relic_item(item)
         item.unidentified = rarity != "Common" and self.rng.random() < 0.45
         return item
@@ -657,106 +652,120 @@ class PopulationMixin:
         if self.story_state is not None and not item.unique_effect:
             item.unique_effect = f"echo of {self.story_state.relic_name}"
 
-    def _apply_affixes(self, item: Item, count: int) -> None:
-        weapon_affixes = [
-            ("Serrated", 3, 0),
-            ("Cruel", 5, 0),
-            ("Balanced", 2, 0),
-            ("Frostbitten", 4, 0),
-            ("Zealous", 3, 1),
-            ("Vampiric", 4, 0),
-            ("Storm-Touched", 5, 0),
-        ]
-        armor_affixes = [
-            ("Reinforced", 0, 2),
-            ("Stalwart", 0, 3),
-            ("Light", 0, 1),
-            ("Sealed", 0, 4),
-            ("Thorned", 1, 2),
-            ("Grounded", 0, 4),
-            ("Regal", 1, 3),
-        ]
-        utility_affixes = [
-            ("of the Fox", 1, 1),
-            ("of Warding", 0, 2),
-            ("of Force", 2, 0),
-            ("of the Deep", 0, 3),
-            ("of Ember", 3, 0),
-            ("of Cinders", 4, -1),
-            ("of the Moon", 1, 3),
-        ]
-        pool = weapon_affixes if item.slot == "weapon" else armor_affixes
-        pool = pool + utility_affixes
-        for name, power, defense in self.rng.sample(pool, k=min(count, len(pool))):
-            item.affixes.append(name)
-            item.power += power
-            item.defense += defense
-            if name in ("Frostbitten", "of the Moon"):
-                item.damage_type = "frost"
-                item.proc_effect = item.proc_effect or "chill"
-            elif name in ("of Ember", "of Cinders"):
-                item.damage_type = "fire"
-                item.proc_effect = item.proc_effect or "ignite"
-            elif name == "Storm-Touched":
-                item.damage_type = "arcane"
-                item.skill_bonus = item.skill_bonus or "Bolt +1 shard"
-            elif name == "Vampiric":
-                item.damage_type = "shadow"
-                item.proc_effect = item.proc_effect or "lifesteal"
-            elif name == "Thorned":
-                item.proc_effect = item.proc_effect or "thorns"
-            elif name in ("Grounded", "Sealed"):
-                item.skill_bonus = item.skill_bonus or "Nova ward"
-            elif name in ("Balanced", "Light", "of the Fox"):
-                item.skill_bonus = item.skill_bonus or "Dash tempo"
-            elif name in ("Zealous", "Regal", "of Force"):
-                item.skill_bonus = item.skill_bonus or "Melee force"
+    def _roll_affix_float(self, base_range: tuple[float, float], rarity: str) -> float:
+        if base_range == (0.0, 0.0):
+            return 0.0
+        rarity_range = RARITY_AFFIX_ROLL_RANGES.get(
+            rarity, RARITY_AFFIX_ROLL_RANGES["Magic"]
+        )
+        base = self.rng.uniform(base_range[0], base_range[1])
+        multiplier = self.rng.uniform(rarity_range[0], rarity_range[1])
+        return base * multiplier
+
+    def _roll_affix_int(self, base_range: tuple[float, float], rarity: str) -> int:
+        value = self._roll_affix_float(base_range, rarity)
+        if value == 0.0:
+            return 0
+        return int(round(value))
+
+    def _add_item_tags(self, item: Item, tags: tuple[str, ...]) -> None:
+        for tag in tags:
+            normalized = tag.lower()
+            if normalized not in item.affix_tags:
+                item.affix_tags.append(normalized)
+
+    def _append_skill_bonus(self, item: Item, bonus: str) -> None:
+        if not bonus:
+            return
+        if not item.skill_bonus:
+            item.skill_bonus = bonus
+        elif bonus not in item.skill_bonus:
+            item.skill_bonus = f"{item.skill_bonus} / {bonus}"
+
+    def _apply_affix_definition(
+        self, item: Item, affix: AffixDefinition, rarity: str
+    ) -> None:
+        item.affixes.append(affix.name)
+        item.power += self._roll_affix_int(affix.power, rarity)
+        item.defense += self._roll_affix_int(affix.defense, rarity)
+        item.attack_speed += self._roll_affix_float(affix.attack_speed, rarity)
+        item.cast_speed += self._roll_affix_float(affix.cast_speed, rarity)
+        item.move_speed += self._roll_affix_float(affix.move_speed, rarity)
+        item.thorns += max(0, self._roll_affix_int(affix.thorns, rarity))
+        item.lifesteal += max(0.0, self._roll_affix_float(affix.lifesteal, rarity))
+        item.proc_chance += max(0.0, self._roll_affix_float(affix.proc_chance, rarity))
+        if affix.damage_type:
+            item.damage_type = affix.damage_type
+        self._append_skill_bonus(item, affix.skill_bonus)
+        if affix.proc_effect and not item.proc_effect:
+            item.proc_effect = affix.proc_effect
+        self._add_item_tags(item, affix.tags)
+
+    def _apply_affixes(self, item: Item, count: int, rarity: str | None = None) -> None:
+        rarity = rarity or item.rarity
+        pool = [affix for affix in AFFIX_DEFINITIONS if item.slot in affix.slots]
+        for affix in self.rng.sample(pool, k=min(count, len(pool))):
+            self._apply_affix_definition(item, affix, rarity)
+        item.proc_chance = min(item.proc_chance, 0.85)
+        item.lifesteal = min(item.lifesteal, 0.22)
+        item.attack_speed = max(-0.20, min(item.attack_speed, 0.36))
+        item.cast_speed = max(-0.20, min(item.cast_speed, 0.36))
+        item.move_speed = max(-0.20, min(item.move_speed, 0.28))
+
+    def _apply_cursed_bargain(self, item: Item) -> None:
+        item.cursed = True
+        item.rarity = "Cursed"
+        if "Tempting Curse" not in item.affixes:
+            item.affixes.append("Tempting Curse")
+        self._add_item_tags(item, ("curse", "risk"))
+        if item.slot == "weapon":
+            item.power += 4
+            item.proc_chance = min(0.90, item.proc_chance + 0.08)
+            item.attack_speed += 0.03
+            item.move_speed -= 0.03
+        else:
+            item.defense += 3
+            item.thorns += 2
+            item.cast_speed -= 0.03
+            item.move_speed -= 0.04
 
     def _make_unique(self, x: float, y: float) -> Item:
-        unique_roll = self.rng.random()
-        if unique_roll < 0.42:
-            return Item(
-                "Emberbrand",
-                "weapon",
-                power=12,
-                rarity="Unique",
-                x=x,
-                y=y,
-                affixes=["Serrated", "of Force"],
-                unidentified=self.rng.random() < 0.35,
-                unique_effect="embers on hit",
-                damage_type="fire",
-                skill_bonus="Melee force",
-                proc_effect="ignite",
-            )
-        if unique_roll < 0.72:
-            return Item(
-                "Frostwake",
-                "weapon",
-                power=10,
-                rarity="Unique",
-                x=x,
-                y=y,
-                affixes=["Frostbitten", "Balanced"],
-                unidentified=self.rng.random() < 0.35,
-                unique_effect="chill on hit",
-                damage_type="frost",
-                skill_bonus="Bolt +1 shard",
-                proc_effect="chill",
-            )
+        archetype_name = self.selected_archetype.name
+        archetype_pool = [
+            definition
+            for definition in UNIQUE_ITEM_DEFINITIONS
+            if definition.archetype == archetype_name
+        ]
+        if archetype_pool and self.rng.random() < 0.72:
+            definition = self.rng.choice(archetype_pool)
+        else:
+            definition = self.rng.choice(UNIQUE_ITEM_DEFINITIONS)
+        return self._make_unique_from_definition(definition, x, y)
+
+    def _make_unique_from_definition(
+        self, definition: UniqueItemDefinition, x: float, y: float
+    ) -> Item:
         return Item(
-            "Bulwark of the First Gate",
-            "armor",
-            defense=8,
+            definition.name,
+            definition.slot,
+            power=definition.power,
+            defense=definition.defense,
             rarity="Unique",
             x=x,
             y=y,
-            affixes=["Reinforced", "of Warding"],
+            affixes=list(definition.affixes),
             unidentified=self.rng.random() < 0.35,
-            unique_effect="steadfast bulwark",
-            damage_type="holy",
-            skill_bonus="Dash guard",
-            proc_effect="thorns",
+            unique_effect=definition.unique_effect,
+            damage_type=definition.damage_type,
+            skill_bonus=definition.skill_bonus,
+            proc_effect=definition.proc_effect,
+            affix_tags=[tag.lower() for tag in definition.affix_tags],
+            attack_speed=definition.attack_speed,
+            cast_speed=definition.cast_speed,
+            move_speed=definition.move_speed,
+            thorns=definition.thorns,
+            lifesteal=definition.lifesteal,
+            proc_chance=definition.proc_chance,
         )
 
     def drop_position_near(self, x: float, y: float) -> tuple[float, float]:

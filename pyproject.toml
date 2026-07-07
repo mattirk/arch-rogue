@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.9.0"
-description = "3.8.3 fixes enemies attacking the player through walls by gating melee/cast on a line-of-sight check.",
+version = "3.10.0"
+description = "3.10.0 deepens loot-driven build variety with expanded affixes, combat synergies, archetype uniques, and clearer inventory hints."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
