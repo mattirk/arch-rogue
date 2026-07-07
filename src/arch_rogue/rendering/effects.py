@@ -834,22 +834,55 @@ class RenderingEffectsMixin:
         # pulsates when the player stands still.
         shadow = self.shade(slab, -24)
         lip = self.shade(slab, 16)
-        pygame.draw.aalines(glow_layer, (*shadow, groove_alpha), False, crack_points)
-        pygame.draw.aalines(
-            glow_layer,
-            (*lip, groove_alpha),
-            False,
-            [(p[0], p[1] - 1) for p in crack_points],
-        )
-        # Faint warm seep at the bottom of the recess; the only colored cue.
-        seep_points = [(p[0], p[1] + 1) for p in crack_points]
-        pygame.draw.lines(glow_layer, (*warm, seep_alpha), False, seep_points, 1)
-        # Short branch stubs at a couple of interior points (only in open
-        # floor) so it reads as a real fracture rather than a drawn line.
+
+        # Tile-visibility clipping: the guiding light leads the player toward
+        # the relic, which is usually far outside the current sight radius. To
+        # avoid painting a glowing crack across dark / unrevealed floor (which
+        # would break the darkness effect), split the polyline into runs of
+        # consecutive samples that sit on a currently-lit tile and only draw
+        # those runs. As the player advances, more of the crack lights up and
+        # the leading end fades into the dark ahead.
+        def tile_lit(wx: float, wy: float) -> bool:
+            ix, iy = int(wx), int(wy)
+            if not self.dungeon.in_bounds(ix, iy):
+                return False
+            return self.tile_visibility_alpha(ix, iy) > 0
+
+        lit_flags = [tile_lit(wx, wy) for wx, wy in crack_world]
+        runs: list[list[int]] = []
+        current: list[int] = []
+        for index, lit in enumerate(lit_flags):
+            if lit:
+                current.append(index)
+            elif current:
+                runs.append(current)
+                current = []
+        if current:
+            runs.append(current)
+
+        drew_anything = False
+        for run in runs:
+            if len(run) < 2:
+                continue
+            run_points = [crack_points[i] for i in run]
+            pygame.draw.aalines(glow_layer, (*shadow, groove_alpha), False, run_points)
+            pygame.draw.aalines(
+                glow_layer,
+                (*lip, groove_alpha),
+                False,
+                [(p[0], p[1] - 1) for p in run_points],
+            )
+            # Faint warm seep at the bottom of the recess; the only colored cue.
+            seep_points = [(p[0], p[1] + 1) for p in run_points]
+            pygame.draw.lines(glow_layer, (*warm, seep_alpha), False, seep_points, 1)
+            drew_anything = True
+
+        # Short branch stubs at a couple of interior points (only in open,
+        # lit floor) so it reads as a real fracture rather than a drawn line.
         for branch_index in (1, len(crack_points) - 2):
             if branch_index < 1 or branch_index >= len(crack_points) - 1:
                 continue
-            if not can_fracture[branch_index]:
+            if not can_fracture[branch_index] or not lit_flags[branch_index]:
                 continue
             bx, by = crack_points[branch_index]
             prev_x, prev_y = raw_screen[branch_index - 1]
@@ -867,53 +900,60 @@ class RenderingEffectsMixin:
                 (bx, by - 1),
                 (tip[0], tip[1] - 1),
             )
+            drew_anything = True
 
         # Target: a small worn ring groove lying flat on the iso floor (y
         # squashed to match the floor plane) in the same carved language, with
         # a faint warm pinprick at its center. Clipped to the relic's own
         # floor tile diamond so it can't spill over an adjacent wall; like the
-        # crack it dims while moving and pulsates when idle.
-        target_sx, target_sy = self.world_to_screen(tx, ty)
-        ring_cx = float(target_sx)
-        ring_cy = float(target_sy - int(4 * WORLD_SCALE))
-        ring_radius = 7.0 * WORLD_SCALE
-        r_tile_x, r_tile_y = int(tx), int(ty)
-        tcx, tcy = self.world_to_screen(r_tile_x + 0.5, r_tile_y + 0.5)
-        half_w = TILE_W / 2
-        half_h = TILE_H / 2
+        # crack it dims while moving and pulsates when idle. Only drawn when
+        # the relic's tile is currently lit, so the ring never appears in the
+        # dark ahead of the player.
+        if tile_lit(tx, ty):
+            target_sx, target_sy = self.world_to_screen(tx, ty)
+            ring_cx = float(target_sx)
+            ring_cy = float(target_sy - int(4 * WORLD_SCALE))
+            ring_radius = 7.0 * WORLD_SCALE
+            r_tile_x, r_tile_y = int(tx), int(ty)
+            tcx, tcy = self.world_to_screen(r_tile_x + 0.5, r_tile_y + 0.5)
+            half_w = TILE_W / 2
+            half_h = TILE_H / 2
 
-        def in_diamond(px: float, py: float) -> bool:
-            return (abs(px - tcx) / half_w + abs(py - tcy) / half_h) <= 0.97
+            def in_diamond(px: float, py: float) -> bool:
+                return (abs(px - tcx) / half_w + abs(py - tcy) / half_h) <= 0.97
 
-        segs = 22
-        for i in range(segs):
-            a0 = i * (2 * math.pi / segs)
-            a1 = (i + 1) * (2 * math.pi / segs)
-            p0 = (
-                ring_cx + math.cos(a0) * ring_radius,
-                ring_cy + math.sin(a0) * ring_radius * 0.5,
-            )
-            p1 = (
-                ring_cx + math.cos(a1) * ring_radius,
-                ring_cy + math.sin(a1) * ring_radius * 0.5,
-            )
-            if not (in_diamond(p0[0], p0[1]) and in_diamond(p1[0], p1[1])):
-                continue
-            pygame.draw.aaline(glow_layer, (*shadow, ring_groove_alpha), p0, p1)
-            pygame.draw.aaline(
-                glow_layer,
-                (*lip, ring_groove_alpha),
-                (p0[0], p0[1] - 1),
-                (p1[0], p1[1] - 1),
-            )
-        if in_diamond(ring_cx, ring_cy):
-            pygame.draw.circle(
-                glow_layer,
-                (*warm, ring_light_alpha),
-                (int(ring_cx), int(ring_cy)),
-                max(1, int(2 * WORLD_SCALE)),
-            )
-        self.screen.blit(glow_layer, (0, 0))
+            segs = 22
+            for i in range(segs):
+                a0 = i * (2 * math.pi / segs)
+                a1 = (i + 1) * (2 * math.pi / segs)
+                p0 = (
+                    ring_cx + math.cos(a0) * ring_radius,
+                    ring_cy + math.sin(a0) * ring_radius * 0.5,
+                )
+                p1 = (
+                    ring_cx + math.cos(a1) * ring_radius,
+                    ring_cy + math.sin(a1) * ring_radius * 0.5,
+                )
+                if not (in_diamond(p0[0], p0[1]) and in_diamond(p1[0], p1[1])):
+                    continue
+                pygame.draw.aaline(glow_layer, (*shadow, ring_groove_alpha), p0, p1)
+                pygame.draw.aaline(
+                    glow_layer,
+                    (*lip, ring_groove_alpha),
+                    (p0[0], p0[1] - 1),
+                    (p1[0], p1[1] - 1),
+                )
+            if in_diamond(ring_cx, ring_cy):
+                pygame.draw.circle(
+                    glow_layer,
+                    (*warm, ring_light_alpha),
+                    (int(ring_cx), int(ring_cy)),
+                    max(1, int(2 * WORLD_SCALE)),
+                )
+            drew_anything = True
+
+        if drew_anything:
+            self.screen.blit(glow_layer, (0, 0))
 
     def story_relic_guidance_route(
         self, target: tuple[float, float]
@@ -1083,16 +1123,44 @@ class RenderingEffectsMixin:
             (sx, sy + 9 * WORLD_SCALE + bob),
             (sx - 12 * WORLD_SCALE, sy - 5 * WORLD_SCALE + bob),
         ]
-        pygame.draw.polygon(self.screen, self.shade(accent, -45), points)
-        pygame.draw.polygon(
-            self.screen, self.shade(accent, 42), points, max(1, WORLD_SCALE)
+        # Gem body: dark accent fill with a lit lip, drawn as a flat iso
+        # diamond so it reads as a cut stone lying on the floor.
+        gem_face = self.shade(accent, -45)
+        gem_rim = self.shade(accent, 42)
+        pygame.draw.polygon(self.screen, gem_face, points)
+        pygame.draw.polygon(self.screen, gem_rim, points, max(1, WORLD_SCALE))
+
+        # Subtle status sigil at the gem's heart: a thin accent-tinted ring
+        # with a faint warm pinprick at its center, alpha-blended onto a tiny
+        # SRCALPHA patch so it reads as a soft inscription on the gem face
+        # rather than a flat opaque badge pasted on top. It breathes with the
+        # same pulse as the surrounding glow so the relic stays calm.
+        sigil_size = 14 * WORLD_SCALE
+        sigil = pygame.Surface((sigil_size, sigil_size), pygame.SRCALPHA)
+        scx = scy = sigil_size // 2
+        ring_radius = max(2, 3 * WORLD_SCALE)
+        pygame.draw.circle(
+            sigil,
+            (*gem_rim, int(60 + pulse * 35)),
+            (scx, scy),
+            ring_radius,
+            max(1, WORLD_SCALE),
         )
         pygame.draw.circle(
-            self.screen,
-            (245, 238, 210),
-            (sx, sy - 5 * WORLD_SCALE + bob),
-            max(2, 3 * WORLD_SCALE),
+            sigil,
+            (245, 238, 210, int(90 + pulse * 55)),
+            (scx, scy),
+            max(1, WORLD_SCALE),
         )
+        self.screen.blit(
+            sigil,
+            sigil.get_rect(center=(sx, sy - 5 * WORLD_SCALE + bob)),
+        )
+
+        # Orbiting motes around the relic, drawn on top of the gem so they
+        # read as attendant sparks circling the stone. Kept small and
+        # accent-tinted so they don't compete with the sigil as a second
+        # status ring.
         for index in range(4):
             angle = self.elapsed * 2.2 + index * math.tau / 4
             mote = (
@@ -1214,25 +1282,13 @@ class RenderingEffectsMixin:
         )
         self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 5 * WORLD_SCALE)))
 
-        portrait_radius = 10 * WORLD_SCALE
-        portrait_y = sy - 34 * WORLD_SCALE
-        pygame.draw.circle(self.screen, (15, 12, 18), (sx, portrait_y), portrait_radius)
-        pygame.draw.circle(
-            self.screen, color, (sx, portrait_y), portrait_radius, max(1, WORLD_SCALE)
-        )
-        pygame.draw.circle(
-            self.screen,
-            (*self.shade(color, 45), int(35 + pulse * 50)),
-            (sx, portrait_y),
-            max(3, int(5 * WORLD_SCALE)),
-        )
-        marker = "✓" if guest.resolved else "?"
-        role_glyph = (guest.role[:1] or "G").upper()
-        glyph = marker if not guest.met or guest.resolved else role_glyph
-        marker_surface = self.small_font.render(glyph, True, (245, 236, 205))
-        self.screen.blit(
-            marker_surface, marker_surface.get_rect(center=(sx, portrait_y))
-        )
+        # The floating portrait badge (a dark disc with a "?"/role/"✓" glyph)
+        # used to be drawn above the guest here. It read as a pasted-on status
+        # icon and, on aid-choice floors where the relic is placed on the
+        # guest's own tile, it sat directly on top of the relic. The floor ring,
+        # the sprite itself, and the proximity label below already identify the
+        # guest and its state, so the badge is gone.
+
         if (
             not guest.resolved
             and math.hypot(guest.x - self.player.x, guest.y - self.player.y) < 1.25

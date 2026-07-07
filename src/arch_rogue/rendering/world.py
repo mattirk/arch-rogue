@@ -828,8 +828,11 @@ class RenderingWorldMixin:
                 drawables.append((effect.x + effect.y + 0.08, "impact", effect))
 
         self.draw_aim_cone()
-        relic_target = self.story_relic_target_position()
-        if relic_target is not None and visible(relic_target[0], relic_target[1], 0.65):
+        # The guiding light leads the player TO the relic, so it must render
+        # even when the relic is far outside the sight radius. The per-tile
+        # visibility clipping inside draw_story_relic_guidance keeps the crack
+        # from painting over dark / unrevealed floor.
+        if self.story_relic_target_position() is not None:
             self.draw_story_relic_guidance()
 
         for _depth, kind, obj in sorted(drawables, key=lambda entry: entry[0]):
