@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import math
+import random
 from collections.abc import Callable
 
 from .constants import DUNGEON_DEPTH
@@ -40,6 +41,7 @@ from .content import (
 from .models import (
     Color,
     Enemy,
+    IdleNpc,
     Item,
     Room,
     SecretCache,
@@ -238,6 +240,8 @@ class PopulationMixin:
             handlers = {
                 "shop": self._populate_shop_special_room,
                 "quest_room": self._populate_quest_room_special_room,
+                "bar": self._populate_bar_special_room,
+                "garden": self._populate_garden_special_room,
             }
             self._special_room_population_handlers = handlers
         return handlers
@@ -336,6 +340,83 @@ class PopulationMixin:
         self._reserve_special_room_anchor(special_room, "guest", cx, cy)
         self._clear_room_hostiles_and_traps(room)
         self._populate_story_guest(special_room, room)
+
+    # --- 3.14 flavor rooms: bar / garden -------------------------------
+    # These are appearance-only. They never clear hostiles (they are not refuges)
+    # and never offer interaction. Each MAY host a single decorative idle NPC at
+    # 50% chance; a layout-seeded local RNG drives the roll so the shared
+    # `self.rng` stream (and thus the rest of population) is unchanged. Re-running
+    # `_populate_special_rooms` (e.g. on save restore) is a no-op: a guard skips
+    # rooms that already hold an idle NPC.
+    _BAR_NPC_NAMES = (
+        "Barkeep Ossar",
+        "Drunk Mabel",
+        "Quiet Fenn",
+        "Old Candle-Venn",
+    )
+    _GARDEN_NPC_NAMES = (
+        "Gardener Thistle",
+        "Wandering Pilgrim",
+        "Hollow Friar",
+        "Moss-Bound Wren",
+    )
+
+    def _room_has_idle_npc(self, room: Room) -> bool:
+        return any(
+            self._room_contains_world_point(room, npc.x, npc.y)
+            for npc in getattr(self, "idle_npcs", [])
+        )
+
+    def _flavor_room_rng(self, special_room: SpecialRoom, salt: int) -> random.Random:
+        # Same layout-seeded family as the guest-room planner, folded with the
+        # room index and a per-kind salt so bar/garden rolls stay independent of
+        # each other and of the shared `self.rng` stream.
+        seed = (
+            (special_room.room_index * 73856093)
+            ^ (salt * 19349663)
+            ^ (len(self.dungeon.rooms) * 0x9E3779B1)
+        )
+        return random.Random(seed)
+
+    def _populate_bar_special_room(self, special_room: SpecialRoom, room: Room) -> None:
+        if self._room_has_idle_npc(room):
+            return
+        rng = self._flavor_room_rng(special_room, salt=0xB4B)
+        if rng.random() >= 0.50:
+            return
+        cx, cy = room.center
+        self._reserve_special_room_anchor(special_room, "npc", cx, cy)
+        self.idle_npcs.append(
+            IdleNpc(
+                x=cx + 0.5,
+                y=cy + 0.5,
+                kind="bar",
+                name=rng.choice(self._BAR_NPC_NAMES),
+                role="Wayfarer",
+                color=(214, 176, 120),
+            )
+        )
+
+    def _populate_garden_special_room(
+        self, special_room: SpecialRoom, room: Room
+    ) -> None:
+        if self._room_has_idle_npc(room):
+            return
+        rng = self._flavor_room_rng(special_room, salt=0x6A6)
+        if rng.random() >= 0.50:
+            return
+        cx, cy = room.center
+        self._reserve_special_room_anchor(special_room, "npc", cx, cy)
+        self.idle_npcs.append(
+            IdleNpc(
+                x=cx + 0.5,
+                y=cy + 0.5,
+                kind="garden",
+                name=rng.choice(self._GARDEN_NPC_NAMES),
+                role="Wanderer",
+                color=(150, 196, 132),
+            )
+        )
 
     def _make_shop_inventory(self, room: Room) -> list[Item]:
         stock: list[Item] = [

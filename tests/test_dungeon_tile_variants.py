@@ -96,10 +96,11 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                     for k in game.tile_cache
                     if k[0] == theme and k[1] == int(Tile.STAIRS)
                 ]
-                self.assertEqual(len(wall_keys), DUNGEON_WALL_VARIANTS * 3)
-                # Floor exists in normal, shop, and guest forms; stairs in
-                # normal + shop only (guest stairs keep the normal slab).
-                self.assertEqual(len(floor_keys), DUNGEON_FLOOR_VARIANTS * 3)
+                self.assertEqual(len(wall_keys), DUNGEON_WALL_VARIANTS * 7)
+                # Floor exists in normal, shop, guest, bar, and garden forms;
+                # stairs in normal + shop only (special-room stairs keep the
+                # normal slab).
+                self.assertEqual(len(floor_keys), DUNGEON_FLOOR_VARIANTS * 5)
                 self.assertEqual(len(stairs_keys), DUNGEON_FLOOR_VARIANTS * 2)
 
                 before = set(game.tile_cache.keys())
@@ -206,7 +207,7 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                     for k in game.tile_cache
                     if k[0] == game.theme.name and k[1] == int(Tile.WALL)
                 ]
-                self.assertEqual(len(wall_keys), DUNGEON_WALL_VARIANTS * 3)
+                self.assertEqual(len(wall_keys), DUNGEON_WALL_VARIANTS * 7)
 
                 # Find a closed door tile in the dungeon and open it adjacent
                 # to the player; the cache must be rewarmed afterward.

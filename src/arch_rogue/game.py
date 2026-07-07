@@ -79,6 +79,7 @@ from .models import (
     Enemy,
     FloatingText,
     FloorPlan,
+    IdleNpc,
     ImpactEffect,
     Item,
     Player,
@@ -152,6 +153,7 @@ __all__ = (
     "FloatingText",
     "FloorPlan",
     "Game",
+    "IdleNpc",
     "ImpactEffect",
     "InputMixin",
     "InteractionMixin",
@@ -326,6 +328,7 @@ class Game(
         self.story_seed = 0
         self.story_state: StoryState | None = None
         self.story_guests: list[StoryGuest] = []
+        self.idle_npcs: list[IdleNpc] = []
         self.story_intro_pending = False
         self.story_relic_depth = 0
         self.story_relic_choice_key = ""

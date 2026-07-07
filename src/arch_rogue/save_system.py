@@ -38,6 +38,7 @@ from .dungeon import (
 )
 from .models import (
     Enemy,
+    IdleNpc,
     Item,
     Player,
     Room,
@@ -147,6 +148,35 @@ class SaveLoadMixin:
             buy_multiplier=float(data.get("buy_multiplier", 0.45)),
             sell_multiplier=float(data.get("sell_multiplier", 1.15)),
             met=bool(data.get("met", False)),
+        )
+
+    def idle_npc_to_dict(self, npc: IdleNpc) -> dict[str, Any]:
+        return {
+            "x": npc.x,
+            "y": npc.y,
+            "kind": npc.kind,
+            "name": npc.name,
+            "role": npc.role,
+            "color": list(npc.color),
+        }
+
+    def idle_npc_from_dict(self, data: dict[str, Any]) -> IdleNpc:
+        raw_color = data.get("color", [200, 190, 170])
+        if isinstance(raw_color, (list, tuple)) and len(raw_color) >= 3:
+            color = (
+                int(raw_color[0]),
+                int(raw_color[1]),
+                int(raw_color[2]),
+            )
+        else:
+            color = (200, 190, 170)
+        return IdleNpc(
+            x=float(data.get("x", 0.0)),
+            y=float(data.get("y", 0.0)),
+            kind=str(data.get("kind", "")),
+            name=str(data.get("name", "")),
+            role=str(data.get("role", "")),
+            color=color,
         )
 
     def special_room_to_dict(self, special_room: SpecialRoom) -> dict[str, Any]:
@@ -307,6 +337,7 @@ class SaveLoadMixin:
             "shrines": [shrine.__dict__ for shrine in self.shrines],
             "secrets": [secret.__dict__ for secret in self.secrets],
             "story_guests": [story_guest_to_dict(guest) for guest in self.story_guests],
+            "idle_npcs": [self.idle_npc_to_dict(npc) for npc in self.idle_npcs],
             "run_stats": self.run_stats.__dict__,
         }
 
@@ -483,6 +514,9 @@ class SaveLoadMixin:
         self.secrets = [SecretCache(**secret) for secret in data.get("secrets", [])]
         self.story_guests = [
             story_guest_from_dict(guest) for guest in data.get("story_guests", [])
+        ]
+        self.idle_npcs = [
+            self.idle_npc_from_dict(npc) for npc in data.get("idle_npcs", [])
         ]
         self.active_cutscene = ActiveQuestCutscene.from_dict(
             data.get("active_cutscene")

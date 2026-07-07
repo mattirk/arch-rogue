@@ -190,7 +190,7 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 
 - Add two more special room kinds: `bar` and `garden`
 - These are only special rooms in terms of their appearance
-- Generate nice decorative floor tiles for these rooms that represent their purpose and aesthetic
+- Generate nice decorative floor and wall tiles for these rooms that represent their purpose and aesthetic
 - Both rooms may or may not have a friendly idle NPC, player cannot interact with him 
 - Make both of these rooms spawn at 50% change on all depths
 

@@ -52,7 +52,7 @@ class StoryMode20Tests(unittest.TestCase):
     def test_story_corpus_and_engine_are_deterministic_and_backstory_aligned(
         self,
     ) -> None:
-        self.assertEqual(arch_rogue.__version__, "3.13.0")
+        self.assertEqual(arch_rogue.__version__, "3.14.0")
         self.assertGreaterEqual(len(STORY_CORPUS["factions"]), 8)
         self.assertGreaterEqual(len(STORY_CORPUS["relics"]), 8)
         self.assertGreaterEqual(len(STORY_CORPUS["guest_templates"]), 8)
@@ -128,7 +128,7 @@ class StoryMode20Tests(unittest.TestCase):
 
                 saved = json.loads(game.save_path.read_text(encoding="utf-8"))
                 self.assertEqual(saved["version"], 5)
-                self.assertEqual(saved["release"], "3.13.0")
+                self.assertEqual(saved["release"], "3.14.0")
                 self.assertIn("story_state", saved)
                 self.assertIn("story_guests", saved)
                 self.assertEqual(saved["run_stats"]["story_choices"], 1)

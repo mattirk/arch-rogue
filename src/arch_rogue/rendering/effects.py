@@ -27,6 +27,7 @@ from ..content import HUMANOID_ENEMY_NAMES
 from ..models import (
     Color,
     Enemy,
+    IdleNpc,
     ImpactEffect,
     Item,
     Player,
@@ -1273,6 +1274,16 @@ class RenderingEffectsMixin:
             self.screen.blit(
                 sublabel, sublabel.get_rect(center=(sx, sy - 42 * WORLD_SCALE))
             )
+
+    def draw_idle_npc(self, npc: IdleNpc) -> None:
+        # Decorative, non-interactable traveler (bar / garden flavor). Reuses the
+        # story-guest humanoid sprite so it reads as a person, but drops the
+        # quest aura, label, and interaction prompt — the player cannot talk to
+        # or trade with them. A faint floor shadow is enough to ground them.
+        sx, sy = self.world_to_screen(npc.x, npc.y)
+        self.draw_shadow(npc.x, npc.y, 24, 10)
+        sprite = self.sprites.story_guest_frame(self.elapsed + npc.x * 0.7, False)
+        self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 5 * WORLD_SCALE)))
 
     def draw_shrine(self, shrine: Shrine) -> None:
         sx, sy = self.world_to_screen(shrine.x, shrine.y)

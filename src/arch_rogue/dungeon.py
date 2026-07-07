@@ -40,6 +40,15 @@ _PASSABLE_TILES = (Tile.FLOOR, Tile.STAIRS, Tile.OPEN_DOOR)
 SHOP_ROOM_KIND = "shop"
 QUEST_ROOM_KIND = "quest_room"
 LEGACY_QUEST_GUEST_ROOM_KIND = "quest_guest"
+# 3.14 flavor special rooms: appearance-only chambers (no merchant/quest
+# logic). They roll at 50% on every depth and may host a decorative,
+# non-interactable idle NPC. ``door_policy="sealed"`` gives them a closed
+# perimeter with doors so the distinct interior wall art always renders and
+# the room reads as a discovered chamber rather than open dungeon floor.
+# ``spawn_policy="normal"`` keeps them out of the safe-refuge path: hostiles are
+# not cleared (they are appearance-only, not gameplay refuges).
+BAR_ROOM_KIND = "bar"
+GARDEN_ROOM_KIND = "garden"
 
 SPECIAL_ROOM_DEFINITIONS: dict[str, SpecialRoomDefinition] = {
     SHOP_ROOM_KIND: SpecialRoomDefinition(
@@ -55,6 +64,20 @@ SPECIAL_ROOM_DEFINITIONS: dict[str, SpecialRoomDefinition] = {
         tags=("quest", "guest", "story", "refuge"),
         door_policy="sealed",
         spawn_policy="safe",
+    ),
+    BAR_ROOM_KIND: SpecialRoomDefinition(
+        kind=BAR_ROOM_KIND,
+        display_name="Wayfarer's Bar",
+        tags=("bar", "refuge", "flavor"),
+        door_policy="sealed",
+        spawn_policy="normal",
+    ),
+    GARDEN_ROOM_KIND: SpecialRoomDefinition(
+        kind=GARDEN_ROOM_KIND,
+        display_name="Overgrown Garden",
+        tags=("garden", "refuge", "flavor"),
+        door_policy="sealed",
+        spawn_policy="normal",
     ),
 }
 
@@ -330,6 +353,34 @@ class Dungeon:
                 guest_rng = random.Random(guest_seed)
                 self._add_special_room(
                     QUEST_ROOM_KIND, guest_rng.choice(guest_candidates)
+                )
+
+        # 3.14 flavor rooms (bar / garden): appearance-only chambers that spawn
+        # at 50% chance on every depth. They are sealed with doors (like the
+        # shop/quest rooms) so the distinct interior wall art always renders, and
+        # they never displace shop/quest. A layout-seeded local RNG drives both
+        # the spawn roll and the room pick so the shared `self.rng` stream — and
+        # thus the downstream door pass + population — stays byte-for-byte
+        # identical to runs without flavor rooms, preserving determinism and
+        # save compat.
+        flavor_seed = (
+            (self.stairs[0] * 73856093)
+            ^ (self.stairs[1] * 19349663)
+            ^ (len(self.rooms) * 0x9E3779B1)
+        )
+        flavor_rng = random.Random(flavor_seed)
+        for flavor_kind in (BAR_ROOM_KIND, GARDEN_ROOM_KIND):
+            if flavor_rng.random() >= 0.50:
+                continue
+            occupied = {room.room_index for room in self.special_rooms}
+            flavor_candidates = [
+                idx
+                for idx in eligible_rooms
+                if idx not in occupied and idx not in (0, len(self.rooms) - 1)
+            ]
+            if flavor_candidates:
+                self._add_special_room(
+                    flavor_kind, flavor_rng.choice(flavor_candidates)
                 )
 
         # Room definitions own mandatory gating. Apply those gates before the

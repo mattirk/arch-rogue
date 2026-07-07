@@ -41,6 +41,7 @@ from .models import (
     Enemy,
     FloatingText,
     FloorPlan,
+    IdleNpc,
     Item,
     Player,
     Projectile,
@@ -538,6 +539,7 @@ class RunFlowMixin:
         self.shrines: list[Shrine] = []
         self.secrets: list[SecretCache] = []
         self.story_guests = []
+        self.idle_npcs: list[IdleNpc] = []
         self.floaters: list[FloatingText] = []
         self.slashes: list[SlashEffect] = []
         self.impact_effects = []
@@ -618,6 +620,7 @@ class RunFlowMixin:
         self.shrines = []
         self.secrets = []
         self.story_guests = []
+        self.idle_npcs = []
         self.floaters = []
         self.slashes = []
         self.impact_effects = []

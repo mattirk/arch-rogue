@@ -36,6 +36,7 @@ from ..content import HUMANOID_ENEMY_NAMES
 from ..models import (
     Color,
     Enemy,
+    IdleNpc,
     ImpactEffect,
     Item,
     Player,
@@ -91,13 +92,15 @@ class RenderingWorldMixin:
         if sx < -TILE_W or sx > sw + TILE_W or sy < -TILE_H or sy > sh + TILE_H:
             return None
         seed = self.tile_seed(x, y)
-        wall_guest_face = self.guest_wall_faces(x, y) if tile == Tile.WALL else None
+        wall_face_style = self.special_wall_faces(x, y) if tile == Tile.WALL else None
         surface, anchor_x, anchor_y = self.tile_surface(
             tile,
             seed,
-            self.is_shop_floor_tile(x, y),
-            self.is_guest_tile(x, y),
-            wall_guest_face,
+            shop_floor=self.is_shop_floor_tile(x, y),
+            guest=self.is_guest_tile(x, y),
+            bar_floor=self.is_bar_tile(x, y),
+            garden_floor=self.is_garden_tile(x, y),
+            wall_face_style=wall_face_style,
         )
         if self._frame_dark:  # set at start of draw_world_objects/draw_dungeon
             alpha = self.tile_visibility_alpha(x, y)
@@ -157,25 +160,34 @@ class RenderingWorldMixin:
         # Also drop the dark-floor alpha-bucket cache since its keyed surfaces
         # belong to the previous theme.
         self._alpha_tile_cache = {}
+        # Per-kind interior wall face styles (one side face gets distinct art).
+        wall_face_styles: list[str | None] = [None]
+        for kind in ("quest_room", "bar", "garden"):
+            for side in ("left", "right"):
+                wall_face_styles.append(f"{kind}:{side}")
         for tile in (Tile.WALL, Tile.FLOOR, Tile.STAIRS):
             variants = (
                 DUNGEON_WALL_VARIANTS if tile == Tile.WALL else DUNGEON_FLOOR_VARIANTS
             )
             for seed in range(variants):
-                self.tile_surface(tile, seed, shop_floor=False)
-                if tile in (Tile.FLOOR, Tile.STAIRS):
-                    self.tile_surface(tile, seed, shop_floor=True)
                 if tile == Tile.WALL:
-                    # Guest-room perimeter walls render the distinct art on one
-                    # interior side face only; prewarm both face options.
-                    self.tile_surface(
-                        tile, seed, shop_floor=False, wall_guest_face="left"
-                    )
-                    self.tile_surface(
-                        tile, seed, shop_floor=False, wall_guest_face="right"
-                    )
-                elif tile == Tile.FLOOR:
-                    self.tile_surface(tile, seed, shop_floor=False, guest=True)
+                    for style in wall_face_styles:
+                        self.tile_surface(
+                            tile, seed, shop_floor=False, wall_face_style=style
+                        )
+                else:
+                    self.tile_surface(tile, seed, shop_floor=False)
+                    self.tile_surface(tile, seed, shop_floor=True)
+                    if tile == Tile.FLOOR:
+                        # Special-room floor art only applies to FLOOR tiles;
+                        # stairs keep the normal slab in every special room, so
+                        # they are not prewarmed with these flags (avoids
+                        # wasting cache entries on identical stairs surfaces).
+                        self.tile_surface(tile, seed, shop_floor=False, guest=True)
+                        self.tile_surface(tile, seed, shop_floor=False, bar_floor=True)
+                        self.tile_surface(
+                            tile, seed, shop_floor=False, garden_floor=True
+                        )
 
     def is_shop_floor_tile(self, x: int, y: int) -> bool:
         return self.is_special_room_floor_tile(x, y, kind="shop")
@@ -185,6 +197,16 @@ class RenderingWorldMixin:
         # by guest_wall_faces so the distinct wall art appears only on the
         # face that borders the room interior, not on the outside.
         return self.is_special_room_floor_tile(x, y, kind="quest_room")
+
+    def is_bar_tile(self, x: int, y: int) -> bool:
+        # 3.14 flavor room: tavern floor. Distinct floor art; perimeter walls get
+        # warm wood-panel art on the interior face via special_wall_faces.
+        return self.is_special_room_floor_tile(x, y, kind="bar")
+
+    def is_garden_tile(self, x: int, y: int) -> bool:
+        # 3.14 flavor room: overgrown garden floor. Perimeter walls get moss/vine
+        # art on the interior face via special_wall_faces.
+        return self.is_special_room_floor_tile(x, y, kind="garden")
 
     def is_special_room_floor_tile(
         self,
@@ -217,19 +239,34 @@ class RenderingWorldMixin:
         return self._special_room_interior_floor(x, y, kind="quest_room")
 
     def guest_wall_faces(self, x: int, y: int) -> str | None:
-        # For a wall tile on the guest-room perimeter, return which visible side
-        # face borders the room interior: "left" (the +y face), "right" (the +x
-        # face), or None. Only that face gets the distinct guest wall art, so the
-        # markings never appear on the room's outside. Walls not on the guest
-        # perimeter return None.
+        # Backwards-compatible wrapper: returns the legacy bare side string
+        # ("left"/"right") for the quest-room perimeter, or None. New code should
+        # call `special_wall_faces` which returns a "<kind>:<side>" style.
+        style = self.special_wall_faces(x, y)
+        if style is None:
+            return None
+        kind, side = self._parse_wall_face_style(style)
+        if kind == "quest_room":
+            return side
+        return None
+
+    def special_wall_faces(self, x: int, y: int) -> str | None:
+        # For a wall tile on a special-room perimeter, return which visible side
+        # face borders the room interior as a "<kind>:<side>" style string
+        # (e.g. "quest_room:left", "bar:right", "garden:left"), or None. Only that
+        # face gets the distinct interior wall art, so the markings never appear
+        # on the room's outside. The first matching kind/side wins (a wall rarely
+        # borders two special rooms). ``side`` is "left" (the +y face) or
+        # "right" (the +x face).
         if self.dungeon.tiles[x][y] != Tile.WALL:
             return None
-        left_interior = self._special_room_interior_floor(x, y + 1, kind="quest_room")
-        right_interior = self._special_room_interior_floor(x + 1, y, kind="quest_room")
-        if left_interior:
-            return "left"
-        if right_interior:
-            return "right"
+        for kind in ("quest_room", "bar", "garden"):
+            left_interior = self._special_room_interior_floor(x, y + 1, kind=kind)
+            if left_interior:
+                return f"{kind}:left"
+            right_interior = self._special_room_interior_floor(x + 1, y, kind=kind)
+            if right_interior:
+                return f"{kind}:right"
         return None
 
     def _special_room_bounds(
@@ -272,18 +309,24 @@ class RenderingWorldMixin:
         seed: int,
         shop_floor: bool = False,
         guest: bool = False,
-        wall_guest_face: str | None = None,
+        bar_floor: bool = False,
+        garden_floor: bool = False,
+        wall_face_style: str | None = None,
     ) -> tuple[pygame.Surface, int, int]:
-        # ``wall_guest_face`` selects which side face of a WALL tile gets the
-        # distinct guest-room wall art ("left"/"right"/None). Ignored for
-        # non-wall tiles; floors/stairs use the ``guest`` flag instead.
+        # ``wall_face_style`` is "<kind>:<side>" (or legacy "left"/"right") and
+        # selects which side face of a WALL tile gets distinct interior wall art.
+        # ``shop_floor`` / ``guest`` / ``bar_floor`` / ``garden_floor`` select the
+        # floor art for the four special-room floor kinds; they are mutually
+        # exclusive in practice (a tile belongs to at most one special room).
         key = (
             self.theme.name,
             int(tile),
             seed,
             shop_floor,
             guest,
-            wall_guest_face,
+            bar_floor,
+            garden_floor,
+            wall_face_style,
         )
         cached = self.tile_cache.get(key)
         if cached:
@@ -317,7 +360,7 @@ class RenderingWorldMixin:
                 left,
                 wall_h,
                 seed,
-                guest_face=wall_guest_face,
+                wall_face_style=wall_face_style,
             )
         elif tile in (Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
             self.draw_door_tile_surface(
@@ -346,6 +389,8 @@ class RenderingWorldMixin:
                 seed,
                 shop_floor,
                 guest=guest,
+                bar_floor=bar_floor,
+                garden_floor=garden_floor,
             )
 
         cached = (surface.convert_alpha(), anchor_x, anchor_y)
@@ -409,10 +454,15 @@ class RenderingWorldMixin:
         left: tuple[int, int],
         wall_h: int,
         seed: int,
-        guest_face: str | None = None,
+        wall_face_style: str | None = None,
     ) -> None:
-        left_guest = guest_face == "left"
-        right_guest = guest_face == "right"
+        # ``wall_face_style`` is "<kind>:<side>" (e.g. "quest_room:left",
+        # "bar:right", "garden:left") or None. Only the named side face gets the
+        # distinct interior wall art for that special room; the other face and the
+        # cap stay normal dungeon stone so the room reads as found, not sealed.
+        face_kind, face_side = self._parse_wall_face_style(wall_face_style)
+        left_kind = face_kind if face_side == "left" else None
+        right_kind = face_kind if face_side == "right" else None
         scale = WORLD_SCALE
         cap_top = (top[0], top[1] - wall_h)
         cap_right = (right[0], right[1] - wall_h)
@@ -425,12 +475,6 @@ class RenderingWorldMixin:
         variant = seed % DUNGEON_WALL_VARIANTS
         tint = variant * 2 - 3
         top_color = self.shade(self.theme.wall_top, 14 + tint)
-        left_color = self.shade(self.theme.wall_left, tint)
-        right_color = self.shade(self.theme.wall_right, tint)
-        # Guest-room interior faces use a cooler/darker stone so the consecrated
-        # chamber reads distinctly only on the inside; the outside stays normal.
-        guest_left_color = self.shade(self.theme.wall_left, -6 + tint)
-        guest_right_color = self.shade(self.theme.wall_right, -10 + tint)
         accent = (
             self.story_state.accent
             if getattr(self, "story_state", None) is not None
@@ -458,31 +502,31 @@ class RenderingWorldMixin:
 
         left_face = self._wall_face_parallelogram(cap_left, cap_bottom, left, bottom)
         right_face = self._wall_face_parallelogram(cap_bottom, cap_right, bottom, right)
-        # Side faces first (each in normal or guest style), then the cap on top.
-        # The cap is always normal stone — the distinct guest art is for the
-        # interior side faces only, never the top visible from outside.
+        # Side faces first (each in normal or special-room style), then the cap.
+        # The cap is always normal stone — distinct art is for the interior side
+        # faces only, never the top visible from outside.
         self._draw_wall_side_face(
             surface,
             left_face,
-            guest_left_color if left_guest else left_color,
+            self._wall_face_base_color("left", left_kind, tint),
             courses,
             joints,
             course_color,
             course_hi,
             scale,
-            guest=left_guest,
+            face_kind=left_kind,
             accent=accent,
         )
         self._draw_wall_side_face(
             surface,
             right_face,
-            guest_right_color if right_guest else right_color,
+            self._wall_face_base_color("right", right_kind, tint),
             courses,
             joints,
             course_color,
             course_hi,
             scale,
-            guest=right_guest,
+            face_kind=right_kind,
             accent=accent,
         )
         pygame.draw.polygon(
@@ -496,7 +540,8 @@ class RenderingWorldMixin:
 
         # --- Weathered variant: a short jagged crack down the left face for
         # ancient, broken character. Subtle and single so it stays in-family.
-        if variant == 3:
+        # Only on plain (non-special) walls so it never clashes with interior art.
+        if variant == 3 and left_kind is None:
             top_left, top_right, bot_left, bot_right = left_face
             crack = [
                 (
@@ -534,6 +579,40 @@ class RenderingWorldMixin:
         pygame.draw.line(surface, self.shade(edge, -44), left, bottom, scale)
         pygame.draw.line(surface, self.shade(edge, -56), bottom, right, scale)
 
+    def _parse_wall_face_style(
+        self, style: str | None
+    ) -> tuple[str | None, str | None]:
+        # ``style`` is "<kind>:<side>" or None/"<side>" (legacy guest form).
+        if not style:
+            return None, None
+        if ":" not in style:
+            # Legacy bare side string → quest_room (the original guest-room face).
+            if style in ("left", "right"):
+                return "quest_room", style
+            return None, None
+        kind, _, side = style.partition(":")
+        if side not in ("left", "right"):
+            return None, None
+        return kind or None, side
+
+    def _wall_face_base_color(self, side: str, kind: str | None, tint: int) -> Color:
+        base = self.shade(
+            self.theme.wall_left if side == "left" else self.theme.wall_right, tint
+        )
+        if kind == "quest_room":
+            # Cooler/darker consecrated stone; left face is lit so it stays a touch
+            # lighter than the right.
+            return self.shade(base, -6 if side == "left" else -10)
+        if kind == "bar":
+            # Warm wood-paneled stone: mix toward aged oak so the tavern reads
+            # warmly without abandoning the dungeon palette.
+            return self.mix(base, (120, 84, 52), 0.55)
+        if kind == "garden":
+            # Moss-veined stone: mix toward damp green so the garden reads as
+            # reclaimed by growth.
+            return self.mix(base, (80, 108, 72), 0.45)
+        return base
+
     def _draw_wall_side_face(
         self,
         surface: pygame.Surface,
@@ -547,12 +626,12 @@ class RenderingWorldMixin:
         course_hi: Color,
         scale: int,
         *,
-        guest: bool = False,
+        face_kind: str | None = None,
         accent: Color | None = None,
     ) -> None:
         # Draw one side face of a wall (base fill + vertical gradient + masonry
-        # + course lip), and when ``guest`` add the carved accent band so the
-        # distinct consecrated-chamber wall art appears only on this (interior)
+        # + course lip), and when ``face_kind`` is set add the per-room interior
+        # wall art so the distinct chamber markings appear only on this (interior)
         # face. ``face_quad`` is (top_left, top_right, bot_left, bot_right).
         top_left, top_right, bot_left, bot_right = face_quad
         pygame.draw.polygon(
@@ -573,29 +652,145 @@ class RenderingWorldMixin:
                 self.shade(base_color, sh),
                 [(lx0, ly0), (rx0, ry0), (rx1, ry1), (lx1, ly1)],
             )
-        self._draw_wall_masonry(
-            surface, *face_quad, courses, joints, course_color, scale
-        )
-        # Faint highlight along each top course line to read as a cut lip.
-        for t in courses:
-            ax = top_left[0] + (bot_left[0] - top_left[0]) * t
-            ay = top_left[1] + (bot_left[1] - top_left[1]) * t
-            bx = top_right[0] + (bot_right[0] - top_right[0]) * t
-            by = top_right[1] + (bot_right[1] - top_right[1]) * t
-            pygame.draw.line(
-                surface, course_hi, (ax, ay - scale), (bx, by - scale), max(1, scale)
+        # Bar wood paneling replaces the cut-stone masonry with horizontal plank
+        # grooves; quest_room/garden keep the stone courses.
+        if face_kind != "bar":
+            self._draw_wall_masonry(
+                surface, *face_quad, courses, joints, course_color, scale
             )
-        # Carved accent band near the top of the face — guest/interior only.
-        if guest and accent is not None:
-            band_t = 0.22
-            band_color = self.shade(accent, -34)
-            ax = top_left[0] + (bot_left[0] - top_left[0]) * band_t
-            ay = top_left[1] + (bot_left[1] - top_left[1]) * band_t
-            bx = top_right[0] + (bot_right[0] - top_right[0]) * band_t
-            by = top_right[1] + (bot_right[1] - top_right[1]) * band_t
-            pygame.draw.line(surface, band_color, (ax, ay), (bx, by), max(1, scale))
+        # Faint highlight along each top course line to read as a cut lip
+        # (stone faces only; bar planks draw their own lip below).
+        if face_kind != "bar":
+            for t in courses:
+                ax = top_left[0] + (bot_left[0] - top_left[0]) * t
+                ay = top_left[1] + (bot_left[1] - top_left[1]) * t
+                bx = top_right[0] + (bot_right[0] - top_right[0]) * t
+                by = top_right[1] + (bot_right[1] - top_right[1]) * t
+                pygame.draw.line(
+                    surface,
+                    course_hi,
+                    (ax, ay - scale),
+                    (bx, by - scale),
+                    max(1, scale),
+                )
+        if face_kind == "quest_room" and accent is not None:
+            self._draw_quest_wall_band(
+                surface, top_left, top_right, bot_left, bot_right, accent, scale
+            )
+        elif face_kind == "bar":
+            self._draw_bar_wall_planks(
+                surface, top_left, top_right, bot_left, bot_right, base_color, scale
+            )
+        elif face_kind == "garden":
+            self._draw_garden_wall_vines(
+                surface, top_left, top_right, bot_left, bot_right, base_color, scale
+            )
+
+    def _face_h_line(
+        self,
+        top_left: tuple[int, int],
+        top_right: tuple[int, int],
+        bot_left: tuple[int, int],
+        bot_right: tuple[int, int],
+        t: float,
+    ) -> tuple[tuple[float, float], tuple[float, float]]:
+        # A horizontal (iso-projected) line across the face at vertical fraction t.
+        a = (
+            top_left[0] + (bot_left[0] - top_left[0]) * t,
+            top_left[1] + (bot_left[1] - top_left[1]) * t,
+        )
+        b = (
+            top_right[0] + (bot_right[0] - top_right[0]) * t,
+            top_right[1] + (bot_right[1] - top_right[1]) * t,
+        )
+        return a, b
+
+    def _draw_quest_wall_band(
+        self,
+        surface: pygame.Surface,
+        top_left: tuple[int, int],
+        top_right: tuple[int, int],
+        bot_left: tuple[int, int],
+        bot_right: tuple[int, int],
+        accent: Color,
+        scale: int,
+    ) -> None:
+        # Carved accent band near the top of the face — consecrated-chamber mark.
+        band_t = 0.22
+        band_color = self.shade(accent, -34)
+        ax = top_left[0] + (bot_left[0] - top_left[0]) * band_t
+        ay = top_left[1] + (bot_left[1] - top_left[1]) * band_t
+        bx = top_right[0] + (bot_right[0] - top_right[0]) * band_t
+        by = top_right[1] + (bot_right[1] - top_right[1]) * band_t
+        pygame.draw.line(surface, band_color, (ax, ay), (bx, by), max(1, scale))
+        pygame.draw.aalines(
+            surface, self.shade(band_color, 14), False, [(ax, ay - 1), (bx, by - 1)]
+        )
+
+    def _draw_bar_wall_planks(
+        self,
+        surface: pygame.Surface,
+        top_left: tuple[int, int],
+        top_right: tuple[int, int],
+        bot_left: tuple[int, int],
+        bot_right: tuple[int, int],
+        base_color: Color,
+        scale: int,
+    ) -> None:
+        # Horizontal wood-plank grooves (shadowed recess + lit lip) reading as
+        # aged paneling. Five courses evenly spaced, with a per-plank seam offset
+        # so it does not look like ruled lines.
+        groove = self.shade(base_color, -34)
+        lip = self.shade(base_color, 16)
+        planks = (0.20, 0.42, 0.64, 0.86)
+        for t in planks:
+            a, b = self._face_h_line(top_left, top_right, bot_left, bot_right, t)
+            pygame.draw.aalines(surface, groove, False, [a, b])
             pygame.draw.aalines(
-                surface, self.shade(band_color, 14), False, [(ax, ay - 1), (bx, by - 1)]
+                surface, lip, False, [(a[0], a[1] - 1), (b[0], b[1] - 1)]
+            )
+        # A short vertical plank seam near one-third, gently offset.
+        seam_t = 0.34
+        top_a, top_b = self._face_h_line(top_left, top_right, bot_left, bot_right, 0.08)
+        mid_a, mid_b = self._face_h_line(top_left, top_right, bot_left, bot_right, 0.52)
+        sx = top_a[0] + (top_b[0] - top_a[0]) * seam_t
+        sy = top_a[1] + (top_b[1] - top_a[1]) * seam_t
+        ex = mid_a[0] + (mid_b[0] - mid_a[0]) * seam_t
+        ey = mid_a[1] + (mid_b[1] - mid_a[1]) * seam_t
+        pygame.draw.aalines(surface, groove, False, [(sx, sy), (ex, ey)])
+
+    def _draw_garden_wall_vines(
+        self,
+        surface: pygame.Surface,
+        top_left: tuple[int, int],
+        top_right: tuple[int, int],
+        bot_left: tuple[int, int],
+        bot_right: tuple[int, int],
+        base_color: Color,
+        scale: int,
+    ) -> None:
+        # Moss and creeping vines: a few low-contrast green splotches and a
+        # wandering vine line, deterministic from the face geometry so cached
+        # surfaces stay stable. Subtle so it reads as weathered growth, not a
+        # painted mural.
+        moss = self.mix(base_color, (96, 132, 84), 0.55)
+        vine = self.shade(moss, -18)
+        # Two moss patches near the lower corners (damp collects at the base).
+        for corner_t, side_t in ((0.82, 0.18), (0.78, 0.80)):
+            a, b = self._face_h_line(top_left, top_right, bot_left, bot_right, corner_t)
+            cx = a[0] + (b[0] - a[0]) * side_t
+            cy = a[1] + (b[1] - a[1]) * side_t
+            pygame.draw.circle(surface, moss, (int(cx), int(cy)), max(2, scale))
+        # A wandering vine down the upper-middle of the face.
+        pts: list[tuple[float, float]] = []
+        for vt, hs in ((0.16, 0.50), (0.40, 0.40), (0.62, 0.58), (0.86, 0.46)):
+            a, b = self._face_h_line(top_left, top_right, bot_left, bot_right, vt)
+            pts.append((a[0] + (b[0] - a[0]) * hs, a[1] + (b[1] - a[1]) * hs))
+        pygame.draw.aalines(surface, vine, False, pts)
+        # Faint leaf motes along the vine.
+        for px, py in pts:
+            pygame.draw.circle(
+                surface, self.shade(moss, 8), (int(px), int(py)), max(1, scale)
             )
 
     def _floor_groove(
@@ -723,6 +918,81 @@ class RenderingWorldMixin:
         # Crisp lit lip along the top-left edge.
         pygame.draw.aalines(surface, self.shade(base, 18), False, [top, left])
 
+    def _draw_bar_floor(self, surface, top, right, bottom, left, scale):
+        # Tavern floor: warm aged-wood planks running along the iso diagonal,
+        # with a faint spilled-ale sheen near the center. Reads as a worn common
+        # room, not a polished hall. Plank spacing divides the iso neighbor
+        # offsets so the cached surface tiles seamlessly across the room.
+        diamond = [top, right, bottom, left]
+        wood_base = self.mix(self.theme.floor, (96, 64, 40), 0.62)
+        plank_dark = self.shade(wood_base, -26)
+        plank_light = self.shade(wood_base, 14)
+        pygame.draw.polygon(surface, wood_base, diamond)
+        # Plank grooves: five shadowed recesses along the long iso diagonal,
+        # each with a one-pixel-up lit lip so they read as beveled joins.
+        cx = (top[0] + bottom[0]) / 2
+        cy = (top[1] + bottom[1]) / 2
+        # Direction along the iso long axis (top-left -> bottom-right).
+        axis_dx = (right[0] - left[0]) / 2
+        axis_dy = 0
+        perp_dx = 0
+        perp_dy = (bottom[1] - top[1]) / 2
+        plank_ts = (0.18, 0.36, 0.54, 0.72, 0.90)
+        for t in plank_ts:
+            # Offset perpendicular to the long axis by fraction (t-0.5).
+            off = (t - 0.5) * 2
+            p_start = (cx - axis_dx + perp_dx * off, cy - axis_dy + perp_dy * off)
+            p_end = (cx + axis_dx + perp_dx * off, cy + axis_dy + perp_dy * off)
+            pygame.draw.aalines(surface, plank_dark, False, [p_start, p_end])
+            up = [(p_start[0], p_start[1] - 1), (p_end[0], p_end[1] - 1)]
+            pygame.draw.aalines(surface, plank_light, False, up)
+        # Faint ale spill: a small low-contrast warm ellipse off-center.
+        spill = self.mix(wood_base, (180, 150, 90), 0.30)
+        spill_cx = int(cx + axis_dx * 0.25)
+        spill_cy = int(cy + 2 * scale)
+        pygame.draw.ellipse(
+            surface,
+            spill,
+            (spill_cx - 6 * scale, spill_cy - 2 * scale, 12 * scale, 4 * scale),
+        )
+        # Crisp lit lip along the top-left edge.
+        pygame.draw.aalines(surface, self.shade(wood_base, 18), False, [top, left])
+
+    def _draw_garden_floor(self, surface, top, right, bottom, left, scale):
+        # Overgrown garden floor: mossy flagstone with patches of green turf and
+        # scattered low plants. Reads as reclaimed ruins, not a tended lawn.
+        diamond = [top, right, bottom, left]
+        stone = self.mix(self.theme.floor, (90, 110, 84), 0.30)
+        turf = self.mix(stone, (78, 116, 70), 0.55)
+        pygame.draw.polygon(surface, stone, diamond)
+        cx = (top[0] + bottom[0]) // 2
+        cy = (top[1] + bottom[1]) // 2
+        # Two turf patches (grass overgrowing the stone) near opposite corners of
+        # the diamond, soft-edged via small overlapping ellipses.
+        for px, py, rx, ry in (
+            (cx - 12 * scale, cy + 4 * scale, 14 * scale, 7 * scale),
+            (cx + 10 * scale, cy - 3 * scale, 10 * scale, 5 * scale),
+        ):
+            pygame.draw.ellipse(
+                surface, turf, (int(px - rx), int(py - ry), int(rx * 2), int(ry * 2))
+            )
+            pygame.draw.ellipse(
+                surface,
+                self.shade(turf, 12),
+                (int(px - rx * 0.6), int(py - ry * 0.6), int(rx * 1.2), int(ry * 1.2)),
+            )
+        # A few low plant motes scattered across the slab (deterministic by
+        # position so cached surfaces stay stable).
+        plant = self.shade(turf, 18)
+        for mx, my in (
+            (cx - 2 * scale, cy - 5 * scale),
+            (cx + 6 * scale, cy + 6 * scale),
+            (cx - 9 * scale, cy - 1 * scale),
+        ):
+            pygame.draw.circle(surface, plant, (int(mx), int(my)), max(1, scale))
+        # Crisp lit lip along the top-left edge.
+        pygame.draw.aalines(surface, self.shade(stone, 18), False, [top, left])
+
     def draw_floor_tile_surface(
         self,
         surface: pygame.Surface,
@@ -736,6 +1006,8 @@ class RenderingWorldMixin:
         seed: int,
         shop_floor: bool = False,
         guest: bool = False,
+        bar_floor: bool = False,
+        garden_floor: bool = False,
     ) -> None:
         is_stairs = tile == Tile.STAIRS
         scale = WORLD_SCALE
@@ -747,6 +1019,12 @@ class RenderingWorldMixin:
             return
         if guest and not is_stairs:
             self._draw_guest_floor(surface, top, right, bottom, left, scale)
+            return
+        if bar_floor and not is_stairs:
+            self._draw_bar_floor(surface, top, right, bottom, left, scale)
+            return
+        if garden_floor and not is_stairs:
+            self._draw_garden_floor(surface, top, right, bottom, left, scale)
             return
         # Stairs sit in the same flagstone slab as the surrounding floor (same
         # base color + per-variant tint) so the stairwell reads as an opening
@@ -1007,6 +1285,9 @@ class RenderingWorldMixin:
         for guest in self.story_guests:
             if visible(guest.x, guest.y, 0.55):
                 drawables.append((guest.x + guest.y, "story_guest", guest))
+        for npc in self.idle_npcs:
+            if visible(npc.x, npc.y, 0.55):
+                drawables.append((npc.x + npc.y, "idle_npc", npc))
         for shopkeeper in self.shopkeepers:
             if visible(shopkeeper.x, shopkeeper.y, 0.55):
                 drawables.append(
@@ -1054,6 +1335,8 @@ class RenderingWorldMixin:
                 self.draw_secret(cast(SecretCache, obj))
             elif kind == "story_guest":
                 self.draw_story_guest(cast(StoryGuest, obj))
+            elif kind == "idle_npc":
+                self.draw_idle_npc(cast(IdleNpc, obj))
             elif kind == "shopkeeper":
                 self.draw_shopkeeper(cast(Shopkeeper, obj))
             elif kind == "gold_stack":

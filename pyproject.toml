@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.13.1"
-description = "3.13.1 trims the test suite to ~1/3 size/runtime while preserving behavioral coverage; built on the 3.13.0 data-driven special-room abstraction."
+version = "3.14.0"
+description = "3.14.0 adds bar and garden flavor special rooms with decorative floor/wall art and non-interactable idle NPCs; built on the 3.13.0 data-driven special-room abstraction."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

@@ -212,11 +212,11 @@ In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from t
 
 ## License
 
-This project is licensed under the Apache License, Version 2.0 (see `LICENSE`). The author intends the Apache 2.0 license to apply retroactively to all past commits in this repository's history, including commits made before the license was first declared here.
+This project is licensed under the Apache License, Version 2.0 (see `LICENSE`).
 
 ## Credits
 
-Design, code, procedural story corpus, procedural art, and procedural audio by the Arch Rogue project. Built with Python and [Pygame CE](https://pyga.me/).
+Design, code, procedural story corpus, procedural art, and procedural audio by the Arch Rogue project. Built with Python and [Pygame CE](https://pyga.me/). Much of this code is computer generated and not reviewed by a human.
 
 ## Changelog
 

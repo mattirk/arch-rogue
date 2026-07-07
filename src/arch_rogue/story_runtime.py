@@ -59,6 +59,7 @@ class StoryRuntimeMixin:
             self.run_modifier.name,
         )
         self.story_guests = []
+        self.idle_npcs = []
         self._apply_story_theme_for_current_depth()
 
     def current_story_beat(self) -> Any:

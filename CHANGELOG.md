@@ -1,5 +1,31 @@
 # Changelog
 
+## 3.14.0 — Special Room Flavor: Bar & Garden
+
+Two new appearance-only special rooms (bar and garden) join the dungeon, giving floors a sense of inhabited, lived-in place beyond the shop and quest chamber. They exist for atmosphere: the player cannot trade with or talk to anyone inside, and they do not change loot, enemies, or progression.
+
+### Added
+- `bar` and `garden` special room kinds in `dungeon.py`, registered in `SPECIAL_ROOM_DEFINITIONS` with `door_policy="sealed"` (so the distinct interior wall art always renders) and `spawn_policy="normal"` (hostiles are not cleared — they are appearance-only, not safe refuges). Both roll at 50% chance on every depth, never displace the shop/quest room, never overlap each other or the entrance/stairs room.
+- A `IdleNpc` model in `models.py`: a decorative, non-interactable traveler (x/y, kind, name, role, color). The player cannot talk to or trade with them and no interaction hint references them.
+- `bar`/`garden` population handlers in `population.py` that may (50% per room, layout-seeded local RNG) place one `IdleNpc` at the room center. Re-running `_populate_special_rooms` is a no-op (guarded against duplicate NPCs). Bar NPCs use warm tavern names; garden NPCs use wandering-pilgrim names.
+- Decorative floor art in `rendering/world.py`: `_draw_bar_floor` (warm aged-wood planks with a faint ale spill) and `_draw_garden_floor` (mossy flagstone with turf patches and low plants), plus `is_bar_tile`/`is_garden_tile` detectors.
+- Generalized special-room wall face art: `guest_wall_faces` is now backed by `special_wall_faces`, which returns a `"kind:side"` style for any special-room perimeter wall. `draw_wall_tile_surface`/`_draw_wall_side_face` were refactored to dispatch per kind: quest_room keeps its carved accent band, `bar` gets horizontal wood-plank paneling, `garden` gets moss splotches and a wandering vine. The cap stays normal stone so the art reads only on the interior face.
+- `draw_idle_npc` in `rendering/effects.py` reuses the story-guest humanoid sprite with just a floor shadow (no aura, label, or prompt) and is depth-sorted in `draw_world_objects`.
+- `idle_npcs` serialized in `save_system.py` via `idle_npc_to_dict`/`idle_npc_from_dict`; restored on load and reset on restart/descend/story-start. Old saves without `idle_npcs` or flavor rooms load cleanly (additive; schema version stays `5`).
+- `prewarm_tile_cache` prewarms all wall face styles (None + quest/bar/garden × left/right) and all five floor forms (normal, shop, guest, bar, garden) so the first frame on a floor is hitch-free.
+- New `tests/test_3_14_special_room_flavors.py` (10 tests): definitions, ~50% spawn rate across depths, determinism, population-determinism preservation, idle-NPC placement/interactability/spawn-rate, floor+wall detector coverage, save round-trip, pre-3.14 save compatibility, and a full-frame render smoke test.
+
+### Changed
+- `Game.__init__`, `RunFlowMixin.restart`/`descend_to_next_depth`, and `StoryRuntimeMixin.start_story_mode` initialize/reset `idle_npcs`.
+- Flavor-room rolls use a layout-seeded local RNG (same family as the guest-room planner) so the shared `self.rng` stream — and thus the door pass + enemy/item population — stays byte-for-byte identical to runs without flavor rooms, preserving determinism and save compatibility.
+- `tests/test_dungeon_tile_variants.py` prewarm-contract assertions updated: wall cache now holds `DUNGEON_WALL_VARIANTS * 7` style variants and floors `DUNGEON_FLOOR_VARIANTS * 5` forms (stairs unchanged at `* 2`).
+- Package metadata, `__version__`, save `release`, and version-current tests now target `3.14.0`. Save schema `version` remains `5`.
+
+### Validation
+- `python -m compileall src tests` passes.
+- `python -m unittest tests.test_3_14_special_room_flavors` passes (10 tests).
+- `python -m unittest discover tests` passes (104 tests).
+
 ## 3.13.1 — Test Suite Trim
 
 Reduced the automated test suite to roughly a third of its size and runtime without losing behavioral coverage, addressing the accumulated redundancy from milestone-based test files.
