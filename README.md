@@ -129,6 +129,10 @@ In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from t
 - Visuals and audio remain procedural prototype assets, now tuned for a cleaner milestone look rather than final art quality.
 - Save files are local JSON and are not cloud-synced.
 
+## License
+
+This project is licensed under the Apache License, Version 2.0 (see `LICENSE`). The author intends the Apache 2.0 license to apply retroactively to all past commits in this repository's history, including commits made before the license was first declared here.
+
 ## Credits
 
 Design, code, procedural story corpus, procedural art, and procedural audio by the Arch Rogue project. Built with Python and [Pygame CE](https://pyga.me/).

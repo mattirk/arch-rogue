@@ -4,6 +4,10 @@ version = "3.11.0"
 description = "3.11.0 cleans up the cutscene stage: removes unused overlay clutter, fixes sprite depth and sizing, and adds a player/antagonist duel."
 readme = "README.md"
 requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+]
 dependencies = [
     "pygame-ce>=2.5.0",
 ]
