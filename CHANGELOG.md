@@ -14,6 +14,7 @@ Loot rolls now carry clearer build identities: speed, proc, sustain, thorns, dam
 ### Changed
 - `population.py` equipment generation now consumes the affix/unique tables instead of hardcoded inline affix tuples, keeping loot tuning centralized and easier to expand.
 - Cursed equipment remains tempting but now has explicit handling tradeoffs alongside its hotter stat rolls.
+- Inventory affix tag chips are now drawn as procedural vector icons (matching the project's pixel-art style) instead of font glyphs, so they render reliably on any system including headless and web builds. Chip rows wrap inside the selected-item card, and shared menu text is clipped to stay inside inventory and character panels.
 - Package metadata bumped to `3.10.0`.
 
 ### Validation

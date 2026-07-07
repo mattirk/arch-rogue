@@ -13,29 +13,45 @@ ARCHETYPE_BUILD_TAGS: dict[str, tuple[str, ...]] = {
     "Ranger": ("volley", "control", "beast", "movement", "attack_speed"),
 }
 
-AFFIX_TAG_LABELS: dict[str, tuple[str, str]] = {
-    "attack_speed": ("⚔", "attack speed"),
-    "cast_speed": ("✦", "cast speed"),
-    "movement": ("➤", "movement"),
-    "lifesteal": ("♥", "lifesteal"),
-    "thorns": ("✹", "thorns"),
-    "proc": ("✧", "proc"),
-    "fire": ("🔥", "fire"),
-    "frost": ("❄", "frost"),
-    "poison": ("☠", "poison"),
-    "arcane": ("✦", "arcane"),
-    "shadow": ("☾", "shadow"),
-    "holy": ("✚", "holy"),
-    "bolt": ("➵", "bolt"),
-    "nova": ("○", "nova"),
-    "dash": ("➤", "dash"),
-    "guard": ("▣", "guard"),
-    "critical": ("✦", "crit"),
-    "volley": ("➵", "volley"),
-    "control": ("⌁", "control"),
-    "blood": ("♥", "blood"),
-    "curse": ("☾", "curse"),
-    "beast": ("♞", "beast"),
+AFFIX_TAG_LABELS: dict[str, str] = {
+    # Display labels for affix tag chips. The icons themselves are drawn
+    # procedurally by MenuBaseMixin.draw_tag_icon, so these are text-only.
+    "armor": "armor",
+    "arcane": "arcane",
+    "attack_speed": "atk speed",
+    "beast": "beast",
+    "bleed": "bleed",
+    "blood": "blood",
+    "bolt": "bolt",
+    "cast_speed": "cast speed",
+    "control": "control",
+    "counter": "counter",
+    "critical": "crit",
+    "curse": "curse",
+    "dash": "dash",
+    "fire": "fire",
+    "frost": "frost",
+    "guard": "guard",
+    "holy": "holy",
+    "knockback": "knockback",
+    "legendary": "legendary",
+    "lifesteal": "lifesteal",
+    "melee": "melee",
+    "movement": "movement",
+    "nova": "nova",
+    "physical": "physical",
+    "poison": "poison",
+    "proc": "proc",
+    "retaliate": "retaliate",
+    "risk": "risk",
+    "shadow": "shadow",
+    "spell": "spell",
+    "spirit": "spirit",
+    "stealth": "stealth",
+    "survival": "survival",
+    "thorns": "thorns",
+    "volley": "volley",
+    "ward": "ward",
 }
 
 
@@ -146,7 +162,7 @@ class InventoryMixin:
             return ""
         matches = sorted(item_tags & self.player_build_tags())
         if matches:
-            labels = [AFFIX_TAG_LABELS.get(tag, ("", tag))[1] for tag in matches[:2]]
+            labels = [AFFIX_TAG_LABELS.get(tag, tag) for tag in matches[:2]]
             return f"Build: supports {'/'.join(labels)}"
         equipped = self.player.equipment.get(item.slot)
         current = 0
@@ -157,17 +173,24 @@ class InventoryMixin:
             return "Build: raw-stat upgrade"
         return "Build: off-path tech"
 
+    def item_affix_tag_chips(self, item: Item) -> list[str]:
+        """Ordered affix tags to render as procedural icon chips in the HUD."""
+        if item.unidentified and item.slot in ("weapon", "armor"):
+            return []
+        # Surface damage-type and proc identity first so the chip row leads
+        # with the most build-relevant signal, then sort the rest for stability.
+        tags = self.item_build_tags(item)
+        priority = []
+        for preferred in (item.damage_type.lower(), item.proc_effect.lower(), "proc"):
+            if preferred and preferred in tags and preferred not in priority:
+                priority.append(preferred)
+        rest = sorted(tags - set(priority))
+        return (priority + rest)[:6]
+
     def item_affix_tooltip_lines(self, item: Item) -> list[str]:
         if item.unidentified and item.slot in ("weapon", "armor"):
             return ["Affixes hidden until identified."]
         lines: list[str] = []
-        tags = sorted(self.item_build_tags(item))
-        if tags:
-            chips = [
-                f"{AFFIX_TAG_LABELS.get(tag, ('•', tag))[0]} {AFFIX_TAG_LABELS.get(tag, ('•', tag))[1]}"
-                for tag in tags[:6]
-            ]
-            lines.append(f"Tags: {' · '.join(chips)}")
         if item.affixes:
             lines.append(f"Affixes: {', '.join(item.affixes)}")
         stat_bits: list[str] = []
@@ -190,9 +213,6 @@ class InventoryMixin:
             stat_bits.append(f"{item.proc_effect}{chance}")
         if stat_bits:
             lines.append("Stats: " + " · ".join(stat_bits))
-        hint = self.item_build_relevance_hint(item)
-        if hint:
-            lines.append(hint)
         return lines
 
     def inventory_category(self, item: Item) -> int:

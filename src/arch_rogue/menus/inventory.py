@@ -417,7 +417,7 @@ class MenuInventoryMixin:
         detail_rect = pygame.Rect(
             text_x,
             name_rect.bottom + self.u(3),
-            max(1, row.right - text_x - self.u(10)),
+            text_w,
             self.g.tiny_font.get_height(),
         )
         name = f"{item.visible_rarity} · {item.display_name}{self.compare_hint(item)}"
@@ -530,24 +530,31 @@ class MenuInventoryMixin:
             pygame.Rect(rect.x + pad, y, rect.width - pad * 2, rect.bottom - y - pad),
             max(self.g.tiny_font.get_height() + self.u(3), self.u(16)),
         ) + self.u(6)
+        # Tag chip row — procedural icons + labels, wrapping inside the card.
+        tags = self.g.item_affix_tag_chips(item)
+        if tags:
+            y = self._draw_affix_tag_chips(rect, pad, y, tags, color)
         extra_lines: list[str] = self.g.item_affix_tooltip_lines(item)
         if item.unique_effect:
             extra_lines.append(f"Effect: {item.unique_effect}")
         if item.cursed:
             extra_lines.append("Cursed bargain: hotter rolls, slower handling.")
         extra_lines.append("Enter/E use · Del drop")
+        line_gap = max(self.g.tiny_font.get_height() + self.u(3), self.u(15))
+        text_rect_w = rect.width - pad * 2
         for line in extra_lines:
-            if y + self.g.tiny_font.get_height() > rect.bottom - pad:
-                break
-            self.draw_text(
-                line,
-                self.g.tiny_font,
-                self.MUTED,
-                pygame.Rect(
-                    rect.x + pad, y, rect.width - pad * 2, self.g.tiny_font.get_height()
-                ),
-            )
-            y += self.g.tiny_font.get_height() + self.u(3)
+            for wrapped in self.wrap_text(line, self.g.tiny_font, text_rect_w):
+                if y + self.g.tiny_font.get_height() > rect.bottom - pad:
+                    return
+                self.draw_text(
+                    wrapped,
+                    self.g.tiny_font,
+                    self.MUTED,
+                    pygame.Rect(
+                        rect.x + pad, y, text_rect_w, self.g.tiny_font.get_height()
+                    ),
+                )
+                y += line_gap
 
     def draw_inventory_equipment(self, rect: pygame.Rect) -> None:
         pygame.draw.rect(self.screen, self.PANEL_INK, rect, border_radius=self.u(9))
@@ -678,6 +685,55 @@ class MenuInventoryMixin:
                 valign="center",
             )
             x += pill_w + gap
+
+    def _draw_affix_tag_chips(
+        self, rect: pygame.Rect, pad: int, y: int, tags: list[str], color: Color
+    ) -> int:
+        from ..inventory import AFFIX_TAG_LABELS
+
+        tiny = self.g.tiny_font
+        tiny_h = tiny.get_height()
+        icon_size = max(self.u(12), tiny_h)
+        chip_h = max(icon_size + self.u(2), tiny_h + self.u(4))
+        chip_gap = self.u(4)
+        inner_x = rect.x + pad
+        max_x = rect.right - pad
+        x = inner_x
+        for tag in tags:
+            label = AFFIX_TAG_LABELS.get(tag, tag)
+            label_w = tiny.size(label)[0]
+            chip_w = icon_size + self.u(4) + label_w + self.u(8)
+            if x + chip_w > max_x:
+                x = inner_x
+                y += chip_h + self.u(2)
+            if y + chip_h > rect.bottom - pad:
+                return y
+            chip_rect = pygame.Rect(x, y, chip_w, chip_h)
+            pygame.draw.rect(
+                self.screen, self.PANEL_2, chip_rect, border_radius=self.u(4)
+            )
+            pygame.draw.rect(
+                self.screen,
+                self.IRON_DARK,
+                chip_rect,
+                max(1, self.u(1)),
+                border_radius=self.u(4),
+            )
+            icon_rect = pygame.Rect(
+                x + self.u(3), y + (chip_h - icon_size) // 2, icon_size, icon_size
+            )
+            self.draw_tag_icon(tag, icon_rect, color)
+            self.draw_text(
+                label,
+                tiny,
+                self.MUTED,
+                pygame.Rect(
+                    icon_rect.right + self.u(3), y, label_w + self.u(2), chip_h
+                ),
+                valign="center",
+            )
+            x += chip_w + chip_gap
+        return y + chip_h + self.u(4)
 
     def compare_hint(self, item: Item) -> str:
         if item.unidentified or item.slot not in ("weapon", "armor"):

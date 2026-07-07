@@ -1,13 +1,11 @@
 # pyright: reportAttributeAccessIssue=false, reportUnusedImport=false
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Sequence
 
 import pygame
 
-from .. import __version__
-from ..constants import MAX_INVENTORY
-from ..models import Archetype, Color, Item
+from ..models import Archetype, Color
 
 MenuRow = tuple[str, str, str]
 
@@ -427,13 +425,14 @@ class MenuCharacterMixin:
             )
 
     def archetype_accent(self, name: str) -> Color:
-        return {
+        colors: dict[str, Color] = {
             "Warden": (235, 205, 120),
             "Rogue": (170, 230, 150),
             "Arcanist": (120, 210, 255),
             "Acolyte": (220, 95, 140),
             "Ranger": (150, 215, 105),
-        }.get(name, self.accent())
+        }
+        return colors[name] if name in colors else self.accent()
 
     def class_tagline(self, name: str) -> str:
         return {
@@ -631,18 +630,18 @@ class MenuCharacterMixin:
             )
             y = rect.y + card_pad + small_h + self.u(6)
             line_h = max(tiny_h + self.u(3), self.u(15))
+            text_w = max(1, rect.width - card_pad * 2)
             for line, color in lines:
-                if y + line_h > rect.bottom - card_pad:
-                    break
-                self.draw_text(
-                    line,
-                    self.g.tiny_font,
-                    color,
-                    pygame.Rect(
-                        rect.x + card_pad, y, rect.width - card_pad * 2, line_h
-                    ),
-                )
-                y += line_h
+                for wrapped in self.wrap_text(line, self.g.tiny_font, text_w):
+                    if y + tiny_h > rect.bottom - card_pad:
+                        return
+                    self.draw_text(
+                        wrapped,
+                        self.g.tiny_font,
+                        color,
+                        pygame.Rect(rect.x + card_pad, y, text_w, line_h),
+                    )
+                    y += line_h
 
         melee_name, bolt_name, nova_name, dash_name = self.g.skill_names()
         skill_lines = [
@@ -1008,7 +1007,7 @@ class MenuCharacterMixin:
                     _, c_melee, c_spell, c_hp = self.g.combo_state()
                     if (p_melee, p_spell, p_hp) != (c_melee, c_spell, c_hp):
                         hint_text = (
-                            f"{hovered.name} → combo +{p_melee} melee "
+                            f"{hovered.name} -> combo +{p_melee} melee "
                             f"+{p_spell} spell +{p_hp} HP"
                         )
                         hint_color = self.WARNING

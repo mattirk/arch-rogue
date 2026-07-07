@@ -7,9 +7,7 @@ from typing import Any, Sequence
 
 import pygame
 
-from .. import __version__
-from ..constants import MAX_INVENTORY
-from ..models import Archetype, Color, Item
+from ..models import Archetype, Color
 
 MenuRow = tuple[str, str, str]
 
@@ -116,6 +114,8 @@ class MenuBaseMixin:
         align: str = "left",
         valign: str = "top",
     ) -> None:
+        if rect.width <= 0 or rect.height <= 0:
+            return
         surface = font.render(self.ellipsize(text, font, rect.width), True, color)
         if align == "center":
             x = rect.centerx - surface.get_width() // 2
@@ -129,7 +129,300 @@ class MenuBaseMixin:
             y = rect.bottom - surface.get_height()
         else:
             y = rect.y
+        old_clip = self.screen.get_clip()
+        self.screen.set_clip(rect.clip(self.screen.get_rect()))
         self.screen.blit(surface, (x, y))
+        self.screen.set_clip(old_clip)
+
+    def draw_tag_icon(self, tag: str, rect: pygame.Rect, color: Color) -> None:
+        """Draw a small procedural glyph for an affix tag inside ``rect``.
+
+        Pygame's bundled default font does not guarantee emoji/symbol glyph
+        coverage, so tag icons are drawn with primitives (matching the project's
+        procedural pixel-art style) instead of font characters. Each icon fits
+        inside ``rect`` and strokes/fills with ``color``.
+        """
+        tag = tag.lower()
+        cx, cy = rect.center
+        size = min(rect.width, rect.height)
+        if size < 3:
+            return
+        screen = self.screen
+        r = size // 2
+        w = max(1, size // 7)
+
+        def line(p1, p2, width=w):
+            pygame.draw.line(screen, color, p1, p2, width)
+
+        def poly(points, width=0):
+            if width:
+                pygame.draw.polygon(screen, color, points, width)
+            else:
+                pygame.draw.polygon(screen, color, points)
+
+        def circle(center, radius, width=0):
+            if radius <= 0:
+                return
+            if width:
+                pygame.draw.circle(screen, color, center, radius, width)
+            else:
+                pygame.draw.circle(screen, color, center, radius)
+
+        def star4(points=4, outer=r, inner=r * 0.38, width=0):
+            pts = []
+            for i in range(points * 2):
+                ang = math.radians((360 / (points * 2)) * i - 90)
+                rad = outer if i % 2 == 0 else inner
+                pts.append((cx + math.cos(ang) * rad, cy + math.sin(ang) * rad))
+            poly(pts, width)
+
+        def arrow(oy=0, shaft=r * 0.7, head=r * 0.35):
+            line((cx - shaft, cy + oy), (cx + shaft * 0.6, cy + oy))
+            poly(
+                [
+                    (cx + shaft, cy + oy),
+                    (cx + shaft * 0.4, cy + oy - head),
+                    (cx + shaft * 0.4, cy + oy + head),
+                ],
+                width=w,
+            )
+
+        # --- icon families ---------------------------------------------------
+        if tag == "fire":
+            poly(
+                [
+                    (cx, cy - r),
+                    (cx + r * 0.7, cy + r * 0.6),
+                    (cx - r * 0.7, cy + r * 0.6),
+                ],
+                width=w,
+            )
+            poly(
+                [
+                    (cx, cy - r * 0.3),
+                    (cx + r * 0.35, cy + r * 0.45),
+                    (cx - r * 0.35, cy + r * 0.45),
+                ],
+                width=w,
+            )
+        elif tag == "frost":
+            for ang in (0, 60, 120):
+                dx = math.cos(math.radians(ang)) * r * 0.85
+                dy = math.sin(math.radians(ang)) * r * 0.85
+                line((cx - dx, cy - dy), (cx + dx, cy + dy))
+        elif tag in ("poison", "blood", "bleed"):
+            circle((cx, cy + int(r * 0.25)), int(r * 0.5), width=w)
+            line((cx - int(r * 0.4), cy + int(r * 0.05)), (cx, cy - int(r * 0.7)))
+            line((cx + int(r * 0.4), cy + int(r * 0.05)), (cx, cy - int(r * 0.7)))
+        elif tag in ("arcane", "critical", "proc"):
+            star4(width=w)
+        elif tag == "shadow":
+            pygame.draw.circle(screen, color, (cx, cy), int(r * 0.8), 0)
+            pygame.draw.circle(
+                screen,
+                self.PANEL_INK,
+                (cx + int(r * 0.35), cy - int(r * 0.1)),
+                int(r * 0.65),
+            )
+        elif tag == "holy":
+            line((cx, cy - r * 0.7), (cx, cy + r * 0.7))
+            line((cx - r * 0.5, cy - r * 0.1), (cx + r * 0.5, cy - r * 0.1))
+        elif tag == "physical":
+            line((cx - r * 0.7, cy + r * 0.7), (cx + r * 0.7, cy - r * 0.7))
+        elif tag == "melee":
+            line((cx, cy - r * 0.8), (cx, cy + r * 0.5))
+            line((cx - r * 0.4, cy - r * 0.3), (cx + r * 0.4, cy - r * 0.3))
+            poly(
+                [
+                    (cx, cy - r * 0.95),
+                    (cx - r * 0.15, cy - r * 0.6),
+                    (cx + r * 0.15, cy - r * 0.6),
+                ],
+                width=w,
+            )
+        elif tag == "attack_speed":
+            poly(
+                [
+                    (cx - r * 0.2, cy - r * 0.8),
+                    (cx + r * 0.3, cy - r * 0.1),
+                    (cx, cy - r * 0.1),
+                    (cx + r * 0.2, cy + r * 0.8),
+                    (cx - r * 0.3, cy + r * 0.1),
+                    (cx, cy + r * 0.1),
+                ],
+                width=w,
+            )
+        elif tag in ("cast_speed", "spell"):
+            poly(
+                [
+                    (cx, cy - r * 0.8),
+                    (cx + r * 0.2, cy),
+                    (cx, cy + r * 0.8),
+                    (cx - r * 0.2, cy),
+                ],
+                width=w,
+            )
+            poly(
+                [
+                    (cx - r * 0.8, cy),
+                    (cx, cy + r * 0.2),
+                    (cx + r * 0.8, cy),
+                    (cx, cy - r * 0.2),
+                ],
+                width=w,
+            )
+        elif tag in ("movement", "bolt", "knockback", "retaliate"):
+            arrow()
+        elif tag == "dash":
+            for ox in (-r * 0.3, r * 0.3):
+                line((cx + ox - r * 0.2, cy - r * 0.5), (cx + ox + r * 0.2, cy))
+                line((cx + ox + r * 0.2, cy), (cx + ox - r * 0.2, cy + r * 0.5))
+        elif tag == "lifesteal":
+            circle((cx - int(r * 0.3), cy - int(r * 0.15)), int(r * 0.35), width=w)
+            circle((cx + int(r * 0.3), cy - int(r * 0.15)), int(r * 0.35), width=w)
+            poly([(cx - r * 0.6, cy), (cx + r * 0.6, cy), (cx, cy + r * 0.7)], width=w)
+        elif tag == "thorns":
+            for ox in (-r * 0.5, 0, r * 0.5):
+                poly(
+                    [
+                        (ox + cx - r * 0.15, cy + r * 0.6),
+                        (ox + cx, cy - r * 0.6),
+                        (ox + cx + r * 0.15, cy + r * 0.6),
+                    ],
+                    width=w,
+                )
+        elif tag == "nova":
+            circle((cx, cy), int(r * 0.7), width=w)
+            circle((cx, cy), max(1, w), width=0)
+        elif tag in ("guard", "ward", "armor"):
+            poly(
+                [
+                    (cx - r * 0.6, cy - r * 0.6),
+                    (cx + r * 0.6, cy - r * 0.6),
+                    (cx + r * 0.6, cy + r * 0.2),
+                    (cx, cy + r * 0.8),
+                    (cx - r * 0.6, cy + r * 0.2),
+                ],
+                width=w,
+            )
+            if tag == "ward":
+                line((cx, cy - r * 0.35), (cx, cy + r * 0.45))
+                line((cx - r * 0.3, cy - r * 0.05), (cx + r * 0.3, cy - r * 0.05))
+        elif tag == "control":
+            pygame.draw.rect(
+                screen,
+                color,
+                pygame.Rect(
+                    cx - int(r * 0.7), cy - int(r * 0.2), int(r * 0.7), int(r * 0.4)
+                ),
+                w,
+                border_radius=int(r * 0.2),
+            )
+            pygame.draw.rect(
+                screen,
+                color,
+                pygame.Rect(cx, cy - int(r * 0.2), int(r * 0.7), int(r * 0.4)),
+                w,
+                border_radius=int(r * 0.2),
+            )
+        elif tag == "curse":
+            line((cx - r * 0.6, cy - r * 0.6), (cx + r * 0.6, cy + r * 0.6))
+            line((cx - r * 0.6, cy + r * 0.6), (cx + r * 0.6, cy - r * 0.6))
+        elif tag == "beast":
+            circle((cx, cy + int(r * 0.3)), int(r * 0.35), width=w)
+            for ox in (-r * 0.4, 0, r * 0.4):
+                circle(
+                    (cx + int(ox), cy - int(r * 0.4)), max(1, int(r * 0.15)), width=w
+                )
+        elif tag == "spirit":
+            circle((cx, cy - int(r * 0.2)), int(r * 0.4), width=w)
+            line((cx - r * 0.3, cy + r * 0.2), (cx + r * 0.3, cy + r * 0.2))
+            line((cx - r * 0.2, cy + r * 0.5), (cx + r * 0.2, cy + r * 0.5))
+        elif tag == "stealth":
+            pygame.draw.ellipse(
+                screen,
+                color,
+                pygame.Rect(
+                    cx - int(r * 0.7), cy - int(r * 0.35), int(r * 1.4), int(r * 0.7)
+                ),
+                w,
+            )
+            circle((cx, cy), max(1, int(r * 0.2)), width=0)
+        elif tag == "survival":
+            pygame.draw.ellipse(
+                screen,
+                color,
+                pygame.Rect(
+                    cx - int(r * 0.5), cy - int(r * 0.6), int(r * 1.0), int(r * 1.2)
+                ),
+                w,
+            )
+            line((cx - r * 0.3, cy + r * 0.5), (cx + r * 0.3, cy - r * 0.5))
+        elif tag == "counter":
+            pygame.draw.arc(
+                screen,
+                color,
+                pygame.Rect(
+                    cx - int(r * 0.6), cy - int(r * 0.6), int(r * 1.2), int(r * 1.2)
+                ),
+                0.5,
+                5.5,
+                w,
+            )
+            poly(
+                [
+                    (cx + int(r * 0.5), cy - int(r * 0.5)),
+                    (cx + int(r * 0.6), cy - int(r * 0.1)),
+                    (cx + int(r * 0.1), cy - int(r * 0.5)),
+                ],
+                width=w,
+            )
+        elif tag == "legendary":
+            poly(
+                [
+                    (cx - r * 0.7, cy + r * 0.4),
+                    (cx - r * 0.7, cy - r * 0.2),
+                    (cx - r * 0.4, cy + r * 0.1),
+                    (cx, cy - r * 0.5),
+                    (cx + r * 0.4, cy + r * 0.1),
+                    (cx + r * 0.7, cy - r * 0.2),
+                    (cx + r * 0.7, cy + r * 0.4),
+                ],
+                width=w,
+            )
+        elif tag == "risk":
+            poly(
+                [
+                    (cx, cy - r * 0.7),
+                    (cx + r * 0.7, cy + r * 0.6),
+                    (cx - r * 0.7, cy + r * 0.6),
+                ],
+                width=w,
+            )
+            line((cx, cy - r * 0.2), (cx, cy + r * 0.2))
+            circle((cx, cy + int(r * 0.4)), max(1, w), width=0)
+        elif tag == "volley":
+            for oy in (-r * 0.4, 0, r * 0.4):
+                line((cx - r * 0.6, cy + oy), (cx + r * 0.3, cy + oy))
+                poly(
+                    [
+                        (cx + r * 0.5, cy + oy),
+                        (cx + r * 0.2, cy + oy - r * 0.2),
+                        (cx + r * 0.2, cy + oy + r * 0.2),
+                    ],
+                    width=w,
+                )
+        else:
+            # Generic fallback: a small diamond so unknown tags still read as a tag.
+            poly(
+                [
+                    (cx, cy - r * 0.7),
+                    (cx + r * 0.5, cy),
+                    (cx, cy + r * 0.7),
+                    (cx - r * 0.5, cy),
+                ],
+                width=w,
+            )
 
     def draw_wrapped_text(
         self,

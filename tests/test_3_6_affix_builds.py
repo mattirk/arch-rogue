@@ -18,6 +18,7 @@ from arch_rogue.content import (  # noqa: E402
     UNIQUE_ITEM_DEFINITIONS,
 )
 from arch_rogue.game import Game  # noqa: E402
+from arch_rogue.inventory import AFFIX_TAG_LABELS  # noqa: E402
 from arch_rogue.models import Enemy, Item  # noqa: E402
 
 
@@ -286,6 +287,11 @@ class AffixBuild310Tests(unittest.TestCase):
             self.assertAlmostEqual(restored.lifesteal, 0.12)
             self.assertAlmostEqual(restored.proc_chance, 0.45)
 
+    def test_inventory_tag_labels_are_ascii_and_chips_resolve(self) -> None:
+        for tag, label in AFFIX_TAG_LABELS.items():
+            self.assertTrue(label.isascii(), tag)
+            self.assertLessEqual(len(label), 12, tag)
+
     def test_inventory_hints_surface_affix_tags_and_build_relevance(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=1, seed=3105)
@@ -306,11 +312,16 @@ class AffixBuild310Tests(unittest.TestCase):
 
             summary = game.item_decision_summary(blade)
             tooltips = game.item_affix_tooltip_lines(blade)
+            chips = game.item_affix_tag_chips(blade)
 
             self.assertIn("Build: supports", summary)
             self.assertIn("poison", summary)
-            self.assertTrue(any(line.startswith("Tags:") for line in tooltips))
+            self.assertIn("poison", chips)
+            self.assertIn("attack_speed", chips)
             self.assertTrue(any("attack speed" in line for line in tooltips))
+            # Rendering the selected card with procedural icon chips must not error.
+            game.inventory_open = True
+            game.draw_inventory()
 
 
 if __name__ == "__main__":
