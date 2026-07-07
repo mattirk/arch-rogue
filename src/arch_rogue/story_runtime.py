@@ -22,6 +22,10 @@ from .story import (
 
 
 class StoryRuntimeMixin:
+    # Narrator typewriter speed multiplier (milestone 3.11). Higher values
+    # make the narrator read faster; delays are divided by this factor.
+    CUTSCENE_NARRATION_SPEED = 2.25
+
     def start_story_mode(self) -> None:
         self.story_seed = self.rng.randrange(1, 2**31)
         self.story_state = StoryEngine.generate(
@@ -192,17 +196,18 @@ class StoryRuntimeMixin:
         return format_asset_text(node.text, context)
 
     def cutscene_narration_char_delay(self, char: str) -> float:
+        speed = self.CUTSCENE_NARRATION_SPEED
         if char == "\n":
-            return 0.18
+            return 0.18 / speed
         if char in ".!?":
-            return 0.25
+            return 0.25 / speed
         if char in ";:":
-            return 0.16
-        if char in ",—":
-            return 0.10
+            return 0.16 / speed
+        if char in ",\u2014":
+            return 0.10 / speed
         if char.isspace():
-            return 0.012
-        return 0.026
+            return 0.012 / speed
+        return 0.026 / speed
 
     def active_cutscene_narration_duration(self, text: str | None = None) -> float:
         narration = self.active_cutscene_text() if text is None else text

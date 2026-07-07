@@ -567,6 +567,13 @@ class RenderingStoryOverlayMixin:
     STAGE_DUEL_PHASE_RETREAT = 0.30
     STAGE_DUEL_GAP = 0.045
     STAGE_DUEL_ANTAGONIST_ALPHA = 0.88
+    # Obstacle avoidance: a center-stage prop such as the altar blocks the
+    # direct duel path. The duelers route around it, passing to opposite sides
+    # and clashing just in front of it, so the altar reads as solid and
+    # unpassable instead of something they walk through.
+    STAGE_DUEL_OBSTACLE_CLEAR = 0.09
+    STAGE_DUEL_DETOUR_FORWARD = 0.07
+    STAGE_DUEL_DETOUR_MAX_Y = 0.92
 
     def _stage_cache_key(self, asset_id, layer, size, accent, extra=()):
         return (asset_id, layer, size, accent, extra)
@@ -630,8 +637,9 @@ class RenderingStoryOverlayMixin:
                     actor.id, animation_id
                 )
                 if duel is not None and actor.id in duel:
-                    ddx, dpose, dalpha, dscale = duel[actor.id]
+                    ddx, ddy, dpose, dalpha, dscale = duel[actor.id]
                     dx = ddx
+                    dy = ddy
                     pose = dpose
                     if dalpha is not None:
                         alpha = dalpha
@@ -647,10 +655,7 @@ class RenderingStoryOverlayMixin:
         else:
             self._frame_duel_state = None
         self._draw_duel_clash_flash(surface, stage_rect)
-        self.draw_stage_lights(surface, stage_rect, stage, accent)
-        self.draw_stage_ambient(surface, stage_rect, stage, accent)
-        if stage.footlights:
-            self.draw_stage_footlights(surface, stage_rect, stage, accent)
+        self.draw_stage_lighting(surface, stage_rect, stage, accent)
         if stage.proscenium:
             self.draw_stage_proscenium(surface, stage_rect, stage, accent)
         self.draw_stage_curtain(surface, stage_rect, stage, accent)
@@ -682,7 +687,7 @@ class RenderingStoryOverlayMixin:
             theme = self.theme
             base = self.shade(theme.floor, -52)
             far = self.mix(base, self.shade(accent, -75), 0.45)
-            # Clean vertical gradient back wall — no keyword doodads.
+            # Clean vertical gradient back wall — no keyword doodads, no halo blobs.
             bands = 8
             for band in range(bands):
                 amount = band / (bands - 1)
@@ -690,31 +695,15 @@ class RenderingStoryOverlayMixin:
                 y = int(h * band / bands)
                 bh = max(1, h // bands + 1)
                 pygame.draw.rect(layer, (*color, 255), (0, y, w, bh))
-            # Soft radial vignette so the back wall recedes.
-            vignette = pygame.Surface((w, h), pygame.SRCALPHA)
-            for ring in range(6):
-                radius = int(max(w, h) * (0.7 - ring * 0.08))
-                pygame.draw.circle(
-                    vignette, (0, 0, 0, 16 + ring * 7), (w // 2, int(h * 0.45)), radius
-                )
-            layer.blit(vignette, (0, 0))
-            # A single faint accent halo behind the relic position for depth.
-            asset_local = self.active_cutscene_asset()
-            if asset_local is not None:
-                relic_actor = asset_local.actors.get("relic")
-                if relic_actor is not None:
-                    cx = int(relic_actor.x * w)
-                    cy = int(relic_actor.y * h)
-                    halo = pygame.Surface((w, h), pygame.SRCALPHA)
-                    for r in range(5):
-                        radius = int(w * (0.22 - r * 0.035))
-                        pygame.draw.circle(
-                            halo,
-                            (*self.shade(accent, -40), 14 - r * 2),
-                            (cx, cy),
-                            max(1, radius),
-                        )
-                    layer.blit(halo, (0, 0))
+            # A subtle top-down light gradient so the back wall reads as lit
+            # from above without any transparent circle/halo overlays.
+            warm = self.mix(self.STAGE_FLAME, accent, 0.2)
+            light_bands = 6
+            for band in range(light_bands):
+                t = band / (light_bands - 1)
+                y = int(h * 0.62 * band / light_bands)
+                bh = max(1, int(h * 0.62) // light_bands + 1)
+                pygame.draw.rect(layer, (*warm, int(18 * (1.0 - t))), (0, y, w, bh))
             # Painted horizon line where back wall meets floor.
             horizon_y = int(h * 0.62)
             pygame.draw.line(
@@ -788,9 +777,6 @@ class RenderingStoryOverlayMixin:
             "lectern": self._paint_prop_lectern,
             "candelabra": self._paint_prop_candelabra,
             "banner": self._paint_prop_banner,
-            "brazier": self._paint_prop_brazier,
-            "throne": self._paint_prop_throne,
-            "crate": self._paint_prop_crate,
         }.get(kind)
 
     def _paint_prop_pillar(self, surface, x, y, scale, color, phase, sway):
@@ -851,19 +837,9 @@ class RenderingStoryOverlayMixin:
         pygame.draw.rect(
             surface, (*self.shade(stone, -32), 220), top, 1, border_radius=self.ui(2)
         )
-        glow = 0.5 + 0.5 * math.sin(self.elapsed * 2.0 + phase)
         accent = self.story_state.accent if self.story_state else self.theme.accent
         pygame.draw.circle(
-            surface,
-            (*accent, int(60 + glow * 80)),
-            (rect.centerx, rect.centery),
-            self.ui(4),
-        )
-        pygame.draw.circle(
-            surface,
-            (*self.shade(accent, 40), 160),
-            (rect.centerx, rect.centery),
-            self.ui(2),
+            surface, accent, (rect.centerx, rect.centery), self.ui(2)
         )
 
     def _paint_prop_lectern(self, surface, x, y, scale, color, phase, sway):
@@ -917,32 +893,18 @@ class RenderingStoryOverlayMixin:
             candle = pygame.Rect(
                 arm_end[0] - self.ui(2), arm_end[1] - self.ui(8), self.ui(4), self.ui(8)
             )
-            pygame.draw.rect(surface, (220, 210, 188, 240), candle)
+            pygame.draw.rect(surface, (220, 210, 188), candle)
             flick = 0.7 + 0.3 * math.sin(self.elapsed * 9.0 + phase + side * 1.3)
             flame_y = candle.y - self.ui(3) - int(flick * self.ui(2))
             pygame.draw.polygon(
                 surface,
-                (*flame_color, int(200 * flick)),
+                flame_color,
                 [
                     (candle.centerx, flame_y - self.ui(4)),
                     (candle.centerx - self.ui(2), flame_y),
                     (candle.centerx + self.ui(2), flame_y),
                 ],
             )
-            pygame.draw.circle(
-                surface,
-                (*self.STAGE_FLAME_CORE, int(150 * flick)),
-                (candle.centerx, flame_y),
-                self.ui(1),
-            )
-            halo = pygame.Surface((self.ui(20), self.ui(20)), pygame.SRCALPHA)
-            pygame.draw.circle(
-                halo,
-                (*flame_color, int(24 * flick)),
-                halo.get_rect().center,
-                self.ui(9),
-            )
-            surface.blit(halo, halo.get_rect(center=(candle.centerx, flame_y)))
 
     def _paint_prop_banner(self, surface, x, y, scale, color, phase, sway):
         w = max(self.ui(14), int(self.ui(20) * scale))
@@ -979,250 +941,65 @@ class RenderingStoryOverlayMixin:
             border_radius=self.ui(1),
         )
 
-    def _paint_prop_brazier(self, surface, x, y, scale, color, phase, sway):
-        iron = self.STAGE_IRON
-        w = max(self.ui(18), int(self.ui(26) * scale))
-        h = max(self.ui(16), int(self.ui(22) * scale))
-        rect = pygame.Rect(0, 0, w, h)
-        rect.midbottom = (x, y + self.ui(8))
-        pygame.draw.ellipse(surface, (*self.shade(iron, -10), 255), rect)
-        pygame.draw.ellipse(surface, (*self.shade(iron, 22), 200), rect, 1)
-        accent = self.story_state.accent if self.story_state else self.theme.accent
-        ember = self.mix(self.STAGE_FLAME, accent, 0.4)
-        for index in range(5):
-            t = (self.elapsed * 1.4 + index * 0.4 + phase) % 1.0
-            ey = rect.y - int(t * self.ui(18))
-            ex = rect.centerx + int(math.sin(t * 6 + index) * self.ui(4))
-            alpha = int(180 * (1.0 - t))
-            pygame.draw.circle(surface, (*ember, alpha), (ex, ey), self.ui(1))
+    def draw_stage_lighting(self, surface, stage_rect, stage, accent):
+        """Simplified stage lights (milestone 3.11).
 
-    def _paint_prop_throne(self, surface, x, y, scale, color, phase, sway):
-        stone = self.STAGE_STONE
-        w = max(self.ui(40), int(self.ui(56) * scale))
-        h = max(self.ui(60), int(self.ui(84) * scale))
-        rect = pygame.Rect(0, 0, w, h)
-        rect.midbottom = (x, y + self.ui(8))
-        pygame.draw.rect(
-            surface, (*self.shade(stone, -16), 255), rect, border_radius=self.ui(4)
-        )
-        pygame.draw.rect(
-            surface, (*self.shade(stone, 22), 200), rect, 1, border_radius=self.ui(4)
-        )
-        seat = pygame.Rect(
-            rect.x - self.ui(4), rect.centery, rect.w + self.ui(8), self.ui(10)
-        )
-        pygame.draw.rect(
-            surface, (*self.shade(stone, 4), 255), seat, border_radius=self.ui(2)
-        )
-        for side in (-1, 1):
-            pygame.draw.polygon(
-                surface,
-                (*self.shade(stone, 26), 230),
-                [
-                    (rect.x + (rect.w if side > 0 else 0), rect.y),
-                    (
-                        rect.x + (rect.w if side > 0 else 0) + side * self.ui(4),
-                        rect.y - self.ui(10),
-                    ),
-                    (rect.x + (rect.w if side > 0 else 0) + side * self.ui(8), rect.y),
-                ],
-            )
+        Replaces the old multi-circle spot/cone/wash/beam lights, the ambient
+        particle system, and the footlight halos with one clean, cached
+        lighting pass: a soft top-down key-light gradient, a warm floor pool,
+        and a single thin flickering footlight strip at the front of the
+        stage. No transparent ellipses or stacked glow circles.
+        """
+        asset = self.active_cutscene_asset()
+        asset_id = asset.id if asset is not None else "_default"
+        key = self._stage_cache_key(asset_id, "lighting", stage_rect.size, accent, ())
 
-    def _paint_prop_crate(self, surface, x, y, scale, color, phase, sway):
-        wood = (78, 60, 44)
-        w = max(self.ui(20), int(self.ui(28) * scale))
-        h = max(self.ui(18), int(self.ui(24) * scale))
-        rect = pygame.Rect(0, 0, w, h)
-        rect.midbottom = (x, y + self.ui(8))
-        pygame.draw.rect(surface, (*wood, 255), rect)
-        pygame.draw.rect(surface, (*self.shade(wood, 22), 200), rect, 1)
-        pygame.draw.line(
-            surface,
-            (*self.shade(wood, -30), 200),
-            (rect.x, rect.y),
-            (rect.right, rect.bottom),
-            1,
-        )
-        pygame.draw.line(
-            surface,
-            (*self.shade(wood, -30), 200),
-            (rect.right, rect.y),
-            (rect.x, rect.bottom),
-            1,
-        )
-
-    def draw_stage_lights(self, surface, stage_rect, stage, accent):
-        if not stage.lights:
-            return
-        for light in stage.lights:
-            self._draw_stage_light(surface, stage_rect, light, accent)
-
-    def _draw_stage_light(self, surface, stage_rect, light, accent):
-        tint = self.stage_role_color(light.tint, accent)
-        sway_x = math.sin(self.elapsed * 0.8 + light.phase) * light.sway * 0.02
-        sway_y = math.cos(self.elapsed * 0.6 + light.phase) * light.sway * 0.01
-        tx = stage_rect.x + int((light.target_x + sway_x) * stage_rect.width)
-        ty = stage_rect.y + int((light.target_y + sway_y) * stage_rect.height)
-        sx = stage_rect.x + int(light.source_x * stage_rect.width)
-        sy = stage_rect.y + int(light.source_y * stage_rect.height)
-        radius = max(self.ui(8), int(light.radius * stage_rect.width))
-        intensity = light.intensity
-        if light.kind == "spot":
-            glow = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-            for ring in range(4):
-                r = int(radius * (1.0 - ring * 0.22))
-                a = int(50 * intensity * (1.0 - ring * 0.2))
-                pygame.draw.circle(glow, (*tint, a), (radius, radius), r)
-            surface.blit(glow, glow.get_rect(center=(tx, ty)))
-            beam = pygame.Surface(stage_rect.size, pygame.SRCALPHA)
-            beam_pts = [
-                (sx - stage_rect.x - self.ui(3), sy - stage_rect.y),
-                (sx - stage_rect.x + self.ui(3), sy - stage_rect.y),
-                (tx - stage_rect.x + radius, ty - stage_rect.y),
-                (tx - stage_rect.x - radius, ty - stage_rect.y),
-            ]
-            pygame.draw.polygon(beam, (*tint, int(20 * intensity)), beam_pts)
-            surface.blit(beam, stage_rect.topleft)
-        elif light.kind == "cone":
-            beam = pygame.Surface(stage_rect.size, pygame.SRCALPHA)
-            pygame.draw.polygon(
-                beam,
-                (*tint, int(36 * intensity)),
-                [
-                    (sx - stage_rect.x - self.ui(2), sy - stage_rect.y),
-                    (sx - stage_rect.x + self.ui(2), sy - stage_rect.y),
-                    (tx - stage_rect.x + radius, ty - stage_rect.y),
-                    (tx - stage_rect.x - radius, ty - stage_rect.y),
-                ],
-            )
-            surface.blit(beam, stage_rect.topleft)
-        elif light.kind == "wash":
-            glow = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-            pygame.draw.circle(
-                glow, (*tint, int(32 * intensity)), (radius, radius), radius
-            )
-            surface.blit(glow, glow.get_rect(center=(tx, ty)))
-        elif light.kind == "beam":
-            pygame.draw.line(
-                surface,
-                (*tint, int(70 * intensity)),
-                (sx, sy),
-                (tx, ty),
-                max(1, self.ui(2)),
-            )
-
-    def draw_stage_ambient(self, surface, stage_rect, stage, accent):
-        for effect in stage.ambient:
-            painter = self._ambient_painter(effect.kind)
-            if painter is None:
-                continue
-            color = self.stage_role_color(effect.color, accent)
-            painter(surface, stage_rect, effect, color)
-
-    def _ambient_painter(self, kind):
-        return {
-            "mote": self._paint_ambient_mote,
-            "dust": self._paint_ambient_dust,
-            "ember": self._paint_ambient_ember,
-            "spark": self._paint_ambient_spark,
-            "leaf": self._paint_ambient_leaf,
-            "snow": self._paint_ambient_snow,
-            "ash": self._paint_ambient_ash,
-        }.get(kind)
-
-    def _ambient_particle_pos(self, stage_rect, effect, index, vertical=False):
-        seed_phase = effect.phase + index * 0.83
-        t = (self.elapsed * effect.speed * 0.18 + seed_phase) % 1.0
-        base_x = (index * 0.137 + seed_phase * 0.31) % 1.0
-        base_y = (index * 0.211 + seed_phase * 0.19) % 1.0
-        if vertical:
-            y = (1.0 - t) * 1.05 - 0.025
-            x = (
-                base_x + math.sin(self.elapsed * 0.7 + seed_phase) * effect.drift
-            ) % 1.0
-        else:
-            y = base_y + math.sin(self.elapsed * 0.5 + seed_phase) * 0.06
-            x = (t + base_x * 0.4) % 1.0
-        px = stage_rect.x + int(x * stage_rect.width)
-        py = stage_rect.y + int(y * stage_rect.height)
-        return px, py, t
-
-    def _paint_ambient_mote(self, surface, stage_rect, effect, color):
-        for index in range(effect.count):
-            px, py, t = self._ambient_particle_pos(stage_rect, effect, index)
-            alpha = int(50 + 50 * (0.5 + 0.5 * math.sin(t * math.tau)))
-            pygame.draw.circle(surface, (*color, alpha), (px, py), self.ui(1))
-
-    def _paint_ambient_dust(self, surface, stage_rect, effect, color):
-        for index in range(effect.count):
-            px, py, t = self._ambient_particle_pos(
-                stage_rect, effect, index, vertical=True
-            )
-            alpha = int(36 + 44 * (1.0 - t))
-            pygame.draw.circle(
-                surface, (*self.shade(color, 30), alpha), (px, py), max(1, self.ui(1))
-            )
-
-    def _paint_ambient_ember(self, surface, stage_rect, effect, color):
-        ember = self.mix(self.STAGE_FLAME, color, 0.4)
-        for index in range(effect.count):
-            px, py, t = self._ambient_particle_pos(
-                stage_rect, effect, index, vertical=True
-            )
-            alpha = int(110 * (1.0 - t))
-            pygame.draw.circle(surface, (*ember, alpha), (px, py), self.ui(1))
-            if alpha > 60:
-                pygame.draw.circle(
-                    surface,
-                    (*self.STAGE_FLAME_CORE, min(255, alpha + 40)),
-                    (px, py),
-                    max(1, self.ui(1) // 2),
+        def paint(layer):
+            w, h = layer.get_size()
+            warm = self.mix(self.STAGE_FLAME, accent, 0.22)
+            # Top-down key light: brightest near the top where the rig hangs,
+            # fading toward the floor. Smooth band gradient, no circles.
+            top_bands = 8
+            top_h = int(h * self.STAGE_FLOOR_TOP)
+            for band in range(top_bands):
+                t = band / max(1, top_bands - 1)
+                y = int(top_h * band / top_bands)
+                bh = max(1, top_h // top_bands + 1)
+                pygame.draw.rect(layer, (*warm, int(30 * (1.0 - t))), (0, y, w, bh))
+            # Warm floor pool across the lower stage: brightest just past the
+            # horizon, softening toward the front. A gentle accent tint ties
+            # the light to the scene mood.
+            floor_top = top_h
+            floor_h = h - floor_top
+            floor_bands = 7
+            for band in range(floor_bands):
+                t = band / max(1, floor_bands - 1)
+                fall = max(0.0, 1.0 - abs(t - 0.35) / 0.65)
+                y = floor_top + int(floor_h * band / floor_bands)
+                bh = max(1, floor_h // floor_bands + 1)
+                pygame.draw.rect(
+                    layer, (*accent, int(22 * fall)), (0, y, w, bh)
                 )
 
-    def _paint_ambient_spark(self, surface, stage_rect, effect, color):
-        for index in range(effect.count):
-            px, py, t = self._ambient_particle_pos(stage_rect, effect, index)
-            flick = 0.5 + 0.5 * math.sin(self.elapsed * 8.0 + index * 2.1)
-            alpha = int(70 + 110 * flick)
-            pygame.draw.line(
-                surface, (*color, alpha), (px, py), (px, py - self.ui(3)), 1
-            )
-
-    def _paint_ambient_leaf(self, surface, stage_rect, effect, color):
-        for index in range(effect.count):
-            px, py, t = self._ambient_particle_pos(
-                stage_rect, effect, index, vertical=True
-            )
-            alpha = int(70 + 50 * (1.0 - t))
-            sway_x = int(math.sin(self.elapsed * 2.0 + index) * self.ui(3))
-            pygame.draw.polygon(
-                surface,
-                (*self.shade(color, 20), alpha),
-                [
-                    (px + sway_x, py - self.ui(2)),
-                    (px + sway_x + self.ui(2), py),
-                    (px + sway_x, py + self.ui(2)),
-                    (px + sway_x - self.ui(2), py),
-                ],
-            )
-
-    def _paint_ambient_snow(self, surface, stage_rect, effect, color):
-        for index in range(effect.count):
-            px, py, t = self._ambient_particle_pos(
-                stage_rect, effect, index, vertical=True
-            )
-            alpha = int(110 + 70 * (1.0 - t))
-            pygame.draw.circle(surface, (220, 226, 238, alpha), (px, py), self.ui(1))
-
-    def _paint_ambient_ash(self, surface, stage_rect, effect, color):
-        for index in range(effect.count):
-            px, py, t = self._ambient_particle_pos(
-                stage_rect, effect, index, vertical=True
-            )
-            alpha = int(50 + 50 * (1.0 - t))
-            pygame.draw.circle(
-                surface, (*self.shade(color, 40), alpha), (px, py), self.ui(1)
-            )
+        layer = self._cached_stage_layer(key, stage_rect.size, paint)
+        surface.blit(layer, stage_rect.topleft)
+        # Live footlight: a thin warm strip at the front edge with a gentle
+        # flicker, plus a crisp iron lip. Cheap (two draw calls), no halos.
+        flick = 0.82 + 0.18 * math.sin(self.elapsed * 5.5)
+        foot_y = stage_rect.bottom - self.ui(3)
+        foot_color = self.mix(self.STAGE_FLAME, accent, 0.4)
+        pygame.draw.rect(
+            surface,
+            (*foot_color, int(120 * flick)),
+            (stage_rect.x + self.ui(6), foot_y, stage_rect.width - self.ui(12), self.ui(2)),
+        )
+        pygame.draw.line(
+            surface,
+            (*self.shade(self.STAGE_IRON, 18), 180),
+            (stage_rect.x, foot_y),
+            (stage_rect.right, foot_y),
+            1,
+        )
 
     def draw_stage_proscenium(self, surface, stage_rect, stage, accent):
         asset = self.active_cutscene_asset()
@@ -1380,35 +1157,7 @@ class RenderingStoryOverlayMixin:
             surface, (*self.shade(self.STAGE_IRON, -10), 200), valance_pts, 1
         )
 
-    def draw_stage_footlights(self, surface, stage_rect, stage, accent):
-        count = max(5, stage_rect.width // self.ui(28))
-        ember = self.mix(self.STAGE_FLAME, accent, 0.35)
-        y = stage_rect.bottom - self.ui(4)
-        for index in range(count):
-            t = (index + 0.5) / count
-            x = stage_rect.x + int(t * stage_rect.width)
-            flick = 0.7 + 0.3 * math.sin(self.elapsed * 6.0 + index * 1.7)
-            pygame.draw.circle(surface, (*ember, int(190 * flick)), (x, y), self.ui(2))
-            glow = pygame.Surface((self.ui(24), self.ui(16)), pygame.SRCALPHA)
-            pygame.draw.circle(
-                glow,
-                (*ember, int(26 * flick)),
-                (glow.get_width() // 2, glow.get_height()),
-                self.ui(10),
-            )
-            surface.blit(glow, glow.get_rect(midbottom=(x, y)))
-        pygame.draw.rect(
-            surface,
-            (*self.shade(self.STAGE_IRON, -16), 240),
-            (stage_rect.x, y, stage_rect.width, self.ui(3)),
-        )
-        pygame.draw.line(
-            surface,
-            (*self.shade(self.STAGE_IRON, 18), 200),
-            (stage_rect.x, y),
-            (stage_rect.right, y),
-            1,
-        )
+
 
     def draw_cutscene_choice_glyph(
         self,
@@ -1551,8 +1300,9 @@ class RenderingStoryOverlayMixin:
         )
         duel = getattr(self, "_frame_duel_state", None)
         if duel is not None and actor.id in duel:
-            ddx, dpose, dalpha, dscale = duel[actor.id]
+            ddx, ddy, dpose, dalpha, dscale = duel[actor.id]
             dx = ddx
+            dy = ddy
             pose = dpose
             if dalpha is not None:
                 alpha = dalpha
@@ -1586,28 +1336,6 @@ class RenderingStoryOverlayMixin:
         sprite_h = max(1, int(sprite.get_height() * scale))
         sprite = pygame.transform.scale(sprite, (sprite_w, sprite_h))
         sprite.set_alpha(max(0, min(255, int(255 * alpha))))
-
-        # A single subtle ground shadow for grounded figures only — the
-        # floating relic casts no shadow, and the shadow scales with the
-        # (now depth-correct) sprite so it never reads as a flat blob.
-        if actor.sprite != "relic":
-            shadow_w = max(4, int(sprite_w * 0.78))
-            shadow_h = max(3, int(sprite_w * 0.20))
-            shadow = pygame.Surface((shadow_w, shadow_h), pygame.SRCALPHA)
-            pygame.draw.ellipse(shadow, (0, 0, 0, 72), shadow.get_rect())
-            surface.blit(shadow, shadow.get_rect(center=(x, y + self.ui(18))))
-
-        node = self.active_cutscene_node()
-        if node is not None and node.speaker == actor.id:
-            glow_radius = max(self.ui(8), int(sprite_h * 0.28))
-            glow = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
-            pygame.draw.circle(
-                glow,
-                (*color, 38 + int(22 * (0.5 + 0.5 * math.sin(self.elapsed * 3.6)))),
-                (glow_radius, glow_radius),
-                glow_radius,
-            )
-            surface.blit(glow, glow.get_rect(center=(x, y - sprite_h // 2)))
 
         surface.blit(sprite, sprite.get_rect(midbottom=(x, y + self.ui(14))))
         self.draw_cutscene_actor_pose_effects(
@@ -1687,12 +1415,30 @@ class RenderingStoryOverlayMixin:
             + (self.STAGE_FRONT_SCALE - self.STAGE_BACK_SCALE) * depth_t
         )
 
+    def _cutscene_duel_obstacle(self, asset, player, antagonist):
+        # Find a stage prop that sits between the duelers' home x positions
+        # (e.g. the altar in the middle of the omen stage). It is treated as a
+        # solid obstacle the duelers must route around. Returns (x, y) in
+        # normalized stage coordinates, or None when the path is clear.
+        lo, hi = (player.x, antagonist.x) if player.x < antagonist.x else (
+            antagonist.x, player.x
+        )
+        best = None
+        best_dist = None
+        mid = (player.x + antagonist.x) * 0.5
+        for prop in asset.stage.props:
+            if lo < prop.x < hi:
+                dist = abs(prop.x - mid)
+                if best is None or dist < best_dist:
+                    best, best_dist = (prop.x, prop.y), dist
+        return best
+
     def _cutscene_duel_state(self):
         # Choreograph the player/antagonist duel for the current frame.
         # Returns None when the active cutscene has no duel pair, otherwise a
-        # mapping of actor_id -> (dx, pose, alpha, frame_scale). The duel
-        # loops on its own clock so the fight plays continuously while the
-        # narrator speaks, independent of narration progress.
+        # mapping with per-actor (dx, dy, pose, alpha, frame_scale) tuples and
+        # a "clash" (x, y) point for the clash flash. The duel loops on its
+        # own clock so the fight plays continuously while the narrator speaks.
         asset = self.active_cutscene_asset()
         if asset is None:
             return None
@@ -1707,40 +1453,66 @@ class RenderingStoryOverlayMixin:
         p_clash = p_app + self.STAGE_DUEL_PHASE_CLASH
         p_ret = p_clash + self.STAGE_DUEL_PHASE_RETREAT
 
-        home_p = player.x
-        home_a = antagonist.x
-        mid = (home_p + home_a) * 0.5
-        meet_p = mid - self.STAGE_DUEL_GAP
-        meet_a = mid + self.STAGE_DUEL_GAP
+        home_p = (player.x, player.y)
+        home_a = (antagonist.x, antagonist.y)
+        obstacle = self._cutscene_duel_obstacle(asset, player, antagonist)
+        if obstacle is not None:
+            # Route around the obstacle: pass to opposite sides and clash just
+            # in front of it so neither dueler crosses its footprint.
+            obs_x, obs_y = obstacle
+            clash_y = min(obs_y + self.STAGE_DUEL_DETOUR_FORWARD,
+                          self.STAGE_DUEL_DETOUR_MAX_Y)
+            # Keep each dueler on their own side of the obstacle.
+            if player.x < antagonist.x:
+                meet_p = (obs_x - self.STAGE_DUEL_OBSTACLE_CLEAR, clash_y)
+                meet_a = (obs_x + self.STAGE_DUEL_OBSTACLE_CLEAR, clash_y)
+            else:
+                meet_p = (obs_x + self.STAGE_DUEL_OBSTACLE_CLEAR, clash_y)
+                meet_a = (obs_x - self.STAGE_DUEL_OBSTACLE_CLEAR, clash_y)
+            clash = (obs_x, clash_y)
+        else:
+            # No obstacle: straight-line meeting at the midpoint, dy = 0.
+            mid_x = (player.x + antagonist.x) * 0.5
+            meet_p = (mid_x - self.STAGE_DUEL_GAP, player.y)
+            meet_a = (mid_x + self.STAGE_DUEL_GAP, antagonist.y)
+            clash = (mid_x, (player.y + antagonist.y) * 0.5)
 
         def ease(value):
             return value * value * (3.0 - 2.0 * value)
 
         if t < p_app:
             k = ease(t / p_app)
-            xp = home_p + (meet_p - home_p) * k
-            xa = home_a + (meet_a - home_a) * k
+            xp = home_p[0] + (meet_p[0] - home_p[0]) * k
+            yp = home_p[1] + (meet_p[1] - home_p[1]) * k
+            xa = home_a[0] + (meet_a[0] - home_a[0]) * k
+            ya = home_a[1] + (meet_a[1] - home_a[1]) * k
             pose_p, pose_a = "vow", "threaten"
         elif t < p_clash:
-            xp, xa = meet_p, meet_a
+            xp, yp = meet_p
+            xa, ya = meet_a
             pose_p, pose_a = "defy", "threaten"
         elif t < p_ret:
             k = ease((t - p_clash) / (p_ret - p_clash))
-            xp = meet_p + (home_p - meet_p) * k
-            xa = meet_a + (home_a - meet_a) * k
+            xp = meet_p[0] + (home_p[0] - meet_p[0]) * k
+            yp = meet_p[1] + (home_p[1] - meet_p[1]) * k
+            xa = meet_a[0] + (home_a[0] - meet_a[0]) * k
+            ya = meet_a[1] + (home_a[1] - meet_a[1]) * k
             pose_p, pose_a = "guard", "watch"
         else:
-            xp, xa = home_p, home_a
+            xp, yp = home_p
+            xa, ya = home_a
             pose_p, pose_a = "listen", "watch"
 
         return {
-            "player": (xp - home_p, pose_p, 1.0, 1.0),
+            "player": (xp - home_p[0], yp - home_p[1], pose_p, 1.0, 1.0),
             "antagonist": (
-                xa - home_a,
+                xa - home_a[0],
+                ya - home_a[1],
                 pose_a,
                 self.STAGE_DUEL_ANTAGONIST_ALPHA,
                 1.0,
             ),
+            "clash": clash,
         }
 
     def _draw_duel_clash_flash(self, surface, stage_rect):
@@ -1756,26 +1528,13 @@ class RenderingStoryOverlayMixin:
             return
         local = (t - p_app) / self.STAGE_DUEL_PHASE_CLASH
         intensity = 1.0 - abs(local - 0.5) * 2.0
-        asset = self.active_cutscene_asset()
-        player = asset.actors["player"]
-        antagonist = asset.actors["antagonist"]
-        meet_x = (player.x + antagonist.x) * 0.5
-        meet_y = (player.y + antagonist.y) * 0.5
-        cx = stage_rect.x + int(meet_x * stage_rect.width)
-        cy = stage_rect.y + int(meet_y * stage_rect.height)
+        clash_x, clash_y = duel["clash"]
+        cx = stage_rect.x + int(clash_x * stage_rect.width)
+        cy = stage_rect.y + int(clash_y * stage_rect.height)
         accent = self.story_state.accent if self.story_state else self.theme.accent
         spark = self.mix((255, 244, 210), accent, 0.25)
-        radius = self.ui(6) + int(self.ui(6) * intensity)
-        flash = pygame.Surface((radius * 4, radius * 4), pygame.SRCALPHA)
-        for ring in range(3):
-            r = max(1, radius * (2 - ring))
-            pygame.draw.circle(
-                flash,
-                (*spark, int(60 * intensity * (1.0 - ring * 0.3))),
-                (radius * 2, radius * 2),
-                r,
-            )
-        surface.blit(flash, flash.get_rect(center=(cx, cy)))
+        # Cross-slash lines only: a crisp weapon clash read with no circular
+        # glow blobs stacked on the stage.
         arm = self.ui(10) + int(self.ui(8) * intensity)
         for (dx0, dy0), (dx1, dy1) in (
             ((-arm, -arm // 2), (arm, arm // 2)),
@@ -1793,18 +1552,9 @@ class RenderingStoryOverlayMixin:
         self, actor: CutsceneActorAsset, color: Color, pose: str = "idle"
     ) -> pygame.Surface:
         if actor.sprite == "player":
-            sprite = self.sprites.player_sprites.get(
+            return self.sprites.player_sprites.get(
                 self.player.class_name, self.sprites.player
             ).copy()
-            if pose in ("vow", "guard", "defy"):
-                pygame.draw.line(
-                    sprite,
-                    (245, 236, 190),
-                    (sprite.get_width() // 2, 8),
-                    (sprite.get_width() // 2 + 12, 2),
-                    max(1, self.ui_scale),
-                )
-            return sprite
         if actor.sprite == "relic":
             return self.cutscene_relic_surface(color, pose)
         if actor.sprite == "story_guest":
@@ -1850,7 +1600,7 @@ class RenderingStoryOverlayMixin:
         ring_alpha = int(44 + 44 * pulse)
         if pose in ("reveal", "surge", "pulse"):
             ring_alpha = min(140, ring_alpha + 42)
-        pygame.draw.circle(sprite, (*color, ring_alpha), (27, 34), 24)
+        pygame.draw.circle(sprite, (*color, ring_alpha), (27, 34), 24, 2)
         diamond = [(27, 6), (44, 34), (27, 62), (10, 34)]
         pygame.draw.polygon(sprite, self.shade(color, -45), diamond)
         pygame.draw.polygon(sprite, color, diamond, 2)
@@ -1930,23 +1680,14 @@ class RenderingStoryOverlayMixin:
         color: Color,
         accent: Color,
     ) -> None:
+        # Pose emphasis stays minimal: a guest shudder line and relic surge
+        # rays. Player/enemy attack lines are intentionally omitted so the
+        # sprites read cleanly during the duel.
         top = y + self.ui(16) - sprite_h
         if actor.id == "guest":
             self.draw_cutscene_guest_prop(
                 surface, x + sprite_w // 3, top + self.ui(12), color
             )
-            if pose in ("plead", "reach", "warn"):
-                for index in range(3):
-                    phase = self.elapsed * 2.4 + index * 1.1
-                    mote = (
-                        x - self.ui(22 - index * 9),
-                        top
-                        + self.ui(12 + index * 5)
-                        + int(math.sin(phase) * self.ui(3)),
-                    )
-                    pygame.draw.circle(
-                        surface, (*color, 96 - index * 18), mote, self.ui(2)
-                    )
             if pose == "shudder":
                 pygame.draw.line(
                     surface,
@@ -1955,50 +1696,7 @@ class RenderingStoryOverlayMixin:
                     (x + self.ui(11), top + self.ui(24)),
                     self.ui(1),
                 )
-        elif actor.id == "player":
-            if pose in ("vow", "guard"):
-                shield = pygame.Surface((self.ui(42), self.ui(42)), pygame.SRCALPHA)
-                pygame.draw.circle(
-                    shield,
-                    (108, 218, 156, 52),
-                    shield.get_rect().center,
-                    self.ui(20),
-                    self.ui(2),
-                )
-                surface.blit(shield, shield.get_rect(center=(x, top + self.ui(24))))
-            elif pose == "defy":
-                pygame.draw.line(
-                    surface,
-                    (232, 83, 74, 150),
-                    (x - self.ui(17), top + self.ui(36)),
-                    (x + self.ui(19), top + self.ui(10)),
-                    self.ui(2),
-                )
-                pygame.draw.line(
-                    surface,
-                    (245, 228, 170, 120),
-                    (x - self.ui(11), top + self.ui(12)),
-                    (x + self.ui(23), top + self.ui(33)),
-                    self.ui(1),
-                )
-            elif pose == "price":
-                pygame.draw.circle(
-                    surface,
-                    (190, 45, 70, 120),
-                    (x + self.ui(16), top + self.ui(21)),
-                    self.ui(3),
-                )
         elif actor.id == "relic":
-            pulse = 0.5 + 0.5 * math.sin(self.elapsed * 5.0)
-            for index in range(2):
-                radius = self.ui(18 + index * 11) + int(pulse * self.ui(6))
-                pygame.draw.circle(
-                    surface,
-                    (*accent, 44 - index * 12),
-                    (x, top + sprite_h // 2),
-                    radius,
-                    self.ui(1),
-                )
             if pose in ("surge", "reveal"):
                 for angle_index in range(6):
                     angle = self.elapsed * 0.8 + math.tau * angle_index / 6
@@ -2011,31 +1709,6 @@ class RenderingStoryOverlayMixin:
                         top + sprite_h // 2 + int(math.sin(angle) * self.ui(23)),
                     )
                     pygame.draw.line(surface, (*accent, 118), start, end, self.ui(1))
-        elif actor.id == "antagonist":
-            pulse = 0.5 + 0.5 * math.sin(self.elapsed * 2.8)
-            crown_y = top + self.ui(8)
-            pygame.draw.circle(
-                surface,
-                (232, 83, 74, int(42 + pulse * 42)),
-                (x, top + sprite_h // 2),
-                self.ui(28),
-                self.ui(1),
-            )
-            for side in (-1, 1):
-                pygame.draw.line(
-                    surface,
-                    (232, 83, 74, 104),
-                    (x, crown_y),
-                    (x + side * self.ui(20), crown_y - self.ui(12)),
-                    self.ui(1),
-                )
-                pygame.draw.line(
-                    surface,
-                    (232, 83, 74, 72),
-                    (x + side * self.ui(12), crown_y + self.ui(4)),
-                    (x + side * self.ui(28), crown_y + self.ui(18)),
-                    self.ui(1),
-                )
 
     def draw_cutscene_guest_prop(
         self, surface: pygame.Surface, x: int, y: int, color: Color
@@ -2440,12 +2113,6 @@ class RenderingStoryOverlayMixin:
         sprite_w = max(1, int(sprite.get_width() * scale))
         sprite_h = max(1, int(sprite.get_height() * scale))
         sprite = pygame.transform.scale(sprite, (sprite_w, sprite_h))
-        if actor.sprite != "relic":
-            shadow_w = max(4, int(sprite_w * 0.78))
-            shadow_h = max(3, int(sprite_w * 0.20))
-            shadow = pygame.Surface((shadow_w, shadow_h), pygame.SRCALPHA)
-            pygame.draw.ellipse(shadow, (0, 0, 0, 72), shadow.get_rect())
-            surface.blit(shadow, shadow.get_rect(center=(x, y + self.ui(18))))
         surface.blit(sprite, sprite.get_rect(midbottom=(x, y + self.ui(14))))
         self.draw_cutscene_actor_pose_effects(
             surface, x, y, sprite_w, sprite_h, actor, pose, color, color
