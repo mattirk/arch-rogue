@@ -95,6 +95,24 @@ jobs:
         shell: bash
         run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Create launcher shim
+        shell: bash
+        run: |
+          # PyInstaller cannot use src/arch_rogue/__main__.py directly as the
+          # entry script: that file uses a relative import (`from .game import
+          # main`) which fails inside the frozen bundle because the top-level
+          # entry has no package parent. This absolute-import shim gives
+          # PyInstaller a clean top-level entry while letting it follow the
+          # import into the arch_rogue package, which then keeps its package
+          # context so all internal relative imports resolve correctly.
+          cat > arch_rogue_launcher.py <<'PY'
+          """PyInstaller entry shim for Arch Rogue."""
+          from arch_rogue.game import main
+
+          if __name__ == "__main__":
+              main()
+          PY
+
       - name: Build with PyInstaller
         shell: bash
         run: |
@@ -110,7 +128,7 @@ jobs:
             --hidden-import=pygame.base \
             --hidden-import=pygame.font \
             --hidden-import=pygame.mixer \
-            src/arch_rogue/__main__.py
+            arch_rogue_launcher.py
 
       - name: Rename artifact
         shell: bash
