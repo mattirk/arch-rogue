@@ -25,7 +25,7 @@ class SpecialRooms313Tests(unittest.TestCase):
             dungeon = Dungeon(random.Random(seed), guest_room=True)
             if (
                 dungeon.special_room_for_kind("shop") is not None
-                and dungeon.special_room_for_kind("quest_guest") is not None
+                and dungeon.special_room_for_kind("quest_room") is not None
             ):
                 return dungeon
         self.fail("Expected a deterministic seed to assign shop and quest rooms")
@@ -45,7 +45,7 @@ class SpecialRooms313Tests(unittest.TestCase):
             game.restart(ARCHETYPES[2])
             if (
                 game.dungeon.special_room_for_kind("shop") is not None
-                and game.dungeon.special_room_for_kind("quest_guest") is not None
+                and game.dungeon.special_room_for_kind("quest_room") is not None
             ):
                 return game
         self.fail("Expected a deterministic game seed to generate shop and quest rooms")
@@ -72,13 +72,13 @@ class SpecialRooms313Tests(unittest.TestCase):
         self.assertEqual(first_signature, second_signature)
 
         kinds = {room.kind for room in first.special_rooms}
-        self.assertIn("quest_guest", kinds)
+        self.assertIn("quest_room", kinds)
         room_indexes = [room.room_index for room in first.special_rooms]
         self.assertEqual(len(room_indexes), len(set(room_indexes)))
         self.assertNotIn(0, room_indexes)
         self.assertNotIn(len(first.rooms) - 1, room_indexes)
 
-        quest = first.special_room_for_kind("quest_guest")
+        quest = first.special_room_for_kind("quest_room")
         self.assertIsNotNone(quest)
         assert quest is not None
         self.assertEqual(first.guest_room_index, quest.room_index)
@@ -108,7 +108,7 @@ class SpecialRooms313Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game_with_shop_and_guest(tmpdir)
             shop = game.dungeon.special_room_for_kind("shop")
-            quest = game.dungeon.special_room_for_kind("quest_guest")
+            quest = game.dungeon.special_room_for_kind("quest_room")
             self.assertIsNotNone(shop)
             self.assertIsNotNone(quest)
             assert shop is not None and quest is not None
@@ -163,7 +163,7 @@ class SpecialRooms313Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game_with_shop_and_guest(tmpdir)
             shop = game.dungeon.special_room_for_kind("shop")
-            quest = game.dungeon.special_room_for_kind("quest_guest")
+            quest = game.dungeon.special_room_for_kind("quest_room")
             assert shop is not None and quest is not None
 
             shop_room = game.dungeon.rooms[shop.room_index]
@@ -204,7 +204,35 @@ class SpecialRooms313Tests(unittest.TestCase):
             self.assertEqual(loaded.dungeon.shop_room_index, shop_index)
             self.assertEqual(loaded.dungeon.guest_room_index, guest_index)
             self.assertIsNotNone(loaded.dungeon.special_room_for_kind("shop"))
-            self.assertIsNotNone(loaded.dungeon.special_room_for_kind("quest_guest"))
+            self.assertIsNotNone(loaded.dungeon.special_room_for_kind("quest_room"))
+
+    def test_legacy_quest_guest_kind_aliases_to_quest_room(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game_with_shop_and_guest(tmpdir)
+            data = copy.deepcopy(game.serialize_run_state())
+            data["dungeon"]["guest_room_index"] = None
+            for special_room in data["dungeon"]["special_rooms"]:
+                if special_room["kind"] == "quest_room":
+                    special_room["kind"] = "quest_guest"
+                    special_room["display_name"] = "Quest Guest Room"
+                    break
+
+            loaded = Game(
+                screen_size=(820, 540),
+                headless=True,
+                save_path=Path(tmpdir) / "legacy-kind-run.json",
+            )
+            loaded.options_path = Path(tmpdir) / "legacy-kind-options.json"
+            loaded.restore_run_state(data)
+
+            quest = loaded.dungeon.special_room_for_kind("quest_room")
+            self.assertIsNotNone(quest)
+            assert quest is not None
+            self.assertEqual(quest.kind, "quest_room")
+            self.assertEqual(loaded.dungeon.special_room_for_kind("quest_guest"), quest)
+            self.assertFalse(
+                any(room.kind == "quest_guest" for room in loaded.dungeon.special_rooms)
+            )
 
     def test_unknown_special_room_kind_loads_and_noops(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

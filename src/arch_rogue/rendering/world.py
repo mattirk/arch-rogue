@@ -184,7 +184,7 @@ class RenderingWorldMixin:
         # Interior guest-room floor only (not walls). Walls are handled per-face
         # by guest_wall_faces so the distinct wall art appears only on the
         # face that borders the room interior, not on the outside.
-        return self.is_special_room_floor_tile(x, y, kind="quest_guest")
+        return self.is_special_room_floor_tile(x, y, kind="quest_room")
 
     def is_special_room_floor_tile(
         self,
@@ -214,7 +214,7 @@ class RenderingWorldMixin:
 
     def _guest_interior_floor(self, x: int, y: int) -> bool:
         # Compatibility wrapper for tests and old render helpers.
-        return self._special_room_interior_floor(x, y, kind="quest_guest")
+        return self._special_room_interior_floor(x, y, kind="quest_room")
 
     def guest_wall_faces(self, x: int, y: int) -> str | None:
         # For a wall tile on the guest-room perimeter, return which visible side
@@ -224,8 +224,8 @@ class RenderingWorldMixin:
         # perimeter return None.
         if self.dungeon.tiles[x][y] != Tile.WALL:
             return None
-        left_interior = self._special_room_interior_floor(x, y + 1, kind="quest_guest")
-        right_interior = self._special_room_interior_floor(x + 1, y, kind="quest_guest")
+        left_interior = self._special_room_interior_floor(x, y + 1, kind="quest_room")
+        right_interior = self._special_room_interior_floor(x + 1, y, kind="quest_room")
         if left_interior:
             return "left"
         if right_interior:
@@ -264,7 +264,7 @@ class RenderingWorldMixin:
         return self._special_room_bounds(kind="shop")
 
     def _guest_room_bounds(self) -> tuple[int, int, int, int] | None:
-        return self._special_room_bounds(kind="quest_guest")
+        return self._special_room_bounds(kind="quest_room")
 
     def tile_surface(
         self,

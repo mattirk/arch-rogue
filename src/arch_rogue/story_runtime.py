@@ -751,7 +751,7 @@ class StoryRuntimeMixin:
     def story_relic_location_for_choice(
         self, choice_key: str, guest: StoryGuest
     ) -> tuple[float, float]:
-        quest_room = self.dungeon.special_room_for_kind("quest_guest")
+        quest_room = self.dungeon.special_room_for_kind("quest_room")
         if quest_room is not None and 0 <= quest_room.room_index < len(
             self.dungeon.rooms
         ):
@@ -992,7 +992,7 @@ class StoryRuntimeMixin:
         if not available_rooms:
             return
         if room is None:
-            special_room = self.dungeon.special_room_for_kind("quest_guest")
+            special_room = self.dungeon.special_room_for_kind("quest_room")
             if special_room is not None and 0 <= special_room.room_index < len(
                 self.dungeon.rooms
             ):

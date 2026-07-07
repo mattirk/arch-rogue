@@ -38,7 +38,8 @@ BOSS_ARENA_MAX_H = 13
 _PASSABLE_TILES = (Tile.FLOOR, Tile.STAIRS, Tile.OPEN_DOOR)
 
 SHOP_ROOM_KIND = "shop"
-QUEST_GUEST_ROOM_KIND = "quest_guest"
+QUEST_ROOM_KIND = "quest_room"
+LEGACY_QUEST_GUEST_ROOM_KIND = "quest_guest"
 
 SPECIAL_ROOM_DEFINITIONS: dict[str, SpecialRoomDefinition] = {
     SHOP_ROOM_KIND: SpecialRoomDefinition(
@@ -48,9 +49,9 @@ SPECIAL_ROOM_DEFINITIONS: dict[str, SpecialRoomDefinition] = {
         door_policy="sealed",
         spawn_policy="safe",
     ),
-    QUEST_GUEST_ROOM_KIND: SpecialRoomDefinition(
-        kind=QUEST_GUEST_ROOM_KIND,
-        display_name="Quest Guest Room",
+    QUEST_ROOM_KIND: SpecialRoomDefinition(
+        kind=QUEST_ROOM_KIND,
+        display_name="Quest Room",
         tags=("quest", "guest", "story", "refuge"),
         door_policy="sealed",
         spawn_policy="safe",
@@ -82,12 +83,12 @@ class Dungeon:
 
     @property
     def guest_room_index(self) -> int | None:
-        room = self.special_room_for_kind(QUEST_GUEST_ROOM_KIND)
+        room = self.special_room_for_kind(QUEST_ROOM_KIND)
         return room.room_index if room is not None else None
 
     @guest_room_index.setter
     def guest_room_index(self, room_index: int | None) -> None:
-        self._set_legacy_special_room(QUEST_GUEST_ROOM_KIND, room_index)
+        self._set_legacy_special_room(QUEST_ROOM_KIND, room_index)
 
     def _set_legacy_special_room(self, kind: str, room_index: int | None) -> None:
         self.special_rooms = [room for room in self.special_rooms if room.kind != kind]
@@ -102,7 +103,20 @@ class Dungeon:
         self._add_special_room(kind, index)
 
     def special_room_for_kind(self, kind: str) -> SpecialRoom | None:
-        return next((room for room in self.special_rooms if room.kind == kind), None)
+        if kind == LEGACY_QUEST_GUEST_ROOM_KIND:
+            kind = QUEST_ROOM_KIND
+        return next(
+            (
+                room
+                for room in self.special_rooms
+                if room.kind == kind
+                or (
+                    kind == QUEST_ROOM_KIND
+                    and room.kind == LEGACY_QUEST_GUEST_ROOM_KIND
+                )
+            ),
+            None,
+        )
 
     def special_room_at_index(self, room_index: int) -> SpecialRoom | None:
         return next(
@@ -315,7 +329,7 @@ class Dungeon:
                 )
                 guest_rng = random.Random(guest_seed)
                 self._add_special_room(
-                    QUEST_GUEST_ROOM_KIND, guest_rng.choice(guest_candidates)
+                    QUEST_ROOM_KIND, guest_rng.choice(guest_candidates)
                 )
 
         # Room definitions own mandatory gating. Apply those gates before the

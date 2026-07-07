@@ -7,8 +7,8 @@ Shop rooms and quest guest rooms now share a small data-driven special-room laye
 ### Added
 - `SpecialRoomDefinition` and `SpecialRoom` models in `models.py` capture room kind, display name, tags, door/spawn policies, depth constraints, reserved tiles, anchors, and primitive state in a save-friendly format.
 - `Dungeon.special_rooms` is now the primary special-room API, with helper lookups for kind, index, and tags. Legacy `shop_room_index` and `guest_room_index` properties remain as compatibility shims backed by the new collection.
-- A special-room planner in `dungeon.py` assigns initial `shop` and `quest_guest` rooms once per floor, enforces non-overlap, avoids start/stairs rooms, keeps deterministic guest-room selection, and applies per-room door policies.
-- `population.py` now dispatches special-room population through registered handlers keyed by room kind. Built-in handlers cover `shop` and `quest_guest`, and future room kinds can register a handler without changing dungeon generation.
+- A special-room planner in `dungeon.py` assigns initial `shop` and `quest_room` rooms once per floor, enforces non-overlap, avoids start/stairs rooms, keeps deterministic guest-room selection, and applies per-room door policies.
+- `population.py` now dispatches special-room population through registered handlers keyed by room kind. Built-in handlers cover `shop` and `quest_room`, and future room kinds can register a handler without changing dungeon generation.
 - Generic rendering helpers in `rendering/world.py` resolve special-room bounds and floor tiles by kind/tag while preserving existing shop floor tint/gold scatter and guest-room floor/wall presentation.
 - Save/load now serializes `special_rooms`, migrates old saves containing only `shop_room_index` / `guest_room_index`, and tolerates unknown special-room kinds as no-op data.
 - New `tests/test_3_13_special_rooms.py` covers deterministic assignment, non-overlap, door policies, shop/quest behavior parity, generic lookup helpers, legacy-save migration, unknown-kind no-op loading, and stub future-room handler extensibility.
@@ -20,9 +20,9 @@ Shop rooms and quest guest rooms now share a small data-driven special-room laye
 
 ### Validation
 - `python -m compileall src tests` passes.
-- `python -m unittest tests.test_3_13_special_rooms` passes (7 tests).
+- `python -m unittest tests.test_3_13_special_rooms` passes (8 tests).
 - `python -m unittest tests.test_shops tests.test_guest_room tests.test_story_mode tests.test_dungeon_tile_variants` passes (26 tests).
-- `python -m unittest discover tests` passes (261 tests).
+- `python -m unittest discover tests` passes (262 tests).
 
 ## 3.12.0 — Relic & Guest Rooms, Game Logo
 

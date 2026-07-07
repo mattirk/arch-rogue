@@ -237,7 +237,7 @@ class PopulationMixin:
         if handlers is None:
             handlers = {
                 "shop": self._populate_shop_special_room,
-                "quest_guest": self._populate_quest_guest_special_room,
+                "quest_room": self._populate_quest_room_special_room,
             }
             self._special_room_population_handlers = handlers
         return handlers
@@ -329,7 +329,7 @@ class PopulationMixin:
             special_room, "shop_sign", int(shopkeeper.x + 0.9), int(shopkeeper.y)
         )
 
-    def _populate_quest_guest_special_room(
+    def _populate_quest_room_special_room(
         self, special_room: SpecialRoom, room: Room
     ) -> None:
         cx, cy = room.center

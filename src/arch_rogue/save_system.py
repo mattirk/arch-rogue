@@ -30,7 +30,8 @@ from .content import (
     migrate_skill_keys,
 )
 from .dungeon import (
-    QUEST_GUEST_ROOM_KIND,
+    LEGACY_QUEST_GUEST_ROOM_KIND,
+    QUEST_ROOM_KIND,
     SHOP_ROOM_KIND,
     SPECIAL_ROOM_DEFINITIONS,
     Dungeon,
@@ -192,6 +193,11 @@ class SaveLoadMixin:
                 special_room = SpecialRoom.from_dict(raw_room)
                 if special_room is None:
                     continue
+                if special_room.kind == LEGACY_QUEST_GUEST_ROOM_KIND:
+                    special_room.kind = QUEST_ROOM_KIND
+                    special_room.display_name = SPECIAL_ROOM_DEFINITIONS[
+                        QUEST_ROOM_KIND
+                    ].display_name
                 if not (0 <= special_room.room_index < len(self.dungeon.rooms)):
                     continue
                 key = (special_room.kind, special_room.room_index)
@@ -203,7 +209,7 @@ class SaveLoadMixin:
                 parsed, SHOP_ROOM_KIND, dungeon_data.get("shop_room_index")
             )
             self._append_legacy_special_room_if_missing(
-                parsed, QUEST_GUEST_ROOM_KIND, dungeon_data.get("guest_room_index")
+                parsed, QUEST_ROOM_KIND, dungeon_data.get("guest_room_index")
             )
             return parsed
 
@@ -212,7 +218,7 @@ class SaveLoadMixin:
             migrated, SHOP_ROOM_KIND, dungeon_data.get("shop_room_index")
         )
         self._append_legacy_special_room_if_missing(
-            migrated, QUEST_GUEST_ROOM_KIND, dungeon_data.get("guest_room_index")
+            migrated, QUEST_ROOM_KIND, dungeon_data.get("guest_room_index")
         )
         return migrated
 
