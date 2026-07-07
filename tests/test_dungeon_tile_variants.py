@@ -97,9 +97,10 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                     for k in game.tile_cache
                     if k[0] == theme and k[1] == int(Tile.STAIRS)
                 ]
-                self.assertEqual(len(wall_keys), DUNGEON_WALL_VARIANTS)
-                # Floor + stairs exist in both shop and non-shop forms.
-                self.assertEqual(len(floor_keys), DUNGEON_FLOOR_VARIANTS * 2)
+                self.assertEqual(len(wall_keys), DUNGEON_WALL_VARIANTS * 2)
+                # Floor exists in normal, shop, and guest forms; stairs in
+                # normal + shop only (guest stairs keep the normal slab).
+                self.assertEqual(len(floor_keys), DUNGEON_FLOOR_VARIANTS * 3)
                 self.assertEqual(len(stairs_keys), DUNGEON_FLOOR_VARIANTS * 2)
 
                 before = set(game.tile_cache.keys())
@@ -119,9 +120,15 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                     for k in game.tile_cache
                     if k[0] == theme and k[1] == int(Tile.FLOOR) and not k[3]
                 }
+                floor_seeds_guest = {
+                    k[2]
+                    for k in game.tile_cache
+                    if k[0] == theme and k[1] == int(Tile.FLOOR) and k[4]
+                }
                 self.assertLessEqual(len(wall_seeds), DUNGEON_WALL_VARIANTS)
                 self.assertLessEqual(len(floor_seeds_shop), DUNGEON_FLOOR_VARIANTS)
                 self.assertLessEqual(len(floor_seeds_noop), DUNGEON_FLOOR_VARIANTS)
+                self.assertLessEqual(len(floor_seeds_guest), DUNGEON_FLOOR_VARIANTS)
 
                 game.draw()
                 self.assertEqual(set(game.tile_cache.keys()), before)
@@ -329,7 +336,7 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                     for k in game.tile_cache
                     if k[0] == game.theme.name and k[1] == int(Tile.WALL)
                 ]
-                self.assertEqual(len(wall_keys), DUNGEON_WALL_VARIANTS)
+                self.assertEqual(len(wall_keys), DUNGEON_WALL_VARIANTS * 2)
 
                 # Find a closed door tile in the dungeon and open it adjacent
                 # to the player; the cache must be rewarmed afterward.

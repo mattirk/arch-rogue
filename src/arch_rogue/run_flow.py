@@ -50,6 +50,7 @@ from .models import (
     Shrine,
     Trap,
 )
+from .story import story_beat_index_for_depth
 
 
 class RunFlowMixin:
@@ -498,8 +499,13 @@ class RunFlowMixin:
         self.record_run_start_meta()
         self.tile_cache.clear()
         self.prewarm_tile_cache()
+        guest_room = (
+            story_beat_index_for_depth(self.story_state, self.current_depth) is not None
+        )
         self.dungeon = Dungeon(
-            self.rng, boss_arena=self.current_floor_needs_boss_arena()
+            self.rng,
+            boss_arena=self.current_floor_needs_boss_arena(),
+            guest_room=guest_room,
         )
         start_x, start_y = self.dungeon.rooms[0].center
         self.player = Player(
@@ -576,8 +582,13 @@ class RunFlowMixin:
         self._apply_story_theme_for_current_depth()
         self.tile_cache.clear()
         self.prewarm_tile_cache()
+        guest_room = (
+            story_beat_index_for_depth(self.story_state, self.current_depth) is not None
+        )
         self.dungeon = Dungeon(
-            self.rng, boss_arena=self.current_floor_needs_boss_arena()
+            self.rng,
+            boss_arena=self.current_floor_needs_boss_arena(),
+            guest_room=guest_room,
         )
         start_x, start_y = self.dungeon.rooms[0].center
         self.player.x = start_x + 0.5

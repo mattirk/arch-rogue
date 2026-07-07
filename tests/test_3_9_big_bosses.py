@@ -86,6 +86,10 @@ class BigBossesTests(unittest.TestCase):
             game = self.make_game(tmpdir)
             self.populate_floor(game, 3)
             fb = next(e for e in game.enemies if e.role == "floor_boss")
+            # Isolate the boss so the reach check reflects the boss's extended
+            # melee silhouette alone, independent of nearby trash enemies whose
+            # spawn positions shift with story-mode RNG consumption.
+            game.enemies = [fb]
             # Stand just outside the default melee range but within the boss's
             # extended reach (past its large silhouette). Face the boss.
             game.player.facing_x = 1.0

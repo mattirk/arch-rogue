@@ -180,6 +180,7 @@ class SaveLoadMixin:
                 "rooms": [room.__dict__ for room in self.dungeon.rooms],
                 "stairs": list(self.dungeon.stairs),
                 "shop_room_index": self.dungeon.shop_room_index,
+                "guest_room_index": self.dungeon.guest_room_index,
             },
             "player": {
                 "x": self.player.x,
@@ -309,6 +310,10 @@ class SaveLoadMixin:
         saved_shop_index = dungeon_data.get("shop_room_index")
         self.dungeon.shop_room_index = (
             int(saved_shop_index) if saved_shop_index is not None else None
+        )
+        saved_guest_index = dungeon_data.get("guest_room_index")
+        self.dungeon.guest_room_index = (
+            int(saved_guest_index) if saved_guest_index is not None else None
         )
         self.tile_cache.clear()
         self.prewarm_tile_cache()

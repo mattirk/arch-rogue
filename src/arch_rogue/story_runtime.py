@@ -743,6 +743,10 @@ class StoryRuntimeMixin:
     def story_relic_location_for_choice(
         self, choice_key: str, guest: StoryGuest
     ) -> tuple[float, float]:
+        guest_index = self.dungeon.guest_room_index
+        if guest_index is not None and 0 <= guest_index < len(self.dungeon.rooms):
+            cx, cy = self.dungeon.rooms[guest_index].center
+            return self.drop_position_near(cx + 0.5, cy + 0.5, exclude_origin=True)
         if choice_key == "aid":
             # Place the relic on an adjacent tile to the quest NPC, not on the
             # NPC's own tile, so the two sprites never stack.
@@ -973,8 +977,15 @@ class StoryRuntimeMixin:
         available_rooms = self.dungeon.rooms[1:-1] or self.dungeon.rooms[:1]
         if not available_rooms:
             return
-        room = available_rooms[(self.current_depth + beat_index) % len(available_rooms)]
-        x, y = room.random_point(self.rng)
+        guest_index = self.dungeon.guest_room_index
+        if guest_index is not None and 0 <= guest_index < len(self.dungeon.rooms):
+            cx, cy = self.dungeon.rooms[guest_index].center
+            x, y = cx + 0.5, cy + 0.5
+        else:
+            room = available_rooms[
+                (self.current_depth + beat_index) % len(available_rooms)
+            ]
+            x, y = room.random_point(self.rng)
         self.story_guests.append(
             story_guest_from_beat(self.story_state, beat_index, x, y)
         )

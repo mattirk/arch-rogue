@@ -92,7 +92,7 @@ class RenderingWorldMixin:
             return None
         seed = self.tile_seed(x, y)
         surface, anchor_x, anchor_y = self.tile_surface(
-            tile, seed, self.is_shop_floor_tile(x, y)
+            tile, seed, self.is_shop_floor_tile(x, y), self.is_guest_tile(x, y)
         )
         if self._frame_dark:  # set at start of draw_world_objects/draw_dungeon
             alpha = self.tile_visibility_alpha(x, y)
@@ -160,6 +160,10 @@ class RenderingWorldMixin:
                 self.tile_surface(tile, seed, shop_floor=False)
                 if tile in (Tile.FLOOR, Tile.STAIRS):
                     self.tile_surface(tile, seed, shop_floor=True)
+                if tile == Tile.WALL:
+                    self.tile_surface(tile, seed, shop_floor=False, guest=True)
+                elif tile == Tile.FLOOR:
+                    self.tile_surface(tile, seed, shop_floor=False, guest=True)
 
     def is_shop_floor_tile(self, x: int, y: int) -> bool:
         shop_room = self._shop_room_bounds()
@@ -169,6 +173,15 @@ class RenderingWorldMixin:
         if not (rx < x < rx + rw - 1 and ry < y < ry + rh - 1):
             return False
         return self.dungeon.tiles[x][y] in (Tile.FLOOR, Tile.STAIRS)
+
+    def is_guest_tile(self, x: int, y: int) -> bool:
+        bounds = self._guest_room_bounds()
+        if bounds is None:
+            return False
+        rx, ry, rw, rh = bounds
+        if not (rx <= x <= rx + rw - 1 and ry <= y <= ry + rh - 1):
+            return False
+        return self.dungeon.tiles[x][y] in (Tile.FLOOR, Tile.STAIRS, Tile.WALL)
 
     def _shop_room_bounds(self) -> tuple[int, int, int, int] | None:
         cache = getattr(self, "_frame_cache", None)
@@ -183,10 +196,23 @@ class RenderingWorldMixin:
             cache["shop_room_bounds"] = result
         return result
 
+    def _guest_room_bounds(self) -> tuple[int, int, int, int] | None:
+        cache = getattr(self, "_frame_cache", None)
+        if cache is not None and "guest_room_bounds" in cache:
+            return cache["guest_room_bounds"]  # type: ignore[no-any-return]
+        guest_index = self.dungeon.guest_room_index
+        result: tuple[int, int, int, int] | None = None
+        if guest_index is not None and 0 <= guest_index < len(self.dungeon.rooms):
+            room = self.dungeon.rooms[guest_index]
+            result = (room.x, room.y, room.w, room.h)
+        if cache is not None:
+            cache["guest_room_bounds"] = result
+        return result
+
     def tile_surface(
-        self, tile: Tile, seed: int, shop_floor: bool = False
+        self, tile: Tile, seed: int, shop_floor: bool = False, guest: bool = False
     ) -> tuple[pygame.Surface, int, int]:
-        key = (self.theme.name, int(tile), seed, shop_floor)
+        key = (self.theme.name, int(tile), seed, shop_floor, guest)
         cached = self.tile_cache.get(key)
         if cached:
             return cached
@@ -210,7 +236,7 @@ class RenderingWorldMixin:
 
         if tile == Tile.WALL:
             self.draw_wall_tile_surface(
-                surface, sx, sy, top, right, bottom, left, wall_h, seed
+                surface, sx, sy, top, right, bottom, left, wall_h, seed, guest=guest
             )
         elif tile in (Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
             self.draw_door_tile_surface(
@@ -228,7 +254,17 @@ class RenderingWorldMixin:
             )
         else:
             self.draw_floor_tile_surface(
-                surface, sx, sy, top, right, bottom, left, tile, seed, shop_floor
+                surface,
+                sx,
+                sy,
+                top,
+                right,
+                bottom,
+                left,
+                tile,
+                seed,
+                shop_floor,
+                guest=guest,
             )
 
         cached = (surface.convert_alpha(), anchor_x, anchor_y)
@@ -292,7 +328,13 @@ class RenderingWorldMixin:
         left: tuple[int, int],
         wall_h: int,
         seed: int,
+        guest: bool = False,
     ) -> None:
+        if guest:
+            self._draw_guest_wall_surface(
+                surface, sx, sy, top, right, bottom, left, wall_h, seed
+            )
+            return
         scale = WORLD_SCALE
         cap_top = (top[0], top[1] - wall_h)
         cap_right = (right[0], right[1] - wall_h)
@@ -522,6 +564,177 @@ class RenderingWorldMixin:
         shade_surf.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
         surface.blit(shade_surf, (0, 0))
 
+    def _draw_guest_floor(self, surface, top, right, bottom, left, scale):
+        # Consecrated chamber floor: a dim stone slab with a low-contrast
+        # accent inlay (a small diamond insignia near the center) and a crisp
+        # lit lip along the top-left edge. Reads as a ceremonial chamber, not a
+        # glowing beacon.
+        accent = (
+            self.story_state.accent
+            if getattr(self, "story_state", None) is not None
+            else self.theme.accent
+        )
+        base = self.shade(self.theme.floor, -8)
+        diamond = [top, right, bottom, left]
+        pygame.draw.polygon(surface, base, diamond)
+        cx = (top[0] + bottom[0]) // 2
+        cy = (top[1] + bottom[1]) // 2
+        # Insignia: a small accent-colored diamond outline near the center,
+        # darkened so it reads as a carved groove rather than a glowing mark.
+        insignia_color = self.shade(accent, -30)
+        iw = 14 * scale
+        ih = 7 * scale
+        insignia = [
+            (cx, cy - ih),
+            (cx + iw, cy),
+            (cx, cy + ih),
+            (cx - iw, cy),
+        ]
+        pygame.draw.aalines(surface, insignia_color, True, insignia)
+        # Inner dot of the insignia, faint.
+        pygame.draw.aalines(
+            surface,
+            self.shade(insignia_color, -10),
+            True,
+            [(cx, cy - ih // 2), (cx + iw // 2, cy), (cx, cy + ih // 2), (cx - iw // 2, cy)],
+        )
+        # Crisp lit lip along the top-left edge.
+        pygame.draw.aalines(surface, self.shade(base, 18), False, [top, left])
+
+    def _draw_guest_wall_surface(
+        self,
+        surface: pygame.Surface,
+        sx: int,
+        sy: int,
+        top: tuple[int, int],
+        right: tuple[int, int],
+        bottom: tuple[int, int],
+        left: tuple[int, int],
+        wall_h: int,
+        seed: int,
+    ) -> None:
+        # Ceremonial chamber wall: same three-polygon geometry as the normal
+        # wall but with cooler/darker stone tones and a carved accent band
+        # near the top of each face.
+        scale = WORLD_SCALE
+        cap_top = (top[0], top[1] - wall_h)
+        cap_right = (right[0], right[1] - wall_h)
+        cap_bottom = (bottom[0], bottom[1] - wall_h)
+        cap_left = (left[0], left[1] - wall_h)
+        accent = (
+            self.story_state.accent
+            if getattr(self, "story_state", None) is not None
+            else self.theme.accent
+        )
+        variant = seed % DUNGEON_WALL_VARIANTS
+        tint = variant * 2 - 3
+        top_color = self.shade(self.theme.wall_top, 6 + tint)
+        left_color = self.shade(self.theme.wall_left, -6 + tint)
+        right_color = self.shade(self.theme.wall_right, -10 + tint)
+        edge = self.shade(self.theme.wall_edge, 0)
+        course_color = self.shade(edge, -34)
+        course_hi = self.shade(course_color, 16)
+
+        pygame.draw.polygon(surface, left_color, [cap_left, cap_bottom, bottom, left])
+        pygame.draw.polygon(
+            surface, right_color, [cap_right, cap_bottom, bottom, right]
+        )
+        pygame.draw.polygon(
+            surface, top_color, [cap_top, cap_right, cap_bottom, cap_left]
+        )
+
+        # Smooth vertical gradient on each face.
+        for t0, t1, shade in ((0.0, 0.35, 10), (0.65, 1.0, -12)):
+            ly0 = int(cap_left[1] + (left[1] - cap_left[1]) * t0)
+            ly1 = int(cap_left[1] + (left[1] - cap_left[1]) * t1)
+            lx0 = int(cap_left[0] + (left[0] - cap_left[0]) * t0)
+            lx1 = int(cap_left[0] + (left[0] - cap_left[0]) * t1)
+            by0 = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t0)
+            by1 = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t1)
+            pygame.draw.polygon(
+                surface,
+                self.shade(left_color, shade),
+                [(lx0, ly0), (by0, ly0), (by1, ly1), (lx1, ly1)],
+            )
+            ry0 = int(cap_right[1] + (right[1] - cap_right[1]) * t0)
+            ry1 = int(cap_right[1] + (right[1] - cap_right[1]) * t1)
+            rx0 = int(cap_right[0] + (right[0] - cap_right[0]) * t0)
+            rx1 = int(cap_right[0] + (right[0] - cap_right[0]) * t1)
+            by0r = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t0)
+            by1r = int(cap_bottom[0] + (bottom[0] - cap_bottom[0]) * t1)
+            pygame.draw.polygon(
+                surface,
+                self.shade(right_color, shade),
+                [(by0r, ry0), (rx0, ry0), (rx1, ry1), (by1r, ry1)],
+            )
+
+        # Cap highlight.
+        pygame.draw.line(
+            surface, self.shade(top_color, 30), cap_top, cap_left, max(1, scale)
+        )
+
+        # Masonry pattern (same variants as the normal wall).
+        if variant == 0:
+            courses = (0.34, 0.66)
+            joints = ([0.5], [0.5], [0.5])
+        elif variant == 1:
+            courses = (0.34, 0.66)
+            joints = ([0.5], [0.28, 0.72], [0.5])
+        elif variant == 2:
+            courses = (0.5,)
+            joints = ([0.5], [0.5])
+        else:
+            courses = (0.34, 0.66)
+            joints = ([0.5], [0.5], [0.35, 0.7])
+
+        left_face = self._wall_face_parallelogram(cap_left, cap_bottom, left, bottom)
+        right_face = self._wall_face_parallelogram(cap_bottom, cap_right, bottom, right)
+        self._draw_wall_masonry(
+            surface, *left_face, courses, joints, course_color, scale
+        )
+        self._draw_wall_masonry(
+            surface, *right_face, courses, joints, course_color, scale
+        )
+        for face in (left_face, right_face):
+            top_left, top_right, bot_left, bot_right = face
+            for t in courses:
+                ax = top_left[0] + (bot_left[0] - top_left[0]) * t
+                ay = top_left[1] + (bot_left[1] - top_left[1]) * t
+                bx = top_right[0] + (bot_right[0] - top_right[0]) * t
+                by = top_right[1] + (bot_right[1] - top_right[1]) * t
+                pygame.draw.line(
+                    surface,
+                    course_hi,
+                    (ax, ay - scale),
+                    (bx, by - scale),
+                    max(1, scale),
+                )
+
+        # Carved accent band near the top of each face: a horizontal accent-
+        # colored groove running across the upper third of both side faces.
+        band_t = 0.22
+        band_color = self.shade(accent, -34)
+        for face in (left_face, right_face):
+            top_left, top_right, bot_left, bot_right = face
+            ax = top_left[0] + (bot_left[0] - top_left[0]) * band_t
+            ay = top_left[1] + (bot_left[1] - top_left[1]) * band_t
+            bx = top_right[0] + (bot_right[0] - top_right[0]) * band_t
+            by = top_right[1] + (bot_right[1] - top_right[1]) * band_t
+            pygame.draw.line(surface, band_color, (ax, ay), (bx, by), max(1, scale))
+            pygame.draw.aalines(
+                surface, self.shade(band_color, 14), False, [(ax, ay - 1), (bx, by - 1)]
+            )
+
+        # Clean silhouette edges.
+        pygame.draw.lines(
+            surface, edge, True, [cap_top, cap_right, cap_bottom, cap_left], scale
+        )
+        pygame.draw.line(surface, self.shade(edge, -14), cap_left, left, scale)
+        pygame.draw.line(surface, self.shade(edge, -30), cap_right, right, scale)
+        pygame.draw.line(surface, self.shade(edge, -50), cap_bottom, bottom, scale)
+        pygame.draw.line(surface, self.shade(edge, -44), left, bottom, scale)
+        pygame.draw.line(surface, self.shade(edge, -56), bottom, right, scale)
+
     def draw_floor_tile_surface(
         self,
         surface: pygame.Surface,
@@ -534,6 +747,7 @@ class RenderingWorldMixin:
         tile: Tile,
         seed: int,
         shop_floor: bool = False,
+        guest: bool = False,
     ) -> None:
         is_stairs = tile == Tile.STAIRS
         scale = WORLD_SCALE
@@ -542,6 +756,9 @@ class RenderingWorldMixin:
         # normal slab so the stairwell still integrates with the floor plane.
         if shop_floor and not is_stairs:
             self._draw_shop_checker_floor(surface, top, right, bottom, left, scale)
+            return
+        if guest and not is_stairs:
+            self._draw_guest_floor(surface, top, right, bottom, left, scale)
             return
         # Stairs sit in the same flagstone slab as the surrounding floor (same
         # base color + per-variant tint) so the stairwell reads as an opening

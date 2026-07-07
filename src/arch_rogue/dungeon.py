@@ -39,13 +39,17 @@ _PASSABLE_TILES = (Tile.FLOOR, Tile.STAIRS, Tile.OPEN_DOOR)
 
 
 class Dungeon:
-    def __init__(self, rng: random.Random, boss_arena: bool = False) -> None:
+    def __init__(
+        self, rng: random.Random, boss_arena: bool = False, guest_room: bool = False
+    ) -> None:
         self.rng = rng
         self.boss_arena = boss_arena
+        self.guest_room = guest_room
         self.tiles: list[list[Tile]] = []
         self.rooms: list[Room] = []
         self.stairs: tuple[int, int] = (0, 0)
         self.shop_room_index: int | None = None
+        self.guest_room_index: int | None = None
         self.generate()
 
     def generate(self) -> None:
@@ -215,6 +219,25 @@ class Dungeon:
         ]
         if eligible_shop_rooms and self.rng.random() < 0.75:
             self.shop_room_index = self.rng.choice(eligible_shop_rooms)
+        if self.guest_room:
+            guest_candidates = [
+                idx
+                for idx in eligible_shop_rooms
+                if idx != self.shop_room_index and idx not in (0, len(self.rooms) - 1)
+            ]
+            if guest_candidates:
+                # Pick with a local RNG seeded from the dungeon layout so the
+                # shared `self.rng` stream (and thus population determinism) is
+                # preserved across story-beat floors.
+                guest_seed = (self.stairs[0] * 73856093) ^ (
+                    self.stairs[1] * 19349663
+                ) ^ len(self.rooms)
+                guest_rng = random.Random(guest_seed)
+                self.guest_room_index = guest_rng.choice(guest_candidates)
+                guest_room = self.rooms[self.guest_room_index]
+                self._seal_room_with_doors(
+                    guest_room, doorways_by_room[self.guest_room_index]
+                )
         for room_index, room in enumerate(self.rooms[1:-1], start=1):
             doorways = doorways_by_room[room_index]
             if not doorways:
