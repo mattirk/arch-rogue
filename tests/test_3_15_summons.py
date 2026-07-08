@@ -97,13 +97,22 @@ class Summons315Tests(unittest.TestCase):
                 game.update_familiars(0.05)
             self.assertEqual(len(game.familiars), 1)
 
-            # Recasting heals to full and does not double the host.
+            # Recasting recreates the host at the player's side at full HP
+            # and does not double the host.
             game.familiars[0].hp = 1
+            # Move the player so we can confirm the familiar snaps to the new spot.
+            game.player.x += 5.0
             game.player.nova_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player_cast_spirit_call()
             self.assertEqual(len(game.familiars), 1)
             self.assertEqual(game.familiars[0].hp, game.familiars[0].max_hp)
+            # The recreated familiar spawns in a ring around the player's new position.
+            self.assertLess(
+                abs(game.familiars[0].x - game.player.x)
+                + abs(game.familiars[0].y - game.player.y),
+                2.0,
+            )
 
             # Floor descent clears the host (persist until killed or descend).
             game.descend_to_next_depth()
@@ -219,7 +228,7 @@ class Summons315Tests(unittest.TestCase):
             game.player.nova_timer = 0.0
             game.player.mana = game.player.max_mana
 
-            # Wraith Host: lifesteal + more HP.
+            # Owl Companion: lifesteal + more HP.
             game.player.skill_upgrades.append("acolyte_wraith_host")
             game.player_cast_spirit_call()
             self.assertTrue(game.familiars[0].lifesteal)
@@ -228,7 +237,7 @@ class Summons315Tests(unittest.TestCase):
             game.player.nova_timer = 0.0
             game.player.mana = game.player.max_mana
 
-            # Bone Legion: +1 familiar (count = 2) and more damage.
+            # Twin Owls: +1 familiar (count = 2) and more damage.
             game.player.skill_upgrades.append("acolyte_bone_legion")
             game.player_cast_spirit_call()
             self.assertEqual(game.familiar_max_count(), 2)
@@ -237,7 +246,7 @@ class Summons315Tests(unittest.TestCase):
             game.player.nova_timer = 0.0
             game.player.mana = game.player.max_mana
 
-            # Wraith Lord: lead familiar is a champion (taunts); the sprite
+            # Owl Lord: lead familiar is a champion (taunts); the sprite
             # stays the big owl (variant 1) once Spirit Call is chosen.
             game.player.skill_upgrades.append("acolyte_wraith_lord")
             game.player_cast_spirit_call()
@@ -248,7 +257,7 @@ class Summons315Tests(unittest.TestCase):
             game.player.nova_timer = 0.0
             game.player.mana = game.player.max_mana
 
-            # Legion Eternal: +1 familiar (count = 3) and unkillable host.
+            # Eternal Owls: +1 familiar (count = 3) and unkillable host.
             game.player.skill_upgrades.append("acolyte_legion_eternal")
             game.player_cast_spirit_call()
             self.assertEqual(game.familiar_max_count(), 3)

@@ -1783,8 +1783,8 @@ class CombatMixin:
 
         Two states: 0 = small wisp before any Spirit skill is chosen, 1 = big
         owl once the Acolyte has learned Spirit Call (``acolyte_spirit_call``).
-        Deeper Spirit nodes (wraith host / bone legion / wraith lord / legion
-        eternal) scale stats and count but no longer change the silhouette —
+        Deeper Spirit nodes (Owl Companion / Twin Owls / Owl Lord / Eternal
+        Owls) scale stats and count but no longer change the silhouette —
         the big familiar is always the owl.
         """
         if self.player.has_upgrade("acolyte_spirit_call"):
@@ -1803,9 +1803,11 @@ class CombatMixin:
 
         Reuses the nova-slot mana cost and cooldown (``nova_mana_cost`` /
         ``nova_cooldown``) so the action bar stays balanced. On cast, the host
-        is topped up to ``familiar_max_count`` (missing familiars are summoned
-        beside the player) and existing familiars are healed to full. The
-        host persists until each familiar is killed or the floor is descended.
+        is always recreated fresh: any existing familiars are dismissed and a
+        full ``familiar_max_count`` host is summoned in a small ring around the
+        player, so the summon always snaps to the Acolyte's current position
+        and picks up the latest build stats. The host persists until each
+        familiar is killed or the floor is descended.
         """
         if self.player.class_name != "Acolyte":
             # Defensive: only the Acolyte channels Spirit Call. Other classes
@@ -1830,20 +1832,11 @@ class CombatMixin:
         self.apply_story_blood_price("nova")
         max_count = self.familiar_max_count()
         max_hp, damage = self.familiar_stats()
-        # Heal existing familiars to full and tag them with current build flags
-        # so an in-combat recast refreshes the host as the build evolves.
-        for index, familiar in enumerate(self.familiars):
-            familiar.max_hp = max_hp
-            familiar.hp = max_hp
-            familiar.damage = damage
-            familiar.lifesteal = self.player.has_upgrade("acolyte_wraith_host")
-            familiar.unkillable = self.player.has_upgrade("acolyte_legion_eternal")
-            familiar.sprite_variant = self.familiar_variant_for_index(index)
-            familiar.champion = self.familiar_is_champion(index)
-        # Summon missing familiars in a small ring around the player.
-        needed = max_count - len(self.familiars)
-        for slot in range(needed):
-            index = len(self.familiars)
+        # Always recreate the host from scratch so Spirit Call snaps the
+        # familiars to the Acolyte's current position and refreshes stats from
+        # the latest build, instead of healing-in-place the old host.
+        self.familiars.clear()
+        for index in range(max_count):
             angle = (index / max(1, max_count)) * math.tau + 0.7
             offset = 0.9
             fx = self.player.x + math.cos(angle) * offset
@@ -2008,7 +2001,7 @@ class CombatMixin:
             )
         )
         self.add_impact(enemy.x, enemy.y, hit_color, ttl=0.26, radius=0.30, kind="hit")
-        # Wraith Host (t2): familiar hits siphon life into the Acolyte.
+        # Owl Companion (t2): familiar hits siphon life into the Acolyte.
         if familiar.lifesteal:
             heal = max(1, damage // 3)
             self.player.hp = min(self.player.max_hp, self.player.hp + heal)
@@ -2023,7 +2016,7 @@ class CombatMixin:
             )
         # Enemy retaliation: an adjacent foe hits back if ready, giving
         # familiars a natural way to die in combat (and the champion's taunt
-        # value, since it draws the first blows). Legion Eternal makes the
+        # value, since it draws the first blows). Eternal Owls makes the
         # host unkillable so retaliation just chips toward 1.
         if enemy.alive and enemy.attack_timer <= 0:
             self._familiar_take_damage(familiar, max(1, enemy.damage // 2), enemy)
@@ -2035,7 +2028,7 @@ class CombatMixin:
         self, familiar: Familiar, amount: int, source: Enemy | None = None
     ) -> None:
         if familiar.unkillable:
-            # Legion Eternal: the host cannot die; damage floors at 1 and
+            # Eternal Owls: the host cannot die; damage floors at 1 and
             # regenerates (see ``_familiar_regen``).
             familiar.hp = max(1, familiar.hp - amount)
             return
@@ -2051,7 +2044,7 @@ class CombatMixin:
             )
 
     def _familiar_regen(self, familiar: Familiar, dt: float) -> None:
-        # Legion Eternal familiars slowly regenerate, and unkillable ones
+        # Eternal Owls familiars slowly regenerate, and unkillable ones
         # recover from the 1-HP floor so they stay useful between fights.
         if familiar.unkillable and familiar.hp < familiar.max_hp:
             familiar.hp = min(
