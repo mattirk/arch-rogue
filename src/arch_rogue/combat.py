@@ -45,7 +45,15 @@ from .content import (
     skill_node_by_key,
     skill_nodes_for_archetype,
 )
-from .models import Color, Enemy, FloatingText, Player, Projectile, Shopkeeper
+from .models import (
+    Color,
+    Enemy,
+    Familiar,
+    FloatingText,
+    Player,
+    Projectile,
+    Shopkeeper,
+)
 
 
 class CombatMixin:
@@ -343,7 +351,7 @@ class CombatMixin:
             "Warden": ("Shield Bash", "Guard Bolt", "Bulwark Wave", "Guard Step"),
             "Rogue": ("Backstab", "Knife Fan", "Smoke Burst", "Shadow Dash"),
             "Arcanist": ("Mage Strike", "Arc Bolt", "Frost Nova", "Blink"),
-            "Acolyte": ("Blood Rite", "Spirit Bolt", "Blood Nova", "Dark Step"),
+            "Acolyte": ("Blood Rite", "Spirit Bolt", "Spirit Call", "Dark Step"),
             "Ranger": ("Hawk Slash", "Multishot", "Snare Nova", "Vault"),
         }
         return names.get(self.player.class_name, ("Slash", "Bolt", "Nova", "Dash"))
@@ -1170,6 +1178,41 @@ class CombatMixin:
                         continue
                     continue
             else:
+                # Milestone 3.15 — a summoner's familiars bodyguard the
+                # Acolyte, intercepting enemy bolts that pass near them. Only
+                # checked when a host is active so non-Acolyte runs pay nothing.
+                if self.familiars:
+                    struck = None
+                    for familiar in self.familiars:
+                        if (
+                            math.hypot(
+                                projectile.x - familiar.x,
+                                projectile.y - familiar.y,
+                            )
+                            < ENEMY_PROJECTILE_HIT_RADIUS
+                        ):
+                            struck = familiar
+                            break
+                    if struck is not None:
+                        self._familiar_take_damage(struck, projectile.damage, None)
+                        self.floaters.append(
+                            FloatingText(
+                                f"-{max(1, projectile.damage // 2)}",
+                                struck.x,
+                                struck.y - 0.2,
+                                (235, 90, 80),
+                                ttl=0.55,
+                            )
+                        )
+                        self.add_impact(
+                            projectile.x,
+                            projectile.y,
+                            projectile.color,
+                            ttl=0.34,
+                            radius=0.42,
+                            kind="burst",
+                        )
+                        continue
                 if (
                     math.hypot(
                         projectile.x - self.player.x, projectile.y - self.player.y
@@ -1648,14 +1691,15 @@ class CombatMixin:
                     status_effect = "snared"
                     status_duration = snare_time
                 if self.player.class_name == "Acolyte":
-                    # Milestone 3.7 - Blood Nova's leech is gated behind the
-                    # Blood branch; base nova drains nothing.
+                    # Milestone 3.15 — Acolyte's action-bar slot 3 is now Spirit
+                    # Call, so this nova path is only reachable when
+                    # ``player_cast_nova`` is invoked directly (legacy calls).
+                    # The Blood-branch leech still applies here; the gravebind
+                    # *bind* has retired from the nova (it now lives on Spirit
+                    # Bolt, where ``player_cast_bolt`` applies "bound").
                     leech = self._acolyte_nova_leech()
                     if leech:
                         self.player.hp = min(self.player.max_hp, self.player.hp + leech)
-                    if self.player.has_upgrade("acolyte_gravebind"):
-                        status_effect = "bound"
-                        status_duration = 1.6
                 damage = self.apply_story_player_damage(damage, spell=True)
                 direction = (
                     (dx / distance, dy / distance)
@@ -1679,6 +1723,348 @@ class CombatMixin:
                 ttl=0.9,
             )
         )
+
+    # ------------------------------------------------------------------
+    # Milestone 3.15 — Spirit Call / familiar (summon) system.
+    # ------------------------------------------------------------------
+    FAMILIAR_BASE_HP = 20
+    FAMILIAR_BASE_DAMAGE = 6
+    FAMILIAR_BASE_SPEED = 3.2
+    FAMILIAR_ATTACK_RANGE = 1.25
+    FAMILIAR_ATTACK_COOLDOWN = 0.85
+    FAMILIAR_AGGRO_RANGE = 7.0
+    FAMILIAR_FOLLOW_DISTANCE = 1.6
+
+    def familiar_max_count(self) -> int:
+        """How many familiars Spirit Call maintains at once.
+
+        Base 1, +1 from ``acolyte_bone_legion`` (t3), +1 from
+        ``acolyte_legion_eternal`` (t5 capstone). Committing deeper into Spirit
+        visibly grows the host rather than just inflating stats.
+        """
+        count = 1
+        if self.player.has_upgrade("acolyte_bone_legion"):
+            count += 1
+        if self.player.has_upgrade("acolyte_legion_eternal"):
+            count += 1
+        return count
+
+    def familiar_stats(self) -> tuple[int, int]:
+        """Return ``(max_hp, damage)`` for a freshly summoned familiar.
+
+        Scales with Spirit branch investment so each pick is felt:
+          * ``acolyte_spirit_call`` (t1) — the core summoning node — grows the
+            familiar (HP + damage) and unlocks the medium sprite variant.
+          * ``acolyte_wraith_host`` (t2) — lifesteal + HP.
+          * ``acolyte_bone_legion`` (t3) — damage.
+          * ``acolyte_wraith_lord`` (t4) — champion: large sprite, HP + damage,
+            taunts foes.
+          * ``acolyte_legion_eternal`` (t5) — unkillable (regenerates, HP
+            floors at 1).
+        """
+        hp = self.FAMILIAR_BASE_HP
+        damage = self.FAMILIAR_BASE_DAMAGE
+        if self.player.has_upgrade("acolyte_spirit_call"):
+            hp += 12
+            damage += 2
+        if self.player.has_upgrade("acolyte_wraith_host"):
+            hp += 10
+        if self.player.has_upgrade("acolyte_bone_legion"):
+            damage += 2
+        if self.player.has_upgrade("acolyte_wraith_lord"):
+            hp += 24
+            damage += 4
+        if self.player.has_upgrade("acolyte_legion_eternal"):
+            hp += 16
+        return hp, damage
+
+    def familiar_variant_for_index(self, index: int) -> int:
+        """Sprite variant (0=wisp, 1=wraith, 2=champion) for the ``index``-th
+        familiar in the current host.
+
+        Per-summon selection from the Spirit branch: the t1 node promotes the
+        base wisp to the medium wraith, and the t4 champion node promotes the
+        lead familiar to the large bone champion. This keeps variant selection
+        deterministic from the build (testable) while exercising all three
+        sprites as the player commits to Spirit.
+        """
+        if self.player.has_upgrade("acolyte_wraith_lord") and index == 0:
+            return 2
+        if self.player.has_upgrade("acolyte_spirit_call"):
+            return 1
+        return 0
+
+    def familiar_is_champion(self, index: int) -> bool:
+        return self.player.has_upgrade("acolyte_wraith_lord") and index == 0
+
+    def familiar_damage_type(self) -> str:
+        # Summoned spirits deal shadow damage, matching the Acolyte's theme.
+        return "shadow"
+
+    def player_cast_spirit_call(self) -> None:
+        """Acolyte slot-3 ability: summon / refresh the spirit familiar host.
+
+        Reuses the nova-slot mana cost and cooldown (``nova_mana_cost`` /
+        ``nova_cooldown``) so the action bar stays balanced. On cast, the host
+        is topped up to ``familiar_max_count`` (missing familiars are summoned
+        beside the player) and existing familiars are healed to full. The
+        host persists until each familiar is killed or the floor is descended.
+        """
+        if self.player.class_name != "Acolyte":
+            # Defensive: only the Acolyte channels Spirit Call. Other classes
+            # fall through to their nova.
+            self.player_cast_nova()
+            return
+        mana_cost = self.nova_mana_cost()
+        if self.player.nova_timer > 0 or self.player.mana < mana_cost:
+            return
+        self.player.nova_timer = self.nova_cooldown()
+        self.player.mana -= mana_cost
+        self.set_player_action_visual("cast", 0.32)
+        self.add_impact(
+            self.player.x,
+            self.player.y,
+            self.skill_color(),
+            ttl=0.48,
+            radius=0.82,
+            kind="cast",
+            archetype=self.player.class_name,
+        )
+        self.apply_story_blood_price("nova")
+        max_count = self.familiar_max_count()
+        max_hp, damage = self.familiar_stats()
+        # Heal existing familiars to full and tag them with current build flags
+        # so an in-combat recast refreshes the host as the build evolves.
+        for index, familiar in enumerate(self.familiars):
+            familiar.max_hp = max_hp
+            familiar.hp = max_hp
+            familiar.damage = damage
+            familiar.lifesteal = self.player.has_upgrade("acolyte_wraith_host")
+            familiar.unkillable = self.player.has_upgrade("acolyte_legion_eternal")
+            familiar.sprite_variant = self.familiar_variant_for_index(index)
+            familiar.champion = self.familiar_is_champion(index)
+        # Summon missing familiars in a small ring around the player.
+        needed = max_count - len(self.familiars)
+        for slot in range(needed):
+            index = len(self.familiars)
+            angle = (index / max(1, max_count)) * math.tau + 0.7
+            offset = 0.9
+            fx = self.player.x + math.cos(angle) * offset
+            fy = self.player.y + math.sin(angle) * offset
+            variant = self.familiar_variant_for_index(index)
+            champion = self.familiar_is_champion(index)
+            self.familiars.append(
+                Familiar(
+                    x=fx,
+                    y=fy,
+                    max_hp=max_hp,
+                    hp=max_hp,
+                    damage=damage,
+                    speed=self.FAMILIAR_BASE_SPEED,
+                    attack_range=self.FAMILIAR_ATTACK_RANGE,
+                    attack_cooldown=self.FAMILIAR_ATTACK_COOLDOWN,
+                    sprite_variant=variant,
+                    lifesteal=self.player.has_upgrade("acolyte_wraith_host"),
+                    unkillable=self.player.has_upgrade("acolyte_legion_eternal"),
+                    champion=champion,
+                    facing_x=self.player.facing_x,
+                    facing_y=self.player.facing_y,
+                )
+            )
+            self.add_impact(
+                fx,
+                fy,
+                self.skill_color(),
+                ttl=0.40,
+                radius=0.46,
+                kind="burst",
+            )
+        count = len(self.familiars)
+        self.floaters.append(
+            FloatingText(
+                f"{self.skill_names()[2]} x{count}",
+                self.player.x,
+                self.player.y - 0.5,
+                self.skill_color(),
+                ttl=0.9,
+            )
+        )
+        self.play_sfx("hit")
+
+    def update_familiars(self, dt: float) -> None:
+        """Follow-and-attack AI for the familiar host.
+
+        O(familiar) per frame with no per-frame allocations: each familiar finds
+        the nearest living enemy within aggro range (one pass over the enemy
+        list), then either closes to attack, pursues, or returns to follow the
+        player. Familiars persist until killed (HP <= 0) or floor descent.
+        """
+        if not self.familiars:
+            return
+        if not self.enemies:
+            # No threats: regroup around the player.
+            for familiar in self.familiars:
+                self._familiar_follow_player(familiar, dt)
+                self._familiar_regen(familiar, dt)
+            self._cull_dead_familiars()
+            return
+        for familiar in self.familiars:
+            familiar.attack_timer = max(0.0, familiar.attack_timer - dt)
+            # Nearest living enemy within aggro range (single pass).
+            target = None
+            best_dist = self.FAMILIAR_AGGRO_RANGE
+            for enemy in self.enemies:
+                if not enemy.alive:
+                    continue
+                d = math.hypot(enemy.x - familiar.x, enemy.y - familiar.y)
+                if d < best_dist:
+                    best_dist = d
+                    target = enemy
+            if target is not None:
+                dx = target.x - familiar.x
+                dy = target.y - familiar.y
+                dist = math.hypot(dx, dy)
+                if dist <= familiar.attack_range:
+                    # In melee range: face and strike on cooldown.
+                    if dist > 0.001:
+                        familiar.facing_x = dx / dist
+                        familiar.facing_y = dy / dist
+                    if familiar.attack_timer <= 0:
+                        self._familiar_attack(familiar, target)
+                    familiar.moving = False
+                else:
+                    # Pursue the target.
+                    if dist > 0.001:
+                        nx, ny = dx / dist, dy / dist
+                        familiar.facing_x = nx
+                        familiar.facing_y = ny
+                        familiar.move_x = nx
+                        familiar.move_y = ny
+                        self._move_familiar(
+                            familiar, nx * familiar.speed * dt, ny * familiar.speed * dt
+                        )
+                        familiar.moving = True
+            else:
+                self._familiar_follow_player(familiar, dt)
+            familiar.anim_time += dt * (WALK_ANIMATION_RATE if familiar.moving else 0.0)
+            self._familiar_regen(familiar, dt)
+        self._cull_dead_familiars()
+
+    def _familiar_follow_player(self, familiar: Familiar, dt: float) -> None:
+        dx = self.player.x - familiar.x
+        dy = self.player.y - familiar.y
+        dist = math.hypot(dx, dy)
+        if dist > self.FAMILIAR_FOLLOW_DISTANCE and dist > 0.001:
+            nx, ny = dx / dist, dy / dist
+            familiar.facing_x = nx
+            familiar.facing_y = ny
+            familiar.move_x = nx
+            familiar.move_y = ny
+            self._move_familiar(
+                familiar, nx * familiar.speed * dt, ny * familiar.speed * dt
+            )
+            familiar.moving = True
+        else:
+            familiar.moving = False
+
+    def _move_familiar(self, familiar: Familiar, dx: float, dy: float) -> None:
+        """Lightweight familiar locomotion.
+
+        Familiars skip the shared ``move_actor`` path because that resolves
+        contacts via ``enemy_hit_radius``, which assumes Enemy fields
+        (``size``/``kind``/``name``). Instead we do a tight wall probe plus a
+        soft separation from the player so the summon orbits the Acolyte
+        rather than overlapping. Stays O(1) and allocation-free.
+        """
+        radius = 0.22
+        new_x = familiar.x + dx
+        if not self.dungeon.blocked_for_radius(new_x, familiar.y, radius):
+            familiar.x = new_x
+        new_y = familiar.y + dy
+        if not self.dungeon.blocked_for_radius(familiar.x, new_y, radius):
+            familiar.y = new_y
+        px_dx = familiar.x - self.player.x
+        px_dy = familiar.y - self.player.y
+        px_dist = math.hypot(px_dx, px_dy)
+        min_dist = 0.45
+        if 0.001 < px_dist < min_dist:
+            nx, ny = px_dx / px_dist, px_dy / px_dist
+            familiar.x += nx * (min_dist - px_dist)
+            familiar.y += ny * (min_dist - px_dist)
+
+    def _familiar_attack(self, familiar: Familiar, enemy: Enemy) -> None:
+        familiar.attack_timer = familiar.attack_cooldown
+        damage = familiar.damage + self.rng.randrange(0, 3)
+        # Familiars are summoner-aligned, so they bypass the player's
+        # story-damage modifiers and apply directly (keeping the hot path
+        # allocation-free).
+        enemy.hp -= max(1, damage)
+        self.enemy_hit_flashes[id(enemy)] = 0.18
+        hit_color = self.damage_type_color(self.familiar_damage_type())
+        self.floaters.append(
+            FloatingText(
+                f"-{max(1, damage)}",
+                enemy.x,
+                enemy.y - 0.25,
+                hit_color,
+                ttl=0.6,
+            )
+        )
+        self.add_impact(enemy.x, enemy.y, hit_color, ttl=0.26, radius=0.30, kind="hit")
+        # Wraith Host (t2): familiar hits siphon life into the Acolyte.
+        if familiar.lifesteal:
+            heal = max(1, damage // 3)
+            self.player.hp = min(self.player.max_hp, self.player.hp + heal)
+            self.floaters.append(
+                FloatingText(
+                    f"+{heal}",
+                    self.player.x,
+                    self.player.y - 0.45,
+                    self.damage_type_color("shadow"),
+                    ttl=0.55,
+                )
+            )
+        # Enemy retaliation: an adjacent foe hits back if ready, giving
+        # familiars a natural way to die in combat (and the champion's taunt
+        # value, since it draws the first blows). Legion Eternal makes the
+        # host unkillable so retaliation just chips toward 1.
+        if enemy.alive and enemy.attack_timer <= 0:
+            self._familiar_take_damage(familiar, max(1, enemy.damage // 2), enemy)
+            enemy.attack_timer = enemy.attack_cooldown * 0.6
+        if enemy.hp <= 0:
+            self.kill_enemy(enemy)
+
+    def _familiar_take_damage(
+        self, familiar: Familiar, amount: int, source: Enemy | None = None
+    ) -> None:
+        if familiar.unkillable:
+            # Legion Eternal: the host cannot die; damage floors at 1 and
+            # regenerates (see ``_familiar_regen``).
+            familiar.hp = max(1, familiar.hp - amount)
+            return
+        familiar.hp -= max(1, amount)
+        if source is not None:
+            self.add_impact(
+                familiar.x,
+                familiar.y,
+                self.damage_type_color("shadow"),
+                ttl=0.22,
+                radius=0.28,
+                kind="hit",
+            )
+
+    def _familiar_regen(self, familiar: Familiar, dt: float) -> None:
+        # Legion Eternal familiars slowly regenerate, and unkillable ones
+        # recover from the 1-HP floor so they stay useful between fights.
+        if familiar.unkillable and familiar.hp < familiar.max_hp:
+            familiar.hp = min(
+                familiar.max_hp, familiar.hp + max(1, familiar.max_hp // 8) * dt
+            )
+
+    def _cull_dead_familiars(self) -> None:
+        if not self.familiars:
+            return
+        self.familiars = [f for f in self.familiars if f.hp > 0]
 
     def player_dash(self) -> None:
         stamina_cost = self.dash_stamina_cost()

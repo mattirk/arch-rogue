@@ -38,6 +38,7 @@ from .dungeon import (
 )
 from .models import (
     Enemy,
+    Familiar,
     IdleNpc,
     Item,
     Player,
@@ -177,6 +178,46 @@ class SaveLoadMixin:
             name=str(data.get("name", "")),
             role=str(data.get("role", "")),
             color=color,
+        )
+
+    def familiar_to_dict(self, familiar: Familiar) -> dict[str, Any]:
+        return {
+            "x": familiar.x,
+            "y": familiar.y,
+            "max_hp": familiar.max_hp,
+            "hp": familiar.hp,
+            "damage": familiar.damage,
+            "speed": familiar.speed,
+            "attack_range": familiar.attack_range,
+            "attack_cooldown": familiar.attack_cooldown,
+            "sprite_variant": familiar.sprite_variant,
+            "lifesteal": familiar.lifesteal,
+            "unkillable": familiar.unkillable,
+            "champion": familiar.champion,
+            "attack_timer": familiar.attack_timer,
+            "anim_time": familiar.anim_time,
+            "facing_x": familiar.facing_x,
+            "facing_y": familiar.facing_y,
+        }
+
+    def familiar_from_dict(self, data: dict[str, Any]) -> Familiar:
+        return Familiar(
+            x=float(data.get("x", 0.0)),
+            y=float(data.get("y", 0.0)),
+            max_hp=int(data.get("max_hp", 20)),
+            hp=int(data.get("hp", 20)),
+            damage=int(data.get("damage", 6)),
+            speed=float(data.get("speed", 3.2)),
+            attack_range=float(data.get("attack_range", 1.25)),
+            attack_cooldown=float(data.get("attack_cooldown", 0.85)),
+            sprite_variant=int(data.get("sprite_variant", 0)),
+            lifesteal=bool(data.get("lifesteal", False)),
+            unkillable=bool(data.get("unkillable", False)),
+            champion=bool(data.get("champion", False)),
+            attack_timer=float(data.get("attack_timer", 0.0)),
+            anim_time=float(data.get("anim_time", 0.0)),
+            facing_x=float(data.get("facing_x", 1.0)),
+            facing_y=float(data.get("facing_y", 0.0)),
         )
 
     def special_room_to_dict(self, special_room: SpecialRoom) -> dict[str, Any]:
@@ -338,6 +379,9 @@ class SaveLoadMixin:
             "secrets": [secret.__dict__ for secret in self.secrets],
             "story_guests": [story_guest_to_dict(guest) for guest in self.story_guests],
             "idle_npcs": [self.idle_npc_to_dict(npc) for npc in self.idle_npcs],
+            "familiars": [
+                self.familiar_to_dict(familiar) for familiar in self.familiars
+            ],
             "run_stats": self.run_stats.__dict__,
         }
 
@@ -517,6 +561,11 @@ class SaveLoadMixin:
         ]
         self.idle_npcs = [
             self.idle_npc_from_dict(npc) for npc in data.get("idle_npcs", [])
+        ]
+        # Milestone 3.15 - familiars restore additively; old saves without
+        # the field load with an empty host (the Acolyte can re-summon).
+        self.familiars = [
+            self.familiar_from_dict(familiar) for familiar in data.get("familiars", [])
         ]
         self.active_cutscene = ActiveQuestCutscene.from_dict(
             data.get("active_cutscene")

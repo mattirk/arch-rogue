@@ -675,6 +675,42 @@ class Enemy:
 
 
 @dataclass
+class Familiar:
+    """A summoned spirit ally (Milestone 3.15 — Spirit Call).
+
+    A lightweight actor that follows the player and attacks enemies on sight.
+    It persists until killed or on floor descent; Spirit Call re-summons / heals
+    it on cast. The Spirit branch nodes scale its HP, damage, count, and
+    persistence rather than acting as flavor-only stat bonuses.
+    """
+
+    x: float
+    y: float
+    max_hp: int
+    hp: int
+    damage: int
+    speed: float
+    attack_range: float
+    attack_cooldown: float
+    sprite_variant: int = 0
+    # Per-familiar flags set at summon time from the player's Spirit branch.
+    lifesteal: bool = False
+    unkillable: bool = False
+    champion: bool = False
+    attack_timer: float = 0.0
+    anim_time: float = 0.0
+    moving: bool = False
+    move_x: float = 1.0
+    move_y: float = 0.0
+    facing_x: float = 1.0
+    facing_y: float = 0.0
+
+    @property
+    def alive(self) -> bool:
+        return self.hp > 0
+
+
+@dataclass
 class Player:
     x: float
     y: float

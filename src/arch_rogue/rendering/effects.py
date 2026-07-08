@@ -27,6 +27,7 @@ from ..content import HUMANOID_ENEMY_NAMES
 from ..models import (
     Color,
     Enemy,
+    Familiar,
     IdleNpc,
     ImpactEffect,
     Item,
@@ -1284,6 +1285,47 @@ class RenderingEffectsMixin:
         self.draw_shadow(npc.x, npc.y, 24, 10)
         sprite = self.sprites.story_guest_frame(self.elapsed + npc.x * 0.7, False)
         self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 5 * WORLD_SCALE)))
+
+    def draw_familiar(self, familiar: Familiar) -> None:
+        sx, sy = self.world_to_screen(familiar.x, familiar.y)
+        bob = math.sin(self.elapsed * 3.4 + familiar.x * 0.7 + familiar.y * 0.4) * 1.4
+        shadow_w = 30 if familiar.champion else (22 if familiar.sprite_variant else 18)
+        self.draw_shadow(familiar.x, familiar.y, shadow_w, 10, moving=familiar.moving)
+        sprite = self.sprites.familiar_frame(familiar.sprite_variant, self.elapsed)
+        accent = self.mix(self.skill_color(), (190, 250, 255), 0.35)
+        aura = pygame.Surface(
+            (
+                sprite.get_width() + 8 * WORLD_SCALE,
+                sprite.get_height() + 8 * WORLD_SCALE,
+            ),
+            pygame.SRCALPHA,
+        )
+        pulse = 0.5 + 0.5 * math.sin(self.elapsed * 4.0 + familiar.x)
+        pygame.draw.ellipse(
+            aura,
+            (*accent, int(22 + 18 * pulse)),
+            aura.get_rect().inflate(-6 * WORLD_SCALE, -6 * WORLD_SCALE),
+        )
+        self.screen.blit(
+            aura, aura.get_rect(center=(sx, sy - sprite.get_height() // 2))
+        )
+        self.screen.blit(
+            sprite,
+            sprite.get_rect(midbottom=(sx, sy + (5 - bob) * WORLD_SCALE)),
+        )
+        if familiar.hp < familiar.max_hp:
+            bar_w = 24 * WORLD_SCALE
+            fill_w = int(bar_w * max(0, familiar.hp) / familiar.max_hp)
+            bar_h = 3 * WORLD_SCALE
+            bar_y = sy - sprite.get_height() - 2 * WORLD_SCALE
+            pygame.draw.rect(
+                self.screen, (40, 10, 10), (sx - bar_w // 2, bar_y, bar_w, bar_h)
+            )
+            pygame.draw.rect(
+                self.screen,
+                (160, 235, 230),
+                (sx - bar_w // 2, bar_y, fill_w, bar_h),
+            )
 
     def draw_shrine(self, shrine: Shrine) -> None:
         sx, sy = self.world_to_screen(shrine.x, shrine.y)

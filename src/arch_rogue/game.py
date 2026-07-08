@@ -77,6 +77,7 @@ from .models import (
     Archetype,
     Color,
     Enemy,
+    Familiar,
     FloatingText,
     FloorPlan,
     IdleNpc,
@@ -329,6 +330,9 @@ class Game(
         self.story_state: StoryState | None = None
         self.story_guests: list[StoryGuest] = []
         self.idle_npcs: list[IdleNpc] = []
+        # Milestone 3.15 — Acolyte Spirit Call familiars. Reset on restart /
+        # floor descent and serialized additively (old saves load with none).
+        self.familiars: list[Familiar] = []
         self.story_intro_pending = False
         self.story_relic_depth = 0
         self.story_relic_choice_key = ""
@@ -705,7 +709,10 @@ class Game(
                         self.player_cast_bolt()
                     elif index == 2:
                         self.update_player_aim()
-                        self.player_cast_nova()
+                        if self.player.class_name == "Acolyte":
+                            self.player_cast_spirit_call()
+                        else:
+                            self.player_cast_nova()
                     elif index == 3:
                         self.update_player_aim()
                         self.player_dash()
@@ -805,6 +812,7 @@ class Game(
         self.update_revealed_tiles()
         self.update_enemy_statuses(dt)
         self.update_enemies(dt)
+        self.update_familiars(dt)
         self.update_projectiles(dt)
         self.update_traps(dt)
         self.update_secrets()

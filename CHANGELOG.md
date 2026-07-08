@@ -1,5 +1,29 @@
 # Changelog
 
+## 3.15.0 — Summons, first edition
+
+The Acolyte's slot-3 ability is now **Spirit Call**, replacing Blood Nova on the action bar: it summons a small familiar that follows the Acolyte and attacks enemies on sight. The familiar persists until killed or on floor descent, and Spirit Call reuses the existing nova-slot mana cost / cooldown so the action bar stays balanced. Committing to the Spirit branch visibly scales the summon instead of awarding flavor-only stat bonuses.
+
+### Added
+- `Familiar` actor in `models.py` (position, HP, attack cooldown, sprite variant, lifesteal / unkillable / champion flags) with follow-and-attack AI in `combat.py` (`update_familiars`, `_move_familiar`, `_familiar_attack`, `_familiar_take_damage`, `_familiar_regen`, `_cull_dead_familiars`). The host persists until each familiar is killed or the floor is descended; recasting tops the host up to the build's count and heals existing familiars to full. AI is O(familiar) per frame with no per-frame allocations.
+- Three familiar sprite variants in `sprites.py` (`_familiar_wisp`, `_familiar_wraith`, `_familiar_champion`) authored at increasing raw sizes (14x18, 20x26, 26x34) and prop-scaled so they read as small wisp / medium wraith / large bone champion. `familiar_frame(variant, elapsed)` selects per-summon from the Spirit branch tier.
+- `draw_familiar` in `rendering/effects.py` with a class-colored accent aura, a floating bob, and an injury health bar; depth-sorted alongside actors in `rendering/world.py` (always visible to the summoner, no line-of-sight gate).
+- `player_cast_spirit_call` in `combat.py` plus Spirit-branch scaling helpers (`familiar_max_count`, `familiar_stats`, `familiar_variant_for_index`, `familiar_is_champion`, `familiar_damage_type`). Enemy projectiles now intercept familiars that bodyguard the Acolyte.
+- Familiar serialization in `save_system.py` (`familiar_to_dict` / `familiar_from_dict`); restored additively. Old saves without `familiars` load cleanly with an empty host (additive; schema version stays `5`).
+- `self.familiars` initialized on `Game`, reset on `restart`, floor descent, and `start_story_mode`, and updated each frame in the run loop (`update_familiars`).
+- New `tests/test_3_15_summons.py` (14 tests): slot-3 swap, spawn/lifecycle, kill cull, follow-and-attack AI, return-to-player, enemy-projectile damage, Spirit-branch scaling (HP/damage/count/lifesteal/unkillable/champion), lifesteal heal, unkillable floor, sprite-variant selection, three-sprite render, save round-trip, old-save compatibility, and a full-frame render smoke test.
+
+### Changed
+- Acolyte slot-3 is now "Spirit Call" in `skill_names()`, `hud_action_slots()`, and the `K_3` / `ABILITY_3` dispatch (`game.py`, `input.py`). Other classes keep their nova. Spirit Call reuses the nova-slot cost/cooldown and `player.nova_timer`.
+- The Spirit branch nodes now augment the familiar instead of being flavor-only: `acolyte_spirit_call` (t1) grows HP/damage and promotes the sprite to the wraith; `acolyte_wraith_host` (t2) grants lifesteal + HP; `acolyte_bone_legion` (t3) adds +1 familiar and damage; `acolyte_wraith_lord` (t4) makes the lead familiar a champion (large sprite, taunts, +HP/+damage); `acolyte_legion_eternal` (t5) adds +1 familiar and makes the host unkillable (regenerating, HP floored at 1).
+- `acolyte_gravebind`'s nova bind retired: the "bound" status now lives only on Spirit Bolt (`player_cast_bolt` already applies it), since the Acolyte no longer casts Blood Nova from the action bar. The Blood-branch nova leech (`_acolyte_nova_leech`) is preserved for direct `player_cast_nova` calls and existing tests.
+- Package metadata, `__version__`, save `release`, and version-current tests now target `3.15.0`. Save schema `version` remains `5`.
+
+### Validation
+- `python -m compileall src tests` passes.
+- `python -m unittest tests.test_3_15_summons` passes (14 tests).
+- `python -m unittest discover tests` passes (118 tests).
+
 ## 3.14.0 — Special Room Flavor: Bar & Garden
 
 Two new appearance-only special rooms (bar and garden) join the dungeon, giving floors a sense of inhabited, lived-in place beyond the shop and quest chamber. They exist for atmosphere: the player cannot trade with or talk to anyone inside, and they do not change loot, enemies, or progression.

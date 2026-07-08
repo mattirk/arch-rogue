@@ -39,6 +39,7 @@ from .dungeon import MAP_H, MAP_W, Dungeon, Tile
 from .models import (
     Archetype,
     Enemy,
+    Familiar,
     FloatingText,
     FloorPlan,
     IdleNpc,
@@ -540,6 +541,7 @@ class RunFlowMixin:
         self.secrets: list[SecretCache] = []
         self.story_guests = []
         self.idle_npcs: list[IdleNpc] = []
+        self.familiars: list[Familiar] = []
         self.floaters: list[FloatingText] = []
         self.slashes: list[SlashEffect] = []
         self.impact_effects = []
@@ -621,6 +623,7 @@ class RunFlowMixin:
         self.secrets = []
         self.story_guests = []
         self.idle_npcs = []
+        self.familiars = []
         self.floaters = []
         self.slashes = []
         self.impact_effects = []

@@ -36,6 +36,7 @@ from ..content import HUMANOID_ENEMY_NAMES
 from ..models import (
     Color,
     Enemy,
+    Familiar,
     IdleNpc,
     ImpactEffect,
     Item,
@@ -1311,6 +1312,8 @@ class RenderingWorldMixin:
                 enemy.x, enemy.y
             ):
                 drawables.append((enemy.x + enemy.y, "enemy", enemy))
+        for familiar in self.familiars:
+            drawables.append((familiar.x + familiar.y, "familiar", familiar))
         drawables.append((self.player.x + self.player.y, "player", self.player))
         for slash in self.slashes:
             x, y, _ttl, _dx, _dy = slash
@@ -1356,6 +1359,8 @@ class RenderingWorldMixin:
                 self.draw_projectile(cast(Projectile, obj))
             elif kind == "enemy":
                 self.draw_enemy(cast(Enemy, obj))
+            elif kind == "familiar":
+                self.draw_familiar(cast(Familiar, obj))
             elif kind == "player":
                 self.draw_player(cast(Player, obj))
             elif kind == "slash":
