@@ -1292,23 +1292,6 @@ class RenderingEffectsMixin:
         shadow_w = 30 if familiar.champion else (22 if familiar.sprite_variant else 18)
         self.draw_shadow(familiar.x, familiar.y, shadow_w, 10, moving=familiar.moving)
         sprite = self.sprites.familiar_frame(familiar.sprite_variant, self.elapsed)
-        accent = self.mix(self.skill_color(), (190, 250, 255), 0.35)
-        aura = pygame.Surface(
-            (
-                sprite.get_width() + 8 * WORLD_SCALE,
-                sprite.get_height() + 8 * WORLD_SCALE,
-            ),
-            pygame.SRCALPHA,
-        )
-        pulse = 0.5 + 0.5 * math.sin(self.elapsed * 4.0 + familiar.x)
-        pygame.draw.ellipse(
-            aura,
-            (*accent, int(22 + 18 * pulse)),
-            aura.get_rect().inflate(-6 * WORLD_SCALE, -6 * WORLD_SCALE),
-        )
-        self.screen.blit(
-            aura, aura.get_rect(center=(sx, sy - sprite.get_height() // 2))
-        )
         self.screen.blit(
             sprite,
             sprite.get_rect(midbottom=(sx, sy + (5 - bob) * WORLD_SCALE)),

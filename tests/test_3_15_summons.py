@@ -237,11 +237,12 @@ class Summons315Tests(unittest.TestCase):
             game.player.nova_timer = 0.0
             game.player.mana = game.player.max_mana
 
-            # Wraith Lord: lead familiar is a champion (variant 2, taunts).
+            # Wraith Lord: lead familiar is a champion (taunts); the sprite
+            # stays the big owl (variant 1) once Spirit Call is chosen.
             game.player.skill_upgrades.append("acolyte_wraith_lord")
             game.player_cast_spirit_call()
             self.assertTrue(game.familiars[0].champion)
-            self.assertEqual(game.familiars[0].sprite_variant, 2)
+            self.assertEqual(game.familiars[0].sprite_variant, 1)
             self.assertGreater(game.familiars[0].max_hp, tier1.max_hp)
             game.familiars = []
             game.player.nova_timer = 0.0
@@ -290,31 +291,32 @@ class Summons315Tests(unittest.TestCase):
 
     # --- sprite-variant selection ---------------------------------------
 
-    def test_sprite_variant_selection_progresses_with_spirit_branch(self) -> None:
+    def test_sprite_state_small_before_skill_big_owl_after_spirit_call(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
-            # No Spirit nodes: variant 0 (small wisp).
+            # No Spirit skill chosen yet: small wisp state (variant 0).
             self.assertEqual(game.familiar_variant_for_index(0), 0)
+            # Choosing Spirit Call promotes the familiar to the big owl (variant 1).
             game.player.skill_upgrades.append("acolyte_spirit_call")
             self.assertEqual(game.familiar_variant_for_index(0), 1)
             game.player.skill_upgrades.append("acolyte_wraith_lord")
-            # Lead familiar becomes the champion (variant 2); retinue stays 1.
-            self.assertEqual(game.familiar_variant_for_index(0), 2)
+            # Deeper Spirit nodes scale stats/count but keep the owl silhouette.
+            self.assertEqual(game.familiar_variant_for_index(0), 1)
             self.assertEqual(game.familiar_variant_for_index(1), 1)
 
-    def test_three_familiar_sprite_variants_exist_and_render(self) -> None:
-        # The sprite atlas exposes three distinct, renderable familiar sprites.
+    def test_two_familiar_sprite_states_exist_and_owl_is_larger(self) -> None:
+        # The sprite atlas exposes two familiar states (small wisp + big owl),
+        # both renderable, and the owl is clearly larger than the wisp.
         from arch_rogue.sprites import PixelSpriteAtlas
 
         atlas = PixelSpriteAtlas()
-        for variant in (0, 1, 2):
+        for variant in (0, 1):
             frame = atlas.familiar_frame(variant, 0.0)
             self.assertGreater(frame.get_width(), 0)
             self.assertGreater(frame.get_height(), 0)
-        # Champion (variant 2) is the largest of the three.
         w0 = atlas.familiar_frame(0, 0.0).get_width()
-        w2 = atlas.familiar_frame(2, 0.0).get_width()
-        self.assertGreater(w2, w0)
+        w1 = atlas.familiar_frame(1, 0.0).get_width()
+        self.assertGreater(w1, w0)
 
     # --- save round-trip ------------------------------------------------
 

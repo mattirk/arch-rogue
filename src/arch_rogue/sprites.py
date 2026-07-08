@@ -240,23 +240,25 @@ class PixelSpriteAtlas:
         self.gold_stack_sprites = {
             size: self._scale_prop(self._gold_stack(size)) for size in (1, 2, 3)
         }
-        # Milestone 3.15 — three familiar sprite variants (small wisp, medium
-        # wraith, large bone champion). Selected per-summon from the player's
-        # Spirit branch investment so committing to Spirit visibly grows the
-        # summon. Authored at increasing raw sizes and prop-scaled so they read
-        # as small/medium/large against the isometric floor.
+        # Milestone 3.15 — two familiar sprite states: a small wisp before
+        # any Spirit skill is chosen, and a big owl once the Acolyte commits to
+        # Spirit Call. Authored at 14x18 (small) and 26x34 (big). The owl is
+        # scaled a touch smaller than the default prop scale so the big
+        # familiar reads as a companion rather than a full-size actor.
+        familiar_raw = {
+            0: self._familiar_wisp(),
+            1: self._familiar_owl(),
+        }
+        familiar_scales = {0: self.PROP_SCALE, 1: max(2, self.PROP_SCALE - 1)}
         self.familiar_sprites = {
-            variant: self._scale_prop(surface)
-            for variant, surface in {
-                0: self._familiar_wisp(),
-                1: self._familiar_wraith(),
-                2: self._familiar_champion(),
-            }.items()
+            variant: self._scale(
+                self._outline_surface(surface, (18, 14, 20)), familiar_scales[variant]
+            )
+            for variant, surface in familiar_raw.items()
         }
         familiar_glows = {
             0: (120, 235, 225),
-            1: (185, 135, 235),
-            2: (235, 225, 180),
+            1: (190, 250, 255),
         }
         self.familiar_animation_frames = {
             variant: self._prop_animation_frames(sprite, glow=familiar_glows[variant])
@@ -900,9 +902,9 @@ class PixelSpriteAtlas:
     def familiar_frame(self, variant: int, elapsed: float) -> pygame.Surface:
         """Animation frame for a summoned familiar (Milestone 3.15).
 
-        ``variant`` selects one of the three Spirit-branch sprite tiers
-        (0 = small wisp, 1 = medium wraith, 2 = large bone champion). Falls
-        back to the base wisp if an unknown variant is requested.
+        ``variant`` selects one of the two familiar states: 0 = small wisp
+        (pre-skill) or 1 = big owl (post Spirit Call). Falls back to the base
+        wisp if an unknown variant is requested.
         """
         frames = self.familiar_animation_frames.get(
             variant, self.familiar_animation_frames[0]
@@ -2554,9 +2556,8 @@ class PixelSpriteAtlas:
         return self.gold_stack_sprites.get(size, self.gold_stack_sprites[1])
 
     # ------------------------------------------------------------------
-    # Milestone 3.15 — familiar (summoned spirit ally) sprite variants.
-    # Authored at increasing raw sizes (14x18, 20x26, 26x34) so the three
-    # Spirit-branch tiers read as small wisp / medium wraith / large champion.
+    # Milestone 3.15 — familiar (summoned spirit ally) sprite states.
+    # Two states: a small wisp (pre-skill) and a big owl (post Spirit Call).
     # ------------------------------------------------------------------
     def _familiar_wisp(self) -> pygame.Surface:
         s = self._surface(14, 18)
@@ -2582,88 +2583,44 @@ class PixelSpriteAtlas:
         self._dot(s, 7, 0, glow)
         return s
 
-    def _familiar_wraith(self) -> pygame.Surface:
-        s = self._surface(20, 26)
-        violet = (170, 120, 220)
-        violet_hi = (210, 175, 245)
-        violet_lo = (110, 75, 160)
-        violet_dk = (60, 40, 90)
-        glow = (235, 220, 255)
-        dark = (28, 22, 38)
-        # pointed hood
-        self._rect(s, 8, 0, 4, 2, violet_dk)
-        self._rect(s, 6, 2, 8, 6, violet)
-        self._rect(s, 7, 2, 6, 5, violet_hi)  # hood lit side
-        # shadowed face under hood
-        self._rect(s, 7, 5, 6, 4, dark)
-        # glowing eyes
-        self._rect(s, 8, 6, 2, 1, glow)
-        self._rect(s, 11, 6, 2, 1, glow)
-        # flowing cloak / body
-        self._rect(s, 5, 8, 10, 10, violet)
-        self._rect(s, 6, 8, 8, 10, violet_hi)
-        self._rect(s, 4, 10, 12, 6, violet_lo)  # widen base
-        # ragged cloak hem
-        self._rect(s, 4, 18, 12, 3, violet_lo)
-        self._rect(s, 5, 21, 2, 3, violet_dk)
-        self._rect(s, 9, 21, 2, 3, violet_dk)
-        self._rect(s, 13, 21, 2, 3, violet_dk)
-        # shoulder wisp motes
-        self._dot(s, 3, 9, glow)
-        self._dot(s, 17, 9, glow)
-        return s
-
-    def _familiar_champion(self) -> pygame.Surface:
+    def _familiar_owl(self) -> pygame.Surface:
+        # Big owl spirit (the post-Spirit-Call familiar state). A round
+        # feathered body, two big eye discs, ear tufts, a small gold beak, and
+        # the spirit-glow eyes that mark every Acolyte summon.
         s = self._surface(26, 34)
         bone = (224, 218, 196)
         bone_hi = (245, 240, 220)
         bone_lo = (170, 162, 138)
-        iron = (120, 128, 132)
-        iron_hi = (170, 178, 180)
+        feather = (150, 142, 116)  # darker feather tone for body shading
         gold = (235, 200, 110)
         gold_hi = (255, 225, 150)
         glow = (190, 250, 255)
+        glow_deep = (90, 210, 235)
         dark = (26, 28, 32)
-        shadow = (44, 46, 52)
-        # horned skull helm
-        self._rect(s, 6, 0, 3, 3, bone_lo)  # left horn
-        self._rect(s, 17, 0, 3, 3, bone_lo)  # right horn
-        self._dot(s, 7, 0, bone)
-        self._dot(s, 18, 0, bone)
-        self._rect(s, 8, 2, 10, 8, dark)
-        self._rect(s, 9, 3, 8, 7, bone)
-        self._rect(s, 9, 3, 8, 1, bone_hi)  # skull crown
-        # eye sockets (deep glow)
-        self._rect(s, 10, 6, 2, 2, dark)
-        self._rect(s, 14, 6, 2, 2, dark)
-        self._dot(s, 10, 6, glow)
-        self._dot(s, 14, 6, glow)
-        # nasal dark
-        self._vline(s, 12, 8, 2, bone_lo)
-        # bone shoulder plates
-        self._rect(s, 5, 10, 16, 4, iron)
-        self._rect(s, 6, 10, 14, 1, iron_hi)
-        self._rect(s, 7, 11, 4, 3, bone)  # left pauldron
-        self._rect(s, 15, 11, 4, 3, bone)  # right pauldron
-        self._dot(s, 8, 12, gold_hi)
-        self._dot(s, 17, 12, gold_hi)
-        # ethereal torso (glowing ribcage)
-        self._rect(s, 7, 14, 12, 8, shadow)
-        self._hline(s, 8, 16, 10, bone_lo)
-        self._hline(s, 8, 19, 10, bone_lo)
-        self._vline(s, 12, 15, 7, bone)
-        self._dot(s, 12, 17, glow)  # heart-light
-        # flowing spectral cloak
-        self._rect(s, 4, 14, 2, 14, shadow)
-        self._rect(s, 20, 14, 2, 14, shadow)
-        self._rect(s, 5, 22, 16, 4, iron)
-        self._rect(s, 6, 22, 14, 1, iron_hi)
-        # ragged cloak skirt
-        self._rect(s, 6, 26, 14, 4, shadow)
-        self._rect(s, 7, 30, 2, 3, dark)
-        self._rect(s, 12, 30, 2, 3, dark)
-        self._rect(s, 17, 30, 2, 3, dark)
-        # gold belt emblem
-        self._rect(s, 11, 22, 4, 2, gold)
-        self._dot(s, 12, 22, gold_hi)
+        # ear tufts
+        pygame.draw.polygon(s, bone_lo, [(6, 6), (10, 6), (8, 0)])
+        pygame.draw.polygon(s, bone_lo, [(16, 6), (20, 6), (18, 0)])
+        # body (oval)
+        pygame.draw.ellipse(s, bone_lo, (3, 5, 20, 27))
+        # lit breast
+        pygame.draw.ellipse(s, bone, (7, 13, 12, 17))
+        # feather shading bands across the breast
+        self._hline(s, 7, 21, 12, feather)
+        self._hline(s, 7, 25, 12, feather)
+        # big eye discs (lighter than the body so they read as owl eyes)
+        pygame.draw.circle(s, bone, (10, 14), 4)
+        pygame.draw.circle(s, bone, (16, 14), 4)
+        # glowing spirit eyes
+        pygame.draw.circle(s, dark, (10, 14), 3)
+        pygame.draw.circle(s, dark, (16, 14), 3)
+        pygame.draw.circle(s, glow_deep, (10, 14), 2)
+        pygame.draw.circle(s, glow_deep, (16, 14), 2)
+        self._dot(s, 10, 14, glow)
+        self._dot(s, 16, 14, glow)
+        # beak
+        pygame.draw.polygon(s, gold, [(12, 17), (14, 17), (13, 20)])
+        self._dot(s, 13, 19, gold_hi)
+        # feet
+        self._rect(s, 9, 31, 3, 2, gold)
+        self._rect(s, 14, 31, 3, 2, gold)
         return s

@@ -216,3 +216,6 @@ Draft goal: complement the 3.10 player-side build diversity with enemy-side vari
 - Validate with a new `tests/test_3_11_encounter_depth.py` covering faction stat leanings and affix pools, elite-pack generation and retinue sizing, enemy-affix combat resolution (thorns/lifesteal/aura/summon), elite telegraph marker behavior, sealed-vault-encounter interaction, kill-reward scaling, and old-save compatibility, plus the full `unittest discover tests` regression suite.
 
 ### Stash
+
+- make 5 different kinds of animal NPCs (small animal sprites of 5 kind) appear in garden rooms. 2-5 NPCs per room. use data driven approach as usual.
+- owl familiar sprite looks better, or "higher resolution" than for example player sprite. we need to make player sprite more detailed of of a "higher resolution". make 10 trial runs in ./player_sprites with a temporary script

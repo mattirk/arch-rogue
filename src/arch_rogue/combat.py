@@ -1779,17 +1779,14 @@ class CombatMixin:
         return hp, damage
 
     def familiar_variant_for_index(self, index: int) -> int:
-        """Sprite variant (0=wisp, 1=wraith, 2=champion) for the ``index``-th
-        familiar in the current host.
+        """Sprite state for the ``index``-th familiar in the current host.
 
-        Per-summon selection from the Spirit branch: the t1 node promotes the
-        base wisp to the medium wraith, and the t4 champion node promotes the
-        lead familiar to the large bone champion. This keeps variant selection
-        deterministic from the build (testable) while exercising all three
-        sprites as the player commits to Spirit.
+        Two states: 0 = small wisp before any Spirit skill is chosen, 1 = big
+        owl once the Acolyte has learned Spirit Call (``acolyte_spirit_call``).
+        Deeper Spirit nodes (wraith host / bone legion / wraith lord / legion
+        eternal) scale stats and count but no longer change the silhouette —
+        the big familiar is always the owl.
         """
-        if self.player.has_upgrade("acolyte_wraith_lord") and index == 0:
-            return 2
         if self.player.has_upgrade("acolyte_spirit_call"):
             return 1
         return 0
