@@ -186,15 +186,21 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 3.14 Special room additions
+### 3.15 Summons, first edition
 
-- Add two more special room kinds: `bar` and `garden`
-- These are only special rooms in terms of their appearance
-- Generate nice decorative floor and wall tiles for these rooms that represent their purpose and aesthetic
-- Both rooms may or may not have a friendly idle NPC, player cannot interact with him 
-- Make both of these rooms spawn at 50% change on all depths
+- Replace Acolyte Blood Nova action bar skill with Spirit Call
+- Spirit Call summons a small familiar that follows the player and attacks enemies on sight
+- Generate 3 different sprite variants for familiars
+- Sprite size is small in the beginning, gets a bit bigger after learning Spirit Call from the Spirit branch (summoning flavor)
+- Add a lightweight `Familiar` actor in `models.py` (position, HP, attack cooldown, target, sprite variant) with follow-and-attack AI in `combat.py`; it persists until killed or on floor descent, and Spirit Call reuses the existing nova-slot mana cost/cooldown so the action bar stays balanced.
+- The existing Spirit branch nodes (`acolyte_wraith_host`, `acolyte_bone_legion`, `acolyte_wraith_lord`, `acolyte_legion_eternal`) now augment the familiar (HP/damage/persistence/extra count) instead of being flavor-only stat bonuses, so committing to Spirit visibly scales the summon.
+- The slot-3 swap is Acolyte-only: `skill_names()`, `hud_action_slots()`, and the `K_3`/`ABILITY_3` dispatch route Acolyte to Spirit Call while other classes keep their nova. Blood Nova-only augments (e.g. `acolyte_gravebind`'s nova bind) retire or transfer to Spirit Bolt — keep it readable and document the choice in CHANGELOG.
+- Render the familiar in `rendering/` with depth sorting alongside actors, drawing the 3 sprite variants from `sprites.py` selected per-summon.
+- Serialize the familiar in `save_system.py`; old saves without a familiar load cleanly (additive, no schema bump needed).
+- Keep familiar AI O(familiar) per frame with no per-frame allocations; preserve the 60+ FPS run loop, keyboard/mouse/controller bindings, run-save compatibility, and the stable `Game`/`main` entry points.
+- Validate with a new `tests/test_3_15_summons.py` covering familiar spawn/lifecycle, follow-and-attack AI, Spirit-branch scaling, sprite-variant selection, save round-trip, old-save compatibility, and a render smoke test, plus the full `unittest discover tests` regression suite.
 
-### 3.15 Encounter Depth: Elite Packs, Enemy Affixes, and Faction Variety
+### 3.16 Encounter Depth: Elite Packs, Enemy Affixes, and Faction Variety
 
 Draft goal: complement the 3.10 player-side build diversity with enemy-side variety so each run tests builds against a meaningfully different threat landscape rather than a flat stat curve.
 
