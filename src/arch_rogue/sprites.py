@@ -256,12 +256,12 @@ class PixelSpriteAtlas:
             )
             for variant, surface in familiar_raw.items()
         }
-        familiar_glows = {
-            0: (120, 235, 225),
-            1: (190, 250, 255),
-        }
+        # Note: no per-frame glow ellipse is added here. The familiar's
+        # ground shadow is drawn separately in RenderingEffectsMixin.draw_familiar
+        # via draw_shadow(), matching the player sprite's shadow. Adding a glow
+        # ellipse here would stack a second, sharper shadow under the sprite.
         self.familiar_animation_frames = {
-            variant: self._prop_animation_frames(sprite, glow=familiar_glows[variant])
+            variant: self._prop_animation_frames(sprite)
             for variant, sprite in self.familiar_sprites.items()
         }
 
