@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.18.1"
-description = "3.18.1 gives the Warden a dedicated Time skill path: the Fortress branch is rethemed into a five-tier Time Skip ladder (cheaper, wider/stagger, stronger slow, damage ward, on-kill cooldown refund)."
+version = "3.18.2"
+description = "3.18.2 fixes a viewport zoom-out performance cliff: the continuous lighting + ambient depth pass now runs at display resolution when zoomed out (and at the smaller world-layer resolution when zoomed in), so max zoom-out no longer pays for a layer-resolution light buffer + multiply. ~15% faster draw at max zoom-out with zoom-in unchanged."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

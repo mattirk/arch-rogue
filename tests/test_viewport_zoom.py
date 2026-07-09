@@ -118,6 +118,97 @@ class ViewportZoomTests(unittest.TestCase):
             game.view_zoom = 0.75
             game.draw()
 
+    def test_world_to_display_matches_screen_at_unit_zoom(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game.view_zoom = 1.0
+            for wx, wy in ((game.player.x, game.player.y),
+                           (game.player.x + 2, game.player.y - 1)):
+                self.assertEqual(game.world_to_display(wx, wy),
+                                 game.world_to_screen(wx, wy))
+
+    def test_world_to_display_scales_with_zoom(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            cam_x, cam_y = game.camera_iso()
+            iso_x = (game.player.x - game.player.y) * 64 * 5 / 2
+            iso_y = (game.player.x + game.player.y) * 32 * 5 / 2
+            rw, rh = game.screen.get_size()
+            for zoom in (0.65, 0.8, 1.0, 1.3, 1.6):
+                game.view_zoom = zoom
+                dx, dy = game.world_to_display(game.player.x, game.player.y)
+                expected_x = int((iso_x - cam_x) * zoom + rw * 0.5)
+                expected_y = int((iso_y - cam_y) * zoom + rh * 0.48)
+                self.assertAlmostEqual(dx, expected_x, delta=1)
+                self.assertAlmostEqual(dy, expected_y, delta=1)
+
+    def test_shade_post_composite_flag_direction(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game._lighting_enabled = True
+            # Zoomed out / native: shade the display after the composite.
+            for zv in (game.VIEW_ZOOM_MIN, 0.8, 1.0):
+                game.view_zoom = zv
+                game.draw()
+                self.assertTrue(game._shade_post_composite, zv)
+            # Zoomed in: shade the (smaller) world layer before the composite.
+            for zv in (1.3, game.VIEW_ZOOM_MAX):
+                game.view_zoom = zv
+                game.draw()
+                self.assertFalse(game._shade_post_composite, zv)
+
+    def test_lighting_buffer_targets_smaller_surface(self) -> None:
+        import tempfile
+
+        from arch_rogue.constants import LIGHT_BUFFER_SCALE
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game._lighting_enabled = True
+            rw, rh = game.screen.get_size()
+            # Zoomed out: lighting runs post-composite on the display, so the
+            # half-res light buffer matches the display, not the larger layer.
+            game.view_zoom = game.VIEW_ZOOM_MIN
+            game.draw()
+            buf = game._light_buffer_surface
+            self.assertIsNotNone(buf)
+            self.assertEqual(buf.get_size(),
+                             (rw // LIGHT_BUFFER_SCALE, rh // LIGHT_BUFFER_SCALE))
+            # Zoomed in: lighting runs pre-composite on the (smaller) layer, so
+            # the buffer matches the layer, not the larger display.
+            game.view_zoom = game.VIEW_ZOOM_MAX
+            game.draw()
+            buf = game._light_buffer_surface
+            self.assertIsNotNone(buf)
+            layer_w = int(round(rw / game.VIEW_ZOOM_MAX))
+            layer_h = int(round(rh / game.VIEW_ZOOM_MAX))
+            self.assertEqual(buf.get_size(),
+                             (layer_w // LIGHT_BUFFER_SCALE,
+                              layer_h // LIGHT_BUFFER_SCALE))
+
+    def test_lighting_applied_at_max_zoom_out(self) -> None:
+        # Sanity: at max zoom-out the lighting multiply still shades world
+        # pixels (the post-composite pass runs and darkens the display).
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game._lighting_enabled = True
+            game.view_zoom = game.VIEW_ZOOM_MIN
+            game.draw()
+            # A pixel near the player should be brighter than a far corner that
+            # the lantern does not reach (light buffer darkens far areas).
+            sx, sy = game.world_to_display(game.player.x, game.player.y)
+            near = game.screen.get_at((sx, sy))
+            corner = game.screen.get_at((4, 4))
+            self.assertGreater(sum(near[:3]), sum(corner[:3]))
+
 
 if __name__ == "__main__":
     unittest.main()

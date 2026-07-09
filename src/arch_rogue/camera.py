@@ -96,6 +96,24 @@ class CameraMixin:
         width, height = self._screen_size()
         return int(iso_x - cam_x + width * 0.5), int(iso_y - cam_y + height * 0.48)
 
+    def world_to_display(self, x: float, y: float) -> tuple[int, int]:
+        # Real-display-pixel projection for post-composite screen-space effects
+        # (lighting, vignettes). ``world_to_screen`` maps into the current render
+        # target and is deliberately zoom-unaware: the world-layer pipeline
+        # sizes that target to ``screen/zoom`` so tile/sprite drawing fills the
+        # display when scaled back. Effects that run *after* the composite
+        # cannot rely on that trick — they see the real display — so this scales
+        # the iso offset by ``view_zoom`` and is correct at any zoom level. At
+        # zoom 1.0 it is identical to ``world_to_screen``.
+        iso_x, iso_y = self.world_to_iso(x, y)
+        cam_x, cam_y = self.camera_iso()
+        width, height = self._screen_size()
+        zoom = getattr(self, "view_zoom", 1.0)
+        return (
+            int((iso_x - cam_x) * zoom + width * 0.5),
+            int((iso_y - cam_y) * zoom + height * 0.48),
+        )
+
     def _screen_size(self) -> tuple[int, int]:
         cache = getattr(self, "_frame_cache", None)
         if cache is not None and "screen_size" in cache:
@@ -124,6 +142,18 @@ class CameraMixin:
         # dimensions so we only iterate tiles that can appear on screen.
         # The iso diamond's half-extent along either world axis is roughly
         # (screen_w/TILE_W + screen_h/TILE_H) / 2; pad by 2 for safety.
+        #
+        # Cached per frame: the first caller each frame runs while the render
+        # target is the (zoom-sized) world layer, so the cached bounds describe
+        # the world area actually shown. Post-composite callers (lighting) then
+        # reuse those layer-derived bounds instead of recomputing against the
+        # real display, which would under-estimate the visible area when
+        # zoomed out and drop edge lights/tiles.
+        cache = getattr(self, "_frame_cache", None)
+        if cache is not None:
+            cached = cache.get("visible_bounds")
+            if cached is not None:
+                return cached  # type: ignore[no-any-return]
         width, height = self._screen_size()
         radius = int((width / TILE_W + height / TILE_H) / 2) + 2
         # Clamp to a sane floor so tiny windows still render something, and
@@ -133,4 +163,7 @@ class CameraMixin:
         max_x = min(MAP_W - 1, int(self.player.x) + radius)
         min_y = max(0, int(self.player.y) - radius)
         max_y = min(MAP_H - 1, int(self.player.y) + radius)
-        return min_x, max_x, min_y, max_y
+        bounds = (min_x, max_x, min_y, max_y)
+        if cache is not None:
+            cache["visible_bounds"] = bounds
+        return bounds

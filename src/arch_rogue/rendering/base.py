@@ -108,17 +108,37 @@ class RenderingBaseMixin:
         self.sync_music()
 
     def _render_world_view(self) -> None:
-        """Render the dungeon + actors + lighting/overlays, applying viewport zoom.
+        """Render the dungeon + actors, composite the zoom layer, and shade.
 
         At zoom 1.0 the world is drawn straight to the display surface (the
         existing hot path, no extra allocation). At any other zoom the world is
         drawn to an offscreen layer sized ``screen_size / zoom`` — so
         ``world_to_screen``/``visible_bounds`` naturally cover more tiles when
-        zoomed out — then scaled back up to fill the display, giving a uniform
-        zoom of tiles, sprites, and lighting together.
+        zoomed out — then scaled back to fill the display, giving a uniform
+        zoom of tiles and sprites.
+
+        Lighting and the ambient depth vignette are screen-space effects, so
+        they are applied to the smaller of the world layer and the display:
+
+        - zoomed OUT (zoom below 1): the world layer is larger than the
+          display, so shading runs AFTER the composite on the display. Lighting
+          buffers are display-sized, so zooming out no longer pays for a
+          layer-res light buffer + multiply. Positions use the zoom-aware
+          ``world_to_display`` projection.
+        - zoomed IN (zoom above 1): the world layer is smaller than the
+          display, so shading runs BEFORE the composite on the layer (the
+          original hot path) and is upscaled with it. This keeps lighting cheap
+          when zoomed in — it never touches display-resolution buffers.
+        - zoom 1.0: no layer; shading runs on the display directly.
         """
         zoom = getattr(self, "view_zoom", 1.0)
         use_layer = abs(zoom - 1.0) > 1e-3
+        # Shade the display post-composite when zoomed out or at native zoom
+        # (display is the smaller buffer); shade the layer pre-composite when
+        # zoomed in (layer is the smaller buffer). Read by draw_lighting /
+        # _stamp_ambient to pick the correct projection + sprite scale.
+        shade_post = zoom <= 1.0
+        self._shade_post_composite = shade_post
         real_screen = self.screen
         if use_layer:
             layer = self._world_layer_surface(real_screen, zoom)
@@ -130,20 +150,33 @@ class RenderingBaseMixin:
         try:
             self.draw_dungeon()
             self.draw_world_objects()
-            # Milestone 3.16 — continuous colored lighting. Composited after the
-            # world+actors are on the screen and before any HUD/UI so the multiply
-            # pass only shades world pixels. No-op on the LIGHTING_OFF tier, which
-            # keeps the 3.8.0 per-tile alpha look as the fallback/web default.
-            self.draw_lighting()
-            self.draw_ambient_depth_overlay()
-            self.draw_darkness_overlay()
+            if not shade_post:
+                # Zoomed in: shade the (smaller) world layer before it is
+                # upscaled to the display.
+                self._shade_world()
         finally:
             if use_layer:
                 self.screen = real_screen
                 self._composite_world_layer(layer, real_screen)
-                # HUD/UI below must lay out against the real display size, not
-                # the zoomed layer size, so invalidate the size cache.
-                self._frame_cache = {}
+                # Drop only the size cache so HUD/UI lay out against the real
+                # display. Preserve the zoom-independent frame caches
+                # (camera_iso, visible_bounds, frame_lights) so a post-composite
+                # shade pass reuses the layer-derived visible bounds instead of
+                # recomputing against the display.
+                self._frame_cache.pop("screen_size", None)
+        if shade_post:
+            # Zoomed out or native: shade the (smaller or only) display after
+            # the composite. Buffers are display-sized, so this is independent
+            # of viewport zoom and stays cheap when zoomed out.
+            self._shade_world()
+
+    def _shade_world(self) -> None:
+        # Continuous colored lighting + ambient depth vignette. No-op on the
+        # LIGHTING_OFF tier, which keeps the 3.8.0 per-tile alpha look as the
+        # fallback/web default.
+        self.draw_lighting()
+        self.draw_ambient_depth_overlay()
+        self.draw_darkness_overlay()
 
     def _world_layer_surface(
         self, real_screen: pygame.Surface, zoom: float

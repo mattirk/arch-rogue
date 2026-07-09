@@ -1,5 +1,57 @@
 # Changelog
 
+## 3.18.2 — Zoom-Out Render Performance
+
+Zooming out to the max caused a noticeable frame-time cliff because the
+continuous lighting model and the ambient depth vignette ran on the oversized
+world layer (sized `screen / zoom`) before it was downscaled to the display.
+At max zoom-out that layer is ~2.4x the display pixel count, so the half-res
+light buffer, its `smoothscale` upscale, and the `BLEND_RGBA_MULT` composite
+all ran at layer resolution.
+
+Lighting and the vignette are screen-space effects, so they now run on the
+*smaller* of the world layer and the display:
+
+- **Zoomed out (zoom < 1):** shading runs *after* the world-layer composite, on
+  the real display. Light/vignette buffers are display-sized, so the lighting
+  pass is independent of viewport zoom.
+- **Zoomed in (zoom > 1):** shading runs *before* the composite, on the
+  (smaller) world layer, as before — so zooming in never touches
+  display-resolution buffers.
+- **Zoom 1.0:** unchanged (no layer; shading runs on the display directly).
+
+Light positions use a new zoom-aware `world_to_display` projection; light
+sprite radii and the fog-of-war ambient stamp scale by an effective zoom so a
+light covers the same world area at any zoom. `visible_bounds` is now cached
+per frame so the post-composite pass reuses the layer-derived visible bounds
+instead of recomputing against the (smaller) display. At zoom 1.0 the path is
+bit-identical to before.
+
+### Measured (1280x720, headless, 300-frame average)
+| zoom | before | after |
+|------|--------|-------|
+| 1.6  | 4.85 ms | 4.96 ms |
+| 1.0  | 6.34 ms | 6.15 ms |
+| 0.8  | 9.18 ms | 8.52 ms |
+| 0.65 | 11.50 ms | 9.82 ms |
+
+Max zoom-out drops ~15% (~1.7 ms/frame); zoom-in is unchanged within noise.
+
+### Changed
+- `camera.py`: added `world_to_display` (zoom-aware display-space projection);
+  `visible_bounds` is now cached in the per-frame `_frame_cache`.
+- `rendering/base.py`: `_render_world_view` splits shading into a pre-composite
+  (zoomed in) / post-composite (zoomed out / native) pass via a
+  `_shade_post_composite` flag and a `_shade_world` helper; the post-composite
+  cache reset preserves zoom-independent frame caches (`visible_bounds`,
+  `camera_iso`, `frame_lights`).
+- `lighting.py`: `draw_lighting` / `_stamp_ambient` pick the projection and
+  sprite/tile scale from `_shade_params()` (effective zoom + `world_to_display`
+  when post-composite, `world_to_screen` at native scale otherwise).
+- `tests/test_viewport_zoom.py`: 5 new tests covering `world_to_display`, the
+  shade-direction flag, the smaller-surface buffer sizing, and that lighting
+  still shades the display at max zoom-out.
+
 ## 3.18.1 — Warden Time Skill Path
 
 The Warden now has a dedicated slot-3 skill branch like the Rogue (Traps),

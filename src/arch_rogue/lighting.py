@@ -56,6 +56,7 @@ from __future__ import annotations
 
 # pyright: reportAttributeAccessIssue=false
 import math
+from typing import Callable
 
 import pygame
 
@@ -434,6 +435,18 @@ class LightingMixin:
         return s
 
     # --- ambient stamping -------------------------------------------
+    def _shade_params(self) -> tuple[float, Callable[[float, float], tuple[int, int]]]:
+        # Lighting is applied to the smaller of the world layer / display (see
+        # RenderingBaseMixin._render_world_view). When shading the display
+        # post-composite (zoomed out / native) positions use the zoom-aware
+        # ``world_to_display`` and sprite sizes scale by ``view_zoom``; when
+        # shading the layer pre-composite (zoomed in) positions use the
+        # zoom-unaware ``world_to_screen`` at native world scale, exactly like
+        # the original path. Returns (effective_zoom, projection_callable).
+        if getattr(self, "_shade_post_composite", True):
+            return getattr(self, "view_zoom", 1.0), self.world_to_display
+        return 1.0, self.world_to_screen
+
     def _stamp_ambient(self, buffer: pygame.Surface) -> None:
         theme_color = self._theme_light_color()
         level = self._ambient_level()
@@ -447,14 +460,19 @@ class LightingMixin:
         buffer.fill((0, 0, 0, 0))
         ambient = (*shade_color(theme_color, level), 255)
         scale = LIGHT_BUFFER_SCALE
+        # A tile's buffer footprint depends on which surface we shade: display
+        # pixels shrink with zoom (post-composite) while layer pixels stay at
+        # native world scale (pre-composite). Scale the stamp rect by the
+        # effective zoom to keep the fog-of-war fill aligned with the tiles.
+        eff_zoom, project = self._shade_params()
+        tile_w_px = max(1, int(TILE_W * eff_zoom) // scale)
         min_x, max_x, min_y, max_y = self.visible_bounds()
         revealed = self.revealed_tiles
-        tile_w_px = max(1, TILE_W // scale)
         for x in range(min_x, max_x + 1):
             for y in range(min_y, max_y + 1):
                 if (x, y) not in revealed:
                     continue
-                sx, sy = self.world_to_screen(x + 0.5, y + 0.5)
+                sx, sy = project(x + 0.5, y + 0.5)
                 rx = sx // scale - tile_w_px // 2
                 ry = sy // scale - tile_w_px // 2
                 buffer.fill(ambient, pygame.Rect(rx, ry, tile_w_px, tile_w_px))
@@ -481,7 +499,15 @@ class LightingMixin:
         # pass: no per-intensity rebuilds, no radius stepping, smooth fades
         # and flicker. The extra copy/multiply is cheap (half-res sprites) and
         # only the on-screen lights run.
+        #
+        # Sprite size tracks the shaded surface: display pixels (post-composite,
+        # zoomed out) scale by view_zoom so a light covers the same world area
+        # at any zoom; layer pixels (pre-composite, zoomed in) stay at native
+        # world scale. The radial sprite cache quantizes to 8px buckets, so the
+        # few extra entries per zoom level are bounded and cleared on floor
+        # change. At zoom 1.0 this is the original sprite size.
         scale = LIGHT_BUFFER_SCALE
+        eff_zoom, project = self._shade_params()
         lights = self._collect_frame_lights()
         for light in lights:
             factor = light.intensity * light.life
@@ -493,14 +519,16 @@ class LightingMixin:
             factor = max(0.0, min(1.0, factor))
             if factor <= 0.0:
                 continue
-            sprite = self._radial_light_sprite(light_radius_px(light.radius), light.color)
+            sprite = self._radial_light_sprite(
+                int(light_radius_px(light.radius) * eff_zoom), light.color
+            )
             scratch = self._flicker_scratch(
                 sprite.get_width(), sprite.get_height()
             )
             scratch.blit(sprite, (0, 0))
             f = max(0, min(255, int(255 * factor)))
             scratch.fill((f, f, f, 255), special_flags=pygame.BLEND_RGBA_MULT)
-            sx, sy = self.world_to_screen(light.x, light.y)
+            sx, sy = project(light.x, light.y)
             bx = sx // scale - sprite.get_width() // 2
             by = sy // scale - sprite.get_height() // 2
             buffer.blit(scratch, (bx, by), special_flags=pygame.BLEND_RGBA_ADD)
