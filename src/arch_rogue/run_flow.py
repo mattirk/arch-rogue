@@ -44,6 +44,7 @@ from .models import (
     FloorPlan,
     IdleNpc,
     Item,
+    LightSource,
     Player,
     Projectile,
     RunStats,
@@ -542,6 +543,8 @@ class RunFlowMixin:
         self.story_guests = []
         self.idle_npcs: list[IdleNpc] = []
         self.familiars: list[Familiar] = []
+        self.light_sources: list[LightSource] = []
+        self.lights: list[LightSource] = []
         self.floaters: list[FloatingText] = []
         self.slashes: list[SlashEffect] = []
         self.impact_effects = []
@@ -624,6 +627,8 @@ class RunFlowMixin:
         self.story_guests = []
         self.idle_npcs = []
         self.familiars = []
+        self.light_sources = []
+        self.lights = []
         self.floaters = []
         self.slashes = []
         self.impact_effects = []

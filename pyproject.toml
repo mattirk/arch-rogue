@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.15.0"
-description = "3.15.0 adds Acolyte Spirit Call: a summonable familiar host that follows the Acolyte and attacks enemies, scaled by the Spirit skill branch, with three sprite variants, save support, and depth-sorted rendering."
+version = "3.16.0"
+description = "3.16.0 adds a continuous multi-source colored lighting model that replaces the per-tile alpha falloff, with baked normal maps, a screen-space light buffer, dynamic player/skill/projectile lights, static torch/shrine lights, theme ambient tints, lit-actor shading, and a Lighting Off/On option."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

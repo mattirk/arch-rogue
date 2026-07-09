@@ -265,6 +265,10 @@ def make_game(
         game.fullscreen = False
         game.windowed_size = screen_size
         game.screen = game.apply_display_mode()
+    # Milestone 3.16 - native-only lighting; web runs the 3.8.0 per-tile
+    # alpha fallback (the web-safe default) regardless of saved prefs.
+    game._lighting_enabled = False
+    game._lighting_normal_maps = False
     return game
 
 

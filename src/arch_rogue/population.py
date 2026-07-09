@@ -20,7 +20,14 @@ import math
 import random
 from collections.abc import Callable
 
-from .constants import DUNGEON_DEPTH
+from .constants import (
+    DUNGEON_DEPTH,
+    LIGHT_SHRINE_INTENSITY,
+    LIGHT_SHRINE_RADIUS,
+    LIGHT_TORCH_COLOR,
+    LIGHT_TORCH_INTENSITY,
+    LIGHT_TORCH_RADIUS,
+)
 from .content import (
     AFFIX_DEFINITIONS,
     ARMOR_DEFINITIONS,
@@ -30,6 +37,7 @@ from .content import (
     RARITY_AFFIX_COUNTS,
     RARITY_AFFIX_ROLL_RANGES,
     SECRET_TYPES,
+    SHRINE_HINTS,
     SHRINE_TYPES,
     TRAP_DEFINITIONS,
     UNIQUE_ITEM_DEFINITIONS,
@@ -43,6 +51,7 @@ from .models import (
     Enemy,
     IdleNpc,
     Item,
+    LightSource,
     Room,
     SecretCache,
     Shopkeeper,
@@ -233,6 +242,10 @@ class PopulationMixin:
         # Fallback for story floors generated without an assignable quest room.
         # If the quest-room handler already placed the guest, this is a no-op.
         self._populate_story_guest()
+        # Milestone 3.16 - static light sources for the floor: shrines and
+        # torches in flavor rooms. Deterministic, no RNG, so the shared
+        # self.rng stream and thus loot and enemy rolls are unchanged.
+        self._populate_light_sources()
 
     def _special_room_handlers(self) -> dict[str, SpecialRoomHandler]:
         handlers = getattr(self, "_special_room_population_handlers", None)
@@ -250,6 +263,61 @@ class PopulationMixin:
         self, kind: str, handler: SpecialRoomHandler
     ) -> None:
         self._special_room_handlers()[kind] = handler
+
+    def _populate_light_sources(self) -> None:
+        # Milestone 3.16 static lights: shrines plus bar/garden torches.
+        if not hasattr(self, "light_sources"):
+            self.light_sources = []
+        existing = {
+            (round(src.x, 2), round(src.y, 2)) for src in self.light_sources
+        }
+        for shrine in self.shrines:
+            key = (round(shrine.x, 2), round(shrine.y, 2))
+            if key in existing:
+                continue
+            hint = SHRINE_HINTS.get(shrine.kind)
+            color = hint.color if hint is not None else (235, 205, 110)
+            self.light_sources.append(
+                LightSource(
+                    x=shrine.x,
+                    y=shrine.y,
+                    radius=LIGHT_SHRINE_RADIUS,
+                    color=color,
+                    intensity=LIGHT_SHRINE_INTENSITY,
+                    ttl=None,
+                    flicker=False,
+                    kind="shrine",
+                )
+            )
+            existing.add(key)
+        room_count = len(self.dungeon.rooms)
+        for special_room in getattr(self.dungeon, "special_rooms", []):
+            if special_room.room_index not in range(room_count):
+                continue
+            if special_room.kind not in ("bar", "garden"):
+                continue
+            room = self.dungeon.rooms[special_room.room_index]
+            cx, cy = room.center
+            key = (round(cx + 0.5, 2), round(cy + 0.5, 2))
+            if key in existing:
+                continue
+            if special_room.kind == "garden":
+                color = (150, 220, 130)
+            else:
+                color = LIGHT_TORCH_COLOR
+            self.light_sources.append(
+                LightSource(
+                    x=cx + 0.5,
+                    y=cy + 0.5,
+                    radius=LIGHT_TORCH_RADIUS,
+                    color=color,
+                    intensity=LIGHT_TORCH_INTENSITY,
+                    ttl=None,
+                    flicker=True,
+                    kind="torch",
+                )
+            )
+            existing.add(key)
 
     def _populate_special_rooms(self) -> None:
         for special_room in list(getattr(self.dungeon, "special_rooms", [])):

@@ -83,6 +83,11 @@ class RenderingBaseMixin:
             return
         self.draw_dungeon()
         self.draw_world_objects()
+        # Milestone 3.16 — continuous colored lighting. Composited after the
+        # world+actors are on the screen and before any HUD/UI so the multiply
+        # pass only shades world pixels. No-op on the LIGHTING_OFF tier, which
+        # keeps the 3.8.0 per-tile alpha look as the fallback/web default.
+        self.draw_lighting()
         self.draw_ambient_depth_overlay()
         self.draw_darkness_overlay()
         self.draw_ui()

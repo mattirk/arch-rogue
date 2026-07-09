@@ -20,7 +20,8 @@ import random
 
 import pygame
 
-from .constants import RUN_CYCLE_FRAMES, RUN_FRAME_RATE, TILE_H
+from .constants import LIGHT_SHADE_DOWNSAMPLE_LONG, RUN_CYCLE_FRAMES, RUN_FRAME_RATE, TILE_H
+from .lighting import bake_normal_map
 from .models import Color
 
 bone_color = (214, 202, 176)
@@ -910,6 +911,43 @@ class PixelSpriteAtlas:
             variant, self.familiar_animation_frames[0]
         )
         return self._frame_from(frames, elapsed, rate=3.4)
+
+    # Milestone 3.16 - normal maps. A parallel cache keyed by sprite surface
+    # identity (surfaces are built once in __init__ and never recreated, so
+    # id() is a stable key). Baked lazily on first request so the cost is only
+    # paid when the lighting + normal-map tiers are on. The bake is a pure
+    # function of the source pixels (alpha silhouette + luminance -> Sobel), so
+    # it is deterministic and applies to every sprite and tile surface.
+    def normal_map_for(self, surface: pygame.Surface) -> pygame.Surface | None:
+        if not getattr(self, "_normal_maps_enabled", True):
+            return None
+        cache = getattr(self, "_normal_map_cache", None)
+        if cache is None:
+            cache = {}
+            self._normal_map_cache = cache
+        key = id(surface)
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+        try:
+            # Bake at the lit-shade downsample size so the one-time bake
+            # cost is ~1k px/sprite (not ~25k) and the normal aligns with
+            # the downsampled working size used by apply_lit_shading.
+            w, h = surface.get_width(), surface.get_height()
+            long_side = max(w, h)
+            if long_side > LIGHT_SHADE_DOWNSAMPLE_LONG:
+                f = LIGHT_SHADE_DOWNSAMPLE_LONG / long_side
+                src = pygame.transform.smoothscale(
+                    surface, (max(1, int(w * f)), max(1, int(h * f)))
+                )
+            else:
+                src = surface
+            normal = bake_normal_map(src)
+            normal = normal.convert_alpha()
+        except pygame.error:
+            normal = None
+        cache[key] = normal
+        return normal
 
     # ------------------------------------------------------------------
     # Color helpers

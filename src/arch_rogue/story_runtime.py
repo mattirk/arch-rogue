@@ -63,6 +63,8 @@ class StoryRuntimeMixin:
         # Milestone 3.15 - familiars are reset with the rest of the run state
         # when story mode (re)starts. The field always exists on Game.
         self.familiars = []
+        self.light_sources = []
+        self.lights = []
         self._apply_story_theme_for_current_depth()
 
     def current_story_beat(self) -> Any:

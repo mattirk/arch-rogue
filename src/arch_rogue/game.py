@@ -34,6 +34,18 @@ from .constants import (
     ENEMY_PROJECTILE_HIT_RADIUS,
     FPS,
     LARGE_ENEMY_HIT_RADIUS,
+    LIGHT_IMPACT_RADIUS,
+    LIGHT_IMPACT_TTL,
+    LIGHT_SKILL_PULSE_RADIUS,
+    LIGHT_SKILL_PULSE_TTL,
+    LIGHT_PROJECTILE_RADIUS,
+    LIGHT_PROJECTILE_TTL,
+    LIGHT_PROJECTILE_INTENSITY,
+    LIGHT_TORCH_COLOR,
+    LIGHT_TORCH_RADIUS,
+    LIGHT_TORCH_INTENSITY,
+    LIGHT_SHRINE_RADIUS,
+    LIGHT_SHRINE_INTENSITY,
     MAX_INVENTORY,
     PLAYER_HIT_RADIUS,
     PLAYER_MELEE_ARC_DOT,
@@ -83,6 +95,7 @@ from .models import (
     IdleNpc,
     ImpactEffect,
     Item,
+    LightSource,
     Player,
     Projectile,
     Room,
@@ -252,6 +265,13 @@ class Game(
         self.difficulty_name = DEFAULT_DIFFICULTY_NAME
         self.hell_unlocked = False
         self.hell_unlocked_this_run = False
+        # Milestone 3.16 - continuous colored lighting options. Defaults are
+        # native-friendly (lighting + normal maps on, motion flicker on). The
+        # web build forces these off in web/main.make_game so the 3.8.0
+        # per-tile alpha path remains the web-safe default.
+        self._lighting_enabled = True
+        self._lighting_normal_maps = True
+        self._reduced_motion = False
         self.meta_progress: dict[str, Any] = self.default_meta_progress()
         self.run_history: list[dict[str, Any]] = []
         self.last_save_error = ""
@@ -333,6 +353,8 @@ class Game(
         # Milestone 3.15 — Acolyte Spirit Call familiars. Reset on restart /
         # floor descent and serialized additively (old saves load with none).
         self.familiars: list[Familiar] = []
+        self.light_sources: list[LightSource] = []
+        self.lights: list[LightSource] = []
         self.story_intro_pending = False
         self.story_relic_depth = 0
         self.story_relic_choice_key = ""
@@ -368,6 +390,21 @@ class Game(
         self.impact_effects.append(
             ImpactEffect(x, y, color, ttl, radius, kind, ttl, archetype)
         )
+        # Milestone 3.16 - emit a transient light flare for every impact so
+        # casts, dashes, hits, bursts, deaths, and chain-lightning strikes
+        # all pulse the light buffer. Casts/dashes are brighter (the skill
+        # pulse), hits/bursts a shorter snap. Tint comes from the impact color,
+        # which already carries the archetype/damage-type tint.
+        if kind in ("cast", "dash"):
+            self.add_light(
+                x, y, LIGHT_SKILL_PULSE_RADIUS, color,
+                intensity=0.85, ttl=LIGHT_SKILL_PULSE_TTL, kind=kind,
+            )
+        else:
+            self.add_light(
+                x, y, LIGHT_IMPACT_RADIUS, color,
+                intensity=0.7, ttl=LIGHT_IMPACT_TTL, kind=kind or "impact",
+            )
 
     def set_player_action_visual(self, state: str, ttl: float = 0.18) -> None:
         self.player_action_state = state
@@ -378,6 +415,8 @@ class Game(
         self.player_hit_flash = 0.0
         self.player_action_state = ""
         self.player_action_ttl = 0.0
+        # Milestone 3.16 - transient light pulses are visual effects too.
+        self.lights = []
 
     def update_visual_effects(self, dt: float) -> None:
         for effect in self.impact_effects:
@@ -385,6 +424,9 @@ class Game(
         self.impact_effects = [
             effect for effect in self.impact_effects if effect.ttl > 0
         ]
+        # Milestone 3.16 - decay transient light pulses (skill casts,
+        # projectile trails, impact flares) alongside impacts and slashes.
+        self.update_lights(dt)
         self.screen_flash_ttl = max(0.0, self.screen_flash_ttl - dt)
         self.player_hit_flash = max(0.0, self.player_hit_flash - dt)
         self.player_action_ttl = max(0.0, self.player_action_ttl - dt)
@@ -533,6 +575,15 @@ class Game(
                     elif event.key in (pygame.K_MINUS, pygame.K_UNDERSCORE):
                         self.options_cursor = self.OPTIONS_ROW_UI_SCALE
                         self._activate_options_row(self.OPTIONS_ROW_UI_SCALE, False)
+                    elif event.key == pygame.K_l:
+                        self.options_cursor = self.OPTIONS_ROW_LIGHTING
+                        self._activate_options_row(self.OPTIONS_ROW_LIGHTING, True)
+                    elif event.key == pygame.K_n:
+                        self.options_cursor = self.OPTIONS_ROW_LIGHTING_DETAIL
+                        self._activate_options_row(self.OPTIONS_ROW_LIGHTING_DETAIL, True)
+                    elif event.key == pygame.K_r:
+                        self.options_cursor = self.OPTIONS_ROW_REDUCE_MOTION
+                        self._activate_options_row(self.OPTIONS_ROW_REDUCE_MOTION, True)
                     elif event.key == pygame.K_RETURN:
                         self._activate_options_row(self.options_cursor, True)
                     elif event.key in (pygame.K_BACKSPACE, pygame.K_o):

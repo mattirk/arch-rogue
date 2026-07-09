@@ -412,6 +412,13 @@ class RenderingActorMixin:
         if alpha < 255:
             turned_sprite = turned_sprite.copy()
             turned_sprite.set_alpha(alpha)
+        # Milestone 3.16 - Lambertian shading from the dominant light via the
+        # baked normal map. Skipped on the LIGHTING_OFF tier, when normal maps
+        # are off, or when no light is in range. Cached per sprite and
+        # dominant-light bucket so per-pixel work only runs on bucket change.
+        shaded = self.apply_lit_shading(turned_sprite, x, y)
+        if shaded is not turned_sprite:
+            turned_sprite = shaded
         rect = turned_sprite.get_rect(
             midbottom=(
                 round(sx + x_offset * WORLD_SCALE),

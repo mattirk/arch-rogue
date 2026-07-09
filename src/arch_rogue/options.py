@@ -168,6 +168,9 @@ class OptionsMixin:
             "gamepad_mapping": serialize_gamepad_mapping(
                 normalize_gamepad_mapping(getattr(self, "gamepad_mapping", None))
             ),
+            "lighting_enabled": getattr(self, "_lighting_enabled", True),
+            "lighting_normal_maps": getattr(self, "_lighting_normal_maps", True),
+            "reduced_motion": getattr(self, "_reduced_motion", False),
         }
 
     def load_options(self) -> bool:
@@ -194,6 +197,12 @@ class OptionsMixin:
             self.gamepad_mapping = normalize_gamepad_mapping(
                 data.get("gamepad_mapping")
             )
+            # Milestone 3.16 - continuous lighting + accessibility. Missing
+            # on older saves falls back to safe native defaults. The web
+            # build forces these off in make_game.
+            self._lighting_enabled = bool(data.get("lighting_enabled", True))
+            self._lighting_normal_maps = bool(data.get("lighting_normal_maps", True))
+            self._reduced_motion = bool(data.get("reduced_motion", False))
         except (TypeError, ValueError):
             return False
         return True

@@ -705,7 +705,7 @@ class InputMixin:
     """
 
     # Options menu row order (matches MenuOptionsMixin.draw_options_menu).
-    OPTIONS_ROW_COUNT = 8
+    OPTIONS_ROW_COUNT = 11
     OPTIONS_ROW_AUDIO = 0
     OPTIONS_ROW_MUSIC = 1
     OPTIONS_ROW_FULLSCREEN = 2
@@ -713,7 +713,10 @@ class InputMixin:
     OPTIONS_ROW_UI_SCALE = 4
     OPTIONS_ROW_CONTROLS = 5
     OPTIONS_ROW_CONTROLLER = 6
-    OPTIONS_ROW_BACK = 7
+    OPTIONS_ROW_LIGHTING = 7
+    OPTIONS_ROW_LIGHTING_DETAIL = 8
+    OPTIONS_ROW_REDUCE_MOTION = 9
+    OPTIONS_ROW_BACK = 10
 
     def init_input(self) -> None:
         self.input = ControllerManager(
@@ -974,6 +977,15 @@ class InputMixin:
         elif row == self.OPTIONS_ROW_CONTROLLER:
             self.controller_enabled = not self.controller_enabled
             self.input.set_enabled(self.controller_enabled)
+            self.save_options()
+        elif row == self.OPTIONS_ROW_LIGHTING:
+            self._lighting_enabled = not self._lighting_enabled
+            self.save_options()
+        elif row == self.OPTIONS_ROW_LIGHTING_DETAIL:
+            self._lighting_normal_maps = not self._lighting_normal_maps
+            self.save_options()
+        elif row == self.OPTIONS_ROW_REDUCE_MOTION:
+            self._reduced_motion = not self._reduced_motion
             self.save_options()
         elif row == self.OPTIONS_ROW_CONTROLS:
             self.state = "controls"

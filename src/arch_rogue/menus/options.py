@@ -47,6 +47,9 @@ class MenuOptionsMixin:
             ("+ / -", "UI scale", f"{self.g.ui_scale}x"),
             ("Enter", "Controls & gamepad mapping", ""),
             ("Gamepad", "Controller", controller_value),
+            ("L", "Lighting", "On" if self.g._lighting_enabled else "Off"),
+            ("N", "Lighting detail", "On" if self.g._lighting_normal_maps else "Off"),
+            ("R", "Reduce motion", "On" if self.g._reduced_motion else "Off"),
             ("Enter / O / Backspace", "Return to title", ""),
         ]
         note_h = max(self.u(54), self.g.small_font.get_height() * 3 + self.u(8))

@@ -72,4 +72,44 @@ WALK_ANIM_SPEED_CEIL = 3.6
 DUNGEON_WALL_VARIANTS = 4
 DUNGEON_FLOOR_VARIANTS = 4
 
+# Milestone 3.16 — continuous multi-source colored lighting model.
+# The light buffer is rendered at 1/LIGHT_BUFFER_SCALE resolution and
+# smoothscaled up to the screen for the multiply pass; half-res keeps the
+# compositing cheap and the gradients smooth with zero per-frame allocations.
+LIGHT_BUFFER_SCALE = 2
+# Player lantern: warm firelight. The lantern radius reuses the sight radius so
+# the lit area and the combat/LOS reach stay identical.
+LIGHT_LANTERN_COLOR = (255, 224, 168)
+LIGHT_TORCH_COLOR = (255, 196, 130)
+# Ambient floor wash is a white light tinted toward the theme accent so themed
+# regions read as lit by their own light rather than flat. The two levels are
+# the ambient brightness on dark vs light floors: dark floors stay near-black
+# (the lantern does the work), light floors carry a dim memory-level wash.
+LIGHT_AMBIENT_TINT_RATIO = 0.35
+LIGHT_AMBIENT_DARK_LEVEL = 0.10
+LIGHT_AMBIENT_LIGHT_LEVEL = 0.36
+# Subtle lantern/torch flicker amplitudes (fraction of radius/intensity).
+# Suppressed entirely when the Reduce Motion accessibility option is on.
+LIGHT_FLICKER_RADIUS_AMP = 0.05
+LIGHT_FLICKER_INTENSITY_AMP = 0.08
+# Static light radii (world tiles) and intensities.
+LIGHT_TORCH_RADIUS = 2.6
+LIGHT_TORCH_INTENSITY = 0.62
+LIGHT_SHRINE_RADIUS = 2.3
+LIGHT_SHRINE_INTENSITY = 0.55
+# Transient skill/impact/projectile light tuning.
+LIGHT_SKILL_PULSE_RADIUS = 2.1
+LIGHT_SKILL_PULSE_TTL = 0.28
+LIGHT_IMPACT_RADIUS = 1.8
+LIGHT_IMPACT_TTL = 0.22
+LIGHT_PROJECTILE_RADIUS = 1.5
+LIGHT_PROJECTILE_TTL = 0.14
+LIGHT_PROJECTILE_INTENSITY = 0.55
+# Lit-actor shading: dominant light direction is quantized into this many
+# buckets so a persistent (sprite, bucket) tint cache can be reused across
+# frames until the light moves the actor into a new bucket.
+LIGHT_DIRECTION_BUCKETS = 8
+LIGHT_SHADE_DOWNSAMPLE_LONG = 48
+LIGHT_SHADE_BIAS_Z = 0.55
+
 SlashEffect = tuple[float, float, float, float, float]

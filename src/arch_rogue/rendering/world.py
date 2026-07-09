@@ -113,7 +113,12 @@ class RenderingWorldMixin:
             if tile not in (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
                 if alpha <= 0:
                     return None
-                if alpha < 255:
+                # Milestone 3.16: on the continuous lighting tier the per-tile
+                # alpha falloff is replaced by the screen-space light buffer
+                # multiply, so floor tiles blit fully opaque and the buffer
+                # darkens their edges smoothly. The quantized-alpha path stays
+                # as the LIGHTING_OFF / web fallback (the 3.8.0 look).
+                if alpha < 255 and not self.lighting_enabled():
                     surface = self._alpha_tile_surface(surface, alpha)
         return (surface, (sx - anchor_x, sy - anchor_y))
 
@@ -161,6 +166,11 @@ class RenderingWorldMixin:
         # Also drop the dark-floor alpha-bucket cache since its keyed surfaces
         # belong to the previous theme.
         self._alpha_tile_cache = {}
+        # Milestone 3.16: lighting caches are keyed by theme accent and
+        # per-sprite identity, so reset them on floor/theme change alongside
+        # the alpha-bucket cache.
+        if hasattr(self, "reset_lighting_caches"):
+            self.reset_lighting_caches()
         # Per-kind interior wall face styles (one side face gets distinct art).
         wall_face_styles: list[str | None] = [None]
         for kind in ("quest_room", "bar", "garden"):

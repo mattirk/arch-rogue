@@ -41,6 +41,7 @@ from .models import (
     Familiar,
     IdleNpc,
     Item,
+    LightSource,
     Player,
     Room,
     RunStats,
@@ -220,6 +221,32 @@ class SaveLoadMixin:
             facing_y=float(data.get("facing_y", 0.0)),
         )
 
+    def light_source_to_dict(self, light: LightSource) -> dict[str, Any]:
+        return {
+            "x": light.x,
+            "y": light.y,
+            "radius": light.radius,
+            "color": list(light.color),
+            "intensity": light.intensity,
+            "flicker": light.flicker,
+            "kind": light.kind,
+        }
+
+    def light_source_from_dict(self, data: dict[str, Any]) -> LightSource:
+        color = data.get("color", (235, 205, 110))
+        if isinstance(color, list):
+            color = (int(color[0]), int(color[1]), int(color[2]))
+        return LightSource(
+            x=float(data.get("x", 0.0)),
+            y=float(data.get("y", 0.0)),
+            radius=float(data.get("radius", 2.5)),
+            color=color,
+            intensity=float(data.get("intensity", 1.0)),
+            ttl=None,
+            flicker=bool(data.get("flicker", False)),
+            kind=str(data.get("kind", "")),
+        )
+
     def special_room_to_dict(self, special_room: SpecialRoom) -> dict[str, Any]:
         return special_room.to_dict()
 
@@ -381,6 +408,9 @@ class SaveLoadMixin:
             "idle_npcs": [self.idle_npc_to_dict(npc) for npc in self.idle_npcs],
             "familiars": [
                 self.familiar_to_dict(familiar) for familiar in self.familiars
+            ],
+            "light_sources": [
+                self.light_source_to_dict(src) for src in self.light_sources
             ],
             "run_stats": self.run_stats.__dict__,
         }
@@ -570,6 +600,14 @@ class SaveLoadMixin:
         self.active_cutscene = ActiveQuestCutscene.from_dict(
             data.get("active_cutscene")
         )
+        # Milestone 3.16 - static floor lights restore additively; old saves
+        # without the field load with an empty list. Transient pulses are
+        # visual-only and always start empty on load.
+        self.light_sources = [
+            self.light_source_from_dict(src)
+            for src in data.get("light_sources", [])
+        ]
+        self.lights = []
         active_asset = self.active_cutscene_asset() if self.active_cutscene else None
         active_node = self.active_cutscene_node() if self.active_cutscene else None
         if active_asset is None or active_node is None:

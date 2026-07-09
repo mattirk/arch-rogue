@@ -596,6 +596,42 @@ class ImpactEffect:
 
 
 @dataclass
+class LightSource:
+    # Milestone 3.16 — a single light model used by the continuous lighting
+    # system. Static lights (torches, shrines) carry ``ttl=None`` and live for
+    # the whole floor; transient lights (skill pulses, projectile trails, impact
+    # flares) carry a positive ``ttl`` and are decayed/compacted each frame.
+    # ``radius`` is in world tiles (matches the sight/lantern radius vocabulary)
+    # so the player lantern can reuse ``DARK_LEVEL_LIGHT_RADIUS`` exactly.
+    x: float
+    y: float
+    radius: float
+    color: Color
+    intensity: float = 1.0
+    ttl: float | None = None
+    max_ttl: float | None = None
+    flicker: bool = False
+    flicker_seed: int = 0
+    kind: str = ""
+
+    def update(self, dt: float) -> None:
+        if self.ttl is None:
+            return
+        self.ttl -= dt
+
+    @property
+    def alive(self) -> bool:
+        return self.ttl is None or self.ttl > 0.0
+
+    @property
+    def life(self) -> float:
+        # 1.0 at birth, 0.0 at expiry; 1.0 for static (ttl None) lights.
+        if self.ttl is None or self.max_ttl is None or self.max_ttl <= 0:
+            return 1.0
+        return max(0.0, min(1.0, self.ttl / self.max_ttl))
+
+
+@dataclass
 class Projectile:
     x: float
     y: float

@@ -27,6 +27,9 @@ from .constants import (
     ENEMY_HIT_RADIUS,
     ENEMY_PROJECTILE_HIT_RADIUS,
     LARGE_ENEMY_HIT_RADIUS,
+    LIGHT_PROJECTILE_INTENSITY,
+    LIGHT_PROJECTILE_RADIUS,
+    LIGHT_PROJECTILE_TTL,
     PLAYER_HIT_RADIUS,
     PLAYER_MELEE_ARC_DOT,
     PLAYER_MELEE_RANGE,
@@ -1145,6 +1148,16 @@ class CombatMixin:
                 self._steer_homing_projectile(projectile, dt)
             if not projectile.update(dt, self.dungeon):
                 continue
+            # Milestone 3.16 - carry a small moving light along each live
+            # projectile so bolts and arrows read as streaks of light. Reuses
+            # this loop so no new pass is added; the light is transient and
+            # decays in update_lights when the projectile dies.
+            self.add_light(
+                projectile.x, projectile.y,
+                LIGHT_PROJECTILE_RADIUS, projectile.color,
+                intensity=LIGHT_PROJECTILE_INTENSITY,
+                ttl=LIGHT_PROJECTILE_TTL, kind="projectile",
+            )
             if projectile.owner == "player":
                 hit = self.first_enemy_near(
                     projectile.x, projectile.y, PLAYER_PROJECTILE_HIT_RADIUS
