@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.18.0"
-description = "3.18.0 replaces the Warden slot-3 Bulwark Wave with Time Skip, a timed enemy-only slow that leaves the player's tempo untouched."
+version = "3.18.1"
+description = "3.18.1 gives the Warden a dedicated Time skill path: the Fortress branch is rethemed into a five-tier Time Skip ladder (cheaper, wider/stagger, stronger slow, damage ward, on-kill cooldown refund)."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

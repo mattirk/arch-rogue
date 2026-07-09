@@ -1,5 +1,48 @@
 # Changelog
 
+## 3.18.1 — Warden Time Skill Path
+
+The Warden now has a dedicated slot-3 skill branch like the Rogue (Traps),
+Arcanist (Nova), Acolyte (Spirit), and Ranger (Control). The previously
+flavor-only **Fortress** branch is rethemed into the **Time** branch, a
+five-tier ladder that changes how Time Skip *plays* instead of just bumping
+its duration. Node keys are preserved, so existing Warden saves restore their
+purchased Fortress nodes with new names/effects and keep their stat bonuses;
+commitment is derived from keys, so a run committed to Fortress auto-becomes
+committed to Time. No save-schema change (still `version: 5`).
+
+### Time branch ladder
+- **T1 Temporal Sigil** (`warden_ward`): Time Skip costs 1 less mana, cools
+  down 0.3s faster, and lasts +0.5s.
+- **T2 Time Skip** (`warden_bulwark_wave`): +1.0s duration and the cast pulse
+  staggers foes caught in the ring (brief holy stun + attack stall, no damage).
+- **T3 Stutter Step** (`warden_stone_aegis`): deepens the slow factor 0.4 → 0.3.
+- **T4 Temporal Aegis** (`warden_unyielding`): while Time Skip is active the
+  Warden takes 20% less incoming damage (the old "ward" made real).
+- **T5 Eternal Moment** (`warden_eternal_wall`): each kill while Time Skip is
+  active refunds ~40% of the slot-3 cooldown, so aggressive play sustains the slow.
+
+### Changed
+- `time_skip_duration()` / `time_skip_factor()` now scale along the Time branch
+  (`warden_ward`, `warden_bulwark_wave`, `warden_stone_aegis`) instead of the
+  incidental Bulwark hooks. The `warden_aegis` / `warden_bulwark_ward` duration
+  bonuses are removed; those nodes stay pure Bulwark melee (cleave/stagger) and
+  their Time Skip wording is dropped.
+- `nova_mana_cost` / `nova_cooldown` apply the Warden T1 (Temporal Sigil)
+  discount. `player_cast_time_skip` applies the T2 cast-ring stagger via
+  `apply_enemy_status` (no damage, no on-hit procs). `take_player_damage`
+  applies the T4 Temporal Aegis ward while the slow window is open. `kill_enemy`
+  applies the T5 on-kill cooldown refund while the window is open.
+- `progression.py`: the five Fortress nodes are renamed/rethemed to the Time
+  branch (`branch="Time"`, `tags=("Time",)`); keys, prerequisites, tiers, and
+  stat bonuses are unchanged. `warden_bulwark_ward` (Bulwark) description no
+  longer references Time Skip.
+- `tests/test_3_18_time_skip.py` extended (now 19 tests): the duration-scaling
+  test moved to the Time branch, plus T1 budget discount, T3 deeper slow, T2
+  cast-ring stagger, T4 damage ward, and T5 on-kill refund (active + inactive).
+- Package metadata, `__version__`, save `release`, and version-current tests
+  now target `3.18.1`. Save schema `version` remains `5`.
+
 ## 3.18.0 — Warden Time Stop (Time Skip)
 
 The Warden's slot-3 action bar entry is now **Time Skip**, replacing

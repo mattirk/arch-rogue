@@ -651,6 +651,10 @@ class CombatMixin:
         cost = 14 if self.player.class_name in ("Arcanist", "Acolyte") else 18
         if self.player.has_upgrade("acolyte_veil"):
             cost -= 2
+        # Milestone 3.18.1 — Warden Time branch T1 (Temporal Sigil) discounts
+        # the Time Skip slot budget.
+        if self.player.class_name == "Warden" and self.player.has_upgrade("warden_ward"):
+            cost -= 1
         if self.equipment_slot_3_bonus():
             cost -= 1
         if any(
@@ -661,6 +665,10 @@ class CombatMixin:
 
     def nova_cooldown(self) -> float:
         cooldown = 2.65 if self.player.class_name == "Arcanist" else 3.2
+        # Milestone 3.18.1 — Warden Time branch T1 (Temporal Sigil) cools the
+        # Time Skip slot faster.
+        if self.player.class_name == "Warden" and self.player.has_upgrade("warden_ward"):
+            cooldown -= 0.3
         if self.equipment_slot_3_bonus():
             cooldown -= 0.18
         cast_speed = max(-0.20, min(0.35, self.equipment_stat_total("cast_speed")))
@@ -669,15 +677,19 @@ class CombatMixin:
 
     def time_skip_factor(self) -> float:
         """Enemy simulation speed while Time Skip is active (lower = slower)."""
+        # Milestone 3.18.1 — Time branch T3 (Stutter Step) deepens the slow.
+        if self.player.has_upgrade("warden_stone_aegis"):
+            return 0.3
         return 0.4
 
     def time_skip_duration(self) -> float:
         """How long Time Skip slows enemies, in seconds."""
         duration = 3.0
-        if self.player.has_upgrade("warden_aegis"):
-            duration += 0.6
-        if self.player.has_upgrade("warden_bulwark_ward"):
-            duration += 1.2
+        # Time branch scaling (T1 Temporal Sigil, T2 Time Skip).
+        if self.player.has_upgrade("warden_ward"):
+            duration += 0.5
+        if self.player.has_upgrade("warden_bulwark_wave"):
+            duration += 1.0
         if self.equipment_slot_3_bonus("Time Skip duration"):
             duration += 0.5
         return duration
@@ -747,6 +759,14 @@ class CombatMixin:
             typed_resist += 0.06
         if self.player_status("aegis") > 0:
             typed_resist += 0.24
+        # Milestone 3.18.1 — Time branch T4 (Temporal Aegis): while Time
+        # Skip is active the Warden takes 20% less damage from incoming hits.
+        if (
+            self.player.class_name == "Warden"
+            and self.player.time_skip_timer > 0
+            and self.player.has_upgrade("warden_unyielding")
+        ):
+            typed_resist += 0.20
         amount = max(1, raw_damage - self.player.armor() - armor_bonus)
         if typed_resist > 0:
             amount = max(1, int(round(amount * (1.0 - min(0.45, typed_resist)))))
@@ -1880,6 +1900,20 @@ class CombatMixin:
             archetype=self.player.class_name,
         )
         self.apply_story_blood_price("nova")
+        # Milestone 3.18.1 — Time branch T2 (Time Skip node): the cast pulse
+        # briefly staggers foes caught in the ring, repurposing the old
+        # Bulwark Wave knockback fantasy as a holy cast-time stun.
+        if self.player.has_upgrade("warden_bulwark_wave"):
+            stagger_radius = 2.6
+            for enemy in list(self.enemies):
+                if not enemy.alive:
+                    continue
+                if math.hypot(enemy.x - self.player.x, enemy.y - self.player.y) <= stagger_radius:
+                    # Stagger only: apply a brief holy stun and stall the
+                    # next attack, without dealing damage or triggering on-hit
+                    # procs/lifesteal (Time Skip is a control skill).
+                    self.apply_enemy_status(enemy, "stunned", 0.35)
+                    enemy.attack_timer = max(enemy.attack_timer, 0.45)
         self.floaters.append(
             FloatingText(
                 self.skill_names()[2],
@@ -2922,6 +2956,18 @@ class CombatMixin:
         self.enemies.remove(enemy)
         self.enemy_hit_flashes.pop(id(enemy), None)
         self.run_stats.kills += 1
+        # Milestone 3.18.1 — Time branch T5 (Eternal Moment): each kill while
+        # Time Skip is active refunds ~40% of the slot-3 cooldown so aggressive
+        # play sustains the slow.
+        if (
+            self.player.class_name == "Warden"
+            and self.player.time_skip_timer > 0
+            and self.player.has_upgrade("warden_eternal_wall")
+            and self.player.nova_timer > 0
+        ):
+            self.player.nova_timer = max(
+                0.0, self.player.nova_timer - self.nova_cooldown() * 0.4
+            )
         death_color = (
             self.theme.accent if enemy.kind in ("boss", "miniboss") else enemy.color
         )

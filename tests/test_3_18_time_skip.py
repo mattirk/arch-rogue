@@ -76,7 +76,7 @@ class TimeSkip318Tests(unittest.TestCase):
     # --- slot-3 swap ---------------------------------------------------
 
     def test_version_bumped(self) -> None:
-        self.assertEqual(__version__, "3.18.0")
+        self.assertEqual(__version__, "3.18.1")
 
     def test_warden_slot_3_is_time_skip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -209,19 +209,112 @@ class TimeSkip318Tests(unittest.TestCase):
             self.assertEqual(game.player.time_skip_timer, 0.0)
             self.assertEqual(game.enemy_time_scale(), 1.0)
 
-    # --- scaling & equipment ------------------------------------------
+    # --- Time branch skill path (3.18.1) -----------------------------
 
-    def test_duration_scales_with_warden_upgrades(self) -> None:
+    def test_duration_scales_along_time_branch(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             base = game.time_skip_duration()
             self.assertAlmostEqual(base, 3.0, places=4)
 
-            game.player.skill_upgrades.append("warden_aegis")
-            self.assertAlmostEqual(game.time_skip_duration(), 3.6, places=4)
+            # T1 Temporal Sigil.
+            game.player.skill_upgrades.append("warden_ward")
+            self.assertAlmostEqual(game.time_skip_duration(), 3.5, places=4)
 
-            game.player.skill_upgrades.append("warden_bulwark_ward")
-            self.assertAlmostEqual(game.time_skip_duration(), 4.8, places=4)
+            # T2 Time Skip node.
+            game.player.skill_upgrades.append("warden_bulwark_wave")
+            self.assertAlmostEqual(game.time_skip_duration(), 4.5, places=4)
+
+    def test_t1_temporal_sigil_discounts_slot_budget(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            base_cost = game.nova_mana_cost()
+            base_cooldown = game.nova_cooldown()
+            game.player.skill_upgrades.append("warden_ward")
+            self.assertLess(game.nova_mana_cost(), base_cost)
+            self.assertLess(game.nova_cooldown(), base_cooldown)
+
+    def test_t3_stutter_step_deepens_the_slow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            self.assertAlmostEqual(game.time_skip_factor(), 0.4, places=4)
+            game.player.skill_upgrades.append("warden_stone_aegis")
+            self.assertAlmostEqual(game.time_skip_factor(), 0.3, places=4)
+            # The deeper factor flows through enemy_time_scale while active.
+            game.player.time_skip_timer = 1.0
+            self.assertAlmostEqual(game.enemy_time_scale(), 0.3, places=4)
+
+    def test_t2_time_skip_node_staggers_foes_in_cast_ring(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            game.player.skill_upgrades.append("warden_bulwark_wave")
+            inside = _make_enemy(game.player.x + 2.0, game.player.y)
+            outside = _make_enemy(game.player.x + 5.0, game.player.y)
+            game.enemies = [inside, outside]
+            inside_hp = inside.hp
+            outside_hp = outside.hp
+
+            game.player.nova_timer = 0.0
+            game.player.mana = game.player.max_mana
+            game.player_cast_slot_3()
+
+            # Inside the ring: stunned, attack stalled, no damage dealt.
+            self.assertGreater(inside.statuses.get("stunned", 0.0), 0.0)
+            self.assertGreaterEqual(inside.attack_timer, 0.45)
+            self.assertEqual(inside.hp, inside_hp)
+            # Outside the ring: untouched.
+            self.assertEqual(outside.hp, outside_hp)
+            self.assertEqual(outside.statuses.get("stunned", 0.0), 0.0)
+
+    def test_t4_temporal_aegis_reduces_incoming_damage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            game.player.skill_upgrades.append("warden_unyielding")
+            attacker = _make_enemy(game.player.x + 1.0, game.player.y)
+            game.enemies = [attacker]
+
+            # Without Time Skip active: baseline damage.
+            game.player.hp = game.player.max_hp
+            base = game.take_player_damage(20, source="melee", attacker=attacker)
+            self.assertGreater(base, 0)
+
+            # With Time Skip active: the Temporal Aegis ward reduces damage.
+            game.player.hp = game.player.max_hp
+            game.player.time_skip_timer = game.time_skip_duration()
+            warded = game.take_player_damage(20, source="melee", attacker=attacker)
+            self.assertLess(warded, base)
+
+    def test_t5_eternal_moment_refunds_cooldown_on_kill(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            game.player.skill_upgrades.append("warden_eternal_wall")
+            # A wounded enemy the Warden will kill.
+            enemy = _make_enemy(game.player.x + 1.0, game.player.y, hp=2)
+            game.enemies = [enemy]
+
+            # Start a Time Skip window and set a nonzero slot cooldown.
+            game.player.time_skip_timer = game.time_skip_duration()
+            game.player.nova_timer = game.nova_cooldown()
+            before = game.player.nova_timer
+            # Kill the enemy directly; kill_enemy applies the refund.
+            enemy.hp = 1
+            game.damage_enemy(enemy, 5, knockback_from=(0.0, 0.0))
+            self.assertEqual(game.enemies, [])
+            self.assertLess(game.player.nova_timer, before)
+
+    def test_t5_refund_only_while_time_skip_active(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            game.player.skill_upgrades.append("warden_eternal_wall")
+            enemy = _make_enemy(game.player.x + 1.0, game.player.y, hp=2)
+            game.enemies = [enemy]
+            game.player.nova_timer = game.nova_cooldown()
+            before = game.player.nova_timer
+            # No Time Skip window: no refund.
+            enemy.hp = 1
+            game.damage_enemy(enemy, 5, knockback_from=(0.0, 0.0))
+            self.assertEqual(game.enemies, [])
+            self.assertAlmostEqual(game.player.nova_timer, before, places=4)
 
     def test_equipment_bonus_recognizes_time_skip_and_legacy_nova(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -269,7 +362,7 @@ class TimeSkip318Tests(unittest.TestCase):
             game = self.make_game(tmpdir, archetype_index=0)
             game.player.time_skip_timer = 2.5
             data = game.serialize_run_state()
-            self.assertEqual(data["release"], "3.18.0")
+            self.assertEqual(data["release"], "3.18.1")
             self.assertNotIn("time_skip_timer", data)
 
             loaded = Game(
