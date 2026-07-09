@@ -145,7 +145,7 @@ class MenuTitleMixin:
         self.screen.blit(overlay, (0, 0))
         margin = max(self.u(20), 28)
         box_w = min(width - margin * 2, self.u(760))
-        box_h = min(height - margin * 2, self.u(430))
+        box_h = min(height - margin * 2, self.u(460))
         box = pygame.Rect((width - box_w) // 2, (height - box_h) // 2, box_w, box_h)
         self.panel(box, alpha=238)
         pad = max(self.u(22), 26)
@@ -168,6 +168,7 @@ class MenuTitleMixin:
             "Discovery: unidentified gear needs scrolls, Insight Shrines, or equipping to reveal.",
             "Dark floors: sight is limited to 4 tiles; monsters navigate normally. Temporary debug: Ctrl+Shift+D toggles darkness on the current level.",
             "Hazards: traps are single-use but dangerous; shrines and secrets can swing a run.",
+            "View: Ctrl + scroll wheel zooms the viewport in/out.",
         ]
         y = title_rect.bottom + self.u(18)
         for line in lines:

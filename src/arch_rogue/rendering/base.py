@@ -87,15 +87,7 @@ class RenderingBaseMixin:
             pygame.display.flip()
             self.sync_music()
             return
-        self.draw_dungeon()
-        self.draw_world_objects()
-        # Milestone 3.16 — continuous colored lighting. Composited after the
-        # world+actors are on the screen and before any HUD/UI so the multiply
-        # pass only shades world pixels. No-op on the LIGHTING_OFF tier, which
-        # keeps the 3.8.0 per-tile alpha look as the fallback/web default.
-        self.draw_lighting()
-        self.draw_ambient_depth_overlay()
-        self.draw_darkness_overlay()
+        self._render_world_view()
         self.draw_ui()
         if self.active_cutscene is not None:
             self.draw_quest_cutscene_overlay()
@@ -114,6 +106,65 @@ class RenderingBaseMixin:
         self.draw_screen_flash()
         pygame.display.flip()
         self.sync_music()
+
+    def _render_world_view(self) -> None:
+        """Render the dungeon + actors + lighting/overlays, applying viewport zoom.
+
+        At zoom 1.0 the world is drawn straight to the display surface (the
+        existing hot path, no extra allocation). At any other zoom the world is
+        drawn to an offscreen layer sized ``screen_size / zoom`` — so
+        ``world_to_screen``/``visible_bounds`` naturally cover more tiles when
+        zoomed out — then scaled back up to fill the display, giving a uniform
+        zoom of tiles, sprites, and lighting together.
+        """
+        zoom = getattr(self, "view_zoom", 1.0)
+        use_layer = abs(zoom - 1.0) > 1e-3
+        real_screen = self.screen
+        if use_layer:
+            layer = self._world_layer_surface(real_screen, zoom)
+            layer.fill((10, 10, 14))
+            self.screen = layer
+            # ``_screen_size`` caches the surface size; reset so it picks up the
+            # layer instead of the display while the world is being drawn.
+            self._frame_cache = {}
+        try:
+            self.draw_dungeon()
+            self.draw_world_objects()
+            # Milestone 3.16 — continuous colored lighting. Composited after the
+            # world+actors are on the screen and before any HUD/UI so the multiply
+            # pass only shades world pixels. No-op on the LIGHTING_OFF tier, which
+            # keeps the 3.8.0 per-tile alpha look as the fallback/web default.
+            self.draw_lighting()
+            self.draw_ambient_depth_overlay()
+            self.draw_darkness_overlay()
+        finally:
+            if use_layer:
+                self.screen = real_screen
+                self._composite_world_layer(layer, real_screen)
+                # HUD/UI below must lay out against the real display size, not
+                # the zoomed layer size, so invalidate the size cache.
+                self._frame_cache = {}
+
+    def _world_layer_surface(
+        self, real_screen: pygame.Surface, zoom: float
+    ) -> pygame.Surface:
+        rw, rh = real_screen.get_size()
+        lw = max(320, int(round(rw / zoom)))
+        lh = max(240, int(round(rh / zoom)))
+        layer = getattr(self, "_world_layer", None)
+        if layer is None or layer.get_size() != (lw, lh):
+            layer = pygame.Surface((lw, lh))
+            self._world_layer = layer
+        return layer
+
+    def _composite_world_layer(
+        self, layer: pygame.Surface, dest: pygame.Surface
+    ) -> None:
+        size = dest.get_size()
+        try:
+            pygame.transform.smoothscale(layer, size, dest)
+        except (TypeError, ValueError, pygame.error):
+            dest.blit(pygame.transform.smoothscale(layer, size), (0, 0))
 
     def shade(self, color: Color, amount: int) -> Color:
         return (

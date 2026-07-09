@@ -33,6 +33,22 @@ class CameraMixin:
     # collision jitter and per-frame movement variance.
     CAMERA_SMOOTHNESS = 14.0
 
+    # Viewport zoom ("viewport distance"). 1.0 = native; >1 zooms in (fewer
+    # tiles, larger sprites), <1 zooms out (more tiles, smaller sprites).
+    # Implemented as an offscreen world layer rendered at screen_size/zoom and
+    # scaled back to the display, so tiles, sprites, and lighting zoom uniformly.
+    VIEW_ZOOM_MIN = 0.65
+    VIEW_ZOOM_MAX = 1.6
+    VIEW_ZOOM_STEP = 1.12
+
+    def adjust_view_zoom(self, notches: float) -> None:
+        """Adjust viewport zoom by a number of scroll notches (positive = in)."""
+        if not notches:
+            return
+        factor = self.VIEW_ZOOM_STEP ** notches
+        zoom = getattr(self, "view_zoom", 1.0) * factor
+        self.view_zoom = max(self.VIEW_ZOOM_MIN, min(self.VIEW_ZOOM_MAX, zoom))
+
     def world_to_iso(self, x: float, y: float) -> tuple[float, float]:
         return (x - y) * TILE_W / 2, (x + y) * TILE_H / 2
 
@@ -90,10 +106,15 @@ class CameraMixin:
         return size
 
     def screen_to_world(self, sx: int, sy: int) -> tuple[float, float]:
+        # Mouse coordinates arrive in real display pixels. With viewport zoom,
+        # the world is rendered to a layer of size (screen/zoom) and scaled up
+        # by `zoom` to fill the display, so a display pixel maps to layer
+        # pixel / zoom. Invert that, then undo the world_to_iso projection.
         cam_x, cam_y = self.camera_iso()
-        width, height = self._screen_size()
-        iso_x = sx - width * 0.5 + cam_x
-        iso_y = sy - height * 0.48 + cam_y
+        width, height = self.screen.get_size()
+        zoom = getattr(self, "view_zoom", 1.0)
+        iso_x = (sx - width * 0.5) / zoom + cam_x
+        iso_y = (sy - height * 0.48) / zoom + cam_y
         x = iso_y / TILE_H + iso_x / TILE_W
         y = iso_y / TILE_H - iso_x / TILE_W
         return x, y

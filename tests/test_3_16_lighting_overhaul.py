@@ -343,6 +343,9 @@ class Lighting316Tests(unittest.TestCase):
     # --- render smoke test --------------------------------------------
     def test_full_frame_render_with_lighting_on(self) -> None:
         game = self.make_game(tempfile.mkdtemp())
+        # Exercise the direct-to-screen render path (no zoom layer) so the
+        # light buffers are sized to the real display surface.
+        game.view_zoom = 1.0
         game._lighting_enabled = True
         game._lighting_normal_maps = True
         game.add_light(game.player.x + 1.0, game.player.y, 2.0, (200, 160, 90), ttl=0.3)
@@ -365,7 +368,7 @@ class Lighting316Tests(unittest.TestCase):
         self.assertEqual(game._light_scratch_surface.get_size(), (sw, sh))
 
     def test_version_bumped(self) -> None:
-        self.assertEqual(__version__, "3.17.1")
+        self.assertEqual(__version__, "3.17.2")
 
 
 if __name__ == "__main__":

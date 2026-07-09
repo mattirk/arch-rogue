@@ -285,6 +285,10 @@ class Game(
         self.last_load_error = ""
         self.screen_flash_ttl = 0.0
         self.screen_flash_color: Color = (0, 0, 0)
+        # Viewport zoom ("viewport distance"); adjusted in-game with Ctrl+scroll.
+        # Default to max zoom-in; Ctrl+scroll out to see more of the dungeon.
+        self.view_zoom = self.VIEW_ZOOM_MAX
+        self._world_layer: pygame.Surface | None = None
         self.load_options()
         if screen_size is None:
             display_info = pygame.display.Info()
@@ -799,6 +803,14 @@ class Game(
                         self.face_player_toward_screen_point(*event.pos)
                         if self.enemy_in_melee_arc():
                             self.player_melee_attack()
+            elif (
+                event.type == pygame.MOUSEWHEEL
+                and self.state == "playing"
+                and pygame.key.get_mods() & pygame.KMOD_CTRL
+            ):
+                # Ctrl + scroll wheel adjusts viewport distance (zoom).
+                # Positive event.y (scroll up) zooms in, negative zooms out.
+                self.adjust_view_zoom(event.y)
             elif event.type == pygame.MOUSEMOTION and self.state == "playing":
                 if getattr(event, "rel", (0, 0)) != (0, 0):
                     self.aim_input_mode = "mouse"

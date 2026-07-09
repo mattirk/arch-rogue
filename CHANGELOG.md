@@ -1,5 +1,39 @@
 # Changelog
 
+## 3.17.2 — In-Game Viewport Zoom (Ctrl + Scroll)
+
+The viewport distance can now be adjusted live during gameplay with
+**Ctrl + scroll wheel**: scroll up to zoom in (fewer tiles, larger sprites),
+scroll down to zoom out (see more of the dungeon). The view starts maxed-in
+by default and applies uniformly to tiles, actors, effects, and lighting;
+mouse aim stays accurate at any zoom level.
+
+### Added
+- `CameraMixin` viewport-zoom state (`view_zoom`, clamped to `0.65`–`1.6`) with
+  `adjust_view_zoom(notches)`; positive notches zoom in, negative zoom out.
+  The default is now `VIEW_ZOOM_MAX` (max zoom-in); scroll out with Ctrl+wheel
+  to see more of the dungeon.
+- `Game.handle_events` now handles `MOUSEWHEEL` while playing with
+  `KMOD_CTRL` held, forwarding `event.y` to `adjust_view_zoom`.
+- Zoom-aware `screen_to_world` so `face_player_toward_screen_point` / mouse
+  aim remain correct when the view is zoomed.
+
+### Changed
+- `RenderingBaseMixin.draw` renders the dungeon + actors + lighting/overlays
+  through a new `_render_world_view` path. At zoom `1.0` it draws straight to
+  the display (unchanged hot path, no extra cost). At any other zoom it draws
+  to a cached offscreen world layer sized `screen_size / zoom` (so
+  `visible_bounds` naturally covers more tiles when zoomed out) and
+  `smoothscale`s it back up to fill the display — a uniform zoom of the whole
+  world frame with no letterboxing.
+
+### Validation
+- `python -m compileall src tests`.
+- New `tests/test_viewport_zoom.py` covers default zoom, clamping/steps,
+  Ctrl+scroll dispatch, scroll-without-Ctrl no-op, `screen_to_world` inversion
+  across zoom levels, and `draw()` at non-native zoom.
+- `python -m unittest discover tests` (151 tests, all pass).
+
 ## 3.17.1 — Web Build Black-Screen Fix
 
 The pygbag/Pyodide web build booted to a black canvas instead of the title
