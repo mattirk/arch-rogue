@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.16.2 — Dark-Level Scheduling Tuning
+
+Dark/no-memory floors now appear only from depth 5 onward, with each eligible floor rolling a flat 50% chance to be dark. Early floors 1-4 are always light floors with fog-of-war tile memory, giving runs a longer readable opening before lantern-only exploration can begin.
+
+### Changed
+- `run_flow.py` dark-floor planning changed from the old depth ramp (1-3 always light, 4-6 50% dark, 7+ 75% dark) to the new gate: depths 1-4 always light, depths 5+ 50% dark.
+- `tests/test_dark_levels.py` now asserts that dark floors never appear before depth 5 and checks the eligible-depth distribution across deterministic seeds.
+- Package metadata, `__version__`, save `release`, and version-current tests now target `3.16.2`. Save schema `version` remains `5`.
+
+### Validation
+- `python -m unittest tests.test_dark_levels` passes (3 tests).
+- `python -m compileall src tests` passes.
+- `python -m unittest discover tests` passes (136 tests).
+
 ## 3.16.1 — Options Menu Regrouping & License Notice
 
 The Options menu is regrouped into four labeled sections — **Display**, **Controls**, **Audio**, and **Lights** — so related settings read as a group instead of a flat list. Section headers are drawn by a new optional `sections` parameter on `draw_menu_rows` (flat row-index cursor space is unchanged, so navigation/activation and the `OPTIONS_ROW_*` constants stay index-based). The **Reduce motion** accessibility toggle is removed: it had no gameplay effect (it only suppressed the lantern/torch brightness flicker) and the flicker is now always on when the lighting model is on. The underlying `_reduced_motion` field, its persistence in `~/.arch_rogue_options.json`, the `R` hotkey, and the `OPTIONS_ROW_REDUCE_MOTION` row are all removed; `flicker_enabled()` simplifies to `lighting_enabled()`.

@@ -42,39 +42,37 @@ class DarkLevels24Tests(unittest.TestCase):
         game.active_cutscene = None
         return game
 
-    def test_floor_plan_darkness_ramp_and_toggle_roundtrip(self) -> None:
-        # Depth-driven darkness ramp (milestone 3.8):
-        #   1-3  always light
-        #   4-6  50% dark
-        #   7+   75% dark
-        # The guaranteed part (depths 1-3 light) is asserted for every seed; the
-        # probabilistic part is checked across many seeds so the test stays
-        # deterministic rather than flaky.
+    def test_floor_plan_darkness_gate_and_toggle_roundtrip(self) -> None:
+        # Dark floor scheduling:
+        #   1-4  always light with fog-of-war tile memory
+        #   5+   50% dark/no-memory and 50% light/memory
+        # The guaranteed gate is asserted for every seed; the probability is
+        # checked across many deterministic seeds so the test is not flaky.
         for seed in (2411, 2505, 999, 1, 424242):
             with tempfile.TemporaryDirectory() as tmpdir:
                 game = self.make_game(tmpdir, seed=seed)
-                light_depths = {plan.depth for plan in game.floor_plan if not plan.dark}
-                for d in (1, 2, 3):
-                    if d <= DUNGEON_DEPTH:
-                        self.assertIn(d, light_depths)
                 for plan in game.floor_plan:
+                    if plan.depth < 5:
+                        self.assertFalse(plan.dark)
                     if plan.dark:
+                        self.assertGreaterEqual(plan.depth, 5)
                         self.assertIn("darkness", plan.risk_tags)
                         self.assertIn("dark level", plan.preview)
                     else:
                         self.assertNotIn("darkness", plan.risk_tags)
                         self.assertNotIn("dark level", plan.preview)
 
-        # Across many seeds the deep floors (7+) are overwhelmingly dark, so at
-        # least one run must produce a dark floor beyond depth 6.
-        saw_deep_dark = False
+        dark_rolls = 0
+        eligible_rolls = 0
         for seed in range(100):
             with tempfile.TemporaryDirectory() as tmpdir:
                 game = self.make_game(tmpdir, seed=seed)
-                if any(p.dark and p.depth >= 7 for p in game.floor_plan):
-                    saw_deep_dark = True
-                    break
-        self.assertTrue(saw_deep_dark)
+                self.assertFalse(any(p.dark and p.depth < 5 for p in game.floor_plan))
+                eligible = [p for p in game.floor_plan if p.depth >= 5]
+                eligible_rolls += len(eligible)
+                dark_rolls += sum(1 for p in eligible if p.dark)
+        self.assertGreater(dark_rolls, eligible_rolls * 0.35)
+        self.assertLess(dark_rolls, eligible_rolls * 0.65)
 
         # Darkness toggle round-trips through save/load (depth 2 is always light,
         # so toggling flips it to dark).

@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.16.1"
-description = "3.16.1 regroups the Options menu into Lights / Audio / Display / Controls sections and removes the Reduce motion toggle (lantern/torch flicker is now always on when lighting is on)."
+version = "3.16.2"
+description = "3.16.2 tunes dark-level scheduling so lantern-only floors appear only from depth 5 onward, with a flat 50% chance on eligible depths."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

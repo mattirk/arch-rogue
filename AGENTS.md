@@ -186,74 +186,8 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 3.16 Lighting overhaul
+### 3.17 
 
-Goal: replace the per-tile alpha falloff with a continuous, multi-source colored lighting model so the dungeon reads as a lit space rather than a visibility mask, while preserving fog-of-war memory, save compatibility, 60+ FPS, and the web build.
-
-Reality check on community suggestions:
-- SpriteIlluminator / Laigter generate normal maps from sprite art. We can't run those GUI tools, but the algorithm (luminance/layer order -> height map -> Sobel normals) is trivial to reproduce in code. Our sprites are already procedurally drawn pixel-by-pixel in `sprites.py` (`_dot`/`_rect` ops into a `SRCALPHA` surface), so we can bake a normal map per sprite at atlas-build time for free, with no asset pipeline.
-- "Pygame-CE GLSL fragment shaders via `pygame.FRect`" is unreliable: `pygame.FRect` is just a float-precision rect, and pygame-CE's stable renderer is SDL2 2D (software or accelerated 2D textures) and does not expose an arbitrary GLSL fragment-shader pipeline in the shipped API. Relying on GLSL would also break the existing web build (`src/arch_rogue/web`). Use the architecture-honest path the codebase already uses: `SRCALPHA` surfaces + `BLEND_RGBA_ADD`/`BLEND_MULT` compositing.
-
-Current state to build on:
-- `run_flow.tile_visibility_alpha` — per-tile alpha falloff on dark floors, fog-of-war memory on light floors; walls are occluders (opaque or culled).
-- `rendering/world._alpha_tile_surface` — quantized alpha buckets + cached tile surfaces (no per-frame allocs).
-- `sprites.py` — procedural pixel sprites, cached atlas, `convert_alpha()` frames.
-- `content/archetypes.py` `DungeonTheme` already carries accent/floor/wall color palettes per theme.
-
-Features:
-
-1. Procedural normal maps, baked into the sprite atlas — In `sprites.py`, derive a height map per sprite from layer/luminance (the order pixels are stamped already encodes depth; later stamps = closer). Run a 3x3 Sobel to produce a tangent-space normal map, stored in a parallel cache keyed identically to the diffuse frame. No external tools/asset pipeline; mirrors the SpriteIlluminator/Laigter approach in-code. Gate behind a `LIGHTING_NORMAL_MAPS` option so the web/low-end path can skip it. Normal maps should apply to all sprites, including tiles.
-
-2. Screen-space light accumulation buffer — Add a `LightBuffer` (half-resolution `SRCALPHA` surface, reused per frame) in a focused `lighting.py` module (create the module and transfer all relevant logic into it). Each frame: clear, blit cached radial-gradient light sprites with `BLEND_RGBA_ADD` for every active light, then composite onto the world with a multiply pass. Replaces the per-tile alpha quantization in `_alpha_tile_surface` with a continuous mask; the fog-of-war `revealed_tiles` memory stays as a separate terrain-reveal pass (no behavior change to `update_revealed_tiles`).
-
-3. Player as a dynamic light source — Player emits a warm lantern light at `DARK_LEVEL_LIGHT_RADIUS` (keeps sight/visibility reach identical so combat/enemy-LOS logic is untouched). On light floors, the player light still adds local warmth over the ambient theme tint; sight radius stays `LIGHT_LEVEL_SIGHT_RADIUS`. Subtle flicker (low-amplitude noise on radius/intensity) for lantern feel; togglable in Options -> Accessibility (reduced motion disables flicker).
-
-4. Reactive skill/spell lighting — Casting any spell/skill emits a transient light pulse at the cast site, tinted by archetype/branch (Arcanist Bolt = arcane blue, Storm = cyan-white, Warden Vow/Smite = holy gold, Acolyte blood = deep crimson, Ranger fire = amber). Projectiles carry a small moving light that follows them (reuses the projectile loop in `combat.update_projectiles`, O(projectiles) — no new pass). Impact effects (`ImpactEffect`) and `SlashEffect` flare a short pulse on hit/kill. Tempest / chain-lightning arcs light their strike tiles briefly (ties into the 3.10/3.15 storm visuals).
-
-5. Theme- and faction-tinted ambient light — Use `DungeonTheme` accent/floor colors as the ambient floor wash (Thornbound witchlight green, etc.) so themed regions read as lit by their own light rather than flat. Forward-compatible hook for 3.17 elite faction auras to emit colored light (Cursed Knights cold steel, Plague Cult sickly green, Hollow Beasts void violet, Vault Constructs amber rune-glow).
-
-6. Lit-actor shading via normal maps — For actors within range of >=1 light (player, enemies, bosses, familiars), apply a Lambertian-ish tint per dominant light using the baked normal map — cheap CPU pass over the actor's lit pixels only, cached per (frame, dominant-light-direction) to avoid per-pixel work every frame. Keep it O(lit_actors) per frame; skip on the `LIGHTING_OFF` quality tier.
-
-7. Static light sources in the world — Torches/lanterns (already placed in garden/bar/special rooms — `Garden Lantern` exists) emit a small warm static light into the buffer. Shrines emit their `InteractionHint` accent color as a steady glow. Populated once per floor in `population.py`, stored as a lightweight `LightSource` list (x, y, radius, color, flicker). Save-compatible: defaults to empty on old saves.
-
-8. Lighting toggle — Options entry: `Lighting` = `Off / On` Off falls back to the current per-tile alpha model (preserves the 3.8.0 look as a fallback). On uses the newly implemented lighting model.
-
-Constraints to preserve:
-- `Game` / `main` entry points, keyboard/mouse/controller bindings unchanged.
-- Save schema `version` stays `5`; `LightSource` list defaults to `[]` on old saves and never blocks population.
-- No per-frame surface allocations in the hot path — light sprites cached, light buffer reused, normal-map tint results cached per frame.
-- Web build (`src/arch_rogue/web`) must still run; the `Off` tier is the web-safe default path.
-- `can_see_world_position` / `has_line_of_sight` reach values unchanged (same `DARK_LEVEL_LIGHT_RADIUS` / `LIGHT_LEVEL_SIGHT_RADIUS`), so enemy AI and dark-floor tests stay valid.
-
-Validation:
-- New `tests/test_3_16_lighting_overhaul.py` covering: normal-map derivation determinism, light-buffer accumulation math, player lantern radius == sight radius, skill pulse timing/tint per archetype, projectile light follows path, theme ambient tint, static torch/shrine lights, quality-tier toggle fallback to 3.8.0 model, save round-trip with empty `LightSource` list on pre-3.16 saves, reduced-motion flicker suppression, and a render smoke test.
-- Then full `python -m unittest discover tests` (excluding web tests by default).
-
-Metadata:
-- Bump `pyproject.toml` and `__version__` to `3.16.0`; save `release` updated, save schema `version` stays `5`. Update `CHANGELOG.md` with an `## 3.16.0 — Lighting Overhaul` entry.
-
-#### 3.16.1 Lighting post fixes
-
-- Group lighting related menu options visually
-- Group other menu options too: ????
-- What does new recude motion toggle do?
-
-### 3.17 Encounter Depth: Elite Packs, Enemy Affixes, and Faction Variety
-
-Draft goal: complement the 3.10 player-side build diversity with enemy-side variety so each run tests builds against a meaningfully different threat landscape rather than a flat stat curve.
-
-- Introduce elite/champion enemy packs in `population.py` that spawn in deeper floors and themed regions: a pack leader plus 2–4 retinue, scaled HP/damage, and a shared faction tag that gates which enemy affixes may roll.
-- Add an enemy-affix layer in `combat.py` mirroring the player affix vocabulary where it makes sense (e.g. extra damage type, fast/cast speed, thorns, lifesteal, teleport/blink, summon retinue, aura-boosted allies) and gating each affix behind a faction/elite tier so basic trash stays readable.
-- Define a small set of enemy factions in `content/enemies.py` (e.g. Cursed Knights, Plague Cult, Hollow Beasts, Vault Constructs) with distinct stat leanings, resistances, preferred affix pools, and biome affinity so floor populations read as themed rather than random.
-- Make elite telegraphs readable: a faction-colored aura, an affix tag row under the health bar (reusing the 3.10 tag-icon vocabulary), and a pack-leader marker distinct from the existing floor-guardian/boss bar.
-- Add a few faction-specific encounter scripts in `population.py` (ambush patrols, patrolling elites, sealed vault guardians) that interact with the 3.8.5 sealed-arena logic without re-triggering the boss bar.
-- Tune kill rewards so elite packs drop meaningfully better loot and a small meta-currency bump on first kill per pack per floor, encouraging engagement without forcing grind.
-- Preserve save compatibility: existing enemy saves must still load; enemy-affix and faction fields default to no-op/`None` on older saves and never block population.
-- Keep the run loop at 60+ FPS: faction/affix resolution must stay O(pack) on spawn and O(enemy) per frame with no per-frame allocations in the hot path.
-- Preserve keyboard/mouse bindings, controller bindings, run-save compatibility, and the stable `Game`/`main` entry points.
-- Validate with a new `tests/test_3_11_encounter_depth.py` covering faction stat leanings and affix pools, elite-pack generation and retinue sizing, enemy-affix combat resolution (thorns/lifesteal/aura/summon), elite telegraph marker behavior, sealed-vault-encounter interaction, kill-reward scaling, and old-save compatibility, plus the full `unittest discover tests` regression suite.
+### 3.18
 
 ### Stash
-
-- make 5 different kinds of animal NPCs (small animal sprites of 5 kind) appear in garden rooms. 2-5 NPCs per room. use data driven approach as usual.
-- we need to make player archetype sprites look better. we are looking for higher production value aesthetic while maintaining retro look. generate 10 preview images in./player_sprites with a temporary script. generate artistically different variants of the same archetype e.g warden. we will pick a general guideline from that and upgrade other archetypes

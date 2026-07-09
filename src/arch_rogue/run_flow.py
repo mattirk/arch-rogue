@@ -145,22 +145,15 @@ class RunFlowMixin:
             return None
 
     def light_depths_for_run(self) -> set[int]:
-        # Milestone 3.8: floors are dark by default; this selects the light
-        # exceptions with a depth-driven probability ramp so the run eases in
-        # and darkens as it deepens:
-        #   depths 1-3  -> always light (gentle opening)
-        #   depths 4-6  -> 50% chance of being dark (so 50% light)
-        #   depths 7+   -> 75% chance of being dark (so 25% light)
+        # Milestone 3.8: light floors use fog-of-war tile memory, while dark
+        # floors stay lantern-only with no explored-tile memory. Dark floors are
+        # now reserved for deeper runs only:
+        #   depths 1-4  -> always light (fog-of-war memory enabled)
+        #   depths 5+   -> 50% chance of being dark (so 50% light)
         light: set[int] = set()
         for depth in range(1, DUNGEON_DEPTH + 1):
-            if depth <= 3:
+            if depth < 5 or self.rng.random() >= 0.5:
                 light.add(depth)
-            elif depth <= 6:
-                if self.rng.random() < 0.5:
-                    light.add(depth)
-            else:
-                if self.rng.random() < 0.25:
-                    light.add(depth)
         return light
 
     def generate_floor_plan(self) -> list[FloorPlan]:
