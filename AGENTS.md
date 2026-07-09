@@ -234,3 +234,5 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
     - Run `python -m compileall src tests`, focused combat/skill tests, and then `python -m unittest discover tests` before closing the milestone.
 
 ### Stash
+
+- upgrade all graphics using https://www.pixellab.ai

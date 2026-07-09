@@ -463,6 +463,34 @@ class Trap:
     active: bool = True
 
 
+@dataclass(frozen=True)
+class AmbushBellTuning:
+    """Computed Ambush Bell stats for one cast.
+
+    The Rogue's Trap branch modifies this profile before the runtime bell is
+    created, so the action skill has one clean balancing surface.
+    """
+
+    plant_range: float
+    arm_time: float
+    lifetime: float
+    lure_radius: float
+    trigger_radius: float
+    damage_radius: float
+    primary_damage: int
+    splash_damage: int
+    smoke_duration: float
+    status_effect: str = ""
+    status_duration: float = 0.0
+    primary_snare_duration: float = 0.0
+    splash_snare_duration: float = 0.0
+    expired_damage_scale: float = 0.55
+    kill_cooldown_floor: float = 0.0
+    kill_mana_refund: int = 0
+    facing_damage_multiplier: float = 1.18
+    facing_crit_bonus: float = 0.12
+
+
 @dataclass
 class AmbushBell:
     """Rogue Ambush Bell runtime trap (transient, not saved)."""
@@ -482,6 +510,16 @@ class AmbushBell:
     max_arm_timer: float = 0.0
     triggered: bool = False
     armed_announced: bool = False
+    smoke_duration: float = 0.52
+    status_effect: str = ""
+    status_duration: float = 0.0
+    primary_snare_duration: float = 0.0
+    splash_snare_duration: float = 0.0
+    expired_damage_scale: float = 0.55
+    kill_cooldown_floor: float = 0.0
+    kill_mana_refund: int = 0
+    facing_damage_multiplier: float = 1.18
+    facing_crit_bonus: float = 0.12
 
     @property
     def armed(self) -> bool:

@@ -56,6 +56,7 @@ from .content import (
 )
 from .models import (
     AmbushBell,
+    AmbushBellTuning,
     Color,
     Enemy,
     Familiar,
@@ -191,20 +192,20 @@ class CombatMixin:
         if status == "poisoned" and enemy.resistances.get("poison", 0.0) >= 0.55:
             duration *= 0.55
         enemy.statuses[status] = max(enemy.statuses.get(status, 0.0), duration)
+        status_damage_type = {
+            "poisoned": "poison",
+            "chilled": "frost",
+            "burning": "fire",
+            "snared": "physical",
+            "bound": "shadow",
+            "stunned": "holy",
+        }.get(status, "holy")
         self.floaters.append(
             FloatingText(
                 status.title(),
                 enemy.x,
                 enemy.y - 0.45,
-                self.damage_type_color(
-                    "poison"
-                    if status == "poisoned"
-                    else "frost"
-                    if status == "chilled"
-                    else "shadow"
-                    if status == "bound"
-                    else "holy"
-                ),
+                self.damage_type_color(status_damage_type),
                 ttl=0.65,
             )
         )
@@ -1821,87 +1822,155 @@ class CombatMixin:
     AMBUSH_BELL_TRIGGER_RADIUS = 0.95
     AMBUSH_BELL_DAMAGE_RADIUS = 1.85
 
-    def ambush_bell_arm_time(self) -> float:
+    def ambush_bell_tuning(self) -> AmbushBellTuning:
+        """Return the cast profile for Rogue's Ambush Bell action skill.
+
+        The Trap branch specializes this profile with utility first and damage
+        second: faster setup, stronger lure control, poison/snare payoff, and a
+        modest capstone recovery reward on successful ambush kills.
+        """
+        plant_range = self.AMBUSH_BELL_PLANT_RANGE
         arm_time = self.AMBUSH_BELL_ARM_TIME
+        lifetime = self.AMBUSH_BELL_LIFETIME
+        lure_radius = self.AMBUSH_BELL_LURE_RADIUS
+        trigger_radius = self.AMBUSH_BELL_TRIGGER_RADIUS
+        damage_radius = self.AMBUSH_BELL_DAMAGE_RADIUS
+        primary_damage = 20 + self.player.level * 3 + self.player.melee_bonus
+        primary_damage += max(0, self.player.spell_bonus // 2)
+        splash_ratio = 0.48
+        smoke_duration = 0.52
+        status_effect = ""
+        status_duration = 0.0
+        primary_snare_duration = 0.0
+        splash_snare_duration = 0.0
+        expired_damage_scale = 0.55
+        kill_cooldown_floor = 0.0
+        kill_mana_refund = 0
+        facing_damage_multiplier = 1.18
+        facing_crit_bonus = 0.12
+
+        if self.player.has_upgrade("rogue_smoke"):
+            smoke_duration += 0.22
+        if self.player.has_upgrade("rogue_night_veil"):
+            smoke_duration += 0.16
+        if self.player.has_upgrade("rogue_umbral"):
+            smoke_duration += 0.18
+        if self.equipment_skill_bonus("Dash tempo"):
+            smoke_duration += 0.06
+
         if self.player.has_upgrade("rogue_trap_craft"):
             arm_time -= 0.04
+            lifetime += 0.35
+            lure_radius += 0.35
+            primary_damage += 1
+        if self.player.has_upgrade("rogue_venom"):
+            status_effect = "poisoned"
+            status_duration = max(status_duration, 2.2)
+            primary_damage += 2
+        if self.player.has_upgrade("rogue_venom_trap"):
+            status_effect = "poisoned"
+            status_duration = max(status_duration, 2.45)
+            splash_ratio += 0.02
         if self.player.has_upgrade("rogue_bear_trap"):
-            arm_time -= 0.03
+            trigger_radius += 0.05
+            primary_damage += 4
+            primary_snare_duration = max(primary_snare_duration, 1.05)
+            facing_damage_multiplier += 0.06
         if self.player.has_upgrade("rogue_trap_master"):
-            arm_time -= 0.04
+            lure_radius += 0.45
+            damage_radius += 0.16
+            primary_damage += 3
+            splash_ratio += 0.05
+            expired_damage_scale += 0.08
+            facing_crit_bonus += 0.03
+            if status_effect:
+                status_duration += 0.35
+            if primary_snare_duration > 0.0:
+                splash_snare_duration = max(splash_snare_duration, 0.45)
         if self.player.has_upgrade("rogue_ambush_engineer"):
-            arm_time -= 0.06
-        return max(0.20, arm_time)
+            arm_time -= 0.05
+            plant_range += 0.20
+            lure_radius += 0.25
+            damage_radius += 0.14
+            primary_damage += 5
+            splash_ratio += 0.03
+            expired_damage_scale += 0.04
+            facing_damage_multiplier += 0.04
+            facing_crit_bonus += 0.04
+            kill_cooldown_floor = 1.05
+            kill_mana_refund = 4
+            if status_effect:
+                status_duration += 0.35
+            if primary_snare_duration > 0.0:
+                primary_snare_duration += 0.25
+                splash_snare_duration = max(splash_snare_duration, 0.70)
+        if self.equipment_slot_3_bonus():
+            primary_damage += 2
+        if self.equipment_slot_3_bonus("Nova radius"):
+            damage_radius += 0.18
+
+        primary_damage = max(8, primary_damage)
+        return AmbushBellTuning(
+            plant_range=min(4.75, plant_range),
+            arm_time=max(0.22, arm_time),
+            lifetime=min(7.0, lifetime),
+            lure_radius=min(7.05, lure_radius),
+            trigger_radius=min(1.08, trigger_radius),
+            damage_radius=min(2.35, damage_radius),
+            primary_damage=primary_damage,
+            splash_damage=max(5, int(primary_damage * splash_ratio)),
+            smoke_duration=min(1.25, smoke_duration),
+            status_effect=status_effect,
+            status_duration=status_duration,
+            primary_snare_duration=primary_snare_duration,
+            splash_snare_duration=splash_snare_duration,
+            expired_damage_scale=min(0.72, expired_damage_scale),
+            kill_cooldown_floor=kill_cooldown_floor,
+            kill_mana_refund=kill_mana_refund,
+            facing_damage_multiplier=facing_damage_multiplier,
+            facing_crit_bonus=facing_crit_bonus,
+        )
+
+    def ambush_bell_arm_time(self) -> float:
+        return self.ambush_bell_tuning().arm_time
 
     def ambush_bell_damage_radius(self) -> float:
-        radius = self.AMBUSH_BELL_DAMAGE_RADIUS
-        if self.player.has_upgrade("rogue_trap_master"):
-            radius += 0.12
-        if self.player.has_upgrade("rogue_ambush_engineer"):
-            radius += 0.16
-        if self.equipment_slot_3_bonus("Nova radius"):
-            radius += 0.18
-        return radius
+        return self.ambush_bell_tuning().damage_radius
 
     def ambush_bell_smoke_duration(self) -> float:
-        duration = 0.52
-        if self.player.has_upgrade("rogue_smoke"):
-            duration += 0.22
-        if self.player.has_upgrade("rogue_night_veil"):
-            duration += 0.16
-        if self.player.has_upgrade("rogue_umbral"):
-            duration += 0.18
-        if self.equipment_skill_bonus("Dash tempo"):
-            duration += 0.06
-        return min(1.25, duration)
+        return self.ambush_bell_tuning().smoke_duration
 
     def ambush_bell_base_damage(self) -> int:
-        damage = 20 + self.player.level * 3 + self.player.melee_bonus
-        damage += max(0, self.player.spell_bonus // 2)
-        if self.player.has_upgrade("rogue_trap_craft"):
-            damage += 3
-        if self.player.has_upgrade("rogue_bear_trap"):
-            damage += 4
-        if self.player.has_upgrade("rogue_trap_master"):
-            damage += 5
-        if self.player.has_upgrade("rogue_ambush_engineer"):
-            damage += 7
-        if self.equipment_slot_3_bonus():
-            damage += 2
-        return max(8, damage)
+        return self.ambush_bell_tuning().primary_damage
 
     def _ambush_bell_status(self) -> tuple[str, float]:
-        if self.player.has_upgrade("rogue_venom") or self.player.has_upgrade(
-            "rogue_venom_trap"
-        ):
-            duration = 2.2
-            if self.player.has_upgrade("rogue_trap_master"):
-                duration += 0.5
-            if self.player.has_upgrade("rogue_ambush_engineer"):
-                duration += 0.4
-            return "poisoned", duration
-        return "", 0.0
+        tuning = self.ambush_bell_tuning()
+        return tuning.status_effect, tuning.status_duration
 
-    def _ambush_bell_target_point(self) -> tuple[float, float]:
+    def _ambush_bell_target_point(
+        self, tuning: AmbushBellTuning | None = None
+    ) -> tuple[float, float]:
+        tuning = tuning or self.ambush_bell_tuning()
         fx, fy = self.player.facing_x, self.player.facing_y
         length = math.hypot(fx, fy)
         if length <= 0.001:
             fx, fy = 1.0, 0.0
         else:
             fx, fy = fx / length, fy / length
-        target_x = self.player.x + fx * self.AMBUSH_BELL_PLANT_RANGE
-        target_y = self.player.y + fy * self.AMBUSH_BELL_PLANT_RANGE
-        return self._nearest_ambush_bell_floor(target_x, target_y)
+        target_x = self.player.x + fx * tuning.plant_range
+        target_y = self.player.y + fy * tuning.plant_range
+        return self._nearest_ambush_bell_floor(target_x, target_y, tuning.plant_range)
 
     def _nearest_ambush_bell_floor(
-        self, target_x: float, target_y: float
+        self, target_x: float, target_y: float, plant_range: float | None = None
     ) -> tuple[float, float]:
         px, py = self.player.x, self.player.y
         dx = target_x - px
         dy = target_y - py
+        max_range = plant_range or self.AMBUSH_BELL_PLANT_RANGE
         distance = math.hypot(dx, dy)
-        if distance > self.AMBUSH_BELL_PLANT_RANGE and distance > 0.001:
-            scale = self.AMBUSH_BELL_PLANT_RANGE / distance
+        if distance > max_range and distance > 0.001:
+            scale = max_range / distance
             dx *= scale
             dy *= scale
         # Walk backward from the aimed point toward the Rogue so a wall-click or
@@ -1928,28 +1997,36 @@ class CombatMixin:
         if self.player.nova_timer > 0 or self.player.mana < mana_cost:
             return
 
-        x, y = self._ambush_bell_target_point()
-        primary_damage = self.ambush_bell_base_damage()
-        arm_time = self.ambush_bell_arm_time()
-        damage_radius = self.ambush_bell_damage_radius()
+        tuning = self.ambush_bell_tuning()
+        x, y = self._ambush_bell_target_point(tuning)
         bell = AmbushBell(
             x=x,
             y=y,
-            lifetime=self.AMBUSH_BELL_LIFETIME,
-            arm_timer=arm_time,
-            lure_radius=self.AMBUSH_BELL_LURE_RADIUS,
-            trigger_radius=self.AMBUSH_BELL_TRIGGER_RADIUS,
-            damage_radius=damage_radius,
-            primary_damage=primary_damage,
-            splash_damage=max(5, int(primary_damage * 0.48)),
-            max_lifetime=self.AMBUSH_BELL_LIFETIME,
-            max_arm_timer=arm_time,
+            lifetime=tuning.lifetime,
+            arm_timer=tuning.arm_time,
+            lure_radius=tuning.lure_radius,
+            trigger_radius=tuning.trigger_radius,
+            damage_radius=tuning.damage_radius,
+            primary_damage=tuning.primary_damage,
+            splash_damage=tuning.splash_damage,
+            max_lifetime=tuning.lifetime,
+            max_arm_timer=tuning.arm_time,
+            smoke_duration=tuning.smoke_duration,
+            status_effect=tuning.status_effect,
+            status_duration=tuning.status_duration,
+            primary_snare_duration=tuning.primary_snare_duration,
+            splash_snare_duration=tuning.splash_snare_duration,
+            expired_damage_scale=tuning.expired_damage_scale,
+            kill_cooldown_floor=tuning.kill_cooldown_floor,
+            kill_mana_refund=tuning.kill_mana_refund,
+            facing_damage_multiplier=tuning.facing_damage_multiplier,
+            facing_crit_bonus=tuning.facing_crit_bonus,
         )
 
         self.player.nova_timer = self.nova_cooldown()
         self.player.mana -= mana_cost
         self.set_player_action_visual("cast", 0.28)
-        self.set_player_status("smoke", self.ambush_bell_smoke_duration())
+        self.set_player_status("smoke", tuning.smoke_duration)
         self.ambush_bells = [bell]
         self.add_impact(
             self.player.x,
@@ -2044,13 +2121,14 @@ class CombatMixin:
         distance = math.hypot(dx, dy)
         if distance <= 0.001:
             return True
-        return (enemy.facing_x * (dx / distance) + enemy.facing_y * (dy / distance)) > 0.48
+        facing_dot = enemy.facing_x * (dx / distance) + enemy.facing_y * (dy / distance)
+        return facing_dot > 0.48
 
     def _ambush_bell_primary_damage(self, bell: AmbushBell, enemy: Enemy) -> int:
         damage = bell.primary_damage
         facing_bell = self._enemy_facing_point(enemy, bell.x, bell.y)
         if facing_bell:
-            damage = int(damage * 1.18) + 2
+            damage = int(damage * bell.facing_damage_multiplier) + 2
         if self.player.has_upgrade("rogue_precision"):
             damage += 3
         if self.player.has_upgrade("rogue_venom"):
@@ -2075,7 +2153,7 @@ class CombatMixin:
         elif self.player.has_upgrade("rogue_precision"):
             crit_chance, crit_mult = 0.10, 1.6
         if facing_bell:
-            crit_chance += 0.12
+            crit_chance += bell.facing_crit_bonus
         if crit_chance > 0.0 and self.rng.random() < crit_chance:
             damage = int(damage * crit_mult)
             self.floaters.append(
@@ -2093,6 +2171,56 @@ class CombatMixin:
             if distance <= radius + hit_radius * 0.5:
                 targets.append((distance, enemy))
         return [enemy for _distance, enemy in sorted(targets, key=lambda entry: entry[0])]
+
+    def _damage_ambush_bell_enemy(
+        self,
+        enemy: Enemy,
+        amount: int,
+        direction: tuple[float, float],
+        status_effect: str,
+        status_duration: float,
+        snare_duration: float,
+    ) -> bool:
+        """Damage a bell target through shared combat and report whether it died."""
+        was_alive = enemy.alive
+        self.damage_enemy(
+            enemy,
+            amount,
+            knockback_from=direction,
+            damage_type="physical",
+            status_effect=status_effect,
+            status_duration=status_duration,
+        )
+        if snare_duration > 0.0 and enemy.alive:
+            self.apply_enemy_status(enemy, "snared", snare_duration)
+        return was_alive and not enemy.alive
+
+    def _apply_ambush_bell_kill_reward(self, bell: AmbushBell, kills: int) -> None:
+        if kills <= 0:
+            return
+        refunded = 0
+        if bell.kill_cooldown_floor > 0.0:
+            before = self.player.nova_timer
+            self.player.nova_timer = min(self.player.nova_timer, bell.kill_cooldown_floor)
+            if self.player.nova_timer < before:
+                refunded += 1
+        if bell.kill_mana_refund > 0:
+            before_mana = self.player.mana
+            self.player.mana = min(
+                self.player.max_mana, self.player.mana + bell.kill_mana_refund
+            )
+            if self.player.mana > before_mana:
+                refunded += 1
+        if refunded:
+            self.floaters.append(
+                FloatingText(
+                    "Bell Reprise",
+                    self.player.x,
+                    self.player.y - 0.55,
+                    self.skill_color(),
+                    ttl=0.85,
+                )
+            )
 
     def detonate_ambush_bell(
         self, bell: AmbushBell, primary: Enemy | None = None, expired: bool = False
@@ -2118,24 +2246,27 @@ class CombatMixin:
             ttl=0.42,
             kind="bell",
         )
-        self.set_player_status("smoke", self.ambush_bell_smoke_duration())
+        self.set_player_status("smoke", bell.smoke_duration)
 
-        status_effect, status_duration = self._ambush_bell_status()
+        status_effect = bell.status_effect
+        status_duration = bell.status_duration
         radius = bell.damage_radius if not expired else bell.damage_radius * 0.82
         targets = self._ambush_bell_targets(bell, radius)
         hits = 0
+        kills = 0
         if primary is not None and primary.alive:
             if primary not in targets:
                 targets.insert(0, primary)
             direction = (primary.x - bell.x, primary.y - bell.y)
-            self.damage_enemy(
+            if self._damage_ambush_bell_enemy(
                 primary,
                 self._ambush_bell_primary_damage(bell, primary),
-                knockback_from=direction,
-                damage_type="physical",
-                status_effect=status_effect,
-                status_duration=status_duration,
-            )
+                direction,
+                status_effect,
+                status_duration,
+                bell.primary_snare_duration,
+            ):
+                kills += 1
             hits += 1
 
         for enemy in targets:
@@ -2144,18 +2275,20 @@ class CombatMixin:
             direction = (enemy.x - bell.x, enemy.y - bell.y)
             damage = bell.splash_damage
             if expired:
-                damage = max(3, int(damage * 0.55))
+                damage = max(3, int(damage * bell.expired_damage_scale))
             damage = self.apply_story_player_damage(damage)
-            self.damage_enemy(
+            if self._damage_ambush_bell_enemy(
                 enemy,
                 damage,
-                knockback_from=direction,
-                damage_type="physical",
-                status_effect=status_effect,
-                status_duration=status_duration * (0.75 if enemy is not primary else 1.0),
-            )
+                direction,
+                status_effect,
+                status_duration * 0.75,
+                bell.splash_snare_duration,
+            ):
+                kills += 1
             hits += 1
 
+        self._apply_ambush_bell_kill_reward(bell, kills)
         label = "Bell Puff" if expired and hits == 0 else f"Ambush Bell x{hits}"
         self.floaters.append(
             FloatingText(label, bell.x, bell.y - 0.5, self.skill_color(), ttl=0.85)

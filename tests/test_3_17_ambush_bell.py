@@ -21,7 +21,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from arch_rogue.content import ARCHETYPES
+from arch_rogue.content import ARCHETYPES, skill_node_by_key
 from arch_rogue.game import Game
 from arch_rogue.models import AmbushBell, Enemy, Tile
 
@@ -177,6 +177,106 @@ class AmbushBell317Tests(unittest.TestCase):
 
             self.assertGreater(enemy.x, start_x)
             self.assertEqual(enemy.telegraph, "lured")
+
+    def test_trap_path_nodes_are_ambush_bell_specific(self) -> None:
+        expected = {
+            "rogue_trap_craft": "Bellwright's Hand",
+            "rogue_venom_trap": "Venom Chime",
+            "rogue_bear_trap": "Iron Clapper",
+            "rogue_trap_master": "Resonant Lure",
+            "rogue_ambush_engineer": "Cursed Bellwright",
+        }
+        for key, name in expected.items():
+            node = skill_node_by_key(key)
+            self.assertIsNotNone(node)
+            assert node is not None
+            self.assertEqual(node.branch, "Traps")
+            self.assertEqual(node.name, name)
+            self.assertIn("Ambush Bell", node.description)
+
+    def test_trap_path_tunes_bell_profile_and_applies_control(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=1)
+            base = game.ambush_bell_tuning()
+            game.player.skill_upgrades.extend(
+                [
+                    "rogue_trap_craft",
+                    "rogue_venom_trap",
+                    "rogue_bear_trap",
+                    "rogue_trap_master",
+                ]
+            )
+            upgraded = game.ambush_bell_tuning()
+            self.assertLess(upgraded.arm_time, base.arm_time)
+            self.assertGreater(upgraded.lifetime, base.lifetime)
+            self.assertGreater(upgraded.lure_radius, base.lure_radius)
+            self.assertGreater(upgraded.trigger_radius, base.trigger_radius)
+            self.assertGreater(upgraded.damage_radius, base.damage_radius)
+            self.assertGreater(upgraded.primary_damage, base.primary_damage)
+            self.assertGreater(upgraded.splash_damage, base.splash_damage)
+            self.assertEqual(upgraded.status_effect, "poisoned")
+            self.assertGreater(upgraded.status_duration, 0.0)
+            self.assertGreater(upgraded.primary_snare_duration, 0.0)
+            self.assertGreater(upgraded.splash_snare_duration, 0.0)
+
+            game.player.nova_timer = 0.0
+            game.player.mana = game.player.max_mana
+            game.player.facing_x = 1.0
+            game.player.facing_y = 0.0
+            game.player_cast_ambush_bell()
+            bell = game.ambush_bells[0]
+            self.assertAlmostEqual(bell.arm_timer, upgraded.arm_time, places=3)
+            self.assertAlmostEqual(bell.lure_radius, upgraded.lure_radius, places=3)
+            self.assertEqual(bell.status_effect, "poisoned")
+            self.assertGreater(bell.primary_snare_duration, 0.0)
+
+            bell.arm_timer = 0.0
+            bell.armed_announced = True
+            primary = _make_enemy(bell.x, bell.y, hp=999)
+            splash = _make_enemy(bell.x + 1.25, bell.y, hp=999)
+            game.enemies = [primary, splash]
+            game.update_ambush_bells(0.0)
+
+            self.assertIn("poisoned", primary.statuses)
+            self.assertIn("snared", primary.statuses)
+            self.assertIn("poisoned", splash.statuses)
+            self.assertIn("snared", splash.statuses)
+
+    def test_ambush_engineer_kill_hastens_next_bell_without_full_reset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=1)
+            game.player.skill_upgrades.extend(
+                [
+                    "rogue_trap_craft",
+                    "rogue_venom_trap",
+                    "rogue_bear_trap",
+                    "rogue_trap_master",
+                    "rogue_ambush_engineer",
+                ]
+            )
+            tuning = game.ambush_bell_tuning()
+            self.assertGreater(tuning.kill_cooldown_floor, 0.0)
+            self.assertGreater(tuning.kill_mana_refund, 0)
+
+            game.player.nova_timer = 0.0
+            game.player.mana = game.player.max_mana
+            game.player.facing_x = 1.0
+            game.player.facing_y = 0.0
+            game.player_cast_ambush_bell()
+            bell = game.ambush_bells[0]
+            spent_mana = game.player.mana
+            full_cooldown = game.player.nova_timer
+            bell.arm_timer = 0.0
+            bell.armed_announced = True
+            game.enemies = [_make_enemy(bell.x, bell.y, hp=1)]
+
+            game.update_ambush_bells(0.0)
+
+            self.assertEqual(game.ambush_bells, [])
+            self.assertLess(game.player.nova_timer, full_cooldown)
+            self.assertLessEqual(game.player.nova_timer, bell.kill_cooldown_floor)
+            self.assertGreater(game.player.mana, spent_mana)
+            self.assertLess(game.player.nova_timer, game.nova_cooldown())
 
     def test_acolyte_and_other_classes_keep_their_slot_3_actions(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

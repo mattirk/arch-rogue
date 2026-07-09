@@ -497,12 +497,12 @@ SKILL_NODES: tuple[SkillNode, ...] = (
         speed_bonus=0.14,
         max_stamina_bonus=12,
     ),
-    # --- Rogue: Traps branch (engineer and poison traps) ---
+    # --- Rogue: Traps branch (Ambush Bell action-skill upgrades) ---
     SkillNode(
         "rogue_trap_craft",
         "Rogue",
-        "Trap Craft",
-        "Traps arm faster and bite harder.",
+        "Bellwright's Hand",
+        "Ambush Bell arms faster, lasts longer, and lures from farther away.",
         tier=1,
         branch="Traps",
         prerequisites=(),
@@ -526,8 +526,8 @@ SKILL_NODES: tuple[SkillNode, ...] = (
     SkillNode(
         "rogue_venom_trap",
         "Rogue",
-        "Venom Trap",
-        "A poison trap coats foes in lingering toxins.",
+        "Venom Chime",
+        "Ambush Bell dagger bursts poison foes caught in the snap.",
         tier=2,
         branch="Traps",
         prerequisites=("rogue_trap_craft",),
@@ -550,8 +550,8 @@ SKILL_NODES: tuple[SkillNode, ...] = (
     SkillNode(
         "rogue_bear_trap",
         "Rogue",
-        "Iron Maw",
-        "A heavy trap roots and bleeds the first foe to spring it.",
+        "Iron Clapper",
+        "Ambush Bell clamps the first foe with a snare and hits lured prey harder.",
         tier=3,
         branch="Traps",
         prerequisites=("rogue_venom_trap",),
@@ -575,8 +575,8 @@ SKILL_NODES: tuple[SkillNode, ...] = (
     SkillNode(
         "rogue_trap_master",
         "Rogue",
-        "Trap Master",
-        "Traps chain to nearby foes and reset on kill.",
+        "Resonant Lure",
+        "Ambush Bell pulls wider, splashes harder, and catches nearby foes in the snare.",
         tier=4,
         branch="Traps",
         prerequisites=("rogue_bear_trap",),
@@ -606,8 +606,8 @@ SKILL_NODES: tuple[SkillNode, ...] = (
     SkillNode(
         "rogue_ambush_engineer",
         "Rogue",
-        "Ambush Engineer",
-        "Ambush Bell arms faster and trap detonations bite harder.",
+        "Cursed Bellwright",
+        "Ambush Bell gains a sharper snap and successful ambush kills hasten the next bell.",
         tier=5,
         branch="Traps",
         prerequisites=("rogue_trap_master",),
