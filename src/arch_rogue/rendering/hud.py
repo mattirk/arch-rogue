@@ -296,118 +296,31 @@ class RenderingHudMixin:
         cooldown = self.hud_slot_float(slot, "cooldown")
         remaining = self.cooldown_ratio(timer, cooldown)
         border = color if ready or timer > 0.001 else self.HUD_IRON
-        # Recessed iron plate body with a vertical gradient.
-        top_fill = self.shade(color, -118 if ready else -140)
-        bot_fill = self.shade(color, -150 if ready else -168)
-        bands = max(4, min(12, rect.height))
-        for i in range(bands):
-            t = i / max(1, bands - 1)
-            c = (
-                int(top_fill[0] * (1 - t) + bot_fill[0] * t),
-                int(top_fill[1] * (1 - t) + bot_fill[1] * t),
-                int(top_fill[2] * (1 - t) + bot_fill[2] * t),
-            )
-            fy = rect.y + int(i * rect.height / bands)
-            fy2 = rect.y + int((i + 1) * rect.height / bands)
-            pygame.draw.rect(
-                self.screen,
-                c,
-                pygame.Rect(rect.x, fy, rect.width, fy2 - fy + 1),
-                border_top_left_radius=self.ui(8) if i == 0 else 0,
-                border_top_right_radius=self.ui(8) if i == 0 else 0,
-                border_bottom_left_radius=self.ui(8) if i == bands - 1 else 0,
-                border_bottom_right_radius=self.ui(8) if i == bands - 1 else 0,
-            )
-        # Inner bevel — dark rim then light rim.
-        pygame.draw.rect(
-            self.screen,
-            self.HUD_STONE_SHADOW,
-            rect,
-            max(1, self.ui(2)),
-            border_radius=self.ui(8),
-        )
-        pygame.draw.rect(
-            self.screen,
-            self.HUD_STONE_LIGHT,
-            rect.inflate(-self.ui(2), -self.ui(2)),
-            max(1, self.ui(1)),
-            border_radius=self.ui(7),
-        )
-        # Gold/accent border.
-        pygame.draw.rect(
-            self.screen, border, rect, max(1, self.ui(1)), border_radius=self.ui(8)
-        )
-        # Top specular shine.
-        shine = pygame.Rect(
-            rect.x + self.ui(2),
-            rect.y + self.ui(2),
-            rect.width - self.ui(4),
-            rect.height // 3,
-        )
-        shine_surface = pygame.Surface(shine.size, pygame.SRCALPHA)
-        pygame.draw.rect(
-            shine_surface,
-            (255, 255, 255, 22 if ready else 11),
-            shine_surface.get_rect(),
-            border_radius=self.ui(7),
-        )
-        self.screen.blit(shine_surface, shine)
-
-        glyph_rect = rect.inflate(-self.ui(13), -self.ui(14))
-        glyph_rect.y += self.ui(3)
-        glyph_rect.height = max(8, glyph_rect.height - self.tiny_font.get_height() // 2)
-        self.draw_hud_action_glyph(str(slot.get("icon", "")), glyph_rect, color, ready)
-
-        label_rect = pygame.Rect(
-            rect.x + self.ui(3),
-            rect.bottom - self.tiny_font.get_height() - self.ui(2),
-            rect.width - self.ui(6),
-            self.tiny_font.get_height(),
-        )
-        self.draw_ui_text(
-            self.screen,
-            str(slot.get("label", "")),
-            self.tiny_font,
-            self.HUD_PARCHMENT if ready else self.HUD_MUTED,
-            label_rect,
-            align="center",
-        )
-
-        # Hotkey badge — iron plate with gold trim.
+        icon = str(slot.get("icon", ""))
+        label = str(slot.get("label", ""))
         hotkey = str(slot.get("hotkey", ""))
-        key_w = min(
-            rect.width - self.ui(4),
-            max(self.ui(16), self.tiny_font.size(hotkey)[0] + self.ui(6)),
-        )
-        key_rect = pygame.Rect(
-            rect.x + self.ui(3), rect.y + self.ui(3), key_w, self.ui(14)
-        )
-        pygame.draw.rect(
-            self.screen, self.HUD_STONE_SHADOW, key_rect, border_radius=self.ui(4)
-        )
-        pygame.draw.rect(
-            self.screen,
-            self.HUD_IRON,
-            key_rect.inflate(-self.ui(1), -self.ui(1)),
-            border_radius=self.ui(3),
-        )
-        pygame.draw.rect(
-            self.screen,
-            border,
-            key_rect,
-            max(1, self.ui(1)),
-            border_radius=self.ui(4),
-        )
-        self.draw_ui_text(
-            self.screen,
-            hotkey,
-            self.tiny_font,
-            self.HUD_GOLD_BRIGHT,
-            key_rect.inflate(-self.ui(2), 0),
-            align="center",
-            valign="center",
-        )
+        # The icon body (gradient plate, bevels, gold border, shine, glyph,
+        # label, hotkey badge) is a pure function of (size, colors, ready,
+        # ui_scale, glyph texts) — none of it depends on the per-frame
+        # cooldown/count/status. Cache the composed body so steady-state frames
+        # pay one blit instead of ~15 draw.rects + a shine surface + glyph +
+        # two text renders per icon. Cleared in rebuild_fonts.
+        cache = getattr(self, "_hud_icon_cache", None)
+        if cache is None:
+            cache = {}
+            self._hud_icon_cache = cache
+        key = (rect.size, color, ready, border, icon, label, hotkey, self.ui_scale)
+        body = cache.get(key)
+        if body is None:
+            body = self._build_hud_action_icon_body(
+                rect.size, color, ready, border, icon, label, hotkey
+            )
+            if len(cache) >= 256:
+                cache.clear()
+            cache[key] = body
+        self.screen.blit(body, rect.topleft)
 
+        # --- dynamic overlays (depend on per-frame cooldown/count/status) ---
         if "count" in slot:
             count_text = str(slot.get("count", 0))
             count_size = max(
@@ -471,6 +384,142 @@ class RenderingHudMixin:
                 align="center",
                 valign="center",
             )
+
+    def _build_hud_action_icon_body(
+        self,
+        size: tuple[int, int],
+        color: Color,
+        ready: bool,
+        border: Color,
+        icon: str,
+        label: str,
+        hotkey: str,
+    ) -> pygame.Surface:
+        body = pygame.Surface(size, pygame.SRCALPHA)
+        r = body.get_rect()
+        # Draw onto the body via a self.screen swap so draw_hud_action_glyph /
+        # draw_ui_text (which target self.screen) compose into the body without
+        # needing a dest parameter. Coordinates are 0-relative to r.
+        real_screen = self.screen
+        self.screen = body
+        try:
+            # Recessed iron plate body with a vertical gradient.
+            top_fill = self.shade(color, -118 if ready else -140)
+            bot_fill = self.shade(color, -150 if ready else -168)
+            bands = max(4, min(12, r.height))
+            for i in range(bands):
+                t = i / max(1, bands - 1)
+                c = (
+                    int(top_fill[0] * (1 - t) + bot_fill[0] * t),
+                    int(top_fill[1] * (1 - t) + bot_fill[1] * t),
+                    int(top_fill[2] * (1 - t) + bot_fill[2] * t),
+                )
+                fy = r.y + int(i * r.height / bands)
+                fy2 = r.y + int((i + 1) * r.height / bands)
+                pygame.draw.rect(
+                    self.screen,
+                    c,
+                    pygame.Rect(r.x, fy, r.width, fy2 - fy + 1),
+                    border_top_left_radius=self.ui(8) if i == 0 else 0,
+                    border_top_right_radius=self.ui(8) if i == 0 else 0,
+                    border_bottom_left_radius=self.ui(8) if i == bands - 1 else 0,
+                    border_bottom_right_radius=self.ui(8) if i == bands - 1 else 0,
+                )
+            # Inner bevel — dark rim then light rim.
+            pygame.draw.rect(
+                self.screen,
+                self.HUD_STONE_SHADOW,
+                r,
+                max(1, self.ui(2)),
+                border_radius=self.ui(8),
+            )
+            pygame.draw.rect(
+                self.screen,
+                self.HUD_STONE_LIGHT,
+                r.inflate(-self.ui(2), -self.ui(2)),
+                max(1, self.ui(1)),
+                border_radius=self.ui(7),
+            )
+            # Gold/accent border.
+            pygame.draw.rect(
+                self.screen, border, r, max(1, self.ui(1)), border_radius=self.ui(8)
+            )
+            # Top specular shine.
+            shine = pygame.Rect(
+                r.x + self.ui(2),
+                r.y + self.ui(2),
+                r.width - self.ui(4),
+                r.height // 3,
+            )
+            shine_surface = pygame.Surface(shine.size, pygame.SRCALPHA)
+            pygame.draw.rect(
+                shine_surface,
+                (255, 255, 255, 22 if ready else 11),
+                shine_surface.get_rect(),
+                border_radius=self.ui(7),
+            )
+            self.screen.blit(shine_surface, shine)
+
+            glyph_rect = r.inflate(-self.ui(13), -self.ui(14))
+            glyph_rect.y += self.ui(3)
+            glyph_rect.height = max(8, glyph_rect.height - self.tiny_font.get_height() // 2)
+            self.draw_hud_action_glyph(icon, glyph_rect, color, ready)
+
+            label_rect = pygame.Rect(
+                r.x + self.ui(3),
+                r.bottom - self.tiny_font.get_height() - self.ui(2),
+                r.width - self.ui(6),
+                self.tiny_font.get_height(),
+            )
+            self.draw_ui_text(
+                self.screen,
+                label,
+                self.tiny_font,
+                self.HUD_PARCHMENT if ready else self.HUD_MUTED,
+                label_rect,
+                align="center",
+            )
+
+            # Hotkey badge — iron plate with gold trim.
+            key_w = min(
+                r.width - self.ui(4),
+                max(self.ui(16), self.tiny_font.size(hotkey)[0] + self.ui(6)),
+            )
+            key_rect = pygame.Rect(
+                r.x + self.ui(3), r.y + self.ui(3), key_w, self.ui(14)
+            )
+            pygame.draw.rect(
+                self.screen, self.HUD_STONE_SHADOW, key_rect, border_radius=self.ui(4)
+            )
+            pygame.draw.rect(
+                self.screen,
+                self.HUD_IRON,
+                key_rect.inflate(-self.ui(1), -self.ui(1)),
+                border_radius=self.ui(3),
+            )
+            pygame.draw.rect(
+                self.screen,
+                border,
+                key_rect,
+                max(1, self.ui(1)),
+                border_radius=self.ui(4),
+            )
+            self.draw_ui_text(
+                self.screen,
+                hotkey,
+                self.tiny_font,
+                self.HUD_GOLD_BRIGHT,
+                key_rect.inflate(-self.ui(2), 0),
+                align="center",
+                valign="center",
+            )
+        finally:
+            self.screen = real_screen
+        try:
+            body = body.convert_alpha()
+        except pygame.error:
+            pass
+        return body
 
     def draw_hud_action_glyph(
         self, icon: str, rect: pygame.Rect, color: Color, ready: bool

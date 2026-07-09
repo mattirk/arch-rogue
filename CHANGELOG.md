@@ -1,5 +1,61 @@
 # Changelog
 
+## 3.18.3 — Broad HUD Render Cache
+
+On top of the 3.18.2 zoom-out fix, profiling showed the HUD was the largest
+broad (zoom-independent) cost: ``font.size``/``font.render``/``ellipsize`` for
+per-frame text and ``draw.rect`` + per-call SRCALPHA allocations for panels and
+the action bar. The HUD redraws the same stable art every frame, so these are
+now cached:
+
+- **Rendered text surfaces** (``draw_ui_text``): keyed by (font, text, color,
+  width). Static labels (ability names, hotkeys, section headers) skip
+  ellipsize + ``font.render`` entirely after the first frame; dynamic text
+  (cooldown counts, HP/mana numbers) misses and renders as before.
+  ``ellipsize_ui_text`` now measures truncation candidates through the shared
+  ``_text_size`` cache instead of raw ``font.size``.
+- **Panel art** (``draw_translucent_panel`` / ``draw_ornate_hud_panel``):
+  keyed by (size, colors, radii, ui_scale, studs). The chiseled bevel / trim /
+  iron studs are built once and ``convert_alpha``-ed for fast blits, removing
+  the per-call SRCALPHA allocation + ~5 draw.rects (plus up to 12 stud circles)
+  for the HUD's stable panels.
+- **Action-icon body** (``draw_hud_action_icon``): the gradient plate, bevels,
+  gold border, shine, glyph, label, and hotkey badge are a pure function of
+  (size, colors, ready, ui_scale, glyph texts), so the composed body is cached
+  and blitted; only the per-frame cooldown overlay / arc, count badge, and
+  status text are drawn on top. Steady-state frames pay one blit instead of
+  ~15 draw.rects + a shine surface + glyph + two text renders per icon.
+
+All caches are cleared in ``rebuild_fonts`` (which also fires on ui-scale /
+resolution changes) so stale art is never reused after fonts are replaced.
+
+### Measured (1280x720, headless, 400-frame average; no active cooldowns)
+| zoom | 3.18.2 | 3.18.3 |
+|------|--------|--------|
+| 1.6  | 4.59 ms | 3.19 ms |
+| 1.0  | 5.70 ms | 4.13 ms |
+| 0.65 | 8.98 ms | 7.13 ms |
+
+~21-31% lower draw time across all zoom levels. With active cooldowns the
+action-icon body stays cached (the ``ready=False`` variant), so the saving
+holds; only the cheap cooldown overlay / status text are redrawn.
+
+### Changed
+- `rendering/base.py`: ``draw_ui_text`` caches rendered surfaces;
+  ``ellipsize_ui_text`` measures via ``_text_size``; ``draw_translucent_panel``
+  and ``draw_ornate_hud_panel`` cache built panel art (``convert_alpha``-ed) in
+  a shared ``_hud_panel_cache``; panel build split into
+  ``_build_ornate_hud_panel``.
+- `rendering/hud.py`: ``draw_hud_action_icon`` blits a cached body
+  (``_hud_icon_cache``) and draws only the dynamic overlays on top; body build
+  split into ``_build_hud_action_icon_body`` (uses a ``self.screen`` swap so
+  ``draw_hud_action_glyph`` / ``draw_ui_text`` compose into the offscreen body).
+- `options.py`: ``rebuild_fonts`` clears ``_ui_text_cache``,
+  ``_hud_panel_cache``, and ``_hud_icon_cache`` alongside ``_text_size_cache``.
+- `tests/test_hud_action_bar.py`: 2 new tests — body cache identity +
+  rebuild_fonts invalidation, and that the cached body does not swallow the
+  per-frame cooldown overlay.
+
 ## 3.18.2 — Zoom-Out Render Performance
 
 Zooming out to the max caused a noticeable frame-time cliff because the

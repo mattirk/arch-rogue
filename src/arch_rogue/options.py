@@ -72,6 +72,12 @@ class OptionsMixin:
         # Clear the cached font.size() results: the Font objects are replaced, so
         # keys based on id(font) would otherwise collide with the new fonts.
         self._text_size_cache = {}
+        # Rendered HUD text surfaces and panel art are keyed by id(font) /
+        # ui_scale, so drop them when fonts are rebuilt (which also fires on
+        # ui_scale / resolution changes) to avoid stale or colliding entries.
+        self._ui_text_cache = {}
+        self._hud_panel_cache = {}
+        self._hud_icon_cache = {}
 
     def available_difficulty_profiles(self) -> tuple[DifficultyProfile, ...]:
         return tuple(

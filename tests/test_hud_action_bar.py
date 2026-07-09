@@ -123,5 +123,58 @@ class HudPolish25Tests(unittest.TestCase):
                 pass
 
 
+    def test_action_icon_body_is_cached_and_invalidated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            slots = game.hud_action_slots()
+            slot = next(s for s in slots if s.get("kind") == "bolt")
+            color = slot["color"]
+            icon = str(slot.get("icon", ""))
+            label = str(slot.get("label", ""))
+            hotkey = str(slot.get("hotkey", ""))
+            args = ((60, 60), color, True, color, icon, label, hotkey)
+            b1 = game._build_hud_action_icon_body(*args)
+            b2 = game._build_hud_action_icon_body(*args)
+            # Rebuild is deterministic.
+            self.assertEqual(b1.get_size(), b2.get_size())
+            # draw_hud_action_icon populates the cache; the cached body is
+            # present so steady-state frames reuse it instead of rebuilding.
+            rect = pygame.Rect(10, 10, 60, 60)
+            game.screen.fill((0, 0, 0))
+            game.draw_hud_action_icon(slot, rect)
+            ready = game.hud_action_slot_ready(slot)
+            border = color if ready else game.HUD_IRON
+            cached = game._hud_icon_cache.get(
+                (rect.size, color, ready, border, icon, label, hotkey, game.ui_scale)
+            )
+            self.assertIsNotNone(cached)
+            # rebuild_fonts (ui / font change) drops the cache so stale art is
+            # never reused after fonts are replaced.
+            game.rebuild_fonts()
+            self.assertEqual(game._hud_icon_cache, {})
+
+    def test_action_icon_cooldown_overlay_darkens_top(self) -> None:
+        # The cached body must not swallow the per-frame cooldown overlay: with
+        # a cooldown active the top of the icon is darkened relative to the
+        # bottom, and without one it is not.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            slots = game.hud_action_slots()
+            slot = next(s for s in slots if s.get("kind") == "bolt")
+            cd = float(slot["cooldown"])
+            rect = pygame.Rect(120, 120, 60, 60)
+            slot["timer"] = cd * 0.5
+            game.screen.fill((0, 0, 0))
+            game.draw_hud_action_icon(slot, rect)
+            top_cd = sum(game.screen.get_at((rect.centerx, rect.y + 6))[:3])
+            bot_cd = sum(game.screen.get_at((rect.centerx, rect.bottom - 6))[:3])
+            self.assertLess(top_cd, bot_cd)
+            slot["timer"] = 0.0
+            game.screen.fill((0, 0, 0))
+            game.draw_hud_action_icon(slot, rect)
+            top_ready = sum(game.screen.get_at((rect.centerx, rect.y + 6))[:3])
+            self.assertGreater(top_ready, top_cd)
+
+
 if __name__ == "__main__":
     unittest.main()

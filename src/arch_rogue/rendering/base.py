@@ -250,7 +250,10 @@ class RenderingBaseMixin:
         if self._text_size(font, text)[0] <= max_width:
             return text
         suffix = "…"
-        while text and font.size(text + suffix)[0] > max_width:
+        # Measure truncated candidates through the shared _text_size cache so
+        # repeated labels (e.g. an ability name ellipsized every frame) don't
+        # re-run font.size() for every character dropped.
+        while text and self._text_size(font, text + suffix)[0] > max_width:
             text = text[:-1]
         return text + suffix if text else suffix
 
@@ -264,9 +267,24 @@ class RenderingBaseMixin:
         align: str = "left",
         valign: str = "top",
     ) -> None:
-        rendered = font.render(
-            self.ellipsize_ui_text(text, font, rect.width), True, color
-        )
+        # Cache the rendered+ellipsized surface by (font, text, color, width).
+        # Most HUD text is stable frame-to-frame (ability names, hotkeys, section
+        # headers), so this skips the ellipsize + font.render cost on every frame
+        # after the first; dynamic text (cooldown counts, HP/mana numbers) simply
+        # misses and renders as before. Cleared in rebuild_fonts.
+        cache = getattr(self, "_ui_text_cache", None)
+        if cache is None:
+            cache = {}
+            self._ui_text_cache = cache
+        key = (id(font), text, color, rect.width)
+        rendered = cache.get(key)
+        if rendered is None:
+            rendered = font.render(
+                self.ellipsize_ui_text(text, font, rect.width), True, color
+            )
+            if len(cache) >= 2048:
+                cache.clear()
+            cache[key] = rendered
         if align == "center":
             x = rect.centerx - rendered.get_width() // 2
         elif align == "right":
@@ -292,10 +310,29 @@ class RenderingBaseMixin:
     ) -> None:
         radius = self.ui(9) if radius is None else radius
         width = self.ui(1) if width is None else width
-        panel = pygame.Surface(rect.size, pygame.SRCALPHA)
-        panel_rect = panel.get_rect()
-        pygame.draw.rect(panel, fill, panel_rect, border_radius=radius)
-        pygame.draw.rect(panel, border, panel_rect, width, border_radius=radius)
+        # The panel art is a pure function of its inputs, so cache the built
+        # surface and just blit on subsequent frames. HUD panels are redrawn
+        # every frame with stable geometry/colors, so this removes the per-call
+        # SRCALPHA allocation + two draw.rects. convert_alpha() also makes the
+        # cached blit faster than the previous unconverted surface.
+        cache = getattr(self, "_hud_panel_cache", None)
+        if cache is None:
+            cache = {}
+            self._hud_panel_cache = cache
+        key = ("plain", rect.size, fill, border, radius, width, self.ui_scale)
+        panel = cache.get(key)
+        if panel is None:
+            panel = pygame.Surface(rect.size, pygame.SRCALPHA)
+            panel_rect = panel.get_rect()
+            pygame.draw.rect(panel, fill, panel_rect, border_radius=radius)
+            pygame.draw.rect(panel, border, panel_rect, width, border_radius=radius)
+            try:
+                panel = panel.convert_alpha()
+            except pygame.error:
+                pass
+            if len(cache) >= 512:
+                cache.clear()
+            cache[key] = panel
         surface.blit(panel, rect)
 
     def wrap_ui_text(
@@ -347,7 +384,34 @@ class RenderingBaseMixin:
         """A translucent stone panel with a chiseled bevel and optional iron studs."""
         radius = self.ui(9) if radius is None else radius
         width = self.ui(1) if width is None else width
-        panel = pygame.Surface(rect.size, pygame.SRCALPHA)
+        # The bevel/studs/trim are a pure function of (size, colors, radii,
+        # ui_scale), so cache the built panel and blit on subsequent frames.
+        # This removes the per-call SRCALPHA allocation + ~5 draw.rects + up to
+        # 12 stud circles for the HUD's stable panels, and convert_alpha()
+        # makes the cached blit faster than the previous unconverted surface.
+        cache = getattr(self, "_hud_panel_cache", None)
+        if cache is None:
+            cache = {}
+            self._hud_panel_cache = cache
+        key = ("ornate", rect.size, fill, border, radius, width, studs, self.ui_scale)
+        panel = cache.get(key)
+        if panel is None:
+            panel = self._build_ornate_hud_panel(rect.size, fill, border, radius, width, studs)
+            if len(cache) >= 512:
+                cache.clear()
+            cache[key] = panel
+        surface.blit(panel, rect)
+
+    def _build_ornate_hud_panel(
+        self,
+        size: tuple[int, int],
+        fill: tuple[int, int, int, int],
+        border: tuple[int, int, int, int],
+        radius: int,
+        width: int,
+        studs: bool,
+    ) -> pygame.Surface:
+        panel = pygame.Surface(size, pygame.SRCALPHA)
         panel_rect = panel.get_rect()
         pygame.draw.rect(panel, fill, panel_rect, border_radius=radius)
         # Inner bevel — dark rim then a faint light rim.
@@ -394,7 +458,11 @@ class RenderingBaseMixin:
                     (corner[0] - 1, corner[1] - 1),
                     max(1, stud_r - 1),
                 )
-        surface.blit(panel, rect)
+        try:
+            panel = panel.convert_alpha()
+        except pygame.error:
+            pass
+        return panel
 
     def draw_hud_divider(
         self, surface: pygame.Surface, x1: int, y: int, x2: int, color: Color
