@@ -612,6 +612,7 @@ class RunFlowMixin:
         self.player.bolt_timer = 0.0
         self.player.dash_timer = 0.0
         self.player.nova_timer = 0.0
+        self.player.time_skip_timer = 0.0
         self.player.stamina = min(
             self.player.max_stamina,
             self.player.stamina + self.player.max_stamina * 0.25,

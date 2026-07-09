@@ -186,52 +186,21 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 3.17
+### 3.18 Warden Time Stop
 
-- [ ] **Ambush Bell:** Replace the Rogue active skill slot 3 (`Nova` / `Smoke Burst`) with a cursed lure trap that rewards positioning, baiting, poison setup, and backstab burst instead of another radial pulse.
-  - Feature fantasy: the Rogue tosses a cracked occult bell or charm onto the floor; it gives off a faint chime and smoke shimmer that tempts nearby enemies toward a small kill zone, then snaps shut in a burst of shadow-dagger strikes when the first enemy reaches it or when its fuse expires.
-  - Core gameplay behavior:
-    - Cast plants one active bell at the aimed ground point within a short range, falling back to a point in front of the Rogue if no aim target is available.
-    - The bell arms after a brief delay, then lures nearby enemies by temporarily biasing their target/movement toward the bell.
-    - The first enemy entering the trigger radius detonates the bell, dealing heavy physical backstab damage to that enemy and lighter splash dagger damage to nearby enemies.
-    - If no enemy triggers it, the bell expires after a short lifetime with a smaller detonation or harmless smoke puff, depending on balance.
-    - The Rogue gains a short smoke/evasion window on cast or detonation so the skill doubles as an ambush setup and escape tool.
-  - Suggested tuning targets:
-    - Mana/cooldown: reuse the existing nova-slot budget initially (`nova_mana_cost()` / `nova_cooldown()`) and tune only if it feels too trap-heavy or too bursty.
-    - Plant range: about 3.5-5.0 tiles in aim direction, clamped to walkable floor.
-    - Arm time: about 0.25-0.45 seconds so placement has readable counterplay.
-    - Lifetime: about 5-7 seconds, enough to kite enemies through it without becoming a permanent minefield.
-    - Lure radius: about 5-7 tiles; trigger radius about 0.75-1.1 tiles; damage radius about 1.6-2.1 tiles.
-    - Damage profile: primary target takes high Rogue-level-scaling physical damage with backstab/crit synergy; splash targets take partial physical damage plus optional poison.
-    - Active limit: one bell baseline; recasting refreshes/replaces the previous bell to keep performance and encounter control simple.
-  - Rogue upgrade and item hooks:
-    - `rogue_venom` or poison-branch upgrades should add poison buildup/duration to the detonation and splash hits.
-    - Rogue crit/backstab upgrades should increase primary-target damage, crit chance, or bonus damage against enemies facing the bell instead of the Rogue.
-    - Rogue mobility/evasion upgrades may extend the smoke/evasion window or reduce plant recovery.
-    - Decide whether existing `Nova` equipment bonuses continue to apply to all slot-3 skills for save compatibility, or whether `Ambush Bell` becomes a recognized skill keyword alongside legacy `Nova` bonuses.
-  - Combat implementation tasks:
-    - Add a lightweight bell/trap runtime model in `src/arch_rogue/models.py` or an existing appropriate model container with position, lifetime, arm timer, lure radius, trigger radius, damage radius, owner/archetype, and triggered state.
-    - Add Rogue-only `player_cast_ambush_bell()` in `src/arch_rogue/combat.py`, structurally similar to `player_cast_spirit_call()` for mana/cooldown spend, cast impact, floating text, class fallback safety, and nova-slot balance reuse.
-    - Add `update_ambush_bells(dt)` or equivalent update path that decrements timers, arms bells, checks trigger collisions against living enemies, applies lure behavior, detonates, and culls expired bells.
-    - Implement bell lure behavior without expensive pathfinding: bias nearby enemy intent/targeting toward the bell while preserving collision, walls, boss behavior, and existing enemy attack timers.
-    - Implement `detonate_ambush_bell()` to apply primary and splash damage through existing `damage_enemy()` pathways so floating text, hit flashes, resistances, statuses, knockback, kill rewards, and story modifiers remain consistent.
-    - Wire Rogue slot-3 input dispatch to `player_cast_ambush_bell()` while keeping Acolyte `Spirit Call` and other class nova-slot behaviors intact.
-    - Rename Rogue slot-3 display text from `Smoke Burst` to `Ambush Bell` in `skill_names()` and ensure cooldown/HUD labels still fit.
-  - Rendering, audio, and feedback tasks:
-    - Draw an armed bell marker on the dungeon floor as a small dark charm, smoke curl, or pulsing ring that is readable from the isometric camera.
-    - Add cast, armed, lure pulse, detonation, and expiration feedback using existing `add_impact`, `FloatingText`, and SFX helpers before introducing new rendering systems.
-    - Make the detonation visually distinct from `Nova`: use a focused snap of shadow daggers/smoke around the bell rather than a player-centered circular blast.
-    - Ensure enemies being lured remain understandable to the player through subtle movement/attention changes rather than hidden AI state only.
-  - Arhitecture notes:
-    - Before implementing this feature, design action skill system interfaces so that they better support archetype specific skills
-    - Make good design choices and write clean code
-  - Save/run lifecycle tasks:
-    - Clear active bells on floor descent, run reset, player death, and load/restore boundaries unless deliberate persistence is added.
-    - Keep old save files compatible by not requiring serialized bell state.
-  - Tests and validation:
-    - Add focused tests for Rogue slot-3 dispatch, mana/cooldown spend, single-active-bell replacement, arming delay, trigger detonation, expiry behavior, damage/status application, and lure targeting.
-    - Add regression coverage that Acolyte slot 3 still summons via `Spirit Call` and non-Rogue nova-slot classes still behave as expected.
-    - Run `python -m compileall src tests`, focused combat/skill tests, and then `python -m unittest discover tests` before closing the milestone.
+Replace the Warden's slot-3 nova (Bulwark Wave) with **Time Skip**, a control
+skill that slows time for all enemies without affecting the player.
+
+- **Activation:** slot-3 hotkey (reuses the nova-slot mana cost + cooldown so
+  the action bar and equipment bonuses stay balanced).
+- **Effect:** while active, enemy movement and attack cadence run at ~40% speed;
+  the player's movement, attacks, and timers are untouched.
+- **Implementation:** single global `enemy_time_scale()` multiplier applied to
+  the enemy simulation dt in `update_enemies`; `player.time_skip_timer` is
+  transient (not serialized, reset on descent). Legacy `Nova` gear still
+  applies its slot-3 budget for save compatibility.
+- **Scaling:** `warden_aegis` (+0.6s) and `warden_bulwark_ward` (+1.2s) extend
+  the duration; future gear can use `Time Skip` wording.
 
 ### Stash
 

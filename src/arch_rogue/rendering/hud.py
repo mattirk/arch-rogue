@@ -133,10 +133,16 @@ class RenderingHudMixin:
         melee_name, bolt_name, nova_name, dash_name = self.skill_names()
         class_color = self.skill_color()
         slot_3_kind = self.slot_3_skill_kind()
-        slot_3_icon = "ambush_bell" if slot_3_kind == "ambush_bell" else "nova"
+        slot_3_icon = (
+            "ambush_bell"
+            if slot_3_kind == "ambush_bell"
+            else "time_skip" if slot_3_kind == "time_skip" else "nova"
+        )
         slot_3_color = (
             self.mix((214, 92, 150), class_color, 0.34)
             if slot_3_kind == "ambush_bell"
+            else self.mix((235, 205, 120), class_color, 0.30)
+            if slot_3_kind == "time_skip"
             else self.mix((185, 125, 255), class_color, 0.24)
         )
         return [
@@ -553,6 +559,39 @@ class RenderingHudMixin:
                     ),
                     max(1, self.ui(1)),
                 )
+        elif icon == "time_skip":
+            # Milestone 3.18 — a clock face with swept hands: enemies slip
+            # into slow time while the Warden keeps their own tempo.
+            radius = max(6, min(rect.width, rect.height) // 3)
+            pygame.draw.circle(self.screen, (24, 22, 28), (cx, cy), radius + line_w // 2)
+            pygame.draw.circle(self.screen, color, (cx, cy), radius, line_w)
+            pygame.draw.circle(
+                self.screen, self.shade(color, 48), (cx, cy), max(2, self.ui(2))
+            )
+            for angle in (0.0, math.pi / 2, math.pi, math.pi * 1.5):
+                pygame.draw.line(
+                    self.screen,
+                    self.shade(color, 30),
+                    (
+                        cx + int(math.cos(angle) * radius * 0.78),
+                        cy + int(math.sin(angle) * radius * 0.78),
+                    ),
+                    (
+                        cx + int(math.cos(angle) * radius * 0.96),
+                        cy + int(math.sin(angle) * radius * 0.96),
+                    ),
+                    max(1, self.ui(1)),
+                )
+            pygame.draw.line(
+                self.screen, color, (cx, cy), (cx, cy - radius * 0.6), line_w
+            )
+            pygame.draw.line(
+                self.screen,
+                self.shade(color, 34),
+                (cx, cy),
+                (cx + int(radius * 0.42), cy + int(radius * 0.32)),
+                line_w,
+            )
         elif icon == "dash":
             for offset in (-rect.width // 7, rect.width // 7):
                 points = [

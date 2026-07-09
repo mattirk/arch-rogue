@@ -1,5 +1,52 @@
 # Changelog
 
+## 3.18.0 — Warden Time Stop (Time Skip)
+
+The Warden's slot-3 action bar entry is now **Time Skip**, replacing
+Bulwark Wave. Activating it opens a short timed window during which the
+entire enemy simulation slows to 40% speed — both movement and attack
+cadence — while the Warden's own movement, attacks, and timers keep their
+full tempo. It reuses the existing nova-slot mana cost and cooldown so the
+action bar and equipment bonuses stay balanced, and legacy `Nova` gear on
+older Warden saves still applies its slot-3 budget.
+
+### Added
+- `player_cast_time_skip()` / `time_skip_duration()` / `time_skip_factor()` /
+  `enemy_time_scale()` in `combat.py`. Time Skip spends the slot-3 mana/cooldown
+  budget (via `nova_mana_cost` / `nova_cooldown`), sets `player.time_skip_timer`,
+  and emits a wide cast pulse + floater. No enemy damage — it is a pure control
+  skill.
+- Global enemy time scaling in `update_enemies`: a single `scaled_dt =
+  dt * enemy_time_scale()` is applied to the enemy `attack_timer` decrement and
+  every enemy `move_actor` step, so movement and attack speed slow uniformly.
+  Player timers/movement, familiars, ambush bells, projectiles, and enemy
+  status ticks are intentionally unaffected.
+- `Player.time_skip_timer` field (transient; not serialized, defaults to 0 on
+  restore and reset on floor descent alongside the other slot timers).
+- Time Skip HUD icon: a clock-face glyph (`draw_hud_action_glyph` "time_skip"
+  branch) with class-tinted coloring, plus `time_skip` slot-3 kind/color wiring
+  in `hud_action_slots`.
+- Warden slot-3 dispatch: `slot_3_skill_kind()` returns `"time_skip"` for the
+  Warden and `player_cast_slot_3()` routes to `player_cast_time_skip()`.
+  `skill_names()` / `skill_names_for()` now label the Warden slot `Time Skip`.
+- `equipment_slot_3_bonus` recognizes new `Time Skip` wording for future Warden
+  gear while keeping legacy `Nova` wording working for existing saves (mirrors
+  the Rogue Ambush Bell compatibility pattern).
+- Skill-tree wording updated: `warden_bulwark_ward` now extends Time Skip
+  duration (+1.2s) and `warden_aegis` adds +0.6s; node descriptions reference
+  Time Skip instead of Bulwark Wave. Keys/prerequisites are unchanged.
+- `tests/test_3_18_time_skip.py` (9 tests): slot-3 swap, cast spends
+  mana/cooldown and sets the timer, enemies move slower while active, enemy
+  attack cadence slows while active, player is unaffected, non-Warden classes
+  keep nova, equipment bonus recognizes Time Skip, duration scales with
+  upgrades, save round-trip preserves the timer default, and a full-frame
+  render smoke test.
+
+### Changed
+- Package metadata, `__version__`, save `release`, and version-current tests
+  now target `3.18.0`. Save schema `version` remains `5` because Time Skip is
+  transient.
+
 ## 3.17.2 — In-Game Viewport Zoom (Ctrl + Scroll)
 
 The viewport distance can now be adjusted live during gameplay with

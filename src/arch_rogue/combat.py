@@ -359,7 +359,7 @@ class CombatMixin:
 
     def skill_names(self) -> tuple[str, str, str, str]:
         names = {
-            "Warden": ("Shield Bash", "Guard Bolt", "Bulwark Wave", "Guard Step"),
+            "Warden": ("Shield Bash", "Guard Bolt", "Time Skip", "Guard Step"),
             "Rogue": ("Backstab", "Knife Fan", "Ambush Bell", "Shadow Dash"),
             "Arcanist": ("Mage Strike", "Arc Bolt", "Frost Nova", "Blink"),
             "Acolyte": ("Blood Rite", "Spirit Bolt", "Spirit Call", "Dark Step"),
@@ -373,6 +373,8 @@ class CombatMixin:
             return "spirit_call"
         if self.player.class_name == "Rogue":
             return "ambush_bell"
+        if self.player.class_name == "Warden":
+            return "time_skip"
         return "nova"
 
     def player_cast_slot_3(self) -> None:
@@ -382,6 +384,8 @@ class CombatMixin:
             self.player_cast_spirit_call()
         elif kind == "ambush_bell":
             self.player_cast_ambush_bell()
+        elif kind == "time_skip":
+            self.player_cast_time_skip()
         else:
             self.player_cast_nova()
 
@@ -389,19 +393,25 @@ class CombatMixin:
         """Slot-3 equipment hook with legacy Nova save compatibility.
 
         Existing gear stores `Nova` text in `Item.skill_bonus`; Rogue's Ambush
-        Bell intentionally reuses that slot budget while also recognizing new
-        `Ambush Bell` wording for future items.
+        Bell and Warden's Time Skip intentionally reuse that slot budget while
+        also recognizing new `Ambush Bell` / `Time Skip` wording for future items.
         """
         if text:
             if self.equipment_skill_bonus(text):
                 return True
             if self.player.class_name == "Rogue" and "Nova" in text:
                 return self.equipment_skill_bonus(text.replace("Nova", "Ambush Bell"))
+            if self.player.class_name == "Warden" and "Nova" in text:
+                return self.equipment_skill_bonus(text.replace("Nova", "Time Skip"))
             return False
         if self.equipment_skill_bonus("Nova"):
             return True
-        return self.player.class_name == "Rogue" and self.equipment_skill_bonus(
+        if self.player.class_name == "Rogue" and self.equipment_skill_bonus(
             "Ambush Bell"
+        ):
+            return True
+        return self.player.class_name == "Warden" and self.equipment_skill_bonus(
+            "Time Skip"
         )
 
     def skill_color(self) -> Color:
@@ -657,6 +667,31 @@ class CombatMixin:
         cooldown *= 1.0 - cast_speed * 0.75
         return max(1.85, cooldown)
 
+    def time_skip_factor(self) -> float:
+        """Enemy simulation speed while Time Skip is active (lower = slower)."""
+        return 0.4
+
+    def time_skip_duration(self) -> float:
+        """How long Time Skip slows enemies, in seconds."""
+        duration = 3.0
+        if self.player.has_upgrade("warden_aegis"):
+            duration += 0.6
+        if self.player.has_upgrade("warden_bulwark_ward"):
+            duration += 1.2
+        if self.equipment_slot_3_bonus("Time Skip duration"):
+            duration += 0.5
+        return duration
+
+    def enemy_time_scale(self) -> float:
+        """Global dt multiplier applied to the enemy simulation.
+
+        Returns ``time_skip_factor`` while the Warden's Time Skip buff is
+        active, otherwise 1.0. The player's own timers/movement are untouched.
+        """
+        if self.player.time_skip_timer > 0:
+            return self.time_skip_factor()
+        return 1.0
+
     def dash_stamina_cost(self) -> int:
         cost = 12 if self.player.class_name in ("Rogue", "Ranger") else 18
         if self.player.has_upgrade("rogue_smoke"):
@@ -888,6 +923,7 @@ class CombatMixin:
         self.player.bolt_timer = max(0.0, self.player.bolt_timer - dt)
         self.player.dash_timer = max(0.0, self.player.dash_timer - dt)
         self.player.nova_timer = max(0.0, self.player.nova_timer - dt)
+        self.player.time_skip_timer = max(0.0, self.player.time_skip_timer - dt)
         if self.player_status("poisoned") > 0:
             tick = self.player.status_effects.get("_poison_tick", 1.0) - dt
             if tick <= 0:
@@ -1056,11 +1092,14 @@ class CombatMixin:
                 actor.y = target_y
 
     def update_enemies(self, dt: float) -> None:
+        # Milestone 3.18 — Time Skip slows the enemy simulation uniformly
+        # (movement and attack cadence) without affecting the player.
+        scaled_dt = dt * self.enemy_time_scale()
         for enemy in self.enemies:
             enemy.moving = False
             if enemy.telegraph == "lured":
                 enemy.telegraph = ""
-            enemy.attack_timer = max(0.0, enemy.attack_timer - dt)
+            enemy.attack_timer = max(0.0, enemy.attack_timer - scaled_dt)
             player_dx = self.player.x - enemy.x
             player_dy = self.player.y - enemy.y
             player_distance = math.hypot(player_dx, player_dy)
@@ -1099,7 +1138,7 @@ class CombatMixin:
             if lure is not None:
                 enemy.telegraph = "lured"
                 if distance > 0.12:
-                    self.move_actor(enemy, nx * move_speed * dt, ny * move_speed * dt)
+                    self.move_actor(enemy, nx * move_speed * scaled_dt, ny * move_speed * scaled_dt)
                 if (
                     player_distance <= enemy.attack_range
                     and enemy.attack_timer <= 0
@@ -1116,7 +1155,7 @@ class CombatMixin:
                 # same pressure pattern: close the gap, cast a bolt fan at mid
                 # range, and crush with melee up close.
                 if distance > enemy.attack_range:
-                    self.move_actor(enemy, nx * move_speed * dt, ny * move_speed * dt)
+                    self.move_actor(enemy, nx * move_speed * scaled_dt, ny * move_speed * scaled_dt)
                 if 2.0 < distance <= 6.0 and enemy.attack_timer <= 0 and has_los:
                     self.enemy_cast(enemy, nx, ny)
                 elif (
@@ -1127,9 +1166,9 @@ class CombatMixin:
                     self.enemy_melee(enemy)
             elif enemy.kind == "ranged":
                 if 3.5 < distance:
-                    self.move_actor(enemy, nx * move_speed * dt, ny * move_speed * dt)
+                    self.move_actor(enemy, nx * move_speed * scaled_dt, ny * move_speed * scaled_dt)
                 elif distance < 2.5:
-                    self.move_actor(enemy, -nx * move_speed * dt, -ny * move_speed * dt)
+                    self.move_actor(enemy, -nx * move_speed * scaled_dt, -ny * move_speed * scaled_dt)
                 if (
                     distance <= enemy.attack_range
                     and enemy.attack_timer <= 0
@@ -1138,7 +1177,7 @@ class CombatMixin:
                     self.enemy_cast(enemy, nx, ny)
             else:
                 if distance > enemy.attack_range:
-                    self.move_actor(enemy, nx * move_speed * dt, ny * move_speed * dt)
+                    self.move_actor(enemy, nx * move_speed * scaled_dt, ny * move_speed * scaled_dt)
                 elif enemy.attack_timer <= 0 and has_los:
                     self.enemy_melee(enemy)
 
@@ -1805,6 +1844,45 @@ class CombatMixin:
         self.floaters.append(
             FloatingText(
                 f"{self.skill_names()[2]}{f' x{hits}' if hits else ''}",
+                self.player.x,
+                self.player.y - 0.5,
+                self.skill_color(),
+                ttl=0.9,
+            )
+        )
+
+    def player_cast_time_skip(self) -> None:
+        """Warden slot-3: slow time for all enemies without affecting the player.
+
+        Reuses the nova-slot mana cost / cooldown so the action bar stays
+        balanced, then opens a timed window during which the enemy simulation
+        (movement + attack cadence) runs at ``time_skip_factor`` speed. The
+        player's own timers, movement, and attacks are untouched.
+        """
+        if self.player.class_name != "Warden":
+            # Legacy fallback: if a non-Warden reaches this path, defer to nova.
+            self.player_cast_nova()
+            return
+        mana_cost = self.nova_mana_cost()
+        if self.player.nova_timer > 0 or self.player.mana < mana_cost:
+            return
+        self.player.nova_timer = self.nova_cooldown()
+        self.player.mana -= mana_cost
+        self.player.time_skip_timer = self.time_skip_duration()
+        self.set_player_action_visual("cast", 0.32)
+        self.add_impact(
+            self.player.x,
+            self.player.y,
+            self.skill_color(),
+            ttl=0.62,
+            radius=3.2,
+            kind="cast",
+            archetype=self.player.class_name,
+        )
+        self.apply_story_blood_price("nova")
+        self.floaters.append(
+            FloatingText(
+                self.skill_names()[2],
                 self.player.x,
                 self.player.y - 0.5,
                 self.skill_color(),

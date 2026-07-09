@@ -1,0 +1,300 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Matti Rita-Kasari
+#
+# AI Provenance & Liability Notice:
+# This repository contains code generated, assisted, or refactored by Artificial
+# Intelligence models. Provided strictly "AS IS" under Apache 2.0 with no warranty
+# of clean IP provenance or non-infringement; downstream users assume all legal
+# and financial risk and should perform their own compliance audits.
+#
+# Milestone 3.18 — Warden Time Skip (slot-3 enemy-only slow).
+from __future__ import annotations
+
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from arch_rogue import __version__
+from arch_rogue.content import ARCHETYPES
+from arch_rogue.game import Game
+from arch_rogue.models import Enemy, Item, Tile
+
+
+def _make_enemy(x: float, y: float, hp: int = 220, kind: str = "melee") -> Enemy:
+    return Enemy(
+        "Test Dummy",
+        kind,
+        x,
+        y,
+        hp,
+        hp,
+        2.4,
+        6,
+        12,
+        0.85 if kind == "melee" else 5.0,
+        1.0,
+    )
+
+
+def _open_patch(game: Game, x: float, y: float, radius: int = 8) -> None:
+    cx = int(x)
+    cy = int(y)
+    for tx in range(max(1, cx - radius), min(len(game.dungeon.tiles) - 1, cx + radius + 1)):
+        column = game.dungeon.tiles[tx]
+        for ty in range(max(1, cy - radius), min(len(column) - 1, cy + radius + 1)):
+            column[ty] = Tile.FLOOR
+
+
+class TimeSkip318Tests(unittest.TestCase):
+    def make_game(self, tmpdir: str, archetype_index: int = 0, seed: int = 3180) -> Game:
+        game = Game(
+            screen_size=(960, 600),
+            headless=True,
+            save_path=Path(tmpdir) / "run.json",
+        )
+        game.options_path = Path(tmpdir) / "options.json"
+        game.ui_scale = 1
+        game.rebuild_fonts()
+        game.rng.seed(seed)
+        game.restart(ARCHETYPES[archetype_index])
+        if game.story_intro_pending:
+            self.assertTrue(game.choose_story_relic_path(0))
+        game.active_cutscene = None
+        _open_patch(game, game.player.x, game.player.y)
+        game.enemies = []
+        game.projectiles = []
+        game.traps = []
+        return game
+
+    # --- slot-3 swap ---------------------------------------------------
+
+    def test_version_bumped(self) -> None:
+        self.assertEqual(__version__, "3.18.0")
+
+    def test_warden_slot_3_is_time_skip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            self.assertEqual(game.player.class_name, "Warden")
+            self.assertEqual(game.skill_names()[2], "Time Skip")
+            self.assertEqual(game.slot_3_skill_kind(), "time_skip")
+            slots = game.hud_action_slots()
+            self.assertEqual(slots[2]["kind"], "time_skip")
+            self.assertEqual(slots[2]["icon"], "time_skip")
+            self.assertEqual(slots[2]["label"], "Time Skip")
+            self.assertEqual(slots[2]["cost"], game.nova_mana_cost())
+            self.assertEqual(slots[2]["cooldown"], game.nova_cooldown())
+
+    def test_non_warden_classes_keep_nova(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            arcanist = self.make_game(tmpdir, archetype_index=2)
+            self.assertEqual(arcanist.player.class_name, "Arcanist")
+            self.assertEqual(arcanist.slot_3_skill_kind(), "nova")
+            self.assertEqual(arcanist.skill_names()[2], "Frost Nova")
+
+    # --- cast behavior -------------------------------------------------
+
+    def test_cast_spends_budget_and_opens_slow_window(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            enemy = _make_enemy(game.player.x + 3.0, game.player.y)
+            game.enemies = [enemy]
+            enemy_hp_before = enemy.hp
+
+            game.player.nova_timer = 0.0
+            game.player.mana = game.player.max_mana
+            before_mana = game.player.mana
+            game.player_cast_slot_3()
+
+            # Slot-3 budget spent, slow window opened, no enemy damage.
+            self.assertLess(game.player.mana, before_mana)
+            self.assertGreater(game.player.nova_timer, 0.0)
+            self.assertAlmostEqual(
+                game.player.time_skip_timer, game.time_skip_duration(), places=4
+            )
+            self.assertEqual(enemy.hp, enemy_hp_before)
+            # Time Skip is transient and never serialized.
+            self.assertNotIn("time_skip_timer", game.serialize_run_state())
+
+    def test_cast_blocked_by_cooldown_and_mana(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            game.player.nova_timer = 1.0
+            game.player.mana = game.player.max_mana
+            game.player_cast_slot_3()
+            self.assertEqual(game.player.time_skip_timer, 0.0)
+
+            game.player.nova_timer = 0.0
+            game.player.mana = 0
+            game.player_cast_slot_3()
+            self.assertEqual(game.player.time_skip_timer, 0.0)
+
+    # --- enemy slow ----------------------------------------------------
+
+    def test_enemies_move_slower_while_active(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            # Place a melee enemy inside aggro range but outside melee range so
+            # it pursues the player without attacking.
+            enemy = _make_enemy(game.player.x + 5.0, game.player.y)
+            enemy.attack_timer = 5.0  # prevent attacks during the step
+            game.enemies = [enemy]
+
+            # Control step: normal time.
+            start_x = enemy.x
+            game.update_enemies(0.5)
+            normal_step = abs(enemy.x - start_x)
+            self.assertGreater(normal_step, 0.0)
+
+            # Reset position and run the same step under Time Skip.
+            enemy.x = start_x
+            enemy.attack_timer = 5.0
+            game.player.time_skip_timer = game.time_skip_duration()
+            game.update_enemies(0.5)
+            slowed_step = abs(enemy.x - start_x)
+
+            self.assertLess(slowed_step, normal_step)
+            # ~40% speed: the slowed step should be noticeably below the normal
+            # one and roughly proportional to the time-skip factor.
+            self.assertLess(slowed_step, normal_step * 0.6)
+
+    def test_enemy_attack_cadence_slows_while_active(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            enemy = _make_enemy(game.player.x + 5.0, game.player.y)
+            game.enemies = [enemy]
+
+            # Normal time: attack_timer ticks down by dt.
+            enemy.attack_timer = 1.0
+            game.update_enemies(0.5)
+            self.assertAlmostEqual(enemy.attack_timer, 0.5, places=4)
+
+            # Under Time Skip: attack_timer ticks down by dt * 0.4.
+            enemy.attack_timer = 1.0
+            game.player.time_skip_timer = game.time_skip_duration()
+            game.update_enemies(0.5)
+            self.assertAlmostEqual(enemy.attack_timer, 0.8, places=4)
+
+    def test_player_unaffected_by_own_time_skip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            game.player.time_skip_timer = game.time_skip_duration()
+            game.player.melee_timer = 0.5
+            game.player.dash_timer = 0.5
+            game.player.bolt_timer = 0.5
+            game.player.nova_timer = 0.5
+            game.update_player(0.5)
+            # Player timers tick at full dt, not the slowed enemy rate.
+            self.assertAlmostEqual(game.player.melee_timer, 0.0, places=4)
+            self.assertAlmostEqual(game.player.dash_timer, 0.0, places=4)
+            self.assertAlmostEqual(game.player.bolt_timer, 0.0, places=4)
+            self.assertAlmostEqual(game.player.nova_timer, 0.0, places=4)
+            # The slow window itself still counts down for the player.
+            self.assertLess(game.player.time_skip_timer, game.time_skip_duration())
+
+    def test_time_skip_expires_and_enemies_resume_normal_speed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            self.assertEqual(game.enemy_time_scale(), 1.0)
+            game.player.time_skip_timer = 1.0
+            self.assertAlmostEqual(game.enemy_time_scale(), game.time_skip_factor())
+            # Tick the player timer down to expiry.
+            game.update_player(1.0)
+            self.assertEqual(game.player.time_skip_timer, 0.0)
+            self.assertEqual(game.enemy_time_scale(), 1.0)
+
+    # --- scaling & equipment ------------------------------------------
+
+    def test_duration_scales_with_warden_upgrades(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            base = game.time_skip_duration()
+            self.assertAlmostEqual(base, 3.0, places=4)
+
+            game.player.skill_upgrades.append("warden_aegis")
+            self.assertAlmostEqual(game.time_skip_duration(), 3.6, places=4)
+
+            game.player.skill_upgrades.append("warden_bulwark_ward")
+            self.assertAlmostEqual(game.time_skip_duration(), 4.8, places=4)
+
+    def test_equipment_bonus_recognizes_time_skip_and_legacy_nova(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            # No slot-3 gear: no bonus.
+            self.assertFalse(game.equipment_slot_3_bonus())
+
+            # New Time Skip wording on future gear.
+            game.player.equipment["weapon"] = Item(
+                name="Chrono Aegis", slot="weapon", skill_bonus="Time Skip"
+            )
+            self.assertTrue(game.equipment_slot_3_bonus())
+            self.assertTrue(game.equipment_slot_3_bonus("Time Skip"))
+
+            # A Time Skip duration affix both counts as a slot-3 bonus and
+            # extends the slow window.
+            game.player.equipment["weapon"] = Item(
+                name="Chrono Duration", slot="weapon", skill_bonus="Time Skip duration"
+            )
+            self.assertTrue(game.equipment_slot_3_bonus("Time Skip duration"))
+            self.assertAlmostEqual(game.time_skip_duration(), 3.0 + 0.5, places=4)
+
+            # Legacy Nova gear on an older Warden save still applies its
+            # slot-3 budget (and Nova-radius wording still resolves).
+            game.player.equipment["weapon"] = Item(
+                name="Old Bulwark", slot="weapon", skill_bonus="Nova"
+            )
+            self.assertTrue(game.equipment_slot_3_bonus())
+            game.player.equipment["weapon"] = Item(
+                name="Old Bulwark Radius", slot="weapon", skill_bonus="Nova radius"
+            )
+            self.assertTrue(game.equipment_slot_3_bonus("Nova radius"))
+
+            # Time Skip wording does not leak to non-Warden classes.
+            arcanist = self.make_game(tmpdir, archetype_index=2)
+            arcanist.player.equipment["weapon"] = Item(
+                name="Chrono Aegis", slot="weapon", skill_bonus="Time Skip"
+            )
+            self.assertFalse(arcanist.equipment_slot_3_bonus())
+
+    # --- save round-trip & render -------------------------------------
+
+    def test_save_round_trip_resets_transient_timer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            game.player.time_skip_timer = 2.5
+            data = game.serialize_run_state()
+            self.assertEqual(data["release"], "3.18.0")
+            self.assertNotIn("time_skip_timer", data)
+
+            loaded = Game(
+                screen_size=(960, 600),
+                headless=True,
+                save_path=Path(tmpdir) / "restore.json",
+            )
+            loaded.options_path = Path(tmpdir) / "restore-opt.json"
+            loaded.restore_run_state(data)
+            self.assertEqual(loaded.player.class_name, "Warden")
+            self.assertEqual(loaded.player.time_skip_timer, 0.0)
+            self.assertEqual(loaded.slot_3_skill_kind(), "time_skip")
+
+    def test_full_frame_render_with_active_time_skip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            game.enemies = [_make_enemy(game.player.x + 3.0, game.player.y)]
+            game.player.nova_timer = 0.0
+            game.player.mana = game.player.max_mana
+            game.player_cast_slot_3()
+            self.assertGreater(game.player.time_skip_timer, 0.0)
+            # A full frame render with the slow window active must not raise;
+            # the clock glyph draws alongside the rest of the HUD action bar.
+            game.draw()
+
+
+if __name__ == "__main__":
+    unittest.main()

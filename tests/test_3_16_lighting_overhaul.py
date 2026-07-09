@@ -368,7 +368,7 @@ class Lighting316Tests(unittest.TestCase):
         self.assertEqual(game._light_scratch_surface.get_size(), (sw, sh))
 
     def test_version_bumped(self) -> None:
-        self.assertEqual(__version__, "3.17.2")
+        self.assertEqual(__version__, "3.18.0")
 
 
 if __name__ == "__main__":
