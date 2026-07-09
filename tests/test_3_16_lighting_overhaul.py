@@ -106,7 +106,7 @@ class Lighting316Tests(unittest.TestCase):
             buf = game._light_buffer(max(1, sw // scale), max(1, sh // scale))
             buf.fill((0, 0, 0, 0))
             sprite = game._radial_light_sprite(
-                light_radius_px(light.radius), light.color, light.intensity
+                light_radius_px(light.radius), light.color
             )
             buf.blit(
                 sprite,
@@ -126,7 +126,7 @@ class Lighting316Tests(unittest.TestCase):
         buf.fill((0, 0, 0, 0))
         for light in (a, b):
             sprite = game._radial_light_sprite(
-                light_radius_px(light.radius), light.color, light.intensity
+                light_radius_px(light.radius), light.color
             )
             buf.blit(
                 sprite,

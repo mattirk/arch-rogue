@@ -234,7 +234,8 @@ Metadata:
 
 #### 3.16.1 Lighting post fixes
 
-- Simplify lighting related menu options: remove lighting detail, Lighting Off/On toggle is enough
+- Group lighting related menu options visually
+- Group other menu options too: ????
 - What does new recude motion toggle do?
 
 ### 3.17 Encounter Depth: Elite Packs, Enemy Affixes, and Faction Variety

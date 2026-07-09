@@ -166,13 +166,15 @@ def mix_color(a: Color, b: Color, ratio: float) -> Color:
 
 
 def light_radius_px(world_radius: float) -> int:
-    """Convert a world-tile light radius to a screen-space sprite radius.
+    """Convert a world-tile light radius to a half-res sprite radius.
 
-    A world-space circle projects to a screen ellipse under the iso transform;
-    a screen circle of this radius reads as the same reach in the dominant
-    directions while staying cheap (one cached sprite per radius/color).
+    The light buffer is half-resolution, so light sprites are sized in
+    half-res pixels to match (a full-res sprite would be clipped to the
+    buffer and waste fill/blit work). A world-space circle projects to a
+    screen ellipse under the iso transform; a screen circle of this radius
+    reads as the same reach in the dominant directions.
     """
-    return max(4, int(world_radius * TILE_W * 0.46))
+    return max(4, int(world_radius * TILE_W * 0.46 / LIGHT_BUFFER_SCALE))
 
 
 def quantize_direction(dx: float, dy: float) -> int:
@@ -270,16 +272,21 @@ class LightingMixin:
         )
 
     def _flicker(self, light: LightSource) -> tuple[float, float]:
-        """Return (radius_scale, intensity_scale) flicker for a light this frame."""
+        """Return (radius_scale, intensity_scale) flicker for a light this frame.
+
+        The radius is constant (1.0) so the light sprite is built once and
+        never snaps between size buckets; only the brightness modulates,
+        applied as a continuous multiply in the compositing loop (no
+        quantized stepping). A single slow sine keeps the lantern breathing
+        smoothly rather than flickering.
+        """
         if not light.flicker or not self.flicker_enabled():
             return 1.0, 1.0
-        # Low-amplitude noise on radius/intensity for a lantern feel. Two
-        # incoherent sines keep it from looking like a uniform pulse.
         t = self.elapsed + light.flicker_seed * 0.37
-        # Slow pulsate (~0.5 Hz) so the lantern breathes rather than
-        # flickers; two incoherent sines keep it from looking uniform.
-        rad = 1.0 + LIGHT_FLICKER_RADIUS_AMP * math.sin(t * 3.0)
-        inten = 1.0 + LIGHT_FLICKER_INTENSITY_AMP * math.sin(t * 2.2 + 1.7)
+        # ~0.25 Hz; centered just under 1.0 so the pulse dims and recovers
+        # smoothly without clamping at full brightness.
+        rad = 1.0
+        inten = 0.92 + LIGHT_FLICKER_INTENSITY_AMP * math.sin(t * 1.6)
         return rad, inten
 
     def _collect_frame_lights(self) -> list[LightSource]:
@@ -336,14 +343,14 @@ class LightingMixin:
         return scratch
 
     def _radial_light_sprite(
-        self, radius_px: int, color: Color, intensity: float
+        self, radius_px: int, color: Color
     ) -> pygame.Surface:
-        # Quantize the radius to 16px buckets so the lantern/torch flicker
-        # (a small per-frame radius change) does not bust the cache and trigger
-        # a full radial-sprite rebuild every frame. Intensity is quantized too.
-        radius_px = max(4, (int(radius_px) // 16) * 16)
-        intensity_bucket = max(0, min(20, int(intensity * 20)))
-        key = (radius_px, color, intensity_bucket)
+        # One smooth radial gradient per (quantized radius, color), cached.
+        # Always full intensity; brightness is modulated continuously in the
+        # compositing loop (copy -> multiply -> add), so the sprite never
+        # rebuilds for flicker or fade and the brightness never steps.
+        radius_px = max(4, (int(radius_px) // 8) * 8)
+        key = (radius_px, color)
         cache = getattr(self, "_light_sprite_cache", None)
         if cache is None:
             cache = {}
@@ -351,37 +358,59 @@ class LightingMixin:
         cached = cache.get(key)
         if cached is not None:
             return cached
-        size = radius_px * 2 + 2
-        sprite = pygame.Surface((size, size), pygame.SRCALPHA)
-        cx = cy = size // 2
+        sprite_size = radius_px * 2 + 2
+        # Build the gradient at a bounded resolution: one filled circle per
+        # pixel-radius (1px bands -> no visible banding at this resolution),
+        # then bilinear-smoothscale up to the sprite size. The upscale
+        # interpolates the bands into a continuous gradient, so there are no
+        # visible rings/ellipses. Build cost is bounded and paid once.
+        build_size = min(sprite_size, 160)
+        build_r = build_size // 2
+        grad = pygame.Surface((build_size, build_size), pygame.SRCALPHA)
+        cx = cy = build_size // 2
         peak = (
-            max(0, min(255, int(color[0] * intensity))),
-            max(0, min(255, int(color[1] * intensity))),
-            max(0, min(255, int(color[2] * intensity))),
+            max(0, min(255, int(color[0]))),
+            max(0, min(255, int(color[1]))),
+            max(0, min(255, int(color[2]))),
         )
-        # Build the gradient with a bounded number of bands (not one per pixel)
-        # so a cache miss rebuilds in well under a millisecond. Bands go from
-        # outer (dim, quadratic falloff) to inner (peak); opaque overwrites put
-        # the bright center on top. The outer band is near-black, which adds
-        # nothing under BLEND_RGBA_ADD but keeps the disc opaque for the alpha.
-        bands = min(radius_px, 48)
-        for i in range(bands, 0, -1):
-            r = max(1, int(radius_px * i / bands))
-            falloff = 1.0 - (r / radius_px)
+        for r in range(build_r, 0, -1):
+            falloff = 1.0 - (r / max(1, build_r))
             falloff = falloff * falloff
             c = (
                 int(peak[0] * falloff),
                 int(peak[1] * falloff),
                 int(peak[2] * falloff),
-                255,
+                int(255 * falloff),
             )
-            pygame.draw.circle(sprite, c, (cx, cy), r)
+            pygame.draw.circle(grad, c, (cx, cy), r)
+        if build_size < sprite_size:
+            sprite = pygame.transform.smoothscale(grad, (sprite_size, sprite_size))
+        else:
+            sprite = grad
         try:
             sprite = sprite.convert_alpha()
         except pygame.error:
             pass
         cache[key] = sprite
         return sprite
+
+    def _flicker_scratch(self, w: int, h: int) -> pygame.Surface:
+        # One reusable scratch per sprite size for the smooth flicker path
+        # (copy -> multiply -> add). Sizes are stable per light, so this
+        # stays tiny (one per flickering light size).
+        cache = getattr(self, "_flicker_scratch_cache", None)
+        if cache is None:
+            cache = {}
+            self._flicker_scratch_cache = cache
+        s = cache.get((w, h))
+        if s is None:
+            s = pygame.Surface((w, h), pygame.SRCALPHA)
+            try:
+                s = s.convert_alpha()
+            except pygame.error:
+                pass
+            cache[(w, h)] = s
+        return s
 
     # --- ambient stamping -------------------------------------------
     def _stamp_ambient(self, buffer: pygame.Surface) -> None:
@@ -426,20 +455,34 @@ class LightingMixin:
         self._stamp_ambient(buffer)
 
         # 2) Accumulate every active light additively into the buffer.
+        # Every light shares one smooth cached sprite per (radius, color)
+        # and modulates brightness with a continuous copy->multiply->add
+        # pass: no per-intensity rebuilds, no radius stepping, smooth fades
+        # and flicker. The extra copy/multiply is cheap (half-res sprites) and
+        # only the on-screen lights run.
         scale = LIGHT_BUFFER_SCALE
         lights = self._collect_frame_lights()
         for light in lights:
-            rad_scale, int_scale = self._flicker(light)
-            life = light.life
-            intensity = max(0.0, light.intensity * int_scale * life)
-            if intensity <= 0.0:
+            factor = light.intensity * light.life
+            if factor <= 0.0:
                 continue
-            radius_px = light_radius_px(light.radius * rad_scale)
-            sprite = self._radial_light_sprite(radius_px, light.color, intensity)
+            if light.flicker and self.flicker_enabled():
+                _, int_scale = self._flicker(light)
+                factor *= int_scale
+            factor = max(0.0, min(1.0, factor))
+            if factor <= 0.0:
+                continue
+            sprite = self._radial_light_sprite(light_radius_px(light.radius), light.color)
+            scratch = self._flicker_scratch(
+                sprite.get_width(), sprite.get_height()
+            )
+            scratch.blit(sprite, (0, 0))
+            f = max(0, min(255, int(255 * factor)))
+            scratch.fill((f, f, f, 255), special_flags=pygame.BLEND_RGBA_MULT)
             sx, sy = self.world_to_screen(light.x, light.y)
             bx = sx // scale - sprite.get_width() // 2
             by = sy // scale - sprite.get_height() // 2
-            buffer.blit(sprite, (bx, by), special_flags=pygame.BLEND_RGBA_ADD)
+            buffer.blit(scratch, (bx, by), special_flags=pygame.BLEND_RGBA_ADD)
 
         # 3) Smoothscale the half-res buffer up to the screen and multiply.
         scratch = self._light_scratch(screen_w, screen_h)
@@ -595,6 +638,7 @@ class LightingMixin:
         # the lit-actor tint cache and invalidates any sized buffers.
         self._lit_shade_cache = {}
         self._light_sprite_cache = {}
+        self._flicker_scratch_cache = {}
         self._light_buffer_surface = None
         self._light_scratch_surface = None
         cache = getattr(self, "_frame_cache", None)
