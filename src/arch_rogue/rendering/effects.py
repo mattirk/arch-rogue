@@ -1292,8 +1292,6 @@ class RenderingEffectsMixin:
         shadow_w = 30 if familiar.champion else (22 if familiar.sprite_variant else 18)
         self.draw_shadow(familiar.x, familiar.y, shadow_w, 10, moving=familiar.moving)
         sprite = self.sprites.familiar_frame(familiar.sprite_variant, self.elapsed)
-        # familiar shading
-        sprite = self.apply_lit_shading(sprite, familiar.x, familiar.y)
         self.screen.blit(
             sprite,
             sprite.get_rect(midbottom=(sx, sy + (5 - bob) * WORLD_SCALE)),

@@ -232,6 +232,11 @@ Validation:
 Metadata:
 - Bump `pyproject.toml` and `__version__` to `3.16.0`; save `release` updated, save schema `version` stays `5`. Update `CHANGELOG.md` with an `## 3.16.0 — Lighting Overhaul` entry.
 
+#### 3.16.1 Lighting post fixes
+
+- Simplify lighting related menu options: remove lighting detail, Lighting Off/On toggle is enough
+- What does new recude motion toggle do?
+
 ### 3.17 Encounter Depth: Elite Packs, Enemy Affixes, and Faction Variety
 
 Draft goal: complement the 3.10 player-side build diversity with enemy-side variety so each run tests builds against a meaningfully different threat landscape rather than a flat stat curve.

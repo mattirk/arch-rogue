@@ -937,7 +937,7 @@ class PixelSpriteAtlas:
             long_side = max(w, h)
             if long_side > LIGHT_SHADE_DOWNSAMPLE_LONG:
                 f = LIGHT_SHADE_DOWNSAMPLE_LONG / long_side
-                src = pygame.transform.smoothscale(
+                src = pygame.transform.scale(
                     surface, (max(1, int(w * f)), max(1, int(h * f)))
                 )
             else:

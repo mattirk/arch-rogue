@@ -392,6 +392,7 @@ class RenderingActorMixin:
         stretch: float = 1.0,
         lean: float = 0.0,
         alpha: int = 255,
+        apply_shading: bool = True,
     ) -> tuple[int, int]:
         sx, sy = self.world_to_screen(x, y)
         turned_sprite = sprite
@@ -416,9 +417,10 @@ class RenderingActorMixin:
         # baked normal map. Skipped on the LIGHTING_OFF tier, when normal maps
         # are off, or when no light is in range. Cached per sprite and
         # dominant-light bucket so per-pixel work only runs on bucket change.
-        shaded = self.apply_lit_shading(turned_sprite, x, y)
-        if shaded is not turned_sprite:
-            turned_sprite = shaded
+        if apply_shading:
+            shaded = self.apply_lit_shading(turned_sprite, x, y)
+            if shaded is not turned_sprite:
+                turned_sprite = shaded
         rect = turned_sprite.get_rect(
             midbottom=(
                 round(sx + x_offset * WORLD_SCALE),
@@ -656,6 +658,7 @@ class RenderingActorMixin:
             x_offset=sway,
             stretch=stretch,
             lean=lean,
+            apply_shading=(enemy.kind == "boss"),
         )
         self.draw_hit_flash_overlay(
             sx,

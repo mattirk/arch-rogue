@@ -276,8 +276,10 @@ class LightingMixin:
         # Low-amplitude noise on radius/intensity for a lantern feel. Two
         # incoherent sines keep it from looking like a uniform pulse.
         t = self.elapsed + light.flicker_seed * 0.37
-        rad = 1.0 + LIGHT_FLICKER_RADIUS_AMP * math.sin(t * 7.3)
-        inten = 1.0 + LIGHT_FLICKER_INTENSITY_AMP * math.sin(t * 5.1 + 1.7)
+        # Slow pulsate (~0.5 Hz) so the lantern breathes rather than
+        # flickers; two incoherent sines keep it from looking uniform.
+        rad = 1.0 + LIGHT_FLICKER_RADIUS_AMP * math.sin(t * 3.0)
+        inten = 1.0 + LIGHT_FLICKER_INTENSITY_AMP * math.sin(t * 2.2 + 1.7)
         return rad, inten
 
     def _collect_frame_lights(self) -> list[LightSource]:
@@ -336,8 +338,10 @@ class LightingMixin:
     def _radial_light_sprite(
         self, radius_px: int, color: Color, intensity: float
     ) -> pygame.Surface:
-        # Cache one additive radial gradient per (radius, color, intensity
-        # bucket). Intensity is quantized so the cache stays tiny.
+        # Quantize the radius to 16px buckets so the lantern/torch flicker
+        # (a small per-frame radius change) does not bust the cache and trigger
+        # a full radial-sprite rebuild every frame. Intensity is quantized too.
+        radius_px = max(4, (int(radius_px) // 16) * 16)
         intensity_bucket = max(0, min(20, int(intensity * 20)))
         key = (radius_px, color, intensity_bucket)
         cache = getattr(self, "_light_sprite_cache", None)
@@ -350,16 +354,19 @@ class LightingMixin:
         size = radius_px * 2 + 2
         sprite = pygame.Surface((size, size), pygame.SRCALPHA)
         cx = cy = size // 2
-        # Pre-multiply the color by the intensity so the additive blit lands at
-        # the right brightness; falloff is quadratic for a soft lantern edge.
         peak = (
             max(0, min(255, int(color[0] * intensity))),
             max(0, min(255, int(color[1] * intensity))),
             max(0, min(255, int(color[2] * intensity))),
         )
-        # Concentric filled circles from outer (dim) to inner (bright) so the
-        # center overwrites the edge with the peak color (opaque overwrites).
-        for r in range(radius_px, 0, -1):
+        # Build the gradient with a bounded number of bands (not one per pixel)
+        # so a cache miss rebuilds in well under a millisecond. Bands go from
+        # outer (dim, quadratic falloff) to inner (peak); opaque overwrites put
+        # the bright center on top. The outer band is near-black, which adds
+        # nothing under BLEND_RGBA_ADD but keeps the disc opaque for the alpha.
+        bands = min(radius_px, 48)
+        for i in range(bands, 0, -1):
+            r = max(1, int(radius_px * i / bands))
             falloff = 1.0 - (r / radius_px)
             falloff = falloff * falloff
             c = (
@@ -508,21 +515,22 @@ class LightingMixin:
         w, h = sprite.get_width(), sprite.get_height()
         if w <= 0 or h <= 0:
             return sprite
-        # Downscale both sprite and normal to a bounded working size.
+        # The sprite is NEVER scaled: we build a low-res TINT map from the
+        # baked normal map, smoothscale only the tint up to full size, and
+        # multiply it onto a full-res copy of the sprite. The sprite stays
+        # pixel-crisp; only the shading is a soft directional gradient. Per-pixel
+        # work is bounded to the downsample size, so this is cheap in pure
+        # Python and only runs on a cache miss (player + bosses only).
         long_side = max(w, h)
         if long_side > LIGHT_SHADE_DOWNSAMPLE_LONG:
             f = LIGHT_SHADE_DOWNSAMPLE_LONG / long_side
             sw = max(1, int(w * f))
             sh = max(1, int(h * f))
-            small_sprite = pygame.transform.smoothscale(sprite, (sw, sh))
-            small_normal = pygame.transform.smoothscale(normal, (sw, sh))
+            small_normal = pygame.transform.scale(normal, (sw, sh))
         else:
             sw, sh = w, h
-            small_sprite = sprite
             small_normal = normal
 
-        # Light direction in screen space (from light toward actor), normalized,
-        # plus a constant front bias so sprites read as lit from the camera side.
         slx, sly = self.world_to_screen(light.x, light.y)
         sax, say = self.world_to_screen(light.x + light_dx, light.y + light_dy)
         ddx = sax - slx
@@ -536,19 +544,23 @@ class LightingMixin:
         ldz = LIGHT_SHADE_BIAS_Z
         light_color = light.color
         reach = max(0.5, light.radius)
-        # Attenuation across the light reach so actors at the edge shade less.
         atten = max(0.0, 1.0 - dist / reach)
+        intensity = light.intensity
 
+        # TINT map: per-pixel multiplier for BLEND_RGB_MULT. 255 = no change
+        # (lit-facing side stays full bright, with a slight light-color tint);
+        # lower values darken the shadow side. RGB-only blend keeps the sprite's
+        # own alpha/silhouette exactly intact.
+        tint = pygame.Surface((sw, sh), pygame.SRCALPHA)
+        tint.fill((255, 255, 255, 255))
         try:
-            small_sprite = small_sprite.copy()  # we mutate this in place
-            small_sprite.lock()
             small_normal.lock()
+            tint.lock()
             for py in range(sh):
                 for px in range(sw):
                     nc = small_normal.get_at((px, py))
                     if nc.a <= 0:
                         continue
-                    # Decode tangent-space normal from the baked map.
                     nx = (nc.r / 255.0) * 2.0 - 1.0
                     ny = (nc.g / 255.0) * 2.0 - 1.0
                     nz = nc.b / 255.0
@@ -557,30 +569,21 @@ class LightingMixin:
                         lambert = 0.0
                     elif lambert > 1.0:
                         lambert = 1.0
-                    # Shade factor: a base ambient floor plus the directional
-                    # term, scaled by the light intensity and reach.
-                    shade = (0.55 + 0.45 * lambert) * (0.5 + 0.5 * atten) * light.intensity
-                    shade = max(0.0, min(1.2, shade))
-                    sc = small_sprite.get_at((px, py))
-                    r = int(max(0, min(255, sc.r * shade)))
-                    g = int(max(0, min(255, sc.g * shade)))
-                    b = int(max(0, min(255, sc.b * shade)))
-                    # Lean the tint toward the light color so colored lights
-                    # color the actor, not just darken it.
-                    r = int(r * 0.7 + light_color[0] * lambert * 0.3)
-                    g = int(g * 0.7 + light_color[1] * lambert * 0.3)
-                    b = int(b * 0.7 + light_color[2] * lambert * 0.3)
-                    small_sprite.set_at((px, py), (r, g, b, sc.a))
+                    shade = (0.32 + 0.68 * lambert) * (0.45 + 0.55 * atten) * intensity
+                    shade = max(0.0, min(1.25, shade))
+                    tr = max(0, min(255, int(light_color[0] * shade)))
+                    tg = max(0, min(255, int(light_color[1] * shade)))
+                    tb = max(0, min(255, int(light_color[2] * shade)))
+                    tint.set_at((px, py), (tr, tg, tb, 255))
         finally:
-            if small_sprite.get_locked():
-                small_sprite.unlock()
             if small_normal.get_locked():
                 small_normal.unlock()
+            if tint.get_locked():
+                tint.unlock()
 
-        if small_sprite is not sprite and (sw, sh) != (w, h):
-            result = pygame.transform.smoothscale(small_sprite, (w, h))
-        else:
-            result = small_sprite
+        tint_full = pygame.transform.smoothscale(tint, (w, h))
+        result = sprite.copy()
+        result.blit(tint_full, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
         try:
             result = result.convert_alpha()
         except pygame.error:
