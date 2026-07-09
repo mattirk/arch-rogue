@@ -202,9 +202,9 @@ Current state to build on:
 
 Features:
 
-1. Procedural normal maps, baked into the sprite atlas — In `sprites.py`, derive a height map per sprite from layer/luminance (the order pixels are stamped already encodes depth; later stamps = closer). Run a 3x3 Sobel to produce a tangent-space normal map, stored in a parallel cache keyed identically to the diffuse frame. No external tools/asset pipeline; mirrors the SpriteIlluminator/Laigter approach in-code. Gate behind a `LIGHTING_NORMAL_MAPS` option so the web/low-end path can skip it.
+1. Procedural normal maps, baked into the sprite atlas — In `sprites.py`, derive a height map per sprite from layer/luminance (the order pixels are stamped already encodes depth; later stamps = closer). Run a 3x3 Sobel to produce a tangent-space normal map, stored in a parallel cache keyed identically to the diffuse frame. No external tools/asset pipeline; mirrors the SpriteIlluminator/Laigter approach in-code. Gate behind a `LIGHTING_NORMAL_MAPS` option so the web/low-end path can skip it. Normal maps should apply to all sprites, including tiles.
 
-2. Screen-space light accumulation buffer — Add a `LightBuffer` (half-resolution `SRCALPHA` surface, reused per frame) in a focused `lighting.py` module (or extend `run_flow.py` until a boundary is justified, per the vibe-architecture note). Each frame: clear, blit cached radial-gradient light sprites with `BLEND_RGBA_ADD` for every active light, then composite onto the world with a multiply pass. Replaces the per-tile alpha quantization in `_alpha_tile_surface` with a continuous mask; the fog-of-war `revealed_tiles` memory stays as a separate terrain-reveal pass (no behavior change to `update_revealed_tiles`).
+2. Screen-space light accumulation buffer — Add a `LightBuffer` (half-resolution `SRCALPHA` surface, reused per frame) in a focused `lighting.py` module (create the module and transfer all relevant logic into it). Each frame: clear, blit cached radial-gradient light sprites with `BLEND_RGBA_ADD` for every active light, then composite onto the world with a multiply pass. Replaces the per-tile alpha quantization in `_alpha_tile_surface` with a continuous mask; the fog-of-war `revealed_tiles` memory stays as a separate terrain-reveal pass (no behavior change to `update_revealed_tiles`).
 
 3. Player as a dynamic light source — Player emits a warm lantern light at `DARK_LEVEL_LIGHT_RADIUS` (keeps sight/visibility reach identical so combat/enemy-LOS logic is untouched). On light floors, the player light still adds local warmth over the ambient theme tint; sight radius stays `LIGHT_LEVEL_SIGHT_RADIUS`. Subtle flicker (low-amplitude noise on radius/intensity) for lantern feel; togglable in Options -> Accessibility (reduced motion disables flicker).
 
@@ -216,12 +216,7 @@ Features:
 
 7. Static light sources in the world — Torches/lanterns (already placed in garden/bar/special rooms — `Garden Lantern` exists) emit a small warm static light into the buffer. Shrines emit their `InteractionHint` accent color as a steady glow. Populated once per floor in `population.py`, stored as a lightweight `LightSource` list (x, y, radius, color, flicker). Save-compatible: defaults to empty on old saves.
 
-8. Lighting quality option + accessibility — Options entry: `Lighting` = `Off / Soft / Full` (default `Soft`). `Off` falls back to the current per-tile alpha model (preserves the 3.8.0 look as a fallback). Reduced-motion toggle kills flicker; brightness slider scales ambient floor light.
-
-Open questions to resolve before implementation:
-- New `lighting.py` module vs. extending `run_flow.py` — lean `lighting.py` since lighting is about to grow, but prefer existing modules until a boundary is clearly justified.
-- Default quality tier — `Soft` (good-looking, web-safe-ish) or `Full` (best look, possibly heavy on web)?
-- Should normal maps apply to tiles too (walls get faceted stone shading) or stay actor-only? Tile normals are more visible but cost more per frame.
+8. Lighting toggle — Options entry: `Lighting` = `Off / On` Off falls back to the current per-tile alpha model (preserves the 3.8.0 look as a fallback). On uses the newly implemented lighting model.
 
 Constraints to preserve:
 - `Game` / `main` entry points, keyboard/mouse/controller bindings unchanged.
