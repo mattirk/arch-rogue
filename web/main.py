@@ -64,10 +64,31 @@ def _bootstrap_arch_rogue_path() -> None:
 
 _bootstrap_arch_rogue_path()
 
-import pygame  # noqa: E402
 
-from arch_rogue.constants import FPS, SCREEN_HEIGHT, SCREEN_WIDTH  # noqa: E402
-from arch_rogue.game import Game  # noqa: E402
+def _surface_traceback(tb: str, banner: str) -> None:
+    # pygbag routes Python stdout/stderr to the in-page xterm terminal, which
+    # is hard to read from the browser console. Mirror tracebacks to the
+    # browser console (via the Pyodide ``js`` bridge) so import/startup
+    # failures are visible in DevTools instead of presenting as a black canvas.
+    print(tb, file=sys.stderr)
+    try:
+        import js as _js
+
+        _js.console.error(banner + "\n" + tb)
+    except Exception:
+        pass
+
+
+try:
+    import pygame  # noqa: E402
+
+    from arch_rogue.constants import FPS, SCREEN_HEIGHT, SCREEN_WIDTH  # noqa: E402
+    from arch_rogue.game import Game  # noqa: E402
+except Exception:
+    import traceback
+
+    _surface_traceback(traceback.format_exc(), "ARCH_ROGUE_IMPORT_FAIL:")
+    raise
 
 
 def _writable_home() -> Path:
@@ -296,12 +317,18 @@ async def run_frame(game: Game) -> None:
 
 
 async def main() -> None:
-    game = make_game()
     try:
-        while game.running:
-            await run_frame(game)
-    finally:
-        pygame.quit()
+        game = make_game()
+        try:
+            while game.running:
+                await run_frame(game)
+        finally:
+            pygame.quit()
+    except Exception:
+        import traceback
+
+        _surface_traceback(traceback.format_exc(), "ARCH_ROGUE_RUN_FAIL:")
+        raise
 
 
 if __name__ == "__main__":

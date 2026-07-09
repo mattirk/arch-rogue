@@ -1,5 +1,38 @@
 # Changelog
 
+## 3.17.1 — Web Build Black-Screen Fix
+
+The pygbag/Pyodide web build booted to a black canvas instead of the title
+screen. Root cause: the bundled icon PNG assets (added in 3.16 work) are now
+included in the browser tarball, so `load_icon` reached
+`pygame.image.load(io.BytesIO(...))`; the pygame-web/Pyodide runtime raises
+`RuntimeError` ("can't access resource on platform") for file-like image
+sources, which `load_icon` only guarded with `except pygame.error`. The
+uncaught error crashed `Game.__init__` before the first frame, leaving the
+canvas black.
+
+### Fixed
+- `src/arch_rogue/icon.py` `load_icon` now catches `RuntimeError`/`OSError`/
+  `ValueError` (in addition to `pygame.error`) from `pygame.image.load` and
+  `convert_alpha`, so platforms without file-like image loading degrade to
+  `None` (no window icon / title crest) instead of crashing `Game`
+  construction. Desktop behavior is unchanged.
+- `web/main.py` now mirrors import- and run-time tracebacks to the browser
+  console (via the Pyodide `js` bridge) in addition to the in-page xterm
+  terminal, so future web startup failures are visible in DevTools instead
+  of presenting as an opaque black canvas.
+
+### Validation
+- Rebuilt the web bundle with `python web/build.py --no-serve` and verified
+  in a headless Chromium (Playwright) that the title screen renders non-black
+  content with no Python traceback reaching the browser console; driving the
+  title menu into a run exercises the gameplay/lighting/ambush-bell paths on
+  the web without crashing.
+- `python -m compileall src tests web/main.py` passes.
+- `python -m unittest discover tests` passes (145 tests).
+- Package metadata, `__version__`, and save `release` updated to `3.17.1`.
+  Save schema `version` remains `5`.
+
 ## 3.17.0 — Rogue Ambush Bell
 
 The Rogue's slot-3 action is now **Ambush Bell**: a single active cursed lure trap that plants at the aimed floor point, arms after a short delay, pulls nearby non-boss enemies toward its kill zone, then snaps shut in a focused shadow-dagger burst. It reuses the old nova-slot mana/cooldown budget for action-bar balance while preserving Acolyte Spirit Call and other classes' nova-style slot-3 actions.

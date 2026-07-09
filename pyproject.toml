@@ -1,6 +1,6 @@
 [project]
 name = "arch-rogue"
-version = "3.17.0"
+version = "3.17.1"
 description = "3.17.0 replaces the Rogue slot-3 Smoke Burst with Ambush Bell, a cursed lure trap for positioning, poison setup, and backstab burst."
 readme = "README.md"
 requires-python = ">=3.11"
