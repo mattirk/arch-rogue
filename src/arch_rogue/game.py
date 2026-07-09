@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Matti Rita-Kasari
 #
+# AI Provenance & Liability Notice:
+# This repository contains code generated, assisted, or refactored by Artificial
+# Intelligence models. Provided strictly "AS IS" under Apache 2.0 with no warranty
+# of clean IP provenance or non-infringement; downstream users assume all legal
+# and financial risk and should perform their own compliance audits.
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -266,12 +272,11 @@ class Game(
         self.hell_unlocked = False
         self.hell_unlocked_this_run = False
         # Milestone 3.16 - continuous colored lighting options. Defaults are
-        # native-friendly (lighting + normal maps on, motion flicker on). The
-        # web build forces these off in web/main.make_game so the 3.8.0
-        # per-tile alpha path remains the web-safe default.
+        # native-friendly (lighting + normal maps on, flicker on). The web
+        # build forces these off in web/main.make_game so the 3.8.0 per-tile
+        # alpha path remains the web-safe default.
         self._lighting_enabled = True
         self._lighting_normal_maps = True
-        self._reduced_motion = False
         self.meta_progress: dict[str, Any] = self.default_meta_progress()
         self.run_history: list[dict[str, Any]] = []
         self.last_save_error = ""
@@ -581,9 +586,6 @@ class Game(
                     elif event.key == pygame.K_n:
                         self.options_cursor = self.OPTIONS_ROW_LIGHTING_DETAIL
                         self._activate_options_row(self.OPTIONS_ROW_LIGHTING_DETAIL, True)
-                    elif event.key == pygame.K_r:
-                        self.options_cursor = self.OPTIONS_ROW_REDUCE_MOTION
-                        self._activate_options_row(self.OPTIONS_ROW_REDUCE_MOTION, True)
                     elif event.key == pygame.K_RETURN:
                         self._activate_options_row(self.options_cursor, True)
                     elif event.key in (pygame.K_BACKSPACE, pygame.K_o):

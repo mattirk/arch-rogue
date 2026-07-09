@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Matti Rita-Kasari
 #
+# AI Provenance & Liability Notice:
+# This repository contains code generated, assisted, or refactored by Artificial
+# Intelligence models. Provided strictly "AS IS" under Apache 2.0 with no warranty
+# of clean IP provenance or non-infringement; downstream users assume all legal
+# and financial risk and should perform their own compliance audits.
+#
 # Milestone 3.16 — Lighting overhaul.
 from __future__ import annotations
 
@@ -22,8 +28,13 @@ import pygame  # noqa: F401  (required to initialize pygame subsystems in tests)
 from arch_rogue import __version__
 from arch_rogue.constants import (
     DARK_LEVEL_LIGHT_RADIUS,
-    LIGHT_LEVEL_SIGHT_RADIUS,
+    DUNGEON_DEPTH,
+    LIGHT_AMBIENT_DARK_LEVEL,
+    LIGHT_AMBIENT_DEPTH_FLOOR,
+    LIGHT_AMBIENT_DEPTH_PEAK,
+    LIGHT_AMBIENT_LIGHT_LEVEL,
     LIGHT_LANTERN_COLOR,
+    LIGHT_LEVEL_SIGHT_RADIUS,
     LIGHT_TORCH_COLOR,
 )
 from arch_rogue.content import ARCHETYPES, SHRINE_HINTS
@@ -199,6 +210,35 @@ class Lighting316Tests(unittest.TestCase):
         game2.set_current_floor_dark(True)
         self.assertLess(game2._ambient_level(), game._ambient_level())
 
+    def test_light_floor_ambient_brightens_near_surface_and_darkens_with_depth(self) -> None:
+        # The depth brightness gradient is a separate axis from the dark-floor
+        # flag: light floors (fog-of-war memory) are brighter at depth 1 and
+        # gradually darken toward the deepest floor.
+        game = self.make_game(tempfile.mkdtemp())
+        game._lighting_enabled = True
+        game.current_depth = 1
+        game._frame_cache = {}
+        self.assertAlmostEqual(
+            game._ambient_depth_factor(), LIGHT_AMBIENT_DEPTH_PEAK, places=4
+        )
+        # Depth 1 light floor is brighter than the old flat level.
+        self.assertGreater(game._ambient_level(), LIGHT_AMBIENT_LIGHT_LEVEL)
+        game.current_depth = DUNGEON_DEPTH
+        self.assertAlmostEqual(
+            game._ambient_depth_factor(), LIGHT_AMBIENT_DEPTH_FLOOR, places=4
+        )
+        self.assertLess(game._ambient_depth_factor(), LIGHT_AMBIENT_DEPTH_PEAK)
+        # Dark floors keep a constant ambient regardless of depth (dark-levels
+        # logic intact); the gradient only applies to light floors.
+        game.current_depth = 1
+        game._frame_cache = {}
+        game.set_current_floor_dark(True)
+        self.assertEqual(game._ambient_level(), LIGHT_AMBIENT_DARK_LEVEL)
+        game.current_depth = DUNGEON_DEPTH
+        game.set_current_floor_dark(True)
+        self.assertEqual(game._ambient_level(), LIGHT_AMBIENT_DARK_LEVEL)
+        self.assertTrue(game.is_current_floor_dark())
+
     # --- feature 7: static torch/shrine lights ------------------------
     def test_static_shrine_and_torch_lights_populated(self) -> None:
         game = self.make_game(tempfile.mkdtemp())
@@ -276,19 +316,14 @@ class Lighting316Tests(unittest.TestCase):
         game2.restore_run_state(data)
         self.assertEqual(game2.light_sources, [])
 
-    # --- feature 3: reduced-motion flicker suppression ----------------
-    def test_reduced_motion_suppresses_flicker(self) -> None:
+    # --- feature 3: lantern/torch flicker -----------------------------
+    def test_flicker_modulates_when_lighting_on(self) -> None:
         game = self.make_game(tempfile.mkdtemp())
         game._lighting_enabled = True
-        game._reduced_motion = True
         lantern = LightSource(
             game.player.x, game.player.y, 4.0, LIGHT_LANTERN_COLOR,
             intensity=1.0, ttl=None, flicker=True, kind="lantern",
         )
-        rad_scale, int_scale = game._flicker(lantern)
-        self.assertEqual((rad_scale, int_scale), (1.0, 1.0))
-        # With reduced motion off, a flickering light modulates.
-        game._reduced_motion = False
         varied = False
         for seed in range(50):
             lantern.flicker_seed = seed
@@ -297,6 +332,13 @@ class Lighting316Tests(unittest.TestCase):
                 varied = True
                 break
         self.assertTrue(varied)
+        # A non-flickering light never modulates.
+        lantern.flicker = False
+        self.assertEqual(game._flicker(lantern), (1.0, 1.0))
+        # Flicker is suppressed entirely when the lighting model is off.
+        game._lighting_enabled = False
+        lantern.flicker = True
+        self.assertEqual(game._flicker(lantern), (1.0, 1.0))
 
     # --- render smoke test --------------------------------------------
     def test_full_frame_render_with_lighting_on(self) -> None:
@@ -323,7 +365,7 @@ class Lighting316Tests(unittest.TestCase):
         self.assertEqual(game._light_scratch_surface.get_size(), (sw, sh))
 
     def test_version_bumped(self) -> None:
-        self.assertEqual(__version__, "3.16.0")
+        self.assertEqual(__version__, "3.16.1")
 
 
 if __name__ == "__main__":

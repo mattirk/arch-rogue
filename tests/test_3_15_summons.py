@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Matti Rita-Kasari
 #
+# AI Provenance & Liability Notice:
+# This repository contains code generated, assisted, or refactored by Artificial
+# Intelligence models. Provided strictly "AS IS" under Apache 2.0 with no warranty
+# of clean IP provenance or non-infringement; downstream users assume all legal
+# and financial risk and should perform their own compliance audits.
+#
 # Milestone 3.15 — Summons, first edition (Acolyte Spirit Call / familiar).
 from __future__ import annotations
 
@@ -341,7 +347,7 @@ class Summons315Tests(unittest.TestCase):
             self.assertEqual(len(game.familiars), 2)
             before = game.familiars[0]
             data = copy.deepcopy(game.serialize_run_state())
-            self.assertEqual(data["release"], "3.16.0")
+            self.assertEqual(data["release"], "3.16.1")
             self.assertIn("familiars", data)
             self.assertEqual(len(data["familiars"]), 2)
 

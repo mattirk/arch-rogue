@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Matti Rita-Kasari
 #
+# AI Provenance & Liability Notice:
+# This repository contains code generated, assisted, or refactored by Artificial
+# Intelligence models. Provided strictly "AS IS" under Apache 2.0 with no warranty
+# of clean IP provenance or non-infringement; downstream users assume all legal
+# and financial risk and should perform their own compliance audits.
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -88,8 +94,16 @@ LIGHT_TORCH_COLOR = (255, 196, 130)
 LIGHT_AMBIENT_TINT_RATIO = 0.35
 LIGHT_AMBIENT_DARK_LEVEL = 0.10
 LIGHT_AMBIENT_LIGHT_LEVEL = 0.36
+# Milestone 3.16 - depth brightness gradient on light floors: brighter near the
+# surface, gradually darker as you descend. This is a separate axis from the
+# dark-floor flag (lantern-only visibility / no fog-of-war memory), which stays
+# intact; dark floors keep their constant near-black ambient regardless of
+# depth. The light-floor ambient is LIGHT_AMBIENT_LIGHT_LEVEL * factor, where
+# factor goes from PEAK at depth 1 to FLOOR at the max depth.
+LIGHT_AMBIENT_DEPTH_PEAK = 1.6
+LIGHT_AMBIENT_DEPTH_FLOOR = 0.5
 # Subtle lantern/torch flicker amplitudes (fraction of radius/intensity).
-# Suppressed entirely when the Reduce Motion accessibility option is on.
+# Always applied when the lighting model is on.
 LIGHT_FLICKER_RADIUS_AMP = 0.05
 LIGHT_FLICKER_INTENSITY_AMP = 0.08
 # Static light radii (world tiles) and intensities.

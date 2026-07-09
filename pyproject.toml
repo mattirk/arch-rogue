@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.16.0"
-description = "3.16.0 adds a continuous multi-source colored lighting model that replaces the per-tile alpha falloff, with baked normal maps, a screen-space light buffer, dynamic player/skill/projectile lights, static torch/shrine lights, theme ambient tints, lit-actor shading, and a Lighting Off/On option."
+version = "3.16.1"
+description = "3.16.1 regroups the Options menu into Lights / Audio / Display / Controls sections and removes the Reduce motion toggle (lantern/torch flicker is now always on when lighting is on)."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

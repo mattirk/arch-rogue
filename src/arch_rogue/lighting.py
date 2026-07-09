@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Matti Rita-Kasari
 #
+# AI Provenance & Liability Notice:
+# This repository contains code generated, assisted, or refactored by Artificial
+# Intelligence models. Provided strictly "AS IS" under Apache 2.0 with no warranty
+# of clean IP provenance or non-infringement; downstream users assume all legal
+# and financial risk and should perform their own compliance audits.
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -55,7 +61,10 @@ import pygame
 
 from .constants import (
     DARK_LEVEL_LIGHT_RADIUS,
+    DUNGEON_DEPTH,
     LIGHT_AMBIENT_DARK_LEVEL,
+    LIGHT_AMBIENT_DEPTH_FLOOR,
+    LIGHT_AMBIENT_DEPTH_PEAK,
     LIGHT_AMBIENT_LIGHT_LEVEL,
     LIGHT_AMBIENT_TINT_RATIO,
     LIGHT_BUFFER_SCALE,
@@ -207,10 +216,8 @@ class LightingMixin:
         return bool(getattr(self, "_lighting_normal_maps", True)) and self.lighting_enabled()
 
     def flicker_enabled(self) -> bool:
-        # Reduced Motion (accessibility) suppresses the lantern/torch flicker.
-        return self.lighting_enabled() and not bool(
-            getattr(self, "_reduced_motion", False)
-        )
+        # Lantern/torch flicker is always on when the lighting model is on.
+        return self.lighting_enabled()
 
     # --- transient light emission (called from combat / add_impact) --
     def add_light(
@@ -254,12 +261,26 @@ class LightingMixin:
         theme = self.theme
         return mix_color((255, 255, 255), theme.accent, LIGHT_AMBIENT_TINT_RATIO)
 
-    def _ambient_level(self) -> float:
-        return (
-            LIGHT_AMBIENT_DARK_LEVEL
-            if self.is_current_floor_dark()
-            else LIGHT_AMBIENT_LIGHT_LEVEL
+    def _ambient_depth_factor(self) -> float:
+        # Light-floor ambient brightness vs depth: 1.6x at the surface (depth 1)
+        # fading to 0.5x at the deepest floor, so the dungeon gets gradually
+        # darker as you descend. A separate axis from the dark-floor flag
+        # (lantern-only visibility / no fog-of-war memory), which is untouched.
+        depth = max(1, self.current_depth)
+        span = max(1, DUNGEON_DEPTH - 1)
+        t = (depth - 1) / span
+        return LIGHT_AMBIENT_DEPTH_PEAK - t * (
+            LIGHT_AMBIENT_DEPTH_PEAK - LIGHT_AMBIENT_DEPTH_FLOOR
         )
+
+    def _ambient_level(self) -> float:
+        if self.is_current_floor_dark():
+            # Dark floors keep a constant near-black ambient regardless of depth;
+            # the lantern drives visibility. The dark-floor logic is intact.
+            return LIGHT_AMBIENT_DARK_LEVEL
+        # Light floor (fog-of-war memory): brighter near the surface, darker
+        # deeper. The memory/reveal behavior and sight radius are unchanged.
+        return LIGHT_AMBIENT_LIGHT_LEVEL * self._ambient_depth_factor()
 
     def _lantern_radius(self) -> float:
         # Identical reach on both floor types: dark floors use the lantern
@@ -491,15 +512,22 @@ class LightingMixin:
 
     # --- lit-actor shading (feature 6) ------------------------------
     def apply_lit_shading(
-        self, sprite: pygame.Surface, world_x: float, world_y: float
+        self,
+        sprite: pygame.Surface,
+        base_sprite: pygame.Surface,
+        world_x: float,
+        world_y: float,
     ) -> pygame.Surface:
         """Return ``sprite`` tinted by a Lambertian term from the dominant light.
 
-        Computed on a downscaled copy of the sprite + its baked normal map so
-        the per-pixel cost stays bounded (~``LIGHT_SHADE_DOWNSAMPLE_LONG``^2
-        pixels), and cached per (sprite, dominant-light bucket) in a persistent
-        cache that is cleared on floor change. Skipped entirely on the LIGHTING
-       _OFF tier and when normal maps are disabled.
+        The tint is computed ONCE per (base sprite, light-direction bucket,
+        distance bucket, light color, frame size) from the BASE sprite's stable
+        baked normal map and cached, then applied (a copy + a single
+        ``BLEND_RGB_MULT`` blit) to whichever animation frame is showing. Because
+        the tint comes from the base sprite (not each animation frame's own
+        normal map), the shading is identical across animation frames and the
+        actor no longer flickers as its pose animates. Skipped on the
+        LIGHTING_OFF tier and when normal maps are disabled.
         """
         if not self.lighting_normal_maps_active():
             return sprite
@@ -510,26 +538,25 @@ class LightingMixin:
         light_dy = world_y - dominant.y
         bucket = quantize_direction(light_dx, light_dy)
         dist = math.hypot(light_dx, light_dy)
-        # Distance bucket: how far the actor is through the light's reach.
         reach = max(0.5, dominant.radius)
         dist_bucket = min(3, int(dist / reach * 4))
-        key = (id(sprite), bucket, dist_bucket)
-        cache = getattr(self, "_lit_shade_cache", None)
-        if cache is None:
-            cache = {}
-            self._lit_shade_cache = cache
-        cached = cache.get(key)
-        if cached is not None:
-            return cached
-
-        normal = self.sprites.normal_map_for(sprite)
-        if normal is None:
-            cache[key] = sprite
+        tint_map = self._lit_tint_map(
+            base_sprite,
+            sprite.get_width(),
+            sprite.get_height(),
+            dominant,
+            bucket,
+            dist_bucket,
+        )
+        if tint_map is None:
             return sprite
-
-        shaded = self._compute_lit_shade(sprite, normal, light_dx, light_dy, dominant, dist)
-        cache[key] = shaded
-        return shaded
+        result = sprite.copy()
+        result.blit(tint_map, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
+        try:
+            result = result.convert_alpha()
+        except pygame.error:
+            pass
+        return result
 
     def _dominant_light(self, x: float, y: float) -> LightSource | None:
         lights = self._collect_frame_lights()
@@ -546,54 +573,62 @@ class LightingMixin:
                 best = light
         return best
 
-    def _compute_lit_shade(
+    def _lit_tint_map(
         self,
-        sprite: pygame.Surface,
-        normal: pygame.Surface,
-        light_dx: float,
-        light_dy: float,
+        base_sprite: pygame.Surface,
+        out_w: int,
+        out_h: int,
         light: LightSource,
-        dist: float,
-    ) -> pygame.Surface:
-        w, h = sprite.get_width(), sprite.get_height()
-        if w <= 0 or h <= 0:
-            return sprite
-        # The sprite is NEVER scaled: we build a low-res TINT map from the
-        # baked normal map, smoothscale only the tint up to full size, and
-        # multiply it onto a full-res copy of the sprite. The sprite stays
-        # pixel-crisp; only the shading is a soft directional gradient. Per-pixel
-        # work is bounded to the downsample size, so this is cheap in pure
-        # Python and only runs on a cache miss (player + bosses only).
-        long_side = max(w, h)
+        bucket: int,
+        dist_bucket: int,
+    ) -> pygame.Surface | None:
+        """A stable per-pixel tint multiplier for BLEND_RGB_MULT.
+
+        Built once per (base sprite, light-direction bucket, distance bucket,
+        light color, output size) from the BASE sprite's baked normal map and
+        cached. Using the base sprite (not each animation frame's normal map)
+        keeps the shading identical across animation frames so actors do not
+        flicker as they animate. The per-pixel work runs only on a cache miss.
+        """
+        key = (id(base_sprite), bucket, dist_bucket, light.color, out_w, out_h)
+        cache = getattr(self, "_lit_shade_cache", None)
+        if cache is None:
+            cache = {}
+            self._lit_shade_cache = cache
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+
+        normal = self.sprites.normal_map_for(base_sprite)
+        if normal is None:
+            cache[key] = None
+            return None
+
+        bw, bh = base_sprite.get_width(), base_sprite.get_height()
+        long_side = max(bw, bh)
         if long_side > LIGHT_SHADE_DOWNSAMPLE_LONG:
             f = LIGHT_SHADE_DOWNSAMPLE_LONG / long_side
-            sw = max(1, int(w * f))
-            sh = max(1, int(h * f))
+            sw = max(1, int(bw * f))
+            sh = max(1, int(bh * f))
             small_normal = pygame.transform.scale(normal, (sw, sh))
         else:
-            sw, sh = w, h
+            sw, sh = bw, bh
             small_normal = normal
 
-        slx, sly = self.world_to_screen(light.x, light.y)
-        sax, say = self.world_to_screen(light.x + light_dx, light.y + light_dy)
-        ddx = sax - slx
-        ddy = say - sly
-        dlen = math.hypot(ddx, ddy)
-        if dlen > 1e-3:
-            ldx = ddx / dlen
-            ldy = ddy / dlen
-        else:
+        # Representative light direction for the bucket. Bucket 0 means the
+        # actor is on top of the light (no horizontal direction) -> only the
+        # front bias lights it; otherwise use the bucket's center angle.
+        if bucket == 0:
             ldx = ldy = 0.0
+        else:
+            angle = (bucket + 0.5) / LIGHT_DIRECTION_BUCKETS * math.tau - math.pi
+            ldx = math.cos(angle)
+            ldy = math.sin(angle)
         ldz = LIGHT_SHADE_BIAS_Z
         light_color = light.color
-        reach = max(0.5, light.radius)
-        atten = max(0.0, 1.0 - dist / reach)
+        atten = max(0.0, 1.0 - (dist_bucket + 0.5) / 4.0)
         intensity = light.intensity
 
-        # TINT map: per-pixel multiplier for BLEND_RGB_MULT. 255 = no change
-        # (lit-facing side stays full bright, with a slight light-color tint);
-        # lower values darken the shadow side. RGB-only blend keeps the sprite's
-        # own alpha/silhouette exactly intact.
         tint = pygame.Surface((sw, sh), pygame.SRCALPHA)
         tint.fill((255, 255, 255, 255))
         try:
@@ -624,14 +659,15 @@ class LightingMixin:
             if tint.get_locked():
                 tint.unlock()
 
-        tint_full = pygame.transform.smoothscale(tint, (w, h))
-        result = sprite.copy()
-        result.blit(tint_full, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
+        # Scale the base-sized tint to the frame's output size (cast frames are
+        # larger than the base). The sprite itself is never scaled here.
+        tint_full = pygame.transform.smoothscale(tint, (out_w, out_h))
         try:
-            result = result.convert_alpha()
+            tint_full = tint_full.convert_alpha()
         except pygame.error:
             pass
-        return result
+        cache[key] = tint_full
+        return tint_full
 
     def reset_lighting_caches(self) -> None:
         # Called on floor/theme change alongside ``tile_cache.clear``; bounds

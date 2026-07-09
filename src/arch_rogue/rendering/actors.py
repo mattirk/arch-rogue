@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Matti Rita-Kasari
 #
+# AI Provenance & Liability Notice:
+# This repository contains code generated, assisted, or refactored by Artificial
+# Intelligence models. Provided strictly "AS IS" under Apache 2.0 with no warranty
+# of clean IP provenance or non-infringement; downstream users assume all legal
+# and financial risk and should perform their own compliance audits.
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -393,9 +399,17 @@ class RenderingActorMixin:
         lean: float = 0.0,
         alpha: int = 255,
         apply_shading: bool = True,
+        base_sprite: pygame.Surface | None = None,
     ) -> tuple[int, int]:
         sx, sy = self.world_to_screen(x, y)
         turned_sprite = sprite
+        # Milestone 3.16 - lit-actor shading is applied to the untransformed
+        # frame (so the cached base-sprite tint aligns) BEFORE stretch/lean;
+        # the transforms then carry the shading with the sprite.
+        if apply_shading and base_sprite is not None:
+            shaded = self.apply_lit_shading(sprite, base_sprite, x, y)
+            if shaded is not sprite:
+                turned_sprite = shaded
         if abs(stretch - 1.0) > 0.018:
             turned_sprite = pygame.transform.scale(
                 turned_sprite,
@@ -413,14 +427,6 @@ class RenderingActorMixin:
         if alpha < 255:
             turned_sprite = turned_sprite.copy()
             turned_sprite.set_alpha(alpha)
-        # Milestone 3.16 - Lambertian shading from the dominant light via the
-        # baked normal map. Skipped on the LIGHTING_OFF tier, when normal maps
-        # are off, or when no light is in range. Cached per sprite and
-        # dominant-light bucket so per-pixel work only runs on bucket change.
-        if apply_shading:
-            shaded = self.apply_lit_shading(turned_sprite, x, y)
-            if shaded is not turned_sprite:
-                turned_sprite = shaded
         rect = turned_sprite.get_rect(
             midbottom=(
                 round(sx + x_offset * WORLD_SCALE),
@@ -491,6 +497,7 @@ class RenderingActorMixin:
             x_offset=sway,
             stretch=stretch,
             lean=lean,
+            base_sprite=self.sprites.player_sprites.get(player.class_name),
         )
         self.draw_hit_flash_overlay(
             sx,
@@ -659,6 +666,9 @@ class RenderingActorMixin:
             stretch=stretch,
             lean=lean,
             apply_shading=(enemy.kind == "boss"),
+            base_sprite=self.sprites.enemies.get(
+                self.sprites.enemy_key(enemy.name, enemy.kind)
+            ),
         )
         self.draw_hit_flash_overlay(
             sx,

@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Matti Rita-Kasari
 #
+# AI Provenance & Liability Notice:
+# This repository contains code generated, assisted, or refactored by Artificial
+# Intelligence models. Provided strictly "AS IS" under Apache 2.0 with no warranty
+# of clean IP provenance or non-infringement; downstream users assume all legal
+# and financial risk and should perform their own compliance audits.
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -705,18 +711,18 @@ class InputMixin:
     """
 
     # Options menu row order (matches MenuOptionsMixin.draw_options_menu).
-    OPTIONS_ROW_COUNT = 11
-    OPTIONS_ROW_AUDIO = 0
-    OPTIONS_ROW_MUSIC = 1
-    OPTIONS_ROW_FULLSCREEN = 2
-    OPTIONS_ROW_DIFFICULTY = 3
-    OPTIONS_ROW_UI_SCALE = 4
-    OPTIONS_ROW_CONTROLS = 5
-    OPTIONS_ROW_CONTROLLER = 6
+    # Grouped: Display (0-2), Controls (3-4), Audio (5-6), Lights (7-8), Back (9).
+    OPTIONS_ROW_COUNT = 10
+    OPTIONS_ROW_FULLSCREEN = 0
+    OPTIONS_ROW_DIFFICULTY = 1
+    OPTIONS_ROW_UI_SCALE = 2
+    OPTIONS_ROW_CONTROLS = 3
+    OPTIONS_ROW_CONTROLLER = 4
+    OPTIONS_ROW_AUDIO = 5
+    OPTIONS_ROW_MUSIC = 6
     OPTIONS_ROW_LIGHTING = 7
     OPTIONS_ROW_LIGHTING_DETAIL = 8
-    OPTIONS_ROW_REDUCE_MOTION = 9
-    OPTIONS_ROW_BACK = 10
+    OPTIONS_ROW_BACK = 9
 
     def init_input(self) -> None:
         self.input = ControllerManager(
@@ -983,9 +989,6 @@ class InputMixin:
             self.save_options()
         elif row == self.OPTIONS_ROW_LIGHTING_DETAIL:
             self._lighting_normal_maps = not self._lighting_normal_maps
-            self.save_options()
-        elif row == self.OPTIONS_ROW_REDUCE_MOTION:
-            self._reduced_motion = not self._reduced_motion
             self.save_options()
         elif row == self.OPTIONS_ROW_CONTROLS:
             self.state = "controls"

@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Matti Rita-Kasari
 #
+# AI Provenance & Liability Notice:
+# This repository contains code generated, assisted, or refactored by Artificial
+# Intelligence models. Provided strictly "AS IS" under Apache 2.0 with no warranty
+# of clean IP provenance or non-infringement; downstream users assume all legal
+# and financial risk and should perform their own compliance audits.
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -394,7 +400,9 @@ class PixelSpriteAtlas:
             tint_color, tint_alpha = tint
             flash = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
             flash.fill((*tint_color, tint_alpha))
-            frame.blit(flash, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+            # BLEND_RGB_ADD (not RGBA) keeps the transparent padding around
+            # the sprite at alpha 0 so the tint cannot leak as a tinted box.
+            frame.blit(flash, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
         try:
             return frame.convert_alpha()
         except pygame.error:
@@ -685,7 +693,10 @@ class PixelSpriteAtlas:
             tint_color, tint_alpha = tint
             flash = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
             flash.fill((*tint_color, tint_alpha))
-            frame.blit(flash, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+            # BLEND_RGB_ADD (not RGBA) so the tint only brightens the sprite's
+            # opaque pixels; the transparent padding around the sprite keeps
+            # alpha 0 instead of becoming a semi-transparent tinted box.
+            frame.blit(flash, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
         try:
             return frame.convert_alpha()
         except pygame.error:

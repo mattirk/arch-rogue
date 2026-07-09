@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Matti Rita-Kasari
 #
+# AI Provenance & Liability Notice:
+# This repository contains code generated, assisted, or refactored by Artificial
+# Intelligence models. Provided strictly "AS IS" under Apache 2.0 with no warranty
+# of clean IP provenance or non-infringement; downstream users assume all legal
+# and financial risk and should perform their own compliance audits.
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -872,12 +878,26 @@ class MenuBaseMixin:
         rows: Sequence[MenuRow],
         rect: pygame.Rect,
         selected_index: int = -1,
+        sections: Sequence[tuple[int, str]] | None = None,
     ) -> None:
+        # Optional section headers: ``sections`` is a list of
+        # ``(start_row_index, title)`` entries. A header band is drawn above
+        # the first row of each section and consumes vertical space, so the
+        # row-height/gap fit calculation subtracts the total header height
+        # first. The cursor index space stays the flat row index space, so
+        # callers keep using row indices for navigation/activation.
+        section_starts: dict[int, str] = {}
+        if sections:
+            for start_index, title in sections:
+                section_starts[start_index] = title
+        label_h = self.g.small_font.get_height()
+        section_header_h = label_h + self.u(12)
+        total_header_h = section_header_h * len(section_starts)
         key_w = min(max(self.u(108), 108), max(self.u(96), rect.width // 3))
         row_count = max(1, len(rows))
         base_gap = max(self.u(7), 7)
         base_row_h = max(self.g.font.get_height() + self.u(18), self.u(44))
-        available_h = max(1, rect.height)
+        available_h = max(1, rect.height - total_header_h)
         if row_count * base_row_h + (row_count - 1) * base_gap > available_h:
             gap = max(1, min(base_gap, self.u(3)))
             row_h = max(
@@ -890,6 +910,29 @@ class MenuBaseMixin:
         y = rect.y
         accent = self.accent()
         for index, (key, label, value) in enumerate(rows):
+            title = section_starts.get(index)
+            if title is not None:
+                # Section header band: aged-gold caption with a thin stone rule.
+                self.draw_text(
+                    title.upper(),
+                    self.g.small_font,
+                    self.TITLE,
+                    pygame.Rect(
+                        rect.x + self.u(4),
+                        y,
+                        rect.width - self.u(8),
+                        label_h + self.u(2),
+                    ),
+                )
+                line_y = y + section_header_h - self.u(4)
+                pygame.draw.line(
+                    self.screen,
+                    self.PANEL_2,
+                    (rect.x + self.u(4), line_y),
+                    (rect.right - self.u(4), line_y),
+                    max(1, self.u(1)),
+                )
+                y += section_header_h
             if y + row_h > rect.bottom:
                 break
             row_rect = pygame.Rect(rect.x, y, rect.width, row_h)

@@ -214,6 +214,14 @@ In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from t
 
 This project is licensed under the Apache License, Version 2.0 (see `LICENSE`).
 
+### AI Provenance & Liability Notice
+
+This repository contains code generated, assisted, or refactored by Artificial Intelligence models.
+
+Pursuant to the accompanying Apache 2.0 License, this software is provided strictly "AS IS", without warranties of any kind regarding its intellectual property status, clean provenance, or non-infringement.
+
+- For Downstream Users: The maintainer does not guarantee that this code is completely free of third-party copyright claims or copyleft license contamination. By utilizing, modifying, or distributing this code, you assume all legal and financial risks associated with its use. You are strongly advised to perform your own code-matching and compliance audits before integrating this software into commercial or production environments.
+
 ## Credits
 
 Design, code, procedural story corpus, procedural art, and procedural audio by the Arch Rogue project. Built with Python and [Pygame CE](https://pyga.me/). Much of this code is computer generated and not reviewed by a human.

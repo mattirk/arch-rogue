@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Matti Rita-Kasari
 #
+# AI Provenance & Liability Notice:
+# This repository contains code generated, assisted, or refactored by Artificial
+# Intelligence models. Provided strictly "AS IS" under Apache 2.0 with no warranty
+# of clean IP provenance or non-infringement; downstream users assume all legal
+# and financial risk and should perform their own compliance audits.
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -170,7 +176,6 @@ class OptionsMixin:
             ),
             "lighting_enabled": getattr(self, "_lighting_enabled", True),
             "lighting_normal_maps": getattr(self, "_lighting_normal_maps", True),
-            "reduced_motion": getattr(self, "_reduced_motion", False),
         }
 
     def load_options(self) -> bool:
@@ -197,12 +202,11 @@ class OptionsMixin:
             self.gamepad_mapping = normalize_gamepad_mapping(
                 data.get("gamepad_mapping")
             )
-            # Milestone 3.16 - continuous lighting + accessibility. Missing
-            # on older saves falls back to safe native defaults. The web
-            # build forces these off in make_game.
+            # Milestone 3.16 - continuous lighting. Missing on older saves
+            # falls back to safe native defaults. The web build forces these
+            # off in make_game.
             self._lighting_enabled = bool(data.get("lighting_enabled", True))
             self._lighting_normal_maps = bool(data.get("lighting_normal_maps", True))
-            self._reduced_motion = bool(data.get("reduced_motion", False))
         except (TypeError, ValueError):
             return False
         return True

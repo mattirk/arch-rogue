@@ -199,3 +199,11 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+--- AI Provenance & Liability Notice ---
+
+This repository contains code generated, assisted, or refactored by Artificial Intelligence models.
+
+Pursuant to the accompanying Apache 2.0 License, this software is provided strictly "AS IS", without warranties of any kind regarding its intellectual property status, clean provenance, or non-infringement.
+
+- For Downstream Users: The maintainer does not guarantee that this code is completely free of third-party copyright claims or copyleft license contamination. By utilizing, modifying, or distributing this code, you assume all legal and financial risks associated with its use. You are strongly advised to perform your own code-matching and compliance audits before integrating this software into commercial or production environments.
