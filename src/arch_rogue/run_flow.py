@@ -43,6 +43,7 @@ from .content import (
 )
 from .dungeon import MAP_H, MAP_W, Dungeon, Tile
 from .models import (
+    AmbushBell,
     Archetype,
     Enemy,
     Familiar,
@@ -542,6 +543,7 @@ class RunFlowMixin:
         self.story_guests = []
         self.idle_npcs: list[IdleNpc] = []
         self.familiars: list[Familiar] = []
+        self.ambush_bells: list[AmbushBell] = []
         self.light_sources: list[LightSource] = []
         self.lights: list[LightSource] = []
         self.floaters: list[FloatingText] = []
@@ -573,6 +575,7 @@ class RunFlowMixin:
             self.run_stats.floors_cleared = max(
                 self.run_stats.floors_cleared, DUNGEON_DEPTH
             )
+            self.ambush_bells = []
             self.state = "victory"
             self.unlock_hell_difficulty()
             self.finalize_run("victory")
@@ -626,6 +629,7 @@ class RunFlowMixin:
         self.story_guests = []
         self.idle_npcs = []
         self.familiars = []
+        self.ambush_bells = []
         self.light_sources = []
         self.lights = []
         self.floaters = []

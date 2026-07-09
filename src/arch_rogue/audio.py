@@ -86,6 +86,7 @@ class AudioSystem:
                     "hit": 190,
                     "damage": 150,
                     "trap": 96,
+                    "bell": 744,
                     "secret": 612,
                     "shrine": 520,
                     "boss": 88,
@@ -93,7 +94,7 @@ class AudioSystem:
                     "victory": 784,
                     "death": 120,
                 }.get(name, 440)
-                duration = 0.16 if name in {"boss", "victory", "death"} else 0.08
+                duration = 0.16 if name in {"boss", "victory", "death", "bell"} else 0.08
                 sound = self.make_tone(frequency, duration)
                 self.sfx_cache[name] = sound
             sound.play()

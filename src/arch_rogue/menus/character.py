@@ -467,9 +467,9 @@ class MenuCharacterMixin:
     def skill_names_for(self, name: str) -> tuple[str, str, str, str]:
         return {
             "Warden": ("Shield Bash", "Guard Bolt", "Bulwark Wave", "Guard Step"),
-            "Rogue": ("Backstab", "Knife Fan", "Smoke Burst", "Shadow Dash"),
+            "Rogue": ("Backstab", "Knife Fan", "Ambush Bell", "Shadow Dash"),
             "Arcanist": ("Mage Strike", "Arc Bolt", "Frost Nova", "Blink"),
-            "Acolyte": ("Blood Rite", "Spirit Bolt", "Blood Nova", "Dark Step"),
+            "Acolyte": ("Blood Rite", "Spirit Bolt", "Spirit Call", "Dark Step"),
             "Ranger": ("Hawk Slash", "Multishot", "Snare Nova", "Vault"),
         }.get(name, ("Slash", "Bolt", "Nova", "Dash"))
 

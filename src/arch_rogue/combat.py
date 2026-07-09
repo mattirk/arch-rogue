@@ -55,6 +55,7 @@ from .content import (
     skill_nodes_for_archetype,
 )
 from .models import (
+    AmbushBell,
     Color,
     Enemy,
     Familiar,
@@ -358,12 +359,49 @@ class CombatMixin:
     def skill_names(self) -> tuple[str, str, str, str]:
         names = {
             "Warden": ("Shield Bash", "Guard Bolt", "Bulwark Wave", "Guard Step"),
-            "Rogue": ("Backstab", "Knife Fan", "Smoke Burst", "Shadow Dash"),
+            "Rogue": ("Backstab", "Knife Fan", "Ambush Bell", "Shadow Dash"),
             "Arcanist": ("Mage Strike", "Arc Bolt", "Frost Nova", "Blink"),
             "Acolyte": ("Blood Rite", "Spirit Bolt", "Spirit Call", "Dark Step"),
             "Ranger": ("Hawk Slash", "Multishot", "Snare Nova", "Vault"),
         }
         return names.get(self.player.class_name, ("Slash", "Bolt", "Nova", "Dash"))
+
+    def slot_3_skill_kind(self) -> str:
+        """Runtime action bound to hotkey slot 3 for the current archetype."""
+        if self.player.class_name == "Acolyte":
+            return "spirit_call"
+        if self.player.class_name == "Rogue":
+            return "ambush_bell"
+        return "nova"
+
+    def player_cast_slot_3(self) -> None:
+        """Dispatch the archetype-specific slot-3 action."""
+        kind = self.slot_3_skill_kind()
+        if kind == "spirit_call":
+            self.player_cast_spirit_call()
+        elif kind == "ambush_bell":
+            self.player_cast_ambush_bell()
+        else:
+            self.player_cast_nova()
+
+    def equipment_slot_3_bonus(self, text: str = "") -> bool:
+        """Slot-3 equipment hook with legacy Nova save compatibility.
+
+        Existing gear stores `Nova` text in `Item.skill_bonus`; Rogue's Ambush
+        Bell intentionally reuses that slot budget while also recognizing new
+        `Ambush Bell` wording for future items.
+        """
+        if text:
+            if self.equipment_skill_bonus(text):
+                return True
+            if self.player.class_name == "Rogue" and "Nova" in text:
+                return self.equipment_skill_bonus(text.replace("Nova", "Ambush Bell"))
+            return False
+        if self.equipment_skill_bonus("Nova"):
+            return True
+        return self.player.class_name == "Rogue" and self.equipment_skill_bonus(
+            "Ambush Bell"
+        )
 
     def skill_color(self) -> Color:
         colors = {
@@ -602,7 +640,7 @@ class CombatMixin:
         cost = 14 if self.player.class_name in ("Arcanist", "Acolyte") else 18
         if self.player.has_upgrade("acolyte_veil"):
             cost -= 2
-        if self.equipment_skill_bonus("Nova"):
+        if self.equipment_slot_3_bonus():
             cost -= 1
         if any(
             item is not None and item.cursed for item in self.player.equipment.values()
@@ -612,7 +650,7 @@ class CombatMixin:
 
     def nova_cooldown(self) -> float:
         cooldown = 2.65 if self.player.class_name == "Arcanist" else 3.2
-        if self.equipment_skill_bonus("Nova"):
+        if self.equipment_slot_3_bonus():
             cooldown -= 0.18
         cast_speed = max(-0.20, min(0.35, self.equipment_stat_total("cast_speed")))
         cooldown *= 1.0 - cast_speed * 0.75
@@ -1019,16 +1057,30 @@ class CombatMixin:
     def update_enemies(self, dt: float) -> None:
         for enemy in self.enemies:
             enemy.moving = False
+            if enemy.telegraph == "lured":
+                enemy.telegraph = ""
             enemy.attack_timer = max(0.0, enemy.attack_timer - dt)
-            dx = self.player.x - enemy.x
-            dy = self.player.y - enemy.y
-            distance = math.hypot(dx, dy)
-            if distance > enemy.aggro_range:
+            player_dx = self.player.x - enemy.x
+            player_dy = self.player.y - enemy.y
+            player_distance = math.hypot(player_dx, player_dy)
+            lure = self.ambush_bell_lure_target(enemy)
+            if player_distance > enemy.aggro_range and lure is None:
                 continue
             if enemy.statuses.get("stunned", 0.0) > 0:
                 enemy.telegraph = "stunned"
                 continue
+
+            target_x = lure.x if lure is not None else self.player.x
+            target_y = lure.y if lure is not None else self.player.y
+            dx = target_x - enemy.x
+            dy = target_y - enemy.y
+            distance = math.hypot(dx, dy)
             nx, ny = (dx / distance, dy / distance) if distance > 0.001 else (0.0, 0.0)
+            player_nx, player_ny = (
+                (player_dx / player_distance, player_dy / player_distance)
+                if player_distance > 0.001
+                else (0.0, 0.0)
+            )
             move_speed = enemy.speed * self.enemy_speed_multiplier(enemy)
             if distance > 0.001:
                 enemy.facing_x = nx
@@ -1037,10 +1089,26 @@ class CombatMixin:
             # Enemies must actually see the player to attack; without this they
             # melee/cast through walls when adjacent on the far side of a wall.
             # Movement is intentionally not gated so pursuit around corners still
-            # works once an enemy has aggro'd.
+            # works once an enemy has aggro'd. Ambush Bell lure only changes the
+            # movement target; attacks still require player LOS/range.
             has_los = self.dungeon.line_of_sight(
                 enemy.x, enemy.y, self.player.x, self.player.y
             )
+
+            if lure is not None:
+                enemy.telegraph = "lured"
+                if distance > 0.12:
+                    self.move_actor(enemy, nx * move_speed * dt, ny * move_speed * dt)
+                if (
+                    player_distance <= enemy.attack_range
+                    and enemy.attack_timer <= 0
+                    and has_los
+                ):
+                    if enemy.kind == "ranged":
+                        self.enemy_cast(enemy, player_nx, player_ny)
+                    else:
+                        self.enemy_melee(enemy)
+                continue
 
             if enemy.kind == "boss" or enemy.is_boss_encounter:
                 # 4-tile boss encounters (final tyrant + floor guardians) use the
@@ -1668,9 +1736,9 @@ class CombatMixin:
                     radius += 0.45
                 elif self.player.has_upgrade("arcanist_focus"):
                     radius += 0.25
-            if self.equipment_skill_bonus("Nova"):
+            if self.equipment_slot_3_bonus():
                 radius += 0.25
-            if self.equipment_skill_bonus("Nova radius"):
+            if self.equipment_slot_3_bonus("Nova radius"):
                 radius += 0.35
             if distance <= radius:
                 hits += 1
@@ -1683,7 +1751,7 @@ class CombatMixin:
                 damage_type = self.nova_damage_type()
                 status_effect = ""
                 status_duration = 0.0
-                if self.equipment_skill_bonus("Nova"):
+                if self.equipment_slot_3_bonus():
                     damage += 2
                 if self.player.class_name == "Warden":
                     status_effect = "stunned"
@@ -1742,6 +1810,357 @@ class CombatMixin:
                 ttl=0.9,
             )
         )
+
+    # ------------------------------------------------------------------
+    # Milestone 3.17 — Rogue Ambush Bell (slot-3 lure trap).
+    # ------------------------------------------------------------------
+    AMBUSH_BELL_PLANT_RANGE = 4.35
+    AMBUSH_BELL_ARM_TIME = 0.34
+    AMBUSH_BELL_LIFETIME = 6.0
+    AMBUSH_BELL_LURE_RADIUS = 6.0
+    AMBUSH_BELL_TRIGGER_RADIUS = 0.95
+    AMBUSH_BELL_DAMAGE_RADIUS = 1.85
+
+    def ambush_bell_arm_time(self) -> float:
+        arm_time = self.AMBUSH_BELL_ARM_TIME
+        if self.player.has_upgrade("rogue_trap_craft"):
+            arm_time -= 0.04
+        if self.player.has_upgrade("rogue_bear_trap"):
+            arm_time -= 0.03
+        if self.player.has_upgrade("rogue_trap_master"):
+            arm_time -= 0.04
+        if self.player.has_upgrade("rogue_ambush_engineer"):
+            arm_time -= 0.06
+        return max(0.20, arm_time)
+
+    def ambush_bell_damage_radius(self) -> float:
+        radius = self.AMBUSH_BELL_DAMAGE_RADIUS
+        if self.player.has_upgrade("rogue_trap_master"):
+            radius += 0.12
+        if self.player.has_upgrade("rogue_ambush_engineer"):
+            radius += 0.16
+        if self.equipment_slot_3_bonus("Nova radius"):
+            radius += 0.18
+        return radius
+
+    def ambush_bell_smoke_duration(self) -> float:
+        duration = 0.52
+        if self.player.has_upgrade("rogue_smoke"):
+            duration += 0.22
+        if self.player.has_upgrade("rogue_night_veil"):
+            duration += 0.16
+        if self.player.has_upgrade("rogue_umbral"):
+            duration += 0.18
+        if self.equipment_skill_bonus("Dash tempo"):
+            duration += 0.06
+        return min(1.25, duration)
+
+    def ambush_bell_base_damage(self) -> int:
+        damage = 20 + self.player.level * 3 + self.player.melee_bonus
+        damage += max(0, self.player.spell_bonus // 2)
+        if self.player.has_upgrade("rogue_trap_craft"):
+            damage += 3
+        if self.player.has_upgrade("rogue_bear_trap"):
+            damage += 4
+        if self.player.has_upgrade("rogue_trap_master"):
+            damage += 5
+        if self.player.has_upgrade("rogue_ambush_engineer"):
+            damage += 7
+        if self.equipment_slot_3_bonus():
+            damage += 2
+        return max(8, damage)
+
+    def _ambush_bell_status(self) -> tuple[str, float]:
+        if self.player.has_upgrade("rogue_venom") or self.player.has_upgrade(
+            "rogue_venom_trap"
+        ):
+            duration = 2.2
+            if self.player.has_upgrade("rogue_trap_master"):
+                duration += 0.5
+            if self.player.has_upgrade("rogue_ambush_engineer"):
+                duration += 0.4
+            return "poisoned", duration
+        return "", 0.0
+
+    def _ambush_bell_target_point(self) -> tuple[float, float]:
+        fx, fy = self.player.facing_x, self.player.facing_y
+        length = math.hypot(fx, fy)
+        if length <= 0.001:
+            fx, fy = 1.0, 0.0
+        else:
+            fx, fy = fx / length, fy / length
+        target_x = self.player.x + fx * self.AMBUSH_BELL_PLANT_RANGE
+        target_y = self.player.y + fy * self.AMBUSH_BELL_PLANT_RANGE
+        return self._nearest_ambush_bell_floor(target_x, target_y)
+
+    def _nearest_ambush_bell_floor(
+        self, target_x: float, target_y: float
+    ) -> tuple[float, float]:
+        px, py = self.player.x, self.player.y
+        dx = target_x - px
+        dy = target_y - py
+        distance = math.hypot(dx, dy)
+        if distance > self.AMBUSH_BELL_PLANT_RANGE and distance > 0.001:
+            scale = self.AMBUSH_BELL_PLANT_RANGE / distance
+            dx *= scale
+            dy *= scale
+        # Walk backward from the aimed point toward the Rogue so a wall-click or
+        # wall-facing cast lands on the nearest reachable floor instead of failing.
+        for step in range(16, 0, -1):
+            t = step / 16.0
+            x = px + dx * t
+            y = py + dy * t
+            if self.dungeon.is_floor(x, y) and not self.dungeon.blocked_for_radius(
+                x, y, 0.22
+            ):
+                return x, y
+        return px, py
+
+    def player_cast_ambush_bell(self) -> None:
+        """Rogue slot-3 ability: plant one lure trap at the aimed ground point."""
+        if self.player.class_name != "Rogue":
+            if self.player.class_name == "Acolyte":
+                self.player_cast_spirit_call()
+            else:
+                self.player_cast_nova()
+            return
+        mana_cost = self.nova_mana_cost()
+        if self.player.nova_timer > 0 or self.player.mana < mana_cost:
+            return
+
+        x, y = self._ambush_bell_target_point()
+        primary_damage = self.ambush_bell_base_damage()
+        arm_time = self.ambush_bell_arm_time()
+        damage_radius = self.ambush_bell_damage_radius()
+        bell = AmbushBell(
+            x=x,
+            y=y,
+            lifetime=self.AMBUSH_BELL_LIFETIME,
+            arm_timer=arm_time,
+            lure_radius=self.AMBUSH_BELL_LURE_RADIUS,
+            trigger_radius=self.AMBUSH_BELL_TRIGGER_RADIUS,
+            damage_radius=damage_radius,
+            primary_damage=primary_damage,
+            splash_damage=max(5, int(primary_damage * 0.48)),
+            max_lifetime=self.AMBUSH_BELL_LIFETIME,
+            max_arm_timer=arm_time,
+        )
+
+        self.player.nova_timer = self.nova_cooldown()
+        self.player.mana -= mana_cost
+        self.set_player_action_visual("cast", 0.28)
+        self.set_player_status("smoke", self.ambush_bell_smoke_duration())
+        self.ambush_bells = [bell]
+        self.add_impact(
+            self.player.x,
+            self.player.y,
+            self.skill_color(),
+            ttl=0.30,
+            radius=0.36,
+            kind="cast",
+            archetype=self.player.class_name,
+        )
+        bell_color = self.damage_type_color("shadow")
+        self.add_impact(x, y, bell_color, ttl=0.30, radius=0.34, kind="ambush_bell")
+        self.add_light(x, y, 1.8, bell_color, intensity=0.75, ttl=0.42, kind="bell")
+        self.apply_story_blood_price("ambush")
+        self.floaters.append(
+            FloatingText("Ambush Bell", x, y - 0.42, self.skill_color(), ttl=0.9)
+        )
+        self.play_sfx("bell")
+
+    def update_ambush_bells(self, dt: float) -> None:
+        bells = getattr(self, "ambush_bells", [])
+        if not bells:
+            return
+        kept: list[AmbushBell] = []
+        for bell in bells:
+            if bell.triggered:
+                continue
+            if dt > 0.0:
+                bell.lifetime -= dt
+                if bell.arm_timer > 0.0:
+                    previous_arm = bell.arm_timer
+                    bell.arm_timer = max(0.0, bell.arm_timer - dt)
+                    if previous_arm > 0.0 and bell.arm_timer <= 0.0:
+                        self._announce_ambush_bell_armed(bell)
+            elif bell.arm_timer <= 0.0 and not bell.armed_announced:
+                self._announce_ambush_bell_armed(bell)
+
+            if bell.armed:
+                primary = self._ambush_bell_trigger_enemy(bell)
+                if primary is not None:
+                    self.detonate_ambush_bell(bell, primary)
+                    continue
+
+            if bell.lifetime <= 0.0:
+                self.detonate_ambush_bell(bell, None, expired=True)
+                continue
+            kept.append(bell)
+        self.ambush_bells = kept
+
+    def _announce_ambush_bell_armed(self, bell: AmbushBell) -> None:
+        if bell.armed_announced:
+            return
+        bell.armed_announced = True
+        color = self.damage_type_color("shadow")
+        self.add_impact(bell.x, bell.y, color, ttl=0.24, radius=0.28, kind="spark")
+        self.add_light(bell.x, bell.y, 1.45, color, intensity=0.55, ttl=0.30, kind="bell")
+
+    def _ambush_bell_trigger_enemy(self, bell: AmbushBell) -> Enemy | None:
+        best: Enemy | None = None
+        best_distance = float("inf")
+        for enemy in self.enemies:
+            if not enemy.alive:
+                continue
+            hit_radius = max(0.0, self.enemy_hit_radius(enemy) - ENEMY_HIT_RADIUS)
+            distance = math.hypot(enemy.x - bell.x, enemy.y - bell.y)
+            if distance <= bell.trigger_radius + hit_radius * 0.5 and distance < best_distance:
+                best = enemy
+                best_distance = distance
+        return best
+
+    def ambush_bell_lure_target(self, enemy: Enemy) -> AmbushBell | None:
+        bells = getattr(self, "ambush_bells", [])
+        if not bells or enemy.kind == "boss" or enemy.is_boss_encounter:
+            return None
+        best: AmbushBell | None = None
+        best_distance = float("inf")
+        for bell in bells:
+            if not bell.armed or bell.lifetime <= 0.0:
+                continue
+            distance = math.hypot(enemy.x - bell.x, enemy.y - bell.y)
+            if distance > bell.lure_radius or distance >= best_distance:
+                continue
+            if not self.dungeon.line_of_sight(enemy.x, enemy.y, bell.x, bell.y):
+                continue
+            best = bell
+            best_distance = distance
+        return best
+
+    def _enemy_facing_point(self, enemy: Enemy, x: float, y: float) -> bool:
+        dx = x - enemy.x
+        dy = y - enemy.y
+        distance = math.hypot(dx, dy)
+        if distance <= 0.001:
+            return True
+        return (enemy.facing_x * (dx / distance) + enemy.facing_y * (dy / distance)) > 0.48
+
+    def _ambush_bell_primary_damage(self, bell: AmbushBell, enemy: Enemy) -> int:
+        damage = bell.primary_damage
+        facing_bell = self._enemy_facing_point(enemy, bell.x, bell.y)
+        if facing_bell:
+            damage = int(damage * 1.18) + 2
+        if self.player.has_upgrade("rogue_precision"):
+            damage += 3
+        if self.player.has_upgrade("rogue_venom"):
+            damage += 2
+        if self.player.has_upgrade("rogue_executioner"):
+            damage += 5 if enemy.statuses.get("poisoned", 0.0) > 0 else 3
+        if self.player.has_upgrade("rogue_crimson_edge"):
+            damage = int(damage * 1.12)
+        if self.player.has_upgrade("rogue_deathmark"):
+            damage = int(damage * 1.20)
+
+        crit_chance = 0.0
+        crit_mult = 1.0
+        if self.player.has_upgrade("rogue_deathmark"):
+            crit_chance, crit_mult = 0.34, 2.15
+        elif self.player.has_upgrade("rogue_crimson_edge"):
+            crit_chance, crit_mult = 0.28, 2.0
+        elif self.player.has_upgrade("rogue_executioner"):
+            crit_chance, crit_mult = 0.22, 1.9
+        elif self.player.has_upgrade("rogue_venom"):
+            crit_chance, crit_mult = 0.16, 1.75
+        elif self.player.has_upgrade("rogue_precision"):
+            crit_chance, crit_mult = 0.10, 1.6
+        if facing_bell:
+            crit_chance += 0.12
+        if crit_chance > 0.0 and self.rng.random() < crit_chance:
+            damage = int(damage * crit_mult)
+            self.floaters.append(
+                FloatingText("Bell Crit", enemy.x, enemy.y - 0.48, (255, 225, 120))
+            )
+        return self.apply_story_player_damage(damage)
+
+    def _ambush_bell_targets(self, bell: AmbushBell, radius: float) -> list[Enemy]:
+        targets: list[tuple[float, Enemy]] = []
+        for enemy in self.enemies:
+            if not enemy.alive:
+                continue
+            hit_radius = max(0.0, self.enemy_hit_radius(enemy) - ENEMY_HIT_RADIUS)
+            distance = math.hypot(enemy.x - bell.x, enemy.y - bell.y)
+            if distance <= radius + hit_radius * 0.5:
+                targets.append((distance, enemy))
+        return [enemy for _distance, enemy in sorted(targets, key=lambda entry: entry[0])]
+
+    def detonate_ambush_bell(
+        self, bell: AmbushBell, primary: Enemy | None = None, expired: bool = False
+    ) -> None:
+        if bell.triggered:
+            return
+        bell.triggered = True
+        color = self.damage_type_color("shadow")
+        self.add_impact(
+            bell.x,
+            bell.y,
+            color,
+            ttl=0.44 if not expired else 0.34,
+            radius=bell.damage_radius,
+            kind="ambush_bell",
+        )
+        self.add_light(
+            bell.x,
+            bell.y,
+            2.8 if not expired else 2.0,
+            color,
+            intensity=0.85 if not expired else 0.55,
+            ttl=0.42,
+            kind="bell",
+        )
+        self.set_player_status("smoke", self.ambush_bell_smoke_duration())
+
+        status_effect, status_duration = self._ambush_bell_status()
+        radius = bell.damage_radius if not expired else bell.damage_radius * 0.82
+        targets = self._ambush_bell_targets(bell, radius)
+        hits = 0
+        if primary is not None and primary.alive:
+            if primary not in targets:
+                targets.insert(0, primary)
+            direction = (primary.x - bell.x, primary.y - bell.y)
+            self.damage_enemy(
+                primary,
+                self._ambush_bell_primary_damage(bell, primary),
+                knockback_from=direction,
+                damage_type="physical",
+                status_effect=status_effect,
+                status_duration=status_duration,
+            )
+            hits += 1
+
+        for enemy in targets:
+            if enemy is primary or not enemy.alive:
+                continue
+            direction = (enemy.x - bell.x, enemy.y - bell.y)
+            damage = bell.splash_damage
+            if expired:
+                damage = max(3, int(damage * 0.55))
+            damage = self.apply_story_player_damage(damage)
+            self.damage_enemy(
+                enemy,
+                damage,
+                knockback_from=direction,
+                damage_type="physical",
+                status_effect=status_effect,
+                status_duration=status_duration * (0.75 if enemy is not primary else 1.0),
+            )
+            hits += 1
+
+        label = "Bell Puff" if expired and hits == 0 else f"Ambush Bell x{hits}"
+        self.floaters.append(
+            FloatingText(label, bell.x, bell.y - 0.5, self.skill_color(), ttl=0.85)
+        )
+        self.play_sfx("bell")
 
     # ------------------------------------------------------------------
     # Milestone 3.15 — Spirit Call / familiar (summon) system.

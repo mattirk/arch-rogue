@@ -1,5 +1,29 @@
 # Changelog
 
+## 3.17.0 — Rogue Ambush Bell
+
+The Rogue's slot-3 action is now **Ambush Bell**: a single active cursed lure trap that plants at the aimed floor point, arms after a short delay, pulls nearby non-boss enemies toward its kill zone, then snaps shut in a focused shadow-dagger burst. It reuses the old nova-slot mana/cooldown budget for action-bar balance while preserving Acolyte Spirit Call and other classes' nova-style slot-3 actions.
+
+### Added
+- `AmbushBell` transient runtime model with plant position, arm/lifetime timers, lure/trigger/damage radii, damage payloads, owner/archetype fields, and triggered/armed state.
+- Rogue-only `player_cast_ambush_bell()`, `update_ambush_bells()`, and `detonate_ambush_bell()` combat flow with one-active-bell replacement, cast/detonation smoke, expiry splash/puff behavior, lure movement bias, physical primary/splash damage through `damage_enemy()`, poison hooks for `rogue_venom` / trap-branch upgrades, and crit/backstab scaling for Precision upgrades.
+- Depth-sorted Ambush Bell rendering, a distinct shadow-dagger detonation impact, a bell HUD glyph, a subtle lured-enemy marker, and a procedural bell SFX.
+- `tests/test_3_17_ambush_bell.py` covering Rogue slot-3 dispatch, mana/cooldown spend, single-bell replacement, arming delay, trigger detonation, venom status, expiry splash, lure movement, lifecycle clearing, no save persistence, and Acolyte/non-Rogue regressions.
+
+### Changed
+- Slot-3 dispatch is centralized through `player_cast_slot_3()` / `slot_3_skill_kind()` so archetype-specific actions no longer require duplicating Rogue/Acolyte/Nova branches across keyboard and controller paths.
+- Rogue slot-3 labels now read `Ambush Bell` in combat HUD and character/class previews; controls describe the key as the class-specific slot-3 skill.
+- Legacy `Nova` equipment bonuses still apply to the slot-3 budget for save compatibility, while new `Ambush Bell` wording is recognized for Rogue-specific future items.
+- Active bells clear on floor descent, run reset, victory/death cleanup, and save restore/load boundaries; bell state is intentionally not serialized.
+- Package metadata, `__version__`, save `release`, and version-current tests now target `3.17.0`. Save schema `version` remains `5` because bell state is transient.
+
+### Validation
+- `python -m unittest tests.test_3_17_ambush_bell` passes (6 tests).
+- `python -m unittest tests.test_3_15_summons tests.test_hud_action_bar tests.test_save_and_metadata tests.test_archetypes_options_and_difficulty tests.test_3_9_input_accessibility` passes (34 tests).
+- `python -m unittest tests.test_3_16_lighting_overhaul tests.test_world_rendering_and_animation tests.test_story_mode` passes (26 tests).
+- `python -m unittest discover tests` passes (142 tests).
+- `python -m compileall src tests` passes.
+
 ## 3.16.2 — Dark-Level Scheduling Tuning
 
 Dark/no-memory floors now appear only from depth 5 onward, with each eligible floor rolling a flat 50% chance to be dark. Early floors 1-4 are always light floors with fog-of-war tile memory, giving runs a longer readable opening before lantern-only exploration can begin.

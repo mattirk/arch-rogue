@@ -40,6 +40,7 @@ from ..constants import (
 )
 from ..content import HUMANOID_ENEMY_NAMES
 from ..models import (
+    AmbushBell,
     Color,
     Enemy,
     Familiar,
@@ -1296,6 +1297,9 @@ class RenderingWorldMixin:
         for trap in self.traps:
             if visible(trap.x, trap.y, 0.20):
                 drawables.append((trap.x + trap.y - 0.02, "trap", trap))
+        for bell in getattr(self, "ambush_bells", []):
+            if visible(bell.x, bell.y, 0.55):
+                drawables.append((bell.x + bell.y - 0.03, "ambush_bell", bell))
         for shrine in self.shrines:
             if visible(shrine.x, shrine.y, 0.55):
                 drawables.append((shrine.x + shrine.y, "shrine", shrine))
@@ -1355,6 +1359,8 @@ class RenderingWorldMixin:
                 self.draw_item(cast(Item, obj))
             elif kind == "trap":
                 self.draw_trap(cast(Trap, obj))
+            elif kind == "ambush_bell":
+                self.draw_ambush_bell(cast(AmbushBell, obj))
             elif kind == "shrine":
                 self.draw_shrine(cast(Shrine, obj))
             elif kind == "secret":

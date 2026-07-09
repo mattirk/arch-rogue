@@ -48,7 +48,7 @@ BUTTON_NAMES: dict[int, str] = {
 COMMAND_LABELS: dict[str, str] = {
     Command.ABILITY_1: "Melee (key 1)",
     Command.ABILITY_2: "Bolt (key 2)",
-    Command.ABILITY_3: "Nova (key 3)",
+    Command.ABILITY_3: "Slot 3 skill (key 3)",
     Command.ABILITY_4: "Dash (key 4)",
     Command.ABILITY_5: "Potion (key 5)",
     Command.ABILITY_6: "Mana potion (key 6)",
@@ -68,7 +68,7 @@ KEYBOARD_ROWS: list[MenuRow] = [
     ("Mouse / Arrows", "Aim", ""),
     ("1", "Melee", ""),
     ("2", "Bolt", ""),
-    ("3", "Nova", ""),
+    ("3", "Slot 3 class skill", ""),
     ("4", "Dash", ""),
     ("5", "Potion", ""),
     ("6", "Mana potion", ""),

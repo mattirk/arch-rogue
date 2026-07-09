@@ -464,6 +464,31 @@ class Trap:
 
 
 @dataclass
+class AmbushBell:
+    """Rogue Ambush Bell runtime trap (transient, not saved)."""
+
+    x: float
+    y: float
+    lifetime: float
+    arm_timer: float
+    lure_radius: float
+    trigger_radius: float
+    damage_radius: float
+    primary_damage: int
+    splash_damage: int
+    owner: str = "player"
+    archetype: str = "Rogue"
+    max_lifetime: float = 0.0
+    max_arm_timer: float = 0.0
+    triggered: bool = False
+    armed_announced: bool = False
+
+    @property
+    def armed(self) -> bool:
+        return self.arm_timer <= 0.0 and not self.triggered
+
+
+@dataclass
 class Shrine:
     x: float
     y: float

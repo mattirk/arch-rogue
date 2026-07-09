@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.16.2"
-description = "3.16.2 tunes dark-level scheduling so lantern-only floors appear only from depth 5 onward, with a flat 50% chance on eligible depths."
+version = "3.17.0"
+description = "3.17.0 replaces the Rogue slot-3 Smoke Burst with Ambush Bell, a cursed lure trap for positioning, poison setup, and backstab burst."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

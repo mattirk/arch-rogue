@@ -1330,10 +1330,7 @@ class InputMixin:
             return True
         if cmd == Command.ABILITY_3:
             self._sync_controller_action_aim()
-            if self.player.class_name == "Acolyte":
-                self.player_cast_spirit_call()
-            else:
-                self.player_cast_nova()
+            self.player_cast_slot_3()
             return True
         if cmd == Command.ABILITY_4:
             self._sync_controller_action_aim()

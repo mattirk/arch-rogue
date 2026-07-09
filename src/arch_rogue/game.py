@@ -92,6 +92,7 @@ from .interactions import InteractionMixin
 from .inventory import InventoryMixin
 from .menus import MenuRenderer
 from .models import (
+    AmbushBell,
     Archetype,
     Color,
     Enemy,
@@ -147,6 +148,7 @@ __all__ = (
     "ARCHETYPES",
     "ARMOR_DEFINITIONS",
     "ActiveQuestCutscene",
+    "AmbushBell",
     "Archetype",
     "AudioSystem",
     "BOSS_DEFINITIONS",
@@ -358,6 +360,9 @@ class Game(
         # Milestone 3.15 — Acolyte Spirit Call familiars. Reset on restart /
         # floor descent and serialized additively (old saves load with none).
         self.familiars: list[Familiar] = []
+        # Milestone 3.17 — Rogue Ambush Bell runtime traps are transient and are
+        # intentionally never serialized.
+        self.ambush_bells: list[AmbushBell] = []
         self.light_sources: list[LightSource] = []
         self.lights: list[LightSource] = []
         self.story_intro_pending = False
@@ -762,10 +767,7 @@ class Game(
                         self.player_cast_bolt()
                     elif index == 2:
                         self.update_player_aim()
-                        if self.player.class_name == "Acolyte":
-                            self.player_cast_spirit_call()
-                        else:
-                            self.player_cast_nova()
+                        self.player_cast_slot_3()
                     elif index == 3:
                         self.update_player_aim()
                         self.player_dash()
@@ -864,7 +866,9 @@ class Game(
         self.update_camera(dt)
         self.update_revealed_tiles()
         self.update_enemy_statuses(dt)
+        self.update_ambush_bells(dt)
         self.update_enemies(dt)
+        self.update_ambush_bells(0.0)
         self.update_familiars(dt)
         self.update_projectiles(dt)
         self.update_traps(dt)
@@ -876,6 +880,7 @@ class Game(
         if self.player.hp <= 0 and self.state == "playing":
             if not self.run_stats.cause_of_death:
                 self.run_stats.cause_of_death = "unknown dungeon violence"
+            self.ambush_bells = []
             self.finalize_run("death")
             self.state = "dead"
             self.audio.stop_music()

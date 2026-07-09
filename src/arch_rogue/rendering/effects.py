@@ -31,6 +31,7 @@ import pygame
 from ..constants import DUNGEON_DEPTH, TILE_H, TILE_W, WORLD_SCALE, SlashEffect
 from ..content import HUMANOID_ENEMY_NAMES
 from ..models import (
+    AmbushBell,
     Color,
     Enemy,
     Familiar,
@@ -185,6 +186,58 @@ class RenderingEffectsMixin:
                     (center[0] - length, center[1] + y_offset),
                     (center[0] + length // 2, center[1] + y_offset // 2),
                     max(1, WORLD_SCALE),
+                )
+        elif effect.kind == "ambush_bell":
+            snap_radius = max(3, int(radius * (0.30 + progress * 0.55)))
+            smoke = self.mix(dark, (38, 30, 45), 0.55)
+            pygame.draw.circle(overlay, (*smoke, int(alpha * 0.42)), center, snap_radius)
+            pygame.draw.circle(
+                overlay,
+                (*bright, int(alpha * 0.32)),
+                center,
+                max(2, int(snap_radius * 0.55)),
+                max(1, WORLD_SCALE),
+            )
+            for index in range(8):
+                angle = index * math.tau / 8 + progress * 0.7
+                inner = snap_radius * (0.20 + progress * 0.12)
+                outer = snap_radius * (0.92 + progress * 0.35)
+                start = (
+                    center[0] + int(math.cos(angle) * inner),
+                    center[1] + int(math.sin(angle) * inner * 0.55),
+                )
+                tip = (
+                    center[0] + int(math.cos(angle) * outer),
+                    center[1] + int(math.sin(angle) * outer * 0.55),
+                )
+                pygame.draw.line(overlay, (*bright, alpha), start, tip, max(1, WORLD_SCALE))
+                side = angle + math.pi * 0.5
+                barb = max(2, int(radius * 0.08))
+                left = (
+                    tip[0] - int(math.cos(angle) * barb) + int(math.cos(side) * barb * 0.45),
+                    tip[1]
+                    - int(math.sin(angle) * barb * 0.55)
+                    + int(math.sin(side) * barb * 0.25),
+                )
+                right = (
+                    tip[0] - int(math.cos(angle) * barb) - int(math.cos(side) * barb * 0.45),
+                    tip[1]
+                    - int(math.sin(angle) * barb * 0.55)
+                    - int(math.sin(side) * barb * 0.25),
+                )
+                pygame.draw.polygon(overlay, (*self.shade(bright, 35), alpha), [tip, left, right])
+            for index in range(5):
+                angle = index * math.tau / 5 - progress * 1.3
+                dist = snap_radius * (0.55 + progress * 0.55)
+                puff = (
+                    center[0] + int(math.cos(angle) * dist),
+                    center[1] + int(math.sin(angle) * dist * 0.55) - int(progress * 8),
+                )
+                pygame.draw.circle(
+                    overlay,
+                    (*smoke, int(alpha * (0.24 - progress * 0.14))),
+                    puff,
+                    max(2, radius // 9),
                 )
         else:
             pygame.draw.circle(
@@ -1202,6 +1255,78 @@ class RenderingEffectsMixin:
         if math.hypot(trap.x - self.player.x, trap.y - self.player.y) < 1.35:
             label = self.small_font.render(f"! {trap.kind}", True, color)
             self.screen.blit(label, label.get_rect(center=(sx, sy - 24 * WORLD_SCALE)))
+
+    def draw_ambush_bell(self, bell: AmbushBell) -> None:
+        sx, sy = self.world_to_screen(bell.x, bell.y)
+        color = self.damage_type_color("shadow")
+        armed = bell.armed
+        pulse = 0.5 + 0.5 * math.sin(self.elapsed * (8.0 if armed else 5.2) + bell.x)
+        self.draw_shadow(bell.x, bell.y, 24, 9)
+
+        ring_w = int((42 + pulse * (14 if armed else 7)) * WORLD_SCALE)
+        ring_h = int((20 + pulse * (7 if armed else 4)) * WORLD_SCALE)
+        ring = pygame.Surface((max(4, ring_w), max(4, ring_h)), pygame.SRCALPHA)
+        ring_alpha = int(44 + pulse * (64 if armed else 34))
+        pygame.draw.ellipse(ring, (*color, ring_alpha), ring.get_rect(), max(1, WORLD_SCALE))
+        if armed:
+            inner = ring.get_rect().inflate(-ring.get_width() // 3, -ring.get_height() // 3)
+            pygame.draw.ellipse(ring, (*self.shade(color, 48), 36), inner, max(1, WORLD_SCALE))
+        self.screen.blit(ring, ring.get_rect(center=(sx, sy + 2 * WORLD_SCALE)))
+
+        if not armed and bell.max_arm_timer > 0.001:
+            progress = 1.0 - max(0.0, min(1.0, bell.arm_timer / bell.max_arm_timer))
+            arc_rect = pygame.Rect(0, 0, 30 * WORLD_SCALE, 17 * WORLD_SCALE)
+            arc_rect.center = (sx, sy - 2 * WORLD_SCALE)
+            pygame.draw.arc(
+                self.screen,
+                self.shade(color, 50),
+                arc_rect,
+                -math.pi / 2,
+                -math.pi / 2 + math.tau * progress,
+                max(1, WORLD_SCALE),
+            )
+        elif armed:
+            for index in range(3):
+                angle = self.elapsed * 3.8 + index * math.tau / 3 + bell.x
+                mote = (
+                    sx + int(math.cos(angle) * 15 * WORLD_SCALE),
+                    sy - int((8 + math.sin(angle) * 4) * WORLD_SCALE),
+                )
+                pygame.draw.circle(
+                    self.screen,
+                    self.shade(color, 60),
+                    mote,
+                    max(1, WORLD_SCALE),
+                )
+
+        body_w = max(6, 8 * WORLD_SCALE)
+        body_h = max(5, 7 * WORLD_SCALE)
+        body = pygame.Rect(0, 0, body_w, body_h)
+        body.midbottom = (sx, sy - 1 * WORLD_SCALE)
+        pygame.draw.ellipse(self.screen, (24, 20, 28), body.inflate(2 * WORLD_SCALE, 0))
+        pygame.draw.ellipse(self.screen, self.shade(color, -48), body)
+        pygame.draw.arc(
+            self.screen,
+            self.shade(color, 42),
+            body.inflate(2 * WORLD_SCALE, 2 * WORLD_SCALE),
+            math.pi,
+            math.tau,
+            max(1, WORLD_SCALE),
+        )
+        crack_x = sx + int(math.sin(self.elapsed * 8.0) * WORLD_SCALE)
+        pygame.draw.line(
+            self.screen,
+            self.shade(color, 80),
+            (crack_x, body.top + WORLD_SCALE),
+            (crack_x - 2 * WORLD_SCALE, body.centery),
+            max(1, WORLD_SCALE),
+        )
+        pygame.draw.circle(
+            self.screen,
+            self.shade(color, 55),
+            (sx, body.bottom),
+            max(1, WORLD_SCALE),
+        )
 
     def draw_secret(self, secret: SecretCache) -> None:
         sx, sy = self.world_to_screen(secret.x, secret.y)

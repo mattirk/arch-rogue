@@ -132,6 +132,13 @@ class RenderingHudMixin:
     def hud_action_slots(self) -> list[dict[str, object]]:
         melee_name, bolt_name, nova_name, dash_name = self.skill_names()
         class_color = self.skill_color()
+        slot_3_kind = self.slot_3_skill_kind()
+        slot_3_icon = "ambush_bell" if slot_3_kind == "ambush_bell" else "nova"
+        slot_3_color = (
+            self.mix((214, 92, 150), class_color, 0.34)
+            if slot_3_kind == "ambush_bell"
+            else self.mix((185, 125, 255), class_color, 0.24)
+        )
         return [
             {
                 "kind": "melee",
@@ -158,8 +165,8 @@ class RenderingHudMixin:
                 "color": self.mix((96, 190, 255), class_color, 0.24),
             },
             {
-                "kind": "nova",
-                "icon": "nova",
+                "kind": slot_3_kind,
+                "icon": slot_3_icon,
                 "hotkey": "3",
                 "label": nova_name,
                 "timer": self.player.nova_timer,
@@ -167,7 +174,7 @@ class RenderingHudMixin:
                 "cost": self.nova_mana_cost(),
                 "resource": self.player.mana,
                 "resource_name": "MP",
-                "color": self.mix((185, 125, 255), class_color, 0.24),
+                "color": slot_3_color,
             },
             {
                 "kind": "dash",
@@ -510,6 +517,39 @@ class RenderingHudMixin:
                     (
                         cx + int(math.cos(angle) * radius * 1.55),
                         cy + int(math.sin(angle) * radius * 1.55),
+                    ),
+                    max(1, self.ui(1)),
+                )
+        elif icon == "ambush_bell":
+            radius = max(5, min(rect.width, rect.height) // 3)
+            bell_rect = pygame.Rect(0, 0, radius + self.ui(7), radius)
+            bell_rect.center = (cx, cy + self.ui(1))
+            pygame.draw.ellipse(self.screen, (24, 22, 28), bell_rect.inflate(line_w, line_w))
+            pygame.draw.ellipse(self.screen, color, bell_rect, line_w)
+            pygame.draw.arc(
+                self.screen,
+                self.shade(color, 40),
+                bell_rect.inflate(self.ui(5), self.ui(5)),
+                math.pi,
+                math.tau,
+                line_w,
+            )
+            pygame.draw.line(
+                self.screen,
+                self.shade(color, 50),
+                (cx + self.ui(1), bell_rect.top + self.ui(2)),
+                (cx - self.ui(2), bell_rect.centery),
+                max(1, self.ui(1)),
+            )
+            pygame.draw.circle(self.screen, self.shade(color, 48), (cx, bell_rect.bottom), max(2, self.ui(2)))
+            for angle in (-0.75, 0.0, 0.75):
+                pygame.draw.line(
+                    self.screen,
+                    self.shade(color, 28),
+                    (cx, cy),
+                    (
+                        cx + int(math.sin(angle) * radius * 1.25),
+                        cy - int(math.cos(angle) * radius * 0.85),
                     ),
                     max(1, self.ui(1)),
                 )

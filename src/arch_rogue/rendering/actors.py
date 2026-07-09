@@ -730,6 +730,24 @@ class RenderingActorMixin:
                     (start_x + index * pip_spacing, pip_y),
                     max(2, 3 * WORLD_SCALE),
                 )
+        if enemy.telegraph == "lured":
+            lure_color = self.damage_type_color("shadow")
+            pulse = 0.5 + 0.5 * math.sin(self.elapsed * 10.0 + enemy.x)
+            marker_y = sy - (30 if big_boss else 22) * WORLD_SCALE
+            pygame.draw.circle(
+                self.screen,
+                (*lure_color, int(80 + pulse * 80)),
+                (sx, marker_y),
+                max(3, int((3 + pulse * 2) * WORLD_SCALE)),
+                max(1, WORLD_SCALE),
+            )
+            pygame.draw.line(
+                self.screen,
+                self.shade(lure_color, 45),
+                (sx - 4 * WORLD_SCALE, marker_y - 2 * WORLD_SCALE),
+                (sx + 4 * WORLD_SCALE, marker_y - 2 * WORLD_SCALE),
+                max(1, WORLD_SCALE),
+            )
         if enemy.elite_modifier or enemy.kind == "miniboss":
             pulse = 0.5 + 0.5 * math.sin(self.elapsed * 5.2)
             marker_w = (96 if big_boss else 46) * WORLD_SCALE

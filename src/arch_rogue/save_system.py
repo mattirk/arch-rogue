@@ -603,6 +603,9 @@ class SaveLoadMixin:
         self.familiars = [
             self.familiar_from_dict(familiar) for familiar in data.get("familiars", [])
         ]
+        # Ambush Bell traps are floor-local transient runtime actors; saves load
+        # with none, even if a future/newer save file happens to contain them.
+        self.ambush_bells = []
         self.active_cutscene = ActiveQuestCutscene.from_dict(
             data.get("active_cutscene")
         )
