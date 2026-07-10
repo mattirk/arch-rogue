@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.19.5 — Harder Enemies Below Level 5
+
+The difficulty curve flattened out past depth 5, so the lower dungeon felt no more threatening than the upper floors. Enemy HP, damage, aggro, and per-room counts now ramp up more aggressively once you descend below level 5.
+
+### Tuned
+- `_apply_run_modifier` HP `depth_multiplier`: added `+ max(0, current_depth - 5) * 0.05` on top of the existing surface scaling, so deep floors add ~5% extra enemy HP per depth past 5 (e.g. depth 10 ≈ +25% over the old curve).
+- `_apply_run_modifier` damage: added `+ max(0, current_depth - 5)` flat damage per depth below level 5, stacking on the existing slow `depth - 4` ramp.
+- `_apply_run_modifier` aggro: added `+ max(0, current_depth - 5) * 0.25` so deep enemies notice the player from farther away.
+- `_populate_dungeon` per-room enemy count: depth ≥ 6 now adds +1 enemy, depth ≥ 8 adds +2 (previously only depth ≥ 7 added +1).
+
+### Unchanged
+- Difficulty profile, run modifier, and story-pressure multipliers still apply on top of the new depth scaling.
+- Boss HP/damage scaling, trap damage, and elite/miniboss chances are untouched.
+
 ## 3.19.4 — Slower, More Rewarding Leveling
 
 Characters were leveling up too quickly, which diluted the payoff of each level-up and made mastery tokens feel cheap. The XP curve is steepened so each level is a genuine milestone.

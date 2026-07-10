@@ -88,7 +88,9 @@ class PopulationMixin:
             count = self.rng.randrange(1, 4)
             if self.current_depth <= 2:
                 count = max(1, count - 1)
-            elif self.current_depth >= 7:
+            elif self.current_depth >= 8:
+                count += 2
+            elif self.current_depth >= 6:
                 count += 1
             if enemy_pressure > 0 and self.rng.random() < enemy_pressure:
                 count += 1
@@ -518,6 +520,9 @@ class PopulationMixin:
     def _apply_run_modifier(self, enemy: Enemy) -> Enemy:
         difficulty = self.difficulty_profile()
         depth_multiplier = 1.0 + max(0, self.current_depth - 1) * 0.045
+        # Below level 5 the dungeon steepens: each depth past 5 adds an extra
+        # 5% HP on top of the gentle surface scaling so deep floors hit harder.
+        depth_multiplier += max(0, self.current_depth - 5) * 0.05
         story_pressure = self.story_effect_value("enemy_pressure", -0.25, 0.35)
         story_multiplier = 1.0 + max(-0.12, min(0.22, story_pressure * 0.55))
         if enemy.kind == "boss":
@@ -535,6 +540,9 @@ class PopulationMixin:
         enemy.hp = enemy.max_hp
         damage = enemy.damage + self.run_modifier.enemy_damage_bonus
         damage += max(0, self.current_depth - 4) // 2
+        # Below level 5 enemies hit noticeably harder: +1 damage per depth
+        # past 5, on top of the slow depth-4 ramp.
+        damage += max(0, self.current_depth - 5)
         if story_pressure > 0:
             damage += int(story_pressure * 8)
         if enemy.kind == "boss":
@@ -553,6 +561,7 @@ class PopulationMixin:
             self.run_modifier.enemy_aggro_bonus
             + max(0.0, story_pressure)
             + difficulty.enemy_aggro_bonus
+            + max(0, self.current_depth - 5) * 0.25
         )
         return enemy
 
