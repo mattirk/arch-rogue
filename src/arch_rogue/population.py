@@ -818,10 +818,13 @@ class PopulationMixin:
         loot_bonus = self.run_modifier.loot_bonus + self.story_effect_value(
             "loot_bonus", 0.0, 0.25
         )
-        if roll > 0.985 - loot_bonus * 0.5:
+        # Legendary and unique drops are deliberately scarce: a tiny base window
+        # plus a dampened loot_bonus so treasure buffs nudge the odds upward
+        # without flooding runs with build-defining gear.
+        if roll > 0.996 - loot_bonus * 0.20:
             slot = "weapon" if self.rng.random() < 0.58 else "armor"
             return self._make_equipment(slot, "Legendary", x, y)
-        if roll > 0.96 - loot_bonus:
+        if roll > 0.988 - loot_bonus * 0.35:
             return self._make_unique(x, y)
         slot = "weapon" if roll < 0.70 else "armor"
         rarity = "Rare" if self.rng.random() < 0.34 else "Magic"

@@ -98,8 +98,8 @@ RARITY_PROFILES: dict[str, RarityProfile] = {
     "Common": RarityProfile((215, 210, 190), "·", 100),
     "Magic": RarityProfile((115, 175, 255), "✦", 52),
     "Rare": RarityProfile((245, 215, 90), "◆", 26),
-    "Unique": RarityProfile((240, 145, 65), "✹", 4),
-    "Legendary": RarityProfile((255, 112, 82), "✷", 2),
+    "Unique": RarityProfile((240, 145, 65), "✹", 2),
+    "Legendary": RarityProfile((255, 112, 82), "✷", 1),
     "Cursed": RarityProfile((214, 92, 150), "!", 10),
     "Unidentified": RarityProfile((170, 170, 185), "?", 18),
 }

@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.19.3 — Rarer Legendary & Unique Drops
+
+Legendary and unique items were dropping far too often, diluting the excitement of finding build-defining gear. The loot-roll thresholds in `PopulationMixin._make_loot` are tightened and the `loot_bonus` influence is dampened so treasure buffs still help without flooding runs.
+
+### Tuned
+- Base legendary drop window: `roll > 0.985` → `roll > 0.996` (roughly 1.5% → 0.4% of all loot).
+- Base unique drop window: `roll > 0.96` → `roll > 0.988` (roughly 2.5% → 0.8% of all loot).
+- `loot_bonus` multiplier for legendary: `×0.5` → `×0.20`; for unique: `×1.0` → `×0.35`, so high loot-bonus floors no longer make rare drops commonplace.
+- `RARITY_PROFILES` descriptive weights lowered for `Unique` (4 → 2) and `Legendary` (2 → 1) to reflect their new scarcity.
+
+### Unchanged
+- Boss-kill unique drops (`CombatMixin.kill_enemy` → `_make_unique`) still guarantee a unique gate relic.
+- Affix counts, roll ranges, cursed-bargain logic, and equipment power are untouched.
+
 ## 3.19.2 — Skill Points → Mastery Tokens
 
 For consistency with the Disciplines rename, the class-progression currency **skill points** is renamed to **mastery tokens** throughout the codebase, UI, and docs. The player spends mastery tokens to acquire Disciplines.

@@ -1,6 +1,6 @@
 [project]
 name = "arch-rogue"
-version = "3.19.2"
+version = "3.19.3"
 description = "3.19.0 renames the 'slot 3 skill' concept to 'class skill' throughout the codebase. The shared budget (mana cost, cooldown, timer) is renamed from nova_* to class_skill_*, and the dispatch is data-driven via a class-skill registry. Nova-specific implementation (player_cast_nova, nova_damage_type) is preserved as one class-skill variant."
 readme = "README.md"
 requires-python = ">=3.11"
