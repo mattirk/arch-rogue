@@ -842,9 +842,10 @@ class Player:
     melee_timer: float = 0.0
     bolt_timer: float = 0.0
     dash_timer: float = 0.0
-    nova_timer: float = 0.0
-    # Milestone 3.18 — Warden's Time Skip slot-3 skill: while > 0, enemy
-    # movement and attack cadence run at ``time_skip_factor`` speed.
+    # Shared cooldown timer for the archetype-specific class skill (hotkey 3).
+    class_skill_timer: float = 0.0
+    # Warden's Time Skip: while > 0, enemy movement and attack cadence run
+    # at ``time_skip_factor`` speed.
     time_skip_timer: float = 0.0
     inventory: list[Item] = field(default_factory=list)
     equipment: dict[str, Item | None] = field(

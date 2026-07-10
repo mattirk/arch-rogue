@@ -72,37 +72,37 @@ class AmbushBell317Tests(unittest.TestCase):
         game.traps = []
         return game
 
-    def test_rogue_slot_3_dispatch_spends_budget_and_replaces_one_bell(self) -> None:
+    def test_rogue_class_skill_dispatch_spends_budget_and_replaces_one_bell(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=1)
             self.assertEqual(game.skill_names()[2], "Ambush Bell")
-            self.assertEqual(game.slot_3_skill_kind(), "ambush_bell")
+            self.assertEqual(game.class_skill_kind(), "ambush_bell")
             slots = game.hud_action_slots()
             self.assertEqual(slots[2]["kind"], "ambush_bell")
             self.assertEqual(slots[2]["label"], "Ambush Bell")
-            self.assertEqual(slots[2]["cost"], game.nova_mana_cost())
-            self.assertEqual(slots[2]["cooldown"], game.nova_cooldown())
+            self.assertEqual(slots[2]["cost"], game.class_skill_mana_cost())
+            self.assertEqual(slots[2]["cooldown"], game.class_skill_cooldown())
 
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player.facing_x = 1.0
             game.player.facing_y = 0.0
             before_mana = game.player.mana
-            game.player_cast_slot_3()
+            game.player_cast_class_skill()
 
             self.assertEqual(len(game.ambush_bells), 1)
             first = game.ambush_bells[0]
             self.assertIsInstance(first, AmbushBell)
             self.assertLess(game.player.mana, before_mana)
-            self.assertGreater(game.player.nova_timer, 0.0)
+            self.assertGreater(game.player.class_skill_timer, 0.0)
             self.assertGreater(game.player_status("smoke"), 0.0)
             self.assertNotIn("ambush_bells", game.serialize_run_state())
 
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player.facing_x = 0.0
             game.player.facing_y = 1.0
-            game.player_cast_slot_3()
+            game.player_cast_class_skill()
             self.assertEqual(len(game.ambush_bells), 1)
             replacement = game.ambush_bells[0]
             self.assertIsNot(replacement, first)
@@ -112,7 +112,7 @@ class AmbushBell317Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=1)
             game.player.skill_upgrades.append("rogue_venom")
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player.facing_x = 1.0
             game.player.facing_y = 0.0
@@ -133,7 +133,7 @@ class AmbushBell317Tests(unittest.TestCase):
     def test_expiry_splashes_nearby_enemy_without_trigger_radius(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=1)
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player.facing_x = 1.0
             game.player.facing_y = 0.0
@@ -219,7 +219,7 @@ class AmbushBell317Tests(unittest.TestCase):
             self.assertGreater(upgraded.primary_snare_duration, 0.0)
             self.assertGreater(upgraded.splash_snare_duration, 0.0)
 
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player.facing_x = 1.0
             game.player.facing_y = 0.0
@@ -258,14 +258,14 @@ class AmbushBell317Tests(unittest.TestCase):
             self.assertGreater(tuning.kill_cooldown_floor, 0.0)
             self.assertGreater(tuning.kill_mana_refund, 0)
 
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player.facing_x = 1.0
             game.player.facing_y = 0.0
             game.player_cast_ambush_bell()
             bell = game.ambush_bells[0]
             spent_mana = game.player.mana
-            full_cooldown = game.player.nova_timer
+            full_cooldown = game.player.class_skill_timer
             bell.arm_timer = 0.0
             bell.armed_announced = True
             game.enemies = [_make_enemy(bell.x, bell.y, hp=1)]
@@ -273,29 +273,29 @@ class AmbushBell317Tests(unittest.TestCase):
             game.update_ambush_bells(0.0)
 
             self.assertEqual(game.ambush_bells, [])
-            self.assertLess(game.player.nova_timer, full_cooldown)
-            self.assertLessEqual(game.player.nova_timer, bell.kill_cooldown_floor)
+            self.assertLess(game.player.class_skill_timer, full_cooldown)
+            self.assertLessEqual(game.player.class_skill_timer, bell.kill_cooldown_floor)
             self.assertGreater(game.player.mana, spent_mana)
-            self.assertLess(game.player.nova_timer, game.nova_cooldown())
+            self.assertLess(game.player.class_skill_timer, game.class_skill_cooldown())
 
-    def test_acolyte_and_other_classes_keep_their_slot_3_actions(self) -> None:
+    def test_acolyte_and_other_classes_keep_their_class_skills(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             acolyte = self.make_game(tmpdir, archetype_index=3)
-            self.assertEqual(acolyte.slot_3_skill_kind(), "spirit_call")
-            acolyte.player.nova_timer = 0.0
+            self.assertEqual(acolyte.class_skill_kind(), "spirit_call")
+            acolyte.player.class_skill_timer = 0.0
             acolyte.player.mana = acolyte.player.max_mana
-            acolyte.player_cast_slot_3()
+            acolyte.player_cast_class_skill()
             self.assertEqual(len(acolyte.familiars), 1)
             self.assertEqual(getattr(acolyte, "ambush_bells", []), [])
 
         with tempfile.TemporaryDirectory() as tmpdir:
             arcanist = self.make_game(tmpdir, archetype_index=2)
-            self.assertEqual(arcanist.slot_3_skill_kind(), "nova")
+            self.assertEqual(arcanist.class_skill_kind(), "nova")
             enemy = _make_enemy(arcanist.player.x + 1.0, arcanist.player.y, hp=220)
             arcanist.enemies = [enemy]
-            arcanist.player.nova_timer = 0.0
+            arcanist.player.class_skill_timer = 0.0
             arcanist.player.mana = arcanist.player.max_mana
-            arcanist.player_cast_slot_3()
+            arcanist.player_cast_class_skill()
             self.assertEqual(getattr(arcanist, "ambush_bells", []), [])
             self.assertEqual(arcanist.familiars, [])
             self.assertLess(enemy.hp, enemy.max_hp)
@@ -303,7 +303,7 @@ class AmbushBell317Tests(unittest.TestCase):
     def test_floor_descent_death_and_restore_clear_active_bells(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=1)
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player_cast_ambush_bell()
             self.assertEqual(len(game.ambush_bells), 1)
@@ -321,7 +321,7 @@ class AmbushBell317Tests(unittest.TestCase):
             game.descend_to_next_depth()
             self.assertEqual(game.ambush_bells, [])
 
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player_cast_ambush_bell()
             self.assertEqual(len(game.ambush_bells), 1)

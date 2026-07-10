@@ -47,7 +47,7 @@ class PublicReleaseMilestoneTests(unittest.TestCase):
                         armor.name,
                         game.melee_stamina_cost(),
                         game.bolt_mana_cost(),
-                        game.nova_mana_cost(),
+                        game.class_skill_mana_cost(),
                         game.dash_stamina_cost(),
                         game.dash_cooldown(),
                     )
@@ -85,7 +85,7 @@ class PublicReleaseMilestoneTests(unittest.TestCase):
                 self.assertTrue(game.save_run())
                 saved_run = json.loads(game.save_path.read_text(encoding="utf-8"))
                 self.assertEqual(saved_run["version"], 5)
-                self.assertEqual(saved_run["release"], "3.18.1")
+                self.assertEqual(saved_run["release"], "3.19.0")
                 self.assertEqual(saved_run["difficulty"], "Hard")
                 self.assertFalse(Path(f"{game.save_path}.tmp").exists())
             finally:

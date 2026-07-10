@@ -1330,7 +1330,7 @@ class InputMixin:
             return True
         if cmd == Command.ABILITY_3:
             self._sync_controller_action_aim()
-            self.player_cast_slot_3()
+            self.player_cast_class_skill()
             return True
         if cmd == Command.ABILITY_4:
             self._sync_controller_action_aim()

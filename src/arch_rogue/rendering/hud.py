@@ -61,7 +61,7 @@ class RenderingHudMixin:
         timers = (
             ("1", self.player.melee_timer, self.melee_cooldown(), (255, 226, 150)),
             ("2", self.player.bolt_timer, self.bolt_cooldown(), (96, 190, 255)),
-            ("3", self.player.nova_timer, self.nova_cooldown(), (185, 125, 255)),
+            ("3", self.player.class_skill_timer, self.class_skill_cooldown(), (185, 125, 255)),
             ("4", self.player.dash_timer, self.dash_cooldown(), (225, 184, 82)),
         )
         active = [entry for entry in timers if entry[1] > 0.001 and entry[2] > 0.001]
@@ -130,19 +130,19 @@ class RenderingHudMixin:
         return sum(1 for item in self.player.inventory if item.slot == slot)
 
     def hud_action_slots(self) -> list[dict[str, object]]:
-        melee_name, bolt_name, nova_name, dash_name = self.skill_names()
+        melee_name, bolt_name, class_skill_name, dash_name = self.skill_names()
         class_color = self.skill_color()
-        slot_3_kind = self.slot_3_skill_kind()
-        slot_3_icon = (
+        class_skill_kind = self.class_skill_kind()
+        class_skill_icon = (
             "ambush_bell"
-            if slot_3_kind == "ambush_bell"
-            else "time_skip" if slot_3_kind == "time_skip" else "nova"
+            if class_skill_kind == "ambush_bell"
+            else "time_skip" if class_skill_kind == "time_skip" else "nova"
         )
-        slot_3_color = (
+        class_skill_color = (
             self.mix((214, 92, 150), class_color, 0.34)
-            if slot_3_kind == "ambush_bell"
+            if class_skill_kind == "ambush_bell"
             else self.mix((235, 205, 120), class_color, 0.30)
-            if slot_3_kind == "time_skip"
+            if class_skill_kind == "time_skip"
             else self.mix((185, 125, 255), class_color, 0.24)
         )
         return [
@@ -171,16 +171,16 @@ class RenderingHudMixin:
                 "color": self.mix((96, 190, 255), class_color, 0.24),
             },
             {
-                "kind": slot_3_kind,
-                "icon": slot_3_icon,
+                "kind": class_skill_kind,
+                "icon": class_skill_icon,
                 "hotkey": "3",
-                "label": nova_name,
-                "timer": self.player.nova_timer,
-                "cooldown": self.nova_cooldown(),
-                "cost": self.nova_mana_cost(),
+                "label": class_skill_name,
+                "timer": self.player.class_skill_timer,
+                "cooldown": self.class_skill_cooldown(),
+                "cost": self.class_skill_mana_cost(),
                 "resource": self.player.mana,
                 "resource_name": "MP",
-                "color": slot_3_color,
+                "color": class_skill_color,
             },
             {
                 "kind": "dash",

@@ -220,7 +220,7 @@ class GraphicsAnimation21Tests(unittest.TestCase):
 
                 game.player.melee_timer = 0.0
                 game.player.bolt_timer = 0.0
-                game.player.nova_timer = 0.0
+                game.player.class_skill_timer = 0.0
                 game.player.dash_timer = 0.0
                 hud_bounds = pygame.Rect(320, 430, 280, 80)
                 game.draw_hud_cooldown_pips(hud_bounds)

@@ -664,11 +664,11 @@ class MenuCharacterMixin:
                     )
                     y += line_h
 
-        melee_name, bolt_name, nova_name, dash_name = self.g.skill_names()
+        melee_name, bolt_name, class_skill_name, dash_name = self.g.skill_names()
         skill_lines = [
             (f"1 {melee_name} · {self.g.melee_stamina_cost()} stamina", self.TEXT),
             (f"2 {bolt_name} · {self.g.bolt_mana_cost()} mana", self.TEXT),
-            (f"3 {nova_name} · {self.g.nova_mana_cost()} mana", self.TEXT),
+            (f"3 {class_skill_name} · {self.g.class_skill_mana_cost()} mana", self.TEXT),
             (f"4 {dash_name} · {self.g.dash_stamina_cost()} stamina", self.TEXT),
         ]
 

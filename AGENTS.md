@@ -214,5 +214,6 @@ branch, mirroring the 3.15 Acolyte Spirit retheme).
 ### Stash
 
 - Upgrade all graphics using https://www.pixellab.ai
-- Refactor "slot 3 skill" to "Class Skill" and remember to update all references. Design new abstractions if necessary to write clean, maintainable code.
+- ~~Refactor "slot 3 skill" to "class skill" and remember to update all references. Design new abstractions if necessary to write clean, maintainable code.~~ Done in 3.19.0: renamed to class-skill API with data-driven dispatch registry.
+- Refactor Skills in skill tree (not to be confused with action skills or class skills) into Disciplines. Skill paths are called Discipline Paths. Tiers 1-5 are called Degrees (Degree 1, Degree 2, etc.). Remember to update all references. 
 - Item rarity: legendary and unique items are way too common now -> make more rare

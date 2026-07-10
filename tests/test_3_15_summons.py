@@ -63,18 +63,18 @@ class Summons315Tests(unittest.TestCase):
         game.active_cutscene = None
         return game
 
-    # --- slot-3 swap is Acolyte-only ------------------------------------
+    # --- class-skill swap is Acolyte-only ------------------------------------
 
-    def test_acolyte_slot_3_is_spirit_call_others_keep_nova(self) -> None:
+    def test_acolyte_class_skill_is_spirit_call_others_keep_nova(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             acolyte = self.make_game(tmpdir, archetype_index=3)
             self.assertEqual(acolyte.skill_names()[2], "Spirit Call")
             slots = acolyte.hud_action_slots()
             self.assertEqual(slots[2]["hotkey"], "3")
             self.assertEqual(slots[2]["label"], "Spirit Call")
-            # Reuses the nova-slot cost/cooldown so the bar stays balanced.
-            self.assertEqual(slots[2]["cost"], acolyte.nova_mana_cost())
-            self.assertEqual(slots[2]["cooldown"], acolyte.nova_cooldown())
+            # Reuses the shared class-skill cost/cooldown so the bar stays balanced.
+            self.assertEqual(slots[2]["cost"], acolyte.class_skill_mana_cost())
+            self.assertEqual(slots[2]["cooldown"], acolyte.class_skill_cooldown())
         with tempfile.TemporaryDirectory() as tmpdir:
             others = self.make_game(tmpdir, archetype_index=2)  # Arcanist
             self.assertEqual(others.skill_names()[2], "Frost Nova")
@@ -85,7 +85,7 @@ class Summons315Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             self.assertEqual(game.familiars, [])
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player_cast_spirit_call()
             self.assertEqual(len(game.familiars), 1)
@@ -93,8 +93,8 @@ class Summons315Tests(unittest.TestCase):
             self.assertIsInstance(familiar, Familiar)
             self.assertGreater(familiar.max_hp, 0)
             self.assertGreater(familiar.damage, 0)
-            # Casting sets the nova-slot cooldown (reuses the nova slot).
-            self.assertGreater(game.player.nova_timer, 0.0)
+            # Casting sets the class-skill cooldown.
+            self.assertGreater(game.player.class_skill_timer, 0.0)
             self.assertLess(game.player.mana, game.player.max_mana)
 
             # The familiar persists across frames (no timeout); simulate a
@@ -108,7 +108,7 @@ class Summons315Tests(unittest.TestCase):
             game.familiars[0].hp = 1
             # Move the player so we can confirm the familiar snaps to the new spot.
             game.player.x += 5.0
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player_cast_spirit_call()
             self.assertEqual(len(game.familiars), 1)
@@ -127,7 +127,7 @@ class Summons315Tests(unittest.TestCase):
     def test_familiar_killed_in_combat_is_culled(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player_cast_spirit_call()
             familiar = game.familiars[0]
@@ -142,7 +142,7 @@ class Summons315Tests(unittest.TestCase):
     def test_familiar_pursues_and_attacks_nearby_enemy(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player_cast_spirit_call()
             familiar = game.familiars[0]
@@ -161,7 +161,7 @@ class Summons315Tests(unittest.TestCase):
     def test_familiar_returns_to_player_when_no_enemies(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player_cast_spirit_call()
             familiar = game.familiars[0]
@@ -177,7 +177,7 @@ class Summons315Tests(unittest.TestCase):
     def test_familiar_takes_damage_from_enemy_projectiles(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player_cast_spirit_call()
             familiar = game.familiars[0]
@@ -207,7 +207,7 @@ class Summons315Tests(unittest.TestCase):
     def test_spirit_branch_scales_hp_damage_count_and_flags(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
 
             # Base host: 1 familiar, base stats, small sprite (variant 0).
@@ -220,7 +220,7 @@ class Summons315Tests(unittest.TestCase):
             self.assertFalse(base.unkillable)
             self.assertFalse(base.champion)
             game.familiars = []
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
 
             # Spirit Call node: +HP/+damage and medium sprite (variant 1).
@@ -231,7 +231,7 @@ class Summons315Tests(unittest.TestCase):
             self.assertGreater(tier1.damage, base_damage)
             self.assertEqual(tier1.sprite_variant, 1)
             game.familiars = []
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
 
             # Owl Companion: more HP (lifesteal moved to the Blood branch in
@@ -241,7 +241,7 @@ class Summons315Tests(unittest.TestCase):
             self.assertFalse(game.familiars[0].lifesteal)
             self.assertGreater(game.familiars[0].max_hp, tier1.max_hp)
             game.familiars = []
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
 
             # Twin Owls: +1 familiar (count = 2) and more damage.
@@ -250,7 +250,7 @@ class Summons315Tests(unittest.TestCase):
             self.assertEqual(game.familiar_max_count(), 2)
             self.assertEqual(len(game.familiars), 2)
             game.familiars = []
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
 
             # Owl Lord: lead familiar is a champion (taunts); the sprite
@@ -261,7 +261,7 @@ class Summons315Tests(unittest.TestCase):
             self.assertEqual(game.familiars[0].sprite_variant, 1)
             self.assertGreater(game.familiars[0].max_hp, tier1.max_hp)
             game.familiars = []
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
 
             # Eternal Owls: +1 familiar (count = 3) and unkillable host.
@@ -279,7 +279,7 @@ class Summons315Tests(unittest.TestCase):
             game.player.skill_upgrades.extend(
                 ["acolyte_spirit_call", "acolyte_sanguine"]
             )
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player_cast_spirit_call()
             familiar = game.familiars[0]
@@ -299,7 +299,7 @@ class Summons315Tests(unittest.TestCase):
             game.player.skill_upgrades.extend(
                 ["acolyte_spirit_call", "acolyte_legion_eternal"]
             )
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player_cast_spirit_call()
             familiar = game.familiars[0]
@@ -344,13 +344,13 @@ class Summons315Tests(unittest.TestCase):
             game.player.skill_upgrades.extend(
                 ["acolyte_spirit_call", "acolyte_bone_legion", "acolyte_wraith_lord"]
             )
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player_cast_spirit_call()
             self.assertEqual(len(game.familiars), 2)
             before = game.familiars[0]
             data = copy.deepcopy(game.serialize_run_state())
-            self.assertEqual(data["release"], "3.18.1")
+            self.assertEqual(data["release"], "3.19.0")
             self.assertIn("familiars", data)
             self.assertEqual(len(data["familiars"]), 2)
 
@@ -389,7 +389,7 @@ class Summons315Tests(unittest.TestCase):
             loaded.restore_run_state(data)
             self.assertEqual(loaded.familiars, [])
             # The Acolyte can immediately re-summon on the loaded floor.
-            loaded.player.nova_timer = 0.0
+            loaded.player.class_skill_timer = 0.0
             loaded.player.mana = loaded.player.max_mana
             loaded.player_cast_spirit_call()
             self.assertEqual(len(loaded.familiars), 1)
@@ -402,7 +402,7 @@ class Summons315Tests(unittest.TestCase):
             game.player.skill_upgrades.extend(
                 ["acolyte_spirit_call", "acolyte_wraith_lord"]
             )
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             game.player_cast_spirit_call()
             self.assertGreater(len(game.familiars), 0)
@@ -414,7 +414,3 @@ class Summons315Tests(unittest.TestCase):
                 pygame.image.tobytes(game.screen, "RGBA"), digest_size=8
             ).hexdigest()
             self.assertNotEqual(digest, "0" * 16)
-
-
-if __name__ == "__main__":
-    unittest.main()

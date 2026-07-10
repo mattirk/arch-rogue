@@ -138,9 +138,9 @@ class Rc1RegressionTests(unittest.TestCase):
             self.assertEqual(game.player.hp, 45)
             self.assertEqual(game.player.inventory, [])
 
-            # --- C toggles character menu; 3 uses nova ---
+            # --- C toggles character menu; 3 uses class skill ---
             game.active_cutscene = None
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             starting_mana = game.player.mana
 
@@ -148,7 +148,7 @@ class Rc1RegressionTests(unittest.TestCase):
             pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_c, mod=0))
             game.handle_events()
             self.assertTrue(game.character_menu_open)
-            self.assertEqual(game.player.nova_timer, 0.0)
+            self.assertEqual(game.player.class_skill_timer, 0.0)
             self.assertEqual(game.player.mana, starting_mana)
             game.draw_character_menu()
 
@@ -169,7 +169,7 @@ class Rc1RegressionTests(unittest.TestCase):
             game.inventory_open = False
             pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_3, mod=0))
             game.handle_events()
-            self.assertGreater(game.player.nova_timer, 0.0)
+            self.assertGreater(game.player.class_skill_timer, 0.0)
             self.assertLess(game.player.mana, starting_mana)
 
             # --- 4 dashes; Left Shift does not ---

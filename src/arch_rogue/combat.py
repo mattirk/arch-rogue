@@ -367,34 +367,44 @@ class CombatMixin:
         }
         return names.get(self.player.class_name, ("Slash", "Bolt", "Nova", "Dash"))
 
-    def slot_3_skill_kind(self) -> str:
-        """Runtime action bound to hotkey slot 3 for the current archetype."""
-        if self.player.class_name == "Acolyte":
-            return "spirit_call"
-        if self.player.class_name == "Rogue":
-            return "ambush_bell"
-        if self.player.class_name == "Warden":
-            return "time_skip"
-        return "nova"
+    # ------------------------------------------------------------------
+    # Class skill registry — data-driven dispatch for hotkey 3.
+    #
+    # Each archetype maps to a class-skill *kind* (the identifier used by the
+    # HUD and dispatch), and each kind maps to a cast method. Adding a new
+    # class skill only requires extending these two tables, not editing the
+    # dispatch logic.
+    # ------------------------------------------------------------------
+    _CLASS_SKILL_KINDS: dict[str, str] = {
+        "Warden": "time_skip",
+        "Rogue": "ambush_bell",
+        "Arcanist": "nova",
+        "Acolyte": "spirit_call",
+        "Ranger": "nova",
+    }
+    _CLASS_SKILL_CASTS: dict[str, str] = {
+        "spirit_call": "player_cast_spirit_call",
+        "ambush_bell": "player_cast_ambush_bell",
+        "time_skip": "player_cast_time_skip",
+        "nova": "player_cast_nova",
+    }
 
-    def player_cast_slot_3(self) -> None:
-        """Dispatch the archetype-specific slot-3 action."""
-        kind = self.slot_3_skill_kind()
-        if kind == "spirit_call":
-            self.player_cast_spirit_call()
-        elif kind == "ambush_bell":
-            self.player_cast_ambush_bell()
-        elif kind == "time_skip":
-            self.player_cast_time_skip()
-        else:
-            self.player_cast_nova()
+    def class_skill_kind(self) -> str:
+        """The archetype-specific class skill bound to hotkey 3."""
+        return self._CLASS_SKILL_KINDS.get(self.player.class_name, "nova")
 
-    def equipment_slot_3_bonus(self, text: str = "") -> bool:
-        """Slot-3 equipment hook with legacy Nova save compatibility.
+    def player_cast_class_skill(self) -> None:
+        """Dispatch the archetype-specific class skill."""
+        kind = self.class_skill_kind()
+        cast_name = self._CLASS_SKILL_CASTS.get(kind, "player_cast_nova")
+        getattr(self, cast_name)()
+
+    def equipment_class_skill_bonus(self, text: str = "") -> bool:
+        """Class-skill equipment hook with legacy Nova save compatibility.
 
         Existing gear stores `Nova` text in `Item.skill_bonus`; Rogue's Ambush
-        Bell and Warden's Time Skip intentionally reuse that slot budget while
-        also recognizing new `Ambush Bell` / `Time Skip` wording for future items.
+        Bell and Warden's Time Skip intentionally reuse that budget while also
+        recognizing new `Ambush Bell` / `Time Skip` wording for future items.
         """
         if text:
             if self.equipment_skill_bonus(text):
@@ -647,15 +657,15 @@ class CombatMixin:
         cooldown *= 1.0 - cast_speed
         return max(0.22, cooldown)
 
-    def nova_mana_cost(self) -> int:
+    def class_skill_mana_cost(self) -> int:
+        """Shared mana cost for the archetype class skill (hotkey 3)."""
         cost = 14 if self.player.class_name in ("Arcanist", "Acolyte") else 18
         if self.player.has_upgrade("acolyte_veil"):
             cost -= 2
-        # Milestone 3.18.1 — Warden Time branch T1 (Temporal Sigil) discounts
-        # the Time Skip slot budget.
+        # Warden Time branch T1 (Temporal Sigil) discounts the class-skill budget.
         if self.player.class_name == "Warden" and self.player.has_upgrade("warden_ward"):
             cost -= 1
-        if self.equipment_slot_3_bonus():
+        if self.equipment_class_skill_bonus():
             cost -= 1
         if any(
             item is not None and item.cursed for item in self.player.equipment.values()
@@ -663,13 +673,13 @@ class CombatMixin:
             cost += 2
         return max(8, cost)
 
-    def nova_cooldown(self) -> float:
+    def class_skill_cooldown(self) -> float:
+        """Shared cooldown for the archetype class skill (hotkey 3)."""
         cooldown = 2.65 if self.player.class_name == "Arcanist" else 3.2
-        # Milestone 3.18.1 — Warden Time branch T1 (Temporal Sigil) cools the
-        # Time Skip slot faster.
+        # Warden Time branch T1 (Temporal Sigil) cools the class skill faster.
         if self.player.class_name == "Warden" and self.player.has_upgrade("warden_ward"):
             cooldown -= 0.3
-        if self.equipment_slot_3_bonus():
+        if self.equipment_class_skill_bonus():
             cooldown -= 0.18
         cast_speed = max(-0.20, min(0.35, self.equipment_stat_total("cast_speed")))
         cooldown *= 1.0 - cast_speed * 0.75
@@ -690,7 +700,7 @@ class CombatMixin:
             duration += 0.5
         if self.player.has_upgrade("warden_bulwark_wave"):
             duration += 1.0
-        if self.equipment_slot_3_bonus("Time Skip duration"):
+        if self.equipment_class_skill_bonus("Time Skip duration"):
             duration += 0.5
         return duration
 
@@ -942,7 +952,7 @@ class CombatMixin:
         self.player.melee_timer = max(0.0, self.player.melee_timer - dt)
         self.player.bolt_timer = max(0.0, self.player.bolt_timer - dt)
         self.player.dash_timer = max(0.0, self.player.dash_timer - dt)
-        self.player.nova_timer = max(0.0, self.player.nova_timer - dt)
+        self.player.class_skill_timer = max(0.0, self.player.class_skill_timer - dt)
         self.player.time_skip_timer = max(0.0, self.player.time_skip_timer - dt)
         if self.player_status("poisoned") > 0:
             tick = self.player.status_effects.get("_poison_tick", 1.0) - dt
@@ -1774,10 +1784,10 @@ class CombatMixin:
             )
 
     def player_cast_nova(self) -> None:
-        mana_cost = self.nova_mana_cost()
-        if self.player.nova_timer > 0 or self.player.mana < mana_cost:
+        mana_cost = self.class_skill_mana_cost()
+        if self.player.class_skill_timer > 0 or self.player.mana < mana_cost:
             return
-        self.player.nova_timer = self.nova_cooldown()
+        self.player.class_skill_timer = self.class_skill_cooldown()
         self.player.mana -= mana_cost
         self.set_player_action_visual("cast", 0.32)
         self.add_impact(
@@ -1809,9 +1819,9 @@ class CombatMixin:
                     radius += 0.45
                 elif self.player.has_upgrade("arcanist_focus"):
                     radius += 0.25
-            if self.equipment_slot_3_bonus():
+            if self.equipment_class_skill_bonus():
                 radius += 0.25
-            if self.equipment_slot_3_bonus("Nova radius"):
+            if self.equipment_class_skill_bonus("Nova radius"):
                 radius += 0.35
             if distance <= radius:
                 hits += 1
@@ -1824,7 +1834,7 @@ class CombatMixin:
                 damage_type = self.nova_damage_type()
                 status_effect = ""
                 status_duration = 0.0
-                if self.equipment_slot_3_bonus():
+                if self.equipment_class_skill_bonus():
                     damage += 2
                 if self.player.class_name == "Warden":
                     status_effect = "stunned"
@@ -1851,13 +1861,11 @@ class CombatMixin:
                     status_effect = "snared"
                     status_duration = snare_time
                 if self.player.class_name == "Acolyte":
-                    # Milestone 3.18.4 — the Acolyte no longer casts Blood Nova
-                    # from the action bar (slot 3 is Spirit Call), so this nova
-                    # path is only reachable via direct ``player_cast_nova``
-                    # calls. The Blood-branch spell leech still applies here for
-                    # legacy callers; the gravebind *bind* retired from the nova
-                    # (it lives on Spirit Bolt / Blood Rite, which apply
-                    # "bound").
+                    # The Acolyte's class skill is Spirit Call, so this nova path
+                    # is only reachable via direct ``player_cast_nova`` calls. The
+                    # Blood-branch spell leech still applies here for legacy
+                    # callers; the gravebind *bind* retired from the nova (it
+                    # lives on Spirit Bolt / Blood Rite, which apply "bound").
                     leech = self._acolyte_spell_leech()
                     if leech:
                         self.player.hp = min(self.player.max_hp, self.player.hp + leech)
@@ -1886,21 +1894,21 @@ class CombatMixin:
         )
 
     def player_cast_time_skip(self) -> None:
-        """Warden slot-3: slow time for all enemies without affecting the player.
+        """Warden class skill: slow time for all enemies without affecting the player.
 
-        Reuses the nova-slot mana cost / cooldown so the action bar stays
-        balanced, then opens a timed window during which the enemy simulation
-        (movement + attack cadence) runs at ``time_skip_factor`` speed. The
-        player's own timers, movement, and attacks are untouched.
+        Spends the shared class-skill mana cost / cooldown so the action bar
+        stays balanced, then opens a timed window during which the enemy
+        simulation (movement + attack cadence) runs at ``time_skip_factor``
+        speed. The player's own timers, movement, and attacks are untouched.
         """
         if self.player.class_name != "Warden":
             # Legacy fallback: if a non-Warden reaches this path, defer to nova.
             self.player_cast_nova()
             return
-        mana_cost = self.nova_mana_cost()
-        if self.player.nova_timer > 0 or self.player.mana < mana_cost:
+        mana_cost = self.class_skill_mana_cost()
+        if self.player.class_skill_timer > 0 or self.player.mana < mana_cost:
             return
-        self.player.nova_timer = self.nova_cooldown()
+        self.player.class_skill_timer = self.class_skill_cooldown()
         self.player.mana -= mana_cost
         self.player.time_skip_timer = self.time_skip_duration()
         self.set_player_action_visual("cast", 0.32)
@@ -1939,7 +1947,7 @@ class CombatMixin:
         )
 
     # ------------------------------------------------------------------
-    # Milestone 3.17 — Rogue Ambush Bell (slot-3 lure trap).
+    # Rogue Ambush Bell (class-skill lure trap).
     # ------------------------------------------------------------------
     AMBUSH_BELL_PLANT_RANGE = 4.35
     AMBUSH_BELL_ARM_TIME = 0.34
@@ -2030,9 +2038,9 @@ class CombatMixin:
             if primary_snare_duration > 0.0:
                 primary_snare_duration += 0.25
                 splash_snare_duration = max(splash_snare_duration, 0.70)
-        if self.equipment_slot_3_bonus():
+        if self.equipment_class_skill_bonus():
             primary_damage += 2
-        if self.equipment_slot_3_bonus("Nova radius"):
+        if self.equipment_class_skill_bonus("Nova radius"):
             damage_radius += 0.18
 
         primary_damage = max(8, primary_damage)
@@ -2112,15 +2120,15 @@ class CombatMixin:
         return px, py
 
     def player_cast_ambush_bell(self) -> None:
-        """Rogue slot-3 ability: plant one lure trap at the aimed ground point."""
+        """Rogue class skill: plant one lure trap at the aimed ground point."""
         if self.player.class_name != "Rogue":
             if self.player.class_name == "Acolyte":
                 self.player_cast_spirit_call()
             else:
                 self.player_cast_nova()
             return
-        mana_cost = self.nova_mana_cost()
-        if self.player.nova_timer > 0 or self.player.mana < mana_cost:
+        mana_cost = self.class_skill_mana_cost()
+        if self.player.class_skill_timer > 0 or self.player.mana < mana_cost:
             return
 
         tuning = self.ambush_bell_tuning()
@@ -2149,7 +2157,7 @@ class CombatMixin:
             facing_crit_bonus=tuning.facing_crit_bonus,
         )
 
-        self.player.nova_timer = self.nova_cooldown()
+        self.player.class_skill_timer = self.class_skill_cooldown()
         self.player.mana -= mana_cost
         self.set_player_action_visual("cast", 0.28)
         self.set_player_status("smoke", tuning.smoke_duration)
@@ -2326,9 +2334,9 @@ class CombatMixin:
             return
         refunded = 0
         if bell.kill_cooldown_floor > 0.0:
-            before = self.player.nova_timer
-            self.player.nova_timer = min(self.player.nova_timer, bell.kill_cooldown_floor)
-            if self.player.nova_timer < before:
+            before = self.player.class_skill_timer
+            self.player.class_skill_timer = min(self.player.class_skill_timer, bell.kill_cooldown_floor)
+            if self.player.class_skill_timer < before:
                 refunded += 1
         if bell.kill_mana_refund > 0:
             before_mana = self.player.mana
@@ -2497,25 +2505,26 @@ class CombatMixin:
         return "shadow"
 
     def player_cast_spirit_call(self) -> None:
-        """Acolyte slot-3 ability: summon / refresh the spirit familiar host.
+        """Acolyte class skill: summon / refresh the spirit familiar host.
 
-        Reuses the nova-slot mana cost and cooldown (``nova_mana_cost`` /
-        ``nova_cooldown``) so the action bar stays balanced. On cast, the host
-        is always recreated fresh: any existing familiars are dismissed and a
-        full ``familiar_max_count`` host is summoned in a small ring around the
-        player, so the summon always snaps to the Acolyte's current position
-        and picks up the latest build stats. The host persists until each
-        familiar is killed or the floor is descended.
+        Spends the shared class-skill mana cost and cooldown
+        (``class_skill_mana_cost`` / ``class_skill_cooldown``) so the action bar
+        stays balanced. On cast, the host is always recreated fresh: any existing
+        familiars are dismissed and a full ``familiar_max_count`` host is
+        summoned in a small ring around the player, so the summon always snaps
+        to the Acolyte's current position and picks up the latest build stats.
+        The host persists until each familiar is killed or the floor is
+        descended.
         """
         if self.player.class_name != "Acolyte":
             # Defensive: only the Acolyte channels Spirit Call. Other classes
             # fall through to their nova.
             self.player_cast_nova()
             return
-        mana_cost = self.nova_mana_cost()
-        if self.player.nova_timer > 0 or self.player.mana < mana_cost:
+        mana_cost = self.class_skill_mana_cost()
+        if self.player.class_skill_timer > 0 or self.player.mana < mana_cost:
             return
-        self.player.nova_timer = self.nova_cooldown()
+        self.player.class_skill_timer = self.class_skill_cooldown()
         self.player.mana -= mana_cost
         self.set_player_action_visual("cast", 0.32)
         self.add_impact(
@@ -2976,17 +2985,17 @@ class CombatMixin:
         self.enemies.remove(enemy)
         self.enemy_hit_flashes.pop(id(enemy), None)
         self.run_stats.kills += 1
-        # Milestone 3.18.1 — Time branch T5 (Eternal Moment): each kill while
-        # Time Skip is active refunds ~40% of the slot-3 cooldown so aggressive
-        # play sustains the slow.
+        # Time branch T5 (Eternal Moment): each kill while Time Skip is active
+        # refunds ~40% of the class-skill cooldown so aggressive play sustains
+        # the slow.
         if (
             self.player.class_name == "Warden"
             and self.player.time_skip_timer > 0
             and self.player.has_upgrade("warden_eternal_wall")
-            and self.player.nova_timer > 0
+            and self.player.class_skill_timer > 0
         ):
-            self.player.nova_timer = max(
-                0.0, self.player.nova_timer - self.nova_cooldown() * 0.4
+            self.player.class_skill_timer = max(
+                0.0, self.player.class_skill_timer - self.class_skill_cooldown() * 0.4
             )
         death_color = (
             self.theme.accent if enemy.kind in ("boss", "miniboss") else enemy.color

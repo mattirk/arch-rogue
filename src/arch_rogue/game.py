@@ -771,7 +771,7 @@ class Game(
                         self.player_cast_bolt()
                     elif index == 2:
                         self.update_player_aim()
-                        self.player_cast_slot_3()
+                        self.player_cast_class_skill()
                     elif index == 3:
                         self.update_player_aim()
                         self.player_dash()

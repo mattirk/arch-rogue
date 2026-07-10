@@ -86,7 +86,7 @@ class HudPolish25Tests(unittest.TestCase):
                 ]
                 game.player.hp = game.player.max_hp - 20
                 game.player.mana = game.player.max_mana - 14
-                game.player.nova_timer = game.nova_cooldown() * 0.4
+                game.player.class_skill_timer = game.class_skill_cooldown() * 0.4
                 rect = pygame.Rect(70, 440, 760, 70)
 
                 game.screen.fill((11, 12, 16))
@@ -96,7 +96,7 @@ class HudPolish25Tests(unittest.TestCase):
                 self.assertNotEqual(before, after_ready)
 
                 game.screen.fill((11, 12, 16))
-                game.player.nova_timer = 0.0
+                game.player.class_skill_timer = 0.0
                 game.draw_hud_action_bar(rect)
                 after_no_cooldown = self.surface_signature(game.screen)
                 self.assertNotEqual(after_ready, after_no_cooldown)

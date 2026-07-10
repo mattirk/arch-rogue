@@ -265,7 +265,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 game.enemies = [enemy2]
                 game.player.hp = game.player.max_hp - 20
                 hp_before = game.player.hp
-                game.player.nova_timer = 0.0
+                game.player.class_skill_timer = 0.0
                 game.player.mana = game.player.max_mana
                 game.player_cast_nova()
                 self.assertEqual(game.player.hp, hp_before)
@@ -277,7 +277,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 game.enemies = [enemy3]
                 game.player.hp = game.player.max_hp - 20
                 hp_before = game.player.hp
-                game.player.nova_timer = 0.0
+                game.player.class_skill_timer = 0.0
                 game.player.mana = game.player.max_mana
                 game.player_cast_nova()
                 self.assertGreater(game.player.hp, hp_before)

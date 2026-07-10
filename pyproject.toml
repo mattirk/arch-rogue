@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.18.4"
-description = "3.18.4 retargets the Acolyte Blood branch lifesteal onto Blood Rite, Spirit Bolt, and Spirit Call (familiar hits), and removes familiar lifesteal from the Spirit branch (it was too strong). The dormant nova-only leech hook is repurposed as the shared Blood spell-leech ramp."
+version = "3.19.0"
+description = "3.19.0 renames the 'slot 3 skill' concept to 'class skill' throughout the codebase. The shared budget (mana cost, cooldown, timer) is renamed from nova_* to class_skill_*, and the dispatch is data-driven via a class-skill registry. Nova-specific implementation (player_cast_nova, nova_damage_type) is preserved as one class-skill variant."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

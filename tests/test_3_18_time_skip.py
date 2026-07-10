@@ -7,7 +7,7 @@
 # of clean IP provenance or non-infringement; downstream users assume all legal
 # and financial risk and should perform their own compliance audits.
 #
-# Milestone 3.18 — Warden Time Skip (slot-3 enemy-only slow).
+# Milestone 3.18 — Warden Time Skip (class-skill enemy-only slow).
 from __future__ import annotations
 
 import os
@@ -73,29 +73,29 @@ class TimeSkip318Tests(unittest.TestCase):
         game.traps = []
         return game
 
-    # --- slot-3 swap ---------------------------------------------------
+    # --- class-skill swap ----------------------------------------------
 
     def test_version_bumped(self) -> None:
-        self.assertEqual(__version__, "3.18.1")
+        self.assertEqual(__version__, "3.19.0")
 
-    def test_warden_slot_3_is_time_skip(self) -> None:
+    def test_warden_class_skill_is_time_skip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             self.assertEqual(game.player.class_name, "Warden")
             self.assertEqual(game.skill_names()[2], "Time Skip")
-            self.assertEqual(game.slot_3_skill_kind(), "time_skip")
+            self.assertEqual(game.class_skill_kind(), "time_skip")
             slots = game.hud_action_slots()
             self.assertEqual(slots[2]["kind"], "time_skip")
             self.assertEqual(slots[2]["icon"], "time_skip")
             self.assertEqual(slots[2]["label"], "Time Skip")
-            self.assertEqual(slots[2]["cost"], game.nova_mana_cost())
-            self.assertEqual(slots[2]["cooldown"], game.nova_cooldown())
+            self.assertEqual(slots[2]["cost"], game.class_skill_mana_cost())
+            self.assertEqual(slots[2]["cooldown"], game.class_skill_cooldown())
 
     def test_non_warden_classes_keep_nova(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             arcanist = self.make_game(tmpdir, archetype_index=2)
             self.assertEqual(arcanist.player.class_name, "Arcanist")
-            self.assertEqual(arcanist.slot_3_skill_kind(), "nova")
+            self.assertEqual(arcanist.class_skill_kind(), "nova")
             self.assertEqual(arcanist.skill_names()[2], "Frost Nova")
 
     # --- cast behavior -------------------------------------------------
@@ -107,14 +107,14 @@ class TimeSkip318Tests(unittest.TestCase):
             game.enemies = [enemy]
             enemy_hp_before = enemy.hp
 
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
             before_mana = game.player.mana
-            game.player_cast_slot_3()
+            game.player_cast_class_skill()
 
-            # Slot-3 budget spent, slow window opened, no enemy damage.
+            # Class-skill budget spent, slow window opened, no enemy damage.
             self.assertLess(game.player.mana, before_mana)
-            self.assertGreater(game.player.nova_timer, 0.0)
+            self.assertGreater(game.player.class_skill_timer, 0.0)
             self.assertAlmostEqual(
                 game.player.time_skip_timer, game.time_skip_duration(), places=4
             )
@@ -125,14 +125,14 @@ class TimeSkip318Tests(unittest.TestCase):
     def test_cast_blocked_by_cooldown_and_mana(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
-            game.player.nova_timer = 1.0
+            game.player.class_skill_timer = 1.0
             game.player.mana = game.player.max_mana
-            game.player_cast_slot_3()
+            game.player_cast_class_skill()
             self.assertEqual(game.player.time_skip_timer, 0.0)
 
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = 0
-            game.player_cast_slot_3()
+            game.player_cast_class_skill()
             self.assertEqual(game.player.time_skip_timer, 0.0)
 
     # --- enemy slow ----------------------------------------------------
@@ -188,13 +188,13 @@ class TimeSkip318Tests(unittest.TestCase):
             game.player.melee_timer = 0.5
             game.player.dash_timer = 0.5
             game.player.bolt_timer = 0.5
-            game.player.nova_timer = 0.5
+            game.player.class_skill_timer = 0.5
             game.update_player(0.5)
             # Player timers tick at full dt, not the slowed enemy rate.
             self.assertAlmostEqual(game.player.melee_timer, 0.0, places=4)
             self.assertAlmostEqual(game.player.dash_timer, 0.0, places=4)
             self.assertAlmostEqual(game.player.bolt_timer, 0.0, places=4)
-            self.assertAlmostEqual(game.player.nova_timer, 0.0, places=4)
+            self.assertAlmostEqual(game.player.class_skill_timer, 0.0, places=4)
             # The slow window itself still counts down for the player.
             self.assertLess(game.player.time_skip_timer, game.time_skip_duration())
 
@@ -225,14 +225,14 @@ class TimeSkip318Tests(unittest.TestCase):
             game.player.skill_upgrades.append("warden_bulwark_wave")
             self.assertAlmostEqual(game.time_skip_duration(), 4.5, places=4)
 
-    def test_t1_temporal_sigil_discounts_slot_budget(self) -> None:
+    def test_t1_temporal_sigil_discounts_class_skill_budget(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
-            base_cost = game.nova_mana_cost()
-            base_cooldown = game.nova_cooldown()
+            base_cost = game.class_skill_mana_cost()
+            base_cooldown = game.class_skill_cooldown()
             game.player.skill_upgrades.append("warden_ward")
-            self.assertLess(game.nova_mana_cost(), base_cost)
-            self.assertLess(game.nova_cooldown(), base_cooldown)
+            self.assertLess(game.class_skill_mana_cost(), base_cost)
+            self.assertLess(game.class_skill_cooldown(), base_cooldown)
 
     def test_t3_stutter_step_deepens_the_slow(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -254,9 +254,9 @@ class TimeSkip318Tests(unittest.TestCase):
             inside_hp = inside.hp
             outside_hp = outside.hp
 
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
-            game.player_cast_slot_3()
+            game.player_cast_class_skill()
 
             # Inside the ring: stunned, attack stalled, no damage dealt.
             self.assertGreater(inside.statuses.get("stunned", 0.0), 0.0)
@@ -294,13 +294,13 @@ class TimeSkip318Tests(unittest.TestCase):
 
             # Start a Time Skip window and set a nonzero slot cooldown.
             game.player.time_skip_timer = game.time_skip_duration()
-            game.player.nova_timer = game.nova_cooldown()
-            before = game.player.nova_timer
+            game.player.class_skill_timer = game.class_skill_cooldown()
+            before = game.player.class_skill_timer
             # Kill the enemy directly; kill_enemy applies the refund.
             enemy.hp = 1
             game.damage_enemy(enemy, 5, knockback_from=(0.0, 0.0))
             self.assertEqual(game.enemies, [])
-            self.assertLess(game.player.nova_timer, before)
+            self.assertLess(game.player.class_skill_timer, before)
 
     def test_t5_refund_only_while_time_skip_active(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -308,52 +308,52 @@ class TimeSkip318Tests(unittest.TestCase):
             game.player.skill_upgrades.append("warden_eternal_wall")
             enemy = _make_enemy(game.player.x + 1.0, game.player.y, hp=2)
             game.enemies = [enemy]
-            game.player.nova_timer = game.nova_cooldown()
-            before = game.player.nova_timer
+            game.player.class_skill_timer = game.class_skill_cooldown()
+            before = game.player.class_skill_timer
             # No Time Skip window: no refund.
             enemy.hp = 1
             game.damage_enemy(enemy, 5, knockback_from=(0.0, 0.0))
             self.assertEqual(game.enemies, [])
-            self.assertAlmostEqual(game.player.nova_timer, before, places=4)
+            self.assertAlmostEqual(game.player.class_skill_timer, before, places=4)
 
     def test_equipment_bonus_recognizes_time_skip_and_legacy_nova(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
-            # No slot-3 gear: no bonus.
-            self.assertFalse(game.equipment_slot_3_bonus())
+            # No class-skill gear: no bonus.
+            self.assertFalse(game.equipment_class_skill_bonus())
 
             # New Time Skip wording on future gear.
             game.player.equipment["weapon"] = Item(
                 name="Chrono Aegis", slot="weapon", skill_bonus="Time Skip"
             )
-            self.assertTrue(game.equipment_slot_3_bonus())
-            self.assertTrue(game.equipment_slot_3_bonus("Time Skip"))
+            self.assertTrue(game.equipment_class_skill_bonus())
+            self.assertTrue(game.equipment_class_skill_bonus("Time Skip"))
 
-            # A Time Skip duration affix both counts as a slot-3 bonus and
+            # A Time Skip duration affix both counts as a class-skill bonus and
             # extends the slow window.
             game.player.equipment["weapon"] = Item(
                 name="Chrono Duration", slot="weapon", skill_bonus="Time Skip duration"
             )
-            self.assertTrue(game.equipment_slot_3_bonus("Time Skip duration"))
+            self.assertTrue(game.equipment_class_skill_bonus("Time Skip duration"))
             self.assertAlmostEqual(game.time_skip_duration(), 3.0 + 0.5, places=4)
 
             # Legacy Nova gear on an older Warden save still applies its
-            # slot-3 budget (and Nova-radius wording still resolves).
+            # class-skill budget (and Nova-radius wording still resolves).
             game.player.equipment["weapon"] = Item(
                 name="Old Bulwark", slot="weapon", skill_bonus="Nova"
             )
-            self.assertTrue(game.equipment_slot_3_bonus())
+            self.assertTrue(game.equipment_class_skill_bonus())
             game.player.equipment["weapon"] = Item(
                 name="Old Bulwark Radius", slot="weapon", skill_bonus="Nova radius"
             )
-            self.assertTrue(game.equipment_slot_3_bonus("Nova radius"))
+            self.assertTrue(game.equipment_class_skill_bonus("Nova radius"))
 
             # Time Skip wording does not leak to non-Warden classes.
             arcanist = self.make_game(tmpdir, archetype_index=2)
             arcanist.player.equipment["weapon"] = Item(
                 name="Chrono Aegis", slot="weapon", skill_bonus="Time Skip"
             )
-            self.assertFalse(arcanist.equipment_slot_3_bonus())
+            self.assertFalse(arcanist.equipment_class_skill_bonus())
 
     # --- save round-trip & render -------------------------------------
 
@@ -362,7 +362,7 @@ class TimeSkip318Tests(unittest.TestCase):
             game = self.make_game(tmpdir, archetype_index=0)
             game.player.time_skip_timer = 2.5
             data = game.serialize_run_state()
-            self.assertEqual(data["release"], "3.18.1")
+            self.assertEqual(data["release"], "3.19.0")
             self.assertNotIn("time_skip_timer", data)
 
             loaded = Game(
@@ -374,15 +374,15 @@ class TimeSkip318Tests(unittest.TestCase):
             loaded.restore_run_state(data)
             self.assertEqual(loaded.player.class_name, "Warden")
             self.assertEqual(loaded.player.time_skip_timer, 0.0)
-            self.assertEqual(loaded.slot_3_skill_kind(), "time_skip")
+            self.assertEqual(loaded.class_skill_kind(), "time_skip")
 
     def test_full_frame_render_with_active_time_skip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             game.enemies = [_make_enemy(game.player.x + 3.0, game.player.y)]
-            game.player.nova_timer = 0.0
+            game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
-            game.player_cast_slot_3()
+            game.player_cast_class_skill()
             self.assertGreater(game.player.time_skip_timer, 0.0)
             # A full frame render with the slow window active must not raise;
             # the clock glyph draws alongside the rest of the HUD action bar.

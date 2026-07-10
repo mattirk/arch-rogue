@@ -1,5 +1,50 @@
 # Changelog
 
+## 3.19.0 — Class Skill Rename
+
+The archetype-specific active ability bound to hotkey 3 is renamed from the
+legacy "slot 3 skill" / "nova-slot" terminology to **class skill** throughout
+the codebase. The rename clarifies that the hotkey-3 ability is the
+archetype's signature class skill, not a generic "slot" or a "nova" variant.
+
+### New abstraction
+
+- **Data-driven class-skill registry.** `class_skill_kind()` and
+  `player_cast_class_skill()` now dispatch through two class-level lookup
+  tables (`_CLASS_SKILL_KINDS` / `_CLASS_SKILL_CASTS`) instead of an if/elif
+  chain. Adding a new class skill only requires extending the tables, not
+  editing the dispatch logic.
+
+### Renamed (structural / shared budget)
+
+- `slot_3_skill_kind()` → `class_skill_kind()`
+- `player_cast_slot_3()` → `player_cast_class_skill()`
+- `equipment_slot_3_bonus()` → `equipment_class_skill_bonus()`
+- `nova_mana_cost()` → `class_skill_mana_cost()`
+- `nova_cooldown()` → `class_skill_cooldown()`
+- `Player.nova_timer` → `Player.class_skill_timer`
+- HUD variables `slot_3_kind` / `slot_3_icon` / `slot_3_color` / `nova_name` →
+  `class_skill_kind` / `class_skill_icon` / `class_skill_color` /
+  `class_skill_name`
+- Controls labels: "Slot 3 skill" / "Slot 3 class skill" → "Class skill"
+
+### Preserved (nova-specific implementation)
+
+- `player_cast_nova()` and `nova_damage_type()` keep their names — Nova is one
+  *implementation* of a class skill, not the abstraction itself.
+- Legacy `Nova` equipment wording still resolves via
+  `equipment_class_skill_bonus()` for save compatibility.
+- `time_skip_timer` (Warden-specific) is unchanged.
+- Save schema `version` remains `5`; `class_skill_timer` is transient and not
+  serialized, so no migration is needed.
+
+### Updated references
+
+- `combat.py`, `game.py`, `input.py`, `run_flow.py`, `rendering/hud.py`,
+  `menus/controls.py`, `menus/character.py`, `models.py`.
+- All test modules updated to the new API. Version-current tests now target
+  `3.19.0`.
+
 ## 3.18.4 — Acolyte Blood Retarget
 
 The Acolyte's familiar lifesteal lived on the Spirit branch (`acolyte_wraith_host`,
