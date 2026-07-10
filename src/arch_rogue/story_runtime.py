@@ -1152,7 +1152,7 @@ class StoryRuntimeMixin:
         elif choice_key == "defy":
             leveled = self.player.gain_xp(24 + self.current_depth * 3)
             if leveled:
-                self.grant_skill_point(reason="story defiance")
+                self.grant_mastery_token(reason="story defiance")
             spawn_x, spawn_y = self.drop_position_near(guest.x, guest.y)
             self.enemies.append(
                 self._make_story_hunter(spawn_x, spawn_y, prefix="Story-Marked")

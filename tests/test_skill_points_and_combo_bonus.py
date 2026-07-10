@@ -50,56 +50,56 @@ class SkillPointProgression33Tests(unittest.TestCase):
         game.active_cutscene = None
         return game
 
-    # --- Skill point earning ------------------------------------------------
+    # --- Mastery token earning ---------------------------------------------
 
-    def test_skill_point_earning(self) -> None:
+    def test_mastery_token_earning(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             try:
-                # Players start a run with zero banked skill points.
-                self.assertEqual(game.player.skill_points, 0)
+                # Players start a run with zero banked mastery tokens.
+                self.assertEqual(game.player.mastery_tokens, 0)
                 # Force a level-up by feeding enough XP. gain_xp returns True
                 # when a level boundary is crossed and awards exactly one point.
                 before_level = game.player.level
-                before_points = game.player.skill_points
+                before_points = game.player.mastery_tokens
                 leveled = game.player.gain_xp(game.player.next_xp + 1)
                 self.assertTrue(leveled)
                 self.assertEqual(game.player.level, before_level + 1)
-                self.assertEqual(game.player.skill_points, before_points + 1)
+                self.assertEqual(game.player.mastery_tokens, before_points + 1)
                 # Explicit grants award points and surface a floater.
-                before = game.player.skill_points
+                before = game.player.mastery_tokens
                 before_floaters = len(game.floaters)
-                game.grant_skill_point(amount=2, reason="test reward")
-                self.assertEqual(game.player.skill_points, before + 2)
+                game.grant_mastery_token(amount=2, reason="test reward")
+                self.assertEqual(game.player.mastery_tokens, before + 2)
                 self.assertEqual(len(game.floaters), before_floaters + 1)
                 # Zero/negative grants are no-ops.
-                game.grant_skill_point(amount=0)
-                self.assertEqual(game.player.skill_points, before + 2)
-                game.grant_skill_point(amount=-3)
-                self.assertEqual(game.player.skill_points, before + 2)
+                game.grant_mastery_token(amount=0)
+                self.assertEqual(game.player.mastery_tokens, before + 2)
+                game.grant_mastery_token(amount=-3)
+                self.assertEqual(game.player.mastery_tokens, before + 2)
             finally:
                 pass
 
-    # --- Skill point spending -----------------------------------------------
+    # --- Mastery token spending ---------------------------------------------
 
     def test_choose_discipline_spending_rules(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             try:
                 # No points banked — the choice is rejected without spending.
-                self.assertEqual(game.player.skill_points, 0)
+                self.assertEqual(game.player.mastery_tokens, 0)
                 self.assertFalse(game.choose_discipline("warden_bulwark"))
-                self.assertEqual(game.player.skill_points, 0)
+                self.assertEqual(game.player.mastery_tokens, 0)
                 self.assertNotIn("warden_bulwark", game.player.skill_upgrades)
                 # Bank one point: the first valid spend succeeds.
-                game.player.skill_points = 1
+                game.player.mastery_tokens = 1
                 self.assertTrue(game.choose_discipline("warden_bulwark"))
-                self.assertEqual(game.player.skill_points, 0)
+                self.assertEqual(game.player.mastery_tokens, 0)
                 self.assertIn("warden_bulwark", game.player.skill_upgrades)
                 # A second spend fails (no points left) even if the node is
                 # valid — the spender never goes negative.
                 self.assertFalse(game.choose_discipline("warden_riposte"))
-                self.assertEqual(game.player.skill_points, 0)
+                self.assertEqual(game.player.mastery_tokens, 0)
                 self.assertNotIn("warden_riposte", game.player.skill_upgrades)
             finally:
                 pass
@@ -155,7 +155,7 @@ class SkillPointProgression33Tests(unittest.TestCase):
             game = self.make_game(tmpdir, archetype_index=0)
             try:
                 # Bank enough points to buy two Warden paths (Milestone 3.7 limit).
-                game.player.skill_points = 100
+                game.player.mastery_tokens = 100
                 warden_nodes = sorted(
                     disciplines_for_archetype("Warden"), key=lambda n: n.degree
                 )
@@ -227,15 +227,15 @@ class SkillPointProgression33Tests(unittest.TestCase):
 
     # --- Save migration -----------------------------------------------------
 
-    def test_save_and_restore_preserves_skill_points_and_migrates_missing(self):
+    def test_save_and_restore_preserves_mastery_tokens_and_migrates_missing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             try:
-                game.player.skill_points = 5
+                game.player.mastery_tokens = 5
                 game.choose_discipline("warden_bulwark")
                 game.choose_discipline("warden_riposte")
                 # 3 points remain banked.
-                self.assertEqual(game.player.skill_points, 3)
+                self.assertEqual(game.player.mastery_tokens, 3)
                 save_path = Path(tmpdir) / "run.json"
                 game.save_run()
 
@@ -250,7 +250,7 @@ class SkillPointProgression33Tests(unittest.TestCase):
                 game2.options_path = Path(tmpdir) / "options.json"
                 game2.rng.seed(9999)
                 self.assertTrue(game2.load_run())
-                self.assertEqual(game2.player.skill_points, 3)
+                self.assertEqual(game2.player.mastery_tokens, 3)
                 self.assertEqual(
                     game2.player.skill_upgrades,
                     ["warden_bulwark", "warden_riposte"],
@@ -259,10 +259,10 @@ class SkillPointProgression33Tests(unittest.TestCase):
                     getattr(game2.player, "_combo_applied", None), (0, 0, 0)
                 )
 
-                # Case 2: a pre-3.3 save stripped of skill_points migrates to
+                # Case 2: a pre-3.3 save stripped of mastery_tokens migrates to
                 # zero (no free windfall) while preserving acquired nodes.
                 data = json.loads(save_path.read_text())
-                data["player"].pop("skill_points", None)
+                data["player"].pop("mastery_tokens", None)
                 save_path.write_text(json.dumps(data))
 
                 game3 = Game(
@@ -273,7 +273,26 @@ class SkillPointProgression33Tests(unittest.TestCase):
                 game3.options_path = Path(tmpdir) / "options.json"
                 game3.rng.seed(7777)
                 self.assertTrue(game3.load_run())
-                self.assertEqual(game3.player.skill_points, 0)
+                self.assertEqual(game3.player.mastery_tokens, 0)
                 self.assertIn("warden_bulwark", game3.player.skill_upgrades)
+
+                # Case 3: a pre-3.19.2 save that stored the currency under the
+                # legacy `skill_points` key migrates into `mastery_tokens`
+                # (backward compatibility — no token loss on rename).
+                data = json.loads(save_path.read_text())
+                data["player"]["skill_points"] = 3
+                save_path.write_text(json.dumps(data))
+
+                game4 = Game(
+                    screen_size=(960, 600),
+                    headless=True,
+                    save_path=save_path,
+                )
+                game4.options_path = Path(tmpdir) / "options.json"
+                game4.rng.seed(4242)
+                self.assertTrue(game4.load_run())
+                self.assertEqual(game4.player.mastery_tokens, 3)
+                self.assertNotIn("skill_points", game4.serialize_run_state()["player"])
+                self.assertIn("warden_bulwark", game4.player.skill_upgrades)
             finally:
                 pass

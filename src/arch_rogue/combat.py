@@ -471,12 +471,12 @@ class CombatMixin:
         return "locked"
 
     def choose_discipline(self, key: str, reason: str = "chosen") -> bool:
-        """Apply a specific discipline by key, spending one skill point.
+        """Apply a specific discipline by key, spending one mastery token.
 
         Returns False (without spending a point) if the discipline is unknown, belongs
         to another archetype, is already acquired, has unmet prerequisites, is
-        in a path locked by the commitment limit, or the player has no skill
-        points to spend.
+        in a path locked by the commitment limit, or the player has no mastery
+        tokens to spend.
         """
         node = discipline_by_key(key)
         if node is None or node.archetype != self.player.class_name:
@@ -491,21 +491,21 @@ class CombatMixin:
             set(self.player.skill_upgrades), node.archetype, node.path
         ):
             return False
-        if self.player.skill_points <= 0:
+        if self.player.mastery_tokens <= 0:
             return False
-        self.player.skill_points -= 1
+        self.player.mastery_tokens -= 1
         self._apply_discipline(node, reason)
         self._apply_combo_bonus_delta(node)
         return True
 
-    def grant_skill_point(self, amount: int = 1, reason: str = "reward") -> None:
-        """Award skill points from run rewards (shrines, altars, story)."""
+    def grant_mastery_token(self, amount: int = 1, reason: str = "reward") -> None:
+        """Award mastery tokens from run rewards (shrines, altars, story)."""
         if amount <= 0:
             return
-        self.player.skill_points += amount
+        self.player.mastery_tokens += amount
         self.floaters.append(
             FloatingText(
-                f"+{amount} Skill Point{'s' if amount != 1 else ''}",
+                f"+{amount} Mastery Token{'s' if amount != 1 else ''}",
                 self.player.x,
                 self.player.y - 0.6,
                 self.skill_color(),
@@ -589,7 +589,7 @@ class CombatMixin:
         """Grant a random available discipline, respecting discipline tree prerequisites.
 
         Used by shrines/altars/story rewards. These are bonus grants that do
-        NOT spend the player's banked skill points (level-up points are spent
+        NOT spend the player's banked mastery tokens (level-up tokens are spent
         by the player via `choose_discipline`). Falls back to the flat
         `DISCIPLINE_UPGRADES` pool only if the discipline tree yields no available disciplines.
         """
@@ -3103,13 +3103,13 @@ class CombatMixin:
                     )
                 )
         if self.player.gain_xp(xp_gain):
-            # Milestone 3.3: level-ups award a skill point (handled inside
+            # Milestone 3.3: level-ups award a mastery token (handled inside
             # `gain_xp`) instead of auto-granting a node. The player spends
-            # the point in the character sheet. Surface the banked point so the
+            # the token in the character sheet. Surface the banked token so the
             # player knows to open the sheet.
             self.floaters.append(
                 FloatingText(
-                    "LEVEL UP · SKILL POINT",
+                    "LEVEL UP · MASTERY TOKEN",
                     self.player.x,
                     self.player.y - 0.6,
                     (120, 230, 150),

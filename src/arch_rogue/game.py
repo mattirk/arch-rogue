@@ -792,7 +792,7 @@ class Game(
                 self.aim_input_mode = "mouse"
                 if event.button == 1:
                     # Milestone 3.3: clicking an available discipline in the
-                    # character sheet spends a skill point to acquire it.
+                    # character sheet spends a mastery token to acquire it.
                     if (
                         self.character_menu_open
                         and self.character_menu_tab == "disciplines"

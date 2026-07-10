@@ -58,7 +58,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             try:
-                game.player.skill_points = 10
+                game.player.mastery_tokens = 10
 
                 # Commit to Bulwark and Riposte (two degree-1 entries).
                 self.assertTrue(game.choose_discipline("warden_bulwark"))
@@ -85,7 +85,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             try:
-                game.player.skill_points = 10
+                game.player.mastery_tokens = 10
 
                 smite = discipline_by_key("warden_smite")
                 self.assertIsNotNone(smite)

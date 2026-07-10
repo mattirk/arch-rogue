@@ -1507,7 +1507,7 @@ def path_progress(acquired: set[str], archetype: str, path: str) -> int:
     return sum(1 for node in nodes if node.key in acquired)
 
 
-# --- Milestone 3.3: skill points, cross-path tags, and combo bonuses ----------
+# --- Milestone 3.3: mastery tokens, cross-path tags, and combo bonuses ----------
 #
 # Two layers of bonus reward committing to a discipline tree:
 #

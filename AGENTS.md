@@ -186,9 +186,10 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 3.19
+### 3.20 ???
 
 ### Stash
 
 - Upgrade all graphics using https://www.pixellab.ai
 - Item rarity: legendary and unique items are way too common now -> make more rare
+- Characters level up too fast. Reduce level up speed to make leveling up more rewarding.

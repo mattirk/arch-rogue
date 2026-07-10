@@ -528,19 +528,19 @@ class MenuCharacterMixin:
         )
 
         subtitle_y = inner.y + title_h + self.u(5)
-        # Milestone 3.3: surface unspent skill points in the subtitle so the
+        # Milestone 3.3: surface unspent mastery tokens in the subtitle so the
         # player knows to open the Disciplines tab and spend them.
-        skill_points = self.g.player.skill_points
+        mastery_tokens = self.g.player.mastery_tokens
         point_text = (
-            f" · {skill_points} Skill Point{'s' if skill_points != 1 else ''}"
-            if skill_points > 0
+            f" · {mastery_tokens} Mastery Token{'s' if mastery_tokens != 1 else ''}"
+            if mastery_tokens > 0
             else ""
         )
         subtitle = (
             f"{player.class_name} · Level {player.level} · "
             f"XP {player.xp}/{player.next_xp}{point_text}"
         )
-        subtitle_color = self.WARNING if skill_points > 0 else self.TEXT
+        subtitle_color = self.WARNING if mastery_tokens > 0 else self.TEXT
         self.draw_text(
             subtitle,
             self.g.small_font,
@@ -1031,10 +1031,10 @@ class MenuCharacterMixin:
         hint_y = legend_y + legend_h
         hint_rect = pygame.Rect(rect.x, hint_y, rect.width, hint_h)
         # Milestone 3.3: if the player is hovering an available node, preview
-        # the combo tier it would unlock; otherwise show the skill-point spend
+        # the combo tier it would unlock; otherwise show the mastery-token spend
         # hint so the player knows how to acquire nodes.
         hovered_key = self.g.character_menu_hovered_node
-        hint_text = "Level-ups award skill points · click or press A on an available node to spend one."
+        hint_text = "Level-ups award mastery tokens · click or press A on an available node to spend one."
         hint_color = self.MUTED
         if hovered_key:
             from ..content import discipline_by_key
@@ -1051,13 +1051,13 @@ class MenuCharacterMixin:
                             f"+{p_spell} spell +{p_hp} HP"
                         )
                         hint_color = self.WARNING
-                    elif self.g.player.skill_points > 0:
+                    elif self.g.player.mastery_tokens > 0:
                         hint_text = (
-                            f"{hovered.name} · click or press A to spend 1 skill point"
+                            f"{hovered.name} · click or press A to spend 1 mastery token"
                         )
                         hint_color = self.g.skill_color()
                     else:
-                        hint_text = f"{hovered.name} · no skill points available"
+                        hint_text = f"{hovered.name} · no mastery tokens available"
                 elif state == "chosen":
                     hint_text = f"{hovered.name} · acquired"
                 elif state == "path_locked":

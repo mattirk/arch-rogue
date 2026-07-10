@@ -98,9 +98,9 @@ class SkillTree32Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)  # Warden
             try:
-                # Milestone 3.3: choosing nodes now spends skill points, so
+                # Milestone 3.3: choosing nodes now spends mastery tokens, so
                 # bank enough points to exercise the discipline tree.
-                game.player.skill_points = 10
+                game.player.mastery_tokens = 10
                 # Initially only degree-1 nodes are available.
                 available = game.available_disciplines()
                 self.assertTrue(available)
@@ -135,15 +135,15 @@ class SkillTree32Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=1, seed=3241)  # Rogue
             try:
-                game.player.skill_points = 2
+                game.player.mastery_tokens = 2
                 game.choose_discipline("rogue_precision")
                 game.choose_discipline("rogue_venom")
                 self.assertEqual(
                     game.player.skill_upgrades,
                     ["rogue_precision", "rogue_venom"],
                 )
-                # Skill points are spent on save.
-                self.assertEqual(game.player.skill_points, 0)
+                # Mastery tokens are spent on save.
+                self.assertEqual(game.player.mastery_tokens, 0)
                 game.save_run()
 
                 game2 = Game(
@@ -232,7 +232,7 @@ class SkillTree32Tests(unittest.TestCase):
                 game.draw_character_menu()
                 # Render Disciplines tab with some acquired nodes.
                 game.character_menu_tab = "disciplines"
-                game.player.skill_points = 2
+                game.player.mastery_tokens = 2
                 game.choose_discipline("acolyte_sanguine")
                 game.choose_discipline("acolyte_gravebind")
                 game.draw_character_menu()

@@ -149,7 +149,7 @@ Arch Rogue supports keyboard/mouse and gamepad. Gamepad bindings can be remapped
 | Control | Action |
 | --- | --- |
 | `Tab` / `1` / `2` / `←` / `→` | Switch Overview and Disciplines tabs |
-| Click discipline (Disciplines) | Spend a skill point to acquire it |
+| Click discipline (Disciplines) | Spend a mastery token to acquire it |
 
 ### Shop (while open)
 

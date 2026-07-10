@@ -398,7 +398,7 @@ class SaveLoadMixin:
                     for slot, item in self.player.equipment.items()
                 },
                 "skill_upgrades": list(self.player.skill_upgrades),
-                "skill_points": int(self.player.skill_points),
+                "mastery_tokens": int(self.player.mastery_tokens),
                 "status_effects": dict(self.player.status_effects),
                 "gold": self.player.gold,
             },
@@ -547,9 +547,12 @@ class SaveLoadMixin:
         self.player.skill_upgrades = migrate_discipline_keys(
             [str(upgrade) for upgrade in player_data.get("skill_upgrades", [])]
         )
-        # Milestone 3.3: skill points default to 0 on older saves so existing
-        # runs resume without a free point windfall.
-        self.player.skill_points = int(player_data.get("skill_points", 0))
+        # Milestone 3.3: mastery tokens default to 0 on older saves so existing
+        # runs resume without a free token windfall. The legacy `skill_points`
+        # key is accepted as a fallback so pre-3.19.2 saves resume cleanly.
+        self.player.mastery_tokens = int(
+            player_data.get("mastery_tokens", player_data.get("skill_points", 0))
+        )
         # Seed the combo-bonus baseline so future discipline picks only apply the
         # delta. The restored stat totals already reflect whatever combo bonus
         # was applied during the original run (3.3+ saves), and pre-3.3 saves

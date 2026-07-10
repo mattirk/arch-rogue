@@ -1,5 +1,29 @@
 # Changelog
 
+## 3.19.2 — Skill Points → Mastery Tokens
+
+For consistency with the Disciplines rename, the class-progression currency **skill points** is renamed to **mastery tokens** throughout the codebase, UI, and docs. The player spends mastery tokens to acquire Disciplines.
+
+### Renamed
+
+- `Player.skill_points` → `Player.mastery_tokens`.
+- `CombatMixin.grant_skill_point` → `grant_mastery_token`.
+- Save JSON key `"skill_points"` → `"mastery_tokens"`.
+- UI text: the level-up floater `LEVEL UP · SKILL POINT` → `LEVEL UP · MASTERY TOKEN`; the grant floater `+N Skill Point(s)` → `+N Mastery Token(s)`; the character-sheet subtitle and Disciplines-tab hints now say "mastery token(s)"; the War Shrine message says "mastery token".
+- All comments/docstrings referencing "skill point(s)" now say "mastery token(s)".
+
+### Preserved (intentionally unchanged)
+
+- **Save compatibility:** `restore_run_state` accepts the legacy `"skill_points"` key as a fallback (older saves resume without losing banked tokens). Save schema `version` remains `5`.
+- `player.skill_upgrades` (acquired discipline keys) and `has_upgrade()` are unchanged — they are the acquired-key store, not the currency.
+- Discipline node keys (e.g. `warden_bulwark`), combo terminology, and class-skill/action-skill concepts are unchanged.
+- Historical changelog entries retain their original wording.
+
+### Validation
+
+- `python -m compileall src tests` — OK.
+- `python -m unittest discover tests` — 178 tests; one pre-existing unrelated inventory-HUD layout failure (`test_inventory_hud_layout_navigation_sorting_and_cues`) remains, unchanged by this refactor. New backward-compatibility assertion added to the save-migration test (legacy `skill_points` key → `mastery_tokens`).
+
 ## 3.19.1 — Skill Tree → Disciplines Refactor
 
 The class-progression skill tree is renamed to the **Disciplines** system throughout the codebase, docs, and UI. Skill-tree nodes are now **Disciplines**, routes are **Discipline Paths**, and the five depth tiers are **Degrees** (Degree 1–5). Discipline node keys, save schema, and save-compatibility are unchanged.

@@ -95,7 +95,7 @@ class Discipline:
     chosen; an empty tuple means the node is open at degree 1. Bonus fields
     mirror `DisciplineUpgrade` so the derived flat upgrade table stays in sync.
 
-    Milestone 3.3 — skill points and combo trees:
+    Milestone 3.3 — mastery tokens and combo trees:
       * `tags` labels the node for cross-path interactions (e.g. "Frost",
         "Stealth", "Critical"). A node may carry tags that other paths'
         modifier nodes key off of.
@@ -852,7 +852,7 @@ class Player:
         default_factory=lambda: {"weapon": None, "armor": None}
     )
     skill_upgrades: list[str] = field(default_factory=list)
-    skill_points: int = 0
+    mastery_tokens: int = 0
     # Runtime cache of the combo bonus already applied to derived stats, so
     # `_apply_combo_bonus_delta` only applies the delta on changes. Not saved;
     # restored by `restore_run_state` / seeded to zero on a fresh player.
@@ -906,8 +906,8 @@ class Player:
         self.mana = self.max_mana
         self.max_stamina += 5
         self.stamina = self.max_stamina
-        # Milestone 3.3: level-ups award a skill point the player spends in the
+        # Milestone 3.3: level-ups award a mastery token the player spends in the
         # character sheet, rather than auto-granting a node. This keeps build
         # choice in the player's hands.
-        self.skill_points += 1
+        self.mastery_tokens += 1
         return True
