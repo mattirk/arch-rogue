@@ -745,6 +745,7 @@ class MenuBaseMixin:
             align="center",
             valign="center",
         )
+        top = title_y + title_font.get_height() // 2 + self.u(72)
         if subtitle:
             self.draw_text(
                 subtitle,
@@ -752,14 +753,12 @@ class MenuBaseMixin:
                 self.MUTED,
                 pygame.Rect(
                     side_margin,
-                    title_y + title_font.get_height() // 2 + self.u(8),
+                    top - subtitle_font.get_height() - self.u(6),
                     width - side_margin * 2,
                     subtitle_font.get_height(),
                 ),
                 align="center",
             )
-
-        top = title_y + title_font.get_height() // 2 + self.u(72)
         footer_space = max(self.g.small_font.get_height() + self.u(18), self.u(42))
         panel_w = min(width - side_margin * 2, self.u(860))
         rect = pygame.Rect(
