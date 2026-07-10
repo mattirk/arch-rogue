@@ -39,7 +39,7 @@ from arch_rogue.constants import (
 )
 from arch_rogue.content import ARCHETYPES, SHRINE_HINTS
 from arch_rogue.game import Game
-from arch_rogue.lighting import bake_normal_map, light_radius_px
+from arch_rogue.lighting import bake_normal_map, hashable_color, light_radius_px
 from arch_rogue.models import LightSource, Projectile, Tile
 
 
@@ -366,6 +366,28 @@ class Lighting316Tests(unittest.TestCase):
         assert game._light_scratch_surface is not None
         self.assertEqual(game._light_buffer_surface.get_size(), (sw // 2, sh // 2))
         self.assertEqual(game._light_scratch_surface.get_size(), (sw, sh))
+
+    def test_list_colored_light_does_not_crash_render(self) -> None:
+        # Light colors arrive as JSON lists (save round-trips) or as unhashable
+        # pygame.Color; the lighting cache keys on color and must tolerate both
+        # instead of raising ``TypeError: unhashable type``.
+        game = self.make_game(tempfile.mkdtemp())
+        game._lighting_enabled = True
+        game._lighting_normal_maps = True
+        game.light_sources.append(
+            LightSource(
+                game.player.x, game.player.y, 2.3, [245, 215, 90],
+                intensity=0.6, ttl=None, flicker=False, kind="shrine",
+            )
+        )
+        for _ in range(3):
+            game.update(0.016)
+            game.draw()
+        # The cache key is a hashable tuple, so the sprite is cached/reused.
+        self.assertEqual(game._radial_light_sprite(48, [245, 215, 90]),
+                         game._radial_light_sprite(48, (245, 215, 90)))
+        self.assertEqual(hashable_color([1, 2, 3]), (1, 2, 3))
+        self.assertEqual(hashable_color((1, 2, 3)), (1, 2, 3))
 
     def test_version_bumped(self) -> None:
         self.assertEqual(__version__, "3.18.1")

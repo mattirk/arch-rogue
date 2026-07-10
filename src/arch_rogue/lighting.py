@@ -187,6 +187,20 @@ def light_radius_px(world_radius: float) -> int:
     return max(4, int(world_radius * TILE_W * 0.46 / LIGHT_BUFFER_SCALE))
 
 
+def hashable_color(color: Color) -> Color:
+    """Normalize a color to a hashable 3-int tuple.
+
+    Light colors flow in from several sources (save JSON, combat, themes). JSON
+    round-trips tuples to lists and ``pygame.Color`` is itself unhashable, so any
+    of those used directly as a dict cache key raises ``TypeError: unhashable
+    type``. Normalizing here keeps the lighting caches robust regardless of how
+    a color arrived, without changing the rendered values.
+    """
+    if type(color) is tuple:
+        return color
+    return (int(color[0]), int(color[1]), int(color[2]))
+
+
 def quantize_direction(dx: float, dy: float) -> int:
     """Bucket a 2D light direction into ``LIGHT_DIRECTION_BUCKETS`` sectors.
 
@@ -372,6 +386,7 @@ class LightingMixin:
         # compositing loop (copy -> multiply -> add), so the sprite never
         # rebuilds for flicker or fade and the brightness never steps.
         radius_px = max(4, (int(radius_px) // 8) * 8)
+        color = hashable_color(color)
         key = (radius_px, color)
         cache = getattr(self, "_light_sprite_cache", None)
         if cache is None:
@@ -618,7 +633,7 @@ class LightingMixin:
         keeps the shading identical across animation frames so actors do not
         flicker as they animate. The per-pixel work runs only on a cache miss.
         """
-        key = (id(base_sprite), bucket, dist_bucket, light.color, out_w, out_h)
+        key = (id(base_sprite), bucket, dist_bucket, hashable_color(light.color), out_w, out_h)
         cache = getattr(self, "_lit_shade_cache", None)
         if cache is None:
             cache = {}

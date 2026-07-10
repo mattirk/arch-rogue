@@ -234,10 +234,11 @@ class Summons315Tests(unittest.TestCase):
             game.player.nova_timer = 0.0
             game.player.mana = game.player.max_mana
 
-            # Owl Companion: lifesteal + more HP.
+            # Owl Companion: more HP (lifesteal moved to the Blood branch in
+            # 3.18.4, so the flag must be off without Blood investment).
             game.player.skill_upgrades.append("acolyte_wraith_host")
             game.player_cast_spirit_call()
-            self.assertTrue(game.familiars[0].lifesteal)
+            self.assertFalse(game.familiars[0].lifesteal)
             self.assertGreater(game.familiars[0].max_hp, tier1.max_hp)
             game.familiars = []
             game.player.nova_timer = 0.0
@@ -273,8 +274,10 @@ class Summons315Tests(unittest.TestCase):
     def test_lifesteal_familiar_heals_acolyte_on_hit(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
+            # 3.18.4: familiar lifesteal is gated on the Blood branch, not the
+            # Spirit branch. Sanguine Rite (Blood t1) is the entry node.
             game.player.skill_upgrades.extend(
-                ["acolyte_spirit_call", "acolyte_wraith_host"]
+                ["acolyte_spirit_call", "acolyte_sanguine"]
             )
             game.player.nova_timer = 0.0
             game.player.mana = game.player.max_mana

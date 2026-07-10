@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.18.3"
-description = "3.18.3 adds a broad HUD render cache (rendered text surfaces, translucent/ornate panel art, and the action-icon body) so steady-state frames blit cached art instead of re-rendering it — ~20-30% lower draw time across all zoom levels on top of the 3.18.2 zoom-out lighting fix."
+version = "3.18.4"
+description = "3.18.4 retargets the Acolyte Blood branch lifesteal onto Blood Rite, Spirit Bolt, and Spirit Call (familiar hits), and removes familiar lifesteal from the Spirit branch (it was too strong). The dormant nova-only leech hook is repurposed as the shared Blood spell-leech ramp."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

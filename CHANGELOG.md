@@ -1,6 +1,65 @@
 # Changelog
 
+## 3.18.4 — Acolyte Blood Retarget
+
+The Acolyte's familiar lifesteal lived on the Spirit branch (`acolyte_wraith_host`,
+t2), which made the summoner build too self-sustaining for how early it came
+online. Lifesteal now belongs to the Blood branch, and the Blood branch's
+previously-dormant nova-leech ramp is repurposed as a shared **Blood spell
+leech** that fires on every active Blood-tagged damage source.
+
+### Changed
+
+- **Removed familiar lifesteal from the Spirit branch.** `acolyte_wraith_host`
+  (Owl Companion, Spirit t2) now grants HP + persistence only — it no longer
+  sets the familiar `lifesteal` flag. The node's description was updated to drop
+  the "drains life from foes" wording.
+- **Blood branch lifesteal now applies to Blood Rite, Spirit Bolt, and Spirit
+  Call.** The old `_acolyte_nova_leech` helper (which only fired on the legacy
+  `player_cast_nova` path the Acolyte no longer reaches from the action bar) is
+  renamed `_acolyte_spell_leech` with the same per-tier ramp (3/4/5/7/8 across
+  Sanguine / Gravebind / Blood Pact / Crimson Maw / Sanguine Ascendant, +1 from
+  the "Blood leech" gear bonus) and is now applied to:
+  - **Spirit Bolt** — each projectile hit siphons life when Blood is committed
+    (in `update_projectiles`, gated on `projectile.archetype == "Acolyte"`).
+  - **Spirit Call familiars** — familiar hits heal the Acolyte by the live
+    spell-leech value; the `lifesteal` flag is set at summon time from Blood
+    investment (`_acolyte_spell_leech() > 0`) and the heal scales with the
+    current Blood tier.
+  - **Legacy nova** — `player_cast_nova` keeps applying the same leech for
+    direct callers / existing tests.
+  Blood Rite (melee) is unchanged: it still uses `_acolyte_melee_leech`
+  (2/3/4/5/6 ramp).
+- **Blood node descriptions** no longer reference the retired Blood Nova:
+  `acolyte_gravebind` now reads "Blood Rite and Spirit Bolt bind foes…" and
+  `acolyte_crimson_maw` reads "Blood skills devour weak foes…".
+- The `familiar_stats` docstring notes the lifesteal move to Blood.
+
+### Notes
+
+- Save schema is unchanged (version stays `5`); the `Familiar.lifesteal`
+  field is preserved and still serialized. Existing familiars keep their flag
+  until the host is recreated on the next Spirit Call / floor descent, at
+  which point it is recomputed from the current Blood investment.
+- `acolyte_wraith_host`'s HP bonus and prerequisite chain are unchanged, so
+  existing Spirit builds keep their progression path; they just lose the
+  (over-tuned) sustain.
+
 ## 3.18.3 — Broad HUD Render Cache
+
+### Bug fixes
+
+- **Lighting crash on room entry:** entering a room could crash with
+  `TypeError: cannot use 'tuple' as a dict key (unhashable type: 'list')` in
+  `draw_lighting` / `_radial_light_sprite`. Light colors flow in from several
+  sources and JSON save round-trips tuples to lists, but the radial-sprite and
+  lit-actor tint caches keyed on `light.color` directly, so any list (or
+  unhashable `pygame.Color`) color raised when it scrolled into view. Both cache
+  keys now normalize the color through a new `hashable_color` helper, so the
+  lighting system is robust to list/`Color` colors regardless of how they
+  arrived. The save-load conversion in `light_source_from_dict` is retained.
+
+### Render caching
 
 On top of the 3.18.2 zoom-out fix, profiling showed the HUD was the largest
 broad (zoom-independent) cost: ``font.size``/``font.render``/``ellipsize`` for

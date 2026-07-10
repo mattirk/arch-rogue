@@ -224,7 +224,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
             finally:
                 pass
 
-    # --- Acolyte lifesteal gated behind Sanguine (melee + nova) ---------
+    # --- Acolyte lifesteal gated behind Sanguine (melee + spell) -------
 
     def test_acolyte_lifesteal_gated_behind_sanguine(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -238,7 +238,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
 
                 # Helper ramps one step per Blood tier; base leech is 0.
                 self.assertEqual(game._acolyte_melee_leech(), 0)
-                self.assertEqual(game._acolyte_nova_leech(), 0)
+                self.assertEqual(game._acolyte_spell_leech(), 0)
 
                 # --- Melee: no sanguine -> no leech ---
                 game.player.hp = game.player.max_hp - 20
@@ -260,7 +260,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
 
                 # --- Nova: no sanguine -> no leech ---
                 game.player.skill_upgrades.remove("acolyte_sanguine")
-                self.assertEqual(game._acolyte_nova_leech(), 0)
+                self.assertEqual(game._acolyte_spell_leech(), 0)
                 enemy2 = _make_enemy(px + 1.0, py, hp=9999)
                 game.enemies = [enemy2]
                 game.player.hp = game.player.max_hp - 20
@@ -272,7 +272,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
 
                 # --- Nova: with sanguine -> leech applies (tier 1 = 3) ---
                 game.player.skill_upgrades.append("acolyte_sanguine")
-                self.assertEqual(game._acolyte_nova_leech(), 3)
+                self.assertEqual(game._acolyte_spell_leech(), 3)
                 enemy3 = _make_enemy(px + 1.0, py, hp=9999)
                 game.enemies = [enemy3]
                 game.player.hp = game.player.max_hp - 20
@@ -285,7 +285,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 # --- Blood Pact t3 ramps melee leech to 4 (gradual tier step) ---
                 game.player.skill_upgrades.append("acolyte_blood_pact")
                 self.assertEqual(game._acolyte_melee_leech(), 4)
-                self.assertEqual(game._acolyte_nova_leech(), 5)
+                self.assertEqual(game._acolyte_spell_leech(), 5)
             finally:
                 pass
 

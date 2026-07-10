@@ -1313,6 +1313,15 @@ class CombatMixin:
                         status_effect=projectile.status_effect,
                         status_duration=projectile.status_duration,
                     )
+                    # Milestone 3.18.4 — Acolyte Spirit Bolt siphons life when the
+                    # Blood branch is committed (same spell-leech ramp as Spirit
+                    # Call familiars and the legacy nova path).
+                    if projectile.archetype == "Acolyte":
+                        leech = self._acolyte_spell_leech()
+                        if leech:
+                            self.player.hp = min(
+                                self.player.max_hp, self.player.hp + leech
+                            )
                     # Milestone 3.7 — Storm-branch chain lightning arcs from
                     # the struck foe to a nearby second target.
                     self._maybe_chain_lightning(projectile, hit)
@@ -1483,9 +1492,13 @@ class CombatMixin:
             return 1
         return 0
 
-    def _acolyte_nova_leech(self) -> int:
-        # Milestone 3.7 refinement: ramp one step per Blood tier; 0 until Blood
-        # is committed.
+    def _acolyte_spell_leech(self) -> int:
+        # Blood-branch spell leech: ramps one step per Blood tier (0 until Blood
+        # is committed). Applied to Spirit Bolt hits, Spirit Call familiar
+        # hits, and the legacy ``player_cast_nova`` path. Milestone 3.18.4 moved
+        # the Acolyte's spell lifesteal off the (now-dormant) nova-only hook and
+        # onto every active Blood-tagged damage source, so committing to Blood
+        # meaningfully sustains the Acolyte again.
         if self.player.has_upgrade("acolyte_sanguine_ascendant"):
             return 8
         if self.player.has_upgrade("acolyte_crimson_maw"):
@@ -1838,13 +1851,14 @@ class CombatMixin:
                     status_effect = "snared"
                     status_duration = snare_time
                 if self.player.class_name == "Acolyte":
-                    # Milestone 3.15 — Acolyte's action-bar slot 3 is now Spirit
-                    # Call, so this nova path is only reachable when
-                    # ``player_cast_nova`` is invoked directly (legacy calls).
-                    # The Blood-branch leech still applies here; the gravebind
-                    # *bind* has retired from the nova (it now lives on Spirit
-                    # Bolt, where ``player_cast_bolt`` applies "bound").
-                    leech = self._acolyte_nova_leech()
+                    # Milestone 3.18.4 — the Acolyte no longer casts Blood Nova
+                    # from the action bar (slot 3 is Spirit Call), so this nova
+                    # path is only reachable via direct ``player_cast_nova``
+                    # calls. The Blood-branch spell leech still applies here for
+                    # legacy callers; the gravebind *bind* retired from the nova
+                    # (it lives on Spirit Bolt / Blood Rite, which apply
+                    # "bound").
+                    leech = self._acolyte_spell_leech()
                     if leech:
                         self.player.hp = min(self.player.max_hp, self.player.hp + leech)
                 damage = self.apply_story_player_damage(damage, spell=True)
@@ -2438,7 +2452,8 @@ class CombatMixin:
         Scales with Spirit branch investment so each pick is felt:
           * ``acolyte_spirit_call`` (t1) — the core summoning node — grows the
             familiar (HP + damage) and unlocks the medium sprite variant.
-          * ``acolyte_wraith_host`` (t2) — lifesteal + HP.
+          * ``acolyte_wraith_host`` (t2) — HP + persistence (lifesteal moved to
+            the Blood branch in 3.18.4).
           * ``acolyte_bone_legion`` (t3) — damage.
           * ``acolyte_wraith_lord`` (t4) — champion: large sprite, HP + damage,
             taunts foes.
@@ -2537,7 +2552,7 @@ class CombatMixin:
                     attack_range=self.FAMILIAR_ATTACK_RANGE,
                     attack_cooldown=self.FAMILIAR_ATTACK_COOLDOWN,
                     sprite_variant=variant,
-                    lifesteal=self.player.has_upgrade("acolyte_wraith_host"),
+                    lifesteal=self._acolyte_spell_leech() > 0,
                     unkillable=self.player.has_upgrade("acolyte_legion_eternal"),
                     champion=champion,
                     facing_x=self.player.facing_x,
@@ -2684,19 +2699,24 @@ class CombatMixin:
             )
         )
         self.add_impact(enemy.x, enemy.y, hit_color, ttl=0.26, radius=0.30, kind="hit")
-        # Owl Companion (t2): familiar hits siphon life into the Acolyte.
+        # Blood branch (3.18.4): familiar hits siphon life into the Acolyte. The
+        # ``lifesteal`` flag is set at summon time from Blood investment (see
+        # ``player_cast_spirit_call``); the heal amount scales live with the
+        # current Blood tier via the shared spell-leech ramp, so leveling Blood
+        # after summoning still strengthens the drain on the next cast.
         if familiar.lifesteal:
-            heal = max(1, damage // 3)
-            self.player.hp = min(self.player.max_hp, self.player.hp + heal)
-            self.floaters.append(
-                FloatingText(
-                    f"+{heal}",
-                    self.player.x,
-                    self.player.y - 0.45,
-                    self.damage_type_color("shadow"),
-                    ttl=0.55,
+            heal = self._acolyte_spell_leech()
+            if heal:
+                self.player.hp = min(self.player.max_hp, self.player.hp + heal)
+                self.floaters.append(
+                    FloatingText(
+                        f"+{heal}",
+                        self.player.x,
+                        self.player.y - 0.45,
+                        self.damage_type_color("shadow"),
+                        ttl=0.55,
+                    )
                 )
-            )
         # Enemy retaliation: an adjacent foe hits back if ready, giving
         # familiars a natural way to die in combat (and the champion's taunt
         # value, since it draws the first blows). Eternal Owls makes the

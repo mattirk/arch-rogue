@@ -213,4 +213,6 @@ branch, mirroring the 3.15 Acolyte Spirit retheme).
 
 ### Stash
 
-- upgrade all graphics using https://www.pixellab.ai
+- Upgrade all graphics using https://www.pixellab.ai
+- Refactor "slot 3 skill" to "Class Skill" and remember to update all references. Design new abstractions if necessary to write clean, maintainable code.
+- Item rarity: legendary and unique items are way too common now -> make more rare
