@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.19.4 — Slower, More Rewarding Leveling
+
+Characters were leveling up too quickly, which diluted the payoff of each level-up and made mastery tokens feel cheap. The XP curve is steepened so each level is a genuine milestone.
+
+### Tuned
+- Base XP threshold for level 1→2: `60` → `100` (first level now takes ~4-5 kills instead of ~3).
+- Per-level XP growth multiplier: `×1.45` → `×1.5`, so later levels scale up faster and stay meaningful across a run.
+- `SaveLoadMixin.restore_run_state` default `next_xp` updated `60` → `100` to match the new starting curve.
+
+### Unchanged
+- Per-level rewards (max HP +12, max mana +5, max stamina +5, +1 mastery token) are untouched — levels are just harder to earn now.
+- XP granted per enemy kill, shrine, and story choice is unchanged.
+
 ## 3.19.3 — Rarer Legendary & Unique Drops
 
 Legendary and unique items were dropping far too often, diluting the excitement of finding build-defining gear. The loot-roll thresholds in `PopulationMixin._make_loot` are tightened and the `loot_bonus` influence is dampened so treasure buffs still help without flooding runs.

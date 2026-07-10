@@ -191,5 +191,5 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 ### Stash
 
 - Upgrade all graphics using https://www.pixellab.ai
-- Item rarity: legendary and unique items are way too common now -> make more rare
-- Characters level up too fast. Reduce level up speed to make leveling up more rewarding.
+- Item rarity: legendary and unique items are way too common now -> make more rare *Done, not tested well*
+- Characters level up too fast. Reduce level up speed to make it more rewarding. *Done, not tested well*

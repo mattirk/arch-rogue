@@ -540,7 +540,7 @@ class SaveLoadMixin:
             armor_bonus=int(player_data.get("armor_bonus", 0)),
             level=int(player_data.get("level", 1)),
             xp=int(player_data.get("xp", 0)),
-            next_xp=int(player_data.get("next_xp", 60)),
+            next_xp=int(player_data.get("next_xp", 100)),
             facing_x=float(player_data.get("facing_x", 1.0)),
             facing_y=float(player_data.get("facing_y", 0.0)),
         )

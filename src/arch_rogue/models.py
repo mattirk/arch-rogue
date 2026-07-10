@@ -832,7 +832,7 @@ class Player:
     armor_bonus: int = 0
     level: int = 1
     xp: int = 0
-    next_xp: int = 60
+    next_xp: int = 100
     facing_x: float = 1.0
     facing_y: float = 0.0
     moving: bool = False
@@ -899,7 +899,7 @@ class Player:
             return False
         self.xp -= self.next_xp
         self.level += 1
-        self.next_xp = int(self.next_xp * 1.45)
+        self.next_xp = int(self.next_xp * 1.5)
         self.max_hp += 12
         self.hp = self.max_hp
         self.max_mana += 5
