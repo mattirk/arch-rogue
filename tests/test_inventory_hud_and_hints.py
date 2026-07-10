@@ -126,8 +126,8 @@ class SystemsPolish12Tests(unittest.TestCase):
                 self.assertIn("missing", game.item_decision_summary(potion))
                 self.assertIn("Unknown stats", game.item_decision_summary(unknown))
 
-                self.assertTrue(game.grant_skill_upgrade(reason="test"))
-                upgrades = game.acquired_skill_upgrades()
+                self.assertTrue(game.grant_discipline(reason="test"))
+                upgrades = game.acquired_discipline_summaries()
                 self.assertTrue(upgrades)
                 self.assertIsInstance(upgrades[-1][0], str)
 

@@ -33,7 +33,7 @@ from .content import (
     DUNGEON_THEMES,
     HELL_DIFFICULTY_NAME,
     RUN_MODIFIERS,
-    migrate_skill_keys,
+    migrate_discipline_keys,
 )
 from .dungeon import (
     LEGACY_QUEST_GUEST_ROOM_KIND,
@@ -544,13 +544,13 @@ class SaveLoadMixin:
             facing_x=float(player_data.get("facing_x", 1.0)),
             facing_y=float(player_data.get("facing_y", 0.0)),
         )
-        self.player.skill_upgrades = migrate_skill_keys(
+        self.player.skill_upgrades = migrate_discipline_keys(
             [str(upgrade) for upgrade in player_data.get("skill_upgrades", [])]
         )
         # Milestone 3.3: skill points default to 0 on older saves so existing
         # runs resume without a free point windfall.
         self.player.skill_points = int(player_data.get("skill_points", 0))
-        # Seed the combo-bonus baseline so future node picks only apply the
+        # Seed the combo-bonus baseline so future discipline picks only apply the
         # delta. The restored stat totals already reflect whatever combo bonus
         # was applied during the original run (3.3+ saves), and pre-3.3 saves
         # default to no combo bonus — matching the "new combo fields default to

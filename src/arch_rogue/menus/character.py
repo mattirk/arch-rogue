@@ -529,7 +529,7 @@ class MenuCharacterMixin:
 
         subtitle_y = inner.y + title_h + self.u(5)
         # Milestone 3.3: surface unspent skill points in the subtitle so the
-        # player knows to open the skill tree tab and spend them.
+        # player knows to open the Disciplines tab and spend them.
         skill_points = self.g.player.skill_points
         point_text = (
             f" · {skill_points} Skill Point{'s' if skill_points != 1 else ''}"
@@ -548,7 +548,7 @@ class MenuCharacterMixin:
             pygame.Rect(inner.x, subtitle_y, inner.width, small_h),
         )
 
-        # Tab strip — Overview and Skill Tree. Tab/Left/Right switch while the
+        # Tab strip — Overview and Disciplines. Tab/Left/Right switch while the
         # menu is open. The active tab is highlighted; the inactive one dims.
         tab_y = subtitle_y + small_h + self.u(4)
         tab_h = max(self.u(22), small_h + self.u(6))
@@ -558,14 +558,14 @@ class MenuCharacterMixin:
         tree_tab = pygame.Rect(inner.x + tab_w + tab_gap, tab_y, tab_w, tab_h)
         active_tab = self.g.character_menu_tab
         self._draw_character_tab(overview_tab, "Overview (1)", active_tab == "overview")
-        self._draw_character_tab(tree_tab, "Skill Tree (2)", active_tab == "skill_tree")
+        self._draw_character_tab(tree_tab, "Disciplines (2)", active_tab == "disciplines")
 
         stats_y = tab_y + tab_h + gap
         content_top = stats_y
         content_bottom = inner.bottom
 
-        if active_tab == "skill_tree":
-            self._draw_character_skill_tree(
+        if active_tab == "disciplines":
+            self._draw_character_disciplines(
                 pygame.Rect(
                     inner.x, content_top, inner.width, content_bottom - content_top
                 )
@@ -686,7 +686,7 @@ class MenuCharacterMixin:
             (f"Bolt type: {self.g.bolt_damage_type().title()}", self.MUTED),
         ]
 
-        upgrades = self.g.acquired_skill_upgrades()
+        upgrades = self.g.acquired_discipline_summaries()
         upgrade_lines = (
             [(name, self.TEXT) for name, _description in upgrades[:4]]
             if upgrades
@@ -766,10 +766,10 @@ class MenuCharacterMixin:
             valign="center",
         )
 
-    def _draw_character_skill_tree(self, rect: pygame.Rect) -> None:
-        """Render the archetype skill tree as a tier x branch grid.
+    def _draw_character_disciplines(self, rect: pygame.Rect) -> None:
+        """Render the archetype discipline tree as a degree x path grid.
 
-        Each row is a tier (1..5, top to bottom). Each column is a branch route.
+        Each row is a degree (1..5, top to bottom). Each column is a path route.
         Nodes are drawn as small cards with state-tinted borders:
             chosen   — gold border, filled
             available — accent border, ready to pick on level-up/shrine
@@ -779,22 +779,22 @@ class MenuCharacterMixin:
         with the mouse previews the combo tier it would unlock.
         """
         from ..content import (
-            MAX_COMMITTED_BRANCHES,
-            committed_branches,
-            is_branch_locked,
-            skill_branches_for_archetype,
-            skill_nodes_for_archetype,
-            skill_tree_max_tier,
+            MAX_COMMITTED_PATHS,
+            committed_paths,
+            is_path_locked,
+            discipline_paths_for_archetype,
+            disciplines_for_archetype,
+            max_discipline_degree,
         )
 
         player = self.g.player
         archetype = player.class_name
-        nodes = skill_nodes_for_archetype(archetype)
-        branches = skill_branches_for_archetype(archetype)
-        max_tier = skill_tree_max_tier(archetype)
-        if not nodes or not branches or max_tier <= 0:
+        nodes = disciplines_for_archetype(archetype)
+        paths = discipline_paths_for_archetype(archetype)
+        max_degree = max_discipline_degree(archetype)
+        if not nodes or not paths or max_degree <= 0:
             self.draw_text(
-                "No skill tree defined for this archetype.",
+                "No disciplines defined for this archetype.",
                 self.g.small_font,
                 self.MUTED,
                 rect,
@@ -803,48 +803,48 @@ class MenuCharacterMixin:
             )
             return
 
-        # Index nodes by (tier, branch). A branch may have at most one node
-        # per tier in the current tree definition.
+        # Index nodes by (degree, path). A path may have at most one node
+        # per degree in the current tree definition.
         grid: dict[tuple[int, str], object] = {}
         for node in nodes:
-            grid[(node.tier, node.branch)] = node
+            grid[(node.degree, node.path)] = node
 
         tiny_h = self.g.tiny_font.get_height()
         small_h = self.g.small_font.get_height()
         pad = max(self.u(10), 10)
         gap = self.u(6)
 
-        # Acquired-node set, reused by the combo strip and the branch headers.
+        # Acquired-node set, reused by the combo strip and the path headers.
         acquired = set(player.skill_upgrades)
 
-        # Combo state — completed branches and current bonus. Surfaced in a
+        # Combo state — completed paths and current bonus. Surfaced in a
         # strip above the grid so the player can see their commitment payoff.
         completed, combo_melee, combo_spell, combo_hp = self.g.combo_state()
         completed_count = len(completed)
         combo_active = completed_count >= 2
-        # The combo_state total combines the per-branch depth bonus and the
-        # multi-branch combo breadth bonus. Show the breakdown when both apply.
+        # The combo_state total combines the per-path depth bonus and the
+        # multi-path combo breadth bonus. Show the breakdown when both apply.
         from ..content import (
             COMBO_BONUS_PER_STEP_MAX_HP,
             COMBO_BONUS_PER_STEP_MELEE,
             COMBO_BONUS_PER_STEP_SPELL,
-            COMPLETED_BRANCH_BONUS_MAX_HP,
-            COMPLETED_BRANCH_BONUS_MELEE,
-            COMPLETED_BRANCH_BONUS_SPELL,
+            COMPLETED_PATH_BONUS_MAX_HP,
+            COMPLETED_PATH_BONUS_MELEE,
+            COMPLETED_PATH_BONUS_SPELL,
         )
 
-        depth_melee = completed_count * COMPLETED_BRANCH_BONUS_MELEE
-        depth_spell = completed_count * COMPLETED_BRANCH_BONUS_SPELL
-        depth_hp = completed_count * COMPLETED_BRANCH_BONUS_MAX_HP
+        depth_melee = completed_count * COMPLETED_PATH_BONUS_MELEE
+        depth_spell = completed_count * COMPLETED_PATH_BONUS_SPELL
+        depth_hp = completed_count * COMPLETED_PATH_BONUS_MAX_HP
         steps = max(0, completed_count - 1) if completed_count >= 2 else 0
         breadth_melee = steps * COMBO_BONUS_PER_STEP_MELEE
         breadth_spell = steps * COMBO_BONUS_PER_STEP_SPELL
         breadth_hp = steps * COMBO_BONUS_PER_STEP_MAX_HP
         # Milestone 3.7 - always show a commitment strip so the player can see
-        # how many of the MAX_COMMITTED_BRANCHES paths they have committed to.
+        # how many of the MAX_COMMITTED_PATHS paths they have committed to.
         combo_strip_h = small_h + self.u(4)
 
-        # Header: branch names across the top.
+        # Header: path names across the top.
         header_h = small_h + self.u(6)
         # Footer: legend + hint.
         legend_h = tiny_h + self.u(8)
@@ -862,10 +862,10 @@ class MenuCharacterMixin:
 
         # Combo strip — only drawn when there is something to show.
         combo_rect = pygame.Rect(rect.x, rect.y + header_h, rect.width, combo_strip_h)
-        committed_count = len(committed_branches(acquired, archetype))
+        committed_count = len(committed_paths(acquired, archetype))
         if completed_count and combo_active:
             label = (
-                f"Committed {committed_count}/{MAX_COMMITTED_BRANCHES} paths "
+                f"Committed {committed_count}/{MAX_COMMITTED_PATHS} paths "
                 f"· {completed_count} complete: "
                 f"depth +{depth_melee}m/+{depth_spell}s/+{depth_hp}hp"
                 f" · combo +{breadth_melee}m/+{breadth_spell}s/+{breadth_hp}hp"
@@ -873,7 +873,7 @@ class MenuCharacterMixin:
             color = self.WARNING
         elif completed_count:
             label = (
-                f"Committed {committed_count}/{MAX_COMMITTED_BRANCHES} paths "
+                f"Committed {committed_count}/{MAX_COMMITTED_PATHS} paths "
                 f"· {completed_count} complete: "
                 f"depth +{depth_melee}m/+{depth_spell}s/+{depth_hp}hp"
                 f" · commit to 2 for a combo bonus"
@@ -881,7 +881,7 @@ class MenuCharacterMixin:
             color = self.TEXT
         else:
             label = (
-                f"Committed {committed_count}/{MAX_COMMITTED_BRANCHES} paths "
+                f"Committed {committed_count}/{MAX_COMMITTED_PATHS} paths "
                 f"· pick a node to commit to a route"
             )
             color = self.MUTED
@@ -894,40 +894,40 @@ class MenuCharacterMixin:
             valign="center",
         )
 
-        # Row layout — tier label gutter on the left, columns to its right.
-        tier_label_w = max(self.u(28), self.g.tiny_font.size("Tier 5")[0] + self.u(6))
+        # Row layout — degree label gutter on the left, columns to its right.
+        degree_label_w = max(self.u(28), self.g.tiny_font.size(f"Degree {max_degree}")[0] + self.u(6))
         rows_area = pygame.Rect(
-            grid_rect.x + tier_label_w,
+            grid_rect.x + degree_label_w,
             grid_rect.y,
-            max(1, grid_rect.width - tier_label_w),
+            max(1, grid_rect.width - degree_label_w),
             grid_rect.height,
         )
-        # Column layout — columns live inside `rows_area` (after the tier-label
+        # Column layout — columns live inside `rows_area` (after the degree-label
         # gutter), so size them from `rows_area.width` to avoid overflowing the
         # container's right edge.
         col_gap = self.u(6)
         col_w = max(
-            1, (rows_area.width - col_gap * (len(branches) - 1)) // len(branches)
+            1, (rows_area.width - col_gap * (len(paths) - 1)) // len(paths)
         )
-        row_h = max(1, (rows_area.height - gap * (max_tier - 1)) // max_tier)
+        row_h = max(1, (rows_area.height - gap * (max_degree - 1)) // max_degree)
 
-        # Branch headers. Locked branches (Milestone 3.7 two-branch
+        # Path headers. Locked paths (Milestone 3.7 two-path
         # commitment limit) are dimmed and tagged with a lock glyph so the
         # player can see which routes are sealed.
-        committed = committed_branches(acquired, archetype)
-        for col, branch in enumerate(branches):
+        committed = committed_paths(acquired, archetype)
+        for col, path in enumerate(paths):
             col_x = rows_area.x + col * (col_w + col_gap)
-            if branch in completed:
+            if path in completed:
                 header_color = self.WARNING
-            elif branch in committed:
+            elif path in committed:
                 header_color = self.TEXT
-            elif is_branch_locked(acquired, archetype, branch):
+            elif is_path_locked(acquired, archetype, path):
                 header_color = self.MUTED
             else:
                 header_color = self.MUTED
-            label = branch
-            if is_branch_locked(acquired, archetype, branch):
-                label = f"[lock] {branch}"
+            label = path
+            if is_path_locked(acquired, archetype, path):
+                label = f"[lock] {path}"
             self.draw_text(
                 label,
                 self.g.small_font,
@@ -939,22 +939,22 @@ class MenuCharacterMixin:
 
         # Reset the mouse-hover cell map; repopulated as nodes are drawn so
         # `handle_events` can map mouse positions to node keys next frame.
-        self.g._skill_node_cells = {}
+        self.g._discipline_cells = {}
 
-        # Tier rows.
-        for tier in range(1, max_tier + 1):
-            row_y = rows_area.y + (tier - 1) * (row_h + gap)
-            # Tier label in the gutter.
+        # Degree rows.
+        for degree in range(1, max_degree + 1):
+            row_y = rows_area.y + (degree - 1) * (row_h + gap)
+            # Degree label in the gutter.
             self.draw_text(
-                f"Tier {tier}",
+                f"Degree {degree}",
                 self.g.tiny_font,
                 self.MUTED,
-                pygame.Rect(grid_rect.x, row_y, tier_label_w, row_h),
+                pygame.Rect(grid_rect.x, row_y, degree_label_w, row_h),
                 align="left",
                 valign="center",
             )
-            for col, branch in enumerate(branches):
-                node = grid.get((tier, branch))
+            for col, path in enumerate(paths):
+                node = grid.get((degree, path))
                 col_x = rows_area.x + col * (col_w + col_gap)
                 cell = pygame.Rect(col_x, row_y, col_w, row_h)
                 if node is None:
@@ -973,8 +973,8 @@ class MenuCharacterMixin:
                         border_radius=self.u(6),
                     )
                     continue
-                self._draw_skill_node_cell(node, cell, pad, tiny_h, small_h)
-                self.g._skill_node_cells[node.key] = cell
+                self._draw_discipline_cell(node, cell, pad, tiny_h, small_h)
+                self.g._discipline_cells[node.key] = cell
                 # Hover highlight — a bright outline around the cell the mouse
                 # is over, so the player can see which node the preview refers to.
                 if self.g.character_menu_hovered_node == node.key:
@@ -1017,7 +1017,7 @@ class MenuCharacterMixin:
             )
             x = text_rect.right + self.u(16)
         # Available count on the right of the legend.
-        available = self.g.available_skill_choices()
+        available = self.g.available_disciplines()
         count_text = f"{len(available)} path{'s' if len(available) != 1 else ''} ready"
         count_w = self.g.tiny_font.size(count_text)[0]
         self.draw_text(
@@ -1037,11 +1037,11 @@ class MenuCharacterMixin:
         hint_text = "Level-ups award skill points · click or press A on an available node to spend one."
         hint_color = self.MUTED
         if hovered_key:
-            from ..content import skill_node_by_key
+            from ..content import discipline_by_key
 
-            hovered = skill_node_by_key(hovered_key)
+            hovered = discipline_by_key(hovered_key)
             if hovered is not None:
-                state = self.g.skill_node_state(hovered)
+                state = self.g.discipline_state(hovered)
                 if state == "available":
                     p_melee, p_spell, p_hp = self.g.combo_preview(hovered)
                     _, c_melee, c_spell, c_hp = self.g.combo_state()
@@ -1060,10 +1060,10 @@ class MenuCharacterMixin:
                         hint_text = f"{hovered.name} · no skill points available"
                 elif state == "chosen":
                     hint_text = f"{hovered.name} · acquired"
-                elif state == "branch_locked":
+                elif state == "path_locked":
                     hint_text = (
-                        f"{hovered.name} · branch sealed "
-                        f"(max {MAX_COMMITTED_BRANCHES} paths)"
+                        f"{hovered.name} · path sealed "
+                        f"(max {MAX_COMMITTED_PATHS} paths)"
                     )
                 else:
                     hint_text = f"{hovered.name} · locked"
@@ -1076,7 +1076,7 @@ class MenuCharacterMixin:
             valign="center",
         )
 
-    def _draw_skill_node_cell(
+    def _draw_discipline_cell(
         self,
         node,
         cell: pygame.Rect,
@@ -1084,8 +1084,8 @@ class MenuCharacterMixin:
         tiny_h: int,
         small_h: int,
     ) -> None:
-        state = self.g.skill_node_state(node)
-        # Milestone 3.7 - "branch_locked" nodes are sealed by the two-branch
+        state = self.g.discipline_state(node)
+        # Milestone 3.7 - "path_locked" nodes are sealed by the two-path
         # commitment limit and render with a dim red wash so they read as a
         # deliberate specialization seal rather than a prereq gate.
         sealed = (132, 74, 74)
@@ -1097,7 +1097,7 @@ class MenuCharacterMixin:
             border = self.g.skill_color()
             fill = self.PANEL_2
             name_color = self.TEXT
-        elif state == "branch_locked":
+        elif state == "path_locked":
             border = sealed
             fill = self.PANEL_INK
             name_color = self.MUTED

@@ -23,7 +23,7 @@
 from __future__ import annotations
 
 from .constants import MAX_INVENTORY
-from .content import skill_node_by_key
+from .content import discipline_by_key
 from .models import FloatingText, Item
 
 ARCHETYPE_BUILD_TAGS: dict[str, tuple[str, ...]] = {
@@ -167,11 +167,11 @@ class InventoryMixin:
     def player_build_tags(self) -> set[str]:
         tags = set(ARCHETYPE_BUILD_TAGS.get(self.player.class_name, ()))
         for key in self.player.skill_upgrades:
-            node = skill_node_by_key(key)
+            node = discipline_by_key(key)
             if node is None:
                 continue
-            if node.branch:
-                tags.add(node.branch.lower())
+            if node.path:
+                tags.add(node.path.lower())
             tags.update(tag.lower() for tag in node.tags)
         return tags
 

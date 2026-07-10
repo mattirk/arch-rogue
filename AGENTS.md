@@ -186,34 +186,9 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 3.18 Warden Time Stop
-
-Replace the Warden's slot-3 nova (Bulwark Wave) with **Time Skip**, a control
-skill that slows time for all enemies without affecting the player, and give it
-a dedicated **Time** skill branch (rethemed from the flavor-only Fortress
-branch, mirroring the 3.15 Acolyte Spirit retheme).
-
-- **Activation:** slot-3 hotkey (reuses the nova-slot mana cost + cooldown so
-  the action bar and equipment bonuses stay balanced).
-- **Effect:** while active, enemy movement and attack cadence run at ~40% speed;
-  the player's movement, attacks, and timers are untouched.
-- **Implementation:** single global `enemy_time_scale()` multiplier applied to
-  the enemy simulation dt in `update_enemies`; `player.time_skip_timer` is
-  transient (not serialized, reset on descent). Legacy `Nova` gear still
-  applies its slot-3 budget for save compatibility.
-- **Time branch ladder** (keys preserved for save compat):
-  - T1 `warden_ward` (Temporal Sigil): −1 mana, −0.3s cooldown, +0.5s duration.
-  - T2 `warden_bulwark_wave` (Time Skip): +1.0s duration; cast ring staggers foes.
-  - T3 `warden_stone_aegis` (Stutter Step): slow factor 0.4 → 0.3.
-  - T4 `warden_unyielding` (Temporal Aegis): −20% incoming damage while active.
-  - T5 `warden_eternal_wall` (Eternal Moment): kills refund ~40% slot cooldown.
-- **Scaling:** duration/factor scale along the Time branch; the incidental
-  `warden_aegis` / `warden_bulwark_ward` hooks were removed. Future gear can use
-  `Time Skip` wording.
+### 3.19
 
 ### Stash
 
 - Upgrade all graphics using https://www.pixellab.ai
-- ~~Refactor "slot 3 skill" to "class skill" and remember to update all references. Design new abstractions if necessary to write clean, maintainable code.~~ Done in 3.19.0: renamed to class-skill API with data-driven dispatch registry.
-- Refactor Skills in skill tree (not to be confused with action skills or class skills) into Disciplines. Skill paths are called Discipline Paths. Tiers 1-5 are called Degrees (Degree 1, Degree 2, etc.). Remember to update all references. 
 - Item rarity: legendary and unique items are way too common now -> make more rare

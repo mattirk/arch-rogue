@@ -76,7 +76,7 @@ class TimeSkip318Tests(unittest.TestCase):
     # --- class-skill swap ----------------------------------------------
 
     def test_version_bumped(self) -> None:
-        self.assertEqual(__version__, "3.19.0")
+        self.assertEqual(__version__, "3.19.1")
 
     def test_warden_class_skill_is_time_skip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -209,7 +209,7 @@ class TimeSkip318Tests(unittest.TestCase):
             self.assertEqual(game.player.time_skip_timer, 0.0)
             self.assertEqual(game.enemy_time_scale(), 1.0)
 
-    # --- Time branch skill path (3.18.1) -----------------------------
+    # --- Time Discipline Path (3.18.1) -----------------------------
 
     def test_duration_scales_along_time_branch(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -217,11 +217,11 @@ class TimeSkip318Tests(unittest.TestCase):
             base = game.time_skip_duration()
             self.assertAlmostEqual(base, 3.0, places=4)
 
-            # T1 Temporal Sigil.
+            # Degree 1 Temporal Sigil.
             game.player.skill_upgrades.append("warden_ward")
             self.assertAlmostEqual(game.time_skip_duration(), 3.5, places=4)
 
-            # T2 Time Skip node.
+            # Degree 2 Time Skip node.
             game.player.skill_upgrades.append("warden_bulwark_wave")
             self.assertAlmostEqual(game.time_skip_duration(), 4.5, places=4)
 
@@ -362,7 +362,7 @@ class TimeSkip318Tests(unittest.TestCase):
             game = self.make_game(tmpdir, archetype_index=0)
             game.player.time_skip_timer = 2.5
             data = game.serialize_run_state()
-            self.assertEqual(data["release"], "3.19.0")
+            self.assertEqual(data["release"], "3.19.1")
             self.assertNotIn("time_skip_timer", data)
 
             loaded = Game(

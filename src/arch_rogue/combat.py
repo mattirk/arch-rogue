@@ -46,13 +46,13 @@ from .constants import (
     WALK_ANIMATION_RATE,
 )
 from .content import (
-    SKILL_UPGRADES,
+    DISCIPLINE_UPGRADES,
     combo_bonus,
-    completed_branches,
-    cross_branch_tag_bonus,
-    is_branch_locked,
-    skill_node_by_key,
-    skill_nodes_for_archetype,
+    completed_paths,
+    cross_path_tag_bonus,
+    is_path_locked,
+    discipline_by_key,
+    disciplines_for_archetype,
 )
 from .models import (
     AmbushBell,
@@ -434,51 +434,51 @@ class CombatMixin:
         }
         return colors.get(self.player.class_name, (120, 210, 255))
 
-    def available_skill_choices(self) -> list:
-        """Skill nodes the player can choose right now.
+    def available_disciplines(self) -> list:
+        """Disciplines the player can choose right now.
 
-        A node is available when it belongs to the player's archetype, is not
-        yet acquired, every prerequisite node has already been acquired, and
-        its branch has not been locked by the two-branch commitment limit
-        (Milestone 3.7). Tier-1 nodes are always available until taken, unless
-        their branch is locked.
+        A discipline is available when it belongs to the player's archetype, is not
+        yet acquired, every prerequisite discipline has already been acquired, and
+        its path has not been locked by the two-path commitment limit
+        (Milestone 3.7). Degree-1 disciplines are always available until taken, unless
+        their path is locked.
         """
         acquired = set(self.player.skill_upgrades)
         choices: list = []
-        for node in skill_nodes_for_archetype(self.player.class_name):
+        for node in disciplines_for_archetype(self.player.class_name):
             if node.key in acquired:
                 continue
-            if is_branch_locked(acquired, node.archetype, node.branch):
+            if is_path_locked(acquired, node.archetype, node.path):
                 continue
             if all(prereq in acquired for prereq in node.prerequisites):
                 choices.append(node)
         return choices
 
-    def skill_node_state(self, node) -> str:
-        """Return one of "chosen", "available", "branch_locked", "locked".
+    def discipline_state(self, node) -> str:
+        """Return one of "chosen", "available", "path_locked", "locked".
 
-        "branch_locked" (Milestone 3.7) marks nodes whose branch is sealed by
-        the two-branch commitment limit and is distinct from "locked" so the
+        "path_locked" (Milestone 3.7) marks disciplines whose path is sealed by
+        the two-path commitment limit and is distinct from "locked" so the
         menu can render the two reasons differently.
         """
         acquired = set(self.player.skill_upgrades)
         if node.key in acquired:
             return "chosen"
-        if is_branch_locked(acquired, node.archetype, node.branch):
-            return "branch_locked"
+        if is_path_locked(acquired, node.archetype, node.path):
+            return "path_locked"
         if all(prereq in acquired for prereq in node.prerequisites):
             return "available"
         return "locked"
 
-    def choose_skill_upgrade(self, key: str, reason: str = "chosen") -> bool:
-        """Apply a specific skill node by key, spending one skill point.
+    def choose_discipline(self, key: str, reason: str = "chosen") -> bool:
+        """Apply a specific discipline by key, spending one skill point.
 
-        Returns False (without spending a point) if the node is unknown, belongs
+        Returns False (without spending a point) if the discipline is unknown, belongs
         to another archetype, is already acquired, has unmet prerequisites, is
-        in a branch locked by the commitment limit, or the player has no skill
+        in a path locked by the commitment limit, or the player has no skill
         points to spend.
         """
-        node = skill_node_by_key(key)
+        node = discipline_by_key(key)
         if node is None or node.archetype != self.player.class_name:
             return False
         if node.key in self.player.skill_upgrades:
@@ -487,14 +487,14 @@ class CombatMixin:
             prereq in self.player.skill_upgrades for prereq in node.prerequisites
         ):
             return False
-        if is_branch_locked(
-            set(self.player.skill_upgrades), node.archetype, node.branch
+        if is_path_locked(
+            set(self.player.skill_upgrades), node.archetype, node.path
         ):
             return False
         if self.player.skill_points <= 0:
             return False
         self.player.skill_points -= 1
-        self._apply_skill_node(node, reason)
+        self._apply_discipline(node, reason)
         self._apply_combo_bonus_delta(node)
         return True
 
@@ -513,7 +513,7 @@ class CombatMixin:
             )
         )
 
-    def _apply_skill_node(self, node, reason: str) -> None:
+    def _apply_discipline(self, node, reason: str) -> None:
         self.player.skill_upgrades.append(node.key)
         self.player.melee_bonus += node.melee_bonus
         self.player.spell_bonus += node.spell_bonus
@@ -543,8 +543,8 @@ class CombatMixin:
     def _apply_combo_bonus_delta(self, node) -> None:
         """Apply the combo-bonus delta caused by acquiring `node`.
 
-        Called after a node is chosen. If the acquisition completed a new
-        branch and pushed the player into a higher combo tier, the delta is
+        Called after a discipline is chosen. If the acquisition completed a new
+        path and pushed the player into a higher combo tier, the delta is
         applied to the player's derived stats so the bonus is felt immediately.
         """
         acquired = set(self.player.skill_upgrades)
@@ -563,19 +563,19 @@ class CombatMixin:
         self.player._combo_applied = (melee, spell, max_hp)
 
     def combo_state(self) -> tuple[tuple[str, ...], int, int, int]:
-        """Return (completed_branches, melee_bonus, spell_bonus, max_hp_bonus).
+        """Return (completed_paths, melee_bonus, spell_bonus, max_hp_bonus).
 
         Cheap O(nodes) lookup with no per-frame allocations beyond the returned
         tuple; safe to call from the hot path or the character sheet.
         """
         acquired = set(self.player.skill_upgrades)
-        done = completed_branches(acquired, self.player.class_name)
+        done = completed_paths(acquired, self.player.class_name)
         melee, spell, max_hp = combo_bonus(acquired, self.player.class_name)
         return (done, melee, spell, max_hp)
 
-    def cross_branch_bonus_state(self) -> tuple[int, int]:
-        """Return (melee, spell) bonus from acquired cross-branch modifiers."""
-        return cross_branch_tag_bonus(set(self.player.skill_upgrades))
+    def cross_path_bonus_state(self) -> tuple[int, int]:
+        """Return (melee, spell) bonus from acquired cross-path modifiers."""
+        return cross_path_tag_bonus(set(self.player.skill_upgrades))
 
     def combo_preview(self, node) -> tuple[int, int, int]:
         """Combo bonus if `node` were acquired next (for sheet hover preview)."""
@@ -585,33 +585,33 @@ class CombatMixin:
             set(self.player.skill_upgrades), self.player.class_name, node.key
         )
 
-    def grant_skill_upgrade(self, reason: str = "level up") -> bool:
-        """Grant a random available skill node, respecting tree prerequisites.
+    def grant_discipline(self, reason: str = "level up") -> bool:
+        """Grant a random available discipline, respecting discipline tree prerequisites.
 
         Used by shrines/altars/story rewards. These are bonus grants that do
         NOT spend the player's banked skill points (level-up points are spent
-        by the player via `choose_skill_upgrade`). Falls back to the flat
-        `SKILL_UPGRADES` pool only if the tree yields no available nodes.
+        by the player via `choose_discipline`). Falls back to the flat
+        `DISCIPLINE_UPGRADES` pool only if the discipline tree yields no available disciplines.
         """
-        choices = self.available_skill_choices()
+        choices = self.available_disciplines()
         if not choices:
             legacy_choices = [
                 upgrade
-                for upgrade in SKILL_UPGRADES
+                for upgrade in DISCIPLINE_UPGRADES
                 if upgrade.archetype == self.player.class_name
                 and upgrade.key not in self.player.skill_upgrades
             ]
             if not legacy_choices:
                 return False
             upgrade = self.rng.choice(legacy_choices)
-            node = skill_node_by_key(upgrade.key)
+            node = discipline_by_key(upgrade.key)
             if node is not None:
-                self._apply_skill_node(node, reason)
+                self._apply_discipline(node, reason)
                 self._apply_combo_bonus_delta(node)
                 return True
             return False
         node = self.rng.choice(choices)
-        self._apply_skill_node(node, reason)
+        self._apply_discipline(node, reason)
         self._apply_combo_bonus_delta(node)
         return True
 
@@ -662,7 +662,7 @@ class CombatMixin:
         cost = 14 if self.player.class_name in ("Arcanist", "Acolyte") else 18
         if self.player.has_upgrade("acolyte_veil"):
             cost -= 2
-        # Warden Time branch T1 (Temporal Sigil) discounts the class-skill budget.
+        # Warden Time path Degree 1 (Temporal Sigil) discounts the class-skill budget.
         if self.player.class_name == "Warden" and self.player.has_upgrade("warden_ward"):
             cost -= 1
         if self.equipment_class_skill_bonus():
@@ -676,7 +676,7 @@ class CombatMixin:
     def class_skill_cooldown(self) -> float:
         """Shared cooldown for the archetype class skill (hotkey 3)."""
         cooldown = 2.65 if self.player.class_name == "Arcanist" else 3.2
-        # Warden Time branch T1 (Temporal Sigil) cools the class skill faster.
+        # Warden Time path Degree 1 (Temporal Sigil) cools the class skill faster.
         if self.player.class_name == "Warden" and self.player.has_upgrade("warden_ward"):
             cooldown -= 0.3
         if self.equipment_class_skill_bonus():
@@ -687,7 +687,7 @@ class CombatMixin:
 
     def time_skip_factor(self) -> float:
         """Enemy simulation speed while Time Skip is active (lower = slower)."""
-        # Milestone 3.18.1 — Time branch T3 (Stutter Step) deepens the slow.
+        # Milestone 3.18.1 — Time path Degree 3 (Stutter Step) deepens the slow.
         if self.player.has_upgrade("warden_stone_aegis"):
             return 0.3
         return 0.4
@@ -695,7 +695,7 @@ class CombatMixin:
     def time_skip_duration(self) -> float:
         """How long Time Skip slows enemies, in seconds."""
         duration = 3.0
-        # Time branch scaling (T1 Temporal Sigil, T2 Time Skip).
+        # Time path scaling (Degree 1 Temporal Sigil, Degree 2 Time Skip).
         if self.player.has_upgrade("warden_ward"):
             duration += 0.5
         if self.player.has_upgrade("warden_bulwark_wave"):
@@ -769,7 +769,7 @@ class CombatMixin:
             typed_resist += 0.06
         if self.player_status("aegis") > 0:
             typed_resist += 0.24
-        # Milestone 3.18.1 — Time branch T4 (Temporal Aegis): while Time
+        # Milestone 3.18.1 — Time path Degree 4 (Temporal Aegis): while Time
         # Skip is active the Warden takes 20% less damage from incoming hits.
         if (
             self.player.class_name == "Warden"
@@ -1324,7 +1324,7 @@ class CombatMixin:
                         status_duration=projectile.status_duration,
                     )
                     # Milestone 3.18.4 — Acolyte Spirit Bolt siphons life when the
-                    # Blood branch is committed (same spell-leech ramp as Spirit
+                    # Blood path is committed (same spell-leech ramp as Spirit
                     # Call familiars and the legacy nova path).
                     if projectile.archetype == "Acolyte":
                         leech = self._acolyte_spell_leech()
@@ -1332,7 +1332,7 @@ class CombatMixin:
                             self.player.hp = min(
                                 self.player.max_hp, self.player.hp + leech
                             )
-                    # Milestone 3.7 — Storm-branch chain lightning arcs from
+                    # Milestone 3.7 — Storm-path chain lightning arcs from
                     # the struck foe to a nearby second target.
                     self._maybe_chain_lightning(projectile, hit)
                     projectile.hit_enemies.add(id(hit))
@@ -1449,9 +1449,9 @@ class CombatMixin:
         projectile.vy = new_dy * speed
 
     def _maybe_chain_lightning(self, projectile: Projectile, primary: Enemy) -> None:
-        """Storm-branch chain lightning: arc from a struck foe to a neighbour.
+        """Storm-path chain lightning: arc from a struck foe to a neighbour.
 
-        Triggered by the Arcanist Storm branch (arcanist_chain_lightning and
+        Triggered by the Arcanist Storm path (arcanist_chain_lightning and
         deeper). The chain hits one extra foe near the primary for partial
         damage, giving the Storm path a distinct bolt behavior versus the Bolt
         path's pierce/homing.
@@ -1486,7 +1486,7 @@ class CombatMixin:
         projectile.hit_enemies.add(id(best))
 
     def _acolyte_melee_leech(self) -> int:
-        # Milestone 3.7 refinement: ramp one step per Blood tier; 0 until Blood
+        # Milestone 3.7 refinement: ramp one step per Blood degree; 0 until Blood
         # is committed.
         if self.player.has_upgrade("acolyte_sanguine_ascendant"):
             return 6
@@ -1503,7 +1503,7 @@ class CombatMixin:
         return 0
 
     def _acolyte_spell_leech(self) -> int:
-        # Blood-branch spell leech: ramps one step per Blood tier (0 until Blood
+        # Blood-path spell leech: ramps one step per Blood degree (0 until Blood
         # is committed). Applied to Spirit Bolt hits, Spirit Call familiar
         # hits, and the legacy ``player_cast_nova`` path. Milestone 3.18.4 moved
         # the Acolyte's spell lifesteal off the (now-dormant) nova-only hook and
@@ -1565,8 +1565,8 @@ class CombatMixin:
             targets = [target]
             if self.player.class_name == "Warden":
                 # Milestone 3.7 — base Shield Bash hits a single foe; the
-                # Bulwark branch's first node unlocks the cleave arc so the
-                # branch choice changes how melee plays, not just its damage.
+                # Bulwark path's first discipline unlocks the cleave arc so the
+                # path choice changes how melee plays, not just its damage.
                 if self.player.has_upgrade("warden_bulwark_ward"):
                     targets = self.enemies_in_melee_arc(reach_bonus=0.35)[:4]
                 elif self.player.has_upgrade("warden_aegis"):
@@ -1585,7 +1585,7 @@ class CombatMixin:
                 if index > 0:
                     damage = max(1, int(damage * 0.62))
                 # Milestone 3.7 — Rogue crits are gated behind the Precision
-                # branch; base backstabs never crit, so committing to Precision
+                # path; base backstabs never crit, so committing to Precision
                 # feels essential to the crit playstyle.
                 if self.player.has_upgrade("rogue_deathmark"):
                     crit_chance = 0.40
@@ -1667,7 +1667,7 @@ class CombatMixin:
                 )
                 if self.player.class_name == "Acolyte":
                     # Milestone 3.7 — Blood Rite's leech is gated behind the
-                    # Blood branch; base melee drains nothing until the Acolyte
+                    # Blood path; base melee drains nothing until the Acolyte
                     # commits to Blood.
                     leech = self._acolyte_melee_leech()
                     if leech:
@@ -1699,7 +1699,7 @@ class CombatMixin:
         self.apply_story_blood_price("bolt")
         angles = [0.0]
         # Milestone 3.7 refinement — the bolt ability is a single shot by
-        # default and gains one projectile per branch tier rather than jumping
+        # default and gains one projectile per path degree rather than jumping
         # straight to a full fan, so each upgrade feels like a step.
         if self.player.class_name == "Ranger":
             if self.player.has_upgrade("ranger_storm_volley"):
@@ -1737,10 +1737,10 @@ class CombatMixin:
         elif self.player.has_upgrade("ranger_snare"):
             status_effect = "snared"
             status_duration = 1.1
-        # Milestone 3.7 refinement — branch-progression projectile mechanics
-        # ramp one step per tier. Bolt path (Arcanist): pierce climbs 0->1->2
+        # Milestone 3.7 refinement — path-progression projectile mechanics
+        # ramp one step per degree. Bolt path (Arcanist): pierce climbs 0->1->2
         # and the capstone adds homing. Volley path (Ranger): piercing unlocks
-        # at the piercing tier and the capstone adds homing.
+        # at the piercing degree and the capstone adds homing.
         pierce = 0
         homing = 0.0
         if self.player.class_name == "Arcanist":
@@ -1807,7 +1807,7 @@ class CombatMixin:
             distance = math.hypot(dx, dy)
             radius = 2.45
             # Milestone 3.7 refinement - Frost Nova radius ramps one step per
-            # Nova tier so each pick reaches farther, instead of one big jump.
+            # Nova degree so each pick reaches farther, instead of one big jump.
             if self.player.class_name == "Arcanist":
                 if self.player.has_upgrade("arcanist_absolute_zero"):
                     radius += 1.05
@@ -1863,7 +1863,7 @@ class CombatMixin:
                 if self.player.class_name == "Acolyte":
                     # The Acolyte's class skill is Spirit Call, so this nova path
                     # is only reachable via direct ``player_cast_nova`` calls. The
-                    # Blood-branch spell leech still applies here for legacy
+                    # Blood-path spell leech still applies here for legacy
                     # callers; the gravebind *bind* retired from the nova (it
                     # lives on Spirit Bolt / Blood Rite, which apply "bound").
                     leech = self._acolyte_spell_leech()
@@ -1922,7 +1922,7 @@ class CombatMixin:
             archetype=self.player.class_name,
         )
         self.apply_story_blood_price("nova")
-        # Milestone 3.18.1 — Time branch T2 (Time Skip node): the cast pulse
+        # Milestone 3.18.1 — Time path Degree 2 (Time Skip node): the cast pulse
         # briefly staggers foes caught in the ring, repurposing the old
         # Bulwark Wave knockback fantasy as a holy cast-time stun.
         if self.player.has_upgrade("warden_bulwark_wave"):
@@ -1959,7 +1959,7 @@ class CombatMixin:
     def ambush_bell_tuning(self) -> AmbushBellTuning:
         """Return the cast profile for Rogue's Ambush Bell action skill.
 
-        The Trap branch specializes this profile with utility first and damage
+        The Trap path specializes this profile with utility first and damage
         second: faster setup, stronger lure control, poison/snare payoff, and a
         modest capstone recovery reward on successful ambush kills.
         """
@@ -2443,8 +2443,8 @@ class CombatMixin:
     def familiar_max_count(self) -> int:
         """How many familiars Spirit Call maintains at once.
 
-        Base 1, +1 from ``acolyte_bone_legion`` (t3), +1 from
-        ``acolyte_legion_eternal`` (t5 capstone). Committing deeper into Spirit
+        Base 1, +1 from ``acolyte_bone_legion`` (Degree 3), +1 from
+        ``acolyte_legion_eternal`` (Degree 5 capstone). Committing deeper into Spirit
         visibly grows the host rather than just inflating stats.
         """
         count = 1
@@ -2457,15 +2457,15 @@ class CombatMixin:
     def familiar_stats(self) -> tuple[int, int]:
         """Return ``(max_hp, damage)`` for a freshly summoned familiar.
 
-        Scales with Spirit branch investment so each pick is felt:
-          * ``acolyte_spirit_call`` (t1) — the core summoning node — grows the
+        Scales with Spirit path investment so each pick is felt:
+          * ``acolyte_spirit_call`` (Degree 1) — the core summoning discipline — grows the
             familiar (HP + damage) and unlocks the medium sprite variant.
-          * ``acolyte_wraith_host`` (t2) — HP + persistence (lifesteal moved to
-            the Blood branch in 3.18.4).
-          * ``acolyte_bone_legion`` (t3) — damage.
-          * ``acolyte_wraith_lord`` (t4) — champion: large sprite, HP + damage,
+          * ``acolyte_wraith_host`` (Degree 2) — HP + persistence (lifesteal moved to
+            the Blood path in 3.18.4).
+          * ``acolyte_bone_legion`` (Degree 3) — damage.
+          * ``acolyte_wraith_lord`` (Degree 4) — champion: large sprite, HP + damage,
             taunts foes.
-          * ``acolyte_legion_eternal`` (t5) — unkillable (regenerates, HP
+          * ``acolyte_legion_eternal`` (Degree 5) — unkillable (regenerates, HP
             floors at 1).
         """
         hp = self.FAMILIAR_BASE_HP
@@ -2708,10 +2708,10 @@ class CombatMixin:
             )
         )
         self.add_impact(enemy.x, enemy.y, hit_color, ttl=0.26, radius=0.30, kind="hit")
-        # Blood branch (3.18.4): familiar hits siphon life into the Acolyte. The
+        # Blood path (3.18.4): familiar hits siphon life into the Acolyte. The
         # ``lifesteal`` flag is set at summon time from Blood investment (see
         # ``player_cast_spirit_call``); the heal amount scales live with the
-        # current Blood tier via the shared spell-leech ramp, so leveling Blood
+        # current Blood degree via the shared spell-leech ramp, so leveling Blood
         # after summoning still strengthens the drain on the next cast.
         if familiar.lifesteal:
             heal = self._acolyte_spell_leech()
@@ -2985,7 +2985,7 @@ class CombatMixin:
         self.enemies.remove(enemy)
         self.enemy_hit_flashes.pop(id(enemy), None)
         self.run_stats.kills += 1
-        # Time branch T5 (Eternal Moment): each kill while Time Skip is active
+        # Time path Degree 5 (Eternal Moment): each kill while Time Skip is active
         # refunds ~40% of the class-skill cooldown so aggressive play sustains
         # the slow.
         if (

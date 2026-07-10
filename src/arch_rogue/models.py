@@ -71,7 +71,7 @@ class RunModifier:
 
 
 @dataclass(frozen=True)
-class SkillUpgrade:
+class DisciplineUpgrade:
     key: str
     archetype: str
     name: str
@@ -86,23 +86,23 @@ class SkillUpgrade:
 
 
 @dataclass(frozen=True)
-class SkillNode:
-    """A route-based skill tree node.
+class Discipline:
+    """A route-based discipline tree node.
 
-    `tier` is 1..5 (depth from the root). `branch` names the route the node
-    belongs to (e.g. "Bulwark" vs "Riposte" on the Warden). `prerequisites`
+    `degree` is 1..5 (depth from the root). `path` names the Discipline Path the
+    node belongs to (e.g. "Bulwark" vs "Riposte" on the Warden). `prerequisites`
     lists node keys that must already be acquired before this node can be
-    chosen; an empty tuple means the node is open at tier 1. Bonus fields mirror
-    `SkillUpgrade` so the derived flat upgrade table stays in sync.
+    chosen; an empty tuple means the node is open at degree 1. Bonus fields
+    mirror `DisciplineUpgrade` so the derived flat upgrade table stays in sync.
 
     Milestone 3.3 — skill points and combo trees:
-      * `tags` labels the node for cross-branch interactions (e.g. "Frost",
-        "Stealth", "Critical"). A node may carry tags that other branches'
+      * `tags` labels the node for cross-path interactions (e.g. "Frost",
+        "Stealth", "Critical"). A node may carry tags that other paths'
         modifier nodes key off of.
-      * `cross_branch_tags` lists tags this node boosts when acquired. Acquiring
-        a node with `cross_branch_tags=("Frost",)` increases the effective rank
+      * `cross_path_tags` lists tags this node boosts when acquired. Acquiring
+        a node with `cross_path_tags=("Frost",)` increases the effective rank
         of every acquired node that carries the "Frost" tag, regardless of which
-        branch owns it. `cross_branch_bonus_melee` / `cross_branch_bonus_spell`
+        path owns it. `cross_path_bonus_melee` / `cross_path_bonus_spell`
         are the per-tag bonuses applied to matching nodes.
     """
 
@@ -110,8 +110,8 @@ class SkillNode:
     archetype: str
     name: str
     description: str
-    tier: int = 1
-    branch: str = ""
+    degree: int = 1
+    path: str = ""
     prerequisites: tuple[str, ...] = ()
     melee_bonus: int = 0
     spell_bonus: int = 0
@@ -121,9 +121,9 @@ class SkillNode:
     max_stamina_bonus: int = 0
     speed_bonus: float = 0.0
     tags: tuple[str, ...] = ()
-    cross_branch_tags: tuple[str, ...] = ()
-    cross_branch_bonus_melee: int = 0
-    cross_branch_bonus_spell: int = 0
+    cross_path_tags: tuple[str, ...] = ()
+    cross_path_bonus_melee: int = 0
+    cross_path_bonus_spell: int = 0
 
 
 @dataclass(frozen=True)
@@ -467,7 +467,7 @@ class Trap:
 class AmbushBellTuning:
     """Computed Ambush Bell stats for one cast.
 
-    The Rogue's Trap branch modifies this profile before the runtime bell is
+    The Rogue's Trap path modifies this profile before the runtime bell is
     created, so the action skill has one clean balancing surface.
     """
 
@@ -717,7 +717,7 @@ class Projectile:
     # Archetype that fired this player projectile so the bolt sprite can be
     # themed per class (arrows for Ranger, daggers for Rogue, etc.).
     archetype: str = ""
-    # Milestone 3.7 — branch-progression projectile mechanics:
+    # Milestone 3.7 — path-progression projectile mechanics:
     #   * `pierce` is the number of additional enemies a projectile may pass
     #     through before expiring. 0 means it dies on the first hit.
     #   * `homing` in 0..1 steers the projectile toward the nearest enemy each
@@ -785,7 +785,7 @@ class Familiar:
 
     A lightweight actor that follows the player and attacks enemies on sight.
     It persists until killed or on floor descent; Spirit Call re-summons / heals
-    it on cast. The Spirit branch nodes scale its HP, damage, count, and
+    it on cast. The Spirit path nodes scale its HP, damage, count, and
     persistence rather than acting as flavor-only stat bonuses.
     """
 
@@ -798,7 +798,7 @@ class Familiar:
     attack_range: float
     attack_cooldown: float
     sprite_variant: int = 0
-    # Per-familiar flags set at summon time from the player's Spirit branch.
+    # Per-familiar flags set at summon time from the player's Spirit path.
     lifesteal: bool = False
     unkillable: bool = False
     champion: bool = False

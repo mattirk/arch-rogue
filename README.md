@@ -125,7 +125,7 @@ Arch Rogue supports keyboard/mouse and gamepad. Gamepad bindings can be remapped
 | `7`-`9` | Use / equip inventory slot 7-9 |
 | `E` | Interact: pick up loot, use shrine, reveal secret, descend stairs, open story guest dialogue |
 | `I` | Toggle inventory |
-| `C` | Toggle character sheet (Overview + Skill Tree tabs) |
+| `C` | Toggle character sheet (Overview + Disciplines tabs) |
 | `Q` | Toggle quest HUD info |
 | `H` or `?` | Toggle in-run help overlay |
 | `Esc` | Close overlays, or save and quit from gameplay |
@@ -148,8 +148,8 @@ Arch Rogue supports keyboard/mouse and gamepad. Gamepad bindings can be remapped
 
 | Control | Action |
 | --- | --- |
-| `Tab` / `1` / `2` / `←` / `→` | Switch Overview and Skill Tree tabs |
-| Click skill node (Skill Tree) | Spend a skill point to acquire it |
+| `Tab` / `1` / `2` / `←` / `→` | Switch Overview and Disciplines tabs |
+| Click discipline (Disciplines) | Spend a skill point to acquire it |
 
 ### Shop (while open)
 
@@ -203,7 +203,7 @@ In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from t
 
 ## Known Issues
 
-- Quest cutscene and story-corpus content is intentionally compact for the prototype; more authored beats will land over time.
+- Quest cutscene and story-corpus content is computer generated and not human-authored. Story is mostly slop and may be replaced with more engaging content in future versions.
 - Music and sound effects are procedural/static cues; there is no hand-authored soundtrack asset pipeline yet.
 - Visuals are procedural pixel-art prototype assets tuned for a clean look - issue or feature?
 - Save files are local JSON and are not cloud-synced.

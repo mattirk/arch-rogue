@@ -21,7 +21,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from arch_rogue.content import ARCHETYPES, skill_node_by_key
+from arch_rogue.content import ARCHETYPES, discipline_by_key
 from arch_rogue.game import Game
 from arch_rogue.models import AmbushBell, Enemy, Tile
 
@@ -187,10 +187,10 @@ class AmbushBell317Tests(unittest.TestCase):
             "rogue_ambush_engineer": "Cursed Bellwright",
         }
         for key, name in expected.items():
-            node = skill_node_by_key(key)
+            node = discipline_by_key(key)
             self.assertIsNotNone(node)
             assert node is not None
-            self.assertEqual(node.branch, "Traps")
+            self.assertEqual(node.path, "Traps")
             self.assertEqual(node.name, name)
             self.assertIn("Ambush Bell", node.description)
 

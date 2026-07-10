@@ -245,7 +245,7 @@ class SpecialRoomFlavor314Tests(unittest.TestCase):
         game = self._make_game_with_flavor_room()
         try:
             # Ensure the player is inside the flavor room so its tiles are visible
-            # and the new render branches actually execute.
+            # and the new render paths actually execute.
             for kind in (BAR_ROOM_KIND, GARDEN_ROOM_KIND):
                 special = game.dungeon.special_room_for_kind(kind)
                 if special is None:

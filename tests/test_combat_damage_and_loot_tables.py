@@ -12,7 +12,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 
-from arch_rogue.content import ARCHETYPES, RARITY_PROFILES, SKILL_UPGRADES
+from arch_rogue.content import ARCHETYPES, RARITY_PROFILES, DISCIPLINE_UPGRADES
 from arch_rogue.game import Game
 from arch_rogue.models import Enemy, Item
 
@@ -49,7 +49,7 @@ class CombatSkillsLoot22Tests(unittest.TestCase):
             try:
                 # --- content tables expose synergy hooks ---
                 self.assertIn("Legendary", RARITY_PROFILES)
-                upgrade_keys = {upgrade.key for upgrade in SKILL_UPGRADES}
+                upgrade_keys = {upgrade.key for upgrade in DISCIPLINE_UPGRADES}
                 self.assertTrue(
                     {
                         "warden_aegis",
@@ -157,7 +157,7 @@ class CombatSkillsLoot22Tests(unittest.TestCase):
             try:
                 game.projectiles.clear()
                 # Milestone 3.7: Arc Bolt is a single shot unless the Bolt
-                # branch is committed; grant the branch entry node so the
+                # path is committed; grant the path entry node so the
                 # multi-bolt fan (plus the equipment shard bonus) is exercised.
                 game.player.skill_upgrades.append("arcanist_splinter")
                 game.player.skill_upgrades.append("arcanist_permafrost")

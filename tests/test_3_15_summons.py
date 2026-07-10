@@ -202,7 +202,7 @@ class Summons315Tests(unittest.TestCase):
                     break
             self.assertLess(familiar.hp, start_hp)
 
-    # --- Spirit-branch scaling -----------------------------------------
+    # --- Spirit-path scaling -----------------------------------------
 
     def test_spirit_branch_scales_hp_damage_count_and_flags(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -234,7 +234,7 @@ class Summons315Tests(unittest.TestCase):
             game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
 
-            # Owl Companion: more HP (lifesteal moved to the Blood branch in
+            # Owl Companion: more HP (lifesteal moved to the Blood path in
             # 3.18.4, so the flag must be off without Blood investment).
             game.player.skill_upgrades.append("acolyte_wraith_host")
             game.player_cast_spirit_call()
@@ -274,8 +274,8 @@ class Summons315Tests(unittest.TestCase):
     def test_lifesteal_familiar_heals_acolyte_on_hit(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
-            # 3.18.4: familiar lifesteal is gated on the Blood branch, not the
-            # Spirit branch. Sanguine Rite (Blood t1) is the entry node.
+            # 3.18.4: familiar lifesteal is gated on the Blood path, not the
+            # Spirit path. Sanguine Rite (Blood Degree 1) is the entry node.
             game.player.skill_upgrades.extend(
                 ["acolyte_spirit_call", "acolyte_sanguine"]
             )
@@ -350,7 +350,7 @@ class Summons315Tests(unittest.TestCase):
             self.assertEqual(len(game.familiars), 2)
             before = game.familiars[0]
             data = copy.deepcopy(game.serialize_run_state())
-            self.assertEqual(data["release"], "3.19.0")
+            self.assertEqual(data["release"], "3.19.1")
             self.assertIn("familiars", data)
             self.assertEqual(len(data["familiars"]), 2)
 

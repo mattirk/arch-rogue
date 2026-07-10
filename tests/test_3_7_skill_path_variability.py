@@ -15,7 +15,7 @@ import pygame  # noqa: F401  (required to initialize pygame subsystems in tests)
 
 from arch_rogue.content import (
     ARCHETYPES,
-    skill_node_by_key,
+    discipline_by_key,
 )
 from arch_rogue.game import Game
 from arch_rogue.models import Enemy
@@ -52,55 +52,55 @@ class SkillPathVariability37Tests(unittest.TestCase):
         game.active_cutscene = None
         return game
 
-    # --- choose_skill_upgrade enforces the two-branch limit ---------------
+    # --- choose_discipline enforces the two-path limit ---------------
 
-    def test_choose_skill_upgrade_enforces_two_branch_limit(self) -> None:
+    def test_choose_discipline_enforces_two_path_limit(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             try:
                 game.player.skill_points = 10
 
-                # Commit to Bulwark and Riposte (two tier-1 entries).
-                self.assertTrue(game.choose_skill_upgrade("warden_bulwark"))
-                self.assertTrue(game.choose_skill_upgrade("warden_riposte"))
+                # Commit to Bulwark and Riposte (two degree-1 entries).
+                self.assertTrue(game.choose_discipline("warden_bulwark"))
+                self.assertTrue(game.choose_discipline("warden_riposte"))
 
-                # Tier-1 entries of the other two branches must be rejected.
-                self.assertFalse(game.choose_skill_upgrade("warden_smite"))
-                self.assertFalse(game.choose_skill_upgrade("warden_ward"))
+                # Degree-1 entries of the other two paths must be rejected.
+                self.assertFalse(game.choose_discipline("warden_smite"))
+                self.assertFalse(game.choose_discipline("warden_ward"))
 
-                # available_skill_choices excludes Vow/Fortress tier-1 nodes
-                # but still offers deeper nodes in committed branches.
-                choices = game.available_skill_choices()
+                # available_disciplines excludes Vow/Fortress degree-1 nodes
+                # but still offers deeper nodes in committed paths.
+                choices = game.available_disciplines()
                 choice_keys = {node.key for node in choices}
                 self.assertNotIn("warden_smite", choice_keys)
                 self.assertNotIn("warden_ward", choice_keys)
-                self.assertIn("warden_aegis", choice_keys)  # Bulwark t2
-                self.assertIn("warden_counter", choice_keys)  # Riposte t2
+                self.assertIn("warden_aegis", choice_keys)  # Bulwark Degree 2
+                self.assertIn("warden_counter", choice_keys)  # Riposte Degree 2
             finally:
                 pass
 
-    # --- skill_node_state distinguishes branch_locked vs locked ----------
+    # --- discipline_state distinguishes path_locked vs locked ----------
 
-    def test_skill_node_state_reports_branch_locked(self) -> None:
+    def test_discipline_state_reports_path_locked(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             try:
                 game.player.skill_points = 10
 
-                smite = skill_node_by_key("warden_smite")
+                smite = discipline_by_key("warden_smite")
                 self.assertIsNotNone(smite)
-                # Before any commitment Vow t1 is simply available.
-                self.assertEqual(game.skill_node_state(smite), "available")
+                # Before any commitment Vow Degree 1 is simply available.
+                self.assertEqual(game.discipline_state(smite), "available")
 
-                # A prereq-locked node (Bulwark t2 before Bulwark t1) is "locked".
-                aegis = skill_node_by_key("warden_aegis")
+                # A prereq-locked node (Bulwark Degree 2 before Bulwark Degree 1) is "locked".
+                aegis = discipline_by_key("warden_aegis")
                 self.assertIsNotNone(aegis)
-                self.assertEqual(game.skill_node_state(aegis), "locked")
+                self.assertEqual(game.discipline_state(aegis), "locked")
 
-                # Commit to two branches -> Vow becomes branch_locked.
-                self.assertTrue(game.choose_skill_upgrade("warden_bulwark"))
-                self.assertTrue(game.choose_skill_upgrade("warden_riposte"))
-                self.assertEqual(game.skill_node_state(smite), "branch_locked")
+                # Commit to two paths -> Vow becomes path_locked.
+                self.assertTrue(game.choose_discipline("warden_bulwark"))
+                self.assertTrue(game.choose_discipline("warden_riposte"))
+                self.assertEqual(game.discipline_state(smite), "path_locked")
             finally:
                 pass
 
@@ -112,7 +112,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=2)
             try:
-                # splinter t1 -> 2 bolts (one extra shard)
+                # splinter Degree 1 -> 2 bolts (one extra shard)
                 game.player.skill_upgrades.append("arcanist_splinter")
                 game.projectiles.clear()
                 game.player.mana = game.player.max_mana
@@ -123,7 +123,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 self.assertEqual(len(game.projectiles), 2)
                 self.assertTrue(all(p.pierce == 0 for p in game.projectiles))
 
-                # + overload t2 -> 3 bolts (split on impact) and pierce 1
+                # + overload Degree 2 -> 3 bolts (split on impact) and pierce 1
                 game.player.skill_upgrades.append("arcanist_overload")
                 game.projectiles.clear()
                 game.player.bolt_timer = 0.0
@@ -132,7 +132,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 self.assertEqual(len(game.projectiles), 3)
                 self.assertTrue(all(p.pierce == 1 for p in game.projectiles))
 
-                # + pierce t3 -> pierce ramps to 2 (bolt count unchanged)
+                # + pierce Degree 3 -> pierce ramps to 2 (bolt count unchanged)
                 game.player.skill_upgrades.append("arcanist_pierce")
                 game.projectiles.clear()
                 game.player.bolt_timer = 0.0
@@ -196,7 +196,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 self.assertLess(near.hp, 200)
                 self.assertEqual(far.hp, 200)
 
-                # Bulwark t1 unlocks the cleave arc -> both foes hit.
+                # Bulwark Degree 1 unlocks the cleave arc -> both foes hit.
                 game.player.skill_upgrades.append("warden_bulwark")
                 near.hp = 200
                 far.hp = 200
@@ -206,7 +206,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 self.assertLess(near.hp, 200)
                 self.assertLess(far.hp, 200)
 
-                # Aegis t2 widens the cleave arc to 3 foes; add a third enemy.
+                # Aegis Degree 2 widens the cleave arc to 3 foes; add a third enemy.
                 game.player.skill_upgrades.append("warden_aegis")
                 third = _make_enemy(px + 1.4, py, hp=200)
                 game.enemies = [near, far, third]
@@ -236,7 +236,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 game.player.facing_x = 1.0
                 game.player.facing_y = 0.0
 
-                # Helper ramps one step per Blood tier; base leech is 0.
+                # Helper ramps one step per Blood degree; base leech is 0.
                 self.assertEqual(game._acolyte_melee_leech(), 0)
                 self.assertEqual(game._acolyte_spell_leech(), 0)
 
@@ -248,7 +248,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 game.player_melee_attack()
                 self.assertEqual(game.player.hp, hp_before)
 
-                # --- Melee: with sanguine -> leech applies (tier 1 = 2) ---
+                # --- Melee: with sanguine -> leech applies (degree 1 = 2) ---
                 game.player.skill_upgrades.append("acolyte_sanguine")
                 self.assertEqual(game._acolyte_melee_leech(), 2)
                 game.player.hp = game.player.max_hp - 20
@@ -270,7 +270,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 game.player_cast_nova()
                 self.assertEqual(game.player.hp, hp_before)
 
-                # --- Nova: with sanguine -> leech applies (tier 1 = 3) ---
+                # --- Nova: with sanguine -> leech applies (degree 1 = 3) ---
                 game.player.skill_upgrades.append("acolyte_sanguine")
                 self.assertEqual(game._acolyte_spell_leech(), 3)
                 enemy3 = _make_enemy(px + 1.0, py, hp=9999)
@@ -282,7 +282,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 game.player_cast_nova()
                 self.assertGreater(game.player.hp, hp_before)
 
-                # --- Blood Pact t3 ramps melee leech to 4 (gradual tier step) ---
+                # --- Blood Pact Degree 3 ramps melee leech to 4 (gradual degree step) ---
                 game.player.skill_upgrades.append("acolyte_blood_pact")
                 self.assertEqual(game._acolyte_melee_leech(), 4)
                 self.assertEqual(game._acolyte_spell_leech(), 5)

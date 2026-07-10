@@ -75,15 +75,15 @@ from .content import (
     RUN_MODIFIERS,
     SECRET_TYPES,
     SHRINE_TYPES,
-    SKILL_NODES,
-    SKILL_UPGRADES,
+    DISCIPLINES,
+    DISCIPLINE_UPGRADES,
     STORY_LOCATION_MOTIFS,
     TRAP_DEFINITIONS,
     WEAPON_DEFINITIONS,
     BossDefinition,
     EncounterTemplate,
     EnemyDefinition,
-    skill_node_by_key,
+    discipline_by_key,
 )
 from .dungeon import Dungeon
 from .icon import load_icon
@@ -202,8 +202,8 @@ __all__ = (
     "RuntimeDialogueChoice",
     "SECRET_TYPES",
     "SHRINE_TYPES",
-    "SKILL_NODES",
-    "SKILL_UPGRADES",
+    "DISCIPLINES",
+    "DISCIPLINE_UPGRADES",
     "SaveLoadMixin",
     "SecretCache",
     "ShopMixin",
@@ -230,7 +230,7 @@ __all__ = (
     "main",
     "record_story_choice",
     "record_unanswered_story_beat",
-    "skill_node_by_key",
+    "discipline_by_key",
     "story_beat_for_depth",
     "story_beat_index_for_depth",
     "story_effect",
@@ -320,13 +320,13 @@ class Game(
         self.inventory_scroll = 0
         self.character_menu_open = False
         self.character_menu_tab = "overview"
-        # Milestone 3.3: hovered skill node key in the character sheet's skill
-        # tree tab (set by mouse motion, read by the renderer for combo
+        # Milestone 3.3: hovered discipline key in the character sheet's
+        # Disciplines tab (set by mouse motion, read by the renderer for combo
         # preview). None when nothing is hovered.
         self.character_menu_hovered_node: str | None = None
         # Populated by the character sheet renderer each frame so mouse motion
-        # can map screen positions to skill node keys without duplicating layout.
-        self._skill_node_cells: dict[str, object] = {}
+        # can map screen positions to discipline keys without duplicating layout.
+        self._discipline_cells: dict[str, object] = {}
         self.shop_open = False
         self.active_shopkeeper: Shopkeeper | None = None
         self.shop_mode = "buy"
@@ -464,17 +464,17 @@ class Game(
     def rarity_icon(self, rarity: str) -> str:
         return RARITY_PROFILES.get(rarity, RARITY_PROFILES["Common"]).icon
 
-    def acquired_skill_upgrades(self) -> list[tuple[str, str]]:
-        by_key = {node.key: node for node in SKILL_NODES}
+    def acquired_discipline_summaries(self) -> list[tuple[str, str]]:
+        by_key = {node.key: node for node in DISCIPLINES}
         return [
             (by_key[key].name, by_key[key].description)
             for key in self.player.skill_upgrades
             if key in by_key
         ]
 
-    def acquired_skill_nodes(self) -> list:
-        """Acquired `SkillNode` objects in purchase order (for the skill tree tab)."""
-        by_key = {node.key: node for node in SKILL_NODES}
+    def acquired_disciplines(self) -> list:
+        """Acquired `Discipline` objects in purchase order (for the disciplines tab)."""
+        by_key = {node.key: node for node in DISCIPLINES}
         return [by_key[key] for key in self.player.skill_upgrades if key in by_key]
 
     def run(self) -> None:
@@ -750,14 +750,14 @@ class Game(
                 ):
                     if event.key == pygame.K_TAB:
                         self.character_menu_tab = (
-                            "skill_tree"
+                            "disciplines"
                             if self.character_menu_tab == "overview"
                             else "overview"
                         )
                     elif event.key in (pygame.K_LEFT, pygame.K_a, pygame.K_1):
                         self.character_menu_tab = "overview"
                     else:
-                        self.character_menu_tab = "skill_tree"
+                        self.character_menu_tab = "disciplines"
                 elif pygame.K_1 <= event.key <= pygame.K_9 and self.state == "playing":
                     index = event.key - pygame.K_1
                     guest = None if self.inventory_open else self.nearby_story_guest()
@@ -791,14 +791,14 @@ class Game(
             ):
                 self.aim_input_mode = "mouse"
                 if event.button == 1:
-                    # Milestone 3.3: clicking an available skill node in the
+                    # Milestone 3.3: clicking an available discipline in the
                     # character sheet spends a skill point to acquire it.
                     if (
                         self.character_menu_open
-                        and self.character_menu_tab == "skill_tree"
+                        and self.character_menu_tab == "disciplines"
                         and self.character_menu_hovered_node
                     ):
-                        self.choose_skill_upgrade(self.character_menu_hovered_node)
+                        self.choose_discipline(self.character_menu_hovered_node)
                     else:
                         self.face_player_toward_screen_point(*event.pos)
                         if self.enemy_in_melee_arc():
@@ -815,14 +815,14 @@ class Game(
                 if getattr(event, "rel", (0, 0)) != (0, 0):
                     self.aim_input_mode = "mouse"
                 if not (
-                    self.character_menu_open and self.character_menu_tab == "skill_tree"
+                    self.character_menu_open and self.character_menu_tab == "disciplines"
                 ):
                     continue
-                # The renderer populates `_skill_node_cells` each frame with
+                # The renderer populates `_discipline_cells` each frame with
                 # {node_key: pygame.Rect}; mouse motion updates the hovered
                 # key so the renderer can show a combo preview next frame.
                 self.character_menu_hovered_node = None
-                cells = getattr(self, "_skill_node_cells", {})
+                cells = getattr(self, "_discipline_cells", {})
                 for node_key, cell in cells.items():
                     if cell.collidepoint(event.pos):
                         self.character_menu_hovered_node = node_key

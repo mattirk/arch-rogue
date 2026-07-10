@@ -391,7 +391,7 @@ class InteractionMixin:
             self.run_stats.discoveries.append(secret.kind)
             del self.run_stats.discoveries[:-8]
         if secret.kind == "Forgotten Skill Altar":
-            self.grant_skill_upgrade(reason="forgotten altar")
+            self.grant_discipline(reason="forgotten altar")
             message = "Forgotten altar deepens your build"
         elif secret.kind == "Moonlit Bargain":
             self.player.hp = max(1, self.player.hp - max(6, self.player.max_hp // 8))
@@ -491,7 +491,7 @@ class InteractionMixin:
             self.player.speed += 0.18
             message = "Haste Shrine quickens your stride"
         elif shrine.kind == "Oath Shrine":
-            granted = self.grant_skill_upgrade(reason="oath shrine")
+            granted = self.grant_discipline(reason="oath shrine")
             message = (
                 "Oath Shrine grants a new technique"
                 if granted

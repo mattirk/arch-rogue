@@ -1,5 +1,60 @@
 # Changelog
 
+## 3.19.1 — Skill Tree → Disciplines Refactor
+
+The class-progression skill tree is renamed to the **Disciplines** system throughout the codebase, docs, and UI. Skill-tree nodes are now **Disciplines**, routes are **Discipline Paths**, and the five depth tiers are **Degrees** (Degree 1–5). Discipline node keys, save schema, and save-compatibility are unchanged.
+
+### Renamed (domain model and content tables)
+
+- `SkillNode` → `Discipline`; `SkillUpgrade` → `DisciplineUpgrade`.
+- `SKILL_NODES` → `DISCIPLINES`; `SKILL_UPGRADES` → `DISCIPLINE_UPGRADES` (backwards-compat flat table derived from the discipline tree).
+- `LEGACY_SKILL_KEYS` → `LEGACY_DISCIPLINE_KEYS`.
+- Discipline fields: `tier` → `degree`, `branch` → `path`, `cross_branch_tags` → `cross_path_tags`, `cross_branch_bonus_melee` → `cross_path_bonus_melee`, `cross_branch_bonus_spell` → `cross_path_bonus_spell`.
+
+### Renamed (progression helpers)
+
+- `migrate_skill_keys` → `migrate_discipline_keys`
+- `skill_node_by_key` → `discipline_by_key`
+- `skill_nodes_for_archetype` → `disciplines_for_archetype`
+- `skill_branches_for_archetype` → `discipline_paths_for_archetype`
+- `skill_tree_max_tier` → `max_discipline_degree`
+- `skill_branch_nodes` → `discipline_path_nodes`
+- `committed_branches` → `committed_paths`
+- `is_branch_locked` → `is_path_locked`
+- `branch_progress` → `path_progress`
+- `completed_branches` → `completed_paths`
+- `completed_branch_bonus` → `completed_path_bonus`
+- `cross_branch_tag_bonus` → `cross_path_tag_bonus`
+- `MAX_COMMITTED_BRANCHES` → `MAX_COMMITTED_PATHS`
+- `COMPLETED_BRANCH_BONUS_*` → `COMPLETED_PATH_BONUS_*`
+
+### Renamed (combat / game / input / menus API)
+
+- `available_skill_choices` → `available_disciplines`
+- `skill_node_state` → `discipline_state`
+- `choose_skill_upgrade` → `choose_discipline`
+- `grant_skill_upgrade` → `grant_discipline`
+- `_apply_skill_node` → `_apply_discipline`
+- `cross_branch_bonus_state` → `cross_path_bonus_state`
+- `acquired_skill_nodes` → `acquired_disciplines`
+- `acquired_skill_upgrades` → `acquired_discipline_summaries`
+- `_skill_node_cells` → `_discipline_cells`
+- `_*_skill_tree_*` cursor/grid/draw methods → `_*_discipline_*`
+- UI state strings: `"skill_tree"` → `"disciplines"` (character-sheet tab), `"branch_locked"` → `"path_locked"`.
+- Tab label "Skill Tree" → "Disciplines"; row labels "Tier N" → "Degree N".
+
+### Preserved (intentionally unchanged)
+
+- **Save compatibility:** the player's acquired-key store `player.skill_upgrades`, the currency `player.skill_points`, the `has_upgrade(key)` helper, `grant_skill_point`, and the save JSON keys `"skill_upgrades"` / `"skill_points"` are unchanged. Discipline node keys (e.g. `warden_bulwark`) are stable identifiers and are NOT renamed.
+- **Combo terminology:** `combo_bonus`, `combo_bonus_preview`, `combo_bonus_steps`, `COMBO_BONUS_PER_STEP_*`, and "combo tier" wording are unchanged — the combo bonus is a breadth concept distinct from discipline Degrees.
+- **Action skills / class skill:** the hotkey-3 "class skill" and equipment "skill bonus" concepts are unchanged.
+- Historical changelog entries retain their original (contemporary) terminology.
+
+### Validation
+
+- `python -m compileall src tests` — OK.
+- `python -m unittest discover tests` — 177 pass; one pre-existing unrelated inventory-HUD layout assertion failure (`test_inventory_hud_layout_navigation_sorting_and_cues`) is unchanged by this refactor (verified failing on the clean tree).
+
 ## 3.19.0 — Class Skill Rename
 
 The archetype-specific active ability bound to hotkey 3 is renamed from the

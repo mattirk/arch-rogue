@@ -15,12 +15,12 @@ import pygame
 
 from arch_rogue.content import (
     ARCHETYPES,
-    SKILL_NODES,
-    SKILL_UPGRADES,
-    skill_branches_for_archetype,
-    skill_node_by_key,
-    skill_nodes_for_archetype,
-    skill_tree_max_tier,
+    DISCIPLINES,
+    DISCIPLINE_UPGRADES,
+    discipline_paths_for_archetype,
+    discipline_by_key,
+    disciplines_for_archetype,
+    max_discipline_degree,
 )
 from arch_rogue.game import Game
 
@@ -47,50 +47,50 @@ class SkillTree32Tests(unittest.TestCase):
 
     # --- Content table shape -------------------------------------------------
 
-    def test_skill_tree_content_table_shape(self) -> None:
-        # Every archetype has a 5-tier, >=2-branch tree with sane prerequisites.
+    def test_discipline_content_table_shape(self) -> None:
+        # Every archetype has a 5-degree, >=2-path discipline tree with sane prerequisites.
         for archetype in ARCHETYPES:
-            nodes = skill_nodes_for_archetype(archetype.name)
+            nodes = disciplines_for_archetype(archetype.name)
             self.assertGreaterEqual(
                 len(nodes), 10, f"{archetype.name} should have >=10 nodes"
             )
             self.assertEqual(
-                {node.tier for node in nodes},
+                {node.degree for node in nodes},
                 set(range(1, 6)),
-                f"{archetype.name} must cover tiers 1..5",
+                f"{archetype.name} must cover degrees 1..5",
             )
-            self.assertEqual(skill_tree_max_tier(archetype.name), 5)
-            branches = skill_branches_for_archetype(archetype.name)
+            self.assertEqual(max_discipline_degree(archetype.name), 5)
+            paths = discipline_paths_for_archetype(archetype.name)
             self.assertGreaterEqual(
-                len(branches), 2, f"{archetype.name} needs >=2 branches"
+                len(paths), 2, f"{archetype.name} needs >=2 paths"
             )
-            # Tier 1 nodes are open (no prerequisites); higher tiers require
-            # an earlier-tier prerequisite of the same branch.
+            # Degree 1 nodes are open (no prerequisites); higher degrees require
+            # an earlier-degree prerequisite of the same path.
             for node in nodes:
-                if node.tier == 1:
+                if node.degree == 1:
                     self.assertEqual(
                         node.prerequisites,
                         (),
-                        f"{node.key} tier-1 nodes must be open",
+                        f"{node.key} degree-1 nodes must be open",
                     )
                 else:
                     self.assertTrue(
                         node.prerequisites,
-                        f"{node.key} tier-{node.tier} must require something",
+                        f"{node.key} degree-{node.degree} must require something",
                     )
                     for prereq_key in node.prerequisites:
-                        prereq = skill_node_by_key(prereq_key)
+                        prereq = discipline_by_key(prereq_key)
                         self.assertIsNotNone(prereq)
                         assert prereq is not None
                         self.assertEqual(prereq.archetype, archetype.name)
-                        self.assertLess(prereq.tier, node.tier)
+                        self.assertLess(prereq.degree, node.degree)
 
-        # SKILL_UPGRADES is derived 1:1 from SKILL_NODES and every key resolves.
-        node_keys = {node.key for node in SKILL_NODES}
-        upgrade_keys = {upgrade.key for upgrade in SKILL_UPGRADES}
+        # DISCIPLINE_UPGRADES is derived 1:1 from DISCIPLINES and every key resolves.
+        node_keys = {node.key for node in DISCIPLINES}
+        upgrade_keys = {upgrade.key for upgrade in DISCIPLINE_UPGRADES}
         self.assertEqual(node_keys, upgrade_keys)
-        for node in SKILL_NODES:
-            self.assertIs(skill_node_by_key(node.key), node)
+        for node in DISCIPLINES:
+            self.assertIs(discipline_by_key(node.key), node)
 
     # --- Combat grant logic --------------------------------------------------
 
@@ -99,33 +99,33 @@ class SkillTree32Tests(unittest.TestCase):
             game = self.make_game(tmpdir, archetype_index=0)  # Warden
             try:
                 # Milestone 3.3: choosing nodes now spends skill points, so
-                # bank enough points to exercise the tree.
+                # bank enough points to exercise the discipline tree.
                 game.player.skill_points = 10
-                # Initially only tier-1 nodes are available.
-                available = game.available_skill_choices()
+                # Initially only degree-1 nodes are available.
+                available = game.available_disciplines()
                 self.assertTrue(available)
-                self.assertTrue(all(node.tier == 1 for node in available))
+                self.assertTrue(all(node.degree == 1 for node in available))
 
                 # Rogue node cannot be chosen by a Warden.
-                self.assertFalse(game.choose_skill_upgrade("rogue_precision"))
+                self.assertFalse(game.choose_discipline("rogue_precision"))
                 self.assertNotIn("rogue_precision", game.player.skill_upgrades)
 
-                # Acquire a tier-1 Bulwark node; its tier-2 child unlocks.
-                self.assertTrue(game.choose_skill_upgrade("warden_bulwark"))
+                # Acquire a degree-1 Bulwark node; its degree-2 child unlocks.
+                self.assertTrue(game.choose_discipline("warden_bulwark"))
                 # Duplicate acquisition is rejected.
-                self.assertFalse(game.choose_skill_upgrade("warden_bulwark"))
+                self.assertFalse(game.choose_discipline("warden_bulwark"))
 
-                available = game.available_skill_choices()
+                available = game.available_disciplines()
                 keys = {node.key for node in available}
                 self.assertIn("warden_aegis", keys)
-                # The other tier-1 node is still available.
+                # The other degree-1 node is still available.
                 self.assertIn("warden_riposte", keys)
-                # Tier-2 Riposte child stays locked (its parent unchosen).
+                # Degree-2 Riposte child stays locked (its parent unchosen).
                 self.assertNotIn("warden_counter", keys)
 
                 # Trying to skip ahead fails.
-                self.assertFalse(game.choose_skill_upgrade("warden_bulwark_ward"))
-                self.assertFalse(game.choose_skill_upgrade("warden_iron_vow"))
+                self.assertFalse(game.choose_discipline("warden_bulwark_ward"))
+                self.assertFalse(game.choose_discipline("warden_iron_vow"))
             finally:
                 pass
 
@@ -136,8 +136,8 @@ class SkillTree32Tests(unittest.TestCase):
             game = self.make_game(tmpdir, archetype_index=1, seed=3241)  # Rogue
             try:
                 game.player.skill_points = 2
-                game.choose_skill_upgrade("rogue_precision")
-                game.choose_skill_upgrade("rogue_venom")
+                game.choose_discipline("rogue_precision")
+                game.choose_discipline("rogue_venom")
                 self.assertEqual(
                     game.player.skill_upgrades,
                     ["rogue_precision", "rogue_venom"],
@@ -158,13 +158,13 @@ class SkillTree32Tests(unittest.TestCase):
                     game2.player.skill_upgrades,
                     ["rogue_precision", "rogue_venom"],
                 )
-                # Tree state is consistent after restore.
+                # Discipline tree state is consistent after restore.
                 self.assertEqual(
-                    game2.skill_node_state(skill_node_by_key("rogue_precision")),
+                    game2.discipline_state(discipline_by_key("rogue_precision")),
                     "chosen",
                 )
                 self.assertEqual(
-                    game2.skill_node_state(skill_node_by_key("rogue_executioner")),
+                    game2.discipline_state(discipline_by_key("rogue_executioner")),
                     "available",
                 )
 
@@ -185,8 +185,8 @@ class SkillTree32Tests(unittest.TestCase):
                     game3.player.skill_upgrades,
                     ["rogue_precision", "rogue_venom"],
                 )
-                # The run is still playable and the tree offers valid choices.
-                self.assertTrue(game3.available_skill_choices())
+                # The run is still playable and the discipline tree offers valid choices.
+                self.assertTrue(game3.available_disciplines())
             finally:
                 pass
 
@@ -203,7 +203,7 @@ class SkillTree32Tests(unittest.TestCase):
                     pygame.event.Event(pygame.KEYDOWN, key=pygame.K_TAB, mod=0)
                 )
                 game.handle_events()
-                self.assertEqual(game.character_menu_tab, "skill_tree")
+                self.assertEqual(game.character_menu_tab, "disciplines")
                 pygame.event.post(
                     pygame.event.Event(pygame.KEYDOWN, key=pygame.K_TAB, mod=0)
                 )
@@ -214,7 +214,7 @@ class SkillTree32Tests(unittest.TestCase):
                     pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT, mod=0)
                 )
                 game.handle_events()
-                self.assertEqual(game.character_menu_tab, "skill_tree")
+                self.assertEqual(game.character_menu_tab, "disciplines")
                 pygame.event.post(
                     pygame.event.Event(pygame.KEYDOWN, key=pygame.K_LEFT, mod=0)
                 )
@@ -225,16 +225,16 @@ class SkillTree32Tests(unittest.TestCase):
                     pygame.event.Event(pygame.KEYDOWN, key=pygame.K_2, mod=0)
                 )
                 game.handle_events()
-                self.assertEqual(game.character_menu_tab, "skill_tree")
+                self.assertEqual(game.character_menu_tab, "disciplines")
 
                 # Render overview tab.
                 game.character_menu_tab = "overview"
                 game.draw_character_menu()
-                # Render skill tree tab with some acquired nodes.
-                game.character_menu_tab = "skill_tree"
+                # Render Disciplines tab with some acquired nodes.
+                game.character_menu_tab = "disciplines"
                 game.player.skill_points = 2
-                game.choose_skill_upgrade("acolyte_sanguine")
-                game.choose_skill_upgrade("acolyte_gravebind")
+                game.choose_discipline("acolyte_sanguine")
+                game.choose_discipline("acolyte_gravebind")
                 game.draw_character_menu()
                 # Compact screen size should still render without error.
                 compact = Game(
@@ -249,7 +249,7 @@ class SkillTree32Tests(unittest.TestCase):
                     self.assertTrue(compact.choose_story_relic_path(0))
                 compact.active_cutscene = None
                 compact.character_menu_open = True
-                compact.character_menu_tab = "skill_tree"
+                compact.character_menu_tab = "disciplines"
                 compact.draw_character_menu()
             finally:
                 pass
