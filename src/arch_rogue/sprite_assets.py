@@ -51,6 +51,13 @@ DIRECTIONS = (
     "south-west",
 )
 _ACTION_STATES = frozenset(("attack", "cast", "hit", "dash"))
+GOLD_STACK_ASSET_KEYS = (
+    "gold_stack",
+    "gold_stack_02",
+    "gold_stack_03",
+    "gold_stack_04",
+    "gold_stack_05",
+)
 
 _K = TypeVar("_K")
 _V = TypeVar("_V")
@@ -229,12 +236,15 @@ class AssetSpriteLibrary:
                     raise ValueError("invalid actor clip frame rate")
                 if "loop" in clip and not isinstance(clip["loop"], bool):
                     raise ValueError("invalid actor clip loop flag")
-                missing_directions = set(DIRECTIONS).difference(clip["directions"])
-                if missing_directions:
+                clip_directions = clip["directions"]
+                if not clip_directions:
+                    raise ValueError("actor clip has no directions")
+                unknown_directions = set(clip_directions).difference(DIRECTIONS)
+                if unknown_directions:
                     raise ValueError(
-                        f"actor clip is missing directions: {sorted(missing_directions)}"
+                        f"actor clip has invalid directions: {sorted(unknown_directions)}"
                     )
-                for frame_paths in clip["directions"].values():
+                for frame_paths in clip_directions.values():
                     if not isinstance(frame_paths, list) or not frame_paths:
                         raise ValueError("invalid actor frame list")
                     for path in frame_paths:
@@ -250,6 +260,7 @@ class AssetSpriteLibrary:
                 validate_scale(entry, "reference_height", label)
                 validate_scale(entry, "target_height", label)
         for entry in data["world"].values():
+            validate_scale(entry, "reference_width", "world")
             tint_strength = entry.get("tint_strength", 0.5)
             if not isinstance(tint_strength, (int, float)) or not math.isfinite(
                 float(tint_strength)
@@ -412,11 +423,6 @@ class AssetSpriteLibrary:
             by_direction = clip.get("directions", {})
             frame_paths = by_direction.get(direction)
             used_direction = direction
-            if not frame_paths:
-                used_direction = "south"
-                frame_paths = by_direction.get(used_direction)
-            if not frame_paths and by_direction:
-                used_direction, frame_paths = next(iter(by_direction.items()))
             if frame_paths:
                 fps = max(0.1, float(clip.get("fps", 6.0)))
                 looping = bool(clip.get("loop", True))
@@ -619,7 +625,8 @@ class AssetSpriteLibrary:
         padding = 2
         available_width = max(1, target_canvas[0] - padding * 2)
         available_height = max(1, target_canvas[1] - padding * 2)
-        desired_scale = TILE_W / max(1, source.get_width())
+        reference_width = float(entry.get("reference_width", source.get_width()))
+        desired_scale = TILE_W / max(1.0, reference_width)
         scale = min(
             desired_scale,
             available_width / bounds.width,
@@ -1025,17 +1032,28 @@ class SpriteAtlas:
             return asset
         return self._fallback_frame(self.legacy.shop_sign_sprite, "shop-sign")
 
-    def gold_stack_visual(self, size: int) -> ResolvedSpriteFrame:
-        asset = self._asset_prop("gold_stack")
+    def gold_stack_visual(
+        self, size: int, variant: int = 0
+    ) -> ResolvedSpriteFrame:
+        size = max(1, min(3, int(size)))
+        variant = int(variant) % len(GOLD_STACK_ASSET_KEYS)
+        asset_key = GOLD_STACK_ASSET_KEYS[variant]
+        asset = self._asset_prop(asset_key)
+        if asset is None and asset_key != "gold_stack":
+            asset = self._asset_prop("gold_stack")
         if asset is not None:
-            scale = {1: 0.72, 2: 0.92, 3: 1.14}.get(max(1, min(3, size)), 0.92)
-            return self._prop_variant(asset, f"gold-stack-{size}", scale=scale)
+            scale = {1: 0.72, 2: 0.92, 3: 1.14}[size]
+            return self._prop_variant(
+                asset,
+                f"gold-stack-{variant}-{size}",
+                scale=scale,
+            )
         return self._fallback_frame(
             self.legacy.gold_stack_sprite(size), "gold-stack", size
         )
 
-    def gold_stack_sprite(self, size: int) -> pygame.Surface:
-        return self.gold_stack_visual(size).surface
+    def gold_stack_sprite(self, size: int, variant: int = 0) -> pygame.Surface:
+        return self.gold_stack_visual(size, variant).surface
 
     def ambush_bell_visual(self) -> ResolvedSpriteFrame | None:
         return self._asset_prop("ambush_bell")

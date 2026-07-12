@@ -63,6 +63,25 @@ from ..quest_assets import (
 )
 
 
+_DOOR_DIRECTIONS = (
+    "south",
+    "south-east",
+    "east",
+    "north-east",
+    "north",
+    "north-west",
+    "west",
+    "south-west",
+)
+_SPECIAL_WALL_ASSET_PREFIXES = {
+    "quest_room": "wall_quest_room",
+    "bar": "wall_bar",
+    "garden": "wall_garden",
+}
+_GOLD_STACK_VARIANT_COUNT = 5
+_GOLD_STACK_VARIANT_SALT = 0x4A17C0DE
+
+
 class RenderingWorldMixin:
     def draw_dungeon(self) -> None:
         min_x, max_x, min_y, max_y = self.visible_bounds()
@@ -207,10 +226,15 @@ class RenderingWorldMixin:
                         self.tile_surface(
                             tile, seed, shop_floor=False, garden_floor=True
                         )
+        door_orientations = (
+            _DOOR_DIRECTIONS
+            if self.sprites.modern_graphics_active
+            else ("left", "right")
+        )
         for tile in (Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
             for seed in range(DUNGEON_WALL_VARIANTS):
-                for face in ("left", "right"):
-                    self.door_tile_surface(tile, seed, face)
+                for orientation in door_orientations:
+                    self.door_tile_surface(tile, seed, orientation)
 
     def is_shop_floor_tile(self, x: int, y: int) -> bool:
         return self.is_special_room_floor_tile(x, y, kind="shop")
@@ -402,15 +426,32 @@ class RenderingWorldMixin:
             # remain intact instead of clipping them into the flat-floor canvas.
             asset_canvas = (width, TILE_W + margin * 2)
             asset_anchor = (anchor_x, margin + TILE_W * 5 // 8)
-        asset_surface = self.sprites.world_tile_surface(
-            asset_key,
-            target_canvas=asset_canvas,
-            target_anchor=asset_anchor,
-            tint=tint,
-            accent=accent,
-            variant=seed,
-            wall_face_style=wall_face_style,
-        )
+        asset_surface = None
+        if tile == Tile.WALL and wall_face_style:
+            face_kind, face_side = self._parse_wall_face_style(wall_face_style)
+            prefix = _SPECIAL_WALL_ASSET_PREFIXES.get(face_kind or "")
+            if prefix is not None and face_side is not None:
+                asset_surface = self.sprites.world_tile_surface(
+                    f"{prefix}_{face_side}",
+                    target_canvas=asset_canvas,
+                    target_anchor=asset_anchor,
+                    tint=tint,
+                    accent=accent,
+                    variant=seed,
+                )
+        if asset_surface is None:
+            # Missing 4.0.1 variants intentionally fall back one resource at a
+            # time. For special walls this preserves the 4.0 generic wall plus
+            # procedural face decoration instead of disabling modern graphics.
+            asset_surface = self.sprites.world_tile_surface(
+                asset_key,
+                target_canvas=asset_canvas,
+                target_anchor=asset_anchor,
+                tint=tint,
+                accent=accent,
+                variant=seed,
+                wall_face_style=wall_face_style,
+            )
         if asset_surface is not None:
             self.tile_cache[key] = asset_surface
             return asset_surface
@@ -1427,8 +1468,8 @@ class RenderingWorldMixin:
             elif kind == "shopkeeper":
                 self.draw_shopkeeper(cast(Shopkeeper, obj))
             elif kind == "gold_stack":
-                gx, gy, gsize = cast(tuple[int, int, int], obj)
-                self.draw_gold_stack(gx, gy, gsize)
+                gx, gy, gsize, variant = cast(tuple[int, int, int, int], obj)
+                self.draw_gold_stack(gx, gy, gsize, variant)
             elif kind == "door":
                 x, y, tile = cast(tuple[int, int, Tile], obj)
                 self.draw_door(x, y, tile)
@@ -1460,15 +1501,17 @@ class RenderingWorldMixin:
         # Scattered gold-coin stacks on the shop floor. Placements are stable
         # for a given shop room (seeded from the room bounds) and cached per
         # frame so the scatter never flickers between frames.
-        for gx, gy, gsize in self._shop_gold_stack_placements():
+        for gx, gy, gsize, variant in self._shop_gold_stack_placements():
             if visible(gx + 0.5, gy + 0.5, 0.45):
-                drawables.append((gx + gy + 0.5, "gold_stack", (gx, gy, gsize)))
+                drawables.append(
+                    (gx + gy + 0.5, "gold_stack", (gx, gy, gsize, variant))
+                )
 
-    def _shop_gold_stack_placements(self) -> list[tuple[int, int, int]]:
+    def _shop_gold_stack_placements(self) -> list[tuple[int, int, int, int]]:
         cache = getattr(self, "_frame_cache", None)
         if cache is not None and "gold_stack_placements" in cache:
             return cache["gold_stack_placements"]  # type: ignore[no-any-return]
-        placements: list[tuple[int, int, int]] = []
+        placements: list[tuple[int, int, int, int]] = []
         shop = self._shop_room_bounds()
         if shop is not None:
             rx, ry, rw, rh = shop
@@ -1501,15 +1544,25 @@ class RenderingWorldMixin:
                 chosen = interior[start::stride][:count]
                 sizes = [2, 1, 3, 2, 1, 3, 2, 1]
                 rng.shuffle(sizes)
+                variant_rng = random.Random(seed ^ _GOLD_STACK_VARIANT_SALT)
                 for i, (tx, ty) in enumerate(chosen):
-                    placements.append((tx, ty, sizes[i % len(sizes)]))
+                    placements.append(
+                        (
+                            tx,
+                            ty,
+                            sizes[i % len(sizes)],
+                            variant_rng.randrange(_GOLD_STACK_VARIANT_COUNT),
+                        )
+                    )
         if cache is not None:
             cache["gold_stack_placements"] = placements
         return placements
 
-    def draw_gold_stack(self, x: int, y: int, size: int) -> None:
+    def draw_gold_stack(
+        self, x: int, y: int, size: int, variant: int = 0
+    ) -> None:
         sx, sy = self.world_to_screen(x + 0.5, y + 0.5)
-        frame = self.sprites.gold_stack_visual(size)
+        frame = self.sprites.gold_stack_visual(size, variant)
         if frame.is_asset:
             self.blit_resolved_sprite(frame, x + 0.5, y + 0.5, y_offset=2.0)
         else:
@@ -1665,6 +1718,49 @@ class RenderingWorldMixin:
                 max(2, 2 * scale),
             )
 
+    def door_render_direction(self, x: int, y: int) -> str:
+        room = self.dungeon.room_at(x, y)
+        if room is not None:
+            vertical = ""
+            horizontal = ""
+            if y == room.y:
+                vertical = "north"
+            elif y == room.y + room.h - 1:
+                vertical = "south"
+            if x == room.x:
+                horizontal = "west"
+            elif x == room.x + room.w - 1:
+                horizontal = "east"
+            if vertical and horizontal:
+                return f"{vertical}-{horizontal}"
+            if vertical:
+                return vertical
+            if horizontal:
+                return horizontal
+
+        # Corridors and malformed legacy maps may contain a door outside any
+        # room. Recover a stable cardinal from its wall run; dedicated assets
+        # still render, while ambiguous topology keeps the old deterministic
+        # north/west convention rather than storing orientation in the save.
+        doorish = (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR)
+        x_axis = (
+            self.dungeon.in_bounds(x - 1, y)
+            and self.dungeon.in_bounds(x + 1, y)
+            and self.dungeon.tiles[x - 1][y] in doorish
+            and self.dungeon.tiles[x + 1][y] in doorish
+        )
+        y_axis = (
+            self.dungeon.in_bounds(x, y - 1)
+            and self.dungeon.in_bounds(x, y + 1)
+            and self.dungeon.tiles[x][y - 1] in doorish
+            and self.dungeon.tiles[x][y + 1] in doorish
+        )
+        if x_axis and not y_axis:
+            return "north"
+        if y_axis and not x_axis:
+            return "west"
+        return "north"
+
     def door_render_face(self, x: int, y: int) -> str:
         doorish = (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR)
         x_axis = (
@@ -1686,8 +1782,13 @@ class RenderingWorldMixin:
         return "left"
 
     def door_tile_surface(
-        self, tile: Tile, seed: int, face: str
+        self, tile: Tile, seed: int, direction: str
     ) -> tuple[pygame.Surface, int, int]:
+        face = (
+            self._door_asset_face(direction)
+            if self.sprites.modern_graphics_active
+            else self._legacy_door_face(direction)
+        )
         key = (self.theme.name, int(tile), seed, face)
         cache: dict[tuple[str, int, int, str], tuple[pygame.Surface, int, int]] = (
             getattr(self, "door_tile_cache", {})
@@ -1707,15 +1808,27 @@ class RenderingWorldMixin:
             if getattr(self, "story_state", None) is not None
             else self.theme.accent
         )
-        asset_surface = self.sprites.world_tile_surface(
-            "door_open" if tile == Tile.OPEN_DOOR else "door_closed",
-            target_canvas=(width, height),
-            target_anchor=(anchor_x, anchor_y),
-            tint=self.theme.wall_top,
-            accent=accent,
-            variant=seed,
-            mirror=face == "left",
-        )
+        base_asset_key = "door_open" if tile == Tile.OPEN_DOOR else "door_closed"
+        asset_surface = None
+        if direction in _DOOR_DIRECTIONS:
+            asset_surface = self.sprites.world_tile_surface(
+                f"{base_asset_key}_{direction.replace('-', '_')}",
+                target_canvas=(width, height),
+                target_anchor=(anchor_x, anchor_y),
+                tint=self.theme.wall_top,
+                accent=accent,
+                variant=seed,
+            )
+        if asset_surface is None:
+            asset_surface = self.sprites.world_tile_surface(
+                base_asset_key,
+                target_canvas=(width, height),
+                target_anchor=(anchor_x, anchor_y),
+                tint=self.theme.wall_top,
+                accent=accent,
+                variant=seed,
+                mirror=face == "right",
+            )
         if asset_surface is not None:
             cache[key] = asset_surface
             self.door_tile_cache = cache
@@ -1745,11 +1858,27 @@ class RenderingWorldMixin:
         self.door_tile_cache = cache
         return cached
 
+    @staticmethod
+    def _door_asset_face(direction: str) -> str:
+        if direction in ("left", "right"):
+            return direction
+        if direction in ("north", "south", "north-west", "south-east"):
+            return "left"
+        return "right"
+
+    @staticmethod
+    def _legacy_door_face(direction: str) -> str:
+        if direction in ("left", "right"):
+            return direction
+        if "-" in direction or direction in ("north", "south"):
+            return "left"
+        return "right"
+
     def draw_door(self, x: int, y: int, tile: Tile) -> None:
         sx, sy = self.world_to_screen(x + 0.5, y + 0.5)
         seed = self.tile_seed(x, y)
         surface, anchor_x, anchor_y = self.door_tile_surface(
-            tile, seed, self.door_render_face(x, y)
+            tile, seed, self.door_render_direction(x, y)
         )
         # Doors are tall occluders like walls; never render them translucent in
         # dark mode or the player can see through them. Culling beyond the

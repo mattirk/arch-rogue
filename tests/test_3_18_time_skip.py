@@ -76,7 +76,7 @@ class TimeSkip318Tests(unittest.TestCase):
     # --- class-skill swap ----------------------------------------------
 
     def test_version_bumped(self) -> None:
-        self.assertEqual(__version__, "4.0.0")
+        self.assertEqual(__version__, "4.0.1")
 
     def test_warden_class_skill_is_time_skip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -362,7 +362,7 @@ class TimeSkip318Tests(unittest.TestCase):
             game = self.make_game(tmpdir, archetype_index=0)
             game.player.time_skip_timer = 2.5
             data = game.serialize_run_state()
-            self.assertEqual(data["release"], "4.0.0")
+            self.assertEqual(data["release"], "4.0.1")
             self.assertNotIn("time_skip_timer", data)
 
             loaded = Game(

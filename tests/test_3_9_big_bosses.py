@@ -15,6 +15,7 @@ from arch_rogue.constants import DUNGEON_DEPTH
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.dungeon import BOSS_ARENA_MIN_H, BOSS_ARENA_MIN_W, Dungeon, Tile
 from arch_rogue.game import Game
+from arch_rogue.sprite_assets import DIRECTIONS
 
 
 class BigBossesTests(unittest.TestCase):
@@ -103,6 +104,7 @@ class BigBossesTests(unittest.TestCase):
             self.assertGreater(len(game.boss_sealed_tiles), 0)
             for x, y, _tile in game.boss_sealed_tiles:
                 self.assertEqual(game.dungeon.tiles[x][y], Tile.CLOSED_DOOR)
+                self.assertIn(game.door_render_direction(x, y), DIRECTIONS)
 
             # Kill the boss: doors restore.
             game.kill_enemy(fb)

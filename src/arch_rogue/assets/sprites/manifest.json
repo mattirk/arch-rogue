@@ -1267,12 +1267,6 @@
       "clips": {
         "idle": {
           "directions": {
-            "east": [
-              "actors/familiar_wisp/animations/idle/east/frame_000.png",
-              "actors/familiar_wisp/animations/idle/east/frame_001.png",
-              "actors/familiar_wisp/animations/idle/east/frame_002.png",
-              "actors/familiar_wisp/animations/idle/east/frame_003.png"
-            ],
             "north": [
               "actors/familiar_wisp/animations/idle/north/frame_000.png",
               "actors/familiar_wisp/animations/idle/north/frame_001.png",
@@ -2570,14 +2564,6 @@
               "actors/ranger/animations/run/north-east/frame_004.png",
               "actors/ranger/animations/run/north-east/frame_005.png"
             ],
-            "north-west": [
-              "actors/ranger/animations/run/north-west/frame_000.png",
-              "actors/ranger/animations/run/north-west/frame_001.png",
-              "actors/ranger/animations/run/north-west/frame_002.png",
-              "actors/ranger/animations/run/north-west/frame_003.png",
-              "actors/ranger/animations/run/north-west/frame_004.png",
-              "actors/ranger/animations/run/north-west/frame_005.png"
-            ],
             "south": [
               "actors/ranger/animations/run/south/frame_000.png",
               "actors/ranger/animations/run/south/frame_001.png",
@@ -3029,14 +3015,6 @@
               "actors/rune_sentinel/animations/run/north-east/frame_003.png",
               "actors/rune_sentinel/animations/run/north-east/frame_004.png",
               "actors/rune_sentinel/animations/run/north-east/frame_005.png"
-            ],
-            "north-west": [
-              "actors/rune_sentinel/animations/run/north-west/frame_000.png",
-              "actors/rune_sentinel/animations/run/north-west/frame_001.png",
-              "actors/rune_sentinel/animations/run/north-west/frame_002.png",
-              "actors/rune_sentinel/animations/run/north-west/frame_003.png",
-              "actors/rune_sentinel/animations/run/north-west/frame_004.png",
-              "actors/rune_sentinel/animations/run/north-west/frame_005.png"
             ],
             "south": [
               "actors/rune_sentinel/animations/run/south/frame_000.png",
@@ -3884,17 +3862,82 @@
     },
     "gold_stack": {
       "aliases": [
-        "gold_stack"
+        "gold_stack",
+        "gold_stack_01"
       ],
-      "path": "props/gold_stack.png",
-      "reference_height": 57,
+      "path": "props/gold_stack_01.png",
+      "reference_height": 38,
       "source_anchor": [
-        48.0,
-        78.0
+        38.0,
+        59.0
       ],
       "source_canvas": [
-        96,
-        96
+        80,
+        80
+      ],
+      "target_height": 46
+    },
+    "gold_stack_02": {
+      "aliases": [
+        "gold_stack_02"
+      ],
+      "path": "props/gold_stack_02.png",
+      "reference_height": 45,
+      "source_anchor": [
+        37.0,
+        64.0
+      ],
+      "source_canvas": [
+        80,
+        80
+      ],
+      "target_height": 46
+    },
+    "gold_stack_03": {
+      "aliases": [
+        "gold_stack_03"
+      ],
+      "path": "props/gold_stack_03.png",
+      "reference_height": 51,
+      "source_anchor": [
+        39.0,
+        66.0
+      ],
+      "source_canvas": [
+        80,
+        80
+      ],
+      "target_height": 46
+    },
+    "gold_stack_04": {
+      "aliases": [
+        "gold_stack_04"
+      ],
+      "path": "props/gold_stack_04.png",
+      "reference_height": 38,
+      "source_anchor": [
+        41.0,
+        56.0
+      ],
+      "source_canvas": [
+        80,
+        80
+      ],
+      "target_height": 46
+    },
+    "gold_stack_05": {
+      "aliases": [
+        "gold_stack_05"
+      ],
+      "path": "props/gold_stack_05.png",
+      "reference_height": 57,
+      "source_anchor": [
+        40.0,
+        68.0
+      ],
+      "source_canvas": [
+        80,
+        80
       ],
       "target_height": 46
     },
@@ -4005,18 +4048,164 @@
       "tint_strength": 0.14
     },
     "door_closed": {
-      "path": "world/door_closed.png",
+      "path": "world/door_closed_left.png",
+      "reference_width": 49,
       "source_anchor": [
-        32,
-        48
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_closed_east": {
+      "path": "world/door_closed_right.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_closed_north": {
+      "path": "world/door_closed_left.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_closed_north_east": {
+      "path": "world/door_closed_right.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_closed_north_west": {
+      "path": "world/door_closed_left.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_closed_south": {
+      "path": "world/door_closed_left.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_closed_south_east": {
+      "path": "world/door_closed_left.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_closed_south_west": {
+      "path": "world/door_closed_right.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_closed_west": {
+      "path": "world/door_closed_right.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
       ],
       "tint_strength": 0.46
     },
     "door_open": {
-      "path": "world/door_open.png",
+      "path": "world/door_open_left.png",
+      "reference_width": 49,
       "source_anchor": [
-        32,
-        48
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_open_east": {
+      "path": "world/door_open_right.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_open_north": {
+      "path": "world/door_open_left.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_open_north_east": {
+      "path": "world/door_open_right.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_open_north_west": {
+      "path": "world/door_open_left.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_open_south": {
+      "path": "world/door_open_left.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_open_south_east": {
+      "path": "world/door_open_left.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_open_south_west": {
+      "path": "world/door_open_right.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.46
+    },
+    "door_open_west": {
+      "path": "world/door_open_right.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
       ],
       "tint_strength": 0.46
     },
@@ -4061,12 +4250,67 @@
       "tint_strength": 0.52
     },
     "wall": {
-      "path": "world/wall.png",
+      "path": "world/wall_401.png",
+      "reference_width": 49,
       "source_anchor": [
-        32,
-        48
+        34,
+        50
       ],
       "tint_strength": 0.62
+    },
+    "wall_bar_left": {
+      "path": "world/wall_bar_left.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.26
+    },
+    "wall_bar_right": {
+      "path": "world/wall_bar_right.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.26
+    },
+    "wall_garden_left": {
+      "path": "world/wall_garden_left.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.26
+    },
+    "wall_garden_right": {
+      "path": "world/wall_garden_right.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.26
+    },
+    "wall_quest_room_left": {
+      "path": "world/wall_quest_room_left.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.32
+    },
+    "wall_quest_room_right": {
+      "path": "world/wall_quest_room_right.png",
+      "reference_width": 49,
+      "source_anchor": [
+        34,
+        50
+      ],
+      "tint_strength": 0.32
     }
   }
 }

@@ -121,6 +121,36 @@ class SpecialRooms313Tests(unittest.TestCase):
                 )
             )
 
+    def test_shop_gold_stack_variants_are_deterministic_cosmetics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game_with_shop_and_guest(tmpdir)
+            before_rng = game.rng.getstate()
+            game._frame_cache = {}
+            placements = game._shop_gold_stack_placements()
+            self.assertGreaterEqual(len(placements), 3)
+            self.assertTrue(all(len(placement) == 4 for placement in placements))
+            self.assertTrue(all(0 <= placement[3] < 5 for placement in placements))
+            self.assertGreater(len({placement[3] for placement in placements}), 1)
+            self.assertEqual(game.rng.getstate(), before_rng)
+
+            game._frame_cache = {}
+            self.assertEqual(game._shop_gold_stack_placements(), placements)
+            self.assertFalse(any(item.slot.startswith("gold_stack") for item in game.items))
+
+            data = copy.deepcopy(game.serialize_run_state())
+            loaded = Game(
+                screen_size=(820, 540),
+                headless=True,
+                save_path=Path(tmpdir) / "gold-restore.json",
+            )
+            loaded.options_path = Path(tmpdir) / "gold-options.json"
+            loaded.restore_run_state(data)
+            loaded._frame_cache = {}
+            self.assertEqual(loaded._shop_gold_stack_placements(), placements)
+            self.assertFalse(
+                any(item["slot"].startswith("gold_stack") for item in data["items"])
+            )
+
     def test_legacy_save_indexes_migrate_to_special_rooms(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game_with_shop_and_guest(tmpdir)

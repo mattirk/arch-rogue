@@ -1,5 +1,39 @@
 # Changelog
 
+## 4.0.1 — Post Sprite Generation Fixes
+
+Milestone 4.0.1 refines the asset-backed dungeon set without changing gameplay or abandoning the procedural renderer. Doors now remain recognizable from both sides on every room boundary, special rooms use authored wall faces instead of procedural marks painted over masonry, and shop gold uses five complete unclipped silhouettes.
+
+### Added
+
+- Sixteen new packaged PNG resources: a regenerated seamless base wall, closed/open doorway art for both visible isometric wall planes, six face-specific quest/bar/garden walls, and five distinct gold-stack variants.
+- Sixteen logical directional door entries (`open`/`closed` × eight compass directions). Opposite directions share an authored door-bearing plane, so approaching a closed door from its reverse side can no longer turn it into solid masonry; corner directions also resolve only to door-visible art.
+- `reference_width` support in world-sprite manifest entries, allowing transparent source canvases to retain generous edit margins while scaling the authored one-tile wall footprint exactly to the canonical `320 px` isometric tile width.
+- Focused regressions for eight-way room-boundary inference, boss-seal directions, opposite-side door visibility, per-resource door/wall fallbacks, special-wall overlay removal, deterministic gold variation, unclipped/distinct gold assets, partial actor clips, canonical canvases, and bounded legacy door caches.
+
+### Changed
+
+- Door rendering derives north, south, east, west, and corner directions from room perimeter geometry without persisting orientation in run saves. Missing directional resources still fall back independently to the 4.0 generic/procedural door path.
+- Dedicated quest-room rune stone, tavern wood panel, and garden moss/vine walls replace the glitch-prone modern path that composited procedural decorations over the generic authored wall. The old compositor remains a resource-level fallback for incomplete installations.
+- Shop-floor gold placement now assigns one of five authored variants with a salted local RNG. Existing stack positions and size tiers are unchanged, gameplay RNG is untouched, and the decorative piles remain outside item/pickup/save state.
+- Partial actor animation direction maps are now valid: a deliberately omitted or missing clip direction falls back to that direction's static rotation instead of disabling the complete asset library or borrowing a wrongly facing animation.
+- Door cache keys collapse opposite logical directions onto the two visible isometric wall planes in both renderers, avoiding duplicate high-resolution surfaces while modern mode still exposes all eight authored direction keys.
+- Runtime/package release version is `4.0.1`. Options remain schema `4`; run saves remain schema `5` and require no migration.
+
+### Compatibility and resilience
+
+- Explicit legacy graphics still use the original procedural walls, doors, and three gold size tiers.
+- The generic 4.0 door and procedural special-wall decoration paths remain available per resource; one missing/corrupt 4.0.1 PNG cannot disable unrelated modern assets.
+- Existing 4.0.0 saves regenerate cosmetic door direction and gold variants from already-saved dungeon geometry, with no new serialized fields.
+
+### Validation
+
+- `python -m compileall src tests` — OK.
+- Focused asset/world/special-room/boss/version regression run — 100 tests, all passing.
+- `python -m unittest discover tests` — 193 tests run; 192 pass and the pre-existing unrelated inventory-HUD containment failure (`test_inventory_hud_layout_navigation_sorting_and_cues`) remains unchanged.
+- Isolated wheel build through `setuptools.build_meta` — `arch_rogue-4.0.1-py3-none-any.whl` contains all 16 new PNGs, 2,208 sprite resources total, 12 prop entries, and 31 world entries.
+- Warm-cache 960×540 dummy-SDL benchmark — 4.26 ms/frame (234.7 FPS); tile, door, decoded-source, resolved-frame, world-surface, and normal-map cache counts stayed unchanged over 120 frames, with the modern door cache reduced from 64 to 16 surfaces.
+
 ## 4.0.0 — Big Sprites Upgrade
 
 Arch Rogue now ships with a production asset-sprite renderer while preserving the complete procedural renderer as an instant legacy fallback. The upgrade keeps the existing 2:1 isometric projection, gameplay identifiers, run-save schema, theme palette changes, lighting, and deterministic dungeon variation intact.

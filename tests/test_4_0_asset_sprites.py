@@ -17,6 +17,7 @@ import pygame
 
 from arch_rogue import __version__
 from arch_rogue.constants import (
+    DUNGEON_WALL_VARIANTS,
     LIGHT_SHADE_DOWNSAMPLE_LONG,
     TILE_H,
     TILE_W,
@@ -29,8 +30,13 @@ from arch_rogue.content import (
     FINAL_ROOM_ENEMY_DEFINITIONS,
 )
 from arch_rogue.game import Game
-from arch_rogue.models import Tile
-from arch_rogue.sprite_assets import AssetSpriteLibrary, DIRECTIONS, SpriteAtlas
+from arch_rogue.models import Room, Tile
+from arch_rogue.sprite_assets import (
+    GOLD_STACK_ASSET_KEYS,
+    AssetSpriteLibrary,
+    DIRECTIONS,
+    SpriteAtlas,
+)
 
 
 class AssetSpriteMilestone40Tests(unittest.TestCase):
@@ -59,7 +65,7 @@ class AssetSpriteMilestone40Tests(unittest.TestCase):
         return game
 
     def test_release_and_manifest_cover_runtime_visual_roster(self) -> None:
-        self.assertEqual(__version__, "4.0.0")
+        self.assertEqual(__version__, "4.0.1")
         library = AssetSpriteLibrary()
         self.assertTrue(library.available, library.load_error)
         manifest = library.manifest
@@ -97,25 +103,240 @@ class AssetSpriteMilestone40Tests(unittest.TestCase):
             "shrine",
             "secret_cache",
             "shop_sign",
-            "gold_stack",
             "ambush_bell",
+            *GOLD_STACK_ASSET_KEYS,
         }
         self.assertTrue(required_props.issubset(manifest["props"]))
         for prop in required_props:
             self.assertIsNotNone(library.resolve_prop(prop), prop)
-        self.assertTrue(
-            {
-                "floor",
-                "wall",
-                "stairs",
-                "door_open",
-                "door_closed",
-                "shop_floor",
-                "quest_floor",
-                "bar_floor",
-                "garden_floor",
-            }.issubset(manifest["world"])
+
+        directional_doors = {
+            f"door_{state}_{direction.replace('-', '_')}"
+            for state in ("open", "closed")
+            for direction in DIRECTIONS
+        }
+        special_walls = {
+            f"wall_{kind}_{side}"
+            for kind in ("quest_room", "bar", "garden")
+            for side in ("left", "right")
+        }
+        required_world = {
+            "floor",
+            "wall",
+            "stairs",
+            "door_open",
+            "door_closed",
+            "shop_floor",
+            "quest_floor",
+            "bar_floor",
+            "garden_floor",
+            *directional_doors,
+            *special_walls,
+        }
+        self.assertTrue(required_world.issubset(manifest["world"]))
+        for state in ("open", "closed"):
+            entries = {
+                direction: manifest["world"][
+                    f"door_{state}_{direction.replace('-', '_')}"
+                ]
+                for direction in DIRECTIONS
+            }
+            for first, opposite in (
+                ("north", "south"),
+                ("east", "west"),
+                ("north-east", "south-west"),
+                ("north-west", "south-east"),
+            ):
+                self.assertEqual(
+                    entries[first]["path"],
+                    entries[opposite]["path"],
+                    (state, first, opposite),
+                )
+            self.assertTrue(
+                all(
+                    entry["path"]
+                    in {
+                        f"world/door_{state}_left.png",
+                        f"world/door_{state}_right.png",
+                    }
+                    for entry in entries.values()
+                )
+            )
+
+        world_kwargs = {
+            "target_canvas": (360, 440),
+            "target_anchor": (180, 340),
+            "tint": (104, 106, 118),
+            "accent": (150, 88, 176),
+            "variant": 0,
+        }
+        for key in directional_doors | special_walls:
+            self.assertIsNotNone(
+                library.resolve_world(key, **world_kwargs),
+                key,
+            )
+
+    def test_gold_stack_variants_are_complete_distinct_and_cached(self) -> None:
+        library = AssetSpriteLibrary()
+        prop_frames = []
+        for key in GOLD_STACK_ASSET_KEYS:
+            frame = library.resolve_prop(key)
+            self.assertIsNotNone(frame, key)
+            assert frame is not None
+            bounds = frame.surface.get_bounding_rect(min_alpha=1)
+            self.assertGreaterEqual(bounds.top, 1, key)
+            self.assertLessEqual(bounds.bottom, frame.surface.get_height() - 1, key)
+            prop_frames.append(frame)
+        self.assertEqual(
+            len({pygame.image.tobytes(frame.surface, "RGBA") for frame in prop_frames}),
+            len(GOLD_STACK_ASSET_KEYS),
         )
+
+        atlas = SpriteAtlas()
+        variants = [
+            atlas.gold_stack_visual(2, index)
+            for index in range(len(GOLD_STACK_ASSET_KEYS))
+        ]
+        for index, frame in enumerate(variants):
+            self.assertTrue(frame.is_asset)
+            self.assertIs(frame, atlas.gold_stack_visual(2, index))
+        self.assertEqual(
+            len({pygame.image.tobytes(frame.surface, "RGBA") for frame in variants}),
+            len(GOLD_STACK_ASSET_KEYS),
+        )
+
+    def test_directional_doors_and_special_walls_use_dedicated_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game.door_tile_cache.clear()
+            game.sprites.assets.clear_derived_caches()
+            with mock.patch.object(
+                game.sprites,
+                "world_tile_surface",
+                wraps=game.sprites.world_tile_surface,
+            ) as resolve_world:
+                door = game.door_tile_surface(
+                    Tile.CLOSED_DOOR, 0, "north-east"
+                )
+            dedicated_calls = [
+                call
+                for call in resolve_world.call_args_list
+                if call.args and call.args[0] == "door_closed_north_east"
+            ]
+            self.assertEqual(len(dedicated_calls), 1)
+            self.assertEqual(resolve_world.call_count, 1)
+            self.assertFalse(dedicated_calls[0].kwargs.get("mirror", False))
+            self.assertGreater(door[0].get_bounding_rect(min_alpha=1).height, 0)
+
+            entry = game.sprites.assets.manifest["world"].pop(
+                "door_closed_north_west"
+            )
+            try:
+                game.door_tile_cache.clear()
+                game.sprites.assets.clear_derived_caches()
+                with mock.patch.object(
+                    game.sprites,
+                    "world_tile_surface",
+                    wraps=game.sprites.world_tile_surface,
+                ) as resolve_world:
+                    fallback_door = game.door_tile_surface(
+                        Tile.CLOSED_DOOR, 0, "north-west"
+                    )
+                self.assertEqual(resolve_world.call_count, 2)
+                self.assertEqual(resolve_world.call_args_list[-1].args[0], "door_closed")
+                self.assertFalse(resolve_world.call_args_list[-1].kwargs["mirror"])
+                self.assertGreater(
+                    fallback_door[0].get_bounding_rect(min_alpha=1).height, 0
+                )
+            finally:
+                game.sprites.assets.manifest["world"][
+                    "door_closed_north_west"
+                ] = entry
+                game.sprites.assets.clear_derived_caches()
+
+            game.tile_cache.clear()
+            game.sprites.assets.clear_derived_caches()
+            with mock.patch.object(
+                game.sprites.assets,
+                "_decorate_special_wall",
+                wraps=game.sprites.assets._decorate_special_wall,
+            ) as decorate:
+                special, _, _ = game.tile_surface(
+                    Tile.WALL, 0, wall_face_style="bar:left"
+                )
+            self.assertEqual(decorate.call_args.args[1], None)
+            generic, _, _ = game.tile_surface(Tile.WALL, 0)
+            self.assertNotEqual(
+                pygame.image.tobytes(special, "RGBA"),
+                pygame.image.tobytes(generic, "RGBA"),
+            )
+
+            entry = game.sprites.assets.manifest["world"].pop("wall_bar_left")
+            try:
+                game.tile_cache.clear()
+                game.sprites.assets.clear_derived_caches()
+                with mock.patch.object(
+                    game.sprites.assets,
+                    "_decorate_special_wall",
+                    wraps=game.sprites.assets._decorate_special_wall,
+                ) as decorate:
+                    fallback, _, _ = game.tile_surface(
+                        Tile.WALL, 0, wall_face_style="bar:left"
+                    )
+                self.assertEqual(decorate.call_args.args[1], "bar:left")
+                self.assertGreater(fallback.get_bounding_rect(min_alpha=1).height, 0)
+            finally:
+                game.sprites.assets.manifest["world"]["wall_bar_left"] = entry
+                game.sprites.assets.clear_derived_caches()
+
+    def test_world_reference_width_controls_authored_tile_footprint(self) -> None:
+        library = AssetSpriteLibrary()
+        kwargs = {
+            "target_canvas": (360, 440),
+            "target_anchor": (180, 340),
+            "tint": (104, 106, 118),
+            "accent": (150, 88, 176),
+            "variant": 0,
+        }
+        regular = library.resolve_world("wall", **kwargs)
+        self.assertIsNotNone(regular)
+        assert regular is not None
+        entry = library.manifest["world"]["wall"]
+        entry["reference_width"] = 80
+        try:
+            library.clear_derived_caches()
+            narrowed = library.resolve_world("wall", **kwargs)
+            self.assertIsNotNone(narrowed)
+            assert narrowed is not None
+            self.assertLess(
+                narrowed[0].get_bounding_rect(min_alpha=1).width,
+                regular[0].get_bounding_rect(min_alpha=1).width,
+            )
+        finally:
+            entry.pop("reference_width", None)
+            library.clear_derived_caches()
+
+    def test_door_direction_follows_all_room_boundary_sides(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game.dungeon.rooms = [Room(10, 10, 5, 5)]
+            expected = {
+                (12, 10): "north",
+                (14, 10): "north-east",
+                (14, 12): "east",
+                (14, 14): "south-east",
+                (12, 14): "south",
+                (10, 14): "south-west",
+                (10, 12): "west",
+                (10, 10): "north-west",
+            }
+            self.assertEqual(
+                {
+                    position: game.door_render_direction(*position)
+                    for position in expected
+                },
+                expected,
+            )
 
     def test_directional_animation_and_resolved_frames_are_cached(self) -> None:
         atlas = SpriteAtlas()
@@ -265,6 +486,34 @@ class AssetSpriteMilestone40Tests(unittest.TestCase):
         self.assertFalse(library.available)
         self.assertIn("alias list", library.load_error)
 
+    def test_partial_actor_clip_uses_matching_rotation_fallback(self) -> None:
+        manifest = json.loads(json.dumps(AssetSpriteLibrary().manifest))
+        manifest["actors"]["warden"]["clips"]["run"]["directions"].pop("east")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "manifest.json").write_text(
+                json.dumps(manifest),
+                encoding="utf-8",
+            )
+            partial = AssetSpriteLibrary(root)
+        self.assertTrue(partial.available, partial.load_error)
+
+        atlas = SpriteAtlas()
+        directions = atlas.assets.manifest["actors"]["warden"]["clips"]["run"][
+            "directions"
+        ]
+        removed = directions.pop("east")
+        try:
+            frame = atlas.player_visual(
+                "Warden", "run", 0.0, 0.0, direction="east"
+            )
+            self.assertTrue(frame.is_asset)
+            self.assertEqual(frame.key[2], "rotation")
+            self.assertEqual(frame.key[3], "east")
+        finally:
+            directions["east"] = removed
+            atlas.assets.clear_derived_caches()
+
     def test_modern_world_preserves_canonical_canvases_and_legacy_toggle(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
@@ -304,10 +553,43 @@ class AssetSpriteMilestone40Tests(unittest.TestCase):
 
             asset_player = game.sprites.player_visual("Warden", "idle", 0.0, 0.0)
             self.assertTrue(asset_player.is_asset)
+            north = game.door_tile_surface(Tile.CLOSED_DOOR, 0, "north")[0]
+            south = game.door_tile_surface(Tile.CLOSED_DOOR, 0, "south")[0]
+            north_west = game.door_tile_surface(
+                Tile.CLOSED_DOOR, 0, "north-west"
+            )[0]
+            south_east = game.door_tile_surface(
+                Tile.CLOSED_DOOR, 0, "south-east"
+            )[0]
+            east = game.door_tile_surface(Tile.CLOSED_DOOR, 0, "east")[0]
+            west = game.door_tile_surface(Tile.CLOSED_DOOR, 0, "west")[0]
+            north_east = game.door_tile_surface(
+                Tile.CLOSED_DOOR, 0, "north-east"
+            )[0]
+            south_west = game.door_tile_surface(
+                Tile.CLOSED_DOOR, 0, "south-west"
+            )[0]
+            for paired in (south, north_west, south_east):
+                self.assertIs(north, paired)
+            for paired in (west, north_east, south_west):
+                self.assertIs(east, paired)
+            self.assertIsNot(north, east)
+            self.assertEqual(
+                len(game.door_tile_cache),
+                2 * DUNGEON_WALL_VARIANTS * 2,
+            )
             game.set_legacy_graphics(True)
             legacy_player = game.sprites.player_visual("Warden", "idle", 0.0, 0.0)
             self.assertFalse(legacy_player.is_asset)
             self.assertGreater(len(game.tile_cache), 0)
+            self.assertEqual(
+                len(game.door_tile_cache),
+                2 * DUNGEON_WALL_VARIANTS * 2,
+            )
+            self.assertIs(
+                game.door_tile_surface(Tile.CLOSED_DOOR, 0, "north-west")[0],
+                game.door_tile_surface(Tile.CLOSED_DOOR, 0, "left")[0],
+            )
 
     def test_graphics_option_scrolls_persists_and_stays_out_of_run_save(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

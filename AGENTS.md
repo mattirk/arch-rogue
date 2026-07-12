@@ -209,13 +209,11 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 
 - We need to generate door sprites (open and closed) that look good regardless of the direction the door is facing (e.g north, south, east, west, north-east, south-east, north-west, south-west). Door sprites need to seamlessly integrate with wall sprites.
 - Walls in special rooms look glitchy. This is probably due to mixing of legacy procedural visuals with asset sprites. Generate separate wall sprites for special rooms.
-- Remember to preserve compatibility with legacy graphics.
 - Stack of gold sprites look bad. They seem to be "clipped from top". Generate 5 variants of stack of gold sprites and implement them in the game (pick randomly when placing them in room).
-- There is "more" text in settings menu to indicate that there are more items, remove it for now
 
 ### 4.0.2 Archetype sprites re-generation / fix
 
-Re-generate / fix archetype sprites as listed below. Validata and test. Download and implement in code.
+Re-generate / fix archetype sprites. Known issues listed below. Fix all issues including known ones. Validate and test. Download and implement in code.
 
 Warden
 - Walk south (just standing still)
@@ -231,6 +229,8 @@ Arcanist
 - Walk North (legs not moving)
 - Walk North-West (extra hand flicking in/out)
 
+Check all Archetype asset sprites for animation / rotation inconsistencies. Common issues are: missing or in/out disappearing weapons, shield or apparel (disappearing cloack seems common). Fix any inconsistencies by re-generating the inconsistent animation frames using available MCP servers/tools.
+
 ### 4.1 Asset based menus and HUD
 
 - Generate assets for menus and HUD using asset MCP server/tools
@@ -244,3 +244,4 @@ Arcanist
 
 - We need toggle in settings menu for legacy graphics mode that switches between procedural and asset sprites. Add to Display group. Also add scrolling to settings menu to fit all options on screen. - done
 - Player can attack through walls. Make sure player and enemy attacks do not go through walls.
+- We need to make the darkess deepen more on lower levels, dark levels look already good, but also other "normal" levels below 5 should feel more dark. (do not implement this yet, user will explicitly request this feature if needed)
