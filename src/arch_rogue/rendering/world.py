@@ -173,6 +173,7 @@ class RenderingWorldMixin:
         # Also drop the dark-floor alpha-bucket cache since its keyed surfaces
         # belong to the previous theme.
         self._alpha_tile_cache = {}
+        self.door_tile_cache = {}
         # Milestone 3.16: lighting caches are keyed by theme accent and
         # per-sprite identity, so reset them on floor/theme change alongside
         # the alpha-bucket cache.
@@ -206,6 +207,10 @@ class RenderingWorldMixin:
                         self.tile_surface(
                             tile, seed, shop_floor=False, garden_floor=True
                         )
+        for tile in (Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
+            for seed in range(DUNGEON_WALL_VARIANTS):
+                for face in ("left", "right"):
+                    self.door_tile_surface(tile, seed, face)
 
     def is_shop_floor_tile(self, x: int, y: int) -> bool:
         return self.is_special_room_floor_tile(x, y, kind="shop")
@@ -358,9 +363,59 @@ class RenderingWorldMixin:
         )
         width = TILE_W + margin * 2
         height = TILE_H + wall_h + margin * 2
-        surface = pygame.Surface((width, height), pygame.SRCALPHA)
         anchor_x = width // 2
         anchor_y = margin + wall_h + TILE_H // 2
+        asset_key = ""
+        tint = self.theme.floor
+        if tile == Tile.WALL:
+            asset_key = "wall"
+            tint = self.mix(self.theme.wall_top, self.theme.wall_left, 0.42)
+        elif tile == Tile.STAIRS:
+            asset_key = "stairs"
+            tint = self.theme.stair
+        elif tile == Tile.CLOSED_DOOR:
+            asset_key = "door_closed"
+            tint = self.theme.wall_top
+        elif tile == Tile.OPEN_DOOR:
+            asset_key = "door_open"
+            tint = self.theme.wall_top
+        elif garden_floor:
+            asset_key = "garden_floor"
+        elif bar_floor:
+            asset_key = "bar_floor"
+        elif guest:
+            asset_key = "quest_floor"
+        elif shop_floor:
+            asset_key = "shop_floor"
+        else:
+            asset_key = "floor"
+        accent = (
+            self.story_state.accent
+            if getattr(self, "story_state", None) is not None
+            else self.theme.accent
+        )
+        asset_canvas = (width, height)
+        asset_anchor = (anchor_x, anchor_y)
+        if tile == Tile.STAIRS:
+            # The authored stairwell occupies a full isometric block. Give it a
+            # taller transparent canvas so its upper rim and descending steps
+            # remain intact instead of clipping them into the flat-floor canvas.
+            asset_canvas = (width, TILE_W + margin * 2)
+            asset_anchor = (anchor_x, margin + TILE_W * 5 // 8)
+        asset_surface = self.sprites.world_tile_surface(
+            asset_key,
+            target_canvas=asset_canvas,
+            target_anchor=asset_anchor,
+            tint=tint,
+            accent=accent,
+            variant=seed,
+            wall_face_style=wall_face_style,
+        )
+        if asset_surface is not None:
+            self.tile_cache[key] = asset_surface
+            return asset_surface
+
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
         sx, sy = anchor_x, anchor_y
         top = (sx, sy - TILE_H // 2)
         right = (sx + TILE_W // 2, sy)
@@ -1454,9 +1509,13 @@ class RenderingWorldMixin:
 
     def draw_gold_stack(self, x: int, y: int, size: int) -> None:
         sx, sy = self.world_to_screen(x + 0.5, y + 0.5)
-        sprite = self.sprites.gold_stack_sprite(size)
-        rect = sprite.get_rect(midbottom=(sx, sy + 2 * WORLD_SCALE))
-        self.screen.blit(sprite, rect)
+        frame = self.sprites.gold_stack_visual(size)
+        if frame.is_asset:
+            self.blit_resolved_sprite(frame, x + 0.5, y + 0.5, y_offset=2.0)
+        else:
+            sprite = frame.surface
+            rect = sprite.get_rect(midbottom=(sx, sy + 2 * WORLD_SCALE))
+            self.screen.blit(sprite, rect)
 
     def draw_door_tile_surface(
         self,
@@ -1641,9 +1700,28 @@ class RenderingWorldMixin:
         wall_h = 48 * WORLD_SCALE
         width = TILE_W + margin * 2
         height = TILE_H + wall_h + margin * 2
-        surface = pygame.Surface((width, height), pygame.SRCALPHA)
         anchor_x = width // 2
         anchor_y = margin + wall_h + TILE_H // 2
+        accent = (
+            self.story_state.accent
+            if getattr(self, "story_state", None) is not None
+            else self.theme.accent
+        )
+        asset_surface = self.sprites.world_tile_surface(
+            "door_open" if tile == Tile.OPEN_DOOR else "door_closed",
+            target_canvas=(width, height),
+            target_anchor=(anchor_x, anchor_y),
+            tint=self.theme.wall_top,
+            accent=accent,
+            variant=seed,
+            mirror=face == "left",
+        )
+        if asset_surface is not None:
+            cache[key] = asset_surface
+            self.door_tile_cache = cache
+            return asset_surface
+
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
         local_sx, local_sy = anchor_x, anchor_y
         top = (local_sx, local_sy - TILE_H // 2)
         right = (local_sx + TILE_W // 2, local_sy)

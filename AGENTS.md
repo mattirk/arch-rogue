@@ -186,10 +186,61 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 3.20 ???
+### 4.0 Big sprites upgrade - pre-generated assets
+
+- Sprites for Archetypes, enemies and items have been pre-generated, accessible via asset MCP tool
+  - Use these pre-generated sprites when it makes sense, download from MCP service and store into assets folder
+- Create necessary abstractions for sprite loading and animation
+  - Support all Archetypes
+  - Support enemies / enemy sprites
+  - Support for NPC and familiar sprites
+  - Support for world sprites (floor, walls, doors open/closed, stairs, special walls, special rooms, relics and quest related entities)
+  - Support for items sprites (weapons, armor, potions, etc.)
+- Double check world sprites (floor, walls, doors open/closed, stairs, special walls, special rooms) generation, implement if missing.
+  - Make sure tile graphics (mainly walls, floor and doors) are generated with correct aspect ratio and high enough resolution so minimum amount of scaling and stretching is needed
+- Make sure all sprites are stored neatly under assets/sprites/
+- Make sure we preserve the procedural features in the game as much as possible with new sprites (e.g changing dungeon floor colors)
+- We need high resolution sprites
+- Preserve backwards compatibility with "legacy graphics"
+- Implement modern graphics with generated asset sprites for all entities in game. Pay special attention to preserving isometric perspective and tile alignment as well as scaling of sprites.
+
+
+### 4.0.1 Post sprite generation fixes
+
+- We need to generate door sprites (open and closed) that look good regardless of the direction the door is facing (e.g north, south, east, west, north-east, south-east, north-west, south-west). Door sprites need to seamlessly integrate with wall sprites.
+- Walls in special rooms look glitchy. This is probably due to mixing of legacy procedural visuals with asset sprites. Generate separate wall sprites for special rooms.
+- Remember to preserve compatibility with legacy graphics.
+- Stack of gold sprites look bad. They seem to be "clipped from top". Generate 5 variants of stack of gold sprites and implement them in the game (pick randomly when placing them in room).
+- There is "more" text in settings menu to indicate that there are more items, remove it for now
+
+### 4.0.2 Archetype sprites re-generation / fix
+
+Re-generate / fix archetype sprites as listed below. Validata and test. Download and implement in code.
+
+Warden
+- Walk south (just standing still)
+- Walk North-East (missing cape)
+- Walk North-West (cape swinging too much)
+
+Ranger
+- Idle North-West (cape missing / on front side)
+- Walk North-East (cape flicking in/out)
+- Walk North-West (seems to be missing)
+
+Arcanist
+- Walk North (legs not moving)
+- Walk North-West (extra hand flicking in/out)
+
+### 4.1 Asset based menus and HUD
+
+- Generate assets for menus and HUD using asset MCP server/tools
+- Create folder `assets/sprites/menus/` and `assets/sprites/hud/`
+- Create necessary abstractions for menu and HUD sprite loading and rendering
+  - Extend pre existing logic when is makes sense
+- Implement new versions of menus and HUD using new asset sprites
+- Make sure legacy graphics support is preserved
 
 ### Stash
 
-- Upgrade all graphics using https://www.pixellab.ai
-- Item rarity: legendary and unique items are way too common now -> make more rare *Done, not tested well*
-- Characters level up too fast. Reduce level up speed to make it more rewarding. *Done, not tested well*
+- We need toggle in settings menu for legacy graphics mode that switches between procedural and asset sprites. Add to Display group. Also add scrolling to settings menu to fit all options on screen. - done
+- Player can attack through walls. Make sure player and enemy attacks do not go through walls.

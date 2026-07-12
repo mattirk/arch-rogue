@@ -57,6 +57,7 @@ from ..quest_assets import (
     SpriteAnimationFrameAsset,
     format_asset_text,
 )
+from ..sprite_assets import ResolvedSpriteFrame
 
 
 class RenderingActorMixin:
@@ -76,8 +77,12 @@ class RenderingActorMixin:
         )
         self.screen.blit(ring, ring.get_rect(center=(sx, sy + 5 * scale)))
 
-        sprite = self.sprites.shopkeeper_frame(self.elapsed + shopkeeper.x * 0.17)
-        self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 6 * scale)))
+        frame = self.sprites.shopkeeper_visual(self.elapsed + shopkeeper.x * 0.17)
+        if frame.is_asset:
+            self.blit_resolved_sprite(frame, shopkeeper.x, shopkeeper.y, y_offset=6.0)
+        else:
+            sprite = frame.surface
+            self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 6 * scale)))
 
     def walk_offsets(self, actor: Player | Enemy) -> tuple[int, int]:
         sway, bob, _lean, _stretch = self.actor_animation(actor)
@@ -128,6 +133,22 @@ class RenderingActorMixin:
         if length <= 0.001:
             return 1.0, 0.0
         return screen_dx / length, screen_dy / length
+
+    def actor_sprite_direction(self, dx: float, dy: float) -> str:
+        """Quantize a world-facing vector into an asset screen direction."""
+        screen_x, screen_y = self.iso_screen_direction(dx, dy)
+        angle = math.degrees(math.atan2(screen_y, screen_x))
+        directions = (
+            "east",
+            "south-east",
+            "south",
+            "south-west",
+            "west",
+            "north-west",
+            "north",
+            "north-east",
+        )
+        return directions[round(angle / 45.0) % len(directions)]
 
     def is_humanoid(self, actor: Player | Enemy) -> bool:
         if isinstance(actor, Player):
@@ -436,6 +457,35 @@ class RenderingActorMixin:
         self.screen.blit(turned_sprite, rect)
         return rect.centerx, sy
 
+    def blit_resolved_sprite(
+        self,
+        frame: ResolvedSpriteFrame,
+        x: float,
+        y: float,
+        *,
+        y_offset: float = 0.0,
+        x_offset: float = 0.0,
+        alpha: int = 255,
+        apply_shading: bool = True,
+    ) -> pygame.Rect:
+        sx, sy = self.world_to_screen(x, y)
+        sprite = frame.surface
+        if apply_shading:
+            shaded = self.apply_lit_shading(sprite, sprite, x, y)
+            if shaded is not sprite:
+                sprite = shaded
+        if alpha < 255:
+            sprite = sprite.copy()
+            sprite.set_alpha(alpha)
+        rect = sprite.get_rect(
+            topleft=(
+                round(sx + x_offset * WORLD_SCALE - frame.anchor[0]),
+                round(sy + y_offset * WORLD_SCALE - frame.anchor[1]),
+            )
+        )
+        self.screen.blit(sprite, rect)
+        return rect
+
     def player_visual_state(self, player: Player) -> str:
         if getattr(self, "player_hit_flash", 0.0) > 0.0:
             return "hit"
@@ -485,20 +535,41 @@ class RenderingActorMixin:
     def draw_player(self, player: Player) -> None:
         sway, bob, lean, stretch = self.actor_animation(player)
         state = self.player_visual_state(player)
-        sprite = self.sprites.player_frame(
-            player.class_name, state, player.anim_time, self.elapsed
+        direction = self.actor_sprite_direction(player.facing_x, player.facing_y)
+        action_elapsed = getattr(self, "player_action_elapsed", 0.0)
+        action_duration = getattr(self, "player_action_duration", 0.0)
+        action_progress = (
+            max(0.0, min(1.0, action_elapsed / action_duration))
+            if action_duration > 0.0
+            else None
         )
-        self.draw_shadow(player.x, player.y, 34, 13, moving=player.moving, lift=bob)
-        sx, sy = self.blit_sprite(
-            sprite,
-            player.x,
-            player.y,
-            y_offset=6.0 - bob,
-            x_offset=sway,
-            stretch=stretch,
-            lean=lean,
-            base_sprite=self.sprites.player_sprites.get(player.class_name),
+        frame = self.sprites.player_visual(
+            player.class_name,
+            state,
+            player.anim_time,
+            self.elapsed,
+            direction=direction,
+            action_time=action_elapsed,
+            action_progress=action_progress,
         )
+        sprite = frame.surface
+        if frame.is_asset:
+            self.draw_shadow(player.x, player.y, 34, 13, moving=player.moving)
+            rect = self.blit_resolved_sprite(frame, player.x, player.y, y_offset=6.0)
+            sx = rect.centerx
+            _ground_x, sy = self.world_to_screen(player.x, player.y)
+        else:
+            self.draw_shadow(player.x, player.y, 34, 13, moving=player.moving, lift=bob)
+            sx, sy = self.blit_sprite(
+                sprite,
+                player.x,
+                player.y,
+                y_offset=6.0 - bob,
+                x_offset=sway,
+                stretch=stretch,
+                lean=lean,
+                base_sprite=self.sprites.legacy_player_base(player.class_name),
+            )
         self.draw_hit_flash_overlay(
             sx,
             sy,
@@ -617,18 +688,30 @@ class RenderingActorMixin:
         base_name = self.sprites.enemy_key(enemy.name, enemy.kind)
         state = self.enemy_visual_state(enemy)
         big_boss = enemy.is_boss_encounter and enemy.size >= 2
-        if big_boss:
-            sprite = self.sprites.boss_frame(state, enemy.anim_time, self.elapsed)
-        else:
-            sprite = self.sprites.enemy_frame(
-                enemy.name, enemy.kind, state, enemy.anim_time, self.elapsed
-            )
-        if big_boss:
-            # Scale the already-scaled tyrant sprite up a notch further so it
-            # reads as a true 4-tile hulk next to regular enemies.
+        direction = self.actor_sprite_direction(enemy.facing_x, enemy.facing_y)
+        action_time = max(0.0, enemy.attack_cooldown - enemy.attack_timer)
+        frame = self.sprites.enemy_visual(
+            enemy.name,
+            enemy.kind,
+            state,
+            enemy.anim_time,
+            self.elapsed,
+            direction=direction,
+            action_time=action_time,
+        )
+        sprite = frame.surface
+        if big_boss and not frame.is_asset:
+            # Legacy tyrants were authored smaller and retain their established
+            # encounter scale. Asset bosses have per-identity target heights.
             sprite = pygame.transform.smoothscale(
                 sprite,
                 (int(sprite.get_width() * 1.18), int(sprite.get_height() * 1.18)),
+            )
+            frame = ResolvedSpriteFrame(
+                sprite,
+                (sprite.get_width() // 2, sprite.get_height()),
+                "legacy",
+                frame.key,
             )
         shadow_w = (
             78
@@ -640,7 +723,9 @@ class RenderingActorMixin:
             else 32
         )
         sway, bob, lean, stretch = self.actor_animation(enemy)
-        if big_boss or enemy.kind == "boss":
+        if frame.is_asset:
+            sway, bob, lean, stretch = 0.0, 0.0, 0.0, 1.0
+        elif big_boss or enemy.kind == "boss":
             stretch += math.sin(self.elapsed * 3.4) * 0.010
             lean += math.sin(self.elapsed * 2.1) * 1.5
         elif enemy.elite_modifier or enemy.kind == "miniboss":
@@ -657,19 +742,29 @@ class RenderingActorMixin:
         # Big bosses sit a little lower in their footprint so the sprite base
         # lands near the center of the 2x2 block instead of the center tile.
         y_off = (10.0 if big_boss else 6.0) - bob
-        sx, sy = self.blit_sprite(
-            sprite,
-            enemy.x,
-            enemy.y,
-            y_offset=y_off,
-            x_offset=sway,
-            stretch=stretch,
-            lean=lean,
-            apply_shading=(enemy.kind == "boss"),
-            base_sprite=self.sprites.enemies.get(
-                self.sprites.enemy_key(enemy.name, enemy.kind)
-            ),
-        )
+        if frame.is_asset:
+            rect = self.blit_resolved_sprite(
+                frame,
+                enemy.x,
+                enemy.y,
+                y_offset=y_off,
+                apply_shading=(enemy.kind == "boss" or big_boss),
+            )
+            sx = rect.centerx
+            _ground_x, sy = self.world_to_screen(enemy.x, enemy.y)
+        else:
+            sx, sy = self.blit_sprite(
+                sprite,
+                enemy.x,
+                enemy.y,
+                y_offset=y_off,
+                x_offset=sway,
+                stretch=stretch,
+                lean=lean,
+                apply_shading=(enemy.kind == "boss"),
+                base_sprite=self.sprites.legacy_enemy_base(enemy.name, enemy.kind),
+            )
+            rect = sprite.get_rect(midbottom=(sx, sy + round(y_off * WORLD_SCALE)))
         self.draw_hit_flash_overlay(
             sx,
             sy,
@@ -689,7 +784,7 @@ class RenderingActorMixin:
         ) * WORLD_SCALE
         fill_w = int(bar_w * max(0, enemy.hp) / enemy.max_hp)
         bar_h = (7 if big_boss else 4) * WORLD_SCALE
-        bar_y = sy - sprite.get_height() - (4 if big_boss else 2) * WORLD_SCALE
+        bar_y = rect.top - (4 if big_boss else 2) * WORLD_SCALE
         pygame.draw.rect(
             self.screen, (40, 10, 10), (sx - bar_w // 2, bar_y, bar_w, bar_h)
         )

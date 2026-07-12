@@ -166,7 +166,7 @@ class OptionsMixin:
     def options_to_dict(self) -> dict[str, Any]:
         return {
             "version": 1,
-            "schema_version": 3,
+            "schema_version": 4,
             "audio_enabled": self.audio_enabled,
             "music_enabled": self.music_enabled,
             "fullscreen": self.fullscreen,
@@ -182,6 +182,7 @@ class OptionsMixin:
             ),
             "lighting_enabled": getattr(self, "_lighting_enabled", True),
             "lighting_normal_maps": getattr(self, "_lighting_normal_maps", True),
+            "legacy_graphics": getattr(self, "legacy_graphics", False),
         }
 
     def load_options(self) -> bool:
@@ -213,8 +214,19 @@ class OptionsMixin:
             # off in make_game.
             self._lighting_enabled = bool(data.get("lighting_enabled", True))
             self._lighting_normal_maps = bool(data.get("lighting_normal_maps", True))
+            # Schema v4 (milestone 4.0): modern asset sprites are the default.
+            # Older option files omit this field and migrate to modern graphics;
+            # missing individual resources still fall back procedurally.
+            self.legacy_graphics = bool(data.get("legacy_graphics", False))
         except (TypeError, ValueError):
             return False
+        sprites = getattr(self, "sprites", None)
+        if (
+            sprites is not None
+            and getattr(sprites, "legacy_graphics", self.legacy_graphics)
+            != self.legacy_graphics
+        ):
+            self._apply_graphics_mode()
         return True
 
     def save_options(self) -> bool:
@@ -228,6 +240,32 @@ class OptionsMixin:
         except (OSError, TypeError, ValueError):
             return False
         return True
+
+    def _apply_graphics_mode(self) -> None:
+        sprites = getattr(self, "sprites", None)
+        if sprites is not None and hasattr(sprites, "set_legacy_graphics"):
+            sprites.set_legacy_graphics(self.legacy_graphics)
+        tile_cache = getattr(self, "tile_cache", None)
+        if tile_cache is not None:
+            tile_cache.clear()
+        self.door_tile_cache = {}
+        self._alpha_tile_cache = {}
+        if hasattr(self, "reset_lighting_caches"):
+            self.reset_lighting_caches()
+        if tile_cache is not None and hasattr(self, "theme"):
+            self.prewarm_tile_cache()
+
+    def set_legacy_graphics(self, enabled: bool) -> None:
+        enabled = bool(enabled)
+        sprites = getattr(self, "sprites", None)
+        renderer_matches = (
+            sprites is None or getattr(sprites, "legacy_graphics", enabled) == enabled
+        )
+        if enabled == getattr(self, "legacy_graphics", False) and renderer_matches:
+            return
+        self.legacy_graphics = enabled
+        self._apply_graphics_mode()
+        self.save_options()
 
     def current_music_profile(self) -> MusicProfile | None:
         if self.state in (

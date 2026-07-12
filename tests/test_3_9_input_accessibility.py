@@ -349,8 +349,9 @@ class OptionsPersistenceTests(unittest.TestCase):
             self.assertFalse(game.controller_enabled)
             self.assertEqual(game.last_controller_guid, "abc-123")
             data = game.options_to_dict()
-            self.assertEqual(data["schema_version"], 3)
+            self.assertEqual(data["schema_version"], 4)
             self.assertIn("gamepad_mapping", data)
+            self.assertFalse(data["legacy_graphics"])
 
     def test_old_schema_v2_loads_with_safe_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

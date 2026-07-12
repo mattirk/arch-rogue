@@ -202,12 +202,22 @@ class ViewportZoomTests(unittest.TestCase):
             game._lighting_enabled = True
             game.view_zoom = game.VIEW_ZOOM_MIN
             game.draw()
-            # A pixel near the player should be brighter than a far corner that
-            # the lantern does not reach (light buffer darkens far areas).
+            # Compare the light buffer itself rather than one world pixel: asset
+            # sprites can place a deliberately dark contact shadow exactly at the
+            # player's projected origin even though the lantern is bright there.
+            from arch_rogue.constants import LIGHT_BUFFER_SCALE
+
             sx, sy = game.world_to_display(game.player.x, game.player.y)
-            near = game.screen.get_at((sx, sy))
-            corner = game.screen.get_at((4, 4))
-            self.assertGreater(sum(near[:3]), sum(corner[:3]))
+            buffer = game._light_buffer_surface
+            bx = max(0, min(buffer.get_width() - 1, sx // LIGHT_BUFFER_SCALE))
+            by = max(0, min(buffer.get_height() - 1, sy // LIGHT_BUFFER_SCALE))
+            near = max(
+                sum(buffer.get_at((x, y))[:3])
+                for x in range(max(0, bx - 2), min(buffer.get_width(), bx + 3))
+                for y in range(max(0, by - 2), min(buffer.get_height(), by + 3))
+            )
+            corner = sum(buffer.get_at((2, 2))[:3])
+            self.assertGreater(near, corner)
 
 
 if __name__ == "__main__":

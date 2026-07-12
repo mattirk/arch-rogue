@@ -1,5 +1,44 @@
 # Changelog
 
+## 4.0.0 — Big Sprites Upgrade
+
+Arch Rogue now ships with a production asset-sprite renderer while preserving the complete procedural renderer as an instant legacy fallback. The upgrade keeps the existing 2:1 isometric projection, gameplay identifiers, run-save schema, theme palette changes, lighting, and deterministic dungeon variation intact.
+
+### Added
+
+- A packaged high-resolution sprite library under `src/arch_rogue/assets/sprites/` with a validated manifest and directional art for all five archetypes, the regular enemy roster, every named floor boss, the final gate tyrant, shopkeepers, story guests, wisps, owls, item classes, interactable props, and core world tiles.
+- `sprite_assets.py` with lazy PNG decoding, alpha-bound normalization, explicit foot/tile anchors, eight-direction clip resolution, bounded LRU caches, theme tinting, special-room wall decoration, and per-resource failure isolation.
+- Asset-backed idle and run animation for the actor roster, plus authored attack/cast clips where available. Missing state/direction frames fall back to a safe rotation or the procedural atlas without interrupting a run.
+- High-resolution isometric floor, wall, open-door, closed-door, stair, shop, quest-room, tavern, and garden tiles aligned to canonical `360×200` floor, `360×360` stair, and `360×440` wall/door render canvases.
+- Asset props for spike/rune/poison traps, shrines, secret caches, merchant signs, gold stacks, and Ambush Bells, each normalized to gameplay scale with procedural telegraphs and glows preserved.
+- Cached item thumbnails in the inventory UI; legacy mode retains the original faceted rarity gems.
+- A Display → Graphics setting (`G`) that switches between asset sprites and legacy procedural graphics at runtime, clears derived tile/lighting caches, and prewarms the selected renderer.
+- Scroll-aware options rendering with physically fitted, cached typography so every setting and footer remains readable, visible, and selectable at low resolutions and UI scale 4.
+
+### Changed
+
+- `Game.sprites` now uses an asset-first compatibility facade while `PixelSpriteAtlas` remains public and unchanged for legacy imports and tests.
+- Player, enemy, boss, NPC, familiar, loot, relic, and world rendering resolve stable gameplay names through manifest aliases rather than storing asset paths in saves.
+- Authored actor animation bypasses the old procedural lean/stretch pass to avoid double motion; non-looping actions sample the full clip over their gameplay visual TTL, while legacy sprites retain their previous transforms exactly.
+- World sprite variants keep deterministic seed/cache keys and theme recoloring. Special-room markings remain composited dynamically so procedural room flavor is preserved.
+- Package data now includes nested sprite manifests and PNGs in wheels and web builds.
+- Runtime/package release version is `4.0.0`; options schema is `4`. Run saves remain schema `5` and graphics preference remains options-only.
+
+### Compatibility and resilience
+
+- Explicit legacy mode reproduces the original procedural actor, item, prop, and tile renderer.
+- Missing, corrupt, incomplete, or unsupported asset entries fall back independently instead of disabling modern graphics globally; malformed manifest shapes are contained at startup and failed resource reads are negatively cached.
+- Old options files migrate to asset sprites by default; old run files require no sprite-specific migration.
+- Normal maps continue to bake lazily from the actual resolved frame, preserving colored lighting on both renderers.
+
+### Validation
+
+- `python -m compileall src tests` — OK.
+- Focused graphics/options/save/rendering regression run — 80 tests, all passing.
+- `python -m unittest discover tests` — 187 tests, all passing.
+- Clean isolated wheel build/install — 2,192 nested sprite resources present (2,191 PNGs plus the manifest); the installed manifest loaded 25 actors, 6 item classes, 8 props, and 9 world types.
+- Warm-cache 960×540 dummy-SDL benchmark — 1.97 ms/frame (507.6 FPS) with no decoded-source, resolved-frame, world, normal-map, tile, or door-cache growth over 120 frames.
+
 ## 3.19.5 — Harder Enemies Below Level 5
 
 The difficulty curve flattened out past depth 5, so the lower dungeon felt no more threatening than the upper floors. Enemy HP, damage, aggro, and per-room counts now ramp up more aggressively once you descend below level 5.

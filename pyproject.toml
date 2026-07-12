@@ -1,7 +1,7 @@
 [project]
 name = "arch-rogue"
-version = "3.19.5"
-description = "3.19.0 renames the 'slot 3 skill' concept to 'class skill' throughout the codebase. The shared budget (mana cost, cooldown, timer) is renamed from nova_* to class_skill_*, and the dispatch is data-driven via a class-skill registry. Nova-specific implementation (player_cast_nova, nova_damage_type) is preserved as one class-skill variant."
+version = "4.0.0"
+description = "A grim isometric action roguelike with directional high-resolution asset sprites, procedural legacy graphics, and replayable dungeon runs."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
@@ -29,4 +29,13 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-arch_rogue = ["assets/*.json", "assets/icons/*.png"]
+arch_rogue = [
+    "assets/*.json",
+    "assets/icons/*.png",
+    "assets/sprites/*.json",
+    "assets/sprites/actors/*/rotations/*.png",
+    "assets/sprites/actors/*/animations/*/*/*.png",
+    "assets/sprites/items/*.png",
+    "assets/sprites/props/*.png",
+    "assets/sprites/world/*.png",
+]

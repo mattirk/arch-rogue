@@ -33,9 +33,11 @@ Arch Rogue is a modernized take on the classic Rogue formula: a grim, replayable
 - End-of-run summaries covering cause of death, loot, bosses, secrets, story choices, and mastery.
 
 **Presentation & input**
-- Procedural pixel-art sprites and procedural NES-style music and sound effects.
+- High-resolution directional asset sprites for all five archetypes, the complete enemy and boss roster, NPCs, familiars, loot, and isometric dungeon tiles.
+- Cached idle/run/action animation playback, theme-aware world recoloring, normal-map lighting, and a complete procedural legacy-graphics fallback.
+- Procedural NES-style music and sound effects.
 - Keyboard/mouse and full gamepad support with remappable bindings, deadzones, and hot-plug.
-- Accessibility touches: aim assist, adjustable UI scale, and an in-run help overlay.
+- Accessibility touches: aim assist, adjustable UI scale, scrollable settings, and an in-run help overlay.
 
 ## Architecture
 
@@ -48,7 +50,8 @@ Current ownership:
 - `src/arch_rogue/rendering/` owns world, actor, effects, HUD, and story/cutscene drawing behind the compatible `RenderingMixin` export.
 - `src/arch_rogue/menus/` owns reusable title/options/character/inventory/state overlay rendering behind the compatible `MenuRenderer` export.
 - `src/arch_rogue/content/` owns content-table modules for definitions, archetypes, enemies, equipment, difficulty, interactables, progression, and story corpus behind the compatible `arch_rogue.content` facade.
-- `src/arch_rogue/story.py`, `dungeon.py`, `audio.py`, `sprites.py`, `models.py`, and `constants.py` remain focused support modules.
+- `src/arch_rogue/sprite_assets.py` owns packaged sprite loading, directional animation resolution, anchors, tinting, bounded caches, and per-resource fallback; `sprites.py` remains the compatible procedural legacy atlas.
+- `src/arch_rogue/story.py`, `dungeon.py`, `audio.py`, `models.py`, and `constants.py` remain focused support modules.
 
 ## Requirements
 
@@ -187,7 +190,10 @@ Arch Rogue supports keyboard/mouse and gamepad. Gamepad bindings can be remapped
 | Control | Action |
 | --- | --- |
 | `A` / `M` / `F` / `D` | Toggle audio, music, fullscreen, or cycle difficulty |
+| `G` | Toggle asset sprites / legacy procedural graphics |
+| `L` / `N` | Toggle lighting / normal-map lighting detail |
 | `+` / `-` | Adjust UI scale |
+| Arrow keys / D-pad | Navigate all rows; the settings list scrolls to keep selection visible |
 | `Return` | Toggle the selected row |
 | `Backspace` / `O` | Back to title |
 
@@ -205,10 +211,10 @@ In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from t
 
 - Quest cutscene and story-corpus content is computer generated and not human-authored. Story is mostly slop and may be replaced with more engaging content in future versions.
 - Music and sound effects are procedural/static cues; there is no hand-authored soundtrack asset pipeline yet.
-- Visuals are procedural pixel-art prototype assets tuned for a clean look - issue or feature?
+- The packaged high-resolution sprite set increases wheel and web-bundle size; legacy graphics remains available for constrained systems.
 - Save files are local JSON and are not cloud-synced.
 - Single-player only; there is no multiplayer.
-- The experimental web build exists in `src/arch_rogue/web` but is not part of the default test run.
+- The experimental web build exists in `web/` but is not part of the default test run.
 
 ## License
 
@@ -224,7 +230,7 @@ Pursuant to the accompanying Apache 2.0 License, this software is provided stric
 
 ## Credits
 
-Design, code, procedural story corpus, procedural art, and procedural audio by the Arch Rogue project. Built with Python and [Pygame CE](https://pyga.me/). Much of this code is computer generated and not reviewed by a human.
+Design, code, asset sprites, procedural legacy art, procedural story corpus, and procedural audio by the Arch Rogue project. Built with Python and [Pygame CE](https://pyga.me/). Much of this project is computer generated and not reviewed by a human.
 
 ## Changelog
 

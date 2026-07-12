@@ -711,18 +711,19 @@ class InputMixin:
     """
 
     # Options menu row order (matches MenuOptionsMixin.draw_options_menu).
-    # Grouped: Display (0-2), Controls (3-4), Audio (5-6), Lights (7-8), Back (9).
-    OPTIONS_ROW_COUNT = 10
+    # Grouped: Display (0-3), Controls (4-5), Audio (6-7), Lights (8-9), Back (10).
+    OPTIONS_ROW_COUNT = 11
     OPTIONS_ROW_FULLSCREEN = 0
     OPTIONS_ROW_DIFFICULTY = 1
     OPTIONS_ROW_UI_SCALE = 2
-    OPTIONS_ROW_CONTROLS = 3
-    OPTIONS_ROW_CONTROLLER = 4
-    OPTIONS_ROW_AUDIO = 5
-    OPTIONS_ROW_MUSIC = 6
-    OPTIONS_ROW_LIGHTING = 7
-    OPTIONS_ROW_LIGHTING_DETAIL = 8
-    OPTIONS_ROW_BACK = 9
+    OPTIONS_ROW_GRAPHICS = 3
+    OPTIONS_ROW_CONTROLS = 4
+    OPTIONS_ROW_CONTROLLER = 5
+    OPTIONS_ROW_AUDIO = 6
+    OPTIONS_ROW_MUSIC = 7
+    OPTIONS_ROW_LIGHTING = 8
+    OPTIONS_ROW_LIGHTING_DETAIL = 9
+    OPTIONS_ROW_BACK = 10
 
     def init_input(self) -> None:
         self.input = ControllerManager(
@@ -748,6 +749,7 @@ class InputMixin:
         # Options menu cursor for unified arrow/gamepad navigation. -1 means
         # no row focused (legacy direct-key usage stays untouched).
         self.options_cursor = 0
+        self.options_scroll = 0
         # Cutscene choice highlight index for gamepad navigation.
         self.cutscene_cursor = 0
 
@@ -980,6 +982,8 @@ class InputMixin:
             self.ui_scale = max(1, min(4, self.ui_scale + (1 if forward else -1)))
             self.rebuild_fonts()
             self.save_options()
+        elif row == self.OPTIONS_ROW_GRAPHICS:
+            self.set_legacy_graphics(not self.legacy_graphics)
         elif row == self.OPTIONS_ROW_CONTROLLER:
             self.controller_enabled = not self.controller_enabled
             self.input.set_enabled(self.controller_enabled)

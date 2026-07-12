@@ -766,9 +766,18 @@ class RenderingEffectsMixin:
         pygame.draw.ellipse(glow, (*gold, int(40 + 35 * pulse)), glow.get_rect())
         self.screen.blit(glow, glow.get_rect(center=(sx, sy + WORLD_SCALE)))
         bob = int(math.sin(self.elapsed * 3.2 + item.x * 0.7) * 2 * WORLD_SCALE)
-        sign = self.sprites.shop_sign_sprite
-        rect = sign.get_rect(midbottom=(sx, sy + 4 * WORLD_SCALE - bob))
-        self.screen.blit(sign, rect)
+        frame = self.sprites.shop_sign_visual()
+        sign = frame.surface
+        if frame.is_asset:
+            rect = self.blit_resolved_sprite(
+                frame,
+                item.x,
+                item.y,
+                y_offset=4.0 - bob / WORLD_SCALE,
+            )
+        else:
+            rect = sign.get_rect(midbottom=(sx, sy + 4 * WORLD_SCALE - bob))
+            self.screen.blit(sign, rect)
         if math.hypot(item.x - self.player.x, item.y - self.player.y) < 1.0:
             label = self.small_font.render(
                 f"E {self.rarity_icon(item.visible_rarity)} {item.display_name}",
@@ -1250,8 +1259,12 @@ class RenderingEffectsMixin:
         pygame.draw.circle(
             self.screen, self.shade(color, 45), (sx, sy), max(1, WORLD_SCALE)
         )
-        sprite = self.sprites.trap_frame(trap.kind, self.elapsed + trap.x * 0.5)
-        self.screen.blit(sprite, sprite.get_rect(center=(sx, sy - 2 * WORLD_SCALE)))
+        frame = self.sprites.trap_visual(trap.kind, self.elapsed + trap.x * 0.5)
+        if frame.is_asset:
+            self.blit_resolved_sprite(frame, trap.x, trap.y, y_offset=1.0)
+        else:
+            sprite = frame.surface
+            self.screen.blit(sprite, sprite.get_rect(center=(sx, sy - 2 * WORLD_SCALE)))
         if math.hypot(trap.x - self.player.x, trap.y - self.player.y) < 1.35:
             label = self.small_font.render(f"! {trap.kind}", True, color)
             self.screen.blit(label, label.get_rect(center=(sx, sy - 24 * WORLD_SCALE)))
@@ -1299,66 +1312,77 @@ class RenderingEffectsMixin:
                     max(1, WORLD_SCALE),
                 )
 
-        body_w = max(6, 8 * WORLD_SCALE)
-        body_h = max(5, 7 * WORLD_SCALE)
-        body = pygame.Rect(0, 0, body_w, body_h)
-        body.midbottom = (sx, sy - 1 * WORLD_SCALE)
-        pygame.draw.ellipse(self.screen, (24, 20, 28), body.inflate(2 * WORLD_SCALE, 0))
-        pygame.draw.ellipse(self.screen, self.shade(color, -48), body)
-        pygame.draw.arc(
-            self.screen,
-            self.shade(color, 42),
-            body.inflate(2 * WORLD_SCALE, 2 * WORLD_SCALE),
-            math.pi,
-            math.tau,
-            max(1, WORLD_SCALE),
-        )
-        crack_x = sx + int(math.sin(self.elapsed * 8.0) * WORLD_SCALE)
-        pygame.draw.line(
-            self.screen,
-            self.shade(color, 80),
-            (crack_x, body.top + WORLD_SCALE),
-            (crack_x - 2 * WORLD_SCALE, body.centery),
-            max(1, WORLD_SCALE),
-        )
-        pygame.draw.circle(
-            self.screen,
-            self.shade(color, 55),
-            (sx, body.bottom),
-            max(1, WORLD_SCALE),
-        )
+        bell_frame = self.sprites.ambush_bell_visual()
+        if bell_frame is not None:
+            self.blit_resolved_sprite(bell_frame, bell.x, bell.y, y_offset=1.0)
+        else:
+            body_w = max(6, 8 * WORLD_SCALE)
+            body_h = max(5, 7 * WORLD_SCALE)
+            body = pygame.Rect(0, 0, body_w, body_h)
+            body.midbottom = (sx, sy - 1 * WORLD_SCALE)
+            pygame.draw.ellipse(
+                self.screen, (24, 20, 28), body.inflate(2 * WORLD_SCALE, 0)
+            )
+            pygame.draw.ellipse(self.screen, self.shade(color, -48), body)
+            pygame.draw.arc(
+                self.screen,
+                self.shade(color, 42),
+                body.inflate(2 * WORLD_SCALE, 2 * WORLD_SCALE),
+                math.pi,
+                math.tau,
+                max(1, WORLD_SCALE),
+            )
+            crack_x = sx + int(math.sin(self.elapsed * 8.0) * WORLD_SCALE)
+            pygame.draw.line(
+                self.screen,
+                self.shade(color, 80),
+                (crack_x, body.top + WORLD_SCALE),
+                (crack_x - 2 * WORLD_SCALE, body.centery),
+                max(1, WORLD_SCALE),
+            )
+            pygame.draw.circle(
+                self.screen,
+                self.shade(color, 55),
+                (sx, body.bottom),
+                max(1, WORLD_SCALE),
+            )
 
     def draw_secret(self, secret: SecretCache) -> None:
         sx, sy = self.world_to_screen(secret.x, secret.y)
         self.draw_shadow(secret.x, secret.y, 26, 11)
         color = self.theme.accent
+        frame = self.sprites.secret_visual(self.elapsed + secret.x * 0.33)
         pulse = 0.55 + 0.45 * math.sin(self.elapsed * 5.0 + secret.x)
         glow = pygame.Surface((34 * WORLD_SCALE, 18 * WORLD_SCALE), pygame.SRCALPHA)
         pygame.draw.ellipse(glow, (*color, int(34 + 46 * pulse)), glow.get_rect())
         self.screen.blit(glow, glow.get_rect(center=(sx, sy + 2 * WORLD_SCALE)))
-        pygame.draw.rect(
-            self.screen,
-            (35, 28, 24),
-            (
-                sx - 8 * WORLD_SCALE,
-                sy - 8 * WORLD_SCALE,
-                16 * WORLD_SCALE,
-                10 * WORLD_SCALE,
-            ),
-        )
-        pygame.draw.rect(
-            self.screen,
-            color,
-            (
-                sx - 8 * WORLD_SCALE,
-                sy - 8 * WORLD_SCALE,
-                16 * WORLD_SCALE,
-                10 * WORLD_SCALE,
-            ),
-            max(1, WORLD_SCALE),
-        )
-        sprite = self.sprites.secret_frame(self.elapsed + secret.x * 0.33)
-        self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 4 * WORLD_SCALE)))
+        if not frame.is_asset:
+            pygame.draw.rect(
+                self.screen,
+                (35, 28, 24),
+                (
+                    sx - 8 * WORLD_SCALE,
+                    sy - 8 * WORLD_SCALE,
+                    16 * WORLD_SCALE,
+                    10 * WORLD_SCALE,
+                ),
+            )
+            pygame.draw.rect(
+                self.screen,
+                color,
+                (
+                    sx - 8 * WORLD_SCALE,
+                    sy - 8 * WORLD_SCALE,
+                    16 * WORLD_SCALE,
+                    10 * WORLD_SCALE,
+                ),
+                max(1, WORLD_SCALE),
+            )
+        if frame.is_asset:
+            self.blit_resolved_sprite(frame, secret.x, secret.y, y_offset=4.0)
+        else:
+            sprite = frame.surface
+            self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 4 * WORLD_SCALE)))
         if math.hypot(secret.x - self.player.x, secret.y - self.player.y) < 1.1:
             hint = self.current_interaction_hint()
             detail = hint[2] if hint else "Open secret"
@@ -1384,13 +1408,17 @@ class RenderingEffectsMixin:
         )
         self.screen.blit(ring, ring.get_rect(center=(sx, sy + 4 * WORLD_SCALE)))
 
-        sprite = self.sprites.story_guest_frame(
+        frame = self.sprites.story_guest_visual(
             self.elapsed + guest.depth, guest.resolved
         )
         # Drawn as-is, like every other actor. The previous additive tint over
         # the whole sprite is what made the guest glow; normal humanoids are not
         # tinted at draw time.
-        self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 5 * WORLD_SCALE)))
+        if frame.is_asset:
+            self.blit_resolved_sprite(frame, guest.x, guest.y, y_offset=5.0)
+        else:
+            sprite = frame.surface
+            self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 5 * WORLD_SCALE)))
 
         # The floating portrait badge (a dark disc with a "?"/role/"✓" glyph)
         # used to be drawn above the guest here. It read as a pasted-on status
@@ -1417,24 +1445,40 @@ class RenderingEffectsMixin:
         # or trade with them. A faint floor shadow is enough to ground them.
         sx, sy = self.world_to_screen(npc.x, npc.y)
         self.draw_shadow(npc.x, npc.y, 24, 10)
-        sprite = self.sprites.story_guest_frame(self.elapsed + npc.x * 0.7, False)
-        self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 5 * WORLD_SCALE)))
+        frame = self.sprites.story_guest_visual(self.elapsed + npc.x * 0.7, False)
+        if frame.is_asset:
+            self.blit_resolved_sprite(frame, npc.x, npc.y, y_offset=5.0)
+        else:
+            sprite = frame.surface
+            self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 5 * WORLD_SCALE)))
 
     def draw_familiar(self, familiar: Familiar) -> None:
         sx, sy = self.world_to_screen(familiar.x, familiar.y)
         bob = math.sin(self.elapsed * 3.4 + familiar.x * 0.7 + familiar.y * 0.4) * 1.4
         shadow_w = 30 if familiar.champion else (22 if familiar.sprite_variant else 18)
         self.draw_shadow(familiar.x, familiar.y, shadow_w, 10, moving=familiar.moving)
-        sprite = self.sprites.familiar_frame(familiar.sprite_variant, self.elapsed)
-        self.screen.blit(
-            sprite,
-            sprite.get_rect(midbottom=(sx, sy + (5 - bob) * WORLD_SCALE)),
+        direction = self.actor_sprite_direction(
+            getattr(familiar, "facing_x", 1.0), getattr(familiar, "facing_y", 0.0)
         )
+        frame = self.sprites.familiar_visual(
+            familiar.sprite_variant,
+            self.elapsed,
+            direction=direction,
+            moving=familiar.moving,
+        )
+        sprite = frame.surface
+        if frame.is_asset:
+            rect = self.blit_resolved_sprite(
+                frame, familiar.x, familiar.y, y_offset=5.0 - bob
+            )
+        else:
+            rect = sprite.get_rect(midbottom=(sx, sy + (5 - bob) * WORLD_SCALE))
+            self.screen.blit(sprite, rect)
         if familiar.hp < familiar.max_hp:
             bar_w = 24 * WORLD_SCALE
             fill_w = int(bar_w * max(0, familiar.hp) / familiar.max_hp)
             bar_h = 3 * WORLD_SCALE
-            bar_y = sy - sprite.get_height() - 2 * WORLD_SCALE
+            bar_y = rect.top - 2 * WORLD_SCALE
             pygame.draw.rect(
                 self.screen, (40, 10, 10), (sx - bar_w // 2, bar_y, bar_w, bar_h)
             )
@@ -1448,6 +1492,9 @@ class RenderingEffectsMixin:
         sx, sy = self.world_to_screen(shrine.x, shrine.y)
         self.draw_shadow(shrine.x, shrine.y, 30, 12)
         color = (92, 92, 100) if shrine.used else (235, 205, 110)
+        frame = self.sprites.shrine_visual(
+            shrine.kind, self.elapsed + shrine.x, shrine.used
+        )
         pulse = 0.6 + 0.4 * math.sin(self.elapsed * 3.0 + shrine.x)
         glow = pygame.Surface((50 * WORLD_SCALE, 28 * WORLD_SCALE), pygame.SRCALPHA)
         pygame.draw.ellipse(glow, (*color, int(42 + 48 * pulse)), glow.get_rect())
@@ -1468,30 +1515,32 @@ class RenderingEffectsMixin:
                     (mote_x, mote_y),
                     max(1, WORLD_SCALE),
                 )
-        pygame.draw.rect(
-            self.screen,
-            (48, 42, 50),
-            (
-                sx - 7 * WORLD_SCALE,
-                sy - 24 * WORLD_SCALE,
-                14 * WORLD_SCALE,
-                25 * WORLD_SCALE,
-            ),
-        )
-        pygame.draw.rect(
-            self.screen,
-            color,
-            (
-                sx - 4 * WORLD_SCALE,
-                sy - 19 * WORLD_SCALE,
-                8 * WORLD_SCALE,
-                6 * WORLD_SCALE,
-            ),
-        )
-        sprite = self.sprites.shrine_frame(
-            shrine.kind, self.elapsed + shrine.x, shrine.used
-        )
-        self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 2 * WORLD_SCALE)))
+        if not frame.is_asset:
+            pygame.draw.rect(
+                self.screen,
+                (48, 42, 50),
+                (
+                    sx - 7 * WORLD_SCALE,
+                    sy - 24 * WORLD_SCALE,
+                    14 * WORLD_SCALE,
+                    25 * WORLD_SCALE,
+                ),
+            )
+            pygame.draw.rect(
+                self.screen,
+                color,
+                (
+                    sx - 4 * WORLD_SCALE,
+                    sy - 19 * WORLD_SCALE,
+                    8 * WORLD_SCALE,
+                    6 * WORLD_SCALE,
+                ),
+            )
+        if frame.is_asset:
+            self.blit_resolved_sprite(frame, shrine.x, shrine.y, y_offset=2.0)
+        else:
+            sprite = frame.surface
+            self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 2 * WORLD_SCALE)))
         if (
             not shrine.used
             and math.hypot(shrine.x - self.player.x, shrine.y - self.player.y) < 1.15

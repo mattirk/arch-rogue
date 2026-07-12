@@ -146,6 +146,9 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
+                # This assertion protects the original procedural groove
+                # generator; milestone 4.0's asset floors have authored texture.
+                game.set_legacy_graphics(True)
                 for v in range(DUNGEON_FLOOR_VARIANTS):
                     surf, ax, ay = game.tile_surface(Tile.FLOOR, v, False)
                     slab = sum(game.shade(game.theme.floor, v * 2 - 3))

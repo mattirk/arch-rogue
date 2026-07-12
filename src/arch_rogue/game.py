@@ -129,6 +129,7 @@ from .rendering import RenderingMixin
 from .run_flow import RunFlowMixin
 from .save_system import SaveLoadMixin
 from .shop import ShopMixin
+from .sprite_assets import SpriteAtlas
 from .sprites import PixelSpriteAtlas
 from .story import (
     StoryEngine,
@@ -191,6 +192,7 @@ __all__ = (
     "PLAYER_PROJECTILE_HIT_RADIUS",
     "PixelSpriteAtlas",
     "Player",
+    "SpriteAtlas",
     "PopulationMixin",
     "Projectile",
     "RARITY_PROFILES",
@@ -279,6 +281,10 @@ class Game(
         # alpha path remains the web-safe default.
         self._lighting_enabled = True
         self._lighting_normal_maps = True
+        # Asset sprites are the production default. The persisted legacy toggle
+        # keeps the original procedural renderer available on constrained systems
+        # and as a per-install compatibility fallback.
+        self.legacy_graphics = False
         self.meta_progress: dict[str, Any] = self.default_meta_progress()
         self.run_history: list[dict[str, Any]] = []
         self.last_save_error = ""
@@ -305,12 +311,15 @@ class Game(
                 pass
         self.clock = pygame.time.Clock()
         self.rebuild_fonts()
-        self.sprites = PixelSpriteAtlas()
+        self.sprites = SpriteAtlas(legacy_graphics=self.legacy_graphics)
         self.quest_cutscenes = load_quest_cutscene_library()
         self.active_cutscene: ActiveQuestCutscene | None = None
         self.tile_cache: dict[
-            tuple[str, int, int, bool, bool, str | None],
+            tuple[str, int, int, bool, bool, bool, bool, str | None],
             tuple[pygame.Surface, int, int],
+        ] = {}
+        self.door_tile_cache: dict[
+            tuple[str, int, int, str], tuple[pygame.Surface, int, int]
         ] = {}
         self.rng = random.Random()
         self.running = True
@@ -381,9 +390,15 @@ class Game(
         self.player_hit_flash = 0.0
         self.player_action_state = ""
         self.player_action_ttl = 0.0
+        self.player_action_elapsed = 0.0
+        self.player_action_duration = 0.0
         self.ambient_overlay_cache: dict[tuple[int, int, str, int], pygame.Surface] = {}
         self.audio = AudioSystem()
         self.audio_available = self.audio.initialize(headless)
+        self._options_visible_range = (0, 0)
+        self._options_row_viewport = pygame.Rect(0, 0, 0, 0)
+        self._options_selected_row_rect = pygame.Rect(0, 0, 0, 0)
+        self._options_row_font_height = 0
         self.menus = MenuRenderer(self, ARCHETYPES, DUNGEON_DEPTH)
         self.init_input()
 
@@ -421,6 +436,18 @@ class Game(
             )
 
     def set_player_action_visual(self, state: str, ttl: float = 0.18) -> None:
+        ttl = max(0.0, float(ttl))
+        starts_new_action = (
+            state != self.player_action_state or self.player_action_ttl <= 0.0
+        )
+        if starts_new_action:
+            self.player_action_elapsed = 0.0
+            self.player_action_duration = ttl
+        else:
+            self.player_action_duration = max(
+                self.player_action_duration,
+                self.player_action_elapsed + ttl,
+            )
         self.player_action_state = state
         self.player_action_ttl = max(self.player_action_ttl, ttl)
 
@@ -429,6 +456,8 @@ class Game(
         self.player_hit_flash = 0.0
         self.player_action_state = ""
         self.player_action_ttl = 0.0
+        self.player_action_elapsed = 0.0
+        self.player_action_duration = 0.0
         # Milestone 3.16 - transient light pulses are visual effects too.
         self.lights = []
 
@@ -443,9 +472,13 @@ class Game(
         self.update_lights(dt)
         self.screen_flash_ttl = max(0.0, self.screen_flash_ttl - dt)
         self.player_hit_flash = max(0.0, self.player_hit_flash - dt)
+        if self.player_action_ttl > 0.0:
+            self.player_action_elapsed += dt
         self.player_action_ttl = max(0.0, self.player_action_ttl - dt)
         if self.player_action_ttl <= 0:
             self.player_action_state = ""
+            self.player_action_elapsed = 0.0
+            self.player_action_duration = 0.0
         alive_enemy_ids = {id(enemy) for enemy in self.enemies}
         self.enemy_hit_flashes = {
             enemy_id: max(0.0, ttl - dt)
@@ -589,6 +622,9 @@ class Game(
                     elif event.key in (pygame.K_MINUS, pygame.K_UNDERSCORE):
                         self.options_cursor = self.OPTIONS_ROW_UI_SCALE
                         self._activate_options_row(self.OPTIONS_ROW_UI_SCALE, False)
+                    elif event.key == pygame.K_g:
+                        self.options_cursor = self.OPTIONS_ROW_GRAPHICS
+                        self._activate_options_row(self.OPTIONS_ROW_GRAPHICS, True)
                     elif event.key == pygame.K_l:
                         self.options_cursor = self.OPTIONS_ROW_LIGHTING
                         self._activate_options_row(self.OPTIONS_ROW_LIGHTING, True)

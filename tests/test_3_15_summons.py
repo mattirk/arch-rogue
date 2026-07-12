@@ -350,7 +350,7 @@ class Summons315Tests(unittest.TestCase):
             self.assertEqual(len(game.familiars), 2)
             before = game.familiars[0]
             data = copy.deepcopy(game.serialize_run_state())
-            self.assertEqual(data["release"], "3.19.3")
+            self.assertEqual(data["release"], "4.0.0")
             self.assertIn("familiars", data)
             self.assertEqual(len(data["familiars"]), 2)
 

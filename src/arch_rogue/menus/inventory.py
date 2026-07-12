@@ -383,30 +383,54 @@ class MenuInventoryMixin:
             slot_size,
         )
         pygame.draw.rect(self.screen, self.BG_DEEP, slot_rect, border_radius=self.u(5))
-        # Faceted gem: darker base, lighter top-left triangle.
-        gem = slot_rect.inflate(-self.u(6), -self.u(6))
-        pygame.draw.rect(
-            self.screen, self.shade(color, -60), gem, border_radius=self.u(4)
-        )
-        tri = [
-            (gem.x, gem.y),
-            (gem.right, gem.y),
-            (gem.x, gem.bottom),
-        ]
-        pygame.draw.polygon(self.screen, self.shade(color, 30), tri)
-        pygame.draw.rect(
-            self.screen, color, gem, max(1, self.u(1)), border_radius=self.u(4)
-        )
         icon = self.g.rarity_icon(item.visible_rarity)
         shortcut = str(index + 1) if index < 9 else f"{index + 1}"
-        self.draw_text(
-            f"{shortcut}{icon}",
-            self.g.tiny_font,
-            self.shade(color, 60),
-            slot_rect.inflate(-self.u(2), 0),
-            align="center",
-            valign="center",
-        )
+        if self.g.legacy_graphics:
+            # Preserve the original faceted rarity gem in legacy mode.
+            gem = slot_rect.inflate(-self.u(6), -self.u(6))
+            pygame.draw.rect(
+                self.screen, self.shade(color, -60), gem, border_radius=self.u(4)
+            )
+            tri = [
+                (gem.x, gem.y),
+                (gem.right, gem.y),
+                (gem.x, gem.bottom),
+            ]
+            pygame.draw.polygon(self.screen, self.shade(color, 30), tri)
+            pygame.draw.rect(
+                self.screen, color, gem, max(1, self.u(1)), border_radius=self.u(4)
+            )
+            self.draw_text(
+                f"{shortcut}{icon}",
+                self.g.tiny_font,
+                self.shade(color, 60),
+                slot_rect.inflate(-self.u(2), 0),
+                align="center",
+                valign="center",
+            )
+        else:
+            preview = self.g.sprites.item_preview(
+                item.slot, max(1, slot_rect.width - self.u(6))
+            )
+            self.screen.blit(preview, preview.get_rect(center=slot_rect.center))
+            badge = pygame.Rect(
+                slot_rect.right - self.u(17),
+                slot_rect.bottom - self.u(15),
+                self.u(16),
+                self.u(14),
+            )
+            pygame.draw.rect(self.screen, self.BG_DEEP, badge, border_radius=self.u(3))
+            pygame.draw.rect(
+                self.screen, color, badge, max(1, self.u(1)), border_radius=self.u(3)
+            )
+            self.draw_text(
+                shortcut,
+                self.g.tiny_font,
+                self.shade(color, 60),
+                badge,
+                align="center",
+                valign="center",
+            )
         tag = self.inventory_category_label(item)
         tag_w = min(
             max(self.g.tiny_font.size(tag)[0] + self.u(16), self.u(62)),

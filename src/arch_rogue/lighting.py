@@ -56,6 +56,7 @@ from __future__ import annotations
 
 # pyright: reportAttributeAccessIssue=false
 import math
+from collections import OrderedDict
 from typing import Callable
 
 import pygame
@@ -635,16 +636,21 @@ class LightingMixin:
         """
         key = (id(base_sprite), bucket, dist_bucket, hashable_color(light.color), out_w, out_h)
         cache = getattr(self, "_lit_shade_cache", None)
-        if cache is None:
-            cache = {}
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
             self._lit_shade_cache = cache
         cached = cache.get(key)
+        if cached is not None and cached[0] is base_sprite:
+            cache.move_to_end(key)
+            return cached[1]
         if cached is not None:
-            return cached
+            cache.pop(key, None)
 
         normal = self.sprites.normal_map_for(base_sprite)
         if normal is None:
-            cache[key] = None
+            cache[key] = (base_sprite, None)
+            while len(cache) > 384:
+                cache.popitem(last=False)
             return None
 
         bw, bh = base_sprite.get_width(), base_sprite.get_height()
@@ -709,17 +715,23 @@ class LightingMixin:
             tint_full = tint_full.convert_alpha()
         except pygame.error:
             pass
-        cache[key] = tint_full
+        cache[key] = (base_sprite, tint_full)
+        cache.move_to_end(key)
+        while len(cache) > 384:
+            cache.popitem(last=False)
         return tint_full
 
     def reset_lighting_caches(self) -> None:
         # Called on floor/theme change alongside ``tile_cache.clear``; bounds
         # the lit-actor tint cache and invalidates any sized buffers.
-        self._lit_shade_cache = {}
+        self._lit_shade_cache = OrderedDict()
         self._light_sprite_cache = {}
         self._flicker_scratch_cache = {}
         self._light_buffer_surface = None
         self._light_scratch_surface = None
+        sprites = getattr(self, "sprites", None)
+        if sprites is not None and hasattr(sprites, "clear_normal_map_cache"):
+            sprites.clear_normal_map_cache()
         cache = getattr(self, "_frame_cache", None)
         if isinstance(cache, dict):
             cache.pop("frame_lights", None)

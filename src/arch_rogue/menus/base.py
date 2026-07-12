@@ -76,6 +76,7 @@ class MenuBaseMixin:
         self.g = game
         self.archetypes = archetypes
         self.dungeon_depth = dungeon_depth
+        self._menu_font_cache: dict[int, pygame.font.Font] = {}
 
     # --- Accessors ----------------------------------------------------------
     @property
@@ -154,6 +155,58 @@ class MenuBaseMixin:
         self.screen.set_clip(rect.clip(self.screen.get_rect()))
         self.screen.blit(surface, (x, y))
         self.screen.set_clip(old_clip)
+
+    def fit_menu_font(
+        self,
+        preferred: pygame.font.Font,
+        *,
+        max_height: int,
+        max_width: int,
+        texts: Sequence[str] = (),
+        minimum_size: int = 10,
+    ) -> pygame.font.Font:
+        """Return the largest cached default font that fits physical bounds.
+
+        UI scale is an accessibility preference, but a scaled font must not make
+        a menu unusable on a small window. Callers provide the real pixel budget;
+        the preferred scaled font is retained whenever it fits, and only then is
+        a smaller physical font selected. Render-time construction is avoided by
+        caching the small set of fallback point sizes on the menu renderer.
+        """
+
+        max_height = max(1, int(max_height))
+        max_width = max(1, int(max_width))
+        samples = tuple(text for text in texts if text)
+
+        def fits(candidate: pygame.font.Font) -> bool:
+            return candidate.get_height() <= max_height and all(
+                candidate.size(text)[0] <= max_width for text in samples
+            )
+
+        if fits(preferred):
+            return preferred
+
+        minimum_size = max(8, int(minimum_size))
+
+        def cached_font(point_size: int) -> pygame.font.Font:
+            font = self._menu_font_cache.get(point_size)
+            if font is None:
+                font = pygame.font.Font(None, point_size)
+                self._menu_font_cache[point_size] = font
+            return font
+
+        best = cached_font(minimum_size)
+        low = minimum_size
+        high = max(low, min(512, max_height * 2 + 4))
+        while low <= high:
+            point_size = (low + high) // 2
+            candidate = cached_font(point_size)
+            if fits(candidate):
+                best = candidate
+                low = point_size + 1
+            else:
+                high = point_size - 1
+        return best
 
     def draw_tag_icon(self, tag: str, rect: pygame.Rect, color: Color) -> None:
         """Draw a small procedural glyph for an affix tag inside ``rect``.
@@ -722,10 +775,56 @@ class MenuBaseMixin:
     ) -> tuple[pygame.Rect, pygame.Rect]:
         width, height = self.screen.get_size()
         self.draw_menu_backdrop()
-        title_font = self.g.title_font if height >= self.u(360) else self.g.big_font
-        subtitle_font = self.g.small_font
-        side_margin = max(self.u(24), 32)
-        title_y = max(self.u(30), int(height * 0.12))
+        side_margin = min(max(self.u(24), 32), max(16, width // 12))
+        text_width = max(1, width - side_margin * 2)
+        title_limit = max(24, height // 8)
+        title_font = next(
+            (
+                font
+                for font in (
+                    self.g.title_font,
+                    self.g.big_font,
+                    self.g.heading_font,
+                    self.g.font,
+                    self.g.small_font,
+                    self.g.tiny_font,
+                )
+                if font.get_height() <= title_limit
+                and font.size(title)[0] <= text_width
+            ),
+            None,
+        )
+        if title_font is None:
+            title_font = self.fit_menu_font(
+                self.g.tiny_font,
+                max_height=title_limit,
+                max_width=text_width,
+                texts=(title,),
+                minimum_size=12,
+            )
+        subtitle_limit = max(18, height // 10)
+        subtitle_font = next(
+            (
+                font
+                for font in (self.g.small_font, self.g.tiny_font)
+                if font.get_height() <= subtitle_limit
+                and font.size(subtitle)[0] <= text_width
+            ),
+            None,
+        )
+        if subtitle_font is None:
+            subtitle_font = self.fit_menu_font(
+                self.g.tiny_font,
+                max_height=subtitle_limit,
+                max_width=text_width,
+                texts=(subtitle,),
+                minimum_size=10,
+            )
+        requested_title_y = max(self.u(30), int(height * 0.12))
+        title_y = max(
+            title_font.get_height() // 2 + 8,
+            min(requested_title_y, max(24, height // 8)),
+        )
 
         # Ornamental flourish around the title — thin gold rule with center crest.
         self._draw_title_ornament(
@@ -745,35 +844,44 @@ class MenuBaseMixin:
             align="center",
             valign="center",
         )
-        top = title_y + title_font.get_height() // 2 + self.u(72)
+        title_bottom = title_y + title_font.get_height() // 2
+        panel_gap = min(self.u(18), max(10, height // 48))
+        top = title_bottom + panel_gap
         if subtitle:
+            subtitle_top = title_bottom + min(self.u(8), 8)
             self.draw_text(
                 subtitle,
                 subtitle_font,
                 self.MUTED,
                 pygame.Rect(
                     side_margin,
-                    top - subtitle_font.get_height() - self.u(6),
+                    subtitle_top,
                     width - side_margin * 2,
                     subtitle_font.get_height(),
                 ),
                 align="center",
             )
-        footer_space = max(self.g.small_font.get_height() + self.u(18), self.u(42))
+            top = subtitle_top + subtitle_font.get_height() + panel_gap
+        requested_footer = max(
+            self.g.small_font.get_height() + self.u(18), self.u(42)
+        )
+        footer_space = min(requested_footer, max(32, height // 7))
         panel_w = min(width - side_margin * 2, self.u(860))
+        panel_h = max(80, height - top - footer_space - min(self.u(10), 10))
+        panel_h = min(panel_h, max(1, height - top - 4))
         rect = pygame.Rect(
             (width - panel_w) // 2,
             top,
             panel_w,
-            max(self.u(110), height - top - footer_space - self.u(10)),
+            panel_h,
         )
         self.panel(rect)
         self._draw_parchment_header(rect, title)
-        content_pad_x = max(self.u(22), 28)
-        content_pad_y = max(self.u(20), 24)
+        content_pad_x = min(max(self.u(22), 28), max(8, rect.width // 10))
+        content_pad_y = min(max(self.u(20), 24), max(8, rect.height // 12))
         content = rect.inflate(-content_pad_x * 2, -content_pad_y * 2)
-        content.y += self.u(8)
-        content.h -= self.u(4)
+        content.y += min(self.u(8), max(2, rect.height // 30))
+        content.h -= min(self.u(4), max(1, rect.height // 45))
         return rect, content
 
     def _draw_title_ornament(self, title_y: int, title_h: int, accent: Color) -> None:
@@ -858,19 +966,36 @@ class MenuBaseMixin:
             max(1, self.u(1)),
         )
 
-    def draw_footer(self, panel: pygame.Rect, text: str) -> None:
+    def draw_footer(
+        self,
+        panel: pygame.Rect,
+        text: str,
+        font: pygame.font.Font | None = None,
+    ) -> None:
         width, height = self.screen.get_size()
-        margin = max(self.u(18), 28)
+        margin = min(max(self.u(18), 28), max(16, width // 12))
+        available_width = max(1, width - margin * 2)
+        footer_room = max(10, height - panel.bottom - 4)
+        footer_font = self.fit_menu_font(
+            font or self.g.small_font,
+            max_height=max(10, min(max(18, height // 18), footer_room)),
+            max_width=available_width,
+            texts=(text,),
+            minimum_size=10,
+        )
+        bottom_pad = min(self.u(10), max(6, height // 48))
+        panel_gap = min(self.u(14), max(8, height // 40))
         rect = pygame.Rect(
             margin,
             min(
-                height - self.g.small_font.get_height() - self.u(10),
-                panel.bottom + self.u(14),
+                height - footer_font.get_height() - bottom_pad,
+                panel.bottom + panel_gap,
             ),
-            width - margin * 2,
-            self.g.small_font.get_height() + self.u(4),
+            available_width,
+            footer_font.get_height()
+            + min(self.u(4), max(2, footer_font.get_height() // 3)),
         )
-        self.draw_text(text, self.g.small_font, self.MUTED, rect, align="center")
+        self.draw_text(text, footer_font, self.MUTED, rect, align="center")
 
     def draw_menu_rows(
         self,
@@ -878,74 +1003,117 @@ class MenuBaseMixin:
         rect: pygame.Rect,
         selected_index: int = -1,
         sections: Sequence[tuple[int, str]] | None = None,
-    ) -> None:
+        *,
+        body_font: pygame.font.Font | None = None,
+        detail_font: pygame.font.Font | None = None,
+        layout_scale: float | None = None,
+        row_height: int | None = None,
+        row_gap: int | None = None,
+        section_header_height: int | None = None,
+    ) -> tuple[pygame.Rect, ...]:
+        """Draw menu rows and return the rectangles that were actually rendered.
+
+        Explicit metrics let a scrolling menu calculate visibility with exactly
+        the same geometry used for drawing. Other menus keep the original scaled
+        defaults by omitting the keyword-only responsive-layout arguments.
+        """
+
+        if body_font is None:
+            body_font = self.g.font
+        if detail_font is None:
+            detail_font = self.g.small_font
+        assert body_font is not None
+        assert detail_font is not None
+        scale = (
+            float(self.g.ui_scale)
+            if layout_scale is None
+            else max(1.0, min(float(self.g.ui_scale), float(layout_scale)))
+        )
+
+        def px(value: int) -> int:
+            return max(1, round(value * scale))
+
         # Optional section headers: ``sections`` is a list of
-        # ``(start_row_index, title)`` entries. A header band is drawn above
-        # the first row of each section and consumes vertical space, so the
-        # row-height/gap fit calculation subtracts the total header height
-        # first. The cursor index space stays the flat row index space, so
-        # callers keep using row indices for navigation/activation.
-        section_starts: dict[int, str] = {}
-        if sections:
-            for start_index, title in sections:
-                section_starts[start_index] = title
-        label_h = self.g.small_font.get_height()
-        section_header_h = label_h + self.u(12)
-        total_header_h = section_header_h * len(section_starts)
-        key_w = min(max(self.u(108), 108), max(self.u(96), rect.width // 3))
+        # ``(start_row_index, title)`` entries. The cursor remains in the flat
+        # row index space so callers do not need separate navigation semantics.
+        section_starts = dict(sections or ())
+        label_h = detail_font.get_height()
+        header_h = max(
+            label_h + px(2),
+            section_header_height
+            if section_header_height is not None
+            else label_h + px(12),
+        )
+        total_header_h = header_h * len(section_starts)
         row_count = max(1, len(rows))
-        base_gap = max(self.u(7), 7)
-        base_row_h = max(self.g.font.get_height() + self.u(18), self.u(44))
+        base_gap = max(px(7), 7)
+        base_row_h = max(body_font.get_height() + px(18), px(44))
         available_h = max(1, rect.height - total_header_h)
-        if row_count * base_row_h + (row_count - 1) * base_gap > available_h:
-            gap = max(1, min(base_gap, self.u(3)))
+        if row_height is not None:
+            row_h = max(body_font.get_height() + px(2), int(row_height))
+            gap = max(0, int(row_gap if row_gap is not None else px(3)))
+        elif row_count * base_row_h + (row_count - 1) * base_gap > available_h:
+            gap = max(1, min(base_gap, px(3)))
             row_h = max(
-                self.g.font.get_height() + self.u(8),
+                body_font.get_height() + px(8),
                 (available_h - gap * (row_count - 1)) // row_count,
             )
         else:
             row_h = base_row_h
             gap = base_gap
+
+        row_inset = min(px(8), max(5, row_h // 7))
+        key_text_pad = min(px(8), max(4, detail_font.get_height() // 3))
+        key_limit = max(1, min(rect.width - 1, max(48, int(rect.width * 0.40))))
+        widest_key = max((detail_font.size(key)[0] for key, _, _ in rows), default=0)
+        desired_key_w = widest_key + row_inset * 2 + key_text_pad
+        base_key_w = min(max(px(108), 108), key_limit)
+        key_w = min(key_limit, max(base_key_w, desired_key_w))
+        column_gap = min(px(12), max(8, rect.width // 40))
+        right_pad = min(px(10), max(6, rect.width // 60))
+        value_pad = min(px(18), max(10, detail_font.get_height()))
+
         y = rect.y
         accent = self.accent()
+        rendered_rows: list[pygame.Rect] = []
         for index, (key, label, value) in enumerate(rows):
             title = section_starts.get(index)
             if title is not None:
-                # Section header band: aged-gold caption with a thin stone rule.
                 self.draw_text(
                     title.upper(),
-                    self.g.small_font,
+                    detail_font,
                     self.TITLE,
                     pygame.Rect(
-                        rect.x + self.u(4),
+                        rect.x + px(4),
                         y,
-                        rect.width - self.u(8),
-                        label_h + self.u(2),
+                        rect.width - px(8),
+                        label_h + px(2),
                     ),
                 )
-                line_y = y + section_header_h - self.u(4)
+                line_y = y + header_h - px(4)
                 pygame.draw.line(
                     self.screen,
                     self.PANEL_2,
-                    (rect.x + self.u(4), line_y),
-                    (rect.right - self.u(4), line_y),
-                    max(1, self.u(1)),
+                    (rect.x + px(4), line_y),
+                    (rect.right - px(4), line_y),
+                    px(1),
                 )
-                y += section_header_h
+                y += header_h
             if y + row_h > rect.bottom:
                 break
+
             row_rect = pygame.Rect(rect.x, y, rect.width, row_h)
+            rendered_rows.append(row_rect.copy())
             is_selected = index == selected_index
-            # Recessed row plate with a faint top highlight.
             plate_fill = self.shade(accent, -100) if is_selected else self.PANEL_INK
-            pygame.draw.rect(self.screen, plate_fill, row_rect, border_radius=self.u(5))
+            pygame.draw.rect(self.screen, plate_fill, row_rect, border_radius=px(5))
             if is_selected:
                 glow = pygame.Surface(row_rect.size, pygame.SRCALPHA)
                 pygame.draw.rect(
                     glow,
                     (*accent, 32),
                     glow.get_rect(),
-                    border_radius=self.u(5),
+                    border_radius=px(5),
                 )
                 self.screen.blit(glow, row_rect)
             border_color = accent if is_selected else self.PANEL_2
@@ -953,82 +1121,103 @@ class MenuBaseMixin:
                 self.screen,
                 border_color,
                 row_rect,
-                max(1, self.u(1)),
-                border_radius=self.u(5),
+                px(1),
+                border_radius=px(5),
             )
             pygame.draw.line(
                 self.screen,
                 self.STONE_LIGHT,
-                (row_rect.x + self.u(6), row_rect.y + self.u(1)),
-                (row_rect.right - self.u(6), row_rect.y + self.u(1)),
-                max(1, self.u(1)),
+                (row_rect.x + px(6), row_rect.y + px(1)),
+                (row_rect.right - px(6), row_rect.y + px(1)),
+                px(1),
             )
             if is_selected:
+                strip_inset = min(px(4), max(2, row_h // 5))
                 strip = pygame.Rect(
-                    row_rect.x, row_rect.y + self.u(4), self.u(4), row_h - self.u(8)
+                    row_rect.x,
+                    row_rect.y + strip_inset,
+                    px(4),
+                    max(1, row_h - strip_inset * 2),
                 )
-                pygame.draw.rect(self.screen, accent, strip, border_radius=self.u(3))
+                pygame.draw.rect(self.screen, accent, strip, border_radius=px(3))
                 pygame.draw.rect(
                     self.screen,
                     self.shade(accent, 40),
                     strip,
-                    border_radius=self.u(3),
+                    border_radius=px(3),
                 )
 
-            # Key badge — iron plate with gold trim.
+            key_y_inset = min(
+                px(7), max(3, (row_h - detail_font.get_height()) // 4)
+            )
             key_rect = pygame.Rect(
-                row_rect.x + self.u(8),
-                row_rect.y + self.u(7),
-                key_w - self.u(16),
-                row_h - self.u(14),
+                row_rect.x + row_inset,
+                row_rect.y + key_y_inset,
+                max(1, key_w - row_inset * 2),
+                max(1, row_h - key_y_inset * 2),
             )
             pygame.draw.rect(
-                self.screen, self.IRON_DARK, key_rect, border_radius=self.u(4)
+                self.screen, self.IRON_DARK, key_rect, border_radius=px(4)
             )
             pygame.draw.rect(
                 self.screen,
                 self.IRON,
-                key_rect.inflate(-self.u(2), -self.u(2)),
-                border_radius=self.u(3),
+                key_rect.inflate(-px(2), -px(2)),
+                border_radius=px(3),
             )
             pygame.draw.rect(
                 self.screen,
                 self.shade(self.accent(), -40),
                 key_rect,
-                max(1, self.u(1)),
-                border_radius=self.u(4),
+                px(1),
+                border_radius=px(4),
             )
             self.draw_text(
                 key,
-                self.g.small_font,
+                detail_font,
                 self.TITLE,
-                key_rect.inflate(-self.u(8), 0),
+                key_rect.inflate(-key_text_pad, 0),
                 align="center",
                 valign="center",
             )
 
-            value_w = (
-                min(rect.width // 4, self.g.small_font.size(value)[0] + self.u(18))
-                if value
-                else 0
-            )
+            label_x = row_rect.x + key_w + column_gap
+            label_right = row_rect.right - right_pad
+            value_rect: pygame.Rect | None = None
+            if value:
+                available_after_key = max(
+                    0, row_rect.width - key_w - column_gap - right_pad
+                )
+                value_limit = min(
+                    rect.width // 3,
+                    max(0, available_after_key // 2),
+                )
+                value_w = min(
+                    value_limit,
+                    detail_font.size(value)[0] + value_pad,
+                )
+                value_rect = pygame.Rect(
+                    row_rect.right - right_pad - value_w,
+                    row_rect.y,
+                    value_w,
+                    row_h,
+                )
+                label_right = value_rect.x - column_gap
             label_rect = pygame.Rect(
-                row_rect.x + key_w + self.u(12),
+                label_x,
                 row_rect.y,
-                row_rect.width - key_w - value_w - self.u(24),
+                max(0, label_right - label_x),
                 row_h,
             )
-            self.draw_text(label, self.g.font, self.TEXT, label_rect, valign="center")
-            if value:
-                value_rect = pygame.Rect(
-                    row_rect.right - value_w - self.u(10), row_rect.y, value_w, row_h
-                )
+            self.draw_text(label, body_font, self.TEXT, label_rect, valign="center")
+            if value and value_rect is not None:
                 self.draw_text(
                     value,
-                    self.g.small_font,
+                    detail_font,
                     self.WARNING,
                     value_rect,
                     align="right",
                     valign="center",
                 )
             y += row_h + gap
+        return tuple(rendered_rows)
