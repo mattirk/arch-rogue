@@ -1,6 +1,6 @@
 [project]
 name = "arch-rogue"
-version = "4.0.1"
+version = "4.0.2"
 description = "A grim isometric action roguelike with directional high-resolution asset sprites, procedural legacy graphics, and replayable dungeon runs."
 readme = "README.md"
 requires-python = ">=3.11"

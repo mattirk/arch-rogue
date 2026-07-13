@@ -65,7 +65,7 @@ class AssetSpriteMilestone40Tests(unittest.TestCase):
         return game
 
     def test_release_and_manifest_cover_runtime_visual_roster(self) -> None:
-        self.assertEqual(__version__, "4.0.1")
+        self.assertEqual(__version__, "4.0.2")
         library = AssetSpriteLibrary()
         self.assertTrue(library.available, library.load_error)
         manifest = library.manifest
@@ -175,6 +175,115 @@ class AssetSpriteMilestone40Tests(unittest.TestCase):
                 library.resolve_world(key, **world_kwargs),
                 key,
             )
+
+    def test_archetype_idle_and_run_assets_are_complete_and_well_formed(self) -> None:
+        library = AssetSpriteLibrary()
+        player_entries = {
+            entry["name"]: entry
+            for entry in library.manifest["actors"].values()
+            if entry.get("category") == "player"
+        }
+        self.assertEqual(
+            set(player_entries),
+            {archetype.name for archetype in ARCHETYPES},
+        )
+
+        for archetype in ARCHETYPES:
+            entry = player_entries[archetype.name]
+            source_canvas = tuple(entry["source_canvas"])
+            for state, expected_frames in (("idle", 4), ("run", 6)):
+                directions = entry["clips"][state]["directions"]
+                self.assertEqual(
+                    set(directions),
+                    set(DIRECTIONS),
+                    (archetype.name, state),
+                )
+                for direction, frame_paths in directions.items():
+                    with self.subTest(
+                        archetype=archetype.name,
+                        state=state,
+                        direction=direction,
+                    ):
+                        self.assertEqual(len(frame_paths), expected_frames)
+                        surfaces = [
+                            library._source_surface(path) for path in frame_paths
+                        ]
+                        self.assertNotIn(None, surfaces)
+                        decoded = [surface for surface in surfaces if surface is not None]
+                        self.assertEqual(len(decoded), expected_frames)
+                        self.assertEqual(
+                            len(
+                                {
+                                    pygame.image.tobytes(surface, "RGBA")
+                                    for surface in decoded
+                                }
+                            ),
+                            expected_frames,
+                        )
+                        for surface in decoded:
+                            self.assertEqual(surface.get_size(), source_canvas)
+                            bounds = surface.get_bounding_rect(min_alpha=1)
+                            self.assertGreater(bounds.width, 0)
+                            self.assertGreater(bounds.height, 0)
+                            self.assertGreaterEqual(bounds.left, 1)
+                            self.assertGreaterEqual(bounds.top, 1)
+                            self.assertLessEqual(bounds.right, surface.get_width() - 1)
+                            self.assertLessEqual(bounds.bottom, surface.get_height() - 1)
+
+    def test_repaired_walks_have_clear_lower_body_motion(self) -> None:
+        library = AssetSpriteLibrary()
+        player_entries = {
+            entry["name"]: entry
+            for entry in library.manifest["actors"].values()
+            if entry.get("category") == "player"
+        }
+        repaired_directions = (
+            ("Warden", "south"),
+            ("Ranger", "north"),
+            ("Arcanist", "north"),
+            ("Acolyte", "south"),
+        )
+
+        for archetype, direction in repaired_directions:
+            with self.subTest(archetype=archetype, direction=direction):
+                paths = player_entries[archetype]["clips"]["run"]["directions"][
+                    direction
+                ]
+                surfaces = [library._source_surface(path) for path in paths]
+                self.assertNotIn(None, surfaces)
+                decoded = [surface for surface in surfaces if surface is not None]
+                self.assertEqual(len(decoded), 6)
+
+                bounds = decoded[0].get_bounding_rect(min_alpha=1)
+                for surface in decoded[1:]:
+                    bounds.union_ip(surface.get_bounding_rect(min_alpha=1))
+                lower_body_y = round(bounds.top + bounds.height * 0.65)
+                masks = [
+                    pygame.mask.from_surface(
+                        surface.subsurface(
+                            (
+                                0,
+                                lower_body_y,
+                                surface.get_width(),
+                                surface.get_height() - lower_body_y,
+                            )
+                        ),
+                        1,
+                    )
+                    for surface in decoded
+                ]
+                silhouette_changes = []
+                for first_index, first in enumerate(masks):
+                    for second in masks[first_index + 1 :]:
+                        shared = first.overlap_area(second, (0, 0))
+                        silhouette_changes.append(
+                            first.count() + second.count() - 2 * shared
+                        )
+                self.assertGreaterEqual(
+                    max(silhouette_changes),
+                    350,
+                    (archetype, direction, max(silhouette_changes)),
+                )
 
     def test_gold_stack_variants_are_complete_distinct_and_cached(self) -> None:
         library = AssetSpriteLibrary()

@@ -2564,6 +2564,14 @@
               "actors/ranger/animations/run/north-east/frame_004.png",
               "actors/ranger/animations/run/north-east/frame_005.png"
             ],
+            "north-west": [
+              "actors/ranger/animations/run/north-west/frame_000.png",
+              "actors/ranger/animations/run/north-west/frame_001.png",
+              "actors/ranger/animations/run/north-west/frame_002.png",
+              "actors/ranger/animations/run/north-west/frame_003.png",
+              "actors/ranger/animations/run/north-west/frame_004.png",
+              "actors/ranger/animations/run/north-west/frame_005.png"
+            ],
             "south": [
               "actors/ranger/animations/run/south/frame_000.png",
               "actors/ranger/animations/run/south/frame_001.png",
