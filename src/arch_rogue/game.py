@@ -352,6 +352,9 @@ class Game(
         self.run_stats = RunStats()
         self.state = "archetype_select"
         self.elapsed = 0.0
+        # Wall-clock-style visual time advances in every app state. Keep it
+        # separate from elapsed, which is the serialized duration of a run.
+        self.ui_elapsed = 0.0
         self.title_selection = 0
         self.selected_archetype = ARCHETYPES[0]
         self.theme = DUNGEON_THEMES[0]
@@ -522,6 +525,7 @@ class Game(
     def run(self) -> None:
         while self.running:
             dt = min(self.clock.tick(FPS) / 1000.0, 0.05)
+            self.ui_elapsed += dt
             self.handle_events()
             if self.state == "playing":
                 self.update(dt)

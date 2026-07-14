@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -288,6 +288,25 @@ class UiRefinement411Tests(unittest.TestCase):
                 any(call.args[0] is game.screen for call in draw_rect.call_args_list)
             )
 
+            def missing_bar(key: str, size: tuple[int, int]) -> pygame.Surface | None:
+                if key == "hud.bar":
+                    return None
+                return real_render(key, size)
+
+            game.state = "archetype_select"
+            game.selected_archetype = ARCHETYPES[2]
+            with patch.object(game.ui_assets, "render", side_effect=missing_bar):
+                with patch("pygame.draw.rect", wraps=pygame.draw.rect) as draw_rect:
+                    game.draw_archetype_select()
+            stat_cells = getattr(game, "_archetype_stat_rects")
+            fallback_rects = [
+                pygame.Rect(call.args[2])
+                for call in draw_rect.call_args_list
+                if len(call.args) >= 3 and call.args[0] is game.screen
+            ]
+            self.assertEqual(len(stat_cells), 7)
+            self.assertTrue(all(cell in fallback_rects for cell in stat_cells))
+
     def test_modern_menu_hotkeys_statuses_and_headers_use_safe_sections(self) -> None:
         for size in ((960, 540), (640, 480)):
             with self.subTest(size=size), tempfile.TemporaryDirectory() as tmpdir:
@@ -361,7 +380,7 @@ class UiRefinement411Tests(unittest.TestCase):
             game.state = "archetype_select"
             game.selected_archetype = ARCHETYPES[2]
 
-            game.elapsed = 0.0
+            game.ui_elapsed = 0.0
             with patch.object(
                 game.sprites, "player_frame", wraps=game.sprites.player_frame
             ) as player_frame:
@@ -372,13 +391,102 @@ class UiRefinement411Tests(unittest.TestCase):
             sprite_box = getattr(game, "_archetype_sprite_box").copy()
             first = self.surface_bytes(game.screen.subsurface(sprite_box))
 
-            game.elapsed = 0.2
+            game.ui_elapsed = 0.2
             game.draw_archetype_select()
             second = self.surface_bytes(game.screen.subsurface(sprite_box))
             self.assertNotEqual(first, second)
             sprite_rect = getattr(game, "_archetype_sprite_rect")
             preview_rect = getattr(game, "_archetype_preview_rect")
             self.assertEqual(sprite_rect.centerx, preview_rect.centerx)
+
+    def test_legacy_archetype_preview_uses_idle_animation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, legacy=True)
+            game.state = "archetype_select"
+            game.selected_archetype = ARCHETYPES[1]
+            game.ui_elapsed = 0.2
+            with patch.object(
+                game.sprites, "player_frame", wraps=game.sprites.player_frame
+            ) as player_frame:
+                game.draw_archetype_select()
+            self.assertTrue(player_frame.called)
+            self.assertEqual(player_frame.call_args.args[:2], ("Rogue", "idle"))
+            self.assertEqual(player_frame.call_args.args[3], game.ui_elapsed)
+            self.assertEqual(player_frame.call_args.kwargs["direction"], "south")
+
+    def test_menu_animation_clock_advances_without_run_time(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game.state = "archetype_select"
+            game.running = True
+            game.clock = Mock()
+            game.clock.tick.return_value = 16
+
+            def stop_after_events() -> None:
+                game.running = False
+
+            with (
+                patch.object(game, "handle_events", side_effect=stop_after_events),
+                patch.object(game, "draw"),
+                patch("arch_rogue.game.pygame.quit"),
+            ):
+                game.run()
+
+            self.assertAlmostEqual(game.ui_elapsed, 0.016)
+            self.assertEqual(game.elapsed, 0.0)
+            self.prepare_run(game)
+            self.assertNotIn("ui_elapsed", game.serialize_run_state())
+
+    def test_compact_archetypes_keep_complete_preview_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, (640, 480))
+            game.state = "archetype_select"
+            for archetype in ARCHETYPES:
+                with self.subTest(archetype=archetype.name):
+                    game.selected_archetype = archetype
+                    game.draw_archetype_select()
+                    preview_rect = getattr(game, "_archetype_preview_rect")
+                    skills_text = getattr(game, "_archetype_skills_text")
+                    skills_font = getattr(game, "_archetype_skills_font")
+                    description_rect = getattr(game, "_archetype_description_rect")
+                    description_font = getattr(game, "_archetype_description_font")
+                    description_line_h = getattr(
+                        game, "_archetype_description_line_height"
+                    )
+                    description_lines = getattr(game, "_archetype_description_lines")
+                    required_description_h = (
+                        (len(description_lines) - 1) * description_line_h
+                        + description_font.get_height()
+                    )
+                    self.assertLessEqual(
+                        skills_font.size(skills_text)[0], preview_rect.width
+                    )
+                    self.assertGreaterEqual(
+                        description_rect.height, required_description_h
+                    )
+                    stat_text_layout = getattr(game, "_last_stat_card_text_layout")
+                    self.assertEqual(len(stat_text_layout), 7)
+                    for label, label_font, label_rect, value, value_rect in stat_text_layout:
+                        self.assertLessEqual(
+                            label_font.size(label)[0], label_rect.width
+                        )
+                        self.assertLessEqual(
+                            game.small_font.size(value)[0], value_rect.width
+                        )
+
+    def test_archetype_stat_cards_do_not_change_character_sheet_stats(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            self.prepare_run(game)
+            game.ui_assets.clear_derived_caches()
+            with patch.object(
+                game.ui_assets, "render", wraps=game.ui_assets.render
+            ) as render:
+                game.draw_character_menu()
+            rendered_keys = {
+                call.args[0] for call in render.call_args_list if call.args
+            }
+            self.assertNotIn("hud.bar", rendered_keys)
 
     def test_modern_compact_layout_matrix_stays_contained(self) -> None:
         cases = (((960, 540), 1), ((640, 480), 1), ((640, 480), 4))
@@ -391,12 +499,36 @@ class UiRefinement411Tests(unittest.TestCase):
                 game.selected_archetype = ARCHETYPES[2]
                 game.draw_archetype_select()
                 archetype_panel = getattr(game, "_archetype_panel_rect")
+                reference_panel = getattr(game, "_archetype_panel_reference_rect")
                 archetype_content = getattr(game, "_archetype_content_rect")
                 list_rect = getattr(game, "_archetype_list_rect")
                 preview_rect = getattr(game, "_archetype_preview_rect")
                 sprite_box = getattr(game, "_archetype_sprite_box")
                 sprite_rect = getattr(game, "_archetype_sprite_rect")
+                title_rect = getattr(game, "_archetype_title_rect")
+                subtitle_rect = getattr(game, "_archetype_subtitle_rect")
+                shortcut_rect = getattr(game, "_archetype_shortcut_rect")
+                stat_rect = getattr(game, "_archetype_stat_rect")
+                stat_cells = getattr(game, "_archetype_stat_rects")
                 self.assertTrue(screen.contains(archetype_panel))
+                self.assertEqual(archetype_panel.center, reference_panel.center)
+                self.assertEqual(
+                    archetype_panel.width, round(reference_panel.width * 0.8)
+                )
+                self.assertEqual(
+                    archetype_panel.height, round(reference_panel.height * 0.8)
+                )
+                header_shift = archetype_panel.y - reference_panel.y
+                self.assertGreater(header_shift, 0)
+                self.assertEqual(
+                    title_rect.y,
+                    max(20, int(screen.height * 0.04)) + header_shift,
+                )
+                self.assertEqual(subtitle_rect.y, title_rect.bottom + 5)
+                self.assertEqual(shortcut_rect.x, archetype_panel.x)
+                self.assertEqual(shortcut_rect.width, archetype_panel.width)
+                self.assertEqual(shortcut_rect.y, archetype_panel.bottom + 4)
+                self.assertLess(shortcut_rect.y, reference_panel.bottom + 4)
                 self.assertLessEqual(archetype_panel.width, screen.width - 52)
                 self.assertLessEqual(archetype_panel.height, screen.height - 40)
                 self.assertTrue(archetype_panel.contains(archetype_content))
@@ -408,6 +540,12 @@ class UiRefinement411Tests(unittest.TestCase):
                 self.assertGreater(list_rect.width * list_rect.height, 0)
                 self.assertGreater(preview_rect.width * preview_rect.height, 0)
                 self.assertLessEqual(list_rect.right, preview_rect.x)
+                self.assertTrue(preview_rect.contains(stat_rect))
+                self.assertEqual(len(stat_cells), 7)
+                self.assertTrue(all(stat_rect.contains(cell) for cell in stat_cells))
+                self.assertIn(
+                    "hud.bar", {key[0] for key in game.ui_assets._render_cache}
+                )
                 panel_key = (
                     "menu.panel" if size[0] >= 800 else "menu.panel.compact"
                 )

@@ -390,7 +390,7 @@ class Lighting316Tests(unittest.TestCase):
         self.assertEqual(hashable_color((1, 2, 3)), (1, 2, 3))
 
     def test_version_bumped(self) -> None:
-        self.assertEqual(__version__, "4.1.5")
+        self.assertEqual(__version__, "4.1.6")
 
 
 if __name__ == "__main__":

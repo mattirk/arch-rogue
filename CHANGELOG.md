@@ -1,5 +1,31 @@
 # Changelog
 
+## 4.1.6 — Archetype Selection Polish
+
+Milestone 4.1.6 tightens the authored archetype-selection composition, restores a genuinely live idle preview while the game is in menu states, and gives every class statistic a compact framed card without adding another visual asset dependency.
+
+### Changed
+
+- The modern archetype container is exactly 20% smaller on both axes and remains centered on its previous footprint. Its title and keyboard guidance move down by the reclaimed top inset, while the selected-number shortcut stays attached beneath the panel and moves up by the reclaimed bottom inset.
+- The selector recomputes its class list, preview, description, and statistics from the compact panel's authored safe area. Wide previews use four stat columns and compact previews use three or two as space requires.
+- HP, Mana, Stamina, Speed, Melee, Spell, and DR now render in individual Obsidian-framed cards using the existing cached `hud.bar` nine-slice, with restrained per-stat color accents and a procedural fallback when that optional resource is unavailable.
+- A UI-only animation clock now advances in every app state. Modern and legacy archetype previews use it for their south-facing idle animation without adding menu time to serialized run duration.
+- Outer-panel safe-area lookup now follows the exact wide or compact frame selected for rendering.
+- Runtime/package release version is `4.1.6`. Options remain schema `4`; run saves remain schema `5` and require no migration.
+
+### Compatibility and resilience
+
+- Explicit legacy graphics retain the previous selector geometry and procedural chrome; only the previously static preview now advances its existing idle frames.
+- Missing `hud.bar` art restores compact procedural stat cards without disabling the rest of the authored selector.
+- The UI animation clock is transient and is neither serialized nor used for gameplay simulation, cooldowns, or run statistics.
+
+### Validation
+
+- Manual modern visual checks covered `960×540` and `640×480`, including two idle phases, compact card legibility, and complete containment.
+- Focused UI refinement, asset sprite/UI, movement-animation, and archetype/options suites — 43 tests, all passing.
+- `python -m compileall -q src tests` and `git diff --check` — OK.
+- `python -m unittest discover tests` — 216 tests, all passing.
+
 ## 4.1.5 — Obsidian Resource HUD
 
 Milestone 4.1.5 replaces the undersized modern HP, Mana, and Stamina treatment with the selected Obsidian frame and gives the lower HUD enough space for those resources to read clearly during combat. The authored layout grows only in modern graphics mode; the procedural legacy HUD retains its previous dimensions and rendering.

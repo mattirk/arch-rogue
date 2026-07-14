@@ -55,7 +55,7 @@ class AssetUiMilestone41Tests(unittest.TestCase):
         return f"{surface.get_width()}x{surface.get_height()}:{digest}"
 
     def test_release_manifest_assets_and_package_data(self) -> None:
-        self.assertEqual(__version__, "4.1.5")
+        self.assertEqual(__version__, "4.1.6")
         library = UiAssetLibrary()
         self.assertTrue(library.available, library.load_error)
         self.assertEqual(library.manifest["format_version"], 1)
