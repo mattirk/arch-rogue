@@ -36,6 +36,10 @@ MenuRow = tuple[str, str, str]
 
 class MenuStateOverlayMixin:
     def draw_state_overlay(self) -> None:
+        with self.g.fitted_ui_layout((960, 540)):
+            self._draw_state_overlay_fitted()
+
+    def _draw_state_overlay_fitted(self) -> None:
         width, height = self.screen.get_size()
         victory = self.g.state == "victory"
         color = (214, 168, 92) if victory else (176, 48, 44)
@@ -75,12 +79,31 @@ class MenuStateOverlayMixin:
         panel = pygame.Rect(
             (width - panel_w) // 2, (height - panel_h) // 2, panel_w, panel_h
         )
+        library = getattr(self.g, "ui_assets", None)
+        if (
+            self.asset_ui_active()
+            and library is not None
+            and library.source("menu.panel") is not None
+        ):
+            margin = max(10, min(self.u(16), width // 28, height // 22))
+            panel = pygame.Rect(margin, margin, width - margin * 2, height - margin * 2)
         # Draw the panel on top of the red overlay so text stays readable.
         # Use a neutral accent for the body so the stone panel reads as a distinct
         # surface on top of the red wash, instead of being tinted red itself.
-        self.panel(panel, self.IRON, alpha=255)
+        used_asset = self.panel(panel, self.IRON, alpha=255)
+        self._state_asset_panel = used_asset
 
-        inner = panel.inflate(-self.u(54), -self.u(42))
+        safe = self.ui_content_rect("menu.panel", panel) if used_asset else None
+        inner = (
+            safe.inflate(-self.u(6) * 2, -self.u(4) * 2)
+            if safe is not None
+            else panel.inflate(-self.u(54), -self.u(42))
+        )
+        self.g._state_panel_rect = panel.copy()
+        self.g._state_content_rect = inner.copy()
+        compact_modern = used_asset and inner.height < 390
+        title_font = self.g.heading_font if compact_modern else self.g.big_font
+        subtitle_font = self.g.small_font if compact_modern else self.g.font
 
         # Gothic crest ornament above the title, centered.
         crest_y = inner.y + self.u(8) + self.u(14)
@@ -90,13 +113,13 @@ class MenuStateOverlayMixin:
         title_y = crest_y + self.u(28)
         self.draw_text(
             title,
-            self.g.big_font,
+            title_font,
             color,
-            pygame.Rect(inner.x, title_y, inner.width, self.g.big_font.get_height()),
+            pygame.Rect(inner.x, title_y, inner.width, title_font.get_height()),
             align="center",
         )
         # Thin gold rule under the title, centered.
-        rule_y = title_y + self.g.big_font.get_height() + self.u(6)
+        rule_y = title_y + title_font.get_height() + self.u(6)
         rule_half = min(inner.width // 2 - self.u(40), self.u(180))
         pygame.draw.line(
             self.screen,
@@ -111,10 +134,10 @@ class MenuStateOverlayMixin:
 
         # Subtitle, centered.
         sub_y = rule_y + self.u(14)
-        sub_h = self.g.font.get_height() + self.u(6)
+        sub_h = subtitle_font.get_height() + self.u(6)
         self.draw_text(
             subtitle,
-            self.g.font,
+            subtitle_font,
             self.TEXT,
             pygame.Rect(inner.x, sub_y, inner.width, sub_h),
             align="center",
@@ -138,9 +161,12 @@ class MenuStateOverlayMixin:
         )
 
     def _draw_run_stats_table(self, rect: pygame.Rect, victory: bool) -> None:
-        """A clean two-column run-stats table: label (left) · value (right)."""
+        """Draw run statistics, using two compact groups in authored panels."""
         rows = self._run_stats_rows(victory)
         if not rows:
+            return
+        if bool(getattr(self, "_state_asset_panel", False)):
+            self._draw_modern_run_stats_table(rect, rows)
             return
         # Recessed sub-panel behind the table — neutral iron border so it reads
         # as a distinct surface, not a red-tinted one.
@@ -193,6 +219,51 @@ class MenuStateOverlayMixin:
                 valign="center",
             )
             y += row_h + gap
+
+    def _draw_modern_run_stats_table(
+        self, rect: pygame.Rect, rows: list[tuple[str, str]]
+    ) -> None:
+        column_gap = max(self.u(12), 12)
+        column_count = 2
+        column_w = max(1, (rect.width - column_gap) // column_count)
+        rows_per_column = max(1, (len(rows) + column_count - 1) // column_count)
+        gap = max(1, self.u(1))
+        row_h = max(1, (rect.height - gap * (rows_per_column - 1)) // rows_per_column)
+        font = self.g.small_font
+        if row_h < font.get_height() + 1:
+            font = self.g.tiny_font
+        for index, (label, value) in enumerate(rows):
+            column = index // rows_per_column
+            row = index % rows_per_column
+            if column >= column_count:
+                break
+            item_rect = pygame.Rect(
+                rect.x + column * (column_w + column_gap),
+                rect.y + row * (row_h + gap),
+                column_w,
+                row_h,
+            )
+            label_w = max(1, int(item_rect.width * 0.46))
+            self.draw_text(
+                label,
+                font,
+                self.MUTED,
+                pygame.Rect(item_rect.x, item_rect.y, label_w, item_rect.height),
+                valign="center",
+            )
+            self.draw_text(
+                value,
+                font,
+                self.TITLE,
+                pygame.Rect(
+                    item_rect.x + label_w + self.u(4),
+                    item_rect.y,
+                    max(1, item_rect.width - label_w - self.u(4)),
+                    item_rect.height,
+                ),
+                align="right",
+                valign="center",
+            )
 
     def _run_stats_rows(self, victory: bool) -> list[tuple[str, str]]:
         """Build clean label/value pairs for the run-stats table."""

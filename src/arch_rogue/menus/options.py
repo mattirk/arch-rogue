@@ -36,6 +36,7 @@ MenuRow = tuple[str, str, str]
 class MenuOptionsMixin:
     def draw_options_menu(self) -> None:
         panel, content = self.menu_frame("Options", "Settings are saved automatically")
+        modern = bool(getattr(self, "_last_menu_frame_used_asset", False))
         difficulty_value = self.g.difficulty_profile().name
         if not self.g.hell_unlocked:
             difficulty_value = f"{difficulty_value} · Hell locked"
@@ -109,13 +110,27 @@ class MenuOptionsMixin:
         row_h = max(body_font.get_height() + metric(8), metric(44))
         gap = metric(3)
         header_h = detail_font.get_height() + metric(12)
+        shortcut_h = (
+            self.menu_shortcut_section_height(detail_font) if modern else 0
+        )
+        shortcut_gap = metric(7) if modern else 0
+        shortcut_rect = pygame.Rect(
+            content.x,
+            content.bottom - shortcut_h,
+            content.width,
+            shortcut_h,
+        )
+        list_and_note_bottom = (
+            shortcut_rect.y - shortcut_gap if modern else content.bottom
+        )
+        available_content_h = max(1, list_and_note_bottom - content.y)
         note_candidate = max(
             metric(54), detail_font.get_height() * 3 + metric(8)
         )
-        minimum_list_h = (row_h + header_h) * 2
+        minimum_list_h = (row_h + header_h) * (3 if modern else 2)
         note_h = (
-            min(note_candidate, content.height // 3)
-            if content.height >= note_candidate + minimum_list_h
+            min(note_candidate, available_content_h // 3)
+            if available_content_h >= note_candidate + minimum_list_h
             else 0
         )
         note_gap = metric(10) if note_h else 0
@@ -123,7 +138,7 @@ class MenuOptionsMixin:
             content.x,
             content.y,
             content.width,
-            max(1, content.height - note_h - note_gap),
+            max(1, available_content_h - note_h - note_gap),
         )
         section_map = dict(sections)
 
@@ -151,7 +166,9 @@ class MenuOptionsMixin:
         self.g.options_scroll = scroll
         self.g._options_row_viewport = row_rect.copy()
         self.g._options_row_font_height = body_font.get_height()
+        self.g._options_detail_font = detail_font
         visible_rows = rows[scroll:end]
+        self.g._options_visible_rows = tuple(visible_rows)
         visible_sections = [
             (index - scroll, title)
             for index, title in sections
@@ -168,6 +185,7 @@ class MenuOptionsMixin:
             row_height=row_h,
             row_gap=gap,
             section_header_height=header_h,
+            keys_in_rows=not modern,
         )
         self.g._options_visible_range = (scroll, scroll + len(rendered_rows))
         selected_offset = cursor - scroll
@@ -188,6 +206,15 @@ class MenuOptionsMixin:
                 self.MUTED,
                 note_rect,
             )
+        if modern:
+            selected = rows[cursor]
+            self.draw_menu_shortcut_section(
+                shortcut_rect,
+                selected[0],
+                selected[1],
+                font=detail_font,
+            )
+            self.g._options_shortcut_rect = shortcut_rect.copy()
         self.draw_footer(
             panel,
             "Arrow keys / D-pad navigate · Enter activates · Backspace returns",

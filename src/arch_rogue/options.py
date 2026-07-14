@@ -78,6 +78,8 @@ class OptionsMixin:
         self._ui_text_cache = {}
         self._hud_panel_cache = {}
         self._hud_icon_cache = {}
+        self._title_logo_cache = {}
+        self._fitted_ui_font_cache = {}
 
     def available_difficulty_profiles(self) -> tuple[DifficultyProfile, ...]:
         return tuple(
@@ -245,6 +247,11 @@ class OptionsMixin:
         sprites = getattr(self, "sprites", None)
         if sprites is not None and hasattr(sprites, "set_legacy_graphics"):
             sprites.set_legacy_graphics(self.legacy_graphics)
+        ui_assets = getattr(self, "ui_assets", None)
+        if ui_assets is not None and hasattr(ui_assets, "clear_derived_caches"):
+            ui_assets.clear_derived_caches()
+        self._hud_panel_cache = {}
+        self._hud_icon_cache = {}
         tile_cache = getattr(self, "tile_cache", None)
         if tile_cache is not None:
             tile_cache.clear()

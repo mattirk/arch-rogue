@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import math
 from collections import deque
-from typing import cast
+from contextlib import contextmanager
+from typing import Iterator, cast
 
 import pygame
 
@@ -213,16 +214,96 @@ class RenderingBaseMixin:
             int(a[2] * (1.0 - ratio) + b[2] * ratio),
         )
 
+    def ui_scale_factor(self) -> float:
+        """Return the active physical UI scale without changing saved settings."""
+
+        return float(getattr(self, "_ui_scale_override", self.ui_scale))
+
     def ui(self, value: int) -> int:
-        return value * self.ui_scale
+        override = getattr(self, "_ui_scale_override", None)
+        if override is None:
+            return value * self.ui_scale
+        return round(value * float(override))
+
+    @contextmanager
+    def fitted_ui_layout(
+        self, reference_size: tuple[int, int] = (960, 540)
+    ) -> Iterator[float]:
+        """Fit complex modern UI to the display without mutating ``ui_scale``.
+
+        Authored menus and the HUD need a minimum physical canvas. When a saved
+        scale would exceed it, this context temporarily substitutes matching
+        fonts and makes :meth:`ui` use the largest scale that fits. Legacy mode
+        intentionally bypasses this path so its historical geometry is stable.
+        """
+
+        requested = float(self.ui_scale)
+        if not self.asset_ui_active() or hasattr(self, "_ui_scale_override"):
+            yield self.ui_scale_factor()
+            return
+        reference_width, reference_height = reference_size
+        if reference_width <= 0 or reference_height <= 0:
+            yield requested
+            return
+        width, height = self.screen.get_size()
+        effective = max(
+            1.0,
+            min(requested, width / reference_width, height / reference_height),
+        )
+        if effective >= requested - 1e-6:
+            yield requested
+            return
+
+        font_sizes = tuple(
+            max(1, round(base_size * effective))
+            for base_size in (14, 16, 22, 32, 48, 62)
+        )
+        cache = getattr(self, "_fitted_ui_font_cache", None)
+        if cache is None:
+            cache = {}
+            self._fitted_ui_font_cache = cache
+        fonts = cache.get(font_sizes)
+        if fonts is None:
+            fonts = tuple(pygame.font.Font(None, size) for size in font_sizes)
+            cache[font_sizes] = fonts
+
+        names = (
+            "tiny_font",
+            "small_font",
+            "font",
+            "heading_font",
+            "big_font",
+            "title_font",
+        )
+        previous = tuple(getattr(self, name) for name in names)
+        self._ui_scale_override = effective
+        for name, font in zip(names, fonts):
+            setattr(self, name, font)
+        try:
+            yield effective
+        finally:
+            for name, font in zip(names, previous):
+                setattr(self, name, font)
+            del self._ui_scale_override
 
     def hud_panel_height(self) -> int:
         _width, height = self.screen.get_size()
-        desired = (
-            self.font.get_height() + self.small_font.get_height() * 3 + self.ui(74)
-        )
-        minimum = min(self.ui(112), max(132, int(height * 0.30)))
-        maximum = max(minimum, int(height * 0.38))
+        if self.asset_ui_active():
+            desired = (
+                self.font.get_height()
+                + self.small_font.get_height() * 3
+                + self.ui(100)
+            )
+            minimum = min(self.ui(136), max(128, int(height * 0.25)))
+            maximum = max(minimum, int(height * 0.39))
+        else:
+            desired = (
+                self.font.get_height()
+                + self.small_font.get_height() * 3
+                + self.ui(74)
+            )
+            minimum = min(self.ui(112), max(132, int(height * 0.30)))
+            maximum = max(minimum, int(height * 0.38))
         return min(max(desired, minimum), maximum)
 
     def _text_size(self, font: pygame.font.Font, text: str) -> tuple[int, int]:
@@ -298,6 +379,28 @@ class RenderingBaseMixin:
         else:
             y = rect.y
         surface.blit(rendered, (x, y))
+
+    def asset_ui_active(self) -> bool:
+        library = getattr(self, "ui_assets", None)
+        return (
+            not getattr(self, "legacy_graphics", False)
+            and library is not None
+            and bool(getattr(library, "available", False))
+        )
+
+    def ui_asset_surface(
+        self, key: str, size: tuple[int, int]
+    ) -> pygame.Surface | None:
+        if not self.asset_ui_active():
+            return None
+        return self.ui_assets.render(key, size)
+
+    def ui_asset_content_rect(
+        self, key: str, rect: pygame.Rect
+    ) -> pygame.Rect | None:
+        if not self.asset_ui_active():
+            return None
+        return self.ui_assets.content_rect(key, rect)
 
     def draw_translucent_panel(
         self,
@@ -384,6 +487,10 @@ class RenderingBaseMixin:
         """A translucent stone panel with a chiseled bevel and optional iron studs."""
         radius = self.ui(9) if radius is None else radius
         width = self.ui(1) if width is None else width
+        asset = self.ui_asset_surface("hud.panel", rect.size)
+        if asset is not None:
+            surface.blit(asset, rect)
+            return
         # The bevel/studs/trim are a pure function of (size, colors, radii,
         # ui_scale), so cache the built panel and blit on subsequent frames.
         # This removes the per-call SRCALPHA allocation + ~5 draw.rects + up to

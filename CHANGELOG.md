@@ -1,5 +1,235 @@
 # Changelog
 
+## 4.1.5 — Obsidian Resource HUD
+
+Milestone 4.1.5 replaces the undersized modern HP, Mana, and Stamina treatment with the selected Obsidian frame and gives the lower HUD enough space for those resources to read clearly during combat. The authored layout grows only in modern graphics mode; the procedural legacy HUD retains its previous dimensions and rendering.
+
+### Added
+
+- A generated `474×66` Obsidian resource-bar source with a clean charcoal trough, restrained iron bevel, and thin warm-metal edge, packaged under the existing `hud.bar` key.
+- Geometry regressions for the approved `960×540` composition, compact bar containment, modern-versus-legacy sizing, generated source dimensions, nine-slice safe content, and combined story-panel/interaction-prompt placement.
+- Runtime geometry probes for the three resource bars through `_hud_resource_bar_rects`, matching the existing HUD layout diagnostics pattern.
+
+### Changed
+
+- The normal modern lower slab is `84px` tall at `960×540`—25% shorter than the initially approved `112px` composition—while retaining the `322px` resource card and three readable `260×14px` status bars. The original pre-Obsidian layout used a roughly `60px` slab, `190px` resource card, and `170×10px` bars.
+- Modern compact layouts rebalance the three lower cards rather than forcing the normal widths: at `640×480` the slab remains `84px` with a `215px` resource card and `153×14px` bars; at `640×360` it compresses to `79px` with contained `153×13px` bars.
+- Resource fills retain their live red, blue, and gold gradients while gaining a quiet top sheen. Labels use the larger small font whenever bar height permits and add a one-pixel shadow for contrast.
+- The action dock shifts only as far as the condensed slab requires and trims to `56px` at normal scale, preserving its controls, cooldowns, counts, and authored assets while returning more vertical space to the dungeon view.
+- Story information now yields vertical space to an active interaction prompt when their horizontal spans intersect. Compact windows temporarily hide the story card when both overlays cannot fit, preventing the later-drawn story panel from obscuring interaction guidance.
+- Runtime/package release version is `4.1.5`. Options remain schema `4`; run saves remain schema `5` and require no migration.
+
+### Asset provenance
+
+- PixelLab Obsidian resource bar: `a7dc111c-69f9-4489-a45a-2c74ea89cee2`.
+- The generated `512×192` authoring canvas was losslessly trimmed to its `474×66` non-transparent bounds. It contains no baked labels, resource colors, values, or gameplay state; all fills and text remain dynamic.
+
+### Compatibility and resilience
+
+- Explicit legacy graphics keep the prior HUD reserve, card widths, procedural resource bars, action-dock placement, and visual output.
+- Missing or invalid `hud.bar` art continues to restore the procedural bar renderer without affecting the fitted UI-scale context or other HUD assets.
+- HUD panel/bar transforms remain cached after the first render; the larger layout adds no warm-cache rebuilds or source decodes.
+
+### Validation
+
+- Manual modern runtime renders covered `960×540`, `640×480`, and `640×360`; a `960×540` legacy render confirmed the prior procedural composition.
+- Focused asset UI, UI refinement, action-bar, and inventory/HUD suites — 21 tests, all passing.
+- `python -m compileall -q src tests` and `git diff --check` — OK.
+- `python -m unittest discover tests` — 212 tests, all passing.
+
+## 4.1.4 — Character and Inventory Panel Polish
+
+Milestone 4.1.4 tightens the two most information-dense in-run overlays. Modern Character and Inventory views now use smaller centered shells with authored inner frames around related content, preserving more of the dungeon backdrop while making each information group read as a deliberate card instead of floating text.
+
+### Added
+
+- A generated thin inset-panel sprite at `assets/sprites/menus/panel_inset.png`, exposed as the nine-slice `menu.panel.inset` resource with explicit safe-content metadata.
+- A shared inset-panel primitive that returns the exact authored safe area used for layout and independently falls back to a restrained procedural frame when the optional resource is missing.
+- Geometry and content regressions for smaller overlay bounds, nested panel containment, all inventory controls, visible-row clipping, all character skills/equipment, compact discipline cells, and responsive transitions at heights `419`, `420`, `439`, and `440`.
+
+### Changed
+
+- Modern Character and Inventory overlays use centered shells around 88% of the viewport at normal window heights instead of stretching almost edge-to-edge.
+- Short-wide windows use a slightly narrower, nearly full-height shell and a dedicated compact composition so `640×360` retains usable content without returning to the oversized normal layout.
+- Character Overview wraps statistics, skills, equipment, upgrades, and status/proc content in authored inset frames. The compact layout places the four cards in one row and abbreviates resource costs to keep every ability visible.
+- Character Disciplines wraps the complete tree in one authored inset frame. Cells too short for both title and description now intentionally show a centered name only rather than drawing overlapping description text.
+- Inventory wraps sort controls, carried items, selected-item details, equipment, and shortcut controls in authored inset frames. Compact layouts retain one fully contained item row, selected-item guidance, both equipment lines, and all eight shortcuts.
+- Nested content is positioned from authored safe insets, inventory rows are clipped to their viewport, and shared text clipping now intersects any active parent clip instead of escaping it.
+- Outer-panel selection and safe-area lookup use the same resource order, so a missing or metadata-incomplete compact frame consistently falls back to the wide frame before procedural rendering.
+- Runtime/package release version is `4.1.4`. Options remain schema `4`; run saves remain schema `5` and require no migration.
+
+### Asset provenance
+
+- PixelLab inset panel source: `24c53c30-8cf4-43ee-a010-05fda73ce4ab`.
+- The generated `256×256` authoring canvas was losslessly trimmed to its `161×81` non-transparent bounds. The packaged frame contains no baked labels, dividers, or gameplay values and is stretched only through nine-slicing.
+
+### Compatibility and resilience
+
+- Explicit legacy Character and Inventory views retain their prior procedural geometry and chrome; captured `960×540` before/after renders were byte-identical.
+- Missing `menu.panel.inset` art restores procedural nested frames without disabling other authored UI. Missing compact art or safe metadata falls back to `menu.panel` with matching content insets.
+- Existing `Game`, `MenuRenderer`, `UiAssetLibrary`, input, save, and graphics-option interfaces remain compatible.
+
+### Validation
+
+- Manual modern visual matrix covered Character Overview, Character Disciplines, and Inventory at `960×540`, `640×480`, and `640×360` with saved UI scale `4`; responsive breakpoint probes covered heights `419`, `420`, `439`, and `440`.
+- Focused asset UI, UI refinement, inventory, and skill-menu suites — 20 tests, all passing.
+- `python -m compileall -q src tests` and `git diff --check` — OK.
+- `python -m unittest discover tests` — 210 tests, all passing.
+
+## 4.1.3 — Menu Navigation and Header Refinement
+
+Milestone 4.1.3 moves modern menu shortcuts out of decorative row endcaps, gives status values enough room to render in full, and rebalances authored-background headers. The changes are layout-only: controls/binding tables and procedural legacy menus keep their established inline-key presentation.
+
+### Added
+
+- A dedicated bottom shortcut strip that follows the selected title, options, exit, or archetype item without repeating every hotkey inside the navigation rows.
+- Geometry regressions at `960×540` and `640×480` for empty modern key endcaps, selected shortcut strips, full difficulty status width, left-shifted status placement, header spacing, and legacy inline-key preservation.
+
+### Changed
+
+- Modern navigation rows leave their stone endcaps as ornament and use the central field for labels and status values. Statuses such as `Hard · Hell locked`, controller state, and graphics mode now render in a wider column shifted away from the right edge.
+- Title, options, exit, and archetype menus show the selected item's shortcut in a quiet bottom section with an accent marker and separator rule.
+- Authored-background headers no longer receive the procedural gold rule/crest that crossed subtitles. Titles are positioned slightly lower, subtitle spacing is increased, and panel tops move down while panel bottoms remain stable.
+- Compact options omit the explanatory difficulty paragraph when necessary, preserving readable rows and the new shortcut section; scrolling still keeps the selected setting visible.
+- Archetype class rows no longer repeat `1–5` inline. The selected class shortcut appears beneath the shortened panel, while the animated centered preview and larger typography remain unchanged.
+- Runtime/package release version is `4.1.3`. Options remain schema `4`; run saves remain schema `5` and require no migration.
+
+### Compatibility and resilience
+
+- Explicit legacy graphics retain the prior title ornament, inline row hotkeys, status endcaps, menu metrics, and procedural panel layout.
+- Keyboard/mouse and gamepad binding tables continue to show their keys and mappings inline because those values are primary content rather than menu-item shortcuts.
+- Missing authored row resources continue to use the procedural row fallback while preserving the modern bottom-shortcut layout.
+
+### Validation
+
+- Manual modern visual matrix at `960×540` and `640×480` covered title, options, and archetype selection with full status strings and non-overlapping headers.
+- Focused menu, asset UI, options, pause, and skill-menu suites — 22 tests, all passing.
+
+## 4.1.2 — Cutscene and Archetype UI Polish
+
+Milestone 4.1.2 finishes the post-asset menu pass with purpose-sized panel art, a cinematic cutscene backdrop, and a rebuilt archetype selector. Modern mode gains the new visuals and responsive geometry while procedural legacy graphics remain unchanged and continue to act as the per-resource fallback.
+
+### Added
+
+- A generated `688×384` catacomb cutscene backdrop, rendered behind a readability wash instead of the previous fullscreen black clear.
+- Generated wide and compact menu-panel sources with thin, symmetric borders, clean dark content fields, and aspect-aware selection for compact layouts.
+- Layout regressions covering the smaller archetype panel, centered south-facing animated preview, panel-variant selection, modern cutscene background, stage/narrator/choice containment, and legacy cutscene fallback.
+
+### Changed
+
+- Archetype selection uses a slightly smaller container, a wider right-side preview region, larger class/skill/description typography, and three-column compact statistics so labels remain readable.
+- The selected archetype now advances its authored south-facing idle clip through `SpriteAtlas.player_frame()` rather than displaying a static frame-zero surface; procedural sprites remain the automatic fallback.
+- The character sprite is centered in the full right-side preview, with description and statistics flowing below it instead of squeezing the figure into a narrow left subcolumn.
+- The generated panel sources replace the previous oversized asymmetric frame. Runtime nine-slicing now preserves approximately `18–21 px` borders and `22–24 px` safe-content gutters rather than the former `80–96 px` chrome.
+- Cutscene shells use the new panel variants and leave visible screen margins for the backdrop. Stage height is chosen only after reserving header, two narration lines, choices, and footer space.
+- Cutscene stage drawing is clipped to its stage rectangle, preventing minimum-size pillars, banners, and curtains from intruding into the header on compact windows.
+- Runtime/package release version is `4.1.2`. Options remain schema `4`; run saves remain schema `5` and require no migration.
+
+### Asset provenance
+
+- PixelLab wide menu panel: `3c165843-c97c-42bf-8ef5-2f830e2dced0`.
+- PixelLab compact menu panel: `4e97ce8d-499e-42bd-bbe9-cff3cda2fbe8`.
+- PixelLab cutscene catacomb backdrop: `c38a07cc-4432-4803-88d0-421177ee4add`.
+- Transparent authoring margins were trimmed, panel center fields were deterministically normalized for text readability, and the generated square backdrop was nearest-neighbor fitted to the packaged `688×384` cinematic canvas.
+
+### Compatibility and resilience
+
+- Explicit legacy graphics still bypass every authored menu and cutscene resource, preserving the procedural selector and black-backed procedural cutscene shell.
+- A missing compact panel falls back to the wide generated panel; unavailable panel/background resources independently restore procedural rendering without disabling unrelated UI assets.
+- Existing `Game`, `MenuRenderer`, `RenderingMixin`, save, input, and graphics-option interfaces remain compatible.
+
+### Validation
+
+- Manual modern visual checks at `960×540` and `640×480` covered the archetype selector at two idle phases and revealed-choice cutscenes; text, panels, sprites, narration, choices, and footers remained contained.
+- Focused asset UI, refinement, and cutscene suites — 15 tests, all passing.
+- `python -m compileall -q src tests` and `git diff --check` — OK.
+- `python -m unittest discover tests` — 207 tests, all passing; no experimental web tests are present in the discovered suite.
+- Built `arch_rogue-4.1.2-py3-none-any.whl`; the wheel contains both panel variants, `background_cutscene.png`, and the updated UI manifest.
+
+## 4.1.1 — Authored Menu and HUD Refinement
+
+Milestone 4.1.1 removes the remaining procedural chrome that was being painted over the 4.1 authored interface, moves live content into explicit sprite-safe regions, and makes high accessibility scales fit compact windows without changing the saved UI-scale preference. The procedural renderer remains available as the complete legacy mode and as an independent fallback for any missing UI resource.
+
+### Added
+
+- Optional `content_insets` metadata for authored menu panels, menu rows, HUD panels, action slots, and resource bars.
+- `UiAssetLibrary.content_rect()`, which validates resource availability and maps authored safe-content insets into normal and proportionally compressed nine-slice targets.
+- A modern-only fitted-layout context that temporarily substitutes physically appropriate fonts and spacing for complex screens while preserving the configured `ui_scale` and restoring all font objects after rendering.
+- Focused 4.1.1 regressions for content-inset validation, tiny-target fitting, asset-pure panel/row rendering, selected-row visibility, independent resource fallback, compact layout containment, fitted-scale restoration, and complete 24-stat death/victory summaries.
+
+### Changed
+
+- Authored menu panels, HUD panels, menu rows, and action slots now supply their complete static chrome. The renderer no longer layers legacy outlines, bevel highlights, parchment header rules, action-slot shine, or three-layer hotkey plates over those sprites.
+- Authored menu backgrounds retain their low-alpha thematic wash but no longer receive an extra procedural edge frame.
+- Modern menu rows place key and value text directly in the authored endcaps. Targets too narrow to preserve those endcaps use a flat compact row while retaining selection glow and the inset selection marker.
+- Title flavor text now has reserved space below its navigation rows and uses a quiet borderless wash in modern mode.
+- Archetype selection now uses one full authored panel, splits its safe center into class and preview regions, allows character previews to scale below `1×`, and uses flat modern stat groups instead of nested procedural panels and plaques.
+- Inventory, character, help, shop, cutscene, death, and victory overlays now derive layout from authored safe centers. Modern inventory and character subgroups shed static borders while preserving selection, rarity, active sort/tab, scrollbar, equipment, and discipline-state cues.
+- Death and victory summaries render all 24 run statistics as two compact 12-row groups in modern mode; the legacy single-column table is unchanged.
+- The HUD now keeps resource bars, run headers, story text, interaction prompts, lower cards, and cutscene narration inside authored boundaries. Action-slot cooldowns, counts, disabled states, glyphs, labels, hotkeys, and readiness remain dynamic.
+- Complex modern screens and the HUD fit `640×480` at configured UI scale `4` using an effective physical scale without mutating options. Legacy rendering retains its original scale and geometry.
+- Runtime/package release version is `4.1.1`. Options remain schema `4`; run saves remain schema `5` and require no migration.
+
+### Compatibility and resilience
+
+- Explicit legacy graphics preserve the previous procedural backdrop, panel, row, stat-card, inventory, character, state-overlay, and HUD implementations.
+- Asset decisions remain per resource: a missing `menu.panel`, `menu.row`, `hud.panel`, action slot, or bar restores that component's procedural renderer and geometry without disabling unrelated UI sprites.
+- Existing `Game`, `MenuRenderer`, `RenderingMixin`, save, input, and graphics-option interfaces remain compatible.
+
+### Validation
+
+- Manual modern/legacy visual matrices at `960×540` covered title, options, controls, archetype selection, about, help, inventory, character overview/disciplines, death, victory, and the in-run HUD. Compact modern renders covered archetype selection, inventory, and HUD at `640×480` with UI scales `1` and `4`.
+- `python -m compileall src tests` and `git diff --check` — OK.
+- Focused UI, HUD, inventory, sprite, save, story, summon, lighting, and class-skill gate — 90 tests, all passing.
+- `python -m unittest discover tests` — 205 tests, all passing.
+- Wheel build — `arch_rogue-4.1.1-py3-none-any.whl`, 2,280 entries; all eight UI PNGs, `ui_manifest.json`, `ui_assets.py`, package version metadata, and five `content_insets` entries are present.
+- Warm `960×540` HUD-only benchmark — `0.323 ms/frame` over 240 frames (about 3,101 HUD passes/s), with render builds fixed at `8`, source decodes fixed at `4`, and no transformed/source cache growth.
+
+## 4.1.0 — Asset-Backed Menus and HUD
+
+Milestone 4.1 replaces the modern-mode menu and HUD chrome with a cohesive generated pixel-art interface while preserving the complete procedural presentation behind the existing Display → Graphics toggle. Dynamic text, selection state, cooldowns, resource fills, controller mappings, story data, and run statistics remain runtime-rendered so the new art stays readable and responsive across resolutions.
+
+### Added
+
+- Eight packaged UI PNGs under `assets/sprites/menus/` and `assets/sprites/hud/`: distinct dungeon-gate and occult-crypt menu backdrops, a carved modal panel, a compact row plate, a five-bay action dock, action-slot frame, status-bar frame, and shallow HUD panel frame.
+- `ui_manifest.json` with stable logical keys, render modes, and nine-slice insets for menu backgrounds, panels, rows, HUD cards, action slots, docks, and resource bars.
+- `UiAssetLibrary`, an optional package-resource loader with safe manifest/path validation, full-canvas PNG decoding, cover/scale/nine-slice rendering, bounded LRU caches, negative caching, best-effort display conversion, and independent per-resource failure containment.
+- Focused milestone regressions for packaged asset coverage, malformed manifests, missing-resource isolation, tiny-target nine-slicing, modern/legacy switching, warm-cache stability, compact options scrolling, and complete controls-row containment.
+
+### Changed
+
+- Shared `MenuBaseMixin` backdrop, panel, and row primitives now resolve authored art in modern mode, so title, options, controls, archetype selection, about/help, character, inventory, death, and victory screens inherit the new skin without duplicating navigation or layout logic.
+- Title menus use a dungeon-gate background while other full-screen menus use the occult crypt frame. Generated panel and row interiors were normalized after generation to retain decorative borders without placing ornament behind live text.
+- Shared HUD panel rendering now skins the lower dock cards, run header, interaction prompt, story panel, shop, and story cards; resource bars and action slots use dedicated authored sprites while all fill ratios, glyphs, hotkeys, counts, cooldown arcs, and disabled overlays remain dynamic.
+- The authored action dock is sized around the actual six-slot cluster instead of stretching across the viewport, and all transformed static surfaces are reused after their first render.
+- Controls typography and row metrics now fit the available physical column height. All 15 keyboard references and every remappable gamepad command remain visible at both `960×540` and the `640×480` / UI-scale-4 stress case.
+- High UI scales on compact windows use tighter title/subtitle budgets, increasing usable menu-panel height while preserving the requested accessibility scale where it physically fits.
+- Runtime graphics-mode changes clear only derived UI/HUD caches; decoded sources remain reusable when switching back to asset graphics.
+- Package data now explicitly includes `assets/sprites/menus/*.png` and `assets/sprites/hud/*.png`.
+- Runtime/package release version is `4.1.0`. Options remain schema `4`; run saves remain schema `5` and require no migration.
+
+### Compatibility and resilience
+
+- Explicit legacy graphics bypass all milestone-4.1 PNGs and retains the prior procedural stone backdrops, panels, menu rows, HUD cards, bars, action plates, and fallback title crest.
+- A missing, corrupt, unsafe, or unsupported UI resource falls back only that component to its procedural renderer; UI-manifest failure does not disable actor, item, prop, or world assets.
+- Existing `MenuRenderer`, `RenderingMixin`, `Game`, save, input, and graphics-option public behavior remains compatible.
+- UI art contains no baked labels or gameplay values, so localization-sized strings, remapped controller values, item names, and generated story content still use the existing clipping and wrapping rules.
+
+### Asset provenance
+
+- Final PixelLab source jobs: title backdrop `1e6fb7a2-8e39-4ae5-b414-adb10b36be6f`, menu backdrop `d26c22d1-87fb-44d0-8956-2051bf36ae30`, modal panel `8087840a-d4c9-47d5-966a-8f77c0547f8d`, row plate `a21b2178-8a38-4ab3-a77d-b5160c756efa`, HUD dock `344de9a4-e3be-4927-a081-317ede03f9fb`, action slot `21cf97fc-1e8a-4f03-90fd-87dfa04a467f`, and status bar `a280b2de-396a-4778-81af-b365a486cad4`.
+- Runtime files are losslessly trimmed from transparent source margins. The panel/row center fields and shallow HUD panel derivative are deterministic curation steps that preserve generated borders while removing decorative interference from live text.
+
+### Validation
+
+- Manual visual matrix at `960×540` covered title, options, controls, archetype selection, about, help, inventory, character, death, victory, and the in-run HUD in modern mode, with direct modern/legacy comparisons for title and HUD.
+- Compact visual/layout gate at `640×480` and UI scale `4` kept the selected options row inside its viewport and rendered all 15 keyboard references plus every remappable gamepad command without overlap.
+- `python -m compileall src tests` — OK.
+- `python -m unittest tests.test_4_1_asset_ui` — 4 tests, all passing.
+- `python -m unittest discover tests` — 199 tests, all passing; the prior environment-dependent inventory containment failure is eliminated by preventing headless tests/tools from inheriting the developer's home-directory options before installing an isolated path.
+- Direct `setuptools.build_meta` wheel build — `arch_rogue-4.1.0-py3-none-any.whl`, 2,280 files; all eight UI PNGs, `ui_manifest.json`, and `ui_assets.py` are present.
+- Warm `960×540` HUD-only benchmark — `0.343 ms/frame` over 120 frames (about 2,919 HUD passes/s), with render builds fixed at `8`, source decodes fixed at `4`, and no transformed/source cache growth.
+
 ## 4.0.2 — Archetype Animation Repairs
 
 Milestone 4.0.2 audits the complete modern idle/run set for all five playable archetypes and replaces clips with static locomotion, unstable facing, missing equipment or apparel, extra anatomy, and frame-to-frame gear flicker. The repaired sources retain their existing high-resolution canvases and runtime anchors, so the update is asset-only apart from manifest coverage and validation.

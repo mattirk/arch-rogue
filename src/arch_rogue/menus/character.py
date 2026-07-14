@@ -33,6 +33,274 @@ MenuRow = tuple[str, str, str]
 
 class MenuCharacterMixin:
     def draw_archetype_select(self) -> None:
+        with self.g.fitted_ui_layout((960, 540)):
+            library = getattr(self.g, "ui_assets", None)
+            modern = bool(
+                self.asset_ui_active()
+                and library is not None
+                and library.source("menu.panel") is not None
+            )
+            if modern:
+                self._draw_archetype_select_modern()
+            else:
+                self._draw_archetype_select_legacy()
+
+    def _draw_archetype_select_modern(self) -> None:
+        width, height = self.screen.get_size()
+        self.draw_menu_backdrop()
+        selected = self.g.selected_archetype
+        accent = self.archetype_accent(selected.name)
+        side_margin = max(20, min(self.u(36), width // 16))
+        preferred_title_font = self.g.title_font if width >= 800 else self.g.big_font
+        title_font = self.fit_menu_font(
+            preferred_title_font,
+            max_height=max(30, min(48, height // 9)),
+            max_width=max(1, width - side_margin * 2),
+            texts=("Choose Your Archetype",),
+            minimum_size=20,
+        )
+        subtitle_font = self.g.font
+        title_y = max(20, int(height * 0.04))
+        title_rect = pygame.Rect(
+            side_margin,
+            title_y,
+            width - side_margin * 2,
+            title_font.get_height(),
+        )
+        self.g._archetype_title_rect = title_rect.copy()
+        self.draw_text(
+            "Choose Your Archetype",
+            title_font,
+            self.TITLE,
+            title_rect,
+            align="center",
+        )
+        subtitle_y = title_rect.bottom + self.u(5)
+        subtitle_rect = pygame.Rect(
+            side_margin,
+            subtitle_y,
+            width - side_margin * 2,
+            subtitle_font.get_height(),
+        )
+        self.g._archetype_subtitle_rect = subtitle_rect.copy()
+        self.draw_text(
+            "Arrow keys select · Enter begins · Backspace returns",
+            subtitle_font,
+            self.MUTED,
+            subtitle_rect,
+            align="center",
+        )
+
+        footer_h = max(
+            self.menu_shortcut_section_height(self.g.small_font) + self.u(4),
+            self.g.small_font.get_height() + self.u(8),
+            32,
+        )
+        panel_top = subtitle_rect.bottom + max(self.u(14), 14)
+        panel_margin = max(26, min(self.u(44), width // 18))
+        panel_bottom_gap = max(self.u(10), 10)
+        panel_rect = pygame.Rect(
+            panel_margin,
+            panel_top,
+            max(1, width - panel_margin * 2),
+            max(1, height - panel_top - footer_h - panel_bottom_gap),
+        )
+        self.g._archetype_panel_rect = panel_rect.copy()
+        if not self.panel(panel_rect, accent, alpha=248):
+            self._draw_archetype_select_legacy()
+            return
+        safe = self.ui_content_rect("menu.panel", panel_rect)
+        if safe is None:
+            self._draw_archetype_select_legacy()
+            return
+        safe = safe.inflate(-self.u(6) * 2, -self.u(4) * 2)
+        gap = max(self.u(14), 14)
+        list_min = 170 if safe.width >= 500 else 140
+        preview_min = min(220, max(180, int(safe.width * 0.46)))
+        list_w = min(
+            max(list_min, int(safe.width * 0.31)),
+            max(1, safe.width - gap - preview_min),
+        )
+        list_rect = pygame.Rect(safe.x, safe.y, list_w, safe.height)
+        preview_rect = pygame.Rect(
+            list_rect.right + gap,
+            safe.y,
+            max(1, safe.right - list_rect.right - gap),
+            safe.height,
+        )
+        self.g._archetype_content_rect = safe.copy()
+        self.g._archetype_list_rect = list_rect.copy()
+        self.g._archetype_preview_rect = preview_rect.copy()
+        self._draw_archetype_list_modern(list_rect, selected)
+        self._draw_archetype_preview_modern(preview_rect, selected)
+        shortcut_h = self.menu_shortcut_section_height(self.g.small_font)
+        shortcut_rect = pygame.Rect(
+            panel_rect.x,
+            panel_rect.bottom + self.u(4),
+            panel_rect.width,
+            min(shortcut_h, max(1, height - panel_rect.bottom - self.u(8))),
+        )
+        selected_index = self.archetypes.index(selected)
+        self.draw_menu_shortcut_section(
+            shortcut_rect,
+            str(selected_index + 1),
+            f"Select {selected.name}",
+            font=self.g.small_font,
+        )
+        self.g._archetype_shortcut_rect = shortcut_rect.copy()
+
+    def _draw_archetype_list_modern(
+        self, rect: pygame.Rect, selected: Archetype
+    ) -> None:
+        heading_h = self.g.font.get_height()
+        self.draw_text(
+            "Classes",
+            self.g.font,
+            self.TITLE,
+            pygame.Rect(rect.x, rect.y, rect.width, heading_h),
+        )
+        rows_top = rect.y + heading_h + self.u(7)
+        rows_rect = pygame.Rect(
+            rect.x,
+            rows_top,
+            rect.width,
+            max(1, rect.bottom - rows_top),
+        )
+        gap = max(3, self.u(4))
+        row_h = max(
+            self.g.small_font.get_height() + self.u(5),
+            (rows_rect.height - gap * (len(self.archetypes) - 1))
+            // max(1, len(self.archetypes)),
+        )
+        rows: list[MenuRow] = [
+            (str(index + 1), archetype.name, "")
+            for index, archetype in enumerate(self.archetypes)
+        ]
+        self.draw_menu_rows(
+            rows,
+            rows_rect,
+            selected_index=self.archetypes.index(selected),
+            body_font=self.g.font,
+            detail_font=self.g.small_font,
+            row_height=row_h,
+            row_gap=gap,
+            keys_in_rows=False,
+        )
+
+    def _draw_archetype_preview_modern(
+        self, rect: pygame.Rect, archetype: Archetype
+    ) -> None:
+        accent = self.archetype_accent(archetype.name)
+        name_font = self.fit_menu_font(
+            self.g.big_font,
+            max_height=max(22, rect.height // 7),
+            max_width=max(1, rect.width),
+            texts=(archetype.name,),
+            minimum_size=16,
+        )
+        self.draw_text(
+            archetype.name,
+            name_font,
+            self.TITLE,
+            pygame.Rect(rect.x, rect.y, rect.width, name_font.get_height()),
+            align="center",
+        )
+        skills_y = rect.y + name_font.get_height() + self.u(2)
+        skills_font = self.g.small_font
+        self.draw_text(
+            " · ".join(self.skill_names_for(archetype.name)),
+            skills_font,
+            accent,
+            pygame.Rect(rect.x, skills_y, rect.width, skills_font.get_height()),
+            align="center",
+        )
+
+        middle_y = skills_y + skills_font.get_height() + self.u(7)
+        stat_h = max(self.g.small_font.get_height() * 2 + self.u(12), self.u(56))
+        stat_rect = pygame.Rect(rect.x, rect.bottom - stat_h, rect.width, stat_h)
+        middle = pygame.Rect(
+            rect.x,
+            middle_y,
+            rect.width,
+            max(1, stat_rect.y - middle_y - self.u(7)),
+        )
+        description_font = self.g.font
+        description_line_h = max(
+            description_font.get_height() + self.u(3), self.u(20)
+        )
+        description_h = min(
+            max(description_line_h * 2, self.u(42)),
+            max(1, middle.height // 3),
+        )
+        desc_rect = pygame.Rect(
+            middle.x,
+            middle.bottom - description_h,
+            middle.width,
+            description_h,
+        )
+        sprite_box = pygame.Rect(
+            middle.x,
+            middle.y,
+            middle.width,
+            max(1, desc_rect.y - middle.y - self.u(5)),
+        )
+        sprite = self.g.sprites.player_frame(
+            archetype.name,
+            "idle",
+            0.0,
+            self.g.elapsed,
+            direction="south",
+        )
+        scale = min(
+            max(1, sprite_box.width - self.u(20)) / max(1, sprite.get_width()),
+            max(1, sprite_box.height - self.u(12)) / max(1, sprite.get_height()),
+            3.4,
+        )
+        scale = max(0.15, scale)
+        preview = pygame.transform.scale(
+            sprite,
+            (
+                max(1, round(sprite.get_width() * scale)),
+                max(1, round(sprite.get_height() * scale)),
+            ),
+        )
+        pedestal = pygame.Rect(
+            0,
+            0,
+            min(sprite_box.width, preview.get_width() + self.u(26)),
+            max(5, self.u(9)),
+        )
+        pedestal.midbottom = (sprite_box.centerx, sprite_box.bottom - self.u(2))
+        glow = pygame.Surface(
+            (max(1, pedestal.width), max(1, pedestal.height * 2)), pygame.SRCALPHA
+        )
+        pygame.draw.ellipse(glow, (*accent, 42), glow.get_rect())
+        self.screen.blit(glow, glow.get_rect(center=pedestal.center))
+        preview_rect = preview.get_rect(
+            midbottom=(sprite_box.centerx, pedestal.centery)
+        )
+        self.screen.blit(preview, preview_rect)
+        self.g._archetype_sprite_box = sprite_box.copy()
+        self.g._archetype_sprite_rect = preview_rect.copy()
+        self.draw_wrapped_text(
+            archetype.description,
+            description_font,
+            self.TEXT,
+            desc_rect,
+            description_line_h,
+        )
+        stats = [
+            ("HP", str(archetype.max_hp)),
+            ("Mana", str(archetype.max_mana)),
+            ("Stamina", str(archetype.max_stamina)),
+            ("Speed", f"{archetype.speed:.2f}"),
+            ("Melee", f"+{archetype.melee_bonus}"),
+            ("Spell", f"+{archetype.spell_bonus}"),
+            ("DR", f"+{archetype.armor_bonus}"),
+        ]
+        self.draw_stat_grid(stats, stat_rect, modern=True)
+
+    def _draw_archetype_select_legacy(self) -> None:
         width, height = self.screen.get_size()
         self.draw_menu_backdrop()
         selected = self.g.selected_archetype
@@ -394,16 +662,32 @@ class MenuCharacterMixin:
             stats, pygame.Rect(inner.x, inner.bottom - stat_h, inner.width, stat_h)
         )
 
-    def draw_stat_grid(self, stats: list[tuple[str, str]], rect: pygame.Rect) -> None:
+    def draw_stat_grid(
+        self,
+        stats: list[tuple[str, str]],
+        rect: pygame.Rect,
+        *,
+        modern: bool = False,
+    ) -> None:
         stat_font = self.g.small_font
-        columns = 4 if rect.width >= self.u(260) else 3
+        columns = (
+            (4 if rect.width >= self.u(500) else 3)
+            if modern
+            else (4 if rect.width >= self.u(260) else 3)
+        )
         gap = max(self.u(4), 5)
+        row_count = max(1, (len(stats) + columns - 1) // columns)
+        max_rows = row_count if modern else 2
         cell_w = (rect.width - gap * (columns - 1)) // columns
-        cell_h = max(stat_font.get_height() + self.u(12), (rect.height - gap) // 2)
+        cell_h = (
+            max(1, (rect.height - gap * (row_count - 1)) // row_count)
+            if modern
+            else max(stat_font.get_height() + self.u(12), (rect.height - gap) // 2)
+        )
         for index, (label, value) in enumerate(stats):
             row = index // columns
             col = index % columns
-            if row > 1:
+            if row >= max_rows:
                 break
             cell = pygame.Rect(
                 rect.x + col * (cell_w + gap),
@@ -411,22 +695,25 @@ class MenuCharacterMixin:
                 cell_w,
                 cell_h,
             )
-            # Recessed stat cell with a faint top highlight.
-            pygame.draw.rect(self.screen, self.PANEL_INK, cell, border_radius=self.u(5))
-            pygame.draw.rect(
-                self.screen,
-                self.STONE_LIGHT,
-                cell,
-                max(1, self.u(1)),
-                border_radius=self.u(5),
-            )
-            pygame.draw.line(
-                self.screen,
-                self.IRON,
-                (cell.x + self.u(4), cell.y + self.u(1)),
-                (cell.right - self.u(4), cell.y + self.u(1)),
-                max(1, self.u(1)),
-            )
+            if not modern:
+                # Procedural mode keeps the original recessed stat cells.
+                pygame.draw.rect(
+                    self.screen, self.PANEL_INK, cell, border_radius=self.u(5)
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    self.STONE_LIGHT,
+                    cell,
+                    max(1, self.u(1)),
+                    border_radius=self.u(5),
+                )
+                pygame.draw.line(
+                    self.screen,
+                    self.IRON,
+                    (cell.x + self.u(4), cell.y + self.u(1)),
+                    (cell.right - self.u(4), cell.y + self.u(1)),
+                    max(1, self.u(1)),
+                )
             self.draw_text(
                 label,
                 stat_font,
@@ -473,7 +760,19 @@ class MenuCharacterMixin:
             "Ranger": ("Hawk Slash", "Multishot", "Snare Nova", "Vault"),
         }.get(name, ("Slash", "Bolt", "Nova", "Dash"))
 
+    def _draw_character_section_panel(
+        self, name: str, rect: pygame.Rect, accent: Color | None = None
+    ) -> pygame.Rect:
+        content, _used_asset = self.inset_panel(rect, accent)
+        self.g._character_inset_rects[name] = rect.copy()
+        self.g._character_inset_content_rects[name] = content.copy()
+        return content
+
     def draw_character_menu(self) -> None:
+        with self.g.fitted_ui_layout((960, 540)):
+            self._draw_character_menu_fitted()
+
+    def _draw_character_menu_fitted(self) -> None:
         width, height = self.screen.get_size()
         dim = pygame.Surface((width, height), pygame.SRCALPHA)
         dim.fill((0, 0, 0, 92))
@@ -482,12 +781,57 @@ class MenuCharacterMixin:
         margin = max(self.u(18), 20)
         box_w = min(max(self.u(560), int(width * 0.72)), width - margin * 2)
         box_h = min(max(self.u(400), int(height * 0.82)), height - margin * 2)
-        box = pygame.Rect((width - box_w) // 2, (height - box_h) // 2, box_w, box_h)
-        self.panel(box, self.accent(), alpha=250)
+        legacy_box = pygame.Rect(
+            (width - box_w) // 2,
+            (height - box_h) // 2,
+            box_w,
+            box_h,
+        )
+        box = legacy_box
+        short_layout = height < 440
+        modern_requested = self.asset_ui_active()
+        if modern_requested:
+            if short_layout:
+                side_margin = max(16, min(self.u(20), width // 32))
+                vertical_margin = max(8, min(self.u(10), height // 36))
+                minimum_w, minimum_h = 600, 340
+                width_ratio, height_ratio = 0.94, 0.94
+            else:
+                side_margin = max(22, min(self.u(42), width // 16))
+                vertical_margin = max(18, min(self.u(32), height // 18))
+                minimum_w, minimum_h = 560, 400
+                width_ratio, height_ratio = 0.88, 0.88
+            box_w = min(
+                max(1, width - side_margin * 2),
+                max(minimum_w, round(width * width_ratio)),
+            )
+            box_h = min(
+                max(1, height - vertical_margin * 2),
+                max(minimum_h, round(height * height_ratio)),
+            )
+            box = pygame.Rect(
+                (width - box_w) // 2,
+                (height - box_h) // 2,
+                box_w,
+                box_h,
+            )
+            if self.menu_panel_content_rect(box) is None:
+                box = legacy_box
+        used_asset = self.panel(box, self.accent(), alpha=250)
+        self._character_asset_panel = used_asset
 
-        pad = max(self.u(16), 18)
         gap = max(self.u(8), 10)
-        inner = box.inflate(-pad * 2, -pad * 2)
+        safe = self.menu_panel_content_rect(box) if used_asset else None
+        if safe is not None:
+            inner = safe.inflate(-self.u(5) * 2, -self.u(3) * 2)
+            gap = max(self.u(5), 5) if short_layout else max(self.u(6), 7)
+        else:
+            pad = max(self.u(16), 18)
+            inner = box.inflate(-pad * 2, -pad * 2)
+        self.g._character_panel_rect = box.copy()
+        self.g._character_content_rect = inner.copy()
+        self.g._character_inset_rects = {}
+        self.g._character_inset_content_rects = {}
         player = self.g.player
         title_h = self.g.font.get_height()
         small_h = self.g.small_font.get_height()
@@ -508,16 +852,17 @@ class MenuCharacterMixin:
             pygame.Rect(inner.x, inner.y, inner.width - close_w - gap, title_h),
         )
         close_rect = pygame.Rect(inner.right - close_w, inner.y, close_w, title_h)
-        pygame.draw.rect(
-            self.screen, self.PANEL_INK, close_rect, border_radius=self.u(6)
-        )
-        pygame.draw.rect(
-            self.screen,
-            self.IRON,
-            close_rect,
-            max(1, self.u(1)),
-            border_radius=self.u(6),
-        )
+        if not used_asset:
+            pygame.draw.rect(
+                self.screen, self.PANEL_INK, close_rect, border_radius=self.u(6)
+            )
+            pygame.draw.rect(
+                self.screen,
+                self.IRON,
+                close_rect,
+                max(1, self.u(1)),
+                border_radius=self.u(6),
+            )
         self.draw_text(
             "C/Esc closes · Tab switches tabs",
             self.g.small_font,
@@ -565,14 +910,29 @@ class MenuCharacterMixin:
         content_bottom = inner.bottom
 
         if active_tab == "disciplines":
-            self._draw_character_disciplines(
-                pygame.Rect(
-                    inner.x, content_top, inner.width, content_bottom - content_top
-                )
+            discipline_rect = pygame.Rect(
+                inner.x,
+                content_top,
+                inner.width,
+                max(1, content_bottom - content_top),
             )
+            discipline_content = (
+                self._draw_character_section_panel(
+                    "disciplines", discipline_rect, self.g.skill_color()
+                )
+                if used_asset
+                else discipline_rect
+            )
+            self._draw_character_disciplines(discipline_content)
             return
 
-        stats_h = max(self.u(72), small_h * 2 + self.u(24))
+        if used_asset and short_layout:
+            stats_h = max(self.u(58), small_h * 2 + self.u(14))
+        else:
+            stats_h = max(
+                self.u(78 if used_asset else 72),
+                small_h * 2 + self.u(24),
+            )
         stats = [
             ("HP", f"{int(player.hp)}/{player.max_hp}"),
             ("Mana", f"{int(player.mana)}/{player.max_mana}"),
@@ -583,12 +943,23 @@ class MenuCharacterMixin:
             ("Weapon", self.g.weapon_damage_type().title()),
             ("Nova", self.g.nova_damage_type().title()),
         ]
-        self.draw_stat_grid(stats, pygame.Rect(inner.x, stats_y, inner.width, stats_h))
+        stats_rect = pygame.Rect(inner.x, stats_y, inner.width, stats_h)
+        stats_content = (
+            self._draw_character_section_panel(
+                "stats", stats_rect, self.g.skill_color()
+            )
+            if used_asset
+            else stats_rect
+        )
+        self.draw_stat_grid(stats, stats_content, modern=used_asset)
 
         content_y = stats_y + stats_h + gap
         content_h = max(1, inner.bottom - content_y)
-        columns = 2 if inner.width >= self.u(420) else 1
-        rows = 2 if columns == 2 else 4
+        if used_asset and short_layout:
+            columns, rows = 4, 1
+        else:
+            columns = 2 if inner.width >= self.u(420) else 1
+            rows = 2 if columns == 2 else 4
         card_gap = gap
         card_w = (inner.width - card_gap * (columns - 1)) // columns
         card_h = (content_h - card_gap * (rows - 1)) // rows
@@ -604,73 +975,98 @@ class MenuCharacterMixin:
             )
 
         def draw_card(
+            name: str,
             rect: pygame.Rect,
             title: str,
             lines: Sequence[tuple[str, Color]],
             accent: Color | None = None,
         ) -> None:
             accent = accent or self.accent()
-            pygame.draw.rect(self.screen, self.PANEL_INK, rect, border_radius=self.u(8))
-            # Soft accent-tinted wash to distinguish cards.
-            wash = pygame.Surface(rect.size, pygame.SRCALPHA)
+            modern = bool(getattr(self, "_character_asset_panel", False))
+            content = rect
+            if modern:
+                content = self._draw_character_section_panel(name, rect, accent)
+            else:
+                pygame.draw.rect(
+                    self.screen, self.PANEL_INK, rect, border_radius=self.u(8)
+                )
+
+            wash = pygame.Surface(content.size, pygame.SRCALPHA)
             pygame.draw.rect(
                 wash,
-                (*accent, 18),
+                (*accent, 14 if modern else 18),
                 wash.get_rect(),
-                border_radius=self.u(8),
+                border_radius=self.u(6 if modern else 8),
             )
-            self.screen.blit(wash, rect)
-            pygame.draw.rect(
-                self.screen,
-                accent,
-                rect,
-                max(1, self.u(1)),
-                border_radius=self.u(8),
-            )
-            # Top accent strip — a thin gold band on the card header.
-            strip = pygame.Rect(
-                rect.x + self.u(8),
-                rect.y + self.u(4),
-                rect.width - self.u(16),
-                self.u(2),
-            )
-            pygame.draw.rect(
-                self.screen, self.shade(accent, 30), strip, border_radius=self.u(1)
-            )
-            card_pad = max(self.u(9), 9)
+            self.screen.blit(wash, content)
+            if not modern:
+                pygame.draw.rect(
+                    self.screen,
+                    accent,
+                    rect,
+                    max(1, self.u(1)),
+                    border_radius=self.u(8),
+                )
+                strip = pygame.Rect(
+                    rect.x + self.u(8),
+                    rect.y + self.u(4),
+                    rect.width - self.u(16),
+                    self.u(2),
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    self.shade(accent, 30),
+                    strip,
+                    border_radius=self.u(1),
+                )
+            card_pad = max(self.u(3), 3) if modern else max(self.u(9), 9)
             self.draw_text(
                 title,
                 self.g.small_font,
                 self.WARNING,
                 pygame.Rect(
-                    rect.x + card_pad,
-                    rect.y + card_pad,
-                    rect.width - card_pad * 2,
+                    content.x + card_pad,
+                    content.y + card_pad,
+                    content.width - card_pad * 2,
                     small_h,
                 ),
             )
-            y = rect.y + card_pad + small_h + self.u(6)
+            y = content.y + card_pad + small_h + self.u(6)
             line_h = max(tiny_h + self.u(3), self.u(15))
-            text_w = max(1, rect.width - card_pad * 2)
+            text_w = max(1, content.width - card_pad * 2)
             for line, color in lines:
                 for wrapped in self.wrap_text(line, self.g.tiny_font, text_w):
-                    if y + tiny_h > rect.bottom - card_pad:
+                    if y + tiny_h > content.bottom - card_pad:
                         return
                     self.draw_text(
                         wrapped,
                         self.g.tiny_font,
                         color,
-                        pygame.Rect(rect.x + card_pad, y, text_w, line_h),
+                        pygame.Rect(content.x + card_pad, y, text_w, line_h),
                     )
                     y += line_h
 
         melee_name, bolt_name, class_skill_name, dash_name = self.g.skill_names()
-        skill_lines = [
-            (f"1 {melee_name} · {self.g.melee_stamina_cost()} stamina", self.TEXT),
-            (f"2 {bolt_name} · {self.g.bolt_mana_cost()} mana", self.TEXT),
-            (f"3 {class_skill_name} · {self.g.class_skill_mana_cost()} mana", self.TEXT),
-            (f"4 {dash_name} · {self.g.dash_stamina_cost()} stamina", self.TEXT),
-        ]
+        if used_asset and short_layout:
+            skill_lines = [
+                (f"1 {melee_name} · {self.g.melee_stamina_cost()} STM", self.TEXT),
+                (f"2 {bolt_name} · {self.g.bolt_mana_cost()} MP", self.TEXT),
+                (
+                    f"3 {class_skill_name} · {self.g.class_skill_mana_cost()} MP",
+                    self.TEXT,
+                ),
+                (f"4 {dash_name} · {self.g.dash_stamina_cost()} STM", self.TEXT),
+            ]
+        else:
+            skill_lines = [
+                (f"1 {melee_name} · {self.g.melee_stamina_cost()} stamina", self.TEXT),
+                (f"2 {bolt_name} · {self.g.bolt_mana_cost()} mana", self.TEXT),
+                (
+                    f"3 {class_skill_name} · {self.g.class_skill_mana_cost()} mana",
+                    self.TEXT,
+                ),
+                (f"4 {dash_name} · {self.g.dash_stamina_cost()} stamina", self.TEXT),
+            ]
 
         weapon = player.equipment.get("weapon")
         armor = player.equipment.get("armor")
@@ -731,22 +1127,33 @@ class MenuCharacterMixin:
         if not status_lines:
             status_lines.append(("No active statuses or procs", self.MUTED))
 
-        draw_card(card_rect(0), "Skills", skill_lines, self.g.skill_color())
-        draw_card(card_rect(1), "Equipment", equipment_lines, self.accent())
-        draw_card(card_rect(2), "Upgrades", upgrade_lines, self.g.skill_color())
-        draw_card(card_rect(3), "Status & Procs", status_lines[:4], self.accent())
+        draw_card(
+            "skills", card_rect(0), "Skills", skill_lines, self.g.skill_color()
+        )
+        draw_card(
+            "equipment", card_rect(1), "Equipment", equipment_lines, self.accent()
+        )
+        draw_card(
+            "upgrades", card_rect(2), "Upgrades", upgrade_lines, self.g.skill_color()
+        )
+        draw_card(
+            "status", card_rect(3), "Status & Procs", status_lines[:4], self.accent()
+        )
 
     def _draw_character_tab(self, rect: pygame.Rect, label: str, active: bool) -> None:
         accent = self.g.skill_color() if active else self.IRON
         fill = self.PANEL_2 if active else self.PANEL_INK
-        pygame.draw.rect(self.screen, fill, rect, border_radius=self.u(6))
-        pygame.draw.rect(
-            self.screen,
-            accent,
-            rect,
-            max(1, self.u(1)),
-            border_radius=self.u(6),
-        )
+        modern = bool(getattr(self, "_character_asset_panel", False))
+        if active or not modern:
+            pygame.draw.rect(self.screen, fill, rect, border_radius=self.u(6))
+        if not modern:
+            pygame.draw.rect(
+                self.screen,
+                accent,
+                rect,
+                max(1, self.u(1)),
+                border_radius=self.u(6),
+            )
         if active:
             strip = pygame.Rect(
                 rect.x + self.u(6),
@@ -1127,8 +1534,8 @@ class MenuCharacterMixin:
         )
 
         inner = cell.inflate(-pad * 2, -pad)
-        if inner.height < tiny_h:
-            # Cell too short for text — just show the name ellipsized.
+        minimum_detail_h = small_h + self.u(2) + tiny_h
+        if inner.height < minimum_detail_h:
             self.draw_text(
                 self.ellipsize(node.name, self.g.tiny_font, inner.width),
                 self.g.tiny_font,

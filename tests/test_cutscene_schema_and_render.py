@@ -37,9 +37,14 @@ class StoryCutscene34Tests(unittest.TestCase):
     def tearDown(self) -> None:
         pass
 
-    def make_game(self, tmpdir: str, seed: int = 3401) -> Game:
+    def make_game(
+        self,
+        tmpdir: str,
+        seed: int = 3401,
+        size: tuple[int, int] = (960, 600),
+    ) -> Game:
         game = Game(
-            screen_size=(960, 600),
+            screen_size=size,
             headless=True,
             save_path=Path(tmpdir) / "run.json",
         )
@@ -154,6 +159,50 @@ class StoryCutscene34Tests(unittest.TestCase):
                     game.draw()
             finally:
                 pass
+
+    def test_asset_cutscene_background_and_compact_geometry(self) -> None:
+        for size in ((960, 540), (640, 480)):
+            with self.subTest(size=size), tempfile.TemporaryDirectory() as tmpdir:
+                game = self.make_game(tmpdir, size=size)
+                game.set_legacy_graphics(False)
+                game.ui_scale = 1
+                game.rebuild_fonts()
+                game.reveal_active_cutscene_narration()
+                game.draw()
+
+                screen = game.screen.get_rect()
+                panel = game._cutscene_panel_rect
+                content = game._cutscene_content_rect
+                stage = game._cutscene_stage_rect
+                narrator = game._cutscene_narrator_rect
+                choices = game._cutscene_choice_rects
+                self.assertTrue(game._cutscene_background_asset_used)
+                self.assertTrue(game._cutscene_panel_asset_used)
+                self.assertIn(
+                    "cutscene.background",
+                    {key[0] for key in game.ui_assets._render_cache},
+                )
+                self.assertTrue(screen.contains(panel))
+                self.assertLess(panel.width, screen.width)
+                self.assertLess(panel.height, screen.height)
+                self.assertTrue(panel.contains(content))
+                self.assertTrue(content.contains(stage))
+                self.assertTrue(content.contains(narrator))
+                self.assertTrue(all(content.contains(choice) for choice in choices))
+                self.assertLessEqual(stage.bottom, narrator.y)
+                if choices:
+                    self.assertLessEqual(narrator.bottom, choices[0].y)
+                    self.assertTrue(
+                        all(
+                            first.bottom <= second.y
+                            for first, second in zip(choices, choices[1:])
+                        )
+                    )
+
+                game.set_legacy_graphics(True)
+                game.draw()
+                self.assertFalse(game._cutscene_background_asset_used)
+                self.assertFalse(game._cutscene_panel_asset_used)
 
     def test_cutscene_save_restore_preserves_active_stage(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

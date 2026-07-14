@@ -131,6 +131,7 @@ from .save_system import SaveLoadMixin
 from .shop import ShopMixin
 from .sprite_assets import SpriteAtlas
 from .sprites import PixelSpriteAtlas
+from .ui_assets import UiAssetLibrary
 from .story import (
     StoryEngine,
     clamp_story_effect,
@@ -292,10 +293,15 @@ class Game(
         self.screen_flash_ttl = 0.0
         self.screen_flash_color: Color = (0, 0, 0)
         # Viewport zoom ("viewport distance"); adjusted in-game with Ctrl+scroll.
-        # Default to max zoom-in; Ctrl+scroll out to see more of the dungeon.
-        self.view_zoom = self.VIEW_ZOOM_MAX
+        # Start at native scale, allowing players to zoom either in or out.
+        self.view_zoom = 1.0
         self._world_layer: pygame.Surface | None = None
-        self.load_options()
+        # Headless callers (tests, benchmarks, tooling) must not inherit the
+        # developer machine's real home-directory preferences before they can
+        # install an isolated options_path. They can still call load_options()
+        # explicitly after setting that path, as persistence tests already do.
+        if not headless:
+            self.load_options()
         if screen_size is None:
             display_info = pygame.display.Info()
             screen_size = (display_info.current_w, display_info.current_h)
@@ -311,6 +317,7 @@ class Game(
                 pass
         self.clock = pygame.time.Clock()
         self.rebuild_fonts()
+        self.ui_assets = UiAssetLibrary()
         self.sprites = SpriteAtlas(legacy_graphics=self.legacy_graphics)
         self.quest_cutscenes = load_quest_cutscene_library()
         self.active_cutscene: ActiveQuestCutscene | None = None
@@ -399,6 +406,8 @@ class Game(
         self._options_row_viewport = pygame.Rect(0, 0, 0, 0)
         self._options_selected_row_rect = pygame.Rect(0, 0, 0, 0)
         self._options_row_font_height = 0
+        self._controls_keyboard_row_rects: tuple[pygame.Rect, ...] = ()
+        self._controls_gamepad_row_rects: tuple[pygame.Rect, ...] = ()
         self.menus = MenuRenderer(self, ARCHETYPES, DUNGEON_DEPTH)
         self.init_input()
 

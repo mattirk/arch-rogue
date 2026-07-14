@@ -58,6 +58,7 @@ from ..quest_assets import (
 
 class RenderingStoryOverlayMixin:
     def draw_story_panel(self) -> None:
+        self._story_panel_rect: pygame.Rect | None = None
         if not getattr(self, "quest_info_visible", True):
             return
         lines = self.story_panel_lines()
@@ -74,10 +75,18 @@ class RenderingStoryOverlayMixin:
         boss_top = self.boss_bar_top()
         if boss_top is not None:
             max_h = min(max_h, max(0, boss_top - y - self.ui(8)))
+        prompt_rect = getattr(self, "_interaction_prompt_rect", None)
+        if (
+            isinstance(prompt_rect, pygame.Rect)
+            and x < prompt_rect.right
+            and x + panel_w > prompt_rect.x
+        ):
+            max_h = min(max_h, max(0, prompt_rect.y - y - self.ui(8)))
         if panel_w <= self.ui(220) or max_h < self.ui(84):
             return
         accent = self.story_state.accent if self.story_state else self.theme.accent
         rect = pygame.Rect(x, y, panel_w, max_h)
+        self._story_panel_rect = rect.copy()
         surface = pygame.Surface(rect.size, pygame.SRCALPHA)
         self.draw_ornate_hud_panel(
             surface,
@@ -87,19 +96,30 @@ class RenderingStoryOverlayMixin:
             radius=self.ui(9),
         )
         pad = self.ui(12)
+        content = self.ui_asset_content_rect("hud.panel", surface.get_rect())
+        content = (
+            content.inflate(-self.ui(3) * 2, -self.ui(1) * 2)
+            if content is not None
+            else surface.get_rect().inflate(-pad * 2, -pad * 2)
+        )
         title = lines[0]
-        title_surface = self.small_font.render(title, True, (244, 232, 214))
-        surface.blit(title_surface, (pad, pad))
+        title_surface = self.small_font.render(
+            self.ellipsize_ui_text(title, self.small_font, content.width),
+            True,
+            (244, 232, 214),
+        )
+        surface.blit(title_surface, content.topleft)
+        divider_y = content.y + title_surface.get_height() + self.ui(4)
         self.draw_hud_divider(
             surface,
-            pad,
-            pad + title_surface.get_height() + self.ui(4),
-            panel_w - pad,
+            content.x,
+            divider_y,
+            content.right,
             accent,
         )
-        cursor_y = pad + title_surface.get_height() + self.ui(9)
+        cursor_y = divider_y + self.ui(5)
         line_h = max(self.small_font.get_height() + self.ui(3), self.ui(18))
-        max_lines = max(2, (max_h - cursor_y - pad) // line_h)
+        max_lines = max(2, (content.bottom - cursor_y) // line_h)
         rendered = 0
         for raw_line in lines[1:]:
             color = (
@@ -110,15 +130,15 @@ class RenderingStoryOverlayMixin:
             if raw_line.startswith("Depth ") or raw_line.startswith("Outcome:"):
                 color = (238, 218, 164)
             for wrapped in self.wrap_ui_text(
-                raw_line, self.small_font, panel_w - pad * 2
+                raw_line, self.small_font, content.width
             ):
                 if rendered >= max_lines:
                     ellipsis = self.small_font.render("…", True, (170, 165, 155))
-                    surface.blit(ellipsis, (pad, cursor_y))
+                    surface.blit(ellipsis, (content.x, cursor_y))
                     self.screen.blit(surface, rect)
                     return
                 text = self.small_font.render(wrapped, True, color)
-                surface.blit(text, (pad, cursor_y))
+                surface.blit(text, (content.x, cursor_y))
                 cursor_y += line_h
                 rendered += 1
         self.screen.blit(surface, rect)
@@ -201,44 +221,72 @@ class RenderingStoryOverlayMixin:
             cursor_y += self.tiny_font.get_height()
 
     def draw_quest_cutscene_overlay(self) -> None:
+        with self.fitted_ui_layout((960, 540)):
+            self._draw_quest_cutscene_overlay_fitted()
+
+    def _draw_quest_cutscene_overlay_fitted(self) -> None:
         asset = self.active_cutscene_asset()
         node = self.active_cutscene_node()
         if asset is None or node is None:
             return
         width, height = self.screen.get_size()
-        dim = pygame.Surface((width, height), pygame.SRCALPHA)
-        dim.fill((0, 0, 0, 255))
-        self.screen.blit(dim, (0, 0))
+        background = self.ui_asset_surface("cutscene.background", (width, height))
+        self._cutscene_background_asset_used = background is not None
+        if background is not None:
+            self.screen.blit(background, (0, 0))
+            dim = pygame.Surface((width, height), pygame.SRCALPHA)
+            dim.fill((0, 0, 0, 118))
+            self.screen.blit(dim, (0, 0))
+        else:
+            self.screen.fill((0, 0, 0))
 
         accent = self.story_state.accent if self.story_state else self.theme.accent
-        panel_w = min(width - self.ui(28), self.ui(920))
-        panel_h = min(height - self.ui(16), self.ui(620))
+        panel_margin_x = max(self.ui(28), 28)
+        panel_margin_y = max(self.ui(20), 20)
+        panel_w = min(width - panel_margin_x * 2, self.ui(900))
+        panel_h = min(height - panel_margin_y * 2, self.ui(600))
         if panel_w < 300 or panel_h < 260:
             return
         rect = pygame.Rect(
             (width - panel_w) // 2,
-            max(self.ui(8), (height - panel_h) // 2),
+            (height - panel_h) // 2,
             panel_w,
             panel_h,
         )
         surface = pygame.Surface(rect.size, pygame.SRCALPHA)
-        self.draw_translucent_panel(
-            surface,
-            surface.get_rect(),
-            (10, 8, 14, 248),
-            (*accent, 222),
-            radius=self.ui(14),
-            width=self.ui(2),
+        panel_key = (
+            "menu.panel.compact"
+            if panel_w * 10 <= panel_h * 17
+            else "menu.panel"
         )
-        pygame.draw.line(
-            surface,
-            (255, 245, 210, 28),
-            (self.ui(24), self.ui(10)),
-            (panel_w - self.ui(24), self.ui(10)),
-            self.ui(1),
+        panel_asset = self.ui_asset_surface(panel_key, rect.size)
+        if panel_asset is None and panel_key != "menu.panel":
+            panel_key = "menu.panel"
+            panel_asset = self.ui_asset_surface(panel_key, rect.size)
+        panel_inner = (
+            self.ui_asset_content_rect(panel_key, surface.get_rect())
+            if panel_asset is not None
+            else None
         )
+        if panel_asset is not None and panel_inner is not None:
+            surface.blit(panel_asset, (0, 0))
+            inner = panel_inner.inflate(-self.ui(4) * 2, -self.ui(3) * 2)
+            self._cutscene_panel_asset_used = True
+        else:
+            self.draw_translucent_panel(
+                surface,
+                surface.get_rect(),
+                (10, 8, 14, 248),
+                (*accent, 222),
+                radius=self.ui(14),
+                width=self.ui(2),
+            )
+            pad = max(self.ui(14), 18)
+            inner = surface.get_rect().inflate(-pad * 2, -pad * 2)
+            self._cutscene_panel_asset_used = False
 
-        pad = max(self.ui(14), 18)
+        self._cutscene_panel_rect = rect.copy()
+        self._cutscene_content_rect = inner.move(rect.topleft)
         title_text = asset.title
         if self.story_intro_pending:
             title_text = f"{asset.title} · Depth {self.current_depth}/{DUNGEON_DEPTH}"
@@ -248,18 +296,18 @@ class RenderingStoryOverlayMixin:
         header_meta = node.id.replace("_", " ").title()
         meta_w = min(
             self.small_font.size(header_meta)[0] + self.ui(8),
-            max(self.ui(96), (panel_w - pad * 2) // 3),
+            max(self.ui(96), inner.width // 3),
         )
-        meta_x = panel_w - pad - meta_w
+        meta_x = inner.right - meta_w
         title_rect = pygame.Rect(
-            pad,
-            pad,
-            max(1, meta_x - pad - self.ui(10)),
+            inner.x,
+            inner.y,
+            max(1, meta_x - inner.x - self.ui(10)),
             self.font.get_height(),
         )
         meta_rect = pygame.Rect(
             meta_x,
-            pad + (self.font.get_height() - self.small_font.get_height()) // 2,
+            inner.y + (self.font.get_height() - self.small_font.get_height()) // 2,
             meta_w,
             self.small_font.get_height(),
         )
@@ -277,7 +325,7 @@ class RenderingStoryOverlayMixin:
         choices = self.active_cutscene_choices()
         choices_to_draw = choices[: min(9, len(choices))] if narration_complete else []
         choice_gap = max(self.ui(4), 6)
-        choice_w = panel_w - pad * 2
+        choice_w = inner.width
         footer_h = self.small_font.get_height()
         choice_entries = [(choice.label, choice.detail) for choice in choices_to_draw]
         choice_heights = [
@@ -287,34 +335,58 @@ class RenderingStoryOverlayMixin:
         choices_block_h = (
             sum(choice_heights) + max(0, len(choice_heights) - 1) * choice_gap
         )
-        choices_start = panel_h - pad - footer_h - self.ui(10) - choices_block_h
-
-        stage_top = pad + header_h + self.ui(12)
-        available_for_stage = max(
-            self.ui(54), choices_start - stage_top - self.small_font.get_height() * 3
+        choices_start = (
+            inner.bottom - footer_h - self.ui(10) - choices_block_h
         )
-        stage_h = max(self.ui(74), min(int(panel_h * 0.38), available_for_stage))
+
+        progress_h = max(self.ui(3), 3)
+        line_h = max(self.small_font.get_height() + self.ui(3), self.ui(18))
+        narrator_content_min_h = (
+            self.small_font.get_height()
+            + self.ui(5)
+            + progress_h
+            + self.ui(8)
+            + line_h * 2
+        )
+        narrator_frame_min_h = narrator_content_min_h + self.ui(20)
+        stage_top = inner.y + header_h + self.ui(10)
+        available_for_stage = (
+            choices_start
+            - self.ui(8)
+            - narrator_frame_min_h
+            - self.ui(10)
+            - stage_top
+        )
+        stage_h = max(
+            self.ui(74),
+            min(int(inner.height * 0.34), available_for_stage),
+        )
         stage_rect = pygame.Rect(
-            pad,
+            inner.x,
             stage_top,
-            panel_w - pad * 2,
+            inner.width,
             stage_h,
         )
-        self.draw_cutscene_stage(surface, stage_rect, node.animation, accent)
+        self._cutscene_stage_rect = stage_rect.move(rect.topleft)
+        previous_clip = surface.get_clip()
+        surface.set_clip(stage_rect)
+        try:
+            self.draw_cutscene_stage(surface, stage_rect, node.animation, accent)
+        finally:
+            surface.set_clip(previous_clip)
 
-        y = stage_rect.bottom + self.ui(12)
+        card_top = stage_rect.bottom + self.ui(10)
+        card_bottom = choices_start - self.ui(8)
+        if card_bottom - card_top < narrator_frame_min_h:
+            card_top = card_bottom - narrator_frame_min_h
         speaker = self.active_cutscene_speaker_name()
         # Polished narrator card: a parchment panel with an ornate header,
         # a speaker label, a gilded progress rule, and the scrolling text.
-        text_bottom = max(
-            y + self.small_font.get_height() * 2,
-            choices_start - self.ui(10),
-        )
         card_rect = pygame.Rect(
-            pad - self.ui(4),
-            y - self.ui(6),
-            panel_w - pad * 2 + self.ui(8),
-            text_bottom - y + self.ui(12),
+            inner.x,
+            card_top,
+            inner.width,
+            max(1, card_bottom - card_top),
         )
         card = pygame.Surface(card_rect.size, pygame.SRCALPHA)
         self.draw_ornate_hud_panel(
@@ -325,26 +397,41 @@ class RenderingStoryOverlayMixin:
             radius=self.ui(8),
             width=self.ui(1),
         )
-        # Parchment inner trim
-        inner = card.get_rect().inflate(-self.ui(6), -self.ui(6))
-        pygame.draw.rect(
-            card,
-            (*self.HUD_GOLD, 90),
-            inner,
-            max(1, self.ui(1)),
-            border_radius=max(1, self.ui(6)),
-        )
+        card_safe = self.ui_asset_content_rect("hud.panel", card.get_rect())
+        if card_safe is None:
+            # Procedural fallback retains its original parchment inner trim.
+            card_inner = card.get_rect().inflate(-self.ui(6), -self.ui(6))
+            pygame.draw.rect(
+                card,
+                (*self.HUD_GOLD, 90),
+                card_inner,
+                max(1, self.ui(1)),
+                border_radius=max(1, self.ui(6)),
+            )
+            narrator_rect = card_inner.move(card_rect.topleft).inflate(
+                -self.ui(3) * 2, -self.ui(1) * 2
+            )
+        else:
+            narrator_rect = card_safe.move(card_rect.topleft).inflate(
+                -self.ui(3) * 2, -self.ui(1) * 2
+            )
         surface.blit(card, card_rect)
+        self._cutscene_narrator_rect = narrator_rect.move(rect.topleft)
 
+        y = narrator_rect.y
+        text_bottom = narrator_rect.bottom
         speaker_rect = pygame.Rect(
-            pad, y, panel_w - pad * 2, self.small_font.get_height()
+            narrator_rect.x,
+            y,
+            narrator_rect.width,
+            self.small_font.get_height(),
         )
         # Speaker label with a small accent dot like a stage bill.
         speaker_color = (246, 235, 210)
         pygame.draw.circle(
             surface,
             (*accent, 220),
-            (pad + self.ui(3), speaker_rect.centery),
+            (speaker_rect.x + self.ui(3), speaker_rect.centery),
             self.ui(2),
         )
         self.draw_ui_text(
@@ -353,9 +440,9 @@ class RenderingStoryOverlayMixin:
             self.small_font,
             speaker_color,
             pygame.Rect(
-                pad + self.ui(10),
+                speaker_rect.x + self.ui(10),
                 y,
-                panel_w - pad * 2 - self.ui(10),
+                max(1, speaker_rect.width - self.ui(10)),
                 self.small_font.get_height(),
             ),
         )
@@ -364,12 +451,18 @@ class RenderingStoryOverlayMixin:
         pygame.draw.line(
             surface,
             (*self.HUD_GOLD, 140),
-            (pad + self.ui(10) + speaker_w + self.ui(8), line_y),
-            (panel_w - pad, line_y),
+            (speaker_rect.x + self.ui(10) + speaker_w + self.ui(8), line_y),
+            (speaker_rect.right, line_y),
             self.ui(1),
         )
         # Center diamond ornament on the rule.
-        rule_cx = (pad + self.ui(10) + speaker_w + self.ui(8) + panel_w - pad) // 2
+        rule_cx = (
+            speaker_rect.x
+            + self.ui(10)
+            + speaker_w
+            + self.ui(8)
+            + speaker_rect.right
+        ) // 2
         pygame.draw.polygon(
             surface,
             (*self.HUD_GOLD, 180),
@@ -382,7 +475,9 @@ class RenderingStoryOverlayMixin:
         )
         y += self.small_font.get_height() + self.ui(5)
         progress = self.active_cutscene_narration_progress()
-        progress_rect = pygame.Rect(pad, y, panel_w - pad * 2, max(self.ui(3), 3))
+        progress_rect = pygame.Rect(
+            narrator_rect.x, y, narrator_rect.width, max(self.ui(3), 3)
+        )
         pygame.draw.rect(
             surface, (33, 25, 43, 210), progress_rect, border_radius=self.ui(2)
         )
@@ -414,15 +509,15 @@ class RenderingStoryOverlayMixin:
             visible_text = " "
         for paragraph in visible_text.splitlines() or [""]:
             body_lines.extend(
-                self.wrap_ui_text(paragraph, self.small_font, panel_w - pad * 2)
+                self.wrap_ui_text(paragraph, self.small_font, narrator_rect.width)
             )
         if not narration_complete and body_lines:
             # Blinking quill caret at the end of the spoken line.
             if int(self.elapsed * 2.4) % 2 == 0:
                 body_lines[-1] = f"{body_lines[-1]} \u2588"
-        max_body_lines = max(1, (text_bottom - y) // line_h)
+        max_body_lines = max(0, (text_bottom - y) // line_h)
         omitted_lines = max(0, len(body_lines) - max_body_lines)
-        visible_lines = body_lines[-max_body_lines:]
+        visible_lines = body_lines[-max_body_lines:] if max_body_lines else []
         if omitted_lines and visible_lines:
             visible_lines[0] = "\u2026 " + visible_lines[0]
         for index, text_line in enumerate(visible_lines):
@@ -437,13 +532,16 @@ class RenderingStoryOverlayMixin:
                 text_line,
                 self.small_font,
                 color,
-                pygame.Rect(pad, y, panel_w - pad * 2, line_h),
+                pygame.Rect(narrator_rect.x, y, narrator_rect.width, line_h),
             )
             y += line_h
 
         choice_rects = self.cutscene_response_rects(
-            choice_entries, pad, choices_start, choice_w, choice_gap
+            choice_entries, inner.x, choices_start, choice_w, choice_gap
         )
+        self._cutscene_choice_rects = [
+            choice_rect.move(rect.topleft) for choice_rect in choice_rects
+        ]
         for index, (choice, choice_rect) in enumerate(
             zip(choices_to_draw, choice_rects)
         ):
@@ -529,7 +627,7 @@ class RenderingStoryOverlayMixin:
             footer_text,
             self.small_font,
             (205, 185, 225),
-            pygame.Rect(pad, panel_h - pad - footer_h, panel_w - pad * 2, footer_h),
+            pygame.Rect(inner.x, inner.bottom - footer_h, inner.width, footer_h),
         )
         self.screen.blit(surface, rect)
 
@@ -1865,6 +1963,10 @@ class RenderingStoryOverlayMixin:
         return format_asset_text(actor.name, context)[:32]
 
     def draw_story_intro_overlay(self) -> None:
+        with self.fitted_ui_layout((960, 540)):
+            self._draw_story_intro_overlay_fitted()
+
+    def _draw_story_intro_overlay_fitted(self) -> None:
         lines = self.story_intro_lines()
         if not lines:
             return

@@ -65,7 +65,7 @@ class AssetSpriteMilestone40Tests(unittest.TestCase):
         return game
 
     def test_release_and_manifest_cover_runtime_visual_roster(self) -> None:
-        self.assertEqual(__version__, "4.0.2")
+        self.assertEqual(__version__, "4.1.5")
         library = AssetSpriteLibrary()
         self.assertTrue(library.available, library.load_error)
         manifest = library.manifest

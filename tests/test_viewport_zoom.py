@@ -32,12 +32,12 @@ class ViewportZoomTests(unittest.TestCase):
         game.snap_camera_to_player()
         return game
 
-    def test_default_zoom_is_max_zoom_in(self) -> None:
+    def test_default_zoom_is_native_scale(self) -> None:
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
-            self.assertAlmostEqual(game.view_zoom, game.VIEW_ZOOM_MAX)
+            self.assertAlmostEqual(game.view_zoom, 1.0)
 
     def test_adjust_view_zoom_clamps_and_steps(self) -> None:
         import tempfile

@@ -99,6 +99,24 @@ class MenuBaseMixin:
     def accent(self) -> Color:
         return self.g.theme.accent
 
+    def asset_ui_active(self) -> bool:
+        library = getattr(self.g, "ui_assets", None)
+        return (
+            not getattr(self.g, "legacy_graphics", False)
+            and library is not None
+            and bool(getattr(library, "available", False))
+        )
+
+    def ui_asset(self, key: str, size: tuple[int, int]) -> pygame.Surface | None:
+        if not self.asset_ui_active():
+            return None
+        return self.g.ui_assets.render(key, size)
+
+    def ui_content_rect(self, key: str, rect: pygame.Rect) -> pygame.Rect | None:
+        if not self.asset_ui_active():
+            return None
+        return self.g.ui_assets.content_rect(key, rect)
+
     # --- Text helpers -------------------------------------------------------
     def ellipsize(self, text: str, font: pygame.font.Font, max_width: int) -> str:
         max_width = max(1, max_width)
@@ -152,7 +170,8 @@ class MenuBaseMixin:
         else:
             y = rect.y
         old_clip = self.screen.get_clip()
-        self.screen.set_clip(rect.clip(self.screen.get_rect()))
+        text_clip = rect.clip(self.screen.get_rect()).clip(old_clip)
+        self.screen.set_clip(text_clip)
         self.screen.blit(surface, (x, y))
         self.screen.set_clip(old_clip)
 
@@ -562,6 +581,21 @@ class MenuBaseMixin:
     def draw_menu_backdrop(self) -> None:
         width, height = self.screen.get_size()
         accent = self.accent()
+        key = (
+            "menu.background.title"
+            if getattr(self.g, "state", "") == "title"
+            else "menu.background"
+        )
+        asset = self.ui_asset(key, (width, height))
+        if asset is None and key != "menu.background":
+            asset = self.ui_asset("menu.background", (width, height))
+        if asset is not None:
+            self.screen.fill(self.BG_DEEP)
+            self.screen.blit(asset, (0, 0))
+            wash = pygame.Surface((width, height), pygame.SRCALPHA)
+            wash.fill((*self.shade(accent, -126), 34))
+            self.screen.blit(wash, (0, 0))
+            return
 
         # Base cold-obsidian wash with a faint stone texture for depth.
         self.screen.fill(self.BG_DEEP)
@@ -677,14 +711,93 @@ class MenuBaseMixin:
         return points
 
     # --- Ornate panel primitive -------------------------------------------
+    def menu_panel_key(self, rect: pygame.Rect) -> str:
+        return (
+            "menu.panel.compact"
+            if rect.width * 10 <= rect.height * 17
+            else "menu.panel"
+        )
+
+    def _menu_panel_keys(self, rect: pygame.Rect) -> tuple[str, ...]:
+        primary = self.menu_panel_key(rect)
+        return (primary, "menu.panel") if primary != "menu.panel" else (primary,)
+
+    def menu_panel_content_rect(self, rect: pygame.Rect) -> pygame.Rect | None:
+        """Return the safe area for the same authored frame used by ``panel``."""
+        for key in self._menu_panel_keys(rect):
+            if self.ui_asset(key, rect.size) is None:
+                continue
+            safe = self.ui_content_rect(key, rect)
+            if safe is not None:
+                return safe
+        return None
+
+    def inset_panel(
+        self, rect: pygame.Rect, accent: Color | None = None, alpha: int = 238
+    ) -> tuple[pygame.Rect, bool]:
+        """Draw a nested content frame and return its safe area and asset state."""
+        target = pygame.Rect(rect)
+        if target.width <= 0 or target.height <= 0:
+            return target, False
+
+        asset = self.ui_asset("menu.panel.inset", target.size)
+        safe = (
+            self.ui_content_rect("menu.panel.inset", target)
+            if asset is not None
+            else None
+        )
+        if asset is not None and safe is not None:
+            self.screen.blit(asset, target)
+            return safe, True
+
+        accent = accent or self.accent()
+        radius = max(2, self.u(7))
+        body = pygame.Surface(target.size, pygame.SRCALPHA)
+        pygame.draw.rect(
+            body,
+            (*self.PANEL_INK, max(0, min(255, alpha))),
+            body.get_rect(),
+            border_radius=radius,
+        )
+        self.screen.blit(body, target)
+        pygame.draw.rect(
+            self.screen,
+            self.shade(accent, -58),
+            target,
+            max(1, self.u(1)),
+            border_radius=radius,
+        )
+        inner_bevel = target.inflate(-self.u(2), -self.u(2))
+        pygame.draw.rect(
+            self.screen,
+            self.IRON_DARK,
+            inner_bevel,
+            max(1, self.u(1)),
+            border_radius=max(1, radius - self.u(1)),
+        )
+        pad_x = min(max(self.u(10), 10), max(1, target.width // 4))
+        pad_y = min(max(self.u(8), 8), max(1, target.height // 4))
+        return target.inflate(-pad_x * 2, -pad_y * 2), False
+
     def panel(
         self, rect: pygame.Rect, accent: Color | None = None, alpha: int = 245
-    ) -> None:
-        """Draw a chiseled stone panel with iron studs and a gold inner trim."""
+    ) -> bool:
+        """Draw a panel and report whether authored asset art was used."""
         accent = accent or self.accent()
         radius = self.u(10)
 
-        # Drop shadow — soft, offset down-right.
+        for panel_key in self._menu_panel_keys(rect):
+            asset = self.ui_asset(panel_key, rect.size)
+            safe = (
+                self.ui_content_rect(panel_key, rect)
+                if asset is not None
+                else None
+            )
+            if asset is not None and safe is not None:
+                self.screen.blit(asset, rect)
+                return True
+
+        # The procedural fallback keeps its original soft drop shadow.
         shadow = rect.move(max(2, self.u(3)), max(3, self.u(5)))
         shadow_surf = pygame.Surface(shadow.size, pygame.SRCALPHA)
         pygame.draw.rect(
@@ -744,6 +857,7 @@ class MenuBaseMixin:
                 (corner[0] - 1, corner[1] - 1),
                 max(1, stud_r - 1),
             )
+        return False
 
     def _fill_stone_gradient(
         self, surface: pygame.Surface, accent: Color, alpha: int
@@ -777,7 +891,9 @@ class MenuBaseMixin:
         self.draw_menu_backdrop()
         side_margin = min(max(self.u(24), 32), max(16, width // 12))
         text_width = max(1, width - side_margin * 2)
-        title_limit = max(24, height // 8)
+        compact_scaled_layout = self.g.ui_scale_factor() >= 3 and height <= 720
+        modern_header = self.asset_ui_active()
+        title_limit = max(24, height // (10 if compact_scaled_layout else 8))
         title_font = next(
             (
                 font
@@ -802,7 +918,7 @@ class MenuBaseMixin:
                 texts=(title,),
                 minimum_size=12,
             )
-        subtitle_limit = max(18, height // 10)
+        subtitle_limit = max(16, height // (18 if compact_scaled_layout else 10))
         subtitle_font = next(
             (
                 font
@@ -823,45 +939,63 @@ class MenuBaseMixin:
         requested_title_y = max(self.u(30), int(height * 0.12))
         title_y = max(
             title_font.get_height() // 2 + 8,
-            min(requested_title_y, max(24, height // 8)),
+            min(
+                requested_title_y,
+                max(24, height // (12 if compact_scaled_layout else 8)),
+            ),
         )
+        if modern_header:
+            title_y += min(8, max(5, height // 90))
 
-        # Ornamental flourish around the title — thin gold rule with center crest.
-        self._draw_title_ornament(
-            title_y, title_font.get_height(), accent=self.accent()
+        # Authored backgrounds already frame the header. The procedural flourish
+        # remains part of legacy graphics, where it cannot cross a subtitle.
+        if not modern_header:
+            self._draw_title_ornament(
+                title_y, title_font.get_height(), accent=self.accent()
+            )
+
+        title_rect = pygame.Rect(
+            side_margin,
+            title_y - title_font.get_height() // 2,
+            width - side_margin * 2,
+            title_font.get_height(),
         )
-
+        self.g._menu_header_title_rect = title_rect.copy()
         self.draw_text(
             title,
             title_font,
             self.TITLE,
-            pygame.Rect(
-                side_margin,
-                title_y - title_font.get_height() // 2,
-                width - side_margin * 2,
-                title_font.get_height(),
-            ),
+            title_rect,
             align="center",
             valign="center",
         )
         title_bottom = title_y + title_font.get_height() // 2
-        panel_gap = min(self.u(18), max(10, height // 48))
+        panel_gap = min(
+            self.u(24),
+            max(7 if compact_scaled_layout else 10, height // 64)
+            + (6 if modern_header else 0),
+        )
         top = title_bottom + panel_gap
+        self.g._menu_header_subtitle_rect = pygame.Rect(0, 0, 0, 0)
         if subtitle:
-            subtitle_top = title_bottom + min(self.u(8), 8)
+            subtitle_top = title_bottom + min(
+                self.u(10), 10 if modern_header else 8
+            )
+            subtitle_rect = pygame.Rect(
+                side_margin,
+                subtitle_top,
+                width - side_margin * 2,
+                subtitle_font.get_height(),
+            )
+            self.g._menu_header_subtitle_rect = subtitle_rect.copy()
             self.draw_text(
                 subtitle,
                 subtitle_font,
                 self.MUTED,
-                pygame.Rect(
-                    side_margin,
-                    subtitle_top,
-                    width - side_margin * 2,
-                    subtitle_font.get_height(),
-                ),
+                subtitle_rect,
                 align="center",
             )
-            top = subtitle_top + subtitle_font.get_height() + panel_gap
+            top = subtitle_rect.bottom + panel_gap
         requested_footer = max(
             self.g.small_font.get_height() + self.u(18), self.u(42)
         )
@@ -875,7 +1009,17 @@ class MenuBaseMixin:
             panel_w,
             panel_h,
         )
-        self.panel(rect)
+        self.g._last_menu_panel_rect = rect.copy()
+        used_asset = self.panel(rect)
+        self._last_menu_frame_used_asset = False
+        if used_asset:
+            safe = self.ui_content_rect("menu.panel", rect)
+            if safe is not None:
+                self._last_menu_frame_used_asset = True
+                gutter_x = min(self.u(6), max(2, safe.width // 80))
+                gutter_y = min(self.u(4), max(1, safe.height // 80))
+                content = safe.inflate(-gutter_x * 2, -gutter_y * 2)
+                return rect, content
         self._draw_parchment_header(rect, title)
         content_pad_x = min(max(self.u(22), 28), max(8, rect.width // 10))
         content_pad_y = min(max(self.u(20), 24), max(8, rect.height // 12))
@@ -933,6 +1077,8 @@ class MenuBaseMixin:
             )
 
     def _title_logo(self, height: int) -> pygame.Surface | None:
+        if getattr(self.g, "legacy_graphics", False):
+            return None
         # Cached octahedron logo scaled to the requested height. Cached on the
         # Game so a UI-scale change (which changes self.u) rebuilds once.
         cache = getattr(self.g, "_title_logo_cache", None)
@@ -997,6 +1143,83 @@ class MenuBaseMixin:
         )
         self.draw_text(text, footer_font, self.MUTED, rect, align="center")
 
+    def menu_shortcut_section_height(
+        self, font: pygame.font.Font | None = None
+    ) -> int:
+        shortcut_font = font or self.g.small_font
+        return max(self.u(28), shortcut_font.get_height() + self.u(12))
+
+    def draw_menu_shortcut_section(
+        self,
+        rect: pygame.Rect,
+        key: str,
+        label: str,
+        *,
+        font: pygame.font.Font | None = None,
+    ) -> None:
+        """Draw the selected menu item's shortcut in a dedicated bottom strip."""
+
+        if rect.width <= 0 or rect.height <= 0:
+            return
+        shortcut_font = font or self.g.small_font
+        heading_font = self.g.tiny_font
+        plate = pygame.Surface(rect.size, pygame.SRCALPHA)
+        plate.fill((8, 8, 12, 172))
+        self.screen.blit(plate, rect)
+        accent = self.accent()
+        pygame.draw.line(
+            self.screen,
+            self.shade(accent, -38),
+            (rect.x + self.u(8), rect.y),
+            (rect.right - self.u(8), rect.y),
+            max(1, self.u(1)),
+        )
+        marker = pygame.Rect(
+            rect.x + self.u(7),
+            rect.y + self.u(6),
+            max(2, self.u(3)),
+            max(1, rect.height - self.u(12)),
+        )
+        pygame.draw.rect(self.screen, accent, marker, border_radius=self.u(2))
+        heading_w = min(
+            max(self.u(66), heading_font.size("SHORTCUT")[0] + self.u(10)),
+            max(1, rect.width // 3),
+        )
+        heading_rect = pygame.Rect(
+            marker.right + self.u(8), rect.y, heading_w, rect.height
+        )
+        self.draw_text(
+            "SHORTCUT",
+            heading_font,
+            self.MUTED,
+            heading_rect,
+            valign="center",
+        )
+        detail_rect = pygame.Rect(
+            heading_rect.right + self.u(4),
+            rect.y,
+            max(1, rect.right - heading_rect.right - self.u(12)),
+            rect.height,
+        )
+        detail = f"{key}  ·  {label}" if label else key
+        detail_font = self.fit_menu_font(
+            shortcut_font,
+            max_height=max(8, rect.height - self.u(6)),
+            max_width=detail_rect.width,
+            texts=(detail,),
+            minimum_size=9,
+        )
+        self.draw_text(
+            detail,
+            detail_font,
+            self.TITLE,
+            detail_rect,
+            valign="center",
+        )
+        self.g._menu_shortcut_rect = rect.copy()
+        self.g._menu_shortcut_key = key
+        self.g._menu_shortcut_label = label
+
     def draw_menu_rows(
         self,
         rows: Sequence[MenuRow],
@@ -1010,6 +1233,7 @@ class MenuBaseMixin:
         row_height: int | None = None,
         row_gap: int | None = None,
         section_header_height: int | None = None,
+        keys_in_rows: bool = True,
     ) -> tuple[pygame.Rect, ...]:
         """Draw menu rows and return the rectangles that were actually rendered.
 
@@ -1024,10 +1248,11 @@ class MenuBaseMixin:
             detail_font = self.g.small_font
         assert body_font is not None
         assert detail_font is not None
+        active_scale = self.g.ui_scale_factor()
         scale = (
-            float(self.g.ui_scale)
+            active_scale
             if layout_scale is None
-            else max(1.0, min(float(self.g.ui_scale), float(layout_scale)))
+            else max(1.0, min(active_scale, float(layout_scale)))
         )
 
         def px(value: int) -> int:
@@ -1076,6 +1301,8 @@ class MenuBaseMixin:
         y = rect.y
         accent = self.accent()
         rendered_rows: list[pygame.Rect] = []
+        rendered_key_rects: list[pygame.Rect] = []
+        rendered_value_rects: list[pygame.Rect] = []
         for index, (key, label, value) in enumerate(rows):
             title = section_starts.get(index)
             if title is not None:
@@ -1106,7 +1333,28 @@ class MenuBaseMixin:
             rendered_rows.append(row_rect.copy())
             is_selected = index == selected_index
             plate_fill = self.shade(accent, -100) if is_selected else self.PANEL_INK
-            pygame.draw.rect(self.screen, plate_fill, row_rect, border_radius=px(5))
+            row_asset = self.ui_asset("menu.row", row_rect.size)
+            row_safe = (
+                self.ui_content_rect("menu.row", row_rect)
+                if row_asset is not None
+                else None
+            )
+            authored_row = bool(
+                row_asset is not None
+                and row_safe is not None
+                and row_safe.width >= max(72, row_rect.width // 5)
+                and row_h >= detail_font.get_height() + px(6)
+            )
+            modern_row = row_asset is not None
+            if authored_row:
+                assert row_asset is not None
+                self.screen.blit(row_asset, row_rect)
+            elif modern_row:
+                # Tiny modern rows cannot preserve the authored endcaps. Keep a
+                # quiet flat plate instead of reintroducing procedural bevels.
+                pygame.draw.rect(self.screen, self.PANEL_INK, row_rect, border_radius=px(4))
+            else:
+                pygame.draw.rect(self.screen, plate_fill, row_rect, border_radius=px(5))
             if is_selected:
                 glow = pygame.Surface(row_rect.size, pygame.SRCALPHA)
                 pygame.draw.rect(
@@ -1116,21 +1364,22 @@ class MenuBaseMixin:
                     border_radius=px(5),
                 )
                 self.screen.blit(glow, row_rect)
-            border_color = accent if is_selected else self.PANEL_2
-            pygame.draw.rect(
-                self.screen,
-                border_color,
-                row_rect,
-                px(1),
-                border_radius=px(5),
-            )
-            pygame.draw.line(
-                self.screen,
-                self.STONE_LIGHT,
-                (row_rect.x + px(6), row_rect.y + px(1)),
-                (row_rect.right - px(6), row_rect.y + px(1)),
-                px(1),
-            )
+            if not modern_row:
+                border_color = accent if is_selected else self.PANEL_2
+                pygame.draw.rect(
+                    self.screen,
+                    border_color,
+                    row_rect,
+                    px(1),
+                    border_radius=px(5),
+                )
+                pygame.draw.line(
+                    self.screen,
+                    self.STONE_LIGHT,
+                    (row_rect.x + px(6), row_rect.y + px(1)),
+                    (row_rect.right - px(6), row_rect.y + px(1)),
+                    px(1),
+                )
             if is_selected:
                 strip_inset = min(px(4), max(2, row_h // 5))
                 strip = pygame.Rect(
@@ -1147,68 +1396,125 @@ class MenuBaseMixin:
                     border_radius=px(3),
                 )
 
-            key_y_inset = min(
-                px(7), max(3, (row_h - detail_font.get_height()) // 4)
-            )
-            key_rect = pygame.Rect(
-                row_rect.x + row_inset,
-                row_rect.y + key_y_inset,
-                max(1, key_w - row_inset * 2),
-                max(1, row_h - key_y_inset * 2),
-            )
-            pygame.draw.rect(
-                self.screen, self.IRON_DARK, key_rect, border_radius=px(4)
-            )
-            pygame.draw.rect(
-                self.screen,
-                self.IRON,
-                key_rect.inflate(-px(2), -px(2)),
-                border_radius=px(3),
-            )
-            pygame.draw.rect(
-                self.screen,
-                self.shade(self.accent(), -40),
-                key_rect,
-                px(1),
-                border_radius=px(4),
-            )
-            self.draw_text(
-                key,
-                detail_font,
-                self.TITLE,
-                key_rect.inflate(-key_text_pad, 0),
-                align="center",
-                valign="center",
-            )
-
-            label_x = row_rect.x + key_w + column_gap
-            label_right = row_rect.right - right_pad
             value_rect: pygame.Rect | None = None
-            if value:
-                available_after_key = max(
-                    0, row_rect.width - key_w - column_gap - right_pad
-                )
-                value_limit = min(
-                    rect.width // 3,
-                    max(0, available_after_key // 2),
-                )
-                value_w = min(
-                    value_limit,
-                    detail_font.size(value)[0] + value_pad,
-                )
-                value_rect = pygame.Rect(
-                    row_rect.right - right_pad - value_w,
+            key_rect = pygame.Rect(row_rect.x, row_rect.y, 0, row_h)
+            if authored_row:
+                assert row_safe is not None
+                if keys_in_rows:
+                    endcap_pad = min(px(8), max(3, row_h // 8))
+                    key_rect = pygame.Rect(
+                        row_rect.x + endcap_pad,
+                        row_rect.y,
+                        max(1, row_safe.x - row_rect.x - endcap_pad * 2),
+                        row_h,
+                    )
+                    label_rect = row_safe.inflate(
+                        -min(px(6), row_safe.width // 12) * 2, 0
+                    )
+                    if value:
+                        value_rect = pygame.Rect(
+                            row_safe.right + endcap_pad,
+                            row_rect.y,
+                            max(1, row_rect.right - row_safe.right - endcap_pad * 2),
+                            row_h,
+                        )
+                else:
+                    center_pad = min(px(10), max(6, row_safe.width // 30))
+                    center_rect = row_safe.inflate(-center_pad * 2, 0)
+                    label_right = center_rect.right
+                    if value:
+                        status_right_gap = min(
+                            px(18), max(8, center_rect.width // 24)
+                        )
+                        status_limit = max(1, center_rect.width // 2)
+                        desired_status_w = detail_font.size(value)[0] + value_pad
+                        value_w = min(
+                            status_limit,
+                            max(desired_status_w, center_rect.width // 4),
+                        )
+                        value_rect = pygame.Rect(
+                            center_rect.right - status_right_gap - value_w,
+                            row_rect.y,
+                            value_w,
+                            row_h,
+                        )
+                        label_right = value_rect.x - column_gap
+                    label_rect = pygame.Rect(
+                        center_rect.x,
+                        row_rect.y,
+                        max(0, label_right - center_rect.x),
+                        row_h,
+                    )
+            else:
+                if keys_in_rows:
+                    key_y_inset = min(
+                        px(7), max(3, (row_h - detail_font.get_height()) // 4)
+                    )
+                    key_rect = pygame.Rect(
+                        row_rect.x + row_inset,
+                        row_rect.y + key_y_inset,
+                        max(1, key_w - row_inset * 2),
+                        max(1, row_h - key_y_inset * 2),
+                    )
+                    if not modern_row:
+                        pygame.draw.rect(
+                            self.screen,
+                            self.IRON_DARK,
+                            key_rect,
+                            border_radius=px(4),
+                        )
+                        pygame.draw.rect(
+                            self.screen,
+                            self.IRON,
+                            key_rect.inflate(-px(2), -px(2)),
+                            border_radius=px(3),
+                        )
+                        pygame.draw.rect(
+                            self.screen,
+                            self.shade(self.accent(), -40),
+                            key_rect,
+                            px(1),
+                            border_radius=px(4),
+                        )
+                    label_x = row_rect.x + key_w + column_gap
+                    status_right_gap = 0
+                else:
+                    label_x = row_rect.x + row_inset + px(6)
+                    status_right_gap = px(10)
+                label_right = row_rect.right - right_pad - status_right_gap
+                if value:
+                    available_for_value = max(0, label_right - label_x)
+                    value_limit = min(
+                        rect.width // (3 if keys_in_rows else 2),
+                        max(0, available_for_value // 2),
+                    )
+                    value_w = min(
+                        value_limit,
+                        detail_font.size(value)[0] + value_pad,
+                    )
+                    value_rect = pygame.Rect(
+                        label_right - value_w,
+                        row_rect.y,
+                        value_w,
+                        row_h,
+                    )
+                    label_right = value_rect.x - column_gap
+                label_rect = pygame.Rect(
+                    label_x,
                     row_rect.y,
-                    value_w,
+                    max(0, label_right - label_x),
                     row_h,
                 )
-                label_right = value_rect.x - column_gap
-            label_rect = pygame.Rect(
-                label_x,
-                row_rect.y,
-                max(0, label_right - label_x),
-                row_h,
-            )
+
+            if keys_in_rows and key:
+                self.draw_text(
+                    key,
+                    detail_font,
+                    self.TITLE,
+                    key_rect.inflate(-key_text_pad, 0),
+                    align="center",
+                    valign="center",
+                )
             self.draw_text(label, body_font, self.TEXT, label_rect, valign="center")
             if value and value_rect is not None:
                 self.draw_text(
@@ -1219,5 +1525,11 @@ class MenuBaseMixin:
                     align="right",
                     valign="center",
                 )
+            rendered_key_rects.append(key_rect.copy())
+            rendered_value_rects.append(
+                value_rect.copy() if value_rect is not None else pygame.Rect(0, 0, 0, 0)
+            )
             y += row_h + gap
+        self.g._menu_row_key_rects = tuple(rendered_key_rects)
+        self.g._menu_row_value_rects = tuple(rendered_value_rects)
         return tuple(rendered_rows)

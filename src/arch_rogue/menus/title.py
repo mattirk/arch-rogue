@@ -43,43 +43,91 @@ class MenuTitleMixin:
             ("O", "Options", ""),
             ("A / C / H / ?", "About, credits, and quick help", ""),
         ]
-        self.draw_menu_rows(rows, content, selected_index=self.g.title_selection)
-        note_rect = pygame.Rect(
-            content.x, content.bottom - self.u(72), content.width, self.u(60)
+        modern = bool(getattr(self, "_last_menu_frame_used_asset", False))
+        shortcut_h = self.menu_shortcut_section_height() if modern else 0
+        shortcut_gap = min(self.u(7), 7) if modern else 0
+        shortcut_rect = pygame.Rect(
+            content.x,
+            content.bottom - shortcut_h,
+            content.width,
+            shortcut_h,
         )
+        note_bottom = shortcut_rect.y - shortcut_gap if modern else content.bottom
+        note_h = (
+            min(self.u(56), max(36, content.height // 5))
+            if modern
+            else min(self.u(60), max(38, content.height // 4))
+        )
+        note_rect = pygame.Rect(
+            content.x, note_bottom - note_h, content.width, note_h
+        )
+        rows_rect = (
+            pygame.Rect(
+                content.x,
+                content.y,
+                content.width,
+                max(1, note_rect.y - content.y - self.u(7)),
+            )
+            if modern
+            else content
+        )
+        rendered_rows = self.draw_menu_rows(
+            rows,
+            rows_rect,
+            selected_index=self.g.title_selection,
+            keys_in_rows=not modern,
+        )
+        self.g._title_row_rects = rendered_rows
         self._draw_parchment_note(
             note_rect,
             "Choose an archetype, follow a seeded dark-fantasy storyline, meet story guests, shape future floors with choices, and break the gate tyrant's seal.",
+            modern=modern,
         )
+        if modern:
+            selected_index = max(0, min(self.g.title_selection, len(rows) - 1))
+            shortcut_labels = (
+                "New descent",
+                "Resume saved run",
+                "Options",
+                "About & help",
+            )
+            self.draw_menu_shortcut_section(
+                shortcut_rect,
+                rows[selected_index][0],
+                shortcut_labels[selected_index],
+            )
         self.draw_footer(
             panel,
             "Arrows select · Enter confirms · Esc asks before quitting · Backspace returns from submenus",
         )
 
-    def _draw_parchment_note(self, rect: pygame.Rect, text: str) -> None:
-        """A small aged-parchment plaque for flavor text."""
+    def _draw_parchment_note(
+        self, rect: pygame.Rect, text: str, *, modern: bool = False
+    ) -> None:
+        """Draw flavor copy as a plaque in legacy mode or a quiet modern wash."""
         plaque = pygame.Surface(rect.size, pygame.SRCALPHA)
         pygame.draw.rect(
             plaque,
-            (208, 188, 142, 38),
+            (208, 188, 142, 24 if modern else 38),
             plaque.get_rect(),
             border_radius=self.u(6),
         )
-        pygame.draw.rect(
-            plaque,
-            (180, 152, 96, 90),
-            plaque.get_rect(),
-            max(1, self.u(1)),
-            border_radius=self.u(6),
-        )
-        # Subtle inner shadow line at the top.
-        pygame.draw.line(
-            plaque,
-            (90, 70, 40, 60),
-            (self.u(6), self.u(2)),
-            (rect.width - self.u(6), self.u(2)),
-            max(1, self.u(1)),
-        )
+        if not modern:
+            pygame.draw.rect(
+                plaque,
+                (180, 152, 96, 90),
+                plaque.get_rect(),
+                max(1, self.u(1)),
+                border_radius=self.u(6),
+            )
+            # Subtle inner shadow line at the top.
+            pygame.draw.line(
+                plaque,
+                (90, 70, 40, 60),
+                (self.u(6), self.u(2)),
+                (rect.width - self.u(6), self.u(2)),
+                max(1, self.u(1)),
+            )
         self.screen.blit(plaque, rect)
         self.draw_wrapped_text(
             text,
@@ -95,16 +143,45 @@ class MenuTitleMixin:
             ("Y / Enter", "Exit game", "Save run" if from_run else "Close"),
             ("N / Esc / Backspace", "Cancel and return", "Safe"),
         ]
-        self.draw_menu_rows(rows, content)
-        note_rect = pygame.Rect(
-            content.x, content.bottom - self.u(92), content.width, self.u(78)
+        modern = bool(getattr(self, "_last_menu_frame_used_asset", False))
+        shortcut_h = self.menu_shortcut_section_height() if modern else 0
+        shortcut_gap = min(self.u(7), 7) if modern else 0
+        shortcut_rect = pygame.Rect(
+            content.x,
+            content.bottom - shortcut_h,
+            content.width,
+            shortcut_h,
         )
+        note_bottom = shortcut_rect.y - shortcut_gap if modern else content.bottom
+        if modern:
+            note_h = min(self.u(78), max(48, content.height // 3))
+            note_rect = pygame.Rect(
+                content.x, note_bottom - note_h, content.width, note_h
+            )
+            rows_rect = pygame.Rect(
+                content.x,
+                content.y,
+                content.width,
+                max(1, note_rect.y - content.y - self.u(7)),
+            )
+        else:
+            note_rect = pygame.Rect(
+                content.x, content.bottom - self.u(92), content.width, self.u(78)
+            )
+            rows_rect = content
+        self.draw_menu_rows(rows, rows_rect, keys_in_rows=not modern)
         note = (
             "Your current run will be saved before the game closes. Choose Cancel to keep playing."
             if from_run
             else "No run is active. Choose Exit to close the game, or Cancel to return to the menu."
         )
         self.draw_wrapped_text(note, self.g.small_font, self.MUTED, note_rect)
+        if modern:
+            self.draw_menu_shortcut_section(
+                shortcut_rect,
+                "Y / Enter",
+                "Exit · N / Esc / Backspace cancels",
+            )
         self.draw_footer(panel, "Y confirms · N cancels")
 
     def draw_about_screen(self) -> None:
@@ -139,6 +216,10 @@ class MenuTitleMixin:
         self.draw_footer(panel, "Enter or Backspace returns to title")
 
     def draw_help_overlay(self) -> None:
+        with self.g.fitted_ui_layout((960, 540)):
+            self._draw_help_overlay_fitted()
+
+    def _draw_help_overlay_fitted(self) -> None:
         width, height = self.screen.get_size()
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 118))
@@ -147,12 +228,27 @@ class MenuTitleMixin:
         box_w = min(width - margin * 2, self.u(760))
         box_h = min(height - margin * 2, self.u(460))
         box = pygame.Rect((width - box_w) // 2, (height - box_h) // 2, box_w, box_h)
-        self.panel(box, alpha=238)
-        pad = max(self.u(22), 26)
+        library = getattr(self.g, "ui_assets", None)
+        if (
+            self.asset_ui_active()
+            and library is not None
+            and library.source("menu.panel") is not None
+        ):
+            margin = max(10, min(self.u(16), width // 28, height // 22))
+            box = pygame.Rect(margin, margin, width - margin * 2, height - margin * 2)
+        used_asset = self.panel(box, alpha=238)
+        safe = self.ui_content_rect("menu.panel", box) if used_asset else None
+        if safe is not None:
+            inner = safe.inflate(-self.u(6) * 2, -self.u(4) * 2)
+        else:
+            pad = max(self.u(22), 26)
+            inner = box.inflate(-pad * 2, -pad * 2)
+        self.g._help_panel_rect = box.copy()
+        self.g._help_content_rect = inner.copy()
         title_rect = pygame.Rect(
-            box.x + pad,
-            box.y + pad,
-            box.width - pad * 2,
+            inner.x,
+            inner.y,
+            inner.width,
             self.g.font.get_height(),
         )
         self.draw_text("Run Guide", self.g.font, self.accent(), title_rect)
@@ -170,30 +266,32 @@ class MenuTitleMixin:
             "Hazards: traps are single-use but dangerous; shrines and secrets can swing a run.",
             "View: Ctrl + scroll wheel zooms the viewport in/out.",
         ]
-        y = title_rect.bottom + self.u(18)
+        body_font = self.g.tiny_font if inner.height < 390 else self.g.small_font
+        footer_h = self.g.small_font.get_height() + self.u(4)
+        y = title_rect.bottom + self.u(10)
         for line in lines:
             y = self.draw_wrapped_text(
                 line,
-                self.g.small_font,
+                body_font,
                 self.TEXT,
                 pygame.Rect(
-                    box.x + pad,
+                    inner.x,
                     y,
-                    box.width - pad * 2,
-                    box.bottom - y - self.u(26),
+                    inner.width,
+                    max(1, inner.bottom - footer_h - y),
                 ),
-                max(self.g.small_font.get_height() + self.u(2), self.u(18)),
-            ) + self.u(8)
-            if y >= box.bottom:
+                max(body_font.get_height() + self.u(1), self.u(15)),
+            ) + self.u(4)
+            if y >= inner.bottom - footer_h:
                 break
         self.draw_text(
             "H / ? closes",
             self.g.small_font,
             self.MUTED,
             pygame.Rect(
-                box.x + pad,
-                box.bottom - self.g.small_font.get_height() - self.u(12),
-                box.width - pad * 2,
+                inner.x,
+                inner.bottom - self.g.small_font.get_height(),
+                inner.width,
                 self.g.small_font.get_height(),
             ),
             align="right",

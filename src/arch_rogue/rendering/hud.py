@@ -282,6 +282,12 @@ class RenderingHudMixin:
             gap = max(3, self.ui(3))
             icon_size = max(24, (inner.width - gap * (len(slots) - 1)) // len(slots))
         total_w = icon_size * len(slots) + gap * (len(slots) - 1)
+        dock_w = min(rect.width, total_w + max(self.ui(38), 38))
+        dock_rect = pygame.Rect(0, 0, dock_w, rect.height)
+        dock_rect.center = rect.center
+        dock = self.ui_asset_surface("hud.dock", dock_rect.size)
+        if dock is not None:
+            self.screen.blit(dock, dock_rect)
         x = inner.centerx - total_w // 2
         y = inner.centery - icon_size // 2
         for slot in slots:
@@ -403,62 +409,79 @@ class RenderingHudMixin:
         real_screen = self.screen
         self.screen = body
         try:
-            # Recessed iron plate body with a vertical gradient.
-            top_fill = self.shade(color, -118 if ready else -140)
-            bot_fill = self.shade(color, -150 if ready else -168)
-            bands = max(4, min(12, r.height))
-            for i in range(bands):
-                t = i / max(1, bands - 1)
-                c = (
-                    int(top_fill[0] * (1 - t) + bot_fill[0] * t),
-                    int(top_fill[1] * (1 - t) + bot_fill[1] * t),
-                    int(top_fill[2] * (1 - t) + bot_fill[2] * t),
-                )
-                fy = r.y + int(i * r.height / bands)
-                fy2 = r.y + int((i + 1) * r.height / bands)
+            # Recessed iron plate body with a vertical gradient. Modern mode
+            # replaces only the static chrome; glyphs and state overlays remain live.
+            action_slot = self.ui_asset_surface("hud.action_slot", size)
+            modern_slot = action_slot is not None
+            if modern_slot:
+                assert action_slot is not None
+                self.screen.blit(action_slot, (0, 0))
+            else:
+                top_fill = self.shade(color, -118 if ready else -140)
+                bot_fill = self.shade(color, -150 if ready else -168)
+                bands = max(4, min(12, r.height))
+                for i in range(bands):
+                    t = i / max(1, bands - 1)
+                    c = (
+                        int(top_fill[0] * (1 - t) + bot_fill[0] * t),
+                        int(top_fill[1] * (1 - t) + bot_fill[1] * t),
+                        int(top_fill[2] * (1 - t) + bot_fill[2] * t),
+                    )
+                    fy = r.y + int(i * r.height / bands)
+                    fy2 = r.y + int((i + 1) * r.height / bands)
+                    pygame.draw.rect(
+                        self.screen,
+                        c,
+                        pygame.Rect(r.x, fy, r.width, fy2 - fy + 1),
+                        border_top_left_radius=self.ui(8) if i == 0 else 0,
+                        border_top_right_radius=self.ui(8) if i == 0 else 0,
+                        border_bottom_left_radius=self.ui(8) if i == bands - 1 else 0,
+                        border_bottom_right_radius=self.ui(8) if i == bands - 1 else 0,
+                    )
                 pygame.draw.rect(
                     self.screen,
-                    c,
-                    pygame.Rect(r.x, fy, r.width, fy2 - fy + 1),
-                    border_top_left_radius=self.ui(8) if i == 0 else 0,
-                    border_top_right_radius=self.ui(8) if i == 0 else 0,
-                    border_bottom_left_radius=self.ui(8) if i == bands - 1 else 0,
-                    border_bottom_right_radius=self.ui(8) if i == bands - 1 else 0,
+                    self.HUD_STONE_SHADOW,
+                    r,
+                    max(1, self.ui(2)),
+                    border_radius=self.ui(8),
                 )
-            # Inner bevel — dark rim then light rim.
-            pygame.draw.rect(
-                self.screen,
-                self.HUD_STONE_SHADOW,
-                r,
-                max(1, self.ui(2)),
-                border_radius=self.ui(8),
-            )
-            pygame.draw.rect(
-                self.screen,
-                self.HUD_STONE_LIGHT,
-                r.inflate(-self.ui(2), -self.ui(2)),
-                max(1, self.ui(1)),
-                border_radius=self.ui(7),
-            )
-            # Gold/accent border.
-            pygame.draw.rect(
-                self.screen, border, r, max(1, self.ui(1)), border_radius=self.ui(8)
-            )
-            # Top specular shine.
-            shine = pygame.Rect(
-                r.x + self.ui(2),
-                r.y + self.ui(2),
-                r.width - self.ui(4),
-                r.height // 3,
-            )
-            shine_surface = pygame.Surface(shine.size, pygame.SRCALPHA)
-            pygame.draw.rect(
-                shine_surface,
-                (255, 255, 255, 22 if ready else 11),
-                shine_surface.get_rect(),
-                border_radius=self.ui(7),
-            )
-            self.screen.blit(shine_surface, shine)
+                pygame.draw.rect(
+                    self.screen,
+                    self.HUD_STONE_LIGHT,
+                    r.inflate(-self.ui(2), -self.ui(2)),
+                    max(1, self.ui(1)),
+                    border_radius=self.ui(7),
+                )
+                # Procedural fallback keeps its original accent rim and shine.
+                pygame.draw.rect(
+                    self.screen,
+                    border,
+                    r,
+                    max(1, self.ui(1)),
+                    border_radius=self.ui(8),
+                )
+                shine = pygame.Rect(
+                    r.x + self.ui(2),
+                    r.y + self.ui(2),
+                    r.width - self.ui(4),
+                    r.height // 3,
+                )
+                shine_surface = pygame.Surface(shine.size, pygame.SRCALPHA)
+                pygame.draw.rect(
+                    shine_surface,
+                    (255, 255, 255, 22 if ready else 11),
+                    shine_surface.get_rect(),
+                    border_radius=self.ui(7),
+                )
+                self.screen.blit(shine_surface, shine)
+            if modern_slot and ready:
+                # A small semantic readiness lamp replaces the legacy full rim.
+                pygame.draw.circle(
+                    self.screen,
+                    self.shade(color, 36),
+                    (r.right - self.ui(7), r.y + self.ui(7)),
+                    max(2, self.ui(2)),
+                )
 
             glyph_rect = r.inflate(-self.ui(13), -self.ui(14))
             glyph_rect.y += self.ui(3)
@@ -480,7 +503,6 @@ class RenderingHudMixin:
                 align="center",
             )
 
-            # Hotkey badge — iron plate with gold trim.
             key_w = min(
                 r.width - self.ui(4),
                 max(self.ui(16), self.tiny_font.size(hotkey)[0] + self.ui(6)),
@@ -488,22 +510,27 @@ class RenderingHudMixin:
             key_rect = pygame.Rect(
                 r.x + self.ui(3), r.y + self.ui(3), key_w, self.ui(14)
             )
-            pygame.draw.rect(
-                self.screen, self.HUD_STONE_SHADOW, key_rect, border_radius=self.ui(4)
-            )
-            pygame.draw.rect(
-                self.screen,
-                self.HUD_IRON,
-                key_rect.inflate(-self.ui(1), -self.ui(1)),
-                border_radius=self.ui(3),
-            )
-            pygame.draw.rect(
-                self.screen,
-                border,
-                key_rect,
-                max(1, self.ui(1)),
-                border_radius=self.ui(4),
-            )
+            if not modern_slot:
+                # The authored slot already supplies the plate and trim.
+                pygame.draw.rect(
+                    self.screen,
+                    self.HUD_STONE_SHADOW,
+                    key_rect,
+                    border_radius=self.ui(4),
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    self.HUD_IRON,
+                    key_rect.inflate(-self.ui(1), -self.ui(1)),
+                    border_radius=self.ui(3),
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    border,
+                    key_rect,
+                    max(1, self.ui(1)),
+                    border_radius=self.ui(4),
+                )
             self.draw_ui_text(
                 self.screen,
                 hotkey,
@@ -676,77 +703,124 @@ class RenderingHudMixin:
             )
 
     def draw_ui(self) -> None:
+        with self.fitted_ui_layout((960, 540)):
+            self._draw_ui_fitted()
+
+    def _draw_ui_fitted(self) -> None:
         width, height = self.screen.get_size()
         reserved_h = self.hud_panel_height()
         accent = self.theme.accent
+        modern = self.asset_ui_active()
         outer = max(self.ui(14), 18)
         gap = max(self.ui(8), 12)
-        action_gap = max(self.ui(8), 8)
-        reserved_inner_h = max(1, reserved_h - self.ui(24))
-        action_h = max(self.ui(54), min(self.ui(70), int(reserved_inner_h * 0.46)))
+        if modern:
+            action_gap = max(self.ui(6), 8)
+            action_h = max(
+                self.ui(52),
+                min(self.ui(56), int(reserved_h * 0.38)),
+            )
+        else:
+            action_gap = max(self.ui(8), 8)
+            reserved_inner_h = max(1, reserved_h - self.ui(24))
+            action_h = max(
+                self.ui(54),
+                min(self.ui(70), int(reserved_inner_h * 0.46)),
+            )
         panel_h = max(1, reserved_h - action_h - action_gap)
         panel = pygame.Rect(0, height - panel_h, width, panel_h)
 
-        # Stone dock — a heavy recessed slab with a gold top edge and iron studs.
-        dock = pygame.Surface(panel.size, pygame.SRCALPHA)
-        # Vertical gradient body for cold-stone depth.
-        top = self.mix(self.HUD_PANEL, accent, 0.05)
-        bottom = self.HUD_STONE_SHADOW
-        bands = max(8, min(32, panel_h))
-        for i in range(bands):
-            t = i / max(1, bands - 1)
-            color = (
-                int(top[0] * (1 - t) + bottom[0] * t),
-                int(top[1] * (1 - t) + bottom[1] * t),
-                int(top[2] * (1 - t) + bottom[2] * t),
-                240,
+        panel_asset = self.ui_asset_surface("hud.panel", panel.size)
+        panel_safe: pygame.Rect | None = None
+        if panel_asset is not None:
+            self.screen.blit(panel_asset, panel)
+            panel_safe = self.ui_assets.content_rect("hud.panel", panel)
+        else:
+            # Legacy dock — a heavy recessed slab with a gold top edge and studs.
+            dock = pygame.Surface(panel.size, pygame.SRCALPHA)
+            top = self.mix(self.HUD_PANEL, accent, 0.05)
+            bottom = self.HUD_STONE_SHADOW
+            bands = max(8, min(32, panel_h))
+            for i in range(bands):
+                t = i / max(1, bands - 1)
+                color = (
+                    int(top[0] * (1 - t) + bottom[0] * t),
+                    int(top[1] * (1 - t) + bottom[1] * t),
+                    int(top[2] * (1 - t) + bottom[2] * t),
+                    240,
+                )
+                y = int(i * panel_h / bands)
+                y2 = int((i + 1) * panel_h / bands)
+                pygame.draw.rect(dock, color, pygame.Rect(0, y, width, y2 - y + 1))
+            pygame.draw.line(dock, (0, 0, 0, 220), (0, 0), (width, 0), self.ui(2))
+            pygame.draw.line(
+                dock,
+                (*self.shade(accent, -18), 210),
+                (0, self.ui(1)),
+                (width, self.ui(1)),
+                self.ui(1),
             )
-            y = int(i * panel_h / bands)
-            y2 = int((i + 1) * panel_h / bands)
-            pygame.draw.rect(dock, color, pygame.Rect(0, y, width, y2 - y + 1))
-        # Top edge: dark shadow line then gold accent line then a faint highlight.
-        pygame.draw.line(dock, (0, 0, 0, 220), (0, 0), (width, 0), self.ui(2))
-        pygame.draw.line(
-            dock,
-            (*self.shade(accent, -18), 210),
-            (0, self.ui(1)),
-            (width, self.ui(1)),
-            self.ui(1),
-        )
-        pygame.draw.line(
-            dock,
-            (*self.HUD_GOLD_BRIGHT, 40),
-            (self.ui(18), self.ui(3)),
-            (width - self.ui(18), self.ui(3)),
-            self.ui(1),
-        )
-        # Iron studs along the top edge.
-        stud_r = max(2, self.ui(3))
-        stud_spacing = max(self.ui(80), 80)
-        for sx in range(self.ui(40), width - self.ui(20), stud_spacing):
-            cy = self.ui(6)
-            pygame.draw.circle(dock, self.HUD_IRON_DARK, (sx, cy), stud_r + 1)
-            pygame.draw.circle(dock, self.HUD_IRON, (sx, cy), stud_r)
-            pygame.draw.circle(
-                dock, self.HUD_IRON_LIGHT, (sx - 1, cy - 1), max(1, stud_r - 1)
+            pygame.draw.line(
+                dock,
+                (*self.HUD_GOLD_BRIGHT, 40),
+                (self.ui(18), self.ui(3)),
+                (width - self.ui(18), self.ui(3)),
+                self.ui(1),
             )
-        self.screen.blit(dock, panel)
+            stud_r = max(2, self.ui(3))
+            stud_spacing = max(self.ui(80), 80)
+            for sx in range(self.ui(40), width - self.ui(20), stud_spacing):
+                cy = self.ui(6)
+                pygame.draw.circle(dock, self.HUD_IRON_DARK, (sx, cy), stud_r + 1)
+                pygame.draw.circle(dock, self.HUD_IRON, (sx, cy), stud_r)
+                pygame.draw.circle(
+                    dock,
+                    self.HUD_IRON_LIGHT,
+                    (sx - 1, cy - 1),
+                    max(1, stud_r - 1),
+                )
+            self.screen.blit(dock, panel)
 
-        inner = pygame.Rect(
-            outer,
-            panel.y + self.ui(12),
-            max(1, width - outer * 2),
-            max(1, panel_h - self.ui(24)),
+        panel_pad_y = self.ui(1 if modern else 2)
+        inner = (
+            panel_safe.inflate(-self.ui(4) * 2, -panel_pad_y * 2)
+            if panel_safe is not None
+            else pygame.Rect(
+                outer,
+                panel.y + self.ui(12),
+                max(1, width - outer * 2),
+                max(1, panel_h - self.ui(24)),
+            )
         )
         top_area = pygame.Rect(inner.x, inner.y, inner.width, inner.height)
         action_bar = pygame.Rect(
             inner.x, panel.y - action_gap - action_h, inner.width, action_h
         )
-        left_w = max(170, min(max(self.ui(120), 190), int(top_area.width * 0.29)))
-        center_w = max(190, min(max(self.ui(150), 230), int(top_area.width * 0.33)))
-        if top_area.width - left_w - center_w - gap * 2 < 170:
-            left_w = max(150, int(top_area.width * 0.30))
-            center_w = max(170, int(top_area.width * 0.32))
+        if modern:
+            left_w = min(
+                max(self.ui(240), int(top_area.width * 0.36)),
+                self.ui(322),
+            )
+            center_w = min(
+                max(self.ui(180), int(top_area.width * 0.27)),
+                self.ui(242),
+            )
+            minimum_right_w = max(self.ui(160), 160)
+            if top_area.width - left_w - center_w - gap * 2 < minimum_right_w:
+                available_w = max(1, top_area.width - gap * 2)
+                left_w = max(self.ui(190), int(available_w * 0.39))
+                center_w = max(self.ui(150), int(available_w * 0.29))
+        else:
+            left_w = max(
+                170,
+                min(max(self.ui(120), 190), int(top_area.width * 0.29)),
+            )
+            center_w = max(
+                190,
+                min(max(self.ui(150), 230), int(top_area.width * 0.33)),
+            )
+            if top_area.width - left_w - center_w - gap * 2 < 170:
+                left_w = max(150, int(top_area.width * 0.30))
+                center_w = max(170, int(top_area.width * 0.32))
         right_w = max(1, top_area.width - left_w - center_w - gap * 2)
         resources = pygame.Rect(top_area.x, top_area.y, left_w, top_area.height)
         character = pygame.Rect(
@@ -770,44 +844,76 @@ class RenderingHudMixin:
             )
 
         pad = max(self.ui(8), 10)
-        bar_gap = max(self.ui(4), 6)
+        resources_content = self.ui_asset_content_rect("hud.panel", resources)
+        character_content = self.ui_asset_content_rect("hud.panel", character)
+        mission_content = self.ui_asset_content_rect("hud.panel", mission)
+        card_pad_y = 0 if modern else self.ui(2)
+        resources_inner = (
+            resources_content.inflate(-self.ui(3) * 2, -card_pad_y * 2)
+            if resources_content is not None
+            else resources.inflate(-pad * 2, -pad * 2)
+        )
+        character_inner = (
+            character_content.inflate(-self.ui(3) * 2, -card_pad_y * 2)
+            if character_content is not None
+            else character.inflate(-pad * 2, -pad * 2)
+        )
+        mission_inner = (
+            mission_content.inflate(-self.ui(3) * 2, -card_pad_y * 2)
+            if mission_content is not None
+            else mission.inflate(-pad * 2, -pad * 2)
+        )
+        self._hud_layout = {
+            "panel": panel.copy(),
+            "panel_content": inner.copy(),
+            "action_bar": action_bar.copy(),
+            "resources": resources.copy(),
+            "resources_content": resources_inner.copy(),
+            "character": character.copy(),
+            "character_content": character_inner.copy(),
+            "mission": mission.copy(),
+            "mission_content": mission_inner.copy(),
+        }
+        bar_gap = max(self.ui(3), 3) if modern else max(self.ui(4), 6)
+        maximum_bar_h = self.ui(16 if modern else 17)
         bar_h = max(
-            self.ui(10),
-            min(self.ui(17), (resources.height - pad * 2 - bar_gap * 2) // 3),
+            self.ui(8 if modern else 10),
+            min(maximum_bar_h, (resources_inner.height - bar_gap * 2) // 3),
         )
         bars_h = bar_h * 3 + bar_gap * 2
-        bar_y = resources.y + (resources.height - bars_h) // 2
-        bar_w = max(1, resources.width - pad * 2)
-        self.draw_bar(
-            resources.x + pad,
-            bar_y,
-            bar_w,
-            bar_h,
-            self.player.hp,
-            self.player.max_hp,
-            (168, 38, 38),
-            "HP",
+        bar_y = resources_inner.y + (resources_inner.height - bars_h) // 2
+        bar_w = max(1, resources_inner.width)
+        bar_rects = tuple(
+            pygame.Rect(
+                resources_inner.x,
+                bar_y + index * (bar_h + bar_gap),
+                bar_w,
+                bar_h,
+            )
+            for index in range(3)
         )
-        self.draw_bar(
-            resources.x + pad,
-            bar_y + bar_h + bar_gap,
-            bar_w,
-            bar_h,
-            self.player.mana,
-            self.player.max_mana,
-            (48, 92, 188),
-            "Mana",
+        self._hud_resource_bar_rects = tuple(rect.copy() for rect in bar_rects)
+        bar_values = (
+            (self.player.hp, self.player.max_hp, (168, 38, 38), "HP"),
+            (self.player.mana, self.player.max_mana, (48, 92, 188), "Mana"),
+            (
+                self.player.stamina,
+                self.player.max_stamina,
+                (196, 156, 60),
+                "Stamina",
+            ),
         )
-        self.draw_bar(
-            resources.x + pad,
-            bar_y + (bar_h + bar_gap) * 2,
-            bar_w,
-            bar_h,
-            self.player.stamina,
-            self.player.max_stamina,
-            (196, 156, 60),
-            "Stamina",
-        )
+        for rect, (value, maximum, color, label) in zip(bar_rects, bar_values):
+            self.draw_bar(
+                rect.x,
+                rect.y,
+                rect.width,
+                rect.height,
+                value,
+                maximum,
+                color,
+                label,
+            )
 
         weapon = (
             self.player.equipment["weapon"].name
@@ -819,26 +925,32 @@ class RenderingHudMixin:
             if self.player.equipment["armor"]
             else "Cloth"
         )
-        line_h = max(self.small_font.get_height() + self.ui(3), self.ui(18))
-        text_rect = character.inflate(-pad * 2, -pad * 2)
+        title_font = self.small_font if modern else self.font
+        body_font = self.tiny_font if modern else self.small_font
+        line_h = (
+            max(body_font.get_height() + self.ui(2), self.ui(13))
+            if modern
+            else max(body_font.get_height() + self.ui(3), self.ui(18))
+        )
+        text_rect = character_inner
         self.draw_ui_text(
             self.screen,
             self.player.class_name,
-            self.font,
+            title_font,
             self.HUD_GOLD_BRIGHT,
             pygame.Rect(
-                text_rect.x, text_rect.y, text_rect.width, self.font.get_height()
+                text_rect.x, text_rect.y, text_rect.width, title_font.get_height()
             ),
         )
         # Thin divider under the class name.
         self.draw_hud_divider(
             self.screen,
             text_rect.x,
-            text_rect.y + self.font.get_height() + self.ui(2),
+            text_rect.y + title_font.get_height() + self.ui(2),
             text_rect.right,
             self.HUD_GOLD,
         )
-        char_y = text_rect.y + self.font.get_height() + self.ui(8)
+        char_y = text_rect.y + title_font.get_height() + self.ui(5 if modern else 8)
         potion_count = sum(1 for item in self.player.inventory if item.slot == "potion")
         mana_potion_count = sum(
             1 for item in self.player.inventory if item.slot == "mana_potion"
@@ -855,7 +967,7 @@ class RenderingHudMixin:
             self.draw_ui_text(
                 self.screen,
                 line,
-                self.small_font,
+                body_font,
                 self.HUD_BONE,
                 pygame.Rect(text_rect.x, char_y, text_rect.width, line_h),
             )
@@ -872,31 +984,32 @@ class RenderingHudMixin:
         if hint:
             _key, title, detail, objective_color = hint
             objective = title
-        mission_inner = mission.inflate(-pad * 2, -pad * 2)
         self.draw_ui_text(
             self.screen,
             objective,
-            self.font,
+            title_font,
             objective_color,
             pygame.Rect(
                 mission_inner.x,
                 mission_inner.y,
                 mission_inner.width,
-                self.font.get_height(),
+                title_font.get_height(),
             ),
             align="right",
         )
-        mission_y = mission_inner.y + self.font.get_height() + self.ui(4)
+        mission_y = mission_inner.y + title_font.get_height() + self.ui(
+            3 if modern else 4
+        )
         if detail:
             for wrapped in self.wrap_ui_text(
-                detail, self.small_font, mission_inner.width
+                detail, body_font, mission_inner.width
             )[:2]:
                 if mission_y + line_h > mission_inner.bottom:
                     break
                 self.draw_ui_text(
                     self.screen,
                     wrapped,
-                    self.small_font,
+                    body_font,
                     self.HUD_PARCHMENT,
                     pygame.Rect(
                         mission_inner.x, mission_y, mission_inner.width, line_h
@@ -948,6 +1061,7 @@ class RenderingHudMixin:
         self.draw_boss_bar()
 
     def draw_interaction_prompt(self, hint: tuple[str, str, str, Color] | None) -> None:
+        self._interaction_prompt_rect: pygame.Rect | None = None
         if not hint:
             return
         key, title, detail, color = hint
@@ -962,6 +1076,7 @@ class RenderingHudMixin:
         )
         if rect.y < self.ui(108):
             rect.y = self.ui(108)
+        self._interaction_prompt_rect = rect.copy()
         surface = pygame.Surface(rect.size, pygame.SRCALPHA)
         self.draw_ornate_hud_panel(
             surface,
@@ -970,11 +1085,17 @@ class RenderingHudMixin:
             (*color, 200),
             radius=self.ui(9),
         )
+        content = self.ui_asset_content_rect("hud.panel", surface.get_rect())
+        content = (
+            content.inflate(-self.ui(3) * 2, -self.ui(1) * 2)
+            if content is not None
+            else surface.get_rect().inflate(-self.ui(10) * 2, -self.ui(10) * 2)
+        )
         key_rect = pygame.Rect(
-            self.ui(10),
-            self.ui(10),
-            self.ui(44),
-            prompt_h - self.ui(20),
+            content.x,
+            content.y,
+            min(self.ui(44), max(1, content.width // 5)),
+            content.height,
         )
         # Iron key plate with gold trim.
         pygame.draw.rect(
@@ -993,15 +1114,15 @@ class RenderingHudMixin:
             surface, key, self.font, self.HUD_GOLD_BRIGHT, key_rect, "center", "center"
         )
         text_x = key_rect.right + self.ui(12)
-        text_w = max(1, prompt_w - text_x - self.ui(12))
+        text_w = max(1, content.right - text_x)
         self.draw_ui_text(
             surface,
             title,
             self.small_font,
             self.HUD_PARCHMENT,
-            pygame.Rect(text_x, self.ui(8), text_w, self.small_font.get_height()),
+            pygame.Rect(text_x, content.y, text_w, self.small_font.get_height()),
         )
-        detail_y = self.ui(10) + self.small_font.get_height()
+        detail_y = content.y + self.small_font.get_height() + self.ui(2)
         for wrapped in self.wrap_ui_text(detail, self.small_font, text_w)[:1]:
             self.draw_ui_text(
                 surface,
@@ -1056,28 +1177,38 @@ class RenderingHudMixin:
             radius=self.ui(9),
             studs=True,
         )
+        content = self.ui_asset_content_rect("hud.panel", surface.get_rect())
+        content = (
+            content.inflate(-self.ui(3) * 2, -self.ui(1) * 2)
+            if content is not None
+            else pygame.Rect(pad, pad, header_w - pad * 2, header_h - pad * 2)
+        )
+        title_rect = pygame.Rect(
+            content.x, content.y, content.width, self.font.get_height()
+        )
         self.draw_ui_text(
             surface,
             title,
             self.font,
             self.HUD_GOLD_BRIGHT,
-            pygame.Rect(pad, pad, header_w - pad * 2, self.font.get_height()),
+            title_rect,
         )
         # Ornamental divider under the title.
+        divider_y = title_rect.bottom + self.ui(3)
         self.draw_hud_divider(
             surface,
-            pad,
-            pad + self.font.get_height() + self.ui(3),
-            header_w - pad,
+            content.x,
+            divider_y,
+            content.right,
             self.HUD_GOLD,
         )
-        y = pad + self.font.get_height() + self.ui(7)
+        y = divider_y + self.ui(4)
         self.draw_ui_text(
             surface,
             modifier,
             self.small_font,
             self.HUD_BONE,
-            pygame.Rect(pad, y, header_w - pad * 2, line_h),
+            pygame.Rect(content.x, y, content.width, line_h),
         )
         y += line_h
         self.draw_ui_text(
@@ -1085,7 +1216,7 @@ class RenderingHudMixin:
             story,
             self.small_font,
             story_color,
-            pygame.Rect(pad, y, header_w - pad * 2, line_h),
+            pygame.Rect(content.x, y, content.width, line_h),
         )
         self.screen.blit(surface, rect)
 
@@ -1277,6 +1408,53 @@ class RenderingHudMixin:
     ) -> None:
         radius = max(2, min(self.ui(5), h // 2))
         rect = pygame.Rect(x, y, w, h)
+        bar_asset = self.ui_asset_surface("hud.bar", rect.size)
+        if bar_asset is not None:
+            self.screen.blit(bar_asset, rect)
+            trough = self.ui_asset_content_rect("hud.bar", rect)
+            if trough is None:
+                inset_x = max(2, min(self.ui(5), max(2, w // 12)))
+                inset_y = max(1, min(self.ui(3), max(1, h // 5)))
+                trough = rect.inflate(-inset_x * 2, -inset_y * 2)
+            ratio = 0.0 if max_value <= 0 else max(0.0, min(1.0, value / max_value))
+            fill = int(trough.width * ratio)
+            if fill > 0 and trough.height > 0:
+                fill_rect = pygame.Rect(trough.x, trough.y, fill, trough.height)
+                top_c = self.shade(color, 36)
+                bot_c = self.shade(color, -28)
+                bands = max(2, min(10, fill_rect.height))
+                for i in range(bands):
+                    t = i / max(1, bands - 1)
+                    band_color = (
+                        int(top_c[0] * (1 - t) + bot_c[0] * t),
+                        int(top_c[1] * (1 - t) + bot_c[1] * t),
+                        int(top_c[2] * (1 - t) + bot_c[2] * t),
+                    )
+                    fy = fill_rect.y + int(i * fill_rect.height / bands)
+                    fy2 = fill_rect.y + int((i + 1) * fill_rect.height / bands)
+                    pygame.draw.rect(
+                        self.screen,
+                        band_color,
+                        pygame.Rect(fill_rect.x, fy, fill_rect.width, fy2 - fy + 1),
+                    )
+                shine = pygame.Surface(
+                    (fill_rect.width, max(1, fill_rect.height // 4)),
+                    pygame.SRCALPHA,
+                )
+                shine.fill((255, 255, 255, 42))
+                self.screen.blit(shine, fill_rect.topleft)
+            bar_font = (
+                self.small_font
+                if h >= self.small_font.get_height() + self.ui(4)
+                else self.tiny_font
+            )
+            label_text = f"{label} {int(value)}/{int(max_value)}"
+            shadow = bar_font.render(label_text, True, (4, 4, 7))
+            text = bar_font.render(label_text, True, self.HUD_PARCHMENT)
+            text_rect = text.get_rect(center=rect.center)
+            self.screen.blit(shadow, text_rect.move(self.ui(1), self.ui(1)))
+            self.screen.blit(text, text_rect)
+            return
         # Recessed stone trough — dark interior with a light top edge.
         pygame.draw.rect(self.screen, self.HUD_STONE_SHADOW, rect, border_radius=radius)
         trough = rect.inflate(-self.ui(2), -self.ui(2))
@@ -1345,6 +1523,10 @@ class RenderingHudMixin:
         self.menus.draw_inventory()
 
     def draw_shop_overlay(self) -> None:
+        with self.fitted_ui_layout((960, 540)):
+            self._draw_shop_overlay_fitted()
+
+    def _draw_shop_overlay_fitted(self) -> None:
         shopkeeper = self.active_shopkeeper
         if shopkeeper is None:
             return
@@ -1366,16 +1548,22 @@ class RenderingHudMixin:
             studs=True,
         )
 
+        safe = self.ui_asset_content_rect("hud.panel", rect)
+        modern = safe is not None
+        if safe is not None:
+            safe = safe.inflate(-self.ui(4) * 2, -self.ui(3) * 2)
+        title_x = safe.x if safe is not None else rect.x + self.ui(18)
+        title_y = safe.y if safe is not None else rect.y + self.ui(14)
+        content_right = safe.right if safe is not None else rect.right - self.ui(18)
+        content_bottom = safe.bottom if safe is not None else rect.bottom - self.ui(22)
         title = self.heading_font.render(shopkeeper.name, True, self.HUD_GOLD_BRIGHT)
-        self.screen.blit(
-            title, title.get_rect(x=rect.x + self.ui(18), y=rect.y + self.ui(14))
-        )
+        self.screen.blit(title, title.get_rect(x=title_x, y=title_y))
         # Ornamental divider under the title.
         self.draw_hud_divider(
             self.screen,
-            rect.x + self.ui(18),
-            rect.y + self.ui(14) + title.get_height() + self.ui(4),
-            rect.right - self.ui(18),
+            title_x,
+            title_y + title.get_height() + self.ui(4),
+            content_right,
             self.HUD_GOLD,
         )
         subtitle = self.small_font.render(
@@ -1383,21 +1571,31 @@ class RenderingHudMixin:
             True,
             self.HUD_BONE,
         )
-        self.screen.blit(
-            subtitle, subtitle.get_rect(x=rect.x + self.ui(18), y=rect.y + self.ui(48))
+        subtitle_y = (
+            title_y + title.get_height() + self.ui(10)
+            if modern
+            else rect.y + self.ui(48)
         )
+        self.screen.blit(subtitle, subtitle.get_rect(x=title_x, y=subtitle_y))
 
         mode_text = "BUY STOCK" if self.shop_mode == "buy" else "SELL INVENTORY"
         mode = self.font.render(mode_text, True, self.HUD_GOLD)
-        self.screen.blit(
-            mode, mode.get_rect(x=rect.x + self.ui(18), y=rect.y + self.ui(82))
+        mode_y = (
+            subtitle_y + self.small_font.get_height() + self.ui(10)
+            if modern
+            else rect.y + self.ui(82)
         )
+        self.screen.blit(mode, mode.get_rect(x=title_x, y=mode_y))
 
         entries = self.shop_entries()
         self.clamp_shop_cursor()
-        list_top = rect.y + self.ui(112)
+        list_top = (
+            mode_y + self.font.get_height() + self.ui(8)
+            if modern
+            else rect.y + self.ui(112)
+        )
         row_h = self.ui(34)
-        max_rows = max(1, (rect.bottom - list_top - self.ui(22)) // row_h)
+        max_rows = max(1, (content_bottom - list_top) // row_h)
         start = 0
         if self.shop_cursor >= max_rows:
             start = self.shop_cursor - max_rows + 1
@@ -1408,14 +1606,17 @@ class RenderingHudMixin:
                 True,
                 self.HUD_MUTED,
             )
-            self.screen.blit(empty, empty.get_rect(x=rect.x + self.ui(24), y=list_top))
+            self.screen.blit(empty, empty.get_rect(x=title_x + self.ui(6), y=list_top))
             return
 
         for offset, item in enumerate(visible_entries):
             index = start + offset
             y = list_top + offset * row_h
             row = pygame.Rect(
-                rect.x + self.ui(16), y, rect.w - self.ui(32), row_h - self.ui(4)
+                safe.x if safe is not None else rect.x + self.ui(16),
+                y,
+                safe.width if safe is not None else rect.w - self.ui(32),
+                row_h - self.ui(4),
             )
             selected = index == self.shop_cursor
             if selected:

@@ -112,9 +112,16 @@ class MenuControlsMixin:
         panel, content = self.menu_frame(
             "Controls", "Keyboard, mouse, and gamepad bindings"
         )
-        header_h = self.u(30)
-        gap = self.u(10)
-        col_gap = self.u(18)
+        header_font = self.fit_menu_font(
+            self.g.heading_font,
+            max_height=max(14, min(self.u(30), content.height // 8)),
+            max_width=max(80, int(content.width * 0.42)),
+            texts=("Keyboard & Mouse", "Gamepad — None connected"),
+            minimum_size=12,
+        )
+        header_h = header_font.get_height() + max(2, min(self.u(6), 6))
+        gap = max(3, min(self.u(8), 8))
+        col_gap = max(8, min(self.u(18), content.width // 24))
         left_w = int(content.width * 0.43)
         right_w = content.width - left_w - col_gap
         left = pygame.Rect(content.x, content.y, left_w, content.height)
@@ -122,13 +129,53 @@ class MenuControlsMixin:
             content.x + left_w + col_gap, content.y, right_w, content.height
         )
 
+        def draw_fitted_rows(
+            rows: list[MenuRow], bounds: pygame.Rect, selected_index: int = -1
+        ) -> tuple[pygame.Rect, ...]:
+            count = max(1, len(rows))
+            row_gap = 1 if bounds.height >= count * 12 else 0
+            row_budget = max(
+                9, (bounds.height - row_gap * (count - 1)) // count
+            )
+            body_font = self.fit_menu_font(
+                self.g.small_font,
+                max_height=max(8, row_budget - 2),
+                max_width=max(28, int(bounds.width * 0.48)),
+                texts=tuple(label for _key, label, _value in rows),
+                minimum_size=8,
+            )
+            detail_font = self.fit_menu_font(
+                self.g.tiny_font,
+                max_height=max(8, row_budget - 2),
+                max_width=max(24, int(bounds.width * 0.36)),
+                texts=tuple(key for key, _label, _value in rows)
+                + tuple(value for _key, _label, value in rows if value),
+                minimum_size=8,
+            )
+            row_h = max(
+                body_font.get_height() + 2,
+                detail_font.get_height() + 2,
+                row_budget,
+            )
+            return self.draw_menu_rows(
+                rows,
+                bounds,
+                selected_index=selected_index,
+                body_font=body_font,
+                detail_font=detail_font,
+                layout_scale=1.0,
+                row_height=row_h,
+                row_gap=row_gap,
+            )
+
         accent = self.accent()
         kb_header = pygame.Rect(left.x, left.y, left.width, header_h)
         kb_rect = pygame.Rect(
             left.x, kb_header.bottom + gap, left.width, left.height - header_h - gap
         )
-        self.draw_text("Keyboard & Mouse", self.g.heading_font, accent, kb_header)
-        self.draw_menu_rows(KEYBOARD_ROWS, kb_rect)
+        self.draw_text("Keyboard & Mouse", header_font, accent, kb_header)
+        keyboard_rows = draw_fitted_rows(KEYBOARD_ROWS, kb_rect)
+        self.g._controls_keyboard_row_rects = keyboard_rows
 
         pad_status = (
             self.g.input.active_name()
@@ -138,27 +185,36 @@ class MenuControlsMixin:
         capture = self.g.controls_capture_command
         subtitle = "press any controller button/trigger" if capture else pad_status
         pad_header = pygame.Rect(right.x, right.y, right.width, header_h)
+        hint_h = max(18, min(self.u(42), max(18, right.height // 6)))
         pad_rect = pygame.Rect(
             right.x,
             pad_header.bottom + gap,
             right.width,
-            right.height - header_h - gap - self.u(42),
+            max(1, right.height - header_h - gap * 2 - hint_h),
         )
-        self.draw_text(f"Gamepad — {subtitle}", self.g.heading_font, accent, pad_header)
-        self.draw_menu_rows(
+        self.draw_text(f"Gamepad — {subtitle}", header_font, accent, pad_header)
+        gamepad_rows = draw_fitted_rows(
             self._gamepad_mapping_rows(),
             pad_rect,
             selected_index=self.g.controls_cursor,
         )
+        self.g._controls_gamepad_row_rects = gamepad_rows
         hint_rect = pygame.Rect(
-            right.x, pad_rect.bottom + self.u(8), right.width, self.u(34)
+            right.x, pad_rect.bottom + gap, right.width, hint_h
         )
         hint = (
             "Back cancels mapping"
             if capture
             else "Up/down select · Enter/A remaps · Esc/Back returns"
         )
-        self.draw_wrapped_text(hint, self.g.small_font, self.MUTED, hint_rect)
+        hint_font = self.fit_menu_font(
+            self.g.small_font,
+            max_height=max(8, hint_rect.height // 2),
+            max_width=max(40, hint_rect.width),
+            texts=(hint,),
+            minimum_size=8,
+        )
+        self.draw_wrapped_text(hint, hint_font, self.MUTED, hint_rect)
 
         self.draw_footer(
             panel,

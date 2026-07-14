@@ -198,9 +198,21 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - Generate (MCP) nice pixel graphic backgrounds for menus
 - Make sure everything is well aligned, text is visible and not overlapping 
 
+### 4.1.1 Menus and HUD post-assets fixes
+
+- There are now "legacy type" lines drawn around asset based UI elemnets (e.g in main menu there is border line drawn around center panel). Remove these lines and other "legacy artifacts" from menus / HUDs
+  - We still need menu elements, indication of selected menu item and other non-asset based UI elements, but they need to look good on new asset sprites
+- In character selection screen, the character selection grid is drawn "on top of" new asset sprites
+  - Make sure all UI elements fit well within the graphical boundaries of new asset sprites
+- Similar issues are present in other UI elements, run visual tests to catch these issues
+- Make sure text is aligned well withing the graphical bounds of new asset sprites
+  - We may need to adjust text alignment separately for legacy and new graphics modes
+- Remember to preserve legacy graphics compatibility
+
 ### Stash
 
-- We need toggle in settings menu for legacy graphics mode that switches between procedural and asset sprites. Add to Display group. Also add scrolling to settings menu to fit all options on screen. - done
 - Player can attack through walls. Make sure player and enemy attacks do not go through walls.
 - It appears Acolyte's familiar can "see" through walls. Make sure enemy and familiar line of sight (or perception) does not ignore walls.
 - We need to make the darkess deepen more on lower levels, dark levels look already good, but also other "normal" levels below 5 should feel more dark. (do not implement this yet, user will explicitly request this feature if needed)
+- Scrollbar is needed in settings menu when all options do not fit on screen vertically.
+- Character animations are still not implemented in archetype selection screen.

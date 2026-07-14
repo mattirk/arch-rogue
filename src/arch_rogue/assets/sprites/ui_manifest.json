@@ -1,0 +1,62 @@
+{
+  "format_version": 1,
+  "assets": {
+    "menu.background.title": {
+      "path": "menus/background_title.png",
+      "render": "cover"
+    },
+    "menu.background": {
+      "path": "menus/background.png",
+      "render": "cover"
+    },
+    "cutscene.background": {
+      "path": "menus/background_cutscene.png",
+      "render": "cover"
+    },
+    "menu.panel": {
+      "path": "menus/panel.png",
+      "render": "nine_slice",
+      "insets": [18, 18, 18, 18],
+      "content_insets": [24, 22, 24, 22]
+    },
+    "menu.panel.compact": {
+      "path": "menus/panel_compact.png",
+      "render": "nine_slice",
+      "insets": [21, 18, 21, 18],
+      "content_insets": [24, 22, 24, 22]
+    },
+    "menu.panel.inset": {
+      "path": "menus/panel_inset.png",
+      "render": "nine_slice",
+      "insets": [14, 14, 14, 14],
+      "content_insets": [10, 8, 10, 8]
+    },
+    "menu.row": {
+      "path": "menus/row.png",
+      "render": "nine_slice",
+      "insets": [105, 10, 105, 10],
+      "content_insets": [92, 6, 92, 6]
+    },
+    "hud.panel": {
+      "path": "hud/panel.png",
+      "render": "nine_slice",
+      "insets": [70, 10, 70, 10],
+      "content_insets": [28, 8, 28, 8]
+    },
+    "hud.dock": {
+      "path": "hud/dock.png",
+      "render": "scale"
+    },
+    "hud.action_slot": {
+      "path": "hud/action_slot.png",
+      "render": "scale",
+      "content_insets": [20, 20, 20, 20]
+    },
+    "hud.bar": {
+      "path": "hud/bar.png",
+      "render": "nine_slice",
+      "insets": [22, 10, 22, 10],
+      "content_insets": [8, 4, 8, 4]
+    }
+  }
+}
