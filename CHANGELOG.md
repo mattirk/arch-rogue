@@ -1,5 +1,50 @@
 # Changelog
 
+## 4.0.2 — Archetype Animation Repairs
+
+Milestone 4.0.2 audits the complete modern idle/run set for all five playable archetypes and replaces clips with static locomotion, unstable facing, missing equipment or apparel, extra anatomy, and frame-to-frame gear flicker. The repaired sources retain their existing high-resolution canvases and runtime anchors, so the update is asset-only apart from manifest coverage and validation.
+
+### Acolyte full-regeneration follow-up
+
+- Replaced all 88 Acolyte PNGs with one new PixelLab V3 identity (`aa6961b2-9dca-43a9-b68b-6cfdfaa8ee17`): eight base rotations, 32 idle frames, and 48 walk frames on a `244×244` high-resolution canvas.
+- Imported every rotation and animation through the required PixelLab-to-game direction mapping: south-east→south, south→south-west, north-east→east, east→south-east, north-west→north, north→north-east, south-west→west, and west→north-west.
+- Removed the previous mirrored side/rear-diagonal frames and duplicated walk contact holds; every game direction now uses its independently generated four-frame idle and six-frame walk source.
+- Updated the Acolyte source anchor/reference geometry while preserving the runtime target height, asset-first loading, and legacy procedural fallback.
+
+### Repaired assets
+
+- Replaced 152 packaged PNGs: 148 frames across 27 repaired clips (seven idle and twenty run clips), plus corrected Ranger north-west and Acolyte east/north-west/west rotations.
+- Warden: repaired north-east/south-east idle and south/north-east/north-west run clips, restoring southward leg motion and keeping the shield and cape stable on both rear diagonals.
+- Ranger: repaired north-west rotation/idle and north/north-east/north-west run clips, keeping the cape, bow, and quiver on the correct side without flicker or a missing north-west stride.
+- Arcanist: repaired south/east/north/north-west/south-west run clips, adding visible northward leg motion while preserving the staff and removing the intermittent extra hand.
+- Rogue: repaired north and north-east run clips after the full-roster audit found weak locomotion and unstable blade silhouettes.
+- Acolyte: repaired east/north-east/north-west/west idle, south/south-east/east/north-east/north/north-west/west run, and the east/north-west/west fallback rotations. The final set keeps the complete red-orb staff present, removes front/back cape duplication, stabilizes the free hand, and replaces the wobbly north/south gait with clear alternating steps.
+- Repairs use reviewed V3, template, and Pro-generated source clips. The Pro east idle/run art is losslessly root-aligned, with the four clean Pro gait poses retained in the existing six-frame run through deliberate contact holds; deterministic mirrors preserve accepted north-east/north-west and east/west equipment silhouettes.
+
+### Changed
+
+- Ranger's run manifest now explicitly includes all six north-west frames instead of falling back to a static rotation at runtime.
+- Acolyte east/west rotations and idle clips now use matching Pro side-profile art, with west mirrored from east so state changes preserve scale, staff placement, and cape construction.
+- Acolyte north-west rotation/idle/run now mirror the accepted north-east art, preventing the occluded source set from reducing the staff to a floating orb through runtime fallback.
+- Added full player-asset regressions covering all five archetypes, all eight directions, exact four-frame idle/six-frame run clips, decodable frames with expected pose uniqueness, canonical source canvases, nonblank alpha bounds, and transparent edit margins.
+- Added focused regressions for lower-body silhouette motion in the previously static or unstable walks, plus Acolyte east/west and north-east/north-west mirror parity, exact Pro contact-hold cadence, side rotation/idle parity, root stability, and north-east idle staff width/stability.
+- Runtime/package release version is `4.0.2`. Options remain schema `4`; run saves remain schema `5` and require no migration.
+
+### Compatibility and resilience
+
+- Public sprite APIs, actor names, source canvases, anchors, timing, and independent per-resource fallback behavior are unchanged.
+- Explicit legacy graphics continue to use the procedural archetype renderer and do not load these replacement PNGs.
+- Missing or corrupt modern frames still fall back independently through the existing static-rotation/procedural paths.
+
+### Validation
+
+- Reviewed final contact sheets for every repaired clip for direction stability, stride motion, continuous weapons/shields/cloaks, anatomy, and image artifacts.
+- Staging/package gate — exactly 152 intended PNGs; all destination paths and canvas sizes match, all frames decode and remain nonblank, pose uniqueness matches each reviewed cadence, every frame has transparent margins, and installed files byte-match the reviewed set.
+- `python -m compileall src tests` — OK.
+- `python -m unittest tests.test_4_0_asset_sprites` — 17 tests, all passing.
+- `python -m unittest discover tests` — 196 tests run; 195 pass and the pre-existing unrelated inventory-HUD containment failure (`test_inventory_hud_layout_navigation_sorting_and_cues`) remains unchanged.
+- Prior build-isolated wheel validation — `arch_rogue-4.0.2-py3-none-any.whl` contains all 2,207 sprite PNGs, the manifest, and the corrected archetype resources; local wheel revalidation requires the unavailable `setuptools.build_meta` backend.
+
 ## 4.0.1 — Post Sprite Generation Fixes
 
 Milestone 4.0.1 refines the asset-backed dungeon set without changing gameplay or abandoning the procedural renderer. Doors now remain recognizable from both sides on every room boundary, special rooms use authored wall faces instead of procedural marks painted over masonry, and shop gold uses five complete unclipped silhouettes.

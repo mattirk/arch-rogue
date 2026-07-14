@@ -132,7 +132,7 @@
         }
       },
       "name": "Acolyte",
-      "reference_height": 92,
+      "reference_height": 118,
       "rotations": {
         "east": "actors/acolyte/rotations/east.png",
         "north": "actors/acolyte/rotations/north.png",
@@ -144,12 +144,12 @@
         "west": "actors/acolyte/rotations/west.png"
       },
       "source_anchor": [
-        94.0,
-        141.0
+        122.0,
+        183.0
       ],
       "source_canvas": [
-        188,
-        188
+        244,
+        244
       ],
       "target_height": 184
     },
@@ -2563,6 +2563,14 @@
               "actors/ranger/animations/run/north-east/frame_003.png",
               "actors/ranger/animations/run/north-east/frame_004.png",
               "actors/ranger/animations/run/north-east/frame_005.png"
+            ],
+            "north-west": [
+              "actors/ranger/animations/run/north-west/frame_000.png",
+              "actors/ranger/animations/run/north-west/frame_001.png",
+              "actors/ranger/animations/run/north-west/frame_002.png",
+              "actors/ranger/animations/run/north-west/frame_003.png",
+              "actors/ranger/animations/run/north-west/frame_004.png",
+              "actors/ranger/animations/run/north-west/frame_005.png"
             ],
             "south": [
               "actors/ranger/animations/run/south/frame_000.png",

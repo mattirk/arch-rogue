@@ -181,6 +181,7 @@ Example categories:
 - Keep early prototypes focused on feel: movement, combat readability, loot feedback, and dungeon traversal.
 - Avoid overbuilding meta-progression before the core run loop is fun.
 - When choosing between authenticity to Rogue and modern playability, preserve the spirit of Rogue while modernizing the interface and moment-to-moment feel.
+- Do not ask for confirmation on sprite asset generation via MCP or other tools / APIs. Spend as much as you like. Inform user if limit has been reached.
 
 ## Milestones / Versions
 
