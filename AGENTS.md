@@ -198,17 +198,6 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - Generate (MCP) nice pixel graphic backgrounds for menus
 - Make sure everything is well aligned, text is visible and not overlapping 
 
-### 4.1.1 Menus and HUD post-assets fixes
-
-- There are now "legacy type" lines drawn around asset based UI elemnets (e.g in main menu there is border line drawn around center panel). Remove these lines and other "legacy artifacts" from menus / HUDs
-  - We still need menu elements, indication of selected menu item and other non-asset based UI elements, but they need to look good on new asset sprites
-- In character selection screen, the character selection grid is drawn "on top of" new asset sprites
-  - Make sure all UI elements fit well within the graphical boundaries of new asset sprites
-- Similar issues are present in other UI elements, run visual tests to catch these issues
-- Make sure text is aligned well withing the graphical bounds of new asset sprites
-  - We may need to adjust text alignment separately for legacy and new graphics modes
-- Remember to preserve legacy graphics compatibility
-
 ### Stash
 
 - Player can attack through walls. Make sure player and enemy attacks do not go through walls.
@@ -216,3 +205,6 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - We need to make the darkess deepen more on lower levels, dark levels look already good, but also other "normal" levels below 5 should feel more dark. (do not implement this yet, user will explicitly request this feature if needed)
 - Scrollbar is needed in settings menu when all options do not fit on screen vertically.
 - Character animations are still not implemented in archetype selection screen.
+- The game difficulty starts ok, but gets too easy when player character reaches level 7 or so (not dungeon level, character level). We should either nerf characters, make leveling slower or make enemies harder on lower dungeon depths.
+- Loot drops should be more rare accross the borad.
+- Elites should be harder to kill.
