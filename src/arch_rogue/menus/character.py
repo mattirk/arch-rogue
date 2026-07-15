@@ -291,13 +291,14 @@ class MenuCharacterMixin:
             middle.width,
             max(1, desc_rect.y - middle.y - self.u(5)),
         )
-        sprite = self.g.sprites.player_frame(
+        visual = self.g.sprites.player_visual(
             archetype.name,
             "idle",
             0.0,
             self.g.ui_elapsed,
             direction="south",
         )
+        sprite = visual.surface
         scale = min(
             max(1, sprite_box.width - self.u(20)) / max(1, sprite.get_width()),
             max(1, sprite_box.height - self.u(12)) / max(1, sprite.get_height()),
@@ -311,6 +312,10 @@ class MenuCharacterMixin:
                 max(1, round(sprite.get_height() * scale)),
             ),
         )
+        preview_anchor = (
+            round(visual.anchor[0] * preview.get_width() / max(1, sprite.get_width())),
+            round(visual.anchor[1] * preview.get_height() / max(1, sprite.get_height())),
+        )
         pedestal = pygame.Rect(
             0,
             0,
@@ -323,12 +328,20 @@ class MenuCharacterMixin:
         )
         pygame.draw.ellipse(glow, (*accent, 42), glow.get_rect())
         self.screen.blit(glow, glow.get_rect(center=pedestal.center))
+        # Asset frames are cropped independently, so their canvas centers move.
+        # Pin the authored ground anchor to the pedestal instead.
+        preview_ground = (sprite_box.centerx, pedestal.centery)
         preview_rect = preview.get_rect(
-            midbottom=(sprite_box.centerx, pedestal.centery)
+            topleft=(
+                preview_ground[0] - preview_anchor[0],
+                preview_ground[1] - preview_anchor[1],
+            )
         )
         self.screen.blit(preview, preview_rect)
         self.g._archetype_sprite_box = sprite_box.copy()
         self.g._archetype_sprite_rect = preview_rect.copy()
+        self.g._archetype_sprite_anchor = preview_anchor
+        self.g._archetype_sprite_ground = preview_ground
         self.g._archetype_description_rect = desc_rect.copy()
         self.g._archetype_description_font = description_font
         self.g._archetype_description_line_height = description_line_h
@@ -646,13 +659,14 @@ class MenuCharacterMixin:
             ],
         )
 
-        sprite = self.g.sprites.player_frame(
+        visual = self.g.sprites.player_visual(
             archetype.name,
             "idle",
             0.0,
             self.g.ui_elapsed,
             direction="south",
         )
+        sprite = visual.surface
         sprite_max_h = max(128, int(inner.height * (0.58 if compact_fonts else 0.68)))
         sprite_max_w = max(140, int(inner.width * 0.88))
         scale = min(
@@ -665,6 +679,10 @@ class MenuCharacterMixin:
                 max(1, int(sprite.get_width() * scale)),
                 max(1, int(sprite.get_height() * scale)),
             ),
+        )
+        preview_anchor = (
+            round(visual.anchor[0] * preview.get_width() / max(1, sprite.get_width())),
+            round(visual.anchor[1] * preview.get_height() / max(1, sprite.get_height())),
         )
         sprite_y = divider_y + self.u(8)
         pedestal = pygame.Rect(0, 0, preview.get_width() + self.u(40), self.u(18))
@@ -687,9 +705,17 @@ class MenuCharacterMixin:
             pedestal,
             max(1, self.u(1)),
         )
-        self.screen.blit(
-            preview, preview.get_rect(midbottom=(inner.centerx, pedestal.centery + 2))
+        preview_ground = (inner.centerx, pedestal.centery + 2)
+        preview_rect = preview.get_rect(
+            topleft=(
+                preview_ground[0] - preview_anchor[0],
+                preview_ground[1] - preview_anchor[1],
+            )
         )
+        self.screen.blit(preview, preview_rect)
+        self.g._archetype_sprite_rect = preview_rect.copy()
+        self.g._archetype_sprite_anchor = preview_anchor
+        self.g._archetype_sprite_ground = preview_ground
 
         text_top = pedestal.bottom + self.u(10)
         stat_h = max(self.u(96), self.g.small_font.get_height() * 4 + self.u(22))
