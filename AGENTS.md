@@ -187,16 +187,10 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 4.1 Asset based menus and HUD
+### 4.1.x More sprites, assets, animations updates
 
-- Generate assets for menus and HUD using asset MCP server/tools and implement into game code
-- Create folder `assets/sprites/menus/` and `assets/sprites/hud/`
-- Create necessary abstractions for menu and HUD sprite loading and rendering
-  - Extend pre existing logic when is makes sense
-- Implement new versions of menus and HUD using new asset sprites
-- Make sure legacy graphics support is preserved
-- Generate (MCP) nice pixel graphic backgrounds for menus
-- Make sure everything is well aligned, text is visible and not overlapping 
+- NPCs such as shopkeepers need idle animations, generate using MCP and implement into game code
+- 
 
 ### Stash
 

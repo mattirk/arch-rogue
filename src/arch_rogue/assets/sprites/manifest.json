@@ -2917,7 +2917,7 @@
         }
       },
       "name": "Rogue",
-      "reference_height": 89,
+      "reference_height": 122,
       "rotations": {
         "east": "actors/rogue/rotations/east.png",
         "north": "actors/rogue/rotations/north.png",
@@ -2929,12 +2929,12 @@
         "west": "actors/rogue/rotations/west.png"
       },
       "source_anchor": [
-        90.0,
-        135.0
+        122.0,
+        183.0
       ],
       "source_canvas": [
-        180,
-        180
+        244,
+        244
       ],
       "target_height": 184
     },

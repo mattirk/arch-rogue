@@ -1,5 +1,38 @@
 # Changelog
 
+## 4.1.7 — Female Rogue Sprite Refresh
+
+Milestone 4.1.7 replaces the playable Rogue's previous male sprite set with a completely new female PixelLab identity and reviewed high-resolution locomotion while preserving the existing runtime animation contract.
+
+### Changed
+
+- Replaced all 88 packaged Rogue PNGs with eight new base rotations, 32 reviewed four-frame breathing-idle frames, and 48 reviewed six-frame V3 walk frames on a `244×244` transparent canvas.
+- The existing runtime `run` clip now presents the approved walk cycle, preserving player-state, rendering, fallback, and package-data interfaces without introducing a Rogue-only animation state.
+- Imported every Rogue rotation and animation with a direct one-to-one direction mapping (`north`→`north`, `south-east`→`south-east`, and so on); no character-specific remapping is applied.
+- Updated Rogue source normalization to anchor `(122, 183)` with a `122px` reference height while retaining the shared playable-character target height of `184px`.
+- Runtime/package release version is `4.1.7`. Options remain schema `4`; run saves remain schema `5` and require no migration.
+
+### Asset provenance
+
+- PixelLab Rogue character: `d6f3357f-e41d-4181-8a14-1deaef8e1bdd`.
+- Source prompt: “Athletic female rogue, braided black hair, charcoal leather armor, muted green scarf, two short-bladed daggers.”
+- Idle and walk frames were reviewed and adjusted in PixelLab before the final package export used by the game.
+
+### Compatibility and resilience
+
+- The `Rogue` actor name, manifest slug, `idle`/`run` clip names, public sprite APIs, animation timing, and independent per-frame fallback behavior remain unchanged.
+- Explicit legacy graphics continue to use the procedural Rogue and do not decode the replacement PNGs.
+- Existing saves require no migration because this update changes only presentation assets and release metadata.
+
+### Validation
+
+- `python -m unittest tests.test_sprite_assets` — 16 tests, all passing; includes complete direction/frame counts, PNG decoding, pose uniqueness, canonical canvas checks, transparent margins, and runtime resolution.
+- Save/release metadata plus movement-animation and archetype/options suites — 9 tests, all passing.
+- Headless modern-mode Rogue render smoke check resolved grounded asset-backed idle and movement frames.
+- Final export gate byte-verified all 88 packaged PNGs against the reviewed PixelLab archive using identical source and destination direction names.
+- `python -m compileall -q src tests` and scoped `git diff --check` — OK.
+- `python -m unittest discover tests` — 204 tests, all passing.
+
 ## 4.1.6 — Archetype Selection Polish
 
 Milestone 4.1.6 tightens the authored archetype-selection composition, restores a genuinely live idle preview while the game is in menu states, and gives every class statistic a compact framed card without adding another visual asset dependency.
