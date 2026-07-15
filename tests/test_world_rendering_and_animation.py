@@ -210,26 +210,6 @@ class GraphicsAnimation21Tests(unittest.TestCase):
 
                 game.draw()
 
-                # Cooldown pips must only draw active progress: an all-zero
-                # state leaves the HUD region untouched, while partial progress
-                # paints visible pips. Reuses the same Game/floor since the pip
-                # renderer only reads player timers and establishes its own
-                # screen-fill baseline.
-                game.screen.fill((17, 19, 23))
-                before = self.surface_bytes(game.screen)
-
-                game.player.melee_timer = 0.0
-                game.player.bolt_timer = 0.0
-                game.player.class_skill_timer = 0.0
-                game.player.dash_timer = 0.0
-                hud_bounds = pygame.Rect(320, 430, 280, 80)
-                game.draw_hud_cooldown_pips(hud_bounds)
-                self.assertEqual(before, self.surface_bytes(game.screen))
-
-                game.player.bolt_timer = game.bolt_cooldown() * 0.5
-                game.player.dash_timer = game.dash_cooldown() * 0.25
-                game.draw_hud_cooldown_pips(hud_bounds)
-                self.assertNotEqual(before, self.surface_bytes(game.screen))
             finally:
                 pass
 

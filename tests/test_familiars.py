@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import os
 import sys
 import tempfile
@@ -46,7 +45,7 @@ def _make_enemy(x: float, y: float, hp: int = 200, damage: int = 8) -> Enemy:
     )
 
 
-class Summons315Tests(unittest.TestCase):
+class FamiliarTests(unittest.TestCase):
     def make_game(self, tmpdir, archetype_index=3, seed=3151) -> Game:
         game = Game(
             screen_size=(960, 600),
@@ -54,8 +53,6 @@ class Summons315Tests(unittest.TestCase):
             save_path=Path(tmpdir) / "run.json",
         )
         game.options_path = Path(tmpdir) / "options.json"
-        game.ui_scale = 1
-        game.rebuild_fonts()
         game.rng.seed(seed)
         game.restart(ARCHETYPES[archetype_index])
         if game.story_intro_pending:
@@ -65,19 +62,15 @@ class Summons315Tests(unittest.TestCase):
 
     # --- class-skill swap is Acolyte-only ------------------------------------
 
-    def test_acolyte_class_skill_is_spirit_call_others_keep_nova(self) -> None:
+    def test_acolyte_class_skill_is_spirit_call(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             acolyte = self.make_game(tmpdir, archetype_index=3)
             self.assertEqual(acolyte.skill_names()[2], "Spirit Call")
             slots = acolyte.hud_action_slots()
             self.assertEqual(slots[2]["hotkey"], "3")
             self.assertEqual(slots[2]["label"], "Spirit Call")
-            # Reuses the shared class-skill cost/cooldown so the bar stays balanced.
             self.assertEqual(slots[2]["cost"], acolyte.class_skill_mana_cost())
             self.assertEqual(slots[2]["cooldown"], acolyte.class_skill_cooldown())
-        with tempfile.TemporaryDirectory() as tmpdir:
-            others = self.make_game(tmpdir, archetype_index=2)  # Arcanist
-            self.assertEqual(others.skill_names()[2], "Frost Nova")
 
     # --- spawn / lifecycle ----------------------------------------------
 
@@ -249,6 +242,7 @@ class Summons315Tests(unittest.TestCase):
             game.player_cast_spirit_call()
             self.assertEqual(game.familiar_max_count(), 2)
             self.assertEqual(len(game.familiars), 2)
+            self.assertTrue(all(f.sprite_variant == 1 for f in game.familiars))
             game.familiars = []
             game.player.class_skill_timer = 0.0
             game.player.mana = game.player.max_mana
@@ -269,6 +263,7 @@ class Summons315Tests(unittest.TestCase):
             game.player_cast_spirit_call()
             self.assertEqual(game.familiar_max_count(), 3)
             self.assertEqual(len(game.familiars), 3)
+            self.assertTrue(all(f.sprite_variant == 1 for f in game.familiars))
             self.assertTrue(all(f.unkillable for f in game.familiars))
 
     def test_lifesteal_familiar_heals_acolyte_on_hit(self) -> None:
@@ -307,20 +302,8 @@ class Summons315Tests(unittest.TestCase):
             game._familiar_take_damage(familiar, 9999, None)
             self.assertGreaterEqual(familiar.hp, 1)
 
-    # --- sprite-variant selection ---------------------------------------
+    # --- sprite variants -------------------------------------------------
 
-    def test_sprite_state_small_before_skill_big_owl_after_spirit_call(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            # No Spirit skill chosen yet: small wisp state (variant 0).
-            self.assertEqual(game.familiar_variant_for_index(0), 0)
-            # Choosing Spirit Call promotes the familiar to the big owl (variant 1).
-            game.player.skill_upgrades.append("acolyte_spirit_call")
-            self.assertEqual(game.familiar_variant_for_index(0), 1)
-            game.player.skill_upgrades.append("acolyte_wraith_lord")
-            # Deeper Spirit nodes scale stats/count but keep the owl silhouette.
-            self.assertEqual(game.familiar_variant_for_index(0), 1)
-            self.assertEqual(game.familiar_variant_for_index(1), 1)
 
     def test_two_familiar_sprite_states_exist_and_owl_is_larger(self) -> None:
         # The sprite atlas exposes two familiar states (small wisp + big owl),
@@ -350,7 +333,6 @@ class Summons315Tests(unittest.TestCase):
             self.assertEqual(len(game.familiars), 2)
             before = game.familiars[0]
             data = copy.deepcopy(game.serialize_run_state())
-            self.assertEqual(data["release"], "4.1.6")
             self.assertIn("familiars", data)
             self.assertEqual(len(data["familiars"]), 2)
 
@@ -406,11 +388,14 @@ class Summons315Tests(unittest.TestCase):
             game.player.mana = game.player.max_mana
             game.player_cast_spirit_call()
             self.assertGreater(len(game.familiars), 0)
-            # A full frame render must not raise; the familiar is depth-sorted
-            # alongside walls, enemies, and the player.
+            # Record the active world-render path while preserving the real draw.
+            drawn: list[Familiar] = []
+            draw_familiar = game.draw_familiar
+
+            def record_familiar(familiar: Familiar) -> None:
+                drawn.append(familiar)
+                draw_familiar(familiar)
+
+            game.draw_familiar = record_familiar  # type: ignore[method-assign]
             game.draw()
-            # Sanity: the screen now has non-background pixels.
-            digest = hashlib.blake2s(
-                pygame.image.tobytes(game.screen, "RGBA"), digest_size=8
-            ).hexdigest()
-            self.assertNotEqual(digest, "0" * 16)
+            self.assertEqual(drawn, game.familiars)

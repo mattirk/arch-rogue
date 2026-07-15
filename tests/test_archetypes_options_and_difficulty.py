@@ -16,10 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from arch_rogue.game import ARCHETYPES, DUNGEON_DEPTH, Game
 
 
-class PublicReleaseMilestoneTests(unittest.TestCase):
-    def tearDown(self) -> None:
-        pass
-
+class ArchetypeOptionsDifficultyTests(unittest.TestCase):
     def make_game(self, tmpdir: str, seed: int = 1001) -> Game:
         game = Game(
             screen_size=(960, 540),
@@ -85,7 +82,6 @@ class PublicReleaseMilestoneTests(unittest.TestCase):
                 self.assertTrue(game.save_run())
                 saved_run = json.loads(game.save_path.read_text(encoding="utf-8"))
                 self.assertEqual(saved_run["version"], 5)
-                self.assertEqual(saved_run["release"], "4.1.6")
                 self.assertEqual(saved_run["difficulty"], "Hard")
                 self.assertFalse(Path(f"{game.save_path}.tmp").exists())
             finally:

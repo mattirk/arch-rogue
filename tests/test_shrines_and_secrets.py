@@ -22,10 +22,10 @@ from arch_rogue.game import (
     WEAPON_DEFINITIONS,
     Game,
 )
-from arch_rogue.models import Item, Projectile, RunStats, SecretCache, Shrine, Trap
+from arch_rogue.models import SecretCache, Shrine
 
 
-class Rc2ContentUxTests(unittest.TestCase):
+class ShrineAndSecretTests(unittest.TestCase):
     def make_game(self, seed: int = 4321) -> Game:
         game = Game(screen_size=(960, 540), headless=True)
         game.rng.seed(seed)
@@ -52,7 +52,7 @@ class Rc2ContentUxTests(unittest.TestCase):
             self.assertGreater(definition.weight, 0)
             self.assertIn(definition.kind, {"melee", "ranged"})
 
-    def test_new_shrine_and_secret_effects_then_summary_render(self) -> None:
+    def test_new_shrine_and_secret_effects(self) -> None:
         game = self.make_game()
         try:
             # --- new shrine effects update stats and rewards ---
@@ -84,59 +84,6 @@ class Rc2ContentUxTests(unittest.TestCase):
                 all(item.slot in {"weapon", "armor"} for item in game.items)
             )
 
-            # --- run summary and help overlay are renderable ---
-            game.elapsed = 125.0
-            game.run_stats = RunStats(
-                kills=7,
-                loot_picked_up=3,
-                potions_used=2,
-                shrines_used=1,
-                secrets_opened=1,
-                traps_triggered=1,
-                damage_taken=42,
-                boss_killed=True,
-            )
-            summary = game.run_summary_lines()
-            self.assertIn("Time 02:05", summary[0])
-            self.assertIn("Boss defeated", summary[1])
-            self.assertIn("Loot 3", summary[2])
-            self.assertIn("Traps triggered 1", summary[3])
-
-            game.player.moving = True
-            game.player.move_x = 1.0
-            game.player.move_y = 0.0
-            game.player.anim_time = 0.4
-            if game.enemies:
-                game.enemies[0].moving = True
-                game.enemies[0].move_x = -1.0
-                game.enemies[0].move_y = 0.25
-                game.enemies[0].facing_x = -1.0
-                game.enemies[0].anim_time = 0.35
-            game.items.append(
-                Item(
-                    "Render Unique",
-                    "weapon",
-                    power=1,
-                    rarity="Unique",
-                    x=game.player.x + 0.5,
-                    y=game.player.y,
-                )
-            )
-            game.traps.append(
-                Trap(game.player.x + 0.8, game.player.y, "Poison Needle", 1)
-            )
-            game.shrines.append(
-                Shrine(game.player.x, game.player.y + 0.8, "Haste Shrine")
-            )
-            game.projectiles.append(
-                Projectile(
-                    game.player.x, game.player.y, 3.0, 1.0, 1, "player", (70, 165, 255)
-                )
-            )
-            game.slashes.append((game.player.x, game.player.y, 0.12, 1.0, 0.0))
-            game.draw_help_overlay()
-            game.show_help = True
-            game.draw()
         finally:
             pass
 

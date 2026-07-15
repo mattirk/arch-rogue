@@ -51,7 +51,7 @@ def _open_patch(game: Game, x: float, y: float, radius: int = 7) -> None:
             column[ty] = Tile.FLOOR
 
 
-class AmbushBell317Tests(unittest.TestCase):
+class AmbushBellTests(unittest.TestCase):
     def make_game(self, tmpdir: str, archetype_index: int = 1, seed: int = 3170) -> Game:
         game = Game(
             screen_size=(960, 600),
@@ -59,8 +59,6 @@ class AmbushBell317Tests(unittest.TestCase):
             save_path=Path(tmpdir) / "run.json",
         )
         game.options_path = Path(tmpdir) / "options.json"
-        game.ui_scale = 1
-        game.rebuild_fonts()
         game.rng.seed(seed)
         game.restart(ARCHETYPES[archetype_index])
         if game.story_intro_pending:

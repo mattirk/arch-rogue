@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import random
 import sys
 import tempfile
 import unittest
@@ -20,12 +21,15 @@ from arch_rogue.constants import (
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.models import Tile
+from arch_rogue.run_flow import RunFlowMixin
 
 
-class DarkLevels24Tests(unittest.TestCase):
-    def tearDown(self) -> None:
-        pass
+class _DarkScheduleHarness(RunFlowMixin):
+    def __init__(self, seed: int) -> None:
+        self.rng = random.Random(seed)
 
+
+class DarkLevelTests(unittest.TestCase):
     def make_game(self, tmpdir: str, seed: int = 2404) -> Game:
         game = Game(
             screen_size=(820, 540),
@@ -42,40 +46,35 @@ class DarkLevels24Tests(unittest.TestCase):
         game.active_cutscene = None
         return game
 
-    def test_floor_plan_darkness_gate_and_toggle_roundtrip(self) -> None:
-        # Dark floor scheduling:
-        #   1-4  always light with fog-of-war tile memory
-        #   5+   50% dark/no-memory and 50% light/memory
-        # The guaranteed gate is asserted for every seed; the probability is
-        # checked across many deterministic seeds so the test is not flaky.
-        for seed in (2411, 2505, 999, 1, 424242):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                game = self.make_game(tmpdir, seed=seed)
-                for plan in game.floor_plan:
-                    if plan.depth < 5:
-                        self.assertFalse(plan.dark)
-                    if plan.dark:
-                        self.assertGreaterEqual(plan.depth, 5)
-                        self.assertIn("darkness", plan.risk_tags)
-                        self.assertIn("dark level", plan.preview)
-                    else:
-                        self.assertNotIn("darkness", plan.risk_tags)
-                        self.assertNotIn("dark level", plan.preview)
-
+    def test_dark_floor_schedule_keeps_early_depths_light(self) -> None:
         dark_rolls = 0
         eligible_rolls = 0
-        for seed in range(100):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                game = self.make_game(tmpdir, seed=seed)
-                self.assertFalse(any(p.dark and p.depth < 5 for p in game.floor_plan))
-                eligible = [p for p in game.floor_plan if p.depth >= 5]
-                eligible_rolls += len(eligible)
-                dark_rolls += sum(1 for p in eligible if p.dark)
-        self.assertGreater(dark_rolls, eligible_rolls * 0.35)
-        self.assertLess(dark_rolls, eligible_rolls * 0.65)
+        for seed in range(1_000):
+            light_depths = _DarkScheduleHarness(seed).light_depths_for_run()
+            self.assertTrue(set(range(1, 5)).issubset(light_depths))
+            for depth in range(5, DUNGEON_DEPTH + 1):
+                eligible_rolls += 1
+                dark_rolls += depth not in light_depths
 
-        # Darkness toggle round-trips through save/load (depth 2 is always light,
-        # so toggling flips it to dark).
+        ratio = dark_rolls / eligible_rolls
+        self.assertGreater(ratio, 0.45)
+        self.assertLess(ratio, 0.55)
+
+    def test_floor_plan_darkness_metadata_matches_schedule(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=2411)
+            for plan in game.floor_plan:
+                if plan.depth < 5:
+                    self.assertFalse(plan.dark)
+                if plan.dark:
+                    self.assertGreaterEqual(plan.depth, 5)
+                    self.assertIn("darkness", plan.risk_tags)
+                    self.assertIn("dark level", plan.preview)
+                else:
+                    self.assertNotIn("darkness", plan.risk_tags)
+                    self.assertNotIn("dark level", plan.preview)
+
+    def test_darkness_toggle_roundtrips_through_save(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, seed=2411)
             game.current_depth = 2

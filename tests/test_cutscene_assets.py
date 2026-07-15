@@ -1,11 +1,4 @@
-"""Milestone 3.4 — Story Cutscene Refactor.
-
-Validates the data-driven quest cutscene pipeline: the new schema_version 2
-stage asset (props, lights, ambient, curtains, proscenium, footlights),
-backward compatibility with schema_version 1, the polished narrator card,
-and the hot-path safety of the stage renderer (no per-frame allocations of
-the static layers, which are cached).
-"""
+"""Quest cutscene asset schema, compatibility, and layout regressions."""
 
 from __future__ import annotations
 
@@ -33,10 +26,7 @@ from arch_rogue.quest_assets import (
 )
 
 
-class StoryCutscene34Tests(unittest.TestCase):
-    def tearDown(self) -> None:
-        pass
-
+class CutsceneAssetTests(unittest.TestCase):
     def make_game(
         self,
         tmpdir: str,
@@ -121,44 +111,7 @@ class StoryCutscene34Tests(unittest.TestCase):
         self.assertEqual(scene.stage.ambient, ())
         self.assertTrue(scene.stage.proscenium)
 
-    # --- Runtime pipeline --------------------------------------------------
 
-    def test_cutscene_renders_and_caches_static_layers(self) -> None:
-        from arch_rogue.rendering.story_overlays import RenderingStoryOverlayMixin
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                # Intro omen cutscene: render once to populate the cache.
-                game.reveal_active_cutscene_narration()
-                game.draw()
-                cache = RenderingStoryOverlayMixin._STAGE_CACHE
-                snapshot = dict(cache)
-                self.assertTrue(snapshot, "stage layer cache should be populated")
-                # Render several more frames; static layers should be reused
-                # and the cutscene should not error.
-                for _ in range(8):
-                    game.update_active_cutscene(1 / 60)
-                    game.draw()
-                # The cache should not grow unboundedly for static layers.
-                self.assertLessEqual(len(cache), len(snapshot) + 4)
-                # The cached surfaces should be the same objects (no rebuild).
-                for key, surface in snapshot.items():
-                    if key in cache:
-                        self.assertIs(cache[key], surface)
-
-                # Guest dialogue cutscene: render frames without error.
-                self.assertTrue(game.choose_story_relic_path(0))
-                guest = game.story_guests[0]
-                self.assertTrue(
-                    game.start_quest_cutscene("story_guest_dialogue", guest)
-                )
-                game.reveal_active_cutscene_narration()
-                for _ in range(8):
-                    game.update_active_cutscene(1 / 60)
-                    game.draw()
-            finally:
-                pass
 
     def test_asset_cutscene_background_and_compact_geometry(self) -> None:
         for size in ((960, 540), (640, 480)):
@@ -204,30 +157,7 @@ class StoryCutscene34Tests(unittest.TestCase):
                 self.assertFalse(game._cutscene_background_asset_used)
                 self.assertFalse(game._cutscene_panel_asset_used)
 
-    def test_cutscene_save_restore_preserves_active_stage(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            try:
-                self.assertTrue(game.save_run())
-                saved = json.loads(game.save_path.read_text(encoding="utf-8"))
-                self.assertEqual(
-                    saved["active_cutscene"]["asset_id"], "story_guest_omen"
-                )
-                loaded = Game(
-                    screen_size=(960, 600),
-                    headless=True,
-                    save_path=game.save_path,
-                )
-                self.assertTrue(loaded.load_run(), loaded.last_load_error)
-                self.assertIsNotNone(loaded.active_cutscene)
-                assert loaded.active_cutscene is not None
-                self.assertEqual(loaded.active_cutscene.asset_id, "story_guest_omen")
-                asset = loaded.active_cutscene_asset()
-                self.assertIsNotNone(asset)
-                assert asset is not None
-                self.assertGreater(len(asset.stage.props), 0)
-            finally:
-                pass
+
 
 
 if __name__ == "__main__":

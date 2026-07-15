@@ -21,7 +21,7 @@ from arch_rogue.models import Item
 from arch_rogue.ui_assets import UiAssetLibrary
 
 
-class UiRefinement411Tests(unittest.TestCase):
+class UiLayoutTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         pygame.init()

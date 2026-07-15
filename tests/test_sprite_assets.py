@@ -15,7 +15,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import pygame
 
-from arch_rogue import __version__
 from arch_rogue.constants import (
     DUNGEON_WALL_VARIANTS,
     LIGHT_SHADE_DOWNSAMPLE_LONG,
@@ -39,7 +38,7 @@ from arch_rogue.sprite_assets import (
 )
 
 
-class AssetSpriteMilestone40Tests(unittest.TestCase):
+class SpriteAssetTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         pygame.init()
@@ -64,8 +63,7 @@ class AssetSpriteMilestone40Tests(unittest.TestCase):
         game.active_cutscene = None
         return game
 
-    def test_release_and_manifest_cover_runtime_visual_roster(self) -> None:
-        self.assertEqual(__version__, "4.1.6")
+    def test_manifest_covers_runtime_visual_roster(self) -> None:
         library = AssetSpriteLibrary()
         self.assertTrue(library.available, library.load_error)
         manifest = library.manifest
@@ -750,10 +748,18 @@ class AssetSpriteMilestone40Tests(unittest.TestCase):
 
     def test_normal_map_cache_is_bounded_and_identity_safe(self) -> None:
         atlas = SpriteAtlas()
-        for index in range(720):
+        first_surface = pygame.Surface((16, 16), pygame.SRCALPHA)
+        first_surface.fill((120, 100, 140, 255))
+        first_normal = atlas.normal_map_for(first_surface)
+        self.assertIsNotNone(first_normal)
+        self.assertIs(atlas.normal_map_for(first_surface), first_normal)
+
+        surfaces = [first_surface]
+        for index in range(321):
             width = 12 + index % 17
             height = 13 + index % 19
             surface = pygame.Surface((width, height), pygame.SRCALPHA)
+            surfaces.append(surface)
             pygame.draw.rect(
                 surface,
                 (80 + index % 120, 100, 140, 255),
@@ -773,7 +779,12 @@ class AssetSpriteMilestone40Tests(unittest.TestCase):
             else:
                 expected = (width, height)
             self.assertEqual(normal.get_size(), expected)
+
         self.assertLessEqual(atlas.cache_stats()["normal_maps"], 320)
+        rebuilt = atlas.normal_map_for(first_surface)
+        self.assertIsNotNone(rebuilt)
+        self.assertIsNot(rebuilt, first_normal)
+        self.assertIs(atlas.normal_map_for(first_surface), rebuilt)
 
     def test_full_modern_frame_renders_without_resource_misses(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

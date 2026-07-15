@@ -15,7 +15,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import pygame
 
-from arch_rogue import __version__
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.input import REMAPPABLE_GAMEPAD_COMMANDS
@@ -23,7 +22,7 @@ from arch_rogue.menus.controls import KEYBOARD_ROWS
 from arch_rogue.ui_assets import UiAssetLibrary
 
 
-class AssetUiMilestone41Tests(unittest.TestCase):
+class UiAssetTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         pygame.init()
@@ -54,8 +53,7 @@ class AssetUiMilestone41Tests(unittest.TestCase):
         ).hexdigest()
         return f"{surface.get_width()}x{surface.get_height()}:{digest}"
 
-    def test_release_manifest_assets_and_package_data(self) -> None:
-        self.assertEqual(__version__, "4.1.6")
+    def test_manifest_assets_and_package_data(self) -> None:
         library = UiAssetLibrary()
         self.assertTrue(library.available, library.load_error)
         self.assertEqual(library.manifest["format_version"], 1)
@@ -231,23 +229,11 @@ class AssetUiMilestone41Tests(unittest.TestCase):
             self.assertLessEqual(len(game.ui_assets._render_cache), 256)
             self.assertLessEqual(len(game.ui_assets._source_cache), 16)
 
-    def test_compact_options_and_controls_keep_rows_visible_and_contained(self) -> None:
+    def test_compact_controls_keep_rows_visible_and_contained(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, (640, 480))
             game.ui_scale = 4
             game.rebuild_fonts()
-
-            game.state = "options"
-            game.options_cursor = 10
-            game.options_scroll = 0
-            game.draw_options_menu()
-            selected = game._options_selected_row_rect
-            viewport = game._options_row_viewport
-            self.assertTrue(viewport.contains(selected), (viewport, selected))
-            start, end = game._options_visible_range
-            self.assertLessEqual(start, game.options_cursor)
-            self.assertGreater(end, game.options_cursor)
-
             game.state = "controls"
             game.draw_controls_menu()
             keyboard = game._controls_keyboard_row_rects

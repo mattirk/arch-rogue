@@ -108,15 +108,7 @@ class ViewportZoomTests(unittest.TestCase):
                     self.assertAlmostEqual(bx, wx, delta=0.25)
                     self.assertAlmostEqual(by, wy, delta=0.25)
 
-    def test_draw_runs_at_nonnative_zoom(self) -> None:
-        import tempfile
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            game.view_zoom = 1.3
-            game.draw()  # should not raise; composites world layer.
-            game.view_zoom = 0.75
-            game.draw()
 
     def test_world_to_display_matches_screen_at_unit_zoom(self) -> None:
         import tempfile

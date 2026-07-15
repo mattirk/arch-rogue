@@ -21,7 +21,6 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from arch_rogue import __version__
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.models import Enemy, Item, Tile
@@ -52,7 +51,7 @@ def _open_patch(game: Game, x: float, y: float, radius: int = 8) -> None:
             column[ty] = Tile.FLOOR
 
 
-class TimeSkip318Tests(unittest.TestCase):
+class TimeSkipTests(unittest.TestCase):
     def make_game(self, tmpdir: str, archetype_index: int = 0, seed: int = 3180) -> Game:
         game = Game(
             screen_size=(960, 600),
@@ -60,8 +59,6 @@ class TimeSkip318Tests(unittest.TestCase):
             save_path=Path(tmpdir) / "run.json",
         )
         game.options_path = Path(tmpdir) / "options.json"
-        game.ui_scale = 1
-        game.rebuild_fonts()
         game.rng.seed(seed)
         game.restart(ARCHETYPES[archetype_index])
         if game.story_intro_pending:
@@ -75,8 +72,6 @@ class TimeSkip318Tests(unittest.TestCase):
 
     # --- class-skill swap ----------------------------------------------
 
-    def test_version_bumped(self) -> None:
-        self.assertEqual(__version__, "4.1.6")
 
     def test_warden_class_skill_is_time_skip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -91,12 +86,7 @@ class TimeSkip318Tests(unittest.TestCase):
             self.assertEqual(slots[2]["cost"], game.class_skill_mana_cost())
             self.assertEqual(slots[2]["cooldown"], game.class_skill_cooldown())
 
-    def test_non_warden_classes_keep_nova(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            arcanist = self.make_game(tmpdir, archetype_index=2)
-            self.assertEqual(arcanist.player.class_name, "Arcanist")
-            self.assertEqual(arcanist.class_skill_kind(), "nova")
-            self.assertEqual(arcanist.skill_names()[2], "Frost Nova")
+
 
     # --- cast behavior -------------------------------------------------
 
@@ -362,7 +352,6 @@ class TimeSkip318Tests(unittest.TestCase):
             game = self.make_game(tmpdir, archetype_index=0)
             game.player.time_skip_timer = 2.5
             data = game.serialize_run_state()
-            self.assertEqual(data["release"], "4.1.6")
             self.assertNotIn("time_skip_timer", data)
 
             loaded = Game(

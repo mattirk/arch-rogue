@@ -19,26 +19,20 @@ from arch_rogue.game import Game
 from arch_rogue.models import Item, SpecialRoom
 
 
-class SpecialRooms313Tests(unittest.TestCase):
-    def make_game_with_shop_and_guest(
-        self, tmpdir: str, start_seed: int = 2602
-    ) -> Game:
-        for seed in range(start_seed, start_seed + 120):
-            game = Game(
-                screen_size=(820, 540),
-                headless=True,
-                save_path=Path(tmpdir) / f"run-{seed}.json",
-            )
-            game.options_path = Path(tmpdir) / f"options-{seed}.json"
-            game.rng.seed(seed)
-            game.restart(ARCHETYPES[2])
-            if (
-                game.dungeon.special_room_for_kind("shop") is not None
-                and game.dungeon.special_room_for_kind("quest_room") is not None
-            ):
-                return game
-        self.fail("Expected a deterministic game seed to generate shop and quest rooms")
-        raise AssertionError
+class SpecialRoomTests(unittest.TestCase):
+    def make_game_with_shop_and_guest(self, tmpdir: str) -> Game:
+        seed = 2602
+        game = Game(
+            screen_size=(820, 540),
+            headless=True,
+            save_path=Path(tmpdir) / f"run-{seed}.json",
+        )
+        game.options_path = Path(tmpdir) / f"options-{seed}.json"
+        game.rng.seed(seed)
+        game.restart(ARCHETYPES[2])
+        self.assertIsNotNone(game.dungeon.special_room_for_kind("shop"))
+        self.assertIsNotNone(game.dungeon.special_room_for_kind("quest_room"))
+        return game
 
     def room_contains(self, room, x: float, y: float) -> bool:
         return room.x <= x < room.x + room.w and room.y <= y < room.y + room.h
@@ -172,7 +166,7 @@ class SpecialRooms313Tests(unittest.TestCase):
             self.assertIsNotNone(loaded.dungeon.special_room_for_kind("shop"))
             self.assertIsNotNone(loaded.dungeon.special_room_for_kind("quest_room"))
 
-    def test_unknown_special_room_kind_loads_and_noops(self) -> None:
+    def test_unknown_room_kind_noops_then_accepts_registered_handler(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game_with_shop_and_guest(tmpdir)
             data = copy.deepcopy(game.serialize_run_state())
@@ -199,57 +193,35 @@ class SpecialRooms313Tests(unittest.TestCase):
             loaded.restore_run_state(data)
             unknown = loaded.dungeon.special_room_for_kind("npc_home")
             self.assertIsNotNone(unknown)
+            assert unknown is not None
             before_items = len(loaded.items)
             loaded._populate_special_rooms()
             self.assertEqual(len(loaded.items), before_items)
 
-    def test_future_room_kind_can_register_population_handler(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game_with_shop_and_guest(tmpdir)
-            occupied = {room.room_index for room in game.dungeon.special_rooms}
-            room_index = next(
-                index
-                for index in range(1, len(game.dungeon.rooms) - 1)
-                if index not in occupied
-            )
-            garden = SpecialRoom(
-                room_index=room_index,
-                kind="garden",
-                display_name="Grave Garden",
-                tags=["garden", "refuge"],
-                door_policy="sealed",
-                spawn_policy="safe",
-            )
-            game.dungeon.special_rooms.append(garden)
-
-            def populate_garden(special_room: SpecialRoom, room) -> None:
+            def populate_home(special_room: SpecialRoom, room) -> None:
                 cx, cy = room.center
                 special_room.anchor_points["feature"] = [cx, cy]
-                special_room.state["blooming"] = True
-                game.items.append(
+                special_room.state["occupied"] = True
+                loaded.items.append(
                     Item(
-                        "Garden Lantern",
-                        "garden_feature",
+                        "Home Lantern",
+                        "home_feature",
                         rarity="Common",
                         x=cx + 0.5,
                         y=cy + 0.5,
                     )
                 )
 
-            game.register_special_room_handler("garden", populate_garden)
-            game._populate_special_rooms()
-
-            self.assertTrue(garden.state["blooming"])
-            self.assertEqual(
-                garden.anchor("feature"), game.dungeon.rooms[room_index].center
-            )
+            loaded.register_special_room_handler("npc_home", populate_home)
+            loaded._populate_special_rooms()
+            room = loaded.dungeon.rooms[unknown.room_index]
+            self.assertTrue(unknown.state["occupied"])
+            self.assertEqual(unknown.anchor("feature"), room.center)
             self.assertTrue(
                 any(
-                    item.slot == "garden_feature"
-                    and self.room_contains(
-                        game.dungeon.rooms[room_index], item.x, item.y
-                    )
-                    for item in game.items
+                    item.slot == "home_feature"
+                    and self.room_contains(room, item.x, item.y)
+                    for item in loaded.items
                 )
             )
 

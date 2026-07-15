@@ -17,6 +17,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -25,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import pygame  # noqa: F401  (required to initialize pygame subsystems in tests)
 
-from arch_rogue import __version__
 from arch_rogue.constants import (
     DARK_LEVEL_LIGHT_RADIUS,
     DUNGEON_DEPTH,
@@ -43,7 +43,7 @@ from arch_rogue.lighting import bake_normal_map, hashable_color, light_radius_px
 from arch_rogue.models import LightSource, Projectile, Tile
 
 
-class Lighting316Tests(unittest.TestCase):
+class LightingTests(unittest.TestCase):
     def make_game(self, tmpdir, archetype_index=0, seed=3161) -> Game:
         game = Game(
             screen_size=(960, 600),
@@ -51,8 +51,6 @@ class Lighting316Tests(unittest.TestCase):
             save_path=Path(tmpdir) / "run.json",
         )
         game.options_path = Path(tmpdir) / "options.json"
-        game.ui_scale = 1
-        game.rebuild_fonts()
         game.rng.seed(seed)
         game.restart(ARCHETYPES[archetype_index])
         if game.story_intro_pending:
@@ -86,13 +84,7 @@ class Lighting316Tests(unittest.TestCase):
         na, nb = bake_normal_map(a), bake_normal_map(b)
         self.assertNotEqual(na.get_at((1, 4)), nb.get_at((1, 4)))
 
-    def test_sprite_atlas_bakes_normal_maps_lazily(self) -> None:
-        game = self.make_game(tempfile.mkdtemp())
-        sprite = game.sprites.player_frame("Warden", "idle", 0.0, 0.0)
-        nm = game.sprites.normal_map_for(sprite)
-        self.assertIsNotNone(nm)
-        # Cached: a second request returns the same surface.
-        self.assertIs(game.sprites.normal_map_for(sprite), nm)
+
 
     # --- feature 2 + 3: light-buffer accumulation + player lantern -----
     def test_player_lantern_radius_equals_sight_radius(self) -> None:
@@ -205,10 +197,9 @@ class Lighting316Tests(unittest.TestCase):
             expected = int(255 * 0.65 + game.theme.accent[ch] * 0.35)
             self.assertAlmostEqual(theme_color[ch], expected, delta=1)
         # Dark floors use a much dimmer ambient than light floors.
-        game2 = self.make_game(tempfile.mkdtemp())
-        game2._lighting_enabled = True
-        game2.set_current_floor_dark(True)
-        self.assertLess(game2._ambient_level(), game._ambient_level())
+        light_ambient = game._ambient_level()
+        game.set_current_floor_dark(True)
+        self.assertLess(game._ambient_level(), light_ambient)
 
     def test_light_floor_ambient_brightens_near_surface_and_darkens_with_depth(self) -> None:
         # The depth brightness gradient is a separate axis from the dark-floor
@@ -289,8 +280,10 @@ class Lighting316Tests(unittest.TestCase):
     def test_draw_lighting_noop_when_disabled(self) -> None:
         game = self.make_game(tempfile.mkdtemp())
         game._lighting_enabled = False
-        # Should return without raising and without compositing.
+        game.screen.fill((17, 19, 23))
+        before = pygame.image.tobytes(game.screen, "RGBA")
         game.draw_lighting()
+        self.assertEqual(pygame.image.tobytes(game.screen, "RGBA"), before)
 
     # --- save round-trip: empty LightSource list on pre-3.16 saves -----
     def test_save_round_trip_with_light_sources(self) -> None:
@@ -374,23 +367,31 @@ class Lighting316Tests(unittest.TestCase):
         game = self.make_game(tempfile.mkdtemp())
         game._lighting_enabled = True
         game._lighting_normal_maps = True
+        json_color = cast(tuple[int, int, int], [245, 215, 90])
         game.light_sources.append(
             LightSource(
-                game.player.x, game.player.y, 2.3, [245, 215, 90],
-                intensity=0.6, ttl=None, flicker=False, kind="shrine",
+                game.player.x,
+                game.player.y,
+                2.3,
+                json_color,
+                intensity=0.6,
+                ttl=None,
+                flicker=False,
+                kind="shrine",
             )
         )
-        for _ in range(3):
-            game.update(0.016)
-            game.draw()
+        game.update(0.016)
+        game.draw()
         # The cache key is a hashable tuple, so the sprite is cached/reused.
-        self.assertEqual(game._radial_light_sprite(48, [245, 215, 90]),
-                         game._radial_light_sprite(48, (245, 215, 90)))
-        self.assertEqual(hashable_color([1, 2, 3]), (1, 2, 3))
+        self.assertEqual(
+            game._radial_light_sprite(48, json_color),
+            game._radial_light_sprite(48, (245, 215, 90)),
+        )
+        self.assertEqual(
+            hashable_color(cast(tuple[int, int, int], [1, 2, 3])),
+            (1, 2, 3),
+        )
         self.assertEqual(hashable_color((1, 2, 3)), (1, 2, 3))
-
-    def test_version_bumped(self) -> None:
-        self.assertEqual(__version__, "4.1.6")
 
 
 if __name__ == "__main__":

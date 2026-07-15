@@ -1,10 +1,4 @@
-"""Milestone 3.11 — Cutscene cleanup.
-
-Validates the stage cleanup work: removal of the unused transparent-overlay
-rendering functions, the depth/perspective scaling that fixes oversized
-sprites, the cleaner ground shadows, and the procedural player/antagonist
-duel choreography (run together, clash, retreat, repeat).
-"""
+"""Cutscene runtime, perspective, choreography, timing, and cache regressions."""
 
 from __future__ import annotations
 
@@ -19,13 +13,11 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import pygame
-
 from arch_rogue.game import ARCHETYPES, Game
 from arch_rogue.rendering.story_overlays import RenderingStoryOverlayMixin
 
 
-class CutsceneCleanup311Tests(unittest.TestCase):
+class CutsceneRuntimeTests(unittest.TestCase):
     def make_game(self, tmpdir: str, seed: int = 3117) -> Game:
         game = Game(
             screen_size=(960, 600),
@@ -37,50 +29,7 @@ class CutsceneCleanup311Tests(unittest.TestCase):
         game.restart(ARCHETYPES[2])
         return game
 
-    # --- Unused overlay code removed -------------------------------------
 
-    def test_unused_stage_overlay_functions_removed(self) -> None:
-        removed = [
-            "draw_cutscene_memory_ribbon",
-            "draw_cutscene_story_backdrop",
-            "draw_cutscene_theme_motifs",
-            "draw_cutscene_relic_silhouette",
-            "draw_cutscene_faction_sigil",
-            "draw_cutscene_choice_tableau",
-            "draw_cutscene_narrator_wave",
-            # 3.11 stage-lights simplification: the old multi-circle lighting,
-            # ambient particle, and footlight-halo systems are gone.
-            "draw_stage_lights",
-            "_draw_stage_light",
-            "draw_stage_ambient",
-            "_ambient_painter",
-            "_ambient_particle_pos",
-            "_paint_ambient_mote",
-            "_paint_ambient_dust",
-            "_paint_ambient_ember",
-            "_paint_ambient_spark",
-            "_paint_ambient_leaf",
-            "_paint_ambient_snow",
-            "_paint_ambient_ash",
-            "draw_stage_footlights",
-            # Unused prop painters (never placed by any cutscene JSON).
-            "_paint_prop_brazier",
-            "_paint_prop_throne",
-            "_paint_prop_crate",
-        ]
-        for name in removed:
-            self.assertFalse(
-                hasattr(RenderingStoryOverlayMixin, name),
-                f"unused overlay function {name} should be removed",
-            )
-        # The new simplified lighting pass and the choice glyph helper remain.
-        self.assertTrue(hasattr(RenderingStoryOverlayMixin, "draw_stage_lighting"))
-        self.assertTrue(
-            hasattr(RenderingStoryOverlayMixin, "draw_cutscene_choice_glyph")
-        )
-        self.assertTrue(
-            hasattr(RenderingStoryOverlayMixin, "draw_cutscene_choice_glyph")
-        )
 
     # --- Depth / perspective scaling -------------------------------------
 
@@ -189,11 +138,6 @@ class CutsceneCleanup311Tests(unittest.TestCase):
             game = self.make_game(tmpdir)
             speed = game.CUTSCENE_NARRATION_SPEED
             self.assertAlmostEqual(speed, 2.25, places=6)
-            sample = "Hello, world! This is a test.\nNew line; done."
-            fast = sum(game.cutscene_narration_char_delay(c) for c in sample)
-            # Reconstruct the baseline (multiplier = 1) by undoing the division.
-            baseline = fast * speed
-            self.assertAlmostEqual(fast, baseline / 2.25, places=6)
             # Spot-check a regular character and a sentence-end pause.
             self.assertAlmostEqual(
                 game.cutscene_narration_char_delay("a"), 0.026 / 2.25, places=6
@@ -204,16 +148,26 @@ class CutsceneCleanup311Tests(unittest.TestCase):
 
     # --- Full render regression ------------------------------------------
 
-    def test_cutscene_renders_clean_across_duel_cycle(self) -> None:
+    def test_cutscene_render_reuses_cached_stage_across_duel_cycle(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             game.reveal_active_cutscene_narration()
+            cache = RenderingStoryOverlayMixin._STAGE_CACHE
+            cache.clear()
+            game.elapsed = 0.0
+            game.draw()
+            snapshot = dict(cache)
+            self.assertTrue(snapshot)
+
             period = game.STAGE_DUEL_PERIOD
-            for index in range(12):
+            for index in range(1, 12):
                 game.elapsed = index * period / 12
                 game.draw()
-            cache = RenderingStoryOverlayMixin._STAGE_CACHE
-            self.assertLess(len(cache), 32)
+
+            self.assertLessEqual(len(cache), len(snapshot) + 4)
+            for key, surface in snapshot.items():
+                if key in cache:
+                    self.assertIs(cache[key], surface)
 
 
 if __name__ == "__main__":
