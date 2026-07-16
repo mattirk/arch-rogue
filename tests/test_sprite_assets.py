@@ -237,6 +237,138 @@ class SpriteAssetTests(unittest.TestCase):
                             self.assertLessEqual(bounds.right, surface.get_width() - 1)
                             self.assertLessEqual(bounds.bottom, surface.get_height() - 1)
 
+    def test_friendly_npc_dance_clips_are_complete_and_beat_addressable(self) -> None:
+        library = AssetSpriteLibrary()
+        contracts = {
+            "shopkeeper": "Shopkeeper",
+            "story_guest": "Story Guest",
+        }
+
+        for slug, actor_name in contracts.items():
+            entry = library.manifest["actors"][slug]
+            self.assertEqual(tuple(entry["source_canvas"]), (180, 180))
+            self.assertEqual(tuple(entry["source_anchor"]), (90.0, 135.0))
+            self.assertEqual(entry["reference_height"], 89)
+            self.assertEqual(entry["target_height"], 176)
+            self.assertEqual(set(entry["clips"]), {"idle", "run"})
+
+            for state, folder in (("idle", "idle"), ("run", "walk")):
+                clip = entry["clips"][state]
+                self.assertTrue(clip["loop"])
+                self.assertEqual(clip["fps"], 8.0)
+                self.assertEqual(set(clip["directions"]), set(DIRECTIONS))
+                for direction, frame_paths in clip["directions"].items():
+                    with self.subTest(actor=slug, state=state, direction=direction):
+                        self.assertEqual(
+                            frame_paths,
+                            [
+                                f"actors/{slug}/animations/{folder}/{direction}/"
+                                f"frame_{index:03d}.png"
+                                for index in range(8)
+                            ],
+                        )
+                        surfaces = [
+                            library._source_surface(path) for path in frame_paths
+                        ]
+                        self.assertNotIn(None, surfaces)
+                        decoded = [
+                            surface for surface in surfaces if surface is not None
+                        ]
+                        self.assertEqual(len(decoded), 8)
+                        self.assertEqual(
+                            len(
+                                {
+                                    pygame.image.tobytes(surface, "RGBA")
+                                    for surface in decoded
+                                }
+                            ),
+                            8,
+                        )
+                        for surface in decoded:
+                            self.assertEqual(surface.get_size(), (180, 180))
+                            bounds = surface.get_bounding_rect(min_alpha=1)
+                            self.assertGreater(bounds.width, 0)
+                            self.assertGreater(bounds.height, 0)
+                            self.assertGreaterEqual(bounds.left, 1)
+                            self.assertGreaterEqual(bounds.top, 1)
+                            self.assertLessEqual(bounds.right, 179)
+                            self.assertLessEqual(bounds.bottom, 179)
+
+                        start = library.resolve_actor(
+                            actor_name,
+                            state,
+                            direction,
+                            99.0,
+                            loop_progress=0.0,
+                        )
+                        midpoint = library.resolve_actor(
+                            actor_name,
+                            state,
+                            direction,
+                            0.0,
+                            loop_progress=0.5,
+                        )
+                        wrapped = library.resolve_actor(
+                            actor_name,
+                            state,
+                            direction,
+                            0.0,
+                            loop_progress=1.0,
+                        )
+                        self.assertIsNotNone(start)
+                        self.assertIsNotNone(midpoint)
+                        self.assertIsNotNone(wrapped)
+                        assert start is not None
+                        assert midpoint is not None
+                        assert wrapped is not None
+                        self.assertEqual(start.key[2:5], (state, direction, 0))
+                        self.assertEqual(midpoint.key[2:5], (state, direction, 4))
+                        self.assertEqual(wrapped.key[2:5], (state, direction, 0))
+
+        atlas = SpriteAtlas()
+        shop_idle = atlas.shopkeeper_visual(
+            0.0, direction="north-east", clip_progress=0.5
+        )
+        shop_walk = atlas.shopkeeper_visual(
+            0.0, direction="west", moving=True, clip_progress=0.5
+        )
+        guest_idle = atlas.story_guest_visual(
+            0.0, direction="south-west", clip_progress=0.5
+        )
+        guest_walk = atlas.story_guest_visual(
+            0.0, direction="north", moving=True, clip_progress=0.5
+        )
+        for frame, state, direction in (
+            (shop_idle, "idle", "north-east"),
+            (shop_walk, "run", "west"),
+            (guest_idle, "idle", "south-west"),
+            (guest_walk, "run", "north"),
+        ):
+            self.assertTrue(frame.is_asset)
+            self.assertEqual(frame.key[2:4], (state, direction))
+
+    def test_action_progress_does_not_override_looping_movement_clips(self) -> None:
+        library = AssetSpriteLibrary()
+        early = library.resolve_actor(
+            "Warden",
+            "dash",
+            "south",
+            0.35,
+            clip_progress=0.0,
+        )
+        late = library.resolve_actor(
+            "Warden",
+            "dash",
+            "south",
+            0.35,
+            clip_progress=0.95,
+        )
+        self.assertIsNotNone(early)
+        self.assertIsNotNone(late)
+        assert early is not None and late is not None
+        self.assertEqual(early.key, late.key)
+        self.assertEqual(early.key[2], "run")
+
     def test_ranger_refresh_uses_reviewed_high_resolution_contract(self) -> None:
         library = AssetSpriteLibrary()
         ranger = library.manifest["actors"]["ranger"]

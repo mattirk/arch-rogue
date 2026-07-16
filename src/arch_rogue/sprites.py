@@ -900,16 +900,32 @@ class PixelSpriteAtlas:
         )
 
     def story_guest_frame(
-        self, elapsed: float, resolved: bool = False
+        self,
+        elapsed: float,
+        resolved: bool = False,
+        *,
+        moving: bool = False,
+        clip_progress: float | None = None,
     ) -> pygame.Surface:
         state = "resolved" if resolved else "active"
-        states = self.story_guest_animation_frames[state]
-        return self._frame_from(states["idle"], elapsed, rate=3.2)
+        frames = self.story_guest_animation_frames[state][
+            "run" if moving else "idle"
+        ]
+        if clip_progress is not None:
+            return self._frame_from(frames, (clip_progress % 1.0) * len(frames))
+        return self._frame_from(frames, elapsed, rate=5.0 if moving else 3.2)
 
-    def shopkeeper_frame(self, elapsed: float) -> pygame.Surface:
-        return self._frame_from(
-            self.shopkeeper_animation_frames["idle"], elapsed, rate=3.0
-        )
+    def shopkeeper_frame(
+        self,
+        elapsed: float,
+        *,
+        moving: bool = False,
+        clip_progress: float | None = None,
+    ) -> pygame.Surface:
+        frames = self.shopkeeper_animation_frames["run" if moving else "idle"]
+        if clip_progress is not None:
+            return self._frame_from(frames, (clip_progress % 1.0) * len(frames))
+        return self._frame_from(frames, elapsed, rate=5.0 if moving else 3.0)
 
     def familiar_frame(self, variant: int, elapsed: float) -> pygame.Surface:
         """Animation frame for a summoned familiar (Milestone 3.15).

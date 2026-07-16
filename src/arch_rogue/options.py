@@ -302,8 +302,11 @@ class OptionsMixin:
         )
 
     def sync_music(self) -> None:
+        transport_time = (
+            None if self.music_enabled and self.audio.available else self.elapsed
+        )
         self.audio_available = self.audio.sync_music(
-            self.current_music_profile(), self.music_enabled
+            self.current_music_profile(), self.music_enabled, transport_time
         )
 
     def play_sfx(self, name: str) -> None:

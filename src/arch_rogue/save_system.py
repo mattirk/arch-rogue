@@ -601,6 +601,7 @@ class SaveLoadMixin:
         self.idle_npcs = [
             self.idle_npc_from_dict(npc) for npc in data.get("idle_npcs", [])
         ]
+        self.reset_friendly_npc_runtime()
         # Milestone 3.15 - familiars restore additively; old saves without
         # the field load with an empty host (the Acolyte can re-summon).
         self.familiars = [

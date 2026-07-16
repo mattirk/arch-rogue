@@ -91,6 +91,7 @@ from .input import InputMixin, key_command
 from .interactions import InteractionMixin
 from .inventory import InventoryMixin
 from .menus import MenuRenderer
+from .npc_runtime import FriendlyNpcRuntimeMixin
 from .models import (
     AmbushBell,
     Archetype,
@@ -176,6 +177,7 @@ __all__ = (
     "FPS",
     "FloatingText",
     "FloorPlan",
+    "FriendlyNpcRuntimeMixin",
     "Game",
     "IdleNpc",
     "ImpactEffect",
@@ -248,6 +250,7 @@ class Game(
     RunFlowMixin,
     PopulationMixin,
     StoryRuntimeMixin,
+    FriendlyNpcRuntimeMixin,
     CombatMixin,
     InventoryMixin,
     ShopMixin,
@@ -380,6 +383,7 @@ class Game(
         self.story_state: StoryState | None = None
         self.story_guests: list[StoryGuest] = []
         self.idle_npcs: list[IdleNpc] = []
+        self.reset_friendly_npc_runtime()
         # Milestone 3.15 — Acolyte Spirit Call familiars. Reset on restart /
         # floor descent and serialized additively (old saves load with none).
         self.familiars: list[Familiar] = []
@@ -924,6 +928,7 @@ class Game(
             return
         self.update_player_aim()
         self.update_player(dt)
+        self.update_friendly_npcs(dt)
         self.update_camera(dt)
         self.update_revealed_tiles()
         self.update_enemy_statuses(dt)

@@ -401,6 +401,7 @@ class AssetSpriteLibrary:
         *,
         kind: str = "",
         clip_progress: float | None = None,
+        loop_progress: float | None = None,
     ) -> ResolvedSpriteFrame | None:
         if not self.available:
             return None
@@ -426,7 +427,13 @@ class AssetSpriteLibrary:
             if frame_paths:
                 fps = max(0.1, float(clip.get("fps", 6.0)))
                 looping = bool(clip.get("loop", True))
-                if not looping and clip_progress is not None:
+                if looping and loop_progress is not None:
+                    progress = float(loop_progress) % 1.0
+                    frame_number = min(
+                        len(frame_paths) - 1,
+                        int(progress * len(frame_paths)),
+                    )
+                elif not looping and clip_progress is not None:
                     progress = max(0.0, min(1.0, float(clip_progress)))
                     frame_number = min(
                         len(frame_paths) - 1,
@@ -752,6 +759,7 @@ class SpriteAtlas:
         *,
         kind: str = "",
         clip_progress: float | None = None,
+        loop_progress: float | None = None,
     ) -> ResolvedSpriteFrame | None:
         if not self.modern_graphics_active:
             return None
@@ -762,6 +770,7 @@ class SpriteAtlas:
             clip_time,
             kind=kind,
             clip_progress=clip_progress,
+            loop_progress=loop_progress,
         )
 
     def player_visual(
@@ -899,31 +908,95 @@ class SpriteAtlas:
         self._preview_cache[cache_key] = preview
         return preview
 
-    def shopkeeper_visual(self, elapsed: float) -> ResolvedSpriteFrame:
-        asset = self._asset_actor("shopkeeper", "idle", "south", elapsed)
+    def shopkeeper_visual(
+        self,
+        elapsed: float,
+        *,
+        direction: str = "south",
+        moving: bool = False,
+        clip_progress: float | None = None,
+    ) -> ResolvedSpriteFrame:
+        state = "run" if moving else "idle"
+        asset = self._asset_actor(
+            "shopkeeper",
+            state,
+            direction,
+            elapsed,
+            loop_progress=clip_progress,
+        )
         if asset is not None:
             return asset
         return self._fallback_frame(
-            self.legacy.shopkeeper_frame(elapsed), "npc", "shopkeeper"
+            self.legacy.shopkeeper_frame(
+                elapsed, moving=moving, clip_progress=clip_progress
+            ),
+            "npc",
+            "shopkeeper",
+            state,
         )
 
-    def shopkeeper_frame(self, elapsed: float) -> pygame.Surface:
-        return self.shopkeeper_visual(elapsed).surface
+    def shopkeeper_frame(
+        self,
+        elapsed: float,
+        *,
+        direction: str = "south",
+        moving: bool = False,
+        clip_progress: float | None = None,
+    ) -> pygame.Surface:
+        return self.shopkeeper_visual(
+            elapsed,
+            direction=direction,
+            moving=moving,
+            clip_progress=clip_progress,
+        ).surface
 
     def story_guest_visual(
-        self, elapsed: float, resolved: bool = False
+        self,
+        elapsed: float,
+        resolved: bool = False,
+        *,
+        direction: str = "south",
+        moving: bool = False,
+        clip_progress: float | None = None,
     ) -> ResolvedSpriteFrame:
-        asset = self._asset_actor("story_guest", "idle", "south", elapsed)
+        state = "run" if moving else "idle"
+        asset = self._asset_actor(
+            "story_guest",
+            state,
+            direction,
+            elapsed,
+            loop_progress=clip_progress,
+        )
         if asset is not None:
             return asset
         return self._fallback_frame(
-            self.legacy.story_guest_frame(elapsed, resolved), "npc", "story_guest"
+            self.legacy.story_guest_frame(
+                elapsed,
+                resolved,
+                moving=moving,
+                clip_progress=clip_progress,
+            ),
+            "npc",
+            "story_guest",
+            state,
         )
 
     def story_guest_frame(
-        self, elapsed: float, resolved: bool = False
+        self,
+        elapsed: float,
+        resolved: bool = False,
+        *,
+        direction: str = "south",
+        moving: bool = False,
+        clip_progress: float | None = None,
     ) -> pygame.Surface:
-        return self.story_guest_visual(elapsed, resolved).surface
+        return self.story_guest_visual(
+            elapsed,
+            resolved,
+            direction=direction,
+            moving=moving,
+            clip_progress=clip_progress,
+        ).surface
 
     def familiar_visual(
         self,

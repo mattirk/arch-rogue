@@ -542,6 +542,7 @@ class RunFlowMixin:
         self.secrets: list[SecretCache] = []
         self.story_guests = []
         self.idle_npcs: list[IdleNpc] = []
+        self.reset_friendly_npc_runtime()
         self.familiars: list[Familiar] = []
         self.ambush_bells: list[AmbushBell] = []
         self.light_sources: list[LightSource] = []
@@ -629,6 +630,7 @@ class RunFlowMixin:
         self.secrets = []
         self.story_guests = []
         self.idle_npcs = []
+        self.reset_friendly_npc_runtime()
         self.familiars = []
         self.ambush_bells = []
         self.light_sources = []

@@ -129,6 +129,11 @@ class SpecialRoomTests(unittest.TestCase):
 
             game._frame_cache = {}
             self.assertEqual(game._shop_gold_stack_placements(), placements)
+            keeper = game.shopkeepers[0]
+            keeper.x += 1.0
+            keeper.y += 1.0
+            game._frame_cache = {}
+            self.assertEqual(game._shop_gold_stack_placements(), placements)
             self.assertFalse(any(item.slot.startswith("gold_stack") for item in game.items))
 
             data = copy.deepcopy(game.serialize_run_state())
@@ -165,6 +170,20 @@ class SpecialRoomTests(unittest.TestCase):
             self.assertEqual(loaded.dungeon.guest_room_index, guest_index)
             self.assertIsNotNone(loaded.dungeon.special_room_for_kind("shop"))
             self.assertIsNotNone(loaded.dungeon.special_room_for_kind("quest_room"))
+
+            loaded._frame_cache = {}
+            occupied = {
+                (x, y) for x, y, _size, _variant in loaded._shop_gold_stack_placements()
+            }
+            keeper = loaded.shopkeepers[0]
+            self.assertNotIn((int(keeper.x), int(keeper.y)), occupied)
+            sign_tiles = {
+                (int(item.x), int(item.y))
+                for item in loaded.items
+                if item.slot == "shop_sign"
+            }
+            self.assertTrue(sign_tiles)
+            self.assertTrue(occupied.isdisjoint(sign_tiles))
 
     def test_unknown_room_kind_noops_then_accepts_registered_handler(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

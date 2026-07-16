@@ -24,6 +24,7 @@ from __future__ import annotations
 import math
 import random
 import struct
+import time
 from dataclasses import dataclass
 
 import pygame
@@ -43,6 +44,29 @@ class MusicProfile:
     mood: str = "run"
 
 
+@dataclass(frozen=True, slots=True)
+class MusicTrackSpec:
+    tempo: float
+    steps: int
+    steps_per_beat: int
+    step_seconds: float
+    total_samples: int
+    loop_seconds: float
+
+    @property
+    def beats_per_loop(self) -> int:
+        return self.steps // self.steps_per_beat
+
+
+@dataclass(frozen=True, slots=True)
+class MusicTiming:
+    total_beats: float
+    loop_beat: float
+    beat_index: int
+    beat_phase: float
+    phrase_index: int
+
+
 class AudioSystem:
     """Procedural audio manager for SFX and run-specific chiptune music."""
 
@@ -52,6 +76,10 @@ class AudioSystem:
         self.music_cache: dict[int, pygame.mixer.Sound] = {}
         self.music_channel: pygame.mixer.Channel | None = None
         self.current_music_seed: int | None = None
+        self._music_transport_key: int | None = None
+        self._music_transport_started_at = 0.0
+        self._music_transport_spec: MusicTrackSpec | None = None
+        self._music_transport_uses_explicit_clock: bool | None = None
 
     def initialize(self, headless: bool) -> bool:
         if headless:
@@ -115,9 +143,102 @@ class AudioSystem:
             frames.extend(struct.pack("<h", value))
         return pygame.mixer.Sound(buffer=bytes(frames))
 
-    def play_run_music(self, profile: MusicProfile, enabled: bool = True) -> bool:
+    def music_track_spec(self, profile: MusicProfile) -> MusicTrackSpec:
+        if profile.mood == "menu":
+            tempo = 58.0
+            steps = 16
+            steps_per_beat = 1
+        else:
+            depth = max(1, profile.depth)
+            base_tempo = 74 + (profile.seed % 4) * 3
+            tempo = float(min(138, base_tempo + (depth - 1) * 4))
+            steps = 32
+            steps_per_beat = 2
+        step_seconds = 60.0 / tempo / steps_per_beat
+        total_samples = int(steps * step_seconds * SAMPLE_RATE)
+        return MusicTrackSpec(
+            tempo=tempo,
+            steps=steps,
+            steps_per_beat=steps_per_beat,
+            step_seconds=step_seconds,
+            total_samples=total_samples,
+            loop_seconds=total_samples / SAMPLE_RATE,
+        )
+
+    def _clock_value(self, now: float | None) -> float:
+        return time.monotonic() if now is None else float(now)
+
+    def _reset_music_transport(
+        self, profile: MusicProfile, now: float, uses_explicit_clock: bool
+    ) -> None:
+        self._music_transport_key = self._profile_seed(profile)
+        self._music_transport_started_at = now
+        self._music_transport_spec = self.music_track_spec(profile)
+        self._music_transport_uses_explicit_clock = uses_explicit_clock
+
+    def _sync_music_transport(
+        self, profile: MusicProfile, now: float, uses_explicit_clock: bool
+    ) -> None:
+        if (
+            self._music_transport_key != self._profile_seed(profile)
+            or self._music_transport_uses_explicit_clock != uses_explicit_clock
+        ):
+            self._reset_music_transport(profile, now, uses_explicit_clock)
+
+    def music_timing(
+        self, profile: MusicProfile | None, now: float | None = None
+    ) -> MusicTiming:
+        if profile is None:
+            return MusicTiming(0.0, 0.0, 0, 0.0, 0)
+        uses_explicit_clock = now is not None
+        clock = self._clock_value(now)
+        self._sync_music_transport(profile, clock, uses_explicit_clock)
+        spec = self._music_transport_spec or self.music_track_spec(profile)
+        beat_seconds = spec.loop_seconds / max(1, spec.beats_per_loop)
+        total_beats = max(0.0, clock - self._music_transport_started_at) / beat_seconds
+        loop_beat = total_beats % spec.beats_per_loop
+        beat_index = int(total_beats)
+        return MusicTiming(
+            total_beats=total_beats,
+            loop_beat=loop_beat,
+            beat_index=beat_index,
+            beat_phase=total_beats - beat_index,
+            phrase_index=beat_index // 4,
+        )
+
+    def current_music_timing(self, now: float | None = None) -> MusicTiming:
+        spec = self._music_transport_spec
+        uses_explicit_clock = now is not None
+        if (
+            self._music_transport_key is None
+            or spec is None
+            or self._music_transport_uses_explicit_clock != uses_explicit_clock
+        ):
+            return MusicTiming(0.0, 0.0, 0, 0.0, 0)
+        clock = self._clock_value(now)
+        beat_seconds = spec.loop_seconds / max(1, spec.beats_per_loop)
+        total_beats = max(0.0, clock - self._music_transport_started_at) / beat_seconds
+        loop_beat = total_beats % spec.beats_per_loop
+        beat_index = int(total_beats)
+        return MusicTiming(
+            total_beats=total_beats,
+            loop_beat=loop_beat,
+            beat_index=beat_index,
+            beat_phase=total_beats - beat_index,
+            phrase_index=beat_index // 4,
+        )
+
+    def play_run_music(
+        self,
+        profile: MusicProfile,
+        enabled: bool = True,
+        now: float | None = None,
+    ) -> bool:
+        uses_explicit_clock = now is not None
+        clock = self._clock_value(now)
+        self._sync_music_transport(profile, clock, uses_explicit_clock)
         if not enabled or not self.available:
-            self.stop_music()
+            self._stop_music_output()
             return self.available
         try:
             music_key = self._profile_seed(profile)
@@ -137,11 +258,16 @@ class AudioSystem:
                 self.music_channel.play(sound, loops=-1, fade_ms=650)
             self.music_channel = channel
             self.current_music_seed = music_key
+            # A newly-started Sound channel always begins at its downbeat. Sample
+            # the clock after synthesis/channel startup so generation time cannot
+            # create an immediate animation offset.
+            started_at = self._clock_value(now)
+            self._reset_music_transport(profile, started_at, uses_explicit_clock)
         except pygame.error:
             self.available = False
         return self.available
 
-    def stop_music(self) -> None:
+    def _stop_music_output(self) -> None:
         if self.music_channel:
             try:
                 self.music_channel.fadeout(300)
@@ -149,11 +275,23 @@ class AudioSystem:
                 self.available = False
         self.current_music_seed = None
 
-    def sync_music(self, profile: MusicProfile | None, enabled: bool) -> bool:
+    def stop_music(self) -> None:
+        self._stop_music_output()
+        self._music_transport_key = None
+        self._music_transport_started_at = 0.0
+        self._music_transport_spec = None
+        self._music_transport_uses_explicit_clock = None
+
+    def sync_music(
+        self,
+        profile: MusicProfile | None,
+        enabled: bool,
+        now: float | None = None,
+    ) -> bool:
         if profile is None:
             self.stop_music()
             return self.available
-        return self.play_run_music(profile, enabled)
+        return self.play_run_music(profile, enabled, now)
 
     def generate_run_track(self, profile: MusicProfile) -> pygame.mixer.Sound:
         rng = random.Random(self._profile_seed(profile))
@@ -168,11 +306,10 @@ class AudioSystem:
             else 0.0
         )
         dread = min(1.0, dread + theme_dread)
-        base_tempo = 74 + (profile.seed % 4) * 3
-        tempo = min(138, base_tempo + (depth - 1) * 4)
-        steps = 32
-        step_seconds = 60.0 / tempo / 2.0
-        total_samples = int(steps * step_seconds * SAMPLE_RATE)
+        spec = self.music_track_spec(profile)
+        steps = spec.steps
+        step_seconds = spec.step_seconds
+        total_samples = spec.total_samples
         samples = [0] * total_samples
 
         root = rng.choice((55.0, 61.74, 65.41, 73.42, 82.41))
@@ -317,10 +454,12 @@ class AudioSystem:
         return pygame.mixer.Sound(buffer=bytes(frames))
 
     def generate_static_menu_track(self) -> pygame.mixer.Sound:
-        tempo = 58
-        steps = 16
-        step_seconds = 60.0 / tempo
-        total_samples = int(steps * step_seconds * SAMPLE_RATE)
+        spec = self.music_track_spec(
+            MusicProfile(0xA11CE, "Menu", "Main Menu", "Quiet", depth=0, mood="menu")
+        )
+        steps = spec.steps
+        step_seconds = spec.step_seconds
+        total_samples = spec.total_samples
         samples = [0] * total_samples
 
         root = 110.0

@@ -1394,9 +1394,12 @@ class RenderingEffectsMixin:
             )
 
     def draw_story_guest(self, guest: StoryGuest) -> None:
+        facing_x, facing_y, moving, dance_progress = self.friendly_npc_visual_state(
+            guest
+        )
         sx, sy = self.world_to_screen(guest.x, guest.y)
         color = guest.color if not guest.resolved else self.shade(guest.color, -60)
-        self.draw_shadow(guest.x, guest.y, 26, 11)
+        self.draw_shadow(guest.x, guest.y, 26, 11, moving=moving)
         pulse = 0.55 + 0.45 * math.sin(self.elapsed * 4.0 + guest.depth)
         # Subtle floor marker (a faint accent ring) so the quest NPC is still
         # distinguishable from a generic traveler, but without the bright
@@ -1409,7 +1412,11 @@ class RenderingEffectsMixin:
         self.screen.blit(ring, ring.get_rect(center=(sx, sy + 4 * WORLD_SCALE)))
 
         frame = self.sprites.story_guest_visual(
-            self.elapsed + guest.depth, guest.resolved
+            self.elapsed,
+            guest.resolved,
+            direction=self.actor_sprite_direction(facing_x, facing_y),
+            moving=moving,
+            clip_progress=dance_progress,
         )
         # Drawn as-is, like every other actor. The previous additive tint over
         # the whole sprite is what made the guest glow; normal humanoids are not
@@ -1443,9 +1450,16 @@ class RenderingEffectsMixin:
         # story-guest humanoid sprite so it reads as a person, but drops the
         # quest aura, label, and interaction prompt — the player cannot talk to
         # or trade with them. A faint floor shadow is enough to ground them.
+        facing_x, facing_y, moving, dance_progress = self.friendly_npc_visual_state(npc)
         sx, sy = self.world_to_screen(npc.x, npc.y)
-        self.draw_shadow(npc.x, npc.y, 24, 10)
-        frame = self.sprites.story_guest_visual(self.elapsed + npc.x * 0.7, False)
+        self.draw_shadow(npc.x, npc.y, 24, 10, moving=moving)
+        frame = self.sprites.story_guest_visual(
+            self.elapsed,
+            False,
+            direction=self.actor_sprite_direction(facing_x, facing_y),
+            moving=moving,
+            clip_progress=dance_progress,
+        )
         if frame.is_asset:
             self.blit_resolved_sprite(frame, npc.x, npc.y, y_offset=5.0)
         else:

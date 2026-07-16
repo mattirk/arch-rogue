@@ -1,5 +1,51 @@
 # Changelog
 
+## 4.1.11 — Beat-Synced Friendly NPC Dancing
+
+Milestone 4.1.11 makes every friendly world NPC dance to the procedural soundtrack and roam within its assigned room, with authored PixelLab motion for shopkeepers, story guests, and the decorative bar/garden travelers that reuse Story Guest art.
+
+### Added
+
+- Added 256 reviewed `180×180` transparent PixelLab animation frames: eight-frame in-place dance and traveling dance-step loops in all eight directions for both `Shopkeeper` and `Story Guest`.
+- Added a shared procedural-music track specification and virtual beat transport. Audible music follows a monotonic mixer-aligned clock; muted and headless runs use deterministic game time, and both expose loop beat, beat phase, and four-beat phrase timing.
+- Added `FriendlyNpcRuntimeMixin`, which gives `Shopkeeper`, `StoryGuest`, and `IdleNpc` deterministic transient motion without changing their public models or consuming gameplay RNG.
+- Added focused regression suites for music timing, clock-domain/downbeat synchronization, deterministic NPC motion, room containment after doors open, interaction holds, pause behavior, shared dance phase, and bounded transient state.
+
+### Changed
+
+- Friendly NPCs now select deterministic waypoints on four-beat phrase boundaries, travel with a restrained dance step, and play their in-place dance across a shared two-beat cycle.
+- NPC movement is clamped to the original room interior even after a door opens, avoids walls, the player, other NPCs, live enemies, traps, shrines, secrets, quest/shop props, and cosmetic shop gold stacks, and pauses near interactive shopkeepers or unresolved story guests.
+- Shopkeeper and Story Guest sprite helpers now accept backward-compatible keyword-only direction, movement, and normalized loop-progress inputs. Runtime `idle` maps to PixelLab `idle`; runtime `run` maps to PixelLab `walk`.
+- Loop-progress addressing is isolated from the existing non-looping action-progress contract, so player dash and fallback action clips retain their prior time-based behavior.
+- Shop gold-stack placement now excludes canonical special-room anchors rather than the shopkeeper's changing tile, keeping the cosmetic layout stable while the keeper moves; migrated index-only rooms fall back to their center and restored shop sign.
+- Runtime/package release version is `4.1.11`. Run saves remain schema `5` and require no migration.
+
+### Asset provenance
+
+- PixelLab Shopkeeper character: `a5486d07-0778-4b91-b817-791696de463f`.
+- PixelLab Story Guest character: `794acf2b-900e-461f-a81e-933bd9363134`.
+- Shopkeeper `idle` prompt: “rhythmic dark-fantasy tavern dance in place, grounded two-beat step-touch with alternating foot taps, gentle shoulder bounce and restrained arm movement, seamless loop, preserve the satchel, hood, clothing and all body parts clearly visible”.
+- Shopkeeper `walk` prompt: “moving forward with rhythmic dance steps, a grounded jaunty two-beat shuffle suitable for slow roaming, clear alternating footfalls and gentle shoulder bounce, seamless locomotion loop, preserve the satchel, hood, clothing and all body parts clearly visible”.
+- Story Guest `idle` and `walk` use the matching occult-court variants, preserving the staff, hood, clothing, cloak motion, and all body parts.
+- All four groups use direct one-to-one PixelLab-to-runtime direction mapping. Rate-limited split attempts were deleted in full; the retained service sources contain exactly one complete eight-direction `idle` group and one complete eight-direction `walk` group per exact character name.
+
+### Compatibility and resilience
+
+- Existing `Shopkeeper`, `StoryGuest`, and `IdleNpc` constructors and serialized fields are unchanged. Motion targets, facing, phrase state, and beat phase remain transient and are rebuilt after load or floor changes.
+- Existing `SpriteAtlas.shopkeeper_visual`, `story_guest_visual`, `shopkeeper_frame`, and `story_guest_frame` calls remain valid through their original defaults.
+- Explicit legacy graphics use the existing cached procedural idle/run frames with the same normalized beat phase. Missing individual modern frames still fall back through the established asset resolver.
+- Music output availability changes presentation timing only; NPC route selection never consumes shared combat, loot, or dungeon RNG.
+
+### Validation
+
+- Visually reviewed labeled sheets for every direction and all eight frames in each retained group, checking grounded motion, facing continuity, transparent separation, and retention of weapons, apparel, limbs, and carried equipment.
+- Automated asset checks cover exact frame counts and paths, `180×180` RGBA decoding, transparent margins, per-direction uniqueness, complete direction sets, normalized loop wrapping, and asset-backed facade resolution.
+- PixelLab source-export gate — 256 animation PNGs validated across both actors.
+- `.venv/bin/python -m unittest tests.test_sprite_assets` — 21 tests, all passing.
+- `.venv/bin/python -m unittest tests.test_audio_music_timing tests.test_friendly_npcs tests.test_special_rooms tests.test_world_rendering_and_animation tests.test_save_and_metadata` — 29 tests, all passing.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+- `.venv/bin/python -m unittest discover tests` — 229 tests, all passing.
+
 ## 4.1.10 — Aura-Free Arcanist Sprite Refresh
 
 Milestone 4.1.10 replaces the playable Arcanist's previous sprite set with the finalized aura-free PixelLab redesign and its reviewed eight-direction idle and walking animations while preserving the existing gameplay and save contracts.

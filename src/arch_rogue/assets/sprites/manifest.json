@@ -3231,7 +3231,180 @@
         "Allied Shopkeeper"
       ],
       "category": "npc",
-      "clips": {},
+      "clips": {
+        "idle": {
+          "directions": {
+            "east": [
+              "actors/shopkeeper/animations/idle/east/frame_000.png",
+              "actors/shopkeeper/animations/idle/east/frame_001.png",
+              "actors/shopkeeper/animations/idle/east/frame_002.png",
+              "actors/shopkeeper/animations/idle/east/frame_003.png",
+              "actors/shopkeeper/animations/idle/east/frame_004.png",
+              "actors/shopkeeper/animations/idle/east/frame_005.png",
+              "actors/shopkeeper/animations/idle/east/frame_006.png",
+              "actors/shopkeeper/animations/idle/east/frame_007.png"
+            ],
+            "north": [
+              "actors/shopkeeper/animations/idle/north/frame_000.png",
+              "actors/shopkeeper/animations/idle/north/frame_001.png",
+              "actors/shopkeeper/animations/idle/north/frame_002.png",
+              "actors/shopkeeper/animations/idle/north/frame_003.png",
+              "actors/shopkeeper/animations/idle/north/frame_004.png",
+              "actors/shopkeeper/animations/idle/north/frame_005.png",
+              "actors/shopkeeper/animations/idle/north/frame_006.png",
+              "actors/shopkeeper/animations/idle/north/frame_007.png"
+            ],
+            "north-east": [
+              "actors/shopkeeper/animations/idle/north-east/frame_000.png",
+              "actors/shopkeeper/animations/idle/north-east/frame_001.png",
+              "actors/shopkeeper/animations/idle/north-east/frame_002.png",
+              "actors/shopkeeper/animations/idle/north-east/frame_003.png",
+              "actors/shopkeeper/animations/idle/north-east/frame_004.png",
+              "actors/shopkeeper/animations/idle/north-east/frame_005.png",
+              "actors/shopkeeper/animations/idle/north-east/frame_006.png",
+              "actors/shopkeeper/animations/idle/north-east/frame_007.png"
+            ],
+            "north-west": [
+              "actors/shopkeeper/animations/idle/north-west/frame_000.png",
+              "actors/shopkeeper/animations/idle/north-west/frame_001.png",
+              "actors/shopkeeper/animations/idle/north-west/frame_002.png",
+              "actors/shopkeeper/animations/idle/north-west/frame_003.png",
+              "actors/shopkeeper/animations/idle/north-west/frame_004.png",
+              "actors/shopkeeper/animations/idle/north-west/frame_005.png",
+              "actors/shopkeeper/animations/idle/north-west/frame_006.png",
+              "actors/shopkeeper/animations/idle/north-west/frame_007.png"
+            ],
+            "south": [
+              "actors/shopkeeper/animations/idle/south/frame_000.png",
+              "actors/shopkeeper/animations/idle/south/frame_001.png",
+              "actors/shopkeeper/animations/idle/south/frame_002.png",
+              "actors/shopkeeper/animations/idle/south/frame_003.png",
+              "actors/shopkeeper/animations/idle/south/frame_004.png",
+              "actors/shopkeeper/animations/idle/south/frame_005.png",
+              "actors/shopkeeper/animations/idle/south/frame_006.png",
+              "actors/shopkeeper/animations/idle/south/frame_007.png"
+            ],
+            "south-east": [
+              "actors/shopkeeper/animations/idle/south-east/frame_000.png",
+              "actors/shopkeeper/animations/idle/south-east/frame_001.png",
+              "actors/shopkeeper/animations/idle/south-east/frame_002.png",
+              "actors/shopkeeper/animations/idle/south-east/frame_003.png",
+              "actors/shopkeeper/animations/idle/south-east/frame_004.png",
+              "actors/shopkeeper/animations/idle/south-east/frame_005.png",
+              "actors/shopkeeper/animations/idle/south-east/frame_006.png",
+              "actors/shopkeeper/animations/idle/south-east/frame_007.png"
+            ],
+            "south-west": [
+              "actors/shopkeeper/animations/idle/south-west/frame_000.png",
+              "actors/shopkeeper/animations/idle/south-west/frame_001.png",
+              "actors/shopkeeper/animations/idle/south-west/frame_002.png",
+              "actors/shopkeeper/animations/idle/south-west/frame_003.png",
+              "actors/shopkeeper/animations/idle/south-west/frame_004.png",
+              "actors/shopkeeper/animations/idle/south-west/frame_005.png",
+              "actors/shopkeeper/animations/idle/south-west/frame_006.png",
+              "actors/shopkeeper/animations/idle/south-west/frame_007.png"
+            ],
+            "west": [
+              "actors/shopkeeper/animations/idle/west/frame_000.png",
+              "actors/shopkeeper/animations/idle/west/frame_001.png",
+              "actors/shopkeeper/animations/idle/west/frame_002.png",
+              "actors/shopkeeper/animations/idle/west/frame_003.png",
+              "actors/shopkeeper/animations/idle/west/frame_004.png",
+              "actors/shopkeeper/animations/idle/west/frame_005.png",
+              "actors/shopkeeper/animations/idle/west/frame_006.png",
+              "actors/shopkeeper/animations/idle/west/frame_007.png"
+            ]
+          },
+          "fps": 8.0,
+          "loop": true
+        },
+        "run": {
+          "directions": {
+            "east": [
+              "actors/shopkeeper/animations/walk/east/frame_000.png",
+              "actors/shopkeeper/animations/walk/east/frame_001.png",
+              "actors/shopkeeper/animations/walk/east/frame_002.png",
+              "actors/shopkeeper/animations/walk/east/frame_003.png",
+              "actors/shopkeeper/animations/walk/east/frame_004.png",
+              "actors/shopkeeper/animations/walk/east/frame_005.png",
+              "actors/shopkeeper/animations/walk/east/frame_006.png",
+              "actors/shopkeeper/animations/walk/east/frame_007.png"
+            ],
+            "north": [
+              "actors/shopkeeper/animations/walk/north/frame_000.png",
+              "actors/shopkeeper/animations/walk/north/frame_001.png",
+              "actors/shopkeeper/animations/walk/north/frame_002.png",
+              "actors/shopkeeper/animations/walk/north/frame_003.png",
+              "actors/shopkeeper/animations/walk/north/frame_004.png",
+              "actors/shopkeeper/animations/walk/north/frame_005.png",
+              "actors/shopkeeper/animations/walk/north/frame_006.png",
+              "actors/shopkeeper/animations/walk/north/frame_007.png"
+            ],
+            "north-east": [
+              "actors/shopkeeper/animations/walk/north-east/frame_000.png",
+              "actors/shopkeeper/animations/walk/north-east/frame_001.png",
+              "actors/shopkeeper/animations/walk/north-east/frame_002.png",
+              "actors/shopkeeper/animations/walk/north-east/frame_003.png",
+              "actors/shopkeeper/animations/walk/north-east/frame_004.png",
+              "actors/shopkeeper/animations/walk/north-east/frame_005.png",
+              "actors/shopkeeper/animations/walk/north-east/frame_006.png",
+              "actors/shopkeeper/animations/walk/north-east/frame_007.png"
+            ],
+            "north-west": [
+              "actors/shopkeeper/animations/walk/north-west/frame_000.png",
+              "actors/shopkeeper/animations/walk/north-west/frame_001.png",
+              "actors/shopkeeper/animations/walk/north-west/frame_002.png",
+              "actors/shopkeeper/animations/walk/north-west/frame_003.png",
+              "actors/shopkeeper/animations/walk/north-west/frame_004.png",
+              "actors/shopkeeper/animations/walk/north-west/frame_005.png",
+              "actors/shopkeeper/animations/walk/north-west/frame_006.png",
+              "actors/shopkeeper/animations/walk/north-west/frame_007.png"
+            ],
+            "south": [
+              "actors/shopkeeper/animations/walk/south/frame_000.png",
+              "actors/shopkeeper/animations/walk/south/frame_001.png",
+              "actors/shopkeeper/animations/walk/south/frame_002.png",
+              "actors/shopkeeper/animations/walk/south/frame_003.png",
+              "actors/shopkeeper/animations/walk/south/frame_004.png",
+              "actors/shopkeeper/animations/walk/south/frame_005.png",
+              "actors/shopkeeper/animations/walk/south/frame_006.png",
+              "actors/shopkeeper/animations/walk/south/frame_007.png"
+            ],
+            "south-east": [
+              "actors/shopkeeper/animations/walk/south-east/frame_000.png",
+              "actors/shopkeeper/animations/walk/south-east/frame_001.png",
+              "actors/shopkeeper/animations/walk/south-east/frame_002.png",
+              "actors/shopkeeper/animations/walk/south-east/frame_003.png",
+              "actors/shopkeeper/animations/walk/south-east/frame_004.png",
+              "actors/shopkeeper/animations/walk/south-east/frame_005.png",
+              "actors/shopkeeper/animations/walk/south-east/frame_006.png",
+              "actors/shopkeeper/animations/walk/south-east/frame_007.png"
+            ],
+            "south-west": [
+              "actors/shopkeeper/animations/walk/south-west/frame_000.png",
+              "actors/shopkeeper/animations/walk/south-west/frame_001.png",
+              "actors/shopkeeper/animations/walk/south-west/frame_002.png",
+              "actors/shopkeeper/animations/walk/south-west/frame_003.png",
+              "actors/shopkeeper/animations/walk/south-west/frame_004.png",
+              "actors/shopkeeper/animations/walk/south-west/frame_005.png",
+              "actors/shopkeeper/animations/walk/south-west/frame_006.png",
+              "actors/shopkeeper/animations/walk/south-west/frame_007.png"
+            ],
+            "west": [
+              "actors/shopkeeper/animations/walk/west/frame_000.png",
+              "actors/shopkeeper/animations/walk/west/frame_001.png",
+              "actors/shopkeeper/animations/walk/west/frame_002.png",
+              "actors/shopkeeper/animations/walk/west/frame_003.png",
+              "actors/shopkeeper/animations/walk/west/frame_004.png",
+              "actors/shopkeeper/animations/walk/west/frame_005.png",
+              "actors/shopkeeper/animations/walk/west/frame_006.png",
+              "actors/shopkeeper/animations/walk/west/frame_007.png"
+            ]
+          },
+          "fps": 8.0,
+          "loop": true
+        }
+      },
       "name": "Shopkeeper",
       "reference_height": 89,
       "rotations": {
@@ -3261,7 +3434,180 @@
         "garden"
       ],
       "category": "npc",
-      "clips": {},
+      "clips": {
+        "idle": {
+          "directions": {
+            "east": [
+              "actors/story_guest/animations/idle/east/frame_000.png",
+              "actors/story_guest/animations/idle/east/frame_001.png",
+              "actors/story_guest/animations/idle/east/frame_002.png",
+              "actors/story_guest/animations/idle/east/frame_003.png",
+              "actors/story_guest/animations/idle/east/frame_004.png",
+              "actors/story_guest/animations/idle/east/frame_005.png",
+              "actors/story_guest/animations/idle/east/frame_006.png",
+              "actors/story_guest/animations/idle/east/frame_007.png"
+            ],
+            "north": [
+              "actors/story_guest/animations/idle/north/frame_000.png",
+              "actors/story_guest/animations/idle/north/frame_001.png",
+              "actors/story_guest/animations/idle/north/frame_002.png",
+              "actors/story_guest/animations/idle/north/frame_003.png",
+              "actors/story_guest/animations/idle/north/frame_004.png",
+              "actors/story_guest/animations/idle/north/frame_005.png",
+              "actors/story_guest/animations/idle/north/frame_006.png",
+              "actors/story_guest/animations/idle/north/frame_007.png"
+            ],
+            "north-east": [
+              "actors/story_guest/animations/idle/north-east/frame_000.png",
+              "actors/story_guest/animations/idle/north-east/frame_001.png",
+              "actors/story_guest/animations/idle/north-east/frame_002.png",
+              "actors/story_guest/animations/idle/north-east/frame_003.png",
+              "actors/story_guest/animations/idle/north-east/frame_004.png",
+              "actors/story_guest/animations/idle/north-east/frame_005.png",
+              "actors/story_guest/animations/idle/north-east/frame_006.png",
+              "actors/story_guest/animations/idle/north-east/frame_007.png"
+            ],
+            "north-west": [
+              "actors/story_guest/animations/idle/north-west/frame_000.png",
+              "actors/story_guest/animations/idle/north-west/frame_001.png",
+              "actors/story_guest/animations/idle/north-west/frame_002.png",
+              "actors/story_guest/animations/idle/north-west/frame_003.png",
+              "actors/story_guest/animations/idle/north-west/frame_004.png",
+              "actors/story_guest/animations/idle/north-west/frame_005.png",
+              "actors/story_guest/animations/idle/north-west/frame_006.png",
+              "actors/story_guest/animations/idle/north-west/frame_007.png"
+            ],
+            "south": [
+              "actors/story_guest/animations/idle/south/frame_000.png",
+              "actors/story_guest/animations/idle/south/frame_001.png",
+              "actors/story_guest/animations/idle/south/frame_002.png",
+              "actors/story_guest/animations/idle/south/frame_003.png",
+              "actors/story_guest/animations/idle/south/frame_004.png",
+              "actors/story_guest/animations/idle/south/frame_005.png",
+              "actors/story_guest/animations/idle/south/frame_006.png",
+              "actors/story_guest/animations/idle/south/frame_007.png"
+            ],
+            "south-east": [
+              "actors/story_guest/animations/idle/south-east/frame_000.png",
+              "actors/story_guest/animations/idle/south-east/frame_001.png",
+              "actors/story_guest/animations/idle/south-east/frame_002.png",
+              "actors/story_guest/animations/idle/south-east/frame_003.png",
+              "actors/story_guest/animations/idle/south-east/frame_004.png",
+              "actors/story_guest/animations/idle/south-east/frame_005.png",
+              "actors/story_guest/animations/idle/south-east/frame_006.png",
+              "actors/story_guest/animations/idle/south-east/frame_007.png"
+            ],
+            "south-west": [
+              "actors/story_guest/animations/idle/south-west/frame_000.png",
+              "actors/story_guest/animations/idle/south-west/frame_001.png",
+              "actors/story_guest/animations/idle/south-west/frame_002.png",
+              "actors/story_guest/animations/idle/south-west/frame_003.png",
+              "actors/story_guest/animations/idle/south-west/frame_004.png",
+              "actors/story_guest/animations/idle/south-west/frame_005.png",
+              "actors/story_guest/animations/idle/south-west/frame_006.png",
+              "actors/story_guest/animations/idle/south-west/frame_007.png"
+            ],
+            "west": [
+              "actors/story_guest/animations/idle/west/frame_000.png",
+              "actors/story_guest/animations/idle/west/frame_001.png",
+              "actors/story_guest/animations/idle/west/frame_002.png",
+              "actors/story_guest/animations/idle/west/frame_003.png",
+              "actors/story_guest/animations/idle/west/frame_004.png",
+              "actors/story_guest/animations/idle/west/frame_005.png",
+              "actors/story_guest/animations/idle/west/frame_006.png",
+              "actors/story_guest/animations/idle/west/frame_007.png"
+            ]
+          },
+          "fps": 8.0,
+          "loop": true
+        },
+        "run": {
+          "directions": {
+            "east": [
+              "actors/story_guest/animations/walk/east/frame_000.png",
+              "actors/story_guest/animations/walk/east/frame_001.png",
+              "actors/story_guest/animations/walk/east/frame_002.png",
+              "actors/story_guest/animations/walk/east/frame_003.png",
+              "actors/story_guest/animations/walk/east/frame_004.png",
+              "actors/story_guest/animations/walk/east/frame_005.png",
+              "actors/story_guest/animations/walk/east/frame_006.png",
+              "actors/story_guest/animations/walk/east/frame_007.png"
+            ],
+            "north": [
+              "actors/story_guest/animations/walk/north/frame_000.png",
+              "actors/story_guest/animations/walk/north/frame_001.png",
+              "actors/story_guest/animations/walk/north/frame_002.png",
+              "actors/story_guest/animations/walk/north/frame_003.png",
+              "actors/story_guest/animations/walk/north/frame_004.png",
+              "actors/story_guest/animations/walk/north/frame_005.png",
+              "actors/story_guest/animations/walk/north/frame_006.png",
+              "actors/story_guest/animations/walk/north/frame_007.png"
+            ],
+            "north-east": [
+              "actors/story_guest/animations/walk/north-east/frame_000.png",
+              "actors/story_guest/animations/walk/north-east/frame_001.png",
+              "actors/story_guest/animations/walk/north-east/frame_002.png",
+              "actors/story_guest/animations/walk/north-east/frame_003.png",
+              "actors/story_guest/animations/walk/north-east/frame_004.png",
+              "actors/story_guest/animations/walk/north-east/frame_005.png",
+              "actors/story_guest/animations/walk/north-east/frame_006.png",
+              "actors/story_guest/animations/walk/north-east/frame_007.png"
+            ],
+            "north-west": [
+              "actors/story_guest/animations/walk/north-west/frame_000.png",
+              "actors/story_guest/animations/walk/north-west/frame_001.png",
+              "actors/story_guest/animations/walk/north-west/frame_002.png",
+              "actors/story_guest/animations/walk/north-west/frame_003.png",
+              "actors/story_guest/animations/walk/north-west/frame_004.png",
+              "actors/story_guest/animations/walk/north-west/frame_005.png",
+              "actors/story_guest/animations/walk/north-west/frame_006.png",
+              "actors/story_guest/animations/walk/north-west/frame_007.png"
+            ],
+            "south": [
+              "actors/story_guest/animations/walk/south/frame_000.png",
+              "actors/story_guest/animations/walk/south/frame_001.png",
+              "actors/story_guest/animations/walk/south/frame_002.png",
+              "actors/story_guest/animations/walk/south/frame_003.png",
+              "actors/story_guest/animations/walk/south/frame_004.png",
+              "actors/story_guest/animations/walk/south/frame_005.png",
+              "actors/story_guest/animations/walk/south/frame_006.png",
+              "actors/story_guest/animations/walk/south/frame_007.png"
+            ],
+            "south-east": [
+              "actors/story_guest/animations/walk/south-east/frame_000.png",
+              "actors/story_guest/animations/walk/south-east/frame_001.png",
+              "actors/story_guest/animations/walk/south-east/frame_002.png",
+              "actors/story_guest/animations/walk/south-east/frame_003.png",
+              "actors/story_guest/animations/walk/south-east/frame_004.png",
+              "actors/story_guest/animations/walk/south-east/frame_005.png",
+              "actors/story_guest/animations/walk/south-east/frame_006.png",
+              "actors/story_guest/animations/walk/south-east/frame_007.png"
+            ],
+            "south-west": [
+              "actors/story_guest/animations/walk/south-west/frame_000.png",
+              "actors/story_guest/animations/walk/south-west/frame_001.png",
+              "actors/story_guest/animations/walk/south-west/frame_002.png",
+              "actors/story_guest/animations/walk/south-west/frame_003.png",
+              "actors/story_guest/animations/walk/south-west/frame_004.png",
+              "actors/story_guest/animations/walk/south-west/frame_005.png",
+              "actors/story_guest/animations/walk/south-west/frame_006.png",
+              "actors/story_guest/animations/walk/south-west/frame_007.png"
+            ],
+            "west": [
+              "actors/story_guest/animations/walk/west/frame_000.png",
+              "actors/story_guest/animations/walk/west/frame_001.png",
+              "actors/story_guest/animations/walk/west/frame_002.png",
+              "actors/story_guest/animations/walk/west/frame_003.png",
+              "actors/story_guest/animations/walk/west/frame_004.png",
+              "actors/story_guest/animations/walk/west/frame_005.png",
+              "actors/story_guest/animations/walk/west/frame_006.png",
+              "actors/story_guest/animations/walk/west/frame_007.png"
+            ]
+          },
+          "fps": 8.0,
+          "loop": true
+        }
+      },
       "name": "Story Guest",
       "reference_height": 89,
       "rotations": {

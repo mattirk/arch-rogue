@@ -1516,11 +1516,25 @@ class RenderingWorldMixin:
         if shop is not None:
             rx, ry, rw, rh = shop
             avoid: set[tuple[int, int]] = set()
-            for keeper in self.shopkeepers:
-                avoid.add((int(keeper.x), int(keeper.y)))
-            for it in self.items:
-                if it.slot == "shop_sign":
-                    avoid.add((int(it.x), int(it.y)))
+            special_room = self.dungeon.special_room_for_kind("shop")
+            keeper_anchor = None
+            sign_anchor = None
+            if special_room is not None:
+                keeper_anchor = special_room.anchor("shopkeeper")
+                if keeper_anchor is None:
+                    keeper_anchor = special_room.anchor("center")
+                sign_anchor = special_room.anchor("shop_sign")
+            if keeper_anchor is not None:
+                avoid.add(keeper_anchor)
+            else:
+                for keeper in self.shopkeepers:
+                    avoid.add((int(keeper.x), int(keeper.y)))
+            if sign_anchor is not None:
+                avoid.add(sign_anchor)
+            else:
+                for it in self.items:
+                    if it.slot == "shop_sign":
+                        avoid.add((int(it.x), int(it.y)))
             interior: list[tuple[int, int]] = []
             for x in range(rx + 1, rx + rw - 1):
                 for y in range(ry + 1, ry + rh - 1):

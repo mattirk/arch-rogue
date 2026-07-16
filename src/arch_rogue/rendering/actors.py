@@ -62,7 +62,10 @@ from ..sprite_assets import ResolvedSpriteFrame
 
 class RenderingActorMixin:
     def draw_shopkeeper(self, shopkeeper: Shopkeeper) -> None:
-        self.draw_shadow(shopkeeper.x, shopkeeper.y, 32, 12)
+        facing_x, facing_y, moving, dance_progress = self.friendly_npc_visual_state(
+            shopkeeper
+        )
+        self.draw_shadow(shopkeeper.x, shopkeeper.y, 32, 12, moving=moving)
         sx, sy = self.world_to_screen(shopkeeper.x, shopkeeper.y)
         scale = WORLD_SCALE
         gold = (245, 205, 92)
@@ -77,7 +80,12 @@ class RenderingActorMixin:
         )
         self.screen.blit(ring, ring.get_rect(center=(sx, sy + 5 * scale)))
 
-        frame = self.sprites.shopkeeper_visual(self.elapsed + shopkeeper.x * 0.17)
+        frame = self.sprites.shopkeeper_visual(
+            self.elapsed,
+            direction=self.actor_sprite_direction(facing_x, facing_y),
+            moving=moving,
+            clip_progress=dance_progress,
+        )
         if frame.is_asset:
             self.blit_resolved_sprite(frame, shopkeeper.x, shopkeeper.y, y_offset=6.0)
         else:
