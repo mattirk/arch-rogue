@@ -44,6 +44,24 @@ class ShopMixin:
             default=None,
         )
 
+    def shopkeeper_for_sign(self, sign: Item) -> Shopkeeper | None:
+        sign_room = self.dungeon.room_at(sign.x, sign.y)
+        if sign_room is None:
+            return self.nearby_shopkeeper(radius=2.2)
+        room_shopkeepers = [
+            shopkeeper
+            for shopkeeper in self.shopkeepers
+            if self.dungeon.room_at(shopkeeper.x, shopkeeper.y) is sign_room
+        ]
+        if not room_shopkeepers:
+            return self.nearby_shopkeeper(radius=2.2)
+        return min(
+            room_shopkeepers,
+            key=lambda shopkeeper: math.hypot(
+                shopkeeper.x - sign.x, shopkeeper.y - sign.y
+            ),
+        )
+
     def item_value(self, item: Item) -> int:
         if item.slot == "potion":
             return max(8, item.heal // 2)

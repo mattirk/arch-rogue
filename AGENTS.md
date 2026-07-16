@@ -188,7 +188,7 @@ Example categories:
 - Generate all asset sprites using Pixellab (or similar) MCP server/tools
 - For each actor, first generate base sprite, then rotations and after that, animations
 - Keep all animations neatly grouped within the service so they can be easily managed by the user
-  - Naming conventions for animation groups are: idle, walk, run, hit and cast
+  - Naming conventions for animation groups are: idle, walk, run, hit and cast (later dance)
 - Workflow when generating animations:
   - Create requested animation group with 8-directional animations (never create duplicates)
   - Validate each animation direction and all frames within it (natural movement, keep weapons, apparell and body parts visible)
@@ -204,7 +204,7 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 
 ### 4.1.x More sprites, assets, animations updates
 
-- Make all friendly NPCs dance to the beat of the procedural music and move around in the room. Generate necessary dance animations using Pixellab.
+- Make all friendly NPCs dance to the beat of the procedural music and move around in the room. Generate necessary dance animations using MCP.
 
 ### Stash
 

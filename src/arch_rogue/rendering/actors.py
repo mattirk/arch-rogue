@@ -62,14 +62,23 @@ from ..sprite_assets import ResolvedSpriteFrame
 
 class RenderingActorMixin:
     def draw_shopkeeper(self, shopkeeper: Shopkeeper) -> None:
-        facing_x, facing_y, moving, dance_progress = self.friendly_npc_visual_state(
+        facing_x, facing_y, moving, loop_progress = self.friendly_npc_visual_state(
             shopkeeper
         )
-        self.draw_shadow(shopkeeper.x, shopkeeper.y, 32, 12, moving=moving)
+        beat_lift, beat_accent = self.friendly_npc_beat_pulse(loop_progress, moving)
+        body_lift = beat_lift * (1.1 if moving else 1.8)
+        self.draw_shadow(
+            shopkeeper.x,
+            shopkeeper.y,
+            32,
+            12,
+            moving=False,
+            lift=body_lift,
+        )
         sx, sy = self.world_to_screen(shopkeeper.x, shopkeeper.y)
         scale = WORLD_SCALE
         gold = (245, 205, 92)
-        pulse = 0.5 + 0.5 * math.sin(self.elapsed * 4.0 + shopkeeper.x + shopkeeper.y)
+        pulse = beat_accent
 
         ring = pygame.Surface((28 * scale, 12 * scale), pygame.SRCALPHA)
         pygame.draw.ellipse(
@@ -84,13 +93,19 @@ class RenderingActorMixin:
             self.elapsed,
             direction=self.actor_sprite_direction(facing_x, facing_y),
             moving=moving,
-            clip_progress=dance_progress,
+            dancing=not moving,
+            clip_progress=loop_progress,
         )
+        y_offset = 6.0 - body_lift
         if frame.is_asset:
-            self.blit_resolved_sprite(frame, shopkeeper.x, shopkeeper.y, y_offset=6.0)
+            self.blit_resolved_sprite(
+                frame, shopkeeper.x, shopkeeper.y, y_offset=y_offset
+            )
         else:
             sprite = frame.surface
-            self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 6 * scale)))
+            self.screen.blit(
+                sprite, sprite.get_rect(midbottom=(sx, sy + y_offset * scale))
+            )
 
     def walk_offsets(self, actor: Player | Enemy) -> tuple[int, int]:
         sway, bob, _lean, _stretch = self.actor_animation(actor)

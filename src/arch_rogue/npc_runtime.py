@@ -47,14 +47,18 @@ class FriendlyNpcMotion:
     facing_y: float = 1.0
     moving: bool = False
     phrase_index: int = -1
+    next_move_beat: float = 0.0
 
 
 class FriendlyNpcRuntimeMixin:
     """Beat-driven, room-bound motion shared by friendly world NPCs."""
 
-    FRIENDLY_NPC_SPEED = 0.58
+    FRIENDLY_NPC_SPEED = 0.76
     FRIENDLY_NPC_RADIUS = 0.27
-    FRIENDLY_NPC_DANCE_BEATS = 2.0
+    FRIENDLY_NPC_DANCE_BEATS = 4.0
+    FRIENDLY_NPC_TRAVEL_BEATS = 2.0
+    FRIENDLY_NPC_MIN_DANCE_BEATS = 2.0
+    FRIENDLY_NPC_WAYPOINT_BEATS = 4.0
 
     def iter_friendly_npcs(self) -> Iterator[FriendlyNpc]:
         yield from getattr(self, "shopkeepers", ())
@@ -88,9 +92,29 @@ class FriendlyNpcRuntimeMixin:
             phrase_index=beat_index // 4,
         )
 
-    def friendly_npc_dance_progress(self) -> float:
+    def friendly_npc_animation_progress(self, moving: bool) -> float:
         timing = self.friendly_npc_music_timing()
-        return (timing.total_beats % self.FRIENDLY_NPC_DANCE_BEATS) / self.FRIENDLY_NPC_DANCE_BEATS
+        cycle_beats = (
+            self.FRIENDLY_NPC_TRAVEL_BEATS
+            if moving
+            else self.FRIENDLY_NPC_DANCE_BEATS
+        )
+        return (timing.total_beats % cycle_beats) / cycle_beats
+
+    def friendly_npc_dance_progress(self) -> float:
+        return self.friendly_npc_animation_progress(False)
+
+    def friendly_npc_beat_pulse(
+        self, loop_progress: float, moving: bool
+    ) -> tuple[float, float]:
+        cycle_beats = (
+            self.FRIENDLY_NPC_TRAVEL_BEATS
+            if moving
+            else self.FRIENDLY_NPC_DANCE_BEATS
+        )
+        beat_phase = (float(loop_progress) * cycle_beats) % 1.0
+        lift = math.sin(math.pi * beat_phase) ** 2
+        return lift, 1.0 - lift
 
     def friendly_npc_motion(self, npc: FriendlyNpc) -> FriendlyNpcMotion:
         motions = getattr(self, "_friendly_npc_motions", None)
@@ -148,11 +172,12 @@ class FriendlyNpcRuntimeMixin:
             or getattr(self, "inventory_open", False)
             or getattr(self, "character_menu_open", False)
         )
+        moving = motion.moving and not paused
         return (
             motion.facing_x,
             motion.facing_y,
-            motion.moving and not paused,
-            self.friendly_npc_dance_progress(),
+            moving,
+            self.friendly_npc_animation_progress(moving),
         )
 
     def update_friendly_npcs(self, dt: float) -> None:
@@ -174,16 +199,45 @@ class FriendlyNpcRuntimeMixin:
             if motion.room_index is None:
                 motion.moving = False
                 continue
-            if motion.phrase_index != timing.phrase_index:
-                motion.phrase_index = timing.phrase_index
-                motion.target_x, motion.target_y = self._friendly_npc_waypoint(
-                    npc, motion, timing.phrase_index
-                )
             if self._friendly_npc_holds_for_player(npc):
                 motion.moving = False
                 self._friendly_npc_face_player(motion, npc)
                 continue
+
+            distance_to_target = math.hypot(
+                motion.target_x - npc.x, motion.target_y - npc.y
+            )
+            if distance_to_target <= 0.05:
+                motion.moving = False
+                if timing.total_beats + 1e-9 < motion.next_move_beat:
+                    continue
+                motion.phrase_index = timing.phrase_index
+                motion.target_x, motion.target_y = self._friendly_npc_waypoint(
+                    npc, motion, timing.phrase_index
+                )
+                distance_to_target = math.hypot(
+                    motion.target_x - npc.x, motion.target_y - npc.y
+                )
+                if distance_to_target <= 0.05:
+                    motion.next_move_beat = self._friendly_npc_next_move_beat(
+                        timing.total_beats
+                    )
+                    continue
+
             self._move_friendly_npc(npc, motion, max(0.0, dt))
+            remaining = math.hypot(
+                motion.target_x - npc.x, motion.target_y - npc.y
+            )
+            if remaining <= 0.05:
+                motion.moving = False
+                motion.next_move_beat = self._friendly_npc_next_move_beat(
+                    timing.total_beats
+                )
+
+    def _friendly_npc_next_move_beat(self, total_beats: float) -> float:
+        ready_beat = max(0.0, total_beats) + self.FRIENDLY_NPC_MIN_DANCE_BEATS
+        phrase_beats = self.FRIENDLY_NPC_WAYPOINT_BEATS
+        return math.ceil((ready_beat - 1e-9) / phrase_beats) * phrase_beats
 
     def _friendly_npc_room(
         self, npc: FriendlyNpc
@@ -229,10 +283,10 @@ class FriendlyNpcRuntimeMixin:
 
     def _friendly_npc_roam_radius(self, npc: FriendlyNpc) -> float:
         if isinstance(npc, Shopkeeper):
-            return 1.75
-        if isinstance(npc, StoryGuest) and not npc.resolved:
             return 2.5
-        return 3.5
+        if isinstance(npc, StoryGuest) and not npc.resolved:
+            return 3.4
+        return 4.5
 
     def _friendly_npc_waypoint(
         self,
@@ -271,11 +325,19 @@ class FriendlyNpcRuntimeMixin:
                 candidates.append((x, y))
         if not candidates:
             return motion.home_x, motion.home_y
+        minimum_travel = min(1.8, max_radius * 0.55)
+        far_candidates = [
+            candidate
+            for candidate in candidates
+            if math.hypot(candidate[0] - npc.x, candidate[1] - npc.y)
+            >= minimum_travel
+        ]
+        pool = far_candidates or candidates
         rng = random.Random(
             motion.seed ^ ((phrase_index + 1) * 0x9E3779B1 & 0xFFFFFFFF)
         )
-        rng.shuffle(candidates)
-        return candidates[0]
+        rng.shuffle(pool)
+        return pool[0]
 
     def _friendly_npc_obstacles(
         self, npc: FriendlyNpc

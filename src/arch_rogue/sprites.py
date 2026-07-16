@@ -240,6 +240,13 @@ class PixelSpriteAtlas:
         self.shopkeeper_animation_frames = self._actor_animation_frames(
             self.shopkeeper_sprite, (245, 205, 92)
         )
+        frog_scale = max(2, round(self.ACTOR_SCALE * 0.65))
+        self.garden_frog_sprite = self._scale(
+            self._outline_surface(self._garden_frog()), frog_scale
+        )
+        self.garden_frog_animation_frames = self._actor_animation_frames(
+            self.garden_frog_sprite, (142, 220, 104)
+        )
         self.shop_sign_sprite = self._scale_prop(self._shop_sign())
         # Gold-coin stack props scattered on the shop floor (size 1-3). Each
         # size is seeded to match the approved preview sprites so the in-game
@@ -926,6 +933,18 @@ class PixelSpriteAtlas:
         if clip_progress is not None:
             return self._frame_from(frames, (clip_progress % 1.0) * len(frames))
         return self._frame_from(frames, elapsed, rate=5.0 if moving else 3.0)
+
+    def garden_frog_frame(
+        self,
+        elapsed: float,
+        *,
+        moving: bool = False,
+        clip_progress: float | None = None,
+    ) -> pygame.Surface:
+        frames = self.garden_frog_animation_frames["run" if moving else "idle"]
+        if clip_progress is not None:
+            return self._frame_from(frames, (clip_progress % 1.0) * len(frames))
+        return self._frame_from(frames, elapsed, rate=6.0 if moving else 4.0)
 
     def familiar_frame(self, variant: int, elapsed: float) -> pygame.Surface:
         """Animation frame for a summoned familiar (Milestone 3.15).
@@ -2346,6 +2365,40 @@ class PixelSpriteAtlas:
         self._vline(s, 22, 6, 22, wood)
         self._rect(s, 21, 4, 4, 3, gold)
         self._dot(s, 22, 4, gold_hi)
+        return s
+
+    def _garden_frog(self) -> pygame.Surface:
+        s = self._surface(self.RAW_ACTOR_W, self.RAW_ACTOR_H)
+        outline = (18, 28, 18)
+        green = (92, 164, 72)
+        green_hi = (142, 210, 104)
+        green_lo = (56, 112, 52)
+        cream = (210, 214, 142)
+        gold = (238, 202, 92)
+        pupil = (12, 18, 14)
+        leaf = (64, 132, 62)
+
+        pygame.draw.ellipse(s, outline, (5, 5, 16, 13))
+        pygame.draw.ellipse(s, green, (6, 6, 14, 11))
+        pygame.draw.ellipse(s, green_hi, (7, 6, 12, 5))
+        for eye_x in (7, 17):
+            pygame.draw.circle(s, outline, (eye_x, 5), 4)
+            pygame.draw.circle(s, gold, (eye_x, 5), 3)
+            pygame.draw.circle(s, pupil, (eye_x, 5), 1)
+        self._hline(s, 10, 13, 6, green_lo)
+
+        pygame.draw.ellipse(s, outline, (7, 15, 12, 13))
+        pygame.draw.ellipse(s, green, (8, 16, 10, 11))
+        pygame.draw.ellipse(s, cream, (10, 18, 6, 8))
+        pygame.draw.polygon(s, leaf, [(7, 16), (2, 14), (7, 20)])
+        pygame.draw.polygon(s, green_hi, [(19, 16), (24, 14), (19, 20)])
+
+        pygame.draw.ellipse(s, outline, (2, 25, 10, 6))
+        pygame.draw.ellipse(s, green_lo, (3, 26, 8, 4))
+        pygame.draw.ellipse(s, outline, (14, 25, 10, 6))
+        pygame.draw.ellipse(s, green, (15, 26, 8, 4))
+        for toe_x in (3, 6, 9, 16, 19, 22):
+            self._dot(s, toe_x, 30, green_hi)
         return s
 
     def _shop_sign(self) -> pygame.Surface:

@@ -618,10 +618,9 @@ class StoryGuest:
 
 @dataclass
 class IdleNpc:
-    # Decorative, non-interactable traveler placed in flavor special rooms
-    # (bar / garden). The player cannot talk to or trade with them; they exist
-    # purely for atmosphere. ``kind`` records which room flavor spawned them so
-    # the renderer can tint them to match.
+    # Decorative, non-interactable actor placed in flavor special rooms. The
+    # player cannot talk to or trade with it; ``kind`` selects the flavor or a
+    # dedicated visual subtype such as ``garden_frog``.
     x: float
     y: float
     kind: str = ""

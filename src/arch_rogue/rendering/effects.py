@@ -1394,13 +1394,22 @@ class RenderingEffectsMixin:
             )
 
     def draw_story_guest(self, guest: StoryGuest) -> None:
-        facing_x, facing_y, moving, dance_progress = self.friendly_npc_visual_state(
+        facing_x, facing_y, moving, loop_progress = self.friendly_npc_visual_state(
             guest
         )
+        beat_lift, beat_accent = self.friendly_npc_beat_pulse(loop_progress, moving)
+        body_lift = beat_lift * (1.1 if moving else 1.8)
         sx, sy = self.world_to_screen(guest.x, guest.y)
         color = guest.color if not guest.resolved else self.shade(guest.color, -60)
-        self.draw_shadow(guest.x, guest.y, 26, 11, moving=moving)
-        pulse = 0.55 + 0.45 * math.sin(self.elapsed * 4.0 + guest.depth)
+        self.draw_shadow(
+            guest.x,
+            guest.y,
+            26,
+            11,
+            moving=False,
+            lift=body_lift,
+        )
+        pulse = beat_accent
         # Subtle floor marker (a faint accent ring) so the quest NPC is still
         # distinguishable from a generic traveler, but without the bright
         # pulsing aura that made it read as a glowing quest beacon.
@@ -1416,16 +1425,20 @@ class RenderingEffectsMixin:
             guest.resolved,
             direction=self.actor_sprite_direction(facing_x, facing_y),
             moving=moving,
-            clip_progress=dance_progress,
+            dancing=not moving,
+            clip_progress=loop_progress,
         )
         # Drawn as-is, like every other actor. The previous additive tint over
         # the whole sprite is what made the guest glow; normal humanoids are not
         # tinted at draw time.
+        y_offset = 5.0 - body_lift
         if frame.is_asset:
-            self.blit_resolved_sprite(frame, guest.x, guest.y, y_offset=5.0)
+            self.blit_resolved_sprite(frame, guest.x, guest.y, y_offset=y_offset)
         else:
             sprite = frame.surface
-            self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 5 * WORLD_SCALE)))
+            self.screen.blit(
+                sprite, sprite.get_rect(midbottom=(sx, sy + y_offset * WORLD_SCALE))
+            )
 
         # The floating portrait badge (a dark disc with a "?"/role/"✓" glyph)
         # used to be drawn above the guest here. It read as a pasted-on status
@@ -1446,25 +1459,50 @@ class RenderingEffectsMixin:
             )
 
     def draw_idle_npc(self, npc: IdleNpc) -> None:
-        # Decorative, non-interactable traveler (bar / garden flavor). Reuses the
-        # story-guest humanoid sprite so it reads as a person, but drops the
-        # quest aura, label, and interaction prompt — the player cannot talk to
-        # or trade with them. A faint floor shadow is enough to ground them.
-        facing_x, facing_y, moving, dance_progress = self.friendly_npc_visual_state(npc)
-        sx, sy = self.world_to_screen(npc.x, npc.y)
-        self.draw_shadow(npc.x, npc.y, 24, 10, moving=moving)
-        frame = self.sprites.story_guest_visual(
-            self.elapsed,
-            False,
-            direction=self.actor_sprite_direction(facing_x, facing_y),
-            moving=moving,
-            clip_progress=dance_progress,
+        # Decorative, non-interactable flavor NPC. Humanoid travelers reuse the
+        # story-guest art, while garden frogs have a dedicated asset/fallback.
+        # Neither branch draws quest markers, labels, or interaction prompts.
+        facing_x, facing_y, moving, loop_progress = self.friendly_npc_visual_state(npc)
+        beat_lift, _beat_accent = self.friendly_npc_beat_pulse(
+            loop_progress, moving
         )
+        body_lift = beat_lift * (1.1 if moving else 1.8)
+        sx, sy = self.world_to_screen(npc.x, npc.y)
+        is_frog = npc.kind == "garden_frog"
+        self.draw_shadow(
+            npc.x,
+            npc.y,
+            18 if is_frog else 24,
+            8 if is_frog else 10,
+            moving=False,
+            lift=body_lift,
+        )
+        direction = self.actor_sprite_direction(facing_x, facing_y)
+        if is_frog:
+            frame = self.sprites.garden_frog_visual(
+                self.elapsed,
+                direction=direction,
+                moving=moving,
+                dancing=not moving,
+                clip_progress=loop_progress,
+            )
+        else:
+            frame = self.sprites.story_guest_visual(
+                self.elapsed,
+                False,
+                direction=direction,
+                moving=moving,
+                dancing=not moving,
+                clip_progress=loop_progress,
+            )
+        y_offset = 5.0 - body_lift
         if frame.is_asset:
-            self.blit_resolved_sprite(frame, npc.x, npc.y, y_offset=5.0)
+            self.blit_resolved_sprite(frame, npc.x, npc.y, y_offset=y_offset)
         else:
             sprite = frame.surface
-            self.screen.blit(sprite, sprite.get_rect(midbottom=(sx, sy + 5 * WORLD_SCALE)))
+            self.screen.blit(
+                sprite, sprite.get_rect(midbottom=(sx, sy + y_offset * WORLD_SCALE))
+            )
 
     def draw_familiar(self, familiar: Familiar) -> None:
         sx, sy = self.world_to_screen(familiar.x, familiar.y)

@@ -1408,6 +1408,208 @@
       ],
       "target_height": 76
     },
+    "garden_frog": {
+      "aliases": [
+        "Garden Frog",
+        "garden_frog"
+      ],
+      "category": "npc",
+      "clips": {
+        "dance": {
+          "directions": {
+            "east": [
+              "actors/garden_frog/animations/dance/east/frame_000.png",
+              "actors/garden_frog/animations/dance/east/frame_001.png",
+              "actors/garden_frog/animations/dance/east/frame_002.png",
+              "actors/garden_frog/animations/dance/east/frame_003.png",
+              "actors/garden_frog/animations/dance/east/frame_004.png",
+              "actors/garden_frog/animations/dance/east/frame_005.png",
+              "actors/garden_frog/animations/dance/east/frame_006.png",
+              "actors/garden_frog/animations/dance/east/frame_007.png"
+            ],
+            "north": [
+              "actors/garden_frog/animations/dance/north/frame_000.png",
+              "actors/garden_frog/animations/dance/north/frame_001.png",
+              "actors/garden_frog/animations/dance/north/frame_002.png",
+              "actors/garden_frog/animations/dance/north/frame_003.png",
+              "actors/garden_frog/animations/dance/north/frame_004.png",
+              "actors/garden_frog/animations/dance/north/frame_005.png",
+              "actors/garden_frog/animations/dance/north/frame_006.png",
+              "actors/garden_frog/animations/dance/north/frame_007.png"
+            ],
+            "north-east": [
+              "actors/garden_frog/animations/dance/north-east/frame_000.png",
+              "actors/garden_frog/animations/dance/north-east/frame_001.png",
+              "actors/garden_frog/animations/dance/north-east/frame_002.png",
+              "actors/garden_frog/animations/dance/north-east/frame_003.png",
+              "actors/garden_frog/animations/dance/north-east/frame_004.png",
+              "actors/garden_frog/animations/dance/north-east/frame_005.png",
+              "actors/garden_frog/animations/dance/north-east/frame_006.png",
+              "actors/garden_frog/animations/dance/north-east/frame_007.png"
+            ],
+            "north-west": [
+              "actors/garden_frog/animations/dance/north-west/frame_000.png",
+              "actors/garden_frog/animations/dance/north-west/frame_001.png",
+              "actors/garden_frog/animations/dance/north-west/frame_002.png",
+              "actors/garden_frog/animations/dance/north-west/frame_003.png",
+              "actors/garden_frog/animations/dance/north-west/frame_004.png",
+              "actors/garden_frog/animations/dance/north-west/frame_005.png",
+              "actors/garden_frog/animations/dance/north-west/frame_006.png",
+              "actors/garden_frog/animations/dance/north-west/frame_007.png"
+            ],
+            "south": [
+              "actors/garden_frog/animations/dance/south/frame_000.png",
+              "actors/garden_frog/animations/dance/south/frame_001.png",
+              "actors/garden_frog/animations/dance/south/frame_002.png",
+              "actors/garden_frog/animations/dance/south/frame_003.png",
+              "actors/garden_frog/animations/dance/south/frame_004.png",
+              "actors/garden_frog/animations/dance/south/frame_005.png",
+              "actors/garden_frog/animations/dance/south/frame_006.png",
+              "actors/garden_frog/animations/dance/south/frame_007.png"
+            ],
+            "south-east": [
+              "actors/garden_frog/animations/dance/south-east/frame_000.png",
+              "actors/garden_frog/animations/dance/south-east/frame_001.png",
+              "actors/garden_frog/animations/dance/south-east/frame_002.png",
+              "actors/garden_frog/animations/dance/south-east/frame_003.png",
+              "actors/garden_frog/animations/dance/south-east/frame_004.png",
+              "actors/garden_frog/animations/dance/south-east/frame_005.png",
+              "actors/garden_frog/animations/dance/south-east/frame_006.png",
+              "actors/garden_frog/animations/dance/south-east/frame_007.png"
+            ],
+            "south-west": [
+              "actors/garden_frog/animations/dance/south-west/frame_000.png",
+              "actors/garden_frog/animations/dance/south-west/frame_001.png",
+              "actors/garden_frog/animations/dance/south-west/frame_002.png",
+              "actors/garden_frog/animations/dance/south-west/frame_003.png",
+              "actors/garden_frog/animations/dance/south-west/frame_004.png",
+              "actors/garden_frog/animations/dance/south-west/frame_005.png",
+              "actors/garden_frog/animations/dance/south-west/frame_006.png",
+              "actors/garden_frog/animations/dance/south-west/frame_007.png"
+            ],
+            "west": [
+              "actors/garden_frog/animations/dance/west/frame_000.png",
+              "actors/garden_frog/animations/dance/west/frame_001.png",
+              "actors/garden_frog/animations/dance/west/frame_002.png",
+              "actors/garden_frog/animations/dance/west/frame_003.png",
+              "actors/garden_frog/animations/dance/west/frame_004.png",
+              "actors/garden_frog/animations/dance/west/frame_005.png",
+              "actors/garden_frog/animations/dance/west/frame_006.png",
+              "actors/garden_frog/animations/dance/west/frame_007.png"
+            ]
+          },
+          "fps": 8.0,
+          "loop": true
+        },
+        "run": {
+          "directions": {
+            "east": [
+              "actors/garden_frog/animations/walk/east/frame_000.png",
+              "actors/garden_frog/animations/walk/east/frame_001.png",
+              "actors/garden_frog/animations/walk/east/frame_002.png",
+              "actors/garden_frog/animations/walk/east/frame_003.png",
+              "actors/garden_frog/animations/walk/east/frame_004.png",
+              "actors/garden_frog/animations/walk/east/frame_005.png",
+              "actors/garden_frog/animations/walk/east/frame_006.png",
+              "actors/garden_frog/animations/walk/east/frame_007.png"
+            ],
+            "north": [
+              "actors/garden_frog/animations/walk/north/frame_000.png",
+              "actors/garden_frog/animations/walk/north/frame_001.png",
+              "actors/garden_frog/animations/walk/north/frame_002.png",
+              "actors/garden_frog/animations/walk/north/frame_003.png",
+              "actors/garden_frog/animations/walk/north/frame_004.png",
+              "actors/garden_frog/animations/walk/north/frame_005.png",
+              "actors/garden_frog/animations/walk/north/frame_006.png",
+              "actors/garden_frog/animations/walk/north/frame_007.png"
+            ],
+            "north-east": [
+              "actors/garden_frog/animations/walk/north-east/frame_000.png",
+              "actors/garden_frog/animations/walk/north-east/frame_001.png",
+              "actors/garden_frog/animations/walk/north-east/frame_002.png",
+              "actors/garden_frog/animations/walk/north-east/frame_003.png",
+              "actors/garden_frog/animations/walk/north-east/frame_004.png",
+              "actors/garden_frog/animations/walk/north-east/frame_005.png",
+              "actors/garden_frog/animations/walk/north-east/frame_006.png",
+              "actors/garden_frog/animations/walk/north-east/frame_007.png"
+            ],
+            "north-west": [
+              "actors/garden_frog/animations/walk/north-west/frame_000.png",
+              "actors/garden_frog/animations/walk/north-west/frame_001.png",
+              "actors/garden_frog/animations/walk/north-west/frame_002.png",
+              "actors/garden_frog/animations/walk/north-west/frame_003.png",
+              "actors/garden_frog/animations/walk/north-west/frame_004.png",
+              "actors/garden_frog/animations/walk/north-west/frame_005.png",
+              "actors/garden_frog/animations/walk/north-west/frame_006.png",
+              "actors/garden_frog/animations/walk/north-west/frame_007.png"
+            ],
+            "south": [
+              "actors/garden_frog/animations/walk/south/frame_000.png",
+              "actors/garden_frog/animations/walk/south/frame_001.png",
+              "actors/garden_frog/animations/walk/south/frame_002.png",
+              "actors/garden_frog/animations/walk/south/frame_003.png",
+              "actors/garden_frog/animations/walk/south/frame_004.png",
+              "actors/garden_frog/animations/walk/south/frame_005.png",
+              "actors/garden_frog/animations/walk/south/frame_006.png",
+              "actors/garden_frog/animations/walk/south/frame_007.png"
+            ],
+            "south-east": [
+              "actors/garden_frog/animations/walk/south-east/frame_000.png",
+              "actors/garden_frog/animations/walk/south-east/frame_001.png",
+              "actors/garden_frog/animations/walk/south-east/frame_002.png",
+              "actors/garden_frog/animations/walk/south-east/frame_003.png",
+              "actors/garden_frog/animations/walk/south-east/frame_004.png",
+              "actors/garden_frog/animations/walk/south-east/frame_005.png",
+              "actors/garden_frog/animations/walk/south-east/frame_006.png",
+              "actors/garden_frog/animations/walk/south-east/frame_007.png"
+            ],
+            "south-west": [
+              "actors/garden_frog/animations/walk/south-west/frame_000.png",
+              "actors/garden_frog/animations/walk/south-west/frame_001.png",
+              "actors/garden_frog/animations/walk/south-west/frame_002.png",
+              "actors/garden_frog/animations/walk/south-west/frame_003.png",
+              "actors/garden_frog/animations/walk/south-west/frame_004.png",
+              "actors/garden_frog/animations/walk/south-west/frame_005.png",
+              "actors/garden_frog/animations/walk/south-west/frame_006.png",
+              "actors/garden_frog/animations/walk/south-west/frame_007.png"
+            ],
+            "west": [
+              "actors/garden_frog/animations/walk/west/frame_000.png",
+              "actors/garden_frog/animations/walk/west/frame_001.png",
+              "actors/garden_frog/animations/walk/west/frame_002.png",
+              "actors/garden_frog/animations/walk/west/frame_003.png",
+              "actors/garden_frog/animations/walk/west/frame_004.png",
+              "actors/garden_frog/animations/walk/west/frame_005.png",
+              "actors/garden_frog/animations/walk/west/frame_006.png",
+              "actors/garden_frog/animations/walk/west/frame_007.png"
+            ]
+          },
+          "fps": 8.0,
+          "loop": true
+        }
+      },
+      "name": "Garden Frog",
+      "reference_height": 129,
+      "rotations": {
+        "east": "actors/garden_frog/rotations/east.png",
+        "north": "actors/garden_frog/rotations/north.png",
+        "north-east": "actors/garden_frog/rotations/north-east.png",
+        "north-west": "actors/garden_frog/rotations/north-west.png",
+        "south": "actors/garden_frog/rotations/south.png",
+        "south-east": "actors/garden_frog/rotations/south-east.png",
+        "south-west": "actors/garden_frog/rotations/south-west.png",
+        "west": "actors/garden_frog/rotations/west.png"
+      },
+      "source_anchor": [
+        120.0,
+        180.0
+      ],
+      "source_canvas": [
+        240,
+        240
+      ],
+      "target_height": 96
+    },
     "gate_tyrant": {
       "aliases": [
         "Gate Tyrant",
@@ -3232,6 +3434,156 @@
       ],
       "category": "npc",
       "clips": {
+        "dance": {
+          "directions": {
+            "east": [
+              "actors/shopkeeper/animations/dance/east/frame_000.png",
+              "actors/shopkeeper/animations/dance/east/frame_001.png",
+              "actors/shopkeeper/animations/dance/east/frame_002.png",
+              "actors/shopkeeper/animations/dance/east/frame_003.png",
+              "actors/shopkeeper/animations/dance/east/frame_004.png",
+              "actors/shopkeeper/animations/dance/east/frame_005.png",
+              "actors/shopkeeper/animations/dance/east/frame_006.png",
+              "actors/shopkeeper/animations/dance/east/frame_007.png",
+              "actors/shopkeeper/animations/dance/east/frame_008.png",
+              "actors/shopkeeper/animations/dance/east/frame_009.png",
+              "actors/shopkeeper/animations/dance/east/frame_010.png",
+              "actors/shopkeeper/animations/dance/east/frame_011.png",
+              "actors/shopkeeper/animations/dance/east/frame_012.png",
+              "actors/shopkeeper/animations/dance/east/frame_013.png",
+              "actors/shopkeeper/animations/dance/east/frame_014.png",
+              "actors/shopkeeper/animations/dance/east/frame_015.png"
+            ],
+            "north": [
+              "actors/shopkeeper/animations/dance/north/frame_000.png",
+              "actors/shopkeeper/animations/dance/north/frame_001.png",
+              "actors/shopkeeper/animations/dance/north/frame_002.png",
+              "actors/shopkeeper/animations/dance/north/frame_003.png",
+              "actors/shopkeeper/animations/dance/north/frame_004.png",
+              "actors/shopkeeper/animations/dance/north/frame_005.png",
+              "actors/shopkeeper/animations/dance/north/frame_006.png",
+              "actors/shopkeeper/animations/dance/north/frame_007.png",
+              "actors/shopkeeper/animations/dance/north/frame_008.png",
+              "actors/shopkeeper/animations/dance/north/frame_009.png",
+              "actors/shopkeeper/animations/dance/north/frame_010.png",
+              "actors/shopkeeper/animations/dance/north/frame_011.png",
+              "actors/shopkeeper/animations/dance/north/frame_012.png",
+              "actors/shopkeeper/animations/dance/north/frame_013.png",
+              "actors/shopkeeper/animations/dance/north/frame_014.png",
+              "actors/shopkeeper/animations/dance/north/frame_015.png"
+            ],
+            "north-east": [
+              "actors/shopkeeper/animations/dance/north-east/frame_000.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_001.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_002.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_003.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_004.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_005.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_006.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_007.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_008.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_009.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_010.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_011.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_012.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_013.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_014.png",
+              "actors/shopkeeper/animations/dance/north-east/frame_015.png"
+            ],
+            "north-west": [
+              "actors/shopkeeper/animations/dance/north-west/frame_000.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_001.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_002.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_003.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_004.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_005.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_006.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_007.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_008.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_009.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_010.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_011.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_012.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_013.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_014.png",
+              "actors/shopkeeper/animations/dance/north-west/frame_015.png"
+            ],
+            "south": [
+              "actors/shopkeeper/animations/dance/south/frame_000.png",
+              "actors/shopkeeper/animations/dance/south/frame_001.png",
+              "actors/shopkeeper/animations/dance/south/frame_002.png",
+              "actors/shopkeeper/animations/dance/south/frame_003.png",
+              "actors/shopkeeper/animations/dance/south/frame_004.png",
+              "actors/shopkeeper/animations/dance/south/frame_005.png",
+              "actors/shopkeeper/animations/dance/south/frame_006.png",
+              "actors/shopkeeper/animations/dance/south/frame_007.png",
+              "actors/shopkeeper/animations/dance/south/frame_008.png",
+              "actors/shopkeeper/animations/dance/south/frame_009.png",
+              "actors/shopkeeper/animations/dance/south/frame_010.png",
+              "actors/shopkeeper/animations/dance/south/frame_011.png",
+              "actors/shopkeeper/animations/dance/south/frame_012.png",
+              "actors/shopkeeper/animations/dance/south/frame_013.png",
+              "actors/shopkeeper/animations/dance/south/frame_014.png",
+              "actors/shopkeeper/animations/dance/south/frame_015.png"
+            ],
+            "south-east": [
+              "actors/shopkeeper/animations/dance/south-east/frame_000.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_001.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_002.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_003.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_004.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_005.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_006.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_007.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_008.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_009.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_010.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_011.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_012.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_013.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_014.png",
+              "actors/shopkeeper/animations/dance/south-east/frame_015.png"
+            ],
+            "south-west": [
+              "actors/shopkeeper/animations/dance/south-west/frame_000.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_001.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_002.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_003.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_004.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_005.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_006.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_007.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_008.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_009.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_010.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_011.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_012.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_013.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_014.png",
+              "actors/shopkeeper/animations/dance/south-west/frame_015.png"
+            ],
+            "west": [
+              "actors/shopkeeper/animations/dance/west/frame_000.png",
+              "actors/shopkeeper/animations/dance/west/frame_001.png",
+              "actors/shopkeeper/animations/dance/west/frame_002.png",
+              "actors/shopkeeper/animations/dance/west/frame_003.png",
+              "actors/shopkeeper/animations/dance/west/frame_004.png",
+              "actors/shopkeeper/animations/dance/west/frame_005.png",
+              "actors/shopkeeper/animations/dance/west/frame_006.png",
+              "actors/shopkeeper/animations/dance/west/frame_007.png",
+              "actors/shopkeeper/animations/dance/west/frame_008.png",
+              "actors/shopkeeper/animations/dance/west/frame_009.png",
+              "actors/shopkeeper/animations/dance/west/frame_010.png",
+              "actors/shopkeeper/animations/dance/west/frame_011.png",
+              "actors/shopkeeper/animations/dance/west/frame_012.png",
+              "actors/shopkeeper/animations/dance/west/frame_013.png",
+              "actors/shopkeeper/animations/dance/west/frame_014.png",
+              "actors/shopkeeper/animations/dance/west/frame_015.png"
+            ]
+          },
+          "fps": 8.0,
+          "loop": true
+        },
         "idle": {
           "directions": {
             "east": [
@@ -3435,6 +3787,156 @@
       ],
       "category": "npc",
       "clips": {
+        "dance": {
+          "directions": {
+            "east": [
+              "actors/story_guest/animations/dance/east/frame_000.png",
+              "actors/story_guest/animations/dance/east/frame_001.png",
+              "actors/story_guest/animations/dance/east/frame_002.png",
+              "actors/story_guest/animations/dance/east/frame_003.png",
+              "actors/story_guest/animations/dance/east/frame_004.png",
+              "actors/story_guest/animations/dance/east/frame_005.png",
+              "actors/story_guest/animations/dance/east/frame_006.png",
+              "actors/story_guest/animations/dance/east/frame_007.png",
+              "actors/story_guest/animations/dance/east/frame_008.png",
+              "actors/story_guest/animations/dance/east/frame_009.png",
+              "actors/story_guest/animations/dance/east/frame_010.png",
+              "actors/story_guest/animations/dance/east/frame_011.png",
+              "actors/story_guest/animations/dance/east/frame_012.png",
+              "actors/story_guest/animations/dance/east/frame_013.png",
+              "actors/story_guest/animations/dance/east/frame_014.png",
+              "actors/story_guest/animations/dance/east/frame_015.png"
+            ],
+            "north": [
+              "actors/story_guest/animations/dance/north/frame_000.png",
+              "actors/story_guest/animations/dance/north/frame_001.png",
+              "actors/story_guest/animations/dance/north/frame_002.png",
+              "actors/story_guest/animations/dance/north/frame_003.png",
+              "actors/story_guest/animations/dance/north/frame_004.png",
+              "actors/story_guest/animations/dance/north/frame_005.png",
+              "actors/story_guest/animations/dance/north/frame_006.png",
+              "actors/story_guest/animations/dance/north/frame_007.png",
+              "actors/story_guest/animations/dance/north/frame_008.png",
+              "actors/story_guest/animations/dance/north/frame_009.png",
+              "actors/story_guest/animations/dance/north/frame_010.png",
+              "actors/story_guest/animations/dance/north/frame_011.png",
+              "actors/story_guest/animations/dance/north/frame_012.png",
+              "actors/story_guest/animations/dance/north/frame_013.png",
+              "actors/story_guest/animations/dance/north/frame_014.png",
+              "actors/story_guest/animations/dance/north/frame_015.png"
+            ],
+            "north-east": [
+              "actors/story_guest/animations/dance/north-east/frame_000.png",
+              "actors/story_guest/animations/dance/north-east/frame_001.png",
+              "actors/story_guest/animations/dance/north-east/frame_002.png",
+              "actors/story_guest/animations/dance/north-east/frame_003.png",
+              "actors/story_guest/animations/dance/north-east/frame_004.png",
+              "actors/story_guest/animations/dance/north-east/frame_005.png",
+              "actors/story_guest/animations/dance/north-east/frame_006.png",
+              "actors/story_guest/animations/dance/north-east/frame_007.png",
+              "actors/story_guest/animations/dance/north-east/frame_008.png",
+              "actors/story_guest/animations/dance/north-east/frame_009.png",
+              "actors/story_guest/animations/dance/north-east/frame_010.png",
+              "actors/story_guest/animations/dance/north-east/frame_011.png",
+              "actors/story_guest/animations/dance/north-east/frame_012.png",
+              "actors/story_guest/animations/dance/north-east/frame_013.png",
+              "actors/story_guest/animations/dance/north-east/frame_014.png",
+              "actors/story_guest/animations/dance/north-east/frame_015.png"
+            ],
+            "north-west": [
+              "actors/story_guest/animations/dance/north-west/frame_000.png",
+              "actors/story_guest/animations/dance/north-west/frame_001.png",
+              "actors/story_guest/animations/dance/north-west/frame_002.png",
+              "actors/story_guest/animations/dance/north-west/frame_003.png",
+              "actors/story_guest/animations/dance/north-west/frame_004.png",
+              "actors/story_guest/animations/dance/north-west/frame_005.png",
+              "actors/story_guest/animations/dance/north-west/frame_006.png",
+              "actors/story_guest/animations/dance/north-west/frame_007.png",
+              "actors/story_guest/animations/dance/north-west/frame_008.png",
+              "actors/story_guest/animations/dance/north-west/frame_009.png",
+              "actors/story_guest/animations/dance/north-west/frame_010.png",
+              "actors/story_guest/animations/dance/north-west/frame_011.png",
+              "actors/story_guest/animations/dance/north-west/frame_012.png",
+              "actors/story_guest/animations/dance/north-west/frame_013.png",
+              "actors/story_guest/animations/dance/north-west/frame_014.png",
+              "actors/story_guest/animations/dance/north-west/frame_015.png"
+            ],
+            "south": [
+              "actors/story_guest/animations/dance/south/frame_000.png",
+              "actors/story_guest/animations/dance/south/frame_001.png",
+              "actors/story_guest/animations/dance/south/frame_002.png",
+              "actors/story_guest/animations/dance/south/frame_003.png",
+              "actors/story_guest/animations/dance/south/frame_004.png",
+              "actors/story_guest/animations/dance/south/frame_005.png",
+              "actors/story_guest/animations/dance/south/frame_006.png",
+              "actors/story_guest/animations/dance/south/frame_007.png",
+              "actors/story_guest/animations/dance/south/frame_008.png",
+              "actors/story_guest/animations/dance/south/frame_009.png",
+              "actors/story_guest/animations/dance/south/frame_010.png",
+              "actors/story_guest/animations/dance/south/frame_011.png",
+              "actors/story_guest/animations/dance/south/frame_012.png",
+              "actors/story_guest/animations/dance/south/frame_013.png",
+              "actors/story_guest/animations/dance/south/frame_014.png",
+              "actors/story_guest/animations/dance/south/frame_015.png"
+            ],
+            "south-east": [
+              "actors/story_guest/animations/dance/south-east/frame_000.png",
+              "actors/story_guest/animations/dance/south-east/frame_001.png",
+              "actors/story_guest/animations/dance/south-east/frame_002.png",
+              "actors/story_guest/animations/dance/south-east/frame_003.png",
+              "actors/story_guest/animations/dance/south-east/frame_004.png",
+              "actors/story_guest/animations/dance/south-east/frame_005.png",
+              "actors/story_guest/animations/dance/south-east/frame_006.png",
+              "actors/story_guest/animations/dance/south-east/frame_007.png",
+              "actors/story_guest/animations/dance/south-east/frame_008.png",
+              "actors/story_guest/animations/dance/south-east/frame_009.png",
+              "actors/story_guest/animations/dance/south-east/frame_010.png",
+              "actors/story_guest/animations/dance/south-east/frame_011.png",
+              "actors/story_guest/animations/dance/south-east/frame_012.png",
+              "actors/story_guest/animations/dance/south-east/frame_013.png",
+              "actors/story_guest/animations/dance/south-east/frame_014.png",
+              "actors/story_guest/animations/dance/south-east/frame_015.png"
+            ],
+            "south-west": [
+              "actors/story_guest/animations/dance/south-west/frame_000.png",
+              "actors/story_guest/animations/dance/south-west/frame_001.png",
+              "actors/story_guest/animations/dance/south-west/frame_002.png",
+              "actors/story_guest/animations/dance/south-west/frame_003.png",
+              "actors/story_guest/animations/dance/south-west/frame_004.png",
+              "actors/story_guest/animations/dance/south-west/frame_005.png",
+              "actors/story_guest/animations/dance/south-west/frame_006.png",
+              "actors/story_guest/animations/dance/south-west/frame_007.png",
+              "actors/story_guest/animations/dance/south-west/frame_008.png",
+              "actors/story_guest/animations/dance/south-west/frame_009.png",
+              "actors/story_guest/animations/dance/south-west/frame_010.png",
+              "actors/story_guest/animations/dance/south-west/frame_011.png",
+              "actors/story_guest/animations/dance/south-west/frame_012.png",
+              "actors/story_guest/animations/dance/south-west/frame_013.png",
+              "actors/story_guest/animations/dance/south-west/frame_014.png",
+              "actors/story_guest/animations/dance/south-west/frame_015.png"
+            ],
+            "west": [
+              "actors/story_guest/animations/dance/west/frame_000.png",
+              "actors/story_guest/animations/dance/west/frame_001.png",
+              "actors/story_guest/animations/dance/west/frame_002.png",
+              "actors/story_guest/animations/dance/west/frame_003.png",
+              "actors/story_guest/animations/dance/west/frame_004.png",
+              "actors/story_guest/animations/dance/west/frame_005.png",
+              "actors/story_guest/animations/dance/west/frame_006.png",
+              "actors/story_guest/animations/dance/west/frame_007.png",
+              "actors/story_guest/animations/dance/west/frame_008.png",
+              "actors/story_guest/animations/dance/west/frame_009.png",
+              "actors/story_guest/animations/dance/west/frame_010.png",
+              "actors/story_guest/animations/dance/west/frame_011.png",
+              "actors/story_guest/animations/dance/west/frame_012.png",
+              "actors/story_guest/animations/dance/west/frame_013.png",
+              "actors/story_guest/animations/dance/west/frame_014.png",
+              "actors/story_guest/animations/dance/west/frame_015.png"
+            ]
+          },
+          "fps": 8.0,
+          "loop": true
+        },
         "idle": {
           "directions": {
             "east": [

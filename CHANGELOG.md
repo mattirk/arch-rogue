@@ -1,12 +1,98 @@
 # Changelog
 
-## 4.1.11 — Beat-Synced Friendly NPC Dancing
+## 4.1.13 — Dancing Garden Frogs
 
-Milestone 4.1.11 makes every friendly world NPC dance to the procedural soundtrack and roam within its assigned room, with authored PixelLab motion for shopkeepers, story guests, and the decorative bar/garden travelers that reuse Story Guest art.
+Milestone 4.1.13 fills every generated garden with two cheerful frog revelers that hop around the room and visibly dance on the procedural soundtrack's shared four-beat phrase.
 
 ### Added
 
-- Added 256 reviewed `180×180` transparent PixelLab animation frames: eight-frame in-place dance and traveling dance-step loops in all eight directions for both `Shopkeeper` and `Story Guest`.
+- Added two deterministic, decorative `garden_frog` NPCs to every garden flavor room. Frog names come from a local room-seeded pool, they remain non-interactable, and the existing optional humanoid garden wanderer is preserved.
+- Added a dedicated `Garden Frog` actor with eight reviewed directional rotations, an eight-frame traveling hop, and an eight-frame four-beat dance state. Seven directions use authored dance frames; north intentionally reuses the north walk cycle.
+- Added a procedural frog sprite fallback and an asset-first `garden_frog_visual`/`garden_frog_frame` facade so both modern and legacy graphics modes retain the new NPC behavior.
+- Added regression coverage for mandatory frog population, unique deterministic names, idempotent room re-population, non-interaction, save restoration, rendering, shared beat phase, room-bound roaming, and the complete sprite contract.
+
+### Changed
+
+- Garden frogs use the existing friendly-NPC transport and deterministic movement runtime: they avoid actors and room obstacles, roam up to `4.5` tiles from home, finish each route, and then dance until a phrase boundary at least two beats after arrival.
+- Frog dance frames are addressed directly from normalized four-beat music progress, making frames `0`, `2`, `4`, and `6` land on consecutive downbeats while all friendly NPCs remain synchronized.
+- Flavor-room local RNG now includes stable room geometry, keeping bar and garden humanoid rolls independently near the intended 50% instead of repeating a small set of room-count/index outcomes.
+- Frog spawn tiles are selected deterministically from clear, passable garden tiles after general population, preventing overlap with enemies, loot, traps, shrines, secrets, friendly actors, familiars, or the player.
+- Runtime/package release version is `4.1.13`. Run saves remain schema `5`; pre-4.1.13 gardens are reconciled additively to exactly two frogs without a schema migration.
+
+### Asset provenance
+
+- Garden Frog character: `3b6f153e-a0e2-4034-90ad-5406ed985f21`.
+- Character prompt: “small cheerful anthropomorphic garden frog NPC, vivid moss-green skin, round golden eyes, cream throat and belly, tiny leaf collar, compact upright body, webbed hands and large webbed feet, no weapons, no aura, no magic effects, full-body dark-fantasy garden reveler, readable pixel-art silhouette”.
+- `walk` prompt: “small cheerful frog moving forward with rhythmic garden hops, alternating low crouch and short springing hop, clear webbed-foot landings, gentle throat and leaf-collar bounce, fixed directional facing, seamless locomotion loop, preserve the round golden eyes, cream belly, leaf collar, webbed hands, large webbed feet and every body part, no magic effects”.
+- `dance` prompt: “pronounced four-beat frog dance in place with exactly two frames per musical beat: beat one deep squat and left webbed-foot stomp, beat two spring upright with both forelegs raised, beat three deep squat and right webbed-foot stomp, beat four spring upright with both forelegs raised; cheerful head bob, throat puff and leaf-collar bounce, feet stay grounded between small springs, fixed directional facing, no spins, seamless 8-frame loop, preserve the round golden eyes, cream belly, leaf collar, webbed hands, large webbed feet and every body part, no magic effects”.
+- MCP limits `240×240` character animations to eight frames. The north-west dance direction was regenerated in place and retained from animation `e0492122-646d-453e-b481-5c9dddc9424a`; the unnecessary north dance was removed in MCP and its packaged slot is an exact copy of north walk.
+
+### Compatibility and resilience
+
+- The public `IdleNpc` model and save payload are unchanged; older garden saves automatically receive the deterministic pair, while duplicate, unknown, or extra frog records and stale anchors are repaired idempotently.
+- Missing or disabled modern assets fall back to cached procedural frog frames while preserving the same direction, movement state, beat-derived lift, and compact contact shadow.
+- Bar patrons and humanoid garden wanderers continue to use the existing Story Guest visual contract without changes.
+
+### Validation
+
+- Reviewed all eight rotations, all 64 walk frames, and the seven retained authored dance directions on labeled sheets; the regenerated north-west loop has eight unique frames and four distinct beat poses, while north dance is byte-identical to the approved north walk sequence by design.
+- Packaged asset gate — exactly 136 `240×240` RGBA PNGs (`8` rotations + `64` walk + `64` dance-state frames), all with non-empty alpha, transparent canvas margins, eight unique frames per directional sequence, and direct normalized-loop addressing at frames `0/2/4/6`.
+- Generated-floor stress probe — 1,000 floors contained 514 gardens and 1,028 frogs with exactly two unique frogs per garden and zero same-tile overlaps against enemies, items, traps, shrines, secrets, friendly NPCs, or the player; targeted restoration also verified familiar avoidance.
+- Flavor RNG probe — 6,000 generated dungeons measured optional humanoid rates of `49.76%` for bars and `49.95%` for gardens, with exactly two uniquely named frogs in all 3,029 sampled gardens.
+- `.venv/bin/python -m unittest tests.test_flavor_rooms tests.test_friendly_npcs tests.test_sprite_assets tests.test_save_and_metadata` — 48 tests, all passing.
+- `.venv/bin/python -m unittest tests.test_friendly_npcs tests.test_world_rendering_and_animation tests.test_save_and_metadata` — 16 tests, all passing.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+- `.venv/bin/python -m unittest discover tests` — 238 tests, all passing.
+
+## 4.1.12 — Stronger Four-Beat NPC Dancing
+
+Milestone 4.1.12 makes friendly-NPC dancing visibly lock to the procedural soundtrack and gives room-bound NPCs more space and speed to roam.
+
+### Added
+
+- Added dedicated 16-frame MCP `dance` loops in all eight directions for both `Shopkeeper` and `Story Guest`, adding 256 reviewed transparent animation frames.
+- Added a shared per-beat body-lift and contact-shadow pulse so every friendly NPC visibly plants on the downbeat and rises between beats, including procedural-graphics fallbacks.
+- Added regression coverage for the four-beat phase, beat accents, expanded waypoint distance, and dedicated runtime `dance` clip resolution.
+
+### Changed
+
+- Stationary friendly NPCs now use an explicit four-beat `dance` state with four authored frames per musical beat. Traveling NPCs retain their two-beat `run` loop so roaming steps do not slow down.
+- Shopkeeper and Story Guest floor markers now pulse from the music transport rather than unrelated elapsed-time offsets, keeping every friendly actor on the same visible beat.
+- Friendly NPC speed increased from `0.58` to `0.76` tiles per second. Shopkeeper, unresolved Story Guest, and decorative NPC roam radii increased to `2.5`, `3.4`, and `4.5` tiles respectively, and waypoint selection favors meaningful cross-room travel over short shuffles.
+- NPCs now finish their selected route instead of replacing distant targets every four beats, then dance until a phrase boundary at least two beats after arrival. This preserves visible dance breaks even at the maximum procedural tempo.
+- Shop signs now resolve the keeper assigned to their room, so trading remains reliable when the keeper roams beyond the old proximity fallback.
+- Runtime/package release version is `4.1.12`. Run saves remain schema `5` and require no migration.
+
+### Asset provenance
+
+- MCP Shopkeeper character: `a5486d07-0778-4b91-b817-791696de463f`.
+- MCP Story Guest character: `794acf2b-900e-461f-a81e-933bd9363134`.
+- Shopkeeper `dance` prompt: “pronounced four-beat dark-fantasy tavern dance in place with clearly readable beat accents: beat one stomp and dip to the left, beat two rebound upright at center, beat three stomp and dip to the right, beat four rebound upright at center; large alternating side steps, deep knee bends, shoulder and forearm pumps, cloak and satchel bounce, feet stay grounded, seamless 16-frame loop; preserve the exact hooded shopkeeper identity, satchel, clothing, hands, feet and every body part, no added props”.
+- Story Guest `dance` prompt: “pronounced four-beat occult court dance in place with clearly readable beat accents: beat one staff-side stomp and deep knee dip, beat two rebound upright at center, beat three opposite-side stomp and dip, beat four rebound upright at center; large alternating side steps, shoulder turns and cloak bounce, staff stays held and fully visible in every frame, feet stay grounded, seamless 16-frame loop; preserve the exact hooded story guest identity, staff, clothing, hands, feet and every body part, no magic effects”.
+
+### Compatibility and resilience
+
+- Existing sprite helper calls keep their prior `idle` defaults. The new keyword-only `dancing` flag selects `dance`, and missing modern dance frames still fall back to the established procedural idle animation.
+- NPC movement targets, facing, beat phase, and dance state remain transient; public models and save serialization are unchanged.
+- Player/enemy shadow behavior and the established `draw_shadow` API are unchanged; only friendly-NPC call sites pass the music-derived lift value.
+
+### Validation
+
+- Visually reviewed beat-labeled sheets for all eight directions and 16 frames per retained `dance` group, checking distinct downbeat poses, grounded movement, apparel, limbs, satchel, cloak, and staff retention; automated first/last seam measurements remained within the sequences' normal adjacent-motion range.
+- MCP source-export gate — 256 new dance PNGs validated for exact paths/counts, `180×180` RGBA decoding, transparent margins, 16 unique frames per direction, and four distinct beat poses.
+- Maximum-tempo simulation at 138 BPM confirmed completed routes and repeated dance breaks: minimum measured pauses exceeded two beats, with every friendly NPC type stationary for visible portions of the run.
+- `.venv/bin/python -m unittest tests.test_sprite_assets` — 21 tests, all passing.
+- `.venv/bin/python -m unittest tests.test_audio_music_timing tests.test_friendly_npcs tests.test_special_rooms tests.test_world_rendering_and_animation tests.test_save_and_metadata` — 33 tests, all passing.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+- `.venv/bin/python -m unittest discover tests` — 233 tests, all passing.
+
+## 4.1.11 — Beat-Synced Friendly NPC Dancing
+
+Milestone 4.1.11 makes every friendly world NPC dance to the procedural soundtrack and roam within its assigned room, with authored MCP motion for shopkeepers, story guests, and the decorative bar/garden travelers that reuse Story Guest art.
+
+### Added
+
+- Added 256 reviewed `180×180` transparent MCP animation frames: eight-frame in-place dance and traveling dance-step loops in all eight directions for both `Shopkeeper` and `Story Guest`.
 - Added a shared procedural-music track specification and virtual beat transport. Audible music follows a monotonic mixer-aligned clock; muted and headless runs use deterministic game time, and both expose loop beat, beat phase, and four-beat phrase timing.
 - Added `FriendlyNpcRuntimeMixin`, which gives `Shopkeeper`, `StoryGuest`, and `IdleNpc` deterministic transient motion without changing their public models or consuming gameplay RNG.
 - Added focused regression suites for music timing, clock-domain/downbeat synchronization, deterministic NPC motion, room containment after doors open, interaction holds, pause behavior, shared dance phase, and bounded transient state.
@@ -15,19 +101,19 @@ Milestone 4.1.11 makes every friendly world NPC dance to the procedural soundtra
 
 - Friendly NPCs now select deterministic waypoints on four-beat phrase boundaries, travel with a restrained dance step, and play their in-place dance across a shared two-beat cycle.
 - NPC movement is clamped to the original room interior even after a door opens, avoids walls, the player, other NPCs, live enemies, traps, shrines, secrets, quest/shop props, and cosmetic shop gold stacks, and pauses near interactive shopkeepers or unresolved story guests.
-- Shopkeeper and Story Guest sprite helpers now accept backward-compatible keyword-only direction, movement, and normalized loop-progress inputs. Runtime `idle` maps to PixelLab `idle`; runtime `run` maps to PixelLab `walk`.
+- Shopkeeper and Story Guest sprite helpers now accept backward-compatible keyword-only direction, movement, and normalized loop-progress inputs. Runtime `idle` maps to MCP `idle`; runtime `run` maps to MCP `walk`.
 - Loop-progress addressing is isolated from the existing non-looping action-progress contract, so player dash and fallback action clips retain their prior time-based behavior.
 - Shop gold-stack placement now excludes canonical special-room anchors rather than the shopkeeper's changing tile, keeping the cosmetic layout stable while the keeper moves; migrated index-only rooms fall back to their center and restored shop sign.
 - Runtime/package release version is `4.1.11`. Run saves remain schema `5` and require no migration.
 
 ### Asset provenance
 
-- PixelLab Shopkeeper character: `a5486d07-0778-4b91-b817-791696de463f`.
-- PixelLab Story Guest character: `794acf2b-900e-461f-a81e-933bd9363134`.
+- MCP Shopkeeper character: `a5486d07-0778-4b91-b817-791696de463f`.
+- MCP Story Guest character: `794acf2b-900e-461f-a81e-933bd9363134`.
 - Shopkeeper `idle` prompt: “rhythmic dark-fantasy tavern dance in place, grounded two-beat step-touch with alternating foot taps, gentle shoulder bounce and restrained arm movement, seamless loop, preserve the satchel, hood, clothing and all body parts clearly visible”.
 - Shopkeeper `walk` prompt: “moving forward with rhythmic dance steps, a grounded jaunty two-beat shuffle suitable for slow roaming, clear alternating footfalls and gentle shoulder bounce, seamless locomotion loop, preserve the satchel, hood, clothing and all body parts clearly visible”.
 - Story Guest `idle` and `walk` use the matching occult-court variants, preserving the staff, hood, clothing, cloak motion, and all body parts.
-- All four groups use direct one-to-one PixelLab-to-runtime direction mapping. Rate-limited split attempts were deleted in full; the retained service sources contain exactly one complete eight-direction `idle` group and one complete eight-direction `walk` group per exact character name.
+- All four groups use direct one-to-one MCP-to-runtime direction mapping. Rate-limited split attempts were deleted in full; the retained service sources contain exactly one complete eight-direction `idle` group and one complete eight-direction `walk` group per exact character name.
 
 ### Compatibility and resilience
 
@@ -40,7 +126,7 @@ Milestone 4.1.11 makes every friendly world NPC dance to the procedural soundtra
 
 - Visually reviewed labeled sheets for every direction and all eight frames in each retained group, checking grounded motion, facing continuity, transparent separation, and retention of weapons, apparel, limbs, and carried equipment.
 - Automated asset checks cover exact frame counts and paths, `180×180` RGBA decoding, transparent margins, per-direction uniqueness, complete direction sets, normalized loop wrapping, and asset-backed facade resolution.
-- PixelLab source-export gate — 256 animation PNGs validated across both actors.
+- MCP source-export gate — 256 animation PNGs validated across both actors.
 - `.venv/bin/python -m unittest tests.test_sprite_assets` — 21 tests, all passing.
 - `.venv/bin/python -m unittest tests.test_audio_music_timing tests.test_friendly_npcs tests.test_special_rooms tests.test_world_rendering_and_animation tests.test_save_and_metadata` — 29 tests, all passing.
 - `.venv/bin/python -m compileall -q src tests` — OK.
@@ -48,21 +134,21 @@ Milestone 4.1.11 makes every friendly world NPC dance to the procedural soundtra
 
 ## 4.1.10 — Aura-Free Arcanist Sprite Refresh
 
-Milestone 4.1.10 replaces the playable Arcanist's previous sprite set with the finalized aura-free PixelLab redesign and its reviewed eight-direction idle and walking animations while preserving the existing gameplay and save contracts.
+Milestone 4.1.10 replaces the playable Arcanist's previous sprite set with the finalized aura-free MCP redesign and its reviewed eight-direction idle and walking animations while preserving the existing gameplay and save contracts.
 
 ### Changed
 
 - Replaced the Arcanist asset set with 90 new `196×196` transparent PNGs: eight base rotations, 32 four-frame idle frames, and 50 walk frames across all eight directions.
-- Imported PixelLab's `walk` group as the established runtime `run` clip with a direct one-to-one direction mapping. Seven directions retain six frames; the approved south cycle retains all eight source frames.
+- Imported MCP's `walk` group as the established runtime `run` clip with a direct one-to-one direction mapping. Seven directions retain six frames; the approved south cycle retains all eight source frames.
 - Updated Arcanist source normalization to anchor `(98, 147)` with a `97px` reference height while retaining the shared playable-character target height of `184px`.
 - Updated sprite regression expectations for the source-authored eight-frame south cycle and the redesigned Arcanist's narrower north-facing lower-body silhouette. The existing runtime already resolves each direction using its own frame-list length, so no playback code change was required.
 - Runtime/package release version is `4.1.10`. Run saves remain schema `5` and require no migration.
 
 ### Asset provenance
 
-- PixelLab Arcanist character: `37842e46-0d8c-4084-b533-01185cbc3930`.
+- MCP Arcanist character: `37842e46-0d8c-4084-b533-01185cbc3930`.
 - The finalized character was rotated from the prior clean Arcanist reference with instructions to preserve the hooded blue-robed mage, ornate attached staff, and distinct 45-degree facings while excluding magical body auras, energy ribbons, orbiting effects, particles, and detached spell effects.
-- The retained PixelLab source has one base character with the exact name `Arcanist`, no alternate character states, and exactly two complete animation groups: `idle` and `walk`.
+- The retained MCP source has one base character with the exact name `Arcanist`, no alternate character states, and exactly two complete animation groups: `idle` and `walk`.
 - The game import preserves every approved source frame and contains no temporary review sheets or suffixed/test animation groups.
 
 ### Compatibility and resilience
@@ -73,34 +159,34 @@ Milestone 4.1.10 replaces the playable Arcanist's previous sprite set with the f
 
 ### Validation
 
-- Fresh PixelLab metadata confirmed the exact `Arcanist` name, all eight rotations, and only complete `idle` and `walk` groups in all eight directions.
-- The import gate byte-verified all 90 packaged PNGs against their PixelLab sources and confirmed `196×196` 32-bit alpha decoding, unique images throughout each group, transparent canvas margins, exact direction sets, and the accepted 4/6/8 frame counts.
+- Fresh MCP metadata confirmed the exact `Arcanist` name, all eight rotations, and only complete `idle` and `walk` groups in all eight directions.
+- The import gate byte-verified all 90 packaged PNGs against their MCP sources and confirmed `196×196` 32-bit alpha decoding, unique images throughout each group, transparent canvas margins, exact direction sets, and the accepted 4/6/8 frame counts.
 - `python -m unittest tests.test_sprite_assets tests.test_save_and_metadata` — 21 tests, all passing.
 - `python -m compileall src tests` — OK.
 - `python -m unittest discover tests` — 208 tests, all passing.
 
 ## 4.1.9 — Ranger Combat Animations
 
-Milestone 4.1.9 completes the female spear Ranger's authored gameplay animation set with reviewed PixelLab strike and skill-casting clips while preserving the existing combat-state and save contracts.
+Milestone 4.1.9 completes the female spear Ranger's authored gameplay animation set with reviewed MCP strike and skill-casting clips while preserving the existing combat-state and save contracts.
 
 ### Added
 
 - Added 96 packaged Ranger action frames: six-frame `hit` and `cast` sequences in all eight directions on the existing `256×256` transparent canvas.
-- Added non-looping Ranger runtime `attack` and `cast` clips. The runtime `attack` clip reads from the reviewed PixelLab `hit` files so Hawk Slash uses the diagonal spear strike without introducing a new combat state.
+- Added non-looping Ranger runtime `attack` and `cast` clips. The runtime `attack` clip reads from the reviewed MCP `hit` files so Hawk Slash uses the diagonal spear strike without introducing a new combat state.
 - Added regression coverage for action folder/state wiring, all direction and frame counts, non-looping playback, unique RGBA frames, transparent margins, and first-to-last progress resolution.
 
 ### Changed
 
 - Hawk Slash continues to emit the shared `attack` action state and now resolves the Ranger's authored `hit` frames. Multishot and Snare Nova continue to emit `cast` and now resolve the authored free-hand casting gesture; Vault retains the shared movement/run treatment.
-- Applied the established Ranger-only PixelLab→game direction map to both new groups: `north-west`→`north`, `north`→`north-east`, `west`→`north-west`, `south-west`→`west`, `north-east`→`east`, `south`→`south-west`, `south-east`→`south`, and `east`→`south-east`.
+- Applied the established Ranger-only MCP→game direction map to both new groups: `north-west`→`north`, `north`→`north-east`, `west`→`north-west`, `south-west`→`west`, `north-east`→`east`, `south`→`south-west`, `south-east`→`south`, and `east`→`south-east`.
 - Runtime/package release version is `4.1.9`. Run saves remain schema `5` and require no migration.
 
 ### Asset provenance
 
-- PixelLab Ranger character: `2a6c4684-9821-4520-96b2-b0622bfb0d91`.
+- MCP Ranger character: `2a6c4684-9821-4520-96b2-b0622bfb0d91`.
 - Final `hit` prompt: “Raise the spear above one shoulder, lower its steel tip diagonally across the body, then return upright. Wooden butt stays down.”
 - Final `cast` prompt: “Stand still, keep one spear upright in one hand, raise the open free hand chest-high, then lower it.”
-- The current PixelLab source contains exactly four maintainable groups: `idle`, `walk`, `hit`, and `cast`, each complete in all eight directions.
+- The current MCP source contains exactly four maintainable groups: `idle`, `walk`, `hit`, and `cast`, each complete in all eight directions.
 - Multiple rejected `hit` groups containing magic trails, ambiguous double spearheads, or malformed follow-throughs were deleted in full before the approved import.
 
 ### Compatibility and resilience
@@ -111,31 +197,31 @@ Milestone 4.1.9 completes the female spear Ranger's authored gameplay animation 
 
 ### Validation
 
-- Fresh PixelLab export confirmed exactly four animation folders and 48 source frames in each new action group.
-- The import gate byte-verified all 96 packaged files against their mapped PixelLab sources and confirmed `256×256` 8-bit RGBA decoding, six distinct frames per direction, and transparent canvas margins.
+- Fresh MCP export confirmed exactly four animation folders and 48 source frames in each new action group.
+- The import gate byte-verified all 96 packaged files against their mapped MCP sources and confirmed `256×256` 8-bit RGBA decoding, six distinct frames per direction, and transparent canvas margins.
 - `python -m unittest tests.test_sprite_assets tests.test_save_and_metadata` — 21 tests, all passing, including live Hawk Slash, Multishot, and Snare Nova clip selection.
 - `python -m compileall -q src tests` and `git diff --check` — OK.
 - `python -m unittest discover tests` — 208 tests, all passing.
 
 ## 4.1.8 — Female Spear Ranger Sprite Refresh
 
-Milestone 4.1.8 replaces the playable Ranger's bow-based sprite set with a completely new female PixelLab identity built around a single upright spear, while preserving the existing runtime animation and save contracts.
+Milestone 4.1.8 replaces the playable Ranger's bow-based sprite set with a completely new female MCP identity built around a single upright spear, while preserving the existing runtime animation and save contracts.
 
 ### Changed
 
 - Replaced all 88 packaged Ranger PNGs with eight new base rotations, 32 reviewed four-frame idle frames, and 48 reviewed six-frame V3 walk frames on a `256×256` transparent canvas.
-- The existing runtime `run` clip now presents the approved PixelLab walk cycle, preserving player-state, rendering, fallback, and package-data interfaces without introducing a Ranger-only animation state.
-- Applied the reviewed Ranger-specific PixelLab→game direction map consistently to rotations, idle frames, and walk→run frames: `north-west`→`north`, `north`→`north-east`, `west`→`north-west`, `south-west`→`west`, `north-east`→`east`, `south`→`south-west`, `south-east`→`south`, and `east`→`south-east`. Other actors retain their existing mappings.
+- The existing runtime `run` clip now presents the approved MCP walk cycle, preserving player-state, rendering, fallback, and package-data interfaces without introducing a Ranger-only animation state.
+- Applied the reviewed Ranger-specific MCP→game direction map consistently to rotations, idle frames, and walk→run frames: `north-west`→`north`, `north`→`north-east`, `west`→`north-west`, `south-west`→`west`, `north-east`→`east`, `south`→`south-west`, `south-east`→`south`, and `east`→`south-east`. Other actors retain their existing mappings.
 - Updated Ranger source normalization to anchor `(128, 212)` with a `165px` reference height while retaining the shared playable-character target height of `184px`.
 - Ranger previews on both modern and legacy archetype-selection screens now use the `south-west` idle animation; the other archetypes retain their established `south` previews.
 - Runtime/package release version is `4.1.8`. Run saves remain schema `5` and require no migration.
 
 ### Asset provenance
 
-- PixelLab Ranger character: `2a6c4684-9821-4520-96b2-b0622bfb0d91`.
+- MCP Ranger character: `2a6c4684-9821-4520-96b2-b0622bfb0d91`.
 - Source prompt: “Female forest spearmaiden, auburn braid, dark-green leather armor, short cloak. Only weapon: one tall upright spear held beside her, with one straight continuous wooden shaft. Completely bare back and belt.”
-- The retained PixelLab source contains exactly two animation groups: `idle` with four frames in all eight directions and `walk` with six frames in all eight directions.
-- Rejected bow/quiver identities, malformed spear rotations, split animation groups, and the identity-breaking template walk were deleted from PixelLab before the final import.
+- The retained MCP source contains exactly two animation groups: `idle` with four frames in all eight directions and `walk` with six frames in all eight directions.
+- Rejected bow/quiver identities, malformed spear rotations, split animation groups, and the identity-breaking template walk were deleted from MCP before the final import.
 
 ### Compatibility and resilience
 
@@ -145,7 +231,7 @@ Milestone 4.1.8 replaces the playable Ranger's bow-based sprite set with a compl
 
 ### Validation
 
-- Final import gate byte-verified all 88 packaged PNGs against their corrected mapped PixelLab sources and confirmed `256×256` RGBA decoding with transparent margins.
+- Final import gate byte-verified all 88 packaged PNGs against their corrected mapped MCP sources and confirmed `256×256` RGBA decoding with transparent margins.
 - `python -m unittest tests.test_sprite_assets` — 17 tests, all passing; includes complete direction/frame counts, PNG decoding, pose uniqueness, lower-body motion, Ranger normalization, transparent margins, and runtime resolution.
 - Save/release metadata, movement-animation, and archetype/options suites — 9 tests, all passing.
 - `python -m unittest tests.test_ui_layouts` — 17 tests, all passing; covers modern and legacy Ranger `south-west` idle selection previews and anchored animation.
@@ -154,7 +240,7 @@ Milestone 4.1.8 replaces the playable Ranger's bow-based sprite set with a compl
 
 ## 4.1.7 — Female Rogue Sprite Refresh
 
-Milestone 4.1.7 replaces the playable Rogue's previous male sprite set with a completely new female PixelLab identity and reviewed high-resolution locomotion while preserving the existing runtime animation contract.
+Milestone 4.1.7 replaces the playable Rogue's previous male sprite set with a completely new female MCP identity and reviewed high-resolution locomotion while preserving the existing runtime animation contract.
 
 ### Changed
 
@@ -166,9 +252,9 @@ Milestone 4.1.7 replaces the playable Rogue's previous male sprite set with a co
 
 ### Asset provenance
 
-- PixelLab Rogue character: `d6f3357f-e41d-4181-8a14-1deaef8e1bdd`.
+- MCP Rogue character: `d6f3357f-e41d-4181-8a14-1deaef8e1bdd`.
 - Source prompt: “Athletic female rogue, braided black hair, charcoal leather armor, muted green scarf, two short-bladed daggers.”
-- Idle and walk frames were reviewed and adjusted in PixelLab before the final package export used by the game.
+- Idle and walk frames were reviewed and adjusted in MCP before the final package export used by the game.
 
 ### Compatibility and resilience
 
@@ -181,7 +267,7 @@ Milestone 4.1.7 replaces the playable Rogue's previous male sprite set with a co
 - `python -m unittest tests.test_sprite_assets` — 16 tests, all passing; includes complete direction/frame counts, PNG decoding, pose uniqueness, canonical canvas checks, transparent margins, and runtime resolution.
 - Save/release metadata plus movement-animation and archetype/options suites — 9 tests, all passing.
 - Headless modern-mode Rogue render smoke check resolved grounded asset-backed idle and movement frames.
-- Final export gate byte-verified all 88 packaged PNGs against the reviewed PixelLab archive using identical source and destination direction names.
+- Final export gate byte-verified all 88 packaged PNGs against the reviewed MCP archive using identical source and destination direction names.
 - `python -m compileall -q src tests` and scoped `git diff --check` — OK.
 - `python -m unittest discover tests` — 204 tests, all passing.
 
@@ -232,7 +318,7 @@ Milestone 4.1.5 replaces the undersized modern HP, Mana, and Stamina treatment w
 
 ### Asset provenance
 
-- PixelLab Obsidian resource bar: `a7dc111c-69f9-4489-a45a-2c74ea89cee2`.
+- MCP Obsidian resource bar: `a7dc111c-69f9-4489-a45a-2c74ea89cee2`.
 - The generated `512×192` authoring canvas was losslessly trimmed to its `474×66` non-transparent bounds. It contains no baked labels, resource colors, values, or gameplay state; all fills and text remain dynamic.
 
 ### Compatibility and resilience
@@ -271,7 +357,7 @@ Milestone 4.1.4 tightens the two most information-dense in-run overlays. Modern 
 
 ### Asset provenance
 
-- PixelLab inset panel source: `24c53c30-8cf4-43ee-a010-05fda73ce4ab`.
+- MCP inset panel source: `24c53c30-8cf4-43ee-a010-05fda73ce4ab`.
 - The generated `256×256` authoring canvas was losslessly trimmed to its `161×81` non-transparent bounds. The packaged frame contains no baked labels, dividers, or gameplay values and is stretched only through nine-slicing.
 
 ### Compatibility and resilience
@@ -338,9 +424,9 @@ Milestone 4.1.2 finishes the post-asset menu pass with purpose-sized panel art, 
 
 ### Asset provenance
 
-- PixelLab wide menu panel: `3c165843-c97c-42bf-8ef5-2f830e2dced0`.
-- PixelLab compact menu panel: `4e97ce8d-499e-42bd-bbe9-cff3cda2fbe8`.
-- PixelLab cutscene catacomb backdrop: `c38a07cc-4432-4803-88d0-421177ee4add`.
+- MCP wide menu panel: `3c165843-c97c-42bf-8ef5-2f830e2dced0`.
+- MCP compact menu panel: `4e97ce8d-499e-42bd-bbe9-cff3cda2fbe8`.
+- MCP cutscene catacomb backdrop: `c38a07cc-4432-4803-88d0-421177ee4add`.
 - Transparent authoring margins were trimmed, panel center fields were deterministically normalized for text readability, and the generated square backdrop was nearest-neighbor fitted to the packaged `688×384` cinematic canvas.
 
 ### Compatibility and resilience
@@ -428,7 +514,7 @@ Milestone 4.1 replaces the modern-mode menu and HUD chrome with a cohesive gener
 
 ### Asset provenance
 
-- Final PixelLab source jobs: title backdrop `1e6fb7a2-8e39-4ae5-b414-adb10b36be6f`, menu backdrop `d26c22d1-87fb-44d0-8956-2051bf36ae30`, modal panel `8087840a-d4c9-47d5-966a-8f77c0547f8d`, row plate `a21b2178-8a38-4ab3-a77d-b5160c756efa`, HUD dock `344de9a4-e3be-4927-a081-317ede03f9fb`, action slot `21cf97fc-1e8a-4f03-90fd-87dfa04a467f`, and status bar `a280b2de-396a-4778-81af-b365a486cad4`.
+- Final MCP source jobs: title backdrop `1e6fb7a2-8e39-4ae5-b414-adb10b36be6f`, menu backdrop `d26c22d1-87fb-44d0-8956-2051bf36ae30`, modal panel `8087840a-d4c9-47d5-966a-8f77c0547f8d`, row plate `a21b2178-8a38-4ab3-a77d-b5160c756efa`, HUD dock `344de9a4-e3be-4927-a081-317ede03f9fb`, action slot `21cf97fc-1e8a-4f03-90fd-87dfa04a467f`, and status bar `a280b2de-396a-4778-81af-b365a486cad4`.
 - Runtime files are losslessly trimmed from transparent source margins. The panel/row center fields and shallow HUD panel derivative are deterministic curation steps that preserve generated borders while removing decorative interference from live text.
 
 ### Validation
@@ -447,8 +533,8 @@ Milestone 4.0.2 audits the complete modern idle/run set for all five playable ar
 
 ### Acolyte full-regeneration follow-up
 
-- Replaced all 88 Acolyte PNGs with one new PixelLab V3 identity (`aa6961b2-9dca-43a9-b68b-6cfdfaa8ee17`): eight base rotations, 32 idle frames, and 48 walk frames on a `244×244` high-resolution canvas.
-- Imported every rotation and animation through the required PixelLab-to-game direction mapping: south-east→south, south→south-west, north-east→east, east→south-east, north-west→north, north→north-east, south-west→west, and west→north-west.
+- Replaced all 88 Acolyte PNGs with one new MCP V3 identity (`aa6961b2-9dca-43a9-b68b-6cfdfaa8ee17`): eight base rotations, 32 idle frames, and 48 walk frames on a `244×244` high-resolution canvas.
+- Imported every rotation and animation through the required MCP-to-game direction mapping: south-east→south, south→south-west, north-east→east, east→south-east, north-west→north, north→north-east, south-west→west, and west→north-west.
 - Removed the previous mirrored side/rear-diagonal frames and duplicated walk contact holds; every game direction now uses its independently generated four-frame idle and six-frame walk source.
 - Updated the Acolyte source anchor/reference geometry while preserving the runtime target height, asset-first loading, and legacy procedural fallback.
 

@@ -414,7 +414,9 @@ class AssetSpriteLibrary:
         if direction not in DIRECTIONS:
             direction = "south"
 
-        requested_state = state if state in ("idle", "run", "attack", "cast") else ""
+        requested_state = (
+            state if state in ("idle", "run", "dance", "attack", "cast") else ""
+        )
         if state == "dash":
             requested_state = "run"
         clips = entry.get("clips", {})
@@ -914,9 +916,10 @@ class SpriteAtlas:
         *,
         direction: str = "south",
         moving: bool = False,
+        dancing: bool = False,
         clip_progress: float | None = None,
     ) -> ResolvedSpriteFrame:
-        state = "run" if moving else "idle"
+        state = "run" if moving else "dance" if dancing else "idle"
         asset = self._asset_actor(
             "shopkeeper",
             state,
@@ -941,12 +944,14 @@ class SpriteAtlas:
         *,
         direction: str = "south",
         moving: bool = False,
+        dancing: bool = False,
         clip_progress: float | None = None,
     ) -> pygame.Surface:
         return self.shopkeeper_visual(
             elapsed,
             direction=direction,
             moving=moving,
+            dancing=dancing,
             clip_progress=clip_progress,
         ).surface
 
@@ -957,9 +962,10 @@ class SpriteAtlas:
         *,
         direction: str = "south",
         moving: bool = False,
+        dancing: bool = False,
         clip_progress: float | None = None,
     ) -> ResolvedSpriteFrame:
-        state = "run" if moving else "idle"
+        state = "run" if moving else "dance" if dancing else "idle"
         asset = self._asset_actor(
             "story_guest",
             state,
@@ -988,6 +994,7 @@ class SpriteAtlas:
         *,
         direction: str = "south",
         moving: bool = False,
+        dancing: bool = False,
         clip_progress: float | None = None,
     ) -> pygame.Surface:
         return self.story_guest_visual(
@@ -995,6 +1002,52 @@ class SpriteAtlas:
             resolved,
             direction=direction,
             moving=moving,
+            dancing=dancing,
+            clip_progress=clip_progress,
+        ).surface
+
+    def garden_frog_visual(
+        self,
+        elapsed: float,
+        *,
+        direction: str = "south",
+        moving: bool = False,
+        dancing: bool = False,
+        clip_progress: float | None = None,
+    ) -> ResolvedSpriteFrame:
+        state = "run" if moving else "dance" if dancing else "idle"
+        asset = self._asset_actor(
+            "Garden Frog",
+            state,
+            direction,
+            elapsed,
+            loop_progress=clip_progress,
+        )
+        if asset is not None:
+            return asset
+        return self._fallback_frame(
+            self.legacy.garden_frog_frame(
+                elapsed, moving=moving, clip_progress=clip_progress
+            ),
+            "npc",
+            "garden_frog",
+            state,
+        )
+
+    def garden_frog_frame(
+        self,
+        elapsed: float,
+        *,
+        direction: str = "south",
+        moving: bool = False,
+        dancing: bool = False,
+        clip_progress: float | None = None,
+    ) -> pygame.Surface:
+        return self.garden_frog_visual(
+            elapsed,
+            direction=direction,
+            moving=moving,
+            dancing=dancing,
             clip_progress=clip_progress,
         ).surface
 

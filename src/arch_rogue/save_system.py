@@ -601,12 +601,15 @@ class SaveLoadMixin:
         self.idle_npcs = [
             self.idle_npc_from_dict(npc) for npc in data.get("idle_npcs", [])
         ]
-        self.reset_friendly_npc_runtime()
         # Milestone 3.15 - familiars restore additively; old saves without
         # the field load with an empty host (the Acolyte can re-summon).
         self.familiars = [
             self.familiar_from_dict(familiar) for familiar in data.get("familiars", [])
         ]
+        # 4.1.13 backfills the two decorative frogs into saves created before
+        # their introduction, then resets transient motion for the final roster.
+        self._reconcile_garden_frogs()
+        self.reset_friendly_npc_runtime()
         # Ambush Bell traps are floor-local transient runtime actors; saves load
         # with none, even if a future/newer save file happens to contain them.
         self.ambush_bells = []

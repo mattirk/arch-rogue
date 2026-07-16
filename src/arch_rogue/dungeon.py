@@ -47,10 +47,11 @@ SHOP_ROOM_KIND = "shop"
 QUEST_ROOM_KIND = "quest_room"
 LEGACY_QUEST_GUEST_ROOM_KIND = "quest_guest"
 # 3.14 flavor special rooms: appearance-only chambers (no merchant/quest
-# logic). They roll at 50% on every depth and may host a decorative,
-# non-interactable idle NPC. ``door_policy="sealed"`` gives them a closed
-# perimeter with doors so the distinct interior wall art always renders and
-# the room reads as a discovered chamber rather than open dungeon floor.
+# logic). They roll at 50% on every depth and host decorative, non-interactable
+# actors (including two frogs in each garden). ``door_policy="sealed"`` gives
+# them a closed perimeter with doors so the distinct interior wall art always
+# renders and the room reads as a discovered chamber rather than open dungeon
+# floor.
 # ``spawn_policy="normal"`` keeps them out of the safe-refuge path: hostiles are
 # not cleared (they are appearance-only, not gameplay refuges).
 BAR_ROOM_KIND = "bar"

@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.dungeon import MAP_H, MAP_W, Dungeon
 from arch_rogue.game import Game
-from arch_rogue.models import IdleNpc, Room, Shopkeeper, StoryGuest, Tile
+from arch_rogue.models import IdleNpc, Item, Room, Shopkeeper, StoryGuest, Tile
 
 
 class FriendlyNpcRuntimeTests(unittest.TestCase):
@@ -58,7 +58,23 @@ class FriendlyNpcRuntimeTests(unittest.TestCase):
             )
         ]
         game.idle_npcs = [
-            IdleNpc(28.5, 25.5, kind="bar", name="Tovin", role="Patron")
+            IdleNpc(28.5, 25.5, kind="bar", name="Tovin", role="Patron"),
+            IdleNpc(
+                22.5,
+                25.5,
+                kind="garden_frog",
+                name="Pip Croakleaf",
+                role="Garden Dancer",
+                color=(116, 190, 92),
+            ),
+            IdleNpc(
+                22.5,
+                28.5,
+                kind="garden_frog",
+                name="Moss-Hop",
+                role="Garden Dancer",
+                color=(116, 190, 92),
+            ),
         ]
         game.player.x = 4.5
         game.player.y = 4.5
@@ -205,6 +221,27 @@ class FriendlyNpcRuntimeTests(unittest.TestCase):
         self.assertEqual((guest.x, guest.y), guest_position)
         self.assert_faces_player(game, guest)
 
+    def test_shop_sign_finds_its_room_keeper_after_extended_roaming(self) -> None:
+        game = self.make_game()
+        keeper = game.shopkeepers[0]
+        keeper.x, keeper.y = 29.5, 29.5
+        sign = Item(
+            "Shop Sign: Press E to trade",
+            "shop_sign",
+            rarity="Common",
+            x=24.5,
+            y=25.5,
+        )
+        game.items = [sign]
+        game.story_guests = []
+        game.idle_npcs = []
+        game.player.x, game.player.y = sign.x, sign.y
+
+        self.assertIsNone(game.nearby_shopkeeper(radius=2.2))
+        game.interact()
+        self.assertTrue(game.shop_open)
+        self.assertIs(game.active_shopkeeper, keeper)
+
     def test_inventory_pause_freezes_positions_while_dance_progress_advances(self) -> None:
         game = self.make_game()
         game.elapsed = 0.125
@@ -224,7 +261,7 @@ class FriendlyNpcRuntimeTests(unittest.TestCase):
         self.assertTrue(all(not state[2] for state in states_after))
         for state_before, state_after in zip(states_before, states_after, strict=True):
             self.assertAlmostEqual(state_before[3], 0.125, places=7)
-            self.assertAlmostEqual(state_after[3], 0.375, places=7)
+            self.assertAlmostEqual(state_after[3], 0.1875, places=7)
             self.assertGreater(state_after[3], state_before[3])
 
     def test_visual_states_share_the_same_music_beat_phase(self) -> None:
@@ -236,10 +273,92 @@ class FriendlyNpcRuntimeTests(unittest.TestCase):
             for npc in game.iter_friendly_npcs()
         ]
 
-        self.assertEqual(len(phases), 3)
+        self.assertEqual(len(phases), 5)
+        self.assertEqual(
+            sum(
+                getattr(npc, "kind", "") == "garden_frog"
+                for npc in game.iter_friendly_npcs()
+            ),
+            2,
+        )
         for phase in phases:
             self.assertAlmostEqual(phase, phases[0], places=12)
-            self.assertAlmostEqual(phase, 0.375, places=7)
+            self.assertAlmostEqual(phase, 0.6875, places=7)
+
+    def test_four_beat_dance_progress_has_a_clear_pulse_on_every_beat(self) -> None:
+        game = self.make_game()
+        self.assertEqual(game.FRIENDLY_NPC_DANCE_BEATS, 4.0)
+        self.assertEqual(game.FRIENDLY_NPC_TRAVEL_BEATS, 2.0)
+        self.assertEqual(game.FRIENDLY_NPC_MIN_DANCE_BEATS, 2.0)
+
+        for beat in range(4):
+            progress = beat / game.FRIENDLY_NPC_DANCE_BEATS
+            lift, accent = game.friendly_npc_beat_pulse(progress, moving=False)
+            self.assertAlmostEqual(lift, 0.0, places=12)
+            self.assertAlmostEqual(accent, 1.0, places=12)
+
+            lift, accent = game.friendly_npc_beat_pulse(
+                progress + 0.5 / game.FRIENDLY_NPC_DANCE_BEATS,
+                moving=False,
+            )
+            self.assertAlmostEqual(lift, 1.0, places=12)
+            self.assertAlmostEqual(accent, 0.0, places=12)
+
+        game.elapsed = 0.5
+        self.assertAlmostEqual(game.friendly_npc_dance_progress(), 0.25, places=12)
+        game.elapsed = 2.0
+        self.assertAlmostEqual(game.friendly_npc_dance_progress(), 0.0, places=12)
+
+    def test_waypoints_use_more_of_the_room_and_avoid_short_shuffles(self) -> None:
+        game = self.make_game()
+        game.elapsed = 0.0
+        game.update_friendly_npcs(0.0)
+
+        self.assertGreater(game.FRIENDLY_NPC_SPEED, 0.58)
+        for npc in game.iter_friendly_npcs():
+            motion = game.friendly_npc_motion(npc)
+            roam_radius = game._friendly_npc_roam_radius(npc)
+            minimum_travel = min(1.8, roam_radius * 0.55)
+            self.assertGreaterEqual(
+                math.hypot(motion.target_x - npc.x, motion.target_y - npc.y),
+                minimum_travel - 1e-9,
+            )
+
+    def test_reaching_a_waypoint_guarantees_a_two_beat_dance_break(self) -> None:
+        game = self.make_game()
+        game.shopkeepers = []
+        game.story_guests = []
+        game.idle_npcs = [
+            IdleNpc(25.5, 25.5, kind="bar", name="Tovin", role="Patron")
+        ]
+        game.reset_friendly_npc_runtime()
+        npc = game.idle_npcs[0]
+
+        game.elapsed = 0.0
+        game.update_friendly_npcs(0.0)
+        motion = game.friendly_npc_motion(npc)
+        self.assertGreater(math.hypot(motion.target_x - npc.x, motion.target_y - npc.y), 0.05)
+
+        arrival_beats = None
+        for step in range(1, 401):
+            game.elapsed = step * 0.125
+            game.update_friendly_npcs(0.125)
+            timing = game.friendly_npc_music_timing()
+            remaining = math.hypot(motion.target_x - npc.x, motion.target_y - npc.y)
+            if (
+                not motion.moving
+                and remaining <= 0.05
+                and motion.next_move_beat > timing.total_beats
+            ):
+                arrival_beats = timing.total_beats
+                break
+
+        self.assertIsNotNone(arrival_beats)
+        assert arrival_beats is not None
+        self.assertGreaterEqual(
+            motion.next_move_beat - arrival_beats,
+            game.FRIENDLY_NPC_MIN_DANCE_BEATS - 1e-9,
+        )
 
     def test_moved_npc_positions_round_trip_and_resume_inside_their_rooms(self) -> None:
         self.game_count += 1
@@ -300,7 +419,7 @@ class FriendlyNpcRuntimeTests(unittest.TestCase):
     def test_runtime_cache_prunes_removed_npcs_and_can_be_reset(self) -> None:
         game = self.make_game()
         game.update_friendly_npcs(0.0)
-        self.assertEqual(len(game._friendly_npc_motions), 3)
+        self.assertEqual(len(game._friendly_npc_motions), 5)
 
         game.shopkeepers = []
         game.story_guests = []

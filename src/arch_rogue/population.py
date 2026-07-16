@@ -336,6 +336,19 @@ class PopulationMixin:
                 continue
             handler(special_room, self.dungeon.rooms[special_room.room_index])
 
+    def _reconcile_garden_frogs(self) -> None:
+        """Backfill frogs in pre-4.1.13 saves without touching gameplay RNG."""
+        for special_room in list(getattr(self.dungeon, "special_rooms", [])):
+            if special_room.kind != "garden":
+                continue
+            if not (0 <= special_room.room_index < len(self.dungeon.rooms)):
+                continue
+            self._populate_garden_special_room(
+                special_room,
+                self.dungeon.rooms[special_room.room_index],
+                include_wanderer=False,
+            )
+
     def _room_contains_world_point(self, room: Room, x: float, y: float) -> bool:
         return room.x <= x < room.x + room.w and room.y <= y < room.y + room.h
 
@@ -354,8 +367,27 @@ class PopulationMixin:
     def _reserve_special_room_anchor(
         self, special_room: SpecialRoom, key: str, x: int, y: int
     ) -> None:
-        special_room.anchor_points[key] = [int(x), int(y)]
         tile = [int(x), int(y)]
+        previous = special_room.anchor_points.get(key)
+        previous_tile = (
+            [int(previous[0]), int(previous[1])]
+            if previous is not None and len(previous) >= 2
+            else None
+        )
+        special_room.anchor_points[key] = tile.copy()
+        if previous_tile is not None and previous_tile != tile:
+            still_referenced = any(
+                len(anchor) >= 2
+                and [int(anchor[0]), int(anchor[1])] == previous_tile
+                for anchor in special_room.anchor_points.values()
+            )
+            if not still_referenced:
+                special_room.reserved_tiles = [
+                    reserved
+                    for reserved in special_room.reserved_tiles
+                    if len(reserved) < 2
+                    or [int(reserved[0]), int(reserved[1])] != previous_tile
+                ]
         if tile not in special_room.reserved_tiles:
             special_room.reserved_tiles.append(tile)
 
@@ -417,13 +449,12 @@ class PopulationMixin:
         self._clear_room_hostiles_and_traps(room)
         self._populate_story_guest(special_room, room)
 
-    # --- 3.14 flavor rooms: bar / garden -------------------------------
+    # --- 3.14 / 4.1.13 flavor rooms: bar / garden ----------------------
     # These are appearance-only. They never clear hostiles (they are not refuges)
-    # and never offer interaction. Each MAY host a single decorative idle NPC at
-    # 50% chance; a layout-seeded local RNG drives the roll so the shared
-    # `self.rng` stream (and thus the rest of population) is unchanged. Re-running
-    # `_populate_special_rooms` (e.g. on save restore) is a no-op: a guard skips
-    # rooms that already hold an idle NPC.
+    # and never offer interaction. Bars and gardens may host one humanoid at 50%
+    # chance, while every garden also receives two dancing frogs. A layout-seeded
+    # local RNG drives names and rolls without advancing the shared population RNG.
+    # Kind/name guards make repeated population (including save restore) idempotent.
     _BAR_NPC_NAMES = (
         "Barkeep Ossar",
         "Drunk Mabel",
@@ -436,6 +467,14 @@ class PopulationMixin:
         "Hollow Friar",
         "Moss-Bound Wren",
     )
+    _GARDEN_FROG_NAMES = (
+        "Pip Croakleaf",
+        "Moss-Hop",
+        "Lady Ribbit",
+        "Bogbell",
+        "Thimble-Toad",
+        "Dewdrop",
+    )
 
     def _room_has_idle_npc(self, room: Room) -> bool:
         return any(
@@ -444,13 +483,20 @@ class PopulationMixin:
         )
 
     def _flavor_room_rng(self, special_room: SpecialRoom, salt: int) -> random.Random:
-        # Same layout-seeded family as the guest-room planner, folded with the
-        # room index and a per-kind salt so bar/garden rolls stay independent of
-        # each other and of the shared `self.rng` stream.
-        seed = (
-            (special_room.room_index * 73856093)
-            ^ (salt * 19349663)
-            ^ (len(self.dungeon.rooms) * 0x9E3779B1)
+        # Include stable room geometry rather than only count/index; otherwise
+        # many unrelated layouts repeat the same roll and skew far from 50%.
+        room = self.dungeon.rooms[special_room.room_index]
+        seed = ":".join(
+            str(value)
+            for value in (
+                salt,
+                special_room.room_index,
+                len(self.dungeon.rooms),
+                room.x,
+                room.y,
+                room.w,
+                room.h,
+            )
         )
         return random.Random(seed)
 
@@ -473,26 +519,158 @@ class PopulationMixin:
             )
         )
 
+    def _garden_frog_spawn_tiles(
+        self,
+        special_room: SpecialRoom,
+        room: Room,
+        rng: random.Random,
+        count: int,
+    ) -> list[tuple[int, int]]:
+        occupied: set[tuple[int, int]] = set()
+        collections = (
+            getattr(self, "enemies", ()),
+            getattr(self, "items", ()),
+            getattr(self, "traps", ()),
+            getattr(self, "shrines", ()),
+            getattr(self, "secrets", ()),
+            getattr(self, "shopkeepers", ()),
+            getattr(self, "story_guests", ()),
+            getattr(self, "idle_npcs", ()),
+            getattr(self, "familiars", ()),
+        )
+        for collection in collections:
+            for actor in collection:
+                if self._room_contains_world_point(room, actor.x, actor.y):
+                    occupied.add((math.floor(actor.x), math.floor(actor.y)))
+        player = getattr(self, "player", None)
+        if player is not None and self._room_contains_world_point(
+            room, player.x, player.y
+        ):
+            occupied.add((math.floor(player.x), math.floor(player.y)))
+
+        passable = [
+            (x, y)
+            for x in range(room.x + 1, room.x + room.w - 1)
+            for y in range(room.y + 1, room.y + room.h - 1)
+            if not self.dungeon.blocked_for_radius(x + 0.5, y + 0.5, 0.27)
+        ]
+        rng.shuffle(passable)
+        cx, cy = room.center
+        passable.sort(
+            key=lambda tile: (tile[0] - cx) ** 2 + (tile[1] - cy) ** 2
+        )
+        candidates = [tile for tile in passable if tile not in occupied]
+        reserved = {
+            (int(tile[0]), int(tile[1]))
+            for tile in special_room.reserved_tiles
+            if len(tile) >= 2
+        }
+        preferred = [tile for tile in candidates if tile not in reserved]
+        if len(preferred) < count:
+            preferred.extend(tile for tile in candidates if tile in reserved)
+        if len(preferred) < count:
+            # Corrupt saves can theoretically occupy every interior tile. Keep
+            # loading deterministic and preserve the two-frog invariant rather
+            # than raising; normal generated floors always use clear candidates.
+            preferred.extend(tile for tile in passable if tile not in preferred)
+        return preferred[:count]
+
     def _populate_garden_special_room(
-        self, special_room: SpecialRoom, room: Room
+        self,
+        special_room: SpecialRoom,
+        room: Room,
+        *,
+        include_wanderer: bool = True,
     ) -> None:
-        if self._room_has_idle_npc(room):
-            return
         rng = self._flavor_room_rng(special_room, salt=0x6A6)
-        if rng.random() >= 0.50:
-            return
         cx, cy = room.center
         self._reserve_special_room_anchor(special_room, "npc", cx, cy)
-        self.idle_npcs.append(
-            IdleNpc(
-                x=cx + 0.5,
-                y=cy + 0.5,
-                kind="garden",
-                name=rng.choice(self._GARDEN_NPC_NAMES),
-                role="Wanderer",
-                color=(150, 196, 132),
+        existing = [
+            npc
+            for npc in self.idle_npcs
+            if self._room_contains_world_point(room, npc.x, npc.y)
+        ]
+
+        spawn_wanderer = rng.random() < 0.50
+        wanderer_name = (
+            rng.choice(self._GARDEN_NPC_NAMES) if spawn_wanderer else ""
+        )
+        if (
+            include_wanderer
+            and spawn_wanderer
+            and not any(npc.kind == "garden" for npc in existing)
+        ):
+            self.idle_npcs.append(
+                IdleNpc(
+                    x=cx + 0.5,
+                    y=cy + 0.5,
+                    kind="garden",
+                    name=wanderer_name,
+                    role="Wanderer",
+                    color=(150, 196, 132),
+                )
+            )
+
+        frog_names = rng.sample(self._GARDEN_FROG_NAMES, k=2)
+        room_frogs = [npc for npc in existing if npc.kind == "garden_frog"]
+        retained: dict[int, IdleNpc] = {}
+        retained_ids: set[int] = set()
+        for index, name in enumerate(frog_names):
+            frog = next(
+                (
+                    candidate
+                    for candidate in room_frogs
+                    if candidate.name == name and id(candidate) not in retained_ids
+                ),
+                None,
+            )
+            if frog is not None:
+                retained[index] = frog
+                retained_ids.add(id(frog))
+
+        # Enforce the two deterministic frog slots when reconciling old or
+        # partially inconsistent saves, while preserving moved valid frogs.
+        self.idle_npcs = [
+            npc
+            for npc in self.idle_npcs
+            if not (
+                npc.kind == "garden_frog"
+                and self._room_contains_world_point(room, npc.x, npc.y)
+                and id(npc) not in retained_ids
+            )
+        ]
+        missing_indexes = [index for index in range(2) if index not in retained]
+        spawn_tiles = iter(
+            self._garden_frog_spawn_tiles(
+                special_room, room, rng, len(missing_indexes)
             )
         )
+        for index, name in enumerate(frog_names):
+            anchor_key = f"garden_frog_{index}"
+            frog = retained.get(index)
+            if frog is not None:
+                anchor = special_room.anchor(anchor_key)
+                if anchor is None:
+                    anchor = (math.floor(frog.x), math.floor(frog.y))
+                self._reserve_special_room_anchor(
+                    special_room, anchor_key, anchor[0], anchor[1]
+                )
+                continue
+
+            frog_x, frog_y = next(spawn_tiles)
+            self._reserve_special_room_anchor(
+                special_room, anchor_key, frog_x, frog_y
+            )
+            self.idle_npcs.append(
+                IdleNpc(
+                    x=frog_x + 0.5,
+                    y=frog_y + 0.5,
+                    kind="garden_frog",
+                    name=name,
+                    role="Garden Dancer",
+                    color=(116, 190, 92),
+                )
+            )
 
     def _make_shop_inventory(self, room: Room) -> list[Item]:
         stock: list[Item] = [

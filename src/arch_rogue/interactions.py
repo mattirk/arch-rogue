@@ -264,7 +264,7 @@ class InteractionMixin:
                 self.collect_story_relic(nearest)
                 return
             if nearest.slot == "shop_sign":
-                shopkeeper = self.nearby_shopkeeper(radius=2.2)
+                shopkeeper = self.shopkeeper_for_sign(nearest)
                 if shopkeeper is not None:
                     self.open_shop(shopkeeper)
                 return

@@ -250,9 +250,13 @@ class SpriteAssetTests(unittest.TestCase):
             self.assertEqual(tuple(entry["source_anchor"]), (90.0, 135.0))
             self.assertEqual(entry["reference_height"], 89)
             self.assertEqual(entry["target_height"], 176)
-            self.assertEqual(set(entry["clips"]), {"idle", "run"})
+            self.assertEqual(set(entry["clips"]), {"idle", "run", "dance"})
 
-            for state, folder in (("idle", "idle"), ("run", "walk")):
+            for state, folder, frame_count in (
+                ("idle", "idle", 8),
+                ("run", "walk", 8),
+                ("dance", "dance", 16),
+            ):
                 clip = entry["clips"][state]
                 self.assertTrue(clip["loop"])
                 self.assertEqual(clip["fps"], 8.0)
@@ -264,7 +268,7 @@ class SpriteAssetTests(unittest.TestCase):
                             [
                                 f"actors/{slug}/animations/{folder}/{direction}/"
                                 f"frame_{index:03d}.png"
-                                for index in range(8)
+                                for index in range(frame_count)
                             ],
                         )
                         surfaces = [
@@ -274,7 +278,7 @@ class SpriteAssetTests(unittest.TestCase):
                         decoded = [
                             surface for surface in surfaces if surface is not None
                         ]
-                        self.assertEqual(len(decoded), 8)
+                        self.assertEqual(len(decoded), frame_count)
                         self.assertEqual(
                             len(
                                 {
@@ -282,7 +286,7 @@ class SpriteAssetTests(unittest.TestCase):
                                     for surface in decoded
                                 }
                             ),
-                            8,
+                            frame_count,
                         )
                         for surface in decoded:
                             self.assertEqual(surface.get_size(), (180, 180))
@@ -322,7 +326,9 @@ class SpriteAssetTests(unittest.TestCase):
                         assert midpoint is not None
                         assert wrapped is not None
                         self.assertEqual(start.key[2:5], (state, direction, 0))
-                        self.assertEqual(midpoint.key[2:5], (state, direction, 4))
+                        self.assertEqual(
+                            midpoint.key[2:5], (state, direction, frame_count // 2)
+                        )
                         self.assertEqual(wrapped.key[2:5], (state, direction, 0))
 
         atlas = SpriteAtlas()
@@ -338,14 +344,157 @@ class SpriteAssetTests(unittest.TestCase):
         guest_walk = atlas.story_guest_visual(
             0.0, direction="north", moving=True, clip_progress=0.5
         )
+        shop_dance = atlas.shopkeeper_visual(
+            0.0, direction="south", dancing=True, clip_progress=0.5
+        )
+        guest_dance = atlas.story_guest_visual(
+            0.0, direction="east", dancing=True, clip_progress=0.5
+        )
         for frame, state, direction in (
             (shop_idle, "idle", "north-east"),
             (shop_walk, "run", "west"),
             (guest_idle, "idle", "south-west"),
             (guest_walk, "run", "north"),
+            (shop_dance, "dance", "south"),
+            (guest_dance, "dance", "east"),
         ):
             self.assertTrue(frame.is_asset)
             self.assertEqual(frame.key[2:4], (state, direction))
+
+    def test_garden_frog_assets_are_complete_and_beat_addressable(self) -> None:
+        library = AssetSpriteLibrary()
+        entry = library.manifest["actors"]["garden_frog"]
+        self.assertEqual(entry["name"], "Garden Frog")
+        self.assertEqual(entry["category"], "npc")
+        self.assertEqual(tuple(entry["source_canvas"]), (240, 240))
+        self.assertEqual(tuple(entry["source_anchor"]), (120.0, 180.0))
+        self.assertEqual(entry["reference_height"], 129)
+        self.assertEqual(entry["target_height"], 96)
+        self.assertEqual(set(entry["clips"]), {"run", "dance"})
+
+        rotation_paths = entry["rotations"]
+        self.assertEqual(set(rotation_paths), set(DIRECTIONS))
+        rotations = []
+        for direction, path in rotation_paths.items():
+            self.assertEqual(path, f"actors/garden_frog/rotations/{direction}.png")
+            surface = library._source_surface(path)
+            self.assertIsNotNone(surface)
+            assert surface is not None
+            rotations.append(surface)
+        self.assertEqual(
+            len({pygame.image.tobytes(surface, "RGBA") for surface in rotations}),
+            8,
+        )
+
+        for state, folder in (("run", "walk"), ("dance", "dance")):
+            clip = entry["clips"][state]
+            self.assertTrue(clip["loop"])
+            self.assertEqual(clip["fps"], 8.0)
+            self.assertEqual(set(clip["directions"]), set(DIRECTIONS))
+            for direction, frame_paths in clip["directions"].items():
+                with self.subTest(state=state, direction=direction):
+                    self.assertEqual(
+                        frame_paths,
+                        [
+                            f"actors/garden_frog/animations/{folder}/{direction}/"
+                            f"frame_{index:03d}.png"
+                            for index in range(8)
+                        ],
+                    )
+                    surfaces = [
+                        library._source_surface(path) for path in frame_paths
+                    ]
+                    self.assertNotIn(None, surfaces)
+                    decoded = [
+                        surface for surface in surfaces if surface is not None
+                    ]
+                    self.assertEqual(len(decoded), 8)
+                    self.assertEqual(
+                        len(
+                            {
+                                pygame.image.tobytes(surface, "RGBA")
+                                for surface in decoded
+                            }
+                        ),
+                        8,
+                    )
+                    if state == "dance":
+                        self.assertEqual(
+                            len(
+                                {
+                                    pygame.image.tobytes(decoded[index], "RGBA")
+                                    for index in (0, 2, 4, 6)
+                                }
+                            ),
+                            4,
+                        )
+                    for surface in decoded:
+                        self.assertEqual(surface.get_size(), (240, 240))
+                        bounds = surface.get_bounding_rect(min_alpha=1)
+                        self.assertGreater(bounds.width, 0)
+                        self.assertGreater(bounds.height, 0)
+                        self.assertGreaterEqual(bounds.left, 1)
+                        self.assertGreaterEqual(bounds.top, 1)
+                        self.assertLessEqual(bounds.right, 239)
+                        self.assertLessEqual(bounds.bottom, 239)
+
+                    for progress, frame_index in (
+                        (0.0, 0),
+                        (0.25, 2),
+                        (0.5, 4),
+                        (0.75, 6),
+                        (1.0, 0),
+                    ):
+                        frame = library.resolve_actor(
+                            "Garden Frog",
+                            state,
+                            direction,
+                            99.0,
+                            loop_progress=progress,
+                        )
+                        self.assertIsNotNone(frame)
+                        assert frame is not None
+                        self.assertEqual(
+                            frame.key[2:5], (state, direction, frame_index)
+                        )
+
+        north_walk = entry["clips"]["run"]["directions"]["north"]
+        north_dance = entry["clips"]["dance"]["directions"]["north"]
+        for walk_path, dance_path in zip(north_walk, north_dance, strict=True):
+            walk_surface = library._source_surface(walk_path)
+            dance_surface = library._source_surface(dance_path)
+            self.assertIsNotNone(walk_surface)
+            self.assertIsNotNone(dance_surface)
+            assert walk_surface is not None and dance_surface is not None
+            self.assertEqual(
+                pygame.image.tobytes(dance_surface, "RGBA"),
+                pygame.image.tobytes(walk_surface, "RGBA"),
+            )
+
+        for surface in rotations:
+            self.assertEqual(surface.get_size(), (240, 240))
+            bounds = surface.get_bounding_rect(min_alpha=1)
+            self.assertGreater(bounds.width, 0)
+            self.assertGreater(bounds.height, 0)
+            self.assertGreaterEqual(bounds.left, 1)
+            self.assertGreaterEqual(bounds.top, 1)
+            self.assertLessEqual(bounds.right, 239)
+            self.assertLessEqual(bounds.bottom, 239)
+
+        atlas = SpriteAtlas()
+        idle = atlas.garden_frog_visual(0.0, direction="north-east")
+        walking = atlas.garden_frog_visual(
+            0.0, direction="west", moving=True, clip_progress=0.5
+        )
+        dancing = atlas.garden_frog_visual(
+            0.0, direction="south", dancing=True, clip_progress=0.5
+        )
+        self.assertTrue(idle.is_asset)
+        self.assertEqual(idle.key[2:4], ("rotation", "north-east"))
+        self.assertTrue(walking.is_asset)
+        self.assertEqual(walking.key[2:5], ("run", "west", 4))
+        self.assertTrue(dancing.is_asset)
+        self.assertEqual(dancing.key[2:5], ("dance", "south", 4))
 
     def test_action_progress_does_not_override_looping_movement_clips(self) -> None:
         library = AssetSpriteLibrary()
