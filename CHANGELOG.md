@@ -1,5 +1,144 @@
 # Changelog
 
+## 4.1.10 — Aura-Free Arcanist Sprite Refresh
+
+Milestone 4.1.10 replaces the playable Arcanist's previous sprite set with the finalized aura-free PixelLab redesign and its reviewed eight-direction idle and walking animations while preserving the existing gameplay and save contracts.
+
+### Changed
+
+- Replaced the Arcanist asset set with 90 new `196×196` transparent PNGs: eight base rotations, 32 four-frame idle frames, and 50 walk frames across all eight directions.
+- Imported PixelLab's `walk` group as the established runtime `run` clip with a direct one-to-one direction mapping. Seven directions retain six frames; the approved south cycle retains all eight source frames.
+- Updated Arcanist source normalization to anchor `(98, 147)` with a `97px` reference height while retaining the shared playable-character target height of `184px`.
+- Updated sprite regression expectations for the source-authored eight-frame south cycle and the redesigned Arcanist's narrower north-facing lower-body silhouette. The existing runtime already resolves each direction using its own frame-list length, so no playback code change was required.
+- Runtime/package release version is `4.1.10`. Run saves remain schema `5` and require no migration.
+
+### Asset provenance
+
+- PixelLab Arcanist character: `37842e46-0d8c-4084-b533-01185cbc3930`.
+- The finalized character was rotated from the prior clean Arcanist reference with instructions to preserve the hooded blue-robed mage, ornate attached staff, and distinct 45-degree facings while excluding magical body auras, energy ribbons, orbiting effects, particles, and detached spell effects.
+- The retained PixelLab source has one base character with the exact name `Arcanist`, no alternate character states, and exactly two complete animation groups: `idle` and `walk`.
+- The game import preserves every approved source frame and contains no temporary review sheets or suffixed/test animation groups.
+
+### Compatibility and resilience
+
+- The `Arcanist` actor name, `arcanist` manifest slug, public sprite APIs, runtime `idle`/`run` state names, animation timing, package-data patterns, and procedural legacy fallback remain unchanged.
+- Direction-local frame counts are supported by the existing resolver, which loops over the selected direction's own frame list. Other archetypes and their animation contracts are unchanged.
+- Existing options and run saves require no migration because this update changes only presentation assets, manifest normalization, regression expectations, and release metadata.
+
+### Validation
+
+- Fresh PixelLab metadata confirmed the exact `Arcanist` name, all eight rotations, and only complete `idle` and `walk` groups in all eight directions.
+- The import gate byte-verified all 90 packaged PNGs against their PixelLab sources and confirmed `196×196` 32-bit alpha decoding, unique images throughout each group, transparent canvas margins, exact direction sets, and the accepted 4/6/8 frame counts.
+- `python -m unittest tests.test_sprite_assets tests.test_save_and_metadata` — 21 tests, all passing.
+- `python -m compileall src tests` — OK.
+- `python -m unittest discover tests` — 208 tests, all passing.
+
+## 4.1.9 — Ranger Combat Animations
+
+Milestone 4.1.9 completes the female spear Ranger's authored gameplay animation set with reviewed PixelLab strike and skill-casting clips while preserving the existing combat-state and save contracts.
+
+### Added
+
+- Added 96 packaged Ranger action frames: six-frame `hit` and `cast` sequences in all eight directions on the existing `256×256` transparent canvas.
+- Added non-looping Ranger runtime `attack` and `cast` clips. The runtime `attack` clip reads from the reviewed PixelLab `hit` files so Hawk Slash uses the diagonal spear strike without introducing a new combat state.
+- Added regression coverage for action folder/state wiring, all direction and frame counts, non-looping playback, unique RGBA frames, transparent margins, and first-to-last progress resolution.
+
+### Changed
+
+- Hawk Slash continues to emit the shared `attack` action state and now resolves the Ranger's authored `hit` frames. Multishot and Snare Nova continue to emit `cast` and now resolve the authored free-hand casting gesture; Vault retains the shared movement/run treatment.
+- Applied the established Ranger-only PixelLab→game direction map to both new groups: `north-west`→`north`, `north`→`north-east`, `west`→`north-west`, `south-west`→`west`, `north-east`→`east`, `south`→`south-west`, `south-east`→`south`, and `east`→`south-east`.
+- Runtime/package release version is `4.1.9`. Run saves remain schema `5` and require no migration.
+
+### Asset provenance
+
+- PixelLab Ranger character: `2a6c4684-9821-4520-96b2-b0622bfb0d91`.
+- Final `hit` prompt: “Raise the spear above one shoulder, lower its steel tip diagonally across the body, then return upright. Wooden butt stays down.”
+- Final `cast` prompt: “Stand still, keep one spear upright in one hand, raise the open free hand chest-high, then lower it.”
+- The current PixelLab source contains exactly four maintainable groups: `idle`, `walk`, `hit`, and `cast`, each complete in all eight directions.
+- Multiple rejected `hit` groups containing magic trails, ambiguous double spearheads, or malformed follow-throughs were deleted in full before the approved import.
+
+### Compatibility and resilience
+
+- The shared `attack`/`cast` action states, `SpriteAtlas.player_visual` API, animation progress timing, Ranger name/slug, and public manifest format remain unchanged.
+- Other archetypes retain their existing authored or fallback action visuals. Explicit legacy graphics continue to use the procedural Ranger and do not decode the new PNGs.
+- Missing individual action resources continue to fall back through the existing per-frame asset resolution path without disabling the remaining asset library.
+
+### Validation
+
+- Fresh PixelLab export confirmed exactly four animation folders and 48 source frames in each new action group.
+- The import gate byte-verified all 96 packaged files against their mapped PixelLab sources and confirmed `256×256` 8-bit RGBA decoding, six distinct frames per direction, and transparent canvas margins.
+- `python -m unittest tests.test_sprite_assets tests.test_save_and_metadata` — 21 tests, all passing, including live Hawk Slash, Multishot, and Snare Nova clip selection.
+- `python -m compileall -q src tests` and `git diff --check` — OK.
+- `python -m unittest discover tests` — 208 tests, all passing.
+
+## 4.1.8 — Female Spear Ranger Sprite Refresh
+
+Milestone 4.1.8 replaces the playable Ranger's bow-based sprite set with a completely new female PixelLab identity built around a single upright spear, while preserving the existing runtime animation and save contracts.
+
+### Changed
+
+- Replaced all 88 packaged Ranger PNGs with eight new base rotations, 32 reviewed four-frame idle frames, and 48 reviewed six-frame V3 walk frames on a `256×256` transparent canvas.
+- The existing runtime `run` clip now presents the approved PixelLab walk cycle, preserving player-state, rendering, fallback, and package-data interfaces without introducing a Ranger-only animation state.
+- Applied the reviewed Ranger-specific PixelLab→game direction map consistently to rotations, idle frames, and walk→run frames: `north-west`→`north`, `north`→`north-east`, `west`→`north-west`, `south-west`→`west`, `north-east`→`east`, `south`→`south-west`, `south-east`→`south`, and `east`→`south-east`. Other actors retain their existing mappings.
+- Updated Ranger source normalization to anchor `(128, 212)` with a `165px` reference height while retaining the shared playable-character target height of `184px`.
+- Ranger previews on both modern and legacy archetype-selection screens now use the `south-west` idle animation; the other archetypes retain their established `south` previews.
+- Runtime/package release version is `4.1.8`. Run saves remain schema `5` and require no migration.
+
+### Asset provenance
+
+- PixelLab Ranger character: `2a6c4684-9821-4520-96b2-b0622bfb0d91`.
+- Source prompt: “Female forest spearmaiden, auburn braid, dark-green leather armor, short cloak. Only weapon: one tall upright spear held beside her, with one straight continuous wooden shaft. Completely bare back and belt.”
+- The retained PixelLab source contains exactly two animation groups: `idle` with four frames in all eight directions and `walk` with six frames in all eight directions.
+- Rejected bow/quiver identities, malformed spear rotations, split animation groups, and the identity-breaking template walk were deleted from PixelLab before the final import.
+
+### Compatibility and resilience
+
+- The `Ranger` actor name, manifest slug, `idle`/`run` clip names, public sprite APIs, animation timing, and independent per-frame fallback behavior remain unchanged.
+- Explicit legacy graphics continue to use the procedural Ranger and do not decode the replacement PNGs.
+- Existing options and run saves require no migration because this update changes only presentation assets and release metadata.
+
+### Validation
+
+- Final import gate byte-verified all 88 packaged PNGs against their corrected mapped PixelLab sources and confirmed `256×256` RGBA decoding with transparent margins.
+- `python -m unittest tests.test_sprite_assets` — 17 tests, all passing; includes complete direction/frame counts, PNG decoding, pose uniqueness, lower-body motion, Ranger normalization, transparent margins, and runtime resolution.
+- Save/release metadata, movement-animation, and archetype/options suites — 9 tests, all passing.
+- `python -m unittest tests.test_ui_layouts` — 17 tests, all passing; covers modern and legacy Ranger `south-west` idle selection previews and anchored animation.
+- `python -m compileall -q src tests` and `git diff --check` — OK.
+- `python -m unittest discover tests` — 206 tests, all passing.
+
+## 4.1.7 — Female Rogue Sprite Refresh
+
+Milestone 4.1.7 replaces the playable Rogue's previous male sprite set with a completely new female PixelLab identity and reviewed high-resolution locomotion while preserving the existing runtime animation contract.
+
+### Changed
+
+- Replaced all 88 packaged Rogue PNGs with eight new base rotations, 32 reviewed four-frame breathing-idle frames, and 48 reviewed six-frame V3 walk frames on a `244×244` transparent canvas.
+- The existing runtime `run` clip now presents the approved walk cycle, preserving player-state, rendering, fallback, and package-data interfaces without introducing a Rogue-only animation state.
+- Imported every Rogue rotation and animation with a direct one-to-one direction mapping (`north`→`north`, `south-east`→`south-east`, and so on); no character-specific remapping is applied.
+- Updated Rogue source normalization to anchor `(122, 183)` with a `122px` reference height while retaining the shared playable-character target height of `184px`.
+- Runtime/package release version is `4.1.7`. Options remain schema `4`; run saves remain schema `5` and require no migration.
+
+### Asset provenance
+
+- PixelLab Rogue character: `d6f3357f-e41d-4181-8a14-1deaef8e1bdd`.
+- Source prompt: “Athletic female rogue, braided black hair, charcoal leather armor, muted green scarf, two short-bladed daggers.”
+- Idle and walk frames were reviewed and adjusted in PixelLab before the final package export used by the game.
+
+### Compatibility and resilience
+
+- The `Rogue` actor name, manifest slug, `idle`/`run` clip names, public sprite APIs, animation timing, and independent per-frame fallback behavior remain unchanged.
+- Explicit legacy graphics continue to use the procedural Rogue and do not decode the replacement PNGs.
+- Existing saves require no migration because this update changes only presentation assets and release metadata.
+
+### Validation
+
+- `python -m unittest tests.test_sprite_assets` — 16 tests, all passing; includes complete direction/frame counts, PNG decoding, pose uniqueness, canonical canvas checks, transparent margins, and runtime resolution.
+- Save/release metadata plus movement-animation and archetype/options suites — 9 tests, all passing.
+- Headless modern-mode Rogue render smoke check resolved grounded asset-backed idle and movement frames.
+- Final export gate byte-verified all 88 packaged PNGs against the reviewed PixelLab archive using identical source and destination direction names.
+- `python -m compileall -q src tests` and scoped `git diff --check` — OK.
+- `python -m unittest discover tests` — 204 tests, all passing.
+
 ## 4.1.6 — Archetype Selection Polish
 
 Milestone 4.1.6 tightens the authored archetype-selection composition, restores a genuinely live idle preview while the game is in menu states, and gives every class statistic a compact framed card without adding another visual asset dependency.

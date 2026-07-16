@@ -374,20 +374,22 @@ class UiLayoutTests(unittest.TestCase):
                 legacy_keys = getattr(game, "_menu_row_key_rects")
                 self.assertTrue(any(rect.width > 0 for rect in legacy_keys))
 
-    def test_archetype_preview_uses_south_idle_animation(self) -> None:
+    def test_ranger_archetype_preview_uses_south_west_idle_animation(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             game.state = "archetype_select"
-            game.selected_archetype = ARCHETYPES[2]
+            game.selected_archetype = ARCHETYPES[4]
 
             game.ui_elapsed = 0.0
             with patch.object(
-                game.sprites, "player_frame", wraps=game.sprites.player_frame
-            ) as player_frame:
+                game.sprites, "player_visual", wraps=game.sprites.player_visual
+            ) as player_visual:
                 game.draw_archetype_select()
-            self.assertTrue(player_frame.called)
-            self.assertEqual(player_frame.call_args.args[:2], ("Arcanist", "idle"))
-            self.assertEqual(player_frame.call_args.kwargs["direction"], "south")
+            self.assertTrue(player_visual.called)
+            self.assertEqual(player_visual.call_args.args[:2], ("Ranger", "idle"))
+            self.assertEqual(
+                player_visual.call_args.kwargs["direction"], "south-west"
+            )
             sprite_box = getattr(game, "_archetype_sprite_box").copy()
             first = self.surface_bytes(game.screen.subsurface(sprite_box))
 
@@ -396,23 +398,63 @@ class UiLayoutTests(unittest.TestCase):
             second = self.surface_bytes(game.screen.subsurface(sprite_box))
             self.assertNotEqual(first, second)
             sprite_rect = getattr(game, "_archetype_sprite_rect")
-            preview_rect = getattr(game, "_archetype_preview_rect")
-            self.assertEqual(sprite_rect.centerx, preview_rect.centerx)
+            sprite_anchor = getattr(game, "_archetype_sprite_anchor")
+            sprite_ground = getattr(game, "_archetype_sprite_ground")
+            self.assertEqual(
+                (sprite_rect.x + sprite_anchor[0], sprite_rect.y + sprite_anchor[1]),
+                sprite_ground,
+            )
 
-    def test_legacy_archetype_preview_uses_idle_animation(self) -> None:
+            game.selected_archetype = ARCHETYPES[2]
+            with patch.object(
+                game.sprites, "player_visual", wraps=game.sprites.player_visual
+            ) as player_visual:
+                game.draw_archetype_select()
+            self.assertEqual(player_visual.call_args.args[:2], ("Arcanist", "idle"))
+            self.assertEqual(player_visual.call_args.kwargs["direction"], "south")
+
+    def test_rogue_archetype_idle_keeps_ground_anchor_fixed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game.state = "archetype_select"
+            game.selected_archetype = ARCHETYPES[1]
+
+            ground_positions = []
+            crop_centers = []
+            for frame_index in range(4):
+                game.ui_elapsed = frame_index / 5.0
+                game.draw_archetype_select()
+                sprite_rect = getattr(game, "_archetype_sprite_rect")
+                sprite_anchor = getattr(game, "_archetype_sprite_anchor")
+                ground_positions.append(
+                    (
+                        sprite_rect.x + sprite_anchor[0],
+                        sprite_rect.y + sprite_anchor[1],
+                    )
+                )
+                crop_centers.append(sprite_rect.centerx)
+
+            self.assertEqual(len(set(ground_positions)), 1)
+            self.assertGreater(len(set(crop_centers)), 1)
+
+    def test_legacy_ranger_archetype_preview_uses_south_west_idle_animation(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, legacy=True)
             game.state = "archetype_select"
-            game.selected_archetype = ARCHETYPES[1]
+            game.selected_archetype = ARCHETYPES[4]
             game.ui_elapsed = 0.2
             with patch.object(
-                game.sprites, "player_frame", wraps=game.sprites.player_frame
-            ) as player_frame:
+                game.sprites, "player_visual", wraps=game.sprites.player_visual
+            ) as player_visual:
                 game.draw_archetype_select()
-            self.assertTrue(player_frame.called)
-            self.assertEqual(player_frame.call_args.args[:2], ("Rogue", "idle"))
-            self.assertEqual(player_frame.call_args.args[3], game.ui_elapsed)
-            self.assertEqual(player_frame.call_args.kwargs["direction"], "south")
+            self.assertTrue(player_visual.called)
+            self.assertEqual(player_visual.call_args.args[:2], ("Ranger", "idle"))
+            self.assertEqual(player_visual.call_args.args[3], game.ui_elapsed)
+            self.assertEqual(
+                player_visual.call_args.kwargs["direction"], "south-west"
+            )
 
     def test_menu_animation_clock_advances_without_run_time(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -505,6 +547,8 @@ class UiLayoutTests(unittest.TestCase):
                 preview_rect = getattr(game, "_archetype_preview_rect")
                 sprite_box = getattr(game, "_archetype_sprite_box")
                 sprite_rect = getattr(game, "_archetype_sprite_rect")
+                sprite_anchor = getattr(game, "_archetype_sprite_anchor")
+                sprite_ground = getattr(game, "_archetype_sprite_ground")
                 title_rect = getattr(game, "_archetype_title_rect")
                 subtitle_rect = getattr(game, "_archetype_subtitle_rect")
                 shortcut_rect = getattr(game, "_archetype_shortcut_rect")
@@ -536,7 +580,11 @@ class UiLayoutTests(unittest.TestCase):
                 self.assertTrue(archetype_content.contains(preview_rect))
                 self.assertTrue(preview_rect.contains(sprite_box))
                 self.assertTrue(sprite_box.contains(sprite_rect))
-                self.assertEqual(sprite_rect.centerx, preview_rect.centerx)
+                self.assertEqual(
+                    (sprite_rect.x + sprite_anchor[0], sprite_rect.y + sprite_anchor[1]),
+                    sprite_ground,
+                )
+                self.assertEqual(sprite_ground[0], preview_rect.centerx)
                 self.assertGreater(list_rect.width * list_rect.height, 0)
                 self.assertGreater(preview_rect.width * preview_rect.height, 0)
                 self.assertLessEqual(list_rect.right, preview_rect.x)

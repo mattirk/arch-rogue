@@ -253,7 +253,9 @@
               "actors/arcanist/animations/run/south/frame_002.png",
               "actors/arcanist/animations/run/south/frame_003.png",
               "actors/arcanist/animations/run/south/frame_004.png",
-              "actors/arcanist/animations/run/south/frame_005.png"
+              "actors/arcanist/animations/run/south/frame_005.png",
+              "actors/arcanist/animations/run/south/frame_006.png",
+              "actors/arcanist/animations/run/south/frame_007.png"
             ],
             "south-east": [
               "actors/arcanist/animations/run/south-east/frame_000.png",
@@ -285,7 +287,7 @@
         }
       },
       "name": "Arcanist",
-      "reference_height": 89,
+      "reference_height": 97,
       "rotations": {
         "east": "actors/arcanist/rotations/east.png",
         "north": "actors/arcanist/rotations/north.png",
@@ -297,12 +299,12 @@
         "west": "actors/arcanist/rotations/west.png"
       },
       "source_anchor": [
-        90.0,
-        135.0
+        98.0,
+        147.0
       ],
       "source_canvas": [
-        180,
-        180
+        196,
+        196
       ],
       "target_height": 184
     },
@@ -2484,6 +2486,146 @@
       ],
       "category": "player",
       "clips": {
+        "attack": {
+          "directions": {
+            "east": [
+              "actors/ranger/animations/hit/east/frame_000.png",
+              "actors/ranger/animations/hit/east/frame_001.png",
+              "actors/ranger/animations/hit/east/frame_002.png",
+              "actors/ranger/animations/hit/east/frame_003.png",
+              "actors/ranger/animations/hit/east/frame_004.png",
+              "actors/ranger/animations/hit/east/frame_005.png"
+            ],
+            "north": [
+              "actors/ranger/animations/hit/north/frame_000.png",
+              "actors/ranger/animations/hit/north/frame_001.png",
+              "actors/ranger/animations/hit/north/frame_002.png",
+              "actors/ranger/animations/hit/north/frame_003.png",
+              "actors/ranger/animations/hit/north/frame_004.png",
+              "actors/ranger/animations/hit/north/frame_005.png"
+            ],
+            "north-east": [
+              "actors/ranger/animations/hit/north-east/frame_000.png",
+              "actors/ranger/animations/hit/north-east/frame_001.png",
+              "actors/ranger/animations/hit/north-east/frame_002.png",
+              "actors/ranger/animations/hit/north-east/frame_003.png",
+              "actors/ranger/animations/hit/north-east/frame_004.png",
+              "actors/ranger/animations/hit/north-east/frame_005.png"
+            ],
+            "north-west": [
+              "actors/ranger/animations/hit/north-west/frame_000.png",
+              "actors/ranger/animations/hit/north-west/frame_001.png",
+              "actors/ranger/animations/hit/north-west/frame_002.png",
+              "actors/ranger/animations/hit/north-west/frame_003.png",
+              "actors/ranger/animations/hit/north-west/frame_004.png",
+              "actors/ranger/animations/hit/north-west/frame_005.png"
+            ],
+            "south": [
+              "actors/ranger/animations/hit/south/frame_000.png",
+              "actors/ranger/animations/hit/south/frame_001.png",
+              "actors/ranger/animations/hit/south/frame_002.png",
+              "actors/ranger/animations/hit/south/frame_003.png",
+              "actors/ranger/animations/hit/south/frame_004.png",
+              "actors/ranger/animations/hit/south/frame_005.png"
+            ],
+            "south-east": [
+              "actors/ranger/animations/hit/south-east/frame_000.png",
+              "actors/ranger/animations/hit/south-east/frame_001.png",
+              "actors/ranger/animations/hit/south-east/frame_002.png",
+              "actors/ranger/animations/hit/south-east/frame_003.png",
+              "actors/ranger/animations/hit/south-east/frame_004.png",
+              "actors/ranger/animations/hit/south-east/frame_005.png"
+            ],
+            "south-west": [
+              "actors/ranger/animations/hit/south-west/frame_000.png",
+              "actors/ranger/animations/hit/south-west/frame_001.png",
+              "actors/ranger/animations/hit/south-west/frame_002.png",
+              "actors/ranger/animations/hit/south-west/frame_003.png",
+              "actors/ranger/animations/hit/south-west/frame_004.png",
+              "actors/ranger/animations/hit/south-west/frame_005.png"
+            ],
+            "west": [
+              "actors/ranger/animations/hit/west/frame_000.png",
+              "actors/ranger/animations/hit/west/frame_001.png",
+              "actors/ranger/animations/hit/west/frame_002.png",
+              "actors/ranger/animations/hit/west/frame_003.png",
+              "actors/ranger/animations/hit/west/frame_004.png",
+              "actors/ranger/animations/hit/west/frame_005.png"
+            ]
+          },
+          "fps": 12.0,
+          "loop": false
+        },
+        "cast": {
+          "directions": {
+            "east": [
+              "actors/ranger/animations/cast/east/frame_000.png",
+              "actors/ranger/animations/cast/east/frame_001.png",
+              "actors/ranger/animations/cast/east/frame_002.png",
+              "actors/ranger/animations/cast/east/frame_003.png",
+              "actors/ranger/animations/cast/east/frame_004.png",
+              "actors/ranger/animations/cast/east/frame_005.png"
+            ],
+            "north": [
+              "actors/ranger/animations/cast/north/frame_000.png",
+              "actors/ranger/animations/cast/north/frame_001.png",
+              "actors/ranger/animations/cast/north/frame_002.png",
+              "actors/ranger/animations/cast/north/frame_003.png",
+              "actors/ranger/animations/cast/north/frame_004.png",
+              "actors/ranger/animations/cast/north/frame_005.png"
+            ],
+            "north-east": [
+              "actors/ranger/animations/cast/north-east/frame_000.png",
+              "actors/ranger/animations/cast/north-east/frame_001.png",
+              "actors/ranger/animations/cast/north-east/frame_002.png",
+              "actors/ranger/animations/cast/north-east/frame_003.png",
+              "actors/ranger/animations/cast/north-east/frame_004.png",
+              "actors/ranger/animations/cast/north-east/frame_005.png"
+            ],
+            "north-west": [
+              "actors/ranger/animations/cast/north-west/frame_000.png",
+              "actors/ranger/animations/cast/north-west/frame_001.png",
+              "actors/ranger/animations/cast/north-west/frame_002.png",
+              "actors/ranger/animations/cast/north-west/frame_003.png",
+              "actors/ranger/animations/cast/north-west/frame_004.png",
+              "actors/ranger/animations/cast/north-west/frame_005.png"
+            ],
+            "south": [
+              "actors/ranger/animations/cast/south/frame_000.png",
+              "actors/ranger/animations/cast/south/frame_001.png",
+              "actors/ranger/animations/cast/south/frame_002.png",
+              "actors/ranger/animations/cast/south/frame_003.png",
+              "actors/ranger/animations/cast/south/frame_004.png",
+              "actors/ranger/animations/cast/south/frame_005.png"
+            ],
+            "south-east": [
+              "actors/ranger/animations/cast/south-east/frame_000.png",
+              "actors/ranger/animations/cast/south-east/frame_001.png",
+              "actors/ranger/animations/cast/south-east/frame_002.png",
+              "actors/ranger/animations/cast/south-east/frame_003.png",
+              "actors/ranger/animations/cast/south-east/frame_004.png",
+              "actors/ranger/animations/cast/south-east/frame_005.png"
+            ],
+            "south-west": [
+              "actors/ranger/animations/cast/south-west/frame_000.png",
+              "actors/ranger/animations/cast/south-west/frame_001.png",
+              "actors/ranger/animations/cast/south-west/frame_002.png",
+              "actors/ranger/animations/cast/south-west/frame_003.png",
+              "actors/ranger/animations/cast/south-west/frame_004.png",
+              "actors/ranger/animations/cast/south-west/frame_005.png"
+            ],
+            "west": [
+              "actors/ranger/animations/cast/west/frame_000.png",
+              "actors/ranger/animations/cast/west/frame_001.png",
+              "actors/ranger/animations/cast/west/frame_002.png",
+              "actors/ranger/animations/cast/west/frame_003.png",
+              "actors/ranger/animations/cast/west/frame_004.png",
+              "actors/ranger/animations/cast/west/frame_005.png"
+            ]
+          },
+          "fps": 10.0,
+          "loop": false
+        },
         "idle": {
           "directions": {
             "east": [
@@ -2610,7 +2752,7 @@
         }
       },
       "name": "Ranger",
-      "reference_height": 92,
+      "reference_height": 165,
       "rotations": {
         "east": "actors/ranger/rotations/east.png",
         "north": "actors/ranger/rotations/north.png",
@@ -2622,12 +2764,12 @@
         "west": "actors/ranger/rotations/west.png"
       },
       "source_anchor": [
-        94.0,
-        141.0
+        128.0,
+        212.0
       ],
       "source_canvas": [
-        188,
-        188
+        256,
+        256
       ],
       "target_height": 184
     },
@@ -2917,7 +3059,7 @@
         }
       },
       "name": "Rogue",
-      "reference_height": 89,
+      "reference_height": 122,
       "rotations": {
         "east": "actors/rogue/rotations/east.png",
         "north": "actors/rogue/rotations/north.png",
@@ -2929,12 +3071,12 @@
         "west": "actors/rogue/rotations/west.png"
       },
       "source_anchor": [
-        90.0,
-        135.0
+        122.0,
+        183.0
       ],
       "source_canvas": [
-        180,
-        180
+        244,
+        244
       ],
       "target_height": 184
     },

@@ -189,7 +189,7 @@ class SpriteAssetTests(unittest.TestCase):
         for archetype in ARCHETYPES:
             entry = player_entries[archetype.name]
             source_canvas = tuple(entry["source_canvas"])
-            for state, expected_frames in (("idle", 4), ("run", 6)):
+            for state in ("idle", "run"):
                 directions = entry["clips"][state]["directions"]
                 self.assertEqual(
                     set(directions),
@@ -197,6 +197,13 @@ class SpriteAssetTests(unittest.TestCase):
                     (archetype.name, state),
                 )
                 for direction, frame_paths in directions.items():
+                    expected_frames = 4 if state == "idle" else 6
+                    if (archetype.name, state, direction) == (
+                        "Arcanist",
+                        "run",
+                        "south",
+                    ):
+                        expected_frames = 8
                     with self.subTest(
                         archetype=archetype.name,
                         state=state,
@@ -230,7 +237,145 @@ class SpriteAssetTests(unittest.TestCase):
                             self.assertLessEqual(bounds.right, surface.get_width() - 1)
                             self.assertLessEqual(bounds.bottom, surface.get_height() - 1)
 
+    def test_ranger_refresh_uses_reviewed_high_resolution_contract(self) -> None:
+        library = AssetSpriteLibrary()
+        ranger = library.manifest["actors"]["ranger"]
 
+        self.assertEqual(tuple(ranger["source_canvas"]), (256, 256))
+        self.assertEqual(tuple(ranger["source_anchor"]), (128.0, 212.0))
+        self.assertEqual(ranger["reference_height"], 165)
+        self.assertEqual(ranger["target_height"], 184)
+
+        rotation_paths = ranger["rotations"]
+        self.assertEqual(set(rotation_paths), set(DIRECTIONS))
+        rotations = [
+            library._source_surface(rotation_paths[direction])
+            for direction in DIRECTIONS
+        ]
+        self.assertNotIn(None, rotations)
+        decoded = [surface for surface in rotations if surface is not None]
+        self.assertEqual(len(decoded), 8)
+        self.assertEqual(
+            len({pygame.image.tobytes(surface, "RGBA") for surface in decoded}),
+            8,
+        )
+        for surface in decoded:
+            self.assertEqual(surface.get_size(), (256, 256))
+
+    def test_ranger_action_clips_are_complete_non_looping_and_wired(self) -> None:
+        library = AssetSpriteLibrary()
+        ranger = library.manifest["actors"]["ranger"]
+        clips = ranger["clips"]
+        expected_clips = {
+            "attack": ("hit", 12.0),
+            "cast": ("cast", 10.0),
+        }
+
+        self.assertNotIn("hit", clips)
+        for state, (folder, expected_fps) in expected_clips.items():
+            clip = clips[state]
+            self.assertEqual(clip["fps"], expected_fps)
+            self.assertFalse(clip["loop"])
+            self.assertEqual(set(clip["directions"]), set(DIRECTIONS))
+
+            for direction, frame_paths in clip["directions"].items():
+                with self.subTest(state=state, direction=direction):
+                    self.assertEqual(len(frame_paths), 6)
+                    expected_prefix = (
+                        f"actors/ranger/animations/{folder}/{direction}/"
+                    )
+                    self.assertTrue(
+                        all(path.startswith(expected_prefix) for path in frame_paths)
+                    )
+                    surfaces = [library._source_surface(path) for path in frame_paths]
+                    self.assertNotIn(None, surfaces)
+                    decoded = [surface for surface in surfaces if surface is not None]
+                    self.assertEqual(len(decoded), 6)
+                    self.assertEqual(
+                        len(
+                            {
+                                pygame.image.tobytes(surface, "RGBA")
+                                for surface in decoded
+                            }
+                        ),
+                        6,
+                    )
+                    for surface in decoded:
+                        self.assertEqual(surface.get_size(), (256, 256))
+                        bounds = surface.get_bounding_rect(min_alpha=1)
+                        self.assertGreaterEqual(bounds.left, 1)
+                        self.assertGreaterEqual(bounds.top, 1)
+                        self.assertLessEqual(bounds.right, 255)
+                        self.assertLessEqual(bounds.bottom, 255)
+
+                    start = library.resolve_actor(
+                        "Ranger",
+                        state,
+                        direction,
+                        0.0,
+                        clip_progress=0.0,
+                    )
+                    end = library.resolve_actor(
+                        "Ranger",
+                        state,
+                        direction,
+                        0.0,
+                        clip_progress=1.0,
+                    )
+                    self.assertIsNotNone(start)
+                    self.assertIsNotNone(end)
+                    assert start is not None and end is not None
+                    self.assertEqual(start.key[2:5], (state, direction, 0))
+                    self.assertEqual(end.key[2:5], (state, direction, 5))
+
+    def test_ranger_skills_select_authored_action_clips(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game.restart(ARCHETYPES[4])
+            if game.story_intro_pending:
+                self.assertTrue(game.choose_story_relic_path(0))
+            game.active_cutscene = None
+            game.player.facing_x = 0.0
+            game.player.facing_y = 1.0
+
+            game.player.melee_timer = 0.0
+            game.player.stamina = game.player.max_stamina
+            game.player_melee_attack()
+            self.assertEqual(game.player_visual_state(game.player), "attack")
+            attack = game.sprites.player_visual(
+                "Ranger",
+                "attack",
+                0.0,
+                game.elapsed,
+                direction="south",
+                action_time=0.1,
+                action_progress=0.5,
+            )
+            self.assertTrue(attack.is_asset)
+            self.assertEqual(attack.key[2], "attack")
+
+            for skill_name, cast_skill in (
+                ("Multishot", game.player_cast_bolt),
+                ("Snare Nova", game.player_cast_class_skill),
+            ):
+                with self.subTest(skill=skill_name):
+                    game.reset_transient_visuals()
+                    game.player.mana = game.player.max_mana
+                    game.player.bolt_timer = 0.0
+                    game.player.class_skill_timer = 0.0
+                    cast_skill()
+                    self.assertEqual(game.player_visual_state(game.player), "cast")
+                    cast = game.sprites.player_visual(
+                        "Ranger",
+                        "cast",
+                        0.0,
+                        game.elapsed,
+                        direction="south",
+                        action_time=0.12,
+                        action_progress=0.5,
+                    )
+                    self.assertTrue(cast.is_asset)
+                    self.assertEqual(cast.key[2], "cast")
 
     def test_repaired_walks_have_clear_lower_body_motion(self) -> None:
         library = AssetSpriteLibrary()
@@ -240,16 +385,16 @@ class SpriteAssetTests(unittest.TestCase):
             if entry.get("category") == "player"
         }
         repaired_directions = (
-            ("Warden", "south"),
-            ("Ranger", "north"),
-            ("Arcanist", "north"),
-            ("Acolyte", "south"),
-            ("Acolyte", "east"),
-            ("Acolyte", "north"),
-            ("Acolyte", "west"),
+            ("Warden", "south", 350),
+            ("Ranger", "north", 350),
+            ("Arcanist", "north", 200),
+            ("Acolyte", "south", 350),
+            ("Acolyte", "east", 350),
+            ("Acolyte", "north", 350),
+            ("Acolyte", "west", 350),
         )
 
-        for archetype, direction in repaired_directions:
+        for archetype, direction, minimum_change in repaired_directions:
             with self.subTest(archetype=archetype, direction=direction):
                 paths = player_entries[archetype]["clips"]["run"]["directions"][
                     direction
@@ -286,7 +431,7 @@ class SpriteAssetTests(unittest.TestCase):
                         )
                 self.assertGreaterEqual(
                     max(silhouette_changes),
-                    350,
+                    minimum_change,
                     (archetype, direction, max(silhouette_changes)),
                 )
 

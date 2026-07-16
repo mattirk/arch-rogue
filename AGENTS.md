@@ -183,20 +183,29 @@ Example categories:
 - When choosing between authenticity to Rogue and modern playability, preserve the spirit of Rogue while modernizing the interface and moment-to-moment feel.
 - Do not ask for confirmation on sprite asset generation via MCP or other tools / APIs. Spend as much as you like. Inform user if limit has been reached.
 
+### Asset graphics generation guide
+
+- Generate all asset sprites using Pixellab (or similar) MCP server/tools
+- For each actor, first generate base sprite, then rotations and after that, animations
+- Keep all animations neatly grouped within the service so they can be easily managed by the user
+  - Naming conventions for animation groups are: idle, walk, run, hit and cast
+- Workflow when generating animations:
+  - Create requested animation group with 8-directional animations (never create duplicates)
+  - Validate each animation direction and all frames within it (natural movement, keep weapons, apparell and body parts visible)
+  - When requested animations have been generated, pause and let the user validate the results
+  - When the user request change for specific animation (e.g walk south), edit that animation within already existing group (do not create new one)
+- Do not generate multiple states for single character without good reason
+- Always use exact character names e.g "Arcanist" or "Rogue" for current character. If you need to preserve old characters, rename them (e.g "Arcanist" -> "Arcanist_old_1") before creating new ones 
+
+
 ## Milestones / Versions
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 4.1 Asset based menus and HUD
+### 4.1.x More sprites, assets, animations updates
 
-- Generate assets for menus and HUD using asset MCP server/tools and implement into game code
-- Create folder `assets/sprites/menus/` and `assets/sprites/hud/`
-- Create necessary abstractions for menu and HUD sprite loading and rendering
-  - Extend pre existing logic when is makes sense
-- Implement new versions of menus and HUD using new asset sprites
-- Make sure legacy graphics support is preserved
-- Generate (MCP) nice pixel graphic backgrounds for menus
-- Make sure everything is well aligned, text is visible and not overlapping 
+- NPCs such as shopkeepers need idle animations, generate using MCP and implement into game code
+- 
 
 ### Stash
 
@@ -208,3 +217,10 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - The game difficulty starts ok, but gets too easy when player character reaches level 7 or so (not dungeon level, character level). We should either nerf characters, make leveling slower or make enemies harder on lower dungeon depths.
 - Loot drops should be more rare accross the borad.
 - Elites should be harder to kill.
+- Make all idle NPCs dance to the beat of the procedural music and move around in the room. Generate necessary dance animations using Pixellab.
+- Multiplayer -> you get your own AI generated (extra generations cost 10€)character with unique sprites and animations, maybe music.
+  - Maybe connect your own AI to the multiplayer system so it's more your own
+- You died screen needs nice looking panels where stats are displayed
+- Maybe add cryptographic randomness in map seed generation
+- Wolf familiar to Rogue since Discipline exist for it, make sure discipline affects Familiar stats.
+- Make it so that on Hell difficulty dungeon levels dont end but become progressively harder the deeper you go. Make settings menu item red & grim when hell is selected.
