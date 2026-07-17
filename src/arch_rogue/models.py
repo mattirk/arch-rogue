@@ -651,8 +651,8 @@ class ImpactEffect:
     radius: float = 0.35
     kind: str = "spark"
     max_ttl: float = 0.38
-    # Archetype that produced this effect so cast/nova emanation graphics can
-    # be themed per class (e.g. Arcanist's arcane ring vs Warden's bulwark wave).
+    # Archetype that produced this effect so skill emanations can be themed per
+    # class (e.g. Arcanist's arcane ring vs Warden's bulwark wave).
     archetype: str = ""
 
     def update(self, dt: float) -> None:
@@ -730,11 +730,19 @@ class Projectile:
     # Enemy ids already damaged by this projectile so a piercing bolt does not
     # hit the same foe twice. Lazily populated by the combat loop.
     hit_enemies: set = field(default_factory=set)
+    # One transient light follows this projectile. Keeping the association on
+    # the unsaved runtime model prevents a new overlapping light from being
+    # allocated every frame while still allowing the final glow to decay.
+    light_source: LightSource | None = field(default=None, repr=False, compare=False)
+    # Runtime-only animation age: trajectory and render timing must not affect
+    # projectile frame cadence. Appended to preserve existing positional calls.
+    anim_time: float = field(default=0.0, repr=False, compare=False)
 
     def update(self, dt: float, dungeon: "Dungeon") -> bool:
         self.x += self.vx * dt
         self.y += self.vy * dt
         self.ttl -= dt
+        self.anim_time += dt
         return self.ttl > 0 and dungeon.is_floor(self.x, self.y)
 
 
@@ -770,6 +778,18 @@ class Enemy:
     size: int = 1
     resistances: dict[str, float] = field(default_factory=dict)
     statuses: dict[str, float] = field(default_factory=dict)
+    # Runtime-only multiplier for locomotion cadence. Status and global time
+    # slows scale the authored walk clip without changing save data.
+    locomotion_anim_scale: float = field(default=1.0, repr=False, compare=False)
+    # One-frame combined movement multiplier sampled before slow TTLs decrement.
+    pending_locomotion_scale: float | None = field(
+        default=None, repr=False, compare=False
+    )
+    pending_locomotion_anim_scale: float | None = field(
+        default=None, repr=False, compare=False
+    )
+    # Last rendered authored-sprite direction; transient hysteresis anchor.
+    sprite_direction: str = field(default="", repr=False, compare=False)
 
     @property
     def alive(self) -> bool:
@@ -783,12 +803,11 @@ class Enemy:
 
 @dataclass
 class Familiar:
-    """A summoned spirit ally (Milestone 3.15 — Spirit Call).
+    """A summoned ally shared by Spirit Call and Spirit Beast.
 
-    A lightweight actor that follows the player and attacks enemies on sight.
-    It persists until killed or on floor descent; Spirit Call re-summons / heals
-    it on cast. The Spirit path nodes scale its HP, damage, count, and
-    persistence rather than acting as flavor-only stat bonuses.
+    The lightweight actor follows the player, attacks visible enemies, and
+    persists until killed or floor descent. ``kind`` selects archetype-specific
+    combat and rendering behavior while preserving old Spirit Call saves.
     """
 
     x: float
@@ -800,7 +819,7 @@ class Familiar:
     attack_range: float
     attack_cooldown: float
     sprite_variant: int = 0
-    # Per-familiar flags set at summon time from the player's Spirit path.
+    # Per-familiar flags set at summon time from the player's discipline path.
     lifesteal: bool = False
     unkillable: bool = False
     champion: bool = False
@@ -811,6 +830,21 @@ class Familiar:
     move_y: float = 0.0
     facing_x: float = 1.0
     facing_y: float = 0.0
+    # Additive 4.1.20 fields are intentionally last so old positional
+    # constructors preserve the meaning of every pre-existing argument.
+    kind: str = "spirit"
+    # Remaining duration of the transient authored attack clip. This is not
+    # serialized; loading safely resumes in idle/walk state.
+    attack_anim_timer: float = 0.0
+    # Last rendered authored-sprite direction; transient hysteresis anchor.
+    sprite_direction: str = field(default="", repr=False, compare=False)
+    # Additive 4.1.21 Ranger command state. Old saves default to autonomous
+    # attack behavior; Acolyte familiars leave this value unused.
+    command_mode: str = "attack"
+    # Additive 4.1.22 petting state. Both timers are transient: loading a run
+    # resumes with the Spirit Beast immediately pettable and in its normal pose.
+    pet_cooldown: float = 0.0
+    pet_anim_timer: float = 0.0
 
     @property
     def alive(self) -> bool:
@@ -861,6 +895,10 @@ class Player:
     _combo_applied: tuple[int, int, int] = (0, 0, 0)
     status_effects: dict[str, float] = field(default_factory=dict)
     gold: int = 40
+    # Runtime-only multiplier for analog/equipment/status-adjusted walk cadence.
+    locomotion_anim_scale: float = field(default=1.0, repr=False, compare=False)
+    # Last rendered authored-sprite direction; transient hysteresis anchor.
+    sprite_direction: str = field(default="", repr=False, compare=False)
 
     def has_upgrade(self, key: str) -> bool:
         return key in self.skill_upgrades

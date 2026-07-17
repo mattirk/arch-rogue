@@ -258,7 +258,7 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 game.player_melee_attack()
                 self.assertGreater(game.player.hp, hp_before)
 
-                # --- Nova: no sanguine -> no leech ---
+                # --- Spirit Call: no sanguine -> familiar hit has no leech ---
                 game.player.skill_upgrades.remove("acolyte_sanguine")
                 self.assertEqual(game._acolyte_spell_leech(), 0)
                 enemy2 = _make_enemy(px + 1.0, py, hp=9999)
@@ -267,10 +267,11 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 hp_before = game.player.hp
                 game.player.class_skill_timer = 0.0
                 game.player.mana = game.player.max_mana
-                game.player_cast_nova()
+                game.player_cast_spirit_call()
+                game._familiar_attack(game.familiars[0], enemy2)
                 self.assertEqual(game.player.hp, hp_before)
 
-                # --- Nova: with sanguine -> leech applies (degree 1 = 3) ---
+                # --- Spirit Call: with sanguine -> familiar leech applies ---
                 game.player.skill_upgrades.append("acolyte_sanguine")
                 self.assertEqual(game._acolyte_spell_leech(), 3)
                 enemy3 = _make_enemy(px + 1.0, py, hp=9999)
@@ -279,7 +280,8 @@ class SkillPathVariability37Tests(unittest.TestCase):
                 hp_before = game.player.hp
                 game.player.class_skill_timer = 0.0
                 game.player.mana = game.player.max_mana
-                game.player_cast_nova()
+                game.player_cast_spirit_call()
+                game._familiar_attack(game.familiars[0], enemy3)
                 self.assertGreater(game.player.hp, hp_before)
 
                 # --- Blood Pact Degree 3 ramps melee leech to 4 (gradual degree step) ---

@@ -175,6 +175,53 @@ class ControllerManagerTests(unittest.TestCase):
         mgr.poll_axes()
         self.assertEqual(mgr.left_vec(), (0.0, 0.0))
 
+    def test_deadzone_noise_around_old_threshold_does_not_activate(self) -> None:
+        fake = FakeJoystick(0, num_axes=4, axes_rest=(0, 0, 0, 0))
+        mgr = make_controller_manager(fake)
+        noise = (mgr.DEADZONE - 0.01, mgr.DEADZONE + 0.01) * 4
+
+        for frame, value in enumerate(noise):
+            with self.subTest(frame=frame, value=value):
+                fake.set_axis(0, value)
+                mgr.poll_axes()
+                self.assertEqual(mgr.left_vec(), (0.0, 0.0))
+
+    def test_deadzone_deliberate_activation_preserves_radial_scaling(self) -> None:
+        fake = FakeJoystick(0, num_axes=4, axes_rest=(0, 0, 0, 0))
+        mgr = make_controller_manager(fake)
+        fake.set_axis(0, 0.3)
+        fake.set_axis(1, 0.4)
+
+        mgr.poll_axes()
+
+        expected_magnitude = (0.5 - mgr.DEADZONE) / (1.0 - mgr.DEADZONE)
+        lx, ly = mgr.left_vec()
+        self.assertAlmostEqual(lx, 0.6 * expected_magnitude)
+        self.assertAlmostEqual(ly, 0.8 * expected_magnitude)
+
+    def test_deadzone_active_stick_releases_at_neutral_boundary(self) -> None:
+        fake = FakeJoystick(0, num_axes=4, axes_rest=(0, 0, 0, 0))
+        mgr = make_controller_manager(fake)
+        fake.set_axis(0, mgr.DEADZONE_ACTIVATION + 0.05)
+        mgr.poll_axes()
+        self.assertNotEqual(mgr.left_vec(), (0.0, 0.0))
+
+        for frame, value in enumerate((0.25, 0.27, 0.25)):
+            with self.subTest(frame=frame, value=value):
+                fake.set_axis(0, value)
+                mgr.poll_axes()
+                self.assertGreater(math.hypot(*mgr.left_vec()), 0.0)
+
+        # Returning to the original neutral range must release the latch so a
+        # controller resting near 0.23 cannot cause permanent movement/aim drift.
+        fake.set_axis(0, mgr.DEADZONE_RELEASE - 0.01)
+        mgr.poll_axes()
+        self.assertEqual(mgr.left_vec(), (0.0, 0.0))
+
+        fake.set_axis(0, mgr.DEADZONE + 0.01)
+        mgr.poll_axes()
+        self.assertEqual(mgr.left_vec(), (0.0, 0.0))
+
     def test_hot_plug_add_and_remove(self) -> None:
         mgr = ControllerManager(last_guid="", enabled=True)
         added = pygame.event.Event(pygame.JOYDEVICEADDED, device_index=0)

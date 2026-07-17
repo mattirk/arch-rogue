@@ -63,6 +63,12 @@ from .models import (
 from .story import story_beat_index_for_depth
 
 
+_DARK_VISIBILITY_INNER_RADIUS = DARK_LEVEL_LIGHT_RADIUS - 1.1
+_DARK_VISIBILITY_OUTER_RADIUS = DARK_LEVEL_LIGHT_RADIUS + 0.65
+_DARK_VISIBILITY_INNER_RADIUS_SQUARED = _DARK_VISIBILITY_INNER_RADIUS**2
+_DARK_VISIBILITY_OUTER_RADIUS_SQUARED = _DARK_VISIBILITY_OUTER_RADIUS**2
+
+
 class RunFlowMixin:
     def save_exists(self) -> bool:
         return self.save_path.exists()
@@ -325,13 +331,18 @@ class RunFlowMixin:
             DARK_LEVEL_LIGHT_RADIUS
             if self.is_current_floor_dark()
             else LIGHT_LEVEL_SIGHT_RADIUS
-        )
-        return self.light_distance_to_player(x, y) <= radius + margin
+        ) + margin
+        if radius < 0.0:
+            return False
+        dx = x - self.player.x
+        dy = y - self.player.y
+        return dx * dx + dy * dy <= radius * radius
 
     def reset_revealed_tiles(self) -> None:
         # Drop all fog-of-war memory for the current floor. Called on floor
         # changes and whenever a floor's darkness state is toggled.
         self.revealed_tiles = set()
+        self._last_reveal_state = None
 
     def is_tile_revealed(self, x: int, y: int) -> bool:
         return (x, y) in self.revealed_tiles
@@ -343,16 +354,28 @@ class RunFlowMixin:
         # reveal mirrors the dark-floor lantern model and keeps the hot path
         # cheap (no per-tile line-of-sight walk).
         if self.is_current_floor_dark():
+            self._last_reveal_state = None
             return
         px = self.player.x
         py = self.player.y
+        revealed = self.revealed_tiles
+        previous = getattr(self, "_last_reveal_state", None)
+        if previous is not None:
+            previous_tiles, previous_depth, previous_x, previous_y = previous
+            if (
+                previous_tiles is revealed
+                and previous_depth == self.current_depth
+                and previous_x == px
+                and previous_y == py
+                and (int(px), int(py)) in revealed
+            ):
+                return
         radius = LIGHT_LEVEL_SIGHT_RADIUS
         min_x = max(0, int(px - radius) - 1)
         max_x = min(MAP_W - 1, int(px + radius) + 1)
         min_y = max(0, int(py - radius) - 1)
         max_y = min(MAP_H - 1, int(py + radius) + 1)
         r2 = radius * radius
-        revealed = self.revealed_tiles
         for x in range(min_x, max_x + 1):
             dx = x + 0.5 - px
             dx2 = dx * dx
@@ -360,6 +383,7 @@ class RunFlowMixin:
                 dy = y + 0.5 - py
                 if dx2 + dy * dy <= r2:
                     revealed.add((x, y))
+        self._last_reveal_state = (revealed, self.current_depth, px, py)
 
     def has_line_of_sight(self, ax: float, ay: float, bx: float, by: float) -> bool:
         # Integer Bresenham walk over the cells between (ax,ay) and (bx,by):
@@ -417,14 +441,15 @@ class RunFlowMixin:
             # Light floor: fog of war. Revealed terrain persists at full
             # opacity; anything never explored stays black.
             return 255 if (x, y) in self.revealed_tiles else 0
-        px = self.player.x
-        py = self.player.y
-        distance = math.hypot(x + 0.5 - px, y + 0.5 - py)
-        if distance <= DARK_LEVEL_LIGHT_RADIUS - 1.1:
+        dx = x + 0.5 - self.player.x
+        dy = y + 0.5 - self.player.y
+        distance_squared = dx * dx + dy * dy
+        if distance_squared <= _DARK_VISIBILITY_INNER_RADIUS_SQUARED:
             return 255
-        if distance > DARK_LEVEL_LIGHT_RADIUS + 0.65:
+        if distance_squared > _DARK_VISIBILITY_OUTER_RADIUS_SQUARED:
             return 0
-        ratio = (DARK_LEVEL_LIGHT_RADIUS + 0.65 - distance) / 1.75
+        distance = math.sqrt(distance_squared)
+        ratio = (_DARK_VISIBILITY_OUTER_RADIUS - distance) / 1.75
         return max(34, min(255, int(255 * ratio)))
 
     def record_meta_discovery(self, key: str, value: str) -> None:

@@ -394,8 +394,8 @@ class Game(
         self.story_guests: list[StoryGuest] = []
         self.idle_npcs: list[IdleNpc] = []
         self.reset_friendly_npc_runtime()
-        # Milestone 3.15 — Acolyte Spirit Call familiars. Reset on restart /
-        # floor descent and serialized additively (old saves load with none).
+        # Persistent Acolyte/Ranger familiars. Reset on restart or floor descent
+        # and serialized additively (old saves load with none).
         self.familiars: list[Familiar] = []
         # Milestone 3.17 — Rogue Ambush Bell runtime traps are transient and are
         # intentionally never serialized.
@@ -411,7 +411,9 @@ class Game(
         self.story_relic_guarded = False
         self.impact_effects: list[ImpactEffect] = []
         self.enemy_hit_flashes: dict[int, float] = {}
+        self.enemy_hit_flash_durations: dict[int, float] = {}
         self.player_hit_flash = 0.0
+        self.player_hit_flash_duration = 0.0
         self.player_action_state = ""
         self.player_action_ttl = 0.0
         self.player_action_elapsed = 0.0
@@ -479,7 +481,9 @@ class Game(
 
     def reset_transient_visuals(self) -> None:
         self.enemy_hit_flashes = {}
+        self.enemy_hit_flash_durations = {}
         self.player_hit_flash = 0.0
+        self.player_hit_flash_duration = 0.0
         self.player_action_state = ""
         self.player_action_ttl = 0.0
         self.player_action_elapsed = 0.0
@@ -487,35 +491,50 @@ class Game(
         # Milestone 3.16 - transient light pulses are visual effects too.
         self.lights = []
 
-    def update_visual_effects(self, dt: float) -> None:
-        for effect in self.impact_effects:
-            effect.update(dt)
-        self.impact_effects = [
-            effect for effect in self.impact_effects if effect.ttl > 0
-        ]
+    def update_visual_effects(
+        self, dt: float, *, advance_actor_clocks: bool = True
+    ) -> None:
+        if self.impact_effects:
+            for effect in self.impact_effects:
+                effect.update(dt)
+            self.impact_effects = [
+                effect for effect in self.impact_effects if effect.ttl > 0
+            ]
         # Milestone 3.16 - decay transient light pulses (skill casts,
         # projectile trails, impact flares) alongside impacts and slashes.
         self.update_lights(dt)
         self.screen_flash_ttl = max(0.0, self.screen_flash_ttl - dt)
-        self.player_hit_flash = max(0.0, self.player_hit_flash - dt)
-        if self.player_action_ttl > 0.0:
-            self.player_action_elapsed += dt
-        self.player_action_ttl = max(0.0, self.player_action_ttl - dt)
-        if self.player_action_ttl <= 0:
-            self.player_action_state = ""
-            self.player_action_elapsed = 0.0
-            self.player_action_duration = 0.0
-        alive_enemy_ids = {id(enemy) for enemy in self.enemies}
-        self.enemy_hit_flashes = {
-            enemy_id: max(0.0, ttl - dt)
-            for enemy_id, ttl in self.enemy_hit_flashes.items()
-            if ttl - dt > 0 and enemy_id in alive_enemy_ids
-        }
-        self.slashes = [
-            (x, y, ttl - dt, dx, dy)
-            for x, y, ttl, dx, dy in self.slashes
-            if ttl - dt > 0
-        ]
+        if advance_actor_clocks:
+            self.player_hit_flash = max(0.0, self.player_hit_flash - dt)
+            if self.player_hit_flash <= 0.0:
+                self.player_hit_flash_duration = 0.0
+            if self.player_action_ttl > 0.0:
+                self.player_action_elapsed += dt
+            self.player_action_ttl = max(0.0, self.player_action_ttl - dt)
+            if self.player_action_ttl <= 0:
+                self.player_action_state = ""
+                self.player_action_elapsed = 0.0
+                self.player_action_duration = 0.0
+            if self.enemy_hit_flashes:
+                alive_enemy_ids = {id(enemy) for enemy in self.enemies}
+                self.enemy_hit_flashes = {
+                    enemy_id: max(0.0, ttl - dt)
+                    for enemy_id, ttl in self.enemy_hit_flashes.items()
+                    if ttl - dt > 0 and enemy_id in alive_enemy_ids
+                }
+                self.enemy_hit_flash_durations = {
+                    enemy_id: duration
+                    for enemy_id, duration in self.enemy_hit_flash_durations.items()
+                    if enemy_id in self.enemy_hit_flashes
+                }
+            elif self.enemy_hit_flash_durations:
+                self.enemy_hit_flash_durations.clear()
+        if self.slashes:
+            self.slashes = [
+                (x, y, ttl - dt, dx, dy)
+                for x, y, ttl, dx, dy in self.slashes
+                if ttl - dt > 0
+            ]
 
     def rarity_color(self, rarity: str) -> Color:
         return RARITY_PROFILES.get(rarity, RARITY_PROFILES["Common"]).color
@@ -909,7 +928,14 @@ class Game(
             self.input.drain_trigger_slots()
             for cmd in self.input.drain_trigger_commands():
                 self._dispatch_command(cmd)
-        self.update_visual_effects(dt)
+        menu_pauses_simulation = bool(
+            self.active_cutscene is None
+            and not self.story_intro_pending
+            and (self.inventory_open or self.character_menu_open)
+        )
+        self.update_visual_effects(
+            dt, advance_actor_clocks=not menu_pauses_simulation
+        )
         if self.active_cutscene is not None:
             self.update_active_cutscene(dt)
             self.update_floaters(dt)
@@ -917,15 +943,11 @@ class Game(
         if self.shop_open:
             if self.active_shopkeeper not in self.shopkeepers:
                 self.close_shop()
-            elif (
-                self.active_shopkeeper is not None
-                and math.hypot(
-                    self.active_shopkeeper.x - self.player.x,
-                    self.active_shopkeeper.y - self.player.y,
-                )
-                > 2.6
-            ):
-                self.close_shop()
+            elif self.active_shopkeeper is not None:
+                shop_dx = self.active_shopkeeper.x - self.player.x
+                shop_dy = self.active_shopkeeper.y - self.player.y
+                if shop_dx * shop_dx + shop_dy * shop_dy > 2.6 * 2.6:
+                    self.close_shop()
         if self.story_intro_pending:
             self.update_floaters(dt)
             return
@@ -934,16 +956,27 @@ class Game(
         # overlay is up so players can inspect their build safely.
         if self.inventory_open or self.character_menu_open:
             self.update_floaters(dt)
-            self.advance_animation_phases(dt)
             return
+        # Sample before update_player() decrements Time Skip so final partial and
+        # overlapping slow intervals are integrated consistently at every FPS.
+        time_skip_remaining = self.player.time_skip_timer
+        enemy_time_scale = self.enemy_time_scale(
+            dt, remaining=time_skip_remaining
+        )
         self.update_player_aim()
         self.update_player(dt)
         self.update_friendly_npcs(dt)
         self.update_camera(dt)
         self.update_revealed_tiles()
-        self.update_enemy_statuses(dt)
+        self.update_enemy_statuses(
+            dt, time_skip_remaining=time_skip_remaining
+        )
         self.update_ambush_bells(dt)
-        self.update_enemies(dt)
+        self.update_enemies(
+            dt,
+            time_scale=enemy_time_scale,
+            time_skip_remaining=time_skip_remaining,
+        )
         self.update_ambush_bells(0.0)
         self.update_familiars(dt)
         self.update_projectiles(dt)
@@ -967,7 +1000,9 @@ class Game(
         for secret in self.secrets:
             if secret.revealed or secret.opened:
                 continue
-            if math.hypot(secret.x - self.player.x, secret.y - self.player.y) < 1.55:
+            dx = secret.x - self.player.x
+            dy = secret.y - self.player.y
+            if dx * dx + dy * dy < 1.55 * 1.55:
                 secret.revealed = True
                 self.floaters.append(
                     FloatingText(

@@ -133,18 +133,25 @@ class RenderingHudMixin:
         melee_name, bolt_name, class_skill_name, dash_name = self.skill_names()
         class_color = self.skill_color()
         class_skill_kind = self.class_skill_kind()
-        class_skill_icon = (
-            "ambush_bell"
-            if class_skill_kind == "ambush_bell"
-            else "time_skip" if class_skill_kind == "time_skip" else "nova"
+        class_skill_icon = {
+            "ambush_bell": "ambush_bell",
+            "time_skip": "time_skip",
+            "spirit_beast": "spirit_beast",
+        }.get(class_skill_kind, "nova")
+        if class_skill_kind == "ambush_bell":
+            class_skill_color = self.mix((214, 92, 150), class_color, 0.34)
+        elif class_skill_kind == "time_skip":
+            class_skill_color = self.mix((235, 205, 120), class_color, 0.30)
+        elif class_skill_kind == "spirit_beast":
+            class_skill_color = self.mix((142, 202, 92), class_color, 0.34)
+        else:
+            class_skill_color = self.mix((185, 125, 255), class_color, 0.24)
+        class_skill_command = (
+            self.spirit_beast_next_command()
+            if class_skill_kind == "spirit_beast"
+            else ""
         )
-        class_skill_color = (
-            self.mix((214, 92, 150), class_color, 0.34)
-            if class_skill_kind == "ambush_bell"
-            else self.mix((235, 205, 120), class_color, 0.30)
-            if class_skill_kind == "time_skip"
-            else self.mix((185, 125, 255), class_color, 0.24)
-        )
+        class_skill_cost = 0 if class_skill_command else self.class_skill_mana_cost()
         return [
             {
                 "kind": "melee",
@@ -177,10 +184,11 @@ class RenderingHudMixin:
                 "label": class_skill_name,
                 "timer": self.player.class_skill_timer,
                 "cooldown": self.class_skill_cooldown(),
-                "cost": self.class_skill_mana_cost(),
+                "cost": class_skill_cost,
                 "resource": self.player.mana,
                 "resource_name": "MP",
                 "color": class_skill_color,
+                "cooldown_command": class_skill_command,
             },
             {
                 "kind": "dash",
@@ -242,6 +250,9 @@ class RenderingHudMixin:
             if count <= 0:
                 return "EMPTY"
             return "FULL" if self.player.mana >= self.player.max_mana else f"x{count}"
+        cooldown_command = str(slot.get("cooldown_command", ""))
+        if cooldown_command:
+            return cooldown_command
         timer = self.hud_slot_float(slot, "timer")
         if timer > 0.001:
             return f"{timer:.1f}s"
@@ -263,6 +274,8 @@ class RenderingHudMixin:
                 self.hud_slot_int(slot, "count") > 0
                 and self.player.mana < self.player.max_mana
             )
+        if str(slot.get("cooldown_command", "")):
+            return True
         return self.hud_slot_float(slot, "timer") <= 0.001 and self.hud_slot_float(
             slot, "resource"
         ) >= self.hud_slot_float(slot, "cost")
@@ -602,6 +615,41 @@ class RenderingHudMixin:
                     ),
                     max(1, self.ui(1)),
                 )
+        elif icon == "spirit_beast":
+            radius = max(6, min(rect.width, rect.height) // 3)
+            outline = (24, 22, 28)
+            head = [
+                (cx - radius, cy - radius // 2),
+                (cx - radius, cy - radius),
+                (cx - radius // 3, cy - radius * 2 // 3),
+                (cx, cy - radius),
+                (cx + radius // 3, cy - radius * 2 // 3),
+                (cx + radius, cy - radius),
+                (cx + radius, cy - radius // 2),
+                (cx + radius * 2 // 3, cy + radius // 2),
+                (cx, cy + radius),
+                (cx - radius * 2 // 3, cy + radius // 2),
+            ]
+            pygame.draw.polygon(self.screen, outline, head)
+            pygame.draw.polygon(self.screen, color, head, line_w)
+            muzzle = pygame.Rect(0, 0, radius, max(3, radius // 2))
+            muzzle.center = (cx, cy + radius // 2)
+            pygame.draw.ellipse(self.screen, self.shade(color, 28), muzzle)
+            pygame.draw.circle(
+                self.screen,
+                outline,
+                (cx - radius // 3, cy),
+                max(1, self.ui(1)),
+            )
+            pygame.draw.circle(
+                self.screen,
+                outline,
+                (cx + radius // 3, cy),
+                max(1, self.ui(1)),
+            )
+            pygame.draw.circle(
+                self.screen, outline, (cx, muzzle.centery), max(2, self.ui(2))
+            )
         elif icon == "ambush_bell":
             radius = max(5, min(rect.width, rect.height) // 3)
             bell_rect = pygame.Rect(0, 0, radius + self.ui(7), radius)

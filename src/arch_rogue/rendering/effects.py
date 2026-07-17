@@ -109,6 +109,7 @@ class RenderingEffectsMixin:
             2, int((effect.radius + progress * effect.radius * 1.4) * 28 * WORLD_SCALE)
         )
         alpha = max(0, min(230, int(205 * life)))
+
         overlay = pygame.Surface((radius * 2 + 18, radius * 2 + 18), pygame.SRCALPHA)
         center = (overlay.get_width() // 2, overlay.get_height() // 2)
         bright = self.shade(effect.color, 48)
@@ -175,6 +176,10 @@ class RenderingEffectsMixin:
             self._draw_cast_emanation(
                 overlay, center, radius, alpha, bright, dark, progress, life, effect
             )
+        elif effect.kind == "spirit_beast_call":
+            self._draw_spirit_beast_call(
+                overlay, center, radius, alpha, bright, dark, progress
+            )
         elif effect.kind == "dash":
             for index in range(4):
                 streak_alpha = int(alpha * (0.55 - index * 0.10))
@@ -225,7 +230,11 @@ class RenderingEffectsMixin:
                     - int(math.sin(angle) * barb * 0.55)
                     - int(math.sin(side) * barb * 0.25),
                 )
-                pygame.draw.polygon(overlay, (*self.shade(bright, 35), alpha), [tip, left, right])
+                pygame.draw.polygon(
+                    overlay,
+                    (*self.shade(bright, 35), alpha),
+                    [tip, left, right],
+                )
             for index in range(5):
                 angle = index * math.tau / 5 - progress * 1.3
                 dist = snap_radius * (0.55 + progress * 0.55)
@@ -264,6 +273,7 @@ class RenderingEffectsMixin:
                     max(1, WORLD_SCALE),
                 )
 
+
         self.screen.blit(overlay, overlay.get_rect(center=(sx, sy - 12 * WORLD_SCALE)))
 
     def _draw_cast_emanation(
@@ -278,13 +288,11 @@ class RenderingEffectsMixin:
         life: float,
         effect: ImpactEffect,
     ) -> None:
-        """Archetype-themed emanation for bolt/nova cast impacts.
+        """Archetype-themed emanation for shared spell-cast impacts.
 
-        The Arcanist keeps the classic arcane ring with orbiting runes. The
-        other archetypes get distinct visuals that match their damage type and
-        fantasy: Warden's holy bulwark wave, Rogue's smoke/poison burst,
-        Acolyte's blood nova, and Ranger's snare-vine ring. Nova impacts use a
-        larger radius/ttl so the same routine scales up automatically.
+        The Arcanist keeps the classic arcane ring with orbiting runes. Other
+        shared cast call sites retain distinct colors and motifs matching their
+        damage type, while dedicated class-skill effects render separately.
         """
         archetype = getattr(effect, "archetype", "")
         if archetype == "Warden":
@@ -527,6 +535,75 @@ class RenderingEffectsMixin:
             overlay, (*blood, int(alpha * 0.85)), center, max(1, core_r // 2)
         )
 
+    def _draw_spirit_beast_call(
+        self,
+        overlay: pygame.Surface,
+        center: tuple[int, int],
+        radius: int,
+        alpha: int,
+        bright: Color,
+        dark: Color,
+        progress: float,
+    ) -> None:
+        """Forest-green call ring and paw sigil for the Ranger's Spirit Beast."""
+        call_color = self.mix(bright, (142, 202, 92), 0.42)
+        ring_radius = max(4, int(radius * (0.32 + progress * 0.68)))
+        ring_rect = pygame.Rect(0, 0, ring_radius * 2, max(4, ring_radius))
+        ring_rect.center = center
+        pygame.draw.ellipse(
+            overlay,
+            (*call_color, int(alpha * (0.58 - progress * 0.24))),
+            ring_rect,
+            max(1, WORLD_SCALE),
+        )
+        inner_rect = ring_rect.inflate(-max(2, radius // 4), -max(2, radius // 8))
+        pygame.draw.ellipse(
+            overlay,
+            (*self.shade(call_color, -38), int(alpha * 0.28)),
+            inner_rect,
+            max(1, WORLD_SCALE),
+        )
+
+        paw_y = center[1] + max(1, int(radius * 0.05))
+        pad_w = max(4, int(radius * 0.34))
+        pad_h = max(3, int(radius * 0.24))
+        pad = pygame.Rect(0, 0, pad_w, pad_h)
+        pad.center = (center[0], paw_y)
+        pygame.draw.ellipse(
+            overlay,
+            (*self.shade(call_color, 28), int(alpha * (0.82 - progress * 0.25))),
+            pad,
+        )
+        toe_radius = max(2, radius // 11)
+        toe_y = paw_y - pad_h // 2 - toe_radius
+        for offset_x, offset_y in (
+            (-toe_radius * 2, toe_radius // 2),
+            (-toe_radius, -toe_radius // 2),
+            (toe_radius, -toe_radius // 2),
+            (toe_radius * 2, toe_radius // 2),
+        ):
+            pygame.draw.circle(
+                overlay,
+                (*call_color, int(alpha * (0.74 - progress * 0.22))),
+                (center[0] + offset_x, toe_y + offset_y),
+                toe_radius,
+            )
+
+        for side in (-1, 1):
+            arc_rect = ring_rect.inflate(
+                int(radius * (0.35 + progress * 0.25)),
+                int(radius * (0.18 + progress * 0.12)),
+            )
+            start = math.pi * (0.64 if side < 0 else 1.64)
+            pygame.draw.arc(
+                overlay,
+                (*self.mix(call_color, dark, 0.18), int(alpha * 0.34)),
+                arc_rect,
+                start,
+                start + math.pi * 0.45,
+                max(1, WORLD_SCALE),
+            )
+
     def _draw_cast_ranger(
         self,
         overlay: pygame.Surface,
@@ -617,8 +694,8 @@ class RenderingEffectsMixin:
 
     def _soft_shadow_template(self, size: int) -> pygame.Surface:
         # Cached radial-alpha square: center peaks at full opacity, edges fade
-        # to transparent. Built once per quantized size and reused across every
-        # entity so the hot path only pays for a smoothscale + blit.
+        # to transparent. Built once per quantized size; final entity dimensions
+        # are cached separately so the per-frame hot path only sets alpha + blits.
         cache: dict[int, pygame.Surface] = getattr(
             self, "_soft_shadow_template_cache", {}
         )
@@ -654,6 +731,22 @@ class RenderingEffectsMixin:
         self._soft_shadow_template_cache = cache
         return surf
 
+    def _scaled_soft_shadow(self, width: int, height: int) -> pygame.Surface:
+        key = (width, height)
+        cache: dict[tuple[int, int], pygame.Surface] = getattr(
+            self, "_scaled_soft_shadow_cache", {}
+        )
+        shadow = cache.get(key)
+        if shadow is not None:
+            return shadow
+        if len(cache) >= 128:
+            cache.pop(next(iter(cache)))
+        template = self._soft_shadow_template(max(8, max(width, height)))
+        shadow = pygame.transform.smoothscale(template, key)
+        cache[key] = shadow
+        self._scaled_soft_shadow_cache = cache
+        return shadow
+
     def draw_shadow(
         self,
         x: float,
@@ -668,13 +761,10 @@ class RenderingEffectsMixin:
         squash = pulse * 1.4 if moving else 0.0
         scaled_w = max(1, round((width + squash * 3 + lift) * WORLD_SCALE))
         scaled_h = max(1, round((height - squash - lift * 0.32) * WORLD_SCALE))
-        # Soft contact shadow: a cached radial-alpha template, scaled per entity
-        # size and squashed by the iso projection (height < width) so actors
-        # read as grounded on the floor diamond instead of floating above it.
-        # The template internally quantizes its cache key so lift/bob jitter
-        # across frames does not fragment the cache.
-        template = self._soft_shadow_template(max(8, max(scaled_w, scaled_h)))
-        shadow = pygame.transform.smoothscale(template, (scaled_w, scaled_h))
+        # Soft contact shadow: cache the final iso-squashed dimensions as well as
+        # the radial template. Actor dimensions repeat heavily within and across
+        # frames, especially in crowds, so no rescale is needed on cache hits.
+        shadow = self._scaled_soft_shadow(scaled_w, scaled_h)
         # set_alpha acts as a global multiplier on per-pixel-alpha surfaces in
         # pygame-ce, so motion/lift modulation costs nothing per frame.
         opacity = 210 if moving else 175
@@ -1420,10 +1510,17 @@ class RenderingEffectsMixin:
         )
         self.screen.blit(ring, ring.get_rect(center=(sx, sy + 4 * WORLD_SCALE)))
 
+        motion = self.friendly_npc_motion(guest)
+        direction = self.actor_sprite_direction(
+            facing_x,
+            facing_y,
+            previous=motion.sprite_direction,
+        )
+        motion.sprite_direction = direction
         frame = self.sprites.story_guest_visual(
             self.elapsed,
             guest.resolved,
-            direction=self.actor_sprite_direction(facing_x, facing_y),
+            direction=direction,
             moving=moving,
             dancing=not moving,
             clip_progress=loop_progress,
@@ -1459,9 +1556,9 @@ class RenderingEffectsMixin:
             )
 
     def draw_idle_npc(self, npc: IdleNpc) -> None:
-        # Decorative, non-interactable flavor NPC. Humanoid travelers reuse the
-        # story-guest art, while garden frogs have a dedicated asset/fallback.
-        # Neither branch draws quest markers, labels, or interaction prompts.
+        # Decorative, non-interactable flavor NPC. Generic humanoids reuse the
+        # story-guest art; bar dancers and garden frogs have dedicated visuals.
+        # No branch draws quest markers, labels, or interaction prompts.
         facing_x, facing_y, moving, loop_progress = self.friendly_npc_visual_state(npc)
         beat_lift, _beat_accent = self.friendly_npc_beat_pulse(
             loop_progress, moving
@@ -1477,9 +1574,23 @@ class RenderingEffectsMixin:
             moving=False,
             lift=body_lift,
         )
-        direction = self.actor_sprite_direction(facing_x, facing_y)
+        motion = self.friendly_npc_motion(npc)
+        direction = self.actor_sprite_direction(
+            facing_x,
+            facing_y,
+            previous=motion.sprite_direction,
+        )
+        motion.sprite_direction = direction
         if is_frog:
             frame = self.sprites.garden_frog_visual(
+                self.elapsed,
+                direction=direction,
+                moving=moving,
+                dancing=not moving,
+                clip_progress=loop_progress,
+            )
+        elif npc.kind == "bar_dancer":
+            frame = self.sprites.bar_dancer_visual(
                 self.elapsed,
                 direction=direction,
                 moving=moving,
@@ -1504,27 +1615,129 @@ class RenderingEffectsMixin:
                 sprite, sprite.get_rect(midbottom=(sx, sy + y_offset * WORLD_SCALE))
             )
 
+    def draw_spirit_beast_pet_indicator(
+        self, familiar: Familiar, sprite_rect: pygame.Rect
+    ) -> bool:
+        """Draw a compact paw badge when this beast can be petted now."""
+        if not self.can_pet_spirit_beast_now(familiar):
+            return False
+
+        unit = max(1, WORLD_SCALE)
+        size = 5 * unit
+        center = size // 2
+
+        def scaled(value: float) -> int:
+            return round(value * size / 10.0)
+
+        badge = pygame.Surface((size, size), pygame.SRCALPHA)
+        color = self.skill_color()
+        pygame.draw.circle(
+            badge,
+            (10, 16, 13, 90),
+            (center, center),
+            center - 1,
+        )
+        pygame.draw.circle(
+            badge,
+            (*color, 150),
+            (center, center),
+            center - 1,
+            max(1, round(unit * 0.5)),
+        )
+        paw_color = (232, 244, 218, 180)
+        toe_radius = max(1, scaled(1.0))
+        for toe_x, toe_y in ((3.0, 4.0), (5.0, 3.0), (7.0, 4.0)):
+            pygame.draw.circle(
+                badge,
+                paw_color,
+                (scaled(toe_x), scaled(toe_y)),
+                toe_radius,
+            )
+        pygame.draw.ellipse(
+            badge,
+            paw_color,
+            pygame.Rect(
+                scaled(3.0),
+                scaled(5.0),
+                max(1, scaled(4.0)),
+                max(1, scaled(3.0)),
+            ),
+        )
+
+        health_bar_clearance = (
+            5 * unit if familiar.hp < familiar.max_hp else 2 * unit
+        )
+        bob = round(math.sin(self.elapsed * 4.2 + familiar.x) * unit * 0.35)
+        badge_rect = badge.get_rect(
+            midbottom=(
+                sprite_rect.centerx,
+                sprite_rect.top - health_bar_clearance - bob,
+            )
+        )
+        self.screen.blit(badge, badge_rect)
+        return True
+
     def draw_familiar(self, familiar: Familiar) -> None:
         sx, sy = self.world_to_screen(familiar.x, familiar.y)
-        bob = math.sin(self.elapsed * 3.4 + familiar.x * 0.7 + familiar.y * 0.4) * 1.4
-        shadow_w = 30 if familiar.champion else (22 if familiar.sprite_variant else 18)
+        kind = getattr(familiar, "kind", "spirit")
+        if kind == "spirit_beast":
+            bob = 0.0
+            shadow_w = 34 if familiar.champion else 28
+            y_offset = 2.0
+        else:
+            bob = (
+                math.sin(self.elapsed * 3.4 + familiar.x * 0.7 + familiar.y * 0.4)
+                * 1.4
+            )
+            shadow_w = 30 if familiar.champion else (22 if familiar.sprite_variant else 18)
+            y_offset = 5.0 - bob
         self.draw_shadow(familiar.x, familiar.y, shadow_w, 10, moving=familiar.moving)
         direction = self.actor_sprite_direction(
-            getattr(familiar, "facing_x", 1.0), getattr(familiar, "facing_y", 0.0)
+            getattr(familiar, "facing_x", 1.0),
+            getattr(familiar, "facing_y", 0.0),
+            previous=familiar.sprite_direction,
+        )
+        familiar.sprite_direction = direction
+        pet_timer = max(0.0, getattr(familiar, "pet_anim_timer", 0.0))
+        pet_duration = max(
+            0.01, getattr(self, "SPIRIT_BEAST_PET_ANIMATION_DURATION", 0.8)
+        )
+        petting = kind == "spirit_beast" and pet_timer > 0.0
+        attack_timer = max(0.0, getattr(familiar, "attack_anim_timer", 0.0))
+        attack_duration = max(
+            0.01, getattr(self, "FAMILIAR_ATTACK_ANIMATION_DURATION", 0.42)
+        )
+        attacking = not petting and attack_timer > 0.0
+        # Locomotion uses the familiar's simulation-local phase. Sampling walk
+        # from run-global elapsed made intermittent slow following restart on an
+        # unrelated frame, which read as jitter; ambient idle can stay global.
+        clip_time = (
+            pet_duration - pet_timer
+            if petting
+            else familiar.anim_time
+            if familiar.moving
+            else self.elapsed
         )
         frame = self.sprites.familiar_visual(
             familiar.sprite_variant,
-            self.elapsed,
+            clip_time,
             direction=direction,
             moving=familiar.moving,
+            kind=kind,
+            petting=petting,
+            pet_progress=(1.0 - pet_timer / pet_duration) if petting else None,
+            attacking=attacking,
+            attack_progress=(1.0 - attack_timer / attack_duration)
+            if attacking
+            else None,
         )
         sprite = frame.surface
         if frame.is_asset:
             rect = self.blit_resolved_sprite(
-                frame, familiar.x, familiar.y, y_offset=5.0 - bob
+                frame, familiar.x, familiar.y, y_offset=y_offset
             )
         else:
-            rect = sprite.get_rect(midbottom=(sx, sy + (5 - bob) * WORLD_SCALE))
+            rect = sprite.get_rect(midbottom=(sx, sy + y_offset * WORLD_SCALE))
             self.screen.blit(sprite, rect)
         if familiar.hp < familiar.max_hp:
             bar_w = 24 * WORLD_SCALE
@@ -1536,9 +1749,13 @@ class RenderingEffectsMixin:
             )
             pygame.draw.rect(
                 self.screen,
-                (160, 235, 230),
+                (145, 214, 105)
+                if kind == "spirit_beast"
+                else (160, 235, 230),
                 (sx - bar_w // 2, bar_y, fill_w, bar_h),
             )
+        if kind == "spirit_beast":
+            self.draw_spirit_beast_pet_indicator(familiar, rect)
 
     def draw_shrine(self, shrine: Shrine) -> None:
         sx, sy = self.world_to_screen(shrine.x, shrine.y)
@@ -1606,11 +1823,28 @@ class RenderingEffectsMixin:
                 sublabel, sublabel.get_rect(center=(sx, sy - 31 * WORLD_SCALE))
             )
 
+    def _projectile_trail_surface(self, color: Color, alpha: int) -> pygame.Surface:
+        normalized_color = (int(color[0]), int(color[1]), int(color[2]))
+        key = (*normalized_color, int(alpha))
+        cache: dict[tuple[int, int, int, int], pygame.Surface] = getattr(
+            self, "_projectile_trail_cache", {}
+        )
+        trail = cache.get(key)
+        if trail is not None:
+            return trail
+        if len(cache) >= 128:
+            cache.pop(next(iter(cache)))
+        trail = pygame.Surface((10 * WORLD_SCALE, 5 * WORLD_SCALE), pygame.SRCALPHA)
+        pygame.draw.ellipse(trail, (*normalized_color, alpha), trail.get_rect())
+        cache[key] = trail
+        self._projectile_trail_cache = cache
+        return trail
+
     def draw_projectile(self, projectile: Projectile) -> None:
         sx, sy = self.world_to_screen(projectile.x, projectile.y)
         sprite = self.sprites.projectile_frame(
             projectile.owner,
-            self.elapsed + projectile.x * 0.2 + projectile.y * 0.15,
+            projectile.anim_time,
             archetype=getattr(projectile, "archetype", ""),
         )
         vx, vy = self.iso_screen_direction(projectile.vx, projectile.vy)
@@ -1620,8 +1854,7 @@ class RenderingEffectsMixin:
         px, py = -vy, vx
         flicker = 0.5 + 0.5 * math.sin(self.elapsed * 18.0 + projectile.x)
         for step, alpha in ((1, 136), (2, 92), (3, 54), (4, 26)):
-            trail = pygame.Surface((10 * WORLD_SCALE, 5 * WORLD_SCALE), pygame.SRCALPHA)
-            pygame.draw.ellipse(trail, (*color, alpha), trail.get_rect())
+            trail = self._projectile_trail_surface(color, alpha)
             side = math.sin(self.elapsed * 12.0 + step) * 2 * WORLD_SCALE
             self.screen.blit(
                 trail,

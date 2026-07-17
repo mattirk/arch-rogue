@@ -17,6 +17,8 @@ import pygame
 from arch_rogue.constants import (
     RUN_CYCLE_FRAMES,
     RUN_FRAME_RATE,
+    TILE_H,
+    TILE_W,
 )
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
@@ -40,6 +42,68 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
             self.assertTrue(game.choose_story_relic_path(0))
         game.active_cutscene = None
         return game
+
+    def test_directional_sprite_hysteresis_rejects_sector_edge_noise(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+
+            def world_vector(screen_angle: float) -> tuple[float, float]:
+                radians = math.radians(screen_angle)
+                projected_x = math.cos(radians) / (TILE_W / 2)
+                projected_y = math.sin(radians) / (TILE_H / 2)
+                return (
+                    (projected_x + projected_y) * 0.5,
+                    (projected_y - projected_x) * 0.5,
+                )
+
+            for angle in (22.0, 24.0, 27.0):
+                dx, dy = world_vector(angle)
+                self.assertEqual(
+                    game.actor_sprite_direction(dx, dy, previous="east"),
+                    "east",
+                )
+
+            dx, dy = world_vector(30.0)
+            self.assertEqual(
+                game.actor_sprite_direction(dx, dy, previous="east"),
+                "south-east",
+            )
+
+    def test_tiny_movement_detection_is_frame_rate_independent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game.enemies = []
+            game.dungeon.blocked_for_radius = lambda *_args: False  # type: ignore[method-assign]
+            start_x = game.player.x
+
+            for fps in (30, 60, 120):
+                with self.subTest(fps=fps):
+                    dt = 1.0 / fps
+                    game._last_dt = dt
+                    game.player.x = start_x
+                    game.player.moving = False
+                    moved = game.move_actor(game.player, 0.000001 * dt, 0.0)
+                    self.assertGreater(moved, 0.0)
+                    self.assertTrue(game.player.moving)
+
+    def test_player_walk_cadence_scales_with_partial_movement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game.enemies = []
+            player = game.player
+            player.moving = True
+            player.locomotion_anim_scale = 1.0
+            game.advance_animation_phases(0.1)
+            full_speed_phase = player.anim_time
+
+            player.anim_time = 0.0
+            player.locomotion_anim_scale = 0.25
+            game.advance_animation_phases(0.1)
+            self.assertAlmostEqual(
+                player.anim_time,
+                full_speed_phase * 0.25,
+                places=6,
+            )
 
     def set_moving(self, player, mx: float, my: float) -> None:
         player.moving = True

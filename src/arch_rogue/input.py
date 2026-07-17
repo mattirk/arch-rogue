@@ -28,9 +28,9 @@ interact, navigate, confirm, back, tab). ``Game.handle_events`` keeps its
 existing flow; controller events and the unified menu navigation path route
 through the helpers here so keyboard and gamepad behave consistently.
 
-The hot-path pieces (per-frame axis polling) are allocation-free: the manager
-caches float attributes and only rebuilds the returned tuples when the deadzone
-state flips, so the run loop stays cheap.
+The hot-path pieces (per-frame axis polling) cache float attributes and
+independent stick deadzone state, keeping movement stable across noisy frames
+without changing the public vector API.
 """
 
 from __future__ import annotations
@@ -344,7 +344,14 @@ class ControllerManager:
     - expose cheap, allocation-free left/right stick vectors for the run loop.
     """
 
+    # Keep the legacy deadzone as the radial scaling origin. A stick must move
+    # clearly beyond it to activate, then remains active until it returns below
+    # the lower release threshold, preventing frame-to-frame movement chatter.
     DEADZONE = 0.24
+    DEADZONE_ACTIVATION = 0.28
+    # Release at the legacy neutral boundary. Once released, activation still
+    # requires 0.28, so threshold noise cannot chatter or latch neutral drift.
+    DEADZONE_RELEASE = DEADZONE
     # Axes whose rest value is far from zero (|v| > 0.5) are treated as
     # triggers and skipped when locating the analog sticks. This handles the
     # common raw-joystick layouts (Xbox: axes 2/5 are triggers; Stadia/PS:
@@ -380,6 +387,8 @@ class ControllerManager:
         self._left_y = 0.0
         self._right_x = 0.0
         self._right_y = 0.0
+        self._left_stick_active = False
+        self._right_stick_active = False
         self._left_vec: tuple[float, float] = (0.0, 0.0)
         self._right_vec: tuple[float, float] = (0.0, 0.0)
 
@@ -553,10 +562,12 @@ class ControllerManager:
         if joy is None:
             self._left_axes = self._right_axes = None
             self._active_triggers = []
+            self._left_stick_active = self._right_stick_active = False
             self._layout_id = None
             return
         joy_id = joy.get_instance_id()
         if self._layout_id != joy_id:
+            self._left_stick_active = self._right_stick_active = False
             layout = self._axis_layout.get(joy_id)
             if layout is None:
                 layout = self._compute_layout(joy)
@@ -594,7 +605,9 @@ class ControllerManager:
         # SDL reports stick-down as +Y and stick-up as -Y, which already
         # matches the keyboard arrow intent (DOWN = +dy, UP = -dy) used by
         # the movement/aim code, so no Y inversion is needed.
-        lx, ly = self._apply_deadzone(lx, ly)
+        lx, ly, self._left_stick_active = self._apply_stick_deadzone(
+            lx, ly, self._left_stick_active
+        )
         rx = ry = 0.0
         if self._right_axes is not None:
             ax, ay = self._right_axes
@@ -603,7 +616,9 @@ class ControllerManager:
                 ry = joy.get_axis(ay)
             except pygame.error:
                 rx = ry = 0.0
-            rx, ry = self._apply_deadzone(rx, ry)
+        rx, ry, self._right_stick_active = self._apply_stick_deadzone(
+            rx, ry, self._right_stick_active
+        )
         self._left_x = lx
         self._left_y = ly
         self._right_x = rx
@@ -612,6 +627,7 @@ class ControllerManager:
         self._poll_triggers(joy, emit_trigger_commands)
 
     def _reset_axes(self) -> None:
+        self._left_stick_active = self._right_stick_active = False
         if self._left_x or self._left_y or self._right_x or self._right_y:
             self._left_x = self._left_y = self._right_x = self._right_y = 0.0
             self._refresh_vecs()
@@ -667,9 +683,36 @@ class ControllerManager:
         self._queued_trigger_slots = []
         return slots
 
+    def _apply_stick_deadzone(
+        self, x: float, y: float, was_active: bool
+    ) -> tuple[float, float, bool]:
+        """Apply radial scaling with frame-stable activation hysteresis."""
+        mag = (x * x + y * y) ** 0.5
+        threshold = self.DEADZONE_RELEASE if was_active else self.DEADZONE_ACTIVATION
+        if mag <= threshold:
+            return 0.0, 0.0, False
+
+        if mag < self.DEADZONE_ACTIVATION:
+            # Interpolate the latched band from zero at release to the legacy
+            # radial curve at activation. This keeps the vector nonzero until a
+            # real release while preserving the established scaling above it.
+            activation_magnitude = (
+                (self.DEADZONE_ACTIVATION - self.DEADZONE)
+                / (1.0 - self.DEADZONE)
+            )
+            scaled_magnitude = activation_magnitude * (
+                (mag - self.DEADZONE_RELEASE)
+                / (self.DEADZONE_ACTIVATION - self.DEADZONE_RELEASE)
+            )
+        else:
+            scaled_magnitude = min(
+                1.0, (mag - self.DEADZONE) / (1.0 - self.DEADZONE)
+            )
+        scale = scaled_magnitude / mag
+        return x * scale, y * scale, True
+
     def _apply_deadzone(self, x: float, y: float) -> tuple[float, float]:
-        # Radial deadzone: drop the whole stick if inside the circle, then
-        # rescale the surviving magnitude so the active range is full 0..1.
+        # Preserve the original stateless helper behavior for compatibility.
         mag = (x * x + y * y) ** 0.5
         if mag <= self.DEADZONE:
             return 0.0, 0.0

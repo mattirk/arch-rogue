@@ -33,6 +33,7 @@ from ..constants import (
     DUNGEON_DEPTH,
     DUNGEON_FLOOR_VARIANTS,
     DUNGEON_WALL_VARIANTS,
+    LIGHT_BAR_WALL_ELEVATION,
     TILE_H,
     TILE_W,
     WORLD_SCALE,
@@ -490,7 +491,6 @@ class RenderingWorldMixin:
                     wall_surface,
                     wall_anchor_x,
                     wall_anchor_y,
-                    wall_h,
                     bar_wall_light_side,
                 )
                 asset_surface = (wall_surface, wall_anchor_x, wall_anchor_y)
@@ -519,7 +519,7 @@ class RenderingWorldMixin:
             )
             if bar_wall_light_side is not None:
                 self._draw_bar_wall_light(
-                    surface, anchor_x, anchor_y, wall_h, bar_wall_light_side
+                    surface, anchor_x, anchor_y, bar_wall_light_side
                 )
         elif tile in (Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
             self.draw_door_tile_surface(
@@ -891,15 +891,19 @@ class RenderingWorldMixin:
         surface: pygame.Surface,
         anchor_x: int,
         anchor_y: int,
-        wall_h: int,
         side: str,
     ) -> None:
         if side not in ("left", "right"):
             return
         direction = -1 if side == "left" else 1
+        # Static bar lights sit half a world tile inward from their wall tile,
+        # which projects them TILE_H/4 downward. Subtracting the shared elevation
+        # here keeps the visible fixture centered on its light halo.
         mount = (
             anchor_x + direction * TILE_W // 4,
-            anchor_y - wall_h // 2 + TILE_H // 4,
+            anchor_y
+            - round(LIGHT_BAR_WALL_ELEVATION * TILE_H)
+            + TILE_H // 4,
         )
         frame = self.sprites.bar_wall_sconce_visual(side)
         if frame is not None:

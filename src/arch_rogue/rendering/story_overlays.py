@@ -1552,6 +1552,14 @@ class RenderingStoryOverlayMixin:
                     best, best_dist = (prop.x, prop.y), dist
         return best
 
+    def _cutscene_duel_cycle_phase(self):
+        if self.active_cutscene is None:
+            return 0.0
+        # Whole-cutscene time keeps the duel continuous across dialogue nodes,
+        # while still starting at phase zero regardless of run-global time.
+        period = self.STAGE_DUEL_PERIOD
+        return (max(0.0, self.active_cutscene.elapsed) % period) / period
+
     def _cutscene_duel_state(self):
         # Choreograph the player/antagonist duel for the current frame.
         # Returns None when the active cutscene has no duel pair, otherwise a
@@ -1566,8 +1574,7 @@ class RenderingStoryOverlayMixin:
         if player is None or antagonist is None:
             return None
 
-        period = self.STAGE_DUEL_PERIOD
-        t = (self.elapsed % period) / period
+        t = self._cutscene_duel_cycle_phase()
         p_app = self.STAGE_DUEL_PHASE_APPROACH
         p_clash = p_app + self.STAGE_DUEL_PHASE_CLASH
         p_ret = p_clash + self.STAGE_DUEL_PHASE_RETREAT
@@ -1639,8 +1646,7 @@ class RenderingStoryOverlayMixin:
         duel = getattr(self, "_frame_duel_state", None)
         if duel is None:
             return
-        period = self.STAGE_DUEL_PERIOD
-        t = (self.elapsed % period) / period
+        t = self._cutscene_duel_cycle_phase()
         p_app = self.STAGE_DUEL_PHASE_APPROACH
         p_clash_end = p_app + self.STAGE_DUEL_PHASE_CLASH
         if t < p_app or t >= p_clash_end:

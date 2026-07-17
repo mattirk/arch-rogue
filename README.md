@@ -108,6 +108,16 @@ Notes:
 - Test modules configure dummy SDL video/audio drivers for headless Pygame runs.
 - Prefer running the focused test module for your change first, then the full suite before submitting.
 
+## Profile Performance
+
+Use the deterministic fixed-step harness to profile simulation and rendering separately without frame-limit sleep or human input:
+
+```bash
+.venv/bin/python tools/profile_game.py --scenario crowd --frames 240
+```
+
+`--scenario quiet` profiles an unmodified generated floor; `crowd` clusters the generated population into an open arena to stress collisions, combat effects, sprites, and lighting. Use `--no-lighting`, `--depth`, `--zoom`, and `--output-dir` for focused comparisons. The harness prints cumulative hotspots and writes separate `cProfile` files for update and render work under `build/profiles/` by default.
+
 ## Controls
 
 Arch Rogue supports keyboard/mouse and gamepad. Gamepad bindings can be remapped from the Controls menu (Options → Controls).

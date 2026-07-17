@@ -8,12 +8,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any, Callable
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from arch_rogue.constants import TILE_H, TILE_W
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.dungeon import MAP_H, MAP_W, Dungeon
 from arch_rogue.game import Game
@@ -59,6 +61,14 @@ class FriendlyNpcRuntimeTests(unittest.TestCase):
         ]
         game.idle_npcs = [
             IdleNpc(28.5, 25.5, kind="bar", name="Tovin", role="Patron"),
+            IdleNpc(
+                25.5,
+                28.5,
+                kind="bar_dancer",
+                name="Bar Dancer",
+                role="Tavern Reveler",
+                color=(224, 126, 72),
+            ),
             IdleNpc(
                 22.5,
                 25.5,
@@ -126,7 +136,7 @@ class FriendlyNpcRuntimeTests(unittest.TestCase):
         game = self.make_game()
         humanoids = tuple(game.iter_friendly_humanoids())
 
-        self.assertEqual(humanoids, tuple(game.iter_friendly_npcs())[:3])
+        self.assertEqual(humanoids, tuple(game.iter_friendly_npcs())[:4])
         self.assertEqual(
             {type(npc) for npc in humanoids},
             {Shopkeeper, StoryGuest, IdleNpc},
@@ -134,6 +144,40 @@ class FriendlyNpcRuntimeTests(unittest.TestCase):
         self.assertTrue(
             all(getattr(npc, "kind", "") != "garden_frog" for npc in humanoids)
         )
+
+    def test_friendly_sprite_directions_use_hysteresis(self) -> None:
+        game = self.make_game()
+
+        def world_vector(screen_angle: float) -> tuple[float, float]:
+            radians = math.radians(screen_angle)
+            projected_x = math.cos(radians) / (TILE_W / 2)
+            projected_y = math.sin(radians) / (TILE_H / 2)
+            return (
+                (projected_x + projected_y) * 0.5,
+                (projected_y - projected_x) * 0.5,
+            )
+
+        def assert_hysteresis(
+            npc: Shopkeeper | StoryGuest | IdleNpc,
+            draw: Callable[[Any], None],
+        ) -> None:
+            with self.subTest(actor=npc.name):
+                motion = game.friendly_npc_motion(npc)
+                motion.facing_x, motion.facing_y = world_vector(22.0)
+                draw(npc)
+                self.assertEqual(motion.sprite_direction, "east")
+
+                motion.facing_x, motion.facing_y = world_vector(24.0)
+                draw(npc)
+                self.assertEqual(motion.sprite_direction, "east")
+
+                motion.facing_x, motion.facing_y = world_vector(30.0)
+                draw(npc)
+                self.assertEqual(motion.sprite_direction, "south-east")
+
+        assert_hysteresis(game.shopkeepers[0], game.draw_shopkeeper)
+        assert_hysteresis(game.story_guests[0], game.draw_story_guest)
+        assert_hysteresis(game.idle_npcs[1], game.draw_idle_npc)
 
     def assert_faces_player(self, game: Game, npc: Shopkeeper | StoryGuest) -> None:
         motion = game.friendly_npc_motion(npc)
@@ -234,6 +278,44 @@ class FriendlyNpcRuntimeTests(unittest.TestCase):
         self.assertEqual((guest.x, guest.y), guest_position)
         self.assert_faces_player(game, guest)
 
+    def test_player_proximity_hold_uses_release_hysteresis(self) -> None:
+        game = self.make_game()
+        actors = (
+            (game.shopkeepers[0], 1.55),
+            (game.story_guests[0], 1.45),
+        )
+        hysteresis = game.FRIENDLY_NPC_PLAYER_HOLD_HYSTERESIS
+        self.assertGreater(hysteresis, 0.0)
+        self.assertLess(hysteresis, 0.25)
+
+        for npc, enter_radius in actors:
+            with self.subTest(npc=type(npc).__name__):
+                game.shopkeepers = [npc] if isinstance(npc, Shopkeeper) else []
+                game.story_guests = [npc] if isinstance(npc, StoryGuest) else []
+                game.idle_npcs = []
+                game.reset_friendly_npc_runtime()
+                motion = game.friendly_npc_motion(npc)
+                motion.target_x = npc.x + 1.0
+                motion.target_y = npc.y
+                start = (npc.x, npc.y)
+
+                game.player.x = npc.x - enter_radius
+                game.player.y = npc.y
+                game.update_friendly_npcs(0.25)
+                self.assertEqual((npc.x, npc.y), start)
+                self.assertTrue(motion.holding_for_player)
+
+                game.player.x = npc.x - enter_radius - hysteresis * 0.5
+                game.update_friendly_npcs(0.25)
+                self.assertEqual((npc.x, npc.y), start)
+                self.assertTrue(motion.holding_for_player)
+
+                game.player.x = npc.x - enter_radius - hysteresis - 0.01
+                game.update_friendly_npcs(0.25)
+                self.assertFalse(motion.holding_for_player)
+                self.assertTrue(motion.moving)
+                self.assertGreater(npc.x, start[0])
+
     def test_shop_sign_finds_its_room_keeper_after_extended_roaming(self) -> None:
         game = self.make_game()
         keeper = game.shopkeepers[0]
@@ -286,7 +368,7 @@ class FriendlyNpcRuntimeTests(unittest.TestCase):
             for npc in game.iter_friendly_npcs()
         ]
 
-        self.assertEqual(len(phases), 5)
+        self.assertEqual(len(phases), 6)
         self.assertEqual(
             sum(
                 getattr(npc, "kind", "") == "garden_frog"
@@ -373,6 +455,37 @@ class FriendlyNpcRuntimeTests(unittest.TestCase):
             game.FRIENDLY_NPC_MIN_DANCE_BEATS - 1e-9,
         )
 
+    def test_final_arrival_frame_remains_a_music_synced_travel_frame(self) -> None:
+        game = self.make_game()
+        game.shopkeepers = []
+        game.story_guests = []
+        game.idle_npcs = [
+            IdleNpc(25.5, 25.5, kind="bar", name="Tovin", role="Patron")
+        ]
+        game.reset_friendly_npc_runtime()
+        npc = game.idle_npcs[0]
+        motion = game.friendly_npc_motion(npc)
+        motion.target_x = npc.x + 0.1
+        motion.target_y = npc.y
+        start_x = npc.x
+
+        game.elapsed = 0.375
+        game.update_friendly_npcs(1.0)
+
+        self.assertGreater(npc.x, start_x)
+        self.assertAlmostEqual(npc.x, motion.target_x, places=12)
+        self.assertTrue(motion.moving)
+        arrival_state = game.friendly_npc_visual_state(npc)
+        self.assertTrue(arrival_state[2])
+        self.assertAlmostEqual(arrival_state[3], 0.375, places=12)
+
+        game.update_friendly_npcs(0.0)
+
+        self.assertFalse(motion.moving)
+        dance_state = game.friendly_npc_visual_state(npc)
+        self.assertFalse(dance_state[2])
+        self.assertAlmostEqual(dance_state[3], 0.1875, places=12)
+
     def test_moved_npc_positions_round_trip_and_resume_inside_their_rooms(self) -> None:
         self.game_count += 1
         game = Game(
@@ -432,7 +545,7 @@ class FriendlyNpcRuntimeTests(unittest.TestCase):
     def test_runtime_cache_prunes_removed_npcs_and_can_be_reset(self) -> None:
         game = self.make_game()
         game.update_friendly_npcs(0.0)
-        self.assertEqual(len(game._friendly_npc_motions), 5)
+        self.assertEqual(len(game._friendly_npc_motions), 6)
 
         game.shopkeepers = []
         game.story_guests = []

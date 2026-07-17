@@ -72,7 +72,6 @@ from .constants import (
     LIGHT_BUFFER_SCALE,
     LIGHT_DIRECTION_BUCKETS,
     LIGHT_FLICKER_INTENSITY_AMP,
-    LIGHT_FLICKER_RADIUS_AMP,
     LIGHT_LANTERN_COLOR,
     LIGHT_LEVEL_SIGHT_RADIUS,
     LIGHT_SHADE_BIAS_Z,
@@ -361,6 +360,18 @@ class LightingMixin:
 
         lights: list[LightSource] = []
         min_x, max_x, min_y, max_y = self.visible_bounds()
+
+        def overlaps_visible_bounds(light: LightSource) -> bool:
+            # Keep halos whose source is outside the tile bounds but whose radius
+            # can still reach the rendered view. Transient off-screen pulses do
+            # not affect visible actors or pixels and need not enter either light
+            # compositing pass.
+            padding = max(4.0, light.radius)
+            return (
+                min_x - padding <= light.x <= max_x + padding
+                and min_y - padding <= light.y <= max_y + padding
+            )
+
         # The player and every friendly humanoid carry the same warm lantern.
         # NPC lights are rebuilt from actor positions each frame, so they follow
         # movement without entering the persistent or transient light lists.
@@ -383,10 +394,11 @@ class LightingMixin:
                 )
             )
         for src in getattr(self, "light_sources", []):
-            if not (min_x - 4 <= src.x <= max_x + 4 and min_y - 4 <= src.y <= max_y + 4):
-                continue
-            lights.append(src)
-        lights.extend(getattr(self, "lights", []))
+            if overlaps_visible_bounds(src):
+                lights.append(src)
+        for light in getattr(self, "lights", []):
+            if overlaps_visible_bounds(light):
+                lights.append(light)
         cache["frame_lights"] = lights
         return lights
 
@@ -624,12 +636,32 @@ class LightingMixin:
         )
         if tint_map is None:
             return sprite
+        key = (id(sprite), id(tint_map))
+        cache = getattr(self, "_lit_composite_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._lit_composite_cache = cache
+        cached = cache.get(key)
+        if (
+            cached is not None
+            and cached[0] is sprite
+            and cached[1] is tint_map
+        ):
+            cache.move_to_end(key)
+            return cached[2]
+        if cached is not None:
+            cache.pop(key, None)
+
         result = sprite.copy()
         result.blit(tint_map, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
         try:
             result = result.convert_alpha()
         except pygame.error:
             pass
+        cache[key] = (sprite, tint_map, result)
+        cache.move_to_end(key)
+        while len(cache) > 192:
+            cache.popitem(last=False)
         return result
 
     def _dominant_light(self, x: float, y: float) -> LightSource | None:
@@ -637,11 +669,18 @@ class LightingMixin:
         best: LightSource | None = None
         best_score = -1.0
         for light in lights:
-            d = math.hypot(x - light.x, y - light.y)
-            if d > light.radius:
+            if light.radius < 0.0:
                 continue
+            dx = x - light.x
+            dy = y - light.y
+            distance_squared = dx * dx + dy * dy
+            if distance_squared > light.radius * light.radius:
+                continue
+            distance = math.sqrt(distance_squared)
             # Closer + brighter + more intense wins.
-            score = light.intensity * light.life * (1.0 - d / max(light.radius, 0.5))
+            score = light.intensity * light.life * (
+                1.0 - distance / max(light.radius, 0.5)
+            )
             if score > best_score:
                 best_score = score
                 best = light
@@ -755,6 +794,7 @@ class LightingMixin:
         # Called on floor/theme change alongside ``tile_cache.clear``; bounds
         # the lit-actor tint cache and invalidates any sized buffers.
         self._lit_shade_cache = OrderedDict()
+        self._lit_composite_cache = OrderedDict()
         self._light_sprite_cache = {}
         self._flicker_scratch_cache = {}
         self._light_buffer_surface = None

@@ -202,6 +202,42 @@ class DarkLevelTests(unittest.TestCase):
             finally:
                 pass
 
+    def test_stationary_reveal_pass_is_cached_and_invalidates_safely(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, seed=2441)
+            game.set_current_floor_dark(False)
+            game.revealed_tiles = set()
+            game.update_revealed_tiles()
+
+            first_state = game._last_reveal_state
+            first_tiles = set(game.revealed_tiles)
+            game.update_revealed_tiles()
+            self.assertIs(game._last_reveal_state, first_state)
+            self.assertEqual(game.revealed_tiles, first_tiles)
+
+            # External/test tooling may clear the set in place. The central-tile
+            # guard must detect that even though set identity and position match.
+            game.revealed_tiles.clear()
+            game.update_revealed_tiles()
+            self.assertGreater(len(game.revealed_tiles), 0)
+            self.assertIsNot(game._last_reveal_state, first_state)
+
+            moved_state = game._last_reveal_state
+            game.player.x += 0.125
+            game.update_revealed_tiles()
+            self.assertIsNot(game._last_reveal_state, moved_state)
+
+            retained_tiles = game.revealed_tiles
+            game.set_current_floor_dark(True)
+            game._last_reveal_state = (
+                retained_tiles,
+                game.current_depth - 1,
+                game.player.x,
+                game.player.y,
+            )
+            game.update_revealed_tiles()
+            self.assertIsNone(game._last_reveal_state)
+
     def test_revealed_tiles_roundtrip_through_save(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, seed=2451)

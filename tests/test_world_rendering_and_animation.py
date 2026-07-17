@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -51,6 +52,166 @@ class GraphicsAnimation21Tests(unittest.TestCase):
 
     def surface_bytes(self, surface: pygame.Surface) -> bytes:
         return pygame.image.tobytes(surface, "RGBA")
+
+    def rendered_projectile_frame_time(
+        self, game: Game, projectile: Projectile
+    ) -> float:
+        with mock.patch.object(
+            game.sprites,
+            "projectile_frame",
+            wraps=game.sprites.projectile_frame,
+        ) as projectile_frame:
+            game.draw_projectile(projectile)
+        return float(projectile_frame.call_args.args[1])
+
+    def test_projectile_animation_cadence_ignores_travel_direction(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            open_dungeon = mock.Mock()
+            open_dungeon.is_floor.return_value = True
+            spawn_x, spawn_y = game.player.x, game.player.y
+            forward = Projectile(
+                spawn_x, spawn_y, 4.0, -1.5, 1, "player", (70, 165, 255)
+            )
+            reverse = Projectile(
+                spawn_x, spawn_y, -4.0, 1.5, 1, "player", (70, 165, 255)
+            )
+            steps = (0.04, 0.07, 0.13)
+
+            for dt in steps:
+                self.assertTrue(forward.update(dt, open_dungeon))
+                self.assertTrue(reverse.update(dt, open_dungeon))
+
+            self.assertNotEqual((forward.x, forward.y), (reverse.x, reverse.y))
+            game.elapsed = 2.0
+            forward_frame_time = self.rendered_projectile_frame_time(game, forward)
+            game.elapsed = 47.0
+            reverse_frame_time = self.rendered_projectile_frame_time(game, reverse)
+
+            expected_time = sum(steps)
+            self.assertAlmostEqual(forward.anim_time, expected_time)
+            self.assertAlmostEqual(reverse.anim_time, expected_time)
+            self.assertAlmostEqual(forward_frame_time, reverse_frame_time)
+            self.assertAlmostEqual(forward_frame_time, expected_time)
+
+    def test_homing_turns_do_not_change_projectile_animation_cadence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            open_dungeon = mock.Mock()
+            open_dungeon.is_floor.return_value = True
+            target = game.enemies[0]
+            game.enemies = [target]
+            homing = Projectile(
+                target.x - 2.0,
+                target.y,
+                0.0,
+                -6.0,
+                1,
+                "player",
+                (70, 165, 255),
+                homing=1.0,
+            )
+            straight = Projectile(
+                target.x - 2.0,
+                target.y,
+                0.0,
+                -6.0,
+                1,
+                "player",
+                (70, 165, 255),
+            )
+            steps = (0.04, 0.06, 0.08)
+
+            for dt in steps:
+                game._steer_homing_projectile(homing, dt)
+                self.assertTrue(homing.update(dt, open_dungeon))
+                self.assertTrue(straight.update(dt, open_dungeon))
+
+            self.assertGreater(homing.vx, 0.0)
+            self.assertGreater(homing.x, straight.x)
+            self.assertGreater(homing.y, straight.y)
+            game.elapsed = 8.5
+            homing_frame_time = self.rendered_projectile_frame_time(game, homing)
+            straight_frame_time = self.rendered_projectile_frame_time(game, straight)
+
+            expected_time = sum(steps)
+            self.assertAlmostEqual(homing.anim_time, expected_time)
+            self.assertAlmostEqual(straight.anim_time, expected_time)
+            self.assertAlmostEqual(homing_frame_time, straight_frame_time)
+            self.assertAlmostEqual(homing_frame_time, expected_time)
+
+    def test_projectile_frame_stays_fixed_without_simulation_update(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            open_dungeon = mock.Mock()
+            open_dungeon.is_floor.return_value = True
+            projectile = Projectile(
+                game.player.x,
+                game.player.y,
+                3.0,
+                1.0,
+                1,
+                "player",
+                (70, 165, 255),
+            )
+            self.assertTrue(projectile.update(0.19, open_dungeon))
+            paused_anim_time = projectile.anim_time
+            paused_position = (projectile.x, projectile.y)
+
+            game.elapsed = 1.0
+            before_time = self.rendered_projectile_frame_time(game, projectile)
+            before_frame = game.sprites.projectile_frame(
+                projectile.owner,
+                before_time,
+                archetype=projectile.archetype,
+            )
+            game.elapsed = 99.75
+            after_time = self.rendered_projectile_frame_time(game, projectile)
+            after_frame = game.sprites.projectile_frame(
+                projectile.owner,
+                after_time,
+                archetype=projectile.archetype,
+            )
+
+            self.assertEqual(projectile.anim_time, paused_anim_time)
+            self.assertEqual((projectile.x, projectile.y), paused_position)
+            self.assertAlmostEqual(before_time, after_time)
+            self.assertEqual(
+                self.surface_bytes(before_frame), self.surface_bytes(after_frame)
+            )
+
+    def test_hit_reactions_use_their_own_local_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            enemy = game.enemies[0]
+            enemy_id = id(enemy)
+            game.player_hit_flash = 0.22
+            game.player_hit_flash_duration = 0.22
+            game.enemy_hit_flashes[enemy_id] = 0.22
+            game.enemy_hit_flash_durations[enemy_id] = 0.22
+
+            def rendered_progress() -> tuple[float, float]:
+                with mock.patch.object(
+                    game.sprites,
+                    "player_visual",
+                    wraps=game.sprites.player_visual,
+                ) as player_visual, mock.patch.object(
+                    game.sprites,
+                    "enemy_visual",
+                    wraps=game.sprites.enemy_visual,
+                ) as enemy_visual:
+                    game.draw_player(game.player)
+                    game.draw_enemy(enemy)
+                return (
+                    float(player_visual.call_args.kwargs["action_progress"]),
+                    float(enemy_visual.call_args.kwargs["action_progress"]),
+                )
+
+            self.assertEqual(rendered_progress(), (0.0, 0.0))
+            game.update_visual_effects(0.11)
+            player_progress, enemy_progress = rendered_progress()
+            self.assertAlmostEqual(player_progress, 0.5, places=5)
+            self.assertAlmostEqual(enemy_progress, 0.5, places=5)
 
     def test_sprite_atlas_exposes_cached_animation_frames(
         self,

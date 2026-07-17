@@ -74,8 +74,19 @@ class SoftShadow38Tests(unittest.TestCase):
                 bucket_a = game._soft_shadow_template(60)
                 bucket_b = game._soft_shadow_template(61)
                 self.assertIs(bucket_a, bucket_b)
+
+                # Final isometric dimensions are cached too, avoiding one
+                # smoothscale per actor and frame in dense encounters.
+                scaled_a = game._scaled_soft_shadow(64, 24)
+                scaled_b = game._scaled_soft_shadow(64, 24)
+                scaled_other = game._scaled_soft_shadow(64, 25)
+                self.assertIs(scaled_a, scaled_b)
+                self.assertIsNot(scaled_a, scaled_other)
+                self.assertEqual(scaled_a.get_size(), (64, 24))
             finally:
                 pass
+
+
 
     def test_draw_shadow_applied_consistently_to_all_actors_and_props(
         self,

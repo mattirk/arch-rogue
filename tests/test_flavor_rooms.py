@@ -167,8 +167,24 @@ class FlavorRoomTests(unittest.TestCase):
                 for npc in game.idle_npcs
                 if _room_contains(garden_room, npc.x, npc.y)
             ]
-            self.assertLessEqual(len(bar_npcs), 1)
-            self.assertTrue(all(npc.kind == "bar" for npc in bar_npcs))
+            patrons = [npc for npc in bar_npcs if npc.kind == "bar"]
+            dancers = [npc for npc in bar_npcs if npc.kind == "bar_dancer"]
+            self.assertLessEqual(len(patrons), 1)
+            self.assertEqual(len(dancers), 1)
+            self.assertEqual(dancers[0].name, "Bar Dancer")
+            self.assertEqual(dancers[0].role, "Tavern Reveler")
+            dancer_anchor = bar.anchor("bar_dancer")
+            self.assertIsNotNone(dancer_anchor)
+            assert dancer_anchor is not None
+            dancer_motion = game.friendly_npc_motion(dancers[0])
+            self.assertEqual(
+                (dancer_motion.home_x, dancer_motion.home_y),
+                (dancer_anchor[0] + 0.5, dancer_anchor[1] + 0.5),
+            )
+            self.assertEqual(
+                len({(int(npc.x), int(npc.y)) for npc in bar_npcs}),
+                len(bar_npcs),
+            )
             frogs = [npc for npc in garden_npcs if npc.kind == "garden_frog"]
             wanderers = [npc for npc in garden_npcs if npc.kind == "garden"]
             self.assertEqual(len(frogs), 2)
@@ -217,6 +233,18 @@ class FlavorRoomTests(unittest.TestCase):
                 spawned[special.kind] += any(
                     npc.kind == special.kind for npc in room_npcs
                 )
+                if special.kind == BAR_ROOM_KIND:
+                    dancers = [
+                        npc for npc in room_npcs if npc.kind == "bar_dancer"
+                    ]
+                    self.assertEqual(len(dancers), 1)
+                    self.assertIsNotNone(special.anchor("bar_dancer"))
+                    patrons = [npc for npc in room_npcs if npc.kind == "bar"]
+                    self.assertLessEqual(len(patrons), 1)
+                    self.assertEqual(
+                        len({(int(npc.x), int(npc.y)) for npc in room_npcs}),
+                        len(room_npcs),
+                    )
                 if special.kind == GARDEN_ROOM_KIND:
                     frogs = [
                         npc for npc in room_npcs if npc.kind == "garden_frog"
@@ -361,11 +389,14 @@ class FlavorRoomTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self._make_game_with_flavor_room(tmpdir=tmpdir)
             self.assertEqual(
+                sum(npc.kind == "bar_dancer" for npc in game.idle_npcs), 1
+            )
+            self.assertEqual(
                 sum(npc.kind == "garden_frog" for npc in game.idle_npcs), 2
             )
             self.assertTrue(
                 {npc.kind for npc in game.idle_npcs}.issubset(
-                    {"bar", "garden", "garden_frog"}
+                    {"bar", "bar_dancer", "garden", "garden_frog"}
                 )
             )
             data = copy.deepcopy(game.serialize_run_state())
@@ -387,6 +418,66 @@ class FlavorRoomTests(unittest.TestCase):
                 self.assertEqual(restored.name, original.name)
                 self.assertEqual(restored.role, original.role)
                 self.assertEqual(restored.color, original.color)
+
+    def test_pre_dancer_bar_save_backfills_without_adding_optional_patron(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_game_with_flavor_room(tmpdir=tmpdir, seed=4)
+            source_bar = game.dungeon.special_room_for_kind(BAR_ROOM_KIND)
+            assert source_bar is not None
+            patron_roll = game._flavor_room_rng(source_bar, salt=0xB4B).random()
+            self.assertLess(patron_roll, 0.50)
+            self.assertEqual(
+                sum(npc.kind == "bar" for npc in game.idle_npcs), 1
+            )
+            data = copy.deepcopy(game.serialize_run_state())
+            data["idle_npcs"] = [
+                npc
+                for npc in data["idle_npcs"]
+                if npc.get("kind") not in {"bar", "bar_dancer"}
+            ]
+            bar_data = next(
+                room
+                for room in data["dungeon"]["special_rooms"]
+                if room.get("kind") == BAR_ROOM_KIND
+            )
+            dancer_anchor_tile = bar_data["anchor_points"].pop("bar_dancer")
+            bar_data["reserved_tiles"] = [
+                tile
+                for tile in bar_data["reserved_tiles"]
+                if tile != dancer_anchor_tile
+            ]
+
+            loaded = Game(
+                screen_size=(820, 540),
+                headless=True,
+                save_path=Path(tmpdir) / "pre-dancer.json",
+            )
+            loaded.options_path = Path(tmpdir) / "pre-dancer-options.json"
+            loaded.restore_run_state(data)
+            dancers = [
+                npc for npc in loaded.idle_npcs if npc.kind == "bar_dancer"
+            ]
+            self.assertEqual(len(dancers), 1)
+            self.assertEqual(dancers[0].name, "Bar Dancer")
+            self.assertEqual(dancers[0].role, "Tavern Reveler")
+            self.assertEqual(dancers[0].color, (224, 126, 72))
+            self.assertFalse(any(npc.kind == "bar" for npc in loaded.idle_npcs))
+            bar = loaded.dungeon.special_room_for_kind(BAR_ROOM_KIND)
+            assert bar is not None
+            self.assertIsNotNone(bar.anchor("bar_dancer"))
+
+            before = [
+                (id(npc), npc.kind, npc.name, npc.x, npc.y)
+                for npc in loaded.idle_npcs
+            ]
+            loaded._reconcile_bar_dancers()
+            self.assertEqual(
+                [
+                    (id(npc), npc.kind, npc.name, npc.x, npc.y)
+                    for npc in loaded.idle_npcs
+                ],
+                before,
+            )
 
     def test_pre_frog_garden_save_backfills_exactly_two_frogs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -436,6 +527,90 @@ class FlavorRoomTests(unittest.TestCase):
                 ],
                 before,
             )
+
+    def test_bar_dancer_reconciliation_preserves_moved_actor_and_deduplicates(self) -> None:
+        game = self._make_game_with_flavor_room()
+        try:
+            special = game.dungeon.special_room_for_kind(BAR_ROOM_KIND)
+            assert special is not None
+            room = game.dungeon.rooms[special.room_index]
+            dancers = [
+                npc
+                for npc in game.idle_npcs
+                if npc.kind == "bar_dancer"
+                and _room_contains(room, npc.x, npc.y)
+            ]
+            self.assertEqual(len(dancers), 1)
+            retained = dancers[0]
+            old_anchor = special.anchor("bar_dancer")
+            self.assertIsNotNone(old_anchor)
+            assert old_anchor is not None
+            occupied = {
+                (int(npc.x), int(npc.y))
+                for npc in game.idle_npcs
+                if npc is not retained
+            }
+            moved_tile = next(
+                (x, y)
+                for x in range(room.x + 1, room.x + room.w - 1)
+                for y in range(room.y + 1, room.y + room.h - 1)
+                if (x, y) != old_anchor
+                and (x, y) not in occupied
+                and not game.dungeon.blocked_for_radius(x + 0.5, y + 0.5, 0.27)
+            )
+            retained.x = moved_tile[0] + 0.5
+            retained.y = moved_tile[1] + 0.5
+            game.idle_npcs.append(
+                IdleNpc(
+                    old_anchor[0] + 0.5,
+                    old_anchor[1] + 0.5,
+                    kind="bar_dancer",
+                    name="Duplicate Dancer",
+                    role="Duplicate",
+                )
+            )
+            special.anchor_points.pop("bar_dancer")
+            special.reserved_tiles = [
+                tile for tile in special.reserved_tiles if tuple(tile[:2]) != old_anchor
+            ]
+
+            game._reconcile_bar_dancers()
+            repaired = [
+                npc
+                for npc in game.idle_npcs
+                if npc.kind == "bar_dancer"
+                and _room_contains(room, npc.x, npc.y)
+            ]
+            self.assertEqual(repaired, [retained])
+            self.assertEqual(
+                (retained.x, retained.y),
+                (moved_tile[0] + 0.5, moved_tile[1] + 0.5),
+            )
+            self.assertEqual(special.anchor("bar_dancer"), moved_tile)
+
+            before = (
+                [(id(npc), npc.name, npc.x, npc.y) for npc in repaired],
+                copy.deepcopy(special.anchor_points),
+                copy.deepcopy(special.reserved_tiles),
+            )
+            game._reconcile_bar_dancers()
+            self.assertEqual(
+                (
+                    [
+                        (id(npc), npc.name, npc.x, npc.y)
+                        for npc in game.idle_npcs
+                        if npc.kind == "bar_dancer"
+                        and _room_contains(room, npc.x, npc.y)
+                    ],
+                    special.anchor_points,
+                    special.reserved_tiles,
+                ),
+                before,
+            )
+        finally:
+            tmp = getattr(game, "_flavor_tmpdir", None)
+            if tmp is not None:
+                tmp.cleanup()
 
     def test_garden_reconciliation_repairs_duplicates_and_stale_anchors(self) -> None:
         game = self._make_game_with_flavor_room()
@@ -525,7 +700,18 @@ class FlavorRoomTests(unittest.TestCase):
                 game.update_revealed_tiles()
                 game.draw()
                 break
-            # Explicitly render on a frog tile so the dedicated asset path runs.
+            # Explicitly render both dedicated flavor-actor asset branches.
+            dancer = next(npc for npc in game.idle_npcs if npc.kind == "bar_dancer")
+            dancer_frame = game.sprites.bar_dancer_visual(
+                game.elapsed, dancing=True, clip_progress=0.0
+            )
+            self.assertTrue(dancer_frame.is_asset)
+            self.assertEqual(dancer_frame.key[1], "bar_dancer")
+            game.player.x = dancer.x
+            game.player.y = dancer.y
+            game.update_revealed_tiles()
+            game.draw()
+
             frog = next(npc for npc in game.idle_npcs if npc.kind == "garden_frog")
             self.assertTrue(
                 game.sprites.garden_frog_visual(
@@ -568,14 +754,15 @@ class FlavorRoomTests(unittest.TestCase):
 
     # --- helpers --------------------------------------------------------
 
-    def _make_game_with_flavor_room(self, tmpdir: str | None = None) -> Game:
+    def _make_game_with_flavor_room(
+        self, tmpdir: str | None = None, *, seed: int = 3001
+    ) -> Game:
         owns_tmp = tmpdir is None
         tmp: tempfile.TemporaryDirectory | None = None
         if owns_tmp:
             tmp = tempfile.TemporaryDirectory()
             tmpdir = tmp.name
         assert tmpdir is not None
-        seed = 3001
         try:
             game = Game(
                 screen_size=(820, 540),
@@ -588,11 +775,14 @@ class FlavorRoomTests(unittest.TestCase):
             self.assertIsNotNone(game.dungeon.special_room_for_kind(BAR_ROOM_KIND))
             self.assertIsNotNone(game.dungeon.special_room_for_kind(GARDEN_ROOM_KIND))
             self.assertEqual(
+                sum(npc.kind == "bar_dancer" for npc in game.idle_npcs), 1
+            )
+            self.assertEqual(
                 sum(npc.kind == "garden_frog" for npc in game.idle_npcs), 2
             )
             self.assertTrue(
                 {npc.kind for npc in game.idle_npcs}.issubset(
-                    {"bar", "garden", "garden_frog"}
+                    {"bar", "bar_dancer", "garden", "garden_frog"}
                 )
             )
             if owns_tmp and tmp is not None:

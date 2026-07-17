@@ -646,6 +646,208 @@
       ],
       "target_height": 118
     },
+    "bar_dancer": {
+      "aliases": [
+        "Bar Dancer",
+        "bar_dancer"
+      ],
+      "category": "npc",
+      "clips": {
+        "dance": {
+          "directions": {
+            "east": [
+              "actors/bar_dancer/animations/dance/east/frame_000.png",
+              "actors/bar_dancer/animations/dance/east/frame_001.png",
+              "actors/bar_dancer/animations/dance/east/frame_002.png",
+              "actors/bar_dancer/animations/dance/east/frame_003.png",
+              "actors/bar_dancer/animations/dance/east/frame_004.png",
+              "actors/bar_dancer/animations/dance/east/frame_005.png",
+              "actors/bar_dancer/animations/dance/east/frame_006.png",
+              "actors/bar_dancer/animations/dance/east/frame_007.png"
+            ],
+            "north": [
+              "actors/bar_dancer/animations/dance/north/frame_000.png",
+              "actors/bar_dancer/animations/dance/north/frame_001.png",
+              "actors/bar_dancer/animations/dance/north/frame_002.png",
+              "actors/bar_dancer/animations/dance/north/frame_003.png",
+              "actors/bar_dancer/animations/dance/north/frame_004.png",
+              "actors/bar_dancer/animations/dance/north/frame_005.png",
+              "actors/bar_dancer/animations/dance/north/frame_006.png",
+              "actors/bar_dancer/animations/dance/north/frame_007.png"
+            ],
+            "north-east": [
+              "actors/bar_dancer/animations/dance/north-east/frame_000.png",
+              "actors/bar_dancer/animations/dance/north-east/frame_001.png",
+              "actors/bar_dancer/animations/dance/north-east/frame_002.png",
+              "actors/bar_dancer/animations/dance/north-east/frame_003.png",
+              "actors/bar_dancer/animations/dance/north-east/frame_004.png",
+              "actors/bar_dancer/animations/dance/north-east/frame_005.png",
+              "actors/bar_dancer/animations/dance/north-east/frame_006.png",
+              "actors/bar_dancer/animations/dance/north-east/frame_007.png"
+            ],
+            "north-west": [
+              "actors/bar_dancer/animations/dance/north-west/frame_000.png",
+              "actors/bar_dancer/animations/dance/north-west/frame_001.png",
+              "actors/bar_dancer/animations/dance/north-west/frame_002.png",
+              "actors/bar_dancer/animations/dance/north-west/frame_003.png",
+              "actors/bar_dancer/animations/dance/north-west/frame_004.png",
+              "actors/bar_dancer/animations/dance/north-west/frame_005.png",
+              "actors/bar_dancer/animations/dance/north-west/frame_006.png",
+              "actors/bar_dancer/animations/dance/north-west/frame_007.png"
+            ],
+            "south": [
+              "actors/bar_dancer/animations/dance/south/frame_000.png",
+              "actors/bar_dancer/animations/dance/south/frame_001.png",
+              "actors/bar_dancer/animations/dance/south/frame_002.png",
+              "actors/bar_dancer/animations/dance/south/frame_003.png",
+              "actors/bar_dancer/animations/dance/south/frame_004.png",
+              "actors/bar_dancer/animations/dance/south/frame_005.png",
+              "actors/bar_dancer/animations/dance/south/frame_006.png",
+              "actors/bar_dancer/animations/dance/south/frame_007.png"
+            ],
+            "south-east": [
+              "actors/bar_dancer/animations/dance/south-east/frame_000.png",
+              "actors/bar_dancer/animations/dance/south-east/frame_001.png",
+              "actors/bar_dancer/animations/dance/south-east/frame_002.png",
+              "actors/bar_dancer/animations/dance/south-east/frame_003.png",
+              "actors/bar_dancer/animations/dance/south-east/frame_004.png",
+              "actors/bar_dancer/animations/dance/south-east/frame_005.png",
+              "actors/bar_dancer/animations/dance/south-east/frame_006.png",
+              "actors/bar_dancer/animations/dance/south-east/frame_007.png"
+            ],
+            "south-west": [
+              "actors/bar_dancer/animations/dance/south-west/frame_000.png",
+              "actors/bar_dancer/animations/dance/south-west/frame_001.png",
+              "actors/bar_dancer/animations/dance/south-west/frame_002.png",
+              "actors/bar_dancer/animations/dance/south-west/frame_003.png",
+              "actors/bar_dancer/animations/dance/south-west/frame_004.png",
+              "actors/bar_dancer/animations/dance/south-west/frame_005.png",
+              "actors/bar_dancer/animations/dance/south-west/frame_006.png",
+              "actors/bar_dancer/animations/dance/south-west/frame_007.png"
+            ],
+            "west": [
+              "actors/bar_dancer/animations/dance/west/frame_000.png",
+              "actors/bar_dancer/animations/dance/west/frame_001.png",
+              "actors/bar_dancer/animations/dance/west/frame_002.png",
+              "actors/bar_dancer/animations/dance/west/frame_003.png",
+              "actors/bar_dancer/animations/dance/west/frame_004.png",
+              "actors/bar_dancer/animations/dance/west/frame_005.png",
+              "actors/bar_dancer/animations/dance/west/frame_006.png",
+              "actors/bar_dancer/animations/dance/west/frame_007.png"
+            ]
+          },
+          "fps": 8.0,
+          "loop": true
+        },
+        "run": {
+          "directions": {
+            "east": [
+              "actors/bar_dancer/animations/walk/east/frame_000.png",
+              "actors/bar_dancer/animations/walk/east/frame_001.png",
+              "actors/bar_dancer/animations/walk/east/frame_002.png",
+              "actors/bar_dancer/animations/walk/east/frame_003.png",
+              "actors/bar_dancer/animations/walk/east/frame_004.png",
+              "actors/bar_dancer/animations/walk/east/frame_005.png",
+              "actors/bar_dancer/animations/walk/east/frame_006.png",
+              "actors/bar_dancer/animations/walk/east/frame_007.png"
+            ],
+            "north": [
+              "actors/bar_dancer/animations/walk/north/frame_000.png",
+              "actors/bar_dancer/animations/walk/north/frame_001.png",
+              "actors/bar_dancer/animations/walk/north/frame_002.png",
+              "actors/bar_dancer/animations/walk/north/frame_003.png",
+              "actors/bar_dancer/animations/walk/north/frame_004.png",
+              "actors/bar_dancer/animations/walk/north/frame_005.png",
+              "actors/bar_dancer/animations/walk/north/frame_006.png",
+              "actors/bar_dancer/animations/walk/north/frame_007.png"
+            ],
+            "north-east": [
+              "actors/bar_dancer/animations/walk/north-east/frame_000.png",
+              "actors/bar_dancer/animations/walk/north-east/frame_001.png",
+              "actors/bar_dancer/animations/walk/north-east/frame_002.png",
+              "actors/bar_dancer/animations/walk/north-east/frame_003.png",
+              "actors/bar_dancer/animations/walk/north-east/frame_004.png",
+              "actors/bar_dancer/animations/walk/north-east/frame_005.png",
+              "actors/bar_dancer/animations/walk/north-east/frame_006.png",
+              "actors/bar_dancer/animations/walk/north-east/frame_007.png"
+            ],
+            "north-west": [
+              "actors/bar_dancer/animations/walk/north-west/frame_000.png",
+              "actors/bar_dancer/animations/walk/north-west/frame_001.png",
+              "actors/bar_dancer/animations/walk/north-west/frame_002.png",
+              "actors/bar_dancer/animations/walk/north-west/frame_003.png",
+              "actors/bar_dancer/animations/walk/north-west/frame_004.png",
+              "actors/bar_dancer/animations/walk/north-west/frame_005.png",
+              "actors/bar_dancer/animations/walk/north-west/frame_006.png",
+              "actors/bar_dancer/animations/walk/north-west/frame_007.png"
+            ],
+            "south": [
+              "actors/bar_dancer/animations/walk/south/frame_000.png",
+              "actors/bar_dancer/animations/walk/south/frame_001.png",
+              "actors/bar_dancer/animations/walk/south/frame_002.png",
+              "actors/bar_dancer/animations/walk/south/frame_003.png",
+              "actors/bar_dancer/animations/walk/south/frame_004.png",
+              "actors/bar_dancer/animations/walk/south/frame_005.png",
+              "actors/bar_dancer/animations/walk/south/frame_006.png",
+              "actors/bar_dancer/animations/walk/south/frame_007.png"
+            ],
+            "south-east": [
+              "actors/bar_dancer/animations/walk/south-east/frame_000.png",
+              "actors/bar_dancer/animations/walk/south-east/frame_001.png",
+              "actors/bar_dancer/animations/walk/south-east/frame_002.png",
+              "actors/bar_dancer/animations/walk/south-east/frame_003.png",
+              "actors/bar_dancer/animations/walk/south-east/frame_004.png",
+              "actors/bar_dancer/animations/walk/south-east/frame_005.png",
+              "actors/bar_dancer/animations/walk/south-east/frame_006.png",
+              "actors/bar_dancer/animations/walk/south-east/frame_007.png"
+            ],
+            "south-west": [
+              "actors/bar_dancer/animations/walk/south-west/frame_000.png",
+              "actors/bar_dancer/animations/walk/south-west/frame_001.png",
+              "actors/bar_dancer/animations/walk/south-west/frame_002.png",
+              "actors/bar_dancer/animations/walk/south-west/frame_003.png",
+              "actors/bar_dancer/animations/walk/south-west/frame_004.png",
+              "actors/bar_dancer/animations/walk/south-west/frame_005.png",
+              "actors/bar_dancer/animations/walk/south-west/frame_006.png",
+              "actors/bar_dancer/animations/walk/south-west/frame_007.png"
+            ],
+            "west": [
+              "actors/bar_dancer/animations/walk/west/frame_000.png",
+              "actors/bar_dancer/animations/walk/west/frame_001.png",
+              "actors/bar_dancer/animations/walk/west/frame_002.png",
+              "actors/bar_dancer/animations/walk/west/frame_003.png",
+              "actors/bar_dancer/animations/walk/west/frame_004.png",
+              "actors/bar_dancer/animations/walk/west/frame_005.png",
+              "actors/bar_dancer/animations/walk/west/frame_006.png",
+              "actors/bar_dancer/animations/walk/west/frame_007.png"
+            ]
+          },
+          "fps": 8.0,
+          "loop": true
+        }
+      },
+      "name": "Bar Dancer",
+      "reference_height": 119,
+      "rotations": {
+        "east": "actors/bar_dancer/rotations/east.png",
+        "north": "actors/bar_dancer/rotations/north.png",
+        "north-east": "actors/bar_dancer/rotations/north-east.png",
+        "north-west": "actors/bar_dancer/rotations/north-west.png",
+        "south": "actors/bar_dancer/rotations/south.png",
+        "south-east": "actors/bar_dancer/rotations/south-east.png",
+        "south-west": "actors/bar_dancer/rotations/south-west.png",
+        "west": "actors/bar_dancer/rotations/west.png"
+      },
+      "source_anchor": [
+        122.0,
+        183.0
+      ],
+      "source_canvas": [
+        244,
+        244
+      ],
+      "target_height": 176
+    },
     "bone_imp": {
       "aliases": [
         "Bone Imp"
@@ -2882,6 +3084,92 @@
           "fps": 5.0,
           "loop": true
         },
+        "pet": {
+          "directions": {
+            "east": [
+              "actors/ranger/animations/pet/east/frame_000.png",
+              "actors/ranger/animations/pet/east/frame_001.png",
+              "actors/ranger/animations/pet/east/frame_002.png",
+              "actors/ranger/animations/pet/east/frame_003.png",
+              "actors/ranger/animations/pet/east/frame_004.png",
+              "actors/ranger/animations/pet/east/frame_005.png",
+              "actors/ranger/animations/pet/east/frame_006.png",
+              "actors/ranger/animations/pet/east/frame_007.png"
+            ],
+            "north": [
+              "actors/ranger/animations/pet/north/frame_000.png",
+              "actors/ranger/animations/pet/north/frame_001.png",
+              "actors/ranger/animations/pet/north/frame_002.png",
+              "actors/ranger/animations/pet/north/frame_003.png",
+              "actors/ranger/animations/pet/north/frame_004.png",
+              "actors/ranger/animations/pet/north/frame_005.png",
+              "actors/ranger/animations/pet/north/frame_006.png",
+              "actors/ranger/animations/pet/north/frame_007.png"
+            ],
+            "north-east": [
+              "actors/ranger/animations/pet/north-east/frame_000.png",
+              "actors/ranger/animations/pet/north-east/frame_001.png",
+              "actors/ranger/animations/pet/north-east/frame_002.png",
+              "actors/ranger/animations/pet/north-east/frame_003.png",
+              "actors/ranger/animations/pet/north-east/frame_004.png",
+              "actors/ranger/animations/pet/north-east/frame_005.png",
+              "actors/ranger/animations/pet/north-east/frame_006.png",
+              "actors/ranger/animations/pet/north-east/frame_007.png"
+            ],
+            "north-west": [
+              "actors/ranger/animations/pet/north-west/frame_000.png",
+              "actors/ranger/animations/pet/north-west/frame_001.png",
+              "actors/ranger/animations/pet/north-west/frame_002.png",
+              "actors/ranger/animations/pet/north-west/frame_003.png",
+              "actors/ranger/animations/pet/north-west/frame_004.png",
+              "actors/ranger/animations/pet/north-west/frame_005.png",
+              "actors/ranger/animations/pet/north-west/frame_006.png",
+              "actors/ranger/animations/pet/north-west/frame_007.png"
+            ],
+            "south": [
+              "actors/ranger/animations/pet/south/frame_000.png",
+              "actors/ranger/animations/pet/south/frame_001.png",
+              "actors/ranger/animations/pet/south/frame_002.png",
+              "actors/ranger/animations/pet/south/frame_003.png",
+              "actors/ranger/animations/pet/south/frame_004.png",
+              "actors/ranger/animations/pet/south/frame_005.png",
+              "actors/ranger/animations/pet/south/frame_006.png",
+              "actors/ranger/animations/pet/south/frame_007.png"
+            ],
+            "south-east": [
+              "actors/ranger/animations/pet/south-east/frame_000.png",
+              "actors/ranger/animations/pet/south-east/frame_001.png",
+              "actors/ranger/animations/pet/south-east/frame_002.png",
+              "actors/ranger/animations/pet/south-east/frame_003.png",
+              "actors/ranger/animations/pet/south-east/frame_004.png",
+              "actors/ranger/animations/pet/south-east/frame_005.png",
+              "actors/ranger/animations/pet/south-east/frame_006.png",
+              "actors/ranger/animations/pet/south-east/frame_007.png"
+            ],
+            "south-west": [
+              "actors/ranger/animations/pet/south-west/frame_000.png",
+              "actors/ranger/animations/pet/south-west/frame_001.png",
+              "actors/ranger/animations/pet/south-west/frame_002.png",
+              "actors/ranger/animations/pet/south-west/frame_003.png",
+              "actors/ranger/animations/pet/south-west/frame_004.png",
+              "actors/ranger/animations/pet/south-west/frame_005.png",
+              "actors/ranger/animations/pet/south-west/frame_006.png",
+              "actors/ranger/animations/pet/south-west/frame_007.png"
+            ],
+            "west": [
+              "actors/ranger/animations/pet/west/frame_000.png",
+              "actors/ranger/animations/pet/west/frame_001.png",
+              "actors/ranger/animations/pet/west/frame_002.png",
+              "actors/ranger/animations/pet/west/frame_003.png",
+              "actors/ranger/animations/pet/west/frame_004.png",
+              "actors/ranger/animations/pet/west/frame_005.png",
+              "actors/ranger/animations/pet/west/frame_006.png",
+              "actors/ranger/animations/pet/west/frame_007.png"
+            ]
+          },
+          "fps": 10.0,
+          "loop": false
+        },
         "run": {
           "directions": {
             "east": [
@@ -4730,6 +5018,381 @@
         180
       ],
       "target_height": 184
+    },
+    "spirit_beast": {
+      "aliases": [
+        "Spirit Beast",
+        "spirit_beast",
+        "2"
+      ],
+      "category": "familiar",
+      "clips": {
+        "attack": {
+          "directions": {
+            "east": [
+              "actors/spirit_beast/animations/attack/east/frame_000.png",
+              "actors/spirit_beast/animations/attack/east/frame_001.png",
+              "actors/spirit_beast/animations/attack/east/frame_002.png",
+              "actors/spirit_beast/animations/attack/east/frame_003.png",
+              "actors/spirit_beast/animations/attack/east/frame_004.png",
+              "actors/spirit_beast/animations/attack/east/frame_005.png",
+              "actors/spirit_beast/animations/attack/east/frame_006.png",
+              "actors/spirit_beast/animations/attack/east/frame_007.png"
+            ],
+            "north": [
+              "actors/spirit_beast/animations/attack/north/frame_000.png",
+              "actors/spirit_beast/animations/attack/north/frame_001.png",
+              "actors/spirit_beast/animations/attack/north/frame_002.png",
+              "actors/spirit_beast/animations/attack/north/frame_003.png",
+              "actors/spirit_beast/animations/attack/north/frame_004.png",
+              "actors/spirit_beast/animations/attack/north/frame_005.png",
+              "actors/spirit_beast/animations/attack/north/frame_006.png",
+              "actors/spirit_beast/animations/attack/north/frame_007.png"
+            ],
+            "north-east": [
+              "actors/spirit_beast/animations/attack/north-east/frame_000.png",
+              "actors/spirit_beast/animations/attack/north-east/frame_001.png",
+              "actors/spirit_beast/animations/attack/north-east/frame_002.png",
+              "actors/spirit_beast/animations/attack/north-east/frame_003.png",
+              "actors/spirit_beast/animations/attack/north-east/frame_004.png",
+              "actors/spirit_beast/animations/attack/north-east/frame_005.png",
+              "actors/spirit_beast/animations/attack/north-east/frame_006.png",
+              "actors/spirit_beast/animations/attack/north-east/frame_007.png"
+            ],
+            "north-west": [
+              "actors/spirit_beast/animations/attack/north-west/frame_000.png",
+              "actors/spirit_beast/animations/attack/north-west/frame_001.png",
+              "actors/spirit_beast/animations/attack/north-west/frame_002.png",
+              "actors/spirit_beast/animations/attack/north-west/frame_003.png",
+              "actors/spirit_beast/animations/attack/north-west/frame_004.png",
+              "actors/spirit_beast/animations/attack/north-west/frame_005.png",
+              "actors/spirit_beast/animations/attack/north-west/frame_006.png",
+              "actors/spirit_beast/animations/attack/north-west/frame_007.png"
+            ],
+            "south": [
+              "actors/spirit_beast/animations/attack/south/frame_000.png",
+              "actors/spirit_beast/animations/attack/south/frame_001.png",
+              "actors/spirit_beast/animations/attack/south/frame_002.png",
+              "actors/spirit_beast/animations/attack/south/frame_003.png",
+              "actors/spirit_beast/animations/attack/south/frame_004.png",
+              "actors/spirit_beast/animations/attack/south/frame_005.png",
+              "actors/spirit_beast/animations/attack/south/frame_006.png",
+              "actors/spirit_beast/animations/attack/south/frame_007.png"
+            ],
+            "south-east": [
+              "actors/spirit_beast/animations/attack/south-east/frame_000.png",
+              "actors/spirit_beast/animations/attack/south-east/frame_001.png",
+              "actors/spirit_beast/animations/attack/south-east/frame_002.png",
+              "actors/spirit_beast/animations/attack/south-east/frame_003.png",
+              "actors/spirit_beast/animations/attack/south-east/frame_004.png",
+              "actors/spirit_beast/animations/attack/south-east/frame_005.png",
+              "actors/spirit_beast/animations/attack/south-east/frame_006.png",
+              "actors/spirit_beast/animations/attack/south-east/frame_007.png"
+            ],
+            "south-west": [
+              "actors/spirit_beast/animations/attack/south-west/frame_000.png",
+              "actors/spirit_beast/animations/attack/south-west/frame_001.png",
+              "actors/spirit_beast/animations/attack/south-west/frame_002.png",
+              "actors/spirit_beast/animations/attack/south-west/frame_003.png",
+              "actors/spirit_beast/animations/attack/south-west/frame_004.png",
+              "actors/spirit_beast/animations/attack/south-west/frame_005.png",
+              "actors/spirit_beast/animations/attack/south-west/frame_006.png",
+              "actors/spirit_beast/animations/attack/south-west/frame_007.png"
+            ],
+            "west": [
+              "actors/spirit_beast/animations/attack/west/frame_000.png",
+              "actors/spirit_beast/animations/attack/west/frame_001.png",
+              "actors/spirit_beast/animations/attack/west/frame_002.png",
+              "actors/spirit_beast/animations/attack/west/frame_003.png",
+              "actors/spirit_beast/animations/attack/west/frame_004.png",
+              "actors/spirit_beast/animations/attack/west/frame_005.png",
+              "actors/spirit_beast/animations/attack/west/frame_006.png",
+              "actors/spirit_beast/animations/attack/west/frame_007.png"
+            ]
+          },
+          "fps": 18.0,
+          "loop": false
+        },
+        "idle": {
+          "directions": {
+            "east": [
+              "actors/spirit_beast/animations/idle/east/frame_000.png",
+              "actors/spirit_beast/animations/idle/east/frame_001.png",
+              "actors/spirit_beast/animations/idle/east/frame_002.png",
+              "actors/spirit_beast/animations/idle/east/frame_003.png",
+              "actors/spirit_beast/animations/idle/east/frame_004.png",
+              "actors/spirit_beast/animations/idle/east/frame_005.png",
+              "actors/spirit_beast/animations/idle/east/frame_006.png",
+              "actors/spirit_beast/animations/idle/east/frame_007.png"
+            ],
+            "north": [
+              "actors/spirit_beast/animations/idle/north/frame_000.png",
+              "actors/spirit_beast/animations/idle/north/frame_001.png",
+              "actors/spirit_beast/animations/idle/north/frame_002.png",
+              "actors/spirit_beast/animations/idle/north/frame_003.png",
+              "actors/spirit_beast/animations/idle/north/frame_004.png",
+              "actors/spirit_beast/animations/idle/north/frame_005.png",
+              "actors/spirit_beast/animations/idle/north/frame_006.png",
+              "actors/spirit_beast/animations/idle/north/frame_007.png"
+            ],
+            "north-east": [
+              "actors/spirit_beast/animations/idle/north-east/frame_000.png",
+              "actors/spirit_beast/animations/idle/north-east/frame_001.png",
+              "actors/spirit_beast/animations/idle/north-east/frame_002.png",
+              "actors/spirit_beast/animations/idle/north-east/frame_003.png",
+              "actors/spirit_beast/animations/idle/north-east/frame_004.png",
+              "actors/spirit_beast/animations/idle/north-east/frame_005.png",
+              "actors/spirit_beast/animations/idle/north-east/frame_006.png",
+              "actors/spirit_beast/animations/idle/north-east/frame_007.png"
+            ],
+            "north-west": [
+              "actors/spirit_beast/animations/idle/north-west/frame_000.png",
+              "actors/spirit_beast/animations/idle/north-west/frame_001.png",
+              "actors/spirit_beast/animations/idle/north-west/frame_002.png",
+              "actors/spirit_beast/animations/idle/north-west/frame_003.png",
+              "actors/spirit_beast/animations/idle/north-west/frame_004.png",
+              "actors/spirit_beast/animations/idle/north-west/frame_005.png",
+              "actors/spirit_beast/animations/idle/north-west/frame_006.png",
+              "actors/spirit_beast/animations/idle/north-west/frame_007.png"
+            ],
+            "south": [
+              "actors/spirit_beast/animations/idle/south/frame_000.png",
+              "actors/spirit_beast/animations/idle/south/frame_001.png",
+              "actors/spirit_beast/animations/idle/south/frame_002.png",
+              "actors/spirit_beast/animations/idle/south/frame_003.png",
+              "actors/spirit_beast/animations/idle/south/frame_004.png",
+              "actors/spirit_beast/animations/idle/south/frame_005.png",
+              "actors/spirit_beast/animations/idle/south/frame_006.png",
+              "actors/spirit_beast/animations/idle/south/frame_007.png"
+            ],
+            "south-east": [
+              "actors/spirit_beast/animations/idle/south-east/frame_000.png",
+              "actors/spirit_beast/animations/idle/south-east/frame_001.png",
+              "actors/spirit_beast/animations/idle/south-east/frame_002.png",
+              "actors/spirit_beast/animations/idle/south-east/frame_003.png",
+              "actors/spirit_beast/animations/idle/south-east/frame_004.png",
+              "actors/spirit_beast/animations/idle/south-east/frame_005.png",
+              "actors/spirit_beast/animations/idle/south-east/frame_006.png",
+              "actors/spirit_beast/animations/idle/south-east/frame_007.png"
+            ],
+            "south-west": [
+              "actors/spirit_beast/animations/idle/south-west/frame_000.png",
+              "actors/spirit_beast/animations/idle/south-west/frame_001.png",
+              "actors/spirit_beast/animations/idle/south-west/frame_002.png",
+              "actors/spirit_beast/animations/idle/south-west/frame_003.png",
+              "actors/spirit_beast/animations/idle/south-west/frame_004.png",
+              "actors/spirit_beast/animations/idle/south-west/frame_005.png",
+              "actors/spirit_beast/animations/idle/south-west/frame_006.png",
+              "actors/spirit_beast/animations/idle/south-west/frame_007.png"
+            ],
+            "west": [
+              "actors/spirit_beast/animations/idle/west/frame_000.png",
+              "actors/spirit_beast/animations/idle/west/frame_001.png",
+              "actors/spirit_beast/animations/idle/west/frame_002.png",
+              "actors/spirit_beast/animations/idle/west/frame_003.png",
+              "actors/spirit_beast/animations/idle/west/frame_004.png",
+              "actors/spirit_beast/animations/idle/west/frame_005.png",
+              "actors/spirit_beast/animations/idle/west/frame_006.png",
+              "actors/spirit_beast/animations/idle/west/frame_007.png"
+            ]
+          },
+          "fps": 5.0,
+          "loop": true
+        },
+        "pet": {
+          "directions": {
+            "east": [
+              "actors/spirit_beast/animations/pet/east/frame_000.png",
+              "actors/spirit_beast/animations/pet/east/frame_001.png",
+              "actors/spirit_beast/animations/pet/east/frame_002.png",
+              "actors/spirit_beast/animations/pet/east/frame_003.png",
+              "actors/spirit_beast/animations/pet/east/frame_004.png",
+              "actors/spirit_beast/animations/pet/east/frame_005.png",
+              "actors/spirit_beast/animations/pet/east/frame_006.png",
+              "actors/spirit_beast/animations/pet/east/frame_007.png"
+            ],
+            "north": [
+              "actors/spirit_beast/animations/pet/north/frame_000.png",
+              "actors/spirit_beast/animations/pet/north/frame_001.png",
+              "actors/spirit_beast/animations/pet/north/frame_002.png",
+              "actors/spirit_beast/animations/pet/north/frame_003.png",
+              "actors/spirit_beast/animations/pet/north/frame_004.png",
+              "actors/spirit_beast/animations/pet/north/frame_005.png",
+              "actors/spirit_beast/animations/pet/north/frame_006.png",
+              "actors/spirit_beast/animations/pet/north/frame_007.png"
+            ],
+            "north-east": [
+              "actors/spirit_beast/animations/pet/north-east/frame_000.png",
+              "actors/spirit_beast/animations/pet/north-east/frame_001.png",
+              "actors/spirit_beast/animations/pet/north-east/frame_002.png",
+              "actors/spirit_beast/animations/pet/north-east/frame_003.png",
+              "actors/spirit_beast/animations/pet/north-east/frame_004.png",
+              "actors/spirit_beast/animations/pet/north-east/frame_005.png",
+              "actors/spirit_beast/animations/pet/north-east/frame_006.png",
+              "actors/spirit_beast/animations/pet/north-east/frame_007.png"
+            ],
+            "north-west": [
+              "actors/spirit_beast/animations/pet/north-west/frame_000.png",
+              "actors/spirit_beast/animations/pet/north-west/frame_001.png",
+              "actors/spirit_beast/animations/pet/north-west/frame_002.png",
+              "actors/spirit_beast/animations/pet/north-west/frame_003.png",
+              "actors/spirit_beast/animations/pet/north-west/frame_004.png",
+              "actors/spirit_beast/animations/pet/north-west/frame_005.png",
+              "actors/spirit_beast/animations/pet/north-west/frame_006.png",
+              "actors/spirit_beast/animations/pet/north-west/frame_007.png"
+            ],
+            "south": [
+              "actors/spirit_beast/animations/pet/south/frame_000.png",
+              "actors/spirit_beast/animations/pet/south/frame_001.png",
+              "actors/spirit_beast/animations/pet/south/frame_002.png",
+              "actors/spirit_beast/animations/pet/south/frame_003.png",
+              "actors/spirit_beast/animations/pet/south/frame_004.png",
+              "actors/spirit_beast/animations/pet/south/frame_005.png",
+              "actors/spirit_beast/animations/pet/south/frame_006.png",
+              "actors/spirit_beast/animations/pet/south/frame_007.png"
+            ],
+            "south-east": [
+              "actors/spirit_beast/animations/pet/south-east/frame_000.png",
+              "actors/spirit_beast/animations/pet/south-east/frame_001.png",
+              "actors/spirit_beast/animations/pet/south-east/frame_002.png",
+              "actors/spirit_beast/animations/pet/south-east/frame_003.png",
+              "actors/spirit_beast/animations/pet/south-east/frame_004.png",
+              "actors/spirit_beast/animations/pet/south-east/frame_005.png",
+              "actors/spirit_beast/animations/pet/south-east/frame_006.png",
+              "actors/spirit_beast/animations/pet/south-east/frame_007.png"
+            ],
+            "south-west": [
+              "actors/spirit_beast/animations/pet/south-west/frame_000.png",
+              "actors/spirit_beast/animations/pet/south-west/frame_001.png",
+              "actors/spirit_beast/animations/pet/south-west/frame_002.png",
+              "actors/spirit_beast/animations/pet/south-west/frame_003.png",
+              "actors/spirit_beast/animations/pet/south-west/frame_004.png",
+              "actors/spirit_beast/animations/pet/south-west/frame_005.png",
+              "actors/spirit_beast/animations/pet/south-west/frame_006.png",
+              "actors/spirit_beast/animations/pet/south-west/frame_007.png"
+            ],
+            "west": [
+              "actors/spirit_beast/animations/pet/west/frame_000.png",
+              "actors/spirit_beast/animations/pet/west/frame_001.png",
+              "actors/spirit_beast/animations/pet/west/frame_002.png",
+              "actors/spirit_beast/animations/pet/west/frame_003.png",
+              "actors/spirit_beast/animations/pet/west/frame_004.png",
+              "actors/spirit_beast/animations/pet/west/frame_005.png",
+              "actors/spirit_beast/animations/pet/west/frame_006.png",
+              "actors/spirit_beast/animations/pet/west/frame_007.png"
+            ]
+          },
+          "fps": 10.0,
+          "loop": false
+        },
+        "walk": {
+          "directions": {
+            "east": [
+              "actors/spirit_beast/animations/walk/east/frame_000.png",
+              "actors/spirit_beast/animations/walk/east/frame_001.png",
+              "actors/spirit_beast/animations/walk/east/frame_002.png",
+              "actors/spirit_beast/animations/walk/east/frame_003.png",
+              "actors/spirit_beast/animations/walk/east/frame_004.png",
+              "actors/spirit_beast/animations/walk/east/frame_005.png",
+              "actors/spirit_beast/animations/walk/east/frame_006.png",
+              "actors/spirit_beast/animations/walk/east/frame_007.png"
+            ],
+            "north": [
+              "actors/spirit_beast/animations/walk/north/frame_000.png",
+              "actors/spirit_beast/animations/walk/north/frame_001.png",
+              "actors/spirit_beast/animations/walk/north/frame_002.png",
+              "actors/spirit_beast/animations/walk/north/frame_003.png",
+              "actors/spirit_beast/animations/walk/north/frame_004.png",
+              "actors/spirit_beast/animations/walk/north/frame_005.png",
+              "actors/spirit_beast/animations/walk/north/frame_006.png",
+              "actors/spirit_beast/animations/walk/north/frame_007.png"
+            ],
+            "north-east": [
+              "actors/spirit_beast/animations/walk/north-east/frame_000.png",
+              "actors/spirit_beast/animations/walk/north-east/frame_001.png",
+              "actors/spirit_beast/animations/walk/north-east/frame_002.png",
+              "actors/spirit_beast/animations/walk/north-east/frame_003.png",
+              "actors/spirit_beast/animations/walk/north-east/frame_004.png",
+              "actors/spirit_beast/animations/walk/north-east/frame_005.png",
+              "actors/spirit_beast/animations/walk/north-east/frame_006.png",
+              "actors/spirit_beast/animations/walk/north-east/frame_007.png"
+            ],
+            "north-west": [
+              "actors/spirit_beast/animations/walk/north-west/frame_000.png",
+              "actors/spirit_beast/animations/walk/north-west/frame_001.png",
+              "actors/spirit_beast/animations/walk/north-west/frame_002.png",
+              "actors/spirit_beast/animations/walk/north-west/frame_003.png",
+              "actors/spirit_beast/animations/walk/north-west/frame_004.png",
+              "actors/spirit_beast/animations/walk/north-west/frame_005.png",
+              "actors/spirit_beast/animations/walk/north-west/frame_006.png",
+              "actors/spirit_beast/animations/walk/north-west/frame_007.png"
+            ],
+            "south": [
+              "actors/spirit_beast/animations/walk/south/frame_000.png",
+              "actors/spirit_beast/animations/walk/south/frame_001.png",
+              "actors/spirit_beast/animations/walk/south/frame_002.png",
+              "actors/spirit_beast/animations/walk/south/frame_003.png",
+              "actors/spirit_beast/animations/walk/south/frame_004.png",
+              "actors/spirit_beast/animations/walk/south/frame_005.png",
+              "actors/spirit_beast/animations/walk/south/frame_006.png",
+              "actors/spirit_beast/animations/walk/south/frame_007.png"
+            ],
+            "south-east": [
+              "actors/spirit_beast/animations/walk/south-east/frame_000.png",
+              "actors/spirit_beast/animations/walk/south-east/frame_001.png",
+              "actors/spirit_beast/animations/walk/south-east/frame_002.png",
+              "actors/spirit_beast/animations/walk/south-east/frame_003.png",
+              "actors/spirit_beast/animations/walk/south-east/frame_004.png",
+              "actors/spirit_beast/animations/walk/south-east/frame_005.png",
+              "actors/spirit_beast/animations/walk/south-east/frame_006.png",
+              "actors/spirit_beast/animations/walk/south-east/frame_007.png"
+            ],
+            "south-west": [
+              "actors/spirit_beast/animations/walk/south-west/frame_000.png",
+              "actors/spirit_beast/animations/walk/south-west/frame_001.png",
+              "actors/spirit_beast/animations/walk/south-west/frame_002.png",
+              "actors/spirit_beast/animations/walk/south-west/frame_003.png",
+              "actors/spirit_beast/animations/walk/south-west/frame_004.png",
+              "actors/spirit_beast/animations/walk/south-west/frame_005.png",
+              "actors/spirit_beast/animations/walk/south-west/frame_006.png",
+              "actors/spirit_beast/animations/walk/south-west/frame_007.png"
+            ],
+            "west": [
+              "actors/spirit_beast/animations/walk/west/frame_000.png",
+              "actors/spirit_beast/animations/walk/west/frame_001.png",
+              "actors/spirit_beast/animations/walk/west/frame_002.png",
+              "actors/spirit_beast/animations/walk/west/frame_003.png",
+              "actors/spirit_beast/animations/walk/west/frame_004.png",
+              "actors/spirit_beast/animations/walk/west/frame_005.png",
+              "actors/spirit_beast/animations/walk/west/frame_006.png",
+              "actors/spirit_beast/animations/walk/west/frame_007.png"
+            ]
+          },
+          "fps": 9.0,
+          "loop": true
+        }
+      },
+      "name": "Spirit Beast",
+      "reference_height": 76,
+      "rotations": {
+        "east": "actors/spirit_beast/rotations/east.png",
+        "north": "actors/spirit_beast/rotations/north.png",
+        "north-east": "actors/spirit_beast/rotations/north-east.png",
+        "north-west": "actors/spirit_beast/rotations/north-west.png",
+        "south": "actors/spirit_beast/rotations/south.png",
+        "south-east": "actors/spirit_beast/rotations/south-east.png",
+        "south-west": "actors/spirit_beast/rotations/south-west.png",
+        "west": "actors/spirit_beast/rotations/west.png"
+      },
+      "source_anchor": [
+        92.0,
+        127.0
+      ],
+      "source_canvas": [
+        184,
+        184
+      ],
+      "target_height": 126
     }
   },
   "directions": [

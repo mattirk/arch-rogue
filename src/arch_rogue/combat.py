@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import math
+from itertools import chain
 
 import pygame
 
@@ -41,6 +42,7 @@ from .constants import (
     PLAYER_MELEE_RANGE,
     PLAYER_MOVE_SPEED,
     PLAYER_PROJECTILE_HIT_RADIUS,
+    WALK_ANIM_RUNTIME_SCALE_FLOOR,
     WALK_ANIM_SPEED_CEIL,
     WALK_ANIM_SPEED_FLOOR,
     WALK_ANIMATION_RATE,
@@ -63,7 +65,6 @@ from .models import (
     FloatingText,
     Player,
     Projectile,
-    Shopkeeper,
 )
 
 
@@ -111,13 +112,7 @@ class CombatMixin:
         }.get(self.player.class_name, "arcane")
 
     def nova_damage_type(self) -> str:
-        return {
-            "Warden": "holy",
-            "Rogue": "poison",
-            "Arcanist": "frost",
-            "Acolyte": "shadow",
-            "Ranger": "physical",
-        }.get(self.player.class_name, "arcane")
+        return "frost"
 
     def equipment_stat_total(self, stat: str) -> float:
         return sum(
@@ -210,15 +205,96 @@ class CombatMixin:
             )
         )
 
-    def enemy_speed_multiplier(self, enemy: Enemy) -> float:
-        multiplier = 1.0
-        if enemy.statuses.get("chilled", 0.0) > 0:
-            multiplier *= 0.58
-        if enemy.statuses.get("snared", 0.0) > 0:
-            multiplier *= 0.45
-        if enemy.statuses.get("bound", 0.0) > 0:
-            multiplier *= 0.62
-        return multiplier
+    @staticmethod
+    def _average_slow_factors(
+        dt: float, factors: tuple[tuple[float, float], ...]
+    ) -> tuple[float, float]:
+        """Return exact average movement and cadence scales for overlapping slows."""
+        constant_scale = 1.0
+        partial: list[tuple[float, float]] | None = None
+        for ttl, scale in factors:
+            if ttl <= 0.0:
+                continue
+            if dt <= 0.0 or ttl >= dt:
+                constant_scale *= scale
+                continue
+            if partial is None:
+                partial = []
+            partial.append((ttl, scale))
+        if partial is None:
+            return (
+                constant_scale,
+                max(WALK_ANIM_RUNTIME_SCALE_FLOOR, constant_scale),
+            )
+
+        # Partial expirations are rare (one frame per effect). Integrate the
+        # exact piecewise product only on those frames; the common path above
+        # stays allocation-light.
+        breakpoints = [0.0, dt, *(ttl for ttl, _scale in partial)]
+        breakpoints.sort()
+        weighted_movement = 0.0
+        weighted_animation = 0.0
+        for start, end in zip(breakpoints, breakpoints[1:]):
+            if end <= start:
+                continue
+            midpoint = (start + end) * 0.5
+            interval_scale = constant_scale
+            for ttl, scale in partial:
+                if midpoint < ttl:
+                    interval_scale *= scale
+            duration = end - start
+            weighted_movement += interval_scale * duration
+            weighted_animation += max(
+                WALK_ANIM_RUNTIME_SCALE_FLOOR, interval_scale
+            ) * duration
+        return weighted_movement / dt, weighted_animation / dt
+
+    def enemy_speed_multiplier(self, enemy: Enemy, dt: float = 0.0) -> float:
+        movement_scale, _animation_scale = self._average_slow_factors(
+            dt,
+            (
+                (enemy.statuses.get("chilled", 0.0), 0.58),
+                (enemy.statuses.get("snared", 0.0), 0.45),
+                (enemy.statuses.get("bound", 0.0), 0.62),
+            ),
+        )
+        return movement_scale
+
+    def enemy_locomotion_scales(
+        self,
+        enemy: Enemy,
+        dt: float,
+        *,
+        time_skip_remaining: float | None = None,
+    ) -> tuple[float, float]:
+        time_ttl = (
+            self.player.time_skip_timer
+            if time_skip_remaining is None
+            else time_skip_remaining
+        )
+        return self._average_slow_factors(
+            dt,
+            (
+                (time_ttl, self.time_skip_factor()),
+                (enemy.statuses.get("chilled", 0.0), 0.58),
+                (enemy.statuses.get("snared", 0.0), 0.45),
+                (enemy.statuses.get("bound", 0.0), 0.62),
+            ),
+        )
+
+    def enemy_locomotion_scale(
+        self,
+        enemy: Enemy,
+        dt: float,
+        *,
+        time_skip_remaining: float | None = None,
+    ) -> float:
+        movement_scale, _animation_scale = self.enemy_locomotion_scales(
+            enemy,
+            dt,
+            time_skip_remaining=time_skip_remaining,
+        )
+        return movement_scale
 
     def mitigate_enemy_damage(self, enemy: Enemy, amount: int, damage_type: str) -> int:
         resistance = max(-0.35, min(0.70, enemy.resistances.get(damage_type, 0.0)))
@@ -231,8 +307,20 @@ class CombatMixin:
             adjusted = int(round(adjusted * 1.22))
         return max(1, adjusted)
 
-    def update_enemy_statuses(self, dt: float) -> None:
+    def update_enemy_statuses(
+        self, dt: float, *, time_skip_remaining: float | None = None
+    ) -> None:
         for enemy in list(self.enemies):
+            # Sample combined movement slows before decrementing status TTLs.
+            # update_enemies() consumes this once for exact partial intervals.
+            (
+                enemy.pending_locomotion_scale,
+                enemy.pending_locomotion_anim_scale,
+            ) = self.enemy_locomotion_scales(
+                enemy,
+                dt,
+                time_skip_remaining=time_skip_remaining,
+            )
             if not enemy.statuses:
                 continue
             if enemy.statuses.get("poisoned", 0.0) > 0:
@@ -363,7 +451,7 @@ class CombatMixin:
             "Rogue": ("Backstab", "Knife Fan", "Ambush Bell", "Shadow Dash"),
             "Arcanist": ("Mage Strike", "Arc Bolt", "Frost Nova", "Blink"),
             "Acolyte": ("Blood Rite", "Spirit Bolt", "Spirit Call", "Dark Step"),
-            "Ranger": ("Hawk Slash", "Multishot", "Snare Nova", "Vault"),
+            "Ranger": ("Hawk Slash", "Multishot", "Spirit Beast", "Vault"),
         }
         return names.get(self.player.class_name, ("Slash", "Bolt", "Nova", "Dash"))
 
@@ -380,13 +468,21 @@ class CombatMixin:
         "Rogue": "ambush_bell",
         "Arcanist": "nova",
         "Acolyte": "spirit_call",
-        "Ranger": "nova",
+        "Ranger": "spirit_beast",
     }
     _CLASS_SKILL_CASTS: dict[str, str] = {
         "spirit_call": "player_cast_spirit_call",
+        "spirit_beast": "player_cast_spirit_beast",
         "ambush_bell": "player_cast_ambush_bell",
         "time_skip": "player_cast_time_skip",
         "nova": "player_cast_nova",
+    }
+    _CLASS_SKILL_BONUS_TERMS: dict[str, str] = {
+        "Warden": "Time Skip",
+        "Rogue": "Ambush Bell",
+        "Arcanist": "Nova",
+        "Acolyte": "Spirit Call",
+        "Ranger": "Spirit Beast",
     }
 
     def class_skill_kind(self) -> str:
@@ -400,29 +496,13 @@ class CombatMixin:
         getattr(self, cast_name)()
 
     def equipment_class_skill_bonus(self, text: str = "") -> bool:
-        """Class-skill equipment hook with legacy Nova save compatibility.
-
-        Existing gear stores `Nova` text in `Item.skill_bonus`; Rogue's Ambush
-        Bell and Warden's Time Skip intentionally reuse that budget while also
-        recognizing new `Ambush Bell` / `Time Skip` wording for future items.
-        """
-        if text:
-            if self.equipment_skill_bonus(text):
-                return True
-            if self.player.class_name == "Rogue" and "Nova" in text:
-                return self.equipment_skill_bonus(text.replace("Nova", "Ambush Bell"))
-            if self.player.class_name == "Warden" and "Nova" in text:
-                return self.equipment_skill_bonus(text.replace("Nova", "Time Skip"))
-            return False
-        if self.equipment_skill_bonus("Nova"):
-            return True
-        if self.player.class_name == "Rogue" and self.equipment_skill_bonus(
-            "Ambush Bell"
-        ):
-            return True
-        return self.player.class_name == "Warden" and self.equipment_skill_bonus(
-            "Time Skip"
+        """Whether equipped gear boosts this archetype's canonical class skill."""
+        canonical = self._CLASS_SKILL_BONUS_TERMS.get(
+            self.player.class_name, "Nova"
         )
+        if text:
+            return canonical in text and self.equipment_skill_bonus(text)
+        return self.equipment_skill_bonus(canonical)
 
     def skill_color(self) -> Color:
         colors = {
@@ -539,6 +619,8 @@ class CombatMixin:
                 ttl=1.8,
             )
         )
+        if node.archetype == "Ranger" and node.path == "Beast":
+            self._refresh_active_spirit_beast()
 
     def _apply_combo_bonus_delta(self, node) -> None:
         """Apply the combo-bonus delta caused by acquiring `node`.
@@ -657,8 +739,12 @@ class CombatMixin:
         cooldown *= 1.0 - cast_speed
         return max(0.22, cooldown)
 
-    def class_skill_mana_cost(self) -> int:
-        """Shared mana cost for the archetype class skill (hotkey 3)."""
+    def class_skill_mana_cost(self) -> int | float:
+        """Mana cost for the archetype class skill bound to hotkey 3."""
+        if self.player.class_name == "Ranger":
+            # Summoning Spirit Beast always costs exactly half of the current
+            # maximum mana. Commands issued while it is alive are free.
+            return self.player.max_mana * 0.5
         cost = 14 if self.player.class_name in ("Arcanist", "Acolyte") else 18
         if self.player.has_upgrade("acolyte_veil"):
             cost -= 2
@@ -674,7 +760,11 @@ class CombatMixin:
         return max(8, cost)
 
     def class_skill_cooldown(self) -> float:
-        """Shared cooldown for the archetype class skill (hotkey 3)."""
+        """Cooldown before an absent archetype class summon can be used again."""
+        if self.player.class_name == "Ranger":
+            # This gates replacement summons only; a living Spirit Beast can
+            # still receive free return/attack commands while the timer runs.
+            return 60.0
         cooldown = 2.65 if self.player.class_name == "Arcanist" else 3.2
         # Warden Time path Degree 1 (Temporal Sigil) cools the class skill faster.
         if self.player.class_name == "Warden" and self.player.has_upgrade("warden_ward"):
@@ -704,15 +794,18 @@ class CombatMixin:
             duration += 0.5
         return duration
 
-    def enemy_time_scale(self) -> float:
-        """Global dt multiplier applied to the enemy simulation.
-
-        Returns ``time_skip_factor`` while the Warden's Time Skip buff is
-        active, otherwise 1.0. The player's own timers/movement are untouched.
-        """
-        if self.player.time_skip_timer > 0:
-            return self.time_skip_factor()
-        return 1.0
+    def enemy_time_scale(
+        self, dt: float = 0.0, *, remaining: float | None = None
+    ) -> float:
+        """Average enemy simulation multiplier across this update interval."""
+        ttl = self.player.time_skip_timer if remaining is None else remaining
+        if ttl <= 0.0:
+            return 1.0
+        factor = self.time_skip_factor()
+        if dt > 0.0 and ttl < dt:
+            active_fraction = max(0.0, min(1.0, ttl / dt))
+            return 1.0 - (1.0 - factor) * active_fraction
+        return factor
 
     def dash_stamina_cost(self) -> int:
         cost = 12 if self.player.class_name in ("Rogue", "Ranger") else 18
@@ -837,10 +930,12 @@ class CombatMixin:
         if self.player.hp <= 0 and not self.run_stats.cause_of_death:
             self.run_stats.cause_of_death = f"{source} {damage_type} damage"
         self.run_stats.damage_taken += amount
-        flash = (160, 35, 32) if amount >= self.player.max_hp * 0.18 else (105, 24, 28)
-        self.player_hit_flash = max(
-            self.player_hit_flash, 0.22 if amount < self.player.max_hp * 0.18 else 0.32
-        )
+        heavy_hit = amount >= self.player.max_hp * 0.18
+        flash = (160, 35, 32) if heavy_hit else (105, 24, 28)
+        hit_duration = 0.32 if heavy_hit else 0.22
+        if hit_duration >= self.player_hit_flash:
+            self.player_hit_flash_duration = hit_duration
+        self.player_hit_flash = max(self.player_hit_flash, hit_duration)
         self.trigger_screen_flash(
             flash, 0.18 if amount < self.player.max_hp * 0.18 else 0.30
         )
@@ -864,11 +959,18 @@ class CombatMixin:
             )
         return amount
 
+    def _trigger_enemy_hit_flash(self, enemy: Enemy) -> None:
+        duration = 0.32 if enemy.kind == "boss" else 0.22
+        enemy_id = id(enemy)
+        if duration >= self.enemy_hit_flashes.get(enemy_id, 0.0):
+            self.enemy_hit_flash_durations[enemy_id] = duration
+        self.enemy_hit_flashes[enemy_id] = max(
+            self.enemy_hit_flashes.get(enemy_id, 0.0), duration
+        )
+
     def _reflect_thorns(self, attacker: Enemy, amount: int) -> None:
         attacker.hp -= amount
-        self.enemy_hit_flashes[id(attacker)] = max(
-            self.enemy_hit_flashes.get(id(attacker), 0.0), 0.18
-        )
+        self._trigger_enemy_hit_flash(attacker)
         self.floaters.append(
             FloatingText(
                 f"Thorns -{amount}",
@@ -891,6 +993,11 @@ class CombatMixin:
 
     def update_player(self, dt: float) -> None:
         self.player.moving = False
+        self.player.locomotion_anim_scale = 0.0
+        petting = (
+            getattr(self, "player_action_state", "") == "pet"
+            and getattr(self, "player_action_ttl", 0.0) > 0.0
+        )
         # Keyboard movement (WASD + arrows) takes priority so the game is
         # playable without holding the mouse. Mouse-hold-to-walk remains as
         # a fallback for players who prefer click-to-move style.
@@ -908,6 +1015,11 @@ class CombatMixin:
         if controller_moving:
             self.aim_input_mode = "controller"
             kbd_dx, kbd_dy = cx, cy
+        if petting:
+            # Keep the authored kneel grounded. Cooldowns, statuses, and resource
+            # regeneration below still advance normally during this brief pause.
+            kbd_dx = kbd_dy = 0.0
+            controller_moving = False
         equipment_move = max(-0.25, min(0.30, self.equipment_stat_total("move_speed")))
         move_speed = (
             PLAYER_MOVE_SPEED
@@ -930,22 +1042,31 @@ class CombatMixin:
                     if controller_moving:
                         self.snap_controller_aim_to_enemy()
                 magnitude = min(1.0, length)
-                self.move_actor(
+                moved = self.move_actor(
                     self.player,
                     nx * magnitude * move_speed * dt,
                     ny * magnitude * move_speed * dt,
                 )
+                if moved > 0.0 and dt > 0.0:
+                    self.player.locomotion_anim_scale = (
+                        moved / (dt * PLAYER_MOVE_SPEED)
+                    )
             if self.enemy_in_melee_arc():
                 self.player_melee_attack()
-        elif pygame.mouse.get_pressed()[0]:
+        elif not petting and pygame.mouse.get_pressed()[0]:
             dx, dy = self.face_player_toward_screen_point(*pygame.mouse.get_pos())
             distance = math.hypot(dx, dy)
             if distance > 0.12:
-                self.move_actor(
+                step = min(move_speed * dt, distance - 0.12)
+                moved = self.move_actor(
                     self.player,
-                    (dx / distance) * move_speed * dt,
-                    (dy / distance) * move_speed * dt,
+                    (dx / distance) * step,
+                    (dy / distance) * step,
                 )
+                if moved > 0.0 and dt > 0.0:
+                    self.player.locomotion_anim_scale = (
+                        moved / (dt * PLAYER_MOVE_SPEED)
+                    )
             if self.enemy_in_melee_arc():
                 self.player_melee_attack()
 
@@ -995,7 +1116,7 @@ class CombatMixin:
         )
         self.player.mana = min(self.player.max_mana, self.player.mana + mana_regen * dt)
 
-    def move_actor(self, actor: Player | Enemy, dx: float, dy: float) -> None:
+    def move_actor(self, actor: Player | Enemy, dx: float, dy: float) -> float:
         old_x, old_y = actor.x, actor.y
         # Big bosses (2x2 footprint) need a wider collision probe so they don't
         # clip into walls; regular actors keep the tight default radius.
@@ -1014,7 +1135,7 @@ class CombatMixin:
         actual_dx = actor.x - old_x
         actual_dy = actor.y - old_y
         distance = math.hypot(actual_dx, actual_dy)
-        if distance > 0.0001:
+        if distance > 0.0:
             actor.moving = True
             target_x = actual_dx / distance
             target_y = actual_dy / distance
@@ -1037,26 +1158,52 @@ class CombatMixin:
             # anim_time is advanced in update() via advance_animation_phases()
             # using a steady dt-based rate so the run cycle stays smooth even
             # when per-frame movement distance jitters from frame-rate variance.
+        return distance
+
+    def _move_enemy_locomotion(
+        self,
+        enemy: Enemy,
+        dx: float,
+        dy: float,
+        dt: float,
+        planned_scale: float,
+    ) -> None:
+        moved = self.move_actor(enemy, dx, dy)
+        if moved <= 0.0 or dt <= 0.0 or enemy.speed <= 0.0:
+            return
+        actual_scale = moved / (enemy.speed * dt)
+        if actual_scale < planned_scale - 1e-9:
+            enemy.locomotion_anim_scale = min(
+                enemy.locomotion_anim_scale,
+                max(WALK_ANIM_RUNTIME_SCALE_FLOOR, actual_scale),
+            )
 
     def advance_animation_phases(self, dt: float) -> None:
-        # Advance run-cycle animation phases on a fixed-timestep accumulator
-        # so the sprite/limb animation stays smooth even when per-frame dt
-        # jitters from frame-rate variance. The rate scales with the actor's
-        # speed so faster units take faster steps, but is clamped to a
-        # floor/ceiling (WALK_ANIM_SPEED_FLOOR/CEIL): without the floor, slow
-        # enemies cycle so slowly that the 12 discrete run frames are each
-        # held for many render frames, producing a visible stutter; the
-        # ceiling keeps very fast units (elites, haste) from blurring.
-        anim_dt = dt
+        # Base cadence remains clamped by actor type, then the runtime movement
+        # multiplier follows analog input, status effects, and Time Skip. This
+        # keeps authored footsteps synchronized when simulation speed changes
+        # without making naturally slow enemy archetypes freeze between frames.
         if self.player.moving:
-            self.player.anim_time += (
-                anim_dt * WALK_ANIMATION_RATE * self._anim_speed(PLAYER_MOVE_SPEED)
+            speed = min(
+                WALK_ANIM_SPEED_CEIL,
+                self._anim_speed(PLAYER_MOVE_SPEED)
+                * max(
+                    WALK_ANIM_RUNTIME_SCALE_FLOOR,
+                    self.player.locomotion_anim_scale,
+                ),
             )
+            self.player.anim_time += dt * WALK_ANIMATION_RATE * speed
         for enemy in self.enemies:
             if enemy.moving:
-                enemy.anim_time += (
-                    anim_dt * WALK_ANIMATION_RATE * self._anim_speed(enemy.speed)
+                speed = min(
+                    WALK_ANIM_SPEED_CEIL,
+                    self._anim_speed(enemy.speed)
+                    * max(
+                        WALK_ANIM_RUNTIME_SCALE_FLOOR,
+                        enemy.locomotion_anim_scale,
+                    ),
                 )
+                enemy.anim_time += dt * WALK_ANIMATION_RATE * speed
 
     @staticmethod
     def _anim_speed(speed: float) -> float:
@@ -1084,30 +1231,36 @@ class CombatMixin:
         return PLAYER_HIT_RADIUS + self.enemy_hit_radius(enemy)
 
     def resolve_actor_contacts(self, actor: Player | Enemy) -> None:
-        others: list[Player | Enemy | Shopkeeper]
-        if isinstance(actor, Player):
-            others = [*self.enemies, *self.shopkeepers]
+        actor_is_player = isinstance(actor, Player)
+        actor_radius = (
+            PLAYER_HIT_RADIUS if actor_is_player else self.enemy_hit_radius(actor)
+        )
+        # Preserve the original deterministic resolution order without allocating
+        # a fresh all-actor list for every mover. Most pairs do not overlap, so a
+        # squared-distance rejection also avoids their comparatively costly sqrt.
+        if actor_is_player:
+            others = chain(self.enemies, self.shopkeepers)
         else:
-            others = [
-                self.player,
-                *(enemy for enemy in self.enemies if enemy is not actor),
-                *self.shopkeepers,
-            ]
+            others = chain((self.player,), self.enemies, self.shopkeepers)
 
         for other in others:
+            if other is actor:
+                continue
             dx = actor.x - other.x
             dy = actor.y - other.y
-            distance = math.hypot(dx, dy)
-            other_radius = (
-                self.actor_hit_radius(other)
-                if isinstance(other, (Player, Enemy))
-                else 0.34
-            )
-            min_distance = self.actor_hit_radius(actor) + other_radius
-            if distance >= min_distance:
+            distance_squared = dx * dx + dy * dy
+            if isinstance(other, Player):
+                other_radius = PLAYER_HIT_RADIUS
+            elif isinstance(other, Enemy):
+                other_radius = self.enemy_hit_radius(other)
+            else:
+                other_radius = 0.34
+            min_distance = actor_radius + other_radius
+            if distance_squared >= min_distance * min_distance:
                 continue
 
-            if distance > 0.001:
+            if distance_squared > 0.000001:
+                distance = math.sqrt(distance_squared)
                 nx, ny = dx / distance, dy / distance
             else:
                 nx, ny = -actor.facing_x, -actor.facing_y
@@ -1121,12 +1274,33 @@ class CombatMixin:
             if not self.dungeon.blocked_for_radius(actor.x, target_y):
                 actor.y = target_y
 
-    def update_enemies(self, dt: float) -> None:
+    def update_enemies(
+        self,
+        dt: float,
+        *,
+        time_scale: float | None = None,
+        time_skip_remaining: float | None = None,
+    ) -> None:
         # Milestone 3.18 — Time Skip slows the enemy simulation uniformly
         # (movement and attack cadence) without affecting the player.
-        scaled_dt = dt * self.enemy_time_scale()
+        if time_scale is None:
+            time_scale = self.enemy_time_scale(
+                dt, remaining=time_skip_remaining
+            )
+        scaled_dt = dt * time_scale
         for enemy in self.enemies:
             enemy.moving = False
+            enemy.locomotion_anim_scale = 0.0
+            locomotion_scale = enemy.pending_locomotion_scale
+            animation_scale = enemy.pending_locomotion_anim_scale
+            if locomotion_scale is None or animation_scale is None:
+                locomotion_scale, animation_scale = self.enemy_locomotion_scales(
+                    enemy,
+                    dt,
+                    time_skip_remaining=time_skip_remaining,
+                )
+            enemy.pending_locomotion_scale = None
+            enemy.pending_locomotion_anim_scale = None
             if enemy.telegraph == "lured":
                 enemy.telegraph = ""
             enemy.attack_timer = max(0.0, enemy.attack_timer - scaled_dt)
@@ -1151,27 +1325,44 @@ class CombatMixin:
                 if player_distance > 0.001
                 else (0.0, 0.0)
             )
-            move_speed = enemy.speed * self.enemy_speed_multiplier(enemy)
+            move_speed = enemy.speed * locomotion_scale
+            enemy.locomotion_anim_scale = animation_scale
             if distance > 0.001:
                 enemy.facing_x = nx
                 enemy.facing_y = ny
 
-            # Enemies must actually see the player to attack; without this they
-            # melee/cast through walls when adjacent on the far side of a wall.
-            # Movement is intentionally not gated so pursuit around corners still
-            # works once an enemy has aggro'd. Ambush Bell lure only changes the
-            # movement target; attacks still require player LOS/range.
-            has_los = self.dungeon.line_of_sight(
-                enemy.x, enemy.y, self.player.x, self.player.y
+            # Enemies must actually see the player to attack; movement remains
+            # intentionally ungated so pursuit around corners still works. Trace
+            # LOS only when the pre-movement state could attack this frame. This
+            # preserves the former attack position/ordering while avoiding a wall
+            # walk for distant enemies and enemies whose cooldown is still active.
+            attack_ready = enemy.attack_timer <= 0
+            if lure is not None:
+                attack_in_range = player_distance <= enemy.attack_range
+            elif enemy.kind == "boss" or enemy.is_boss_encounter:
+                attack_in_range = (
+                    2.0 < distance <= 6.0 or distance <= enemy.attack_range
+                )
+            else:
+                attack_in_range = distance <= enemy.attack_range
+            has_los = (
+                attack_ready
+                and attack_in_range
+                and self.dungeon.line_of_sight(
+                    enemy.x, enemy.y, self.player.x, self.player.y
+                )
             )
 
             if lure is not None:
                 enemy.telegraph = "lured"
                 if distance > 0.12:
-                    self.move_actor(enemy, nx * move_speed * scaled_dt, ny * move_speed * scaled_dt)
+                    step = min(move_speed * dt, distance - 0.12)
+                    self._move_enemy_locomotion(
+                        enemy, nx * step, ny * step, dt, locomotion_scale
+                    )
                 if (
                     player_distance <= enemy.attack_range
-                    and enemy.attack_timer <= 0
+                    and attack_ready
                     and has_los
                 ):
                     if enemy.kind == "ranged":
@@ -1185,30 +1376,42 @@ class CombatMixin:
                 # same pressure pattern: close the gap, cast a bolt fan at mid
                 # range, and crush with melee up close.
                 if distance > enemy.attack_range:
-                    self.move_actor(enemy, nx * move_speed * scaled_dt, ny * move_speed * scaled_dt)
-                if 2.0 < distance <= 6.0 and enemy.attack_timer <= 0 and has_los:
+                    step = min(
+                        move_speed * dt, distance - enemy.attack_range
+                    )
+                    self._move_enemy_locomotion(
+                        enemy, nx * step, ny * step, dt, locomotion_scale
+                    )
+                if 2.0 < distance <= 6.0 and attack_ready and has_los:
                     self.enemy_cast(enemy, nx, ny)
-                elif (
-                    distance <= enemy.attack_range
-                    and enemy.attack_timer <= 0
-                    and has_los
-                ):
+                elif distance <= enemy.attack_range and attack_ready and has_los:
                     self.enemy_melee(enemy)
             elif enemy.kind == "ranged":
                 if 3.5 < distance:
-                    self.move_actor(enemy, nx * move_speed * scaled_dt, ny * move_speed * scaled_dt)
+                    step = min(move_speed * dt, distance - 3.5)
+                    self._move_enemy_locomotion(
+                        enemy, nx * step, ny * step, dt, locomotion_scale
+                    )
                 elif distance < 2.5:
-                    self.move_actor(enemy, -nx * move_speed * scaled_dt, -ny * move_speed * scaled_dt)
+                    step = min(move_speed * dt, 2.5 - distance)
+                    self._move_enemy_locomotion(
+                        enemy, -nx * step, -ny * step, dt, locomotion_scale
+                    )
                 if (
                     distance <= enemy.attack_range
-                    and enemy.attack_timer <= 0
+                    and attack_ready
                     and has_los
                 ):
                     self.enemy_cast(enemy, nx, ny)
             else:
                 if distance > enemy.attack_range:
-                    self.move_actor(enemy, nx * move_speed * scaled_dt, ny * move_speed * scaled_dt)
-                elif enemy.attack_timer <= 0 and has_los:
+                    step = min(
+                        move_speed * dt, distance - enemy.attack_range
+                    )
+                    self._move_enemy_locomotion(
+                        enemy, nx * step, ny * step, dt, locomotion_scale
+                    )
+                elif attack_ready and has_los:
                     self.enemy_melee(enemy)
 
     def enemy_melee(self, enemy: Enemy) -> None:
@@ -1292,16 +1495,28 @@ class CombatMixin:
                 self._steer_homing_projectile(projectile, dt)
             if not projectile.update(dt, self.dungeon):
                 continue
-            # Milestone 3.16 - carry a small moving light along each live
-            # projectile so bolts and arrows read as streaks of light. Reuses
-            # this loop so no new pass is added; the light is transient and
-            # decays in update_lights when the projectile dies.
-            self.add_light(
-                projectile.x, projectile.y,
-                LIGHT_PROJECTILE_RADIUS, projectile.color,
-                intensity=LIGHT_PROJECTILE_INTENSITY,
-                ttl=LIGHT_PROJECTILE_TTL, kind="projectile",
-            )
+            # Carry one small moving light per live projectile. Refreshing the
+            # same source preserves the leading glow and lets it decay after the
+            # projectile dies, without accumulating eight or more overlapping
+            # light-buffer stamps along every flight path.
+            projectile_light = projectile.light_source
+            if projectile_light is None or not projectile_light.alive:
+                projectile_light = self.add_light(
+                    projectile.x,
+                    projectile.y,
+                    LIGHT_PROJECTILE_RADIUS,
+                    projectile.color,
+                    intensity=LIGHT_PROJECTILE_INTENSITY,
+                    ttl=LIGHT_PROJECTILE_TTL,
+                    kind="projectile",
+                )
+                projectile.light_source = projectile_light
+            else:
+                projectile_light.x = projectile.x
+                projectile_light.y = projectile.y
+                projectile_light.color = projectile.color
+                projectile_light.ttl = LIGHT_PROJECTILE_TTL
+                projectile_light.max_ttl = LIGHT_PROJECTILE_TTL
             if projectile.owner == "player":
                 hit = self.first_enemy_near(
                     projectile.x, projectile.y, PLAYER_PROJECTILE_HIT_RADIUS
@@ -1323,9 +1538,8 @@ class CombatMixin:
                         status_effect=projectile.status_effect,
                         status_duration=projectile.status_duration,
                     )
-                    # Milestone 3.18.4 — Acolyte Spirit Bolt siphons life when the
-                    # Blood path is committed (same spell-leech ramp as Spirit
-                    # Call familiars and the legacy nova path).
+                    # Acolyte Spirit Bolt siphons life when the Blood path is
+                    # committed, using the same ramp as Spirit Call familiars.
                     if projectile.archetype == "Acolyte":
                         leech = self._acolyte_spell_leech()
                         if leech:
@@ -1344,18 +1558,18 @@ class CombatMixin:
                         continue
                     continue
             else:
-                # Milestone 3.15 — a summoner's familiars bodyguard the
-                # Acolyte, intercepting enemy bolts that pass near them. Only
-                # checked when a host is active so non-Acolyte runs pay nothing.
+                # A summoner's familiars bodyguard their owner by intercepting
+                # enemy bolts that pass near them. This path is skipped when no
+                # Acolyte spirit or Ranger Spirit Beast is active.
                 if self.familiars:
                     struck = None
                     for familiar in self.familiars:
+                        dx = projectile.x - familiar.x
+                        dy = projectile.y - familiar.y
                         if (
-                            math.hypot(
-                                projectile.x - familiar.x,
-                                projectile.y - familiar.y,
-                            )
+                            dx * dx + dy * dy
                             < ENEMY_PROJECTILE_HIT_RADIUS
+                            * ENEMY_PROJECTILE_HIT_RADIUS
                         ):
                             struck = familiar
                             break
@@ -1379,11 +1593,11 @@ class CombatMixin:
                             kind="burst",
                         )
                         continue
+                player_dx = projectile.x - self.player.x
+                player_dy = projectile.y - self.player.y
                 if (
-                    math.hypot(
-                        projectile.x - self.player.x, projectile.y - self.player.y
-                    )
-                    < ENEMY_PROJECTILE_HIT_RADIUS
+                    player_dx * player_dx + player_dy * player_dy
+                    < ENEMY_PROJECTILE_HIT_RADIUS * ENEMY_PROJECTILE_HIT_RADIUS
                 ):
                     amount = self.take_player_damage(
                         projectile.damage,
@@ -1420,11 +1634,13 @@ class CombatMixin:
         capstone.
         """
         nearest = None
-        best_dist = 6.5
+        best_distance_squared = 6.5 * 6.5
         for enemy in self.enemies:
-            dist = math.hypot(enemy.x - projectile.x, enemy.y - projectile.y)
-            if dist < best_dist:
-                best_dist = dist
+            dx = enemy.x - projectile.x
+            dy = enemy.y - projectile.y
+            distance_squared = dx * dx + dy * dy
+            if distance_squared < best_distance_squared:
+                best_distance_squared = distance_squared
                 nearest = enemy
         if nearest is None:
             return
@@ -1461,13 +1677,15 @@ class CombatMixin:
         if projectile.owner != "player":
             return
         best = None
-        best_dist = 2.6
+        best_distance_squared = 2.6 * 2.6
         for enemy in self.enemies:
             if enemy is primary or id(enemy) in projectile.hit_enemies:
                 continue
-            dist = math.hypot(enemy.x - primary.x, enemy.y - primary.y)
-            if dist < best_dist:
-                best_dist = dist
+            dx = enemy.x - primary.x
+            dy = enemy.y - primary.y
+            distance_squared = dx * dx + dy * dy
+            if distance_squared < best_distance_squared:
+                best_distance_squared = distance_squared
                 best = enemy
         if best is None:
             return
@@ -1503,12 +1721,8 @@ class CombatMixin:
         return 0
 
     def _acolyte_spell_leech(self) -> int:
-        # Blood-path spell leech: ramps one step per Blood degree (0 until Blood
-        # is committed). Applied to Spirit Bolt hits, Spirit Call familiar
-        # hits, and the legacy ``player_cast_nova`` path. Milestone 3.18.4 moved
-        # the Acolyte's spell lifesteal off the (now-dormant) nova-only hook and
-        # onto every active Blood-tagged damage source, so committing to Blood
-        # meaningfully sustains the Acolyte again.
+        # Blood-path spell leech ramps one step per Blood degree (0 until Blood
+        # is committed) and applies to Spirit Bolt and Spirit Call familiar hits.
         if self.player.has_upgrade("acolyte_sanguine_ascendant"):
             return 8
         if self.player.has_upgrade("acolyte_crimson_maw"):
@@ -1784,6 +1998,8 @@ class CombatMixin:
             )
 
     def player_cast_nova(self) -> None:
+        if self.player.class_name != "Arcanist":
+            return
         mana_cost = self.class_skill_mana_cost()
         if self.player.class_skill_timer > 0 or self.player.mana < mana_cost:
             return
@@ -1808,17 +2024,16 @@ class CombatMixin:
             radius = 2.45
             # Milestone 3.7 refinement - Frost Nova radius ramps one step per
             # Nova degree so each pick reaches farther, instead of one big jump.
-            if self.player.class_name == "Arcanist":
-                if self.player.has_upgrade("arcanist_absolute_zero"):
-                    radius += 1.05
-                elif self.player.has_upgrade("arcanist_blizzard"):
-                    radius += 0.85
-                elif self.player.has_upgrade("arcanist_glacial"):
-                    radius += 0.65
-                elif self.player.has_upgrade("arcanist_permafrost"):
-                    radius += 0.45
-                elif self.player.has_upgrade("arcanist_focus"):
-                    radius += 0.25
+            if self.player.has_upgrade("arcanist_absolute_zero"):
+                radius += 1.05
+            elif self.player.has_upgrade("arcanist_blizzard"):
+                radius += 0.85
+            elif self.player.has_upgrade("arcanist_glacial"):
+                radius += 0.65
+            elif self.player.has_upgrade("arcanist_permafrost"):
+                radius += 0.45
+            elif self.player.has_upgrade("arcanist_focus"):
+                radius += 0.25
             if self.equipment_class_skill_bonus():
                 radius += 0.25
             if self.equipment_class_skill_bonus("Nova radius"):
@@ -1832,43 +2047,12 @@ class CombatMixin:
                     + self.rng.randrange(0, 5)
                 )
                 damage_type = self.nova_damage_type()
-                status_effect = ""
-                status_duration = 0.0
+                status_effect = "chilled"
+                status_duration = (
+                    1.9 if self.player.has_upgrade("arcanist_permafrost") else 1.2
+                )
                 if self.equipment_class_skill_bonus():
                     damage += 2
-                if self.player.class_name == "Warden":
-                    status_effect = "stunned"
-                    status_duration = (
-                        0.35 if self.player.has_upgrade("warden_aegis") else 0.2
-                    )
-                    enemy.attack_timer = max(enemy.attack_timer, 0.45)
-                elif self.player.class_name == "Rogue":
-                    status_effect = "poisoned"
-                    status_duration = (
-                        2.4 if self.player.has_upgrade("rogue_venom") else 1.4
-                    )
-                    self.set_player_status("smoke", 0.65)
-                elif self.player.class_name == "Arcanist":
-                    status_effect = "chilled"
-                    status_duration = (
-                        1.9 if self.player.has_upgrade("arcanist_permafrost") else 1.2
-                    )
-                elif self.player.class_name == "Ranger":
-                    snare_time = (
-                        1.25 if self.player.has_upgrade("ranger_snare") else 0.8
-                    )
-                    enemy.attack_timer = max(enemy.attack_timer, snare_time)
-                    status_effect = "snared"
-                    status_duration = snare_time
-                if self.player.class_name == "Acolyte":
-                    # The Acolyte's class skill is Spirit Call, so this nova path
-                    # is only reachable via direct ``player_cast_nova`` calls. The
-                    # Blood-path spell leech still applies here for legacy
-                    # callers; the gravebind *bind* retired from the nova (it
-                    # lives on Spirit Bolt / Blood Rite, which apply "bound").
-                    leech = self._acolyte_spell_leech()
-                    if leech:
-                        self.player.hp = min(self.player.max_hp, self.player.hp + leech)
                 damage = self.apply_story_player_damage(damage, spell=True)
                 direction = (
                     (dx / distance, dy / distance)
@@ -1902,8 +2086,6 @@ class CombatMixin:
         speed. The player's own timers, movement, and attacks are untouched.
         """
         if self.player.class_name != "Warden":
-            # Legacy fallback: if a non-Warden reaches this path, defer to nova.
-            self.player_cast_nova()
             return
         mana_cost = self.class_skill_mana_cost()
         if self.player.class_skill_timer > 0 or self.player.mana < mana_cost:
@@ -1921,7 +2103,7 @@ class CombatMixin:
             kind="cast",
             archetype=self.player.class_name,
         )
-        self.apply_story_blood_price("nova")
+        self.apply_story_blood_price("time skip")
         # Milestone 3.18.1 — Time path Degree 2 (Time Skip node): the cast pulse
         # briefly staggers foes caught in the ring, repurposing the old
         # Bulwark Wave knockback fantasy as a holy cast-time stun.
@@ -2040,7 +2222,7 @@ class CombatMixin:
                 splash_snare_duration = max(splash_snare_duration, 0.70)
         if self.equipment_class_skill_bonus():
             primary_damage += 2
-        if self.equipment_class_skill_bonus("Nova radius"):
+        if self.equipment_class_skill_bonus("Ambush Bell radius"):
             damage_radius += 0.18
 
         primary_damage = max(8, primary_damage)
@@ -2122,10 +2304,6 @@ class CombatMixin:
     def player_cast_ambush_bell(self) -> None:
         """Rogue class skill: plant one lure trap at the aimed ground point."""
         if self.player.class_name != "Rogue":
-            if self.player.class_name == "Acolyte":
-                self.player_cast_spirit_call()
-            else:
-                self.player_cast_nova()
             return
         mana_cost = self.class_skill_mana_cost()
         if self.player.class_skill_timer > 0 or self.player.mana < mana_cost:
@@ -2430,7 +2608,7 @@ class CombatMixin:
         self.play_sfx("bell")
 
     # ------------------------------------------------------------------
-    # Milestone 3.15 — Spirit Call / familiar (summon) system.
+    # Persistent familiar system — Acolyte Spirit Call and Ranger Spirit Beast.
     # ------------------------------------------------------------------
     FAMILIAR_BASE_HP = 20
     FAMILIAR_BASE_DAMAGE = 6
@@ -2439,6 +2617,16 @@ class CombatMixin:
     FAMILIAR_ATTACK_COOLDOWN = 0.85
     FAMILIAR_AGGRO_RANGE = 7.0
     FAMILIAR_FOLLOW_DISTANCE = 1.6
+    FAMILIAR_ATTACK_ANIMATION_DURATION = 0.42
+
+    SPIRIT_BEAST_BASE_HP = 60
+    SPIRIT_BEAST_BASE_DAMAGE = 12
+    SPIRIT_BEAST_BASE_SPEED = 3.55
+    SPIRIT_BEAST_ATTACK_COOLDOWN = 0.86
+    SPIRIT_BEAST_AGGRO_RANGE = 8.0
+    SPIRIT_BEAST_FOLLOW_DISTANCE = 1.8
+    SPIRIT_BEAST_RETURN_DISTANCE = 0.9
+    SPIRIT_BEAST_COLLISION_RADIUS = 0.24
 
     def familiar_max_count(self) -> int:
         """How many familiars Spirit Call maintains at once.
@@ -2484,6 +2672,61 @@ class CombatMixin:
             hp += 16
         return hp, damage
 
+    def spirit_beast_stats(self) -> tuple[int, int, float, float]:
+        """Return the Spirit Beast's HP, damage, speed, and attack cooldown.
+
+        Every Beast discipline changes at least one familiar stat. The explicit
+        steps make Beast Bond immediately meaningful and keep deeper Beast picks
+        relevant without coupling the beast to the Ranger's already-large player
+        stat bonuses.
+        """
+        hp = self.SPIRIT_BEAST_BASE_HP
+        damage = self.SPIRIT_BEAST_BASE_DAMAGE
+        speed = self.SPIRIT_BEAST_BASE_SPEED
+        attack_cooldown = self.SPIRIT_BEAST_ATTACK_COOLDOWN
+        if self.player.has_upgrade("ranger_beast_bond"):
+            hp += 14
+            damage += 2
+        if self.player.has_upgrade("ranger_pack_tactics"):
+            hp += 8
+            damage += 2
+            attack_cooldown -= 0.08
+        if self.player.has_upgrade("ranger_alpha"):
+            hp += 18
+            damage += 3
+            speed += 0.15
+        if self.player.has_upgrade("ranger_spirit_companion"):
+            hp += 14
+            damage += 3
+            speed += 0.10
+            attack_cooldown -= 0.05
+        if self.player.has_upgrade("ranger_primal_lord"):
+            hp += 24
+            damage += 4
+            speed += 0.10
+            attack_cooldown -= 0.07
+        if self.equipment_class_skill_bonus():
+            hp += 12
+            damage += 2
+        return hp, damage, speed, max(0.52, attack_cooldown)
+
+    def _refresh_active_spirit_beast(self) -> None:
+        """Apply newly chosen Beast ranks to an already-summoned Spirit Beast."""
+        if not getattr(self, "familiars", None):
+            return
+        max_hp, damage, speed, attack_cooldown = self.spirit_beast_stats()
+        champion = self.player.has_upgrade("ranger_primal_lord")
+        for familiar in self.familiars:
+            if familiar.kind != "spirit_beast" or not familiar.alive:
+                continue
+            hp_gain = max(0, max_hp - familiar.max_hp)
+            familiar.max_hp = max_hp
+            familiar.hp = min(max_hp, familiar.hp + hp_gain)
+            familiar.damage = damage
+            familiar.speed = speed
+            familiar.attack_cooldown = attack_cooldown
+            familiar.champion = champion
+
     def familiar_variant_for_index(self, index: int) -> int:
         """Sprite state for the ``index``-th familiar in the current host.
 
@@ -2500,7 +2743,11 @@ class CombatMixin:
     def familiar_is_champion(self, index: int) -> bool:
         return self.player.has_upgrade("acolyte_wraith_lord") and index == 0
 
-    def familiar_damage_type(self) -> str:
+    def familiar_damage_type(self, familiar: Familiar | None = None) -> str:
+        if familiar is not None and familiar.kind == "spirit_beast":
+            if self.player.has_upgrade("ranger_spirit_companion"):
+                return "arcane"
+            return "physical"
         # Summoned spirits deal shadow damage, matching the Acolyte's theme.
         return "shadow"
 
@@ -2517,9 +2764,6 @@ class CombatMixin:
         descended.
         """
         if self.player.class_name != "Acolyte":
-            # Defensive: only the Acolyte channels Spirit Call. Other classes
-            # fall through to their nova.
-            self.player_cast_nova()
             return
         mana_cost = self.class_skill_mana_cost()
         if self.player.class_skill_timer > 0 or self.player.mana < mana_cost:
@@ -2536,7 +2780,7 @@ class CombatMixin:
             kind="cast",
             archetype=self.player.class_name,
         )
-        self.apply_story_blood_price("nova")
+        self.apply_story_blood_price("spirit call")
         max_count = self.familiar_max_count()
         max_hp, damage = self.familiar_stats()
         # Always recreate the host from scratch so Spirit Call snaps the
@@ -2588,62 +2832,248 @@ class CombatMixin:
         )
         self.play_sfx("hit")
 
-    def update_familiars(self, dt: float) -> None:
-        """Follow-and-attack AI for the familiar host.
+    def active_spirit_beast(self) -> Familiar | None:
+        """Return the first living Ranger beast, ignoring dead pending-cull entries."""
+        for familiar in self.familiars:
+            if familiar.kind == "spirit_beast" and familiar.alive:
+                return familiar
+        return None
 
-        O(familiar) per frame with no per-frame allocations: each familiar finds
-        the nearest living enemy within aggro range (one pass over the enemy
-        list), then either closes to attack, pursues, or returns to follow the
-        player. Familiars persist until killed (HP <= 0) or floor descent.
+    def spirit_beast_next_command(self) -> str:
+        """HUD label for the free command issued by the next class-skill press."""
+        familiar = self.active_spirit_beast()
+        if self.player.class_name != "Ranger" or familiar is None:
+            return ""
+        return "ATTACK" if familiar.command_mode == "follow" else "RETURN"
+
+    def _command_spirit_beast(self, familiar: Familiar) -> None:
+        """Alternate every living Spirit Beast between close return and attack modes."""
+        command_mode = "attack" if familiar.command_mode == "follow" else "follow"
+        for beast in self.familiars:
+            if beast.kind != "spirit_beast" or not beast.alive:
+                continue
+            beast.command_mode = command_mode
+            if command_mode == "follow":
+                beast.attack_anim_timer = 0.0
+
+        command_name = "Attack" if command_mode == "attack" else "Return"
+        self.set_player_action_visual("cast", 0.18)
+        self.add_impact(
+            familiar.x,
+            familiar.y,
+            self.skill_color(),
+            ttl=0.28,
+            radius=0.34,
+            kind="burst",
+        )
+        self.floaters.append(
+            FloatingText(
+                f"Spirit Beast: {command_name}",
+                familiar.x,
+                familiar.y - 0.45,
+                self.skill_color(),
+                ttl=0.75,
+            )
+        )
+        self.play_sfx("hit")
+
+    def _spirit_beast_spawn_position(self) -> tuple[float, float] | None:
+        """Find a clear spawn connected to the Ranger by an unobstructed segment."""
+        px, py = self.player.x, self.player.y
+        collision_radius = self.SPIRIT_BEAST_COLLISION_RADIUS
+
+        def valid(x: float, y: float) -> bool:
+            dx = x - px
+            dy = y - py
+            return (
+                dx * dx + dy * dy >= 0.45 * 0.45
+                and not self.dungeon.blocked_for_radius(x, y, collision_radius)
+                and self.dungeon.line_of_sight(px, py, x, y)
+            )
+
+        # Prefer a compact ring, then widen it. Sampling around the full circle
+        # avoids the old fallback that could place the beast inside a nearby wall.
+        angle_offsets = (
+            0.0,
+            math.pi / 4,
+            -math.pi / 4,
+            math.pi / 2,
+            -math.pi / 2,
+            3 * math.pi / 4,
+            -3 * math.pi / 4,
+            math.pi,
+        )
+        for distance in (0.9, 1.15, 0.65, 1.4):
+            for angle_offset in angle_offsets:
+                angle = 0.7 + angle_offset
+                x = px + math.cos(angle) * distance
+                y = py + math.sin(angle) * distance
+                if valid(x, y):
+                    return x, y
+
+        # Corrupt or unusually cramped maps may reject the ring samples. Search
+        # nearby floor centers, but never spend resources unless one is truly clear.
+        tile_x = int(px)
+        tile_y = int(py)
+        for radius in range(1, 4):
+            for offset_y in range(-radius, radius + 1):
+                for offset_x in range(-radius, radius + 1):
+                    if max(abs(offset_x), abs(offset_y)) != radius:
+                        continue
+                    x = tile_x + offset_x + 0.5
+                    y = tile_y + offset_y + 0.5
+                    if valid(x, y):
+                        return x, y
+        return None
+
+    def player_cast_spirit_beast(self) -> None:
+        """Command a living Spirit Beast, or summon one when absent and ready."""
+        if self.player.class_name != "Ranger":
+            return
+
+        familiar = self.active_spirit_beast()
+        if familiar is not None:
+            # A living beast is never replaced or healed. Return/attack commands
+            # are free and available regardless of the Ranger's current mana.
+            self._command_spirit_beast(familiar)
+            return
+
+        mana_cost = self.class_skill_mana_cost()
+        if self.player.class_skill_timer > 0 or self.player.mana < mana_cost:
+            return
+        spawn_position = self._spirit_beast_spawn_position()
+        if spawn_position is None:
+            return
+
+        self._cull_dead_familiars()
+        self.player.class_skill_timer = self.class_skill_cooldown()
+        self.player.mana -= mana_cost
+        self.set_player_action_visual("cast", 0.32)
+        self.add_impact(
+            self.player.x,
+            self.player.y,
+            self.skill_color(),
+            ttl=0.48,
+            radius=0.82,
+            kind="spirit_beast_call",
+            archetype=self.player.class_name,
+        )
+        self.apply_story_blood_price("spirit beast")
+
+        max_hp, damage, speed, attack_cooldown = self.spirit_beast_stats()
+        fx, fy = spawn_position
+        self.familiars.clear()
+        self.familiars.append(
+            Familiar(
+                x=fx,
+                y=fy,
+                max_hp=max_hp,
+                hp=max_hp,
+                damage=damage,
+                speed=speed,
+                attack_range=self.FAMILIAR_ATTACK_RANGE,
+                attack_cooldown=attack_cooldown,
+                sprite_variant=2,
+                kind="spirit_beast",
+                champion=self.player.has_upgrade("ranger_primal_lord"),
+                facing_x=self.player.facing_x,
+                facing_y=self.player.facing_y,
+                command_mode="attack",
+            )
+        )
+        self.add_impact(
+            fx,
+            fy,
+            self.skill_color(),
+            ttl=0.40,
+            radius=0.46,
+            kind="burst",
+        )
+        self.floaters.append(
+            FloatingText(
+                self.skill_names()[2],
+                self.player.x,
+                self.player.y - 0.5,
+                self.skill_color(),
+                ttl=0.9,
+            )
+        )
+        self.play_sfx("hit")
+
+    def update_familiars(self, dt: float) -> None:
+        """Follow, perceive, and attack for each persistent familiar.
+
+        Target selection is allocation-free and only accepts enemies with clear
+        dungeon line of sight, so Spirit Beasts and spirits cannot perceive or bite
+        through walls.
         """
         if not self.familiars:
             return
-        if not self.enemies:
-            # No threats: regroup around the player.
-            for familiar in self.familiars:
-                self._familiar_follow_player(familiar, dt)
-                self._familiar_regen(familiar, dt)
-            self._cull_dead_familiars()
-            return
         for familiar in self.familiars:
             familiar.attack_timer = max(0.0, familiar.attack_timer - dt)
-            # Nearest living enemy within aggro range (single pass).
+            familiar.attack_anim_timer = max(0.0, familiar.attack_anim_timer - dt)
+            pet_cooldown = familiar.pet_cooldown - dt
+            pet_anim_timer = familiar.pet_anim_timer - dt
+            familiar.pet_cooldown = pet_cooldown if pet_cooldown > 1e-9 else 0.0
+            familiar.pet_anim_timer = pet_anim_timer if pet_anim_timer > 1e-9 else 0.0
+            familiar.moving = False
+
+            # Petting is a short paired pose. Hold the beast in place and suppress
+            # perception/attacks until the non-looping affection clip completes.
+            if familiar.pet_anim_timer > 0.0:
+                continue
+
+            if familiar.kind == "spirit_beast" and familiar.command_mode == "follow":
+                self._familiar_follow_player(familiar, dt)
+                self._familiar_regen(familiar, dt)
+                continue
+
             target = None
-            best_dist = self.FAMILIAR_AGGRO_RANGE
+            aggro_range = (
+                self.SPIRIT_BEAST_AGGRO_RANGE
+                if familiar.kind == "spirit_beast"
+                else self.FAMILIAR_AGGRO_RANGE
+            )
+            best_dist_sq = aggro_range * aggro_range
             for enemy in self.enemies:
                 if not enemy.alive:
                     continue
-                d = math.hypot(enemy.x - familiar.x, enemy.y - familiar.y)
-                if d < best_dist:
-                    best_dist = d
-                    target = enemy
+                dx = enemy.x - familiar.x
+                dy = enemy.y - familiar.y
+                dist_sq = dx * dx + dy * dy
+                if dist_sq >= best_dist_sq:
+                    continue
+                if not self.dungeon.line_of_sight(
+                    familiar.x, familiar.y, enemy.x, enemy.y
+                ):
+                    continue
+                best_dist_sq = dist_sq
+                target = enemy
+
             if target is not None:
                 dx = target.x - familiar.x
                 dy = target.y - familiar.y
-                dist = math.hypot(dx, dy)
+                dist = math.sqrt(best_dist_sq)
                 if dist <= familiar.attack_range:
-                    # In melee range: face and strike on cooldown.
                     if dist > 0.001:
                         familiar.facing_x = dx / dist
                         familiar.facing_y = dy / dist
                     if familiar.attack_timer <= 0:
                         self._familiar_attack(familiar, target)
-                    familiar.moving = False
-                else:
-                    # Pursue the target.
-                    if dist > 0.001:
-                        nx, ny = dx / dist, dy / dist
-                        familiar.facing_x = nx
-                        familiar.facing_y = ny
-                        familiar.move_x = nx
-                        familiar.move_y = ny
-                        self._move_familiar(
-                            familiar, nx * familiar.speed * dt, ny * familiar.speed * dt
-                        )
-                        familiar.moving = True
+                elif dist > 0.001:
+                    nx, ny = dx / dist, dy / dist
+                    familiar.facing_x = nx
+                    familiar.facing_y = ny
+                    familiar.move_x = nx
+                    familiar.move_y = ny
+                    step = min(
+                        familiar.speed * dt, dist - familiar.attack_range
+                    )
+                    moved = self._move_familiar(familiar, nx * step, ny * step)
+                    self._advance_familiar_locomotion(familiar, moved, dt)
             else:
                 self._familiar_follow_player(familiar, dt)
-            familiar.anim_time += dt * (WALK_ANIMATION_RATE if familiar.moving else 0.0)
+
             self._familiar_regen(familiar, dt)
         self._cull_dead_familiars()
 
@@ -2651,21 +3081,43 @@ class CombatMixin:
         dx = self.player.x - familiar.x
         dy = self.player.y - familiar.y
         dist = math.hypot(dx, dy)
-        if dist > self.FAMILIAR_FOLLOW_DISTANCE and dist > 0.001:
+        if familiar.kind == "spirit_beast":
+            follow_distance = (
+                self.SPIRIT_BEAST_RETURN_DISTANCE
+                if familiar.command_mode == "follow"
+                else self.SPIRIT_BEAST_FOLLOW_DISTANCE
+            )
+        else:
+            follow_distance = self.FAMILIAR_FOLLOW_DISTANCE
+        if dist > follow_distance and dist > 0.001:
             nx, ny = dx / dist, dy / dist
             familiar.facing_x = nx
             familiar.facing_y = ny
             familiar.move_x = nx
             familiar.move_y = ny
-            self._move_familiar(
-                familiar, nx * familiar.speed * dt, ny * familiar.speed * dt
-            )
-            familiar.moving = True
-        else:
-            familiar.moving = False
+            step = min(familiar.speed * dt, dist - follow_distance)
+            moved = self._move_familiar(familiar, nx * step, ny * step)
+            self._advance_familiar_locomotion(familiar, moved, dt)
 
-    def _move_familiar(self, familiar: Familiar, dx: float, dy: float) -> None:
-        """Lightweight familiar locomotion.
+    @staticmethod
+    def _advance_familiar_locomotion(
+        familiar: Familiar, distance: float, dt: float
+    ) -> None:
+        if distance <= 0.0:
+            return
+        familiar.moving = True
+        # At full speed this advances one animation-second per simulation-second.
+        # Smaller final approach/follow steps slow the paw cycle, with the same
+        # low cadence floor used by player/enemy authored locomotion clips.
+        full_step = max(0.001, familiar.speed * dt)
+        movement_scale = max(
+            WALK_ANIM_RUNTIME_SCALE_FLOOR,
+            min(1.0, distance / full_step),
+        )
+        familiar.anim_time += dt * movement_scale
+
+    def _move_familiar(self, familiar: Familiar, dx: float, dy: float) -> float:
+        """Lightweight familiar locomotion and return actual distance moved.
 
         Familiars skip the shared ``move_actor`` path because that resolves
         contacts via ``enemy_hit_radius``, which assumes Enemy fields
@@ -2673,6 +3125,7 @@ class CombatMixin:
         soft separation from the player so the summon orbits the Acolyte
         rather than overlapping. Stays O(1) and allocation-free.
         """
+        old_x, old_y = familiar.x, familiar.y
         radius = 0.22
         new_x = familiar.x + dx
         if not self.dungeon.blocked_for_radius(new_x, familiar.y, radius):
@@ -2688,19 +3141,36 @@ class CombatMixin:
             nx, ny = px_dx / px_dist, px_dy / px_dist
             familiar.x += nx * (min_dist - px_dist)
             familiar.y += ny * (min_dist - px_dist)
+        return math.hypot(familiar.x - old_x, familiar.y - old_y)
 
     def _familiar_attack(self, familiar: Familiar, enemy: Enemy) -> None:
+        if not self.dungeon.line_of_sight(
+            familiar.x, familiar.y, enemy.x, enemy.y
+        ):
+            return
         familiar.attack_timer = familiar.attack_cooldown
+        familiar.attack_anim_timer = self.FAMILIAR_ATTACK_ANIMATION_DURATION
         damage = familiar.damage + self.rng.randrange(0, 3)
-        # Familiars are summoner-aligned, so they bypass the player's
-        # story-damage modifiers and apply directly (keeping the hot path
-        # allocation-free).
-        enemy.hp -= max(1, damage)
-        self.enemy_hit_flashes[id(enemy)] = 0.18
-        hit_color = self.damage_type_color(self.familiar_damage_type())
+        damage_type = self.familiar_damage_type(familiar)
+        if familiar.kind == "spirit_beast":
+            if self.player.has_upgrade("ranger_pack_tactics") and enemy.statuses.get(
+                "snared", 0.0
+            ) > 0:
+                damage = int(round(damage * 1.25))
+            if self.player.has_upgrade("ranger_primal_lord") and (
+                enemy.elite_modifier or enemy.kind in ("boss", "miniboss")
+            ):
+                damage = int(round(damage * 1.35))
+            damage = self.mitigate_enemy_damage(enemy, damage, damage_type)
+        # Familiars bypass player equipment procs and story damage modifiers;
+        # their own discipline scaling is already reflected above.
+        damage = max(1, damage)
+        enemy.hp -= damage
+        self._trigger_enemy_hit_flash(enemy)
+        hit_color = self.damage_type_color(damage_type)
         self.floaters.append(
             FloatingText(
-                f"-{max(1, damage)}",
+                f"-{damage}",
                 enemy.x,
                 enemy.y - 0.25,
                 hit_color,
@@ -2708,6 +3178,16 @@ class CombatMixin:
             )
         )
         self.add_impact(enemy.x, enemy.y, hit_color, ttl=0.26, radius=0.30, kind="hit")
+        if (
+            familiar.kind == "spirit_beast"
+            and self.player.has_upgrade("ranger_alpha")
+            and enemy.alive
+        ):
+            self.move_actor(
+                enemy,
+                familiar.facing_x * 0.22,
+                familiar.facing_y * 0.22,
+            )
         # Blood path (3.18.4): familiar hits siphon life into the Acolyte. The
         # ``lifesteal`` flag is set at summon time from Blood investment (see
         # ``player_cast_spirit_call``); the heal amount scales live with the
@@ -2749,7 +3229,7 @@ class CombatMixin:
             self.add_impact(
                 familiar.x,
                 familiar.y,
-                self.damage_type_color("shadow"),
+                self.damage_type_color(self.familiar_damage_type(familiar)),
                 ttl=0.22,
                 radius=0.28,
                 kind="hit",
@@ -2853,7 +3333,9 @@ class CombatMixin:
     def first_enemy_near(self, x: float, y: float, radius: float) -> Enemy | None:
         for enemy in self.enemies:
             hit_radius = radius + self.enemy_hit_radius(enemy) - ENEMY_HIT_RADIUS
-            if math.hypot(enemy.x - x, enemy.y - y) <= hit_radius:
+            dx = enemy.x - x
+            dy = enemy.y - y
+            if dx * dx + dy * dy <= hit_radius * hit_radius:
                 return enemy
         return None
 
@@ -2895,7 +3377,7 @@ class CombatMixin:
             proc_damage += max(1, self.player.level // 3 + 1)
         total = max(1, amount + proc_damage)
         enemy.hp -= total
-        self.enemy_hit_flashes[id(enemy)] = 0.22 if enemy.kind != "boss" else 0.32
+        self._trigger_enemy_hit_flash(enemy)
         hit_color = (
             self.theme.accent
             if enemy.kind == "boss"
@@ -2956,9 +3438,7 @@ class CombatMixin:
         if target is None:
             return
         target.hp -= damage
-        self.enemy_hit_flashes[id(target)] = max(
-            self.enemy_hit_flashes.get(id(target), 0.0), 0.18
-        )
+        self._trigger_enemy_hit_flash(target)
         self.floaters.append(
             FloatingText(
                 f"Arc -{damage}",

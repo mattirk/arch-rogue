@@ -89,9 +89,16 @@ class RenderingActorMixin:
         )
         self.screen.blit(ring, ring.get_rect(center=(sx, sy + 5 * scale)))
 
+        motion = self.friendly_npc_motion(shopkeeper)
+        direction = self.actor_sprite_direction(
+            facing_x,
+            facing_y,
+            previous=motion.sprite_direction,
+        )
+        motion.sprite_direction = direction
         frame = self.sprites.shopkeeper_visual(
             self.elapsed,
-            direction=self.actor_sprite_direction(facing_x, facing_y),
+            direction=direction,
             moving=moving,
             dancing=not moving,
             clip_progress=loop_progress,
@@ -157,8 +164,10 @@ class RenderingActorMixin:
             return 1.0, 0.0
         return screen_dx / length, screen_dy / length
 
-    def actor_sprite_direction(self, dx: float, dy: float) -> str:
-        """Quantize a world-facing vector into an asset screen direction."""
+    def actor_sprite_direction(
+        self, dx: float, dy: float, *, previous: str = ""
+    ) -> str:
+        """Quantize facing with a small render-only directional hysteresis."""
         screen_x, screen_y = self.iso_screen_direction(dx, dy)
         angle = math.degrees(math.atan2(screen_y, screen_x))
         directions = (
@@ -171,6 +180,11 @@ class RenderingActorMixin:
             "north",
             "north-east",
         )
+        if previous in directions:
+            previous_angle = directions.index(previous) * 45.0
+            delta = (angle - previous_angle + 180.0) % 360.0 - 180.0
+            if abs(delta) <= 27.5:
+                return previous
         return directions[round(angle / 45.0) % len(directions)]
 
     def is_humanoid(self, actor: Player | Enemy) -> bool:
@@ -558,9 +572,21 @@ class RenderingActorMixin:
     def draw_player(self, player: Player) -> None:
         sway, bob, lean, stretch = self.actor_animation(player)
         state = self.player_visual_state(player)
-        direction = self.actor_sprite_direction(player.facing_x, player.facing_y)
+        direction = self.actor_sprite_direction(
+            player.facing_x,
+            player.facing_y,
+            previous=player.sprite_direction,
+        )
+        player.sprite_direction = direction
         action_elapsed = getattr(self, "player_action_elapsed", 0.0)
         action_duration = getattr(self, "player_action_duration", 0.0)
+        if state == "hit":
+            hit_ttl = max(0.0, getattr(self, "player_hit_flash", 0.0))
+            action_duration = max(
+                0.01,
+                getattr(self, "player_hit_flash_duration", hit_ttl),
+            )
+            action_elapsed = max(0.0, action_duration - hit_ttl)
         action_progress = (
             max(0.0, min(1.0, action_elapsed / action_duration))
             if action_duration > 0.0
@@ -711,8 +737,23 @@ class RenderingActorMixin:
         base_name = self.sprites.enemy_key(enemy.name, enemy.kind)
         state = self.enemy_visual_state(enemy)
         big_boss = enemy.is_boss_encounter and enemy.size >= 2
-        direction = self.actor_sprite_direction(enemy.facing_x, enemy.facing_y)
+        direction = self.actor_sprite_direction(
+            enemy.facing_x,
+            enemy.facing_y,
+            previous=enemy.sprite_direction,
+        )
+        enemy.sprite_direction = direction
         action_time = max(0.0, enemy.attack_cooldown - enemy.attack_timer)
+        action_progress = None
+        if state == "hit":
+            enemy_id = id(enemy)
+            hit_ttl = max(0.0, self.enemy_hit_flashes.get(enemy_id, 0.0))
+            hit_duration = max(
+                0.01,
+                self.enemy_hit_flash_durations.get(enemy_id, hit_ttl),
+            )
+            action_time = max(0.0, hit_duration - hit_ttl)
+            action_progress = min(1.0, action_time / hit_duration)
         frame = self.sprites.enemy_visual(
             enemy.name,
             enemy.kind,
@@ -721,6 +762,7 @@ class RenderingActorMixin:
             self.elapsed,
             direction=direction,
             action_time=action_time,
+            action_progress=action_progress,
         )
         sprite = frame.surface
         if big_boss and not frame.is_asset:

@@ -17,6 +17,7 @@ import pygame
 
 from arch_rogue.constants import (
     DUNGEON_WALL_VARIANTS,
+    LIGHT_BAR_WALL_ELEVATION,
     LIGHT_SHADE_DOWNSAMPLE_LONG,
     TILE_H,
     TILE_W,
@@ -260,6 +261,95 @@ class SpriteAssetTests(unittest.TestCase):
                             self.assertLessEqual(bounds.right, surface.get_width() - 1)
                             self.assertLessEqual(bounds.bottom, surface.get_height() - 1)
 
+    def test_spirit_beast_assets_are_complete_and_state_addressable(self) -> None:
+        library = AssetSpriteLibrary()
+        entry = library.manifest["actors"]["spirit_beast"]
+        self.assertEqual(entry["name"], "Spirit Beast")
+        self.assertIn("spirit_beast", entry["aliases"])
+        self.assertIn("Spirit Beast", entry["aliases"])
+        self.assertEqual(entry["category"], "familiar")
+        self.assertEqual(tuple(entry["source_canvas"]), (184, 184))
+        self.assertEqual(tuple(entry["source_anchor"]), (92.0, 127.0))
+        self.assertEqual(entry["reference_height"], 76)
+        self.assertEqual(entry["target_height"], 126)
+        self.assertEqual(set(entry["rotations"]), set(DIRECTIONS))
+        self.assertEqual(set(entry["clips"]), {"idle", "walk", "attack", "pet"})
+
+        for direction, path in entry["rotations"].items():
+            rotation = library._source_surface(path)
+            self.assertIsNotNone(rotation, direction)
+            assert rotation is not None
+            self.assertEqual(rotation.get_size(), (184, 184))
+            self.assertGreater(rotation.get_bounding_rect(min_alpha=1).height, 0)
+
+        state_sequences: dict[str, set[tuple[bytes, ...]]] = {}
+        for state in ("idle", "walk", "attack", "pet"):
+            clip = entry["clips"][state]
+            self.assertEqual(clip["loop"], state not in ("attack", "pet"))
+            self.assertEqual(set(clip["directions"]), set(DIRECTIONS))
+            sequences: set[tuple[bytes, ...]] = set()
+            for direction, frame_paths in clip["directions"].items():
+                with self.subTest(state=state, direction=direction):
+                    self.assertEqual(
+                        frame_paths,
+                        [
+                            f"actors/spirit_beast/animations/{state}/{direction}/"
+                            f"frame_{index:03d}.png"
+                            for index in range(8)
+                        ],
+                    )
+                    surfaces = [library._source_surface(path) for path in frame_paths]
+                    self.assertNotIn(None, surfaces)
+                    decoded = [surface for surface in surfaces if surface is not None]
+                    self.assertEqual(len(decoded), 8)
+                    sequence = tuple(
+                        pygame.image.tobytes(surface, "RGBA") for surface in decoded
+                    )
+                    self.assertEqual(len(set(sequence)), 8)
+                    sequences.add(sequence)
+                    for surface in decoded:
+                        self.assertEqual(surface.get_size(), (184, 184))
+                        bounds = surface.get_bounding_rect(min_alpha=1)
+                        self.assertGreater(bounds.width, 0)
+                        self.assertGreater(bounds.height, 0)
+                        self.assertGreaterEqual(bounds.left, 1)
+                        self.assertGreaterEqual(bounds.top, 1)
+                        self.assertLessEqual(bounds.right, 183)
+                        self.assertLessEqual(bounds.bottom, 183)
+
+                    resolved = library.resolve_actor(
+                        "Spirit Beast",
+                        state,
+                        direction,
+                        0.25,
+                        clip_progress=0.5 if state in ("attack", "pet") else None,
+                    )
+                    self.assertIsNotNone(resolved)
+                    assert resolved is not None
+                    self.assertEqual(resolved.key[1:4], ("spirit_beast", state, direction))
+            self.assertEqual(len(sequences), 8)
+            state_sequences[state] = sequences
+        self.assertNotEqual(state_sequences["idle"], state_sequences["walk"])
+        self.assertNotEqual(state_sequences["walk"], state_sequences["attack"])
+        self.assertNotEqual(state_sequences["attack"], state_sequences["pet"])
+
+        atlas = SpriteAtlas()
+        for state, kwargs in (
+            ("idle", {}),
+            ("walk", {"moving": True}),
+            ("attack", {"attacking": True, "attack_progress": 0.5}),
+            ("pet", {"petting": True, "pet_progress": 0.5}),
+        ):
+            frame = atlas.familiar_visual(
+                2,
+                0.25,
+                direction="south",
+                kind="spirit_beast",
+                **kwargs,
+            )
+            self.assertTrue(frame.is_asset)
+            self.assertEqual(frame.key[1:3], ("spirit_beast", state))
+
     def test_friendly_npc_dance_clips_are_complete_and_beat_addressable(self) -> None:
         library = AssetSpriteLibrary()
         contracts = {
@@ -383,6 +473,173 @@ class SpriteAssetTests(unittest.TestCase):
         ):
             self.assertTrue(frame.is_asset)
             self.assertEqual(frame.key[2:4], (state, direction))
+
+    def test_bar_dancer_assets_are_distinct_complete_and_beat_addressable(self) -> None:
+        library = AssetSpriteLibrary()
+        entry = library.manifest["actors"]["bar_dancer"]
+        self.assertEqual(entry["name"], "Bar Dancer")
+        self.assertEqual(entry["category"], "npc")
+        self.assertEqual(entry["aliases"], ["Bar Dancer", "bar_dancer"])
+        self.assertNotIn("bar", entry["aliases"])
+        self.assertIn(
+            "bar", library.manifest["actors"]["story_guest"]["aliases"]
+        )
+        self.assertEqual(tuple(entry["source_canvas"]), (244, 244))
+        self.assertEqual(tuple(entry["source_anchor"]), (122.0, 183.0))
+        self.assertEqual(entry["reference_height"], 119)
+        self.assertEqual(entry["target_height"], 176)
+        self.assertEqual(set(entry["clips"]), {"run", "dance"})
+
+        rotation_paths = entry["rotations"]
+        self.assertEqual(set(rotation_paths), set(DIRECTIONS))
+        rotations: dict[str, pygame.Surface] = {}
+        for direction, path in rotation_paths.items():
+            self.assertEqual(path, f"actors/bar_dancer/rotations/{direction}.png")
+            surface = library._source_surface(path)
+            self.assertIsNotNone(surface)
+            assert surface is not None
+            rotations[direction] = surface
+        self.assertEqual(
+            len(
+                {
+                    pygame.image.tobytes(surface, "RGBA")
+                    for surface in rotations.values()
+                }
+            ),
+            8,
+        )
+        for surface in rotations.values():
+            self.assertEqual(surface.get_size(), (244, 244))
+            bounds = surface.get_bounding_rect(min_alpha=1)
+            self.assertGreater(bounds.width, 0)
+            self.assertGreater(bounds.height, 0)
+            self.assertGreaterEqual(bounds.left, 1)
+            self.assertGreaterEqual(bounds.top, 1)
+            self.assertLessEqual(bounds.right, 243)
+            self.assertLessEqual(bounds.bottom, 243)
+
+        story_south = library._source_surface(
+            library.manifest["actors"]["story_guest"]["rotations"]["south"]
+        )
+        self.assertIsNotNone(story_south)
+        assert story_south is not None
+        self.assertNotEqual(rotations["south"].get_size(), story_south.get_size())
+
+        clip_sequences: dict[str, dict[str, bytes]] = {}
+        for state, folder in (("run", "walk"), ("dance", "dance")):
+            clip = entry["clips"][state]
+            self.assertTrue(clip["loop"])
+            self.assertEqual(clip["fps"], 8.0)
+            self.assertEqual(set(clip["directions"]), set(DIRECTIONS))
+            direction_sequences: dict[str, bytes] = {}
+            for direction, frame_paths in clip["directions"].items():
+                with self.subTest(state=state, direction=direction):
+                    self.assertEqual(
+                        frame_paths,
+                        [
+                            f"actors/bar_dancer/animations/{folder}/{direction}/"
+                            f"frame_{index:03d}.png"
+                            for index in range(8)
+                        ],
+                    )
+                    surfaces = [
+                        library._source_surface(path) for path in frame_paths
+                    ]
+                    self.assertNotIn(None, surfaces)
+                    decoded = [
+                        surface for surface in surfaces if surface is not None
+                    ]
+                    self.assertEqual(len(decoded), 8)
+                    direction_sequences[direction] = b"".join(
+                        pygame.image.tobytes(surface, "RGBA")
+                        for surface in decoded
+                    )
+                    self.assertEqual(
+                        len(
+                            {
+                                pygame.image.tobytes(surface, "RGBA")
+                                for surface in decoded
+                            }
+                        ),
+                        8,
+                    )
+                    for surface in decoded:
+                        self.assertEqual(surface.get_size(), (244, 244))
+                        bounds = surface.get_bounding_rect(min_alpha=1)
+                        self.assertGreater(bounds.width, 0)
+                        self.assertGreater(bounds.height, 0)
+                        self.assertGreaterEqual(bounds.left, 1)
+                        self.assertGreaterEqual(bounds.top, 1)
+                        self.assertLessEqual(bounds.right, 243)
+                        self.assertLessEqual(bounds.bottom, 243)
+
+                    for progress, frame_index in (
+                        (0.0, 0),
+                        (0.25, 2),
+                        (0.5, 4),
+                        (0.75, 6),
+                        (1.0, 0),
+                    ):
+                        frame = library.resolve_actor(
+                            "Bar Dancer",
+                            state,
+                            direction,
+                            99.0,
+                            loop_progress=progress,
+                        )
+                        self.assertIsNotNone(frame)
+                        assert frame is not None
+                        self.assertEqual(
+                            frame.key[2:5], (state, direction, frame_index)
+                        )
+            self.assertEqual(len(set(direction_sequences.values())), 8)
+            clip_sequences[state] = direction_sequences
+
+        self.assertTrue(
+            all(
+                clip_sequences["run"][direction]
+                != clip_sequences["dance"][direction]
+                for direction in DIRECTIONS
+            )
+        )
+
+        atlas = SpriteAtlas()
+        idle = atlas.bar_dancer_visual(0.0, direction="north-east")
+        walking = atlas.bar_dancer_visual(
+            0.0, direction="west", moving=True, clip_progress=0.5
+        )
+        dancing = atlas.bar_dancer_visual(
+            0.0, direction="south", dancing=True, clip_progress=0.5
+        )
+        self.assertTrue(idle.is_asset)
+        self.assertEqual(idle.key[1:4], ("bar_dancer", "rotation", "north-east"))
+        self.assertTrue(walking.is_asset)
+        self.assertEqual(walking.key[1:5], ("bar_dancer", "run", "west", 4))
+        self.assertTrue(dancing.is_asset)
+        self.assertEqual(dancing.key[1:5], ("bar_dancer", "dance", "south", 4))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fallback_atlas = SpriteAtlas(asset_root=Path(tmpdir))
+            fallback_idle = fallback_atlas.bar_dancer_visual(
+                0.0, clip_progress=0.5
+            )
+            fallback_walk = fallback_atlas.bar_dancer_visual(
+                0.0, moving=True, clip_progress=0.5
+            )
+            fallback_dance = fallback_atlas.bar_dancer_visual(
+                0.0, dancing=True, clip_progress=0.5
+            )
+        self.assertFalse(fallback_idle.is_asset)
+        self.assertFalse(fallback_walk.is_asset)
+        self.assertFalse(fallback_dance.is_asset)
+        self.assertEqual(fallback_idle.key[-1], "idle")
+        self.assertEqual(fallback_walk.key[-1], "run")
+        self.assertEqual(fallback_dance.key[-1], "dance")
+        fallback_pixels = {
+            pygame.image.tobytes(frame.surface, "RGBA")
+            for frame in (fallback_idle, fallback_walk, fallback_dance)
+        }
+        self.assertEqual(len(fallback_pixels), 3)
 
     def test_garden_frog_assets_are_complete_and_beat_addressable(self) -> None:
         library = AssetSpriteLibrary()
@@ -541,6 +798,117 @@ class SpriteAssetTests(unittest.TestCase):
         self.assertEqual(early.key, late.key)
         self.assertEqual(early.key[2], "run")
 
+    def test_legacy_player_actions_use_local_time_and_progress(self) -> None:
+        atlas = SpriteAtlas(legacy_graphics=True)
+        states = atlas.legacy.player_animation_frames["Warden"]
+
+        for state in ("attack", "cast", "hit", "dash"):
+            with self.subTest(state=state):
+                frames = states[state]
+                first = atlas.player_visual(
+                    "Warden",
+                    state,
+                    37.0,
+                    1.0,
+                    action_time=0.0,
+                )
+                same_local_start = atlas.player_visual(
+                    "Warden",
+                    state,
+                    37.0,
+                    9.0,
+                    action_time=0.0,
+                )
+                midpoint = atlas.player_visual(
+                    "Warden",
+                    state,
+                    37.0,
+                    91.0,
+                    action_time=8.0,
+                    action_progress=0.5,
+                )
+                final = atlas.player_visual(
+                    "Warden",
+                    state,
+                    37.0,
+                    123.0,
+                    action_time=12.0,
+                    action_progress=1.0,
+                )
+
+                self.assertFalse(first.is_asset)
+                self.assertIs(first.surface, frames[0])
+                self.assertIs(same_local_start.surface, frames[0])
+                self.assertIs(midpoint.surface, frames[len(frames) // 2])
+                self.assertIs(final.surface, frames[-1])
+
+    def test_legacy_enemy_and_boss_actions_use_local_time_and_progress(self) -> None:
+        atlas = SpriteAtlas(legacy_graphics=True)
+        actors = (
+            ("Ghoul", "melee", "Ghoul"),
+            ("Gate Tyrant", "boss", "Gate Tyrant"),
+        )
+
+        for name, kind, frame_key in actors:
+            with self.subTest(actor=name):
+                frames = atlas.legacy.enemy_animation_frames[frame_key]["attack"]
+                first = atlas.enemy_visual(
+                    name,
+                    kind,
+                    "attack",
+                    41.0,
+                    1.0,
+                    action_time=0.0,
+                )
+                same_local_start = atlas.enemy_visual(
+                    name,
+                    kind,
+                    "attack",
+                    41.0,
+                    9.0,
+                    action_time=0.0,
+                )
+                next_frame = atlas.enemy_visual(
+                    name,
+                    kind,
+                    "attack",
+                    41.0,
+                    73.0,
+                    action_time=0.1,
+                )
+                midpoint = atlas.enemy_visual(
+                    name,
+                    kind,
+                    "attack",
+                    41.0,
+                    101.0,
+                    action_time=8.0,
+                    action_progress=0.5,
+                )
+
+                self.assertFalse(first.is_asset)
+                self.assertIs(first.surface, frames[0])
+                self.assertIs(same_local_start.surface, frames[0])
+                self.assertIs(next_frame.surface, frames[1])
+                self.assertIs(midpoint.surface, frames[len(frames) // 2])
+
+        boss_frames = atlas.legacy.enemy_animation_frames["Gate Tyrant"]["cast"]
+        boss_start = atlas.boss_frame(
+            "cast",
+            29.0,
+            1.0,
+            action_time=0.0,
+        )
+        boss_final = atlas.boss_frame(
+            "cast",
+            29.0,
+            77.0,
+            action_time=6.0,
+            action_progress=1.0,
+        )
+        self.assertIs(boss_start, boss_frames[0])
+        self.assertIs(boss_final, boss_frames[-1])
+
     def test_ranger_refresh_uses_reviewed_high_resolution_contract(self) -> None:
         library = AssetSpriteLibrary()
         ranger = library.manifest["actors"]["ranger"]
@@ -571,12 +939,13 @@ class SpriteAssetTests(unittest.TestCase):
         ranger = library.manifest["actors"]["ranger"]
         clips = ranger["clips"]
         expected_clips = {
-            "attack": ("hit", 12.0),
-            "cast": ("cast", 10.0),
+            "attack": ("hit", 12.0, 6),
+            "cast": ("cast", 10.0, 6),
+            "pet": ("pet", 10.0, 8),
         }
 
         self.assertNotIn("hit", clips)
-        for state, (folder, expected_fps) in expected_clips.items():
+        for state, (folder, expected_fps, frame_count) in expected_clips.items():
             clip = clips[state]
             self.assertEqual(clip["fps"], expected_fps)
             self.assertFalse(clip["loop"])
@@ -584,7 +953,7 @@ class SpriteAssetTests(unittest.TestCase):
 
             for direction, frame_paths in clip["directions"].items():
                 with self.subTest(state=state, direction=direction):
-                    self.assertEqual(len(frame_paths), 6)
+                    self.assertEqual(len(frame_paths), frame_count)
                     expected_prefix = (
                         f"actors/ranger/animations/{folder}/{direction}/"
                     )
@@ -594,7 +963,7 @@ class SpriteAssetTests(unittest.TestCase):
                     surfaces = [library._source_surface(path) for path in frame_paths]
                     self.assertNotIn(None, surfaces)
                     decoded = [surface for surface in surfaces if surface is not None]
-                    self.assertEqual(len(decoded), 6)
+                    self.assertEqual(len(decoded), frame_count)
                     self.assertEqual(
                         len(
                             {
@@ -602,7 +971,7 @@ class SpriteAssetTests(unittest.TestCase):
                                 for surface in decoded
                             }
                         ),
-                        6,
+                        frame_count,
                     )
                     for surface in decoded:
                         self.assertEqual(surface.get_size(), (256, 256))
@@ -630,7 +999,9 @@ class SpriteAssetTests(unittest.TestCase):
                     self.assertIsNotNone(end)
                     assert start is not None and end is not None
                     self.assertEqual(start.key[2:5], (state, direction, 0))
-                    self.assertEqual(end.key[2:5], (state, direction, 5))
+                    self.assertEqual(
+                        end.key[2:5], (state, direction, frame_count - 1)
+                    )
 
     def test_ranger_skills_select_authored_action_clips(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -660,7 +1031,7 @@ class SpriteAssetTests(unittest.TestCase):
 
             for skill_name, cast_skill in (
                 ("Multishot", game.player_cast_bolt),
-                ("Snare Nova", game.player_cast_class_skill),
+                ("Spirit Beast", game.player_cast_class_skill),
             ):
                 with self.subTest(skill=skill_name):
                     game.reset_transient_visuals()
@@ -880,6 +1251,7 @@ class SpriteAssetTests(unittest.TestCase):
                 BAR_WALL_SCONCE_DIRECTION_BY_FACE["right"],
             )
             wall_h = 48 * WORLD_SCALE
+            self.assertEqual(LIGHT_BAR_WALL_ELEVATION, 0.50)
             for side, direction in (("left", -1), ("right", 1)):
                 game.tile_cache.clear()
                 plain, anchor_x, anchor_y = game.tile_surface(
@@ -894,8 +1266,13 @@ class SpriteAssetTests(unittest.TestCase):
                 changed = changed_bounds(plain, mounted)
                 mount = (
                     anchor_x + direction * TILE_W // 4,
-                    anchor_y - wall_h // 2 + TILE_H // 4,
+                    anchor_y
+                    - round(LIGHT_BAR_WALL_ELEVATION * TILE_H)
+                    + TILE_H // 4,
                 )
+                former_mount_y = anchor_y - wall_h // 2 + TILE_H // 4
+                self.assertGreater(mount[1], former_mount_y)
+                self.assertLess(mount[1], anchor_y)
                 self.assertTrue(changed.inflate(4, 4).collidepoint(mount), side)
 
             game.tile_cache.clear()
@@ -914,8 +1291,13 @@ class SpriteAssetTests(unittest.TestCase):
             changed = changed_bounds(plain, fallback)
             mount = (
                 anchor_x - TILE_W // 4,
-                anchor_y - wall_h // 2 + TILE_H // 4,
+                anchor_y
+                - round(LIGHT_BAR_WALL_ELEVATION * TILE_H)
+                + TILE_H // 4,
             )
+            former_mount_y = anchor_y - wall_h // 2 + TILE_H // 4
+            self.assertGreater(mount[1], former_mount_y)
+            self.assertLess(mount[1], anchor_y)
             self.assertTrue(changed.inflate(4, 4).collidepoint(mount))
 
             game.tile_cache.clear()
@@ -1033,6 +1415,7 @@ class SpriteAssetTests(unittest.TestCase):
         self.assertNotEqual(wisp_idle.key, wisp_idle_later.key)
         stats = atlas.cache_stats()
         self.assertLessEqual(stats["resolved_frames"], 320)
+        self.assertLessEqual(stats["actor_resolution_keys"], 512)
         self.assertEqual(stats["missing_resources"], 0)
 
     def test_player_action_ttl_drives_the_full_authored_clip(self) -> None:
@@ -1253,6 +1636,14 @@ class SpriteAssetTests(unittest.TestCase):
             self.assertEqual(run_data["version"], 5)
             self.assertNotIn("legacy_graphics", run_data)
             self.assertNotIn("sprite", json.dumps(run_data).casefold())
+            self.assertTrue(run_data["enemies"])
+            self.assertNotIn("locomotion_anim_scale", run_data["enemies"][0])
+            self.assertNotIn(
+                "pending_locomotion_scale", run_data["enemies"][0]
+            )
+            self.assertNotIn(
+                "pending_locomotion_anim_scale", run_data["enemies"][0]
+            )
 
             game.state = "options"
             game.ui_scale = 4

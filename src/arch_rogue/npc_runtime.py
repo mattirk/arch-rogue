@@ -47,6 +47,8 @@ class FriendlyNpcMotion:
     facing_x: float = 1.0
     facing_y: float = 1.0
     moving: bool = False
+    holding_for_player: bool = False
+    sprite_direction: str = ""
     phrase_index: int = -1
     next_move_beat: float = 0.0
 
@@ -60,6 +62,7 @@ class FriendlyNpcRuntimeMixin:
     FRIENDLY_NPC_TRAVEL_BEATS = 2.0
     FRIENDLY_NPC_MIN_DANCE_BEATS = 2.0
     FRIENDLY_NPC_WAYPOINT_BEATS = 4.0
+    FRIENDLY_NPC_PLAYER_HOLD_HYSTERESIS = 0.12
 
     def iter_friendly_npcs(self) -> Iterator[FriendlyNpc]:
         yield from getattr(self, "shopkeepers", ())
@@ -208,7 +211,7 @@ class FriendlyNpcRuntimeMixin:
             if motion.room_index is None:
                 motion.moving = False
                 continue
-            if self._friendly_npc_holds_for_player(npc):
+            if self._friendly_npc_holds_for_player(npc, motion):
                 motion.moving = False
                 self._friendly_npc_face_player(motion, npc)
                 continue
@@ -238,7 +241,8 @@ class FriendlyNpcRuntimeMixin:
                 motion.target_x - npc.x, motion.target_y - npc.y
             )
             if remaining <= 0.05:
-                motion.moving = False
+                # Preserve the travel frame when this update actually displaced
+                # the NPC onto its target. The next update enters the dance hold.
                 motion.next_move_beat = self._friendly_npc_next_move_beat(
                     timing.total_beats
                 )
@@ -276,6 +280,8 @@ class FriendlyNpcRuntimeMixin:
             if isinstance(npc, Shopkeeper)
             else "guest"
             if isinstance(npc, StoryGuest)
+            else "bar_dancer"
+            if isinstance(npc, IdleNpc) and npc.kind == "bar_dancer"
             else "npc"
         )
         anchor = special_room.anchor(anchor_key)
@@ -372,22 +378,39 @@ class FriendlyNpcRuntimeMixin:
             for x, y, _size, _variant in self._shop_gold_stack_placements():
                 yield x + 0.5, y + 0.5, 0.48
 
-    def _friendly_npc_holds_for_player(self, npc: FriendlyNpc) -> bool:
+    def _friendly_npc_holds_for_player(
+        self,
+        npc: FriendlyNpc,
+        motion: FriendlyNpcMotion | None = None,
+    ) -> bool:
+        if motion is None:
+            motion = self.friendly_npc_motion(npc)
         player = getattr(self, "player", None)
         if player is None:
+            motion.holding_for_player = False
             return False
         if (
             isinstance(npc, Shopkeeper)
             and getattr(self, "shop_open", False)
             and getattr(self, "active_shopkeeper", None) is npc
         ):
+            motion.holding_for_player = True
             return True
         radius = 0.0
         if isinstance(npc, Shopkeeper):
             radius = 1.55
         elif isinstance(npc, StoryGuest) and not npc.resolved:
             radius = 1.45
-        return radius > 0.0 and math.hypot(npc.x - player.x, npc.y - player.y) <= radius
+        if radius <= 0.0:
+            motion.holding_for_player = False
+            return False
+
+        if motion.holding_for_player:
+            radius += self.FRIENDLY_NPC_PLAYER_HOLD_HYSTERESIS
+        motion.holding_for_player = (
+            math.hypot(npc.x - player.x, npc.y - player.y) <= radius + 1e-9
+        )
+        return motion.holding_for_player
 
     def _friendly_npc_face_player(
         self, motion: FriendlyNpcMotion, npc: FriendlyNpc
@@ -448,4 +471,4 @@ class FriendlyNpcRuntimeMixin:
         moved = math.hypot(next_x - npc.x, next_y - npc.y)
         npc.x = next_x
         npc.y = next_y
-        motion.moving = moved > 0.0001
+        motion.moving = moved > 0.0

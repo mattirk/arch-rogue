@@ -68,6 +68,16 @@ from .story import (
 )
 
 
+_TRANSIENT_ENEMY_FIELDS = frozenset(
+    (
+        "locomotion_anim_scale",
+        "pending_locomotion_scale",
+        "pending_locomotion_anim_scale",
+        "sprite_direction",
+    )
+)
+
+
 class SaveLoadMixin:
     def item_to_dict(self, item: Item | None) -> dict[str, Any] | None:
         if item is None:
@@ -198,6 +208,7 @@ class SaveLoadMixin:
             "attack_range": familiar.attack_range,
             "attack_cooldown": familiar.attack_cooldown,
             "sprite_variant": familiar.sprite_variant,
+            "kind": familiar.kind,
             "lifesteal": familiar.lifesteal,
             "unkillable": familiar.unkillable,
             "champion": familiar.champion,
@@ -205,9 +216,13 @@ class SaveLoadMixin:
             "anim_time": familiar.anim_time,
             "facing_x": familiar.facing_x,
             "facing_y": familiar.facing_y,
+            "command_mode": familiar.command_mode,
         }
 
     def familiar_from_dict(self, data: dict[str, Any]) -> Familiar:
+        command_mode = str(data.get("command_mode", "attack"))
+        if command_mode not in ("attack", "follow"):
+            command_mode = "attack"
         return Familiar(
             x=float(data.get("x", 0.0)),
             y=float(data.get("y", 0.0)),
@@ -218,6 +233,7 @@ class SaveLoadMixin:
             attack_range=float(data.get("attack_range", 1.25)),
             attack_cooldown=float(data.get("attack_cooldown", 0.85)),
             sprite_variant=int(data.get("sprite_variant", 0)),
+            kind=str(data.get("kind", "spirit")),
             lifesteal=bool(data.get("lifesteal", False)),
             unkillable=bool(data.get("unkillable", False)),
             champion=bool(data.get("champion", False)),
@@ -225,6 +241,7 @@ class SaveLoadMixin:
             anim_time=float(data.get("anim_time", 0.0)),
             facing_x=float(data.get("facing_x", 1.0)),
             facing_y=float(data.get("facing_y", 0.0)),
+            command_mode=command_mode,
         )
 
     def light_source_to_dict(self, light: LightSource) -> dict[str, Any]:
@@ -404,7 +421,14 @@ class SaveLoadMixin:
                 "status_effects": dict(self.player.status_effects),
                 "gold": self.player.gold,
             },
-            "enemies": [enemy.__dict__ for enemy in self.enemies],
+            "enemies": [
+                {
+                    key: value
+                    for key, value in enemy.__dict__.items()
+                    if key not in _TRANSIENT_ENEMY_FIELDS
+                }
+                for enemy in self.enemies
+            ],
             "items": [self.item_to_dict(item) for item in self.items],
             "shopkeepers": [
                 self.shopkeeper_to_dict(shopkeeper) for shopkeeper in self.shopkeepers
@@ -603,13 +627,14 @@ class SaveLoadMixin:
         self.idle_npcs = [
             self.idle_npc_from_dict(npc) for npc in data.get("idle_npcs", [])
         ]
-        # Milestone 3.15 - familiars restore additively; old saves without
-        # the field load with an empty host (the Acolyte can re-summon).
+        # Familiars restore additively. Old saves without the field load with
+        # an empty host; pre-Spirit-Beast entries default to the Acolyte spirit kind.
         self.familiars = [
             self.familiar_from_dict(familiar) for familiar in data.get("familiars", [])
         ]
-        # 4.1.13 backfills the two decorative frogs into saves created before
-        # their introduction, then resets transient motion for the final roster.
+        # Backfill required flavor-room performers into older saves, then reset
+        # transient motion once for the final friendly roster.
+        self._reconcile_bar_dancers()
         self._reconcile_garden_frogs()
         self.reset_friendly_npc_runtime()
         # Ambush Bell traps are floor-local transient runtime actors; saves load

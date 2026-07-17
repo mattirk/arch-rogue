@@ -259,7 +259,7 @@ class MenuTitleMixin:
             "Story guests: press E to hear their plea; press 1 Aid, 2 Bargain, or 3 Defy to shape future floors. Q toggles quest HUD info.",
             "Elites/minibosses: named foes have brighter telegraphs, more danger, and better rewards.",
             f"Difficulty: {self.g.difficulty_profile().name} — change it from Options; Hell unlocks after one clear.",
-            "Resources: stamina powers melee and movement skills; mana powers bolt and nova skills. The bottom action bar combines skill icons, hotkeys, and cooldowns.",
+            "Resources: stamina powers melee and movement skills; mana powers bolts and class skills. The bottom action bar combines skill icons, hotkeys, and cooldowns.",
             "Inventory and HUD: E picks up; I opens inventory; C opens character; 1-9 triggers skills/potions and uses/equips inventory; Shift+1-9 drops; Tab/S sorts.",
             "Discovery: unidentified gear needs scrolls, Insight Shrines, or equipping to reveal.",
             "Dark floors: sight is limited to 4 tiles; monsters navigate normally. Temporary debug: Ctrl+Shift+D toggles darkness on the current level.",

@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -68,7 +69,9 @@ class CutsceneRuntimeTests(unittest.TestCase):
             meet_a = (obs_x + game.STAGE_DUEL_OBSTACLE_CLEAR, clash_y)
 
             def state_at(t):
-                game.elapsed = t
+                assert game.active_cutscene is not None
+                game.active_cutscene.elapsed = t
+                game.elapsed = 137.25
                 duel = game._cutscene_duel_state()
                 assert duel is not None
                 return duel["player"], duel["antagonist"], duel["clash"]
@@ -128,6 +131,76 @@ class CutsceneRuntimeTests(unittest.TestCase):
             self.assertEqual(p_ret[2], "guard")
             self.assertEqual(a_ret[2], "watch")
 
+    def test_duel_uses_cutscene_local_time_independent_of_run_time(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            active = game.active_cutscene
+            self.assertIsNotNone(active)
+            assert active is not None
+            period = game.STAGE_DUEL_PERIOD
+            clash_t = (
+                game.STAGE_DUEL_PHASE_APPROACH
+                + game.STAGE_DUEL_PHASE_CLASH * 0.5
+            ) * period
+
+            # Entering the cutscene late in a run still starts the duel at its
+            # deterministic local origin rather than midway through a cycle.
+            self.assertEqual(active.elapsed, 0.0)
+            game.elapsed = clash_t + period * 100.0
+            start = game._cutscene_duel_state()
+            self.assertIsNotNone(start)
+            assert start is not None
+            self.assertEqual(start["player"][:2], (0.0, 0.0))
+            self.assertEqual(start["antagonist"][:2], (0.0, 0.0))
+            self.assertEqual(start["player"][2], "vow")
+
+            # The same cutscene-local instant is identical at unrelated
+            # run-global times, and wrapping one period preserves the cycle.
+            active.elapsed = clash_t
+            game.elapsed = 0.0
+            first = game._cutscene_duel_state()
+            game.elapsed = period * 0.83
+            second = game._cutscene_duel_state()
+            active.elapsed = clash_t + period
+            wrapped = game._cutscene_duel_state()
+            self.assertEqual(first, second)
+            self.assertEqual(first, wrapped)
+
+    def test_duel_clash_flash_uses_cutscene_local_time(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            active = game.active_cutscene
+            self.assertIsNotNone(active)
+            assert active is not None
+            period = game.STAGE_DUEL_PERIOD
+            clash_t = (
+                game.STAGE_DUEL_PHASE_APPROACH
+                + game.STAGE_DUEL_PHASE_CLASH * 0.5
+            ) * period
+            rest_t = (
+                game.STAGE_DUEL_PHASE_APPROACH
+                + game.STAGE_DUEL_PHASE_CLASH
+                + game.STAGE_DUEL_PHASE_RETREAT
+                + 0.04
+            ) * period
+            surface = game.screen.copy()
+            stage_rect = surface.get_rect()
+
+            active.elapsed = clash_t
+            game.elapsed = rest_t
+            game._frame_duel_state = game._cutscene_duel_state()
+            with patch("arch_rogue.rendering.story_overlays.pygame.draw.line") as line:
+                game._draw_duel_clash_flash(surface, stage_rect)
+            self.assertEqual(line.call_count, 2)
+
+            active.elapsed = rest_t
+            game.elapsed = clash_t
+            game._frame_duel_state = game._cutscene_duel_state()
+            with patch("arch_rogue.rendering.story_overlays.pygame.draw.line") as line:
+                game._draw_duel_clash_flash(surface, stage_rect)
+            line.assert_not_called()
+            game._frame_duel_state = None
+
     # --- Narration speed -------------------------------------------------
 
     def test_narrator_read_speed_is_2_25x(self) -> None:
@@ -154,14 +227,17 @@ class CutsceneRuntimeTests(unittest.TestCase):
             game.reveal_active_cutscene_narration()
             cache = RenderingStoryOverlayMixin._STAGE_CACHE
             cache.clear()
-            game.elapsed = 0.0
+            assert game.active_cutscene is not None
+            game.active_cutscene.elapsed = 0.0
+            game.elapsed = 91.0
             game.draw()
             snapshot = dict(cache)
             self.assertTrue(snapshot)
 
             period = game.STAGE_DUEL_PERIOD
             for index in range(1, 12):
-                game.elapsed = index * period / 12
+                game.active_cutscene.elapsed = index * period / 12
+                game.elapsed = 91.0 + index
                 game.draw()
 
             self.assertLessEqual(len(cache), len(snapshot) + 4)

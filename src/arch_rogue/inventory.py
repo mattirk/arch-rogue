@@ -412,6 +412,8 @@ class InventoryMixin:
             )
         old = self.player.equipment.get(item.slot)
         self.player.equipment[item.slot] = item
+        if self.player.class_name == "Ranger":
+            self._refresh_active_spirit_beast()
         if old and len(self.player.inventory) < MAX_INVENTORY:
             self.player.inventory.append(old)
         self.floaters.append(

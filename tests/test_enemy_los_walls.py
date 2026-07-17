@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -14,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pygame  # noqa: F401  (required to initialize pygame subsystems in tests)
 
 from arch_rogue.content import ARCHETYPES
-from arch_rogue.dungeon import MAP_W
+from arch_rogue.dungeon import MAP_H, MAP_W
 from arch_rogue.game import Game
 from arch_rogue.models import Enemy, Tile
 
@@ -68,6 +69,25 @@ class EnemyLineOfSightTests(unittest.TestCase):
             dungeon.tiles[cx + 2][cy] = Tile.FLOOR
             self.assertTrue(dungeon.line_of_sight(x0, y0, x1, y1))
 
+    def test_dungeon_line_of_sight_blocks_closed_diagonal_corner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            dungeon = game.dungeon
+            cx, cy = int(game.player.x), int(game.player.y)
+            self.assertGreater(MAP_W - cx, 3)
+            self.assertGreater(MAP_H - cy, 3)
+            dungeon.tiles[cx][cy] = Tile.FLOOR
+            dungeon.tiles[cx + 1][cy + 1] = Tile.FLOOR
+            dungeon.tiles[cx + 1][cy] = Tile.WALL
+            dungeon.tiles[cx][cy + 1] = Tile.WALL
+            start = (cx + 0.5, cy + 0.5)
+            target = (cx + 1.5, cy + 1.5)
+
+            self.assertFalse(dungeon.line_of_sight(*start, *target))
+
+            dungeon.tiles[cx + 1][cy] = Tile.FLOOR
+            self.assertTrue(dungeon.line_of_sight(*start, *target))
+
     def test_enemy_cannot_melee_through_wall(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
@@ -97,6 +117,57 @@ class EnemyLineOfSightTests(unittest.TestCase):
             enemy.attack_timer = 0.0
             game.update_enemies(0.1)
             self.assertLess(game.player.hp, hp_before)
+
+    def test_enemy_cannot_melee_through_closed_diagonal_corner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            dungeon = game.dungeon
+            cx, cy = int(game.player.x), int(game.player.y)
+            game.player.x, game.player.y = cx + 0.5, cy + 0.5
+            dungeon.tiles[cx][cy] = Tile.FLOOR
+            dungeon.tiles[cx + 1][cy + 1] = Tile.FLOOR
+            dungeon.tiles[cx + 1][cy] = Tile.WALL
+            dungeon.tiles[cx][cy + 1] = Tile.WALL
+            enemy = _make_melee_enemy(cx + 1.5, cy + 1.5, attack_range=2.0)
+            enemy.speed = 0.0
+            game.enemies = [enemy]
+
+            hp_before = game.player.hp
+            game.update_enemies(0.1)
+            self.assertEqual(game.player.hp, hp_before)
+            self.assertEqual(enemy.attack_timer, 0.0)
+
+            dungeon.tiles[cx + 1][cy] = Tile.FLOOR
+            game.update_enemies(0.1)
+            self.assertLess(game.player.hp, hp_before)
+
+    def test_enemy_los_runs_only_when_an_attack_is_eligible(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            enemy = _make_melee_enemy(
+                game.player.x + 1.0,
+                game.player.y,
+                attack_range=1.5,
+            )
+            enemy.aggro_range = 20.0
+            enemy.speed = 0.0
+            game.enemies = [enemy]
+
+            with patch.object(game.dungeon, "line_of_sight", return_value=True) as los:
+                enemy.attack_timer = 0.8
+                game.update_enemies(0.1)
+                los.assert_not_called()
+
+                enemy.x = game.player.x + 4.0
+                enemy.attack_timer = 0.0
+                game.update_enemies(0.1)
+                los.assert_not_called()
+
+                enemy.x = game.player.x + 1.0
+                enemy.attack_timer = 0.0
+                game.update_enemies(0.1)
+                los.assert_called_once()
+                self.assertGreater(enemy.attack_timer, 0.0)
 
 
 if __name__ == "__main__":

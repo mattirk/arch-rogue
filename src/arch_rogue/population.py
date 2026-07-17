@@ -433,6 +433,17 @@ class PopulationMixin:
                 continue
             handler(special_room, self.dungeon.rooms[special_room.room_index])
 
+    def _reconcile_bar_dancers(self) -> None:
+        """Backfill one dedicated dancer per persisted bar without patron rolls."""
+        for special_room in list(getattr(self.dungeon, "special_rooms", [])):
+            if special_room.kind != "bar":
+                continue
+            if not (0 <= special_room.room_index < len(self.dungeon.rooms)):
+                continue
+            self._ensure_bar_dancer(
+                special_room, self.dungeon.rooms[special_room.room_index]
+            )
+
     def _reconcile_garden_frogs(self) -> None:
         """Backfill frogs in pre-4.1.13 saves without touching gameplay RNG."""
         for special_room in list(getattr(self.dungeon, "special_rooms", [])):
@@ -546,18 +557,20 @@ class PopulationMixin:
         self._clear_room_hostiles_and_traps(room)
         self._populate_story_guest(special_room, room)
 
-    # --- 3.14 / 4.1.13 flavor rooms: bar / garden ----------------------
-    # These are appearance-only. They never clear hostiles (they are not refuges)
-    # and never offer interaction. Bars and gardens may host one humanoid at 50%
-    # chance, while every garden also receives two dancing frogs. A layout-seeded
-    # local RNG drives names and rolls without advancing the shared population RNG.
-    # Kind/name guards make repeated population (including save restore) idempotent.
+    # --- flavor rooms: bar / garden -------------------------------------
+    # These are appearance-only. They never clear hostiles or offer interaction.
+    # Bars and gardens may host one traveler at 50%; every bar also receives one
+    # dedicated dancer and every garden two frogs. Layout-seeded local RNG keeps
+    # population deterministic without advancing the shared gameplay RNG.
     _BAR_NPC_NAMES = (
         "Barkeep Ossar",
         "Drunk Mabel",
         "Quiet Fenn",
         "Old Candle-Venn",
     )
+    _BAR_DANCER_NAME = "Bar Dancer"
+    _BAR_DANCER_ROLE = "Tavern Reveler"
+    _BAR_DANCER_COLOR = (224, 126, 72)
     _GARDEN_NPC_NAMES = (
         "Gardener Thistle",
         "Wandering Pilgrim",
@@ -572,12 +585,6 @@ class PopulationMixin:
         "Thimble-Toad",
         "Dewdrop",
     )
-
-    def _room_has_idle_npc(self, room: Room) -> bool:
-        return any(
-            self._room_contains_world_point(room, npc.x, npc.y)
-            for npc in getattr(self, "idle_npcs", [])
-        )
 
     def _flavor_room_rng(self, special_room: SpecialRoom, salt: int) -> random.Random:
         # Include stable room geometry rather than only count/index; otherwise
@@ -598,25 +605,79 @@ class PopulationMixin:
         return random.Random(seed)
 
     def _populate_bar_special_room(self, special_room: SpecialRoom, room: Room) -> None:
-        if self._room_has_idle_npc(room):
-            return
         rng = self._flavor_room_rng(special_room, salt=0xB4B)
-        if rng.random() >= 0.50:
+        spawn_wayfarer = rng.random() < 0.50
+        wayfarer_name = rng.choice(self._BAR_NPC_NAMES) if spawn_wayfarer else ""
+        existing = [
+            npc
+            for npc in self.idle_npcs
+            if self._room_contains_world_point(room, npc.x, npc.y)
+        ]
+        if spawn_wayfarer and not any(npc.kind == "bar" for npc in existing):
+            cx, cy = room.center
+            self._reserve_special_room_anchor(special_room, "npc", cx, cy)
+            self.idle_npcs.append(
+                IdleNpc(
+                    x=cx + 0.5,
+                    y=cy + 0.5,
+                    kind="bar",
+                    name=wayfarer_name,
+                    role="Wayfarer",
+                    color=(214, 176, 120),
+                )
+            )
+        self._ensure_bar_dancer(special_room, room)
+
+    def _ensure_bar_dancer(
+        self, special_room: SpecialRoom, room: Room
+    ) -> None:
+        room_dancers = [
+            npc
+            for npc in self.idle_npcs
+            if npc.kind == "bar_dancer"
+            and self._room_contains_world_point(room, npc.x, npc.y)
+        ]
+        retained = room_dancers[0] if room_dancers else None
+        self.idle_npcs = [
+            npc
+            for npc in self.idle_npcs
+            if not (
+                npc.kind == "bar_dancer"
+                and self._room_contains_world_point(room, npc.x, npc.y)
+                and npc is not retained
+            )
+        ]
+        if retained is not None:
+            anchor = special_room.anchor("bar_dancer")
+            if anchor is None:
+                anchor = (math.floor(retained.x), math.floor(retained.y))
+            self._reserve_special_room_anchor(
+                special_room, "bar_dancer", anchor[0], anchor[1]
+            )
             return
-        cx, cy = room.center
-        self._reserve_special_room_anchor(special_room, "npc", cx, cy)
+
+        rng = self._flavor_room_rng(special_room, salt=0xD4A)
+        spawn_tiles = self._flavor_npc_spawn_tiles(
+            special_room, room, rng, 1
+        )
+        if not spawn_tiles:
+            return
+        dancer_x, dancer_y = spawn_tiles[0]
+        self._reserve_special_room_anchor(
+            special_room, "bar_dancer", dancer_x, dancer_y
+        )
         self.idle_npcs.append(
             IdleNpc(
-                x=cx + 0.5,
-                y=cy + 0.5,
-                kind="bar",
-                name=rng.choice(self._BAR_NPC_NAMES),
-                role="Wayfarer",
-                color=(214, 176, 120),
+                x=dancer_x + 0.5,
+                y=dancer_y + 0.5,
+                kind="bar_dancer",
+                name=self._BAR_DANCER_NAME,
+                role=self._BAR_DANCER_ROLE,
+                color=self._BAR_DANCER_COLOR,
             )
         )
 
-    def _garden_frog_spawn_tiles(
+    def _flavor_npc_spawn_tiles(
         self,
         special_room: SpecialRoom,
         room: Room,
@@ -667,7 +728,7 @@ class PopulationMixin:
             preferred.extend(tile for tile in candidates if tile in reserved)
         if len(preferred) < count:
             # Corrupt saves can theoretically occupy every interior tile. Keep
-            # loading deterministic and preserve the two-frog invariant rather
+            # loading deterministic and preserve required flavor actors rather
             # than raising; normal generated floors always use clear candidates.
             preferred.extend(tile for tile in passable if tile not in preferred)
         return preferred[:count]
@@ -738,7 +799,7 @@ class PopulationMixin:
         ]
         missing_indexes = [index for index in range(2) if index not in retained]
         spawn_tiles = iter(
-            self._garden_frog_spawn_tiles(
+            self._flavor_npc_spawn_tiles(
                 special_room, room, rng, len(missing_indexes)
             )
         )

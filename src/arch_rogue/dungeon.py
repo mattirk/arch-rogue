@@ -540,19 +540,33 @@ class Dungeon:
     def line_of_sight(self, x0: float, y0: float, x1: float, y1: float) -> bool:
         # Trace the straight line between two world points and return False if a
         # wall/closed door blocks it. Endpoints are skipped so actors standing on
-        # floor are not treated as blocking themselves. Sampling step is small
-        # enough (<= 0.25 tile) that no 1-tile wall can be jumped between samples.
+        # floor are not treated as blocking themselves. Diagonal tile transitions
+        # also reject a closed corner made from two touching orthogonal walls; a
+        # zero-width ray must not let attacks slip through that seam.
         dx = x1 - x0
         dy = y1 - y0
         distance = math.hypot(dx, dy)
         if distance < 1e-3:
             return True
-        steps = int(distance / 0.25)
+        steps = max(1, math.ceil(distance / 0.25))
         if steps <= 1:
             return True
         inv = 1.0 / steps
-        for i in range(1, steps):
+        previous_tx = int(x0)
+        previous_ty = int(y0)
+        for i in range(1, steps + 1):
             t = i * inv
-            if not self.is_floor(x0 + dx * t, y0 + dy * t):
+            px = x0 + dx * t
+            py = y0 + dy * t
+            tx = int(px)
+            ty = int(py)
+            if tx != previous_tx and ty != previous_ty:
+                horizontal_open = self.is_floor(tx + 0.5, previous_ty + 0.5)
+                vertical_open = self.is_floor(previous_tx + 0.5, ty + 0.5)
+                if not horizontal_open and not vertical_open:
+                    return False
+            if i < steps and not self.is_floor(px, py):
                 return False
+            previous_tx = tx
+            previous_ty = ty
         return True

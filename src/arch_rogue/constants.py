@@ -68,6 +68,10 @@ RUN_FRAME_RATE = 8.0
 # don't blur. Effective range gives ~1.2..1.9 stride cycles per second.
 WALK_ANIM_SPEED_FLOOR = 2.2
 WALK_ANIM_SPEED_CEIL = 3.6
+# Runtime movement modifiers (analog creep, snares, Time Skip, final approach
+# steps) may lower cadence further, but never below this fraction of the base
+# cycle so discrete authored frames do not turn into occasional visible ticks.
+WALK_ANIM_RUNTIME_SCALE_FLOOR = 0.25
 # Dungeon tile texture variants. A small, coherent family of pre-generated
 # wall/floor textures picked deterministically per tile so the dungeon reads
 # as hand-laid masonry instead of a single repeating stamp. Bounded set keeps
@@ -109,9 +113,9 @@ LIGHT_FLICKER_INTENSITY_AMP = 0.08
 # Static light radii (world tiles) and intensities.
 LIGHT_TORCH_RADIUS = 2.6
 LIGHT_TORCH_INTENSITY = 0.62
-# Bar sconces are mounted halfway up a 48px wall face. Expressing height in
-# TILE_H units lets the light buffer project them consistently at every zoom.
-LIGHT_BAR_WALL_ELEVATION = 0.75
+# Bar sconces sit on the lower third of a 48px wall face, closer to the floor.
+# TILE_H units keep the fixture and light halo aligned at every viewport zoom.
+LIGHT_BAR_WALL_ELEVATION = 0.50
 LIGHT_SHRINE_RADIUS = 2.3
 LIGHT_SHRINE_INTENSITY = 0.55
 # Transient skill/impact/projectile light tuning.

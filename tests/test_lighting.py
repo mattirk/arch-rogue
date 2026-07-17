@@ -124,6 +124,13 @@ class LightingTests(unittest.TestCase):
             [],
         )
         patron = IdleNpc(px - 0.3, py, kind="bar", name="Tovin", role="Patron")
+        dancer = IdleNpc(
+            px + 0.3,
+            py + 0.3,
+            kind="bar_dancer",
+            name="Bar Dancer",
+            role="Tavern Reveler",
+        )
         frog = IdleNpc(
             px,
             py - 0.3,
@@ -133,7 +140,7 @@ class LightingTests(unittest.TestCase):
         )
         game.shopkeepers = [shopkeeper]
         game.story_guests = [guest]
-        game.idle_npcs = [patron, frog]
+        game.idle_npcs = [patron, dancer, frog]
         game.reset_friendly_npc_runtime()
         persistent_count = len(game.light_sources)
         transient_count = len(game.lights)
@@ -144,10 +151,15 @@ class LightingTests(unittest.TestCase):
         npc_lights = [
             light for light in lights if light.kind == "friendly_lantern"
         ]
-        self.assertEqual(len(npc_lights), 3)
+        self.assertEqual(len(npc_lights), 4)
         self.assertEqual(
             {(light.x, light.y) for light in npc_lights},
-            {(shopkeeper.x, shopkeeper.y), (guest.x, guest.y), (patron.x, patron.y)},
+            {
+                (shopkeeper.x, shopkeeper.y),
+                (guest.x, guest.y),
+                (patron.x, patron.y),
+                (dancer.x, dancer.y),
+            },
         )
         self.assertNotIn((frog.x, frog.y), {(light.x, light.y) for light in npc_lights})
         for light in npc_lights:
@@ -238,6 +250,7 @@ class LightingTests(unittest.TestCase):
     def test_projectile_light_follows_path(self) -> None:
         game = self.make_game(tempfile.mkdtemp())
         game.lights = []
+        game.enemies = []
         proj = Projectile(
             x=game.player.x + 0.4,
             y=game.player.y,
@@ -251,11 +264,47 @@ class LightingTests(unittest.TestCase):
         )
         game.projectiles = [proj]
         game.update_projectiles(0.05)
-        # A moving light is appended inside the projectile loop.
-        self.assertGreaterEqual(len(game.lights), 1)
-        first = game.lights[0]
+        projectile_lights = [light for light in game.lights if light.kind == "projectile"]
+        self.assertEqual(len(projectile_lights), 1)
+        first = projectile_lights[0]
+        first_x = first.x
+        self.assertIs(proj.light_source, first)
         self.assertEqual(first.color, proj.color)
-        self.assertEqual(first.kind, "projectile")
+
+        game.update_lights(0.05)
+        game.update_projectiles(0.05)
+        projectile_lights = [light for light in game.lights if light.kind == "projectile"]
+        self.assertEqual(len(projectile_lights), 1)
+        self.assertIs(projectile_lights[0], first)
+        self.assertGreater(first.x, first_x)
+
+        # Once the projectile is gone, its unrefreshed light decays normally.
+        game.projectiles = []
+        game.update_lights(1.0)
+        self.assertNotIn(first, game.lights)
+
+    def test_offscreen_transient_lights_are_not_collected_for_rendering(self) -> None:
+        game = self.make_game(tempfile.mkdtemp())
+        game.lights = []
+        near = game.add_light(
+            game.player.x + 1.0,
+            game.player.y,
+            1.5,
+            (220, 140, 90),
+            ttl=0.3,
+        )
+        far = game.add_light(
+            game.player.x + 1_000.0,
+            game.player.y + 1_000.0,
+            1.5,
+            (220, 140, 90),
+            ttl=0.3,
+        )
+        game._frame_cache = {}
+        collected = game._collect_frame_lights()
+        self.assertTrue(any(light is near for light in collected))
+        self.assertFalse(any(light is far for light in collected))
+        self.assertEqual(len(game.lights), 2)
 
     # --- feature 5: theme ambient tint ---------------------------------
     def test_theme_ambient_tint_uses_theme_accent(self) -> None:

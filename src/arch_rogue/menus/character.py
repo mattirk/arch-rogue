@@ -934,7 +934,7 @@ class MenuCharacterMixin:
             "Rogue": ("Backstab", "Knife Fan", "Ambush Bell", "Shadow Dash"),
             "Arcanist": ("Mage Strike", "Arc Bolt", "Frost Nova", "Blink"),
             "Acolyte": ("Blood Rite", "Spirit Bolt", "Spirit Call", "Dark Step"),
-            "Ranger": ("Hawk Slash", "Multishot", "Snare Nova", "Vault"),
+            "Ranger": ("Hawk Slash", "Multishot", "Spirit Beast", "Vault"),
         }.get(name, ("Slash", "Bolt", "Nova", "Dash"))
 
     def _draw_character_section_panel(
@@ -1110,6 +1110,12 @@ class MenuCharacterMixin:
                 self.u(78 if used_asset else 72),
                 small_h * 2 + self.u(24),
             )
+        class_skill_stat = ("Nova", self.g.nova_damage_type().title())
+        if player.class_name == "Ranger":
+            _beast_hp, beast_damage, _beast_speed, _beast_cooldown = (
+                self.g.spirit_beast_stats()
+            )
+            class_skill_stat = ("Beast DMG", str(beast_damage))
         stats = [
             ("HP", f"{int(player.hp)}/{player.max_hp}"),
             ("Mana", f"{int(player.mana)}/{player.max_mana}"),
@@ -1118,7 +1124,7 @@ class MenuCharacterMixin:
             ("Melee", str(player.melee_damage())),
             ("Armor", str(player.armor())),
             ("Weapon", self.g.weapon_damage_type().title()),
-            ("Nova", self.g.nova_damage_type().title()),
+            class_skill_stat,
         ]
         stats_rect = pygame.Rect(inner.x, stats_y, inner.width, stats_h)
         stats_content = (

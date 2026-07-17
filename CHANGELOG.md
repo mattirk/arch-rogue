@@ -1,5 +1,224 @@
 # Changelog
 
+## 4.1.22 — Ranger Spirit Beast Petting
+
+Milestone 4.1.22 lets the Ranger pet a living nearby Spirit Beast through the normal interact action, pairing a grounded kneel-and-reach animation with the beast's pleased response while preserving the companion's combat command and resource systems.
+
+### Added
+
+- Added Ranger-only petting for a living, cooldown-ready Spirit Beast within `1.5` tiles and clear dungeon line of sight. It remains on the normal interact action, but no longer occupies the generic HUD interaction tooltip; a half-size translucent world-space paw badge appears above the closest eligible beast instead.
+- Petting restores up to `2` missing Spirit Beast HP, clamped to maximum health, emits a compact `+2` floater, and starts a per-beast `2.0`-second pet cooldown. It spends no mana, does not alter or reset the Ranger class-skill cooldown, does not summon or replace the beast, and leaves its return/attack command mode unchanged.
+- Added synchronized `0.8`-second paired action state: the Ranger and Spirit Beast face each other, the Ranger briefly stays grounded in the kneeling pose, and familiar movement, perception, and attacks pause until the affection clip completes.
+- Added complete authored `pet` clips for Ranger and Spirit Beast: eight directions, eight frames per direction, `10` FPS, and non-looping playback. The package gains `128` transparent PNG frames under canonical `ranger` and `spirit_beast` asset paths.
+- Added procedural legacy fallbacks for the Ranger's kneel-and-reach and the Spirit Beast's pleased body wiggle, so petting remains readable when modern authored graphics are disabled or unavailable.
+
+### State and resilience
+
+- `Familiar.pet_cooldown` and `Familiar.pet_anim_timer` are transient runtime state. They are intentionally excluded from run saves, so loading resumes with the beast in its normal pose and immediately pettable; run-save schema remains `5` and options schema remains `4`.
+- Pet rendering has priority over attack, walk, and idle state selection. Both modern and procedural paths use action-local progress, hold the final non-looping frame correctly, and return to ordinary simulation after the paired timer expires.
+- Runtime/package release version is `4.1.22`.
+
+### Asset provenance
+
+- PixelLab Ranger character: `2a6c4684-9821-4520-96b2-b0622bfb0d91`; approved `pet` group: `61eff18d-b0fe-4842-abed-16cb49a37321`.
+- PixelLab Spirit Beast character: `ad64a571-0551-4de1-b6c4-81a6dc717a7e`; approved `pet` group: `11edf405-b927-4157-947f-c5c22dad2937`.
+- The user reviewed and approved both final eight-direction animation groups before they were downloaded and integrated. Ranger frames retain the existing `256×256` contract; Spirit Beast frames retain the existing `184×184` contract.
+
+### Validation
+
+- `.venv/bin/python -m unittest tests.test_familiars tests.test_inventory_hud_and_hints tests.test_world_rendering_and_animation` — 41 tests, all passing.
+- `.venv/bin/python -m unittest discover tests` — 296 tests, all passing; experimental web tests were not run separately.
+- `.venv/bin/python -m compileall -q src tests tools` — OK.
+- Packaged asset gate verifies every direction and frame, source dimensions, transparent margins, frame uniqueness, non-looping endpoints, and modern runtime resolution for both actors.
+- `git diff --check` — OK.
+
+## 4.1.21 — Ranger Spirit Beast Commands
+
+Milestone 4.1.21 renames the Ranger's companion skill to Spirit Beast, makes the summon durable enough for its new long replacement cadence, and turns every cast made while the beast is alive into a direct return/attack command.
+
+### Changed
+
+- Canonicalized the Ranger class skill as `Spirit Beast` across runtime dispatch, familiar kind values, method names, skill lists, archetype selection, the character sheet, HUD labels/icons, discipline descriptions, effects, authored-asset metadata, on-disk asset paths, and tests. The character sheet reports `Beast DMG`.
+- Increased base Spirit Beast health from `30` to `60` and base bite damage from `7` to `12`. Existing Beast-discipline increments remain additive, producing a fully upgraded `138` HP / `26` damage companion.
+- Spirit Beast summoning now always costs exactly 50% of the Ranger's current maximum mana and starts an exact 60-second replacement cooldown. Equipment discounts, curses, and cast speed do not alter either summon value.
+- A living Spirit Beast is never resummoned, replaced, healed, or charged mana by another class-skill cast, even after the replacement cooldown reaches zero. Casts instead alternate between `RETURN`, which suppresses enemy targeting and regroups within `0.9` tiles of the Ranger, and `ATTACK`, which resumes nearest visible-enemy targeting.
+- Return/attack commands cost no mana, do not reset or consume the replacement cooldown, and remain available even at zero mana. The HUD action slot displays the next `RETURN` or `ATTACK` command and remains visibly actionable while the summon timer is running.
+- Summoning resolves a clear, radius-safe position with direct dungeon line of sight before spending mana or starting cooldown. It samples progressively wider rings and nearby floor centers instead of falling back into blocked geometry; if no safe point exists, the cast has no cost and creates no beast.
+- Runtime/package release version is `4.1.21`. Options remain schema `4` and run saves remain schema `5`.
+
+### Refactor and resilience
+
+- The runtime familiar kind, class-skill dispatch, HUD icon, authored manifest key, procedural helper, and actor directory now use only `spirit_beast`; no legacy aliases or method wrappers remain.
+- Ranger class-skill equipment recognizes only `Spirit Beast` wording. `Beastlord Harness` now grants `Spirit Beast bond`, adding `12` HP and `2` bite damage and refreshing an already-active beast immediately when equipped.
+- `Familiar.command_mode` is serialized as `attack` or `follow`; invalid values default to `attack`. Existing positional constructor arguments retain their prior meaning, but obsolete familiar kind values are intentionally not migrated.
+- Wall-blocked perception and attacks remain unchanged: attack mode only selects enemies with clear dungeon line of sight, while return mode ignores enemies entirely.
+
+### Validation
+
+- `.venv/bin/python -m unittest tests.test_familiars tests.test_hud_action_bar` — 31 tests, all passing.
+- `.venv/bin/python -m unittest discover tests` — 292 tests, all passing; no web-specific modules were present under `tests/`.
+- `.venv/bin/python -m compileall -q src tests tools` — OK.
+- `git diff --check` — OK.
+
+## 4.1.20 — Ranger Spirit Beast
+
+Milestone 4.1.20 introduces the Ranger's persistent Spirit Beast companion, makes the existing Beast discipline path directly strengthen it, and adds a complete reviewed directional animation set.
+
+### Added
+
+- Added `Spirit Beast` as the Ranger's hotkey-3 class skill. Casting spends the established class-skill mana/cooldown budget, summons one beast beside the Ranger, and recreates it at full health with the current build's stats. The beast persists until killed, resummoned, or floor descent.
+- Added Ranger-specific beast progression. Beast Bond grants health and bite damage; Pack Tactics adds health, damage, attack speed, and bonus damage against snared foes; Alpha adds dire-beast health, damage, speed, and knockback; Spirit Companion adds health, damage, speed, faster arcane bites; and Primal Lord creates a tougher champion with faster attacks and bonus damage against elites and bosses. Choosing a Beast discipline refreshes an already-active beast immediately.
+- Added a dedicated `spirit_beast` HUD slot/icon, forest-green paw-call summon effect, discipline-aware `Beast DMG` character-sheet stat, and a grounded procedural Spirit Beast fallback for legacy graphics or missing authored files.
+- Added a modern `Spirit Beast` actor with eight base rotations and eight-frame `idle`, `walk`, and non-looping `attack` clips in all eight directions.
+- Added regression coverage for Ranger skill dispatch and presentation, resource/cooldown use, summon/recast/descent lifecycle, every Beast rank's stats, active-beast refresh, marked/elite/knockback behavior, save compatibility, wall-blocked perception and attacks, closed diagonal corners, attack animation state, authored asset completeness, frame uniqueness, and runtime state resolution.
+
+### Changed
+
+- Removed the former Ranger class skill from Ranger runtime and menu-facing skill lists. Ranger class-skill dispatch now resolves to `spirit_beast`; Arcanist Frost Nova and other archetype class skills are unchanged.
+- Familiar targeting now requires clear dungeon line of sight before pursuit or attack. The shared LOS trace also rejects zero-width seams between two touching orthogonal walls, preventing both familiars and enemies from attacking through closed diagonal corners.
+- Familiar rendering now carries an explicit additive `kind` (`spirit` or `spirit_beast`), selects the Spirit Beast's approved idle/walk/attack states, keeps its body grounded instead of applying spirit bobbing, and uses a Ranger-green health bar.
+- Ranger class-skill equipment uses `Spirit Beast` wording directly.
+- Fixed slow beast movement jitter at its follow and attack boundaries. Familiar walk clips now use a simulation-local phase, final movement steps are capped to the remaining distance, slow cadence retains a smooth 25% floor, blocked movement does not animate, and directional-sheet hysteresis prevents adjacent directions from flickering near sector edges.
+- Applied the same animation-timing audit to other actors: player/enemy cadence follows actual analog, equipment, status, Time Skip, collision, and stopping-distance movement; enemy/friendly-NPC threshold transitions no longer burst or chatter; controller deadzone activation is hysteretic without latching neutral drift; menu-paused actor clocks freeze; and hit/action clips use local progress in both modern and procedural graphics.
+- Projectile animation now uses simulation-local age rather than global time plus live position, so travel direction and homing do not alter frame cadence. Friendly NPC directions and proximity holds use transient hysteresis, and cutscene duel choreography now begins from cutscene-local time rather than an arbitrary run-global phase.
+- Overlapping fractional movement slows are integrated piecewise, including the low-cadence floor, so one coarse update produces the same enemy displacement and animation phase as equivalent split updates.
+- Runtime/package release version is `4.1.20`. Options remain schema `4` and run saves remain schema `5`.
+
+### Asset provenance
+
+- PixelLab character `Spirit Beast`: `ad64a571-0551-4de1-b6c4-81a6dc717a7e`.
+- Character prompt: “lean loyal grey beast familiar for the Ranger, natural quadruped canine anatomy, alert pointed ears, long muzzle, bushy tail, charcoal and ash-grey fur with a pale throat and underbelly, subtle forest-green leather collar with one small bronze ranger medallion, amber eyes, battle-ready but not monstrous, no saddle, no armor, no clothing, no weapons, no magic aura, no extra limbs, readable grim dark-fantasy isometric action-RPG pixel art, transparent background”.
+- Final `idle` group: `aa96e139-9756-4e19-b3d8-15cb42036d69`.
+- Final `walk` group: `07d39bb4-8aec-4806-9b5b-1fb490cf36eb`.
+- Final `attack` group `7f6bdbbc-c3f7-4815-9ca7-ed01fb576237`: “attack with one fast grounded forward bite: lower the head, bare the teeth, lunge a short distance, snap the jaws once, then recoil to the starting stance; keep the original facing direction locked, all four legs and the tail visible, no turning, spinning, barking, magic, or camera-facing pivot”.
+- The user reviewed and approved the final rotations plus all idle, walk, and attack directions in PixelLab. The packaged set contains exactly `200` transparent `184×184` PNGs: `8` rotations and `192` animation frames.
+
+### Compatibility and resilience
+
+- `Familiar.kind` is additive and defaults to `spirit`, so pre-4.1.20 Acolyte familiar payloads retain their wisp/owl behavior. Old saves without a `familiars` collection still load an empty host, and the run-save schema remains `5`.
+- Familiar attack-animation time is transient and intentionally excluded from saves. Saved position, health, damage, cooldown, facing, champion state, and other existing fields retain their prior shape and behavior.
+- Missing modern Spirit Beast assets resolve through the procedural canine fallback. Missing individual clips continue through the asset resolver's established rotation/fallback path.
+- New locomotion scales, sprite-direction anchors, projectile age, and hit/action clocks are transient and excluded from run payloads. Existing positional constructor prefixes remain valid, and the save schema remains `5`.
+- The separately documented 60-second cooldown and in-cooldown recall/attack command toggle are future ideas and are intentionally not part of this milestone.
+
+### Validation
+
+- Human review approved the final PixelLab rotations and all three eight-direction animation groups.
+- Packaged asset gate: exactly `200` transparent `184×184` PNGs (`8` rotations plus `64` idle, `64` walk, and `64` attack frames), eight unique frames in every directional clip, eight distinct direction sequences per state, complete transparent margins, and successful idle/walk/attack runtime resolution.
+- `.venv/bin/python -m unittest tests.test_familiars tests.test_enemy_los_walls tests.test_sprite_assets tests.test_skill_paths tests.test_skill_tree_choices_and_menu tests.test_hud_action_bar tests.test_save_and_metadata tests.test_world_rendering_and_animation tests.test_ambush_bell` — 77 tests, all passing.
+- `.venv/bin/python -m compileall -q src tests tools` — OK.
+- Animation-focused regression suite (`test_movement_animation`, `test_familiars`, `test_world_rendering_and_animation`, `test_time_skip`, `test_sprite_assets`, `test_input_and_accessibility`, `test_friendly_npcs`, `test_cutscene_runtime`, and `test_pause_on_menus`) — 127 tests, all passing.
+- `.venv/bin/python -m unittest discover tests` — 287 tests, all passing; experimental web tests were not run.
+- Worst-case overlapping partial-slow timing probe: `100` enemies averaged `0.2041 ms` per batch under dummy SDL.
+- `git diff --check` — OK.
+
+## 4.1.19 — Profile-Guided Frame Optimization
+
+Milestone 4.1.19 adds a deterministic gameplay profiler and applies measured, low-risk hot-path optimizations to dense combat simulation, actor rendering, and continuous lighting.
+
+### Added
+
+- Added `tools/profile_game.py`, a headless fixed-step `cProfile` harness with deterministic quiet-floor and dense-crowd scenarios. It profiles `Game.update()` and `Game.draw()` separately, supports seed/depth/resolution/zoom/lighting controls, prints cumulative hotspots, and writes reusable `.prof` files.
+- Added regression coverage for attack-eligible enemy LOS checks, stationary fog-of-war reveal caching and invalidation, final-dimension shadow reuse, bounded actor-resolution keys, one moving light per projectile, off-screen transient-light culling, and projectile-light decay.
+
+### Changed
+
+- Preserved actor-contact resolution order while removing per-mover all-actor list construction, caching the moving actor's radius, and rejecting non-overlapping pairs with squared distances before computing a square root. Dense contact resolution cumulative time fell from `0.814 s` to `0.373 s` over the 240-frame stress profile.
+- Enemy wall LOS is now evaluated only when attack range and cooldown make an attack possible that frame. The stress scenario dropped from `12,000` dungeon LOS traces to `110`; pursuit and through-wall attack prevention are unchanged.
+- Replaced distance-only `hypot` work with squared-radius comparisons in live visibility, dark-floor inner/outer visibility gates, projectile/familiar collision checks, homing and chain target scans, secrets, and shop range checks. Stationary light-floor players no longer rebuild the same reveal disk every frame, while movement, floor changes, set replacement, and in-place clearing invalidate safely.
+- Each projectile now refreshes one associated transient `LightSource` instead of appending another overlapping source every frame. The existing four-sprite visual trail remains, the leading glow follows the projectile, and the final light still decays after impact or expiry.
+- Added bounded reuse for final-size soft shadows, projectile trail surfaces, actor slug/frame resolution keys, and lit sprite composites. Actor resolution keys delegate surface ownership to the existing 320-frame LRU rather than extending image residency. Transient lights whose radius cannot overlap the visible bounds are skipped by light collection.
+- Empty impact/slash/hit-flash collections avoid unnecessary per-frame compaction work.
+- Runtime/package release version is `4.1.19`. Options remain schema `4` and run saves remain schema `5`.
+
+### Profile results
+
+- Deterministic dummy-SDL stress profile: `960×540`, seed `3161`, depth `10`, `50` clustered generated enemies, lighting on, `20` warm-up frames plus `240` measured frames.
+- Profiled update CPU time improved from `4.945 ms/frame` to `2.754 ms/frame` (`44.3%` lower).
+- Profiled render CPU time improved from `20.463 ms/frame` to `15.339 ms/frame` (`25.0%` lower).
+- Major render hotspot totals improved as follows: lighting `1.357 s → 0.627 s`, soft shadows `0.414 s → 0.175 s`, and actor resolution `0.477 s → 0.292 s` over 240 frames.
+- The final unmodified generated-floor profile measured `0.665 ms/update` and `5.307 ms/render`. These are comparative `cProfile` results under the dummy SDL driver, not claims about end-user GPU/display FPS.
+
+### Compatibility and resilience
+
+- Enemy movement, attack timing, collision ordering, hit radii, visibility radii, fog-of-war contents, projectile damage/collision, and save payloads retain their existing rules.
+- Dynamic projectile lighting intentionally consolidates the former chain of overlapping additive halos into one leading glow; the four-sprite trail remains unchanged. `Projectile.light_source` is an additive optional runtime-only field excluded from dataclass comparison, so existing positional constructors and old saves remain compatible; active projectiles are intentionally not serialized.
+- All new surface caches are bounded, while actor-resolution keys own no image surfaces beyond the existing frame LRU. Missing modern assets and disabled lighting continue through the established procedural/web fallback paths.
+
+### Validation
+
+- `.venv/bin/python -m unittest tests.test_enemy_los_walls tests.test_dark_levels tests.test_lighting tests.test_soft_shadows` — 31 tests, all passing.
+- `.venv/bin/python -m unittest tests.test_lighting tests.test_combat_damage_and_loot_tables tests.test_familiars tests.test_pause_on_menus tests.test_world_rendering_and_animation tests.test_soft_shadows tests.test_enemy_los_walls tests.test_dark_levels` — 51 tests, all passing.
+- `.venv/bin/python -m compileall -q src tests tools` — OK.
+- `.venv/bin/python -m unittest discover tests` — 251 tests, all passing; experimental web tests were not run.
+- `.venv/bin/python tools/profile_game.py --scenario crowd --frames 240 --warmup 20 --output-dir /tmp/arch-rogue-profile-final` — completed with the profile results above.
+
+## 4.1.18 — Lower Bar Sconce Mounts
+
+Milestone 4.1.18 lowers both bar-wall sconces toward the floor so each candle reads as attached to the lower portion of its isometric wooden wall face rather than floating near the upper trim.
+
+### Changed
+
+- Lowered `LIGHT_BAR_WALL_ELEVATION` from `0.75` to `0.50` tile heights, moving each authored or procedural fixture downward by one quarter of `TILE_H` (`40` pixels at native world scale).
+- The fixture mount now derives its vertical screen position from the same elevation constant used by the lighting pass. The candle sprite and warm light halo therefore remain centered together at every viewport zoom.
+- Both left and right wall-face directions retain their reviewed south-west/south-east assets and horizontal wall-plane placement; only vertical mounting height changed.
+- Runtime/package release version is `4.1.18`. Options remain schema `4` and run saves remain schema `5`.
+
+### Compatibility and resilience
+
+- Bar wall-tile anchors, asset names, facing assignments, cache keys, and save payload shape are unchanged.
+- Existing saves rebuild their static `bar_wall_light` sources through the established reconciliation path, adopting the lower elevation without a schema migration or duplicate lights.
+- Missing modern sconce art still uses the procedural backplate, bracket, candle, and flame at the same lower mount point.
+
+### Validation
+
+- Reviewed a four-panel old-versus-new comparison for both wall faces. The new fixtures sit visibly closer to the wall base while remaining fully contained on their wooden side panels and aligned with the correct isometric face.
+- Added mount geometry assertions proving the new point is lower than the former midpoint mount, remains above the floor anchor, and intersects both authored and procedural fixture pixels.
+- `python -m unittest tests.test_sprite_assets.SpriteAssetTests.test_bar_wall_sconces_render_assets_and_procedural_fallback tests.test_lighting.LightingTests.test_static_shrine_and_bar_wall_lights_populated tests.test_lighting.LightingTests.test_legacy_bar_center_torch_migrates_to_wall_sconces tests.test_dungeon_tile_variants.DungeonSpriteVariants36Tests.test_prewarm_and_draw_cache_bounds_stable tests.test_save_and_metadata.SaveAndMetadataTests.test_metadata_content_profiles_and_save_version` — 5 tests, all passing.
+- `python -m compileall -q src tests` — OK.
+- `python -m unittest discover tests` — 248 tests, all passing.
+
+## 4.1.17 — Dwarven Bar Dancer
+
+Milestone 4.1.17 adds a second, guaranteed tavern performer to every bar: a stocky dwarven `Bar Dancer` who roams between music-synchronized dance breaks, carries friendly lantern light, and uses a dedicated reviewed eight-direction sprite set distinct from the optional hooded wayfarer.
+
+### Added
+
+- Added exactly one deterministic `IdleNpc(kind="bar_dancer")` to every bar room, named `Bar Dancer` with role `Tavern Reveler`. The existing optional `kind="bar"` wayfarer and its independent 50% roll remain unchanged, so both NPCs can occupy the same tavern without overlapping.
+- Added a dedicated `bar_dancer` special-room anchor. The dancer uses the established friendly-NPC runtime for deterministic room-bound roaming, two-beat travel, four-beat dance breaks, obstacle avoidance, and shared procedural-music phase.
+- Added a dedicated modern `Bar Dancer` actor: eight base rotations, eight-frame `walk` loops in all eight directions, and eight-frame `dance` loops in all eight directions. Idle presentation uses the reviewed directional rotations.
+- Added a distinct procedural dwarven fallback with separate idle, walk, and eight-frame tavern-stomp dance states, preserving the feature when modern graphics are disabled or authored files are unavailable.
+- Added regression coverage for guaranteed/idempotent population, optional-patron coexistence, clear spawn tiles, dedicated home anchoring, non-interaction, humanoid lantern inclusion, serialization, pre-dancer save backfill, duplicate repair, dedicated render dispatch, authored asset completeness, cross-direction sequence uniqueness, beat addressing, and distinct procedural fallback states.
+
+### Changed
+
+- Bar population no longer returns merely because another decorative NPC already occupies the room. The optional wayfarer and mandatory dancer are reconciled independently with local room-seeded RNG and without advancing gameplay RNG.
+- Friendly humanoid enumeration naturally includes `bar_dancer`, so the new NPC emits the same cosmetic `friendly_lantern` light as the player, shopkeepers, story guests, and other humanoid idle NPCs. Garden frogs remain excluded.
+- Stationary Bar Dancers resolve the dedicated `dance` clip, moving dancers resolve `run` through the packaged `walk` frames, and generic bar/garden travelers continue using Story Guest art. The `bar` asset alias remains owned only by Story Guest.
+- Runtime/package release version is `4.1.17`. Options remain schema `4` and run saves remain schema `5`.
+
+### Asset provenance
+
+- PixelLab character `Bar Dancer`: `20f51a7b-8877-4a42-9939-5b8259ea5718`.
+- Character prompt: “jovial stocky dwarven tavern dancer, broad short humanoid silhouette, uncovered head, bright copper-red swept-back hair and large braided beard, round nose and rosy cheeks, friendly grin, cream rolled-sleeve shirt, emerald green waistcoat with brass buttons, burgundy trousers, striped ochre sash, heavy brown dancing boots, small pewter tankard clipped securely to belt, both hands free, no hood, no cloak, no robe, no staff, no weapon, no armor, no aura, no magic effects, full-body medieval dark-fantasy bar reveler, readable high-quality pixel art”.
+- Final `walk` group `59ce6b90-8788-4d1e-8a4a-1d5ed83939ee`: “Walk forward with a grounded, confident short dwarven stride while keeping the original facing direction locked. East and west remain side profiles, north remains back-facing, and diagonals keep their original three-quarter angle. Alternate the heavy boots naturally with modest opposite arm swings; the large braided beard, ochre sash, and belt tankard bounce slightly with each step. Preserve the short stocky body, uncovered swept copper hair, cream rolled sleeves, emerald waistcoat, burgundy trousers, heavy boots, free empty hands, and exact identity in every frame. No turns, spins, weapons, gestures, or camera-facing pivots.”
+- Final `dance` group `6f45f867-5cfe-4f00-a044-b1455c16d96b`: “Dance in place with the original facing locked for the entire loop. Never rotate or turn toward the viewer: east and west remain strict side profiles, north remains fully back-facing, and diagonal views remain at their original three-quarter angle. Perform a grounded four-beat dwarven tavern stomp: left boot stomp, clap both empty hands at chest height, right boot stomp, then raise both fists in celebration before returning to the start. No spins, pivots, travel, weapons, or props in the hands. Preserve the short stocky body, uncovered swept copper hair, large braided copper beard, cream rolled sleeves, emerald waistcoat, burgundy trousers, ochre sash, heavy boots, and belt tankard in every frame. Beard, sash, and tankard bounce naturally without disappearing.”
+- PixelLab limits the `244×244` canvas to eight generated animation frames. The incomplete load-failed template walk group `09257acb-3dd7-40ca-bc59-885f0f653051` and rejected first dance group `82527792-4dd3-4856-9f63-7907af59d275` were deleted; the MCP character now contains exactly the two complete maintainable groups above.
+
+### Compatibility and resilience
+
+- Pre-4.1.17 saves with a persisted bar automatically receive exactly one dancer. Reconciliation calls only the dancer path, so it never performs or replays the optional patron roll, and repeated restores are idempotent.
+- Valid saved or runtime-moved dancers retain identity and position. Duplicate dancers are removed, missing anchors are repaired, and corrupt fully occupied rooms still choose a deterministic passable fallback tile.
+- The public `IdleNpc` model and save schema are unchanged. Missing assets use the procedural dwarf; missing animation clips fall back through the existing asset resolver without affecting movement, lighting, interaction, or save data.
+
+### Validation
+
+- The user visually approved the final overview sheets. All eight rotations and every retained walk/dance frame were reviewed for the dwarven silhouette, hair, beard, clothing, free hands, boots, belt tankard, readable motion, and transparent margins; the separately surfaced south-west walk also passed frame-by-frame review.
+- Packaged asset gate — exactly 136 `244×244` PNGs (`8` rotations + `64` walk + `64` dance), byte-identical to the final MCP export, with non-empty alpha, transparent canvas margins, eight unique rotations, eight unique frames in every directional clip, eight distinct direction sequences per state, and no walk sequence duplicated by its corresponding dance sequence.
+- `python -m unittest tests.test_flavor_rooms tests.test_friendly_npcs tests.test_lighting tests.test_sprite_assets tests.test_save_and_metadata` — 72 tests, all passing.
+- `python -m compileall -q src tests` — OK.
+- `python -m unittest discover tests` — 248 tests, all passing; no web-specific test modules or imports are present in `tests/`.
+
 ## 4.1.16 — Controller and Startup Defaults
 
 Milestone 4.1.16 updates fresh-install controller and display preferences: the shipped gamepad profile uses the requested raw SDL button assignments, Medium becomes the default difficulty, and desktop play starts fullscreen.
@@ -272,7 +491,7 @@ Milestone 4.1.9 completes the female spear Ranger's authored gameplay animation 
 
 ### Changed
 
-- Hawk Slash continues to emit the shared `attack` action state and now resolves the Ranger's authored `hit` frames. Multishot and Snare Nova continue to emit `cast` and now resolve the authored free-hand casting gesture; Vault retains the shared movement/run treatment.
+- Hawk Slash continues to emit the shared `attack` action state and now resolves the Ranger's authored `hit` frames. Multishot and the former Ranger class skill continue to emit `cast` and now resolve the authored free-hand casting gesture; Vault retains the shared movement/run treatment.
 - Applied the established Ranger-only MCP→game direction map to both new groups: `north-west`→`north`, `north`→`north-east`, `west`→`north-west`, `south-west`→`west`, `north-east`→`east`, `south`→`south-west`, `south-east`→`south`, and `east`→`south-east`.
 - Runtime/package release version is `4.1.9`. Run saves remain schema `5` and require no migration.
 
@@ -294,7 +513,7 @@ Milestone 4.1.9 completes the female spear Ranger's authored gameplay animation 
 
 - Fresh MCP export confirmed exactly four animation folders and 48 source frames in each new action group.
 - The import gate byte-verified all 96 packaged files against their mapped MCP sources and confirmed `256×256` 8-bit RGBA decoding, six distinct frames per direction, and transparent canvas margins.
-- `python -m unittest tests.test_sprite_assets tests.test_save_and_metadata` — 21 tests, all passing, including live Hawk Slash, Multishot, and Snare Nova clip selection.
+- `python -m unittest tests.test_sprite_assets tests.test_save_and_metadata` — 21 tests, all passing, including live Hawk Slash, Multishot, and the former Ranger class skill clip selection.
 - `python -m compileall -q src tests` and `git diff --check` — OK.
 - `python -m unittest discover tests` — 208 tests, all passing.
 

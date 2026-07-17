@@ -29,6 +29,75 @@ class PauseOnMenuTests(unittest.TestCase):
             game.choose_story_relic_path(0)
         return game
 
+    def assert_overlay_freezes_actor_clocks(
+        self, game: Game, overlay_attribute: str
+    ) -> None:
+        game.active_cutscene = None
+        enemy = Enemy(
+            name="Clock Test Enemy",
+            kind="stalker",
+            x=game.player.x + 4.0,
+            y=game.player.y,
+            max_hp=50,
+            hp=50,
+            speed=2.5,
+            damage=12,
+            xp=5,
+            attack_range=1.4,
+            attack_cooldown=0.5,
+        )
+        game.enemies.append(enemy)
+        game.player.moving = True
+        game.player.anim_time = 0.75
+        enemy.moving = True
+        enemy.anim_time = 1.25
+        game.set_player_action_visual("cast", 0.6)
+        game.player_action_elapsed = 0.15
+        game.player_hit_flash = 0.4
+        game.enemy_hit_flashes[id(enemy)] = 0.35
+
+        actor_clocks_before = (
+            game.player.anim_time,
+            enemy.anim_time,
+            game.player_action_ttl,
+            game.player_action_elapsed,
+            game.player_action_duration,
+            game.player_hit_flash,
+            game.enemy_hit_flashes[id(enemy)],
+        )
+        elapsed_before = game.elapsed
+        npc_animation_before = game.friendly_npc_dance_progress()
+
+        setattr(game, overlay_attribute, True)
+        game.update(0.1)
+
+        self.assertEqual(
+            (
+                game.player.anim_time,
+                enemy.anim_time,
+                game.player_action_ttl,
+                game.player_action_elapsed,
+                game.player_action_duration,
+                game.player_hit_flash,
+                game.enemy_hit_flashes[id(enemy)],
+            ),
+            actor_clocks_before,
+        )
+        self.assertAlmostEqual(game.elapsed, elapsed_before + 0.1)
+        self.assertNotEqual(game.friendly_npc_dance_progress(), npc_animation_before)
+
+    def test_inventory_overlay_freezes_actor_animation_and_action_clocks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self.assert_overlay_freezes_actor_clocks(
+                self.make_game(tmpdir), "inventory_open"
+            )
+
+    def test_character_overlay_freezes_actor_animation_and_action_clocks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self.assert_overlay_freezes_actor_clocks(
+                self.make_game(tmpdir), "character_menu_open"
+            )
+
     def test_inventory_pauses_and_then_resumes_simulation(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)

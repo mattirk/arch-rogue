@@ -21,6 +21,10 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from arch_rogue.constants import (
+    WALK_ANIM_RUNTIME_SCALE_FLOOR,
+    WALK_ANIMATION_RATE,
+)
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.models import Enemy, Item, Tile
@@ -153,6 +157,144 @@ class TimeSkipTests(unittest.TestCase):
             # ~40% speed: the slowed step should be noticeably below the normal
             # one and roughly proportional to the time-skip factor.
             self.assertLess(slowed_step, normal_step * 0.6)
+
+    def test_enemy_walk_animation_cadence_matches_time_skip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            enemy = _make_enemy(game.player.x + 5.0, game.player.y)
+            enemy.attack_timer = 5.0
+            game.enemies = [enemy]
+            dt = 0.1
+
+            start_x = enemy.x
+            game.update_enemies(dt)
+            game.advance_animation_phases(dt)
+            normal_phase = enemy.anim_time
+            self.assertGreater(normal_phase, 0.0)
+
+            enemy.x = start_x
+            enemy.anim_time = 0.0
+            enemy.attack_timer = 5.0
+            game.player.time_skip_timer = game.time_skip_duration()
+            game.update_enemies(dt)
+            game.advance_animation_phases(dt)
+
+            self.assertAlmostEqual(
+                enemy.anim_time / normal_phase,
+                game.time_skip_factor(),
+                places=4,
+            )
+
+    def test_enemy_tracks_slow_target_without_stop_start_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            enemy = _make_enemy(
+                game.player.x + 0.85,
+                game.player.y,
+            )
+            enemy.attack_timer = 5.0
+            game.enemies = [enemy]
+
+            for _ in range(6):
+                game.player.x -= 0.02
+                before_x = enemy.x
+                before_phase = enemy.anim_time
+                game.update_enemies(0.05)
+                game.advance_animation_phases(0.05)
+                self.assertTrue(enemy.moving)
+                self.assertAlmostEqual(before_x - enemy.x, 0.02, places=5)
+                self.assertAlmostEqual(
+                    enemy.anim_time - before_phase,
+                    0.05
+                    * WALK_ANIMATION_RATE
+                    * enemy.speed
+                    * WALK_ANIM_RUNTIME_SCALE_FLOOR,
+                    places=5,
+                )
+
+    def test_partial_slow_intervals_are_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=0)
+            enemy = _make_enemy(game.player.x + 5.0, game.player.y)
+            enemy.attack_timer = 5.0
+            game.enemies = [enemy]
+            dt = 0.1
+
+            game.player.time_skip_timer = dt * 0.5
+            expected_time_scale = 1.0 - (1.0 - game.time_skip_factor()) * 0.5
+            self.assertAlmostEqual(
+                game.enemy_time_scale(dt), expected_time_scale, places=6
+            )
+
+            enemy.statuses["snared"] = dt * 0.5
+            game.update_enemy_statuses(
+                dt, time_skip_remaining=game.player.time_skip_timer
+            )
+            expected_combined_scale = (
+                game.time_skip_factor() * 0.45 * 0.5 + 1.0 * 0.5
+            )
+            expected_animation_scale = (
+                WALK_ANIM_RUNTIME_SCALE_FLOOR * 0.5 + 1.0 * 0.5
+            )
+            self.assertIsNotNone(enemy.pending_locomotion_scale)
+            self.assertIsNotNone(enemy.pending_locomotion_anim_scale)
+            assert enemy.pending_locomotion_scale is not None
+            assert enemy.pending_locomotion_anim_scale is not None
+            self.assertAlmostEqual(
+                enemy.pending_locomotion_scale,
+                expected_combined_scale,
+                places=6,
+            )
+            self.assertAlmostEqual(
+                enemy.pending_locomotion_anim_scale,
+                expected_animation_scale,
+                places=6,
+            )
+
+            game.update_enemies(
+                dt,
+                time_scale=expected_time_scale,
+                time_skip_remaining=game.player.time_skip_timer,
+            )
+            self.assertAlmostEqual(
+                enemy.locomotion_anim_scale,
+                expected_animation_scale,
+                places=6,
+            )
+
+    def test_overlapping_slows_match_coarse_and_split_updates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+
+            def simulate(step_sizes: tuple[float, ...]) -> tuple[float, float]:
+                game = self.make_game(tmpdir, archetype_index=0)
+                enemy = _make_enemy(game.player.x + 5.0, game.player.y)
+                enemy.attack_timer = 5.0
+                enemy.statuses["snared"] = 0.025
+                game.player.time_skip_timer = 0.025
+                game.enemies = [enemy]
+                start_x = enemy.x
+
+                for step_dt in step_sizes:
+                    remaining = game.player.time_skip_timer
+                    time_scale = game.enemy_time_scale(
+                        step_dt, remaining=remaining
+                    )
+                    game.player.time_skip_timer = max(0.0, remaining - step_dt)
+                    game.update_enemy_statuses(
+                        step_dt, time_skip_remaining=remaining
+                    )
+                    game.update_enemies(
+                        step_dt,
+                        time_scale=time_scale,
+                        time_skip_remaining=remaining,
+                    )
+                    game.advance_animation_phases(step_dt)
+                return start_x - enemy.x, enemy.anim_time
+
+            coarse_distance, coarse_phase = simulate((0.05,))
+            split_distance, split_phase = simulate((0.025, 0.025))
+            self.assertAlmostEqual(coarse_distance, split_distance, places=6)
+            self.assertAlmostEqual(coarse_phase, split_phase, places=6)
 
     def test_enemy_attack_cadence_slows_while_active(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -306,7 +448,7 @@ class TimeSkipTests(unittest.TestCase):
             self.assertEqual(game.enemies, [])
             self.assertAlmostEqual(game.player.class_skill_timer, before, places=4)
 
-    def test_equipment_bonus_recognizes_time_skip_and_legacy_nova(self) -> None:
+    def test_equipment_bonus_recognizes_only_time_skip_wording(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, archetype_index=0)
             # No class-skill gear: no bonus.
@@ -327,16 +469,7 @@ class TimeSkipTests(unittest.TestCase):
             self.assertTrue(game.equipment_class_skill_bonus("Time Skip duration"))
             self.assertAlmostEqual(game.time_skip_duration(), 3.0 + 0.5, places=4)
 
-            # Legacy Nova gear on an older Warden save still applies its
-            # class-skill budget (and Nova-radius wording still resolves).
-            game.player.equipment["weapon"] = Item(
-                name="Old Bulwark", slot="weapon", skill_bonus="Nova"
-            )
-            self.assertTrue(game.equipment_class_skill_bonus())
-            game.player.equipment["weapon"] = Item(
-                name="Old Bulwark Radius", slot="weapon", skill_bonus="Nova radius"
-            )
-            self.assertTrue(game.equipment_class_skill_bonus("Nova radius"))
+
 
             # Time Skip wording does not leak to non-Warden classes.
             arcanist = self.make_game(tmpdir, archetype_index=2)

@@ -169,6 +169,9 @@ class PixelSpriteAtlas:
             name: self._actor_animation_frames(sprite, self.PLAYER_ACCENTS[name])
             for name, sprite in self.player_sprites.items()
         }
+        self.player_animation_frames["Ranger"]["pet"] = self._ranger_pet_frames(
+            self.player_sprites["Ranger"]
+        )
         self.enemy_animation_frames = {
             name: self._actor_animation_frames(
                 sprite, self.ENEMY_ACCENTS.get(name, (225, 120, 100)), hostile=True
@@ -240,6 +243,17 @@ class PixelSpriteAtlas:
         self.shopkeeper_animation_frames = self._actor_animation_frames(
             self.shopkeeper_sprite, (245, 205, 92)
         )
+        self.bar_dancer_sprite = self._scale_actor(self._bar_dancer())
+        bar_dancer_accent = (232, 126, 72)
+        self.bar_dancer_animation_frames = self._actor_animation_frames(
+            self.bar_dancer_sprite, bar_dancer_accent
+        )
+        self.bar_dancer_animation_frames["dance"] = [
+            self._actor_pose_frame(
+                self.bar_dancer_sprite, bar_dancer_accent, "dance", frame
+            )
+            for frame in range(8)
+        ]
         frog_scale = max(2, round(self.ACTOR_SCALE * 0.65))
         self.garden_frog_sprite = self._scale(
             self._outline_surface(self._garden_frog()), frog_scale
@@ -254,16 +268,19 @@ class PixelSpriteAtlas:
         self.gold_stack_sprites = {
             size: self._scale_prop(self._gold_stack(size)) for size in (1, 2, 3)
         }
-        # Milestone 3.15 — two familiar sprite states: a small wisp before
-        # any Spirit skill is chosen, and a big owl once the Acolyte commits to
-        # Spirit Call. Authored at 14x18 (small) and 26x34 (big). The owl is
-        # scaled a touch smaller than the default prop scale so the big
-        # familiar reads as a companion rather than a full-size actor.
+        # Procedural fallbacks for both familiar skills: Acolyte wisp/owl and
+        # the Ranger's grounded Spirit Beast. Authored assets replace these
+        # when modern graphics are on.
         familiar_raw = {
             0: self._familiar_wisp(),
             1: self._familiar_owl(),
+            2: self._familiar_spirit_beast(),
         }
-        familiar_scales = {0: self.PROP_SCALE, 1: max(2, self.PROP_SCALE - 1)}
+        familiar_scales = {
+            0: self.PROP_SCALE,
+            1: max(2, self.PROP_SCALE - 1),
+            2: max(2, self.PROP_SCALE - 1),
+        }
         self.familiar_sprites = {
             variant: self._scale(
                 self._outline_surface(surface, (18, 14, 20)), familiar_scales[variant]
@@ -278,6 +295,9 @@ class PixelSpriteAtlas:
             variant: self._prop_animation_frames(sprite)
             for variant, sprite in self.familiar_sprites.items()
         }
+        self.spirit_beast_pet_animation_frames = self._spirit_beast_pet_frames(
+            self.familiar_sprites[2]
+        )
 
     # ------------------------------------------------------------------
     # Low-level surface helpers
@@ -595,6 +615,28 @@ class PixelSpriteAtlas:
                 feet_dy=-lift,
             )
 
+        elif state == "dance":
+            # 8-frame tavern stomp: broad alternating torso sway, counter-moving
+            # hips, and grounded boot accents. The asymmetric foot sequence keeps
+            # all eight frames distinct while landing frames 0/2/4/6 on beats.
+            i = index % 8
+            sway = (-2, -1, 0, 1, 2, 1, 0, -1)[i]
+            dip = (1, 0, -1, 0, 1, 0, -1, 0)[i]
+            foot_swing = (-2, -1, 0, 1, 2, -1, 0, 1)[i]
+            blit_pose(
+                cap_dx=round(sway * 0.25),
+                head_dx=round(sway * 0.5),
+                head_dy=dip,
+                torso_dx=sway,
+                torso_dy=dip,
+                hip_dx=round(-sway * 0.5),
+                hip_dy=max(0, dip),
+                legs_dx=-foot_swing,
+                legs_dy=max(0, dip),
+                feet_dx=foot_swing,
+                feet_dy=min(0, dip),
+            )
+
         elif state == "attack":
             # 6-frame: anticipation (lean back), strike (lunge forward),
             # recovery (settle). Torso leads, hips trail, feet brace.
@@ -774,6 +816,34 @@ class PixelSpriteAtlas:
             ],
         }
 
+    def _ranger_pet_frames(self, sprite: pygame.Surface) -> list[pygame.Surface]:
+        """Legacy kneel-and-reach silhouette for Ranger pet interactions."""
+        stretches = (1.0, 0.94, 0.86, 0.78, 0.75, 0.79, 0.88, 0.97)
+        tilts = (0.0, -1.0, -2.0, -3.0, -1.5, -3.0, -1.0, 0.0)
+        return [
+            self._frame_surface(
+                sprite,
+                stretch=stretches[index],
+                tilt=tilts[index],
+            )
+            for index in range(8)
+        ]
+
+    def _spirit_beast_pet_frames(
+        self, sprite: pygame.Surface
+    ) -> list[pygame.Surface]:
+        """Legacy pleased body wiggle used when authored assets are disabled."""
+        stretches = (1.0, 0.96, 0.93, 0.95, 0.92, 0.96, 0.98, 1.0)
+        tilts = (0.0, -2.0, 3.0, -3.0, 3.5, -2.0, 1.0, 0.0)
+        return [
+            self._frame_surface(
+                sprite,
+                stretch=stretches[index],
+                tilt=tilts[index],
+            )
+            for index in range(8)
+        ]
+
     def _item_animation_frames(self, sprite: pygame.Surface) -> list[pygame.Surface]:
         return [
             self._frame_surface(sprite, stretch=1.0),
@@ -814,16 +884,48 @@ class PixelSpriteAtlas:
             return self.player
         return frames[int(abs(phase) * rate) % len(frames)]
 
+    def _action_frame_from(
+        self,
+        frames: list[pygame.Surface],
+        elapsed: float,
+        rate: float,
+        *,
+        action_time: float | None = None,
+        action_progress: float | None = None,
+    ) -> pygame.Surface:
+        """Resolve an action from actor-local timing when the caller has it."""
+        if not frames:
+            return self.player
+        if action_progress is not None:
+            progress = max(0.0, min(1.0, float(action_progress)))
+            frame_number = min(len(frames) - 1, int(progress * len(frames)))
+            return frames[frame_number]
+        clock = elapsed if action_time is None else max(0.0, float(action_time))
+        return self._frame_from(frames, clock, rate=rate)
+
     def player_frame(
-        self, class_name: str, state: str, anim_time: float, elapsed: float
+        self,
+        class_name: str,
+        state: str,
+        anim_time: float,
+        elapsed: float,
+        *,
+        action_time: float | None = None,
+        action_progress: float | None = None,
     ) -> pygame.Surface:
         states = self.player_animation_frames.get(
             class_name, self.player_animation_frames["Warden"]
         )
         frames = states.get(state, states["idle"])
+        if state in ("attack", "cast", "hit", "dash", "pet"):
+            return self._action_frame_from(
+                frames,
+                elapsed,
+                14.0,
+                action_time=action_time,
+                action_progress=action_progress,
+            )
         phase = anim_time * RUN_FRAME_RATE if state == "run" else elapsed * 5.0
-        if state in ("attack", "cast", "hit", "dash"):
-            phase = elapsed * 14.0
         return self._frame_from(frames, phase)
 
     def enemy_key(self, name: str, kind: str = "") -> str:
@@ -842,31 +944,57 @@ class PixelSpriteAtlas:
         return "Gate Tyrant"
 
     def enemy_frame(
-        self, name: str, kind: str, state: str, anim_time: float, elapsed: float
+        self,
+        name: str,
+        kind: str,
+        state: str,
+        anim_time: float,
+        elapsed: float,
+        *,
+        action_time: float | None = None,
+        action_progress: float | None = None,
     ) -> pygame.Surface:
         key = self.enemy_key(name, kind)
         states = self.enemy_animation_frames.get(
             key, self.enemy_animation_frames["Ghoul"]
         )
         frames = states.get(state, states["idle"])
+        if state in ("attack", "cast", "hit", "dash"):
+            return self._action_frame_from(
+                frames,
+                elapsed,
+                13.0,
+                action_time=action_time,
+                action_progress=action_progress,
+            )
         phase = (
             anim_time * RUN_FRAME_RATE
             if state == "run"
             else elapsed * (4.3 if kind == "boss" else 5.0)
         )
-        if state in ("attack", "cast", "hit"):
-            phase = elapsed * 13.0
         return self._frame_from(frames, phase)
 
     def boss_frame(
-        self, state: str, anim_time: float, elapsed: float
+        self,
+        state: str,
+        anim_time: float,
+        elapsed: float,
+        *,
+        action_time: float | None = None,
+        action_progress: float | None = None,
     ) -> pygame.Surface:
         """Animation frame for the shared 4-tile Gate Tyrant boss sprite."""
         states = self.enemy_animation_frames["Gate Tyrant"]
         frames = states.get(state, states["idle"])
+        if state in ("attack", "cast", "hit", "dash"):
+            return self._action_frame_from(
+                frames,
+                elapsed,
+                13.0,
+                action_time=action_time,
+                action_progress=action_progress,
+            )
         phase = anim_time * RUN_FRAME_RATE if state == "run" else elapsed * 4.3
-        if state in ("attack", "cast", "hit"):
-            phase = elapsed * 13.0
         return self._frame_from(frames, phase)
 
     def item_frame(
@@ -934,6 +1062,21 @@ class PixelSpriteAtlas:
             return self._frame_from(frames, (clip_progress % 1.0) * len(frames))
         return self._frame_from(frames, elapsed, rate=5.0 if moving else 3.0)
 
+    def bar_dancer_frame(
+        self,
+        elapsed: float,
+        *,
+        moving: bool = False,
+        dancing: bool = False,
+        clip_progress: float | None = None,
+    ) -> pygame.Surface:
+        state = "run" if moving else "dance" if dancing else "idle"
+        frames = self.bar_dancer_animation_frames[state]
+        if clip_progress is not None:
+            return self._frame_from(frames, (clip_progress % 1.0) * len(frames))
+        rate = 5.6 if moving else 4.0 if dancing else 3.2
+        return self._frame_from(frames, elapsed, rate=rate)
+
     def garden_frog_frame(
         self,
         elapsed: float,
@@ -946,13 +1089,28 @@ class PixelSpriteAtlas:
             return self._frame_from(frames, (clip_progress % 1.0) * len(frames))
         return self._frame_from(frames, elapsed, rate=6.0 if moving else 4.0)
 
-    def familiar_frame(self, variant: int, elapsed: float) -> pygame.Surface:
+    def familiar_frame(
+        self,
+        variant: int,
+        elapsed: float,
+        *,
+        state: str = "idle",
+        action_progress: float | None = None,
+    ) -> pygame.Surface:
         """Animation frame for a summoned familiar (Milestone 3.15).
 
-        ``variant`` selects one of the two familiar states: 0 = small wisp
-        (pre-skill) or 1 = big owl (post Spirit Call). Falls back to the base
-        wisp if an unknown variant is requested.
+        ``variant`` selects small wisp (0), big owl (1), or Spirit Beast (2).
+        Unknown variants fall back to the base wisp. Spirit Beast petting uses
+        an authored-looking non-looping body wiggle in legacy graphics mode.
         """
+        if variant == 2 and state == "pet":
+            return self._action_frame_from(
+                self.spirit_beast_pet_animation_frames,
+                elapsed,
+                10.0,
+                action_time=elapsed,
+                action_progress=action_progress,
+            )
         frames = self.familiar_animation_frames.get(
             variant, self.familiar_animation_frames[0]
         )
@@ -2367,6 +2525,63 @@ class PixelSpriteAtlas:
         self._dot(s, 22, 4, gold_hi)
         return s
 
+    def _bar_dancer(self) -> pygame.Surface:
+        s = self._surface(self.RAW_ACTOR_W, self.RAW_ACTOR_H)
+        outline = (32, 20, 17)
+        skin = (218, 158, 112)
+        skin_hi = (240, 190, 142)
+        copper = (164, 62, 34)
+        copper_hi = (222, 104, 48)
+        green = (48, 112, 76)
+        green_hi = (78, 158, 100)
+        cream = (222, 206, 164)
+        burgundy = (112, 42, 52)
+        ochre = (214, 156, 66)
+        leather = (74, 45, 30)
+        pewter = (150, 160, 158)
+
+        # Broad uncovered head, swept hair, round face, and oversized forked beard.
+        self._rect(s, 7, 2, 12, 9, outline)
+        self._rect(s, 8, 3, 10, 7, skin)
+        self._hline(s, 8, 3, 10, skin_hi)
+        self._hline(s, 7, 2, 12, copper)
+        self._rect(s, 8, 1, 8, 2, copper_hi)
+        self._dot(s, 10, 6, (34, 26, 22))
+        self._dot(s, 15, 6, (34, 26, 22))
+        self._rect(s, 10, 8, 6, 5, copper)
+        self._vline(s, 11, 11, 4, copper_hi)
+        self._vline(s, 14, 11, 4, copper_hi)
+
+        # Rolled cream sleeves around a wide green waistcoat.
+        self._rect(s, 4, 12, 18, 11, outline)
+        self._rect(s, 5, 13, 4, 8, cream)
+        self._rect(s, 17, 13, 4, 8, cream)
+        self._rect(s, 9, 12, 8, 11, green)
+        self._vline(s, 10, 13, 9, green_hi)
+        self._vline(s, 16, 13, 9, self._shade(green, -30))
+        for y in (14, 17, 20):
+            self._dot(s, 13, y, ochre)
+        self._rect(s, 5, 20, 4, 3, skin)
+        self._rect(s, 17, 20, 4, 3, skin)
+
+        # Ochre sash, burgundy trousers, and separate heavy dancing boots.
+        self._hline(s, 7, 23, 12, ochre)
+        self._rect(s, 7, 24, 12, 5, burgundy)
+        self._vline(s, 12, 24, 5, outline)
+        self._rect(s, 6, 29, 6, 4, outline)
+        self._rect(s, 14, 29, 6, 4, outline)
+        self._rect(s, 7, 29, 5, 3, leather)
+        self._rect(s, 14, 29, 5, 3, leather)
+        self._hline(s, 6, 32, 6, self._shade(leather, -24))
+        self._hline(s, 14, 32, 6, self._shade(leather, -24))
+
+        # Small tankard clipped to the belt; hands remain free for dancing.
+        self._rect(s, 19, 22, 4, 5, outline)
+        self._rect(s, 19, 23, 3, 4, pewter)
+        self._rect(s, 22, 23, 2, 3, outline)
+        self._dot(s, 20, 23, self._shade(pewter, 35))
+        return s
+
     def _garden_frog(self) -> pygame.Surface:
         s = self._surface(self.RAW_ACTOR_W, self.RAW_ACTOR_H)
         outline = (18, 28, 18)
@@ -2674,8 +2889,8 @@ class PixelSpriteAtlas:
         return self.gold_stack_sprites.get(size, self.gold_stack_sprites[1])
 
     # ------------------------------------------------------------------
-    # Milestone 3.15 — familiar (summoned spirit ally) sprite states.
-    # Two states: a small wisp (pre-skill) and a big owl (post Spirit Call).
+    # Acolyte familiar sprite states: a small pre-skill wisp and the larger
+    # post-Spirit-Call owl. The Ranger Spirit Beast fallback follows below.
     # ------------------------------------------------------------------
     def _familiar_wisp(self) -> pygame.Surface:
         s = self._surface(14, 18)
@@ -2741,4 +2956,34 @@ class PixelSpriteAtlas:
         # feet
         self._rect(s, 9, 31, 3, 2, gold)
         self._rect(s, 14, 31, 3, 2, gold)
+        return s
+
+    def _familiar_spirit_beast(self) -> pygame.Surface:
+        """Grounded grey canine fallback for the Ranger's Spirit Beast."""
+        s = self._surface(32, 24)
+        dark = (28, 31, 35)
+        fur = (105, 112, 116)
+        fur_hi = (166, 170, 164)
+        fur_lo = (69, 75, 80)
+        green = (74, 116, 72)
+        bronze = (202, 153, 72)
+        amber = (238, 178, 70)
+        # Tail, body, chest, and four grounded legs.
+        pygame.draw.polygon(s, fur_lo, [(7, 10), (1, 5), (0, 7), (6, 14)])
+        pygame.draw.ellipse(s, fur, (5, 8, 19, 10))
+        self._rect(s, 8, 15, 4, 7, fur_lo)
+        self._rect(s, 19, 15, 4, 7, fur_lo)
+        self._rect(s, 9, 21, 5, 2, dark)
+        self._rect(s, 20, 21, 5, 2, dark)
+        # Neck, alert head, ears, and long muzzle.
+        pygame.draw.polygon(s, fur, [(20, 8), (22, 3), (28, 5), (27, 13), (21, 15)])
+        pygame.draw.polygon(s, fur_lo, [(22, 5), (23, 0), (25, 5)])
+        pygame.draw.polygon(s, fur_lo, [(26, 5), (29, 1), (29, 7)])
+        pygame.draw.polygon(s, fur_hi, [(25, 8), (31, 9), (31, 12), (26, 12)])
+        self._dot(s, 31, 10, dark)
+        self._dot(s, 27, 7, amber)
+        # Pale throat and Ranger collar/medallion.
+        pygame.draw.polygon(s, fur_hi, [(21, 10), (24, 13), (21, 17), (19, 13)])
+        self._rect(s, 20, 11, 5, 2, green)
+        self._dot(s, 21, 14, bronze)
         return s

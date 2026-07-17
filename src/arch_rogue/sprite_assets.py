@@ -50,7 +50,7 @@ DIRECTIONS = (
     "west",
     "south-west",
 )
-_ACTION_STATES = frozenset(("attack", "cast", "hit", "dash"))
+_ACTION_STATES = frozenset(("attack", "cast", "hit", "dash", "pet"))
 GOLD_STACK_ASSET_KEYS = (
     "gold_stack",
     "gold_stack_02",
@@ -133,8 +133,12 @@ class AssetSpriteLibrary:
         self._world_cache: _LruCache[
             tuple[object, ...], tuple[pygame.Surface, int, int]
         ] = _LruCache(192)
+        self._resolved_actor_cache: _LruCache[
+            tuple[object, ...], tuple[object, ...]
+        ] = _LruCache(512)
         self._missing_resources: set[str] = set()
         self._actor_aliases: dict[str, str] = {}
+        self._actor_slug_cache: dict[tuple[str, str], str | None] = {}
         self._item_aliases: dict[str, str] = {}
         self._prop_aliases: dict[str, str] = {}
         self._load_manifest()
@@ -316,22 +320,33 @@ class AssetSpriteLibrary:
             return None
         return self._source_cache.put(path, surface)
 
-    def _normalized_frame(
-        self,
-        path: str,
-        entry: dict[str, Any],
-        identity: tuple[object, ...],
-    ) -> ResolvedSpriteFrame | None:
+    @staticmethod
+    def _normalized_frame_cache_key(
+        path: str, entry: dict[str, Any]
+    ) -> tuple[object, ...]:
         source_anchor = entry.get("source_anchor", (0.0, 0.0))
         reference_height = max(1.0, float(entry.get("reference_height", 1.0)))
         target_height = max(1.0, float(entry.get("target_height", reference_height)))
-        cache_key = (
+        return (
             path,
             round(float(source_anchor[0]), 3),
             round(float(source_anchor[1]), 3),
             round(reference_height, 3),
             round(target_height, 3),
         )
+
+    def _normalized_frame(
+        self,
+        path: str,
+        entry: dict[str, Any],
+        identity: tuple[object, ...],
+        cache_key: tuple[object, ...] | None = None,
+    ) -> ResolvedSpriteFrame | None:
+        source_anchor = entry.get("source_anchor", (0.0, 0.0))
+        reference_height = max(1.0, float(entry.get("reference_height", 1.0)))
+        target_height = max(1.0, float(entry.get("target_height", reference_height)))
+        if cache_key is None:
+            cache_key = self._normalized_frame_cache_key(path, entry)
         cached = self._frame_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -379,25 +394,31 @@ class AssetSpriteLibrary:
 
     def _actor_slug(self, name: str, kind: str = "") -> str | None:
         folded = str(name).strip().casefold()
-        direct = self._actor_aliases.get(folded)
-        if direct is not None:
-            return direct
+        cache_key = (folded, kind)
+        if cache_key in self._actor_slug_cache:
+            return self._actor_slug_cache[cache_key]
 
+        result = self._actor_aliases.get(folded)
         actors = self.manifest.get("actors", {})
-        candidates: list[tuple[int, str]] = []
-        for slug, entry in actors.items():
-            if entry.get("category") not in ("enemy", "boss"):
-                continue
-            aliases = [entry.get("name", slug), *entry.get("aliases", [])]
-            for alias in aliases:
-                alias_folded = str(alias).casefold()
-                if alias_folded and alias_folded in folded:
-                    candidates.append((len(alias_folded), str(slug)))
-        if candidates:
-            return max(candidates)[1]
-        if kind == "boss" or "gate tyrant" in folded:
-            return "gate_tyrant" if "gate_tyrant" in actors else None
-        return None
+        if result is None:
+            candidates: list[tuple[int, str]] = []
+            for slug, entry in actors.items():
+                if entry.get("category") not in ("enemy", "boss"):
+                    continue
+                aliases = [entry.get("name", slug), *entry.get("aliases", [])]
+                for alias in aliases:
+                    alias_folded = str(alias).casefold()
+                    if alias_folded and alias_folded in folded:
+                        candidates.append((len(alias_folded), str(slug)))
+            if candidates:
+                result = max(candidates)[1]
+            elif kind == "boss" or "gate tyrant" in folded:
+                result = "gate_tyrant" if "gate_tyrant" in actors else None
+
+        if len(self._actor_slug_cache) >= 512:
+            self._actor_slug_cache.clear()
+        self._actor_slug_cache[cache_key] = result
+        return result
 
     def resolve_actor(
         self,
@@ -422,7 +443,9 @@ class AssetSpriteLibrary:
             direction = "south"
 
         requested_state = (
-            state if state in ("idle", "run", "dance", "attack", "cast") else ""
+            state
+            if state in ("idle", "walk", "run", "dance", "attack", "cast", "pet")
+            else ""
         )
         if state == "dash":
             requested_state = "run"
@@ -455,12 +478,21 @@ class AssetSpriteLibrary:
                     else:
                         frame_number = min(len(frame_paths) - 1, frame_number)
                 path = str(frame_paths[frame_number])
+                identity = ("actor", slug, clip_name, used_direction, frame_number)
+                frame_cache_key = self._resolved_actor_cache.get(identity)
+                if frame_cache_key is not None:
+                    cached = self._frame_cache.get(frame_cache_key)
+                    if cached is not None:
+                        return cached
+                frame_cache_key = self._normalized_frame_cache_key(path, entry)
                 frame = self._normalized_frame(
                     path,
                     entry,
-                    ("actor", slug, clip_name, used_direction, frame_number),
+                    identity,
+                    cache_key=frame_cache_key,
                 )
                 if frame is not None:
+                    self._resolved_actor_cache.put(identity, frame_cache_key)
                     return frame
 
         rotations = entry.get("rotations", {})
@@ -469,9 +501,23 @@ class AssetSpriteLibrary:
             direction, path = next(iter(rotations.items()))
         if path is None:
             return None
-        return self._normalized_frame(
-            str(path), entry, ("actor", slug, "rotation", direction, 0)
+        identity = ("actor", slug, "rotation", direction, 0)
+        frame_cache_key = self._resolved_actor_cache.get(identity)
+        if frame_cache_key is not None:
+            cached = self._frame_cache.get(frame_cache_key)
+            if cached is not None:
+                return cached
+        path = str(path)
+        frame_cache_key = self._normalized_frame_cache_key(path, entry)
+        frame = self._normalized_frame(
+            path,
+            entry,
+            identity,
+            cache_key=frame_cache_key,
         )
+        if frame is not None:
+            self._resolved_actor_cache.put(identity, frame_cache_key)
+        return frame
 
     def resolve_item(self, slot: str) -> ResolvedSpriteFrame | None:
         if not self.available:
@@ -693,11 +739,13 @@ class AssetSpriteLibrary:
     def clear_derived_caches(self) -> None:
         self._frame_cache.clear()
         self._world_cache.clear()
+        self._resolved_actor_cache.clear()
 
     def cache_stats(self) -> dict[str, int]:
         return {
             "decoded_sources": len(self._source_cache),
             "resolved_frames": len(self._frame_cache),
+            "actor_resolution_keys": len(self._resolved_actor_cache),
             "world_surfaces": len(self._world_cache),
             "missing_resources": len(self._missing_resources),
         }
@@ -809,7 +857,14 @@ class SpriteAtlas:
         )
         if asset is not None:
             return asset
-        surface = self.legacy.player_frame(class_name, state, anim_time, elapsed)
+        surface = self.legacy.player_frame(
+            class_name,
+            state,
+            anim_time,
+            elapsed,
+            action_time=action_time,
+            action_progress=action_progress,
+        )
         return self._fallback_frame(surface, "player", class_name, state)
 
     def legacy_player_base(self, class_name: str) -> pygame.Surface:
@@ -822,9 +877,18 @@ class SpriteAtlas:
         anim_time: float,
         elapsed: float,
         direction: str = "south",
+        *,
+        action_time: float | None = None,
+        action_progress: float | None = None,
     ) -> pygame.Surface:
         return self.player_visual(
-            class_name, state, anim_time, elapsed, direction=direction
+            class_name,
+            state,
+            anim_time,
+            elapsed,
+            direction=direction,
+            action_time=action_time,
+            action_progress=action_progress,
         ).surface
 
     def enemy_visual(
@@ -837,6 +901,7 @@ class SpriteAtlas:
         *,
         direction: str = "south",
         action_time: float | None = None,
+        action_progress: float | None = None,
     ) -> ResolvedSpriteFrame:
         clip_time = (
             action_time
@@ -846,11 +911,24 @@ class SpriteAtlas:
             else elapsed
         )
         asset = self._asset_actor(
-            name, state, direction, clip_time, kind=kind
+            name,
+            state,
+            direction,
+            clip_time,
+            kind=kind,
+            clip_progress=action_progress,
         )
         if asset is not None:
             return asset
-        surface = self.legacy.enemy_frame(name, kind, state, anim_time, elapsed)
+        surface = self.legacy.enemy_frame(
+            name,
+            kind,
+            state,
+            anim_time,
+            elapsed,
+            action_time=action_time,
+            action_progress=action_progress,
+        )
         return self._fallback_frame(surface, "enemy", name, state)
 
     def enemy_frame(
@@ -861,9 +939,19 @@ class SpriteAtlas:
         anim_time: float,
         elapsed: float,
         direction: str = "south",
+        *,
+        action_time: float | None = None,
+        action_progress: float | None = None,
     ) -> pygame.Surface:
         return self.enemy_visual(
-            name, kind, state, anim_time, elapsed, direction=direction
+            name,
+            kind,
+            state,
+            anim_time,
+            elapsed,
+            direction=direction,
+            action_time=action_time,
+            action_progress=action_progress,
         ).surface
 
     def legacy_enemy_base(self, name: str, kind: str) -> pygame.Surface:
@@ -876,13 +964,34 @@ class SpriteAtlas:
         anim_time: float,
         elapsed: float,
         direction: str = "south",
+        *,
+        action_time: float | None = None,
+        action_progress: float | None = None,
     ) -> pygame.Surface:
+        clip_time = (
+            action_time
+            if state in _ACTION_STATES and action_time is not None
+            else anim_time
+            if state == "run"
+            else elapsed
+        )
         asset = self._asset_actor(
-            "Gate Tyrant", state, direction, anim_time if state == "run" else elapsed, kind="boss"
+            "Gate Tyrant",
+            state,
+            direction,
+            clip_time,
+            kind="boss",
+            clip_progress=action_progress,
         )
         if asset is not None:
             return asset.surface
-        return self.legacy.boss_frame(state, anim_time, elapsed)
+        return self.legacy.boss_frame(
+            state,
+            anim_time,
+            elapsed,
+            action_time=action_time,
+            action_progress=action_progress,
+        )
 
     def item_visual(
         self, slot: str, elapsed: float, rarity: str = "Common"
@@ -1013,6 +1122,54 @@ class SpriteAtlas:
             clip_progress=clip_progress,
         ).surface
 
+    def bar_dancer_visual(
+        self,
+        elapsed: float,
+        *,
+        direction: str = "south",
+        moving: bool = False,
+        dancing: bool = False,
+        clip_progress: float | None = None,
+    ) -> ResolvedSpriteFrame:
+        state = "run" if moving else "dance" if dancing else "idle"
+        asset = self._asset_actor(
+            "Bar Dancer",
+            state,
+            direction,
+            elapsed,
+            loop_progress=clip_progress,
+        )
+        if asset is not None:
+            return asset
+        return self._fallback_frame(
+            self.legacy.bar_dancer_frame(
+                elapsed,
+                moving=moving,
+                dancing=dancing,
+                clip_progress=clip_progress,
+            ),
+            "npc",
+            "bar_dancer",
+            state,
+        )
+
+    def bar_dancer_frame(
+        self,
+        elapsed: float,
+        *,
+        direction: str = "south",
+        moving: bool = False,
+        dancing: bool = False,
+        clip_progress: float | None = None,
+    ) -> pygame.Surface:
+        return self.bar_dancer_visual(
+            elapsed,
+            direction=direction,
+            moving=moving,
+            dancing=dancing,
+            clip_progress=clip_progress,
+        ).surface
+
     def garden_frog_visual(
         self,
         elapsed: float,
@@ -1065,14 +1222,51 @@ class SpriteAtlas:
         *,
         direction: str = "south",
         moving: bool = False,
+        kind: str = "spirit",
+        petting: bool = False,
+        pet_progress: float | None = None,
+        attacking: bool = False,
+        attack_progress: float | None = None,
     ) -> ResolvedSpriteFrame:
-        key = "familiar_owl" if variant else "familiar_wisp"
-        state = "run" if moving else "idle"
-        asset = self._asset_actor(key, state, direction, elapsed)
+        if kind == "spirit_beast":
+            key = "spirit_beast"
+            state = (
+                "pet"
+                if petting
+                else "attack"
+                if attacking
+                else "walk"
+                if moving
+                else "idle"
+            )
+            fallback_variant = 2
+        else:
+            key = "familiar_owl" if variant else "familiar_wisp"
+            state = "run" if moving else "idle"
+            fallback_variant = variant
+        action_progress = (
+            pet_progress if petting else attack_progress if attacking else None
+        )
+        asset = self._asset_actor(
+            key,
+            state,
+            direction,
+            elapsed,
+            clip_progress=action_progress,
+        )
         if asset is not None:
             return asset
         return self._fallback_frame(
-            self.legacy.familiar_frame(variant, elapsed), "familiar", variant
+            self.legacy.familiar_frame(
+                fallback_variant,
+                elapsed,
+                state=state,
+                action_progress=action_progress,
+            ),
+            "familiar",
+            kind,
+            fallback_variant,
+            state,
         )
 
     def familiar_frame(self, variant: int, elapsed: float) -> pygame.Surface:

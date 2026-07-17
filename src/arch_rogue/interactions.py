@@ -26,10 +26,15 @@ import math
 
 from .constants import DUNGEON_DEPTH, MAX_INVENTORY
 from .content import SECRET_HINTS, SHRINE_HINTS, TRAP_HINTS, InteractionHint
-from .models import Color, Enemy, FloatingText, Item, SecretCache, Shrine, Trap
+from .models import Color, Enemy, Familiar, FloatingText, Item, SecretCache, Shrine, Trap
 
 
 class InteractionMixin:
+    SPIRIT_BEAST_PET_RANGE = 1.5
+    SPIRIT_BEAST_PET_HEAL = 2
+    SPIRIT_BEAST_PET_COOLDOWN = 2.0
+    SPIRIT_BEAST_PET_ANIMATION_DURATION = 0.8
+
     def current_interaction_hint(self) -> tuple[str, str, str, Color] | None:
         if self.story_intro_pending:
             return (
@@ -136,6 +141,7 @@ class InteractionMixin:
                 self.item_decision_summary(item),
                 self.rarity_color(item.visible_rarity),
             )
+
         trap = self.nearby_trap_warning()
         if trap:
             hint = TRAP_HINTS.get(
@@ -146,6 +152,108 @@ class InteractionMixin:
             )
             return ("!", hint.title, hint.detail, hint.color)
         return None
+
+    def nearby_pettable_spirit_beast(self) -> Familiar | None:
+        """Return the closest living, ready Spirit Beast within petting reach."""
+        if self.player.class_name != "Ranger":
+            return None
+        best: Familiar | None = None
+        best_distance_sq = self.SPIRIT_BEAST_PET_RANGE**2
+        for familiar in self.familiars:
+            if (
+                familiar.kind != "spirit_beast"
+                or not familiar.alive
+                or familiar.pet_cooldown > 0.0
+            ):
+                continue
+            dx = familiar.x - self.player.x
+            dy = familiar.y - self.player.y
+            distance_sq = dx * dx + dy * dy
+            if distance_sq >= best_distance_sq:
+                continue
+            if not self.dungeon.line_of_sight(
+                self.player.x, self.player.y, familiar.x, familiar.y
+            ):
+                continue
+            best = familiar
+            best_distance_sq = distance_sq
+        return best
+
+    def can_pet_spirit_beast_now(self, familiar: Familiar) -> bool:
+        """Return whether the interact action would pet this beast right now."""
+        if self.nearby_pettable_spirit_beast() is not familiar:
+            return False
+        return not (
+            self.story_intro_pending
+            or self.nearby_story_relic() is not None
+            or self.nearby_closed_door() is not None
+            or self.nearby_shopkeeper() is not None
+            or self.player_near_stairs()
+            or self.nearby_story_guest() is not None
+            or self.nearby_secret() is not None
+            or self.nearby_shrine() is not None
+            or self.nearby_item() is not None
+        )
+
+    def pet_spirit_beast(self, familiar: Familiar) -> bool:
+        """Pet one nearby Spirit Beast, healing two HP and starting paired clips."""
+        if (
+            self.player.class_name != "Ranger"
+            or not any(candidate is familiar for candidate in self.familiars)
+            or familiar.kind != "spirit_beast"
+            or not familiar.alive
+            or familiar.pet_cooldown > 0.0
+        ):
+            return False
+        dx = familiar.x - self.player.x
+        dy = familiar.y - self.player.y
+        distance = math.hypot(dx, dy)
+        if distance >= self.SPIRIT_BEAST_PET_RANGE:
+            return False
+        if not self.dungeon.line_of_sight(
+            self.player.x, self.player.y, familiar.x, familiar.y
+        ):
+            return False
+        if distance > 0.001:
+            nx, ny = dx / distance, dy / distance
+            self.player.facing_x = nx
+            self.player.facing_y = ny
+            familiar.facing_x = -nx
+            familiar.facing_y = -ny
+
+        familiar.hp = min(
+            familiar.max_hp, familiar.hp + self.SPIRIT_BEAST_PET_HEAL
+        )
+        familiar.pet_cooldown = self.SPIRIT_BEAST_PET_COOLDOWN
+        familiar.pet_anim_timer = self.SPIRIT_BEAST_PET_ANIMATION_DURATION
+        familiar.attack_anim_timer = 0.0
+        familiar.moving = False
+        familiar.move_x = 0.0
+        familiar.move_y = 0.0
+        self.player.moving = False
+        self.set_player_action_visual(
+            "pet", self.SPIRIT_BEAST_PET_ANIMATION_DURATION
+        )
+
+        self.floaters.append(
+            FloatingText(
+                "+2",
+                familiar.x,
+                familiar.y - 0.45,
+                self.skill_color(),
+                ttl=0.9,
+            )
+        )
+        self.add_impact(
+            (self.player.x + familiar.x) * 0.5,
+            (self.player.y + familiar.y) * 0.5,
+            self.skill_color(),
+            ttl=0.30,
+            radius=0.24,
+            kind="spark",
+        )
+        self.play_sfx("pickup")
+        return True
 
     def nearby_closed_door(self) -> tuple[int, int] | None:
         return self.dungeon.nearby_closed_door(self.player.x, self.player.y)
@@ -293,6 +401,10 @@ class InteractionMixin:
             )
             self.play_sfx("pickup")
             self.save_run()
+            return
+        spirit_beast = self.nearby_pettable_spirit_beast()
+        if spirit_beast is not None:
+            self.pet_spirit_beast(spirit_beast)
 
     def collect_story_relic(self, relic: Item) -> None:
         if relic in self.items:
