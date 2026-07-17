@@ -202,27 +202,17 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 4.1.x Finalizing version
-
-- There needs to be more money stacks on shop floors
-- Player can attack through walls. Make sure player and enemy attacks do not go through walls.
-- Aim cone is barely visible when using modern graphics, make it more visible but preserve legacy compatibility. Make it subtle but visible, use good taste.
-
-Additions:
-- Generate angry wolf icon for Ranger class skill icon
-  - When Spirit Beast is in attacking mode, show angry icon, when in Return mode, show normal icon
-- Petting bonus (curretly +2) will doble on each Beast Discipline Degree
-
+### 4.2 
+- It appears Acolyte's familiar can "see" through walls. Make sure enemy and familiar line of sight (or perception) does not ignore walls. This may be already fixed in 4.1.x but needs to be verified.
+- While inside garden room, player heals little by little and emits visible (greenish) healing glow
+- Scrollbar is needed in settings menu when all options do not fit on screen vertically.
+- Loot drops should be more rare accross the borad. But not by too much.
+- Elites should be harder to kill.
 
 ### Backlog
 
-- It appears Acolyte's familiar can "see" through walls. Make sure enemy and familiar line of sight (or perception) does not ignore walls.
 - We need to make the darkess deepen more on lower levels, dark levels look already good, but also other "normal" levels below 5 should feel more dark. (do not implement this yet, user will explicitly request this feature if needed)
-- Scrollbar is needed in settings menu when all options do not fit on screen vertically.
-- Character animations are still not implemented in archetype selection screen.
 - The game difficulty starts ok, but gets too easy when player character reaches level 7 or so (not dungeon level, character level). We should either nerf characters, make leveling slower or make enemies harder on lower dungeon depths.
-- Loot drops should be more rare accross the borad.
-- Elites should be harder to kill.
 - Multiplayer -> you get your own AI generated character with unique sprites and animations, maybe music.
   - Maybe connect your own AI to the multiplayer system so it's more your own
   - This has a prerequisite that Archetype is fully data driven
@@ -235,4 +225,3 @@ Additions:
   - e.g "Find the stairs to descend deeper" on lower right corner should be placed a bit more down and to the left
   - Apply to other HUD texts as well, e.g. texts in quest info panel
 - Widen Arcanist Frost Nova when gaining appropriate Disciplines (need to make one path dedicated to this), finally affecting the whole room
-- While inside garden room, player heals little by little and emits visible (greenish) healing glow
