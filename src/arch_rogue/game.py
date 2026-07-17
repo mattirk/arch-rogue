@@ -272,7 +272,7 @@ class Game(
         self.options_path = Path.home() / ".arch_rogue_options.json"
         self.audio_enabled = True
         self.music_enabled = False
-        self.fullscreen = False
+        self.fullscreen = True
         self.ui_scale = UI_SCALE
         self.controller_enabled = True
         self.last_controller_guid = ""
@@ -325,7 +325,17 @@ class Game(
         self.quest_cutscenes = load_quest_cutscene_library()
         self.active_cutscene: ActiveQuestCutscene | None = None
         self.tile_cache: dict[
-            tuple[str, int, int, bool, bool, bool, bool, str | None],
+            tuple[
+                str,
+                int,
+                int,
+                bool,
+                bool,
+                bool,
+                bool,
+                str | None,
+                str | None,
+            ],
             tuple[pygame.Surface, int, int],
         ] = {}
         self.door_tile_cache: dict[

@@ -4858,6 +4858,38 @@
       ],
       "target_height": 48
     },
+    "bar_wall_sconce_south_east": {
+      "aliases": [
+        "bar_wall_sconce_right"
+      ],
+      "path": "props/bar_wall_sconce_south_east.png",
+      "reference_height": 47,
+      "source_anchor": [
+        42.0,
+        34.0
+      ],
+      "source_canvas": [
+        68,
+        68
+      ],
+      "target_height": 84
+    },
+    "bar_wall_sconce_south_west": {
+      "aliases": [
+        "bar_wall_sconce_left"
+      ],
+      "path": "props/bar_wall_sconce_south_west.png",
+      "reference_height": 47,
+      "source_anchor": [
+        26.0,
+        34.0
+      ],
+      "source_canvas": [
+        68,
+        68
+      ],
+      "target_height": 84
+    },
     "gold_stack": {
       "aliases": [
         "gold_stack",

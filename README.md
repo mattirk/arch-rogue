@@ -27,7 +27,7 @@ Arch Rogue is a modernized take on the classic Rogue formula: a grim, replayable
 - Discoverable lore through items, shrines, enemy factions, and rare encounters.
 
 **Run lifecycle**
-- Four difficulty levels — Easy, Medium, Hard (default), and Hell (unlocked after a clear).
+- Four difficulty levels — Easy, Medium (default), Hard, and Hell (unlocked after a clear).
 - Lightweight meta-progression (best depth, clears, discoveries, defeated bosses, notable loot, unlocks) that opens options without removing run tension.
 - Versioned run saves with resume from the title screen, plus persistent options.
 - End-of-run summaries covering cause of death, loot, bosses, secrets, story choices, and mastery.

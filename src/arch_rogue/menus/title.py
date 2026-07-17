@@ -192,7 +192,7 @@ class MenuTitleMixin:
             f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs, procedural stories, and dark-level exploration.",
             "Goal: descend through ten depths, survive escalating encounters, resolve story guest dilemmas, defeat the final-depth gate tyrant, then use the stairs to complete the run.",
             "Combat: hold left mouse to move and aim. Number keys trigger skills and potions: 1 melee, 2 bolt, 3 nova, 4 movement skill, 5 health potion, 6 mana potion. C opens the character sheet. The bottom HUD action bar shows hotkeys, cooldowns, and potion counts.",
-            "Difficulty: Options cycle Easy, Medium, and Hard; Hard is the default, and Hell unlocks after your first complete clear.",
+            "Difficulty: Options cycle Easy, Medium, and Hard; Medium is the default, and Hell unlocks after your first complete clear.",
             "Story: every run generates an archetype-aligned backstory, factions, relic, guests, and floor beats. Near a story guest, press E to hear their plea or 1-3 to choose Aid, Bargain, or Defy.",
             "Loot and discovery: press E for pickups, shrines, secrets, and stairs. Interaction prompts explain risks, and inventory rows summarize upgrades, curses, and comparisons.",
             "Dark floors: some depths limit sight to a small light radius while monsters still navigate the dungeon perfectly.",

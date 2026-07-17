@@ -236,6 +236,7 @@ class SaveLoadMixin:
             "intensity": light.intensity,
             "flicker": light.flicker,
             "kind": light.kind,
+            "elevation": light.elevation,
         }
 
     def light_source_from_dict(self, data: dict[str, Any]) -> LightSource:
@@ -251,6 +252,7 @@ class SaveLoadMixin:
             ttl=None,
             flicker=bool(data.get("flicker", False)),
             kind=str(data.get("kind", "")),
+            elevation=float(data.get("elevation", 0.0)),
         )
 
     def special_room_to_dict(self, special_room: SpecialRoom) -> dict[str, Any]:
@@ -616,13 +618,16 @@ class SaveLoadMixin:
         self.active_cutscene = ActiveQuestCutscene.from_dict(
             data.get("active_cutscene")
         )
-        # Milestone 3.16 - static floor lights restore additively; old saves
-        # without the field load with an empty list. Transient pulses are
-        # visual-only and always start empty on load.
+        # Static floor lights restore additively. Saves without the field start
+        # from an empty list, then reconciliation backfills current fixtures.
+        # Transient pulses are visual-only and always start empty on load.
         self.light_sources = [
             self.light_source_from_dict(src)
             for src in data.get("light_sources", [])
         ]
+        # Replace the legacy room-center bar torch with deterministic wall
+        # sconces and backfill all static fixtures in older saves.
+        self._reconcile_static_light_sources()
         self.lights = []
         active_asset = self.active_cutscene_asset() if self.active_cutscene else None
         active_node = self.active_cutscene_node() if self.active_cutscene else None

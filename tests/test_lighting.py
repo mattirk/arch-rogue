@@ -33,14 +33,24 @@ from arch_rogue.constants import (
     LIGHT_AMBIENT_DEPTH_FLOOR,
     LIGHT_AMBIENT_DEPTH_PEAK,
     LIGHT_AMBIENT_LIGHT_LEVEL,
+    LIGHT_BAR_WALL_ELEVATION,
     LIGHT_LANTERN_COLOR,
     LIGHT_LEVEL_SIGHT_RADIUS,
     LIGHT_TORCH_COLOR,
+    LIGHT_TORCH_INTENSITY,
+    LIGHT_TORCH_RADIUS,
 )
 from arch_rogue.content import ARCHETYPES, SHRINE_HINTS
 from arch_rogue.game import Game
 from arch_rogue.lighting import bake_normal_map, hashable_color, light_radius_px
-from arch_rogue.models import LightSource, Projectile, Tile
+from arch_rogue.models import (
+    IdleNpc,
+    LightSource,
+    Projectile,
+    Shopkeeper,
+    StoryGuest,
+    Tile,
+)
 
 
 class LightingTests(unittest.TestCase):
@@ -97,6 +107,66 @@ class LightingTests(unittest.TestCase):
         self.assertEqual(lantern.radius, DARK_LEVEL_LIGHT_RADIUS)
         self.assertEqual(DARK_LEVEL_LIGHT_RADIUS, LIGHT_LEVEL_SIGHT_RADIUS)
         self.assertEqual(lantern.color, LIGHT_LANTERN_COLOR)
+
+    def test_friendly_humanoid_lanterns_follow_npcs_and_exclude_frogs(self) -> None:
+        game = self.make_game(tempfile.mkdtemp())
+        px, py = game.player.x, game.player.y
+        shopkeeper = Shopkeeper(px + 0.3, py, "Mara", "Quartermaster")
+        guest = StoryGuest(
+            px,
+            py + 0.3,
+            game.current_depth,
+            0,
+            "Ilyra",
+            "Witness",
+            "seeks passage",
+            "The stones remember.",
+            [],
+        )
+        patron = IdleNpc(px - 0.3, py, kind="bar", name="Tovin", role="Patron")
+        frog = IdleNpc(
+            px,
+            py - 0.3,
+            kind="garden_frog",
+            name="Pip",
+            role="Garden Dancer",
+        )
+        game.shopkeepers = [shopkeeper]
+        game.story_guests = [guest]
+        game.idle_npcs = [patron, frog]
+        game.reset_friendly_npc_runtime()
+        persistent_count = len(game.light_sources)
+        transient_count = len(game.lights)
+        game._frame_cache = {}
+
+        lights = game._collect_frame_lights()
+        player_lantern = next(light for light in lights if light.kind == "lantern")
+        npc_lights = [
+            light for light in lights if light.kind == "friendly_lantern"
+        ]
+        self.assertEqual(len(npc_lights), 3)
+        self.assertEqual(
+            {(light.x, light.y) for light in npc_lights},
+            {(shopkeeper.x, shopkeeper.y), (guest.x, guest.y), (patron.x, patron.y)},
+        )
+        self.assertNotIn((frog.x, frog.y), {(light.x, light.y) for light in npc_lights})
+        for light in npc_lights:
+            self.assertEqual(light.radius, player_lantern.radius)
+            self.assertEqual(light.color, player_lantern.color)
+            self.assertEqual(light.intensity, player_lantern.intensity)
+            self.assertEqual(light.flicker, player_lantern.flicker)
+            self.assertIsNone(light.ttl)
+
+        patron.x += 0.45
+        game._frame_cache = {}
+        moved_lights = [
+            light
+            for light in game._collect_frame_lights()
+            if light.kind == "friendly_lantern"
+        ]
+        self.assertIn((patron.x, patron.y), {(light.x, light.y) for light in moved_lights})
+        self.assertEqual(len(game.light_sources), persistent_count)
+        self.assertEqual(len(game.lights), transient_count)
 
     def test_light_buffer_accumulates_additively(self) -> None:
         game = self.make_game(tempfile.mkdtemp())
@@ -231,13 +301,16 @@ class LightingTests(unittest.TestCase):
         self.assertTrue(game.is_current_floor_dark())
 
     # --- feature 7: static torch/shrine lights ------------------------
-    def test_static_shrine_and_torch_lights_populated(self) -> None:
-        game = self.make_game(tempfile.mkdtemp())
+    def test_static_shrine_and_bar_wall_lights_populated(self) -> None:
+        game = self.make_game(tempfile.mkdtemp(), archetype_index=2, seed=3001)
         # Shrines always become light sources tinted by their accent color.
         for shrine in game.shrines:
             matches = [
-                s for s in game.light_sources
-                if s.kind == "shrine" and abs(s.x - shrine.x) < 0.01 and abs(s.y - shrine.y) < 0.01
+                source
+                for source in game.light_sources
+                if source.kind == "shrine"
+                and abs(source.x - shrine.x) < 0.01
+                and abs(source.y - shrine.y) < 0.01
             ]
             self.assertEqual(len(matches), 1)
             hint = SHRINE_HINTS.get(shrine.kind)
@@ -245,10 +318,56 @@ class LightingTests(unittest.TestCase):
             assert hint is not None
             self.assertEqual(matches[0].color, hint.color)
             self.assertFalse(matches[0].flicker)
-        # Torch lights are flickering and warm; garden torches are green.
-        torches = [s for s in game.light_sources if s.kind == "torch"]
-        for t in torches:
-            self.assertTrue(t.flicker)
+
+        bar = game.dungeon.special_room_for_kind("bar")
+        self.assertIsNotNone(bar)
+        assert bar is not None
+        room = game.dungeon.rooms[bar.room_index]
+        wall_lights = [
+            source for source in game.light_sources if source.kind == "bar_wall_light"
+        ]
+        self.assertEqual(len(wall_lights), 2)
+        for side in ("left", "right"):
+            wall_tile = bar.anchor(f"bar_wall_light_{side}")
+            self.assertIsNotNone(wall_tile)
+            assert wall_tile is not None
+            self.assertEqual(game.dungeon.tiles[wall_tile[0]][wall_tile[1]], Tile.WALL)
+            self.assertEqual(game.special_wall_faces(*wall_tile), f"bar:{side}")
+            self.assertEqual(game.bar_wall_light_side(*wall_tile), side)
+            expected_position = (
+                (wall_tile[0] + 0.5, wall_tile[1] + 1.0)
+                if side == "left"
+                else (wall_tile[0] + 1.0, wall_tile[1] + 0.5)
+            )
+            source = next(
+                light
+                for light in wall_lights
+                if abs(light.x - expected_position[0]) < 0.01
+                and abs(light.y - expected_position[1]) < 0.01
+            )
+            self.assertEqual(source.radius, LIGHT_TORCH_RADIUS)
+            self.assertEqual(source.color, LIGHT_TORCH_COLOR)
+            self.assertEqual(source.intensity, LIGHT_TORCH_INTENSITY)
+            self.assertEqual(source.elevation, LIGHT_BAR_WALL_ELEVATION)
+            self.assertTrue(source.flicker)
+            self.assertIsNone(source.ttl)
+
+        center_x, center_y = room.center
+        self.assertFalse(
+            any(
+                source.kind == "torch"
+                and abs(source.x - (center_x + 0.5)) < 0.01
+                and abs(source.y - (center_y + 0.5)) < 0.01
+                for source in game.light_sources
+            )
+        )
+        before = [game.light_source_to_dict(source) for source in game.light_sources]
+        rng_state = game.rng.getstate()
+        game._populate_light_sources()
+        self.assertEqual(
+            [game.light_source_to_dict(source) for source in game.light_sources], before
+        )
+        self.assertEqual(game.rng.getstate(), rng_state)
 
     # --- feature 8: quality-tier toggle fallback to 3.8.0 model --------
     def test_lighting_off_keeps_per_tile_alpha_quantization(self) -> None:
@@ -295,19 +414,97 @@ class LightingTests(unittest.TestCase):
         # Round-trip: load into a fresh game restores the static lights.
         game2 = self.make_game(tempfile.mkdtemp())
         game2.restore_run_state(data)
-        self.assertEqual(len(game2.light_sources), len(game.light_sources))
+        self.assertEqual(
+            sorted(
+                (
+                    source.kind,
+                    source.x,
+                    source.y,
+                    source.radius,
+                    source.elevation,
+                )
+                for source in game2.light_sources
+            ),
+            sorted(
+                (
+                    source.kind,
+                    source.x,
+                    source.y,
+                    source.radius,
+                    source.elevation,
+                )
+                for source in game.light_sources
+            ),
+        )
         # Transient pulses never persist.
         self.assertEqual(game2.lights, [])
 
-    def test_pre_3_16_save_loads_with_empty_light_sources(self) -> None:
+    def test_pre_3_16_save_backfills_current_static_light_sources(self) -> None:
         game = self.make_game(tempfile.mkdtemp())
         data = copy.deepcopy(game.serialize_run_state())
         # Simulate a pre-3.16 save that has no light_sources field.
         data.pop("light_sources", None)
         game2 = self.make_game(tempfile.mkdtemp())
-        # Must not raise; defaults to empty and never blocks population.
         game2.restore_run_state(data)
-        self.assertEqual(game2.light_sources, [])
+        self.assertGreater(len(game2.light_sources), 0)
+        self.assertEqual(
+            len([source for source in game2.light_sources if source.kind == "shrine"]),
+            len(game2.shrines),
+        )
+        legacy = game2.light_source_from_dict(
+            {
+                "x": 1.0,
+                "y": 2.0,
+                "radius": 2.5,
+                "color": [255, 200, 120],
+                "kind": "torch",
+            }
+        )
+        self.assertEqual(legacy.elevation, 0.0)
+
+    def test_legacy_bar_center_torch_migrates_to_wall_sconces(self) -> None:
+        game = self.make_game(tempfile.mkdtemp(), archetype_index=2, seed=3001)
+        data = copy.deepcopy(game.serialize_run_state())
+        bar = game.dungeon.special_room_for_kind("bar")
+        self.assertIsNotNone(bar)
+        assert bar is not None
+        center_x, center_y = game.dungeon.rooms[bar.room_index].center
+        data["light_sources"] = [
+            source
+            for source in data["light_sources"]
+            if source.get("kind") != "bar_wall_light"
+        ]
+        data["light_sources"].append(
+            {
+                "x": center_x + 0.5,
+                "y": center_y + 0.5,
+                "radius": LIGHT_TORCH_RADIUS,
+                "color": list(LIGHT_TORCH_COLOR),
+                "intensity": LIGHT_TORCH_INTENSITY,
+                "flicker": True,
+                "kind": "torch",
+            }
+        )
+
+        restored = self.make_game(tempfile.mkdtemp())
+        restored.restore_run_state(data)
+        wall_lights = [
+            source
+            for source in restored.light_sources
+            if source.kind == "bar_wall_light"
+        ]
+        self.assertEqual(len(wall_lights), 2)
+        self.assertTrue(
+            all(source.elevation == LIGHT_BAR_WALL_ELEVATION for source in wall_lights)
+        )
+        self.assertFalse(
+            any(
+                source.kind == "torch"
+                and abs(source.x - (center_x + 0.5)) < 0.01
+                and abs(source.y - (center_y + 0.5)) < 0.01
+                for source in restored.light_sources
+            )
+        )
 
     # --- feature 3: lantern/torch flicker -----------------------------
     def test_flicker_modulates_when_lighting_on(self) -> None:

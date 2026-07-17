@@ -19,10 +19,12 @@ from arch_rogue.game import Game  # noqa: E402
 from arch_rogue.input import (  # noqa: E402
     Command,
     ControllerManager,
+    default_gamepad_mapping,
     hat_commands,
     key_command,
     mapped_joybutton_command,
     normalize_gamepad_mapping,
+    serialize_gamepad_mapping,
 )
 from arch_rogue.models import Enemy, Tile  # noqa: E402
 from arch_rogue.quest_assets import ActiveQuestCutscene  # noqa: E402
@@ -91,6 +93,36 @@ def make_controller_manager(fake: FakeJoystick | None = None) -> ControllerManag
 
 
 class InputMappingTests(unittest.TestCase):
+    def test_default_gamepad_mapping_matches_shipped_profile(self) -> None:
+        expected = {
+            0: Command.INTERACT,
+            1: Command.ABILITY_3,
+            2: Command.ABILITY_2,
+            3: Command.ABILITY_5,
+            5: Command.ABILITY_6,
+            6: Command.INVENTORY,
+            7: Command.CHARACTER,
+            11: Command.BACK,
+            13: Command.ABILITY_4,
+        }
+        mapping = default_gamepad_mapping()
+        self.assertEqual(mapping["gameplay_buttons"], expected)
+        self.assertEqual(mapping["triggers"], ["", ""])
+        self.assertEqual(
+            serialize_gamepad_mapping(mapping)["gameplay_buttons"],
+            {str(button): command for button, command in expected.items()},
+        )
+        for button, command in expected.items():
+            self.assertEqual(
+                mapped_joybutton_command(button, "gameplay", mapping), command
+            )
+        self.assertEqual(
+            mapped_joybutton_command(11, "menu", mapping), Command.BACK
+        )
+        self.assertEqual(
+            mapped_joybutton_command(0, "menu", mapping), Command.CONFIRM
+        )
+
     def test_key_command_navigation_keys(self) -> None:
         self.assertEqual(key_command(pygame.K_UP, 0), Command.UP)
         self.assertEqual(key_command(pygame.K_DOWN, 0), Command.DOWN)
@@ -354,6 +386,25 @@ class OptionsPersistenceTests(unittest.TestCase):
             self.assertIn("gamepad_mapping", data)
             self.assertFalse(data["legacy_graphics"])
 
+    def test_missing_display_and_difficulty_fields_use_fresh_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            import json
+
+            game.fullscreen = False
+            game.difficulty_name = "Hard"
+            game.options_path.write_text(
+                json.dumps({"version": 1, "schema_version": 4}),
+                encoding="utf-8",
+            )
+            self.assertTrue(game.load_options())
+            self.assertTrue(game.fullscreen)
+            self.assertEqual(game.difficulty_profile().name, "Medium")
+            self.assertEqual(
+                game.gamepad_mapping["gameplay_buttons"],
+                default_gamepad_mapping()["gameplay_buttons"],
+            )
+
     def test_old_schema_v2_loads_with_safe_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_game(tmpdir)
@@ -376,5 +427,7 @@ class OptionsPersistenceTests(unittest.TestCase):
             # Missing controller fields default to enabled / no preferred device.
             self.assertTrue(game.controller_enabled)
             self.assertEqual(game.last_controller_guid, "")
-            # Other fields still load correctly.
+            # Explicit legacy values remain authoritative despite new defaults.
             self.assertTrue(game.audio_enabled)
+            self.assertFalse(game.fullscreen)
+            self.assertEqual(game.difficulty_profile().name, "Hard")

@@ -1,5 +1,100 @@
 # Changelog
 
+## 4.1.16 — Controller and Startup Defaults
+
+Milestone 4.1.16 updates fresh-install controller and display preferences: the shipped gamepad profile uses the requested raw SDL button assignments, Medium becomes the default difficulty, and desktop play starts fullscreen.
+
+### Changed
+
+- Replaced the default gameplay button profile with: button `0` → `interact`, `1` → `ability_3`, `2` → `ability_2`, `3` → `ability_5`, `5` → `ability_6`, `6` → `inventory`, `7` → `character`, `11` → `back`, and `13` → `ability_4`.
+- Default trigger slots are now unbound because `interact` and `ability_4` have explicit button assignments. Triggers remain remappable through the controls menu.
+- Fresh desktop installs now start fullscreen. Headless execution still uses a hidden window, the web build continues to force fullscreen off, and explicit saved windowed/fullscreen preferences remain authoritative.
+- Changed `DEFAULT_DIFFICULTY_NAME` from Hard to Medium and updated the difficulty descriptions, options note, onboarding text, and README accordingly.
+- Runtime/package release version is `4.1.16`. Options remain schema `4` and run saves remain schema `5`.
+
+### Compatibility and resilience
+
+- Existing option files keep every explicit gamepad, fullscreen, and difficulty value. Only absent fields or a fresh install receive the new defaults.
+- Older option files with explicit `fullscreen: false` or `difficulty: Hard` continue loading those values unchanged.
+- Menu and cutscene button contexts remain unchanged; the new table applies to gameplay, with button `11` retaining universal back behavior.
+
+### Validation
+
+- Added exact default-map assertions for integer and serialized string button IDs, empty trigger defaults, gameplay dispatch lookup, menu confirm, and universal back behavior.
+- Added fresh-install and missing-field tests for fullscreen/Medium defaults plus legacy-option assertions proving explicit old values are preserved.
+- `.venv/bin/python -m unittest tests.test_input_and_accessibility tests.test_archetypes_options_and_difficulty tests.test_save_and_metadata tests.test_ui_assets tests.test_ui_layouts` — 42 tests, all passing.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+- `.venv/bin/python -m unittest discover tests` — 245 tests, all passing.
+
+## 4.1.15 — Wall-Aligned Bar Sconces
+
+Milestone 4.1.15 corrects the bar-sconce rotations so every fixture follows the same world-vector-to-screen-direction mapping as actor sprites and visibly faces into its room from a backplate seated against the wall.
+
+### Changed
+
+- Corrected the visible wall-face mapping from the screen-side labels to PixelLab compass rotations: the `bar:left` (`+y`) face now uses `south-west`, while `bar:right` (`+x`) uses `south-east`.
+- Swapped the previously reversed fixtures so the candle and bracket project into the bar instead of across the wall texture, and each backplate perspective now follows its wood-paneled face.
+- Renamed packaged assets to `bar_wall_sconce_south_west.png` and `bar_wall_sconce_south_east.png`. The old `bar_wall_sconce_left`/`bar_wall_sconce_right` aliases remain accepted by the asset manifest.
+- Added an explicit `BAR_WALL_SCONCE_DIRECTION_BY_FACE` contract and regression assertions tying it to `actor_sprite_direction(0, 1)` / `actor_sprite_direction(1, 0)`, preventing screen-side and compass directions from being reversed again.
+- Runtime/package release version is `4.1.15`. Run saves remain schema `5`; light positions, wall anchors, and save payloads are unchanged.
+
+### Asset provenance
+
+- Reused the reviewed south-west and south-east rotations from PixelLab object `5a907401-c4ac-4ff5-bfc9-29235340001a`; no additional generations were spent.
+- The same two `68×68` transparent sources are retained. Only their face assignment and direction-based packaged names changed.
+
+### Compatibility and resilience
+
+- Existing saves need no migration: bar wall anchors still use `bar_wall_light_left`/`bar_wall_light_right`, while rendering resolves those face labels through the corrected compass-direction map.
+- Procedural/legacy sconces already derive their projection from the face side and continue to point inward without asset dependencies.
+
+### Validation
+
+- Reviewed a four-panel real-wall comparison of old vs corrected mappings. The corrected pair seats each backplate against the matching plank perspective and projects each candle toward the bar interior.
+- Reviewed a full in-game dark-floor bar render at `0.65×` viewport zoom and confirmed runtime resolution as `left → bar_wall_sconce_south_west` and `right → bar_wall_sconce_south_east`.
+- `.venv/bin/python -m unittest tests.test_lighting tests.test_flavor_rooms tests.test_friendly_npcs tests.test_sprite_assets tests.test_save_and_metadata` — 69 tests, all passing.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+- `.venv/bin/python -m unittest discover tests` — 242 tests, all passing.
+
+## 4.1.14 — Lantern-Bearing Friends and Bar Sconces
+
+Milestone 4.1.14 gives friendly humanoid NPCs the player's warm lantern light and replaces each bar's room-center torch with two visible, wall-mounted medieval candle sconces.
+
+### Added
+
+- Added frame-derived `friendly_lantern` sources for every `Shopkeeper`, `StoryGuest`, and humanoid `IdleNpc`. They reuse the player's lantern color, radius, intensity, and flicker, follow roaming NPC positions, and never enter persistent or transient light lists.
+- Added two deterministic sconce mounts to every bar: one on each visible interior wood-paneled wall face. Each mount has a flickering warm `bar_wall_light` source projected at wall height and a matching rendered fixture.
+- Added two reviewed MCP wall-sconce sprites, with asset-first atlas resolution and a procedural wrought-iron candle fallback for legacy or missing graphics.
+- Added focused regression coverage for humanoid classification, frog exclusion, lantern movement, static-list isolation, deterministic/idempotent wall mounts, face orientation, elevated source properties, generated and procedural fixture rendering, prewarmed cache variants, sprite contracts, save round-tripping, old-save backfill, and legacy center-torch migration.
+
+### Changed
+
+- Garden frogs remain friendly dancers but do not emit humanoid lantern light.
+- Bar lighting now comes from two wall sconces instead of one generic torch at room center. Existing saves remove the legacy center source and rebuild the current pair without advancing gameplay RNG.
+- `LightSource` gained an additive `elevation` field, expressed in tile-height units. Existing floor-level and transient lights default to `0.0`; save payloads missing the field restore safely at floor level.
+- Runtime/package release version is `4.1.14`. Run saves remain schema `5`; pre-4.1.14 saves require no schema migration.
+
+### Asset provenance
+
+- Medieval bar wall sconce object: `5a907401-c4ac-4ff5-bfc9-29235340001a` (20-generation PixelLab eight-direction object pipeline).
+- Object prompt: “compact medieval dark-fantasy tavern wall sconce, wrought-iron backplate and short iron bracket, one thick aged beeswax candle with visible melted wax and a bright amber flame, isolated complete wall-mounted object, transparent background, crisp pixel art, strong dark outline, warm brass-brown and amber palette, readable at small game scale, no wall, no floor, no text, no smoke, no aura and no painted glow halo”.
+- Reviewed all eight `68×68` rotations. The south-east rotation is retained for the bar's left visible face and the south-west rotation for the right visible face, so each backplate follows its isometric wall plane while the candle projects into the room.
+
+### Compatibility and resilience
+
+- Friendly NPC lanterns are cosmetic lighting only: they do not reveal unexplored terrain, extend player perception, alter line of sight, or modify NPC/save models.
+- Static sconce anchors are stored in existing `SpecialRoom.anchor_points`/`reserved_tiles`; older bars receive them deterministically when loaded, and repeated population is idempotent.
+- Saves without `light_sources` backfill current shrine, garden, and bar fixtures. Saves without `elevation` remain valid, and transient combat lights remain unsaved.
+- Missing or disabled modern sconce art falls back to a cached wall-tile surface with a procedural iron backplate, bracket, candle, and flame.
+
+### Validation
+
+- Visually reviewed all eight MCP rotations and an in-game dark-floor render at `0.65×` viewport zoom, including fixture scale, wall-height placement, and elevated light-halo alignment.
+- Packaged asset gate — both retained sprites are `68×68` RGBA PNGs with non-empty alpha (`34×47` opaque bounds), resolve through the production atlas, and retain transparent canvas margins.
+- `.venv/bin/python -m unittest tests.test_lighting tests.test_flavor_rooms tests.test_friendly_npcs tests.test_sprite_assets tests.test_save_and_metadata` — 69 tests, all passing.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+- `.venv/bin/python -m unittest discover tests` — 242 tests, all passing.
+
 ## 4.1.13 — Dancing Garden Frogs
 
 Milestone 4.1.13 fills every generated garden with two cheerful frog revelers that hop around the room and visibly dance on the procedural soundtrack's shared four-beat phrase.

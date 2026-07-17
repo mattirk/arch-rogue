@@ -141,19 +141,19 @@ DEFAULT_JOY_BUTTON_COMMANDS: dict[int, str] = {
     7: Command.CHARACTER,
 }
 
-# Base gameplay button map. The face/shoulder buttons drive the six combat
-# actions (mirroring keyboard 1-6), B opens the pause/exit confirmation, and
-# Back/Start open the inventory and character sheet. D-pad movement is handled
-# by hat events and the left stick by axis polling.
+# Base gameplay button map. These raw SDL button IDs intentionally mirror the
+# shipped controller profile; menu/cutscene buttons keep their context-specific
+# meanings. Stick and hat movement remain handled independently.
 GAMEPLAY_BUTTON_COMMANDS: dict[int, str] = {
-    0: Command.ABILITY_1,  # A  -> melee (key 1)
-    2: Command.ABILITY_2,  # X  -> bolt  (key 2)
-    3: Command.ABILITY_3,  # Y  -> nova  (key 3)
-    4: Command.ABILITY_5,  # LB -> potion (key 5)
-    5: Command.ABILITY_6,  # RB -> mana potion (key 6)
-    1: Command.BACK,  # B  -> pause / exit
-    6: Command.INVENTORY,  # Back/Select
-    7: Command.CHARACTER,  # Start
+    0: Command.INTERACT,
+    1: Command.ABILITY_3,
+    2: Command.ABILITY_2,
+    3: Command.ABILITY_5,
+    5: Command.ABILITY_6,
+    6: Command.INVENTORY,
+    7: Command.CHARACTER,
+    11: Command.BACK,
+    13: Command.ABILITY_4,
 }
 
 # Cutscene button map: A advances narration / selects the highlighted choice,
@@ -167,10 +167,10 @@ CUTSCENE_BUTTON_COMMANDS: dict[int, str] = {
     5: Command.ABILITY_4,  # RB -> choice 3
 }
 
-# Trigger axes (read via JOYAXISMOTION / polling) map to the two actions that
-# do not fit on the face buttons: LT = dash (key 4), RT = interact (key E).
-# Order is by ascending trigger axis index (LT before RT on common pads).
-TRIGGER_COMMANDS: tuple[str, ...] = (Command.ABILITY_4, Command.INTERACT)
+# Trigger axes remain remappable, but default to unbound because dash and
+# interact are explicitly present in GAMEPLAY_BUTTON_COMMANDS. Order is by
+# ascending trigger axis index (LT before RT on common pads).
+TRIGGER_COMMANDS: tuple[str, ...] = ("", "")
 TRIGGER_PRESS_THRESHOLD = 0.25
 
 REMAPPABLE_GAMEPAD_COMMANDS: tuple[str, ...] = (

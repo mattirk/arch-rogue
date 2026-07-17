@@ -31,6 +31,7 @@ from .audio import MusicTiming
 from .models import IdleNpc, Room, Shopkeeper, StoryGuest
 
 FriendlyNpc = Shopkeeper | StoryGuest | IdleNpc
+NON_HUMANOID_FRIENDLY_NPC_KINDS = frozenset(("garden_frog",))
 
 
 @dataclass(slots=True)
@@ -64,6 +65,14 @@ class FriendlyNpcRuntimeMixin:
         yield from getattr(self, "shopkeepers", ())
         yield from getattr(self, "story_guests", ())
         yield from getattr(self, "idle_npcs", ())
+
+    def iter_friendly_humanoids(self) -> Iterator[FriendlyNpc]:
+        """Yield friendly actors that use the humanoid NPC visual contract."""
+        yield from getattr(self, "shopkeepers", ())
+        yield from getattr(self, "story_guests", ())
+        for npc in getattr(self, "idle_npcs", ()):
+            if npc.kind not in NON_HUMANOID_FRIENDLY_NPC_KINDS:
+                yield npc
 
     def reset_friendly_npc_runtime(self) -> None:
         self._friendly_npc_motions: dict[int, FriendlyNpcMotion] = {}

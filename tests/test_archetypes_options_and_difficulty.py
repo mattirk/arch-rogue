@@ -27,6 +27,15 @@ class ArchetypeOptionsDifficultyTests(unittest.TestCase):
         game.rng.seed(seed)
         return game
 
+    def test_fresh_install_defaults_to_fullscreen_and_medium(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            self.assertTrue(game.fullscreen)
+            self.assertEqual(game.difficulty_profile().name, "Medium")
+            options = game.options_to_dict()
+            self.assertTrue(options["fullscreen"])
+            self.assertEqual(options["difficulty"], "Medium")
+
     def test_archetype_signature_mechanics_are_distinct(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)

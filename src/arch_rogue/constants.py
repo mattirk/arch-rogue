@@ -109,6 +109,9 @@ LIGHT_FLICKER_INTENSITY_AMP = 0.08
 # Static light radii (world tiles) and intensities.
 LIGHT_TORCH_RADIUS = 2.6
 LIGHT_TORCH_INTENSITY = 0.62
+# Bar sconces are mounted halfway up a 48px wall face. Expressing height in
+# TILE_H units lets the light buffer project them consistently at every zoom.
+LIGHT_BAR_WALL_ELEVATION = 0.75
 LIGHT_SHRINE_RADIUS = 2.3
 LIGHT_SHRINE_INTENSITY = 0.55
 # Transient skill/impact/projectile light tuning.

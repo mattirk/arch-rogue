@@ -24,7 +24,7 @@ from __future__ import annotations
 from .definitions import DifficultyProfile
 
 
-DEFAULT_DIFFICULTY_NAME = "Hard"
+DEFAULT_DIFFICULTY_NAME = "Medium"
 HELL_DIFFICULTY_NAME = "Hell"
 DIFFICULTY_PROFILES = (
     DifficultyProfile(
@@ -47,7 +47,7 @@ DIFFICULTY_PROFILES = (
     ),
     DifficultyProfile(
         "Medium",
-        "Severe pressure with doubled monster durability, damage, traps, and room threats.",
+        "Default: severe pressure with doubled monster durability, damage, traps, and room threats.",
         enemy_hp_multiplier=2.36,
         enemy_damage_multiplier=2.30,
         enemy_damage_bonus=2,
@@ -65,7 +65,7 @@ DIFFICULTY_PROFILES = (
     ),
     DifficultyProfile(
         "Hard",
-        "Default: brutal density, crushing hits, relentless attacks, and scarce recovery.",
+        "Brutal density, crushing hits, relentless attacks, and scarce recovery.",
         enemy_hp_multiplier=2.85,
         enemy_damage_multiplier=2.60,
         enemy_damage_bonus=5,

@@ -681,6 +681,9 @@ class LightSource:
     flicker: bool = False
     flicker_seed: int = 0
     kind: str = ""
+    # Height above the floor in TILE_H units. Most lights remain floor-level;
+    # wall-mounted fixtures opt in without changing existing constructors.
+    elevation: float = 0.0
 
     def update(self, dt: float) -> None:
         if self.ttl is None:

@@ -77,6 +77,7 @@ from .constants import (
     LIGHT_LEVEL_SIGHT_RADIUS,
     LIGHT_SHADE_BIAS_Z,
     LIGHT_SHADE_DOWNSAMPLE_LONG,
+    TILE_H,
     TILE_W,
 )
 from .models import Color, LightSource
@@ -308,6 +309,26 @@ class LightingMixin:
             else LIGHT_LEVEL_SIGHT_RADIUS
         )
 
+    def _lantern_light(
+        self,
+        x: float,
+        y: float,
+        *,
+        kind: str,
+        flicker_seed: int = 0,
+    ) -> LightSource:
+        return LightSource(
+            x=x,
+            y=y,
+            radius=self._lantern_radius(),
+            color=LIGHT_LANTERN_COLOR,
+            intensity=1.0,
+            ttl=None,
+            flicker=True,
+            flicker_seed=flicker_seed,
+            kind=kind,
+        )
+
     def _flicker(self, light: LightSource) -> tuple[float, float]:
         """Return (radius_scale, intensity_scale) flicker for a light this frame.
 
@@ -339,20 +360,28 @@ class LightingMixin:
             return cached  # type: ignore[return-value]
 
         lights: list[LightSource] = []
-        # Player lantern: always present, warm, at the sight/lantern radius.
-        lights.append(
-            LightSource(
-                x=self.player.x,
-                y=self.player.y,
-                radius=self._lantern_radius(),
-                color=LIGHT_LANTERN_COLOR,
-                intensity=1.0,
-                ttl=None,
-                flicker=True,
-                kind="lantern",
-            )
-        )
         min_x, max_x, min_y, max_y = self.visible_bounds()
+        # The player and every friendly humanoid carry the same warm lantern.
+        # NPC lights are rebuilt from actor positions each frame, so they follow
+        # movement without entering the persistent or transient light lists.
+        lights.append(
+            self._lantern_light(self.player.x, self.player.y, kind="lantern")
+        )
+        for npc in self.iter_friendly_humanoids():
+            if not (
+                min_x - 4 <= npc.x <= max_x + 4
+                and min_y - 4 <= npc.y <= max_y + 4
+            ):
+                continue
+            motion = self.friendly_npc_motion(npc)
+            lights.append(
+                self._lantern_light(
+                    npc.x,
+                    npc.y,
+                    kind="friendly_lantern",
+                    flicker_seed=motion.seed,
+                )
+            )
         for src in getattr(self, "light_sources", []):
             if not (min_x - 4 <= src.x <= max_x + 4 and min_y - 4 <= src.y <= max_y + 4):
                 continue
@@ -545,6 +574,7 @@ class LightingMixin:
             f = max(0, min(255, int(255 * factor)))
             scratch.fill((f, f, f, 255), special_flags=pygame.BLEND_RGBA_MULT)
             sx, sy = project(light.x, light.y)
+            sy -= round(light.elevation * TILE_H * eff_zoom)
             bx = sx // scale - sprite.get_width() // 2
             by = sy // scale - sprite.get_height() // 2
             buffer.blit(scratch, (bx, by), special_flags=pygame.BLEND_RGBA_ADD)

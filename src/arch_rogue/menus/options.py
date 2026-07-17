@@ -199,7 +199,7 @@ class MenuOptionsMixin:
                 content.x, row_rect.bottom + note_gap, content.width, note_h
             )
             self.draw_wrapped_text(
-                "Difficulty defaults to Hard. Cycle Easy, Medium, and Hard here; "
+                "Difficulty defaults to Medium. Cycle Easy, Medium, and Hard here; "
                 "Hell appears after your first clear. Options persist to "
                 "~/.arch_rogue_options.json.",
                 detail_font,

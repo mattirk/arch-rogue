@@ -122,6 +122,19 @@ class FriendlyNpcRuntimeTests(unittest.TestCase):
     def positions(game: Game) -> tuple[tuple[float, float], ...]:
         return tuple((npc.x, npc.y) for npc in game.iter_friendly_npcs())
 
+    def test_friendly_humanoid_iterator_excludes_garden_frogs(self) -> None:
+        game = self.make_game()
+        humanoids = tuple(game.iter_friendly_humanoids())
+
+        self.assertEqual(humanoids, tuple(game.iter_friendly_npcs())[:3])
+        self.assertEqual(
+            {type(npc) for npc in humanoids},
+            {Shopkeeper, StoryGuest, IdleNpc},
+        )
+        self.assertTrue(
+            all(getattr(npc, "kind", "") != "garden_frog" for npc in humanoids)
+        )
+
     def assert_faces_player(self, game: Game, npc: Shopkeeper | StoryGuest) -> None:
         motion = game.friendly_npc_motion(npc)
         dx = game.player.x - npc.x

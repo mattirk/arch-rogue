@@ -31,6 +31,7 @@ from arch_rogue.content import (
 from arch_rogue.game import Game
 from arch_rogue.models import Room, Tile
 from arch_rogue.sprite_assets import (
+    BAR_WALL_SCONCE_DIRECTION_BY_FACE,
     GOLD_STACK_ASSET_KEYS,
     AssetSpriteLibrary,
     DIRECTIONS,
@@ -102,11 +103,33 @@ class SpriteAssetTests(unittest.TestCase):
             "secret_cache",
             "shop_sign",
             "ambush_bell",
+            "bar_wall_sconce_south_east",
+            "bar_wall_sconce_south_west",
             *GOLD_STACK_ASSET_KEYS,
         }
         self.assertTrue(required_props.issubset(manifest["props"]))
         for prop in required_props:
             self.assertIsNotNone(library.resolve_prop(prop), prop)
+
+        atlas = SpriteAtlas()
+        for side, direction in BAR_WALL_SCONCE_DIRECTION_BY_FACE.items():
+            key = f"bar_wall_sconce_{direction.replace('-', '_')}"
+            entry = manifest["props"][key]
+            self.assertEqual(tuple(entry["source_canvas"]), (68, 68))
+            self.assertEqual(entry["reference_height"], 47)
+            self.assertEqual(entry["target_height"], 84)
+            source = library._source_surface(entry["path"])
+            self.assertIsNotNone(source)
+            assert source is not None
+            self.assertEqual(source.get_size(), (68, 68))
+            bounds = source.get_bounding_rect(min_alpha=1)
+            self.assertGreater(bounds.width, 0)
+            self.assertGreater(bounds.height, 0)
+            frame = atlas.bar_wall_sconce_visual(side)
+            self.assertIsNotNone(frame)
+            assert frame is not None
+            self.assertTrue(frame.is_asset)
+            self.assertEqual(frame.key[1], key)
 
         directional_doors = {
             f"door_{state}_{direction.replace('-', '_')}"
@@ -828,6 +851,89 @@ class SpriteAssetTests(unittest.TestCase):
             finally:
                 game.sprites.assets.manifest["world"]["wall_bar_left"] = entry
                 game.sprites.assets.clear_derived_caches()
+
+    def test_bar_wall_sconces_render_assets_and_procedural_fallback(self) -> None:
+        def changed_bounds(
+            plain: pygame.Surface, mounted: pygame.Surface
+        ) -> pygame.Rect:
+            points = [
+                (x, y)
+                for x in range(plain.get_width())
+                for y in range(plain.get_height())
+                if plain.get_at((x, y)) != mounted.get_at((x, y))
+            ]
+            self.assertTrue(points)
+            left = min(point[0] for point in points)
+            top = min(point[1] for point in points)
+            right = max(point[0] for point in points) + 1
+            bottom = max(point[1] for point in points) + 1
+            return pygame.Rect(left, top, right - left, bottom - top)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            self.assertEqual(
+                game.actor_sprite_direction(0.0, 1.0),
+                BAR_WALL_SCONCE_DIRECTION_BY_FACE["left"],
+            )
+            self.assertEqual(
+                game.actor_sprite_direction(1.0, 0.0),
+                BAR_WALL_SCONCE_DIRECTION_BY_FACE["right"],
+            )
+            wall_h = 48 * WORLD_SCALE
+            for side, direction in (("left", -1), ("right", 1)):
+                game.tile_cache.clear()
+                plain, anchor_x, anchor_y = game.tile_surface(
+                    Tile.WALL, 0, wall_face_style=f"bar:{side}"
+                )
+                mounted, _, _ = game.tile_surface(
+                    Tile.WALL,
+                    0,
+                    wall_face_style=f"bar:{side}",
+                    bar_wall_light_side=side,
+                )
+                changed = changed_bounds(plain, mounted)
+                mount = (
+                    anchor_x + direction * TILE_W // 4,
+                    anchor_y - wall_h // 2 + TILE_H // 4,
+                )
+                self.assertTrue(changed.inflate(4, 4).collidepoint(mount), side)
+
+            game.tile_cache.clear()
+            with mock.patch.object(
+                game.sprites, "bar_wall_sconce_visual", return_value=None
+            ):
+                plain, anchor_x, anchor_y = game.tile_surface(
+                    Tile.WALL, 1, wall_face_style="bar:left"
+                )
+                fallback, _, _ = game.tile_surface(
+                    Tile.WALL,
+                    1,
+                    wall_face_style="bar:left",
+                    bar_wall_light_side="left",
+                )
+            changed = changed_bounds(plain, fallback)
+            mount = (
+                anchor_x - TILE_W // 4,
+                anchor_y - wall_h // 2 + TILE_H // 4,
+            )
+            self.assertTrue(changed.inflate(4, 4).collidepoint(mount))
+
+            game.tile_cache.clear()
+            game.prewarm_tile_cache()
+            for seed in range(DUNGEON_WALL_VARIANTS):
+                for side in ("left", "right"):
+                    key = (
+                        game.theme.name,
+                        int(Tile.WALL),
+                        seed,
+                        False,
+                        False,
+                        False,
+                        False,
+                        f"bar:{side}",
+                        side,
+                    )
+                    self.assertIn(key, game.tile_cache)
 
     def test_world_reference_width_controls_authored_tile_footprint(self) -> None:
         library = AssetSpriteLibrary()

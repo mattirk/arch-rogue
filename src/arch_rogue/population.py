@@ -28,6 +28,7 @@ from collections.abc import Callable
 
 from .constants import (
     DUNGEON_DEPTH,
+    LIGHT_BAR_WALL_ELEVATION,
     LIGHT_SHRINE_INTENSITY,
     LIGHT_SHRINE_RADIUS,
     LIGHT_TORCH_COLOR,
@@ -63,6 +64,7 @@ from .models import (
     Shopkeeper,
     Shrine,
     SpecialRoom,
+    Tile,
     Trap,
 )
 
@@ -272,20 +274,70 @@ class PopulationMixin:
     ) -> None:
         self._special_room_handlers()[kind] = handler
 
+    def _bar_wall_light_mounts(
+        self, special_room: SpecialRoom, room: Room
+    ) -> list[tuple[str, int, int]]:
+        """Return one deterministic mount on each visible interior bar wall."""
+
+        def nearest_wall(
+            candidates: list[tuple[int, int]], target: float, axis: int
+        ) -> tuple[int, int] | None:
+            walls = [
+                tile
+                for tile in candidates
+                if self.dungeon.in_bounds(*tile)
+                and self.dungeon.tiles[tile[0]][tile[1]] == Tile.WALL
+            ]
+            if not walls:
+                return None
+            return min(walls, key=lambda tile: (abs(tile[axis] + 0.5 - target), tile))
+
+        mounts: list[tuple[str, int, int]] = []
+        left = nearest_wall(
+            [(x, room.y) for x in range(room.x + 1, room.x + room.w - 1)],
+            room.x + room.w / 2,
+            0,
+        )
+        right = nearest_wall(
+            [(room.x, y) for y in range(room.y + 1, room.y + room.h - 1)],
+            room.y + room.h / 2,
+            1,
+        )
+        for side, tile in (("left", left), ("right", right)):
+            if tile is None:
+                continue
+            self._reserve_special_room_anchor(
+                special_room, f"bar_wall_light_{side}", *tile
+            )
+            mounts.append((side, tile[0], tile[1]))
+        return mounts
+
+    @staticmethod
+    def _static_light_key(light: LightSource) -> tuple[str, float, float, float]:
+        return (
+            light.kind,
+            round(light.x, 2),
+            round(light.y, 2),
+            round(light.elevation, 2),
+        )
+
     def _populate_light_sources(self) -> None:
-        # Milestone 3.16 static lights: shrines plus bar/garden torches.
+        # Static floor lights: shrines, the garden's central witchlight, and two
+        # elevated candle sconces on each bar's visible interior wall faces.
         if not hasattr(self, "light_sources"):
             self.light_sources = []
-        existing = {
-            (round(src.x, 2), round(src.y, 2)) for src in self.light_sources
-        }
+        existing = {self._static_light_key(src) for src in self.light_sources}
+
+        def add(light: LightSource) -> None:
+            key = self._static_light_key(light)
+            if key not in existing:
+                self.light_sources.append(light)
+                existing.add(key)
+
         for shrine in self.shrines:
-            key = (round(shrine.x, 2), round(shrine.y, 2))
-            if key in existing:
-                continue
             hint = SHRINE_HINTS.get(shrine.kind)
             color = hint.color if hint is not None else (235, 205, 110)
-            self.light_sources.append(
+            add(
                 LightSource(
                     x=shrine.x,
                     y=shrine.y,
@@ -297,7 +349,6 @@ class PopulationMixin:
                     kind="shrine",
                 )
             )
-            existing.add(key)
         room_count = len(self.dungeon.rooms)
         for special_room in getattr(self.dungeon, "special_rooms", []):
             if special_room.room_index not in range(room_count):
@@ -305,27 +356,73 @@ class PopulationMixin:
             if special_room.kind not in ("bar", "garden"):
                 continue
             room = self.dungeon.rooms[special_room.room_index]
-            cx, cy = room.center
-            key = (round(cx + 0.5, 2), round(cy + 0.5, 2))
-            if key in existing:
+            if special_room.kind == "bar":
+                for side, wall_x, wall_y in self._bar_wall_light_mounts(
+                    special_room, room
+                ):
+                    if side == "left":
+                        light_x, light_y = wall_x + 0.5, wall_y + 1.0
+                    else:
+                        light_x, light_y = wall_x + 1.0, wall_y + 0.5
+                    add(
+                        LightSource(
+                            x=light_x,
+                            y=light_y,
+                            radius=LIGHT_TORCH_RADIUS,
+                            color=LIGHT_TORCH_COLOR,
+                            intensity=LIGHT_TORCH_INTENSITY,
+                            ttl=None,
+                            flicker=True,
+                            flicker_seed=(
+                                wall_x * 131
+                                + wall_y * 17
+                                + (0 if side == "left" else 977)
+                            )
+                            % 9973,
+                            kind="bar_wall_light",
+                            elevation=LIGHT_BAR_WALL_ELEVATION,
+                        )
+                    )
                 continue
-            if special_room.kind == "garden":
-                color = (150, 220, 130)
-            else:
-                color = LIGHT_TORCH_COLOR
-            self.light_sources.append(
+
+            cx, cy = room.center
+            add(
                 LightSource(
                     x=cx + 0.5,
                     y=cy + 0.5,
                     radius=LIGHT_TORCH_RADIUS,
-                    color=color,
+                    color=(150, 220, 130),
                     intensity=LIGHT_TORCH_INTENSITY,
                     ttl=None,
                     flicker=True,
                     kind="torch",
                 )
             )
-            existing.add(key)
+
+    def _reconcile_static_light_sources(self) -> None:
+        """Upgrade persisted floor lights, then idempotently backfill fixtures."""
+        bar_center: tuple[float, float] | None = None
+        special_room = self.dungeon.special_room_for_kind("bar")
+        if special_room is not None and 0 <= special_room.room_index < len(
+            self.dungeon.rooms
+        ):
+            cx, cy = self.dungeon.rooms[special_room.room_index].center
+            bar_center = (cx + 0.5, cy + 0.5)
+
+        retained: list[LightSource] = []
+        for source in getattr(self, "light_sources", []):
+            if source.kind == "bar_wall_light":
+                continue
+            if (
+                bar_center is not None
+                and source.kind == "torch"
+                and abs(source.x - bar_center[0]) < 0.01
+                and abs(source.y - bar_center[1]) < 0.01
+            ):
+                continue
+            retained.append(source)
+        self.light_sources = retained
+        self._populate_light_sources()
 
     def _populate_special_rooms(self) -> None:
         for special_room in list(getattr(self.dungeon, "special_rooms", [])):

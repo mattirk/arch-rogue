@@ -120,6 +120,9 @@ class RenderingWorldMixin:
             return None
         seed = self.tile_seed(x, y)
         wall_face_style = self.special_wall_faces(x, y) if tile == Tile.WALL else None
+        bar_wall_light_side = (
+            self.bar_wall_light_side(x, y) if tile == Tile.WALL else None
+        )
         surface, anchor_x, anchor_y = self.tile_surface(
             tile,
             seed,
@@ -128,6 +131,7 @@ class RenderingWorldMixin:
             bar_floor=self.is_bar_tile(x, y),
             garden_floor=self.is_garden_tile(x, y),
             wall_face_style=wall_face_style,
+            bar_wall_light_side=bar_wall_light_side,
         )
         if self._frame_dark:  # set at start of draw_world_objects/draw_dungeon
             alpha = self.tile_visibility_alpha(x, y)
@@ -212,6 +216,14 @@ class RenderingWorldMixin:
                     for style in wall_face_styles:
                         self.tile_surface(
                             tile, seed, shop_floor=False, wall_face_style=style
+                        )
+                    for side in ("left", "right"):
+                        self.tile_surface(
+                            tile,
+                            seed,
+                            shop_floor=False,
+                            wall_face_style=f"bar:{side}",
+                            bar_wall_light_side=side,
                         )
                 else:
                     self.tile_surface(tile, seed, shop_floor=False)
@@ -316,6 +328,22 @@ class RenderingWorldMixin:
                 return f"{kind}:right"
         return None
 
+    def bar_wall_light_side(self, x: int, y: int) -> str | None:
+        cache = getattr(self, "_frame_cache", None)
+        cache_key = "bar_wall_light_mounts"
+        mounts = cache.get(cache_key) if cache is not None else None
+        if mounts is None:
+            mounts = {}
+            special_room = self.dungeon.special_room_for_kind("bar")
+            if special_room is not None:
+                for side in ("left", "right"):
+                    tile = special_room.anchor(f"bar_wall_light_{side}")
+                    if tile is not None:
+                        mounts[tile] = side
+            if cache is not None:
+                cache[cache_key] = mounts
+        return mounts.get((x, y))
+
     def _special_room_bounds(
         self,
         kind: str | None = None,
@@ -359,6 +387,7 @@ class RenderingWorldMixin:
         bar_floor: bool = False,
         garden_floor: bool = False,
         wall_face_style: str | None = None,
+        bar_wall_light_side: str | None = None,
     ) -> tuple[pygame.Surface, int, int]:
         # ``wall_face_style`` is "<kind>:<side>" (or legacy "left"/"right") and
         # selects which side face of a WALL tile gets distinct interior wall art.
@@ -374,6 +403,7 @@ class RenderingWorldMixin:
             bar_floor,
             garden_floor,
             wall_face_style,
+            bar_wall_light_side,
         )
         cached = self.tile_cache.get(key)
         if cached:
@@ -453,6 +483,17 @@ class RenderingWorldMixin:
                 wall_face_style=wall_face_style,
             )
         if asset_surface is not None:
+            if tile == Tile.WALL and bar_wall_light_side is not None:
+                wall_surface, wall_anchor_x, wall_anchor_y = asset_surface
+                wall_surface = wall_surface.copy()
+                self._draw_bar_wall_light(
+                    wall_surface,
+                    wall_anchor_x,
+                    wall_anchor_y,
+                    wall_h,
+                    bar_wall_light_side,
+                )
+                asset_surface = (wall_surface, wall_anchor_x, wall_anchor_y)
             self.tile_cache[key] = asset_surface
             return asset_surface
 
@@ -476,6 +517,10 @@ class RenderingWorldMixin:
                 seed,
                 wall_face_style=wall_face_style,
             )
+            if bar_wall_light_side is not None:
+                self._draw_bar_wall_light(
+                    surface, anchor_x, anchor_y, wall_h, bar_wall_light_side
+                )
         elif tile in (Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
             self.draw_door_tile_surface(
                 surface,
@@ -839,6 +884,61 @@ class RenderingWorldMixin:
         pygame.draw.line(surface, band_color, (ax, ay), (bx, by), max(1, scale))
         pygame.draw.aalines(
             surface, self.shade(band_color, 14), False, [(ax, ay - 1), (bx, by - 1)]
+        )
+
+    def _draw_bar_wall_light(
+        self,
+        surface: pygame.Surface,
+        anchor_x: int,
+        anchor_y: int,
+        wall_h: int,
+        side: str,
+    ) -> None:
+        if side not in ("left", "right"):
+            return
+        direction = -1 if side == "left" else 1
+        mount = (
+            anchor_x + direction * TILE_W // 4,
+            anchor_y - wall_h // 2 + TILE_H // 4,
+        )
+        frame = self.sprites.bar_wall_sconce_visual(side)
+        if frame is not None:
+            surface.blit(
+                frame.surface,
+                (mount[0] - frame.anchor[0], mount[1] - frame.anchor[1]),
+            )
+            return
+
+        # Legacy/missing-asset fallback: a compact iron backplate, bracket,
+        # beeswax candle, and flame drawn directly onto the selected wall face.
+        scale = WORLD_SCALE
+        iron = (39, 31, 27)
+        iron_hi = (92, 69, 47)
+        wax = (219, 178, 104)
+        flame = (255, 174, 54)
+        pygame.draw.circle(surface, iron, mount, 5 * scale)
+        pygame.draw.circle(surface, iron_hi, mount, 5 * scale, max(1, scale))
+        bracket_end = (
+            mount[0] + direction * 8 * scale,
+            mount[1] + 3 * scale,
+        )
+        pygame.draw.line(surface, iron, mount, bracket_end, max(2, 2 * scale))
+        candle = pygame.Rect(0, 0, 5 * scale, 12 * scale)
+        candle.midbottom = (bracket_end[0], bracket_end[1] + scale)
+        pygame.draw.rect(surface, iron, candle.inflate(2 * scale, 2 * scale))
+        pygame.draw.rect(surface, wax, candle)
+        flame_points = [
+            (candle.centerx, candle.top - 7 * scale),
+            (candle.centerx + 3 * scale, candle.top - scale),
+            (candle.centerx, candle.top + scale),
+            (candle.centerx - 3 * scale, candle.top - scale),
+        ]
+        pygame.draw.polygon(surface, flame, flame_points)
+        pygame.draw.circle(
+            surface,
+            (255, 232, 132),
+            (candle.centerx, candle.top - 2 * scale),
+            max(1, scale),
         )
 
     def _draw_bar_wall_planks(

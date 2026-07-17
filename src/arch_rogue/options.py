@@ -195,7 +195,7 @@ class OptionsMixin:
         try:
             self.audio_enabled = bool(data.get("audio_enabled", True))
             self.music_enabled = bool(data.get("music_enabled", False))
-            self.fullscreen = bool(data.get("fullscreen", False))
+            self.fullscreen = bool(data.get("fullscreen", True))
             self.ui_scale = max(1, min(4, int(data.get("ui_scale", UI_SCALE))))
             self.hell_unlocked = bool(data.get("hell_unlocked", False))
             self.meta_progress = self.normalize_meta_progress(data.get("meta_progress"))

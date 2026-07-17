@@ -58,6 +58,13 @@ GOLD_STACK_ASSET_KEYS = (
     "gold_stack_04",
     "gold_stack_05",
 )
+# Special wall faces are named for their screen side, while PixelLab rotations
+# use the same screen-space compass directions as actor sprites. The +y
+# (left) face points south-west; the +x (right) face points south-east.
+BAR_WALL_SCONCE_DIRECTION_BY_FACE = {
+    "left": "south-west",
+    "right": "south-east",
+}
 
 _K = TypeVar("_K")
 _V = TypeVar("_V")
@@ -1183,6 +1190,16 @@ class SpriteAtlas:
 
     def ambush_bell_visual(self) -> ResolvedSpriteFrame | None:
         return self._asset_prop("ambush_bell")
+
+    def bar_wall_sconce_visual(
+        self, side: str
+    ) -> ResolvedSpriteFrame | None:
+        direction = BAR_WALL_SCONCE_DIRECTION_BY_FACE.get(side)
+        if direction is None:
+            return None
+        return self._asset_prop(
+            f"bar_wall_sconce_{direction.replace('-', '_')}"
+        )
 
     def world_tile_surface(
         self,
