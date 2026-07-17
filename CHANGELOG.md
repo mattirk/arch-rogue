@@ -1,5 +1,42 @@
 # Changelog
 
+## 4.2.0 — General Refinements
+
+Milestone 4.2.0 delivers the small quality-of-life improvements queued under the 4.2 General Refinements milestone: verified familiar/enemy wall line-of-sight, garden-room passive healing with a visible greenish aura, a scrollbar for the settings menu when options overflow, slightly rarer loot drops across the board, and harder-to-kill elite enemies.
+
+### Added
+
+- Added `Dungeon.special_room_at_point(x, y)` returning the `SpecialRoom` whose interior contains a world point, used by the new garden healing logic to detect "player is standing inside a garden flavor room" without duplicating the room-bounds query.
+- Added garden-room passive healing: while the player stands inside an overgrown garden flavor room with missing HP, `CombatMixin._update_garden_healing` banks time and grants one small +HP tick per second (`max(2, max_hp // 25 + 2)`), emits a `Garden +N` floater in a soft green, and refreshes a transient `garden_heal_glow` timer. The heal only ticks while HP is actually missing and stops as soon as the player steps out of the garden or reaches full HP.
+- Added a greenish garden healing aura renderer: `RenderingActorMixin.draw_garden_heal_glow` draws a pulsing halo + rising leaf-wisp sparks around the player whenever `garden_heal_glow` is active, faded by the timer's remaining life so the garden reads as a calm refuge rather than a flash. The aura is drawn after the hit flash so a recent hit does not mask the green tint, and lazily skipped when no glow timer is active.
+- Added `garden_heal_accumulator`, `garden_heal_glow`, and `garden_heal_glow_duration` to `Game` state, reset in `reset_transient_visuals` (so floor descent, run restart, and save restore all clear them) and decayed in `Game.update_visual_effects`.
+- Added a scrollbar to the Options menu: `MenuOptionsMixin.draw_options_scrollbar` draws a thin ember-gold thumb on a recessed track on the right rail of the options row viewport whenever the full options list does not fit vertically. When the scrollbar is needed, the rendered rows are inset from the viewport's right edge so the thumb never overlaps a row's right-aligned value; when everything fits, no scrollbar is drawn and rows keep the full width. The look mirrors the inventory scrollbar so the two menus read as one family.
+
+### Changed
+
+- Elite modifiers are harder to kill across the board. The `ELITE_MODIFIERS` HP multipliers and damage bonuses were raised so each elite tier reads as a real threat instead of a slightly tougher normal enemy: Frenzied HP 1.25 → 1.45 / damage +2 → +3, Ironbound HP 1.65 → 1.95 / damage +1 → +2, Venomous HP 1.20 → 1.40 / damage +4 → +5, Runed HP 1.35 → 1.55 / damage +3 → +4. Speed multipliers and xp rewards are preserved so kiting strategy and reward pacing stay the same.
+- Loot drops are rarer across the board (but not by too much). The on-kill loot roll in `CombatMixin.kill_enemy` is reduced from `0.45` to `0.36`, and the per-floor loot spawn multiplier in `PopulationMixin._populate_dungeon` is reduced from `0.5` to `0.42` (on top of the existing base chance). Guaranteed event drops (secrets, shrines, boss/miniboss notable loot) are unchanged so rare encounters still feel rewarding.
+- Runtime/package release version is `4.2.0`; options remain schema `4` and run saves remain schema `5`.
+
+### Verified
+
+- Verified that the Acolyte's Spirit Call familiar cannot perceive or attack enemies through dungeon walls. The familiar target-selection loop in `CombatMixin.update_familiars` already gates every candidate on `Dungeon.line_of_sight`, so both the Acolyte's owl and the Ranger's Spirit Beast share the same wall-blocked perception contract. Added an explicit Acolyte regression test (`test_acolyte_spirit_familiar_cannot_perceive_or_attack_through_walls`) alongside the existing Ranger Spirit Beast wall tests.
+
+### Tests
+
+- Added `FlavorRoomTests.test_garden_room_slowly_heals_player_and_emits_greenish_glow` covering: sub-second accumulator banking without a tick, the one-second tick healing the player and activating the glow with a green `Garden +N` floater, healing stopping when the player steps out of the garden, and no-Op behavior at full HP.
+- Added `FlavorRoomTests.test_garden_heal_glow_renders_without_crashing` exercising a full `game.draw()` frame with `garden_heal_glow` active and confirming `update_visual_effects` decays the timer.
+- Added `UiLayoutTests.test_options_scrollbar_appears_when_rows_overflow_and_is_absent_when_they_fit` covering: the scrollbar is drawn (and rows inset) when the options list overflows at high UI scale, the scrollbar is absent and rows keep full width when the list fits at a large window, and the viewport/selected-row geometry stays sane in both modes.
+- Added `FamiliarTests.test_acolyte_spirit_familiar_cannot_perceive_or_attack_through_walls` verifying the Acolyte's owl cannot bite through walls and regains perception once the wall is cleared.
+- Added `CombatSkillsLoot22Tests.test_elite_modifiers_are_harder_to_kill_than_baseline` verifying the new HP multiplier / damage bonus floors for all four elite tiers and that applying each modifier produces a higher-HP, higher-damage foe than the baseline.
+- Added `CombatSkillsLoot22Tests.test_loot_drops_are_rarer_than_the_four_one_baseline` verifying the on-kill loot threshold sits below `0.36` (a 0.35 roll drops, a 0.40 roll does not).
+
+### Validation
+
+- `.venv/bin/python -m unittest tests.test_flavor_rooms tests.test_familiars tests.test_enemy_los_walls tests.test_ui_layouts tests.test_combat_damage_and_loot_tables tests.test_floor_plan_and_boss_rewards tests.test_input_and_accessibility tests.test_sprite_assets` — all passing.
+- `.venv/bin/python -m unittest discover tests` — 320 tests, all passing; the experimental web build was not run separately.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+
 ## 4.1.26 — In-Game Legacy Graphics Hotkey
 
 Milestone 4.1.26 delivers the backlog item for an in-game legacy graphics toggle, exposing the existing `legacy_graphics` option through a global hotkey so players can switch between authored asset sprites and the procedural legacy renderer without entering the Options menu.

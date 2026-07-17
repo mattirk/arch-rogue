@@ -132,8 +132,11 @@ class PopulationMixin:
                     + encounter.loot_bonus,
                 ),
             )
-            # Loot is twice as rare: halve the final spawn probability.
-            loot_chance *= 0.5
+            # 4.2: loot drops are rarer across the board. The previous floor
+            # spawn multiplier (0.5) already halved the base chance; trimming it
+            # further to 0.42 makes exploration loot feel earned without starving
+            # the player of drops entirely.
+            loot_chance *= 0.42
             if self.rng.random() < loot_chance:
                 self.items.append(self._make_loot(*room.random_point(self.rng)))
             if (

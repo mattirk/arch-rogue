@@ -1684,11 +1684,15 @@ DISCIPLINE_UPGRADES: tuple[DisciplineUpgrade, ...] = tuple(
 
 
 ELITE_MODIFIERS = (
+    # 4.2: elites are harder to kill across the board — HP multipliers and
+    # damage bonuses were nudged up so each elite tier reads as a real threat
+    # instead of a slightly tougher normal enemy. Speed and xp rewards are
+    # preserved so kiting strategy and reward pacing stay the same.
     EliteModifier(
         "Frenzied",
         "fast attacks with a red warning flash",
-        hp_multiplier=1.25,
-        damage_bonus=2,
+        hp_multiplier=1.45,
+        damage_bonus=3,
         speed_multiplier=1.18,
         xp_bonus=12,
         color_shift=(45, -10, -10),
@@ -1696,8 +1700,8 @@ ELITE_MODIFIERS = (
     EliteModifier(
         "Ironbound",
         "slow, armored pressure with a bronze tell",
-        hp_multiplier=1.65,
-        damage_bonus=1,
+        hp_multiplier=1.95,
+        damage_bonus=2,
         speed_multiplier=0.86,
         xp_bonus=16,
         color_shift=(35, 24, -8),
@@ -1705,8 +1709,8 @@ ELITE_MODIFIERS = (
     EliteModifier(
         "Venomous",
         "poisoned strikes and sickly green tells",
-        hp_multiplier=1.20,
-        damage_bonus=4,
+        hp_multiplier=1.40,
+        damage_bonus=5,
         speed_multiplier=1.0,
         xp_bonus=14,
         color_shift=(-20, 42, -16),
@@ -1714,8 +1718,8 @@ ELITE_MODIFIERS = (
     EliteModifier(
         "Runed",
         "longer aggro and brighter spell telegraphs",
-        hp_multiplier=1.35,
-        damage_bonus=3,
+        hp_multiplier=1.55,
+        damage_bonus=4,
         speed_multiplier=1.0,
         xp_bonus=18,
         color_shift=(-18, 30, 48),

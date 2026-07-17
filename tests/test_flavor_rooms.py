@@ -727,6 +727,36 @@ class FlavorRoomTests(unittest.TestCase):
             if tmp is not None:
                 tmp.cleanup()
 
+    def test_garden_heal_glow_renders_without_crashing(self) -> None:
+        # 4.2: the greenish garden healing aura is drawn by
+        # ``draw_garden_heal_glow`` when ``garden_heal_glow`` is active. Verify
+        # a full frame render with the glow timer set does not crash and
+        # leaves the glow timer decayed by the visual-effects step.
+        game = self._make_game_with_flavor_room()
+        try:
+            special = game.dungeon.special_room_for_kind(GARDEN_ROOM_KIND)
+            assert special is not None
+            room = game.dungeon.rooms[special.room_index]
+            game.player.x = room.x + room.w / 2
+            game.player.y = room.y + room.h / 2
+            game.update_revealed_tiles()
+            game.garden_heal_glow = 0.9
+            game.garden_heal_glow_duration = 0.9
+            # Rendering with the glow active must not crash; the aura is drawn
+            # by ``draw_garden_heal_glow`` inside ``draw_player``.
+            game.draw()
+            # The decay happens in update_visual_effects (the game-loop update
+            # step), not during draw. Exercise it directly to confirm the
+            # timer decays toward zero.
+            glow_before = game.garden_heal_glow
+            game.update_visual_effects(0.2)
+            self.assertLess(game.garden_heal_glow, glow_before)
+            self.assertGreaterEqual(game.garden_heal_glow, 0.0)
+        finally:
+            tmp = getattr(game, "_flavor_tmpdir", None)
+            if tmp is not None:
+                tmp.cleanup()
+
     def test_old_save_without_idle_npcs_or_flavor_rooms_loads(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self._make_game_with_flavor_room(tmpdir=tmpdir)
@@ -792,6 +822,68 @@ class FlavorRoomTests(unittest.TestCase):
             if tmp is not None:
                 tmp.cleanup()
             raise
+
+    def test_garden_room_slowly_heals_player_and_emits_greenish_glow(self) -> None:
+        # 4.2: standing inside an overgrown garden flavor room mends the
+        # player a little (one +HP tick per second) and refreshes a greenish
+        # aura timer the renderer fades out. The heal only ticks while HP is
+        # actually missing and only while standing inside the garden.
+        game = self._make_game_with_flavor_room()
+        try:
+            special = game.dungeon.special_room_for_kind(GARDEN_ROOM_KIND)
+            assert special is not None
+            room = game.dungeon.rooms[special.room_index]
+            cx, cy = room.center
+            # Ensure the garden center is walkable and park the player there.
+            game.dungeon.tiles[cx][cy] = Tile.FLOOR
+            game.player.x = cx + 0.5
+            game.player.y = cy + 0.5
+            game.player.hp = max(1, game.player.max_hp - 24)
+            hp_before = game.player.hp
+            game.garden_heal_accumulator = 0.0
+            game.garden_heal_glow = 0.0
+            game.floaters.clear()
+
+            # Sub-second: accumulator banks time but no tick yet.
+            game.update_player(0.6)
+            self.assertEqual(game.player.hp, hp_before)
+            self.assertEqual(game.garden_heal_glow, 0.0)
+
+            # Cross the one-second tick threshold: HP rises, glow activates,
+            # and a "Garden +N" floater is emitted.
+            game.update_player(0.5)
+            self.assertGreater(game.player.hp, hp_before)
+            self.assertGreater(game.garden_heal_glow, 0.0)
+            self.assertGreater(game.garden_heal_glow_duration, 0.0)
+            garden_floaters = [
+                f for f in game.floaters if str(f.text).startswith("Garden +")
+            ]
+            self.assertEqual(len(garden_floaters), 1)
+            self.assertEqual(garden_floaters[0].color, (130, 220, 150))
+
+            # Step out of the garden: accumulator resets and no further heal.
+            outside_x = game.player.x + room.w + 2
+            game.dungeon.tiles[int(outside_x)][int(game.player.y)] = Tile.FLOOR
+            game.player.x = outside_x
+            hp_in_garden = game.player.hp
+            game.garden_heal_accumulator = 0.0
+            game.update_player(1.6)
+            self.assertEqual(game.player.hp, hp_in_garden)
+            self.assertEqual(game.garden_heal_accumulator, 0.0)
+
+            # At full HP, standing in the garden does nothing (no wasted glow).
+            game.player.x = cx + 0.5
+            game.player.y = cy + 0.5
+            game.player.hp = game.player.max_hp
+            game.garden_heal_accumulator = 0.0
+            game.garden_heal_glow = 0.0
+            game.update_player(1.6)
+            self.assertEqual(game.player.hp, game.player.max_hp)
+            self.assertEqual(game.garden_heal_glow, 0.0)
+        finally:
+            tmp = getattr(game, "_flavor_tmpdir", None)
+            if tmp is not None:
+                tmp.cleanup()
 
 
 if __name__ == "__main__":

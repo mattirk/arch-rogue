@@ -164,6 +164,13 @@ class MenuOptionsMixin:
             scroll += 1
             end = visible_end(scroll)
         self.g.options_scroll = scroll
+        # 4.2: reserve a narrow right rail for the scrollbar when the full
+        # options list does not fit vertically, so the scrollbar never overlaps
+        # a row's right-aligned value. ``row_rect`` keeps its full width for the
+        # viewport / scrollbar geometry; only the rows themselves are inset.
+        needs_scrollbar = len(rows) > (end - scroll)
+        scrollbar_pad = self.u(10) if needs_scrollbar else 0
+        rows_draw_rect = row_rect.inflate(-scrollbar_pad, 0) if scrollbar_pad else row_rect
         self.g._options_row_viewport = row_rect.copy()
         self.g._options_row_font_height = body_font.get_height()
         self.g._options_detail_font = detail_font
@@ -176,7 +183,7 @@ class MenuOptionsMixin:
         ]
         rendered_rows = self.draw_menu_rows(
             visible_rows,
-            row_rect,
+            rows_draw_rect,
             selected_index=cursor - scroll,
             sections=visible_sections,
             body_font=body_font,
@@ -194,6 +201,8 @@ class MenuOptionsMixin:
             if 0 <= selected_offset < len(rendered_rows)
             else pygame.Rect(0, 0, 0, 0)
         )
+        if needs_scrollbar:
+            self.draw_options_scrollbar(row_rect, scroll, end - scroll, len(rows))
         if note_h:
             note_rect = pygame.Rect(
                 content.x, row_rect.bottom + note_gap, content.width, note_h
@@ -218,4 +227,49 @@ class MenuOptionsMixin:
         self.draw_footer(
             panel,
             "Arrow keys / D-pad navigate · Enter activates · Backspace returns",
+        )
+
+    def draw_options_scrollbar(
+        self,
+        rows_rect: pygame.Rect,
+        scroll: int,
+        visible_count: int,
+        total_count: int,
+    ) -> None:
+        # 4.2: thin scrollbar on the right rail of the options list so the
+        # player can see there are more rows than fit and where the cursor is
+        # within the full list. Mirrors the inventory scrollbar's look (recessed
+        # track, ember-gold thumb) so the two menus read as one family.
+        if total_count <= visible_count or visible_count <= 1:
+            return
+        track = pygame.Rect(
+            rows_rect.right - self.u(5),
+            rows_rect.y,
+            self.u(4),
+            rows_rect.height,
+        )
+        pygame.draw.rect(
+            self.screen, self.PANEL_INK, track, border_radius=self.u(3)
+        )
+        pygame.draw.rect(
+            self.screen,
+            self.IRON_DARK,
+            track,
+            max(1, self.u(1)),
+            border_radius=self.u(3),
+        )
+        thumb_h = max(self.u(18), int(track.height * visible_count / total_count))
+        max_scroll = max(1, total_count - visible_count)
+        travel = max(1, track.height - thumb_h)
+        clamped_scroll = max(0, min(scroll, max_scroll))
+        thumb_y = track.y + int(travel * clamped_scroll / max_scroll)
+        thumb = pygame.Rect(track.x, thumb_y, track.width, thumb_h)
+        pygame.draw.rect(
+            self.screen, self.WARNING, thumb, border_radius=self.u(3)
+        )
+        pygame.draw.rect(
+            self.screen,
+            self.shade(self.WARNING, 40),
+            thumb,
+            border_radius=self.u(3),
         )

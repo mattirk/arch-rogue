@@ -418,6 +418,13 @@ class Game(
         self.player_action_ttl = 0.0
         self.player_action_elapsed = 0.0
         self.player_action_duration = 0.0
+        # 4.2: garden-room passive healing glow. ``garden_heal_accumulator``
+        # banks time until the next +HP tick while standing inside a garden
+        # flavor room, and ``garden_heal_glow`` is a transient visual timer
+        # the renderer fades a greenish aura from after each tick.
+        self.garden_heal_accumulator = 0.0
+        self.garden_heal_glow = 0.0
+        self.garden_heal_glow_duration = 0.0
         self.ambient_overlay_cache: dict[tuple[int, int, str, int], pygame.Surface] = {}
         self.audio = AudioSystem()
         self.audio_available = self.audio.initialize(headless)
@@ -488,6 +495,11 @@ class Game(
         self.player_action_ttl = 0.0
         self.player_action_elapsed = 0.0
         self.player_action_duration = 0.0
+        # 4.2: garden healing glow is transient and clears with the rest of
+        # the visual state on floor transitions / cutscenes / load.
+        self.garden_heal_accumulator = 0.0
+        self.garden_heal_glow = 0.0
+        self.garden_heal_glow_duration = 0.0
         # Milestone 3.16 - transient light pulses are visual effects too.
         self.lights = []
 
@@ -515,6 +527,12 @@ class Game(
                 self.player_action_state = ""
                 self.player_action_elapsed = 0.0
                 self.player_action_duration = 0.0
+            # 4.2: fade the garden healing aura alongside other transient
+            # player visuals so it decays even when the player steps out of
+            # the garden between ticks.
+            self.garden_heal_glow = max(0.0, self.garden_heal_glow - dt)
+            if self.garden_heal_glow <= 0.0:
+                self.garden_heal_glow_duration = 0.0
             if self.enemy_hit_flashes:
                 alive_enemy_ids = {id(enemy) for enemy in self.enemies}
                 self.enemy_hit_flashes = {

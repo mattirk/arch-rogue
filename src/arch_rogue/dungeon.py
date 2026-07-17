@@ -162,6 +162,17 @@ class Dungeon:
             for room in self.special_rooms
         )
 
+    def special_room_at_point(self, x: float, y: float) -> SpecialRoom | None:
+        """Return the special room whose interior contains the world point, if any."""
+        room = self.room_at(x, y)
+        if room is None:
+            return None
+        try:
+            room_index = self.rooms.index(room)
+        except ValueError:
+            return None
+        return self.special_room_at_index(room_index)
+
     def _add_special_room(self, kind: str, room_index: int) -> SpecialRoom | None:
         definition = SPECIAL_ROOM_DEFINITIONS.get(kind)
         if definition is None or not (0 <= room_index < len(self.rooms)):

@@ -56,6 +56,7 @@ from .content import (
     discipline_by_key,
     disciplines_for_archetype,
 )
+from .dungeon import GARDEN_ROOM_KIND
 from .models import (
     AmbushBell,
     AmbushBellTuning,
@@ -1115,6 +1116,46 @@ class CombatMixin:
             self.player.max_stamina, self.player.stamina + stamina_regen * dt
         )
         self.player.mana = min(self.player.max_mana, self.player.mana + mana_regen * dt)
+        self._update_garden_healing(dt)
+
+    def _update_garden_healing(self, dt: float) -> None:
+        # 4.2: standing inside an overgrown garden flavor room mends the
+        # player a little. The heal is slow (one +HP tick per second) so it
+        # reads as a calm refuge rather than a full heal station, and it only
+        # ticks while HP is actually missing. Each tick refreshes a greenish
+        # aura the renderer fades out so the player can see the garden is
+        # doing something.
+        if self.player.hp <= 0:
+            return
+        if self.player.hp >= self.player.max_hp:
+            self.garden_heal_accumulator = 0.0
+            return
+        special_room = self.dungeon.special_room_at_point(
+            self.player.x, self.player.y
+        )
+        if special_room is None or special_room.kind != GARDEN_ROOM_KIND:
+            self.garden_heal_accumulator = 0.0
+            return
+        self.garden_heal_accumulator += dt
+        if self.garden_heal_accumulator < 1.0:
+            return
+        self.garden_heal_accumulator -= 1.0
+        heal = max(2, self.player.max_hp // 25 + 2)
+        healed = min(self.player.max_hp - self.player.hp, heal)
+        if healed <= 0:
+            return
+        self.player.hp += healed
+        self.garden_heal_glow_duration = 0.9
+        self.garden_heal_glow = self.garden_heal_glow_duration
+        self.floaters.append(
+            FloatingText(
+                f"Garden +{healed}",
+                self.player.x,
+                self.player.y - 0.55,
+                (130, 220, 150),
+                ttl=0.95,
+            )
+        )
 
     def move_actor(self, actor: Player | Enemy, dx: float, dy: float) -> float:
         old_x, old_y = actor.x, actor.y
@@ -3720,7 +3761,11 @@ class CombatMixin:
                     ttl=1.0,
                 )
             )
-        if self.rng.random() < 0.45:
+        # 4.2: loot drops are rarer across the board (but not by too much).
+        # The previous 0.45 base made most kills spit out an item; nudging down
+        # to 0.36 keeps drops exciting while making each piece of loot feel
+        # earned. Elites and bosses still grant their existing gold bonuses.
+        if self.rng.random() < 0.36:
             drop_x, drop_y = self.drop_position_near(enemy.x, enemy.y)
             loot = self._make_loot(drop_x, drop_y)
             self.items.append(loot)

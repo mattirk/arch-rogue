@@ -887,6 +887,58 @@ class UiLayoutTests(unittest.TestCase):
                 self.assertIn(label, rendered_text)
                 self.assertIn(value, rendered_text)
 
+    def test_options_scrollbar_appears_when_rows_overflow_and_is_absent_when_they_fit(self) -> None:
+        # 4.2: when the options list does not fit vertically, a thin scrollbar
+        # is drawn on the right rail of the row viewport; when everything
+        # fits, no scrollbar is drawn and the rows keep the full width.
+        from arch_rogue.menus import MenuRenderer
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, (960, 540))
+            game.state = "options"
+            # Force vertical overflow: a large UI scale makes each row tall
+            # enough that the full options list can no longer fit on screen.
+            game.ui_scale = 4
+            game.rebuild_fonts()
+            game.options_cursor = 0
+            game.options_scroll = 0
+
+            with patch.object(
+                MenuRenderer, "draw_options_scrollbar", wraps=game.menus.draw_options_scrollbar
+            ) as scrollbar:
+                game.draw_options_menu()
+            self.assertTrue(scrollbar.called)
+            viewport_rect, scroll, visible_count, total_count = scrollbar.call_args.args
+            # ``total_count`` is the full options list length; ``visible_count``
+            # is how many rows fit on screen right now.
+            self.assertEqual(total_count, 11)  # fixed options list length
+            # Sanity: the viewport is inside the screen and the visible range
+            # really is smaller than the full options list.
+            self.assertLess(visible_count, total_count)
+            self.assertEqual(len(game._options_visible_rows), visible_count)
+            self.assertTrue(game.screen.get_rect().contains(viewport_rect))
+            self.assertGreater(viewport_rect.width, 0)
+            # The rendered rows were inset from the viewport's right edge to
+            # leave room for the scrollbar rail, so the selected row rect does
+            # not extend all the way to the viewport's right edge.
+            self.assertLess(
+                game._options_selected_row_rect.right,
+                viewport_rect.right - game.ui(2),
+            )
+
+            # When the list fits, no scrollbar is drawn and rows keep full width.
+            game = self.make_game(tmpdir, (1600, 1200), scale=1)
+            game.state = "options"
+            game.options_cursor = 0
+            game.options_scroll = 0
+            with patch.object(
+                MenuRenderer, "draw_options_scrollbar", wraps=game.menus.draw_options_scrollbar
+            ) as scrollbar_fit:
+                game.draw_options_menu()
+            self.assertFalse(scrollbar_fit.called)
+            visible_start, visible_end = game._options_visible_range
+            self.assertEqual(visible_end - visible_start, len(game._options_visible_rows))
+
 
 if __name__ == "__main__":
     unittest.main()

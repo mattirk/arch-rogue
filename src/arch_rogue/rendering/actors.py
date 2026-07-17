@@ -569,6 +569,58 @@ class RenderingActorMixin:
             )
         self.screen.blit(overlay, overlay.get_rect(center=(sx, sy - height // 2)))
 
+    def draw_garden_heal_glow(self, sx: int, sy: int, width: int, height: int) -> None:
+        # 4.2: greenish aura that fades in around the player after each garden
+        # room healing tick. ``garden_heal_glow`` is a transient timer set by
+        # ``CombatMixin._update_garden_healing`` and decayed in
+        # ``Game.update_visual_effects``. The aura is drawn beneath the
+        # sprite's centerline as a soft pulsing ring so it reads as warmth
+        # rising from the overgrown garden floor rather than a flat flash.
+        ttl = getattr(self, "garden_heal_glow", 0.0)
+        if ttl <= 0.0:
+            return
+        duration = max(0.01, getattr(self, "garden_heal_glow_duration", 0.9))
+        life = max(0.0, min(1.0, ttl / duration))
+        pulse = 0.5 + 0.5 * math.sin(self.elapsed * 6.0)
+        aura_w = width + int(18 * WORLD_SCALE) + int(6 * WORLD_SCALE * pulse)
+        aura_h = height + int(14 * WORLD_SCALE) + int(4 * WORLD_SCALE * pulse)
+        overlay = pygame.Surface((aura_w, aura_h), pygame.SRCALPHA)
+        overlay_rect = overlay.get_rect()
+        # Outer halo: a wide, low-alpha green wash.
+        halo_color = (130, 220, 150)
+        pygame.draw.ellipse(
+            overlay,
+            (*halo_color, int(46 * life)),
+            overlay_rect.inflate(-overlay_rect.width // 6, -overlay_rect.height // 6),
+        )
+        # Inner ring: a brighter, tighter band to read as a healing pulse.
+        ring_rect = overlay_rect.inflate(
+            -overlay_rect.width // 3, -overlay_rect.height // 3
+        )
+        pygame.draw.ellipse(
+            overlay,
+            (*self.shade(halo_color, 28), int(96 * life)),
+            ring_rect,
+            max(1, WORLD_SCALE * 2),
+        )
+        # Soft rising sparks: four short vertical wisps rotating slowly to
+        # evoke leaves/petals drifting up from the garden floor.
+        for index in range(4):
+            angle = self.elapsed * 2.4 + index * math.tau / 4
+            radius_x = overlay_rect.width * 0.30
+            radius_y = overlay_rect.height * 0.22
+            cx = overlay_rect.centerx + int(math.cos(angle) * radius_x)
+            cy = overlay_rect.centery + int(math.sin(angle) * radius_y)
+            spark_h = int(10 * WORLD_SCALE * (0.6 + 0.4 * pulse))
+            pygame.draw.line(
+                overlay,
+                (*halo_color, int(120 * life)),
+                (cx, cy),
+                (cx, cy - spark_h),
+                max(1, WORLD_SCALE),
+            )
+        self.screen.blit(overlay, overlay.get_rect(center=(sx, sy - height // 2)))
+
     def draw_player(self, player: Player) -> None:
         sway, bob, lean, stretch = self.actor_animation(player)
         state = self.player_visual_state(player)
@@ -626,6 +678,15 @@ class RenderingActorMixin:
             sprite.get_height(),
             getattr(self, "player_hit_flash", 0.0),
             (255, 110, 90),
+        )
+        # 4.2: garden healing aura. Drawn after the hit flash so a recent hit
+        # does not mask the green tint, and lazily skipped when no glow timer
+        # is active (the common case in non-garden floors).
+        self.draw_garden_heal_glow(
+            sx,
+            sy,
+            sprite.get_width(),
+            sprite.get_height(),
         )
 
     def draw_aim_cone(self) -> None:

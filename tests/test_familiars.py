@@ -712,6 +712,40 @@ class FamiliarTests(unittest.TestCase):
             game.update_familiars(0.1)
             self.assertLess(enemy.hp, enemy.max_hp)
 
+    def test_acolyte_spirit_familiar_cannot_perceive_or_attack_through_walls(self) -> None:
+        # 4.2 verification: the Acolyte's Spirit Call familiar also runs through
+        # the shared ``update_familiars`` LOS check, so it cannot see or bite
+        # enemies through dungeon walls. This is the same contract as the
+        # Ranger Spirit Beast wall test above, exercised on the Acolyte's owl.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=3)
+            game.player.class_skill_timer = 0.0
+            game.player.mana = game.player.max_mana
+            game.player_cast_spirit_call()
+            familiar = game.familiars[0]
+            dungeon = game.dungeon
+            cx, cy = int(game.player.x), int(game.player.y)
+            self.assertGreater(MAP_W - cx, 6)
+            familiar.x, familiar.y = cx + 0.5, cy + 0.5
+            familiar.attack_range = 4.0
+            dungeon.tiles[cx][cy] = Tile.FLOOR
+            dungeon.tiles[cx + 3][cy] = Tile.FLOOR
+            dungeon.tiles[cx + 1][cy] = Tile.WALL
+            dungeon.tiles[cx + 2][cy] = Tile.WALL
+            enemy = _make_enemy(cx + 3.5, cy + 0.5, hp=200)
+            game.enemies = [enemy]
+
+            game.update_familiars(0.1)
+            self.assertEqual(enemy.hp, enemy.max_hp)
+            self.assertEqual(familiar.attack_timer, 0.0)
+
+            # Clearing the walls restores perception and the familiar bites.
+            dungeon.tiles[cx + 1][cy] = Tile.FLOOR
+            dungeon.tiles[cx + 2][cy] = Tile.FLOOR
+            game.update_familiars(0.1)
+            self.assertLess(enemy.hp, enemy.max_hp)
+            self.assertGreater(familiar.attack_timer, 0.0)
+
     # --- discipline scaling -----------------------------------------
 
     def test_ranger_beast_path_scales_and_refreshes_active_beast(self) -> None:
