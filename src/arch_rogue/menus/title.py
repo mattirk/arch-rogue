@@ -265,6 +265,7 @@ class MenuTitleMixin:
             "Dark floors: sight is limited to 4 tiles; monsters navigate normally. Temporary debug: Ctrl+Shift+D toggles darkness on the current level.",
             "Hazards: traps are single-use but dangerous; shrines and secrets can swing a run.",
             "View: Ctrl + scroll wheel zooms the viewport in/out.",
+            "Graphics: Ctrl+Alt+L toggles between authored asset sprites and the procedural legacy renderer.",
         ]
         body_font = self.g.tiny_font if inner.height < 390 else self.g.small_font
         footer_h = self.g.small_font.get_height() + self.u(4)

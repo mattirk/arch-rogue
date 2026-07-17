@@ -478,3 +478,106 @@ class OptionsPersistenceTests(unittest.TestCase):
             self.assertTrue(game.audio_enabled)
             self.assertFalse(game.fullscreen)
             self.assertEqual(game.difficulty_profile().name, "Hard")
+
+
+class LegacyGraphicsHotkeyTests(unittest.TestCase):
+    """Ctrl+Alt+L toggles legacy graphics from any game state."""
+
+    def _post_key(self, game: Game, key: int, mod: int) -> None:
+        pygame.event.post(
+            pygame.event.Event(pygame.KEYDOWN, key=key, mod=mod)
+        )
+        game.handle_events()
+
+    def test_ctrl_alt_l_toggles_legacy_graphics_in_playing_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            self.assertEqual(game.state, "playing")
+            self.assertFalse(game.legacy_graphics)
+            self.assertFalse(game.sprites.legacy_graphics)
+
+            self._post_key(
+                game, pygame.K_l, pygame.KMOD_CTRL | pygame.KMOD_ALT
+            )
+            self.assertTrue(game.legacy_graphics)
+            self.assertTrue(game.sprites.legacy_graphics)
+            # Feedback floater appears in playing state.
+            self.assertTrue(
+                any(
+                    floater.text in ("Legacy graphics", "Asset sprites")
+                    for floater in game.floaters
+                )
+            )
+
+            # Toggling again returns to modern asset sprites.
+            self._post_key(
+                game, pygame.K_l, pygame.KMOD_CTRL | pygame.KMOD_ALT
+            )
+            self.assertFalse(game.legacy_graphics)
+            self.assertFalse(game.sprites.legacy_graphics)
+
+    def test_ctrl_alt_l_persists_to_options_file(self) -> None:
+        import json
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            self._post_key(
+                game, pygame.K_l, pygame.KMOD_CTRL | pygame.KMOD_ALT
+            )
+            data = json.loads(
+                game.options_path.read_text(encoding="utf-8")
+            )
+            self.assertTrue(data["legacy_graphics"])
+
+            # A fresh Game loading the same options inherits the toggle.
+            loaded = Game(
+                screen_size=(820, 540),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+            )
+            loaded.options_path = Path(tmpdir) / "options.json"
+            loaded.meta_progress = loaded.default_meta_progress()
+            loaded.run_history = []
+            self.assertTrue(loaded.load_options())
+            self.assertTrue(loaded.legacy_graphics)
+            self.assertTrue(loaded.sprites.legacy_graphics)
+
+    def test_ctrl_alt_l_works_from_title_without_load_run_side_effect(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            # On the title screen, plain K_l would load a run if a save exists.
+            # The Ctrl+Alt+L hotkey must intercept that binding instead.
+            game.state = "title"
+            game.save_path.unlink(missing_ok=True)
+            self.assertFalse(game.legacy_graphics)
+
+            self._post_key(
+                game, pygame.K_l, pygame.KMOD_CTRL | pygame.KMOD_ALT
+            )
+            self.assertTrue(game.legacy_graphics)
+            # Still on the title screen, no run was loaded.
+            self.assertEqual(game.state, "title")
+
+    def test_plain_l_in_options_menu_does_not_toggle_legacy_graphics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.state = "options"
+            self.assertFalse(game.legacy_graphics)
+
+            # Plain K_l in options adjusts the lighting row, not graphics.
+            self._post_key(game, pygame.K_l, 0)
+            self.assertFalse(game.legacy_graphics)
+            self.assertEqual(game.options_cursor, game.OPTIONS_ROW_LIGHTING)
+
+    def test_ctrl_alt_l_does_not_fire_on_lone_ctrl_or_alt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            self.assertFalse(game.legacy_graphics)
+
+            # Only Ctrl (no Alt) — must not toggle.
+            self._post_key(game, pygame.K_l, pygame.KMOD_CTRL)
+            self.assertFalse(game.legacy_graphics)
+
+            # Only Alt (no Ctrl) — must not toggle.
+            self._post_key(game, pygame.K_l, pygame.KMOD_ALT)
+            self.assertFalse(game.legacy_graphics)

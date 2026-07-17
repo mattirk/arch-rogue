@@ -1,5 +1,30 @@
 # Changelog
 
+## 4.1.26 — In-Game Legacy Graphics Hotkey
+
+Milestone 4.1.26 delivers the backlog item for an in-game legacy graphics toggle, exposing the existing `legacy_graphics` option through a global hotkey so players can switch between authored asset sprites and the procedural legacy renderer without entering the Options menu.
+
+### Added
+
+- Added a global `Ctrl+Alt+L` hotkey that toggles `legacy_graphics` from any game state (playing, title, options, menus). It is intercepted before the state-specific `KEYDOWN` branches so it does not collide with the title's `K_l` load-run shortcut or the options menu's `K_l` lighting-row shortcut.
+- In the playing state, the toggle emits a short feedback floater (`"Legacy graphics"` / `"Asset sprites"`) above the player using the active theme accent.
+- Documented the hotkey in the in-game Run Guide overlay alongside the existing `Ctrl+Shift+D` darkness and `Ctrl + scroll` zoom hints.
+
+### Changed
+
+- The hotkey reuses the existing `OptionsMixin.set_legacy_graphics` entry point, so the toggle still persists to `options.json` (schema `4`), refreshes sprite/UI/tile/aim/lighting caches, and prewarms the tile cache exactly like the Options menu row.
+- Runtime/package release version is `4.1.26`; options remain schema `4` and run saves remain schema `5`.
+
+### Tests
+
+- Added `LegacyGraphicsHotkeyTests` covering: in-playing-state toggle both ways with floater feedback, options-file persistence and reload by a fresh `Game`, title-state interception without triggering load-run, plain-`L` in options still adjusting the lighting row, and the hotkey not firing on lone `Ctrl` or lone `Alt`.
+
+### Validation
+
+- `.venv/bin/python -m unittest tests.test_input_and_accessibility tests.test_dark_levels tests.test_ui_assets tests.test_ui_layouts` — 50 tests, all passing.
+- `.venv/bin/python -m unittest discover tests` — 313 tests, all passing; the experimental web build was not run separately.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+
 ## 4.1.25 — Finalization Additions
 
 Milestone 4.1.25 completes the 4.1.x Finalizing version additions: an angry wolf icon for the Ranger's Spirit Beast skill, dynamic icon switching based on command mode, and exponential petting bonus scaling with Beast Discipline investment.

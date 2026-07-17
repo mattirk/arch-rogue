@@ -623,6 +623,28 @@ class Game(
                     and event.mod & pygame.KMOD_SHIFT
                 ):
                     self.toggle_current_floor_dark()
+                elif (
+                    event.key == pygame.K_l
+                    and event.mod & pygame.KMOD_CTRL
+                    and event.mod & pygame.KMOD_ALT
+                ):
+                    # In-game legacy graphics toggle. Works in every state so
+                    # players can flip rendering mode without entering Options.
+                    # Placed before the state-specific branches so it intercepts
+                    # the K_l shortcuts used on the title and options menus.
+                    self.set_legacy_graphics(not self.legacy_graphics)
+                    if self.state == "playing" and hasattr(self, "player"):
+                        self.floaters.append(
+                            FloatingText(
+                                "Legacy graphics"
+                                if self.legacy_graphics
+                                else "Asset sprites",
+                                self.player.x,
+                                self.player.y - 0.5,
+                                self.theme.accent,
+                                ttl=1.4,
+                            )
+                        )
                 elif self.state == "title":
                     # Four title rows: 0=New, 1=Resume, 2=Options, 3=About.
                     # Resume is only selectable when a save exists.
