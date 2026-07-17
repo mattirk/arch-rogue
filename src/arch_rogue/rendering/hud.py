@@ -51,6 +51,40 @@ from ..quest_assets import (
 )
 
 
+HUD_ACTION_SKILL_ASSETS: dict[str, tuple[str, str, str, str]] = {
+    "Warden": (
+        "hud.action.warden.shield_bash",
+        "hud.action.warden.guard_bolt",
+        "hud.action.warden.time_skip",
+        "hud.action.warden.guard_step",
+    ),
+    "Rogue": (
+        "hud.action.rogue.backstab",
+        "hud.action.rogue.knife_fan",
+        "hud.action.rogue.ambush_bell",
+        "hud.action.rogue.shadow_dash",
+    ),
+    "Arcanist": (
+        "hud.action.arcanist.mage_strike",
+        "hud.action.arcanist.arc_bolt",
+        "hud.action.arcanist.frost_nova",
+        "hud.action.arcanist.blink",
+    ),
+    "Acolyte": (
+        "hud.action.acolyte.blood_rite",
+        "hud.action.acolyte.spirit_bolt",
+        "hud.action.acolyte.spirit_call",
+        "hud.action.acolyte.dark_step",
+    ),
+    "Ranger": (
+        "hud.action.ranger.hawk_slash",
+        "hud.action.ranger.multishot",
+        "hud.action.ranger.spirit_beast",
+        "hud.action.ranger.vault",
+    ),
+}
+
+
 class RenderingHudMixin:
     def cooldown_ratio(self, timer: float, cooldown: float) -> float:
         if cooldown <= 0.001:
@@ -152,10 +186,14 @@ class RenderingHudMixin:
             else ""
         )
         class_skill_cost = 0 if class_skill_command else self.class_skill_mana_cost()
+        skill_assets = HUD_ACTION_SKILL_ASSETS.get(
+            self.player.class_name, ("", "", "", "")
+        )
         return [
             {
                 "kind": "melee",
                 "icon": "melee",
+                "asset": skill_assets[0],
                 "hotkey": "1",
                 "label": melee_name,
                 "timer": self.player.melee_timer,
@@ -168,6 +206,7 @@ class RenderingHudMixin:
             {
                 "kind": "bolt",
                 "icon": "bolt",
+                "asset": skill_assets[1],
                 "hotkey": "2",
                 "label": bolt_name,
                 "timer": self.player.bolt_timer,
@@ -180,6 +219,7 @@ class RenderingHudMixin:
             {
                 "kind": class_skill_kind,
                 "icon": class_skill_icon,
+                "asset": skill_assets[2],
                 "hotkey": "3",
                 "label": class_skill_name,
                 "timer": self.player.class_skill_timer,
@@ -193,6 +233,7 @@ class RenderingHudMixin:
             {
                 "kind": "dash",
                 "icon": "dash",
+                "asset": skill_assets[3],
                 "hotkey": "4",
                 "label": dash_name,
                 "timer": self.player.dash_timer,
@@ -205,6 +246,7 @@ class RenderingHudMixin:
             {
                 "kind": "health_potion",
                 "icon": "health_potion",
+                "asset": "hud.action.health_potion",
                 "hotkey": "5",
                 "label": "Health",
                 "timer": 0.0,
@@ -218,6 +260,7 @@ class RenderingHudMixin:
             {
                 "kind": "mana_potion",
                 "icon": "mana_potion",
+                "asset": "hud.action.mana_potion",
                 "hotkey": "6",
                 "label": "Mana",
                 "timer": 0.0,
@@ -316,23 +359,32 @@ class RenderingHudMixin:
         remaining = self.cooldown_ratio(timer, cooldown)
         border = color if ready or timer > 0.001 else self.HUD_IRON
         icon = str(slot.get("icon", ""))
+        asset = str(slot.get("asset", ""))
         label = str(slot.get("label", ""))
         hotkey = str(slot.get("hotkey", ""))
-        # The icon body (gradient plate, bevels, gold border, shine, glyph,
-        # label, hotkey badge) is a pure function of (size, colors, ready,
-        # ui_scale, glyph texts) — none of it depends on the per-frame
-        # cooldown/count/status. Cache the composed body so steady-state frames
-        # pay one blit instead of ~15 draw.rects + a shine surface + glyph +
-        # two text renders per icon. Cleared in rebuild_fonts.
+        # The static plate, authored/procedural glyph, legacy label, and hotkey
+        # badge do not depend on per-frame cooldown/count/status. Cache the
+        # composed body so steady-state frames pay one blit per slot.
         cache = getattr(self, "_hud_icon_cache", None)
         if cache is None:
             cache = {}
             self._hud_icon_cache = cache
-        key = (rect.size, color, ready, border, icon, label, hotkey, self.ui_scale)
+        key = (
+            rect.size,
+            color,
+            ready,
+            border,
+            icon,
+            asset,
+            label,
+            hotkey,
+            self.ui_scale,
+            self.asset_ui_active(),
+        )
         body = cache.get(key)
         if body is None:
             body = self._build_hud_action_icon_body(
-                rect.size, color, ready, border, icon, label, hotkey
+                rect.size, color, ready, border, icon, label, hotkey, asset
             )
             if len(cache) >= 256:
                 cache.clear()
@@ -413,9 +465,11 @@ class RenderingHudMixin:
         icon: str,
         label: str,
         hotkey: str,
+        asset: str = "",
     ) -> pygame.Surface:
         body = pygame.Surface(size, pygame.SRCALPHA)
         r = body.get_rect()
+        modern_ui = self.asset_ui_active()
         # Draw onto the body via a self.screen swap so draw_hud_action_glyph /
         # draw_ui_text (which target self.screen) compose into the body without
         # needing a dest parameter. Coordinates are 0-relative to r.
@@ -496,25 +550,37 @@ class RenderingHudMixin:
                     max(2, self.ui(2)),
                 )
 
-            glyph_rect = r.inflate(-self.ui(13), -self.ui(14))
-            glyph_rect.y += self.ui(3)
-            glyph_rect.height = max(8, glyph_rect.height - self.tiny_font.get_height() // 2)
-            self.draw_hud_action_glyph(icon, glyph_rect, color, ready)
+            authored_icon = None
+            authored_rect = r
+            if modern_ui:
+                authored_rect = r.inflate(-self.ui(9), -self.ui(9))
+                authored_rect.y += self.ui(1)
+                authored_icon = self.ui_asset_surface(asset, authored_rect.size)
+            if authored_icon is not None:
+                self.screen.blit(authored_icon, authored_rect)
+            else:
+                glyph_rect = r.inflate(-self.ui(13), -self.ui(14))
+                glyph_rect.y += self.ui(3)
+                glyph_rect.height = max(
+                    8, glyph_rect.height - self.tiny_font.get_height() // 2
+                )
+                self.draw_hud_action_glyph(icon, glyph_rect, color, ready)
 
-            label_rect = pygame.Rect(
-                r.x + self.ui(3),
-                r.bottom - self.tiny_font.get_height() - self.ui(2),
-                r.width - self.ui(6),
-                self.tiny_font.get_height(),
-            )
-            self.draw_ui_text(
-                self.screen,
-                label,
-                self.tiny_font,
-                self.HUD_PARCHMENT if ready else self.HUD_MUTED,
-                label_rect,
-                align="center",
-            )
+            if authored_icon is None:
+                label_rect = pygame.Rect(
+                    r.x + self.ui(3),
+                    r.bottom - self.tiny_font.get_height() - self.ui(2),
+                    r.width - self.ui(6),
+                    self.tiny_font.get_height(),
+                )
+                self.draw_ui_text(
+                    self.screen,
+                    label,
+                    self.tiny_font,
+                    self.HUD_PARCHMENT if ready else self.HUD_MUTED,
+                    label_rect,
+                    align="center",
+                )
 
             key_w = min(
                 r.width - self.ui(4),

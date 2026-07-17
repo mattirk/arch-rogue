@@ -19,6 +19,7 @@ from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.input import REMAPPABLE_GAMEPAD_COMMANDS
 from arch_rogue.menus.controls import KEYBOARD_ROWS
+from arch_rogue.rendering.hud import HUD_ACTION_SKILL_ASSETS
 from arch_rogue.ui_assets import UiAssetLibrary
 
 
@@ -57,6 +58,12 @@ class UiAssetTests(unittest.TestCase):
         library = UiAssetLibrary()
         self.assertTrue(library.available, library.load_error)
         self.assertEqual(library.manifest["format_version"], 1)
+        action_icon_keys = {
+            key
+            for class_assets in HUD_ACTION_SKILL_ASSETS.values()
+            for key in class_assets
+        } | {"hud.action.health_potion", "hud.action.mana_potion"}
+        self.assertEqual(len(action_icon_keys), 22)
         expected = {
             "menu.background.title",
             "menu.background",
@@ -69,6 +76,7 @@ class UiAssetTests(unittest.TestCase):
             "hud.dock",
             "hud.action_slot",
             "hud.bar",
+            *action_icon_keys,
         }
         self.assertEqual(set(library.manifest["assets"]), expected)
 
@@ -98,6 +106,25 @@ class UiAssetTests(unittest.TestCase):
                 self.assertGreater(rendered.get_bounding_rect(min_alpha=1).width, 0)
                 self.assertIs(library.render(key, size), rendered)
 
+        for key in action_icon_keys:
+            with self.subTest(action_icon=key):
+                source = library.source(key)
+                self.assertIsNotNone(source)
+                assert source is not None
+                self.assertEqual(source.get_size(), (32, 32))
+                self.assertGreater(source.get_bounding_rect(min_alpha=1).width, 0)
+                self.assertTrue(
+                    any(
+                        source.get_at((x, y)).a == 0
+                        for y in range(source.get_height())
+                        for x in range(source.get_width())
+                    )
+                )
+                rendered = library.render(key, (48, 48))
+                self.assertIsNotNone(rendered)
+                assert rendered is not None
+                self.assertEqual(rendered.get_size(), (48, 48))
+
         bar_source = library.source("hud.bar")
         self.assertIsNotNone(bar_source)
         assert bar_source is not None
@@ -107,6 +134,9 @@ class UiAssetTests(unittest.TestCase):
             pygame.Rect(8, 4, 244, 12),
         )
 
+        # The 22-icon audit intentionally exceeds the source LRU. Touch the row
+        # again before checking that clear_derived_caches retains decoded sources.
+        self.assertIsNotNone(library.source("menu.row"))
         builds = library.render_build_count
         decodes = library.source_decode_count
         library.clear_derived_caches()
@@ -216,9 +246,15 @@ class UiAssetTests(unittest.TestCase):
             game.draw_ui()
             hud_keys = {key[0] for key in game.ui_assets._render_cache}
             self.assertTrue(
-                {"hud.panel", "hud.dock", "hud.action_slot", "hud.bar"}.issubset(
-                    hud_keys
-                )
+                {
+                    "hud.panel",
+                    "hud.dock",
+                    "hud.action_slot",
+                    "hud.bar",
+                    *HUD_ACTION_SKILL_ASSETS["Warden"],
+                    "hud.action.health_potion",
+                    "hud.action.mana_potion",
+                }.issubset(hud_keys)
             )
             warm_builds = game.ui_assets.render_build_count
             warm_decodes = game.ui_assets.source_decode_count

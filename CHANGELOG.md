@@ -1,5 +1,35 @@
 # Changelog
 
+## 4.1.23 — Authored Action Skill Icons
+
+Milestone 4.1.23 replaces the cramped modern action-bar glyphs and truncated skill names with a complete PixelLab-authored icon language while preserving the original procedural legacy HUD.
+
+### Added
+
+- Added `22` transparent `32×32` PixelLab HUD sprites: one distinct icon for each of the Warden, Rogue, Arcanist, Acolyte, and Ranger's four action skills, plus a matched healing/mana potion pair for hotkeys `5` and `6`.
+- Added explicit per-archetype action-icon keys and manifest entries. Every modern slot now resolves its canonical authored sprite through the existing validated, lazy, size-cached `UiAssetLibrary` path.
+- Added regression coverage for all `20` class-skill mappings, authored file dimensions and transparency, rendered asset use, warm caches, modern label suppression, and unchanged legacy labels/fallbacks.
+
+### Changed
+
+- Modern action slots no longer draw the long skill-name labels that were ellipsized beyond usefulness. The freed area is used for larger, more readable authored artwork; hotkey numbers, potion counts, cooldown shading/timers, resource warnings, and Spirit Beast `RETURN`/`ATTACK` command status remain intact.
+- Legacy graphics still draw the original procedural action glyphs, label text, slot plates, and sizing, and do not decode or render the new UI assets. Missing/disabled modern assets continue through the established procedural fallback path.
+- Action-icon body caching now distinguishes authored asset keys and graphics mode, retaining the steady-state one-blit-per-slot path. Runtime/package release version is `4.1.23`; options remain schema `4` and run saves remain schema `5`.
+
+### Asset provenance
+
+- PixelLab generation/review pack: `f511566e-a164-4263-9fb5-3a3d385d2555` (`20` generations), created with a cohesive grim dark-fantasy action-RPG HUD prompt requiring bold centered silhouettes, transparent backgrounds, and no frames or text.
+- Approved candidates: Warden frames `0–3`; Rogue frames `4`, `5`, `10`, and `7`; Arcanist frames `16–19`; Acolyte frames `20–23`; Ranger frames `28–31`; healing/mana potion frames `50–51`. The `20` promoted skill objects use the `arch-rogue-action-icon-4.1.23` PixelLab tag; unused candidates and two mistakenly promoted review objects were discarded.
+- All final sprites were reviewed both as an enlarged contact sheet and in the real six-slot HUD for every archetype, with a legacy Arcanist comparison confirming that only the modern path changed.
+
+### Validation
+
+- `.venv/bin/python -m unittest tests.test_hud_action_bar tests.test_ui_assets tests.test_save_and_metadata` — 11 tests, all passing.
+- `.venv/bin/python -m unittest discover tests` — 298 tests, all passing; experimental web tests were not run separately.
+- `.venv/bin/python -m compileall -q src tests tools` — OK.
+- `git diff --check` — OK.
+- The asset gate verifies all `22` icon keys, source files, exact dimensions, non-empty alpha bounds, transparent background pixels, scaled rendering, active modern HUD use, and cache reuse.
+
 ## 4.1.22 — Ranger Spirit Beast Petting
 
 Milestone 4.1.22 lets the Ranger pet a living nearby Spirit Beast through the normal interact action, pairing a grounded kneel-and-reach animation with the beast's pleased response while preserving the companion's combat command and resource systems.

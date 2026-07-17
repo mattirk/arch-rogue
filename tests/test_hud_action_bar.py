@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -16,7 +17,8 @@ import pygame
 
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
-from arch_rogue.models import Item
+from arch_rogue.models import Color, Item
+from arch_rogue.rendering.hud import HUD_ACTION_SKILL_ASSETS
 
 
 class HudPolish25Tests(unittest.TestCase):
@@ -71,6 +73,14 @@ class HudPolish25Tests(unittest.TestCase):
                         "dash",
                         "health_potion",
                         "mana_potion",
+                    ],
+                )
+                self.assertEqual(
+                    [slot["asset"] for slot in slots],
+                    [
+                        *HUD_ACTION_SKILL_ASSETS["Arcanist"],
+                        "hud.action.health_potion",
+                        "hud.action.mana_potion",
                     ],
                 )
                 self.assertEqual(slots[-2]["count"], 1)
@@ -128,11 +138,12 @@ class HudPolish25Tests(unittest.TestCase):
             game = self.make_game(tmpdir)
             slots = game.hud_action_slots()
             slot = next(s for s in slots if s.get("kind") == "bolt")
-            color = slot["color"]
+            color = cast(Color, slot["color"])
             icon = str(slot.get("icon", ""))
             label = str(slot.get("label", ""))
             hotkey = str(slot.get("hotkey", ""))
-            args = ((60, 60), color, True, color, icon, label, hotkey)
+            asset = str(slot.get("asset", ""))
+            args = ((60, 60), color, True, color, icon, label, hotkey, asset)
             b1 = game._build_hud_action_icon_body(*args)
             b2 = game._build_hud_action_icon_body(*args)
             # Rebuild is deterministic.
@@ -145,13 +156,80 @@ class HudPolish25Tests(unittest.TestCase):
             ready = game.hud_action_slot_ready(slot)
             border = color if ready else game.HUD_IRON
             cached = game._hud_icon_cache.get(
-                (rect.size, color, ready, border, icon, label, hotkey, game.ui_scale)
+                (
+                    rect.size,
+                    color,
+                    ready,
+                    border,
+                    icon,
+                    asset,
+                    label,
+                    hotkey,
+                    game.ui_scale,
+                    game.asset_ui_active(),
+                )
             )
             self.assertIsNotNone(cached)
             # rebuild_fonts (ui / font change) drops the cache so stale art is
             # never reused after fonts are replaced.
             game.rebuild_fonts()
             self.assertEqual(game._hud_icon_cache, {})
+
+    def test_modern_icons_replace_skill_labels_and_legacy_labels_remain(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            slot = next(s for s in game.hud_action_slots() if s.get("kind") == "bolt")
+            color = cast(Color, slot["color"])
+            args = (
+                (60, 60),
+                color,
+                True,
+                color,
+                str(slot["icon"]),
+                str(slot["label"]),
+                str(slot["hotkey"]),
+                str(slot["asset"]),
+            )
+
+            game._ui_text_cache = {}
+            game._build_hud_action_icon_body(*args)
+            modern_texts = {key[1] for key in game._ui_text_cache}
+            self.assertNotIn("Arc Bolt", modern_texts)
+            self.assertIn("2", modern_texts)
+            self.assertIn(
+                "hud.action.arcanist.arc_bolt",
+                {key[0] for key in game.ui_assets._render_cache},
+            )
+
+            game._ui_text_cache = {}
+            missing_asset_args = (*args[:-1], "hud.action.missing")
+            game._build_hud_action_icon_body(*missing_asset_args)
+            partial_fallback_texts = {key[1] for key in game._ui_text_cache}
+            self.assertIn("Arc Bolt", partial_fallback_texts)
+            self.assertIn("2", partial_fallback_texts)
+
+            game.set_legacy_graphics(True)
+            game._ui_text_cache = {}
+            builds = game.ui_assets.render_build_count
+            game._build_hud_action_icon_body(*args)
+            legacy_texts = {key[1] for key in game._ui_text_cache}
+            self.assertIn("Arc Bolt", legacy_texts)
+            self.assertIn("2", legacy_texts)
+            self.assertEqual(game.ui_assets.render_build_count, builds)
+
+    def test_every_archetype_action_slot_has_a_distinct_authored_asset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            skill_assets: set[str] = set()
+            for archetype in ARCHETYPES:
+                game.restart(archetype)
+                slots = game.hud_action_slots()
+                expected = HUD_ACTION_SKILL_ASSETS[archetype.name]
+                self.assertEqual(
+                    tuple(str(slot["asset"]) for slot in slots[:4]), expected
+                )
+                skill_assets.update(expected)
+            self.assertEqual(len(skill_assets), 20)
 
     def test_action_icon_cooldown_overlay_darkens_top(self) -> None:
         # The cached body must not swallow the per-frame cooldown overlay: with
@@ -161,7 +239,7 @@ class HudPolish25Tests(unittest.TestCase):
             game = self.make_game(tmpdir)
             slots = game.hud_action_slots()
             slot = next(s for s in slots if s.get("kind") == "bolt")
-            cd = float(slot["cooldown"])
+            cd = float(cast(int | float, slot["cooldown"]))
             rect = pygame.Rect(120, 120, 60, 60)
             slot["timer"] = cd * 0.5
             game.screen.fill((0, 0, 0))

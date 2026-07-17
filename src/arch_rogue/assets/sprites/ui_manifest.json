@@ -52,6 +52,94 @@
       "render": "scale",
       "content_insets": [20, 20, 20, 20]
     },
+    "hud.action.warden.shield_bash": {
+      "path": "hud/action_warden_shield_bash.png",
+      "render": "scale"
+    },
+    "hud.action.warden.guard_bolt": {
+      "path": "hud/action_warden_guard_bolt.png",
+      "render": "scale"
+    },
+    "hud.action.warden.time_skip": {
+      "path": "hud/action_warden_time_skip.png",
+      "render": "scale"
+    },
+    "hud.action.warden.guard_step": {
+      "path": "hud/action_warden_guard_step.png",
+      "render": "scale"
+    },
+    "hud.action.rogue.backstab": {
+      "path": "hud/action_rogue_backstab.png",
+      "render": "scale"
+    },
+    "hud.action.rogue.knife_fan": {
+      "path": "hud/action_rogue_knife_fan.png",
+      "render": "scale"
+    },
+    "hud.action.rogue.ambush_bell": {
+      "path": "hud/action_rogue_ambush_bell.png",
+      "render": "scale"
+    },
+    "hud.action.rogue.shadow_dash": {
+      "path": "hud/action_rogue_shadow_dash.png",
+      "render": "scale"
+    },
+    "hud.action.arcanist.mage_strike": {
+      "path": "hud/action_arcanist_mage_strike.png",
+      "render": "scale"
+    },
+    "hud.action.arcanist.arc_bolt": {
+      "path": "hud/action_arcanist_arc_bolt.png",
+      "render": "scale"
+    },
+    "hud.action.arcanist.frost_nova": {
+      "path": "hud/action_arcanist_frost_nova.png",
+      "render": "scale"
+    },
+    "hud.action.arcanist.blink": {
+      "path": "hud/action_arcanist_blink.png",
+      "render": "scale"
+    },
+    "hud.action.acolyte.blood_rite": {
+      "path": "hud/action_acolyte_blood_rite.png",
+      "render": "scale"
+    },
+    "hud.action.acolyte.spirit_bolt": {
+      "path": "hud/action_acolyte_spirit_bolt.png",
+      "render": "scale"
+    },
+    "hud.action.acolyte.spirit_call": {
+      "path": "hud/action_acolyte_spirit_call.png",
+      "render": "scale"
+    },
+    "hud.action.acolyte.dark_step": {
+      "path": "hud/action_acolyte_dark_step.png",
+      "render": "scale"
+    },
+    "hud.action.ranger.hawk_slash": {
+      "path": "hud/action_ranger_hawk_slash.png",
+      "render": "scale"
+    },
+    "hud.action.ranger.multishot": {
+      "path": "hud/action_ranger_multishot.png",
+      "render": "scale"
+    },
+    "hud.action.ranger.spirit_beast": {
+      "path": "hud/action_ranger_spirit_beast.png",
+      "render": "scale"
+    },
+    "hud.action.ranger.vault": {
+      "path": "hud/action_ranger_vault.png",
+      "render": "scale"
+    },
+    "hud.action.health_potion": {
+      "path": "hud/action_health_potion.png",
+      "render": "scale"
+    },
+    "hud.action.mana_potion": {
+      "path": "hud/action_mana_potion.png",
+      "render": "scale"
+    },
     "hud.bar": {
       "path": "hud/bar.png",
       "render": "nine_slice",
