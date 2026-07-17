@@ -429,8 +429,24 @@ class InventoryMixin:
         self.clamp_inventory_selection()
         self.save_run()
 
+    def scroll_story_panel(self, delta: int) -> None:
+        """4.2.2: scroll the quest info panel's story text by ``delta`` lines.
+
+        The renderer publishes ``_story_panel_scroll_max`` for the current
+        wrap/geometry each frame, so the offset is clamped against the last
+        drawn panel; it re-clamps on draw when the text or window changes.
+        """
+        if not self.quest_info_visible:
+            return
+        maximum = max(0, int(getattr(self, "_story_panel_scroll_max", 0)))
+        self.story_panel_scroll = max(
+            0, min(int(self.story_panel_scroll) + delta, maximum)
+        )
+
     def toggle_quest_info_visibility(self) -> None:
         self.quest_info_visible = not self.quest_info_visible
+        # 4.2.2: reopening the panel always starts from the top of the text.
+        self.story_panel_scroll = 0
         label = "Quest info shown" if self.quest_info_visible else "Quest info hidden"
         color = (
             self.story_state.accent

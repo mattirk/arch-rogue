@@ -1,5 +1,33 @@
 # Changelog
 
+## 4.2.2 — Quest Info Scrolling
+
+Milestone 4.2.2 makes the quest info panel's story text scrollable: overflowing quest text now scrolls with the mouse wheel or PgUp/PgDn behind a thin ember-gold scrollbar instead of truncating with an ellipsis.
+
+### Added
+
+- Added `Game.story_panel_scroll` (wrapped-line offset) with `scroll_story_panel(delta)` clamping against the renderer-published `_story_panel_scroll_max`. The offset starts at the top, resets when Q toggles the quest panel, and clears in `reset_transient_visuals` so floor transitions, cutscenes, run restarts, and save restores all return the panel to the top of the text.
+- Plain mouse wheel (no Ctrl) scrolls the quest info panel's story text by two lines per notch while playing with the panel visible; `Ctrl+scroll` still zooms the viewport, and the wheel is ignored while the inventory, character sheet, shop, cutscenes, or the story intro are up. `PgUp`/`PgDn` page the text by one panel of lines; the inventory and shop key branches keep priority for those keys while their overlays are open.
+- `RenderingStoryOverlayMixin.draw_story_panel` now wraps the full story body, renders the scrolled slice under the pinned title, and draws `draw_story_panel_scrollbar` — a thin recessed track with an ember-gold thumb on the panel's right rail, mirroring the inventory/options scrollbars so the three read as one family. When the text overflows, the body wraps slightly narrower so no line runs under the scrollbar; when it fits, the layout is unchanged and no scrollbar is drawn.
+- The Run Guide's story-guest line now documents the scroll controls ("scroll wheel or PgUp/PgDn scrolls its story text when it overflows").
+
+### Changed
+
+- Overflowing quest text no longer truncates with a `…` marker — the scrollbar communicates the overflow and position instead, and the full story text is reachable.
+- Runtime/package release version is `4.2.2`; options remain schema `4` and run saves remain schema `5`.
+
+### Tests
+
+- Added `UiLayoutTests.test_quest_info_panel_scrolls_overflowing_story_text` covering: overflow publishes a positive scroll range with a scrollbar inside the panel, scrolling re-renders a different slice, the offset clamps in both directions and resets on Q toggle, and short text keeps the no-scroll layout with no scrollbar and a snapped-back offset.
+- Added `QuestInfoScrollInputTests` covering: plain wheel scrolling down/up with clamping, Ctrl+wheel zooming instead of scrolling, the wheel doing nothing while the panel is hidden, PgUp/PgDn paging by one panel of lines, and the inventory overlay keeping PgDn for its own cursor.
+- Updated the pinned release assertions in `SaveAndMetadataTests` to `4.2.2`.
+
+### Validation
+
+- `.venv/bin/python -m unittest tests.test_ui_layouts tests.test_input_and_accessibility tests.test_save_and_metadata tests.test_story_mode` — all passing.
+- `.venv/bin/python -m unittest discover tests` — all passing.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+
 ## 4.2.1 — Visual Refinement
 
 Milestone 4.2.1 delivers the 4.2.x visual refinement pass: the lower HUD slab was regenerated in Pixellab with really thin left/right side decorations so panel interiors fit more content, and HUD texts (mission objective, quest info panel, tooltips, run header, shop) received a little more breathing room from their frames.

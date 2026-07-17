@@ -219,7 +219,7 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 #### 4.2.x Cutscene theater redesign
 
 - We need to re-design stage/theater visuals in cutscenes
-- Now characters are not animated -> use existing or create if necessary
+- Now characters are not animated -> create new via MCP tools
 - We need Pixellab generated high end sprites for all stage/theater props
 - Use good taste, make it look of a high production value
 

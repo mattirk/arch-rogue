@@ -59,6 +59,10 @@ from ..quest_assets import (
 class RenderingStoryOverlayMixin:
     def draw_story_panel(self) -> None:
         self._story_panel_rect: pygame.Rect | None = None
+        # 4.2.2: scroll introspection resets whenever the panel is not drawn
+        # so input paging never acts on a stale overflow range.
+        self._story_panel_scrollbar_rect: pygame.Rect | None = None
+        self._story_panel_scroll_max = 0
         if not getattr(self, "quest_info_visible", True):
             return
         lines = self.story_panel_lines()
@@ -121,28 +125,101 @@ class RenderingStoryOverlayMixin:
         cursor_y = divider_y + self.ui(5)
         line_h = max(self.small_font.get_height() + self.ui(3), self.ui(18))
         max_lines = max(2, (content.bottom - cursor_y) // line_h)
-        rendered = 0
-        for raw_line in lines[1:]:
-            color = (
-                (205, 185, 225)
-                if raw_line.startswith("Story forces:")
-                else (210, 205, 192)
-            )
+
+        def body_color(raw_line: str) -> Color:
             if raw_line.startswith("Depth ") or raw_line.startswith("Outcome:"):
-                color = (238, 218, 164)
-            for wrapped in self.wrap_ui_text(
-                raw_line, self.small_font, content.width
-            ):
-                if rendered >= max_lines:
-                    ellipsis = self.small_font.render("…", True, (170, 165, 155))
-                    surface.blit(ellipsis, (content.x, cursor_y))
-                    self.screen.blit(surface, rect)
-                    return
-                text = self.small_font.render(wrapped, True, color)
-                surface.blit(text, (content.x, cursor_y))
-                cursor_y += line_h
-                rendered += 1
+                return (238, 218, 164)
+            if raw_line.startswith("Story forces:"):
+                return (205, 185, 225)
+            return (210, 205, 192)
+
+        def wrap_body(width: int) -> list[tuple[str, Color]]:
+            wrapped: list[tuple[str, Color]] = []
+            for raw_line in lines[1:]:
+                color = body_color(raw_line)
+                for piece in self.wrap_ui_text(raw_line, self.small_font, width):
+                    wrapped.append((piece, color))
+            return wrapped
+
+        # 4.2.2: overflowing story text scrolls instead of truncating with an
+        # ellipsis. When it overflows, the body wraps a little narrower so the
+        # right-rail scrollbar never overlaps a line.
+        body_width = content.width
+        wrapped_lines = wrap_body(body_width)
+        if len(wrapped_lines) > max_lines:
+            body_width = max(1, content.width - self.ui(9))
+            wrapped_lines = wrap_body(body_width)
+        scroll_max = max(0, len(wrapped_lines) - max_lines)
+        scroll = max(
+            0, min(int(getattr(self, "story_panel_scroll", 0)), scroll_max)
+        )
+        self.story_panel_scroll = scroll
+        self._story_panel_scroll_max = scroll_max
+        self._story_panel_visible_lines = max_lines
+        for piece, color in wrapped_lines[scroll : scroll + max_lines]:
+            text = self.small_font.render(piece, True, color)
+            surface.blit(text, (content.x, cursor_y))
+            cursor_y += line_h
+        if scroll_max > 0:
+            track = self.draw_story_panel_scrollbar(
+                surface,
+                content,
+                divider_y + self.ui(5),
+                scroll,
+                max_lines,
+                len(wrapped_lines),
+            )
+            self._story_panel_scrollbar_rect = track.move(rect.x, rect.y)
         self.screen.blit(surface, rect)
+
+    def draw_story_panel_scrollbar(
+        self,
+        surface: pygame.Surface,
+        content: pygame.Rect,
+        top: int,
+        scroll: int,
+        visible_count: int,
+        total_count: int,
+    ) -> pygame.Rect:
+        # 4.2.2: thin scrollbar on the right rail of the quest info panel's
+        # body so the player can see there is more story than fits and where
+        # they are within it. Mirrors the inventory/options scrollbars'
+        # recessed track + ember-gold thumb so the panels read as one family.
+        track = pygame.Rect(
+            content.right - self.ui(4),
+            top,
+            self.ui(4),
+            max(1, content.bottom - top),
+        )
+        pygame.draw.rect(
+            surface, (*self.HUD_INK, 235), track, border_radius=self.ui(3)
+        )
+        pygame.draw.rect(
+            surface,
+            (*self.HUD_IRON_DARK, 255),
+            track,
+            max(1, self.ui(1)),
+            border_radius=self.ui(3),
+        )
+        thumb_h = max(
+            self.ui(14), int(track.height * visible_count / total_count)
+        )
+        max_scroll = max(1, total_count - visible_count)
+        travel = max(1, track.height - thumb_h)
+        clamped_scroll = max(0, min(scroll, max_scroll))
+        thumb_y = track.y + int(travel * clamped_scroll / max_scroll)
+        thumb = pygame.Rect(track.x, thumb_y, track.width, thumb_h)
+        pygame.draw.rect(
+            surface, self.HUD_GOLD, thumb, border_radius=self.ui(3)
+        )
+        pygame.draw.rect(
+            surface,
+            self.shade(self.HUD_GOLD, 40),
+            thumb,
+            max(1, self.ui(1)),
+            border_radius=self.ui(3),
+        )
+        return track
 
     def cutscene_response_text_width(self, choice_width: int) -> int:
         key_size = self.ui(36)

@@ -256,7 +256,7 @@ class MenuTitleMixin:
             "Goal: defeat the gate tyrant in the final room, then press E on the stairs.",
             "Movement: hold left mouse to move and aim. Arrow keys can aim without moving.",
             "Class skills: level ups, Oath Shrines, and skill altars can add class-specific upgrades.",
-            "Story guests: press E to hear their plea; press 1 Aid, 2 Bargain, or 3 Defy to shape future floors. Q toggles quest HUD info.",
+            "Story guests: press E to hear their plea; press 1 Aid, 2 Bargain, or 3 Defy to shape future floors. Q toggles quest HUD info; scroll wheel or PgUp/PgDn scrolls its story text when it overflows.",
             "Elites/minibosses: named foes have brighter telegraphs, more danger, and better rewards.",
             f"Difficulty: {self.g.difficulty_profile().name} — change it from Options; Hell unlocks after one clear.",
             "Resources: stamina powers melee and movement skills; mana powers bolts and class skills. The bottom action bar combines skill icons, hotkeys, and cooldowns.",

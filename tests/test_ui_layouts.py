@@ -813,6 +813,76 @@ class UiLayoutTests(unittest.TestCase):
                     self.assertFalse(story_rect.colliderect(prompt_rect))
                     self.assertLessEqual(story_rect.bottom + 8, prompt_rect.y)
 
+    def test_quest_info_panel_scrolls_overflowing_story_text(self) -> None:
+        # 4.2.2: overflowing quest text scrolls with a right-rail scrollbar
+        # instead of truncating with an ellipsis; the offset clamps to the
+        # overflow and resets when the quest info panel is toggled.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            self.prepare_run(game)
+            game.quest_info_visible = True
+            story_lines = ["The Ossuary remembers"] + [
+                f"Chronicle entry {index}: the vault doors remember every "
+                "oath sworn beneath them."
+                for index in range(24)
+            ]
+            with patch.object(
+                game, "story_panel_lines", return_value=story_lines
+            ):
+                game.screen.fill((12, 12, 16))
+                game.draw_ui()
+                self.assertGreater(game._story_panel_scroll_max, 0)
+                self.assertEqual(game.story_panel_scroll, 0)
+                story_rect = game._story_panel_rect
+                scrollbar = game._story_panel_scrollbar_rect
+                self.assertIsNotNone(story_rect)
+                self.assertIsNotNone(scrollbar)
+                self.assertTrue(story_rect.contains(scrollbar))
+                top_bytes = self.surface_bytes(
+                    game.screen.subsurface(story_rect)
+                )
+
+                # Scrolling down moves the rendered slice.
+                game.scroll_story_panel(4)
+                self.assertEqual(game.story_panel_scroll, 4)
+                game.screen.fill((12, 12, 16))
+                game.draw_ui()
+                self.assertNotEqual(
+                    top_bytes,
+                    self.surface_bytes(game.screen.subsurface(story_rect)),
+                )
+
+                # The offset clamps to the overflow in both directions.
+                game.scroll_story_panel(999)
+                self.assertEqual(
+                    game.story_panel_scroll, game._story_panel_scroll_max
+                )
+                game.scroll_story_panel(-999)
+                self.assertEqual(game.story_panel_scroll, 0)
+
+                # A scrolled offset resets when the panel is toggled.
+                game.scroll_story_panel(3)
+                game.toggle_quest_info_visibility()
+                game.toggle_quest_info_visibility()
+                self.assertEqual(game.story_panel_scroll, 0)
+
+            # Short story text keeps the no-scroll layout: no overflow, no
+            # scrollbar, and a stale offset snaps back to the top.
+            game.story_panel_scroll = 7
+            with patch.object(
+                game,
+                "story_panel_lines",
+                return_value=[
+                    "The Ossuary remembers",
+                    "Depth 1 · Find the sealed stair",
+                ],
+            ):
+                game.screen.fill((12, 12, 16))
+                game.draw_ui()
+            self.assertEqual(game._story_panel_scroll_max, 0)
+            self.assertIsNone(game._story_panel_scrollbar_rect)
+            self.assertEqual(game.story_panel_scroll, 0)
+
     def test_obsidian_resource_bars_expand_only_the_modern_hud(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, (960, 540))

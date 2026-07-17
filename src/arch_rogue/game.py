@@ -362,6 +362,10 @@ class Game(
         self.shop_cursor = 0
         self.show_help = False
         self.quest_info_visible = False
+        # 4.2.2: scroll offset (in wrapped lines) for the quest info panel's
+        # story text. The renderer clamps it against the current overflow and
+        # publishes `_story_panel_scroll_max` / `_story_panel_visible_lines`.
+        self.story_panel_scroll = 0
         self.run_stats = RunStats()
         self.state = "archetype_select"
         self.elapsed = 0.0
@@ -500,6 +504,8 @@ class Game(
         self.garden_heal_accumulator = 0.0
         self.garden_heal_glow = 0.0
         self.garden_heal_glow_duration = 0.0
+        # 4.2.2: quest info scroll position resets with the story context.
+        self.story_panel_scroll = 0
         # Milestone 3.16 - transient light pulses are visual effects too.
         self.lights = []
 
@@ -851,6 +857,21 @@ class Game(
                     self.interact()
                 elif event.key == pygame.K_q and self.state == "playing":
                     self.toggle_quest_info_visibility()
+                elif (
+                    event.key in (pygame.K_PAGEUP, pygame.K_PAGEDOWN)
+                    and self.state == "playing"
+                    and self.quest_info_visible
+                    and not self.character_menu_open
+                ):
+                    # 4.2.2: PgUp/PgDn page the quest info panel's story text
+                    # by one panel of lines. The inventory and shop branches
+                    # above consume these keys while their overlays are open.
+                    page = max(
+                        1, getattr(self, "_story_panel_visible_lines", 3) - 1
+                    )
+                    self.scroll_story_panel(
+                        -page if event.key == pygame.K_PAGEUP else page
+                    )
                 elif event.key == pygame.K_c and self.state == "playing":
                     self.character_menu_open = not self.character_menu_open
                     if self.character_menu_open:
@@ -933,6 +954,20 @@ class Game(
                 # Ctrl + scroll wheel adjusts viewport distance (zoom).
                 # Positive event.y (scroll up) zooms in, negative zooms out.
                 self.adjust_view_zoom(event.y)
+            elif (
+                event.type == pygame.MOUSEWHEEL
+                and self.state == "playing"
+                and self.quest_info_visible
+                and not self.inventory_open
+                and not self.character_menu_open
+                and not self.shop_open
+                and self.active_cutscene is None
+                and not self.story_intro_pending
+            ):
+                # 4.2.2: plain scroll wheel pages the quest info panel's story
+                # text (Ctrl+scroll above still zooms the viewport). Scroll up
+                # shows earlier lines.
+                self.scroll_story_panel(-event.y * 2)
             elif event.type == pygame.MOUSEMOTION and self.state == "playing":
                 if getattr(event, "rel", (0, 0)) != (0, 0):
                     self.aim_input_mode = "mouse"

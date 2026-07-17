@@ -602,3 +602,92 @@ class LegacyGraphicsHotkeyTests(unittest.TestCase):
 
             self.assertTrue(seen, "Ctrl+Alt+L hint not rendered in HUD")
             self.assertIn("Ctrl+Alt+L", seen[0])
+
+
+class QuestInfoScrollInputTests(unittest.TestCase):
+    """4.2.2: plain wheel and PgUp/PgDn scroll the quest info panel text."""
+
+    def _make_scrollable_game(self, tmpdir: str) -> Game:
+        game = make_game(tmpdir)
+        game.quest_info_visible = True
+        # Simulate the renderer having published an overflowing panel.
+        game._story_panel_scroll_max = 10
+        game._story_panel_visible_lines = 5
+        return game
+
+    def test_plain_wheel_scrolls_and_ctrl_wheel_still_zooms(self) -> None:
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_scrollable_game(tmpdir)
+            self.assertEqual(game.state, "playing")
+            self.assertEqual(game.story_panel_scroll, 0)
+
+            # Wheel down (y=-1) advances the story text by two lines.
+            pygame.event.post(pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=-1))
+            game.handle_events()
+            self.assertEqual(game.story_panel_scroll, 2)
+
+            # Wheel up returns toward the top and clamps at zero.
+            for _ in range(3):
+                pygame.event.post(
+                    pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=1)
+                )
+                game.handle_events()
+            self.assertEqual(game.story_panel_scroll, 0)
+
+            # Ctrl+wheel keeps zooming the viewport instead of scrolling.
+            zoom_before = getattr(game, "view_zoom", 1.0)
+            with patch.object(
+                pygame.key, "get_mods", return_value=pygame.KMOD_CTRL
+            ):
+                pygame.event.post(
+                    pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=-1)
+                )
+                game.handle_events()
+            self.assertEqual(game.story_panel_scroll, 0)
+            self.assertNotEqual(getattr(game, "view_zoom", 1.0), zoom_before)
+
+            # With the quest panel hidden, plain wheel does nothing.
+            game.quest_info_visible = False
+            pygame.event.post(pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=-1))
+            game.handle_events()
+            self.assertEqual(game.story_panel_scroll, 0)
+
+    def test_page_keys_page_quest_text_but_inventory_keeps_priority(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_scrollable_game(tmpdir)
+
+            # PgDn pages by one panel of lines (visible lines minus one).
+            pygame.event.post(
+                pygame.event.Event(pygame.KEYDOWN, key=pygame.K_PAGEDOWN, mod=0)
+            )
+            game.handle_events()
+            self.assertEqual(game.story_panel_scroll, 4)
+
+            # PgUp pages back and clamps at the top.
+            for _ in range(2):
+                pygame.event.post(
+                    pygame.event.Event(
+                        pygame.KEYDOWN, key=pygame.K_PAGEUP, mod=0
+                    )
+                )
+                game.handle_events()
+            self.assertEqual(game.story_panel_scroll, 0)
+
+            # While the inventory overlay is open, PgDn moves the inventory
+            # cursor (existing behavior) and leaves the quest text alone.
+            from arch_rogue.models import Item
+
+            game.player.inventory = [
+                Item(f"Test Blade {index}", "weapon", power=index + 1)
+                for index in range(8)
+            ]
+            game.inventory_open = True
+            game.set_inventory_selection(0)
+            pygame.event.post(
+                pygame.event.Event(pygame.KEYDOWN, key=pygame.K_PAGEDOWN, mod=0)
+            )
+            game.handle_events()
+            self.assertEqual(game.story_panel_scroll, 0)
+            self.assertEqual(game.inventory_cursor, 5)
