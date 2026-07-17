@@ -1133,13 +1133,8 @@ class RenderingHudMixin:
             if getattr(self, "quest_info_visible", True)
             else "Q show quest"
         )
-        debug_dark = (
-            " · Ctrl+Shift+D light"
-            if self.is_current_floor_dark()
-            else " · Ctrl+Shift+D dark"
-        )
         control_lines = [
-            f"Mouse/aim · 1-6 actions · E interact · I inventory · C character · {quest_control} · H help{debug_dark}",
+            f"Mouse/aim · 1-6 actions · E interact · I inventory · C character · {quest_control} · H help · Ctrl+Mouse scroll zoom",
         ]
         control_y = max(
             mission_y + self.ui(4),

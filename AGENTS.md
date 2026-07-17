@@ -236,3 +236,4 @@ Additions:
   - Apply to other HUD texts as well, e.g. texts in quest info panel
 - Widen Arcanist Frost Nova when gaining appropriate Disciplines (need to make one path dedicated to this), finally affecting the whole room
 - While inside garden room, player heals little by little and emits visible (greenish) healing glow
+- In-game legacy graphics toggle. Hotkey Control+Alt+L
