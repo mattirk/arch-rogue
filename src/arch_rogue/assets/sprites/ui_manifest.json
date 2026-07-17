@@ -128,6 +128,10 @@
       "path": "hud/action_ranger_spirit_beast.png",
       "render": "scale"
     },
+    "hud.action.ranger.spirit_beast_angry": {
+      "path": "hud/action_ranger_spirit_beast_angry.png",
+      "render": "scale"
+    },
     "hud.action.ranger.vault": {
       "path": "hud/action_ranger_vault.png",
       "render": "scale"

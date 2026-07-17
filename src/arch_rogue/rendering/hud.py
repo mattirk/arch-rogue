@@ -189,6 +189,15 @@ class RenderingHudMixin:
         skill_assets = HUD_ACTION_SKILL_ASSETS.get(
             self.player.class_name, ("", "", "", "")
         )
+        # Spirit Beast icon swaps to the angry wolf when the beast is actively
+        # attacking (next command is RETURN); the calm wolf shows in follow/return
+        # mode or before summoning.
+        class_skill_asset = skill_assets[2]
+        if (
+            class_skill_kind == "spirit_beast"
+            and class_skill_command == "RETURN"
+        ):
+            class_skill_asset = "hud.action.ranger.spirit_beast_angry"
         return [
             {
                 "kind": "melee",
@@ -219,7 +228,7 @@ class RenderingHudMixin:
             {
                 "kind": class_skill_kind,
                 "icon": class_skill_icon,
-                "asset": skill_assets[2],
+                "asset": class_skill_asset,
                 "hotkey": "3",
                 "label": class_skill_name,
                 "timer": self.player.class_skill_timer,
@@ -438,23 +447,9 @@ class RenderingHudMixin:
             overlay.fill((0, 0, 0, 100))
             self.screen.blit(overlay, rect)
 
-        if status != "READY" and not ("count" in slot and status.startswith("x")):
-            status_rect = pygame.Rect(
-                rect.x + self.ui(4),
-                rect.centery - self.tiny_font.get_height() // 2,
-                rect.width - self.ui(8),
-                self.tiny_font.get_height(),
-            )
-            text_color = self.HUD_GOLD_BRIGHT if timer > 0.001 else self.HUD_PARCHMENT
-            self.draw_ui_text(
-                self.screen,
-                status,
-                self.tiny_font,
-                text_color,
-                status_rect,
-                align="center",
-                valign="center",
-            )
+        # Status text overlays (ATTACK, RETURN, EMPTY, FULL, MP, ST, timer)
+        # have been removed: the cooldown arc, darkening, count badge,
+        # angry/calm icon swap, and readiness lamp already convey state.
 
     def _build_hud_action_icon_body(
         self,

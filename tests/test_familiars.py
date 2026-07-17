@@ -389,6 +389,49 @@ class FamiliarTests(unittest.TestCase):
             self.assertEqual(beast.pet_cooldown, 2.0)
             self.assertEqual(game.floaters[-1].text, "+2")
 
+    def test_petting_bonus_doubles_per_beast_discipline_degree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=4)
+            self.assertEqual(game.spirit_beast_pet_heal(), 2)
+
+            game.player.skill_upgrades.append("ranger_beast_bond")
+            self.assertEqual(game.spirit_beast_pet_heal(), 4)
+
+            game.player.skill_upgrades.append("ranger_pack_tactics")
+            self.assertEqual(game.spirit_beast_pet_heal(), 8)
+
+            game.player.skill_upgrades.append("ranger_alpha")
+            self.assertEqual(game.spirit_beast_pet_heal(), 16)
+
+            game.player.skill_upgrades.append("ranger_spirit_companion")
+            self.assertEqual(game.spirit_beast_pet_heal(), 32)
+
+            game.player.skill_upgrades.append("ranger_primal_lord")
+            self.assertEqual(game.spirit_beast_pet_heal(), 64)
+
+            # Non-Beast disciplines do not inflate the petting bonus.
+            game.player.skill_upgrades.append("ranger_survival")
+            game.player.skill_upgrades.append("ranger_camouflage")
+            self.assertEqual(game.spirit_beast_pet_heal(), 64)
+
+            # An actual pet at degree 5 heals 64 and the floater reflects it.
+            game.player.mana = game.player.max_mana
+            game.player.class_skill_timer = 0.0
+            game.player_cast_spirit_beast()
+            beast = game.familiars[0]
+            beast.hp = 1
+            beast.x = game.player.x + 0.8
+            beast.y = game.player.y
+            beast.pet_cooldown = 0.0
+            game.items.clear()
+            game.shrines.clear()
+            game.secrets.clear()
+            game.shopkeepers.clear()
+            game.story_guests.clear()
+            game.interact()
+            self.assertEqual(beast.hp, 1 + 64)
+            self.assertEqual(game.floaters[-1].text, "+64")
+
     def test_only_ranger_can_pet_a_living_spirit_beast_in_range(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             acolyte = self.make_game(tmpdir, archetype_index=3)

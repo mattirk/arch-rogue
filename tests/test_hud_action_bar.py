@@ -231,6 +231,45 @@ class HudPolish25Tests(unittest.TestCase):
                 skill_assets.update(expected)
             self.assertEqual(len(skill_assets), 20)
 
+    def test_spirit_beast_icon_switches_to_angry_in_attack_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game.restart(ARCHETYPES[4])
+            if game.story_intro_pending:
+                self.assertTrue(game.choose_story_relic_path(0))
+            game.active_cutscene = None
+
+            # Before summoning: normal icon.
+            slots = game.hud_action_slots()
+            self.assertEqual(slots[2]["asset"], "hud.action.ranger.spirit_beast")
+            self.assertEqual(slots[2]["cooldown_command"], "")
+
+            # Summon the beast; it starts in attack mode so the next command is
+            # RETURN and the angry icon is shown.
+            game.player.class_skill_timer = 0.0
+            game.player.mana = game.player.max_mana
+            game.player_cast_class_skill()
+            slots = game.hud_action_slots()
+            self.assertEqual(slots[2]["cooldown_command"], "RETURN")
+            self.assertEqual(
+                slots[2]["asset"], "hud.action.ranger.spirit_beast_angry"
+            )
+
+            # Command it to return (follow mode): next command becomes ATTACK
+            # and the icon reverts to the calm wolf.
+            game.player_cast_class_skill()
+            slots = game.hud_action_slots()
+            self.assertEqual(slots[2]["cooldown_command"], "ATTACK")
+            self.assertEqual(slots[2]["asset"], "hud.action.ranger.spirit_beast")
+
+            # Command back to attack mode: angry icon returns.
+            game.player_cast_class_skill()
+            slots = game.hud_action_slots()
+            self.assertEqual(slots[2]["cooldown_command"], "RETURN")
+            self.assertEqual(
+                slots[2]["asset"], "hud.action.ranger.spirit_beast_angry"
+            )
+
     def test_action_icon_cooldown_overlay_darkens_top(self) -> None:
         # The cached body must not swallow the per-frame cooldown overlay: with
         # a cooldown active the top of the icon is darkened relative to the

@@ -34,6 +34,22 @@ class InteractionMixin:
     SPIRIT_BEAST_PET_HEAL = 2
     SPIRIT_BEAST_PET_COOLDOWN = 2.0
     SPIRIT_BEAST_PET_ANIMATION_DURATION = 0.8
+    _BEAST_DISCIPLINE_KEYS = (
+        "ranger_beast_bond",
+        "ranger_pack_tactics",
+        "ranger_alpha",
+        "ranger_spirit_companion",
+        "ranger_primal_lord",
+    )
+
+    def spirit_beast_pet_heal(self) -> int:
+        """Petting heal amount: base 2, doubled per Beast discipline degree."""
+        degrees = sum(
+            1
+            for key in self._BEAST_DISCIPLINE_KEYS
+            if self.player.has_upgrade(key)
+        )
+        return self.SPIRIT_BEAST_PET_HEAL * (2 ** degrees)
 
     def current_interaction_hint(self) -> tuple[str, str, str, Color] | None:
         if self.story_intro_pending:
@@ -221,8 +237,9 @@ class InteractionMixin:
             familiar.facing_x = -nx
             familiar.facing_y = -ny
 
+        heal = self.spirit_beast_pet_heal()
         familiar.hp = min(
-            familiar.max_hp, familiar.hp + self.SPIRIT_BEAST_PET_HEAL
+            familiar.max_hp, familiar.hp + heal
         )
         familiar.pet_cooldown = self.SPIRIT_BEAST_PET_COOLDOWN
         familiar.pet_anim_timer = self.SPIRIT_BEAST_PET_ANIMATION_DURATION
@@ -237,7 +254,7 @@ class InteractionMixin:
 
         self.floaters.append(
             FloatingText(
-                "+2",
+                f"+{heal}",
                 familiar.x,
                 familiar.y - 0.45,
                 self.skill_color(),

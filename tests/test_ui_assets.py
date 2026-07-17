@@ -62,8 +62,12 @@ class UiAssetTests(unittest.TestCase):
             key
             for class_assets in HUD_ACTION_SKILL_ASSETS.values()
             for key in class_assets
-        } | {"hud.action.health_potion", "hud.action.mana_potion"}
-        self.assertEqual(len(action_icon_keys), 22)
+        } | {
+            "hud.action.health_potion",
+            "hud.action.mana_potion",
+            "hud.action.ranger.spirit_beast_angry",
+        }
+        self.assertEqual(len(action_icon_keys), 23)
         expected = {
             "menu.background.title",
             "menu.background",

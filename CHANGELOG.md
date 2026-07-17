@@ -1,5 +1,32 @@
 # Changelog
 
+## 4.1.25 — Finalization Additions
+
+Milestone 4.1.25 completes the 4.1.x Finalizing version additions: an angry wolf icon for the Ranger's Spirit Beast skill, dynamic icon switching based on command mode, and exponential petting bonus scaling with Beast Discipline investment.
+
+### Added
+
+- Added a `32×32` PixelLab-authored angry wolf HUD icon (`hud.action.ranger.spirit_beast_angry`) depicting a snarling wolf head with bared fangs, flattened ears, and glowing red eyes in the established grim dark-fantasy action-RPG style.
+- Added dynamic Spirit Beast skill-icon switching in the modern HUD: the angry wolf icon is shown when the beast is in attacking mode (next command: RETURN), and the calm wolf icon is shown when the beast is in return/follow mode (next command: ATTACK) or before summoning. Legacy procedural glyphs are unchanged.
+- Added `spirit_beast_pet_heal()`: the petting bonus now starts at `+2` and doubles for each Beast Discipline degree chosen — `+4` at Beast Bond, `+8` at Pack Tactics, `+16` at Alpha, `+32` at Spirit Companion, and `+64` at Primal Lord. Non-Beast disciplines do not inflate the bonus. The floater text reflects the actual heal amount.
+
+### Changed
+
+- Removed all status text overlays from action skill icons ("ATTACK", "RETURN", "EMPTY", "FULL", "MP", "ST", cooldown timer text). The cooldown arc, darkening overlay, count badge, angry/calm Spirit Beast icon swap, and readiness lamp already convey state visually, making the text labels redundant clutter.
+- The HUD action slot for the Ranger's class skill now selects between two authored asset keys (`hud.action.ranger.spirit_beast` and `hud.action.ranger.spirit_beast_angry`) based on the beast's current `command_mode`, preserving the existing `cooldown_command` status label and cache behavior.
+- Runtime/package release version is `4.1.25`; options remain schema `4` and run saves remain schema `5`.
+
+### Asset provenance
+
+- PixelLab generation/review pack: `8d5bf4cd-7ad4-4f51-8245-560d7dae5715` (`20` generations), 64 candidate frames at `32×32`. Approved candidate: frame `0`, promoted as object `86014eba-63b4-4b80-a8aa-893510bb11db` with the `arch-rogue-action-icon-4.1.25` tag. Unused candidates were discarded.
+
+### Validation
+
+- `.venv/bin/python -m unittest tests.test_familiars tests.test_hud_action_bar tests.test_ui_assets` — 43 tests, all passing.
+- `.venv/bin/python -m unittest discover tests` — 308 tests, all passing; the experimental web build was not run separately.
+- `.venv/bin/python -m compileall -q src tests tools` — OK.
+- `git diff --check` — OK.
+
 ## 4.1.24 — Finalization Patch
 
 Milestone 4.1.24 closes the remaining 4.1.x gameplay and presentation issues: shop floors carry a richer coin scatter, combat can no longer resolve through dungeon walls, and the modern aim cone is readable without changing the legacy renderer.
