@@ -8,6 +8,7 @@ Milestone 4.1.26 delivers the backlog item for an in-game legacy graphics toggle
 
 - Added a global `Ctrl+Alt+L` hotkey that toggles `legacy_graphics` from any game state (playing, title, options, menus). It is intercepted before the state-specific `KEYDOWN` branches so it does not collide with the title's `K_l` load-run shortcut or the options menu's `K_l` lighting-row shortcut.
 - In the playing state, the toggle emits a short feedback floater (`"Legacy graphics"` / `"Asset sprites"`) above the player using the active theme accent.
+- Added the `Ctrl+Alt+L graphics` hint to the bottom-right mission panel control line in the playing HUD, prepended so it stays on the first (visible) wrap line at the standard `960×540` logical resolution where only one control line renders. The full control line (including all existing hotkeys) is visible at wider layouts.
 - Documented the hotkey in the in-game Run Guide overlay alongside the existing `Ctrl+Shift+D` darkness and `Ctrl + scroll` zoom hints.
 
 ### Changed
@@ -17,12 +18,12 @@ Milestone 4.1.26 delivers the backlog item for an in-game legacy graphics toggle
 
 ### Tests
 
-- Added `LegacyGraphicsHotkeyTests` covering: in-playing-state toggle both ways with floater feedback, options-file persistence and reload by a fresh `Game`, title-state interception without triggering load-run, plain-`L` in options still adjusting the lighting row, and the hotkey not firing on lone `Ctrl` or lone `Alt`.
+- Added `LegacyGraphicsHotkeyTests` covering: in-playing-state toggle both ways with floater feedback, options-file persistence and reload by a fresh `Game`, title-state interception without triggering load-run, plain-`L` in options still adjusting the lighting row, the hotkey not firing on lone `Ctrl` or lone `Alt`, and the `Ctrl+Alt+L` hint appearing in the rendered HUD control line.
 
 ### Validation
 
-- `.venv/bin/python -m unittest tests.test_input_and_accessibility tests.test_dark_levels tests.test_ui_assets tests.test_ui_layouts` — 50 tests, all passing.
-- `.venv/bin/python -m unittest discover tests` — 313 tests, all passing; the experimental web build was not run separately.
+- `.venv/bin/python -m unittest tests.test_input_and_accessibility tests.test_dark_levels tests.test_ui_assets tests.test_ui_layouts tests.test_world_rendering_and_animation tests.test_hud_action_bar` — 56 tests, all passing.
+- `.venv/bin/python -m unittest discover tests` — 314 tests, all passing; the experimental web build was not run separately.
 - `.venv/bin/python -m compileall -q src tests` — OK.
 
 ## 4.1.25 — Finalization Additions

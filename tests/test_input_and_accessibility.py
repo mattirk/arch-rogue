@@ -581,3 +581,24 @@ class LegacyGraphicsHotkeyTests(unittest.TestCase):
             # Only Alt (no Ctrl) — must not toggle.
             self._post_key(game, pygame.K_l, pygame.KMOD_ALT)
             self.assertFalse(game.legacy_graphics)
+
+    def test_ctrl_alt_l_hint_appears_in_hud_control_line(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.ui_scale = 1
+            game.rebuild_fonts()
+
+            seen: list[str] = []
+            original = game.draw_ui_text
+
+            def spy(surface, text, font, color, rect, align="left", valign="top"):
+                if font is game.tiny_font and "Ctrl+Alt+L" in str(text):
+                    seen.append(str(text))
+                return original(surface, text, font, color, rect, align, valign)
+
+            game.draw_ui_text = spy
+            game.draw_ui()
+            game.draw_ui_text = original
+
+            self.assertTrue(seen, "Ctrl+Alt+L hint not rendered in HUD")
+            self.assertIn("Ctrl+Alt+L", seen[0])

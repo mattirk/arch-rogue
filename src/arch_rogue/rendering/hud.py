@@ -1134,7 +1134,7 @@ class RenderingHudMixin:
             else "Q show quest"
         )
         control_lines = [
-            f"Mouse/aim · 1-6 actions · E interact · I inventory · C character · {quest_control} · H help · Ctrl+Mouse scroll zoom",
+            f"Ctrl+Alt+L graphics · Mouse/aim · 1-6 actions · E interact · I inventory · C character · {quest_control} · H help · Ctrl+Mouse scroll zoom",
         ]
         control_y = max(
             mission_y + self.ui(4),
