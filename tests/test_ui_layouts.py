@@ -827,7 +827,8 @@ class UiLayoutTests(unittest.TestCase):
             self.assertEqual(modern_hud["panel"].height, 84)
             self.assertEqual(modern_hud["resources"].width, 322)
             self.assertEqual(len(modern_bars), 3)
-            self.assertTrue(all(bar.size == (260, 14) for bar in modern_bars))
+            # 4.2.x thin-border slab: the same card yields wider bar troughs.
+            self.assertTrue(all(bar.size == (284, 14) for bar in modern_bars))
             self.assertTrue(
                 all(modern_hud["resources_content"].contains(bar) for bar in modern_bars)
             )
@@ -869,6 +870,48 @@ class UiLayoutTests(unittest.TestCase):
                         scaled_legacy_bars[1:],
                     )
                 )
+            )
+
+    def test_hud_slab_has_thin_side_borders_and_padded_mission_text(self) -> None:
+        # 4.2.x: the regenerated lower HUD slab keeps its left/right nine-slice
+        # caps and safe-content insets thin so panel interiors fit more content,
+        # and the mission objective sits slightly lower and further left than
+        # the raw card content rect.
+        library = UiAssetLibrary()
+        self.assertTrue(library.available)
+        entry = library.manifest["assets"]["hud.panel"]
+        left, _top, right, _bottom = entry["insets"]
+        self.assertLessEqual(left, 16)
+        self.assertLessEqual(right, 16)
+        content_left, _, content_right, _ = entry["content_insets"]
+        self.assertLessEqual(content_left, 16)
+        self.assertLessEqual(content_right, 16)
+        self.assertIsNotNone(library.source("hud.panel"))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            self.prepare_run(game)
+            captured: list[tuple[str, pygame.Rect]] = []
+            original_draw_ui_text = game.draw_ui_text
+
+            def capture(surface, text, font, color, rect, *args, **kwargs):
+                captured.append((text, rect.copy()))
+                return original_draw_ui_text(
+                    surface, text, font, color, rect, *args, **kwargs
+                )
+
+            game.screen.fill((12, 12, 16))
+            with patch.object(game, "draw_ui_text", side_effect=capture):
+                game.draw_ui()
+            mission_content = game._hud_layout["mission_content"]
+            objective_rect = next(
+                rect
+                for text, rect in captured
+                if text.startswith("Find the stairs")
+            )
+            self.assertGreaterEqual(objective_rect.y, mission_content.y + 4)
+            self.assertLessEqual(
+                objective_rect.right, mission_content.right - 8
             )
 
     def test_modern_state_table_renders_all_twenty_four_statistics(self) -> None:

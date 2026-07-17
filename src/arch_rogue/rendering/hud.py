@@ -956,19 +956,22 @@ class RenderingHudMixin:
         resources_content = self.ui_asset_content_rect("hud.panel", resources)
         character_content = self.ui_asset_content_rect("hud.panel", character)
         mission_content = self.ui_asset_content_rect("hud.panel", mission)
-        card_pad_y = 0 if modern else self.ui(2)
+        # 4.2.x — the asset-content path (modern only) keeps a little more air
+        # between card texts and the slab's frame; legacy fallbacks unchanged.
+        card_pad_x = self.ui(5)
+        card_pad_y = self.ui(1)
         resources_inner = (
-            resources_content.inflate(-self.ui(3) * 2, -card_pad_y * 2)
+            resources_content.inflate(-card_pad_x * 2, -card_pad_y * 2)
             if resources_content is not None
             else resources.inflate(-pad * 2, -pad * 2)
         )
         character_inner = (
-            character_content.inflate(-self.ui(3) * 2, -card_pad_y * 2)
+            character_content.inflate(-card_pad_x * 2, -card_pad_y * 2)
             if character_content is not None
             else character.inflate(-pad * 2, -pad * 2)
         )
         mission_inner = (
-            mission_content.inflate(-self.ui(3) * 2, -card_pad_y * 2)
+            mission_content.inflate(-card_pad_x * 2, -card_pad_y * 2)
             if mission_content is not None
             else mission.inflate(-pad * 2, -pad * 2)
         )
@@ -1093,27 +1096,39 @@ class RenderingHudMixin:
         if hint:
             _key, title, detail, objective_color = hint
             objective = title
+        # 4.2.x — mission texts sit a touch lower and further from the card's
+        # right edge so the objective never kisses the frame ornament.
+        mission_text = (
+            pygame.Rect(
+                mission_inner.x,
+                mission_inner.y + self.ui(5),
+                max(1, mission_inner.width - self.ui(10)),
+                max(1, mission_inner.height - self.ui(5)),
+            )
+            if modern
+            else mission_inner
+        )
         self.draw_ui_text(
             self.screen,
             objective,
             title_font,
             objective_color,
             pygame.Rect(
-                mission_inner.x,
-                mission_inner.y,
-                mission_inner.width,
+                mission_text.x,
+                mission_text.y,
+                mission_text.width,
                 title_font.get_height(),
             ),
             align="right",
         )
-        mission_y = mission_inner.y + title_font.get_height() + self.ui(
+        mission_y = mission_text.y + title_font.get_height() + self.ui(
             3 if modern else 4
         )
         if detail:
             for wrapped in self.wrap_ui_text(
-                detail, body_font, mission_inner.width
+                detail, body_font, mission_text.width
             )[:2]:
-                if mission_y + line_h > mission_inner.bottom:
+                if mission_y + line_h > mission_text.bottom:
                     break
                 self.draw_ui_text(
                     self.screen,
@@ -1121,7 +1136,7 @@ class RenderingHudMixin:
                     body_font,
                     self.HUD_PARCHMENT,
                     pygame.Rect(
-                        mission_inner.x, mission_y, mission_inner.width, line_h
+                        mission_text.x, mission_y, mission_text.width, line_h
                     ),
                     align="right",
                 )
@@ -1138,14 +1153,14 @@ class RenderingHudMixin:
         ]
         control_y = max(
             mission_y + self.ui(4),
-            mission_inner.bottom - self.tiny_font.get_height() * 3,
+            mission_text.bottom - self.tiny_font.get_height() * 3,
         )
         tiny_h = max(self.tiny_font.get_height() + self.ui(2), self.ui(15))
         for controls in control_lines:
             for wrapped in self.wrap_ui_text(
-                controls, self.tiny_font, mission_inner.width
+                controls, self.tiny_font, mission_text.width
             )[:2]:
-                if control_y + tiny_h > mission_inner.bottom:
+                if control_y + tiny_h > mission_text.bottom:
                     break
                 self.draw_ui_text(
                     self.screen,
@@ -1153,7 +1168,7 @@ class RenderingHudMixin:
                     self.tiny_font,
                     self.HUD_MUTED,
                     pygame.Rect(
-                        mission_inner.x, control_y, mission_inner.width, tiny_h
+                        mission_text.x, control_y, mission_text.width, tiny_h
                     ),
                     align="right",
                 )
@@ -1172,6 +1187,9 @@ class RenderingHudMixin:
         width, height = self.screen.get_size()
         prompt_w = min(width - self.ui(40), self.ui(560))
         prompt_h = max(self.ui(56), self.small_font.get_height() * 2 + self.ui(18))
+        if self.asset_ui_active():
+            # 4.2.x — a touch taller so the padded text keeps two clear lines.
+            prompt_h += self.ui(4)
         rect = pygame.Rect(
             width - prompt_w - self.ui(22),
             height - self.hud_panel_height() - prompt_h - self.ui(12),
@@ -1191,7 +1209,7 @@ class RenderingHudMixin:
         )
         content = self.ui_asset_content_rect("hud.panel", surface.get_rect())
         content = (
-            content.inflate(-self.ui(3) * 2, -self.ui(1) * 2)
+            content.inflate(-self.ui(5) * 2, -self.ui(2) * 2)
             if content is not None
             else surface.get_rect().inflate(-self.ui(10) * 2, -self.ui(10) * 2)
         )
@@ -1271,6 +1289,9 @@ class RenderingHudMixin:
         line_h = max(self.small_font.get_height() + self.ui(3), self.ui(18))
         header_w = min(width - margin * 2, self.ui(740))
         header_h = pad * 2 + self.font.get_height() + line_h * 2 + self.ui(4)
+        if self.asset_ui_active():
+            # 4.2.x — extra room for the padded content inset below.
+            header_h += self.ui(4)
         rect = pygame.Rect(margin, self.ui(14), header_w, header_h)
         surface = pygame.Surface(rect.size, pygame.SRCALPHA)
         self.draw_ornate_hud_panel(
@@ -1283,7 +1304,7 @@ class RenderingHudMixin:
         )
         content = self.ui_asset_content_rect("hud.panel", surface.get_rect())
         content = (
-            content.inflate(-self.ui(3) * 2, -self.ui(1) * 2)
+            content.inflate(-self.ui(5) * 2, -self.ui(2) * 2)
             if content is not None
             else pygame.Rect(pad, pad, header_w - pad * 2, header_h - pad * 2)
         )
@@ -1655,7 +1676,8 @@ class RenderingHudMixin:
         safe = self.ui_asset_content_rect("hud.panel", rect)
         modern = safe is not None
         if safe is not None:
-            safe = safe.inflate(-self.ui(4) * 2, -self.ui(3) * 2)
+            # 4.2.x — a little more air between shop texts and the frame.
+            safe = safe.inflate(-self.ui(6) * 2, -self.ui(4) * 2)
         title_x = safe.x if safe is not None else rect.x + self.ui(18)
         title_y = safe.y if safe is not None else rect.y + self.ui(14)
         content_right = safe.right if safe is not None else rect.right - self.ui(18)

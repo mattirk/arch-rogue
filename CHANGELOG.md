@@ -1,5 +1,31 @@
 # Changelog
 
+## 4.2.1 — Visual Refinement
+
+Milestone 4.2.1 delivers the 4.2.x visual refinement pass: the lower HUD slab was regenerated in Pixellab with really thin left/right side decorations so panel interiors fit more content, and HUD texts (mission objective, quest info panel, tooltips, run header, shop) received a little more breathing room from their frames.
+
+### Added
+
+- Added a freshly generated `hud/panel.png` (Pixellab asset "Arch Rogue HUD slab thin A", cropped to its 668×108 band): a matte blackened-iron slab with an opaque near-black fill, a hairline ember-gold trim along the top edge, barely rounded corners, and extremely thin flat left/right edges with no side ornaments. Because every ornate HUD container shares the `hud.panel` nine-slice (bottom slab, resource/character/mission cards, interaction prompt, run header, quest info panel, shop panel), all of them pick up the thinner frame at once.
+- Added `UiLayoutTests.test_hud_slab_has_thin_side_borders_and_padded_mission_text` guarding the thin manifest insets (left/right nine-slice caps and content insets ≤ 16px) and asserting the rendered mission objective sits below and left of the raw card content rect.
+
+### Changed
+
+- `hud.panel` manifest geometry follows the new art: nine-slice insets `[70, 10, 70, 10]` → `[10, 10, 10, 8]` and safe-content insets `[28, 8, 28, 8]` → `[14, 8, 14, 8]`. The bottom slab's decorated side caps shrink from 70px to 10px per side, so the three HUD cards and their interiors widen — at the reference 960×540 layout the resource bar troughs grow from 260px to 284px wide with unchanged height.
+- HUD texts keep a little more air between themselves and the slab frame (asset path only; legacy geometry untouched): the three bottom cards inset their content by `ui(5)`/`ui(1)` instead of `ui(3)`/0, the mission texts (objective, detail, control hints) additionally sit `ui(5)` lower and end `ui(10)` short of the card's right edge so "Find the stairs to descend deeper" no longer kisses the frame corner, the quest info panel and run header inset their content by `ui(5)`/`ui(2–3)` instead of `ui(3)`/`ui(1)`, the interaction prompt and run header grow `ui(4)` taller to preserve their line room, and the shop panel safe area insets by `ui(6)`/`ui(4)` instead of `ui(4)`/`ui(3)`.
+- Runtime/package release version is `4.2.1`, and the stale `arch_rogue.__version__` (left at `4.1.25` through the 4.1.26/4.2.0 bumps while `pyproject.toml` moved on) is resynced, so the window caption, title/options menus, and the save file's informational `release` field report the real release again. The `release` field is write-only metadata, so existing saves restore unchanged; options remain schema `4` and run saves remain schema `5`.
+
+### Tests
+
+- Updated `UiLayoutTests.test_obsidian_resource_bars_expand_only_the_modern_hud` to the new 284×14 bar troughs produced by the thin-border slab.
+- Updated the pinned release assertions in `SaveAndMetadataTests` from `4.1.25` to `4.2.1`.
+
+### Validation
+
+- `.venv/bin/python -m unittest tests.test_ui_layouts tests.test_ui_assets tests.test_sprite_assets tests.test_inventory_hud_and_hints tests.test_hud_action_bar tests.test_save_and_metadata` — all passing.
+- `.venv/bin/python -m unittest discover tests` — all passing.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+
 ## 4.2.0 — General Refinements
 
 Milestone 4.2.0 delivers the small quality-of-life improvements queued under the 4.2 General Refinements milestone: verified familiar/enemy wall line-of-sight, garden-room passive healing with a visible greenish aura, a scrollbar for the settings menu when options overflow, slightly rarer loot drops across the board, and harder-to-kill elite enemies.

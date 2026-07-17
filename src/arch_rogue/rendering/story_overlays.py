@@ -98,7 +98,8 @@ class RenderingStoryOverlayMixin:
         pad = self.ui(12)
         content = self.ui_asset_content_rect("hud.panel", surface.get_rect())
         content = (
-            content.inflate(-self.ui(3) * 2, -self.ui(1) * 2)
+            # 4.2.x — a little more air between quest texts and the frame.
+            content.inflate(-self.ui(5) * 2, -self.ui(3) * 2)
             if content is not None
             else surface.get_rect().inflate(-pad * 2, -pad * 2)
         )

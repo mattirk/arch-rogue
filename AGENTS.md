@@ -216,6 +216,13 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
   - e.g "Find the stairs to descend deeper" on lower right corner should be placed a bit more down and to the left
   - Apply to other HUD texts as well, e.g. texts in quest info panel
 
+#### 4.2.x Cutscene theater redesign
+
+- We need to re-design stage/theater visuals in cutscenes
+- Now characters are not animated -> use existing or create if necessary
+- We need Pixellab generated high end sprites for all stage/theater props
+- Use good taste, make it look of a high production value
+
 ### Backlog
 
 - We need to make the darkess deepen more on lower levels, dark levels look already good, but also other "normal" levels below 5 should feel more dark. (do not implement this yet, user will explicitly request this feature if needed)
