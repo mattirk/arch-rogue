@@ -252,6 +252,7 @@ class OptionsMixin:
             ui_assets.clear_derived_caches()
         self._hud_panel_cache = {}
         self._hud_icon_cache = {}
+        self._aim_cone_cache = {}
         tile_cache = getattr(self, "tile_cache", None)
         if tile_cache is not None:
             tile_cache.clear()

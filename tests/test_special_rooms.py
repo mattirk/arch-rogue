@@ -121,11 +121,37 @@ class SpecialRoomTests(unittest.TestCase):
             before_rng = game.rng.getstate()
             game._frame_cache = {}
             placements = game._shop_gold_stack_placements()
-            self.assertGreaterEqual(len(placements), 3)
+            legacy_prefix = [
+                (4, 11, 2, 0),
+                (5, 10, 3, 1),
+                (6, 9, 1, 3),
+                (6, 13, 1, 2),
+                (7, 13, 2, 3),
+                (8, 13, 3, 0),
+                (9, 12, 1, 1),
+                (10, 11, 2, 1),
+            ]
+            self.assertEqual(len(placements), 12)
+            self.assertEqual(placements[: len(legacy_prefix)], legacy_prefix)
             self.assertTrue(all(len(placement) == 4 for placement in placements))
             self.assertTrue(all(0 <= placement[3] < 5 for placement in placements))
             self.assertGreater(len({placement[3] for placement in placements}), 1)
+            occupied = {(x, y) for x, y, _size, _variant in placements}
+            self.assertEqual(len(occupied), len(placements))
+            shop = game.dungeon.special_room_for_kind("shop")
+            assert shop is not None
+            self.assertNotIn(shop.anchor("shopkeeper"), occupied)
+            self.assertNotIn(shop.anchor("shop_sign"), occupied)
             self.assertEqual(game.rng.getstate(), before_rng)
+
+            before_items = copy.deepcopy(game.items)
+            before_keepers = copy.deepcopy(game.shopkeepers)
+            before_gold = game.player.gold
+            game._populate_shop_room()
+            game._populate_shop_room()
+            self.assertEqual(game.items, before_items)
+            self.assertEqual(game.shopkeepers, before_keepers)
+            self.assertEqual(game.player.gold, before_gold)
 
             game._frame_cache = {}
             self.assertEqual(game._shop_gold_stack_placements(), placements)

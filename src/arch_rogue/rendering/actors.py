@@ -633,14 +633,15 @@ class RenderingActorMixin:
         vx, vy = self.iso_screen_direction(self.player.facing_x, self.player.facing_y)
         px, py = -vy, vx
         aim_blue = self.mix((92, 170, 255), self.theme.accent, 0.18)
+        modern_aim = self.sprites.modern_graphics_active
+        cone_alpha = 28 if modern_aim else 14
 
-        # The cone overlay surface only depends on facing direction, so cache
-        # it persistently (across frames) by quantized facing and reposition
-        # the blit each frame. The supersampled polygon draw + smoothscale is
-        # the expensive part.
+        # Cache by every input that changes the generated surface, then reuse it
+        # across frames by repositioning the blit. The supersampled polygon draw
+        # and smoothscale blur are the expensive parts.
         if not hasattr(self, "_aim_cone_cache"):
-            self._aim_cone_cache: dict[tuple[float, float], tuple] = {}
-        cone_key = (round(vx, 3), round(vy, 3))
+            self._aim_cone_cache: dict[tuple[object, ...], tuple] = {}
+        cone_key = (modern_aim, aim_blue, round(vx, 3), round(vy, 3))
         cached = self._aim_cone_cache.get(cone_key)
 
         if cached is None:
@@ -704,7 +705,9 @@ class RenderingActorMixin:
                     for x, y in points
                 ]
 
-            for length, angle, alpha, start in ((60.5, 0.21, 14, cutout),):
+            for length, angle, alpha, start in (
+                (60.5, 0.21, cone_alpha, cutout),
+            ):
                 pygame.draw.polygon(
                     overlay,
                     (*aim_blue, alpha),

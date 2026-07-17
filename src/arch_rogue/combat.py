@@ -1345,6 +1345,7 @@ class CombatMixin:
                 )
             else:
                 attack_in_range = distance <= enemy.attack_range
+            attack_los_x, attack_los_y = enemy.x, enemy.y
             has_los = (
                 attack_ready
                 and attack_in_range
@@ -1366,9 +1367,21 @@ class CombatMixin:
                     and has_los
                 ):
                     if enemy.kind == "ranged":
-                        self.enemy_cast(enemy, player_nx, player_ny)
+                        self.enemy_cast(
+                            enemy,
+                            player_nx,
+                            player_ny,
+                            line_of_sight_confirmed=(
+                                enemy.x == attack_los_x and enemy.y == attack_los_y
+                            ),
+                        )
                     else:
-                        self.enemy_melee(enemy)
+                        self.enemy_melee(
+                            enemy,
+                            line_of_sight_confirmed=(
+                                enemy.x == attack_los_x and enemy.y == attack_los_y
+                            ),
+                        )
                 continue
 
             if enemy.kind == "boss" or enemy.is_boss_encounter:
@@ -1383,9 +1396,21 @@ class CombatMixin:
                         enemy, nx * step, ny * step, dt, locomotion_scale
                     )
                 if 2.0 < distance <= 6.0 and attack_ready and has_los:
-                    self.enemy_cast(enemy, nx, ny)
+                    self.enemy_cast(
+                        enemy,
+                        nx,
+                        ny,
+                        line_of_sight_confirmed=(
+                            enemy.x == attack_los_x and enemy.y == attack_los_y
+                        ),
+                    )
                 elif distance <= enemy.attack_range and attack_ready and has_los:
-                    self.enemy_melee(enemy)
+                    self.enemy_melee(
+                        enemy,
+                        line_of_sight_confirmed=(
+                            enemy.x == attack_los_x and enemy.y == attack_los_y
+                        ),
+                    )
             elif enemy.kind == "ranged":
                 if 3.5 < distance:
                     step = min(move_speed * dt, distance - 3.5)
@@ -1402,7 +1427,14 @@ class CombatMixin:
                     and attack_ready
                     and has_los
                 ):
-                    self.enemy_cast(enemy, nx, ny)
+                    self.enemy_cast(
+                        enemy,
+                        nx,
+                        ny,
+                        line_of_sight_confirmed=(
+                            enemy.x == attack_los_x and enemy.y == attack_los_y
+                        ),
+                    )
             else:
                 if distance > enemy.attack_range:
                     step = min(
@@ -1412,9 +1444,17 @@ class CombatMixin:
                         enemy, nx * step, ny * step, dt, locomotion_scale
                     )
                 elif attack_ready and has_los:
-                    self.enemy_melee(enemy)
+                    self.enemy_melee(enemy, line_of_sight_confirmed=True)
 
-    def enemy_melee(self, enemy: Enemy) -> None:
+    def enemy_melee(
+        self, enemy: Enemy, *, line_of_sight_confirmed: bool = False
+    ) -> None:
+        if not line_of_sight_confirmed:
+            distance = math.hypot(enemy.x - self.player.x, enemy.y - self.player.y)
+            if distance > enemy.attack_range or not self.dungeon.line_of_sight(
+                enemy.x, enemy.y, self.player.x, self.player.y
+            ):
+                return
         enemy.attack_timer = enemy.attack_cooldown
         enemy.telegraph = "melee"
         raw = enemy.damage + self.rng.randrange(-2, 3)
@@ -1451,7 +1491,25 @@ class CombatMixin:
             kind="slash",
         )
 
-    def enemy_cast(self, enemy: Enemy, nx: float, ny: float) -> None:
+    def enemy_cast(
+        self,
+        enemy: Enemy,
+        nx: float,
+        ny: float,
+        *,
+        line_of_sight_confirmed: bool = False,
+    ) -> None:
+        if not line_of_sight_confirmed:
+            distance = math.hypot(enemy.x - self.player.x, enemy.y - self.player.y)
+            cast_range = (
+                max(6.0, enemy.attack_range)
+                if enemy.kind == "boss" or enemy.is_boss_encounter
+                else enemy.attack_range
+            )
+            if distance > cast_range or not self.dungeon.line_of_sight(
+                enemy.x, enemy.y, self.player.x, self.player.y
+            ):
+                return
         enemy.attack_timer = enemy.attack_cooldown
         enemy.telegraph = "cast"
         projectile_color = self.damage_type_color(enemy.damage_type)
@@ -1570,6 +1628,12 @@ class CombatMixin:
                             dx * dx + dy * dy
                             < ENEMY_PROJECTILE_HIT_RADIUS
                             * ENEMY_PROJECTILE_HIT_RADIUS
+                            and self.dungeon.line_of_sight(
+                                projectile.x,
+                                projectile.y,
+                                familiar.x,
+                                familiar.y,
+                            )
                         ):
                             struck = familiar
                             break
@@ -1598,6 +1662,12 @@ class CombatMixin:
                 if (
                     player_dx * player_dx + player_dy * player_dy
                     < ENEMY_PROJECTILE_HIT_RADIUS * ENEMY_PROJECTILE_HIT_RADIUS
+                    and self.dungeon.line_of_sight(
+                        projectile.x,
+                        projectile.y,
+                        self.player.x,
+                        self.player.y,
+                    )
                 ):
                     amount = self.take_player_damage(
                         projectile.damage,
@@ -1684,7 +1754,9 @@ class CombatMixin:
             dx = enemy.x - primary.x
             dy = enemy.y - primary.y
             distance_squared = dx * dx + dy * dy
-            if distance_squared < best_distance_squared:
+            if distance_squared < best_distance_squared and self.dungeon.line_of_sight(
+                primary.x, primary.y, enemy.x, enemy.y
+            ):
                 best_distance_squared = distance_squared
                 best = enemy
         if best is None:
@@ -2038,7 +2110,9 @@ class CombatMixin:
                 radius += 0.25
             if self.equipment_class_skill_bonus("Nova radius"):
                 radius += 0.35
-            if distance <= radius:
+            if distance <= radius and self.dungeon.line_of_sight(
+                self.player.x, self.player.y, enemy.x, enemy.y
+            ):
                 hits += 1
                 damage = (
                     10
@@ -2112,7 +2186,13 @@ class CombatMixin:
             for enemy in list(self.enemies):
                 if not enemy.alive:
                     continue
-                if math.hypot(enemy.x - self.player.x, enemy.y - self.player.y) <= stagger_radius:
+                if (
+                    math.hypot(enemy.x - self.player.x, enemy.y - self.player.y)
+                    <= stagger_radius
+                    and self.dungeon.line_of_sight(
+                        self.player.x, self.player.y, enemy.x, enemy.y
+                    )
+                ):
                     # Stagger only: apply a brief holy stun and stall the
                     # next attack, without dealing damage or triggering on-hit
                     # procs/lifesteal (Time Skip is a control skill).
@@ -2295,8 +2375,10 @@ class CombatMixin:
             t = step / 16.0
             x = px + dx * t
             y = py + dy * t
-            if self.dungeon.is_floor(x, y) and not self.dungeon.blocked_for_radius(
-                x, y, 0.22
+            if (
+                self.dungeon.is_floor(x, y)
+                and not self.dungeon.blocked_for_radius(x, y, 0.22)
+                and self.dungeon.line_of_sight(px, py, x, y)
             ):
                 return x, y
         return px, py
@@ -2404,7 +2486,11 @@ class CombatMixin:
                 continue
             hit_radius = max(0.0, self.enemy_hit_radius(enemy) - ENEMY_HIT_RADIUS)
             distance = math.hypot(enemy.x - bell.x, enemy.y - bell.y)
-            if distance <= bell.trigger_radius + hit_radius * 0.5 and distance < best_distance:
+            if (
+                distance <= bell.trigger_radius + hit_radius * 0.5
+                and distance < best_distance
+                and self.dungeon.line_of_sight(bell.x, bell.y, enemy.x, enemy.y)
+            ):
                 best = enemy
                 best_distance = distance
         return best
@@ -2480,7 +2566,10 @@ class CombatMixin:
                 continue
             hit_radius = max(0.0, self.enemy_hit_radius(enemy) - ENEMY_HIT_RADIUS)
             distance = math.hypot(enemy.x - bell.x, enemy.y - bell.y)
-            if distance <= radius + hit_radius * 0.5:
+            if (
+                distance <= radius + hit_radius * 0.5
+                and self.dungeon.line_of_sight(bell.x, bell.y, enemy.x, enemy.y)
+            ):
                 targets.append((distance, enemy))
         return [enemy for _distance, enemy in sorted(targets, key=lambda entry: entry[0])]
 
@@ -2566,7 +2655,11 @@ class CombatMixin:
         targets = self._ambush_bell_targets(bell, radius)
         hits = 0
         kills = 0
-        if primary is not None and primary.alive:
+        if (
+            primary is not None
+            and primary.alive
+            and self.dungeon.line_of_sight(bell.x, bell.y, primary.x, primary.y)
+        ):
             if primary not in targets:
                 targets.insert(0, primary)
             direction = (primary.x - bell.x, primary.y - bell.y)
@@ -3315,6 +3408,9 @@ class CombatMixin:
             if (
                 distance > PLAYER_MELEE_RANGE + reach_bonus + extra_reach
                 or distance < 0.001
+                or not self.dungeon.line_of_sight(
+                    self.player.x, self.player.y, enemy.x, enemy.y
+                )
             ):
                 continue
             dot = (dx / distance) * self.player.facing_x + (
@@ -3335,7 +3431,10 @@ class CombatMixin:
             hit_radius = radius + self.enemy_hit_radius(enemy) - ENEMY_HIT_RADIUS
             dx = enemy.x - x
             dy = enemy.y - y
-            if dx * dx + dy * dy <= hit_radius * hit_radius:
+            if (
+                dx * dx + dy * dy <= hit_radius * hit_radius
+                and self.dungeon.line_of_sight(x, y, enemy.x, enemy.y)
+            ):
                 return enemy
         return None
 
@@ -3432,7 +3531,9 @@ class CombatMixin:
             if enemy is source or not enemy.alive:
                 continue
             distance = math.hypot(enemy.x - source.x, enemy.y - source.y)
-            if distance < best_distance:
+            if distance < best_distance and self.dungeon.line_of_sight(
+                source.x, source.y, enemy.x, enemy.y
+            ):
                 best_distance = distance
                 target = enemy
         if target is None:

@@ -549,8 +549,6 @@ class Dungeon:
         if distance < 1e-3:
             return True
         steps = max(1, math.ceil(distance / 0.25))
-        if steps <= 1:
-            return True
         inv = 1.0 / steps
         previous_tx = int(x0)
         previous_ty = int(y0)

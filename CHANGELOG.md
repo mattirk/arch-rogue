@@ -1,5 +1,32 @@
 # Changelog
 
+## 4.1.24 — Finalization Patch
+
+Milestone 4.1.24 closes the remaining 4.1.x gameplay and presentation issues: shop floors carry a richer coin scatter, combat can no longer resolve through dungeon walls, and the modern aim cone is readable without changing the legacy renderer.
+
+### Changed
+
+- Increased deterministic cosmetic gold dressing in shop rooms to as many as `12` unique stacks. Existing stack positions remain the stable prefix of each layout, additional placements use an isolated local RNG, merchant/sign anchors stay clear, and the piles still create no pickup, currency, save-state, loot-stat, or gameplay-RNG changes.
+- Player melee and Warden cleaves, Frost Nova, Time Skip's stagger pulse, Arcanist chain lightning, equipment chain procs, and Ambush Bell placement/trigger/splash now require direct dungeon line of sight. Walls, closed doors, and sealed diagonal corners block these attacks while open doors and clear floor paths remain valid.
+- Player, enemy, and boss projectiles now validate the complete segment traveled each simulation step instead of only the destination tile, preventing high-step tunneling through walls. Projectile-to-player, projectile-to-familiar, and projectile-to-enemy contact also verifies the final short path so hits cannot leak across a closed corner seam.
+- Enemy melee and cast entry points defensively enforce range/line of sight when invoked outside the normal AI loop. Stationary attacks reuse the loop's already-confirmed LOS result, while ranged, boss, and lured enemies that move before attacking revalidate from their final position. Familiar attacks retain their existing LOS protection, and lingering status ticks, ripostes, and thorns retain their established post-hit behavior.
+- Doubled only the modern aim-cone source opacity from `14` to `28`, leaving its size, angle, cutout, blur, placement, and draw order unchanged. The final glow remains below 10% peak opacity but is now readily visible; legacy graphics reproduce the previous cone byte-for-byte.
+- Aim-cone caching now includes graphics mode, theme-derived color, and facing, and is cleared with other derived graphics caches when modes change. Runtime/package release version is `4.1.24`; options remain schema `4` and run saves remain schema `5`.
+
+### Tests
+
+- Added wall-collision regressions for walls, closed doors, diagonal seams, player melee, Nova, both chain paths, swept player/enemy projectiles, direct enemy melee/casts, final-position LOS after enemy movement, and Ambush Bell placement/blasts, with open-path controls.
+- Expanded shop-room coverage to lock the original eight-stack prefix, twelve-stack final scatter, unique/clear placements, population idempotence, unchanged currency/RNG, and save restoration without serialized gold props.
+- Added rendered aim-cone coverage proving stronger modern alpha, stable geometry and warm-cache reuse, mode-cache invalidation, and exact legacy output after a modern/legacy round trip.
+
+### Validation
+
+- `.venv/bin/python -m unittest tests.test_enemy_los_walls tests.test_ambush_bell tests.test_special_rooms tests.test_world_rendering_and_animation tests.test_save_and_metadata` — 36 tests, all passing.
+- `.venv/bin/python -m unittest tests.test_boss_encounters tests.test_familiars tests.test_lighting tests.test_skill_paths tests.test_combat_damage_and_loot_tables tests.test_pause_on_menus` — 67 tests, all passing.
+- `.venv/bin/python -m unittest discover tests` — 306 tests, all passing; the experimental web build was not run separately.
+- `.venv/bin/python -m compileall -q src tests tools` — OK.
+- `git diff --check` — OK.
+
 ## 4.1.23 — Authored Action Skill Icons
 
 Milestone 4.1.23 replaces the cramped modern action-bar glyphs and truncated skill names with a complete PixelLab-authored icon language while preserving the original procedural legacy HUD.

@@ -202,24 +202,20 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 4.1.x More sprites, assets, animations updates
-
-- Spirit Beast as a Ranger class skill since Discipline (Beast Bond) exists for it; make sure the discipline affects familiar stats.
-  - Generate new sprites for the familiar using MCP tools
-  - Include idle, walk and attack animations
-  - Replace the former Ranger class skill
-
-#### 4.1.x Spirit Beast follow-up fixes
-
-- Use "Spirit Beast" consistently for all references, identifiers, assets, and UI labels
-- Spirit Beast should be stronger, but cooldown should be increased to 60 seconds
-- Also mana cost should be increased so it always costs 50% mana to use
-- When using Ranger class skill while it's cooldown is active, it insteads calls the familiar back to the player's side, when cast again, it commands the familiar to attack nearest enemy. So to recap: when cooldown is active, using the skill alterates between calling the familiar back and attacking nearest enemy.
-
-### Stash
+### 4.1.x Finalizing version
 
 - There needs to be more money stacks on shop floors
 - Player can attack through walls. Make sure player and enemy attacks do not go through walls.
+- Aim cone is barely visible when using modern graphics, make it more visible but preserve legacy compatibility. Make it subtle but visible, use good taste.
+
+Additions:
+- Generate angry wolf icon for Ranger class skill icon
+  - When Spirit Beast is in attacking mode, show angry icon, when in Return mode, show normal icon
+- Petting bonus (curretly +2) will doble on each Beast Discipline Degree
+
+
+### Backlog
+
 - It appears Acolyte's familiar can "see" through walls. Make sure enemy and familiar line of sight (or perception) does not ignore walls.
 - We need to make the darkess deepen more on lower levels, dark levels look already good, but also other "normal" levels below 5 should feel more dark. (do not implement this yet, user will explicitly request this feature if needed)
 - Scrollbar is needed in settings menu when all options do not fit on screen vertically.
@@ -238,5 +234,5 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - Add a little bit more padding around texts
   - e.g "Find the stairs to descend deeper" on lower right corner should be placed a bit more down and to the left
   - Apply to other HUD texts as well, e.g. texts in quest info panel
-- Aim cone is barely visible when using modern graphics, make it more visible but preserve legacy compatibility
 - Widen Arcanist Frost Nova when gaining appropriate Disciplines (need to make one path dedicated to this), finally affecting the whole room
+- While inside garden room, player heals little by little and emits visible (greenish) healing glow

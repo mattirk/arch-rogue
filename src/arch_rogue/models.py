@@ -739,11 +739,16 @@ class Projectile:
     anim_time: float = field(default=0.0, repr=False, compare=False)
 
     def update(self, dt: float, dungeon: "Dungeon") -> bool:
+        old_x, old_y = self.x, self.y
         self.x += self.vx * dt
         self.y += self.vy * dt
         self.ttl -= dt
         self.anim_time += dt
-        return self.ttl > 0 and dungeon.is_floor(self.x, self.y)
+        return (
+            self.ttl > 0
+            and dungeon.is_floor(self.x, self.y)
+            and dungeon.line_of_sight(old_x, old_y, self.x, self.y)
+        )
 
 
 @dataclass

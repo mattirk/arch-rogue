@@ -176,6 +176,48 @@ class AmbushBellTests(unittest.TestCase):
             self.assertGreater(enemy.x, start_x)
             self.assertEqual(enemy.telegraph, "lured")
 
+    def test_bell_placement_and_blast_cannot_cross_walls(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, archetype_index=1)
+            cx, cy = int(game.player.x), int(game.player.y)
+            game.player.x, game.player.y = cx + 0.5, cy + 0.5
+            _open_patch(game, game.player.x, game.player.y)
+            wall_x = cx + 2
+            game.dungeon.tiles[wall_x][cy] = Tile.WALL
+            game.player.facing_x, game.player.facing_y = 1.0, 0.0
+
+            target_x, target_y = game._ambush_bell_target_point()
+
+            self.assertLess(target_x, wall_x)
+            self.assertTrue(
+                game.dungeon.line_of_sight(
+                    game.player.x, game.player.y, target_x, target_y
+                )
+            )
+
+            bell = AmbushBell(
+                x=wall_x - 0.2,
+                y=cy + 0.5,
+                lifetime=5.0,
+                arm_timer=0.0,
+                lure_radius=6.0,
+                trigger_radius=0.2,
+                damage_radius=1.85,
+                primary_damage=30,
+                splash_damage=15,
+                max_lifetime=5.0,
+                max_arm_timer=0.0,
+                armed_announced=True,
+            )
+            visible = _make_enemy(bell.x - 0.8, bell.y)
+            hidden = _make_enemy(wall_x + 1.2, bell.y)
+            game.enemies = [visible, hidden]
+
+            self.assertEqual(game._ambush_bell_targets(bell, bell.damage_radius), [visible])
+            game.detonate_ambush_bell(bell)
+            self.assertLess(visible.hp, visible.max_hp)
+            self.assertEqual(hidden.hp, hidden.max_hp)
+
     def test_trap_path_nodes_are_ambush_bell_specific(self) -> None:
         expected = {
             "rogue_trap_craft": "Bellwright's Hand",

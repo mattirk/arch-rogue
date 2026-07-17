@@ -81,6 +81,7 @@ _SPECIAL_WALL_ASSET_PREFIXES = {
 }
 _GOLD_STACK_VARIANT_COUNT = 5
 _GOLD_STACK_VARIANT_SALT = 0x4A17C0DE
+_GOLD_STACK_EXTRA_SALT = 0x71D6B295
 
 
 class RenderingWorldMixin:
@@ -1660,6 +1661,15 @@ class RenderingWorldMixin:
                 stride = max(1, len(interior) // count)
                 start = rng.randrange(stride) if stride else 0
                 chosen = interior[start::stride][:count]
+                target_count = min(
+                    len(interior), max(count, max(5, min(12, len(interior) // 2)))
+                )
+                if len(chosen) < target_count:
+                    chosen_tiles = set(chosen)
+                    extras = [tile for tile in interior if tile not in chosen_tiles]
+                    extra_rng = random.Random(seed ^ _GOLD_STACK_EXTRA_SALT)
+                    extra_rng.shuffle(extras)
+                    chosen.extend(extras[: target_count - len(chosen)])
                 sizes = [2, 1, 3, 2, 1, 3, 2, 1]
                 rng.shuffle(sizes)
                 variant_rng = random.Random(seed ^ _GOLD_STACK_VARIANT_SALT)

@@ -64,6 +64,49 @@ class GraphicsAnimation21Tests(unittest.TestCase):
             game.draw_projectile(projectile)
         return float(projectile_frame.call_args.args[1])
 
+    def test_modern_aim_cone_is_stronger_and_legacy_render_is_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game.player.facing_x, game.player.facing_y = 1.0, 0.0
+
+            game.set_legacy_graphics(True)
+            game.draw_aim_cone()
+            self.assertEqual(len(game._aim_cone_cache), 1)
+            legacy_entry = next(iter(game._aim_cone_cache.values()))
+            legacy_overlay, legacy_x, legacy_y, legacy_w, legacy_h = legacy_entry
+            legacy_bytes = self.surface_bytes(legacy_overlay)
+            legacy_alpha = legacy_bytes[3::4]
+            game.draw_aim_cone()
+            self.assertIs(
+                next(iter(game._aim_cone_cache.values()))[0], legacy_overlay
+            )
+
+            game.set_legacy_graphics(False)
+            self.assertTrue(game.sprites.modern_graphics_active)
+            self.assertEqual(game._aim_cone_cache, {})
+            game.draw_aim_cone()
+            modern_entry = next(iter(game._aim_cone_cache.values()))
+            modern_overlay, modern_x, modern_y, modern_w, modern_h = modern_entry
+            modern_bytes = self.surface_bytes(modern_overlay)
+            modern_alpha = modern_bytes[3::4]
+
+            self.assertEqual(
+                (modern_x, modern_y, modern_w, modern_h),
+                (legacy_x, legacy_y, legacy_w, legacy_h),
+            )
+            self.assertGreater(sum(modern_alpha), sum(legacy_alpha) * 1.8)
+            self.assertGreater(max(modern_alpha), max(legacy_alpha))
+            game.draw_aim_cone()
+            self.assertIs(
+                next(iter(game._aim_cone_cache.values()))[0], modern_overlay
+            )
+
+            game.set_legacy_graphics(True)
+            game.draw_aim_cone()
+            restored_entry = next(iter(game._aim_cone_cache.values()))
+            self.assertEqual(restored_entry[1:], legacy_entry[1:])
+            self.assertEqual(self.surface_bytes(restored_entry[0]), legacy_bytes)
+
     def test_projectile_animation_cadence_ignores_travel_direction(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
