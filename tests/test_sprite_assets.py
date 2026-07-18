@@ -261,6 +261,133 @@ class SpriteAssetTests(unittest.TestCase):
                             self.assertLessEqual(bounds.right, surface.get_width() - 1)
                             self.assertLessEqual(bounds.bottom, surface.get_height() - 1)
 
+    def test_archetype_stage_act_assets_are_complete_and_animated(self) -> None:
+        library = AssetSpriteLibrary()
+        for archetype in ARCHETYPES:
+            slug = archetype.name.casefold()
+            entry = library.manifest["actors"][slug]
+            clip = entry["clips"]["act"]
+            self.assertEqual(clip["fps"], 4.0, archetype.name)
+            self.assertTrue(clip["loop"], archetype.name)
+            self.assertEqual(set(clip["directions"]), {"south"}, archetype.name)
+
+            paths = clip["directions"]["south"]
+            self.assertEqual(
+                paths,
+                [
+                    f"actors/{slug}/animations/act/south/frame_{index:03d}.png"
+                    for index in range(8)
+                ],
+            )
+            surfaces = [library._source_surface(path) for path in paths]
+            self.assertNotIn(None, surfaces, archetype.name)
+            decoded = [surface for surface in surfaces if surface is not None]
+            self.assertEqual(len(decoded), 8)
+            self.assertEqual(
+                len({pygame.image.tobytes(surface, "RGBA") for surface in decoded}),
+                8,
+                archetype.name,
+            )
+            for surface in decoded:
+                self.assertEqual(surface.get_size(), tuple(entry["source_canvas"]))
+                bounds = surface.get_bounding_rect(min_alpha=1)
+                self.assertGreater(bounds.width, 0)
+                self.assertGreater(bounds.height, 0)
+                self.assertGreaterEqual(bounds.left, 1)
+                self.assertGreaterEqual(bounds.top, 1)
+                self.assertLessEqual(bounds.right, surface.get_width() - 1)
+                self.assertLessEqual(bounds.bottom, surface.get_height() - 1)
+
+            resolved = [
+                library.resolve_actor(archetype.name, "act", "south", clip_time)
+                for clip_time in (0.0, 0.26, 0.51, 0.76)
+            ]
+            self.assertNotIn(None, resolved, archetype.name)
+            frames = [frame for frame in resolved if frame is not None]
+            self.assertTrue(all(frame.is_asset for frame in frames))
+            self.assertEqual(
+                {frame.key[1:4] for frame in frames},
+                {(slug, "act", "south")},
+            )
+            self.assertEqual({frame.key[4] for frame in frames}, {0, 1, 2, 3})
+
+            # The clip is intentionally south-only. Other directions preserve
+            # the library's existing static-rotation fallback.
+            fallback = library.resolve_actor(archetype.name, "act", "east", 0.0)
+            self.assertIsNotNone(fallback)
+            assert fallback is not None
+            self.assertEqual(fallback.key[1:4], (slug, "rotation", "east"))
+
+    def test_gate_warden_reviewed_animation_set_is_complete_and_wired(self) -> None:
+        library = AssetSpriteLibrary()
+        entry = library.manifest["actors"]["gate_warden"]
+        self.assertEqual(entry["name"], "Gate Warden")
+        self.assertEqual(tuple(entry["source_canvas"]), (208, 208))
+        self.assertEqual(tuple(entry["source_anchor"]), (104.0, 156.0))
+        contracts = {
+            "idle": (5.0, True, 4),
+            "run": (9.0, True, 6),
+            "attack": (12.0, False, 8),
+        }
+        self.assertEqual(set(entry["clips"]), set(contracts))
+
+        for state, (fps, looping, frame_count) in contracts.items():
+            clip = entry["clips"][state]
+            self.assertEqual(clip["fps"], fps)
+            self.assertEqual(clip["loop"], looping)
+            self.assertEqual(set(clip["directions"]), set(DIRECTIONS))
+            for direction, paths in clip["directions"].items():
+                with self.subTest(state=state, direction=direction):
+                    self.assertEqual(
+                        paths,
+                        [
+                            f"actors/gate_warden/animations/{state}/{direction}/"
+                            f"frame_{index:03d}.png"
+                            for index in range(frame_count)
+                        ],
+                    )
+                    surfaces = [library._source_surface(path) for path in paths]
+                    self.assertNotIn(None, surfaces)
+                    decoded = [surface for surface in surfaces if surface is not None]
+                    self.assertEqual(len(decoded), frame_count)
+                    self.assertEqual(
+                        len(
+                            {
+                                pygame.image.tobytes(surface, "RGBA")
+                                for surface in decoded
+                            }
+                        ),
+                        frame_count,
+                    )
+                    for surface in decoded:
+                        self.assertEqual(surface.get_size(), (208, 208))
+                        bounds = surface.get_bounding_rect(min_alpha=1)
+                        self.assertGreater(bounds.width, 0)
+                        self.assertGreater(bounds.height, 0)
+
+        attack_frames = [
+            library.resolve_actor(
+                "Gate Warden",
+                "attack",
+                "west",
+                99.0,
+                kind="brute",
+                clip_progress=progress,
+            )
+            for progress in (0.0, 0.5, 1.0)
+        ]
+        self.assertNotIn(None, attack_frames)
+        resolved = [frame for frame in attack_frames if frame is not None]
+        self.assertTrue(all(frame.is_asset for frame in resolved))
+        self.assertEqual(
+            [frame.key[1:] for frame in resolved],
+            [
+                ("gate_warden", "attack", "west", 0),
+                ("gate_warden", "attack", "west", 4),
+                ("gate_warden", "attack", "west", 7),
+            ],
+        )
+
     def test_spirit_beast_assets_are_complete_and_state_addressable(self) -> None:
         library = AssetSpriteLibrary()
         entry = library.manifest["actors"]["spirit_beast"]

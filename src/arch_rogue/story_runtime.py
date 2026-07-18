@@ -191,13 +191,75 @@ class StoryRuntimeMixin:
             guest_beat_index=active_guest.beat_index if active_guest else -1,
             context=self.quest_cutscene_context(active_guest),
         )
-        # Reset the gamepad choice highlight when a new cutscene begins.
+        # Reset transient navigation when a new cutscene begins.
         self.cutscene_cursor = 0
+        self.reset_active_cutscene_narration_scroll()
         return True
 
     def close_active_cutscene(self) -> None:
         self.active_cutscene = None
         self.cutscene_cursor = 0
+        self.reset_active_cutscene_narration_scroll()
+
+    def reset_active_cutscene_narration_scroll(self) -> None:
+        self.cutscene_narration_scroll = 0
+        self.cutscene_narration_follow_tail = True
+        self.cutscene_scroll_axis_direction = 0
+        self.cutscene_scroll_axis_repeat = 0.0
+
+    def scroll_active_cutscene_narration(self, delta: int) -> bool:
+        """Scroll completed narration without affecting dialogue choices."""
+        if self.active_cutscene is None or not self.active_cutscene_narration_complete():
+            return False
+        scroll_max = max(
+            0,
+            int(getattr(self, "_cutscene_narration_scroll_max", 0)),
+        )
+        if scroll_max <= 0:
+            self.cutscene_narration_scroll = 0
+            self.cutscene_narration_follow_tail = True
+            return False
+        current = (
+            scroll_max
+            if getattr(self, "cutscene_narration_follow_tail", True)
+            else max(
+                0,
+                min(int(getattr(self, "cutscene_narration_scroll", 0)), scroll_max),
+            )
+        )
+        target = max(0, min(current + int(delta), scroll_max))
+        self.cutscene_narration_scroll = target
+        self.cutscene_narration_follow_tail = False
+        return target != current
+
+    def update_active_cutscene_scroll_input(self, dt: float) -> None:
+        """Edge/repeat scrolling for the otherwise-unused cutscene right stick."""
+        scroll_max = int(getattr(self, "_cutscene_narration_scroll_max", 0))
+        if (
+            self.active_cutscene is None
+            or not self.active_cutscene_narration_complete()
+            or scroll_max <= 0
+        ):
+            self.cutscene_scroll_axis_direction = 0
+            self.cutscene_scroll_axis_repeat = 0.0
+            return
+        _x, y = self.input.right_vec()
+        direction = 1 if y > 0.55 else -1 if y < -0.55 else 0
+        previous = int(getattr(self, "cutscene_scroll_axis_direction", 0))
+        if direction == 0:
+            self.cutscene_scroll_axis_direction = 0
+            self.cutscene_scroll_axis_repeat = 0.0
+            return
+        if direction != previous:
+            self.scroll_active_cutscene_narration(direction * 2)
+            self.cutscene_scroll_axis_direction = direction
+            self.cutscene_scroll_axis_repeat = 0.32
+            return
+        repeat = max(0.0, float(self.cutscene_scroll_axis_repeat) - max(0.0, dt))
+        if repeat <= 0.0:
+            self.scroll_active_cutscene_narration(direction)
+            repeat = 0.10
+        self.cutscene_scroll_axis_repeat = repeat
 
     def active_cutscene_asset(self) -> Any:
         if self.active_cutscene is None:
@@ -264,21 +326,28 @@ class StoryRuntimeMixin:
                 return index
         return len(narration)
 
-    def active_cutscene_visible_text(self) -> str:
-        narration = self.active_cutscene_text()
-        return narration[: self.active_cutscene_narration_char_count(narration)]
+    def active_cutscene_narration_snapshot(self) -> tuple[str, str, bool, float]:
+        """Return narration text, visible slice, completion, and progress.
 
-    def active_cutscene_narration_complete(self) -> bool:
-        narration = self.active_cutscene_text()
-        return self.active_cutscene_narration_char_count(narration) >= len(narration)
-
-    def active_cutscene_narration_progress(self) -> float:
+        Rendering consumes all four values together; calculating them here keeps
+        the typewriter delay scan to once per frame instead of three times.
+        """
         narration = self.active_cutscene_text()
         if not narration:
-            return 1.0
-        return min(
-            1.0, self.active_cutscene_narration_char_count(narration) / len(narration)
-        )
+            return "", "", True, 1.0
+        char_count = self.active_cutscene_narration_char_count(narration)
+        complete = char_count >= len(narration)
+        progress = min(1.0, char_count / len(narration))
+        return narration, narration[:char_count], complete, progress
+
+    def active_cutscene_visible_text(self) -> str:
+        return self.active_cutscene_narration_snapshot()[1]
+
+    def active_cutscene_narration_complete(self) -> bool:
+        return self.active_cutscene_narration_snapshot()[2]
+
+    def active_cutscene_narration_progress(self) -> float:
+        return self.active_cutscene_narration_snapshot()[3]
 
     def active_cutscene_current_sentence_text(self) -> str:
         narration = self.active_cutscene_text()
@@ -304,6 +373,7 @@ class StoryRuntimeMixin:
     def reveal_active_cutscene_narration(self) -> None:
         if self.active_cutscene is None:
             return
+        self.cutscene_narration_follow_tail = True
         self.active_cutscene.node_elapsed = max(
             self.active_cutscene.node_elapsed,
             self.active_cutscene_narration_duration() + 0.05,
@@ -380,6 +450,7 @@ class StoryRuntimeMixin:
         self.active_cutscene.context = self.quest_cutscene_context(
             self.active_cutscene_guest()
         )
+        self.reset_active_cutscene_narration_scroll()
         return True
 
     def advance_active_cutscene(self) -> bool:

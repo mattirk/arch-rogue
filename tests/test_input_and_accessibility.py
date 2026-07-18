@@ -358,6 +358,39 @@ class CommandDispatchTests(unittest.TestCase):
 
 
 
+    def test_completed_cutscene_narration_scroll_input(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            self.assertTrue(game.start_quest_cutscene("story_guest_omen"))
+            game.reveal_active_cutscene_narration()
+            game.draw()
+            self.assertGreater(game._cutscene_narration_scroll_max, 0)
+            bottom = game.cutscene_narration_scroll
+
+            pygame.event.clear()
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_PAGEUP, mod=0))
+            game.handle_events()
+            self.assertLess(game.cutscene_narration_scroll, bottom)
+
+            game.cutscene_narration_scroll = bottom
+            game.cutscene_narration_follow_tail = False
+            pygame.event.post(pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=1))
+            game.handle_events()
+            self.assertEqual(game.cutscene_narration_scroll, bottom - 2)
+
+            game.cutscene_narration_scroll = bottom
+            game.cutscene_narration_follow_tail = False
+            game.input._right_vec = (0.0, -1.0)
+            game.update_active_cutscene_scroll_input(0.016)
+            self.assertEqual(game.cutscene_narration_scroll, bottom - 2)
+
+            assert game.active_cutscene is not None
+            game.active_cutscene.node_elapsed = 0.0
+            game.cutscene_narration_scroll = 0
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_PAGEDOWN, mod=0))
+            game.handle_events()
+            self.assertEqual(game.cutscene_narration_scroll, 0)
+
     def test_cutscene_cursor_and_confirm_select_story_option(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_game(tmpdir)

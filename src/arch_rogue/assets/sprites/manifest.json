@@ -6,6 +6,22 @@
       ],
       "category": "player",
       "clips": {
+        "act": {
+          "directions": {
+            "south": [
+              "actors/acolyte/animations/act/south/frame_000.png",
+              "actors/acolyte/animations/act/south/frame_001.png",
+              "actors/acolyte/animations/act/south/frame_002.png",
+              "actors/acolyte/animations/act/south/frame_003.png",
+              "actors/acolyte/animations/act/south/frame_004.png",
+              "actors/acolyte/animations/act/south/frame_005.png",
+              "actors/acolyte/animations/act/south/frame_006.png",
+              "actors/acolyte/animations/act/south/frame_007.png"
+            ]
+          },
+          "fps": 4.0,
+          "loop": true
+        },
         "idle": {
           "directions": {
             "east": [
@@ -159,6 +175,22 @@
       ],
       "category": "player",
       "clips": {
+        "act": {
+          "directions": {
+            "south": [
+              "actors/arcanist/animations/act/south/frame_000.png",
+              "actors/arcanist/animations/act/south/frame_001.png",
+              "actors/arcanist/animations/act/south/frame_002.png",
+              "actors/arcanist/animations/act/south/frame_003.png",
+              "actors/arcanist/animations/act/south/frame_004.png",
+              "actors/arcanist/animations/act/south/frame_005.png",
+              "actors/arcanist/animations/act/south/frame_006.png",
+              "actors/arcanist/animations/act/south/frame_007.png"
+            ]
+          },
+          "fps": 4.0,
+          "loop": true
+        },
         "idle": {
           "directions": {
             "east": [
@@ -1972,6 +2004,92 @@
       ],
       "category": "enemy",
       "clips": {
+        "attack": {
+          "directions": {
+            "east": [
+              "actors/gate_warden/animations/attack/east/frame_000.png",
+              "actors/gate_warden/animations/attack/east/frame_001.png",
+              "actors/gate_warden/animations/attack/east/frame_002.png",
+              "actors/gate_warden/animations/attack/east/frame_003.png",
+              "actors/gate_warden/animations/attack/east/frame_004.png",
+              "actors/gate_warden/animations/attack/east/frame_005.png",
+              "actors/gate_warden/animations/attack/east/frame_006.png",
+              "actors/gate_warden/animations/attack/east/frame_007.png"
+            ],
+            "north": [
+              "actors/gate_warden/animations/attack/north/frame_000.png",
+              "actors/gate_warden/animations/attack/north/frame_001.png",
+              "actors/gate_warden/animations/attack/north/frame_002.png",
+              "actors/gate_warden/animations/attack/north/frame_003.png",
+              "actors/gate_warden/animations/attack/north/frame_004.png",
+              "actors/gate_warden/animations/attack/north/frame_005.png",
+              "actors/gate_warden/animations/attack/north/frame_006.png",
+              "actors/gate_warden/animations/attack/north/frame_007.png"
+            ],
+            "north-east": [
+              "actors/gate_warden/animations/attack/north-east/frame_000.png",
+              "actors/gate_warden/animations/attack/north-east/frame_001.png",
+              "actors/gate_warden/animations/attack/north-east/frame_002.png",
+              "actors/gate_warden/animations/attack/north-east/frame_003.png",
+              "actors/gate_warden/animations/attack/north-east/frame_004.png",
+              "actors/gate_warden/animations/attack/north-east/frame_005.png",
+              "actors/gate_warden/animations/attack/north-east/frame_006.png",
+              "actors/gate_warden/animations/attack/north-east/frame_007.png"
+            ],
+            "north-west": [
+              "actors/gate_warden/animations/attack/north-west/frame_000.png",
+              "actors/gate_warden/animations/attack/north-west/frame_001.png",
+              "actors/gate_warden/animations/attack/north-west/frame_002.png",
+              "actors/gate_warden/animations/attack/north-west/frame_003.png",
+              "actors/gate_warden/animations/attack/north-west/frame_004.png",
+              "actors/gate_warden/animations/attack/north-west/frame_005.png",
+              "actors/gate_warden/animations/attack/north-west/frame_006.png",
+              "actors/gate_warden/animations/attack/north-west/frame_007.png"
+            ],
+            "south": [
+              "actors/gate_warden/animations/attack/south/frame_000.png",
+              "actors/gate_warden/animations/attack/south/frame_001.png",
+              "actors/gate_warden/animations/attack/south/frame_002.png",
+              "actors/gate_warden/animations/attack/south/frame_003.png",
+              "actors/gate_warden/animations/attack/south/frame_004.png",
+              "actors/gate_warden/animations/attack/south/frame_005.png",
+              "actors/gate_warden/animations/attack/south/frame_006.png",
+              "actors/gate_warden/animations/attack/south/frame_007.png"
+            ],
+            "south-east": [
+              "actors/gate_warden/animations/attack/south-east/frame_000.png",
+              "actors/gate_warden/animations/attack/south-east/frame_001.png",
+              "actors/gate_warden/animations/attack/south-east/frame_002.png",
+              "actors/gate_warden/animations/attack/south-east/frame_003.png",
+              "actors/gate_warden/animations/attack/south-east/frame_004.png",
+              "actors/gate_warden/animations/attack/south-east/frame_005.png",
+              "actors/gate_warden/animations/attack/south-east/frame_006.png",
+              "actors/gate_warden/animations/attack/south-east/frame_007.png"
+            ],
+            "south-west": [
+              "actors/gate_warden/animations/attack/south-west/frame_000.png",
+              "actors/gate_warden/animations/attack/south-west/frame_001.png",
+              "actors/gate_warden/animations/attack/south-west/frame_002.png",
+              "actors/gate_warden/animations/attack/south-west/frame_003.png",
+              "actors/gate_warden/animations/attack/south-west/frame_004.png",
+              "actors/gate_warden/animations/attack/south-west/frame_005.png",
+              "actors/gate_warden/animations/attack/south-west/frame_006.png",
+              "actors/gate_warden/animations/attack/south-west/frame_007.png"
+            ],
+            "west": [
+              "actors/gate_warden/animations/attack/west/frame_000.png",
+              "actors/gate_warden/animations/attack/west/frame_001.png",
+              "actors/gate_warden/animations/attack/west/frame_002.png",
+              "actors/gate_warden/animations/attack/west/frame_003.png",
+              "actors/gate_warden/animations/attack/west/frame_004.png",
+              "actors/gate_warden/animations/attack/west/frame_005.png",
+              "actors/gate_warden/animations/attack/west/frame_006.png",
+              "actors/gate_warden/animations/attack/west/frame_007.png"
+            ]
+          },
+          "fps": 12.0,
+          "loop": false
+        },
         "idle": {
           "directions": {
             "east": [
@@ -2890,6 +3008,22 @@
       ],
       "category": "player",
       "clips": {
+        "act": {
+          "directions": {
+            "south": [
+              "actors/ranger/animations/act/south/frame_000.png",
+              "actors/ranger/animations/act/south/frame_001.png",
+              "actors/ranger/animations/act/south/frame_002.png",
+              "actors/ranger/animations/act/south/frame_003.png",
+              "actors/ranger/animations/act/south/frame_004.png",
+              "actors/ranger/animations/act/south/frame_005.png",
+              "actors/ranger/animations/act/south/frame_006.png",
+              "actors/ranger/animations/act/south/frame_007.png"
+            ]
+          },
+          "fps": 4.0,
+          "loop": true
+        },
         "attack": {
           "directions": {
             "east": [
@@ -3423,6 +3557,22 @@
       ],
       "category": "player",
       "clips": {
+        "act": {
+          "directions": {
+            "south": [
+              "actors/rogue/animations/act/south/frame_000.png",
+              "actors/rogue/animations/act/south/frame_001.png",
+              "actors/rogue/animations/act/south/frame_002.png",
+              "actors/rogue/animations/act/south/frame_003.png",
+              "actors/rogue/animations/act/south/frame_004.png",
+              "actors/rogue/animations/act/south/frame_005.png",
+              "actors/rogue/animations/act/south/frame_006.png",
+              "actors/rogue/animations/act/south/frame_007.png"
+            ]
+          },
+          "fps": 4.0,
+          "loop": true
+        },
         "idle": {
           "directions": {
             "east": [
@@ -4732,6 +4882,22 @@
       ],
       "category": "player",
       "clips": {
+        "act": {
+          "directions": {
+            "south": [
+              "actors/warden/animations/act/south/frame_000.png",
+              "actors/warden/animations/act/south/frame_001.png",
+              "actors/warden/animations/act/south/frame_002.png",
+              "actors/warden/animations/act/south/frame_003.png",
+              "actors/warden/animations/act/south/frame_004.png",
+              "actors/warden/animations/act/south/frame_005.png",
+              "actors/warden/animations/act/south/frame_006.png",
+              "actors/warden/animations/act/south/frame_007.png"
+            ]
+          },
+          "fps": 4.0,
+          "loop": true
+        },
         "attack": {
           "directions": {
             "east": [
@@ -5681,6 +5847,86 @@
         128
       ],
       "target_height": 108
+    },
+    "stage_altar": {
+      "aliases": [
+        "stage_altar"
+      ],
+      "path": "props/stage_altar.png",
+      "reference_height": 55,
+      "source_anchor": [
+        84.0,
+        127.0
+      ],
+      "source_canvas": [
+        168,
+        168
+      ],
+      "target_height": 55
+    },
+    "stage_banner": {
+      "aliases": [
+        "stage_banner"
+      ],
+      "path": "props/stage_banner.png",
+      "reference_height": 387,
+      "source_anchor": [
+        94.0,
+        1.0
+      ],
+      "source_canvas": [
+        188,
+        400
+      ],
+      "target_height": 387
+    },
+    "stage_candelabra": {
+      "aliases": [
+        "stage_candelabra"
+      ],
+      "path": "props/stage_candelabra.png",
+      "reference_height": 338,
+      "source_anchor": [
+        94.0,
+        351.0
+      ],
+      "source_canvas": [
+        188,
+        360
+      ],
+      "target_height": 338
+    },
+    "stage_lectern": {
+      "aliases": [
+        "stage_lectern"
+      ],
+      "path": "props/stage_lectern.png",
+      "reference_height": 239,
+      "source_anchor": [
+        105.0,
+        282.0
+      ],
+      "source_canvas": [
+        208,
+        300
+      ],
+      "target_height": 239
+    },
+    "stage_pillar": {
+      "aliases": [
+        "stage_pillar"
+      ],
+      "path": "props/stage_pillar.png",
+      "reference_height": 381,
+      "source_anchor": [
+        74.0,
+        395.0
+      ],
+      "source_canvas": [
+        152,
+        400
+      ],
+      "target_height": 381
     },
     "trap_poison": {
       "aliases": [

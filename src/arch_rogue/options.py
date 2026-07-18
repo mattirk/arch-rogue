@@ -250,6 +250,8 @@ class OptionsMixin:
         ui_assets = getattr(self, "ui_assets", None)
         if ui_assets is not None and hasattr(ui_assets, "clear_derived_caches"):
             ui_assets.clear_derived_caches()
+        if hasattr(self, "clear_stage_render_cache"):
+            self.clear_stage_render_cache()
         self._hud_panel_cache = {}
         self._hud_icon_cache = {}
         self._aim_cone_cache = {}

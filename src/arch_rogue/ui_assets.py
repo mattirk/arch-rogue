@@ -54,7 +54,15 @@ class UiAssetLibrary:
         self.render_build_count = 0
         self._source_cache: OrderedDict[str, pygame.Surface | None] = OrderedDict()
         self._render_cache: OrderedDict[
-            tuple[str, str, str, tuple[int, int, int, int] | None, int, int],
+            tuple[
+                str,
+                str,
+                str,
+                tuple[int, int, int, int] | None,
+                bool,
+                int,
+                int,
+            ],
             pygame.Surface,
         ] = OrderedDict()
 
@@ -125,6 +133,15 @@ class UiAssetLibrary:
                 self._validated_insets(entry["insets"], key)
             if "content_insets" in entry:
                 self._validated_insets(entry["content_insets"], key)
+            scale_insets = entry.get("scale_insets_with_height", False)
+            if type(scale_insets) is not bool:
+                raise ValueError(
+                    f"UI asset {key!r} has an invalid scale-insets flag"
+                )
+            if scale_insets and render_mode != "nine_slice":
+                raise ValueError(
+                    f"UI asset {key!r} can scale insets only in nine-slice mode"
+                )
 
     @staticmethod
     def _validated_path(value: object, key: str = "") -> PurePosixPath:
@@ -303,18 +320,39 @@ class UiAssetLibrary:
         cls,
         source: pygame.Surface,
         size: tuple[int, int],
-        insets: tuple[int, int, int, int],
+        source_insets: tuple[int, int, int, int],
+        target_insets: tuple[int, int, int, int] | None = None,
     ) -> pygame.Surface | None:
         source_width, source_height = source.get_size()
         target_width, target_height = size
-        left, top, right, bottom = insets
-        if left + right > source_width or top + bottom > source_height:
+        source_left, source_top, source_right, source_bottom = source_insets
+        if (
+            source_left + source_right > source_width
+            or source_top + source_bottom > source_height
+        ):
             return None
 
-        target_left, target_right = cls._fit_borders(left, right, target_width)
-        target_top, target_bottom = cls._fit_borders(top, bottom, target_height)
-        source_x = (0, left, source_width - right, source_width)
-        source_y = (0, top, source_height - bottom, source_height)
+        target_left, target_top, target_right, target_bottom = (
+            target_insets if target_insets is not None else source_insets
+        )
+        target_left, target_right = cls._fit_borders(
+            target_left, target_right, target_width
+        )
+        target_top, target_bottom = cls._fit_borders(
+            target_top, target_bottom, target_height
+        )
+        source_x = (
+            0,
+            source_left,
+            source_width - source_right,
+            source_width,
+        )
+        source_y = (
+            0,
+            source_top,
+            source_height - source_bottom,
+            source_height,
+        )
         target_x = (0, target_left, target_width - target_right, target_width)
         target_y = (0, target_top, target_height - target_bottom, target_height)
 
@@ -367,27 +405,38 @@ class UiAssetLibrary:
 
         if render_mode == "nine_slice":
             try:
-                border_left, border_top, border_right, border_bottom = (
-                    self._validated_insets(entry.get("insets"), key)
-                )
+                source_borders = self._validated_insets(entry.get("insets"), key)
             except ValueError:
                 return None
+            inset_scale = (
+                target.height / max(1, source_height)
+                if entry.get("scale_insets_with_height", False)
+                else 1.0
+            )
+            desired_borders = tuple(
+                max(0, round(value * inset_scale)) for value in source_borders
+            )
             target_left, target_right = self._fit_borders(
-                border_left, border_right, target.width
+                desired_borders[0], desired_borders[2], target.width
             )
             target_top, target_bottom = self._fit_borders(
-                border_top, border_bottom, target.height
+                desired_borders[1], desired_borders[3], target.height
             )
 
-            def fitted_content(value: int, source_border: int, target_border: int) -> int:
-                if source_border <= 0 or target_border >= source_border:
-                    return value
-                return round(value * target_border / source_border)
+            def fitted_content(
+                value: int,
+                desired_border: int,
+                target_border: int,
+            ) -> int:
+                desired_value = max(0, round(value * inset_scale))
+                if desired_border <= 0 or target_border >= desired_border:
+                    return desired_value
+                return round(desired_value * target_border / desired_border)
 
-            left = fitted_content(left, border_left, target_left)
-            right = fitted_content(right, border_right, target_right)
-            top = fitted_content(top, border_top, target_top)
-            bottom = fitted_content(bottom, border_bottom, target_bottom)
+            left = fitted_content(left, desired_borders[0], target_left)
+            right = fitted_content(right, desired_borders[2], target_right)
+            top = fitted_content(top, desired_borders[1], target_top)
+            bottom = fitted_content(bottom, desired_borders[3], target_bottom)
         else:
             left = round(left * target.width / max(1, source_width))
             right = round(right * target.width / max(1, source_width))
@@ -414,6 +463,7 @@ class UiAssetLibrary:
         render_mode = entry.get("render")
         if not isinstance(render_mode, str) or render_mode not in self.RENDER_MODES:
             return None
+        scale_insets = entry.get("scale_insets_with_height", False) is True
         try:
             path = self._validated_path(entry.get("path"), key)
             insets = (
@@ -429,6 +479,7 @@ class UiAssetLibrary:
             path.as_posix(),
             render_mode,
             insets,
+            scale_insets,
             target_size[0],
             target_size[1],
         )
@@ -449,7 +500,23 @@ class UiAssetLibrary:
                 rendered = pygame.transform.scale(source, target_size)
             else:
                 assert insets is not None
-                rendered = self._nine_slice(source, target_size, insets)
+                inset_scale = target_size[1] / source.get_height()
+                target_insets = (
+                    (
+                        max(0, round(insets[0] * inset_scale)),
+                        max(0, round(insets[1] * inset_scale)),
+                        max(0, round(insets[2] * inset_scale)),
+                        max(0, round(insets[3] * inset_scale)),
+                    )
+                    if scale_insets
+                    else None
+                )
+                rendered = self._nine_slice(
+                    source,
+                    target_size,
+                    insets,
+                    target_insets,
+                )
                 if rendered is None:
                     return None
             rendered = self._best_effort_convert_alpha(rendered)

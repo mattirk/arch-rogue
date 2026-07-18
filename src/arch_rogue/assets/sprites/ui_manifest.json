@@ -13,6 +13,38 @@
       "path": "menus/background_cutscene.png",
       "render": "cover"
     },
+    "cutscene.choice.panel": {
+      "path": "menus/story_choice_panel.png",
+      "render": "nine_slice",
+      "insets": [77, 6, 8, 6],
+      "content_insets": [80, 6, 10, 6],
+      "scale_insets_with_height": true
+    },
+    "cutscene.choice.icon.aid": {
+      "path": "menus/story_choice_aid.png",
+      "render": "scale"
+    },
+    "cutscene.choice.icon.bargain": {
+      "path": "menus/story_choice_bargain.png",
+      "render": "scale"
+    },
+    "cutscene.choice.icon.defy": {
+      "path": "menus/story_choice_defy.png",
+      "render": "scale"
+    },
+    "stage.backdrop.omen": {
+      "path": "menus/stage_backdrop_omen.png",
+      "render": "cover"
+    },
+    "stage.backdrop.dialogue": {
+      "path": "menus/stage_backdrop_dialogue.png",
+      "render": "cover"
+    },
+    "stage.curtain.open": {
+      "path": "menus/stage_curtain_open.png",
+      "render": "scale"
+    },
+
     "menu.panel": {
       "path": "menus/panel.png",
       "render": "nine_slice",

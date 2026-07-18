@@ -51,6 +51,9 @@ DIRECTIONS = (
     "south-west",
 )
 _ACTION_STATES = frozenset(("attack", "cast", "hit", "dash", "pet"))
+_SUPPORTED_ACTOR_STATES = frozenset(
+    ("idle", "walk", "run", "dance", "attack", "cast", "pet", "act")
+)
 GOLD_STACK_ASSET_KEYS = (
     "gold_stack",
     "gold_stack_02",
@@ -58,6 +61,14 @@ GOLD_STACK_ASSET_KEYS = (
     "gold_stack_04",
     "gold_stack_05",
 )
+# 4.2.x theater redesign: cutscene stage prop kinds -> authored prop sprites.
+STAGE_PROP_ASSET_KEYS = {
+    "pillar": "stage_pillar",
+    "altar": "stage_altar",
+    "lectern": "stage_lectern",
+    "candelabra": "stage_candelabra",
+    "banner": "stage_banner",
+}
 # Special wall faces are named for their screen side, while PixelLab rotations
 # use the same screen-space compass directions as actor sprites. The +y
 # (left) face points south-west; the +x (right) face points south-east.
@@ -442,11 +453,7 @@ class AssetSpriteLibrary:
         if direction not in DIRECTIONS:
             direction = "south"
 
-        requested_state = (
-            state
-            if state in ("idle", "walk", "run", "dance", "attack", "cast", "pet")
-            else ""
-        )
+        requested_state = state if state in _SUPPORTED_ACTOR_STATES else ""
         if state == "dash":
             requested_state = "run"
         clips = entry.get("clips", {})
@@ -1384,6 +1391,27 @@ class SpriteAtlas:
 
     def ambush_bell_visual(self) -> ResolvedSpriteFrame | None:
         return self._asset_prop("ambush_bell")
+
+    def stage_prop_visual(
+        self, kind: str, scale: float = 1.0
+    ) -> ResolvedSpriteFrame | None:
+        """4.2.x theater redesign: authored sprite for a cutscene stage prop.
+
+        Returns ``None`` for unknown kinds, in legacy graphics mode, or when
+        the asset is missing so the stage renderer can fall back to its
+        procedural prop painters. Scaled variants (anchor included) are cached
+        through the shared prop-variant cache, so per-frame stage draws blit
+        prebuilt surfaces.
+        """
+        key = STAGE_PROP_ASSET_KEYS.get(kind)
+        if key is None:
+            return None
+        asset = self._asset_prop(key)
+        if asset is None:
+            return None
+        if abs(scale - 1.0) <= 0.001:
+            return asset
+        return self._prop_variant(asset, f"stage-{kind}", scale=scale)
 
     def bar_wall_sconce_visual(
         self, side: str

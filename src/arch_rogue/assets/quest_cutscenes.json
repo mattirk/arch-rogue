@@ -10,8 +10,8 @@
           "id": "player",
           "name": "{player_class}",
           "sprite": "player",
-          "x": 0.18,
-          "y": 0.68,
+          "x": 0.24,
+          "y": 0.74,
           "scale": 1.08,
           "color": "player"
         },
@@ -20,7 +20,7 @@
           "name": "{relic_name}",
           "sprite": "relic",
           "x": 0.5,
-          "y": 0.38,
+          "y": 0.46,
           "scale": 1.0,
           "color": "accent"
         },
@@ -28,8 +28,8 @@
           "id": "guest",
           "name": "{guest_name}",
           "sprite": "story_guest",
-          "x": 0.8,
-          "y": 0.62,
+          "x": 0.82,
+          "y": 0.7,
           "scale": 1.12,
           "color": "accent"
         },
@@ -37,8 +37,8 @@
           "id": "antagonist",
           "name": "{antagonist}",
           "sprite": "enemy",
-          "x": 0.58,
-          "y": 0.66,
+          "x": 0.76,
+          "y": 0.74,
           "scale": 0.94,
           "color": "danger"
         }
@@ -96,7 +96,7 @@
             {
               "actor": "guest",
               "duration": 0.24,
-              "dx": -0.018,
+              "dx": -0.006,
               "dy": -0.02,
               "scale": 1.02,
               "alpha": 0.94,
@@ -105,7 +105,7 @@
             {
               "actor": "guest",
               "duration": 0.3,
-              "dx": -0.05,
+              "dx": -0.012,
               "dy": -0.042,
               "scale": 1.08,
               "alpha": 1.0,
@@ -114,7 +114,7 @@
             {
               "actor": "guest",
               "duration": 0.22,
-              "dx": -0.026,
+              "dx": -0.008,
               "dy": -0.014,
               "scale": 1.04,
               "alpha": 0.96,
@@ -227,18 +227,50 @@
         },
         "props": [
           {
-            "id": "left_pillar",
+            "id": "pillar_left_far",
             "kind": "pillar",
-            "x": 0.06,
-            "y": 0.42,
+            "x": 0.3,
+            "y": 0.7,
             "scale": 1.0,
             "color": "stone"
           },
           {
-            "id": "right_pillar",
+            "id": "pillar_right_far",
             "kind": "pillar",
-            "x": 0.94,
-            "y": 0.42,
+            "x": 0.7,
+            "y": 0.7,
+            "scale": 1.0,
+            "color": "stone"
+          },
+          {
+            "id": "pillar_left_mid",
+            "kind": "pillar",
+            "x": 0.18,
+            "y": 0.82,
+            "scale": 1.0,
+            "color": "stone"
+          },
+          {
+            "id": "pillar_right_mid",
+            "kind": "pillar",
+            "x": 0.82,
+            "y": 0.82,
+            "scale": 1.0,
+            "color": "stone"
+          },
+          {
+            "id": "pillar_left_front",
+            "kind": "pillar",
+            "x": 0.12,
+            "y": 0.95,
+            "scale": 1.0,
+            "color": "stone"
+          },
+          {
+            "id": "pillar_right_front",
+            "kind": "pillar",
+            "x": 0.88,
+            "y": 0.95,
             "scale": 1.0,
             "color": "stone"
           },
@@ -246,16 +278,16 @@
             "id": "altar",
             "kind": "altar",
             "x": 0.5,
-            "y": 0.78,
-            "scale": 1.0,
+            "y": 0.8,
+            "scale": 0.95,
             "color": "stone"
           },
           {
             "id": "candelabra_left",
             "kind": "candelabra",
-            "x": 0.14,
-            "y": 0.74,
-            "scale": 0.9,
+            "x": 0.4,
+            "y": 0.68,
+            "scale": 0.72,
             "color": "gold",
             "phase": 0.0,
             "amplitude": 1.0
@@ -263,32 +295,12 @@
           {
             "id": "candelabra_right",
             "kind": "candelabra",
-            "x": 0.86,
-            "y": 0.74,
-            "scale": 0.9,
+            "x": 0.6,
+            "y": 0.68,
+            "scale": 0.72,
             "color": "gold",
             "phase": 1.7,
             "amplitude": 1.0
-          },
-          {
-            "id": "banner_left",
-            "kind": "banner",
-            "x": 0.1,
-            "y": 0.22,
-            "scale": 0.9,
-            "color": "accent",
-            "phase": 0.6,
-            "amplitude": 0.6
-          },
-          {
-            "id": "banner_right",
-            "kind": "banner",
-            "x": 0.9,
-            "y": 0.22,
-            "scale": 0.9,
-            "color": "accent",
-            "phase": 2.3,
-            "amplitude": 0.6
           }
         ],
         "lights": [
@@ -308,9 +320,9 @@
           {
             "id": "spot_player",
             "kind": "spot",
-            "source_x": 0.18,
+            "source_x": 0.24,
             "source_y": 0.0,
-            "target_x": 0.2,
+            "target_x": 0.26,
             "target_y": 0.66,
             "radius": 0.18,
             "intensity": 0.5,
@@ -323,7 +335,7 @@
             "kind": "spot",
             "source_x": 0.82,
             "source_y": 0.0,
-            "target_x": 0.8,
+            "target_x": 0.82,
             "target_y": 0.6,
             "radius": 0.18,
             "intensity": 0.55,
@@ -334,9 +346,9 @@
           {
             "id": "wash_antagonist",
             "kind": "wash",
-            "source_x": 0.58,
+            "source_x": 0.76,
             "source_y": 0.0,
-            "target_x": 0.58,
+            "target_x": 0.76,
             "target_y": 0.66,
             "radius": 0.24,
             "intensity": 0.32,
@@ -387,7 +399,7 @@
           "name": "{player_class}",
           "sprite": "player",
           "x": 0.2,
-          "y": 0.66,
+          "y": 0.74,
           "scale": 1.05,
           "color": "player"
         },
@@ -396,7 +408,7 @@
           "name": "{guest_name}",
           "sprite": "story_guest",
           "x": 0.76,
-          "y": 0.58,
+          "y": 0.66,
           "scale": 1.16,
           "color": "accent"
         },
@@ -405,7 +417,7 @@
           "name": "{relic_name}",
           "sprite": "relic",
           "x": 0.5,
-          "y": 0.36,
+          "y": 0.44,
           "scale": 0.9,
           "color": "accent"
         }
@@ -521,22 +533,7 @@
           "phase": 0.5
         },
         "props": [
-          {
-            "id": "left_pillar",
-            "kind": "pillar",
-            "x": 0.07,
-            "y": 0.44,
-            "scale": 0.95,
-            "color": "stone"
-          },
-          {
-            "id": "right_pillar",
-            "kind": "pillar",
-            "x": 0.93,
-            "y": 0.44,
-            "scale": 0.95,
-            "color": "stone"
-          },
+
           {
             "id": "lectern",
             "kind": "lectern",
@@ -548,9 +545,9 @@
           {
             "id": "candelabra_left",
             "kind": "candelabra",
-            "x": 0.16,
-            "y": 0.76,
-            "scale": 0.85,
+            "x": 0.32,
+            "y": 0.81,
+            "scale": 0.8,
             "color": "gold",
             "phase": 0.4,
             "amplitude": 1.0
@@ -558,9 +555,9 @@
           {
             "id": "candelabra_right",
             "kind": "candelabra",
-            "x": 0.84,
-            "y": 0.76,
-            "scale": 0.85,
+            "x": 0.68,
+            "y": 0.81,
+            "scale": 0.8,
             "color": "gold",
             "phase": 2.1,
             "amplitude": 1.0

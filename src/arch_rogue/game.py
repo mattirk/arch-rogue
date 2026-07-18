@@ -324,6 +324,13 @@ class Game(
         self.sprites = SpriteAtlas(legacy_graphics=self.legacy_graphics)
         self.quest_cutscenes = load_quest_cutscene_library()
         self.active_cutscene: ActiveQuestCutscene | None = None
+        # Completed cutscene narration can be reviewed line-by-line.
+        # The renderer publishes the current overflow range; right-stick repeat
+        # state stays transient and is never serialized.
+        self.cutscene_narration_scroll = 0
+        self.cutscene_narration_follow_tail = True
+        self.cutscene_scroll_axis_direction = 0
+        self.cutscene_scroll_axis_repeat = 0.0
         self.tile_cache: dict[
             tuple[
                 str,
@@ -504,8 +511,9 @@ class Game(
         self.garden_heal_accumulator = 0.0
         self.garden_heal_glow = 0.0
         self.garden_heal_glow_duration = 0.0
-        # 4.2.2: quest info scroll position resets with the story context.
+        # Story text scroll positions reset with the visual/story context.
         self.story_panel_scroll = 0
+        self.reset_active_cutscene_narration_scroll()
         # Milestone 3.16 - transient light pulses are visual effects too.
         self.lights = []
 
@@ -769,7 +777,20 @@ class Game(
                         elif event.key == pygame.K_RETURN:
                             self.restart(self.selected_archetype)
                 elif self.state == "playing" and self.active_cutscene is not None:
-                    if pygame.K_1 <= event.key <= pygame.K_9:
+                    if event.key in (pygame.K_PAGEUP, pygame.K_PAGEDOWN):
+                        page = max(
+                            1,
+                            getattr(
+                                self,
+                                "_cutscene_narration_visible_lines",
+                                3,
+                            )
+                            - 1,
+                        )
+                        self.scroll_active_cutscene_narration(
+                            -page if event.key == pygame.K_PAGEUP else page
+                        )
+                    elif pygame.K_1 <= event.key <= pygame.K_9:
                         self.choose_active_cutscene_option(event.key - pygame.K_1)
                     elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_e):
                         if not self.advance_active_cutscene():
@@ -957,6 +978,14 @@ class Game(
             elif (
                 event.type == pygame.MOUSEWHEEL
                 and self.state == "playing"
+                and self.active_cutscene is not None
+            ):
+                # Completed narration can be reviewed without disturbing the
+                # choice cursor. Ctrl+wheel zoom retains priority above.
+                self.scroll_active_cutscene_narration(-event.y * 2)
+            elif (
+                event.type == pygame.MOUSEWHEEL
+                and self.state == "playing"
                 and self.quest_info_visible
                 and not self.inventory_open
                 and not self.character_menu_open
@@ -1012,6 +1041,7 @@ class Game(
             dt, advance_actor_clocks=not menu_pauses_simulation
         )
         if self.active_cutscene is not None:
+            self.update_active_cutscene_scroll_input(dt)
             self.update_active_cutscene(dt)
             self.update_floaters(dt)
             return

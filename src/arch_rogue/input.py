@@ -1024,6 +1024,8 @@ class InputMixin:
         elif row == self.OPTIONS_ROW_UI_SCALE:
             self.ui_scale = max(1, min(4, self.ui_scale + (1 if forward else -1)))
             self.rebuild_fonts()
+            if hasattr(self, "clear_stage_render_cache"):
+                self.clear_stage_render_cache()
             self.save_options()
         elif row == self.OPTIONS_ROW_GRAPHICS:
             self.set_legacy_graphics(not self.legacy_graphics)

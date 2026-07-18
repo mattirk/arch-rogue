@@ -72,6 +72,13 @@ class UiAssetTests(unittest.TestCase):
             "menu.background.title",
             "menu.background",
             "cutscene.background",
+            "cutscene.choice.panel",
+            "cutscene.choice.icon.aid",
+            "cutscene.choice.icon.bargain",
+            "cutscene.choice.icon.defy",
+            "stage.backdrop.omen",
+            "stage.backdrop.dialogue",
+            "stage.curtain.open",
             "menu.panel",
             "menu.panel.compact",
             "menu.panel.inset",
@@ -88,6 +95,13 @@ class UiAssetTests(unittest.TestCase):
             "menu.background.title": (960, 540),
             "menu.background": (640, 480),
             "cutscene.background": (960, 540),
+            "cutscene.choice.panel": (640, 52),
+            "cutscene.choice.icon.aid": (48, 48),
+            "cutscene.choice.icon.bargain": (48, 48),
+            "cutscene.choice.icon.defy": (48, 48),
+            "stage.backdrop.omen": (688, 384),
+            "stage.backdrop.dialogue": (591, 293),
+            "stage.curtain.open": (688, 192),
             "menu.panel": (720, 360),
             "menu.panel.compact": (480, 360),
             "menu.panel.inset": (320, 160),
@@ -154,6 +168,121 @@ class UiAssetTests(unittest.TestCase):
         )
         self.assertIn('"assets/sprites/menus/*.png"', pyproject)
         self.assertIn('"assets/sprites/hud/*.png"', pyproject)
+
+    def test_cutscene_background_is_full_bleed_and_fully_opaque(self) -> None:
+        library = UiAssetLibrary()
+        source = library.source("cutscene.background")
+        self.assertIsNotNone(source)
+        assert source is not None
+        self.assertEqual(source.get_size(), (688, 384))
+
+        for label, surface in (
+            ("source", source),
+            ("widescreen", library.render("cutscene.background", (960, 540))),
+            ("compact", library.render("cutscene.background", (640, 480))),
+        ):
+            with self.subTest(label=label):
+                self.assertIsNotNone(surface)
+                assert surface is not None
+                rgba = pygame.image.tobytes(surface, "RGBA")
+                alpha = rgba[3::4]
+                self.assertTrue(alpha)
+                self.assertEqual(min(alpha), 255)
+                self.assertEqual(max(alpha), 255)
+
+    def test_story_choice_plate_and_semantic_icons_are_complete(self) -> None:
+        library = UiAssetLibrary()
+        panel = library.source("cutscene.choice.panel")
+        self.assertIsNotNone(panel)
+        assert panel is not None
+        self.assertEqual(panel.get_size(), (640, 44))
+        self.assertEqual(panel.get_bounding_rect(min_alpha=1), panel.get_rect())
+        rendered_panel = library.render("cutscene.choice.panel", (640, 52))
+        self.assertIsNotNone(rendered_panel)
+        assert rendered_panel is not None
+        self.assertEqual(rendered_panel.get_size(), (640, 52))
+        self.assertTrue(
+            library.manifest["assets"]["cutscene.choice.panel"][
+                "scale_insets_with_height"
+            ]
+        )
+        self.assertEqual(
+            library.content_rect(
+                "cutscene.choice.panel",
+                pygame.Rect(0, 0, 640, 44),
+            ),
+            pygame.Rect(80, 6, 550, 32),
+        )
+        doubled_panel = library.render("cutscene.choice.panel", (1280, 88))
+        self.assertIsNotNone(doubled_panel)
+        assert doubled_panel is not None
+        self.assertEqual(doubled_panel.get_size(), (1280, 88))
+        expected_left_cap = pygame.transform.scale(
+            panel.subsurface((0, 0, 77, 44)),
+            (154, 88),
+        )
+        self.assertEqual(
+            pygame.image.tobytes(
+                doubled_panel.subsurface((0, 0, 154, 88)),
+                "RGBA",
+            ),
+            pygame.image.tobytes(expected_left_cap, "RGBA"),
+        )
+        self.assertEqual(
+            library.content_rect(
+                "cutscene.choice.panel",
+                pygame.Rect(0, 0, 1280, 88),
+            ),
+            pygame.Rect(160, 12, 1100, 64),
+        )
+
+        icon_bytes = set()
+        alpha_masks = set()
+        outer_frames = set()
+        for choice_key in ("aid", "bargain", "defy"):
+            with self.subTest(choice_key=choice_key):
+                key = f"cutscene.choice.icon.{choice_key}"
+                icon = library.source(key)
+                self.assertIsNotNone(icon)
+                assert icon is not None
+                self.assertEqual(icon.get_size(), (32, 32))
+                bounds = icon.get_bounding_rect(min_alpha=1)
+                self.assertEqual(bounds, pygame.Rect(3, 3, 26, 26))
+                self.assertTrue(
+                    any(
+                        icon.get_at((x, y)).a == 0
+                        for y in range(icon.get_height())
+                        for x in range(icon.get_width())
+                    )
+                )
+                rendered = library.render(key, (40, 40))
+                self.assertIsNotNone(rendered)
+                assert rendered is not None
+                self.assertEqual(rendered.get_size(), (40, 40))
+                doubled_icon = library.render(key, (64, 64))
+                self.assertIsNotNone(doubled_icon)
+                assert doubled_icon is not None
+                self.assertEqual(
+                    doubled_icon.get_bounding_rect(min_alpha=1),
+                    pygame.Rect(6, 6, 52, 52),
+                )
+                icon_bytes.add(pygame.image.tobytes(icon, "RGBA"))
+                alpha_masks.add(
+                    bytes(
+                        icon.get_at((x, y)).a
+                        for y in range(icon.get_height())
+                        for x in range(icon.get_width())
+                    )
+                )
+                outer_frame = bytearray()
+                for y in range(icon.get_height()):
+                    for x in range(icon.get_width()):
+                        if (2 * x - 31) ** 2 + (2 * y - 31) ** 2 > 19**2:
+                            outer_frame.extend(icon.get_at((x, y)))
+                outer_frames.add(bytes(outer_frame))
+        self.assertEqual(len(icon_bytes), 3)
+        self.assertEqual(len(alpha_masks), 1)
+        self.assertEqual(len(outer_frames), 1)
 
     def test_invalid_manifest_and_missing_resource_are_contained(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
