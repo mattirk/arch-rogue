@@ -1,5 +1,27 @@
 # Changelog
 
+## 4.3.1 — Android Launch and ABI Hardening
+
+Release 4.3.1 fixes the Android beta APK startup failure caused by a desktop x86_64 pygame-ce wheel being packaged into both ARM Python bundles, and makes the SDL2 bootstrap entry point reproducible from checked-in source.
+
+### Added
+
+- `src/main.py`, the root entry point required by python-for-android's SDL2 bootstrap, delegates to the stable `arch_rogue.game:main` entry point.
+- A checked-in local p4a `pygame` recipe cross-compiles pygame-ce 2.5.7 separately for every target ABI and enables `pygame.system` for SDL private-storage paths.
+- `tools/validate_android_apk.py` preflights the source/spec and audits generated APKs, nested `libpybundle.so` archives, required packages, and every ELF machine type. It rejects host-native source files, missing launchers, stale manylinux `pygame_ce.libs` payloads, and ABI mismatches such as `EM_X86_64` in `arm64-v8a`.
+- Focused Android packaging regression tests cover the maintained source/spec contract, valid dual-ARM APKs, missing launchers, host wheel payloads, and x86_64-in-ARM failures.
+
+### Changed
+
+- Buildozer now requests `python3,pygame==2.5.7,pyjnius`, uses the local SDL2 pygame-ce recipe, pins python-for-android release commit `58d21141f17c889bf8585f5665921d72028f8831`, pins NDK r28c, enables short-edge display cutouts, and uses supported `android.archs` syntax.
+- Android CI installs the pinned `android` optional dependency set and keys its cache on the spec, recipe, builder, and validator instead of the spec alone.
+- `tools/build_android.sh` runs source/spec validation before compilation and refuses to publish an APK that fails the post-build payload audit.
+- Runtime/package release version is `4.3.1`; options remain schema `5` and run saves remain schema `5`.
+
+### Validation
+
+- Validation results are recorded after the repaired APK is rebuilt below.
+
 ## 4.3.0 — Android Beta
 
 Milestone 4.3.0 adds a landscape-only Android beta build with touch controls, a safe-area-aware mobile HUD, Android lifecycle handling, writable private-storage save/options paths, and an interrupted-run recovery path. Desktop and gamepad behavior is unchanged.

@@ -213,7 +213,7 @@ Left stick or D-pad moves, the right stick aims, face buttons trigger combat abi
 
 ### Android (beta)
 
-Milestone 4.3.0 adds a landscape-only Android build with the same gameplay. Touch and drag inside the central viewport to move/aim, tap the six skill badges on the right rail, use the left rail for HP/MP/Stamina and Inventory/Character/Quest/Help, and use the on-screen Back/arrows/Select buttons in menus. Android Back closes the top overlay or opens the pause sheet. See `docs/android-beta.md` for install, upgrade, build, and known-issue notes; the CI workflow publishes a debug APK with every release.
+The 4.3.x beta adds a landscape-only Android build with the same gameplay. Touch and drag inside the central viewport to move/aim, tap the six skill badges on the right rail, use the left rail for HP/MP/Stamina and Inventory/Character/Quest/Help, and use the on-screen Back/arrows/Select buttons in menus. Android Back closes the top overlay or opens the pause sheet. See `docs/android-beta.md` for install, upgrade, build, and known-issue notes; the CI workflow publishes a debug APK with every release.
 
 ## Goal
 

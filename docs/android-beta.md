@@ -1,6 +1,6 @@
 # Arch Rogue Android Beta
 
-Milestone **4.3.0** ships a landscape-only Android beta APK built from the same
+Release **4.3.1** ships a landscape-only Android beta APK built from the same
 Python/pygame-ce codebase as the desktop release.  This document is the source
 of truth for installing, building, and reporting issues with the beta.
 
@@ -48,13 +48,29 @@ of truth for installing, building, and reporting issues with the beta.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e .
-python -m pip install buildozer cython
+python -m pip install -e ".[android]"
 ./tools/build_android.sh debug
 ```
 
-The APK appears in `bin/`.  `tools/build_android.sh release` produces a release
-APK; set the `ARCH_ROGUE_ANDROID_KEYSTORE*` env vars (see the script) to sign it.
+The APK appears in `bin/`. The build helper runs a source/spec preflight before
+Buildozer and then inspects the finished APK, including every native extension
+inside each ABI's nested Python bundle. `tools/build_android.sh release`
+produces a release APK; set the `ARCH_ROGUE_ANDROID_KEYSTORE*` env vars (see the
+script) to sign it.
+
+The checked-in local p4a recipe is deliberately requested as
+`pygame==2.5.7`. Do **not** replace it with `pygame-ce` in `buildozer.spec`:
+p4a has no recipe under that distribution name and pip may copy the build
+host's x86_64 manylinux wheel into an ARM APK. If you previously used manual
+staging hacks, start once with `buildozer android clean`; `src/main.py` is now
+the maintained SDL2 bootstrap entry point.
+
+To audit an existing APK without rebuilding it:
+
+```bash
+python tools/validate_android_apk.py \
+  --source-dir src --spec buildozer.spec bin/<apk-name>.apk
+```
 
 ## CI
 

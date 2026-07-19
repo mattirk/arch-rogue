@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Matti Rita-Kasari
 #
-# Buildozer spec for the Arch Rogue Android beta APK (milestone 4.3.0).
+# Buildozer spec for the Arch Rogue Android beta APK (milestone 4.3.x).
 #
 # Reproducible landscape pygame-ce build.  Version and app id are sourced from
 # pyproject.toml by tools/build_android.sh before invoking buildozer, so this
@@ -13,19 +13,26 @@ package.name = archrogue
 
 # `tools/build_android.sh` rewrites these from pyproject.toml at build time.
 package.domain = org.archrogue
-package.version = 4.3.0
+package.version = 4.3.1
 
 source.dir = src
 source.include_exts = py,png,json
 
-version = 4.3.0
+version = 4.3.1
 
 # Landscape-only: the manifest locks orientation so the safe-area layout is the
 # only one the runtime sees.
 orientation = landscape
 
-# pygame-ce is the runtime; the Python activity boots SDL2 + the game.
-requirements = python3,pygame-ce==2.5.7
+# The local recipe named `pygame` cross-compiles pygame-ce 2.5.7. Do not put
+# `pygame-ce` here: p4a has no recipe by that name and would bundle a host wheel.
+# PyJNIus is required by the safe-area DisplayCutout bridge.
+requirements = python3,pygame==2.5.7,pyjnius
+p4a.bootstrap = sdl2
+p4a.local_recipes = android/recipes
+# python-for-android release 2026.05.09. Pinning the commit keeps recipe, Python,
+# Gradle, and NDK expectations stable across local and CI builds.
+p4a.commit = 58d21141f17c889bf8585f5665921d72028f8831
 
 # Bundle every packaged asset directory.  `source.include_exts` above already
 # keeps .png/.json; these ensure the deep sprite/animation trees are not pruned
@@ -41,15 +48,17 @@ fullscreen = 1
 android.api = 34
 android.minapi = 28
 android.target_api = 34
-android.arch = arm64-v8a,armeabi-v7a
+android.ndk = 28c
+android.archs = arm64-v8a,armeabi-v7a
+android.display_cutout = shortEdges
 
 # Debug build by default.  `tools/build_android.sh release` switches signing on.
 android.debug = 1
 android.release_artifact = _apk
 
-# Permit writing saves/options to the app's private storage; the runtime maps
-# this through pygame.system.get_pref_path.
-android.permissions = 
+# No Android permissions are requested. Saves/options use app-private storage,
+# which requires no storage permission.
+
 
 # Keep the Python bootstrap quiet; Arch Rogue logs its own lifecycle transitions.
 log_level = 2

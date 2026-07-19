@@ -1,6 +1,6 @@
 [project]
 name = "arch-rogue"
-version = "4.3.0"
+version = "4.3.1"
 description = "A grim isometric action roguelike with asset-backed sprites, menus, and HUD, procedural legacy graphics, and replayable dungeon runs."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,6 +16,12 @@ dependencies = [
 # Build-time only: packaging the game for the web via Pyodide/WASM.
 web = [
     "pygbag",
+]
+# Host-side Android tooling. Target pygame-ce is cross-compiled by the local
+# python-for-android recipe and is intentionally not installed from a wheel.
+android = [
+    "buildozer==1.6.0",
+    "Cython==0.29.37",
 ]
 
 [project.scripts]

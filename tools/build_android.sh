@@ -2,15 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Matti Rita-Kasari
 #
-# Reproducible Arch Rogue Android APK build helper (milestone 4.3.0).
+# Reproducible Arch Rogue Android APK build helper (milestone 4.3.x).
 #
 # Usage:
 #   tools/build_android.sh            # debug APK (unsigned, self-signed at install)
 #   tools/build_android.sh release     # release APK, signed when keystore env is set
 #
-# Requires: a Python 3.11+ venv with pygame-ce installed, plus buildozer.
-# Install buildozer into the project venv:
-#   .venv/bin/python -m pip install buildozer cython
+# Requires the pinned host-side Android tooling:
+#   .venv/bin/python -m pip install -e ".[android]"
+# Target pygame-ce is cross-compiled by the checked-in p4a recipe; the host
+# pygame-ce wheel installed for desktop development is never copied into the APK.
 #
 # The script sources the version + app id from pyproject.toml so the APK always
 # matches the desktop release.  It writes the rewritten buildozer.spec into the
@@ -52,17 +53,86 @@ PY
 echo "Arch Rogue Android build: version=$VERSION mode=$MODE"
 
 if ! "$PYTHON" -m buildozer --version >/dev/null 2>&1; then
-  echo "buildozer not found. Install it with:" >&2
-  echo "  $PYTHON -m pip install buildozer cython" >&2
+  echo "buildozer not found. Install the pinned Android dependencies with:" >&2
+  echo "  $PYTHON -m pip install -e \".[android]\"" >&2
   exit 1
+fi
+
+# Fail before an expensive cross-build if the root SDL2 entry point, local
+# pygame-ce recipe, p4a pin, or ABI settings have regressed.
+"$PYTHON" tools/validate_android_apk.py \
+  --project-root . --source-dir src --spec buildozer.spec
+
+# p4a removes an incompatible distribution but can leave its per-ABI
+# python-installs tree behind. A replacement recipe with the same import package
+# name (pygame) is then incorrectly considered already installed. Fingerprint
+# every native-build input and clean only when those inputs changed or when a
+# previous build never reached the validated/stamped state.
+NATIVE_FINGERPRINT="$("$PYTHON" - <<'PY'
+import configparser
+import hashlib
+import importlib.metadata
+from pathlib import Path
+
+config = configparser.ConfigParser(interpolation=None)
+config.read("buildozer.spec", encoding="utf-8")
+app = config["app"]
+keys = (
+    "requirements",
+    "p4a.bootstrap",
+    "p4a.commit",
+    "android.api",
+    "android.minapi",
+    "android.target_api",
+    "android.ndk",
+    "android.archs",
+)
+digest = hashlib.sha256()
+for key in keys:
+    digest.update(f"{key}={app.get(key, '')}\n".encode())
+for package in ("buildozer", "Cython"):
+    digest.update(f"{package}={importlib.metadata.version(package)}\n".encode())
+for path in sorted(Path("android/recipes").rglob("*")):
+    if path.is_file():
+        digest.update(str(path.relative_to("android/recipes")).encode())
+        digest.update(path.read_bytes())
+print(digest.hexdigest())
+PY
+)"
+NATIVE_STAMP=".buildozer/android/arch-rogue-native.sha256"
+CACHED_FINGERPRINT=""
+if [ -f "$NATIVE_STAMP" ]; then
+  IFS= read -r CACHED_FINGERPRINT < "$NATIVE_STAMP" || true
+fi
+BUILD_CACHE_PRESENT=0
+for cache_dir in .buildozer/android/platform/build-*; do
+  if [ -d "$cache_dir" ]; then
+    BUILD_CACHE_PRESENT=1
+    break
+  fi
+done
+if [ "$BUILD_CACHE_PRESENT" -eq 1 ] && [ "$CACHED_FINGERPRINT" != "$NATIVE_FINGERPRINT" ]; then
+  if [ "${ARCH_ROGUE_ANDROID_REUSE_UNVERIFIED_CACHE:-0}" = "1" ]; then
+    echo "WARNING: reusing unverified Android caches for iterative development; final APK audit remains mandatory." >&2
+  else
+    echo "Android native inputs changed or are unverified; cleaning stale p4a build caches."
+    "$PYTHON" -m buildozer android clean
+  fi
 fi
 
 # buildozer reads [app]/package.version and [app]/package.domain from the spec.
 # Patch the spec in place so the build is reproducible from the checked-in file,
 # then restore it on exit so the repository stays clean.
 SPEC="buildozer.spec"
-cp "$SPEC" "$SPEC.bak"
-trap 'mv "$SPEC.bak" "$SPEC"' EXIT
+SPEC_BACKUP="$(mktemp "${TMPDIR:-/tmp}/arch-rogue-buildozer.XXXXXX")"
+BUILD_MARKER="$(mktemp "${TMPDIR:-/tmp}/arch-rogue-apk-build.XXXXXX")"
+BUILD_LOG="$(mktemp "${TMPDIR:-/tmp}/arch-rogue-build-log.XXXXXX")"
+cp "$SPEC" "$SPEC_BACKUP"
+cleanup() {
+  cp "$SPEC_BACKUP" "$SPEC"
+  rm -f "$SPEC_BACKUP" "$BUILD_MARKER" "$BUILD_LOG"
+}
+trap cleanup EXIT
 
 "$PYTHON" - <<PY
 import re
@@ -135,17 +205,40 @@ run_buildozer() {
   fi
 }
 
-if ! run_buildozer "$MODE"; then
-  echo "build_android.sh: first buildozer pass failed; re-accepting SDK licenses and retrying." >&2
-  accept_android_licenses
-  run_buildozer "$MODE"
+if ! run_buildozer "$MODE" 2>&1 | tee "$BUILD_LOG"; then
+  if grep -Eqi 'license.*not accepted|Aidl not found|build-tools.*not found' "$BUILD_LOG"; then
+    echo "build_android.sh: SDK setup failed; re-accepting licenses and retrying once." >&2
+    accept_android_licenses
+    run_buildozer "$MODE"
+  else
+    echo "build_android.sh: build failed; not retrying a non-license error." >&2
+    exit 1
+  fi
 fi
 
-# Surface the produced APK path for CI/local users.
+# Select only artifacts created by this invocation. This prevents an old, bad
+# APK in bin/ from being reported or released after a failed/partial rebuild.
 APK_DIR="bin"
-APK_PATH="$(ls -1 "$APK_DIR"/*.apk 2>/dev/null | head -n1 || true)"
-if [ -z "$APK_PATH" ]; then
-  echo "build_android.sh: no APK produced in $APK_DIR" >&2
+APK_PATHS=()
+if [ -d "$APK_DIR" ]; then
+  while IFS= read -r -d '' candidate; do
+    APK_PATHS+=("$candidate")
+  done < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' \
+    -newer "$BUILD_MARKER" -print0)
+fi
+if [ "${#APK_PATHS[@]}" -ne 1 ]; then
+  echo "build_android.sh: expected exactly one newly built APK in $APK_DIR; found ${#APK_PATHS[@]}" >&2
+  printf '  %s\n' "${APK_PATHS[@]}" >&2
   exit 1
 fi
+APK_PATH="${APK_PATHS[0]}"
+
+# Inspect both APK-level libraries and every ELF extension in each compressed
+# Python bundle. A successful Gradle build is not sufficient: p4a can otherwise
+# package a host x86_64 wheel into a valid-looking ARM APK.
+"$PYTHON" tools/validate_android_apk.py \
+  --project-root . --source-dir src --spec "$SPEC" "$APK_PATH"
+
+mkdir -p "$(dirname "$NATIVE_STAMP")"
+printf '%s\n' "$NATIVE_FINGERPRINT" > "$NATIVE_STAMP"
 echo "Arch Rogue Android APK: $APK_PATH"
