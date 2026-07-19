@@ -35,7 +35,9 @@ MenuRow = tuple[str, str, str]
 
 class MenuTitleMixin:
     def draw_title_menu(self) -> None:
-        panel, content = self.menu_frame("Arch Rogue")
+        panel, content = self.menu_frame(
+            "Arch Rogue", title_asset="menu.logo.title"
+        )
         resume_value = "Ready" if self.g.save_exists() else "None"
         rows: list[MenuRow] = [
             ("N / Enter", "Begin a new descent", ""),

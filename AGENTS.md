@@ -211,10 +211,9 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 
 #### 4.2.x Visual refinement
 
-- Lower slab in HUD should have more narrow borders (left / right). I mean the container that holds stats (health, mana, etc) and tooltips. Generate new via MCP if necessary.
-- Add a little bit more padding around texts
-  - e.g "Find the stairs to descend deeper" on lower right corner should be placed a bit more down and to the left
-  - Apply to other HUD texts as well, e.g. texts in quest info panel
+- We need generated asset for relic, use diamond shape similar to game icon. Owl looking quest relic needs to go (delete from game / pixellab). Use game icon as a base and generate new relic sprites. Create one for game logo too (with Arch Rogue text also).
+- Game icon should stay similar diamond shape but modernized with Pixellab
+- Use generated logo with text in main menu
 
 ### Backlog
 
@@ -229,6 +228,5 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - Widen Arcanist Frost Nova when gaining appropriate Disciplines (need to make one path dedicated to this), finally affecting the whole room
 - When in Return mode, spirit beast dashes along Ranger when using dash (action skill 4)
 - Is it possible to detect host system display scaling and adjust game scaling accordingly? e.g if display scale on host is 200% -> scale game to 2x
-- We need generated asset for relic, use diamond shape similar to game icon. Owl looking quest relic needs to go. Use game icon as a base and generate new relic sprites. Create one for game logo too (with Arch Rogue text also).
 - Dedicated room decorations for bosses (floor, walls, props). Generate new via Pixellab for bosses up to level 10 and final boss.
 - Dash: extended dash/blink skill (skill 4) when key pressed long, character starts "running" and moves faster. This consumes stamina really fast and stops once stamina is spent. When "running" mode activated, dash/blink suffers 1min cooldown. To be used as last resort to run away.

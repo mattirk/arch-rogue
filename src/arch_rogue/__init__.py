@@ -22,4 +22,4 @@
 """Arch Rogue public release package."""
 
 __all__ = ["__version__"]
-__version__ = "4.2.3"
+__version__ = "4.2.5"

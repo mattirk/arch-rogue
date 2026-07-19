@@ -5,6 +5,10 @@
       "path": "menus/background_title.png",
       "render": "cover"
     },
+    "menu.logo.title": {
+      "path": "menus/title_logo.png",
+      "render": "scale"
+    },
     "menu.background": {
       "path": "menus/background.png",
       "render": "cover"

@@ -1,5 +1,86 @@
 # Changelog
 
+## 4.2.5 — Final Diamond Brand Selection
+
+Milestone 4.2.5 finalizes the user-reviewed brand refinement: icon variant 4 becomes the application emblem, text-logo layout 1 becomes the modern title lockup, and every circular halo is removed. The packaged title now reads `ARCH <diamond> ROGUE` while retaining the exact approved gothic lettering from 4.2.4.
+
+### Changed
+
+- Replaced the circle-backed application emblem with the selected PixelLab ornate diamond: a standalone upright four-point relic with blackened-iron edges, engraved antique-gold facets, a small violet center, and a fully transparent background. The selected `128×128` master was re-exported to the stable `16`, `32`, `64`, `128`, `256`, and `512` icon paths, so window/taskbar loading and package APIs require no code or migration changes.
+- Rebuilt `menus/title_logo.png` from selected layout 1 using the chosen ornate icon rather than the preview's placeholder. The final transparent `640×122` lockup keeps the existing letter pixels unchanged, places an `84×84` diamond between `ARCH` and `ROGUE` with 10px layout gaps, and has compact visible bounds `Rect(62, 24, 516, 74)`.
+- Replaced the README's plain-text H1 with the finalized packaged `ARCH <diamond> ROGUE` lockup while retaining `Arch Rogue` as accessible fallback text.
+- Runtime/package release version is `4.2.5`; options remain schema `4` and run saves remain schema `5`.
+
+### Removed
+
+- Removed the obsolete circular-halo icon from all packaged sizes and permanently deleted its PixelLab source object `4e964fd6-8299-4547-80c7-1deb4b28d80a`.
+- Deleted the four rejected PixelLab preview siblings (`ce046a7f-adc5-40e5-9b27-8758e2a4b0dc`, `f02ef33e-d283-4c06-a360-7c917fe829cb`, `506993c5-402b-4f3d-a6aa-ea20381a8237`, and `e7415ed5-40d3-47e0-b0d8-d17e540fe41f`).
+- Deleted the temporary local `icont_preview/` and `text_logos_preview/` directories plus their ignored comparison/title captures after packaging and visual review.
+
+### Tests
+
+- Updated title-logo geometry coverage for the compact centered lockup and asserted that its center diamond is opaque.
+- Added explicit no-halo coverage at eight master-icon pixels formerly occupied by the circular ring while retaining all six size, transparency, readable-bounds, and center-opacity checks.
+- Updated pinned runtime/save release assertions to `4.2.5`.
+
+### Asset provenance
+
+- Final icon: PixelLab object `0abafd0c-f0af-4bf1-b2be-ea21b7c21668`, seed `42044`, retained as the sole selected sibling in group `59f86320-2986-4a6f-a3ae-ce7a882071d2` and tagged `arch-rogue-brand-4.2.5`.
+- Final lettering remains sourced from PixelLab UI asset `dfd0a3e1-2392-421d-a4c9-3c85b8ff784c`; the `ARCH` and `ROGUE` pixels were preserved exactly and only their placement around the selected center diamond changed.
+
+### Validation
+
+- `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/python -m unittest tests.test_ui_assets tests.test_ui_layouts tests.test_save_and_metadata` — 29 tests, all passing.
+- `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/python -m unittest discover tests` — 362 tests, all passing; the experimental web build was not run separately.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+- `git diff --check` — clean.
+- Visually reviewed the final modern title at `960×540` and `640×480` before deleting the temporary captures.
+
+
+## 4.2.4 — Relic & Brand Visual Upgrade
+
+Milestone 4.2.4 completes the queued 4.2.x relic visual refinement: the owl-like quest artifact is replaced by a faceted diamond relic derived from the established brand geometry, the application icon becomes a modern PixelLab-authored diamond crest, and the modern title menu now uses an exact `ARCH ROGUE` generated wordmark. Legacy graphics retain their procedural title and relic paths.
+
+### Added
+
+- Added a PixelLab-authored `48×48` story-relic sprite with a transparent `34×40` four-point silhouette, four high-contrast neutral facets, blackened-iron edges, and no animal anatomy, pedestal, baked glow, or particles. The existing live floor glow, contact shadow, bob, tilt, motes, story-accent recolor, and interaction label remain runtime effects.
+- Added a modern PixelLab application emblem: a bold upright faceted octahedron with an antique-gold halo and blackened-iron rim. The approved `128×128` master was exported to the existing `16`, `32`, `64`, `128`, `256`, and `512` icon contract, so window/taskbar loading and package paths remain unchanged.
+- Added `menus/title_logo.png`, an alpha-cropped `640×122` horizontal lockup containing a faceted diamond crest and the correctly spelled uppercase `ARCH ROGUE` wordmark in antique-gold gothic pixel lettering. It is exposed as `menu.logo.title` through the validated `UiAssetLibrary` manifest.
+- Added an optional `title_asset` path to `MenuBaseMixin.menu_frame`. The main title requests the generated lockup, fits it by aspect ratio within the existing responsive header envelope, records whether the asset was used, and falls back to the prior live text whenever the resource is missing or asset UI is disabled.
+
+### Changed
+
+- Modern story-relic tinting now scales the additive story color explicitly to 28%. `BLEND_RGB_ADD` ignores the supplied fill alpha, so the former call unintentionally added the full accent and washed pale facets toward one color. The authored diamond now keeps its facet depth while still inheriting each story palette.
+- The procedural legacy relic retains its established full-accent blend byte-for-byte; only the authored modern sprite receives the restrained tint. The legacy title continues to render the original live `Arch Rogue` text and procedural menu frame.
+- Runtime/package release version is `4.2.4`; options remain schema `4` and run saves remain schema `5`.
+
+### Removed
+
+- Removed the owl-like quest-relic PNG from the game and replaced it in place at the stable `items/story_relic.png` manifest path, so saves and gameplay identifiers require no migration.
+- Deleted the obsolete PixelLab owl-relic object and its remaining review batch. Rejected diamond icon/relic candidates were also dismissed or deleted, leaving only the two approved maintainable object records plus the title-logo UI asset.
+
+### Tests
+
+- Added story-relic asset coverage for the native canvas/bounds, occupied top/left/right/bottom tips, widening-then-narrowing diamond rows, near-symmetric alpha mask, four distinct facet samples, and successful modern atlas resolution.
+- Added brand coverage for all six packaged icon sizes, transparent corners, opaque centers, ≥80% readable silhouettes, the exact title-logo source geometry, manifest/package inclusion, modern render-cache use, and legacy title-asset bypass.
+- Updated pinned release/save metadata assertions to `4.2.4`.
+
+### Asset provenance
+
+- Application icon: PixelLab review pack `a69a0e31-990c-473f-b446-cfb6b0fe2b5d` (`20` generations), approved frame `1`, promoted as object `4e964fd6-8299-4547-80c7-1deb4b28d80a` with tag `arch-rogue-brand-4.2.4`; unused candidates and the review parent were discarded.
+- Story relic: PixelLab review pack `6b40ecad-0768-48b9-8c36-29f1da15fc2e` (`20` generations), approved frame `6`, promoted as object `dfbaf9c0-2e65-4551-aa36-505b4859f0b8` with tag `arch-rogue-relic-4.2.4`; the alternate finalist `eb400ed7-e18f-4a7c-a44a-28e5ecb675ca`, unused candidates, and the review parent were deleted.
+- Title lockup: PixelLab UI asset `dfd0a3e1-2392-421d-a4c9-3c85b8ff784c` (`40` generations), generated at `688×192` and alpha-cropped without resampling to the packaged `640×122` source.
+- Removed owl relic: PixelLab object `e647c50b-fdce-4430-96be-377f59324da2` and review batch `b43013f4-b83a-45bd-8dce-81160364993c` were permanently deleted. The Acolyte's separate spirit-owl familiar assets were intentionally retained.
+
+### Validation
+
+- `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/python -m unittest tests.test_ui_assets tests.test_sprite_assets tests.test_ui_layouts tests.test_save_and_metadata` — 65 tests, all passing.
+- `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/python -m unittest discover tests` — 362 tests, all passing; the experimental web build was not run separately.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+- `git diff --check` — clean.
+- Visually reviewed the authored title at `960×540` and `640×480`, the unchanged legacy title at both sizes, the generated icon/relic contact sheet, and a deterministic close-up through the real relic atlas/tint/effect renderer. Captures remain ignored under `build/title_logo_*`, `build/relic_brand_review.png`, and `build/relic_renderer_closeup.png`.
+
+
 ## 4.2.3 — Cutscene Theater Production Overhaul
 
 Milestone 4.2.3 delivers the complete cutscene-theater redesign as one release: authored gothic scenery and props, real animated performers, perspective-correct stage blocking, tactical duel choreography, a pillar-hiding witness, and scrollable narration. Modern graphics use the finished PixelLab production set while legacy graphics retain the procedural theater fallback.

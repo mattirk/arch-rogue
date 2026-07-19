@@ -1,4 +1,4 @@
-# Arch Rogue
+# ![Arch Rogue](src/arch_rogue/assets/sprites/menus/title_logo.png)
 
 Arch Rogue is a modernized take on the classic Rogue formula: a grim, replayable isometric action-RPG dungeon crawler built with Python and Pygame CE. Procedural dungeons, permanent consequences, scarce resources, and unidentified treasure meet real-time combat, loot-driven builds, and a seeded dark-fantasy storyline.
 

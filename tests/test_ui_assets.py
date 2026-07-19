@@ -17,6 +17,7 @@ import pygame
 
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
+from arch_rogue.icon import available_sizes, icon_sizes, load_icon
 from arch_rogue.input import REMAPPABLE_GAMEPAD_COMMANDS
 from arch_rogue.menus.controls import KEYBOARD_ROWS
 from arch_rogue.rendering.hud import HUD_ACTION_SKILL_ASSETS
@@ -70,6 +71,7 @@ class UiAssetTests(unittest.TestCase):
         self.assertEqual(len(action_icon_keys), 23)
         expected = {
             "menu.background.title",
+            "menu.logo.title",
             "menu.background",
             "cutscene.background",
             "cutscene.choice.panel",
@@ -93,6 +95,7 @@ class UiAssetTests(unittest.TestCase):
 
         sizes = {
             "menu.background.title": (960, 540),
+            "menu.logo.title": (400, 76),
             "menu.background": (640, 480),
             "cutscene.background": (960, 540),
             "cutscene.choice.panel": (640, 52),
@@ -123,6 +126,16 @@ class UiAssetTests(unittest.TestCase):
                 self.assertEqual(rendered.get_size(), size)
                 self.assertGreater(rendered.get_bounding_rect(min_alpha=1).width, 0)
                 self.assertIs(library.render(key, size), rendered)
+
+        title_logo = library.source("menu.logo.title")
+        self.assertIsNotNone(title_logo)
+        assert title_logo is not None
+        self.assertEqual(title_logo.get_size(), (640, 122))
+        self.assertEqual(
+            title_logo.get_bounding_rect(min_alpha=1),
+            pygame.Rect(62, 24, 516, 74),
+        )
+        self.assertGreater(title_logo.get_at((320, 61)).a, 0)
 
         for key in action_icon_keys:
             with self.subTest(action_icon=key):
@@ -168,6 +181,35 @@ class UiAssetTests(unittest.TestCase):
         )
         self.assertIn('"assets/sprites/menus/*.png"', pyproject)
         self.assertIn('"assets/sprites/hud/*.png"', pyproject)
+
+    def test_generated_brand_icons_preserve_the_diamond_silhouette(self) -> None:
+        self.assertEqual(available_sizes(), list(icon_sizes()))
+        for size in icon_sizes():
+            with self.subTest(size=size):
+                icon = load_icon(size)
+                self.assertIsNotNone(icon)
+                assert icon is not None
+                self.assertEqual(icon.get_size(), (size, size))
+                bounds = icon.get_bounding_rect(min_alpha=1)
+                self.assertGreaterEqual(bounds.width, size * 4 // 5)
+                self.assertGreaterEqual(bounds.height, size * 4 // 5)
+                self.assertEqual(icon.get_at((0, 0)).a, 0)
+                self.assertGreater(icon.get_at((size // 2, size // 2)).a, 0)
+
+        master = load_icon(128)
+        self.assertIsNotNone(master)
+        assert master is not None
+        former_halo_points = (
+            (113, 55),
+            (14, 55),
+            (55, 14),
+            (55, 113),
+            (113, 73),
+            (14, 73),
+            (73, 14),
+            (73, 113),
+        )
+        self.assertTrue(all(master.get_at(point).a == 0 for point in former_halo_points))
 
     def test_cutscene_background_is_full_bleed_and_fully_opaque(self) -> None:
         library = UiAssetLibrary()
@@ -350,9 +392,15 @@ class UiAssetTests(unittest.TestCase):
             modern_title = self.surface_signature(game.screen)
             menu_keys = {key[0] for key in game.ui_assets._render_cache}
             self.assertTrue(
-                {"menu.background.title", "menu.panel", "menu.row"}.issubset(
-                    menu_keys
-                )
+                {
+                    "menu.background.title",
+                    "menu.logo.title",
+                    "menu.panel",
+                    "menu.row",
+                }.issubset(menu_keys)
+            )
+            self.assertTrue(
+                getattr(game, "_menu_header_title_asset_used", False)
             )
             warm_builds = game.ui_assets.render_build_count
             warm_decodes = game.ui_assets.source_decode_count
@@ -365,6 +413,9 @@ class UiAssetTests(unittest.TestCase):
             legacy_builds = game.ui_assets.render_build_count
             game.screen.fill((0, 0, 0))
             game.draw_title_menu()
+            self.assertFalse(
+                getattr(game, "_menu_header_title_asset_used", False)
+            )
             self.assertEqual(game.ui_assets.render_build_count, legacy_builds)
             self.assertNotEqual(self.surface_signature(game.screen), modern_title)
             self.assertIsNone(game.menus._title_logo(24))

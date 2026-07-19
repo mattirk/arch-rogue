@@ -198,6 +198,48 @@ class SpriteAssetTests(unittest.TestCase):
                 key,
             )
 
+    def test_story_relic_is_a_faceted_diamond_instead_of_an_owl(self) -> None:
+        library = AssetSpriteLibrary()
+        entry = library.manifest["items"]["story_relic"]
+        source = library._source_surface(entry["path"])
+        self.assertIsNotNone(source)
+        assert source is not None
+        self.assertEqual(source.get_size(), (48, 48))
+        self.assertEqual(
+            source.get_bounding_rect(min_alpha=1),
+            pygame.Rect(7, 4, 34, 40),
+        )
+
+        tips = ((24, 4), (7, 24), (40, 24), (24, 43))
+        self.assertTrue(all(source.get_at(point).a > 0 for point in tips))
+        self.assertEqual(source.get_at((0, 0)).a, 0)
+        row_widths = [
+            sum(source.get_at((x, y)).a > 0 for x in range(source.get_width()))
+            for y in (4, 12, 24, 35, 43)
+        ]
+        self.assertLess(row_widths[0], row_widths[1])
+        self.assertLess(row_widths[1], row_widths[2])
+        self.assertGreater(row_widths[2], row_widths[3])
+        self.assertGreater(row_widths[3], row_widths[4])
+
+        mirror_mismatches = sum(
+            (source.get_at((x, y)).a > 0)
+            != (source.get_at((source.get_width() - 1 - x, y)).a > 0)
+            for y in range(source.get_height())
+            for x in range(source.get_width())
+        )
+        self.assertLessEqual(mirror_mismatches, 8)
+        facet_colors = {
+            tuple(source.get_at(point))
+            for point in ((17, 17), (31, 17), (17, 31), (31, 31))
+        }
+        self.assertEqual(len(facet_colors), 4)
+
+        resolved = library.resolve_item("story_relic")
+        self.assertIsNotNone(resolved)
+        assert resolved is not None
+        self.assertTrue(resolved.is_asset)
+
     def test_archetype_idle_and_walk_assets_are_complete_and_well_formed(self) -> None:
         library = AssetSpriteLibrary()
         player_entries = {

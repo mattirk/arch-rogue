@@ -1282,21 +1282,25 @@ class RenderingEffectsMixin:
         bob = int(math.sin(self.elapsed * 3.5 + item.y) * 3 * WORLD_SCALE)
         self.draw_shadow(item.x, item.y, 26, 11, lift=bob / WORLD_SCALE)
 
-        # The gem itself is the cached octahedron sprite from the atlas
-        # (sprites._story_relic), pulled as the un-tinted base frame and recolored
-        # here with the per-story accent via an additive blend so the same art
-        # recolors for every story. A slow tilt + bob give it a floating, alive
-        # read; the atlas already outlined + upscaled it for the chunky look.
-        sprite = self.sprites.item_frame(
+        # Modern graphics use the authored PixelLab diamond; legacy graphics use
+        # the procedural octahedron fallback. A slow tilt + bob give either relic a
+        # floating, alive read.
+        visual = self.sprites.item_visual(
             "story_relic",
             self.elapsed + item.x * 0.31 + item.y * 0.17,
             "Common",
         )
-        sprite = sprite.copy()
-        # BLEND_RGB_ADD (not RGBA) recolors only the gem's opaque pixels;
-        # the transparent padding around the sprite stays at alpha 0 so no
-        # accent-tinted rectangle leaks around the relic.
-        sprite.fill((*accent, 40), special_flags=pygame.BLEND_RGB_ADD)
+        sprite = visual.surface.copy()
+        if visual.is_asset:
+            # BLEND_RGB_ADD ignores the fill alpha, so scale the RGB channels
+            # explicitly. This keeps the generated facet contrast visible instead
+            # of washing every light plane to the full story color. Transparent
+            # padding remains alpha 0 and cannot leak a tinted rectangle.
+            tint_add = tuple(round(channel * 0.28) for channel in accent)
+            sprite.fill((*tint_add, 0), special_flags=pygame.BLEND_RGB_ADD)
+        else:
+            # Preserve the established procedural/legacy recolor byte-for-byte.
+            sprite.fill((*accent, 40), special_flags=pygame.BLEND_RGB_ADD)
         tilt = math.sin(self.elapsed * 2.8 + item.y) * 3.0
         if abs(tilt) > 0.1:
             sprite = pygame.transform.rotate(sprite, tilt)

@@ -21,9 +21,9 @@
 
 """Bundled game icon/logo loading.
 
-The Arch Rogue logo is the octahedron relic, shipped as PNG assets in
-``arch_rogue.assets.icons`` at several sizes (see ``gen_icon_assets.py``).
-These helpers load them via :mod:`importlib.resources` so the icons resolve
+The Arch Rogue logo is a PixelLab-authored faceted diamond relic, shipped as
+PNG assets in ``arch_rogue.assets.icons`` at several sizes. These helpers load
+them via :mod:`importlib.resources` so the icons resolve
 both under a normal install and inside the pygbag/Pyodide web bundle.
 """
 
@@ -94,8 +94,8 @@ def load_icon(size: int) -> pygame.Surface | None:
 def title_logo(height: int) -> pygame.Surface | None:
     """Return the logo scaled to the requested pixel height (cached by size).
 
-    Used by menus for the branded title crest. The source is the 128px icon
-    (sharp enough for typical crest sizes, small enough to scale cheaply).
+    Used by menus for the compact branded crest fallback. The source is the
+    128px icon (sharp enough for typical crest sizes and cheap to scale).
     Returns ``None`` if the bundled assets are unavailable.
     """
     source = load_icon(128)

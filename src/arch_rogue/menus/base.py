@@ -885,7 +885,11 @@ class MenuBaseMixin:
 
     # --- Menu frame --------------------------------------------------------
     def menu_frame(
-        self, title: str, subtitle: str = ""
+        self,
+        title: str,
+        subtitle: str = "",
+        *,
+        title_asset: str = "",
     ) -> tuple[pygame.Rect, pygame.Rect]:
         width, height = self.screen.get_size()
         self.draw_menu_backdrop()
@@ -936,9 +940,40 @@ class MenuBaseMixin:
                 texts=(subtitle,),
                 minimum_size=10,
             )
+
+        title_surface: pygame.Surface | None = None
+        title_height = title_font.get_height()
+        if title_asset and modern_header:
+            source = self.g.ui_assets.source(title_asset)
+            if (
+                source is not None
+                and source.get_width() > 0
+                and source.get_height() > 0
+            ):
+                max_logo_width = max(
+                    1,
+                    min(text_width, self.u(520), max(1, width * 3 // 5)),
+                )
+                max_logo_height = max(
+                    1,
+                    min(self.u(72), max(32, height // 6)),
+                )
+                logo_scale = min(
+                    max_logo_width / source.get_width(),
+                    max_logo_height / source.get_height(),
+                )
+                logo_size = (
+                    max(1, round(source.get_width() * logo_scale)),
+                    max(1, round(source.get_height() * logo_scale)),
+                )
+                title_surface = self.ui_asset(title_asset, logo_size)
+                if title_surface is not None:
+                    title_height = title_surface.get_height()
+        self.g._menu_header_title_asset_used = title_surface is not None
+
         requested_title_y = max(self.u(30), int(height * 0.12))
         title_y = max(
-            title_font.get_height() // 2 + 8,
+            title_height // 2 + 8,
             min(
                 requested_title_y,
                 max(24, height // (12 if compact_scaled_layout else 8)),
@@ -956,20 +991,26 @@ class MenuBaseMixin:
 
         title_rect = pygame.Rect(
             side_margin,
-            title_y - title_font.get_height() // 2,
+            title_y - title_height // 2,
             width - side_margin * 2,
-            title_font.get_height(),
+            title_height,
         )
         self.g._menu_header_title_rect = title_rect.copy()
-        self.draw_text(
-            title,
-            title_font,
-            self.TITLE,
-            title_rect,
-            align="center",
-            valign="center",
-        )
-        title_bottom = title_y + title_font.get_height() // 2
+        if title_surface is not None:
+            self.screen.blit(
+                title_surface,
+                title_surface.get_rect(center=title_rect.center),
+            )
+        else:
+            self.draw_text(
+                title,
+                title_font,
+                self.TITLE,
+                title_rect,
+                align="center",
+                valign="center",
+            )
+        title_bottom = title_y + title_height // 2
         panel_gap = min(
             self.u(24),
             max(7 if compact_scaled_layout else 10, height // 64)
