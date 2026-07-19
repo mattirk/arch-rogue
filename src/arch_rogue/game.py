@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import math
 import random
+import time
 from pathlib import Path
 from typing import Any
 
@@ -623,16 +624,35 @@ class Game(
 
     def run(self) -> None:
         while self.running:
+            performance = getattr(self, "_mobile_performance_monitor", None)
+            if performance is not None:
+                performance.begin_frame()
+
             suspended = self.mobile_mode and self.mobile_suspended
             target_fps = 10 if suspended else FPS
+            started = time.perf_counter()
             dt = min(self.clock.tick(target_fps) / 1000.0, 0.05)
+            if performance is not None:
+                performance.record_phase("tick", time.perf_counter() - started)
             self.ui_elapsed += dt
+
+            started = time.perf_counter()
             self.handle_events()
+            if performance is not None:
+                performance.record_phase("events", time.perf_counter() - started)
             if self.mobile_mode and self.mobile_suspended:
+                if performance is not None:
+                    performance.finish_frame(self)
                 continue
+
             if self.state == "playing":
+                started = time.perf_counter()
                 self.update(dt)
+                if performance is not None:
+                    performance.record_phase("update", time.perf_counter() - started)
             self.draw()
+            if performance is not None:
+                performance.finish_frame(self)
         pygame.quit()
 
     def request_exit_confirmation(self) -> None:

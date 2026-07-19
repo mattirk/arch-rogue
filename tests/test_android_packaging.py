@@ -46,10 +46,13 @@ def write_apk(
     include_main: bool = True,
     include_desktop_wheel: bool = False,
     include_pygame_system: bool = True,
+    include_generated_metadata: bool = False,
 ) -> None:
     private_entries = {"arch_rogue/game.pyc": b"game"}
     if include_main:
         private_entries["main.pyc"] = b"arch_rogue.game\x00main"
+    if include_generated_metadata:
+        private_entries["arch_rogue.egg-info/PKG-INFO"] = b"Version: stale"
 
     with zipfile.ZipFile(path, "w") as apk:
         apk.writestr("assets/private.tar", tar_gzip(private_entries))
@@ -97,6 +100,21 @@ class AndroidSourceContractTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 ValidationError,
                 "omit android.permissions",
+            ):
+                validate_build_spec(spec, ROOT)
+
+    def test_build_spec_requires_generated_metadata_exclusions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            spec = Path(tmpdir) / "buildozer.spec"
+            text = (ROOT / "buildozer.spec").read_text(encoding="utf-8")
+            text = text.replace(
+                "source.exclude_dirs = __pycache__,arch_rogue.egg-info\n",
+                "",
+            )
+            spec.write_text(text, encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValidationError,
+                "source.exclude_dirs.*arch_rogue.egg-info",
             ):
                 validate_build_spec(spec, ROOT)
 
@@ -162,6 +180,20 @@ class AndroidApkValidationTests(unittest.TestCase):
             apk = Path(tmpdir) / "game.apk"
             write_apk(apk, {"arm64-v8a": 183}, include_desktop_wheel=True)
             with self.assertRaisesRegex(ValidationError, "pygame_ce.libs"):
+                validate_apk(apk, ("arm64-v8a",))
+
+    def test_rejects_generated_source_metadata_in_private_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            apk = Path(tmpdir) / "game.apk"
+            write_apk(
+                apk,
+                {"arm64-v8a": 183},
+                include_generated_metadata=True,
+            )
+            with self.assertRaisesRegex(
+                ValidationError,
+                "generated source metadata.*egg-info",
+            ):
                 validate_apk(apk, ("arm64-v8a",))
 
     def test_rejects_missing_root_entrypoint(self) -> None:

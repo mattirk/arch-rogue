@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import math
+import time
 from collections import deque
 from contextlib import contextmanager
 from typing import Iterator, cast
@@ -57,9 +58,14 @@ class RenderingBaseMixin:
         # Per-frame caches for hot-path lookups. These are invalidated every
         # frame so they never go stale within a single render pass.
         self._frame_cache: dict[str, object] = {}
+        performance = getattr(self, "_mobile_performance_monitor", None)
         if getattr(self, "mobile_mode", False):
             self.reset_mobile_touch_targets()
+
+        started = time.perf_counter()
         self.screen.fill((10, 10, 14))
+        if performance is not None:
+            performance.record_phase("clear", time.perf_counter() - started)
 
         menu_draw = {
             "title": self.draw_title_menu,
@@ -70,16 +76,41 @@ class RenderingBaseMixin:
             "confirm_exit": self.draw_exit_confirmation,
         }.get(self.state)
         if menu_draw is not None:
+            started = time.perf_counter()
             with self.mobile_safe_render_target():
                 menu_draw()
+            if performance is not None:
+                performance.record_phase("menu", time.perf_counter() - started)
+
+            started = time.perf_counter()
             if getattr(self, "mobile_mode", False):
                 self.draw_mobile_touch_navigation()
+            if performance is not None:
+                self.draw_mobile_performance_overlay()
+                performance.record_phase("overlays", time.perf_counter() - started)
+
+            started = time.perf_counter()
             pygame.display.flip()
+            if performance is not None:
+                performance.record_phase("flip", time.perf_counter() - started)
+
+            started = time.perf_counter()
             self.sync_music()
+            if performance is not None:
+                performance.record_phase("audio", time.perf_counter() - started)
             return
 
+        started = time.perf_counter()
         self._render_world_view()
+        if performance is not None:
+            performance.record_phase("world", time.perf_counter() - started)
+
+        started = time.perf_counter()
         self.draw_ui()
+        if performance is not None:
+            performance.record_phase("hud", time.perf_counter() - started)
+
+        started = time.perf_counter()
         with self.mobile_safe_render_target():
             if self.active_cutscene is not None:
                 self.draw_quest_cutscene_overlay()
@@ -98,8 +129,19 @@ class RenderingBaseMixin:
         if getattr(self, "mobile_mode", False):
             self.draw_mobile_touch_navigation()
         self.draw_screen_flash()
+        if performance is not None:
+            self.draw_mobile_performance_overlay()
+            performance.record_phase("overlays", time.perf_counter() - started)
+
+        started = time.perf_counter()
         pygame.display.flip()
+        if performance is not None:
+            performance.record_phase("flip", time.perf_counter() - started)
+
+        started = time.perf_counter()
         self.sync_music()
+        if performance is not None:
+            performance.record_phase("audio", time.perf_counter() - started)
 
     @contextmanager
     def mobile_safe_render_target(self) -> Iterator[None]:
@@ -178,6 +220,7 @@ class RenderingBaseMixin:
         shade_post = zoom <= 1.0
         self._shade_post_composite = shade_post
         real_screen = self.screen
+        layer: pygame.Surface | None = None
         if use_layer:
             layer = self._world_layer_surface(real_screen, zoom)
             layer.fill((10, 10, 14))
@@ -195,6 +238,7 @@ class RenderingBaseMixin:
         finally:
             if use_layer:
                 self.screen = real_screen
+                assert layer is not None
                 self._composite_world_layer(layer, real_screen)
                 # Drop only the size cache so HUD/UI lay out against the real
                 # display. Preserve the zoom-independent frame caches

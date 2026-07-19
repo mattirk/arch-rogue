@@ -5,8 +5,9 @@ import os
 import sys
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -19,6 +20,7 @@ from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.input import Command
 from arch_rogue.mobile import (
+    MobilePerformanceMonitor,
     SafeInsets,
     build_mobile_layout,
     detect_mobile_runtime,
@@ -65,15 +67,15 @@ class MobileRenderQualityTests(unittest.TestCase):
         )
         self.assertEqual(
             MOBILE_RENDER_QUALITY_HEIGHT_CAPS,
-            {"performance": 540, "balanced": 720, "native": None},
+            {"performance": 360, "balanced": 540, "native": None},
         )
         cases = (
-            ((2340, 1080), MOBILE_RENDER_QUALITY_PERFORMANCE, (1170, 540)),
-            ((2340, 1080), MOBILE_RENDER_QUALITY_BALANCED, (1560, 720)),
+            ((2340, 1080), MOBILE_RENDER_QUALITY_PERFORMANCE, (780, 360)),
+            ((2340, 1080), MOBILE_RENDER_QUALITY_BALANCED, (1170, 540)),
             ((2340, 1080), MOBILE_RENDER_QUALITY_NATIVE, (2340, 1080)),
-            ((2560, 1600), MOBILE_RENDER_QUALITY_BALANCED, (1152, 720)),
-            ((800, 480), MOBILE_RENDER_QUALITY_PERFORMANCE, (800, 480)),
-            ((1280, 720), MOBILE_RENDER_QUALITY_BALANCED, (1280, 720)),
+            ((2560, 1600), MOBILE_RENDER_QUALITY_BALANCED, (864, 540)),
+            ((800, 480), MOBILE_RENDER_QUALITY_PERFORMANCE, (600, 360)),
+            ((1280, 720), MOBILE_RENDER_QUALITY_BALANCED, (960, 540)),
         )
         for physical, quality, expected in cases:
             with self.subTest(physical=physical, quality=quality):
@@ -98,7 +100,7 @@ class MobileRenderQualityTests(unittest.TestCase):
         )
         self.assertEqual(
             mobile_render_quality_label(MOBILE_RENDER_QUALITY_PERFORMANCE),
-            "Performance · 540p cap",
+            "Performance · 360p cap",
         )
         self.assertEqual(
             next_mobile_render_quality(MOBILE_RENDER_QUALITY_PERFORMANCE),
@@ -162,8 +164,81 @@ class MobileRenderQualityTests(unittest.TestCase):
                 result = game.apply_display_mode()
             self.assertIs(result, game.screen)
             set_mode.assert_called_once_with(
-                (1560, 720), pygame.FULLSCREEN | pygame.SCALED
+                (1170, 540), pygame.FULLSCREEN | pygame.SCALED
             )
+
+    def test_android_display_retries_with_second_accelerated_gles_driver(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(1280, 720),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+                mobile=True,
+            )
+            with (
+                patch.dict(os.environ, {"SDL_RENDER_DRIVER": "opengles2"}),
+                patch("arch_rogue.options.android_runtime_active", return_value=True),
+                patch.object(game, "display_size", return_value=(2340, 1080)),
+                patch(
+                    "arch_rogue.options.pygame.display.set_mode",
+                    side_effect=[pygame.error("gles2 failed"), game.screen],
+                ) as set_mode,
+                patch.object(game, "_reset_android_display_subsystem") as reset,
+                patch.object(game, "_record_mobile_renderer") as record,
+            ):
+                result = game.apply_display_mode()
+                self.assertEqual(os.environ["SDL_RENDER_DRIVER"], "opengles")
+
+            self.assertIs(result, game.screen)
+            self.assertEqual(
+                set_mode.call_args_list,
+                [
+                    call((780, 360), pygame.FULLSCREEN | pygame.SCALED),
+                    call((780, 360), pygame.FULLSCREEN | pygame.SCALED),
+                ],
+            )
+            reset.assert_called_once_with()
+            record.assert_called_once_with(
+                game.screen,
+                name="opengles",
+                accelerated=True,
+                failures=["opengles2:error:gles2 failed"],
+            )
+
+    def test_android_display_marks_last_resort_software_renderer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(1280, 720),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+                mobile=True,
+            )
+
+            def slow_renderer(*_args: object, **_kwargs: object) -> pygame.Surface:
+                warnings.warn("no fast renderer available", Warning, stacklevel=2)
+                return game.screen
+
+            with (
+                patch.dict(os.environ, {"SDL_RENDER_DRIVER": "opengles2"}),
+                patch("arch_rogue.options.android_runtime_active", return_value=True),
+                patch.object(game, "display_size", return_value=(2340, 1080)),
+                patch(
+                    "arch_rogue.options.pygame.display.set_mode",
+                    side_effect=slow_renderer,
+                ) as set_mode,
+                patch.object(game, "_reset_android_display_subsystem") as reset,
+                patch.object(game, "_record_mobile_renderer") as record,
+            ):
+                result = game.apply_display_mode()
+                self.assertNotIn("SDL_RENDER_DRIVER", os.environ)
+
+            self.assertIs(result, game.screen)
+            self.assertEqual(set_mode.call_count, 3)
+            self.assertEqual(reset.call_count, 2)
+            record.assert_called_once()
+            self.assertEqual(record.call_args.kwargs["name"], "software")
+            self.assertFalse(record.call_args.kwargs["accelerated"])
+            self.assertEqual(len(record.call_args.kwargs["failures"]), 2)
 
     def test_mobile_quality_persists_and_old_options_migrate_safely(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -234,7 +309,7 @@ class MobileRenderQualityTests(unittest.TestCase):
             game.draw_options_menu()
             self.assertEqual(
                 getattr(game, "_options_visible_rows")[0],
-                ("F", "Render quality", "Performance · 540p cap"),
+                ("F", "Render quality", "Performance · 360p cap"),
             )
 
             game._world_layer = pygame.Surface((8, 8))
@@ -326,6 +401,38 @@ class MobileRenderQualityTests(unittest.TestCase):
                         ),
                     )
 
+    def test_mobile_performance_monitor_reports_phase_and_runtime_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (780, 360))
+            game._mobile_renderer_name = "opengles2"
+            game._mobile_renderer_accelerated = True
+            now = [0.0]
+            emitted: list[str] = []
+            monitor = MobilePerformanceMonitor(
+                report_interval=1.0,
+                clock=lambda: now[0],
+                emit=emitted.append,
+            )
+            monitor.begin_frame()
+            monitor.record_phase("world", 0.2)
+            monitor.record_phase("hud", 0.05)
+            monitor.record_phase("flip", 0.7)
+            now[0] = 1.1
+            report = monitor.finish_frame(game)
+
+            self.assertIsNotNone(report)
+            assert report is not None
+            self.assertEqual(emitted, [report])
+            self.assertTrue(report.startswith("ARCH_ROGUE_PERF "))
+            self.assertIn("fps=0.91", report)
+            self.assertIn("world:200.0", report)
+            self.assertIn("hud:50.0", report)
+            self.assertIn("flip:700.0", report)
+            self.assertIn("logical=780x360", report)
+            self.assertIn("renderer=opengles2 accelerated=yes", report)
+            self.assertIn("cache=decoded:", report)
+            self.assertIn("W 200 H 50 F 700", monitor.overlay_text)
+
 
 class MobileLayoutTests(unittest.TestCase):
     def test_safe_insets_coerce_and_clamp(self) -> None:
@@ -341,6 +448,7 @@ class MobileLayoutTests(unittest.TestCase):
 
     def test_layout_matrix_centers_viewport_and_keeps_rails_apart(self) -> None:
         for size, insets in (
+            ((780, 360), (0, 0, 0, 0)),
             ((1280, 720), (0, 0, 0, 0)),
             ((2340, 1080), (90, 0, 18, 0)),
             ((2340, 1080), (18, 0, 90, 0)),

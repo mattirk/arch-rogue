@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 import pygame
 
@@ -31,6 +32,37 @@ from .input import Command
 
 _TRUE_VALUES = frozenset(("1", "true", "yes", "on"))
 _FALSE_VALUES = frozenset(("0", "false", "no", "off"))
+MOBILE_PERF_LOG_PREFIX = "ARCH_ROGUE_PERF"
+MOBILE_PERF_REPORT_INTERVAL = 4.0
+MOBILE_PERF_PHASES = (
+    "tick",
+    "events",
+    "update",
+    "clear",
+    "menu",
+    "world",
+    "hud",
+    "overlays",
+    "flip",
+    "audio",
+)
+
+
+def android_runtime_active() -> bool:
+    """Return whether SDL is hosted by a real python-for-android activity."""
+
+    return sys.platform == "android" or "ANDROID_ARGUMENT" in os.environ
+
+
+def mobile_performance_telemetry_enabled() -> bool:
+    """Enable beta telemetry by default on Android, with an env escape hatch."""
+
+    override = os.environ.get("ARCH_ROGUE_PERF", "").strip().lower()
+    if override in _TRUE_VALUES:
+        return True
+    if override in _FALSE_VALUES:
+        return False
+    return android_runtime_active()
 
 
 def detect_mobile_runtime() -> bool:
@@ -322,6 +354,163 @@ class _TouchContact:
     position: tuple[int, int]
 
 
+class MobilePerformanceMonitor:
+    """Low-overhead rolling Android frame-phase telemetry."""
+
+    def __init__(
+        self,
+        *,
+        report_interval: float = MOBILE_PERF_REPORT_INTERVAL,
+        clock: Callable[[], float] = time.perf_counter,
+        emit: Callable[[str], None] | None = None,
+    ) -> None:
+        self.report_interval = max(0.05, float(report_interval))
+        self._clock = clock
+        self._emit = emit or self._print_line
+        self._report_started: float | None = None
+        self._frame_started: float | None = None
+        self._frame_seconds = 0.0
+        self._frame_count = 0
+        self._phase_seconds = {phase: 0.0 for phase in MOBILE_PERF_PHASES}
+        self._last_cache_stats: dict[str, int] = {}
+        self.last_report = ""
+        self.overlay_text = "PERF collecting frame timings..."
+
+    @staticmethod
+    def _print_line(line: str) -> None:
+        print(line, flush=True)
+
+    def begin_frame(self) -> None:
+        now = self._clock()
+        if self._report_started is None:
+            self._report_started = now
+        self._frame_started = now
+
+    def record_phase(self, phase: str, seconds: float) -> None:
+        if phase not in self._phase_seconds:
+            return
+        self._phase_seconds[phase] += max(0.0, float(seconds))
+
+    @staticmethod
+    def _safe_len(value: object) -> int:
+        try:
+            return len(value)  # type: ignore[arg-type]
+        except (TypeError, AttributeError):
+            return 0
+
+    @staticmethod
+    def _size_label(size: tuple[int, int]) -> str:
+        return f"{int(size[0])}x{int(size[1])}"
+
+    def finish_frame(self, game: Any) -> str | None:
+        if self._frame_started is None:
+            return None
+        now = self._clock()
+        self._frame_seconds += max(0.0, now - self._frame_started)
+        self._frame_started = None
+        self._frame_count += 1
+        report_started = self._report_started if self._report_started is not None else now
+        elapsed = max(0.0, now - report_started)
+        if elapsed < self.report_interval:
+            return None
+
+        frames = max(1, self._frame_count)
+        fps = frames / max(elapsed, 1e-9)
+        frame_ms = self._frame_seconds * 1000.0 / frames
+        phase_ms = {
+            phase: self._phase_seconds[phase] * 1000.0 / frames
+            for phase in MOBILE_PERF_PHASES
+        }
+        measured_ms = sum(phase_ms.values())
+        other_ms = max(0.0, frame_ms - measured_ms)
+
+        try:
+            logical = game.screen.get_size()
+            logical_size = (int(logical[0]), int(logical[1]))
+        except (AttributeError, IndexError, TypeError, ValueError):
+            logical_size = (0, 0)
+        try:
+            window = pygame.display.get_window_size()
+            window_size = (int(window[0]), int(window[1]))
+        except (AttributeError, IndexError, TypeError, ValueError, pygame.error):
+            window_size = (0, 0)
+        try:
+            viewport = game.mobile_world_viewport().size
+            viewport_size = (int(viewport[0]), int(viewport[1]))
+        except (AttributeError, IndexError, TypeError, ValueError):
+            viewport_size = logical_size
+        try:
+            video_driver = pygame.display.get_driver()
+        except pygame.error:
+            video_driver = "unknown"
+
+        sprites = getattr(game, "sprites", None)
+        cache_stats_method = getattr(sprites, "cache_stats", None)
+        try:
+            raw_cache_stats = cache_stats_method() if callable(cache_stats_method) else {}
+            cache_stats = {
+                str(key): int(value) for key, value in raw_cache_stats.items()
+            }
+        except (AttributeError, TypeError, ValueError):
+            cache_stats = {}
+        source_loads = cache_stats.get("source_loads", 0)
+        frame_builds = cache_stats.get("frame_builds", 0)
+        source_delta = max(
+            0, source_loads - self._last_cache_stats.get("source_loads", 0)
+        )
+        build_delta = max(
+            0, frame_builds - self._last_cache_stats.get("frame_builds", 0)
+        )
+        self._last_cache_stats = cache_stats
+
+        accelerated = getattr(game, "_mobile_renderer_accelerated", None)
+        accelerated_label = (
+            "yes" if accelerated is True else "no" if accelerated is False else "unknown"
+        )
+        renderer_name = str(getattr(game, "_mobile_renderer_name", "unknown"))
+        phase_label = ",".join(
+            f"{phase}:{phase_ms[phase]:.1f}" for phase in MOBILE_PERF_PHASES
+        )
+        enemies = self._safe_len(getattr(game, "enemies", ()))
+        lights = self._safe_len(getattr(game, "light_sources", ())) + self._safe_len(
+            getattr(game, "lights", ())
+        )
+        effects = self._safe_len(getattr(game, "impact_effects", ()))
+        projectiles = self._safe_len(getattr(game, "projectiles", ()))
+        line = (
+            f"{MOBILE_PERF_LOG_PREFIX} "
+            f"state={getattr(game, 'state', 'unknown')} fps={fps:.2f} "
+            f"frame_ms={frame_ms:.1f} phase_ms={phase_label},other:{other_ms:.1f} "
+            f"logical={self._size_label(logical_size)} "
+            f"window={self._size_label(window_size)} "
+            f"viewport={self._size_label(viewport_size)} "
+            f"quality={getattr(game, 'mobile_render_quality', 'unknown')} "
+            f"renderer={renderer_name} accelerated={accelerated_label} "
+            f"video={video_driver} lighting={int(bool(getattr(game, '_lighting_enabled', False)))} "
+            f"normals={int(bool(getattr(game, '_lighting_normal_maps', False)))} "
+            f"entities=enemies:{enemies},lights:{lights},effects:{effects},projectiles:{projectiles} "
+            f"cache=decoded:{cache_stats.get('decoded_sources', 0)},"
+            f"frames:{cache_stats.get('resolved_frames', 0)},"
+            f"loads+:{source_delta},builds+:{build_delta}"
+        )
+        self.last_report = line
+        visible_world_ms = max(phase_ms["menu"], phase_ms["world"])
+        self.overlay_text = (
+            f"PERF {fps:.1f}fps {frame_ms:.0f}ms | "
+            f"W {visible_world_ms:.0f} H {phase_ms['hud']:.0f} "
+            f"F {phase_ms['flip']:.0f} | {self._size_label(logical_size)} "
+            f"{renderer_name}"
+        )
+        self._emit(line)
+
+        self._report_started = now
+        self._frame_seconds = 0.0
+        self._frame_count = 0
+        for phase in self._phase_seconds:
+            self._phase_seconds[phase] = 0.0
+        return line
+
+
 class MobileMixin:
     """Game mixin implementing mobile geometry, touch, and app lifecycle."""
 
@@ -342,6 +531,15 @@ class MobileMixin:
         self._mobile_touch_world_active = False
         self.mobile_suspended = False
         self.mobile_audio_focus_paused = False
+        self._mobile_perf_overlay_cache: tuple[
+            str, int, pygame.Surface
+        ] | None = None
+        self._mobile_performance_monitor = (
+            MobilePerformanceMonitor()
+            if getattr(self, "mobile_mode", False)
+            and mobile_performance_telemetry_enabled()
+            else None
+        )
         if getattr(self, "mobile_mode", False):
             self.refresh_mobile_safe_insets()
 
@@ -718,6 +916,34 @@ class MobileMixin:
             self.register_mobile_touch_target(
                 rect, command, label, context=context
             )
+
+    def draw_mobile_performance_overlay(self) -> None:
+        """Draw the latest compact on-device phase summary without per-frame text work."""
+
+        monitor = getattr(self, "_mobile_performance_monitor", None)
+        if monitor is None:
+            return
+        text = monitor.overlay_text
+        font = self.tiny_font
+        cache = getattr(self, "_mobile_perf_overlay_cache", None)
+        if cache is None or cache[0] != text or cache[1] != id(font):
+            label = font.render(text, True, (236, 231, 206))
+            surface = pygame.Surface(
+                (label.get_width() + 8, label.get_height() + 4), pygame.SRCALPHA
+            )
+            surface.fill((4, 5, 8, 212))
+            surface.blit(label, (4, 2))
+            cache = (text, id(font), surface)
+            self._mobile_perf_overlay_cache = cache
+        surface = cache[2]
+        bounds = (
+            self.mobile_world_viewport()
+            if self.state in ("playing", "dead", "victory")
+            else self.mobile_safe_rect()
+        )
+        x = bounds.x + 3
+        y = max(bounds.y + 3, bounds.bottom - surface.get_height() - 3)
+        self._mobile_display_surface().blit(surface, (x, y))
 
     def handle_mobile_lifecycle_event(self, event: pygame.event.Event) -> bool:
         if not getattr(self, "mobile_mode", False):

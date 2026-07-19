@@ -208,6 +208,19 @@ def validate_build_spec(spec_path: Path, project_root: Path | None = None) -> tu
             "produces the invalid manifest permission android.permission."
         )
 
+    excluded_source_dirs = {
+        value.strip().lower()
+        for value in app.get("source.exclude_dirs", "").split(",")
+        if value.strip()
+    }
+    required_exclusions = {"__pycache__", "arch_rogue.egg-info"}
+    missing_exclusions = sorted(required_exclusions - excluded_source_dirs)
+    if missing_exclusions:
+        raise ValidationError(
+            "buildozer source.exclude_dirs must reject generated source metadata: "
+            + ", ".join(missing_exclusions)
+        )
+
     if app.get("p4a.bootstrap", "").strip() != "sdl2":
         raise ValidationError("Arch Rogue Android builds require p4a.bootstrap = sdl2")
     commit = app.get("p4a.commit", "").strip().lower()
@@ -224,6 +237,20 @@ def _validate_private_bundle(payload: bytes) -> str:
                 for member in archive.getmembers()
                 if member.isfile()
             }
+            generated_metadata = sorted(
+                name
+                for name in members
+                if any(
+                    part == "__pycache__" or part.endswith(".egg-info")
+                    for part in PurePosixPath(name).parts
+                )
+            )
+            if generated_metadata:
+                raise ValidationError(
+                    "assets/private.tar contains generated source metadata: "
+                    + ", ".join(generated_metadata)
+                )
+
             entrypoint = next(
                 (name for name in ("main.py", "main.pyc") if name in members),
                 None,

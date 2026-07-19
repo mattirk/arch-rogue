@@ -1,8 +1,37 @@
 # Changelog
 
-## 4.3.2 — Android Render Performance
+## 4.3.3 — Android GLES Enforcement and Device Telemetry
 
-Release 4.3.2 fixes the Android beta's unusable native-resolution software-rendering path, which could fall to roughly 1 FPS on phones. Android now renders an aspect-preserving logical framebuffer and uses SDL's accelerated renderer to scale it to the physical display.
+Release 4.3.3 addresses the remaining physical-device ~1 FPS failure after 4.3.2's resolution reduction. Android now rejects SDL's unaccelerated `pygame.SCALED` renderer, explicitly tries the packaged GLES2/GLES drivers, and reports every frame phase on-device so any vendor-specific remainder is attributable rather than guessed.
+
+### Added
+
+- Rolling Android telemetry emits one `ARCH_ROGUE_PERF` line every four seconds with true FPS/frame time; tick, event, update, menu/world, HUD, overlay, flip, and audio timings; logical/window/viewport sizes; renderer acceleration; quality/lighting state; entity counts; and interval sprite decode/build deltas.
+- A small cached in-game diagnostic line shows FPS plus world/HUD/flip milliseconds. It performs no per-frame font rendering and is enabled by default only in the Android beta; `ARCH_ROGUE_PERF=0` disables it.
+- Renderer startup diagnostics attach safely to Pygame CE's existing `_sdl2` renderer and log logical size/scale without creating a competing renderer.
+- Regression coverage exercises GLES2-to-GLES retry, launch-safe software fallback, telemetry aggregation, and the reduced-resolution layout.
+
+### Changed
+
+- Before `pygame.init()`, Android requests `SDL_RENDER_DRIVER=opengles2`. Display creation converts Pygame CE's `no fast renderer available` warning into a failed candidate, retries `opengles`, and permits SDL auto-selection only as a final launch-safe fallback. Telemetry records `accelerated=no` if that fallback is software.
+- Performance now caps logical height at 360p (780×360 on a 2340×1080 phone) and Balanced at 540p. This reduces Performance's streamed texture from 0.63 to 0.28 megapixels while preserving aspect ratio, safe-area input, and the complete six-skill mobile HUD.
+- Buildozer excludes generated `__pycache__` and `arch_rogue.egg-info` directories, and the APK validator rejects either if they leak into `assets/private.tar`; stale editable-install metadata can no longer contradict the release version.
+- Runtime/package release version is `4.3.3`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- The cached Android SDL source has both `SDL_VIDEO_RENDER_OGL_ES2` and `SDL_VIDEO_RENDER_OGL_ES` enabled; GLES2 precedes GLES and software in its renderer table.
+- Deterministic depth-10 crowded-floor profile at physical 2340×1080 / logical 780×360 with 45 enemies: update `2.278 ms/frame`, render `9.631 ms/frame`, and continuous lighting about `0.70 ms/frame`. With lighting off, render was `8.936 ms/frame`.
+- A 1,500-frame cache run settled at 295 resolved frames (~19.3 MiB), below the 320-frame limit, confirming no steady representative-floor eviction loop; telemetry still exposes device-side APK decode spikes through `loads+`/`builds+`.
+- The 780×360 smoke render retained all six action skills, three resource bars, four utility buttons, pause/interact controls, twelve gameplay touch targets, and a 614×344 world viewport.
+- Focused mobile/lifecycle/packaging suite: 43 tests, all passing; full `unittest` discovery: 420 tests, all passing. `compileall`, Android source/spec preflight, shell syntax, changed-file diagnostics, and `git diff --check` passed.
+- `./tools/build_android.sh debug` produced `bin/archrogue-4.3.3-arm64-v8a_armeabi-v7a-debug.apk` (70 MiB, SHA-256 `e1fd494c2682e9eb5e2473ac741fbf4a8cbee03e86e16e1942ef7e1b175e9506`). The mandatory audit found root `main.pyc`, no generated source metadata or desktop pygame payload, and 104 architecture-correct ELF extensions for each ARM ABI.
+- Android `aapt` confirmed version 4.3.3, API 28/34, GLES 2.0, landscape `PythonActivity`, both native ABIs, and no permissions; `apksigner` verified the V2 debug signature. Packaged bytecode contains the GLES2 enforcement, `ARCH_ROGUE_PERF`, and 360p tier.
+- Physical-device FPS/logcat validation remains required because no ADB device or emulator is attached to this workstation.
+
+## 4.3.2 — Android Render Performance (Incomplete First Pass)
+
+Release 4.3.2 reduced Android's logical framebuffer and mobile lighting cost, but subsequent modern-phone testing remained around 1 FPS. It requested Pygame's SDL scaled renderer without rejecting SDL's permitted software fallback and had no device-side phase telemetry, so this release did not resolve or attribute the physical-device bottleneck.
 
 ### Added
 
@@ -11,7 +40,7 @@ Release 4.3.2 fixes the Android beta's unusable native-resolution software-rende
 
 ### Changed
 
-- Android display creation now combines `pygame.FULLSCREEN | pygame.SCALED`. Pygame CE creates an SDL accelerated renderer and uploads only the capped logical streaming texture; the GPU performs the final scale to the full landscape display. Aspect ratio, normalized finger input, and scaled safe-area insets remain correct on phones and tablets.
+- Android display creation now combines `pygame.FULLSCREEN | pygame.SCALED`. Pygame CE uploads the capped logical streaming texture through an SDL renderer, although this release did not enforce acceleration and SDL could fall back to software. Aspect ratio, normalized finger input, and scaled safe-area insets remain correct on phones and tablets.
 - Performance mode renders only 25% as many root pixels as a representative 2340×1080 phone (1170×540), downsamples continuous lighting to quarter resolution, uses nearest-neighbor mobile light/world compositing, and omits the redundant full-viewport ambient alpha pass while continuous lighting is active. Balanced uses a one-third-resolution light buffer; Native retains the original half-resolution buffer.
 - Fresh mobile installs disable generated normal-map detail, and pre-schema-6 mobile options migrate to Performance with normal maps off. Explicit schema-6 choices remain authoritative.
 - Screen flashes reuse a size-matched surface instead of allocating a full frame for every flash, resolution changes preserve expensive decoded actor animation frames, and suspended Android apps throttle to 10 Hz without updating or drawing.
@@ -19,7 +48,7 @@ Release 4.3.2 fixes the Android beta's unusable native-resolution software-rende
 
 ### Validation
 
-- Deterministic crowded-floor mobile profile at a physical 2340×1080: Native rendered at 16.923 ms/frame; Performance rendered at 9.051 ms/frame (46.5% less host render CPU). Continuous lighting fell from about 3.52 to 0.90 ms/frame (74% less). This deliberately excludes the additional Android-side gain from replacing a 2.53 MP native upload with a 0.63 MP GPU-scaled logical texture.
+- Deterministic crowded-floor mobile profile at a physical 2340×1080: Native rendered at 16.923 ms/frame; Performance rendered at 9.051 ms/frame (46.5% less host render CPU). Continuous lighting fell from about 3.52 to 0.90 ms/frame (74% less). The dummy driver could not measure Android texture upload or verify the selected renderer; later physical-device testing showed this reduction was insufficient.
 - 540p safe-area smoke render at 1170×540 confirmed readable HUD text, six action buttons, all resource bars/utilities, and an unobstructed 874×516 world viewport with asymmetric cutout insets.
 - Focused mobile, lifecycle, input, lighting, and viewport suite: 99 tests, all passing.
 - `./tools/build_android.sh debug` produced `bin/archrogue-4.3.2-arm64-v8a_armeabi-v7a-debug.apk` (70 MiB, SHA-256 `ffe5c3210342d76609b02abc9974b3ca5f012bc12f0bb2b4fc82ec5837e62db6`). The mandatory audit found root `main.pyc` and 104 correct ELF extensions for each ARM ABI.

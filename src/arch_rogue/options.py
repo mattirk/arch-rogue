@@ -27,6 +27,7 @@ import math
 import os
 import re
 import sys
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,7 @@ from .content import (
     DifficultyProfile,
 )
 from .input import normalize_gamepad_mapping, serialize_gamepad_mapping
+from .mobile import android_runtime_active
 
 
 _BASE_DISPLAY_DPI = 96.0
@@ -58,15 +60,16 @@ MOBILE_RENDER_QUALITY_MODES: tuple[str, ...] = (
     MOBILE_RENDER_QUALITY_NATIVE,
 )
 MOBILE_RENDER_QUALITY_HEIGHT_CAPS: dict[str, int | None] = {
-    MOBILE_RENDER_QUALITY_PERFORMANCE: 540,
-    MOBILE_RENDER_QUALITY_BALANCED: 720,
+    MOBILE_RENDER_QUALITY_PERFORMANCE: 360,
+    MOBILE_RENDER_QUALITY_BALANCED: 540,
     MOBILE_RENDER_QUALITY_NATIVE: None,
 }
 MOBILE_RENDER_QUALITY_LABELS: dict[str, str] = {
-    MOBILE_RENDER_QUALITY_PERFORMANCE: "Performance · 540p cap",
-    MOBILE_RENDER_QUALITY_BALANCED: "Balanced · 720p cap",
+    MOBILE_RENDER_QUALITY_PERFORMANCE: "Performance · 360p cap",
+    MOBILE_RENDER_QUALITY_BALANCED: "Balanced · 540p cap",
     MOBILE_RENDER_QUALITY_NATIVE: "Native · full resolution",
 }
+ANDROID_RENDER_DRIVER_CANDIDATES: tuple[str, ...] = ("opengles2", "opengles")
 
 
 def default_mobile_render_quality(mobile: bool) -> str:
@@ -321,6 +324,10 @@ class OptionsMixin:
             os.environ.setdefault("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2")
         if getattr(self, "mobile_mode", False):
             os.environ["SDL_RENDER_SCALE_QUALITY"] = "0"
+            if android_runtime_active():
+                # SDL_CreateRenderer otherwise accepts a software renderer. On
+                # Android that makes every fullscreen scale/present CPU-bound.
+                os.environ.setdefault("SDL_RENDER_DRIVER", "opengles2")
 
     def _set_ui_scale(
         self,
@@ -451,6 +458,126 @@ class OptionsMixin:
         display_info = pygame.display.Info()
         return display_info.current_w, display_info.current_h
 
+    @staticmethod
+    def _mobile_slow_renderer_warning(value: object) -> bool:
+        message = getattr(value, "message", value)
+        return "no fast renderer available" in str(message).lower()
+
+    def _reset_android_display_subsystem(self) -> None:
+        # A failed SDL_CreateRenderer tears down Pygame's default window but can
+        # leave the video subsystem initialized. Reinitializing gives the next
+        # GLES candidate a clean window/context.
+        try:
+            title = pygame.display.get_caption()[0] or "Arch Rogue"
+        except pygame.error:
+            title = "Arch Rogue"
+        try:
+            pygame.display.quit()
+        finally:
+            pygame.display.init()
+            pygame.display.set_caption(title)
+
+    def _record_mobile_renderer(
+        self,
+        surface: pygame.Surface,
+        *,
+        name: str,
+        accelerated: bool,
+        failures: list[str],
+    ) -> None:
+        self._mobile_renderer_name = name
+        self._mobile_renderer_accelerated = accelerated
+        self._mobile_renderer_failures = tuple(failures)
+        self._mobile_renderer_logical_size = surface.get_size()
+        self._mobile_renderer_scale = (0.0, 0.0)
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                from pygame._sdl2.video import Renderer, Window
+
+                window = Window.from_display_module()
+                renderer = Renderer.from_window(window)
+                self._mobile_renderer_logical_size = tuple(renderer.logical_size)
+                self._mobile_renderer_scale = tuple(renderer.scale)
+        except (AttributeError, ImportError, TypeError, ValueError, pygame.error):
+            pass
+        try:
+            window_size = pygame.display.get_window_size()
+        except pygame.error:
+            window_size = (0, 0)
+        failure_label = "|".join(failures) if failures else "none"
+        print(
+            "ARCH_ROGUE_PERF display "
+            f"renderer={name} accelerated={'yes' if accelerated else 'no'} "
+            f"logical={surface.get_width()}x{surface.get_height()} "
+            f"window={window_size[0]}x{window_size[1]} "
+            f"renderer_logical={self._mobile_renderer_logical_size[0]}x"
+            f"{self._mobile_renderer_logical_size[1]} "
+            f"renderer_scale={self._mobile_renderer_scale[0]:.3f}x"
+            f"{self._mobile_renderer_scale[1]:.3f} failures={failure_label}",
+            flush=True,
+        )
+
+    def _apply_android_scaled_mode(
+        self, logical_size: tuple[int, int]
+    ) -> pygame.Surface:
+        flags = pygame.FULLSCREEN | pygame.SCALED
+        requested = os.environ.get("SDL_RENDER_DRIVER", "").strip().lower()
+        candidates: list[str] = []
+        for driver in (requested, *ANDROID_RENDER_DRIVER_CANDIDATES):
+            if driver and driver != "software" and driver not in candidates:
+                candidates.append(driver)
+
+        failures: list[str] = []
+        for index, driver in enumerate(candidates):
+            if index:
+                self._reset_android_display_subsystem()
+            os.environ["SDL_RENDER_DRIVER"] = driver
+            try:
+                # Pygame CE emits this warning only after SDL_GetRendererInfo
+                # reports no SDL_RENDERER_ACCELERATED flag. Turning that one
+                # warning into an exception also makes display.c clean up the
+                # unusable software renderer before we try another candidate.
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "error",
+                        message=r"^no fast renderer available$",
+                        category=Warning,
+                    )
+                    surface = pygame.display.set_mode(logical_size, flags)
+            except (pygame.error, Warning) as exc:
+                failures.append(f"{driver}:{type(exc).__name__}:{exc}")
+                continue
+            self._record_mobile_renderer(
+                surface,
+                name=driver,
+                accelerated=True,
+                failures=failures,
+            )
+            return surface
+
+        # GLES2 is mandatory on the supported Android API range, but retain a
+        # last-resort automatic path so a vendor renderer failure does not turn
+        # a performance problem into an app-launch failure. Telemetry marks a
+        # software fallback explicitly.
+        if candidates:
+            self._reset_android_display_subsystem()
+        os.environ.pop("SDL_RENDER_DRIVER", None)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            surface = pygame.display.set_mode(logical_size, flags)
+        accelerated = not any(
+            self._mobile_slow_renderer_warning(value) for value in caught
+        )
+        renderer_name = "auto" if accelerated else "software"
+        self._record_mobile_renderer(
+            surface,
+            name=renderer_name,
+            accelerated=accelerated,
+            failures=failures,
+        )
+        return surface
+
     def apply_display_mode(self, headless: bool = False) -> pygame.Surface:
         if headless:
             return pygame.display.set_mode(self.windowed_size, pygame.HIDDEN)
@@ -471,9 +598,9 @@ class OptionsMixin:
                     MOBILE_RENDER_QUALITY_PERFORMANCE,
                 ),
             )
-            return pygame.display.set_mode(
-                logical_size, pygame.FULLSCREEN | pygame.SCALED
-            )
+            if android_runtime_active():
+                return self._apply_android_scaled_mode(logical_size)
+            return pygame.display.set_mode(logical_size, pygame.FULLSCREEN | pygame.SCALED)
         if self.fullscreen:
             # Use SDL's scaled fullscreen path so the game surface is expanded to
             # the actual monitor instead of being placed unscaled in the top-left

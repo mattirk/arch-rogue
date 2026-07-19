@@ -1,6 +1,6 @@
 # Arch Rogue Android Beta
 
-Release **4.3.2** ships a landscape-only Android beta APK built from the same
+Release **4.3.3** ships a landscape-only Android beta APK built from the same
 Python/pygame-ce codebase as the desktop release.  This document is the source
 of truth for installing, building, and reporting issues with the beta.
 
@@ -38,25 +38,43 @@ gameplay, and never silently commits a story-relic choice.
 ## Performance and render quality
 
 Android defaults to **Performance** render quality. The game keeps the device's
-full landscape aspect ratio but renders at no more than 540 pixels high, uploads
-that smaller logical framebuffer, and lets SDL's accelerated renderer scale it
-to the physical display. This avoids CPU-rendering every pixel of a 1080p/1440p
-phone or tablet while preserving touch coordinates and safe-area insets.
+full landscape aspect ratio but renders at no more than 360 pixels high, uploads
+that smaller logical framebuffer, and lets SDL's accelerated GLES2 renderer scale
+it to the physical display. The startup path rejects SDL's software renderer,
+tries the packaged `opengles2` and `opengles` drivers, and only permits automatic
+software fallback so a vendor failure remains launchable and visible in telemetry.
+This avoids CPU-rendering every pixel of a 1080p/1440p phone or tablet while
+preserving touch coordinates and safe-area insets.
 
 The first Options row cycles the available tiers:
 
-- **Performance · 540p cap** — recommended for phones; quarter-resolution
+- **Performance · 360p cap** — supported phone baseline; quarter-resolution
   continuous lighting and normal-map detail off by default.
-- **Balanced · 720p cap** — sharper output on faster phones/tablets; one-third-
+- **Balanced · 540p cap** — sharper output on faster phones/tablets; one-third-
   resolution lighting.
 - **Native · full resolution** — diagnostic/high-end mode; can be dramatically
   slower because Pygame's world remains CPU-rendered before presentation.
 
 Upgrades from 4.3.0/4.3.1 migrate to Performance and disable generated normal
 maps once. You can re-enable **Lighting detail** explicitly after confirming the
-device remains smooth. If Performance is still slow, turn **Lighting** off and
-include the device model, Android version, physical resolution, and selected
-tier in the report.
+device remains smooth.
+
+The 4.3.3 beta displays a small diagnostic line at the bottom of the game view:
+`PERF <fps> <frame ms> | W <world ms> H <HUD ms> F <flip ms>`. It also emits a
+full phase report every four seconds. Capture title-screen and active-gameplay
+samples with:
+
+```bash
+adb logcat -c
+adb logcat | grep ARCH_ROGUE_PERF
+```
+
+The first `ARCH_ROGUE_PERF display` line must show `accelerated=yes` and normally
+`renderer=opengles2`. Later lines include logical/window/viewport dimensions,
+all frame phases, entity counts, lighting state, and interval asset cache loads.
+If Performance is still slow, include several complete lines plus the device
+model and Android version in the report; do not infer the bottleneck from FPS
+alone.
 
 ## Lifecycle
 
@@ -123,5 +141,5 @@ The `Build & Release` workflow builds and uploads the debug APK on every push to
 - The debug APK is not signed by a Google Play upload key; install it outside
   Play.  A signed release track is a 4.3.x goal.
 - Performance and cutout behavior vary across devices. Performance mode is the
-  supported baseline; report frame timing, render tier, physical resolution,
+  supported baseline; report the `ARCH_ROGUE_PERF` display/title/gameplay lines,
   Android version, and device model with any issue.
