@@ -126,6 +126,54 @@ class RenderingWorldMixin:
                         entries.append(entry)
         return entries
 
+    def _mobile_floor_entries_for_tiles(
+        self, tiles: set[tuple[int, int]]
+    ) -> list[tuple[pygame.Surface, tuple[int, int]]]:
+        """Return canonical painter-order entries for a small reveal delta."""
+
+        entries: list[tuple[pygame.Surface, tuple[int, int]]] = []
+        for x, y in sorted(tiles, key=lambda point: (point[0] + point[1], point[0])):
+            if not self.dungeon.in_bounds(x, y) or (x, y) not in self.revealed_tiles:
+                continue
+            tile = self.dungeon.tiles[x][y]
+            if tile in (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
+                continue
+            entry = self._tile_blit_entry(x, y, tile)
+            if entry is not None:
+                entries.append(entry)
+        return entries
+
+    def _patch_cached_mobile_floor_layer(
+        self,
+        layer: pygame.Surface,
+        build_camera: tuple[float, float],
+        pending: set[tuple[int, int]],
+        rendered: set[tuple[int, int]],
+    ) -> int:
+        # Redraw each new tile plus its immediate neighbors in canonical order so
+        # stairs and decorative diamond margins retain the same painter order as
+        # a cold full-layer build. Projection is frozen to the cache's build
+        # camera; using the live camera would write patches at shifted positions.
+        dirty: set[tuple[int, int]] = set()
+        for x, y in pending:
+            for nx in range(x - 1, x + 2):
+                for ny in range(y - 1, y + 2):
+                    if (nx, ny) in rendered or (nx, ny) in pending:
+                        dirty.add((nx, ny))
+
+        root_screen = self.screen
+        frame_cache = self._frame_cache
+        self.screen = layer
+        self._frame_cache = {"camera_iso": build_camera}
+        self._frame_dark = False
+        try:
+            entries = self._mobile_floor_entries_for_tiles(dirty)
+        finally:
+            self.screen = root_screen
+            self._frame_cache = frame_cache
+        self._blit_floor_entries(layer, entries)
+        return len(entries)
+
     def _draw_cached_mobile_floor_layer(self) -> bool:
         """Blit a reusable opaque floor layer on the Android SDL2-alpha path."""
 
@@ -140,8 +188,12 @@ class RenderingWorldMixin:
             return False
 
         cam_x, cam_y = self.camera_iso()
-        margin_x = TILE_W
-        margin_y = TILE_H
+        # A one-third-screen gutter keeps the layer reusable for several world
+        # steps instead of rebuilding roughly once per tile while the camera
+        # follows the player. Native mode pays a bounded ~1.8x surface dimension,
+        # replacing frequent alpha-tile rebuilds with one opaque translated blit.
+        margin_x = max(TILE_W, screen_w // 3)
+        margin_y = max(TILE_H, screen_h // 3)
         layer_size = (screen_w + margin_x * 2, screen_h + margin_y * 2)
         story_accent = tuple(getattr(getattr(self, "story_state", None), "accent", ()))
         cache_key = (
@@ -153,7 +205,7 @@ class RenderingWorldMixin:
             layer_size,
             round(float(getattr(self, "view_zoom", 1.0)), 4),
             bool(getattr(self, "legacy_graphics", False)),
-            len(self.revealed_tiles),
+            id(self.revealed_tiles),
         )
         cache = getattr(self, "_mobile_floor_layer_cache", None)
         rebuild = cache is None or cache[0] != cache_key
@@ -161,9 +213,12 @@ class RenderingWorldMixin:
             assert cache is not None
             build_cam_x, build_cam_y = cache[1], cache[2]
             rebuild = (
-                abs(cam_x - build_cam_x) >= margin_x * 0.5
-                or abs(cam_y - build_cam_y) >= margin_y * 0.5
+                abs(cam_x - build_cam_x) >= margin_x * 0.75
+                or abs(cam_y - build_cam_y) >= margin_y * 0.75
             )
+            if not rebuild:
+                rendered = cache[4]
+                rebuild = not rendered.issubset(self.revealed_tiles)
 
         if rebuild:
             layer = pygame.Surface(layer_size).convert()
@@ -178,8 +233,33 @@ class RenderingWorldMixin:
                 self.screen = root_screen
                 self._frame_cache = frame_cache
             self._blit_floor_entries(layer, entries)
-            cache = (cache_key, cam_x, cam_y, layer)
+            cache = (
+                cache_key,
+                cam_x,
+                cam_y,
+                layer,
+                set(self.revealed_tiles),
+            )
             self._mobile_floor_layer_cache = cache
+            self._mobile_floor_cache_rebuilds = int(
+                getattr(self, "_mobile_floor_cache_rebuilds", 0)
+            ) + 1
+        else:
+            assert cache is not None
+            rendered = cache[4]
+            pending = self.revealed_tiles.difference(rendered)
+            if pending:
+                patched = self._patch_cached_mobile_floor_layer(
+                    cache[3],
+                    (cache[1], cache[2]),
+                    pending,
+                    rendered,
+                )
+                rendered.update(pending)
+                if patched:
+                    self._mobile_floor_cache_patches = int(
+                        getattr(self, "_mobile_floor_cache_patches", 0)
+                    ) + 1
 
         assert cache is not None
         build_cam_x, build_cam_y, layer = cache[1], cache[2], cache[3]

@@ -417,6 +417,9 @@ class OptionsMixin:
     def _invalidate_resolution_sized_caches(self) -> None:
         # Actor animation frames are resolution-independent and expensive to
         # decode from an APK. Keep them warm when only the logical canvas changes.
+        release_gpu_textures = getattr(self, "release_mobile_gpu_textures", None)
+        if callable(release_gpu_textures):
+            release_gpu_textures()
         self._world_layer = None
         self._mobile_floor_layer_cache = None
         self._screen_flash_surface = None
@@ -467,7 +470,11 @@ class OptionsMixin:
     def _reset_android_display_subsystem(self) -> None:
         # A failed SDL_CreateRenderer tears down Pygame's default window but can
         # leave the video subsystem initialized. Reinitializing gives the next
-        # GLES candidate a clean window/context.
+        # GLES candidate a clean window/context. Custom textures must die before
+        # the display-owned renderer or their wrappers retain invalid pointers.
+        release_gpu_renderer = getattr(self, "release_mobile_gpu_renderer", None)
+        if callable(release_gpu_renderer):
+            release_gpu_renderer()
         try:
             title = pygame.display.get_caption()[0] or "Arch Rogue"
         except pygame.error:
@@ -500,8 +507,15 @@ class OptionsMixin:
                 renderer = Renderer.from_window(window)
                 self._mobile_renderer_logical_size = tuple(renderer.logical_size)
                 self._mobile_renderer_scale = tuple(renderer.scale)
+                configure_gpu_renderer = getattr(
+                    self, "configure_mobile_gpu_renderer", None
+                )
+                if callable(configure_gpu_renderer):
+                    configure_gpu_renderer(window, renderer)
         except (AttributeError, ImportError, TypeError, ValueError, pygame.error):
-            pass
+            release_gpu_renderer = getattr(self, "release_mobile_gpu_renderer", None)
+            if callable(release_gpu_renderer):
+                release_gpu_renderer()
         try:
             window_size = pygame.display.get_window_size()
         except pygame.error:
@@ -539,6 +553,9 @@ class OptionsMixin:
     def _apply_android_scaled_mode(
         self, logical_size: tuple[int, int]
     ) -> pygame.Surface:
+        release_gpu_renderer = getattr(self, "release_mobile_gpu_renderer", None)
+        if callable(release_gpu_renderer):
+            release_gpu_renderer()
         flags = pygame.FULLSCREEN | pygame.SCALED
         requested = os.environ.get("SDL_RENDER_DRIVER", "").strip().lower()
         candidates: list[str] = []

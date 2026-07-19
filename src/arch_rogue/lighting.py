@@ -114,19 +114,30 @@ def bake_normal_map(surface: pygame.Surface) -> pygame.Surface:
     try:
         surface.lock()
         heights = [0.0] * (w * h)
-        has_alpha = surface.get_flags() & pygame.SRCALPHA
+        alphas = bytearray(w * h)
+        has_alpha = bool(surface.get_flags() & pygame.SRCALPHA)
+        colorkey = surface.get_colorkey()
+        key_rgb = tuple(colorkey[:3]) if colorkey is not None else None
         for y in range(h):
             for x in range(w):
                 c = surface.get_at((x, y))
-                a = c.a if has_alpha else 255
+                a = (
+                    0
+                    if key_rgb is not None and tuple(c[:3]) == key_rgb
+                    else c.a
+                    if has_alpha
+                    else 255
+                )
+                index = y * w + x
+                alphas[index] = a
                 if a <= 0:
-                    heights[y * w + x] = 0.0
+                    heights[index] = 0.0
                     continue
                 # Silhouette contributes the gross height; luminance adds
                 # readable surface relief on top.
                 lum = (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / 255.0
                 height = 0.62 * (a / 255.0) + 0.38 * lum
-                heights[y * w + x] = height
+                heights[index] = height
     finally:
         if surface.get_locked():
             surface.unlock()
@@ -135,7 +146,7 @@ def bake_normal_map(surface: pygame.Surface) -> pygame.Surface:
     strength = 2.2  # emboss gain; tuned for readable relief on pixel art
     for y in range(h):
         for x in range(w):
-            a = surface.get_at((x, y)).a if has_alpha else 255
+            a = alphas[y * w + x]
             if a <= 0:
                 continue
             # 3x3 Sobel on the height field with edge clamp.
@@ -429,11 +440,10 @@ class LightingMixin:
     def _light_scratch(self, w: int, h: int) -> pygame.Surface:
         scratch = getattr(self, "_light_scratch_surface", None)
         if scratch is None or scratch.get_width() != w or scratch.get_height() != h:
-            scratch = pygame.Surface((w, h), pygame.SRCALPHA)
-            try:
-                scratch = scratch.convert_alpha()
-            except pygame.error:
-                pass
+            # The destination display/world layer is opaque. Matching its format
+            # keeps the CPU fallback on the cheaper RGB multiply path instead of
+            # processing a useless alpha channel across the full viewport.
+            scratch = pygame.Surface((w, h)).convert(self.screen)
             self._light_scratch_surface = scratch
         return scratch
 
@@ -611,13 +621,22 @@ class LightingMixin:
             scratch.fill((f, f, f, 255), special_flags=pygame.BLEND_RGBA_MULT)
             buffer.blit(scratch, (bx, by), special_flags=pygame.BLEND_RGBA_ADD)
 
-        # 3) Smoothscale the half-res buffer up to the screen and multiply.
+        # 3) On Android, queue the small light buffer for GLES to scale and
+        # multiply during presentation. This preserves native-resolution world
+        # sprites while removing the full-viewport CPU RGBA multiply measured in
+        # physical-device traces. Desktop and capability failures retain the CPU
+        # path below.
+        if getattr(self, "mobile_mode", False) and self.queue_mobile_gpu_lighting(
+            buffer
+        ):
+            return
+
         scratch = self._light_scratch(screen_w, screen_h)
         if getattr(self, "mobile_mode", False):
             pygame.transform.scale(buffer, (screen_w, screen_h), scratch)
         else:
             pygame.transform.smoothscale(buffer, (screen_w, screen_h), scratch)
-        self.screen.blit(scratch, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        self.screen.blit(scratch, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
 
     # --- lit-actor shading (feature 6) ------------------------------
     def apply_lit_shading(
@@ -681,6 +700,7 @@ class LightingMixin:
             result = result.convert_alpha()
         except pygame.error:
             pass
+        result = optimize_immutable_alpha_surface(result)
         cache[key] = (sprite, tint_map, result)
         cache.move_to_end(key)
         while len(cache) > 192:

@@ -653,6 +653,7 @@ class Game(
             self.draw()
             if performance is not None:
                 performance.finish_frame(self)
+        self.release_mobile_gpu_renderer()
         pygame.quit()
 
     def request_exit_confirmation(self) -> None:

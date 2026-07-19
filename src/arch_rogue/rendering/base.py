@@ -62,6 +62,7 @@ class RenderingBaseMixin:
         performance = getattr(self, "_mobile_performance_monitor", None)
         if getattr(self, "mobile_mode", False):
             self.reset_mobile_touch_targets()
+            self.begin_mobile_gpu_frame()
 
         started = time.perf_counter()
         self.screen.fill((10, 10, 14))
@@ -91,7 +92,7 @@ class RenderingBaseMixin:
                 performance.record_phase("overlays", time.perf_counter() - started)
 
             started = time.perf_counter()
-            pygame.display.flip()
+            self._present_frame()
             if performance is not None:
                 performance.record_phase("flip", time.perf_counter() - started)
 
@@ -135,7 +136,7 @@ class RenderingBaseMixin:
             performance.record_phase("overlays", time.perf_counter() - started)
 
         started = time.perf_counter()
-        pygame.display.flip()
+        self._present_frame()
         if performance is not None:
             performance.record_phase("flip", time.perf_counter() - started)
 
@@ -143,6 +144,11 @@ class RenderingBaseMixin:
         self.sync_music()
         if performance is not None:
             performance.record_phase("audio", time.perf_counter() - started)
+
+    def _present_frame(self) -> None:
+        if getattr(self, "mobile_mode", False) and self.present_mobile_gpu_frame():
+            return
+        pygame.display.flip()
 
     @contextmanager
     def mobile_safe_render_target(self) -> Iterator[None]:
@@ -229,9 +235,20 @@ class RenderingBaseMixin:
             # ``_screen_size`` caches the surface size; reset so it picks up the
             # layer instead of the display while the world is being drawn.
             self._frame_cache = {}
+        performance = getattr(self, "_mobile_performance_monitor", None)
         try:
+            started = time.perf_counter()
             self.draw_dungeon()
+            if performance is not None:
+                performance.record_detail_phase(
+                    "floor", time.perf_counter() - started
+                )
+            started = time.perf_counter()
             self.draw_world_objects()
+            if performance is not None:
+                performance.record_detail_phase(
+                    "objects", time.perf_counter() - started
+                )
             if not shade_post:
                 # Zoomed in: shade the (smaller) world layer before it is
                 # upscaled to the display.
@@ -257,9 +274,18 @@ class RenderingBaseMixin:
         # Continuous colored lighting + ambient depth vignette. No-op on the
         # LIGHTING_OFF tier, which keeps the 3.8.0 per-tile alpha look as the
         # fallback/web default.
+        performance = getattr(self, "_mobile_performance_monitor", None)
+        started = time.perf_counter()
         self.draw_lighting()
+        if performance is not None:
+            performance.record_detail_phase(
+                "light_build", time.perf_counter() - started
+            )
+        started = time.perf_counter()
         self.draw_ambient_depth_overlay()
         self.draw_darkness_overlay()
+        if performance is not None:
+            performance.record_detail_phase("ambient", time.perf_counter() - started)
 
     def _world_layer_surface(
         self, real_screen: pygame.Surface, zoom: float

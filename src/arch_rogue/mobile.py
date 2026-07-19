@@ -47,6 +47,31 @@ MOBILE_PERF_PHASES = (
     "flip",
     "audio",
 )
+MOBILE_PERF_DETAIL_PHASES = (
+    "floor",
+    "objects",
+    "light_build",
+    "ambient",
+    "base_upload",
+    "light_upload",
+    "ui_upload",
+    "gpu_present",
+)
+# SDL2's stable blend-mode values. pygame._sdl2 accepts these integer values but
+# does not export the corresponding SDL_BLENDMODE_* constants in pygame-ce 2.5.7.
+SDL_BLENDMODE_NONE = 0
+SDL_BLENDMODE_BLEND = 1
+SDL_BLENDMODE_MOD = 4
+_ANDROID_XRGB_MASKS = (0x00FF0000, 0x0000FF00, 0x000000FF, 0x00000000)
+_ANDROID_ARGB_MASKS = (0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000)
+_COLORKEY_CANDIDATES = (
+    (255, 0, 255),
+    (0, 255, 0),
+    (1, 0, 2),
+    (254, 1, 253),
+    (3, 5, 7),
+    (255, 255, 1),
+)
 
 
 def android_runtime_active() -> bool:
@@ -74,17 +99,35 @@ def sdl2_alpha_blitter_requested() -> bool:
     return PYGAME_BLEND_ALPHA_SDL2_ENV in os.environ
 
 
+def _unused_colorkey(surface: pygame.Surface) -> tuple[int, int, int] | None:
+    """Choose a key absent from the source's visible pixels."""
+
+    for color in _COLORKEY_CANDIDATES:
+        try:
+            matches = pygame.mask.from_threshold(
+                surface,
+                (*color, 255),
+                (1, 1, 1, 1),
+            ).count()
+        except (TypeError, ValueError, pygame.error):
+            return None
+        if matches == 0:
+            return color
+    return None
+
+
 def optimize_immutable_alpha_surface(
     surface: pygame.Surface,
     *,
     alpha: int | None = None,
 ) -> pygame.Surface:
-    """Enable SDL's RLE alpha cache for a read-only Android source surface.
+    """Optimize a read-only transparent source for Android's software blitter.
 
-    Transparent actor, tile, and UI surfaces are blitted hundreds of times per
-    frame. RLE lets SDL skip transparent runs instead of touching every pixel.
-    It is intentionally activated only with the SDL2 alpha override so desktop
-    blending and surfaces that callers continue to modify remain unchanged.
+    Authored pixel art has binary alpha. Converting those final immutable cache
+    entries to display-format colorkey surfaces selects SDL's much cheaper RLE
+    copy path instead of alpha blending every occupied pixel on ARM. Gradients,
+    text, shadows, panels, and any source with partial alpha retain per-pixel
+    alpha and only receive the previous RLE hint. Desktop behavior is unchanged.
     """
 
     if not sdl2_alpha_blitter_requested() or not surface.get_flags() & pygame.SRCALPHA:
@@ -92,8 +135,11 @@ def optimize_immutable_alpha_surface(
     area = surface.get_width() * surface.get_height()
     if area <= 0:
         return surface
+    target_alpha = surface.get_alpha() if alpha is None else int(alpha)
+    target_alpha = 255 if target_alpha is None else max(0, min(255, target_alpha))
     try:
-        occupied = pygame.mask.from_surface(surface, 1).count()
+        occupied = pygame.mask.from_surface(surface, 0).count()
+        fully_opaque = pygame.mask.from_surface(surface, 254).count()
     except (TypeError, ValueError, pygame.error):
         return surface
     # RLE is a win for transparent runs but adds decode overhead to nearly opaque
@@ -101,8 +147,19 @@ def optimize_immutable_alpha_surface(
     # occupied; dense UI art stays on pygame's normal contiguous path.
     if occupied * 100 > area * 85:
         return surface
-    target_alpha = surface.get_alpha() if alpha is None else int(alpha)
-    target_alpha = 255 if target_alpha is None else max(0, min(255, target_alpha))
+
+    if target_alpha == 255 and occupied == fully_opaque:
+        key = _unused_colorkey(surface)
+        if key is not None:
+            try:
+                optimized = pygame.Surface(surface.get_size()).convert()
+                optimized.fill(key)
+                optimized.blit(surface, (0, 0))
+                optimized.set_colorkey(key, pygame.RLEACCEL)
+                return optimized
+            except (TypeError, ValueError, pygame.error):
+                pass
+
     if surface.get_flags() & pygame.RLEACCEL and surface.get_alpha() == target_alpha:
         return surface
     try:
@@ -419,6 +476,9 @@ class MobilePerformanceMonitor:
         self._frame_seconds = 0.0
         self._frame_count = 0
         self._phase_seconds = {phase: 0.0 for phase in MOBILE_PERF_PHASES}
+        self._detail_phase_seconds = {
+            phase: 0.0 for phase in MOBILE_PERF_DETAIL_PHASES
+        }
         self._last_cache_stats: dict[str, int] = {}
         self.last_report = ""
         self.overlay_text = "PERF collecting frame timings..."
@@ -438,6 +498,13 @@ class MobilePerformanceMonitor:
         if phase not in self._phase_seconds:
             return
         self._phase_seconds[phase] += max(0.0, float(seconds))
+
+    def record_detail_phase(self, phase: str, seconds: float) -> None:
+        """Record nested render work without double-counting total frame time."""
+
+        if phase not in self._detail_phase_seconds:
+            return
+        self._detail_phase_seconds[phase] += max(0.0, float(seconds))
 
     @staticmethod
     def _safe_len(value: object) -> int:
@@ -468,6 +535,10 @@ class MobilePerformanceMonitor:
         phase_ms = {
             phase: self._phase_seconds[phase] * 1000.0 / frames
             for phase in MOBILE_PERF_PHASES
+        }
+        detail_ms = {
+            phase: self._detail_phase_seconds[phase] * 1000.0 / frames
+            for phase in MOBILE_PERF_DETAIL_PHASES
         }
         measured_ms = sum(phase_ms.values())
         other_ms = max(0.0, frame_ms - measured_ms)
@@ -524,6 +595,9 @@ class MobilePerformanceMonitor:
         phase_label = ",".join(
             f"{phase}:{phase_ms[phase]:.1f}" for phase in MOBILE_PERF_PHASES
         )
+        detail_label = ",".join(
+            f"{phase}:{detail_ms[phase]:.1f}" for phase in MOBILE_PERF_DETAIL_PHASES
+        )
         enemies = self._safe_len(getattr(game, "enemies", ()))
         lights = self._safe_len(getattr(game, "light_sources", ())) + self._safe_len(
             getattr(game, "lights", ())
@@ -534,18 +608,22 @@ class MobilePerformanceMonitor:
             f"{MOBILE_PERF_LOG_PREFIX} "
             f"state={getattr(game, 'state', 'unknown')} fps={fps:.2f} "
             f"frame_ms={frame_ms:.1f} phase_ms={phase_label},other:{other_ms:.1f} "
+            f"render_ms={detail_label} "
             f"logical={self._size_label(logical_size)} "
             f"window={self._size_label(window_size)} "
             f"viewport={self._size_label(viewport_size)} "
             f"quality={getattr(game, 'mobile_render_quality', 'unknown')} "
             f"renderer={renderer_name} accelerated={accelerated_label} "
             f"alpha_sdl2={int(alpha_sdl2)} neon={neon_label} "
+            f"gpu_light={int(bool(getattr(game, '_mobile_gpu_last_present', False)))} "
             f"video={video_driver} lighting={int(bool(getattr(game, '_lighting_enabled', False)))} "
             f"normals={int(bool(getattr(game, '_lighting_normal_maps', False)))} "
             f"entities=enemies:{enemies},lights:{lights},effects:{effects},projectiles:{projectiles} "
             f"cache=decoded:{cache_stats.get('decoded_sources', 0)},"
             f"frames:{cache_stats.get('resolved_frames', 0)},"
-            f"loads+:{source_delta},builds+:{build_delta}"
+            f"loads+:{source_delta},builds+:{build_delta} "
+            f"floor_cache=rebuilds:{int(getattr(game, '_mobile_floor_cache_rebuilds', 0))},"
+            f"patches:{int(getattr(game, '_mobile_floor_cache_patches', 0))}"
         )
         self.last_report = line
         visible_world_ms = max(phase_ms["menu"], phase_ms["world"])
@@ -567,6 +645,8 @@ class MobilePerformanceMonitor:
         self._frame_count = 0
         for phase in self._phase_seconds:
             self._phase_seconds[phase] = 0.0
+        for phase in self._detail_phase_seconds:
+            self._detail_phase_seconds[phase] = 0.0
         return line
 
 
@@ -593,6 +673,20 @@ class MobileMixin:
         self._mobile_perf_overlay_cache: tuple[
             tuple[str, str], int, pygame.Surface
         ] | None = None
+        self._mobile_gpu_renderer_generation = int(
+            getattr(self, "_mobile_gpu_renderer_generation", 0)
+        )
+        self._mobile_gpu_frame_sequence = 0
+        self._mobile_gpu_frame_active = False
+        self._mobile_gpu_pending_light: tuple[
+            int, int, pygame.Surface, pygame.Rect
+        ] | None = None
+        self._mobile_gpu_pending_flash: tuple[tuple[int, int, int], int] | None = None
+        self._mobile_gpu_ui_surface: pygame.Surface | None = None
+        self._mobile_gpu_ui_viewport: pygame.Rect | None = None
+        self._mobile_gpu_flash_surface: pygame.Surface | None = None
+        self._mobile_gpu_failure = ""
+        self._mobile_gpu_last_present = False
         self._mobile_performance_monitor = (
             MobilePerformanceMonitor()
             if getattr(self, "mobile_mode", False)
@@ -601,6 +695,348 @@ class MobileMixin:
         )
         if getattr(self, "mobile_mode", False):
             self.refresh_mobile_safe_insets()
+
+    def configure_mobile_gpu_renderer(self, window: object, renderer: object) -> None:
+        """Attach borrowed wrappers for pygame.display's accelerated renderer."""
+
+        self.release_mobile_gpu_renderer()
+        self._mobile_gpu_renderer_generation = int(
+            getattr(self, "_mobile_gpu_renderer_generation", 0)
+        ) + 1
+        self._mobile_gpu_window = window
+        self._mobile_gpu_renderer = renderer
+        self._mobile_gpu_failure = ""
+        self._mobile_gpu_last_present = False
+
+    def release_mobile_gpu_textures(self) -> None:
+        """Destroy custom textures while their display-owned renderer is alive."""
+
+        self._mobile_gpu_frame_active = False
+        self._mobile_gpu_pending_light = None
+        self._mobile_gpu_pending_flash = None
+        self._mobile_gpu_last_present = False
+        for name in (
+            "_mobile_gpu_flash_texture",
+            "_mobile_gpu_ui_texture",
+            "_mobile_gpu_light_texture",
+            "_mobile_gpu_base_texture",
+        ):
+            if hasattr(self, name):
+                setattr(self, name, None)
+        self._mobile_gpu_flash_texture_key = None
+        self._mobile_gpu_ui_texture_key = None
+        self._mobile_gpu_light_texture_key = None
+        self._mobile_gpu_base_texture_key = None
+
+    def release_mobile_gpu_renderer(self) -> None:
+        """Release textures first, then borrowed renderer/window wrappers."""
+
+        self.release_mobile_gpu_textures()
+        self._mobile_gpu_renderer = None
+        self._mobile_gpu_window = None
+
+    def refresh_mobile_gpu_renderer(self) -> bool:
+        """Re-borrow pygame.display's renderer after an SDL context reset."""
+
+        if not getattr(self, "mobile_mode", False):
+            return False
+        try:
+            from pygame._sdl2.video import Renderer, Window
+
+            window = Window.from_display_module()
+            renderer = Renderer.from_window(window)
+        except (AttributeError, ImportError, TypeError, ValueError, pygame.error):
+            self.release_mobile_gpu_renderer()
+            return False
+        self.configure_mobile_gpu_renderer(window, renderer)
+        return True
+
+    def _mobile_gpu_frame_eligible(self) -> bool:
+        lighting_enabled = getattr(self, "lighting_enabled", None)
+        return bool(
+            getattr(self, "mobile_mode", False)
+            and not getattr(self, "mobile_suspended", False)
+            and getattr(self, "_mobile_renderer_accelerated", False)
+            and getattr(self, "_mobile_gpu_renderer", None) is not None
+            and not getattr(self, "_mobile_gpu_failure", "")
+            and self.mobile_input_context() == "gameplay"
+            and callable(lighting_enabled)
+            and lighting_enabled()
+        )
+
+    @staticmethod
+    def _mobile_gpu_upload_layout_supported(surface: pygame.Surface) -> bool:
+        return bool(
+            sys.byteorder == "little"
+            and surface.get_bytesize() == 4
+            and surface.get_pitch() == surface.get_width() * 4
+            and tuple(surface.get_masks()) == _ANDROID_XRGB_MASKS
+        )
+
+    def begin_mobile_gpu_frame(self) -> bool:
+        """Latch the direct GLES lighting path before any frame content is drawn."""
+
+        self._mobile_gpu_last_present = False
+        self._mobile_gpu_pending_light = None
+        self._mobile_gpu_pending_flash = None
+        self._mobile_gpu_frame_active = False
+        if not self._mobile_gpu_frame_eligible():
+            return False
+        root = self.screen
+        if not self._mobile_gpu_upload_layout_supported(root):
+            self._mobile_gpu_failure = (
+                f"unsupported-root-format:{root.get_masks()}:{root.get_pitch()}"
+            )
+            return False
+        renderer: Any = getattr(self, "_mobile_gpu_renderer", None)
+        if renderer is None:
+            return False
+        try:
+            logical_size = tuple(renderer.logical_size)
+        except (AttributeError, TypeError, ValueError, pygame.error):
+            self._mobile_gpu_failure = "renderer-logical-size-unavailable"
+            return False
+        if logical_size != root.get_size():
+            self._mobile_gpu_failure = (
+                f"renderer-logical-size:{logical_size}!={root.get_size()}"
+            )
+            return False
+        viewport = self.mobile_world_viewport().clip(root.get_rect())
+        if viewport.width <= 0 or viewport.height <= 0:
+            return False
+        ui_surface = self._mobile_gpu_ui_surface
+        if ui_surface is None or ui_surface.get_size() != viewport.size:
+            ui_surface = pygame.Surface(viewport.size, pygame.SRCALPHA)
+            try:
+                ui_surface = ui_surface.convert_alpha()
+            except pygame.error:
+                pass
+            self._mobile_gpu_ui_surface = ui_surface
+        ui_surface.fill((0, 0, 0, 0))
+        self._mobile_gpu_ui_viewport = viewport
+        self._mobile_gpu_frame_sequence += 1
+        self._mobile_gpu_frame_active = True
+        return True
+
+    def mobile_gpu_frame_active(self) -> bool:
+        return bool(getattr(self, "_mobile_gpu_frame_active", False))
+
+    def mobile_gpu_post_light_surface(
+        self, viewport: pygame.Rect
+    ) -> pygame.Surface | None:
+        if not getattr(self, "_mobile_gpu_frame_active", False):
+            return None
+        target = getattr(self, "_mobile_gpu_ui_viewport", None)
+        if target is None or target != viewport:
+            return None
+        return self._mobile_gpu_ui_surface
+
+    def blit_mobile_post_light(
+        self, surface: pygame.Surface, destination: tuple[int, int]
+    ) -> bool:
+        """Blit root-coordinate diagnostics above the GPU lighting pass."""
+
+        if not getattr(self, "_mobile_gpu_frame_active", False):
+            return False
+        viewport = getattr(self, "_mobile_gpu_ui_viewport", None)
+        overlay = getattr(self, "_mobile_gpu_ui_surface", None)
+        if viewport is None or overlay is None:
+            return False
+        rect = surface.get_rect(topleft=destination)
+        if not rect.colliderect(viewport):
+            return False
+        overlay.blit(surface, (rect.x - viewport.x, rect.y - viewport.y))
+        return True
+
+    def queue_mobile_gpu_lighting(self, surface: pygame.Surface) -> bool:
+        if not getattr(self, "_mobile_gpu_frame_active", False):
+            return False
+        viewport = getattr(self, "_mobile_gpu_ui_viewport", None)
+        if viewport is None:
+            return False
+        self._mobile_gpu_pending_light = (
+            self._mobile_gpu_frame_sequence,
+            self._mobile_gpu_renderer_generation,
+            surface,
+            viewport.copy(),
+        )
+        return True
+
+    def queue_mobile_gpu_flash(
+        self, color: tuple[int, int, int], alpha: int
+    ) -> bool:
+        """Queue a uniform post-light flash without touching native CPU pixels."""
+
+        if not getattr(self, "_mobile_gpu_frame_active", False):
+            return False
+        red, green, blue = color
+        self._mobile_gpu_pending_flash = (
+            (int(red), int(green), int(blue)),
+            max(0, min(255, int(alpha))),
+        )
+        return True
+
+    @staticmethod
+    def _create_mobile_gpu_texture(
+        renderer: Any,
+        size: tuple[int, int],
+    ) -> Any:
+        from pygame._sdl2.video import Texture
+
+        return Texture(renderer, size, streaming=True, scale_quality=0)
+
+    def _mobile_gpu_texture(
+        self,
+        kind: str,
+        size: tuple[int, int],
+        blend_mode: int,
+    ) -> Any:
+        key = (self._mobile_gpu_renderer_generation, size)
+        key_name = f"_mobile_gpu_{kind}_texture_key"
+        texture_name = f"_mobile_gpu_{kind}_texture"
+        texture = getattr(self, texture_name, None)
+        if texture is None or getattr(self, key_name, None) != key:
+            texture = self._create_mobile_gpu_texture(self._mobile_gpu_renderer, size)
+            texture.blend_mode = blend_mode
+            setattr(self, texture_name, texture)
+            setattr(self, key_name, key)
+        return texture
+
+    def _composite_mobile_gpu_ui_fallback(self) -> None:
+        viewport = getattr(self, "_mobile_gpu_ui_viewport", None)
+        overlay = getattr(self, "_mobile_gpu_ui_surface", None)
+        pending_flash = getattr(self, "_mobile_gpu_pending_flash", None)
+        if viewport is not None and overlay is not None:
+            self.screen.blit(overlay, viewport)
+        if pending_flash is not None:
+            color, alpha = pending_flash
+            width, height = self.screen.get_size()
+            flash = getattr(self, "_screen_flash_surface", None)
+            if flash is None or flash.get_size() != (width, height):
+                flash = pygame.Surface((width, height), pygame.SRCALPHA)
+                self._screen_flash_surface = flash
+            flash.fill((*color, alpha))
+            self.screen.blit(flash, (0, 0))
+        self._mobile_gpu_frame_active = False
+        self._mobile_gpu_pending_light = None
+        self._mobile_gpu_pending_flash = None
+
+    def present_mobile_gpu_frame(self) -> bool:
+        """Upload the native frame and let GLES scale/modulate the light buffer."""
+
+        if not getattr(self, "_mobile_gpu_frame_active", False):
+            return False
+        pending = getattr(self, "_mobile_gpu_pending_light", None)
+        if pending is None:
+            self._composite_mobile_gpu_ui_fallback()
+            return False
+        sequence, generation, light_surface, viewport = pending
+        if (
+            sequence != self._mobile_gpu_frame_sequence
+            or generation != self._mobile_gpu_renderer_generation
+        ):
+            self._composite_mobile_gpu_ui_fallback()
+            return False
+
+        root = self.screen
+        ui_surface = self._mobile_gpu_ui_surface
+        renderer: Any = getattr(self, "_mobile_gpu_renderer", None)
+        if ui_surface is None or renderer is None:
+            self._composite_mobile_gpu_ui_fallback()
+            return False
+        monitor = getattr(self, "_mobile_performance_monitor", None)
+        root_buffer = None
+        root_alias = None
+        try:
+            base_texture = self._mobile_gpu_texture(
+                "base", root.get_size(), SDL_BLENDMODE_NONE
+            )
+            light_texture = self._mobile_gpu_texture(
+                "light", light_surface.get_size(), SDL_BLENDMODE_MOD
+            )
+            ui_texture = self._mobile_gpu_texture(
+                "ui", ui_surface.get_size(), SDL_BLENDMODE_BLEND
+            )
+            pending_flash = getattr(self, "_mobile_gpu_pending_flash", None)
+            flash_texture = None
+            flash_surface = self._mobile_gpu_flash_surface
+            if pending_flash is not None:
+                flash_texture = self._mobile_gpu_texture(
+                    "flash", (1, 1), SDL_BLENDMODE_BLEND
+                )
+                if flash_surface is None:
+                    flash_surface = pygame.Surface((1, 1), pygame.SRCALPHA)
+                    self._mobile_gpu_flash_surface = flash_surface
+
+            started = time.perf_counter()
+            root_buffer = root.get_buffer()
+            root_alias = pygame.image.frombuffer(root_buffer, root.get_size(), "BGRA")
+            if tuple(root_alias.get_masks()) != _ANDROID_ARGB_MASKS:
+                raise ValueError(f"unexpected upload masks {root_alias.get_masks()}")
+            base_texture.update(root_alias)
+            if monitor is not None:
+                monitor.record_detail_phase(
+                    "base_upload", time.perf_counter() - started
+                )
+
+            started = time.perf_counter()
+            light_texture.update(light_surface)
+            if monitor is not None:
+                monitor.record_detail_phase(
+                    "light_upload", time.perf_counter() - started
+                )
+
+            started = time.perf_counter()
+            ui_texture.update(ui_surface)
+            if (
+                flash_texture is not None
+                and flash_surface is not None
+                and pending_flash is not None
+            ):
+                color, alpha = pending_flash
+                flash_surface.fill((*color, alpha))
+                flash_texture.update(flash_surface)
+            if monitor is not None:
+                monitor.record_detail_phase("ui_upload", time.perf_counter() - started)
+
+            # Release the BufferProxy lock before any later Surface operation.
+            root_alias = None
+            root_buffer = None
+
+            started = time.perf_counter()
+            renderer.draw_color = (0, 0, 0, 255)
+            renderer.clear()
+            renderer.blit(base_texture, root.get_rect())
+            renderer.blit(light_texture, viewport)
+            renderer.blit(ui_texture, viewport)
+            if flash_texture is not None:
+                renderer.blit(flash_texture, root.get_rect())
+            renderer.present()
+            if monitor is not None:
+                monitor.record_detail_phase(
+                    "gpu_present", time.perf_counter() - started
+                )
+        except (
+            AttributeError,
+            BufferError,
+            ImportError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+            pygame.error,
+        ) as exc:
+            root_alias = None
+            root_buffer = None
+            self._mobile_gpu_failure = f"{type(exc).__name__}:{exc}"
+            self._composite_mobile_gpu_ui_fallback()
+            self.release_mobile_gpu_textures()
+            return False
+
+        self._mobile_gpu_frame_active = False
+        self._mobile_gpu_pending_light = None
+        self._mobile_gpu_pending_flash = None
+        self._mobile_gpu_last_present = True
+        return True
 
     def _mobile_display_surface(self) -> pygame.Surface:
         return getattr(self, "_mobile_root_screen", self.screen)
@@ -1011,11 +1447,20 @@ class MobileMixin:
         )
         x = bounds.x + 3
         y = max(bounds.y + 3, bounds.bottom - surface.get_height() - 3)
-        self._mobile_display_surface().blit(surface, (x, y))
+        if not self.blit_mobile_post_light(surface, (x, y)):
+            self._mobile_display_surface().blit(surface, (x, y))
 
     def handle_mobile_lifecycle_event(self, event: pygame.event.Event) -> bool:
         if not getattr(self, "mobile_mode", False):
             return False
+        renderer_resets = {
+            getattr(pygame, "RENDER_TARGETS_RESET", -26),
+            getattr(pygame, "RENDER_DEVICE_RESET", -27),
+        }
+        if event.type in renderer_resets:
+            self.release_mobile_gpu_textures()
+            self.refresh_mobile_gpu_renderer()
+            return True
         background = {
             getattr(pygame, "APP_WILLENTERBACKGROUND", -20),
             getattr(pygame, "APP_DIDENTERBACKGROUND", -21),
@@ -1040,6 +1485,7 @@ class MobileMixin:
             return True
         if event.type in foreground:
             self.mobile_suspended = False
+            self.release_mobile_gpu_textures()
             self.refresh_mobile_safe_insets()
             try:
                 self.clock.tick()
@@ -1070,6 +1516,7 @@ class MobileMixin:
         self.sync_music()
 
     def clear_mobile_memory_caches(self) -> None:
+        self.release_mobile_gpu_textures()
         self._world_layer = None
         self._mobile_floor_layer_cache = None
         self._screen_flash_surface = None

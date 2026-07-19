@@ -86,6 +86,19 @@ class LightingTests(unittest.TestCase):
         self.assertGreater(n1.get_at((8, 8)).b, 0)
         self.assertEqual(n1.get_at((8, 8)).a, 255)
 
+    def test_normal_map_preserves_colorkey_padding(self) -> None:
+        surface = pygame.Surface((12, 12), depth=32)
+        key = (255, 0, 255)
+        surface.fill(key)
+        surface.set_colorkey(key, pygame.RLEACCEL)
+        pygame.draw.rect(surface, (190, 150, 90), (3, 2, 6, 8))
+
+        normal = bake_normal_map(surface)
+
+        self.assertEqual(normal.get_at((0, 0)).a, 0)
+        self.assertEqual(normal.get_at((5, 5)).a, 255)
+        self.assertGreater(normal.get_at((5, 5)).b, 0)
+
     def test_normal_map_differs_for_different_pixels(self) -> None:
         a = pygame.Surface((8, 8), pygame.SRCALPHA)
         pygame.draw.rect(a, (255, 255, 255), (0, 0, 8, 8))

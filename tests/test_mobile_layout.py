@@ -26,6 +26,7 @@ from arch_rogue.mobile import (
     detect_mobile_runtime,
     optimize_immutable_alpha_surface,
 )
+from arch_rogue.models import Tile
 from arch_rogue.options import (
     MOBILE_RENDER_QUALITY_BALANCED,
     MOBILE_RENDER_QUALITY_HEIGHT_CAPS,
@@ -406,11 +407,18 @@ class MobileRenderQualityTests(unittest.TestCase):
                     assert scratch is not None
                     self.assertEqual(scratch.get_masks()[:3], game.screen.get_masks()[:3])
 
-    def test_mobile_floor_layer_reuses_until_camera_or_reveal_changes(self) -> None:
+    def test_mobile_floor_layer_patches_reveals_and_rebuilds_after_camera_travel(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1170, 540))
             game.state = "playing"
             self.assertFalse(game.is_current_floor_dark())
+            candidate = next(
+                point
+                for point in game.revealed_tiles
+                if game.dungeon.tiles[point[0]][point[1]]
+                in (Tile.FLOOR, Tile.STAIRS)
+            )
+            game.revealed_tiles.remove(candidate)
             with patch.dict(os.environ, {"PYGAME_BLEND_ALPHA_SDL2": "1"}):
                 game.draw()
                 first = game._mobile_floor_layer_cache
@@ -424,7 +432,16 @@ class MobileRenderQualityTests(unittest.TestCase):
                 assert second is not None
                 self.assertIs(second[3], first_surface)
 
-                game.revealed_tiles.add((-1, -1))
+                patches_before = getattr(game, "_mobile_floor_cache_patches", 0)
+                game.revealed_tiles.add(candidate)
+                game.draw()
+                patched = game._mobile_floor_layer_cache
+                self.assertIsNotNone(patched)
+                assert patched is not None
+                self.assertIs(patched[3], first_surface)
+                self.assertGreater(game._mobile_floor_cache_patches, patches_before)
+
+                game._cam_iso = (first[1] + first_surface.get_width(), first[2])
                 game.draw()
                 rebuilt = game._mobile_floor_layer_cache
                 self.assertIsNotNone(rebuilt)
@@ -487,6 +504,149 @@ class MobileRenderQualityTests(unittest.TestCase):
         self.assertIs(optimized, source)
         self.assertEqual(source.get_alpha(), 208)
         self.assertTrue(source.get_flags() & pygame.RLEACCELOK)
+
+    def test_android_binary_pixel_art_uses_equivalent_colorkey_rle(self) -> None:
+        source = pygame.Surface((24, 24), pygame.SRCALPHA)
+        source.fill((0, 0, 0, 0))
+        pygame.draw.rect(source, (220, 90, 60, 255), (5, 4, 13, 16))
+        pygame.draw.rect(source, (255, 0, 255, 255), (8, 8, 4, 4))
+        with patch.dict(os.environ, {"PYGAME_BLEND_ALPHA_SDL2": "1"}):
+            optimized = optimize_immutable_alpha_surface(source)
+
+        self.assertIsNot(optimized, source)
+        self.assertIsNotNone(optimized.get_colorkey())
+        self.assertTrue(optimized.get_flags() & pygame.RLEACCELOK)
+        expected = pygame.Surface((32, 32)).convert()
+        actual = expected.copy()
+        expected.fill((17, 29, 41))
+        actual.fill((17, 29, 41))
+        expected.blit(source, (3, 5))
+        actual.blit(optimized, (3, 5))
+        self.assertEqual(
+            pygame.image.tobytes(actual, "RGB"),
+            pygame.image.tobytes(expected, "RGB"),
+        )
+
+    def test_gpu_screen_flash_queues_one_pixel_overlay_and_falls_back_safely(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            base_color = (20, 40, 60)
+            post_color = (80, 100, 120)
+            flash_color = (210, 48, 24)
+            viewport = pygame.Rect(200, 100, 800, 500)
+            post_light = pygame.Surface(viewport.size, pygame.SRCALPHA)
+            post_light.fill((*post_color, 255))
+            game.screen.fill(base_color)
+            game._mobile_gpu_frame_active = True
+            game._mobile_gpu_ui_viewport = viewport.copy()
+            game._mobile_gpu_ui_surface = post_light
+            game.screen_flash_color = flash_color
+            game.screen_flash_ttl = 0.30
+
+            game.draw_screen_flash()
+
+            self.assertTrue(game.mobile_gpu_frame_active())
+            self.assertEqual(game._mobile_gpu_pending_flash, (flash_color, 120))
+            self.assertEqual(game.screen.get_at(viewport.center)[:3], base_color)
+            self.assertEqual(
+                post_light.get_at((viewport.width // 2, viewport.height // 2)),
+                (*post_color, 255),
+            )
+
+            flash_sample = pygame.Surface((1, 1), pygame.SRCALPHA)
+            flash_sample.fill((*flash_color, 120))
+            expected_outer = pygame.Surface((1, 1), pygame.SRCALPHA)
+            expected_outer.fill((*base_color, 255))
+            expected_outer.blit(flash_sample, (0, 0))
+            expected_viewport = pygame.Surface((1, 1), pygame.SRCALPHA)
+            expected_viewport.fill((*post_color, 255))
+            expected_viewport.blit(flash_sample, (0, 0))
+
+            game._composite_mobile_gpu_ui_fallback()
+
+            self.assertFalse(game.mobile_gpu_frame_active())
+            self.assertIsNone(game._mobile_gpu_pending_flash)
+            self.assertEqual(
+                game.screen.get_at(viewport.center),
+                expected_viewport.get_at((0, 0)),
+            )
+            for point in (
+                (viewport.centerx, viewport.top // 2),
+                (viewport.centerx, (viewport.bottom + game.screen.get_height()) // 2),
+                (viewport.left // 2, viewport.centery),
+                ((viewport.right + game.screen.get_width()) // 2, viewport.centery),
+            ):
+                with self.subTest(point=point):
+                    self.assertEqual(
+                        game.screen.get_at(point),
+                        expected_outer.get_at((0, 0)),
+                    )
+
+    def test_gpu_lighting_presenter_uses_base_mod_ui_order_without_flip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (780, 360))
+            game.state = "playing"
+            game.screen_flash_color = (210, 48, 24)
+            game.screen_flash_ttl = 0.30
+            calls: list[tuple[str, object]] = []
+
+            class FakeTexture:
+                def __init__(self, label: str) -> None:
+                    self.label = label
+                    self.blend_mode = -1
+
+                def update(self, surface: pygame.Surface) -> None:
+                    calls.append((f"update:{self.label}", surface.get_size()))
+
+            class FakeRenderer:
+                logical_size = game.screen.get_size()
+                draw_color = (0, 0, 0, 0)
+
+                def clear(self) -> None:
+                    calls.append(("clear", self.draw_color))
+
+                def blit(self, texture: FakeTexture, rect: pygame.Rect) -> None:
+                    calls.append((f"blit:{texture.label}", rect.copy()))
+
+                def present(self) -> None:
+                    calls.append(("present", None))
+
+            labels = iter(("base", "light", "ui", "flash"))
+
+            def make_texture(_renderer: object, _size: tuple[int, int]) -> FakeTexture:
+                return FakeTexture(next(labels))
+
+            renderer = FakeRenderer()
+            game._mobile_renderer_accelerated = True
+            game.configure_mobile_gpu_renderer(object(), renderer)
+            with (
+                patch.object(game, "_create_mobile_gpu_texture", side_effect=make_texture),
+                patch("arch_rogue.rendering.base.pygame.display.flip") as flip,
+            ):
+                game.draw()
+
+            self.assertFalse(flip.called)
+            self.assertTrue(game._mobile_gpu_last_present)
+            self.assertFalse(game.screen.get_locked())
+            self.assertEqual(
+                [name for name, _value in calls],
+                (
+                    ["update:base", "update:light", "update:ui", "update:flash"]
+                    + [
+                        "clear",
+                        "blit:base",
+                        "blit:light",
+                        "blit:ui",
+                        "blit:flash",
+                        "present",
+                    ]
+                ),
+            )
+            self.assertIn(("update:flash", (1, 1)), calls)
+            self.assertEqual(getattr(game, "_mobile_gpu_base_texture").blend_mode, 0)
+            self.assertEqual(getattr(game, "_mobile_gpu_light_texture").blend_mode, 4)
+            self.assertEqual(getattr(game, "_mobile_gpu_ui_texture").blend_mode, 1)
+            self.assertEqual(getattr(game, "_mobile_gpu_flash_texture").blend_mode, 1)
 
 
 class MobileLayoutTests(unittest.TestCase):

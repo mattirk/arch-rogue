@@ -892,7 +892,12 @@ class RenderingHudMixin:
         viewport = layout.world_viewport.clip(root.get_rect())
         self._mobile_root_screen = root
         self._mobile_world_rendering = True
-        self.screen = root.subsurface(viewport)
+        post_light_surface = self.mobile_gpu_post_light_surface(viewport)
+        self.screen = (
+            post_light_surface
+            if post_light_surface is not None
+            else root.subsurface(viewport)
+        )
         self._frame_cache.pop("screen_size", None)
         try:
             hint = self.current_interaction_hint()
@@ -1473,8 +1478,11 @@ class RenderingHudMixin:
     def draw_screen_flash(self) -> None:
         if self.screen_flash_ttl <= 0:
             return
-        width, height = self.screen.get_size()
         alpha = max(0, min(120, int(120 * (self.screen_flash_ttl / 0.30))))
+        if self.queue_mobile_gpu_flash(self.screen_flash_color, alpha):
+            return
+
+        width, height = self.screen.get_size()
         overlay = getattr(self, "_screen_flash_surface", None)
         if overlay is None or overlay.get_size() != (width, height):
             overlay = pygame.Surface((width, height), pygame.SRCALPHA)

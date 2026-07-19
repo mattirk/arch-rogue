@@ -1,5 +1,35 @@
 # Changelog
 
+## 4.3.4 — Native Android GPU Lighting
+
+Release 4.3.4 targets the physical-device native-resolution traces that averaged roughly 5.7 FPS at 2424×1080, with about 173 ms/frame attributed to world rendering. The continuous light mask and uniform combat flash are now composited by the display-owned GLES renderer instead of performing full-viewport CPU blends, while the world remains rendered at the selected native resolution.
+
+### Added
+
+- An Android direct-presentation path borrows Pygame CE's existing accelerated SDL renderer and draws the native base frame, a low-resolution multiplicative light texture, viewport-local post-light UI, and an optional 1×1 screen-flash texture in the correct order before one GLES present.
+- Renderer-generation and frame-sequence guards, context-reset handling, and explicit texture teardown protect borrowed SDL resources across display recreation, foreground resume, low-memory events, renderer/device resets, and shutdown.
+- Nested Android render telemetry now separates floor, object, light-build, ambient, base-upload, light-upload, UI-upload, and GPU-present costs without double-counting total frame time. Reports also expose `gpu_light` and floor-cache rebuild/patch counters.
+- Regression coverage verifies direct-present texture order and blend modes, active-flash GPU presentation, CPU fallback ordering, colorkey normal-map transparency, binary-alpha equivalence, and incremental floor reveal patches.
+
+### Changed
+
+- Continuous Android lighting keeps its quality-tier downsampled mask but uploads that small mask for GLES nearest-neighbor scaling and `SDL_BLENDMODE_MOD`; successful frames no longer expand and multiply the mask over millions of pixels on the CPU or call `pygame.display.flip()` afterward.
+- Screen flashes on the GLES path upload one RGBA pixel and scale it over the final frame after lighting and HUD composition. Desktop, software-renderer, and failed-present paths retain the existing full-screen CPU blend.
+- Native base uploads use a short-lived BGRA alias over Pygame's XRGB display surface, avoiding a hidden full-frame XRGB-to-ARGB conversion while releasing the `BufferProxy` lock immediately after upload.
+- Immutable binary-alpha pixel-art cache entries use display-format colorkey RLE sources on the Android SDL2-alpha path; partial-alpha text, gradients, panels, and shadows retain alpha blending. Generated normal maps now preserve colorkey transparency.
+- The Android floor layer uses one-third-screen gutters, rebuilds only after most of a gutter is consumed, and patches newly revealed floor tiles against its frozen build camera instead of rebuilding whenever the reveal count or camera position changes slightly.
+- The CPU lighting fallback uses an opaque display-format scratch surface and `BLEND_RGB_MULT`, avoiding unnecessary alpha-channel work. Desktop rendering behavior is unchanged.
+- Runtime/package release version is `4.3.4`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Device logs used as the baseline confirmed accelerated GLES2 and NEON, but showed native gameplay near 5.7 FPS / 173 ms world time and Balanced gameplay near 10.7 FPS / 120 ms world time; simulation remained below 1 ms/frame.
+- Deterministic depth-10 crowded-floor host profile at native 2424×1080 with 45 enemies: update `2.131 ms/frame` and render `18.856 ms/frame`. The dummy SDL driver intentionally exercises the CPU fallback rather than the direct GLES presenter.
+- A real SDL offscreen renderer accepted the native base/light/UI texture formats and the 1×1 flash texture, presented successfully without fallback, left the display surface unlocked, and preserved base → MOD light → UI → flash ordering.
+- Focused mobile, lighting, and lifecycle suite: 59 tests, all passing. Full non-web `unittest` discovery: 428 tests, all passing. `compileall` and `git diff --check` passed; changed-file diagnostics reported no errors (the rendering mixins retain their existing cross-module unused-import warnings).
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.4-arm64-v8a_armeabi-v7a-debug.apk` (73,333,235 bytes; SHA-256 `87a674a095f466f63ad6c9c2039942d31a314153ee7000abd862bd4940f367fe`). The package contains 104 architecture-correct ELF extensions for each ARM ABI; `aapt` confirmed version 4.3.4, API 28/34, GLES 2.0, landscape `PythonActivity`, and both ABIs; `apksigner` verified its V2 debug signature.
+- Physical-device FPS and upload/present timings remain required to confirm the 30 FPS native-resolution target; the new `gpu_light=1` and detailed `render_ms` fields make that verification attributable.
+
 ## 4.3.3 — Android GLES Enforcement and Device Telemetry
 
 Release 4.3.3 addresses the remaining physical-device ~1 FPS failure after 4.3.2's resolution reduction. Android now rejects SDL's unaccelerated `pygame.SCALED` renderer, explicitly tries the packaged GLES2/GLES drivers, and reports every frame phase on-device so any vendor-specific remainder is attributable rather than guessed.
