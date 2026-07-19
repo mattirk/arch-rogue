@@ -1,10 +1,18 @@
 name: Build & Release
 
-# On every push to master: run the test suite, build standalone Windows and
-# Linux binaries with PyInstaller, and publish both artifacts to a GitHub
-# Release tagged `v<version>-<short-sha>`, where <version> comes from
-# pyproject.toml. Each commit therefore gets its own uniquely-tagged release
-# whose name carries the current project version.
+# On every push to master: run the test suite, build standalone Windows,
+# Linux, and universal macOS (arm64 + x86_64) binaries with PyInstaller,
+# and publish all artifacts to a GitHub Release tagged
+# `v<version>-<short-sha>`, where <version> comes from pyproject.toml.
+# Each commit therefore gets its own uniquely-tagged release whose name
+# carries the current project version.
+#
+# The macOS universal binary is produced by building two single-architecture
+# PyInstaller onefile executables on `macos-13` (Intel) and `macos-latest`
+# (Apple Silicon) and merging them with `lipo -create`. We build per-arch
+# because pygame-ce ships separate arm64 and x86_64 wheels (no universal2
+# wheel), so a single universal2 PyInstaller run would only pull one arch's
+# native deps.
 
 "on":
   push:
@@ -58,12 +66,35 @@ jobs:
             artifact_name: arch-rogue-linux-x64
             asset_suffix: linux-x64
             windowed_flag: ""
+            arch_prefix: ""
           - os: windows-latest
             platform: windows
             exe_name: arch-rogue
             artifact_name: arch-rogue-windows-x64.exe
             asset_suffix: windows-x64
             windowed_flag: "--windowed"
+            arch_prefix: ""
+          # macOS Intel — `macos-13` (Intel) was retired by GitHub, so we
+          # build the x86_64 slice on an arm64 `macos-latest` runner under
+          # Rosetta 2 via `arch -x86_64`. `actions/setup-python` installs the
+          # python.org universal2 Python, so `arch -x86_64 python` runs the
+          # x86_64 slice and `pip` resolves x86_64 `pygame-ce` wheels. Combined
+          # with the arm64 build below in the `combine-macos` job via `lipo`.
+          - os: macos-latest
+            platform: macos
+            exe_name: arch-rogue
+            artifact_name: arch-rogue-macos-x86_64
+            asset_suffix: macos-x86_64
+            windowed_flag: ""
+            arch_prefix: "arch -x86_64"
+          # macOS Apple Silicon — produces an arm64 Mach-O binary natively.
+          - os: macos-latest
+            platform: macos
+            exe_name: arch-rogue
+            artifact_name: arch-rogue-macos-arm64
+            asset_suffix: macos-arm64
+            windowed_flag: ""
+            arch_prefix: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -72,11 +103,37 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install build dependencies
+      - name: Verify Rosetta 2 (macOS x86_64 only)
+        if: runner.os == 'macOS' && matrix.arch_prefix != ''
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install pyinstaller
+          # Confirm Rosetta 2 is available before we try to run x86_64 code
+          # under emulation on the arm64 runner.
+          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+            echo "Rosetta 2 is not installed on this runner."
+            echo "Try: softwareupdate --install-rosetta --agree-to-license"
+            exit 1
+          fi
+          arch -x86_64 /usr/bin/true
+          echo "Rosetta 2 OK — x86_64 emulation is available"
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          ${{ matrix.arch_prefix }} python -m pip install --upgrade pip
+          ${{ matrix.arch_prefix }} python -m pip install -e .
+          ${{ matrix.arch_prefix }} python -m pip install pyinstaller
+
+      - name: Sanity-check Python architecture (macOS only)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "=== python binary arch ==="
+          file "$(command -v python)"
+          echo "=== active arch under arch_prefix ==="
+          ${{ matrix.arch_prefix }} python - <<'PY'
+          import platform
+          print("platform.machine():", platform.machine())
+          PY
 
       - name: Read version
         id: version
@@ -84,11 +141,11 @@ jobs:
         run: |
           import tomllib, os
           with open("pyproject.toml", "rb") as f:
-              data = tomllib.load(f)
+            data = tomllib.load(f)
           version = data["project"]["version"]
           print(f"version={version}")
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              out.write(f"version={version}\n")
+            out.write(f"version={version}\n")
 
       - name: Short SHA
         id: sha
@@ -116,7 +173,7 @@ jobs:
       - name: Build with PyInstaller
         shell: bash
         run: |
-          python -m PyInstaller \
+          ${{ matrix.arch_prefix }} python -m PyInstaller \
             --noconfirm \
             --onefile \
             ${{ matrix.windowed_flag }} \
@@ -130,6 +187,16 @@ jobs:
             --hidden-import=pygame.mixer \
             arch_rogue_launcher.py
 
+      - name: Verify binary architecture (macOS only)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "=== built binary ==="
+          ls -la dist
+          file "dist/${{ matrix.exe_name }}" || true
+          lipo -info "dist/${{ matrix.exe_name }}" || true
+          echo "Expected arch for this matrix entry: ${{ matrix.asset_suffix }}"
+
       - name: Rename artifact
         shell: bash
         run: |
@@ -141,6 +208,7 @@ jobs:
             mv "dist/${{ matrix.exe_name }}.exe" "dist/final/${FINAL}.exe"
           else
             mv "dist/${{ matrix.exe_name }}" "dist/final/${FINAL}"
+            chmod +x "dist/final/${FINAL}"
           fi
           ls -la dist/final
 
@@ -151,9 +219,79 @@ jobs:
           path: dist/final/*
           if-no-files-found: error
 
+  combine-macos:
+    name: Combine macOS universal (arm64 + x86_64)
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - name: Checkout (for version + sha helpers)
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        shell: python
+        run: |
+          import tomllib, os
+          with open("pyproject.toml", "rb") as f:
+              data = tomllib.load(f)
+          version = data["project"]["version"]
+          print(f"version={version}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"version={version}\n")
+
+      - name: Short SHA
+        id: sha
+        shell: bash
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Download x86_64 build
+        uses: actions/download-artifact@v4
+        with:
+          name: arch-rogue-macos-x86_64
+          path: macos-x86_64
+
+      - name: Download arm64 build
+        uses: actions/download-artifact@v4
+        with:
+          name: arch-rogue-macos-arm64
+          path: macos-arm64
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== x86_64 ===" && ls -la macos-x86_64
+          echo "=== arm64 ===" && ls -la macos-arm64
+
+      - name: Merge with lipo into universal binary
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sha.outputs.short }}"
+          FINAL="arch-rogue-v${VERSION}-${SHA}-macos-universal"
+          X86_BIN="$(find macos-x86_64 -type f ! -name '*.exe' | head -n 1)"
+          ARM_BIN="$(find macos-arm64 -type f ! -name '*.exe' | head -n 1)"
+          echo "x86_64 binary: $X86_BIN"
+          echo "arm64 binary:  $ARM_BIN"
+          echo "Before lipo:"
+          lipo -info "$X86_BIN"
+          lipo -info "$ARM_BIN"
+          mkdir -p dist/final
+          lipo -create "$X86_BIN" "$ARM_BIN" -output "dist/final/$FINAL"
+          chmod +x "dist/final/$FINAL"
+          echo "After lipo:"
+          lipo -info "dist/final/$FINAL"
+          file "dist/final/$FINAL"
+          ls -la dist/final
+
+      - name: Upload universal artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-rogue-macos-universal
+          path: dist/final/*
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
-    needs: build
+    needs: [build, combine-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -164,24 +302,33 @@ jobs:
         run: |
           import tomllib, os
           with open("pyproject.toml", "rb") as f:
-              data = tomllib.load(f)
+            data = tomllib.load(f)
           version = data["project"]["version"]
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              out.write(f"version={version}\n")
+            out.write(f"version={version}\n")
 
       - name: Short SHA
         id: sha
         shell: bash
         run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Download build artifacts
+      - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
+          # All five artifacts are pulled: Linux, Windows, the universal
+          # macOS binary, and the two intermediate single-arch macOS builds
+          # (kept as smaller per-architecture fallbacks).
+          pattern: arch-rogue-*
 
-      - name: List release assets
-        run: ls -la release-assets
+      - name: Restore executable bit on Unix binaries
+        # upload-artifact@v4 strips the executable bit; restore it so the
+        # Linux and macOS binaries are runnable directly after download.
+        run: |
+          chmod +x release-assets/arch-rogue-*-linux-x64 \
+                 release-assets/arch-rogue-*-macos-* 2>/dev/null || true
+          ls -la release-assets
 
       - name: Create or update release
         uses: softprops/action-gh-release@v2
@@ -197,6 +344,9 @@ jobs:
             Assets:
             - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-windows-x64.exe` — standalone Windows executable
             - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-linux-x64` — standalone Linux binary
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-universal` — universal macOS binary (Apple Silicon + Intel)
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-arm64` — macOS Apple Silicon only (smaller)
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-x86_64` — macOS Intel only (smaller)
           files: release-assets/*
           prerelease: true
           make_latest: "false"

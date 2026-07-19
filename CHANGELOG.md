@@ -1,5 +1,30 @@
 # Changelog
 
+## 4.2.10 — Universal macOS Build
+
+Milestone 4.2.10 extends the `Build & Release` GitHub Actions workflow to produce a universal macOS binary that runs natively on both Apple Silicon (arm64) and Intel (x86_64) Macs.
+
+### Added
+
+- Two new macOS build matrix entries, both running on `macos-latest` (Apple Silicon). GitHub retired the `macos-13` Intel runner image, so the x86_64 slice is now built on the arm64 runner under Rosetta 2 via `arch -x86_64`. `actions/setup-python` installs the python.org universal2 Python, so `arch -x86_64 python` runs the x86_64 slice and `pip` resolves x86_64 `pygame-ce` wheels. Each matrix entry runs the existing PyInstaller `--onefile` pipeline, producing a single-architecture Mach-O executable tagged `macos-x86_64` or `macos-arm64`.
+- A `Verify Rosetta 2` step (only runs for the emulated x86_64 build) that aborts with a clear message if Rosetta 2 is unavailable, plus a `Sanity-check Python architecture` step that prints `platform.machine()` under the chosen `arch_prefix` so the active slice is visible in the logs.
+- A `Verify binary architecture` step that runs `file` and `lipo -info` on the freshly built macOS binary so the Mach-O arch can be confirmed before the `combine-macos` job merges it.
+- New `combine-macos` job that downloads both single-arch binaries and merges them with `lipo -create` into a single `arch-rogue-v<version>-<sha>-macos-universal` executable. The job verifies each input with `lipo -info` and reports the merged architecture with `file`.
+- Release job now publishes five assets: Windows `.exe`, Linux binary, the universal macOS binary, and the two intermediate single-arch macOS binaries as smaller per-architecture fallbacks.
+- Restored the executable bit on Linux/macOS release assets after `upload-artifact@v4` strips it.
+
+### Changed
+
+- `release` job now `needs: [build, combine-macos]` so the universal binary is always present before publishing.
+- Release body lists all five assets and labels the universal macOS binary as `Apple Silicon + Intel`.
+- Why Rosetta instead of a single universal2 PyInstaller run: `pygame-ce` ships separate arm64 and x86_64 macOS wheels (no universal2 wheel), so a single native `pip install` only resolves one architecture's native deps, and `--target-architecture universal2` would only embed that one arch. Building per-arch on matching runners (one native, one emulated) and merging with `lipo` is the supported PyInstaller recipe for universal binaries.
+- Runtime/package release version is `4.2.10`; options remain schema `5` and run saves remain schema `5`.
+
+### Validation
+
+- `.venv/bin/python -c "import yaml; yaml.safe_load(open('.github/workflows/build-release.yml'))"` — YAML parses cleanly.
+- The workflow was not executed locally; it will run on the next push to `master`.
+
 ## 4.2.9 — Safe Exit Default
 
 Milestone 4.2.9 makes `Cancel and return to game` the default highlighted option whenever the exit confirmation screen opens, preventing accidental exits or menu returns from an immediate confirmation keypress.
