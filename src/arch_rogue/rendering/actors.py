@@ -30,8 +30,8 @@ import pygame
 
 from ..constants import (
     DUNGEON_DEPTH,
-    RUN_CYCLE_FRAMES,
-    RUN_FRAME_RATE,
+    WALK_CYCLE_FRAMES,
+    WALK_FRAME_RATE,
     TILE_H,
     TILE_W,
     WORLD_SCALE,
@@ -118,21 +118,25 @@ class RenderingActorMixin:
         sway, bob, _lean, _stretch = self.actor_animation(actor)
         return round(sway), round(bob)
 
-    def run_cycle_position(self, anim_time: float) -> float:
-        """Continuous 0..1 position within the run stride cycle.
+    def walk_cycle_position(self, anim_time: float) -> float:
+        """Continuous 0..1 position within the walk stride cycle.
 
         This is derived from the *exact* same expression the sprite atlas uses
-        to pick the displayed run frame (``anim_time * RUN_FRAME_RATE`` mod
-        ``RUN_CYCLE_FRAMES``), so the whole-body bob/sway/lean advance in lock
-        step with the cached frame instead of running at an unrelated frequency.
+        to pick the displayed walk frame (``anim_time * WALK_FRAME_RATE`` mod
+        ``WALK_CYCLE_FRAMES``), so the whole-body bob/sway/lean advance in lock
+        step with the cached frame instead of using an unrelated frequency.
         """
-        return (anim_time * RUN_FRAME_RATE) % RUN_CYCLE_FRAMES / RUN_CYCLE_FRAMES
+        return (
+            (anim_time * WALK_FRAME_RATE)
+            % WALK_CYCLE_FRAMES
+            / WALK_CYCLE_FRAMES
+        )
 
     def actor_animation(
         self, actor: Player | Enemy
     ) -> tuple[float, float, float, float]:
         if actor.moving:
-            cycle_t = self.run_cycle_position(actor.anim_time)
+            cycle_t = self.walk_cycle_position(actor.anim_time)
             phase = cycle_t * math.tau
             footfall = 0.5 - 0.5 * math.cos(phase)
             stride = math.sin(phase)
@@ -143,7 +147,7 @@ class RenderingActorMixin:
             sway = stride * 0.55
             # Directional lean: tilt the top of the sprite a few degrees toward
             # the screen-space facing direction so the character leans into its
-            # run. The lean follows the facing vector (which snaps to the
+            # stride. The lean follows the facing vector (which snaps to the
             # input/aim direction every frame) rather than the gameplay-smoothed
             # move vector, so it changes consistently and immediately on a
             # direction change instead of easing slowly or stalling against a wall.
@@ -479,7 +483,7 @@ class RenderingActorMixin:
         if abs(lean) > 1.0:
             # ``lean`` is signed by the screen-space movement direction
             # (positive = moving screen-right); a consistent rotation tilts
-            # the top toward where the character is running. The sprite is
+            # the top toward where the character is moving. The sprite is
             # never mirror-flipped on facing changes.
             turned_sprite = pygame.transform.rotate(turned_sprite, -lean)
         if alpha < 255:
@@ -529,7 +533,7 @@ class RenderingActorMixin:
         action_state = getattr(self, "player_action_state", "")
         if getattr(self, "player_action_ttl", 0.0) > 0.0 and action_state:
             return action_state
-        return "run" if player.moving else "idle"
+        return "walk" if player.moving else "idle"
 
     def enemy_visual_state(self, enemy: Enemy) -> str:
         if getattr(self, "enemy_hit_flashes", {}).get(id(enemy), 0.0) > 0.0:
@@ -539,7 +543,7 @@ class RenderingActorMixin:
             return "cast"
         if just_attacked and enemy.telegraph == "melee":
             return "attack"
-        return "run" if enemy.moving else "idle"
+        return "walk" if enemy.moving else "idle"
 
     def draw_hit_flash_overlay(
         self, sx: int, sy: int, width: int, height: int, ttl: float, color: Color

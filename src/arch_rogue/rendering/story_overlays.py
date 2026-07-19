@@ -2152,7 +2152,7 @@ class RenderingStoryOverlayMixin:
     def _cutscene_stage_clock(self) -> float:
         """Clock for stage actor animation clips.
 
-        Uses the whole-cutscene elapsed time so idle/run clips play
+        Uses the whole-cutscene elapsed time so idle/walk clips play
         continuously across dialogue nodes; the story intro overlay has no
         active cutscene and falls back to the app-wide visual clock.
         """
@@ -2209,7 +2209,7 @@ class RenderingStoryOverlayMixin:
         performers and quieter poses keep their directional idle clips.
         """
         if moving:
-            return "run"
+            return "walk"
         if dueling and pose in ("defy", "threaten"):
             return "attack"
         if is_player and (
@@ -2230,7 +2230,7 @@ class RenderingStoryOverlayMixin:
         """Resolve the surface (and foot anchor) for a stage actor.
 
         4.2.x theater redesign: with asset sprites active, player, guest, and
-        antagonist request their authored idle/run/attack/act clips so the stage
+        antagonist request their authored idle/walk/attack/act clips so the stage
         reads as live performers instead of static cutouts. Archetypes whose
         attack group is not authored yet retain the asset library's idle fallback.
         The relic stays procedural, and legacy graphics keep the historical look.

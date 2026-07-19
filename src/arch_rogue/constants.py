@@ -45,7 +45,7 @@ PLAYER_MELEE_ARC_DOT = 0.05
 # `player.speed` stat so movement is always constant regardless of archetype,
 # discipline-tree speed bonuses, or Haste Shrine buffs. `player.speed` is retained
 # as a character stat for future affix-driven movement bonuses (milestone 3.4)
-# but no longer drives base locomotion or the run-cycle animation rate.
+# but no longer drives base locomotion or the walk-cycle animation rate.
 PLAYER_MOVE_SPEED = 2.8
 PLAYER_PROJECTILE_HIT_RADIUS = 0.54
 ENEMY_PROJECTILE_HIT_RADIUS = 0.52
@@ -56,12 +56,12 @@ DARK_LEVEL_LIGHT_RADIUS = 4.0
 # lantern radius so both floor types share the same visibility reach; the
 # difference is memory, not range.
 LIGHT_LEVEL_SIGHT_RADIUS = DARK_LEVEL_LIGHT_RADIUS
-# Run-cycle tuning shared by the sprite atlas and the renderer so the cached
-# run frames, the whole-body bob, and the directional lean all advance on the
-# exact same phase. RUN_FRAME_RATE converts anim_time into run-frame units;
-# RUN_CYCLE_FRAMES is the number of cached frames per full stride cycle.
-RUN_CYCLE_FRAMES = 12
-RUN_FRAME_RATE = 8.0
+# Walk-cycle tuning shared by the sprite atlas and the renderer so the cached
+# walk frames, the whole-body bob, and the directional lean all advance on the
+# exact same phase. WALK_FRAME_RATE converts anim_time into walk-frame units;
+# WALK_CYCLE_FRAMES is the number of cached frames per full stride cycle.
+WALK_CYCLE_FRAMES = 12
+WALK_FRAME_RATE = 8.0
 # Walk-cycle cadence is scaled by movement speed so faster units take faster
 # steps, but clamped to a floor/ceiling so slow units never freeze into a
 # stuttering handful of discrete frames and very fast units (elites, haste)

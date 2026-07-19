@@ -262,7 +262,7 @@ class GraphicsAnimation21Tests(unittest.TestCase):
         pygame.init()
         pygame.display.set_mode((64, 64), pygame.HIDDEN)
         atlas = PixelSpriteAtlas()
-        actor_states = {"idle", "run", "attack", "cast", "hit", "dash"}
+        actor_states = {"idle", "walk", "attack", "cast", "hit", "dash"}
 
         for archetype in ARCHETYPES:
             states = atlas.player_animation_frames[archetype.name]
@@ -271,17 +271,17 @@ class GraphicsAnimation21Tests(unittest.TestCase):
                 self.assertGreaterEqual(len(states[state]), 3)
                 self.assert_surface(states[state][0])
             base = atlas.player_sprites[archetype.name]
-            for state in ("idle", "run", "attack", "hit", "dash"):
+            for state in ("idle", "walk", "attack", "hit", "dash"):
                 self.assertTrue(
                     all(frame.get_size() == base.get_size() for frame in states[state])
                 )
             self.assertGreater(
-                len({self.surface_bytes(frame) for frame in states["run"]}), 1
+                len({self.surface_bytes(frame) for frame in states["walk"]}), 1
             )
             self.assertNotEqual(
                 self.surface_bytes(base), self.surface_bytes(states["attack"][1])
             )
-            self.assert_surface(atlas.player_frame(archetype.name, "run", 0.25, 0.5))
+            self.assert_surface(atlas.player_frame(archetype.name, "walk", 0.25, 0.5))
 
         for definition in FINAL_ROOM_ENEMY_DEFINITIONS:
             key = atlas.enemy_key(f"Runed {definition.name}", definition.kind)
@@ -292,12 +292,12 @@ class GraphicsAnimation21Tests(unittest.TestCase):
             for state in actor_states:
                 self.assertGreaterEqual(len(states[state]), 3)
                 self.assert_surface(states[state][0])
-            for state in ("idle", "run", "attack", "hit", "dash"):
+            for state in ("idle", "walk", "attack", "hit", "dash"):
                 self.assertTrue(
                     all(frame.get_size() == base.get_size() for frame in states[state])
                 )
             self.assertGreater(
-                len({self.surface_bytes(frame) for frame in states["run"]}), 1
+                len({self.surface_bytes(frame) for frame in states["walk"]}), 1
             )
             self.assert_surface(
                 atlas.enemy_frame(
@@ -421,7 +421,7 @@ class GraphicsAnimation21Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             try:
-                # Enemy run animation must advance via the dedicated phase
+                # Enemy walk animation must advance via the dedicated phase
                 # accumulator rather than the old distance-based advance.
                 enemy = game.enemies[0]
                 enemy.moving = True

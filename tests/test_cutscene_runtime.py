@@ -908,7 +908,7 @@ class TheaterRedesignTests(CutsceneGameTestCase):
                 game._cutscene_actor_state(
                     "vow", True, False, is_player=True
                 ),
-                "run",
+                "walk",
             )
             self.assertEqual(
                 game._cutscene_actor_state(
@@ -1024,7 +1024,7 @@ class TheaterRedesignTests(CutsceneGameTestCase):
             self.assertEqual(args[1], "act")
             self.assertEqual(kwargs["direction"], "south")
 
-    def test_duel_state_reports_movement_for_run_clip(self) -> None:
+    def test_duel_state_reports_movement_for_walk_clip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             assert game.active_cutscene is not None
@@ -1155,7 +1155,7 @@ class TheaterRedesignTests(CutsceneGameTestCase):
                 for actor_id in ("player", "antagonist", "guest"):
                     self.assertGreater(front_index, order.index(("actor", actor_id)))
 
-    def test_duel_period_and_run_clip_slow_together(self) -> None:
+    def test_duel_period_and_walk_clip_slow_together(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             self.assertAlmostEqual(game.STAGE_ACTOR_TIME_SCALE, 0.40)

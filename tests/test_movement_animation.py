@@ -15,10 +15,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pygame
 
 from arch_rogue.constants import (
-    RUN_CYCLE_FRAMES,
-    RUN_FRAME_RATE,
     TILE_H,
     TILE_W,
+    WALK_CYCLE_FRAMES,
+    WALK_FRAME_RATE,
 )
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
@@ -121,10 +121,10 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
     def test_bob_is_grounded_phase_locked_and_footfall_matched(self) -> None:
         # The whole-body bob must (a) be signed so the body dips below its
         # anchor at foot-plant instead of constantly floating upward, and
-        # (b) complete exactly one cycle per run-frame stride cycle, proving
+        # (b) complete exactly one cycle per walk-frame stride cycle, proving
         # it is phase-locked to the displayed frames (old code ran the bob at
         # 3x the frame frequency, producing a wobblish ghost-float look), and
-        # (c) match the footfall of the displayed run frame so the body rises
+        # (c) match the footfall of the displayed walk frame so the body rises
         # exactly when the lifted foot rises.
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
@@ -134,7 +134,7 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
 
                 # (a)+(b): sample bob over one stride cycle; assert sign span
                 # and exactly one interior maximum.
-                frame_cycle_span = RUN_CYCLE_FRAMES / RUN_FRAME_RATE  # one stride
+                frame_cycle_span = WALK_CYCLE_FRAMES / WALK_FRAME_RATE  # one stride
                 samples = 40
                 bobs = []
                 for i in range(samples + 1):
@@ -161,28 +161,28 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
                 # on a continuous phase (smooth) while the cached frame steps in
                 # discrete increments; they share one frequency, so the body
                 # rises in lockstep with the lifted foot.
-                for frame in range(RUN_CYCLE_FRAMES):
-                    player.anim_time = (frame + 0.5) / RUN_FRAME_RATE
+                for frame in range(WALK_CYCLE_FRAMES):
+                    player.anim_time = (frame + 0.5) / WALK_FRAME_RATE
                     _, bob, _, _ = game.actor_animation(player)
-                    cycle_t = (frame + 0.5) / RUN_CYCLE_FRAMES
+                    cycle_t = (frame + 0.5) / WALK_CYCLE_FRAMES
                     footfall = 0.5 - 0.5 * math.cos(cycle_t * math.tau)
                     expected = (footfall - 0.5) * 1.2
                     self.assertAlmostEqual(bob, expected, places=2)
             finally:
                 pass
 
-    def test_run_pose_keeps_upper_body_stable_while_feet_lift(self) -> None:
-        # The polished run pose must keep the head/cap stable while the feet
+    def test_walk_pose_keeps_upper_body_stable_while_feet_lift(self) -> None:
+        # The polished walk pose must keep the head/cap stable while the feet
         # do the lifting work, so the upper body no longer floats. Compare the
         # opaque-pixel mask of the foot-plant frame (i=0) against the peak-lift
         # frame (i=half): the feet region must shift, the head region stays put.
         atlas = PixelSpriteAtlas()
         try:
             for class_name in atlas.player_animation_frames:
-                run = atlas.player_animation_frames[class_name]["run"]
-                self.assertEqual(len(run), RUN_CYCLE_FRAMES)
-                plant = run[0]
-                peak = run[RUN_CYCLE_FRAMES // 2]
+                walk = atlas.player_animation_frames[class_name]["walk"]
+                self.assertEqual(len(walk), WALK_CYCLE_FRAMES)
+                plant = walk[0]
+                peak = walk[WALK_CYCLE_FRAMES // 2]
                 self.assertIsInstance(plant, pygame.Surface)
                 self.assertIsInstance(peak, pygame.Surface)
 

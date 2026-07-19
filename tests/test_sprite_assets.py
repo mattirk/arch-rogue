@@ -75,7 +75,7 @@ class SpriteAssetTests(unittest.TestCase):
         for archetype in ARCHETYPES:
             for direction in DIRECTIONS:
                 frame = library.resolve_actor(
-                    archetype.name, "run", direction, 0.22
+                    archetype.name, "walk", direction, 0.22
                 )
                 self.assertIsNotNone(frame, (archetype.name, direction))
                 if frame is None:
@@ -198,7 +198,7 @@ class SpriteAssetTests(unittest.TestCase):
                 key,
             )
 
-    def test_archetype_idle_and_run_assets_are_complete_and_well_formed(self) -> None:
+    def test_archetype_idle_and_walk_assets_are_complete_and_well_formed(self) -> None:
         library = AssetSpriteLibrary()
         player_entries = {
             entry["name"]: entry
@@ -213,7 +213,7 @@ class SpriteAssetTests(unittest.TestCase):
         for archetype in ARCHETYPES:
             entry = player_entries[archetype.name]
             source_canvas = tuple(entry["source_canvas"])
-            for state in ("idle", "run"):
+            for state in ("idle", "walk"):
                 directions = entry["clips"][state]["directions"]
                 self.assertEqual(
                     set(directions),
@@ -224,13 +224,13 @@ class SpriteAssetTests(unittest.TestCase):
                     expected_frames = 4 if state == "idle" else 6
                     if (archetype.name, state, direction) == (
                         "Arcanist",
-                        "run",
+                        "walk",
                         "south",
                     ):
                         expected_frames = 8
                     elif (archetype.name, state, direction) == (
                         "Arcanist",
-                        "run",
+                        "walk",
                         "north",
                     ):
                         expected_frames = 7
@@ -332,7 +332,7 @@ class SpriteAssetTests(unittest.TestCase):
         self.assertEqual(tuple(entry["source_anchor"]), (104.0, 156.0))
         contracts = {
             "idle": (5.0, True, 4),
-            "run": (9.0, True, 6),
+            "walk": (9.0, True, 6),
             "attack": (12.0, False, 8),
         }
         self.assertEqual(set(entry["clips"]), set(contracts))
@@ -496,11 +496,11 @@ class SpriteAssetTests(unittest.TestCase):
             self.assertEqual(tuple(entry["source_anchor"]), (90.0, 135.0))
             self.assertEqual(entry["reference_height"], 89)
             self.assertEqual(entry["target_height"], 176)
-            self.assertEqual(set(entry["clips"]), {"idle", "run", "dance"})
+            self.assertEqual(set(entry["clips"]), {"idle", "walk", "dance"})
 
             for state, folder, frame_count in (
                 ("idle", "idle", 8),
-                ("run", "walk", 8),
+                ("walk", "walk", 8),
                 ("dance", "dance", 16),
             ):
                 clip = entry["clips"][state]
@@ -598,9 +598,9 @@ class SpriteAssetTests(unittest.TestCase):
         )
         for frame, state, direction in (
             (shop_idle, "idle", "north-east"),
-            (shop_walk, "run", "west"),
+            (shop_walk, "walk", "west"),
             (guest_idle, "idle", "south-west"),
-            (guest_walk, "run", "north"),
+            (guest_walk, "walk", "north"),
             (shop_dance, "dance", "south"),
             (guest_dance, "dance", "east"),
         ):
@@ -621,7 +621,7 @@ class SpriteAssetTests(unittest.TestCase):
         self.assertEqual(tuple(entry["source_anchor"]), (122.0, 183.0))
         self.assertEqual(entry["reference_height"], 119)
         self.assertEqual(entry["target_height"], 176)
-        self.assertEqual(set(entry["clips"]), {"run", "dance"})
+        self.assertEqual(set(entry["clips"]), {"walk", "dance"})
 
         rotation_paths = entry["rotations"]
         self.assertEqual(set(rotation_paths), set(DIRECTIONS))
@@ -659,7 +659,7 @@ class SpriteAssetTests(unittest.TestCase):
         self.assertNotEqual(rotations["south"].get_size(), story_south.get_size())
 
         clip_sequences: dict[str, dict[str, bytes]] = {}
-        for state, folder in (("run", "walk"), ("dance", "dance")):
+        for state, folder in (("walk", "walk"), ("dance", "dance")):
             clip = entry["clips"][state]
             self.assertTrue(clip["loop"])
             self.assertEqual(clip["fps"], 8.0)
@@ -730,7 +730,7 @@ class SpriteAssetTests(unittest.TestCase):
 
         self.assertTrue(
             all(
-                clip_sequences["run"][direction]
+                clip_sequences["walk"][direction]
                 != clip_sequences["dance"][direction]
                 for direction in DIRECTIONS
             )
@@ -747,7 +747,7 @@ class SpriteAssetTests(unittest.TestCase):
         self.assertTrue(idle.is_asset)
         self.assertEqual(idle.key[1:4], ("bar_dancer", "rotation", "north-east"))
         self.assertTrue(walking.is_asset)
-        self.assertEqual(walking.key[1:5], ("bar_dancer", "run", "west", 4))
+        self.assertEqual(walking.key[1:5], ("bar_dancer", "walk", "west", 4))
         self.assertTrue(dancing.is_asset)
         self.assertEqual(dancing.key[1:5], ("bar_dancer", "dance", "south", 4))
 
@@ -766,7 +766,7 @@ class SpriteAssetTests(unittest.TestCase):
         self.assertFalse(fallback_walk.is_asset)
         self.assertFalse(fallback_dance.is_asset)
         self.assertEqual(fallback_idle.key[-1], "idle")
-        self.assertEqual(fallback_walk.key[-1], "run")
+        self.assertEqual(fallback_walk.key[-1], "walk")
         self.assertEqual(fallback_dance.key[-1], "dance")
         fallback_pixels = {
             pygame.image.tobytes(frame.surface, "RGBA")
@@ -783,7 +783,7 @@ class SpriteAssetTests(unittest.TestCase):
         self.assertEqual(tuple(entry["source_anchor"]), (120.0, 180.0))
         self.assertEqual(entry["reference_height"], 129)
         self.assertEqual(entry["target_height"], 96)
-        self.assertEqual(set(entry["clips"]), {"run", "dance"})
+        self.assertEqual(set(entry["clips"]), {"walk", "dance"})
 
         rotation_paths = entry["rotations"]
         self.assertEqual(set(rotation_paths), set(DIRECTIONS))
@@ -799,7 +799,7 @@ class SpriteAssetTests(unittest.TestCase):
             8,
         )
 
-        for state, folder in (("run", "walk"), ("dance", "dance")):
+        for state, folder in (("walk", "walk"), ("dance", "dance")):
             clip = entry["clips"][state]
             self.assertTrue(clip["loop"])
             self.assertEqual(clip["fps"], 8.0)
@@ -871,7 +871,7 @@ class SpriteAssetTests(unittest.TestCase):
                             frame.key[2:5], (state, direction, frame_index)
                         )
 
-        north_walk = entry["clips"]["run"]["directions"]["north"]
+        north_walk = entry["clips"]["walk"]["directions"]["north"]
         north_dance = entry["clips"]["dance"]["directions"]["north"]
         for walk_path, dance_path in zip(north_walk, north_dance, strict=True):
             walk_surface = library._source_surface(walk_path)
@@ -905,7 +905,7 @@ class SpriteAssetTests(unittest.TestCase):
         self.assertTrue(idle.is_asset)
         self.assertEqual(idle.key[2:4], ("rotation", "north-east"))
         self.assertTrue(walking.is_asset)
-        self.assertEqual(walking.key[2:5], ("run", "west", 4))
+        self.assertEqual(walking.key[2:5], ("walk", "west", 4))
         self.assertTrue(dancing.is_asset)
         self.assertEqual(dancing.key[2:5], ("dance", "south", 4))
 
@@ -929,7 +929,7 @@ class SpriteAssetTests(unittest.TestCase):
         self.assertIsNotNone(late)
         assert early is not None and late is not None
         self.assertEqual(early.key, late.key)
-        self.assertEqual(early.key[2], "run")
+        self.assertEqual(early.key[2], "walk")
 
     def test_legacy_player_actions_use_local_time_and_progress(self) -> None:
         atlas = SpriteAtlas(legacy_graphics=True)
@@ -1638,7 +1638,7 @@ class SpriteAssetTests(unittest.TestCase):
 
         for archetype, direction, minimum_change in repaired_directions:
             with self.subTest(archetype=archetype, direction=direction):
-                paths = player_entries[archetype]["clips"]["run"]["directions"][
+                paths = player_entries[archetype]["clips"]["walk"]["directions"][
                     direction
                 ]
                 surfaces = [library._source_surface(path) for path in paths]
@@ -1938,16 +1938,16 @@ class SpriteAssetTests(unittest.TestCase):
         atlas = SpriteAtlas()
         self.assertTrue(atlas.modern_graphics_active, atlas.assets.load_error)
         east = atlas.player_visual(
-            "Warden", "run", 0.0, 0.0, direction="east"
+            "Warden", "walk", 0.0, 0.0, direction="east"
         )
         east_again = atlas.player_visual(
-            "Warden", "run", 0.0, 0.0, direction="east"
+            "Warden", "walk", 0.0, 0.0, direction="east"
         )
         east_later = atlas.player_visual(
-            "Warden", "run", 0.28, 0.28, direction="east"
+            "Warden", "walk", 0.28, 0.28, direction="east"
         )
         west = atlas.player_visual(
-            "Warden", "run", 0.0, 0.0, direction="west"
+            "Warden", "walk", 0.0, 0.0, direction="west"
         )
         self.assertTrue(east.is_asset)
         self.assertIs(east.surface, east_again.surface)
@@ -2085,7 +2085,7 @@ class SpriteAssetTests(unittest.TestCase):
 
     def test_partial_actor_clip_uses_matching_rotation_fallback(self) -> None:
         manifest = json.loads(json.dumps(AssetSpriteLibrary().manifest))
-        manifest["actors"]["warden"]["clips"]["run"]["directions"].pop("east")
+        manifest["actors"]["warden"]["clips"]["walk"]["directions"].pop("east")
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "manifest.json").write_text(
@@ -2096,13 +2096,13 @@ class SpriteAssetTests(unittest.TestCase):
         self.assertTrue(partial.available, partial.load_error)
 
         atlas = SpriteAtlas()
-        directions = atlas.assets.manifest["actors"]["warden"]["clips"]["run"][
+        directions = atlas.assets.manifest["actors"]["warden"]["clips"]["walk"][
             "directions"
         ]
         removed = directions.pop("east")
         try:
             frame = atlas.player_visual(
-                "Warden", "run", 0.0, 0.0, direction="east"
+                "Warden", "walk", 0.0, 0.0, direction="east"
             )
             self.assertTrue(frame.is_asset)
             self.assertEqual(frame.key[2], "rotation")

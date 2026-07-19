@@ -220,9 +220,7 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 
 - We need to make the darkess deepen more on lower levels, dark levels look already good, but also other "normal" levels below 5 should feel more dark. (do not implement this yet, user will explicitly request this feature if needed)
 - The game difficulty starts ok, but gets too easy when player character reaches level 7 or so (not dungeon level, character level). We should either nerf characters, make leveling slower or make enemies harder on lower dungeon depths.
-- Multiplayer -> you get your own AI generated character with unique sprites and animations, maybe music.
-  - Maybe connect your own AI to the multiplayer system so it's more your own
-  - This has a prerequisite that Archetype is fully data driven
+- Multiplayer -> you get your own AI generated character with unique sprites and animations
 - You died screen needs nice looking panels where stats are displayed
 - Maybe add cryptographic randomness in map seed generation
 - Make it so that on Hell difficulty dungeon levels dont end but become progressively harder the deeper you go. 

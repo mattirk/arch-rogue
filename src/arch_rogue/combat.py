@@ -1197,7 +1197,7 @@ class CombatMixin:
                 actor.move_x = target_x
                 actor.move_y = target_y
             # anim_time is advanced in update() via advance_animation_phases()
-            # using a steady dt-based rate so the run cycle stays smooth even
+            # using a steady dt-based rate so the walk cycle stays smooth even
             # when per-frame movement distance jitters from frame-rate variance.
         return distance
 

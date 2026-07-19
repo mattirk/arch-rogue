@@ -26,7 +26,12 @@ import random
 
 import pygame
 
-from .constants import LIGHT_SHADE_DOWNSAMPLE_LONG, RUN_CYCLE_FRAMES, RUN_FRAME_RATE, TILE_H
+from .constants import (
+    LIGHT_SHADE_DOWNSAMPLE_LONG,
+    TILE_H,
+    WALK_CYCLE_FRAMES,
+    WALK_FRAME_RATE,
+)
 from .lighting import bake_normal_map
 from .models import Color
 
@@ -590,14 +595,14 @@ class PixelSpriteAtlas:
                 feet_dy=0,
             )
 
-        elif state == "run":
+        elif state == "walk":
             # 12-frame grounded walk cycle. The upper body (cap/head/torso)
             # stays stable and leads subtly into the stride while the hips and
             # legs drive the motion: feet swing forward and lift on the footfall
             # pulse, hips counter-rotate against the torso, and the whole pose
             # stays planted instead of floating. Offsets are kept small and
             # phase-locked to the whole-body bob in RenderingActorMixin.
-            n = RUN_CYCLE_FRAMES
+            n = WALK_CYCLE_FRAMES
             i = index % n
             stride = math.sin(i / n * math.tau)  # -1..1 forward/back sway
             footfall = 0.5 - 0.5 * math.cos(i / n * math.tau)  # 0..1 lift pulse
@@ -763,9 +768,9 @@ class PixelSpriteAtlas:
                 self._actor_pose_frame(sprite, accent, "idle", frame, hostile=hostile)
                 for frame in range(6)
             ],
-            "run": [
-                self._actor_pose_frame(sprite, accent, "run", frame, hostile=hostile)
-                for frame in range(RUN_CYCLE_FRAMES)
+            "walk": [
+                self._actor_pose_frame(sprite, accent, "walk", frame, hostile=hostile)
+                for frame in range(WALK_CYCLE_FRAMES)
             ],
             "attack": [
                 self._actor_pose_frame(
@@ -925,7 +930,7 @@ class PixelSpriteAtlas:
                 action_time=action_time,
                 action_progress=action_progress,
             )
-        phase = anim_time * RUN_FRAME_RATE if state == "run" else elapsed * 5.0
+        phase = anim_time * WALK_FRAME_RATE if state == "walk" else elapsed * 5.0
         return self._frame_from(frames, phase)
 
     def enemy_key(self, name: str, kind: str = "") -> str:
@@ -968,8 +973,8 @@ class PixelSpriteAtlas:
                 action_progress=action_progress,
             )
         phase = (
-            anim_time * RUN_FRAME_RATE
-            if state == "run"
+            anim_time * WALK_FRAME_RATE
+            if state == "walk"
             else elapsed * (4.3 if kind == "boss" else 5.0)
         )
         return self._frame_from(frames, phase)
@@ -994,7 +999,7 @@ class PixelSpriteAtlas:
                 action_time=action_time,
                 action_progress=action_progress,
             )
-        phase = anim_time * RUN_FRAME_RATE if state == "run" else elapsed * 4.3
+        phase = anim_time * WALK_FRAME_RATE if state == "walk" else elapsed * 4.3
         return self._frame_from(frames, phase)
 
     def item_frame(
@@ -1044,7 +1049,7 @@ class PixelSpriteAtlas:
     ) -> pygame.Surface:
         state = "resolved" if resolved else "active"
         frames = self.story_guest_animation_frames[state][
-            "run" if moving else "idle"
+            "walk" if moving else "idle"
         ]
         if clip_progress is not None:
             return self._frame_from(frames, (clip_progress % 1.0) * len(frames))
@@ -1057,7 +1062,7 @@ class PixelSpriteAtlas:
         moving: bool = False,
         clip_progress: float | None = None,
     ) -> pygame.Surface:
-        frames = self.shopkeeper_animation_frames["run" if moving else "idle"]
+        frames = self.shopkeeper_animation_frames["walk" if moving else "idle"]
         if clip_progress is not None:
             return self._frame_from(frames, (clip_progress % 1.0) * len(frames))
         return self._frame_from(frames, elapsed, rate=5.0 if moving else 3.0)
@@ -1070,7 +1075,7 @@ class PixelSpriteAtlas:
         dancing: bool = False,
         clip_progress: float | None = None,
     ) -> pygame.Surface:
-        state = "run" if moving else "dance" if dancing else "idle"
+        state = "walk" if moving else "dance" if dancing else "idle"
         frames = self.bar_dancer_animation_frames[state]
         if clip_progress is not None:
             return self._frame_from(frames, (clip_progress % 1.0) * len(frames))
@@ -1084,7 +1089,7 @@ class PixelSpriteAtlas:
         moving: bool = False,
         clip_progress: float | None = None,
     ) -> pygame.Surface:
-        frames = self.garden_frog_animation_frames["run" if moving else "idle"]
+        frames = self.garden_frog_animation_frames["walk" if moving else "idle"]
         if clip_progress is not None:
             return self._frame_from(frames, (clip_progress % 1.0) * len(frames))
         return self._frame_from(frames, elapsed, rate=6.0 if moving else 4.0)

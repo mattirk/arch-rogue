@@ -232,71 +232,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/acolyte/animations/run/east/frame_000.png",
-              "actors/acolyte/animations/run/east/frame_001.png",
-              "actors/acolyte/animations/run/east/frame_002.png",
-              "actors/acolyte/animations/run/east/frame_003.png",
-              "actors/acolyte/animations/run/east/frame_004.png",
-              "actors/acolyte/animations/run/east/frame_005.png"
+              "actors/acolyte/animations/walk/east/frame_000.png",
+              "actors/acolyte/animations/walk/east/frame_001.png",
+              "actors/acolyte/animations/walk/east/frame_002.png",
+              "actors/acolyte/animations/walk/east/frame_003.png",
+              "actors/acolyte/animations/walk/east/frame_004.png",
+              "actors/acolyte/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/acolyte/animations/run/north/frame_000.png",
-              "actors/acolyte/animations/run/north/frame_001.png",
-              "actors/acolyte/animations/run/north/frame_002.png",
-              "actors/acolyte/animations/run/north/frame_003.png",
-              "actors/acolyte/animations/run/north/frame_004.png",
-              "actors/acolyte/animations/run/north/frame_005.png"
+              "actors/acolyte/animations/walk/north/frame_000.png",
+              "actors/acolyte/animations/walk/north/frame_001.png",
+              "actors/acolyte/animations/walk/north/frame_002.png",
+              "actors/acolyte/animations/walk/north/frame_003.png",
+              "actors/acolyte/animations/walk/north/frame_004.png",
+              "actors/acolyte/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/acolyte/animations/run/north-east/frame_000.png",
-              "actors/acolyte/animations/run/north-east/frame_001.png",
-              "actors/acolyte/animations/run/north-east/frame_002.png",
-              "actors/acolyte/animations/run/north-east/frame_003.png",
-              "actors/acolyte/animations/run/north-east/frame_004.png",
-              "actors/acolyte/animations/run/north-east/frame_005.png"
+              "actors/acolyte/animations/walk/north-east/frame_000.png",
+              "actors/acolyte/animations/walk/north-east/frame_001.png",
+              "actors/acolyte/animations/walk/north-east/frame_002.png",
+              "actors/acolyte/animations/walk/north-east/frame_003.png",
+              "actors/acolyte/animations/walk/north-east/frame_004.png",
+              "actors/acolyte/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/acolyte/animations/run/north-west/frame_000.png",
-              "actors/acolyte/animations/run/north-west/frame_001.png",
-              "actors/acolyte/animations/run/north-west/frame_002.png",
-              "actors/acolyte/animations/run/north-west/frame_003.png",
-              "actors/acolyte/animations/run/north-west/frame_004.png",
-              "actors/acolyte/animations/run/north-west/frame_005.png"
+              "actors/acolyte/animations/walk/north-west/frame_000.png",
+              "actors/acolyte/animations/walk/north-west/frame_001.png",
+              "actors/acolyte/animations/walk/north-west/frame_002.png",
+              "actors/acolyte/animations/walk/north-west/frame_003.png",
+              "actors/acolyte/animations/walk/north-west/frame_004.png",
+              "actors/acolyte/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/acolyte/animations/run/south/frame_000.png",
-              "actors/acolyte/animations/run/south/frame_001.png",
-              "actors/acolyte/animations/run/south/frame_002.png",
-              "actors/acolyte/animations/run/south/frame_003.png",
-              "actors/acolyte/animations/run/south/frame_004.png",
-              "actors/acolyte/animations/run/south/frame_005.png"
+              "actors/acolyte/animations/walk/south/frame_000.png",
+              "actors/acolyte/animations/walk/south/frame_001.png",
+              "actors/acolyte/animations/walk/south/frame_002.png",
+              "actors/acolyte/animations/walk/south/frame_003.png",
+              "actors/acolyte/animations/walk/south/frame_004.png",
+              "actors/acolyte/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/acolyte/animations/run/south-east/frame_000.png",
-              "actors/acolyte/animations/run/south-east/frame_001.png",
-              "actors/acolyte/animations/run/south-east/frame_002.png",
-              "actors/acolyte/animations/run/south-east/frame_003.png",
-              "actors/acolyte/animations/run/south-east/frame_004.png",
-              "actors/acolyte/animations/run/south-east/frame_005.png"
+              "actors/acolyte/animations/walk/south-east/frame_000.png",
+              "actors/acolyte/animations/walk/south-east/frame_001.png",
+              "actors/acolyte/animations/walk/south-east/frame_002.png",
+              "actors/acolyte/animations/walk/south-east/frame_003.png",
+              "actors/acolyte/animations/walk/south-east/frame_004.png",
+              "actors/acolyte/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/acolyte/animations/run/south-west/frame_000.png",
-              "actors/acolyte/animations/run/south-west/frame_001.png",
-              "actors/acolyte/animations/run/south-west/frame_002.png",
-              "actors/acolyte/animations/run/south-west/frame_003.png",
-              "actors/acolyte/animations/run/south-west/frame_004.png",
-              "actors/acolyte/animations/run/south-west/frame_005.png"
+              "actors/acolyte/animations/walk/south-west/frame_000.png",
+              "actors/acolyte/animations/walk/south-west/frame_001.png",
+              "actors/acolyte/animations/walk/south-west/frame_002.png",
+              "actors/acolyte/animations/walk/south-west/frame_003.png",
+              "actors/acolyte/animations/walk/south-west/frame_004.png",
+              "actors/acolyte/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/acolyte/animations/run/west/frame_000.png",
-              "actors/acolyte/animations/run/west/frame_001.png",
-              "actors/acolyte/animations/run/west/frame_002.png",
-              "actors/acolyte/animations/run/west/frame_003.png",
-              "actors/acolyte/animations/run/west/frame_004.png",
-              "actors/acolyte/animations/run/west/frame_005.png"
+              "actors/acolyte/animations/walk/west/frame_000.png",
+              "actors/acolyte/animations/walk/west/frame_001.png",
+              "actors/acolyte/animations/walk/west/frame_002.png",
+              "actors/acolyte/animations/walk/west/frame_003.png",
+              "actors/acolyte/animations/walk/west/frame_004.png",
+              "actors/acolyte/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -559,74 +559,74 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/arcanist/animations/run/east/frame_000.png",
-              "actors/arcanist/animations/run/east/frame_001.png",
-              "actors/arcanist/animations/run/east/frame_002.png",
-              "actors/arcanist/animations/run/east/frame_003.png",
-              "actors/arcanist/animations/run/east/frame_004.png",
-              "actors/arcanist/animations/run/east/frame_005.png"
+              "actors/arcanist/animations/walk/east/frame_000.png",
+              "actors/arcanist/animations/walk/east/frame_001.png",
+              "actors/arcanist/animations/walk/east/frame_002.png",
+              "actors/arcanist/animations/walk/east/frame_003.png",
+              "actors/arcanist/animations/walk/east/frame_004.png",
+              "actors/arcanist/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/arcanist/animations/run/north/frame_000.png",
-              "actors/arcanist/animations/run/north/frame_001.png",
-              "actors/arcanist/animations/run/north/frame_002.png",
-              "actors/arcanist/animations/run/north/frame_003.png",
-              "actors/arcanist/animations/run/north/frame_004.png",
-              "actors/arcanist/animations/run/north/frame_005.png",
-              "actors/arcanist/animations/run/north/frame_006.png"
+              "actors/arcanist/animations/walk/north/frame_000.png",
+              "actors/arcanist/animations/walk/north/frame_001.png",
+              "actors/arcanist/animations/walk/north/frame_002.png",
+              "actors/arcanist/animations/walk/north/frame_003.png",
+              "actors/arcanist/animations/walk/north/frame_004.png",
+              "actors/arcanist/animations/walk/north/frame_005.png",
+              "actors/arcanist/animations/walk/north/frame_006.png"
             ],
             "north-east": [
-              "actors/arcanist/animations/run/north-east/frame_000.png",
-              "actors/arcanist/animations/run/north-east/frame_001.png",
-              "actors/arcanist/animations/run/north-east/frame_002.png",
-              "actors/arcanist/animations/run/north-east/frame_003.png",
-              "actors/arcanist/animations/run/north-east/frame_004.png",
-              "actors/arcanist/animations/run/north-east/frame_005.png"
+              "actors/arcanist/animations/walk/north-east/frame_000.png",
+              "actors/arcanist/animations/walk/north-east/frame_001.png",
+              "actors/arcanist/animations/walk/north-east/frame_002.png",
+              "actors/arcanist/animations/walk/north-east/frame_003.png",
+              "actors/arcanist/animations/walk/north-east/frame_004.png",
+              "actors/arcanist/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/arcanist/animations/run/north-west/frame_000.png",
-              "actors/arcanist/animations/run/north-west/frame_001.png",
-              "actors/arcanist/animations/run/north-west/frame_002.png",
-              "actors/arcanist/animations/run/north-west/frame_003.png",
-              "actors/arcanist/animations/run/north-west/frame_004.png",
-              "actors/arcanist/animations/run/north-west/frame_005.png"
+              "actors/arcanist/animations/walk/north-west/frame_000.png",
+              "actors/arcanist/animations/walk/north-west/frame_001.png",
+              "actors/arcanist/animations/walk/north-west/frame_002.png",
+              "actors/arcanist/animations/walk/north-west/frame_003.png",
+              "actors/arcanist/animations/walk/north-west/frame_004.png",
+              "actors/arcanist/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/arcanist/animations/run/south/frame_000.png",
-              "actors/arcanist/animations/run/south/frame_001.png",
-              "actors/arcanist/animations/run/south/frame_002.png",
-              "actors/arcanist/animations/run/south/frame_003.png",
-              "actors/arcanist/animations/run/south/frame_004.png",
-              "actors/arcanist/animations/run/south/frame_005.png",
-              "actors/arcanist/animations/run/south/frame_006.png",
-              "actors/arcanist/animations/run/south/frame_007.png"
+              "actors/arcanist/animations/walk/south/frame_000.png",
+              "actors/arcanist/animations/walk/south/frame_001.png",
+              "actors/arcanist/animations/walk/south/frame_002.png",
+              "actors/arcanist/animations/walk/south/frame_003.png",
+              "actors/arcanist/animations/walk/south/frame_004.png",
+              "actors/arcanist/animations/walk/south/frame_005.png",
+              "actors/arcanist/animations/walk/south/frame_006.png",
+              "actors/arcanist/animations/walk/south/frame_007.png"
             ],
             "south-east": [
-              "actors/arcanist/animations/run/south-east/frame_000.png",
-              "actors/arcanist/animations/run/south-east/frame_001.png",
-              "actors/arcanist/animations/run/south-east/frame_002.png",
-              "actors/arcanist/animations/run/south-east/frame_003.png",
-              "actors/arcanist/animations/run/south-east/frame_004.png",
-              "actors/arcanist/animations/run/south-east/frame_005.png"
+              "actors/arcanist/animations/walk/south-east/frame_000.png",
+              "actors/arcanist/animations/walk/south-east/frame_001.png",
+              "actors/arcanist/animations/walk/south-east/frame_002.png",
+              "actors/arcanist/animations/walk/south-east/frame_003.png",
+              "actors/arcanist/animations/walk/south-east/frame_004.png",
+              "actors/arcanist/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/arcanist/animations/run/south-west/frame_000.png",
-              "actors/arcanist/animations/run/south-west/frame_001.png",
-              "actors/arcanist/animations/run/south-west/frame_002.png",
-              "actors/arcanist/animations/run/south-west/frame_003.png",
-              "actors/arcanist/animations/run/south-west/frame_004.png",
-              "actors/arcanist/animations/run/south-west/frame_005.png"
+              "actors/arcanist/animations/walk/south-west/frame_000.png",
+              "actors/arcanist/animations/walk/south-west/frame_001.png",
+              "actors/arcanist/animations/walk/south-west/frame_002.png",
+              "actors/arcanist/animations/walk/south-west/frame_003.png",
+              "actors/arcanist/animations/walk/south-west/frame_004.png",
+              "actors/arcanist/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/arcanist/animations/run/west/frame_000.png",
-              "actors/arcanist/animations/run/west/frame_001.png",
-              "actors/arcanist/animations/run/west/frame_002.png",
-              "actors/arcanist/animations/run/west/frame_003.png",
-              "actors/arcanist/animations/run/west/frame_004.png",
-              "actors/arcanist/animations/run/west/frame_005.png"
+              "actors/arcanist/animations/walk/west/frame_000.png",
+              "actors/arcanist/animations/walk/west/frame_001.png",
+              "actors/arcanist/animations/walk/west/frame_002.png",
+              "actors/arcanist/animations/walk/west/frame_003.png",
+              "actors/arcanist/animations/walk/west/frame_004.png",
+              "actors/arcanist/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -715,71 +715,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/ash_gallows_knight/animations/run/east/frame_000.png",
-              "actors/ash_gallows_knight/animations/run/east/frame_001.png",
-              "actors/ash_gallows_knight/animations/run/east/frame_002.png",
-              "actors/ash_gallows_knight/animations/run/east/frame_003.png",
-              "actors/ash_gallows_knight/animations/run/east/frame_004.png",
-              "actors/ash_gallows_knight/animations/run/east/frame_005.png"
+              "actors/ash_gallows_knight/animations/walk/east/frame_000.png",
+              "actors/ash_gallows_knight/animations/walk/east/frame_001.png",
+              "actors/ash_gallows_knight/animations/walk/east/frame_002.png",
+              "actors/ash_gallows_knight/animations/walk/east/frame_003.png",
+              "actors/ash_gallows_knight/animations/walk/east/frame_004.png",
+              "actors/ash_gallows_knight/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/ash_gallows_knight/animations/run/north/frame_000.png",
-              "actors/ash_gallows_knight/animations/run/north/frame_001.png",
-              "actors/ash_gallows_knight/animations/run/north/frame_002.png",
-              "actors/ash_gallows_knight/animations/run/north/frame_003.png",
-              "actors/ash_gallows_knight/animations/run/north/frame_004.png",
-              "actors/ash_gallows_knight/animations/run/north/frame_005.png"
+              "actors/ash_gallows_knight/animations/walk/north/frame_000.png",
+              "actors/ash_gallows_knight/animations/walk/north/frame_001.png",
+              "actors/ash_gallows_knight/animations/walk/north/frame_002.png",
+              "actors/ash_gallows_knight/animations/walk/north/frame_003.png",
+              "actors/ash_gallows_knight/animations/walk/north/frame_004.png",
+              "actors/ash_gallows_knight/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/ash_gallows_knight/animations/run/north-east/frame_000.png",
-              "actors/ash_gallows_knight/animations/run/north-east/frame_001.png",
-              "actors/ash_gallows_knight/animations/run/north-east/frame_002.png",
-              "actors/ash_gallows_knight/animations/run/north-east/frame_003.png",
-              "actors/ash_gallows_knight/animations/run/north-east/frame_004.png",
-              "actors/ash_gallows_knight/animations/run/north-east/frame_005.png"
+              "actors/ash_gallows_knight/animations/walk/north-east/frame_000.png",
+              "actors/ash_gallows_knight/animations/walk/north-east/frame_001.png",
+              "actors/ash_gallows_knight/animations/walk/north-east/frame_002.png",
+              "actors/ash_gallows_knight/animations/walk/north-east/frame_003.png",
+              "actors/ash_gallows_knight/animations/walk/north-east/frame_004.png",
+              "actors/ash_gallows_knight/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/ash_gallows_knight/animations/run/north-west/frame_000.png",
-              "actors/ash_gallows_knight/animations/run/north-west/frame_001.png",
-              "actors/ash_gallows_knight/animations/run/north-west/frame_002.png",
-              "actors/ash_gallows_knight/animations/run/north-west/frame_003.png",
-              "actors/ash_gallows_knight/animations/run/north-west/frame_004.png",
-              "actors/ash_gallows_knight/animations/run/north-west/frame_005.png"
+              "actors/ash_gallows_knight/animations/walk/north-west/frame_000.png",
+              "actors/ash_gallows_knight/animations/walk/north-west/frame_001.png",
+              "actors/ash_gallows_knight/animations/walk/north-west/frame_002.png",
+              "actors/ash_gallows_knight/animations/walk/north-west/frame_003.png",
+              "actors/ash_gallows_knight/animations/walk/north-west/frame_004.png",
+              "actors/ash_gallows_knight/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/ash_gallows_knight/animations/run/south/frame_000.png",
-              "actors/ash_gallows_knight/animations/run/south/frame_001.png",
-              "actors/ash_gallows_knight/animations/run/south/frame_002.png",
-              "actors/ash_gallows_knight/animations/run/south/frame_003.png",
-              "actors/ash_gallows_knight/animations/run/south/frame_004.png",
-              "actors/ash_gallows_knight/animations/run/south/frame_005.png"
+              "actors/ash_gallows_knight/animations/walk/south/frame_000.png",
+              "actors/ash_gallows_knight/animations/walk/south/frame_001.png",
+              "actors/ash_gallows_knight/animations/walk/south/frame_002.png",
+              "actors/ash_gallows_knight/animations/walk/south/frame_003.png",
+              "actors/ash_gallows_knight/animations/walk/south/frame_004.png",
+              "actors/ash_gallows_knight/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/ash_gallows_knight/animations/run/south-east/frame_000.png",
-              "actors/ash_gallows_knight/animations/run/south-east/frame_001.png",
-              "actors/ash_gallows_knight/animations/run/south-east/frame_002.png",
-              "actors/ash_gallows_knight/animations/run/south-east/frame_003.png",
-              "actors/ash_gallows_knight/animations/run/south-east/frame_004.png",
-              "actors/ash_gallows_knight/animations/run/south-east/frame_005.png"
+              "actors/ash_gallows_knight/animations/walk/south-east/frame_000.png",
+              "actors/ash_gallows_knight/animations/walk/south-east/frame_001.png",
+              "actors/ash_gallows_knight/animations/walk/south-east/frame_002.png",
+              "actors/ash_gallows_knight/animations/walk/south-east/frame_003.png",
+              "actors/ash_gallows_knight/animations/walk/south-east/frame_004.png",
+              "actors/ash_gallows_knight/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/ash_gallows_knight/animations/run/south-west/frame_000.png",
-              "actors/ash_gallows_knight/animations/run/south-west/frame_001.png",
-              "actors/ash_gallows_knight/animations/run/south-west/frame_002.png",
-              "actors/ash_gallows_knight/animations/run/south-west/frame_003.png",
-              "actors/ash_gallows_knight/animations/run/south-west/frame_004.png",
-              "actors/ash_gallows_knight/animations/run/south-west/frame_005.png"
+              "actors/ash_gallows_knight/animations/walk/south-west/frame_000.png",
+              "actors/ash_gallows_knight/animations/walk/south-west/frame_001.png",
+              "actors/ash_gallows_knight/animations/walk/south-west/frame_002.png",
+              "actors/ash_gallows_knight/animations/walk/south-west/frame_003.png",
+              "actors/ash_gallows_knight/animations/walk/south-west/frame_004.png",
+              "actors/ash_gallows_knight/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/ash_gallows_knight/animations/run/west/frame_000.png",
-              "actors/ash_gallows_knight/animations/run/west/frame_001.png",
-              "actors/ash_gallows_knight/animations/run/west/frame_002.png",
-              "actors/ash_gallows_knight/animations/run/west/frame_003.png",
-              "actors/ash_gallows_knight/animations/run/west/frame_004.png",
-              "actors/ash_gallows_knight/animations/run/west/frame_005.png"
+              "actors/ash_gallows_knight/animations/walk/west/frame_000.png",
+              "actors/ash_gallows_knight/animations/walk/west/frame_001.png",
+              "actors/ash_gallows_knight/animations/walk/west/frame_002.png",
+              "actors/ash_gallows_knight/animations/walk/west/frame_003.png",
+              "actors/ash_gallows_knight/animations/walk/west/frame_004.png",
+              "actors/ash_gallows_knight/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -900,71 +900,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/ash_hound/animations/run/east/frame_000.png",
-              "actors/ash_hound/animations/run/east/frame_001.png",
-              "actors/ash_hound/animations/run/east/frame_002.png",
-              "actors/ash_hound/animations/run/east/frame_003.png",
-              "actors/ash_hound/animations/run/east/frame_004.png",
-              "actors/ash_hound/animations/run/east/frame_005.png"
+              "actors/ash_hound/animations/walk/east/frame_000.png",
+              "actors/ash_hound/animations/walk/east/frame_001.png",
+              "actors/ash_hound/animations/walk/east/frame_002.png",
+              "actors/ash_hound/animations/walk/east/frame_003.png",
+              "actors/ash_hound/animations/walk/east/frame_004.png",
+              "actors/ash_hound/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/ash_hound/animations/run/north/frame_000.png",
-              "actors/ash_hound/animations/run/north/frame_001.png",
-              "actors/ash_hound/animations/run/north/frame_002.png",
-              "actors/ash_hound/animations/run/north/frame_003.png",
-              "actors/ash_hound/animations/run/north/frame_004.png",
-              "actors/ash_hound/animations/run/north/frame_005.png"
+              "actors/ash_hound/animations/walk/north/frame_000.png",
+              "actors/ash_hound/animations/walk/north/frame_001.png",
+              "actors/ash_hound/animations/walk/north/frame_002.png",
+              "actors/ash_hound/animations/walk/north/frame_003.png",
+              "actors/ash_hound/animations/walk/north/frame_004.png",
+              "actors/ash_hound/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/ash_hound/animations/run/north-east/frame_000.png",
-              "actors/ash_hound/animations/run/north-east/frame_001.png",
-              "actors/ash_hound/animations/run/north-east/frame_002.png",
-              "actors/ash_hound/animations/run/north-east/frame_003.png",
-              "actors/ash_hound/animations/run/north-east/frame_004.png",
-              "actors/ash_hound/animations/run/north-east/frame_005.png"
+              "actors/ash_hound/animations/walk/north-east/frame_000.png",
+              "actors/ash_hound/animations/walk/north-east/frame_001.png",
+              "actors/ash_hound/animations/walk/north-east/frame_002.png",
+              "actors/ash_hound/animations/walk/north-east/frame_003.png",
+              "actors/ash_hound/animations/walk/north-east/frame_004.png",
+              "actors/ash_hound/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/ash_hound/animations/run/north-west/frame_000.png",
-              "actors/ash_hound/animations/run/north-west/frame_001.png",
-              "actors/ash_hound/animations/run/north-west/frame_002.png",
-              "actors/ash_hound/animations/run/north-west/frame_003.png",
-              "actors/ash_hound/animations/run/north-west/frame_004.png",
-              "actors/ash_hound/animations/run/north-west/frame_005.png"
+              "actors/ash_hound/animations/walk/north-west/frame_000.png",
+              "actors/ash_hound/animations/walk/north-west/frame_001.png",
+              "actors/ash_hound/animations/walk/north-west/frame_002.png",
+              "actors/ash_hound/animations/walk/north-west/frame_003.png",
+              "actors/ash_hound/animations/walk/north-west/frame_004.png",
+              "actors/ash_hound/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/ash_hound/animations/run/south/frame_000.png",
-              "actors/ash_hound/animations/run/south/frame_001.png",
-              "actors/ash_hound/animations/run/south/frame_002.png",
-              "actors/ash_hound/animations/run/south/frame_003.png",
-              "actors/ash_hound/animations/run/south/frame_004.png",
-              "actors/ash_hound/animations/run/south/frame_005.png"
+              "actors/ash_hound/animations/walk/south/frame_000.png",
+              "actors/ash_hound/animations/walk/south/frame_001.png",
+              "actors/ash_hound/animations/walk/south/frame_002.png",
+              "actors/ash_hound/animations/walk/south/frame_003.png",
+              "actors/ash_hound/animations/walk/south/frame_004.png",
+              "actors/ash_hound/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/ash_hound/animations/run/south-east/frame_000.png",
-              "actors/ash_hound/animations/run/south-east/frame_001.png",
-              "actors/ash_hound/animations/run/south-east/frame_002.png",
-              "actors/ash_hound/animations/run/south-east/frame_003.png",
-              "actors/ash_hound/animations/run/south-east/frame_004.png",
-              "actors/ash_hound/animations/run/south-east/frame_005.png"
+              "actors/ash_hound/animations/walk/south-east/frame_000.png",
+              "actors/ash_hound/animations/walk/south-east/frame_001.png",
+              "actors/ash_hound/animations/walk/south-east/frame_002.png",
+              "actors/ash_hound/animations/walk/south-east/frame_003.png",
+              "actors/ash_hound/animations/walk/south-east/frame_004.png",
+              "actors/ash_hound/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/ash_hound/animations/run/south-west/frame_000.png",
-              "actors/ash_hound/animations/run/south-west/frame_001.png",
-              "actors/ash_hound/animations/run/south-west/frame_002.png",
-              "actors/ash_hound/animations/run/south-west/frame_003.png",
-              "actors/ash_hound/animations/run/south-west/frame_004.png",
-              "actors/ash_hound/animations/run/south-west/frame_005.png"
+              "actors/ash_hound/animations/walk/south-west/frame_000.png",
+              "actors/ash_hound/animations/walk/south-west/frame_001.png",
+              "actors/ash_hound/animations/walk/south-west/frame_002.png",
+              "actors/ash_hound/animations/walk/south-west/frame_003.png",
+              "actors/ash_hound/animations/walk/south-west/frame_004.png",
+              "actors/ash_hound/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/ash_hound/animations/run/west/frame_000.png",
-              "actors/ash_hound/animations/run/west/frame_001.png",
-              "actors/ash_hound/animations/run/west/frame_002.png",
-              "actors/ash_hound/animations/run/west/frame_003.png",
-              "actors/ash_hound/animations/run/west/frame_004.png",
-              "actors/ash_hound/animations/run/west/frame_005.png"
+              "actors/ash_hound/animations/walk/west/frame_000.png",
+              "actors/ash_hound/animations/walk/west/frame_001.png",
+              "actors/ash_hound/animations/walk/west/frame_002.png",
+              "actors/ash_hound/animations/walk/west/frame_003.png",
+              "actors/ash_hound/animations/walk/west/frame_004.png",
+              "actors/ash_hound/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -1086,7 +1086,7 @@
           "fps": 8.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
               "actors/bar_dancer/animations/walk/east/frame_000.png",
@@ -1255,71 +1255,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/bone_imp/animations/run/east/frame_000.png",
-              "actors/bone_imp/animations/run/east/frame_001.png",
-              "actors/bone_imp/animations/run/east/frame_002.png",
-              "actors/bone_imp/animations/run/east/frame_003.png",
-              "actors/bone_imp/animations/run/east/frame_004.png",
-              "actors/bone_imp/animations/run/east/frame_005.png"
+              "actors/bone_imp/animations/walk/east/frame_000.png",
+              "actors/bone_imp/animations/walk/east/frame_001.png",
+              "actors/bone_imp/animations/walk/east/frame_002.png",
+              "actors/bone_imp/animations/walk/east/frame_003.png",
+              "actors/bone_imp/animations/walk/east/frame_004.png",
+              "actors/bone_imp/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/bone_imp/animations/run/north/frame_000.png",
-              "actors/bone_imp/animations/run/north/frame_001.png",
-              "actors/bone_imp/animations/run/north/frame_002.png",
-              "actors/bone_imp/animations/run/north/frame_003.png",
-              "actors/bone_imp/animations/run/north/frame_004.png",
-              "actors/bone_imp/animations/run/north/frame_005.png"
+              "actors/bone_imp/animations/walk/north/frame_000.png",
+              "actors/bone_imp/animations/walk/north/frame_001.png",
+              "actors/bone_imp/animations/walk/north/frame_002.png",
+              "actors/bone_imp/animations/walk/north/frame_003.png",
+              "actors/bone_imp/animations/walk/north/frame_004.png",
+              "actors/bone_imp/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/bone_imp/animations/run/north-east/frame_000.png",
-              "actors/bone_imp/animations/run/north-east/frame_001.png",
-              "actors/bone_imp/animations/run/north-east/frame_002.png",
-              "actors/bone_imp/animations/run/north-east/frame_003.png",
-              "actors/bone_imp/animations/run/north-east/frame_004.png",
-              "actors/bone_imp/animations/run/north-east/frame_005.png"
+              "actors/bone_imp/animations/walk/north-east/frame_000.png",
+              "actors/bone_imp/animations/walk/north-east/frame_001.png",
+              "actors/bone_imp/animations/walk/north-east/frame_002.png",
+              "actors/bone_imp/animations/walk/north-east/frame_003.png",
+              "actors/bone_imp/animations/walk/north-east/frame_004.png",
+              "actors/bone_imp/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/bone_imp/animations/run/north-west/frame_000.png",
-              "actors/bone_imp/animations/run/north-west/frame_001.png",
-              "actors/bone_imp/animations/run/north-west/frame_002.png",
-              "actors/bone_imp/animations/run/north-west/frame_003.png",
-              "actors/bone_imp/animations/run/north-west/frame_004.png",
-              "actors/bone_imp/animations/run/north-west/frame_005.png"
+              "actors/bone_imp/animations/walk/north-west/frame_000.png",
+              "actors/bone_imp/animations/walk/north-west/frame_001.png",
+              "actors/bone_imp/animations/walk/north-west/frame_002.png",
+              "actors/bone_imp/animations/walk/north-west/frame_003.png",
+              "actors/bone_imp/animations/walk/north-west/frame_004.png",
+              "actors/bone_imp/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/bone_imp/animations/run/south/frame_000.png",
-              "actors/bone_imp/animations/run/south/frame_001.png",
-              "actors/bone_imp/animations/run/south/frame_002.png",
-              "actors/bone_imp/animations/run/south/frame_003.png",
-              "actors/bone_imp/animations/run/south/frame_004.png",
-              "actors/bone_imp/animations/run/south/frame_005.png"
+              "actors/bone_imp/animations/walk/south/frame_000.png",
+              "actors/bone_imp/animations/walk/south/frame_001.png",
+              "actors/bone_imp/animations/walk/south/frame_002.png",
+              "actors/bone_imp/animations/walk/south/frame_003.png",
+              "actors/bone_imp/animations/walk/south/frame_004.png",
+              "actors/bone_imp/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/bone_imp/animations/run/south-east/frame_000.png",
-              "actors/bone_imp/animations/run/south-east/frame_001.png",
-              "actors/bone_imp/animations/run/south-east/frame_002.png",
-              "actors/bone_imp/animations/run/south-east/frame_003.png",
-              "actors/bone_imp/animations/run/south-east/frame_004.png",
-              "actors/bone_imp/animations/run/south-east/frame_005.png"
+              "actors/bone_imp/animations/walk/south-east/frame_000.png",
+              "actors/bone_imp/animations/walk/south-east/frame_001.png",
+              "actors/bone_imp/animations/walk/south-east/frame_002.png",
+              "actors/bone_imp/animations/walk/south-east/frame_003.png",
+              "actors/bone_imp/animations/walk/south-east/frame_004.png",
+              "actors/bone_imp/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/bone_imp/animations/run/south-west/frame_000.png",
-              "actors/bone_imp/animations/run/south-west/frame_001.png",
-              "actors/bone_imp/animations/run/south-west/frame_002.png",
-              "actors/bone_imp/animations/run/south-west/frame_003.png",
-              "actors/bone_imp/animations/run/south-west/frame_004.png",
-              "actors/bone_imp/animations/run/south-west/frame_005.png"
+              "actors/bone_imp/animations/walk/south-west/frame_000.png",
+              "actors/bone_imp/animations/walk/south-west/frame_001.png",
+              "actors/bone_imp/animations/walk/south-west/frame_002.png",
+              "actors/bone_imp/animations/walk/south-west/frame_003.png",
+              "actors/bone_imp/animations/walk/south-west/frame_004.png",
+              "actors/bone_imp/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/bone_imp/animations/run/west/frame_000.png",
-              "actors/bone_imp/animations/run/west/frame_001.png",
-              "actors/bone_imp/animations/run/west/frame_002.png",
-              "actors/bone_imp/animations/run/west/frame_003.png",
-              "actors/bone_imp/animations/run/west/frame_004.png",
-              "actors/bone_imp/animations/run/west/frame_005.png"
+              "actors/bone_imp/animations/walk/west/frame_000.png",
+              "actors/bone_imp/animations/walk/west/frame_001.png",
+              "actors/bone_imp/animations/walk/west/frame_002.png",
+              "actors/bone_imp/animations/walk/west/frame_003.png",
+              "actors/bone_imp/animations/walk/west/frame_004.png",
+              "actors/bone_imp/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -1408,71 +1408,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/crypt_brute/animations/run/east/frame_000.png",
-              "actors/crypt_brute/animations/run/east/frame_001.png",
-              "actors/crypt_brute/animations/run/east/frame_002.png",
-              "actors/crypt_brute/animations/run/east/frame_003.png",
-              "actors/crypt_brute/animations/run/east/frame_004.png",
-              "actors/crypt_brute/animations/run/east/frame_005.png"
+              "actors/crypt_brute/animations/walk/east/frame_000.png",
+              "actors/crypt_brute/animations/walk/east/frame_001.png",
+              "actors/crypt_brute/animations/walk/east/frame_002.png",
+              "actors/crypt_brute/animations/walk/east/frame_003.png",
+              "actors/crypt_brute/animations/walk/east/frame_004.png",
+              "actors/crypt_brute/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/crypt_brute/animations/run/north/frame_000.png",
-              "actors/crypt_brute/animations/run/north/frame_001.png",
-              "actors/crypt_brute/animations/run/north/frame_002.png",
-              "actors/crypt_brute/animations/run/north/frame_003.png",
-              "actors/crypt_brute/animations/run/north/frame_004.png",
-              "actors/crypt_brute/animations/run/north/frame_005.png"
+              "actors/crypt_brute/animations/walk/north/frame_000.png",
+              "actors/crypt_brute/animations/walk/north/frame_001.png",
+              "actors/crypt_brute/animations/walk/north/frame_002.png",
+              "actors/crypt_brute/animations/walk/north/frame_003.png",
+              "actors/crypt_brute/animations/walk/north/frame_004.png",
+              "actors/crypt_brute/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/crypt_brute/animations/run/north-east/frame_000.png",
-              "actors/crypt_brute/animations/run/north-east/frame_001.png",
-              "actors/crypt_brute/animations/run/north-east/frame_002.png",
-              "actors/crypt_brute/animations/run/north-east/frame_003.png",
-              "actors/crypt_brute/animations/run/north-east/frame_004.png",
-              "actors/crypt_brute/animations/run/north-east/frame_005.png"
+              "actors/crypt_brute/animations/walk/north-east/frame_000.png",
+              "actors/crypt_brute/animations/walk/north-east/frame_001.png",
+              "actors/crypt_brute/animations/walk/north-east/frame_002.png",
+              "actors/crypt_brute/animations/walk/north-east/frame_003.png",
+              "actors/crypt_brute/animations/walk/north-east/frame_004.png",
+              "actors/crypt_brute/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/crypt_brute/animations/run/north-west/frame_000.png",
-              "actors/crypt_brute/animations/run/north-west/frame_001.png",
-              "actors/crypt_brute/animations/run/north-west/frame_002.png",
-              "actors/crypt_brute/animations/run/north-west/frame_003.png",
-              "actors/crypt_brute/animations/run/north-west/frame_004.png",
-              "actors/crypt_brute/animations/run/north-west/frame_005.png"
+              "actors/crypt_brute/animations/walk/north-west/frame_000.png",
+              "actors/crypt_brute/animations/walk/north-west/frame_001.png",
+              "actors/crypt_brute/animations/walk/north-west/frame_002.png",
+              "actors/crypt_brute/animations/walk/north-west/frame_003.png",
+              "actors/crypt_brute/animations/walk/north-west/frame_004.png",
+              "actors/crypt_brute/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/crypt_brute/animations/run/south/frame_000.png",
-              "actors/crypt_brute/animations/run/south/frame_001.png",
-              "actors/crypt_brute/animations/run/south/frame_002.png",
-              "actors/crypt_brute/animations/run/south/frame_003.png",
-              "actors/crypt_brute/animations/run/south/frame_004.png",
-              "actors/crypt_brute/animations/run/south/frame_005.png"
+              "actors/crypt_brute/animations/walk/south/frame_000.png",
+              "actors/crypt_brute/animations/walk/south/frame_001.png",
+              "actors/crypt_brute/animations/walk/south/frame_002.png",
+              "actors/crypt_brute/animations/walk/south/frame_003.png",
+              "actors/crypt_brute/animations/walk/south/frame_004.png",
+              "actors/crypt_brute/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/crypt_brute/animations/run/south-east/frame_000.png",
-              "actors/crypt_brute/animations/run/south-east/frame_001.png",
-              "actors/crypt_brute/animations/run/south-east/frame_002.png",
-              "actors/crypt_brute/animations/run/south-east/frame_003.png",
-              "actors/crypt_brute/animations/run/south-east/frame_004.png",
-              "actors/crypt_brute/animations/run/south-east/frame_005.png"
+              "actors/crypt_brute/animations/walk/south-east/frame_000.png",
+              "actors/crypt_brute/animations/walk/south-east/frame_001.png",
+              "actors/crypt_brute/animations/walk/south-east/frame_002.png",
+              "actors/crypt_brute/animations/walk/south-east/frame_003.png",
+              "actors/crypt_brute/animations/walk/south-east/frame_004.png",
+              "actors/crypt_brute/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/crypt_brute/animations/run/south-west/frame_000.png",
-              "actors/crypt_brute/animations/run/south-west/frame_001.png",
-              "actors/crypt_brute/animations/run/south-west/frame_002.png",
-              "actors/crypt_brute/animations/run/south-west/frame_003.png",
-              "actors/crypt_brute/animations/run/south-west/frame_004.png",
-              "actors/crypt_brute/animations/run/south-west/frame_005.png"
+              "actors/crypt_brute/animations/walk/south-west/frame_000.png",
+              "actors/crypt_brute/animations/walk/south-west/frame_001.png",
+              "actors/crypt_brute/animations/walk/south-west/frame_002.png",
+              "actors/crypt_brute/animations/walk/south-west/frame_003.png",
+              "actors/crypt_brute/animations/walk/south-west/frame_004.png",
+              "actors/crypt_brute/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/crypt_brute/animations/run/west/frame_000.png",
-              "actors/crypt_brute/animations/run/west/frame_001.png",
-              "actors/crypt_brute/animations/run/west/frame_002.png",
-              "actors/crypt_brute/animations/run/west/frame_003.png",
-              "actors/crypt_brute/animations/run/west/frame_004.png",
-              "actors/crypt_brute/animations/run/west/frame_005.png"
+              "actors/crypt_brute/animations/walk/west/frame_000.png",
+              "actors/crypt_brute/animations/walk/west/frame_001.png",
+              "actors/crypt_brute/animations/walk/west/frame_002.png",
+              "actors/crypt_brute/animations/walk/west/frame_003.png",
+              "actors/crypt_brute/animations/walk/west/frame_004.png",
+              "actors/crypt_brute/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -1561,71 +1561,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/cultist/animations/run/east/frame_000.png",
-              "actors/cultist/animations/run/east/frame_001.png",
-              "actors/cultist/animations/run/east/frame_002.png",
-              "actors/cultist/animations/run/east/frame_003.png",
-              "actors/cultist/animations/run/east/frame_004.png",
-              "actors/cultist/animations/run/east/frame_005.png"
+              "actors/cultist/animations/walk/east/frame_000.png",
+              "actors/cultist/animations/walk/east/frame_001.png",
+              "actors/cultist/animations/walk/east/frame_002.png",
+              "actors/cultist/animations/walk/east/frame_003.png",
+              "actors/cultist/animations/walk/east/frame_004.png",
+              "actors/cultist/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/cultist/animations/run/north/frame_000.png",
-              "actors/cultist/animations/run/north/frame_001.png",
-              "actors/cultist/animations/run/north/frame_002.png",
-              "actors/cultist/animations/run/north/frame_003.png",
-              "actors/cultist/animations/run/north/frame_004.png",
-              "actors/cultist/animations/run/north/frame_005.png"
+              "actors/cultist/animations/walk/north/frame_000.png",
+              "actors/cultist/animations/walk/north/frame_001.png",
+              "actors/cultist/animations/walk/north/frame_002.png",
+              "actors/cultist/animations/walk/north/frame_003.png",
+              "actors/cultist/animations/walk/north/frame_004.png",
+              "actors/cultist/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/cultist/animations/run/north-east/frame_000.png",
-              "actors/cultist/animations/run/north-east/frame_001.png",
-              "actors/cultist/animations/run/north-east/frame_002.png",
-              "actors/cultist/animations/run/north-east/frame_003.png",
-              "actors/cultist/animations/run/north-east/frame_004.png",
-              "actors/cultist/animations/run/north-east/frame_005.png"
+              "actors/cultist/animations/walk/north-east/frame_000.png",
+              "actors/cultist/animations/walk/north-east/frame_001.png",
+              "actors/cultist/animations/walk/north-east/frame_002.png",
+              "actors/cultist/animations/walk/north-east/frame_003.png",
+              "actors/cultist/animations/walk/north-east/frame_004.png",
+              "actors/cultist/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/cultist/animations/run/north-west/frame_000.png",
-              "actors/cultist/animations/run/north-west/frame_001.png",
-              "actors/cultist/animations/run/north-west/frame_002.png",
-              "actors/cultist/animations/run/north-west/frame_003.png",
-              "actors/cultist/animations/run/north-west/frame_004.png",
-              "actors/cultist/animations/run/north-west/frame_005.png"
+              "actors/cultist/animations/walk/north-west/frame_000.png",
+              "actors/cultist/animations/walk/north-west/frame_001.png",
+              "actors/cultist/animations/walk/north-west/frame_002.png",
+              "actors/cultist/animations/walk/north-west/frame_003.png",
+              "actors/cultist/animations/walk/north-west/frame_004.png",
+              "actors/cultist/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/cultist/animations/run/south/frame_000.png",
-              "actors/cultist/animations/run/south/frame_001.png",
-              "actors/cultist/animations/run/south/frame_002.png",
-              "actors/cultist/animations/run/south/frame_003.png",
-              "actors/cultist/animations/run/south/frame_004.png",
-              "actors/cultist/animations/run/south/frame_005.png"
+              "actors/cultist/animations/walk/south/frame_000.png",
+              "actors/cultist/animations/walk/south/frame_001.png",
+              "actors/cultist/animations/walk/south/frame_002.png",
+              "actors/cultist/animations/walk/south/frame_003.png",
+              "actors/cultist/animations/walk/south/frame_004.png",
+              "actors/cultist/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/cultist/animations/run/south-east/frame_000.png",
-              "actors/cultist/animations/run/south-east/frame_001.png",
-              "actors/cultist/animations/run/south-east/frame_002.png",
-              "actors/cultist/animations/run/south-east/frame_003.png",
-              "actors/cultist/animations/run/south-east/frame_004.png",
-              "actors/cultist/animations/run/south-east/frame_005.png"
+              "actors/cultist/animations/walk/south-east/frame_000.png",
+              "actors/cultist/animations/walk/south-east/frame_001.png",
+              "actors/cultist/animations/walk/south-east/frame_002.png",
+              "actors/cultist/animations/walk/south-east/frame_003.png",
+              "actors/cultist/animations/walk/south-east/frame_004.png",
+              "actors/cultist/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/cultist/animations/run/south-west/frame_000.png",
-              "actors/cultist/animations/run/south-west/frame_001.png",
-              "actors/cultist/animations/run/south-west/frame_002.png",
-              "actors/cultist/animations/run/south-west/frame_003.png",
-              "actors/cultist/animations/run/south-west/frame_004.png",
-              "actors/cultist/animations/run/south-west/frame_005.png"
+              "actors/cultist/animations/walk/south-west/frame_000.png",
+              "actors/cultist/animations/walk/south-west/frame_001.png",
+              "actors/cultist/animations/walk/south-west/frame_002.png",
+              "actors/cultist/animations/walk/south-west/frame_003.png",
+              "actors/cultist/animations/walk/south-west/frame_004.png",
+              "actors/cultist/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/cultist/animations/run/west/frame_000.png",
-              "actors/cultist/animations/run/west/frame_001.png",
-              "actors/cultist/animations/run/west/frame_002.png",
-              "actors/cultist/animations/run/west/frame_003.png",
-              "actors/cultist/animations/run/west/frame_004.png",
-              "actors/cultist/animations/run/west/frame_005.png"
+              "actors/cultist/animations/walk/west/frame_000.png",
+              "actors/cultist/animations/walk/west/frame_001.png",
+              "actors/cultist/animations/walk/west/frame_002.png",
+              "actors/cultist/animations/walk/west/frame_003.png",
+              "actors/cultist/animations/walk/west/frame_004.png",
+              "actors/cultist/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -1716,71 +1716,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/familiar_owl/animations/run/east/frame_000.png",
-              "actors/familiar_owl/animations/run/east/frame_001.png",
-              "actors/familiar_owl/animations/run/east/frame_002.png",
-              "actors/familiar_owl/animations/run/east/frame_003.png",
-              "actors/familiar_owl/animations/run/east/frame_004.png",
-              "actors/familiar_owl/animations/run/east/frame_005.png"
+              "actors/familiar_owl/animations/walk/east/frame_000.png",
+              "actors/familiar_owl/animations/walk/east/frame_001.png",
+              "actors/familiar_owl/animations/walk/east/frame_002.png",
+              "actors/familiar_owl/animations/walk/east/frame_003.png",
+              "actors/familiar_owl/animations/walk/east/frame_004.png",
+              "actors/familiar_owl/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/familiar_owl/animations/run/north/frame_000.png",
-              "actors/familiar_owl/animations/run/north/frame_001.png",
-              "actors/familiar_owl/animations/run/north/frame_002.png",
-              "actors/familiar_owl/animations/run/north/frame_003.png",
-              "actors/familiar_owl/animations/run/north/frame_004.png",
-              "actors/familiar_owl/animations/run/north/frame_005.png"
+              "actors/familiar_owl/animations/walk/north/frame_000.png",
+              "actors/familiar_owl/animations/walk/north/frame_001.png",
+              "actors/familiar_owl/animations/walk/north/frame_002.png",
+              "actors/familiar_owl/animations/walk/north/frame_003.png",
+              "actors/familiar_owl/animations/walk/north/frame_004.png",
+              "actors/familiar_owl/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/familiar_owl/animations/run/north-east/frame_000.png",
-              "actors/familiar_owl/animations/run/north-east/frame_001.png",
-              "actors/familiar_owl/animations/run/north-east/frame_002.png",
-              "actors/familiar_owl/animations/run/north-east/frame_003.png",
-              "actors/familiar_owl/animations/run/north-east/frame_004.png",
-              "actors/familiar_owl/animations/run/north-east/frame_005.png"
+              "actors/familiar_owl/animations/walk/north-east/frame_000.png",
+              "actors/familiar_owl/animations/walk/north-east/frame_001.png",
+              "actors/familiar_owl/animations/walk/north-east/frame_002.png",
+              "actors/familiar_owl/animations/walk/north-east/frame_003.png",
+              "actors/familiar_owl/animations/walk/north-east/frame_004.png",
+              "actors/familiar_owl/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/familiar_owl/animations/run/north-west/frame_000.png",
-              "actors/familiar_owl/animations/run/north-west/frame_001.png",
-              "actors/familiar_owl/animations/run/north-west/frame_002.png",
-              "actors/familiar_owl/animations/run/north-west/frame_003.png",
-              "actors/familiar_owl/animations/run/north-west/frame_004.png",
-              "actors/familiar_owl/animations/run/north-west/frame_005.png"
+              "actors/familiar_owl/animations/walk/north-west/frame_000.png",
+              "actors/familiar_owl/animations/walk/north-west/frame_001.png",
+              "actors/familiar_owl/animations/walk/north-west/frame_002.png",
+              "actors/familiar_owl/animations/walk/north-west/frame_003.png",
+              "actors/familiar_owl/animations/walk/north-west/frame_004.png",
+              "actors/familiar_owl/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/familiar_owl/animations/run/south/frame_000.png",
-              "actors/familiar_owl/animations/run/south/frame_001.png",
-              "actors/familiar_owl/animations/run/south/frame_002.png",
-              "actors/familiar_owl/animations/run/south/frame_003.png",
-              "actors/familiar_owl/animations/run/south/frame_004.png",
-              "actors/familiar_owl/animations/run/south/frame_005.png"
+              "actors/familiar_owl/animations/walk/south/frame_000.png",
+              "actors/familiar_owl/animations/walk/south/frame_001.png",
+              "actors/familiar_owl/animations/walk/south/frame_002.png",
+              "actors/familiar_owl/animations/walk/south/frame_003.png",
+              "actors/familiar_owl/animations/walk/south/frame_004.png",
+              "actors/familiar_owl/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/familiar_owl/animations/run/south-east/frame_000.png",
-              "actors/familiar_owl/animations/run/south-east/frame_001.png",
-              "actors/familiar_owl/animations/run/south-east/frame_002.png",
-              "actors/familiar_owl/animations/run/south-east/frame_003.png",
-              "actors/familiar_owl/animations/run/south-east/frame_004.png",
-              "actors/familiar_owl/animations/run/south-east/frame_005.png"
+              "actors/familiar_owl/animations/walk/south-east/frame_000.png",
+              "actors/familiar_owl/animations/walk/south-east/frame_001.png",
+              "actors/familiar_owl/animations/walk/south-east/frame_002.png",
+              "actors/familiar_owl/animations/walk/south-east/frame_003.png",
+              "actors/familiar_owl/animations/walk/south-east/frame_004.png",
+              "actors/familiar_owl/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/familiar_owl/animations/run/south-west/frame_000.png",
-              "actors/familiar_owl/animations/run/south-west/frame_001.png",
-              "actors/familiar_owl/animations/run/south-west/frame_002.png",
-              "actors/familiar_owl/animations/run/south-west/frame_003.png",
-              "actors/familiar_owl/animations/run/south-west/frame_004.png",
-              "actors/familiar_owl/animations/run/south-west/frame_005.png"
+              "actors/familiar_owl/animations/walk/south-west/frame_000.png",
+              "actors/familiar_owl/animations/walk/south-west/frame_001.png",
+              "actors/familiar_owl/animations/walk/south-west/frame_002.png",
+              "actors/familiar_owl/animations/walk/south-west/frame_003.png",
+              "actors/familiar_owl/animations/walk/south-west/frame_004.png",
+              "actors/familiar_owl/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/familiar_owl/animations/run/west/frame_000.png",
-              "actors/familiar_owl/animations/run/west/frame_001.png",
-              "actors/familiar_owl/animations/run/west/frame_002.png",
-              "actors/familiar_owl/animations/run/west/frame_003.png",
-              "actors/familiar_owl/animations/run/west/frame_004.png",
-              "actors/familiar_owl/animations/run/west/frame_005.png"
+              "actors/familiar_owl/animations/walk/west/frame_000.png",
+              "actors/familiar_owl/animations/walk/west/frame_001.png",
+              "actors/familiar_owl/animations/walk/west/frame_002.png",
+              "actors/familiar_owl/animations/walk/west/frame_003.png",
+              "actors/familiar_owl/animations/walk/west/frame_004.png",
+              "actors/familiar_owl/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -1864,71 +1864,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/familiar_wisp/animations/run/east/frame_000.png",
-              "actors/familiar_wisp/animations/run/east/frame_001.png",
-              "actors/familiar_wisp/animations/run/east/frame_002.png",
-              "actors/familiar_wisp/animations/run/east/frame_003.png",
-              "actors/familiar_wisp/animations/run/east/frame_004.png",
-              "actors/familiar_wisp/animations/run/east/frame_005.png"
+              "actors/familiar_wisp/animations/walk/east/frame_000.png",
+              "actors/familiar_wisp/animations/walk/east/frame_001.png",
+              "actors/familiar_wisp/animations/walk/east/frame_002.png",
+              "actors/familiar_wisp/animations/walk/east/frame_003.png",
+              "actors/familiar_wisp/animations/walk/east/frame_004.png",
+              "actors/familiar_wisp/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/familiar_wisp/animations/run/north/frame_000.png",
-              "actors/familiar_wisp/animations/run/north/frame_001.png",
-              "actors/familiar_wisp/animations/run/north/frame_002.png",
-              "actors/familiar_wisp/animations/run/north/frame_003.png",
-              "actors/familiar_wisp/animations/run/north/frame_004.png",
-              "actors/familiar_wisp/animations/run/north/frame_005.png"
+              "actors/familiar_wisp/animations/walk/north/frame_000.png",
+              "actors/familiar_wisp/animations/walk/north/frame_001.png",
+              "actors/familiar_wisp/animations/walk/north/frame_002.png",
+              "actors/familiar_wisp/animations/walk/north/frame_003.png",
+              "actors/familiar_wisp/animations/walk/north/frame_004.png",
+              "actors/familiar_wisp/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/familiar_wisp/animations/run/north-east/frame_000.png",
-              "actors/familiar_wisp/animations/run/north-east/frame_001.png",
-              "actors/familiar_wisp/animations/run/north-east/frame_002.png",
-              "actors/familiar_wisp/animations/run/north-east/frame_003.png",
-              "actors/familiar_wisp/animations/run/north-east/frame_004.png",
-              "actors/familiar_wisp/animations/run/north-east/frame_005.png"
+              "actors/familiar_wisp/animations/walk/north-east/frame_000.png",
+              "actors/familiar_wisp/animations/walk/north-east/frame_001.png",
+              "actors/familiar_wisp/animations/walk/north-east/frame_002.png",
+              "actors/familiar_wisp/animations/walk/north-east/frame_003.png",
+              "actors/familiar_wisp/animations/walk/north-east/frame_004.png",
+              "actors/familiar_wisp/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/familiar_wisp/animations/run/north-west/frame_000.png",
-              "actors/familiar_wisp/animations/run/north-west/frame_001.png",
-              "actors/familiar_wisp/animations/run/north-west/frame_002.png",
-              "actors/familiar_wisp/animations/run/north-west/frame_003.png",
-              "actors/familiar_wisp/animations/run/north-west/frame_004.png",
-              "actors/familiar_wisp/animations/run/north-west/frame_005.png"
+              "actors/familiar_wisp/animations/walk/north-west/frame_000.png",
+              "actors/familiar_wisp/animations/walk/north-west/frame_001.png",
+              "actors/familiar_wisp/animations/walk/north-west/frame_002.png",
+              "actors/familiar_wisp/animations/walk/north-west/frame_003.png",
+              "actors/familiar_wisp/animations/walk/north-west/frame_004.png",
+              "actors/familiar_wisp/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/familiar_wisp/animations/run/south/frame_000.png",
-              "actors/familiar_wisp/animations/run/south/frame_001.png",
-              "actors/familiar_wisp/animations/run/south/frame_002.png",
-              "actors/familiar_wisp/animations/run/south/frame_003.png",
-              "actors/familiar_wisp/animations/run/south/frame_004.png",
-              "actors/familiar_wisp/animations/run/south/frame_005.png"
+              "actors/familiar_wisp/animations/walk/south/frame_000.png",
+              "actors/familiar_wisp/animations/walk/south/frame_001.png",
+              "actors/familiar_wisp/animations/walk/south/frame_002.png",
+              "actors/familiar_wisp/animations/walk/south/frame_003.png",
+              "actors/familiar_wisp/animations/walk/south/frame_004.png",
+              "actors/familiar_wisp/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/familiar_wisp/animations/run/south-east/frame_000.png",
-              "actors/familiar_wisp/animations/run/south-east/frame_001.png",
-              "actors/familiar_wisp/animations/run/south-east/frame_002.png",
-              "actors/familiar_wisp/animations/run/south-east/frame_003.png",
-              "actors/familiar_wisp/animations/run/south-east/frame_004.png",
-              "actors/familiar_wisp/animations/run/south-east/frame_005.png"
+              "actors/familiar_wisp/animations/walk/south-east/frame_000.png",
+              "actors/familiar_wisp/animations/walk/south-east/frame_001.png",
+              "actors/familiar_wisp/animations/walk/south-east/frame_002.png",
+              "actors/familiar_wisp/animations/walk/south-east/frame_003.png",
+              "actors/familiar_wisp/animations/walk/south-east/frame_004.png",
+              "actors/familiar_wisp/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/familiar_wisp/animations/run/south-west/frame_000.png",
-              "actors/familiar_wisp/animations/run/south-west/frame_001.png",
-              "actors/familiar_wisp/animations/run/south-west/frame_002.png",
-              "actors/familiar_wisp/animations/run/south-west/frame_003.png",
-              "actors/familiar_wisp/animations/run/south-west/frame_004.png",
-              "actors/familiar_wisp/animations/run/south-west/frame_005.png"
+              "actors/familiar_wisp/animations/walk/south-west/frame_000.png",
+              "actors/familiar_wisp/animations/walk/south-west/frame_001.png",
+              "actors/familiar_wisp/animations/walk/south-west/frame_002.png",
+              "actors/familiar_wisp/animations/walk/south-west/frame_003.png",
+              "actors/familiar_wisp/animations/walk/south-west/frame_004.png",
+              "actors/familiar_wisp/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/familiar_wisp/animations/run/west/frame_000.png",
-              "actors/familiar_wisp/animations/run/west/frame_001.png",
-              "actors/familiar_wisp/animations/run/west/frame_002.png",
-              "actors/familiar_wisp/animations/run/west/frame_003.png",
-              "actors/familiar_wisp/animations/run/west/frame_004.png",
-              "actors/familiar_wisp/animations/run/west/frame_005.png"
+              "actors/familiar_wisp/animations/walk/west/frame_000.png",
+              "actors/familiar_wisp/animations/walk/west/frame_001.png",
+              "actors/familiar_wisp/animations/walk/west/frame_002.png",
+              "actors/familiar_wisp/animations/walk/west/frame_003.png",
+              "actors/familiar_wisp/animations/walk/west/frame_004.png",
+              "actors/familiar_wisp/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -2050,7 +2050,7 @@
           "fps": 8.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
               "actors/garden_frog/animations/walk/east/frame_000.png",
@@ -2220,71 +2220,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/gate_tyrant/animations/run/east/frame_000.png",
-              "actors/gate_tyrant/animations/run/east/frame_001.png",
-              "actors/gate_tyrant/animations/run/east/frame_002.png",
-              "actors/gate_tyrant/animations/run/east/frame_003.png",
-              "actors/gate_tyrant/animations/run/east/frame_004.png",
-              "actors/gate_tyrant/animations/run/east/frame_005.png"
+              "actors/gate_tyrant/animations/walk/east/frame_000.png",
+              "actors/gate_tyrant/animations/walk/east/frame_001.png",
+              "actors/gate_tyrant/animations/walk/east/frame_002.png",
+              "actors/gate_tyrant/animations/walk/east/frame_003.png",
+              "actors/gate_tyrant/animations/walk/east/frame_004.png",
+              "actors/gate_tyrant/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/gate_tyrant/animations/run/north/frame_000.png",
-              "actors/gate_tyrant/animations/run/north/frame_001.png",
-              "actors/gate_tyrant/animations/run/north/frame_002.png",
-              "actors/gate_tyrant/animations/run/north/frame_003.png",
-              "actors/gate_tyrant/animations/run/north/frame_004.png",
-              "actors/gate_tyrant/animations/run/north/frame_005.png"
+              "actors/gate_tyrant/animations/walk/north/frame_000.png",
+              "actors/gate_tyrant/animations/walk/north/frame_001.png",
+              "actors/gate_tyrant/animations/walk/north/frame_002.png",
+              "actors/gate_tyrant/animations/walk/north/frame_003.png",
+              "actors/gate_tyrant/animations/walk/north/frame_004.png",
+              "actors/gate_tyrant/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/gate_tyrant/animations/run/north-east/frame_000.png",
-              "actors/gate_tyrant/animations/run/north-east/frame_001.png",
-              "actors/gate_tyrant/animations/run/north-east/frame_002.png",
-              "actors/gate_tyrant/animations/run/north-east/frame_003.png",
-              "actors/gate_tyrant/animations/run/north-east/frame_004.png",
-              "actors/gate_tyrant/animations/run/north-east/frame_005.png"
+              "actors/gate_tyrant/animations/walk/north-east/frame_000.png",
+              "actors/gate_tyrant/animations/walk/north-east/frame_001.png",
+              "actors/gate_tyrant/animations/walk/north-east/frame_002.png",
+              "actors/gate_tyrant/animations/walk/north-east/frame_003.png",
+              "actors/gate_tyrant/animations/walk/north-east/frame_004.png",
+              "actors/gate_tyrant/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/gate_tyrant/animations/run/north-west/frame_000.png",
-              "actors/gate_tyrant/animations/run/north-west/frame_001.png",
-              "actors/gate_tyrant/animations/run/north-west/frame_002.png",
-              "actors/gate_tyrant/animations/run/north-west/frame_003.png",
-              "actors/gate_tyrant/animations/run/north-west/frame_004.png",
-              "actors/gate_tyrant/animations/run/north-west/frame_005.png"
+              "actors/gate_tyrant/animations/walk/north-west/frame_000.png",
+              "actors/gate_tyrant/animations/walk/north-west/frame_001.png",
+              "actors/gate_tyrant/animations/walk/north-west/frame_002.png",
+              "actors/gate_tyrant/animations/walk/north-west/frame_003.png",
+              "actors/gate_tyrant/animations/walk/north-west/frame_004.png",
+              "actors/gate_tyrant/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/gate_tyrant/animations/run/south/frame_000.png",
-              "actors/gate_tyrant/animations/run/south/frame_001.png",
-              "actors/gate_tyrant/animations/run/south/frame_002.png",
-              "actors/gate_tyrant/animations/run/south/frame_003.png",
-              "actors/gate_tyrant/animations/run/south/frame_004.png",
-              "actors/gate_tyrant/animations/run/south/frame_005.png"
+              "actors/gate_tyrant/animations/walk/south/frame_000.png",
+              "actors/gate_tyrant/animations/walk/south/frame_001.png",
+              "actors/gate_tyrant/animations/walk/south/frame_002.png",
+              "actors/gate_tyrant/animations/walk/south/frame_003.png",
+              "actors/gate_tyrant/animations/walk/south/frame_004.png",
+              "actors/gate_tyrant/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/gate_tyrant/animations/run/south-east/frame_000.png",
-              "actors/gate_tyrant/animations/run/south-east/frame_001.png",
-              "actors/gate_tyrant/animations/run/south-east/frame_002.png",
-              "actors/gate_tyrant/animations/run/south-east/frame_003.png",
-              "actors/gate_tyrant/animations/run/south-east/frame_004.png",
-              "actors/gate_tyrant/animations/run/south-east/frame_005.png"
+              "actors/gate_tyrant/animations/walk/south-east/frame_000.png",
+              "actors/gate_tyrant/animations/walk/south-east/frame_001.png",
+              "actors/gate_tyrant/animations/walk/south-east/frame_002.png",
+              "actors/gate_tyrant/animations/walk/south-east/frame_003.png",
+              "actors/gate_tyrant/animations/walk/south-east/frame_004.png",
+              "actors/gate_tyrant/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/gate_tyrant/animations/run/south-west/frame_000.png",
-              "actors/gate_tyrant/animations/run/south-west/frame_001.png",
-              "actors/gate_tyrant/animations/run/south-west/frame_002.png",
-              "actors/gate_tyrant/animations/run/south-west/frame_003.png",
-              "actors/gate_tyrant/animations/run/south-west/frame_004.png",
-              "actors/gate_tyrant/animations/run/south-west/frame_005.png"
+              "actors/gate_tyrant/animations/walk/south-west/frame_000.png",
+              "actors/gate_tyrant/animations/walk/south-west/frame_001.png",
+              "actors/gate_tyrant/animations/walk/south-west/frame_002.png",
+              "actors/gate_tyrant/animations/walk/south-west/frame_003.png",
+              "actors/gate_tyrant/animations/walk/south-west/frame_004.png",
+              "actors/gate_tyrant/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/gate_tyrant/animations/run/west/frame_000.png",
-              "actors/gate_tyrant/animations/run/west/frame_001.png",
-              "actors/gate_tyrant/animations/run/west/frame_002.png",
-              "actors/gate_tyrant/animations/run/west/frame_003.png",
-              "actors/gate_tyrant/animations/run/west/frame_004.png",
-              "actors/gate_tyrant/animations/run/west/frame_005.png"
+              "actors/gate_tyrant/animations/walk/west/frame_000.png",
+              "actors/gate_tyrant/animations/walk/west/frame_001.png",
+              "actors/gate_tyrant/animations/walk/west/frame_002.png",
+              "actors/gate_tyrant/animations/walk/west/frame_003.png",
+              "actors/gate_tyrant/animations/walk/west/frame_004.png",
+              "actors/gate_tyrant/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -2459,71 +2459,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/gate_warden/animations/run/east/frame_000.png",
-              "actors/gate_warden/animations/run/east/frame_001.png",
-              "actors/gate_warden/animations/run/east/frame_002.png",
-              "actors/gate_warden/animations/run/east/frame_003.png",
-              "actors/gate_warden/animations/run/east/frame_004.png",
-              "actors/gate_warden/animations/run/east/frame_005.png"
+              "actors/gate_warden/animations/walk/east/frame_000.png",
+              "actors/gate_warden/animations/walk/east/frame_001.png",
+              "actors/gate_warden/animations/walk/east/frame_002.png",
+              "actors/gate_warden/animations/walk/east/frame_003.png",
+              "actors/gate_warden/animations/walk/east/frame_004.png",
+              "actors/gate_warden/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/gate_warden/animations/run/north/frame_000.png",
-              "actors/gate_warden/animations/run/north/frame_001.png",
-              "actors/gate_warden/animations/run/north/frame_002.png",
-              "actors/gate_warden/animations/run/north/frame_003.png",
-              "actors/gate_warden/animations/run/north/frame_004.png",
-              "actors/gate_warden/animations/run/north/frame_005.png"
+              "actors/gate_warden/animations/walk/north/frame_000.png",
+              "actors/gate_warden/animations/walk/north/frame_001.png",
+              "actors/gate_warden/animations/walk/north/frame_002.png",
+              "actors/gate_warden/animations/walk/north/frame_003.png",
+              "actors/gate_warden/animations/walk/north/frame_004.png",
+              "actors/gate_warden/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/gate_warden/animations/run/north-east/frame_000.png",
-              "actors/gate_warden/animations/run/north-east/frame_001.png",
-              "actors/gate_warden/animations/run/north-east/frame_002.png",
-              "actors/gate_warden/animations/run/north-east/frame_003.png",
-              "actors/gate_warden/animations/run/north-east/frame_004.png",
-              "actors/gate_warden/animations/run/north-east/frame_005.png"
+              "actors/gate_warden/animations/walk/north-east/frame_000.png",
+              "actors/gate_warden/animations/walk/north-east/frame_001.png",
+              "actors/gate_warden/animations/walk/north-east/frame_002.png",
+              "actors/gate_warden/animations/walk/north-east/frame_003.png",
+              "actors/gate_warden/animations/walk/north-east/frame_004.png",
+              "actors/gate_warden/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/gate_warden/animations/run/north-west/frame_000.png",
-              "actors/gate_warden/animations/run/north-west/frame_001.png",
-              "actors/gate_warden/animations/run/north-west/frame_002.png",
-              "actors/gate_warden/animations/run/north-west/frame_003.png",
-              "actors/gate_warden/animations/run/north-west/frame_004.png",
-              "actors/gate_warden/animations/run/north-west/frame_005.png"
+              "actors/gate_warden/animations/walk/north-west/frame_000.png",
+              "actors/gate_warden/animations/walk/north-west/frame_001.png",
+              "actors/gate_warden/animations/walk/north-west/frame_002.png",
+              "actors/gate_warden/animations/walk/north-west/frame_003.png",
+              "actors/gate_warden/animations/walk/north-west/frame_004.png",
+              "actors/gate_warden/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/gate_warden/animations/run/south/frame_000.png",
-              "actors/gate_warden/animations/run/south/frame_001.png",
-              "actors/gate_warden/animations/run/south/frame_002.png",
-              "actors/gate_warden/animations/run/south/frame_003.png",
-              "actors/gate_warden/animations/run/south/frame_004.png",
-              "actors/gate_warden/animations/run/south/frame_005.png"
+              "actors/gate_warden/animations/walk/south/frame_000.png",
+              "actors/gate_warden/animations/walk/south/frame_001.png",
+              "actors/gate_warden/animations/walk/south/frame_002.png",
+              "actors/gate_warden/animations/walk/south/frame_003.png",
+              "actors/gate_warden/animations/walk/south/frame_004.png",
+              "actors/gate_warden/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/gate_warden/animations/run/south-east/frame_000.png",
-              "actors/gate_warden/animations/run/south-east/frame_001.png",
-              "actors/gate_warden/animations/run/south-east/frame_002.png",
-              "actors/gate_warden/animations/run/south-east/frame_003.png",
-              "actors/gate_warden/animations/run/south-east/frame_004.png",
-              "actors/gate_warden/animations/run/south-east/frame_005.png"
+              "actors/gate_warden/animations/walk/south-east/frame_000.png",
+              "actors/gate_warden/animations/walk/south-east/frame_001.png",
+              "actors/gate_warden/animations/walk/south-east/frame_002.png",
+              "actors/gate_warden/animations/walk/south-east/frame_003.png",
+              "actors/gate_warden/animations/walk/south-east/frame_004.png",
+              "actors/gate_warden/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/gate_warden/animations/run/south-west/frame_000.png",
-              "actors/gate_warden/animations/run/south-west/frame_001.png",
-              "actors/gate_warden/animations/run/south-west/frame_002.png",
-              "actors/gate_warden/animations/run/south-west/frame_003.png",
-              "actors/gate_warden/animations/run/south-west/frame_004.png",
-              "actors/gate_warden/animations/run/south-west/frame_005.png"
+              "actors/gate_warden/animations/walk/south-west/frame_000.png",
+              "actors/gate_warden/animations/walk/south-west/frame_001.png",
+              "actors/gate_warden/animations/walk/south-west/frame_002.png",
+              "actors/gate_warden/animations/walk/south-west/frame_003.png",
+              "actors/gate_warden/animations/walk/south-west/frame_004.png",
+              "actors/gate_warden/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/gate_warden/animations/run/west/frame_000.png",
-              "actors/gate_warden/animations/run/west/frame_001.png",
-              "actors/gate_warden/animations/run/west/frame_002.png",
-              "actors/gate_warden/animations/run/west/frame_003.png",
-              "actors/gate_warden/animations/run/west/frame_004.png",
-              "actors/gate_warden/animations/run/west/frame_005.png"
+              "actors/gate_warden/animations/walk/west/frame_000.png",
+              "actors/gate_warden/animations/walk/west/frame_001.png",
+              "actors/gate_warden/animations/walk/west/frame_002.png",
+              "actors/gate_warden/animations/walk/west/frame_003.png",
+              "actors/gate_warden/animations/walk/west/frame_004.png",
+              "actors/gate_warden/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -2612,71 +2612,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/ghoul/animations/run/east/frame_000.png",
-              "actors/ghoul/animations/run/east/frame_001.png",
-              "actors/ghoul/animations/run/east/frame_002.png",
-              "actors/ghoul/animations/run/east/frame_003.png",
-              "actors/ghoul/animations/run/east/frame_004.png",
-              "actors/ghoul/animations/run/east/frame_005.png"
+              "actors/ghoul/animations/walk/east/frame_000.png",
+              "actors/ghoul/animations/walk/east/frame_001.png",
+              "actors/ghoul/animations/walk/east/frame_002.png",
+              "actors/ghoul/animations/walk/east/frame_003.png",
+              "actors/ghoul/animations/walk/east/frame_004.png",
+              "actors/ghoul/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/ghoul/animations/run/north/frame_000.png",
-              "actors/ghoul/animations/run/north/frame_001.png",
-              "actors/ghoul/animations/run/north/frame_002.png",
-              "actors/ghoul/animations/run/north/frame_003.png",
-              "actors/ghoul/animations/run/north/frame_004.png",
-              "actors/ghoul/animations/run/north/frame_005.png"
+              "actors/ghoul/animations/walk/north/frame_000.png",
+              "actors/ghoul/animations/walk/north/frame_001.png",
+              "actors/ghoul/animations/walk/north/frame_002.png",
+              "actors/ghoul/animations/walk/north/frame_003.png",
+              "actors/ghoul/animations/walk/north/frame_004.png",
+              "actors/ghoul/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/ghoul/animations/run/north-east/frame_000.png",
-              "actors/ghoul/animations/run/north-east/frame_001.png",
-              "actors/ghoul/animations/run/north-east/frame_002.png",
-              "actors/ghoul/animations/run/north-east/frame_003.png",
-              "actors/ghoul/animations/run/north-east/frame_004.png",
-              "actors/ghoul/animations/run/north-east/frame_005.png"
+              "actors/ghoul/animations/walk/north-east/frame_000.png",
+              "actors/ghoul/animations/walk/north-east/frame_001.png",
+              "actors/ghoul/animations/walk/north-east/frame_002.png",
+              "actors/ghoul/animations/walk/north-east/frame_003.png",
+              "actors/ghoul/animations/walk/north-east/frame_004.png",
+              "actors/ghoul/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/ghoul/animations/run/north-west/frame_000.png",
-              "actors/ghoul/animations/run/north-west/frame_001.png",
-              "actors/ghoul/animations/run/north-west/frame_002.png",
-              "actors/ghoul/animations/run/north-west/frame_003.png",
-              "actors/ghoul/animations/run/north-west/frame_004.png",
-              "actors/ghoul/animations/run/north-west/frame_005.png"
+              "actors/ghoul/animations/walk/north-west/frame_000.png",
+              "actors/ghoul/animations/walk/north-west/frame_001.png",
+              "actors/ghoul/animations/walk/north-west/frame_002.png",
+              "actors/ghoul/animations/walk/north-west/frame_003.png",
+              "actors/ghoul/animations/walk/north-west/frame_004.png",
+              "actors/ghoul/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/ghoul/animations/run/south/frame_000.png",
-              "actors/ghoul/animations/run/south/frame_001.png",
-              "actors/ghoul/animations/run/south/frame_002.png",
-              "actors/ghoul/animations/run/south/frame_003.png",
-              "actors/ghoul/animations/run/south/frame_004.png",
-              "actors/ghoul/animations/run/south/frame_005.png"
+              "actors/ghoul/animations/walk/south/frame_000.png",
+              "actors/ghoul/animations/walk/south/frame_001.png",
+              "actors/ghoul/animations/walk/south/frame_002.png",
+              "actors/ghoul/animations/walk/south/frame_003.png",
+              "actors/ghoul/animations/walk/south/frame_004.png",
+              "actors/ghoul/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/ghoul/animations/run/south-east/frame_000.png",
-              "actors/ghoul/animations/run/south-east/frame_001.png",
-              "actors/ghoul/animations/run/south-east/frame_002.png",
-              "actors/ghoul/animations/run/south-east/frame_003.png",
-              "actors/ghoul/animations/run/south-east/frame_004.png",
-              "actors/ghoul/animations/run/south-east/frame_005.png"
+              "actors/ghoul/animations/walk/south-east/frame_000.png",
+              "actors/ghoul/animations/walk/south-east/frame_001.png",
+              "actors/ghoul/animations/walk/south-east/frame_002.png",
+              "actors/ghoul/animations/walk/south-east/frame_003.png",
+              "actors/ghoul/animations/walk/south-east/frame_004.png",
+              "actors/ghoul/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/ghoul/animations/run/south-west/frame_000.png",
-              "actors/ghoul/animations/run/south-west/frame_001.png",
-              "actors/ghoul/animations/run/south-west/frame_002.png",
-              "actors/ghoul/animations/run/south-west/frame_003.png",
-              "actors/ghoul/animations/run/south-west/frame_004.png",
-              "actors/ghoul/animations/run/south-west/frame_005.png"
+              "actors/ghoul/animations/walk/south-west/frame_000.png",
+              "actors/ghoul/animations/walk/south-west/frame_001.png",
+              "actors/ghoul/animations/walk/south-west/frame_002.png",
+              "actors/ghoul/animations/walk/south-west/frame_003.png",
+              "actors/ghoul/animations/walk/south-west/frame_004.png",
+              "actors/ghoul/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/ghoul/animations/run/west/frame_000.png",
-              "actors/ghoul/animations/run/west/frame_001.png",
-              "actors/ghoul/animations/run/west/frame_002.png",
-              "actors/ghoul/animations/run/west/frame_003.png",
-              "actors/ghoul/animations/run/west/frame_004.png",
-              "actors/ghoul/animations/run/west/frame_005.png"
+              "actors/ghoul/animations/walk/west/frame_000.png",
+              "actors/ghoul/animations/walk/west/frame_001.png",
+              "actors/ghoul/animations/walk/west/frame_002.png",
+              "actors/ghoul/animations/walk/west/frame_003.png",
+              "actors/ghoul/animations/walk/west/frame_004.png",
+              "actors/ghoul/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -2765,71 +2765,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/grave_archer/animations/run/east/frame_000.png",
-              "actors/grave_archer/animations/run/east/frame_001.png",
-              "actors/grave_archer/animations/run/east/frame_002.png",
-              "actors/grave_archer/animations/run/east/frame_003.png",
-              "actors/grave_archer/animations/run/east/frame_004.png",
-              "actors/grave_archer/animations/run/east/frame_005.png"
+              "actors/grave_archer/animations/walk/east/frame_000.png",
+              "actors/grave_archer/animations/walk/east/frame_001.png",
+              "actors/grave_archer/animations/walk/east/frame_002.png",
+              "actors/grave_archer/animations/walk/east/frame_003.png",
+              "actors/grave_archer/animations/walk/east/frame_004.png",
+              "actors/grave_archer/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/grave_archer/animations/run/north/frame_000.png",
-              "actors/grave_archer/animations/run/north/frame_001.png",
-              "actors/grave_archer/animations/run/north/frame_002.png",
-              "actors/grave_archer/animations/run/north/frame_003.png",
-              "actors/grave_archer/animations/run/north/frame_004.png",
-              "actors/grave_archer/animations/run/north/frame_005.png"
+              "actors/grave_archer/animations/walk/north/frame_000.png",
+              "actors/grave_archer/animations/walk/north/frame_001.png",
+              "actors/grave_archer/animations/walk/north/frame_002.png",
+              "actors/grave_archer/animations/walk/north/frame_003.png",
+              "actors/grave_archer/animations/walk/north/frame_004.png",
+              "actors/grave_archer/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/grave_archer/animations/run/north-east/frame_000.png",
-              "actors/grave_archer/animations/run/north-east/frame_001.png",
-              "actors/grave_archer/animations/run/north-east/frame_002.png",
-              "actors/grave_archer/animations/run/north-east/frame_003.png",
-              "actors/grave_archer/animations/run/north-east/frame_004.png",
-              "actors/grave_archer/animations/run/north-east/frame_005.png"
+              "actors/grave_archer/animations/walk/north-east/frame_000.png",
+              "actors/grave_archer/animations/walk/north-east/frame_001.png",
+              "actors/grave_archer/animations/walk/north-east/frame_002.png",
+              "actors/grave_archer/animations/walk/north-east/frame_003.png",
+              "actors/grave_archer/animations/walk/north-east/frame_004.png",
+              "actors/grave_archer/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/grave_archer/animations/run/north-west/frame_000.png",
-              "actors/grave_archer/animations/run/north-west/frame_001.png",
-              "actors/grave_archer/animations/run/north-west/frame_002.png",
-              "actors/grave_archer/animations/run/north-west/frame_003.png",
-              "actors/grave_archer/animations/run/north-west/frame_004.png",
-              "actors/grave_archer/animations/run/north-west/frame_005.png"
+              "actors/grave_archer/animations/walk/north-west/frame_000.png",
+              "actors/grave_archer/animations/walk/north-west/frame_001.png",
+              "actors/grave_archer/animations/walk/north-west/frame_002.png",
+              "actors/grave_archer/animations/walk/north-west/frame_003.png",
+              "actors/grave_archer/animations/walk/north-west/frame_004.png",
+              "actors/grave_archer/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/grave_archer/animations/run/south/frame_000.png",
-              "actors/grave_archer/animations/run/south/frame_001.png",
-              "actors/grave_archer/animations/run/south/frame_002.png",
-              "actors/grave_archer/animations/run/south/frame_003.png",
-              "actors/grave_archer/animations/run/south/frame_004.png",
-              "actors/grave_archer/animations/run/south/frame_005.png"
+              "actors/grave_archer/animations/walk/south/frame_000.png",
+              "actors/grave_archer/animations/walk/south/frame_001.png",
+              "actors/grave_archer/animations/walk/south/frame_002.png",
+              "actors/grave_archer/animations/walk/south/frame_003.png",
+              "actors/grave_archer/animations/walk/south/frame_004.png",
+              "actors/grave_archer/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/grave_archer/animations/run/south-east/frame_000.png",
-              "actors/grave_archer/animations/run/south-east/frame_001.png",
-              "actors/grave_archer/animations/run/south-east/frame_002.png",
-              "actors/grave_archer/animations/run/south-east/frame_003.png",
-              "actors/grave_archer/animations/run/south-east/frame_004.png",
-              "actors/grave_archer/animations/run/south-east/frame_005.png"
+              "actors/grave_archer/animations/walk/south-east/frame_000.png",
+              "actors/grave_archer/animations/walk/south-east/frame_001.png",
+              "actors/grave_archer/animations/walk/south-east/frame_002.png",
+              "actors/grave_archer/animations/walk/south-east/frame_003.png",
+              "actors/grave_archer/animations/walk/south-east/frame_004.png",
+              "actors/grave_archer/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/grave_archer/animations/run/south-west/frame_000.png",
-              "actors/grave_archer/animations/run/south-west/frame_001.png",
-              "actors/grave_archer/animations/run/south-west/frame_002.png",
-              "actors/grave_archer/animations/run/south-west/frame_003.png",
-              "actors/grave_archer/animations/run/south-west/frame_004.png",
-              "actors/grave_archer/animations/run/south-west/frame_005.png"
+              "actors/grave_archer/animations/walk/south-west/frame_000.png",
+              "actors/grave_archer/animations/walk/south-west/frame_001.png",
+              "actors/grave_archer/animations/walk/south-west/frame_002.png",
+              "actors/grave_archer/animations/walk/south-west/frame_003.png",
+              "actors/grave_archer/animations/walk/south-west/frame_004.png",
+              "actors/grave_archer/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/grave_archer/animations/run/west/frame_000.png",
-              "actors/grave_archer/animations/run/west/frame_001.png",
-              "actors/grave_archer/animations/run/west/frame_002.png",
-              "actors/grave_archer/animations/run/west/frame_003.png",
-              "actors/grave_archer/animations/run/west/frame_004.png",
-              "actors/grave_archer/animations/run/west/frame_005.png"
+              "actors/grave_archer/animations/walk/west/frame_000.png",
+              "actors/grave_archer/animations/walk/west/frame_001.png",
+              "actors/grave_archer/animations/walk/west/frame_002.png",
+              "actors/grave_archer/animations/walk/west/frame_003.png",
+              "actors/grave_archer/animations/walk/west/frame_004.png",
+              "actors/grave_archer/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -2918,71 +2918,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/hollow_knight/animations/run/east/frame_000.png",
-              "actors/hollow_knight/animations/run/east/frame_001.png",
-              "actors/hollow_knight/animations/run/east/frame_002.png",
-              "actors/hollow_knight/animations/run/east/frame_003.png",
-              "actors/hollow_knight/animations/run/east/frame_004.png",
-              "actors/hollow_knight/animations/run/east/frame_005.png"
+              "actors/hollow_knight/animations/walk/east/frame_000.png",
+              "actors/hollow_knight/animations/walk/east/frame_001.png",
+              "actors/hollow_knight/animations/walk/east/frame_002.png",
+              "actors/hollow_knight/animations/walk/east/frame_003.png",
+              "actors/hollow_knight/animations/walk/east/frame_004.png",
+              "actors/hollow_knight/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/hollow_knight/animations/run/north/frame_000.png",
-              "actors/hollow_knight/animations/run/north/frame_001.png",
-              "actors/hollow_knight/animations/run/north/frame_002.png",
-              "actors/hollow_knight/animations/run/north/frame_003.png",
-              "actors/hollow_knight/animations/run/north/frame_004.png",
-              "actors/hollow_knight/animations/run/north/frame_005.png"
+              "actors/hollow_knight/animations/walk/north/frame_000.png",
+              "actors/hollow_knight/animations/walk/north/frame_001.png",
+              "actors/hollow_knight/animations/walk/north/frame_002.png",
+              "actors/hollow_knight/animations/walk/north/frame_003.png",
+              "actors/hollow_knight/animations/walk/north/frame_004.png",
+              "actors/hollow_knight/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/hollow_knight/animations/run/north-east/frame_000.png",
-              "actors/hollow_knight/animations/run/north-east/frame_001.png",
-              "actors/hollow_knight/animations/run/north-east/frame_002.png",
-              "actors/hollow_knight/animations/run/north-east/frame_003.png",
-              "actors/hollow_knight/animations/run/north-east/frame_004.png",
-              "actors/hollow_knight/animations/run/north-east/frame_005.png"
+              "actors/hollow_knight/animations/walk/north-east/frame_000.png",
+              "actors/hollow_knight/animations/walk/north-east/frame_001.png",
+              "actors/hollow_knight/animations/walk/north-east/frame_002.png",
+              "actors/hollow_knight/animations/walk/north-east/frame_003.png",
+              "actors/hollow_knight/animations/walk/north-east/frame_004.png",
+              "actors/hollow_knight/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/hollow_knight/animations/run/north-west/frame_000.png",
-              "actors/hollow_knight/animations/run/north-west/frame_001.png",
-              "actors/hollow_knight/animations/run/north-west/frame_002.png",
-              "actors/hollow_knight/animations/run/north-west/frame_003.png",
-              "actors/hollow_knight/animations/run/north-west/frame_004.png",
-              "actors/hollow_knight/animations/run/north-west/frame_005.png"
+              "actors/hollow_knight/animations/walk/north-west/frame_000.png",
+              "actors/hollow_knight/animations/walk/north-west/frame_001.png",
+              "actors/hollow_knight/animations/walk/north-west/frame_002.png",
+              "actors/hollow_knight/animations/walk/north-west/frame_003.png",
+              "actors/hollow_knight/animations/walk/north-west/frame_004.png",
+              "actors/hollow_knight/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/hollow_knight/animations/run/south/frame_000.png",
-              "actors/hollow_knight/animations/run/south/frame_001.png",
-              "actors/hollow_knight/animations/run/south/frame_002.png",
-              "actors/hollow_knight/animations/run/south/frame_003.png",
-              "actors/hollow_knight/animations/run/south/frame_004.png",
-              "actors/hollow_knight/animations/run/south/frame_005.png"
+              "actors/hollow_knight/animations/walk/south/frame_000.png",
+              "actors/hollow_knight/animations/walk/south/frame_001.png",
+              "actors/hollow_knight/animations/walk/south/frame_002.png",
+              "actors/hollow_knight/animations/walk/south/frame_003.png",
+              "actors/hollow_knight/animations/walk/south/frame_004.png",
+              "actors/hollow_knight/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/hollow_knight/animations/run/south-east/frame_000.png",
-              "actors/hollow_knight/animations/run/south-east/frame_001.png",
-              "actors/hollow_knight/animations/run/south-east/frame_002.png",
-              "actors/hollow_knight/animations/run/south-east/frame_003.png",
-              "actors/hollow_knight/animations/run/south-east/frame_004.png",
-              "actors/hollow_knight/animations/run/south-east/frame_005.png"
+              "actors/hollow_knight/animations/walk/south-east/frame_000.png",
+              "actors/hollow_knight/animations/walk/south-east/frame_001.png",
+              "actors/hollow_knight/animations/walk/south-east/frame_002.png",
+              "actors/hollow_knight/animations/walk/south-east/frame_003.png",
+              "actors/hollow_knight/animations/walk/south-east/frame_004.png",
+              "actors/hollow_knight/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/hollow_knight/animations/run/south-west/frame_000.png",
-              "actors/hollow_knight/animations/run/south-west/frame_001.png",
-              "actors/hollow_knight/animations/run/south-west/frame_002.png",
-              "actors/hollow_knight/animations/run/south-west/frame_003.png",
-              "actors/hollow_knight/animations/run/south-west/frame_004.png",
-              "actors/hollow_knight/animations/run/south-west/frame_005.png"
+              "actors/hollow_knight/animations/walk/south-west/frame_000.png",
+              "actors/hollow_knight/animations/walk/south-west/frame_001.png",
+              "actors/hollow_knight/animations/walk/south-west/frame_002.png",
+              "actors/hollow_knight/animations/walk/south-west/frame_003.png",
+              "actors/hollow_knight/animations/walk/south-west/frame_004.png",
+              "actors/hollow_knight/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/hollow_knight/animations/run/west/frame_000.png",
-              "actors/hollow_knight/animations/run/west/frame_001.png",
-              "actors/hollow_knight/animations/run/west/frame_002.png",
-              "actors/hollow_knight/animations/run/west/frame_003.png",
-              "actors/hollow_knight/animations/run/west/frame_004.png",
-              "actors/hollow_knight/animations/run/west/frame_005.png"
+              "actors/hollow_knight/animations/walk/west/frame_000.png",
+              "actors/hollow_knight/animations/walk/west/frame_001.png",
+              "actors/hollow_knight/animations/walk/west/frame_002.png",
+              "actors/hollow_knight/animations/walk/west/frame_003.png",
+              "actors/hollow_knight/animations/walk/west/frame_004.png",
+              "actors/hollow_knight/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -3071,71 +3071,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/mycelial_matron/animations/run/east/frame_000.png",
-              "actors/mycelial_matron/animations/run/east/frame_001.png",
-              "actors/mycelial_matron/animations/run/east/frame_002.png",
-              "actors/mycelial_matron/animations/run/east/frame_003.png",
-              "actors/mycelial_matron/animations/run/east/frame_004.png",
-              "actors/mycelial_matron/animations/run/east/frame_005.png"
+              "actors/mycelial_matron/animations/walk/east/frame_000.png",
+              "actors/mycelial_matron/animations/walk/east/frame_001.png",
+              "actors/mycelial_matron/animations/walk/east/frame_002.png",
+              "actors/mycelial_matron/animations/walk/east/frame_003.png",
+              "actors/mycelial_matron/animations/walk/east/frame_004.png",
+              "actors/mycelial_matron/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/mycelial_matron/animations/run/north/frame_000.png",
-              "actors/mycelial_matron/animations/run/north/frame_001.png",
-              "actors/mycelial_matron/animations/run/north/frame_002.png",
-              "actors/mycelial_matron/animations/run/north/frame_003.png",
-              "actors/mycelial_matron/animations/run/north/frame_004.png",
-              "actors/mycelial_matron/animations/run/north/frame_005.png"
+              "actors/mycelial_matron/animations/walk/north/frame_000.png",
+              "actors/mycelial_matron/animations/walk/north/frame_001.png",
+              "actors/mycelial_matron/animations/walk/north/frame_002.png",
+              "actors/mycelial_matron/animations/walk/north/frame_003.png",
+              "actors/mycelial_matron/animations/walk/north/frame_004.png",
+              "actors/mycelial_matron/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/mycelial_matron/animations/run/north-east/frame_000.png",
-              "actors/mycelial_matron/animations/run/north-east/frame_001.png",
-              "actors/mycelial_matron/animations/run/north-east/frame_002.png",
-              "actors/mycelial_matron/animations/run/north-east/frame_003.png",
-              "actors/mycelial_matron/animations/run/north-east/frame_004.png",
-              "actors/mycelial_matron/animations/run/north-east/frame_005.png"
+              "actors/mycelial_matron/animations/walk/north-east/frame_000.png",
+              "actors/mycelial_matron/animations/walk/north-east/frame_001.png",
+              "actors/mycelial_matron/animations/walk/north-east/frame_002.png",
+              "actors/mycelial_matron/animations/walk/north-east/frame_003.png",
+              "actors/mycelial_matron/animations/walk/north-east/frame_004.png",
+              "actors/mycelial_matron/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/mycelial_matron/animations/run/north-west/frame_000.png",
-              "actors/mycelial_matron/animations/run/north-west/frame_001.png",
-              "actors/mycelial_matron/animations/run/north-west/frame_002.png",
-              "actors/mycelial_matron/animations/run/north-west/frame_003.png",
-              "actors/mycelial_matron/animations/run/north-west/frame_004.png",
-              "actors/mycelial_matron/animations/run/north-west/frame_005.png"
+              "actors/mycelial_matron/animations/walk/north-west/frame_000.png",
+              "actors/mycelial_matron/animations/walk/north-west/frame_001.png",
+              "actors/mycelial_matron/animations/walk/north-west/frame_002.png",
+              "actors/mycelial_matron/animations/walk/north-west/frame_003.png",
+              "actors/mycelial_matron/animations/walk/north-west/frame_004.png",
+              "actors/mycelial_matron/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/mycelial_matron/animations/run/south/frame_000.png",
-              "actors/mycelial_matron/animations/run/south/frame_001.png",
-              "actors/mycelial_matron/animations/run/south/frame_002.png",
-              "actors/mycelial_matron/animations/run/south/frame_003.png",
-              "actors/mycelial_matron/animations/run/south/frame_004.png",
-              "actors/mycelial_matron/animations/run/south/frame_005.png"
+              "actors/mycelial_matron/animations/walk/south/frame_000.png",
+              "actors/mycelial_matron/animations/walk/south/frame_001.png",
+              "actors/mycelial_matron/animations/walk/south/frame_002.png",
+              "actors/mycelial_matron/animations/walk/south/frame_003.png",
+              "actors/mycelial_matron/animations/walk/south/frame_004.png",
+              "actors/mycelial_matron/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/mycelial_matron/animations/run/south-east/frame_000.png",
-              "actors/mycelial_matron/animations/run/south-east/frame_001.png",
-              "actors/mycelial_matron/animations/run/south-east/frame_002.png",
-              "actors/mycelial_matron/animations/run/south-east/frame_003.png",
-              "actors/mycelial_matron/animations/run/south-east/frame_004.png",
-              "actors/mycelial_matron/animations/run/south-east/frame_005.png"
+              "actors/mycelial_matron/animations/walk/south-east/frame_000.png",
+              "actors/mycelial_matron/animations/walk/south-east/frame_001.png",
+              "actors/mycelial_matron/animations/walk/south-east/frame_002.png",
+              "actors/mycelial_matron/animations/walk/south-east/frame_003.png",
+              "actors/mycelial_matron/animations/walk/south-east/frame_004.png",
+              "actors/mycelial_matron/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/mycelial_matron/animations/run/south-west/frame_000.png",
-              "actors/mycelial_matron/animations/run/south-west/frame_001.png",
-              "actors/mycelial_matron/animations/run/south-west/frame_002.png",
-              "actors/mycelial_matron/animations/run/south-west/frame_003.png",
-              "actors/mycelial_matron/animations/run/south-west/frame_004.png",
-              "actors/mycelial_matron/animations/run/south-west/frame_005.png"
+              "actors/mycelial_matron/animations/walk/south-west/frame_000.png",
+              "actors/mycelial_matron/animations/walk/south-west/frame_001.png",
+              "actors/mycelial_matron/animations/walk/south-west/frame_002.png",
+              "actors/mycelial_matron/animations/walk/south-west/frame_003.png",
+              "actors/mycelial_matron/animations/walk/south-west/frame_004.png",
+              "actors/mycelial_matron/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/mycelial_matron/animations/run/west/frame_000.png",
-              "actors/mycelial_matron/animations/run/west/frame_001.png",
-              "actors/mycelial_matron/animations/run/west/frame_002.png",
-              "actors/mycelial_matron/animations/run/west/frame_003.png",
-              "actors/mycelial_matron/animations/run/west/frame_004.png",
-              "actors/mycelial_matron/animations/run/west/frame_005.png"
+              "actors/mycelial_matron/animations/walk/west/frame_000.png",
+              "actors/mycelial_matron/animations/walk/west/frame_001.png",
+              "actors/mycelial_matron/animations/walk/west/frame_002.png",
+              "actors/mycelial_matron/animations/walk/west/frame_003.png",
+              "actors/mycelial_matron/animations/walk/west/frame_004.png",
+              "actors/mycelial_matron/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -3224,71 +3224,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/plague_toad/animations/run/east/frame_000.png",
-              "actors/plague_toad/animations/run/east/frame_001.png",
-              "actors/plague_toad/animations/run/east/frame_002.png",
-              "actors/plague_toad/animations/run/east/frame_003.png",
-              "actors/plague_toad/animations/run/east/frame_004.png",
-              "actors/plague_toad/animations/run/east/frame_005.png"
+              "actors/plague_toad/animations/walk/east/frame_000.png",
+              "actors/plague_toad/animations/walk/east/frame_001.png",
+              "actors/plague_toad/animations/walk/east/frame_002.png",
+              "actors/plague_toad/animations/walk/east/frame_003.png",
+              "actors/plague_toad/animations/walk/east/frame_004.png",
+              "actors/plague_toad/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/plague_toad/animations/run/north/frame_000.png",
-              "actors/plague_toad/animations/run/north/frame_001.png",
-              "actors/plague_toad/animations/run/north/frame_002.png",
-              "actors/plague_toad/animations/run/north/frame_003.png",
-              "actors/plague_toad/animations/run/north/frame_004.png",
-              "actors/plague_toad/animations/run/north/frame_005.png"
+              "actors/plague_toad/animations/walk/north/frame_000.png",
+              "actors/plague_toad/animations/walk/north/frame_001.png",
+              "actors/plague_toad/animations/walk/north/frame_002.png",
+              "actors/plague_toad/animations/walk/north/frame_003.png",
+              "actors/plague_toad/animations/walk/north/frame_004.png",
+              "actors/plague_toad/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/plague_toad/animations/run/north-east/frame_000.png",
-              "actors/plague_toad/animations/run/north-east/frame_001.png",
-              "actors/plague_toad/animations/run/north-east/frame_002.png",
-              "actors/plague_toad/animations/run/north-east/frame_003.png",
-              "actors/plague_toad/animations/run/north-east/frame_004.png",
-              "actors/plague_toad/animations/run/north-east/frame_005.png"
+              "actors/plague_toad/animations/walk/north-east/frame_000.png",
+              "actors/plague_toad/animations/walk/north-east/frame_001.png",
+              "actors/plague_toad/animations/walk/north-east/frame_002.png",
+              "actors/plague_toad/animations/walk/north-east/frame_003.png",
+              "actors/plague_toad/animations/walk/north-east/frame_004.png",
+              "actors/plague_toad/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/plague_toad/animations/run/north-west/frame_000.png",
-              "actors/plague_toad/animations/run/north-west/frame_001.png",
-              "actors/plague_toad/animations/run/north-west/frame_002.png",
-              "actors/plague_toad/animations/run/north-west/frame_003.png",
-              "actors/plague_toad/animations/run/north-west/frame_004.png",
-              "actors/plague_toad/animations/run/north-west/frame_005.png"
+              "actors/plague_toad/animations/walk/north-west/frame_000.png",
+              "actors/plague_toad/animations/walk/north-west/frame_001.png",
+              "actors/plague_toad/animations/walk/north-west/frame_002.png",
+              "actors/plague_toad/animations/walk/north-west/frame_003.png",
+              "actors/plague_toad/animations/walk/north-west/frame_004.png",
+              "actors/plague_toad/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/plague_toad/animations/run/south/frame_000.png",
-              "actors/plague_toad/animations/run/south/frame_001.png",
-              "actors/plague_toad/animations/run/south/frame_002.png",
-              "actors/plague_toad/animations/run/south/frame_003.png",
-              "actors/plague_toad/animations/run/south/frame_004.png",
-              "actors/plague_toad/animations/run/south/frame_005.png"
+              "actors/plague_toad/animations/walk/south/frame_000.png",
+              "actors/plague_toad/animations/walk/south/frame_001.png",
+              "actors/plague_toad/animations/walk/south/frame_002.png",
+              "actors/plague_toad/animations/walk/south/frame_003.png",
+              "actors/plague_toad/animations/walk/south/frame_004.png",
+              "actors/plague_toad/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/plague_toad/animations/run/south-east/frame_000.png",
-              "actors/plague_toad/animations/run/south-east/frame_001.png",
-              "actors/plague_toad/animations/run/south-east/frame_002.png",
-              "actors/plague_toad/animations/run/south-east/frame_003.png",
-              "actors/plague_toad/animations/run/south-east/frame_004.png",
-              "actors/plague_toad/animations/run/south-east/frame_005.png"
+              "actors/plague_toad/animations/walk/south-east/frame_000.png",
+              "actors/plague_toad/animations/walk/south-east/frame_001.png",
+              "actors/plague_toad/animations/walk/south-east/frame_002.png",
+              "actors/plague_toad/animations/walk/south-east/frame_003.png",
+              "actors/plague_toad/animations/walk/south-east/frame_004.png",
+              "actors/plague_toad/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/plague_toad/animations/run/south-west/frame_000.png",
-              "actors/plague_toad/animations/run/south-west/frame_001.png",
-              "actors/plague_toad/animations/run/south-west/frame_002.png",
-              "actors/plague_toad/animations/run/south-west/frame_003.png",
-              "actors/plague_toad/animations/run/south-west/frame_004.png",
-              "actors/plague_toad/animations/run/south-west/frame_005.png"
+              "actors/plague_toad/animations/walk/south-west/frame_000.png",
+              "actors/plague_toad/animations/walk/south-west/frame_001.png",
+              "actors/plague_toad/animations/walk/south-west/frame_002.png",
+              "actors/plague_toad/animations/walk/south-west/frame_003.png",
+              "actors/plague_toad/animations/walk/south-west/frame_004.png",
+              "actors/plague_toad/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/plague_toad/animations/run/west/frame_000.png",
-              "actors/plague_toad/animations/run/west/frame_001.png",
-              "actors/plague_toad/animations/run/west/frame_002.png",
-              "actors/plague_toad/animations/run/west/frame_003.png",
-              "actors/plague_toad/animations/run/west/frame_004.png",
-              "actors/plague_toad/animations/run/west/frame_005.png"
+              "actors/plague_toad/animations/walk/west/frame_000.png",
+              "actors/plague_toad/animations/walk/west/frame_001.png",
+              "actors/plague_toad/animations/walk/west/frame_002.png",
+              "actors/plague_toad/animations/walk/west/frame_003.png",
+              "actors/plague_toad/animations/walk/west/frame_004.png",
+              "actors/plague_toad/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -3619,71 +3619,71 @@
           "fps": 10.0,
           "loop": false
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/ranger/animations/run/east/frame_000.png",
-              "actors/ranger/animations/run/east/frame_001.png",
-              "actors/ranger/animations/run/east/frame_002.png",
-              "actors/ranger/animations/run/east/frame_003.png",
-              "actors/ranger/animations/run/east/frame_004.png",
-              "actors/ranger/animations/run/east/frame_005.png"
+              "actors/ranger/animations/walk/east/frame_000.png",
+              "actors/ranger/animations/walk/east/frame_001.png",
+              "actors/ranger/animations/walk/east/frame_002.png",
+              "actors/ranger/animations/walk/east/frame_003.png",
+              "actors/ranger/animations/walk/east/frame_004.png",
+              "actors/ranger/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/ranger/animations/run/north/frame_000.png",
-              "actors/ranger/animations/run/north/frame_001.png",
-              "actors/ranger/animations/run/north/frame_002.png",
-              "actors/ranger/animations/run/north/frame_003.png",
-              "actors/ranger/animations/run/north/frame_004.png",
-              "actors/ranger/animations/run/north/frame_005.png"
+              "actors/ranger/animations/walk/north/frame_000.png",
+              "actors/ranger/animations/walk/north/frame_001.png",
+              "actors/ranger/animations/walk/north/frame_002.png",
+              "actors/ranger/animations/walk/north/frame_003.png",
+              "actors/ranger/animations/walk/north/frame_004.png",
+              "actors/ranger/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/ranger/animations/run/north-east/frame_000.png",
-              "actors/ranger/animations/run/north-east/frame_001.png",
-              "actors/ranger/animations/run/north-east/frame_002.png",
-              "actors/ranger/animations/run/north-east/frame_003.png",
-              "actors/ranger/animations/run/north-east/frame_004.png",
-              "actors/ranger/animations/run/north-east/frame_005.png"
+              "actors/ranger/animations/walk/north-east/frame_000.png",
+              "actors/ranger/animations/walk/north-east/frame_001.png",
+              "actors/ranger/animations/walk/north-east/frame_002.png",
+              "actors/ranger/animations/walk/north-east/frame_003.png",
+              "actors/ranger/animations/walk/north-east/frame_004.png",
+              "actors/ranger/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/ranger/animations/run/north-west/frame_000.png",
-              "actors/ranger/animations/run/north-west/frame_001.png",
-              "actors/ranger/animations/run/north-west/frame_002.png",
-              "actors/ranger/animations/run/north-west/frame_003.png",
-              "actors/ranger/animations/run/north-west/frame_004.png",
-              "actors/ranger/animations/run/north-west/frame_005.png"
+              "actors/ranger/animations/walk/north-west/frame_000.png",
+              "actors/ranger/animations/walk/north-west/frame_001.png",
+              "actors/ranger/animations/walk/north-west/frame_002.png",
+              "actors/ranger/animations/walk/north-west/frame_003.png",
+              "actors/ranger/animations/walk/north-west/frame_004.png",
+              "actors/ranger/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/ranger/animations/run/south/frame_000.png",
-              "actors/ranger/animations/run/south/frame_001.png",
-              "actors/ranger/animations/run/south/frame_002.png",
-              "actors/ranger/animations/run/south/frame_003.png",
-              "actors/ranger/animations/run/south/frame_004.png",
-              "actors/ranger/animations/run/south/frame_005.png"
+              "actors/ranger/animations/walk/south/frame_000.png",
+              "actors/ranger/animations/walk/south/frame_001.png",
+              "actors/ranger/animations/walk/south/frame_002.png",
+              "actors/ranger/animations/walk/south/frame_003.png",
+              "actors/ranger/animations/walk/south/frame_004.png",
+              "actors/ranger/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/ranger/animations/run/south-east/frame_000.png",
-              "actors/ranger/animations/run/south-east/frame_001.png",
-              "actors/ranger/animations/run/south-east/frame_002.png",
-              "actors/ranger/animations/run/south-east/frame_003.png",
-              "actors/ranger/animations/run/south-east/frame_004.png",
-              "actors/ranger/animations/run/south-east/frame_005.png"
+              "actors/ranger/animations/walk/south-east/frame_000.png",
+              "actors/ranger/animations/walk/south-east/frame_001.png",
+              "actors/ranger/animations/walk/south-east/frame_002.png",
+              "actors/ranger/animations/walk/south-east/frame_003.png",
+              "actors/ranger/animations/walk/south-east/frame_004.png",
+              "actors/ranger/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/ranger/animations/run/south-west/frame_000.png",
-              "actors/ranger/animations/run/south-west/frame_001.png",
-              "actors/ranger/animations/run/south-west/frame_002.png",
-              "actors/ranger/animations/run/south-west/frame_003.png",
-              "actors/ranger/animations/run/south-west/frame_004.png",
-              "actors/ranger/animations/run/south-west/frame_005.png"
+              "actors/ranger/animations/walk/south-west/frame_000.png",
+              "actors/ranger/animations/walk/south-west/frame_001.png",
+              "actors/ranger/animations/walk/south-west/frame_002.png",
+              "actors/ranger/animations/walk/south-west/frame_003.png",
+              "actors/ranger/animations/walk/south-west/frame_004.png",
+              "actors/ranger/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/ranger/animations/run/west/frame_000.png",
-              "actors/ranger/animations/run/west/frame_001.png",
-              "actors/ranger/animations/run/west/frame_002.png",
-              "actors/ranger/animations/run/west/frame_003.png",
-              "actors/ranger/animations/run/west/frame_004.png",
-              "actors/ranger/animations/run/west/frame_005.png"
+              "actors/ranger/animations/walk/west/frame_000.png",
+              "actors/ranger/animations/walk/west/frame_001.png",
+              "actors/ranger/animations/walk/west/frame_002.png",
+              "actors/ranger/animations/walk/west/frame_003.png",
+              "actors/ranger/animations/walk/west/frame_004.png",
+              "actors/ranger/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -3773,71 +3773,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/rime_chanter/animations/run/east/frame_000.png",
-              "actors/rime_chanter/animations/run/east/frame_001.png",
-              "actors/rime_chanter/animations/run/east/frame_002.png",
-              "actors/rime_chanter/animations/run/east/frame_003.png",
-              "actors/rime_chanter/animations/run/east/frame_004.png",
-              "actors/rime_chanter/animations/run/east/frame_005.png"
+              "actors/rime_chanter/animations/walk/east/frame_000.png",
+              "actors/rime_chanter/animations/walk/east/frame_001.png",
+              "actors/rime_chanter/animations/walk/east/frame_002.png",
+              "actors/rime_chanter/animations/walk/east/frame_003.png",
+              "actors/rime_chanter/animations/walk/east/frame_004.png",
+              "actors/rime_chanter/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/rime_chanter/animations/run/north/frame_000.png",
-              "actors/rime_chanter/animations/run/north/frame_001.png",
-              "actors/rime_chanter/animations/run/north/frame_002.png",
-              "actors/rime_chanter/animations/run/north/frame_003.png",
-              "actors/rime_chanter/animations/run/north/frame_004.png",
-              "actors/rime_chanter/animations/run/north/frame_005.png"
+              "actors/rime_chanter/animations/walk/north/frame_000.png",
+              "actors/rime_chanter/animations/walk/north/frame_001.png",
+              "actors/rime_chanter/animations/walk/north/frame_002.png",
+              "actors/rime_chanter/animations/walk/north/frame_003.png",
+              "actors/rime_chanter/animations/walk/north/frame_004.png",
+              "actors/rime_chanter/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/rime_chanter/animations/run/north-east/frame_000.png",
-              "actors/rime_chanter/animations/run/north-east/frame_001.png",
-              "actors/rime_chanter/animations/run/north-east/frame_002.png",
-              "actors/rime_chanter/animations/run/north-east/frame_003.png",
-              "actors/rime_chanter/animations/run/north-east/frame_004.png",
-              "actors/rime_chanter/animations/run/north-east/frame_005.png"
+              "actors/rime_chanter/animations/walk/north-east/frame_000.png",
+              "actors/rime_chanter/animations/walk/north-east/frame_001.png",
+              "actors/rime_chanter/animations/walk/north-east/frame_002.png",
+              "actors/rime_chanter/animations/walk/north-east/frame_003.png",
+              "actors/rime_chanter/animations/walk/north-east/frame_004.png",
+              "actors/rime_chanter/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/rime_chanter/animations/run/north-west/frame_000.png",
-              "actors/rime_chanter/animations/run/north-west/frame_001.png",
-              "actors/rime_chanter/animations/run/north-west/frame_002.png",
-              "actors/rime_chanter/animations/run/north-west/frame_003.png",
-              "actors/rime_chanter/animations/run/north-west/frame_004.png",
-              "actors/rime_chanter/animations/run/north-west/frame_005.png"
+              "actors/rime_chanter/animations/walk/north-west/frame_000.png",
+              "actors/rime_chanter/animations/walk/north-west/frame_001.png",
+              "actors/rime_chanter/animations/walk/north-west/frame_002.png",
+              "actors/rime_chanter/animations/walk/north-west/frame_003.png",
+              "actors/rime_chanter/animations/walk/north-west/frame_004.png",
+              "actors/rime_chanter/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/rime_chanter/animations/run/south/frame_000.png",
-              "actors/rime_chanter/animations/run/south/frame_001.png",
-              "actors/rime_chanter/animations/run/south/frame_002.png",
-              "actors/rime_chanter/animations/run/south/frame_003.png",
-              "actors/rime_chanter/animations/run/south/frame_004.png",
-              "actors/rime_chanter/animations/run/south/frame_005.png"
+              "actors/rime_chanter/animations/walk/south/frame_000.png",
+              "actors/rime_chanter/animations/walk/south/frame_001.png",
+              "actors/rime_chanter/animations/walk/south/frame_002.png",
+              "actors/rime_chanter/animations/walk/south/frame_003.png",
+              "actors/rime_chanter/animations/walk/south/frame_004.png",
+              "actors/rime_chanter/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/rime_chanter/animations/run/south-east/frame_000.png",
-              "actors/rime_chanter/animations/run/south-east/frame_001.png",
-              "actors/rime_chanter/animations/run/south-east/frame_002.png",
-              "actors/rime_chanter/animations/run/south-east/frame_003.png",
-              "actors/rime_chanter/animations/run/south-east/frame_004.png",
-              "actors/rime_chanter/animations/run/south-east/frame_005.png"
+              "actors/rime_chanter/animations/walk/south-east/frame_000.png",
+              "actors/rime_chanter/animations/walk/south-east/frame_001.png",
+              "actors/rime_chanter/animations/walk/south-east/frame_002.png",
+              "actors/rime_chanter/animations/walk/south-east/frame_003.png",
+              "actors/rime_chanter/animations/walk/south-east/frame_004.png",
+              "actors/rime_chanter/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/rime_chanter/animations/run/south-west/frame_000.png",
-              "actors/rime_chanter/animations/run/south-west/frame_001.png",
-              "actors/rime_chanter/animations/run/south-west/frame_002.png",
-              "actors/rime_chanter/animations/run/south-west/frame_003.png",
-              "actors/rime_chanter/animations/run/south-west/frame_004.png",
-              "actors/rime_chanter/animations/run/south-west/frame_005.png"
+              "actors/rime_chanter/animations/walk/south-west/frame_000.png",
+              "actors/rime_chanter/animations/walk/south-west/frame_001.png",
+              "actors/rime_chanter/animations/walk/south-west/frame_002.png",
+              "actors/rime_chanter/animations/walk/south-west/frame_003.png",
+              "actors/rime_chanter/animations/walk/south-west/frame_004.png",
+              "actors/rime_chanter/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/rime_chanter/animations/run/west/frame_000.png",
-              "actors/rime_chanter/animations/run/west/frame_001.png",
-              "actors/rime_chanter/animations/run/west/frame_002.png",
-              "actors/rime_chanter/animations/run/west/frame_003.png",
-              "actors/rime_chanter/animations/run/west/frame_004.png",
-              "actors/rime_chanter/animations/run/west/frame_005.png"
+              "actors/rime_chanter/animations/walk/west/frame_000.png",
+              "actors/rime_chanter/animations/walk/west/frame_001.png",
+              "actors/rime_chanter/animations/walk/west/frame_002.png",
+              "actors/rime_chanter/animations/walk/west/frame_003.png",
+              "actors/rime_chanter/animations/walk/west/frame_004.png",
+              "actors/rime_chanter/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -4098,71 +4098,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/rogue/animations/run/east/frame_000.png",
-              "actors/rogue/animations/run/east/frame_001.png",
-              "actors/rogue/animations/run/east/frame_002.png",
-              "actors/rogue/animations/run/east/frame_003.png",
-              "actors/rogue/animations/run/east/frame_004.png",
-              "actors/rogue/animations/run/east/frame_005.png"
+              "actors/rogue/animations/walk/east/frame_000.png",
+              "actors/rogue/animations/walk/east/frame_001.png",
+              "actors/rogue/animations/walk/east/frame_002.png",
+              "actors/rogue/animations/walk/east/frame_003.png",
+              "actors/rogue/animations/walk/east/frame_004.png",
+              "actors/rogue/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/rogue/animations/run/north/frame_000.png",
-              "actors/rogue/animations/run/north/frame_001.png",
-              "actors/rogue/animations/run/north/frame_002.png",
-              "actors/rogue/animations/run/north/frame_003.png",
-              "actors/rogue/animations/run/north/frame_004.png",
-              "actors/rogue/animations/run/north/frame_005.png"
+              "actors/rogue/animations/walk/north/frame_000.png",
+              "actors/rogue/animations/walk/north/frame_001.png",
+              "actors/rogue/animations/walk/north/frame_002.png",
+              "actors/rogue/animations/walk/north/frame_003.png",
+              "actors/rogue/animations/walk/north/frame_004.png",
+              "actors/rogue/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/rogue/animations/run/north-east/frame_000.png",
-              "actors/rogue/animations/run/north-east/frame_001.png",
-              "actors/rogue/animations/run/north-east/frame_002.png",
-              "actors/rogue/animations/run/north-east/frame_003.png",
-              "actors/rogue/animations/run/north-east/frame_004.png",
-              "actors/rogue/animations/run/north-east/frame_005.png"
+              "actors/rogue/animations/walk/north-east/frame_000.png",
+              "actors/rogue/animations/walk/north-east/frame_001.png",
+              "actors/rogue/animations/walk/north-east/frame_002.png",
+              "actors/rogue/animations/walk/north-east/frame_003.png",
+              "actors/rogue/animations/walk/north-east/frame_004.png",
+              "actors/rogue/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/rogue/animations/run/north-west/frame_000.png",
-              "actors/rogue/animations/run/north-west/frame_001.png",
-              "actors/rogue/animations/run/north-west/frame_002.png",
-              "actors/rogue/animations/run/north-west/frame_003.png",
-              "actors/rogue/animations/run/north-west/frame_004.png",
-              "actors/rogue/animations/run/north-west/frame_005.png"
+              "actors/rogue/animations/walk/north-west/frame_000.png",
+              "actors/rogue/animations/walk/north-west/frame_001.png",
+              "actors/rogue/animations/walk/north-west/frame_002.png",
+              "actors/rogue/animations/walk/north-west/frame_003.png",
+              "actors/rogue/animations/walk/north-west/frame_004.png",
+              "actors/rogue/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/rogue/animations/run/south/frame_000.png",
-              "actors/rogue/animations/run/south/frame_001.png",
-              "actors/rogue/animations/run/south/frame_002.png",
-              "actors/rogue/animations/run/south/frame_003.png",
-              "actors/rogue/animations/run/south/frame_004.png",
-              "actors/rogue/animations/run/south/frame_005.png"
+              "actors/rogue/animations/walk/south/frame_000.png",
+              "actors/rogue/animations/walk/south/frame_001.png",
+              "actors/rogue/animations/walk/south/frame_002.png",
+              "actors/rogue/animations/walk/south/frame_003.png",
+              "actors/rogue/animations/walk/south/frame_004.png",
+              "actors/rogue/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/rogue/animations/run/south-east/frame_000.png",
-              "actors/rogue/animations/run/south-east/frame_001.png",
-              "actors/rogue/animations/run/south-east/frame_002.png",
-              "actors/rogue/animations/run/south-east/frame_003.png",
-              "actors/rogue/animations/run/south-east/frame_004.png",
-              "actors/rogue/animations/run/south-east/frame_005.png"
+              "actors/rogue/animations/walk/south-east/frame_000.png",
+              "actors/rogue/animations/walk/south-east/frame_001.png",
+              "actors/rogue/animations/walk/south-east/frame_002.png",
+              "actors/rogue/animations/walk/south-east/frame_003.png",
+              "actors/rogue/animations/walk/south-east/frame_004.png",
+              "actors/rogue/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/rogue/animations/run/south-west/frame_000.png",
-              "actors/rogue/animations/run/south-west/frame_001.png",
-              "actors/rogue/animations/run/south-west/frame_002.png",
-              "actors/rogue/animations/run/south-west/frame_003.png",
-              "actors/rogue/animations/run/south-west/frame_004.png",
-              "actors/rogue/animations/run/south-west/frame_005.png"
+              "actors/rogue/animations/walk/south-west/frame_000.png",
+              "actors/rogue/animations/walk/south-west/frame_001.png",
+              "actors/rogue/animations/walk/south-west/frame_002.png",
+              "actors/rogue/animations/walk/south-west/frame_003.png",
+              "actors/rogue/animations/walk/south-west/frame_004.png",
+              "actors/rogue/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/rogue/animations/run/west/frame_000.png",
-              "actors/rogue/animations/run/west/frame_001.png",
-              "actors/rogue/animations/run/west/frame_002.png",
-              "actors/rogue/animations/run/west/frame_003.png",
-              "actors/rogue/animations/run/west/frame_004.png",
-              "actors/rogue/animations/run/west/frame_005.png"
+              "actors/rogue/animations/walk/west/frame_000.png",
+              "actors/rogue/animations/walk/west/frame_001.png",
+              "actors/rogue/animations/walk/west/frame_002.png",
+              "actors/rogue/animations/walk/west/frame_003.png",
+              "actors/rogue/animations/walk/west/frame_004.png",
+              "actors/rogue/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -4251,63 +4251,63 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/rune_sentinel/animations/run/east/frame_000.png",
-              "actors/rune_sentinel/animations/run/east/frame_001.png",
-              "actors/rune_sentinel/animations/run/east/frame_002.png",
-              "actors/rune_sentinel/animations/run/east/frame_003.png",
-              "actors/rune_sentinel/animations/run/east/frame_004.png",
-              "actors/rune_sentinel/animations/run/east/frame_005.png"
+              "actors/rune_sentinel/animations/walk/east/frame_000.png",
+              "actors/rune_sentinel/animations/walk/east/frame_001.png",
+              "actors/rune_sentinel/animations/walk/east/frame_002.png",
+              "actors/rune_sentinel/animations/walk/east/frame_003.png",
+              "actors/rune_sentinel/animations/walk/east/frame_004.png",
+              "actors/rune_sentinel/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/rune_sentinel/animations/run/north/frame_000.png",
-              "actors/rune_sentinel/animations/run/north/frame_001.png",
-              "actors/rune_sentinel/animations/run/north/frame_002.png",
-              "actors/rune_sentinel/animations/run/north/frame_003.png",
-              "actors/rune_sentinel/animations/run/north/frame_004.png",
-              "actors/rune_sentinel/animations/run/north/frame_005.png"
+              "actors/rune_sentinel/animations/walk/north/frame_000.png",
+              "actors/rune_sentinel/animations/walk/north/frame_001.png",
+              "actors/rune_sentinel/animations/walk/north/frame_002.png",
+              "actors/rune_sentinel/animations/walk/north/frame_003.png",
+              "actors/rune_sentinel/animations/walk/north/frame_004.png",
+              "actors/rune_sentinel/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/rune_sentinel/animations/run/north-east/frame_000.png",
-              "actors/rune_sentinel/animations/run/north-east/frame_001.png",
-              "actors/rune_sentinel/animations/run/north-east/frame_002.png",
-              "actors/rune_sentinel/animations/run/north-east/frame_003.png",
-              "actors/rune_sentinel/animations/run/north-east/frame_004.png",
-              "actors/rune_sentinel/animations/run/north-east/frame_005.png"
+              "actors/rune_sentinel/animations/walk/north-east/frame_000.png",
+              "actors/rune_sentinel/animations/walk/north-east/frame_001.png",
+              "actors/rune_sentinel/animations/walk/north-east/frame_002.png",
+              "actors/rune_sentinel/animations/walk/north-east/frame_003.png",
+              "actors/rune_sentinel/animations/walk/north-east/frame_004.png",
+              "actors/rune_sentinel/animations/walk/north-east/frame_005.png"
             ],
             "south": [
-              "actors/rune_sentinel/animations/run/south/frame_000.png",
-              "actors/rune_sentinel/animations/run/south/frame_001.png",
-              "actors/rune_sentinel/animations/run/south/frame_002.png",
-              "actors/rune_sentinel/animations/run/south/frame_003.png",
-              "actors/rune_sentinel/animations/run/south/frame_004.png",
-              "actors/rune_sentinel/animations/run/south/frame_005.png"
+              "actors/rune_sentinel/animations/walk/south/frame_000.png",
+              "actors/rune_sentinel/animations/walk/south/frame_001.png",
+              "actors/rune_sentinel/animations/walk/south/frame_002.png",
+              "actors/rune_sentinel/animations/walk/south/frame_003.png",
+              "actors/rune_sentinel/animations/walk/south/frame_004.png",
+              "actors/rune_sentinel/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/rune_sentinel/animations/run/south-east/frame_000.png",
-              "actors/rune_sentinel/animations/run/south-east/frame_001.png",
-              "actors/rune_sentinel/animations/run/south-east/frame_002.png",
-              "actors/rune_sentinel/animations/run/south-east/frame_003.png",
-              "actors/rune_sentinel/animations/run/south-east/frame_004.png",
-              "actors/rune_sentinel/animations/run/south-east/frame_005.png"
+              "actors/rune_sentinel/animations/walk/south-east/frame_000.png",
+              "actors/rune_sentinel/animations/walk/south-east/frame_001.png",
+              "actors/rune_sentinel/animations/walk/south-east/frame_002.png",
+              "actors/rune_sentinel/animations/walk/south-east/frame_003.png",
+              "actors/rune_sentinel/animations/walk/south-east/frame_004.png",
+              "actors/rune_sentinel/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/rune_sentinel/animations/run/south-west/frame_000.png",
-              "actors/rune_sentinel/animations/run/south-west/frame_001.png",
-              "actors/rune_sentinel/animations/run/south-west/frame_002.png",
-              "actors/rune_sentinel/animations/run/south-west/frame_003.png",
-              "actors/rune_sentinel/animations/run/south-west/frame_004.png",
-              "actors/rune_sentinel/animations/run/south-west/frame_005.png"
+              "actors/rune_sentinel/animations/walk/south-west/frame_000.png",
+              "actors/rune_sentinel/animations/walk/south-west/frame_001.png",
+              "actors/rune_sentinel/animations/walk/south-west/frame_002.png",
+              "actors/rune_sentinel/animations/walk/south-west/frame_003.png",
+              "actors/rune_sentinel/animations/walk/south-west/frame_004.png",
+              "actors/rune_sentinel/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/rune_sentinel/animations/run/west/frame_000.png",
-              "actors/rune_sentinel/animations/run/west/frame_001.png",
-              "actors/rune_sentinel/animations/run/west/frame_002.png",
-              "actors/rune_sentinel/animations/run/west/frame_003.png",
-              "actors/rune_sentinel/animations/run/west/frame_004.png",
-              "actors/rune_sentinel/animations/run/west/frame_005.png"
+              "actors/rune_sentinel/animations/walk/west/frame_000.png",
+              "actors/rune_sentinel/animations/walk/west/frame_001.png",
+              "actors/rune_sentinel/animations/walk/west/frame_002.png",
+              "actors/rune_sentinel/animations/walk/west/frame_003.png",
+              "actors/rune_sentinel/animations/walk/west/frame_004.png",
+              "actors/rune_sentinel/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -4579,7 +4579,7 @@
           "fps": 8.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
               "actors/shopkeeper/animations/walk/east/frame_000.png",
@@ -4932,7 +4932,7 @@
           "fps": 8.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
               "actors/story_guest/animations/walk/east/frame_000.png",
@@ -5101,71 +5101,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/venom_skitter/animations/run/east/frame_000.png",
-              "actors/venom_skitter/animations/run/east/frame_001.png",
-              "actors/venom_skitter/animations/run/east/frame_002.png",
-              "actors/venom_skitter/animations/run/east/frame_003.png",
-              "actors/venom_skitter/animations/run/east/frame_004.png",
-              "actors/venom_skitter/animations/run/east/frame_005.png"
+              "actors/venom_skitter/animations/walk/east/frame_000.png",
+              "actors/venom_skitter/animations/walk/east/frame_001.png",
+              "actors/venom_skitter/animations/walk/east/frame_002.png",
+              "actors/venom_skitter/animations/walk/east/frame_003.png",
+              "actors/venom_skitter/animations/walk/east/frame_004.png",
+              "actors/venom_skitter/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/venom_skitter/animations/run/north/frame_000.png",
-              "actors/venom_skitter/animations/run/north/frame_001.png",
-              "actors/venom_skitter/animations/run/north/frame_002.png",
-              "actors/venom_skitter/animations/run/north/frame_003.png",
-              "actors/venom_skitter/animations/run/north/frame_004.png",
-              "actors/venom_skitter/animations/run/north/frame_005.png"
+              "actors/venom_skitter/animations/walk/north/frame_000.png",
+              "actors/venom_skitter/animations/walk/north/frame_001.png",
+              "actors/venom_skitter/animations/walk/north/frame_002.png",
+              "actors/venom_skitter/animations/walk/north/frame_003.png",
+              "actors/venom_skitter/animations/walk/north/frame_004.png",
+              "actors/venom_skitter/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/venom_skitter/animations/run/north-east/frame_000.png",
-              "actors/venom_skitter/animations/run/north-east/frame_001.png",
-              "actors/venom_skitter/animations/run/north-east/frame_002.png",
-              "actors/venom_skitter/animations/run/north-east/frame_003.png",
-              "actors/venom_skitter/animations/run/north-east/frame_004.png",
-              "actors/venom_skitter/animations/run/north-east/frame_005.png"
+              "actors/venom_skitter/animations/walk/north-east/frame_000.png",
+              "actors/venom_skitter/animations/walk/north-east/frame_001.png",
+              "actors/venom_skitter/animations/walk/north-east/frame_002.png",
+              "actors/venom_skitter/animations/walk/north-east/frame_003.png",
+              "actors/venom_skitter/animations/walk/north-east/frame_004.png",
+              "actors/venom_skitter/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/venom_skitter/animations/run/north-west/frame_000.png",
-              "actors/venom_skitter/animations/run/north-west/frame_001.png",
-              "actors/venom_skitter/animations/run/north-west/frame_002.png",
-              "actors/venom_skitter/animations/run/north-west/frame_003.png",
-              "actors/venom_skitter/animations/run/north-west/frame_004.png",
-              "actors/venom_skitter/animations/run/north-west/frame_005.png"
+              "actors/venom_skitter/animations/walk/north-west/frame_000.png",
+              "actors/venom_skitter/animations/walk/north-west/frame_001.png",
+              "actors/venom_skitter/animations/walk/north-west/frame_002.png",
+              "actors/venom_skitter/animations/walk/north-west/frame_003.png",
+              "actors/venom_skitter/animations/walk/north-west/frame_004.png",
+              "actors/venom_skitter/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/venom_skitter/animations/run/south/frame_000.png",
-              "actors/venom_skitter/animations/run/south/frame_001.png",
-              "actors/venom_skitter/animations/run/south/frame_002.png",
-              "actors/venom_skitter/animations/run/south/frame_003.png",
-              "actors/venom_skitter/animations/run/south/frame_004.png",
-              "actors/venom_skitter/animations/run/south/frame_005.png"
+              "actors/venom_skitter/animations/walk/south/frame_000.png",
+              "actors/venom_skitter/animations/walk/south/frame_001.png",
+              "actors/venom_skitter/animations/walk/south/frame_002.png",
+              "actors/venom_skitter/animations/walk/south/frame_003.png",
+              "actors/venom_skitter/animations/walk/south/frame_004.png",
+              "actors/venom_skitter/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/venom_skitter/animations/run/south-east/frame_000.png",
-              "actors/venom_skitter/animations/run/south-east/frame_001.png",
-              "actors/venom_skitter/animations/run/south-east/frame_002.png",
-              "actors/venom_skitter/animations/run/south-east/frame_003.png",
-              "actors/venom_skitter/animations/run/south-east/frame_004.png",
-              "actors/venom_skitter/animations/run/south-east/frame_005.png"
+              "actors/venom_skitter/animations/walk/south-east/frame_000.png",
+              "actors/venom_skitter/animations/walk/south-east/frame_001.png",
+              "actors/venom_skitter/animations/walk/south-east/frame_002.png",
+              "actors/venom_skitter/animations/walk/south-east/frame_003.png",
+              "actors/venom_skitter/animations/walk/south-east/frame_004.png",
+              "actors/venom_skitter/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/venom_skitter/animations/run/south-west/frame_000.png",
-              "actors/venom_skitter/animations/run/south-west/frame_001.png",
-              "actors/venom_skitter/animations/run/south-west/frame_002.png",
-              "actors/venom_skitter/animations/run/south-west/frame_003.png",
-              "actors/venom_skitter/animations/run/south-west/frame_004.png",
-              "actors/venom_skitter/animations/run/south-west/frame_005.png"
+              "actors/venom_skitter/animations/walk/south-west/frame_000.png",
+              "actors/venom_skitter/animations/walk/south-west/frame_001.png",
+              "actors/venom_skitter/animations/walk/south-west/frame_002.png",
+              "actors/venom_skitter/animations/walk/south-west/frame_003.png",
+              "actors/venom_skitter/animations/walk/south-west/frame_004.png",
+              "actors/venom_skitter/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/venom_skitter/animations/run/west/frame_000.png",
-              "actors/venom_skitter/animations/run/west/frame_001.png",
-              "actors/venom_skitter/animations/run/west/frame_002.png",
-              "actors/venom_skitter/animations/run/west/frame_003.png",
-              "actors/venom_skitter/animations/run/west/frame_004.png",
-              "actors/venom_skitter/animations/run/west/frame_005.png"
+              "actors/venom_skitter/animations/walk/west/frame_000.png",
+              "actors/venom_skitter/animations/walk/west/frame_001.png",
+              "actors/venom_skitter/animations/walk/west/frame_002.png",
+              "actors/venom_skitter/animations/walk/west/frame_003.png",
+              "actors/venom_skitter/animations/walk/west/frame_004.png",
+              "actors/venom_skitter/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -5254,71 +5254,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/voidbound_rune_sentinel/animations/run/east/frame_000.png",
-              "actors/voidbound_rune_sentinel/animations/run/east/frame_001.png",
-              "actors/voidbound_rune_sentinel/animations/run/east/frame_002.png",
-              "actors/voidbound_rune_sentinel/animations/run/east/frame_003.png",
-              "actors/voidbound_rune_sentinel/animations/run/east/frame_004.png",
-              "actors/voidbound_rune_sentinel/animations/run/east/frame_005.png"
+              "actors/voidbound_rune_sentinel/animations/walk/east/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/walk/east/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/walk/east/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/walk/east/frame_003.png",
+              "actors/voidbound_rune_sentinel/animations/walk/east/frame_004.png",
+              "actors/voidbound_rune_sentinel/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/voidbound_rune_sentinel/animations/run/north/frame_000.png",
-              "actors/voidbound_rune_sentinel/animations/run/north/frame_001.png",
-              "actors/voidbound_rune_sentinel/animations/run/north/frame_002.png",
-              "actors/voidbound_rune_sentinel/animations/run/north/frame_003.png",
-              "actors/voidbound_rune_sentinel/animations/run/north/frame_004.png",
-              "actors/voidbound_rune_sentinel/animations/run/north/frame_005.png"
+              "actors/voidbound_rune_sentinel/animations/walk/north/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north/frame_003.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north/frame_004.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/voidbound_rune_sentinel/animations/run/north-east/frame_000.png",
-              "actors/voidbound_rune_sentinel/animations/run/north-east/frame_001.png",
-              "actors/voidbound_rune_sentinel/animations/run/north-east/frame_002.png",
-              "actors/voidbound_rune_sentinel/animations/run/north-east/frame_003.png",
-              "actors/voidbound_rune_sentinel/animations/run/north-east/frame_004.png",
-              "actors/voidbound_rune_sentinel/animations/run/north-east/frame_005.png"
+              "actors/voidbound_rune_sentinel/animations/walk/north-east/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north-east/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north-east/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north-east/frame_003.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north-east/frame_004.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/voidbound_rune_sentinel/animations/run/north-west/frame_000.png",
-              "actors/voidbound_rune_sentinel/animations/run/north-west/frame_001.png",
-              "actors/voidbound_rune_sentinel/animations/run/north-west/frame_002.png",
-              "actors/voidbound_rune_sentinel/animations/run/north-west/frame_003.png",
-              "actors/voidbound_rune_sentinel/animations/run/north-west/frame_004.png",
-              "actors/voidbound_rune_sentinel/animations/run/north-west/frame_005.png"
+              "actors/voidbound_rune_sentinel/animations/walk/north-west/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north-west/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north-west/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north-west/frame_003.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north-west/frame_004.png",
+              "actors/voidbound_rune_sentinel/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/voidbound_rune_sentinel/animations/run/south/frame_000.png",
-              "actors/voidbound_rune_sentinel/animations/run/south/frame_001.png",
-              "actors/voidbound_rune_sentinel/animations/run/south/frame_002.png",
-              "actors/voidbound_rune_sentinel/animations/run/south/frame_003.png",
-              "actors/voidbound_rune_sentinel/animations/run/south/frame_004.png",
-              "actors/voidbound_rune_sentinel/animations/run/south/frame_005.png"
+              "actors/voidbound_rune_sentinel/animations/walk/south/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south/frame_003.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south/frame_004.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/voidbound_rune_sentinel/animations/run/south-east/frame_000.png",
-              "actors/voidbound_rune_sentinel/animations/run/south-east/frame_001.png",
-              "actors/voidbound_rune_sentinel/animations/run/south-east/frame_002.png",
-              "actors/voidbound_rune_sentinel/animations/run/south-east/frame_003.png",
-              "actors/voidbound_rune_sentinel/animations/run/south-east/frame_004.png",
-              "actors/voidbound_rune_sentinel/animations/run/south-east/frame_005.png"
+              "actors/voidbound_rune_sentinel/animations/walk/south-east/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south-east/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south-east/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south-east/frame_003.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south-east/frame_004.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/voidbound_rune_sentinel/animations/run/south-west/frame_000.png",
-              "actors/voidbound_rune_sentinel/animations/run/south-west/frame_001.png",
-              "actors/voidbound_rune_sentinel/animations/run/south-west/frame_002.png",
-              "actors/voidbound_rune_sentinel/animations/run/south-west/frame_003.png",
-              "actors/voidbound_rune_sentinel/animations/run/south-west/frame_004.png",
-              "actors/voidbound_rune_sentinel/animations/run/south-west/frame_005.png"
+              "actors/voidbound_rune_sentinel/animations/walk/south-west/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south-west/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south-west/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south-west/frame_003.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south-west/frame_004.png",
+              "actors/voidbound_rune_sentinel/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/voidbound_rune_sentinel/animations/run/west/frame_000.png",
-              "actors/voidbound_rune_sentinel/animations/run/west/frame_001.png",
-              "actors/voidbound_rune_sentinel/animations/run/west/frame_002.png",
-              "actors/voidbound_rune_sentinel/animations/run/west/frame_003.png",
-              "actors/voidbound_rune_sentinel/animations/run/west/frame_004.png",
-              "actors/voidbound_rune_sentinel/animations/run/west/frame_005.png"
+              "actors/voidbound_rune_sentinel/animations/walk/west/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/walk/west/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/walk/west/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/walk/west/frame_003.png",
+              "actors/voidbound_rune_sentinel/animations/walk/west/frame_004.png",
+              "actors/voidbound_rune_sentinel/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,
@@ -5563,71 +5563,71 @@
           "fps": 5.0,
           "loop": true
         },
-        "run": {
+        "walk": {
           "directions": {
             "east": [
-              "actors/warden/animations/run/east/frame_000.png",
-              "actors/warden/animations/run/east/frame_001.png",
-              "actors/warden/animations/run/east/frame_002.png",
-              "actors/warden/animations/run/east/frame_003.png",
-              "actors/warden/animations/run/east/frame_004.png",
-              "actors/warden/animations/run/east/frame_005.png"
+              "actors/warden/animations/walk/east/frame_000.png",
+              "actors/warden/animations/walk/east/frame_001.png",
+              "actors/warden/animations/walk/east/frame_002.png",
+              "actors/warden/animations/walk/east/frame_003.png",
+              "actors/warden/animations/walk/east/frame_004.png",
+              "actors/warden/animations/walk/east/frame_005.png"
             ],
             "north": [
-              "actors/warden/animations/run/north/frame_000.png",
-              "actors/warden/animations/run/north/frame_001.png",
-              "actors/warden/animations/run/north/frame_002.png",
-              "actors/warden/animations/run/north/frame_003.png",
-              "actors/warden/animations/run/north/frame_004.png",
-              "actors/warden/animations/run/north/frame_005.png"
+              "actors/warden/animations/walk/north/frame_000.png",
+              "actors/warden/animations/walk/north/frame_001.png",
+              "actors/warden/animations/walk/north/frame_002.png",
+              "actors/warden/animations/walk/north/frame_003.png",
+              "actors/warden/animations/walk/north/frame_004.png",
+              "actors/warden/animations/walk/north/frame_005.png"
             ],
             "north-east": [
-              "actors/warden/animations/run/north-east/frame_000.png",
-              "actors/warden/animations/run/north-east/frame_001.png",
-              "actors/warden/animations/run/north-east/frame_002.png",
-              "actors/warden/animations/run/north-east/frame_003.png",
-              "actors/warden/animations/run/north-east/frame_004.png",
-              "actors/warden/animations/run/north-east/frame_005.png"
+              "actors/warden/animations/walk/north-east/frame_000.png",
+              "actors/warden/animations/walk/north-east/frame_001.png",
+              "actors/warden/animations/walk/north-east/frame_002.png",
+              "actors/warden/animations/walk/north-east/frame_003.png",
+              "actors/warden/animations/walk/north-east/frame_004.png",
+              "actors/warden/animations/walk/north-east/frame_005.png"
             ],
             "north-west": [
-              "actors/warden/animations/run/north-west/frame_000.png",
-              "actors/warden/animations/run/north-west/frame_001.png",
-              "actors/warden/animations/run/north-west/frame_002.png",
-              "actors/warden/animations/run/north-west/frame_003.png",
-              "actors/warden/animations/run/north-west/frame_004.png",
-              "actors/warden/animations/run/north-west/frame_005.png"
+              "actors/warden/animations/walk/north-west/frame_000.png",
+              "actors/warden/animations/walk/north-west/frame_001.png",
+              "actors/warden/animations/walk/north-west/frame_002.png",
+              "actors/warden/animations/walk/north-west/frame_003.png",
+              "actors/warden/animations/walk/north-west/frame_004.png",
+              "actors/warden/animations/walk/north-west/frame_005.png"
             ],
             "south": [
-              "actors/warden/animations/run/south/frame_000.png",
-              "actors/warden/animations/run/south/frame_001.png",
-              "actors/warden/animations/run/south/frame_002.png",
-              "actors/warden/animations/run/south/frame_003.png",
-              "actors/warden/animations/run/south/frame_004.png",
-              "actors/warden/animations/run/south/frame_005.png"
+              "actors/warden/animations/walk/south/frame_000.png",
+              "actors/warden/animations/walk/south/frame_001.png",
+              "actors/warden/animations/walk/south/frame_002.png",
+              "actors/warden/animations/walk/south/frame_003.png",
+              "actors/warden/animations/walk/south/frame_004.png",
+              "actors/warden/animations/walk/south/frame_005.png"
             ],
             "south-east": [
-              "actors/warden/animations/run/south-east/frame_000.png",
-              "actors/warden/animations/run/south-east/frame_001.png",
-              "actors/warden/animations/run/south-east/frame_002.png",
-              "actors/warden/animations/run/south-east/frame_003.png",
-              "actors/warden/animations/run/south-east/frame_004.png",
-              "actors/warden/animations/run/south-east/frame_005.png"
+              "actors/warden/animations/walk/south-east/frame_000.png",
+              "actors/warden/animations/walk/south-east/frame_001.png",
+              "actors/warden/animations/walk/south-east/frame_002.png",
+              "actors/warden/animations/walk/south-east/frame_003.png",
+              "actors/warden/animations/walk/south-east/frame_004.png",
+              "actors/warden/animations/walk/south-east/frame_005.png"
             ],
             "south-west": [
-              "actors/warden/animations/run/south-west/frame_000.png",
-              "actors/warden/animations/run/south-west/frame_001.png",
-              "actors/warden/animations/run/south-west/frame_002.png",
-              "actors/warden/animations/run/south-west/frame_003.png",
-              "actors/warden/animations/run/south-west/frame_004.png",
-              "actors/warden/animations/run/south-west/frame_005.png"
+              "actors/warden/animations/walk/south-west/frame_000.png",
+              "actors/warden/animations/walk/south-west/frame_001.png",
+              "actors/warden/animations/walk/south-west/frame_002.png",
+              "actors/warden/animations/walk/south-west/frame_003.png",
+              "actors/warden/animations/walk/south-west/frame_004.png",
+              "actors/warden/animations/walk/south-west/frame_005.png"
             ],
             "west": [
-              "actors/warden/animations/run/west/frame_000.png",
-              "actors/warden/animations/run/west/frame_001.png",
-              "actors/warden/animations/run/west/frame_002.png",
-              "actors/warden/animations/run/west/frame_003.png",
-              "actors/warden/animations/run/west/frame_004.png",
-              "actors/warden/animations/run/west/frame_005.png"
+              "actors/warden/animations/walk/west/frame_000.png",
+              "actors/warden/animations/walk/west/frame_001.png",
+              "actors/warden/animations/walk/west/frame_002.png",
+              "actors/warden/animations/walk/west/frame_003.png",
+              "actors/warden/animations/walk/west/frame_004.png",
+              "actors/warden/animations/walk/west/frame_005.png"
             ]
           },
           "fps": 9.0,

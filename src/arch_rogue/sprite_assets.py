@@ -52,7 +52,7 @@ DIRECTIONS = (
 )
 _ACTION_STATES = frozenset(("attack", "cast", "hit", "dash", "pet"))
 _SUPPORTED_ACTOR_STATES = frozenset(
-    ("idle", "walk", "run", "dance", "attack", "cast", "pet", "act")
+    ("idle", "walk", "dance", "attack", "cast", "pet", "act")
 )
 GOLD_STACK_ASSET_KEYS = (
     "gold_stack",
@@ -455,7 +455,7 @@ class AssetSpriteLibrary:
 
         requested_state = state if state in _SUPPORTED_ACTOR_STATES else ""
         if state == "dash":
-            requested_state = "run"
+            requested_state = "walk"
         clips = entry.get("clips", {})
         clip_name = requested_state if requested_state in clips else "idle"
         clip = clips.get(clip_name)
@@ -852,7 +852,7 @@ class SpriteAtlas:
             action_time
             if state in _ACTION_STATES and action_time is not None
             else anim_time
-            if state == "run"
+            if state == "walk"
             else elapsed
         )
         asset = self._asset_actor(
@@ -914,7 +914,7 @@ class SpriteAtlas:
             action_time
             if state in _ACTION_STATES and action_time is not None
             else anim_time
-            if state == "run"
+            if state == "walk"
             else elapsed
         )
         asset = self._asset_actor(
@@ -979,7 +979,7 @@ class SpriteAtlas:
             action_time
             if state in _ACTION_STATES and action_time is not None
             else anim_time
-            if state == "run"
+            if state == "walk"
             else elapsed
         )
         asset = self._asset_actor(
@@ -1042,7 +1042,7 @@ class SpriteAtlas:
         dancing: bool = False,
         clip_progress: float | None = None,
     ) -> ResolvedSpriteFrame:
-        state = "run" if moving else "dance" if dancing else "idle"
+        state = "walk" if moving else "dance" if dancing else "idle"
         asset = self._asset_actor(
             "shopkeeper",
             state,
@@ -1088,7 +1088,7 @@ class SpriteAtlas:
         dancing: bool = False,
         clip_progress: float | None = None,
     ) -> ResolvedSpriteFrame:
-        state = "run" if moving else "dance" if dancing else "idle"
+        state = "walk" if moving else "dance" if dancing else "idle"
         asset = self._asset_actor(
             "story_guest",
             state,
@@ -1138,7 +1138,7 @@ class SpriteAtlas:
         dancing: bool = False,
         clip_progress: float | None = None,
     ) -> ResolvedSpriteFrame:
-        state = "run" if moving else "dance" if dancing else "idle"
+        state = "walk" if moving else "dance" if dancing else "idle"
         asset = self._asset_actor(
             "Bar Dancer",
             state,
@@ -1186,7 +1186,7 @@ class SpriteAtlas:
         dancing: bool = False,
         clip_progress: float | None = None,
     ) -> ResolvedSpriteFrame:
-        state = "run" if moving else "dance" if dancing else "idle"
+        state = "walk" if moving else "dance" if dancing else "idle"
         asset = self._asset_actor(
             "Garden Frog",
             state,
@@ -1249,7 +1249,7 @@ class SpriteAtlas:
             fallback_variant = 2
         else:
             key = "familiar_owl" if variant else "familiar_wisp"
-            state = "run" if moving else "idle"
+            state = "walk" if moving else "idle"
             fallback_variant = variant
         action_progress = (
             pet_progress if petting else attack_progress if attacking else None
