@@ -1,5 +1,33 @@
 # Changelog
 
+## 4.2.10 — Universal macOS Build
+
+Milestone 4.2.10 extends the `Build & Release` GitHub Actions workflow to produce a Finder-launchable universal `Arch Rogue.app` that runs natively on both Apple Silicon (arm64) and Intel (x86_64) Macs.
+
+### Added
+
+- Two native macOS build matrix entries: `macos-15-intel` for the x86_64 slice and `macos-latest` for the arm64 slice. GitHub's current runner documentation identifies `macos-latest` as Arm64, so the retired `macos-13` Intel image is replaced by the explicit `macos-15-intel` label rather than relying on Rosetta emulation. Each entry runs the existing PyInstaller `--onefile` pipeline, producing a single-architecture Mach-O executable tagged `macos-x86_64` or `macos-arm64`.
+- A `Sanity-check Python architecture` step prints `platform.machine()` on both macOS runners so their native slices are visible in the logs.
+- A `Verify binary architecture` step that runs `file` and `lipo -info` on the freshly built macOS binary so the Mach-O arch can be confirmed before the `combine-macos` job merges it.
+- New `combine-macos` job that downloads both single-arch binaries and merges them with `lipo -create` inside `Arch Rogue.app/Contents/MacOS/arch-rogue`. The bundle includes an `Info.plist` with the executable, display name, bundle identifier, project version, game category, and high-resolution rendering metadata.
+- The universal app is ad-hoc signed after `lipo` invalidates the thin executables' signatures, then verified with `codesign --verify --deep --strict`.
+- The app is packaged as `arch-rogue-v<version>-<sha>-macos-universal.zip` with macOS `ditto`, preserving its Finder bundle metadata and executable mode. CI extracts that final ZIP and verifies its plist, executable permission, universal architecture, and code signature before upload.
+- Release job now publishes five assets: Windows `.exe`, Linux binary, the universal macOS app ZIP, and the two intermediate single-arch macOS binaries as smaller per-architecture fallbacks.
+- Restored the executable bit on raw Linux/thin-macOS release assets after `upload-artifact@v4` strips it; the universal app's mode is preserved inside its ZIP.
+
+### Changed
+
+- `release` job now `needs: [build, combine-macos]` so the universal binary is always present before publishing.
+- Release body lists all five assets and labels the universal ZIP as a Finder-launchable `Arch Rogue.app` for `Apple Silicon + Intel`.
+- The app is ad-hoc signed rather than Developer ID notarized. Finder recognizes and launches it as a graphical app, but macOS Gatekeeper may still require users to right-click **Open** on first launch until Apple signing credentials are configured.
+- Why two native runners instead of a single universal2 PyInstaller run: `pygame-ce` ships separate arm64 and x86_64 macOS wheels (no universal2 wheel), so a single native `pip install` only resolves one architecture's native dependencies, and `--target-architecture universal2` would only embed that one architecture. Building on matching native runners and merging with `lipo` keeps both dependency sets architecture-correct.
+- Runtime/package release version is `4.2.10`; options remain schema `5` and run saves remain schema `5`.
+
+### Validation
+
+- `.venv/bin/python -c "import yaml; yaml.safe_load(open('.github/workflows/build-release.yml'))"` — YAML parses cleanly.
+- The workflow was not executed locally; it will run on the next push to `master`.
+
 ## 4.2.9 — Safe Exit Default
 
 Milestone 4.2.9 makes `Cancel and return to game` the default highlighted option whenever the exit confirmation screen opens, preventing accidental exits or menu returns from an immediate confirmation keypress.

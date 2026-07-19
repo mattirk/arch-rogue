@@ -1,10 +1,19 @@
 name: Build & Release
 
 # On every push to master: run the test suite, build standalone Windows and
-# Linux binaries with PyInstaller, and publish both artifacts to a GitHub
-# Release tagged `v<version>-<short-sha>`, where <version> comes from
-# pyproject.toml. Each commit therefore gets its own uniquely-tagged release
-# whose name carries the current project version.
+# Linux binaries plus a universal macOS app (arm64 + x86_64) with PyInstaller,
+# and publish all artifacts to a GitHub Release tagged
+# `v<version>-<short-sha>`, where <version> comes from pyproject.toml.
+# Each commit therefore gets its own uniquely-tagged release whose name
+# carries the current project version.
+#
+# The macOS slices are built natively on `macos-15` (arm64) and
+# `macos-15-intel` (x86_64). They remain intact inside `Arch Rogue.app`; a tiny
+# universal Mach-O launcher selects the matching executable at runtime. Do not
+# lipo the PyInstaller one-file executables themselves: each has an appended,
+# architecture-specific Python/SDL archive that `lipo` cannot safely combine.
+# The finished bundle is ad-hoc signed and archived with `ditto` so Finder
+# metadata and executable permissions survive the download.
 
 "on":
   push:
@@ -64,6 +73,25 @@ jobs:
             artifact_name: arch-rogue-windows-x64.exe
             asset_suffix: windows-x64
             windowed_flag: "--windowed"
+          - os: macos-15-intel
+            platform: macos
+            python_arch: x64
+            expected_arch: x86_64
+            exe_name: arch-rogue
+            artifact_name: arch-rogue-macos-x86_64
+            asset_suffix: macos-x86_64
+            # The thin executable is embedded into our own universal .app.
+            windowed_flag: ""
+          # Pin the Apple Silicon image instead of relying on the moving
+          # `macos-latest` alias.
+          - os: macos-15
+            platform: macos
+            python_arch: arm64
+            expected_arch: arm64
+            exe_name: arch-rogue
+            artifact_name: arch-rogue-macos-arm64
+            asset_suffix: macos-arm64
+            windowed_flag: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -71,12 +99,30 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          architecture: ${{ matrix.python_arch || 'x64' }}
 
       - name: Install build dependencies
+        shell: bash
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
           python -m pip install pyinstaller
+
+      - name: Sanity-check Python architecture (macOS only)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "=== python binary arch ==="
+          file "$(command -v python)"
+          echo "=== active architecture ==="
+          python - <<'PY'
+          import platform
+          actual = platform.machine()
+          expected = "${{ matrix.expected_arch }}"
+          print("platform.machine():", actual)
+          if actual != expected:
+              raise SystemExit(f"Expected {expected} Python, got {actual}")
+          PY
 
       - name: Read version
         id: version
@@ -84,11 +130,11 @@ jobs:
         run: |
           import tomllib, os
           with open("pyproject.toml", "rb") as f:
-              data = tomllib.load(f)
+            data = tomllib.load(f)
           version = data["project"]["version"]
           print(f"version={version}")
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              out.write(f"version={version}\n")
+            out.write(f"version={version}\n")
 
       - name: Short SHA
         id: sha
@@ -130,6 +176,17 @@ jobs:
             --hidden-import=pygame.mixer \
             arch_rogue_launcher.py
 
+      - name: Verify binary architecture (macOS only)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "=== built binary ==="
+          ls -la dist
+          file "dist/${{ matrix.exe_name }}"
+          lipo -info "dist/${{ matrix.exe_name }}"
+          test "$(lipo -archs "dist/${{ matrix.exe_name }}")" = "${{ matrix.expected_arch }}"
+          echo "Verified architecture: ${{ matrix.expected_arch }}"
+
       - name: Rename artifact
         shell: bash
         run: |
@@ -141,6 +198,7 @@ jobs:
             mv "dist/${{ matrix.exe_name }}.exe" "dist/final/${FINAL}.exe"
           else
             mv "dist/${{ matrix.exe_name }}" "dist/final/${FINAL}"
+            chmod +x "dist/final/${FINAL}"
           fi
           ls -la dist/final
 
@@ -151,9 +209,205 @@ jobs:
           path: dist/final/*
           if-no-files-found: error
 
+  combine-macos:
+    name: Package macOS universal app (arm64 + x86_64)
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - name: Checkout (for version + sha helpers)
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        shell: python
+        run: |
+          import tomllib, os
+          with open("pyproject.toml", "rb") as f:
+              data = tomllib.load(f)
+          version = data["project"]["version"]
+          print(f"version={version}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"version={version}\n")
+
+      - name: Short SHA
+        id: sha
+        shell: bash
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Download x86_64 build
+        uses: actions/download-artifact@v4
+        with:
+          name: arch-rogue-macos-x86_64
+          path: macos-x86_64
+
+      - name: Download arm64 build
+        uses: actions/download-artifact@v4
+        with:
+          name: arch-rogue-macos-arm64
+          path: macos-arm64
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== x86_64 ===" && ls -la macos-x86_64
+          echo "=== arm64 ===" && ls -la macos-arm64
+
+      - name: Merge slices into Arch Rogue.app
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sha.outputs.short }}"
+          X86_BIN="macos-x86_64/arch-rogue-v${VERSION}-${SHA}-macos-x86_64"
+          ARM_BIN="macos-arm64/arch-rogue-v${VERSION}-${SHA}-macos-arm64"
+          APP="dist/app/Arch Rogue.app"
+          APP_BINARY="$APP/Contents/MacOS/arch-rogue"
+          X86_APP_BINARY="$APP/Contents/MacOS/arch-rogue-x86_64"
+          ARM_APP_BINARY="$APP/Contents/MacOS/arch-rogue-arm64"
+
+          test -f "$X86_BIN"
+          test -f "$ARM_BIN"
+          echo "x86_64 binary: $X86_BIN"
+          echo "arm64 binary:  $ARM_BIN"
+          echo "Before lipo:"
+          lipo -info "$X86_BIN"
+          lipo -info "$ARM_BIN"
+
+          test "$(lipo -archs "$X86_BIN")" = "x86_64"
+          test "$(lipo -archs "$ARM_BIN")" = "arm64"
+
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp "$X86_BIN" "$X86_APP_BINARY"
+          cp "$ARM_BIN" "$ARM_APP_BINARY"
+          chmod 755 "$X86_APP_BINARY" "$ARM_APP_BINARY"
+
+          # A universal native launcher lets Finder start one app while keeping
+          # each PyInstaller executable and its appended native payload intact.
+          cat > launcher.c <<'C'
+          #include <mach-o/dyld.h>
+          #include <libgen.h>
+          #include <limits.h>
+          #include <stdio.h>
+          #include <string.h>
+          #include <unistd.h>
+
+          int main(int argc, char **argv) {
+              char executable[PATH_MAX];
+              uint32_t size = sizeof(executable);
+              if (_NSGetExecutablePath(executable, &size) != 0) {
+                  fputs("Arch Rogue: launcher path is too long\n", stderr);
+                  return 1;
+              }
+              const char *binary =
+          #if defined(__arm64__)
+                  "arch-rogue-arm64";
+          #elif defined(__x86_64__)
+                  "arch-rogue-x86_64";
+          #else
+          #error Unsupported macOS architecture
+          #endif
+              char target[PATH_MAX];
+              snprintf(target, sizeof(target), "%s/%s", dirname(executable), binary);
+              argv[0] = target;
+              execv(target, argv);
+              perror("Arch Rogue: unable to start game");
+              return 1;
+          }
+          C
+          clang -arch x86_64 -mmacosx-version-min=11.0 launcher.c -o launcher-x86_64
+          clang -arch arm64 -mmacosx-version-min=11.0 launcher.c -o launcher-arm64
+          lipo -create launcher-x86_64 launcher-arm64 -output "$APP_BINARY"
+          chmod 755 "$APP_BINARY"
+
+          cat > "$APP/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>en</string>
+              <key>CFBundleDisplayName</key>
+              <string>Arch Rogue</string>
+              <key>CFBundleExecutable</key>
+              <string>arch-rogue</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.archrogue.game</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>Arch Rogue</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${VERSION}</string>
+              <key>CFBundleVersion</key>
+              <string>${VERSION}</string>
+              <key>LSApplicationCategoryType</key>
+              <string>public.app-category.role-playing-games</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          PLIST
+
+          echo "Universal launcher and packaged payloads:"
+          test "$(lipo -archs "$APP_BINARY")" = "x86_64 arm64" || \
+            test "$(lipo -archs "$APP_BINARY")" = "arm64 x86_64"
+          test "$(lipo -archs "$X86_APP_BINARY")" = "x86_64"
+          test "$(lipo -archs "$ARM_APP_BINARY")" = "arm64"
+          lipo -info "$APP_BINARY"
+          file "$APP_BINARY"
+          plutil -lint "$APP/Contents/Info.plist"
+
+      - name: Ad-hoc sign app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="dist/app/Arch Rogue.app"
+          # Re-sign after lipo: combining the thin Mach-O slices invalidates
+          # their original signatures. Ad-hoc signing provides valid bundle
+          # integrity; Developer ID signing/notarization can replace this later.
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign --display --verbose=2 "$APP"
+
+      - name: Archive app for Finder-safe distribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sha.outputs.short }}"
+          FINAL="arch-rogue-v${VERSION}-${SHA}-macos-universal.zip"
+          APP="dist/app/Arch Rogue.app"
+          ZIP="dist/final/$FINAL"
+
+          mkdir -p dist/final
+          # `ditto` preserves the bundle layout, executable bit, resource
+          # forks, and extended attributes expected by Finder.
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+
+          # Extract once in CI and verify the exact archive users receive.
+          mkdir -p dist/verify
+          ditto -x -k "$ZIP" dist/verify
+          EXTRACTED_APP="dist/verify/Arch Rogue.app"
+          EXTRACTED_BINARY="$EXTRACTED_APP/Contents/MacOS/arch-rogue"
+          test -x "$EXTRACTED_BINARY"
+          plutil -lint "$EXTRACTED_APP/Contents/Info.plist"
+          lipo -info "$EXTRACTED_BINARY"
+          test -x "$EXTRACTED_APP/Contents/MacOS/arch-rogue-x86_64"
+          test -x "$EXTRACTED_APP/Contents/MacOS/arch-rogue-arm64"
+          codesign --verify --deep --strict --verbose=2 "$EXTRACTED_APP"
+          ls -lh "$ZIP"
+
+      - name: Upload universal app archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-rogue-macos-universal
+          path: dist/final/*.zip
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
-    needs: build
+    needs: [build, combine-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -164,24 +418,35 @@ jobs:
         run: |
           import tomllib, os
           with open("pyproject.toml", "rb") as f:
-              data = tomllib.load(f)
+            data = tomllib.load(f)
           version = data["project"]["version"]
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              out.write(f"version={version}\n")
+            out.write(f"version={version}\n")
 
       - name: Short SHA
         id: sha
         shell: bash
         run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Download build artifacts
+      - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
+          # All five artifacts are pulled: Linux, Windows, the universal
+          # macOS app ZIP, and the two intermediate single-arch macOS builds
+          # (kept as smaller per-architecture fallbacks).
+          pattern: arch-rogue-*
 
-      - name: List release assets
-        run: ls -la release-assets
+      - name: Restore executable bit on raw Unix binaries
+        # The universal app keeps its executable bit inside its `ditto` ZIP.
+        # Restore it here only for the raw Linux and thin macOS fallbacks,
+        # because upload-artifact@v4 does not retain file modes.
+        run: |
+          chmod +x release-assets/arch-rogue-*-linux-x64 \
+                 release-assets/arch-rogue-*-macos-arm64 \
+                 release-assets/arch-rogue-*-macos-x86_64 2>/dev/null || true
+          ls -la release-assets
 
       - name: Create or update release
         uses: softprops/action-gh-release@v2
@@ -197,6 +462,9 @@ jobs:
             Assets:
             - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-windows-x64.exe` — standalone Windows executable
             - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-linux-x64` — standalone Linux binary
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-universal.zip` — Finder-launchable `Arch Rogue.app` (Apple Silicon + Intel)
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-arm64` — macOS Apple Silicon only (smaller)
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-x86_64` — macOS Intel only (smaller)
           files: release-assets/*
           prerelease: true
           make_latest: "false"
