@@ -202,18 +202,28 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 4.2 General refinenements - small quality of life improvements
-- It appears Acolyte's familiar can "see" through walls. Make sure enemy and familiar line of sight (or perception) does not ignore walls. This may be already fixed in 4.1.x but needs to be verified.
-- While inside garden room, player heals little by little and emits visible (greenish) healing glow
-- Scrollbar is needed in settings menu when all options do not fit on screen vertically.
-- Loot drops should be more rare accross the borad. But not by too much.
-- Elites should be harder to kill.
+### 4.3 Mobile support (Android) + APK build
 
-#### 4.2.x Visual refinement
+#### 4.3.0 Android beta
 
-- We need generated asset for relic, use diamond shape similar to game icon. Owl looking quest relic needs to go (delete from game / pixellab). Use game icon as a base and generate new relic sprites. Create one for game logo too (with Arch Rogue text also).
-- Game icon should stay similar diamond shape but modernized with Pixellab
-- Use generated logo with text in main menu
+- Prove the Pygame CE Android toolchain and produce a reproducible, installable debug APK with all assets bundled.
+- Add a landscape-only, safe-area-aware layout based on `build/arch-rogue_mobile_layout.drawio.png`: centered gameplay, left health/mana/stamina and optional character info, right action skills 1–6.
+  - Generate new assets if necessary for mobile
+  - Existing action skill badges can be used
+  - Skills panel may just be rotated to support mobile (or generate new if necessary)
+  - Health/mana/stamina need vertical bars / panel components
+- Add direct world touch for movement/aim plus touch controls for skills, interaction, pause, and every menu/overlay; keep desktop and gamepad controls unchanged.
+- Handle Android Back, pause/resume, audio focus, writable save/options paths, and interrupted-run recovery.
+- Test representative phones/tablets, aspect ratios, and display cutouts; target stable 60 FPS and a complete playable run.
+- Publish a signed beta APK with install, upgrade, feedback, and known-issues notes.
+  - Self-signed apk is good enough for now, since we are in beta
+  - Include necessary steps into gh build release 
+
+#### 4.3.x Beta hardening and release
+
+- Fix beta device, input, layout, lifecycle, and performance issues; add focused regression tests.
+- Automate reproducible APK builds/releases and document the local build process.
+- Exit beta only when all gameplay and menus are touch-operable and save upgrades complete without data loss.
 
 ### Backlog
 
