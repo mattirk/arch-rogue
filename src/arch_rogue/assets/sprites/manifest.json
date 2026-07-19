@@ -191,6 +191,164 @@
           "fps": 4.0,
           "loop": true
         },
+        "attack": {
+          "directions": {
+            "east": [
+              "actors/arcanist/animations/attack/east/frame_000.png",
+              "actors/arcanist/animations/attack/east/frame_001.png",
+              "actors/arcanist/animations/attack/east/frame_002.png",
+              "actors/arcanist/animations/attack/east/frame_003.png",
+              "actors/arcanist/animations/attack/east/frame_004.png",
+              "actors/arcanist/animations/attack/east/frame_005.png",
+              "actors/arcanist/animations/attack/east/frame_006.png"
+            ],
+            "north": [
+              "actors/arcanist/animations/attack/north/frame_000.png",
+              "actors/arcanist/animations/attack/north/frame_001.png",
+              "actors/arcanist/animations/attack/north/frame_002.png",
+              "actors/arcanist/animations/attack/north/frame_003.png",
+              "actors/arcanist/animations/attack/north/frame_004.png",
+              "actors/arcanist/animations/attack/north/frame_005.png",
+              "actors/arcanist/animations/attack/north/frame_006.png",
+              "actors/arcanist/animations/attack/north/frame_007.png",
+              "actors/arcanist/animations/attack/north/frame_008.png"
+            ],
+            "north-east": [
+              "actors/arcanist/animations/attack/north-east/frame_000.png",
+              "actors/arcanist/animations/attack/north-east/frame_001.png",
+              "actors/arcanist/animations/attack/north-east/frame_002.png",
+              "actors/arcanist/animations/attack/north-east/frame_003.png",
+              "actors/arcanist/animations/attack/north-east/frame_004.png",
+              "actors/arcanist/animations/attack/north-east/frame_005.png",
+              "actors/arcanist/animations/attack/north-east/frame_006.png"
+            ],
+            "north-west": [
+              "actors/arcanist/animations/attack/north-west/frame_000.png",
+              "actors/arcanist/animations/attack/north-west/frame_001.png",
+              "actors/arcanist/animations/attack/north-west/frame_002.png",
+              "actors/arcanist/animations/attack/north-west/frame_003.png",
+              "actors/arcanist/animations/attack/north-west/frame_004.png",
+              "actors/arcanist/animations/attack/north-west/frame_005.png",
+              "actors/arcanist/animations/attack/north-west/frame_006.png"
+            ],
+            "south": [
+              "actors/arcanist/animations/attack/south/frame_000.png",
+              "actors/arcanist/animations/attack/south/frame_001.png",
+              "actors/arcanist/animations/attack/south/frame_002.png",
+              "actors/arcanist/animations/attack/south/frame_003.png",
+              "actors/arcanist/animations/attack/south/frame_004.png",
+              "actors/arcanist/animations/attack/south/frame_005.png",
+              "actors/arcanist/animations/attack/south/frame_006.png"
+            ],
+            "south-east": [
+              "actors/arcanist/animations/attack/south-east/frame_000.png",
+              "actors/arcanist/animations/attack/south-east/frame_001.png",
+              "actors/arcanist/animations/attack/south-east/frame_002.png",
+              "actors/arcanist/animations/attack/south-east/frame_003.png",
+              "actors/arcanist/animations/attack/south-east/frame_004.png",
+              "actors/arcanist/animations/attack/south-east/frame_005.png",
+              "actors/arcanist/animations/attack/south-east/frame_006.png"
+            ],
+            "south-west": [
+              "actors/arcanist/animations/attack/south-west/frame_000.png",
+              "actors/arcanist/animations/attack/south-west/frame_001.png",
+              "actors/arcanist/animations/attack/south-west/frame_002.png",
+              "actors/arcanist/animations/attack/south-west/frame_003.png",
+              "actors/arcanist/animations/attack/south-west/frame_004.png",
+              "actors/arcanist/animations/attack/south-west/frame_005.png",
+              "actors/arcanist/animations/attack/south-west/frame_006.png"
+            ],
+            "west": [
+              "actors/arcanist/animations/attack/west/frame_000.png",
+              "actors/arcanist/animations/attack/west/frame_001.png",
+              "actors/arcanist/animations/attack/west/frame_002.png",
+              "actors/arcanist/animations/attack/west/frame_003.png",
+              "actors/arcanist/animations/attack/west/frame_004.png",
+              "actors/arcanist/animations/attack/west/frame_005.png",
+              "actors/arcanist/animations/attack/west/frame_006.png"
+            ]
+          },
+          "fps": 12.0,
+          "loop": false
+        },
+        "cast": {
+          "directions": {
+            "east": [
+              "actors/arcanist/animations/cast/east/frame_000.png",
+              "actors/arcanist/animations/cast/east/frame_001.png",
+              "actors/arcanist/animations/cast/east/frame_002.png",
+              "actors/arcanist/animations/cast/east/frame_003.png",
+              "actors/arcanist/animations/cast/east/frame_004.png",
+              "actors/arcanist/animations/cast/east/frame_005.png",
+              "actors/arcanist/animations/cast/east/frame_006.png"
+            ],
+            "north": [
+              "actors/arcanist/animations/cast/north/frame_000.png",
+              "actors/arcanist/animations/cast/north/frame_001.png",
+              "actors/arcanist/animations/cast/north/frame_002.png",
+              "actors/arcanist/animations/cast/north/frame_003.png",
+              "actors/arcanist/animations/cast/north/frame_004.png",
+              "actors/arcanist/animations/cast/north/frame_005.png",
+              "actors/arcanist/animations/cast/north/frame_006.png"
+            ],
+            "north-east": [
+              "actors/arcanist/animations/cast/north-east/frame_000.png",
+              "actors/arcanist/animations/cast/north-east/frame_001.png",
+              "actors/arcanist/animations/cast/north-east/frame_002.png",
+              "actors/arcanist/animations/cast/north-east/frame_003.png",
+              "actors/arcanist/animations/cast/north-east/frame_004.png",
+              "actors/arcanist/animations/cast/north-east/frame_005.png",
+              "actors/arcanist/animations/cast/north-east/frame_006.png"
+            ],
+            "north-west": [
+              "actors/arcanist/animations/cast/north-west/frame_000.png",
+              "actors/arcanist/animations/cast/north-west/frame_001.png",
+              "actors/arcanist/animations/cast/north-west/frame_002.png",
+              "actors/arcanist/animations/cast/north-west/frame_003.png",
+              "actors/arcanist/animations/cast/north-west/frame_004.png",
+              "actors/arcanist/animations/cast/north-west/frame_005.png",
+              "actors/arcanist/animations/cast/north-west/frame_006.png"
+            ],
+            "south": [
+              "actors/arcanist/animations/cast/south/frame_000.png",
+              "actors/arcanist/animations/cast/south/frame_001.png",
+              "actors/arcanist/animations/cast/south/frame_002.png",
+              "actors/arcanist/animations/cast/south/frame_003.png",
+              "actors/arcanist/animations/cast/south/frame_004.png",
+              "actors/arcanist/animations/cast/south/frame_005.png",
+              "actors/arcanist/animations/cast/south/frame_006.png"
+            ],
+            "south-east": [
+              "actors/arcanist/animations/cast/south-east/frame_000.png",
+              "actors/arcanist/animations/cast/south-east/frame_001.png",
+              "actors/arcanist/animations/cast/south-east/frame_002.png",
+              "actors/arcanist/animations/cast/south-east/frame_003.png",
+              "actors/arcanist/animations/cast/south-east/frame_004.png",
+              "actors/arcanist/animations/cast/south-east/frame_005.png",
+              "actors/arcanist/animations/cast/south-east/frame_006.png"
+            ],
+            "south-west": [
+              "actors/arcanist/animations/cast/south-west/frame_000.png",
+              "actors/arcanist/animations/cast/south-west/frame_001.png",
+              "actors/arcanist/animations/cast/south-west/frame_002.png",
+              "actors/arcanist/animations/cast/south-west/frame_003.png",
+              "actors/arcanist/animations/cast/south-west/frame_004.png",
+              "actors/arcanist/animations/cast/south-west/frame_005.png",
+              "actors/arcanist/animations/cast/south-west/frame_006.png"
+            ],
+            "west": [
+              "actors/arcanist/animations/cast/west/frame_000.png",
+              "actors/arcanist/animations/cast/west/frame_001.png",
+              "actors/arcanist/animations/cast/west/frame_002.png",
+              "actors/arcanist/animations/cast/west/frame_003.png",
+              "actors/arcanist/animations/cast/west/frame_004.png",
+              "actors/arcanist/animations/cast/west/frame_005.png",
+              "actors/arcanist/animations/cast/west/frame_006.png"
+            ]
+          },
+          "fps": 10.0,
+          "loop": false
+        },
         "idle": {
           "directions": {
             "east": [

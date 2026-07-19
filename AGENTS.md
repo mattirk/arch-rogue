@@ -216,24 +216,6 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
   - e.g "Find the stairs to descend deeper" on lower right corner should be placed a bit more down and to the left
   - Apply to other HUD texts as well, e.g. texts in quest info panel
 
-#### 4.2.x Cutscene theater redesign
-
-- We need to re-design stage/theater visuals in cutscenes
-- Now characters are not animated -> create new via MCP tools
-- We need Pixellab generated high end sprites for all stage/theater props
-- Use good taste, make it look of a high production value
-
-##### 4.2.x Cutscene theater additions
-
-- We need "act" animations for archetype characters
-  - South facing acting pose is enough, generate 4 poses per archetype
-- You really need to pay attention to the movement of the actors on stage. Now it looks yanky and unnatural. Also too fast. 
-- Need scrolling for story text when narration is finished
-- Backgrouund looks weird since "Run 1: Depth.." is "leaking" from top left corner. Generate new background to fix this.
-- You need to make pillars separate sprites (generate) and actors need to respect the pillars so that they can't walk through them and are drawn "behind" the pillars visually when walking behind them
-  - Make the friendly NPC clearly hide behind the pillars while hero and villain are fighting
-- Curtains are now not opening as the narration progresses but otherwise better. Maybe try to get the opening effect while preserving good looks. 
-
 ### Backlog
 
 - We need to make the darkess deepen more on lower levels, dark levels look already good, but also other "normal" levels below 5 should feel more dark. (do not implement this yet, user will explicitly request this feature if needed)
@@ -249,4 +231,5 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - Widen Arcanist Frost Nova when gaining appropriate Disciplines (need to make one path dedicated to this), finally affecting the whole room
 - When in Return mode, spirit beast dashes along Ranger when using dash (action skill 4)
 - Is it possible to detect host system display scaling and adjust game scaling accordingly? e.g if display scale on host is 200% -> scale game to 2x
-- We need generated asset for relic. Owl relic needs to go. Use game icon as a base and generate new relic sprites. Create one for game logo too (with Arch Rogue text also).
+- We need generated asset for relic, use diamond shape similar to game icon. Owl looking quest relic needs to go. Use game icon as a base and generate new relic sprites. Create one for game logo too (with Arch Rogue text also).
+- Dedicated room decorations for bosses (floor, walls, props). Generate new via Pixellab for bosses up to level 10 and final boss.
