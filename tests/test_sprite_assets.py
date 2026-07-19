@@ -2235,7 +2235,7 @@ class SpriteAssetTests(unittest.TestCase):
             game = self.make_game(tmpdir, (640, 480))
             game.set_legacy_graphics(True)
             options = json.loads(game.options_path.read_text(encoding="utf-8"))
-            self.assertEqual(options["schema_version"], 4)
+            self.assertEqual(options["schema_version"], 5)
             self.assertTrue(options["legacy_graphics"])
             game.legacy_graphics = False
             self.assertTrue(game.load_options())

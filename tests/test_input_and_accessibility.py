@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -16,6 +17,10 @@ import pygame  # noqa: E402
 
 from arch_rogue.content import ARCHETYPES  # noqa: E402
 from arch_rogue.game import Game  # noqa: E402
+from arch_rogue.options import (  # noqa: E402
+    _scale_from_xresources,
+    ui_scale_from_display_scale,
+)
 from arch_rogue.input import (  # noqa: E402
     Command,
     ControllerManager,
@@ -450,6 +455,114 @@ class CombatAxisIntegrationTests(unittest.TestCase):
             self.assertGreater(bolt.vy, 0.0)
 
 
+class DisplayScaleTests(unittest.TestCase):
+    def test_display_scale_quantizes_to_supported_ui_scales(self) -> None:
+        cases = (
+            (None, 1),
+            (float("nan"), 1),
+            (1.0, 1),
+            (1.25, 1),
+            (1.5, 2),
+            (2.0, 2),
+            (2.5, 3),
+            (3.5, 4),
+            (8.0, 4),
+        )
+        for display_scale, expected in cases:
+            with self.subTest(display_scale=display_scale):
+                self.assertEqual(
+                    ui_scale_from_display_scale(display_scale), expected
+                )
+
+    def test_xft_dpi_matches_reference_two_x_spacing(self) -> None:
+        resources = "Xft.dpi:\t192\nXft.antialias:\t1\n"
+        self.assertEqual(_scale_from_xresources(resources), 2.0)
+        self.assertIsNone(_scale_from_xresources("Xft.antialias:\t1\n"))
+        self.assertIsNone(_scale_from_xresources("Xft.dpi:\tbroken\n"))
+
+    def test_auto_scale_refresh_and_manual_override_cycle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.ui_scale_auto = True
+            with patch(
+                "arch_rogue.options.detect_host_display_scale", return_value=2.0
+            ):
+                self.assertTrue(game.refresh_automatic_ui_scale())
+                self.assertEqual(game.ui_scale, 2)
+                self.assertEqual(game.ui_scale_label(), "Auto · 2x")
+
+                game._activate_options_row(game.OPTIONS_ROW_UI_SCALE, True)
+                self.assertFalse(game.ui_scale_auto)
+                self.assertEqual(game.ui_scale, 3)
+                self.assertEqual(game.ui_scale_label(), "3x")
+
+                game.ui_scale = 4
+                self.assertTrue(game.cycle_ui_scale(True))
+                self.assertTrue(game.ui_scale_auto)
+                self.assertEqual(game.ui_scale, 2)
+
+    def test_auto_scale_mode_round_trips_and_rebuilds_fonts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.ui_scale = 2
+            game.ui_scale_auto = True
+            self.assertTrue(game.save_options())
+
+            game.ui_scale = 1
+            game.ui_scale_auto = False
+            game.rebuild_fonts()
+            old_font_height = game.font.get_height()
+            self.assertTrue(game.load_options())
+            self.assertEqual(game.ui_scale, 2)
+            self.assertTrue(game.ui_scale_auto)
+            self.assertGreater(game.font.get_height(), old_font_height)
+
+    def test_legacy_custom_scale_conflicting_with_host_stays_manual(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.ui_scale = 3
+            game.ui_scale_auto = False
+            game._legacy_ui_scale_migration = True
+            with patch(
+                "arch_rogue.options.detect_host_display_scale", return_value=2.0
+            ):
+                self.assertFalse(game.refresh_automatic_ui_scale())
+            self.assertEqual(game.ui_scale, 3)
+            self.assertFalse(game.ui_scale_auto)
+
+    def test_manual_choice_cancels_delayed_legacy_migration(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.ui_scale = 1
+            game.ui_scale_auto = False
+            game._legacy_ui_scale_migration = True
+            with patch(
+                "arch_rogue.options.detect_host_display_scale", return_value=None
+            ):
+                self.assertFalse(game.refresh_automatic_ui_scale())
+            self.assertTrue(game.cycle_ui_scale(True))
+            self.assertFalse(game._legacy_ui_scale_migration)
+            with patch(
+                "arch_rogue.options.detect_host_display_scale", return_value=2.0
+            ):
+                self.assertFalse(game.refresh_automatic_ui_scale())
+            self.assertFalse(game.ui_scale_auto)
+            self.assertEqual(game.ui_scale, 2)
+
+    def test_display_change_event_refreshes_auto_scale(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.ui_scale_auto = True
+            with patch.object(game, "refresh_automatic_ui_scale") as refresh:
+                pygame.event.post(
+                    pygame.event.Event(
+                        pygame.WINDOWDISPLAYCHANGED, display_index=0
+                    )
+                )
+                game.handle_events()
+            refresh.assert_called_once_with()
+
+
 class OptionsPersistenceTests(unittest.TestCase):
     def test_controller_prefs_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -462,8 +575,9 @@ class OptionsPersistenceTests(unittest.TestCase):
             self.assertFalse(game.controller_enabled)
             self.assertEqual(game.last_controller_guid, "abc-123")
             data = game.options_to_dict()
-            self.assertEqual(data["schema_version"], 4)
+            self.assertEqual(data["schema_version"], 5)
             self.assertIn("gamepad_mapping", data)
+            self.assertTrue(data["ui_scale_auto"])
             self.assertFalse(data["legacy_graphics"])
 
     def test_missing_display_and_difficulty_fields_use_fresh_defaults(self) -> None:
@@ -479,6 +593,7 @@ class OptionsPersistenceTests(unittest.TestCase):
             )
             self.assertTrue(game.load_options())
             self.assertTrue(game.fullscreen)
+            self.assertTrue(game.ui_scale_auto)
             self.assertEqual(game.difficulty_profile().name, "Medium")
             self.assertEqual(
                 game.gamepad_mapping["gameplay_buttons"],
@@ -503,13 +618,18 @@ class OptionsPersistenceTests(unittest.TestCase):
                 "run_history": [],
             }
             game.options_path.write_text(json.dumps(old), encoding="utf-8")
-            self.assertTrue(game.load_options())
+            with patch(
+                "arch_rogue.options.detect_host_display_scale", return_value=2.0
+            ):
+                self.assertTrue(game.load_options())
             # Missing controller fields default to enabled / no preferred device.
             self.assertTrue(game.controller_enabled)
             self.assertEqual(game.last_controller_guid, "")
             # Explicit legacy values remain authoritative despite new defaults.
             self.assertTrue(game.audio_enabled)
             self.assertFalse(game.fullscreen)
+            self.assertTrue(game.ui_scale_auto)
+            self.assertEqual(game.ui_scale, 2)
             self.assertEqual(game.difficulty_profile().name, "Hard")
 
 

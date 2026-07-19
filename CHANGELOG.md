@@ -1,5 +1,33 @@
 # Changelog
 
+## 4.2.6 — Display-Aware UI Scaling
+
+Milestone 4.2.6 makes the UI spacing follow the host desktop scale automatically. The supplied 4K Cinnamon/X11 references use `Xft.dpi: 192`, which now resolves to `Auto · 2x` before fonts and menu geometry are built.
+
+### Added
+
+- Added an `Auto` mode to the existing `1x–4x` UI scale setting. Pressing `0` on the Options screen restores automatic scaling; `+` and `-` still select manual larger or smaller scales, with Auto reachable again beyond either end of the manual range.
+- Added dependency-free host scale detection for Windows per-monitor DPI, the backing scale of the macOS display containing the game window, and X11 `Xft.dpi`. `ARCH_ROGUE_DISPLAY_SCALE`, `GDK_SCALE`, and `QT_SCALE_FACTOR` provide safe fallbacks where SDL2 does not expose compositor scaling, including Wayland setups.
+- Added display-change refresh handling so Auto mode can follow the window between monitors where the platform reports the change.
+
+### Changed
+
+- Options schema `5` now persists whether UI scale is automatic or manual. Schema-4 defaults and values already matching the detected host migrate to Auto; conflicting custom legacy scales remain manual overrides.
+- Loading options after game construction now rebuilds fonts and invalidates scale-dependent UI/cutscene caches instead of leaving geometry and font sizes out of sync.
+- Runtime/package release version is `4.2.6`; run saves remain schema `5`.
+
+### Tests
+
+- Added deterministic coverage for display-scale quantization, the reference `192 DPI → 2x` X11 path, Auto/manual cycling, delayed legacy migration, options round trips, font rebuilding, and monitor-change refresh events.
+- Retained responsive title, options, character-selection, HUD, cutscene, scrollbar, and legacy-layout coverage across compact and large resolutions.
+
+### Validation
+
+- Live Cinnamon/X11 probe: `Xft.dpi: 192` detected as display scale `2.0` and UI scale `2x`.
+- `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/python -m unittest discover tests` — 369 tests, all passing; the experimental web build was not run separately.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+- `git diff --check` — clean.
+
 ## 4.2.5 — Final Diamond Brand Selection
 
 Milestone 4.2.5 finalizes the user-reviewed brand refinement: icon variant 4 becomes the application emblem, text-logo layout 1 becomes the modern title lockup, and every circular halo is removed. The packaged title now reads `ARCH <diamond> ROGUE` while retaining the exact approved gothic lettering from 4.2.4.

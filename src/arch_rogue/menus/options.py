@@ -49,7 +49,7 @@ class MenuOptionsMixin:
         rows: list[MenuRow] = [
             ("F", "Fullscreen", "On" if self.g.fullscreen else "Off"),
             ("D", "Difficulty", difficulty_value),
-            ("+ / -", "UI scale", f"{self.g.ui_scale}x"),
+            ("0 / + / -", "UI scale", self.g.ui_scale_label()),
             (
                 "G",
                 "Graphics",

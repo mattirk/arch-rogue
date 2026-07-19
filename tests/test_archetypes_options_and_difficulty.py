@@ -73,6 +73,7 @@ class ArchetypeOptionsDifficultyTests(unittest.TestCase):
                 game.audio_enabled = False
                 game.fullscreen = True
                 game.ui_scale = 3
+                game.ui_scale_auto = False
                 game.difficulty_name = "Hard"
                 game.hell_unlocked = False
                 self.assertTrue(game.save_options())
@@ -83,7 +84,9 @@ class ArchetypeOptionsDifficultyTests(unittest.TestCase):
                 self.assertEqual(loaded_options["version"], 1)
                 self.assertFalse(loaded_options["audio_enabled"])
                 self.assertTrue(loaded_options["fullscreen"])
+                self.assertEqual(loaded_options["schema_version"], 5)
                 self.assertEqual(loaded_options["ui_scale"], 3)
+                self.assertFalse(loaded_options["ui_scale_auto"])
                 self.assertEqual(loaded_options["difficulty"], "Hard")
                 self.assertFalse(loaded_options["hell_unlocked"])
 

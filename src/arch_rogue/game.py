@@ -264,6 +264,7 @@ class Game(
         headless: bool = False,
         save_path: str | Path | None = None,
     ) -> None:
+        self.prepare_display_scaling()
         pygame.init()
         pygame.display.set_caption(f"Arch Rogue {__version__}")
         self.save_path = (
@@ -274,6 +275,8 @@ class Game(
         self.music_enabled = False
         self.fullscreen = True
         self.ui_scale = UI_SCALE
+        self.ui_scale_auto = True
+        self.detected_display_scale: float | None = None
         self.controller_enabled = True
         self.last_controller_guid = ""
         self.difficulty_name = DEFAULT_DIFFICULTY_NAME
@@ -310,6 +313,8 @@ class Game(
             screen_size = (display_info.current_w, display_info.current_h)
         self.windowed_size = screen_size
         self.screen = self.apply_display_mode(headless=headless)
+        if not headless:
+            self.refresh_automatic_ui_scale()
         # Branded window/taskbar icon: the octahedron relic logo. Best-effort —
         # headless/dummy drivers and platforms without bundled assets quietly skip.
         icon_surface = load_icon(64)
@@ -621,6 +626,9 @@ class Game(
                 self.screen = pygame.display.set_mode(
                     self.windowed_size, pygame.RESIZABLE
                 )
+                self.refresh_automatic_ui_scale()
+            elif event.type == pygame.WINDOWDISPLAYCHANGED:
+                self.refresh_automatic_ui_scale()
             elif self.handle_controller_event(event):
                 continue
             elif event.type == pygame.KEYDOWN:
@@ -712,10 +720,14 @@ class Game(
                             self.windowed_size = self.screen.get_size()
                         self.fullscreen = not self.fullscreen
                         self.screen = self.apply_display_mode()
+                        self.refresh_automatic_ui_scale()
                         self.save_options()
                     elif event.key == pygame.K_d:
                         self.options_cursor = self.OPTIONS_ROW_DIFFICULTY
                         self.cycle_difficulty()
+                    elif event.key in (pygame.K_0, pygame.K_KP0):
+                        self.options_cursor = self.OPTIONS_ROW_UI_SCALE
+                        self.enable_automatic_ui_scale()
                     elif event.key in (pygame.K_EQUALS, pygame.K_PLUS):
                         self.options_cursor = self.OPTIONS_ROW_UI_SCALE
                         self._activate_options_row(self.OPTIONS_ROW_UI_SCALE, True)

@@ -1018,15 +1018,12 @@ class InputMixin:
                 self.windowed_size = self.screen.get_size()
             self.fullscreen = not self.fullscreen
             self.screen = self.apply_display_mode()
+            self.refresh_automatic_ui_scale()
             self.save_options()
         elif row == self.OPTIONS_ROW_DIFFICULTY:
             self.cycle_difficulty()
         elif row == self.OPTIONS_ROW_UI_SCALE:
-            self.ui_scale = max(1, min(4, self.ui_scale + (1 if forward else -1)))
-            self.rebuild_fonts()
-            if hasattr(self, "clear_stage_render_cache"):
-                self.clear_stage_render_cache()
-            self.save_options()
+            self.cycle_ui_scale(forward)
         elif row == self.OPTIONS_ROW_GRAPHICS:
             self.set_legacy_graphics(not self.legacy_graphics)
         elif row == self.OPTIONS_ROW_CONTROLLER:

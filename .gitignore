@@ -19,3 +19,4 @@ gen_relic_previews.py
 guest_template_active.png
 guest_template_resolved.png
 relic_previews/
+ui_scale_reference/
