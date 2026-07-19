@@ -46,8 +46,13 @@ class MenuOptionsMixin:
             controller_value = "Off"
         else:
             controller_value = "None connected"
+        display_row: MenuRow = (
+            ("F", "Render quality", self.g.render_quality_label())
+            if self.g.mobile_mode
+            else ("F", "Fullscreen", "On" if self.g.fullscreen else "Off")
+        )
         rows: list[MenuRow] = [
-            ("F", "Fullscreen", "On" if self.g.fullscreen else "Off"),
+            display_row,
             ("D", "Difficulty", difficulty_value),
             ("0 / + / -", "UI scale", self.g.ui_scale_label()),
             (

@@ -49,6 +49,90 @@ _XFT_DPI_PATTERN = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+MOBILE_RENDER_QUALITY_PERFORMANCE = "performance"
+MOBILE_RENDER_QUALITY_BALANCED = "balanced"
+MOBILE_RENDER_QUALITY_NATIVE = "native"
+MOBILE_RENDER_QUALITY_MODES: tuple[str, ...] = (
+    MOBILE_RENDER_QUALITY_PERFORMANCE,
+    MOBILE_RENDER_QUALITY_BALANCED,
+    MOBILE_RENDER_QUALITY_NATIVE,
+)
+MOBILE_RENDER_QUALITY_HEIGHT_CAPS: dict[str, int | None] = {
+    MOBILE_RENDER_QUALITY_PERFORMANCE: 540,
+    MOBILE_RENDER_QUALITY_BALANCED: 720,
+    MOBILE_RENDER_QUALITY_NATIVE: None,
+}
+MOBILE_RENDER_QUALITY_LABELS: dict[str, str] = {
+    MOBILE_RENDER_QUALITY_PERFORMANCE: "Performance · 540p cap",
+    MOBILE_RENDER_QUALITY_BALANCED: "Balanced · 720p cap",
+    MOBILE_RENDER_QUALITY_NATIVE: "Native · full resolution",
+}
+
+
+def default_mobile_render_quality(mobile: bool) -> str:
+    """Return the fresh-install quality default for the active platform."""
+
+    return (
+        MOBILE_RENDER_QUALITY_PERFORMANCE
+        if mobile
+        else MOBILE_RENDER_QUALITY_NATIVE
+    )
+
+
+def normalize_mobile_render_quality(
+    value: object,
+    *,
+    default: str = MOBILE_RENDER_QUALITY_PERFORMANCE,
+) -> str:
+    """Normalize a persisted quality name without depending on runtime state."""
+
+    fallback = str(default).strip().lower()
+    if fallback not in MOBILE_RENDER_QUALITY_MODES:
+        fallback = MOBILE_RENDER_QUALITY_PERFORMANCE
+    quality = str(value).strip().lower() if value is not None else ""
+    return quality if quality in MOBILE_RENDER_QUALITY_MODES else fallback
+
+
+def mobile_logical_resolution(
+    physical_size: tuple[int, int], quality: object
+) -> tuple[int, int]:
+    """Cap render height while retaining aspect ratio and never upscaling."""
+
+    try:
+        width = int(physical_size[0])
+        height = int(physical_size[1])
+    except (IndexError, TypeError, ValueError) as exc:
+        raise ValueError("physical_size must contain two positive integers") from exc
+    if width <= 0 or height <= 0:
+        raise ValueError("physical_size must contain two positive integers")
+
+    mode = normalize_mobile_render_quality(quality)
+    height_cap = MOBILE_RENDER_QUALITY_HEIGHT_CAPS[mode]
+    if height_cap is None or height <= height_cap:
+        return width, height
+
+    logical_height = height_cap
+    logical_width = max(
+        1,
+        min(width, (width * logical_height + height // 2) // height),
+    )
+    return logical_width, logical_height
+
+
+def mobile_render_quality_label(value: object) -> str:
+    """Return the concise options-menu label for a quality mode."""
+
+    return MOBILE_RENDER_QUALITY_LABELS[normalize_mobile_render_quality(value)]
+
+
+def next_mobile_render_quality(value: object, forward: bool = True) -> str:
+    """Cycle through performance, balanced, and native quality modes."""
+
+    quality = normalize_mobile_render_quality(value)
+    index = MOBILE_RENDER_QUALITY_MODES.index(quality)
+    delta = 1 if forward else -1
+    return MOBILE_RENDER_QUALITY_MODES[(index + delta) % len(MOBILE_RENDER_QUALITY_MODES)]
+
 
 def _valid_display_scale(value: Any) -> float | None:
     try:
@@ -231,9 +315,12 @@ def detect_host_display_scale() -> float | None:
 
 class OptionsMixin:
     def prepare_display_scaling(self) -> None:
-        # SDL must declare DPI awareness before its video subsystem starts.
+        # SDL must declare DPI awareness and scaling hints before its video
+        # subsystem starts. Nearest-neighbor output keeps logical pixels crisp.
         if sys.platform == "win32":
             os.environ.setdefault("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2")
+        if getattr(self, "mobile_mode", False):
+            os.environ["SDL_RENDER_SCALE_QUALITY"] = "0"
 
     def _set_ui_scale(
         self,
@@ -309,6 +396,51 @@ class OptionsMixin:
             return f"Auto · {self.ui_scale}x"
         return f"{self.ui_scale}x"
 
+    def render_quality_label(self) -> str:
+        return mobile_render_quality_label(
+            getattr(
+                self,
+                "mobile_render_quality",
+                default_mobile_render_quality(
+                    bool(getattr(self, "mobile_mode", False))
+                ),
+            )
+        )
+
+    def _invalidate_resolution_sized_caches(self) -> None:
+        # Actor animation frames are resolution-independent and expensive to
+        # decode from an APK. Keep them warm when only the logical canvas changes.
+        self._world_layer = None
+        self._screen_flash_surface = None
+        ambient_cache = getattr(self, "ambient_overlay_cache", None)
+        if ambient_cache is not None and hasattr(ambient_cache, "clear"):
+            ambient_cache.clear()
+        if hasattr(self, "reset_lighting_caches"):
+            self.reset_lighting_caches()
+        if hasattr(self, "clear_stage_render_cache"):
+            self.clear_stage_render_cache()
+
+    def cycle_mobile_render_quality(self, forward: bool = True) -> bool:
+        if not getattr(self, "mobile_mode", False):
+            return False
+        current = normalize_mobile_render_quality(
+            getattr(self, "mobile_render_quality", None)
+        )
+        quality = next_mobile_render_quality(current, forward)
+        if quality == current:
+            return False
+
+        self.mobile_render_quality = quality
+        self.fullscreen = True
+        self.screen = self.apply_display_mode()
+        self._mobile_layout_cache = None
+        self.refresh_mobile_safe_insets()
+        self.mobile_layout()
+        self.refresh_automatic_ui_scale()
+        self._invalidate_resolution_sized_caches()
+        self.save_options()
+        return True
+
     def display_size(self) -> tuple[int, int]:
         try:
             sizes = pygame.display.get_desktop_sizes()
@@ -323,10 +455,25 @@ class OptionsMixin:
         if headless:
             return pygame.display.set_mode(self.windowed_size, pygame.HIDDEN)
         if getattr(self, "mobile_mode", False):
-            # Android SDL owns the native surface and orientation. Request the
-            # actual landscape display instead of scaling a fixed 16:9 desktop
-            # canvas, so wide phones and tablets use every safe pixel.
-            return pygame.display.set_mode(self.display_size(), pygame.FULLSCREEN)
+            # Android SDL owns the native landscape surface. Render to a capped
+            # same-aspect logical surface and let SDL's GPU scaler fill the
+            # physical display; low-resolution devices remain native-sized.
+            physical_size = self.display_size()
+            if physical_size[1] > physical_size[0]:
+                # Some Android devices report the boot orientation until the
+                # manifest-locked landscape activity creates its first window.
+                physical_size = (physical_size[1], physical_size[0])
+            logical_size = mobile_logical_resolution(
+                physical_size,
+                getattr(
+                    self,
+                    "mobile_render_quality",
+                    MOBILE_RENDER_QUALITY_PERFORMANCE,
+                ),
+            )
+            return pygame.display.set_mode(
+                logical_size, pygame.FULLSCREEN | pygame.SCALED
+            )
         if self.fullscreen:
             # Use SDL's scaled fullscreen path so the game surface is expanded to
             # the actual monitor instead of being placed unscaled in the top-left
@@ -442,10 +589,16 @@ class OptionsMixin:
     def options_to_dict(self) -> dict[str, Any]:
         return {
             "version": 1,
-            "schema_version": 5,
+            "schema_version": 6,
             "audio_enabled": self.audio_enabled,
             "music_enabled": self.music_enabled,
             "fullscreen": self.fullscreen,
+            "mobile_render_quality": normalize_mobile_render_quality(
+                getattr(self, "mobile_render_quality", None),
+                default=default_mobile_render_quality(
+                    bool(getattr(self, "mobile_mode", False))
+                ),
+            ),
             "ui_scale": self.ui_scale,
             "ui_scale_auto": getattr(self, "ui_scale_auto", True),
             "difficulty": self.difficulty_profile().name,
@@ -468,6 +621,19 @@ class OptionsMixin:
         except (OSError, json.JSONDecodeError):
             return False
         try:
+            schema_version = int(data.get("schema_version", 1))
+            mobile_mode = bool(getattr(self, "mobile_mode", False))
+            legacy_mobile_quality_migration = (
+                mobile_mode
+                and schema_version < 6
+                and "mobile_render_quality" not in data
+            )
+            quality_default = default_mobile_render_quality(mobile_mode)
+            if legacy_mobile_quality_migration:
+                quality_default = MOBILE_RENDER_QUALITY_PERFORMANCE
+            self.mobile_render_quality = normalize_mobile_render_quality(
+                data.get("mobile_render_quality"), default=quality_default
+            )
             self.audio_enabled = bool(data.get("audio_enabled", True))
             self.music_enabled = bool(data.get("music_enabled", False))
             self.fullscreen = bool(data.get("fullscreen", True))
@@ -496,11 +662,18 @@ class OptionsMixin:
             self.gamepad_mapping = normalize_gamepad_mapping(
                 data.get("gamepad_mapping")
             )
-            # Milestone 3.16 - continuous lighting. Missing on older saves
-            # falls back to safe native defaults. The web build forces these
-            # off in make_game.
+            # Milestone 3.16 - continuous lighting. Pre-v6 mobile files already
+            # serialized the old True default, so a no-quality migration must
+            # explicitly switch normal maps off to avoid the cold ARM cache spike.
+            # Schema-v6 choices and non-migrating explicit values stay authoritative.
             self._lighting_enabled = bool(data.get("lighting_enabled", True))
-            self._lighting_normal_maps = bool(data.get("lighting_normal_maps", True))
+            if legacy_mobile_quality_migration:
+                self._lighting_normal_maps = False
+            else:
+                normal_maps_default = False if mobile_mode else True
+                self._lighting_normal_maps = bool(
+                    data.get("lighting_normal_maps", normal_maps_default)
+                )
             # Schema v4 (milestone 4.0): modern asset sprites are the default.
             # Older option files omit this field and migrate to modern graphics;
             # missing individual resources still fall back procedurally.

@@ -232,10 +232,15 @@ class RenderingBaseMixin:
         self, layer: pygame.Surface, dest: pygame.Surface
     ) -> None:
         size = dest.get_size()
+        scaler = (
+            pygame.transform.scale
+            if getattr(self, "mobile_mode", False)
+            else pygame.transform.smoothscale
+        )
         try:
-            pygame.transform.smoothscale(layer, size, dest)
+            scaler(layer, size, dest)
         except (TypeError, ValueError, pygame.error):
-            dest.blit(pygame.transform.smoothscale(layer, size), (0, 0))
+            dest.blit(scaler(layer, size), (0, 0))
 
     def shade(self, color: Color, amount: int) -> Color:
         return (

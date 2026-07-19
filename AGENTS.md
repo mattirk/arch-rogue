@@ -225,6 +225,11 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - Automate reproducible APK builds/releases and document the local build process.
 - Exit beta only when all gameplay and menus are touch-operable and save upgrades complete without data loss.
 
+#### 4.3.x Android performance
+
+- How locked are we into the device resolution? Can performance be improved by adjusting resolution?
+- Is there something in packaging that could improve performance on Android? Are we using all the latest libraries, SDK, and other middleware?
+
 ### Backlog
 
 - We need to make the darkess deepen more on lower levels, dark levels look already good, but also other "normal" levels below 5 should feel more dark. (do not implement this yet, user will explicitly request this feature if needed)

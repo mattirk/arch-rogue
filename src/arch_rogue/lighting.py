@@ -36,8 +36,9 @@ with a continuous, multi-source, colored light buffer:
 * :class:`LightingMixin` is composed into :class:`arch_rogue.rendering.RenderingMixin`
   and supplies ``draw_lighting``, the per-frame entry point called between
   ``draw_world_objects`` and ``draw_ambient_depth_overlay``. Each frame it
-  clears a reused half-resolution ``SRCALPHA`` buffer, stamps the theme-tinted
-  ambient wash, blits cached radial light sprites with ``BLEND_RGBA_ADD`` for
+  clears a reused downsampled ``SRCALPHA`` buffer (half-resolution on desktop,
+  smaller on mobile quality tiers), stamps the theme-tinted ambient wash, and blits
+  cached radial light sprites with ``BLEND_RGBA_ADD`` for
   the player lantern / static torches & shrines / transient skill, projectile
   and impact pulses, then smoothscales the buffer up and composites it onto the
   screen with ``BLEND_RGBA_MULT``. No surface is allocated in the hot path: the
@@ -176,16 +177,12 @@ def mix_color(a: Color, b: Color, ratio: float) -> Color:
     )
 
 
-def light_radius_px(world_radius: float) -> int:
-    """Convert a world-tile light radius to a half-res sprite radius.
+def light_radius_px(
+    world_radius: float, buffer_scale: int = LIGHT_BUFFER_SCALE
+) -> int:
+    """Convert a world-tile light radius to light-buffer pixels."""
 
-    The light buffer is half-resolution, so light sprites are sized in
-    half-res pixels to match (a full-res sprite would be clipped to the
-    buffer and waste fill/blit work). A world-space circle projects to a
-    screen ellipse under the iso transform; a screen circle of this radius
-    reads as the same reach in the dominant directions.
-    """
-    return max(4, int(world_radius * TILE_W * 0.46 / LIGHT_BUFFER_SCALE))
+    return max(4, int(world_radius * TILE_W * 0.46 / max(1, buffer_scale)))
 
 
 def hashable_color(color: Color) -> Color:
@@ -234,6 +231,17 @@ class LightingMixin:
     def flicker_enabled(self) -> bool:
         # Lantern/torch flicker is always on when the lighting model is on.
         return self.lighting_enabled()
+
+    def light_buffer_scale(self) -> int:
+        """Return the lighting downsample divisor for the active platform tier."""
+
+        if getattr(self, "mobile_mode", False):
+            quality = getattr(self, "mobile_render_quality", "performance")
+            if quality == "performance":
+                return 4
+            if quality == "balanced":
+                return 3
+        return LIGHT_BUFFER_SCALE
 
     # --- transient light emission (called from combat / add_impact) --
     def add_light(
@@ -504,7 +512,7 @@ class LightingMixin:
             return getattr(self, "view_zoom", 1.0), self.world_to_display
         return 1.0, self.world_to_screen
 
-    def _stamp_ambient(self, buffer: pygame.Surface) -> None:
+    def _stamp_ambient(self, buffer: pygame.Surface, scale: int) -> None:
         theme_color = self._theme_light_color()
         level = self._ambient_level()
         if self.is_current_floor_dark():
@@ -516,7 +524,6 @@ class LightingMixin:
         # over the visible bounds — rect fills, no surface allocations.
         buffer.fill((0, 0, 0, 0))
         ambient = (*shade_color(theme_color, level), 255)
-        scale = LIGHT_BUFFER_SCALE
         # A tile's buffer footprint depends on which surface we shade: display
         # pixels shrink with zoom (post-composite) while layer pixels stay at
         # native world scale (pre-composite). Scale the stamp rect by the
@@ -543,12 +550,13 @@ class LightingMixin:
         screen_w, screen_h = self._screen_size()
         if screen_w <= 0 or screen_h <= 0:
             return
-        buf_w = max(1, screen_w // LIGHT_BUFFER_SCALE)
-        buf_h = max(1, screen_h // LIGHT_BUFFER_SCALE)
+        scale = self.light_buffer_scale()
+        buf_w = max(1, screen_w // scale)
+        buf_h = max(1, screen_h // scale)
         buffer = self._light_buffer(buf_w, buf_h)
 
         # 1) Ambient base (theme-tinted; revealed-tile memory on light floors).
-        self._stamp_ambient(buffer)
+        self._stamp_ambient(buffer, scale)
 
         # 2) Accumulate every active light additively into the buffer.
         # Every light shares one smooth cached sprite per (radius, color)
@@ -563,7 +571,6 @@ class LightingMixin:
         # world scale. The radial sprite cache quantizes to 8px buckets, so the
         # few extra entries per zoom level are bounded and cleared on floor
         # change. At zoom 1.0 this is the original sprite size.
-        scale = LIGHT_BUFFER_SCALE
         eff_zoom, project = self._shade_params()
         lights = self._collect_frame_lights()
         for light in lights:
@@ -577,23 +584,29 @@ class LightingMixin:
             if factor <= 0.0:
                 continue
             sprite = self._radial_light_sprite(
-                int(light_radius_px(light.radius) * eff_zoom), light.color
+                int(light_radius_px(light.radius, scale) * eff_zoom), light.color
             )
-            scratch = self._flicker_scratch(
-                sprite.get_width(), sprite.get_height()
-            )
-            scratch.blit(sprite, (0, 0))
-            f = max(0, min(255, int(255 * factor)))
-            scratch.fill((f, f, f, 255), special_flags=pygame.BLEND_RGBA_MULT)
             sx, sy = project(light.x, light.y)
             sy -= round(light.elevation * TILE_H * eff_zoom)
             bx = sx // scale - sprite.get_width() // 2
             by = sy // scale - sprite.get_height() // 2
+            f = max(0, min(255, int(255 * factor)))
+            if f >= 254:
+                buffer.blit(sprite, (bx, by), special_flags=pygame.BLEND_RGBA_ADD)
+                continue
+            scratch = self._flicker_scratch(
+                sprite.get_width(), sprite.get_height()
+            )
+            scratch.blit(sprite, (0, 0))
+            scratch.fill((f, f, f, 255), special_flags=pygame.BLEND_RGBA_MULT)
             buffer.blit(scratch, (bx, by), special_flags=pygame.BLEND_RGBA_ADD)
 
         # 3) Smoothscale the half-res buffer up to the screen and multiply.
         scratch = self._light_scratch(screen_w, screen_h)
-        pygame.transform.smoothscale(buffer, (screen_w, screen_h), scratch)
+        if getattr(self, "mobile_mode", False):
+            pygame.transform.scale(buffer, (screen_w, screen_h), scratch)
+        else:
+            pygame.transform.smoothscale(buffer, (screen_w, screen_h), scratch)
         self.screen.blit(scratch, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
 
     # --- lit-actor shading (feature 6) ------------------------------

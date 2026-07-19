@@ -83,9 +83,8 @@ DUNGEON_WALL_VARIANTS = 4
 DUNGEON_FLOOR_VARIANTS = 4
 
 # Milestone 3.16 — continuous multi-source colored lighting model.
-# The light buffer is rendered at 1/LIGHT_BUFFER_SCALE resolution and
-# smoothscaled up to the screen for the multiply pass; half-res keeps the
-# compositing cheap and the gradients smooth with zero per-frame allocations.
+# Desktop light-buffer divisor. Mobile quality tiers can increase this at
+# runtime before the reused buffer is scaled into the world multiply pass.
 LIGHT_BUFFER_SCALE = 2
 # Player lantern: warm firelight. The lantern radius reuses the sight radius so
 # the lit area and the combat/LOS reach stay identical.

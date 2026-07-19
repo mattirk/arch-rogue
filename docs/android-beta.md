@@ -1,6 +1,6 @@
 # Arch Rogue Android Beta
 
-Release **4.3.1** ships a landscape-only Android beta APK built from the same
+Release **4.3.2** ships a landscape-only Android beta APK built from the same
 Python/pygame-ce codebase as the desktop release.  This document is the source
 of truth for installing, building, and reporting issues with the beta.
 
@@ -33,7 +33,30 @@ of truth for installing, building, and reporting issues with the beta.
 - **Menus:** tap rows directly, or use the on-screen Back / arrows / Select
   buttons at the bottom of every menu and overlay.
 - **Android Back:** closes the topmost overlay, opens the pause sheet in
-  gameplay, and never silently commits a story-relic choice.
+gameplay, and never silently commits a story-relic choice.
+
+## Performance and render quality
+
+Android defaults to **Performance** render quality. The game keeps the device's
+full landscape aspect ratio but renders at no more than 540 pixels high, uploads
+that smaller logical framebuffer, and lets SDL's accelerated renderer scale it
+to the physical display. This avoids CPU-rendering every pixel of a 1080p/1440p
+phone or tablet while preserving touch coordinates and safe-area insets.
+
+The first Options row cycles the available tiers:
+
+- **Performance · 540p cap** — recommended for phones; quarter-resolution
+  continuous lighting and normal-map detail off by default.
+- **Balanced · 720p cap** — sharper output on faster phones/tablets; one-third-
+  resolution lighting.
+- **Native · full resolution** — diagnostic/high-end mode; can be dramatically
+  slower because Pygame's world remains CPU-rendered before presentation.
+
+Upgrades from 4.3.0/4.3.1 migrate to Performance and disable generated normal
+maps once. You can re-enable **Lighting detail** explicitly after confirming the
+device remains smooth. If Performance is still slow, turn **Lighting** off and
+include the device model, Android version, physical resolution, and selected
+tier in the report.
 
 ## Lifecycle
 
@@ -72,6 +95,21 @@ python tools/validate_android_apk.py \
   --source-dir src --spec buildozer.spec bin/<apk-name>.apk
 ```
 
+To compare mobile CPU rendering tiers without an Android device, use the
+fixed-step profiler. `--width` and `--height` are the physical device size; the
+selected quality computes the same logical surface used by Android:
+
+```bash
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+  .venv/bin/python tools/profile_game.py \
+  --scenario crowd --mobile --mobile-quality performance \
+  --width 2340 --height 1080 --frames 240
+```
+
+The dummy driver measures relative Python/SDL surface work, not Android's GPU,
+SurfaceFlinger, scheduler, or thermal behavior. Use `adb shell top`, `dumpsys
+meminfo`, and Perfetto for final device-side attribution.
+
 ## CI
 
 The `Build & Release` workflow builds and uploads the debug APK on every push to
@@ -84,5 +122,6 @@ The `Build & Release` workflow builds and uploads the debug APK on every push to
   the safe interior.
 - The debug APK is not signed by a Google Play upload key; install it outside
   Play.  A signed release track is a 4.3.x goal.
-- Performance and cutout behavior vary across devices; report frame timing and
-  device model with any issue.
+- Performance and cutout behavior vary across devices. Performance mode is the
+  supported baseline; report frame timing, render tier, physical resolution,
+  Android version, and device model with any issue.

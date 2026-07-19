@@ -1,5 +1,33 @@
 # Changelog
 
+## 4.3.2 — Android Render Performance
+
+Release 4.3.2 fixes the Android beta's unusable native-resolution software-rendering path, which could fall to roughly 1 FPS on phones. Android now renders an aspect-preserving logical framebuffer and uses SDL's accelerated renderer to scale it to the physical display.
+
+### Added
+
+- A persisted mobile **Render quality** setting reuses the first Options row: Performance caps logical height at 540p, Balanced at 720p, and Native retains every physical display pixel. Fresh and upgraded mobile installs default to Performance; desktop display behavior is unchanged.
+- `tools/profile_game.py --mobile --mobile-quality <performance|balanced|native>` profiles the real safe-area/mobile viewport at a requested physical device size and reports sprite decode/build cache activity alongside update/render timings.
+
+### Changed
+
+- Android display creation now combines `pygame.FULLSCREEN | pygame.SCALED`. Pygame CE creates an SDL accelerated renderer and uploads only the capped logical streaming texture; the GPU performs the final scale to the full landscape display. Aspect ratio, normalized finger input, and scaled safe-area insets remain correct on phones and tablets.
+- Performance mode renders only 25% as many root pixels as a representative 2340×1080 phone (1170×540), downsamples continuous lighting to quarter resolution, uses nearest-neighbor mobile light/world compositing, and omits the redundant full-viewport ambient alpha pass while continuous lighting is active. Balanced uses a one-third-resolution light buffer; Native retains the original half-resolution buffer.
+- Fresh mobile installs disable generated normal-map detail, and pre-schema-6 mobile options migrate to Performance with normal maps off. Explicit schema-6 choices remain authoritative.
+- Screen flashes reuse a size-matched surface instead of allocating a full frame for every flash, resolution changes preserve expensive decoded actor animation frames, and suspended Android apps throttle to 10 Hz without updating or drawing.
+- Runtime/package release version is `4.3.2`; options advance to schema `6`, while run saves remain schema `5` and load unchanged.
+
+### Validation
+
+- Deterministic crowded-floor mobile profile at a physical 2340×1080: Native rendered at 16.923 ms/frame; Performance rendered at 9.051 ms/frame (46.5% less host render CPU). Continuous lighting fell from about 3.52 to 0.90 ms/frame (74% less). This deliberately excludes the additional Android-side gain from replacing a 2.53 MP native upload with a 0.63 MP GPU-scaled logical texture.
+- 540p safe-area smoke render at 1170×540 confirmed readable HUD text, six action buttons, all resource bars/utilities, and an unobstructed 874×516 world viewport with asymmetric cutout insets.
+- Focused mobile, lifecycle, input, lighting, and viewport suite: 99 tests, all passing.
+- `./tools/build_android.sh debug` produced `bin/archrogue-4.3.2-arm64-v8a_armeabi-v7a-debug.apk` (70 MiB, SHA-256 `ffe5c3210342d76609b02abc9974b3ca5f012bc12f0bb2b4fc82ec5837e62db6`). The mandatory audit found root `main.pyc` and 104 correct ELF extensions for each ARM ABI.
+- Android `aapt` confirmed version 4.3.2, API 28/34, landscape `PythonActivity`, both native ABIs, and no permissions; `apksigner` verified the V2 debug signature.
+- `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/python -m unittest discover tests` — 415 tests, all passing.
+- `.venv/bin/python -m compileall -q src tests tools`, shell syntax checks, and `git diff --check` — OK.
+- No ADB device or Android emulator was available, so final physical-device FPS and logcat validation must be performed after installing this APK.
+
 ## 4.3.1 — Android Launch and ABI Hardening
 
 Release 4.3.1 fixes the Android beta APK startup failure caused by a desktop x86_64 pygame-ce wheel being packaged into both ARM Python bundles, and makes the SDL2 bootstrap entry point reproducible from checked-in source.
@@ -20,7 +48,12 @@ Release 4.3.1 fixes the Android beta APK startup failure caused by a desktop x86
 
 ### Validation
 
-- Validation results are recorded after the repaired APK is rebuilt below.
+- `./tools/build_android.sh debug` produced the audited 70 MiB dual-ABI `bin/archrogue-4.3.1-arm64-v8a_armeabi-v7a-debug.apk`.
+- The source/APK validator found root `main.pyc`, `pygame.base`, `pygame.system`, PyJNIus, and 104 architecture-correct ELF extensions in each bundle (`EM_AARCH64` for `arm64-v8a`, `EM_ARM` for `armeabi-v7a`), with no desktop `pygame_ce.libs` payload.
+- Android `aapt` confirmed package `org.archrogue.archrogue`, version 4.3.1, API 28/34, landscape `PythonActivity`, both target ABIs, and no bogus blank permission; `apksigner` verified the debug APK's V2 signature.
+- `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/python -m unittest discover tests` — 407 tests, all passing.
+- `.venv/bin/python -m compileall -q src tests tools`, shell syntax checks, and `git diff --check` — OK.
+- No Android device was connected, so installation/logcat launch smoke testing remained external to this workstation.
 
 ## 4.3.0 — Android Beta
 

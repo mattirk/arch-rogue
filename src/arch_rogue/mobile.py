@@ -777,6 +777,7 @@ class MobileMixin:
 
     def clear_mobile_memory_caches(self) -> None:
         self._world_layer = None
+        self._screen_flash_surface = None
         for name in (
             "_hud_panel_cache",
             "_hud_icon_cache",

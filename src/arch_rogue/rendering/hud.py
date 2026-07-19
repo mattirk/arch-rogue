@@ -1475,7 +1475,10 @@ class RenderingHudMixin:
             return
         width, height = self.screen.get_size()
         alpha = max(0, min(120, int(120 * (self.screen_flash_ttl / 0.30))))
-        overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+        overlay = getattr(self, "_screen_flash_surface", None)
+        if overlay is None or overlay.get_size() != (width, height):
+            overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+            self._screen_flash_surface = overlay
         overlay.fill((*self.screen_flash_color, alpha))
         self.screen.blit(overlay, (0, 0))
 

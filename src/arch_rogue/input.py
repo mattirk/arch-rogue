@@ -756,6 +756,7 @@ class InputMixin:
     # Options menu row order (matches MenuOptionsMixin.draw_options_menu).
     # Grouped: Display (0-3), Controls (4-5), Audio (6-7), Lights (8-9), Back (10).
     OPTIONS_ROW_COUNT = 11
+    # Reused as Render quality on mobile; row count/order intentionally match desktop.
     OPTIONS_ROW_FULLSCREEN = 0
     OPTIONS_ROW_DIFFICULTY = 1
     OPTIONS_ROW_UI_SCALE = 2
@@ -1025,7 +1026,7 @@ class InputMixin:
             self.save_options()
         elif row == self.OPTIONS_ROW_FULLSCREEN:
             if getattr(self, "mobile_mode", False):
-                self.fullscreen = True
+                self.cycle_mobile_render_quality(forward)
                 return
             if not self.fullscreen:
                 self.windowed_size = self.screen.get_size()

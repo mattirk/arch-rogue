@@ -137,6 +137,8 @@ class AssetSpriteLibrary:
         self.manifest: dict[str, Any] = {}
         self.available = False
         self.load_error = ""
+        self.source_load_count = 0
+        self.frame_build_count = 0
         self._source_cache: _LruCache[str, pygame.Surface] = _LruCache(48)
         self._frame_cache: _LruCache[tuple[object, ...], ResolvedSpriteFrame] = (
             _LruCache(320)
@@ -326,6 +328,7 @@ class AssetSpriteLibrary:
                 surface = surface.convert_alpha()
             except pygame.error:
                 surface = surface.copy()
+            self.source_load_count += 1
         except (OSError, RuntimeError, ValueError, pygame.error) as exc:
             self._warn_missing_once(path, exc)
             return None
@@ -401,6 +404,7 @@ class AssetSpriteLibrary:
             "asset",
             identity,
         )
+        self.frame_build_count += 1
         return self._frame_cache.put(cache_key, frame)
 
     def _actor_slug(self, name: str, kind: str = "") -> str | None:
@@ -755,6 +759,8 @@ class AssetSpriteLibrary:
             "actor_resolution_keys": len(self._resolved_actor_cache),
             "world_surfaces": len(self._world_cache),
             "missing_resources": len(self._missing_resources),
+            "source_loads": self.source_load_count,
+            "frame_builds": self.frame_build_count,
         }
 
 

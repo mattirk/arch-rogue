@@ -124,7 +124,7 @@ from .models import (
     Tile,
     Trap,
 )
-from .options import OptionsMixin
+from .options import OptionsMixin, default_mobile_render_quality
 from .population import PopulationMixin
 from .quest_assets import (
     ActiveQuestCutscene,
@@ -296,6 +296,7 @@ class Game(
         self.audio_enabled = True
         self.music_enabled = False
         self.fullscreen = True
+        self.mobile_render_quality = default_mobile_render_quality(self.mobile_mode)
         self.ui_scale = UI_SCALE
         self.ui_scale_auto = True
         self.detected_display_scale: float | None = None
@@ -304,12 +305,11 @@ class Game(
         self.difficulty_name = DEFAULT_DIFFICULTY_NAME
         self.hell_unlocked = False
         self.hell_unlocked_this_run = False
-        # Milestone 3.16 - continuous colored lighting options. Defaults are
-        # native-friendly (lighting + normal maps on, flicker on). The web
-        # build forces these off in web/main.make_game so the 3.8.0 per-tile
-        # alpha path remains the web-safe default.
+        # Milestone 3.16 - continuous colored lighting options. Normal maps stay
+        # on by default on desktop, but fresh mobile installs avoid their cold
+        # ARM cache spike. The web build forces lighting off in web/main.make_game.
         self._lighting_enabled = True
-        self._lighting_normal_maps = True
+        self._lighting_normal_maps = not self.mobile_mode
         # Asset sprites are the production default. The persisted legacy toggle
         # keeps the original procedural renderer available on constrained systems
         # and as a per-install compatibility fallback.
@@ -623,9 +623,13 @@ class Game(
 
     def run(self) -> None:
         while self.running:
-            dt = min(self.clock.tick(FPS) / 1000.0, 0.05)
+            suspended = self.mobile_mode and self.mobile_suspended
+            target_fps = 10 if suspended else FPS
+            dt = min(self.clock.tick(target_fps) / 1000.0, 0.05)
             self.ui_elapsed += dt
             self.handle_events()
+            if self.mobile_mode and self.mobile_suspended:
+                continue
             if self.state == "playing":
                 self.update(dt)
             self.draw()
@@ -794,15 +798,9 @@ class Game(
                         self.save_options()
                     elif event.key == pygame.K_f:
                         self.options_cursor = self.OPTIONS_ROW_FULLSCREEN
-                        if self.mobile_mode:
-                            self.fullscreen = True
-                        else:
-                            if not self.fullscreen:
-                                self.windowed_size = self.screen.get_size()
-                            self.fullscreen = not self.fullscreen
-                            self.screen = self.apply_display_mode()
-                            self.refresh_automatic_ui_scale()
-                            self.save_options()
+                        self._activate_options_row(
+                            self.OPTIONS_ROW_FULLSCREEN, True
+                        )
                     elif event.key == pygame.K_d:
                         self.options_cursor = self.OPTIONS_ROW_DIFFICULTY
                         self.cycle_difficulty()

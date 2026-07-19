@@ -32,6 +32,10 @@ from arch_rogue.content import ARCHETYPES
 from arch_rogue.dungeon import MAP_H, MAP_W
 from arch_rogue.game import Game
 from arch_rogue.models import Tile
+from arch_rogue.options import (
+    MOBILE_RENDER_QUALITY_MODES,
+    mobile_logical_resolution,
+)
 
 FIXED_DT = 1.0 / 60.0
 
@@ -51,6 +55,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--width", type=int, default=960)
     parser.add_argument("--height", type=int, default=540)
     parser.add_argument("--zoom", type=float, default=1.0)
+    parser.add_argument(
+        "--mobile",
+        action="store_true",
+        help="Profile the Android layout and mobile rendering quality path.",
+    )
+    parser.add_argument(
+        "--mobile-quality",
+        choices=MOBILE_RENDER_QUALITY_MODES,
+        default="performance",
+        help="Logical render tier used with --mobile (width/height remain physical).",
+    )
     parser.add_argument(
         "--no-lighting",
         action="store_true",
@@ -78,11 +93,19 @@ def parse_args() -> argparse.Namespace:
 
 
 def prepare_game(args: argparse.Namespace, temp_dir: Path) -> Game:
+    physical_size = (args.width, args.height)
+    render_size = (
+        mobile_logical_resolution(physical_size, args.mobile_quality)
+        if args.mobile
+        else physical_size
+    )
     game = Game(
-        screen_size=(args.width, args.height),
+        screen_size=render_size,
         headless=True,
         save_path=temp_dir / "run.json",
+        mobile=args.mobile,
     )
+    game.mobile_render_quality = args.mobile_quality
     game.options_path = temp_dir / "options.json"
     game.rng.seed(args.seed)
     game.restart(ARCHETYPES[2])  # Fixed archetype keeps player asset setup deterministic.
@@ -170,12 +193,17 @@ def main() -> None:
         with tempfile.TemporaryDirectory(prefix="arch-rogue-profile-") as temp_name:
             game = prepare_game(args, Path(temp_name))
             enemy_count = len(game.enemies)
+            cache_before = game.sprites.cache_stats()
             update_profile, render_profile, update_seconds, render_seconds = run_profile(
                 game, args.warmup, args.frames
             )
+            cache_after = game.sprites.cache_stats()
 
-            update_path = output_dir / f"{args.scenario}-update.prof"
-            render_path = output_dir / f"{args.scenario}-render.prof"
+            profile_name = args.scenario
+            if args.mobile:
+                profile_name = f"{profile_name}-mobile-{args.mobile_quality}"
+            update_path = output_dir / f"{profile_name}-update.prof"
+            render_path = output_dir / f"{profile_name}-render.prof"
             update_profile.dump_stats(update_path)
             render_profile.dump_stats(render_path)
 
@@ -183,11 +211,21 @@ def main() -> None:
                 "Profile summary: "
                 f"scenario={args.scenario} seed={args.seed} depth={args.depth} "
                 f"frames={args.frames} enemies={enemy_count} zoom={args.zoom:.2f} "
-                f"lighting={'off' if args.no_lighting else 'on'}"
+                f"lighting={'off' if args.no_lighting else 'on'} "
+                f"mobile={args.mobile} quality={args.mobile_quality} "
+                f"render_size={game.screen.get_size()} "
+                f"viewport={game.mobile_world_viewport().size if args.mobile else game.screen.get_size()}"
             )
             print(
                 f"Profiled update: {update_seconds * 1000.0 / args.frames:.3f} ms/frame; "
                 f"render: {render_seconds * 1000.0 / args.frames:.3f} ms/frame"
+            )
+            print(
+                "Asset cache: "
+                f"{cache_after}; profile loads="
+                f"{cache_after.get('source_loads', 0) - cache_before.get('source_loads', 0)}, "
+                f"frame builds="
+                f"{cache_after.get('frame_builds', 0) - cache_before.get('frame_builds', 0)}"
             )
             print(f"Profiles: {update_path} and {render_path}")
             print_profile("Update", update_profile, args.top)

@@ -116,7 +116,7 @@ Use the deterministic fixed-step harness to profile simulation and rendering sep
 .venv/bin/python tools/profile_game.py --scenario crowd --frames 240
 ```
 
-`--scenario quiet` profiles an unmodified generated floor; `crowd` clusters the generated population into an open arena to stress collisions, combat effects, sprites, and lighting. Use `--no-lighting`, `--depth`, `--zoom`, and `--output-dir` for focused comparisons. The harness prints cumulative hotspots and writes separate `cProfile` files for update and render work under `build/profiles/` by default.
+`--scenario quiet` profiles an unmodified generated floor; `crowd` clusters the generated population into an open arena to stress collisions, combat effects, sprites, and lighting. Use `--no-lighting`, `--depth`, `--zoom`, and `--output-dir` for focused comparisons. For the Android layout and logical-resolution tiers, pass the physical device size plus `--mobile --mobile-quality performance` (or `balanced` / `native`), for example `--width 2340 --height 1080`. The harness prints cumulative hotspots, render/viewport dimensions, asset-cache activity, and separate `cProfile` files for update and render work under `build/profiles/` by default.
 
 ## Controls
 

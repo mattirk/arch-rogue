@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -20,6 +22,17 @@ from arch_rogue.mobile import (
     SafeInsets,
     build_mobile_layout,
     detect_mobile_runtime,
+)
+from arch_rogue.options import (
+    MOBILE_RENDER_QUALITY_BALANCED,
+    MOBILE_RENDER_QUALITY_HEIGHT_CAPS,
+    MOBILE_RENDER_QUALITY_MODES,
+    MOBILE_RENDER_QUALITY_NATIVE,
+    MOBILE_RENDER_QUALITY_PERFORMANCE,
+    default_mobile_render_quality,
+    mobile_logical_resolution,
+    mobile_render_quality_label,
+    next_mobile_render_quality,
 )
 
 
@@ -42,6 +55,276 @@ def make_mobile_game(
         game.choose_story_relic_path(0)
     game.active_cutscene = None
     return game
+
+
+class MobileRenderQualityTests(unittest.TestCase):
+    def test_quality_modes_cap_height_without_upscaling_or_aspect_change(self) -> None:
+        self.assertEqual(
+            MOBILE_RENDER_QUALITY_MODES,
+            ("performance", "balanced", "native"),
+        )
+        self.assertEqual(
+            MOBILE_RENDER_QUALITY_HEIGHT_CAPS,
+            {"performance": 540, "balanced": 720, "native": None},
+        )
+        cases = (
+            ((2340, 1080), MOBILE_RENDER_QUALITY_PERFORMANCE, (1170, 540)),
+            ((2340, 1080), MOBILE_RENDER_QUALITY_BALANCED, (1560, 720)),
+            ((2340, 1080), MOBILE_RENDER_QUALITY_NATIVE, (2340, 1080)),
+            ((2560, 1600), MOBILE_RENDER_QUALITY_BALANCED, (1152, 720)),
+            ((800, 480), MOBILE_RENDER_QUALITY_PERFORMANCE, (800, 480)),
+            ((1280, 720), MOBILE_RENDER_QUALITY_BALANCED, (1280, 720)),
+        )
+        for physical, quality, expected in cases:
+            with self.subTest(physical=physical, quality=quality):
+                logical = mobile_logical_resolution(physical, quality)
+                self.assertEqual(logical, expected)
+                self.assertLessEqual(logical[0], physical[0])
+                self.assertLessEqual(logical[1], physical[1])
+                self.assertAlmostEqual(
+                    logical[0] / logical[1],
+                    physical[0] / physical[1],
+                    places=3,
+                )
+
+    def test_quality_defaults_labels_and_cycle_order(self) -> None:
+        self.assertEqual(
+            default_mobile_render_quality(True),
+            MOBILE_RENDER_QUALITY_PERFORMANCE,
+        )
+        self.assertEqual(
+            default_mobile_render_quality(False),
+            MOBILE_RENDER_QUALITY_NATIVE,
+        )
+        self.assertEqual(
+            mobile_render_quality_label(MOBILE_RENDER_QUALITY_PERFORMANCE),
+            "Performance · 540p cap",
+        )
+        self.assertEqual(
+            next_mobile_render_quality(MOBILE_RENDER_QUALITY_PERFORMANCE),
+            MOBILE_RENDER_QUALITY_BALANCED,
+        )
+        self.assertEqual(
+            next_mobile_render_quality(MOBILE_RENDER_QUALITY_PERFORMANCE, False),
+            MOBILE_RENDER_QUALITY_NATIVE,
+        )
+
+    def test_fresh_platform_defaults_and_mobile_scaler_hint(self) -> None:
+        previous_hint = os.environ.get("SDL_RENDER_SCALE_QUALITY")
+        try:
+            os.environ["SDL_RENDER_SCALE_QUALITY"] = "1"
+            with tempfile.TemporaryDirectory() as tmpdir:
+                mobile = Game(
+                    screen_size=(1280, 720),
+                    headless=True,
+                    save_path=Path(tmpdir) / "mobile-run.json",
+                    mobile=True,
+                )
+                desktop = Game(
+                    screen_size=(820, 540),
+                    headless=True,
+                    save_path=Path(tmpdir) / "desktop-run.json",
+                    mobile=False,
+                )
+            self.assertEqual(
+                mobile.mobile_render_quality,
+                MOBILE_RENDER_QUALITY_PERFORMANCE,
+            )
+            self.assertFalse(mobile._lighting_normal_maps)
+            self.assertEqual(
+                desktop.mobile_render_quality,
+                MOBILE_RENDER_QUALITY_NATIVE,
+            )
+            self.assertTrue(desktop._lighting_normal_maps)
+            self.assertEqual(os.environ["SDL_RENDER_SCALE_QUALITY"], "0")
+        finally:
+            if previous_hint is None:
+                os.environ.pop("SDL_RENDER_SCALE_QUALITY", None)
+            else:
+                os.environ["SDL_RENDER_SCALE_QUALITY"] = previous_hint
+
+    def test_mobile_display_mode_uses_mocked_scaled_fullscreen_logical_size(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(1280, 720),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+                mobile=True,
+            )
+            game.mobile_render_quality = MOBILE_RENDER_QUALITY_BALANCED
+            with (
+                patch.object(game, "display_size", return_value=(1080, 2340)),
+                patch(
+                    "arch_rogue.options.pygame.display.set_mode",
+                    return_value=game.screen,
+                ) as set_mode,
+            ):
+                result = game.apply_display_mode()
+            self.assertIs(result, game.screen)
+            set_mode.assert_called_once_with(
+                (1560, 720), pygame.FULLSCREEN | pygame.SCALED
+            )
+
+    def test_mobile_quality_persists_and_old_options_migrate_safely(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(1280, 720),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+                mobile=True,
+            )
+            game.options_path = Path(tmpdir) / "options.json"
+            game.mobile_render_quality = MOBILE_RENDER_QUALITY_BALANCED
+            game._lighting_normal_maps = True
+            self.assertTrue(game.save_options())
+            saved = json.loads(game.options_path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["schema_version"], 6)
+            self.assertEqual(
+                saved["mobile_render_quality"], MOBILE_RENDER_QUALITY_BALANCED
+            )
+
+            game.mobile_render_quality = MOBILE_RENDER_QUALITY_PERFORMANCE
+            game._lighting_normal_maps = False
+            self.assertTrue(game.load_options())
+            self.assertEqual(
+                game.mobile_render_quality, MOBILE_RENDER_QUALITY_BALANCED
+            )
+            self.assertTrue(game._lighting_normal_maps)
+
+            game.options_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "schema_version": 5,
+                        "lighting_normal_maps": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            game.mobile_render_quality = MOBILE_RENDER_QUALITY_NATIVE
+            game._lighting_normal_maps = True
+            self.assertTrue(game.load_options())
+            self.assertEqual(
+                game.mobile_render_quality,
+                MOBILE_RENDER_QUALITY_PERFORMANCE,
+            )
+            self.assertFalse(game._lighting_normal_maps)
+
+            game.options_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "schema_version": 6,
+                        "mobile_render_quality": MOBILE_RENDER_QUALITY_NATIVE,
+                        "lighting_normal_maps": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertTrue(game.load_options())
+            self.assertEqual(game.mobile_render_quality, MOBILE_RENDER_QUALITY_NATIVE)
+            self.assertTrue(game._lighting_normal_maps)
+
+    def test_mobile_options_row_labels_and_activates_quality_without_real_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir)
+            game.state = "options"
+            game.options_cursor = game.OPTIONS_ROW_FULLSCREEN
+            game.options_scroll = 0
+            game.draw_options_menu()
+            self.assertEqual(
+                getattr(game, "_options_visible_rows")[0],
+                ("F", "Render quality", "Performance · 540p cap"),
+            )
+
+            game._world_layer = pygame.Surface((8, 8))
+            game.ambient_overlay_cache[(8, 8, "test", 1)] = pygame.Surface((8, 8))
+            game._light_buffer_surface = pygame.Surface((8, 8))
+            game._stage_surface_cache = {("test",): pygame.Surface((8, 8))}
+            replacement_screen = pygame.Surface((1560, 720))
+            with (
+                patch.object(
+                    game, "apply_display_mode", return_value=replacement_screen
+                ) as apply_mode,
+                patch.object(
+                    game,
+                    "refresh_mobile_safe_insets",
+                    wraps=game.refresh_mobile_safe_insets,
+                ) as refresh_insets,
+                patch.object(
+                    game, "mobile_layout", wraps=game.mobile_layout
+                ) as refresh_layout,
+                patch.object(
+                    game,
+                    "refresh_automatic_ui_scale",
+                    wraps=game.refresh_automatic_ui_scale,
+                ) as refresh_ui_scale,
+                patch.object(
+                    game,
+                    "_invalidate_resolution_sized_caches",
+                    wraps=game._invalidate_resolution_sized_caches,
+                ) as clear_caches,
+                patch.object(
+                    game, "save_options", wraps=game.save_options
+                ) as save_options,
+            ):
+                game._activate_options_row(game.OPTIONS_ROW_FULLSCREEN, True)
+
+            self.assertEqual(
+                game.mobile_render_quality, MOBILE_RENDER_QUALITY_BALANCED
+            )
+            self.assertIs(game.screen, replacement_screen)
+            apply_mode.assert_called_once_with()
+            refresh_insets.assert_called_once_with()
+            refresh_layout.assert_called_once_with()
+            refresh_ui_scale.assert_called_once_with()
+            clear_caches.assert_called_once_with()
+            save_options.assert_called_once_with()
+            self.assertIsNone(game._world_layer)
+            self.assertEqual(game.ambient_overlay_cache, {})
+            self.assertIsNone(game._light_buffer_surface)
+            self.assertEqual(game._stage_surface_cache, {})
+            saved = json.loads(game.options_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                saved["mobile_render_quality"], MOBILE_RENDER_QUALITY_BALANCED
+            )
+
+    def test_mobile_f_shortcut_activates_reused_first_row(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir)
+            game.state = "options"
+            pygame.event.clear()
+            with patch.object(game, "_activate_options_row") as activate:
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_f, mod=0)
+                )
+                game.handle_events()
+            activate.assert_called_once_with(game.OPTIONS_ROW_FULLSCREEN, True)
+            self.assertEqual(game.options_cursor, game.OPTIONS_ROW_FULLSCREEN)
+
+    def test_mobile_lighting_buffer_divisor_tracks_quality_tier(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            viewport = game.mobile_world_viewport()
+            for quality, divisor in (
+                (MOBILE_RENDER_QUALITY_PERFORMANCE, 4),
+                (MOBILE_RENDER_QUALITY_BALANCED, 3),
+                (MOBILE_RENDER_QUALITY_NATIVE, 2),
+            ):
+                with self.subTest(quality=quality):
+                    game.mobile_render_quality = quality
+                    game.reset_lighting_caches()
+                    game.draw()
+                    buffer = game._light_buffer_surface
+                    self.assertIsNotNone(buffer)
+                    assert buffer is not None
+                    self.assertEqual(
+                        buffer.get_size(),
+                        (
+                            max(1, viewport.width // divisor),
+                            max(1, viewport.height // divisor),
+                        ),
+                    )
 
 
 class MobileLayoutTests(unittest.TestCase):

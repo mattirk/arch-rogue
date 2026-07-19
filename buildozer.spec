@@ -13,12 +13,12 @@ package.name = archrogue
 
 # `tools/build_android.sh` rewrites these from pyproject.toml at build time.
 package.domain = org.archrogue
-package.version = 4.3.1
+package.version = 4.3.2
 
 source.dir = src
 source.include_exts = py,png,json
 
-version = 4.3.1
+version = 4.3.2
 
 # Landscape-only: the manifest locks orientation so the safe-area layout is the
 # only one the runtime sees.

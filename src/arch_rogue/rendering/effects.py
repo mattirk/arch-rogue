@@ -92,6 +92,14 @@ class RenderingEffectsMixin:
             return
         if self.is_current_floor_dark():
             return
+        if (
+            getattr(self, "mobile_mode", False)
+            and getattr(self, "mobile_render_quality", "performance") == "performance"
+            and self.lighting_enabled()
+        ):
+            # The continuous lighting buffer already carries the depth tint.
+            # Avoid a second full-viewport alpha blend on the lowest mobile tier.
+            return
         self.screen.blit(self.ambient_overlay_surface(), (0, 0))
 
     def draw_darkness_overlay(self) -> None:

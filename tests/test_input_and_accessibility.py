@@ -19,6 +19,7 @@ import pygame  # noqa: E402
 from arch_rogue.content import ARCHETYPES  # noqa: E402
 from arch_rogue.game import Game  # noqa: E402
 from arch_rogue.options import (  # noqa: E402
+    MOBILE_RENDER_QUALITY_NATIVE,
     _scale_from_xresources,
     ui_scale_from_display_scale,
 )
@@ -742,7 +743,13 @@ class OptionsPersistenceTests(unittest.TestCase):
             self.assertFalse(game.controller_enabled)
             self.assertEqual(game.last_controller_guid, "abc-123")
             data = game.options_to_dict()
-            self.assertEqual(data["schema_version"], 5)
+            self.assertEqual(data["schema_version"], 6)
+            self.assertEqual(
+                data["mobile_render_quality"], MOBILE_RENDER_QUALITY_NATIVE
+            )
+            self.assertEqual(
+                game.mobile_render_quality, MOBILE_RENDER_QUALITY_NATIVE
+            )
             self.assertIn("gamepad_mapping", data)
             self.assertTrue(data["ui_scale_auto"])
             self.assertFalse(data["legacy_graphics"])
