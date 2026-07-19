@@ -1191,6 +1191,139 @@ class SpriteAssetTests(unittest.TestCase):
                         ("arcanist", "cast", "north", 3),
                     )
 
+    def test_rogue_action_clips_are_complete_non_looping_and_wired(self) -> None:
+        library = AssetSpriteLibrary()
+        rogue = library.manifest["actors"]["rogue"]
+        clips = rogue["clips"]
+
+        for state, expected_fps in (("attack", 12.0), ("cast", 10.0)):
+            clip = clips[state]
+            self.assertEqual(clip["fps"], expected_fps)
+            self.assertFalse(clip["loop"])
+            self.assertEqual(set(clip["directions"]), set(DIRECTIONS))
+
+            for direction in DIRECTIONS:
+                with self.subTest(state=state, direction=direction):
+                    frame_paths = clip["directions"][direction]
+                    self.assertEqual(
+                        frame_paths,
+                        [
+                            f"actors/rogue/animations/{state}/{direction}/"
+                            f"frame_{index:03d}.png"
+                            for index in range(7)
+                        ],
+                    )
+                    surfaces = [
+                        library._source_surface(path) for path in frame_paths
+                    ]
+                    self.assertNotIn(None, surfaces)
+                    decoded = [
+                        surface for surface in surfaces if surface is not None
+                    ]
+                    self.assertEqual(len(decoded), 7)
+                    self.assertEqual(
+                        len(
+                            {
+                                pygame.image.tobytes(surface, "RGBA")
+                                for surface in decoded
+                            }
+                        ),
+                        7,
+                    )
+                    for surface in decoded:
+                        self.assertEqual(surface.get_size(), (244, 244))
+                        bounds = surface.get_bounding_rect(min_alpha=1)
+                        self.assertGreater(bounds.width, 0)
+                        self.assertGreater(bounds.height, 0)
+                        self.assertGreaterEqual(bounds.left, 1)
+                        self.assertGreaterEqual(bounds.top, 1)
+                        self.assertLessEqual(bounds.right, 243)
+                        self.assertLessEqual(bounds.bottom, 243)
+
+                    start = library.resolve_actor(
+                        "Rogue",
+                        state,
+                        direction,
+                        0.0,
+                        clip_progress=0.0,
+                    )
+                    midpoint = library.resolve_actor(
+                        "Rogue",
+                        state,
+                        direction,
+                        0.0,
+                        clip_progress=0.5,
+                    )
+                    end = library.resolve_actor(
+                        "Rogue",
+                        state,
+                        direction,
+                        0.0,
+                        clip_progress=1.0,
+                    )
+                    self.assertIsNotNone(start)
+                    self.assertIsNotNone(midpoint)
+                    self.assertIsNotNone(end)
+                    assert start is not None and midpoint is not None and end is not None
+                    self.assertEqual(start.key[2:5], (state, direction, 0))
+                    self.assertEqual(midpoint.key[2:5], (state, direction, 3))
+                    self.assertEqual(end.key[2:5], (state, direction, 6))
+
+    def test_rogue_skills_select_authored_action_clips(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            rogue = next(
+                archetype for archetype in ARCHETYPES if archetype.name == "Rogue"
+            )
+            game.restart(rogue)
+            if game.story_intro_pending:
+                self.assertTrue(game.choose_story_relic_path(0))
+            game.active_cutscene = None
+            game.player.facing_x = -1.0
+            game.player.facing_y = -1.0
+
+            game.player.melee_timer = 0.0
+            game.player.stamina = game.player.max_stamina
+            game.player_melee_attack()
+            self.assertEqual(game.player_visual_state(game.player), "attack")
+            attack = game.sprites.player_visual(
+                "Rogue",
+                "attack",
+                0.0,
+                game.elapsed,
+                direction="north",
+                action_time=0.1,
+                action_progress=0.5,
+            )
+            self.assertTrue(attack.is_asset)
+            self.assertEqual(attack.key[1:5], ("rogue", "attack", "north", 3))
+
+            for skill_name, cast_skill in (
+                ("Knife Fan", game.player_cast_bolt),
+                ("Ambush Bell", game.player_cast_ambush_bell),
+            ):
+                with self.subTest(skill=skill_name):
+                    game.reset_transient_visuals()
+                    game.player.mana = game.player.max_mana
+                    game.player.bolt_timer = 0.0
+                    game.player.class_skill_timer = 0.0
+                    cast_skill()
+                    self.assertEqual(game.player_visual_state(game.player), "cast")
+                    cast = game.sprites.player_visual(
+                        "Rogue",
+                        "cast",
+                        0.0,
+                        game.elapsed,
+                        direction="north",
+                        action_time=0.12,
+                        action_progress=0.5,
+                    )
+                    self.assertTrue(cast.is_asset)
+                    self.assertEqual(
+                        cast.key[1:5],
+                        ("rogue", "cast", "north", 3),
+                    )
+
     def test_ranger_refresh_uses_reviewed_high_resolution_contract(self) -> None:
         library = AssetSpriteLibrary()
         ranger = library.manifest["actors"]["ranger"]

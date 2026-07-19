@@ -3731,6 +3731,162 @@
           "fps": 4.0,
           "loop": true
         },
+        "attack": {
+          "directions": {
+            "east": [
+              "actors/rogue/animations/attack/east/frame_000.png",
+              "actors/rogue/animations/attack/east/frame_001.png",
+              "actors/rogue/animations/attack/east/frame_002.png",
+              "actors/rogue/animations/attack/east/frame_003.png",
+              "actors/rogue/animations/attack/east/frame_004.png",
+              "actors/rogue/animations/attack/east/frame_005.png",
+              "actors/rogue/animations/attack/east/frame_006.png"
+            ],
+            "north": [
+              "actors/rogue/animations/attack/north/frame_000.png",
+              "actors/rogue/animations/attack/north/frame_001.png",
+              "actors/rogue/animations/attack/north/frame_002.png",
+              "actors/rogue/animations/attack/north/frame_003.png",
+              "actors/rogue/animations/attack/north/frame_004.png",
+              "actors/rogue/animations/attack/north/frame_005.png",
+              "actors/rogue/animations/attack/north/frame_006.png"
+            ],
+            "north-east": [
+              "actors/rogue/animations/attack/north-east/frame_000.png",
+              "actors/rogue/animations/attack/north-east/frame_001.png",
+              "actors/rogue/animations/attack/north-east/frame_002.png",
+              "actors/rogue/animations/attack/north-east/frame_003.png",
+              "actors/rogue/animations/attack/north-east/frame_004.png",
+              "actors/rogue/animations/attack/north-east/frame_005.png",
+              "actors/rogue/animations/attack/north-east/frame_006.png"
+            ],
+            "north-west": [
+              "actors/rogue/animations/attack/north-west/frame_000.png",
+              "actors/rogue/animations/attack/north-west/frame_001.png",
+              "actors/rogue/animations/attack/north-west/frame_002.png",
+              "actors/rogue/animations/attack/north-west/frame_003.png",
+              "actors/rogue/animations/attack/north-west/frame_004.png",
+              "actors/rogue/animations/attack/north-west/frame_005.png",
+              "actors/rogue/animations/attack/north-west/frame_006.png"
+            ],
+            "south": [
+              "actors/rogue/animations/attack/south/frame_000.png",
+              "actors/rogue/animations/attack/south/frame_001.png",
+              "actors/rogue/animations/attack/south/frame_002.png",
+              "actors/rogue/animations/attack/south/frame_003.png",
+              "actors/rogue/animations/attack/south/frame_004.png",
+              "actors/rogue/animations/attack/south/frame_005.png",
+              "actors/rogue/animations/attack/south/frame_006.png"
+            ],
+            "south-east": [
+              "actors/rogue/animations/attack/south-east/frame_000.png",
+              "actors/rogue/animations/attack/south-east/frame_001.png",
+              "actors/rogue/animations/attack/south-east/frame_002.png",
+              "actors/rogue/animations/attack/south-east/frame_003.png",
+              "actors/rogue/animations/attack/south-east/frame_004.png",
+              "actors/rogue/animations/attack/south-east/frame_005.png",
+              "actors/rogue/animations/attack/south-east/frame_006.png"
+            ],
+            "south-west": [
+              "actors/rogue/animations/attack/south-west/frame_000.png",
+              "actors/rogue/animations/attack/south-west/frame_001.png",
+              "actors/rogue/animations/attack/south-west/frame_002.png",
+              "actors/rogue/animations/attack/south-west/frame_003.png",
+              "actors/rogue/animations/attack/south-west/frame_004.png",
+              "actors/rogue/animations/attack/south-west/frame_005.png",
+              "actors/rogue/animations/attack/south-west/frame_006.png"
+            ],
+            "west": [
+              "actors/rogue/animations/attack/west/frame_000.png",
+              "actors/rogue/animations/attack/west/frame_001.png",
+              "actors/rogue/animations/attack/west/frame_002.png",
+              "actors/rogue/animations/attack/west/frame_003.png",
+              "actors/rogue/animations/attack/west/frame_004.png",
+              "actors/rogue/animations/attack/west/frame_005.png",
+              "actors/rogue/animations/attack/west/frame_006.png"
+            ]
+          },
+          "fps": 12.0,
+          "loop": false
+        },
+        "cast": {
+          "directions": {
+            "east": [
+              "actors/rogue/animations/cast/east/frame_000.png",
+              "actors/rogue/animations/cast/east/frame_001.png",
+              "actors/rogue/animations/cast/east/frame_002.png",
+              "actors/rogue/animations/cast/east/frame_003.png",
+              "actors/rogue/animations/cast/east/frame_004.png",
+              "actors/rogue/animations/cast/east/frame_005.png",
+              "actors/rogue/animations/cast/east/frame_006.png"
+            ],
+            "north": [
+              "actors/rogue/animations/cast/north/frame_000.png",
+              "actors/rogue/animations/cast/north/frame_001.png",
+              "actors/rogue/animations/cast/north/frame_002.png",
+              "actors/rogue/animations/cast/north/frame_003.png",
+              "actors/rogue/animations/cast/north/frame_004.png",
+              "actors/rogue/animations/cast/north/frame_005.png",
+              "actors/rogue/animations/cast/north/frame_006.png"
+            ],
+            "north-east": [
+              "actors/rogue/animations/cast/north-east/frame_000.png",
+              "actors/rogue/animations/cast/north-east/frame_001.png",
+              "actors/rogue/animations/cast/north-east/frame_002.png",
+              "actors/rogue/animations/cast/north-east/frame_003.png",
+              "actors/rogue/animations/cast/north-east/frame_004.png",
+              "actors/rogue/animations/cast/north-east/frame_005.png",
+              "actors/rogue/animations/cast/north-east/frame_006.png"
+            ],
+            "north-west": [
+              "actors/rogue/animations/cast/north-west/frame_000.png",
+              "actors/rogue/animations/cast/north-west/frame_001.png",
+              "actors/rogue/animations/cast/north-west/frame_002.png",
+              "actors/rogue/animations/cast/north-west/frame_003.png",
+              "actors/rogue/animations/cast/north-west/frame_004.png",
+              "actors/rogue/animations/cast/north-west/frame_005.png",
+              "actors/rogue/animations/cast/north-west/frame_006.png"
+            ],
+            "south": [
+              "actors/rogue/animations/cast/south/frame_000.png",
+              "actors/rogue/animations/cast/south/frame_001.png",
+              "actors/rogue/animations/cast/south/frame_002.png",
+              "actors/rogue/animations/cast/south/frame_003.png",
+              "actors/rogue/animations/cast/south/frame_004.png",
+              "actors/rogue/animations/cast/south/frame_005.png",
+              "actors/rogue/animations/cast/south/frame_006.png"
+            ],
+            "south-east": [
+              "actors/rogue/animations/cast/south-east/frame_000.png",
+              "actors/rogue/animations/cast/south-east/frame_001.png",
+              "actors/rogue/animations/cast/south-east/frame_002.png",
+              "actors/rogue/animations/cast/south-east/frame_003.png",
+              "actors/rogue/animations/cast/south-east/frame_004.png",
+              "actors/rogue/animations/cast/south-east/frame_005.png",
+              "actors/rogue/animations/cast/south-east/frame_006.png"
+            ],
+            "south-west": [
+              "actors/rogue/animations/cast/south-west/frame_000.png",
+              "actors/rogue/animations/cast/south-west/frame_001.png",
+              "actors/rogue/animations/cast/south-west/frame_002.png",
+              "actors/rogue/animations/cast/south-west/frame_003.png",
+              "actors/rogue/animations/cast/south-west/frame_004.png",
+              "actors/rogue/animations/cast/south-west/frame_005.png",
+              "actors/rogue/animations/cast/south-west/frame_006.png"
+            ],
+            "west": [
+              "actors/rogue/animations/cast/west/frame_000.png",
+              "actors/rogue/animations/cast/west/frame_001.png",
+              "actors/rogue/animations/cast/west/frame_002.png",
+              "actors/rogue/animations/cast/west/frame_003.png",
+              "actors/rogue/animations/cast/west/frame_004.png",
+              "actors/rogue/animations/cast/west/frame_005.png",
+              "actors/rogue/animations/cast/west/frame_006.png"
+            ]
+          },
+          "fps": 10.0,
+          "loop": false
+        },
         "idle": {
           "directions": {
             "east": [
