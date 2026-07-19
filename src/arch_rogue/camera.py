@@ -107,11 +107,19 @@ class CameraMixin:
         # zoom 1.0 it is identical to ``world_to_screen``.
         iso_x, iso_y = self.world_to_iso(x, y)
         cam_x, cam_y = self.camera_iso()
-        width, height = self._screen_size()
+        origin_x = origin_y = 0
+        if getattr(self, "mobile_mode", False) and not getattr(
+            self, "_mobile_world_rendering", False
+        ):
+            viewport = self.mobile_world_viewport()
+            width, height = viewport.size
+            origin_x, origin_y = viewport.topleft
+        else:
+            width, height = self._screen_size()
         zoom = getattr(self, "view_zoom", 1.0)
         return (
-            int((iso_x - cam_x) * zoom + width * 0.5),
-            int((iso_y - cam_y) * zoom + height * 0.48),
+            origin_x + int((iso_x - cam_x) * zoom + width * 0.5),
+            origin_y + int((iso_y - cam_y) * zoom + height * 0.48),
         )
 
     def _screen_size(self) -> tuple[int, int]:
@@ -129,7 +137,13 @@ class CameraMixin:
         # by `zoom` to fill the display, so a display pixel maps to layer
         # pixel / zoom. Invert that, then undo the world_to_iso projection.
         cam_x, cam_y = self.camera_iso()
-        width, height = self.screen.get_size()
+        if getattr(self, "mobile_mode", False):
+            viewport = self.mobile_world_viewport()
+            sx -= viewport.x
+            sy -= viewport.y
+            width, height = viewport.size
+        else:
+            width, height = self.screen.get_size()
         zoom = getattr(self, "view_zoom", 1.0)
         iso_x = (sx - width * 0.5) / zoom + cam_x
         iso_y = (sy - height * 0.48) / zoom + cam_y

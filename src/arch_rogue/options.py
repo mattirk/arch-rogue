@@ -263,11 +263,17 @@ class OptionsMixin:
         )
         if not getattr(self, "ui_scale_auto", True) and not legacy_migration:
             return False
-        display_scale = detect_host_display_scale()
+        if getattr(self, "mobile_mode", False) and hasattr(self, "screen"):
+            width, height = self.screen.get_size()
+            display_scale = max(1.0, min(width / 1280.0, height / 720.0))
+            target = max(1, min(4, math.floor(display_scale + 0.5)))
+        else:
+            display_scale = detect_host_display_scale()
+            if display_scale is None:
+                self.detected_display_scale = None
+                return False
+            target = ui_scale_from_display_scale(display_scale)
         self.detected_display_scale = display_scale
-        if display_scale is None:
-            return False
-        target = ui_scale_from_display_scale(display_scale)
         if legacy_migration:
             self._legacy_ui_scale_migration = False
             # Schema 4 always serialized a scale, so it could not distinguish
@@ -316,6 +322,11 @@ class OptionsMixin:
     def apply_display_mode(self, headless: bool = False) -> pygame.Surface:
         if headless:
             return pygame.display.set_mode(self.windowed_size, pygame.HIDDEN)
+        if getattr(self, "mobile_mode", False):
+            # Android SDL owns the native surface and orientation. Request the
+            # actual landscape display instead of scaling a fixed 16:9 desktop
+            # canvas, so wide phones and tablets use every safe pixel.
+            return pygame.display.set_mode(self.display_size(), pygame.FULLSCREEN)
         if self.fullscreen:
             # Use SDL's scaled fullscreen path so the game surface is expanded to
             # the actual monitor instead of being placed unscaled in the top-left

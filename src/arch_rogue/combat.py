@@ -431,12 +431,20 @@ class CombatMixin:
             length = math.hypot(dx, dy)
             self.player.facing_x = dx / length
             self.player.facing_y = dy / length
+        elif getattr(self, "aim_input_mode", "mouse") == "touch":
+            point = getattr(self, "_mobile_touch_world_point", None)
+            if point is not None:
+                self.face_player_toward_screen_point(*point)
         elif getattr(self, "aim_input_mode", "mouse") != "controller":
             self.face_player_toward_screen_point(*pygame.mouse.get_pos())
         else:
             self.snap_controller_aim_to_enemy()
 
     def face_player_toward_screen_point(self, sx: int, sy: int) -> tuple[float, float]:
+        if getattr(self, "mobile_mode", False) and not self.screen_point_in_world_viewport(
+            (sx, sy)
+        ):
+            return 0.0, 0.0
         target_x, target_y = self.screen_to_world(sx, sy)
         dx = target_x - self.player.x
         dy = target_y - self.player.y
@@ -1054,22 +1062,35 @@ class CombatMixin:
                     )
             if self.enemy_in_melee_arc():
                 self.player_melee_attack()
-        elif not petting and pygame.mouse.get_pressed()[0]:
-            dx, dy = self.face_player_toward_screen_point(*pygame.mouse.get_pos())
-            distance = math.hypot(dx, dy)
-            if distance > 0.12:
-                step = min(move_speed * dt, distance - 0.12)
-                moved = self.move_actor(
-                    self.player,
-                    (dx / distance) * step,
-                    (dy / distance) * step,
-                )
-                if moved > 0.0 and dt > 0.0:
-                    self.player.locomotion_anim_scale = (
-                        moved / (dt * PLAYER_MOVE_SPEED)
+        elif not petting:
+            touch_point = (
+                self.active_mobile_world_touch()
+                if getattr(self, "mobile_mode", False)
+                else None
+            )
+            mouse_point = (
+                pygame.mouse.get_pos()
+                if not getattr(self, "mobile_mode", False)
+                and pygame.mouse.get_pressed()[0]
+                else None
+            )
+            target_point = touch_point or mouse_point
+            if target_point is not None:
+                dx, dy = self.face_player_toward_screen_point(*target_point)
+                distance = math.hypot(dx, dy)
+                if distance > 0.12:
+                    step = min(move_speed * dt, distance - 0.12)
+                    moved = self.move_actor(
+                        self.player,
+                        (dx / distance) * step,
+                        (dy / distance) * step,
                     )
-            if self.enemy_in_melee_arc():
-                self.player_melee_attack()
+                    if moved > 0.0 and dt > 0.0:
+                        self.player.locomotion_anim_scale = (
+                            moved / (dt * PLAYER_MOVE_SPEED)
+                        )
+                if self.enemy_in_melee_arc():
+                    self.player_melee_attack()
 
         self.player.melee_timer = max(0.0, self.player.melee_timer - dt)
         self.player.bolt_timer = max(0.0, self.player.bolt_timer - dt)

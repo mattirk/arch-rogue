@@ -1,5 +1,39 @@
 # Changelog
 
+## 4.3.0 — Android Beta
+
+Milestone 4.3.0 adds a landscape-only Android beta build with touch controls, a safe-area-aware mobile HUD, Android lifecycle handling, writable private-storage save/options paths, and an interrupted-run recovery path. Desktop and gamepad behavior is unchanged.
+
+### Added
+
+- `src/arch_rogue/mobile.py`: runtime detection, `SafeInsets`, `MobileLayout`, multitouch capture, universal touch navigation, Android Back/lifecycle handling, and Android private-storage path resolution via `pygame.system.get_pref_path`.
+- Landscape mobile HUD matching `build/arch-rogue_mobile_layout.drawio.png`: centered world viewport, left rail with vertical HP/MP/Stamina bars, optional compact character summary, and Inventory/Character/Quest/Help buttons; right rail with the six existing skill badges; dedicated Interact and Pause targets. Reuses the authored `hud.panel`/`hud.action_slot` assets; no new art required for the beta.
+- True multitouch input via `FINGERDOWN`/`FINGERMOTION`/`FINGERUP`. Direct world touch drives movement/aim; skill/utility/interact/pause touches dispatch the existing semantic `Command`s; menu rows and cutscene choices are tap-selectable; swipes page the quest panel, inventory, and cutscene narration. Touch-emulated mouse events are ignored so inputs never double-fire.
+- Camera viewport awareness: world rendering targets the central viewport subsurface; `screen_to_world` and `world_to_display` translate between display and viewport coordinates; lighting/shading runs on the viewport-sized buffer on mobile.
+- Android lifecycle: `APP_WILLENTERBACKGROUND`/`APP_DIDENTERBACKGROUND` save the run, cancel touches, pause audio, and open the pause sheet; foreground events clear suspension without auto-resuming combat; `APP_TERMINATING` attempts a final save; `APP_LOWMEMORY` drops caches. `K_AC_BACK` maps to `Command.BACK` and never commits a story-relic choice.
+- `AudioSystem.suspend`/`resume` pause and resume `pygame.mixer` and adjust the music transport clock so timing stays correct after a backgrounded period.
+- Interrupted-run recovery: run saves are written through a `.tmp` file with `fsync` before atomic replace; `load_run` and `save_exists` promote a compatible interrupted `.tmp` save when the main file is missing. `recovered_interrupted_run` flags the recovery.
+- Shop and Help are now modal on mobile (simulation pauses while they are open), matching Inventory and Character. Quest info remains non-modal.
+- `buildozer.spec`, `tools/build_android.sh`, and a new `android` CI job in `.github/workflows/build-release.yml` produce and publish a reproducible debug APK with bundled assets; the release job attaches it alongside the desktop binaries. `tools/build_android.sh` pre-seeds every known Android SDK license hash and runs `sdkmanager --licenses` non-interactively (with a two-phase bootstrap fallback) so buildozer can install build-tools and `aidl` in a non-interactive CI shell. `docs/android-beta.md` documents install, upgrade, controls, lifecycle, local build, and known issues.
+- Regression tests: `tests/test_mobile_layout.py` (layout matrix, safe insets, six action targets, multitouch world+skill coexistence, modal nav blocking, Android Back safety) and `tests/test_android_lifecycle.py` (background save/pause, foreground no-auto-resume, audio resume on cancel, terminating save, low-memory cache clear, suspended update no-op, pref-path helper, interrupted `.tmp` recovery).
+
+### Changed
+
+- `Game.__init__` accepts `mobile` and `safe_insets` arguments; `mobile_mode` is auto-detected via `ARCH_ROGUE_MOBILE`, `sys.platform == "android"`, or `ANDROID_ARGUMENT`. Save/options paths use the Android private storage directory on mobile. Fullscreen is forced on and the desktop `RESIZABLE`/`SCALED` path is bypassed on mobile.
+- `OptionsMixin.apply_display_mode` requests the native landscape display on mobile instead of the fixed 2560×1440 desktop canvas. `refresh_automatic_ui_scale` derives a mobile UI scale from the actual landscape surface so HUD/menu text stays readable on phones and tablets.
+- `RenderingBaseMixin.draw` composes menus/overlays into a safe-area subsurface and the world into the viewport subsurface on mobile; the desktop single-surface path is unchanged. `hud_panel_height` returns 0 on mobile so world-adjacent HUD anchors to the viewport.
+- `InputMixin._dispatch_back` now closes Help before shop/inventory and opens the pause sheet (never commits a choice) during the mandatory story intro. `_dispatch_playing` treats Help as modal for input. `_sync_action_aim` is a source-neutral aim helper used by controller, touch, and desktop; `_sync_controller_action_aim` is retained as a compatibility alias.
+- `MenuBaseMixin.draw_menu_rows` publishes `_menu_row_rects` so mobile taps can select rows directly. `RenderingHudMixin._draw_shop_overlay_fitted` publishes `_shop_visible_row_rects`/`_shop_visible_start` for the same reason.
+- Runtime/package release version is `4.3.0`; options remain schema `5` and run saves remain schema `5`.
+
+### Validation
+
+- `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/python -m unittest discover tests` — 398 tests, all passing (was 377 before this milestone; +21 new mobile/lifecycle tests).
+- `.venv/bin/python -m compileall -q src tests` — OK.
+- Headless mobile smoke render confirms the three-column layout, six action targets, twelve gameplay touch targets, and viewport-local `screen_to_world`.
+- `git diff --check` — clean.
+- The Android APK was not built in this environment (no Android SDK/NDK); the buildozer spec, build script, and CI job are configured for the next CI run.
+
 ## 4.2.10 — Universal macOS Build
 
 Milestone 4.2.10 extends the `Build & Release` GitHub Actions workflow to produce a Finder-launchable universal `Arch Rogue.app` that runs natively on both Apple Silicon (arm64) and Intel (x86_64) Macs.

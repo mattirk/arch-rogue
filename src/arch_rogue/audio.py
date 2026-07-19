@@ -80,6 +80,8 @@ class AudioSystem:
         self._music_transport_started_at = 0.0
         self._music_transport_spec: MusicTrackSpec | None = None
         self._music_transport_uses_explicit_clock: bool | None = None
+        self.suspended = False
+        self._suspended_at = 0.0
 
     def initialize(self, headless: bool) -> bool:
         if headless:
@@ -103,6 +105,8 @@ class AudioSystem:
         return True
 
     def play_sfx(self, name: str, enabled: bool = True) -> bool:
+        if self.suspended:
+            return self.available
         if not enabled or not self.available:
             return self.available
         try:
@@ -237,6 +241,8 @@ class AudioSystem:
         uses_explicit_clock = now is not None
         clock = self._clock_value(now)
         self._sync_music_transport(profile, clock, uses_explicit_clock)
+        if self.suspended:
+            return self.available
         if not enabled or not self.available:
             self._stop_music_output()
             return self.available
@@ -281,6 +287,33 @@ class AudioSystem:
         self._music_transport_started_at = 0.0
         self._music_transport_spec = None
         self._music_transport_uses_explicit_clock = None
+
+    def suspend(self) -> None:
+        if self.suspended:
+            return
+        self.suspended = True
+        self._suspended_at = time.monotonic()
+        if not self.available:
+            return
+        try:
+            pygame.mixer.pause()
+        except pygame.error:
+            self.available = False
+
+    def resume(self) -> None:
+        if not self.suspended:
+            return
+        paused_for = max(0.0, time.monotonic() - self._suspended_at)
+        self.suspended = False
+        self._suspended_at = 0.0
+        if self._music_transport_uses_explicit_clock is False:
+            self._music_transport_started_at += paused_for
+        if not self.available:
+            return
+        try:
+            pygame.mixer.unpause()
+        except pygame.error:
+            self.available = False
 
     def sync_music(
         self,

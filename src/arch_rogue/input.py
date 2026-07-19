@@ -904,6 +904,9 @@ class InputMixin:
 
     def _dispatch_back(self) -> bool:
         if self.state == "playing":
+            if self.show_help:
+                self.show_help = False
+                return True
             if self.shop_open:
                 self.close_shop()
                 return True
@@ -915,18 +918,13 @@ class InputMixin:
                 return True
             if self.active_cutscene is not None:
                 if self.story_intro_pending:
-                    choices = self.active_cutscene_choices()
-                    if choices:
-                        index = max(0, min(self.cutscene_cursor, len(choices) - 1))
-                        self.choose_active_cutscene_option(index)
+                    # Back/pause must never commit an irreversible story choice.
+                    self.request_exit_confirmation()
                     return True
                 self.close_active_cutscene()
                 return True
             if self.story_intro_pending:
-                choices = self.story_relic_choice_options()[:3]
-                if choices:
-                    index = max(0, min(self.cutscene_cursor, len(choices) - 1))
-                    self.choose_story_relic_path(index)
+                self.request_exit_confirmation()
                 return True
             self.request_exit_confirmation()
             return True
@@ -1026,6 +1024,9 @@ class InputMixin:
             self.sync_music()
             self.save_options()
         elif row == self.OPTIONS_ROW_FULLSCREEN:
+            if getattr(self, "mobile_mode", False):
+                self.fullscreen = True
+                return
             if not self.fullscreen:
                 self.windowed_size = self.screen.get_size()
             self.fullscreen = not self.fullscreen
@@ -1127,6 +1128,11 @@ class InputMixin:
         self.save_options()
 
     def _dispatch_playing(self, cmd: str) -> bool:
+        if self.show_help:
+            if cmd == Command.HELP:
+                self.show_help = False
+            # Help is modal for input. BACK is handled before state dispatch.
+            return True
         # Active cutscenes get the full controller path (D-pad cursor, A confirm,
         # B skip). This includes mandatory story-intro cutscenes.
         if self.active_cutscene is not None:
@@ -1211,6 +1217,14 @@ class InputMixin:
             if choice_count:
                 step = 1 if cmd == Command.RIGHT else -1
                 self.cutscene_cursor = (self.cutscene_cursor + step) % choice_count
+            return True
+        if cmd == Command.PAGE_UP:
+            page = max(1, getattr(self, "_cutscene_narration_visible_lines", 3) - 1)
+            self.scroll_active_cutscene_narration(-page)
+            return True
+        if cmd == Command.PAGE_DOWN:
+            page = max(1, getattr(self, "_cutscene_narration_visible_lines", 3) - 1)
+            self.scroll_active_cutscene_narration(page)
             return True
         if cmd == Command.CONFIRM:
             if not self.active_cutscene_narration_complete():
@@ -1375,20 +1389,27 @@ class InputMixin:
         if self.character_menu_hovered_node:
             self.choose_discipline(self.character_menu_hovered_node)
 
-    def _sync_controller_action_aim(self) -> None:
-        """Refresh facing from right stick, then apply controller aim assist.
-
-        Controller actions must launch in the direction of the visible aim cone.
-        The cone is stored in `player.facing_x/y`; falling back to mouse aim here
-        would silently rotate the shot away from what gamepad players see.
-        """
+    def _sync_action_aim(self) -> None:
+        """Refresh facing for the active controller, touch, or desktop source."""
+        if getattr(self, "aim_input_mode", "mouse") == "touch":
+            point = getattr(self, "_mobile_touch_world_point", None)
+            if point is not None:
+                self.face_player_toward_screen_point(*point)
+            return
         rx, ry = self.input.right_vec()
-        if rx or ry:
-            length = (rx * rx + ry * ry) ** 0.5
-            if length > 0.0:
-                self.player.facing_x = rx / length
-                self.player.facing_y = ry / length
-        self.snap_controller_aim_to_enemy()
+        if rx or ry or getattr(self, "aim_input_mode", "mouse") == "controller":
+            if rx or ry:
+                length = (rx * rx + ry * ry) ** 0.5
+                if length > 0.0:
+                    self.player.facing_x = rx / length
+                    self.player.facing_y = ry / length
+            self.snap_controller_aim_to_enemy()
+            return
+        self.update_player_aim()
+
+    def _sync_controller_action_aim(self) -> None:
+        """Compatibility alias retained for external controller integrations."""
+        self._sync_action_aim()
 
     def _dispatch_gameplay(self, cmd: str) -> bool:
         if cmd == Command.INTERACT:
@@ -1400,20 +1421,24 @@ class InputMixin:
         if cmd == Command.HELP:
             self.show_help = not self.show_help
             return True
+        if cmd in (Command.PAGE_UP, Command.PAGE_DOWN) and self.quest_info_visible:
+            page = max(1, getattr(self, "_story_panel_visible_lines", 3) - 1)
+            self.scroll_story_panel(-page if cmd == Command.PAGE_UP else page)
+            return True
         if cmd == Command.ABILITY_1:
-            self._sync_controller_action_aim()
+            self._sync_action_aim()
             self.player_melee_attack()
             return True
         if cmd == Command.ABILITY_2:
-            self._sync_controller_action_aim()
+            self._sync_action_aim()
             self.player_cast_bolt()
             return True
         if cmd == Command.ABILITY_3:
-            self._sync_controller_action_aim()
+            self._sync_action_aim()
             self.player_cast_class_skill()
             return True
         if cmd == Command.ABILITY_4:
-            self._sync_controller_action_aim()
+            self._sync_action_aim()
             self.player_dash()
             return True
         if cmd == Command.ABILITY_5:

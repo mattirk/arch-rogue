@@ -57,56 +57,71 @@ class RenderingBaseMixin:
         # Per-frame caches for hot-path lookups. These are invalidated every
         # frame so they never go stale within a single render pass.
         self._frame_cache: dict[str, object] = {}
+        if getattr(self, "mobile_mode", False):
+            self.reset_mobile_touch_targets()
         self.screen.fill((10, 10, 14))
-        if self.state == "title":
-            self.draw_title_menu()
+
+        menu_draw = {
+            "title": self.draw_title_menu,
+            "options": self.draw_options_menu,
+            "controls": self.draw_controls_menu,
+            "about": self.draw_about_screen,
+            "archetype_select": self.draw_archetype_select,
+            "confirm_exit": self.draw_exit_confirmation,
+        }.get(self.state)
+        if menu_draw is not None:
+            with self.mobile_safe_render_target():
+                menu_draw()
+            if getattr(self, "mobile_mode", False):
+                self.draw_mobile_touch_navigation()
             pygame.display.flip()
             self.sync_music()
             return
-        if self.state == "options":
-            self.draw_options_menu()
-            pygame.display.flip()
-            self.sync_music()
-            return
-        if self.state == "controls":
-            self.draw_controls_menu()
-            pygame.display.flip()
-            self.sync_music()
-            return
-        if self.state == "about":
-            self.draw_about_screen()
-            pygame.display.flip()
-            self.sync_music()
-            return
-        if self.state == "archetype_select":
-            self.draw_archetype_select()
-            pygame.display.flip()
-            self.sync_music()
-            return
-        if self.state == "confirm_exit":
-            self.draw_exit_confirmation()
-            pygame.display.flip()
-            self.sync_music()
-            return
+
         self._render_world_view()
         self.draw_ui()
-        if self.active_cutscene is not None:
-            self.draw_quest_cutscene_overlay()
-        elif self.story_intro_pending:
-            self.draw_story_intro_overlay()
-        if self.inventory_open:
-            self.draw_inventory()
-        if self.shop_open:
-            self.draw_shop_overlay()
-        if self.character_menu_open:
-            self.draw_character_menu()
-        if self.show_help:
-            self.draw_help_overlay()
-        if self.state != "playing":
-            self.draw_state_overlay()
+        with self.mobile_safe_render_target():
+            if self.active_cutscene is not None:
+                self.draw_quest_cutscene_overlay()
+            elif self.story_intro_pending:
+                self.draw_story_intro_overlay()
+            if self.inventory_open:
+                self.draw_inventory()
+            if self.shop_open:
+                self.draw_shop_overlay()
+            if self.character_menu_open:
+                self.draw_character_menu()
+            if self.show_help:
+                self.draw_help_overlay()
+            if self.state != "playing":
+                self.draw_state_overlay()
+        if getattr(self, "mobile_mode", False):
+            self.draw_mobile_touch_navigation()
         self.draw_screen_flash()
         pygame.display.flip()
         self.sync_music()
+
+    @contextmanager
+    def mobile_safe_render_target(self) -> Iterator[None]:
+        """Render menus/overlays inside the Android safe area."""
+
+        if not getattr(self, "mobile_mode", False):
+            yield
+            return
+        root = self.screen
+        safe = self.mobile_safe_rect().clip(root.get_rect())
+        if safe.width <= 0 or safe.height <= 0:
+            yield
+            return
+        self._mobile_root_screen = root
+        self.screen = root.subsurface(safe)
+        self._frame_cache.pop("screen_size", None)
+        try:
+            yield
+        finally:
+            self.screen = root
+            self._frame_cache.pop("screen_size", None)
+            del self._mobile_root_screen
 
     def _render_world_view(self) -> None:
         """Render the dungeon + actors, composite the zoom layer, and shade.
@@ -132,6 +147,28 @@ class RenderingBaseMixin:
           when zoomed in — it never touches display-resolution buffers.
         - zoom 1.0: no layer; shading runs on the display directly.
         """
+        if getattr(self, "mobile_mode", False):
+            root = self.screen
+            viewport = self.mobile_world_viewport().clip(root.get_rect())
+            if viewport.width <= 0 or viewport.height <= 0:
+                return
+            self._mobile_root_screen = root
+            self._mobile_world_rendering = True
+            self.screen = root.subsurface(viewport)
+            self._frame_cache = {}
+            try:
+                self._render_world_target()
+            finally:
+                self.screen = root
+                self._mobile_world_rendering = False
+                self._frame_cache.pop("screen_size", None)
+                del self._mobile_root_screen
+            return
+        self._render_world_target()
+
+    def _render_world_target(self) -> None:
+        """Render and shade the world into the current target surface."""
+
         zoom = getattr(self, "view_zoom", 1.0)
         use_layer = abs(zoom - 1.0) > 1e-3
         # Shade the display post-composite when zoomed out or at native zoom
@@ -287,6 +324,8 @@ class RenderingBaseMixin:
             del self._ui_scale_override
 
     def hud_panel_height(self) -> int:
+        if getattr(self, "mobile_mode", False):
+            return 0
         _width, height = self.screen.get_size()
         if self.asset_ui_active():
             desired = (

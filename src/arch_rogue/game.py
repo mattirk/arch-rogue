@@ -91,6 +91,12 @@ from .input import Command, InputMixin, key_command
 from .interactions import InteractionMixin
 from .inventory import InventoryMixin
 from .menus import MenuRenderer
+from .mobile import (
+    MobileMixin,
+    SafeInsets,
+    application_storage_directory,
+    detect_mobile_runtime,
+)
 from .npc_runtime import FriendlyNpcRuntimeMixin
 from .models import (
     AmbushBell,
@@ -188,6 +194,7 @@ __all__ = (
     "LARGE_ENEMY_HIT_RADIUS",
     "MAX_INVENTORY",
     "MenuRenderer",
+    "MobileMixin",
     "OptionsMixin",
     "PLAYER_HIT_RADIUS",
     "PLAYER_MELEE_ARC_DOT",
@@ -256,6 +263,7 @@ class Game(
     ShopMixin,
     InteractionMixin,
     InputMixin,
+    MobileMixin,
     CameraMixin,
 ):
     EXIT_CONFIRMATION_EXIT = 0
@@ -268,14 +276,23 @@ class Game(
         screen_size: tuple[int, int] | None = None,
         headless: bool = False,
         save_path: str | Path | None = None,
+        mobile: bool | None = None,
+        safe_insets: SafeInsets | tuple[int, int, int, int] | None = None,
     ) -> None:
+        self.mobile_mode = detect_mobile_runtime() if mobile is None else bool(mobile)
         self.prepare_display_scaling()
         pygame.init()
         pygame.display.set_caption(f"Arch Rogue {__version__}")
+        storage_dir = application_storage_directory(self.mobile_mode)
         self.save_path = (
-            Path(save_path) if save_path else Path.home() / ".arch_rogue_run.json"
+            Path(save_path)
+            if save_path
+            else storage_dir
+            / ("run.json" if self.mobile_mode else ".arch_rogue_run.json")
         )
-        self.options_path = Path.home() / ".arch_rogue_options.json"
+        self.options_path = storage_dir / (
+            "options.json" if self.mobile_mode else ".arch_rogue_options.json"
+        )
         self.audio_enabled = True
         self.music_enabled = False
         self.fullscreen = True
@@ -301,6 +318,7 @@ class Game(
         self.run_history: list[dict[str, Any]] = []
         self.last_save_error = ""
         self.last_load_error = ""
+        self.recovered_interrupted_run = False
         self.screen_flash_ttl = 0.0
         self.screen_flash_color: Color = (0, 0, 0)
         # Viewport zoom ("viewport distance"); adjusted in-game with Ctrl+scroll.
@@ -313,11 +331,16 @@ class Game(
         # explicitly after setting that path, as persistence tests already do.
         if not headless:
             self.load_options()
+        if self.mobile_mode:
+            # Android is landscape/fullscreen by manifest; a persisted desktop
+            # preference must not request a resizable window there.
+            self.fullscreen = True
         if screen_size is None:
             display_info = pygame.display.Info()
             screen_size = (display_info.current_w, display_info.current_h)
         self.windowed_size = screen_size
         self.screen = self.apply_display_mode(headless=headless)
+        self.init_mobile_runtime(safe_insets)
         if not headless:
             self.refresh_automatic_ui_scale()
         # Branded window/taskbar icon: the octahedron relic logo. Best-effort —
@@ -609,6 +632,8 @@ class Game(
         pygame.quit()
 
     def request_exit_confirmation(self) -> None:
+        if self.mobile_mode:
+            self.cancel_mobile_touches()
         if self.state != "confirm_exit":
             self.exit_previous_state = self.state
             self.exit_confirmation_cursor = self.EXIT_CONFIRMATION_CANCEL
@@ -633,6 +658,8 @@ class Game(
     def return_to_main_menu(self) -> None:
         if self.exit_previous_state == "playing" and not self.save_run():
             return
+        if self.mobile_mode:
+            self.resume_mobile_audio_focus()
         self.show_help = False
         self.inventory_open = False
         self.character_menu_open = False
@@ -642,6 +669,8 @@ class Game(
 
     def cancel_exit_confirmation(self) -> None:
         self.state = self.exit_previous_state or "title"
+        if self.mobile_mode:
+            self.resume_mobile_audio_focus()
 
     def confirm_exit(self) -> None:
         if self.exit_previous_state == "playing" and not self.save_run():
@@ -650,6 +679,10 @@ class Game(
 
     def handle_events(self) -> None:
         for event in pygame.event.get():
+            if self.handle_mobile_lifecycle_event(event):
+                continue
+            if self.handle_mobile_finger_event(event):
+                continue
             if event.type == pygame.QUIT:
                 self.request_exit_confirmation()
             elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
@@ -657,13 +690,19 @@ class Game(
                 self.screen = pygame.display.set_mode(
                     self.windowed_size, pygame.RESIZABLE
                 )
+                self._mobile_layout_cache = None
+                self.refresh_mobile_safe_insets()
                 self.refresh_automatic_ui_scale()
             elif event.type == pygame.WINDOWDISPLAYCHANGED:
+                self._mobile_layout_cache = None
+                self.refresh_mobile_safe_insets()
                 self.refresh_automatic_ui_scale()
             elif self.handle_controller_event(event):
                 continue
             elif event.type == pygame.KEYDOWN:
-                if self.state == "confirm_exit":
+                if event.key == getattr(pygame, "K_AC_BACK", -1):
+                    self._dispatch_command(Command.BACK)
+                elif self.state == "confirm_exit":
                     if event.key in (pygame.K_UP, pygame.K_LEFT):
                         self.move_exit_confirmation_cursor(-1)
                     elif event.key in (pygame.K_DOWN, pygame.K_RIGHT):
@@ -755,12 +794,15 @@ class Game(
                         self.save_options()
                     elif event.key == pygame.K_f:
                         self.options_cursor = self.OPTIONS_ROW_FULLSCREEN
-                        if not self.fullscreen:
-                            self.windowed_size = self.screen.get_size()
-                        self.fullscreen = not self.fullscreen
-                        self.screen = self.apply_display_mode()
-                        self.refresh_automatic_ui_scale()
-                        self.save_options()
+                        if self.mobile_mode:
+                            self.fullscreen = True
+                        else:
+                            if not self.fullscreen:
+                                self.windowed_size = self.screen.get_size()
+                            self.fullscreen = not self.fullscreen
+                            self.screen = self.apply_display_mode()
+                            self.refresh_automatic_ui_scale()
+                            self.save_options()
                     elif event.key == pygame.K_d:
                         self.options_cursor = self.OPTIONS_ROW_DIFFICULTY
                         self.cycle_difficulty()
@@ -1029,6 +1071,7 @@ class Game(
                         self.use_inventory_slot(index)
             elif (
                 event.type == pygame.MOUSEBUTTONDOWN
+                and not getattr(event, "touch", False)
                 and self.state == "playing"
                 and self.active_cutscene is None
                 and not self.story_intro_pending
@@ -1077,7 +1120,11 @@ class Game(
                 # text (Ctrl+scroll above still zooms the viewport). Scroll up
                 # shows earlier lines.
                 self.scroll_story_panel(-event.y * 2)
-            elif event.type == pygame.MOUSEMOTION and self.state == "playing":
+            elif (
+                event.type == pygame.MOUSEMOTION
+                and not getattr(event, "touch", False)
+                and self.state == "playing"
+            ):
                 if getattr(event, "rel", (0, 0)) != (0, 0):
                     self.aim_input_mode = "mouse"
                 if not (
@@ -1095,6 +1142,8 @@ class Game(
                         break
 
     def update(self, dt: float) -> None:
+        if self.mobile_mode and self.mobile_suspended:
+            return
         self.elapsed += dt
         self._last_dt = dt
         # Sample gamepad axes once per frame into cached floats so the
@@ -1115,7 +1164,11 @@ class Game(
         menu_pauses_simulation = bool(
             self.active_cutscene is None
             and not self.story_intro_pending
-            and (self.inventory_open or self.character_menu_open)
+            and (
+                self.inventory_open
+                or self.character_menu_open
+                or (self.mobile_mode and (self.shop_open or self.show_help))
+            )
         )
         self.update_visual_effects(
             dt, advance_actor_clocks=not menu_pauses_simulation
@@ -1136,10 +1189,11 @@ class Game(
         if self.story_intro_pending:
             self.update_floaters(dt)
             return
-        # Opening the character sheet or inventory pauses the run: enemies,
-        # projectiles, traps, and player movement stay frozen while the
-        # overlay is up so players can inspect their build safely.
-        if self.inventory_open or self.character_menu_open:
+        # Opening a full-screen mobile overlay pauses the run. Desktop keeps its
+        # established shop/help behavior; inventory and character always pause.
+        if self.inventory_open or self.character_menu_open or (
+            self.mobile_mode and (self.shop_open or self.show_help)
+        ):
             self.update_floaters(dt)
             return
         # Sample before update_player() decrements Time Skip so final partial and

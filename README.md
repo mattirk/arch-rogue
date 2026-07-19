@@ -211,6 +211,10 @@ Arch Rogue supports keyboard/mouse and gamepad. Gamepad bindings can be remapped
 
 Left stick or D-pad moves, the right stick aims, face buttons trigger combat abilities, and the triggers handle dash and interact. Menu navigation, inventory, shop, character sheet, and cutscene selection all work on pad. Bindings are remappable from the Controls menu, with deadzone and hot-plug support.
 
+### Android (beta)
+
+Milestone 4.3.0 adds a landscape-only Android build with the same gameplay. Touch and drag inside the central viewport to move/aim, tap the six skill badges on the right rail, use the left rail for HP/MP/Stamina and Inventory/Character/Quest/Help, and use the on-screen Back/arrows/Select buttons in menus. Android Back closes the top overlay or opens the pause sheet. See `docs/android-beta.md` for install, upgrade, build, and known-issue notes; the CI workflow publishes a debug APK with every release.
+
 ## Goal
 
 Explore 10 dungeon depths, survive enemies and traps, identify and equip loot, use shrines wisely, resolve or ignore story guest dilemmas, and reach the exit stairs. Press `E` on stairs to descend. On depth 10, defeat the story-marked gate tyrant before using the stairs to complete the run.

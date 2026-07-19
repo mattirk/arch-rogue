@@ -1571,6 +1571,7 @@ class MenuBaseMixin:
                 value_rect.copy() if value_rect is not None else pygame.Rect(0, 0, 0, 0)
             )
             y += row_h + gap
+        self.g._menu_row_rects = tuple(row.copy() for row in rendered_rows)
         self.g._menu_row_key_rects = tuple(rendered_key_rects)
         self.g._menu_row_value_rects = tuple(rendered_value_rects)
         return tuple(rendered_rows)

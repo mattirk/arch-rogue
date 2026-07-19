@@ -30,6 +30,7 @@ import pygame
 
 from ..constants import DUNGEON_DEPTH, TILE_H, TILE_W, WORLD_SCALE, SlashEffect
 from ..content import HUMANOID_ENEMY_NAMES
+from ..input import Command
 from ..models import (
     Color,
     Enemy,
@@ -812,8 +813,222 @@ class RenderingHudMixin:
             )
 
     def draw_ui(self) -> None:
+        if getattr(self, "mobile_mode", False):
+            self._draw_mobile_ui()
+            return
         with self.fitted_ui_layout((960, 540)):
             self._draw_ui_fitted()
+
+    def _draw_mobile_ui(self) -> None:
+        layout = self.mobile_layout()
+        accent = self.theme.accent
+        root = self.screen
+
+        for rail in (layout.left_rail, layout.right_rail):
+            panel = self.ui_asset_surface("hud.panel", rail.size)
+            if panel is not None:
+                root.blit(panel, rail)
+            else:
+                self.draw_ornate_hud_panel(
+                    root,
+                    rail,
+                    (16, 15, 21, 244),
+                    (*accent, 180),
+                    radius=max(8, rail.width // 12),
+                    studs=True,
+                )
+
+        resource_values = (
+            (self.player.hp, self.player.max_hp, (180, 42, 46), "HP"),
+            (self.player.mana, self.player.max_mana, (54, 104, 210), "MP"),
+            (self.player.stamina, self.player.max_stamina, (206, 164, 64), "ST"),
+        )
+        for rect, (value, maximum, color, label) in zip(
+            layout.resource_rects, resource_values
+        ):
+            self._draw_mobile_vertical_bar(rect, value, maximum, color, label)
+        self._hud_resource_bar_rects = tuple(
+            rect.copy() for rect in layout.resource_rects
+        )
+
+        if layout.character_rect is not None:
+            self._draw_mobile_character_summary(layout.character_rect)
+
+        utility_commands = {
+            "inventory": ("I", Command.INVENTORY),
+            "character": ("C", Command.CHARACTER),
+            "quest": ("Q", Command.QUEST),
+            "help": ("?", Command.HELP),
+        }
+        for name, rect in layout.utility_rects:
+            label, command = utility_commands[name]
+            active = bool(
+                (name == "inventory" and self.inventory_open)
+                or (name == "character" and self.character_menu_open)
+                or (name == "quest" and self.quest_info_visible)
+                or (name == "help" and self.show_help)
+            )
+            self._draw_mobile_control_button(rect, label, accent, active=active)
+            self.register_mobile_touch_target(rect, command, label, context="gameplay")
+
+        slots = self.hud_action_slots()
+        action_commands = (
+            Command.ABILITY_1,
+            Command.ABILITY_2,
+            Command.ABILITY_3,
+            Command.ABILITY_4,
+            Command.ABILITY_5,
+            Command.ABILITY_6,
+        )
+        for slot, rect, command in zip(slots, layout.action_rects, action_commands):
+            self.draw_hud_action_icon(slot, rect)
+            self.register_mobile_touch_target(
+                rect, command, str(slot.get("hotkey", "")), context="gameplay"
+            )
+        self._hud_action_rects = tuple(rect.copy() for rect in layout.action_rects)
+
+        # World-adjacent HUD remains viewport-local, so all existing placement
+        # logic continues to work and cannot overlap either control rail.
+        viewport = layout.world_viewport.clip(root.get_rect())
+        self._mobile_root_screen = root
+        self._mobile_world_rendering = True
+        self.screen = root.subsurface(viewport)
+        self._frame_cache.pop("screen_size", None)
+        try:
+            hint = self.current_interaction_hint()
+            self.draw_interaction_prompt(hint)
+            self.draw_run_header()
+            self.draw_story_panel()
+            self.draw_boss_bar()
+        finally:
+            self.screen = root
+            self._mobile_world_rendering = False
+            self._frame_cache.pop("screen_size", None)
+            del self._mobile_root_screen
+
+        self._draw_mobile_control_button(
+            layout.pause_rect, "Ⅱ", (194, 168, 112), active=False
+        )
+        self.register_mobile_touch_target(
+            layout.pause_rect, Command.BACK, "Pause", context="gameplay"
+        )
+        interaction_active = self.current_interaction_hint() is not None
+        self._draw_mobile_control_button(
+            layout.interact_rect, "USE", accent, active=interaction_active
+        )
+        self.register_mobile_touch_target(
+            layout.interact_rect, Command.INTERACT, "Interact", context="gameplay"
+        )
+
+        self._hud_layout = {
+            "safe": layout.safe_rect.copy(),
+            "left_rail": layout.left_rail.copy(),
+            "world_viewport": layout.world_viewport.copy(),
+            "right_rail": layout.right_rail.copy(),
+            "pause": layout.pause_rect.copy(),
+            "interact": layout.interact_rect.copy(),
+        }
+
+    def _draw_mobile_vertical_bar(
+        self,
+        rect: pygame.Rect,
+        value: float,
+        maximum: float,
+        color: Color,
+        label: str,
+    ) -> None:
+        ratio = max(0.0, min(1.0, value / max(1.0, maximum)))
+        radius = max(4, min(10, rect.width // 3))
+        pygame.draw.rect(self.screen, self.HUD_STONE_SHADOW, rect, border_radius=radius)
+        inner = rect.inflate(-max(3, rect.width // 7) * 2, -max(3, rect.width // 7) * 2)
+        pygame.draw.rect(self.screen, self.HUD_IRON_DARK, inner, border_radius=max(2, radius - 2))
+        fill_h = max(0, round(inner.height * ratio))
+        if fill_h:
+            fill = pygame.Rect(inner.x, inner.bottom - fill_h, inner.width, fill_h)
+            pygame.draw.rect(
+                self.screen,
+                self.shade(color, -18),
+                fill,
+                border_radius=max(2, radius - 2),
+            )
+            shine = pygame.Rect(fill.x, fill.y, max(1, fill.width // 3), fill.height)
+            pygame.draw.rect(self.screen, self.shade(color, 28), shine)
+        pygame.draw.rect(
+            self.screen,
+            self.shade(color, 22),
+            rect,
+            max(1, min(3, rect.width // 10)),
+            border_radius=radius,
+        )
+        font = self.tiny_font
+        tag = font.render(label, True, self.HUD_PARCHMENT)
+        self.screen.blit(tag, tag.get_rect(centerx=rect.centerx, top=rect.y + 3))
+        amount = font.render(f"{int(value)}", True, self.HUD_BONE)
+        self.screen.blit(amount, amount.get_rect(centerx=rect.centerx, bottom=rect.bottom - 3))
+
+    def _draw_mobile_character_summary(self, rect: pygame.Rect) -> None:
+        pygame.draw.rect(
+            self.screen,
+            (12, 11, 16, 210),
+            rect,
+            border_radius=max(5, rect.width // 14),
+        )
+        pygame.draw.rect(
+            self.screen,
+            (*self.theme.accent, 150),
+            rect,
+            max(1, rect.width // 45),
+            border_radius=max(5, rect.width // 14),
+        )
+        pad = max(4, rect.width // 14)
+        content = rect.inflate(-pad * 2, -pad * 2)
+        lines = (
+            self.player.class_name,
+            f"Lv {self.player.level} · {self.player.xp}/{self.player.next_xp} XP",
+            f"DMG {self.player.melee_damage()} · DR {self.player.armor()}",
+        )
+        y = content.y
+        for index, line in enumerate(lines):
+            font = self.small_font if index == 0 and content.height >= 70 else self.tiny_font
+            line_h = font.get_height() + 2
+            if y + line_h > content.bottom:
+                break
+            self.draw_ui_text(
+                self.screen,
+                line,
+                font,
+                self.HUD_GOLD_BRIGHT if index == 0 else self.HUD_BONE,
+                pygame.Rect(content.x, y, content.width, line_h),
+                align="center",
+            )
+            y += line_h
+
+    def _draw_mobile_control_button(
+        self, rect: pygame.Rect, label: str, color: Color, *, active: bool
+    ) -> None:
+        slot = self.ui_asset_surface("hud.action_slot", rect.size)
+        if slot is not None:
+            self.screen.blit(slot, rect)
+        else:
+            pygame.draw.rect(
+                self.screen,
+                self.HUD_STONE_SHADOW,
+                rect,
+                border_radius=max(7, rect.height // 7),
+            )
+        overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
+        overlay.fill((*color, 46 if active else 14))
+        self.screen.blit(overlay, rect)
+        pygame.draw.rect(
+            self.screen,
+            self.shade(color, 24 if active else -18),
+            rect,
+            max(2, min(4, rect.height // 18)),
+            border_radius=max(7, rect.height // 7),
+        )
+        font = self.small_font if len(label) <= 2 else self.tiny_font
+        text = font.render(label, True, self.HUD_GOLD_BRIGHT)
+        self.screen.blit(text, text.get_rect(center=rect.center))
 
     def _draw_ui_fitted(self) -> None:
         width, height = self.screen.get_size()
@@ -1726,6 +1941,8 @@ class RenderingHudMixin:
         if self.shop_cursor >= max_rows:
             start = self.shop_cursor - max_rows + 1
         visible_entries = entries[start : start + max_rows]
+        self._shop_visible_start = start
+        self._shop_visible_row_rects = []
         if not visible_entries:
             empty = self.font.render(
                 "No wares here." if self.shop_mode == "buy" else "Nothing to sell.",
@@ -1744,6 +1961,7 @@ class RenderingHudMixin:
                 safe.width if safe is not None else rect.w - self.ui(32),
                 row_h - self.ui(4),
             )
+            self._shop_visible_row_rects.append(row.copy())
             selected = index == self.shop_cursor
             if selected:
                 # Selected: gold-tinted plate with a soft glow.
