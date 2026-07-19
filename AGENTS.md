@@ -233,3 +233,4 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - Is it possible to detect host system display scaling and adjust game scaling accordingly? e.g if display scale on host is 200% -> scale game to 2x
 - We need generated asset for relic, use diamond shape similar to game icon. Owl looking quest relic needs to go. Use game icon as a base and generate new relic sprites. Create one for game logo too (with Arch Rogue text also).
 - Dedicated room decorations for bosses (floor, walls, props). Generate new via Pixellab for bosses up to level 10 and final boss.
+- Dash: extended dash/blink skill (skill 4) when key pressed long, character starts "running" and moves faster. This consumes stamina really fast and stops once stamina is spent. When "running" mode activated, dash/blink suffers 1min cooldown. To be used as last resort to run away.

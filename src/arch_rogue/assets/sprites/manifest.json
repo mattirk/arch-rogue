@@ -22,6 +22,162 @@
           "fps": 4.0,
           "loop": true
         },
+        "attack": {
+          "directions": {
+            "east": [
+              "actors/acolyte/animations/attack/east/frame_000.png",
+              "actors/acolyte/animations/attack/east/frame_001.png",
+              "actors/acolyte/animations/attack/east/frame_002.png",
+              "actors/acolyte/animations/attack/east/frame_003.png",
+              "actors/acolyte/animations/attack/east/frame_004.png",
+              "actors/acolyte/animations/attack/east/frame_005.png",
+              "actors/acolyte/animations/attack/east/frame_006.png"
+            ],
+            "north": [
+              "actors/acolyte/animations/attack/north/frame_000.png",
+              "actors/acolyte/animations/attack/north/frame_001.png",
+              "actors/acolyte/animations/attack/north/frame_002.png",
+              "actors/acolyte/animations/attack/north/frame_003.png",
+              "actors/acolyte/animations/attack/north/frame_004.png",
+              "actors/acolyte/animations/attack/north/frame_005.png",
+              "actors/acolyte/animations/attack/north/frame_006.png"
+            ],
+            "north-east": [
+              "actors/acolyte/animations/attack/north-east/frame_000.png",
+              "actors/acolyte/animations/attack/north-east/frame_001.png",
+              "actors/acolyte/animations/attack/north-east/frame_002.png",
+              "actors/acolyte/animations/attack/north-east/frame_003.png",
+              "actors/acolyte/animations/attack/north-east/frame_004.png",
+              "actors/acolyte/animations/attack/north-east/frame_005.png",
+              "actors/acolyte/animations/attack/north-east/frame_006.png"
+            ],
+            "north-west": [
+              "actors/acolyte/animations/attack/north-west/frame_000.png",
+              "actors/acolyte/animations/attack/north-west/frame_001.png",
+              "actors/acolyte/animations/attack/north-west/frame_002.png",
+              "actors/acolyte/animations/attack/north-west/frame_003.png",
+              "actors/acolyte/animations/attack/north-west/frame_004.png",
+              "actors/acolyte/animations/attack/north-west/frame_005.png",
+              "actors/acolyte/animations/attack/north-west/frame_006.png"
+            ],
+            "south": [
+              "actors/acolyte/animations/attack/south/frame_000.png",
+              "actors/acolyte/animations/attack/south/frame_001.png",
+              "actors/acolyte/animations/attack/south/frame_002.png",
+              "actors/acolyte/animations/attack/south/frame_003.png",
+              "actors/acolyte/animations/attack/south/frame_004.png",
+              "actors/acolyte/animations/attack/south/frame_005.png",
+              "actors/acolyte/animations/attack/south/frame_006.png"
+            ],
+            "south-east": [
+              "actors/acolyte/animations/attack/south-east/frame_000.png",
+              "actors/acolyte/animations/attack/south-east/frame_001.png",
+              "actors/acolyte/animations/attack/south-east/frame_002.png",
+              "actors/acolyte/animations/attack/south-east/frame_003.png",
+              "actors/acolyte/animations/attack/south-east/frame_004.png",
+              "actors/acolyte/animations/attack/south-east/frame_005.png",
+              "actors/acolyte/animations/attack/south-east/frame_006.png"
+            ],
+            "south-west": [
+              "actors/acolyte/animations/attack/south-west/frame_000.png",
+              "actors/acolyte/animations/attack/south-west/frame_001.png",
+              "actors/acolyte/animations/attack/south-west/frame_002.png",
+              "actors/acolyte/animations/attack/south-west/frame_003.png",
+              "actors/acolyte/animations/attack/south-west/frame_004.png",
+              "actors/acolyte/animations/attack/south-west/frame_005.png",
+              "actors/acolyte/animations/attack/south-west/frame_006.png"
+            ],
+            "west": [
+              "actors/acolyte/animations/attack/west/frame_000.png",
+              "actors/acolyte/animations/attack/west/frame_001.png",
+              "actors/acolyte/animations/attack/west/frame_002.png",
+              "actors/acolyte/animations/attack/west/frame_003.png",
+              "actors/acolyte/animations/attack/west/frame_004.png",
+              "actors/acolyte/animations/attack/west/frame_005.png",
+              "actors/acolyte/animations/attack/west/frame_006.png"
+            ]
+          },
+          "fps": 12.0,
+          "loop": false
+        },
+        "cast": {
+          "directions": {
+            "east": [
+              "actors/acolyte/animations/cast/east/frame_000.png",
+              "actors/acolyte/animations/cast/east/frame_001.png",
+              "actors/acolyte/animations/cast/east/frame_002.png",
+              "actors/acolyte/animations/cast/east/frame_003.png",
+              "actors/acolyte/animations/cast/east/frame_004.png",
+              "actors/acolyte/animations/cast/east/frame_005.png",
+              "actors/acolyte/animations/cast/east/frame_006.png"
+            ],
+            "north": [
+              "actors/acolyte/animations/cast/north/frame_000.png",
+              "actors/acolyte/animations/cast/north/frame_001.png",
+              "actors/acolyte/animations/cast/north/frame_002.png",
+              "actors/acolyte/animations/cast/north/frame_003.png",
+              "actors/acolyte/animations/cast/north/frame_004.png",
+              "actors/acolyte/animations/cast/north/frame_005.png",
+              "actors/acolyte/animations/cast/north/frame_006.png"
+            ],
+            "north-east": [
+              "actors/acolyte/animations/cast/north-east/frame_000.png",
+              "actors/acolyte/animations/cast/north-east/frame_001.png",
+              "actors/acolyte/animations/cast/north-east/frame_002.png",
+              "actors/acolyte/animations/cast/north-east/frame_003.png",
+              "actors/acolyte/animations/cast/north-east/frame_004.png",
+              "actors/acolyte/animations/cast/north-east/frame_005.png",
+              "actors/acolyte/animations/cast/north-east/frame_006.png"
+            ],
+            "north-west": [
+              "actors/acolyte/animations/cast/north-west/frame_000.png",
+              "actors/acolyte/animations/cast/north-west/frame_001.png",
+              "actors/acolyte/animations/cast/north-west/frame_002.png",
+              "actors/acolyte/animations/cast/north-west/frame_003.png",
+              "actors/acolyte/animations/cast/north-west/frame_004.png",
+              "actors/acolyte/animations/cast/north-west/frame_005.png",
+              "actors/acolyte/animations/cast/north-west/frame_006.png"
+            ],
+            "south": [
+              "actors/acolyte/animations/cast/south/frame_000.png",
+              "actors/acolyte/animations/cast/south/frame_001.png",
+              "actors/acolyte/animations/cast/south/frame_002.png",
+              "actors/acolyte/animations/cast/south/frame_003.png",
+              "actors/acolyte/animations/cast/south/frame_004.png",
+              "actors/acolyte/animations/cast/south/frame_005.png",
+              "actors/acolyte/animations/cast/south/frame_006.png"
+            ],
+            "south-east": [
+              "actors/acolyte/animations/cast/south-east/frame_000.png",
+              "actors/acolyte/animations/cast/south-east/frame_001.png",
+              "actors/acolyte/animations/cast/south-east/frame_002.png",
+              "actors/acolyte/animations/cast/south-east/frame_003.png",
+              "actors/acolyte/animations/cast/south-east/frame_004.png",
+              "actors/acolyte/animations/cast/south-east/frame_005.png",
+              "actors/acolyte/animations/cast/south-east/frame_006.png"
+            ],
+            "south-west": [
+              "actors/acolyte/animations/cast/south-west/frame_000.png",
+              "actors/acolyte/animations/cast/south-west/frame_001.png",
+              "actors/acolyte/animations/cast/south-west/frame_002.png",
+              "actors/acolyte/animations/cast/south-west/frame_003.png",
+              "actors/acolyte/animations/cast/south-west/frame_004.png",
+              "actors/acolyte/animations/cast/south-west/frame_005.png",
+              "actors/acolyte/animations/cast/south-west/frame_006.png"
+            ],
+            "west": [
+              "actors/acolyte/animations/cast/west/frame_000.png",
+              "actors/acolyte/animations/cast/west/frame_001.png",
+              "actors/acolyte/animations/cast/west/frame_002.png",
+              "actors/acolyte/animations/cast/west/frame_003.png",
+              "actors/acolyte/animations/cast/west/frame_004.png",
+              "actors/acolyte/animations/cast/west/frame_005.png",
+              "actors/acolyte/animations/cast/west/frame_006.png"
+            ]
+          },
+          "fps": 10.0,
+          "loop": false
+        },
         "idle": {
           "directions": {
             "east": [
@@ -419,7 +575,8 @@
               "actors/arcanist/animations/run/north/frame_002.png",
               "actors/arcanist/animations/run/north/frame_003.png",
               "actors/arcanist/animations/run/north/frame_004.png",
-              "actors/arcanist/animations/run/north/frame_005.png"
+              "actors/arcanist/animations/run/north/frame_005.png",
+              "actors/arcanist/animations/run/north/frame_006.png"
             ],
             "north-east": [
               "actors/arcanist/animations/run/north-east/frame_000.png",
