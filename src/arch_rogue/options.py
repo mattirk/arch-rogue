@@ -60,13 +60,13 @@ MOBILE_RENDER_QUALITY_MODES: tuple[str, ...] = (
     MOBILE_RENDER_QUALITY_NATIVE,
 )
 MOBILE_RENDER_QUALITY_HEIGHT_CAPS: dict[str, int | None] = {
-    MOBILE_RENDER_QUALITY_PERFORMANCE: 360,
-    MOBILE_RENDER_QUALITY_BALANCED: 540,
+    MOBILE_RENDER_QUALITY_PERFORMANCE: 540,
+    MOBILE_RENDER_QUALITY_BALANCED: 720,
     MOBILE_RENDER_QUALITY_NATIVE: None,
 }
 MOBILE_RENDER_QUALITY_LABELS: dict[str, str] = {
-    MOBILE_RENDER_QUALITY_PERFORMANCE: "Performance · 360p cap",
-    MOBILE_RENDER_QUALITY_BALANCED: "Balanced · 540p cap",
+    MOBILE_RENDER_QUALITY_PERFORMANCE: "Performance · 540p cap",
+    MOBILE_RENDER_QUALITY_BALANCED: "Balanced · 720p cap",
     MOBILE_RENDER_QUALITY_NATIVE: "Native · full resolution",
 }
 ANDROID_RENDER_DRIVER_CANDIDATES: tuple[str, ...] = ("opengles2", "opengles")
@@ -418,6 +418,7 @@ class OptionsMixin:
         # Actor animation frames are resolution-independent and expensive to
         # decode from an APK. Keep them warm when only the logical canvas changes.
         self._world_layer = None
+        self._mobile_floor_layer_cache = None
         self._screen_flash_surface = None
         ambient_cache = getattr(self, "ambient_overlay_cache", None)
         if ambient_cache is not None and hasattr(ambient_cache, "clear"):
@@ -505,10 +506,27 @@ class OptionsMixin:
             window_size = pygame.display.get_window_size()
         except pygame.error:
             window_size = (0, 0)
+        try:
+            cpu_features = pygame.system.get_cpu_instruction_sets()
+            neon = bool(cpu_features.get("NEON", False))
+        except (AttributeError, TypeError, pygame.error):
+            neon = None
+        try:
+            smoothscale = pygame.transform.get_smoothscale_backend()
+        except (AttributeError, ValueError, pygame.error):
+            smoothscale = "unknown"
+        alpha_sdl2 = "PYGAME_BLEND_ALPHA_SDL2" in os.environ
+        self._mobile_cpu_neon = neon
+        self._mobile_alpha_sdl2 = alpha_sdl2
+        self._mobile_surface_masks = tuple(int(mask) for mask in surface.get_masks())
+        neon_label = "yes" if neon is True else "no" if neon is False else "unknown"
+        mask_label = "/".join(f"{mask:08x}" for mask in self._mobile_surface_masks)
         failure_label = "|".join(failures) if failures else "none"
         print(
             "ARCH_ROGUE_PERF display "
             f"renderer={name} accelerated={'yes' if accelerated else 'no'} "
+            f"alpha_sdl2={'yes' if alpha_sdl2 else 'no'} neon={neon_label} "
+            f"smoothscale={smoothscale} bpp={surface.get_bitsize()} masks={mask_label} "
             f"logical={surface.get_width()}x{surface.get_height()} "
             f"window={window_size[0]}x{window_size[1]} "
             f"renderer_logical={self._mobile_renderer_logical_size[0]}x"

@@ -80,6 +80,7 @@ from .constants import (
     TILE_H,
     TILE_W,
 )
+from .mobile import optimize_immutable_alpha_surface
 from .models import Color, LightSource
 
 
@@ -415,6 +416,10 @@ class LightingMixin:
         buf = getattr(self, "_light_buffer_surface", None)
         if buf is None or buf.get_width() != w or buf.get_height() != h:
             buf = pygame.Surface((w, h), pygame.SRCALPHA)
+            try:
+                buf = buf.convert_alpha()
+            except pygame.error:
+                pass
             self._light_buffer_surface = buf
             # The full-res scratch must match the screen, not the buffer; force
             # a rebuild on next composite.
@@ -425,6 +430,10 @@ class LightingMixin:
         scratch = getattr(self, "_light_scratch_surface", None)
         if scratch is None or scratch.get_width() != w or scratch.get_height() != h:
             scratch = pygame.Surface((w, h), pygame.SRCALPHA)
+            try:
+                scratch = scratch.convert_alpha()
+            except pygame.error:
+                pass
             self._light_scratch_surface = scratch
         return scratch
 
@@ -478,6 +487,7 @@ class LightingMixin:
             sprite = sprite.convert_alpha()
         except pygame.error:
             pass
+        sprite = optimize_immutable_alpha_surface(sprite)
         cache[key] = sprite
         return sprite
 

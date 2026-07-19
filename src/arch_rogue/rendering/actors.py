@@ -38,6 +38,7 @@ from ..constants import (
     SlashEffect,
 )
 from ..content import HUMANOID_ENEMY_NAMES
+from ..mobile import optimize_immutable_alpha_surface
 from ..models import (
     Color,
     Enemy,
@@ -786,6 +787,7 @@ class RenderingActorMixin:
             blur_h = max(1, height // 3)
             overlay = pygame.transform.smoothscale(overlay, (blur_w, blur_h))
             overlay = pygame.transform.smoothscale(overlay, (width, height))
+            overlay = optimize_immutable_alpha_surface(overlay)
             # Anchor: the local origin (0,0) maps to pixel (-min_x, -min_y)
             # within the surface. Store that anchor so the blit can place it
             # relative to the player's screen position.

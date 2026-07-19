@@ -32,6 +32,7 @@ import pygame
 
 from ..constants import DUNGEON_DEPTH, TILE_H, TILE_W, WORLD_SCALE, SlashEffect
 from ..content import HUMANOID_ENEMY_NAMES
+from ..mobile import optimize_immutable_alpha_surface
 from ..models import (
     Color,
     Enemy,
@@ -451,6 +452,7 @@ class RenderingBaseMixin:
             rendered = font.render(
                 self.ellipsize_ui_text(text, font, rect.width), True, color
             )
+            rendered = optimize_immutable_alpha_surface(rendered)
             if len(cache) >= 2048:
                 cache.clear()
             cache[key] = rendered
@@ -521,6 +523,7 @@ class RenderingBaseMixin:
                 panel = panel.convert_alpha()
             except pygame.error:
                 pass
+            panel = optimize_immutable_alpha_surface(panel)
             if len(cache) >= 512:
                 cache.clear()
             cache[key] = panel
@@ -657,7 +660,7 @@ class RenderingBaseMixin:
             panel = panel.convert_alpha()
         except pygame.error:
             pass
-        return panel
+        return optimize_immutable_alpha_surface(panel)
 
     def draw_hud_divider(
         self, surface: pygame.Surface, x1: int, y: int, x2: int, color: Color

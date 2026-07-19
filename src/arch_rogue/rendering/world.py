@@ -40,6 +40,10 @@ from ..constants import (
     SlashEffect,
 )
 from ..content import HUMANOID_ENEMY_NAMES
+from ..mobile import (
+    optimize_immutable_alpha_surface,
+    sdl2_alpha_blitter_requested,
+)
 from ..models import (
     AmbushBell,
     Color,
@@ -86,12 +90,31 @@ _GOLD_STACK_EXTRA_SALT = 0x71D6B295
 
 class RenderingWorldMixin:
     def draw_dungeon(self) -> None:
+        if self._draw_cached_mobile_floor_layer():
+            return
+        self._blit_floor_entries(self.screen, self._floor_blit_entries())
+
+    @staticmethod
+    def _blit_floor_entries(
+        target: pygame.Surface,
+        entries: list[tuple[pygame.Surface, tuple[int, int]]],
+    ) -> None:
+        if not entries:
+            return
+        blits = getattr(target, "blits", None)
+        if blits is not None:
+            blits(entries)
+        else:
+            for source, destination in entries:
+                target.blit(source, destination)
+
+    def _floor_blit_entries(self) -> list[tuple[pygame.Surface, tuple[int, int]]]:
         min_x, max_x, min_y, max_y = self.visible_bounds()
         self._frame_dark = self.is_current_floor_dark()
         entries: list[tuple[pygame.Surface, tuple[int, int]]] = []
-        for s in range(min_x + min_y, max_x + max_y + 1):
+        for diagonal in range(min_x + min_y, max_x + max_y + 1):
             for x in range(min_x, max_x + 1):
-                y = s - x
+                y = diagonal - x
                 if min_y <= y <= max_y and self.dungeon.in_bounds(x, y):
                     if self.tile_visibility_alpha(x, y) <= 0:
                         continue
@@ -101,13 +124,71 @@ class RenderingWorldMixin:
                     entry = self._tile_blit_entry(x, y, tile)
                     if entry is not None:
                         entries.append(entry)
-        if entries:
-            blits = getattr(self.screen, "blits", None)
-            if blits is not None:
-                blits(entries)
-            else:
-                for src, dest in entries:
-                    self.screen.blit(src, dest)
+        return entries
+
+    def _draw_cached_mobile_floor_layer(self) -> bool:
+        """Blit a reusable opaque floor layer on the Android SDL2-alpha path."""
+
+        if (
+            not getattr(self, "mobile_mode", False)
+            or not sdl2_alpha_blitter_requested()
+            or self.is_current_floor_dark()
+        ):
+            return False
+        screen_w, screen_h = self._screen_size()
+        if screen_w <= 0 or screen_h <= 0:
+            return False
+
+        cam_x, cam_y = self.camera_iso()
+        margin_x = TILE_W
+        margin_y = TILE_H
+        layer_size = (screen_w + margin_x * 2, screen_h + margin_y * 2)
+        story_accent = tuple(getattr(getattr(self, "story_state", None), "accent", ()))
+        cache_key = (
+            id(self.dungeon),
+            getattr(self, "run_number", 0),
+            getattr(self, "current_depth", 0),
+            self.theme.name,
+            story_accent,
+            layer_size,
+            round(float(getattr(self, "view_zoom", 1.0)), 4),
+            bool(getattr(self, "legacy_graphics", False)),
+            len(self.revealed_tiles),
+        )
+        cache = getattr(self, "_mobile_floor_layer_cache", None)
+        rebuild = cache is None or cache[0] != cache_key
+        if not rebuild:
+            assert cache is not None
+            build_cam_x, build_cam_y = cache[1], cache[2]
+            rebuild = (
+                abs(cam_x - build_cam_x) >= margin_x * 0.5
+                or abs(cam_y - build_cam_y) >= margin_y * 0.5
+            )
+
+        if rebuild:
+            layer = pygame.Surface(layer_size).convert()
+            layer.fill((10, 10, 14))
+            root_screen = self.screen
+            frame_cache = self._frame_cache
+            self.screen = layer
+            self._frame_cache = {}
+            try:
+                entries = self._floor_blit_entries()
+            finally:
+                self.screen = root_screen
+                self._frame_cache = frame_cache
+            self._blit_floor_entries(layer, entries)
+            cache = (cache_key, cam_x, cam_y, layer)
+            self._mobile_floor_layer_cache = cache
+
+        assert cache is not None
+        build_cam_x, build_cam_y, layer = cache[1], cache[2], cache[3]
+        destination = (
+            round(build_cam_x - cam_x + screen_w * 0.5 - layer.get_width() * 0.5),
+            round(build_cam_y - cam_y + screen_h * 0.48 - layer.get_height() * 0.48),
+        )
+        self.screen.blit(layer, destination)
+        return True
 
     def _tile_blit_entry(
         self, x: int, y: int, tile: Tile
@@ -199,6 +280,7 @@ class RenderingWorldMixin:
         # belong to the previous theme.
         self._alpha_tile_cache = {}
         self.door_tile_cache = {}
+        self._mobile_floor_layer_cache = None
         # Milestone 3.16: lighting caches are keyed by theme accent and
         # per-sprite identity, so reset them on floor/theme change alongside
         # the alpha-bucket cache.
@@ -485,8 +567,8 @@ class RenderingWorldMixin:
                 wall_face_style=wall_face_style,
             )
         if asset_surface is not None:
+            wall_surface, wall_anchor_x, wall_anchor_y = asset_surface
             if tile == Tile.WALL and bar_wall_light_side is not None:
-                wall_surface, wall_anchor_x, wall_anchor_y = asset_surface
                 wall_surface = wall_surface.copy()
                 self._draw_bar_wall_light(
                     wall_surface,
@@ -494,7 +576,8 @@ class RenderingWorldMixin:
                     wall_anchor_y,
                     bar_wall_light_side,
                 )
-                asset_surface = (wall_surface, wall_anchor_x, wall_anchor_y)
+            wall_surface = optimize_immutable_alpha_surface(wall_surface)
+            asset_surface = (wall_surface, wall_anchor_x, wall_anchor_y)
             self.tile_cache[key] = asset_surface
             return asset_surface
 
@@ -553,7 +636,8 @@ class RenderingWorldMixin:
                 garden_floor=garden_floor,
             )
 
-        cached = (surface.convert_alpha(), anchor_x, anchor_y)
+        surface = optimize_immutable_alpha_surface(surface.convert_alpha())
+        cached = (surface, anchor_x, anchor_y)
         self.tile_cache[key] = cached
         return cached
 

@@ -115,12 +115,46 @@ def validate_source_tree(source_dir: Path) -> None:
     except (OSError, SyntaxError) as error:
         raise ValidationError(f"invalid Android entry point {main_path}: {error}") from error
 
-    imports_main = any(
-        isinstance(node, ast.ImportFrom)
-        and node.module == "arch_rogue.game"
-        and any(alias.name == "main" for alias in node.names)
-        for node in tree.body
+    game_import_index = next(
+        (
+            index
+            for index, node in enumerate(tree.body)
+            if isinstance(node, ast.ImportFrom)
+            and node.module == "arch_rogue.game"
+            and any(alias.name == "main" for alias in node.names)
+        ),
+        None,
     )
+    alpha_setup_index = next(
+        (
+            index
+            for index, node in enumerate(tree.body)
+            if isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Attribute)
+            and node.value.func.attr == "setdefault"
+            and isinstance(node.value.func.value, ast.Attribute)
+            and node.value.func.value.attr == "environ"
+            and isinstance(node.value.func.value.value, ast.Name)
+            and node.value.func.value.value.id == "os"
+            and len(node.value.args) >= 2
+            and isinstance(node.value.args[0], ast.Constant)
+            and node.value.args[0].value == "PYGAME_BLEND_ALPHA_SDL2"
+            and isinstance(node.value.args[1], ast.Constant)
+            and node.value.args[1].value == "1"
+        ),
+        None,
+    )
+    if (
+        alpha_setup_index is None
+        or game_import_index is None
+        or alpha_setup_index >= game_import_index
+    ):
+        raise ValidationError(
+            f"{main_path} must set PYGAME_BLEND_ALPHA_SDL2=1 before importing "
+            "arch_rogue.game so pygame caches the Android ARM blitter choice"
+        )
+
     guarded_call = False
     for node in tree.body:
         if not isinstance(node, ast.If) or not isinstance(node.test, ast.Compare):
@@ -143,7 +177,7 @@ def validate_source_tree(source_dir: Path) -> None:
         )
         guarded_call = guarded_call or (is_main_guard and calls_main)
 
-    if not imports_main or not guarded_call:
+    if game_import_index is None or not guarded_call:
         raise ValidationError(
             f"{main_path} must import arch_rogue.game.main and call it under "
             "an __name__ == '__main__' guard"
@@ -274,6 +308,10 @@ def _validate_private_bundle(payload: bytes) -> str:
             if b"arch_rogue.game" not in entry_data or b"main" not in entry_data:
                 raise ValidationError(
                     f"{entrypoint} does not reference arch_rogue.game.main"
+                )
+            if b"PYGAME_BLEND_ALPHA_SDL2" not in entry_data:
+                raise ValidationError(
+                    f"{entrypoint} does not enable the Android SDL2 alpha blitter"
                 )
             return entrypoint
     except (OSError, tarfile.TarError) as error:

@@ -36,6 +36,7 @@ import pygame
 
 from .constants import LIGHT_SHADE_DOWNSAMPLE_LONG, TILE_W, WORLD_SCALE
 from .lighting import bake_normal_map
+from .mobile import optimize_immutable_alpha_surface
 from .models import Color
 from .sprites import PixelSpriteAtlas
 
@@ -395,6 +396,7 @@ class AssetSpriteLibrary:
             cropped = cropped.convert_alpha()
         except pygame.error:
             pass
+        cropped = optimize_immutable_alpha_surface(cropped)
         frame = ResolvedSpriteFrame(
             cropped,
             (
@@ -744,6 +746,7 @@ class AssetSpriteLibrary:
             canvas = canvas.convert_alpha()
         except pygame.error:
             pass
+        canvas = optimize_immutable_alpha_surface(canvas)
         result = (canvas, target_anchor[0], target_anchor[1])
         return self._world_cache.put(cache_key, result)
 
@@ -1316,6 +1319,7 @@ class SpriteAtlas:
                 ),
             )
             anchor = (round(anchor[0] * scale), round(anchor[1] * scale))
+        surface = optimize_immutable_alpha_surface(surface)
         variant = ResolvedSpriteFrame(
             surface, anchor, "asset", ("prop-variant", *cache_key)
         )

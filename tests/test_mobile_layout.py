@@ -24,6 +24,7 @@ from arch_rogue.mobile import (
     SafeInsets,
     build_mobile_layout,
     detect_mobile_runtime,
+    optimize_immutable_alpha_surface,
 )
 from arch_rogue.options import (
     MOBILE_RENDER_QUALITY_BALANCED,
@@ -67,15 +68,15 @@ class MobileRenderQualityTests(unittest.TestCase):
         )
         self.assertEqual(
             MOBILE_RENDER_QUALITY_HEIGHT_CAPS,
-            {"performance": 360, "balanced": 540, "native": None},
+            {"performance": 540, "balanced": 720, "native": None},
         )
         cases = (
-            ((2340, 1080), MOBILE_RENDER_QUALITY_PERFORMANCE, (780, 360)),
-            ((2340, 1080), MOBILE_RENDER_QUALITY_BALANCED, (1170, 540)),
+            ((2340, 1080), MOBILE_RENDER_QUALITY_PERFORMANCE, (1170, 540)),
+            ((2340, 1080), MOBILE_RENDER_QUALITY_BALANCED, (1560, 720)),
             ((2340, 1080), MOBILE_RENDER_QUALITY_NATIVE, (2340, 1080)),
-            ((2560, 1600), MOBILE_RENDER_QUALITY_BALANCED, (864, 540)),
-            ((800, 480), MOBILE_RENDER_QUALITY_PERFORMANCE, (600, 360)),
-            ((1280, 720), MOBILE_RENDER_QUALITY_BALANCED, (960, 540)),
+            ((2560, 1600), MOBILE_RENDER_QUALITY_BALANCED, (1152, 720)),
+            ((800, 480), MOBILE_RENDER_QUALITY_PERFORMANCE, (800, 480)),
+            ((1280, 720), MOBILE_RENDER_QUALITY_BALANCED, (1280, 720)),
         )
         for physical, quality, expected in cases:
             with self.subTest(physical=physical, quality=quality):
@@ -100,7 +101,7 @@ class MobileRenderQualityTests(unittest.TestCase):
         )
         self.assertEqual(
             mobile_render_quality_label(MOBILE_RENDER_QUALITY_PERFORMANCE),
-            "Performance · 360p cap",
+            "Performance · 540p cap",
         )
         self.assertEqual(
             next_mobile_render_quality(MOBILE_RENDER_QUALITY_PERFORMANCE),
@@ -164,7 +165,7 @@ class MobileRenderQualityTests(unittest.TestCase):
                 result = game.apply_display_mode()
             self.assertIs(result, game.screen)
             set_mode.assert_called_once_with(
-                (1170, 540), pygame.FULLSCREEN | pygame.SCALED
+                (1560, 720), pygame.FULLSCREEN | pygame.SCALED
             )
 
     def test_android_display_retries_with_second_accelerated_gles_driver(self) -> None:
@@ -193,8 +194,8 @@ class MobileRenderQualityTests(unittest.TestCase):
             self.assertEqual(
                 set_mode.call_args_list,
                 [
-                    call((780, 360), pygame.FULLSCREEN | pygame.SCALED),
-                    call((780, 360), pygame.FULLSCREEN | pygame.SCALED),
+                    call((1170, 540), pygame.FULLSCREEN | pygame.SCALED),
+                    call((1170, 540), pygame.FULLSCREEN | pygame.SCALED),
                 ],
             )
             reset.assert_called_once_with()
@@ -309,7 +310,7 @@ class MobileRenderQualityTests(unittest.TestCase):
             game.draw_options_menu()
             self.assertEqual(
                 getattr(game, "_options_visible_rows")[0],
-                ("F", "Render quality", "Performance · 360p cap"),
+                ("F", "Render quality", "Performance · 540p cap"),
             )
 
             game._world_layer = pygame.Surface((8, 8))
@@ -400,12 +401,53 @@ class MobileRenderQualityTests(unittest.TestCase):
                             max(1, viewport.height // divisor),
                         ),
                     )
+                    scratch = game._light_scratch_surface
+                    self.assertIsNotNone(scratch)
+                    assert scratch is not None
+                    self.assertEqual(scratch.get_masks()[:3], game.screen.get_masks()[:3])
+
+    def test_mobile_floor_layer_reuses_until_camera_or_reveal_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1170, 540))
+            game.state = "playing"
+            self.assertFalse(game.is_current_floor_dark())
+            with patch.dict(os.environ, {"PYGAME_BLEND_ALPHA_SDL2": "1"}):
+                game.draw()
+                first = game._mobile_floor_layer_cache
+                self.assertIsNotNone(first)
+                assert first is not None
+                first_surface = first[3]
+
+                game.draw()
+                second = game._mobile_floor_layer_cache
+                self.assertIsNotNone(second)
+                assert second is not None
+                self.assertIs(second[3], first_surface)
+
+                game.revealed_tiles.add((-1, -1))
+                game.draw()
+                rebuilt = game._mobile_floor_layer_cache
+                self.assertIsNotNone(rebuilt)
+                assert rebuilt is not None
+                self.assertIsNot(rebuilt[3], first_surface)
+
+    def test_dark_floor_bypasses_mobile_floor_layer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1170, 540))
+            with (
+                patch.dict(os.environ, {"PYGAME_BLEND_ALPHA_SDL2": "1"}),
+                patch.object(game, "is_current_floor_dark", return_value=True),
+            ):
+                self.assertFalse(game._draw_cached_mobile_floor_layer())
+            self.assertIsNone(getattr(game, "_mobile_floor_layer_cache", None))
 
     def test_mobile_performance_monitor_reports_phase_and_runtime_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (780, 360))
             game._mobile_renderer_name = "opengles2"
             game._mobile_renderer_accelerated = True
+            game._mobile_alpha_sdl2 = True
+            game._mobile_cpu_neon = True
             now = [0.0]
             emitted: list[str] = []
             monitor = MobilePerformanceMonitor(
@@ -430,8 +472,21 @@ class MobileRenderQualityTests(unittest.TestCase):
             self.assertIn("flip:700.0", report)
             self.assertIn("logical=780x360", report)
             self.assertIn("renderer=opengles2 accelerated=yes", report)
+            self.assertIn("alpha_sdl2=1 neon=yes", report)
             self.assertIn("cache=decoded:", report)
-            self.assertIn("W 200 H 50 F 700", monitor.overlay_text)
+            self.assertIn("A2:1 N:yes", monitor.overlay_text)
+            self.assertIn("T 0 U 0 W 200 H 50 F 700 A 0", monitor.overlay_detail_text)
+
+
+    def test_android_alpha_sources_enable_rle_without_changing_alpha(self) -> None:
+        source = pygame.Surface((24, 24), pygame.SRCALPHA)
+        source.fill((0, 0, 0, 0))
+        pygame.draw.circle(source, (220, 90, 60, 180), (12, 12), 7)
+        with patch.dict(os.environ, {"PYGAME_BLEND_ALPHA_SDL2": "1"}):
+            optimized = optimize_immutable_alpha_surface(source, alpha=208)
+        self.assertIs(optimized, source)
+        self.assertEqual(source.get_alpha(), 208)
+        self.assertTrue(source.get_flags() & pygame.RLEACCELOK)
 
 
 class MobileLayoutTests(unittest.TestCase):

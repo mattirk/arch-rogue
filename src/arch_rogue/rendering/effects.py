@@ -30,6 +30,7 @@ import pygame
 
 from ..constants import DUNGEON_DEPTH, TILE_H, TILE_W, WORLD_SCALE, SlashEffect
 from ..content import HUMANOID_ENEMY_NAMES
+from ..mobile import optimize_immutable_alpha_surface
 from ..models import (
     AmbushBell,
     Color,
@@ -83,6 +84,7 @@ class RenderingEffectsMixin:
             overlay = overlay.convert_alpha()
         except pygame.error:
             pass
+        overlay = optimize_immutable_alpha_surface(overlay)
         cache[key] = overlay
         self.ambient_overlay_cache = cache
         return overlay
@@ -92,13 +94,10 @@ class RenderingEffectsMixin:
             return
         if self.is_current_floor_dark():
             return
-        if (
-            getattr(self, "mobile_mode", False)
-            and getattr(self, "mobile_render_quality", "performance") == "performance"
-            and self.lighting_enabled()
-        ):
+        if getattr(self, "mobile_mode", False) and self.lighting_enabled():
             # The continuous lighting buffer already carries the depth tint.
-            # Avoid a second full-viewport alpha blend on the lowest mobile tier.
+            # On ARM, a second full-viewport alpha pass is expensive at every
+            # quality tier and adds little after the themed lighting multiply.
             return
         self.screen.blit(self.ambient_overlay_surface(), (0, 0))
 
@@ -739,9 +738,12 @@ class RenderingEffectsMixin:
         self._soft_shadow_template_cache = cache
         return surf
 
-    def _scaled_soft_shadow(self, width: int, height: int) -> pygame.Surface:
-        key = (width, height)
-        cache: dict[tuple[int, int], pygame.Surface] = getattr(
+    def _scaled_soft_shadow(
+        self, width: int, height: int, alpha: int = 255
+    ) -> pygame.Surface:
+        alpha = max(0, min(255, (int(alpha) // 8) * 8))
+        key = (width, height, alpha)
+        cache: dict[tuple[int, int, int], pygame.Surface] = getattr(
             self, "_scaled_soft_shadow_cache", {}
         )
         shadow = cache.get(key)
@@ -750,7 +752,9 @@ class RenderingEffectsMixin:
         if len(cache) >= 128:
             cache.pop(next(iter(cache)))
         template = self._soft_shadow_template(max(8, max(width, height)))
-        shadow = pygame.transform.smoothscale(template, key)
+        shadow = pygame.transform.smoothscale(template, (width, height))
+        shadow.set_alpha(alpha)
+        shadow = optimize_immutable_alpha_surface(shadow, alpha=alpha)
         cache[key] = shadow
         self._scaled_soft_shadow_cache = cache
         return shadow
@@ -769,15 +773,12 @@ class RenderingEffectsMixin:
         squash = pulse * 1.4 if moving else 0.0
         scaled_w = max(1, round((width + squash * 3 + lift) * WORLD_SCALE))
         scaled_h = max(1, round((height - squash - lift * 0.32) * WORLD_SCALE))
-        # Soft contact shadow: cache the final iso-squashed dimensions as well as
-        # the radial template. Actor dimensions repeat heavily within and across
-        # frames, especially in crowds, so no rescale is needed on cache hits.
-        shadow = self._scaled_soft_shadow(scaled_w, scaled_h)
-        # set_alpha acts as a global multiplier on per-pixel-alpha surfaces in
-        # pygame-ce, so motion/lift modulation costs nothing per frame.
+        # Cache the final dimensions and quantized opacity. Keeping each source
+        # immutable lets SDL retain its RLE encoding instead of rebuilding it
+        # after a per-frame set_alpha call for every actor.
         opacity = 210 if moving else 175
         opacity = max(0, min(255, int(opacity - lift * 6.0)))
-        shadow.set_alpha(opacity)
+        shadow = self._scaled_soft_shadow(scaled_w, scaled_h, opacity)
         self.screen.blit(
             shadow,
             shadow.get_rect(center=(sx, sy + 10 * WORLD_SCALE)),

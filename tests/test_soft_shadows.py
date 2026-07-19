@@ -80,8 +80,11 @@ class SoftShadow38Tests(unittest.TestCase):
                 scaled_a = game._scaled_soft_shadow(64, 24)
                 scaled_b = game._scaled_soft_shadow(64, 24)
                 scaled_other = game._scaled_soft_shadow(64, 25)
+                scaled_alpha = game._scaled_soft_shadow(64, 24, 176)
                 self.assertIs(scaled_a, scaled_b)
                 self.assertIsNot(scaled_a, scaled_other)
+                self.assertIsNot(scaled_a, scaled_alpha)
+                self.assertEqual(scaled_alpha.get_alpha(), 176)
                 self.assertEqual(scaled_a.get_size(), (64, 24))
             finally:
                 pass

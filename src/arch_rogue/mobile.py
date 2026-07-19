@@ -34,6 +34,7 @@ _TRUE_VALUES = frozenset(("1", "true", "yes", "on"))
 _FALSE_VALUES = frozenset(("0", "false", "no", "off"))
 MOBILE_PERF_LOG_PREFIX = "ARCH_ROGUE_PERF"
 MOBILE_PERF_REPORT_INTERVAL = 4.0
+PYGAME_BLEND_ALPHA_SDL2_ENV = "PYGAME_BLEND_ALPHA_SDL2"
 MOBILE_PERF_PHASES = (
     "tick",
     "events",
@@ -63,6 +64,52 @@ def mobile_performance_telemetry_enabled() -> bool:
     if override in _FALSE_VALUES:
         return False
     return android_runtime_active()
+
+
+def sdl2_alpha_blitter_requested() -> bool:
+    """Return whether pygame cached/uses SDL2's alpha blending semantics."""
+
+    # pygame-ce tests only whether the variable exists, not whether its value is
+    # truthy. Mirror that import-time behavior exactly.
+    return PYGAME_BLEND_ALPHA_SDL2_ENV in os.environ
+
+
+def optimize_immutable_alpha_surface(
+    surface: pygame.Surface,
+    *,
+    alpha: int | None = None,
+) -> pygame.Surface:
+    """Enable SDL's RLE alpha cache for a read-only Android source surface.
+
+    Transparent actor, tile, and UI surfaces are blitted hundreds of times per
+    frame. RLE lets SDL skip transparent runs instead of touching every pixel.
+    It is intentionally activated only with the SDL2 alpha override so desktop
+    blending and surfaces that callers continue to modify remain unchanged.
+    """
+
+    if not sdl2_alpha_blitter_requested() or not surface.get_flags() & pygame.SRCALPHA:
+        return surface
+    area = surface.get_width() * surface.get_height()
+    if area <= 0:
+        return surface
+    try:
+        occupied = pygame.mask.from_surface(surface, 1).count()
+    except (TypeError, ValueError, pygame.error):
+        return surface
+    # RLE is a win for transparent runs but adds decode overhead to nearly opaque
+    # panels. Actor frames and isometric floor diamonds are typically 15–75%
+    # occupied; dense UI art stays on pygame's normal contiguous path.
+    if occupied * 100 > area * 85:
+        return surface
+    target_alpha = surface.get_alpha() if alpha is None else int(alpha)
+    target_alpha = 255 if target_alpha is None else max(0, min(255, target_alpha))
+    if surface.get_flags() & pygame.RLEACCEL and surface.get_alpha() == target_alpha:
+        return surface
+    try:
+        surface.set_alpha(target_alpha, pygame.RLEACCEL)
+    except (TypeError, ValueError, pygame.error):
+        pass
+    return surface
 
 
 def detect_mobile_runtime() -> bool:
@@ -375,6 +422,7 @@ class MobilePerformanceMonitor:
         self._last_cache_stats: dict[str, int] = {}
         self.last_report = ""
         self.overlay_text = "PERF collecting frame timings..."
+        self.overlay_detail_text = "T -- U -- W -- H -- F -- A -- | L+0 B+0"
 
     @staticmethod
     def _print_line(line: str) -> None:
@@ -468,6 +516,11 @@ class MobilePerformanceMonitor:
             "yes" if accelerated is True else "no" if accelerated is False else "unknown"
         )
         renderer_name = str(getattr(game, "_mobile_renderer_name", "unknown"))
+        alpha_sdl2 = bool(
+            getattr(game, "_mobile_alpha_sdl2", sdl2_alpha_blitter_requested())
+        )
+        neon = getattr(game, "_mobile_cpu_neon", None)
+        neon_label = "yes" if neon is True else "no" if neon is False else "unknown"
         phase_label = ",".join(
             f"{phase}:{phase_ms[phase]:.1f}" for phase in MOBILE_PERF_PHASES
         )
@@ -486,6 +539,7 @@ class MobilePerformanceMonitor:
             f"viewport={self._size_label(viewport_size)} "
             f"quality={getattr(game, 'mobile_render_quality', 'unknown')} "
             f"renderer={renderer_name} accelerated={accelerated_label} "
+            f"alpha_sdl2={int(alpha_sdl2)} neon={neon_label} "
             f"video={video_driver} lighting={int(bool(getattr(game, '_lighting_enabled', False)))} "
             f"normals={int(bool(getattr(game, '_lighting_normal_maps', False)))} "
             f"entities=enemies:{enemies},lights:{lights},effects:{effects},projectiles:{projectiles} "
@@ -497,9 +551,14 @@ class MobilePerformanceMonitor:
         visible_world_ms = max(phase_ms["menu"], phase_ms["world"])
         self.overlay_text = (
             f"PERF {fps:.1f}fps {frame_ms:.0f}ms | "
+            f"{self._size_label(logical_size)} {renderer_name} "
+            f"A2:{int(alpha_sdl2)} N:{neon_label}"
+        )
+        self.overlay_detail_text = (
+            f"T {phase_ms['tick']:.0f} U {phase_ms['update']:.0f} "
             f"W {visible_world_ms:.0f} H {phase_ms['hud']:.0f} "
-            f"F {phase_ms['flip']:.0f} | {self._size_label(logical_size)} "
-            f"{renderer_name}"
+            f"F {phase_ms['flip']:.0f} A {phase_ms['audio']:.0f} | "
+            f"L+{source_delta} B+{build_delta}"
         )
         self._emit(line)
 
@@ -532,7 +591,7 @@ class MobileMixin:
         self.mobile_suspended = False
         self.mobile_audio_focus_paused = False
         self._mobile_perf_overlay_cache: tuple[
-            str, int, pygame.Surface
+            tuple[str, str], int, pygame.Surface
         ] | None = None
         self._mobile_performance_monitor = (
             MobilePerformanceMonitor()
@@ -923,17 +982,26 @@ class MobileMixin:
         monitor = getattr(self, "_mobile_performance_monitor", None)
         if monitor is None:
             return
-        text = monitor.overlay_text
+        lines = (monitor.overlay_text, monitor.overlay_detail_text)
         font = self.tiny_font
         cache = getattr(self, "_mobile_perf_overlay_cache", None)
-        if cache is None or cache[0] != text or cache[1] != id(font):
-            label = font.render(text, True, (236, 231, 206))
+        if cache is None or cache[0] != lines or cache[1] != id(font):
+            labels = tuple(font.render(text, True, (236, 231, 206)) for text in lines)
+            line_gap = 1
             surface = pygame.Surface(
-                (label.get_width() + 8, label.get_height() + 4), pygame.SRCALPHA
+                (
+                    max(label.get_width() for label in labels) + 8,
+                    sum(label.get_height() for label in labels) + line_gap + 4,
+                ),
+                pygame.SRCALPHA,
             )
             surface.fill((4, 5, 8, 212))
-            surface.blit(label, (4, 2))
-            cache = (text, id(font), surface)
+            y = 2
+            for label in labels:
+                surface.blit(label, (4, y))
+                y += label.get_height() + line_gap
+            surface = optimize_immutable_alpha_surface(surface)
+            cache = (lines, id(font), surface)
             self._mobile_perf_overlay_cache = cache
         surface = cache[2]
         bounds = (
@@ -1003,6 +1071,7 @@ class MobileMixin:
 
     def clear_mobile_memory_caches(self) -> None:
         self._world_layer = None
+        self._mobile_floor_layer_cache = None
         self._screen_flash_surface = None
         for name in (
             "_hud_panel_cache",

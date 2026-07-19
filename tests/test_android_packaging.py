@@ -50,7 +50,9 @@ def write_apk(
 ) -> None:
     private_entries = {"arch_rogue/game.pyc": b"game"}
     if include_main:
-        private_entries["main.pyc"] = b"arch_rogue.game\x00main"
+        private_entries["main.pyc"] = (
+            b"PYGAME_BLEND_ALPHA_SDL2\x001\x00arch_rogue.game\x00main"
+        )
     if include_generated_metadata:
         private_entries["arch_rogue.egg-info/PKG-INFO"] = b"Version: stale"
 
@@ -126,12 +128,32 @@ class AndroidSourceContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ValidationError, "top-level main.py"):
                 validate_source_tree(source)
 
+    def test_source_preflight_requires_alpha_override_before_game_import(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir)
+            (source / "arch_rogue").mkdir()
+            (source / "arch_rogue" / "game.py").write_text("def main(): pass\n")
+            (source / "main.py").write_text(
+                "import os\n"
+                "from arch_rogue.game import main\n"
+                "os.environ.setdefault('PYGAME_BLEND_ALPHA_SDL2', '1')\n"
+                "if __name__ == '__main__':\n"
+                "    main()\n"
+            )
+            with self.assertRaisesRegex(
+                ValidationError,
+                "PYGAME_BLEND_ALPHA_SDL2=1 before importing",
+            ):
+                validate_source_tree(source)
+
     def test_source_preflight_rejects_host_native_library(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir)
             (source / "arch_rogue").mkdir()
             (source / "arch_rogue" / "game.py").write_text("def main(): pass\n")
             (source / "main.py").write_text(
+                "import os\n"
+                "os.environ.setdefault('PYGAME_BLEND_ALPHA_SDL2', '1')\n"
                 "from arch_rogue.game import main\n"
                 "if __name__ == '__main__':\n"
                 "    main()\n"
