@@ -447,6 +447,7 @@ class StoryRuntimeMixin:
             return False
         self.active_cutscene.node_id = node_id
         self.active_cutscene.node_elapsed = 0.0
+        self.cutscene_cursor = 0
         self.active_cutscene.context = self.quest_cutscene_context(
             self.active_cutscene_guest()
         )

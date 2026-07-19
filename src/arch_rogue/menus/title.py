@@ -142,8 +142,17 @@ class MenuTitleMixin:
         panel, content = self.menu_frame("Exit Arch Rogue?", "Confirm before closing")
         from_run = self.g.exit_previous_state == "playing"
         rows: list[MenuRow] = [
-            ("Y / Enter", "Exit game", "Save run" if from_run else "Close"),
-            ("N / Esc / Backspace", "Cancel and return", "Safe"),
+            ("Y", "Exit game", "Save run" if from_run else "Close"),
+            (
+                "M",
+                "Return to main menu",
+                "Save & return" if from_run else "Main menu",
+            ),
+            (
+                "N / Esc / Backspace",
+                "Cancel and return to game",
+                "Keep playing" if from_run else "Return",
+            ),
         ]
         modern = bool(getattr(self, "_last_menu_frame_used_asset", False))
         shortcut_h = self.menu_shortcut_section_height() if modern else 0
@@ -171,20 +180,48 @@ class MenuTitleMixin:
                 content.x, content.bottom - self.u(92), content.width, self.u(78)
             )
             rows_rect = content
-        self.draw_menu_rows(rows, rows_rect, keys_in_rows=not modern)
+        self.draw_menu_rows(
+            rows,
+            rows_rect,
+            selected_index=max(
+                0,
+                min(
+                    getattr(self.g, "exit_confirmation_cursor", 0),
+                    self.g.EXIT_CONFIRMATION_OPTION_COUNT - 1,
+                ),
+            ),
+            keys_in_rows=not modern,
+        )
+        save_error = getattr(self.g, "last_save_error", "")
         note = (
-            "Your current run will be saved before the game closes. Choose Cancel to keep playing."
-            if from_run
-            else "No run is active. Choose Exit to close the game, or Cancel to return to the menu."
+            save_error
+            if save_error
+            else (
+                "Exit closes the game after saving. Return to main menu saves this run and keeps Arch Rogue open. Cancel resumes the game."
+                if from_run
+                else "No run is active. Exit closes Arch Rogue; Return to main menu keeps it open."
+            )
         )
         self.draw_wrapped_text(note, self.g.small_font, self.MUTED, note_rect)
         if modern:
+            selected_label = rows[
+                max(
+                    0,
+                    min(
+                        getattr(self.g, "exit_confirmation_cursor", 0),
+                        self.g.EXIT_CONFIRMATION_OPTION_COUNT - 1,
+                    ),
+                )
+            ][1]
             self.draw_menu_shortcut_section(
                 shortcut_rect,
-                "Y / Enter",
-                "Exit · N / Esc / Backspace cancels",
+                "Enter / E",
+                f"Confirm {selected_label} · Arrow keys select",
             )
-        self.draw_footer(panel, "Y confirms · N cancels")
+        self.draw_footer(
+            panel,
+            "Arrow keys select · Enter / E confirms · M returns to menu · Esc cancels",
+        )
 
     def draw_about_screen(self) -> None:
         panel, content = self.menu_frame(

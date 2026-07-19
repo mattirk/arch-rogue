@@ -756,18 +756,18 @@ class RenderingStoryOverlayMixin:
             "Narrator speaking… Enter/E/Space or gamepad A reveals the full line."
             if not narration_complete
             else (
-                "Press 1-3 or D-pad + A to choose. Gamepad B skips/closes."
-                if len(choices_to_draw) >= 3
+                "Arrow keys select · Enter/E confirms · 1-3 quick-picks · D-pad + A."
+                if choices_to_draw
                 else "Enter/E or gamepad A advances. Esc/B closes non-blocking dialogue."
             )
         )
         if self.story_intro_pending and narration_complete:
             footer_text = (
-                "Choose 1-3 or D-pad + A to bind the guest relic and begin this level."
+                "Arrow keys select · Enter/E confirms · 1-3 quick-picks the guest relic."
             )
         if narration_complete and self._cutscene_narration_scroll_max > 0:
             action_hint = (
-                "Choose 1-3 or D-pad + A."
+                "Arrows select · Enter/E confirms."
                 if choices_to_draw
                 else "Enter/E or gamepad A advances."
             )
@@ -3363,9 +3363,12 @@ class RenderingStoryOverlayMixin:
                 index,
                 label,
                 detail,
+                is_selected=index == getattr(self, "cutscene_cursor", 0),
             )
 
-        footer = "Press 1-3 to confirm the guest dialog, place the relic, and begin this level."
+        footer = (
+            "Arrow keys select · Enter/E confirms · 1-3 quick-picks the guest relic."
+        )
         self.draw_ui_text(
             surface,
             footer,

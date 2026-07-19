@@ -1,5 +1,75 @@
 # Changelog
 
+## 4.2.9 — Safe Exit Default
+
+Milestone 4.2.9 makes `Cancel and return to game` the default highlighted option whenever the exit confirmation screen opens, preventing accidental exits or menu returns from an immediate confirmation keypress.
+
+### Changed
+
+- Exit confirmation now initializes its keyboard/gamepad cursor on `Cancel and return to game` instead of `Exit game`.
+- Up selects `Return to main menu`, while Down wraps safely to `Exit game`; direct `Y`, `M`, `N`, `Esc`, and `Backspace` shortcuts remain unchanged.
+- Runtime/package release version is `4.2.9`; options remain schema `5` and run saves remain schema `5`.
+
+### Tests
+
+- Updated keyboard, `E`, shared gamepad-dispatch, wrapping, rendering, save-count, and version assertions for the safe Cancel default.
+
+### Validation
+
+- `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/python -m unittest discover tests` — 377 tests, all passing; the experimental web build was not run separately.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+- `git diff --check` — clean.
+
+## 4.2.8 — Exit Menu Return Option
+
+Milestone 4.2.8 expands the exit confirmation screen with a safe Return-to-main-menu path while keeping the cursor controls introduced in 4.2.7.
+
+### Added
+
+- Added `Return to main menu` as the middle exit-confirmation option. Selecting it saves an active run, closes transient inventory/shop/help overlays, and returns to the title without stopping Arch Rogue.
+- Added `M` as a direct shortcut for Return to main menu; arrow keys plus `Enter`/`E` and gamepad D-pad/A use the same three-row cursor flow.
+
+### Changed
+
+- Renamed `Cancel and return` to `Cancel and return to game` and changed its detail text to `Keep playing` when a run is active.
+- Exit confirmation now wraps across three choices: Exit game, Return to main menu, and Cancel and return to game.
+- Exit-overlay saves are now accepted by the save layer when the overlay was opened from active gameplay. Both Exit and Return remain on the confirmation screen if writing fails, and the actionable save error is displayed instead of silently discarding progress.
+- Runtime/package release version is `4.2.8`; options remain schema `5` and run saves remain schema `5`.
+
+### Tests
+
+- Expanded exit-confirmation event and shared-dispatch coverage to verify save-before-title behavior, direct `M`, keyboard/gamepad cancellation, default Exit confirmation, three-row rendering, and the exact revised labels.
+- Added real-file persistence coverage for current player state plus save-failure tests proving Exit and Return stay open and surface the error.
+
+### Validation
+
+- `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/python -m unittest discover tests` — 377 tests, all passing; the experimental web build was not run separately.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+- `git diff --check` — clean.
+
+## 4.2.7 — Keyboard Cursor Confirmation
+
+Milestone 4.2.7 makes the exit confirmation and quest dialogue screens fully navigable from the keyboard: arrow keys move the visible option cursor, while `Enter` or `E` confirms the highlighted row.
+
+### Changed
+
+- Exit confirmation now opens with `Exit game` selected, supports wrapped Up/Down/Left/Right navigation between Exit and Cancel, and lets `Enter` or `E` activate the highlighted row. Existing `Y`, `N`, `Esc`, and `Backspace` shortcuts remain available, and gamepad D-pad/A uses the same cursor path.
+- Active quest cutscenes now route keyboard arrows through the existing dialogue cursor and use `Enter`/`E` as true selection confirmation once narration is complete. `Space` retains its narration reveal/advance behavior, and number keys remain quick-picks.
+- The legacy/fallback guest-relic prompt now renders the same selected-choice highlight and supports keyboard arrows, `Enter`/`E`, D-pad, and gamepad A. This keeps restored saves and asset-failure fallbacks accessible.
+- Dialogue cursors reset when changing nodes, clamp to visible choices, and ignore out-of-range number shortcuts instead of leaving every row unselected.
+- Runtime/package release version is `4.2.7`; options remain schema `5` and run saves remain schema `5`.
+
+### Tests
+
+- Added real keyboard-event coverage for exit Cancel/Exit confirmation and both `Enter` and `E` quest-choice confirmation.
+- Added shared-dispatch/gamepad coverage, fallback relic gamepad-A confirmation, rendered selection assertions for exit and relic screens, invalid number-key protection, and selected relic identity verification.
+
+### Validation
+
+- `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/python -m unittest discover tests` — 375 tests, all passing; the experimental web build was not run separately.
+- `.venv/bin/python -m compileall -q src tests` — OK.
+- `git diff --check` — clean.
+
 ## 4.2.6 — Display-Aware UI Scaling
 
 Milestone 4.2.6 makes the UI spacing follow the host desktop scale automatically. The supplied 4K Cinnamon/X11 references use `Xft.dpi: 192`, which now resolves to `Auto · 2x` before fonts and menu geometry are built.

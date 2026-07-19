@@ -679,7 +679,11 @@ class SaveLoadMixin:
 
     def save_run(self) -> bool:
         self.last_save_error = ""
-        if self.state != "playing":
+        saving_from_exit_confirmation = (
+            self.state == "confirm_exit"
+            and getattr(self, "exit_previous_state", "") == "playing"
+        )
+        if self.state != "playing" and not saving_from_exit_confirmation:
             return False
         try:
             self.save_path.parent.mkdir(parents=True, exist_ok=True)

@@ -793,13 +793,13 @@ class InputMixin:
         # no row focused (legacy direct-key usage stays untouched).
         self.options_cursor = 0
         self.options_scroll = 0
-        # Cutscene choice highlight index for gamepad navigation.
+        # Cutscene choice highlight shared by keyboard and gamepad navigation.
         self.cutscene_cursor = 0
 
     def _input_context(self) -> str:
         if self.state != "playing":
             return "menu"
-        if self.active_cutscene is not None:
+        if self.active_cutscene is not None or self.story_intro_pending:
             return "cutscene"
         if self.shop_open or self.inventory_open or self.character_menu_open:
             return "menu"
@@ -860,8 +860,14 @@ class InputMixin:
         the controller; keyboard abilities keep their dedicated handlers.
         """
         if self.state == "confirm_exit":
+            if cmd in (Command.UP, Command.LEFT):
+                self.move_exit_confirmation_cursor(-1)
+                return True
+            if cmd in (Command.DOWN, Command.RIGHT):
+                self.move_exit_confirmation_cursor(1)
+                return True
             if cmd == Command.CONFIRM:
-                self.confirm_exit()
+                self.activate_exit_confirmation_selection()
                 return True
             if cmd == Command.BACK:
                 self.cancel_exit_confirmation()
@@ -915,6 +921,12 @@ class InputMixin:
                         self.choose_active_cutscene_option(index)
                     return True
                 self.close_active_cutscene()
+                return True
+            if self.story_intro_pending:
+                choices = self.story_relic_choice_options()[:3]
+                if choices:
+                    index = max(0, min(self.cutscene_cursor, len(choices) - 1))
+                    self.choose_story_relic_path(index)
                 return True
             self.request_exit_confirmation()
             return True
@@ -1121,14 +1133,31 @@ class InputMixin:
             return self._dispatch_cutscene(cmd)
         # Fallback for the legacy non-cutscene relic prompt path.
         if self.story_intro_pending:
-            if cmd == Command.ABILITY_1:
-                self.choose_story_relic_path(0)
+            choice_count = min(3, len(self.story_relic_choice_options()))
+            if choice_count:
+                self.cutscene_cursor %= choice_count
+            else:
+                self.cutscene_cursor = 0
+            if cmd in (Command.UP, Command.LEFT):
+                if choice_count:
+                    self.cutscene_cursor = (self.cutscene_cursor - 1) % choice_count
                 return True
-            if cmd == Command.ABILITY_2:
-                self.choose_story_relic_path(1)
+            if cmd in (Command.DOWN, Command.RIGHT):
+                if choice_count:
+                    self.cutscene_cursor = (self.cutscene_cursor + 1) % choice_count
                 return True
-            if cmd == Command.ABILITY_3:
-                self.choose_story_relic_path(2)
+            if cmd == Command.CONFIRM:
+                if choice_count:
+                    self.choose_story_relic_path(self.cutscene_cursor)
+                return True
+            quick_choice = {
+                Command.ABILITY_1: 0,
+                Command.ABILITY_2: 1,
+                Command.ABILITY_3: 2,
+            }.get(cmd)
+            if quick_choice is not None and quick_choice < choice_count:
+                self.cutscene_cursor = quick_choice
+                self.choose_story_relic_path(quick_choice)
                 return True
             return False
 
@@ -1162,8 +1191,12 @@ class InputMixin:
         return self._dispatch_gameplay(cmd)
 
     def _dispatch_cutscene(self, cmd: str) -> bool:
-        choices = self.active_cutscene_choices()
+        choices = self.active_cutscene_choices()[:9]
         choice_count = len(choices)
+        if choice_count:
+            self.cutscene_cursor %= choice_count
+        else:
+            self.cutscene_cursor = 0
         # D-pad / stick navigates the choice highlight; A confirms it once the
         # narration is fully revealed, otherwise A advances the narration.
         if cmd == Command.UP:
@@ -1199,7 +1232,8 @@ class InputMixin:
             Command.ABILITY_6: 5,
         }
         if cmd in quick and quick[cmd] < choice_count:
-            self.choose_active_cutscene_option(quick[cmd])
+            self.cutscene_cursor = quick[cmd]
+            self.choose_active_cutscene_option(self.cutscene_cursor)
             return True
         return False
 

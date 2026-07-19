@@ -307,6 +307,68 @@ class UiLayoutTests(unittest.TestCase):
             self.assertEqual(len(stat_cells), 7)
             self.assertTrue(all(cell in fallback_rects for cell in stat_cells))
 
+    def test_exit_confirmation_draws_keyboard_cursor_selection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, (960, 540))
+            game.state = "title"
+            game.request_exit_confirmation()
+            self.assertEqual(
+                game.exit_confirmation_cursor,
+                game.EXIT_CONFIRMATION_CANCEL,
+            )
+            with patch.object(
+                game.menus,
+                "draw_menu_rows",
+                wraps=game.menus.draw_menu_rows,
+            ) as draw_rows:
+                game.draw_exit_confirmation()
+            self.assertEqual(draw_rows.call_args.kwargs["selected_index"], 2)
+            rows = draw_rows.call_args.args[0]
+            self.assertEqual(
+                [label for _key, label, _value in rows],
+                [
+                    "Exit game",
+                    "Return to main menu",
+                    "Cancel and return to game",
+                ],
+            )
+            self.assertEqual(getattr(game, "_menu_shortcut_key"), "Enter / E")
+            self.assertIn(
+                "Cancel and return to game",
+                getattr(game, "_menu_shortcut_label"),
+            )
+
+            game.last_save_error = "Could not save run: disk is full"
+            with patch.object(
+                game.menus,
+                "draw_wrapped_text",
+                wraps=game.menus.draw_wrapped_text,
+            ) as draw_text:
+                game.draw_exit_confirmation()
+            rendered_notes = [call.args[0] for call in draw_text.call_args_list]
+            self.assertIn(game.last_save_error, rendered_notes)
+
+    def test_fallback_story_intro_draws_selected_choice(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir, (960, 540))
+            game.rng.seed(4247)
+            game.restart(ARCHETYPES[0])
+            self.assertTrue(game.story_intro_pending)
+            game.active_cutscene = None
+            game.cutscene_cursor = 1
+            with patch.object(
+                game,
+                "draw_cutscene_choice_option",
+                wraps=game.draw_cutscene_choice_option,
+            ) as draw_choice:
+                game.draw_story_intro_overlay()
+            selected = [
+                call.args[3]
+                for call in draw_choice.call_args_list
+                if call.kwargs.get("is_selected")
+            ]
+            self.assertEqual(selected, [1])
+
     def test_modern_menu_hotkeys_statuses_and_headers_use_safe_sections(self) -> None:
         for size in ((960, 540), (640, 480)):
             with self.subTest(size=size), tempfile.TemporaryDirectory() as tmpdir:

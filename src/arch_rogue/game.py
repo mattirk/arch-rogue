@@ -87,7 +87,7 @@ from .content import (
 )
 from .dungeon import Dungeon
 from .icon import load_icon
-from .input import InputMixin, key_command
+from .input import Command, InputMixin, key_command
 from .interactions import InteractionMixin
 from .inventory import InventoryMixin
 from .menus import MenuRenderer
@@ -258,6 +258,11 @@ class Game(
     InputMixin,
     CameraMixin,
 ):
+    EXIT_CONFIRMATION_EXIT = 0
+    EXIT_CONFIRMATION_MAIN_MENU = 1
+    EXIT_CONFIRMATION_CANCEL = 2
+    EXIT_CONFIRMATION_OPTION_COUNT = 3
+
     def __init__(
         self,
         screen_size: tuple[int, int] | None = None,
@@ -392,6 +397,7 @@ class Game(
         self.current_depth = 1
         self.state = "title"
         self.exit_previous_state = "title"
+        self.exit_confirmation_cursor = self.EXIT_CONFIRMATION_CANCEL
         self.run_music_seed = 0
         self.run_music_theme = ""
         self.floor_plan: list[FloorPlan] = []
@@ -605,16 +611,41 @@ class Game(
     def request_exit_confirmation(self) -> None:
         if self.state != "confirm_exit":
             self.exit_previous_state = self.state
+            self.exit_confirmation_cursor = self.EXIT_CONFIRMATION_CANCEL
+            self.last_save_error = ""
         self.show_help = False
         self.character_menu_open = False
         self.state = "confirm_exit"
+
+    def move_exit_confirmation_cursor(self, direction: int) -> None:
+        self.exit_confirmation_cursor = (
+            self.exit_confirmation_cursor + (1 if direction > 0 else -1)
+        ) % self.EXIT_CONFIRMATION_OPTION_COUNT
+
+    def activate_exit_confirmation_selection(self) -> None:
+        if self.exit_confirmation_cursor == self.EXIT_CONFIRMATION_EXIT:
+            self.confirm_exit()
+        elif self.exit_confirmation_cursor == self.EXIT_CONFIRMATION_MAIN_MENU:
+            self.return_to_main_menu()
+        else:
+            self.cancel_exit_confirmation()
+
+    def return_to_main_menu(self) -> None:
+        if self.exit_previous_state == "playing" and not self.save_run():
+            return
+        self.show_help = False
+        self.inventory_open = False
+        self.character_menu_open = False
+        self.close_shop()
+        self.state = "title"
+        self.exit_previous_state = "title"
 
     def cancel_exit_confirmation(self) -> None:
         self.state = self.exit_previous_state or "title"
 
     def confirm_exit(self) -> None:
-        if self.exit_previous_state == "playing":
-            self.save_run()
+        if self.exit_previous_state == "playing" and not self.save_run():
+            return
         self.running = False
 
     def handle_events(self) -> None:
@@ -633,8 +664,16 @@ class Game(
                 continue
             elif event.type == pygame.KEYDOWN:
                 if self.state == "confirm_exit":
-                    if event.key in (pygame.K_y, pygame.K_RETURN):
+                    if event.key in (pygame.K_UP, pygame.K_LEFT):
+                        self.move_exit_confirmation_cursor(-1)
+                    elif event.key in (pygame.K_DOWN, pygame.K_RIGHT):
+                        self.move_exit_confirmation_cursor(1)
+                    elif event.key in (pygame.K_RETURN, pygame.K_e):
+                        self.activate_exit_confirmation_selection()
+                    elif event.key == pygame.K_y:
                         self.confirm_exit()
+                    elif event.key == pygame.K_m:
+                        self.return_to_main_menu()
                     elif event.key in (pygame.K_n, pygame.K_ESCAPE, pygame.K_BACKSPACE):
                         self.cancel_exit_confirmation()
                 elif event.key == pygame.K_ESCAPE:
@@ -789,7 +828,16 @@ class Game(
                         elif event.key == pygame.K_RETURN:
                             self.restart(self.selected_archetype)
                 elif self.state == "playing" and self.active_cutscene is not None:
-                    if event.key in (pygame.K_PAGEUP, pygame.K_PAGEDOWN):
+                    if event.key in (
+                        pygame.K_UP,
+                        pygame.K_DOWN,
+                        pygame.K_LEFT,
+                        pygame.K_RIGHT,
+                    ):
+                        cmd = key_command(event.key, event.mod)
+                        if cmd is not None:
+                            self._dispatch_command(cmd)
+                    elif event.key in (pygame.K_PAGEUP, pygame.K_PAGEDOWN):
                         page = max(
                             1,
                             getattr(
@@ -803,12 +851,20 @@ class Game(
                             -page if event.key == pygame.K_PAGEUP else page
                         )
                     elif pygame.K_1 <= event.key <= pygame.K_9:
-                        self.choose_active_cutscene_option(event.key - pygame.K_1)
-                    elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_e):
+                        choice_index = event.key - pygame.K_1
+                        visible_choice_count = min(
+                            9, len(self.active_cutscene_choices())
+                        )
+                        if choice_index < visible_choice_count:
+                            self.cutscene_cursor = choice_index
+                            self.choose_active_cutscene_option(choice_index)
+                    elif event.key in (pygame.K_RETURN, pygame.K_e):
+                        self._dispatch_command(Command.CONFIRM)
+                    elif event.key == pygame.K_SPACE:
                         if not self.advance_active_cutscene():
                             self.floaters.append(
                                 FloatingText(
-                                    "Choose 1-3 to answer the dialogue",
+                                    "Use arrows + Enter/E, or 1-3, to answer",
                                     self.player.x,
                                     self.player.y - 0.5,
                                     self.story_state.accent
@@ -818,12 +874,24 @@ class Game(
                                 )
                             )
                 elif self.state == "playing" and self.story_intro_pending:
-                    if pygame.K_1 <= event.key <= pygame.K_3:
-                        self.choose_story_relic_path(event.key - pygame.K_1)
-                    elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_e):
+                    if event.key in (
+                        pygame.K_UP,
+                        pygame.K_DOWN,
+                        pygame.K_LEFT,
+                        pygame.K_RIGHT,
+                    ):
+                        cmd = key_command(event.key, event.mod)
+                        if cmd is not None:
+                            self._dispatch_command(cmd)
+                    elif pygame.K_1 <= event.key <= pygame.K_3:
+                        self.cutscene_cursor = event.key - pygame.K_1
+                        self.choose_story_relic_path(self.cutscene_cursor)
+                    elif event.key in (pygame.K_RETURN, pygame.K_e):
+                        self._dispatch_command(Command.CONFIRM)
+                    elif event.key == pygame.K_SPACE:
                         self.floaters.append(
                             FloatingText(
-                                "Choose 1-3 to bind the guest relic",
+                                "Use arrows + Enter/E, or 1-3, to bind the relic",
                                 self.player.x,
                                 self.player.y - 0.5,
                                 self.story_state.accent

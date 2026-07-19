@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import os
 import sys
@@ -305,6 +306,103 @@ def make_target_enemy(x: float, y: float) -> Enemy:
 
 
 class CommandDispatchTests(unittest.TestCase):
+    def test_exit_confirmation_cursor_keyboard_and_gamepad(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            with patch.object(game, "save_run", return_value=True) as save_run:
+                game.state = "playing"
+                game.request_exit_confirmation()
+                self.assertEqual(
+                    game.exit_confirmation_cursor,
+                    game.EXIT_CONFIRMATION_CANCEL,
+                )
+
+                pygame.event.clear()
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, mod=0)
+                )
+                game.handle_events()
+                self.assertTrue(game.running)
+                self.assertEqual(game.state, "playing")
+                save_run.assert_not_called()
+
+                game.request_exit_confirmation()
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_UP, mod=0)
+                )
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, mod=0)
+                )
+                game.handle_events()
+                self.assertTrue(game.running)
+                self.assertEqual(game.state, "title")
+                save_run.assert_called_once_with()
+
+                game.state = "playing"
+                game.request_exit_confirmation()
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_e, mod=0)
+                )
+                game.handle_events()
+                self.assertTrue(game.running)
+                self.assertEqual(game.state, "playing")
+                self.assertEqual(save_run.call_count, 1)
+
+                game.request_exit_confirmation()
+                self.assertTrue(game._dispatch_command(Command.CONFIRM))
+                self.assertTrue(game.running)
+                self.assertEqual(game.state, "playing")
+
+                game.request_exit_confirmation()
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_m, mod=0)
+                )
+                game.handle_events()
+                self.assertEqual(game.state, "title")
+                self.assertEqual(save_run.call_count, 2)
+
+                game.state = "playing"
+                game.request_exit_confirmation()
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN, mod=0)
+                )
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_e, mod=0)
+                )
+                game.handle_events()
+                self.assertFalse(game.running)
+                self.assertEqual(save_run.call_count, 3)
+
+    def test_return_to_main_menu_persists_current_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.player.gold = 987654
+            game.request_exit_confirmation()
+            game.exit_confirmation_cursor = game.EXIT_CONFIRMATION_MAIN_MENU
+            game.activate_exit_confirmation_selection()
+
+            self.assertEqual(game.state, "title")
+            saved = json.loads(game.save_path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["player"]["gold"], 987654)
+
+    def test_save_failure_keeps_exit_confirmation_open(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            blocked_save = Path(tmpdir) / "blocked-save"
+            blocked_save.mkdir()
+            game.save_path = blocked_save
+            game.request_exit_confirmation()
+
+            game.return_to_main_menu()
+            self.assertEqual(game.state, "confirm_exit")
+            self.assertTrue(game.running)
+            self.assertTrue(game.last_save_error)
+
+            game.confirm_exit()
+            self.assertEqual(game.state, "confirm_exit")
+            self.assertTrue(game.running)
+            self.assertTrue(game.last_save_error)
+
     def test_title_navigation_and_confirm(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_game(tmpdir)
@@ -415,6 +513,75 @@ class CommandDispatchTests(unittest.TestCase):
             game._dispatch_command(Command.CONFIRM)
             self.assertFalse(game.story_intro_pending)
             self.assertIsNone(game.active_cutscene)
+
+    def test_cutscene_arrow_keys_and_enter_or_e_confirm_cursor(self) -> None:
+        for confirm_key in (pygame.K_RETURN, pygame.K_e):
+            with self.subTest(confirm_key=confirm_key), tempfile.TemporaryDirectory() as tmpdir:
+                game = make_game(tmpdir)
+                game.story_intro_pending = True
+                game.active_cutscene = ActiveQuestCutscene(
+                    asset_id="story_guest_omen",
+                    node_id="relic_choice",
+                    guest_depth=game.current_depth,
+                    guest_beat_index=0,
+                    node_elapsed=999.0,
+                    context=game.quest_cutscene_context(),
+                )
+                game.cutscene_cursor = 0
+                expected_choice_key = game.active_cutscene_choices()[1].choice_key
+                pygame.event.clear()
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN, mod=0)
+                )
+                game.handle_events()
+                self.assertEqual(game.cutscene_cursor, 1)
+
+                pygame.event.post(
+                    pygame.event.Event(pygame.KEYDOWN, key=confirm_key, mod=0)
+                )
+                game.handle_events()
+                self.assertFalse(game.story_intro_pending)
+                self.assertIsNone(game.active_cutscene)
+                self.assertEqual(game.story_relic_choice_key, expected_choice_key)
+
+    def test_invalid_cutscene_number_keeps_visible_cursor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.story_intro_pending = True
+            game.active_cutscene = ActiveQuestCutscene(
+                asset_id="story_guest_omen",
+                node_id="relic_choice",
+                guest_depth=game.current_depth,
+                guest_beat_index=0,
+                node_elapsed=999.0,
+                context=game.quest_cutscene_context(),
+            )
+            game.cutscene_cursor = 1
+            pygame.event.clear()
+            pygame.event.post(
+                pygame.event.Event(pygame.KEYDOWN, key=pygame.K_9, mod=0)
+            )
+            game.handle_events()
+            self.assertEqual(game.cutscene_cursor, 1)
+            self.assertIsNotNone(game.active_cutscene)
+
+    def test_fallback_story_intro_gamepad_a_confirms_cursor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            fake = attach_fake_controller(game)
+            game.story_intro_pending = True
+            game.active_cutscene = None
+            game.cutscene_cursor = 1
+            with patch.object(
+                game, "choose_story_relic_path", return_value=True
+            ) as choose:
+                event = pygame.event.Event(
+                    pygame.JOYBUTTONDOWN,
+                    joy=fake.get_instance_id(),
+                    button=0,
+                )
+                self.assertTrue(game.handle_controller_event(event))
+            choose.assert_called_once_with(1)
 
 
 class CombatAxisIntegrationTests(unittest.TestCase):
