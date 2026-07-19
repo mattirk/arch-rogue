@@ -1,5 +1,33 @@
 # Changelog
 
+## 4.3.5 — Android Native Floor Stability and Render Cost
+
+Release 4.3.5 fixes the floor-height flicker introduced by 4.3.4's incremental mobile floor cache and targets the remaining native-resolution costs exposed by the first direct-GLES device log. The GPU lighting path is active and correct, but the Pixel 9a trace showed that half-resolution light construction, full-viewport transparent UI uploads, and dense visible-object blits still prevented 30 FPS.
+
+### Fixed
+
+- Cached floor translation now uses the same floored projected-origin math as live `world_to_screen` coordinates. The previous `round()` translation crossed half-pixel boundaries at different times, shifting the floor by one pixel relative to live walls and actors until the next cache rebuild.
+- Reveal patches no longer draw a new tile and its neighbors over an already flattened isometric layer. Each new tile's clipped pixel rectangle is cleared and reconstructed from every intersecting floor entry in canonical painter order, making the patch byte-identical to a cold rebuild and eliminating temporarily "raised" floor diamonds.
+
+### Changed
+
+- Every mobile quality tier now builds continuous lighting at quarter viewport resolution. Native still renders the world, actors, HUD rails, and final framebuffer at the physical logical resolution; only the smoothly scaled light mask is coarser.
+- Mobile ambient lighting uses one full-buffer fill instead of restamping every revealed tile each frame. Fog-of-war remains authoritative in the already-black base world, so multiplicative lighting cannot expose unrevealed terrain.
+- The post-light GLES UI texture is cropped to its actual alpha bounds instead of uploading the entire world viewport. In ordinary native gameplay the measured content is roughly a 740×79 header rather than a 1732×893 transparent texture; previous dirty bounds are cleared before reuse and CPU fallback ordering remains intact.
+- Mobile actor shadows use two direct pixel-art ellipses instead of per-pixel-alpha shadow surfaces. Full-health ordinary enemies omit redundant floating health bars, while damaged, elite, miniboss, boss, and status-affected enemies retain them.
+- Consecutive depth-sorted wall tiles are submitted through batched blits without changing actor/wall painter order.
+- Android benchmarks equivalent alpha, alpha-RLE, colorkey, and colorkey-RLE sprite sources once on the real SDL build and keeps the fastest representation for subsequent immutable binary sprites. The selected mode and per-format timings are emitted as `ARCH_ROGUE_PERF alpha_blit`.
+- Device telemetry now reports cropped `gpu_ui` dimensions, `gpu_error`, and visible wall/enemy counts so upload and dense-room costs are distinguishable in the next trace.
+- Runtime/package release version is `4.3.5`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- The 4.3.4 Pixel 9a trace confirmed `gpu_light=1`, but steady native intervals averaged 6.61 FPS (median 5.99), 89.7 ms object rendering, 25.2 ms light construction, and 34.6 ms combined GPU uploads/presentation. Balanced GPU intervals averaged 9.12 FPS with 80.5 ms objects, 14.3 ms lighting, and 12.9 ms uploads/presentation.
+- Pixel comparisons reproduced both floor defects before the fix: fractional camera reuse changed 201,330 RGB bytes and an incremental reveal differed by 8,801 bytes from a cold rebuild. After the fix, reveal patches are byte-identical and cached tile anchors match live projections at fractional camera positions.
+- Native 2424×1080 crowded host profiling after the CPU-side changes measured `18.451 ms/frame`; forcing the locally selected alpha-RLE mode measured `17.578 ms/frame`. A real SDL offscreen GLES run completed crowded native frames in `5.726 ms/frame`, with light build `0.526 ms`, cropped UI upload `0.112 ms`, and no presentation fallback; these host numbers are validation, not ARM performance claims.
+- Full non-web `unittest` discovery: 430 tests, all passing. `compileall` and `git diff --check` passed; changed-file diagnostics reported no errors (the rendering mixins retain their existing cross-module unused-import warnings).
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.5-arm64-v8a_armeabi-v7a-debug.apk` (73,337,179 bytes; SHA-256 `ca5b768d5de3d779aa1859811cd462effdcaa516e82167a16d51cde5d8131f3f`). The package contains 104 architecture-correct ELF extensions for each ARM ABI; `aapt` confirmed version 4.3.5, API 28/34, GLES 2.0, landscape `PythonActivity`, and both ABIs; `apksigner` verified its V2 debug signature.
+
 ## 4.3.4 — Native Android GPU Lighting
 
 Release 4.3.4 targets the physical-device native-resolution traces that averaged roughly 5.7 FPS at 2424×1080, with about 173 ms/frame attributed to world rendering. The continuous light mask and uniform combat flash are now composited by the display-owned GLES renderer instead of performing full-viewport CPU blends, while the world remains rendered at the selected native resolution.

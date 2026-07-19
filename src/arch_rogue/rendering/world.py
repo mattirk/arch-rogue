@@ -150,29 +150,68 @@ class RenderingWorldMixin:
         pending: set[tuple[int, int]],
         rendered: set[tuple[int, int]],
     ) -> int:
-        # Redraw each new tile plus its immediate neighbors in canonical order so
-        # stairs and decorative diamond margins retain the same painter order as
-        # a cold full-layer build. Projection is frozen to the cache's build
-        # camera; using the live camera would write patches at shifted positions.
-        dirty: set[tuple[int, int]] = set()
-        for x, y in pending:
-            for nx in range(x - 1, x + 2):
-                for ny in range(y - 1, y + 2):
-                    if (nx, ny) in rendered or (nx, ny) in pending:
-                        dirty.add((nx, ny))
-
+        # A flattened isometric layer cannot insert a new tile by simply drawing
+        # it (or its neighbors) on top: that changes painter order and makes the
+        # diamond look temporarily raised until the next cold rebuild. Rebuild
+        # only each new tile's pixel rectangle, clipping every canonical floor
+        # entry against that rectangle so the result is byte-equivalent locally.
         root_screen = self.screen
         frame_cache = self._frame_cache
         self.screen = layer
         self._frame_cache = {"camera_iso": build_camera}
         self._frame_dark = False
         try:
-            entries = self._mobile_floor_entries_for_tiles(dirty)
+            all_entries = self._mobile_floor_entries_for_tiles(rendered | pending)
+            pending_entries = self._mobile_floor_entries_for_tiles(pending)
         finally:
             self.screen = root_screen
             self._frame_cache = frame_cache
-        self._blit_floor_entries(layer, entries)
-        return len(entries)
+
+        dirty_rects = [
+            source.get_rect(topleft=destination).clip(layer.get_rect())
+            for source, destination in pending_entries
+        ]
+        previous_clip = layer.get_clip()
+        try:
+            for dirty in dirty_rects:
+                if dirty.width <= 0 or dirty.height <= 0:
+                    continue
+                layer.fill((10, 10, 14), dirty)
+                layer.set_clip(dirty)
+                self._blit_floor_entries(
+                    layer,
+                    [
+                        entry
+                        for entry in all_entries
+                        if entry[0]
+                        .get_rect(topleft=entry[1])
+                        .colliderect(dirty)
+                    ],
+                )
+        finally:
+            layer.set_clip(previous_clip)
+        return len(pending_entries)
+
+    @staticmethod
+    def _mobile_floor_layer_destination(
+        screen_size: tuple[int, int],
+        layer: pygame.Surface,
+        build_camera: tuple[float, float],
+        live_camera: tuple[float, float],
+    ) -> tuple[int, int]:
+        # world_to_screen uses int() on positive on-screen coordinates, which is
+        # floor semantics. Compute the translation from the same two projected
+        # origins; round() changes at a different half-pixel boundary and caused
+        # the cached floor to jump one pixel relative to live walls and actors.
+        screen_w, screen_h = screen_size
+        build_cam_x, build_cam_y = build_camera
+        cam_x, cam_y = live_camera
+        return (
+            math.floor(-cam_x + screen_w * 0.5)
+            - math.floor(-build_cam_x + layer.get_width() * 0.5),
+            math.floor(-cam_y + screen_h * 0.48)
+            - math.floor(-build_cam_y + layer.get_height() * 0.48),
+        )
 
     def _draw_cached_mobile_floor_layer(self) -> bool:
         """Blit a reusable opaque floor layer on the Android SDL2-alpha path."""
@@ -263,9 +302,11 @@ class RenderingWorldMixin:
 
         assert cache is not None
         build_cam_x, build_cam_y, layer = cache[1], cache[2], cache[3]
-        destination = (
-            round(build_cam_x - cam_x + screen_w * 0.5 - layer.get_width() * 0.5),
-            round(build_cam_y - cam_y + screen_h * 0.48 - layer.get_height() * 0.48),
+        destination = self._mobile_floor_layer_destination(
+            (screen_w, screen_h),
+            layer,
+            (build_cam_x, build_cam_y),
+            (cam_x, cam_y),
         )
         self.screen.blit(layer, destination)
         return True
@@ -1716,11 +1757,27 @@ class RenderingWorldMixin:
         if self.story_relic_target_position() is not None:
             self.draw_story_relic_guidance()
 
+        wall_entries: list[tuple[pygame.Surface, tuple[int, int]]] = []
+
+        def flush_wall_entries() -> None:
+            if not wall_entries:
+                return
+            self._blit_floor_entries(self.screen, wall_entries)
+            wall_entries.clear()
+
+        visible_wall_count = 0
+        visible_enemy_count = 0
         for _depth, kind, obj in sorted(drawables, key=lambda entry: entry[0]):
             if kind == "wall_tile":
                 x, y = cast(tuple[int, int], obj)
-                self.draw_tile(x, y, Tile.WALL)
-            elif kind == "item":
+                entry = self._tile_blit_entry(x, y, Tile.WALL)
+                if entry is not None:
+                    wall_entries.append(entry)
+                    visible_wall_count += 1
+                continue
+
+            flush_wall_entries()
+            if kind == "item":
                 self.draw_item(cast(Item, obj))
             elif kind == "trap":
                 self.draw_trap(cast(Trap, obj))
@@ -1746,6 +1803,7 @@ class RenderingWorldMixin:
                 self.draw_projectile(cast(Projectile, obj))
             elif kind == "enemy":
                 self.draw_enemy(cast(Enemy, obj))
+                visible_enemy_count += 1
             elif kind == "familiar":
                 self.draw_familiar(cast(Familiar, obj))
             elif kind == "player":
@@ -1754,6 +1812,10 @@ class RenderingWorldMixin:
                 self.draw_slash(cast(SlashEffect, obj))
             elif kind == "impact":
                 self.draw_impact(cast(ImpactEffect, obj))
+
+        flush_wall_entries()
+        self._mobile_visible_wall_count = visible_wall_count
+        self._mobile_visible_enemy_count = visible_enemy_count
 
         for floater in self.floaters:
             if not visible(floater.x, floater.y, 0.8):

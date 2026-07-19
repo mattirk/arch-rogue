@@ -72,6 +72,8 @@ _COLORKEY_CANDIDATES = (
     (3, 5, 7),
     (255, 255, 1),
 )
+_ANDROID_BINARY_ALPHA_MODE: str | None = None
+_ANDROID_BINARY_ALPHA_MIN_BENCHMARK_AREA = 4096
 
 
 def android_runtime_active() -> bool:
@@ -116,6 +118,70 @@ def _unused_colorkey(surface: pygame.Surface) -> tuple[int, int, int] | None:
     return None
 
 
+def _binary_colorkey_surface(
+    surface: pygame.Surface,
+    key: tuple[int, int, int],
+    *,
+    rle: bool,
+) -> pygame.Surface:
+    optimized = pygame.Surface(surface.get_size()).convert()
+    optimized.fill(key)
+    optimized.blit(surface, (0, 0))
+    optimized.set_colorkey(key, pygame.RLEACCEL if rle else 0)
+    return optimized
+
+
+def _benchmark_android_binary_alpha_mode(
+    surface: pygame.Surface,
+    key: tuple[int, int, int],
+) -> tuple[str, pygame.Surface] | None:
+    """Choose the fastest equivalent binary-alpha source on this SDL build."""
+
+    global _ANDROID_BINARY_ALPHA_MODE
+    if not android_runtime_active() or not pygame.display.get_init():
+        return None
+    try:
+        alpha = surface.convert_alpha()
+        alpha_rle = alpha.copy()
+        alpha_rle.set_alpha(255, pygame.RLEACCEL)
+        colorkey = _binary_colorkey_surface(surface, key, rle=False)
+        colorkey_rle = _binary_colorkey_surface(surface, key, rle=True)
+        candidates = {
+            "alpha": alpha,
+            "alpha_rle": alpha_rle,
+            "colorkey": colorkey,
+            "colorkey_rle": colorkey_rle,
+        }
+        destination = pygame.Surface(
+            (surface.get_width() + 4, surface.get_height() + 4)
+        ).convert()
+        loops = 12
+        timings: dict[str, float] = {}
+        for name, candidate in candidates.items():
+            # Warm the lazy RLE encoder before measuring steady repeated blits.
+            destination.blit(candidate, (1, 1))
+            destination.blit(candidate, (2, 2))
+            started = time.perf_counter()
+            for index in range(loops):
+                destination.blit(candidate, (1 + index % 2, 1 + index % 2))
+            timings[name] = (time.perf_counter() - started) / loops
+        mode = min(timings.items(), key=lambda item: item[1])[0]
+    except (TypeError, ValueError, pygame.error):
+        _ANDROID_BINARY_ALPHA_MODE = "colorkey_rle"
+        return None
+
+    _ANDROID_BINARY_ALPHA_MODE = mode
+    labels = ",".join(
+        f"{name}:{seconds * 1000.0:.3f}" for name, seconds in timings.items()
+    )
+    print(
+        f"{MOBILE_PERF_LOG_PREFIX} alpha_blit mode={mode} ms={labels} "
+        f"sample={surface.get_width()}x{surface.get_height()}",
+        flush=True,
+    )
+    return mode, candidates[mode]
+
+
 def optimize_immutable_alpha_surface(
     surface: pygame.Surface,
     *,
@@ -152,11 +218,26 @@ def optimize_immutable_alpha_surface(
         key = _unused_colorkey(surface)
         if key is not None:
             try:
-                optimized = pygame.Surface(surface.get_size()).convert()
-                optimized.fill(key)
-                optimized.blit(surface, (0, 0))
-                optimized.set_colorkey(key, pygame.RLEACCEL)
-                return optimized
+                mode = _ANDROID_BINARY_ALPHA_MODE
+                if (
+                    mode is None
+                    and android_runtime_active()
+                    and area >= _ANDROID_BINARY_ALPHA_MIN_BENCHMARK_AREA
+                ):
+                    benchmark = _benchmark_android_binary_alpha_mode(surface, key)
+                    if benchmark is not None:
+                        return benchmark[1]
+                    mode = "colorkey_rle"
+                elif mode is None:
+                    mode = "colorkey_rle"
+
+                if mode == "colorkey":
+                    return _binary_colorkey_surface(surface, key, rle=False)
+                if mode == "colorkey_rle":
+                    return _binary_colorkey_surface(surface, key, rle=True)
+                if mode == "alpha_rle":
+                    surface.set_alpha(255, pygame.RLEACCEL)
+                return surface
             except (TypeError, ValueError, pygame.error):
                 pass
 
@@ -604,6 +685,14 @@ class MobilePerformanceMonitor:
         )
         effects = self._safe_len(getattr(game, "impact_effects", ()))
         projectiles = self._safe_len(getattr(game, "projectiles", ()))
+        ui_dirty = getattr(game, "_mobile_gpu_ui_dirty_rect", None)
+        ui_upload_size = (
+            (int(ui_dirty.width), int(ui_dirty.height))
+            if isinstance(ui_dirty, pygame.Rect)
+            else (0, 0)
+        )
+        gpu_error = str(getattr(game, "_mobile_gpu_failure", "")).strip()
+        gpu_error = gpu_error.replace(" ", "_") if gpu_error else "none"
         line = (
             f"{MOBILE_PERF_LOG_PREFIX} "
             f"state={getattr(game, 'state', 'unknown')} fps={fps:.2f} "
@@ -616,9 +705,12 @@ class MobilePerformanceMonitor:
             f"renderer={renderer_name} accelerated={accelerated_label} "
             f"alpha_sdl2={int(alpha_sdl2)} neon={neon_label} "
             f"gpu_light={int(bool(getattr(game, '_mobile_gpu_last_present', False)))} "
+            f"gpu_ui={self._size_label(ui_upload_size)} gpu_error={gpu_error} "
             f"video={video_driver} lighting={int(bool(getattr(game, '_lighting_enabled', False)))} "
             f"normals={int(bool(getattr(game, '_lighting_normal_maps', False)))} "
             f"entities=enemies:{enemies},lights:{lights},effects:{effects},projectiles:{projectiles} "
+            f"visible=walls:{int(getattr(game, '_mobile_visible_wall_count', 0))},"
+            f"enemies:{int(getattr(game, '_mobile_visible_enemy_count', 0))} "
             f"cache=decoded:{cache_stats.get('decoded_sources', 0)},"
             f"frames:{cache_stats.get('resolved_frames', 0)},"
             f"loads+:{source_delta},builds+:{build_delta} "
@@ -684,6 +776,7 @@ class MobileMixin:
         self._mobile_gpu_pending_flash: tuple[tuple[int, int, int], int] | None = None
         self._mobile_gpu_ui_surface: pygame.Surface | None = None
         self._mobile_gpu_ui_viewport: pygame.Rect | None = None
+        self._mobile_gpu_ui_dirty_rect: pygame.Rect | None = None
         self._mobile_gpu_flash_surface: pygame.Surface | None = None
         self._mobile_gpu_failure = ""
         self._mobile_gpu_last_present = False
@@ -811,8 +904,14 @@ class MobileMixin:
                 ui_surface = ui_surface.convert_alpha()
             except pygame.error:
                 pass
+            ui_surface.fill((0, 0, 0, 0))
             self._mobile_gpu_ui_surface = ui_surface
-        ui_surface.fill((0, 0, 0, 0))
+            self._mobile_gpu_ui_dirty_rect = None
+        else:
+            dirty = self._mobile_gpu_ui_dirty_rect
+            if dirty is not None and dirty.width > 0 and dirty.height > 0:
+                ui_surface.fill((0, 0, 0, 0), dirty)
+            self._mobile_gpu_ui_dirty_rect = None
         self._mobile_gpu_ui_viewport = viewport
         self._mobile_gpu_frame_sequence += 1
         self._mobile_gpu_frame_active = True
@@ -907,6 +1006,8 @@ class MobileMixin:
         overlay = getattr(self, "_mobile_gpu_ui_surface", None)
         pending_flash = getattr(self, "_mobile_gpu_pending_flash", None)
         if viewport is not None and overlay is not None:
+            dirty = overlay.get_bounding_rect(min_alpha=1)
+            self._mobile_gpu_ui_dirty_rect = dirty if dirty.width > 0 else None
             self.screen.blit(overlay, viewport)
         if pending_flash is not None:
             color, alpha = pending_flash
@@ -954,9 +1055,19 @@ class MobileMixin:
             light_texture = self._mobile_gpu_texture(
                 "light", light_surface.get_size(), SDL_BLENDMODE_MOD
             )
-            ui_texture = self._mobile_gpu_texture(
-                "ui", ui_surface.get_size(), SDL_BLENDMODE_BLEND
+            ui_rect = ui_surface.get_bounding_rect(min_alpha=1)
+            self._mobile_gpu_ui_dirty_rect = (
+                ui_rect.copy() if ui_rect.width > 0 and ui_rect.height > 0 else None
             )
+            ui_texture = None
+            ui_upload_surface = None
+            ui_destination = None
+            if ui_rect.width > 0 and ui_rect.height > 0:
+                ui_upload_surface = ui_surface.subsurface(ui_rect)
+                ui_texture = self._mobile_gpu_texture(
+                    "ui", ui_rect.size, SDL_BLENDMODE_BLEND
+                )
+                ui_destination = ui_rect.move(viewport.x, viewport.y)
             pending_flash = getattr(self, "_mobile_gpu_pending_flash", None)
             flash_texture = None
             flash_surface = self._mobile_gpu_flash_surface
@@ -987,7 +1098,8 @@ class MobileMixin:
                 )
 
             started = time.perf_counter()
-            ui_texture.update(ui_surface)
+            if ui_texture is not None and ui_upload_surface is not None:
+                ui_texture.update(ui_upload_surface)
             if (
                 flash_texture is not None
                 and flash_surface is not None
@@ -1008,7 +1120,8 @@ class MobileMixin:
             renderer.clear()
             renderer.blit(base_texture, root.get_rect())
             renderer.blit(light_texture, viewport)
-            renderer.blit(ui_texture, viewport)
+            if ui_texture is not None and ui_destination is not None:
+                renderer.blit(ui_texture, ui_destination)
             if flash_texture is not None:
                 renderer.blit(flash_texture, root.get_rect())
             renderer.present()

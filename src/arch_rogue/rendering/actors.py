@@ -917,29 +917,37 @@ class RenderingActorMixin:
             if base_name == "Gate Warden"
             else 28
         ) * WORLD_SCALE
-        fill_w = int(bar_w * max(0, enemy.hp) / enemy.max_hp)
         bar_h = (7 if big_boss else 4) * WORLD_SCALE
         bar_y = rect.top - (4 if big_boss else 2) * WORLD_SCALE
-        pygame.draw.rect(
-            self.screen, (40, 10, 10), (sx - bar_w // 2, bar_y, bar_w, bar_h)
-        )
-        pygame.draw.rect(
-            self.screen, (215, 62, 52), (sx - bar_w // 2, bar_y, fill_w, bar_h)
-        )
-        if big_boss:
-            # Gilded frame around the boss's floating health bar so it reads as
-            # a named encounter, not just a tougher enemy.
-            pygame.draw.rect(
-                self.screen,
-                self.theme.accent,
-                (sx - bar_w // 2, bar_y, bar_w, bar_h),
-                max(1, WORLD_SCALE),
-            )
         status_entries = [
             status
             for status, ttl in getattr(enemy, "statuses", {}).items()
             if ttl > 0 and not status.startswith("_")
         ]
+        show_health_bar = bool(
+            enemy.hp < enemy.max_hp
+            or big_boss
+            or enemy.kind in ("boss", "miniboss")
+            or enemy.elite_modifier
+            or status_entries
+        )
+        if show_health_bar:
+            fill_w = int(bar_w * max(0, enemy.hp) / enemy.max_hp)
+            pygame.draw.rect(
+                self.screen, (40, 10, 10), (sx - bar_w // 2, bar_y, bar_w, bar_h)
+            )
+            pygame.draw.rect(
+                self.screen, (215, 62, 52), (sx - bar_w // 2, bar_y, fill_w, bar_h)
+            )
+            if big_boss:
+                # Gilded frame around the boss's floating health bar so it reads
+                # as a named encounter, not just a tougher enemy.
+                pygame.draw.rect(
+                    self.screen,
+                    self.theme.accent,
+                    (sx - bar_w // 2, bar_y, bar_w, bar_h),
+                    max(1, WORLD_SCALE),
+                )
         if status_entries:
             status_colors = {
                 "poisoned": (126, 214, 92),

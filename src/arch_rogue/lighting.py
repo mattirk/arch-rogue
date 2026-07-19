@@ -248,11 +248,11 @@ class LightingMixin:
         """Return the lighting downsample divisor for the active platform tier."""
 
         if getattr(self, "mobile_mode", False):
-            quality = getattr(self, "mobile_render_quality", "performance")
-            if quality == "performance":
-                return 4
-            if quality == "balanced":
-                return 3
+            # Physical-device traces show half-resolution native lighting still
+            # costs 20-30 ms to build. Pixel-art falloff remains readable at the
+            # quarter-resolution tier already used by Performance, while the
+            # world and actor framebuffer stays at the selected native size.
+            return 4
         return LIGHT_BUFFER_SCALE
 
     # --- transient light emission (called from combat / add_impact) --
@@ -544,6 +544,13 @@ class LightingMixin:
         # over the visible bounds — rect fills, no surface allocations.
         buffer.fill((0, 0, 0, 0))
         ambient = (*shade_color(theme_color, level), 255)
+        if getattr(self, "mobile_mode", False):
+            # The mobile base frame already leaves never-revealed terrain black;
+            # multiplying black by a full ambient wash cannot expose it. Avoid
+            # hundreds of per-tile Python fill calls every frame and let the
+            # cached floor layer remain the authoritative fog-of-war mask.
+            buffer.fill(ambient)
+            return
         # A tile's buffer footprint depends on which surface we shade: display
         # pixels shrink with zoom (post-composite) while layer pixels stay at
         # native world scale (pre-composite). Scale the stamp rect by the

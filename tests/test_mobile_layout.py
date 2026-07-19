@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import pygame
 
+import arch_rogue.mobile as mobile_runtime
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.input import Command
@@ -379,14 +380,14 @@ class MobileRenderQualityTests(unittest.TestCase):
             activate.assert_called_once_with(game.OPTIONS_ROW_FULLSCREEN, True)
             self.assertEqual(game.options_cursor, game.OPTIONS_ROW_FULLSCREEN)
 
-    def test_mobile_lighting_buffer_divisor_tracks_quality_tier(self) -> None:
+    def test_mobile_lighting_buffer_uses_quarter_resolution_at_every_quality(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))
             viewport = game.mobile_world_viewport()
             for quality, divisor in (
                 (MOBILE_RENDER_QUALITY_PERFORMANCE, 4),
-                (MOBILE_RENDER_QUALITY_BALANCED, 3),
-                (MOBILE_RENDER_QUALITY_NATIVE, 2),
+                (MOBILE_RENDER_QUALITY_BALANCED, 4),
+                (MOBILE_RENDER_QUALITY_NATIVE, 4),
             ):
                 with self.subTest(quality=quality):
                     game.mobile_render_quality = quality
@@ -440,13 +441,82 @@ class MobileRenderQualityTests(unittest.TestCase):
                 assert patched is not None
                 self.assertIs(patched[3], first_surface)
                 self.assertGreater(game._mobile_floor_cache_patches, patches_before)
+                patched_pixels = pygame.image.tobytes(patched[3], "RGB")
 
-                game._cam_iso = (first[1] + first_surface.get_width(), first[2])
+                game._mobile_floor_layer_cache = None
+                game.draw()
+                cold = game._mobile_floor_layer_cache
+                self.assertIsNotNone(cold)
+                assert cold is not None
+                self.assertEqual(
+                    pygame.image.tobytes(cold[3], "RGB"),
+                    patched_pixels,
+                )
+
+                game._cam_iso = (cold[1] + cold[3].get_width(), cold[2])
                 game.draw()
                 rebuilt = game._mobile_floor_layer_cache
                 self.assertIsNotNone(rebuilt)
                 assert rebuilt is not None
-                self.assertIsNot(rebuilt[3], first_surface)
+                self.assertIsNot(rebuilt[3], cold[3])
+
+    def test_mobile_floor_layer_translation_matches_live_tile_projection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1170, 540))
+            game.state = "playing"
+            with patch.dict(os.environ, {"PYGAME_BLEND_ALPHA_SDL2": "1"}):
+                game.draw()
+            cache = game._mobile_floor_layer_cache
+            self.assertIsNotNone(cache)
+            assert cache is not None
+            layer = cache[3]
+            candidate = min(
+                (
+                    point
+                    for point in game.revealed_tiles
+                    if game.dungeon.tiles[point[0]][point[1]]
+                    in (Tile.FLOOR, Tile.STAIRS)
+                ),
+                key=lambda point: abs(point[0] - game.player.x)
+                + abs(point[1] - game.player.y),
+            )
+            tile = game.dungeon.tiles[candidate[0]][candidate[1]]
+            root = game.screen
+            viewport = game.mobile_world_viewport().clip(root.get_rect())
+            old_cache = game._frame_cache
+            old_world_rendering = game._mobile_world_rendering
+            try:
+                game.screen = layer
+                game._mobile_world_rendering = True
+                game._frame_cache = {"camera_iso": (cache[1], cache[2])}
+                cached_entry = game._tile_blit_entry(*candidate, tile)
+                self.assertIsNotNone(cached_entry)
+                assert cached_entry is not None
+
+                game._cam_iso = (cache[1] + 0.37, cache[2] + 0.37)
+                game.screen = root.subsurface(viewport)
+                game._frame_cache = {}
+                live_entry = game._tile_blit_entry(*candidate, tile)
+                self.assertIsNotNone(live_entry)
+                assert live_entry is not None
+                destination = game._mobile_floor_layer_destination(
+                    viewport.size,
+                    layer,
+                    (cache[1], cache[2]),
+                    game._cam_iso,
+                )
+            finally:
+                game.screen = root
+                game._frame_cache = old_cache
+                game._mobile_world_rendering = old_world_rendering
+
+            self.assertEqual(
+                (
+                    cached_entry[1][0] + destination[0],
+                    cached_entry[1][1] + destination[1],
+                ),
+                live_entry[1],
+            )
 
     def test_dark_floor_bypasses_mobile_floor_layer(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -522,6 +592,35 @@ class MobileRenderQualityTests(unittest.TestCase):
         actual.fill((17, 29, 41))
         expected.blit(source, (3, 5))
         actual.blit(optimized, (3, 5))
+        self.assertEqual(
+            pygame.image.tobytes(actual, "RGB"),
+            pygame.image.tobytes(expected, "RGB"),
+        )
+
+    def test_android_binary_pixel_art_benchmark_preserves_rendered_pixels(self) -> None:
+        source = pygame.Surface((96, 96), pygame.SRCALPHA)
+        source.fill((0, 0, 0, 0))
+        pygame.draw.rect(source, (220, 90, 60, 255), (12, 8, 50, 70))
+        expected = pygame.Surface((112, 112)).convert()
+        actual = expected.copy()
+        expected.fill((17, 29, 41))
+        actual.fill((17, 29, 41))
+        expected.blit(source, (7, 9))
+
+        with (
+            patch.dict(os.environ, {"PYGAME_BLEND_ALPHA_SDL2": "1"}),
+            patch.object(mobile_runtime, "android_runtime_active", return_value=True),
+            patch.object(mobile_runtime, "_ANDROID_BINARY_ALPHA_MODE", None),
+            patch("builtins.print"),
+        ):
+            optimized = optimize_immutable_alpha_surface(source)
+            selected = mobile_runtime._ANDROID_BINARY_ALPHA_MODE
+
+        self.assertIn(
+            selected,
+            ("alpha", "alpha_rle", "colorkey", "colorkey_rle"),
+        )
+        actual.blit(optimized, (7, 9))
         self.assertEqual(
             pygame.image.tobytes(actual, "RGB"),
             pygame.image.tobytes(expected, "RGB"),
@@ -643,6 +742,16 @@ class MobileRenderQualityTests(unittest.TestCase):
                 ),
             )
             self.assertIn(("update:flash", (1, 1)), calls)
+            ui_upload = next(
+                value for name, value in calls if name == "update:ui"
+            )
+            assert isinstance(ui_upload, tuple)
+            viewport = game.mobile_world_viewport()
+            self.assertLess(ui_upload[0] * ui_upload[1], viewport.width * viewport.height)
+            ui_dirty = game._mobile_gpu_ui_dirty_rect
+            self.assertIsNotNone(ui_dirty)
+            assert ui_dirty is not None
+            self.assertEqual(ui_dirty.size, ui_upload)
             self.assertEqual(getattr(game, "_mobile_gpu_base_texture").blend_mode, 0)
             self.assertEqual(getattr(game, "_mobile_gpu_light_texture").blend_mode, 4)
             self.assertEqual(getattr(game, "_mobile_gpu_ui_texture").blend_mode, 1)
