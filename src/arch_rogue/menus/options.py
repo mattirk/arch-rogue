@@ -115,10 +115,13 @@ class MenuOptionsMixin:
         row_h = max(body_font.get_height() + metric(8), metric(44))
         gap = metric(3)
         header_h = detail_font.get_height() + metric(12)
+        show_hints = self.menu_input_hints_visible()
         shortcut_h = (
-            self.menu_shortcut_section_height(detail_font) if modern else 0
+            self.menu_shortcut_section_height(detail_font)
+            if modern and show_hints
+            else 0
         )
-        shortcut_gap = metric(7) if modern else 0
+        shortcut_gap = metric(7) if modern and show_hints else 0
         shortcut_rect = pygame.Rect(
             content.x,
             content.bottom - shortcut_h,
@@ -220,7 +223,7 @@ class MenuOptionsMixin:
                 self.MUTED,
                 note_rect,
             )
-        if modern:
+        if modern and show_hints:
             selected = rows[cursor]
             self.draw_menu_shortcut_section(
                 shortcut_rect,

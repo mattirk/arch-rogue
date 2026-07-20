@@ -100,6 +100,10 @@ class MenuBaseMixin:
     def accent(self) -> Color:
         return self.g.theme.accent
 
+    def menu_input_hints_visible(self) -> bool:
+        """Keep keyboard/gamepad navigation chrome off touch-first mobile menus."""
+        return not bool(getattr(self.g, "mobile_mode", False))
+
     def asset_ui_active(self) -> bool:
         library = getattr(self.g, "ui_assets", None)
         return (
@@ -1056,7 +1060,11 @@ class MenuBaseMixin:
         requested_footer = max(
             self.g.small_font.get_height() + self.u(18), self.u(42)
         )
-        footer_space = min(requested_footer, max(32, height // 7))
+        footer_space = (
+            min(requested_footer, max(32, height // 7))
+            if self.menu_input_hints_visible()
+            else 0
+        )
         panel_w = min(width - side_margin * 2, self.u(860))
         panel_h = max(80, height - top - footer_space - min(self.u(10), 10))
         panel_h = min(panel_h, max(1, height - top - 4))
@@ -1175,6 +1183,8 @@ class MenuBaseMixin:
         text: str,
         font: pygame.font.Font | None = None,
     ) -> None:
+        if not self.menu_input_hints_visible():
+            return
         width, height = self.screen.get_size()
         margin = min(max(self.u(18), 28), max(16, width // 12))
         available_width = max(1, width - margin * 2)
@@ -1203,6 +1213,8 @@ class MenuBaseMixin:
     def menu_shortcut_section_height(
         self, font: pygame.font.Font | None = None
     ) -> int:
+        if not self.menu_input_hints_visible():
+            return 0
         shortcut_font = font or self.g.small_font
         return max(self.u(28), shortcut_font.get_height() + self.u(12))
 
@@ -1216,6 +1228,11 @@ class MenuBaseMixin:
     ) -> None:
         """Draw the selected menu item's shortcut in a dedicated bottom strip."""
 
+        if not self.menu_input_hints_visible():
+            self.g._menu_shortcut_rect = pygame.Rect(0, 0, 0, 0)
+            self.g._menu_shortcut_key = ""
+            self.g._menu_shortcut_label = ""
+            return
         if rect.width <= 0 or rect.height <= 0:
             return
         shortcut_font = font or self.g.small_font
@@ -1299,6 +1316,7 @@ class MenuBaseMixin:
         defaults by omitting the keyword-only responsive-layout arguments.
         """
 
+        keys_in_rows = keys_in_rows and self.menu_input_hints_visible()
         if body_font is None:
             body_font = self.g.font
         if detail_font is None:

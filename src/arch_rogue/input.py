@@ -357,9 +357,27 @@ class ControllerManager:
     # common raw-joystick layouts (Xbox: axes 2/5 are triggers; Stadia/PS:
     # axes 4/5 are triggers) without relying on the SDL controller DB.
     TRIGGER_REST_THRESHOLD = 0.5
+    # SDL on Android exposes motion sensors as raw joysticks. Only reject
+    # explicit sensor descriptors so Bluetooth/USB gamepads remain available.
+    MOTION_SENSOR_NAME_MARKERS = (
+        "accelerometer",
+        "gyroscope",
+        "gyro",
+        "gravity",
+        "linear acceleration",
+        "rotation vector",
+        "orientation sensor",
+    )
 
-    def __init__(self, last_guid: str = "", enabled: bool = True) -> None:
+    def __init__(
+        self,
+        last_guid: str = "",
+        enabled: bool = True,
+        *,
+        ignore_motion_sensors: bool = False,
+    ) -> None:
         self.enabled = enabled
+        self.ignore_motion_sensors = bool(ignore_motion_sensors)
         self._last_guid = last_guid or ""
         self._joysticks: dict[int, Any] = {}
         self._active_id: int | None = None
@@ -423,10 +441,45 @@ class ControllerManager:
         except (AttributeError, pygame.error):
             return ""
 
+    def _name(self, joy: Any) -> str:
+        try:
+            return str(joy.get_name() or "")
+        except (AttributeError, pygame.error):
+            return ""
+
+    @staticmethod
+    def _has_button_or_hat_controls(joy: Any) -> bool:
+        """Return whether a named sensor is demonstrably a real controller."""
+
+        try:
+            if joy.get_numbuttons() > 0:
+                return True
+        except (AttributeError, pygame.error):
+            pass
+        try:
+            return joy.get_numhats() > 0
+        except (AttributeError, pygame.error):
+            return False
+
+    def _is_ignored_motion_sensor(self, joy: Any) -> bool:
+        if not self.ignore_motion_sensors:
+            return False
+        name = self._name(joy).casefold()
+        named_as_sensor = any(
+            marker in name for marker in self.MOTION_SENSOR_NAME_MARKERS
+        )
+        return named_as_sensor and not self._has_button_or_hat_controls(joy)
+
     def _add_device(self, device_index: int) -> Any | None:
         try:
             joy = pygame.joystick.Joystick(device_index)
         except pygame.error:
+            return None
+        if self._is_ignored_motion_sensor(joy):
+            try:
+                joy.quit()
+            except pygame.error:
+                pass
             return None
         # pygame-ce auto-initializes Joystick objects since 2.4; the explicit
         # init() call is deprecated and no longer needed.
@@ -488,10 +541,7 @@ class ControllerManager:
         joy = self.active()
         if joy is None:
             return ""
-        try:
-            return joy.get_name() or "Gamepad"
-        except pygame.error:
-            return "Gamepad"
+        return self._name(joy) or "Gamepad"
 
     def active_guid(self) -> str:
         joy = self.active()
@@ -499,8 +549,11 @@ class ControllerManager:
 
     def set_enabled(self, enabled: bool) -> None:
         self.enabled = bool(enabled)
-        if not enabled:
+        if not self.enabled:
             self._reset_axes()
+            self._trigger_pressed.clear()
+            self._queued_commands.clear()
+            self._queued_trigger_slots.clear()
 
     def prefer_device(self, guid: str) -> None:
         """Switch the active device to one matching ``guid`` if connected."""
@@ -589,6 +642,12 @@ class ControllerManager:
         button events so controllers that also report bumpers as axes do not fire
         stale trigger bindings in addition to the remapped button command.
         """
+        if not self.enabled:
+            self._reset_axes()
+            self._trigger_pressed.clear()
+            self._queued_commands.clear()
+            self._queued_trigger_slots.clear()
+            return
         joy = self.active()
         if joy is None:
             self._reset_axes()
@@ -773,6 +832,7 @@ class InputMixin:
         self.input = ControllerManager(
             last_guid=getattr(self, "last_controller_guid", ""),
             enabled=getattr(self, "controller_enabled", True),
+            ignore_motion_sensors=getattr(self, "mobile_mode", False),
         )
         self.input.initialize()
         self.gamepad_mapping = normalize_gamepad_mapping(
@@ -815,6 +875,14 @@ class InputMixin:
             if event.type == pygame.JOYDEVICEADDED and self.input.active_guid():
                 self.last_controller_guid = self.input.active_guid()
                 self.save_options()
+            return True
+        if not self.input.enabled and event.type in (
+            pygame.JOYAXISMOTION,
+            pygame.JOYBALLMOTION,
+            pygame.JOYHATMOTION,
+            pygame.JOYBUTTONUP,
+            pygame.JOYBUTTONDOWN,
+        ):
             return True
         if event.type == pygame.JOYBUTTONDOWN:
             # Pressing a button on a gamepad makes it the active device so the

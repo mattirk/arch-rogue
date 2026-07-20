@@ -103,6 +103,8 @@ class MenuControlsMixin:
         capture = self.g.controls_capture_command
         for command in REMAPPABLE_GAMEPAD_COMMANDS:
             label = COMMAND_LABELS.get(command, command)
+            if not self.menu_input_hints_visible() and " (key " in label:
+                label = label.split(" (key ", 1)[0]
             binding = self._binding_name_for_command(command)
             value = "Press button/trigger" if capture == command else binding
             rows.append(("Map", label, value))
@@ -185,12 +187,18 @@ class MenuControlsMixin:
         capture = self.g.controls_capture_command
         subtitle = "press any controller button/trigger" if capture else pad_status
         pad_header = pygame.Rect(right.x, right.y, right.width, header_h)
-        hint_h = max(18, min(self.u(42), max(18, right.height // 6)))
+        show_hints = self.menu_input_hints_visible()
+        hint_h = (
+            max(18, min(self.u(42), max(18, right.height // 6)))
+            if show_hints
+            else 0
+        )
+        hint_gap = gap if show_hints else 0
         pad_rect = pygame.Rect(
             right.x,
             pad_header.bottom + gap,
             right.width,
-            max(1, right.height - header_h - gap * 2 - hint_h),
+            max(1, right.height - header_h - gap - hint_gap - hint_h),
         )
         self.draw_text(f"Gamepad — {subtitle}", header_font, accent, pad_header)
         gamepad_rows = draw_fitted_rows(
@@ -199,22 +207,23 @@ class MenuControlsMixin:
             selected_index=self.g.controls_cursor,
         )
         self.g._controls_gamepad_row_rects = gamepad_rows
-        hint_rect = pygame.Rect(
-            right.x, pad_rect.bottom + gap, right.width, hint_h
-        )
-        hint = (
-            "Back cancels mapping"
-            if capture
-            else "Up/down select · Enter/A remaps · Esc/Back returns"
-        )
-        hint_font = self.fit_menu_font(
-            self.g.small_font,
-            max_height=max(8, hint_rect.height // 2),
-            max_width=max(40, hint_rect.width),
-            texts=(hint,),
-            minimum_size=8,
-        )
-        self.draw_wrapped_text(hint, hint_font, self.MUTED, hint_rect)
+        if show_hints:
+            hint_rect = pygame.Rect(
+                right.x, pad_rect.bottom + gap, right.width, hint_h
+            )
+            hint = (
+                "Back cancels mapping"
+                if capture
+                else "Up/down select · Enter/A remaps · Esc/Back returns"
+            )
+            hint_font = self.fit_menu_font(
+                self.g.small_font,
+                max_height=max(8, hint_rect.height // 2),
+                max_width=max(40, hint_rect.width),
+                texts=(hint,),
+                minimum_size=8,
+            )
+            self.draw_wrapped_text(hint, hint_font, self.MUTED, hint_rect)
 
         self.draw_footer(
             panel,

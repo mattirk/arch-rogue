@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import math
+import os
 import random
 import time
 from pathlib import Path
@@ -281,6 +282,11 @@ class Game(
         safe_insets: SafeInsets | tuple[int, int, int, int] | None = None,
     ) -> None:
         self.mobile_mode = detect_mobile_runtime() if mobile is None else bool(mobile)
+        if self.mobile_mode:
+            # SDL otherwise exposes the Android accelerometer as a joystick. Set
+            # the hint before subsystem initialization; ControllerManager also
+            # filters named sensors defensively for SDL/vendor variations.
+            os.environ["SDL_ACCELEROMETER_AS_JOYSTICK"] = "0"
         self.prepare_display_scaling()
         pygame.init()
         pygame.display.set_caption(f"Arch Rogue {__version__}")
@@ -474,12 +480,24 @@ class Game(
         self.ambient_overlay_cache: dict[tuple[int, int, str, int], pygame.Surface] = {}
         self.audio = AudioSystem()
         self.audio_available = self.audio.initialize(headless)
-        self._options_visible_range = (0, 0)
+        self._options_visible_range: tuple[int, int] = (0, 0)
         self._options_row_viewport = pygame.Rect(0, 0, 0, 0)
         self._options_selected_row_rect = pygame.Rect(0, 0, 0, 0)
         self._options_row_font_height = 0
+        # Render-published hitboxes consumed by mouse and touch input. Keeping
+        # them initialized prevents stale context data before the first draw.
+        self._menu_row_rects: tuple[pygame.Rect, ...] = ()
+        self._title_row_rects: tuple[pygame.Rect, ...] = ()
         self._controls_keyboard_row_rects: tuple[pygame.Rect, ...] = ()
         self._controls_gamepad_row_rects: tuple[pygame.Rect, ...] = ()
+        self._inventory_visible_row_rects: list[pygame.Rect] = []
+        self._inventory_sort_mode_rects: list[tuple[str, pygame.Rect]] = []
+        self._shop_visible_start = 0
+        self._shop_visible_row_rects: list[pygame.Rect] = []
+        self._shop_mode_rects: tuple[pygame.Rect, ...] = ()
+        self._character_tab_rects: tuple[pygame.Rect, ...] = ()
+        self._cutscene_choice_rects: list[pygame.Rect] = []
+        self._story_intro_choice_rects: list[pygame.Rect] = []
         self.menus = MenuRenderer(self, ARCHETYPES, DUNGEON_DEPTH)
         self.init_input()
 

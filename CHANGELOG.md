@@ -1,5 +1,32 @@
 # Changelog
 
+## 4.3.7 — Android Touch-First Menus and Sensor Isolation
+
+Release 4.3.7 removes Android's accelerometer pseudo-controller from gameplay and replaces mobile menu navigation chrome with direct, safe-area-aware tap, swipe, and native Back interactions. Desktop keyboard and gamepad behavior remains unchanged, and real Bluetooth/USB gamepads continue to work on Android.
+
+### Fixed
+
+- Android sets `SDL_ACCELEROMETER_AS_JOYSTICK=0` before SDL initialization, preventing the platform accelerometer from being exposed as a joystick. A defensive mobile-only device filter also rejects explicit accelerometer, gyroscope, gravity, linear-acceleration, rotation-vector, and orientation-sensor names while retaining devices that expose real buttons or hats.
+- Turning Controller Off now clears cached stick vectors, pending trigger edges, and queued commands; subsequent axis polls perform no device reads, and joystick axis/button/hat activity is consumed without changing aim or dispatching commands. Device add/remove events remain active so a real controller is ready if the option is re-enabled.
+- Character Overview clears and ignores stale Discipline hitboxes, preventing a tap over an old tree cell from spending a mastery token after switching tabs.
+- Direct menu taps resolve from finger-down with a small tap slop and a separate swipe threshold, so short row-to-row drags cannot activate the release row. Options swipes that begin outside a rendered row no longer mutate the previously selected setting.
+- Inventory use/equip and shop transactions require a true timed double-tap on the same row. Inventory drop remains available through a deliberate long left swipe that must begin on an item row, reducing accidental destructive actions.
+
+### Changed
+
+- Removed the bottom mobile menu navigation strip and its render-loop passes. Menu states no longer register synthetic Back, arrow, Select, Tab, Use, Trade, or Drop touch buttons; gameplay skill, resource, pause, interaction, and utility touch targets are unchanged.
+- Mobile title, options, controls, archetype, exit, about, help, death/victory, story intro, cutscene, inventory, shop, and character contexts now use their rendered rows, choices, tabs, cells, and panels directly. Vertical swipes navigate or page content; horizontal swipes change options, story choices, inventory sort/drop behavior, shop Buy/Sell mode, and character tabs.
+- Mobile menus hide keyboard/gamepad key badges, shortcut sections, navigation footers, quick-use numbers, and close/use/drop helper pills, reclaiming their layout space. Touch-oriented About and Help copy replaces desktop-only mouse/key instructions; desktop guidance remains intact.
+- Android native Back now routes through the shared command dispatcher for gameplay pause, submenu/overlay close, controls-capture cancel, story-safe pause behavior, and death/victory return flow.
+- Runtime/package release version is `4.3.7`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- `python -m compileall -q src tests` passed, and full non-web `unittest` discovery completed with 453 tests passing.
+- Changed-file diagnostics report no errors, `git diff --check` passes, and focused controller/mobile/version/Android-packaging coverage completed with 106 tests passing.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.7-arm64-v8a_armeabi-v7a-debug.apk` (73,356,327 bytes; SHA-256 `f7f04bc97f9aef575825d5448f967255bb3859fe4838abea255441c5a4292c09`). The package contains 104 architecture-correct ELF extensions for each ARM ABI and passed the project entry-point/spec/APK audit.
+- Physical-device validation remains required to confirm sensor enumeration is absent across Android vendors and to assess the touch gesture thresholds on representative phones/tablets.
+
 ## 4.3.6 — Android Native Frame-Pacing Recovery
 
 Release 4.3.6 removes the frame-time spikes and full-frame software/transfer work identified in the second Pixel 9a trace. Native mode keeps the 2424×1080 world framebuffer, but no longer uploads that framebuffer merely to apply lighting; the release also bounds story guidance to its visible pixels and retains unchanged native menu frames.

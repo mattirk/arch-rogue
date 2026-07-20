@@ -46,8 +46,11 @@ class MenuTitleMixin:
             ("A / C / H / ?", "About, credits, and quick help", ""),
         ]
         modern = bool(getattr(self, "_last_menu_frame_used_asset", False))
-        shortcut_h = self.menu_shortcut_section_height() if modern else 0
-        shortcut_gap = min(self.u(7), 7) if modern else 0
+        show_hints = self.menu_input_hints_visible()
+        shortcut_h = (
+            self.menu_shortcut_section_height() if modern and show_hints else 0
+        )
+        shortcut_gap = min(self.u(7), 7) if modern and show_hints else 0
         shortcut_rect = pygame.Rect(
             content.x,
             content.bottom - shortcut_h,
@@ -85,7 +88,7 @@ class MenuTitleMixin:
             "Choose an archetype, follow a seeded dark-fantasy storyline, meet story guests, shape future floors with choices, and break the gate tyrant's seal.",
             modern=modern,
         )
-        if modern:
+        if modern and show_hints:
             selected_index = max(0, min(self.g.title_selection, len(rows) - 1))
             shortcut_labels = (
                 "New descent",
@@ -155,8 +158,11 @@ class MenuTitleMixin:
             ),
         ]
         modern = bool(getattr(self, "_last_menu_frame_used_asset", False))
-        shortcut_h = self.menu_shortcut_section_height() if modern else 0
-        shortcut_gap = min(self.u(7), 7) if modern else 0
+        show_hints = self.menu_input_hints_visible()
+        shortcut_h = (
+            self.menu_shortcut_section_height() if modern and show_hints else 0
+        )
+        shortcut_gap = min(self.u(7), 7) if modern and show_hints else 0
         shortcut_rect = pygame.Rect(
             content.x,
             content.bottom - shortcut_h,
@@ -203,7 +209,7 @@ class MenuTitleMixin:
             )
         )
         self.draw_wrapped_text(note, self.g.small_font, self.MUTED, note_rect)
-        if modern:
+        if modern and show_hints:
             selected_label = rows[
                 max(
                     0,
@@ -228,6 +234,15 @@ class MenuTitleMixin:
             "About / Onboarding", "Arch Rogue milestone 2.5"
         )
         paragraphs = [
+            f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs, procedural stories, and dark-level exploration.",
+            "Goal: descend through ten depths, survive escalating encounters, resolve story guest dilemmas, defeat the final-depth gate tyrant, then use the stairs to complete the run.",
+            "Combat: touch the world to move and aim. Use the six action buttons for attacks, class skills, movement, and potions. The action rail shows cooldowns and potion counts.",
+            "Difficulty: Options cycle Easy, Medium, and Hard; Medium is the default, and Hell unlocks after your first complete clear.",
+            "Story: every run generates an archetype-aligned backstory, factions, relic, guests, and floor beats. Use the interaction control near a guest, then tap a response to shape future floors.",
+            "Loot and discovery: use the interaction control for pickups, shrines, secrets, and stairs. Interaction prompts explain risks, and inventory rows summarize upgrades, curses, and comparisons.",
+            "Dark floors: some depths limit sight to a small light radius while monsters still navigate the dungeon perfectly.",
+            "Credits: design, code, procedural art, procedural audio, and procedural story corpus by the Arch Rogue project.",
+        ] if self.g.mobile_mode else [
             f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs, procedural stories, and dark-level exploration.",
             "Goal: descend through ten depths, survive escalating encounters, resolve story guest dilemmas, defeat the final-depth gate tyrant, then use the stairs to complete the run.",
             "Combat: hold left mouse to move and aim. Number keys trigger skills and potions: 1 melee, 2 bolt, 3 nova, 4 movement skill, 5 health potion, 6 mana potion. C opens the character sheet. The bottom HUD action bar shows hotkeys, cooldowns, and potion counts.",
@@ -292,6 +307,18 @@ class MenuTitleMixin:
         )
         self.draw_text("Run Guide", self.g.font, self.accent(), title_rect)
         lines = [
+            "Goal: defeat the gate tyrant in the final room, then use the interaction control on the stairs.",
+            "Movement: touch or drag in the world view to move and aim.",
+            "Class skills: level ups, Oath Shrines, and skill altars can add class-specific upgrades.",
+            "Story guests: use the interaction control to hear their plea, tap a response to shape future floors, and swipe overflowing story text.",
+            "Elites/minibosses: named foes have brighter telegraphs, more danger, and better rewards.",
+            f"Difficulty: {self.g.difficulty_profile().name} — change it from Options; Hell unlocks after one clear.",
+            "Resources: stamina powers melee and movement skills; mana powers bolts and class skills. The action rail combines skill icons and cooldowns.",
+            "Inventory and character menus open from the left rail. Tap rows and swipe lists to navigate.",
+            "Discovery: unidentified gear needs scrolls, Insight Shrines, or equipping to reveal.",
+            "Dark floors: sight is limited to 4 tiles; monsters navigate normally.",
+            "Hazards: traps are single-use but dangerous; shrines and secrets can swing a run.",
+        ] if self.g.mobile_mode else [
             "Goal: defeat the gate tyrant in the final room, then press E on the stairs.",
             "Movement: hold left mouse to move and aim. Arrow keys can aim without moving.",
             "Class skills: level ups, Oath Shrines, and skill altars can add class-specific upgrades.",
@@ -307,7 +334,11 @@ class MenuTitleMixin:
             "Graphics: Ctrl+Alt+L toggles between authored asset sprites and the procedural legacy renderer.",
         ]
         body_font = self.g.tiny_font if inner.height < 390 else self.g.small_font
-        footer_h = self.g.small_font.get_height() + self.u(4)
+        footer_h = (
+            self.g.small_font.get_height() + self.u(4)
+            if self.menu_input_hints_visible()
+            else 0
+        )
         y = title_rect.bottom + self.u(10)
         for line in lines:
             y = self.draw_wrapped_text(
@@ -324,15 +355,16 @@ class MenuTitleMixin:
             ) + self.u(4)
             if y >= inner.bottom - footer_h:
                 break
-        self.draw_text(
-            "H / ? closes",
-            self.g.small_font,
-            self.MUTED,
-            pygame.Rect(
-                inner.x,
-                inner.bottom - self.g.small_font.get_height(),
-                inner.width,
-                self.g.small_font.get_height(),
-            ),
-            align="right",
-        )
+        if self.menu_input_hints_visible():
+            self.draw_text(
+                "H / ? closes",
+                self.g.small_font,
+                self.MUTED,
+                pygame.Rect(
+                    inner.x,
+                    inner.bottom - self.g.small_font.get_height(),
+                    inner.width,
+                    self.g.small_font.get_height(),
+                ),
+                align="right",
+            )

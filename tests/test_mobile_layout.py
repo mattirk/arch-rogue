@@ -783,7 +783,7 @@ class MobileRenderQualityTests(unittest.TestCase):
             ):
                 game.draw()
                 touch_targets = tuple(game._mobile_touch_targets)
-                self.assertTrue(touch_targets)
+                self.assertEqual(touch_targets, ())
                 game.draw()
                 self.assertEqual(tuple(game._mobile_touch_targets), touch_targets)
                 self.assertEqual(draw_options.call_count, 1)
@@ -1068,6 +1068,35 @@ class MobileTouchTests(unittest.TestCase):
     def finger_event(self, event_type: int, x: float, y: float, key=(0, 0)) -> pygame.event.Event:
         return pygame.event.Event(event_type, touch_id=key[0], finger_id=key[1], x=x, y=y)
 
+    @staticmethod
+    def normalized(
+        point: tuple[int, int], size: tuple[int, int]
+    ) -> tuple[float, float]:
+        return point[0] / size[0], point[1] / size[1]
+
+    def swipe(
+        self,
+        game: Game,
+        start: tuple[int, int],
+        end: tuple[int, int],
+        key: tuple[int, int] = (0, 41),
+    ) -> None:
+        size = game._mobile_display_surface().get_size()
+        self.assertTrue(
+            game.handle_mobile_finger_event(
+                self.finger_event(
+                    pygame.FINGERDOWN, *self.normalized(start, size), key=key
+                )
+            )
+        )
+        self.assertTrue(
+            game.handle_mobile_finger_event(
+                self.finger_event(
+                    pygame.FINGERUP, *self.normalized(end, size), key=key
+                )
+            )
+        )
+
     def test_world_finger_capture_updates_aim_and_release_stops(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))
@@ -1131,6 +1160,180 @@ class MobileTouchTests(unittest.TestCase):
             self.assertTrue(game.handle_mobile_finger_event(skill_down))
             self.assertEqual(melee_calls, 1)
 
+    def test_mobile_runtime_disables_sdl_accelerometer_joystick_hint(self) -> None:
+        with patch.dict(os.environ, {"SDL_ACCELEROMETER_AS_JOYSTICK": "1"}):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                game = make_mobile_game(tmpdir, (1280, 720))
+                self.assertEqual(os.environ["SDL_ACCELEROMETER_AS_JOYSTICK"], "0")
+                self.assertTrue(game.input.ignore_motion_sensors)
+
+    def test_safe_area_title_row_tap_uses_rendered_hitbox(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(
+                tmpdir, (1280, 720), insets=(48, 12, 24, 16)
+            )
+            game.state = "title"
+            game.draw()
+            local_row = game._title_row_rects[2]
+            global_point = (
+                local_row.centerx + game.mobile_safe_rect().x,
+                local_row.centery + game.mobile_safe_rect().y,
+            )
+            size = game._mobile_display_surface().get_size()
+            coords = self.normalized(global_point, size)
+            self.assertTrue(
+                game.handle_mobile_finger_event(
+                    self.finger_event(pygame.FINGERDOWN, *coords, key=(0, 48))
+                )
+            )
+            self.assertTrue(
+                game.handle_mobile_finger_event(
+                    self.finger_event(pygame.FINGERUP, *coords, key=(0, 48))
+                )
+            )
+            self.assertEqual(game.state, "options")
+
+    def test_options_horizontal_swipe_changes_the_touched_row(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.state = "options"
+            game._options_visible_range = (3, 5)
+            game._menu_row_rects = (
+                pygame.Rect(100, 100, 500, 50),
+                pygame.Rect(100, 160, 500, 50),
+            )
+            with patch.object(game, "_activate_options_row") as activate:
+                self.swipe(game, (450, 185), (250, 185))
+            self.assertEqual(game.options_cursor, 4)
+            activate.assert_called_once_with(4, True)
+
+    def test_short_drag_between_rows_never_activates_release_row(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.state = "controls"
+            game._menu_row_rects = (
+                pygame.Rect(180, 100, 640, 43),
+                pygame.Rect(180, 143, 640, 43),
+            )
+            with patch.object(game, "_dispatch_command") as dispatch:
+                self.swipe(game, (300, 120), (300, 164), key=(0, 46))
+            dispatch.assert_not_called()
+
+    def test_options_swipe_outside_rows_does_not_change_a_setting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.state = "options"
+            game.options_cursor = game.OPTIONS_ROW_AUDIO
+            game._menu_row_rects = (pygame.Rect(180, 100, 640, 50),)
+            with patch.object(game, "_activate_options_row") as activate:
+                self.swipe(game, (900, 400), (650, 400), key=(0, 47))
+            activate.assert_not_called()
+            self.assertEqual(game.options_cursor, game.OPTIONS_ROW_AUDIO)
+
+    def test_inventory_rows_and_horizontal_swipes_replace_helper_buttons(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.inventory_open = True
+            game.inventory_scroll = 0
+            game.inventory_cursor = 0
+            game._inventory_visible_row_rects = [pygame.Rect(180, 160, 640, 54)]
+
+            with patch.object(game, "use_selected_inventory_slot") as use_item:
+                self.assertTrue(game.handle_mobile_tap((300, 180)))
+                use_item.assert_not_called()
+                self.assertTrue(game.handle_mobile_tap((300, 180)))
+            use_item.assert_called_once_with()
+
+            with patch.object(game, "drop_selected_inventory_slot") as drop_item:
+                self.swipe(game, (600, 185), (380, 185), key=(0, 42))
+            drop_item.assert_called_once_with()
+
+            before = game.inventory_sort_mode
+            with patch.object(
+                game,
+                "cycle_inventory_sort_mode",
+                wraps=game.cycle_inventory_sort_mode,
+            ) as sort_inventory:
+                self.swipe(game, (380, 185), (600, 185), key=(0, 43))
+            sort_inventory.assert_called_once_with()
+            self.assertNotEqual(game.inventory_sort_mode, before)
+
+    def test_shop_rows_mode_tabs_and_swipes_replace_helper_buttons(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.shop_open = True
+            game.shop_cursor = 0
+            game.shop_mode = "buy"
+            game._shop_visible_start = 0
+            game._shop_visible_row_rects = [pygame.Rect(180, 220, 640, 52)]
+            game._shop_mode_rects = (
+                pygame.Rect(180, 150, 310, 48),
+                pygame.Rect(510, 150, 310, 48),
+            )
+
+            with patch.object(game, "transact_shop_selection") as transact:
+                self.assertTrue(game.handle_mobile_tap((300, 240)))
+                transact.assert_not_called()
+                self.assertTrue(game.handle_mobile_tap((300, 240)))
+            transact.assert_called_once_with()
+
+            self.assertTrue(game.handle_mobile_tap((620, 170)))
+            self.assertEqual(game.shop_mode, "sell")
+            self.swipe(game, (600, 240), (820, 240), key=(0, 44))
+            self.assertEqual(game.shop_mode, "buy")
+
+    def test_character_tab_taps_and_swipes_replace_helper_buttons(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.character_menu_open = True
+            game.character_menu_tab = "overview"
+            game._character_tab_rects = (
+                pygame.Rect(180, 120, 300, 52),
+                pygame.Rect(500, 120, 300, 52),
+            )
+
+            self.assertTrue(game.handle_mobile_tap((620, 145)))
+            self.assertEqual(game.character_menu_tab, "disciplines")
+            self.swipe(game, (600, 300), (820, 300), key=(0, 45))
+            self.assertEqual(game.character_menu_tab, "overview")
+
+    def test_overview_ignores_stale_discipline_hitboxes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.character_menu_open = True
+            game.character_menu_tab = "overview"
+            game._discipline_cells = {
+                "arcanist_splinter": pygame.Rect(180, 220, 160, 80)
+            }
+            with patch.object(game, "choose_discipline") as choose:
+                self.assertFalse(game.handle_mobile_tap((220, 250)))
+            choose.assert_not_called()
+
+    def test_story_intro_choice_and_choice_free_cutscene_are_tappable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.story_intro_pending = True
+            game._story_intro_choice_rects = [pygame.Rect(180, 300, 640, 52)]
+            choices = [("relic", "Relic", "Detail")]
+            with (
+                patch.object(game, "story_relic_choice_options", return_value=choices),
+                patch.object(game, "choose_story_relic_path") as choose,
+            ):
+                self.assertTrue(game.handle_mobile_tap((300, 320)))
+            choose.assert_called_once_with(0)
+
+            game.story_intro_pending = False
+            game.active_cutscene = object()  # type: ignore[assignment]
+            with (
+                patch.object(
+                    game, "active_cutscene_narration_complete", return_value=True
+                ),
+                patch.object(game, "active_cutscene_choices", return_value=[]),
+                patch.object(game, "advance_active_cutscene") as advance,
+            ):
+                self.assertTrue(game.handle_mobile_tap((300, 320)))
+            advance.assert_called_once_with()
+
     def test_opening_inventory_cancels_world_contact(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))
@@ -1149,27 +1352,69 @@ class MobileTouchTests(unittest.TestCase):
 
 
 class MobileBackAndPauseTests(unittest.TestCase):
+    @staticmethod
+    def send_android_back(game: Game) -> None:
+        back = pygame.event.Event(
+            pygame.KEYDOWN,
+            key=getattr(pygame, "K_AC_BACK", -1),
+            mod=0,
+        )
+        with patch.object(pygame.event, "get", return_value=[back]):
+            game.handle_events()
+
     def test_android_back_pauses_base_gameplay(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))
             self.assertEqual(game.state, "playing")
-            back = pygame.event.Event(pygame.KEYDOWN, key=getattr(pygame, "K_AC_BACK", -1), mod=0)
-            consumed = False
-            pygame.event.clear()
-            pygame.event.post(back)
-            for event in pygame.event.get():
-                if event.type == pygame.KEYDOWN and event.key == getattr(pygame, "K_AC_BACK", -1):
-                    game._dispatch_command(Command.BACK)
-                    consumed = True
-            self.assertTrue(consumed)
+            self.send_android_back(game)
             self.assertEqual(game.state, "confirm_exit")
+
+    def test_android_back_closes_mobile_overlays_and_submenus(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+
+            game.inventory_open = True
+            self.send_android_back(game)
+            self.assertFalse(game.inventory_open)
+            self.assertEqual(game.state, "playing")
+
+            game.character_menu_open = True
+            self.send_android_back(game)
+            self.assertFalse(game.character_menu_open)
+            self.assertEqual(game.state, "playing")
+
+            game.shop_open = True
+            self.send_android_back(game)
+            self.assertFalse(game.shop_open)
+            self.assertEqual(game.state, "playing")
+
+            game.show_help = True
+            self.send_android_back(game)
+            self.assertFalse(game.show_help)
+            self.assertEqual(game.state, "playing")
+
+            game.state = "options"
+            self.send_android_back(game)
+            self.assertEqual(game.state, "title")
+
+            game.state = "controls"
+            game.controls_capture_command = Command.ABILITY_1
+            self.send_android_back(game)
+            self.assertEqual(game.state, "controls")
+            self.assertIsNone(game.controls_capture_command)
+            self.send_android_back(game)
+            self.assertEqual(game.state, "options")
+
+            game.state = "dead"
+            self.send_android_back(game)
+            self.assertEqual(game.state, "archetype_select")
 
     def test_android_back_never_commits_story_intro_choice(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))
             game.state = "playing"
             game.story_intro_pending = True
-            game._dispatch_command(Command.BACK)
+            self.send_android_back(game)
             self.assertEqual(game.state, "confirm_exit")
             self.assertTrue(game.story_intro_pending)
 

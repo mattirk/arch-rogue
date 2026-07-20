@@ -34,6 +34,7 @@ _TRUE_VALUES = frozenset(("1", "true", "yes", "on"))
 _FALSE_VALUES = frozenset(("0", "false", "no", "off"))
 MOBILE_PERF_LOG_PREFIX = "ARCH_ROGUE_PERF"
 MOBILE_PERF_REPORT_INTERVAL = 4.0
+MOBILE_DOUBLE_TAP_SECONDS = 0.65
 PYGAME_BLEND_ALPHA_SDL2_ENV = "PYGAME_BLEND_ALPHA_SDL2"
 MOBILE_PERF_PHASES = (
     "tick",
@@ -784,6 +785,7 @@ class MobileMixin:
         ] | None = None
         self._mobile_touch_targets: list[MobileTouchTarget] = []
         self._mobile_touch_contacts: dict[tuple[int, int], _TouchContact] = {}
+        self._mobile_last_row_tap: tuple[str, int, float] | None = None
         self._mobile_world_finger: tuple[int, int] | None = None
         self._mobile_touch_world_point: tuple[int, int] | None = None
         self._mobile_touch_world_active = False
@@ -1508,6 +1510,7 @@ class MobileMixin:
 
     def cancel_mobile_touches(self) -> None:
         self._mobile_touch_contacts.clear()
+        self._mobile_last_row_tap = None
         self._mobile_world_finger = None
         self._mobile_touch_world_active = False
 
@@ -1637,26 +1640,97 @@ class MobileMixin:
         if contact.role in ("tap", "quest_scroll"):
             dx = point[0] - contact.start[0]
             dy = point[1] - contact.start[1]
-            threshold = max(34, root.get_height() // 14)
-            if abs(dy) >= threshold and abs(dy) > abs(dx):
-                self._handle_mobile_swipe(contact.role, dy)
-            elif contact.role == "tap":
-                self.handle_mobile_tap(point)
+            movement = max(abs(dx), abs(dy))
+            tap_slop = max(10, min(root.get_size()) // 72)
+            swipe_threshold = max(34, min(root.get_size()) // 14)
+            if movement >= swipe_threshold:
+                self._handle_mobile_swipe(contact.role, dx, dy, contact.start)
+            elif contact.role == "tap" and movement <= tap_slop:
+                # Resolve direct rows from finger-down, not release, so a short
+                # drag across a neighboring row can never activate that row.
+                self.handle_mobile_tap(contact.start)
         return True
 
-    def _handle_mobile_swipe(self, role: str, dy: int) -> None:
-        down = dy < 0
+    def _handle_mobile_swipe(
+        self,
+        role: str,
+        dx: int,
+        dy: int,
+        start: tuple[int, int],
+    ) -> None:
         if role == "quest_scroll":
-            page = max(1, getattr(self, "_story_panel_visible_lines", 3) - 1)
-            self.scroll_story_panel(page if down else -page)
+            if abs(dy) > abs(dx):
+                page = max(1, getattr(self, "_story_panel_visible_lines", 3) - 1)
+                self.scroll_story_panel(page if dy < 0 else -page)
             return
+
         context = self.mobile_input_context()
+        self._mobile_last_row_tap = None
+        if abs(dx) > abs(dy):
+            self._handle_mobile_horizontal_swipe(context, dx, start)
+            return
+
+        down = dy < 0
         if context == "cutscene":
             self._dispatch_command(Command.PAGE_DOWN if down else Command.PAGE_UP)
         elif context == "inventory":
             self._dispatch_command(Command.PAGE_DOWN if down else Command.PAGE_UP)
         else:
             self._dispatch_command(Command.DOWN if down else Command.UP)
+
+    def _handle_mobile_horizontal_swipe(
+        self,
+        context: str,
+        dx: int,
+        start: tuple[int, int],
+    ) -> None:
+        """Map touch-first horizontal gestures onto the active menu semantics."""
+
+        forward = dx < 0
+        local_start = self._safe_local_point(start)
+        if context == "options":
+            index = self._rect_index(getattr(self, "_menu_row_rects", ()), local_start)
+            if index is None:
+                return
+            visible_start = int(getattr(self, "_options_visible_range", (0, 0))[0])
+            self.options_cursor = min(
+                self.OPTIONS_ROW_COUNT - 1, visible_start + index
+            )
+            self._dispatch_command(Command.RIGHT if forward else Command.LEFT)
+            return
+        if context == "inventory":
+            self._mobile_last_row_tap = None
+            index = self._rect_index(
+                getattr(self, "_inventory_visible_row_rects", ()), local_start
+            )
+            if index is not None:
+                self.set_inventory_selection(self.inventory_scroll + index)
+            if forward:
+                deliberate_drop_distance = max(
+                    96, self.mobile_safe_rect().width // 8
+                )
+                if index is not None and abs(dx) >= deliberate_drop_distance:
+                    self._dispatch_command(Command.DROP)
+            else:
+                self._dispatch_command(Command.TAB)
+            return
+        if context == "shop":
+            self._mobile_last_row_tap = None
+            index = self._rect_index(
+                getattr(self, "_shop_visible_row_rects", ()), local_start
+            )
+            if index is not None:
+                self.shop_cursor = int(getattr(self, "_shop_visible_start", 0)) + index
+            requested_mode = "sell" if forward else "buy"
+            if self.shop_mode != requested_mode:
+                self.cycle_shop_mode()
+            return
+        if context == "character":
+            self.character_menu_tab = "disciplines" if forward else "overview"
+            if self.character_menu_tab == "disciplines":
+                self._ensure_discipline_cursor()
+            return
+        self._dispatch_command(Command.RIGHT if forward else Command.LEFT)
 
     def _safe_local_point(self, point: tuple[int, int]) -> tuple[int, int]:
         safe = self.mobile_safe_rect()
@@ -1670,6 +1744,20 @@ class MobileMixin:
             if isinstance(rect, pygame.Rect) and rect.collidepoint(point):
                 return index
         return None
+
+    def _mobile_row_double_tapped(self, context: str, index: int) -> bool:
+        now = time.monotonic()
+        previous = self._mobile_last_row_tap
+        if (
+            previous is not None
+            and previous[0] == context
+            and previous[1] == index
+            and now - previous[2] <= MOBILE_DOUBLE_TAP_SECONDS
+        ):
+            self._mobile_last_row_tap = None
+            return True
+        self._mobile_last_row_tap = (context, index, now)
+        return False
 
     def handle_mobile_tap(self, point: tuple[int, int]) -> bool:
         """Activate direct row/cell taps not covered by persistent nav buttons."""
@@ -1715,95 +1803,78 @@ class MobileMixin:
             if not self.active_cutscene_narration_complete():
                 self.advance_active_cutscene()
                 return True
-            if index is not None and index < len(self.active_cutscene_choices()):
+            choices = self.active_cutscene_choices()
+            if index is not None and index < len(choices):
                 self.cutscene_cursor = index
                 self.choose_active_cutscene_option(index)
                 return True
+            if not choices:
+                self.advance_active_cutscene()
+                return True
+        elif context == "story_intro":
+            index = self._rect_index(
+                getattr(self, "_story_intro_choice_rects", ()), local
+            )
+            choices = self.story_relic_choice_options()[:3]
+            if index is not None and index < len(choices):
+                self.cutscene_cursor = index
+                self.choose_story_relic_path(index)
+                return True
         elif context == "inventory":
+            sort_modes = getattr(self, "_inventory_sort_mode_rects", ())
+            if isinstance(sort_modes, (tuple, list)):
+                for mode, rect in sort_modes:
+                    if isinstance(rect, pygame.Rect) and rect.collidepoint(local):
+                        self._mobile_last_row_tap = None
+                        self.inventory_sort_mode = str(mode)
+                        self.sort_inventory()
+                        return True
             index = self._rect_index(
                 getattr(self, "_inventory_visible_row_rects", ()), local
             )
             if index is not None:
-                self.set_inventory_selection(self.inventory_scroll + index)
+                selected = self.inventory_scroll + index
+                self.set_inventory_selection(selected)
+                if self._mobile_row_double_tapped("inventory", selected):
+                    self._dispatch_command(Command.CONFIRM)
                 return True
         elif context == "shop":
+            mode_index = self._rect_index(getattr(self, "_shop_mode_rects", ()), local)
+            if mode_index is not None:
+                self._mobile_last_row_tap = None
+                requested_mode = "buy" if mode_index == 0 else "sell"
+                if self.shop_mode != requested_mode:
+                    self.cycle_shop_mode()
+                return True
             index = self._rect_index(getattr(self, "_shop_visible_row_rects", ()), local)
             if index is not None:
-                self.shop_cursor = int(getattr(self, "_shop_visible_start", 0)) + index
+                selected = int(getattr(self, "_shop_visible_start", 0)) + index
+                self.shop_cursor = selected
+                if self._mobile_row_double_tapped("shop", selected):
+                    self._dispatch_command(Command.CONFIRM)
                 return True
         elif context == "character":
+            tab_index = self._rect_index(
+                getattr(self, "_character_tab_rects", ()), local
+            )
+            if tab_index is not None:
+                self.character_menu_tab = (
+                    "overview" if tab_index == 0 else "disciplines"
+                )
+                if self.character_menu_tab == "disciplines":
+                    self._ensure_discipline_cursor()
+                return True
             cells = getattr(self, "_discipline_cells", {})
-            if isinstance(cells, dict):
+            if self.character_menu_tab == "disciplines" and isinstance(cells, dict):
                 for key, rect in cells.items():
                     if isinstance(rect, pygame.Rect) and rect.collidepoint(local):
                         self.character_menu_hovered_node = str(key)
                         self.choose_discipline(str(key))
                         return True
-        elif context == "about":
-            self._dispatch_command(Command.BACK)
-            return True
-        elif context == "state_overlay":
+        elif context in ("about", "help", "state_overlay"):
             self._dispatch_command(Command.BACK)
             return True
         return False
-
-    def _mobile_navigation_spec(self) -> tuple[tuple[str, str], ...]:
-        context = self.mobile_input_context()
-        if context == "gameplay":
-            return ()
-        specs: dict[str, tuple[tuple[str, str], ...]] = {
-            "title": (("Back", Command.BACK), ("↑", Command.UP), ("↓", Command.DOWN), ("Select", Command.CONFIRM)),
-            "options": (("Back", Command.BACK), ("↑", Command.UP), ("↓", Command.DOWN), ("−", Command.LEFT), ("+", Command.RIGHT), ("Select", Command.CONFIRM)),
-            "controls": (("Back", Command.BACK), ("↑", Command.UP), ("↓", Command.DOWN), ("Select", Command.CONFIRM)),
-            "about": (("Back", Command.BACK),),
-            "archetype_select": (("Back", Command.BACK), ("←", Command.LEFT), ("→", Command.RIGHT), ("Begin", Command.CONFIRM)),
-            "confirm_exit": (("Resume", Command.BACK), ("↑", Command.UP), ("↓", Command.DOWN), ("Select", Command.CONFIRM)),
-            "state_overlay": (("New run", Command.BACK),),
-            "help": (("Close", Command.BACK),),
-            "cutscene": (("Pause", Command.BACK), ("↑", Command.UP), ("↓", Command.DOWN), ("Page ↑", Command.PAGE_UP), ("Page ↓", Command.PAGE_DOWN), ("Select", Command.CONFIRM)),
-            "story_intro": (("Pause", Command.BACK), ("←", Command.LEFT), ("→", Command.RIGHT), ("Select", Command.CONFIRM)),
-            "inventory": (("Close", Command.BACK), ("↑", Command.UP), ("↓", Command.DOWN), ("Sort", Command.TAB), ("Use", Command.CONFIRM), ("Drop", Command.DROP)),
-            "shop": (("Close", Command.BACK), ("↑", Command.UP), ("↓", Command.DOWN), ("Mode", Command.TAB), ("Trade", Command.CONFIRM)),
-            "character": (("Close", Command.BACK), ("Tab", Command.TAB), ("↑", Command.UP), ("↓", Command.DOWN), ("←", Command.LEFT), ("→", Command.RIGHT), ("Select", Command.CONFIRM)),
-        }
-        return specs.get(context, (("Back", Command.BACK),))
-
-    def draw_mobile_touch_navigation(self) -> None:
-        if not getattr(self, "mobile_mode", False):
-            return
-        spec = self._mobile_navigation_spec()
-        if not spec:
-            return
-        context = self.mobile_input_context()
-        # Modal/menu navigation replaces gameplay rail targets, preventing input
-        # from leaking through an overlay drawn above the world.
-        self._mobile_touch_targets = []
-        safe = self.mobile_safe_rect()
-        gap = max(5, min(12, safe.height // 72))
-        button_h = max(48, min(68, safe.height // 8))
-        available_w = max(1, safe.width - gap * (len(spec) + 1))
-        button_w = max(54, min(132, available_w // max(1, len(spec))))
-        total_w = button_w * len(spec) + gap * (len(spec) - 1)
-        start_x = safe.centerx - total_w // 2
-        y = safe.bottom - button_h - gap
-        for index, (label, command) in enumerate(spec):
-            rect = pygame.Rect(start_x + index * (button_w + gap), y, button_w, button_h)
-            surface = pygame.Surface(rect.size, pygame.SRCALPHA)
-            surface.fill((15, 14, 20, 224))
-            pygame.draw.rect(
-                surface,
-                (192, 158, 88, 238),
-                surface.get_rect(),
-                max(2, min(4, button_h // 18)),
-                border_radius=max(7, button_h // 7),
-            )
-            font = self.small_font if button_w >= 78 else self.tiny_font
-            text = font.render(label, True, (242, 226, 194))
-            surface.blit(text, text.get_rect(center=surface.get_rect().center))
-            self.screen.blit(surface, rect)
-            self.register_mobile_touch_target(
-                rect, command, label, context=context
-            )
 
     def draw_mobile_performance_overlay(self) -> None:
         """Draw the latest compact on-device phase summary without per-frame text work."""

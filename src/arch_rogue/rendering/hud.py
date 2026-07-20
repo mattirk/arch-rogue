@@ -1970,6 +1970,7 @@ class RenderingHudMixin:
             self._draw_shop_overlay_fitted()
 
     def _draw_shop_overlay_fitted(self) -> None:
+        self._shop_mode_rects = ()
         shopkeeper = self.active_shopkeeper
         if shopkeeper is None:
             return
@@ -2010,11 +2011,13 @@ class RenderingHudMixin:
             content_right,
             self.HUD_GOLD,
         )
-        subtitle = self.small_font.render(
-            f"{shopkeeper.role} · {self.player.gold} gold · Tab {('Sell' if self.shop_mode == 'buy' else 'Buy')} · E trade · Esc close",
-            True,
-            self.HUD_BONE,
+        mobile = bool(getattr(self, "mobile_mode", False))
+        subtitle_text = (
+            f"{shopkeeper.role} · {self.player.gold} gold"
+            if mobile
+            else f"{shopkeeper.role} · {self.player.gold} gold · Tab {('Sell' if self.shop_mode == 'buy' else 'Buy')} · E trade · Esc close"
         )
+        subtitle = self.small_font.render(subtitle_text, True, self.HUD_BONE)
         subtitle_y = (
             title_y + title.get_height() + self.ui(10)
             if modern
@@ -2022,22 +2025,59 @@ class RenderingHudMixin:
         )
         self.screen.blit(subtitle, subtitle.get_rect(x=title_x, y=subtitle_y))
 
-        mode_text = "BUY STOCK" if self.shop_mode == "buy" else "SELL INVENTORY"
-        mode = self.font.render(mode_text, True, self.HUD_GOLD)
         mode_y = (
             subtitle_y + self.small_font.get_height() + self.ui(10)
             if modern
             else rect.y + self.ui(82)
         )
-        self.screen.blit(mode, mode.get_rect(x=title_x, y=mode_y))
+        if mobile:
+            tab_gap = max(self.ui(6), 6)
+            tab_h = max(self.small_font.get_height() + self.ui(10), self.ui(30))
+            tab_w = max(1, (content_right - title_x - tab_gap) // 2)
+            buy_rect = pygame.Rect(title_x, mode_y, tab_w, tab_h)
+            sell_rect = pygame.Rect(
+                buy_rect.right + tab_gap, mode_y, tab_w, tab_h
+            )
+            self._shop_mode_rects = (buy_rect.copy(), sell_rect.copy())
+            for mode_name, label, tab_rect in (
+                ("buy", "Buy", buy_rect),
+                ("sell", "Sell", sell_rect),
+            ):
+                active = self.shop_mode == mode_name
+                pygame.draw.rect(
+                    self.screen,
+                    self.shade(self.HUD_GOLD, -105)
+                    if active
+                    else self.HUD_STONE_SHADOW,
+                    tab_rect,
+                    border_radius=self.ui(5),
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    self.HUD_GOLD if active else self.HUD_IRON,
+                    tab_rect,
+                    max(1, self.ui(1)),
+                    border_radius=self.ui(5),
+                )
+                tab_label = self.small_font.render(
+                    label,
+                    True,
+                    self.HUD_GOLD_BRIGHT if active else self.HUD_MUTED,
+                )
+                self.screen.blit(tab_label, tab_label.get_rect(center=tab_rect.center))
+            list_top = mode_y + tab_h + self.ui(8)
+        else:
+            mode_text = "BUY STOCK" if self.shop_mode == "buy" else "SELL INVENTORY"
+            mode = self.font.render(mode_text, True, self.HUD_GOLD)
+            self.screen.blit(mode, mode.get_rect(x=title_x, y=mode_y))
+            list_top = (
+                mode_y + self.font.get_height() + self.ui(8)
+                if modern
+                else rect.y + self.ui(112)
+            )
 
         entries = self.shop_entries()
         self.clamp_shop_cursor()
-        list_top = (
-            mode_y + self.font.get_height() + self.ui(8)
-            if modern
-            else rect.y + self.ui(112)
-        )
         row_h = self.ui(34)
         max_rows = max(1, (content_bottom - list_top) // row_h)
         start = 0

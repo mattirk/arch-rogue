@@ -169,8 +169,6 @@ class RenderingBaseMixin:
                 performance.record_phase("menu", time.perf_counter() - started)
 
             started = time.perf_counter()
-            if getattr(self, "mobile_mode", False):
-                self.draw_mobile_touch_navigation()
             if performance is not None:
                 self.draw_mobile_performance_overlay()
                 performance.record_phase("overlays", time.perf_counter() - started)
@@ -216,8 +214,6 @@ class RenderingBaseMixin:
                 self.draw_help_overlay()
             if self.state != "playing":
                 self.draw_state_overlay()
-        if getattr(self, "mobile_mode", False):
-            self.draw_mobile_touch_navigation()
         self.draw_screen_flash()
         if performance is not None:
             self.draw_mobile_performance_overlay()
