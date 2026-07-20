@@ -1,5 +1,20 @@
 # Changelog
 
+## 4.3.16 — Android Exit Confirmation Touch Fix
+
+Release 4.3.16 fixes the vertical touch offset on the exit confirmation screen. The exit confirmation renders full-bleed like other menus, but was still listed as a safe-area-clipped overlay, causing taps to land below the visible rows. Desktop is unchanged.
+
+### Fixed
+
+- **Exit confirmation touch offset:** removed `confirm_exit` from the safe-local point conversion list in `_safe_local_point`. The exit confirmation screen renders in display coordinates via `mobile_full_render_target` (like title/options/controls/about/archetype_select), so its row rects are in display coordinates and touch points should not have the safe-area offset subtracted. Taps now register exactly on the visible rows.
+- Runtime/package release version is `4.3.16`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Full non-web `unittest` discovery completed with 476 tests passing; `compileall` and `git diff --check` pass.
+
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.16-arm64-v8a_armeabi-v7a-debug.apk` (73,457,999 bytes; SHA-256 `71f4aa7ddf48569e2585e7e9f81367beaa66b62c8c9a908f43e0315d8b868f5e`). The package reports version 4.3.16 with both ARM ABIs and passes APK Signature Scheme v2 verification.
+
 ## 4.3.15 — Android App Icon and Full-Bleed Cutscene Fix
 
 Release 4.3.15 adds the game icon as the Android launcher/app icon and fixes the cutscene backdrop so it truly fills the whole display. Desktop is unchanged.

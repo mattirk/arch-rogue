@@ -1941,12 +1941,11 @@ class MobileMixin:
             "quest",
             "help",
             "state_overlay",
-            "confirm_exit",
         ):
             safe = self.mobile_safe_rect()
             return point[0] - safe.x, point[1] - safe.y
-        # Full-bleed menus (title, options, controls, about, archetype_select)
-        # and gameplay: row rects are in display coordinates already.
+        # Full-bleed menus (title, options, controls, about, archetype_select,
+        # confirm_exit) and gameplay: row rects are in display coordinates already.
         return point[0], point[1]
 
     @staticmethod
