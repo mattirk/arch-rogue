@@ -1928,8 +1928,26 @@ class MobileMixin:
         self._dispatch_command(Command.RIGHT if forward else Command.LEFT)
 
     def _safe_local_point(self, point: tuple[int, int]) -> tuple[int, int]:
-        safe = self.mobile_safe_rect()
-        return point[0] - safe.x, point[1] - safe.y
+        # Menus render full-bleed across the whole display (mobile_full_render_target
+        # is a no-op that does not offset self.screen), so their row rects live in
+        # display coordinates. In-game overlays (inventory/shop/character/story)
+        # still render inside the safe-area subsurface, so those rects are
+        # safe-local and need the offset removed. The context decides which.
+        context = self.mobile_input_context()
+        if context in (
+            "inventory",
+            "shop",
+            "character",
+            "quest",
+            "help",
+            "state_overlay",
+            "confirm_exit",
+        ):
+            safe = self.mobile_safe_rect()
+            return point[0] - safe.x, point[1] - safe.y
+        # Full-bleed menus (title, options, controls, about, archetype_select)
+        # and gameplay: row rects are in display coordinates already.
+        return point[0], point[1]
 
     @staticmethod
     def _rect_index(rects: Any, point: tuple[int, int]) -> int | None:

@@ -206,22 +206,27 @@ class RenderingBaseMixin:
                 performance.record_phase("hud", time.perf_counter() - started)
 
         started = time.perf_counter()
-        with self.mobile_safe_render_target():
-            if cutscene_active:
-                with self.mobile_full_render_target():
-                    self.draw_quest_cutscene_overlay()
-            elif self.story_intro_pending:
-                self.draw_story_intro_overlay()
-            if self.inventory_open:
-                self.draw_inventory()
-            if self.shop_open:
-                self.draw_shop_overlay()
-            if self.character_menu_open:
-                self.draw_character_menu()
-            if self.show_help:
-                self.draw_help_overlay()
-            if self.state != "playing":
-                self.draw_state_overlay()
+        cutscene_active = self.active_cutscene is not None
+        if cutscene_active:
+            # A quest cutscene owns the full display (opaque backdrop +
+            # letterboxed stage), so render it full-bleed without the
+            # safe-area subsurface that clips other overlays.
+            with self.mobile_full_render_target():
+                self.draw_quest_cutscene_overlay()
+        else:
+            with self.mobile_safe_render_target():
+                if self.story_intro_pending:
+                    self.draw_story_intro_overlay()
+                if self.inventory_open:
+                    self.draw_inventory()
+                if self.shop_open:
+                    self.draw_shop_overlay()
+                if self.character_menu_open:
+                    self.draw_character_menu()
+                if self.show_help:
+                    self.draw_help_overlay()
+                if self.state != "playing":
+                    self.draw_state_overlay()
         self.draw_screen_flash()
         if performance is not None:
             self.draw_mobile_performance_overlay()

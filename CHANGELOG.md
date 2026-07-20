@@ -1,5 +1,26 @@
 # Changelog
 
+## 4.3.15 — Android App Icon and Full-Bleed Cutscene Fix
+
+Release 4.3.15 adds the game icon as the Android launcher/app icon and fixes the cutscene backdrop so it truly fills the whole display. Desktop is unchanged.
+
+### Added
+
+- **Android app icon:** `buildozer.spec` now declares `icon.filename` pointing at the bundled 512px crest (`src/arch_rogue/assets/icons/icon_512.png`). p4a copies it into the APK resources at all density buckets (`mipmap/icon.png` plus `drawable-{m,h,xh,xxh}dpi/ic_launcher.png`) and references it from the manifest's `android:icon`, so the Arch Rogue crest appears as the installed app icon on the Android launcher/home screen.
+
+### Fixed
+
+- **Cutscene backdrop fills the full screen:** the quest cutscene overlay was still being rendered into the safe-area subsurface (clipped by `mobile_safe_render_target`), so the authored background image only covered the safe inset and the rest of the display showed the cleared frame. The cutscene now renders outside the safe-area wrapper — the backdrop, dim pass, and letterboxed stage cover the entire physical display edge-to-edge, with the panel centered on top.
+- **Menu touch vertical offset:** full-bleed menus (title, options, controls, about, archetype select) render in display coordinates, but `handle_mobile_tap` was still subtracting the safe-area offset from the touch point, making taps land a few pixels below the visible row. The safe-local conversion is now context-aware: only safe-area-clipped overlays (inventory, shop, character, quest, help) subtract the offset; full-bleed menus use raw display coordinates so touch registration matches the rendered rows exactly.
+- Runtime/package release version is `4.3.15`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Full non-web `unittest` discovery completed with 476 tests passing, including the updated full-bleed cutscene regression (now checks asymmetric safe insets and corner coverage); `compileall` and `git diff --check` pass.
+- APK inspection confirms `res/mipmap/icon.png` (512×512 RGBA), per-density `ic_launcher.png` variants, and `application: icon='res/mipmap/icon.png'` in the manifest badging.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.15-arm64-v8a_armeabi-v7a-debug.apk` (73,458,011 bytes; SHA-256 `8fd71d8941e20afab4d52d12425d49262e8925ef59cde161d398c077999b05d8`). The package reports version 4.3.15 with both ARM ABIs (104 architecture-correct ELF extensions per ABI), passes APK Signature Scheme v2 verification, and includes the app icon (`application: icon='res/mipmap/icon.png'`).
+- Physical-device validation remains required to confirm the launcher icon renders correctly, the cutscene backdrop covers cutouts, and menu touch registration is vertically accurate.
+
 ## 4.3.14 — Android Touch Responsiveness, Spirit Beast Petting, and Frame Tuning
 
 Release 4.3.14 makes touch controls feel responsive and forgiving, adds first-class Spirit Beast petting on mobile, and removes another per-frame hotspot from the projection path. Desktop is unchanged.

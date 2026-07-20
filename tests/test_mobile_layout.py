@@ -1147,7 +1147,7 @@ class MobileLayoutTests(unittest.TestCase):
 
     def test_cutscene_skips_world_render_and_fills_screen(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            game = make_mobile_game(tmpdir, (1280, 720))
+            game = make_mobile_game(tmpdir, (2340, 1080), (90, 0, 18, 0))
             self.assertTrue(game.start_quest_cutscene("story_guest_omen"))
             self.assertIsNotNone(game.active_cutscene)
             with (
@@ -1157,10 +1157,19 @@ class MobileLayoutTests(unittest.TestCase):
                 game.draw()
             render_world.assert_not_called()
             draw_ui.assert_not_called()
-            # The cutscene background paints the whole display, not just the
-            # safe area (which has zero insets here, but the point is the
-            # overlay runs full-bleed and covers the frame).
             self.assertIsNotNone(game._cutscene_panel_rect)
+            assert game._cutscene_panel_rect is not None
+            # The cutscene backdrop must cover the full display, including the
+            # safe-area insets (not clipped to the safe subsurface).
+            screen = game.screen.get_rect()
+            self.assertTrue(screen.contains(game._cutscene_panel_rect))
+            # Background asset was rendered at full display size.
+            self.assertTrue(game._cutscene_background_asset_used)
+            # Corners are painted (not the cleared black revealing world).
+            tl = game.screen.get_at((2, 2))[:3]
+            tr = game.screen.get_at((screen.width - 3, 2))[:3]
+            self.assertNotEqual(tl, (10, 10, 14))
+            self.assertNotEqual(tr, (10, 10, 14))
 
     def test_world_viewport_and_menus_cover_full_display(self) -> None:
         for size, insets in (
