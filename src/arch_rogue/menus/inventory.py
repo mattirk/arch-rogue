@@ -115,6 +115,8 @@ class MenuInventoryMixin:
                 self.g.tiny_font.get_height() * 3 + 34,
                 90,
             )
+        if not self.menu_input_hints_visible():
+            controls_h = 0
         header = pygame.Rect(inner.x, inner.y, inner.width, header_h)
         sort = pygame.Rect(inner.x, header.bottom + gap, inner.width, sort_h)
         controls = pygame.Rect(
@@ -124,7 +126,8 @@ class MenuInventoryMixin:
             controls_h,
         )
         content_y = sort.bottom + gap
-        content_h = max(1, controls.y - gap - content_y)
+        content_bottom = controls.y - gap if controls_h else inner.bottom
+        content_h = max(1, content_bottom - content_y)
         content = pygame.Rect(inner.x, content_y, inner.width, content_h)
         column_gap = max(self.u(10), 10)
         if modern:
@@ -221,7 +224,10 @@ class MenuInventoryMixin:
             self.draw_inventory_sort_bar(sort_rect)
             self.draw_inventory_list(list_rect, row_h, row_gap, visible_rows)
             self.draw_inventory_details(details_rect)
-            self.draw_inventory_controls(controls_rect)
+            if self.menu_input_hints_visible():
+                self.draw_inventory_controls(controls_rect)
+            else:
+                self.g._inventory_control_pill_rects = []
         finally:
             del self._inventory_asset_panel
 
@@ -233,7 +239,7 @@ class MenuInventoryMixin:
         title_y = rect.y + top_pad
         subtitle_y = title_y + title_h + line_gap
         capacity = f"{len(self.g.player.inventory)}/{MAX_INVENTORY} slots"
-        close_text = "I or Esc closes"
+        close_text = "I or Esc closes" if self.menu_input_hints_visible() else ""
         meta_w = min(
             rect.width // 2,
             max(self.u(150), self.g.small_font.size(capacity)[0] + self.u(24)),
@@ -258,9 +264,13 @@ class MenuInventoryMixin:
         subtitle = "Select an item for details, compare, use, or drop."
         if upgrade_names:
             subtitle = f"{len(upgrade_names)} upgrades learned · {subtitle}"
-        close_w = min(
-            max(self.g.tiny_font.size(close_text)[0] + self.u(8), self.u(112)),
-            rect.width // 3,
+        close_w = (
+            min(
+                max(self.g.tiny_font.size(close_text)[0] + self.u(8), self.u(112)),
+                rect.width // 3,
+            )
+            if close_text
+            else 0
         )
         close_rect = pygame.Rect(
             rect.right - close_w,
@@ -268,20 +278,22 @@ class MenuInventoryMixin:
             close_w,
             self.g.tiny_font.get_height(),
         )
+        subtitle_gap = self.u(12) if close_w else 0
         subtitle_rect = pygame.Rect(
             rect.x,
             subtitle_y,
-            max(1, close_rect.x - rect.x - self.u(12)),
+            max(1, close_rect.x - rect.x - subtitle_gap),
             subtitle_h,
         )
         self.draw_text(subtitle, self.g.small_font, self.MUTED, subtitle_rect)
-        self.draw_text(
-            close_text,
-            self.g.tiny_font,
-            self.MUTED,
-            close_rect,
-            align="right",
-        )
+        if close_text:
+            self.draw_text(
+                close_text,
+                self.g.tiny_font,
+                self.MUTED,
+                close_rect,
+                align="right",
+            )
 
     def draw_inventory_sort_bar(self, rect: pygame.Rect) -> None:
         modern = bool(getattr(self, "_inventory_asset_panel", False))
@@ -307,17 +319,24 @@ class MenuInventoryMixin:
             valign="center",
         )
         modes = (("type", "Type"), ("rarity", "Rarity"), ("power", "Power"))
+        self.g._inventory_sort_mode_rects = []
         chip_gap = max(self.u(5), 5)
         x = content.x + pad + label_w + chip_gap
-        hint_w = min(max(self.u(116), 104), max(0, content.right - x) // 3)
+        hint_w = (
+            min(max(self.u(116), 104), max(0, content.right - x) // 3)
+            if self.menu_input_hints_visible()
+            else 0
+        )
+        trailing_gaps = 3 if self.menu_input_hints_visible() else 2
         chip_w = max(
             1,
-            (content.right - x - hint_w - chip_gap * 3 - pad) // 3,
+            (content.right - x - hint_w - chip_gap * trailing_gaps - pad) // 3,
         )
         chip_h = max(1, content.height - pad * 2)
         for mode, label in modes:
             active = self.g.inventory_sort_mode == mode
             chip = pygame.Rect(x, content.y + pad, chip_w, chip_h)
+            self.g._inventory_sort_mode_rects.append((mode, chip.copy()))
             color = self.WARNING if active else self.IRON
             if active:
                 fill = self.shade(color, -64)
@@ -357,14 +376,15 @@ class MenuInventoryMixin:
             max(1, content.right - x - pad),
             content.height,
         )
-        self.draw_text(
-            "Tab cycles · S re-sorts",
-            self.g.tiny_font,
-            self.MUTED,
-            hint_rect,
-            align="right",
-            valign="center",
-        )
+        if self.menu_input_hints_visible():
+            self.draw_text(
+                "Tab cycles · S re-sorts",
+                self.g.tiny_font,
+                self.MUTED,
+                hint_rect,
+                align="right",
+                valign="center",
+            )
 
 
     def draw_inventory_list(
@@ -522,7 +542,7 @@ class MenuInventoryMixin:
                 self.screen, color, gem, max(1, self.u(1)), border_radius=self.u(4)
             )
             self.draw_text(
-                f"{shortcut}{icon}",
+                f"{shortcut}{icon}" if self.menu_input_hints_visible() else icon,
                 self.g.tiny_font,
                 self.shade(color, 60),
                 slot_rect.inflate(-self.u(2), 0),
@@ -534,24 +554,31 @@ class MenuInventoryMixin:
                 item.slot, max(1, slot_rect.width - self.u(6))
             )
             self.screen.blit(preview, preview.get_rect(center=slot_rect.center))
-            badge = pygame.Rect(
-                slot_rect.right - self.u(17),
-                slot_rect.bottom - self.u(15),
-                self.u(16),
-                self.u(14),
-            )
-            pygame.draw.rect(self.screen, self.BG_DEEP, badge, border_radius=self.u(3))
-            pygame.draw.rect(
-                self.screen, color, badge, max(1, self.u(1)), border_radius=self.u(3)
-            )
-            self.draw_text(
-                shortcut,
-                self.g.tiny_font,
-                self.shade(color, 60),
-                badge,
-                align="center",
-                valign="center",
-            )
+            if self.menu_input_hints_visible():
+                badge = pygame.Rect(
+                    slot_rect.right - self.u(17),
+                    slot_rect.bottom - self.u(15),
+                    self.u(16),
+                    self.u(14),
+                )
+                pygame.draw.rect(
+                    self.screen, self.BG_DEEP, badge, border_radius=self.u(3)
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    color,
+                    badge,
+                    max(1, self.u(1)),
+                    border_radius=self.u(3),
+                )
+                self.draw_text(
+                    shortcut,
+                    self.g.tiny_font,
+                    self.shade(color, 60),
+                    badge,
+                    align="center",
+                    valign="center",
+                )
         tag = self.inventory_category_label(item)
         tag_w = min(
             max(self.g.tiny_font.size(tag)[0] + self.u(16), self.u(62)),
@@ -744,7 +771,8 @@ class MenuInventoryMixin:
             extra_lines.append(f"Effect: {item.unique_effect}")
         if item.cursed:
             extra_lines.append("Cursed bargain: hotter rolls, slower handling.")
-        extra_lines.append("Enter/E use · Del drop")
+        if self.menu_input_hints_visible():
+            extra_lines.append("Enter/E use · Del drop")
         line_gap = max(self.g.tiny_font.get_height() + self.u(3), self.u(15))
         text_rect_w = rect.width - pad * 2
         for line in extra_lines:
@@ -879,6 +907,9 @@ class MenuInventoryMixin:
         )
 
     def draw_inventory_controls(self, rect: pygame.Rect) -> None:
+        if not self.menu_input_hints_visible():
+            self.g._inventory_control_pill_rects = []
+            return
         modern = bool(getattr(self, "_inventory_asset_panel", False))
         panel_rect = rect
         if modern:

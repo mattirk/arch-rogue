@@ -1,0 +1,110 @@
+Arch Rogue — Third-Party Notices and AI Provenance
+==================================================
+
+This file is the canonical third-party attribution list for the Arch Rogue
+Android APK distribution. It reflects the pinned python-for-android distribution
+and the codec/font/image components enabled by its SDL2 bootstrap. A copy is
+bundled inside the APK as `assets/licenses/NOTICE.txt` and surfaced from the
+in-app About → Open Source Licenses screen.
+
+The Arch Rogue project code itself is licensed under the Apache License 2.0
+(see `LICENSE` / `assets/licenses/LICENSE.txt`). pygame-ce is LGPL-2.1-or-later;
+the full LGPL text is bundled as `assets/licenses/LGPL-2.1.txt` and displayed
+in-app. Other components retain the licenses listed below.
+
+Bundled third-party libraries
+-----------------------------
+
+1. pygame-ce (the local `pygame` recipe cross-compiles pygame-ce 2.5.7)
+   License: GNU Lesser General Public License v2.1 or later
+   (LGPL-2.1-or-later). Source: https://pyga.me/
+   License text: `assets/licenses/LGPL-2.1.txt`.
+
+2. SDL2 (Simple DirectMedia Layer 2)
+   License: zlib (https://www.zlib.net/zlib_license.html).
+   Source: https://www.libsdl.org/
+
+3. SDL2_image
+   License: zlib. Source: https://github.com/libsdl-org/SDL_image
+
+4. SDL2_mixer
+   License: zlib. Source: https://github.com/libsdl-org/SDL_mixer
+   The Android bootstrap enables the permissively licensed single-header
+   decoders from dr_libs (dr_flac/dr_mp3, public domain or MIT-0) and
+   stb_vorbis (public domain or MIT). The APK validator rejects external
+   GPL-family codec markers (`libmad`, `libmp3lame`, `libfaad`) in both APK-level
+   and nested native modules.
+
+5. SDL2_ttf
+   License: zlib. Source: https://github.com/libsdl-org/SDL_ttf
+
+6. libpng
+   License: zlib/libpng (https://libpng.org/pub/png/src/libpng-LICENSE.txt).
+
+7. libjpeg (libjpeg-turbo)
+   License: BSD-3-Clause (libjpeg-turbo) / Independent JPEG Group license.
+   Source: https://libjpeg-turbo.org/
+
+8. zlib
+   License: zlib. Source: https://www.zlib.net/
+
+9. Freetype (vendored and statically built by SDL2_ttf)
+   License: Freetype License (FTL, BSD-like with a credit clause), selected
+   under Freetype's FTL-or-GPL dual-license grant. The SDL2_ttf source tree
+   contains `external/freetype/LICENSE.TXT`; this distribution uses the FTL
+   option, not GPL-2.0+. Source: https://freetype.org/
+   FTL text: https://gitlab.freedesktop.org/freetype/freetype/-/blob/master/docs/FTL.TXT
+
+10. Python 3 (CPython)
+    License: PSF-2.0 (Python Software Foundation License). Source:
+    https://www.python.org/
+
+11. PyJNIus
+    License: MIT. Source: https://github.com/kivy/pyjnius
+
+12. OpenSSL
+    License: Apache License 2.0. Source: https://www.openssl.org/
+
+13. libffi
+    License: MIT-style. Source: https://github.com/libffi/libffi
+
+14. SQLite
+    License: Public Domain. Source: https://www.sqlite.org/
+
+15. setuptools and its vendored runtime dependencies
+    License: MIT, BSD, Apache-2.0, or other permissive licenses as identified
+    in the package metadata. Source: https://github.com/pypa/setuptools
+
+16. six
+    License: MIT. Source: https://github.com/benjaminp/six
+
+17. libwebp (enabled by SDL2_image)
+    License: BSD-3-Clause. Source: https://chromium.googlesource.com/webm/libwebp
+
+18. HarfBuzz (vendored by SDL2_ttf)
+    License: MIT. Source: https://github.com/harfbuzz/harfbuzz
+
+19. stb image/audio components
+    License: Public Domain or MIT. Source: https://github.com/nothings/stb
+
+20. dr_libs audio decoders
+    License: Public Domain or MIT-0. Source: https://github.com/mackron/dr_libs
+
+Build-tool attribution (NOT bundled in the APK)
+------------------------------------------------
+
+buildozer and python-for-android are (L)GPL build tools. They compile the APK on
+the host but their source is never packaged into the shipped APK. The validator
+rejects any APK whose `assets/private.tar` contains `buildozer/` or
+`pythonforandroid/` source, so an accidental bundling of build-tool source
+cannot ship.
+
+AI Provenance & Liability Notice
+--------------------------------
+
+This repository and its APK distribution contain code generated, assisted, or
+refactored by Artificial Intelligence models. Provided strictly "AS IS" under
+Apache License 2.0 with no warranty of clean IP provenance or non-infringement;
+downstream users assume all legal and financial risk and should perform their
+own compliance audits. This notice and the Apache-2.0 §7 warranty disclaimer
+are surfaced in-app via the About → Open Source Licenses screen.

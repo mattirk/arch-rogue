@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import math
 import random
+import time
 from collections import deque
 from typing import cast
 
@@ -40,6 +41,10 @@ from ..constants import (
     SlashEffect,
 )
 from ..content import HUMANOID_ENEMY_NAMES
+from ..mobile import (
+    optimize_immutable_alpha_surface,
+    sdl2_alpha_blitter_requested,
+)
 from ..models import (
     AmbushBell,
     Color,
@@ -86,12 +91,31 @@ _GOLD_STACK_EXTRA_SALT = 0x71D6B295
 
 class RenderingWorldMixin:
     def draw_dungeon(self) -> None:
+        if self._draw_cached_mobile_floor_layer():
+            return
+        self._blit_floor_entries(self.screen, self._floor_blit_entries())
+
+    @staticmethod
+    def _blit_floor_entries(
+        target: pygame.Surface,
+        entries: list[tuple[pygame.Surface, tuple[int, int]]],
+    ) -> None:
+        if not entries:
+            return
+        blits = getattr(target, "blits", None)
+        if blits is not None:
+            blits(entries)
+        else:
+            for source, destination in entries:
+                target.blit(source, destination)
+
+    def _floor_blit_entries(self) -> list[tuple[pygame.Surface, tuple[int, int]]]:
         min_x, max_x, min_y, max_y = self.visible_bounds()
         self._frame_dark = self.is_current_floor_dark()
         entries: list[tuple[pygame.Surface, tuple[int, int]]] = []
-        for s in range(min_x + min_y, max_x + max_y + 1):
+        for diagonal in range(min_x + min_y, max_x + max_y + 1):
             for x in range(min_x, max_x + 1):
-                y = s - x
+                y = diagonal - x
                 if min_y <= y <= max_y and self.dungeon.in_bounds(x, y):
                     if self.tile_visibility_alpha(x, y) <= 0:
                         continue
@@ -101,13 +125,213 @@ class RenderingWorldMixin:
                     entry = self._tile_blit_entry(x, y, tile)
                     if entry is not None:
                         entries.append(entry)
-        if entries:
-            blits = getattr(self.screen, "blits", None)
-            if blits is not None:
-                blits(entries)
-            else:
-                for src, dest in entries:
-                    self.screen.blit(src, dest)
+        return entries
+
+    def _mobile_floor_entries_for_tiles(
+        self, tiles: set[tuple[int, int]]
+    ) -> list[tuple[pygame.Surface, tuple[int, int]]]:
+        """Return canonical painter-order entries for a small reveal delta."""
+
+        entries: list[tuple[pygame.Surface, tuple[int, int]]] = []
+        for x, y in sorted(tiles, key=lambda point: (point[0] + point[1], point[0])):
+            if not self.dungeon.in_bounds(x, y) or (x, y) not in self.revealed_tiles:
+                continue
+            tile = self.dungeon.tiles[x][y]
+            if tile in (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
+                continue
+            entry = self._tile_blit_entry(x, y, tile)
+            if entry is not None:
+                entries.append(entry)
+        return entries
+
+    def _patch_cached_mobile_floor_layer(
+        self,
+        layer: pygame.Surface,
+        build_camera: tuple[float, float],
+        pending: set[tuple[int, int]],
+        rendered: set[tuple[int, int]],
+    ) -> int:
+        # A flattened isometric layer cannot insert a new tile by simply drawing
+        # it (or its neighbors) on top: that changes painter order and makes the
+        # diamond look temporarily raised until the next cold rebuild. Rebuild
+        # only each new tile's pixel rectangle, clipping every canonical floor
+        # entry against that rectangle so the result is byte-equivalent locally.
+        root_screen = self.screen
+        frame_cache = self._frame_cache
+        self.screen = layer
+        self._frame_cache = {"camera_iso": build_camera}
+        self._frame_dark = False
+        try:
+            all_entries = self._mobile_floor_entries_for_tiles(rendered | pending)
+            pending_entries = self._mobile_floor_entries_for_tiles(pending)
+        finally:
+            self.screen = root_screen
+            self._frame_cache = frame_cache
+
+        dirty_rects = [
+            source.get_rect(topleft=destination).clip(layer.get_rect())
+            for source, destination in pending_entries
+        ]
+        previous_clip = layer.get_clip()
+        try:
+            for dirty in dirty_rects:
+                if dirty.width <= 0 or dirty.height <= 0:
+                    continue
+                layer.fill((10, 10, 14), dirty)
+                layer.set_clip(dirty)
+                self._blit_floor_entries(
+                    layer,
+                    [
+                        entry
+                        for entry in all_entries
+                        if entry[0]
+                        .get_rect(topleft=entry[1])
+                        .colliderect(dirty)
+                    ],
+                )
+        finally:
+            layer.set_clip(previous_clip)
+        return len(pending_entries)
+
+    def _mobile_floor_layer_destination(
+        self,
+        screen_size: tuple[int, int],
+        layer: pygame.Surface,
+        build_camera: tuple[float, float],
+        live_camera: tuple[float, float],
+    ) -> tuple[int, int]:
+        # world_to_screen uses int() on positive on-screen coordinates, which is
+        # floor semantics. Compute the translation from the same layout-aware
+        # projection origin for the live viewport and the larger guttered cache;
+        # round() changes at a different half-pixel boundary and causes a one-pixel
+        # jump relative to live walls and actors.
+        screen_w, screen_h = screen_size
+        live_origin_x, live_origin_y = self._mobile_projection_origin(
+            screen_w, screen_h
+        )
+        build_origin_x, build_origin_y = self._mobile_projection_origin(
+            layer.get_width(), layer.get_height()
+        )
+        build_cam_x, build_cam_y = build_camera
+        cam_x, cam_y = live_camera
+        return (
+            math.floor(-cam_x + live_origin_x)
+            - math.floor(-build_cam_x + build_origin_x),
+            math.floor(-cam_y + live_origin_y)
+            - math.floor(-build_cam_y + build_origin_y),
+        )
+
+    def _draw_cached_mobile_floor_layer(self) -> bool:
+        """Blit a reusable opaque floor layer on the Android SDL2-alpha path."""
+
+        # WS-C (4.3.17 merge): the incremental floor cache + reveal-patch path
+        # below is a mobile GPU-upload-cost optimization (added 4.3.5). It is
+        # gated behind mobile_mode so desktop always uses the shared
+        # cold-rebuild path in draw_dungeon (_blit_floor_entries on screen),
+        # avoiding any risk of desktop render regression from the merge. The
+        # cold-rebuild path stays shared: mobile falls back to it whenever the
+        # cache is bypassed (dark floors, no SDL2 alpha blitter, etc.).
+        if not getattr(self, "mobile_mode", False):
+            return False
+        if not sdl2_alpha_blitter_requested() or self.is_current_floor_dark():
+            return False
+        screen_w, screen_h = self._screen_size()
+        if screen_w <= 0 or screen_h <= 0:
+            return False
+
+        cam_x, cam_y = self.camera_iso()
+        # A one-third-screen gutter keeps the layer reusable for several world
+        # steps instead of rebuilding roughly once per tile while the camera
+        # follows the player. Native mode pays a bounded ~1.8x surface dimension,
+        # replacing frequent alpha-tile rebuilds with one opaque translated blit.
+        margin_x = max(TILE_W, screen_w // 3)
+        margin_y = max(TILE_H, screen_h // 3)
+        layer_size = (screen_w + margin_x * 2, screen_h + margin_y * 2)
+        story_accent = tuple(getattr(getattr(self, "story_state", None), "accent", ()))
+        lightweight_lighting = self.mobile_lightweight_lighting_active()
+        ambient_tint = (
+            self._mobile_lightweight_ambient_color()
+            if lightweight_lighting
+            else None
+        )
+        cache_key = (
+            id(self.dungeon),
+            getattr(self, "run_number", 0),
+            getattr(self, "current_depth", 0),
+            self.theme.name,
+            story_accent,
+            layer_size,
+            round(float(getattr(self, "view_zoom", 1.0)), 4),
+            bool(getattr(self, "legacy_graphics", False)),
+            bool(self.continuous_lighting_active()),
+            lightweight_lighting,
+            ambient_tint,
+            id(self.revealed_tiles),
+        )
+        cache = getattr(self, "_mobile_floor_layer_cache", None)
+        rebuild = cache is None or cache[0] != cache_key
+        if not rebuild:
+            assert cache is not None
+            build_cam_x, build_cam_y = cache[1], cache[2]
+            rebuild = (
+                abs(cam_x - build_cam_x) >= margin_x * 0.75
+                or abs(cam_y - build_cam_y) >= margin_y * 0.75
+            )
+            if not rebuild:
+                rendered = cache[4]
+                rebuild = not rendered.issubset(self.revealed_tiles)
+
+        if rebuild:
+            layer = pygame.Surface(layer_size).convert()
+            layer.fill((10, 10, 14))
+            root_screen = self.screen
+            frame_cache = self._frame_cache
+            self.screen = layer
+            self._frame_cache = {}
+            try:
+                entries = self._floor_blit_entries()
+            finally:
+                self.screen = root_screen
+                self._frame_cache = frame_cache
+            self._blit_floor_entries(layer, entries)
+            cache = (
+                cache_key,
+                cam_x,
+                cam_y,
+                layer,
+                set(self.revealed_tiles),
+            )
+            self._mobile_floor_layer_cache = cache
+            self._mobile_floor_cache_rebuilds = int(
+                getattr(self, "_mobile_floor_cache_rebuilds", 0)
+            ) + 1
+        else:
+            assert cache is not None
+            rendered = cache[4]
+            pending = self.revealed_tiles.difference(rendered)
+            if pending:
+                patched = self._patch_cached_mobile_floor_layer(
+                    cache[3],
+                    (cache[1], cache[2]),
+                    pending,
+                    rendered,
+                )
+                rendered.update(pending)
+                if patched:
+                    self._mobile_floor_cache_patches = int(
+                        getattr(self, "_mobile_floor_cache_patches", 0)
+                    ) + 1
+
+        assert cache is not None
+        build_cam_x, build_cam_y, layer = cache[1], cache[2], cache[3]
+        destination = self._mobile_floor_layer_destination(
+            (screen_w, screen_h),
+            layer,
+            (build_cam_x, build_cam_y),
+            (cam_x, cam_y),
+        )
+        self.screen.blit(layer, destination)
+        return True
 
     def _tile_blit_entry(
         self, x: int, y: int, tile: Tile
@@ -145,13 +369,14 @@ class RenderingWorldMixin:
             if tile not in (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
                 if alpha <= 0:
                     return None
-                # Milestone 3.16: on the continuous lighting tier the per-tile
-                # alpha falloff is replaced by the screen-space light buffer
-                # multiply, so floor tiles blit fully opaque and the buffer
-                # darkens their edges smoothly. The quantized-alpha path stays
-                # as the LIGHTING_OFF / web fallback (the 3.8.0 look).
-                if alpha < 255 and not self.lighting_enabled():
+                # Continuous lighting replaces per-tile alpha with a screen-space
+                # multiply. Lighting Off, web, and Android Native's lightweight
+                # tier retain the quantized tile falloff so no native framebuffer
+                # transfer is required to preserve darkness.
+                if alpha < 255 and not self.continuous_lighting_active():
                     surface = self._alpha_tile_surface(surface, alpha)
+        if self.mobile_lightweight_lighting_active():
+            surface = self.apply_mobile_lightweight_ambient(surface)
         return (surface, (sx - anchor_x, sy - anchor_y))
 
     def draw_tile(self, x: int, y: int, tile: Tile) -> None:
@@ -199,6 +424,7 @@ class RenderingWorldMixin:
         # belong to the previous theme.
         self._alpha_tile_cache = {}
         self.door_tile_cache = {}
+        self._mobile_floor_layer_cache = None
         # Milestone 3.16: lighting caches are keyed by theme accent and
         # per-sprite identity, so reset them on floor/theme change alongside
         # the alpha-bucket cache.
@@ -485,8 +711,8 @@ class RenderingWorldMixin:
                 wall_face_style=wall_face_style,
             )
         if asset_surface is not None:
+            wall_surface, wall_anchor_x, wall_anchor_y = asset_surface
             if tile == Tile.WALL and bar_wall_light_side is not None:
-                wall_surface, wall_anchor_x, wall_anchor_y = asset_surface
                 wall_surface = wall_surface.copy()
                 self._draw_bar_wall_light(
                     wall_surface,
@@ -494,7 +720,8 @@ class RenderingWorldMixin:
                     wall_anchor_y,
                     bar_wall_light_side,
                 )
-                asset_surface = (wall_surface, wall_anchor_x, wall_anchor_y)
+            wall_surface = optimize_immutable_alpha_surface(wall_surface)
+            asset_surface = (wall_surface, wall_anchor_x, wall_anchor_y)
             self.tile_cache[key] = asset_surface
             return asset_surface
 
@@ -553,7 +780,8 @@ class RenderingWorldMixin:
                 garden_floor=garden_floor,
             )
 
-        cached = (surface.convert_alpha(), anchor_x, anchor_y)
+        surface = optimize_immutable_alpha_surface(surface.convert_alpha())
+        cached = (surface, anchor_x, anchor_y)
         self.tile_cache[key] = cached
         return cached
 
@@ -1544,19 +1772,49 @@ class RenderingWorldMixin:
             if visible(effect.x, effect.y, max(0.35, effect.radius)):
                 drawables.append((effect.x + effect.y + 0.08, "impact", effect))
 
+        aim_started = time.perf_counter()
         self.draw_aim_cone()
+        performance = getattr(self, "_mobile_performance_monitor", None)
+        if performance is not None:
+            performance.record_detail_phase(
+                "aim", time.perf_counter() - aim_started
+            )
+        self._guidance_glow_blit_rect = None
+        self._mobile_guidance_surface_size = (0, 0)
         # The guiding light leads the player TO the relic, so it must render
         # even when the relic is far outside the sight radius. The per-tile
         # visibility clipping inside draw_story_relic_guidance keeps the crack
         # from painting over dark / unrevealed floor.
         if self.story_relic_target_position() is not None:
+            guidance_started = time.perf_counter()
             self.draw_story_relic_guidance()
+            performance = getattr(self, "_mobile_performance_monitor", None)
+            if performance is not None:
+                performance.record_detail_phase(
+                    "guidance", time.perf_counter() - guidance_started
+                )
 
+        wall_entries: list[tuple[pygame.Surface, tuple[int, int]]] = []
+
+        def flush_wall_entries() -> None:
+            if not wall_entries:
+                return
+            self._blit_floor_entries(self.screen, wall_entries)
+            wall_entries.clear()
+
+        visible_wall_count = 0
+        visible_enemy_count = 0
         for _depth, kind, obj in sorted(drawables, key=lambda entry: entry[0]):
             if kind == "wall_tile":
                 x, y = cast(tuple[int, int], obj)
-                self.draw_tile(x, y, Tile.WALL)
-            elif kind == "item":
+                entry = self._tile_blit_entry(x, y, Tile.WALL)
+                if entry is not None:
+                    wall_entries.append(entry)
+                    visible_wall_count += 1
+                continue
+
+            flush_wall_entries()
+            if kind == "item":
                 self.draw_item(cast(Item, obj))
             elif kind == "trap":
                 self.draw_trap(cast(Trap, obj))
@@ -1582,6 +1840,7 @@ class RenderingWorldMixin:
                 self.draw_projectile(cast(Projectile, obj))
             elif kind == "enemy":
                 self.draw_enemy(cast(Enemy, obj))
+                visible_enemy_count += 1
             elif kind == "familiar":
                 self.draw_familiar(cast(Familiar, obj))
             elif kind == "player":
@@ -1590,6 +1849,10 @@ class RenderingWorldMixin:
                 self.draw_slash(cast(SlashEffect, obj))
             elif kind == "impact":
                 self.draw_impact(cast(ImpactEffect, obj))
+
+        flush_wall_entries()
+        self._mobile_visible_wall_count = visible_wall_count
+        self._mobile_visible_enemy_count = visible_enemy_count
 
         for floater in self.floaters:
             if not visible(floater.x, floater.y, 0.8):

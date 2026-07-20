@@ -84,7 +84,7 @@ class ArchetypeOptionsDifficultyTests(unittest.TestCase):
                 self.assertEqual(loaded_options["version"], 1)
                 self.assertFalse(loaded_options["audio_enabled"])
                 self.assertTrue(loaded_options["fullscreen"])
-                self.assertEqual(loaded_options["schema_version"], 5)
+                self.assertEqual(loaded_options["schema_version"], 7)
                 self.assertEqual(loaded_options["ui_scale"], 3)
                 self.assertFalse(loaded_options["ui_scale_auto"])
                 self.assertEqual(loaded_options["difficulty"], "Hard")

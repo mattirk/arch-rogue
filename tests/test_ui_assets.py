@@ -89,6 +89,10 @@ class UiAssetTests(unittest.TestCase):
             "hud.dock",
             "hud.action_slot",
             "hud.bar",
+            "hud.mobile.joystick_base",
+            "hud.mobile.joystick_knob",
+            "hud.mobile.status_bar_frame",
+            "hud.mobile.info_panel",
             *action_icon_keys,
         }
         self.assertEqual(set(library.manifest["assets"]), expected)
@@ -113,6 +117,10 @@ class UiAssetTests(unittest.TestCase):
             "hud.dock": (340, 62),
             "hud.action_slot": (54, 54),
             "hud.bar": (240, 14),
+            "hud.mobile.joystick_base": (184, 184),
+            "hud.mobile.joystick_knob": (112, 112),
+            "hud.mobile.status_bar_frame": (60, 160),
+            "hud.mobile.info_panel": (240, 108),
         }
         for key, size in sizes.items():
             with self.subTest(key=key):

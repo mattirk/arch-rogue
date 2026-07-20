@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -677,6 +678,37 @@ class SaveLoadMixin:
         self.show_help = False
         self.state = "playing"
 
+    def _interrupted_save_path(self) -> Path:
+        return Path(f"{self.save_path}.tmp")
+
+    def recover_interrupted_run_save(self) -> bool:
+        """Promote a compatible interrupted temp save when the main file is absent/bad."""
+
+        tmp_path = self._interrupted_save_path()
+        if not tmp_path.exists():
+            return False
+        try:
+            pending = json.loads(tmp_path.read_text(encoding="utf-8"))
+            if int(pending.get("version", 0)) not in (1, 2, 3, 4, 5):
+                return False
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            return False
+        if self.save_path.exists():
+            try:
+                current = json.loads(self.save_path.read_text(encoding="utf-8"))
+                if int(current.get("version", 0)) in (1, 2, 3, 4, 5):
+                    tmp_path.unlink(missing_ok=True)
+                    return False
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                pass
+        try:
+            self.save_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path.replace(self.save_path)
+        except OSError:
+            return False
+        self.recovered_interrupted_run = True
+        return True
+
     def save_run(self) -> bool:
         self.last_save_error = ""
         saving_from_exit_confirmation = (
@@ -687,10 +719,12 @@ class SaveLoadMixin:
             return False
         try:
             self.save_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path = Path(f"{self.save_path}.tmp")
-            tmp_path.write_text(
-                json.dumps(self.serialize_run_state(), indent=2), encoding="utf-8"
-            )
+            tmp_path = self._interrupted_save_path()
+            payload = json.dumps(self.serialize_run_state(), indent=2)
+            with tmp_path.open("w", encoding="utf-8") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
             tmp_path.replace(self.save_path)
         except (OSError, TypeError, ValueError) as exc:
             self.last_save_error = f"Could not save run: {exc}"
@@ -699,6 +733,7 @@ class SaveLoadMixin:
 
     def load_run(self) -> bool:
         self.last_load_error = ""
+        self.recover_interrupted_run_save()
         try:
             data = json.loads(self.save_path.read_text(encoding="utf-8"))
             if int(data.get("version", 0)) not in (1, 2, 3, 4, 5):
@@ -717,5 +752,6 @@ class SaveLoadMixin:
     def delete_save(self) -> None:
         try:
             self.save_path.unlink(missing_ok=True)
+            self._interrupted_save_path().unlink(missing_ok=True)
         except OSError:
             pass

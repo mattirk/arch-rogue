@@ -72,7 +72,11 @@ class MenuStateOverlayMixin:
             if victory
             else f"The dungeon claims another {self.g.player.class_name}."
         )
-        prompt = "Press R or Pause / Back to choose a new run"
+        prompt = (
+            "Press R or Pause / Back to choose a new run"
+            if self.menu_input_hints_visible()
+            else ""
+        )
 
         panel_w = min(width - 64, self.u(820))
         panel_h = min(height - 80, self.u(520))
@@ -145,20 +149,23 @@ class MenuStateOverlayMixin:
 
         # Run-stats table inside a recessed sub-panel.
         table_top = sub_y + sub_h + self.u(14)
-        table_bottom = inner.bottom - self.u(34)
+        table_bottom = inner.bottom - self.u(34) if prompt else inner.bottom
         self._draw_run_stats_table(
             pygame.Rect(inner.x, table_top, inner.width, table_bottom - table_top),
             victory,
         )
 
         # Prompt footer, centered.
-        self.draw_text(
-            prompt,
-            self.g.small_font,
-            self.MUTED,
-            pygame.Rect(inner.x, inner.bottom - self.u(26), inner.width, self.u(22)),
-            align="center",
-        )
+        if prompt:
+            self.draw_text(
+                prompt,
+                self.g.small_font,
+                self.MUTED,
+                pygame.Rect(
+                    inner.x, inner.bottom - self.u(26), inner.width, self.u(22)
+                ),
+                align="center",
+            )
 
     def _draw_run_stats_table(self, rect: pygame.Rect, victory: bool) -> None:
         """Draw run statistics, using two compact groups in authored panels."""

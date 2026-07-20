@@ -431,12 +431,20 @@ class CombatMixin:
             length = math.hypot(dx, dy)
             self.player.facing_x = dx / length
             self.player.facing_y = dy / length
+        elif getattr(self, "aim_input_mode", "mouse") == "touch":
+            point = getattr(self, "_mobile_touch_world_point", None)
+            if point is not None:
+                self.face_player_toward_screen_point(*point)
         elif getattr(self, "aim_input_mode", "mouse") != "controller":
             self.face_player_toward_screen_point(*pygame.mouse.get_pos())
         else:
             self.snap_controller_aim_to_enemy()
 
     def face_player_toward_screen_point(self, sx: int, sy: int) -> tuple[float, float]:
+        if getattr(self, "mobile_mode", False) and not self.screen_point_in_world_viewport(
+            (sx, sy)
+        ):
+            return 0.0, 0.0
         target_x, target_y = self.screen_to_world(sx, sy)
         dx = target_x - self.player.x
         dy = target_y - self.player.y
@@ -1013,14 +1021,21 @@ class CombatMixin:
         # stick is deflected past the deadzone, giving precise speed control.
         cx, cy = self.input.left_vec()
         controller_moving = bool(cx or cy)
+        mobile_moving = False
         if controller_moving:
             self.aim_input_mode = "controller"
             kbd_dx, kbd_dy = cx, cy
+        elif getattr(self, "mobile_mode", False):
+            mobile_x, mobile_y = self.mobile_joystick_world_vector()
+            mobile_moving = bool(mobile_x or mobile_y)
+            if mobile_moving:
+                kbd_dx, kbd_dy = mobile_x, mobile_y
         if petting:
             # Keep the authored kneel grounded. Cooldowns, statuses, and resource
             # regeneration below still advance normally during this brief pause.
             kbd_dx = kbd_dy = 0.0
             controller_moving = False
+            mobile_moving = False
         equipment_move = max(-0.25, min(0.30, self.equipment_stat_total("move_speed")))
         move_speed = (
             PLAYER_MOVE_SPEED
@@ -1037,7 +1052,11 @@ class CombatMixin:
                 # vector so the aim cone and projectiles do not snap to movement.
                 nx, ny = kbd_dx / length, kbd_dy / length
                 aim_x, aim_y = self.input.right_vec()
-                if not (aim_x or aim_y):
+                mobile_aiming = bool(
+                    getattr(self, "mobile_mode", False)
+                    and self.active_mobile_world_touch() is not None
+                )
+                if not (aim_x or aim_y) and not mobile_aiming:
                     self.player.facing_x = nx
                     self.player.facing_y = ny
                     if controller_moving:
@@ -1054,22 +1073,30 @@ class CombatMixin:
                     )
             if self.enemy_in_melee_arc():
                 self.player_melee_attack()
-        elif not petting and pygame.mouse.get_pressed()[0]:
-            dx, dy = self.face_player_toward_screen_point(*pygame.mouse.get_pos())
-            distance = math.hypot(dx, dy)
-            if distance > 0.12:
-                step = min(move_speed * dt, distance - 0.12)
-                moved = self.move_actor(
-                    self.player,
-                    (dx / distance) * step,
-                    (dy / distance) * step,
-                )
-                if moved > 0.0 and dt > 0.0:
-                    self.player.locomotion_anim_scale = (
-                        moved / (dt * PLAYER_MOVE_SPEED)
+        elif not petting:
+            mouse_point = (
+                pygame.mouse.get_pos()
+                if not getattr(self, "mobile_mode", False)
+                and pygame.mouse.get_pressed()[0]
+                else None
+            )
+            target_point = mouse_point
+            if target_point is not None:
+                dx, dy = self.face_player_toward_screen_point(*target_point)
+                distance = math.hypot(dx, dy)
+                if distance > 0.12:
+                    step = min(move_speed * dt, distance - 0.12)
+                    moved = self.move_actor(
+                        self.player,
+                        (dx / distance) * step,
+                        (dy / distance) * step,
                     )
-            if self.enemy_in_melee_arc():
-                self.player_melee_attack()
+                    if moved > 0.0 and dt > 0.0:
+                        self.player.locomotion_anim_scale = (
+                            moved / (dt * PLAYER_MOVE_SPEED)
+                        )
+                if self.enemy_in_melee_arc():
+                    self.player_melee_attack()
 
         self.player.melee_timer = max(0.0, self.player.melee_timer - dt)
         self.player.bolt_timer = max(0.0, self.player.bolt_timer - dt)

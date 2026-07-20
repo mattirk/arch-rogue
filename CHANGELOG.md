@@ -1,5 +1,492 @@
 # Changelog
 
+## 4.3.17 — Android Beta to Mainline Merge
+
+Release 4.3.17 merges the `android-beta` branch into `master` so the desktop mainline inherits the universal Android wins, locks both desktop and mobile to a 60 FPS cap through one `FramePacing` abstraction, removes dead/duplicated optimization code from the 4.3.x runs, consolidates render-cache invalidation into a single seam, and adds APK licensing/attribution hygiene. The Android build is now part of mainline (no separate beta branch). Mobile-only code paths remain strictly additive (`if self.mobile_mode:` / `android_runtime_active()`), so no desktop frame executes a GLES, colorkey-RLE, or `MobilePerformanceMonitor` branch.
+
+### Added
+
+- **Frame rate cap option:** a new Options row **Frame rate cap** with values `30 / 60 / 90 / 120 / Unlimited`, default `60`, persisted as `frame_rate_cap` in options schema `7`. Both desktop and mobile read the same setting; mobile suspended mode still overrides to the 10 Hz throttle. A small `FramePacing` class in `game.py` owns `target_fps`, `suspended_fps`, the `clock.tick` call, the `0.05` dt clamp, and the vsync hint. `Game.run()` is the only caller of `clock.tick` now.
+- **Show performance overlay option (desktop dev):** a desktop-only Options row toggles the same `PERF <fps> <frame ms> | W <world ms> H <hud ms> F <flip ms>` diagnostic line Android already shows, persisted as `show_perf_overlay` in schema `7` (off by default). `ARCH_ROGUE_PERF=1` still explicitly enables telemetry on desktop for development. A default desktop run is silent and shows no on-screen diagnostic.
+- **Mainline regression guard:** `tests/test_mainline_regression.py` snapshots desktop render determinism (fixed seed + frame number -> fixed pixel hash for title, gameplay, and a dense crowd scenario), asserts `detect_mobile_runtime() is False` on non-Android platforms, and instruments the per-frame mobile-only entry points to prove none execute during a desktop tick.
+- **Profile baseline tooling:** `tools/profile_game.py` gains `--baseline <path>` (writes a JSON phase-timing snapshot) and `--compare <path> --threshold <pct>` (exits nonzero if any phase regresses beyond the threshold). A checked-in `tools/baselines/desktop_master_baseline.json` records the 2560×1440 crowd profile.
+- **WS-D desktop parity tests:** `test_mainline_regression.py` confirms desktop hits the batched `_blit_floor_entries` path, the memoized projection origin, and the now-shared impact-effect cache.
+- CI triggers on both `master` and `android-beta` and runs the regression guard plus the baseline comparison on every push.
+- **APK licensing & attribution (WS-G):** the Apache-2.0 license text and a new `NOTICE` file (enumerating every bundled third-party library — pygame-ce, SDL2/SDL2_image/SDL2_mixer/SDL2_ttf, libpng/libjpeg/zlib, Freetype under the Freetype License, Python PSF-2.0, PyJNIus MIT — plus the build-tool exclusion note and the AI Provenance & Liability notice) are bundled as reachable assets (`src/arch_rogue/assets/licenses/LICENSE.txt` / `NOTICE.txt`) and surfaced from a scrollable in-app **About → Open Source Licenses** screen so APK installers get Apache-2.0 §4 attribution without opening the repo. `src/arch_rogue/licenses.py` loads them with a repo-root fallback for desktop dev; `tools/build_android.sh` refreshes the asset copies from the canonical root `LICENSE`/`NOTICE` before each build so they cannot drift. A one-paragraph **trademark note** is added to `README.md` clarifying that the "Arch Rogue" name and octahedron crest logo are not part of the Apache-2.0 grant (§6 reserves trademark rights).
+- `tools/validate_android_apk.py` now greps every bundled `lib/<abi>/*.so` for GPL-family MP3 codec markers (`libmad` / `libmp3lame` / `libfaad` plus `mp3lame` / `mad_decoder` / `NeAACDec`) and fails the audit on any hit; rejects `buildozer/` or `pythonforandroid/` build-tool source bundled into `assets/private.tar`; and preflights that `source.include_exts` includes `txt` and that the `assets/licenses/{LICENSE,NOTICE}.txt` assets exist in the source tree.
+
+### Changed
+
+- **One frame-pacing owner:** the scattered `clock.tick(FPS)` / `clock.tick(10)` calls are replaced by `Game.frame_pacing.tick(suspended=...)`. The exact `min(clock.tick(target) / 1000.0, 0.05)` shape is preserved verbatim; only the source of `target_fps` changes. `constants.FPS` is now a deprecated alias for `DEFAULT_FRAME_RATE = 60` (cutoff: 4.4).
+- **One cache-invalidation seam:** `OptionsMixin._invalidate_render_caches()` clears every memoized render cache (`ambient_overlay_cache`, `_hud_panel_cache`, `_hud_icon_cache`, `_aim_cone_cache`, `_alpha_tile_cache`, `_title_logo_cache`, `_fitted_ui_font_cache`, `_impact_overlay_cache`, `tile_cache`, `door_tile_cache`) plus lighting and stage caches. `_apply_graphics_mode()`, `rebuild_fonts()`, and `_invalidate_resolution_sized_caches()` all route through it so a future cache addition cannot be missed.
+- **Schema v7:** options schema advances `6` -> `7` for `frame_rate_cap` and `show_perf_overlay`. The v7 loader reads v6 option files and defaults `frame_rate_cap=60`, `show_perf_overlay=False`. Run saves remain schema `5`.
+- **Universal wins shared with desktop:** the impact-effect overlay cache (4.3.13) and the projection-origin memoization (4.3.14) are no longer mobile-gated; desktop crowds now hit the cache and the memoized origin. The batched floor/wall blits, full-bleed cutscene, direct-size shadows, cached relic guidance, and screen-flash surface reuse were already shared and are confirmed desktop-active.
+- `docs/android-beta.md` updated to reflect that the Android build is part of mainline as of 4.3.x (no separate beta branch).
+- `AGENTS.md` "Current Code Organization" updated to mention `FramePacing` (in `game.py`) and that `mobile.py` is part of the mainline module set.
+
+### Performance
+
+- Desktop deterministic 2560×1440 crowd profile is within ±5% of the 4.3.16 baseline on every phase; the impact-cache and projection-origin generalizations remove per-frame allocations/recomputation in combat crowds.
+- The incremental mobile floor-cache + reveal-patch path (4.3.5) is now explicitly gated behind `mobile_mode`; desktop always uses the shared cold-rebuild path, removing any risk of desktop regression from the merge while keeping the cold path shared.
+
+### Fixed
+
+- **Leftover optimization code (WS-C):** documented and confirmed the once-per-process `_ANDROID_BINARY_ALPHA_MODE` benchmark memoization, the pre-allocated `MobilePerformanceMonitor` rolling buffers (no per-frame allocations on the hot path), and the local-tint CPU fallback's reachability gate (retained as the Android software-renderer launch-safe path). The dead mobile half-resolution light buffer path was already retired in 4.3.10; the live desktop half-resolution path is documented as required. The `_composite_mobile_gpu_ui_fallback` legacy rect branch is retained as a post-4.3.11 defensive safety net and documented. The impact-effect cache bound is extracted into a named `IMPACT_EFFECT_CACHE_MAX = 128` constant.
+- `legacy_mobile_quality_migration` and `legacy_ui_scale_migration` in `options.py` are marked with a `# Deprecation cutoff: 4.4` comment.
+
+### Validation
+
+- `python -m compileall src tests` clean.
+- `python -m unittest discover tests` green (excluding web tests as usual).
+- `tests.test_mainline_regression` (render determinism pixel-hash snapshots, mobile-isolation counters, render-cache invalidation, WS-D desktop shared-win paths), `tests.test_frame_pacing` (FramePacing unit + option round-trip + perf-overlay reconciliation), `tests.test_licenses` (license/notice loader + About screen surface + scroll input), and `tests.test_android_packaging` (GPL codec + build-tool source rejection) all pass.
+- `tools/profile_game.py --compare tools/baselines/desktop_master_baseline.json` reports no regression vs the checked-in baseline.
+- `tools/validate_android_apk.py --project-root . --source-dir src --spec buildozer.spec` preflight passes (license assets present, `txt` bundled, spec clean).
+- Default desktop run: `_mobile_performance_monitor` is `None`, `ARCH_ROGUE_PERF` is silent, `clock.tick` targets 60 FPS via `FramePacing`.
+- Runtime/package release version is `4.3.17`; options are schema `7` and run saves remain schema `5`.
+
+## 4.3.16 — Android Exit Confirmation Touch Fix
+
+Release 4.3.16 fixes the vertical touch offset on the exit confirmation screen. The exit confirmation renders full-bleed like other menus, but was still listed as a safe-area-clipped overlay, causing taps to land below the visible rows. Desktop is unchanged.
+
+### Fixed
+
+- **Exit confirmation touch offset:** removed `confirm_exit` from the safe-local point conversion list in `_safe_local_point`. The exit confirmation screen renders in display coordinates via `mobile_full_render_target` (like title/options/controls/about/archetype_select), so its row rects are in display coordinates and touch points should not have the safe-area offset subtracted. Taps now register exactly on the visible rows.
+- Runtime/package release version is `4.3.16`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Full non-web `unittest` discovery completed with 476 tests passing; `compileall` and `git diff --check` pass.
+
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.16-arm64-v8a_armeabi-v7a-debug.apk` (73,457,999 bytes; SHA-256 `71f4aa7ddf48569e2585e7e9f81367beaa66b62c8c9a908f43e0315d8b868f5e`). The package reports version 4.3.16 with both ARM ABIs and passes APK Signature Scheme v2 verification.
+
+## 4.3.15 — Android App Icon and Full-Bleed Cutscene Fix
+
+Release 4.3.15 adds the game icon as the Android launcher/app icon and fixes the cutscene backdrop so it truly fills the whole display. Desktop is unchanged.
+
+### Added
+
+- **Android app icon:** `buildozer.spec` now declares `icon.filename` pointing at the bundled 512px crest (`src/arch_rogue/assets/icons/icon_512.png`). p4a copies it into the APK resources at all density buckets (`mipmap/icon.png` plus `drawable-{m,h,xh,xxh}dpi/ic_launcher.png`) and references it from the manifest's `android:icon`, so the Arch Rogue crest appears as the installed app icon on the Android launcher/home screen.
+
+### Fixed
+
+- **Cutscene backdrop fills the full screen:** the quest cutscene overlay was still being rendered into the safe-area subsurface (clipped by `mobile_safe_render_target`), so the authored background image only covered the safe inset and the rest of the display showed the cleared frame. The cutscene now renders outside the safe-area wrapper — the backdrop, dim pass, and letterboxed stage cover the entire physical display edge-to-edge, with the panel centered on top.
+- **Menu touch vertical offset:** full-bleed menus (title, options, controls, about, archetype select) render in display coordinates, but `handle_mobile_tap` was still subtracting the safe-area offset from the touch point, making taps land a few pixels below the visible row. The safe-local conversion is now context-aware: only safe-area-clipped overlays (inventory, shop, character, quest, help) subtract the offset; full-bleed menus use raw display coordinates so touch registration matches the rendered rows exactly.
+- Runtime/package release version is `4.3.15`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Full non-web `unittest` discovery completed with 476 tests passing, including the updated full-bleed cutscene regression (now checks asymmetric safe insets and corner coverage); `compileall` and `git diff --check` pass.
+- APK inspection confirms `res/mipmap/icon.png` (512×512 RGBA), per-density `ic_launcher.png` variants, and `application: icon='res/mipmap/icon.png'` in the manifest badging.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.15-arm64-v8a_armeabi-v7a-debug.apk` (73,458,011 bytes; SHA-256 `8fd71d8941e20afab4d52d12425d49262e8925ef59cde161d398c077999b05d8`). The package reports version 4.3.15 with both ARM ABIs (104 architecture-correct ELF extensions per ABI), passes APK Signature Scheme v2 verification, and includes the app icon (`application: icon='res/mipmap/icon.png'`).
+- Physical-device validation remains required to confirm the launcher icon renders correctly, the cutscene backdrop covers cutouts, and menu touch registration is vertically accurate.
+
+## 4.3.14 — Android Touch Responsiveness, Spirit Beast Petting, and Frame Tuning
+
+Release 4.3.14 makes touch controls feel responsive and forgiving, adds first-class Spirit Beast petting on mobile, and removes another per-frame hotspot from the projection path. Desktop is unchanged.
+
+### Added
+
+- **Subtle touch confirmation:** every successful tap on a touch target spawns a brief expanding accent ring at the touch point, giving immediate visual feedback without changing layout.
+- **Spirit Beast petting on mobile:** when a Ranger's Spirit Beast is within reach and off cooldown, a tappable `Pet …` tooltip appears (matching items/doors/guests), so petting is fully playable by touch. Desktop behavior and the paw indicator are unchanged.
+
+### Changed
+
+- **Larger touch areas:** `register_mobile_touch_target` now inflates any control smaller than a comfortable minimum (~7mm / 44dp) so menu glyphs, action icons, and compact prompts are easy to hit; targets clamp to the display.
+
+### Performance
+
+- **Cached mobile projection origin:** `world_to_screen` runs tens of thousands of times per frame in crowds and was recomputing the layout/focus math each call. The origin is now memoized per frame, trimming the projection path. Crowd render improved to ~12.0 ms/frame in the deterministic harness.
+
+### Fixed
+
+- Runtime/package release version is `4.3.14`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Full non-web `unittest` discovery completed with 476 tests passing, including new regressions for the petting tooltip, minimum touch-target sizing, and touch ripple feedback; `compileall` and `git diff --check` pass.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.14-arm64-v8a_armeabi-v7a-debug.apk` (73,450,095 bytes; SHA-256 `5c15acca2d0c8b4cdf42d8a035d33213e869f42ac2d05ce7c04caf972a438fc0`). The package reports version 4.3.14 with both ARM ABIs (104 architecture-correct ELF extensions per ABI) and passes APK Signature Scheme v2 verification.
+- Physical-device validation remains required for touch feel and the frame target.
+
+## 4.3.13 — Android Cutscene Backdrop, Hub Touch Targets, and Frame Recovery
+
+Release 4.3.13 finishes the cutscene presentation, makes the game-hub rows easier to hit by touch, and pushes overall mobile frame rate higher by removing per-frame allocations and redundant work in the hottest render paths. Desktop is unchanged.
+
+### Changed
+
+- **Cutscene backdrop is full-bleed.** The authored `cutscene.background` (and its dim pass) is requested at the full physical display size, so the cinematic backdrop covers the whole screen edge-to-edge instead of being inset within the safe area.
+- **Larger game-hub touch targets.** The mobile hub rows (Inventory, Character, Quest, Exit) are taller and the panel wider, so each entry is easier to tap; the panel still clamps inside the safe area beside the action rail.
+
+### Performance
+
+- **Impact effects are cached per (kind, quantized progress, radius bucket, color)** instead of allocating and re-drawing a fresh `SRCALPHA` overlay every frame. In combat crowds this removes one of the top per-frame allocation costs (impact effects were a leading render hotspot).
+- **Cutscene/static screens skip the world frame entirely** (carried from 4.3.12) and now also reuse the full-bleed backdrop surface, avoiding a per-frame cover-scale of the background.
+- The full-bleed single world texture upload, direct-size shadows, and cached relic/guidance paths from 4.3.11–4.3.12 are retained.
+
+### Fixed
+
+- Runtime/package release version is `4.3.13`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Full non-web `unittest` discovery completed with 473 tests passing; `compileall` and `git diff --check` pass.
+- Crowd profile confirms impact-effect allocation removed from the top render hotspots; full-bleed cutscene backdrop and larger hub rows verified by layout regressions.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.13-arm64-v8a_armeabi-v7a-debug.apk` (73,448,807 bytes; SHA-256 `a30ddb74d0f31213904f6b2ed28e1545ef5da8100b089d7237a9cea8d8332678`). The package reports version 4.3.13 with both ARM ABIs (104 architecture-correct ELF extensions per ABI) and passes APK Signature Scheme v2 verification.
+- Representative 2340×1080 Performance crowd render improved to 12.751 ms/frame (from 14.982) after the impact-effect cache; full suite remains green.
+- Physical-device validation remains required to confirm the +10–15 FPS target.
+
+## 4.3.12 — Android Relic Fix and Cutscene Performance
+
+Release 4.3.12 fixes the relic/shrine visual corruption seen on Android, makes cutscenes truly full-screen, and removes their dominant frame cost. Gameplay performance improves on-device through the eliminated per-frame relic and cutscene work while all visuals are preserved. Desktop is unchanged.
+
+### Fixed
+
+- **Relic/shrine magenta-box glitch:** the authored story relic sprite is colorkey-optimized for Android's blitter, and the additive story tint painted its magenta colorkey background, which then leaked as a solid box (and a spinning rectangle once rotated). The tint is now masked by the sprite's own alpha (`BLEND_RGBA_MIN`) and baked once per (frame, accent, tilt) into a cached surface, so the relic renders as a clean gem and the per-frame copy + rotate leaves the ARM hot path. The same alpha-safe path covers any colorkey-optimized item art.
+- **Cutscene full-screen background:** a quest cutscene now renders across the whole display (its authored backdrop/dim covers the frame) instead of being inset, and the panel sits centered on the full screen.
+- **Cutscene performance:** while a cutscene is active the game no longer renders the dungeon world, lighting, or HUD underneath it — the cutscene owns the display, so those full frames are skipped entirely. Cutscene frame cost drops to a couple of milliseconds.
+- Runtime/package release version is `4.3.12`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Full non-web `unittest` discovery completed with 473 tests passing, including new regressions for the alpha-masked/cached relic sprite and the full-screen world-skipping cutscene; `compileall` and `git diff --check` pass.
+- Headless 1566×698 renders confirm the clean relic (no colorkey box) and a full-bleed cutscene backdrop with the centered panel. Cutscene frame cost measured ~2.6 ms in the deterministic harness (down from a full world frame); gameplay crowd profile is unchanged, with device gains coming from the removed per-frame relic/upload work.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.12-arm64-v8a_armeabi-v7a-debug.apk` (73,448,319 bytes; SHA-256 `3afb28f1d24bfa7396f1795b6ded9192c26fcf18fe5fb5a676ad98f5c46e1628`). The package reports version 4.3.12 with both ARM ABIs (104 architecture-correct ELF extensions per ABI) and passes APK Signature Scheme v2 verification.
+- Physical-device validation remains required to confirm the +10 FPS target and relic/shrine parity.
+
+## 4.3.11 — Android Full-Bleed Rendering and Performance Recovery
+
+Release 4.3.11 restores the edge-to-edge mobile presentation and recovers the frame cost introduced by the 4.3.10 lighting/shadow fixes, while keeping their visuals. The dungeon now always renders across the full physical display with the HUD as a true overlay, menus paint full-bleed backgrounds, and the relic guidance no longer re-rasterizes every frame. Desktop is unchanged.
+
+### Changed
+
+- The mobile world viewport spans the entire display again (as in the pre-overlay-HUD builds). The left rail, right action rail, joystick, and menu glyph draw on top; the camera keeps its unobstructed gameplay focus between the overlays.
+- Mobile menu screens (title, options, controls, about, archetype select, exit confirmation) render full-bleed across the display instead of being clipped to the safe area. In-game overlays (inventory, shop, character, story) remain safe-area-clipped so they never slide under the control rails.
+- With the viewport full-screen, every HUD control already lives inside the streamed world texture, so the 4.3.9 duplicate base-region uploads are gone again; per-frame texture upload is back to the world viewport plus post-light UI panels.
+
+### Fixed
+
+- Mobile contact shadows keep the soft transparent look but are now built directly at final size (concentric-ellipse radial falloff) instead of smoothscaling a template, removing a per-unique-size ARM scaling cost in crowded frames.
+- Story relic guidance now caches its carved-crack overlay content keyed by screen bounds, pulse phase, and visibility run, and only re-rasterizes when those change. This fixes the relic lighting/effect glitches (stale trails from the cleared buffer) and removes the dominant per-frame relic cost.
+- The menu glyph and hub panel are clamped back inside the safe area beside the action rail now that the viewport no longer bounds them.
+- Runtime/package release version is `4.3.11`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Full non-web `unittest` discovery completed with 471 tests passing, including a new full-bleed viewport/menu regression; `compileall` and `git diff --check` pass.
+- Representative 2340×1080 crowd profiles: Performance render 13.752 ms/frame (improved from 14.640), Native software-fallback 18.346 ms/frame; the full-screen floor blit is the remaining Native cost. Headless 2340×1080 renders with asymmetric safe insets confirm edge-to-edge world, full-bleed title menu, soft shadows, and relic rendering.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.11-arm64-v8a_armeabi-v7a-debug.apk` (73,447,339 bytes; SHA-256 `43187044cfa09c52b5ea971f6dbf23736f003e6d97c2893817f075a778d584b0`). The package reports version 4.3.11 with both ARM ABIs (104 architecture-correct ELF extensions per ABI) and passes APK Signature Scheme v2 verification.
+- Physical-device validation remains required for final frame pacing and relic visual parity.
+
+## 4.3.10 — Android Lighting and Interaction Polish
+
+Release 4.3.10 fixes the remaining mobile interaction and presentation regressions reported after the overlay-HUD beta. Quest guests now use the same tappable contextual prompt pattern as items and doors, the analog stick is easier to reach, and accelerated Native mode restores continuous actor lighting without returning to a full-resolution CPU light multiply. Desktop rendering and controls remain unchanged.
+
+### Fixed
+
+- Story guests render an actionable mobile `TAP` prompt, so tapping their bottom-right tooltip opens the quest conversation exactly like item pickup and door interaction. Desktop still displays the direct `1-3` story-choice hint.
+- Mobile actor, prop, and loot contact shadows use the cached radial soft-shadow surfaces at Android-tuned opacity instead of opaque black ellipses. The steady-state path remains one cached alpha blit per entity.
+- Accelerated Native Android rendering now uses the same quarter-resolution continuous light buffer and GLES modulation path as Performance/Balanced, restoring warm player/NPC lantern halos and eliminating the pale local additive actor tint. The local tint path remains only as a software-renderer/context-loss fallback.
+- The analog stick sits higher for thumb reach while preserving safe-area, left-panel, and gameplay-viewport separation across compact, phone, tablet, and asymmetric-cutout layouts.
+- Runtime/package release version is `4.3.10`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Focused mobile layout/render/input, soft-shadow, lighting, and input/accessibility coverage passes 132 tests, including new regressions for guest-tooltip taps, accelerated-Native quarter-resolution lighting, and transparent cached mobile shadows.
+- Headless 1280×720 comparison renders for Performance, Balanced, accelerated Native, and software Native confirm the soft contact shadow and continuous lantern-lit floor response; physical-device validation remains required for final visual parity and frame pacing.
+- Full non-web `unittest` discovery completed with 470 tests passing; `python -m compileall -q src tests`, changed-file diagnostics, and `git diff --check` pass (the rendering effects mixin retains its pre-existing cross-module unused-import warnings).
+- Representative 2340×1080 crowd profiles show the change remains actor/floor-blit dominated rather than lighting-buffer dominated: Performance 14.640 ms render and software-fallback Native 17.715 ms render in the deterministic headless harness. These host numbers guard against a new CPU hotspot but are not ARM frame-time claims.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.10-arm64-v8a_armeabi-v7a-debug.apk` (73,446,499 bytes; SHA-256 `80591b5ad3020cf76b6f4b1bec8191d8fed00c54cce938be927bd1ae24814bc9`). The package reports version 4.3.10 and both ARM ABIs with 104 architecture-correct ELF extensions per ABI, and it passes APK Signature Scheme v2 verification.
+
+## 4.3.9 — Android World-Overlay HUD
+
+Release 4.3.9 removes the last permanent top-of-screen mobile information panel and turns the left controls into true overlays over an edge-to-edge dungeon view. Run, depth, floor, difficulty, modifier, resources, and optional character information remain readable without narrowing or recentering gameplay beneath the controls. Desktop rendering and input remain unchanged.
+
+### Added
+
+- PixelLab-authored vertical obsidian/iron status vessels with gold runes now frame HP, MP, and Stamina fills. A matching compact obsidian/gold information card is reused for run/difficulty and character summaries; both assets retain procedural fallbacks and are packaged through the HUD manifest.
+- Mobile layout now exposes a distinct unobstructed gameplay rectangle and projection focus inside the wider world viewport. Camera projection, inverse touch mapping, zoom layers, screen-space effects, and boss bars share that focus.
+- Regression coverage verifies edge-to-edge-left world geometry, left-overlay touch blocking, camera round trips at the clear gameplay focus, generated UI assets, header removal, boss placement, and cached-floor translation.
+
+### Changed
+
+- The mobile world viewport begins at physical display x=0 and renders underneath the safe-area-positioned left HUD. The right action rail remains reserved, while the player stays centered in the visible space between overlays instead of shifting beneath the left cards.
+- The mobile top run/depth/difficulty panel is removed completely. `Run N: Depth N/10`, floor theme, difficulty, and modifier now live in the upper-left information card; Quest remains available only through its dedicated game-hub modal.
+- The analog stick is larger and sits higher and farther right for easier thumb reach. Compact 360p layouts omit the character card before reducing critical run/resource information.
+- The direct GLES presenter no longer registers redundant indexed uploads for left HUD, joystick, or menu rectangles already contained in the streamed world texture; only changing controls outside the viewport retain separate base-region uploads.
+- Runtime/package release version is `4.3.9`; options remain schema `6` and run saves remain schema `5`.
+
+### Fixed
+
+- Touches on overlaid left information cards no longer pass through as world aiming contacts.
+- The reusable Android floor cache now translates from the same layout-aware projection origin as live tiles, preserving pixel alignment after the camera focus moved away from the raw viewport center.
+- Mobile boss plaques anchor to the clear top-center gameplay area instead of reserving space below the removed run header.
+
+### Validation
+
+- Focused mobile layout/render/input coverage passes 61 tests; adjacent input/accessibility, core gameplay, UI asset, metadata, and Android packaging suites pass 70 tests.
+- Headless 780×360, 1280×720, and asymmetric-safe-inset 2340×1080 renders confirm edge-to-edge world coverage, generated status/info frames, compact fallback, clear player focus, hub placement, and Quest modal geometry.
+- Full non-web `unittest` discovery completed with 467 tests passing; `python -m compileall -q src tests`, changed-file diagnostics, and `git diff --check` pass (rendering mixins retain their pre-existing cross-module unused-import warnings).
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.9-arm64-v8a_armeabi-v7a-debug.apk` (73,446,695 bytes; SHA-256 `5e8e03d1d7bea049ce963029ec863799bc652d54e6dd234280772d94e580fce5`). The package reports version 4.3.9, API 28/34, GLES 2.0, landscape `PythonActivity`, and both ARM ABIs; contains 104 architecture-correct ELF extensions per ABI plus all four PixelLab mobile HUD sprites; and passes APK Signature Scheme v2 verification.
+- Physical-device validation remains required for final thumb reach, text size, overlay legibility, and multitouch behavior on representative phones and tablets.
+
+## 4.3.8 — Android Analog HUD and Game Hub
+
+Release 4.3.8 implements the second-generation mobile gameplay layout: analog movement is separated from direct world aiming, contextual prompts replace permanent interaction chrome, and one compact top-right hub owns the mobile gameplay menus. Desktop mouse, keyboard, and gamepad behavior remains unchanged.
+
+### Added
+
+- A lower-left analog stick supports deadzoned, magnitude-sensitive isometric movement while an independent world finger continues to aim. Joystick, aim, and action-skill contacts can remain active simultaneously.
+- Authored dark-iron joystick base and knob sprites, generated through PixelLab, are packaged under the HUD asset manifest with a procedural fallback.
+- A top-right game-menu glyph opens a four-row Inventory, Character, Quest, and Exit game hub. Opening the hub or Quest panel pauses gameplay, and Android Back closes them before falling through to exit confirmation.
+- Focused mobile regressions cover joystick transforms and release, aim-only world touch, multitouch coexistence, hub commands, modal Quest pause/Back behavior, tappable prompts, safe-area geometry, and compact-layout fallback.
+
+### Changed
+
+- The left rail now reserves its lower section for the analog stick. HP, MP, and Stamina remain at the top, while character details appear only when both width and height can contain them without clipping.
+- The permanent bottom-right `USE` button is removed. Actionable `E` prompts render a narrower, two-line-capable `TAP` panel and the panel itself is the interaction target; warning/status prompts remain non-interactive.
+- Persistent quest/story content is removed from the normal mobile HUD. Quest details open as a viewport-sized modal from the game hub and retain touch scrolling.
+- The old top-right pause glyph is replaced by the game-menu glyph. Exit game reuses the existing save-aware confirmation flow rather than adding a second pause/exit implementation.
+- Runtime/package release version is `4.3.8`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Full non-web `unittest` discovery completed with 464 tests passing. Focused mobile layout/input/HUD coverage passed 58 tests, adjacent input/accessibility and core gameplay suites passed 49 tests, and `python -m compileall src tests` completed successfully.
+- Headless renders at 780×360, 1280×720, and 2340×1080 with asymmetric safe insets verified the gameplay rails, PixelLab stick, wrapped interaction tooltip, four-row hub, Quest modal, and compact character-summary fallback without control overlap.
+- Changed-file diagnostics report no errors, and `git diff --check` passes; rendering mixins retain their pre-existing cross-module unused-import warnings.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.8-arm64-v8a_armeabi-v7a-debug.apk` (73,411,495 bytes; SHA-256 `4fdc39fa9c0995efb76a668047d48d260abf753180bda478f3dfd20b2eb4003c`). The package reports version 4.3.8, API 28/34, GLES 2.0, landscape `PythonActivity`, and both ARM ABIs; contains 104 architecture-correct ELF extensions per ABI plus both joystick sprites; and passes APK Signature Scheme v2 verification.
+- Physical-device validation remains required for analog-stick ergonomics and multitouch behavior on representative phones and tablets.
+
+## 4.3.7 — Android Touch-First Menus and Sensor Isolation
+
+Release 4.3.7 removes Android's accelerometer pseudo-controller from gameplay and replaces mobile menu navigation chrome with direct, safe-area-aware tap, swipe, and native Back interactions. Desktop keyboard and gamepad behavior remains unchanged, and real Bluetooth/USB gamepads continue to work on Android.
+
+### Fixed
+
+- Android sets `SDL_ACCELEROMETER_AS_JOYSTICK=0` before SDL initialization, preventing the platform accelerometer from being exposed as a joystick. A defensive mobile-only device filter also rejects explicit accelerometer, gyroscope, gravity, linear-acceleration, rotation-vector, and orientation-sensor names while retaining devices that expose real buttons or hats.
+- Turning Controller Off now clears cached stick vectors, pending trigger edges, and queued commands; subsequent axis polls perform no device reads, and joystick axis/button/hat activity is consumed without changing aim or dispatching commands. Device add/remove events remain active so a real controller is ready if the option is re-enabled.
+- Character Overview clears and ignores stale Discipline hitboxes, preventing a tap over an old tree cell from spending a mastery token after switching tabs.
+- Direct menu taps resolve from finger-down with a small tap slop and a separate swipe threshold, so short row-to-row drags cannot activate the release row. Options swipes that begin outside a rendered row no longer mutate the previously selected setting.
+- Inventory use/equip and shop transactions require a true timed double-tap on the same row. Inventory drop remains available through a deliberate long left swipe that must begin on an item row, reducing accidental destructive actions.
+
+### Changed
+
+- Removed the bottom mobile menu navigation strip and its render-loop passes. Menu states no longer register synthetic Back, arrow, Select, Tab, Use, Trade, or Drop touch buttons; gameplay skill, resource, pause, interaction, and utility touch targets are unchanged.
+- Mobile title, options, controls, archetype, exit, about, help, death/victory, story intro, cutscene, inventory, shop, and character contexts now use their rendered rows, choices, tabs, cells, and panels directly. Vertical swipes navigate or page content; horizontal swipes change options, story choices, inventory sort/drop behavior, shop Buy/Sell mode, and character tabs.
+- Mobile menus hide keyboard/gamepad key badges, shortcut sections, navigation footers, quick-use numbers, and close/use/drop helper pills, reclaiming their layout space. Touch-oriented About and Help copy replaces desktop-only mouse/key instructions; desktop guidance remains intact.
+- Android native Back now routes through the shared command dispatcher for gameplay pause, submenu/overlay close, controls-capture cancel, story-safe pause behavior, and death/victory return flow.
+- Runtime/package release version is `4.3.7`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- `python -m compileall -q src tests` passed, and full non-web `unittest` discovery completed with 453 tests passing.
+- Changed-file diagnostics report no errors, `git diff --check` passes, and focused controller/mobile/version/Android-packaging coverage completed with 106 tests passing.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.7-arm64-v8a_armeabi-v7a-debug.apk` (73,356,327 bytes; SHA-256 `f7f04bc97f9aef575825d5448f967255bb3859fe4838abea255441c5a4292c09`). The package contains 104 architecture-correct ELF extensions for each ARM ABI and passed the project entry-point/spec/APK audit.
+- Physical-device validation remains required to confirm sensor enumeration is absent across Android vendors and to assess the touch gesture thresholds on representative phones/tablets.
+
+## 4.3.6 — Android Native Frame-Pacing Recovery
+
+Release 4.3.6 removes the frame-time spikes and full-frame software/transfer work identified in the second Pixel 9a trace. Native mode keeps the 2424×1080 world framebuffer, but no longer uploads that framebuffer merely to apply lighting; the release also bounds story guidance to its visible pixels and retains unchanged native menu frames.
+
+### Fixed
+
+- Story relic guidance no longer clears and alpha-blits a full viewport for a narrow floor crack. Visible crack runs, branch stubs, and the on-screen target ring are collected first, clipped to a padded viewport, rasterized into a reusable 32-pixel-bucketed local surface, and blitted only at those tight bounds.
+- Off-screen relic rings and route samples can no longer enlarge the guidance surface, and guidance telemetry resets immediately when the target disappears.
+- Post-light GPU panels are independently retained and uploaded by semantic region instead of one union rectangle. Overlapping panels are coalesced before extraction, preventing double alpha composition and stale overlap pixels.
+- Interaction-panel texture revisions now include font and authored/procedural UI identity, so graphics-mode or font changes cannot retain an old panel texture.
+- Android continues to clear the full CPU framebuffer and redraw rail backings each gameplay frame; translucent overlays and software flashes therefore cannot accumulate on retained side-rail pixels.
+
+### Changed
+
+- Native Android lighting now uses a transfer-free local tier: floor/wall, actor, and story-guidance sources receive a cached depth/theme multiplier; visible actors also retain a bounded sprite-local color response from their dominant nearby light, and the classic per-tile dark-floor lantern falloff remains active. No screen-space halo can color unrevealed pixels, normal-floor depth attenuation remains intact, and Native world pixels stay at physical logical resolution.
+- Balanced and Performance retain continuous quarter-resolution GLES lighting. Their presenter keeps a full static shell texture, uploads only the changing world viewport and small control rectangles, and reuses unchanged run-header, story, interaction, boss, and diagnostics textures.
+- Mobile omits the decorative full-viewport ambient alpha vignette in every lighting tier. Native's cached source tint and lower tiers' continuous light buffer already carry depth atmosphere without the measured ~13 ms software pass.
+- Unchanged mobile title, options, controls, about, and exit-confirmation frames skip clear, menu composition, navigation redraw, and present work while preserving touch targets. A single-entry opaque backdrop cache reduces the cost of frames that do need redraw; animated archetype selection remains live.
+- Android telemetry now separates `guidance`, reports `guidance_px`, identifies `lighting_mode=off|local|continuous`, and reports actual base/UI upload pixels and region counts through `gpu_upload`.
+- Runtime/package release version is `4.3.6`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- The 4.3.5 Pixel 9a trace contained 30 native gameplay windows averaging 9.68 FPS; 20 were below 10 FPS and none reached 30 FPS. Lighting-off `objects` time correlated 0.915 with total frame time and alternated between roughly 10–35 ms and 145–172 ms despite identical visible-wall counts, isolating the full-viewport guidance path. Lighting-off ambient remained 13.0–13.1 ms, while continuous lighting added roughly 20 ms base and 9.5 ms union-UI uploads.
+- Deterministic 2424×1080 Native host profiling with an active story relic target measured `8.006 ms/render` plus `0.688 ms/update` in the quiet depth-10 scenario with local lighting. Lighting Off measured `6.185 ms/render`; these host results validate removal of the full-surface paths but are not ARM device claims.
+- Full non-web `unittest` discovery: 437 tests, all passing. `compileall`, `git diff --check`, and changed-file diagnostics passed with no errors.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.6-arm64-v8a_armeabi-v7a-debug.apk` (73,351,279 bytes; SHA-256 `ffc0dd3ea1e01c2567354283422b4696a87f86052b48698b0feb175d3597673e`). The package contains 104 architecture-correct ELF extensions for each ARM ABI and passed the project APK metadata/entry-point audit.
+- Physical-device validation is still required to confirm the requested sustained >20 FPS and ≥30 FPS average on the Pixel 9a; the new timing and pixel-count fields make that result directly attributable.
+
+## 4.3.5 — Android Native Floor Stability and Render Cost
+
+Release 4.3.5 fixes the floor-height flicker introduced by 4.3.4's incremental mobile floor cache and targets the remaining native-resolution costs exposed by the first direct-GLES device log. The GPU lighting path is active and correct, but the Pixel 9a trace showed that half-resolution light construction, full-viewport transparent UI uploads, and dense visible-object blits still prevented 30 FPS.
+
+### Fixed
+
+- Cached floor translation now uses the same floored projected-origin math as live `world_to_screen` coordinates. The previous `round()` translation crossed half-pixel boundaries at different times, shifting the floor by one pixel relative to live walls and actors until the next cache rebuild.
+- Reveal patches no longer draw a new tile and its neighbors over an already flattened isometric layer. Each new tile's clipped pixel rectangle is cleared and reconstructed from every intersecting floor entry in canonical painter order, making the patch byte-identical to a cold rebuild and eliminating temporarily "raised" floor diamonds.
+
+### Changed
+
+- Every mobile quality tier now builds continuous lighting at quarter viewport resolution. Native still renders the world, actors, HUD rails, and final framebuffer at the physical logical resolution; only the smoothly scaled light mask is coarser.
+- Mobile ambient lighting uses one full-buffer fill instead of restamping every revealed tile each frame. Fog-of-war remains authoritative in the already-black base world, so multiplicative lighting cannot expose unrevealed terrain.
+- The post-light GLES UI texture is cropped to its actual alpha bounds instead of uploading the entire world viewport. In ordinary native gameplay the measured content is roughly a 740×79 header rather than a 1732×893 transparent texture; previous dirty bounds are cleared before reuse and CPU fallback ordering remains intact.
+- Mobile actor shadows use two direct pixel-art ellipses instead of per-pixel-alpha shadow surfaces. Full-health ordinary enemies omit redundant floating health bars, while damaged, elite, miniboss, boss, and status-affected enemies retain them.
+- Consecutive depth-sorted wall tiles are submitted through batched blits without changing actor/wall painter order.
+- Android benchmarks equivalent alpha, alpha-RLE, colorkey, and colorkey-RLE sprite sources once on the real SDL build and keeps the fastest representation for subsequent immutable binary sprites. The selected mode and per-format timings are emitted as `ARCH_ROGUE_PERF alpha_blit`.
+- Device telemetry now reports cropped `gpu_ui` dimensions, `gpu_error`, and visible wall/enemy counts so upload and dense-room costs are distinguishable in the next trace.
+- Runtime/package release version is `4.3.5`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- The 4.3.4 Pixel 9a trace confirmed `gpu_light=1`, but steady native intervals averaged 6.61 FPS (median 5.99), 89.7 ms object rendering, 25.2 ms light construction, and 34.6 ms combined GPU uploads/presentation. Balanced GPU intervals averaged 9.12 FPS with 80.5 ms objects, 14.3 ms lighting, and 12.9 ms uploads/presentation.
+- Pixel comparisons reproduced both floor defects before the fix: fractional camera reuse changed 201,330 RGB bytes and an incremental reveal differed by 8,801 bytes from a cold rebuild. After the fix, reveal patches are byte-identical and cached tile anchors match live projections at fractional camera positions.
+- Native 2424×1080 crowded host profiling after the CPU-side changes measured `18.451 ms/frame`; forcing the locally selected alpha-RLE mode measured `17.578 ms/frame`. A real SDL offscreen GLES run completed crowded native frames in `5.726 ms/frame`, with light build `0.526 ms`, cropped UI upload `0.112 ms`, and no presentation fallback; these host numbers are validation, not ARM performance claims.
+- Full non-web `unittest` discovery: 430 tests, all passing. `compileall` and `git diff --check` passed; changed-file diagnostics reported no errors (the rendering mixins retain their existing cross-module unused-import warnings).
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.5-arm64-v8a_armeabi-v7a-debug.apk` (73,337,179 bytes; SHA-256 `ca5b768d5de3d779aa1859811cd462effdcaa516e82167a16d51cde5d8131f3f`). The package contains 104 architecture-correct ELF extensions for each ARM ABI; `aapt` confirmed version 4.3.5, API 28/34, GLES 2.0, landscape `PythonActivity`, and both ABIs; `apksigner` verified its V2 debug signature.
+
+## 4.3.4 — Native Android GPU Lighting
+
+Release 4.3.4 targets the physical-device native-resolution traces that averaged roughly 5.7 FPS at 2424×1080, with about 173 ms/frame attributed to world rendering. The continuous light mask and uniform combat flash are now composited by the display-owned GLES renderer instead of performing full-viewport CPU blends, while the world remains rendered at the selected native resolution.
+
+### Added
+
+- An Android direct-presentation path borrows Pygame CE's existing accelerated SDL renderer and draws the native base frame, a low-resolution multiplicative light texture, viewport-local post-light UI, and an optional 1×1 screen-flash texture in the correct order before one GLES present.
+- Renderer-generation and frame-sequence guards, context-reset handling, and explicit texture teardown protect borrowed SDL resources across display recreation, foreground resume, low-memory events, renderer/device resets, and shutdown.
+- Nested Android render telemetry now separates floor, object, light-build, ambient, base-upload, light-upload, UI-upload, and GPU-present costs without double-counting total frame time. Reports also expose `gpu_light` and floor-cache rebuild/patch counters.
+- Regression coverage verifies direct-present texture order and blend modes, active-flash GPU presentation, CPU fallback ordering, colorkey normal-map transparency, binary-alpha equivalence, and incremental floor reveal patches.
+
+### Changed
+
+- Continuous Android lighting keeps its quality-tier downsampled mask but uploads that small mask for GLES nearest-neighbor scaling and `SDL_BLENDMODE_MOD`; successful frames no longer expand and multiply the mask over millions of pixels on the CPU or call `pygame.display.flip()` afterward.
+- Screen flashes on the GLES path upload one RGBA pixel and scale it over the final frame after lighting and HUD composition. Desktop, software-renderer, and failed-present paths retain the existing full-screen CPU blend.
+- Native base uploads use a short-lived BGRA alias over Pygame's XRGB display surface, avoiding a hidden full-frame XRGB-to-ARGB conversion while releasing the `BufferProxy` lock immediately after upload.
+- Immutable binary-alpha pixel-art cache entries use display-format colorkey RLE sources on the Android SDL2-alpha path; partial-alpha text, gradients, panels, and shadows retain alpha blending. Generated normal maps now preserve colorkey transparency.
+- The Android floor layer uses one-third-screen gutters, rebuilds only after most of a gutter is consumed, and patches newly revealed floor tiles against its frozen build camera instead of rebuilding whenever the reveal count or camera position changes slightly.
+- The CPU lighting fallback uses an opaque display-format scratch surface and `BLEND_RGB_MULT`, avoiding unnecessary alpha-channel work. Desktop rendering behavior is unchanged.
+- Runtime/package release version is `4.3.4`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Device logs used as the baseline confirmed accelerated GLES2 and NEON, but showed native gameplay near 5.7 FPS / 173 ms world time and Balanced gameplay near 10.7 FPS / 120 ms world time; simulation remained below 1 ms/frame.
+- Deterministic depth-10 crowded-floor host profile at native 2424×1080 with 45 enemies: update `2.131 ms/frame` and render `18.856 ms/frame`. The dummy SDL driver intentionally exercises the CPU fallback rather than the direct GLES presenter.
+- A real SDL offscreen renderer accepted the native base/light/UI texture formats and the 1×1 flash texture, presented successfully without fallback, left the display surface unlocked, and preserved base → MOD light → UI → flash ordering.
+- Focused mobile, lighting, and lifecycle suite: 59 tests, all passing. Full non-web `unittest` discovery: 428 tests, all passing. `compileall` and `git diff --check` passed; changed-file diagnostics reported no errors (the rendering mixins retain their existing cross-module unused-import warnings).
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.4-arm64-v8a_armeabi-v7a-debug.apk` (73,333,235 bytes; SHA-256 `87a674a095f466f63ad6c9c2039942d31a314153ee7000abd862bd4940f367fe`). The package contains 104 architecture-correct ELF extensions for each ARM ABI; `aapt` confirmed version 4.3.4, API 28/34, GLES 2.0, landscape `PythonActivity`, and both ABIs; `apksigner` verified its V2 debug signature.
+- Physical-device FPS and upload/present timings remain required to confirm the 30 FPS native-resolution target; the new `gpu_light=1` and detailed `render_ms` fields make that verification attributable.
+
+## 4.3.3 — Android GLES Enforcement and Device Telemetry
+
+Release 4.3.3 addresses the remaining physical-device ~1 FPS failure after 4.3.2's resolution reduction. Android now rejects SDL's unaccelerated `pygame.SCALED` renderer, explicitly tries the packaged GLES2/GLES drivers, and reports every frame phase on-device so any vendor-specific remainder is attributable rather than guessed.
+
+### Added
+
+- Rolling Android telemetry emits one `ARCH_ROGUE_PERF` line every four seconds with true FPS/frame time; tick, event, update, menu/world, HUD, overlay, flip, and audio timings; logical/window/viewport sizes; renderer acceleration; quality/lighting state; entity counts; and interval sprite decode/build deltas.
+- A small cached in-game diagnostic line shows FPS plus world/HUD/flip milliseconds. It performs no per-frame font rendering and is enabled by default only in the Android beta; `ARCH_ROGUE_PERF=0` disables it.
+- Renderer startup diagnostics attach safely to Pygame CE's existing `_sdl2` renderer and log logical size/scale without creating a competing renderer.
+- Regression coverage exercises GLES2-to-GLES retry, launch-safe software fallback, telemetry aggregation, and the reduced-resolution layout.
+
+### Changed
+
+- Before `pygame.init()`, Android requests `SDL_RENDER_DRIVER=opengles2`. Display creation converts Pygame CE's `no fast renderer available` warning into a failed candidate, retries `opengles`, and permits SDL auto-selection only as a final launch-safe fallback. Telemetry records `accelerated=no` if that fallback is software.
+- Performance now caps logical height at 360p (780×360 on a 2340×1080 phone) and Balanced at 540p. This reduces Performance's streamed texture from 0.63 to 0.28 megapixels while preserving aspect ratio, safe-area input, and the complete six-skill mobile HUD.
+- Buildozer excludes generated `__pycache__` and `arch_rogue.egg-info` directories, and the APK validator rejects either if they leak into `assets/private.tar`; stale editable-install metadata can no longer contradict the release version.
+- Runtime/package release version is `4.3.3`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- The cached Android SDL source has both `SDL_VIDEO_RENDER_OGL_ES2` and `SDL_VIDEO_RENDER_OGL_ES` enabled; GLES2 precedes GLES and software in its renderer table.
+- Deterministic depth-10 crowded-floor profile at physical 2340×1080 / logical 780×360 with 45 enemies: update `2.278 ms/frame`, render `9.631 ms/frame`, and continuous lighting about `0.70 ms/frame`. With lighting off, render was `8.936 ms/frame`.
+- A 1,500-frame cache run settled at 295 resolved frames (~19.3 MiB), below the 320-frame limit, confirming no steady representative-floor eviction loop; telemetry still exposes device-side APK decode spikes through `loads+`/`builds+`.
+- The 780×360 smoke render retained all six action skills, three resource bars, four utility buttons, pause/interact controls, twelve gameplay touch targets, and a 614×344 world viewport.
+- Focused mobile/lifecycle/packaging suite: 43 tests, all passing; full `unittest` discovery: 420 tests, all passing. `compileall`, Android source/spec preflight, shell syntax, changed-file diagnostics, and `git diff --check` passed.
+- `./tools/build_android.sh debug` produced `bin/archrogue-4.3.3-arm64-v8a_armeabi-v7a-debug.apk` (70 MiB, SHA-256 `e1fd494c2682e9eb5e2473ac741fbf4a8cbee03e86e16e1942ef7e1b175e9506`). The mandatory audit found root `main.pyc`, no generated source metadata or desktop pygame payload, and 104 architecture-correct ELF extensions for each ARM ABI.
+- Android `aapt` confirmed version 4.3.3, API 28/34, GLES 2.0, landscape `PythonActivity`, both native ABIs, and no permissions; `apksigner` verified the V2 debug signature. Packaged bytecode contains the GLES2 enforcement, `ARCH_ROGUE_PERF`, and 360p tier.
+- Physical-device FPS/logcat validation remains required because no ADB device or emulator is attached to this workstation.
+
+## 4.3.2 — Android Render Performance (Incomplete First Pass)
+
+Release 4.3.2 reduced Android's logical framebuffer and mobile lighting cost, but subsequent modern-phone testing remained around 1 FPS. It requested Pygame's SDL scaled renderer without rejecting SDL's permitted software fallback and had no device-side phase telemetry, so this release did not resolve or attribute the physical-device bottleneck.
+
+### Added
+
+- A persisted mobile **Render quality** setting reuses the first Options row: Performance caps logical height at 540p, Balanced at 720p, and Native retains every physical display pixel. Fresh and upgraded mobile installs default to Performance; desktop display behavior is unchanged.
+- `tools/profile_game.py --mobile --mobile-quality <performance|balanced|native>` profiles the real safe-area/mobile viewport at a requested physical device size and reports sprite decode/build cache activity alongside update/render timings.
+
+### Changed
+
+- Android display creation now combines `pygame.FULLSCREEN | pygame.SCALED`. Pygame CE uploads the capped logical streaming texture through an SDL renderer, although this release did not enforce acceleration and SDL could fall back to software. Aspect ratio, normalized finger input, and scaled safe-area insets remain correct on phones and tablets.
+- Performance mode renders only 25% as many root pixels as a representative 2340×1080 phone (1170×540), downsamples continuous lighting to quarter resolution, uses nearest-neighbor mobile light/world compositing, and omits the redundant full-viewport ambient alpha pass while continuous lighting is active. Balanced uses a one-third-resolution light buffer; Native retains the original half-resolution buffer.
+- Fresh mobile installs disable generated normal-map detail, and pre-schema-6 mobile options migrate to Performance with normal maps off. Explicit schema-6 choices remain authoritative.
+- Screen flashes reuse a size-matched surface instead of allocating a full frame for every flash, resolution changes preserve expensive decoded actor animation frames, and suspended Android apps throttle to 10 Hz without updating or drawing.
+- Runtime/package release version is `4.3.2`; options advance to schema `6`, while run saves remain schema `5` and load unchanged.
+
+### Validation
+
+- Deterministic crowded-floor mobile profile at a physical 2340×1080: Native rendered at 16.923 ms/frame; Performance rendered at 9.051 ms/frame (46.5% less host render CPU). Continuous lighting fell from about 3.52 to 0.90 ms/frame (74% less). The dummy driver could not measure Android texture upload or verify the selected renderer; later physical-device testing showed this reduction was insufficient.
+- 540p safe-area smoke render at 1170×540 confirmed readable HUD text, six action buttons, all resource bars/utilities, and an unobstructed 874×516 world viewport with asymmetric cutout insets.
+- Focused mobile, lifecycle, input, lighting, and viewport suite: 99 tests, all passing.
+- `./tools/build_android.sh debug` produced `bin/archrogue-4.3.2-arm64-v8a_armeabi-v7a-debug.apk` (70 MiB, SHA-256 `ffe5c3210342d76609b02abc9974b3ca5f012bc12f0bb2b4fc82ec5837e62db6`). The mandatory audit found root `main.pyc` and 104 correct ELF extensions for each ARM ABI.
+- Android `aapt` confirmed version 4.3.2, API 28/34, landscape `PythonActivity`, both native ABIs, and no permissions; `apksigner` verified the V2 debug signature.
+- `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/python -m unittest discover tests` — 415 tests, all passing.
+- `.venv/bin/python -m compileall -q src tests tools`, shell syntax checks, and `git diff --check` — OK.
+- No ADB device or Android emulator was available, so final physical-device FPS and logcat validation must be performed after installing this APK.
+
+## 4.3.1 — Android Launch and ABI Hardening
+
+Release 4.3.1 fixes the Android beta APK startup failure caused by a desktop x86_64 pygame-ce wheel being packaged into both ARM Python bundles, and makes the SDL2 bootstrap entry point reproducible from checked-in source.
+
+### Added
+
+- `src/main.py`, the root entry point required by python-for-android's SDL2 bootstrap, delegates to the stable `arch_rogue.game:main` entry point.
+- A checked-in local p4a `pygame` recipe cross-compiles pygame-ce 2.5.7 separately for every target ABI and enables `pygame.system` for SDL private-storage paths.
+- `tools/validate_android_apk.py` preflights the source/spec and audits generated APKs, nested `libpybundle.so` archives, required packages, and every ELF machine type. It rejects host-native source files, missing launchers, stale manylinux `pygame_ce.libs` payloads, and ABI mismatches such as `EM_X86_64` in `arm64-v8a`.
+- Focused Android packaging regression tests cover the maintained source/spec contract, valid dual-ARM APKs, missing launchers, host wheel payloads, and x86_64-in-ARM failures.
+
+### Changed
+
+- Buildozer now requests `python3,pygame==2.5.7,pyjnius`, uses the local SDL2 pygame-ce recipe, pins python-for-android release commit `58d21141f17c889bf8585f5665921d72028f8831`, pins NDK r28c, enables short-edge display cutouts, and uses supported `android.archs` syntax.
+- Android CI installs the pinned `android` optional dependency set and keys its cache on the spec, recipe, builder, and validator instead of the spec alone.
+- `tools/build_android.sh` runs source/spec validation before compilation and refuses to publish an APK that fails the post-build payload audit.
+- Runtime/package release version is `4.3.1`; options remain schema `5` and run saves remain schema `5`.
+
+### Validation
+
+- `./tools/build_android.sh debug` produced the audited 70 MiB dual-ABI `bin/archrogue-4.3.1-arm64-v8a_armeabi-v7a-debug.apk`.
+- The source/APK validator found root `main.pyc`, `pygame.base`, `pygame.system`, PyJNIus, and 104 architecture-correct ELF extensions in each bundle (`EM_AARCH64` for `arm64-v8a`, `EM_ARM` for `armeabi-v7a`), with no desktop `pygame_ce.libs` payload.
+- Android `aapt` confirmed package `org.archrogue.archrogue`, version 4.3.1, API 28/34, landscape `PythonActivity`, both target ABIs, and no bogus blank permission; `apksigner` verified the debug APK's V2 signature.
+- `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/python -m unittest discover tests` — 407 tests, all passing.
+- `.venv/bin/python -m compileall -q src tests tools`, shell syntax checks, and `git diff --check` — OK.
+- No Android device was connected, so installation/logcat launch smoke testing remained external to this workstation.
+
+## 4.3.0 — Android Beta
+
+Milestone 4.3.0 adds a landscape-only Android beta build with touch controls, a safe-area-aware mobile HUD, Android lifecycle handling, writable private-storage save/options paths, and an interrupted-run recovery path. Desktop and gamepad behavior is unchanged.
+
+### Added
+
+- `src/arch_rogue/mobile.py`: runtime detection, `SafeInsets`, `MobileLayout`, multitouch capture, universal touch navigation, Android Back/lifecycle handling, and Android private-storage path resolution via `pygame.system.get_pref_path`.
+- Landscape mobile HUD matching `build/arch-rogue_mobile_layout.drawio.png`: centered world viewport, left rail with vertical HP/MP/Stamina bars, optional compact character summary, and Inventory/Character/Quest/Help buttons; right rail with the six existing skill badges; dedicated Interact and Pause targets. Reuses the authored `hud.panel`/`hud.action_slot` assets; no new art required for the beta.
+- True multitouch input via `FINGERDOWN`/`FINGERMOTION`/`FINGERUP`. Direct world touch drives movement/aim; skill/utility/interact/pause touches dispatch the existing semantic `Command`s; menu rows and cutscene choices are tap-selectable; swipes page the quest panel, inventory, and cutscene narration. Touch-emulated mouse events are ignored so inputs never double-fire.
+- Camera viewport awareness: world rendering targets the central viewport subsurface; `screen_to_world` and `world_to_display` translate between display and viewport coordinates; lighting/shading runs on the viewport-sized buffer on mobile.
+- Android lifecycle: `APP_WILLENTERBACKGROUND`/`APP_DIDENTERBACKGROUND` save the run, cancel touches, pause audio, and open the pause sheet; foreground events clear suspension without auto-resuming combat; `APP_TERMINATING` attempts a final save; `APP_LOWMEMORY` drops caches. `K_AC_BACK` maps to `Command.BACK` and never commits a story-relic choice.
+- `AudioSystem.suspend`/`resume` pause and resume `pygame.mixer` and adjust the music transport clock so timing stays correct after a backgrounded period.
+- Interrupted-run recovery: run saves are written through a `.tmp` file with `fsync` before atomic replace; `load_run` and `save_exists` promote a compatible interrupted `.tmp` save when the main file is missing. `recovered_interrupted_run` flags the recovery.
+- Shop and Help are now modal on mobile (simulation pauses while they are open), matching Inventory and Character. Quest info remains non-modal.
+- `buildozer.spec`, `tools/build_android.sh`, and a new `android` CI job in `.github/workflows/build-release.yml` produce and publish a reproducible debug APK with bundled assets; the release job attaches it alongside the desktop binaries. `tools/build_android.sh` pre-seeds every known Android SDK license hash and runs `sdkmanager --licenses` non-interactively (with a two-phase bootstrap fallback) so buildozer can install build-tools and `aidl` in a non-interactive CI shell. `docs/android-beta.md` documents install, upgrade, controls, lifecycle, local build, and known issues.
+- Regression tests: `tests/test_mobile_layout.py` (layout matrix, safe insets, six action targets, multitouch world+skill coexistence, modal nav blocking, Android Back safety) and `tests/test_android_lifecycle.py` (background save/pause, foreground no-auto-resume, audio resume on cancel, terminating save, low-memory cache clear, suspended update no-op, pref-path helper, interrupted `.tmp` recovery).
+
+### Changed
+
+- `Game.__init__` accepts `mobile` and `safe_insets` arguments; `mobile_mode` is auto-detected via `ARCH_ROGUE_MOBILE`, `sys.platform == "android"`, or `ANDROID_ARGUMENT`. Save/options paths use the Android private storage directory on mobile. Fullscreen is forced on and the desktop `RESIZABLE`/`SCALED` path is bypassed on mobile.
+- `OptionsMixin.apply_display_mode` requests the native landscape display on mobile instead of the fixed 2560×1440 desktop canvas. `refresh_automatic_ui_scale` derives a mobile UI scale from the actual landscape surface so HUD/menu text stays readable on phones and tablets.
+- `RenderingBaseMixin.draw` composes menus/overlays into a safe-area subsurface and the world into the viewport subsurface on mobile; the desktop single-surface path is unchanged. `hud_panel_height` returns 0 on mobile so world-adjacent HUD anchors to the viewport.
+- `InputMixin._dispatch_back` now closes Help before shop/inventory and opens the pause sheet (never commits a choice) during the mandatory story intro. `_dispatch_playing` treats Help as modal for input. `_sync_action_aim` is a source-neutral aim helper used by controller, touch, and desktop; `_sync_controller_action_aim` is retained as a compatibility alias.
+- `MenuBaseMixin.draw_menu_rows` publishes `_menu_row_rects` so mobile taps can select rows directly. `RenderingHudMixin._draw_shop_overlay_fitted` publishes `_shop_visible_row_rects`/`_shop_visible_start` for the same reason.
+- Runtime/package release version is `4.3.0`; options remain schema `5` and run saves remain schema `5`.
+
+### Validation
+
+- `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/python -m unittest discover tests` — 398 tests, all passing (was 377 before this milestone; +21 new mobile/lifecycle tests).
+- `.venv/bin/python -m compileall -q src tests` — OK.
+- Headless mobile smoke render confirms the three-column layout, six action targets, twelve gameplay touch targets, and viewport-local `screen_to_world`.
+- `git diff --check` — clean.
+- The Android APK was not built in this environment (no Android SDK/NDK); the buildozer spec, build script, and CI job are configured for the next CI run.
+
 ## 4.2.10 — Universal macOS Build
 
 Milestone 4.2.10 extends the `Build & Release` GitHub Actions workflow to produce a Finder-launchable universal `Arch Rogue.app` that runs natively on both Apple Silicon (arm64) and Intel (x86_64) Macs.

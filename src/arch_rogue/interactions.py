@@ -67,6 +67,17 @@ class InteractionMixin:
                 self.item_decision_summary(story_relic),
                 self.story_state.accent if self.story_state else self.theme.accent,
             )
+        # Ranger: surface petting as a first-class tappable action on mobile,
+        # matching how items/doors/guests advertise their interact prompt.
+        spirit_beast = self.nearby_pettable_spirit_beast()
+        if spirit_beast is not None:
+            beast_name = getattr(spirit_beast, "name", "") or "Spirit Beast"
+            return (
+                "E",
+                f"Pet {beast_name}",
+                f"Soothe your companion · +{self.spirit_beast_pet_heal()} HP",
+                (142, 202, 92),
+            )
         door = self.nearby_closed_door()
         if door is not None:
             # While a boss arena is sealed, the doors are locked; surface that
@@ -125,8 +136,11 @@ class InteractionMixin:
             )
         guest = self.nearby_story_guest()
         if guest:
+            # Mobile contextual prompts are tappable only for the generic
+            # interaction key; desktop still advertises the direct 1-3 story
+            # choices so keyboard-only play keeps the original shortcut UI.
             return (
-                "1-3",
+                "E" if getattr(self, "mobile_mode", False) else "1-3",
                 f"{guest.name}, {guest.role}",
                 self.story_choices_hint(guest),
                 guest.color,

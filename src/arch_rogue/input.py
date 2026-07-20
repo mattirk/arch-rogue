@@ -68,6 +68,8 @@ class Command:
     QUEST = "quest"
     INVENTORY = "inventory"
     CHARACTER = "character"
+    MOBILE_MENU = "mobile_menu"
+    MOBILE_EXIT = "mobile_exit"
     ABILITY_1 = "ability_1"
     ABILITY_2 = "ability_2"
     ABILITY_3 = "ability_3"
@@ -357,9 +359,27 @@ class ControllerManager:
     # common raw-joystick layouts (Xbox: axes 2/5 are triggers; Stadia/PS:
     # axes 4/5 are triggers) without relying on the SDL controller DB.
     TRIGGER_REST_THRESHOLD = 0.5
+    # SDL on Android exposes motion sensors as raw joysticks. Only reject
+    # explicit sensor descriptors so Bluetooth/USB gamepads remain available.
+    MOTION_SENSOR_NAME_MARKERS = (
+        "accelerometer",
+        "gyroscope",
+        "gyro",
+        "gravity",
+        "linear acceleration",
+        "rotation vector",
+        "orientation sensor",
+    )
 
-    def __init__(self, last_guid: str = "", enabled: bool = True) -> None:
+    def __init__(
+        self,
+        last_guid: str = "",
+        enabled: bool = True,
+        *,
+        ignore_motion_sensors: bool = False,
+    ) -> None:
         self.enabled = enabled
+        self.ignore_motion_sensors = bool(ignore_motion_sensors)
         self._last_guid = last_guid or ""
         self._joysticks: dict[int, Any] = {}
         self._active_id: int | None = None
@@ -423,10 +443,45 @@ class ControllerManager:
         except (AttributeError, pygame.error):
             return ""
 
+    def _name(self, joy: Any) -> str:
+        try:
+            return str(joy.get_name() or "")
+        except (AttributeError, pygame.error):
+            return ""
+
+    @staticmethod
+    def _has_button_or_hat_controls(joy: Any) -> bool:
+        """Return whether a named sensor is demonstrably a real controller."""
+
+        try:
+            if joy.get_numbuttons() > 0:
+                return True
+        except (AttributeError, pygame.error):
+            pass
+        try:
+            return joy.get_numhats() > 0
+        except (AttributeError, pygame.error):
+            return False
+
+    def _is_ignored_motion_sensor(self, joy: Any) -> bool:
+        if not self.ignore_motion_sensors:
+            return False
+        name = self._name(joy).casefold()
+        named_as_sensor = any(
+            marker in name for marker in self.MOTION_SENSOR_NAME_MARKERS
+        )
+        return named_as_sensor and not self._has_button_or_hat_controls(joy)
+
     def _add_device(self, device_index: int) -> Any | None:
         try:
             joy = pygame.joystick.Joystick(device_index)
         except pygame.error:
+            return None
+        if self._is_ignored_motion_sensor(joy):
+            try:
+                joy.quit()
+            except pygame.error:
+                pass
             return None
         # pygame-ce auto-initializes Joystick objects since 2.4; the explicit
         # init() call is deprecated and no longer needed.
@@ -488,10 +543,7 @@ class ControllerManager:
         joy = self.active()
         if joy is None:
             return ""
-        try:
-            return joy.get_name() or "Gamepad"
-        except pygame.error:
-            return "Gamepad"
+        return self._name(joy) or "Gamepad"
 
     def active_guid(self) -> str:
         joy = self.active()
@@ -499,8 +551,11 @@ class ControllerManager:
 
     def set_enabled(self, enabled: bool) -> None:
         self.enabled = bool(enabled)
-        if not enabled:
+        if not self.enabled:
             self._reset_axes()
+            self._trigger_pressed.clear()
+            self._queued_commands.clear()
+            self._queued_trigger_slots.clear()
 
     def prefer_device(self, guid: str) -> None:
         """Switch the active device to one matching ``guid`` if connected."""
@@ -589,6 +644,12 @@ class ControllerManager:
         button events so controllers that also report bumpers as axes do not fire
         stale trigger bindings in addition to the remapped button command.
         """
+        if not self.enabled:
+            self._reset_axes()
+            self._trigger_pressed.clear()
+            self._queued_commands.clear()
+            self._queued_trigger_slots.clear()
+            return
         joy = self.active()
         if joy is None:
             self._reset_axes()
@@ -754,24 +815,37 @@ class InputMixin:
     """
 
     # Options menu row order (matches MenuOptionsMixin.draw_options_menu).
-    # Grouped: Display (0-3), Controls (4-5), Audio (6-7), Lights (8-9), Back (10).
-    OPTIONS_ROW_COUNT = 11
+    # Grouped: Display (0-4), Controls (5-6), Audio (7-8), Lights (9-10),
+    # Diagnostics (11, desktop only), Back (last). The frame-rate cap row at
+    # index 4 was added in 4.3.17; the perf-overlay row at index 11 is desktop
+    # only, so the total count and the Back index depend on mobile_mode.
     OPTIONS_ROW_FULLSCREEN = 0
     OPTIONS_ROW_DIFFICULTY = 1
     OPTIONS_ROW_UI_SCALE = 2
     OPTIONS_ROW_GRAPHICS = 3
-    OPTIONS_ROW_CONTROLS = 4
-    OPTIONS_ROW_CONTROLLER = 5
-    OPTIONS_ROW_AUDIO = 6
-    OPTIONS_ROW_MUSIC = 7
-    OPTIONS_ROW_LIGHTING = 8
-    OPTIONS_ROW_LIGHTING_DETAIL = 9
-    OPTIONS_ROW_BACK = 10
+    OPTIONS_ROW_FRAME_RATE = 4
+    OPTIONS_ROW_CONTROLS = 5
+    OPTIONS_ROW_CONTROLLER = 6
+    OPTIONS_ROW_AUDIO = 7
+    OPTIONS_ROW_MUSIC = 8
+    OPTIONS_ROW_LIGHTING = 9
+    OPTIONS_ROW_LIGHTING_DETAIL = 10
+    OPTIONS_ROW_PERF_OVERLAY = 11
+
+    @property
+    def OPTIONS_ROW_COUNT(self) -> int:
+        # 12 rows on mobile (no desktop-only perf-overlay row), 13 on desktop.
+        return 12 if getattr(self, "mobile_mode", False) else 13
+
+    @property
+    def OPTIONS_ROW_BACK(self) -> int:
+        return self.OPTIONS_ROW_COUNT - 1
 
     def init_input(self) -> None:
         self.input = ControllerManager(
             last_guid=getattr(self, "last_controller_guid", ""),
             enabled=getattr(self, "controller_enabled", True),
+            ignore_motion_sensors=getattr(self, "mobile_mode", False),
         )
         self.input.initialize()
         self.gamepad_mapping = normalize_gamepad_mapping(
@@ -814,6 +888,14 @@ class InputMixin:
             if event.type == pygame.JOYDEVICEADDED and self.input.active_guid():
                 self.last_controller_guid = self.input.active_guid()
                 self.save_options()
+            return True
+        if not self.input.enabled and event.type in (
+            pygame.JOYAXISMOTION,
+            pygame.JOYBALLMOTION,
+            pygame.JOYHATMOTION,
+            pygame.JOYBUTTONUP,
+            pygame.JOYBUTTONDOWN,
+        ):
             return True
         if event.type == pygame.JOYBUTTONDOWN:
             # Pressing a button on a gamepad makes it the active device so the
@@ -884,10 +966,25 @@ class InputMixin:
         if self.state == "controls":
             return self._dispatch_controls(cmd)
         if self.state == "about":
+            # 4.3.17 WS-G: Up/Down scroll the Open Source Licenses text;
+            # confirm/back/left/right return to the title.
+            if cmd == Command.UP:
+                self.scroll_licenses(-1)
+                return True
+            if cmd == Command.DOWN:
+                self.scroll_licenses(1)
+                return True
+            if cmd == Command.PAGE_UP:
+                page = max(1, int(getattr(self, "_licenses_visible_lines", 3)) - 1)
+                self.scroll_licenses(-page)
+                return True
+            if cmd == Command.PAGE_DOWN:
+                page = max(1, int(getattr(self, "_licenses_visible_lines", 3)) - 1)
+                self.scroll_licenses(page)
+                return True
             if cmd in (
                 Command.CONFIRM,
-                Command.UP,
-                Command.DOWN,
+                Command.BACK,
                 Command.LEFT,
                 Command.RIGHT,
             ):
@@ -904,6 +1001,16 @@ class InputMixin:
 
     def _dispatch_back(self) -> bool:
         if self.state == "playing":
+            if getattr(self, "mobile_hub_open", False):
+                self.mobile_hub_open = False
+                return True
+            if getattr(self, "mobile_mode", False) and self.quest_info_visible:
+                self.quest_info_visible = False
+                self.story_panel_scroll = 0
+                return True
+            if self.show_help:
+                self.show_help = False
+                return True
             if self.shop_open:
                 self.close_shop()
                 return True
@@ -915,18 +1022,13 @@ class InputMixin:
                 return True
             if self.active_cutscene is not None:
                 if self.story_intro_pending:
-                    choices = self.active_cutscene_choices()
-                    if choices:
-                        index = max(0, min(self.cutscene_cursor, len(choices) - 1))
-                        self.choose_active_cutscene_option(index)
+                    # Back/pause must never commit an irreversible story choice.
+                    self.request_exit_confirmation()
                     return True
                 self.close_active_cutscene()
                 return True
             if self.story_intro_pending:
-                choices = self.story_relic_choice_options()[:3]
-                if choices:
-                    index = max(0, min(self.cutscene_cursor, len(choices) - 1))
-                    self.choose_story_relic_path(index)
+                self.request_exit_confirmation()
                 return True
             self.request_exit_confirmation()
             return True
@@ -1026,6 +1128,9 @@ class InputMixin:
             self.sync_music()
             self.save_options()
         elif row == self.OPTIONS_ROW_FULLSCREEN:
+            if getattr(self, "mobile_mode", False):
+                self.cycle_mobile_render_quality(forward)
+                return
             if not self.fullscreen:
                 self.windowed_size = self.screen.get_size()
             self.fullscreen = not self.fullscreen
@@ -1038,6 +1143,8 @@ class InputMixin:
             self.cycle_ui_scale(forward)
         elif row == self.OPTIONS_ROW_GRAPHICS:
             self.set_legacy_graphics(not self.legacy_graphics)
+        elif row == self.OPTIONS_ROW_FRAME_RATE:
+            self.cycle_frame_rate_cap(forward)
         elif row == self.OPTIONS_ROW_CONTROLLER:
             self.controller_enabled = not self.controller_enabled
             self.input.set_enabled(self.controller_enabled)
@@ -1048,6 +1155,11 @@ class InputMixin:
         elif row == self.OPTIONS_ROW_LIGHTING_DETAIL:
             self._lighting_normal_maps = not self._lighting_normal_maps
             self.save_options()
+        elif (
+            row == self.OPTIONS_ROW_PERF_OVERLAY
+            and not getattr(self, "mobile_mode", False)
+        ):
+            self.toggle_perf_overlay()
         elif row == self.OPTIONS_ROW_CONTROLS:
             self.state = "controls"
             self.controls_cursor = 0
@@ -1127,6 +1239,26 @@ class InputMixin:
         self.save_options()
 
     def _dispatch_playing(self, cmd: str) -> bool:
+        if cmd == Command.MOBILE_MENU and getattr(self, "mobile_mode", False):
+            opening = not getattr(self, "mobile_hub_open", False)
+            self.mobile_hub_open = opening
+            if opening:
+                self.quest_info_visible = False
+                self.inventory_open = False
+                self.character_menu_open = False
+                self.show_help = False
+                self.close_shop()
+            return True
+        if cmd == Command.MOBILE_EXIT and getattr(self, "mobile_mode", False):
+            self.mobile_hub_open = False
+            self.quest_info_visible = False
+            self.request_exit_confirmation()
+            return True
+        if self.show_help:
+            if cmd == Command.HELP:
+                self.show_help = False
+            # Help is modal for input. BACK is handled before state dispatch.
+            return True
         # Active cutscenes get the full controller path (D-pad cursor, A confirm,
         # B skip). This includes mandatory story-intro cutscenes.
         if self.active_cutscene is not None:
@@ -1165,6 +1297,9 @@ class InputMixin:
         # button that opens an overlay also closes it (mirrors keyboard I / C).
         if cmd == Command.INVENTORY:
             self.inventory_open = not self.inventory_open
+            if getattr(self, "mobile_mode", False):
+                self.mobile_hub_open = False
+                self.quest_info_visible = False
             if self.inventory_open:
                 self.character_menu_open = False
                 self.close_shop()
@@ -1172,6 +1307,9 @@ class InputMixin:
             return True
         if cmd == Command.CHARACTER:
             self.character_menu_open = not self.character_menu_open
+            if getattr(self, "mobile_mode", False):
+                self.mobile_hub_open = False
+                self.quest_info_visible = False
             if self.character_menu_open:
                 self.inventory_open = False
                 self.close_shop()
@@ -1211,6 +1349,14 @@ class InputMixin:
             if choice_count:
                 step = 1 if cmd == Command.RIGHT else -1
                 self.cutscene_cursor = (self.cutscene_cursor + step) % choice_count
+            return True
+        if cmd == Command.PAGE_UP:
+            page = max(1, getattr(self, "_cutscene_narration_visible_lines", 3) - 1)
+            self.scroll_active_cutscene_narration(-page)
+            return True
+        if cmd == Command.PAGE_DOWN:
+            page = max(1, getattr(self, "_cutscene_narration_visible_lines", 3) - 1)
+            self.scroll_active_cutscene_narration(page)
             return True
         if cmd == Command.CONFIRM:
             if not self.active_cutscene_narration_complete():
@@ -1375,45 +1521,61 @@ class InputMixin:
         if self.character_menu_hovered_node:
             self.choose_discipline(self.character_menu_hovered_node)
 
-    def _sync_controller_action_aim(self) -> None:
-        """Refresh facing from right stick, then apply controller aim assist.
-
-        Controller actions must launch in the direction of the visible aim cone.
-        The cone is stored in `player.facing_x/y`; falling back to mouse aim here
-        would silently rotate the shot away from what gamepad players see.
-        """
+    def _sync_action_aim(self) -> None:
+        """Refresh facing for the active controller, touch, or desktop source."""
+        if getattr(self, "aim_input_mode", "mouse") == "touch":
+            point = getattr(self, "_mobile_touch_world_point", None)
+            if point is not None:
+                self.face_player_toward_screen_point(*point)
+            return
         rx, ry = self.input.right_vec()
-        if rx or ry:
-            length = (rx * rx + ry * ry) ** 0.5
-            if length > 0.0:
-                self.player.facing_x = rx / length
-                self.player.facing_y = ry / length
-        self.snap_controller_aim_to_enemy()
+        if rx or ry or getattr(self, "aim_input_mode", "mouse") == "controller":
+            if rx or ry:
+                length = (rx * rx + ry * ry) ** 0.5
+                if length > 0.0:
+                    self.player.facing_x = rx / length
+                    self.player.facing_y = ry / length
+            self.snap_controller_aim_to_enemy()
+            return
+        self.update_player_aim()
+
+    def _sync_controller_action_aim(self) -> None:
+        """Compatibility alias retained for external controller integrations."""
+        self._sync_action_aim()
 
     def _dispatch_gameplay(self, cmd: str) -> bool:
         if cmd == Command.INTERACT:
             self.interact()
             return True
         if cmd == Command.QUEST:
-            self.toggle_quest_info_visibility()
+            if getattr(self, "mobile_mode", False):
+                self.mobile_hub_open = False
+                self.quest_info_visible = not self.quest_info_visible
+                self.story_panel_scroll = 0
+            else:
+                self.toggle_quest_info_visibility()
             return True
         if cmd == Command.HELP:
             self.show_help = not self.show_help
             return True
+        if cmd in (Command.PAGE_UP, Command.PAGE_DOWN) and self.quest_info_visible:
+            page = max(1, getattr(self, "_story_panel_visible_lines", 3) - 1)
+            self.scroll_story_panel(-page if cmd == Command.PAGE_UP else page)
+            return True
         if cmd == Command.ABILITY_1:
-            self._sync_controller_action_aim()
+            self._sync_action_aim()
             self.player_melee_attack()
             return True
         if cmd == Command.ABILITY_2:
-            self._sync_controller_action_aim()
+            self._sync_action_aim()
             self.player_cast_bolt()
             return True
         if cmd == Command.ABILITY_3:
-            self._sync_controller_action_aim()
+            self._sync_action_aim()
             self.player_cast_class_skill()
             return True
         if cmd == Command.ABILITY_4:
-            self._sync_controller_action_aim()
+            self._sync_action_aim()
             self.player_dash()
             return True
         if cmd == Command.ABILITY_5:

@@ -11,8 +11,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import pygame
-
+from arch_rogue.constants import WORLD_SCALE
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.models import (
@@ -80,8 +79,11 @@ class SoftShadow38Tests(unittest.TestCase):
                 scaled_a = game._scaled_soft_shadow(64, 24)
                 scaled_b = game._scaled_soft_shadow(64, 24)
                 scaled_other = game._scaled_soft_shadow(64, 25)
+                scaled_alpha = game._scaled_soft_shadow(64, 24, 176)
                 self.assertIs(scaled_a, scaled_b)
                 self.assertIsNot(scaled_a, scaled_other)
+                self.assertIsNot(scaled_a, scaled_alpha)
+                self.assertEqual(scaled_alpha.get_alpha(), 176)
                 self.assertEqual(scaled_a.get_size(), (64, 24))
             finally:
                 pass
@@ -171,6 +173,40 @@ class SoftShadow38Tests(unittest.TestCase):
                 self.assertTrue(any(s == "30x12" for s in seen))  # shrine
             finally:
                 pass
+
+
+    def test_mobile_shadow_uses_cached_transparent_soft_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(1280, 720),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+                mobile=True,
+            )
+            game.options_path = Path(tmpdir) / "options.json"
+            game.rng.seed(4310)
+            game.restart(ARCHETYPES[0])
+            if game.story_intro_pending:
+                self.assertTrue(game.choose_story_relic_path(0))
+            game.active_cutscene = None
+            game.screen.fill((120, 104, 88))
+            sx, sy = game.world_to_screen(game.player.x, game.player.y)
+            center = (sx, sy + 10 * WORLD_SCALE)
+            before = game.screen.get_at(center)
+
+            game.draw_shadow(game.player.x, game.player.y, 34, 13)
+
+            after = game.screen.get_at(center)
+            self.assertLess(after.r, before.r)
+            self.assertGreater(after.r, 40)
+            self.assertNotEqual(after[:3], (8, 7, 11))
+            first = next(iter(game._scaled_soft_shadow_cache.values()))
+            game.draw_shadow(game.player.x, game.player.y, 34, 13)
+            self.assertEqual(len(game._scaled_soft_shadow_cache), 1)
+            self.assertIs(
+                game._scaled_soft_shadow_cache[next(iter(game._scaled_soft_shadow_cache))],
+                first,
+            )
 
 
 if __name__ == "__main__":

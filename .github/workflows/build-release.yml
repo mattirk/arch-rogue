@@ -17,7 +17,7 @@ name: Build & Release
 
 "on":
   push:
-    branches: [master]
+    branches: [master, android-beta]
   workflow_dispatch:
 
 permissions:
@@ -52,6 +52,15 @@ jobs:
 
       - name: Run test suite
         run: python -m unittest discover tests
+
+      - name: Run mainline regression guard
+        run: python -m unittest tests.test_mainline_regression
+
+      - name: Compare desktop performance baseline
+        run: |
+          python tools/profile_game.py --scenario crowd --frames 60 --warmup 10 \
+            --width 2560 --height 1440 --top 1 \
+            --compare tools/baselines/desktop_master_baseline.json --threshold 10
 
   build:
     name: Build (${{ matrix.asset_suffix }})
@@ -476,9 +485,75 @@ jobs:
           path: dist/final/*.zip
           if-no-files-found: error
 
+  android:
+    name: Build Android APK (debug)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install pinned Android toolchain + project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[android]"
+
+      - name: Cache Android SDK/NDK
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer/android/platform
+            ~/.buildozer/android/packages
+          key: buildozer-android-${{ runner.os }}-${{ hashFiles('buildozer.spec', 'android/recipes/**', 'tools/build_android.sh', 'tools/validate_android_apk.py') }}
+          restore-keys: |
+            buildozer-android-${{ runner.os }}-
+
+      - name: Read version
+        id: version
+        shell: python
+        run: |
+          import tomllib, os
+          with open("pyproject.toml", "rb") as f:
+            data = tomllib.load(f)
+          version = data["project"]["version"]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+            out.write(f"version={version}\n")
+
+      - name: Short SHA
+        id: sha
+        shell: bash
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build debug APK
+        run: ./tools/build_android.sh debug
+
+      - name: Rename APK
+        shell: bash
+        run: |
+          mkdir -p dist/final
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sha.outputs.short }}"
+          APK="$(ls -1 bin/*.apk | head -n1)"
+          cp "$APK" "dist/final/arch-rogue-v${VERSION}-${SHA}-android-debug.apk"
+          ls -lh dist/final
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-rogue-android-debug
+          path: dist/final/*.apk
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
-    needs: [build, combine-macos]
+    # android-beta pushes run the full regression/build matrix, but only
+    # master may publish a public GitHub release.
+    if: github.ref == 'refs/heads/master'
+    needs: [build, combine-macos, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -508,6 +583,7 @@ jobs:
           # macOS app ZIP, and the two intermediate single-arch macOS builds
           # (kept as smaller per-architecture fallbacks).
           pattern: arch-rogue-*
+          # Includes the Android debug APK produced by the android job.
 
       - name: Restore executable bit on raw Unix binaries
         # The universal app keeps its executable bit inside its `ditto` ZIP.
@@ -536,6 +612,7 @@ jobs:
             - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-universal.zip` — Finder-launchable `Arch Rogue.app` (Apple Silicon + Intel)
             - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-arm64` — macOS Apple Silicon only (smaller)
             - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-x86_64` — macOS Intel only (smaller)
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-android-debug.apk` — Android beta debug APK (landscape, self-signed at install)
           files: release-assets/*
           prerelease: true
           make_latest: "false"

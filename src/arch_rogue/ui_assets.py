@@ -31,6 +31,8 @@ from typing import Any
 
 import pygame
 
+from .mobile import optimize_immutable_alpha_surface
+
 
 class UiAssetLibrary:
     """Validated, lazy loader and renderer for optional UI sprite assets.
@@ -520,6 +522,7 @@ class UiAssetLibrary:
                 if rendered is None:
                     return None
             rendered = self._best_effort_convert_alpha(rendered)
+            rendered = optimize_immutable_alpha_surface(rendered)
         except (OSError, RuntimeError, TypeError, ValueError, pygame.error):
             return None
 

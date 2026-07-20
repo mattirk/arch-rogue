@@ -71,6 +71,8 @@ _DARK_VISIBILITY_OUTER_RADIUS_SQUARED = _DARK_VISIBILITY_OUTER_RADIUS**2
 
 class RunFlowMixin:
     def save_exists(self) -> bool:
+        if not self.save_path.exists() and hasattr(self, "recover_interrupted_run_save"):
+            self.recover_interrupted_run_save()
         return self.save_path.exists()
 
     # --- Title menu navigation -------------------------------------------
@@ -107,6 +109,7 @@ class RunFlowMixin:
             self.state = "options"
         elif index == 3:
             self.state = "about"
+            self.licenses_scroll = 0
 
     def theme_by_name(self, name: str) -> Any:
         return next(

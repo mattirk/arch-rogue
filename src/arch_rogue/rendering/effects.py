@@ -23,13 +23,14 @@
 from __future__ import annotations
 
 import math
-from collections import deque
+from collections import OrderedDict, deque
 from typing import cast
 
 import pygame
 
 from ..constants import DUNGEON_DEPTH, TILE_H, TILE_W, WORLD_SCALE, SlashEffect
 from ..content import HUMANOID_ENEMY_NAMES
+from ..mobile import optimize_immutable_alpha_surface
 from ..models import (
     AmbushBell,
     Color,
@@ -52,6 +53,13 @@ from ..quest_assets import (
     SpriteAnimationFrameAsset,
     format_asset_text,
 )
+
+# Impact-effect overlay cache is mobile-only (gated by ``mobile_mode`` in
+# ``draw_impact``). Bounded LRU keyed by
+# ``(kind, progress_bucket, alpha_bucket, radius_bucket, color)`` — the
+# handful of quantized buckets keeps the working set small even in combat
+# crowds, but the cap prevents pathological growth across long runs.
+IMPACT_EFFECT_CACHE_MAX = 128
 
 
 class RenderingEffectsMixin:
@@ -83,6 +91,7 @@ class RenderingEffectsMixin:
             overlay = overlay.convert_alpha()
         except pygame.error:
             pass
+        overlay = optimize_immutable_alpha_surface(overlay)
         cache[key] = overlay
         self.ambient_overlay_cache = cache
         return overlay
@@ -91,6 +100,13 @@ class RenderingEffectsMixin:
         if self.state not in ("playing", "dead", "victory"):
             return
         if self.is_current_floor_dark():
+            return
+        if getattr(self, "mobile_mode", False):
+            # Android's native framebuffer makes this decorative full-viewport
+            # alpha pass cost roughly 13 ms even with continuous lighting off.
+            # Terrain visibility already carries the darkness model, while the
+            # lighting-on path supplies its own depth tint, so omit the vignette
+            # on every mobile quality tier.
             return
         self.screen.blit(self.ambient_overlay_surface(), (0, 0))
 
@@ -109,6 +125,36 @@ class RenderingEffectsMixin:
             2, int((effect.radius + progress * effect.radius * 1.4) * 28 * WORLD_SCALE)
         )
         alpha = max(0, min(230, int(205 * life)))
+
+        # Cache the baked overlay per (kind, quantized progress/alpha, radius
+        # bucket, color). Impact effects animate over a handful of frames, so
+        # quantizing progress into ~24 steps lets consecutive frames share one
+        # surface instead of allocating + redrawing every circle each frame.
+        # 4.3.17 WS-D: the cache is now shared by desktop and mobile (it was a
+        # mobile-only win in 4.3.13); the bounded LRU keeps it tiny and the
+        # cached overlay is byte-identical to the per-frame build, so render
+        # output is unchanged.
+        progress_bucket = int(progress * 24)
+        alpha_bucket = (alpha // 16) * 16
+        radius_bucket = (radius // 4) * 4
+        cache_key = (
+            effect.kind,
+            progress_bucket,
+            alpha_bucket,
+            radius_bucket,
+            effect.color,
+        )
+        cache = getattr(self, "_impact_overlay_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._impact_overlay_cache = cache
+        cached = cache.get(cache_key)
+        if cached is not None:
+            cache.move_to_end(cache_key)
+            self.screen.blit(
+                cached, cached.get_rect(center=(sx, sy - 12 * WORLD_SCALE))
+            )
+            return
 
         overlay = pygame.Surface((radius * 2 + 18, radius * 2 + 18), pygame.SRCALPHA)
         center = (overlay.get_width() // 2, overlay.get_height() // 2)
@@ -274,6 +320,13 @@ class RenderingEffectsMixin:
                 )
 
 
+        overlay = optimize_immutable_alpha_surface(overlay)
+        if cache_key is not None:
+            assert cache is not None
+            cache[cache_key] = overlay
+            cache.move_to_end(cache_key)
+            while len(cache) > IMPACT_EFFECT_CACHE_MAX:
+                cache.popitem(last=False)
         self.screen.blit(overlay, overlay.get_rect(center=(sx, sy - 12 * WORLD_SCALE)))
 
     def _draw_cast_emanation(
@@ -731,9 +784,12 @@ class RenderingEffectsMixin:
         self._soft_shadow_template_cache = cache
         return surf
 
-    def _scaled_soft_shadow(self, width: int, height: int) -> pygame.Surface:
-        key = (width, height)
-        cache: dict[tuple[int, int], pygame.Surface] = getattr(
+    def _scaled_soft_shadow(
+        self, width: int, height: int, alpha: int = 255
+    ) -> pygame.Surface:
+        alpha = max(0, min(255, (int(alpha) // 8) * 8))
+        key = (width, height, alpha)
+        cache: dict[tuple[int, int, int], pygame.Surface] = getattr(
             self, "_scaled_soft_shadow_cache", {}
         )
         shadow = cache.get(key)
@@ -741,11 +797,42 @@ class RenderingEffectsMixin:
             return shadow
         if len(cache) >= 128:
             cache.pop(next(iter(cache)))
-        template = self._soft_shadow_template(max(8, max(width, height)))
-        shadow = pygame.transform.smoothscale(template, key)
+        if getattr(self, "mobile_mode", False):
+            # Mobile shadows are tiny low-opacity patches; bilinear smoothscale
+            # at cache-build time is a measurable ARM cost in crowds, while
+            # nearest scaling is visually indistinguishable under a sprite.
+            shadow = self._mobile_soft_shadow(width, height)
+        else:
+            template = self._soft_shadow_template(max(8, max(width, height)))
+            shadow = pygame.transform.smoothscale(template, (width, height))
+        shadow.set_alpha(alpha)
+        shadow = optimize_immutable_alpha_surface(shadow, alpha=alpha)
         cache[key] = shadow
         self._scaled_soft_shadow_cache = cache
         return shadow
+
+    @staticmethod
+    def _mobile_soft_shadow(width: int, height: int) -> pygame.Surface:
+        # Cheap radial falloff built directly at final size with concentric
+        # ellipses (no scaling): center ~55% alpha, fading to transparent at
+        # the edge. Constant work per unique (w, h) bucket, cached by caller.
+        surf = pygame.Surface((width, height), pygame.SRCALPHA)
+        surf.fill((0, 0, 0, 0))
+        steps = 5
+        cx, cy = width / 2.0, height / 2.0
+        for i in range(steps):
+            ratio = 1.0 - i / steps  # 1.0 outer -> 0.0 inner
+            w = max(1, int(width * ratio))
+            h = max(1, int(height * ratio))
+            alpha = int(140 * (i / (steps - 1)) ** 1.4)
+            rect = pygame.Rect(0, 0, w, h)
+            rect.center = (int(cx), int(cy))
+            pygame.draw.ellipse(surf, (0, 0, 0, alpha), rect)
+        try:
+            surf = surf.convert_alpha()
+        except pygame.error:
+            pass
+        return surf
 
     def draw_shadow(
         self,
@@ -761,15 +848,16 @@ class RenderingEffectsMixin:
         squash = pulse * 1.4 if moving else 0.0
         scaled_w = max(1, round((width + squash * 3 + lift) * WORLD_SCALE))
         scaled_h = max(1, round((height - squash - lift * 0.32) * WORLD_SCALE))
-        # Soft contact shadow: cache the final iso-squashed dimensions as well as
-        # the radial template. Actor dimensions repeat heavily within and across
-        # frames, especially in crowds, so no rescale is needed on cache hits.
-        shadow = self._scaled_soft_shadow(scaled_w, scaled_h)
-        # set_alpha acts as a global multiplier on per-pixel-alpha surfaces in
-        # pygame-ce, so motion/lift modulation costs nothing per frame.
-        opacity = 210 if moving else 175
+        # Cache the final dimensions and quantized opacity. Keeping each source
+        # immutable lets SDL retain its RLE encoding instead of rebuilding it
+        # after a per-frame set_alpha call for every actor. Mobile uses the same
+        # radial template at a lower opacity: steady-state cost remains one
+        # cached alpha blit per actor, but contacts are transparent rather than
+        # the opaque ellipses that previously read as black holes under sprites.
+        mobile = bool(getattr(self, "mobile_mode", False))
+        opacity = (136 if moving else 112) if mobile else (210 if moving else 175)
         opacity = max(0, min(255, int(opacity - lift * 6.0)))
-        shadow.set_alpha(opacity)
+        shadow = self._scaled_soft_shadow(scaled_w, scaled_h, opacity)
         self.screen.blit(
             shadow,
             shadow.get_rect(center=(sx, sy + 10 * WORLD_SCALE)),
@@ -879,18 +967,24 @@ class RenderingEffectsMixin:
             )
 
     def _guidance_glow_layer(self, w: int, h: int) -> pygame.Surface:
-        # Reuse a persistent full-screen alpha layer instead of allocating
-        # one every frame; clear it before each use.
-        if not hasattr(self, "_guidance_glow_surface"):
-            self._guidance_glow_surface = pygame.Surface((w, h), pygame.SRCALPHA)
-        surf = self._guidance_glow_surface
-        if surf.get_size() != (w, h):
+        # The caller supplies tight, bucketed bounds around visible crack runs.
+        # Reuse that small alpha layer without ever clearing/blitting the full
+        # native Android viewport for a route that occupies only a narrow strip.
+        surf = getattr(self, "_guidance_glow_surface", None)
+        if surf is None or surf.get_size() != (w, h):
             surf = pygame.Surface((w, h), pygame.SRCALPHA)
+            try:
+                surf = surf.convert_alpha()
+            except pygame.error:
+                pass
             self._guidance_glow_surface = surf
+            self._guidance_glow_content_key = None
         surf.fill((0, 0, 0, 0))
         return surf
 
     def draw_story_relic_guidance(self) -> None:
+        self._guidance_glow_blit_rect: pygame.Rect | None = None
+        self._mobile_guidance_surface_size = (0, 0)
         target = self.story_relic_target_position()
         if (
             target is None
@@ -913,7 +1007,9 @@ class RenderingEffectsMixin:
         # instead of shimmering every frame.
         slab = self.theme.floor
         accent = self.story_state.accent if self.story_state else self.theme.accent
-        warm = self.mix(accent, (255, 232, 142), 0.5)
+        warm = self.apply_mobile_lightweight_ambient_color(
+            self.mix(accent, (255, 232, 142), 0.5)
+        )
         phase = math.floor(self.elapsed * 3.0) / 3.0
         pulse = 0.5 + 0.5 * math.sin(phase * 2.6)
 
@@ -935,7 +1031,6 @@ class RenderingEffectsMixin:
             ring_light_alpha = int(40 + 55 * pulse)
 
         screen_w, screen_h = self._screen_size()
-        glow_layer = self._guidance_glow_layer(screen_w, screen_h)
 
         # Follow the route's actual waypoints (trimmed a little in from the
         # player and the relic) so the crack bends with the corridor instead
@@ -992,8 +1087,12 @@ class RenderingEffectsMixin:
         # grooves (`_floor_groove`), but drawn with a dimming alpha so the
         # whole guiding light reads very faint while the player moves and
         # pulsates when the player stands still.
-        shadow = self.shade(slab, -24)
-        lip = self.shade(slab, 16)
+        shadow = self.apply_mobile_lightweight_ambient_color(
+            self.shade(slab, -24)
+        )
+        lip = self.apply_mobile_lightweight_ambient_color(
+            self.shade(slab, 16)
+        )
 
         # Tile-visibility clipping: the guiding light leads the player toward
         # the relic, which is usually far outside the current sight radius. To
@@ -1008,7 +1107,13 @@ class RenderingEffectsMixin:
                 return False
             return self.tile_visibility_alpha(ix, iy) > 0
 
-        lit_flags = [tile_lit(wx, wy) for wx, wy in crack_world]
+        guidance_view = pygame.Rect(0, 0, screen_w, screen_h).inflate(
+            TILE_W * 2, TILE_H * 2
+        )
+        lit_flags = [
+            tile_lit(wx, wy) and guidance_view.collidepoint(raw_screen[index])
+            for index, (wx, wy) in enumerate(crack_world)
+        ]
         runs: list[list[int]] = []
         current: list[int] = []
         for index, lit in enumerate(lit_flags):
@@ -1020,25 +1125,17 @@ class RenderingEffectsMixin:
         if current:
             runs.append(current)
 
-        drew_anything = False
-        for run in runs:
-            if len(run) < 2:
-                continue
-            run_points = [crack_points[i] for i in run]
-            pygame.draw.aalines(glow_layer, (*shadow, groove_alpha), False, run_points)
-            pygame.draw.aalines(
-                glow_layer,
-                (*lip, groove_alpha),
-                False,
-                [(p[0], p[1] - 1) for p in run_points],
-            )
-            # Faint warm seep at the bottom of the recess; the only colored cue.
-            seep_points = [(p[0], p[1] + 1) for p in run_points]
-            pygame.draw.lines(glow_layer, (*warm, seep_alpha), False, seep_points, 1)
-            drew_anything = True
+        visible_runs = [
+            [crack_points[index] for index in run]
+            for run in runs
+            if len(run) >= 2
+        ]
 
         # Short branch stubs at a couple of interior points (only in open,
         # lit floor) so it reads as a real fracture rather than a drawn line.
+        branch_segments: list[
+            tuple[tuple[float, float], tuple[float, float]]
+        ] = []
         for branch_index in (1, len(crack_points) - 2):
             if branch_index < 1 or branch_index >= len(crack_points) - 1:
                 continue
@@ -1052,68 +1149,168 @@ class RenderingEffectsMixin:
             tn_len = math.hypot(tn_x, tn_y) or 1.0
             perp_x, perp_y = -tn_y / tn_len, tn_x / tn_len
             stub_len = 5 * WORLD_SCALE
-            tip = (bx + perp_x * stub_len, by + perp_y * stub_len)
-            pygame.draw.aaline(glow_layer, (*shadow, groove_alpha), (bx, by), tip)
-            pygame.draw.aaline(
-                glow_layer,
-                (*lip, groove_alpha),
-                (bx, by - 1),
-                (tip[0], tip[1] - 1),
+            branch_segments.append(
+                ((bx, by), (bx + perp_x * stub_len, by + perp_y * stub_len))
             )
-            drew_anything = True
 
         # Target: a small worn ring groove lying flat on the iso floor (y
         # squashed to match the floor plane) in the same carved language, with
-        # a faint warm pinprick at its center. Clipped to the relic's own
-        # floor tile diamond so it can't spill over an adjacent wall; like the
-        # crack it dims while moving and pulsates when idle. Only drawn when
-        # the relic's tile is currently lit, so the ring never appears in the
-        # dark ahead of the player.
+        # a faint warm pinprick at its center. Build its visible segments before
+        # allocating the alpha surface so they contribute to the tight bounds.
+        ring_segments: list[
+            tuple[tuple[float, float], tuple[float, float]]
+        ] = []
+        ring_center: tuple[float, float] | None = None
         if tile_lit(tx, ty):
             target_sx, target_sy = self.world_to_screen(tx, ty)
             ring_cx = float(target_sx)
             ring_cy = float(target_sy - int(4 * WORLD_SCALE))
             ring_radius = 7.0 * WORLD_SCALE
-            r_tile_x, r_tile_y = int(tx), int(ty)
-            tcx, tcy = self.world_to_screen(r_tile_x + 0.5, r_tile_y + 0.5)
-            half_w = TILE_W / 2
-            half_h = TILE_H / 2
+            ring_view = pygame.Rect(0, 0, screen_w, screen_h).inflate(
+                math.ceil(ring_radius * 2), math.ceil(ring_radius * 2)
+            )
+            if ring_view.collidepoint(ring_cx, ring_cy):
+                r_tile_x, r_tile_y = int(tx), int(ty)
+                tcx, tcy = self.world_to_screen(r_tile_x + 0.5, r_tile_y + 0.5)
+                half_w = TILE_W / 2
+                half_h = TILE_H / 2
 
-            def in_diamond(px: float, py: float) -> bool:
-                return (abs(px - tcx) / half_w + abs(py - tcy) / half_h) <= 0.97
+                def in_diamond(px: float, py: float) -> bool:
+                    return (
+                        abs(px - tcx) / half_w + abs(py - tcy) / half_h
+                    ) <= 0.97
 
-            segs = 22
-            for i in range(segs):
-                a0 = i * (2 * math.pi / segs)
-                a1 = (i + 1) * (2 * math.pi / segs)
-                p0 = (
-                    ring_cx + math.cos(a0) * ring_radius,
-                    ring_cy + math.sin(a0) * ring_radius * 0.5,
-                )
-                p1 = (
-                    ring_cx + math.cos(a1) * ring_radius,
-                    ring_cy + math.sin(a1) * ring_radius * 0.5,
-                )
-                if not (in_diamond(p0[0], p0[1]) and in_diamond(p1[0], p1[1])):
-                    continue
-                pygame.draw.aaline(glow_layer, (*shadow, ring_groove_alpha), p0, p1)
-                pygame.draw.aaline(
-                    glow_layer,
-                    (*lip, ring_groove_alpha),
-                    (p0[0], p0[1] - 1),
-                    (p1[0], p1[1] - 1),
-                )
-            if in_diamond(ring_cx, ring_cy):
-                pygame.draw.circle(
-                    glow_layer,
-                    (*warm, ring_light_alpha),
-                    (int(ring_cx), int(ring_cy)),
-                    max(1, int(2 * WORLD_SCALE)),
-                )
-            drew_anything = True
+                segs = 22
+                for i in range(segs):
+                    a0 = i * (2 * math.pi / segs)
+                    a1 = (i + 1) * (2 * math.pi / segs)
+                    p0 = (
+                        ring_cx + math.cos(a0) * ring_radius,
+                        ring_cy + math.sin(a0) * ring_radius * 0.5,
+                    )
+                    p1 = (
+                        ring_cx + math.cos(a1) * ring_radius,
+                        ring_cy + math.sin(a1) * ring_radius * 0.5,
+                    )
+                    if in_diamond(p0[0], p0[1]) and in_diamond(p1[0], p1[1]):
+                        ring_segments.append((p0, p1))
+                if in_diamond(ring_cx, ring_cy):
+                    ring_center = (ring_cx, ring_cy)
 
-        if drew_anything:
-            self.screen.blit(glow_layer, (0, 0))
+        bounds_points = [point for run in visible_runs for point in run]
+        for start, end in branch_segments:
+            bounds_points.extend((start, end))
+        for start, end in ring_segments:
+            bounds_points.extend((start, end))
+        if ring_center is not None:
+            bounds_points.append(ring_center)
+        if not bounds_points:
+            return
+
+        padding = max(4, int(3 * WORLD_SCALE))
+        left = math.floor(min(point[0] for point in bounds_points)) - padding
+        top = math.floor(min(point[1] for point in bounds_points)) - padding
+        right = math.ceil(max(point[0] for point in bounds_points)) + padding + 1
+        bottom = math.ceil(max(point[1] for point in bounds_points)) + padding + 1
+        local_rect = pygame.Rect(left, top, right - left, bottom - top).clip(
+            pygame.Rect(0, 0, screen_w, screen_h)
+        )
+        if local_rect.width <= 0 or local_rect.height <= 0:
+            return
+
+        # Bucket dimensions reduce reallocations as the camera moves by a pixel,
+        # while clipping prevents a bucket at the edge from exceeding the target.
+        bucket = 32
+        layer_w = min(
+            screen_w - local_rect.x,
+            ((local_rect.width + bucket - 1) // bucket) * bucket,
+        )
+        layer_h = min(
+            screen_h - local_rect.y,
+            ((local_rect.height + bucket - 1) // bucket) * bucket,
+        )
+        glow_layer = self._guidance_glow_layer(layer_w, layer_h)
+        blit_rect = glow_layer.get_rect(topleft=local_rect.topleft)
+        self._guidance_glow_blit_rect = blit_rect.copy()
+        self._mobile_guidance_surface_size = glow_layer.get_size()
+
+        # Content cache: the carved crack only changes shape when its screen
+        # bounds move or the visibility run changes; re-rasterizing every
+        # segment on every frame was the dominant mobile relic-glitch cost
+        # (the overlay is alpha-blitted over lit floor, so stale frames also
+        # left visible trails before the buffer cleared).
+        content_key = (
+            local_rect.topleft,
+            (layer_w, layer_h),
+            groove_alpha,
+            seep_alpha,
+            ring_groove_alpha,
+            ring_light_alpha,
+            tuple(lit_flags),
+            shadow,
+            lip,
+            warm,
+            tuple(raw_screen),
+        )
+        if getattr(self, "_guidance_glow_content_key", None) == content_key:
+            self.screen.blit(glow_layer, blit_rect.topleft)
+            return
+        # Rasterizing below: the layer was just cleared by _guidance_glow_layer.
+        def local(point: tuple[float, float]) -> tuple[float, float]:
+            return point[0] - blit_rect.x, point[1] - blit_rect.y
+
+        for run_points in visible_runs:
+            points = [local(point) for point in run_points]
+            pygame.draw.aalines(glow_layer, (*shadow, groove_alpha), False, points)
+            pygame.draw.aalines(
+                glow_layer,
+                (*lip, groove_alpha),
+                False,
+                [(point[0], point[1] - 1) for point in points],
+            )
+            pygame.draw.lines(
+                glow_layer,
+                (*warm, seep_alpha),
+                False,
+                [(point[0], point[1] + 1) for point in points],
+                1,
+            )
+
+        for start, end in branch_segments:
+            local_start = local(start)
+            local_end = local(end)
+            pygame.draw.aaline(
+                glow_layer, (*shadow, groove_alpha), local_start, local_end
+            )
+            pygame.draw.aaline(
+                glow_layer,
+                (*lip, groove_alpha),
+                (local_start[0], local_start[1] - 1),
+                (local_end[0], local_end[1] - 1),
+            )
+
+        for start, end in ring_segments:
+            local_start = local(start)
+            local_end = local(end)
+            pygame.draw.aaline(
+                glow_layer, (*shadow, ring_groove_alpha), local_start, local_end
+            )
+            pygame.draw.aaline(
+                glow_layer,
+                (*lip, ring_groove_alpha),
+                (local_start[0], local_start[1] - 1),
+                (local_end[0], local_end[1] - 1),
+            )
+        if ring_center is not None:
+            pygame.draw.circle(
+                glow_layer,
+                (*warm, ring_light_alpha),
+                (round(ring_center[0] - blit_rect.x), round(ring_center[1] - blit_rect.y)),
+                max(1, int(2 * WORLD_SCALE)),
+            )
+
+        self._guidance_glow_content_key = content_key
+        self.screen.blit(glow_layer, blit_rect.topleft)
 
     def story_relic_guidance_route(
         self, target: tuple[float, float]
@@ -1290,20 +1487,13 @@ class RenderingEffectsMixin:
             self.elapsed + item.x * 0.31 + item.y * 0.17,
             "Common",
         )
-        sprite = visual.surface.copy()
-        if visual.is_asset:
-            # BLEND_RGB_ADD ignores the fill alpha, so scale the RGB channels
-            # explicitly. This keeps the generated facet contrast visible instead
-            # of washing every light plane to the full story color. Transparent
-            # padding remains alpha 0 and cannot leak a tinted rectangle.
-            tint_add = tuple(round(channel * 0.28) for channel in accent)
-            sprite.fill((*tint_add, 0), special_flags=pygame.BLEND_RGB_ADD)
-        else:
-            # Preserve the established procedural/legacy recolor byte-for-byte.
-            sprite.fill((*accent, 40), special_flags=pygame.BLEND_RGB_ADD)
         tilt = math.sin(self.elapsed * 2.8 + item.y) * 3.0
-        if abs(tilt) > 0.1:
-            sprite = pygame.transform.rotate(sprite, tilt)
+        tilt_bucket = int(round(tilt)) if visual.is_asset else tilt
+        # Tint + tilt are baked once per (frame, story accent, tilt bucket) and
+        # cached. The additive tint is masked by the sprite's own alpha so the
+        # colorkey-optimized asset cannot leak a magenta rectangle, and the
+        # cached rotated frame drops the per-frame copy/rotate off the ARM path.
+        sprite = self._story_relic_sprite(visual, accent, tilt_bucket)
         self.screen.blit(
             sprite, sprite.get_rect(midbottom=(sx, sy + 4 * WORLD_SCALE - bob))
         )
@@ -1323,6 +1513,51 @@ class RenderingEffectsMixin:
         if math.hypot(item.x - self.player.x, item.y - self.player.y) < 1.0:
             label = self.small_font.render(f"E: {item.display_name}", True, accent)
             self.screen.blit(label, label.get_rect(center=(sx, sy - 36 * WORLD_SCALE)))
+
+    def _story_relic_sprite(
+        self,
+        visual: object,
+        accent: Color,
+        tilt: float,
+    ) -> pygame.Surface:
+        """Return the cached tinted + tilted relic sprite for this frame.
+
+        The additive story tint is masked by the sprite's own alpha: the
+        authored relic is colorkey-optimized for Android's blitter, and an
+        unmasked BLEND_RGB_ADD paints the magenta colorkey background, which
+        then leaks as a solid box (and a spinning rectangle once rotated).
+        """
+
+        surface = visual.surface  # type: ignore[attr-defined]
+        is_asset = bool(visual.is_asset)  # type: ignore[attr-defined]
+        key = (id(surface), is_asset, accent, tilt)
+        cache = getattr(self, "_story_relic_sprite_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._story_relic_sprite_cache = cache
+        cached = cache.get(key)
+        if cached is not None and cached[0] is surface:
+            cache.move_to_end(key)
+            return cached[1]
+
+        sprite = surface.copy()
+        if is_asset:
+            tint_add = tuple(round(channel * 0.28) for channel in accent)
+            tint = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
+            tint.fill((*tint_add, 255))
+            # Keep the tint only where the relic art is actually opaque.
+            tint.blit(sprite, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+            sprite.blit(tint, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+        else:
+            sprite.fill((*accent, 40), special_flags=pygame.BLEND_RGB_ADD)
+        if abs(tilt) > 0.1:
+            sprite = pygame.transform.rotate(sprite, tilt)
+        sprite = optimize_immutable_alpha_surface(sprite)
+        cache[key] = (surface, sprite)
+        cache.move_to_end(key)
+        while len(cache) > 96:
+            cache.popitem(last=False)
+        return sprite
 
     def draw_trap(self, trap: Trap) -> None:
         if not trap.active:

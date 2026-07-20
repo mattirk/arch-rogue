@@ -23,7 +23,13 @@ from __future__ import annotations
 
 SCREEN_WIDTH = 2560
 SCREEN_HEIGHT = 1440
-FPS = 60
+# 4.3.17: frame-rate cap is now owned by `FramePacing` and the persisted
+# `frame_rate_cap` option (schema 7). `DEFAULT_FRAME_RATE` is the fresh-install
+# default for both desktop and mobile. `FPS` is retained as a deprecated alias
+# for one release so external callers and the web build keep working; new code
+# should read the live target from `Game.frame_pacing.target_fps`.
+DEFAULT_FRAME_RATE = 60
+FPS = DEFAULT_FRAME_RATE  # Deprecated cutoff: 4.4
 WORLD_SCALE = 5
 TILE_W = 64 * WORLD_SCALE
 TILE_H = 32 * WORLD_SCALE
@@ -83,9 +89,8 @@ DUNGEON_WALL_VARIANTS = 4
 DUNGEON_FLOOR_VARIANTS = 4
 
 # Milestone 3.16 — continuous multi-source colored lighting model.
-# The light buffer is rendered at 1/LIGHT_BUFFER_SCALE resolution and
-# smoothscaled up to the screen for the multiply pass; half-res keeps the
-# compositing cheap and the gradients smooth with zero per-frame allocations.
+# Desktop light-buffer divisor. Mobile quality tiers can increase this at
+# runtime before the reused buffer is scaled into the world multiply pass.
 LIGHT_BUFFER_SCALE = 2
 # Player lantern: warm firelight. The lantern radius reuses the sight radius so
 # the lit area and the combat/LOS reach stay identical.
@@ -134,3 +139,27 @@ LIGHT_SHADE_DOWNSAMPLE_LONG = 48
 LIGHT_SHADE_BIAS_Z = 0.55
 
 SlashEffect = tuple[float, float, float, float, float]
+
+# 4.3.17 frame-rate cap option (schema 7). The order here is also the cycle
+# order used by the Options row. "Unlimited" maps to ``clock.tick(0)``.
+FRAME_RATE_CAP_VALUES: tuple[int | str, ...] = (30, 60, 90, 120, "Unlimited")
+FRAME_RATE_CAP_DEFAULT: int | str = DEFAULT_FRAME_RATE
+
+
+def normalize_frame_rate_cap(value: object) -> int | str:
+    """Normalize a persisted frame-rate cap to one of FRAME_RATE_CAP_VALUES."""
+
+    if isinstance(value, str):
+        if value.strip().lower() == "unlimited":
+            return "Unlimited"
+        try:
+            value = int(value.strip())
+        except ValueError:
+            return FRAME_RATE_CAP_DEFAULT
+    try:
+        candidate = int(value)
+    except (TypeError, ValueError):
+        return FRAME_RATE_CAP_DEFAULT
+    if candidate in (30, 60, 90, 120):
+        return candidate
+    return FRAME_RATE_CAP_DEFAULT

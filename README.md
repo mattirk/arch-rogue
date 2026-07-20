@@ -116,7 +116,7 @@ Use the deterministic fixed-step harness to profile simulation and rendering sep
 .venv/bin/python tools/profile_game.py --scenario crowd --frames 240
 ```
 
-`--scenario quiet` profiles an unmodified generated floor; `crowd` clusters the generated population into an open arena to stress collisions, combat effects, sprites, and lighting. Use `--no-lighting`, `--depth`, `--zoom`, and `--output-dir` for focused comparisons. The harness prints cumulative hotspots and writes separate `cProfile` files for update and render work under `build/profiles/` by default.
+`--scenario quiet` profiles an unmodified generated floor; `crowd` clusters the generated population into an open arena to stress collisions, combat effects, sprites, and lighting. Use `--no-lighting`, `--depth`, `--zoom`, and `--output-dir` for focused comparisons. For the Android layout and logical-resolution tiers, pass the physical device size plus `--mobile --mobile-quality performance` (or `balanced` / `native`), for example `--width 2340 --height 1080`. The harness prints cumulative hotspots, render/viewport dimensions, asset-cache activity, and separate `cProfile` files for update and render work under `build/profiles/` by default.
 
 ## Controls
 
@@ -211,6 +211,10 @@ Arch Rogue supports keyboard/mouse and gamepad. Gamepad bindings can be remapped
 
 Left stick or D-pad moves, the right stick aims, face buttons trigger combat abilities, and the triggers handle dash and interact. Menu navigation, inventory, shop, character sheet, and cutscene selection all work on pad. Bindings are remappable from the Controls menu, with deadzone and hot-plug support.
 
+### Android (beta)
+
+The 4.3.x beta adds a landscape-only Android build with the same gameplay. Touch and drag inside the central viewport to move/aim, tap the six skill badges on the right rail, use the left rail for HP/MP/Stamina and Inventory/Character/Quest/Help, and use the on-screen Back/arrows/Select buttons in menus. Android Back closes the top overlay or opens the pause sheet. See `docs/android-beta.md` for install, upgrade, build, and known-issue notes; the CI workflow publishes a debug APK with every release.
+
 ## Goal
 
 Explore 10 dungeon depths, survive enemies and traps, identify and equip loot, use shrines wisely, resolve or ignore story guest dilemmas, and reach the exit stairs. Press `E` on stairs to descend. On depth 10, defeat the story-marked gate tyrant before using the stairs to complete the run.
@@ -229,6 +233,16 @@ In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from t
 ## License
 
 This project is licensed under the Apache License, Version 2.0 (see `LICENSE`).
+
+### Trademark Notice
+
+The "Arch Rogue" name and the octahedron crest logo are trademarks of the
+project author and are **not** part of the Apache-2.0 copyright grant
+(Apache-2.0 §6 reserves trademark rights). The OSS license covers copyright in
+the source code; it does not grant permission to use the Arch Rogue name or logo
+for branding, derivative product names, or promotion without separate written
+permission. Third-party bundled libraries retain their own trademarks, which
+are likewise not granted by this project's license.
 
 ### AI Provenance & Liability Notice
 

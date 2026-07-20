@@ -27,13 +27,21 @@ import math
 import os
 import re
 import sys
+import warnings
 from pathlib import Path
 from typing import Any
 
 import pygame
 
 from .audio import MusicProfile
-from .constants import SCREEN_HEIGHT, SCREEN_WIDTH, UI_SCALE
+from .constants import (
+    FRAME_RATE_CAP_DEFAULT,
+    FRAME_RATE_CAP_VALUES,
+    SCREEN_HEIGHT,
+    SCREEN_WIDTH,
+    UI_SCALE,
+    normalize_frame_rate_cap,
+)
 from .content import (
     DEFAULT_DIFFICULTY_NAME,
     DIFFICULTY_PROFILES,
@@ -41,6 +49,7 @@ from .content import (
     DifficultyProfile,
 )
 from .input import normalize_gamepad_mapping, serialize_gamepad_mapping
+from .mobile import android_runtime_active
 
 
 _BASE_DISPLAY_DPI = 96.0
@@ -48,6 +57,91 @@ _XFT_DPI_PATTERN = re.compile(
     r"^\s*Xft\.dpi\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
+
+MOBILE_RENDER_QUALITY_PERFORMANCE = "performance"
+MOBILE_RENDER_QUALITY_BALANCED = "balanced"
+MOBILE_RENDER_QUALITY_NATIVE = "native"
+MOBILE_RENDER_QUALITY_MODES: tuple[str, ...] = (
+    MOBILE_RENDER_QUALITY_PERFORMANCE,
+    MOBILE_RENDER_QUALITY_BALANCED,
+    MOBILE_RENDER_QUALITY_NATIVE,
+)
+MOBILE_RENDER_QUALITY_HEIGHT_CAPS: dict[str, int | None] = {
+    MOBILE_RENDER_QUALITY_PERFORMANCE: 540,
+    MOBILE_RENDER_QUALITY_BALANCED: 720,
+    MOBILE_RENDER_QUALITY_NATIVE: None,
+}
+MOBILE_RENDER_QUALITY_LABELS: dict[str, str] = {
+    MOBILE_RENDER_QUALITY_PERFORMANCE: "Performance · 540p cap",
+    MOBILE_RENDER_QUALITY_BALANCED: "Balanced · 720p cap",
+    MOBILE_RENDER_QUALITY_NATIVE: "Native · full resolution",
+}
+ANDROID_RENDER_DRIVER_CANDIDATES: tuple[str, ...] = ("opengles2", "opengles")
+
+
+def default_mobile_render_quality(mobile: bool) -> str:
+    """Return the fresh-install quality default for the active platform."""
+
+    return (
+        MOBILE_RENDER_QUALITY_PERFORMANCE
+        if mobile
+        else MOBILE_RENDER_QUALITY_NATIVE
+    )
+
+
+def normalize_mobile_render_quality(
+    value: object,
+    *,
+    default: str = MOBILE_RENDER_QUALITY_PERFORMANCE,
+) -> str:
+    """Normalize a persisted quality name without depending on runtime state."""
+
+    fallback = str(default).strip().lower()
+    if fallback not in MOBILE_RENDER_QUALITY_MODES:
+        fallback = MOBILE_RENDER_QUALITY_PERFORMANCE
+    quality = str(value).strip().lower() if value is not None else ""
+    return quality if quality in MOBILE_RENDER_QUALITY_MODES else fallback
+
+
+def mobile_logical_resolution(
+    physical_size: tuple[int, int], quality: object
+) -> tuple[int, int]:
+    """Cap render height while retaining aspect ratio and never upscaling."""
+
+    try:
+        width = int(physical_size[0])
+        height = int(physical_size[1])
+    except (IndexError, TypeError, ValueError) as exc:
+        raise ValueError("physical_size must contain two positive integers") from exc
+    if width <= 0 or height <= 0:
+        raise ValueError("physical_size must contain two positive integers")
+
+    mode = normalize_mobile_render_quality(quality)
+    height_cap = MOBILE_RENDER_QUALITY_HEIGHT_CAPS[mode]
+    if height_cap is None or height <= height_cap:
+        return width, height
+
+    logical_height = height_cap
+    logical_width = max(
+        1,
+        min(width, (width * logical_height + height // 2) // height),
+    )
+    return logical_width, logical_height
+
+
+def mobile_render_quality_label(value: object) -> str:
+    """Return the concise options-menu label for a quality mode."""
+
+    return MOBILE_RENDER_QUALITY_LABELS[normalize_mobile_render_quality(value)]
+
+
+def next_mobile_render_quality(value: object, forward: bool = True) -> str:
+    """Cycle through performance, balanced, and native quality modes."""
+
+    quality = normalize_mobile_render_quality(value)
+    index = MOBILE_RENDER_QUALITY_MODES.index(quality)
+    delta = 1 if forward else -1
+    return MOBILE_RENDER_QUALITY_MODES[(index + delta) % len(MOBILE_RENDER_QUALITY_MODES)]
 
 
 def _valid_display_scale(value: Any) -> float | None:
@@ -231,9 +325,16 @@ def detect_host_display_scale() -> float | None:
 
 class OptionsMixin:
     def prepare_display_scaling(self) -> None:
-        # SDL must declare DPI awareness before its video subsystem starts.
+        # SDL must declare DPI awareness and scaling hints before its video
+        # subsystem starts. Nearest-neighbor output keeps logical pixels crisp.
         if sys.platform == "win32":
             os.environ.setdefault("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2")
+        if getattr(self, "mobile_mode", False):
+            os.environ["SDL_RENDER_SCALE_QUALITY"] = "0"
+            if android_runtime_active():
+                # SDL_CreateRenderer otherwise accepts a software renderer. On
+                # Android that makes every fullscreen scale/present CPU-bound.
+                os.environ.setdefault("SDL_RENDER_DRIVER", "opengles2")
 
     def _set_ui_scale(
         self,
@@ -263,11 +364,17 @@ class OptionsMixin:
         )
         if not getattr(self, "ui_scale_auto", True) and not legacy_migration:
             return False
-        display_scale = detect_host_display_scale()
+        if getattr(self, "mobile_mode", False) and hasattr(self, "screen"):
+            width, height = self.screen.get_size()
+            display_scale = max(1.0, min(width / 1280.0, height / 720.0))
+            target = max(1, min(4, math.floor(display_scale + 0.5)))
+        else:
+            display_scale = detect_host_display_scale()
+            if display_scale is None:
+                self.detected_display_scale = None
+                return False
+            target = ui_scale_from_display_scale(display_scale)
         self.detected_display_scale = display_scale
-        if display_scale is None:
-            return False
-        target = ui_scale_from_display_scale(display_scale)
         if legacy_migration:
             self._legacy_ui_scale_migration = False
             # Schema 4 always serialized a scale, so it could not distinguish
@@ -303,6 +410,117 @@ class OptionsMixin:
             return f"Auto · {self.ui_scale}x"
         return f"{self.ui_scale}x"
 
+    def render_quality_label(self) -> str:
+        return mobile_render_quality_label(
+            getattr(
+                self,
+                "mobile_render_quality",
+                default_mobile_render_quality(
+                    bool(getattr(self, "mobile_mode", False))
+                ),
+            )
+        )
+
+    def frame_rate_cap_label(self) -> str:
+        cap = normalize_frame_rate_cap(
+            getattr(self, "frame_rate_cap", FRAME_RATE_CAP_DEFAULT)
+        )
+        return "Unlimited" if cap == "Unlimited" else f"{int(cap)} FPS"
+
+    def cycle_frame_rate_cap(self, forward: bool = True) -> bool:
+        current = normalize_frame_rate_cap(
+            getattr(self, "frame_rate_cap", FRAME_RATE_CAP_DEFAULT)
+        )
+        try:
+            index = FRAME_RATE_CAP_VALUES.index(current)
+        except ValueError:
+            index = FRAME_RATE_CAP_VALUES.index(FRAME_RATE_CAP_DEFAULT)
+        delta = 1 if forward else -1
+        new_cap = FRAME_RATE_CAP_VALUES[
+            (index + delta) % len(FRAME_RATE_CAP_VALUES)
+        ]
+        if new_cap == current:
+            return False
+        self.frame_rate_cap = new_cap
+        frame_pacing = getattr(self, "frame_pacing", None)
+        if frame_pacing is not None:
+            frame_pacing.set_frame_rate_cap(new_cap)
+        self.save_options()
+        return True
+
+    def toggle_perf_overlay(self) -> bool:
+        self.show_perf_overlay = not bool(
+            getattr(self, "show_perf_overlay", False)
+        )
+        self.save_options()
+        # Apply immediately so the overlay appears/disappears without a restart.
+        if hasattr(self, "_reconcile_performance_monitor"):
+            self._reconcile_performance_monitor()
+        return self.show_perf_overlay
+
+    def _invalidate_render_caches(self) -> None:
+        # 4.3.17: single cache-invalidation seam. Graphics-mode, resolution,
+        # and font changes all route through here so a future cache addition
+        # cannot be missed by one of the call sites. Each cache rebuilds
+        # lazily on the next draw; this never changes render output (the WS-B
+        # pixel-hash regression test guards that). Caches are read via getattr
+        # because rebuild_fonts() runs early in __init__ before some of them
+        # (e.g. tile_cache) are constructed.
+        for attr in (
+            "ambient_overlay_cache",
+            "_hud_panel_cache",
+            "_hud_icon_cache",
+            "_aim_cone_cache",
+            "_alpha_tile_cache",
+            "_title_logo_cache",
+            "_fitted_ui_font_cache",
+            "_impact_overlay_cache",
+            "tile_cache",
+            "door_tile_cache",
+        ):
+            cache = getattr(self, attr, None)
+            if cache is not None and hasattr(cache, "clear"):
+                cache.clear()
+        if hasattr(self, "reset_lighting_caches"):
+            self.reset_lighting_caches()
+        if hasattr(self, "clear_stage_render_cache"):
+            self.clear_stage_render_cache()
+
+    def _invalidate_resolution_sized_caches(self) -> None:
+        # Actor animation frames are resolution-independent and expensive to
+        # decode from an APK. Keep them warm when only the logical canvas changes.
+        # Render caches flow through the single _invalidate_render_caches() seam;
+        # the buffers reset below are resolution-sized layer surfaces, not
+        # memoized render caches, so they stay here.
+        self._invalidate_render_caches()
+        release_gpu_textures = getattr(self, "release_mobile_gpu_textures", None)
+        if callable(release_gpu_textures):
+            release_gpu_textures()
+        self._world_layer = None
+        self._mobile_floor_layer_cache = None
+        self._screen_flash_surface = None
+
+    def cycle_mobile_render_quality(self, forward: bool = True) -> bool:
+        if not getattr(self, "mobile_mode", False):
+            return False
+        current = normalize_mobile_render_quality(
+            getattr(self, "mobile_render_quality", None)
+        )
+        quality = next_mobile_render_quality(current, forward)
+        if quality == current:
+            return False
+
+        self.mobile_render_quality = quality
+        self.fullscreen = True
+        self.screen = self.apply_display_mode()
+        self._mobile_layout_cache = None
+        self.refresh_mobile_safe_insets()
+        self.mobile_layout()
+        self.refresh_automatic_ui_scale()
+        self._invalidate_resolution_sized_caches()
+        self.save_options()
+        return True
+
     def display_size(self) -> tuple[int, int]:
         try:
             sizes = pygame.display.get_desktop_sizes()
@@ -313,9 +531,180 @@ class OptionsMixin:
         display_info = pygame.display.Info()
         return display_info.current_w, display_info.current_h
 
+    @staticmethod
+    def _mobile_slow_renderer_warning(value: object) -> bool:
+        message = getattr(value, "message", value)
+        return "no fast renderer available" in str(message).lower()
+
+    def _reset_android_display_subsystem(self) -> None:
+        # A failed SDL_CreateRenderer tears down Pygame's default window but can
+        # leave the video subsystem initialized. Reinitializing gives the next
+        # GLES candidate a clean window/context. Custom textures must die before
+        # the display-owned renderer or their wrappers retain invalid pointers.
+        release_gpu_renderer = getattr(self, "release_mobile_gpu_renderer", None)
+        if callable(release_gpu_renderer):
+            release_gpu_renderer()
+        try:
+            title = pygame.display.get_caption()[0] or "Arch Rogue"
+        except pygame.error:
+            title = "Arch Rogue"
+        try:
+            pygame.display.quit()
+        finally:
+            pygame.display.init()
+            pygame.display.set_caption(title)
+
+    def _record_mobile_renderer(
+        self,
+        surface: pygame.Surface,
+        *,
+        name: str,
+        accelerated: bool,
+        failures: list[str],
+    ) -> None:
+        self._mobile_renderer_name = name
+        self._mobile_renderer_accelerated = accelerated
+        self._mobile_renderer_failures = tuple(failures)
+        self._mobile_renderer_logical_size = surface.get_size()
+        self._mobile_renderer_scale = (0.0, 0.0)
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                from pygame._sdl2.video import Renderer, Window
+
+                window = Window.from_display_module()
+                renderer = Renderer.from_window(window)
+                self._mobile_renderer_logical_size = tuple(renderer.logical_size)
+                self._mobile_renderer_scale = tuple(renderer.scale)
+                configure_gpu_renderer = getattr(
+                    self, "configure_mobile_gpu_renderer", None
+                )
+                if callable(configure_gpu_renderer):
+                    configure_gpu_renderer(window, renderer)
+        except (AttributeError, ImportError, TypeError, ValueError, pygame.error):
+            release_gpu_renderer = getattr(self, "release_mobile_gpu_renderer", None)
+            if callable(release_gpu_renderer):
+                release_gpu_renderer()
+        try:
+            window_size = pygame.display.get_window_size()
+        except pygame.error:
+            window_size = (0, 0)
+        try:
+            cpu_features = pygame.system.get_cpu_instruction_sets()
+            neon = bool(cpu_features.get("NEON", False))
+        except (AttributeError, TypeError, pygame.error):
+            neon = None
+        try:
+            smoothscale = pygame.transform.get_smoothscale_backend()
+        except (AttributeError, ValueError, pygame.error):
+            smoothscale = "unknown"
+        alpha_sdl2 = "PYGAME_BLEND_ALPHA_SDL2" in os.environ
+        self._mobile_cpu_neon = neon
+        self._mobile_alpha_sdl2 = alpha_sdl2
+        self._mobile_surface_masks = tuple(int(mask) for mask in surface.get_masks())
+        neon_label = "yes" if neon is True else "no" if neon is False else "unknown"
+        mask_label = "/".join(f"{mask:08x}" for mask in self._mobile_surface_masks)
+        failure_label = "|".join(failures) if failures else "none"
+        print(
+            "ARCH_ROGUE_PERF display "
+            f"renderer={name} accelerated={'yes' if accelerated else 'no'} "
+            f"alpha_sdl2={'yes' if alpha_sdl2 else 'no'} neon={neon_label} "
+            f"smoothscale={smoothscale} bpp={surface.get_bitsize()} masks={mask_label} "
+            f"logical={surface.get_width()}x{surface.get_height()} "
+            f"window={window_size[0]}x{window_size[1]} "
+            f"renderer_logical={self._mobile_renderer_logical_size[0]}x"
+            f"{self._mobile_renderer_logical_size[1]} "
+            f"renderer_scale={self._mobile_renderer_scale[0]:.3f}x"
+            f"{self._mobile_renderer_scale[1]:.3f} failures={failure_label}",
+            flush=True,
+        )
+
+    def _apply_android_scaled_mode(
+        self, logical_size: tuple[int, int]
+    ) -> pygame.Surface:
+        release_gpu_renderer = getattr(self, "release_mobile_gpu_renderer", None)
+        if callable(release_gpu_renderer):
+            release_gpu_renderer()
+        flags = pygame.FULLSCREEN | pygame.SCALED
+        requested = os.environ.get("SDL_RENDER_DRIVER", "").strip().lower()
+        candidates: list[str] = []
+        for driver in (requested, *ANDROID_RENDER_DRIVER_CANDIDATES):
+            if driver and driver != "software" and driver not in candidates:
+                candidates.append(driver)
+
+        failures: list[str] = []
+        for index, driver in enumerate(candidates):
+            if index:
+                self._reset_android_display_subsystem()
+            os.environ["SDL_RENDER_DRIVER"] = driver
+            try:
+                # Pygame CE emits this warning only after SDL_GetRendererInfo
+                # reports no SDL_RENDERER_ACCELERATED flag. Turning that one
+                # warning into an exception also makes display.c clean up the
+                # unusable software renderer before we try another candidate.
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "error",
+                        message=r"^no fast renderer available$",
+                        category=Warning,
+                    )
+                    surface = pygame.display.set_mode(logical_size, flags)
+            except (pygame.error, Warning) as exc:
+                failures.append(f"{driver}:{type(exc).__name__}:{exc}")
+                continue
+            self._record_mobile_renderer(
+                surface,
+                name=driver,
+                accelerated=True,
+                failures=failures,
+            )
+            return surface
+
+        # GLES2 is mandatory on the supported Android API range, but retain a
+        # last-resort automatic path so a vendor renderer failure does not turn
+        # a performance problem into an app-launch failure. Telemetry marks a
+        # software fallback explicitly.
+        if candidates:
+            self._reset_android_display_subsystem()
+        os.environ.pop("SDL_RENDER_DRIVER", None)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            surface = pygame.display.set_mode(logical_size, flags)
+        accelerated = not any(
+            self._mobile_slow_renderer_warning(value) for value in caught
+        )
+        renderer_name = "auto" if accelerated else "software"
+        self._record_mobile_renderer(
+            surface,
+            name=renderer_name,
+            accelerated=accelerated,
+            failures=failures,
+        )
+        return surface
+
     def apply_display_mode(self, headless: bool = False) -> pygame.Surface:
         if headless:
             return pygame.display.set_mode(self.windowed_size, pygame.HIDDEN)
+        if getattr(self, "mobile_mode", False):
+            # Android SDL owns the native landscape surface. Render to a capped
+            # same-aspect logical surface and let SDL's GPU scaler fill the
+            # physical display; low-resolution devices remain native-sized.
+            physical_size = self.display_size()
+            if physical_size[1] > physical_size[0]:
+                # Some Android devices report the boot orientation until the
+                # manifest-locked landscape activity creates its first window.
+                physical_size = (physical_size[1], physical_size[0])
+            logical_size = mobile_logical_resolution(
+                physical_size,
+                getattr(
+                    self,
+                    "mobile_render_quality",
+                    MOBILE_RENDER_QUALITY_PERFORMANCE,
+                ),
+            )
+            if android_runtime_active():
+                return self._apply_android_scaled_mode(logical_size)
+            return pygame.display.set_mode(logical_size, pygame.FULLSCREEN | pygame.SCALED)
         if self.fullscreen:
             # Use SDL's scaled fullscreen path so the game surface is expanded to
             # the actual monitor instead of being placed unscaled in the top-left
@@ -335,14 +724,12 @@ class OptionsMixin:
         # Clear the cached font.size() results: the Font objects are replaced, so
         # keys based on id(font) would otherwise collide with the new fonts.
         self._text_size_cache = {}
-        # Rendered HUD text surfaces and panel art are keyed by id(font) /
-        # ui_scale, so drop them when fonts are rebuilt (which also fires on
-        # ui_scale / resolution changes) to avoid stale or colliding entries.
+        # Rendered HUD text surfaces keyed by id(font) / ui_scale; the broader
+        # render caches (HUD panels/icons, title logo, fitted fonts, tiles,
+        # aim cone, ambient overlay, impact overlays, lighting, stage) flow
+        # through the single _invalidate_render_caches() seam.
         self._ui_text_cache = {}
-        self._hud_panel_cache = {}
-        self._hud_icon_cache = {}
-        self._title_logo_cache = {}
-        self._fitted_ui_font_cache = {}
+        self._invalidate_render_caches()
 
     def available_difficulty_profiles(self) -> tuple[DifficultyProfile, ...]:
         return tuple(
@@ -431,10 +818,16 @@ class OptionsMixin:
     def options_to_dict(self) -> dict[str, Any]:
         return {
             "version": 1,
-            "schema_version": 5,
+            "schema_version": 7,
             "audio_enabled": self.audio_enabled,
             "music_enabled": self.music_enabled,
             "fullscreen": self.fullscreen,
+            "mobile_render_quality": normalize_mobile_render_quality(
+                getattr(self, "mobile_render_quality", None),
+                default=default_mobile_render_quality(
+                    bool(getattr(self, "mobile_mode", False))
+                ),
+            ),
             "ui_scale": self.ui_scale,
             "ui_scale_auto": getattr(self, "ui_scale_auto", True),
             "difficulty": self.difficulty_profile().name,
@@ -449,6 +842,14 @@ class OptionsMixin:
             "lighting_enabled": getattr(self, "_lighting_enabled", True),
             "lighting_normal_maps": getattr(self, "_lighting_normal_maps", True),
             "legacy_graphics": getattr(self, "legacy_graphics", False),
+            # Schema v7 (4.3.17): frame-rate cap and dev perf overlay. Older
+            # option files migrate to 60 FPS / overlay off.
+            "frame_rate_cap": normalize_frame_rate_cap(
+                getattr(self, "frame_rate_cap", FRAME_RATE_CAP_DEFAULT)
+            ),
+            "show_perf_overlay": bool(
+                getattr(self, "show_perf_overlay", False)
+            ),
         }
 
     def load_options(self) -> bool:
@@ -457,6 +858,22 @@ class OptionsMixin:
         except (OSError, json.JSONDecodeError):
             return False
         try:
+            schema_version = int(data.get("schema_version", 1))
+            mobile_mode = bool(getattr(self, "mobile_mode", False))
+            # Deprecation cutoff: 4.4 — legacy mobile quality migration covered
+            # schema < 6 option files (4.2.x -> 4.3.0 upgrade). Keep through
+            # 4.3.x; remove in 4.4.
+            legacy_mobile_quality_migration = (
+                mobile_mode
+                and schema_version < 6
+                and "mobile_render_quality" not in data
+            )
+            quality_default = default_mobile_render_quality(mobile_mode)
+            if legacy_mobile_quality_migration:
+                quality_default = MOBILE_RENDER_QUALITY_PERFORMANCE
+            self.mobile_render_quality = normalize_mobile_render_quality(
+                data.get("mobile_render_quality"), default=quality_default
+            )
             self.audio_enabled = bool(data.get("audio_enabled", True))
             self.music_enabled = bool(data.get("music_enabled", False))
             self.fullscreen = bool(data.get("fullscreen", True))
@@ -468,6 +885,9 @@ class OptionsMixin:
             loaded_ui_scale_auto = bool(
                 data.get("ui_scale_auto", not has_saved_ui_scale)
             )
+            # Deprecation cutoff: 4.4 -- legacy UI-scale migration covered
+            # schema-4 option files that serialized a scale without an auto
+            # flag. Keep through 4.3.x; remove in 4.4.
             legacy_ui_scale_migration = (
                 has_saved_ui_scale and not has_auto_mode
             )
@@ -485,17 +905,36 @@ class OptionsMixin:
             self.gamepad_mapping = normalize_gamepad_mapping(
                 data.get("gamepad_mapping")
             )
-            # Milestone 3.16 - continuous lighting. Missing on older saves
-            # falls back to safe native defaults. The web build forces these
-            # off in make_game.
+            # Milestone 3.16 - continuous lighting. Pre-v6 mobile files already
+            # serialized the old True default, so a no-quality migration must
+            # explicitly switch normal maps off to avoid the cold ARM cache spike.
+            # Schema-v6 choices and non-migrating explicit values stay authoritative.
             self._lighting_enabled = bool(data.get("lighting_enabled", True))
-            self._lighting_normal_maps = bool(data.get("lighting_normal_maps", True))
+            if legacy_mobile_quality_migration:
+                self._lighting_normal_maps = False
+            else:
+                normal_maps_default = False if mobile_mode else True
+                self._lighting_normal_maps = bool(
+                    data.get("lighting_normal_maps", normal_maps_default)
+                )
             # Schema v4 (milestone 4.0): modern asset sprites are the default.
             # Older option files omit this field and migrate to modern graphics;
             # missing individual resources still fall back procedurally.
             self.legacy_graphics = bool(data.get("legacy_graphics", False))
+            # Schema v7 (4.3.17): frame-rate cap + dev perf overlay. Pre-v7
+            # option files default to 60 FPS and overlay off; run saves stay
+            # schema 5 and are unaffected.
+            self.frame_rate_cap = normalize_frame_rate_cap(
+                data.get("frame_rate_cap", FRAME_RATE_CAP_DEFAULT)
+            )
+            self.show_perf_overlay = bool(data.get("show_perf_overlay", False))
         except (TypeError, ValueError):
             return False
+        frame_pacing = getattr(self, "frame_pacing", None)
+        if frame_pacing is not None:
+            frame_pacing.set_frame_rate_cap(
+                getattr(self, "frame_rate_cap", FRAME_RATE_CAP_DEFAULT)
+            )
         self._set_ui_scale(
             loaded_ui_scale,
             automatic=loaded_ui_scale_auto,
@@ -532,18 +971,9 @@ class OptionsMixin:
         ui_assets = getattr(self, "ui_assets", None)
         if ui_assets is not None and hasattr(ui_assets, "clear_derived_caches"):
             ui_assets.clear_derived_caches()
-        if hasattr(self, "clear_stage_render_cache"):
-            self.clear_stage_render_cache()
-        self._hud_panel_cache = {}
-        self._hud_icon_cache = {}
-        self._aim_cone_cache = {}
+        # All memoized render caches flow through the single invalidation seam.
+        self._invalidate_render_caches()
         tile_cache = getattr(self, "tile_cache", None)
-        if tile_cache is not None:
-            tile_cache.clear()
-        self.door_tile_cache = {}
-        self._alpha_tile_cache = {}
-        if hasattr(self, "reset_lighting_caches"):
-            self.reset_lighting_caches()
         if tile_cache is not None and hasattr(self, "theme"):
             self.prewarm_tile_cache()
 

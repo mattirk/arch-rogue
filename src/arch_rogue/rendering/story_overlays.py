@@ -102,6 +102,7 @@ def _duel_breathing(
 class RenderingStoryOverlayMixin:
     def draw_story_panel(self) -> None:
         self._story_panel_rect: pygame.Rect | None = None
+        self._story_panel_render_key: object | None = None
         # 4.2.2: scroll introspection resets whenever the panel is not drawn
         # so input paging never acts on a stale overflow range.
         self._story_panel_scrollbar_rect: pygame.Rect | None = None
@@ -112,23 +113,34 @@ class RenderingStoryOverlayMixin:
         if not lines:
             return
         width, height = self.screen.get_size()
-        bottom_panel_top = height - self.hud_panel_height()
-        x = self.ui(18)
-        y = self.ui(104)
-        panel_w = min(width - self.ui(36), self.ui(620))
-        max_h = min(self.ui(190), bottom_panel_top - y - self.ui(16))
-        # When a boss bar is on screen (anchored above the bottom HUD panel),
-        # cap the story panel so it never overlaps the boss bar cluster.
-        boss_top = self.boss_bar_top()
-        if boss_top is not None:
-            max_h = min(max_h, max(0, boss_top - y - self.ui(8)))
-        prompt_rect = getattr(self, "_interaction_prompt_rect", None)
-        if (
-            isinstance(prompt_rect, pygame.Rect)
-            and x < prompt_rect.right
-            and x + panel_w > prompt_rect.x
-        ):
-            max_h = min(max_h, max(0, prompt_rect.y - y - self.ui(8)))
+        mobile = bool(getattr(self, "mobile_mode", False))
+        if mobile:
+            layout = self.mobile_layout()
+            viewport = layout.world_viewport
+            gameplay = layout.gameplay_rect.move(-viewport.x, -viewport.y)
+            margin = self.ui(14)
+            x = gameplay.x + margin
+            y = gameplay.y + margin
+            panel_w = gameplay.width - margin * 2
+            max_h = gameplay.height - margin * 2
+        else:
+            bottom_panel_top = height - self.hud_panel_height()
+            x = self.ui(18)
+            y = self.ui(104)
+            panel_w = min(width - self.ui(36), self.ui(620))
+            max_h = min(self.ui(190), bottom_panel_top - y - self.ui(16))
+            # When a boss bar is on screen (anchored above the bottom HUD panel),
+            # cap the story panel so it never overlaps the boss bar cluster.
+            boss_top = self.boss_bar_top()
+            if boss_top is not None:
+                max_h = min(max_h, max(0, boss_top - y - self.ui(8)))
+            prompt_rect = getattr(self, "_interaction_prompt_rect", None)
+            if (
+                isinstance(prompt_rect, pygame.Rect)
+                and x < prompt_rect.right
+                and x + panel_w > prompt_rect.x
+            ):
+                max_h = min(max_h, max(0, prompt_rect.y - y - self.ui(8)))
         if panel_w <= self.ui(220) or max_h < self.ui(84):
             return
         accent = self.story_state.accent if self.story_state else self.theme.accent
@@ -213,6 +225,16 @@ class RenderingStoryOverlayMixin:
                 len(wrapped_lines),
             )
             self._story_panel_scrollbar_rect = track.move(rect.x, rect.y)
+        self._story_panel_render_key = (
+            tuple(lines),
+            scroll,
+            max_lines,
+            tuple(accent),
+            rect.size,
+            self.ui_scale,
+            id(self.small_font),
+            self.asset_ui_active(),
+        )
         self.screen.blit(surface, rect)
 
     def draw_story_panel_scrollbar(
@@ -474,7 +496,8 @@ class RenderingStoryOverlayMixin:
         choices_to_draw = choices[: min(9, len(choices))] if narration_complete else []
         choice_gap = max(self.ui(4), 6)
         choice_w = inner.width
-        footer_h = self.small_font.get_height()
+        show_input_hints = not bool(getattr(self, "mobile_mode", False))
+        footer_h = self.small_font.get_height() if show_input_hints else 0
         choice_entries = [(choice.label, choice.detail) for choice in choices_to_draw]
         choice_heights = [
             self.cutscene_response_height(label, detail, choice_w)
@@ -483,9 +506,8 @@ class RenderingStoryOverlayMixin:
         choices_block_h = (
             sum(choice_heights) + max(0, len(choice_heights) - 1) * choice_gap
         )
-        choices_start = (
-            inner.bottom - footer_h - self.ui(10) - choices_block_h
-        )
+        footer_gap = self.ui(10) if show_input_hints else 0
+        choices_start = inner.bottom - footer_h - footer_gap - choices_block_h
 
         progress_h = max(self.ui(3), 3)
         line_h = max(self.small_font.get_height() + self.ui(3), self.ui(18))
@@ -752,35 +774,38 @@ class RenderingStoryOverlayMixin:
                 is_selected=index == getattr(self, "cutscene_cursor", 0),
             )
 
-        footer_text = (
-            "Narrator speaking… Enter/E/Space or gamepad A reveals the full line."
-            if not narration_complete
-            else (
-                "Arrow keys select · Enter/E confirms · 1-3 quick-picks · D-pad + A."
-                if choices_to_draw
-                else "Enter/E or gamepad A advances. Esc/B closes non-blocking dialogue."
-            )
-        )
-        if self.story_intro_pending and narration_complete:
+        if show_input_hints:
             footer_text = (
-                "Arrow keys select · Enter/E confirms · 1-3 quick-picks the guest relic."
+                "Narrator speaking… Enter/E/Space or gamepad A reveals the full line."
+                if not narration_complete
+                else (
+                    "Arrow keys select · Enter/E confirms · 1-3 quick-picks · D-pad + A."
+                    if choices_to_draw
+                    else "Enter/E or gamepad A advances. Esc/B closes non-blocking dialogue."
+                )
             )
-        if narration_complete and self._cutscene_narration_scroll_max > 0:
-            action_hint = (
-                "Arrows select · Enter/E confirms."
-                if choices_to_draw
-                else "Enter/E or gamepad A advances."
+            if self.story_intro_pending and narration_complete:
+                footer_text = (
+                    "Arrow keys select · Enter/E confirms · 1-3 quick-picks the guest relic."
+                )
+            if narration_complete and self._cutscene_narration_scroll_max > 0:
+                action_hint = (
+                    "Arrows select · Enter/E confirms."
+                    if choices_to_draw
+                    else "Enter/E or gamepad A advances."
+                )
+                footer_text = (
+                    "Scroll: wheel/PgUp/PgDn/right stick · " + action_hint
+                )
+            self.draw_ui_text(
+                surface,
+                footer_text,
+                self.small_font,
+                (205, 185, 225),
+                pygame.Rect(
+                    inner.x, inner.bottom - footer_h, inner.width, footer_h
+                ),
             )
-            footer_text = (
-                "Scroll: wheel/PgUp/PgDn/right stick · " + action_hint
-            )
-        self.draw_ui_text(
-            surface,
-            footer_text,
-            self.small_font,
-            (205, 185, 225),
-            pygame.Rect(inner.x, inner.bottom - footer_h, inner.width, footer_h),
-        )
         self.screen.blit(surface, rect)
 
     # ------------------------------------------------------------------
@@ -1850,31 +1875,32 @@ class RenderingStoryOverlayMixin:
                     key_size // 2 + self.ui(2),
                 )
             surface.blit(icon, key_rect)
-            badge_size = max(8, min(key_size // 3, self.ui(11)))
-            badge_rect = pygame.Rect(0, 0, badge_size, badge_size)
-            badge_rect.bottomright = key_rect.bottomright
-            pygame.draw.circle(
-                surface,
-                (*self.shade(choice_color, -70), 245),
-                badge_rect.center,
-                badge_size // 2,
-            )
-            pygame.draw.circle(
-                surface,
-                (*self.HUD_GOLD, 220),
-                badge_rect.center,
-                badge_size // 2,
-                max(1, self.ui(1)),
-            )
-            self.draw_ui_text(
-                surface,
-                str(index + 1),
-                self.tiny_font,
-                (246, 235, 210),
-                badge_rect,
-                align="center",
-                valign="center",
-            )
+            if not getattr(self, "mobile_mode", False):
+                badge_size = max(8, min(key_size // 3, self.ui(11)))
+                badge_rect = pygame.Rect(0, 0, badge_size, badge_size)
+                badge_rect.bottomright = key_rect.bottomright
+                pygame.draw.circle(
+                    surface,
+                    (*self.shade(choice_color, -70), 245),
+                    badge_rect.center,
+                    badge_size // 2,
+                )
+                pygame.draw.circle(
+                    surface,
+                    (*self.HUD_GOLD, 220),
+                    badge_rect.center,
+                    badge_size // 2,
+                    max(1, self.ui(1)),
+                )
+                self.draw_ui_text(
+                    surface,
+                    str(index + 1),
+                    self.tiny_font,
+                    (246, 235, 210),
+                    badge_rect,
+                    align="center",
+                    valign="center",
+                )
         else:
             pygame.draw.rect(
                 surface,
@@ -1911,15 +1937,16 @@ class RenderingStoryOverlayMixin:
                 max(self.ui(7), key_size // 3),
                 alpha=96,
             )
-            self.draw_ui_text(
-                surface,
-                str(index + 1),
-                self.font,
-                choice_color,
-                key_rect,
-                align="center",
-                valign="center",
-            )
+            if not getattr(self, "mobile_mode", False):
+                self.draw_ui_text(
+                    surface,
+                    str(index + 1),
+                    self.font,
+                    choice_color,
+                    key_rect,
+                    align="center",
+                    valign="center",
+                )
 
         if authored and panel_content is not None:
             text_rect = panel_content.inflate(
@@ -3220,6 +3247,7 @@ class RenderingStoryOverlayMixin:
             self._draw_story_intro_overlay_fitted()
 
     def _draw_story_intro_overlay_fitted(self) -> None:
+        self._story_intro_choice_rects: list[pygame.Rect] = []
         lines = self.story_intro_lines()
         if not lines:
             return
@@ -3293,7 +3321,8 @@ class RenderingStoryOverlayMixin:
         options = self.story_relic_choice_options()
         options_to_draw = options[: min(3, len(options))]
         choice_gap = max(self.ui(4), 6)
-        footer_h = self.small_font.get_height()
+        show_input_hints = not bool(getattr(self, "mobile_mode", False))
+        footer_h = self.small_font.get_height() if show_input_hints else 0
         choice_w = available_w
         option_entries = [
             (label, detail) for _choice_key, label, detail in options_to_draw
@@ -3305,7 +3334,8 @@ class RenderingStoryOverlayMixin:
         choices_block_h = (
             sum(option_heights) + max(0, len(option_heights) - 1) * choice_gap
         )
-        choices_start = panel_h - pad - footer_h - self.ui(10) - choices_block_h
+        footer_gap = self.ui(10) if show_input_hints else 0
+        choices_start = panel_h - pad - footer_h - footer_gap - choices_block_h
 
         stage_top = pad + header_h + self.ui(12)
         available_for_stage = max(
@@ -3352,6 +3382,9 @@ class RenderingStoryOverlayMixin:
             choice_gap,
             option_heights,
         )
+        self._story_intro_choice_rects = [
+            choice_rect.move(rect.topleft) for choice_rect in choice_rects
+        ]
         self._cutscene_choice_asset_used = False
         for index, ((choice_key, label, detail), choice_rect) in enumerate(
             zip(options_to_draw, choice_rects)
@@ -3366,16 +3399,19 @@ class RenderingStoryOverlayMixin:
                 is_selected=index == getattr(self, "cutscene_cursor", 0),
             )
 
-        footer = (
-            "Arrow keys select · Enter/E confirms · 1-3 quick-picks the guest relic."
-        )
-        self.draw_ui_text(
-            surface,
-            footer,
-            self.small_font,
-            (205, 185, 225),
-            pygame.Rect(pad, panel_h - pad - footer_h, available_w, footer_h),
-        )
+        if show_input_hints:
+            footer = (
+                "Arrow keys select · Enter/E confirms · 1-3 quick-picks the guest relic."
+            )
+            self.draw_ui_text(
+                surface,
+                footer,
+                self.small_font,
+                (205, 185, 225),
+                pygame.Rect(
+                    pad, panel_h - pad - footer_h, available_w, footer_h
+                ),
+            )
         self.screen.blit(surface, rect)
 
     def draw_story_intro_stage(

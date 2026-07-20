@@ -22,7 +22,9 @@
 from __future__ import annotations
 
 import math
+import os
 import random
+import time
 from pathlib import Path
 from typing import Any
 
@@ -35,10 +37,13 @@ from .combat import CombatMixin
 from .constants import (
     BOSS_HIT_RADIUS,
     DARK_LEVEL_LIGHT_RADIUS,
+    DEFAULT_FRAME_RATE,
     DUNGEON_DEPTH,
     ENEMY_HIT_RADIUS,
     ENEMY_PROJECTILE_HIT_RADIUS,
     FPS,
+    FRAME_RATE_CAP_DEFAULT,
+    FRAME_RATE_CAP_VALUES,
     LARGE_ENEMY_HIT_RADIUS,
     LIGHT_IMPACT_RADIUS,
     LIGHT_IMPACT_TTL,
@@ -60,6 +65,7 @@ from .constants import (
     UI_SCALE,
     WALK_ANIMATION_RATE,
     SlashEffect,
+    normalize_frame_rate_cap,
 )
 from .content import (
     ARCHETYPES,
@@ -91,6 +97,12 @@ from .input import Command, InputMixin, key_command
 from .interactions import InteractionMixin
 from .inventory import InventoryMixin
 from .menus import MenuRenderer
+from .mobile import (
+    MobileMixin,
+    SafeInsets,
+    application_storage_directory,
+    detect_mobile_runtime,
+)
 from .npc_runtime import FriendlyNpcRuntimeMixin
 from .models import (
     AmbushBell,
@@ -118,7 +130,7 @@ from .models import (
     Tile,
     Trap,
 )
-from .options import OptionsMixin
+from .options import OptionsMixin, default_mobile_render_quality
 from .population import PopulationMixin
 from .quest_assets import (
     ActiveQuestCutscene,
@@ -175,6 +187,8 @@ __all__ = (
     "EnemyDefinition",
     "FINAL_ROOM_ENEMY_DEFINITIONS",
     "FPS",
+    "FRAME_RATE_CAP_DEFAULT",
+    "FRAME_RATE_CAP_VALUES",
     "FloatingText",
     "FloorPlan",
     "FriendlyNpcRuntimeMixin",
@@ -188,12 +202,14 @@ __all__ = (
     "LARGE_ENEMY_HIT_RADIUS",
     "MAX_INVENTORY",
     "MenuRenderer",
+    "MobileMixin",
     "OptionsMixin",
     "PLAYER_HIT_RADIUS",
     "PLAYER_MELEE_ARC_DOT",
     "PLAYER_MELEE_RANGE",
     "PLAYER_PROJECTILE_HIT_RADIUS",
     "PixelSpriteAtlas",
+    "FramePacing",
     "Player",
     "SpriteAtlas",
     "PopulationMixin",
@@ -243,6 +259,47 @@ __all__ = (
 )
 
 
+class FramePacing:
+    """Single owner of frame timing for ``Game.run()``.
+
+    Replaces the scattered ``clock.tick(FPS)`` / ``clock.tick(10)`` calls with
+    one object that reads the persisted ``frame_rate_cap`` option and the
+    mobile suspended-mode throttle. ``Game.run()`` is the only caller of
+    :meth:`tick`; the dt clamp (``0.05``) and the
+    ``min(clock.tick(target) / 1000.0, 0.05)`` shape are preserved verbatim —
+    only the source of ``target_fps`` changes.
+    """
+
+    def __init__(self, clock: pygame.time.Clock) -> None:
+        self._clock = clock
+        # User-facing option (one of FRAME_RATE_CAP_VALUES). Default is 60.
+        self.frame_rate_cap: int | str = FRAME_RATE_CAP_DEFAULT
+        # Resolved tick target. ``0`` means unlimited (``clock.tick(0)`` returns
+        # elapsed ms without waiting). Suspended mode overrides this regardless.
+        self.target_fps: int = int(FRAME_RATE_CAP_DEFAULT)
+        # Mobile suspended-mode throttle (Hz). Used only when Android is
+        # backgrounded; desktop never suspends.
+        self.suspended_fps: int = 10
+        # vsync hint. SDL's ``SCALED`` renderer handles vsync internally on
+        # Android; desktop leaves this off so the cap is the only throttle.
+        self.vsync: bool = False
+
+    def set_frame_rate_cap(self, cap: int | str) -> None:
+        normalized = normalize_frame_rate_cap(cap)
+        self.frame_rate_cap = normalized
+        if normalized == "Unlimited":
+            self.target_fps = 0
+        else:
+            self.target_fps = int(normalized)
+
+    def tick(self, *, suspended: bool = False) -> float:
+        if suspended:
+            fps = self.suspended_fps
+        else:
+            fps = self.target_fps
+        return min(self._clock.tick(fps) / 1000.0, 0.05)
+
+
 class Game(
     SaveLoadMixin,
     RenderingMixin,
@@ -256,6 +313,7 @@ class Game(
     ShopMixin,
     InteractionMixin,
     InputMixin,
+    MobileMixin,
     CameraMixin,
 ):
     EXIT_CONFIRMATION_EXIT = 0
@@ -268,17 +326,32 @@ class Game(
         screen_size: tuple[int, int] | None = None,
         headless: bool = False,
         save_path: str | Path | None = None,
+        mobile: bool | None = None,
+        safe_insets: SafeInsets | tuple[int, int, int, int] | None = None,
     ) -> None:
+        self.mobile_mode = detect_mobile_runtime() if mobile is None else bool(mobile)
+        if self.mobile_mode:
+            # SDL otherwise exposes the Android accelerometer as a joystick. Set
+            # the hint before subsystem initialization; ControllerManager also
+            # filters named sensors defensively for SDL/vendor variations.
+            os.environ["SDL_ACCELEROMETER_AS_JOYSTICK"] = "0"
         self.prepare_display_scaling()
         pygame.init()
         pygame.display.set_caption(f"Arch Rogue {__version__}")
+        storage_dir = application_storage_directory(self.mobile_mode)
         self.save_path = (
-            Path(save_path) if save_path else Path.home() / ".arch_rogue_run.json"
+            Path(save_path)
+            if save_path
+            else storage_dir
+            / ("run.json" if self.mobile_mode else ".arch_rogue_run.json")
         )
-        self.options_path = Path.home() / ".arch_rogue_options.json"
+        self.options_path = storage_dir / (
+            "options.json" if self.mobile_mode else ".arch_rogue_options.json"
+        )
         self.audio_enabled = True
         self.music_enabled = False
         self.fullscreen = True
+        self.mobile_render_quality = default_mobile_render_quality(self.mobile_mode)
         self.ui_scale = UI_SCALE
         self.ui_scale_auto = True
         self.detected_display_scale: float | None = None
@@ -287,12 +360,15 @@ class Game(
         self.difficulty_name = DEFAULT_DIFFICULTY_NAME
         self.hell_unlocked = False
         self.hell_unlocked_this_run = False
-        # Milestone 3.16 - continuous colored lighting options. Defaults are
-        # native-friendly (lighting + normal maps on, flicker on). The web
-        # build forces these off in web/main.make_game so the 3.8.0 per-tile
-        # alpha path remains the web-safe default.
+        # Milestone 3.16 - continuous colored lighting options. Normal maps stay
+        # on by default on desktop, but fresh mobile installs avoid their cold
+        # ARM cache spike. The web build forces lighting off in web/main.make_game.
         self._lighting_enabled = True
-        self._lighting_normal_maps = True
+        self._lighting_normal_maps = not self.mobile_mode
+        # 4.3.17 schema-7 options. Defaults keep desktop telemetry silent and a
+        # 60 FPS cap on both platforms; load_options() overrides from disk.
+        self.frame_rate_cap: int | str = FRAME_RATE_CAP_DEFAULT
+        self.show_perf_overlay: bool = False
         # Asset sprites are the production default. The persisted legacy toggle
         # keeps the original procedural renderer available on constrained systems
         # and as a per-install compatibility fallback.
@@ -301,6 +377,7 @@ class Game(
         self.run_history: list[dict[str, Any]] = []
         self.last_save_error = ""
         self.last_load_error = ""
+        self.recovered_interrupted_run = False
         self.screen_flash_ttl = 0.0
         self.screen_flash_color: Color = (0, 0, 0)
         # Viewport zoom ("viewport distance"); adjusted in-game with Ctrl+scroll.
@@ -313,11 +390,16 @@ class Game(
         # explicitly after setting that path, as persistence tests already do.
         if not headless:
             self.load_options()
+        if self.mobile_mode:
+            # Android is landscape/fullscreen by manifest; a persisted desktop
+            # preference must not request a resizable window there.
+            self.fullscreen = True
         if screen_size is None:
             display_info = pygame.display.Info()
             screen_size = (display_info.current_w, display_info.current_h)
         self.windowed_size = screen_size
         self.screen = self.apply_display_mode(headless=headless)
+        self.init_mobile_runtime(safe_insets)
         if not headless:
             self.refresh_automatic_ui_scale()
         # Branded window/taskbar icon: the octahedron relic logo. Best-effort —
@@ -329,6 +411,12 @@ class Game(
             except pygame.error:
                 pass
         self.clock = pygame.time.Clock()
+        self.frame_pacing = FramePacing(self.clock)
+        # load_options() runs before the display/clock exists so graphics mode
+        # can be selected before set_mode(). Apply its persisted cap now that
+        # FramePacing exists; otherwise every normal startup silently uses 60
+        # until the player changes the option again.
+        self.frame_pacing.set_frame_rate_cap(self.frame_rate_cap)
         self.rebuild_fonts()
         self.ui_assets = UiAssetLibrary()
         self.sprites = SpriteAtlas(legacy_graphics=self.legacy_graphics)
@@ -383,6 +471,10 @@ class Game(
         # story text. The renderer clamps it against the current overflow and
         # publishes `_story_panel_scroll_max` / `_story_panel_visible_lines`.
         self.story_panel_scroll = 0
+        # 4.3.17 WS-G: scroll offset (in wrapped lines) for the About screen's
+        # Open Source Licenses section. The renderer publishes
+        # `_licenses_scroll_max` / `_licenses_visible_lines` each draw.
+        self.licenses_scroll = 0
         self.run_stats = RunStats()
         self.state = "archetype_select"
         self.elapsed = 0.0
@@ -450,12 +542,24 @@ class Game(
         self.ambient_overlay_cache: dict[tuple[int, int, str, int], pygame.Surface] = {}
         self.audio = AudioSystem()
         self.audio_available = self.audio.initialize(headless)
-        self._options_visible_range = (0, 0)
+        self._options_visible_range: tuple[int, int] = (0, 0)
         self._options_row_viewport = pygame.Rect(0, 0, 0, 0)
         self._options_selected_row_rect = pygame.Rect(0, 0, 0, 0)
         self._options_row_font_height = 0
+        # Render-published hitboxes consumed by mouse and touch input. Keeping
+        # them initialized prevents stale context data before the first draw.
+        self._menu_row_rects: tuple[pygame.Rect, ...] = ()
+        self._title_row_rects: tuple[pygame.Rect, ...] = ()
         self._controls_keyboard_row_rects: tuple[pygame.Rect, ...] = ()
         self._controls_gamepad_row_rects: tuple[pygame.Rect, ...] = ()
+        self._inventory_visible_row_rects: list[pygame.Rect] = []
+        self._inventory_sort_mode_rects: list[tuple[str, pygame.Rect]] = []
+        self._shop_visible_start = 0
+        self._shop_visible_row_rects: list[pygame.Rect] = []
+        self._shop_mode_rects: tuple[pygame.Rect, ...] = ()
+        self._character_tab_rects: tuple[pygame.Rect, ...] = ()
+        self._cutscene_choice_rects: list[pygame.Rect] = []
+        self._story_intro_choice_rects: list[pygame.Rect] = []
         self.menus = MenuRenderer(self, ARCHETYPES, DUNGEON_DEPTH)
         self.init_input()
 
@@ -599,16 +703,47 @@ class Game(
         return [by_key[key] for key in self.player.skill_upgrades if key in by_key]
 
     def run(self) -> None:
+        # Rebind the pacing clock each run in case a caller (or test) swapped
+        # ``self.clock`` after construction. ``Game.run()`` is still the only
+        # caller of ``clock.tick`` (via frame_pacing).
+        self.frame_pacing._clock = self.clock
         while self.running:
-            dt = min(self.clock.tick(FPS) / 1000.0, 0.05)
+            performance = getattr(self, "_mobile_performance_monitor", None)
+            if performance is not None:
+                performance.begin_frame()
+
+            suspended = self.mobile_mode and self.mobile_suspended
+            started = time.perf_counter()
+            dt = self.frame_pacing.tick(suspended=suspended)
+            if performance is not None:
+                performance.record_phase("tick", time.perf_counter() - started)
             self.ui_elapsed += dt
+
+            started = time.perf_counter()
             self.handle_events()
+            if performance is not None:
+                performance.record_phase("events", time.perf_counter() - started)
+            if self.mobile_mode and self.mobile_suspended:
+                if performance is not None:
+                    performance.finish_frame(self)
+                continue
+
             if self.state == "playing":
+                started = time.perf_counter()
                 self.update(dt)
+                if performance is not None:
+                    performance.record_phase("update", time.perf_counter() - started)
             self.draw()
+            if performance is not None:
+                performance.finish_frame(self)
+        self.release_mobile_gpu_renderer()
         pygame.quit()
 
     def request_exit_confirmation(self) -> None:
+        if self.mobile_mode:
+            self.cancel_mobile_touches()
+            self.mobile_hub_open = False
+            self.quest_info_visible = False
         if self.state != "confirm_exit":
             self.exit_previous_state = self.state
             self.exit_confirmation_cursor = self.EXIT_CONFIRMATION_CANCEL
@@ -633,15 +768,21 @@ class Game(
     def return_to_main_menu(self) -> None:
         if self.exit_previous_state == "playing" and not self.save_run():
             return
+        if self.mobile_mode:
+            self.resume_mobile_audio_focus()
         self.show_help = False
         self.inventory_open = False
         self.character_menu_open = False
+        self.mobile_hub_open = False
+        self.quest_info_visible = False
         self.close_shop()
         self.state = "title"
         self.exit_previous_state = "title"
 
     def cancel_exit_confirmation(self) -> None:
         self.state = self.exit_previous_state or "title"
+        if self.mobile_mode:
+            self.resume_mobile_audio_focus()
 
     def confirm_exit(self) -> None:
         if self.exit_previous_state == "playing" and not self.save_run():
@@ -650,6 +791,10 @@ class Game(
 
     def handle_events(self) -> None:
         for event in pygame.event.get():
+            if self.handle_mobile_lifecycle_event(event):
+                continue
+            if self.handle_mobile_finger_event(event):
+                continue
             if event.type == pygame.QUIT:
                 self.request_exit_confirmation()
             elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
@@ -657,13 +802,19 @@ class Game(
                 self.screen = pygame.display.set_mode(
                     self.windowed_size, pygame.RESIZABLE
                 )
+                self._mobile_layout_cache = None
+                self.refresh_mobile_safe_insets()
                 self.refresh_automatic_ui_scale()
             elif event.type == pygame.WINDOWDISPLAYCHANGED:
+                self._mobile_layout_cache = None
+                self.refresh_mobile_safe_insets()
                 self.refresh_automatic_ui_scale()
             elif self.handle_controller_event(event):
                 continue
             elif event.type == pygame.KEYDOWN:
-                if self.state == "confirm_exit":
+                if event.key == getattr(pygame, "K_AC_BACK", -1):
+                    self._dispatch_command(Command.BACK)
+                elif self.state == "confirm_exit":
                     if event.key in (pygame.K_UP, pygame.K_LEFT):
                         self.move_exit_confirmation_cursor(-1)
                     elif event.key in (pygame.K_DOWN, pygame.K_RIGHT):
@@ -741,8 +892,10 @@ class Game(
                         self.state = "options"
                     elif event.key in (pygame.K_a, pygame.K_c):
                         self.state = "about"
+                        self.licenses_scroll = 0
                     elif event.key in (pygame.K_h, pygame.K_SLASH):
                         self.state = "about"
+                        self.licenses_scroll = 0
                 elif self.state == "options":
                     if event.key == pygame.K_a:
                         self.options_cursor = self.OPTIONS_ROW_AUDIO
@@ -755,12 +908,9 @@ class Game(
                         self.save_options()
                     elif event.key == pygame.K_f:
                         self.options_cursor = self.OPTIONS_ROW_FULLSCREEN
-                        if not self.fullscreen:
-                            self.windowed_size = self.screen.get_size()
-                        self.fullscreen = not self.fullscreen
-                        self.screen = self.apply_display_mode()
-                        self.refresh_automatic_ui_scale()
-                        self.save_options()
+                        self._activate_options_row(
+                            self.OPTIONS_ROW_FULLSCREEN, True
+                        )
                     elif event.key == pygame.K_d:
                         self.options_cursor = self.OPTIONS_ROW_DIFFICULTY
                         self.cycle_difficulty()
@@ -796,8 +946,19 @@ class Game(
                         pygame.K_BACKSPACE,
                         pygame.K_a,
                         pygame.K_h,
+                        pygame.K_o,
                     ):
                         self.state = "title"
+                    elif event.key in (pygame.K_UP, pygame.K_LEFT):
+                        self.scroll_licenses(-1)
+                    elif event.key in (pygame.K_DOWN, pygame.K_RIGHT):
+                        self.scroll_licenses(1)
+                    elif event.key == pygame.K_PAGEUP:
+                        page = max(1, int(getattr(self, "_licenses_visible_lines", 3)) - 1)
+                        self.scroll_licenses(-page)
+                    elif event.key == pygame.K_PAGEDOWN:
+                        page = max(1, int(getattr(self, "_licenses_visible_lines", 3)) - 1)
+                        self.scroll_licenses(page)
                 elif self.state == "controls":
                     if event.key in (pygame.K_BACKSPACE, pygame.K_o):
                         if self.controls_capture_command:
@@ -1029,6 +1190,7 @@ class Game(
                         self.use_inventory_slot(index)
             elif (
                 event.type == pygame.MOUSEBUTTONDOWN
+                and not getattr(event, "touch", False)
                 and self.state == "playing"
                 and self.active_cutscene is None
                 and not self.story_intro_pending
@@ -1077,7 +1239,11 @@ class Game(
                 # text (Ctrl+scroll above still zooms the viewport). Scroll up
                 # shows earlier lines.
                 self.scroll_story_panel(-event.y * 2)
-            elif event.type == pygame.MOUSEMOTION and self.state == "playing":
+            elif (
+                event.type == pygame.MOUSEMOTION
+                and not getattr(event, "touch", False)
+                and self.state == "playing"
+            ):
                 if getattr(event, "rel", (0, 0)) != (0, 0):
                     self.aim_input_mode = "mouse"
                 if not (
@@ -1095,6 +1261,8 @@ class Game(
                         break
 
     def update(self, dt: float) -> None:
+        if self.mobile_mode and self.mobile_suspended:
+            return
         self.elapsed += dt
         self._last_dt = dt
         # Sample gamepad axes once per frame into cached floats so the
@@ -1115,7 +1283,19 @@ class Game(
         menu_pauses_simulation = bool(
             self.active_cutscene is None
             and not self.story_intro_pending
-            and (self.inventory_open or self.character_menu_open)
+            and (
+                self.inventory_open
+                or self.character_menu_open
+                or (
+                    self.mobile_mode
+                    and (
+                        self.shop_open
+                        or self.show_help
+                        or self.mobile_hub_open
+                        or self.quest_info_visible
+                    )
+                )
+            )
         )
         self.update_visual_effects(
             dt, advance_actor_clocks=not menu_pauses_simulation
@@ -1136,10 +1316,17 @@ class Game(
         if self.story_intro_pending:
             self.update_floaters(dt)
             return
-        # Opening the character sheet or inventory pauses the run: enemies,
-        # projectiles, traps, and player movement stay frozen while the
-        # overlay is up so players can inspect their build safely.
-        if self.inventory_open or self.character_menu_open:
+        # Opening a full-screen mobile overlay pauses the run. Desktop keeps its
+        # established shop/help behavior; inventory and character always pause.
+        if self.inventory_open or self.character_menu_open or (
+            self.mobile_mode
+            and (
+                self.shop_open
+                or self.show_help
+                or self.mobile_hub_open
+                or self.quest_info_visible
+            )
+        ):
             self.update_floaters(dt)
             return
         # Sample before update_player() decrements Time Skip so final partial and

@@ -36,6 +36,7 @@ import pygame
 
 from .constants import LIGHT_SHADE_DOWNSAMPLE_LONG, TILE_W, WORLD_SCALE
 from .lighting import bake_normal_map
+from .mobile import optimize_immutable_alpha_surface
 from .models import Color
 from .sprites import PixelSpriteAtlas
 
@@ -137,6 +138,8 @@ class AssetSpriteLibrary:
         self.manifest: dict[str, Any] = {}
         self.available = False
         self.load_error = ""
+        self.source_load_count = 0
+        self.frame_build_count = 0
         self._source_cache: _LruCache[str, pygame.Surface] = _LruCache(48)
         self._frame_cache: _LruCache[tuple[object, ...], ResolvedSpriteFrame] = (
             _LruCache(320)
@@ -326,6 +329,7 @@ class AssetSpriteLibrary:
                 surface = surface.convert_alpha()
             except pygame.error:
                 surface = surface.copy()
+            self.source_load_count += 1
         except (OSError, RuntimeError, ValueError, pygame.error) as exc:
             self._warn_missing_once(path, exc)
             return None
@@ -392,6 +396,7 @@ class AssetSpriteLibrary:
             cropped = cropped.convert_alpha()
         except pygame.error:
             pass
+        cropped = optimize_immutable_alpha_surface(cropped)
         frame = ResolvedSpriteFrame(
             cropped,
             (
@@ -401,6 +406,7 @@ class AssetSpriteLibrary:
             "asset",
             identity,
         )
+        self.frame_build_count += 1
         return self._frame_cache.put(cache_key, frame)
 
     def _actor_slug(self, name: str, kind: str = "") -> str | None:
@@ -740,6 +746,7 @@ class AssetSpriteLibrary:
             canvas = canvas.convert_alpha()
         except pygame.error:
             pass
+        canvas = optimize_immutable_alpha_surface(canvas)
         result = (canvas, target_anchor[0], target_anchor[1])
         return self._world_cache.put(cache_key, result)
 
@@ -755,6 +762,8 @@ class AssetSpriteLibrary:
             "actor_resolution_keys": len(self._resolved_actor_cache),
             "world_surfaces": len(self._world_cache),
             "missing_resources": len(self._missing_resources),
+            "source_loads": self.source_load_count,
+            "frame_builds": self.frame_build_count,
         }
 
 
@@ -1310,6 +1319,7 @@ class SpriteAtlas:
                 ),
             )
             anchor = (round(anchor[0] * scale), round(anchor[1] * scale))
+        surface = optimize_immutable_alpha_surface(surface)
         variant = ResolvedSpriteFrame(
             surface, anchor, "asset", ("prop-variant", *cache_key)
         )

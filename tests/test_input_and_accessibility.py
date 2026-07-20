@@ -19,6 +19,7 @@ import pygame  # noqa: E402
 from arch_rogue.content import ARCHETYPES  # noqa: E402
 from arch_rogue.game import Game  # noqa: E402
 from arch_rogue.options import (  # noqa: E402
+    MOBILE_RENDER_QUALITY_NATIVE,
     _scale_from_xresources,
     ui_scale_from_display_scale,
 )
@@ -46,11 +47,15 @@ class FakeJoystick:
         name: str = "Fake Pad",
         num_axes: int = 6,
         axes_rest: tuple[float, ...] | None = None,
+        num_buttons: int = 12,
+        num_hats: int = 1,
     ) -> None:
         self._id = instance_id
         self._guid = guid
         self._name = name
         self._num_axes = num_axes
+        self._num_buttons = num_buttons
+        self._num_hats = num_hats
         rest = list(axes_rest or ([0.0] * num_axes))
         # Triggers default-rest at -1.0 on the last two axes to mimic real pads.
         if axes_rest is None and num_axes >= 6:
@@ -71,6 +76,12 @@ class FakeJoystick:
 
     def get_numaxes(self) -> int:
         return self._num_axes
+
+    def get_numbuttons(self) -> int:
+        return self._num_buttons
+
+    def get_numhats(self) -> int:
+        return self._num_hats
 
     def get_axis(self, index: int) -> float:
         if 0 <= index < len(self._axes):
@@ -248,6 +259,91 @@ class ControllerManagerTests(unittest.TestCase):
         )
         mgr.handle_device_event(removed)
         self.assertFalse(mgr.has_controller())
+
+    def test_mobile_filter_rejects_motion_sensor_but_keeps_real_gamepad(self) -> None:
+        mgr = ControllerManager(
+            last_guid="", enabled=True, ignore_motion_sensors=True
+        )
+        sensor = FakeJoystick(
+            17,
+            guid="sensor-guid",
+            name="Android Linear Acceleration Sensor",
+            num_axes=3,
+            num_buttons=0,
+            num_hats=0,
+        )
+        gamepad = FakeJoystick(
+            23,
+            guid="pad-guid",
+            name="8BitDo Pro 2",
+            num_axes=6,
+        )
+        original = pygame.joystick.Joystick
+        try:
+            pygame.joystick.Joystick = lambda _idx: sensor  # type: ignore[misc]
+            self.assertIsNone(mgr._add_device(0))
+            pygame.joystick.Joystick = lambda _idx: gamepad  # type: ignore[misc]
+            self.assertIs(mgr._add_device(1), gamepad)
+        finally:
+            pygame.joystick.Joystick = original  # type: ignore[misc]
+
+        self.assertTrue(sensor.quit_called)
+        self.assertNotIn(sensor.get_instance_id(), mgr._joysticks)
+        self.assertIs(mgr.active(), gamepad)
+        self.assertEqual(mgr.active_name(), "8BitDo Pro 2")
+        self.assertTrue(mgr.has_controller())
+
+    def test_mobile_filter_preserves_controller_with_gyro_in_its_name(self) -> None:
+        mgr = ControllerManager(
+            last_guid="", enabled=True, ignore_motion_sensors=True
+        )
+        gamepad = FakeJoystick(
+            29,
+            name="Pro Gamepad with Gyro",
+            num_buttons=14,
+            num_hats=1,
+        )
+        original = pygame.joystick.Joystick
+        try:
+            pygame.joystick.Joystick = lambda _idx: gamepad  # type: ignore[misc]
+            self.assertIs(mgr._add_device(0), gamepad)
+        finally:
+            pygame.joystick.Joystick = original  # type: ignore[misc]
+        self.assertIs(mgr.active(), gamepad)
+        self.assertFalse(gamepad.quit_called)
+
+    def test_desktop_manager_does_not_filter_named_sensor_devices(self) -> None:
+        mgr = ControllerManager(
+            last_guid="", enabled=True, ignore_motion_sensors=False
+        )
+        sensor = FakeJoystick(31, name="Android Accelerometer", num_axes=3)
+        original = pygame.joystick.Joystick
+        try:
+            pygame.joystick.Joystick = lambda _idx: sensor  # type: ignore[misc]
+            self.assertIs(mgr._add_device(0), sensor)
+        finally:
+            pygame.joystick.Joystick = original  # type: ignore[misc]
+        self.assertFalse(sensor.quit_called)
+        self.assertIs(mgr.active(), sensor)
+
+    def test_disabled_manager_never_reads_axes_and_clears_pending_input(self) -> None:
+        fake = FakeJoystick(0, num_axes=4, axes_rest=(0, 0, 0, 0))
+        mgr = make_controller_manager(fake)
+        fake.set_axis(0, 0.8)
+        mgr.poll_axes()
+        self.assertNotEqual(mgr.left_vec(), (0.0, 0.0))
+        mgr._queued_commands.append(Command.ABILITY_1)
+        mgr._queued_trigger_slots.append(0)
+
+        mgr.set_enabled(False)
+        with patch.object(fake, "get_axis", wraps=fake.get_axis) as get_axis:
+            mgr.poll_axes()
+
+        get_axis.assert_not_called()
+        self.assertEqual(mgr.left_vec(), (0.0, 0.0))
+        self.assertEqual(mgr.right_vec(), (0.0, 0.0))
+        self.assertEqual(mgr.drain_trigger_commands(), [])
+        self.assertEqual(mgr.drain_trigger_slots(), [])
 
 
 def make_game(tmpdir: str) -> Game:
@@ -430,6 +526,29 @@ class CommandDispatchTests(unittest.TestCase):
             self.assertEqual(
                 game.gamepad_mapping["gameplay_buttons"][0], Command.ABILITY_2
             )
+
+    def test_disabled_controller_events_are_consumed_without_dispatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.state = "title"
+            game.input.set_enabled(False)
+            events = (
+                pygame.event.Event(
+                    pygame.JOYBUTTONDOWN, joy=999, button=0
+                ),
+                pygame.event.Event(
+                    pygame.JOYHATMOTION, joy=999, hat=0, value=(0, -1)
+                ),
+                pygame.event.Event(
+                    pygame.JOYAXISMOTION, joy=999, axis=0, value=1.0
+                ),
+            )
+            with patch.object(game, "_dispatch_command") as dispatch:
+                for event in events:
+                    with self.subTest(event_type=event.type):
+                        self.assertTrue(game.handle_controller_event(event))
+            dispatch.assert_not_called()
+            self.assertEqual(game.aim_input_mode, "mouse")
 
     def test_inventory_overlay_navigation_and_use(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -742,7 +861,13 @@ class OptionsPersistenceTests(unittest.TestCase):
             self.assertFalse(game.controller_enabled)
             self.assertEqual(game.last_controller_guid, "abc-123")
             data = game.options_to_dict()
-            self.assertEqual(data["schema_version"], 5)
+            self.assertEqual(data["schema_version"], 7)
+            self.assertEqual(
+                data["mobile_render_quality"], MOBILE_RENDER_QUALITY_NATIVE
+            )
+            self.assertEqual(
+                game.mobile_render_quality, MOBILE_RENDER_QUALITY_NATIVE
+            )
             self.assertIn("gamepad_mapping", data)
             self.assertTrue(data["ui_scale_auto"])
             self.assertFalse(data["legacy_graphics"])

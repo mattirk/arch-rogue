@@ -5,6 +5,13 @@ __pycache__/
 *.dist-info/
 build/
 dist/
+bin/
+.buildozer/
+android-ndk*/
+android-sdk*/
+*.apk
+*.aab
+*.keystore
 web/vendor/
 web/dist/
 .pytest_cache/

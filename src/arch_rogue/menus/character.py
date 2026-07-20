@@ -66,6 +66,7 @@ class MenuCharacterMixin:
             minimum_size=20,
         )
         subtitle_font = self.g.font
+        show_hints = self.menu_input_hints_visible()
         reference_title_rect = pygame.Rect(
             side_margin,
             max(20, int(height * 0.04)),
@@ -79,21 +80,28 @@ class MenuCharacterMixin:
             subtitle_font.get_height(),
         )
 
-        footer_h = max(
-            self.menu_shortcut_section_height(self.g.small_font) + self.u(4),
-            self.g.small_font.get_height() + self.u(8),
-            32,
+        footer_h = (
+            max(
+                self.menu_shortcut_section_height(self.g.small_font) + self.u(4),
+                self.g.small_font.get_height() + self.u(8),
+                32,
+            )
+            if show_hints
+            else 0
+        )
+        header_bottom = (
+            reference_subtitle_rect.bottom if show_hints else reference_title_rect.bottom
         )
         panel_margin = max(26, min(self.u(44), width // 18))
         panel_bottom_gap = max(self.u(10), 10)
         reference_panel_rect = pygame.Rect(
             panel_margin,
-            reference_subtitle_rect.bottom + max(self.u(14), 14),
+            header_bottom + max(self.u(14), 14),
             max(1, width - panel_margin * 2),
             max(
                 1,
                 height
-                - reference_subtitle_rect.bottom
+                - header_bottom
                 - max(self.u(14), 14)
                 - footer_h
                 - panel_bottom_gap,
@@ -111,7 +119,11 @@ class MenuCharacterMixin:
         # The shortcut remains attached below the panel and therefore moves up.
         header_shift_y = max(0, panel_rect.y - reference_panel_rect.y)
         title_rect = reference_title_rect.move(0, header_shift_y)
-        subtitle_rect = reference_subtitle_rect.move(0, header_shift_y)
+        subtitle_rect = (
+            reference_subtitle_rect.move(0, header_shift_y)
+            if show_hints
+            else pygame.Rect(0, 0, 0, 0)
+        )
         self.g._archetype_title_rect = title_rect.copy()
         self.g._archetype_subtitle_rect = subtitle_rect.copy()
         self.g._archetype_panel_reference_rect = reference_panel_rect.copy()
@@ -123,13 +135,14 @@ class MenuCharacterMixin:
             title_rect,
             align="center",
         )
-        self.draw_text(
-            "Arrow keys select · Enter begins · Backspace returns",
-            subtitle_font,
-            self.MUTED,
-            subtitle_rect,
-            align="center",
-        )
+        if show_hints:
+            self.draw_text(
+                "Arrow keys select · Enter begins · Backspace returns",
+                subtitle_font,
+                self.MUTED,
+                subtitle_rect,
+                align="center",
+            )
 
         if not self.panel(panel_rect, accent, alpha=248):
             self._draw_archetype_select_legacy()
@@ -158,21 +171,24 @@ class MenuCharacterMixin:
         self.g._archetype_preview_rect = preview_rect.copy()
         self._draw_archetype_list_modern(list_rect, selected)
         self._draw_archetype_preview_modern(preview_rect, selected)
-        shortcut_h = self.menu_shortcut_section_height(self.g.small_font)
-        shortcut_rect = pygame.Rect(
-            panel_rect.x,
-            panel_rect.bottom + self.u(4),
-            panel_rect.width,
-            min(shortcut_h, max(1, height - panel_rect.bottom - self.u(8))),
-        )
-        selected_index = self.archetypes.index(selected)
-        self.draw_menu_shortcut_section(
-            shortcut_rect,
-            str(selected_index + 1),
-            f"Select {selected.name}",
-            font=self.g.small_font,
-        )
-        self.g._archetype_shortcut_rect = shortcut_rect.copy()
+        if show_hints:
+            shortcut_h = self.menu_shortcut_section_height(self.g.small_font)
+            shortcut_rect = pygame.Rect(
+                panel_rect.x,
+                panel_rect.bottom + self.u(4),
+                panel_rect.width,
+                min(shortcut_h, max(1, height - panel_rect.bottom - self.u(8))),
+            )
+            selected_index = self.archetypes.index(selected)
+            self.draw_menu_shortcut_section(
+                shortcut_rect,
+                str(selected_index + 1),
+                f"Select {selected.name}",
+                font=self.g.small_font,
+            )
+            self.g._archetype_shortcut_rect = shortcut_rect.copy()
+        else:
+            self.g._archetype_shortcut_rect = pygame.Rect(0, 0, 0, 0)
 
     def _draw_archetype_list_modern(
         self, rect: pygame.Rect, selected: Archetype
@@ -379,6 +395,7 @@ class MenuCharacterMixin:
 
         title_font = self.g.title_font if height >= self.u(330) else self.g.big_font
         subtitle_font = self.g.font
+        show_hints = self.menu_input_hints_visible()
         title_h = title_font.get_height()
         top_margin = max(self.u(12), int(height * 0.04))
         self.draw_text(
@@ -389,16 +406,26 @@ class MenuCharacterMixin:
             align="center",
         )
         subtitle_y = top_margin + title_h + self.u(5)
-        self.draw_text(
-            "Arrow keys select · Enter begins · Backspace returns",
-            subtitle_font,
-            self.MUTED,
-            pygame.Rect(32, subtitle_y, width - 64, subtitle_font.get_height()),
-            align="center",
-        )
+        if show_hints:
+            self.draw_text(
+                "Arrow keys select · Enter begins · Backspace returns",
+                subtitle_font,
+                self.MUTED,
+                pygame.Rect(32, subtitle_y, width - 64, subtitle_font.get_height()),
+                align="center",
+            )
 
-        footer_h = max(self.u(30), self.g.small_font.get_height() + self.u(14))
-        content_top = subtitle_y + subtitle_font.get_height() + self.u(14)
+        footer_h = (
+            max(self.u(30), self.g.small_font.get_height() + self.u(14))
+            if show_hints
+            else 0
+        )
+        header_bottom = (
+            subtitle_y + subtitle_font.get_height()
+            if show_hints
+            else top_margin + title_h
+        )
+        content_top = header_bottom + self.u(14)
         content_margin = max(self.u(14), 18)
         content = pygame.Rect(
             content_margin,
@@ -456,21 +483,23 @@ class MenuCharacterMixin:
         self.draw_archetype_list(list_rect, selected)
         self.draw_archetype_preview(preview_rect, selected)
 
-        footer_font = self.g.small_font
-        self.draw_text(
-            f"Press 1-{min(len(self.archetypes), 9)} to jump directly to a class",
-            footer_font,
-            self.WARNING,
-            pygame.Rect(32, height - footer_h, width - 64, footer_h - 4),
-            align="center",
-            valign="center",
-        )
+        if show_hints:
+            footer_font = self.g.small_font
+            self.draw_text(
+                f"Press 1-{min(len(self.archetypes), 9)} to jump directly to a class",
+                footer_font,
+                self.WARNING,
+                pygame.Rect(32, height - footer_h, width - 64, footer_h - 4),
+                align="center",
+                valign="center",
+            )
 
     def draw_archetype_list(self, rect: pygame.Rect, selected: Archetype) -> None:
         compact_fonts = rect.height < self.u(190)
         heading_font = self.g.font if compact_fonts else self.g.heading_font
         name_font_large = self.g.font
         row_font = self.g.small_font
+        show_hints = self.menu_input_hints_visible()
         inner = rect.inflate(-self.u(22), -self.u(22))
         header_rect = pygame.Rect(
             inner.x,
@@ -503,8 +532,10 @@ class MenuCharacterMixin:
             min(self.u(74), available_rows_h // len(self.archetypes)),
         )
         y = list_top
+        rendered_rows: list[pygame.Rect] = []
         for index, archetype in enumerate(self.archetypes):
             row = pygame.Rect(inner.x, y, inner.width, row_h)
+            rendered_rows.append(row.copy())
             is_selected = archetype == selected
             row_accent = self.archetype_accent(archetype.name)
             if is_selected:
@@ -541,38 +572,48 @@ class MenuCharacterMixin:
                     strip,
                     border_radius=self.u(3),
                 )
-            # Sigil badge — iron plate with the class number etched in gold.
-            badge_size = min(self.u(34), row_h - self.u(10))
-            badge = pygame.Rect(
-                row.x + self.u(10),
-                row.y + (row_h - badge_size) // 2,
-                badge_size,
-                badge_size,
-            )
-            pygame.draw.rect(
-                self.screen, self.IRON_DARK, badge, border_radius=self.u(5)
-            )
-            pygame.draw.rect(
-                self.screen,
-                self.IRON,
-                badge.inflate(-self.u(2), -self.u(2)),
-                border_radius=self.u(4),
-            )
-            pygame.draw.rect(
-                self.screen, border, badge, max(1, self.u(1)), border_radius=self.u(5)
-            )
-            self.draw_text(
-                str(index + 1),
-                row_font,
-                self.TITLE if is_selected else self.IRON_LIGHT,
-                badge,
-                align="center",
-                valign="center",
-            )
+            if show_hints:
+                # Sigil badge — iron plate with the class number etched in gold.
+                badge_size = min(self.u(34), row_h - self.u(10))
+                badge = pygame.Rect(
+                    row.x + self.u(10),
+                    row.y + (row_h - badge_size) // 2,
+                    badge_size,
+                    badge_size,
+                )
+                pygame.draw.rect(
+                    self.screen, self.IRON_DARK, badge, border_radius=self.u(5)
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    self.IRON,
+                    badge.inflate(-self.u(2), -self.u(2)),
+                    border_radius=self.u(4),
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    border,
+                    badge,
+                    max(1, self.u(1)),
+                    border_radius=self.u(5),
+                )
+                self.draw_text(
+                    str(index + 1),
+                    row_font,
+                    self.TITLE if is_selected else self.IRON_LIGHT,
+                    badge,
+                    align="center",
+                    valign="center",
+                )
+                text_x = badge.right + self.u(14)
+                text_w = row.width - badge.width - self.u(28)
+            else:
+                text_x = row.x + self.u(14)
+                text_w = row.width - self.u(28)
             name_rect = pygame.Rect(
-                badge.right + self.u(14),
+                text_x,
                 row.y + self.u(3),
-                row.width - badge.width - self.u(28),
+                text_w,
                 max(1, row_h // 2 - 2),
             )
             name_font = name_font_large if row_h >= 46 else row_font
@@ -584,9 +625,9 @@ class MenuCharacterMixin:
                 valign="center",
             )
             role_rect = pygame.Rect(
-                badge.right + self.u(14),
+                text_x,
                 row.centery + self.u(2),
-                row.width - badge.width - self.u(28),
+                text_w,
                 max(1, row_h // 2 - 6),
             )
             self.draw_text(
@@ -597,6 +638,7 @@ class MenuCharacterMixin:
                 valign="center",
             )
             y += row_h + gap
+        self.g._menu_row_rects = tuple(rendered_rows)
 
     def draw_archetype_preview(self, rect: pygame.Rect, archetype: Archetype) -> None:
         compact_fonts = rect.height < self.u(190)
@@ -1009,45 +1051,55 @@ class MenuCharacterMixin:
         self.g._character_content_rect = inner.copy()
         self.g._character_inset_rects = {}
         self.g._character_inset_content_rects = {}
+        # Hitboxes from a previously-rendered Disciplines tab must never remain
+        # active after switching back to Overview on touch devices.
+        self.g._discipline_cells = {}
         player = self.g.player
         title_h = self.g.font.get_height()
         small_h = self.g.small_font.get_height()
         tiny_h = self.g.tiny_font.get_height()
+        show_hints = self.menu_input_hints_visible()
 
-        close_w = min(
-            max(
-                self.u(150),
-                self.g.small_font.size("C/Esc closes · Tab switches tabs")[0]
-                + self.u(20),
-            ),
-            inner.width // 2,
+        close_w = (
+            min(
+                max(
+                    self.u(150),
+                    self.g.small_font.size("C/Esc closes · Tab switches tabs")[0]
+                    + self.u(20),
+                ),
+                inner.width // 2,
+            )
+            if show_hints
+            else 0
         )
+        title_width = inner.width - close_w - (gap if close_w else 0)
         self.draw_text(
             "Character",
             self.g.font,
             self.accent(),
-            pygame.Rect(inner.x, inner.y, inner.width - close_w - gap, title_h),
+            pygame.Rect(inner.x, inner.y, title_width, title_h),
         )
         close_rect = pygame.Rect(inner.right - close_w, inner.y, close_w, title_h)
-        if not used_asset:
-            pygame.draw.rect(
-                self.screen, self.PANEL_INK, close_rect, border_radius=self.u(6)
+        if show_hints:
+            if not used_asset:
+                pygame.draw.rect(
+                    self.screen, self.PANEL_INK, close_rect, border_radius=self.u(6)
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    self.IRON,
+                    close_rect,
+                    max(1, self.u(1)),
+                    border_radius=self.u(6),
+                )
+            self.draw_text(
+                "C/Esc closes · Tab switches tabs",
+                self.g.small_font,
+                self.MUTED,
+                close_rect.inflate(-self.u(8), 0),
+                align="center",
+                valign="center",
             )
-            pygame.draw.rect(
-                self.screen,
-                self.IRON,
-                close_rect,
-                max(1, self.u(1)),
-                border_radius=self.u(6),
-            )
-        self.draw_text(
-            "C/Esc closes · Tab switches tabs",
-            self.g.small_font,
-            self.MUTED,
-            close_rect.inflate(-self.u(8), 0),
-            align="center",
-            valign="center",
-        )
 
         subtitle_y = inner.y + title_h + self.u(5)
         # Milestone 3.3: surface unspent mastery tokens in the subtitle so the
@@ -1079,8 +1131,13 @@ class MenuCharacterMixin:
         overview_tab = pygame.Rect(inner.x, tab_y, tab_w, tab_h)
         tree_tab = pygame.Rect(inner.x + tab_w + tab_gap, tab_y, tab_w, tab_h)
         active_tab = self.g.character_menu_tab
-        self._draw_character_tab(overview_tab, "Overview (1)", active_tab == "overview")
-        self._draw_character_tab(tree_tab, "Disciplines (2)", active_tab == "disciplines")
+        self.g._character_tab_rects = (overview_tab.copy(), tree_tab.copy())
+        overview_label = "Overview (1)" if show_hints else "Overview"
+        disciplines_label = "Disciplines (2)" if show_hints else "Disciplines"
+        self._draw_character_tab(overview_tab, overview_label, active_tab == "overview")
+        self._draw_character_tab(
+            tree_tab, disciplines_label, active_tab == "disciplines"
+        )
 
         stats_y = tab_y + tab_h + gap
         content_top = stats_y
@@ -1624,7 +1681,11 @@ class MenuCharacterMixin:
         # the combo tier it would unlock; otherwise show the mastery-token spend
         # hint so the player knows how to acquire nodes.
         hovered_key = self.g.character_menu_hovered_node
-        hint_text = "Level-ups award mastery tokens · click or press A on an available node to spend one."
+        hint_text = (
+            "Level-ups award mastery tokens · click or press A on an available node to spend one."
+            if self.menu_input_hints_visible()
+            else "Level-ups award mastery tokens for available disciplines."
+        )
         hint_color = self.MUTED
         if hovered_key:
             from ..content import discipline_by_key
@@ -1644,6 +1705,8 @@ class MenuCharacterMixin:
                     elif self.g.player.mastery_tokens > 0:
                         hint_text = (
                             f"{hovered.name} · click or press A to spend 1 mastery token"
+                            if self.menu_input_hints_visible()
+                            else f"{hovered.name} · spend 1 mastery token"
                         )
                         hint_color = self.g.skill_color()
                     else:

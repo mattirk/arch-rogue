@@ -443,6 +443,19 @@ class InventoryMixin:
             0, min(int(self.story_panel_scroll) + delta, maximum)
         )
 
+    def scroll_licenses(self, delta: int) -> None:
+        """4.3.17 WS-G: scroll the About screen's Open Source Licenses text.
+
+        The renderer publishes ``_licenses_scroll_max`` for the current wrap/
+        geometry each frame, so the offset is clamped against the last drawn
+        section and re-clamps on draw when the text or window changes.
+        """
+
+        maximum = max(0, int(getattr(self, "_licenses_scroll_max", 0)))
+        self.licenses_scroll = max(
+            0, min(int(self.licenses_scroll) + delta, maximum)
+        )
+
     def toggle_quest_info_visibility(self) -> None:
         self.quest_info_visible = not self.quest_info_visible
         # 4.2.2: reopening the panel always starts from the top of the text.

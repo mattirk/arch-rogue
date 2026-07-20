@@ -90,11 +90,63 @@ class CameraMixin:
         """Hard-reset the smoothed camera to the player (used on restart/teleport)."""
         self._cam_iso = self.world_to_iso(self.player.x, self.player.y)
 
+    def _projection_origin(
+        self, width: int, height: int
+    ) -> tuple[float, float]:
+        # world_to_screen runs tens of thousands of times per frame in crowds.
+        # The origin only depends on the render-target size (desktop: fixed
+        # 0.5/0.48 focus) or the cached mobile layout + render-target size
+        # (mobile world rendering), so memoize it per frame instead of
+        # recomputing on every call. 4.3.17 WS-D: the memoization was a
+        # mobile-only win in 4.3.14; it is now shared so desktop crowds avoid
+        # recomputing the origin too. _frame_cache is cleared at the start of
+        # every draw(), so the origin is invalidated on camera focus / layout /
+        # resolution changes automatically.
+        cache = getattr(self, "_frame_cache", None)
+        key = ("projection_origin", width, height)
+        if cache is not None and key in cache:
+            return cache[key]  # type: ignore[return-value]
+        if getattr(self, "mobile_mode", False) and getattr(
+            self, "_mobile_world_rendering", False
+        ):
+            layout = self.mobile_layout()
+            viewport = layout.world_viewport
+            focus_x = (layout.world_focus[0] - viewport.x) / max(1, viewport.width)
+            focus_y = (layout.world_focus[1] - viewport.y) / max(1, viewport.height)
+            origin = (width * focus_x, height * focus_y)
+        else:
+            origin = (width * 0.5, height * 0.48)
+        if cache is not None:
+            cache[key] = origin
+        return origin
+
+    def _mobile_projection_origin(
+        self, width: int, height: int
+    ) -> tuple[float, float]:
+        # Layout-aware origin used by world_to_display / screen_to_world / the
+        # mobile floor cache, which need the mobile focus regardless of the
+        # _mobile_world_rendering flag. Kept separate from _projection_origin
+        # (which gates on _mobile_world_rendering for world_to_screen) so the
+        # two hot paths stay behavior-identical to pre-merge.
+        cache = getattr(self, "_frame_cache", None)
+        key = ("mobile_projection_origin", width, height)
+        if cache is not None and key in cache:
+            return cache[key]  # type: ignore[return-value]
+        layout = self.mobile_layout()
+        viewport = layout.world_viewport
+        focus_x = (layout.world_focus[0] - viewport.x) / max(1, viewport.width)
+        focus_y = (layout.world_focus[1] - viewport.y) / max(1, viewport.height)
+        origin = (width * focus_x, height * focus_y)
+        if cache is not None:
+            cache[key] = origin
+        return origin
+
     def world_to_screen(self, x: float, y: float) -> tuple[int, int]:
         iso_x, iso_y = self.world_to_iso(x, y)
         cam_x, cam_y = self.camera_iso()
         width, height = self._screen_size()
-        return int(iso_x - cam_x + width * 0.5), int(iso_y - cam_y + height * 0.48)
+        origin_x, origin_y = self._projection_origin(width, height)
+        return int(iso_x - cam_x + origin_x), int(iso_y - cam_y + origin_y)
 
     def world_to_display(self, x: float, y: float) -> tuple[int, int]:
         # Real-display-pixel projection for post-composite screen-space effects
@@ -107,11 +159,25 @@ class CameraMixin:
         # zoom 1.0 it is identical to ``world_to_screen``.
         iso_x, iso_y = self.world_to_iso(x, y)
         cam_x, cam_y = self.camera_iso()
+        mobile = bool(getattr(self, "mobile_mode", False))
+        world_rendering = bool(getattr(self, "_mobile_world_rendering", False))
+        if mobile and not world_rendering:
+            layout = self.mobile_layout()
+            focus_x, focus_y = layout.world_focus
+            zoom = getattr(self, "view_zoom", 1.0)
+            return (
+                int((iso_x - cam_x) * zoom + focus_x),
+                int((iso_y - cam_y) * zoom + focus_y),
+            )
+
         width, height = self._screen_size()
+        origin_x, origin_y = width * 0.5, height * 0.48
+        if mobile:
+            origin_x, origin_y = self._mobile_projection_origin(width, height)
         zoom = getattr(self, "view_zoom", 1.0)
         return (
-            int((iso_x - cam_x) * zoom + width * 0.5),
-            int((iso_y - cam_y) * zoom + height * 0.48),
+            int((iso_x - cam_x) * zoom + origin_x),
+            int((iso_y - cam_y) * zoom + origin_y),
         )
 
     def _screen_size(self) -> tuple[int, int]:
@@ -129,10 +195,19 @@ class CameraMixin:
         # by `zoom` to fill the display, so a display pixel maps to layer
         # pixel / zoom. Invert that, then undo the world_to_iso projection.
         cam_x, cam_y = self.camera_iso()
-        width, height = self.screen.get_size()
+        mobile = bool(getattr(self, "mobile_mode", False))
+        if mobile:
+            viewport = self.mobile_world_viewport()
+            sx -= viewport.x
+            sy -= viewport.y
+            width, height = viewport.size
+            origin_x, origin_y = self._mobile_projection_origin(width, height)
+        else:
+            width, height = self.screen.get_size()
+            origin_x, origin_y = width * 0.5, height * 0.48
         zoom = getattr(self, "view_zoom", 1.0)
-        iso_x = (sx - width * 0.5) / zoom + cam_x
-        iso_y = (sy - height * 0.48) / zoom + cam_y
+        iso_x = (sx - origin_x) / zoom + cam_x
+        iso_y = (sy - origin_y) / zoom + cam_y
         x = iso_y / TILE_H + iso_x / TILE_W
         y = iso_y / TILE_H - iso_x / TILE_W
         return x, y

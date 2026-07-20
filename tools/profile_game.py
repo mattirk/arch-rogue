@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import cProfile
+import json
 import os
 import pstats
 import sys
@@ -32,6 +33,10 @@ from arch_rogue.content import ARCHETYPES
 from arch_rogue.dungeon import MAP_H, MAP_W
 from arch_rogue.game import Game
 from arch_rogue.models import Tile
+from arch_rogue.options import (
+    MOBILE_RENDER_QUALITY_MODES,
+    mobile_logical_resolution,
+)
 
 FIXED_DT = 1.0 / 60.0
 
@@ -52,6 +57,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--height", type=int, default=540)
     parser.add_argument("--zoom", type=float, default=1.0)
     parser.add_argument(
+        "--mobile",
+        action="store_true",
+        help="Profile the Android layout and mobile rendering quality path.",
+    )
+    parser.add_argument(
+        "--mobile-quality",
+        choices=MOBILE_RENDER_QUALITY_MODES,
+        default="performance",
+        help="Logical render tier used with --mobile (width/height remain physical).",
+    )
+    parser.add_argument(
         "--no-lighting",
         action="store_true",
         help="Disable continuous lighting to isolate its rendering cost.",
@@ -63,6 +79,31 @@ def parse_args() -> argparse.Namespace:
         default=Path("build/profiles"),
         help="Directory for update.prof and render.prof outputs.",
     )
+    parser.add_argument(
+        "--baseline",
+        type=Path,
+        default=None,
+        help=(
+            "Write a JSON snapshot of phase timings to this path. "
+            "Used to establish a regression baseline."
+        ),
+    )
+    parser.add_argument(
+        "--compare",
+        type=Path,
+        default=None,
+        help=(
+            "Compare phase timings against the JSON baseline at this path and "
+            "exit nonzero if any phase regresses by more than --threshold "
+            "(default 10%%)."
+        ),
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=10.0,
+        help="Max allowed regression percentage per phase when using --compare.",
+    )
     args = parser.parse_args()
     if args.frames <= 0:
         parser.error("--frames must be positive")
@@ -72,17 +113,29 @@ def parse_args() -> argparse.Namespace:
         parser.error("profile resolution must be at least 320x240")
     if args.zoom <= 0.0:
         parser.error("--zoom must be positive")
+    if args.threshold <= 0.0:
+        parser.error("--threshold must be positive")
+    if args.baseline and args.compare:
+        parser.error("--baseline and --compare are mutually exclusive")
     if args.top <= 0:
         parser.error("--top must be positive")
     return args
 
 
 def prepare_game(args: argparse.Namespace, temp_dir: Path) -> Game:
+    physical_size = (args.width, args.height)
+    render_size = (
+        mobile_logical_resolution(physical_size, args.mobile_quality)
+        if args.mobile
+        else physical_size
+    )
     game = Game(
-        screen_size=(args.width, args.height),
+        screen_size=render_size,
         headless=True,
         save_path=temp_dir / "run.json",
+        mobile=args.mobile,
     )
+    game.mobile_render_quality = args.mobile_quality
     game.options_path = temp_dir / "options.json"
     game.rng.seed(args.seed)
     game.restart(ARCHETYPES[2])  # Fixed archetype keeps player asset setup deterministic.
@@ -161,6 +214,38 @@ def print_profile(label: str, profile: cProfile.Profile, top: int) -> None:
     pstats.Stats(profile, stream=sys.stdout).strip_dirs().sort_stats("cumulative").print_stats(top)
 
 
+def _compare_baseline(baseline_path: Path, snapshot: dict, threshold_pct: float) -> str | None:
+    """Return a failure message if any phase regresses beyond threshold_pct.
+
+    Regression = current timing is more than ``threshold_pct`` percent slower
+    than the baseline. Improvements and noise within the threshold pass. A
+    missing baseline file or missing phase is reported as a failure message.
+    """
+
+    try:
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return f"could not read baseline {baseline_path}: {exc}"
+    base_phases = baseline.get("phases") or {}
+    cur_phases = snapshot.get("phases") or {}
+    if not base_phases or not cur_phases:
+        return f"baseline/snapshot missing phases (baseline={base_phases!r})"
+    failures: list[str] = []
+    for phase, cur_ms in cur_phases.items():
+        base_ms = base_phases.get(phase)
+        if base_ms is None or base_ms <= 0.0:
+            failures.append(f"{phase}: missing/invalid baseline {base_ms!r}")
+            continue
+        ratio = cur_ms / base_ms
+        regression_pct = (ratio - 1.0) * 100.0
+        if regression_pct > threshold_pct:
+            failures.append(
+                f"{phase}: {cur_ms:.3f} ms/frame vs baseline "
+                f"{base_ms:.3f} ms/frame (+{regression_pct:.1f}% > {threshold_pct:.1f}%)"
+            )
+    return "; ".join(failures) if failures else None
+
+
 def main() -> None:
     args = parse_args()
     output_dir = args.output_dir.resolve()
@@ -170,12 +255,17 @@ def main() -> None:
         with tempfile.TemporaryDirectory(prefix="arch-rogue-profile-") as temp_name:
             game = prepare_game(args, Path(temp_name))
             enemy_count = len(game.enemies)
+            cache_before = game.sprites.cache_stats()
             update_profile, render_profile, update_seconds, render_seconds = run_profile(
                 game, args.warmup, args.frames
             )
+            cache_after = game.sprites.cache_stats()
 
-            update_path = output_dir / f"{args.scenario}-update.prof"
-            render_path = output_dir / f"{args.scenario}-render.prof"
+            profile_name = args.scenario
+            if args.mobile:
+                profile_name = f"{profile_name}-mobile-{args.mobile_quality}"
+            update_path = output_dir / f"{profile_name}-update.prof"
+            render_path = output_dir / f"{profile_name}-render.prof"
             update_profile.dump_stats(update_path)
             render_profile.dump_stats(render_path)
 
@@ -183,13 +273,57 @@ def main() -> None:
                 "Profile summary: "
                 f"scenario={args.scenario} seed={args.seed} depth={args.depth} "
                 f"frames={args.frames} enemies={enemy_count} zoom={args.zoom:.2f} "
-                f"lighting={'off' if args.no_lighting else 'on'}"
+                f"lighting={'off' if args.no_lighting else 'on'} "
+                f"mobile={args.mobile} quality={args.mobile_quality} "
+                f"render_size={game.screen.get_size()} "
+                f"viewport={game.mobile_world_viewport().size if args.mobile else game.screen.get_size()}"
             )
             print(
                 f"Profiled update: {update_seconds * 1000.0 / args.frames:.3f} ms/frame; "
                 f"render: {render_seconds * 1000.0 / args.frames:.3f} ms/frame"
             )
+            print(
+                "Asset cache: "
+                f"{cache_after}; profile loads="
+                f"{cache_after.get('source_loads', 0) - cache_before.get('source_loads', 0)}, "
+                f"frame builds="
+                f"{cache_after.get('frame_builds', 0) - cache_before.get('frame_builds', 0)}"
+            )
             print(f"Profiles: {update_path} and {render_path}")
+            update_ms = update_seconds * 1000.0 / args.frames
+            render_ms = render_seconds * 1000.0 / args.frames
+            snapshot = {
+                "scenario": profile_name,
+                "seed": args.seed,
+                "depth": args.depth,
+                "frames": args.frames,
+                "warmup": args.warmup,
+                "width": args.width,
+                "height": args.height,
+                "zoom": args.zoom,
+                "mobile": args.mobile,
+                "mobile_quality": args.mobile_quality,
+                "lighting": not args.no_lighting,
+                "enemies": enemy_count,
+                "render_size": list(game.screen.get_size()),
+                "phases": {
+                    "update_ms_per_frame": update_ms,
+                    "render_ms_per_frame": render_ms,
+                },
+            }
+            if args.baseline:
+                args.baseline.parent.mkdir(parents=True, exist_ok=True)
+                args.baseline.write_text(
+                    json.dumps(snapshot, indent=2, sort_keys=True),
+                    encoding="utf-8",
+                )
+                print(f"Baseline written: {args.baseline}")
+            if args.compare:
+                failure = _compare_baseline(args.compare, snapshot, args.threshold)
+                if failure:
+                    print(f"REGRESSION: {failure}", file=sys.stderr)
+                    sys.exit(1)
+                print(f"No regression vs baseline {args.compare}")
             print_profile("Update", update_profile, args.top)
             print_profile("Render", render_profile, args.top)
     finally:

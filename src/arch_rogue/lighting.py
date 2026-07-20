@@ -36,8 +36,9 @@ with a continuous, multi-source, colored light buffer:
 * :class:`LightingMixin` is composed into :class:`arch_rogue.rendering.RenderingMixin`
   and supplies ``draw_lighting``, the per-frame entry point called between
   ``draw_world_objects`` and ``draw_ambient_depth_overlay``. Each frame it
-  clears a reused half-resolution ``SRCALPHA`` buffer, stamps the theme-tinted
-  ambient wash, blits cached radial light sprites with ``BLEND_RGBA_ADD`` for
+  clears a reused downsampled ``SRCALPHA`` buffer (half-resolution on desktop,
+  smaller on mobile quality tiers), stamps the theme-tinted ambient wash, and blits
+  cached radial light sprites with ``BLEND_RGBA_ADD`` for
   the player lantern / static torches & shrines / transient skill, projectile
   and impact pulses, then smoothscales the buffer up and composites it onto the
   screen with ``BLEND_RGBA_MULT``. No surface is allocated in the hot path: the
@@ -57,7 +58,7 @@ from __future__ import annotations
 # pyright: reportAttributeAccessIssue=false
 import math
 from collections import OrderedDict
-from typing import Callable
+from typing import Callable, cast
 
 import pygame
 
@@ -79,6 +80,7 @@ from .constants import (
     TILE_H,
     TILE_W,
 )
+from .mobile import optimize_immutable_alpha_surface
 from .models import Color, LightSource
 
 
@@ -112,19 +114,30 @@ def bake_normal_map(surface: pygame.Surface) -> pygame.Surface:
     try:
         surface.lock()
         heights = [0.0] * (w * h)
-        has_alpha = surface.get_flags() & pygame.SRCALPHA
+        alphas = bytearray(w * h)
+        has_alpha = bool(surface.get_flags() & pygame.SRCALPHA)
+        colorkey = surface.get_colorkey()
+        key_rgb = tuple(colorkey[:3]) if colorkey is not None else None
         for y in range(h):
             for x in range(w):
                 c = surface.get_at((x, y))
-                a = c.a if has_alpha else 255
+                a = (
+                    0
+                    if key_rgb is not None and tuple(c[:3]) == key_rgb
+                    else c.a
+                    if has_alpha
+                    else 255
+                )
+                index = y * w + x
+                alphas[index] = a
                 if a <= 0:
-                    heights[y * w + x] = 0.0
+                    heights[index] = 0.0
                     continue
                 # Silhouette contributes the gross height; luminance adds
                 # readable surface relief on top.
                 lum = (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / 255.0
                 height = 0.62 * (a / 255.0) + 0.38 * lum
-                heights[y * w + x] = height
+                heights[index] = height
     finally:
         if surface.get_locked():
             surface.unlock()
@@ -133,7 +146,7 @@ def bake_normal_map(surface: pygame.Surface) -> pygame.Surface:
     strength = 2.2  # emboss gain; tuned for readable relief on pixel art
     for y in range(h):
         for x in range(w):
-            a = surface.get_at((x, y)).a if has_alpha else 255
+            a = alphas[y * w + x]
             if a <= 0:
                 continue
             # 3x3 Sobel on the height field with edge clamp.
@@ -176,16 +189,12 @@ def mix_color(a: Color, b: Color, ratio: float) -> Color:
     )
 
 
-def light_radius_px(world_radius: float) -> int:
-    """Convert a world-tile light radius to a half-res sprite radius.
+def light_radius_px(
+    world_radius: float, buffer_scale: int = LIGHT_BUFFER_SCALE
+) -> int:
+    """Convert a world-tile light radius to light-buffer pixels."""
 
-    The light buffer is half-resolution, so light sprites are sized in
-    half-res pixels to match (a full-res sprite would be clipped to the
-    buffer and waste fill/blit work). A world-space circle projects to a
-    screen ellipse under the iso transform; a screen circle of this radius
-    reads as the same reach in the dominant directions.
-    """
-    return max(4, int(world_radius * TILE_W * 0.46 / LIGHT_BUFFER_SCALE))
+    return max(4, int(world_radius * TILE_W * 0.46 / max(1, buffer_scale)))
 
 
 def hashable_color(color: Color) -> Color:
@@ -228,12 +237,86 @@ class LightingMixin:
     def lighting_enabled(self) -> bool:
         return bool(getattr(self, "_lighting_enabled", True))
 
+    def mobile_lightweight_lighting_active(self) -> bool:
+        """Use local light accents only when Native cannot present via GLES.
+
+        This is the local-tint CPU fallback. It is **not reachable on desktop**:
+        the first guard below short-circuits whenever ``mobile_mode`` is False,
+        so no desktop frame ever runs the local-tint code path. It is reachable
+        on Android only when ALL of the following hold:
+
+        1. ``lighting_enabled()`` is True (the Lighting option is not Off), and
+        2. ``mobile_mode`` is True (Android runtime), and
+        3. ``mobile_render_quality == "native"`` (Performance/Balanced use the
+           quarter-resolution CPU buffer path directly via ``draw_lighting``),
+           and
+        4. the GLES accelerated renderer is unavailable — either
+           ``_mobile_renderer_accelerated`` is False (software renderer, e.g.
+           a device with no GPU) or ``_mobile_gpu_renderer`` is None (renderer
+           not yet attached at launch, or released after an SDL context loss
+           until ``refresh_mobile_gpu_renderer`` re-borrows it).
+
+        This gate is intentionally tight: the fallback exists as the
+        launch-safe / context-loss-safe path for software renderers, NOT as a
+        general mobile tier. It must stay because some supported Android
+        devices have no GLES presenter at all (pure software renderer), and
+        every Android process briefly runs without a renderer before
+        ``init_mobile_runtime`` attaches one. Removing it would leave those
+        devices with no lighting fallback. Once the GLES renderer is attached,
+        the accelerated path composites the same quarter-resolution continuous
+        light buffer used by the capped tiers, restoring actor and lantern
+        halos without a full-resolution CPU multiply.
+        """
+
+        if not (
+            self.lighting_enabled()
+            and getattr(self, "mobile_mode", False)
+            and getattr(self, "mobile_render_quality", "native") == "native"
+        ):
+            return False
+        # Launch-safe / context-loss-safe gate: only fall back to local tint
+        # when the GLES accelerated renderer is genuinely unavailable. This
+        # keeps the fallback off every accelerated Android frame and off every
+        # desktop frame, while preserving a lighting path for software
+        # renderers and during the brief pre-attach / post-context-loss window.
+        return not (
+            getattr(self, "_mobile_renderer_accelerated", False)
+            and getattr(self, "_mobile_gpu_renderer", None) is not None
+        )
+
+    def continuous_lighting_active(self) -> bool:
+        return bool(
+            self.lighting_enabled() and not self.mobile_lightweight_lighting_active()
+        )
+
     def lighting_normal_maps_active(self) -> bool:
-        return bool(getattr(self, "_lighting_normal_maps", True)) and self.lighting_enabled()
+        return bool(
+            getattr(self, "_lighting_normal_maps", True)
+            and self.continuous_lighting_active()
+        )
 
     def flicker_enabled(self) -> bool:
         # Lantern/torch flicker is always on when the lighting model is on.
         return self.lighting_enabled()
+
+    def light_buffer_scale(self) -> int:
+        """Return the lighting downsample divisor for the active platform tier.
+
+        Desktop keeps the half-resolution divisor (``LIGHT_BUFFER_SCALE = 2``):
+        it is the live, active path for the desktop crowd profile, not a stale
+        mobile tier. Mobile uses the quarter-resolution divisor (``4``) on every
+        quality tier (Performance / Balanced / Native); the previous per-tier
+        scale (``2`` for Native, ``3`` for Balanced) was retired in 4.3.10 when
+        physical-device traces showed half-resolution native lighting still
+        costing 20-30 ms to build while pixel-art falloff remained readable at
+        quarter resolution. The mobile half-resolution branch is therefore dead
+        and intentionally not re-exposed here; the desktop half-resolution
+        branch is alive and must stay.
+        """
+
+        if getattr(self, "mobile_mode", False):
+            return 4
+        return LIGHT_BUFFER_SCALE
 
     # --- transient light emission (called from combat / add_impact) --
     def add_light(
@@ -407,6 +490,10 @@ class LightingMixin:
         buf = getattr(self, "_light_buffer_surface", None)
         if buf is None or buf.get_width() != w or buf.get_height() != h:
             buf = pygame.Surface((w, h), pygame.SRCALPHA)
+            try:
+                buf = buf.convert_alpha()
+            except pygame.error:
+                pass
             self._light_buffer_surface = buf
             # The full-res scratch must match the screen, not the buffer; force
             # a rebuild on next composite.
@@ -416,7 +503,10 @@ class LightingMixin:
     def _light_scratch(self, w: int, h: int) -> pygame.Surface:
         scratch = getattr(self, "_light_scratch_surface", None)
         if scratch is None or scratch.get_width() != w or scratch.get_height() != h:
-            scratch = pygame.Surface((w, h), pygame.SRCALPHA)
+            # The destination display/world layer is opaque. Matching its format
+            # keeps the CPU fallback on the cheaper RGB multiply path instead of
+            # processing a useless alpha channel across the full viewport.
+            scratch = pygame.Surface((w, h)).convert(self.screen)
             self._light_scratch_surface = scratch
         return scratch
 
@@ -470,6 +560,7 @@ class LightingMixin:
             sprite = sprite.convert_alpha()
         except pygame.error:
             pass
+        sprite = optimize_immutable_alpha_surface(sprite)
         cache[key] = sprite
         return sprite
 
@@ -504,7 +595,7 @@ class LightingMixin:
             return getattr(self, "view_zoom", 1.0), self.world_to_display
         return 1.0, self.world_to_screen
 
-    def _stamp_ambient(self, buffer: pygame.Surface) -> None:
+    def _stamp_ambient(self, buffer: pygame.Surface, scale: int) -> None:
         theme_color = self._theme_light_color()
         level = self._ambient_level()
         if self.is_current_floor_dark():
@@ -516,7 +607,13 @@ class LightingMixin:
         # over the visible bounds — rect fills, no surface allocations.
         buffer.fill((0, 0, 0, 0))
         ambient = (*shade_color(theme_color, level), 255)
-        scale = LIGHT_BUFFER_SCALE
+        if getattr(self, "mobile_mode", False):
+            # The mobile base frame already leaves never-revealed terrain black;
+            # multiplying black by a full ambient wash cannot expose it. Avoid
+            # hundreds of per-tile Python fill calls every frame and let the
+            # cached floor layer remain the authoritative fog-of-war mask.
+            buffer.fill(ambient)
+            return
         # A tile's buffer footprint depends on which surface we shade: display
         # pixels shrink with zoom (post-composite) while layer pixels stay at
         # native world scale (pre-composite). Scale the stamp rect by the
@@ -534,6 +631,123 @@ class LightingMixin:
                 ry = sy // scale - tile_w_px // 2
                 buffer.fill(ambient, pygame.Rect(rx, ry, tile_w_px, tile_w_px))
 
+    def _mobile_lightweight_ambient_color(self) -> Color:
+        level = self._ambient_level()
+        # The continuous dark-floor ambient is designed to be rescued by a full
+        # multiply-buffer lantern. Local accents are intentionally subtler, so a
+        # readability floor keeps visible tile/sprite detail from collapsing.
+        level = max(0.42 if self.is_current_floor_dark() else 0.36, level)
+        color = shade_color(self._theme_light_color(), level)
+        return (
+            max(8, min(255, (color[0] // 8) * 8)),
+            max(8, min(255, (color[1] // 8) * 8)),
+            max(8, min(255, (color[2] // 8) * 8)),
+        )
+
+    def apply_mobile_lightweight_ambient_color(self, color: Color) -> Color:
+        if not self.mobile_lightweight_lighting_active():
+            return color
+        multiplier = self._mobile_lightweight_ambient_color()
+        return (
+            color[0] * multiplier[0] // 255,
+            color[1] * multiplier[1] // 255,
+            color[2] * multiplier[2] // 255,
+        )
+
+    def apply_mobile_lightweight_ambient(
+        self, surface: pygame.Surface
+    ) -> pygame.Surface:
+        """Return a cached depth/theme-tinted source for Native mobile lighting."""
+
+        if not self.mobile_lightweight_lighting_active():
+            return surface
+        color = self._mobile_lightweight_ambient_color()
+        key = (id(surface), surface.get_size(), color)
+        cache = cast(
+            OrderedDict[
+                tuple[object, ...], tuple[pygame.Surface, pygame.Surface]
+            ],
+            getattr(self, "_mobile_lightweight_ambient_cache", OrderedDict()),
+        )
+        cached = cache.get(key)
+        if cached is not None and cached[0] is surface:
+            cache.move_to_end(key)
+            return cached[1]
+
+        if surface.get_colorkey() is not None:
+            tinted = surface.convert_alpha()
+            blend_flag = pygame.BLEND_RGBA_MULT
+        else:
+            tinted = surface.copy()
+            blend_flag = (
+                pygame.BLEND_RGBA_MULT
+                if tinted.get_flags() & pygame.SRCALPHA
+                else pygame.BLEND_RGB_MULT
+            )
+        tinted.fill((*color, 255), special_flags=blend_flag)
+        tinted = optimize_immutable_alpha_surface(tinted)
+        cache[key] = (surface, tinted)
+        cache.move_to_end(key)
+        while len(cache) > 768:
+            cache.popitem(last=False)
+        self._mobile_lightweight_ambient_cache = cache
+        return tinted
+
+    def _mobile_lightweight_actor_lighting(
+        self,
+        sprite: pygame.Surface,
+        world_x: float,
+        world_y: float,
+    ) -> pygame.Surface:
+        ambient = self.apply_mobile_lightweight_ambient(sprite)
+        dominant = self._dominant_light(
+            world_x, world_y, require_visible_source=True
+        )
+        if dominant is None:
+            return ambient
+        distance = math.hypot(world_x - dominant.x, world_y - dominant.y)
+        factor = dominant.intensity * dominant.life * (
+            1.0 - distance / max(0.5, dominant.radius)
+        )
+        if dominant.flicker and self.flicker_enabled():
+            _, intensity_scale = self._flicker(dominant)
+            factor *= intensity_scale
+        strength_bucket = max(0, min(4, round(max(0.0, factor) * 4.0)))
+        if strength_bucket <= 0:
+            return ambient
+        light_color = hashable_color(dominant.color)
+        key = (id(ambient), light_color, strength_bucket)
+        cache = cast(
+            OrderedDict[
+                tuple[object, ...], tuple[pygame.Surface, pygame.Surface]
+            ],
+            getattr(self, "_mobile_lightweight_actor_cache", OrderedDict()),
+        )
+        cached = cache.get(key)
+        if cached is not None and cached[0] is ambient:
+            cache.move_to_end(key)
+            return cached[1]
+
+        result = (
+            ambient.convert_alpha()
+            if ambient.get_colorkey() is not None
+            else ambient.copy()
+        )
+        strength = 0.05 * strength_bucket
+        addition = (
+            round(light_color[0] * strength),
+            round(light_color[1] * strength),
+            round(light_color[2] * strength),
+        )
+        result.fill(addition, special_flags=pygame.BLEND_RGB_ADD)
+        result = optimize_immutable_alpha_surface(result)
+        cache[key] = (ambient, result)
+        cache.move_to_end(key)
+        while len(cache) > 384:
+            cache.popitem(last=False)
+        self._mobile_lightweight_actor_cache = cache
+        return result
+
     # --- the per-frame compositing entry point ----------------------
     def draw_lighting(self) -> None:
         if not self.lighting_enabled():
@@ -543,12 +757,18 @@ class LightingMixin:
         screen_w, screen_h = self._screen_size()
         if screen_w <= 0 or screen_h <= 0:
             return
-        buf_w = max(1, screen_w // LIGHT_BUFFER_SCALE)
-        buf_h = max(1, screen_h // LIGHT_BUFFER_SCALE)
+        if self.mobile_lightweight_lighting_active():
+            # Source surfaces already carry the cached depth/theme multiplier,
+            # while dark floors retain their per-tile lantern falloff. Avoid any
+            # screen-space halo that could color unrevealed framebuffer pixels.
+            return
+        scale = self.light_buffer_scale()
+        buf_w = max(1, screen_w // scale)
+        buf_h = max(1, screen_h // scale)
         buffer = self._light_buffer(buf_w, buf_h)
 
         # 1) Ambient base (theme-tinted; revealed-tile memory on light floors).
-        self._stamp_ambient(buffer)
+        self._stamp_ambient(buffer, scale)
 
         # 2) Accumulate every active light additively into the buffer.
         # Every light shares one smooth cached sprite per (radius, color)
@@ -563,7 +783,6 @@ class LightingMixin:
         # world scale. The radial sprite cache quantizes to 8px buckets, so the
         # few extra entries per zoom level are bounded and cleared on floor
         # change. At zoom 1.0 this is the original sprite size.
-        scale = LIGHT_BUFFER_SCALE
         eff_zoom, project = self._shade_params()
         lights = self._collect_frame_lights()
         for light in lights:
@@ -577,24 +796,39 @@ class LightingMixin:
             if factor <= 0.0:
                 continue
             sprite = self._radial_light_sprite(
-                int(light_radius_px(light.radius) * eff_zoom), light.color
+                int(light_radius_px(light.radius, scale) * eff_zoom), light.color
             )
-            scratch = self._flicker_scratch(
-                sprite.get_width(), sprite.get_height()
-            )
-            scratch.blit(sprite, (0, 0))
-            f = max(0, min(255, int(255 * factor)))
-            scratch.fill((f, f, f, 255), special_flags=pygame.BLEND_RGBA_MULT)
             sx, sy = project(light.x, light.y)
             sy -= round(light.elevation * TILE_H * eff_zoom)
             bx = sx // scale - sprite.get_width() // 2
             by = sy // scale - sprite.get_height() // 2
+            f = max(0, min(255, int(255 * factor)))
+            if f >= 254:
+                buffer.blit(sprite, (bx, by), special_flags=pygame.BLEND_RGBA_ADD)
+                continue
+            scratch = self._flicker_scratch(
+                sprite.get_width(), sprite.get_height()
+            )
+            scratch.blit(sprite, (0, 0))
+            scratch.fill((f, f, f, 255), special_flags=pygame.BLEND_RGBA_MULT)
             buffer.blit(scratch, (bx, by), special_flags=pygame.BLEND_RGBA_ADD)
 
-        # 3) Smoothscale the half-res buffer up to the screen and multiply.
+        # 3) On Android, queue the small light buffer for GLES to scale and
+        # multiply during presentation. This preserves native-resolution world
+        # sprites while removing the full-viewport CPU RGBA multiply measured in
+        # physical-device traces. Desktop and capability failures retain the CPU
+        # path below.
+        if getattr(self, "mobile_mode", False) and self.queue_mobile_gpu_lighting(
+            buffer
+        ):
+            return
+
         scratch = self._light_scratch(screen_w, screen_h)
-        pygame.transform.smoothscale(buffer, (screen_w, screen_h), scratch)
-        self.screen.blit(scratch, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        if getattr(self, "mobile_mode", False):
+            pygame.transform.scale(buffer, (screen_w, screen_h), scratch)
+        else:
+            pygame.transform.smoothscale(buffer, (screen_w, screen_h), scratch)
+        self.screen.blit(scratch, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
 
     # --- lit-actor shading (feature 6) ------------------------------
     def apply_lit_shading(
@@ -615,6 +849,10 @@ class LightingMixin:
         actor no longer flickers as its pose animates. Skipped on the
         LIGHTING_OFF tier and when normal maps are disabled.
         """
+        if self.mobile_lightweight_lighting_active():
+            return self._mobile_lightweight_actor_lighting(
+                sprite, world_x, world_y
+            )
         if not self.lighting_normal_maps_active():
             return sprite
         dominant = self._dominant_light(world_x, world_y)
@@ -658,18 +896,29 @@ class LightingMixin:
             result = result.convert_alpha()
         except pygame.error:
             pass
+        result = optimize_immutable_alpha_surface(result)
         cache[key] = (sprite, tint_map, result)
         cache.move_to_end(key)
         while len(cache) > 192:
             cache.popitem(last=False)
         return result
 
-    def _dominant_light(self, x: float, y: float) -> LightSource | None:
+    def _dominant_light(
+        self,
+        x: float,
+        y: float,
+        *,
+        require_visible_source: bool = False,
+    ) -> LightSource | None:
         lights = self._collect_frame_lights()
         best: LightSource | None = None
         best_score = -1.0
         for light in lights:
             if light.radius < 0.0:
+                continue
+            if require_visible_source and not self.can_see_world_position(
+                light.x, light.y, 0.0
+            ):
                 continue
             dx = x - light.x
             dy = y - light.y
@@ -799,6 +1048,8 @@ class LightingMixin:
         self._flicker_scratch_cache = {}
         self._light_buffer_surface = None
         self._light_scratch_surface = None
+        self._mobile_lightweight_ambient_cache = OrderedDict()
+        self._mobile_lightweight_actor_cache = OrderedDict()
         sprites = getattr(self, "sprites", None)
         if sprites is not None and hasattr(sprites, "clear_normal_map_cache"):
             sprites.clear_normal_map_cache()
