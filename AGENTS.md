@@ -206,18 +206,6 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 
 ### 4.4 Web page & release
 
-- We need website for game downloads. Reference layout at build/archrogue_website_layout.drawio.png
-  - Create as GitHub Pages
-  - Place files, assets and styles in this repo accordingly
-  - Generate assets in PixelLab when needed
-  - What is the best way to dynamically update download links of platform download badges (Windows, Mac, Android) in website when new releases are built in gh actions?
-
-#### 4.4.1 Post-website what comes to mind
-
-- On mobile, relic shadow/effects are fixed but shrines still glitch. At least after used.
-- On mobile, back button is needed. Place subtle back button in top left corner on screens that allow going back to previous screens, including character and inventory. Generate nice glyph in pixellab
-- Make Native resolution default on mobile
-
 #### 4.4.x Another batch of Android optimization & more
 
 - General optimizations, remember to bump versions after optimizations

@@ -22,7 +22,7 @@
 # pyright: reportAttributeAccessIssue=false, reportUnusedImport=false
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Any, NamedTuple, Sequence
 
 import pygame
 
@@ -31,6 +31,24 @@ from ..constants import MAX_INVENTORY
 from ..models import Archetype, Color, Item
 
 MenuRow = tuple[str, str, str]
+
+
+class AboutEntry(NamedTuple):
+    """One renderable line of the About / Quick Help screen.
+
+    The About screen is laid out as a flat list of these entries so a single
+    scroll cursor (in entry units) can walk a viewport whose lines have variable
+    heights — section headers are taller than body lines, and labeled quick-help
+    bodies are indented under an accent-colored label.
+    """
+
+    text: str
+    font: pygame.font.Font
+    color: Color
+    height: int
+    text_offset: int  # pixels from the box top to draw the text top
+    indent: int  # left inset for this line (e.g. labeled body indent)
+    underline_y: int  # box-relative y for a section divider, or -1 for none
 
 
 class MenuTitleMixin:
@@ -233,11 +251,15 @@ class MenuTitleMixin:
         panel, content = self.menu_frame(
             "About / Open Source Licenses", f"Arch Rogue {__version__}"
         )
-        # 4.3.17 WS-G: the About screen now surfaces the Apache-2.0 license text,
+        # 4.3.17 WS-G: the About screen surfaces the Apache-2.0 license text,
         # the third-party NOTICE list, and the AI Provenance & Liability notice
         # so APK installers get Apache-2.0 §4 attribution without opening the
-        # repo. The full body is one scrollable text region (Up/Down/PgUp/PgDn
-        # on desktop, swipe on mobile); the renderer publishes
+        # repo. 4.4.7 splits the previously unformatted wall of text into named
+        # sections (Overview, Quick Help, Credits, Open Source Licenses, and one
+        # section per bundled license document) with gold section headers, iron
+        # divider rules, accent-colored quick-help labels, and indented bodies.
+        # The whole document is still one scrollable region (Up/Down/PgUp/PgDn on
+        # desktop, swipe on mobile); the renderer publishes
         # _licenses_scroll_max / _licenses_visible_lines for the input layer.
         from ..licenses import (
             ai_provenance_text,
@@ -246,80 +268,263 @@ class MenuTitleMixin:
             pygame_lgpl_text,
         )
 
-        onboarding = [
-            f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs, procedural stories, and dark-level exploration.",
-            "Goal: descend through ten depths, survive escalating encounters, resolve story guest dilemmas, defeat the final-depth gate tyrant, then use the stairs to complete the run.",
-            "Combat: touch the world to move and aim. Use the six action buttons for attacks, class skills, movement, and potions. The action rail shows cooldowns and potion counts.",
-            "Difficulty: Options cycle Easy, Medium, and Hard; Medium is the default, and Hell unlocks after your first complete clear.",
-            "Story: every run generates an archetype-aligned backstory, factions, relic, guests, and floor beats. Use the interaction control near a guest, then tap a response to shape future floors.",
-            "Loot and discovery: use the interaction control for pickups, shrines, secrets, and stairs. Interaction prompts explain risks, and inventory rows summarize upgrades, curses, and comparisons.",
-            "Dark floors: some depths limit sight to a small light radius while monsters still navigate the dungeon perfectly.",
-            "Credits: design, code, procedural art, procedural audio, and procedural story corpus by the Arch Rogue project.",
-        ] if self.g.mobile_mode else [
-            f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs, procedural stories, and dark-level exploration.",
-            "Goal: descend through ten depths, survive escalating encounters, resolve story guest dilemmas, defeat the final-depth gate tyrant, then use the stairs to complete the run.",
-            "Combat: hold left mouse to move and aim. Number keys trigger skills and potions: 1 melee, 2 bolt, 3 nova, 4 movement skill, 5 health potion, 6 mana potion. C opens the character sheet. The bottom HUD action bar shows hotkeys, cooldowns, and potion counts.",
-            "Difficulty: Options cycle Easy, Medium, and Hard; Medium is the default, and Hell unlocks after your first complete clear.",
-            "Story: every run generates an archetype-aligned backstory, factions, relic, guests, and floor beats. Near a story guest, press E to hear their plea or 1-3 to choose Aid, Bargain, or Defy.",
-            "Loot and discovery: press E for pickups, shrines, secrets, and stairs. Interaction prompts explain risks, and inventory rows summarize upgrades, curses, and comparisons.",
-            "Dark floors: some depths limit sight to a small light radius while monsters still navigate the dungeon perfectly.",
-            "Credits: design, code, procedural art, procedural audio, and procedural story corpus by the Arch Rogue project.",
-        ]
-
+        mobile = bool(self.g.mobile_mode)
+        intro = (
+            f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG "
+            "built around compact, replayable dungeon runs, procedural stories, "
+            "and dark-level exploration."
+        )
+        goal = (
+            "Descend through ten depths, survive escalating encounters, resolve "
+            "story guest dilemmas, defeat the final-depth gate tyrant, then use "
+            "the stairs to complete the run."
+        )
+        difficulty = (
+            "Options cycle Easy, Medium, and Hard; Medium is the default, and "
+            "Hell unlocks after your first complete clear."
+        )
+        dark = (
+            "Some depths limit sight to a small light radius while monsters "
+            "still navigate the dungeon perfectly."
+        )
+        credits = (
+            "Design, code, procedural art, procedural audio, and procedural story "
+            "corpus by the Arch Rogue project."
+        )
+        if mobile:
+            combat = (
+                "Touch the world to move and aim. Use the six action buttons for "
+                "attacks, class skills, movement, and potions. The action rail "
+                "shows cooldowns and potion counts."
+            )
+            story = (
+                "Every run generates an archetype-aligned backstory, factions, "
+                "relic, guests, and floor beats. Use the interaction control near "
+                "a guest, then tap a response to shape future floors."
+            )
+            loot = (
+                "Use the interaction control for pickups, shrines, secrets, and "
+                "stairs. Interaction prompts explain risks, and inventory rows "
+                "summarize upgrades, curses, and comparisons."
+            )
+        else:
+            combat = (
+                "Hold left mouse to move and aim. Number keys trigger skills and "
+                "potions: 1 melee, 2 bolt, 3 nova, 4 movement skill, 5 health "
+                "potion, 6 mana potion. C opens the character sheet. The bottom "
+                "HUD action bar shows hotkeys, cooldowns, and potion counts."
+            )
+            story = (
+                "Every run generates an archetype-aligned backstory, factions, "
+                "relic, guests, and floor beats. Near a story guest, press E to "
+                "hear their plea or 1-3 to choose Aid, Bargain, or Defy."
+            )
+            loot = (
+                "Press E for pickups, shrines, secrets, and stairs. Interaction "
+                "prompts explain risks, and inventory rows summarize upgrades, "
+                "curses, and comparisons."
+            )
         license_summary = (
-            "Open Source Licenses: Arch Rogue is licensed under Apache-2.0. "
-            "pygame-ce is LGPL-2.1-or-later. SDL2 and its image/mixer/ttf "
-            "libraries use zlib; other bundled Python, crypto, database, image, "
-            "font, and codec components retain the licenses listed in NOTICE. "
-            "The full NOTICE, pygame-ce LGPL, and Apache-2.0 texts follow."
+            "Arch Rogue is licensed under Apache-2.0. pygame-ce is "
+            "LGPL-2.1-or-later. SDL2 and its image/mixer/ttf libraries use zlib; "
+            "other bundled Python, crypto, database, image, font, and codec "
+            "components retain the licenses listed in the NOTICE below. The full "
+            "NOTICE, pygame-ce LGPL, and Apache-2.0 texts follow."
         )
 
-        body = (
-            "\n\n".join(onboarding)
-            + "\n\n"
-            + "Open Source Licenses\n"
-            + "---------------------\n"
-            + license_summary
-            + "\n\n"
-            + ai_provenance_text()
-            + "\n\n"
-            + notice_text()
-            + "\n\n"
-            + "GNU LGPL 2.1 (pygame-ce)\n"
-            + "-------------------------\n"
-            + pygame_lgpl_text()
-            + "\n\n"
-            + "Apache License 2.0\n"
-            + "------------------\n"
-            + license_text()
+        # Fonts and metrics. Reserve a narrow right rail up front so wrapped
+        # lines never collide with the scrollbar when the document overflows.
+        if content.height >= 360:
+            header_font = self.g.font
+            body_font = self.g.small_font
+        else:
+            header_font = self.g.small_font
+            body_font = self.g.tiny_font
+        pre_font = self.g.tiny_font
+        rail = self.u(10)
+        text_rect = pygame.Rect(
+            content.x, content.y, max(1, content.width - rail), content.height
         )
+        wrap_width = text_rect.width
+        line_gap = max(body_font.get_height() + 2, self.u(16))
+        pre_line_gap = max(pre_font.get_height() + 2, self.u(14))
+        section_gap = self.u(12)
+        paragraph_gap = self.u(6)
+        item_gap = self.u(5)
+        divider_gap = self.u(6)
+        label_indent = self.u(14)
+        header_text_h = header_font.get_height()
+        body_vcenter = max(0, (line_gap - body_font.get_height()) // 2)
+        pre_vcenter = max(0, (pre_line_gap - pre_font.get_height()) // 2)
 
-        font = self.g.tiny_font if content.height < 360 else self.g.small_font
-        line_gap = max(font.get_height() + 2, self.u(16))
-        # Reserve a scrollbar rail when the wrapped text overflows.
-        wrapped = self.wrap_text(body, font, content.width)
-        max_lines = max(1, content.height // line_gap)
-        scroll_max = max(0, len(wrapped) - max_lines)
+        entries: list[AboutEntry] = []
+
+        def add_section(title: str) -> None:
+            entries.append(
+                AboutEntry(
+                    text=title,
+                    font=header_font,
+                    color=self.TITLE,
+                    height=section_gap + header_text_h + divider_gap,
+                    text_offset=section_gap,
+                    indent=0,
+                    underline_y=section_gap + header_text_h + 1,
+                )
+            )
+
+        def add_paragraph(text: str) -> None:
+            wrapped = self.wrap_text(text, body_font, wrap_width)
+            for i, line in enumerate(wrapped):
+                if i == 0:
+                    entries.append(
+                        AboutEntry(
+                            line, body_font, self.TEXT,
+                            paragraph_gap + line_gap,
+                            paragraph_gap + body_vcenter, 0, -1,
+                        )
+                    )
+                else:
+                    entries.append(
+                        AboutEntry(
+                            line, body_font, self.TEXT,
+                            line_gap, body_vcenter, 0, -1,
+                        )
+                    )
+
+        def add_labeled(label: str, body: str) -> None:
+            entries.append(
+                AboutEntry(
+                    label, body_font, self.accent(),
+                    item_gap + line_gap, item_gap + body_vcenter, 0, -1,
+                )
+            )
+            for line in self.wrap_text(body, body_font, wrap_width - label_indent):
+                entries.append(
+                    AboutEntry(
+                        line, body_font, self.TEXT,
+                        line_gap, body_vcenter, label_indent, -1,
+                    )
+                )
+
+        def add_preformatted(text: str) -> None:
+            first = True
+            for src_line in text.split("\n"):
+                for line in self.wrap_text(src_line, pre_font, wrap_width):
+                    if first:
+                        entries.append(
+                            AboutEntry(
+                                line, pre_font, self.MUTED,
+                                paragraph_gap + pre_line_gap,
+                                paragraph_gap + pre_vcenter, 0, -1,
+                            )
+                        )
+                        first = False
+                    else:
+                        entries.append(
+                            AboutEntry(
+                                line, pre_font, self.MUTED,
+                                pre_line_gap, pre_vcenter, 0, -1,
+                            )
+                        )
+
+        add_section("Overview")
+        add_paragraph(intro)
+        add_section("Quick Help")
+        add_labeled("Goal", goal)
+        add_labeled("Combat", combat)
+        add_labeled("Difficulty", difficulty)
+        add_labeled("Story", story)
+        add_labeled("Loot & Discovery", loot)
+        add_labeled("Dark Floors", dark)
+        add_section("Credits")
+        add_paragraph(credits)
+        add_section("Open Source Licenses")
+        add_paragraph(license_summary)
+        add_paragraph(ai_provenance_text())
+        add_section("Third-Party Notices")
+        add_preformatted(notice_text())
+        add_section("pygame-ce — GNU LGPL 2.1-or-later")
+        add_preformatted(pygame_lgpl_text())
+        add_section("Arch Rogue — Apache License 2.0")
+        add_preformatted(license_text())
+
+        # Scroll in entry units across a viewport with variable line heights.
+        # Prefix sums make the visible-window and scroll-max search exact and
+        # O(log n) per query, so the long license documents stay cheap to lay out
+        # every frame.
+        n = len(entries)
+        prefix = [0] * (n + 1)
+        for i, e in enumerate(entries):
+            prefix[i + 1] = prefix[i] + e.height
+        total_h = prefix[n]
+
+        def visible_end(start: int) -> int:
+            # Largest end in [start+1, n] whose cumulative height fits the
+            # viewport. Always returns at least start + 1 so a single tall entry
+            # (e.g. a header on a tiny window) is never stuck off-screen.
+            lo, hi = start + 1, n
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                if prefix[mid] - prefix[start] <= content.height:
+                    lo = mid
+                else:
+                    hi = mid - 1
+            return lo
+
+        if total_h <= content.height:
+            scroll_max = 0
+        else:
+            # Smallest start index whose window reaches the final entry: that is
+            # the bottom-stick scroll position. visible_end is non-decreasing in
+            # start, so a binary search finds it.
+            lo, hi = 0, max(0, n - 1)
+            while lo < hi:
+                mid = (lo + hi) // 2
+                if visible_end(mid) >= n:
+                    hi = mid
+                else:
+                    lo = mid + 1
+            scroll_max = lo
+
         scroll = max(
             0, min(int(getattr(self.g, "licenses_scroll", 0)), scroll_max)
         )
         self.g.licenses_scroll = scroll
         self.g._licenses_scroll_max = scroll_max
-        self.g._licenses_visible_lines = max_lines
-        scrollbar_pad = self.u(10) if scroll_max > 0 else 0
-        text_rect = content.inflate(-scrollbar_pad, 0) if scrollbar_pad else content
+        v_end = visible_end(scroll) if n else 0
+        self.g._licenses_visible_lines = max(1, v_end - scroll)
+
         y = text_rect.y
-        for line in wrapped[scroll : scroll + max_lines]:
-            if line:
+        for i in range(scroll, v_end):
+            e = entries[i]
+            line_x = text_rect.x + e.indent
+            line_w = max(1, text_rect.width - e.indent)
+            if e.text:
                 self.draw_text(
-                    line,
-                    font,
-                    self.TEXT,
-                    pygame.Rect(text_rect.x, y, text_rect.width, line_gap),
+                    e.text,
+                    e.font,
+                    e.color,
+                    pygame.Rect(
+                        line_x,
+                        y + e.text_offset,
+                        line_w,
+                        max(1, e.height - e.text_offset),
+                    ),
                 )
-            y += line_gap
+            if e.underline_y >= 0:
+                uy = y + e.underline_y
+                pygame.draw.line(
+                    self.screen,
+                    self.IRON,
+                    (line_x, uy),
+                    (text_rect.right, uy),
+                    max(1, self.u(1)),
+                )
+            y += e.height
         if scroll_max > 0:
-            self._draw_licenses_scrollbar(content, scroll, max_lines, len(wrapped))
+            self._draw_licenses_scrollbar(
+                content, scroll, scroll_max, v_end - scroll, n
+            )
         self.draw_footer(
             panel,
             "Up / Down / PgUp / PgDn scroll · Enter or Backspace returns to title",
@@ -329,12 +534,16 @@ class MenuTitleMixin:
         self,
         rows_rect: pygame.Rect,
         scroll: int,
+        scroll_max: int,
         visible_count: int,
         total_count: int,
     ) -> None:
         # Mirrors the options/inventory scrollbar look (recessed track, ember
         # thumb) so the About screen reads as one family with the other menus.
-        if total_count <= visible_count or visible_count <= 1:
+        # The thumb travel is driven by scroll_max (the bottom-stick entry index)
+        # rather than total - visible, because the sectioned layout uses variable
+        # line heights and the last reachable scroll position is scroll_max.
+        if scroll_max <= 0 or total_count <= visible_count or visible_count <= 1:
             return
         track = pygame.Rect(
             rows_rect.right - self.u(5),
@@ -347,12 +556,11 @@ class MenuTitleMixin:
             self.screen, self.IRON_DARK, track, max(1, self.u(1)), border_radius=self.u(3)
         )
         thumb_h = max(self.u(18), int(track.height * visible_count / total_count))
-        max_scroll = max(1, total_count - visible_count)
         travel = max(1, track.height - thumb_h)
-        clamped = max(0, min(scroll, max_scroll))
+        clamped = max(0, min(scroll, scroll_max))
         thumb = pygame.Rect(
             track.x,
-            track.y + int(travel * clamped / max_scroll),
+            track.y + int(travel * clamped / max(1, scroll_max)),
             track.width,
             thumb_h,
         )

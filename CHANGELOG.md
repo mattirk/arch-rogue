@@ -1,5 +1,26 @@
 # Changelog
 
+## 4.4.7 — Sectioned About / Quick Help Screen
+
+Release 4.4.7 turns the About, Credits, and Quick Help page from a single unformatted wall of text into a readable, sectioned document while preserving the 4.3.17 WS-G Open Source Licenses scroll contract.
+
+### Changed
+
+- **Named sections with gold headers and divider rules:** the page is now organized into Overview, Quick Help, Credits, Open Source Licenses, Third-Party Notices, pygame-ce — GNU LGPL 2.1-or-later, and Arch Rogue — Apache License 2.0 sections. Each section header is rendered in aged-gold with an iron divider rule beneath it, so the document scans as a structured page rather than a paragraph dump.
+- **Labeled quick-help items:** the Quick Help section splits the onboarding into Goal, Combat, Difficulty, Story, Loot & Discovery, and Dark Floors items. Each label is rendered in the archetype accent color with its description indented underneath, making the controls and concepts scannable at a glance. Desktop and mobile control variants are preserved.
+- **Preformatted license text:** the NOTICE, pygame-ce LGPL, and Apache-2.0 documents are now rendered preserving their original line breaks (wrapping only overlong lines) in a muted tone, instead of being reflowed into one giant paragraph. This keeps the legal text legible and properly attributed.
+- **Variable-height scroll viewport:** the renderer now lays out the page as a flat list of `AboutEntry` lines with per-line heights (section headers are taller than body lines) and scrolls in entry units. Prefix-sum windowing makes the visible-window and bottom-stick scroll-max search exact and O(log n), so the long license documents stay cheap to lay out every frame. The scrollbar thumb now travels against `scroll_max` (the bottom-stick position) instead of `total - visible`.
+- **Responsive fonts:** section headers use the main font on standard windows and step down to the small font on compact layouts; body and preformatted text use the small/tiny fonts respectively, matching the prior compact-window behavior.
+- The `_licenses_scroll_max` / `_licenses_visible_lines` contract and Up/Down/PgUp/PgDn/Enter input behavior are unchanged, so the existing About-screen scroll and return-to-title tests still pass.
+- Project, runtime, Android package, and website release metadata advance to `4.4.7`; options remain schema `7` and run saves remain schema `5`.
+
+### Validation
+
+- `.venv/bin/python -m compileall -q src tests`
+- `.venv/bin/python -m unittest tests.test_licenses tests.test_ui_layouts tests.test_pause_on_menus tests.test_save_and_metadata` — focused suites pass.
+- `.venv/bin/python -m unittest discover tests` — 543 tests pass.
+- Programmatic sweep: every scroll position on desktop (960×540), the mobile variant, and a compact 640×360 window keeps `_licenses_visible_lines >= 1` and clamps to `_licenses_scroll_max`.
+
 ## 4.4.6 — Run-Ending Summary Panels & Shop Pause
 
 Release 4.4.6 gives the You Died screen a clearer visual hierarchy so a finished run reads as a deliberate summary rather than a dense table of small text, and pauses the simulation when the shopkeeper menu is open on all platforms.
