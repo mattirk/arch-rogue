@@ -125,8 +125,11 @@ class InteractionMixin:
             )
         guest = self.nearby_story_guest()
         if guest:
+            # Mobile contextual prompts are tappable only for the generic
+            # interaction key; desktop still advertises the direct 1-3 story
+            # choices so keyboard-only play keeps the original shortcut UI.
             return (
-                "1-3",
+                "E" if getattr(self, "mobile_mode", False) else "1-3",
                 f"{guest.name}, {guest.role}",
                 self.story_choices_hint(guest),
                 guest.color,

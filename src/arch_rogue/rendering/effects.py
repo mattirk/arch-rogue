@@ -777,23 +777,12 @@ class RenderingEffectsMixin:
         scaled_h = max(1, round((height - squash - lift * 0.32) * WORLD_SCALE))
         # Cache the final dimensions and quantized opacity. Keeping each source
         # immutable lets SDL retain its RLE encoding instead of rebuilding it
-        # after a per-frame set_alpha call for every actor.
-        if getattr(self, "mobile_mode", False):
-            # Dozens of soft per-pixel-alpha shadow blits dominate crowded ARM
-            # frames. Two direct pixel-art ellipses keep actors grounded without
-            # allocating, scaling, or alpha-blending a source surface per actor.
-            rect = pygame.Rect(0, 0, scaled_w, scaled_h)
-            rect.center = (sx, sy + 10 * WORLD_SCALE)
-            pygame.draw.ellipse(self.screen, (8, 7, 11), rect)
-            inner = rect.inflate(
-                -max(2, rect.width // 4),
-                -max(2, rect.height // 3),
-            )
-            if inner.width > 0 and inner.height > 0:
-                pygame.draw.ellipse(self.screen, (4, 4, 7), inner)
-            return
-
-        opacity = 210 if moving else 175
+        # after a per-frame set_alpha call for every actor. Mobile uses the same
+        # radial template at a lower opacity: steady-state cost remains one
+        # cached alpha blit per actor, but contacts are transparent rather than
+        # the opaque ellipses that previously read as black holes under sprites.
+        mobile = bool(getattr(self, "mobile_mode", False))
+        opacity = (136 if moving else 112) if mobile else (210 if moving else 175)
         opacity = max(0, min(255, int(opacity - lift * 6.0)))
         shadow = self._scaled_soft_shadow(scaled_w, scaled_h, opacity)
         self.screen.blit(

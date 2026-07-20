@@ -459,7 +459,7 @@ def build_mobile_layout(
         rail_h,
     )
 
-    joystick_raise = max(10, min(38, int(safe.height * 0.035)))
+    joystick_raise = max(18, min(64, int(safe.height * 0.065)))
     joystick = pygame.Rect(0, 0, joystick_size, joystick_size)
     joystick.left = min(
         safe.right - outer - joystick.width,

@@ -63,7 +63,10 @@ The first Options row cycles the available tiers:
   normal-map detail are tuned for the lowest steady rendering cost.
 - **Balanced · 720p cap** — sharper output on faster phones and tablets.
 - **Native · full resolution** — diagnostic/high-end mode; can be dramatically
-  slower because Pygame's world remains CPU-rendered before presentation.
+  slower because Pygame's world remains CPU-rendered before presentation. When
+  the accelerated GLES presenter is available, it now uses the same continuous
+  quarter-resolution lighting as the capped tiers; the cheaper local-tint path
+  remains only for software-renderer or context-loss fallback.
 
 Older mobile options files migrate to Performance and disable generated normal
 maps once. You can re-enable **Lighting detail** explicitly after confirming the

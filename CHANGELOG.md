@@ -1,5 +1,25 @@
 # Changelog
 
+## 4.3.10 — Android Lighting and Interaction Polish
+
+Release 4.3.10 fixes the remaining mobile interaction and presentation regressions reported after the overlay-HUD beta. Quest guests now use the same tappable contextual prompt pattern as items and doors, the analog stick is easier to reach, and accelerated Native mode restores continuous actor lighting without returning to a full-resolution CPU light multiply. Desktop rendering and controls remain unchanged.
+
+### Fixed
+
+- Story guests render an actionable mobile `TAP` prompt, so tapping their bottom-right tooltip opens the quest conversation exactly like item pickup and door interaction. Desktop still displays the direct `1-3` story-choice hint.
+- Mobile actor, prop, and loot contact shadows use the cached radial soft-shadow surfaces at Android-tuned opacity instead of opaque black ellipses. The steady-state path remains one cached alpha blit per entity.
+- Accelerated Native Android rendering now uses the same quarter-resolution continuous light buffer and GLES modulation path as Performance/Balanced, restoring warm player/NPC lantern halos and eliminating the pale local additive actor tint. The local tint path remains only as a software-renderer/context-loss fallback.
+- The analog stick sits higher for thumb reach while preserving safe-area, left-panel, and gameplay-viewport separation across compact, phone, tablet, and asymmetric-cutout layouts.
+- Runtime/package release version is `4.3.10`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Focused mobile layout/render/input, soft-shadow, lighting, and input/accessibility coverage passes 132 tests, including new regressions for guest-tooltip taps, accelerated-Native quarter-resolution lighting, and transparent cached mobile shadows.
+- Headless 1280×720 comparison renders for Performance, Balanced, accelerated Native, and software Native confirm the soft contact shadow and continuous lantern-lit floor response; physical-device validation remains required for final visual parity and frame pacing.
+- Full non-web `unittest` discovery completed with 470 tests passing; `python -m compileall -q src tests`, changed-file diagnostics, and `git diff --check` pass (the rendering effects mixin retains its pre-existing cross-module unused-import warnings).
+- Representative 2340×1080 crowd profiles show the change remains actor/floor-blit dominated rather than lighting-buffer dominated: Performance 14.640 ms render and software-fallback Native 17.715 ms render in the deterministic headless harness. These host numbers guard against a new CPU hotspot but are not ARM frame-time claims.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.10-arm64-v8a_armeabi-v7a-debug.apk` (73,446,499 bytes; SHA-256 `80591b5ad3020cf76b6f4b1bec8191d8fed00c54cce938be927bd1ae24814bc9`). The package reports version 4.3.10 and both ARM ABIs with 104 architecture-correct ELF extensions per ABI, and it passes APK Signature Scheme v2 verification.
+
 ## 4.3.9 — Android World-Overlay HUD
 
 Release 4.3.9 removes the last permanent top-of-screen mobile information panel and turns the left controls into true overlays over an edge-to-edge dungeon view. Run, depth, floor, difficulty, modifier, resources, and optional character information remain readable without narrowing or recentering gameplay beneath the controls. Desktop rendering and input remain unchanged.

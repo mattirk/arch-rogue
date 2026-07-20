@@ -238,12 +238,23 @@ class LightingMixin:
         return bool(getattr(self, "_lighting_enabled", True))
 
     def mobile_lightweight_lighting_active(self) -> bool:
-        """Use local light accents instead of framebuffer transfer at Native."""
+        """Use local light accents only when Native cannot present via GLES.
 
-        return bool(
+        The accelerated Android path can composite the same quarter-resolution
+        continuous light buffer used by the capped tiers, restoring actor and
+        lantern halos without a full-resolution CPU multiply. The local tint
+        remains as a launch/context-loss fallback for software renderers.
+        """
+
+        if not (
             self.lighting_enabled()
             and getattr(self, "mobile_mode", False)
             and getattr(self, "mobile_render_quality", "native") == "native"
+        ):
+            return False
+        return not (
+            getattr(self, "_mobile_renderer_accelerated", False)
+            and getattr(self, "_mobile_gpu_renderer", None) is not None
         )
 
     def continuous_lighting_active(self) -> bool:

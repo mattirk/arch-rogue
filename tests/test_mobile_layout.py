@@ -30,7 +30,7 @@ from arch_rogue.mobile import (
     detect_mobile_runtime,
     optimize_immutable_alpha_surface,
 )
-from arch_rogue.models import LightSource, Tile
+from arch_rogue.models import LightSource, StoryGuest, Tile
 from arch_rogue.options import (
     MOBILE_RENDER_QUALITY_BALANCED,
     MOBILE_RENDER_QUALITY_HEIGHT_CAPS,
@@ -417,6 +417,34 @@ class MobileRenderQualityTests(unittest.TestCase):
             self.assertFalse(game.continuous_lighting_active())
             self.assertIsNone(game._light_buffer_surface)
             self.assertIsNone(game._light_scratch_surface)
+
+    def test_accelerated_native_mobile_uses_quarter_resolution_gpu_lighting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.mobile_render_quality = MOBILE_RENDER_QUALITY_NATIVE
+            game._mobile_renderer_accelerated = True
+            game.configure_mobile_gpu_renderer(object(), object())
+            self.assertFalse(game.mobile_lightweight_lighting_active())
+            self.assertTrue(game.continuous_lighting_active())
+            game._mobile_gpu_frame_active = True
+            game._mobile_gpu_ui_viewport = game.mobile_world_viewport()
+
+            game.draw_lighting()
+
+            buffer = game._light_buffer_surface
+            self.assertIsNotNone(buffer)
+            assert buffer is not None
+            screen_w, screen_h = game._screen_size()
+            self.assertEqual(
+                buffer.get_size(),
+                (max(1, screen_w // 4), max(1, screen_h // 4)),
+            )
+            pending = game._mobile_gpu_pending_light
+            self.assertIsNotNone(pending)
+            assert pending is not None
+            self.assertIs(pending[2], buffer)
+            lights = game._collect_frame_lights()
+            self.assertTrue(any(light.kind == "lantern" for light in lights))
 
     def test_native_local_lighting_caches_depth_tint_and_preserves_transparency(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1277,6 +1305,49 @@ class MobileHudTests(unittest.TestCase):
                 -game.mobile_world_viewport().y,
             )
             self.assertTrue(local_gameplay.contains(story_rect))
+
+    def test_story_guest_tooltip_is_tappable_on_mobile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            guest = StoryGuest(
+                game.player.x + 0.4,
+                game.player.y,
+                game.current_depth,
+                0,
+                "Ilyra",
+                "Veiled Witness",
+                "seeks safe passage",
+                "The old stones remember.",
+                [],
+            )
+            game.story_guests = [guest]
+
+            game.draw()
+
+            targets = [
+                target
+                for target in game._mobile_touch_targets
+                if target.context == "gameplay"
+                and target.command == Command.INTERACT
+            ]
+            self.assertEqual(len(targets), 1)
+            prompt = game._interaction_prompt_rect
+            self.assertIsNotNone(prompt)
+            assert prompt is not None
+            viewport = game.mobile_world_viewport()
+            self.assertEqual(targets[0].rect, prompt.move(viewport.topleft))
+            size = game._mobile_display_surface().get_size()
+            x, y = targets[0].rect.center
+            event = pygame.event.Event(
+                pygame.FINGERDOWN,
+                touch_id=0,
+                finger_id=71,
+                x=x / max(1, size[0] - 1),
+                y=y / max(1, size[1] - 1),
+            )
+            with patch.object(game, "talk_to_story_guest") as talk:
+                self.assertTrue(game.handle_mobile_finger_event(event))
+            talk.assert_called_once_with(guest)
 
     def test_non_actionable_mobile_prompt_is_not_tappable(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
