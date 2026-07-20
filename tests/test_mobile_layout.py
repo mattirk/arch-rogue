@@ -1229,6 +1229,8 @@ class MobileHudTests(unittest.TestCase):
                     self.assertIsInstance(rect, pygame.Rect)
                     assert isinstance(rect, pygame.Rect)
                     self.assertTrue(game.mobile_safe_rect().contains(rect))
+                    self.assertGreaterEqual(rect.width, 52)
+                    self.assertEqual(rect.size, (rect.height, rect.height))
                     targets = [
                         target
                         for target in game._mobile_touch_targets

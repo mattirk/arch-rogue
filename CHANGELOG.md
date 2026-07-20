@@ -24,7 +24,7 @@ Release 4.4.1 polishes the post-website Android experience with an explicit touc
 - `python -m unittest tests.test_website` — 6 tests pass.
 - `python -m compileall -q src tests tools/generate_download_manifest.py`
 - `python tools/validate_android_apk.py --project-root . --source-dir src --spec buildozer.spec`
-- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.4.1-arm64-v8a_armeabi-v7a-debug.apk` (73,485,315 bytes; SHA-256 `0cc00e7de165a49c7a68e4439aa62d0c094d2de2b3366676490f2b240f811ad1`). The package reports version `4.4.1`, contains 104 ARM ELF extensions for each of `arm64-v8a` and `armeabi-v7a`, and passes APK Signature Scheme v2 verification.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.4.1-arm64-v8a_armeabi-v7a-debug.apk` (73,485,883 bytes; SHA-256 `86d2fc1113b08365125a8060a37562bd5f65aa563488b160a3e110f8c2bd90d0`). The package reports version `4.4.1`, contains 104 ARM ELF extensions for each of `arm64-v8a` and `armeabi-v7a`, and passes APK Signature Scheme v2 verification.
 - Release metadata consistency check and `git diff --check` pass.
 
 ## 4.4.0 — Download Website & GitHub Pages Release

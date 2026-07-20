@@ -57,6 +57,7 @@ from ..quest_assets import (
 
 class RenderingBaseMixin:
     _mobile_back_button_rect: pygame.Rect | None = None
+    _mobile_back_panel_cache: dict[int, pygame.Surface] = {}
 
     def _mobile_static_menu_signature(self) -> object | None:
         if not getattr(self, "mobile_mode", False):
@@ -157,17 +158,47 @@ class RenderingBaseMixin:
             return
 
         safe = self.mobile_safe_rect()
-        size = max(42, min(58, safe.height // 9))
-        margin = max(8, size // 6)
+        size = max(52, min(68, safe.height // 8))
+        margin = max(8, size // 7)
         rect = pygame.Rect(safe.x + margin, safe.y + margin, size, size)
-        glyph = self.ui_asset_surface("hud.mobile.back", rect.size)
+        panel = self._mobile_back_panel_cache.get(size)
+        if panel is None:
+            panel = pygame.Surface((size, size), pygame.SRCALPHA)
+            radius = max(9, size // 5)
+            pygame.draw.rect(
+                panel,
+                (11, 10, 15, 208),
+                panel.get_rect(),
+                border_radius=radius,
+            )
+            pygame.draw.rect(
+                panel,
+                (126, 104, 68, 150),
+                panel.get_rect(),
+                max(1, size // 30),
+                border_radius=radius,
+            )
+            inner = panel.get_rect().inflate(-max(6, size // 9), -max(6, size // 9))
+            pygame.draw.rect(
+                panel,
+                (48, 42, 52, 92),
+                inner,
+                max(1, size // 36),
+                border_radius=max(5, radius // 2),
+            )
+            self._mobile_back_panel_cache[size] = panel
+        self.screen.blit(panel, rect)
+
+        glyph_inset = max(3, size // 14)
+        glyph_rect = rect.inflate(-glyph_inset * 2, -glyph_inset * 2)
+        glyph = self.ui_asset_surface("hud.mobile.back", glyph_rect.size)
         if glyph is not None:
-            self.screen.blit(glyph, rect)
+            self.screen.blit(glyph, glyph_rect)
         else:
             color = (210, 185, 126)
             line_width = max(2, size // 12)
-            left = rect.x + size * 3 // 10
-            right = rect.x + size * 7 // 10
+            left = rect.x + size // 4
+            right = rect.x + size * 3 // 4
             center_y = rect.centery
             pygame.draw.lines(
                 self.screen,
