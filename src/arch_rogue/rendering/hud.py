@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import math
+import time
 from collections import deque
 from typing import cast
 
@@ -975,6 +976,8 @@ class RenderingHudMixin:
         if context == "mobile_hub":
             self._draw_mobile_hub(layout)
 
+        self._draw_mobile_touch_ripples(root)
+
         self._hud_layout = {
             "safe": layout.safe_rect.copy(),
             "left_rail": layout.left_rail.copy(),
@@ -986,6 +989,33 @@ class RenderingHudMixin:
             "menu": layout.menu_rect.copy(),
             "hub": layout.hub_panel_rect.copy(),
         }
+
+    def _draw_mobile_touch_ripples(self, root: pygame.Surface) -> None:
+        """Draw brief expanding rings at recent touch points as confirmation."""
+
+        ripples = getattr(self, "_mobile_touch_ripples", None)
+        if not ripples:
+            return
+        now = time.monotonic()
+        lifetime = 0.38
+        keep: list[tuple[int, int, float]] = []
+        for x, y, started in ripples:
+            t = (now - started) / lifetime
+            if t >= 1.0:
+                continue
+            keep.append((x, y, started))
+            radius = int(10 + t * 26)
+            alpha = int(150 * (1.0 - t))
+            ring = pygame.Surface((radius * 2 + 4, radius * 2 + 4), pygame.SRCALPHA)
+            pygame.draw.circle(
+                ring,
+                (*self.theme.accent, alpha),
+                (radius + 2, radius + 2),
+                radius,
+                max(2, WORLD_SCALE),
+            )
+            root.blit(ring, ring.get_rect(center=(x, y)))
+        self._mobile_touch_ripples = keep
 
     def _draw_mobile_vertical_bar(
         self,

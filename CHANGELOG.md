@@ -1,5 +1,32 @@
 # Changelog
 
+## 4.3.14 — Android Touch Responsiveness, Spirit Beast Petting, and Frame Tuning
+
+Release 4.3.14 makes touch controls feel responsive and forgiving, adds first-class Spirit Beast petting on mobile, and removes another per-frame hotspot from the projection path. Desktop is unchanged.
+
+### Added
+
+- **Subtle touch confirmation:** every successful tap on a touch target spawns a brief expanding accent ring at the touch point, giving immediate visual feedback without changing layout.
+- **Spirit Beast petting on mobile:** when a Ranger's Spirit Beast is within reach and off cooldown, a tappable `Pet …` tooltip appears (matching items/doors/guests), so petting is fully playable by touch. Desktop behavior and the paw indicator are unchanged.
+
+### Changed
+
+- **Larger touch areas:** `register_mobile_touch_target` now inflates any control smaller than a comfortable minimum (~7mm / 44dp) so menu glyphs, action icons, and compact prompts are easy to hit; targets clamp to the display.
+
+### Performance
+
+- **Cached mobile projection origin:** `world_to_screen` runs tens of thousands of times per frame in crowds and was recomputing the layout/focus math each call. The origin is now memoized per frame, trimming the projection path. Crowd render improved to ~12.0 ms/frame in the deterministic harness.
+
+### Fixed
+
+- Runtime/package release version is `4.3.14`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Full non-web `unittest` discovery completed with 476 tests passing, including new regressions for the petting tooltip, minimum touch-target sizing, and touch ripple feedback; `compileall` and `git diff --check` pass.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.14-arm64-v8a_armeabi-v7a-debug.apk` (73,450,095 bytes; SHA-256 `5c15acca2d0c8b4cdf42d8a035d33213e869f42ac2d05ce7c04caf972a438fc0`). The package reports version 4.3.14 with both ARM ABIs (104 architecture-correct ELF extensions per ABI) and passes APK Signature Scheme v2 verification.
+- Physical-device validation remains required for touch feel and the frame target.
+
 ## 4.3.13 — Android Cutscene Backdrop, Hub Touch Targets, and Frame Recovery
 
 Release 4.3.13 finishes the cutscene presentation, makes the game-hub rows easier to hit by touch, and pushes overall mobile frame rate higher by removing per-frame allocations and redundant work in the hottest render paths. Desktop is unchanged.

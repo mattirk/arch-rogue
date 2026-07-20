@@ -323,8 +323,10 @@ class FamiliarTests(unittest.TestCase):
             mana_before = game.player.mana
             class_timer_before = game.player.class_skill_timer
 
+            # Petting is now advertised as a first-class interact action
+            # (tappable on mobile), so the contextual hint surfaces it.
             hint = game.current_interaction_hint()
-            self.assertNotEqual(hint[1] if hint else "", "Pet Spirit Beast")
+            self.assertEqual(hint[1] if hint else "", "Pet Spirit Beast")
             indicator_rect = pygame.Rect(100, 100, 100, 100)
             self.assertTrue(
                 game.draw_spirit_beast_pet_indicator(beast, indicator_rect)

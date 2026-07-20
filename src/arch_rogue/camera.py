@@ -93,11 +93,22 @@ class CameraMixin:
     def _mobile_projection_origin(
         self, width: int, height: int
     ) -> tuple[float, float]:
+        # world_to_screen runs tens of thousands of times per frame in crowds;
+        # the origin only depends on the (cached) layout and the render-target
+        # size, so memoize it per frame instead of recomputing the focus math
+        # and re-validating the layout on every call.
+        cache = getattr(self, "_frame_cache", None)
+        key = ("mobile_projection_origin", width, height)
+        if cache is not None and key in cache:
+            return cache[key]  # type: ignore[return-value]
         layout = self.mobile_layout()
         viewport = layout.world_viewport
         focus_x = (layout.world_focus[0] - viewport.x) / max(1, viewport.width)
         focus_y = (layout.world_focus[1] - viewport.y) / max(1, viewport.height)
-        return width * focus_x, height * focus_y
+        origin = (width * focus_x, height * focus_y)
+        if cache is not None:
+            cache[key] = origin
+        return origin
 
     def world_to_screen(self, x: float, y: float) -> tuple[int, int]:
         iso_x, iso_y = self.world_to_iso(x, y)

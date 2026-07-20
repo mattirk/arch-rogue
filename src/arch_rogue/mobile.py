@@ -876,6 +876,10 @@ class MobileMixin:
         self._mobile_touch_targets: list[MobileTouchTarget] = []
         self._mobile_touch_contacts: dict[tuple[int, int], _TouchContact] = {}
         self._mobile_last_row_tap: tuple[str, int, float] | None = None
+        # Transient touch-confirmation ripples: (x, y, start_time). Drawn as a
+        # brief expanding ring so every successful tap gives immediate visual
+        # feedback without changing the underlying layout.
+        self._mobile_touch_ripples: list[tuple[int, int, float]] = []
         self._mobile_world_finger: tuple[int, int] | None = None
         self._mobile_touch_world_point: tuple[int, int] | None = None
         self._mobile_touch_world_active = False
@@ -1680,9 +1684,20 @@ class MobileMixin:
     ) -> None:
         if not getattr(self, "mobile_mode", False) or rect.width <= 0 or rect.height <= 0:
             return
+        # Enforce a comfortable minimum touch area (~7mm / 44dp) around small
+        # controls (menu glyph, action icons, compact prompts) so taps reliably
+        # land without pixel-precision, while keeping the rect on the display.
+        minimum = max(40, self.mobile_layout().safe_rect.height // 12)
+        padded = rect.copy()
+        if padded.width < minimum or padded.height < minimum:
+            padded.inflate_ip(
+                max(0, minimum - padded.width),
+                max(0, minimum - padded.height),
+            )
+            padded.clamp_ip(self._mobile_display_surface().get_rect())
         self._mobile_touch_targets.append(
             MobileTouchTarget(
-                rect.copy(), command, label, context or self.mobile_input_context()
+                padded, command, label, context or self.mobile_input_context()
             )
         )
 
@@ -1743,6 +1758,7 @@ class MobileMixin:
         if event.type == getattr(pygame, "FINGERDOWN", -10):
             target = self._mobile_target_at(point)
             if target is not None:
+                self._mobile_touch_ripples.append((point[0], point[1], time.monotonic()))
                 previous_context = self.mobile_input_context()
                 self._mobile_touch_contacts[key] = _TouchContact(
                     f"target:{target.command}", point, point

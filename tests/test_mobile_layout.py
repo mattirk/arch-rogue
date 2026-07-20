@@ -1356,6 +1356,54 @@ class MobileHudTests(unittest.TestCase):
             )
             self.assertTrue(local_gameplay.contains(story_rect))
 
+    def test_spirit_beast_petting_tooltip_is_tappable_on_mobile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            beast = type(
+                "BeastStub",
+                (),
+                {
+                    "kind": "spirit_beast",
+                    "alive": True,
+                    "pet_cooldown": 0.0,
+                    "x": game.player.x + 0.6,
+                    "y": game.player.y,
+                    "name": "Spirit Wolf",
+                },
+            )()
+            with (
+                patch.object(game, "nearby_pettable_spirit_beast", return_value=beast),
+                patch.object(game.player, "class_name", "Ranger"),
+                patch.object(game, "spirit_beast_pet_heal", return_value=4),
+            ):
+                hint = game.current_interaction_hint()
+            self.assertIsNotNone(hint)
+            assert hint is not None
+            self.assertEqual(hint[0], "E")
+            self.assertIn("Pet", hint[1])
+
+    def test_touch_target_minimum_size_and_ripple_feedback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            tiny = pygame.Rect(600, 300, 24, 24)
+            game.register_mobile_touch_target(tiny, "test_cmd", "Test", context="gameplay")
+            target = game._mobile_touch_targets[-1]
+            minimum = max(40, game.mobile_layout().safe_rect.height // 12)
+            self.assertGreaterEqual(target.rect.width, minimum)
+            self.assertGreaterEqual(target.rect.height, minimum)
+            self.assertTrue(target.rect.collidepoint(tiny.center))
+
+            # Finger-down on a target records a confirmation ripple.
+            size = game._mobile_display_surface().get_size()
+            event = pygame.event.Event(
+                pygame.FINGERDOWN, touch_id=0, finger_id=88,
+                x=target.rect.centerx / (size[0] - 1),
+                y=target.rect.centery / (size[1] - 1),
+            )
+            with patch.object(game, "_dispatch_command", return_value=True):
+                game.handle_mobile_finger_event(event)
+            self.assertEqual(len(game._mobile_touch_ripples), 1)
+
     def test_story_guest_tooltip_is_tappable_on_mobile(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))
