@@ -1367,14 +1367,11 @@ class RenderingHudMixin:
                     max(1, rect.height // 18),
                     border_radius=max(5, rect.height // 7),
                 )
-            icon_rect = pygame.Rect(0, 0, rect.height, rect.height).inflate(-8, -8)
-            icon_rect.centery = rect.centery
-            icon_rect.x = rect.x + 5
-            self._draw_mobile_hub_icon(name, icon_rect, self.HUD_GOLD_BRIGHT)
+            text_pad = max(16, rect.height // 3)
             text_rect = pygame.Rect(
-                icon_rect.right + 6,
+                rect.x + text_pad,
                 rect.y,
-                max(1, rect.right - icon_rect.right - 12),
+                max(1, rect.width - text_pad * 2),
                 rect.height,
             )
             self.draw_ui_text(
@@ -1383,6 +1380,7 @@ class RenderingHudMixin:
                 self.small_font,
                 self.HUD_PARCHMENT,
                 text_rect,
+                align="center",
                 valign="center",
             )
             self.register_mobile_touch_target(

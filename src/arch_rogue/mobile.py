@@ -580,10 +580,12 @@ def build_mobile_layout(
     if menu.left < safe.x + outer:
         menu.left = safe.x + outer
 
-    hub_width = max(146, min(228, int(safe.width * 0.20)))
-    hub_row_h = max(38, min(58, int(safe.height * 0.075)))
-    hub_gap = max(3, min(8, safe.height // 100))
-    hub_pad = max(6, min(12, hub_width // 18))
+    # Keep the four hub actions comfortably thumb-sized and wide enough that
+    # their labels/icons read as primary navigation rather than compact hints.
+    hub_width = max(220, min(400, int(safe.width * 0.32)))
+    hub_row_h = max(48, min(72, int(safe.height * 0.09)))
+    hub_gap = max(4, min(10, safe.height // 90))
+    hub_pad = max(8, min(16, hub_width // 18))
     hub_height = hub_pad * 2 + hub_row_h * 4 + hub_gap * 3
     hub_panel = pygame.Rect(0, 0, hub_width, hub_height)
     hub_panel.topright = (menu.right, menu.bottom + hub_gap)
@@ -1930,7 +1932,7 @@ class MobileMixin:
             )
             if index is not None:
                 self.set_inventory_selection(self.inventory_scroll + index)
-            if forward:
+            if not forward:
                 deliberate_drop_distance = max(
                     96, self.mobile_safe_rect().width // 8
                 )
@@ -1951,7 +1953,7 @@ class MobileMixin:
                 self.cycle_shop_mode()
             return
         if context == "character":
-            self.character_menu_tab = "disciplines" if forward else "overview"
+            self.character_menu_tab = "overview" if forward else "disciplines"
             if self.character_menu_tab == "disciplines":
                 self._ensure_discipline_cursor()
             return

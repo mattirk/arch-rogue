@@ -1120,6 +1120,10 @@ class MobileLayoutTests(unittest.TestCase):
                         for _name, rect in layout.hub_option_rects
                     )
                 )
+                self.assertGreaterEqual(layout.hub_panel_rect.width, 220)
+                self.assertTrue(
+                    all(rect.height >= 48 for _name, rect in layout.hub_option_rects)
+                )
 
     def test_character_summary_only_appears_when_the_left_rail_has_room(self) -> None:
         compact = build_mobile_layout((780, 360))
@@ -1129,6 +1133,13 @@ class MobileLayoutTests(unittest.TestCase):
         self.assertGreaterEqual(regular.joystick_rect.width, 180)
         self.assertGreater(regular.joystick_rect.left, regular.left_rail.left)
         self.assertLess(regular.joystick_rect.bottom, regular.safe_rect.bottom)
+        self.assertEqual(regular.hub_panel_rect.width, 400)
+        self.assertTrue(
+            all(rect.width == 368 for _name, rect in regular.hub_option_rects)
+        )
+        self.assertTrue(
+            all(rect.height == 64 for _name, rect in regular.hub_option_rects)
+        )
 
     def test_story_relic_tint_is_alpha_masked_and_cached(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1346,7 +1357,9 @@ class MobileHudTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))
             self.assertTrue(game._dispatch_command(Command.MOBILE_MENU))
-            game.draw()
+            with patch.object(game, "_draw_mobile_hub_icon") as draw_icon:
+                game.draw()
+            draw_icon.assert_not_called()
 
             expected = {
                 Command.INVENTORY,
@@ -1904,7 +1917,7 @@ class MobileTouchTests(unittest.TestCase):
             use_item.assert_called_once_with()
 
             with patch.object(game, "drop_selected_inventory_slot") as drop_item:
-                self.swipe(game, (600, 185), (380, 185), key=(0, 42))
+                self.swipe(game, (380, 185), (600, 185), key=(0, 42))
             drop_item.assert_called_once_with()
 
             before = game.inventory_sort_mode
@@ -1913,7 +1926,7 @@ class MobileTouchTests(unittest.TestCase):
                 "cycle_inventory_sort_mode",
                 wraps=game.cycle_inventory_sort_mode,
             ) as sort_inventory:
-                self.swipe(game, (380, 185), (600, 185), key=(0, 43))
+                self.swipe(game, (600, 185), (380, 185), key=(0, 43))
             sort_inventory.assert_called_once_with()
             self.assertNotEqual(game.inventory_sort_mode, before)
 
@@ -1953,8 +1966,10 @@ class MobileTouchTests(unittest.TestCase):
 
             self.assertTrue(game.handle_mobile_tap((620, 145)))
             self.assertEqual(game.character_menu_tab, "disciplines")
-            self.swipe(game, (600, 300), (820, 300), key=(0, 45))
+            self.swipe(game, (820, 300), (600, 300), key=(0, 45))
             self.assertEqual(game.character_menu_tab, "overview")
+            self.swipe(game, (600, 300), (820, 300), key=(0, 46))
+            self.assertEqual(game.character_menu_tab, "disciplines")
 
     def test_overview_ignores_stale_discipline_hitboxes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -12,11 +12,14 @@ Release 4.4.1 polishes the post-website Android experience with an explicit touc
 ### Changed
 
 - **Native mobile default:** fresh mobile installs now default to **Native · full resolution**. Existing explicit Performance/Balanced/Native choices remain authoritative, and the older pre-schema-6 migration continues to preserve its safe Performance fallback.
+- **Larger mobile navigation:** the Back control now uses a larger 52–68 px touch panel with a subtle translucent obsidian/gold backing. The Inventory, Character, Quest, and Exit game hub rows expand to 220–400 px wide and 48–72 px tall, remove their left-side icons, and center each label for clearer text and easier thumb targeting.
 - Project, runtime, Android package, and website release metadata advance to `4.4.1`; options remain schema `7` and run saves remain schema `5`.
 
 ### Fixed
 
 - **Used shrine transparency:** Android's immutable-sprite optimization converts alpha to a magenta colorkey. The spent-shrine color multiplier previously recolored those transparent pixels, exposing a magenta/dark rectangular background after activation. Prop variants now restore real alpha before color transforms, preserving the transparent silhouette without affecting desktop rendering.
+Prop variants now restore real alpha before color transforms, preserving the transparent silhouette without affecting desktop rendering.
+- **Inventory/Character swipe direction:** horizontal touch navigation now uses the opposite left/right mapping on Inventory and Character screens, matching the requested gesture direction without changing Options or Shop swipes.
 
 ### Validation
 
@@ -24,7 +27,7 @@ Release 4.4.1 polishes the post-website Android experience with an explicit touc
 - `python -m unittest tests.test_website` — 6 tests pass.
 - `python -m compileall -q src tests tools/generate_download_manifest.py`
 - `python tools/validate_android_apk.py --project-root . --source-dir src --spec buildozer.spec`
-- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.4.1-arm64-v8a_armeabi-v7a-debug.apk` (73,485,883 bytes; SHA-256 `86d2fc1113b08365125a8060a37562bd5f65aa563488b160a3e110f8c2bd90d0`). The package reports version `4.4.1`, contains 104 ARM ELF extensions for each of `arm64-v8a` and `armeabi-v7a`, and passes APK Signature Scheme v2 verification.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.4.1-arm64-v8a_armeabi-v7a-debug.apk` (73,485,807 bytes; SHA-256 `2cd1052b85c83ae1a31d8297c453c3bb9dd40cfcc7111672aab1e12065f0d4ee`). The package reports version `4.4.1`, contains 104 ARM ELF extensions for each of `arm64-v8a` and `armeabi-v7a`, and passes APK Signature Scheme v2 verification.
 - Release metadata consistency check and `git diff --check` pass.
 
 ## 4.4.0 — Download Website & GitHub Pages Release
