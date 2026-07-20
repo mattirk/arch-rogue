@@ -17,6 +17,7 @@ the same semantic commands used by keyboard and gamepad input.
 
 from __future__ import annotations
 
+import math
 import os
 import sys
 import time
@@ -26,6 +27,7 @@ from typing import Any, Callable, Iterable
 
 import pygame
 
+from .constants import TILE_H, TILE_W
 from .content import ARCHETYPES
 from .input import Command
 
@@ -389,10 +391,11 @@ class MobileLayout:
     right_rail: pygame.Rect
     resource_rects: tuple[pygame.Rect, pygame.Rect, pygame.Rect]
     action_rects: tuple[pygame.Rect, ...]
-    utility_rects: tuple[tuple[str, pygame.Rect], ...]
     character_rect: pygame.Rect | None
-    interact_rect: pygame.Rect
-    pause_rect: pygame.Rect
+    joystick_rect: pygame.Rect
+    menu_rect: pygame.Rect
+    hub_panel_rect: pygame.Rect
+    hub_option_rects: tuple[tuple[str, pygame.Rect], ...]
 
 
 def build_mobile_layout(
@@ -422,12 +425,32 @@ def build_mobile_layout(
             max(38, int(safe.width * 0.075)),
         ),
     )
-    desired_rail_w = max(action_size + outer * 2, int(safe.width * 0.09))
+    joystick_size = max(
+        72,
+        min(
+            156,
+            int(safe.height * 0.22),
+            int(safe.width * 0.16),
+        ),
+    )
+    desired_rail_w = max(
+        action_size + outer * 2,
+        joystick_size,
+        int(safe.width * 0.09),
+    )
     maximum_rail_w = max(action_size, (safe.width - max(320, safe.width // 2)) // 2)
     rail_w = max(action_size, min(desired_rail_w, maximum_rail_w))
+    joystick_size = min(joystick_size, rail_w)
 
     rail_h = max(1, safe.height - outer * 2)
-    left = pygame.Rect(safe.x + outer, safe.y + outer, rail_w, rail_h)
+    left_h = max(
+        1,
+        min(
+            int(rail_h * 0.52),
+            rail_h - joystick_size - rail_gap * 2,
+        ),
+    )
+    left = pygame.Rect(safe.x + outer, safe.y + outer, rail_w, left_h)
     right = pygame.Rect(safe.right - outer - rail_w, safe.y + outer, rail_w, rail_h)
     viewport_left = left.right + rail_gap
     viewport_right = right.x - rail_gap
@@ -457,8 +480,8 @@ def build_mobile_layout(
     inner_pad = max(5, min(14, rail_w // 12))
     resource_gap = max(3, min(8, rail_w // 22))
     resource_top = left.y + inner_pad
-    resource_h = max(90, int(left.height * 0.43))
-    resource_h = min(resource_h, max(1, left.height - inner_pad * 4 - 96))
+    resource_h = max(54, int(left.height * 0.52))
+    resource_h = min(resource_h, max(1, left.height - inner_pad * 3 - 48))
     resource_w = max(
         8,
         (left.width - inner_pad * 2 - resource_gap * 2) // 3,
@@ -473,44 +496,49 @@ def build_mobile_layout(
         for index in range(3)
     )
 
-    utility_gap = max(4, min(8, rail_w // 18))
-    utility_h = max(34, min(54, (left.width - inner_pad * 2 - utility_gap) // 2))
-    utility_w = max(34, (left.width - inner_pad * 2 - utility_gap) // 2)
-    utility_y = left.bottom - inner_pad - utility_h * 2 - utility_gap
-    utility_names = ("inventory", "character", "quest", "help")
-    utility_rects: list[tuple[str, pygame.Rect]] = []
-    for index, name in enumerate(utility_names):
-        col = index % 2
-        row = index // 2
-        utility_rects.append(
-            (
-                name,
-                pygame.Rect(
-                    left.x + inner_pad + col * (utility_w + utility_gap),
-                    utility_y + row * (utility_h + utility_gap),
-                    utility_w,
-                    utility_h,
-                ),
-            )
-        )
-
     character_top = max(rect.bottom for rect in resources) + inner_pad
-    character_bottom = utility_y - inner_pad
+    character_bottom = left.bottom - inner_pad
+    character_width = max(1, left.width - inner_pad * 2)
     character = None
-    if character_bottom - character_top >= 58:
+    if character_bottom - character_top >= 58 and character_width >= 96:
         character = pygame.Rect(
             left.x + inner_pad,
             character_top,
-            max(1, left.width - inner_pad * 2),
+            character_width,
             character_bottom - character_top,
         )
 
-    auxiliary_size = max(46, min(72, int(safe.height * 0.085)))
-    pause = pygame.Rect(0, 0, auxiliary_size, auxiliary_size)
-    pause.topright = (viewport.right - outer, viewport.y + outer)
-    interact_size = max(54, min(84, int(safe.height * 0.105)))
-    interact = pygame.Rect(0, 0, interact_size, interact_size)
-    interact.bottomright = (viewport.right - outer, viewport.bottom - outer)
+    joystick = pygame.Rect(0, 0, joystick_size, joystick_size)
+    joystick.midbottom = (left.centerx, safe.bottom - outer)
+
+    auxiliary_size = max(46, min(76, int(safe.height * 0.09)))
+    menu = pygame.Rect(0, 0, auxiliary_size, auxiliary_size)
+    menu.topright = (viewport.right - outer, viewport.y + outer)
+
+    hub_width = max(146, min(228, int(safe.width * 0.20)))
+    hub_row_h = max(38, min(58, int(safe.height * 0.075)))
+    hub_gap = max(3, min(8, safe.height // 100))
+    hub_pad = max(6, min(12, hub_width // 18))
+    hub_height = hub_pad * 2 + hub_row_h * 4 + hub_gap * 3
+    hub_panel = pygame.Rect(0, 0, hub_width, hub_height)
+    hub_panel.topright = (menu.right, menu.bottom + hub_gap)
+    if hub_panel.bottom > viewport.bottom - outer:
+        hub_panel.bottom = viewport.bottom - outer
+    if hub_panel.left < viewport.left + outer:
+        hub_panel.left = viewport.left + outer
+    hub_names = ("inventory", "character", "quest", "exit")
+    hub_options = tuple(
+        (
+            name,
+            pygame.Rect(
+                hub_panel.x + hub_pad,
+                hub_panel.y + hub_pad + index * (hub_row_h + hub_gap),
+                max(1, hub_panel.width - hub_pad * 2),
+                hub_row_h,
+            ),
+        )
+        for index, name in enumerate(hub_names)
+    )
 
     return MobileLayout(
         display_rect=display,
@@ -520,10 +548,11 @@ def build_mobile_layout(
         right_rail=right,
         resource_rects=resources,  # type: ignore[arg-type]
         action_rects=actions,
-        utility_rects=tuple(utility_rects),
         character_rect=character,
-        interact_rect=interact,
-        pause_rect=pause,
+        joystick_rect=joystick,
+        menu_rect=menu,
+        hub_panel_rect=hub_panel,
+        hub_option_rects=hub_options,
     )
 
 
@@ -802,6 +831,9 @@ class MobileMixin:
         self._mobile_world_finger: tuple[int, int] | None = None
         self._mobile_touch_world_point: tuple[int, int] | None = None
         self._mobile_touch_world_active = False
+        self._mobile_joystick_finger: tuple[int, int] | None = None
+        self._mobile_joystick_vector = (0.0, 0.0)
+        self.mobile_hub_open = False
         self.mobile_suspended = False
         self.mobile_audio_focus_paused = False
         self._mobile_perf_overlay_cache: tuple[
@@ -1501,6 +1533,10 @@ class MobileMixin:
             return "cutscene"
         if getattr(self, "story_intro_pending", False):
             return "story_intro"
+        if getattr(self, "mobile_hub_open", False):
+            return "mobile_hub"
+        if getattr(self, "quest_info_visible", False):
+            return "quest"
         if getattr(self, "character_menu_open", False):
             return "character"
         if getattr(self, "inventory_open", False):
@@ -1521,12 +1557,57 @@ class MobileMixin:
             return self._mobile_touch_world_point
         return None
 
+    def mobile_joystick_screen_vector(self) -> tuple[float, float]:
+        if not self.mobile_world_input_enabled():
+            return 0.0, 0.0
+        vector = getattr(self, "_mobile_joystick_vector", (0.0, 0.0))
+        return float(vector[0]), float(vector[1])
+
+    def mobile_joystick_world_vector(self) -> tuple[float, float]:
+        screen_x, screen_y = self.mobile_joystick_screen_vector()
+        magnitude = min(1.0, math.hypot(screen_x, screen_y))
+        if magnitude <= 0.0:
+            return 0.0, 0.0
+        world_x = screen_x / TILE_W + screen_y / TILE_H
+        world_y = screen_y / TILE_H - screen_x / TILE_W
+        world_length = math.hypot(world_x, world_y)
+        if world_length <= 0.0:
+            return 0.0, 0.0
+        return (
+            world_x / world_length * magnitude,
+            world_y / world_length * magnitude,
+        )
+
+    def _update_mobile_joystick(self, point: tuple[int, int]) -> None:
+        rect = self.mobile_layout().joystick_rect
+        radius = max(1.0, min(rect.width, rect.height) * 0.5)
+        dx = (point[0] - rect.centerx) / radius
+        dy = (point[1] - rect.centery) / radius
+        raw_magnitude = math.hypot(dx, dy)
+        deadzone = 0.12
+        if raw_magnitude <= deadzone:
+            self._mobile_joystick_vector = (0.0, 0.0)
+            return
+        clamped = min(1.0, raw_magnitude)
+        strength = (clamped - deadzone) / (1.0 - deadzone)
+        self._mobile_joystick_vector = (
+            dx / raw_magnitude * strength,
+            dy / raw_magnitude * strength,
+        )
+
+    def _point_in_mobile_joystick(self, point: tuple[int, int]) -> bool:
+        rect = self.mobile_layout().joystick_rect
+        radius = min(rect.width, rect.height) * 0.55
+        return math.hypot(point[0] - rect.centerx, point[1] - rect.centery) <= radius
+
     def cancel_mobile_touches(self) -> None:
         self._mobile_touch_contacts.clear()
         self._mobile_last_row_tap = None
         self._mobile_world_finger = None
         self._mobile_touch_world_point = None
         self._mobile_touch_world_active = False
+        self._mobile_joystick_finger = None
+        self._mobile_joystick_vector = (0.0, 0.0)
 
     def register_mobile_touch_target(
         self,
@@ -1577,7 +1658,10 @@ class MobileMixin:
         rect = getattr(self, "_story_panel_rect", None)
         if not isinstance(rect, pygame.Rect):
             return None
-        if getattr(self, "mobile_mode", False) and self.mobile_input_context() == "gameplay":
+        if getattr(self, "mobile_mode", False) and self.mobile_input_context() in (
+            "gameplay",
+            "quest",
+        ):
             return rect.move(self.mobile_world_viewport().topleft)
         return rect.copy()
 
@@ -1607,9 +1691,21 @@ class MobileMixin:
                     self.cancel_mobile_touches()
                 return True
 
+            if (
+                self.mobile_world_input_enabled()
+                and self._mobile_joystick_finger is None
+                and self._point_in_mobile_joystick(point)
+            ):
+                self._mobile_touch_contacts[key] = _TouchContact(
+                    "joystick", point, point
+                )
+                self._mobile_joystick_finger = key
+                self._update_mobile_joystick(point)
+                return True
+
             story_rect = self._global_story_panel_rect()
             if (
-                self.mobile_input_context() == "gameplay"
+                self.mobile_input_context() in ("gameplay", "quest")
                 and story_rect is not None
                 and story_rect.collidepoint(point)
             ):
@@ -1638,7 +1734,9 @@ class MobileMixin:
             return True
         contact.position = point
         if event.type == getattr(pygame, "FINGERMOTION", -11):
-            if contact.role == "world" and key == self._mobile_world_finger:
+            if contact.role == "joystick" and key == self._mobile_joystick_finger:
+                self._update_mobile_joystick(point)
+            elif contact.role == "world" and key == self._mobile_world_finger:
                 self._mobile_touch_world_point = point
                 self.aim_input_mode = "touch"
                 if hasattr(self, "player"):
@@ -1646,6 +1744,10 @@ class MobileMixin:
             return True
 
         self._mobile_touch_contacts.pop(key, None)
+        if contact.role == "joystick" and key == self._mobile_joystick_finger:
+            self._mobile_joystick_finger = None
+            self._mobile_joystick_vector = (0.0, 0.0)
+            return True
         if contact.role == "world" and key == self._mobile_world_finger:
             if hasattr(self, "player"):
                 self.face_player_toward_screen_point(*point)

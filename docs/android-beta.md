@@ -1,7 +1,7 @@
 # Arch Rogue Android Beta
 
-Release **4.3.3** ships a landscape-only Android beta APK built from the same
-Python/pygame-ce codebase as the desktop release.  This document is the source
+Release **4.3.8** ships a landscape-only Android beta APK built from the same
+Python/pygame-ce codebase as the desktop release. This document is the source
 of truth for installing, building, and reporting issues with the beta.
 
 ## Install
@@ -22,23 +22,32 @@ of truth for installing, building, and reporting issues with the beta.
 
 ## Controls
 
-- **World:** touch and drag inside the central viewport to move and aim.  The
-  player walks toward your finger and stops within melee range.
-- **Skills 1–6:** the six badges on the right rail.  Tap to fire; cooldowns and
-  resource costs match the desktop action bar.
-- **Interact / Pause:** bottom-right and top-right of the viewport.  Pause opens
-  the same exit confirmation sheet as desktop Esc.
-- **Left rail:** vertical HP/MP/Stamina bars, compact character summary, and
-  Inventory / Character / Quest / Help buttons.
-- **Menus:** tap rows directly, or use the on-screen Back / arrows / Select
-  buttons at the bottom of every menu and overlay.
-- **Android Back:** closes the topmost overlay, opens the pause sheet in
-gameplay, and never silently commits a story-relic choice.
+- **Movement:** drag the lower-left analog stick. Its distance from center
+  controls movement strength and it recenters immediately when released.
+- **Aim:** touch or drag inside the central world viewport. World touch aims
+  only; it can be held independently while moving with the stick or tapping a
+  skill.
+- **Skills 1–6:** tap the six badges on the right rail. Cooldowns and resource
+  costs match the desktop action bar.
+- **Interact:** tap the contextual bottom-right tooltip when it displays the
+  `TAP` badge, such as `Open door`. Warning-only prompts are not buttons, and
+  there is no permanent `USE` button.
+- **Game menu:** tap the top-right list icon to pause the run and open the
+  Inventory / Character / Quest / Exit game hub. Quest details are hidden from
+  the normal gameplay HUD and open as a dedicated modal panel.
+- **Left rail:** vertical HP/MP/Stamina bars plus a compact character summary
+  when the display has enough room.
+- **Menus:** tap rendered rows, choices, tabs, and cells directly. Supported
+  horizontal/vertical swipes handle paging, tabs, and item actions without a
+  permanent navigation strip.
+- **Android Back:** closes the topmost hub, Quest panel, or submenu; from base
+  gameplay it opens the existing exit-confirmation sheet and never silently
+  commits a story-relic choice.
 
 ## Performance and render quality
 
 Android defaults to **Performance** render quality. The game keeps the device's
-full landscape aspect ratio but renders at no more than 360 pixels high, uploads
+full landscape aspect ratio but renders at no more than 540 pixels high, uploads
 that smaller logical framebuffer, and lets SDL's accelerated GLES2 renderer scale
 it to the physical display. The startup path rejects SDL's software renderer,
 tries the packaged `opengles2` and `opengles` drivers, and only permits automatic
@@ -48,18 +57,17 @@ preserving touch coordinates and safe-area insets.
 
 The first Options row cycles the available tiers:
 
-- **Performance · 360p cap** — supported phone baseline; quarter-resolution
-  continuous lighting and normal-map detail off by default.
-- **Balanced · 540p cap** — sharper output on faster phones/tablets; one-third-
-  resolution lighting.
+- **Performance · 540p cap** — supported phone baseline; mobile lighting and
+  normal-map detail are tuned for the lowest steady rendering cost.
+- **Balanced · 720p cap** — sharper output on faster phones and tablets.
 - **Native · full resolution** — diagnostic/high-end mode; can be dramatically
   slower because Pygame's world remains CPU-rendered before presentation.
 
-Upgrades from 4.3.0/4.3.1 migrate to Performance and disable generated normal
+Older mobile options files migrate to Performance and disable generated normal
 maps once. You can re-enable **Lighting detail** explicitly after confirming the
 device remains smooth.
 
-The 4.3.3 beta displays a small diagnostic line at the bottom of the game view:
+The 4.3.8 beta displays a small diagnostic line at the bottom of the game view:
 `PERF <fps> <frame ms> | W <world ms> H <HUD ms> F <flip ms>`. It also emits a
 full phase report every four seconds. Capture title-screen and active-gameplay
 samples with:

@@ -677,6 +677,8 @@ class Game(
     def request_exit_confirmation(self) -> None:
         if self.mobile_mode:
             self.cancel_mobile_touches()
+            self.mobile_hub_open = False
+            self.quest_info_visible = False
         if self.state != "confirm_exit":
             self.exit_previous_state = self.state
             self.exit_confirmation_cursor = self.EXIT_CONFIRMATION_CANCEL
@@ -706,6 +708,8 @@ class Game(
         self.show_help = False
         self.inventory_open = False
         self.character_menu_open = False
+        self.mobile_hub_open = False
+        self.quest_info_visible = False
         self.close_shop()
         self.state = "title"
         self.exit_previous_state = "title"
@@ -1204,7 +1208,15 @@ class Game(
             and (
                 self.inventory_open
                 or self.character_menu_open
-                or (self.mobile_mode and (self.shop_open or self.show_help))
+                or (
+                    self.mobile_mode
+                    and (
+                        self.shop_open
+                        or self.show_help
+                        or self.mobile_hub_open
+                        or self.quest_info_visible
+                    )
+                )
             )
         )
         self.update_visual_effects(
@@ -1229,7 +1241,13 @@ class Game(
         # Opening a full-screen mobile overlay pauses the run. Desktop keeps its
         # established shop/help behavior; inventory and character always pause.
         if self.inventory_open or self.character_menu_open or (
-            self.mobile_mode and (self.shop_open or self.show_help)
+            self.mobile_mode
+            and (
+                self.shop_open
+                or self.show_help
+                or self.mobile_hub_open
+                or self.quest_info_visible
+            )
         ):
             self.update_floaters(dt)
             return

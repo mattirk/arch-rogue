@@ -1,5 +1,32 @@
 # Changelog
 
+## 4.3.8 — Android Analog HUD and Game Hub
+
+Release 4.3.8 implements the second-generation mobile gameplay layout: analog movement is separated from direct world aiming, contextual prompts replace permanent interaction chrome, and one compact top-right hub owns the mobile gameplay menus. Desktop mouse, keyboard, and gamepad behavior remains unchanged.
+
+### Added
+
+- A lower-left analog stick supports deadzoned, magnitude-sensitive isometric movement while an independent world finger continues to aim. Joystick, aim, and action-skill contacts can remain active simultaneously.
+- Authored dark-iron joystick base and knob sprites, generated through PixelLab, are packaged under the HUD asset manifest with a procedural fallback.
+- A top-right game-menu glyph opens a four-row Inventory, Character, Quest, and Exit game hub. Opening the hub or Quest panel pauses gameplay, and Android Back closes them before falling through to exit confirmation.
+- Focused mobile regressions cover joystick transforms and release, aim-only world touch, multitouch coexistence, hub commands, modal Quest pause/Back behavior, tappable prompts, safe-area geometry, and compact-layout fallback.
+
+### Changed
+
+- The left rail now reserves its lower section for the analog stick. HP, MP, and Stamina remain at the top, while character details appear only when both width and height can contain them without clipping.
+- The permanent bottom-right `USE` button is removed. Actionable `E` prompts render a narrower, two-line-capable `TAP` panel and the panel itself is the interaction target; warning/status prompts remain non-interactive.
+- Persistent quest/story content is removed from the normal mobile HUD. Quest details open as a viewport-sized modal from the game hub and retain touch scrolling.
+- The old top-right pause glyph is replaced by the game-menu glyph. Exit game reuses the existing save-aware confirmation flow rather than adding a second pause/exit implementation.
+- Runtime/package release version is `4.3.8`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Full non-web `unittest` discovery completed with 464 tests passing. Focused mobile layout/input/HUD coverage passed 58 tests, adjacent input/accessibility and core gameplay suites passed 49 tests, and `python -m compileall src tests` completed successfully.
+- Headless renders at 780×360, 1280×720, and 2340×1080 with asymmetric safe insets verified the gameplay rails, PixelLab stick, wrapped interaction tooltip, four-row hub, Quest modal, and compact character-summary fallback without control overlap.
+- Changed-file diagnostics report no errors, and `git diff --check` passes; rendering mixins retain their pre-existing cross-module unused-import warnings.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.8-arm64-v8a_armeabi-v7a-debug.apk` (73,411,495 bytes; SHA-256 `4fdc39fa9c0995efb76a668047d48d260abf753180bda478f3dfd20b2eb4003c`). The package reports version 4.3.8, API 28/34, GLES 2.0, landscape `PythonActivity`, and both ARM ABIs; contains 104 architecture-correct ELF extensions per ABI plus both joystick sprites; and passes APK Signature Scheme v2 verification.
+- Physical-device validation remains required for analog-stick ergonomics and multitouch behavior on representative phones and tablets.
+
 ## 4.3.7 — Android Touch-First Menus and Sensor Isolation
 
 Release 4.3.7 removes Android's accelerometer pseudo-controller from gameplay and replaces mobile menu navigation chrome with direct, safe-area-aware tap, swipe, and native Back interactions. Desktop keyboard and gamepad behavior remains unchanged, and real Bluetooth/USB gamepads continue to work on Android.

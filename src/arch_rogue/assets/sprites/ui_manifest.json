@@ -88,6 +88,14 @@
       "render": "scale",
       "content_insets": [20, 20, 20, 20]
     },
+    "hud.mobile.joystick_base": {
+      "path": "hud/mobile_joystick_base.png",
+      "render": "scale"
+    },
+    "hud.mobile.joystick_knob": {
+      "path": "hud/mobile_joystick_knob.png",
+      "render": "scale"
+    },
     "hud.action.warden.shield_bash": {
       "path": "hud/action_warden_shield_bash.png",
       "render": "scale"

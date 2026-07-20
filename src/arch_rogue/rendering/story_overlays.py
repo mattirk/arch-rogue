@@ -113,23 +113,30 @@ class RenderingStoryOverlayMixin:
         if not lines:
             return
         width, height = self.screen.get_size()
-        bottom_panel_top = height - self.hud_panel_height()
-        x = self.ui(18)
-        y = self.ui(104)
-        panel_w = min(width - self.ui(36), self.ui(620))
-        max_h = min(self.ui(190), bottom_panel_top - y - self.ui(16))
-        # When a boss bar is on screen (anchored above the bottom HUD panel),
-        # cap the story panel so it never overlaps the boss bar cluster.
-        boss_top = self.boss_bar_top()
-        if boss_top is not None:
-            max_h = min(max_h, max(0, boss_top - y - self.ui(8)))
-        prompt_rect = getattr(self, "_interaction_prompt_rect", None)
-        if (
-            isinstance(prompt_rect, pygame.Rect)
-            and x < prompt_rect.right
-            and x + panel_w > prompt_rect.x
-        ):
-            max_h = min(max_h, max(0, prompt_rect.y - y - self.ui(8)))
+        mobile = bool(getattr(self, "mobile_mode", False))
+        if mobile:
+            x = self.ui(14)
+            y = self.ui(14)
+            panel_w = width - x * 2
+            max_h = height - y * 2
+        else:
+            bottom_panel_top = height - self.hud_panel_height()
+            x = self.ui(18)
+            y = self.ui(104)
+            panel_w = min(width - self.ui(36), self.ui(620))
+            max_h = min(self.ui(190), bottom_panel_top - y - self.ui(16))
+            # When a boss bar is on screen (anchored above the bottom HUD panel),
+            # cap the story panel so it never overlaps the boss bar cluster.
+            boss_top = self.boss_bar_top()
+            if boss_top is not None:
+                max_h = min(max_h, max(0, boss_top - y - self.ui(8)))
+            prompt_rect = getattr(self, "_interaction_prompt_rect", None)
+            if (
+                isinstance(prompt_rect, pygame.Rect)
+                and x < prompt_rect.right
+                and x + panel_w > prompt_rect.x
+            ):
+                max_h = min(max_h, max(0, prompt_rect.y - y - self.ui(8)))
         if panel_w <= self.ui(220) or max_h < self.ui(84):
             return
         accent = self.story_state.accent if self.story_state else self.theme.accent

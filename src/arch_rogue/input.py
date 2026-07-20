@@ -68,6 +68,8 @@ class Command:
     QUEST = "quest"
     INVENTORY = "inventory"
     CHARACTER = "character"
+    MOBILE_MENU = "mobile_menu"
+    MOBILE_EXIT = "mobile_exit"
     ABILITY_1 = "ability_1"
     ABILITY_2 = "ability_2"
     ABILITY_3 = "ability_3"
@@ -973,6 +975,13 @@ class InputMixin:
 
     def _dispatch_back(self) -> bool:
         if self.state == "playing":
+            if getattr(self, "mobile_hub_open", False):
+                self.mobile_hub_open = False
+                return True
+            if getattr(self, "mobile_mode", False) and self.quest_info_visible:
+                self.quest_info_visible = False
+                self.story_panel_scroll = 0
+                return True
             if self.show_help:
                 self.show_help = False
                 return True
@@ -1197,6 +1206,21 @@ class InputMixin:
         self.save_options()
 
     def _dispatch_playing(self, cmd: str) -> bool:
+        if cmd == Command.MOBILE_MENU and getattr(self, "mobile_mode", False):
+            opening = not getattr(self, "mobile_hub_open", False)
+            self.mobile_hub_open = opening
+            if opening:
+                self.quest_info_visible = False
+                self.inventory_open = False
+                self.character_menu_open = False
+                self.show_help = False
+                self.close_shop()
+            return True
+        if cmd == Command.MOBILE_EXIT and getattr(self, "mobile_mode", False):
+            self.mobile_hub_open = False
+            self.quest_info_visible = False
+            self.request_exit_confirmation()
+            return True
         if self.show_help:
             if cmd == Command.HELP:
                 self.show_help = False
@@ -1240,6 +1264,9 @@ class InputMixin:
         # button that opens an overlay also closes it (mirrors keyboard I / C).
         if cmd == Command.INVENTORY:
             self.inventory_open = not self.inventory_open
+            if getattr(self, "mobile_mode", False):
+                self.mobile_hub_open = False
+                self.quest_info_visible = False
             if self.inventory_open:
                 self.character_menu_open = False
                 self.close_shop()
@@ -1247,6 +1274,9 @@ class InputMixin:
             return True
         if cmd == Command.CHARACTER:
             self.character_menu_open = not self.character_menu_open
+            if getattr(self, "mobile_mode", False):
+                self.mobile_hub_open = False
+                self.quest_info_visible = False
             if self.character_menu_open:
                 self.inventory_open = False
                 self.close_shop()
@@ -1485,7 +1515,12 @@ class InputMixin:
             self.interact()
             return True
         if cmd == Command.QUEST:
-            self.toggle_quest_info_visibility()
+            if getattr(self, "mobile_mode", False):
+                self.mobile_hub_open = False
+                self.quest_info_visible = not self.quest_info_visible
+                self.story_panel_scroll = 0
+            else:
+                self.toggle_quest_info_visibility()
             return True
         if cmd == Command.HELP:
             self.show_help = not self.show_help

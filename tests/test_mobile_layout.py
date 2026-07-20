@@ -1064,8 +1064,27 @@ class MobileLayoutTests(unittest.TestCase):
                 ):
                     self.assertFalse(first.colliderect(second))
                 self.assertTrue(all(layout.safe_rect.contains(rect) for rect in layout.action_rects))
-                self.assertTrue(layout.safe_rect.contains(layout.pause_rect))
-                self.assertTrue(layout.safe_rect.contains(layout.interact_rect))
+                self.assertTrue(layout.safe_rect.contains(layout.menu_rect))
+                self.assertTrue(layout.safe_rect.contains(layout.joystick_rect))
+                self.assertTrue(layout.safe_rect.contains(layout.hub_panel_rect))
+                self.assertFalse(layout.left_rail.colliderect(layout.joystick_rect))
+                self.assertFalse(layout.world_viewport.colliderect(layout.joystick_rect))
+                self.assertEqual(
+                    [name for name, _rect in layout.hub_option_rects],
+                    ["inventory", "character", "quest", "exit"],
+                )
+                self.assertTrue(
+                    all(
+                        layout.hub_panel_rect.contains(rect)
+                        for _name, rect in layout.hub_option_rects
+                    )
+                )
+
+    def test_character_summary_only_appears_when_the_left_rail_has_room(self) -> None:
+        compact = build_mobile_layout((780, 360))
+        regular = build_mobile_layout((1280, 720))
+        self.assertIsNone(compact.character_rect)
+        self.assertIsNotNone(regular.character_rect)
 
     def test_detect_mobile_runtime_env_override(self) -> None:
         old = os.environ.pop("ARCH_ROGUE_MOBILE", None)
@@ -1108,13 +1127,137 @@ class MobileHudTests(unittest.TestCase):
                     Command.ABILITY_6,
                 },
             )
+            targets = game._mobile_touch_targets
             self.assertIn(
-                (Command.BACK, "Pause"),
-                {(t.command, t.label) for t in game._mobile_touch_targets},
+                (Command.MOBILE_MENU, "Game menu"),
+                {(target.command, target.label) for target in targets},
             )
-            self.assertIn(
-                (Command.INTERACT, "Interact"),
-                {(t.command, t.label) for t in game._mobile_touch_targets},
+            self.assertNotIn(
+                Command.BACK,
+                {target.command for target in targets if target.context == "gameplay"},
+            )
+            self.assertTrue(
+                {
+                    Command.INVENTORY,
+                    Command.CHARACTER,
+                    Command.QUEST,
+                }.isdisjoint(
+                    {
+                        target.command
+                        for target in targets
+                        if target.context == "gameplay"
+                    }
+                )
+            )
+            interaction_targets = [
+                target for target in targets if target.command == Command.INTERACT
+            ]
+            self.assertEqual(len(interaction_targets), 1)
+            prompt = game._interaction_prompt_rect
+            self.assertIsNotNone(prompt)
+            assert prompt is not None
+            self.assertEqual(
+                interaction_targets[0].rect,
+                prompt.move(layout.world_viewport.topleft),
+            )
+            self.assertLessEqual(prompt.width, game.ui(380))
+            self.assertLess(prompt.width, game.ui(560))
+            self.assertNotIn("interact", game._hud_layout)
+            self.assertFalse(game.quest_info_visible)
+            self.assertIsNone(game._story_panel_rect)
+            run_header_key = game._run_header_render_key
+            self.assertIsInstance(run_header_key, tuple)
+            assert isinstance(run_header_key, tuple)
+            self.assertEqual(run_header_key[2], "")
+            self.assertFalse(
+                any(
+                    target.label.upper() in {"USE", "INTERACT"}
+                    for target in targets
+                    if target.context == "gameplay"
+                )
+            )
+            self.assertIsNotNone(game.ui_assets.source("hud.mobile.joystick_base"))
+            self.assertIsNotNone(game.ui_assets.source("hud.mobile.joystick_knob"))
+
+    def test_mobile_hub_publishes_exactly_four_requested_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            self.assertTrue(game._dispatch_command(Command.MOBILE_MENU))
+            game.draw()
+
+            expected = {
+                Command.INVENTORY,
+                Command.CHARACTER,
+                Command.QUEST,
+                Command.MOBILE_EXIT,
+            }
+            rows = [
+                target
+                for target in game._mobile_touch_targets
+                if target.context == "mobile_hub" and target.command in expected
+            ]
+            self.assertEqual(len(rows), 4)
+            self.assertEqual({target.command for target in rows}, expected)
+            self.assertEqual(
+                [target.label for target in rows],
+                ["Inventory", "Character", "Quest", "Exit game"],
+            )
+            self.assertEqual(
+                len(
+                    [
+                        target
+                        for target in game._mobile_touch_targets
+                        if target.context == "mobile_hub"
+                        and game.mobile_layout().hub_panel_rect.contains(target.rect)
+                    ]
+                ),
+                4,
+            )
+
+    def test_mobile_quest_is_modal_and_pauses_simulation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            self.assertTrue(game._dispatch_command(Command.MOBILE_MENU))
+            self.assertTrue(game._dispatch_command(Command.QUEST))
+            self.assertFalse(game.mobile_hub_open)
+            self.assertTrue(game.quest_info_visible)
+            self.assertEqual(game.mobile_input_context(), "quest")
+
+            with patch.object(game, "update_player") as update_player:
+                game.update(1.0 / 60.0)
+            update_player.assert_not_called()
+
+            game.draw()
+            story_rect = game._story_panel_rect
+            self.assertIsInstance(story_rect, pygame.Rect)
+            assert isinstance(story_rect, pygame.Rect)
+            self.assertTrue(
+                pygame.Rect((0, 0), game.mobile_world_viewport().size).contains(
+                    story_rect
+                )
+            )
+            self.assertIsNone(game._interaction_prompt_rect)
+            self.assertIsNone(game._run_header_rect)
+
+    def test_non_actionable_mobile_prompt_is_not_tappable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            warning = (
+                "!",
+                "The gate is sealed",
+                "Defeat the guardian before trying this ancient lock.",
+                (205, 84, 70),
+            )
+            with patch.object(game, "current_interaction_hint", return_value=warning):
+                game.draw()
+
+            self.assertIsInstance(game._interaction_prompt_rect, pygame.Rect)
+            self.assertFalse(
+                any(
+                    target.command == Command.INTERACT
+                    for target in game._mobile_touch_targets
+                    if target.context == "gameplay"
+                )
             )
 
     def test_safe_insets_override_propagates_to_layout(self) -> None:
@@ -1160,6 +1303,99 @@ class MobileTouchTests(unittest.TestCase):
                 )
             )
         )
+
+    def test_joystick_touch_tracks_direction_magnitude_and_release(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.draw()
+            joystick = game.mobile_layout().joystick_rect
+            size = game._mobile_display_surface().get_size()
+            key = (0, 51)
+            near = (
+                joystick.centerx + max(1, joystick.width // 5),
+                joystick.centery,
+            )
+            far = (joystick.right - 2, joystick.centery)
+
+            self.assertTrue(
+                game.handle_mobile_finger_event(
+                    self.finger_event(
+                        pygame.FINGERDOWN, *self.normalized(near, size), key=key
+                    )
+                )
+            )
+            initial_screen = game.mobile_joystick_screen_vector()
+            initial_magnitude = math.hypot(*initial_screen)
+            self.assertGreater(initial_screen[0], 0.0)
+            self.assertLess(abs(initial_screen[1]), 0.02)
+            world_x, world_y = game.mobile_joystick_world_vector()
+            self.assertGreater(world_x, 0.0)
+            self.assertLess(world_y, 0.0)
+
+            self.assertTrue(
+                game.handle_mobile_finger_event(
+                    self.finger_event(
+                        pygame.FINGERMOTION, *self.normalized(far, size), key=key
+                    )
+                )
+            )
+            self.assertGreater(
+                math.hypot(*game.mobile_joystick_screen_vector()),
+                initial_magnitude,
+            )
+
+            self.assertTrue(
+                game.handle_mobile_finger_event(
+                    self.finger_event(
+                        pygame.FINGERUP, *self.normalized(far, size), key=key
+                    )
+                )
+            )
+            self.assertEqual(game.mobile_joystick_screen_vector(), (0.0, 0.0))
+            self.assertEqual(game.mobile_joystick_world_vector(), (0.0, 0.0))
+            self.assertIsNone(game._mobile_joystick_finger)
+
+    def test_update_player_uses_mobile_joystick_world_vector(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game._mobile_joystick_vector = (1.0, 0.0)
+            with (
+                patch.object(game, "move_actor", return_value=0.25) as move_actor,
+                patch.object(game, "enemy_in_melee_arc", return_value=False),
+            ):
+                game.update_player(0.1)
+
+            move_actor.assert_called_once()
+            actor, dx, dy = move_actor.call_args.args
+            self.assertIs(actor, game.player)
+            self.assertGreater(dx, 0.0)
+            self.assertLess(dy, 0.0)
+            self.assertGreater(game.player.locomotion_anim_scale, 0.0)
+
+    def test_world_touch_aims_without_moving_player(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.draw()
+            viewport = game.mobile_world_viewport()
+            size = game._mobile_display_surface().get_size()
+            point = (viewport.right - 40, viewport.centery)
+            self.assertTrue(
+                game.handle_mobile_finger_event(
+                    self.finger_event(
+                        pygame.FINGERDOWN,
+                        *self.normalized(point, size),
+                        key=(0, 52),
+                    )
+                )
+            )
+            with (
+                patch.object(game, "move_actor") as move_actor,
+                patch.object(game, "enemy_in_melee_arc", return_value=False),
+            ):
+                game.update_player(0.1)
+            move_actor.assert_not_called()
+            self.assertTrue(game._mobile_touch_world_active)
+            self.assertEqual(game.aim_input_mode, "touch")
 
     def test_world_finger_capture_updates_aim_and_release_stops(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1226,6 +1462,45 @@ class MobileTouchTests(unittest.TestCase):
             self.assertTrue(game.handle_mobile_finger_event(down))
             self.assertEqual(bolt_calls, 1)
             self.assertFalse(game._mobile_touch_world_active)
+
+    def test_joystick_world_aim_and_skill_fingers_can_coexist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.draw()
+            layout = game.mobile_layout()
+            size = game._mobile_display_surface().get_size()
+            joystick_point = (
+                layout.joystick_rect.right - 2,
+                layout.joystick_rect.centery,
+            )
+            world_point = (layout.world_viewport.right - 40, layout.world_viewport.centery)
+            skill_point = layout.action_rects[0].center
+
+            joystick_down = self.finger_event(
+                pygame.FINGERDOWN,
+                *self.normalized(joystick_point, size),
+                key=(0, 61),
+            )
+            world_down = self.finger_event(
+                pygame.FINGERDOWN,
+                *self.normalized(world_point, size),
+                key=(0, 62),
+            )
+            skill_down = self.finger_event(
+                pygame.FINGERDOWN,
+                *self.normalized(skill_point, size),
+                key=(0, 63),
+            )
+
+            self.assertTrue(game.handle_mobile_finger_event(joystick_down))
+            self.assertTrue(game.handle_mobile_finger_event(world_down))
+            with patch.object(game, "player_melee_attack") as melee:
+                self.assertTrue(game.handle_mobile_finger_event(skill_down))
+            melee.assert_called_once_with()
+            self.assertIsNotNone(game._mobile_joystick_finger)
+            self.assertGreater(game.mobile_joystick_screen_vector()[0], 0.0)
+            self.assertTrue(game._mobile_touch_world_active)
+            self.assertEqual(game.aim_input_mode, "touch")
 
     def test_world_and_skill_fingers_can_coexist(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1427,21 +1702,85 @@ class MobileTouchTests(unittest.TestCase):
                 self.assertTrue(game.handle_mobile_tap((300, 320)))
             advance.assert_called_once_with()
 
-    def test_opening_inventory_cancels_world_contact(self) -> None:
+    def test_actionable_tooltip_tap_dispatches_interaction(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.draw()
+            prompt = game._interaction_prompt_rect
+            self.assertIsInstance(prompt, pygame.Rect)
+            assert isinstance(prompt, pygame.Rect)
+            point = prompt.move(game.mobile_world_viewport().topleft).center
+            size = game._mobile_display_surface().get_size()
+
+            with patch.object(game, "interact") as interact:
+                handled = game.handle_mobile_finger_event(
+                    self.finger_event(
+                        pygame.FINGERDOWN,
+                        *self.normalized(point, size),
+                        key=(0, 70),
+                    )
+                )
+            self.assertTrue(handled)
+            interact.assert_called_once_with()
+
+    def test_exit_hub_row_opens_existing_exit_confirmation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            self.assertTrue(game._dispatch_command(Command.MOBILE_MENU))
+            game.draw()
+            exit_rect = next(
+                rect
+                for name, rect in game.mobile_layout().hub_option_rects
+                if name == "exit"
+            )
+            size = game._mobile_display_surface().get_size()
+            self.assertTrue(
+                game.handle_mobile_finger_event(
+                    self.finger_event(
+                        pygame.FINGERDOWN,
+                        *self.normalized(exit_rect.center, size),
+                        key=(0, 71),
+                    )
+                )
+            )
+            self.assertEqual(game.state, "confirm_exit")
+            self.assertFalse(game.mobile_hub_open)
+
+    def test_opening_inventory_from_hub_cancels_world_contact(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))
             game.draw()
             layout = game.mobile_layout()
-            inventory = next(
-                rect for name, rect in layout.utility_rects if name == "inventory"
+            size = game._mobile_display_surface().get_size()
+            world = self.normalized(layout.world_viewport.center, size)
+            menu = self.normalized(layout.menu_rect.center, size)
+
+            self.assertTrue(
+                game.handle_mobile_finger_event(
+                    self.finger_event(pygame.FINGERDOWN, *world, key=(0, 8))
+                )
             )
-            coords = ((inventory.centerx + 0.5) / 1280.0, (inventory.centery + 0.5) / 720.0)
-            world = (layout.world_viewport.centerx / 1280.0, layout.world_viewport.centery / 720.0)
-            self.assertTrue(game.handle_mobile_finger_event(self.finger_event(pygame.FINGERDOWN, *world)))
             self.assertTrue(game._mobile_touch_world_active)
-            self.assertTrue(game.handle_mobile_finger_event(self.finger_event(pygame.FINGERDOWN, *coords, key=(0, 9))))
-            self.assertTrue(game.inventory_open)
+            self.assertTrue(
+                game.handle_mobile_finger_event(
+                    self.finger_event(pygame.FINGERDOWN, *menu, key=(0, 9))
+                )
+            )
+            self.assertTrue(game.mobile_hub_open)
             self.assertFalse(game._mobile_touch_world_active)
+
+            game.draw()
+            inventory_rect = next(
+                rect for name, rect in layout.hub_option_rects if name == "inventory"
+            )
+            inventory = self.normalized(inventory_rect.center, size)
+            self.assertTrue(
+                game.handle_mobile_finger_event(
+                    self.finger_event(pygame.FINGERDOWN, *inventory, key=(0, 10))
+                )
+            )
+            self.assertTrue(game.inventory_open)
+            self.assertFalse(game.mobile_hub_open)
 
 
 class MobileBackAndPauseTests(unittest.TestCase):
@@ -1465,6 +1804,16 @@ class MobileBackAndPauseTests(unittest.TestCase):
     def test_android_back_closes_mobile_overlays_and_submenus(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))
+
+            game.mobile_hub_open = True
+            self.send_android_back(game)
+            self.assertFalse(game.mobile_hub_open)
+            self.assertEqual(game.state, "playing")
+
+            game.quest_info_visible = True
+            self.send_android_back(game)
+            self.assertFalse(game.quest_info_visible)
+            self.assertEqual(game.state, "playing")
 
             game.inventory_open = True
             self.send_android_back(game)

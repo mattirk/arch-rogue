@@ -856,24 +856,6 @@ class RenderingHudMixin:
             self._draw_mobile_character_summary(layout.character_rect)
             self.mark_mobile_gpu_base_region("character", layout.character_rect)
 
-        utility_commands = {
-            "inventory": ("I", Command.INVENTORY),
-            "character": ("C", Command.CHARACTER),
-            "quest": ("Q", Command.QUEST),
-            "help": ("?", Command.HELP),
-        }
-        for name, rect in layout.utility_rects:
-            label, command = utility_commands[name]
-            active = bool(
-                (name == "inventory" and self.inventory_open)
-                or (name == "character" and self.character_menu_open)
-                or (name == "quest" and self.quest_info_visible)
-                or (name == "help" and self.show_help)
-            )
-            self._draw_mobile_control_button(rect, label, accent, active=active)
-            self.mark_mobile_gpu_base_region(f"utility-{name}", rect)
-            self.register_mobile_touch_target(rect, command, label, context="gameplay")
-
         slots = self.hud_action_slots()
         action_commands = (
             Command.ABILITY_1,
@@ -905,88 +887,112 @@ class RenderingHudMixin:
             else root.subsurface(viewport)
         )
         self._frame_cache.pop("screen_size", None)
+        context = self.mobile_input_context()
         try:
-            hint = self.current_interaction_hint()
-            self.draw_interaction_prompt(hint)
-            interaction_rect = getattr(self, "_interaction_prompt_rect", None)
-            if isinstance(interaction_rect, pygame.Rect):
-                self.mark_mobile_gpu_ui_region(
-                    "interaction",
-                    interaction_rect,
-                    (
-                        hint,
-                        self.ui_scale,
-                        interaction_rect.size,
-                        id(self.font),
-                        id(self.small_font),
-                        self.asset_ui_active(),
-                    ),
-                )
-            self.draw_run_header()
-            run_header_rect = getattr(self, "_run_header_rect", None)
-            if isinstance(run_header_rect, pygame.Rect):
-                self.mark_mobile_gpu_ui_region(
-                    "run-header",
-                    run_header_rect,
-                    getattr(
-                        self,
-                        "_run_header_render_key",
-                        self._mobile_gpu_frame_sequence,
-                    ),
-                )
-            self.draw_story_panel()
-            story_rect = getattr(self, "_story_panel_rect", None)
-            if isinstance(story_rect, pygame.Rect):
-                self.mark_mobile_gpu_ui_region(
-                    "story",
-                    story_rect,
-                    getattr(
-                        self,
-                        "_story_panel_render_key",
-                        self._mobile_gpu_frame_sequence,
-                    ),
-                )
-            self.draw_boss_bar()
-            boss_rect = getattr(self, "_boss_bar_cluster_rect", None)
-            if isinstance(boss_rect, pygame.Rect):
-                self.mark_mobile_gpu_ui_region(
-                    "boss",
-                    boss_rect,
-                    getattr(
-                        self,
-                        "_boss_bar_render_key",
-                        self._mobile_gpu_frame_sequence,
-                    ),
-                )
+            if context == "quest":
+                self._interaction_prompt_rect = None
+                self._run_header_rect = None
+                self.draw_story_panel()
+                story_rect = getattr(self, "_story_panel_rect", None)
+                if isinstance(story_rect, pygame.Rect):
+                    self.mark_mobile_gpu_ui_region(
+                        "story",
+                        story_rect,
+                        getattr(
+                            self,
+                            "_story_panel_render_key",
+                            self._mobile_gpu_frame_sequence,
+                        ),
+                    )
+            else:
+                hint = self.current_interaction_hint()
+                self.draw_interaction_prompt(hint)
+                interaction_rect = getattr(self, "_interaction_prompt_rect", None)
+                if isinstance(interaction_rect, pygame.Rect):
+                    self.mark_mobile_gpu_ui_region(
+                        "interaction",
+                        interaction_rect,
+                        (
+                            hint,
+                            self.ui_scale,
+                            interaction_rect.size,
+                            id(self.font),
+                            id(self.small_font),
+                            self.asset_ui_active(),
+                        ),
+                    )
+                    if context == "gameplay" and hint is not None and hint[0] == "E":
+                        self.register_mobile_touch_target(
+                            interaction_rect.move(viewport.topleft),
+                            Command.INTERACT,
+                            hint[1],
+                            context="gameplay",
+                        )
+                self.draw_run_header()
+                run_header_rect = getattr(self, "_run_header_rect", None)
+                if isinstance(run_header_rect, pygame.Rect):
+                    self.mark_mobile_gpu_ui_region(
+                        "run-header",
+                        run_header_rect,
+                        getattr(
+                            self,
+                            "_run_header_render_key",
+                            self._mobile_gpu_frame_sequence,
+                        ),
+                    )
+                self._story_panel_rect = None
+                self.draw_boss_bar()
+                boss_rect = getattr(self, "_boss_bar_cluster_rect", None)
+                if isinstance(boss_rect, pygame.Rect):
+                    self.mark_mobile_gpu_ui_region(
+                        "boss",
+                        boss_rect,
+                        getattr(
+                            self,
+                            "_boss_bar_render_key",
+                            self._mobile_gpu_frame_sequence,
+                        ),
+                    )
         finally:
             self.screen = root
             self._mobile_world_rendering = False
             self._frame_cache.pop("screen_size", None)
             del self._mobile_root_screen
 
-        self._draw_mobile_control_button(
-            layout.pause_rect, "Ⅱ", (194, 168, 112), active=False
-        )
-        self.mark_mobile_gpu_base_region("pause", layout.pause_rect)
-        self.register_mobile_touch_target(
-            layout.pause_rect, Command.BACK, "Pause", context="gameplay"
-        )
-        interaction_active = self.current_interaction_hint() is not None
-        self._draw_mobile_control_button(
-            layout.interact_rect, "USE", accent, active=interaction_active
-        )
-        self.mark_mobile_gpu_base_region("interact", layout.interact_rect)
-        self.register_mobile_touch_target(
-            layout.interact_rect, Command.INTERACT, "Interact", context="gameplay"
-        )
+        self._draw_mobile_joystick(layout.joystick_rect)
+        self.mark_mobile_gpu_base_region("joystick", layout.joystick_rect)
+
+        if context in ("gameplay", "mobile_hub", "quest"):
+            self._draw_mobile_control_button(
+                layout.menu_rect,
+                "",
+                (194, 168, 112),
+                active=context in ("mobile_hub", "quest"),
+            )
+            self._draw_mobile_menu_glyph(
+                layout.menu_rect,
+                close=context in ("mobile_hub", "quest"),
+            )
+            self.mark_mobile_gpu_base_region("mobile-menu", layout.menu_rect)
+            menu_command = Command.QUEST if context == "quest" else Command.MOBILE_MENU
+            self.register_mobile_touch_target(
+                layout.menu_rect,
+                menu_command,
+                "Close" if context in ("mobile_hub", "quest") else "Game menu",
+                context=context,
+            )
+
+        if context == "mobile_hub":
+            self._draw_mobile_hub(layout)
 
         self._hud_layout = {
             "safe": layout.safe_rect.copy(),
             "left_rail": layout.left_rail.copy(),
             "world_viewport": layout.world_viewport.copy(),
             "right_rail": layout.right_rail.copy(),
-            "pause": layout.pause_rect.copy(),
-            "interact": layout.interact_rect.copy(),
+            "joystick": layout.joystick_rect.copy(),
+            "menu": layout.menu_rect.copy(),
+            "hub": layout.hub_panel_rect.copy(),
         }
 
     def _draw_mobile_vertical_bar(
@@ -1062,6 +1068,230 @@ class RenderingHudMixin:
                 align="center",
             )
             y += line_h
+
+    def _draw_mobile_joystick(self, rect: pygame.Rect) -> None:
+        base = self.ui_asset_surface("hud.mobile.joystick_base", rect.size)
+        if base is not None:
+            self.screen.blit(base, rect)
+        else:
+            radius = min(rect.width, rect.height) // 2
+            pygame.draw.circle(
+                self.screen,
+                self.HUD_STONE_SHADOW,
+                rect.center,
+                radius,
+            )
+            pygame.draw.circle(
+                self.screen,
+                self.HUD_IRON_DARK,
+                rect.center,
+                max(1, int(radius * 0.72)),
+            )
+            pygame.draw.circle(
+                self.screen,
+                self.HUD_GOLD,
+                rect.center,
+                radius,
+                max(2, radius // 14),
+            )
+
+        screen_x, screen_y = self.mobile_joystick_screen_vector()
+        knob_canvas = max(36, int(min(rect.width, rect.height) * 0.62))
+        travel = max(1, int(min(rect.width, rect.height) * 0.22))
+        knob_rect = pygame.Rect(0, 0, knob_canvas, knob_canvas)
+        knob_rect.center = (
+            rect.centerx + round(screen_x * travel),
+            rect.centery + round(screen_y * travel),
+        )
+        knob = self.ui_asset_surface("hud.mobile.joystick_knob", knob_rect.size)
+        if knob is not None:
+            self.screen.blit(knob, knob_rect)
+        else:
+            pygame.draw.circle(
+                self.screen,
+                self.HUD_IRON,
+                knob_rect.center,
+                max(8, knob_canvas // 3),
+            )
+            pygame.draw.circle(
+                self.screen,
+                self.HUD_GOLD_BRIGHT,
+                knob_rect.center,
+                max(8, knob_canvas // 3),
+                max(2, knob_canvas // 18),
+            )
+
+    def _draw_mobile_menu_glyph(self, rect: pygame.Rect, *, close: bool) -> None:
+        color = self.HUD_GOLD_BRIGHT
+        line_w = max(2, rect.width // 18)
+        inset = max(10, rect.width // 4)
+        if close:
+            pygame.draw.line(
+                self.screen,
+                color,
+                (rect.x + inset, rect.y + inset),
+                (rect.right - inset, rect.bottom - inset),
+                line_w,
+            )
+            pygame.draw.line(
+                self.screen,
+                color,
+                (rect.right - inset, rect.y + inset),
+                (rect.x + inset, rect.bottom - inset),
+                line_w,
+            )
+            return
+        left = rect.x + inset
+        right = rect.right - inset
+        for y in (
+            rect.centery - rect.height // 6,
+            rect.centery,
+            rect.centery + rect.height // 6,
+        ):
+            pygame.draw.line(self.screen, color, (left, y), (right, y), line_w)
+            pygame.draw.circle(
+                self.screen,
+                self.theme.accent,
+                (left, y),
+                max(2, line_w),
+            )
+
+    def _draw_mobile_hub_icon(
+        self, name: str, rect: pygame.Rect, color: Color
+    ) -> None:
+        cx, cy = rect.center
+        size = min(rect.width, rect.height)
+        line_w = max(2, size // 12)
+        if name == "inventory":
+            bag = pygame.Rect(0, 0, int(size * 0.58), int(size * 0.50))
+            bag.center = (cx, cy + size // 10)
+            pygame.draw.rect(
+                self.screen, color, bag, line_w, border_radius=max(3, size // 10)
+            )
+            pygame.draw.arc(
+                self.screen,
+                color,
+                pygame.Rect(cx - size // 5, cy - size // 3, size * 2 // 5, size * 2 // 5),
+                math.pi,
+                math.tau,
+                line_w,
+            )
+        elif name == "character":
+            pygame.draw.circle(self.screen, color, (cx, cy - size // 5), size // 7, line_w)
+            pygame.draw.arc(
+                self.screen,
+                color,
+                pygame.Rect(cx - size // 4, cy, size // 2, size // 3),
+                math.pi,
+                math.tau,
+                line_w,
+            )
+        elif name == "quest":
+            scroll = pygame.Rect(cx - size // 5, cy - size // 4, size * 2 // 5, size // 2)
+            pygame.draw.rect(self.screen, color, scroll, line_w)
+            pygame.draw.line(
+                self.screen,
+                color,
+                (scroll.x + line_w, cy - size // 10),
+                (scroll.right - line_w, cy - size // 10),
+                line_w,
+            )
+            pygame.draw.line(
+                self.screen,
+                color,
+                (scroll.x + line_w, cy + size // 10),
+                (scroll.right - line_w, cy + size // 10),
+                line_w,
+            )
+        else:
+            door = pygame.Rect(cx - size // 5, cy - size // 4, size * 2 // 5, size // 2)
+            pygame.draw.rect(self.screen, color, door, line_w)
+            pygame.draw.line(
+                self.screen,
+                color,
+                (cx, cy),
+                (cx + size // 3, cy),
+                line_w,
+            )
+            pygame.draw.line(
+                self.screen,
+                color,
+                (cx + size // 3, cy),
+                (cx + size // 5, cy - size // 8),
+                line_w,
+            )
+            pygame.draw.line(
+                self.screen,
+                color,
+                (cx + size // 3, cy),
+                (cx + size // 5, cy + size // 8),
+                line_w,
+            )
+
+    def _draw_mobile_hub(self, layout) -> None:
+        panel_rect = layout.hub_panel_rect
+        panel = self.ui_asset_surface("hud.panel", panel_rect.size)
+        if panel is not None:
+            self.screen.blit(panel, panel_rect)
+        else:
+            self.draw_ornate_hud_panel(
+                self.screen,
+                panel_rect,
+                (12, 11, 16, 246),
+                (*self.theme.accent, 190),
+                radius=max(8, panel_rect.width // 18),
+                studs=True,
+            )
+        options = {
+            "inventory": ("Inventory", Command.INVENTORY),
+            "character": ("Character", Command.CHARACTER),
+            "quest": ("Quest", Command.QUEST),
+            "exit": ("Exit game", Command.MOBILE_EXIT),
+        }
+        for name, rect in layout.hub_option_rects:
+            label, command = options[name]
+            row = self.ui_asset_surface("menu.row", rect.size)
+            if row is not None:
+                self.screen.blit(row, rect)
+            else:
+                pygame.draw.rect(
+                    self.screen,
+                    (25, 22, 30),
+                    rect,
+                    border_radius=max(5, rect.height // 7),
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    self.shade(self.theme.accent, -20),
+                    rect,
+                    max(1, rect.height // 18),
+                    border_radius=max(5, rect.height // 7),
+                )
+            icon_rect = pygame.Rect(0, 0, rect.height, rect.height).inflate(-8, -8)
+            icon_rect.centery = rect.centery
+            icon_rect.x = rect.x + 5
+            self._draw_mobile_hub_icon(name, icon_rect, self.HUD_GOLD_BRIGHT)
+            text_rect = pygame.Rect(
+                icon_rect.right + 6,
+                rect.y,
+                max(1, rect.right - icon_rect.right - 12),
+                rect.height,
+            )
+            self.draw_ui_text(
+                self.screen,
+                label,
+                self.small_font,
+                self.HUD_PARCHMENT,
+                text_rect,
+                valign="center",
+            )
+            self.register_mobile_touch_target(
+                rect,
+                command,
+                label,
+                context="mobile_hub",
+            )
+        self.mark_mobile_gpu_base_region("mobile-hub", panel_rect)
 
     def _draw_mobile_control_button(
         self, rect: pygame.Rect, label: str, color: Color, *, active: bool
@@ -1460,19 +1690,46 @@ class RenderingHudMixin:
             return
         key, title, detail, color = hint
         width, height = self.screen.get_size()
-        prompt_w = min(width - self.ui(40), self.ui(560))
-        prompt_h = max(self.ui(56), self.small_font.get_height() * 2 + self.ui(18))
-        if self.asset_ui_active():
-            # 4.2.x — a touch taller so the padded text keeps two clear lines.
-            prompt_h += self.ui(4)
-        rect = pygame.Rect(
-            width - prompt_w - self.ui(22),
-            height - self.hud_panel_height() - prompt_h - self.ui(12),
-            prompt_w,
-            prompt_h,
-        )
-        if rect.y < self.ui(108):
-            rect.y = self.ui(108)
+        mobile = bool(getattr(self, "mobile_mode", False))
+        if mobile:
+            desired_w = max(
+                self.ui(260),
+                min(
+                    self.ui(380),
+                    max(
+                        self.small_font.size(title)[0],
+                        self.small_font.size(detail)[0],
+                    )
+                    + self.ui(92),
+                ),
+            )
+            prompt_w = min(width - self.ui(24), desired_w)
+            estimated_text_w = max(1, prompt_w - self.ui(86))
+            detail_lines = self.wrap_ui_text(
+                detail, self.small_font, estimated_text_w
+            )[:2]
+            prompt_h = max(
+                self.ui(62),
+                self.small_font.get_height() * (1 + len(detail_lines))
+                + self.ui(24),
+            )
+            rect = pygame.Rect(0, 0, prompt_w, prompt_h)
+            rect.bottomright = (width - self.ui(12), height - self.ui(12))
+        else:
+            prompt_w = min(width - self.ui(40), self.ui(560))
+            prompt_h = max(
+                self.ui(56), self.small_font.get_height() * 2 + self.ui(18)
+            )
+            if self.asset_ui_active():
+                prompt_h += self.ui(4)
+            rect = pygame.Rect(
+                width - prompt_w - self.ui(22),
+                height - self.hud_panel_height() - prompt_h - self.ui(12),
+                prompt_w,
+                prompt_h,
+            )
+            if rect.y < self.ui(108):
+                rect.y = self.ui(108)
         self._interaction_prompt_rect = rect.copy()
         surface = pygame.Surface(rect.size, pygame.SRCALPHA)
         self.draw_ornate_hud_panel(
@@ -1507,8 +1764,16 @@ class RenderingHudMixin:
         pygame.draw.rect(
             surface, (*color, 230), key_rect, self.ui(1), border_radius=self.ui(7)
         )
+        key_label = "TAP" if mobile and key == "E" else key
+        key_font = self.small_font if len(key_label) > 2 else self.font
         self.draw_ui_text(
-            surface, key, self.font, self.HUD_GOLD_BRIGHT, key_rect, "center", "center"
+            surface,
+            key_label,
+            key_font,
+            self.HUD_GOLD_BRIGHT,
+            key_rect,
+            "center",
+            "center",
         )
         text_x = key_rect.right + self.ui(12)
         text_w = max(1, content.right - text_x)
@@ -1520,7 +1785,12 @@ class RenderingHudMixin:
             pygame.Rect(text_x, content.y, text_w, self.small_font.get_height()),
         )
         detail_y = content.y + self.small_font.get_height() + self.ui(2)
-        for wrapped in self.wrap_ui_text(detail, self.small_font, text_w)[:1]:
+        maximum_detail_lines = 2 if mobile else 1
+        for wrapped in self.wrap_ui_text(
+            detail, self.small_font, text_w
+        )[:maximum_detail_lines]:
+            if detail_y + self.small_font.get_height() > content.bottom:
+                break
             self.draw_ui_text(
                 surface,
                 wrapped,
@@ -1528,6 +1798,7 @@ class RenderingHudMixin:
                 self.HUD_MUTED,
                 pygame.Rect(text_x, detail_y, text_w, self.small_font.get_height()),
             )
+            detail_y += self.small_font.get_height()
         self.screen.blit(surface, rect)
 
     def draw_screen_flash(self) -> None:
@@ -1560,9 +1831,12 @@ class RenderingHudMixin:
         )
         if floor_plan is not None:
             modifier = f"{modifier} · {floor_summary}"
+        mobile = bool(getattr(self, "mobile_mode", False))
         quest_info_visible = getattr(self, "quest_info_visible", True)
         story = (
-            self.story_header_line()
+            ""
+            if mobile
+            else self.story_header_line()
             if quest_info_visible
             else "Quest info hidden · press Q to show"
         )
@@ -1571,7 +1845,13 @@ class RenderingHudMixin:
         pad = self.ui(10)
         line_h = max(self.small_font.get_height() + self.ui(3), self.ui(18))
         header_w = min(width - margin * 2, self.ui(740))
-        header_h = pad * 2 + self.font.get_height() + line_h * 2 + self.ui(4)
+        detail_line_count = 1 if mobile else 2
+        header_h = (
+            pad * 2
+            + self.font.get_height()
+            + line_h * detail_line_count
+            + self.ui(4)
+        )
         if self.asset_ui_active():
             # 4.2.x — extra room for the padded content inset below.
             header_h += self.ui(4)
@@ -1632,20 +1912,27 @@ class RenderingHudMixin:
             pygame.Rect(content.x, y, content.width, line_h),
         )
         y += line_h
-        self.draw_ui_text(
-            surface,
-            story,
-            self.small_font,
-            story_color,
-            pygame.Rect(content.x, y, content.width, line_h),
-        )
+        if not mobile:
+            self.draw_ui_text(
+                surface,
+                story,
+                self.small_font,
+                story_color,
+                pygame.Rect(content.x, y, content.width, line_h),
+            )
         self.screen.blit(surface, rect)
 
     def run_header_bottom(self) -> int:
         """Bottom y of the top-left run header panel (mirrors draw_run_header)."""
         pad = self.ui(10)
         line_h = max(self.small_font.get_height() + self.ui(3), self.ui(18))
-        header_h = pad * 2 + self.font.get_height() + line_h * 2 + self.ui(4)
+        detail_line_count = 1 if getattr(self, "mobile_mode", False) else 2
+        header_h = (
+            pad * 2
+            + self.font.get_height()
+            + line_h * detail_line_count
+            + self.ui(4)
+        )
         return self.ui(14) + header_h
 
     def boss_bar_metrics(self) -> tuple[pygame.Rect, pygame.Rect, bool] | None:

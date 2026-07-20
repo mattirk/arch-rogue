@@ -1021,14 +1021,21 @@ class CombatMixin:
         # stick is deflected past the deadzone, giving precise speed control.
         cx, cy = self.input.left_vec()
         controller_moving = bool(cx or cy)
+        mobile_moving = False
         if controller_moving:
             self.aim_input_mode = "controller"
             kbd_dx, kbd_dy = cx, cy
+        elif getattr(self, "mobile_mode", False):
+            mobile_x, mobile_y = self.mobile_joystick_world_vector()
+            mobile_moving = bool(mobile_x or mobile_y)
+            if mobile_moving:
+                kbd_dx, kbd_dy = mobile_x, mobile_y
         if petting:
             # Keep the authored kneel grounded. Cooldowns, statuses, and resource
             # regeneration below still advance normally during this brief pause.
             kbd_dx = kbd_dy = 0.0
             controller_moving = False
+            mobile_moving = False
         equipment_move = max(-0.25, min(0.30, self.equipment_stat_total("move_speed")))
         move_speed = (
             PLAYER_MOVE_SPEED
@@ -1045,7 +1052,11 @@ class CombatMixin:
                 # vector so the aim cone and projectiles do not snap to movement.
                 nx, ny = kbd_dx / length, kbd_dy / length
                 aim_x, aim_y = self.input.right_vec()
-                if not (aim_x or aim_y):
+                mobile_aiming = bool(
+                    getattr(self, "mobile_mode", False)
+                    and self.active_mobile_world_touch() is not None
+                )
+                if not (aim_x or aim_y) and not mobile_aiming:
                     self.player.facing_x = nx
                     self.player.facing_y = ny
                     if controller_moving:
@@ -1063,18 +1074,13 @@ class CombatMixin:
             if self.enemy_in_melee_arc():
                 self.player_melee_attack()
         elif not petting:
-            touch_point = (
-                self.active_mobile_world_touch()
-                if getattr(self, "mobile_mode", False)
-                else None
-            )
             mouse_point = (
                 pygame.mouse.get_pos()
                 if not getattr(self, "mobile_mode", False)
                 and pygame.mouse.get_pressed()[0]
                 else None
             )
-            target_point = touch_point or mouse_point
+            target_point = mouse_point
             if target_point is not None:
                 dx, dy = self.face_player_toward_screen_point(*target_point)
                 distance = math.hypot(dx, dy)
