@@ -193,25 +193,32 @@ class RenderingWorldMixin:
             layer.set_clip(previous_clip)
         return len(pending_entries)
 
-    @staticmethod
     def _mobile_floor_layer_destination(
+        self,
         screen_size: tuple[int, int],
         layer: pygame.Surface,
         build_camera: tuple[float, float],
         live_camera: tuple[float, float],
     ) -> tuple[int, int]:
         # world_to_screen uses int() on positive on-screen coordinates, which is
-        # floor semantics. Compute the translation from the same two projected
-        # origins; round() changes at a different half-pixel boundary and caused
-        # the cached floor to jump one pixel relative to live walls and actors.
+        # floor semantics. Compute the translation from the same layout-aware
+        # projection origin for the live viewport and the larger guttered cache;
+        # round() changes at a different half-pixel boundary and causes a one-pixel
+        # jump relative to live walls and actors.
         screen_w, screen_h = screen_size
+        live_origin_x, live_origin_y = self._mobile_projection_origin(
+            screen_w, screen_h
+        )
+        build_origin_x, build_origin_y = self._mobile_projection_origin(
+            layer.get_width(), layer.get_height()
+        )
         build_cam_x, build_cam_y = build_camera
         cam_x, cam_y = live_camera
         return (
-            math.floor(-cam_x + screen_w * 0.5)
-            - math.floor(-build_cam_x + layer.get_width() * 0.5),
-            math.floor(-cam_y + screen_h * 0.48)
-            - math.floor(-build_cam_y + layer.get_height() * 0.48),
+            math.floor(-cam_x + live_origin_x)
+            - math.floor(-build_cam_x + build_origin_x),
+            math.floor(-cam_y + live_origin_y)
+            - math.floor(-build_cam_y + build_origin_y),
         )
 
     def _draw_cached_mobile_floor_layer(self) -> bool:

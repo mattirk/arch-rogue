@@ -821,22 +821,22 @@ class RenderingHudMixin:
 
     def _draw_mobile_ui(self) -> None:
         layout = self.mobile_layout()
+        context = self.mobile_input_context()
         accent = self.theme.accent
         root = self.screen
 
-        for rail in (layout.left_rail, layout.right_rail):
-            panel = self.ui_asset_surface("hud.panel", rail.size)
-            if panel is not None:
-                root.blit(panel, rail)
-            else:
-                self.draw_ornate_hud_panel(
-                    root,
-                    rail,
-                    (16, 15, 21, 244),
-                    (*accent, 180),
-                    radius=max(8, rail.width // 12),
-                    studs=True,
-                )
+        panel = self.ui_asset_surface("hud.panel", layout.right_rail.size)
+        if panel is not None:
+            root.blit(panel, layout.right_rail)
+        else:
+            self.draw_ornate_hud_panel(
+                root,
+                layout.right_rail,
+                (16, 15, 21, 244),
+                (*accent, 180),
+                radius=max(8, layout.right_rail.width // 12),
+                studs=True,
+            )
 
         resource_values = (
             (self.player.hp, self.player.max_hp, (180, 42, 46), "HP"),
@@ -852,6 +852,8 @@ class RenderingHudMixin:
             rect.copy() for rect in layout.resource_rects
         )
 
+        self._draw_mobile_run_summary(layout.run_info_rect)
+        self.mark_mobile_gpu_base_region("run-info", layout.run_info_rect)
         if layout.character_rect is not None:
             self._draw_mobile_character_summary(layout.character_rect)
             self.mark_mobile_gpu_base_region("character", layout.character_rect)
@@ -875,8 +877,9 @@ class RenderingHudMixin:
             )
         self._hud_action_rects = tuple(rect.copy() for rect in layout.action_rects)
 
-        # World-adjacent HUD remains viewport-local, so all existing placement
-        # logic continues to work and cannot overlap either control rail.
+        # World-adjacent prompts remain viewport-local. The left HUD deliberately
+        # overlays the extended world, while gameplay-space panels use the clear
+        # center between that overlay and the right action rail.
         viewport = layout.world_viewport.clip(root.get_rect())
         self._mobile_root_screen = root
         self._mobile_world_rendering = True
@@ -887,11 +890,11 @@ class RenderingHudMixin:
             else root.subsurface(viewport)
         )
         self._frame_cache.pop("screen_size", None)
-        context = self.mobile_input_context()
         try:
             if context == "quest":
                 self._interaction_prompt_rect = None
                 self._run_header_rect = None
+                self._run_header_render_key = None
                 self.draw_story_panel()
                 story_rect = getattr(self, "_story_panel_rect", None)
                 if isinstance(story_rect, pygame.Rect):
@@ -928,18 +931,8 @@ class RenderingHudMixin:
                             hint[1],
                             context="gameplay",
                         )
-                self.draw_run_header()
-                run_header_rect = getattr(self, "_run_header_rect", None)
-                if isinstance(run_header_rect, pygame.Rect):
-                    self.mark_mobile_gpu_ui_region(
-                        "run-header",
-                        run_header_rect,
-                        getattr(
-                            self,
-                            "_run_header_render_key",
-                            self._mobile_gpu_frame_sequence,
-                        ),
-                    )
+                self._run_header_rect = None
+                self._run_header_render_key = None
                 self._story_panel_rect = None
                 self.draw_boss_bar()
                 boss_rect = getattr(self, "_boss_bar_cluster_rect", None)
@@ -989,7 +982,9 @@ class RenderingHudMixin:
             "safe": layout.safe_rect.copy(),
             "left_rail": layout.left_rail.copy(),
             "world_viewport": layout.world_viewport.copy(),
+            "gameplay": layout.gameplay_rect.copy(),
             "right_rail": layout.right_rail.copy(),
+            "run_info": layout.run_info_rect.copy(),
             "joystick": layout.joystick_rect.copy(),
             "menu": layout.menu_rect.copy(),
             "hub": layout.hub_panel_rect.copy(),
@@ -1004,10 +999,19 @@ class RenderingHudMixin:
         label: str,
     ) -> None:
         ratio = max(0.0, min(1.0, value / max(1.0, maximum)))
-        radius = max(4, min(10, rect.width // 3))
-        pygame.draw.rect(self.screen, self.HUD_STONE_SHADOW, rect, border_radius=radius)
-        inner = rect.inflate(-max(3, rect.width // 7) * 2, -max(3, rect.width // 7) * 2)
-        pygame.draw.rect(self.screen, self.HUD_IRON_DARK, inner, border_radius=max(2, radius - 2))
+        radius = max(3, min(9, rect.width // 4))
+        inner = pygame.Rect(
+            rect.x + round(rect.width * 0.18),
+            rect.y + round(rect.height * 0.13),
+            max(1, round(rect.width * 0.64)),
+            max(1, round(rect.height * 0.74)),
+        )
+        pygame.draw.rect(
+            self.screen,
+            self.HUD_IRON_DARK,
+            inner,
+            border_radius=max(2, radius - 2),
+        )
         fill_h = max(0, round(inner.height * ratio))
         if fill_h:
             fill = pygame.Rect(inner.x, inner.bottom - fill_h, inner.width, fill_h)
@@ -1018,36 +1022,104 @@ class RenderingHudMixin:
                 border_radius=max(2, radius - 2),
             )
             shine = pygame.Rect(fill.x, fill.y, max(1, fill.width // 3), fill.height)
-            pygame.draw.rect(self.screen, self.shade(color, 28), shine)
-        pygame.draw.rect(
-            self.screen,
-            self.shade(color, 22),
-            rect,
-            max(1, min(3, rect.width // 10)),
-            border_radius=radius,
-        )
+            pygame.draw.rect(self.screen, self.shade(color, 30), shine)
+
+        frame = self.ui_asset_surface("hud.mobile.status_bar_frame", rect.size)
+        if frame is not None:
+            self.screen.blit(frame, rect)
+        else:
+            pygame.draw.rect(
+                self.screen,
+                self.HUD_STONE_SHADOW,
+                rect,
+                max(2, rect.width // 10),
+                border_radius=radius,
+            )
+            pygame.draw.rect(
+                self.screen,
+                self.shade(color, 22),
+                rect.inflate(-2, -2),
+                max(1, rect.width // 14),
+                border_radius=max(2, radius - 1),
+            )
+
         font = self.tiny_font
         tag = font.render(label, True, self.HUD_PARCHMENT)
-        self.screen.blit(tag, tag.get_rect(centerx=rect.centerx, top=rect.y + 3))
+        self.screen.blit(
+            tag,
+            tag.get_rect(centerx=rect.centerx, top=inner.y + max(1, self.ui(1))),
+        )
         amount = font.render(f"{int(value)}", True, self.HUD_BONE)
-        self.screen.blit(amount, amount.get_rect(centerx=rect.centerx, bottom=rect.bottom - 3))
+        self.screen.blit(
+            amount,
+            amount.get_rect(
+                centerx=rect.centerx,
+                bottom=inner.bottom - max(1, self.ui(1)),
+            ),
+        )
+
+    def _draw_mobile_info_panel(self, rect: pygame.Rect) -> pygame.Rect:
+        panel = self.ui_asset_surface("hud.mobile.info_panel", rect.size)
+        if panel is not None:
+            self.screen.blit(panel, rect)
+        else:
+            self.draw_ornate_hud_panel(
+                self.screen,
+                rect,
+                (12, 11, 16, 226),
+                (*self.theme.accent, 160),
+                radius=max(5, rect.height // 10),
+                studs=True,
+            )
+        horizontal = max(8, round(rect.width * 0.09))
+        vertical = max(6, round(rect.height * 0.14))
+        return rect.inflate(-horizontal * 2, -vertical * 2)
+
+    def _draw_mobile_run_summary(self, rect: pygame.Rect) -> None:
+        content = self._draw_mobile_info_panel(rect)
+        darkness = " · Dark" if self.is_current_floor_dark() else ""
+        title = f"Run {self.run_number}: Depth {self.current_depth}/{DUNGEON_DEPTH}"
+        floor_name = f"{self.theme.name}{darkness}"
+        difficulty = f"Difficulty: {self.difficulty_profile().name}"
+        modifier = f"Modifier: {self.run_modifier.name}"
+        self._mobile_run_info_render_key = (
+            title,
+            floor_name,
+            difficulty,
+            modifier,
+            rect.size,
+            self.ui_scale,
+            id(self.tiny_font),
+            id(self.small_font),
+        )
+        lines = (
+            (title, self.HUD_GOLD_BRIGHT),
+            (floor_name, self.HUD_PARCHMENT),
+            (difficulty, self.HUD_BONE),
+            (modifier, self.HUD_MUTED),
+        )
+        y = content.y
+        for index, (line, color) in enumerate(lines):
+            font = (
+                self.small_font
+                if index == 0 and content.width >= self.ui(180)
+                else self.tiny_font
+            )
+            line_h = font.get_height() + max(1, self.ui(1))
+            if y + line_h > content.bottom:
+                break
+            self.draw_ui_text(
+                self.screen,
+                self.ellipsize_ui_text(line, font, content.width),
+                font,
+                color,
+                pygame.Rect(content.x, y, content.width, line_h),
+                align="center",
+            )
+            y += line_h
 
     def _draw_mobile_character_summary(self, rect: pygame.Rect) -> None:
-        pygame.draw.rect(
-            self.screen,
-            (12, 11, 16, 210),
-            rect,
-            border_radius=max(5, rect.width // 14),
-        )
-        pygame.draw.rect(
-            self.screen,
-            (*self.theme.accent, 150),
-            rect,
-            max(1, rect.width // 45),
-            border_radius=max(5, rect.width // 14),
-        )
-        pad = max(4, rect.width // 14)
-        content = rect.inflate(-pad * 2, -pad * 2)
+        content = self._draw_mobile_info_panel(rect)
         lines = (
             self.player.class_name,
             f"Lv {self.player.level} · {self.player.xp}/{self.player.next_xp} XP",
@@ -1055,8 +1127,8 @@ class RenderingHudMixin:
         )
         y = content.y
         for index, line in enumerate(lines):
-            font = self.small_font if index == 0 and content.height >= 70 else self.tiny_font
-            line_h = font.get_height() + 2
+            font = self.small_font if index == 0 and content.height >= 58 else self.tiny_font
+            line_h = font.get_height() + max(1, self.ui(1))
             if y + line_h > content.bottom:
                 break
             self.draw_ui_text(
@@ -1068,6 +1140,7 @@ class RenderingHudMixin:
                 align="center",
             )
             y += line_h
+
 
     def _draw_mobile_joystick(self, rect: pygame.Rect) -> None:
         base = self.ui_asset_surface("hud.mobile.joystick_base", rect.size)
@@ -1949,16 +2022,25 @@ class RenderingHudMixin:
         width, height = self.screen.get_size()
         margin = self.ui(18)
         big = boss.size >= 2
-        bar_w = min(width - margin * 2, self.ui(640 if big else 520))
+        mobile = bool(getattr(self, "mobile_mode", False))
+        if mobile:
+            layout = self.mobile_layout()
+            viewport = layout.world_viewport
+            available_w = layout.gameplay_rect.width
+            center_x = layout.world_focus[0] - viewport.x
+        else:
+            available_w = width
+            center_x = width // 2
+        bar_w = min(available_w - margin * 2, self.ui(640 if big else 520))
         bar_h = max(
             self.ui(20 if big else 12),
             self.small_font.get_height() // 2 + self.ui(4),
         )
         plaque_h = self.ui(24 if big else 20)
-        bottom_panel_top = height - self.hud_panel_height()
-        bar_x = (width - bar_w) // 2
-        # Preferred: plaque below the run header, bar below the plaque.
-        plaque_top = self.run_header_bottom() + self.ui(8)
+        bottom_panel_top = height if mobile else height - self.hud_panel_height()
+        bar_x = center_x - bar_w // 2
+        # Mobile has no top run header; desktop keeps the plaque below it.
+        plaque_top = self.ui(14) if mobile else self.run_header_bottom() + self.ui(8)
         bar_y = plaque_top + plaque_h + self.ui(4)
         # If that pushes the bar into the bottom HUD panel, anchor above it.
         if bar_y + bar_h > bottom_panel_top - self.ui(6):
@@ -1966,7 +2048,7 @@ class RenderingHudMixin:
             plaque_top = bar_y - plaque_h - self.ui(2)
         bar_rect = pygame.Rect(bar_x, bar_y, bar_w, bar_h)
         plaque = pygame.Rect(0, 0, bar_w, plaque_h)
-        plaque.center = (width // 2, plaque_top + plaque_h // 2)
+        plaque.center = (center_x, plaque_top + plaque_h // 2)
         return bar_rect, plaque, big
 
     def boss_bar_top(self) -> int | None:
@@ -2000,7 +2082,7 @@ class RenderingHudMixin:
         )
         plaque_w = label.get_width() + self.ui(28)
         plaque.size = (plaque_w, plaque.height)
-        plaque.center = (width // 2, plaque.centery)
+        plaque.center = (rect.centerx, plaque.centery)
         plaque_surf = pygame.Surface(plaque.size, pygame.SRCALPHA)
         pygame.draw.rect(
             plaque_surf,

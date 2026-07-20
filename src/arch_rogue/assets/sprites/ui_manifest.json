@@ -96,6 +96,14 @@
       "path": "hud/mobile_joystick_knob.png",
       "render": "scale"
     },
+    "hud.mobile.status_bar_frame": {
+      "path": "hud/mobile_status_bar_frame.png",
+      "render": "scale"
+    },
+    "hud.mobile.info_panel": {
+      "path": "hud/mobile_info_panel.png",
+      "render": "scale"
+    },
     "hud.action.warden.shield_bash": {
       "path": "hud/action_warden_shield_bash.png",
       "render": "scale"

@@ -1,5 +1,37 @@
 # Changelog
 
+## 4.3.9 — Android World-Overlay HUD
+
+Release 4.3.9 removes the last permanent top-of-screen mobile information panel and turns the left controls into true overlays over an edge-to-edge dungeon view. Run, depth, floor, difficulty, modifier, resources, and optional character information remain readable without narrowing or recentering gameplay beneath the controls. Desktop rendering and input remain unchanged.
+
+### Added
+
+- PixelLab-authored vertical obsidian/iron status vessels with gold runes now frame HP, MP, and Stamina fills. A matching compact obsidian/gold information card is reused for run/difficulty and character summaries; both assets retain procedural fallbacks and are packaged through the HUD manifest.
+- Mobile layout now exposes a distinct unobstructed gameplay rectangle and projection focus inside the wider world viewport. Camera projection, inverse touch mapping, zoom layers, screen-space effects, and boss bars share that focus.
+- Regression coverage verifies edge-to-edge-left world geometry, left-overlay touch blocking, camera round trips at the clear gameplay focus, generated UI assets, header removal, boss placement, and cached-floor translation.
+
+### Changed
+
+- The mobile world viewport begins at physical display x=0 and renders underneath the safe-area-positioned left HUD. The right action rail remains reserved, while the player stays centered in the visible space between overlays instead of shifting beneath the left cards.
+- The mobile top run/depth/difficulty panel is removed completely. `Run N: Depth N/10`, floor theme, difficulty, and modifier now live in the upper-left information card; Quest remains available only through its dedicated game-hub modal.
+- The analog stick is larger and sits higher and farther right for easier thumb reach. Compact 360p layouts omit the character card before reducing critical run/resource information.
+- The direct GLES presenter no longer registers redundant indexed uploads for left HUD, joystick, or menu rectangles already contained in the streamed world texture; only changing controls outside the viewport retain separate base-region uploads.
+- Runtime/package release version is `4.3.9`; options remain schema `6` and run saves remain schema `5`.
+
+### Fixed
+
+- Touches on overlaid left information cards no longer pass through as world aiming contacts.
+- The reusable Android floor cache now translates from the same layout-aware projection origin as live tiles, preserving pixel alignment after the camera focus moved away from the raw viewport center.
+- Mobile boss plaques anchor to the clear top-center gameplay area instead of reserving space below the removed run header.
+
+### Validation
+
+- Focused mobile layout/render/input coverage passes 61 tests; adjacent input/accessibility, core gameplay, UI asset, metadata, and Android packaging suites pass 70 tests.
+- Headless 780×360, 1280×720, and asymmetric-safe-inset 2340×1080 renders confirm edge-to-edge world coverage, generated status/info frames, compact fallback, clear player focus, hub placement, and Quest modal geometry.
+- Full non-web `unittest` discovery completed with 467 tests passing; `python -m compileall -q src tests`, changed-file diagnostics, and `git diff --check` pass (rendering mixins retain their pre-existing cross-module unused-import warnings).
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.9-arm64-v8a_armeabi-v7a-debug.apk` (73,446,695 bytes; SHA-256 `5e8e03d1d7bea049ce963029ec863799bc652d54e6dd234280772d94e580fce5`). The package reports version 4.3.9, API 28/34, GLES 2.0, landscape `PythonActivity`, and both ARM ABIs; contains 104 architecture-correct ELF extensions per ABI plus all four PixelLab mobile HUD sprites; and passes APK Signature Scheme v2 verification.
+- Physical-device validation remains required for final thumb reach, text size, overlay legibility, and multitouch behavior on representative phones and tablets.
+
 ## 4.3.8 — Android Analog HUD and Game Hub
 
 Release 4.3.8 implements the second-generation mobile gameplay layout: analog movement is separated from direct world aiming, contextual prompts replace permanent interaction chrome, and one compact top-right hub owns the mobile gameplay menus. Desktop mouse, keyboard, and gamepad behavior remains unchanged.

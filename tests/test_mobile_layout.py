@@ -616,6 +616,7 @@ class MobileRenderQualityTests(unittest.TestCase):
             old_cache = game._frame_cache
             old_world_rendering = game._mobile_world_rendering
             try:
+                game._mobile_root_screen = root
                 game.screen = layer
                 game._mobile_world_rendering = True
                 game._frame_cache = {"camera_iso": (cache[1], cache[2])}
@@ -639,6 +640,7 @@ class MobileRenderQualityTests(unittest.TestCase):
                 game.screen = root
                 game._frame_cache = old_cache
                 game._mobile_world_rendering = old_world_rendering
+                del game._mobile_root_screen
 
             self.assertEqual(
                 (
@@ -968,11 +970,11 @@ class MobileRenderQualityTests(unittest.TestCase):
             viewport = game.mobile_world_viewport()
             root_pixels = game.screen.get_width() * game.screen.get_height()
             self.assertEqual(first_base_pixels, root_pixels)
-            self.assertGreaterEqual(first_ui_regions, 2)
+            self.assertEqual(first_ui_regions, 1)
             self.assertGreater(first_ui_pixels, 0)
             self.assertIsNotNone(first_dirty)
             assert first_dirty is not None
-            self.assertLess(first_ui_pixels, first_dirty.width * first_dirty.height)
+            self.assertEqual(first_ui_pixels, first_dirty.width * first_dirty.height)
 
             shell = getattr(game, "_mobile_gpu_shell_texture")
             base = getattr(game, "_mobile_gpu_base_texture")
@@ -1003,6 +1005,12 @@ class MobileRenderQualityTests(unittest.TestCase):
             self.assertEqual(game._mobile_gpu_ui_upload_pixels, 0)
             self.assertGreater(game._mobile_gpu_base_region_count, 0)
             self.assertLess(game._mobile_gpu_base_upload_pixels, root_pixels)
+            self.assertTrue(
+                all(
+                    not viewport.contains(rect)
+                    for _key, rect in game._mobile_gpu_base_regions
+                )
+            )
 
             blitted = [
                 texture
@@ -1052,11 +1060,14 @@ class MobileLayoutTests(unittest.TestCase):
                 self.assertEqual(layout.display_rect.size, size)
                 self.assertTrue(layout.safe_rect.contains(layout.left_rail))
                 self.assertTrue(layout.safe_rect.contains(layout.right_rail))
-                self.assertTrue(layout.safe_rect.contains(layout.world_viewport))
-                self.assertFalse(layout.left_rail.colliderect(layout.world_viewport))
+                self.assertTrue(layout.display_rect.contains(layout.world_viewport))
+                self.assertEqual(layout.world_viewport.left, layout.display_rect.left)
+                self.assertTrue(layout.left_rail.colliderect(layout.world_viewport))
                 self.assertFalse(layout.right_rail.colliderect(layout.world_viewport))
-                self.assertEqual(layout.left_rail.width, layout.right_rail.width)
-                self.assertEqual(layout.world_viewport.centerx, layout.safe_rect.centerx)
+                self.assertTrue(layout.world_viewport.contains(layout.gameplay_rect))
+                self.assertFalse(layout.left_rail.colliderect(layout.gameplay_rect))
+                self.assertFalse(layout.right_rail.colliderect(layout.gameplay_rect))
+                self.assertEqual(layout.world_focus[0], layout.gameplay_rect.centerx)
                 self.assertEqual(len(layout.action_rects), 6)
                 self.assertEqual(len(layout.resource_rects), 3)
                 for first, second in zip(
@@ -1068,7 +1079,8 @@ class MobileLayoutTests(unittest.TestCase):
                 self.assertTrue(layout.safe_rect.contains(layout.joystick_rect))
                 self.assertTrue(layout.safe_rect.contains(layout.hub_panel_rect))
                 self.assertFalse(layout.left_rail.colliderect(layout.joystick_rect))
-                self.assertFalse(layout.world_viewport.colliderect(layout.joystick_rect))
+                self.assertTrue(layout.world_viewport.colliderect(layout.joystick_rect))
+                self.assertTrue(layout.left_rail.contains(layout.run_info_rect))
                 self.assertEqual(
                     [name for name, _rect in layout.hub_option_rects],
                     ["inventory", "character", "quest", "exit"],
@@ -1085,6 +1097,9 @@ class MobileLayoutTests(unittest.TestCase):
         regular = build_mobile_layout((1280, 720))
         self.assertIsNone(compact.character_rect)
         self.assertIsNotNone(regular.character_rect)
+        self.assertGreaterEqual(regular.joystick_rect.width, 180)
+        self.assertGreater(regular.joystick_rect.left, regular.left_rail.left)
+        self.assertLess(regular.joystick_rect.bottom, regular.safe_rect.bottom)
 
     def test_detect_mobile_runtime_env_override(self) -> None:
         old = os.environ.pop("ARCH_ROGUE_MOBILE", None)
@@ -1165,10 +1180,13 @@ class MobileHudTests(unittest.TestCase):
             self.assertNotIn("interact", game._hud_layout)
             self.assertFalse(game.quest_info_visible)
             self.assertIsNone(game._story_panel_rect)
-            run_header_key = game._run_header_render_key
-            self.assertIsInstance(run_header_key, tuple)
-            assert isinstance(run_header_key, tuple)
-            self.assertEqual(run_header_key[2], "")
+            self.assertIsNone(game._run_header_rect)
+            self.assertIsNone(game._run_header_render_key)
+            run_info_key = game._mobile_run_info_render_key
+            self.assertEqual(run_info_key[0], "Run 1: Depth 1/10")
+            self.assertTrue(str(run_info_key[1]))
+            self.assertEqual(run_info_key[2], "Difficulty: Medium")
+            self.assertEqual(game._hud_layout["run_info"], layout.run_info_rect)
             self.assertFalse(
                 any(
                     target.label.upper() in {"USE", "INTERACT"}
@@ -1178,6 +1196,22 @@ class MobileHudTests(unittest.TestCase):
             )
             self.assertIsNotNone(game.ui_assets.source("hud.mobile.joystick_base"))
             self.assertIsNotNone(game.ui_assets.source("hud.mobile.joystick_knob"))
+            self.assertIsNotNone(game.ui_assets.source("hud.mobile.status_bar_frame"))
+            self.assertIsNotNone(game.ui_assets.source("hud.mobile.info_panel"))
+
+    def test_mobile_boss_bar_uses_clear_top_center_without_run_header(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            boss = type("BossStub", (), {"size": 2, "hp": 100, "max_hp": 100})()
+            with patch.object(game, "boss_enemy", return_value=boss):
+                metrics = game.boss_bar_metrics()
+            self.assertIsNotNone(metrics)
+            assert metrics is not None
+            bar_rect, plaque_rect, _big = metrics
+            layout = game.mobile_layout()
+            local_focus_x = layout.world_focus[0] - layout.world_viewport.x
+            self.assertEqual(bar_rect.centerx, local_focus_x)
+            self.assertEqual(plaque_rect.top, game.ui(14))
 
     def test_mobile_hub_publishes_exactly_four_requested_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1238,6 +1272,11 @@ class MobileHudTests(unittest.TestCase):
             )
             self.assertIsNone(game._interaction_prompt_rect)
             self.assertIsNone(game._run_header_rect)
+            local_gameplay = game.mobile_layout().gameplay_rect.move(
+                -game.mobile_world_viewport().x,
+                -game.mobile_world_viewport().y,
+            )
+            self.assertTrue(local_gameplay.contains(story_rect))
 
     def test_non_actionable_mobile_prompt_is_not_tappable(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1371,6 +1410,38 @@ class MobileTouchTests(unittest.TestCase):
             self.assertGreater(dx, 0.0)
             self.assertLess(dy, 0.0)
             self.assertGreater(game.player.locomotion_anim_scale, 0.0)
+
+    def test_left_info_overlay_blocks_world_aim_touches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.draw()
+            layout = game.mobile_layout()
+            size = game._mobile_display_surface().get_size()
+            self.assertTrue(
+                game.handle_mobile_finger_event(
+                    self.finger_event(
+                        pygame.FINGERDOWN,
+                        *self.normalized(layout.run_info_rect.center, size),
+                        key=(0, 53),
+                    )
+                )
+            )
+            self.assertFalse(game._mobile_touch_world_active)
+            self.assertIsNone(game.active_mobile_world_touch())
+
+    def test_mobile_camera_focus_stays_in_unobstructed_gameplay_area(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.snap_camera_to_player()
+            game.draw()
+            layout = game.mobile_layout()
+            self.assertEqual(
+                game.world_to_display(game.player.x, game.player.y),
+                layout.world_focus,
+            )
+            world_x, world_y = game.screen_to_world(*layout.world_focus)
+            self.assertAlmostEqual(world_x, game.player.x, places=6)
+            self.assertAlmostEqual(world_y, game.player.y, places=6)
 
     def test_world_touch_aims_without_moving_player(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

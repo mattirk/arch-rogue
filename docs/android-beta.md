@@ -1,6 +1,6 @@
 # Arch Rogue Android Beta
 
-Release **4.3.8** ships a landscape-only Android beta APK built from the same
+Release **4.3.9** ships a landscape-only Android beta APK built from the same
 Python/pygame-ce codebase as the desktop release. This document is the source
 of truth for installing, building, and reporting issues with the beta.
 
@@ -22,8 +22,8 @@ of truth for installing, building, and reporting issues with the beta.
 
 ## Controls
 
-- **Movement:** drag the lower-left analog stick. Its distance from center
-  controls movement strength and it recenters immediately when released.
+- **Movement:** drag the enlarged lower-left analog stick. Its distance from
+  center controls movement strength and it recenters immediately when released.
 - **Aim:** touch or drag inside the central world viewport. World touch aims
   only; it can be held independently while moving with the stick or tapping a
   skill.
@@ -35,8 +35,10 @@ of truth for installing, building, and reporting issues with the beta.
 - **Game menu:** tap the top-right list icon to pause the run and open the
   Inventory / Character / Quest / Exit game hub. Quest details are hidden from
   the normal gameplay HUD and open as a dedicated modal panel.
-- **Left rail:** vertical HP/MP/Stamina bars plus a compact character summary
-  when the display has enough room.
+- **Left overlay:** the dungeon renders to the physical left edge beneath
+  PixelLab-authored HP/MP/Stamina vessels and information cards. The cards show
+  run/depth, floor theme, difficulty/modifier, and a compact character summary
+  when space permits; touching a card never aims through it into the world.
 - **Menus:** tap rendered rows, choices, tabs, and cells directly. Supported
   horizontal/vertical swipes handle paging, tabs, and item actions without a
   permanent navigation strip.
@@ -67,7 +69,7 @@ Older mobile options files migrate to Performance and disable generated normal
 maps once. You can re-enable **Lighting detail** explicitly after confirming the
 device remains smooth.
 
-The 4.3.8 beta displays a small diagnostic line at the bottom of the game view:
+The 4.3.9 beta displays a small diagnostic line at the bottom of the game view:
 `PERF <fps> <frame ms> | W <world ms> H <HUD ms> F <flip ms>`. It also emits a
 full phase report every four seconds. Capture title-screen and active-gameplay
 samples with:

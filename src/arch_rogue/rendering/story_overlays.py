@@ -115,10 +115,14 @@ class RenderingStoryOverlayMixin:
         width, height = self.screen.get_size()
         mobile = bool(getattr(self, "mobile_mode", False))
         if mobile:
-            x = self.ui(14)
-            y = self.ui(14)
-            panel_w = width - x * 2
-            max_h = height - y * 2
+            layout = self.mobile_layout()
+            viewport = layout.world_viewport
+            gameplay = layout.gameplay_rect.move(-viewport.x, -viewport.y)
+            margin = self.ui(14)
+            x = gameplay.x + margin
+            y = gameplay.y + margin
+            panel_w = gameplay.width - margin * 2
+            max_h = gameplay.height - margin * 2
         else:
             bottom_panel_top = height - self.hud_panel_height()
             x = self.ui(18)

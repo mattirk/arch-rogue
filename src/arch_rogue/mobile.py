@@ -388,11 +388,14 @@ class MobileLayout:
     safe_rect: pygame.Rect
     left_rail: pygame.Rect
     world_viewport: pygame.Rect
+    gameplay_rect: pygame.Rect
     right_rail: pygame.Rect
     resource_rects: tuple[pygame.Rect, pygame.Rect, pygame.Rect]
     action_rects: tuple[pygame.Rect, ...]
+    run_info_rect: pygame.Rect
     character_rect: pygame.Rect | None
     joystick_rect: pygame.Rect
+    world_focus: tuple[int, int]
     menu_rect: pygame.Rect
     hub_panel_rect: pygame.Rect
     hub_option_rects: tuple[tuple[str, pygame.Rect], ...]
@@ -426,44 +429,43 @@ def build_mobile_layout(
         ),
     )
     joystick_size = max(
-        72,
+        82,
         min(
-            156,
-            int(safe.height * 0.22),
-            int(safe.width * 0.16),
+            184,
+            int(safe.height * 0.25),
+            int(safe.width * 0.18),
         ),
     )
-    desired_rail_w = max(
+    left_w = max(
+        132,
+        min(
+            250,
+            int(safe.width * 0.20),
+            max(132, int(safe.height * 0.42)),
+        ),
+    )
+    right_w = max(
         action_size + outer * 2,
-        joystick_size,
-        int(safe.width * 0.09),
+        min(184, max(action_size, int(safe.width * 0.11))),
     )
-    maximum_rail_w = max(action_size, (safe.width - max(320, safe.width // 2)) // 2)
-    rail_w = max(action_size, min(desired_rail_w, maximum_rail_w))
-    joystick_size = min(joystick_size, rail_w)
-
+    left = pygame.Rect(safe.x + outer, safe.y + outer, left_w, 1)
     rail_h = max(1, safe.height - outer * 2)
-    left_h = max(
-        1,
-        min(
-            int(rail_h * 0.52),
-            rail_h - joystick_size - rail_gap * 2,
-        ),
-    )
-    left = pygame.Rect(safe.x + outer, safe.y + outer, rail_w, left_h)
-    right = pygame.Rect(safe.right - outer - rail_w, safe.y + outer, rail_w, rail_h)
-    viewport_left = left.right + rail_gap
-    viewport_right = right.x - rail_gap
-    if viewport_right <= viewport_left:
-        midpoint = safe.centerx
-        viewport_left = midpoint - 1
-        viewport_right = midpoint + 1
+    right = pygame.Rect(safe.right - outer - right_w, safe.y + outer, right_w, rail_h)
+    viewport_right = max(1, right.x - rail_gap)
     viewport = pygame.Rect(
-        viewport_left,
+        display.x,
         safe.y + outer,
-        max(1, viewport_right - viewport_left),
+        max(1, viewport_right - display.x),
         rail_h,
     )
+
+    joystick_raise = max(10, min(38, int(safe.height * 0.035)))
+    joystick = pygame.Rect(0, 0, joystick_size, joystick_size)
+    joystick.left = min(
+        safe.right - outer - joystick.width,
+        left.x + max(10, left.width // 8),
+    )
+    joystick.bottom = safe.bottom - outer - joystick_raise
 
     total_action_h = action_size * 6 + action_gap * 5
     action_y = right.centery - total_action_h // 2
@@ -477,18 +479,47 @@ def build_mobile_layout(
         for index in range(6)
     )
 
-    inner_pad = max(5, min(14, rail_w // 12))
-    resource_gap = max(3, min(8, rail_w // 22))
-    resource_top = left.y + inner_pad
-    resource_h = max(54, int(left.height * 0.52))
-    resource_h = min(resource_h, max(1, left.height - inner_pad * 3 - 48))
-    resource_w = max(
-        8,
-        (left.width - inner_pad * 2 - resource_gap * 2) // 3,
+    inner_pad = max(6, min(14, left.width // 15))
+    info_gap = max(5, min(12, safe.height // 80))
+    resource_gap = max(3, min(8, left.width // 24))
+    maximum_left_h = max(1, joystick.top - rail_gap - left.y)
+    resource_h = max(74, min(210, int(safe.height * 0.22)))
+    run_info_h = max(72, min(122, int(safe.height * 0.17)))
+    character_h = max(64, min(96, int(safe.height * 0.13)))
+    show_character = left.width >= 190
+
+    desired_h = (
+        inner_pad * 2
+        + resource_h
+        + info_gap
+        + run_info_h
+        + (info_gap + character_h if show_character else 0)
     )
+    if show_character and desired_h > maximum_left_h:
+        show_character = False
+        desired_h = inner_pad * 2 + resource_h + info_gap + run_info_h
+    if desired_h > maximum_left_h:
+        available = max(2, maximum_left_h - inner_pad * 2 - info_gap)
+        total = max(1, resource_h + run_info_h)
+        resource_h = max(1, round(available * resource_h / total))
+        run_info_h = max(1, available - resource_h)
+        desired_h = inner_pad * 2 + resource_h + info_gap + run_info_h
+    left.height = max(1, min(maximum_left_h, desired_h))
+
+    available_resource_w = max(1, left.width - inner_pad * 2)
+    resource_w = max(
+        1,
+        min(
+            (available_resource_w - resource_gap * 2) // 3,
+            max(28, round(resource_h * 0.38)),
+        ),
+    )
+    total_resource_w = resource_w * 3 + resource_gap * 2
+    resource_x = left.centerx - total_resource_w // 2
+    resource_top = left.y + inner_pad
     resources = tuple(
         pygame.Rect(
-            left.x + inner_pad + index * (resource_w + resource_gap),
+            resource_x + index * (resource_w + resource_gap),
             resource_top,
             resource_w,
             resource_h,
@@ -496,20 +527,33 @@ def build_mobile_layout(
         for index in range(3)
     )
 
-    character_top = max(rect.bottom for rect in resources) + inner_pad
-    character_bottom = left.bottom - inner_pad
-    character_width = max(1, left.width - inner_pad * 2)
+    info_width = max(1, left.width - inner_pad * 2)
+    run_info = pygame.Rect(
+        left.x + inner_pad,
+        max(rect.bottom for rect in resources) + info_gap,
+        info_width,
+        run_info_h,
+    )
     character = None
-    if character_bottom - character_top >= 58 and character_width >= 96:
+    if show_character:
         character = pygame.Rect(
             left.x + inner_pad,
-            character_top,
-            character_width,
-            character_bottom - character_top,
+            run_info.bottom + info_gap,
+            info_width,
+            character_h,
         )
 
-    joystick = pygame.Rect(0, 0, joystick_size, joystick_size)
-    joystick.midbottom = (left.centerx, safe.bottom - outer)
+    gameplay_left = min(viewport.right - 1, left.right + rail_gap)
+    gameplay = pygame.Rect(
+        gameplay_left,
+        viewport.y,
+        max(1, viewport.right - gameplay_left),
+        viewport.height,
+    )
+    world_focus = (
+        gameplay.centerx,
+        viewport.y + round(viewport.height * 0.48),
+    )
 
     auxiliary_size = max(46, min(76, int(safe.height * 0.09)))
     menu = pygame.Rect(0, 0, auxiliary_size, auxiliary_size)
@@ -524,8 +568,8 @@ def build_mobile_layout(
     hub_panel.topright = (menu.right, menu.bottom + hub_gap)
     if hub_panel.bottom > viewport.bottom - outer:
         hub_panel.bottom = viewport.bottom - outer
-    if hub_panel.left < viewport.left + outer:
-        hub_panel.left = viewport.left + outer
+    if hub_panel.left < gameplay.left + outer:
+        hub_panel.left = gameplay.left + outer
     hub_names = ("inventory", "character", "quest", "exit")
     hub_options = tuple(
         (
@@ -545,11 +589,14 @@ def build_mobile_layout(
         safe_rect=safe,
         left_rail=left,
         world_viewport=viewport,
+        gameplay_rect=gameplay,
         right_rail=right,
         resource_rects=resources,  # type: ignore[arg-type]
         action_rects=actions,
+        run_info_rect=run_info,
         character_rect=character,
         joystick_rect=joystick,
+        world_focus=world_focus,
         menu_rect=menu,
         hub_panel_rect=hub_panel,
         hub_option_rects=hub_options,
@@ -1065,12 +1112,20 @@ class MobileMixin:
         return True
 
     def mark_mobile_gpu_base_region(self, key: str, rect: pygame.Rect) -> bool:
-        """Register a root-space control rectangle that changes over the GPU shell."""
+        """Register a changing root-space control outside the streamed world."""
 
         if not getattr(self, "_mobile_gpu_frame_active", False):
             return False
         clipped = pygame.Rect(rect).clip(self.screen.get_rect())
         if clipped.width <= 0 or clipped.height <= 0:
+            return False
+        # The streamed base texture is captured after HUD drawing, so controls
+        # overlaid inside the expanded world viewport are already present. Only
+        # shell-space controls (currently the right action rail) need a second
+        # indexed upload; duplicating left HUD/joystick rectangles wastes ARM/GLES
+        # bandwidth and can push total uploads above the root framebuffer area.
+        viewport = self.mobile_world_viewport().clip(self.screen.get_rect())
+        if viewport.contains(clipped):
             return False
         self._mobile_gpu_base_regions.append((str(key), clipped))
         return True
@@ -1518,7 +1573,12 @@ class MobileMixin:
         return self.mobile_layout().world_viewport.copy()
 
     def screen_point_in_world_viewport(self, point: tuple[int, int]) -> bool:
-        return self.mobile_world_viewport().collidepoint(point)
+        if not getattr(self, "mobile_mode", False):
+            return self.mobile_world_viewport().collidepoint(point)
+        layout = self.mobile_layout()
+        return layout.world_viewport.collidepoint(point) and not layout.left_rail.collidepoint(
+            point
+        )
 
     def mobile_input_context(self) -> str:
         if self.state == "confirm_exit":
