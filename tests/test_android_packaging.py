@@ -120,6 +120,16 @@ class AndroidSourceContractTests(unittest.TestCase):
             ("arm64-v8a", "armeabi-v7a"),
         )
 
+    def test_android_workflow_installs_libtool_macro_prerequisites(self) -> None:
+        workflow = (
+            ROOT / ".github" / "workflows" / "build-release.yml"
+        ).read_text(encoding="utf-8")
+        android_job = workflow[workflow.index("\n  android:") :]
+        self.assertIn("runs-on: ubuntu-24.04", android_job)
+        self.assertIn("libltdl-dev", android_job)
+        self.assertIn("libtool", android_job)
+        self.assertIn("LT_SYS_SYMBOL_USCORE", android_job)
+
     def test_android_sdk_bootstrap_repairs_partial_ci_cache(self) -> None:
         build_script = (ROOT / "tools" / "build_android.sh").read_text(
             encoding="utf-8"
