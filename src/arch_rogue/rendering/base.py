@@ -59,6 +59,21 @@ class RenderingBaseMixin:
     _mobile_back_button_rect: pygame.Rect | None = None
     _mobile_back_panel_cache: dict[int, pygame.Surface] = {}
 
+    def _clear_frame_surface(self) -> bool:
+        """Clear the CPU framebuffer unless an opaque floor replaces every pixel."""
+
+        skip_clear = bool(
+            getattr(self, "mobile_mode", False)
+            and self.mobile_gpu_frame_active()
+            and getattr(self, "active_cutscene", None) is None
+            and getattr(self, "state", "") in ("playing", "dead", "victory")
+            and self.mobile_opaque_floor_layer_active()
+        )
+        if skip_clear:
+            return False
+        self.screen.fill((10, 10, 14))
+        return True
+
     def _mobile_static_menu_signature(self) -> object | None:
         if not getattr(self, "mobile_mode", False):
             return None
@@ -251,7 +266,7 @@ class RenderingBaseMixin:
             self.begin_mobile_gpu_frame()
 
         started = time.perf_counter()
-        self.screen.fill((10, 10, 14))
+        self._clear_frame_surface()
         if performance is not None:
             performance.record_phase("clear", time.perf_counter() - started)
         if menu_draw is not None:
@@ -719,15 +734,23 @@ class RenderingBaseMixin:
         self,
         source: pygame.Surface,
         angle: float,
+        *,
+        step_degrees: int = 1,
     ) -> pygame.Surface:
-        """Return a degree-quantized rotation for gently animated world props."""
+        """Return a bounded, quantized rotation of an immutable sprite.
 
-        angle_bucket = int(round(angle))
+        Decorative props retain degree-level motion by default. Fast-moving combat
+        sprites can request a coarser direction step, avoiding a fresh software
+        rotation for every projectile on every frame while staying visually smooth.
+        """
+
+        step_degrees = max(1, int(step_degrees))
+        angle_bucket = int(round(angle / step_degrees)) * step_degrees
         cache = getattr(self, "_rotated_surface_cache", None)
         if not isinstance(cache, OrderedDict):
             cache = OrderedDict()
             self._rotated_surface_cache = cache
-        key = (id(source), angle_bucket)
+        key = (id(source), angle_bucket, step_degrees)
         cached = cache.get(key)
         if cached is not None and cached[0] is source:
             cache.move_to_end(key)

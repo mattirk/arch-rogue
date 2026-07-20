@@ -75,8 +75,18 @@ class StoryModeTests(unittest.TestCase):
                         return_value=route,
                     ),
                     patch.object(game, "tile_visibility_alpha", return_value=255),
+                    patch.object(
+                        game,
+                        "_guidance_glow_layer",
+                        wraps=game._guidance_glow_layer,
+                    ) as glow_layer,
                 ):
                     game.draw_story_relic_guidance()
+                    game.draw_story_relic_guidance()
+
+                self.assertEqual(glow_layer.call_count, 2)
+                self.assertTrue(glow_layer.call_args_list[0].kwargs["clear"])
+                self.assertFalse(glow_layer.call_args_list[1].kwargs["clear"])
 
                 rect = game._guidance_glow_blit_rect
                 self.assertIsNotNone(rect)

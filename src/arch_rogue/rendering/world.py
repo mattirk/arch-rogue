@@ -224,6 +224,16 @@ class RenderingWorldMixin:
             - math.floor(-build_cam_y + build_origin_y),
         )
 
+    def mobile_opaque_floor_layer_active(self) -> bool:
+        """Return whether the cached floor will cover the complete world target."""
+
+        if not getattr(self, "mobile_mode", False):
+            return False
+        if not sdl2_alpha_blitter_requested() or self.is_current_floor_dark():
+            return False
+        screen_w, screen_h = self._screen_size()
+        return screen_w > 0 and screen_h > 0
+
     def _draw_cached_mobile_floor_layer(self) -> bool:
         """Blit a reusable opaque floor layer on the Android SDL2-alpha path."""
 
@@ -234,13 +244,9 @@ class RenderingWorldMixin:
         # avoiding any risk of desktop render regression from the merge. The
         # cold-rebuild path stays shared: mobile falls back to it whenever the
         # cache is bypassed (dark floors, no SDL2 alpha blitter, etc.).
-        if not getattr(self, "mobile_mode", False):
-            return False
-        if not sdl2_alpha_blitter_requested() or self.is_current_floor_dark():
+        if not self.mobile_opaque_floor_layer_active():
             return False
         screen_w, screen_h = self._screen_size()
-        if screen_w <= 0 or screen_h <= 0:
-            return False
 
         cam_x, cam_y = self.camera_iso()
         # A one-third-screen gutter keeps the layer reusable for several world

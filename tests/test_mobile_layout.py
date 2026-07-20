@@ -688,6 +688,68 @@ class MobileRenderQualityTests(unittest.TestCase):
                 self.assertFalse(game._draw_cached_mobile_floor_layer())
             self.assertIsNone(getattr(game, "_mobile_floor_layer_cache", None))
 
+    def test_native_gpu_world_stream_uses_720p_texture_with_native_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.mobile_render_quality = MOBILE_RENDER_QUALITY_NATIVE
+
+            self.assertEqual(
+                game.mobile_gpu_base_stream_size(pygame.Rect(0, 0, 2424, 1080)),
+                (1616, 720),
+            )
+            source = pygame.Surface(
+                (1200, 900),
+                depth=32,
+                masks=mobile_runtime._ANDROID_ARGB_MASKS,
+            )
+            first = game._scaled_mobile_gpu_base_upload(source, (800, 600))
+            second = game._scaled_mobile_gpu_base_upload(source, (800, 600))
+            self.assertIs(first, second)
+            self.assertEqual(first.get_size(), (800, 600))
+
+            game.mobile_render_quality = MOBILE_RENDER_QUALITY_BALANCED
+            self.assertEqual(
+                game.mobile_gpu_base_stream_size(pygame.Rect(0, 0, 1280, 720)),
+                (1280, 720),
+            )
+
+    def test_gpu_light_floor_skips_redundant_native_frame_clear(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.state = "playing"
+            game.active_cutscene = None
+            game._mobile_gpu_frame_active = True
+            original = (71, 83, 97)
+            game.screen.fill(original)
+
+            with (
+                patch.dict(os.environ, {"PYGAME_BLEND_ALPHA_SDL2": "1"}),
+                patch.object(game, "is_current_floor_dark", return_value=False),
+            ):
+                self.assertFalse(game._clear_frame_surface())
+            self.assertEqual(game.screen.get_at((0, 0))[:3], original)
+
+            with (
+                patch.dict(os.environ, {"PYGAME_BLEND_ALPHA_SDL2": "1"}),
+                patch.object(game, "is_current_floor_dark", return_value=True),
+            ):
+                self.assertTrue(game._clear_frame_surface())
+            self.assertEqual(game.screen.get_at((0, 0))[:3], (10, 10, 14))
+
+    def test_accelerated_context_transition_skips_cpu_lighting_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game._lighting_enabled = True
+            game._mobile_renderer_accelerated = True
+            game._mobile_gpu_renderer = object()
+            game._mobile_gpu_failure = ""
+            game._mobile_gpu_frame_active = False
+
+            with patch.object(game, "_stamp_ambient") as stamp_ambient:
+                game.draw_lighting()
+
+            stamp_ambient.assert_not_called()
+
     def test_mobile_performance_monitor_reports_phase_and_runtime_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (780, 360))

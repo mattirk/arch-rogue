@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import unittest
+from collections import OrderedDict
 from pathlib import Path
 from unittest import mock
 
@@ -93,6 +94,69 @@ class GraphicsAnimation21Tests(unittest.TestCase):
             self.assertIsNotNone(second)
             self.assertEqual(tile_surface.call_count, 1)
             self.assertEqual(len(game._tile_render_descriptor_cache), 1)
+
+    def test_projectile_rotations_reuse_quantized_cache_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            source = game.sprites.projectile_frame("enemy", 0.0)
+            game._rotated_surface_cache = OrderedDict()
+
+            with mock.patch(
+                "arch_rogue.rendering.base.pygame.transform.rotate",
+                wraps=pygame.transform.rotate,
+            ) as rotate:
+                first = game._cached_rotated_surface(source, 31.0, step_degrees=15)
+                second = game._cached_rotated_surface(source, 34.0, step_degrees=15)
+
+            self.assertIs(first, second)
+            self.assertEqual(rotate.call_count, 1)
+
+    def test_mobile_projectiles_use_two_trail_samples(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game.mobile_mode = True
+            projectile = Projectile(
+                game.player.x,
+                game.player.y,
+                4.0,
+                1.0,
+                3,
+                "enemy",
+                (180, 90, 240),
+            )
+
+            with mock.patch.object(
+                game,
+                "_projectile_trail_surface",
+                wraps=game._projectile_trail_surface,
+            ) as trail_surface:
+                game.draw_projectile(projectile)
+
+            self.assertEqual(trail_surface.call_count, 2)
+
+    def test_partial_alpha_impacts_skip_binary_alpha_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game.mobile_mode = True
+            effect = ImpactEffect(
+                game.player.x,
+                game.player.y,
+                (220, 190, 90),
+                ttl=0.62,
+                radius=3.2,
+                kind="cast",
+                max_ttl=0.62,
+                archetype="Warden",
+            )
+            game._impact_overlay_cache = OrderedDict()
+
+            with mock.patch(
+                "arch_rogue.rendering.effects.optimize_immutable_alpha_surface"
+            ) as optimize:
+                game.draw_impact(effect)
+
+            optimize.assert_not_called()
+            self.assertGreater(game._impact_overlay_cache_bytes, 0)
 
     def rendered_projectile_frame_time(
         self, game: Game, projectile: Projectile

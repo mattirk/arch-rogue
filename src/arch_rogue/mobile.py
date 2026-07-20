@@ -69,6 +69,9 @@ SDL_BLENDMODE_BLEND = 1
 SDL_BLENDMODE_MOD = 4
 _ANDROID_XRGB_MASKS = (0x00FF0000, 0x0000FF00, 0x000000FF, 0x00000000)
 _ANDROID_ARGB_MASKS = (0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000)
+MOBILE_NATIVE_STREAM_SCALE_NUMERATOR = 2
+MOBILE_NATIVE_STREAM_SCALE_DENOMINATOR = 3
+MOBILE_NATIVE_STREAM_MIN_HEIGHT = 900
 _COLORKEY_CANDIDATES = (
     (255, 0, 255),
     (0, 255, 0),
@@ -847,7 +850,9 @@ class MobilePerformanceMonitor:
             f"gpu_light={int(bool(getattr(game, '_mobile_gpu_last_present', False)))} "
             f"gpu_ui={self._size_label(ui_upload_size)} "
             f"gpu_upload=base:{base_upload_pixels}px/{base_region_count}r,"
-            f"ui:{ui_upload_pixels}px/{ui_region_count}r gpu_error={gpu_error} "
+            f"ui:{ui_upload_pixels}px/{ui_region_count}r "
+            f"gpu_stream={self._size_label(getattr(game, '_mobile_gpu_base_stream_size', (0, 0)))} "
+            f"gpu_error={gpu_error} "
             f"video={video_driver} lighting={int(lighting_enabled)} "
             f"lighting_mode={lighting_mode} "
             f"normals={int(bool(getattr(game, '_lighting_normal_maps', False)))} "
@@ -944,6 +949,8 @@ class MobileMixin:
         self._mobile_gpu_ui_upload_pixels = 0
         self._mobile_gpu_base_region_count = 0
         self._mobile_gpu_base_upload_pixels = 0
+        self._mobile_gpu_base_stream_size = (0, 0)
+        self._mobile_gpu_base_upload_surface: pygame.Surface | None = None
         self._mobile_gpu_flash_surface: pygame.Surface | None = None
         self._mobile_gpu_failure = ""
         self._mobile_gpu_last_present = False
@@ -981,6 +988,8 @@ class MobileMixin:
         self._mobile_gpu_ui_upload_pixels = 0
         self._mobile_gpu_base_region_count = 0
         self._mobile_gpu_base_upload_pixels = 0
+        self._mobile_gpu_base_stream_size = (0, 0)
+        self._mobile_gpu_base_upload_surface = None
         self._mobile_render_generation = int(
             getattr(self, "_mobile_render_generation", 0)
         ) + 1
@@ -1211,6 +1220,41 @@ class MobileMixin:
         )
         return True
 
+    def mobile_gpu_base_stream_size(
+        self, viewport: pygame.Rect
+    ) -> tuple[int, int]:
+        """Return the CPU→GPU world-stream size for the current mobile tier.
+
+        Native Android keeps its full-resolution layout and CPU render target,
+        but high-resolution gameplay frames stream at ⅔ size and are upscaled by
+        GLES with nearest-neighbour sampling. This removes 56% of the dominant
+        upload bandwidth while menus and retained UI textures stay native.
+        """
+
+        width, height = viewport.size
+        if (
+            getattr(self, "mobile_render_quality", "native") != "native"
+            or height < MOBILE_NATIVE_STREAM_MIN_HEIGHT
+        ):
+            return width, height
+        numerator = MOBILE_NATIVE_STREAM_SCALE_NUMERATOR
+        denominator = MOBILE_NATIVE_STREAM_SCALE_DENOMINATOR
+        stream_width = max(2, ((width * numerator // denominator) // 2) * 2)
+        stream_height = max(2, ((height * numerator // denominator) // 2) * 2)
+        return stream_width, stream_height
+
+    def _scaled_mobile_gpu_base_upload(
+        self,
+        source: pygame.Surface,
+        size: tuple[int, int],
+    ) -> pygame.Surface:
+        staging = getattr(self, "_mobile_gpu_base_upload_surface", None)
+        if staging is None or staging.get_size() != size:
+            staging = pygame.Surface(size, depth=32, masks=_ANDROID_ARGB_MASKS)
+            self._mobile_gpu_base_upload_surface = staging
+        pygame.transform.scale(source, size, staging)
+        return staging
+
     @staticmethod
     def _create_mobile_gpu_texture(
         renderer: Any,
@@ -1412,9 +1456,11 @@ class MobileMixin:
                     base_map[key] = clipped
             base_draws: list[tuple[Any, pygame.Rect]] = []
             base_texture = None
+            base_stream_size = self.mobile_gpu_base_stream_size(viewport)
+            self._mobile_gpu_base_stream_size = base_stream_size
             if not refresh_shell:
                 base_texture = self._mobile_gpu_texture(
-                    "base", viewport.size, SDL_BLENDMODE_NONE
+                    "base", base_stream_size, SDL_BLENDMODE_NONE
                 )
                 for key, rect in base_map.items():
                     texture = self._mobile_gpu_region_texture(
@@ -1487,8 +1533,13 @@ class MobileMixin:
                 base_pixels = root.get_width() * root.get_height()
             else:
                 assert base_texture is not None
-                base_texture.update(root_alias.subsurface(viewport))
-                base_pixels = viewport.width * viewport.height
+                base_source = root_alias.subsurface(viewport)
+                if base_stream_size != viewport.size:
+                    base_source = self._scaled_mobile_gpu_base_upload(
+                        base_source, base_stream_size
+                    )
+                base_texture.update(base_source)
+                base_pixels = base_stream_size[0] * base_stream_size[1]
                 for texture, rect in base_draws:
                     texture.update(root_alias.subsurface(rect))
                     base_pixels += rect.width * rect.height
@@ -2251,6 +2302,7 @@ class MobileMixin:
         menus = getattr(self, "menus", None)
         if menus is not None and hasattr(menus, "_menu_backdrop_cache"):
             menus._menu_backdrop_cache = None
+        self._impact_overlay_cache_bytes = 0
         for name in (
             "_hud_panel_cache",
             "_hud_icon_cache",

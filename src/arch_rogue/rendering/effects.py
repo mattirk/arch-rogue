@@ -54,15 +54,18 @@ from ..quest_assets import (
     format_asset_text,
 )
 
-# Impact-effect overlay cache is mobile-only (gated by ``mobile_mode`` in
-# ``draw_impact``). Bounded LRU keyed by
-# ``(kind, progress_bucket, alpha_bucket, radius_bucket, color)`` — the
-# handful of quantized buckets keeps the working set small even in combat
-# crowds, but the cap prevents pathological growth across long runs.
+# Bounded impact-overlay LRU. Large skill pulses are expensive translucent
+# software surfaces, so Android uses fewer animation buckets while desktop keeps
+# the original cadence. The byte cap prevents a handful of full-room cast rings
+# from retaining tens of megabytes during long, effect-heavy runs.
 IMPACT_EFFECT_CACHE_MAX = 128
+IMPACT_EFFECT_CACHE_MAX_BYTES = 24 * 1024 * 1024
+PROJECTILE_ROTATION_STEP_DEGREES = 15
 
 
 class RenderingEffectsMixin:
+    _impact_overlay_cache_bytes: int = 0
+
     def ambient_overlay_surface(self) -> pygame.Surface:
         width, height = self.screen.get_size()
         key = (width, height, self.theme.name, self.ui_scale)
@@ -126,19 +129,25 @@ class RenderingEffectsMixin:
         )
         alpha = max(0, min(230, int(205 * life)))
 
-        # Cache the baked overlay per (kind, quantized progress/alpha, radius
-        # bucket, color). Impact effects animate over a handful of frames, so
-        # quantizing progress into ~24 steps lets consecutive frames share one
-        # surface instead of allocating + redrawing every circle each frame.
-        # 4.3.17 WS-D: the cache is now shared by desktop and mobile (it was a
-        # mobile-only win in 4.3.13); the bounded LRU keeps it tiny and the
-        # cached overlay is byte-identical to the per-frame build, so render
-        # output is unchanged.
-        progress_bucket = int(progress * 24)
-        alpha_bucket = (alpha // 16) * 16
-        radius_bucket = (radius // 4) * 4
+        # Cache baked overlays by a quantized animation state. Android's
+        # software composition benefits from coarser buckets for large effects:
+        # a Time Skip ring then reuses each surface for several frames instead of
+        # rasterizing and uploading another large RGBA surface every frame.
+        mobile = bool(getattr(self, "mobile_mode", False))
+        large_mobile_effect = mobile and radius >= 96
+        progress_steps = 12 if large_mobile_effect else 24
+        progress_bucket = int(progress * progress_steps)
+        if large_mobile_effect:
+            # Progress already determines size and fade. A single state key lets
+            # several consecutive frames share the same full-room surface.
+            alpha_bucket = 0
+            radius_bucket = 0
+        else:
+            alpha_bucket = (alpha // 16) * 16
+            radius_bucket = (radius // 4) * 4
         cache_key = (
             effect.kind,
+            effect.archetype,
             progress_bucket,
             alpha_bucket,
             radius_bucket,
@@ -148,6 +157,7 @@ class RenderingEffectsMixin:
         if not isinstance(cache, OrderedDict):
             cache = OrderedDict()
             self._impact_overlay_cache = cache
+            self._impact_overlay_cache_bytes = 0
         cached = cache.get(cache_key)
         if cached is not None:
             cache.move_to_end(cache_key)
@@ -320,13 +330,28 @@ class RenderingEffectsMixin:
                 )
 
 
-        overlay = optimize_immutable_alpha_surface(overlay)
-        if cache_key is not None:
-            assert cache is not None
-            cache[cache_key] = overlay
-            cache.move_to_end(cache_key)
-            while len(cache) > IMPACT_EFFECT_CACHE_MAX:
-                cache.popitem(last=False)
+        # Impact art deliberately contains partial-alpha rings, smoke, and rays.
+        # Running the immutable binary-alpha optimizer here scans the full surface
+        # twice only to reject it, which is especially costly for Time Skip's
+        # full-room pulse. Cache the native alpha surface directly.
+        assert cache is not None
+        cache[cache_key] = overlay
+        cache.move_to_end(cache_key)
+        cache_bytes = int(getattr(self, "_impact_overlay_cache_bytes", 0))
+        cache_bytes += (
+            overlay.get_width() * overlay.get_height() * overlay.get_bytesize()
+        )
+        while (
+            len(cache) > IMPACT_EFFECT_CACHE_MAX
+            or cache_bytes > IMPACT_EFFECT_CACHE_MAX_BYTES
+        ):
+            _old_key, old_surface = cache.popitem(last=False)
+            cache_bytes -= (
+                old_surface.get_width()
+                * old_surface.get_height()
+                * old_surface.get_bytesize()
+            )
+        self._impact_overlay_cache_bytes = max(0, cache_bytes)
         self.screen.blit(overlay, overlay.get_rect(center=(sx, sy - 12 * WORLD_SCALE)))
 
     def _draw_cast_emanation(
@@ -973,7 +998,9 @@ class RenderingEffectsMixin:
                 label, label.get_rect(center=(sx, rect.top - 10 * WORLD_SCALE))
             )
 
-    def _guidance_glow_layer(self, w: int, h: int) -> pygame.Surface:
+    def _guidance_glow_layer(
+        self, w: int, h: int, *, clear: bool = True
+    ) -> pygame.Surface:
         # The caller supplies tight, bucketed bounds around visible crack runs.
         # Reuse that small alpha layer without ever clearing/blitting the full
         # native Android viewport for a route that occupies only a narrow strip.
@@ -986,7 +1013,9 @@ class RenderingEffectsMixin:
                 pass
             self._guidance_glow_surface = surf
             self._guidance_glow_content_key = None
-        surf.fill((0, 0, 0, 0))
+            clear = True
+        if clear:
+            surf.fill((0, 0, 0, 0))
         return surf
 
     def draw_story_relic_guidance(self) -> None:
@@ -1236,11 +1265,6 @@ class RenderingEffectsMixin:
             screen_h - local_rect.y,
             ((local_rect.height + bucket - 1) // bucket) * bucket,
         )
-        glow_layer = self._guidance_glow_layer(layer_w, layer_h)
-        blit_rect = glow_layer.get_rect(topleft=local_rect.topleft)
-        self._guidance_glow_blit_rect = blit_rect.copy()
-        self._mobile_guidance_surface_size = glow_layer.get_size()
-
         # Content cache: the carved crack only changes shape when its screen
         # bounds move or the visibility run changes; re-rasterizing every
         # segment on every frame was the dominant mobile relic-glitch cost
@@ -1259,10 +1283,19 @@ class RenderingEffectsMixin:
             warm,
             tuple(raw_screen),
         )
-        if getattr(self, "_guidance_glow_content_key", None) == content_key:
+        content_unchanged = (
+            getattr(self, "_guidance_glow_content_key", None) == content_key
+        )
+        glow_layer = self._guidance_glow_layer(
+            layer_w, layer_h, clear=not content_unchanged
+        )
+        blit_rect = glow_layer.get_rect(topleft=local_rect.topleft)
+        self._guidance_glow_blit_rect = blit_rect.copy()
+        self._mobile_guidance_surface_size = glow_layer.get_size()
+        if content_unchanged:
             self.screen.blit(glow_layer, blit_rect.topleft)
             return
-        # Rasterizing below: the layer was just cleared by _guidance_glow_layer.
+        # Rasterizing below: the layer was cleared only after a cache miss.
         def local(point: tuple[float, float]) -> tuple[float, float]:
             return point[0] - blit_rect.x, point[1] - blit_rect.y
 
@@ -2099,7 +2132,12 @@ class RenderingEffectsMixin:
         )
         px, py = -vy, vx
         flicker = 0.5 + 0.5 * math.sin(self.elapsed * 18.0 + projectile.x)
-        for step, alpha in ((1, 136), (2, 92), (3, 54), (4, 26)):
+        trail_samples = (
+            ((1, 136), (3, 54))
+            if getattr(self, "mobile_mode", False)
+            else ((1, 136), (2, 92), (3, 54), (4, 26))
+        )
+        for step, alpha in trail_samples:
             trail = self._projectile_trail_surface(color, alpha)
             side = math.sin(self.elapsed * 12.0 + step) * 2 * WORLD_SCALE
             self.screen.blit(
@@ -2120,8 +2158,10 @@ class RenderingEffectsMixin:
             max(3, int((3 + flicker * 2) * WORLD_SCALE)),
         )
         angle = -math.degrees(math.atan2(vy, vx))
-        sprite = pygame.transform.rotate(
-            sprite, angle + math.sin(self.elapsed * 20.0) * 4
+        sprite = self._cached_rotated_surface(
+            sprite,
+            angle + math.sin(self.elapsed * 20.0) * 4,
+            step_degrees=PROJECTILE_ROTATION_STEP_DEGREES,
         )
         rect = sprite.get_rect(center=(sx, sy - 12 * WORLD_SCALE))
         self.screen.blit(sprite, rect)

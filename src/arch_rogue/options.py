@@ -483,6 +483,7 @@ class OptionsMixin:
             cache = getattr(self, attr, None)
             if cache is not None and hasattr(cache, "clear"):
                 cache.clear()
+        self._impact_overlay_cache_bytes = 0
         if hasattr(self, "reset_lighting_caches"):
             self.reset_lighting_caches()
         if hasattr(self, "clear_stage_render_cache"):

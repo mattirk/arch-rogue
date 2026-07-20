@@ -1,5 +1,89 @@
 # Changelog
 
+## 4.4.5 — Android Floor & Guidance Optimization
+
+Release 4.4.5 follows successful physical-device validation of the 720p GLES stream and removes two remaining low-risk costs from Native Android gameplay.
+
+### Changed
+
+- **No redundant light-floor clear:** accelerated gameplay on normal floors no longer clears the complete 2424×1080 CPU framebuffer immediately before the opaque, oversized cached floor layer replaces every pixel. Dark floors, cutscenes, menus, desktop, software renderers, and fallback paths retain explicit clearing.
+- **Effective relic-guidance cache:** unchanged guidance overlays now bypass both the alpha-surface clear and crack/ring rasterization. The previous implementation cleared the cached surface before checking its content key, paying most of the rebuild cost even on a cache hit.
+- **Regression coverage:** tests verify light-floor clear suppression, dark-floor clearing, and that the second unchanged guidance draw requests an uncleared cached layer.
+- Project, runtime, Android package, and website release metadata advance to `4.4.5`; options remain schema `7` and run saves remain schema `5`.
+
+### Performance
+
+- Physical-device telemetry confirms 4.4.4 raised steady Native gameplay from roughly **18–23 FPS to 25–30 FPS**, with `gpu_stream=1616x720`, base traffic at 1,163,520 pixels, and base-upload time reduced from **19–29 ms to 11.7–12.3 ms**.
+- The remaining full-frame clear measured **5.9–6.5 ms/frame** and is now skipped on the safe opaque-floor path.
+- Relic guidance measured **1.7–7.2 ms/frame** in the supplied Android log. The deterministic cache microbenchmark improves from **0.363 ms cold to 0.074 ms cached** (about **80% less**) on the desktop host; physical-device gains depend on visible route size.
+
+### Validation
+
+- `.venv/bin/python -m compileall -q src tests`
+- `.venv/bin/python -m unittest tests.test_story_mode tests.test_mobile_layout tests.test_dark_levels tests.test_world_rendering_and_animation tests.test_mainline_regression` — 109 tests pass.
+- Full non-web `unittest` discovery — 534 tests pass; experimental web modules were excluded per project policy.
+- `.venv/bin/python -m unittest tests.test_save_and_metadata tests.test_website` — 8 release-metadata tests pass.
+- `.venv/bin/python tools/validate_android_apk.py --project-root . --source-dir src --spec buildozer.spec`
+- `PIP_BREAK_SYSTEM_PACKAGES=1 PYTHON=/home/mattirk/.local/share/uv/python/cpython-3.12-linux-x86_64-gnu/bin/python3.12 ./tools/build_android.sh debug` produced and audited `bin/archrogue-4.4.5-arm64-v8a_armeabi-v7a-debug.apk` (73,490,787 bytes; SHA-256 `edf73dfb6efe490803d8b132c7bcf1eeda8279059a3cd51a753ebaf72b3bce42`). The package contains 104 ARM ELF extensions for each ABI and passes APK Signature Scheme v2 verification.
+- `git diff --check`
+
+## 4.4.4 — Android GLES Streaming Optimization
+
+Release 4.4.4 targets the final dominant Android frame cost found in physical-device telemetry: uploading the complete native-resolution world framebuffer to GLES every gameplay frame.
+
+### Changed
+
+- **Hybrid native gameplay stream:** Native mode keeps the 2424×1080 game layout and CPU render target, but high-resolution gameplay frames stream to GLES through a reusable 1616×720 nearest-neighbour texture. Menus, retained UI textures, touch geometry, and the lighting compositor remain native-resolution.
+- **56% fewer streamed pixels:** the steady gameplay base upload falls from 2,617,920 to 1,163,520 pixels per frame. The reusable ARGB staging surface avoids allocations while GLES performs the final upscale.
+- **No catastrophic CPU-lighting fallback:** an accelerated Android renderer that is briefly between eligible GPU frames now presents one unlit transition frame rather than performing a native-resolution CPU lighting multiply. Device telemetry measured the removed fallback at 130–233 ms per frame.
+- **Expanded telemetry:** performance reports include `gpu_stream`, making the active 1616×720 gameplay stream directly verifiable in the next physical-device log.
+- **Regression coverage:** mobile tests verify Native stream sizing, staging-surface reuse, capped-tier behavior, and suppression of the accelerated-context CPU-lighting fallback.
+- Project, runtime, Android package, and website release metadata advance to `4.4.4`; options remain schema `7` and run saves remain schema `5`.
+
+### Performance
+
+- The supplied Pixel telemetry showed steady base uploads consuming **19–29 ms/frame**, while gameplay updates consumed only **0.5–1.2 ms/frame**. The new stream removes **55.6%** of that upload traffic, targeting roughly **9–16 ms/frame** of gross savings before the sub-frame scaling cost.
+- Around the observed 18–22 FPS range, that reduction projects approximately **+4 to +6 FPS**. Exact end-to-end improvement requires the next physical-device log; the headless profiler cannot execute SDL's Android GLES texture upload.
+- The native-to-720p staging scale measured **0.724 ms/frame** on the desktop test host; Android uses pygame-ce's logged NEON scaler, but device telemetry remains authoritative.
+
+### Validation
+
+- `.venv/bin/python -m compileall -q src tests tools/profile_game.py`
+- `.venv/bin/python -m unittest tests.test_mobile_layout tests.test_lighting tests.test_world_rendering_and_animation tests.test_mainline_regression` — 118 tests pass.
+- Full non-web `unittest` discovery — 533 tests pass; experimental web modules were excluded per project policy.
+- `.venv/bin/python tools/validate_android_apk.py --project-root . --source-dir src --spec buildozer.spec`
+- `PIP_BREAK_SYSTEM_PACKAGES=1 PYTHON=/home/mattirk/.local/share/uv/python/cpython-3.12-linux-x86_64-gnu/bin/python3.12 ./tools/build_android.sh debug` produced and audited `bin/archrogue-4.4.4-arm64-v8a_armeabi-v7a-debug.apk` (73,490,203 bytes; SHA-256 `c4aeabd3c293bfb5c08a9c3a183204aa9a3e5b942ce21b7f67c83bd8dbed88f1`). The package contains 104 ARM ELF extensions for each ABI and passes APK Signature Scheme v2 verification.
+- `git diff --check`
+
+## 4.4.3 — Android Combat-Effects Optimization
+
+Release 4.4.3 targets Android frame drops during action skills such as Time Skip, especially while crowded enemies are casting and projectiles are active.
+
+### Changed
+
+- **Cheaper full-room skill pulses:** large Android impact effects use a 12-state visual cache, allowing consecutive Time Skip frames to reuse one translucent surface instead of repeatedly rasterizing a native-resolution ring.
+- **Bounded effect memory:** impact overlays now use both entry and 24 MiB byte limits, and cache keys include the casting archetype so class-specific emanations cannot alias one another.
+- **No rejected alpha scans:** impact art keeps its native partial-alpha surface rather than running the binary-alpha optimizer's two full-surface scans only to reject gradients, smoke, and fading rings.
+- **Cached projectile rotation:** spell bolts reuse bounded 15-degree directional variants instead of invoking a software rotation for every projectile every frame.
+- **Lean Android projectile trails:** mobile retains the bright near trail and fading outer trail while removing two intermediate alpha-blended samples; desktop keeps all four samples.
+- **Repeatable effects profile:** `tools/profile_game.py --scenario action-effects` reproduces repeated Time Skip casts amid a deterministic 45-enemy ranged spell crowd.
+- Project, runtime, Android package, and website release metadata advance to `4.4.3`; options remain schema `7` and run saves remain schema `5`.
+
+### Performance
+
+- In the deterministic 2400×1080 Native-mobile action-effects profile (180 measured frames after 45 warmup frames), cumulative `draw_impact` time falls from **0.602 s to 0.492 s** (**18.3% less**), and frame blits fall from **56,399 to 53,201** (**5.7% fewer**).
+- Average headless software-render time improves from **17.410 ms/frame to 17.317 ms/frame**. This workload cannot exercise the Android GLES presenter, so physical-device telemetry remains the authority for end-to-end FPS and upload behavior.
+
+### Validation
+
+- `.venv/bin/python -m compileall -q src tests tools/profile_game.py`
+- `.venv/bin/python -m unittest tests.test_world_rendering_and_animation tests.test_mobile_layout tests.test_mainline_regression` — 94 tests pass.
+- Full non-web `unittest` discovery — 531 tests pass; experimental web modules were excluded per project policy.
+- `.venv/bin/python -m unittest tests.test_website` — 6 release-metadata tests pass.
+- Deterministic before/after Native-mobile `action-effects` profiles at 2400×1080, 180 measured frames after 45 warmup frames.
+- `PIP_BREAK_SYSTEM_PACKAGES=1 PYTHON=/home/mattirk/.local/share/uv/python/cpython-3.12-linux-x86_64-gnu/bin/python3.12 ./tools/build_android.sh debug` produced and audited `bin/archrogue-4.4.3-arm64-v8a_armeabi-v7a-debug.apk` (73,488,919 bytes; SHA-256 `a92ce83969491a5e3d1431656d0adb057a3c5a2d3a966aec1687a3ed2c332fb4`). The package contains 104 ARM ELF extensions for each ABI and passes APK Signature Scheme v2 verification.
+- `git diff --check`
+
 ## 4.4.2 — Android Native Rendering Optimization
 
 Release 4.4.2 reduces repeated CPU-side rendering work in full-resolution Android gameplay, with the largest gains in dense combat scenes and illuminated dungeon views.

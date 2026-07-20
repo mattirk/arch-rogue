@@ -20,7 +20,9 @@ import pstats
 import sys
 import tempfile
 import time
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -45,9 +47,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--scenario",
-        choices=("quiet", "crowd"),
+        choices=("quiet", "crowd", "action-effects"),
         default="crowd",
-        help="Generated floor as-is, or a dense deterministic combat arena.",
+        help=(
+            "Generated floor as-is, a dense combat arena, or repeated Time Skip "
+            "casts amid an enemy spell crowd."
+        ),
     )
     parser.add_argument("--frames", type=int, default=240)
     parser.add_argument("--warmup", type=int, default=20)
@@ -138,7 +143,10 @@ def prepare_game(args: argparse.Namespace, temp_dir: Path) -> Game:
     game.mobile_render_quality = args.mobile_quality
     game.options_path = temp_dir / "options.json"
     game.rng.seed(args.seed)
-    game.restart(ARCHETYPES[2])  # Fixed archetype keeps player asset setup deterministic.
+    archetype = (
+        ARCHETYPES[0] if args.scenario == "action-effects" else ARCHETYPES[2]
+    )
+    game.restart(archetype)
 
     if game.story_intro_pending:
         if not game.choose_story_relic_path(0):
@@ -154,8 +162,16 @@ def prepare_game(args: argparse.Namespace, temp_dir: Path) -> Game:
     game.player.max_hp = 1_000_000
     game.player.hp = game.player.max_hp
 
-    if args.scenario == "crowd":
+    if args.scenario in ("crowd", "action-effects"):
         prepare_crowd_arena(game)
+    action_effects = args.scenario == "action-effects"
+    setattr(game, "_profile_action_effects", action_effects)
+    if action_effects:
+        for index, enemy in enumerate(game.enemies):
+            enemy.kind = "ranged"
+            enemy.attack_range = max(7.0, enemy.attack_range)
+            enemy.attack_cooldown = min(0.65, enemy.attack_cooldown)
+            enemy.attack_timer = (index % 12) * 0.04
 
     game.revealed_tiles = set()
     game.update_revealed_tiles()
@@ -179,8 +195,22 @@ def prepare_crowd_arena(game: Game) -> None:
         enemy.attack_timer = 0.0
 
 
-def run_profile(game: Game, warmup: int, frames: int) -> tuple[cProfile.Profile, cProfile.Profile, float, float]:
-    for _ in range(warmup):
+def prepare_profile_frame(game: Game, frame_index: int) -> None:
+    """Inject deterministic action-skill pressure for the effects scenario."""
+
+    if not getattr(game, "_profile_action_effects", False):
+        return
+    if frame_index % 36 == 0:
+        game.player.class_skill_timer = 0.0
+        game.player.mana = game.player.max_mana
+        game.player_cast_time_skip()
+
+
+def run_profile(
+    game: Game, warmup: int, frames: int
+) -> tuple[cProfile.Profile, cProfile.Profile, float, float]:
+    for frame_index in range(warmup):
+        prepare_profile_frame(game, frame_index)
         game.ui_elapsed += FIXED_DT
         game.update(FIXED_DT)
         game.draw()
@@ -190,7 +220,8 @@ def run_profile(game: Game, warmup: int, frames: int) -> tuple[cProfile.Profile,
     update_seconds = 0.0
     render_seconds = 0.0
 
-    for _ in range(frames):
+    for frame_index in range(frames):
+        prepare_profile_frame(game, warmup + frame_index)
         game.ui_elapsed += FIXED_DT
 
         started = time.perf_counter()
@@ -214,7 +245,9 @@ def print_profile(label: str, profile: cProfile.Profile, top: int) -> None:
     pstats.Stats(profile, stream=sys.stdout).strip_dirs().sort_stats("cumulative").print_stats(top)
 
 
-def _compare_baseline(baseline_path: Path, snapshot: dict, threshold_pct: float) -> str | None:
+def _compare_baseline(
+    baseline_path: Path, snapshot: Mapping[str, Any], threshold_pct: float
+) -> str | None:
     """Return a failure message if any phase regresses beyond threshold_pct.
 
     Regression = current timing is more than ``threshold_pct`` percent slower

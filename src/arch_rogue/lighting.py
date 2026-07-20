@@ -767,6 +767,19 @@ class LightingMixin:
         screen_w, screen_h = self._screen_size()
         if screen_w <= 0 or screen_h <= 0:
             return
+        mobile = bool(getattr(self, "mobile_mode", False))
+        gpu_capable = bool(
+            mobile
+            and getattr(self, "_mobile_renderer_accelerated", False)
+            and getattr(self, "_mobile_gpu_renderer", None) is not None
+            and not getattr(self, "_mobile_gpu_failure", "")
+        )
+        if gpu_capable and not self.mobile_gpu_frame_active():
+            # During context transitions the old path fell through to a native-
+            # resolution CPU multiply, producing 130–233 ms frames in device
+            # telemetry. Keep the unlit world for that transient frame; the next
+            # eligible frame restores quarter-resolution GLES lighting.
+            return
         if self.mobile_lightweight_lighting_active():
             # Source surfaces already carry the cached depth/theme multiplier,
             # while dark floors retain their per-tile lantern falloff. Avoid any
