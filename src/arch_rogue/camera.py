@@ -90,13 +90,44 @@ class CameraMixin:
         """Hard-reset the smoothed camera to the player (used on restart/teleport)."""
         self._cam_iso = self.world_to_iso(self.player.x, self.player.y)
 
+    def _projection_origin(
+        self, width: int, height: int
+    ) -> tuple[float, float]:
+        # world_to_screen runs tens of thousands of times per frame in crowds.
+        # The origin only depends on the render-target size (desktop: fixed
+        # 0.5/0.48 focus) or the cached mobile layout + render-target size
+        # (mobile world rendering), so memoize it per frame instead of
+        # recomputing on every call. 4.3.17 WS-D: the memoization was a
+        # mobile-only win in 4.3.14; it is now shared so desktop crowds avoid
+        # recomputing the origin too. _frame_cache is cleared at the start of
+        # every draw(), so the origin is invalidated on camera focus / layout /
+        # resolution changes automatically.
+        cache = getattr(self, "_frame_cache", None)
+        key = ("projection_origin", width, height)
+        if cache is not None and key in cache:
+            return cache[key]  # type: ignore[return-value]
+        if getattr(self, "mobile_mode", False) and getattr(
+            self, "_mobile_world_rendering", False
+        ):
+            layout = self.mobile_layout()
+            viewport = layout.world_viewport
+            focus_x = (layout.world_focus[0] - viewport.x) / max(1, viewport.width)
+            focus_y = (layout.world_focus[1] - viewport.y) / max(1, viewport.height)
+            origin = (width * focus_x, height * focus_y)
+        else:
+            origin = (width * 0.5, height * 0.48)
+        if cache is not None:
+            cache[key] = origin
+        return origin
+
     def _mobile_projection_origin(
         self, width: int, height: int
     ) -> tuple[float, float]:
-        # world_to_screen runs tens of thousands of times per frame in crowds;
-        # the origin only depends on the (cached) layout and the render-target
-        # size, so memoize it per frame instead of recomputing the focus math
-        # and re-validating the layout on every call.
+        # Layout-aware origin used by world_to_display / screen_to_world / the
+        # mobile floor cache, which need the mobile focus regardless of the
+        # _mobile_world_rendering flag. Kept separate from _projection_origin
+        # (which gates on _mobile_world_rendering for world_to_screen) so the
+        # two hot paths stay behavior-identical to pre-merge.
         cache = getattr(self, "_frame_cache", None)
         key = ("mobile_projection_origin", width, height)
         if cache is not None and key in cache:
@@ -114,11 +145,7 @@ class CameraMixin:
         iso_x, iso_y = self.world_to_iso(x, y)
         cam_x, cam_y = self.camera_iso()
         width, height = self._screen_size()
-        origin_x, origin_y = width * 0.5, height * 0.48
-        if getattr(self, "mobile_mode", False) and getattr(
-            self, "_mobile_world_rendering", False
-        ):
-            origin_x, origin_y = self._mobile_projection_origin(width, height)
+        origin_x, origin_y = self._projection_origin(width, height)
         return int(iso_x - cam_x + origin_x), int(iso_y - cam_y + origin_y)
 
     def world_to_display(self, x: float, y: float) -> tuple[int, int]:

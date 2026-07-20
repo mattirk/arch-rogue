@@ -16,7 +16,7 @@ package.domain = org.archrogue
 package.version = 4.3.16
 
 source.dir = src
-source.include_exts = py,png,json
+source.include_exts = py,png,json,txt
 # Never package host-generated metadata/bytecode from an editable install.
 source.exclude_dirs = __pycache__,arch_rogue.egg-info
 

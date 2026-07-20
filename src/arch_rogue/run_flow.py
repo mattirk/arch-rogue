@@ -109,6 +109,7 @@ class RunFlowMixin:
             self.state = "options"
         elif index == 3:
             self.state = "about"
+            self.licenses_scroll = 0
 
     def theme_by_name(self, name: str) -> Any:
         return next(

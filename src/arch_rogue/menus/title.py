@@ -231,9 +231,22 @@ class MenuTitleMixin:
 
     def draw_about_screen(self) -> None:
         panel, content = self.menu_frame(
-            "About / Onboarding", "Arch Rogue milestone 2.5"
+            "About / Open Source Licenses", f"Arch Rogue {__version__}"
         )
-        paragraphs = [
+        # 4.3.17 WS-G: the About screen now surfaces the Apache-2.0 license text,
+        # the third-party NOTICE list, and the AI Provenance & Liability notice
+        # so APK installers get Apache-2.0 §4 attribution without opening the
+        # repo. The full body is one scrollable text region (Up/Down/PgUp/PgDn
+        # on desktop, swipe on mobile); the renderer publishes
+        # _licenses_scroll_max / _licenses_visible_lines for the input layer.
+        from ..licenses import (
+            ai_provenance_text,
+            license_text,
+            notice_text,
+            pygame_lgpl_text,
+        )
+
+        onboarding = [
             f"Arch Rogue {__version__} is a Rogue-inspired isometric action RPG built around compact, replayable dungeon runs, procedural stories, and dark-level exploration.",
             "Goal: descend through ten depths, survive escalating encounters, resolve story guest dilemmas, defeat the final-depth gate tyrant, then use the stairs to complete the run.",
             "Combat: touch the world to move and aim. Use the six action buttons for attacks, class skills, movement, and potions. The action rail shows cooldowns and potion counts.",
@@ -252,22 +265,101 @@ class MenuTitleMixin:
             "Dark floors: some depths limit sight to a small light radius while monsters still navigate the dungeon perfectly.",
             "Credits: design, code, procedural art, procedural audio, and procedural story corpus by the Arch Rogue project.",
         ]
-        y = content.y
-        gap = max(self.u(10), 10)
-        for paragraph in paragraphs:
-            y = (
-                self.draw_wrapped_text(
-                    paragraph,
-                    self.g.small_font,
+
+        license_summary = (
+            "Open Source Licenses: Arch Rogue is licensed under Apache-2.0. "
+            "pygame-ce is LGPL-2.1-or-later. SDL2 and its image/mixer/ttf "
+            "libraries use zlib; other bundled Python, crypto, database, image, "
+            "font, and codec components retain the licenses listed in NOTICE. "
+            "The full NOTICE, pygame-ce LGPL, and Apache-2.0 texts follow."
+        )
+
+        body = (
+            "\n\n".join(onboarding)
+            + "\n\n"
+            + "Open Source Licenses\n"
+            + "---------------------\n"
+            + license_summary
+            + "\n\n"
+            + ai_provenance_text()
+            + "\n\n"
+            + notice_text()
+            + "\n\n"
+            + "GNU LGPL 2.1 (pygame-ce)\n"
+            + "-------------------------\n"
+            + pygame_lgpl_text()
+            + "\n\n"
+            + "Apache License 2.0\n"
+            + "------------------\n"
+            + license_text()
+        )
+
+        font = self.g.tiny_font if content.height < 360 else self.g.small_font
+        line_gap = max(font.get_height() + 2, self.u(16))
+        # Reserve a scrollbar rail when the wrapped text overflows.
+        wrapped = self.wrap_text(body, font, content.width)
+        max_lines = max(1, content.height // line_gap)
+        scroll_max = max(0, len(wrapped) - max_lines)
+        scroll = max(
+            0, min(int(getattr(self.g, "licenses_scroll", 0)), scroll_max)
+        )
+        self.g.licenses_scroll = scroll
+        self.g._licenses_scroll_max = scroll_max
+        self.g._licenses_visible_lines = max_lines
+        scrollbar_pad = self.u(10) if scroll_max > 0 else 0
+        text_rect = content.inflate(-scrollbar_pad, 0) if scrollbar_pad else content
+        y = text_rect.y
+        for line in wrapped[scroll : scroll + max_lines]:
+            if line:
+                self.draw_text(
+                    line,
+                    font,
                     self.TEXT,
-                    pygame.Rect(content.x, y, content.width, content.bottom - y),
-                    max(self.g.small_font.get_height() + 3, self.u(18)),
+                    pygame.Rect(text_rect.x, y, text_rect.width, line_gap),
                 )
-                + gap
-            )
-            if y >= content.bottom:
-                break
-        self.draw_footer(panel, "Enter or Backspace returns to title")
+            y += line_gap
+        if scroll_max > 0:
+            self._draw_licenses_scrollbar(content, scroll, max_lines, len(wrapped))
+        self.draw_footer(
+            panel,
+            "Up / Down / PgUp / PgDn scroll · Enter or Backspace returns to title",
+        )
+
+    def _draw_licenses_scrollbar(
+        self,
+        rows_rect: pygame.Rect,
+        scroll: int,
+        visible_count: int,
+        total_count: int,
+    ) -> None:
+        # Mirrors the options/inventory scrollbar look (recessed track, ember
+        # thumb) so the About screen reads as one family with the other menus.
+        if total_count <= visible_count or visible_count <= 1:
+            return
+        track = pygame.Rect(
+            rows_rect.right - self.u(5),
+            rows_rect.y,
+            self.u(4),
+            rows_rect.height,
+        )
+        pygame.draw.rect(self.screen, self.PANEL_INK, track, border_radius=self.u(3))
+        pygame.draw.rect(
+            self.screen, self.IRON_DARK, track, max(1, self.u(1)), border_radius=self.u(3)
+        )
+        thumb_h = max(self.u(18), int(track.height * visible_count / total_count))
+        max_scroll = max(1, total_count - visible_count)
+        travel = max(1, track.height - thumb_h)
+        clamped = max(0, min(scroll, max_scroll))
+        thumb = pygame.Rect(
+            track.x,
+            track.y + int(travel * clamped / max_scroll),
+            track.width,
+            thumb_h,
+        )
+        pygame.draw.rect(self.screen, self.WARNING, thumb, border_radius=self.u(3))
+        pygame.draw.rect(
+            self.screen, self.shade(self.WARNING, 40), thumb, border_radius=self.u(3)
+        )
 
     def draw_help_overlay(self) -> None:
         with self.g.fitted_ui_layout((960, 540)):

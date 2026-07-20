@@ -1,6 +1,6 @@
 [project]
 name = "arch-rogue"
-version = "4.3.16"
+version = "4.3.17"
 description = "A grim isometric action roguelike with asset-backed sprites, menus, and HUD, procedural legacy graphics, and replayable dungeon runs."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -37,6 +37,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 arch_rogue = [
     "assets/*.json",
+    "assets/licenses/*.txt",
     "assets/icons/*.png",
     "assets/sprites/*.json",
     "assets/sprites/actors/*/rotations/*.png",

@@ -1,8 +1,10 @@
-# Arch Rogue Android Beta
+# Arch Rogue Android Build
 
-Release **4.3.9** ships a landscape-only Android beta APK built from the same
-Python/pygame-ce codebase as the desktop release. This document is the source
-of truth for installing, building, and reporting issues with the beta.
+As of release **4.3.17** the Android build is part of the mainline `master`
+branch (it graduated from the `android-beta` branch). The same
+Python/pygame-ce codebase produces both the desktop and the landscape-only
+Android APK. This document is the source of truth for installing, building,
+and reporting issues with the Android build.
 
 ## Install
 

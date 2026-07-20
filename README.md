@@ -234,6 +234,16 @@ In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from t
 
 This project is licensed under the Apache License, Version 2.0 (see `LICENSE`).
 
+### Trademark Notice
+
+The "Arch Rogue" name and the octahedron crest logo are trademarks of the
+project author and are **not** part of the Apache-2.0 copyright grant
+(Apache-2.0 §6 reserves trademark rights). The OSS license covers copyright in
+the source code; it does not grant permission to use the Arch Rogue name or logo
+for branding, derivative product names, or promotion without separate written
+permission. Third-party bundled libraries retain their own trademarks, which
+are likewise not granted by this project's license.
+
 ### AI Provenance & Liability Notice
 
 This repository contains code generated, assisted, or refactored by Artificial Intelligence models.

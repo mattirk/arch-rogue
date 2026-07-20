@@ -54,6 +54,13 @@ from ..quest_assets import (
     format_asset_text,
 )
 
+# Impact-effect overlay cache is mobile-only (gated by ``mobile_mode`` in
+# ``draw_impact``). Bounded LRU keyed by
+# ``(kind, progress_bucket, alpha_bucket, radius_bucket, color)`` — the
+# handful of quantized buckets keeps the working set small even in combat
+# crowds, but the cap prevents pathological growth across long runs.
+IMPACT_EFFECT_CACHE_MAX = 128
+
 
 class RenderingEffectsMixin:
     def ambient_overlay_surface(self) -> pygame.Surface:
@@ -122,32 +129,32 @@ class RenderingEffectsMixin:
         # Cache the baked overlay per (kind, quantized progress/alpha, radius
         # bucket, color). Impact effects animate over a handful of frames, so
         # quantizing progress into ~24 steps lets consecutive frames share one
-        # surface instead of allocating + redrawing every circle each frame —
-        # a leading render hotspot in combat crowds on Android.
-        mobile = bool(getattr(self, "mobile_mode", False))
-        cache_key = None
-        if mobile:
-            progress_bucket = int(progress * 24)
-            alpha_bucket = (alpha // 16) * 16
-            radius_bucket = (radius // 4) * 4
-            cache_key = (
-                effect.kind,
-                progress_bucket,
-                alpha_bucket,
-                radius_bucket,
-                effect.color,
+        # surface instead of allocating + redrawing every circle each frame.
+        # 4.3.17 WS-D: the cache is now shared by desktop and mobile (it was a
+        # mobile-only win in 4.3.13); the bounded LRU keeps it tiny and the
+        # cached overlay is byte-identical to the per-frame build, so render
+        # output is unchanged.
+        progress_bucket = int(progress * 24)
+        alpha_bucket = (alpha // 16) * 16
+        radius_bucket = (radius // 4) * 4
+        cache_key = (
+            effect.kind,
+            progress_bucket,
+            alpha_bucket,
+            radius_bucket,
+            effect.color,
+        )
+        cache = getattr(self, "_impact_overlay_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._impact_overlay_cache = cache
+        cached = cache.get(cache_key)
+        if cached is not None:
+            cache.move_to_end(cache_key)
+            self.screen.blit(
+                cached, cached.get_rect(center=(sx, sy - 12 * WORLD_SCALE))
             )
-            cache = getattr(self, "_impact_overlay_cache", None)
-            if not isinstance(cache, OrderedDict):
-                cache = OrderedDict()
-                self._impact_overlay_cache = cache
-            cached = cache.get(cache_key)
-            if cached is not None:
-                cache.move_to_end(cache_key)
-                self.screen.blit(
-                    cached, cached.get_rect(center=(sx, sy - 12 * WORLD_SCALE))
-                )
-                return
+            return
 
         overlay = pygame.Surface((radius * 2 + 18, radius * 2 + 18), pygame.SRCALPHA)
         center = (overlay.get_width() // 2, overlay.get_height() // 2)
@@ -318,7 +325,7 @@ class RenderingEffectsMixin:
             assert cache is not None
             cache[cache_key] = overlay
             cache.move_to_end(cache_key)
-            while len(cache) > 128:
+            while len(cache) > IMPACT_EFFECT_CACHE_MAX:
                 cache.popitem(last=False)
         self.screen.blit(overlay, overlay.get_rect(center=(sx, sy - 12 * WORLD_SCALE)))
 

@@ -60,23 +60,35 @@ class MenuOptionsMixin:
                 "Graphics",
                 "Legacy procedural" if self.g.legacy_graphics else "Asset sprites",
             ),
+            ("Left / Right", "Frame rate cap", self.g.frame_rate_cap_label()),
             ("Enter", "Controls & gamepad mapping", ""),
             ("Gamepad", "Controller", controller_value),
             ("A", "Audio cues", "On" if self.g.audio_enabled else "Off"),
             ("M", "Static menu/run music", "On" if self.g.music_enabled else "Off"),
             ("L", "Lighting", "On" if self.g._lighting_enabled else "Off"),
             ("N", "Lighting detail", "On" if self.g._lighting_normal_maps else "Off"),
-            ("Enter / O / Backspace", "Return to title", ""),
         ]
+        if not self.g.mobile_mode:
+            rows.append(
+                (
+                    "Enter",
+                    "Show performance overlay",
+                    "On" if self.g.show_perf_overlay else "Off",
+                )
+            )
+        rows.append(("Enter / O / Backspace", "Return to title", ""))
         # Visual grouping: (row_index, section_title). Row order above is
-        # Display (0-3), Controls (4-5), Audio (6-7), Lights (8-9); the Back
-        # row (10) is intentionally ungrouped at the bottom.
+        # Display (0-4), Controls (5-6), Audio (7-8), Lights (9-10); an optional
+        # Diagnostics row (desktop only) and the Back row at the end are
+        # intentionally ungrouped at the bottom.
         sections = [
             (0, "Display"),
-            (4, "Controls"),
-            (6, "Audio"),
-            (8, "Lights"),
+            (5, "Controls"),
+            (7, "Audio"),
+            (9, "Lights"),
         ]
+        if not self.g.mobile_mode:
+            sections.append((len(rows) - 2, "Diagnostics"))
 
         # Preserve the selected UI scale when it physically fits. On compact
         # windows, fit a cached fallback font against both row height and the

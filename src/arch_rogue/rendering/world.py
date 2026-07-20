@@ -224,11 +224,16 @@ class RenderingWorldMixin:
     def _draw_cached_mobile_floor_layer(self) -> bool:
         """Blit a reusable opaque floor layer on the Android SDL2-alpha path."""
 
-        if (
-            not getattr(self, "mobile_mode", False)
-            or not sdl2_alpha_blitter_requested()
-            or self.is_current_floor_dark()
-        ):
+        # WS-C (4.3.17 merge): the incremental floor cache + reveal-patch path
+        # below is a mobile GPU-upload-cost optimization (added 4.3.5). It is
+        # gated behind mobile_mode so desktop always uses the shared
+        # cold-rebuild path in draw_dungeon (_blit_floor_entries on screen),
+        # avoiding any risk of desktop render regression from the merge. The
+        # cold-rebuild path stays shared: mobile falls back to it whenever the
+        # cache is bypassed (dark floors, no SDL2 alpha blitter, etc.).
+        if not getattr(self, "mobile_mode", False):
+            return False
+        if not sdl2_alpha_blitter_requested() or self.is_current_floor_dark():
             return False
         screen_w, screen_h = self._screen_size()
         if screen_w <= 0 or screen_h <= 0:

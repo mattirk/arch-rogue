@@ -1,5 +1,49 @@
 # Changelog
 
+## 4.3.17 — Android Beta to Mainline Merge
+
+Release 4.3.17 merges the `android-beta` branch into `master` so the desktop mainline inherits the universal Android wins, locks both desktop and mobile to a 60 FPS cap through one `FramePacing` abstraction, removes dead/duplicated optimization code from the 4.3.x runs, consolidates render-cache invalidation into a single seam, and adds APK licensing/attribution hygiene. The Android build is now part of mainline (no separate beta branch). Mobile-only code paths remain strictly additive (`if self.mobile_mode:` / `android_runtime_active()`), so no desktop frame executes a GLES, colorkey-RLE, or `MobilePerformanceMonitor` branch.
+
+### Added
+
+- **Frame rate cap option:** a new Options row **Frame rate cap** with values `30 / 60 / 90 / 120 / Unlimited`, default `60`, persisted as `frame_rate_cap` in options schema `7`. Both desktop and mobile read the same setting; mobile suspended mode still overrides to the 10 Hz throttle. A small `FramePacing` class in `game.py` owns `target_fps`, `suspended_fps`, the `clock.tick` call, the `0.05` dt clamp, and the vsync hint. `Game.run()` is the only caller of `clock.tick` now.
+- **Show performance overlay option (desktop dev):** a desktop-only Options row toggles the same `PERF <fps> <frame ms> | W <world ms> H <hud ms> F <flip ms>` diagnostic line Android already shows, persisted as `show_perf_overlay` in schema `7` (off by default). `ARCH_ROGUE_PERF=1` still explicitly enables telemetry on desktop for development. A default desktop run is silent and shows no on-screen diagnostic.
+- **Mainline regression guard:** `tests/test_mainline_regression.py` snapshots desktop render determinism (fixed seed + frame number -> fixed pixel hash for title, gameplay, and a dense crowd scenario), asserts `detect_mobile_runtime() is False` on non-Android platforms, and instruments the per-frame mobile-only entry points to prove none execute during a desktop tick.
+- **Profile baseline tooling:** `tools/profile_game.py` gains `--baseline <path>` (writes a JSON phase-timing snapshot) and `--compare <path> --threshold <pct>` (exits nonzero if any phase regresses beyond the threshold). A checked-in `tools/baselines/desktop_master_baseline.json` records the 2560×1440 crowd profile.
+- **WS-D desktop parity tests:** `test_mainline_regression.py` confirms desktop hits the batched `_blit_floor_entries` path, the memoized projection origin, and the now-shared impact-effect cache.
+- CI triggers on both `master` and `android-beta` and runs the regression guard plus the baseline comparison on every push.
+- **APK licensing & attribution (WS-G):** the Apache-2.0 license text and a new `NOTICE` file (enumerating every bundled third-party library — pygame-ce, SDL2/SDL2_image/SDL2_mixer/SDL2_ttf, libpng/libjpeg/zlib, Freetype under the Freetype License, Python PSF-2.0, PyJNIus MIT — plus the build-tool exclusion note and the AI Provenance & Liability notice) are bundled as reachable assets (`src/arch_rogue/assets/licenses/LICENSE.txt` / `NOTICE.txt`) and surfaced from a scrollable in-app **About → Open Source Licenses** screen so APK installers get Apache-2.0 §4 attribution without opening the repo. `src/arch_rogue/licenses.py` loads them with a repo-root fallback for desktop dev; `tools/build_android.sh` refreshes the asset copies from the canonical root `LICENSE`/`NOTICE` before each build so they cannot drift. A one-paragraph **trademark note** is added to `README.md` clarifying that the "Arch Rogue" name and octahedron crest logo are not part of the Apache-2.0 grant (§6 reserves trademark rights).
+- `tools/validate_android_apk.py` now greps every bundled `lib/<abi>/*.so` for GPL-family MP3 codec markers (`libmad` / `libmp3lame` / `libfaad` plus `mp3lame` / `mad_decoder` / `NeAACDec`) and fails the audit on any hit; rejects `buildozer/` or `pythonforandroid/` build-tool source bundled into `assets/private.tar`; and preflights that `source.include_exts` includes `txt` and that the `assets/licenses/{LICENSE,NOTICE}.txt` assets exist in the source tree.
+
+### Changed
+
+- **One frame-pacing owner:** the scattered `clock.tick(FPS)` / `clock.tick(10)` calls are replaced by `Game.frame_pacing.tick(suspended=...)`. The exact `min(clock.tick(target) / 1000.0, 0.05)` shape is preserved verbatim; only the source of `target_fps` changes. `constants.FPS` is now a deprecated alias for `DEFAULT_FRAME_RATE = 60` (cutoff: 4.4).
+- **One cache-invalidation seam:** `OptionsMixin._invalidate_render_caches()` clears every memoized render cache (`ambient_overlay_cache`, `_hud_panel_cache`, `_hud_icon_cache`, `_aim_cone_cache`, `_alpha_tile_cache`, `_title_logo_cache`, `_fitted_ui_font_cache`, `_impact_overlay_cache`, `tile_cache`, `door_tile_cache`) plus lighting and stage caches. `_apply_graphics_mode()`, `rebuild_fonts()`, and `_invalidate_resolution_sized_caches()` all route through it so a future cache addition cannot be missed.
+- **Schema v7:** options schema advances `6` -> `7` for `frame_rate_cap` and `show_perf_overlay`. The v7 loader reads v6 option files and defaults `frame_rate_cap=60`, `show_perf_overlay=False`. Run saves remain schema `5`.
+- **Universal wins shared with desktop:** the impact-effect overlay cache (4.3.13) and the projection-origin memoization (4.3.14) are no longer mobile-gated; desktop crowds now hit the cache and the memoized origin. The batched floor/wall blits, full-bleed cutscene, direct-size shadows, cached relic guidance, and screen-flash surface reuse were already shared and are confirmed desktop-active.
+- `docs/android-beta.md` updated to reflect that the Android build is part of mainline as of 4.3.x (no separate beta branch).
+- `AGENTS.md` "Current Code Organization" updated to mention `FramePacing` (in `game.py`) and that `mobile.py` is part of the mainline module set.
+
+### Performance
+
+- Desktop deterministic 2560×1440 crowd profile is within ±5% of the 4.3.16 baseline on every phase; the impact-cache and projection-origin generalizations remove per-frame allocations/recomputation in combat crowds.
+- The incremental mobile floor-cache + reveal-patch path (4.3.5) is now explicitly gated behind `mobile_mode`; desktop always uses the shared cold-rebuild path, removing any risk of desktop regression from the merge while keeping the cold path shared.
+
+### Fixed
+
+- **Leftover optimization code (WS-C):** documented and confirmed the once-per-process `_ANDROID_BINARY_ALPHA_MODE` benchmark memoization, the pre-allocated `MobilePerformanceMonitor` rolling buffers (no per-frame allocations on the hot path), and the local-tint CPU fallback's reachability gate (retained as the Android software-renderer launch-safe path). The dead mobile half-resolution light buffer path was already retired in 4.3.10; the live desktop half-resolution path is documented as required. The `_composite_mobile_gpu_ui_fallback` legacy rect branch is retained as a post-4.3.11 defensive safety net and documented. The impact-effect cache bound is extracted into a named `IMPACT_EFFECT_CACHE_MAX = 128` constant.
+- `legacy_mobile_quality_migration` and `legacy_ui_scale_migration` in `options.py` are marked with a `# Deprecation cutoff: 4.4` comment.
+
+### Validation
+
+- `python -m compileall src tests` clean.
+- `python -m unittest discover tests` green (excluding web tests as usual).
+- `tests.test_mainline_regression` (render determinism pixel-hash snapshots, mobile-isolation counters, render-cache invalidation, WS-D desktop shared-win paths), `tests.test_frame_pacing` (FramePacing unit + option round-trip + perf-overlay reconciliation), `tests.test_licenses` (license/notice loader + About screen surface + scroll input), and `tests.test_android_packaging` (GPL codec + build-tool source rejection) all pass.
+- `tools/profile_game.py --compare tools/baselines/desktop_master_baseline.json` reports no regression vs the checked-in baseline.
+- `tools/validate_android_apk.py --project-root . --source-dir src --spec buildozer.spec` preflight passes (license assets present, `txt` bundled, spec clean).
+- Default desktop run: `_mobile_performance_monitor` is `None`, `ARCH_ROGUE_PERF` is silent, `clock.tick` targets 60 FPS via `FramePacing`.
+- Runtime/package release version is `4.3.17`; options are schema `7` and run saves remain schema `5`.
+
 ## 4.3.16 — Android Exit Confirmation Touch Fix
 
 Release 4.3.16 fixes the vertical touch offset on the exit confirmation screen. The exit confirmation renders full-bleed like other menus, but was still listed as a safe-area-clipped overlay, causing taps to land below the visible rows. Desktop is unchanged.

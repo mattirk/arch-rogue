@@ -60,7 +60,7 @@ There is an experimental web build in `src/arch_rogue/web` and some specific tes
 
 Keep the prototype architecture modular but intentionally small:
 
-- `src/arch_rogue/game.py` owns `Game` construction, high-level app state, main loop wiring, and the executable `main()` entry point. Keep `arch_rogue.game.Game` and `arch_rogue.game:main` stable.
+- `src/arch_rogue/game.py` owns `Game` construction, high-level app state, main loop wiring, the executable `main()` entry point, and (since 4.3.17) the `FramePacing` class that owns `target_fps`, the suspended-mode throttle, the `clock.tick` call, and the dt clamp. Keep `arch_rogue.game.Game` and `arch_rogue.game:main` stable. `Game.run()` is the only caller of `clock.tick`; read the live frame-rate target from `Game.frame_pacing.target_fps`.
 - Runtime behavior is composed through focused mixins:
   - `src/arch_rogue/camera.py` for coordinate transforms and visible bounds.
   - `src/arch_rogue/options.py` for display/options, difficulty selection, meta-progress defaults, and audio sync helpers.
@@ -79,6 +79,8 @@ Keep the prototype architecture modular but intentionally small:
 - `src/arch_rogue/dungeon.py` owns procedural map generation and dungeon collision/floor queries.
 - `src/arch_rogue/sprites.py` owns procedural pixel-art sprite construction.
 - `src/arch_rogue/audio.py` owns mixer setup, procedural sound effects, and per-run procedural NES-style background music generation.
+- `src/arch_rogue/licenses.py` (4.3.17 WS-G) loads the bundled Apache-2.0 `LICENSE.txt` / `NOTICE.txt` assets (with a repo-root fallback for desktop dev) for the in-app About → Open Source Licenses screen so APK installers get Apache-2.0 §4 attribution. `tools/build_android.sh` refreshes the asset copies from the canonical root `LICENSE`/`NOTICE` before each build.
+- `src/arch_rogue/mobile.py` is part of the mainline module set (not a fork) as of 4.3.17. It owns mobile-only concerns: the Android landscape layout, touch input, app lifecycle, GLES direct presenter, colorkey-RLE alpha optimization, and `MobilePerformanceMonitor` telemetry. Every Android-specific branch is gated by `self.mobile_mode` (or `android_runtime_active()` for import-time checks); no desktop frame executes a GLES/colorkey-RLE/`MobilePerformanceMonitor` branch. The `MobilePerformanceMonitor` is also created on desktop only when the developer opts in via the `show_perf_overlay` option or `ARCH_ROGUE_PERF=1`.
 
 Prefer expanding these focused modules until a new boundary is clearly justified. Avoid introducing many narrow submodules during prototype work.
 
@@ -322,7 +324,6 @@ Acceptance: deterministic 2560×1440 desktop crowd profile improves 5–10% vs. 
 - Add the `4.3.17` (or chosen version) section to `CHANGELOG.md` summarizing the merge, the frame-rate cap option, the cleanup, and the desktop performance delta. Follow the existing changelog entry structure (Added / Changed / Performance / Fixed / Validation).
 - Bump `pyproject.toml` `version` to match.
 - Update `AGENTS.md` "Current Code Organization" to mention `FramePacing` (wherever it lands) and clarify that `mobile.py` is now part of the mainline module set, not a fork.
-- Merge `android-beta` → `master` with `git merge --no-ff android-beta` so the milestone is preserved as a merge commit; use the 4.3.x CHANGELOG summary as the merge commit message. Tag `v4.3.17`.
 
 ###### WS-G — Licensing & attribution hygiene for APK distribution
 
@@ -384,3 +385,8 @@ Apache-2.0 §4 requires license and NOTICE preservation; APK installers never se
 - Is it possible to detect host system display scaling and adjust game scaling accordingly? e.g if display scale on host is 200% -> scale game to 2x
 - Dedicated room decorations for bosses (floor, walls, props). Generate new via Pixellab for bosses up to level 10 and final boss.
 - Dash: extended dash/blink skill (skill 4) when key pressed long, character starts "running" and moves faster. This consumes stamina really fast and stops once stamina is spent. When "running" mode activated, dash/blink suffers 1min cooldown. To be used as last resort to run away.
+- On mobile, relic shadow/effects are fixed but shrines still glitch. At least after used.
+- We need website for game downloads. Reference layout at build/archrogue_website_layout.drawio.png
+  - Create as GitHub Pages
+  - Place files, assets and styles in this repo accordingly
+  - Generate assets in PixelLab when needed

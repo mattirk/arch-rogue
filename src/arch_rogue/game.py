@@ -37,10 +37,13 @@ from .combat import CombatMixin
 from .constants import (
     BOSS_HIT_RADIUS,
     DARK_LEVEL_LIGHT_RADIUS,
+    DEFAULT_FRAME_RATE,
     DUNGEON_DEPTH,
     ENEMY_HIT_RADIUS,
     ENEMY_PROJECTILE_HIT_RADIUS,
     FPS,
+    FRAME_RATE_CAP_DEFAULT,
+    FRAME_RATE_CAP_VALUES,
     LARGE_ENEMY_HIT_RADIUS,
     LIGHT_IMPACT_RADIUS,
     LIGHT_IMPACT_TTL,
@@ -62,6 +65,7 @@ from .constants import (
     UI_SCALE,
     WALK_ANIMATION_RATE,
     SlashEffect,
+    normalize_frame_rate_cap,
 )
 from .content import (
     ARCHETYPES,
@@ -183,6 +187,8 @@ __all__ = (
     "EnemyDefinition",
     "FINAL_ROOM_ENEMY_DEFINITIONS",
     "FPS",
+    "FRAME_RATE_CAP_DEFAULT",
+    "FRAME_RATE_CAP_VALUES",
     "FloatingText",
     "FloorPlan",
     "FriendlyNpcRuntimeMixin",
@@ -203,6 +209,7 @@ __all__ = (
     "PLAYER_MELEE_RANGE",
     "PLAYER_PROJECTILE_HIT_RADIUS",
     "PixelSpriteAtlas",
+    "FramePacing",
     "Player",
     "SpriteAtlas",
     "PopulationMixin",
@@ -250,6 +257,47 @@ __all__ = (
     "story_effect",
     "story_guest_from_beat",
 )
+
+
+class FramePacing:
+    """Single owner of frame timing for ``Game.run()``.
+
+    Replaces the scattered ``clock.tick(FPS)`` / ``clock.tick(10)`` calls with
+    one object that reads the persisted ``frame_rate_cap`` option and the
+    mobile suspended-mode throttle. ``Game.run()`` is the only caller of
+    :meth:`tick`; the dt clamp (``0.05``) and the
+    ``min(clock.tick(target) / 1000.0, 0.05)`` shape are preserved verbatim —
+    only the source of ``target_fps`` changes.
+    """
+
+    def __init__(self, clock: pygame.time.Clock) -> None:
+        self._clock = clock
+        # User-facing option (one of FRAME_RATE_CAP_VALUES). Default is 60.
+        self.frame_rate_cap: int | str = FRAME_RATE_CAP_DEFAULT
+        # Resolved tick target. ``0`` means unlimited (``clock.tick(0)`` returns
+        # elapsed ms without waiting). Suspended mode overrides this regardless.
+        self.target_fps: int = int(FRAME_RATE_CAP_DEFAULT)
+        # Mobile suspended-mode throttle (Hz). Used only when Android is
+        # backgrounded; desktop never suspends.
+        self.suspended_fps: int = 10
+        # vsync hint. SDL's ``SCALED`` renderer handles vsync internally on
+        # Android; desktop leaves this off so the cap is the only throttle.
+        self.vsync: bool = False
+
+    def set_frame_rate_cap(self, cap: int | str) -> None:
+        normalized = normalize_frame_rate_cap(cap)
+        self.frame_rate_cap = normalized
+        if normalized == "Unlimited":
+            self.target_fps = 0
+        else:
+            self.target_fps = int(normalized)
+
+    def tick(self, *, suspended: bool = False) -> float:
+        if suspended:
+            fps = self.suspended_fps
+        else:
+            fps = self.target_fps
+        return min(self._clock.tick(fps) / 1000.0, 0.05)
 
 
 class Game(
@@ -317,6 +365,10 @@ class Game(
         # ARM cache spike. The web build forces lighting off in web/main.make_game.
         self._lighting_enabled = True
         self._lighting_normal_maps = not self.mobile_mode
+        # 4.3.17 schema-7 options. Defaults keep desktop telemetry silent and a
+        # 60 FPS cap on both platforms; load_options() overrides from disk.
+        self.frame_rate_cap: int | str = FRAME_RATE_CAP_DEFAULT
+        self.show_perf_overlay: bool = False
         # Asset sprites are the production default. The persisted legacy toggle
         # keeps the original procedural renderer available on constrained systems
         # and as a per-install compatibility fallback.
@@ -359,6 +411,12 @@ class Game(
             except pygame.error:
                 pass
         self.clock = pygame.time.Clock()
+        self.frame_pacing = FramePacing(self.clock)
+        # load_options() runs before the display/clock exists so graphics mode
+        # can be selected before set_mode(). Apply its persisted cap now that
+        # FramePacing exists; otherwise every normal startup silently uses 60
+        # until the player changes the option again.
+        self.frame_pacing.set_frame_rate_cap(self.frame_rate_cap)
         self.rebuild_fonts()
         self.ui_assets = UiAssetLibrary()
         self.sprites = SpriteAtlas(legacy_graphics=self.legacy_graphics)
@@ -413,6 +471,10 @@ class Game(
         # story text. The renderer clamps it against the current overflow and
         # publishes `_story_panel_scroll_max` / `_story_panel_visible_lines`.
         self.story_panel_scroll = 0
+        # 4.3.17 WS-G: scroll offset (in wrapped lines) for the About screen's
+        # Open Source Licenses section. The renderer publishes
+        # `_licenses_scroll_max` / `_licenses_visible_lines` each draw.
+        self.licenses_scroll = 0
         self.run_stats = RunStats()
         self.state = "archetype_select"
         self.elapsed = 0.0
@@ -641,15 +703,18 @@ class Game(
         return [by_key[key] for key in self.player.skill_upgrades if key in by_key]
 
     def run(self) -> None:
+        # Rebind the pacing clock each run in case a caller (or test) swapped
+        # ``self.clock`` after construction. ``Game.run()`` is still the only
+        # caller of ``clock.tick`` (via frame_pacing).
+        self.frame_pacing._clock = self.clock
         while self.running:
             performance = getattr(self, "_mobile_performance_monitor", None)
             if performance is not None:
                 performance.begin_frame()
 
             suspended = self.mobile_mode and self.mobile_suspended
-            target_fps = 10 if suspended else FPS
             started = time.perf_counter()
-            dt = min(self.clock.tick(target_fps) / 1000.0, 0.05)
+            dt = self.frame_pacing.tick(suspended=suspended)
             if performance is not None:
                 performance.record_phase("tick", time.perf_counter() - started)
             self.ui_elapsed += dt
@@ -827,8 +892,10 @@ class Game(
                         self.state = "options"
                     elif event.key in (pygame.K_a, pygame.K_c):
                         self.state = "about"
+                        self.licenses_scroll = 0
                     elif event.key in (pygame.K_h, pygame.K_SLASH):
                         self.state = "about"
+                        self.licenses_scroll = 0
                 elif self.state == "options":
                     if event.key == pygame.K_a:
                         self.options_cursor = self.OPTIONS_ROW_AUDIO
@@ -879,8 +946,19 @@ class Game(
                         pygame.K_BACKSPACE,
                         pygame.K_a,
                         pygame.K_h,
+                        pygame.K_o,
                     ):
                         self.state = "title"
+                    elif event.key in (pygame.K_UP, pygame.K_LEFT):
+                        self.scroll_licenses(-1)
+                    elif event.key in (pygame.K_DOWN, pygame.K_RIGHT):
+                        self.scroll_licenses(1)
+                    elif event.key == pygame.K_PAGEUP:
+                        page = max(1, int(getattr(self, "_licenses_visible_lines", 3)) - 1)
+                        self.scroll_licenses(-page)
+                    elif event.key == pygame.K_PAGEDOWN:
+                        page = max(1, int(getattr(self, "_licenses_visible_lines", 3)) - 1)
+                        self.scroll_licenses(page)
                 elif self.state == "controls":
                     if event.key in (pygame.K_BACKSPACE, pygame.K_o):
                         if self.controls_capture_command:

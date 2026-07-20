@@ -259,7 +259,7 @@ class MobileRenderQualityTests(unittest.TestCase):
             game._lighting_normal_maps = True
             self.assertTrue(game.save_options())
             saved = json.loads(game.options_path.read_text(encoding="utf-8"))
-            self.assertEqual(saved["schema_version"], 6)
+            self.assertEqual(saved["schema_version"], 7)
             self.assertEqual(
                 saved["mobile_render_quality"], MOBILE_RENDER_QUALITY_BALANCED
             )

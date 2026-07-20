@@ -815,20 +815,31 @@ class InputMixin:
     """
 
     # Options menu row order (matches MenuOptionsMixin.draw_options_menu).
-    # Grouped: Display (0-3), Controls (4-5), Audio (6-7), Lights (8-9), Back (10).
-    OPTIONS_ROW_COUNT = 11
-    # Reused as Render quality on mobile; row count/order intentionally match desktop.
+    # Grouped: Display (0-4), Controls (5-6), Audio (7-8), Lights (9-10),
+    # Diagnostics (11, desktop only), Back (last). The frame-rate cap row at
+    # index 4 was added in 4.3.17; the perf-overlay row at index 11 is desktop
+    # only, so the total count and the Back index depend on mobile_mode.
     OPTIONS_ROW_FULLSCREEN = 0
     OPTIONS_ROW_DIFFICULTY = 1
     OPTIONS_ROW_UI_SCALE = 2
     OPTIONS_ROW_GRAPHICS = 3
-    OPTIONS_ROW_CONTROLS = 4
-    OPTIONS_ROW_CONTROLLER = 5
-    OPTIONS_ROW_AUDIO = 6
-    OPTIONS_ROW_MUSIC = 7
-    OPTIONS_ROW_LIGHTING = 8
-    OPTIONS_ROW_LIGHTING_DETAIL = 9
-    OPTIONS_ROW_BACK = 10
+    OPTIONS_ROW_FRAME_RATE = 4
+    OPTIONS_ROW_CONTROLS = 5
+    OPTIONS_ROW_CONTROLLER = 6
+    OPTIONS_ROW_AUDIO = 7
+    OPTIONS_ROW_MUSIC = 8
+    OPTIONS_ROW_LIGHTING = 9
+    OPTIONS_ROW_LIGHTING_DETAIL = 10
+    OPTIONS_ROW_PERF_OVERLAY = 11
+
+    @property
+    def OPTIONS_ROW_COUNT(self) -> int:
+        # 12 rows on mobile (no desktop-only perf-overlay row), 13 on desktop.
+        return 12 if getattr(self, "mobile_mode", False) else 13
+
+    @property
+    def OPTIONS_ROW_BACK(self) -> int:
+        return self.OPTIONS_ROW_COUNT - 1
 
     def init_input(self) -> None:
         self.input = ControllerManager(
@@ -955,10 +966,25 @@ class InputMixin:
         if self.state == "controls":
             return self._dispatch_controls(cmd)
         if self.state == "about":
+            # 4.3.17 WS-G: Up/Down scroll the Open Source Licenses text;
+            # confirm/back/left/right return to the title.
+            if cmd == Command.UP:
+                self.scroll_licenses(-1)
+                return True
+            if cmd == Command.DOWN:
+                self.scroll_licenses(1)
+                return True
+            if cmd == Command.PAGE_UP:
+                page = max(1, int(getattr(self, "_licenses_visible_lines", 3)) - 1)
+                self.scroll_licenses(-page)
+                return True
+            if cmd == Command.PAGE_DOWN:
+                page = max(1, int(getattr(self, "_licenses_visible_lines", 3)) - 1)
+                self.scroll_licenses(page)
+                return True
             if cmd in (
                 Command.CONFIRM,
-                Command.UP,
-                Command.DOWN,
+                Command.BACK,
                 Command.LEFT,
                 Command.RIGHT,
             ):
@@ -1117,6 +1143,8 @@ class InputMixin:
             self.cycle_ui_scale(forward)
         elif row == self.OPTIONS_ROW_GRAPHICS:
             self.set_legacy_graphics(not self.legacy_graphics)
+        elif row == self.OPTIONS_ROW_FRAME_RATE:
+            self.cycle_frame_rate_cap(forward)
         elif row == self.OPTIONS_ROW_CONTROLLER:
             self.controller_enabled = not self.controller_enabled
             self.input.set_enabled(self.controller_enabled)
@@ -1127,6 +1155,11 @@ class InputMixin:
         elif row == self.OPTIONS_ROW_LIGHTING_DETAIL:
             self._lighting_normal_maps = not self._lighting_normal_maps
             self.save_options()
+        elif (
+            row == self.OPTIONS_ROW_PERF_OVERLAY
+            and not getattr(self, "mobile_mode", False)
+        ):
+            self.toggle_perf_overlay()
         elif row == self.OPTIONS_ROW_CONTROLS:
             self.state = "controls"
             self.controls_cursor = 0

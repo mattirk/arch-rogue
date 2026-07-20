@@ -47,14 +47,30 @@ def write_apk(
     include_desktop_wheel: bool = False,
     include_pygame_system: bool = True,
     include_generated_metadata: bool = False,
+    include_gpl_codec: bool = False,
+    include_nested_gpl_codec: bool = False,
+    include_build_tool_source: bool = False,
+    missing_license_asset: str | None = None,
 ) -> None:
-    private_entries = {"arch_rogue/game.pyc": b"game"}
+    private_entries = {
+        "arch_rogue/game.pyc": b"game",
+        "arch_rogue/assets/licenses/LICENSE.txt": b"Apache License 2.0",
+        "arch_rogue/assets/licenses/NOTICE.txt": b"Third-party notices",
+        "arch_rogue/assets/licenses/LGPL-2.1.txt": b"GNU LGPL 2.1",
+    }
+    if missing_license_asset is not None:
+        private_entries.pop(
+            f"arch_rogue/assets/licenses/{missing_license_asset}", None
+        )
     if include_main:
         private_entries["main.pyc"] = (
             b"PYGAME_BLEND_ALPHA_SDL2\x001\x00arch_rogue.game\x00main"
         )
     if include_generated_metadata:
         private_entries["arch_rogue.egg-info/PKG-INFO"] = b"Version: stale"
+    if include_build_tool_source:
+        private_entries["buildozer/__init__.pyc"] = b"build tool source"
+        private_entries["pythonforandroid/tool.py"] = b"p4a source"
 
     with zipfile.ZipFile(path, "w") as apk:
         apk.writestr("assets/private.tar", tar_gzip(private_entries))
@@ -75,11 +91,23 @@ def write_apk(
                 bundle_entries[
                     "_python_bundle/site-packages/pygame_ce.libs/libSDL2.so"
                 ] = native
+            if include_nested_gpl_codec:
+                bundle_entries[
+                    "_python_bundle/site-packages/pygame/mixer.so"
+                ] = native + b"\x00libmad.so\x00mad_decoder\x00"
             apk.writestr(f"lib/{abi}/libmain.so", native)
             apk.writestr(
                 f"lib/{abi}/libpybundle.so",
                 tar_gzip(bundle_entries),
             )
+            if include_gpl_codec:
+                # A standalone codec .so (e.g. libSDL2_mixer pulling libmad)
+                # carrying a GPL-family marker. Valid ELF header so it reaches
+                # the codec scan after the architecture check.
+                apk.writestr(
+                    f"lib/{abi}/libSDL2_mixer.so",
+                    native + b"\x00libmad.so\x00mad_decoder\x00",
+                )
 
 
 class AndroidSourceContractTests(unittest.TestCase):
@@ -215,6 +243,66 @@ class AndroidApkValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 ValidationError,
                 "generated source metadata.*egg-info",
+            ):
+                validate_apk(apk, ("arm64-v8a",))
+
+    def test_rejects_gpl_codec_in_bundled_native_library(self) -> None:
+        # 4.3.17 WS-G: a copyleft MP3 decoder (libmad/libmp3lame/libfaad)
+        # pulled in via SDL2_mixer must fail the audit.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            apk = Path(tmpdir) / "game.apk"
+            write_apk(
+                apk,
+                {"arm64-v8a": 183, "armeabi-v7a": 40},
+                include_gpl_codec=True,
+            )
+            with self.assertRaisesRegex(
+                ValidationError,
+                "GPL-family codec marker.*libmad",
+            ):
+                validate_apk(apk, ("arm64-v8a", "armeabi-v7a"))
+
+    def test_rejects_gpl_codec_in_nested_python_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            apk = Path(tmpdir) / "game.apk"
+            write_apk(
+                apk,
+                {"arm64-v8a": 183},
+                include_nested_gpl_codec=True,
+            )
+            with self.assertRaisesRegex(
+                ValidationError,
+                "GPL-family codec marker.*libmad",
+            ):
+                validate_apk(apk, ("arm64-v8a",))
+
+    def test_rejects_missing_in_app_license_asset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            apk = Path(tmpdir) / "game.apk"
+            write_apk(
+                apk,
+                {"arm64-v8a": 183},
+                missing_license_asset="NOTICE.txt",
+            )
+            with self.assertRaisesRegex(
+                ValidationError,
+                "missing in-app license assets.*NOTICE.txt",
+            ):
+                validate_apk(apk, ("arm64-v8a",))
+
+    def test_rejects_build_tool_source_in_private_bundle(self) -> None:
+        # 4.3.17 WS-G: buildozer/python-for-android (L)GPL build-tool source
+        # must never ship inside assets/private.tar.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            apk = Path(tmpdir) / "game.apk"
+            write_apk(
+                apk,
+                {"arm64-v8a": 183},
+                include_build_tool_source=True,
+            )
+            with self.assertRaisesRegex(
+                ValidationError,
+                "build-tool source.*buildozer",
             ):
                 validate_apk(apk, ("arm64-v8a",))
 

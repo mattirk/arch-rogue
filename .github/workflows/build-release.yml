@@ -17,7 +17,7 @@ name: Build & Release
 
 "on":
   push:
-    branches: [master]
+    branches: [master, android-beta]
   workflow_dispatch:
 
 permissions:
@@ -52,6 +52,15 @@ jobs:
 
       - name: Run test suite
         run: python -m unittest discover tests
+
+      - name: Run mainline regression guard
+        run: python -m unittest tests.test_mainline_regression
+
+      - name: Compare desktop performance baseline
+        run: |
+          python tools/profile_game.py --scenario crowd --frames 60 --warmup 10 \
+            --width 2560 --height 1440 --top 1 \
+            --compare tools/baselines/desktop_master_baseline.json --threshold 10
 
   build:
     name: Build (${{ matrix.asset_suffix }})
@@ -541,6 +550,9 @@ jobs:
 
   release:
     name: Publish GitHub Release
+    # android-beta pushes run the full regression/build matrix, but only
+    # master may publish a public GitHub release.
+    if: github.ref == 'refs/heads/master'
     needs: [build, combine-macos, android]
     runs-on: ubuntu-latest
     steps:

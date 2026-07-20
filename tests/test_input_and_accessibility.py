@@ -861,7 +861,7 @@ class OptionsPersistenceTests(unittest.TestCase):
             self.assertFalse(game.controller_enabled)
             self.assertEqual(game.last_controller_guid, "abc-123")
             data = game.options_to_dict()
-            self.assertEqual(data["schema_version"], 6)
+            self.assertEqual(data["schema_version"], 7)
             self.assertEqual(
                 data["mobile_render_quality"], MOBILE_RENDER_QUALITY_NATIVE
             )

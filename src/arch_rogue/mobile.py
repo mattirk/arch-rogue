@@ -77,7 +77,16 @@ _COLORKEY_CANDIDATES = (
     (3, 5, 7),
     (255, 255, 1),
 )
+# Once-per-process memo: the first Android surface with area >=
+# _ANDROID_BINARY_ALPHA_MIN_BENCHMARK_AREA runs the benchmark and caches the
+# winning mode here. Every subsequent optimize_immutable_alpha_surface() call
+# reads this global and skips the benchmark entirely. "None" means "not yet
+# benchmarked on this process" (or "not on Android", in which case the
+# benchmark function returns immediately without doing work).
 _ANDROID_BINARY_ALPHA_MODE: str | None = None
+# Surfaces smaller than this (64x64 = 4096 px) skip the benchmark and default
+# to colorkey_rle — the per-pixel blit cost difference is negligible below this
+# size and the benchmark's own setup overhead would exceed the savings.
 _ANDROID_BINARY_ALPHA_MIN_BENCHMARK_AREA = 4096
 
 
@@ -140,7 +149,13 @@ def _benchmark_android_binary_alpha_mode(
     surface: pygame.Surface,
     key: tuple[int, int, int],
 ) -> tuple[str, pygame.Surface] | None:
-    """Choose the fastest equivalent binary-alpha source on this SDL build."""
+    """Choose the fastest equivalent binary-alpha source on this SDL build.
+
+    Runs at most ONCE per process: the winning mode is cached in the module-
+    global ``_ANDROID_BINARY_ALPHA_MODE`` and reused by every later call to
+    ``optimize_immutable_alpha_surface``. On failure the global is pinned to
+    ``"colorkey_rle"`` so subsequent calls also skip the benchmark.
+    """
 
     global _ANDROID_BINARY_ALPHA_MODE
     if not android_runtime_active() or not pygame.display.get_init():
@@ -223,6 +238,11 @@ def optimize_immutable_alpha_surface(
         key = _unused_colorkey(surface)
         if key is not None:
             try:
+                # Read the cached mode. ``None`` means "not yet benchmarked on
+                # this process": trigger the once-per-process benchmark if the
+                # surface is large enough to be worth measuring. After the first
+                # benchmark, _ANDROID_BINARY_ALPHA_MODE is set and this branch
+                # is never entered again.
                 mode = _ANDROID_BINARY_ALPHA_MODE
                 if (
                     mode is None
@@ -681,6 +701,12 @@ class MobilePerformanceMonitor:
         return f"{int(size[0])}x{int(size[1])}"
 
     def finish_frame(self, game: Any) -> str | None:
+        # Hot path (every frame): no allocations — just accumulate elapsed
+        # time and bump the frame counter. All dict/string/tuple allocations
+        # are deferred to the report-emission path below, which runs at most
+        # once per ``report_interval`` (~5 s). The rolling phase buffers
+        # ``_phase_seconds`` / ``_detail_phase_seconds`` are pre-allocated in
+        # ``__init__`` and zeroed in-place here after a report is emitted.
         if self._frame_started is None:
             return None
         now = self._clock()
@@ -919,12 +945,7 @@ class MobileMixin:
         self._mobile_gpu_flash_surface: pygame.Surface | None = None
         self._mobile_gpu_failure = ""
         self._mobile_gpu_last_present = False
-        self._mobile_performance_monitor = (
-            MobilePerformanceMonitor()
-            if getattr(self, "mobile_mode", False)
-            and mobile_performance_telemetry_enabled()
-            else None
-        )
+        self._mobile_performance_monitor = self._make_performance_monitor()
         if getattr(self, "mobile_mode", False):
             self.refresh_mobile_safe_insets()
 
@@ -1300,6 +1321,15 @@ class MobileMixin:
             coalesced = self._mobile_gpu_coalesced_ui_regions()
             regions = [rect for _key, rect, _revision in coalesced]
             if not regions:
+                # Legacy bounding-rect fallback. After 4.3.11's full-bleed UI
+                # uploads, every draw to the overlay is paired with a
+                # ``mark_mobile_gpu_ui_region`` call, so when ``coalesced`` is
+                # empty the overlay is normally fully transparent and this
+                # ``get_bounding_rect`` scan returns a 0x0 rect (no-op). The
+                # branch is retained as a defensive safety net for partial-
+                # frame / exception-recovery scenarios where the overlay might
+                # have content without a registered region, and is exercised by
+                # ``test_gpu_screen_flash_queues_one_pixel_overlay_and_falls_back_safely``.
                 dirty = overlay.get_bounding_rect(min_alpha=1)
                 if dirty.width > 0 and dirty.height > 0:
                     regions = [dirty]
@@ -2087,6 +2117,24 @@ class MobileMixin:
             self._dispatch_command(Command.BACK)
             return True
         return False
+
+    def _make_performance_monitor(self) -> Any:
+        # 4.3.17 WS-E: the in-game PERF overlay + ARCH_ROGUE_PERF telemetry
+        # default to Android-only. On desktop the monitor is created only when
+        # the developer opts in via the Show performance overlay option or the
+        # ARCH_ROGUE_PERF=1 env escape hatch, so a default desktop run is
+        # silent and shows no diagnostic. Mobile keeps its existing
+        # telemetry-enabled-by-default behavior regardless of the option.
+        if mobile_performance_telemetry_enabled():
+            return MobilePerformanceMonitor()
+        if bool(getattr(self, "show_perf_overlay", False)):
+            return MobilePerformanceMonitor()
+        return None
+
+    def _reconcile_performance_monitor(self) -> None:
+        # Apply the current show_perf_overlay / env state to the live monitor so
+        # toggling the Options row takes effect without a restart.
+        self._mobile_performance_monitor = self._make_performance_monitor()
 
     def draw_mobile_performance_overlay(self) -> None:
         """Draw the latest compact on-device phase summary without per-frame text work."""

@@ -35,6 +35,23 @@ REQUIRED_NATIVE_MODULES = {
     "jnius.jnius": "/site-packages/jnius/jnius",
 }
 NATIVE_SOURCE_SUFFIXES = (".so", ".pyd", ".dll", ".dylib")
+# 4.3.17 WS-G: GPL-family MP3 codec markers that must never appear in a
+# bundled .so. The procedural audio path needs at most libogg/vorbis; an
+# accidental libmad/libmp3lame/libfaad pull-in via SDL2_mixer would create a
+# GPL-2.0 contamination issue that Apache-2.0 alone cannot resolve (Apache-2.0
+# is GPLv3-compatible but not GPLv2-compatible without an explicit "or later"
+# clause). `libmad`/`libmp3lame`/`libfaad` catch the SONAMEs; `mp3lame`/
+# `mad_decoder`/`NeAACDec` catch the well-known internal symbols.
+GPL_CODEC_MARKERS: tuple[bytes, ...] = (
+    b"libmad",
+    b"libmp3lame",
+    b"libfaad",
+    b"mp3lame",
+    b"mad_decoder",
+    b"NeAACDec",
+)
+# (L)GPL build tools whose source must never be packaged into the APK.
+BUILD_TOOL_SOURCE_DIRS: tuple[str, ...] = ("buildozer", "pythonforandroid")
 
 
 class ValidationError(RuntimeError):
@@ -69,6 +86,16 @@ def _elf_machine(header: bytes) -> int | None:
 
 def _machine_name(machine: int) -> str:
     return ELF_MACHINE_NAMES.get(machine, f"e_machine={machine}")
+
+
+def _assert_no_gpl_codec_marker(label: str, payload: bytes) -> None:
+    for marker in GPL_CODEC_MARKERS:
+        if marker in payload:
+            raise ValidationError(
+                f"{label} contains GPL-family codec marker "
+                f"{marker.decode('ascii', 'replace')!r}; "
+                "copyleft MP3 decoder must not ship in the APK"
+            )
 
 
 def _assert_machine(name: str, header: bytes, abi: str) -> bool:
@@ -192,6 +219,18 @@ def validate_source_tree(source_dir: Path) -> None:
         rendered = ", ".join(str(path.relative_to(source_dir)) for path in native_files)
         raise ValidationError(f"source tree contains host native binaries: {rendered}")
 
+    # 4.3.17 WS-G: the Apache-2.0 license text and third-party NOTICE must be
+    # bundled as reachable assets so APK installers get §4 attribution. Fail
+    # the preflight if either asset is missing from the source tree.
+    licenses_dir = source_dir / "arch_rogue" / "assets" / "licenses"
+    for asset_name in ("LICENSE.txt", "NOTICE.txt", "LGPL-2.1.txt"):
+        if not (licenses_dir / asset_name).is_file():
+            raise ValidationError(
+                f"missing bundled license asset {licenses_dir / asset_name}; "
+                "run tools/build_android.sh to refresh assets/licenses/*.txt "
+                "from the repository-root LICENSE and NOTICE"
+            )
+
 
 def validate_build_spec(spec_path: Path, project_root: Path | None = None) -> tuple[str, ...]:
     """Validate settings that prevent host wheels and stale p4a builds."""
@@ -255,6 +294,19 @@ def validate_build_spec(spec_path: Path, project_root: Path | None = None) -> tu
             + ", ".join(missing_exclusions)
         )
 
+    # 4.3.17 WS-G: the license/notice .txt assets must be bundled, so
+    # source.include_exts has to keep .txt files.
+    include_exts = {
+        value.strip().lower().lstrip(".")
+        for value in app.get("source.include_exts", "").split(",")
+        if value.strip()
+    }
+    if "txt" not in include_exts:
+        raise ValidationError(
+            "buildozer source.include_exts must include 'txt' so the bundled "
+            "LICENSE.txt / NOTICE.txt reach the APK's About screen"
+        )
+
     if app.get("p4a.bootstrap", "").strip() != "sdl2":
         raise ValidationError("Arch Rogue Android builds require p4a.bootstrap = sdl2")
     commit = app.get("p4a.commit", "").strip().lower()
@@ -283,6 +335,36 @@ def _validate_private_bundle(payload: bytes) -> str:
                 raise ValidationError(
                     "assets/private.tar contains generated source metadata: "
                     + ", ".join(generated_metadata)
+                )
+
+            # 4.3.17 WS-G: buildozer/python-for-android are (L)GPL build tools;
+            # their source must never ship inside the APK.
+            build_tool_source = sorted(
+                name
+                for name in members
+                if any(
+                    part in BUILD_TOOL_SOURCE_DIRS
+                    for part in PurePosixPath(name).parts
+                )
+            )
+            if build_tool_source:
+                raise ValidationError(
+                    "assets/private.tar contains (L)GPL build-tool source: "
+                    + ", ".join(build_tool_source)
+                )
+
+            required_license_assets = (
+                "arch_rogue/assets/licenses/LICENSE.txt",
+                "arch_rogue/assets/licenses/NOTICE.txt",
+                "arch_rogue/assets/licenses/LGPL-2.1.txt",
+            )
+            missing_license_assets = [
+                name for name in required_license_assets if name not in members
+            ]
+            if missing_license_assets:
+                raise ValidationError(
+                    "assets/private.tar is missing in-app license assets: "
+                    + ", ".join(missing_license_assets)
                 )
 
             entrypoint = next(
@@ -351,9 +433,14 @@ def _validate_python_bundle(
                 if not name.endswith(".so"):
                     continue
                 stream = archive.extractfile(member)
-                header = stream.read(20) if stream is not None else b""
-                if not _assert_machine(f"{abi}:{name}", header, abi):
-                    raise ValidationError(f"{abi}:{name} has a .so suffix but is not ELF")
+                payload = stream.read() if stream is not None else b""
+                label = f"{abi}:{name}"
+                if not _assert_machine(label, payload[:20], abi):
+                    raise ValidationError(f"{label} has a .so suffix but is not ELF")
+                # libpybundle.so is a compressed tar archive, so scanning its
+                # raw APK bytes cannot see strings in nested extensions. Scan
+                # every decompressed native module while it is already open.
+                _assert_no_gpl_codec_marker(label, payload)
                 native_count += 1
             if native_count == 0:
                 raise ValidationError(f"{abi} Python bundle has no native extensions")
@@ -364,6 +451,28 @@ def _validate_python_bundle(
             return native_count
     except (OSError, tarfile.TarError) as error:
         raise ValidationError(f"invalid {abi} libpybundle.so: {error}") from error
+
+
+def _scan_native_libraries_for_gpl_codecs(
+    apk: zipfile.ZipFile,
+    names: list[str],
+    expected_abis: tuple[str, ...],
+) -> None:
+    """Reject bundled .so files containing GPL-family MP3 codec markers.
+
+    4.3.17 WS-G: the procedural audio path needs at most libogg/vorbis. An
+    accidental libmad/libmp3lame/libfaad pull-in via SDL2_mixer would create a
+    GPL-2.0 contamination issue that Apache-2.0 alone cannot resolve. Scan the
+    standalone ``lib/<abi>/*.so`` files (where SDL2_mixer and a separate
+    libmad.so would live) and the .so entries inside each ``libpybundle.so``.
+    """
+
+    for abi in expected_abis:
+        prefix = f"lib/{abi}/"
+        for name in names:
+            if not name.startswith(prefix) or not name.endswith(".so"):
+                continue
+            _assert_no_gpl_codec_marker(name, apk.read(name))
 
 
 def validate_apk(
@@ -422,6 +531,9 @@ def validate_apk(
                 native_counts[abi] = _validate_python_bundle(
                     apk.read(bundle_name), abi, required_packages
                 )
+            # 4.3.17 WS-G: reject copyleft MP3 codec contamination across
+            # every bundled native library.
+            _scan_native_libraries_for_gpl_codecs(apk, names, expected)
     except (OSError, zipfile.BadZipFile) as error:
         raise ValidationError(f"cannot read APK {apk_path}: {error}") from error
 

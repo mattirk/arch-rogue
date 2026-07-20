@@ -34,7 +34,14 @@ from typing import Any
 import pygame
 
 from .audio import MusicProfile
-from .constants import SCREEN_HEIGHT, SCREEN_WIDTH, UI_SCALE
+from .constants import (
+    FRAME_RATE_CAP_DEFAULT,
+    FRAME_RATE_CAP_VALUES,
+    SCREEN_HEIGHT,
+    SCREEN_WIDTH,
+    UI_SCALE,
+    normalize_frame_rate_cap,
+)
 from .content import (
     DEFAULT_DIFFICULTY_NAME,
     DIFFICULTY_PROFILES,
@@ -414,22 +421,84 @@ class OptionsMixin:
             )
         )
 
+    def frame_rate_cap_label(self) -> str:
+        cap = normalize_frame_rate_cap(
+            getattr(self, "frame_rate_cap", FRAME_RATE_CAP_DEFAULT)
+        )
+        return "Unlimited" if cap == "Unlimited" else f"{int(cap)} FPS"
+
+    def cycle_frame_rate_cap(self, forward: bool = True) -> bool:
+        current = normalize_frame_rate_cap(
+            getattr(self, "frame_rate_cap", FRAME_RATE_CAP_DEFAULT)
+        )
+        try:
+            index = FRAME_RATE_CAP_VALUES.index(current)
+        except ValueError:
+            index = FRAME_RATE_CAP_VALUES.index(FRAME_RATE_CAP_DEFAULT)
+        delta = 1 if forward else -1
+        new_cap = FRAME_RATE_CAP_VALUES[
+            (index + delta) % len(FRAME_RATE_CAP_VALUES)
+        ]
+        if new_cap == current:
+            return False
+        self.frame_rate_cap = new_cap
+        frame_pacing = getattr(self, "frame_pacing", None)
+        if frame_pacing is not None:
+            frame_pacing.set_frame_rate_cap(new_cap)
+        self.save_options()
+        return True
+
+    def toggle_perf_overlay(self) -> bool:
+        self.show_perf_overlay = not bool(
+            getattr(self, "show_perf_overlay", False)
+        )
+        self.save_options()
+        # Apply immediately so the overlay appears/disappears without a restart.
+        if hasattr(self, "_reconcile_performance_monitor"):
+            self._reconcile_performance_monitor()
+        return self.show_perf_overlay
+
+    def _invalidate_render_caches(self) -> None:
+        # 4.3.17: single cache-invalidation seam. Graphics-mode, resolution,
+        # and font changes all route through here so a future cache addition
+        # cannot be missed by one of the call sites. Each cache rebuilds
+        # lazily on the next draw; this never changes render output (the WS-B
+        # pixel-hash regression test guards that). Caches are read via getattr
+        # because rebuild_fonts() runs early in __init__ before some of them
+        # (e.g. tile_cache) are constructed.
+        for attr in (
+            "ambient_overlay_cache",
+            "_hud_panel_cache",
+            "_hud_icon_cache",
+            "_aim_cone_cache",
+            "_alpha_tile_cache",
+            "_title_logo_cache",
+            "_fitted_ui_font_cache",
+            "_impact_overlay_cache",
+            "tile_cache",
+            "door_tile_cache",
+        ):
+            cache = getattr(self, attr, None)
+            if cache is not None and hasattr(cache, "clear"):
+                cache.clear()
+        if hasattr(self, "reset_lighting_caches"):
+            self.reset_lighting_caches()
+        if hasattr(self, "clear_stage_render_cache"):
+            self.clear_stage_render_cache()
+
     def _invalidate_resolution_sized_caches(self) -> None:
         # Actor animation frames are resolution-independent and expensive to
         # decode from an APK. Keep them warm when only the logical canvas changes.
+        # Render caches flow through the single _invalidate_render_caches() seam;
+        # the buffers reset below are resolution-sized layer surfaces, not
+        # memoized render caches, so they stay here.
+        self._invalidate_render_caches()
         release_gpu_textures = getattr(self, "release_mobile_gpu_textures", None)
         if callable(release_gpu_textures):
             release_gpu_textures()
         self._world_layer = None
         self._mobile_floor_layer_cache = None
         self._screen_flash_surface = None
-        ambient_cache = getattr(self, "ambient_overlay_cache", None)
-        if ambient_cache is not None and hasattr(ambient_cache, "clear"):
-            ambient_cache.clear()
-        if hasattr(self, "reset_lighting_caches"):
-            self.reset_lighting_caches()
-        if hasattr(self, "clear_stage_render_cache"):
-            self.clear_stage_render_cache()
 
     def cycle_mobile_render_quality(self, forward: bool = True) -> bool:
         if not getattr(self, "mobile_mode", False):
@@ -655,14 +724,12 @@ class OptionsMixin:
         # Clear the cached font.size() results: the Font objects are replaced, so
         # keys based on id(font) would otherwise collide with the new fonts.
         self._text_size_cache = {}
-        # Rendered HUD text surfaces and panel art are keyed by id(font) /
-        # ui_scale, so drop them when fonts are rebuilt (which also fires on
-        # ui_scale / resolution changes) to avoid stale or colliding entries.
+        # Rendered HUD text surfaces keyed by id(font) / ui_scale; the broader
+        # render caches (HUD panels/icons, title logo, fitted fonts, tiles,
+        # aim cone, ambient overlay, impact overlays, lighting, stage) flow
+        # through the single _invalidate_render_caches() seam.
         self._ui_text_cache = {}
-        self._hud_panel_cache = {}
-        self._hud_icon_cache = {}
-        self._title_logo_cache = {}
-        self._fitted_ui_font_cache = {}
+        self._invalidate_render_caches()
 
     def available_difficulty_profiles(self) -> tuple[DifficultyProfile, ...]:
         return tuple(
@@ -751,7 +818,7 @@ class OptionsMixin:
     def options_to_dict(self) -> dict[str, Any]:
         return {
             "version": 1,
-            "schema_version": 6,
+            "schema_version": 7,
             "audio_enabled": self.audio_enabled,
             "music_enabled": self.music_enabled,
             "fullscreen": self.fullscreen,
@@ -775,6 +842,14 @@ class OptionsMixin:
             "lighting_enabled": getattr(self, "_lighting_enabled", True),
             "lighting_normal_maps": getattr(self, "_lighting_normal_maps", True),
             "legacy_graphics": getattr(self, "legacy_graphics", False),
+            # Schema v7 (4.3.17): frame-rate cap and dev perf overlay. Older
+            # option files migrate to 60 FPS / overlay off.
+            "frame_rate_cap": normalize_frame_rate_cap(
+                getattr(self, "frame_rate_cap", FRAME_RATE_CAP_DEFAULT)
+            ),
+            "show_perf_overlay": bool(
+                getattr(self, "show_perf_overlay", False)
+            ),
         }
 
     def load_options(self) -> bool:
@@ -785,6 +860,9 @@ class OptionsMixin:
         try:
             schema_version = int(data.get("schema_version", 1))
             mobile_mode = bool(getattr(self, "mobile_mode", False))
+            # Deprecation cutoff: 4.4 — legacy mobile quality migration covered
+            # schema < 6 option files (4.2.x -> 4.3.0 upgrade). Keep through
+            # 4.3.x; remove in 4.4.
             legacy_mobile_quality_migration = (
                 mobile_mode
                 and schema_version < 6
@@ -807,6 +885,9 @@ class OptionsMixin:
             loaded_ui_scale_auto = bool(
                 data.get("ui_scale_auto", not has_saved_ui_scale)
             )
+            # Deprecation cutoff: 4.4 -- legacy UI-scale migration covered
+            # schema-4 option files that serialized a scale without an auto
+            # flag. Keep through 4.3.x; remove in 4.4.
             legacy_ui_scale_migration = (
                 has_saved_ui_scale and not has_auto_mode
             )
@@ -840,8 +921,20 @@ class OptionsMixin:
             # Older option files omit this field and migrate to modern graphics;
             # missing individual resources still fall back procedurally.
             self.legacy_graphics = bool(data.get("legacy_graphics", False))
+            # Schema v7 (4.3.17): frame-rate cap + dev perf overlay. Pre-v7
+            # option files default to 60 FPS and overlay off; run saves stay
+            # schema 5 and are unaffected.
+            self.frame_rate_cap = normalize_frame_rate_cap(
+                data.get("frame_rate_cap", FRAME_RATE_CAP_DEFAULT)
+            )
+            self.show_perf_overlay = bool(data.get("show_perf_overlay", False))
         except (TypeError, ValueError):
             return False
+        frame_pacing = getattr(self, "frame_pacing", None)
+        if frame_pacing is not None:
+            frame_pacing.set_frame_rate_cap(
+                getattr(self, "frame_rate_cap", FRAME_RATE_CAP_DEFAULT)
+            )
         self._set_ui_scale(
             loaded_ui_scale,
             automatic=loaded_ui_scale_auto,
@@ -878,18 +971,9 @@ class OptionsMixin:
         ui_assets = getattr(self, "ui_assets", None)
         if ui_assets is not None and hasattr(ui_assets, "clear_derived_caches"):
             ui_assets.clear_derived_caches()
-        if hasattr(self, "clear_stage_render_cache"):
-            self.clear_stage_render_cache()
-        self._hud_panel_cache = {}
-        self._hud_icon_cache = {}
-        self._aim_cone_cache = {}
+        # All memoized render caches flow through the single invalidation seam.
+        self._invalidate_render_caches()
         tile_cache = getattr(self, "tile_cache", None)
-        if tile_cache is not None:
-            tile_cache.clear()
-        self.door_tile_cache = {}
-        self._alpha_tile_cache = {}
-        if hasattr(self, "reset_lighting_caches"):
-            self.reset_lighting_caches()
         if tile_cache is not None and hasattr(self, "theme"):
             self.prewarm_tile_cache()
 

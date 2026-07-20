@@ -58,8 +58,15 @@ if ! "$PYTHON" -m buildozer --version >/dev/null 2>&1; then
   exit 1
 fi
 
+# Refresh generated license/notice copies before validating them. The LGPL
+# text is a checked-in third-party license asset and is intentionally not
+# regenerated from an Arch Rogue root file.
+mkdir -p src/arch_rogue/assets/licenses
+cp LICENSE src/arch_rogue/assets/licenses/LICENSE.txt
+cp NOTICE src/arch_rogue/assets/licenses/NOTICE.txt
+
 # Fail before an expensive cross-build if the root SDL2 entry point, local
-# pygame-ce recipe, p4a pin, or ABI settings have regressed.
+# pygame-ce recipe, p4a pin, ABI settings, or bundled license assets regressed.
 "$PYTHON" tools/validate_android_apk.py \
   --project-root . --source-dir src --spec buildozer.spec
 
@@ -238,6 +245,31 @@ APK_PATH="${APK_PATHS[0]}"
 # package a host x86_64 wheel into a valid-looking ARM APK.
 "$PYTHON" tools/validate_android_apk.py \
   --project-root . --source-dir src --spec "$SPEC" "$APK_PATH"
+
+# Release integrity: validate the signing block and manifest metadata before an
+# APK can be stamped/uploaded. A ZIP with valid files is not installable unless
+# its APK signature verifies, and stale package/version metadata must not pass.
+SDK_BUILD_TOOLS_ROOT="${ANDROIDSDK:-$HOME/.buildozer/android/platform/android-sdk}/build-tools"
+BUILD_TOOL_DIRS=()
+while IFS= read -r directory; do
+  BUILD_TOOL_DIRS+=("$directory")
+done < <(find "$SDK_BUILD_TOOLS_ROOT" -mindepth 1 -maxdepth 1 -type d -print | sort -V)
+if [ "${#BUILD_TOOL_DIRS[@]}" -eq 0 ]; then
+  echo "build_android.sh: Android SDK build-tools not found under $SDK_BUILD_TOOLS_ROOT" >&2
+  exit 1
+fi
+BUILD_TOOLS_DIR="${BUILD_TOOL_DIRS[${#BUILD_TOOL_DIRS[@]}-1]}"
+AAPT="$BUILD_TOOLS_DIR/aapt"
+APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
+if [ ! -x "$AAPT" ] || [ ! -x "$APKSIGNER" ]; then
+  echo "build_android.sh: aapt/apksigner missing from $BUILD_TOOLS_DIR" >&2
+  exit 1
+fi
+"$APKSIGNER" verify --verbose "$APK_PATH"
+BADGING="$("$AAPT" dump badging "$APK_PATH")"
+printf '%s\n' "$BADGING" | grep -Fq "package: name='org.archrogue.archrogue'"
+printf '%s\n' "$BADGING" | grep -Fq "versionName='$VERSION'"
+printf '%s\n' "$BADGING" | grep -Fq "native-code: 'arm64-v8a' 'armeabi-v7a'"
 
 mkdir -p "$(dirname "$NATIVE_STAMP")"
 printf '%s\n' "$NATIVE_FINGERPRINT" > "$NATIVE_STAMP"

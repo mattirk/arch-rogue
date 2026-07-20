@@ -240,10 +240,32 @@ class LightingMixin:
     def mobile_lightweight_lighting_active(self) -> bool:
         """Use local light accents only when Native cannot present via GLES.
 
-        The accelerated Android path can composite the same quarter-resolution
-        continuous light buffer used by the capped tiers, restoring actor and
-        lantern halos without a full-resolution CPU multiply. The local tint
-        remains as a launch/context-loss fallback for software renderers.
+        This is the local-tint CPU fallback. It is **not reachable on desktop**:
+        the first guard below short-circuits whenever ``mobile_mode`` is False,
+        so no desktop frame ever runs the local-tint code path. It is reachable
+        on Android only when ALL of the following hold:
+
+        1. ``lighting_enabled()`` is True (the Lighting option is not Off), and
+        2. ``mobile_mode`` is True (Android runtime), and
+        3. ``mobile_render_quality == "native"`` (Performance/Balanced use the
+           quarter-resolution CPU buffer path directly via ``draw_lighting``),
+           and
+        4. the GLES accelerated renderer is unavailable — either
+           ``_mobile_renderer_accelerated`` is False (software renderer, e.g.
+           a device with no GPU) or ``_mobile_gpu_renderer`` is None (renderer
+           not yet attached at launch, or released after an SDL context loss
+           until ``refresh_mobile_gpu_renderer`` re-borrows it).
+
+        This gate is intentionally tight: the fallback exists as the
+        launch-safe / context-loss-safe path for software renderers, NOT as a
+        general mobile tier. It must stay because some supported Android
+        devices have no GLES presenter at all (pure software renderer), and
+        every Android process briefly runs without a renderer before
+        ``init_mobile_runtime`` attaches one. Removing it would leave those
+        devices with no lighting fallback. Once the GLES renderer is attached,
+        the accelerated path composites the same quarter-resolution continuous
+        light buffer used by the capped tiers, restoring actor and lantern
+        halos without a full-resolution CPU multiply.
         """
 
         if not (
@@ -252,6 +274,11 @@ class LightingMixin:
             and getattr(self, "mobile_render_quality", "native") == "native"
         ):
             return False
+        # Launch-safe / context-loss-safe gate: only fall back to local tint
+        # when the GLES accelerated renderer is genuinely unavailable. This
+        # keeps the fallback off every accelerated Android frame and off every
+        # desktop frame, while preserving a lighting path for software
+        # renderers and during the brief pre-attach / post-context-loss window.
         return not (
             getattr(self, "_mobile_renderer_accelerated", False)
             and getattr(self, "_mobile_gpu_renderer", None) is not None
@@ -273,13 +300,21 @@ class LightingMixin:
         return self.lighting_enabled()
 
     def light_buffer_scale(self) -> int:
-        """Return the lighting downsample divisor for the active platform tier."""
+        """Return the lighting downsample divisor for the active platform tier.
+
+        Desktop keeps the half-resolution divisor (``LIGHT_BUFFER_SCALE = 2``):
+        it is the live, active path for the desktop crowd profile, not a stale
+        mobile tier. Mobile uses the quarter-resolution divisor (``4``) on every
+        quality tier (Performance / Balanced / Native); the previous per-tier
+        scale (``2`` for Native, ``3`` for Balanced) was retired in 4.3.10 when
+        physical-device traces showed half-resolution native lighting still
+        costing 20-30 ms to build while pixel-art falloff remained readable at
+        quarter resolution. The mobile half-resolution branch is therefore dead
+        and intentionally not re-exposed here; the desktop half-resolution
+        branch is alive and must stay.
+        """
 
         if getattr(self, "mobile_mode", False):
-            # Physical-device traces show half-resolution native lighting still
-            # costs 20-30 ms to build. Pixel-art falloff remains readable at the
-            # quarter-resolution tier already used by Performance, while the
-            # world and actor framebuffer stays at the selected native size.
             return 4
         return LIGHT_BUFFER_SCALE
 

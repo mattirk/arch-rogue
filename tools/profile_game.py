@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import cProfile
+import json
 import os
 import pstats
 import sys
@@ -78,6 +79,31 @@ def parse_args() -> argparse.Namespace:
         default=Path("build/profiles"),
         help="Directory for update.prof and render.prof outputs.",
     )
+    parser.add_argument(
+        "--baseline",
+        type=Path,
+        default=None,
+        help=(
+            "Write a JSON snapshot of phase timings to this path. "
+            "Used to establish a regression baseline."
+        ),
+    )
+    parser.add_argument(
+        "--compare",
+        type=Path,
+        default=None,
+        help=(
+            "Compare phase timings against the JSON baseline at this path and "
+            "exit nonzero if any phase regresses by more than --threshold "
+            "(default 10%%)."
+        ),
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=10.0,
+        help="Max allowed regression percentage per phase when using --compare.",
+    )
     args = parser.parse_args()
     if args.frames <= 0:
         parser.error("--frames must be positive")
@@ -87,6 +113,10 @@ def parse_args() -> argparse.Namespace:
         parser.error("profile resolution must be at least 320x240")
     if args.zoom <= 0.0:
         parser.error("--zoom must be positive")
+    if args.threshold <= 0.0:
+        parser.error("--threshold must be positive")
+    if args.baseline and args.compare:
+        parser.error("--baseline and --compare are mutually exclusive")
     if args.top <= 0:
         parser.error("--top must be positive")
     return args
@@ -184,6 +214,38 @@ def print_profile(label: str, profile: cProfile.Profile, top: int) -> None:
     pstats.Stats(profile, stream=sys.stdout).strip_dirs().sort_stats("cumulative").print_stats(top)
 
 
+def _compare_baseline(baseline_path: Path, snapshot: dict, threshold_pct: float) -> str | None:
+    """Return a failure message if any phase regresses beyond threshold_pct.
+
+    Regression = current timing is more than ``threshold_pct`` percent slower
+    than the baseline. Improvements and noise within the threshold pass. A
+    missing baseline file or missing phase is reported as a failure message.
+    """
+
+    try:
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return f"could not read baseline {baseline_path}: {exc}"
+    base_phases = baseline.get("phases") or {}
+    cur_phases = snapshot.get("phases") or {}
+    if not base_phases or not cur_phases:
+        return f"baseline/snapshot missing phases (baseline={base_phases!r})"
+    failures: list[str] = []
+    for phase, cur_ms in cur_phases.items():
+        base_ms = base_phases.get(phase)
+        if base_ms is None or base_ms <= 0.0:
+            failures.append(f"{phase}: missing/invalid baseline {base_ms!r}")
+            continue
+        ratio = cur_ms / base_ms
+        regression_pct = (ratio - 1.0) * 100.0
+        if regression_pct > threshold_pct:
+            failures.append(
+                f"{phase}: {cur_ms:.3f} ms/frame vs baseline "
+                f"{base_ms:.3f} ms/frame (+{regression_pct:.1f}% > {threshold_pct:.1f}%)"
+            )
+    return "; ".join(failures) if failures else None
+
+
 def main() -> None:
     args = parse_args()
     output_dir = args.output_dir.resolve()
@@ -228,6 +290,40 @@ def main() -> None:
                 f"{cache_after.get('frame_builds', 0) - cache_before.get('frame_builds', 0)}"
             )
             print(f"Profiles: {update_path} and {render_path}")
+            update_ms = update_seconds * 1000.0 / args.frames
+            render_ms = render_seconds * 1000.0 / args.frames
+            snapshot = {
+                "scenario": profile_name,
+                "seed": args.seed,
+                "depth": args.depth,
+                "frames": args.frames,
+                "warmup": args.warmup,
+                "width": args.width,
+                "height": args.height,
+                "zoom": args.zoom,
+                "mobile": args.mobile,
+                "mobile_quality": args.mobile_quality,
+                "lighting": not args.no_lighting,
+                "enemies": enemy_count,
+                "render_size": list(game.screen.get_size()),
+                "phases": {
+                    "update_ms_per_frame": update_ms,
+                    "render_ms_per_frame": render_ms,
+                },
+            }
+            if args.baseline:
+                args.baseline.parent.mkdir(parents=True, exist_ok=True)
+                args.baseline.write_text(
+                    json.dumps(snapshot, indent=2, sort_keys=True),
+                    encoding="utf-8",
+                )
+                print(f"Baseline written: {args.baseline}")
+            if args.compare:
+                failure = _compare_baseline(args.compare, snapshot, args.threshold)
+                if failure:
+                    print(f"REGRESSION: {failure}", file=sys.stderr)
+                    sys.exit(1)
+                print(f"No regression vs baseline {args.compare}")
             print_profile("Update", update_profile, args.top)
             print_profile("Render", render_profile, args.top)
     finally:
