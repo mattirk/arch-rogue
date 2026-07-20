@@ -51,6 +51,7 @@ MOBILE_PERF_PHASES = (
 MOBILE_PERF_DETAIL_PHASES = (
     "floor",
     "objects",
+    "aim",
     "guidance",
     "light_build",
     "ambient",
@@ -563,6 +564,8 @@ class MobilePerformanceMonitor:
             phase: 0.0 for phase in MOBILE_PERF_DETAIL_PHASES
         }
         self._last_cache_stats: dict[str, int] = {}
+        self._last_aim_cache_hits = 0
+        self._last_aim_cache_misses = 0
         self.last_report = ""
         self.overlay_text = "PERF collecting frame timings..."
         self.overlay_detail_text = "T -- U -- W -- H -- F -- A -- | L+0 B+0"
@@ -664,6 +667,14 @@ class MobilePerformanceMonitor:
             0, frame_builds - self._last_cache_stats.get("frame_builds", 0)
         )
         self._last_cache_stats = cache_stats
+        aim_hits = int(getattr(game, "_aim_cone_cache_hits", 0))
+        aim_misses = int(getattr(game, "_aim_cone_cache_misses", 0))
+        aim_hit_delta = max(0, aim_hits - self._last_aim_cache_hits)
+        aim_miss_delta = max(0, aim_misses - self._last_aim_cache_misses)
+        self._last_aim_cache_hits = aim_hits
+        self._last_aim_cache_misses = aim_misses
+        aim_cache = getattr(game, "_aim_cone_cache", ())
+        aim_cache_entries = self._safe_len(aim_cache)
 
         accelerated = getattr(game, "_mobile_renderer_accelerated", None)
         accelerated_label = (
@@ -742,6 +753,8 @@ class MobilePerformanceMonitor:
             f"cache=decoded:{cache_stats.get('decoded_sources', 0)},"
             f"frames:{cache_stats.get('resolved_frames', 0)},"
             f"loads+:{source_delta},builds+:{build_delta} "
+            f"aim_cache=entries:{aim_cache_entries},hits+:{aim_hit_delta},"
+            f"misses+:{aim_miss_delta} "
             f"floor_cache=rebuilds:{int(getattr(game, '_mobile_floor_cache_rebuilds', 0))},"
             f"patches:{int(getattr(game, '_mobile_floor_cache_patches', 0))}"
         )
@@ -1512,6 +1525,7 @@ class MobileMixin:
         self._mobile_touch_contacts.clear()
         self._mobile_last_row_tap = None
         self._mobile_world_finger = None
+        self._mobile_touch_world_point = None
         self._mobile_touch_world_active = False
 
     def register_mobile_touch_target(
@@ -1633,7 +1647,9 @@ class MobileMixin:
 
         self._mobile_touch_contacts.pop(key, None)
         if contact.role == "world" and key == self._mobile_world_finger:
-            self._mobile_touch_world_point = point
+            if hasattr(self, "player"):
+                self.face_player_toward_screen_point(*point)
+            self._mobile_touch_world_point = None
             self._mobile_world_finger = None
             self._mobile_touch_world_active = False
             return True
@@ -1994,6 +2010,7 @@ class MobileMixin:
             "_hud_icon_cache",
             "_ui_text_cache",
             "_alpha_tile_cache",
+            "_aim_cone_cache",
             "ambient_overlay_cache",
         ):
             cache = getattr(self, name, None)

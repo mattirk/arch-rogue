@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import tempfile
 import unittest
 import warnings
+from collections import OrderedDict
 from pathlib import Path
 from unittest.mock import call, patch
 
@@ -17,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pygame
 
 import arch_rogue.mobile as mobile_runtime
-from arch_rogue.constants import DUNGEON_DEPTH
+from arch_rogue.constants import DUNGEON_DEPTH, TILE_H, TILE_W
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.input import Command
@@ -670,10 +672,15 @@ class MobileRenderQualityTests(unittest.TestCase):
                 clock=lambda: now[0],
                 emit=emitted.append,
             )
+            game._aim_cone_cache = OrderedDict()
+            game._aim_cone_cache[("test",)] = object()
+            game._aim_cone_cache_hits = 7
+            game._aim_cone_cache_misses = 2
             monitor.begin_frame()
             monitor.record_phase("world", 0.2)
             monitor.record_phase("hud", 0.05)
             monitor.record_phase("flip", 0.7)
+            monitor.record_detail_phase("aim", 0.03)
             now[0] = 1.1
             report = monitor.finish_frame(game)
 
@@ -689,9 +696,66 @@ class MobileRenderQualityTests(unittest.TestCase):
             self.assertIn("renderer=opengles2 accelerated=yes", report)
             self.assertIn("alpha_sdl2=1 neon=yes", report)
             self.assertIn("cache=decoded:", report)
+            self.assertIn("aim:30.0", report)
+            self.assertIn("aim_cache=entries:1,hits+:7,misses+:2", report)
             self.assertIn("A2:1 N:yes", monitor.overlay_text)
             self.assertIn("T 0 U 0 W 200 H 50 F 700 A 0", monitor.overlay_detail_text)
 
+
+    def test_mobile_aim_cone_uses_bounded_buckets_without_smoothscale(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game._aim_cone_cache = OrderedDict()
+            game._aim_cone_cache_hits = 0
+            game._aim_cone_cache_misses = 0
+
+            with patch.object(
+                pygame.transform,
+                "smoothscale",
+                wraps=pygame.transform.smoothscale,
+            ) as smoothscale:
+                for index in range(360):
+                    angle = math.tau * index / 360
+                    game.player.facing_x = math.cos(angle)
+                    game.player.facing_y = math.sin(angle)
+                    game.draw_aim_cone()
+
+            self.assertEqual(len(game._aim_cone_cache), 32)
+            self.assertEqual(
+                {int(key[-1]) for key in game._aim_cone_cache},
+                set(range(32)),
+            )
+            self.assertEqual(game._aim_cone_cache_misses, 32)
+            self.assertGreater(game._aim_cone_cache_hits, 300)
+            total_bytes = sum(
+                entry[0].get_width()
+                * entry[0].get_height()
+                * entry[0].get_bytesize()
+                for entry in game._aim_cone_cache.values()
+            )
+            self.assertLess(total_bytes, 8 * 1024 * 1024)
+            smoothscale.assert_not_called()
+
+            def face_screen_angle(angle: float) -> None:
+                iso_difference = 2.0 * math.cos(angle) / TILE_W
+                iso_sum = 2.0 * math.sin(angle) / TILE_H
+                game.player.facing_x = (iso_sum + iso_difference) * 0.5
+                game.player.facing_y = (iso_sum - iso_difference) * 0.5
+
+            bucket_width = math.tau / 32
+            delattr(game, "_aim_cone_direction_bucket")
+            face_screen_angle(bucket_width * 0.5 - 0.01)
+            game.draw_aim_cone()
+            self.assertEqual(game._aim_cone_direction_bucket, (32, 0))
+            face_screen_angle(bucket_width * 0.5 + 0.01)
+            game.draw_aim_cone()
+            self.assertEqual(game._aim_cone_direction_bucket, (32, 0))
+            face_screen_angle(bucket_width * 0.8)
+            game.draw_aim_cone()
+            self.assertEqual(game._aim_cone_direction_bucket, (32, 1))
+
+            game.clear_mobile_memory_caches()
+            self.assertEqual(len(game._aim_cone_cache), 0)
 
     def test_android_alpha_sources_enable_rle_without_changing_alpha(self) -> None:
         source = pygame.Surface((24, 24), pygame.SRCALPHA)
@@ -1102,16 +1166,45 @@ class MobileTouchTests(unittest.TestCase):
             game = make_mobile_game(tmpdir, (1280, 720))
             game.draw()
             viewport = game.mobile_world_viewport()
-            inside = (viewport.centerx / 1280.0, viewport.centery / 720.0)
-            down = self.finger_event(pygame.FINGERDOWN, *inside)
+            size = game._mobile_display_surface().get_size()
+            down_point = viewport.center
+            release_point = (viewport.right - 40, viewport.centery)
+            down = self.finger_event(
+                pygame.FINGERDOWN, *self.normalized(down_point, size)
+            )
             self.assertTrue(game.handle_mobile_finger_event(down))
             self.assertTrue(game._mobile_touch_world_active)
             self.assertEqual(game.aim_input_mode, "touch")
-            self.assertEqual(game.active_mobile_world_touch(), (viewport.centerx, viewport.centery))
-            up = self.finger_event(pygame.FINGERUP, *inside)
+            self.assertEqual(game.active_mobile_world_touch(), down_point)
+
+            up = self.finger_event(
+                pygame.FINGERUP, *self.normalized(release_point, size)
+            )
+            mapped_release = game.mobile_finger_position(up, size)
+            target_x, target_y = game.screen_to_world(*mapped_release)
+            expected_dx = target_x - game.player.x
+            expected_dy = target_y - game.player.y
+            expected_length = math.hypot(expected_dx, expected_dy)
+            self.assertGreater(expected_length, 0.05)
+            expected_facing = (
+                expected_dx / expected_length,
+                expected_dy / expected_length,
+            )
+
             self.assertTrue(game.handle_mobile_finger_event(up))
             self.assertFalse(game._mobile_touch_world_active)
+            self.assertIsNone(game._mobile_touch_world_point)
             self.assertIsNone(game.active_mobile_world_touch())
+            self.assertAlmostEqual(game.player.facing_x, expected_facing[0], places=6)
+            self.assertAlmostEqual(game.player.facing_y, expected_facing[1], places=6)
+
+            facing_after_release = (game.player.facing_x, game.player.facing_y)
+            game._cam_iso = (game._cam_iso[0] + 100.0, game._cam_iso[1] + 100.0)
+            game.update_player_aim()
+            self.assertEqual(
+                (game.player.facing_x, game.player.facing_y),
+                facing_after_release,
+            )
 
     def test_skill_finger_dispatches_ability_without_world_input(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

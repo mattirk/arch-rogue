@@ -1760,7 +1760,13 @@ class RenderingWorldMixin:
             if visible(effect.x, effect.y, max(0.35, effect.radius)):
                 drawables.append((effect.x + effect.y + 0.08, "impact", effect))
 
+        aim_started = time.perf_counter()
         self.draw_aim_cone()
+        performance = getattr(self, "_mobile_performance_monitor", None)
+        if performance is not None:
+            performance.record_detail_phase(
+                "aim", time.perf_counter() - aim_started
+            )
         self._guidance_glow_blit_rect = None
         self._mobile_guidance_surface_size = (0, 0)
         # The guiding light leads the player TO the relic, so it must render

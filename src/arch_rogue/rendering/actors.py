@@ -23,7 +23,7 @@
 from __future__ import annotations
 
 import math
-from collections import deque
+from collections import OrderedDict, deque
 from typing import cast
 
 import pygame
@@ -696,21 +696,61 @@ class RenderingActorMixin:
 
     def draw_aim_cone(self) -> None:
         sx, sy = self.world_to_screen(self.player.x, self.player.y)
-        vx, vy = self.iso_screen_direction(self.player.facing_x, self.player.facing_y)
+        raw_vx, raw_vy = self.iso_screen_direction(
+            self.player.facing_x, self.player.facing_y
+        )
+        mobile_fast = bool(getattr(self, "mobile_mode", False))
+        bucket_count = 32 if mobile_fast else 64
+        raw_angle = math.atan2(raw_vy, raw_vx)
+        direction_bucket = int(
+            round(raw_angle / math.tau * bucket_count)
+        ) % bucket_count
+        bucket_width = math.tau / bucket_count
+        previous_bucket = getattr(self, "_aim_cone_direction_bucket", None)
+        if (
+            isinstance(previous_bucket, tuple)
+            and len(previous_bucket) == 2
+            and previous_bucket[0] == bucket_count
+        ):
+            previous_index = int(previous_bucket[1]) % bucket_count
+            previous_angle = previous_index * bucket_width
+            angle_delta = (
+                (raw_angle - previous_angle + math.pi) % math.tau
+            ) - math.pi
+            if abs(angle_delta) <= bucket_width * 0.62:
+                direction_bucket = previous_index
+        self._aim_cone_direction_bucket = (bucket_count, direction_bucket)
+        bucket_angle = direction_bucket * bucket_width
+        vx, vy = math.cos(bucket_angle), math.sin(bucket_angle)
         px, py = -vy, vx
         aim_blue = self.mix((92, 170, 255), self.theme.accent, 0.18)
         modern_aim = self.sprites.modern_graphics_active
         cone_alpha = 28 if modern_aim else 14
 
-        # Cache by every input that changes the generated surface, then reuse it
-        # across frames by repositioning the blit. The supersampled polygon draw
-        # and smoothscale blur are the expensive parts.
-        if not hasattr(self, "_aim_cone_cache"):
-            self._aim_cone_cache: dict[tuple[object, ...], tuple] = {}
-        cone_key = (modern_aim, aim_blue, round(vx, 3), round(vy, 3))
-        cached = self._aim_cone_cache.get(cone_key)
+        # Touch and analog aim produce effectively continuous vectors. Quantize
+        # only this visual indicator (gameplay aim remains exact), otherwise tiny
+        # camera/finger changes rebuild three blurred surfaces every frame and grow
+        # an unbounded cache. Mobile uses a cheaper pixel-art cone; desktop keeps
+        # the soft blur at finer angular resolution.
+        raw_cache = getattr(self, "_aim_cone_cache", None)
+        if isinstance(raw_cache, OrderedDict):
+            cache = raw_cache
+        else:
+            cache = OrderedDict(raw_cache.items() if isinstance(raw_cache, dict) else ())
+            self._aim_cone_cache = cache
+        cone_key = (
+            modern_aim,
+            aim_blue,
+            mobile_fast,
+            bucket_count,
+            direction_bucket,
+        )
+        cached = cache.get(cone_key)
 
         if cached is None:
+            self._aim_cone_cache_misses = int(
+                getattr(self, "_aim_cone_cache_misses", 0)
+            ) + 1
             # Build the cone in a facing-local space (origin at 0,0) so the
             # same surface is reusable across player positions.
             local_origin = (0.0, 0.0)
@@ -750,14 +790,14 @@ class RenderingActorMixin:
             # from the player body instead of at the player origin.
             cutout = 16.0
             bounds_points = cone_points(61.0, 0.21, cutout, 28)
-            pad = 18 * WORLD_SCALE
+            pad = (3 if mobile_fast else 18) * WORLD_SCALE
             min_x = math.floor(min(point[0] for point in bounds_points) - pad)
             max_x = math.ceil(max(point[0] for point in bounds_points) + pad)
             min_y = math.floor(min(point[1] for point in bounds_points) - pad)
             max_y = math.ceil(max(point[1] for point in bounds_points) + pad)
             width = max(1, max_x - min_x)
             height = max(1, max_y - min_y)
-            supersample = 3
+            supersample = 1 if mobile_fast else 3
             overlay = pygame.Surface(
                 (width * supersample, height * supersample), pygame.SRCALPHA
             )
@@ -780,13 +820,14 @@ class RenderingActorMixin:
                     localize(cone_points(length, angle, start, 30)),
                 )
 
-            overlay = pygame.transform.smoothscale(overlay, (width, height))
-            # Soft blur pass: downscale then upscale to feather the edges and
-            # make the cone read as a subtle glow rather than a hard shape.
-            blur_w = max(1, width // 3)
-            blur_h = max(1, height // 3)
-            overlay = pygame.transform.smoothscale(overlay, (blur_w, blur_h))
-            overlay = pygame.transform.smoothscale(overlay, (width, height))
+            if not mobile_fast:
+                overlay = pygame.transform.smoothscale(overlay, (width, height))
+                # Soft blur pass: downscale then upscale to feather the edges and
+                # make the cone read as a subtle glow rather than a hard shape.
+                blur_w = max(1, width // 3)
+                blur_h = max(1, height // 3)
+                overlay = pygame.transform.smoothscale(overlay, (blur_w, blur_h))
+                overlay = pygame.transform.smoothscale(overlay, (width, height))
             overlay = optimize_immutable_alpha_surface(overlay)
             # Anchor: the local origin (0,0) maps to pixel (-min_x, -min_y)
             # within the surface. Store that anchor so the blit can place it
@@ -794,7 +835,16 @@ class RenderingActorMixin:
             anchor_x = -min_x
             anchor_y = -min_y
             cached = (overlay, anchor_x, anchor_y, width, height)
-            self._aim_cone_cache[cone_key] = cached
+            cache[cone_key] = cached
+            cache.move_to_end(cone_key)
+            cache_limit = 36 if mobile_fast else 72
+            while len(cache) > cache_limit:
+                cache.popitem(last=False)
+        else:
+            self._aim_cone_cache_hits = int(
+                getattr(self, "_aim_cone_cache_hits", 0)
+            ) + 1
+            cache.move_to_end(cone_key)
 
         overlay, anchor_x, anchor_y, _w, _h = cached
         # Player screen position offset by the same origin offset used in the
