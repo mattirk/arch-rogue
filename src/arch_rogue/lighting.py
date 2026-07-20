@@ -564,23 +564,33 @@ class LightingMixin:
         cache[key] = sprite
         return sprite
 
-    def _flicker_scratch(self, w: int, h: int) -> pygame.Surface:
-        # One reusable scratch per sprite size for the smooth flicker path
-        # (copy -> multiply -> add). Sizes are stable per light, so this
-        # stays tiny (one per flickering light size).
-        cache = getattr(self, "_flicker_scratch_cache", None)
-        if cache is None:
-            cache = {}
-            self._flicker_scratch_cache = cache
-        s = cache.get((w, h))
-        if s is None:
-            s = pygame.Surface((w, h), pygame.SRCALPHA)
-            try:
-                s = s.convert_alpha()
-            except pygame.error:
-                pass
-            cache[(w, h)] = s
-        return s
+    def _modulated_light_sprite(
+        self, sprite: pygame.Surface, factor: int
+    ) -> pygame.Surface:
+        """Return a cached 16-step brightness variant of a radial light."""
+
+        factor_bucket = max(0, min(255, ((int(factor) + 8) // 16) * 16))
+        if factor_bucket >= 248:
+            return sprite
+        cache = getattr(self, "_modulated_light_sprite_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._modulated_light_sprite_cache = cache
+        key = (id(sprite), factor_bucket)
+        cached = cache.get(key)
+        if cached is not None and cached[0] is sprite:
+            cache.move_to_end(key)
+            return cached[1]
+        modulated = sprite.copy()
+        modulated.fill(
+            (factor_bucket, factor_bucket, factor_bucket, 255),
+            special_flags=pygame.BLEND_RGBA_MULT,
+        )
+        cache[key] = (sprite, modulated)
+        cache.move_to_end(key)
+        while len(cache) > 64:
+            cache.popitem(last=False)
+        return modulated
 
     # --- ambient stamping -------------------------------------------
     def _shade_params(self) -> tuple[float, Callable[[float, float], tuple[int, int]]]:
@@ -772,10 +782,9 @@ class LightingMixin:
 
         # 2) Accumulate every active light additively into the buffer.
         # Every light shares one smooth cached sprite per (radius, color)
-        # and modulates brightness with a continuous copy->multiply->add
-        # pass: no per-intensity rebuilds, no radius stepping, smooth fades
-        # and flicker. The extra copy/multiply is cheap (half-res sprites) and
-        # only the on-screen lights run.
+        # and modulates brightness through cached 16-step variants. Flicker spans
+        # only a few neighboring buckets, so steady-state frames need one additive
+        # blit per light instead of a copy + multiply + additive triple pass.
         #
         # Sprite size tracks the shaded surface: display pixels (post-composite,
         # zoomed out) scale by view_zoom so a light covers the same world area
@@ -803,15 +812,8 @@ class LightingMixin:
             bx = sx // scale - sprite.get_width() // 2
             by = sy // scale - sprite.get_height() // 2
             f = max(0, min(255, int(255 * factor)))
-            if f >= 254:
-                buffer.blit(sprite, (bx, by), special_flags=pygame.BLEND_RGBA_ADD)
-                continue
-            scratch = self._flicker_scratch(
-                sprite.get_width(), sprite.get_height()
-            )
-            scratch.blit(sprite, (0, 0))
-            scratch.fill((f, f, f, 255), special_flags=pygame.BLEND_RGBA_MULT)
-            buffer.blit(scratch, (bx, by), special_flags=pygame.BLEND_RGBA_ADD)
+            modulated = self._modulated_light_sprite(sprite, f)
+            buffer.blit(modulated, (bx, by), special_flags=pygame.BLEND_RGBA_ADD)
 
         # 3) On Android, queue the small light buffer for GLES to scale and
         # multiply during presentation. This preserves native-resolution world
@@ -1045,7 +1047,7 @@ class LightingMixin:
         self._lit_shade_cache = OrderedDict()
         self._lit_composite_cache = OrderedDict()
         self._light_sprite_cache = {}
-        self._flicker_scratch_cache = {}
+        self._modulated_light_sprite_cache = OrderedDict()
         self._light_buffer_surface = None
         self._light_scratch_surface = None
         self._mobile_lightweight_ambient_cache = OrderedDict()

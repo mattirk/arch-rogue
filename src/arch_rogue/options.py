@@ -471,6 +471,12 @@ class OptionsMixin:
             "_title_logo_cache",
             "_fitted_ui_font_cache",
             "_impact_overlay_cache",
+            "_world_text_cache",
+            "_world_alpha_surface_cache",
+            "_rotated_surface_cache",
+            "_ellipse_overlay_cache",
+            "_circle_overlay_cache",
+            "_tile_render_descriptor_cache",
             "tile_cache",
             "door_tile_cache",
         ):

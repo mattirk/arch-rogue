@@ -218,6 +218,10 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - On mobile, back button is needed. Place subtle back button in top left corner on screens that allow going back to previous screens, including character and inventory. Generate nice glyph in pixellab
 - Make Native resolution default on mobile
 
+#### 4.4.2 Another batch of Android optimization
+
+- General optimizations, remember to bump versions after optimizations
+
 ### Backlog
 
 - We need to make the darkess deepen more on lower levels, dark levels look already good, but also other "normal" levels below 5 should feel more dark. (do not implement this yet, user will explicitly request this feature if needed)

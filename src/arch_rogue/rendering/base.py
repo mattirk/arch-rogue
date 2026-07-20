@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import math
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from contextlib import contextmanager
 from typing import Iterator, cast
 
@@ -664,6 +664,172 @@ class RenderingBaseMixin:
         while text and self._text_size(font, text + suffix)[0] > max_width:
             text = text[:-1]
         return text + suffix if text else suffix
+
+    def _cached_text_surface(
+        self,
+        font: pygame.font.Font,
+        text: str,
+        color: Color,
+    ) -> pygame.Surface:
+        """Return a cached immutable text surface for world-space labels."""
+
+        cache = getattr(self, "_world_text_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._world_text_cache = cache
+        key = (id(font), text, color)
+        cached = cache.get(key)
+        if cached is not None:
+            cache.move_to_end(key)
+            return cached
+        rendered = optimize_immutable_alpha_surface(font.render(text, True, color))
+        cache[key] = rendered
+        cache.move_to_end(key)
+        while len(cache) > 1024:
+            cache.popitem(last=False)
+        return rendered
+
+    def _cached_alpha_surface(
+        self,
+        source: pygame.Surface,
+        alpha: int,
+    ) -> pygame.Surface:
+        """Return a 16-step global-alpha variant without per-frame copies."""
+
+        bucket_alpha = max(0, min(255, ((int(alpha) + 8) // 16) * 16))
+        cache = getattr(self, "_world_alpha_surface_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._world_alpha_surface_cache = cache
+        key = (id(source), bucket_alpha)
+        cached = cache.get(key)
+        if cached is not None and cached[0] is source:
+            cache.move_to_end(key)
+            return cached[1]
+        variant = source.copy()
+        variant.set_alpha(bucket_alpha, pygame.RLEACCEL)
+        variant = optimize_immutable_alpha_surface(variant, alpha=bucket_alpha)
+        cache[key] = (source, variant)
+        cache.move_to_end(key)
+        while len(cache) > 2048:
+            cache.popitem(last=False)
+        return variant
+
+    def _cached_rotated_surface(
+        self,
+        source: pygame.Surface,
+        angle: float,
+    ) -> pygame.Surface:
+        """Return a degree-quantized rotation for gently animated world props."""
+
+        angle_bucket = int(round(angle))
+        cache = getattr(self, "_rotated_surface_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._rotated_surface_cache = cache
+        key = (id(source), angle_bucket)
+        cached = cache.get(key)
+        if cached is not None and cached[0] is source:
+            cache.move_to_end(key)
+            return cached[1]
+        rotated = optimize_immutable_alpha_surface(
+            pygame.transform.rotate(source, angle_bucket)
+        )
+        cache[key] = (source, rotated)
+        cache.move_to_end(key)
+        while len(cache) > 256:
+            cache.popitem(last=False)
+        return rotated
+
+    def _cached_circle_overlay(
+        self,
+        namespace: str,
+        size: tuple[int, int],
+        color: Color,
+        alpha: int,
+        radius: int,
+        width: int,
+    ) -> pygame.Surface:
+        """Cache a small outlined circle used by attack telegraphs."""
+
+        cache = getattr(self, "_circle_overlay_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._circle_overlay_cache = cache
+        key = (namespace, size, color, int(alpha), int(radius), int(width))
+        cached = cache.get(key)
+        if cached is not None:
+            cache.move_to_end(key)
+            return cached
+        overlay = pygame.Surface(size, pygame.SRCALPHA)
+        pygame.draw.circle(
+            overlay,
+            (*color, int(alpha)),
+            overlay.get_rect().center,
+            int(radius),
+            int(width),
+        )
+        overlay = optimize_immutable_alpha_surface(overlay)
+        cache[key] = overlay
+        cache.move_to_end(key)
+        while len(cache) > 128:
+            cache.popitem(last=False)
+        return overlay
+
+    def _cached_ellipse_overlay(
+        self,
+        namespace: str,
+        size: tuple[int, int],
+        outer_color: Color,
+        outer_alpha: int,
+        *,
+        outer_width: int = 0,
+        inner_color: Color | None = None,
+        inner_alpha: int = 0,
+        inner_inflate: tuple[int, int] = (0, 0),
+        inner_width: int = 0,
+    ) -> pygame.Surface:
+        """Cache small pulsing ellipse overlays by their quantized appearance."""
+
+        cache = getattr(self, "_ellipse_overlay_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._ellipse_overlay_cache = cache
+        key = (
+            namespace,
+            size,
+            outer_color,
+            int(outer_alpha),
+            int(outer_width),
+            inner_color,
+            int(inner_alpha),
+            inner_inflate,
+            int(inner_width),
+        )
+        cached = cache.get(key)
+        if cached is not None:
+            cache.move_to_end(key)
+            return cached
+        overlay = pygame.Surface(size, pygame.SRCALPHA)
+        pygame.draw.ellipse(
+            overlay,
+            (*outer_color, int(outer_alpha)),
+            overlay.get_rect(),
+            int(outer_width),
+        )
+        if inner_color is not None and inner_alpha > 0:
+            pygame.draw.ellipse(
+                overlay,
+                (*inner_color, int(inner_alpha)),
+                overlay.get_rect().inflate(*inner_inflate),
+                int(inner_width),
+            )
+        overlay = optimize_immutable_alpha_surface(overlay)
+        cache[key] = overlay
+        cache.move_to_end(key)
+        while len(cache) > 256:
+            cache.popitem(last=False)
+        return overlay
 
     def draw_ui_text(
         self,

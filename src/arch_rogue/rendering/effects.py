@@ -882,17 +882,18 @@ class RenderingEffectsMixin:
         )
         pulse = 0.65 + 0.35 * math.sin(self.elapsed * 4.0 + item.x + item.y)
         rare_scale = 1.25 if item.visible_rarity in ("Rare", "Unique") else 1.0
-        glow = pygame.Surface(
-            (int(42 * rare_scale) * WORLD_SCALE, int(20 * rare_scale) * WORLD_SCALE),
-            pygame.SRCALPHA,
+        glow_size = (
+            int(42 * rare_scale) * WORLD_SCALE,
+            int(20 * rare_scale) * WORLD_SCALE,
         )
-        pygame.draw.ellipse(
-            glow, (*rarity_color, int(55 + 45 * pulse)), glow.get_rect()
-        )
-        pygame.draw.ellipse(
-            glow,
-            (*self.shade(rarity_color, 45), int(22 + 30 * pulse)),
-            glow.get_rect().inflate(-glow.get_width() // 3, -glow.get_height() // 3),
+        glow = self._cached_ellipse_overlay(
+            "item_glow",
+            glow_size,
+            rarity_color,
+            (int(55 + 45 * pulse) // 8) * 8,
+            inner_color=self.shade(rarity_color, 45),
+            inner_alpha=(int(22 + 30 * pulse) // 8) * 8,
+            inner_inflate=(-glow_size[0] // 3, -glow_size[1] // 3),
         )
         self.screen.blit(glow, glow.get_rect(center=(sx, sy + WORLD_SCALE)))
         if item.visible_rarity in ("Magic", "Rare", "Unique", "Unidentified"):
@@ -922,12 +923,14 @@ class RenderingEffectsMixin:
         item_sprite = sprite
         tilt = math.sin(self.elapsed * 2.8 + item.y) * 3.0
         if item.visible_rarity in ("Rare", "Unique"):
-            item_sprite = pygame.transform.rotate(sprite, tilt)
+            item_sprite = self._cached_rotated_surface(sprite, tilt)
         rect = item_sprite.get_rect(midbottom=(sx, sy + 4 * WORLD_SCALE - bob))
         self.screen.blit(item_sprite, rect)
         if math.hypot(item.x - self.player.x, item.y - self.player.y) < 1.0:
-            label = self.small_font.render(
-                f"E {rarity_icon} {item.display_name}", True, rarity_color
+            label = self._cached_text_surface(
+                self.small_font,
+                f"E {rarity_icon} {item.display_name}",
+                rarity_color,
             )
             self.screen.blit(
                 label, label.get_rect(center=(sx, rect.top - 10 * WORLD_SCALE))
@@ -940,8 +943,12 @@ class RenderingEffectsMixin:
         sx, sy = self.world_to_screen(item.x, item.y)
         gold = (245, 205, 92)
         pulse = 0.65 + 0.35 * math.sin(self.elapsed * 4.0 + item.x + item.y)
-        glow = pygame.Surface((42 * WORLD_SCALE, 20 * WORLD_SCALE), pygame.SRCALPHA)
-        pygame.draw.ellipse(glow, (*gold, int(40 + 35 * pulse)), glow.get_rect())
+        glow = self._cached_ellipse_overlay(
+            "shop_sign_glow",
+            (42 * WORLD_SCALE, 20 * WORLD_SCALE),
+            gold,
+            (int(40 + 35 * pulse) // 8) * 8,
+        )
         self.screen.blit(glow, glow.get_rect(center=(sx, sy + WORLD_SCALE)))
         bob = int(math.sin(self.elapsed * 3.2 + item.x * 0.7) * 2 * WORLD_SCALE)
         frame = self.sprites.shop_sign_visual()
@@ -957,9 +964,9 @@ class RenderingEffectsMixin:
             rect = sign.get_rect(midbottom=(sx, sy + 4 * WORLD_SCALE - bob))
             self.screen.blit(sign, rect)
         if math.hypot(item.x - self.player.x, item.y - self.player.y) < 1.0:
-            label = self.small_font.render(
+            label = self._cached_text_surface(
+                self.small_font,
                 f"E {self.rarity_icon(item.visible_rarity)} {item.display_name}",
-                True,
                 gold,
             )
             self.screen.blit(

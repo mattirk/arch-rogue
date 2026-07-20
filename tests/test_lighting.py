@@ -592,6 +592,20 @@ class LightingTests(unittest.TestCase):
         lantern.flicker = True
         self.assertEqual(game._flicker(lantern), (1.0, 1.0))
 
+    def test_modulated_light_sprite_reuses_quantized_variants(self) -> None:
+        game = self.make_game(tempfile.mkdtemp())
+        sprite = game._radial_light_sprite(48, LIGHT_LANTERN_COLOR)
+
+        first = game._modulated_light_sprite(sprite, 225)
+        same_bucket = game._modulated_light_sprite(sprite, 231)
+        different_bucket = game._modulated_light_sprite(sprite, 210)
+
+        self.assertIs(first, same_bucket)
+        self.assertIsNot(first, different_bucket)
+        self.assertEqual(len(game._modulated_light_sprite_cache), 2)
+        game.reset_lighting_caches()
+        self.assertEqual(len(game._modulated_light_sprite_cache), 0)
+
     # --- render smoke test --------------------------------------------
     def test_full_frame_render_with_lighting_on(self) -> None:
         game = self.make_game(tempfile.mkdtemp())

@@ -113,16 +113,19 @@ class RenderingWorldMixin:
         min_x, max_x, min_y, max_y = self.visible_bounds()
         self._frame_dark = self.is_current_floor_dark()
         entries: list[tuple[pygame.Surface, tuple[int, int]]] = []
+        tiles = self.dungeon.tiles
+        visibility_alpha = self.tile_visibility_alpha
+        tile_entry = self._tile_blit_entry
         for diagonal in range(min_x + min_y, max_x + max_y + 1):
             for x in range(min_x, max_x + 1):
                 y = diagonal - x
-                if min_y <= y <= max_y and self.dungeon.in_bounds(x, y):
-                    if self.tile_visibility_alpha(x, y) <= 0:
+                if min_y <= y <= max_y:
+                    if visibility_alpha(x, y) <= 0:
                         continue
-                    tile = self.dungeon.tiles[x][y]
+                    tile = tiles[x][y]
                     if tile in (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
                         continue
-                    entry = self._tile_blit_entry(x, y, tile)
+                    entry = tile_entry(x, y, tile)
                     if entry is not None:
                         entries.append(entry)
         return entries
@@ -344,21 +347,32 @@ class RenderingWorldMixin:
         sw, sh = self._screen_size()
         if sx < -TILE_W or sx > sw + TILE_W or sy < -TILE_H or sy > sh + TILE_H:
             return None
-        seed = self.tile_seed(x, y)
-        wall_face_style = self.special_wall_faces(x, y) if tile == Tile.WALL else None
-        bar_wall_light_side = (
-            self.bar_wall_light_side(x, y) if tile == Tile.WALL else None
-        )
-        surface, anchor_x, anchor_y = self.tile_surface(
-            tile,
-            seed,
-            shop_floor=self.is_shop_floor_tile(x, y),
-            guest=self.is_guest_tile(x, y),
-            bar_floor=self.is_bar_tile(x, y),
-            garden_floor=self.is_garden_tile(x, y),
-            wall_face_style=wall_face_style,
-            bar_wall_light_side=bar_wall_light_side,
-        )
+        descriptor_cache = getattr(self, "_tile_render_descriptor_cache", None)
+        if descriptor_cache is None:
+            descriptor_cache = {}
+            self._tile_render_descriptor_cache = descriptor_cache
+        descriptor_key = (x, y, int(tile))
+        descriptor = descriptor_cache.get(descriptor_key)
+        if descriptor is None:
+            seed = self.tile_seed(x, y)
+            wall_face_style = (
+                self.special_wall_faces(x, y) if tile == Tile.WALL else None
+            )
+            bar_wall_light_side = (
+                self.bar_wall_light_side(x, y) if tile == Tile.WALL else None
+            )
+            descriptor = self.tile_surface(
+                tile,
+                seed,
+                shop_floor=self.is_shop_floor_tile(x, y),
+                guest=self.is_guest_tile(x, y),
+                bar_floor=self.is_bar_tile(x, y),
+                garden_floor=self.is_garden_tile(x, y),
+                wall_face_style=wall_face_style,
+                bar_wall_light_side=bar_wall_light_side,
+            )
+            descriptor_cache[descriptor_key] = descriptor
+        surface, anchor_x, anchor_y = descriptor
         if self._frame_dark:  # set at start of draw_world_objects/draw_dungeon
             alpha = self.tile_visibility_alpha(x, y)
             # Walls and doors are occluders: never render them translucent, or
@@ -423,6 +437,7 @@ class RenderingWorldMixin:
         # Also drop the dark-floor alpha-bucket cache since its keyed surfaces
         # belong to the previous theme.
         self._alpha_tile_cache = {}
+        self._tile_render_descriptor_cache = {}
         self.door_tile_cache = {}
         self._mobile_floor_layer_cache = None
         # Milestone 3.16: lighting caches are keyed by theme accent and
@@ -1706,17 +1721,19 @@ class RenderingWorldMixin:
             return self.can_see_world_position(x, y, margin)
 
         min_x, max_x, min_y, max_y = self.visible_bounds()
+        tiles = self.dungeon.tiles
+        visibility_alpha = self.tile_visibility_alpha
         for s in range(min_x + min_y, max_x + max_y + 1):
             for x in range(min_x, max_x + 1):
                 y = s - x
-                if min_y <= y <= max_y and self.dungeon.in_bounds(x, y):
-                    tile = self.dungeon.tiles[x][y]
+                if min_y <= y <= max_y:
+                    tile = tiles[x][y]
                     if tile == Tile.WALL:
-                        if self.tile_visibility_alpha(x, y) <= 0:
+                        if visibility_alpha(x, y) <= 0:
                             continue
                         drawables.append((x + y + 1.02, "wall_tile", (x, y)))
                     elif tile in (Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
-                        if self.tile_visibility_alpha(x, y) <= 0:
+                        if visibility_alpha(x, y) <= 0:
                             continue
                         drawables.append((x + y + 1.02, "door", (x, y, tile)))
 
@@ -1859,8 +1876,10 @@ class RenderingWorldMixin:
                 continue
             sx, sy = self.world_to_screen(floater.x, floater.y)
             alpha = max(0, min(255, int(255 * floater.ttl)))
-            surface = self.font.render(floater.text, True, floater.color)
-            surface.set_alpha(alpha)
+            text_surface = self._cached_text_surface(
+                self.font, floater.text, floater.color
+            )
+            surface = self._cached_alpha_surface(text_surface, alpha)
             self.screen.blit(
                 surface, surface.get_rect(center=(sx, sy - 34 * WORLD_SCALE))
             )

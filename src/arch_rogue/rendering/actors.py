@@ -1040,19 +1040,15 @@ class RenderingActorMixin:
             pulse = 0.5 + 0.5 * math.sin(self.elapsed * 5.2)
             marker_w = (96 if big_boss else 46) * WORLD_SCALE
             marker_h = (34 if big_boss else 20) * WORLD_SCALE
-            marker = pygame.Surface((marker_w, marker_h), pygame.SRCALPHA)
-            pygame.draw.ellipse(
-                marker,
-                (*enemy.color, int(28 + pulse * 48)),
-                marker.get_rect(),
-                max(1, WORLD_SCALE),
-            )
-            pygame.draw.ellipse(
-                marker,
-                (*self.shade(enemy.color, 45), int(16 + pulse * 30)),
-                marker.get_rect().inflate(
-                    -marker.get_width() // 3, -marker.get_height() // 3
-                ),
+            marker = self._cached_ellipse_overlay(
+                "elite_marker",
+                (marker_w, marker_h),
+                enemy.color,
+                (int(28 + pulse * 48) // 8) * 8,
+                outer_width=max(1, WORLD_SCALE),
+                inner_color=self.shade(enemy.color, 45),
+                inner_alpha=(int(16 + pulse * 30) // 8) * 8,
+                inner_inflate=(-marker_w // 3, -marker_h // 3),
             )
             self.screen.blit(
                 marker,
@@ -1062,7 +1058,9 @@ class RenderingActorMixin:
             )
             label_color = self.theme.accent if big_boss else enemy.color
             label_font = self.small_font
-            label = label_font.render(enemy.elite_modifier, True, label_color)
+            label = self._cached_text_surface(
+                label_font, enemy.elite_modifier, label_color
+            )
             self.screen.blit(
                 label, label.get_rect(center=(sx, bar_y - 8 * WORLD_SCALE))
             )
@@ -1076,11 +1074,11 @@ class RenderingActorMixin:
             )
             pulse = 0.55 + 0.45 * math.sin(self.elapsed * 18.0)
             tell_size = (64 if big_boss else 42) * WORLD_SCALE
-            telegraph = pygame.Surface((tell_size, tell_size), pygame.SRCALPHA)
-            pygame.draw.circle(
-                telegraph,
-                (*tell_color, int(82 + 92 * pulse)),
-                telegraph.get_rect().center,
+            telegraph = self._cached_circle_overlay(
+                "attack_telegraph",
+                (tell_size, tell_size),
+                tell_color,
+                (int(82 + 92 * pulse) // 8) * 8,
                 max(
                     3,
                     int((7 if big_boss else 5) * WORLD_SCALE + pulse * 3 * WORLD_SCALE),
@@ -1093,7 +1091,7 @@ class RenderingActorMixin:
                     center=(sx, sy - (28 if big_boss else 18) * WORLD_SCALE)
                 ),
             )
-            label = self.small_font.render("!", True, tell_color)
+            label = self._cached_text_surface(self.small_font, "!", tell_color)
             self.screen.blit(
                 label,
                 label.get_rect(
@@ -1115,19 +1113,15 @@ class RenderingActorMixin:
             pulse = 0.5 + 0.5 * math.sin(self.elapsed * 4.2)
             aura_w = (132 if big_boss else 74) * WORLD_SCALE
             aura_h = (52 if big_boss else 30) * WORLD_SCALE
-            aura = pygame.Surface((aura_w, aura_h), pygame.SRCALPHA)
-            pygame.draw.ellipse(
-                aura,
-                (*self.theme.accent, int(30 + pulse * 42)),
-                aura.get_rect(),
-                max(1, WORLD_SCALE),
-            )
-            pygame.draw.ellipse(
-                aura,
-                (*self.shade(self.theme.accent, 55), int(15 + pulse * 22)),
-                aura.get_rect().inflate(
-                    -aura.get_width() // 3, -aura.get_height() // 3
-                ),
+            aura = self._cached_ellipse_overlay(
+                "boss_aura",
+                (aura_w, aura_h),
+                self.theme.accent,
+                (int(30 + pulse * 42) // 8) * 8,
+                outer_width=max(1, WORLD_SCALE),
+                inner_color=self.shade(self.theme.accent, 55),
+                inner_alpha=(int(15 + pulse * 22) // 8) * 8,
+                inner_inflate=(-aura_w // 3, -aura_h // 3),
             )
             self.screen.blit(
                 aura,

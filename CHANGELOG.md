@@ -1,5 +1,34 @@
 # Changelog
 
+## 4.4.2 — Android Native Rendering Optimization
+
+Release 4.4.2 reduces repeated CPU-side rendering work in full-resolution Android gameplay, with the largest gains in dense combat scenes and illuminated dungeon views.
+
+### Changed
+
+- **Cached tile render descriptors:** floor, wall, and door draws now resolve deterministic seed, special-room styling, wall-light mounts, and tile surfaces once per tile per floor instead of repeating those lookups every frame.
+- **Lean visible-tile scans:** the floor and world-object passes bind hot operations locally and rely on already-clamped visible bounds, removing thousands of redundant method and bounds-check calls in large viewports.
+- **Cached world-space effects:** floating combat text, pickup labels, elite markers, boss auras, attack telegraphs, loot glows, shop-sign glows, and gently rotated rare-item sprites now reuse bounded, quantized surface variants instead of rasterizing or allocating them every frame.
+- **Cached light modulation:** continuous lighting reuses bounded 16-step brightness variants of radial light sprites. Android GLES frames now need one additive light blit after warmup rather than a copy, full-surface multiply, and additive blit for every flickering or fading light.
+- Project, runtime, Android package, and website release metadata advance to `4.4.2`; options remain schema `7` and run saves remain schema `5`.
+
+### Performance
+
+- The deterministic 2400×1080 Native-mobile crowd profile improved from **14.467 ms/frame** to **13.604 ms/frame** of CPU render time, a **6.0% reduction** and roughly **+4.4 FPS** of render throughput in the headless software-render workload.
+- The headless profiler cannot exercise the Android GLES presenter, so the cached continuous-light modulation benefit is additional but requires physical-device telemetry for an exact FPS measurement.
+
+### Validation
+
+- `python -m compileall -q src tests`
+- `.venv/bin/python -m unittest tests.test_world_rendering_and_animation` — 71 tests pass.
+- `.venv/bin/python -m unittest tests.test_mobile_layout` — 8 tests pass.
+- `.venv/bin/python -m unittest tests.test_lighting`
+- `.venv/bin/python -m unittest tests.test_mainline_regression` — 12 tests pass.
+- `.venv/bin/python -m unittest discover tests` — 534 tests pass.
+- `.venv/bin/python tools/validate_android_apk.py --project-root . --source-dir src --spec buildozer.spec`
+- `PIP_BREAK_SYSTEM_PACKAGES=1 PYTHON=/home/mattirk/.local/share/uv/python/cpython-3.12-linux-x86_64-gnu/bin/python3.12 ./tools/build_android.sh debug` produced and audited `bin/archrogue-4.4.2-arm64-v8a_armeabi-v7a-debug.apk` (73,488,119 bytes; SHA-256 `34ef4b74c100c9807029728a3e8fedf971c6a51260b8fb402cb72cebbcfa2075`). The package reports version `4.4.2`, contains 104 ARM ELF extensions for each ABI, and passes APK Signature Scheme v2 verification.
+- Deterministic before/after Native-mobile crowd profiles at 2400×1080, 180 measured frames after 45 warmup frames.
+
 ## 4.4.1 — Mobile Navigation & Shrine Stability
 
 Release 4.4.1 polishes the post-website Android experience with an explicit touch Back control, stable spent-shrine rendering, and full-resolution rendering as the fresh-install default.

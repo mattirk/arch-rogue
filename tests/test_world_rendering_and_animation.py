@@ -23,6 +23,7 @@ from arch_rogue.models import (
     SecretCache,
     Shrine,
     StoryGuest,
+    Tile,
     Trap,
 )
 from arch_rogue.sprites import PixelSpriteAtlas
@@ -52,6 +53,46 @@ class GraphicsAnimation21Tests(unittest.TestCase):
 
     def surface_bytes(self, surface: pygame.Surface) -> bytes:
         return pygame.image.tobytes(surface, "RGBA")
+
+    def test_world_render_helpers_reuse_cached_surfaces(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            text = game._cached_text_surface(game.font, "12", (255, 220, 180))
+            self.assertIs(
+                text,
+                game._cached_text_surface(game.font, "12", (255, 220, 180)),
+            )
+            faded = game._cached_alpha_surface(text, 173)
+            self.assertIs(faded, game._cached_alpha_surface(text, 168))
+
+            glow = game._cached_ellipse_overlay(
+                "test", (42, 20), (220, 160, 80), 64
+            )
+            self.assertIs(
+                glow,
+                game._cached_ellipse_overlay(
+                    "test", (42, 20), (220, 160, 80), 64
+                ),
+            )
+
+    def test_tile_render_descriptor_is_computed_once_per_floor_tile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            x, y = int(game.player.x), int(game.player.y)
+            game.dungeon.tiles[x][y] = Tile.FLOOR
+            game._tile_render_descriptor_cache = {}
+            game._frame_dark = False
+
+            with mock.patch.object(
+                game, "tile_surface", wraps=game.tile_surface
+            ) as tile_surface:
+                first = game._tile_blit_entry(x, y, Tile.FLOOR)
+                second = game._tile_blit_entry(x, y, Tile.FLOOR)
+
+            self.assertIsNotNone(first)
+            self.assertIsNotNone(second)
+            self.assertEqual(tile_surface.call_count, 1)
+            self.assertEqual(len(game._tile_render_descriptor_cache), 1)
 
     def rendered_projectile_frame_time(
         self, game: Game, projectile: Projectile
