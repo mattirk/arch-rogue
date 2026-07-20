@@ -94,10 +94,12 @@ class RenderingEffectsMixin:
             return
         if self.is_current_floor_dark():
             return
-        if getattr(self, "mobile_mode", False) and self.lighting_enabled():
-            # The continuous lighting buffer already carries the depth tint.
-            # On ARM, a second full-viewport alpha pass is expensive at every
-            # quality tier and adds little after the themed lighting multiply.
+        if getattr(self, "mobile_mode", False):
+            # Android's native framebuffer makes this decorative full-viewport
+            # alpha pass cost roughly 13 ms even with continuous lighting off.
+            # Terrain visibility already carries the darkness model, while the
+            # lighting-on path supplies its own depth tint, so omit the vignette
+            # on every mobile quality tier.
             return
         self.screen.blit(self.ambient_overlay_surface(), (0, 0))
 
@@ -903,18 +905,23 @@ class RenderingEffectsMixin:
             )
 
     def _guidance_glow_layer(self, w: int, h: int) -> pygame.Surface:
-        # Reuse a persistent full-screen alpha layer instead of allocating
-        # one every frame; clear it before each use.
-        if not hasattr(self, "_guidance_glow_surface"):
-            self._guidance_glow_surface = pygame.Surface((w, h), pygame.SRCALPHA)
-        surf = self._guidance_glow_surface
-        if surf.get_size() != (w, h):
+        # The caller supplies tight, bucketed bounds around visible crack runs.
+        # Reuse that small alpha layer without ever clearing/blitting the full
+        # native Android viewport for a route that occupies only a narrow strip.
+        surf = getattr(self, "_guidance_glow_surface", None)
+        if surf is None or surf.get_size() != (w, h):
             surf = pygame.Surface((w, h), pygame.SRCALPHA)
+            try:
+                surf = surf.convert_alpha()
+            except pygame.error:
+                pass
             self._guidance_glow_surface = surf
         surf.fill((0, 0, 0, 0))
         return surf
 
     def draw_story_relic_guidance(self) -> None:
+        self._guidance_glow_blit_rect: pygame.Rect | None = None
+        self._mobile_guidance_surface_size = (0, 0)
         target = self.story_relic_target_position()
         if (
             target is None
@@ -937,7 +944,9 @@ class RenderingEffectsMixin:
         # instead of shimmering every frame.
         slab = self.theme.floor
         accent = self.story_state.accent if self.story_state else self.theme.accent
-        warm = self.mix(accent, (255, 232, 142), 0.5)
+        warm = self.apply_mobile_lightweight_ambient_color(
+            self.mix(accent, (255, 232, 142), 0.5)
+        )
         phase = math.floor(self.elapsed * 3.0) / 3.0
         pulse = 0.5 + 0.5 * math.sin(phase * 2.6)
 
@@ -959,7 +968,6 @@ class RenderingEffectsMixin:
             ring_light_alpha = int(40 + 55 * pulse)
 
         screen_w, screen_h = self._screen_size()
-        glow_layer = self._guidance_glow_layer(screen_w, screen_h)
 
         # Follow the route's actual waypoints (trimmed a little in from the
         # player and the relic) so the crack bends with the corridor instead
@@ -1016,8 +1024,12 @@ class RenderingEffectsMixin:
         # grooves (`_floor_groove`), but drawn with a dimming alpha so the
         # whole guiding light reads very faint while the player moves and
         # pulsates when the player stands still.
-        shadow = self.shade(slab, -24)
-        lip = self.shade(slab, 16)
+        shadow = self.apply_mobile_lightweight_ambient_color(
+            self.shade(slab, -24)
+        )
+        lip = self.apply_mobile_lightweight_ambient_color(
+            self.shade(slab, 16)
+        )
 
         # Tile-visibility clipping: the guiding light leads the player toward
         # the relic, which is usually far outside the current sight radius. To
@@ -1032,7 +1044,13 @@ class RenderingEffectsMixin:
                 return False
             return self.tile_visibility_alpha(ix, iy) > 0
 
-        lit_flags = [tile_lit(wx, wy) for wx, wy in crack_world]
+        guidance_view = pygame.Rect(0, 0, screen_w, screen_h).inflate(
+            TILE_W * 2, TILE_H * 2
+        )
+        lit_flags = [
+            tile_lit(wx, wy) and guidance_view.collidepoint(raw_screen[index])
+            for index, (wx, wy) in enumerate(crack_world)
+        ]
         runs: list[list[int]] = []
         current: list[int] = []
         for index, lit in enumerate(lit_flags):
@@ -1044,25 +1062,17 @@ class RenderingEffectsMixin:
         if current:
             runs.append(current)
 
-        drew_anything = False
-        for run in runs:
-            if len(run) < 2:
-                continue
-            run_points = [crack_points[i] for i in run]
-            pygame.draw.aalines(glow_layer, (*shadow, groove_alpha), False, run_points)
-            pygame.draw.aalines(
-                glow_layer,
-                (*lip, groove_alpha),
-                False,
-                [(p[0], p[1] - 1) for p in run_points],
-            )
-            # Faint warm seep at the bottom of the recess; the only colored cue.
-            seep_points = [(p[0], p[1] + 1) for p in run_points]
-            pygame.draw.lines(glow_layer, (*warm, seep_alpha), False, seep_points, 1)
-            drew_anything = True
+        visible_runs = [
+            [crack_points[index] for index in run]
+            for run in runs
+            if len(run) >= 2
+        ]
 
         # Short branch stubs at a couple of interior points (only in open,
         # lit floor) so it reads as a real fracture rather than a drawn line.
+        branch_segments: list[
+            tuple[tuple[float, float], tuple[float, float]]
+        ] = []
         for branch_index in (1, len(crack_points) - 2):
             if branch_index < 1 or branch_index >= len(crack_points) - 1:
                 continue
@@ -1076,68 +1086,145 @@ class RenderingEffectsMixin:
             tn_len = math.hypot(tn_x, tn_y) or 1.0
             perp_x, perp_y = -tn_y / tn_len, tn_x / tn_len
             stub_len = 5 * WORLD_SCALE
-            tip = (bx + perp_x * stub_len, by + perp_y * stub_len)
-            pygame.draw.aaline(glow_layer, (*shadow, groove_alpha), (bx, by), tip)
-            pygame.draw.aaline(
-                glow_layer,
-                (*lip, groove_alpha),
-                (bx, by - 1),
-                (tip[0], tip[1] - 1),
+            branch_segments.append(
+                ((bx, by), (bx + perp_x * stub_len, by + perp_y * stub_len))
             )
-            drew_anything = True
 
         # Target: a small worn ring groove lying flat on the iso floor (y
         # squashed to match the floor plane) in the same carved language, with
-        # a faint warm pinprick at its center. Clipped to the relic's own
-        # floor tile diamond so it can't spill over an adjacent wall; like the
-        # crack it dims while moving and pulsates when idle. Only drawn when
-        # the relic's tile is currently lit, so the ring never appears in the
-        # dark ahead of the player.
+        # a faint warm pinprick at its center. Build its visible segments before
+        # allocating the alpha surface so they contribute to the tight bounds.
+        ring_segments: list[
+            tuple[tuple[float, float], tuple[float, float]]
+        ] = []
+        ring_center: tuple[float, float] | None = None
         if tile_lit(tx, ty):
             target_sx, target_sy = self.world_to_screen(tx, ty)
             ring_cx = float(target_sx)
             ring_cy = float(target_sy - int(4 * WORLD_SCALE))
             ring_radius = 7.0 * WORLD_SCALE
-            r_tile_x, r_tile_y = int(tx), int(ty)
-            tcx, tcy = self.world_to_screen(r_tile_x + 0.5, r_tile_y + 0.5)
-            half_w = TILE_W / 2
-            half_h = TILE_H / 2
+            ring_view = pygame.Rect(0, 0, screen_w, screen_h).inflate(
+                math.ceil(ring_radius * 2), math.ceil(ring_radius * 2)
+            )
+            if ring_view.collidepoint(ring_cx, ring_cy):
+                r_tile_x, r_tile_y = int(tx), int(ty)
+                tcx, tcy = self.world_to_screen(r_tile_x + 0.5, r_tile_y + 0.5)
+                half_w = TILE_W / 2
+                half_h = TILE_H / 2
 
-            def in_diamond(px: float, py: float) -> bool:
-                return (abs(px - tcx) / half_w + abs(py - tcy) / half_h) <= 0.97
+                def in_diamond(px: float, py: float) -> bool:
+                    return (
+                        abs(px - tcx) / half_w + abs(py - tcy) / half_h
+                    ) <= 0.97
 
-            segs = 22
-            for i in range(segs):
-                a0 = i * (2 * math.pi / segs)
-                a1 = (i + 1) * (2 * math.pi / segs)
-                p0 = (
-                    ring_cx + math.cos(a0) * ring_radius,
-                    ring_cy + math.sin(a0) * ring_radius * 0.5,
-                )
-                p1 = (
-                    ring_cx + math.cos(a1) * ring_radius,
-                    ring_cy + math.sin(a1) * ring_radius * 0.5,
-                )
-                if not (in_diamond(p0[0], p0[1]) and in_diamond(p1[0], p1[1])):
-                    continue
-                pygame.draw.aaline(glow_layer, (*shadow, ring_groove_alpha), p0, p1)
-                pygame.draw.aaline(
-                    glow_layer,
-                    (*lip, ring_groove_alpha),
-                    (p0[0], p0[1] - 1),
-                    (p1[0], p1[1] - 1),
-                )
-            if in_diamond(ring_cx, ring_cy):
-                pygame.draw.circle(
-                    glow_layer,
-                    (*warm, ring_light_alpha),
-                    (int(ring_cx), int(ring_cy)),
-                    max(1, int(2 * WORLD_SCALE)),
-                )
-            drew_anything = True
+                segs = 22
+                for i in range(segs):
+                    a0 = i * (2 * math.pi / segs)
+                    a1 = (i + 1) * (2 * math.pi / segs)
+                    p0 = (
+                        ring_cx + math.cos(a0) * ring_radius,
+                        ring_cy + math.sin(a0) * ring_radius * 0.5,
+                    )
+                    p1 = (
+                        ring_cx + math.cos(a1) * ring_radius,
+                        ring_cy + math.sin(a1) * ring_radius * 0.5,
+                    )
+                    if in_diamond(p0[0], p0[1]) and in_diamond(p1[0], p1[1]):
+                        ring_segments.append((p0, p1))
+                if in_diamond(ring_cx, ring_cy):
+                    ring_center = (ring_cx, ring_cy)
 
-        if drew_anything:
-            self.screen.blit(glow_layer, (0, 0))
+        bounds_points = [point for run in visible_runs for point in run]
+        for start, end in branch_segments:
+            bounds_points.extend((start, end))
+        for start, end in ring_segments:
+            bounds_points.extend((start, end))
+        if ring_center is not None:
+            bounds_points.append(ring_center)
+        if not bounds_points:
+            return
+
+        padding = max(4, int(3 * WORLD_SCALE))
+        left = math.floor(min(point[0] for point in bounds_points)) - padding
+        top = math.floor(min(point[1] for point in bounds_points)) - padding
+        right = math.ceil(max(point[0] for point in bounds_points)) + padding + 1
+        bottom = math.ceil(max(point[1] for point in bounds_points)) + padding + 1
+        local_rect = pygame.Rect(left, top, right - left, bottom - top).clip(
+            pygame.Rect(0, 0, screen_w, screen_h)
+        )
+        if local_rect.width <= 0 or local_rect.height <= 0:
+            return
+
+        # Bucket dimensions reduce reallocations as the camera moves by a pixel,
+        # while clipping prevents a bucket at the edge from exceeding the target.
+        bucket = 32
+        layer_w = min(
+            screen_w - local_rect.x,
+            ((local_rect.width + bucket - 1) // bucket) * bucket,
+        )
+        layer_h = min(
+            screen_h - local_rect.y,
+            ((local_rect.height + bucket - 1) // bucket) * bucket,
+        )
+        glow_layer = self._guidance_glow_layer(layer_w, layer_h)
+        blit_rect = glow_layer.get_rect(topleft=local_rect.topleft)
+        self._guidance_glow_blit_rect = blit_rect.copy()
+        self._mobile_guidance_surface_size = glow_layer.get_size()
+
+        def local(point: tuple[float, float]) -> tuple[float, float]:
+            return point[0] - blit_rect.x, point[1] - blit_rect.y
+
+        for run_points in visible_runs:
+            points = [local(point) for point in run_points]
+            pygame.draw.aalines(glow_layer, (*shadow, groove_alpha), False, points)
+            pygame.draw.aalines(
+                glow_layer,
+                (*lip, groove_alpha),
+                False,
+                [(point[0], point[1] - 1) for point in points],
+            )
+            pygame.draw.lines(
+                glow_layer,
+                (*warm, seep_alpha),
+                False,
+                [(point[0], point[1] + 1) for point in points],
+                1,
+            )
+
+        for start, end in branch_segments:
+            local_start = local(start)
+            local_end = local(end)
+            pygame.draw.aaline(
+                glow_layer, (*shadow, groove_alpha), local_start, local_end
+            )
+            pygame.draw.aaline(
+                glow_layer,
+                (*lip, groove_alpha),
+                (local_start[0], local_start[1] - 1),
+                (local_end[0], local_end[1] - 1),
+            )
+
+        for start, end in ring_segments:
+            local_start = local(start)
+            local_end = local(end)
+            pygame.draw.aaline(
+                glow_layer, (*shadow, ring_groove_alpha), local_start, local_end
+            )
+            pygame.draw.aaline(
+                glow_layer,
+                (*lip, ring_groove_alpha),
+                (local_start[0], local_start[1] - 1),
+                (local_end[0], local_end[1] - 1),
+            )
+        if ring_center is not None:
+            pygame.draw.circle(
+                glow_layer,
+                (*warm, ring_light_alpha),
+                (round(ring_center[0] - blit_rect.x), round(ring_center[1] - blit_rect.y)),
+                max(1, int(2 * WORLD_SCALE)),
+            )
+
+        self.screen.blit(glow_layer, blit_rect.topleft)
 
     def story_relic_guidance_route(
         self, target: tuple[float, float]

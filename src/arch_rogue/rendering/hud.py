@@ -843,16 +843,18 @@ class RenderingHudMixin:
             (self.player.mana, self.player.max_mana, (54, 104, 210), "MP"),
             (self.player.stamina, self.player.max_stamina, (206, 164, 64), "ST"),
         )
-        for rect, (value, maximum, color, label) in zip(
-            layout.resource_rects, resource_values
+        for index, (rect, (value, maximum, color, label)) in enumerate(
+            zip(layout.resource_rects, resource_values)
         ):
             self._draw_mobile_vertical_bar(rect, value, maximum, color, label)
+            self.mark_mobile_gpu_base_region(f"resource-{index}", rect)
         self._hud_resource_bar_rects = tuple(
             rect.copy() for rect in layout.resource_rects
         )
 
         if layout.character_rect is not None:
             self._draw_mobile_character_summary(layout.character_rect)
+            self.mark_mobile_gpu_base_region("character", layout.character_rect)
 
         utility_commands = {
             "inventory": ("I", Command.INVENTORY),
@@ -869,6 +871,7 @@ class RenderingHudMixin:
                 or (name == "help" and self.show_help)
             )
             self._draw_mobile_control_button(rect, label, accent, active=active)
+            self.mark_mobile_gpu_base_region(f"utility-{name}", rect)
             self.register_mobile_touch_target(rect, command, label, context="gameplay")
 
         slots = self.hud_action_slots()
@@ -880,8 +883,11 @@ class RenderingHudMixin:
             Command.ABILITY_5,
             Command.ABILITY_6,
         )
-        for slot, rect, command in zip(slots, layout.action_rects, action_commands):
+        for index, (slot, rect, command) in enumerate(
+            zip(slots, layout.action_rects, action_commands)
+        ):
             self.draw_hud_action_icon(slot, rect)
+            self.mark_mobile_gpu_base_region(f"action-{index}", rect)
             self.register_mobile_touch_target(
                 rect, command, str(slot.get("hotkey", "")), context="gameplay"
             )
@@ -902,9 +908,56 @@ class RenderingHudMixin:
         try:
             hint = self.current_interaction_hint()
             self.draw_interaction_prompt(hint)
+            interaction_rect = getattr(self, "_interaction_prompt_rect", None)
+            if isinstance(interaction_rect, pygame.Rect):
+                self.mark_mobile_gpu_ui_region(
+                    "interaction",
+                    interaction_rect,
+                    (
+                        hint,
+                        self.ui_scale,
+                        interaction_rect.size,
+                        id(self.font),
+                        id(self.small_font),
+                        self.asset_ui_active(),
+                    ),
+                )
             self.draw_run_header()
+            run_header_rect = getattr(self, "_run_header_rect", None)
+            if isinstance(run_header_rect, pygame.Rect):
+                self.mark_mobile_gpu_ui_region(
+                    "run-header",
+                    run_header_rect,
+                    getattr(
+                        self,
+                        "_run_header_render_key",
+                        self._mobile_gpu_frame_sequence,
+                    ),
+                )
             self.draw_story_panel()
+            story_rect = getattr(self, "_story_panel_rect", None)
+            if isinstance(story_rect, pygame.Rect):
+                self.mark_mobile_gpu_ui_region(
+                    "story",
+                    story_rect,
+                    getattr(
+                        self,
+                        "_story_panel_render_key",
+                        self._mobile_gpu_frame_sequence,
+                    ),
+                )
             self.draw_boss_bar()
+            boss_rect = getattr(self, "_boss_bar_cluster_rect", None)
+            if isinstance(boss_rect, pygame.Rect):
+                self.mark_mobile_gpu_ui_region(
+                    "boss",
+                    boss_rect,
+                    getattr(
+                        self,
+                        "_boss_bar_render_key",
+                        self._mobile_gpu_frame_sequence,
+                    ),
+                )
         finally:
             self.screen = root
             self._mobile_world_rendering = False
@@ -914,6 +967,7 @@ class RenderingHudMixin:
         self._draw_mobile_control_button(
             layout.pause_rect, "Ⅱ", (194, 168, 112), active=False
         )
+        self.mark_mobile_gpu_base_region("pause", layout.pause_rect)
         self.register_mobile_touch_target(
             layout.pause_rect, Command.BACK, "Pause", context="gameplay"
         )
@@ -921,6 +975,7 @@ class RenderingHudMixin:
         self._draw_mobile_control_button(
             layout.interact_rect, "USE", accent, active=interaction_active
         )
+        self.mark_mobile_gpu_base_region("interact", layout.interact_rect)
         self.register_mobile_touch_target(
             layout.interact_rect, Command.INTERACT, "Interact", context="gameplay"
         )
@@ -1491,6 +1546,8 @@ class RenderingHudMixin:
         self.screen.blit(overlay, (0, 0))
 
     def draw_run_header(self) -> None:
+        self._run_header_rect: pygame.Rect | None = None
+        self._run_header_render_key: object | None = None
         width, _height = self.screen.get_size()
         darkness = " — Dark" if self.is_current_floor_dark() else ""
         title = f"Run {self.run_number}: Depth {self.current_depth}/{DUNGEON_DEPTH} — {self.theme.name}{darkness}"
@@ -1519,6 +1576,19 @@ class RenderingHudMixin:
             # 4.2.x — extra room for the padded content inset below.
             header_h += self.ui(4)
         rect = pygame.Rect(margin, self.ui(14), header_w, header_h)
+        self._run_header_rect = rect.copy()
+        self._run_header_render_key = (
+            title,
+            modifier,
+            story,
+            story_color,
+            tuple(self.theme.accent),
+            rect.size,
+            self.ui_scale,
+            id(self.font),
+            id(self.small_font),
+            self.asset_ui_active(),
+        )
         surface = pygame.Surface(rect.size, pygame.SRCALPHA)
         self.draw_ornate_hud_panel(
             surface,
@@ -1621,6 +1691,8 @@ class RenderingHudMixin:
         return plaque_rect.top
 
     def draw_boss_bar(self) -> None:
+        self._boss_bar_cluster_rect: pygame.Rect | None = None
+        self._boss_bar_render_key: object | None = None
         metrics = self.boss_bar_metrics()
         if metrics is None:
             return
@@ -1658,11 +1730,15 @@ class RenderingHudMixin:
         )
         self.screen.blit(plaque_surf, plaque)
         self.screen.blit(label, label.get_rect(center=plaque.center))
+        sub_rect: pygame.Rect | None = None
         if big and boss.elite_modifier:
             # Subtitle role tag (e.g. "Floor Boss") under the name plaque.
             sub = self.small_font.render(boss.elite_modifier, True, self.theme.accent)
-            sub_rect = sub.get_rect(midtop=(plaque.centerx, plaque.bottom + self.ui(1)))
-            self.screen.blit(sub, sub_rect)
+            subtitle_rect = sub.get_rect(
+                midtop=(plaque.centerx, plaque.bottom + self.ui(1))
+            )
+            sub_rect = subtitle_rect
+            self.screen.blit(sub, subtitle_rect)
         # Blood trough — deep red recessed bar.
         pygame.draw.rect(
             self.screen, self.HUD_STONE_SHADOW, rect, border_radius=self.ui(5)
@@ -1745,6 +1821,22 @@ class RenderingHudMixin:
                     (tx, rect.bottom - self.ui(2)),
                     max(1, self.ui(1)),
                 )
+
+        cluster = rect.union(plaque)
+        if sub_rect is not None:
+            cluster = cluster.union(sub_rect)
+        self._boss_bar_cluster_rect = cluster.copy()
+        self._boss_bar_render_key = (
+            boss.name,
+            round(float(boss.hp), 3),
+            round(float(boss.max_hp), 3),
+            boss.size,
+            boss.elite_modifier,
+            tuple(self.theme.accent),
+            cluster.size,
+            self.ui_scale,
+            id(self.small_font),
+        )
 
     def draw_bar(
         self,

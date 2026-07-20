@@ -55,20 +55,82 @@ from ..quest_assets import (
 
 
 class RenderingBaseMixin:
+    def _mobile_static_menu_signature(self) -> object | None:
+        if not getattr(self, "mobile_mode", False):
+            return None
+        state = getattr(self, "state", "")
+        if state not in {"title", "options", "controls", "about", "confirm_exit"}:
+            return None
+        monitor = getattr(self, "_mobile_performance_monitor", None)
+        safe = self.mobile_safe_rect()
+        ui_assets = getattr(self, "ui_assets", None)
+        common = (
+            state,
+            id(self.screen),
+            self.screen.get_size(),
+            (safe.x, safe.y, safe.width, safe.height),
+            int(getattr(self, "ui_scale", 1)),
+            bool(getattr(self, "ui_scale_auto", True)),
+            id(getattr(self, "tiny_font", None)),
+            id(getattr(self, "small_font", None)),
+            id(getattr(self, "font", None)),
+            id(getattr(self, "heading_font", None)),
+            bool(getattr(self, "legacy_graphics", False)),
+            bool(getattr(ui_assets, "available", False)),
+            tuple(getattr(getattr(self, "theme", None), "accent", ())),
+            int(getattr(self, "_mobile_render_generation", 0)),
+            getattr(monitor, "overlay_text", ""),
+            getattr(monitor, "overlay_detail_text", ""),
+        )
+        input_manager = getattr(self, "input", None)
+        has_controller = bool(
+            input_manager is not None and input_manager.has_controller()
+        )
+        controller_name = (
+            input_manager.active_name() if has_controller and input_manager is not None else ""
+        )
+        if state == "title":
+            return common + (
+                int(getattr(self, "title_selection", 0)),
+                bool(self.save_exists()),
+            )
+        if state == "options":
+            return common + (
+                int(getattr(self, "options_cursor", 0)),
+                int(getattr(self, "options_scroll", 0)),
+                getattr(self, "mobile_render_quality", ""),
+                getattr(self, "difficulty_name", ""),
+                bool(getattr(self, "hell_unlocked", False)),
+                bool(getattr(self, "controller_enabled", True)),
+                has_controller,
+                controller_name,
+                bool(getattr(self, "audio_enabled", True)),
+                bool(getattr(self, "music_enabled", True)),
+                bool(getattr(self, "_lighting_enabled", True)),
+                bool(getattr(self, "_lighting_normal_maps", False)),
+            )
+        if state == "controls":
+            return common + (
+                int(getattr(self, "controls_cursor", 0)),
+                getattr(self, "controls_capture_command", None),
+                bool(getattr(self, "controller_enabled", True)),
+                has_controller,
+                controller_name,
+                repr(getattr(self, "gamepad_mapping", {})),
+            )
+        if state == "confirm_exit":
+            return common + (
+                getattr(self, "exit_previous_state", ""),
+                int(getattr(self, "exit_confirmation_cursor", 0)),
+                getattr(self, "last_save_error", ""),
+            )
+        return common
+
     def draw(self) -> None:
         # Per-frame caches for hot-path lookups. These are invalidated every
         # frame so they never go stale within a single render pass.
         self._frame_cache: dict[str, object] = {}
         performance = getattr(self, "_mobile_performance_monitor", None)
-        if getattr(self, "mobile_mode", False):
-            self.reset_mobile_touch_targets()
-            self.begin_mobile_gpu_frame()
-
-        started = time.perf_counter()
-        self.screen.fill((10, 10, 14))
-        if performance is not None:
-            performance.record_phase("clear", time.perf_counter() - started)
-
         menu_draw = {
             "title": self.draw_title_menu,
             "options": self.draw_options_menu,
@@ -77,6 +139,28 @@ class RenderingBaseMixin:
             "archetype_select": self.draw_archetype_select,
             "confirm_exit": self.draw_exit_confirmation,
         }.get(self.state)
+        mobile = bool(getattr(self, "mobile_mode", False))
+        menu_signature = self._mobile_static_menu_signature() if menu_draw else None
+        if (
+            menu_signature is not None
+            and getattr(self, "_mobile_static_menu_last_signature", None)
+            == menu_signature
+        ):
+            started = time.perf_counter()
+            self.sync_music()
+            if performance is not None:
+                performance.record_phase("audio", time.perf_counter() - started)
+            return
+        if menu_signature is None:
+            self._mobile_static_menu_last_signature = None
+        if mobile:
+            self.reset_mobile_touch_targets()
+            self.begin_mobile_gpu_frame()
+
+        started = time.perf_counter()
+        self.screen.fill((10, 10, 14))
+        if performance is not None:
+            performance.record_phase("clear", time.perf_counter() - started)
         if menu_draw is not None:
             started = time.perf_counter()
             with self.mobile_safe_render_target():
@@ -100,6 +184,10 @@ class RenderingBaseMixin:
             self.sync_music()
             if performance is not None:
                 performance.record_phase("audio", time.perf_counter() - started)
+            if menu_signature is not None:
+                self._mobile_static_menu_last_signature = (
+                    self._mobile_static_menu_signature()
+                )
             return
 
         started = time.perf_counter()

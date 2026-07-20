@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import math
 import random
+import time
 from collections import deque
 from typing import cast
 
@@ -235,6 +236,12 @@ class RenderingWorldMixin:
         margin_y = max(TILE_H, screen_h // 3)
         layer_size = (screen_w + margin_x * 2, screen_h + margin_y * 2)
         story_accent = tuple(getattr(getattr(self, "story_state", None), "accent", ()))
+        lightweight_lighting = self.mobile_lightweight_lighting_active()
+        ambient_tint = (
+            self._mobile_lightweight_ambient_color()
+            if lightweight_lighting
+            else None
+        )
         cache_key = (
             id(self.dungeon),
             getattr(self, "run_number", 0),
@@ -244,6 +251,9 @@ class RenderingWorldMixin:
             layer_size,
             round(float(getattr(self, "view_zoom", 1.0)), 4),
             bool(getattr(self, "legacy_graphics", False)),
+            bool(self.continuous_lighting_active()),
+            lightweight_lighting,
+            ambient_tint,
             id(self.revealed_tiles),
         )
         cache = getattr(self, "_mobile_floor_layer_cache", None)
@@ -347,13 +357,14 @@ class RenderingWorldMixin:
             if tile not in (Tile.WALL, Tile.CLOSED_DOOR, Tile.OPEN_DOOR):
                 if alpha <= 0:
                     return None
-                # Milestone 3.16: on the continuous lighting tier the per-tile
-                # alpha falloff is replaced by the screen-space light buffer
-                # multiply, so floor tiles blit fully opaque and the buffer
-                # darkens their edges smoothly. The quantized-alpha path stays
-                # as the LIGHTING_OFF / web fallback (the 3.8.0 look).
-                if alpha < 255 and not self.lighting_enabled():
+                # Continuous lighting replaces per-tile alpha with a screen-space
+                # multiply. Lighting Off, web, and Android Native's lightweight
+                # tier retain the quantized tile falloff so no native framebuffer
+                # transfer is required to preserve darkness.
+                if alpha < 255 and not self.continuous_lighting_active():
                     surface = self._alpha_tile_surface(surface, alpha)
+        if self.mobile_lightweight_lighting_active():
+            surface = self.apply_mobile_lightweight_ambient(surface)
         return (surface, (sx - anchor_x, sy - anchor_y))
 
     def draw_tile(self, x: int, y: int, tile: Tile) -> None:
@@ -1750,12 +1761,20 @@ class RenderingWorldMixin:
                 drawables.append((effect.x + effect.y + 0.08, "impact", effect))
 
         self.draw_aim_cone()
+        self._guidance_glow_blit_rect = None
+        self._mobile_guidance_surface_size = (0, 0)
         # The guiding light leads the player TO the relic, so it must render
         # even when the relic is far outside the sight radius. The per-tile
         # visibility clipping inside draw_story_relic_guidance keeps the crack
         # from painting over dark / unrevealed floor.
         if self.story_relic_target_position() is not None:
+            guidance_started = time.perf_counter()
             self.draw_story_relic_guidance()
+            performance = getattr(self, "_mobile_performance_monitor", None)
+            if performance is not None:
+                performance.record_detail_phase(
+                    "guidance", time.perf_counter() - guidance_started
+                )
 
         wall_entries: list[tuple[pygame.Surface, tuple[int, int]]] = []
 

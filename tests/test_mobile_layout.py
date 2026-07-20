@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pygame
 
 import arch_rogue.mobile as mobile_runtime
+from arch_rogue.constants import DUNGEON_DEPTH
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.input import Command
@@ -27,7 +28,7 @@ from arch_rogue.mobile import (
     detect_mobile_runtime,
     optimize_immutable_alpha_surface,
 )
-from arch_rogue.models import Tile
+from arch_rogue.models import LightSource, Tile
 from arch_rogue.options import (
     MOBILE_RENDER_QUALITY_BALANCED,
     MOBILE_RENDER_QUALITY_HEIGHT_CAPS,
@@ -380,14 +381,13 @@ class MobileRenderQualityTests(unittest.TestCase):
             activate.assert_called_once_with(game.OPTIONS_ROW_FULLSCREEN, True)
             self.assertEqual(game.options_cursor, game.OPTIONS_ROW_FULLSCREEN)
 
-    def test_mobile_lighting_buffer_uses_quarter_resolution_at_every_quality(self) -> None:
+    def test_mobile_continuous_lighting_uses_quarter_resolution_below_native(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))
             viewport = game.mobile_world_viewport()
-            for quality, divisor in (
-                (MOBILE_RENDER_QUALITY_PERFORMANCE, 4),
-                (MOBILE_RENDER_QUALITY_BALANCED, 4),
-                (MOBILE_RENDER_QUALITY_NATIVE, 4),
+            for quality in (
+                MOBILE_RENDER_QUALITY_PERFORMANCE,
+                MOBILE_RENDER_QUALITY_BALANCED,
             ):
                 with self.subTest(quality=quality):
                     game.mobile_render_quality = quality
@@ -399,14 +399,142 @@ class MobileRenderQualityTests(unittest.TestCase):
                     self.assertEqual(
                         buffer.get_size(),
                         (
-                            max(1, viewport.width // divisor),
-                            max(1, viewport.height // divisor),
+                            max(1, viewport.width // 4),
+                            max(1, viewport.height // 4),
                         ),
                     )
                     scratch = game._light_scratch_surface
                     self.assertIsNotNone(scratch)
                     assert scratch is not None
                     self.assertEqual(scratch.get_masks()[:3], game.screen.get_masks()[:3])
+
+            game.mobile_render_quality = MOBILE_RENDER_QUALITY_NATIVE
+            game.reset_lighting_caches()
+            game.draw()
+            self.assertTrue(game.mobile_lightweight_lighting_active())
+            self.assertFalse(game.continuous_lighting_active())
+            self.assertIsNone(game._light_buffer_surface)
+            self.assertIsNone(game._light_scratch_surface)
+
+    def test_native_local_lighting_caches_depth_tint_and_preserves_transparency(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.mobile_render_quality = MOBILE_RENDER_QUALITY_NATIVE
+            game.current_depth = DUNGEON_DEPTH
+            game.set_current_floor_dark(False)
+            source = pygame.Surface((12, 12), pygame.SRCALPHA)
+            source.fill((0, 0, 0, 0))
+            pygame.draw.rect(source, (208, 184, 160, 255), (2, 2, 8, 8))
+
+            tinted = game.apply_mobile_lightweight_ambient(source)
+            self.assertIsNot(tinted, source)
+            self.assertEqual(tinted.get_at((0, 0)).a, 0)
+            self.assertLess(tinted.get_at((5, 5)).r, source.get_at((5, 5)).r)
+            self.assertIs(game.apply_mobile_lightweight_ambient(source), tinted)
+            self.assertLess(
+                game.apply_mobile_lightweight_ambient_color((208, 184, 160))[0],
+                208,
+            )
+            game._frame_cache = {}
+            actor_lit = game.apply_lit_shading(
+                source,
+                source,
+                game.player.x,
+                game.player.y,
+            )
+            self.assertGreater(
+                sum(actor_lit.get_at((5, 5))[:3]),
+                sum(tinted.get_at((5, 5))[:3]),
+            )
+            hidden_light = LightSource(
+                game.player.x + 8.0,
+                game.player.y,
+                16.0,
+                (255, 0, 0),
+                intensity=10.0,
+                ttl=None,
+                kind="hidden-test",
+            )
+            game.light_sources.append(hidden_light)
+            game._frame_cache = {}
+            game._mobile_lightweight_actor_cache.clear()
+            hidden_lit = game.apply_lit_shading(
+                source,
+                source,
+                game.player.x,
+                game.player.y,
+            )
+            self.assertEqual(
+                pygame.image.tobytes(hidden_lit, "RGBA"),
+                pygame.image.tobytes(actor_lit, "RGBA"),
+            )
+            expected_lip = game.apply_mobile_lightweight_ambient_color(
+                game.shade(game.theme.floor, 16)
+            )
+            shade_after_tint = game.shade(
+                game.apply_mobile_lightweight_ambient_color(game.theme.floor),
+                16,
+            )
+            self.assertNotEqual(expected_lip, shade_after_tint)
+
+            game._lighting_enabled = False
+            self.assertIs(game.apply_mobile_lightweight_ambient(source), source)
+
+    def test_native_local_lighting_adds_no_unmasked_screen_space_pixels(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.mobile_render_quality = MOBILE_RENDER_QUALITY_NATIVE
+            game.screen.fill((10, 10, 14))
+            before = pygame.image.tobytes(game.screen, "RGB")
+            game.draw_lighting()
+            self.assertEqual(pygame.image.tobytes(game.screen, "RGB"), before)
+
+    def test_native_floor_cache_rebuilds_when_lighting_mode_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.mobile_render_quality = MOBILE_RENDER_QUALITY_NATIVE
+            game.set_current_floor_dark(False)
+            game._lighting_enabled = True
+            game._mobile_floor_layer_cache = None
+            with patch.dict(os.environ, {"PYGAME_BLEND_ALPHA_SDL2": "1"}):
+                game.draw()
+                lit_cache = game._mobile_floor_layer_cache
+                self.assertIsNotNone(lit_cache)
+                assert lit_cache is not None
+
+                game._lighting_enabled = False
+                game.draw()
+                unlit_cache = game._mobile_floor_layer_cache
+                self.assertIsNotNone(unlit_cache)
+                assert unlit_cache is not None
+                self.assertIsNot(unlit_cache[3], lit_cache[3])
+                self.assertNotEqual(unlit_cache[0], lit_cache[0])
+
+                game._lighting_enabled = True
+                game.draw()
+                relit_cache = game._mobile_floor_layer_cache
+                self.assertIsNotNone(relit_cache)
+                assert relit_cache is not None
+                self.assertIsNot(relit_cache[3], unlit_cache[3])
+                self.assertEqual(relit_cache[0], lit_cache[0])
+
+    def test_overlapping_gpu_ui_regions_are_coalesced_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (780, 360))
+            first = pygame.Rect(20, 30, 180, 90)
+            second = pygame.Rect(120, 80, 140, 70)
+            game._mobile_gpu_ui_regions = [
+                ("interaction", first, ("hint",)),
+                ("diagnostics", second, ("perf",)),
+            ]
+            regions = game._mobile_gpu_coalesced_ui_regions()
+            self.assertEqual(len(regions), 1)
+            key, rect, revision = regions[0]
+            self.assertEqual(key, "diagnostics|interaction")
+            self.assertEqual(rect, first.union(second))
+            self.assertIsInstance(revision, tuple)
+            assert isinstance(revision, tuple)
+            self.assertEqual(len(revision), 2)
 
     def test_mobile_floor_layer_patches_reveals_and_rebuilds_after_camera_travel(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -626,6 +754,46 @@ class MobileRenderQualityTests(unittest.TestCase):
             pygame.image.tobytes(expected, "RGB"),
         )
 
+    def test_mobile_skips_full_viewport_ambient_overlay_when_lighting_is_off(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.state = "playing"
+            game._lighting_enabled = False
+            game.set_current_floor_dark(False)
+            with patch.object(
+                game,
+                "ambient_overlay_surface",
+                wraps=game.ambient_overlay_surface,
+            ) as ambient_surface:
+                game.draw_ambient_depth_overlay()
+            ambient_surface.assert_not_called()
+
+    def test_static_native_mobile_menu_redraws_only_when_signature_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.state = "options"
+            game.options_cursor = 0
+            with (
+                patch.object(
+                    game,
+                    "draw_options_menu",
+                    wraps=game.draw_options_menu,
+                ) as draw_options,
+                patch.object(game, "_present_frame") as present,
+            ):
+                game.draw()
+                touch_targets = tuple(game._mobile_touch_targets)
+                self.assertTrue(touch_targets)
+                game.draw()
+                self.assertEqual(tuple(game._mobile_touch_targets), touch_targets)
+                self.assertEqual(draw_options.call_count, 1)
+                self.assertEqual(present.call_count, 1)
+
+                game.options_cursor = 1
+                game.draw()
+                self.assertEqual(draw_options.call_count, 2)
+                self.assertEqual(present.call_count, 2)
+
     def test_gpu_screen_flash_queues_one_pixel_overlay_and_falls_back_safely(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))
@@ -681,39 +849,39 @@ class MobileRenderQualityTests(unittest.TestCase):
                         expected_outer.get_at((0, 0)),
                     )
 
-    def test_gpu_lighting_presenter_uses_base_mod_ui_order_without_flip(self) -> None:
+    def test_gpu_lighting_presenter_uses_retained_shell_and_indexed_ui(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (780, 360))
             game.state = "playing"
             game.screen_flash_color = (210, 48, 24)
             game.screen_flash_ttl = 0.30
-            calls: list[tuple[str, object]] = []
+            calls: list[tuple[str, object, object | None]] = []
 
             class FakeTexture:
-                def __init__(self, label: str) -> None:
-                    self.label = label
+                def __init__(self, size: tuple[int, int]) -> None:
+                    self.size = size
                     self.blend_mode = -1
 
                 def update(self, surface: pygame.Surface) -> None:
-                    calls.append((f"update:{self.label}", surface.get_size()))
+                    calls.append(("update", self, surface.get_size()))
 
             class FakeRenderer:
                 logical_size = game.screen.get_size()
                 draw_color = (0, 0, 0, 0)
 
                 def clear(self) -> None:
-                    calls.append(("clear", self.draw_color))
+                    calls.append(("clear", self.draw_color, None))
 
                 def blit(self, texture: FakeTexture, rect: pygame.Rect) -> None:
-                    calls.append((f"blit:{texture.label}", rect.copy()))
+                    calls.append(("blit", texture, rect.copy()))
 
                 def present(self) -> None:
-                    calls.append(("present", None))
+                    calls.append(("present", self, None))
 
-            labels = iter(("base", "light", "ui", "flash"))
-
-            def make_texture(_renderer: object, _size: tuple[int, int]) -> FakeTexture:
-                return FakeTexture(next(labels))
+            def make_texture(
+                _renderer: object, size: tuple[int, int]
+            ) -> FakeTexture:
+                return FakeTexture(size)
 
             renderer = FakeRenderer()
             game._mobile_renderer_accelerated = True
@@ -723,39 +891,75 @@ class MobileRenderQualityTests(unittest.TestCase):
                 patch("arch_rogue.rendering.base.pygame.display.flip") as flip,
             ):
                 game.draw()
+                first_ui_pixels = game._mobile_gpu_ui_upload_pixels
+                first_ui_regions = game._mobile_gpu_ui_region_count
+                first_dirty = game._mobile_gpu_ui_dirty_rect
+                first_base_pixels = game._mobile_gpu_base_upload_pixels
+                calls.clear()
+                game.draw()
 
             self.assertFalse(flip.called)
             self.assertTrue(game._mobile_gpu_last_present)
             self.assertFalse(game.screen.get_locked())
-            self.assertEqual(
-                [name for name, _value in calls],
-                (
-                    ["update:base", "update:light", "update:ui", "update:flash"]
-                    + [
-                        "clear",
-                        "blit:base",
-                        "blit:light",
-                        "blit:ui",
-                        "blit:flash",
-                        "present",
-                    ]
-                ),
-            )
-            self.assertIn(("update:flash", (1, 1)), calls)
-            ui_upload = next(
-                value for name, value in calls if name == "update:ui"
-            )
-            assert isinstance(ui_upload, tuple)
             viewport = game.mobile_world_viewport()
-            self.assertLess(ui_upload[0] * ui_upload[1], viewport.width * viewport.height)
-            ui_dirty = game._mobile_gpu_ui_dirty_rect
-            self.assertIsNotNone(ui_dirty)
-            assert ui_dirty is not None
-            self.assertEqual(ui_dirty.size, ui_upload)
-            self.assertEqual(getattr(game, "_mobile_gpu_base_texture").blend_mode, 0)
-            self.assertEqual(getattr(game, "_mobile_gpu_light_texture").blend_mode, 4)
-            self.assertEqual(getattr(game, "_mobile_gpu_ui_texture").blend_mode, 1)
-            self.assertEqual(getattr(game, "_mobile_gpu_flash_texture").blend_mode, 1)
+            root_pixels = game.screen.get_width() * game.screen.get_height()
+            self.assertEqual(first_base_pixels, root_pixels)
+            self.assertGreaterEqual(first_ui_regions, 2)
+            self.assertGreater(first_ui_pixels, 0)
+            self.assertIsNotNone(first_dirty)
+            assert first_dirty is not None
+            self.assertLess(first_ui_pixels, first_dirty.width * first_dirty.height)
+
+            shell = getattr(game, "_mobile_gpu_shell_texture")
+            base = getattr(game, "_mobile_gpu_base_texture")
+            light = getattr(game, "_mobile_gpu_light_texture")
+            flash = getattr(game, "_mobile_gpu_flash_texture")
+            ui_textures = {
+                entry[1] for entry in game._mobile_gpu_ui_region_textures.values()
+            }
+            update_sizes = [
+                value
+                for action, _texture, value in calls
+                if action == "update"
+            ]
+            self.assertIn(viewport.size, update_sizes)
+            self.assertIn((1, 1), update_sizes)
+            self.assertFalse(
+                any(
+                    action == "update" and texture is shell
+                    for action, texture, _value in calls
+                )
+            )
+            self.assertFalse(
+                any(
+                    action == "update" and texture in ui_textures
+                    for action, texture, _value in calls
+                )
+            )
+            self.assertEqual(game._mobile_gpu_ui_upload_pixels, 0)
+            self.assertGreater(game._mobile_gpu_base_region_count, 0)
+            self.assertLess(game._mobile_gpu_base_upload_pixels, root_pixels)
+
+            blitted = [
+                texture
+                for action, texture, _value in calls
+                if action == "blit"
+            ]
+            self.assertLess(blitted.index(shell), blitted.index(base))
+            self.assertLess(blitted.index(base), blitted.index(light))
+            self.assertLess(
+                blitted.index(light),
+                min(blitted.index(texture) for texture in ui_textures),
+            )
+            self.assertLess(
+                max(blitted.index(texture) for texture in ui_textures),
+                blitted.index(flash),
+            )
+            self.assertEqual(shell.blend_mode, 0)
+            self.assertEqual(base.blend_mode, 0)
+            self.assertEqual(light.blend_mode, 4)
+            self.assertTrue(all(texture.blend_mode == 1 for texture in ui_textures))
+            self.assertEqual(flash.blend_mode, 1)
 
 
 class MobileLayoutTests(unittest.TestCase):

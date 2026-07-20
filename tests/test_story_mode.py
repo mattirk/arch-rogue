@@ -7,11 +7,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+import pygame
 
 from arch_rogue.constants import DUNGEON_DEPTH
 from arch_rogue.content import STORY_CORPUS
@@ -44,6 +47,50 @@ class StoryModeTests(unittest.TestCase):
                 return index
         self.fail(f"story relic choice {choice_key!r} was not available")
         return -1
+
+    def test_story_guidance_uses_tight_local_alpha_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            try:
+                self.confirm_story_intro(game)
+                game.story_relic_guidance_enabled = True
+                game.story_intro_pending = False
+                game.player.moving = False
+                px = float(game.player.x)
+                py = float(game.player.y)
+                step = 1.0 if int(px) + 4 < len(game.dungeon.tiles) else -1.0
+                route = [(px + step * index, py) for index in range(4)]
+                target = route[-1]
+                game.screen.fill((9, 11, 15))
+                before = pygame.image.tobytes(game.screen, "RGB")
+                with (
+                    patch.object(
+                        game,
+                        "story_relic_target_position",
+                        return_value=target,
+                    ),
+                    patch.object(
+                        game,
+                        "story_relic_guidance_route",
+                        return_value=route,
+                    ),
+                    patch.object(game, "tile_visibility_alpha", return_value=255),
+                ):
+                    game.draw_story_relic_guidance()
+
+                rect = game._guidance_glow_blit_rect
+                self.assertIsNotNone(rect)
+                assert rect is not None
+                self.assertTrue(game.screen.get_rect().contains(rect))
+                layer_w, layer_h = game._mobile_guidance_surface_size
+                self.assertEqual(rect.size, (layer_w, layer_h))
+                self.assertLess(
+                    layer_w * layer_h,
+                    game.screen.get_width() * game.screen.get_height() // 3,
+                )
+                self.assertNotEqual(pygame.image.tobytes(game.screen, "RGB"), before)
+            finally:
+                game.story_relic_guidance_enabled = False
 
     def test_story_corpus_and_engine_are_deterministic_and_backstory_aligned(
         self,

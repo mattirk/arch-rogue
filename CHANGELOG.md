@@ -1,5 +1,34 @@
 # Changelog
 
+## 4.3.6 — Android Native Frame-Pacing Recovery
+
+Release 4.3.6 removes the frame-time spikes and full-frame software/transfer work identified in the second Pixel 9a trace. Native mode keeps the 2424×1080 world framebuffer, but no longer uploads that framebuffer merely to apply lighting; the release also bounds story guidance to its visible pixels and retains unchanged native menu frames.
+
+### Fixed
+
+- Story relic guidance no longer clears and alpha-blits a full viewport for a narrow floor crack. Visible crack runs, branch stubs, and the on-screen target ring are collected first, clipped to a padded viewport, rasterized into a reusable 32-pixel-bucketed local surface, and blitted only at those tight bounds.
+- Off-screen relic rings and route samples can no longer enlarge the guidance surface, and guidance telemetry resets immediately when the target disappears.
+- Post-light GPU panels are independently retained and uploaded by semantic region instead of one union rectangle. Overlapping panels are coalesced before extraction, preventing double alpha composition and stale overlap pixels.
+- Interaction-panel texture revisions now include font and authored/procedural UI identity, so graphics-mode or font changes cannot retain an old panel texture.
+- Android continues to clear the full CPU framebuffer and redraw rail backings each gameplay frame; translucent overlays and software flashes therefore cannot accumulate on retained side-rail pixels.
+
+### Changed
+
+- Native Android lighting now uses a transfer-free local tier: floor/wall, actor, and story-guidance sources receive a cached depth/theme multiplier; visible actors also retain a bounded sprite-local color response from their dominant nearby light, and the classic per-tile dark-floor lantern falloff remains active. No screen-space halo can color unrevealed pixels, normal-floor depth attenuation remains intact, and Native world pixels stay at physical logical resolution.
+- Balanced and Performance retain continuous quarter-resolution GLES lighting. Their presenter keeps a full static shell texture, uploads only the changing world viewport and small control rectangles, and reuses unchanged run-header, story, interaction, boss, and diagnostics textures.
+- Mobile omits the decorative full-viewport ambient alpha vignette in every lighting tier. Native's cached source tint and lower tiers' continuous light buffer already carry depth atmosphere without the measured ~13 ms software pass.
+- Unchanged mobile title, options, controls, about, and exit-confirmation frames skip clear, menu composition, navigation redraw, and present work while preserving touch targets. A single-entry opaque backdrop cache reduces the cost of frames that do need redraw; animated archetype selection remains live.
+- Android telemetry now separates `guidance`, reports `guidance_px`, identifies `lighting_mode=off|local|continuous`, and reports actual base/UI upload pixels and region counts through `gpu_upload`.
+- Runtime/package release version is `4.3.6`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- The 4.3.5 Pixel 9a trace contained 30 native gameplay windows averaging 9.68 FPS; 20 were below 10 FPS and none reached 30 FPS. Lighting-off `objects` time correlated 0.915 with total frame time and alternated between roughly 10–35 ms and 145–172 ms despite identical visible-wall counts, isolating the full-viewport guidance path. Lighting-off ambient remained 13.0–13.1 ms, while continuous lighting added roughly 20 ms base and 9.5 ms union-UI uploads.
+- Deterministic 2424×1080 Native host profiling with an active story relic target measured `8.006 ms/render` plus `0.688 ms/update` in the quiet depth-10 scenario with local lighting. Lighting Off measured `6.185 ms/render`; these host results validate removal of the full-surface paths but are not ARM device claims.
+- Full non-web `unittest` discovery: 437 tests, all passing. `compileall`, `git diff --check`, and changed-file diagnostics passed with no errors.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.6-arm64-v8a_armeabi-v7a-debug.apk` (73,351,279 bytes; SHA-256 `ffc0dd3ea1e01c2567354283422b4696a87f86052b48698b0feb175d3597673e`). The package contains 104 architecture-correct ELF extensions for each ARM ABI and passed the project APK metadata/entry-point audit.
+- Physical-device validation is still required to confirm the requested sustained >20 FPS and ≥30 FPS average on the Pixel 9a; the new timing and pixel-count fields make that result directly attributable.
+
 ## 4.3.5 — Android Native Floor Stability and Render Cost
 
 Release 4.3.5 fixes the floor-height flicker introduced by 4.3.4's incremental mobile floor cache and targets the remaining native-resolution costs exposed by the first direct-GLES device log. The GPU lighting path is active and correct, but the Pixel 9a trace showed that half-resolution light construction, full-viewport transparent UI uploads, and dense visible-object blits still prevented 30 FPS.

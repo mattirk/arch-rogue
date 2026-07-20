@@ -77,6 +77,7 @@ class MenuBaseMixin:
         self.archetypes = archetypes
         self.dungeon_depth = dungeon_depth
         self._menu_font_cache: dict[int, pygame.font.Font] = {}
+        self._menu_backdrop_cache: tuple[object, pygame.Surface] | None = None
 
     # --- Accessors ----------------------------------------------------------
     @property
@@ -590,11 +591,26 @@ class MenuBaseMixin:
         if asset is None and key != "menu.background":
             asset = self.ui_asset("menu.background", (width, height))
         if asset is not None:
-            self.screen.fill(self.BG_DEEP)
-            self.screen.blit(asset, (0, 0))
-            wash = pygame.Surface((width, height), pygame.SRCALPHA)
-            wash.fill((*self.shade(accent, -126), 34))
-            self.screen.blit(wash, (0, 0))
+            cache_key = (
+                key,
+                width,
+                height,
+                id(asset),
+                tuple(accent),
+                tuple(self.screen.get_masks()),
+                self.g.ui_scale,
+            )
+            cached = self._menu_backdrop_cache
+            if cached is None or cached[0] != cache_key:
+                backdrop = pygame.Surface((width, height)).convert(self.screen)
+                backdrop.fill(self.BG_DEEP)
+                backdrop.blit(asset, (0, 0))
+                wash = pygame.Surface((width, height), pygame.SRCALPHA)
+                wash.fill((*self.shade(accent, -126), 34))
+                backdrop.blit(wash, (0, 0))
+                cached = (cache_key, backdrop)
+                self._menu_backdrop_cache = cached
+            self.screen.blit(cached[1], (0, 0))
             return
 
         # Base cold-obsidian wash with a faint stone texture for depth.

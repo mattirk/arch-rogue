@@ -102,6 +102,7 @@ def _duel_breathing(
 class RenderingStoryOverlayMixin:
     def draw_story_panel(self) -> None:
         self._story_panel_rect: pygame.Rect | None = None
+        self._story_panel_render_key: object | None = None
         # 4.2.2: scroll introspection resets whenever the panel is not drawn
         # so input paging never acts on a stale overflow range.
         self._story_panel_scrollbar_rect: pygame.Rect | None = None
@@ -213,6 +214,16 @@ class RenderingStoryOverlayMixin:
                 len(wrapped_lines),
             )
             self._story_panel_scrollbar_rect = track.move(rect.x, rect.y)
+        self._story_panel_render_key = (
+            tuple(lines),
+            scroll,
+            max_lines,
+            tuple(accent),
+            rect.size,
+            self.ui_scale,
+            id(self.small_font),
+            self.asset_ui_active(),
+        )
         self.screen.blit(surface, rect)
 
     def draw_story_panel_scrollbar(

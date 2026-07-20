@@ -58,7 +58,7 @@ from __future__ import annotations
 # pyright: reportAttributeAccessIssue=false
 import math
 from collections import OrderedDict
-from typing import Callable
+from typing import Callable, cast
 
 import pygame
 
@@ -237,8 +237,25 @@ class LightingMixin:
     def lighting_enabled(self) -> bool:
         return bool(getattr(self, "_lighting_enabled", True))
 
+    def mobile_lightweight_lighting_active(self) -> bool:
+        """Use local light accents instead of framebuffer transfer at Native."""
+
+        return bool(
+            self.lighting_enabled()
+            and getattr(self, "mobile_mode", False)
+            and getattr(self, "mobile_render_quality", "native") == "native"
+        )
+
+    def continuous_lighting_active(self) -> bool:
+        return bool(
+            self.lighting_enabled() and not self.mobile_lightweight_lighting_active()
+        )
+
     def lighting_normal_maps_active(self) -> bool:
-        return bool(getattr(self, "_lighting_normal_maps", True)) and self.lighting_enabled()
+        return bool(
+            getattr(self, "_lighting_normal_maps", True)
+            and self.continuous_lighting_active()
+        )
 
     def flicker_enabled(self) -> bool:
         # Lantern/torch flicker is always on when the lighting model is on.
@@ -568,6 +585,123 @@ class LightingMixin:
                 ry = sy // scale - tile_w_px // 2
                 buffer.fill(ambient, pygame.Rect(rx, ry, tile_w_px, tile_w_px))
 
+    def _mobile_lightweight_ambient_color(self) -> Color:
+        level = self._ambient_level()
+        # The continuous dark-floor ambient is designed to be rescued by a full
+        # multiply-buffer lantern. Local accents are intentionally subtler, so a
+        # readability floor keeps visible tile/sprite detail from collapsing.
+        level = max(0.42 if self.is_current_floor_dark() else 0.36, level)
+        color = shade_color(self._theme_light_color(), level)
+        return (
+            max(8, min(255, (color[0] // 8) * 8)),
+            max(8, min(255, (color[1] // 8) * 8)),
+            max(8, min(255, (color[2] // 8) * 8)),
+        )
+
+    def apply_mobile_lightweight_ambient_color(self, color: Color) -> Color:
+        if not self.mobile_lightweight_lighting_active():
+            return color
+        multiplier = self._mobile_lightweight_ambient_color()
+        return (
+            color[0] * multiplier[0] // 255,
+            color[1] * multiplier[1] // 255,
+            color[2] * multiplier[2] // 255,
+        )
+
+    def apply_mobile_lightweight_ambient(
+        self, surface: pygame.Surface
+    ) -> pygame.Surface:
+        """Return a cached depth/theme-tinted source for Native mobile lighting."""
+
+        if not self.mobile_lightweight_lighting_active():
+            return surface
+        color = self._mobile_lightweight_ambient_color()
+        key = (id(surface), surface.get_size(), color)
+        cache = cast(
+            OrderedDict[
+                tuple[object, ...], tuple[pygame.Surface, pygame.Surface]
+            ],
+            getattr(self, "_mobile_lightweight_ambient_cache", OrderedDict()),
+        )
+        cached = cache.get(key)
+        if cached is not None and cached[0] is surface:
+            cache.move_to_end(key)
+            return cached[1]
+
+        if surface.get_colorkey() is not None:
+            tinted = surface.convert_alpha()
+            blend_flag = pygame.BLEND_RGBA_MULT
+        else:
+            tinted = surface.copy()
+            blend_flag = (
+                pygame.BLEND_RGBA_MULT
+                if tinted.get_flags() & pygame.SRCALPHA
+                else pygame.BLEND_RGB_MULT
+            )
+        tinted.fill((*color, 255), special_flags=blend_flag)
+        tinted = optimize_immutable_alpha_surface(tinted)
+        cache[key] = (surface, tinted)
+        cache.move_to_end(key)
+        while len(cache) > 768:
+            cache.popitem(last=False)
+        self._mobile_lightweight_ambient_cache = cache
+        return tinted
+
+    def _mobile_lightweight_actor_lighting(
+        self,
+        sprite: pygame.Surface,
+        world_x: float,
+        world_y: float,
+    ) -> pygame.Surface:
+        ambient = self.apply_mobile_lightweight_ambient(sprite)
+        dominant = self._dominant_light(
+            world_x, world_y, require_visible_source=True
+        )
+        if dominant is None:
+            return ambient
+        distance = math.hypot(world_x - dominant.x, world_y - dominant.y)
+        factor = dominant.intensity * dominant.life * (
+            1.0 - distance / max(0.5, dominant.radius)
+        )
+        if dominant.flicker and self.flicker_enabled():
+            _, intensity_scale = self._flicker(dominant)
+            factor *= intensity_scale
+        strength_bucket = max(0, min(4, round(max(0.0, factor) * 4.0)))
+        if strength_bucket <= 0:
+            return ambient
+        light_color = hashable_color(dominant.color)
+        key = (id(ambient), light_color, strength_bucket)
+        cache = cast(
+            OrderedDict[
+                tuple[object, ...], tuple[pygame.Surface, pygame.Surface]
+            ],
+            getattr(self, "_mobile_lightweight_actor_cache", OrderedDict()),
+        )
+        cached = cache.get(key)
+        if cached is not None and cached[0] is ambient:
+            cache.move_to_end(key)
+            return cached[1]
+
+        result = (
+            ambient.convert_alpha()
+            if ambient.get_colorkey() is not None
+            else ambient.copy()
+        )
+        strength = 0.05 * strength_bucket
+        addition = (
+            round(light_color[0] * strength),
+            round(light_color[1] * strength),
+            round(light_color[2] * strength),
+        )
+        result.fill(addition, special_flags=pygame.BLEND_RGB_ADD)
+        result = optimize_immutable_alpha_surface(result)
+        cache[key] = (ambient, result)
+        cache.move_to_end(key)
+        while len(cache) > 384:
+            cache.popitem(last=False)
+        self._mobile_lightweight_actor_cache = cache
+        return result
+
     # --- the per-frame compositing entry point ----------------------
     def draw_lighting(self) -> None:
         if not self.lighting_enabled():
@@ -576,6 +710,11 @@ class LightingMixin:
             return
         screen_w, screen_h = self._screen_size()
         if screen_w <= 0 or screen_h <= 0:
+            return
+        if self.mobile_lightweight_lighting_active():
+            # Source surfaces already carry the cached depth/theme multiplier,
+            # while dark floors retain their per-tile lantern falloff. Avoid any
+            # screen-space halo that could color unrevealed framebuffer pixels.
             return
         scale = self.light_buffer_scale()
         buf_w = max(1, screen_w // scale)
@@ -664,6 +803,10 @@ class LightingMixin:
         actor no longer flickers as its pose animates. Skipped on the
         LIGHTING_OFF tier and when normal maps are disabled.
         """
+        if self.mobile_lightweight_lighting_active():
+            return self._mobile_lightweight_actor_lighting(
+                sprite, world_x, world_y
+            )
         if not self.lighting_normal_maps_active():
             return sprite
         dominant = self._dominant_light(world_x, world_y)
@@ -714,12 +857,22 @@ class LightingMixin:
             cache.popitem(last=False)
         return result
 
-    def _dominant_light(self, x: float, y: float) -> LightSource | None:
+    def _dominant_light(
+        self,
+        x: float,
+        y: float,
+        *,
+        require_visible_source: bool = False,
+    ) -> LightSource | None:
         lights = self._collect_frame_lights()
         best: LightSource | None = None
         best_score = -1.0
         for light in lights:
             if light.radius < 0.0:
+                continue
+            if require_visible_source and not self.can_see_world_position(
+                light.x, light.y, 0.0
+            ):
                 continue
             dx = x - light.x
             dy = y - light.y
@@ -849,6 +1002,8 @@ class LightingMixin:
         self._flicker_scratch_cache = {}
         self._light_buffer_surface = None
         self._light_scratch_surface = None
+        self._mobile_lightweight_ambient_cache = OrderedDict()
+        self._mobile_lightweight_actor_cache = OrderedDict()
         sprites = getattr(self, "sprites", None)
         if sprites is not None and hasattr(sprites, "clear_normal_map_cache"):
             sprites.clear_normal_map_cache()

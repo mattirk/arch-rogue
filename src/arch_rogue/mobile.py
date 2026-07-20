@@ -50,6 +50,7 @@ MOBILE_PERF_PHASES = (
 MOBILE_PERF_DETAIL_PHASES = (
     "floor",
     "objects",
+    "guidance",
     "light_build",
     "ambient",
     "base_upload",
@@ -691,6 +692,28 @@ class MobilePerformanceMonitor:
             if isinstance(ui_dirty, pygame.Rect)
             else (0, 0)
         )
+        guidance_size = getattr(game, "_mobile_guidance_surface_size", (0, 0))
+        if not (
+            isinstance(guidance_size, tuple)
+            and len(guidance_size) == 2
+        ):
+            guidance_size = (0, 0)
+        ui_region_count = int(getattr(game, "_mobile_gpu_ui_region_count", 0))
+        ui_upload_pixels = int(getattr(game, "_mobile_gpu_ui_upload_pixels", 0))
+        base_region_count = int(getattr(game, "_mobile_gpu_base_region_count", 0))
+        base_upload_pixels = int(getattr(game, "_mobile_gpu_base_upload_pixels", 0))
+        lighting_enabled = bool(getattr(game, "_lighting_enabled", False))
+        lightweight_method = getattr(game, "mobile_lightweight_lighting_active", None)
+        lightweight_lighting = bool(
+            callable(lightweight_method) and lightweight_method()
+        )
+        lighting_mode = (
+            "off"
+            if not lighting_enabled
+            else "local"
+            if lightweight_lighting
+            else "continuous"
+        )
         gpu_error = str(getattr(game, "_mobile_gpu_failure", "")).strip()
         gpu_error = gpu_error.replace(" ", "_") if gpu_error else "none"
         line = (
@@ -705,12 +728,16 @@ class MobilePerformanceMonitor:
             f"renderer={renderer_name} accelerated={accelerated_label} "
             f"alpha_sdl2={int(alpha_sdl2)} neon={neon_label} "
             f"gpu_light={int(bool(getattr(game, '_mobile_gpu_last_present', False)))} "
-            f"gpu_ui={self._size_label(ui_upload_size)} gpu_error={gpu_error} "
-            f"video={video_driver} lighting={int(bool(getattr(game, '_lighting_enabled', False)))} "
+            f"gpu_ui={self._size_label(ui_upload_size)} "
+            f"gpu_upload=base:{base_upload_pixels}px/{base_region_count}r,"
+            f"ui:{ui_upload_pixels}px/{ui_region_count}r gpu_error={gpu_error} "
+            f"video={video_driver} lighting={int(lighting_enabled)} "
+            f"lighting_mode={lighting_mode} "
             f"normals={int(bool(getattr(game, '_lighting_normal_maps', False)))} "
             f"entities=enemies:{enemies},lights:{lights},effects:{effects},projectiles:{projectiles} "
             f"visible=walls:{int(getattr(game, '_mobile_visible_wall_count', 0))},"
             f"enemies:{int(getattr(game, '_mobile_visible_enemy_count', 0))} "
+            f"guidance_px={self._size_label(guidance_size)} "
             f"cache=decoded:{cache_stats.get('decoded_sources', 0)},"
             f"frames:{cache_stats.get('resolved_frames', 0)},"
             f"loads+:{source_delta},builds+:{build_delta} "
@@ -777,6 +804,19 @@ class MobileMixin:
         self._mobile_gpu_ui_surface: pygame.Surface | None = None
         self._mobile_gpu_ui_viewport: pygame.Rect | None = None
         self._mobile_gpu_ui_dirty_rect: pygame.Rect | None = None
+        self._mobile_gpu_ui_regions: list[
+            tuple[str, pygame.Rect, object]
+        ] = []
+        self._mobile_gpu_ui_previous_rects: list[pygame.Rect] = []
+        self._mobile_gpu_base_regions: list[tuple[str, pygame.Rect]] = []
+        self._mobile_gpu_ui_region_textures: dict[str, tuple[object, Any]] = {}
+        self._mobile_gpu_ui_region_revisions: dict[str, object] = {}
+        self._mobile_gpu_base_region_textures: dict[str, tuple[object, Any]] = {}
+        self._mobile_gpu_shell_revision: object | None = None
+        self._mobile_gpu_ui_region_count = 0
+        self._mobile_gpu_ui_upload_pixels = 0
+        self._mobile_gpu_base_region_count = 0
+        self._mobile_gpu_base_upload_pixels = 0
         self._mobile_gpu_flash_surface: pygame.Surface | None = None
         self._mobile_gpu_failure = ""
         self._mobile_gpu_last_present = False
@@ -808,11 +848,26 @@ class MobileMixin:
         self._mobile_gpu_pending_light = None
         self._mobile_gpu_pending_flash = None
         self._mobile_gpu_last_present = False
+        self._mobile_gpu_shell_revision = None
+        self._mobile_gpu_ui_region_textures = {}
+        self._mobile_gpu_ui_region_revisions = {}
+        self._mobile_gpu_base_region_textures = {}
+        self._mobile_gpu_ui_regions = []
+        self._mobile_gpu_ui_previous_rects = []
+        self._mobile_gpu_base_regions = []
+        self._mobile_gpu_ui_region_count = 0
+        self._mobile_gpu_ui_upload_pixels = 0
+        self._mobile_gpu_base_region_count = 0
+        self._mobile_gpu_base_upload_pixels = 0
+        self._mobile_render_generation = int(
+            getattr(self, "_mobile_render_generation", 0)
+        ) + 1
         for name in (
             "_mobile_gpu_flash_texture",
             "_mobile_gpu_ui_texture",
             "_mobile_gpu_light_texture",
             "_mobile_gpu_base_texture",
+            "_mobile_gpu_shell_texture",
         ):
             if hasattr(self, name):
                 setattr(self, name, None)
@@ -820,6 +875,7 @@ class MobileMixin:
         self._mobile_gpu_ui_texture_key = None
         self._mobile_gpu_light_texture_key = None
         self._mobile_gpu_base_texture_key = None
+        self._mobile_gpu_shell_texture_key = None
 
     def release_mobile_gpu_renderer(self) -> None:
         """Release textures first, then borrowed renderer/window wrappers."""
@@ -845,7 +901,7 @@ class MobileMixin:
         return True
 
     def _mobile_gpu_frame_eligible(self) -> bool:
-        lighting_enabled = getattr(self, "lighting_enabled", None)
+        continuous_lighting = getattr(self, "continuous_lighting_active", None)
         return bool(
             getattr(self, "mobile_mode", False)
             and not getattr(self, "mobile_suspended", False)
@@ -853,8 +909,8 @@ class MobileMixin:
             and getattr(self, "_mobile_gpu_renderer", None) is not None
             and not getattr(self, "_mobile_gpu_failure", "")
             and self.mobile_input_context() == "gameplay"
-            and callable(lighting_enabled)
-            and lighting_enabled()
+            and callable(continuous_lighting)
+            and continuous_lighting()
         )
 
     @staticmethod
@@ -873,6 +929,12 @@ class MobileMixin:
         self._mobile_gpu_pending_light = None
         self._mobile_gpu_pending_flash = None
         self._mobile_gpu_frame_active = False
+        self._mobile_gpu_ui_region_count = 0
+        self._mobile_gpu_ui_upload_pixels = 0
+        self._mobile_gpu_base_region_count = 0
+        self._mobile_gpu_base_upload_pixels = 0
+        self._mobile_gpu_ui_regions = []
+        self._mobile_gpu_base_regions = []
         if not self._mobile_gpu_frame_eligible():
             return False
         root = self.screen
@@ -907,10 +969,16 @@ class MobileMixin:
             ui_surface.fill((0, 0, 0, 0))
             self._mobile_gpu_ui_surface = ui_surface
             self._mobile_gpu_ui_dirty_rect = None
+            self._mobile_gpu_ui_previous_rects = []
         else:
-            dirty = self._mobile_gpu_ui_dirty_rect
-            if dirty is not None and dirty.width > 0 and dirty.height > 0:
-                ui_surface.fill((0, 0, 0, 0), dirty)
+            previous = getattr(self, "_mobile_gpu_ui_previous_rects", ())
+            if previous:
+                for rect in previous:
+                    ui_surface.fill((0, 0, 0, 0), rect)
+            else:
+                dirty = self._mobile_gpu_ui_dirty_rect
+                if dirty is not None and dirty.width > 0 and dirty.height > 0:
+                    ui_surface.fill((0, 0, 0, 0), dirty)
             self._mobile_gpu_ui_dirty_rect = None
         self._mobile_gpu_ui_viewport = viewport
         self._mobile_gpu_frame_sequence += 1
@@ -930,6 +998,36 @@ class MobileMixin:
             return None
         return self._mobile_gpu_ui_surface
 
+    def mark_mobile_gpu_ui_region(
+        self,
+        key: str,
+        rect: pygame.Rect,
+        revision: object,
+    ) -> bool:
+        """Register one viewport-local post-light panel for indexed upload."""
+
+        if not getattr(self, "_mobile_gpu_frame_active", False):
+            return False
+        overlay = getattr(self, "_mobile_gpu_ui_surface", None)
+        if overlay is None:
+            return False
+        clipped = pygame.Rect(rect).clip(overlay.get_rect())
+        if clipped.width <= 0 or clipped.height <= 0:
+            return False
+        self._mobile_gpu_ui_regions.append((str(key), clipped, revision))
+        return True
+
+    def mark_mobile_gpu_base_region(self, key: str, rect: pygame.Rect) -> bool:
+        """Register a root-space control rectangle that changes over the GPU shell."""
+
+        if not getattr(self, "_mobile_gpu_frame_active", False):
+            return False
+        clipped = pygame.Rect(rect).clip(self.screen.get_rect())
+        if clipped.width <= 0 or clipped.height <= 0:
+            return False
+        self._mobile_gpu_base_regions.append((str(key), clipped))
+        return True
+
     def blit_mobile_post_light(
         self, surface: pygame.Surface, destination: tuple[int, int]
     ) -> bool:
@@ -942,9 +1040,17 @@ class MobileMixin:
         if viewport is None or overlay is None:
             return False
         rect = surface.get_rect(topleft=destination)
-        if not rect.colliderect(viewport):
+        clipped = rect.clip(viewport)
+        if clipped.width <= 0 or clipped.height <= 0:
             return False
-        overlay.blit(surface, (rect.x - viewport.x, rect.y - viewport.y))
+        local_rect = clipped.move(-viewport.x, -viewport.y)
+        source_area = clipped.move(-rect.x, -rect.y)
+        overlay.blit(surface, local_rect, source_area)
+        self.mark_mobile_gpu_ui_region(
+            "diagnostics",
+            local_rect,
+            (id(surface), surface.get_size()),
+        )
         return True
 
     def queue_mobile_gpu_lighting(self, surface: pygame.Surface) -> bool:
@@ -1001,14 +1107,102 @@ class MobileMixin:
             setattr(self, key_name, key)
         return texture
 
+    def _mobile_gpu_region_texture(
+        self,
+        cache_name: str,
+        region_key: str,
+        size: tuple[int, int],
+        blend_mode: int,
+    ) -> Any:
+        cache: dict[str, tuple[object, Any]] = getattr(self, cache_name, {})
+        texture_key = (self._mobile_gpu_renderer_generation, size)
+        cached = cache.get(region_key)
+        if cached is None or cached[0] != texture_key:
+            texture = self._create_mobile_gpu_texture(self._mobile_gpu_renderer, size)
+            texture.blend_mode = blend_mode
+            cache[region_key] = (texture_key, texture)
+            if cache_name == "_mobile_gpu_ui_region_textures":
+                self._mobile_gpu_ui_region_revisions.pop(region_key, None)
+        else:
+            texture = cached[1]
+        setattr(self, cache_name, cache)
+        return texture
+
+    @staticmethod
+    def _mobile_gpu_regions_union(
+        regions: Iterable[pygame.Rect],
+    ) -> pygame.Rect | None:
+        union: pygame.Rect | None = None
+        for rect in regions:
+            if rect.width <= 0 or rect.height <= 0:
+                continue
+            union = rect.copy() if union is None else union.union(rect)
+        return union
+
+    def _mobile_gpu_coalesced_ui_regions(
+        self,
+    ) -> list[tuple[str, pygame.Rect, object]]:
+        """Merge overlapping final-composite regions to avoid double blending."""
+
+        deduplicated: dict[str, tuple[pygame.Rect, object]] = {}
+        for key, rect, revision in self._mobile_gpu_ui_regions:
+            deduplicated[key] = (rect.copy(), revision)
+        groups: list[
+            tuple[pygame.Rect, list[tuple[str, pygame.Rect, object]]]
+        ] = []
+        for key, (rect, revision) in deduplicated.items():
+            merged_rect = rect.copy()
+            components = [(key, rect.copy(), revision)]
+            index = 0
+            while index < len(groups):
+                group_rect, group_components = groups[index]
+                if not merged_rect.colliderect(group_rect):
+                    index += 1
+                    continue
+                merged_rect = merged_rect.union(group_rect)
+                components.extend(group_components)
+                groups.pop(index)
+                index = 0
+            groups.append((merged_rect, components))
+
+        result: list[tuple[str, pygame.Rect, object]] = []
+        for rect, components in groups:
+            ordered = sorted(components, key=lambda component: component[0])
+            key = "|".join(component[0] for component in ordered)
+            revision = tuple(
+                (
+                    component_key,
+                    (
+                        component_rect.x - rect.x,
+                        component_rect.y - rect.y,
+                        component_rect.width,
+                        component_rect.height,
+                    ),
+                    component_revision,
+                )
+                for component_key, component_rect, component_revision in ordered
+            )
+            result.append((key, rect, revision))
+        return result
+
     def _composite_mobile_gpu_ui_fallback(self) -> None:
         viewport = getattr(self, "_mobile_gpu_ui_viewport", None)
         overlay = getattr(self, "_mobile_gpu_ui_surface", None)
         pending_flash = getattr(self, "_mobile_gpu_pending_flash", None)
         if viewport is not None and overlay is not None:
-            dirty = overlay.get_bounding_rect(min_alpha=1)
-            self._mobile_gpu_ui_dirty_rect = dirty if dirty.width > 0 else None
-            self.screen.blit(overlay, viewport)
+            coalesced = self._mobile_gpu_coalesced_ui_regions()
+            regions = [rect for _key, rect, _revision in coalesced]
+            if not regions:
+                dirty = overlay.get_bounding_rect(min_alpha=1)
+                if dirty.width > 0 and dirty.height > 0:
+                    regions = [dirty]
+            self._mobile_gpu_ui_previous_rects = [rect.copy() for rect in regions]
+            self._mobile_gpu_ui_dirty_rect = self._mobile_gpu_regions_union(regions)
+            for rect in regions:
+                self.screen.blit(
+                    overlay.subsurface(rect),
+                    rect.move(viewport.x, viewport.y),
+                )
         if pending_flash is not None:
             color, alpha = pending_flash
             width, height = self.screen.get_size()
@@ -1023,7 +1217,7 @@ class MobileMixin:
         self._mobile_gpu_pending_flash = None
 
     def present_mobile_gpu_frame(self) -> bool:
-        """Upload the native frame and let GLES scale/modulate the light buffer."""
+        """Composite lighting while uploading only regions that actually change."""
 
         if not getattr(self, "_mobile_gpu_frame_active", False):
             return False
@@ -1049,25 +1243,89 @@ class MobileMixin:
         root_buffer = None
         root_alias = None
         try:
-            base_texture = self._mobile_gpu_texture(
-                "base", root.get_size(), SDL_BLENDMODE_NONE
-            )
             light_texture = self._mobile_gpu_texture(
                 "light", light_surface.get_size(), SDL_BLENDMODE_MOD
             )
-            ui_rect = ui_surface.get_bounding_rect(min_alpha=1)
-            self._mobile_gpu_ui_dirty_rect = (
-                ui_rect.copy() if ui_rect.width > 0 and ui_rect.height > 0 else None
+            shell_texture = self._mobile_gpu_texture(
+                "shell", root.get_size(), SDL_BLENDMODE_NONE
             )
-            ui_texture = None
-            ui_upload_surface = None
-            ui_destination = None
-            if ui_rect.width > 0 and ui_rect.height > 0:
-                ui_upload_surface = ui_surface.subsurface(ui_rect)
-                ui_texture = self._mobile_gpu_texture(
-                    "ui", ui_rect.size, SDL_BLENDMODE_BLEND
+            theme = getattr(self, "theme", None)
+            layout = self.mobile_layout()
+            shell_revision = (
+                root.get_size(),
+                (viewport.x, viewport.y, viewport.width, viewport.height),
+                (layout.left_rail.x, layout.left_rail.y, layout.left_rail.width, layout.left_rail.height),
+                (layout.right_rail.x, layout.right_rail.y, layout.right_rail.width, layout.right_rail.height),
+                getattr(self, "state", ""),
+                getattr(theme, "name", ""),
+                tuple(getattr(theme, "accent", ())),
+                int(getattr(self, "ui_scale", 1)),
+                bool(getattr(self, "legacy_graphics", False)),
+            )
+            refresh_shell = self._mobile_gpu_shell_revision != shell_revision
+
+            # Preserve registration order but let a later draw replace a region
+            # with the same semantic key.
+            base_map: dict[str, pygame.Rect] = {}
+            for key, rect in self._mobile_gpu_base_regions:
+                clipped = rect.clip(root.get_rect())
+                if clipped.width > 0 and clipped.height > 0:
+                    base_map[key] = clipped
+            base_draws: list[tuple[Any, pygame.Rect]] = []
+            base_texture = None
+            if not refresh_shell:
+                base_texture = self._mobile_gpu_texture(
+                    "base", viewport.size, SDL_BLENDMODE_NONE
                 )
-                ui_destination = ui_rect.move(viewport.x, viewport.y)
+                for key, rect in base_map.items():
+                    texture = self._mobile_gpu_region_texture(
+                        "_mobile_gpu_base_region_textures",
+                        key,
+                        rect.size,
+                        SDL_BLENDMODE_NONE,
+                    )
+                    base_draws.append((texture, rect.copy()))
+            self._mobile_gpu_base_region_count = len(base_draws)
+
+            ui_map: dict[str, tuple[pygame.Rect, object]] = {}
+            for key, rect, revision in self._mobile_gpu_coalesced_ui_regions():
+                clipped = rect.clip(ui_surface.get_rect())
+                if clipped.width > 0 and clipped.height > 0:
+                    ui_map[key] = (clipped, revision)
+            if not ui_map:
+                fallback_rect = ui_surface.get_bounding_rect(min_alpha=1)
+                if fallback_rect.width > 0 and fallback_rect.height > 0:
+                    ui_map["legacy"] = (fallback_rect, sequence)
+            ui_rects = [rect for rect, _revision in ui_map.values()]
+            self._mobile_gpu_ui_previous_rects = [rect.copy() for rect in ui_rects]
+            self._mobile_gpu_ui_dirty_rect = self._mobile_gpu_regions_union(ui_rects)
+            self._mobile_gpu_ui_region_count = len(ui_rects)
+            ui_draws: list[
+                tuple[Any, pygame.Rect, pygame.Surface | None, str, object]
+            ] = []
+            for key, (rect, revision) in ui_map.items():
+                texture = self._mobile_gpu_region_texture(
+                    "_mobile_gpu_ui_region_textures",
+                    key,
+                    rect.size,
+                    SDL_BLENDMODE_BLEND,
+                )
+                upload = (
+                    ui_surface.subsurface(rect)
+                    if self._mobile_gpu_ui_region_revisions.get(key) != revision
+                    else None
+                )
+                ui_draws.append(
+                    (
+                        texture,
+                        rect.move(viewport.x, viewport.y),
+                        upload,
+                        key,
+                        revision,
+                    )
+                )
+            self._mobile_gpu_ui_texture = ui_draws[0][0] if ui_draws else None
+
             pending_flash = getattr(self, "_mobile_gpu_pending_flash", None)
             flash_texture = None
             flash_surface = self._mobile_gpu_flash_surface
@@ -1084,11 +1342,26 @@ class MobileMixin:
             root_alias = pygame.image.frombuffer(root_buffer, root.get_size(), "BGRA")
             if tuple(root_alias.get_masks()) != _ANDROID_ARGB_MASKS:
                 raise ValueError(f"unexpected upload masks {root_alias.get_masks()}")
-            base_texture.update(root_alias)
+            if refresh_shell:
+                shell_texture.update(root_alias)
+                self._mobile_gpu_shell_revision = shell_revision
+                base_pixels = root.get_width() * root.get_height()
+            else:
+                assert base_texture is not None
+                base_texture.update(root_alias.subsurface(viewport))
+                base_pixels = viewport.width * viewport.height
+                for texture, rect in base_draws:
+                    texture.update(root_alias.subsurface(rect))
+                    base_pixels += rect.width * rect.height
+            self._mobile_gpu_base_upload_pixels = base_pixels
             if monitor is not None:
                 monitor.record_detail_phase(
                     "base_upload", time.perf_counter() - started
                 )
+
+            # Release the BufferProxy lock before touching independent surfaces.
+            root_alias = None
+            root_buffer = None
 
             started = time.perf_counter()
             light_texture.update(light_surface)
@@ -1098,8 +1371,14 @@ class MobileMixin:
                 )
 
             started = time.perf_counter()
-            if ui_texture is not None and ui_upload_surface is not None:
-                ui_texture.update(ui_upload_surface)
+            ui_pixels = 0
+            for texture, _destination, upload, key, revision in ui_draws:
+                if upload is None:
+                    continue
+                texture.update(upload)
+                self._mobile_gpu_ui_region_revisions[key] = revision
+                ui_pixels += upload.get_width() * upload.get_height()
+            self._mobile_gpu_ui_upload_pixels = ui_pixels
             if (
                 flash_texture is not None
                 and flash_surface is not None
@@ -1111,17 +1390,18 @@ class MobileMixin:
             if monitor is not None:
                 monitor.record_detail_phase("ui_upload", time.perf_counter() - started)
 
-            # Release the BufferProxy lock before any later Surface operation.
-            root_alias = None
-            root_buffer = None
-
             started = time.perf_counter()
             renderer.draw_color = (0, 0, 0, 255)
             renderer.clear()
-            renderer.blit(base_texture, root.get_rect())
+            renderer.blit(shell_texture, root.get_rect())
+            if not refresh_shell and base_texture is not None:
+                renderer.blit(base_texture, viewport)
             renderer.blit(light_texture, viewport)
-            if ui_texture is not None and ui_destination is not None:
-                renderer.blit(ui_texture, ui_destination)
+            if not refresh_shell:
+                for texture, destination in base_draws:
+                    renderer.blit(texture, destination)
+            for texture, destination, _upload, _key, _revision in ui_draws:
+                renderer.blit(texture, destination)
             if flash_texture is not None:
                 renderer.blit(flash_texture, root.get_rect())
             renderer.present()
@@ -1633,6 +1913,11 @@ class MobileMixin:
         self._world_layer = None
         self._mobile_floor_layer_cache = None
         self._screen_flash_surface = None
+        self._mobile_static_menu_last_signature = None
+        self._mobile_static_shell_signature = None
+        menus = getattr(self, "menus", None)
+        if menus is not None and hasattr(menus, "_menu_backdrop_cache"):
+            menus._menu_backdrop_cache = None
         for name in (
             "_hud_panel_cache",
             "_hud_icon_cache",
