@@ -172,8 +172,6 @@ h2 { font-size: clamp(1.35rem, 3vw, 1.8rem); }
   z-index: 2;
   filter: brightness(1.16) drop-shadow(0 10px 8px rgba(0,0,0,.62));
   transform: translateY(-3px);
-  outline: 1px solid var(--gold-bright);
-  outline-offset: 2px;
 }
 .platform-icon-frame {
   position: relative;
