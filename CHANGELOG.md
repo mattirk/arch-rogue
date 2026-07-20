@@ -1,5 +1,29 @@
 # Changelog
 
+## 4.3.11 — Android Full-Bleed Rendering and Performance Recovery
+
+Release 4.3.11 restores the edge-to-edge mobile presentation and recovers the frame cost introduced by the 4.3.10 lighting/shadow fixes, while keeping their visuals. The dungeon now always renders across the full physical display with the HUD as a true overlay, menus paint full-bleed backgrounds, and the relic guidance no longer re-rasterizes every frame. Desktop is unchanged.
+
+### Changed
+
+- The mobile world viewport spans the entire display again (as in the pre-overlay-HUD builds). The left rail, right action rail, joystick, and menu glyph draw on top; the camera keeps its unobstructed gameplay focus between the overlays.
+- Mobile menu screens (title, options, controls, about, archetype select, exit confirmation) render full-bleed across the display instead of being clipped to the safe area. In-game overlays (inventory, shop, character, story) remain safe-area-clipped so they never slide under the control rails.
+- With the viewport full-screen, every HUD control already lives inside the streamed world texture, so the 4.3.9 duplicate base-region uploads are gone again; per-frame texture upload is back to the world viewport plus post-light UI panels.
+
+### Fixed
+
+- Mobile contact shadows keep the soft transparent look but are now built directly at final size (concentric-ellipse radial falloff) instead of smoothscaling a template, removing a per-unique-size ARM scaling cost in crowded frames.
+- Story relic guidance now caches its carved-crack overlay content keyed by screen bounds, pulse phase, and visibility run, and only re-rasterizes when those change. This fixes the relic lighting/effect glitches (stale trails from the cleared buffer) and removes the dominant per-frame relic cost.
+- The menu glyph and hub panel are clamped back inside the safe area beside the action rail now that the viewport no longer bounds them.
+- Runtime/package release version is `4.3.11`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Full non-web `unittest` discovery completed with 471 tests passing, including a new full-bleed viewport/menu regression; `compileall` and `git diff --check` pass.
+- Representative 2340×1080 crowd profiles: Performance render 13.752 ms/frame (improved from 14.640), Native software-fallback 18.346 ms/frame; the full-screen floor blit is the remaining Native cost. Headless 2340×1080 renders with asymmetric safe insets confirm edge-to-edge world, full-bleed title menu, soft shadows, and relic rendering.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.11-arm64-v8a_armeabi-v7a-debug.apk` (73,447,339 bytes; SHA-256 `43187044cfa09c52b5ea971f6dbf23736f003e6d97c2893817f075a778d584b0`). The package reports version 4.3.11 with both ARM ABIs (104 architecture-correct ELF extensions per ABI) and passes APK Signature Scheme v2 verification.
+- Physical-device validation remains required for final frame pacing and relic visual parity.
+
 ## 4.3.10 — Android Lighting and Interaction Polish
 
 Release 4.3.10 fixes the remaining mobile interaction and presentation regressions reported after the overlay-HUD beta. Quest guests now use the same tappable contextual prompt pattern as items and doors, the analog stick is easier to reach, and accelerated Native mode restores continuous actor lighting without returning to a full-resolution CPU light multiply. Desktop rendering and controls remain unchanged.

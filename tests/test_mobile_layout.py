@@ -1031,14 +1031,12 @@ class MobileRenderQualityTests(unittest.TestCase):
                 )
             )
             self.assertEqual(game._mobile_gpu_ui_upload_pixels, 0)
-            self.assertGreater(game._mobile_gpu_base_region_count, 0)
-            self.assertLess(game._mobile_gpu_base_upload_pixels, root_pixels)
-            self.assertTrue(
-                all(
-                    not viewport.contains(rect)
-                    for _key, rect in game._mobile_gpu_base_regions
-                )
-            )
+            # Full-screen viewport: every HUD control already lives inside the
+            # streamed world texture, so no duplicate base-region uploads remain.
+            self.assertEqual(game._mobile_gpu_base_region_count, 0)
+            # Second frame uploads only the world viewport, not the shell.
+            self.assertLessEqual(game._mobile_gpu_base_upload_pixels, root_pixels)
+            self.assertEqual(game._mobile_gpu_base_regions, [])
 
             blitted = [
                 texture
@@ -1088,10 +1086,11 @@ class MobileLayoutTests(unittest.TestCase):
                 self.assertEqual(layout.display_rect.size, size)
                 self.assertTrue(layout.safe_rect.contains(layout.left_rail))
                 self.assertTrue(layout.safe_rect.contains(layout.right_rail))
-                self.assertTrue(layout.display_rect.contains(layout.world_viewport))
-                self.assertEqual(layout.world_viewport.left, layout.display_rect.left)
+                # The world renders edge-to-edge across the whole display; both
+                # rails are overlays on top of it.
+                self.assertEqual(layout.world_viewport, layout.display_rect)
                 self.assertTrue(layout.left_rail.colliderect(layout.world_viewport))
-                self.assertFalse(layout.right_rail.colliderect(layout.world_viewport))
+                self.assertTrue(layout.right_rail.colliderect(layout.world_viewport))
                 self.assertTrue(layout.world_viewport.contains(layout.gameplay_rect))
                 self.assertFalse(layout.left_rail.colliderect(layout.gameplay_rect))
                 self.assertFalse(layout.right_rail.colliderect(layout.gameplay_rect))
@@ -1128,6 +1127,23 @@ class MobileLayoutTests(unittest.TestCase):
         self.assertGreaterEqual(regular.joystick_rect.width, 180)
         self.assertGreater(regular.joystick_rect.left, regular.left_rail.left)
         self.assertLess(regular.joystick_rect.bottom, regular.safe_rect.bottom)
+
+    def test_world_viewport_and_menus_cover_full_display(self) -> None:
+        for size, insets in (
+            ((780, 360), (0, 0, 0, 0)),
+            ((1280, 720), (0, 0, 0, 0)),
+            ((2340, 1080), (90, 0, 18, 0)),
+            ((2340, 1080), (18, 0, 90, 0)),
+        ):
+            with self.subTest(size=size, insets=insets):
+                layout = build_mobile_layout(size, insets)
+                self.assertEqual(layout.world_viewport, layout.display_rect)
+                self.assertTrue(layout.safe_rect.contains(layout.menu_rect))
+                self.assertTrue(layout.safe_rect.contains(layout.hub_panel_rect))
+                self.assertTrue(layout.safe_rect.contains(layout.left_rail))
+                self.assertTrue(layout.safe_rect.contains(layout.right_rail))
+                self.assertFalse(layout.left_rail.colliderect(layout.gameplay_rect))
+                self.assertFalse(layout.right_rail.colliderect(layout.gameplay_rect))
 
     def test_detect_mobile_runtime_env_override(self) -> None:
         old = os.environ.pop("ARCH_ROGUE_MOBILE", None)

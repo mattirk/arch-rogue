@@ -843,20 +843,20 @@ class RenderingHudMixin:
             (self.player.mana, self.player.max_mana, (54, 104, 210), "MP"),
             (self.player.stamina, self.player.max_stamina, (206, 164, 64), "ST"),
         )
+        # The world viewport covers the entire display, so these controls are
+        # already inside the streamed world texture. Registering them again as
+        # base regions would only duplicate texture uploads (4.3.9 regression).
         for index, (rect, (value, maximum, color, label)) in enumerate(
             zip(layout.resource_rects, resource_values)
         ):
             self._draw_mobile_vertical_bar(rect, value, maximum, color, label)
-            self.mark_mobile_gpu_base_region(f"resource-{index}", rect)
         self._hud_resource_bar_rects = tuple(
             rect.copy() for rect in layout.resource_rects
         )
 
         self._draw_mobile_run_summary(layout.run_info_rect)
-        self.mark_mobile_gpu_base_region("run-info", layout.run_info_rect)
         if layout.character_rect is not None:
             self._draw_mobile_character_summary(layout.character_rect)
-            self.mark_mobile_gpu_base_region("character", layout.character_rect)
 
         slots = self.hud_action_slots()
         action_commands = (
@@ -871,7 +871,6 @@ class RenderingHudMixin:
             zip(slots, layout.action_rects, action_commands)
         ):
             self.draw_hud_action_icon(slot, rect)
-            self.mark_mobile_gpu_base_region(f"action-{index}", rect)
             self.register_mobile_touch_target(
                 rect, command, str(slot.get("hotkey", "")), context="gameplay"
             )
@@ -953,7 +952,6 @@ class RenderingHudMixin:
             del self._mobile_root_screen
 
         self._draw_mobile_joystick(layout.joystick_rect)
-        self.mark_mobile_gpu_base_region("joystick", layout.joystick_rect)
 
         if context in ("gameplay", "mobile_hub", "quest"):
             self._draw_mobile_control_button(
@@ -966,7 +964,6 @@ class RenderingHudMixin:
                 layout.menu_rect,
                 close=context in ("mobile_hub", "quest"),
             )
-            self.mark_mobile_gpu_base_region("mobile-menu", layout.menu_rect)
             menu_command = Command.QUEST if context == "quest" else Command.MOBILE_MENU
             self.register_mobile_touch_target(
                 layout.menu_rect,
@@ -1364,7 +1361,6 @@ class RenderingHudMixin:
                 label,
                 context="mobile_hub",
             )
-        self.mark_mobile_gpu_base_region("mobile-hub", panel_rect)
 
     def _draw_mobile_control_button(
         self, rect: pygame.Rect, label: str, color: Color, *, active: bool

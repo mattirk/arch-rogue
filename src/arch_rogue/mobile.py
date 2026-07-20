@@ -451,13 +451,10 @@ def build_mobile_layout(
     left = pygame.Rect(safe.x + outer, safe.y + outer, left_w, 1)
     rail_h = max(1, safe.height - outer * 2)
     right = pygame.Rect(safe.right - outer - right_w, safe.y + outer, right_w, rail_h)
-    viewport_right = max(1, right.x - rail_gap)
-    viewport = pygame.Rect(
-        display.x,
-        safe.y + outer,
-        max(1, viewport_right - display.x),
-        rail_h,
-    )
+    # The world renders edge-to-edge across the whole physical display. The
+    # left rail, right action rail, joystick, and menu sit on top as overlays;
+    # ``gameplay`` below is the unobstructed rectangle the camera focuses on.
+    viewport = display.copy()
 
     joystick_raise = max(18, min(64, int(safe.height * 0.065)))
     joystick = pygame.Rect(0, 0, joystick_size, joystick_size)
@@ -543,21 +540,25 @@ def build_mobile_layout(
             character_h,
         )
 
-    gameplay_left = min(viewport.right - 1, left.right + rail_gap)
+    gameplay_left = min(right.x - rail_gap - 1, left.right + rail_gap)
     gameplay = pygame.Rect(
         gameplay_left,
-        viewport.y,
-        max(1, viewport.right - gameplay_left),
-        viewport.height,
+        safe.y + outer,
+        max(1, right.x - rail_gap - gameplay_left),
+        rail_h,
     )
     world_focus = (
         gameplay.centerx,
-        viewport.y + round(viewport.height * 0.48),
+        gameplay.y + round(gameplay.height * 0.48),
     )
 
     auxiliary_size = max(46, min(76, int(safe.height * 0.09)))
     menu = pygame.Rect(0, 0, auxiliary_size, auxiliary_size)
-    menu.topright = (viewport.right - outer, viewport.y + outer)
+    # The menu glyph stays inside the safe area beside the right action rail,
+    # even though the world viewport now spans the full display.
+    menu.topright = (right.x - rail_gap, safe.y + outer)
+    if menu.left < safe.x + outer:
+        menu.left = safe.x + outer
 
     hub_width = max(146, min(228, int(safe.width * 0.20)))
     hub_row_h = max(38, min(58, int(safe.height * 0.075)))
@@ -566,8 +567,8 @@ def build_mobile_layout(
     hub_height = hub_pad * 2 + hub_row_h * 4 + hub_gap * 3
     hub_panel = pygame.Rect(0, 0, hub_width, hub_height)
     hub_panel.topright = (menu.right, menu.bottom + hub_gap)
-    if hub_panel.bottom > viewport.bottom - outer:
-        hub_panel.bottom = viewport.bottom - outer
+    if hub_panel.bottom > safe.bottom - outer:
+        hub_panel.bottom = safe.bottom - outer
     if hub_panel.left < gameplay.left + outer:
         hub_panel.left = gameplay.left + outer
     hub_names = ("inventory", "character", "quest", "exit")

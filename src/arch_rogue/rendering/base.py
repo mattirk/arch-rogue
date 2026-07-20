@@ -163,7 +163,7 @@ class RenderingBaseMixin:
             performance.record_phase("clear", time.perf_counter() - started)
         if menu_draw is not None:
             started = time.perf_counter()
-            with self.mobile_safe_render_target():
+            with self.mobile_full_render_target():
                 menu_draw()
             if performance is not None:
                 performance.record_phase("menu", time.perf_counter() - started)
@@ -238,10 +238,30 @@ class RenderingBaseMixin:
     def mobile_safe_render_target(self) -> Iterator[None]:
         """Render menus/overlays inside the Android safe area."""
 
+        yield from self._mobile_render_target(safe_area=True)
+
+    @contextmanager
+    def mobile_full_render_target(self) -> Iterator[None]:
+        """Render a screen across the whole Android display.
+
+        Menu screens (title, options, about, archetype select, exit confirm)
+        own the whole screen while open; there is no HUD rail to avoid, so
+        they paint edge-to-edge like their desktop counterparts.
+        """
+
+        yield from self._mobile_render_target(safe_area=False)
+
+    def _mobile_render_target(self, *, safe_area: bool) -> Iterator[None]:
         if not getattr(self, "mobile_mode", False):
             yield
             return
         root = self.screen
+        if not safe_area:
+            # Full-bleed menus still draw on the root surface; nothing to
+            # re-target. Keep the frame-size cache consistent for fitted
+            # layouts that query the display size.
+            yield
+            return
         safe = self.mobile_safe_rect().clip(root.get_rect())
         if safe.width <= 0 or safe.height <= 0:
             yield

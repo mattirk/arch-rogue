@@ -753,13 +753,42 @@ class RenderingEffectsMixin:
             return shadow
         if len(cache) >= 128:
             cache.pop(next(iter(cache)))
-        template = self._soft_shadow_template(max(8, max(width, height)))
-        shadow = pygame.transform.smoothscale(template, (width, height))
+        if getattr(self, "mobile_mode", False):
+            # Mobile shadows are tiny low-opacity patches; bilinear smoothscale
+            # at cache-build time is a measurable ARM cost in crowds, while
+            # nearest scaling is visually indistinguishable under a sprite.
+            shadow = self._mobile_soft_shadow(width, height)
+        else:
+            template = self._soft_shadow_template(max(8, max(width, height)))
+            shadow = pygame.transform.smoothscale(template, (width, height))
         shadow.set_alpha(alpha)
         shadow = optimize_immutable_alpha_surface(shadow, alpha=alpha)
         cache[key] = shadow
         self._scaled_soft_shadow_cache = cache
         return shadow
+
+    @staticmethod
+    def _mobile_soft_shadow(width: int, height: int) -> pygame.Surface:
+        # Cheap radial falloff built directly at final size with concentric
+        # ellipses (no scaling): center ~55% alpha, fading to transparent at
+        # the edge. Constant work per unique (w, h) bucket, cached by caller.
+        surf = pygame.Surface((width, height), pygame.SRCALPHA)
+        surf.fill((0, 0, 0, 0))
+        steps = 5
+        cx, cy = width / 2.0, height / 2.0
+        for i in range(steps):
+            ratio = 1.0 - i / steps  # 1.0 outer -> 0.0 inner
+            w = max(1, int(width * ratio))
+            h = max(1, int(height * ratio))
+            alpha = int(140 * (i / (steps - 1)) ** 1.4)
+            rect = pygame.Rect(0, 0, w, h)
+            rect.center = (int(cx), int(cy))
+            pygame.draw.ellipse(surf, (0, 0, 0, alpha), rect)
+        try:
+            surf = surf.convert_alpha()
+        except pygame.error:
+            pass
+        return surf
 
     def draw_shadow(
         self,
@@ -905,6 +934,7 @@ class RenderingEffectsMixin:
             except pygame.error:
                 pass
             self._guidance_glow_surface = surf
+            self._guidance_glow_content_key = None
         surf.fill((0, 0, 0, 0))
         return surf
 
@@ -1160,6 +1190,28 @@ class RenderingEffectsMixin:
         self._guidance_glow_blit_rect = blit_rect.copy()
         self._mobile_guidance_surface_size = glow_layer.get_size()
 
+        # Content cache: the carved crack only changes shape when its screen
+        # bounds move or the visibility run changes; re-rasterizing every
+        # segment on every frame was the dominant mobile relic-glitch cost
+        # (the overlay is alpha-blitted over lit floor, so stale frames also
+        # left visible trails before the buffer cleared).
+        content_key = (
+            local_rect.topleft,
+            (layer_w, layer_h),
+            groove_alpha,
+            seep_alpha,
+            ring_groove_alpha,
+            ring_light_alpha,
+            tuple(lit_flags),
+            shadow,
+            lip,
+            warm,
+            tuple(raw_screen),
+        )
+        if getattr(self, "_guidance_glow_content_key", None) == content_key:
+            self.screen.blit(glow_layer, blit_rect.topleft)
+            return
+        # Rasterizing below: the layer was just cleared by _guidance_glow_layer.
         def local(point: tuple[float, float]) -> tuple[float, float]:
             return point[0] - blit_rect.x, point[1] - blit_rect.y
 
@@ -1213,6 +1265,7 @@ class RenderingEffectsMixin:
                 max(1, int(2 * WORLD_SCALE)),
             )
 
+        self._guidance_glow_content_key = content_key
         self.screen.blit(glow_layer, blit_rect.topleft)
 
     def story_relic_guidance_route(
