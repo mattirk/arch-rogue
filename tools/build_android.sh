@@ -155,18 +155,59 @@ else:
 path.write_text(text, encoding="utf-8")
 PY
 
-# --- Android SDK license acceptance ---------------------------------------
-# buildozer downloads its own Android SDK to ~/.buildozer/android/platform and
-# then asks sdkmanager to install build-tools/platforms.  sdkmanager refuses
-# to install build-tools (and aidl is then missing) until every SDK license is
-# accepted.  In a non-interactive CI shell the license prompt is skipped and
-# the build dies at "build-tools folder not found / Aidl not found".
-#
-# Fix: pre-seed the license-accepted files with every known SDK license hash,
-# then (once buildozer has downloaded cmdline-tools) run `sdkmanager --licenses`
-# non-interactively so even future build-tools versions are accepted.
+# --- Android SDK bootstrap + license acceptance ---------------------------
+# Buildozer 1.6.0 considers any existing android-sdk directory installed, even
+# if a cancelled/cache-restored setup contains no sdkmanager. Never create an
+# empty SDK merely to seed licenses: that makes Buildozer skip its own download.
+# Repair modern command-line-tool layouts, or remove only Buildozer's incomplete
+# default cache so the next invocation downloads a complete pinned SDK.
+android_sdk_root() {
+  printf '%s\n' "${ANDROIDSDK:-$HOME/.buildozer/android/platform/android-sdk}"
+}
+
+repair_android_sdk_bootstrap() {
+  local sdk legacy manager default_sdk
+  sdk="$(android_sdk_root)"
+  legacy="$sdk/tools/bin/sdkmanager"
+  default_sdk="$HOME/.buildozer/android/platform/android-sdk"
+  if [ -x "$legacy" ]; then
+    return
+  fi
+
+  for manager in \
+    "$sdk/cmdline-tools/latest/bin/sdkmanager" \
+    "$sdk/cmdline-tools/bin/sdkmanager"; do
+    if [ -x "$manager" ]; then
+      echo "Repairing Buildozer sdkmanager compatibility path: $legacy"
+      mkdir -p "$sdk/tools/bin"
+      ln -sfn "$manager" "$legacy"
+      if [ -x "${manager%/*}/avdmanager" ]; then
+        ln -sfn "${manager%/*}/avdmanager" "$sdk/tools/bin/avdmanager"
+      fi
+      return
+    fi
+  done
+
+  if [ -d "$sdk" ]; then
+    if [ "$sdk" = "$default_sdk" ]; then
+      echo "Removing incomplete cached Android SDK (sdkmanager missing): $sdk" >&2
+      rm -rf "$sdk"
+    else
+      echo "build_android.sh: custom ANDROIDSDK is incomplete; sdkmanager missing under $sdk" >&2
+      exit 1
+    fi
+  fi
+}
+
+# Once command-line tools exist, pre-seed known license hashes and run
+# `sdkmanager --licenses` non-interactively. If the SDK does not exist yet,
+# return without creating it so Buildozer can bootstrap it correctly.
 accept_android_licenses() {
-  local sdk="$HOME/.buildozer/android/platform/android-sdk"
+  local sdk
+  sdk="$(android_sdk_root)"
+  if [ ! -d "$sdk" ]; then
+    return
+  fi
   mkdir -p "$sdk/licenses"
   # android-sdk-license covers build-tools through the current generation.
   # Each line is a SHA1 of a license text; sdkmanager accepts if the hash is
@@ -190,6 +231,7 @@ accept_android_licenses() {
   done
 }
 
+repair_android_sdk_bootstrap
 accept_android_licenses
 
 # buildozer may still fail on the first run if it bootstraps cmdline-tools
@@ -213,8 +255,9 @@ run_buildozer() {
 }
 
 if ! run_buildozer "$MODE" 2>&1 | tee "$BUILD_LOG"; then
-  if grep -Eqi 'license.*not accepted|Aidl not found|build-tools.*not found' "$BUILD_LOG"; then
-    echo "build_android.sh: SDK setup failed; re-accepting licenses and retrying once." >&2
+  if grep -Eqi 'license.*not accepted|Aidl not found|build-tools.*not found|sdkmanager.*(does not exist|not installed)' "$BUILD_LOG"; then
+    echo "build_android.sh: SDK setup failed; repairing SDK tools/licenses and retrying once." >&2
+    repair_android_sdk_bootstrap
     accept_android_licenses
     run_buildozer "$MODE"
   else

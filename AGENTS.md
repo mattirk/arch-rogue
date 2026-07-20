@@ -227,3 +227,4 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - Dedicated room decorations for bosses (floor, walls, props). Generate new via Pixellab for bosses up to level 10 and final boss.
 - Dash: extended dash/blink skill (skill 4) when key pressed long, character starts "running" and moves faster. This consumes stamina really fast and stops once stamina is spent. When "running" mode activated, dash/blink suffers 1min cooldown. To be used as last resort to run away.
 - On mobile, relic shadow/effects are fixed but shrines still glitch. At least after used.
+- On mobile, back button is needed. Place subtle back button in top left corner on screens that allow going back to previous screens, including character and inventory. Generate nice glyph in pixellab

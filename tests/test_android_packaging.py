@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import io
+import os
 import struct
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -117,6 +119,54 @@ class AndroidSourceContractTests(unittest.TestCase):
             validate_build_spec(ROOT / "buildozer.spec", ROOT),
             ("arm64-v8a", "armeabi-v7a"),
         )
+
+    def test_android_sdk_bootstrap_repairs_partial_ci_cache(self) -> None:
+        build_script = (ROOT / "tools" / "build_android.sh").read_text(
+            encoding="utf-8"
+        )
+        function_start = build_script.index("android_sdk_root() {")
+        function_end = build_script.index(
+            "\nrepair_android_sdk_bootstrap\naccept_android_licenses",
+            function_start,
+        )
+        functions = build_script[function_start:function_end]
+        exercise = functions + r'''
+set -eu
+sdk="$(android_sdk_root)"
+
+# A cancelled/cache-restored install must be removed so Buildozer downloads it.
+mkdir -p "$sdk/licenses"
+repair_android_sdk_bootstrap
+test ! -e "$sdk"
+
+# Modern command-line tools must satisfy Buildozer 1.6.0's legacy lookup path.
+mkdir -p "$sdk/cmdline-tools/latest/bin"
+printf '#!/bin/sh\nexit 0\n' > "$sdk/cmdline-tools/latest/bin/sdkmanager"
+printf '#!/bin/sh\nexit 0\n' > "$sdk/cmdline-tools/latest/bin/avdmanager"
+chmod +x "$sdk/cmdline-tools/latest/bin/sdkmanager" \
+  "$sdk/cmdline-tools/latest/bin/avdmanager"
+repair_android_sdk_bootstrap
+test -x "$sdk/tools/bin/sdkmanager"
+test -x "$sdk/tools/bin/avdmanager"
+
+# License seeding must not create an empty SDK that suppresses bootstrapping.
+rm -rf "$sdk"
+accept_android_licenses
+test ! -e "$sdk"
+'''
+        with tempfile.TemporaryDirectory() as home:
+            env = os.environ.copy()
+            env["HOME"] = home
+            env.pop("ANDROIDSDK", None)
+            subprocess.run(
+                ["bash", "-c", exercise],
+                check=True,
+                cwd=ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+            )
+
 
     def test_build_spec_rejects_blank_android_permission(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
