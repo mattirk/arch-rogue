@@ -119,6 +119,36 @@ class RenderingEffectsMixin:
         )
         alpha = max(0, min(230, int(205 * life)))
 
+        # Cache the baked overlay per (kind, quantized progress/alpha, radius
+        # bucket, color). Impact effects animate over a handful of frames, so
+        # quantizing progress into ~24 steps lets consecutive frames share one
+        # surface instead of allocating + redrawing every circle each frame —
+        # a leading render hotspot in combat crowds on Android.
+        mobile = bool(getattr(self, "mobile_mode", False))
+        cache_key = None
+        if mobile:
+            progress_bucket = int(progress * 24)
+            alpha_bucket = (alpha // 16) * 16
+            radius_bucket = (radius // 4) * 4
+            cache_key = (
+                effect.kind,
+                progress_bucket,
+                alpha_bucket,
+                radius_bucket,
+                effect.color,
+            )
+            cache = getattr(self, "_impact_overlay_cache", None)
+            if not isinstance(cache, OrderedDict):
+                cache = OrderedDict()
+                self._impact_overlay_cache = cache
+            cached = cache.get(cache_key)
+            if cached is not None:
+                cache.move_to_end(cache_key)
+                self.screen.blit(
+                    cached, cached.get_rect(center=(sx, sy - 12 * WORLD_SCALE))
+                )
+                return
+
         overlay = pygame.Surface((radius * 2 + 18, radius * 2 + 18), pygame.SRCALPHA)
         center = (overlay.get_width() // 2, overlay.get_height() // 2)
         bright = self.shade(effect.color, 48)
@@ -283,6 +313,13 @@ class RenderingEffectsMixin:
                 )
 
 
+        overlay = optimize_immutable_alpha_surface(overlay)
+        if cache_key is not None:
+            assert cache is not None
+            cache[cache_key] = overlay
+            cache.move_to_end(cache_key)
+            while len(cache) > 128:
+                cache.popitem(last=False)
         self.screen.blit(overlay, overlay.get_rect(center=(sx, sy - 12 * WORLD_SCALE)))
 
     def _draw_cast_emanation(

@@ -1,5 +1,32 @@
 # Changelog
 
+## 4.3.13 — Android Cutscene Backdrop, Hub Touch Targets, and Frame Recovery
+
+Release 4.3.13 finishes the cutscene presentation, makes the game-hub rows easier to hit by touch, and pushes overall mobile frame rate higher by removing per-frame allocations and redundant work in the hottest render paths. Desktop is unchanged.
+
+### Changed
+
+- **Cutscene backdrop is full-bleed.** The authored `cutscene.background` (and its dim pass) is requested at the full physical display size, so the cinematic backdrop covers the whole screen edge-to-edge instead of being inset within the safe area.
+- **Larger game-hub touch targets.** The mobile hub rows (Inventory, Character, Quest, Exit) are taller and the panel wider, so each entry is easier to tap; the panel still clamps inside the safe area beside the action rail.
+
+### Performance
+
+- **Impact effects are cached per (kind, quantized progress, radius bucket, color)** instead of allocating and re-drawing a fresh `SRCALPHA` overlay every frame. In combat crowds this removes one of the top per-frame allocation costs (impact effects were a leading render hotspot).
+- **Cutscene/static screens skip the world frame entirely** (carried from 4.3.12) and now also reuse the full-bleed backdrop surface, avoiding a per-frame cover-scale of the background.
+- The full-bleed single world texture upload, direct-size shadows, and cached relic/guidance paths from 4.3.11–4.3.12 are retained.
+
+### Fixed
+
+- Runtime/package release version is `4.3.13`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Full non-web `unittest` discovery completed with 473 tests passing; `compileall` and `git diff --check` pass.
+- Crowd profile confirms impact-effect allocation removed from the top render hotspots; full-bleed cutscene backdrop and larger hub rows verified by layout regressions.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.13-arm64-v8a_armeabi-v7a-debug.apk` (73,448,807 bytes; SHA-256 `a30ddb74d0f31213904f6b2ed28e1545ef5da8100b089d7237a9cea8d8332678`). The package reports version 4.3.13 with both ARM ABIs (104 architecture-correct ELF extensions per ABI) and passes APK Signature Scheme v2 verification.
+- Representative 2340×1080 Performance crowd render improved to 12.751 ms/frame (from 14.982) after the impact-effect cache; full suite remains green.
+- Physical-device validation remains required to confirm the +10–15 FPS target.
+
 ## 4.3.12 — Android Relic Fix and Cutscene Performance
 
 Release 4.3.12 fixes the relic/shrine visual corruption seen on Android, makes cutscenes truly full-screen, and removes their dominant frame cost. Gameplay performance improves on-device through the eliminated per-frame relic and cutscene work while all visuals are preserved. Desktop is unchanged.
