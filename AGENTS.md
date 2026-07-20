@@ -212,6 +212,12 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
   - Generate assets in PixelLab when needed
   - What is the best way to dynamically update download links of platform download badges (Windows, Mac, Android) in website when new releases are built in gh actions?
 
+#### 4.4.1 Post-website what comes to mind
+
+- On mobile, relic shadow/effects are fixed but shrines still glitch. At least after used.
+- On mobile, back button is needed. Place subtle back button in top left corner on screens that allow going back to previous screens, including character and inventory. Generate nice glyph in pixellab
+- Make Native resolution default on mobile
+
 ### Backlog
 
 - We need to make the darkess deepen more on lower levels, dark levels look already good, but also other "normal" levels below 5 should feel more dark. (do not implement this yet, user will explicitly request this feature if needed)
@@ -227,5 +233,3 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - Is it possible to detect host system display scaling and adjust game scaling accordingly? e.g if display scale on host is 200% -> scale game to 2x
 - Dedicated room decorations for bosses (floor, walls, props). Generate new via Pixellab for bosses up to level 10 and final boss.
 - Dash: extended dash/blink skill (skill 4) when key pressed long, character starts "running" and moves faster. This consumes stamina really fast and stops once stamina is spent. When "running" mode activated, dash/blink suffers 1min cooldown. To be used as last resort to run away.
-- On mobile, relic shadow/effects are fixed but shrines still glitch. At least after used.
-- On mobile, back button is needed. Place subtle back button in top left corner on screens that allow going back to previous screens, including character and inventory. Generate nice glyph in pixellab

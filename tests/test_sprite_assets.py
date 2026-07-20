@@ -36,6 +36,7 @@ from arch_rogue.sprite_assets import (
     GOLD_STACK_ASSET_KEYS,
     AssetSpriteLibrary,
     DIRECTIONS,
+    ResolvedSpriteFrame,
     SpriteAtlas,
 )
 
@@ -64,6 +65,24 @@ class SpriteAssetTests(unittest.TestCase):
             self.assertTrue(game.choose_story_relic_path(0))
         game.active_cutscene = None
         return game
+
+    def test_colorkey_prop_variant_preserves_transparent_background(self) -> None:
+        source = pygame.Surface((8, 8))
+        magenta = (255, 0, 255)
+        source.fill(magenta)
+        source.set_colorkey(magenta)
+        pygame.draw.rect(source, (240, 210, 120), (2, 2, 4, 4))
+        frame = ResolvedSpriteFrame(source, (4, 7), "asset", ("test",))
+
+        variant = SpriteAtlas()._prop_variant(
+            frame,
+            "used-shrine-test",
+            multiplier=(105, 105, 115),
+        )
+
+        self.assertIsNone(variant.surface.get_colorkey())
+        self.assertEqual(variant.surface.get_at((0, 0)).a, 0)
+        self.assertGreater(variant.surface.get_at((3, 3)).a, 0)
 
     def test_manifest_covers_runtime_visual_roster(self) -> None:
         library = AssetSpriteLibrary()

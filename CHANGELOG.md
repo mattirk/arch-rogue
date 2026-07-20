@@ -1,5 +1,32 @@
 # Changelog
 
+## 4.4.1 — Mobile Navigation & Shrine Stability
+
+Release 4.4.1 polishes the post-website Android experience with an explicit touch Back control, stable spent-shrine rendering, and full-resolution rendering as the fresh-install default.
+
+### Added
+
+- **Mobile Back control:** reversible mobile screens now show a subtle safe-area-aware Back button in the upper-left corner, including Inventory, Character, Shop, Quest, Help, Options, Controls, About, archetype selection, game hub, exit confirmation, result overlays, and skippable cutscenes. The control uses a PixelLab-authored gothic arrow, a procedural fallback, a minimum-size touch target, and the existing unified `Command.BACK` behavior.
+- **Regression coverage:** mobile tests verify the Back glyph is packaged, remains inside asymmetric safe areas, and closes Inventory and Character screens. Sprite tests verify color variants retain transparent colorkey backgrounds.
+
+### Changed
+
+- **Native mobile default:** fresh mobile installs now default to **Native · full resolution**. Existing explicit Performance/Balanced/Native choices remain authoritative, and the older pre-schema-6 migration continues to preserve its safe Performance fallback.
+- Project, runtime, Android package, and website release metadata advance to `4.4.1`; options remain schema `7` and run saves remain schema `5`.
+
+### Fixed
+
+- **Used shrine transparency:** Android's immutable-sprite optimization converts alpha to a magenta colorkey. The spent-shrine color multiplier previously recolored those transparent pixels, exposing a magenta/dark rectangular background after activation. Prop variants now restore real alpha before color transforms, preserving the transparent silhouette without affecting desktop rendering.
+
+### Validation
+
+- `python -m unittest discover tests` — 531 tests pass.
+- `python -m unittest tests.test_website` — 6 tests pass.
+- `python -m compileall -q src tests tools/generate_download_manifest.py`
+- `python tools/validate_android_apk.py --project-root . --source-dir src --spec buildozer.spec`
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.4.1-arm64-v8a_armeabi-v7a-debug.apk` (73,485,315 bytes; SHA-256 `0cc00e7de165a49c7a68e4439aa62d0c094d2de2b3366676490f2b240f811ad1`). The package reports version `4.4.1`, contains 104 ARM ELF extensions for each of `arm64-v8a` and `armeabi-v7a`, and passes APK Signature Scheme v2 verification.
+- Release metadata consistency check and `git diff --check` pass.
+
 ## 4.4.0 — Download Website & GitHub Pages Release
 
 Release 4.4.0 adds a dedicated, responsive Arch Rogue download website and deploys it through GitHub Pages as the final stage of every successful `master` release. Platform buttons resolve to the exact artifacts produced by the same workflow run, including prereleases that GitHub's `latest` redirect intentionally excludes.

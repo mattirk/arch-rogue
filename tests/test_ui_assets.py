@@ -93,6 +93,7 @@ class UiAssetTests(unittest.TestCase):
             "hud.mobile.joystick_knob",
             "hud.mobile.status_bar_frame",
             "hud.mobile.info_panel",
+            "hud.mobile.back",
             *action_icon_keys,
         }
         self.assertEqual(set(library.manifest["assets"]), expected)
@@ -121,6 +122,7 @@ class UiAssetTests(unittest.TestCase):
             "hud.mobile.joystick_knob": (112, 112),
             "hud.mobile.status_bar_frame": (60, 160),
             "hud.mobile.info_panel": (240, 108),
+            "hud.mobile.back": (52, 52),
         }
         for key, size in sizes.items():
             with self.subTest(key=key):

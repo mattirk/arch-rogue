@@ -79,26 +79,22 @@ MOBILE_RENDER_QUALITY_LABELS: dict[str, str] = {
 ANDROID_RENDER_DRIVER_CANDIDATES: tuple[str, ...] = ("opengles2", "opengles")
 
 
-def default_mobile_render_quality(mobile: bool) -> str:
+def default_mobile_render_quality(_mobile: bool) -> str:
     """Return the fresh-install quality default for the active platform."""
 
-    return (
-        MOBILE_RENDER_QUALITY_PERFORMANCE
-        if mobile
-        else MOBILE_RENDER_QUALITY_NATIVE
-    )
+    return MOBILE_RENDER_QUALITY_NATIVE
 
 
 def normalize_mobile_render_quality(
     value: object,
     *,
-    default: str = MOBILE_RENDER_QUALITY_PERFORMANCE,
+    default: str = MOBILE_RENDER_QUALITY_NATIVE,
 ) -> str:
     """Normalize a persisted quality name without depending on runtime state."""
 
     fallback = str(default).strip().lower()
     if fallback not in MOBILE_RENDER_QUALITY_MODES:
-        fallback = MOBILE_RENDER_QUALITY_PERFORMANCE
+        fallback = MOBILE_RENDER_QUALITY_NATIVE
     quality = str(value).strip().lower() if value is not None else ""
     return quality if quality in MOBILE_RENDER_QUALITY_MODES else fallback
 

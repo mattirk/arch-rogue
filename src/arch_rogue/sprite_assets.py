@@ -1308,7 +1308,18 @@ class SpriteAtlas:
         surface = frame.surface
         anchor = frame.anchor
         if multiplier != (255, 255, 255):
-            surface = surface.copy()
+            color_key = surface.get_colorkey()
+            if color_key is not None:
+                # Android converts immutable alpha sprites to magenta-colorkey
+                # RLE surfaces. Multiplying that background changes the key
+                # pixels and exposes a solid box (most visibly after a shrine
+                # becomes the dimmed "used" variant), so restore real alpha
+                # before applying any color transform.
+                alpha_surface = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+                alpha_surface.blit(surface, (0, 0))
+                surface = alpha_surface
+            else:
+                surface = surface.copy()
             surface.fill((*multiplier, 255), special_flags=pygame.BLEND_RGBA_MULT)
         if abs(scale - 1.0) > 0.001:
             surface = pygame.transform.scale(

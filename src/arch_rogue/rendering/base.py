@@ -32,6 +32,7 @@ import pygame
 
 from ..constants import DUNGEON_DEPTH, TILE_H, TILE_W, WORLD_SCALE, SlashEffect
 from ..content import HUMANOID_ENEMY_NAMES
+from ..input import Command
 from ..mobile import optimize_immutable_alpha_surface
 from ..models import (
     Color,
@@ -55,6 +56,8 @@ from ..quest_assets import (
 
 
 class RenderingBaseMixin:
+    _mobile_back_button_rect: pygame.Rect | None = None
+
     def _mobile_static_menu_signature(self) -> object | None:
         if not getattr(self, "mobile_mode", False):
             return None
@@ -126,6 +129,65 @@ class RenderingBaseMixin:
             )
         return common
 
+    def _draw_mobile_back_button(self) -> None:
+        """Draw one safe-area-aware Back control for reversible mobile screens."""
+
+        if not getattr(self, "mobile_mode", False):
+            self._mobile_back_button_rect = None
+            return
+        context = self.mobile_input_context()
+        reversible_contexts = {
+            "options",
+            "controls",
+            "about",
+            "archetype_select",
+            "confirm_exit",
+            "mobile_hub",
+            "quest",
+            "inventory",
+            "shop",
+            "character",
+            "help",
+            "state_overlay",
+        }
+        if context == "cutscene" and not getattr(self, "story_intro_pending", False):
+            reversible_contexts.add("cutscene")
+        if context not in reversible_contexts:
+            self._mobile_back_button_rect = None
+            return
+
+        safe = self.mobile_safe_rect()
+        size = max(42, min(58, safe.height // 9))
+        margin = max(8, size // 6)
+        rect = pygame.Rect(safe.x + margin, safe.y + margin, size, size)
+        glyph = self.ui_asset_surface("hud.mobile.back", rect.size)
+        if glyph is not None:
+            self.screen.blit(glyph, rect)
+        else:
+            color = (210, 185, 126)
+            line_width = max(2, size // 12)
+            left = rect.x + size * 3 // 10
+            right = rect.x + size * 7 // 10
+            center_y = rect.centery
+            pygame.draw.lines(
+                self.screen,
+                color,
+                False,
+                (
+                    (right, rect.y + size // 4),
+                    (left, center_y),
+                    (right, rect.bottom - size // 4),
+                ),
+                line_width,
+            )
+        self._mobile_back_button_rect = rect.copy()
+        self.register_mobile_touch_target(
+            rect,
+            Command.BACK,
+            "Back",
+            context=context,
+        )
+
     def draw(self) -> None:
         # Per-frame caches for hot-path lookups. These are invalidated every
         # frame so they never go stale within a single render pass.
@@ -167,6 +229,7 @@ class RenderingBaseMixin:
                 menu_draw()
             if performance is not None:
                 performance.record_phase("menu", time.perf_counter() - started)
+            self._draw_mobile_back_button()
 
             started = time.perf_counter()
             if performance is not None:
@@ -227,6 +290,7 @@ class RenderingBaseMixin:
                     self.draw_help_overlay()
                 if self.state != "playing":
                     self.draw_state_overlay()
+        self._draw_mobile_back_button()
         self.draw_screen_flash()
         if performance is not None:
             self.draw_mobile_performance_overlay()

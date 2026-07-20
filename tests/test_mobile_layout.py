@@ -98,7 +98,7 @@ class MobileRenderQualityTests(unittest.TestCase):
     def test_quality_defaults_labels_and_cycle_order(self) -> None:
         self.assertEqual(
             default_mobile_render_quality(True),
-            MOBILE_RENDER_QUALITY_PERFORMANCE,
+            MOBILE_RENDER_QUALITY_NATIVE,
         )
         self.assertEqual(
             default_mobile_render_quality(False),
@@ -136,7 +136,7 @@ class MobileRenderQualityTests(unittest.TestCase):
                 )
             self.assertEqual(
                 mobile.mobile_render_quality,
-                MOBILE_RENDER_QUALITY_PERFORMANCE,
+                MOBILE_RENDER_QUALITY_NATIVE,
             )
             self.assertFalse(mobile._lighting_normal_maps)
             self.assertEqual(
@@ -199,8 +199,8 @@ class MobileRenderQualityTests(unittest.TestCase):
             self.assertEqual(
                 set_mode.call_args_list,
                 [
-                    call((1170, 540), pygame.FULLSCREEN | pygame.SCALED),
-                    call((1170, 540), pygame.FULLSCREEN | pygame.SCALED),
+                    call((2340, 1080), pygame.FULLSCREEN | pygame.SCALED),
+                    call((2340, 1080), pygame.FULLSCREEN | pygame.SCALED),
                 ],
             )
             reset.assert_called_once_with()
@@ -315,7 +315,7 @@ class MobileRenderQualityTests(unittest.TestCase):
             game.draw_options_menu()
             self.assertEqual(
                 getattr(game, "_options_visible_rows")[0],
-                ("F", "Render quality", "Performance · 540p cap"),
+                ("F", "Render quality", "Native · full resolution"),
             )
 
             game._world_layer = pygame.Surface((8, 8))
@@ -352,7 +352,7 @@ class MobileRenderQualityTests(unittest.TestCase):
                 game._activate_options_row(game.OPTIONS_ROW_FULLSCREEN, True)
 
             self.assertEqual(
-                game.mobile_render_quality, MOBILE_RENDER_QUALITY_BALANCED
+                game.mobile_render_quality, MOBILE_RENDER_QUALITY_PERFORMANCE
             )
             self.assertIs(game.screen, replacement_screen)
             apply_mode.assert_called_once_with()
@@ -367,7 +367,7 @@ class MobileRenderQualityTests(unittest.TestCase):
             self.assertEqual(game._stage_surface_cache, {})
             saved = json.loads(game.options_path.read_text(encoding="utf-8"))
             self.assertEqual(
-                saved["mobile_render_quality"], MOBILE_RENDER_QUALITY_BALANCED
+                saved["mobile_render_quality"], MOBILE_RENDER_QUALITY_PERFORMANCE
             )
 
     def test_mobile_f_shortcut_activates_reused_first_row(self) -> None:
@@ -877,7 +877,9 @@ class MobileRenderQualityTests(unittest.TestCase):
             ):
                 game.draw()
                 touch_targets = tuple(game._mobile_touch_targets)
-                self.assertEqual(touch_targets, ())
+                self.assertEqual(len(touch_targets), 1)
+                self.assertEqual(touch_targets[0].command, Command.BACK)
+                self.assertEqual(touch_targets[0].context, "options")
                 game.draw()
                 self.assertEqual(tuple(game._mobile_touch_targets), touch_targets)
                 self.assertEqual(draw_options.call_count, 1)
@@ -1203,6 +1205,44 @@ class MobileLayoutTests(unittest.TestCase):
 
 
 class MobileHudTests(unittest.TestCase):
+    @staticmethod
+    def _finger_down(point: tuple[int, int], size: tuple[int, int]) -> pygame.event.Event:
+        return pygame.event.Event(
+            pygame.FINGERDOWN,
+            touch_id=0,
+            finger_id=71,
+            x=point[0] / max(1, size[0] - 1),
+            y=point[1] / max(1, size[1] - 1),
+        )
+
+    def test_mobile_back_glyph_closes_inventory_and_character_screens(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720), (42, 8, 18, 12))
+            self.assertIsNotNone(game.ui_assets.source("hud.mobile.back"))
+
+            for context in ("inventory", "character"):
+                with self.subTest(context=context):
+                    game.inventory_open = context == "inventory"
+                    game.character_menu_open = context == "character"
+                    game.draw()
+                    rect = game._mobile_back_button_rect
+                    self.assertIsInstance(rect, pygame.Rect)
+                    assert isinstance(rect, pygame.Rect)
+                    self.assertTrue(game.mobile_safe_rect().contains(rect))
+                    targets = [
+                        target
+                        for target in game._mobile_touch_targets
+                        if target.context == context and target.command == Command.BACK
+                    ]
+                    self.assertEqual(len(targets), 1)
+                    event = self._finger_down(
+                        targets[0].rect.center,
+                        game._mobile_display_surface().get_size(),
+                    )
+                    self.assertTrue(game.handle_mobile_finger_event(event))
+                    self.assertFalse(game.inventory_open)
+                    self.assertFalse(game.character_menu_open)
+
     def test_mobile_hud_publishes_six_action_targets_and_resource_bars(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720), (42, 8, 18, 12))
