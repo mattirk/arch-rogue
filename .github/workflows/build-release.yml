@@ -22,6 +22,8 @@ name: Build & Release
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 env:
   PYTHON_VERSION: "3.11"
@@ -649,6 +651,8 @@ jobs:
           body: |
             Automated bleeding-edge build from `master` commit ${{ steps.sha.outputs.short }}.
 
+            Download page: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+
             - Version: ${{ steps.version.outputs.version }}
             - Commit: ${{ github.sha }}
 
@@ -662,3 +666,39 @@ jobs:
           files: release-assets/*
           prerelease: true
           make_latest: "false"
+
+      # Generate exact URLs only after the release exists. Arch Rogue releases
+      # are prereleases, so GitHub's /releases/latest/download shortcut cannot
+      # be used: it deliberately ignores prereleases.
+      - name: Generate website download manifest
+        run: |
+          python tools/generate_download_manifest.py \
+            --repository "${{ github.repository }}" \
+            --version "${{ steps.version.outputs.version }}" \
+            --commit "${{ github.sha }}" \
+            --output website/downloads.json
+          touch website/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload website artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website
+
+  deploy-pages:
+    name: Deploy download website
+    if: github.ref == 'refs/heads/master'
+    needs: release
+    runs-on: ubuntu-latest
+    concurrency:
+      group: github-pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

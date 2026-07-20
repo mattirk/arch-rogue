@@ -1,5 +1,29 @@
 # Changelog
 
+## 4.4.0 — Download Website & GitHub Pages Release
+
+Release 4.4.0 adds a dedicated, responsive Arch Rogue download website and deploys it through GitHub Pages as the final stage of every successful `master` release. Platform buttons resolve to the exact artifacts produced by the same workflow run, including prereleases that GitHub's `latest` redirect intentionally excludes.
+
+### Added
+
+- **GitHub Pages download site:** `website/` implements the reference layout with the authored Arch Rogue logo, dungeon backdrop, dark-fantasy panels, concise game pitch, and responsive download badges for Windows, Linux, universal macOS, and Android.
+- **Accessible, responsive presentation:** the site supports keyboard focus, semantic headings and status announcements, useful image alternatives, narrow mobile layouts, OS-specific recommendations, reduced-motion preferences, and no-JavaScript/release-manifest fallbacks.
+- **Dynamic release manifest:** `tools/generate_download_manifest.py` creates `website/downloads.json` from the repository, package version, and release commit. It emits immutable GitHub `browser_download_url` equivalents using the exact artifact names produced by CI instead of hardcoding a release version in page markup.
+- **Pages deployment:** `.github/workflows/build-release.yml` now configures and uploads the site after the GitHub prerelease is created, then deploys it in a dedicated `github-pages` environment. Deployment therefore cannot advertise missing Windows, Linux, macOS, or Android artifacts.
+- **Website regression tests:** `tests/test_website.py` checks platform coverage, accessibility hooks, local assets, safe fallback links, and exact release URL generation.
+
+### Changed
+
+- Project, runtime, Android package, and website release metadata advance to `4.4.0`.
+- `README.md` now links to the GitHub Pages download site and retains the source-install path for developers.
+
+### Validation
+
+- `python -m unittest tests.test_website`
+- `python -m compileall src tests tools/generate_download_manifest.py`
+- Full non-web `python -m unittest discover tests`
+- Workflow YAML parse and `git diff --check`
+
 ## 4.3.17 — Android Beta to Mainline Merge
 
 Release 4.3.17 merges the `android-beta` branch into `master` so the desktop mainline inherits the universal Android wins, locks both desktop and mobile to a 60 FPS cap through one `FramePacing` abstraction, removes dead/duplicated optimization code from the 4.3.x runs, consolidates render-cache invalidation into a single seam, and adds APK licensing/attribution hygiene. The Android build is now part of mainline (no separate beta branch). Mobile-only code paths remain strictly additive (`if self.mobile_mode:` / `android_runtime_active()`), so no desktop frame executes a GLES, colorkey-RLE, or `MobilePerformanceMonitor` branch.

@@ -210,6 +210,7 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
   - Create as GitHub Pages
   - Place files, assets and styles in this repo accordingly
   - Generate assets in PixelLab when needed
+  - What is the best way to dynamically update download links of platform download badges (Windows, Mac, Android) in website when new releases are built in gh actions?
 
 ### Backlog
 

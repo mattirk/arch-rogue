@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080a0f">
+  <meta name="description" content="Download Arch Rogue for Windows, Linux, macOS, and Android.">
+  <meta property="og:title" content="Arch Rogue Downloads">
+  <meta property="og:description" content="Get the latest Arch Rogue build for your platform.">
+  <meta property="og:image" content="assets/icon.png">
+  <title>Arch Rogue Downloads</title>
+  <link rel="icon" href="assets/icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="embers" aria-hidden="true"></div>
+  <main class="page-shell">
+    <header class="hero">
+      <img class="logo" src="assets/title_logo.png" width="640" height="122" alt="Arch Rogue">
+    </header>
+
+    <section class="story-panel" aria-label="Game features">
+      <div class="story-copy">
+        <ul class="feature-list">
+          <li>Procedural dungeons</li>
+          <li>Real-time tactical combat</li>
+          <li>Unique class skills</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="downloads" aria-labelledby="download-title">
+      <div class="section-heading">
+        <span class="rule" aria-hidden="true"></span>
+        <div>
+          <p class="kicker">Latest bleeding-edge build</p>
+          <h2 id="download-title">Choose your platform</h2>
+        </div>
+        <span class="rule" aria-hidden="true"></span>
+      </div>
+
+      <div class="download-grid">
+        <a class="download-badge" data-platform="windows" href="https://github.com/mattirk/arch-rogue/releases" rel="noopener">
+          <span class="platform-icon-frame"><img src="assets/platform-windows.png" width="192" height="192" alt=""></span>
+          <span class="badge-copy"><small>Download for</small><strong>Windows</strong><span>64-bit executable</span></span>
+        </a>
+        <a class="download-badge" data-platform="linux" href="https://github.com/mattirk/arch-rogue/releases" rel="noopener">
+          <span class="platform-icon-frame"><img src="assets/platform-linux.png" width="192" height="192" alt=""></span>
+          <span class="badge-copy"><small>Download for</small><strong>Linux</strong><span>64-bit binary</span></span>
+        </a>
+        <a class="download-badge" data-platform="macos" href="https://github.com/mattirk/arch-rogue/releases" rel="noopener">
+          <span class="platform-icon-frame"><img src="assets/platform-macos.png" width="192" height="192" alt=""></span>
+          <span class="badge-copy"><small>Download for</small><strong>macOS</strong><span>Apple Silicon + Intel</span></span>
+        </a>
+        <a class="download-badge" data-platform="android" href="https://github.com/mattirk/arch-rogue/releases" rel="noopener">
+          <span class="platform-icon-frame"><img src="assets/platform-android.png" width="192" height="192" alt=""></span>
+          <span class="badge-copy"><small>Download for</small><strong>Android</strong><span>Beta APK</span></span>
+        </a>
+      </div>
+
+      <p class="release-status" data-release-status role="status" aria-live="polite">Loading the latest release…</p>
+      <p class="install-note">These are automated prerelease builds. Windows and macOS packages are not yet store-signed; Android may ask you to allow installation from this source.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Arch Rogue is open source under Apache-2.0.</p>
+    <nav aria-label="Project links">
+      <a href="https://github.com/mattirk/arch-rogue">Source</a>
+      <a href="https://github.com/mattirk/arch-rogue/releases">All releases</a>
+      <a href="https://github.com/mattirk/arch-rogue/issues">Report an issue</a>
+    </nav>
+  </footer>
+  <noscript><p class="noscript">JavaScript is disabled. The download buttons open the GitHub releases page.</p></noscript>
+</body>
+</html>

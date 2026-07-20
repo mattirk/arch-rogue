@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "version": "4.4.0",
+  "commit": "pending",
+  "release_url": "https://github.com/mattirk/arch-rogue/releases",
+  "assets": {
+    "windows": "https://github.com/mattirk/arch-rogue/releases",
+    "linux": "https://github.com/mattirk/arch-rogue/releases",
+    "macos": "https://github.com/mattirk/arch-rogue/releases",
+    "android": "https://github.com/mattirk/arch-rogue/releases"
+  }
+}
