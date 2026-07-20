@@ -1,5 +1,23 @@
 # Changelog
 
+## 4.3.12 — Android Relic Fix and Cutscene Performance
+
+Release 4.3.12 fixes the relic/shrine visual corruption seen on Android, makes cutscenes truly full-screen, and removes their dominant frame cost. Gameplay performance improves on-device through the eliminated per-frame relic and cutscene work while all visuals are preserved. Desktop is unchanged.
+
+### Fixed
+
+- **Relic/shrine magenta-box glitch:** the authored story relic sprite is colorkey-optimized for Android's blitter, and the additive story tint painted its magenta colorkey background, which then leaked as a solid box (and a spinning rectangle once rotated). The tint is now masked by the sprite's own alpha (`BLEND_RGBA_MIN`) and baked once per (frame, accent, tilt) into a cached surface, so the relic renders as a clean gem and the per-frame copy + rotate leaves the ARM hot path. The same alpha-safe path covers any colorkey-optimized item art.
+- **Cutscene full-screen background:** a quest cutscene now renders across the whole display (its authored backdrop/dim covers the frame) instead of being inset, and the panel sits centered on the full screen.
+- **Cutscene performance:** while a cutscene is active the game no longer renders the dungeon world, lighting, or HUD underneath it — the cutscene owns the display, so those full frames are skipped entirely. Cutscene frame cost drops to a couple of milliseconds.
+- Runtime/package release version is `4.3.12`; options remain schema `6` and run saves remain schema `5`.
+
+### Validation
+
+- Full non-web `unittest` discovery completed with 473 tests passing, including new regressions for the alpha-masked/cached relic sprite and the full-screen world-skipping cutscene; `compileall` and `git diff --check` pass.
+- Headless 1566×698 renders confirm the clean relic (no colorkey box) and a full-bleed cutscene backdrop with the centered panel. Cutscene frame cost measured ~2.6 ms in the deterministic harness (down from a full world frame); gameplay crowd profile is unchanged, with device gains coming from the removed per-frame relic/upload work.
+- `./tools/build_android.sh debug` produced and audited `bin/archrogue-4.3.12-arm64-v8a_armeabi-v7a-debug.apk` (73,448,319 bytes; SHA-256 `3afb28f1d24bfa7396f1795b6ded9192c26fcf18fe5fb5a676ad98f5c46e1628`). The package reports version 4.3.12 with both ARM ABIs (104 architecture-correct ELF extensions per ABI) and passes APK Signature Scheme v2 verification.
+- Physical-device validation remains required to confirm the +10 FPS target and relic/shrine parity.
+
 ## 4.3.11 — Android Full-Bleed Rendering and Performance Recovery
 
 Release 4.3.11 restores the edge-to-edge mobile presentation and recovers the frame cost introduced by the 4.3.10 lighting/shadow fixes, while keeping their visuals. The dungeon now always renders across the full physical display with the HUD as a true overlay, menus paint full-bleed backgrounds, and the relic guidance no longer re-rasterizes every frame. Desktop is unchanged.

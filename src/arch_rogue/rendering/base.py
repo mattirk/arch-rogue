@@ -188,20 +188,28 @@ class RenderingBaseMixin:
                 )
             return
 
-        started = time.perf_counter()
-        self._render_world_view()
-        if performance is not None:
-            performance.record_phase("world", time.perf_counter() - started)
+        # A cutscene is a full-screen cinematic: it owns the display with an
+        # opaque background, so rendering the dungeon world + HUD underneath is
+        # wasted work (and on Android it drives the biggest frame cost). Skip
+        # both while a cutscene is active; the story intro and other overlays
+        # still composite over the live world.
+        cutscene_active = self.active_cutscene is not None
+        if not cutscene_active:
+            started = time.perf_counter()
+            self._render_world_view()
+            if performance is not None:
+                performance.record_phase("world", time.perf_counter() - started)
 
-        started = time.perf_counter()
-        self.draw_ui()
-        if performance is not None:
-            performance.record_phase("hud", time.perf_counter() - started)
+            started = time.perf_counter()
+            self.draw_ui()
+            if performance is not None:
+                performance.record_phase("hud", time.perf_counter() - started)
 
         started = time.perf_counter()
         with self.mobile_safe_render_target():
-            if self.active_cutscene is not None:
-                self.draw_quest_cutscene_overlay()
+            if cutscene_active:
+                with self.mobile_full_render_target():
+                    self.draw_quest_cutscene_overlay()
             elif self.story_intro_pending:
                 self.draw_story_intro_overlay()
             if self.inventory_open:

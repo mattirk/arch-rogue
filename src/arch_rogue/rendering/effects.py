@@ -23,7 +23,7 @@
 from __future__ import annotations
 
 import math
-from collections import deque
+from collections import OrderedDict, deque
 from typing import cast
 
 import pygame
@@ -1443,20 +1443,13 @@ class RenderingEffectsMixin:
             self.elapsed + item.x * 0.31 + item.y * 0.17,
             "Common",
         )
-        sprite = visual.surface.copy()
-        if visual.is_asset:
-            # BLEND_RGB_ADD ignores the fill alpha, so scale the RGB channels
-            # explicitly. This keeps the generated facet contrast visible instead
-            # of washing every light plane to the full story color. Transparent
-            # padding remains alpha 0 and cannot leak a tinted rectangle.
-            tint_add = tuple(round(channel * 0.28) for channel in accent)
-            sprite.fill((*tint_add, 0), special_flags=pygame.BLEND_RGB_ADD)
-        else:
-            # Preserve the established procedural/legacy recolor byte-for-byte.
-            sprite.fill((*accent, 40), special_flags=pygame.BLEND_RGB_ADD)
         tilt = math.sin(self.elapsed * 2.8 + item.y) * 3.0
-        if abs(tilt) > 0.1:
-            sprite = pygame.transform.rotate(sprite, tilt)
+        tilt_bucket = int(round(tilt)) if visual.is_asset else tilt
+        # Tint + tilt are baked once per (frame, story accent, tilt bucket) and
+        # cached. The additive tint is masked by the sprite's own alpha so the
+        # colorkey-optimized asset cannot leak a magenta rectangle, and the
+        # cached rotated frame drops the per-frame copy/rotate off the ARM path.
+        sprite = self._story_relic_sprite(visual, accent, tilt_bucket)
         self.screen.blit(
             sprite, sprite.get_rect(midbottom=(sx, sy + 4 * WORLD_SCALE - bob))
         )
@@ -1476,6 +1469,51 @@ class RenderingEffectsMixin:
         if math.hypot(item.x - self.player.x, item.y - self.player.y) < 1.0:
             label = self.small_font.render(f"E: {item.display_name}", True, accent)
             self.screen.blit(label, label.get_rect(center=(sx, sy - 36 * WORLD_SCALE)))
+
+    def _story_relic_sprite(
+        self,
+        visual: object,
+        accent: Color,
+        tilt: float,
+    ) -> pygame.Surface:
+        """Return the cached tinted + tilted relic sprite for this frame.
+
+        The additive story tint is masked by the sprite's own alpha: the
+        authored relic is colorkey-optimized for Android's blitter, and an
+        unmasked BLEND_RGB_ADD paints the magenta colorkey background, which
+        then leaks as a solid box (and a spinning rectangle once rotated).
+        """
+
+        surface = visual.surface  # type: ignore[attr-defined]
+        is_asset = bool(visual.is_asset)  # type: ignore[attr-defined]
+        key = (id(surface), is_asset, accent, tilt)
+        cache = getattr(self, "_story_relic_sprite_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._story_relic_sprite_cache = cache
+        cached = cache.get(key)
+        if cached is not None and cached[0] is surface:
+            cache.move_to_end(key)
+            return cached[1]
+
+        sprite = surface.copy()
+        if is_asset:
+            tint_add = tuple(round(channel * 0.28) for channel in accent)
+            tint = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
+            tint.fill((*tint_add, 255))
+            # Keep the tint only where the relic art is actually opaque.
+            tint.blit(sprite, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+            sprite.blit(tint, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+        else:
+            sprite.fill((*accent, 40), special_flags=pygame.BLEND_RGB_ADD)
+        if abs(tilt) > 0.1:
+            sprite = pygame.transform.rotate(sprite, tilt)
+        sprite = optimize_immutable_alpha_surface(sprite)
+        cache[key] = (surface, sprite)
+        cache.move_to_end(key)
+        while len(cache) > 96:
+            cache.popitem(last=False)
+        return sprite
 
     def draw_trap(self, trap: Trap) -> None:
         if not trap.active:

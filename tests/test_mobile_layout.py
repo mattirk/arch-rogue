@@ -1128,6 +1128,40 @@ class MobileLayoutTests(unittest.TestCase):
         self.assertGreater(regular.joystick_rect.left, regular.left_rail.left)
         self.assertLess(regular.joystick_rect.bottom, regular.safe_rect.bottom)
 
+    def test_story_relic_tint_is_alpha_masked_and_cached(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            visual = game.sprites.item_visual("story_relic", 0.0, "Common")
+            accent = (200, 60, 220)
+            sprite = game._story_relic_sprite(visual, accent, 2)
+            # Same inputs return the identical cached surface (no per-frame
+            # copy/rotate), and the additive tint never paints the colorkey
+            # background (which would leak as a magenta box on Android).
+            self.assertIs(game._story_relic_sprite(visual, accent, 2), sprite)
+            if visual.is_asset:
+                colorkey = visual.surface.get_colorkey()
+                if colorkey is not None:
+                    px = sprite.get_at((0, 0))
+                    self.assertNotEqual(px[:3], colorkey[:3])
+            self.assertLessEqual(len(game._story_relic_sprite_cache), 96)
+
+    def test_cutscene_skips_world_render_and_fills_screen(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            self.assertTrue(game.start_quest_cutscene("story_guest_omen"))
+            self.assertIsNotNone(game.active_cutscene)
+            with (
+                patch.object(game, "_render_world_view") as render_world,
+                patch.object(game, "draw_ui") as draw_ui,
+            ):
+                game.draw()
+            render_world.assert_not_called()
+            draw_ui.assert_not_called()
+            # The cutscene background paints the whole display, not just the
+            # safe area (which has zero insets here, but the point is the
+            # overlay runs full-bleed and covers the frame).
+            self.assertIsNotNone(game._cutscene_panel_rect)
+
     def test_world_viewport_and_menus_cover_full_display(self) -> None:
         for size, insets in (
             ((780, 360), (0, 0, 0, 0)),
