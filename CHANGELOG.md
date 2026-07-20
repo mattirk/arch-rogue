@@ -1,5 +1,29 @@
 # Changelog
 
+## 4.4.6 — Run-Ending Summary Panels & Shop Pause
+
+Release 4.4.6 gives the You Died screen a clearer visual hierarchy so a finished run reads as a deliberate summary rather than a dense table of small text, and pauses the simulation when the shopkeeper menu is open on all platforms.
+
+### Changed
+
+- **Four framed stat groups:** all 24 run statistics are now organized into balanced Run, Combat, Exploration, and Legacy inset panels, using the authored gothic panel art when available and a matching procedural treatment in legacy graphics.
+- **Deliberate typography and spacing:** each group has a restrained accent header, subtle row separators, consistent interior gutters, aligned label columns, and right-aligned value edges. The cause of death receives a focused blood-red treatment without overpowering the rest of the summary.
+- **Smaller outer container:** the main death/victory overlay panel is approximately 15% smaller (700×460 scaled, down from 820×520), keeping the framed summary compact and centered rather than filling the screen. The authored nine-slice panel art now scales to this smaller rect instead of going full-bleed.
+- **Opaque stat panels on red overlay:** each stat inset panel now fills an opaque base rect before blitting the nine-slice asset, so the blood-red death wash does not bleed through the asset's semi-transparent edges. The stat panels render at full opacity and sit cleanly on top of the red tint.
+- **Generous stat text padding:** interior gutters, label/value column spacing, inter-panel gaps, and header-to-body separation were all increased so statistics have breathing room rather than crowding the panel edges.
+- **Shopkeeper pause (all platforms):** opening the shopkeeper menu now pauses the simulation and disables player movement on desktop as well as mobile. Previously only mobile paused; desktop continued running enemies, projectiles, and keyboard-polled movement while the shop was open. A `shop_was_open` guard ensures the pause still applies on the frame the shop is closed by validation (e.g. the shopkeeper died or the player was teleported away).
+- **Responsive fitting:** panel dimensions, heading size, row fonts, and label/value spacing adapt to the available overlay area. Headless visual checks cover the default 960×540 screen, the compact 640×480 layout at maximum saved UI scale, and the procedural fallback.
+- **Layout regression coverage:** tests verify that all statistics render, the four panels do not overlap, panel content retains minimum padding, and every section shares stable label and value alignment. Shop pause tests verify that actor animation clocks freeze, enemy positions and player HP are unchanged while the shop is open, and damage resumes after closing.
+- Project, runtime, Android package, and website release metadata advance to `4.4.6`; options remain schema `7` and run saves remain schema `5`.
+
+### Validation
+
+- `.venv/bin/python -m compileall -q src tests`
+- `.venv/bin/python -m unittest tests.test_pause_on_menus tests.test_ui_layouts tests.test_save_and_metadata tests.test_website` — 35 tests pass.
+- `.venv/bin/python -m unittest discover tests` — 543 tests pass.
+- `.venv/bin/python tools/validate_android_apk.py --project-root . --source-dir src --spec buildozer.spec`
+- `git diff --check`
+
 ## 4.4.5 — Android Floor & Guidance Optimization
 
 Release 4.4.5 follows successful physical-device validation of the 720p GLES stream and removes two remaining low-risk costs from Native Android gameplay.

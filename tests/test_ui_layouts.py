@@ -1056,11 +1056,57 @@ class UiLayoutTests(unittest.TestCase):
                 game.menus._draw_modern_run_stats_table(
                     pygame.Rect(80, 100, 800, 300), rows
                 )
-            self.assertEqual(draw_text.call_count, 48)
+            self.assertEqual(draw_text.call_count, 52)
             rendered_text = [call.args[0] for call in draw_text.call_args_list]
+            for heading in ("RUN", "COMBAT", "EXPLORATION", "LEGACY"):
+                self.assertIn(heading, rendered_text)
             for label, value in rows:
                 self.assertIn(label, rendered_text)
                 self.assertIn(value, rendered_text)
+
+    def test_state_stat_panels_keep_padded_aligned_text_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            self.prepare_run(game)
+            game.state = "dead"
+            game.run_stats.cause_of_death = "poisoned by the Ashen Gatekeeper"
+            game.run_stats.discoveries = ["Moonlit Bargain", "Forgotten Reliquary"]
+            game.run_stats.notable_loot = ["Crown of Cinders", "The Last Oath"]
+            game.screen.fill((12, 12, 16))
+            game.draw_state_overlay()
+
+            panels = getattr(game, "_state_stat_panel_rects")
+            contents = getattr(game, "_state_stat_content_rects")
+            layout = getattr(game, "_state_stat_text_layout")
+            self.assertEqual(set(panels), {"run", "combat", "exploration", "legacy"})
+            self.assertEqual(set(contents), set(panels))
+            self.assertEqual(len(layout), 24)
+
+            for key, panel_rect in panels.items():
+                content_rect = contents[key]
+                self.assertTrue(panel_rect.contains(content_rect), key)
+                self.assertGreaterEqual(content_rect.x - panel_rect.x, 10, key)
+                self.assertGreaterEqual(panel_rect.right - content_rect.right, 10, key)
+                self.assertGreaterEqual(content_rect.y - panel_rect.y, 8, key)
+                self.assertGreaterEqual(panel_rect.bottom - content_rect.bottom, 8, key)
+
+            panel_list = list(panels.values())
+            for index, first in enumerate(panel_list):
+                for second in panel_list[index + 1 :]:
+                    self.assertFalse(first.colliderect(second), (first, second))
+
+            for heading in ("Run", "Combat", "Exploration", "Legacy"):
+                content_rect = contents[heading.casefold()]
+                section_rows = [entry for entry in layout if entry[0] == heading]
+                self.assertEqual(len(section_rows), 6)
+                label_edges = {entry[2].x for entry in section_rows}
+                value_edges = {entry[4].right for entry in section_rows}
+                self.assertEqual(label_edges, {content_rect.x})
+                self.assertEqual(value_edges, {content_rect.right})
+                for _section, _label, label_rect, _value, value_rect in section_rows:
+                    self.assertTrue(content_rect.contains(label_rect))
+                    self.assertTrue(content_rect.contains(value_rect))
+                    self.assertLess(label_rect.right, value_rect.x)
 
     def test_options_scrollbar_appears_when_rows_overflow_and_is_absent_when_they_fit(self) -> None:
         # 4.2: when the options list does not fit vertically, a thin scrollbar

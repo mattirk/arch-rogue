@@ -1286,11 +1286,11 @@ class Game(
             and (
                 self.inventory_open
                 or self.character_menu_open
+                or self.shop_open
                 or (
                     self.mobile_mode
                     and (
-                        self.shop_open
-                        or self.show_help
+                        self.show_help
                         or self.mobile_hub_open
                         or self.quest_info_visible
                     )
@@ -1305,6 +1305,9 @@ class Game(
             self.update_active_cutscene(dt)
             self.update_floaters(dt)
             return
+        # Validate the shopkeeper is still present and in range. This may close
+        # a stale shop, but the simulation should still pause for this frame.
+        shop_was_open = self.shop_open
         if self.shop_open:
             if self.active_shopkeeper not in self.shopkeepers:
                 self.close_shop()
@@ -1317,12 +1320,11 @@ class Game(
             self.update_floaters(dt)
             return
         # Opening a full-screen mobile overlay pauses the run. Desktop keeps its
-        # established shop/help behavior; inventory and character always pause.
-        if self.inventory_open or self.character_menu_open or (
+        # established help behavior; inventory, character, and shop always pause.
+        if self.inventory_open or self.character_menu_open or self.shop_open or shop_was_open or (
             self.mobile_mode
             and (
-                self.shop_open
-                or self.show_help
+                self.show_help
                 or self.mobile_hub_open
                 or self.quest_info_visible
             )

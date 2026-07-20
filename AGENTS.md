@@ -218,16 +218,17 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - On mobile, back button is needed. Place subtle back button in top left corner on screens that allow going back to previous screens, including character and inventory. Generate nice glyph in pixellab
 - Make Native resolution default on mobile
 
-#### 4.4.x Another batch of Android optimization
+#### 4.4.x Another batch of Android optimization & more
 
 - General optimizations, remember to bump versions after optimizations
+- You died screen needs nice looking panels where stats are displayed
+- Pause and disable movement when shopkeeper menu is open
 
 ### Backlog
 
 - We need to make the darkess deepen more on lower levels, dark levels look already good, but also other "normal" levels below 5 should feel more dark. (do not implement this yet, user will explicitly request this feature if needed)
 - The game difficulty starts ok, but gets too easy when player character reaches level 7 or so (not dungeon level, character level). We should either nerf characters, make leveling slower or make enemies harder on lower dungeon depths.
 - Multiplayer -> you get your own AI generated character with unique sprites and animations
-- You died screen needs nice looking panels where stats are displayed
 - Maybe add cryptographic randomness in map seed generation
 - Make it so that on Hell difficulty dungeon levels dont end but become progressively harder the deeper you go. 
   - Make settings menu item red & grim when hell is selected.
@@ -236,4 +237,3 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - When in Return mode, spirit beast dashes along Ranger when using dash (action skill 4)
 - Dedicated room decorations for bosses (floor, walls, props). Generate new via Pixellab for bosses up to level 10 and final boss.
 - Dash: extended dash/blink skill (skill 4) when key pressed long, character starts "running" and moves faster. This consumes stamina really fast and stops once stamina is spent. When "running" mode activated, dash/blink suffers 1min cooldown. To be used as last resort to run away.
-- Pause and disable movement when shopkeeper menu is open.

@@ -35,7 +35,7 @@ class SaveAndMetadataTests(unittest.TestCase):
             if game.story_intro_pending:
                 self.assertTrue(game.choose_story_relic_path(0))
             try:
-                self.assertEqual(arch_rogue.__version__, "4.4.5")
+                self.assertEqual(arch_rogue.__version__, "4.4.6")
                 self.assertIn("Cursed", RARITY_PROFILES)
                 self.assertIn("Twilight Shrine", SHRINE_HINTS)
                 self.assertIn("Moonlit Bargain", SECRET_HINTS)
@@ -44,7 +44,7 @@ class SaveAndMetadataTests(unittest.TestCase):
                 self.assertTrue(game.save_run())
                 saved = json.loads(game.save_path.read_text(encoding="utf-8"))
                 self.assertEqual(saved["version"], 5)
-                self.assertEqual(saved["release"], "4.4.5")
+                self.assertEqual(saved["release"], "4.4.6")
             finally:
                 pass
 
