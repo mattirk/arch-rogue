@@ -22,7 +22,7 @@ from arch_rogue.game import Game
 from arch_rogue.models import Enemy, Item
 
 
-class CombatPhase4BatchBTests(unittest.TestCase):
+class DamageContextAndPlayerResistanceTests(unittest.TestCase):
     def make_game(
         self, tmpdir: str, archetype_index: int = 0, seed: int = 2202
     ) -> Game:

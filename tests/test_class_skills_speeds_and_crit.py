@@ -30,7 +30,7 @@ class _FakeRng:
         return v
 
 
-class CombatPhase4BatchATests(unittest.TestCase):
+class ClassSkillsSpeedsAndCritTests(unittest.TestCase):
     def make_game(
         self, tmpdir: str, archetype_index: int = 0, seed: int = 2202
     ) -> Game:

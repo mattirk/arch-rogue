@@ -25,7 +25,7 @@ from arch_rogue.models import Enemy
 from arch_rogue.save_system import _TRANSIENT_ENEMY_FIELDS
 
 
-class CombatPhase4BatchCTests(unittest.TestCase):
+class EnemyKnockbackAndAttackWindupTests(unittest.TestCase):
     def make_game(
         self, tmpdir: str, archetype_index: int = 0, seed: int = 2202
     ) -> Game:
