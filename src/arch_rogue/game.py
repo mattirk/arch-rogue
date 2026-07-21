@@ -103,7 +103,7 @@ from .mobile import (
     application_storage_directory,
     detect_mobile_runtime,
 )
-from .npc_runtime import FriendlyNpcRuntimeMixin
+from .story import FriendlyNpcRuntimeMixin
 from .models import (
     AmbushBell,
     Archetype,
@@ -132,7 +132,7 @@ from .models import (
 )
 from .options import OptionsMixin, default_mobile_render_quality
 from .population import PopulationMixin
-from .quest_assets import (
+from .story import (
     ActiveQuestCutscene,
     RuntimeDialogueChoice,
     format_asset_text,
@@ -142,9 +142,7 @@ from .rendering import RenderingMixin
 from .run_flow import RunFlowMixin
 from .save_system import SaveLoadMixin
 from .shop import ShopMixin
-from .sprite_assets import SpriteAtlas
-from .sprites import PixelSpriteAtlas
-from .ui_assets import UiAssetLibrary
+from .sprites import PixelSpriteAtlas, SpriteAtlas, UiAssetLibrary
 from .story import (
     StoryEngine,
     clamp_story_effect,
@@ -155,7 +153,7 @@ from .story import (
     story_effect,
     story_guest_from_beat,
 )
-from .story_runtime import StoryRuntimeMixin
+from .story import StoryRuntimeMixin
 
 # Keep compatibility with scripts/tests that imported data tables and models from
 # the earlier monolithic game module, while keeping the imports above idiomatic.

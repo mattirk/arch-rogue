@@ -15,7 +15,7 @@ from arch_rogue.constants import DUNGEON_DEPTH
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.dungeon import BOSS_ARENA_MIN_H, BOSS_ARENA_MIN_W, Dungeon, Tile
 from arch_rogue.game import Game
-from arch_rogue.sprite_assets import DIRECTIONS
+from arch_rogue.sprites import DIRECTIONS
 
 
 class BigBossesTests(unittest.TestCase):

@@ -34,7 +34,7 @@ from arch_rogue.input import (  # noqa: E402
     serialize_gamepad_mapping,
 )
 from arch_rogue.models import Enemy, Tile  # noqa: E402
-from arch_rogue.quest_assets import ActiveQuestCutscene  # noqa: E402
+from arch_rogue.story import ActiveQuestCutscene  # noqa: E402
 
 
 class FakeJoystick:

@@ -62,7 +62,7 @@ from typing import Callable, cast
 
 import pygame
 
-from .constants import (
+from ..constants import (
     DARK_LEVEL_LIGHT_RADIUS,
     DUNGEON_DEPTH,
     LIGHT_AMBIENT_DARK_LEVEL,
@@ -80,8 +80,8 @@ from .constants import (
     TILE_H,
     TILE_W,
 )
-from .mobile import optimize_immutable_alpha_surface
-from .models import Color, LightSource
+from ..mobile import optimize_immutable_alpha_surface
+from ..models import Color, LightSource
 
 
 # ------------------------------------------------------------------

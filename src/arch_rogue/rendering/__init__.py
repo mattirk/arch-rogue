@@ -21,7 +21,7 @@
 
 from __future__ import annotations
 
-from ..lighting import LightingMixin
+from .lighting import LightingMixin
 from .actors import RenderingActorMixin
 from .base import RenderingBaseMixin
 from .effects import RenderingEffectsMixin

@@ -21,7 +21,7 @@ from arch_rogue.icon import available_sizes, icon_sizes, load_icon
 from arch_rogue.input import REMAPPABLE_GAMEPAD_COMMANDS
 from arch_rogue.menus.controls import KEYBOARD_ROWS
 from arch_rogue.rendering.hud import HUD_ACTION_SKILL_ASSETS
-from arch_rogue.ui_assets import UiAssetLibrary
+from arch_rogue.sprites import UiAssetLibrary
 
 
 class UiAssetTests(unittest.TestCase):

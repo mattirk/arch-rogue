@@ -18,7 +18,7 @@ import pygame
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.models import Item
-from arch_rogue.ui_assets import UiAssetLibrary
+from arch_rogue.sprites import UiAssetLibrary
 
 
 class UiLayoutTests(unittest.TestCase):

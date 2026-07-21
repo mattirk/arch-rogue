@@ -24,8 +24,8 @@ from __future__ import annotations
 import random
 from typing import Any
 
-from .constants import DUNGEON_DEPTH
-from .content import (
+from ..constants import DUNGEON_DEPTH
+from ..content import (
     DUNGEON_THEMES,
     STORY_BACKSTORIES,
     STORY_DILEMMAS,
@@ -34,7 +34,7 @@ from .content import (
     STORY_LOCATION_MOTIFS,
     STORY_RELICS,
 )
-from .models import Color, StoryBeat, StoryChoice, StoryGuest, StoryState
+from ..models import Color, StoryBeat, StoryChoice, StoryGuest, StoryState
 
 BASE_STORY_EFFECTS: dict[str, float] = {
     "enemy_pressure": 0.0,

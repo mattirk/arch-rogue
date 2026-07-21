@@ -31,7 +31,7 @@ from typing import Any
 
 import pygame
 
-from .mobile import optimize_immutable_alpha_surface
+from ..mobile import optimize_immutable_alpha_surface
 
 
 class UiAssetLibrary:

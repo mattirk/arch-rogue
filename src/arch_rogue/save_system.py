@@ -59,8 +59,8 @@ from .models import (
     Tile,
     Trap,
 )
-from .quest_assets import ActiveQuestCutscene
 from .story import (
+    ActiveQuestCutscene,
     StoryEngine,
     story_guest_from_dict,
     story_guest_to_dict,

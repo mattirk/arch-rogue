@@ -42,7 +42,7 @@ from arch_rogue.constants import (
 )
 from arch_rogue.content import ARCHETYPES, SHRINE_HINTS
 from arch_rogue.game import Game
-from arch_rogue.lighting import bake_normal_map, hashable_color, light_radius_px
+from arch_rogue.rendering.lighting import bake_normal_map, hashable_color, light_radius_px
 from arch_rogue.models import (
     IdleNpc,
     LightSource,

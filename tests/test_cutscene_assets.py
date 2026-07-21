@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pygame
 
 from arch_rogue.game import ARCHETYPES, Game
-from arch_rogue.quest_assets import (
+from arch_rogue.story import (
     AmbientEffectAsset,
     CurtainAsset,
     StageAsset,

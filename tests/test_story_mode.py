@@ -19,7 +19,7 @@ import pygame
 from arch_rogue.constants import DUNGEON_DEPTH
 from arch_rogue.content import STORY_CORPUS
 from arch_rogue.game import ARCHETYPES, Game
-from arch_rogue.quest_assets import load_quest_cutscene_library
+from arch_rogue.story import load_quest_cutscene_library
 from arch_rogue.story import StoryEngine, story_state_to_dict
 
 

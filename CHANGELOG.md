@@ -1,5 +1,47 @@
 # Changelog
 
+## 4.5.1 — Root module packaging (structural cleanup)
+
+Milestone 4.5.1 reduces root-level clutter in `src/arch_rogue/` by packaging tightly-coupled clusters into modules, mirroring the existing `combat/` / `content/` / `menus/` / `rendering/` facade pattern. Guided by the vibe-architecture rule: only package when a clear boundary exists; peer runtime mixins and leaf utilities stay at root. See `AGENTS.md` → "4.5.x+ Root module packaging" for the full phased plan.
+
+### Phase A — Relocate `lighting` into `rendering/`
+
+- `git mv src/arch_rogue/lighting.py src/arch_rogue/rendering/lighting.py`; `LightingMixin` already composes into `RenderingMixin`, so the move fixes a structural mismatch rather than cosmetic relocation.
+- Updated relative imports inside the moved file (`..constants` / `..mobile` / `..models`) and `rendering/__init__.py` (`from .lighting import LightingMixin`).
+- `sprites.py` / `sprite_assets.py` `bake_normal_map` import retargeted to `arch_rogue.rendering.lighting` (later made lazy in Phase B to break a module-load cycle).
+- `tests/test_lighting.py` import updated to `arch_rogue.rendering.lighting`.
+
+### Phase B — Package the sprite/asset cluster into `sprites/`
+
+- Created `src/arch_rogue/sprites/` package: `sprites.py` → `sprites/procedural.py`, `sprite_assets.py` → `sprites/library.py`, `ui_assets.py` → `sprites/ui_assets.py`.
+- `sprites/__init__.py` re-exports `PixelSpriteAtlas`, `SpriteAtlas`, `AssetSpriteLibrary`, `ResolvedSpriteFrame`, `DIRECTIONS`, `BAR_WALL_SCONCE_DIRECTION_BY_FACE`, `GOLD_STACK_ASSET_KEYS`, `STAGE_PROP_ASSET_KEYS`, `UiAssetLibrary`.
+- Intra-package imports fixed (`from .procedural import PixelSpriteAtlas`, `from ..mobile`, `from ..models`, `from ..constants`).
+- `bake_normal_map` import converted to lazy in-body imports in `sprites/procedural.py` and `sprites/library.py` to break the `sprites ↔ rendering` module-load cycle (the function is only used at runtime inside methods, never at module top).
+- `game.py` and `rendering/actors.py` retargeted to import from `arch_rogue.sprites`.
+- `test_sprite_assets.py` logger assertion updated `arch_rogue.sprite_assets` → `arch_rogue.sprites.library` (the `LOGGER = logging.getLogger(__name__)` now resolves to the new module path).
+
+### Phase C — Package the story/quest/NPC cluster into `story/`
+
+- Created `src/arch_rogue/story/` package: `story.py` → `story/engine.py`, `story_runtime.py` → `story/runtime.py`, `npc_runtime.py` → `story/npc_runtime.py`, `quest_assets.py` → `story/quest_assets.py`.
+- `story/__init__.py` re-exports `StoryEngine`, `StoryRuntimeMixin`, `FriendlyNpcRuntimeMixin`, `FriendlyNpcMotion`, the `story_*_to_dict` / `story_*_from_dict` helpers, and the full quest-cutscene asset class set. The package `__init__.py` is itself the backward-compat facade for the old `from arch_rogue.story import ...` path (no separate shim needed for `story.py`).
+- Intra-package imports fixed: `story/runtime.py` imports `from .engine import ...` and `from .quest_assets import ...`; `story/engine.py` and `story/npc_runtime.py` use `..constants` / `..content` / `..models` / `..audio`.
+- External importers retargeted: `game.py`, `save_system.py`, and the six `rendering/*.py` modules (`from ..quest_assets import ...` → `from ..story import ...`).
+
+### Phase D — Drop deprecated shims
+
+- Removed the transitional one-line re-export shims: `arch_rogue/sprite_assets.py`, `arch_rogue/ui_assets.py`, `arch_rogue/story_runtime.py`, `arch_rogue/npc_runtime.py`, `arch_rogue/quest_assets.py` (`arch_rogue/sprites.py` was already superseded by the `sprites/` package directory in Phase B).
+- Updated the remaining test imports to package paths: `arch_rogue.sprite_assets` → `arch_rogue.sprites`, `arch_rogue.ui_assets` → `arch_rogue.sprites`, `arch_rogue.quest_assets` → `arch_rogue.story`.
+- Updated `AGENTS.md` "Current Code Organization" section to reflect the new package layout.
+
+### Net effect
+
+Root `.py` file count drops from 27 to 16 (excluding `game.py`, `__init__.py`, `__main__.py`). Two new packages (`sprites/`, `story/`) follow the established facade pattern; `lighting.py` joins the existing `rendering/` package. The 10 peer runtime mixins and 6 leaf utilities (`constants`, `models`, `dungeon`, `audio`, `icon`, `licenses`) stay at root per the vibe-architecture guidance.
+
+### Validation
+
+- `python -m compileall src tests` — clean after every phase.
+- `python -m unittest discover tests` — 581 tests pass after every phase (A, B, C, D). No regressions; the suite count is unchanged from the pre-refactor baseline.
+
 ## 4.5 — Combat module refactoring
 
 Milestone 4.5 splits the ~3,800-line `combat.py` / 126-method `CombatMixin` into a `combat/` package of focused submixins, preserving `from arch_rogue.combat import CombatMixin` and keeping behavior identical during the split, then picks a few small ARPG combat improvements. See `AGENTS.md` → "4.5 Combat module refactoring" for the full phased plan.

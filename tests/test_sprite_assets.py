@@ -31,7 +31,7 @@ from arch_rogue.content import (
 )
 from arch_rogue.game import Game
 from arch_rogue.models import Room, Tile
-from arch_rogue.sprite_assets import (
+from arch_rogue.sprites import (
     BAR_WALL_SCONCE_DIRECTION_BY_FACE,
     GOLD_STACK_ASSET_KEYS,
     AssetSpriteLibrary,
@@ -2093,7 +2093,7 @@ class SpriteAssetTests(unittest.TestCase):
             "_resource",
             wraps=atlas.assets._resource,
         ) as resource:
-            with self.assertLogs("arch_rogue.sprite_assets", level="WARNING"):
+            with self.assertLogs("arch_rogue.sprites.library", level="WARNING"):
                 fallback = atlas.player_visual("Warden", "idle", 0.0, 0.0)
             fallback_again = atlas.player_visual("Warden", "idle", 0.0, 0.0)
         unaffected = atlas.player_visual("Rogue", "idle", 0.0, 0.0)

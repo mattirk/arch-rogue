@@ -34,11 +34,10 @@ from typing import Any, Generic, TypeVar
 
 import pygame
 
-from .constants import LIGHT_SHADE_DOWNSAMPLE_LONG, TILE_W, WORLD_SCALE
-from .lighting import bake_normal_map
-from .mobile import optimize_immutable_alpha_surface
-from .models import Color
-from .sprites import PixelSpriteAtlas
+from ..constants import LIGHT_SHADE_DOWNSAMPLE_LONG, TILE_W, WORLD_SCALE
+from ..mobile import optimize_immutable_alpha_surface
+from ..models import Color
+from .procedural import PixelSpriteAtlas
 
 LOGGER = logging.getLogger(__name__)
 DIRECTIONS = (
@@ -1556,6 +1555,10 @@ class SpriteAtlas:
                         max(1, int(height * factor)),
                     ),
                 )
+            # Lazy import avoids a module-load cycle between the
+            # ``sprites`` package and the ``rendering`` package.
+            from arch_rogue.rendering.lighting import bake_normal_map
+
             normal = bake_normal_map(source)
         except (MemoryError, pygame.error):
             return None

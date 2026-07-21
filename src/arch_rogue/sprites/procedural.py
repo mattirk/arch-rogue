@@ -26,14 +26,13 @@ import random
 
 import pygame
 
-from .constants import (
+from ..constants import (
     LIGHT_SHADE_DOWNSAMPLE_LONG,
     TILE_H,
     WALK_CYCLE_FRAMES,
     WALK_FRAME_RATE,
 )
-from .lighting import bake_normal_map
-from .models import Color
+from ..models import Color
 
 bone_color = (214, 202, 176)
 
@@ -1151,6 +1150,10 @@ class PixelSpriteAtlas:
                 )
             else:
                 src = surface
+            # Lazy import avoids a module-load cycle between the
+            # ``sprites`` package and the ``rendering`` package.
+            from arch_rogue.rendering.lighting import bake_normal_map
+
             normal = bake_normal_map(src)
             normal = normal.convert_alpha()
         except pygame.error:

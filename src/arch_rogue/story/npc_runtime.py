@@ -27,8 +27,8 @@ import random
 from dataclasses import dataclass
 from typing import Iterator
 
-from .audio import MusicTiming
-from .models import IdleNpc, Room, Shopkeeper, StoryGuest
+from ..audio import MusicTiming
+from ..models import IdleNpc, Room, Shopkeeper, StoryGuest
 
 FriendlyNpc = Shopkeeper | StoryGuest | IdleNpc
 NON_HUMANOID_FRIENDLY_NPC_KINDS = frozenset(("garden_frog",))

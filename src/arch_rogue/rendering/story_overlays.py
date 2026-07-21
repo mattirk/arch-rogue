@@ -28,7 +28,7 @@ import pygame
 
 from ..constants import DUNGEON_DEPTH
 from ..models import Color
-from ..quest_assets import (
+from ..story import (
     CutsceneActorAsset,
     SpriteAnimationFrameAsset,
     StageAsset,

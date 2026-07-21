@@ -934,7 +934,7 @@ class FamiliarTests(unittest.TestCase):
         self.assertGreater(w1, w0)
 
     def test_pet_action_has_non_looping_legacy_ranger_and_beast_fallbacks(self) -> None:
-        from arch_rogue.sprite_assets import SpriteAtlas
+        from arch_rogue.sprites import SpriteAtlas
 
         atlas = SpriteAtlas(legacy_graphics=True)
         ranger_frames = atlas.legacy.player_animation_frames["Ranger"]["pet"]

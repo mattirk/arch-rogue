@@ -53,12 +53,12 @@ from ..models import (
     Tile,
     Trap,
 )
-from ..quest_assets import (
+from ..story import (
     CutsceneActorAsset,
     SpriteAnimationFrameAsset,
     format_asset_text,
 )
-from ..sprite_assets import ResolvedSpriteFrame
+from arch_rogue.sprites import ResolvedSpriteFrame
 
 
 class RenderingActorMixin:

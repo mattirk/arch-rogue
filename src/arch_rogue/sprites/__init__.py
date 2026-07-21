@@ -19,7 +19,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Arch Rogue public release package."""
+"""Sprite and UI-asset pipeline package.
 
-__all__ = ["__version__"]
-__version__ = "4.5.1"
+Re-exports the public names of the procedural sprite atlas, the runtime asset
+library/atlas, and the UI asset library so callers can import everything from
+``arch_rogue.sprites`` regardless of which submodule owns the implementation.
+"""
+
+from __future__ import annotations
+
+from .library import (
+    BAR_WALL_SCONCE_DIRECTION_BY_FACE,
+    DIRECTIONS,
+    GOLD_STACK_ASSET_KEYS,
+    STAGE_PROP_ASSET_KEYS,
+    AssetSpriteLibrary,
+    ResolvedSpriteFrame,
+    SpriteAtlas,
+)
+from .procedural import PixelSpriteAtlas
+from .ui_assets import UiAssetLibrary
+
+__all__ = [
+    "AssetSpriteLibrary",
+    "BAR_WALL_SCONCE_DIRECTION_BY_FACE",
+    "DIRECTIONS",
+    "GOLD_STACK_ASSET_KEYS",
+    "PixelSpriteAtlas",
+    "ResolvedSpriteFrame",
+    "STAGE_PROP_ASSET_KEYS",
+    "SpriteAtlas",
+    "UiAssetLibrary",
+]
