@@ -1062,11 +1062,13 @@ class MobileRenderQualityTests(unittest.TestCase):
             viewport = game.mobile_world_viewport()
             root_pixels = game.screen.get_width() * game.screen.get_height()
             self.assertEqual(first_base_pixels, root_pixels)
-            self.assertEqual(first_ui_regions, 1)
+            self.assertEqual(first_ui_regions, 2)
             self.assertGreater(first_ui_pixels, 0)
             self.assertIsNotNone(first_dirty)
             assert first_dirty is not None
-            self.assertEqual(first_ui_pixels, first_dirty.width * first_dirty.height)
+            # The retained left cluster and action rail are disjoint; upload
+            # accounting sums their pixels rather than the empty gap in the union.
+            self.assertLess(first_ui_pixels, first_dirty.width * first_dirty.height)
 
             shell = getattr(game, "_mobile_gpu_shell_texture")
             base = getattr(game, "_mobile_gpu_base_texture")
@@ -1107,7 +1109,10 @@ class MobileRenderQualityTests(unittest.TestCase):
                 for action, texture, _value in calls
                 if action == "blit"
             ]
-            self.assertLess(blitted.index(shell), blitted.index(base))
+            # The streamed base covers the full logical target with blend-none,
+            # so clearing and drawing the retained shell first would be redundant.
+            self.assertNotIn(shell, blitted)
+            self.assertFalse(any(action == "clear" for action, _obj, _value in calls))
             self.assertLess(blitted.index(base), blitted.index(light))
             self.assertLess(
                 blitted.index(light),

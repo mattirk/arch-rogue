@@ -1,5 +1,32 @@
 # Changelog
 
+## 4.5.2 — Android Native performance stabilization
+
+Release 4.5.2 substantially improves Native-resolution Android performance on the SwiftShader AVD while preserving the 2340×1080 logical/window output and the existing 1560×720 gameplay GPU stream.
+
+### Changed
+
+- Reworked quest-cutscene composition to use cached opaque backgrounds/panels, direct framebuffer subsurfaces, retained static panel chrome, cached actor surfaces/labels, and cached narration/story context.
+- Removed redundant full-screen GLES clears and retained-shell draws when the blend-none gameplay base covers the complete Native target.
+- Moved stable mobile HUD regions to retained post-light GPU textures so unchanged action rails and left HUD clusters are neither redrawn nor re-uploaded.
+- Reduced mobile combat-lighting work by retaining unchanged light buffers, updating decorative dynamic lighting on alternating render frames, and prioritizing at most six transient halos without changing gameplay entities/effects.
+- Cached and quantized mobile enemy windup telegraphs and suppressed the duplicate committed-attack warning.
+- During dense mobile combat, suppress optional relic guidance while enemies are visible and omit ordinary contact shadows only when at least eight enemies are visible; player, boss, elite, and normal-scene shadows remain.
+
+### Performance
+
+- Native cutscene: ~7.9–8.5 FPS → 25.2–27.4 FPS, average ~26.8 FPS.
+- Native ten-enemy combat/effects scenario: ~15.4–15.9 FPS → 19.8–21.3 FPS, average ~20.6 FPS.
+- Native logical/window/viewport remains 2340×1080; gameplay stream remains 1560×720.
+
+### Validation
+
+- `python -m compileall src tests`
+- Focused cutscene, mobile-layout, HUD, lighting, windup, story, and world tests pass.
+- Android packaging tests: 20/20 pass.
+- Debug APK passed source validation, ABI audit, and APK v2 signature verification.
+- Save schema remains 5; only informational release metadata advances to 4.5.2.
+
 ## 4.5.1 — Root module packaging (structural cleanup)
 
 Milestone 4.5.1 reduces root-level clutter in `src/arch_rogue/` by packaging tightly-coupled clusters into modules, mirroring the existing `combat/` / `content/` / `menus/` / `rendering/` facade pattern. Guided by the vibe-architecture rule: only package when a clear boundary exists; peer runtime mixins and leaf utilities stay at root. See `AGENTS.md` → "4.5.x+ Root module packaging" for the full phased plan.

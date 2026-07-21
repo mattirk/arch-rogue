@@ -248,6 +248,12 @@ class RenderingBaseMixin:
             "confirm_exit": self.draw_exit_confirmation,
         }.get(self.state)
         mobile = bool(getattr(self, "mobile_mode", False))
+        cutscene_owns_display = bool(
+            menu_draw is None
+            and self.active_cutscene is not None
+            and self.active_cutscene_asset() is not None
+            and self.active_cutscene_node() is not None
+        )
         menu_signature = self._mobile_static_menu_signature() if menu_draw else None
         if (
             menu_signature is not None
@@ -266,7 +272,8 @@ class RenderingBaseMixin:
             self.begin_mobile_gpu_frame()
 
         started = time.perf_counter()
-        self._clear_frame_surface()
+        if not cutscene_owns_display:
+            self._clear_frame_surface()
         if performance is not None:
             performance.record_phase("clear", time.perf_counter() - started)
         if menu_draw is not None:

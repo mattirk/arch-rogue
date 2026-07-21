@@ -361,80 +361,116 @@ class RenderingHudMixin:
             self.draw_hud_action_icon(slot, pygame.Rect(x, y, icon_size, icon_size))
             x += icon_size + gap
 
-    def draw_hud_action_icon(self, slot: dict[str, object], rect: pygame.Rect) -> None:
+    def _hud_action_dark_overlay(
+        self, size: tuple[int, int], alpha: int
+    ) -> pygame.Surface:
+        cache = getattr(self, "_hud_action_dark_overlay_cache", None)
+        if cache is None:
+            cache = {}
+            self._hud_action_dark_overlay_cache = cache
+        key = (size, int(alpha))
+        overlay = cache.get(key)
+        if overlay is None:
+            overlay = pygame.Surface(size, pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, alpha))
+            cache[key] = overlay
+        return overlay
+
+    def draw_hud_action_icon(
+        self,
+        slot: dict[str, object],
+        rect: pygame.Rect,
+        *,
+        draw_static: bool = True,
+        draw_dynamic: bool = True,
+    ) -> None:
         color = cast(Color, slot.get("color", self.theme.accent))
         ready = self.hud_action_slot_ready(slot)
-        status = self.hud_action_slot_status(slot)
         timer = self.hud_slot_float(slot, "timer")
         cooldown = self.hud_slot_float(slot, "cooldown")
         remaining = self.cooldown_ratio(timer, cooldown)
         border = color if ready or timer > 0.001 else self.HUD_IRON
-        icon = str(slot.get("icon", ""))
-        asset = str(slot.get("asset", ""))
-        label = str(slot.get("label", ""))
-        hotkey = str(slot.get("hotkey", ""))
-        # The static plate, authored/procedural glyph, legacy label, and hotkey
-        # badge do not depend on per-frame cooldown/count/status. Cache the
-        # composed body so steady-state frames pay one blit per slot.
-        cache = getattr(self, "_hud_icon_cache", None)
-        if cache is None:
-            cache = {}
-            self._hud_icon_cache = cache
-        key = (
-            rect.size,
-            color,
-            ready,
-            border,
-            icon,
-            asset,
-            label,
-            hotkey,
-            self.ui_scale,
-            self.asset_ui_active(),
-        )
-        body = cache.get(key)
-        if body is None:
-            body = self._build_hud_action_icon_body(
-                rect.size, color, ready, border, icon, label, hotkey, asset
-            )
-            if len(cache) >= 256:
-                cache.clear()
-            cache[key] = body
-        self.screen.blit(body, rect.topleft)
 
-        # --- dynamic overlays (depend on per-frame cooldown/count/status) ---
-        if "count" in slot:
-            count_text = str(slot.get("count", 0))
-            count_size = max(
-                self.ui(15), self.tiny_font.size(count_text)[0] + self.ui(6)
-            )
-            count_rect = pygame.Rect(0, 0, count_size, self.ui(15))
-            count_rect.bottomright = (rect.right - self.ui(3), rect.bottom - self.ui(3))
-            pygame.draw.rect(
-                self.screen, self.HUD_STONE_SHADOW, count_rect, border_radius=self.ui(7)
-            )
-            pygame.draw.rect(
-                self.screen,
+        if draw_static:
+            icon = str(slot.get("icon", ""))
+            asset = str(slot.get("asset", ""))
+            label = str(slot.get("label", ""))
+            hotkey = str(slot.get("hotkey", ""))
+            # The static plate, authored/procedural glyph, legacy label, and hotkey
+            # badge do not depend on per-frame cooldown/count/status. Cache the
+            # composed body so steady-state frames pay one blit per slot.
+            cache = getattr(self, "_hud_icon_cache", None)
+            if cache is None:
+                cache = {}
+                self._hud_icon_cache = cache
+            key = (
+                rect.size,
                 color,
-                count_rect,
-                max(1, self.ui(1)),
-                border_radius=self.ui(7),
+                ready,
+                border,
+                icon,
+                asset,
+                label,
+                hotkey,
+                self.ui_scale,
+                self.asset_ui_active(),
             )
-            self.draw_ui_text(
-                self.screen,
-                count_text,
-                self.tiny_font,
-                self.HUD_GOLD_BRIGHT,
-                count_rect.inflate(-self.ui(2), 0),
-                align="center",
-                valign="center",
-            )
+            body = cache.get(key)
+            if body is None:
+                body = self._build_hud_action_icon_body(
+                    rect.size, color, ready, border, icon, label, hotkey, asset
+                )
+                if len(cache) >= 256:
+                    cache.clear()
+                cache[key] = body
+            self.screen.blit(body, rect.topleft)
 
-        if remaining > 0.001:
+            if "count" in slot:
+                count_text = str(slot.get("count", 0))
+                count_size = max(
+                    self.ui(15), self.tiny_font.size(count_text)[0] + self.ui(6)
+                )
+                count_rect = pygame.Rect(0, 0, count_size, self.ui(15))
+                count_rect.bottomright = (
+                    rect.right - self.ui(3),
+                    rect.bottom - self.ui(3),
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    self.HUD_STONE_SHADOW,
+                    count_rect,
+                    border_radius=self.ui(7),
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    color,
+                    count_rect,
+                    max(1, self.ui(1)),
+                    border_radius=self.ui(7),
+                )
+                self.draw_ui_text(
+                    self.screen,
+                    count_text,
+                    self.tiny_font,
+                    self.HUD_GOLD_BRIGHT,
+                    count_rect.inflate(-self.ui(2), 0),
+                    align="center",
+                    valign="center",
+                )
+
+            if remaining <= 0.001 and not ready:
+                self.screen.blit(
+                    self._hud_action_dark_overlay(rect.size, 100), rect
+                )
+
+        if draw_dynamic and remaining > 0.001:
             overlay_h = max(1, int(rect.height * remaining))
-            overlay = pygame.Surface((rect.width, overlay_h), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 150))
-            self.screen.blit(overlay, (rect.x, rect.y))
+            overlay = self._hud_action_dark_overlay(rect.size, 150)
+            self.screen.blit(
+                overlay,
+                (rect.x, rect.y),
+                pygame.Rect(0, 0, rect.width, overlay_h),
+            )
             progress = 1.0 - remaining
             pygame.draw.arc(
                 self.screen,
@@ -444,10 +480,6 @@ class RenderingHudMixin:
                 -math.pi / 2 + math.tau * progress,
                 max(2, self.ui(2)),
             )
-        elif not ready:
-            overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 100))
-            self.screen.blit(overlay, rect)
 
         # Status text overlays (ATTACK, RETURN, EMPTY, FULL, MP, ST, timer)
         # have been removed: the cooldown arc, darkening, count badge,
@@ -820,46 +852,272 @@ class RenderingHudMixin:
         with self.fitted_ui_layout((960, 540)):
             self._draw_ui_fitted()
 
-    def _draw_mobile_ui(self) -> None:
-        layout = self.mobile_layout()
-        context = self.mobile_input_context()
-        accent = self.theme.accent
-        root = self.screen
-
-        panel = self.ui_asset_surface("hud.panel", layout.right_rail.size)
-        if panel is not None:
-            root.blit(panel, layout.right_rail)
-        else:
-            self.draw_ornate_hud_panel(
-                root,
-                layout.right_rail,
-                (16, 15, 21, 244),
-                (*accent, 180),
-                radius=max(8, layout.right_rail.width // 12),
-                studs=True,
+    def _mobile_action_rail_surface(
+        self,
+        layout,
+        slots: list[dict[str, object]],
+    ) -> pygame.Surface:
+        rail = layout.right_rail
+        static_states = []
+        for slot, rect in zip(slots, layout.action_rects):
+            color = cast(Color, slot.get("color", self.theme.accent))
+            ready = self.hud_action_slot_ready(slot)
+            timer = self.hud_slot_float(slot, "timer")
+            cooldown = self.hud_slot_float(slot, "cooldown")
+            remaining = self.cooldown_ratio(timer, cooldown)
+            border = color if ready or timer > 0.001 else self.HUD_IRON
+            static_states.append(
+                (
+                    rect.x - rail.x,
+                    rect.y - rail.y,
+                    rect.width,
+                    rect.height,
+                    color,
+                    ready,
+                    border,
+                    str(slot.get("icon", "")),
+                    str(slot.get("asset", "")),
+                    str(slot.get("label", "")),
+                    str(slot.get("hotkey", "")),
+                    str(slot.get("count", "")) if "count" in slot else None,
+                    remaining <= 0.001 and not ready,
+                )
             )
+        key = (
+            rail.size,
+            tuple(static_states),
+            self.theme.accent,
+            self.ui_scale,
+            id(self.tiny_font),
+            id(self.small_font),
+            self.asset_ui_active(),
+            int(getattr(self, "_mobile_render_generation", 0)),
+        )
+        cached = getattr(self, "_mobile_action_rail_cache", None)
+        if cached is not None and cached[0] == key:
+            return cached[1]
 
+        surface = pygame.Surface(rail.size, pygame.SRCALPHA)
+        try:
+            surface = surface.convert_alpha()
+        except pygame.error:
+            pass
+        real_screen = self.screen
+        self.screen = surface
+        try:
+            local_rail = surface.get_rect()
+            panel = self.ui_asset_surface("hud.panel", local_rail.size)
+            if panel is not None:
+                surface.blit(panel, local_rail)
+            else:
+                self.draw_ornate_hud_panel(
+                    surface,
+                    local_rail,
+                    (16, 15, 21, 244),
+                    (*self.theme.accent, 180),
+                    radius=max(8, local_rail.width // 12),
+                    studs=True,
+                )
+            for slot, rect in zip(slots, layout.action_rects):
+                self.draw_hud_action_icon(
+                    slot,
+                    rect.move(-rail.x, -rail.y),
+                    draw_dynamic=False,
+                )
+        finally:
+            self.screen = real_screen
+        self._mobile_action_rail_cache = (key, surface)
+        return surface
+
+    def _mobile_action_rail_frame(
+        self, layout, slots: list[dict[str, object]]
+    ) -> tuple[pygame.Surface, object]:
+        base = self._mobile_action_rail_surface(layout, slots)
+        assert self._mobile_action_rail_cache is not None
+        base_key = self._mobile_action_rail_cache[0]
+        dynamic_state = []
+        for slot, rect in zip(slots, layout.action_rects):
+            timer = self.hud_slot_float(slot, "timer")
+            cooldown = self.hud_slot_float(slot, "cooldown")
+            remaining = self.cooldown_ratio(timer, cooldown)
+            if remaining > 0.001:
+                dynamic_state.append(
+                    (
+                        rect.x - layout.right_rail.x,
+                        rect.y - layout.right_rail.y,
+                        max(1, int(rect.height * remaining)),
+                        round(1.0 - remaining, 4),
+                    )
+                )
+            else:
+                dynamic_state.append(None)
+        revision = (base_key, tuple(dynamic_state))
+        if not any(state is not None for state in dynamic_state):
+            return base, revision
+        cached = getattr(self, "_mobile_action_rail_frame_cache", None)
+        if cached is not None and cached[0] == revision:
+            return cached[1], revision
+        frame = base.copy()
+        real_screen = self.screen
+        self.screen = frame
+        try:
+            for slot, rect in zip(slots, layout.action_rects):
+                self.draw_hud_action_icon(
+                    slot,
+                    rect.move(-layout.right_rail.x, -layout.right_rail.y),
+                    draw_static=False,
+                )
+        finally:
+            self.screen = real_screen
+        self._mobile_action_rail_frame_cache = (revision, frame)
+        return frame, revision
+
+    def _mobile_left_hud_surface(
+        self, layout
+    ) -> tuple[pygame.Surface, pygame.Rect, object]:
         resource_values = (
             (self.player.hp, self.player.max_hp, (180, 42, 46), "HP"),
             (self.player.mana, self.player.max_mana, (54, 104, 210), "MP"),
             (self.player.stamina, self.player.max_stamina, (206, 164, 64), "ST"),
         )
-        # The world viewport covers the entire display, so these controls are
-        # already inside the streamed world texture. Registering them again as
-        # base regions would only duplicate texture uploads (4.3.9 regression).
-        for index, (rect, (value, maximum, color, label)) in enumerate(
-            zip(layout.resource_rects, resource_values)
+        regions = [rect.copy() for rect in layout.resource_rects]
+        regions.append(layout.run_info_rect.copy())
+        if layout.character_rect is not None:
+            regions.append(layout.character_rect.copy())
+        regions.append(layout.joystick_rect.copy())
+        bounds = regions[0].unionall(regions[1:])
+
+        resource_state = []
+        for rect, (value, maximum, color, label) in zip(
+            layout.resource_rects, resource_values
         ):
-            self._draw_mobile_vertical_bar(rect, value, maximum, color, label)
+            inner_h = max(1, round(rect.height * 0.74))
+            ratio = max(0.0, min(1.0, value / max(1.0, maximum)))
+            resource_state.append(
+                (rect.size, round(inner_h * ratio), int(value), color, label)
+            )
+        darkness = " · Dark" if self.is_current_floor_dark() else ""
+        run_state = (
+            f"Run {self.run_number}: Depth {self.current_depth}/{DUNGEON_DEPTH}",
+            f"{self.theme.name}{darkness}",
+            f"Difficulty: {self.difficulty_profile().name}",
+            f"Modifier: {self.run_modifier.name}",
+        )
+        character_state = (
+            self.player.class_name,
+            self.player.level,
+            self.player.xp,
+            self.player.next_xp,
+            self.player.melee_damage(),
+            self.player.armor(),
+        )
+        screen_x, screen_y = self.mobile_joystick_screen_vector()
+        travel = max(
+            1,
+            int(
+                min(layout.joystick_rect.width, layout.joystick_rect.height)
+                * 0.22
+            ),
+        )
+        joystick_state = (round(screen_x * travel), round(screen_y * travel))
+        key = (
+            bounds.size,
+            tuple((rect.x - bounds.x, rect.y - bounds.y, *rect.size) for rect in regions),
+            tuple(resource_state),
+            run_state,
+            character_state,
+            joystick_state,
+            self.theme.accent,
+            self.ui_scale,
+            id(self.tiny_font),
+            id(self.small_font),
+            self.asset_ui_active(),
+            int(getattr(self, "_mobile_render_generation", 0)),
+        )
+        cached = getattr(self, "_mobile_left_hud_cache", None)
+        if cached is not None and cached[0] == key:
+            return cached[1], bounds, key
+
+        surface = pygame.Surface(bounds.size, pygame.SRCALPHA)
+        try:
+            surface = surface.convert_alpha()
+        except pygame.error:
+            pass
+        real_screen = self.screen
+        self.screen = surface
+        try:
+            for rect, (value, maximum, color, label) in zip(
+                layout.resource_rects, resource_values
+            ):
+                self._draw_mobile_vertical_bar(
+                    rect.move(-bounds.x, -bounds.y),
+                    value,
+                    maximum,
+                    color,
+                    label,
+                )
+            self._draw_mobile_run_summary(
+                layout.run_info_rect.move(-bounds.x, -bounds.y)
+            )
+            if layout.character_rect is not None:
+                self._draw_mobile_character_summary(
+                    layout.character_rect.move(-bounds.x, -bounds.y)
+                )
+            self._draw_mobile_joystick(
+                layout.joystick_rect.move(-bounds.x, -bounds.y)
+            )
+        finally:
+            self.screen = real_screen
+        self._mobile_left_hud_cache = (key, surface)
+        return surface, bounds, key
+
+    def _draw_mobile_retained_region(
+        self,
+        key: str,
+        surface: pygame.Surface,
+        rect: pygame.Rect,
+        revision: object,
+        viewport: pygame.Rect,
+        post_light_surface: pygame.Surface | None,
+    ) -> None:
+        if post_light_surface is None:
+            self.screen.blit(surface, rect)
+            return
+        local_rect = rect.move(-viewport.x, -viewport.y)
+        revisions = getattr(self, "_mobile_gpu_ui_region_revisions", {})
+        if revisions.get(key) != revision:
+            post_light_surface.blit(surface, local_rect)
+        self.mark_mobile_gpu_ui_region(key, local_rect, revision)
+
+    def _draw_mobile_ui(self) -> None:
+        layout = self.mobile_layout()
+        context = self.mobile_input_context()
+        root = self.screen
+        viewport = layout.world_viewport.clip(root.get_rect())
+        post_light_surface = self.mobile_gpu_post_light_surface(viewport)
+        slots = self.hud_action_slots()
+        rail_frame, rail_revision = self._mobile_action_rail_frame(layout, slots)
+        self._draw_mobile_retained_region(
+            "action_rail",
+            rail_frame,
+            layout.right_rail,
+            rail_revision,
+            viewport,
+            post_light_surface,
+        )
+        left_hud, left_rect, left_revision = self._mobile_left_hud_surface(layout)
+        self._draw_mobile_retained_region(
+            "left_hud",
+            left_hud,
+            left_rect,
+            left_revision,
+            viewport,
+            post_light_surface,
+        )
         self._hud_resource_bar_rects = tuple(
             rect.copy() for rect in layout.resource_rects
         )
 
-        self._draw_mobile_run_summary(layout.run_info_rect)
-        if layout.character_rect is not None:
-            self._draw_mobile_character_summary(layout.character_rect)
-
-        slots = self.hud_action_slots()
         action_commands = (
             Command.ABILITY_1,
             Command.ABILITY_2,
@@ -871,7 +1129,6 @@ class RenderingHudMixin:
         for index, (slot, rect, command) in enumerate(
             zip(slots, layout.action_rects, action_commands)
         ):
-            self.draw_hud_action_icon(slot, rect)
             self.register_mobile_touch_target(
                 rect, command, str(slot.get("hotkey", "")), context="gameplay"
             )
@@ -880,10 +1137,8 @@ class RenderingHudMixin:
         # World-adjacent prompts remain viewport-local. The left HUD deliberately
         # overlays the extended world, while gameplay-space panels use the clear
         # center between that overlay and the right action rail.
-        viewport = layout.world_viewport.clip(root.get_rect())
         self._mobile_root_screen = root
         self._mobile_world_rendering = True
-        post_light_surface = self.mobile_gpu_post_light_surface(viewport)
         self.screen = (
             post_light_surface
             if post_light_surface is not None
@@ -951,8 +1206,6 @@ class RenderingHudMixin:
             self._mobile_world_rendering = False
             self._frame_cache.pop("screen_size", None)
             del self._mobile_root_screen
-
-        self._draw_mobile_joystick(layout.joystick_rect)
 
         if context in ("gameplay", "mobile_hub", "quest"):
             self._draw_mobile_control_button(

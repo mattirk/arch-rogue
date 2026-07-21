@@ -1795,6 +1795,12 @@ class RenderingWorldMixin:
             if visible(effect.x, effect.y, max(0.35, effect.radius)):
                 drawables.append((effect.x + effect.y + 0.08, "impact", effect))
 
+        visible_enemy_total = sum(
+            1 for _depth, kind, _obj in drawables if kind == "enemy"
+        )
+        self._frame_mobile_dense_enemy_render = bool(
+            getattr(self, "mobile_mode", False) and visible_enemy_total >= 8
+        )
         aim_started = time.perf_counter()
         self.draw_aim_cone()
         performance = getattr(self, "_mobile_performance_monitor", None)
@@ -1808,7 +1814,10 @@ class RenderingWorldMixin:
         # even when the relic is far outside the sight radius. The per-tile
         # visibility clipping inside draw_story_relic_guidance keeps the crack
         # from painting over dark / unrevealed floor.
-        if self.story_relic_target_position() is not None:
+        combat_focus = bool(
+            getattr(self, "mobile_mode", False) and visible_enemy_total > 0
+        )
+        if self.story_relic_target_position() is not None and not combat_focus:
             guidance_started = time.perf_counter()
             self.draw_story_relic_guidance()
             performance = getattr(self, "_mobile_performance_monitor", None)

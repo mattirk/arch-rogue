@@ -203,6 +203,8 @@ Example categories:
 
 Use an Android Virtual Device (AVD) for repeatable, headless-friendly mobile profiling and debugging. Create your own AVD through Android Studio or `avdmanager`, then use that name in the commands below. The AVD is easier to iterate with than a physical device because it avoids cable handling and uses a stable serial every run.
 
+Note: Target Native resolution on Android since it's the default and should be playable. Lower resolutions are only for fallback and legacy devices.
+
 #### Creating an AVD
 
 If you do not already have an AVD for profiling, create one with `avdmanager` (or use Android Studio's AVD Manager). Choose a recent Android API, the x86_64 ABI, and a device skin that matches the target screen shape. For example, to create a Pixel 5-like device running Android 14:
@@ -324,3 +326,14 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 - Dash: extended dash/blink skill (skill 4) when key pressed long, character starts "running" and moves faster. This consumes stamina really fast and stops once stamina is spent. When "running" mode activated, dash/blink suffers 1min cooldown. To be used as last resort to run away.
 - Gardens should heal player more slowly. Slow the healing "tick" -> every 5 seconds
 - On mobile, dash direction some times gets "stuck". So  that it does not respect the direction player is moving via joystick. Way to fix: stop moving, look around by touching the screen around player (not by joystick) -> start moving again via joystick and problem is gone
+- Generate unique sprites for unique and legendary items
+- Use generated asset relic in cutscene instead of procedurally generated (legacy graphics stay the same)
+  - Also make the relic float a bit lower (also move the altar a bit lower)
+- Make it so that cursed items cannot be removed except via "scroll of remove curse"
+  - We need to create new item: scroll of remove curse -> generate new sprite for it too
+- Make actors on cutscene stage move more slowly, also
+  - When actors stop, make them wait at that position for a bit longer and do a "dance" move
+  - When player and antagonist clash in the middle, make them exchange couple of blows
+- In Archetype selection screen, make the panels containing Archetype names (row.png) a bit more compact in vertical sense (15% for now), keep spacing / alignment clean
+- We need spiral stairs. Generate 5 variants via MCP, human will review, and select the best one
+- Android performance is much better with 4.5.2 but still experiences micro-stuttering at times. May be related to new map (or items / enemies) being revealed when moving.

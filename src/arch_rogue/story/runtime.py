@@ -25,6 +25,7 @@ from __future__ import annotations
 import math
 import random
 import re
+from bisect import bisect_right
 from typing import Any
 
 from ..content import STORY_LOCATION_MOTIFS
@@ -288,8 +289,12 @@ class StoryRuntimeMixin:
         node = self.active_cutscene_node()
         if node is None or self.active_cutscene is None:
             return ""
-        context = {**self.quest_cutscene_context(self.active_cutscene_guest())}
-        context.update(self.active_cutscene.context)
+        # start_quest_cutscene/set_active_cutscene_node snapshot the complete
+        # formatting context. Rebuilding it every rendered frame repeatedly walks
+        # story/guest state even though narration is immutable within the node.
+        context = self.active_cutscene.context
+        if not context:
+            context = self.quest_cutscene_context(self.active_cutscene_guest())
         return format_asset_text(node.text, context)
 
     def cutscene_narration_char_delay(self, char: str) -> float:
@@ -306,11 +311,33 @@ class StoryRuntimeMixin:
             return 0.012 / speed
         return 0.026 / speed
 
+    def _cutscene_narration_timeline(self, narration: str) -> tuple[float, ...]:
+        """Return cached cumulative reveal times for one immutable narration."""
+
+        cache = getattr(self, "_cutscene_narration_timeline_cache", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._cutscene_narration_timeline_cache = cache
+        cached = cache.get(narration)
+        if cached is not None:
+            return cached
+        elapsed = 0.0
+        timeline: list[float] = []
+        for char in narration:
+            elapsed += self.cutscene_narration_char_delay(char)
+            timeline.append(elapsed)
+        cached = tuple(timeline)
+        if len(cache) >= 32:
+            cache.clear()
+        cache[narration] = cached
+        return cached
+
     def active_cutscene_narration_duration(self, text: str | None = None) -> float:
         narration = self.active_cutscene_text() if text is None else text
         if not narration:
             return 0.0
-        return sum(self.cutscene_narration_char_delay(char) for char in narration)
+        timeline = self._cutscene_narration_timeline(narration)
+        return timeline[-1] if timeline else 0.0
 
     def active_cutscene_narration_char_count(self, text: str | None = None) -> int:
         if self.active_cutscene is None:
@@ -319,12 +346,7 @@ class StoryRuntimeMixin:
         if not narration:
             return 0
         elapsed = max(0.0, self.active_cutscene.node_elapsed)
-        spoken_time = 0.0
-        for index, char in enumerate(narration):
-            spoken_time += self.cutscene_narration_char_delay(char)
-            if spoken_time > elapsed:
-                return index
-        return len(narration)
+        return bisect_right(self._cutscene_narration_timeline(narration), elapsed)
 
     def active_cutscene_narration_snapshot(self) -> tuple[str, str, bool, float]:
         """Return narration text, visible slice, completion, and progress.
@@ -389,8 +411,9 @@ class StoryRuntimeMixin:
         actor = asset.actors.get(node.speaker)
         if actor is None:
             return node.speaker.title()
-        context = {**self.quest_cutscene_context(self.active_cutscene_guest())}
-        context.update(self.active_cutscene.context)
+        context = self.active_cutscene.context
+        if not context:
+            context = self.quest_cutscene_context(self.active_cutscene_guest())
         return format_asset_text(actor.name, context)
 
     def active_cutscene_choices(self) -> list[RuntimeDialogueChoice]:
@@ -504,13 +527,26 @@ class StoryRuntimeMixin:
         if self.story_state is None or beat is None:
             return self.default_story_relic_choice_options()
         base_seed = self.story_relic_choice_text_seed(beat)
+        cache = getattr(self, "_story_relic_choice_options_cache", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._story_relic_choice_options_cache = cache
+        cache_key = (base_seed, beat.title, beat.guest_name)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return list(cached)
+
         key_salts = {"aid": 11_117, "bargain": 65_537, "defy": 104_729}
-        return [
+        options = tuple(
             self.story_relic_choice_option_for_key(
                 key, beat, random.Random(base_seed + key_salts[key])
             )
             for key in self.story_relic_choice_key_order(beat)
-        ]
+        )
+        if len(cache) >= 32:
+            cache.clear()
+        cache[cache_key] = options
+        return list(options)
 
     def story_relic_choice_key_order(self, beat: Any) -> list[str]:
         keys = ["aid", "bargain", "defy"]

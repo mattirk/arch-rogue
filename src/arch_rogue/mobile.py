@@ -930,7 +930,7 @@ class MobileMixin:
         self._mobile_gpu_frame_sequence = 0
         self._mobile_gpu_frame_active = False
         self._mobile_gpu_pending_light: tuple[
-            int, int, pygame.Surface, pygame.Rect
+            int, int, pygame.Surface, pygame.Rect, object | None
         ] | None = None
         self._mobile_gpu_pending_flash: tuple[tuple[int, int, int], int] | None = None
         self._mobile_gpu_ui_surface: pygame.Surface | None = None
@@ -945,6 +945,7 @@ class MobileMixin:
         self._mobile_gpu_ui_region_revisions: dict[str, object] = {}
         self._mobile_gpu_base_region_textures: dict[str, tuple[object, Any]] = {}
         self._mobile_gpu_shell_revision: object | None = None
+        self._mobile_gpu_light_revision: object | None = None
         self._mobile_gpu_ui_region_count = 0
         self._mobile_gpu_ui_upload_pixels = 0
         self._mobile_gpu_base_region_count = 0
@@ -978,6 +979,7 @@ class MobileMixin:
         self._mobile_gpu_pending_flash = None
         self._mobile_gpu_last_present = False
         self._mobile_gpu_shell_revision = None
+        self._mobile_gpu_light_revision = None
         self._mobile_gpu_ui_region_textures = {}
         self._mobile_gpu_ui_region_revisions = {}
         self._mobile_gpu_base_region_textures = {}
@@ -1192,7 +1194,9 @@ class MobileMixin:
         )
         return True
 
-    def queue_mobile_gpu_lighting(self, surface: pygame.Surface) -> bool:
+    def queue_mobile_gpu_lighting(
+        self, surface: pygame.Surface, revision: object | None = None
+    ) -> bool:
         if not getattr(self, "_mobile_gpu_frame_active", False):
             return False
         viewport = getattr(self, "_mobile_gpu_ui_viewport", None)
@@ -1203,6 +1207,7 @@ class MobileMixin:
             self._mobile_gpu_renderer_generation,
             surface,
             viewport.copy(),
+            revision,
         )
         return True
 
@@ -1408,7 +1413,7 @@ class MobileMixin:
         if pending is None:
             self._composite_mobile_gpu_ui_fallback()
             return False
-        sequence, generation, light_surface, viewport = pending
+        sequence, generation, light_surface, viewport, light_revision = pending
         if (
             sequence != self._mobile_gpu_frame_sequence
             or generation != self._mobile_gpu_renderer_generation
@@ -1554,7 +1559,12 @@ class MobileMixin:
             root_buffer = None
 
             started = time.perf_counter()
-            light_texture.update(light_surface)
+            if (
+                light_revision is None
+                or self._mobile_gpu_light_revision != light_revision
+            ):
+                light_texture.update(light_surface)
+                self._mobile_gpu_light_revision = light_revision
             if monitor is not None:
                 monitor.record_detail_phase(
                     "light_upload", time.perf_counter() - started
@@ -1581,9 +1591,16 @@ class MobileMixin:
                 monitor.record_detail_phase("ui_upload", time.perf_counter() - started)
 
             started = time.perf_counter()
-            renderer.draw_color = (0, 0, 0, 255)
-            renderer.clear()
-            renderer.blit(shell_texture, root.get_rect())
+            root_rect = root.get_rect()
+            base_covers_root = bool(
+                not refresh_shell
+                and base_texture is not None
+                and viewport == root_rect
+            )
+            if not base_covers_root:
+                renderer.draw_color = (0, 0, 0, 255)
+                renderer.clear()
+                renderer.blit(shell_texture, root_rect)
             if not refresh_shell and base_texture is not None:
                 renderer.blit(base_texture, viewport)
             renderer.blit(light_texture, viewport)
@@ -2306,12 +2323,15 @@ class MobileMixin:
         for name in (
             "_hud_panel_cache",
             "_hud_icon_cache",
+            "_hud_action_dark_overlay_cache",
             "_ui_text_cache",
             "_world_text_cache",
             "_world_alpha_surface_cache",
             "_rotated_surface_cache",
             "_ellipse_overlay_cache",
             "_circle_overlay_cache",
+            "_mobile_windup_ring_cache",
+            "_scaled_soft_shadow_cache",
             "_tile_render_descriptor_cache",
             "_alpha_tile_cache",
             "_aim_cone_cache",
@@ -2320,6 +2340,9 @@ class MobileMixin:
             cache = getattr(self, name, None)
             if cache is not None and hasattr(cache, "clear"):
                 cache.clear()
+        self._mobile_action_rail_cache = None
+        self._mobile_action_rail_frame_cache = None
+        self._mobile_left_hud_cache = None
         if hasattr(self, "reset_lighting_caches"):
             self.reset_lighting_caches()
         if hasattr(self, "clear_stage_render_cache"):

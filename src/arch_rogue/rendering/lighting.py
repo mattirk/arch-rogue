@@ -84,6 +84,12 @@ from ..mobile import optimize_immutable_alpha_surface
 from ..models import Color, LightSource
 
 
+# Projectiles and impacts remain fully rendered as gameplay entities. Only their
+# decorative additive halos are ranked on mobile; six simultaneous pulses retain
+# clear cast/impact feedback without restamping a dozen overlapping gradients.
+MOBILE_MAX_TRANSIENT_LIGHTS = 6
+
+
 # ------------------------------------------------------------------
 # Normal-map baking (feature 1)
 # ------------------------------------------------------------------
@@ -479,9 +485,40 @@ class LightingMixin:
         for src in getattr(self, "light_sources", []):
             if overlaps_visible_bounds(src):
                 lights.append(src)
-        for light in getattr(self, "lights", []):
-            if overlaps_visible_bounds(light):
-                lights.append(light)
+
+        transient = [
+            light
+            for light in getattr(self, "lights", [])
+            if overlaps_visible_bounds(light)
+        ]
+        if (
+            getattr(self, "mobile_mode", False)
+            and len(transient) > MOBILE_MAX_TRANSIENT_LIGHTS
+        ):
+            # Dense projectile volleys can create dozens of nearly coincident
+            # quarter-resolution additive halos. Preserve every gameplay effect
+            # and projectile itself, but render only the strongest nearby light
+            # representatives on mobile. Non-projectile cast/impact pulses win
+            # ties because they carry more combat-feedback information.
+            player_x = self.player.x
+            player_y = self.player.y
+
+            def light_priority(light: LightSource) -> tuple[int, float]:
+                dx = light.x - player_x
+                dy = light.y - player_y
+                distance_weight = 1.0 + (dx * dx + dy * dy) * 0.04
+                strength = (
+                    max(0.0, light.intensity)
+                    * max(0.0, light.life)
+                    * max(0.5, light.radius)
+                    / distance_weight
+                )
+                return (0 if light.kind == "projectile" else 1, strength)
+
+            transient = sorted(transient, key=light_priority, reverse=True)[
+                :MOBILE_MAX_TRANSIENT_LIGHTS
+            ]
+        lights.extend(transient)
         cache["frame_lights"] = lights
         return lights
 
@@ -790,8 +827,80 @@ class LightingMixin:
         buf_h = max(1, screen_h // scale)
         buffer = self._light_buffer(buf_w, buf_h)
 
-        # 1) Ambient base (theme-tinted; revealed-tile memory on light floors).
-        self._stamp_ambient(buffer, scale)
+        # Resolve the final quantized inputs before touching the buffer. On the
+        # accelerated mobile path, a stationary scene often renders the exact same
+        # quarter-resolution light frame for several display frames; retain that
+        # surface and its GLES texture until one of these final inputs changes.
+        eff_zoom, project = self._shade_params()
+        lights = self._collect_frame_lights()
+        render_entries: list[tuple[pygame.Surface, int, int]] = []
+        light_signature: list[tuple[int, Color, int, int, int]] = []
+        for light in lights:
+            factor = light.intensity * light.life
+            if factor <= 0.0:
+                continue
+            if light.flicker and self.flicker_enabled():
+                _, int_scale = self._flicker(light)
+                factor *= int_scale
+            factor = max(0.0, min(1.0, factor))
+            if factor <= 0.0:
+                continue
+            requested_radius = int(
+                light_radius_px(light.radius, scale) * eff_zoom
+            )
+            radius_bucket = max(4, (requested_radius // 8) * 8)
+            sprite = self._radial_light_sprite(requested_radius, light.color)
+            sx, sy = project(light.x, light.y)
+            sy -= round(light.elevation * TILE_H * eff_zoom)
+            bx = sx // scale - sprite.get_width() // 2
+            by = sy // scale - sprite.get_height() // 2
+            factor_value = max(0, min(255, int(255 * factor)))
+            factor_bucket = max(
+                0, min(255, ((factor_value + 8) // 16) * 16)
+            )
+            modulated = self._modulated_light_sprite(sprite, factor_value)
+            render_entries.append((modulated, bx, by))
+            light_signature.append(
+                (
+                    radius_bucket,
+                    hashable_color(light.color),
+                    factor_bucket,
+                    bx,
+                    by,
+                )
+            )
+
+        ambient_color = shade_color(self._theme_light_color(), self._ambient_level())
+        frame_signature = (
+            buffer.get_size(),
+            ambient_color,
+            tuple(light_signature),
+        )
+        retain_mobile_frame = bool(mobile and gpu_capable)
+        rendered_signature = getattr(self, "_mobile_light_frame_signature", None)
+        exact_light_frame = bool(
+            retain_mobile_frame and rendered_signature == frame_signature
+        )
+        # Dynamic projectile/impact lights can change every display frame even
+        # though they are broad quarter-resolution gradients. Rebuild them on
+        # alternating Android frames (at ~15 Hz near the 30 FPS target), retaining
+        # the previous GLES texture between updates. This changes no simulation,
+        # entity, projectile, or impact timing and bounds visual latency to one
+        # rendered frame. Ambient/size changes always rebuild immediately.
+        same_ambient_frame = bool(
+            rendered_signature is not None
+            and rendered_signature[:2] == frame_signature[:2]
+        )
+        defer_dynamic_frame = bool(
+            retain_mobile_frame
+            and not exact_light_frame
+            and same_ambient_frame
+            and int(getattr(self, "_mobile_gpu_frame_sequence", 0)) % 2 == 1
+        )
+        reuse_light_frame = exact_light_frame or defer_dynamic_frame
+        if not reuse_light_frame:
+            # 1) Ambient base (theme-tinted; revealed-tile memory on light floors).
+            self._stamp_ambient(buffer, scale)
 
         # 2) Accumulate every active light additively into the buffer.
         # Every light shares one smooth cached sprite per (radius, color)
@@ -805,36 +914,28 @@ class LightingMixin:
         # world scale. The radial sprite cache quantizes to 8px buckets, so the
         # few extra entries per zoom level are bounded and cleared on floor
         # change. At zoom 1.0 this is the original sprite size.
-        eff_zoom, project = self._shade_params()
-        lights = self._collect_frame_lights()
-        for light in lights:
-            factor = light.intensity * light.life
-            if factor <= 0.0:
-                continue
-            if light.flicker and self.flicker_enabled():
-                _, int_scale = self._flicker(light)
-                factor *= int_scale
-            factor = max(0.0, min(1.0, factor))
-            if factor <= 0.0:
-                continue
-            sprite = self._radial_light_sprite(
-                int(light_radius_px(light.radius, scale) * eff_zoom), light.color
+        if not reuse_light_frame:
+            for modulated, bx, by in render_entries:
+                buffer.blit(
+                    modulated, (bx, by), special_flags=pygame.BLEND_RGBA_ADD
+                )
+            self._mobile_light_frame_signature = (
+                frame_signature if retain_mobile_frame else None
             )
-            sx, sy = project(light.x, light.y)
-            sy -= round(light.elevation * TILE_H * eff_zoom)
-            bx = sx // scale - sprite.get_width() // 2
-            by = sy // scale - sprite.get_height() // 2
-            f = max(0, min(255, int(255 * factor)))
-            modulated = self._modulated_light_sprite(sprite, f)
-            buffer.blit(modulated, (bx, by), special_flags=pygame.BLEND_RGBA_ADD)
 
         # 3) On Android, queue the small light buffer for GLES to scale and
         # multiply during presentation. This preserves native-resolution world
         # sprites while removing the full-viewport CPU RGBA multiply measured in
         # physical-device traces. Desktop and capability failures retain the CPU
         # path below.
+        queued_revision = (
+            getattr(self, "_mobile_light_frame_signature", None)
+            if retain_mobile_frame
+            else None
+        )
         if getattr(self, "mobile_mode", False) and self.queue_mobile_gpu_lighting(
-            buffer
+            buffer,
+            revision=queued_revision,
         ):
             return
 
@@ -1063,6 +1164,7 @@ class LightingMixin:
         self._modulated_light_sprite_cache = OrderedDict()
         self._light_buffer_surface = None
         self._light_scratch_surface = None
+        self._mobile_light_frame_signature = None
         self._mobile_lightweight_ambient_cache = OrderedDict()
         self._mobile_lightweight_actor_cache = OrderedDict()
         sprites = getattr(self, "sprites", None)

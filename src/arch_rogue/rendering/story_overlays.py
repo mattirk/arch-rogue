@@ -23,10 +23,12 @@
 from __future__ import annotations
 
 import math
+from collections import OrderedDict
 
 import pygame
 
 from ..constants import DUNGEON_DEPTH
+from ..mobile import optimize_immutable_alpha_surface
 from ..models import Color
 from ..story import (
     CutsceneActorAsset,
@@ -394,16 +396,15 @@ class RenderingStoryOverlayMixin:
         width, height = self.screen.get_size()
         background = self.ui_asset_surface("cutscene.background", (width, height))
         self._cutscene_background_asset_used = background is not None
+        dimmed_background: pygame.Surface | None = None
         if background is not None:
-            # Clear first so a malformed/partially transparent optional asset
-            # can never leak the previous gameplay frame around the overlay.
-            self.screen.fill((0, 0, 0))
-            self.screen.blit(background, (0, 0))
-            dim = pygame.Surface((width, height), pygame.SRCALPHA)
-            dim.fill((0, 0, 0, 118))
-            self.screen.blit(dim, (0, 0))
-        else:
-            self.screen.fill((0, 0, 0))
+            # The backdrop and fixed dim are static. Precompose them once into an
+            # opaque display-format surface: Android's software alpha blitter is
+            # especially expensive for full-screen sources, while the resulting
+            # cinematic background is fully opaque by design.
+            dimmed_background = self._cutscene_dimmed_background(
+                background, (width, height)
+            )
 
         accent = self.story_state.accent if self.story_state else self.theme.accent
         panel_margin_x = max(self.ui(28), 28)
@@ -411,6 +412,10 @@ class RenderingStoryOverlayMixin:
         panel_w = min(width - panel_margin_x * 2, self.ui(900))
         panel_h = min(height - panel_margin_y * 2, self.ui(600))
         if panel_w < 300 or panel_h < 260:
+            if dimmed_background is not None:
+                self.screen.blit(dimmed_background, (0, 0))
+            else:
+                self.screen.fill((0, 0, 0))
             return
         rect = pygame.Rect(
             (width - panel_w) // 2,
@@ -418,7 +423,24 @@ class RenderingStoryOverlayMixin:
             panel_w,
             panel_h,
         )
-        surface = pygame.Surface(rect.size, pygame.SRCALPHA)
+        # The cached opaque panel base overwrites the complete panel rectangle.
+        # Paint only the four exposed backdrop margins, then compose directly into
+        # a display subsurface. This avoids copying the 1.8M-pixel panel twice and
+        # avoids first painting 1.8M background pixels that are immediately hidden.
+        outside_rects = (
+            pygame.Rect(0, 0, width, rect.top),
+            pygame.Rect(0, rect.bottom, width, height - rect.bottom),
+            pygame.Rect(0, rect.top, rect.left, rect.height),
+            pygame.Rect(rect.right, rect.top, width - rect.right, rect.height),
+        )
+        for outside in outside_rects:
+            if outside.width <= 0 or outside.height <= 0:
+                continue
+            if dimmed_background is not None:
+                self.screen.blit(dimmed_background, outside, outside)
+            else:
+                self.screen.fill((0, 0, 0), outside)
+        surface = self.screen.subsurface(rect)
         panel_key = (
             "menu.panel.compact"
             if panel_w * 10 <= panel_h * 17
@@ -433,11 +455,63 @@ class RenderingStoryOverlayMixin:
             if panel_asset is not None
             else None
         )
+        (
+            _narration,
+            visible_text,
+            narration_complete,
+            progress,
+        ) = self.active_cutscene_narration_snapshot()
+        choices = self.active_cutscene_choices()
+        choices_to_draw = choices[: min(9, len(choices))] if narration_complete else []
+
+        panel_base: pygame.Surface | None = None
+        panel_seed_required = True
         if panel_asset is not None and panel_inner is not None:
-            surface.blit(panel_asset, (0, 0))
+            panel_base = self._cutscene_panel_base(
+                dimmed_background,
+                rect,
+                panel_asset,
+            )
+            # The authored stage fully repaints its live rectangle and the
+            # narrator/choice panels repaint theirs. Retain the surrounding
+            # opaque panel chrome instead of copying 1.8M unchanged pixels every
+            # Android frame. State transitions, lifecycle generations, and any
+            # full-screen flash force one complete refresh.
+            flash_active = getattr(self, "screen_flash_ttl", 0.0) > 0.0
+            panel_seed_key = (
+                id(panel_base),
+                id(getattr(self, "active_cutscene", None)),
+                node.id,
+                narration_complete,
+                bool(self.story_intro_pending),
+                flash_active,
+                rect.x,
+                rect.y,
+                rect.width,
+                rect.height,
+                int(getattr(self, "_mobile_render_generation", 0)),
+            )
+            retain_panel = bool(
+                self.asset_ui_active()
+                and asset.stage.backdrop in self.STAGE_FULL_SET_ASSETS
+                and not flash_active
+            )
+            panel_seed_required = bool(
+                not retain_panel
+                or getattr(self, "_cutscene_panel_seed_key", None)
+                != panel_seed_key
+            )
+            if panel_seed_required:
+                surface.blit(panel_base, (0, 0))
+            self._cutscene_panel_seed_key = panel_seed_key
             inner = panel_inner.inflate(-self.ui(4) * 2, -self.ui(3) * 2)
             self._cutscene_panel_asset_used = True
         else:
+            self._cutscene_panel_seed_key = None
+            if dimmed_background is not None:
+                surface.blit(dimmed_background, (0, 0), rect)
+            else:
+                surface.fill((0, 0, 0))
             self.draw_translucent_panel(
                 surface,
                 surface.get_rect(),
@@ -476,24 +550,16 @@ class RenderingStoryOverlayMixin:
             meta_w,
             self.small_font.get_height(),
         )
-        self.draw_ui_text(surface, title_text, self.font, accent, title_rect)
-        self.draw_ui_text(
-            surface,
-            header_meta,
-            self.small_font,
-            (196, 188, 204),
-            meta_rect,
-            align="right",
-        )
-
-        (
-            _narration,
-            visible_text,
-            narration_complete,
-            progress,
-        ) = self.active_cutscene_narration_snapshot()
-        choices = self.active_cutscene_choices()
-        choices_to_draw = choices[: min(9, len(choices))] if narration_complete else []
+        if panel_seed_required:
+            self.draw_ui_text(surface, title_text, self.font, accent, title_rect)
+            self.draw_ui_text(
+                surface,
+                header_meta,
+                self.small_font,
+                (196, 188, 204),
+                meta_rect,
+                align="right",
+            )
         choice_gap = max(self.ui(4), 6)
         choice_w = inner.width
         show_input_hints = not bool(getattr(self, "mobile_mode", False))
@@ -558,26 +624,35 @@ class RenderingStoryOverlayMixin:
             inner.width,
             max(1, card_bottom - card_top),
         )
-        card = pygame.Surface(card_rect.size, pygame.SRCALPHA)
-        self.draw_ornate_hud_panel(
-            card,
-            card.get_rect(),
-            (24, 18, 28, 235),
-            (*self.shade(accent, -30), 180),
-            radius=self.ui(8),
-            width=self.ui(1),
-        )
+        if panel_base is not None:
+            card = self._cutscene_card_base(panel_base, card_rect, accent)
+        else:
+            card = getattr(self, "_cutscene_card_work_surface", None)
+            if card is None or card.get_size() != card_rect.size:
+                card = pygame.Surface(card_rect.size).convert(surface)
+                self._cutscene_card_work_surface = card
+            card.blit(surface, (0, 0), card_rect)
+            self.draw_ornate_hud_panel(
+                card,
+                card.get_rect(),
+                (24, 18, 28, 235),
+                (*self.shade(accent, -30), 180),
+                radius=self.ui(8),
+                width=self.ui(1),
+            )
         card_safe = self.ui_asset_content_rect("hud.panel", card.get_rect())
         if card_safe is None:
-            # Procedural fallback retains its original parchment inner trim.
+            # Procedural fallback retains its original parchment inner trim. The
+            # cached modern base has already baked this trim when needed.
             card_inner = card.get_rect().inflate(-self.ui(6), -self.ui(6))
-            pygame.draw.rect(
-                card,
-                (*self.HUD_GOLD, 90),
-                card_inner,
-                max(1, self.ui(1)),
-                border_radius=max(1, self.ui(6)),
-            )
+            if panel_base is None:
+                pygame.draw.rect(
+                    card,
+                    (*self.HUD_GOLD, 90),
+                    card_inner,
+                    max(1, self.ui(1)),
+                    border_radius=max(1, self.ui(6)),
+                )
             narrator_rect = card_inner.move(card_rect.topleft).inflate(
                 -self.ui(3) * 2, -self.ui(1) * 2
             )
@@ -806,7 +881,6 @@ class RenderingStoryOverlayMixin:
                     inner.x, inner.bottom - footer_h, inner.width, footer_h
                 ),
             )
-        self.screen.blit(surface, rect)
 
     # ------------------------------------------------------------------
     # Milestone 3.4 cutscene stage — "cursed theater" overhaul
@@ -825,6 +899,8 @@ class RenderingStoryOverlayMixin:
     # performance remain visible throughout narration.
 
     STAGE_CACHE_LIMIT = 96
+    CUTSCENE_COMPOSITE_CACHE_LIMIT = 8
+    CUTSCENE_ACTOR_CACHE_LIMIT = 256
 
     STAGE_STONE = (54, 49, 58)
     STAGE_STONE_DARK = (28, 25, 32)
@@ -999,17 +1075,160 @@ class RenderingStoryOverlayMixin:
             self._stage_surface_cache = cache
         return cache
 
+    def _cutscene_dimmed_background(
+        self,
+        background: pygame.Surface,
+        size: tuple[int, int],
+    ) -> pygame.Surface:
+        cache = getattr(self, "_cutscene_background_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._cutscene_background_cache = cache
+        key = (id(background), size)
+        cached = cache.get(key)
+        if cached is not None and cached[0] is background:
+            cache.move_to_end(key)
+            return cached[1]
+
+        composed = pygame.Surface(size).convert(self.screen)
+        composed.fill((0, 0, 0))
+        composed.blit(background, (0, 0))
+        # Match the original source-over black dim exactly. A 137/255 RGB
+        # multiply is close but rounds many channels one value brighter.
+        dim = pygame.Surface(size, pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 118))
+        composed.blit(dim, (0, 0))
+        cache[key] = (background, composed)
+        cache.move_to_end(key)
+        while len(cache) > self.CUTSCENE_COMPOSITE_CACHE_LIMIT:
+            cache.popitem(last=False)
+        return composed
+
+    def _cutscene_panel_base(
+        self,
+        background: pygame.Surface | None,
+        rect: pygame.Rect,
+        panel_asset: pygame.Surface,
+    ) -> pygame.Surface:
+        cache = getattr(self, "_cutscene_panel_base_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._cutscene_panel_base_cache = cache
+        rect_key = (rect.x, rect.y, rect.width, rect.height)
+        key = (id(background), id(panel_asset), rect_key)
+        cached = cache.get(key)
+        if (
+            cached is not None
+            and cached[0] is background
+            and cached[1] is panel_asset
+        ):
+            cache.move_to_end(key)
+            return cached[2]
+
+        composed = pygame.Surface(rect.size).convert(self.screen)
+        if background is None:
+            composed.fill((0, 0, 0))
+        else:
+            composed.blit(background, (0, 0), rect)
+        composed.blit(panel_asset, (0, 0))
+        cache[key] = (background, panel_asset, composed)
+        cache.move_to_end(key)
+        while len(cache) > self.CUTSCENE_COMPOSITE_CACHE_LIMIT:
+            cache.popitem(last=False)
+        return composed
+
+    def _cutscene_card_base(
+        self,
+        panel_base: pygame.Surface,
+        card_rect: pygame.Rect,
+        accent: Color,
+    ) -> pygame.Surface:
+        cache = getattr(self, "_cutscene_card_base_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._cutscene_card_base_cache = cache
+        rect_key = (
+            card_rect.x,
+            card_rect.y,
+            card_rect.width,
+            card_rect.height,
+        )
+        key = (
+            id(panel_base),
+            rect_key,
+            accent,
+            round(float(self.ui_scale_factor()), 4),
+        )
+        cached = cache.get(key)
+        if cached is not None and cached[0] is panel_base:
+            cache.move_to_end(key)
+            return cached[1]
+
+        composed = pygame.Surface(card_rect.size).convert(panel_base)
+        composed.blit(panel_base, (0, 0), card_rect)
+        self.draw_ornate_hud_panel(
+            composed,
+            composed.get_rect(),
+            (24, 18, 28, 235),
+            (*self.shade(accent, -30), 180),
+            radius=self.ui(8),
+            width=self.ui(1),
+        )
+        if self.ui_asset_content_rect("hud.panel", composed.get_rect()) is None:
+            card_inner = composed.get_rect().inflate(-self.ui(6), -self.ui(6))
+            pygame.draw.rect(
+                composed,
+                (*self.HUD_GOLD, 90),
+                card_inner,
+                max(1, self.ui(1)),
+                border_radius=max(1, self.ui(6)),
+            )
+        cache[key] = (panel_base, composed)
+        cache.move_to_end(key)
+        while len(cache) > self.CUTSCENE_COMPOSITE_CACHE_LIMIT * 2:
+            cache.popitem(last=False)
+        return composed
+
     def clear_stage_render_cache(self) -> None:
         self._stage_surface_cache = {}
+        self._cutscene_background_cache = OrderedDict()
+        self._cutscene_panel_base_cache = OrderedDict()
+        self._cutscene_card_base_cache = OrderedDict()
+        self._cutscene_actor_surface_cache = OrderedDict()
+        self._cutscene_surface_opacity_cache = {}
+        self._cutscene_panel_seed_key = None
+        self._cutscene_panel_work_surface = None
+        self._cutscene_card_work_surface = None
 
-    def _cached_stage_layer(self, key, size, painter):
+    def _cutscene_surface_fully_opaque(self, surface: pygame.Surface) -> bool:
+        cache = getattr(self, "_cutscene_surface_opacity_cache", None)
+        if cache is None:
+            cache = {}
+            self._cutscene_surface_opacity_cache = cache
+        key = id(surface)
+        cached = cache.get(key)
+        if cached is not None and cached[0] is surface:
+            return cached[1]
+        opaque = surface.get_colorkey() is None and (
+            not bool(surface.get_flags() & pygame.SRCALPHA)
+            or surface.get_bounding_rect(min_alpha=255) == surface.get_rect()
+        )
+        if len(cache) >= 32:
+            cache.clear()
+        cache[key] = (surface, opaque)
+        return opaque
+
+    def _cached_stage_layer(self, key, size, painter, *, opaque: bool = False):
         cache = self._stage_cache()
         cached = cache.get(key)
         if cached is not None and cached.get_size() == size:
             return cached
         if len(cache) >= self.STAGE_CACHE_LIMIT:
             cache.clear()
-        surface = pygame.Surface(size, pygame.SRCALPHA)
+        if opaque:
+            surface = pygame.Surface(size).convert(self.screen)
+        else:
+            surface = pygame.Surface(size, pygame.SRCALPHA)
         painter(surface)
         cache[key] = surface
         return surface
@@ -1044,14 +1263,14 @@ class RenderingStoryOverlayMixin:
     def draw_cutscene_stage(self, surface, stage_rect, animation_id, accent):
         asset = self.active_cutscene_asset()
         stage = asset.stage if asset is not None else StageAsset()
-        pygame.draw.rect(
-            surface, self.STAGE_STONE_DARK, stage_rect, border_radius=self.ui(10)
-        )
         # With a full authored scene backdrop, the painted set replaces
         # the procedural back wall, floor, and proscenium wholesale; only the
         # live layers (props, actors, lights, curtain) draw on top of it.
         full_set = self.draw_stage_full_set(surface, stage_rect, stage, accent)
         if not full_set:
+            pygame.draw.rect(
+                surface, self.STAGE_STONE_DARK, stage_rect, border_radius=self.ui(10)
+            )
             self.draw_stage_backdrop(surface, stage_rect, stage, accent)
             self.draw_stage_floor(surface, stage_rect, stage, accent)
         # Wall dressing belongs behind the cast. Grounded props join actors in
@@ -1143,13 +1362,23 @@ class RenderingStoryOverlayMixin:
             return False
         asset = self.active_cutscene_asset()
         asset_id = asset.id if asset is not None else "_default"
+        w, h = stage_rect.size
+        scaled_h = max(1, round(source.get_height() * w / source.get_width()))
+        opaque_full_set = scaled_h >= h and self._cutscene_surface_fully_opaque(source)
         key = self._stage_cache_key(
-            asset_id, "backdrop-full", stage_rect.size, None, (stage.backdrop,)
+            asset_id,
+            "backdrop-full",
+            stage_rect.size,
+            None,
+            (stage.backdrop, id(source), opaque_full_set),
         )
+        if not opaque_full_set:
+            pygame.draw.rect(
+                surface, self.STAGE_STONE_DARK, stage_rect, border_radius=self.ui(10)
+            )
 
         def paint(layer):
             w, h = layer.get_size()
-            scaled_h = max(1, round(source.get_height() * w / source.get_width()))
             scene = pygame.transform.scale(source, (w, scaled_h))
             if scaled_h <= h:
                 layer.blit(scene, (0, h - scaled_h))
@@ -1159,7 +1388,9 @@ class RenderingStoryOverlayMixin:
             crop_y = max(0, min(scaled_h - h, crop_y))
             layer.blit(scene.subsurface((0, crop_y, w, h)), (0, 0))
 
-        layer = self._cached_stage_layer(key, stage_rect.size, paint)
+        layer = self._cached_stage_layer(
+            key, stage_rect.size, paint, opaque=opaque_full_set
+        )
         surface.blit(layer, stage_rect.topleft)
         return True
 
@@ -2129,8 +2360,11 @@ class RenderingStoryOverlayMixin:
         scale = target_h / max(1, sprite.get_height())
         sprite_w = max(1, int(sprite.get_width() * scale))
         sprite_h = max(1, int(sprite.get_height() * scale))
-        sprite = pygame.transform.scale(sprite, (sprite_w, sprite_h))
-        sprite.set_alpha(max(0, min(255, int(255 * alpha))))
+        sprite = self._cutscene_actor_surface(
+            sprite,
+            (sprite_w, sprite_h),
+            max(0, min(255, int(255 * alpha))),
+        )
 
         # Actor y is the foot-contact coordinate, matching grounded props and
         # the backdrop's floor plane. This keeps depth scale, sort depth, and
@@ -2163,7 +2397,7 @@ class RenderingStoryOverlayMixin:
             # concealed by the pillar. It returns once they clear the cover.
             label_text = ""
         if label_text:
-            label = self.small_font.render(label_text, True, color)
+            label = self._cached_text_surface(self.small_font, label_text, color)
             label_rect = label.get_rect(
                 center=(x, foot[1] - sprite_h - self.ui(3))
             )
@@ -2175,6 +2409,32 @@ class RenderingStoryOverlayMixin:
                 else:
                     label_rect.left = x + self.ui(4)
             surface.blit(label, label_rect)
+
+    def _cutscene_actor_surface(
+        self,
+        source: pygame.Surface,
+        size: tuple[int, int],
+        alpha: int,
+    ) -> pygame.Surface:
+        cache = getattr(self, "_cutscene_actor_surface_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._cutscene_actor_surface_cache = cache
+        key = (id(source), size, alpha)
+        cached = cache.get(key)
+        if cached is not None and cached[0] is source:
+            cache.move_to_end(key)
+            return cached[1]
+
+        scaled = pygame.transform.scale(source, size)
+        if alpha < 255:
+            scaled.set_alpha(alpha, pygame.RLEACCEL)
+        scaled = optimize_immutable_alpha_surface(scaled, alpha=alpha)
+        cache[key] = (source, scaled)
+        cache.move_to_end(key)
+        while len(cache) > self.CUTSCENE_ACTOR_CACHE_LIMIT:
+            cache.popitem(last=False)
+        return scaled
 
     def _cutscene_stage_clock(self) -> float:
         """Clock for stage actor animation clips.
@@ -3238,8 +3498,9 @@ class RenderingStoryOverlayMixin:
     def cutscene_actor_label(self, actor: CutsceneActorAsset) -> str:
         if self.active_cutscene is None:
             return ""
-        context = {**self.quest_cutscene_context(self.active_cutscene_guest())}
-        context.update(self.active_cutscene.context)
+        context = self.active_cutscene.context
+        if not context:
+            context = self.quest_cutscene_context(self.active_cutscene_guest())
         return format_asset_text(actor.name, context)[:32]
 
     def draw_story_intro_overlay(self) -> None:

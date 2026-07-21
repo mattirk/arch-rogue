@@ -574,6 +574,51 @@ class RenderingActorMixin:
             )
         self.screen.blit(overlay, overlay.get_rect(center=(sx, sy - height // 2)))
 
+    def _mobile_windup_ring(
+        self,
+        size: tuple[int, int],
+        color: Color,
+        alpha: int,
+        radius: int,
+        width: int,
+    ) -> pygame.Surface:
+        cache = getattr(self, "_mobile_windup_ring_cache", None)
+        if not isinstance(cache, OrderedDict):
+            cache = OrderedDict()
+            self._mobile_windup_ring_cache = cache
+        key = (size, color, alpha, radius, width)
+        cached = cache.get(key)
+        if cached is not None:
+            cache.move_to_end(key)
+            return cached
+
+        overlay = pygame.Surface(size, pygame.SRCALPHA)
+        ring_rect = pygame.Rect(0, 0, radius * 2, radius * 2)
+        ring_rect.center = overlay.get_rect().center
+        segments = 32
+        visible = max(0, min(segments, round(segments * alpha / 120.0)))
+        for index in range(segments):
+            # Multiplicative permutation distributes retained dashes uniformly
+            # instead of erasing one contiguous side as the telegraph fades.
+            if (index * 13) % segments >= visible:
+                continue
+            start = index * math.tau / segments
+            end = (index + 0.82) * math.tau / segments
+            pygame.draw.arc(
+                overlay,
+                (*color, 255),
+                ring_rect,
+                start,
+                end,
+                width,
+            )
+        overlay = optimize_immutable_alpha_surface(overlay)
+        cache[key] = overlay
+        cache.move_to_end(key)
+        while len(cache) > 192:
+            cache.popitem(last=False)
+        return overlay
+
     def draw_windup_telegraph(self, enemy: Enemy, sx: int, sy: int) -> None:
         """Pre-attack windup telegraph: a fading ring while an enemy winds up.
 
@@ -591,18 +636,33 @@ class RenderingActorMixin:
         life = max(0.0, min(1.0, ttl / duration))
         color = self.damage_type_color(enemy.damage_type)
         # Expanding ring: grows outward as the swing follows through, fading
-        # with the remaining telegraph time.
+        # with the remaining telegraph time. Android spell crowds used to allocate
+        # and rasterize one alpha surface per winding-up enemy per frame. Quantize
+        # only the mobile animation and reuse the shared outlined-circle cache;
+        # twelve states still cover a typical windup at near frame cadence.
+        if getattr(self, "mobile_mode", False):
+            life = round(life * 12.0) / 12.0
         base = 10 * WORLD_SCALE
         radius = int(base + (1.0 - life) * 10 * WORLD_SCALE)
+        alpha = int(120 * life)
+        if getattr(self, "mobile_mode", False):
+            radius = max(base, round(radius / WORLD_SCALE) * WORLD_SCALE)
+            alpha = max(0, min(120, round(alpha / 8) * 8))
         size = (radius * 2 + 8 * WORLD_SCALE, radius * 2 + 8 * WORLD_SCALE)
-        overlay = pygame.Surface(size, pygame.SRCALPHA)
-        pygame.draw.circle(
-            overlay,
-            (*color, int(120 * life)),
-            overlay.get_rect().center,
-            radius,
-            max(1, WORLD_SCALE * 2),
-        )
+        line_width = max(1, WORLD_SCALE * 2)
+        if getattr(self, "mobile_mode", False):
+            overlay = self._mobile_windup_ring(
+                size, color, alpha, radius, line_width
+            )
+        else:
+            overlay = self._cached_circle_overlay(
+                "enemy_windup",
+                size,
+                color,
+                alpha,
+                radius,
+                line_width,
+            )
         self.screen.blit(overlay, overlay.get_rect(center=(sx, sy)))
 
     def draw_garden_heal_glow(self, sx: int, sy: int, width: int, height: int) -> None:
@@ -938,23 +998,35 @@ class RenderingActorMixin:
             if base_name == "Gate Warden"
             else 32
         )
-        sway, bob, lean, stretch = self.actor_animation(enemy)
         if frame.is_asset:
             sway, bob, lean, stretch = 0.0, 0.0, 0.0, 1.0
-        elif big_boss or enemy.kind == "boss":
+        else:
+            sway, bob, lean, stretch = self.actor_animation(enemy)
+        if not frame.is_asset and (big_boss or enemy.kind == "boss"):
             stretch += math.sin(self.elapsed * 3.4) * 0.010
             lean += math.sin(self.elapsed * 2.1) * 1.5
-        elif enemy.elite_modifier or enemy.kind == "miniboss":
+        elif not frame.is_asset and (
+            enemy.elite_modifier or enemy.kind == "miniboss"
+        ):
             stretch += math.sin(self.elapsed * 5.0) * 0.006
             lean += math.sin(self.elapsed * 5.0) * 0.6
-        self.draw_shadow(
-            enemy.x,
-            enemy.y,
-            shadow_w,
-            18 if big_boss else 12,
-            moving=enemy.moving,
-            lift=bob,
+        ordinary_enemy = bool(
+            not big_boss
+            and enemy.kind not in ("boss", "miniboss")
+            and not enemy.elite_modifier
         )
+        if not (
+            ordinary_enemy
+            and getattr(self, "_frame_mobile_dense_enemy_render", False)
+        ):
+            self.draw_shadow(
+                enemy.x,
+                enemy.y,
+                shadow_w,
+                18 if big_boss else 12,
+                moving=enemy.moving,
+                lift=bob,
+            )
         # Big bosses sit a little lower in their footprint so the sprite base
         # lands near the center of the 2x2 block instead of the center tile.
         y_off = (10.0 if big_boss else 6.0) - bob
@@ -1096,8 +1168,10 @@ class RenderingActorMixin:
             self.screen.blit(
                 label, label.get_rect(center=(sx, bar_y - 8 * WORLD_SCALE))
             )
-        if enemy.attack_timer <= 0.28 and (
-            enemy.kind in ("boss", "miniboss", "ranged") or big_boss
+        if (
+            enemy.windup_time <= 0.0
+            and enemy.attack_timer <= 0.28
+            and (enemy.kind in ("boss", "miniboss", "ranged") or big_boss)
         ):
             tell_color = (
                 self.theme.accent

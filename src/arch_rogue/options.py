@@ -466,6 +466,7 @@ class OptionsMixin:
             "ambient_overlay_cache",
             "_hud_panel_cache",
             "_hud_icon_cache",
+            "_hud_action_dark_overlay_cache",
             "_aim_cone_cache",
             "_alpha_tile_cache",
             "_title_logo_cache",
@@ -476,6 +477,8 @@ class OptionsMixin:
             "_rotated_surface_cache",
             "_ellipse_overlay_cache",
             "_circle_overlay_cache",
+            "_mobile_windup_ring_cache",
+            "_scaled_soft_shadow_cache",
             "_tile_render_descriptor_cache",
             "tile_cache",
             "door_tile_cache",
@@ -483,6 +486,9 @@ class OptionsMixin:
             cache = getattr(self, attr, None)
             if cache is not None and hasattr(cache, "clear"):
                 cache.clear()
+        self._mobile_action_rail_cache = None
+        self._mobile_action_rail_frame_cache = None
+        self._mobile_left_hud_cache = None
         self._impact_overlay_cache_bytes = 0
         if hasattr(self, "reset_lighting_caches"):
             self.reset_lighting_caches()

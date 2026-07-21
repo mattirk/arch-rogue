@@ -1013,10 +1013,51 @@ class RenderingEffectsMixin:
                 pass
             self._guidance_glow_surface = surf
             self._guidance_glow_content_key = None
+            self._guidance_glow_blit_areas = ()
             clear = True
         if clear:
             surf.fill((0, 0, 0, 0))
         return surf
+
+    def _cache_guidance_glow_blit_areas(self, surface: pygame.Surface) -> None:
+        # The route is a handful of thin anti-aliased cracks inside a much larger
+        # bounding rectangle. Split the already-rasterized layer into disjoint
+        # chunks and retain only each chunk's occupied alpha bounds. Non-overlap
+        # keeps the final source-over result byte-equivalent while avoiding a
+        # hundreds-of-thousands-pixel transparent alpha traversal on Android.
+        areas: list[pygame.Rect] = []
+        chunk_size = 256
+        bounds = surface.get_rect()
+        for y in range(0, bounds.height, chunk_size):
+            for x in range(0, bounds.width, chunk_size):
+                chunk = pygame.Rect(
+                    x,
+                    y,
+                    min(chunk_size, bounds.width - x),
+                    min(chunk_size, bounds.height - y),
+                )
+                occupied = surface.subsurface(chunk).get_bounding_rect(min_alpha=1)
+                if occupied.width > 0 and occupied.height > 0:
+                    areas.append(occupied.move(chunk.topleft))
+        self._guidance_glow_blit_areas = tuple(areas)
+
+    def _blit_cached_guidance_glow(
+        self, surface: pygame.Surface, destination: tuple[int, int]
+    ) -> None:
+        areas = getattr(self, "_guidance_glow_blit_areas", ())
+        if not areas:
+            return
+        dest_x, dest_y = destination
+        blits = [
+            (surface, (dest_x + area.x, dest_y + area.y), area)
+            for area in areas
+        ]
+        batch = getattr(self.screen, "blits", None)
+        if batch is not None:
+            batch(blits)
+        else:
+            for source, target, area in blits:
+                self.screen.blit(source, target, area)
 
     def draw_story_relic_guidance(self) -> None:
         self._guidance_glow_blit_rect: pygame.Rect | None = None
@@ -1271,7 +1312,6 @@ class RenderingEffectsMixin:
         # (the overlay is alpha-blitted over lit floor, so stale frames also
         # left visible trails before the buffer cleared).
         content_key = (
-            local_rect.topleft,
             (layer_w, layer_h),
             groove_alpha,
             seep_alpha,
@@ -1281,7 +1321,10 @@ class RenderingEffectsMixin:
             shadow,
             lip,
             warm,
-            tuple(raw_screen),
+            tuple(
+                (point[0] - local_rect.x, point[1] - local_rect.y)
+                for point in raw_screen
+            ),
         )
         content_unchanged = (
             getattr(self, "_guidance_glow_content_key", None) == content_key
@@ -1293,7 +1336,7 @@ class RenderingEffectsMixin:
         self._guidance_glow_blit_rect = blit_rect.copy()
         self._mobile_guidance_surface_size = glow_layer.get_size()
         if content_unchanged:
-            self.screen.blit(glow_layer, blit_rect.topleft)
+            self._blit_cached_guidance_glow(glow_layer, blit_rect.topleft)
             return
         # Rasterizing below: the layer was cleared only after a cache miss.
         def local(point: tuple[float, float]) -> tuple[float, float]:
@@ -1350,7 +1393,8 @@ class RenderingEffectsMixin:
             )
 
         self._guidance_glow_content_key = content_key
-        self.screen.blit(glow_layer, blit_rect.topleft)
+        self._cache_guidance_glow_blit_areas(glow_layer)
+        self._blit_cached_guidance_glow(glow_layer, blit_rect.topleft)
 
     def story_relic_guidance_route(
         self, target: tuple[float, float]
