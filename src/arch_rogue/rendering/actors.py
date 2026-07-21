@@ -575,14 +575,14 @@ class RenderingActorMixin:
         self.screen.blit(overlay, overlay.get_rect(center=(sx, sy - height // 2)))
 
     def draw_windup_telegraph(self, enemy: Enemy, sx: int, sy: int) -> None:
-        """Swing telegraph: a brief fading ring punctuating an enemy melee/cast.
+        """Pre-attack windup telegraph: a fading ring while an enemy winds up.
 
-        Driven by ``enemy.windup_time`` (set in ``enemy_melee`` / ``enemy_cast``,
-        decayed in ``update_enemies``). The attack itself lands immediately —
-        4.4.11 pinned in-range melee to the eligible frame, and the test suite
-        pins that contract — so this is a readability indicator, not a damage
-        delay. Color follows the enemy's damage type so the telegraph reads as
-        the same flavor as the hit.
+        Driven by ``enemy.windup_time`` (set by ``_commit_enemy_attack`` in the
+        ``update_enemies`` AI loop, decayed each frame, fired on completion). The
+        attack lands AFTER the windup -- this is the readability win -- so the
+        ring gives the player a window to react with abilities (evade/block).
+        Color follows the enemy's damage type so the telegraph reads as the same
+        flavor as the incoming hit.
         """
         ttl = enemy.windup_time
         if ttl <= 0.0:

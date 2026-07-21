@@ -29,7 +29,12 @@ from ..models import (
     Projectile,
 )
 
-from ._utils import ENEMY_SWING_TELEGRAPH, KNOCKBACK_DECAY_RATE
+from ._utils import (
+    ENEMY_BOSS_WINDUP,
+    ENEMY_CAST_WINDUP,
+    ENEMY_MELEE_WINDUP,
+    KNOCKBACK_DECAY_RATE,
+)
 
 
 class _EnemiesCombatMixin:
@@ -56,6 +61,46 @@ class _EnemiesCombatMixin:
         if abs(enemy.knockback_vx) < 0.01 and abs(enemy.knockback_vy) < 0.01:
             enemy.knockback_vx = 0.0
             enemy.knockback_vy = 0.0
+
+    def _enemy_windup_duration(self, enemy: Enemy) -> float:
+        """Telegraph windup (seconds) for an enemy's next attack."""
+        if enemy.kind == "boss" or enemy.is_boss_encounter:
+            return ENEMY_BOSS_WINDUP
+        if enemy.kind == "ranged":
+            return ENEMY_CAST_WINDUP
+        return ENEMY_MELEE_WINDUP
+
+    def _commit_enemy_attack(self, enemy: Enemy, attack: str, nx: float = 0.0, ny: float = 0.0) -> None:
+        """Commit to an attack: start the windup telegraph instead of firing now.
+
+        ``attack`` is "melee" or "cast"; ``nx``/``ny`` snapshot the cast aim so
+        the projectile (fired on windup completion) travels along the committed
+        direction and is dodgeable after launch. No-op if already winding up.
+        """
+        if enemy.windup_time > 0.0:
+            return
+        duration = self._enemy_windup_duration(enemy)
+        enemy.windup_time = duration
+        enemy.windup_duration = duration
+        enemy.windup_attack = attack
+        enemy.windup_nx = nx
+        enemy.windup_ny = ny
+
+    def _fire_committed_attack(self, enemy: Enemy) -> None:
+        """Fire the attack a windup committed to.
+
+        Locked: ``line_of_sight_confirmed=True`` so the committed hit lands
+        even if the player moved during the short windup; the player counters
+        with abilities (evade/block), not by walking out of a committed swing.
+        """
+        attack = enemy.windup_attack
+        enemy.windup_attack = ""
+        if attack == "cast":
+            self.enemy_cast(
+                enemy, enemy.windup_nx, enemy.windup_ny, line_of_sight_confirmed=True
+            )
+        elif attack:
+            self.enemy_melee(enemy, line_of_sight_confirmed=True)
 
     def update_enemies(
         self,
@@ -84,12 +129,19 @@ class _EnemiesCombatMixin:
                 )
             enemy.pending_locomotion_scale = None
             enemy.pending_locomotion_anim_scale = None
-            # Knockback integration + swing-telegraph decay run for every
-            # enemy each frame, before the aggro/stun skips, so shoves land
-            # even on stunned/out-of-aggro enemies and telegraphs fade.
             self._apply_enemy_knockback(enemy, scaled_dt)
+            # Windup phase: a committed attack telegraphs, then fires. Takes
+            # precedence over the aggro/stun skips below so the committed hit
+            # resolves even if the player left aggro range mid-windup. Stun
+            # interrupts a committed windup (a stunned enemy can't finish).
+            if enemy.statuses.get("stunned", 0.0) > 0 and enemy.windup_time > 0.0:
+                enemy.windup_time = 0.0
+                enemy.windup_attack = ""
             if enemy.windup_time > 0.0:
                 enemy.windup_time = max(0.0, enemy.windup_time - scaled_dt)
+                if enemy.windup_time <= 0.0 and enemy.windup_attack:
+                    self._fire_committed_attack(enemy)
+                continue
             if enemy.telegraph == "lured":
                 enemy.telegraph = ""
             enemy.attack_timer = max(0.0, enemy.attack_timer - scaled_dt)
@@ -134,7 +186,6 @@ class _EnemiesCombatMixin:
                 )
             else:
                 attack_in_range = distance <= enemy.attack_range
-            attack_los_x, attack_los_y = enemy.x, enemy.y
             has_los = (
                 attack_ready
                 and attack_in_range
@@ -156,21 +207,9 @@ class _EnemiesCombatMixin:
                     and has_los
                 ):
                     if enemy.kind == "ranged":
-                        self.enemy_cast(
-                            enemy,
-                            player_nx,
-                            player_ny,
-                            line_of_sight_confirmed=(
-                                enemy.x == attack_los_x and enemy.y == attack_los_y
-                            ),
-                        )
+                        self._commit_enemy_attack(enemy, "cast", player_nx, player_ny)
                     else:
-                        self.enemy_melee(
-                            enemy,
-                            line_of_sight_confirmed=(
-                                enemy.x == attack_los_x and enemy.y == attack_los_y
-                            ),
-                        )
+                        self._commit_enemy_attack(enemy, "melee")
                 continue
 
             if enemy.kind == "boss" or enemy.is_boss_encounter:
@@ -184,21 +223,9 @@ class _EnemiesCombatMixin:
                         enemy, nx * step, ny * step, dt, locomotion_scale
                     )
                 if 2.0 < distance <= 6.0 and attack_ready and has_los:
-                    self.enemy_cast(
-                        enemy,
-                        nx,
-                        ny,
-                        line_of_sight_confirmed=(
-                            enemy.x == attack_los_x and enemy.y == attack_los_y
-                        ),
-                    )
+                    self._commit_enemy_attack(enemy, "cast", nx, ny)
                 elif distance <= enemy.attack_range and attack_ready and has_los:
-                    self.enemy_melee(
-                        enemy,
-                        line_of_sight_confirmed=(
-                            enemy.x == attack_los_x and enemy.y == attack_los_y
-                        ),
-                    )
+                    self._commit_enemy_attack(enemy, "melee")
             elif enemy.kind == "ranged":
                 if 3.5 < distance:
                     step = min(move_speed * dt, distance - 3.5)
@@ -215,14 +242,7 @@ class _EnemiesCombatMixin:
                     and attack_ready
                     and has_los
                 ):
-                    self.enemy_cast(
-                        enemy,
-                        nx,
-                        ny,
-                        line_of_sight_confirmed=(
-                            enemy.x == attack_los_x and enemy.y == attack_los_y
-                        ),
-                    )
+                    self._commit_enemy_attack(enemy, "cast", nx, ny)
             else:
                 stop_distance = self._enemy_melee_stop_distance(enemy)
                 if distance > stop_distance:
@@ -233,12 +253,7 @@ class _EnemiesCombatMixin:
                         enemy, nx * step, ny * step, dt, locomotion_scale
                     )
                 if distance <= enemy.attack_range and attack_ready and has_los:
-                    self.enemy_melee(
-                        enemy,
-                        line_of_sight_confirmed=(
-                            enemy.x == attack_los_x and enemy.y == attack_los_y
-                        ),
-                    )
+                    self._commit_enemy_attack(enemy, "melee")
 
     def enemy_melee(
         self, enemy: Enemy, *, line_of_sight_confirmed: bool = False
@@ -251,8 +266,6 @@ class _EnemiesCombatMixin:
                 return
         enemy.attack_timer = enemy.attack_cooldown
         enemy.telegraph = "melee"
-        enemy.windup_time = ENEMY_SWING_TELEGRAPH
-        enemy.windup_duration = ENEMY_SWING_TELEGRAPH
         raw = enemy.damage + self.rng.randrange(-2, 3)
         amount = self.take_player_damage(
             raw, source="melee", damage_type=enemy.damage_type, attacker=enemy
@@ -308,8 +321,6 @@ class _EnemiesCombatMixin:
                 return
         enemy.attack_timer = enemy.attack_cooldown
         enemy.telegraph = "cast"
-        enemy.windup_time = ENEMY_SWING_TELEGRAPH
-        enemy.windup_duration = ENEMY_SWING_TELEGRAPH
         projectile_color = self.damage_type_color(enemy.damage_type)
         if enemy.elite_modifier:
             projectile_color = self.mix(projectile_color, (245, 100, 235), 0.35)

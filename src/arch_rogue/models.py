@@ -801,14 +801,22 @@ class Enemy:
     # enemies. Transient -- not saved.
     knockback_vx: float = field(default=0.0, repr=False, compare=False)
     knockback_vy: float = field(default=0.0, repr=False, compare=False)
-    # Swing telegraph: seconds remaining on the just-committed melee/cast swing
-    # visual. Set in ``enemy_melee``/``enemy_cast`` when the attack fires and
-    # decayed each frame; ``draw_windup_telegraph`` renders it. The attack itself
-    # still lands immediately (4.4.11 pinned in-range melee to hit on the
-    # eligible frame), so this is a readability indicator, not a damage delay.
-    # Transient -- not saved.
+    # Pre-attack windup telegraph: seconds remaining before a committed melee/cast
+    # lands. Set by ``_commit_enemy_attack`` (in the ``update_enemies`` AI loop)
+    # when an enemy is attack-ready + in range + LOS; decayed each frame; fired
+    # (locked) by ``_fire_committed_attack`` on completion. ``draw_windup_telegraph``
+    # renders it. This IS a damage delay (the readability win), replacing the old
+    # instant-damage-on-eligible-frame contract (the 4.4.11 anti-stall guarantee is
+    # preserved as "commit on the eligible frame, no oscillation"). Transient.
     windup_time: float = field(default=0.0, repr=False, compare=False)
     windup_duration: float = field(default=0.0, repr=False, compare=False)
+    # Committed-attack snapshot: which attack a windup will fire ("melee"/"cast")
+    # and the aim direction frozen at commit time. Lets the windup resolve even
+    # if the player moves during it (locked telegraph) and lets ranged casts fire
+    # along the committed direction so the projectile is dodgeable. Transient.
+    windup_attack: str = field(default="", repr=False, compare=False)
+    windup_nx: float = field(default=0.0, repr=False, compare=False)
+    windup_ny: float = field(default=0.0, repr=False, compare=False)
 
     @property
     def alive(self) -> bool:

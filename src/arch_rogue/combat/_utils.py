@@ -79,11 +79,16 @@ WALK_ANIM_SPEED_CEIL = 3.6
 KNOCKBACK_SPEED = 1.6
 KNOCKBACK_DECAY_RATE = 10.0
 
-# Swing telegraph: seconds the ``draw_windup_telegraph`` indicator stays
-# visible after an enemy melee/cast fires. The attack itself lands immediately
-# (4.4.11 pinned in-range melee to the eligible frame); this is a readability
-# indicator, not a damage delay.
-ENEMY_SWING_TELEGRAPH = 0.18
+# Enemy attack windup: when an enemy is attack-ready + in range + LOS, it
+# COMMITS (sets windup_time) instead of attacking immediately, pauses to
+# telegraph, then fires on windup completion (locked -- the committed hit lands
+# even if the player moves during the short windup; the player counters with
+# abilities, not by walking out). Ranged casts snapshot the aim direction at
+# commit so the fired projectile is dodgeable after launch. Bosses wind up
+# shorter so multi-bolt fans don't feel sluggish.
+ENEMY_MELEE_WINDUP = 0.35
+ENEMY_CAST_WINDUP = 0.5
+ENEMY_BOSS_WINDUP = 0.25
 
 
 def average_slow_factors(

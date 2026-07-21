@@ -79,6 +79,9 @@ _TRANSIENT_ENEMY_FIELDS = frozenset(
         "knockback_vy",
         "windup_time",
         "windup_duration",
+        "windup_attack",
+        "windup_nx",
+        "windup_ny",
     )
 )
 

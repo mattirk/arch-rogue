@@ -202,7 +202,7 @@ Example categories:
 
 ## Milestones / Versions
 
-Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
+Always update CHANGELOG.md, pyproject.toml and other version number references when completing milestones!
 
 ### 4.5.x Combat module refactoring - post-release fixes
 
@@ -221,3 +221,4 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - Dedicated room decorations for bosses (floor, walls, props). Generate new via Pixellab for bosses up to level 10 and final boss.
 - Dash: extended dash/blink skill (skill 4) when key pressed long, character starts "running" and moves faster. This consumes stamina really fast and stops once stamina is spent. When "running" mode activated, dash/blink suffers 1min cooldown. To be used as last resort to run away.
 - Gardens should heal player more slowly. Slow the healing "tick" -> every 5 seconds
+- On mobile, dash direction some times gets "stuck". So  that it does not respect the direction player is moving via joystick. Way to fix: stop moving, look around by touching the screen around player (not by joystick) -> start moving again via joystick and problem is gone

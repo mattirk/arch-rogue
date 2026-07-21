@@ -129,6 +129,12 @@ class BigBossesTests(unittest.TestCase):
             before = len(game.projectiles)
             fb.attack_timer = 0.0
             game.update_enemies(0.05)
+            # The boss commits to a cast windup (no projectile yet); the
+            # 3-bolt fan fires after the shorter boss windup.
+            self.assertGreater(fb.windup_time, 0.0)
+            self.assertEqual(len(game.projectiles) - before, 0)
+            for _ in range(10):
+                game.update_enemies(0.05)
             # 4-tile bosses fire a 3-bolt fan.
             self.assertEqual(len(game.projectiles) - before, 3)
 

@@ -21,7 +21,14 @@ from arch_rogue.game import Game
 from arch_rogue.models import AmbushBell, Enemy, Projectile, Tile
 
 
+def _advance_past_windup(game: Game, dt: float, frames: int = 8) -> None:
+    """Advance update_enemies enough frames for a committed windup to fire."""
+    for _ in range(frames):
+        game.update_enemies(dt)
+
+
 def _make_melee_enemy(x: float, y: float, attack_range: float = 4.0) -> Enemy:
+
     return Enemy(
         "Test Dummy",
         "melee",
@@ -123,11 +130,15 @@ class EnemyLineOfSightTests(unittest.TestCase):
             self.assertEqual(game.player.hp, hp_before)
             self.assertEqual(enemy.attack_timer, 0.0)
 
-            # Clear the wall -> LOS restored -> the enemy now lands its hit.
+            # Clear the wall -> LOS restored -> the enemy commits to a windup
+            # (no damage yet); the locked hit lands after the windup.
             dungeon.tiles[cx + 1][cy] = Tile.FLOOR
             dungeon.tiles[cx + 2][cy] = Tile.FLOOR
             enemy.attack_timer = 0.0
             game.update_enemies(0.1)
+            self.assertGreater(enemy.windup_time, 0.0)
+            self.assertEqual(game.player.hp, hp_before)
+            _advance_past_windup(game, 0.1)
             self.assertLess(game.player.hp, hp_before)
 
     def test_enemy_cannot_melee_through_closed_diagonal_corner(self) -> None:
@@ -151,6 +162,9 @@ class EnemyLineOfSightTests(unittest.TestCase):
 
             dungeon.tiles[cx + 1][cy] = Tile.FLOOR
             game.update_enemies(0.1)
+            self.assertGreater(enemy.windup_time, 0.0)
+            self.assertEqual(game.player.hp, hp_before)
+            _advance_past_windup(game, 0.1)
             self.assertLess(game.player.hp, hp_before)
 
     def test_player_melee_cannot_hit_through_wall_or_closed_door(self) -> None:
@@ -421,7 +435,9 @@ class EnemyLineOfSightTests(unittest.TestCase):
                 enemy.attack_timer = 0.0
                 game.update_enemies(0.1)
                 los.assert_called_once()
-                self.assertGreater(enemy.attack_timer, 0.0)
+                # Attack committed (windup started); attack_timer is set
+                # when the windup fires, not on the commit frame.
+                self.assertGreater(enemy.windup_time, 0.0)
 
     def test_melee_enemy_attacks_when_inside_range_even_above_stop_distance(
         self,
@@ -447,7 +463,14 @@ class EnemyLineOfSightTests(unittest.TestCase):
             game.enemies = [enemy]
 
             hp_before = game.player.hp
+            # Anti-stall guarantee (restated for the windup model): the
+            # enemy commits on the eligible frame -- no idling just inside
+            # attack range. The hit lands after the windup.
             game.update_enemies(0.05)
+            self.assertGreater(enemy.windup_time, 0.0)
+            self.assertEqual(enemy.windup_attack, "melee")
+            self.assertEqual(game.player.hp, hp_before)
+            _advance_past_windup(game, 0.05, frames=10)
             self.assertLess(game.player.hp, hp_before)
             self.assertGreater(enemy.attack_timer, 0.0)
             self.assertEqual(enemy.telegraph, "melee")
