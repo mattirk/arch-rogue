@@ -199,6 +199,108 @@ Example categories:
 - Do not generate multiple states for single character without good reason
 - Always use exact character names e.g "Arcanist" or "Rogue" for current character. If you need to preserve old characters, rename them (e.g "Arcanist" -> "Arcanist_old_1") before creating new ones 
 
+### Android profiling and debugging guide
+
+Use an Android Virtual Device (AVD) for repeatable, headless-friendly mobile profiling and debugging. Create your own AVD through Android Studio or `avdmanager`, then use that name in the commands below. The AVD is easier to iterate with than a physical device because it avoids cable handling and uses a stable serial every run.
+
+#### Creating an AVD
+
+If you do not already have an AVD for profiling, create one with `avdmanager` (or use Android Studio's AVD Manager). Choose a recent Android API, the x86_64 ABI, and a device skin that matches the target screen shape. For example, to create a Pixel 5-like device running Android 14:
+
+```bash
+sdkmanager --install "system-images;android-34;google_apis;x86_64"
+avdmanager create avd --name <emulator_name> --device "pixel_5" --package "system-images;android-34;google_apis;x86_64" --abi x86_64
+```
+
+For software-GLES profiling, run the emulator with `-gpu swiftshader_indirect`. For GPU stress testing, use `-gpu host` (requires host GPU support). List existing AVDs with `avdmanager list avd`. The first AVD listed is usually a good default if you only have one.
+
+#### Launch the AVD
+
+From the repo root, replacing `<emulator_name>` and `<device_serial>` with your AVD name and the serial reported by `adb devices`:
+
+```bash
+emulator -avd <emulator_name> -no-snapshot-load -no-audio -gpu swiftshader_indirect -no-boot-anim &
+adb -s <device_serial> wait-for-device shell 'while [ -z "$(getprop sys.boot_completed)" ]; do sleep 1; done; echo booted'
+```
+
+Wait for `booted` before installing or launching the game.
+
+#### Build and install the debug APK
+
+```bash
+tools/build_android.sh debug
+adb -s <device_serial> install -r bin/archrogue-<version>-arm64-v8a_armeabi-v7a-debug.apk
+```
+
+The script also verifies the APK signature and ABI contents. If you change any Python source, you must rebuild and reinstall before the AVD sees the change.
+
+#### Start the game
+
+```bash
+adb -s <device_serial> shell am start -n org.archrogue.archrogue/org.kivy.android.PythonActivity
+```
+
+#### Profile live frame times
+
+The game emits `ARCH_ROGUE_PERF` logcat lines when run with the performance overlay enabled. Stream them with:
+
+```bash
+python tools/profile_adb_live.py --serial <device_serial> --window 8 --no-color --raw
+```
+
+Key fields to watch:
+
+- `fps` and `frame_ms` — overall smoothness.
+- `overlays` — time spent in menus, cutscenes, and the story intro; this is usually the AVD bottleneck because Swiftshader handles large alpha blits poorly.
+- `flip` — present/GLES upload cost.
+- `renderer` and `accelerated` — should show `opengles2` and `yes` on the AVD.
+- `logical`/`window`/`viewport`/`quality=native` — confirm native resolution is still in use.
+
+To reach the story intro from the title screen with the keyboard, send Enter a few times:
+
+```bash
+adb -s <device_serial> shell input keyevent 66
+```
+
+For touch navigation, use `adb shell input tap X Y` instead.
+
+#### Local cutscene CPU profiling
+
+For quick CPU-side iteration without installing to the device:
+
+```bash
+python tools/profile_cutscene.py
+```
+
+This runs the cutscene overlay path headlessly under `cProfile` and writes `build/profiles/cutscene_render.prof`. Inspect the top cumulative functions; the dominant cost on the AVD is usually large `pygame.Surface.blit` calls, not Python CPU time.
+
+#### Common AVD pitfalls
+
+- The AVD uses Swiftshader software GLES, so absolute fps is lower than a real device. Compare relative improvements (`overlays` ms before/after) rather than rejecting a fix because the AVD is still under 60 fps.
+- The title screen and archetype select already run at ~60 fps on the AVD; profile the story intro and gameplay crowd for the real mobile stress cases.
+- If you stop seeing new log lines, the old app process may still be running. Force-stop and restart:
+
+  ```bash
+  adb -s <device_serial> shell am force-stop org.archrogue.archrogue
+  adb -s <device_serial> shell am start -n org.archrogue.archrogue/org.kivy.android.PythonActivity
+  ```
+
+- After editing cutscene rendering, run the focused regression tests and update desktop render snapshots if the visual output is equivalent but byte-different:
+
+  ```bash
+  python -m unittest tests.test_mainline_regression
+  python -m unittest discover tests
+  ```
+
+#### Workflow summary
+
+1. Launch AVD and wait for boot.
+2. Build/install/start the game.
+3. Profile the target screen with `profile_adb_live.py`.
+4. Make a focused optimization (e.g., fewer large alpha blits, persistent surfaces, lower stage cache bucket rate).
+5. Run desktop tests and update snapshots.
+6. Rebuild, reinstall, re-profile.
+7. Repeat until the target phase drops enough to hit the fps goal.
 
 ## Milestones / Versions
 
