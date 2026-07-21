@@ -1276,6 +1276,46 @@ class MobileLayoutTests(unittest.TestCase):
             else:
                 os.environ.pop("ARCH_ROGUE_MOBILE", None)
 
+    def test_death_red_tint_covers_full_display_including_cutout_areas(self) -> None:
+        # 4.4.8: the death/victory red tint must stretch edge-to-edge like the
+        # world viewport, not just the safe area, so cutout/notch areas are tinted.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (2340, 1080), (90, 0, 18, 0))
+            game.state = "dead"
+            game.draw()
+            screen = game.screen.get_rect()
+            safe = game.mobile_safe_rect()
+            # A pixel deep in the left cutout area (outside the safe area)
+            # must carry the red death tint, not the cleared (10, 10, 14).
+            cutout_pixel = game.screen.get_at((4, screen.height // 2))[:3]
+            self.assertNotEqual(cutout_pixel, (10, 10, 14))
+            self.assertGreater(cutout_pixel[0], 20)  # red channel raised by tint
+            # A pixel in the right cutout area too.
+            right_cutout = game.screen.get_at(
+                (screen.width - 4, screen.height // 2)
+            )[:3]
+            self.assertNotEqual(right_cutout, (10, 10, 14))
+            self.assertGreater(right_cutout[0], 20)
+            # The stat panels must be opaque — no red tint bleeding through.
+            # Panel rects are stored in safe-area subsurface coordinates, so
+            # offset them into root coordinates before sampling the root screen.
+            panels = getattr(game, "_state_stat_panel_rects", {})
+            self.assertTrue(panels)
+            cutout_redness = cutout_pixel[0] - cutout_pixel[1]
+            self.assertGreater(cutout_redness, 20)  # R >> G in the red tint
+            for key, panel_rect in panels.items():
+                rx = panel_rect.x + safe.x + panel_rect.width // 4
+                ry = panel_rect.y + safe.y + 4
+                px = game.screen.get_at((rx, ry))[:3]
+                panel_redness = px[0] - px[1]
+                self.assertLess(
+                    panel_redness,
+                    cutout_redness - 10,
+                    f"stat panel '{key}' pixel {px} is as red as the cutout "
+                    f"tint {cutout_pixel} — red bleed through",
+                )
+
+
 
 class MobileHudTests(unittest.TestCase):
     @staticmethod

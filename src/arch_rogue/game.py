@@ -577,6 +577,12 @@ class Game(
         kind: str = "spark",
         archetype: str = "",
     ) -> None:
+        # Colors may arrive as lists (e.g. from JSON-restored enemy.state on
+        # older save paths). The draw_impact overlay cache builds a hashable
+        # tuple key that includes ``color``, so normalize once at the entry point
+        # to keep ImpactEffect.color a tuple regardless of the caller.
+        if not isinstance(color, tuple):
+            color = (int(color[0]), int(color[1]), int(color[2]))
         self.impact_effects.append(
             ImpactEffect(x, y, color, ttl, radius, kind, ttl, archetype)
         )

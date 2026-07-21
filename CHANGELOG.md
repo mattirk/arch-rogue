@@ -1,5 +1,198 @@
 # Changelog
 
+## 4.5 — Combat module refactoring
+
+Milestone 4.5 splits the ~3,800-line `combat.py` / 126-method `CombatMixin` into a `combat/` package of focused submixins, preserving `from arch_rogue.combat import CombatMixin` and keeping behavior identical during the split, then picks a few small ARPG combat improvements. See `AGENTS.md` → "4.5 Combat module refactoring" for the full phased plan.
+
+### Phase 1 — Package skeleton (no behavior change)
+
+- Converted `src/arch_rogue/combat.py` → `src/arch_rogue/combat/` package.
+- `combat/_core.py` holds the full `CombatMixin` body unchanged; the four parent-package imports were retargeted (`.constants`/`.content`/`.dungeon`/`.models` → `..constants`/`..content`/`..dungeon`/`..models`).
+- `combat/__init__.py` re-exports `CombatMixin` so `from arch_rogue.combat import CombatMixin` and `Game`'s `__all__` entry keep working.
+- No method moves yet; behavior is bit-for-bit identical with the previous monolithic module. Phase 2 will split `_core` into focused submixins.
+
+### Validation
+
+- `python -m compileall src tests` — clean.
+- `python -m unittest discover tests` — 550 tests pass.
+
+### Phase 2 — Split into focused submixins (behavior identical)
+
+- Split `combat/_core.py` into 15 focused submodules, each exposing a `_<Name>CombatMixin` that contributes its methods to `CombatMixin` via multiple inheritance in `combat/__init__.py`. Method bodies and signatures are unchanged; the submixins share state through `self.` exactly as the single mixin did.
+- Submodules: `equipment`, `statuses`, `aim`, `disciplines`, `class_skills`, `costs`, `player`, `movement`, `enemies`, `projectiles`, `attacks`, `ambush_bell`, `familiars`, `mobility`, `damage`.
+- `_core.py` removed. Each submodule carries a module docstring naming its subsystem and imports only the parent-package names it uses (verified clean by `pyflakes`).
+- Placement decisions from plan review: `_trigger_enemy_hit_flash` lives in `damage.py` (shared damage-application primitive used by `damage_enemy`, `_reflect_thorns`, `_familiar_attack`, `_apply_chain_proc`); `_reflect_thorns` stays in `player.py` (player thorns effect, only called from `take_player_damage`). `CONTROLLER_AIM_SNAP_*` constants live in `aim.py`; `_CLASS_SKILL_*` tables live in `class_skills.py`.
+- `combo_preview`'s lazy in-body import was retargeted `from .content import combo_bonus_preview` → `from ..content import combo_bonus_preview`.
+- Class-level constants relocated to their owning submodule: the `FAMILIAR_*` / `SPIRIT_BEAST_*` tuning constants (originally sandwiched between `detonate_ambush_bell` and `familiar_max_count`) moved to `familiars.py`; the `AMBUSH_BELL_*` tuning constants (originally between `player_cast_time_skip` and `ambush_bell_tuning`) moved to `ambush_bell.py`; `CONTROLLER_AIM_SNAP_*` live in `aim.py`; `_CLASS_SKILL_*` tables live in `class_skills.py`. Each constants block sits at the top of its class, just under the docstring/comment header.
+- `from arch_rogue.combat import CombatMixin` and `Game`'s `__all__` entry still resolve; composed mixin exposes the same 125 methods as the pre-split module.
+
+### Validation
+
+- `python -m compileall src tests` — clean.
+- `python -m pyflakes src/arch_rogue/combat/` — clean (no unused imports).
+- `python -m unittest discover tests` — 550 tests pass.
+
+### Post-Phase 2 cleanup — story-gated damage hooks moved into combat
+
+Assessment pass found one combat-logic leak outside the `combat/` package: three helpers in `story_runtime.py` (`story_player_damage_bonus`, `apply_story_player_damage`, `apply_story_blood_price`) that are called exclusively from `combat/` and implement combat operations (player damage multiplier + HP-cost payment), only reading story state via `self.story_effect_value` / `self.story_state`.
+
+- Moved the three methods into a new focused submodule `combat/story_hooks.py` (`_StoryHooksCombatMixin`), added to the `CombatMixin` composition. They keep calling `self.story_effect_value(...)` (stays in `story_runtime.py`) and reading `self.story_state` — no story-runtime behavior moved.
+- Removed the three methods from `story_runtime.py`; `FloatingText` is still used there by other floaters, so its import stays.
+- `CombatMixin` now composes 16 submixins and exposes 128 methods (125 + 3 hooks). Other combat-adjacent code outside `combat/` (model derived stats, population enemy setup, petting interaction, potion use, boss-arena radius, rendering/sprites/save) was assessed and intentionally left in place — see `AGENTS.md` → "Post-Phase 2 cleanup" for the rejected candidates and reasoning.
+
+### Validation
+
+- `python -m compileall src tests` — clean.
+- `python -m pyflakes src/arch_rogue/combat/ src/arch_rogue/story_runtime.py` — clean.
+- `python -m unittest discover tests` — 550 tests pass.
+- Smoke: `from arch_rogue.combat import CombatMixin; from arch_rogue.story_runtime import StoryRuntimeMixin` resolves; hooks on `CombatMixin`, not on `StoryRuntimeMixin`.
+
+### Phase 3 — Cleanup & de-duplication (behavior identical)
+
+- **`combat/_utils.py`** — new pure-helper module owning the stateless logic previously inlined in submodules: `average_slow_factors` (from `statuses.py`), `anim_speed` (from `movement.py`), and `enemy_hit_radius` / `actor_hit_radius` (from `movement.py`). The mixin keeps thin wrapper methods `enemy_hit_radius` / `actor_hit_radius` so external callers (`run_flow.boss_arena_enemy_radius`, tests) keep working via `self.enemy_hit_radius(enemy)`; the two `static_method`s were removed and their call sites now import the module-level functions.
+- **`combat/damage_types.py`** — new data-table module centralizing damage-type data: `DAMAGE_TYPE_COLORS` + `DEFAULT_DAMAGE_COLOR` (from `equipment.damage_type_color`'s inline dict), `STATUS_DAMAGE_TYPE` + `DEFAULT_STATUS_DAMAGE_TYPE` (from `statuses.apply_enemy_status`'s inline map), and `RESISTANCE_FLOOR` / `RESISTANCE_CEIL` with a `clamp_resistance` helper (from `statuses.mitigate_enemy_damage`'s inline clamp). `equipment.damage_type_color`, `statuses.apply_enemy_status`, and `statuses.mitigate_enemy_damage` now route through `damage_color()` / `status_damage_type()` / `clamp_resistance()`. Adding a new damage type is now a single edit here.
+- **Combat-only constants relocated**: `BOSS_FOOTPRINT_HIT_RADIUS`, `BOSS_FOOTPRINT_MOVE_RADIUS`, `PLAYER_MOVE_SPEED`, `WALK_ANIM_SPEED_FLOOR`, `WALK_ANIM_SPEED_CEIL` moved from `constants.py` into `combat/_utils.py` (colocated with the helpers that use them). `WALK_ANIM_RUNTIME_SCALE_FLOOR` was left in `constants.py` because tests import it from `arch_rogue.constants`. Shared constants (`PLAYER_HIT_RADIUS`, `BOSS_HIT_RADIUS`, `ENEMY_HIT_RADIUS`, `LARGE_ENEMY_HIT_RADIUS`, `WALK_ANIMATION_RATE`) stay in `constants.py`. `combat/player.py` and `combat/movement.py` now import the moved constants from `._utils`.
+- **pyright suppression**: `# pyright: reportAttributeAccessIssue=false` removed from the three pure modules (`__init__.py`, `_utils.py`, `damage_types.py`) which do no `self.` access; kept on all 17 submixins which still do cross-mixin `self.` access.
+- `CombatMixin` now exposes 126 methods (128 − 2 static helpers promoted to module-level functions in `_utils`).
+
+### Validation
+
+- `python -m compileall src tests` — clean.
+- `python -m pyflakes src/arch_rogue/combat/ src/arch_rogue/constants.py` — clean (pre-existing unused-import warnings elsewhere in `src/` are unrelated to this change).
+- `python -m unittest discover tests` — 550 tests pass.
+- Smoke: `_utils` / `damage_types` helpers return expected values; `constants.WALK_ANIM_RUNTIME_SCALE_FLOOR` preserved, `constants.PLAYER_MOVE_SPEED` removed; `CombatMixin` composes 126 methods.
+
+### Phase 4 — Batch A (low-risk combat-internal improvements)
+
+Three of the seven Phase 4 items, all confined to `combat/` (no `models.py`/`save_system.py`/`rendering/` changes). Each is independently reversible and covered by `tests/test_combat_phase4_batch_a.py` (9 new tests).
+
+- **✅ #7 `ClassSkill` registry** (`combat/class_skills.py`): replaced the `_CLASS_SKILL_KINDS`/`_CASTS`/`_BONUS_TERMS` triple-dict plus the inline color dict with a frozen `ClassSkill` dataclass + `CLASS_SKILLS` registry (fields: archetype, kind, cast_method, bonus_term, color) and a `_DEFAULT_CLASS_SKILL` fallback matching the old defaults. The 4 public methods (`class_skill_kind`, `player_cast_class_skill`, `equipment_class_skill_bonus`, `skill_color`) now route through one `_class_skill()` lookup; signatures and return values unchanged. Adding a new archetype's class skill is one registry entry.
+- **✅ #4 Attack/cast-speed getters** (`combat/costs.py`, `combat/movement.py`): extracted `player_attack_speed()` and `player_cast_speed()` (clamped `[-0.20, 0.35]` equipment stats) as the single source for haste; `melee_cooldown`/`bolt_cooldown`/`class_skill_cooldown` now consume them instead of inlining the clamp three times. Added `player_walk_cadence()` in `movement.py` as the single seam `advance_animation_phases` consumes for the player's animation rate. Deliberately did **not** scale walk cadence by the attack_speed stat — `Player` has only `anim_time` (drives the walk cycle incl. arm swing; no separate attack-swing clock) and movement speed is fixed, so scaling would desync stride from ground speed (footslide). The seam exists for a future discipline that scales cadence and movement together.
+- **✅ #3 Crit refactor** (`combat/attacks.py`): crit was inline in `player_melee_attack` (Rogue Precision-path tiers + the "smoke crits" unique override), not in `damage_enemy` as the plan guessed. Extracted `_rogue_crit_profile()` (the discipline→chance/multiplier table) and `roll_melee_crit(enemy)` (the roll + smoke override, returns `(is_crit, multiplier)` and emits the "Smoke Crit" floater). The caller applies the multiplier and emits the "Critical" floater. RNG consumption order preserved (Precision roll, then smoke roll) so replays stay deterministic; the dead `status_duration=1.4` from the old smoke branch (always overridden by the crit block) was dropped.
+- `CombatMixin` now composes 132 methods (126 + 6 new: `_class_skill`, `player_attack_speed`, `player_cast_speed`, `player_walk_cadence`, `_rogue_crit_profile`, `roll_melee_crit`).
+
+### Validation
+
+- `python -m compileall src tests` — clean.
+- `python -m pyflakes src/arch_rogue/combat/` — clean.
+- `python -m unittest tests.test_combat_phase4_batch_a` — 9 new tests pass (registry mapping/default/methods, speed-getter clamp + cooldown consumption, crit profile tiers, class-gate, deterministic precision roll, smoke override).
+- `python -m unittest discover tests` — 559 tests pass (550 + 9).
+
+### Phase 4 — Batch B (damage pipeline: `DamageContext` + unified resistance table)
+
+Two combat-internal damage-pipeline refactors, both behavior-identical, covered by `tests/test_combat_phase4_batch_b.py` (9 new tests).
+
+- **✅ #1 `DamageContext`** (`combat/damage.py` + 6 src / 5 test call sites): added a frozen `DamageContext` dataclass (target, amount, damage_type, knockback_from, status_effect, status_duration, source, is_crit). `damage_enemy(self, ctx: DamageContext)` unpacks `ctx` into the locals the body already uses, so the body is byte-identical. All 6 src call sites (`player` Warden counter, `projectiles` projectile-hit + chain-secondary, `attacks` melee + nova, `ambush_bell`) and 5 test call sites converted to build a `DamageContext`; melee passes `is_crit` (from `roll_melee_crit`) and each passes a `source` label ("melee"/"bolt"/"nova"/"counter"/"projectile"/"chain"/"ambush_bell") for future damage modifiers. `_apply_chain_proc` kept its `(source, damage)` signature — it's a chain-origin search + flat arcane tick with no mitigation/procs, structurally distinct from a full damage event.
+- **✅ #2 Unified resistance table** (`combat/damage_types.py`, `combat/player.py`): the player per-damage-type resistance `if` chains that were inline in `take_player_damage` (Grounded/Sealed affixes, glacial ward unique, armor typed-match) are now table-driven in `damage_types.py` (`PLAYER_RESIST_AFFIXES`, `PLAYER_RESIST_UNIQUES`, `PLAYER_ARMOR_TYPED_RESIST_BONUS`). New `player_typed_resistance(damage_type)` mixin method computes the full typed-resist fraction via those tables plus the all-types bonuses (oathwall aegis, `aegis` status, Warden Temporal Aegis) that don't branch on damage type; `take_player_damage` now calls it. The enemy side was already data-driven (`enemy.resistances` dict + `clamp_resistance` from Phase 3). Adding a new damage type's resist affix/unique is one table entry. Behavior identical (verified: a frost-typed armor takes strictly less frost damage than physical).
+- `CombatMixin` now composes 133 methods (132 + `player_typed_resistance`).
+
+### Validation
+
+- `python -m compileall src tests` — clean.
+- `python -m pyflakes src/arch_rogue/combat/` — clean.
+- `python -m unittest tests.test_combat_phase4_batch_b` — 9 new tests pass (DamageContext defaults/frozen/round-trip, damage_enemy accepts ctx, resistance tables match old values, typed-resistance branches per damage type, unique/status/Temporal Aegis, take_player_damage reduction).
+- `python -m unittest discover tests` — 568 tests pass (559 + 9).
+
+### Phase 4 — Batch C (cross-module: knockback on `Enemy` + swing telegraph)
+
+The final two Phase 4 items. Both cross the `combat/` boundary into `models.py` / `save_system.py` / `rendering/`, so both add transient fields to `Enemy` (excluded from saves via `_TRANSIENT_ENEMY_FIELDS`). Covered by `tests/test_combat_phase4_batch_c.py` (9 new tests).
+
+- **✅ #5 Knockback field on `Enemy`** (`models.py`, `save_system.py`, `combat/_utils.py`, `combat/damage.py`, `combat/enemies.py`): added transient `knockback_vx`/`knockback_vy` (tiles/sec). `damage_enemy` now sets the velocity (direction × `KNOCKBACK_SPEED`) instead of the old one-shot `move_actor` 0.16-tile nudge. A new `_apply_enemy_knockback(enemy, dt)` helper runs early in `update_enemies` (before the aggro/stun `continue` skips), integrating the velocity via `move_actor` (collision-aware) with exponential decay (`KNOCKBACK_DECAY_RATE`), so shoves are framerate-independent and land even on stunned/out-of-aggro enemies. Tuned so total displacement ≈ `KNOCKBACK_SPEED`/`KNOCKBACK_DECAY_RATE` (~0.16 tiles, matching the old nudge); Time Skip slows the integration via `scaled_dt` but total displacement is unchanged. Deviated from the plan's "consumed in `_move_enemy_locomotion`" because that path is skipped for stunned/out-of-aggro enemies — the dedicated `update_enemies` step ensures shoves work regardless of AI state.
+- **✅ #6 Telegraph helper** (`models.py`, `save_system.py`, `combat/_utils.py`, `combat/enemies.py`, `rendering/actors.py`): added transient `windup_time`/`windup_duration`. `enemy_melee`/`enemy_cast` set them to `ENEMY_SWING_TELEGRAPH` when the attack fires; `update_enemies` decays `windup_time` each frame; `draw_windup_telegraph(enemy, sx, sy)` renders a fading expanding ring (colored by the enemy's damage type) wired into `draw_enemy`. **The attack still lands immediately** — 4.4.11 pinned in-range melee to the eligible frame and `test_enemy_cannot_melee_through_wall` pins that contract (expects damage in the same `update_enemies(0.1)` frame), so a pre-attack windup that defers damage would re-introduce the exact delay 4.4.11 fixed and break those tests. This is therefore a swing/follow-through readability indicator, not a damage delay; a true pre-attack telegraph is flagged as a separate future decision (would require revisiting the 4.4.11 immediate-attack contract + its tests).
+- `CombatMixin` now composes 134 methods (133 + `_apply_enemy_knockback`).
+
+### Validation
+
+- `python -m compileall src tests` — clean.
+- `python -m pyflakes src/arch_rogue/combat/ src/arch_rogue/models.py src/arch_rogue/save_system.py` — clean (pre-existing unused-import warnings in `rendering/actors.py` are unrelated to this change).
+- `python -m unittest tests.test_combat_phase4_batch_c` — 9 new tests pass (knockback fields default zero, damage_enemy sets velocity + defers shove, update_enemies applies+decays for stunned enemy, total displacement ≈ continuous limit, transient fields excluded from saves, enemy_melee/enemy_cast set telegraph, update_enemies decays it, draw helper no-op at zero + safe when active).
+- `python -m unittest discover tests` — 577 tests pass (568 + 9).
+
+## 4.4.11 — Enemy Melee Range Stalling Fix
+
+Release 4.4.11 fixes the common mobile/desktop case where a melee enemy would chase the player but appear to idle just outside (or just inside) its attack range, sometimes failing to land hits for extended periods.
+
+### Root Cause
+
+- `CombatMixin.update_enemies` coupled the movement stop distance and the melee attack decision with an `elif`. Once an enemy was within `attack_range` but still above the implicit movement threshold, it would take a microscopic final step on most frames instead of attacking. On low-FPS/mobile frames or when the player micro-kited at the edge, the enemy could spend many frames oscillating at the threshold without ever satisfying the attack branch.
+- The movement target was exactly `attack_range`, so enemies stopped at the bare edge of their reach. Any small relative motion or floating-point jitter could push them back into the movement branch and delay the attack indefinitely.
+
+### Changed
+
+- **`src/arch_rogue/combat.py` (`_enemy_melee_stop_distance`):** new helper that returns a melee stop distance slightly inside `attack_range` (cushioned by `0.02..0.12` and clamped outside actor contact distance). Melee enemies now press to a reliable sweet spot instead of stopping at the threshold.
+- **`src/arch_rogue/combat.py` (`update_enemies`):** the standard melee and boss-encounter closing logic now use `_enemy_melee_stop_distance` for movement, and the attack decision is an independent `if` rather than an `elif`. Enemies that end a frame within `attack_range` attack immediately, even if they also took a small closing step. LOS is revalidated from the final position when movement occurred.
+- **`tests/test_enemy_los_walls.py`:** two regression tests added — one verifies a melee enemy attacks as soon as it is inside `attack_range` even if still above the movement stop distance, and one verifies a melee enemy closes and lands a hit on a slowly retreating player.
+- Project, runtime, Android package, and website release metadata advance to `4.4.11`; options remain schema `7` and run saves remain schema `5`.
+
+### Validation
+
+- `.venv/bin/python -m compileall src tests`
+- `.venv/bin/python -m unittest tests.test_enemy_los_walls` — focused suite passes, including the two new regression tests.
+- `.venv/bin/python -m unittest discover tests` — 550 tests pass.
+
+## 4.4.10 — Polished Death Screen Panel Corners
+
+Release 4.4.10 fixes a visual defect on the "You Died" / "Dungeon Cleared" screen where dark triangular artifacts appeared at the corners of the stat panels and the main overlay panel. The nine-slice panel assets (`panel.png`, `panel_compact.png`, `panel_inset.png`) had pure-black border pixels in their corner pieces that created visible black triangles against the red death tint background.
+
+### Changed
+
+- **`src/arch_rogue/assets/sprites/menus/panel_inset.png`:** replaced all pure-black (0,0,0) pixels within the four nine-slice corner pieces with the panel body colour (14,17,17), eliminating the dark triangular artifacts at stat sub-panel corners. The border along straight edges is preserved.
+- **`src/arch_rogue/assets/sprites/menus/panel.png`:** same corner-pixel cleanup for the main overlay panel asset (body colour 24,24,26).
+- **`src/arch_rogue/assets/sprites/menus/panel_compact.png`:** same corner-pixel cleanup for the compact panel variant.
+- **`src/arch_rogue/menus/state_overlay.py` (`_draw_state_stat_panel`):** the opaque background fill behind each stat sub-panel now uses a rounded rect (`border_radius`) matching the inset panel's corner shape, so the transparent corner tips show a rounded edge instead of a sharp triangle.
+- **`src/arch_rogue/menus/state_overlay.py` (`_draw_state_overlay_content`):** the main overlay panel background fill also uses a rounded rect for the same reason.
+- **`tests/test_mainline_regression.py`:** updated the three desktop render-snapshot hashes to reflect the asset changes.
+- Project, runtime, Android package, and website release metadata advance to `4.4.10`.
+
+### Validation
+
+- `python -m compileall src tests`
+- `python -m unittest discover tests` — 548 tests pass.
+
+## 4.4.9 — Mobile Crash Fix: Restored Enemy Colors Break Impact Overlay Cache
+
+Release 4.4.9 fixes a hard crash that ended the process on Android (and would also crash desktop builds once they entered the same code path) the first time a non-boss enemy died after loading a saved run. The crash manifested as `Fatal signal 6 (SIGABRT)` from the p4a/SDL host after Python emitted `TypeError: cannot use 'tuple' as a dict key (unhashable type: 'list')` from `draw_impact`.
+
+### Root Cause
+
+- Enemies are serialized via `enemy.__dict__.items()` in `save_system.serialize_run_state`, so the `color` tuple is written to JSON as a list. On restore, `restore_run_state` rebuilt each enemy with `Enemy(**enemy)`, which put that JSON list straight back into `enemy.color` without normalizing it back to a tuple. Every other model that carries a `Color` field (`IdleNpc`, `LightSource`, `StoryGuest`) already converted `list -> tuple` on restore; `Enemy` was the lone exception.
+- `kill_enemy` (combat) sets `death_color = enemy.color` for non-boss/miniboss enemies and passes it to `add_impact`, which built an `ImpactEffect` whose `color` was now a list.
+- The shared impact-overlay cache introduced in 4.3.17 / extended in 4.4 mobile-optimization work builds its LRU key as `(effect.kind, effect.archetype, progress_bucket, alpha_bucket, radius_bucket, effect.color)`. Hashing that tuple with a list member raises `TypeError: unhashable type: 'list'`, killing the render loop and the process.
+
+### Changed
+
+- **`src/arch_rogue/save_system.py` (`restore_run_state`):** the enemy-restore comprehension now normalizes `color` from a list back to a 3-tuple of ints before constructing `Enemy`, matching the existing pattern used by `idle_npc_from_dict`, `light_source_from_dict`, and `story_guest_from_dict`. This is the root-cause fix: a restored enemy's `color` is now always a hashable tuple.
+- **`src/arch_rogue/game.py` (`add_impact`):** defensive normalization. `add_impact` is called from ~25 combat/interaction paths; if any future caller ever passes a list color, `ImpactEffect.color` is now coerced to a tuple at the entry point so the `draw_impact` overlay cache key stays hashable. Tuple colors pass through unchanged.
+- **Regression coverage:** `tests/test_save_and_metadata.py` adds `test_restored_enemy_color_is_hashable_tuple` (round-trips an enemy through save/load and asserts every restored `enemy.color` is a tuple that can be hashed inside the impact-cache key shape) and `test_add_impact_normalizes_list_color` (passes `[255, 90, 70]` to `add_impact` and asserts the resulting `ImpactEffect.color` is a tuple that hashes cleanly).
+- Project, runtime, Android package, and website release metadata advance to `4.4.9`; options remain schema `7` and run saves remain schema `5` (no save-format migration — older saves with list enemy colors now load correctly).
+
+### Validation
+
+- `.venv/bin/python -m compileall -q src tests`
+- `.venv/bin/python -m unittest tests.test_save_and_metadata` — focused suite passes (4 tests, including the two new regression tests).
+- `.venv/bin/python -m unittest discover tests` — 548 tests pass.
+- Reproduced the original crash against the old restore path (`Enemy(**enemy)` with a list color) to confirm the regression test exercises the actual failure mode; the new path produces a tuple and hashes cleanly.
+
+## 4.4.8 — Branded Android Loading Screen & Full-Screen Death Tint
+
+Release 4.4.8 replaces python-for-android's default SDL splash with the authored Arch Rogue title logo so the APK opens with the branded `ARCH <diamond> ROGUE` lockup while the Python interpreter bootstraps, and stretches the death/victory red tint to the full mobile display so cutout/notch areas are tinted like the world viewport while the stat panels stay opaque.
+
+### Changed
+
+- **Branded presplash:** `buildozer.spec` now sets `presplash.filename` to the bundled `src/arch_rogue/assets/sprites/menus/title_logo.png` (the same 640×122 antique-gold gothic lockup used by the in-game title screen) and `presplash.color = #0a0a0f` so the transparent logo sits on a dark background matching the game's grim-fantasy tone. The loading screen is no longer the generic p4a/SDL2 splash.
+- **Presplash preflight:** `tools/validate_android_apk.py` `validate_build_spec` now requires `presplash.filename` to be set and to resolve to an existing file relative to the project root, so a future spec edit cannot silently regress to the default splash or point at a missing asset.
+- **Full-screen death/victory tint on mobile:** the red/gold death-victory background is now drawn to the root display before the safe-area render target clips content, so the tint stretches edge-to-edge across cutout/notch areas — matching the world viewport — instead of only covering the safe area. The frame loop splits `draw_state_overlay` into `draw_state_overlay_background` (full-screen tint) and `draw_state_overlay_content` (safe-area panels); the single-call `draw_state_overlay` entry point is preserved for desktop and tests.
+- **Opaque stat panels:** the main death/victory summary panel now fills an opaque `PANEL_INK` base before the nine-slice asset is blitted, so the red tint does not bleed through the panel's semi-transparent edges. The stat inset panels already had an opaque base; the outer container now matches. The red tint is confined to the background only.
+- **Regression coverage:** `tests/test_android_packaging.py` adds two tests verifying that removing `presplash.filename` fails the preflight with the branded-splash message, and that pointing it at a missing file fails with the missing-asset message. `tests/test_mobile_layout.py` adds a test verifying that cutout-area pixels carry the red tint while stat-panel pixels stay opaque (not red) on a 2340×1080 display with 90/18px horizontal insets.
+- Project, runtime, Android package, and website release metadata advance to `4.4.8`; options remain schema `7` and run saves remain schema `5`.
+
+### Validation
+
+- `.venv/bin/python -m compileall -q src tests`
+- `.venv/bin/python -m unittest tests.test_android_packaging tests.test_save_and_metadata tests.test_ui_layouts tests.test_mobile_layout` — focused suites pass.
+- `.venv/bin/python -m unittest discover tests` — 546 tests pass.
+- `.venv/bin/python tools/validate_android_apk.py --project-root . --source-dir src --spec buildozer.spec`
+
 ## 4.4.7 — Sectioned About / Quick Help Screen
 
 Release 4.4.7 turns the About, Credits, and Quick Help page from a single unformatted wall of text into a readable, sectioned document while preserving the 4.3.17 WS-G Open Source Licenses scroll contract.

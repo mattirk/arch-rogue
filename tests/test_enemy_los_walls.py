@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import sys
 import tempfile
@@ -421,6 +422,71 @@ class EnemyLineOfSightTests(unittest.TestCase):
                 game.update_enemies(0.1)
                 los.assert_called_once()
                 self.assertGreater(enemy.attack_timer, 0.0)
+
+    def test_melee_enemy_attacks_when_inside_range_even_above_stop_distance(
+        self,
+    ) -> None:
+        """Regression: enemy should not idle just inside attack range.
+
+        With the old ``elif`` movement/attack coupling, an enemy that ended
+        a frame slightly inside ``attack_range`` but still above the movement
+        stop distance would move a tiny step instead of attacking, appearing
+        to stand idle. The attack decision must be independent of the
+        movement stop distance once the enemy is within melee reach.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            cx, cy = int(game.player.x), int(game.player.y)
+            self.open_patch(game, cx, cy)
+            game.player.x, game.player.y = cx + 0.5, cy + 0.5
+            # attack_range=1.5 gives a stop distance of ~1.38, so 1.45 is
+            # inside attack range but above the movement stop distance.
+            enemy = _make_melee_enemy(cx + 1.95, cy + 0.5, attack_range=1.5)
+            enemy.attack_timer = 0.0
+            enemy.aggro_range = 20.0
+            game.enemies = [enemy]
+
+            hp_before = game.player.hp
+            game.update_enemies(0.05)
+            self.assertLess(game.player.hp, hp_before)
+            self.assertGreater(enemy.attack_timer, 0.0)
+            self.assertEqual(enemy.telegraph, "melee")
+
+    def test_melee_enemy_closes_and_hits_slowly_retreating_player(self) -> None:
+        """A melee enemy must land a hit on a player walking away slowly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            cx, cy = int(game.player.x), int(game.player.y)
+            self.open_patch(game, cx, cy, radius=12)
+            game.player.x, game.player.y = cx + 0.5, cy + 0.5
+            enemy = _make_melee_enemy(cx + 5.0, cy + 0.5, attack_range=1.05)
+            enemy.speed = 1.56
+            enemy.aggro_range = 20.0
+            game.enemies = [enemy]
+            game.familiars = []
+            game.projectiles = []
+
+            hp_before = game.player.hp
+            dt = 1.0 / 60.0
+            player_speed = 1.4  # slower than the enemy
+            for frame in range(300):
+                # Move the player directly away from the enemy at partial speed
+                # for the first 120 frames, then stop so the enemy can close.
+                if frame < 120:
+                    dx = game.player.x - enemy.x
+                    dy = game.player.y - enemy.y
+                    dist = math.hypot(dx, dy)
+                    if dist > 0.001:
+                        px, py = dx / dist, dy / dist
+                        game.move_actor(
+                            game.player,
+                            px * player_speed * dt,
+                            py * player_speed * dt,
+                        )
+                game.update_enemies(dt)
+                if game.player.hp < hp_before:
+                    break
+            self.assertLess(game.player.hp, hp_before)
 
 
 if __name__ == "__main__":

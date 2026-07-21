@@ -35,7 +35,7 @@ class SaveAndMetadataTests(unittest.TestCase):
             if game.story_intro_pending:
                 self.assertTrue(game.choose_story_relic_path(0))
             try:
-                self.assertEqual(arch_rogue.__version__, "4.4.7")
+                self.assertEqual(arch_rogue.__version__, "4.5")
                 self.assertIn("Cursed", RARITY_PROFILES)
                 self.assertIn("Twilight Shrine", SHRINE_HINTS)
                 self.assertIn("Moonlit Bargain", SECRET_HINTS)
@@ -44,7 +44,7 @@ class SaveAndMetadataTests(unittest.TestCase):
                 self.assertTrue(game.save_run())
                 saved = json.loads(game.save_path.read_text(encoding="utf-8"))
                 self.assertEqual(saved["version"], 5)
-                self.assertEqual(saved["release"], "4.4.7")
+                self.assertEqual(saved["release"], "4.5")
             finally:
                 pass
 
@@ -94,6 +94,81 @@ class SaveAndMetadataTests(unittest.TestCase):
                 self.assertTrue(
                     loaded.dungeon.is_floor(loaded.player.x, loaded.player.y)
                 )
+            finally:
+                pass
+
+    def test_restored_enemy_color_is_hashable_tuple(self) -> None:
+        # Regression: enemies are serialized via __dict__, so the color tuple
+        # becomes a JSON list on disk. Restoring via Enemy(**enemy) used to keep
+        # that list, which crashed draw_impact's overlay cache (the cache key is a
+        # tuple containing color, and a list makes it unhashable). The restore
+        # path must normalize color back to a tuple.
+        from arch_rogue.models import Enemy
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            save_path = Path(tmpdir) / "run.json"
+            game = Game(screen_size=(960, 540), headless=True, save_path=save_path)
+            try:
+                game.rng.seed(2026)
+                game.restart(ARCHETYPES[2])
+                # Force at least one enemy into the run so the save has a color
+                # field to round-trip. restart() leaves enemies empty until the
+                # floor is populated, so append one directly.
+                game.enemies.append(
+                    Enemy(
+                        "Cultist",
+                        "caster",
+                        4.5,
+                        4.5,
+                        18,
+                        18,
+                        2.4,
+                        6,
+                        7,
+                        5.0,
+                        1.2,
+                        color=(160, 70, 200),
+                    )
+                )
+                for enemy in game.enemies:
+                    self.assertIsInstance(enemy.color, tuple)
+                self.assertTrue(game.save_run())
+
+                loaded = Game(
+                    screen_size=(960, 540), headless=True, save_path=save_path
+                )
+                self.assertTrue(loaded.load_run())
+                self.assertTrue(loaded.enemies, "restored run should have enemies")
+                for enemy in loaded.enemies:
+                    self.assertIsInstance(
+                        enemy.color,
+                        tuple,
+                        "restored enemy.color must be a tuple, not a list",
+                    )
+                    # The exact failure mode of the crash: hashing a tuple that
+                    # contains enemy.color must succeed.
+                    hash(("death", 0, 0, 0, enemy.color))
+            finally:
+                pass
+
+    def test_add_impact_normalizes_list_color(self) -> None:
+        # Defensive: add_impact is called from many code paths. If any caller
+        # passes a list color, the ImpactEffect must still get a tuple so the
+        # draw_impact overlay cache key stays hashable.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(960, 540), headless=True, save_path=Path(tmpdir) / "run.json"
+            )
+            try:
+                game.rng.seed(2026)
+                game.restart(ARCHETYPES[2])
+                game.add_impact(0.0, 0.0, [255, 90, 70], ttl=0.3, kind="burst")
+                self.assertEqual(len(game.impact_effects), 1)
+                effect = game.impact_effects[0]
+                self.assertIsInstance(effect.color, tuple)
+                # The draw_impact overlay cache builds a tuple key containing
+                # effect.color; that key must be hashable.
+                hash((effect.kind, effect.archetype, 0, 0, 0, effect.color))
             finally:
                 pass
 

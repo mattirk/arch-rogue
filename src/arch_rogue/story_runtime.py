@@ -985,50 +985,6 @@ class StoryRuntimeMixin:
             lines.append(self.story_state.log[-1])
         return lines
 
-    def story_player_damage_bonus(self, spell: bool = False) -> float:
-        damage = self.story_effect_value("damage_bonus", 0.0, 0.35)
-        relic = self.story_effect_value("relic_power", 0.0, 0.35)
-        relic_weight = 1.0 if spell else 0.6
-        return min(0.55, damage + relic * relic_weight)
-
-    def apply_story_player_damage(self, damage: int, spell: bool = False) -> int:
-        bonus = self.story_player_damage_bonus(spell=spell)
-        if bonus <= 0:
-            return max(1, damage)
-        return max(1, int(round(damage * (1.0 + bonus))))
-
-    def apply_story_blood_price(self, reason: str) -> int:
-        price = self.story_effect_value("blood_price", 0.0, 0.35)
-        if price <= 0 or self.player.hp <= 1:
-            return 0
-        cost = max(
-            1,
-            min(10, int(round(self.player.max_hp * (0.015 + price * 0.18)))),
-        )
-        actual = min(cost, self.player.hp - 1)
-        if actual <= 0:
-            return 0
-        self.player.hp -= actual
-        self.run_stats.damage_taken += actual
-        self.floaters.append(
-            FloatingText(
-                f"{reason.title()} blood price -{actual}",
-                self.player.x,
-                self.player.y - 0.55,
-                self.story_state.accent if self.story_state else (190, 60, 85),
-                ttl=1.0,
-            )
-        )
-        self.add_impact(
-            self.player.x,
-            self.player.y,
-            self.story_state.accent if self.story_state else (190, 60, 85),
-            ttl=0.36,
-            radius=0.42,
-            kind="blood",
-        )
-        return actual
-
     def resolve_unanswered_story_beat(self) -> str:
         if self.story_state is None:
             return ""

@@ -33,14 +33,36 @@ MenuRow = tuple[str, str, str]
 
 class MenuStateOverlayMixin:
     def draw_state_overlay(self) -> None:
-        with self.g.fitted_ui_layout((960, 540)):
-            self._draw_state_overlay_fitted()
+        """Draw the full death/victory overlay (background tint + content).
 
-    def _draw_state_overlay_fitted(self) -> None:
+        The mobile frame loop splits this into :meth:`draw_state_overlay_background`
+        (full-screen red/gold tint, drawn to the root display before the safe-area
+        render target) and :meth:`draw_state_overlay_content` (panels and stats,
+        drawn inside the safe area) so the tint covers cutout/notch areas too.
+        This single-call entry point is kept for tests and desktop callers that
+        draw the overlay in one pass.
+        """
+        self.draw_state_overlay_background()
+        self.draw_state_overlay_content()
+
+    def draw_state_overlay_background(self) -> None:
+        """Full-screen blood-red / gold tint behind the death-victory summary.
+
+        On mobile this is drawn to the root display (before the safe-area render
+        target clips content) so the tint stretches edge-to-edge like the world
+        viewport instead of only covering the safe area.
+        """
+        self._draw_state_overlay_background()
+
+    def draw_state_overlay_content(self) -> None:
+        """Panels, title, crest, and run stats on top of the background tint."""
+        with self.g.fitted_ui_layout((960, 540)):
+            self._draw_state_overlay_content()
+
+    def _draw_state_overlay_background(self) -> None:
         width, height = self.screen.get_size()
         victory = self.g.state == "victory"
         color = (214, 168, 92) if victory else (176, 48, 44)
-        title = "Dungeon Cleared" if victory else "You Died"
 
         # Full-screen colored dimming over the world — blood red for death, gold for victory.
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
@@ -57,6 +79,12 @@ class MenuStateOverlayMixin:
             pygame.Rect(-width // 4, -height // 3, width * 3 // 2, height * 4 // 3),
         )
         self.screen.blit(wash, (0, 0))
+
+    def _draw_state_overlay_content(self) -> None:
+        width, height = self.screen.get_size()
+        victory = self.g.state == "victory"
+        color = (214, 168, 92) if victory else (176, 48, 44)
+        title = "Dungeon Cleared" if victory else "You Died"
 
         unlock_note = (
             " Hell difficulty is now unlocked in Options."
@@ -75,10 +103,22 @@ class MenuStateOverlayMixin:
             else ""
         )
 
-        panel_w = min(width - 64, self.u(760))
+        panel_w = min(width - 64, self.u(900))
         panel_h = min(height - 80, self.u(490))
         panel = pygame.Rect(
             (width - panel_w) // 2, (height - panel_h) // 2, panel_w, panel_h
+        )
+        # Opaque base so the red death tint stays behind the panel and does not
+        # bleed through the nine-slice asset's transparent corners — the tint
+        # is meant for the background only. Use a rounded rect so the background
+        # matches the panel asset's corner shape and avoids sharp triangular
+        # artifacts at the transparent corner tips.
+        panel_radius = self.u(10)
+        pygame.draw.rect(
+            self.screen,
+            self.PANEL_INK,
+            panel,
+            border_radius=panel_radius,
         )
         # Draw the panel on top of the red overlay so text stays readable.
         # Use a neutral accent for the body so the stone panel reads as a distinct
@@ -217,12 +257,15 @@ class MenuStateOverlayMixin:
     ) -> tuple[pygame.Rect, list[tuple[str, str, pygame.Rect, str, pygame.Rect]]]:
         """Draw one section with deliberate gutters and aligned value edges."""
         # Fill an opaque base so the red death overlay does not bleed through
-        # the nine-slice inset asset's semi-transparent edges.
+        # the inset panel's transparent corners. Use a rounded rect so the
+        # background matches the inset panel's corner shape and avoids sharp
+        # triangular artifacts at the transparent corner tips.
+        radius = max(2, self.u(7))
         pygame.draw.rect(
             self.screen,
             self.PANEL_INK,
             rect,
-            border_radius=max(2, self.u(7)),
+            border_radius=radius,
         )
         safe, _used_asset = self.inset_panel(rect, accent, alpha=255)
         if safe.width <= 0 or safe.height <= 0:

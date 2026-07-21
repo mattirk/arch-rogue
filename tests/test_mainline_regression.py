@@ -131,9 +131,9 @@ class DesktopDeterminismTests(unittest.TestCase):
     # before the 4.3.17 merge. Any drift in desktop render output fails the
     # test; update these constants only after intentionally changing rendering
     # and recording the new baseline.
-    TITLE_HASH = "230c6f00c4a8e43491cf5262aa0e79bd19934a18f48646a8a8d39df48c67b895"
-    GAMEPLAY_HASH = "cd27847e61c02908fff2eb2942c617bdc62a6c31c4cbf787478b93b919c57182"
-    CROWD_HASH = "3f8dcfdcb78edbbfa38dc60a06758a78aaf6a98441333e865aeaefc652a029c2"
+    TITLE_HASH = "7b718ed26671705ed2f5b474c1452f11b058dc2285f1c6f45cd737168efcbb3e"
+    GAMEPLAY_HASH = "b65a37b73562a4ad226412d06b22b93af0ef35fe7c4a26473aaec8c53a457243"
+    CROWD_HASH = "f7511a18b057fba05ae676471841459c7e7bdc6e926ae52928626954966b7bfb"
 
     def test_title_render_is_deterministic_and_matches_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -17,6 +17,7 @@ from arch_rogue.content import (  # noqa: E402
 )
 from arch_rogue.game import Game  # noqa: E402
 from arch_rogue.models import Enemy, Item  # noqa: E402
+from arch_rogue.combat.damage import DamageContext  # noqa: E402
 
 
 class AffixBuild310Tests(unittest.TestCase):
@@ -88,10 +89,12 @@ class AffixBuild310Tests(unittest.TestCase):
             before_hp = game.player.hp
 
             game.damage_enemy(
-                enemy,
-                20,
-                knockback_from=(1.0, 0.0),
-                damage_type="arcane",
+                DamageContext(
+                    target=enemy,
+                    amount=20,
+                    damage_type="arcane",
+                    knockback_from=(1.0, 0.0),
+                )
             )
 
             self.assertIn("burning", enemy.statuses)

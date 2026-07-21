@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from arch_rogue.content import ARCHETYPES, RARITY_PROFILES, DISCIPLINE_UPGRADES
 from arch_rogue.game import Game
 from arch_rogue.models import Enemy, Item
+from arch_rogue.combat.damage import DamageContext
 
 
 class CombatSkillsLoot22Tests(unittest.TestCase):
@@ -232,12 +233,14 @@ class CombatSkillsLoot22Tests(unittest.TestCase):
 
                 before_hp = game.player.hp
                 game.damage_enemy(
-                    enemy,
-                    20,
-                    knockback_from=(1.0, 0.0),
-                    damage_type="physical",
-                    status_effect="poisoned",
-                    status_duration=2.0,
+                    DamageContext(
+                        target=enemy,
+                        amount=20,
+                        damage_type="physical",
+                        knockback_from=(1.0, 0.0),
+                        status_effect="poisoned",
+                        status_duration=2.0,
+                    )
                 )
 
                 self.assertEqual(enemy.hp, 70)
@@ -245,7 +248,10 @@ class CombatSkillsLoot22Tests(unittest.TestCase):
                 self.assertGreater(game.player.hp, before_hp)
 
                 game.damage_enemy(
-                    enemy, 20, knockback_from=(1.0, 0.0), damage_type="shadow"
+                    DamageContext(
+                        target=enemy, amount=20, damage_type="shadow",
+                        knockback_from=(1.0, 0.0),
+                    )
                 )
                 self.assertLessEqual(enemy.hp, 46)
             finally:

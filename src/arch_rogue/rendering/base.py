@@ -323,6 +323,16 @@ class RenderingBaseMixin:
             with self.mobile_full_render_target():
                 self.draw_quest_cutscene_overlay()
         else:
+            # The death/victory red tint must cover the full display (including
+            # cutout/notch areas), not just the safe area. Draw the background
+            # to the root screen before the safe-area render target clips the
+            # overlay content, so the tint stretches edge-to-edge like the world
+            # viewport. The stat panels are then drawn inside the safe area on
+            # top of the tint, without red bleeding through them.
+            state_overlay_active = self.state != "playing"
+            if state_overlay_active:
+                self.draw_state_overlay_background()
+
             with self.mobile_safe_render_target():
                 if self.story_intro_pending:
                     self.draw_story_intro_overlay()
@@ -334,8 +344,8 @@ class RenderingBaseMixin:
                     self.draw_character_menu()
                 if self.show_help:
                     self.draw_help_overlay()
-                if self.state != "playing":
-                    self.draw_state_overlay()
+                if state_overlay_active:
+                    self.draw_state_overlay_content()
         self._draw_mobile_back_button()
         self.draw_screen_flash()
         if performance is not None:

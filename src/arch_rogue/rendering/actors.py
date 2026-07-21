@@ -574,6 +574,37 @@ class RenderingActorMixin:
             )
         self.screen.blit(overlay, overlay.get_rect(center=(sx, sy - height // 2)))
 
+    def draw_windup_telegraph(self, enemy: Enemy, sx: int, sy: int) -> None:
+        """Swing telegraph: a brief fading ring punctuating an enemy melee/cast.
+
+        Driven by ``enemy.windup_time`` (set in ``enemy_melee`` / ``enemy_cast``,
+        decayed in ``update_enemies``). The attack itself lands immediately —
+        4.4.11 pinned in-range melee to the eligible frame, and the test suite
+        pins that contract — so this is a readability indicator, not a damage
+        delay. Color follows the enemy's damage type so the telegraph reads as
+        the same flavor as the hit.
+        """
+        ttl = enemy.windup_time
+        if ttl <= 0.0:
+            return
+        duration = max(0.01, enemy.windup_duration)
+        life = max(0.0, min(1.0, ttl / duration))
+        color = self.damage_type_color(enemy.damage_type)
+        # Expanding ring: grows outward as the swing follows through, fading
+        # with the remaining telegraph time.
+        base = 10 * WORLD_SCALE
+        radius = int(base + (1.0 - life) * 10 * WORLD_SCALE)
+        size = (radius * 2 + 8 * WORLD_SCALE, radius * 2 + 8 * WORLD_SCALE)
+        overlay = pygame.Surface(size, pygame.SRCALPHA)
+        pygame.draw.circle(
+            overlay,
+            (*color, int(120 * life)),
+            overlay.get_rect().center,
+            radius,
+            max(1, WORLD_SCALE * 2),
+        )
+        self.screen.blit(overlay, overlay.get_rect(center=(sx, sy)))
+
     def draw_garden_heal_glow(self, sx: int, sy: int, width: int, height: int) -> None:
         # 4.2: greenish aura that fades in around the player after each garden
         # room healing tick. ``garden_heal_glow`` is a transient timer set by
@@ -958,6 +989,7 @@ class RenderingActorMixin:
             getattr(self, "enemy_hit_flashes", {}).get(id(enemy), 0.0),
             enemy.color,
         )
+        self.draw_windup_telegraph(enemy, sx, sy)
         bar_w = (
             96
             if big_boss

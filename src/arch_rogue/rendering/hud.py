@@ -2577,6 +2577,12 @@ class RenderingHudMixin:
     def draw_state_overlay(self) -> None:
         self.menus.draw_state_overlay()
 
+    def draw_state_overlay_background(self) -> None:
+        self.menus.draw_state_overlay_background()
+
+    def draw_state_overlay_content(self) -> None:
+        self.menus.draw_state_overlay_content()
+
     def run_summary_lines(self) -> list[str]:
         minutes = int(self.elapsed // 60)
         seconds = int(self.elapsed % 60)

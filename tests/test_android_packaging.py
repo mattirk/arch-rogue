@@ -178,6 +178,38 @@ test ! -e "$sdk"
             )
 
 
+    def test_build_spec_requires_branded_presplash(self) -> None:
+        # 4.4.8: the APK loading screen must use the Arch Rogue title logo, not
+        # python-for-android's default SDL splash.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            spec = Path(tmpdir) / "buildozer.spec"
+            text = (ROOT / "buildozer.spec").read_text(encoding="utf-8")
+            text = text.replace(
+                "presplash.filename = src/arch_rogue/assets/sprites/menus/title_logo.png\n",
+                "",
+            )
+            spec.write_text(text, encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValidationError,
+                "presplash.filename must point at the Arch Rogue title logo",
+            ):
+                validate_build_spec(spec, ROOT)
+
+    def test_build_spec_rejects_missing_presplash_asset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            spec = Path(tmpdir) / "buildozer.spec"
+            text = (ROOT / "buildozer.spec").read_text(encoding="utf-8")
+            text = text.replace(
+                "presplash.filename = src/arch_rogue/assets/sprites/menus/title_logo.png",
+                "presplash.filename = android/presplash.png",
+            )
+            spec.write_text(text, encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValidationError,
+                "presplash.filename asset is missing",
+            ):
+                validate_build_spec(spec, ROOT)
+
     def test_build_spec_rejects_blank_android_permission(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             spec = Path(tmpdir) / "buildozer.spec"

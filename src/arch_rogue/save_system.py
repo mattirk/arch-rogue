@@ -75,6 +75,10 @@ _TRANSIENT_ENEMY_FIELDS = frozenset(
         "pending_locomotion_scale",
         "pending_locomotion_anim_scale",
         "sprite_direction",
+        "knockback_vx",
+        "knockback_vy",
+        "windup_time",
+        "windup_duration",
     )
 )
 
@@ -609,7 +613,22 @@ class SaveLoadMixin:
             "armor": self.item_from_dict(equipment.get("armor")),
         }
 
-        self.enemies = [Enemy(**enemy) for enemy in data.get("enemies", [])]
+        # JSON serializes the Enemy color tuple as a list, so Enemy(**enemy)
+        # would store a list back into ``enemy.color``. That breaks hashing
+        # downstream (e.g. the draw_impact overlay cache key tuples a color in),
+        # so normalize color (and any stray list fields) back to tuples here.
+        restored_enemies: list[Enemy] = []
+        for enemy in data.get("enemies", []):
+            enemy_dict = dict(enemy)
+            color = enemy_dict.get("color")
+            if isinstance(color, list):
+                enemy_dict["color"] = (
+                    int(color[0]),
+                    int(color[1]),
+                    int(color[2]),
+                )
+            restored_enemies.append(Enemy(**enemy_dict))
+        self.enemies = restored_enemies
         self.items = [
             item
             for item in (self.item_from_dict(item) for item in data.get("items", []))

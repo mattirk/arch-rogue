@@ -28,6 +28,7 @@ from arch_rogue.constants import (
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.models import Enemy, Item, Tile
+from arch_rogue.combat.damage import DamageContext
 
 
 def _make_enemy(x: float, y: float, hp: int = 220, kind: str = "melee") -> Enemy:
@@ -430,7 +431,7 @@ class TimeSkipTests(unittest.TestCase):
             before = game.player.class_skill_timer
             # Kill the enemy directly; kill_enemy applies the refund.
             enemy.hp = 1
-            game.damage_enemy(enemy, 5, knockback_from=(0.0, 0.0))
+            game.damage_enemy(DamageContext(target=enemy, amount=5, knockback_from=(0.0, 0.0)))
             self.assertEqual(game.enemies, [])
             self.assertLess(game.player.class_skill_timer, before)
 
@@ -444,7 +445,7 @@ class TimeSkipTests(unittest.TestCase):
             before = game.player.class_skill_timer
             # No Time Skip window: no refund.
             enemy.hp = 1
-            game.damage_enemy(enemy, 5, knockback_from=(0.0, 0.0))
+            game.damage_enemy(DamageContext(target=enemy, amount=5, knockback_from=(0.0, 0.0)))
             self.assertEqual(game.enemies, [])
             self.assertAlmostEqual(game.player.class_skill_timer, before, places=4)
 

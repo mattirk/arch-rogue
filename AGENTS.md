@@ -204,13 +204,8 @@ Example categories:
 
 Always update CHANGELOG.md content and pyproject.toml version number when completing milestones!
 
-### 4.4 Web page & release
+### 4.5.x Combat module refactoring - post-release fixes
 
-#### 4.4.x Another batch of Android optimization & more
-
-- General optimizations, remember to bump versions after optimizations
-- You died screen needs nice looking panels where stats are displayed
-- Pause and disable movement when shopkeeper menu is open
 
 ### Backlog
 
@@ -225,3 +220,4 @@ Always update CHANGELOG.md content and pyproject.toml version number when comple
 - When in Return mode, spirit beast dashes along Ranger when using dash (action skill 4)
 - Dedicated room decorations for bosses (floor, walls, props). Generate new via Pixellab for bosses up to level 10 and final boss.
 - Dash: extended dash/blink skill (skill 4) when key pressed long, character starts "running" and moves faster. This consumes stamina really fast and stops once stamina is spent. When "running" mode activated, dash/blink suffers 1min cooldown. To be used as last resort to run away.
+- Gardens should heal player more slowly. Slow the healing "tick" -> every 5 seconds

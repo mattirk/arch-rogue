@@ -43,16 +43,8 @@ BOSS_HIT_RADIUS = 0.64
 # 4-tile bosses (2x2 footprint) use a much larger body radius so melee swings,
 # projectiles, and movement collision all respect the hulking silhouette.
 BOSS_FOOTPRINT = 2
-BOSS_FOOTPRINT_HIT_RADIUS = 0.92
-BOSS_FOOTPRINT_MOVE_RADIUS = 0.82
 PLAYER_MELEE_RANGE = 1.55
 PLAYER_MELEE_ARC_DOT = 0.05
-# Fixed player movement speed in tiles per second. Decoupled from the
-# `player.speed` stat so movement is always constant regardless of archetype,
-# discipline-tree speed bonuses, or Haste Shrine buffs. `player.speed` is retained
-# as a character stat for future affix-driven movement bonuses (milestone 3.4)
-# but no longer drives base locomotion or the walk-cycle animation rate.
-PLAYER_MOVE_SPEED = 2.8
 PLAYER_PROJECTILE_HIT_RADIUS = 0.54
 ENEMY_PROJECTILE_HIT_RADIUS = 0.52
 WALK_ANIMATION_RATE = 0.8
@@ -68,12 +60,6 @@ LIGHT_LEVEL_SIGHT_RADIUS = DARK_LEVEL_LIGHT_RADIUS
 # WALK_CYCLE_FRAMES is the number of cached frames per full stride cycle.
 WALK_CYCLE_FRAMES = 12
 WALK_FRAME_RATE = 8.0
-# Walk-cycle cadence is scaled by movement speed so faster units take faster
-# steps, but clamped to a floor/ceiling so slow units never freeze into a
-# stuttering handful of discrete frames and very fast units (elites, haste)
-# don't blur. Effective range gives ~1.2..1.9 stride cycles per second.
-WALK_ANIM_SPEED_FLOOR = 2.2
-WALK_ANIM_SPEED_CEIL = 3.6
 # Runtime movement modifiers (analog creep, snares, Time Skip, final approach
 # steps) may lower cadence further, but never below this fraction of the base
 # cycle so discrete authored frames do not turn into occasional visible ticks.

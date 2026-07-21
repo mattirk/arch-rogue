@@ -13,14 +13,14 @@ package.name = archrogue
 
 # `tools/build_android.sh` rewrites these from pyproject.toml at build time.
 package.domain = org.archrogue
-package.version = 4.4.7
+package.version = 4.4.11
 
 source.dir = src
 source.include_exts = py,png,json,txt
 # Never package host-generated metadata/bytecode from an editable install.
 source.exclude_dirs = __pycache__,arch_rogue.egg-info
 
-version = 4.4.7
+version = 4.4.11
 
 # Landscape-only: the manifest locks orientation so the safe-area layout is the
 # only one the runtime sees.
@@ -30,6 +30,13 @@ orientation = landscape
 # Android resources and references it from the manifest's android:icon, so the
 # game icon shows as the installed app icon on the launcher/home screen.
 icon.filename = src/arch_rogue/assets/icons/icon_512.png
+
+# Loading screen shown while the Python interpreter bootstraps. Uses the
+# authored ARCH <diamond> ROGUE title lockup so the APK opens with the branded
+# logo instead of python-for-android's default SDL splash. The dark presplash
+# color fills the screen behind the centered transparent logo.
+presplash.filename = src/arch_rogue/assets/sprites/menus/title_logo.png
+presplash.color = #0a0a0f
 
 # The local recipe named `pygame` cross-compiles pygame-ce 2.5.7. Do not put
 # `pygame-ce` here: p4a has no recipe by that name and would bundle a host wheel.

@@ -312,6 +312,21 @@ def validate_build_spec(spec_path: Path, project_root: Path | None = None) -> tu
     commit = app.get("p4a.commit", "").strip().lower()
     if not commit or commit in {"master", "develop"}:
         raise ValidationError("p4a.commit must pin an immutable release commit")
+
+    # 4.4.8: the APK loading screen must show the branded Arch Rogue title logo
+    # instead of python-for-android's default SDL splash. The presplash image is
+    # resolved relative to the project root (same convention as icon.filename).
+    presplash = app.get("presplash.filename", "").strip()
+    if not presplash:
+        raise ValidationError(
+            "buildozer presplash.filename must point at the Arch Rogue title "
+            "logo so the APK loading screen is branded, not the default splash"
+        )
+    presplash_path = root / presplash
+    if not presplash_path.is_file():
+        raise ValidationError(
+            f"buildozer presplash.filename asset is missing: {presplash_path}"
+        )
     return abis
 
 

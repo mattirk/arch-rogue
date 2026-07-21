@@ -795,6 +795,20 @@ class Enemy:
     )
     # Last rendered authored-sprite direction; transient hysteresis anchor.
     sprite_direction: str = field(default="", repr=False, compare=False)
+    # Knockback velocity (tiles/sec) imparted by incoming hits. Consumed and
+    # exponentially decayed in ``update_enemies`` so shoves are framerate-
+    # independent, respect collision, and apply even to stunned/out-of-aggro
+    # enemies. Transient -- not saved.
+    knockback_vx: float = field(default=0.0, repr=False, compare=False)
+    knockback_vy: float = field(default=0.0, repr=False, compare=False)
+    # Swing telegraph: seconds remaining on the just-committed melee/cast swing
+    # visual. Set in ``enemy_melee``/``enemy_cast`` when the attack fires and
+    # decayed each frame; ``draw_windup_telegraph`` renders it. The attack itself
+    # still lands immediately (4.4.11 pinned in-range melee to hit on the
+    # eligible frame), so this is a readability indicator, not a damage delay.
+    # Transient -- not saved.
+    windup_time: float = field(default=0.0, repr=False, compare=False)
+    windup_duration: float = field(default=0.0, repr=False, compare=False)
 
     @property
     def alive(self) -> bool:
