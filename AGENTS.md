@@ -339,4 +339,4 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
   - When player and antagonist clash in the middle, make them exchange couple of blows
 - In Archetype selection screen, make the panels containing Archetype names (row.png) a bit more compact in vertical sense (15% for now), keep spacing / alignment clean
 - On mobile, make the stat container (hp, mana, stamina) fill from bottom to top. Top and bottom ends of the container are a bit more narrow than the middle so take that into account.
-- I get "App not installed" error on Android when trying to update app in place
+- Draw distance on mobile is a bit too short (concerning walls, floors, etc.). On desktop this seems not to be limited at all (which is good). Sight radius (or light radius) is good both on desktop and mobile and shoud not be changed. Extend mobile draw distance a bit (1 tile per direction should be enough).

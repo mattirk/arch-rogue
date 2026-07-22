@@ -70,16 +70,13 @@ downgrade can recover it.
 
 ## Performance and render quality
 
-Android defaults to **Performance** render quality. The game keeps the device's
-full landscape aspect ratio but renders at no more than 540 pixels high, uploads
-that smaller logical framebuffer, and lets SDL's accelerated GLES2 renderer scale
-it to the physical display. The startup path rejects SDL's software renderer,
-tries the packaged `opengles2` and `opengles` drivers, and only permits automatic
-software fallback so a vendor failure remains launchable and visible in telemetry.
-This avoids CPU-rendering every pixel of a 1080p/1440p phone or tablet while
-preserving touch coordinates and safe-area insets.
-
-The first Options row cycles the available tiers:
+Android defaults to **Native** render quality, rendering at the device's full
+physical resolution. The game keeps the device's full landscape aspect ratio
+and lets SDL's accelerated GLES2 renderer scale the logical framebuffer to the
+physical display. The startup path rejects SDL's software renderer, tries the
+packaged `opengles2` and `opengles` drivers, and only permits automatic
+software fallback so a vendor failure remains launchable and visible in
+telemetry. The first Options row cycles to capped tiers for slower devices:
 
 - **Performance · 540p cap** — supported phone baseline; mobile lighting and
   normal-map detail are tuned for the lowest steady rendering cost.
@@ -90,18 +87,34 @@ The first Options row cycles the available tiers:
   quarter-resolution lighting as the capped tiers; the cheaper local-tint path
   remains only for software-renderer or context-loss fallback.
 
-Older mobile options files migrate to Performance and disable generated normal
-maps once. You can re-enable **Lighting detail** explicitly after confirming the
-device remains smooth.
+Option files from before 4.3.0 (schema < 6) migrate to Performance and disable
+generated normal maps once to avoid a cold ARM cache spike. You can re-enable
+**Lighting detail** explicitly after confirming the device remains smooth.
 
-The 4.3.9 beta displays a small diagnostic line at the bottom of the game view:
-`PERF <fps> <frame ms> | W <world ms> H <HUD ms> F <flip ms>`. It also emits a
-full phase report every four seconds. Capture title-screen and active-gameplay
-samples with:
+The on-device overlay shows a compact two-line summary at the bottom of the
+game view:
+
+```
+PERF <fps> <frame_ms> | <logical_size> <renderer> A2:<alpha> N:<neon>
+T <tick> U <update> W <world> H <hud> F <flip> A <audio> | L+<loads> B+<builds>
+```
+
+Every four seconds the game emits a full `ARCH_ROGUE_PERF` report through logcat.
+Since 4.5.3 the report includes interval frame-time percentiles (p50/p95/max),
+relative hitch counts, and the worst frame's dominant phase and detail cause
+(reveals, rebuilds, recenters, patches, sprite loads/builds). Capture
+title-screen and active-gameplay samples with:
 
 ```bash
 adb logcat -c
 adb logcat | grep ARCH_ROGUE_PERF
+```
+
+For a live rolling dashboard with FPS history, per-phase cost bars, jank
+distribution, and worst-frame attribution, use the profiler tool:
+
+```bash
+python tools/profile_adb_live.py --serial <device_serial> --window 8 --no-color --raw
 ```
 
 The first `ARCH_ROGUE_PERF display` line must show `accelerated=yes` and normally
