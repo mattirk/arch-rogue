@@ -219,6 +219,10 @@ Left stick or D-pad moves, the right stick aims, face buttons trigger combat abi
 
 The Android beta provides a landscape-only build with the same gameplay. Touch and drag inside the central viewport to move/aim, tap the six skill badges on the right rail, use the left rail for HP/MP/Stamina and Inventory/Character/Quest/Help, and use the on-screen Back/arrows/Select buttons in menus. Android Back closes the top overlay or opens the pause sheet. See `docs/android-beta.md` for install, upgrade, build, and known-issue notes; releases from 4.5.4 onward use one persistent APK signer so future versions can update in place.
 
+### Multiplayer (two-player co-op)
+
+**Two will descend** on the title screen starts a cooperative run: one player hosts and shares a 4-character run code, the other joins with it, the host admits them at the lobby gate, and both descend the same dungeon (host-authoritative simulation, TLS to the relay server with certificate verification by default). Server host/port/encryption live in Options → Multiplayer; a stateless relay server ships in `server/`. See `docs/multiplayer.md` for the player guide, server operations (including nginx TLS termination and hardening), architecture, and the full wire-protocol specification.
+
 ## Goal
 
 Explore 10 dungeon depths, survive enemies and traps, identify and equip loot, use shrines wisely, resolve or ignore story guest dilemmas, and reach the exit stairs. Press `E` on stairs to descend. On depth 10, defeat the story-marked gate tyrant before using the stairs to complete the run.
@@ -231,7 +235,7 @@ In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from t
 - Music and sound effects are procedural/static cues; there is no hand-authored soundtrack asset pipeline yet.
 - The packaged high-resolution sprite set increases wheel and web-bundle size; legacy graphics remains available for constrained systems.
 - Save files are local JSON and are not cloud-synced.
-- Single-player only; there is no multiplayer.
+- Multiplayer is two-player co-op only (desktop and Android); web multiplayer is not available because pygbag cannot open raw TCP sockets.
 - The experimental web build exists in `web/` but is not part of the default test run.
 
 ## License
