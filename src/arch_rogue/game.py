@@ -912,6 +912,8 @@ class Game(
                         self.state = "title"
                     elif self.state == "controls":
                         self.state = "options"
+                    elif self.state == "mp_consent":
+                        self.mp_consent_exit()
                     elif self.state == "mp_setup":
                         self.mp_back_from_setup_step()
                     elif self.state == "mp_lobby":
@@ -971,6 +973,23 @@ class Game(
                     elif event.key in (pygame.K_h, pygame.K_SLASH):
                         self.state = "about"
                         self.licenses_scroll = 0
+                elif self.state == "mp_consent":
+                    if event.key in (pygame.K_BACKSPACE, pygame.K_x):
+                        self.mp_consent_exit()
+                    elif event.key in (
+                        pygame.K_UP,
+                        pygame.K_DOWN,
+                        pygame.K_LEFT,
+                        pygame.K_RIGHT,
+                        pygame.K_w,
+                        pygame.K_s,
+                    ):
+                        self.mp_consent_cursor = (self.mp_consent_cursor + 1) % 2
+                    elif event.key in (pygame.K_RETURN, pygame.K_e):
+                        if self.mp_consent_cursor == 0:
+                            self.mp_consent_agree()
+                        else:
+                            self.mp_consent_exit()
                 elif self.state == "mp_setup":
                     if event.key == pygame.K_BACKSPACE:
                         self.mp_back_from_setup_step()

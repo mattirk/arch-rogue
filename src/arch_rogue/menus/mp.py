@@ -103,6 +103,143 @@ class MenuMultiplayerMixin:
             ) + self.u(4)
         return y
 
+    def draw_mp_consent(self) -> None:
+        """Connection consent: shown before the first socket to a server.
+
+        Mirrors the other multiplayer frames; publishes its two action rows
+        through ``_mp_row_rects`` so mobile taps land on Agree / Exit.
+        """
+
+        panel, content = self.menu_frame(
+            "A Word Before the Gate",
+            "Multiplayer reaches beyond this machine",
+        )
+        g = self.g
+        if bool(getattr(g, "mp_server_tls", True)):
+            transport_text = (
+                "The connection is encrypted (TLS) and the server's "
+                "certificate is verified — that protects the wire, but it is "
+                "no absolute guarantee of who stands behind the server."
+            )
+            transport_color = self.MUTED
+        else:
+            transport_text = (
+                "Server encryption is OFF: traffic travels in plaintext. "
+                "Enable it in Options unless this is your own trusted server."
+            )
+            transport_color = self.WARNING
+        paragraphs: tuple[tuple[str, tuple[int, int, int]], ...] = (
+            (
+                "Arch Rogue is a hobby project, not professionally "
+                "maintained software. Use multiplayer at your own risk.",
+                self.TEXT,
+            ),
+            (
+                "You are about to connect to this server. There is no "
+                "guarantee of who operates or maintains it.",
+                self.TEXT,
+            ),
+            (transport_text, transport_color),
+            (
+                "Before proceeding, get familiar with the project: "
+                "https://github.com/mattirk/arch-rogue",
+                self.TEXT,
+            ),
+        )
+        endpoint = f"{g.mp_server_host}:{g.mp_server_port}"
+
+        # The Agree/Exit rows anchor to the panel bottom. Every consent
+        # paragraph must remain readable on the smallest windows, so the
+        # body font is the largest candidate whose fully wrapped text fits
+        # the space above the rows; nothing is ever silently clipped.
+        rows_height = min(self.u(112), max(72, content.height * 2 // 5))
+        rows_rect = pygame.Rect(
+            content.x,
+            content.bottom - rows_height,
+            content.width,
+            rows_height,
+        )
+        budget = rows_rect.y - self.u(4) - (content.y + self.u(2))
+        candidates = [
+            (g.font, self.u(8)),
+            (g.small_font, self.u(6)),
+            (g.tiny_font, 4),
+            (
+                self.fit_menu_font(
+                    g.tiny_font,
+                    max_height=12,
+                    max_width=content.width,
+                    minimum_size=9,
+                ),
+                2,
+            ),
+        ]
+        body_font, gap = candidates[-1]
+        line_gap = body_font.get_height() + 2
+        for candidate_font, candidate_gap in candidates:
+            candidate_line_gap = candidate_font.get_height() + 3
+            lines = sum(
+                len(self.wrap_text(text, candidate_font, content.width))
+                for text, _ in paragraphs
+            )
+            endpoint_font = candidate_font
+            total = (
+                lines * candidate_line_gap
+                + endpoint_font.get_height()
+                + (len(paragraphs) + 1) * candidate_gap
+            )
+            if total <= budget:
+                body_font, gap, line_gap = (
+                    candidate_font,
+                    candidate_gap,
+                    candidate_line_gap,
+                )
+                break
+        else:
+            endpoint_font = body_font
+
+        y = content.y + self.u(2)
+
+        def paragraph(text: str, color, top: int) -> int:
+            return self.draw_wrapped_text(
+                text,
+                body_font,
+                color,
+                pygame.Rect(
+                    content.x, top, content.width, max(1, rows_rect.y - top)
+                ),
+                line_gap=line_gap,
+            ) + gap
+
+        y = paragraph(*paragraphs[0], y)
+        self.draw_text(
+            endpoint,
+            endpoint_font,
+            self.accent(),
+            pygame.Rect(
+                content.x, y, content.width, endpoint_font.get_height() + 2
+            ),
+            align="center",
+        )
+        y += endpoint_font.get_height() + gap
+        y = paragraph(*paragraphs[1], y)
+        y = paragraph(*paragraphs[2], y)
+        paragraph(*paragraphs[3], y)
+        rows: list[MenuRow] = [
+            ("Enter", "I agree — open the gate", ""),
+            ("Backspace", "Exit", ""),
+        ]
+        rendered = self.draw_menu_rows(
+            rows,
+            rows_rect,
+            selected_index=int(getattr(g, "mp_consent_cursor", 0)) % 2,
+        )
+        g._mp_row_rects = tuple(rendered)
+        g._mp_entry_rect = None
+        self.draw_footer(
+            panel, "Up / Down select · Enter confirms · Backspace exits"
+        )
+
     def draw_mp_setup(self) -> None:
         step = getattr(self.g, "mp_setup_step", "name")
         subtitles = {

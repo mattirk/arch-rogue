@@ -390,6 +390,7 @@ class TwoGameFlowTests(unittest.TestCase):
         game.mp_server_host = "127.0.0.1"
         game.mp_server_port = self.port
         game.mp_server_tls = False  # the loopback relay speaks plain TCP
+        game._mp_consented_endpoint = ("127.0.0.1", self.port)
         return game
 
     def test_lobby_start_snapshot_intent_and_partner_left(self) -> None:
@@ -647,6 +648,7 @@ class HostAcceptGateTests(unittest.TestCase):
         game.mp_server_host = "127.0.0.1"
         game.mp_server_port = self.port
         game.mp_server_tls = False
+        game._mp_consented_endpoint = ("127.0.0.1", self.port)
         return game
 
     def test_decline_kicks_joiner_and_reopens_the_code(self) -> None:
@@ -719,6 +721,83 @@ class HostAcceptGateTests(unittest.TestCase):
             self.assertFalse(session.partner_pending_accept)
             self.assertEqual(session.partner_name, "Hosty")
             game.mp_session = None
+
+
+class ConsentGateTests(unittest.TestCase):
+    """The connection consent screen precedes the first socket per endpoint."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.harness = LoopbackServer()
+        cls.port = cls.harness.start()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.harness.stop()
+
+    def _make_unconsented_game(self, tmpdir: str) -> Game:
+        game = Game(
+            screen_size=(640, 360),
+            headless=True,
+            save_path=Path(tmpdir) / "run.json",
+        )
+        game.options_path = Path(tmpdir) / "options.json"
+        game.mp_player_name = "Wary"
+        game.mp_server_host = "127.0.0.1"
+        game.mp_server_port = self.port
+        game.mp_server_tls = False
+        return game
+
+    def test_hosting_shows_consent_before_any_socket(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_unconsented_game(tmpdir)
+            try:
+                game.state = "mp_setup"
+                game.mp_setup_step = "host_code"
+                game.mp_run_id = generate_run_id()
+                game.mp_begin_hosting()
+                self.assertEqual(game.state, "mp_consent")
+                self.assertIsNone(game.mp_client)
+                self.assertIsNone(game.mp_session)
+                # The screen renders headless and publishes Agree/Exit rows.
+                game.draw()
+                self.assertEqual(len(game._mp_row_rects), 2)
+                # Agreeing opens the session and reaches the lobby.
+                game.mp_consent_agree()
+                self.assertIsNotNone(game.mp_client)
+                _wait_until([game], lambda: game.state == "mp_lobby")
+                # Re-hosting on the same endpoint skips straight past consent.
+                game.mp_back_to_title()
+                game.state = "mp_setup"
+                game.mp_setup_step = "host_code"
+                game.mp_run_id = generate_run_id()
+                game.mp_begin_hosting()
+                self.assertNotEqual(game.state, "mp_consent")
+                self.assertIsNotNone(game.mp_client)
+            finally:
+                game.mp_shutdown(send_bye=False)
+
+    def test_exit_declines_without_connecting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_unconsented_game(tmpdir)
+            game.state = "mp_setup"
+            game.mp_setup_step = "join_code"
+            game.mp_submit_join_code(generate_run_id())
+            self.assertEqual(game.state, "mp_consent")
+            self.assertIsNone(game.mp_client)
+            game.mp_consent_exit()
+            self.assertEqual(game.state, "mp_setup")
+            self.assertEqual(game.mp_setup_step, "role")
+            self.assertIsNone(game.mp_client)
+            self.assertTrue(game.mp_consent_required())
+
+    def test_endpoint_change_requires_fresh_consent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_unconsented_game(tmpdir)
+            game._mp_consented_endpoint = ("127.0.0.1", self.port)
+            self.assertFalse(game.mp_consent_required())
+            game.mp_server_host = "other.example"
+            self.assertTrue(game.mp_consent_required())
 
 
 class HostileDataTests(unittest.TestCase):
@@ -837,6 +916,7 @@ class MobileMultiplayerTests(unittest.TestCase):
         game.mp_server_host = "127.0.0.1"
         game.mp_server_port = 1  # loopback, nothing listens: tap tests only
         game.mp_server_tls = False
+        game._mp_consented_endpoint = ("127.0.0.1", 1)
         return game
 
     def test_mp_setup_role_rows_are_tappable(self) -> None:

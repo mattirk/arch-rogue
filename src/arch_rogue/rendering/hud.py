@@ -2878,6 +2878,9 @@ class RenderingHudMixin:
     def draw_archetype_select(self) -> None:
         self.menus.draw_archetype_select()
 
+    def draw_mp_consent(self) -> None:
+        self.menus.draw_mp_consent()
+
     def draw_mp_setup(self) -> None:
         self.menus.draw_mp_setup()
 

@@ -320,6 +320,7 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
   - Idea: Show the user default server address e.g "play.ar.game" and force user to type it to connect -> show warning on top
 - Joinint guest does not see action animations e.g time skip or shield bash (or enemies' actions) 
 - We need dying animations for all archetypes
+- We need Pixellab generated glyphs for all alphabets and numbers in multiplayer code and place nicely in panel in the UI
 
 ### Backlog
 

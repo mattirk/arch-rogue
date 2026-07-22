@@ -1008,6 +1008,8 @@ class InputMixin:
             return False
         if self.state == "archetype_select":
             return self._dispatch_archetype(cmd)
+        if self.state == "mp_consent":
+            return self._dispatch_mp_consent(cmd)
         if self.state == "mp_setup":
             return self._dispatch_mp_setup(cmd)
         if self.state == "mp_lobby":
@@ -1073,6 +1075,9 @@ class InputMixin:
         if self.state == "archetype_select":
             self.state = "title"
             return True
+        if self.state == "mp_consent":
+            self.mp_consent_exit()
+            return True
         if self.state == "mp_setup":
             self.mp_back_from_setup_step()
             return True
@@ -1105,6 +1110,18 @@ class InputMixin:
             if self.save_exists():
                 self.title_selection = self.TITLE_RESUME_ROW
                 self._activate_title_selection()
+            return True
+        return False
+
+    def _dispatch_mp_consent(self, cmd: str) -> bool:
+        if cmd in (Command.UP, Command.DOWN, Command.LEFT, Command.RIGHT):
+            self.mp_consent_cursor = (self.mp_consent_cursor + 1) % 2
+            return True
+        if cmd == Command.CONFIRM:
+            if self.mp_consent_cursor == 0:
+                self.mp_consent_agree()
+            else:
+                self.mp_consent_exit()
             return True
         return False
 

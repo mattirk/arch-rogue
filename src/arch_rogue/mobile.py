@@ -2339,6 +2339,17 @@ class MobileMixin:
                         self.character_menu_hovered_node = str(key)
                         self.choose_discipline(str(key))
                         return True
+        elif context == "mp_consent":
+            index = self._rect_index(getattr(self, "_mp_row_rects", ()), local)
+            if index == 0:
+                self.mp_consent_cursor = 0
+                self.mp_consent_agree()
+                return True
+            if index == 1:
+                self.mp_consent_cursor = 1
+                self.mp_consent_exit()
+                return True
+            return False
         elif context == "mp_setup":
             return self._handle_mp_setup_tap(local)
         elif context == "mp_lobby":

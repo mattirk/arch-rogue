@@ -177,6 +177,12 @@ class NetMixin:
         self.mp_status = ""
         self.mp_title_notice = ""
         self.mp_partner_pause_reason = ""
+        # 4.7: connection consent gate. Consent is per-launch, per-endpoint
+        # and never persisted: every session reaffirms it before the first
+        # socket to a given server is opened.
+        self.mp_consent_cursor = 0
+        self._mp_consented_endpoint: tuple[str, int] | None = None
+        self._mp_pending_session: tuple[str, str] | None = None
         # The stable player collection. Single-player logic keeps using the
         # plain ``self.player`` attribute; multiplayer-aware code paths call
         # ``active_players()`` which falls back to ``(self.player,)``.
@@ -1051,12 +1057,59 @@ class NetMixin:
             )
             self.mp_setup_step = "role"
             return
+        if self.mp_consent_required():
+            # No socket may be opened before the player has read and agreed
+            # to the connection notice for this endpoint.
+            self._mp_pending_session = (role, run_id)
+            self.mp_consent_cursor = 0
+            self.state = "mp_consent"
+            return
+        self._mp_open_session_now(role, run_id)
+
+    def _mp_open_session_now(self, role: str, run_id: str) -> None:
         self._mp_drop_client()
         self.mp_session = MpSession(role=role, run_id=run_id)
         self.mp_role = role
         self.mp_notice = ""
         self.mp_status = "Knocking on the server gate…"
         self._mp_connect()
+
+    # -- connection consent gate ---------------------------------------------
+
+    def _mp_endpoint(self) -> tuple[str, int]:
+        return (
+            str(getattr(self, "mp_server_host", "")).strip(),
+            int(getattr(self, "mp_server_port", 0)),
+        )
+
+    def mp_consent_required(self) -> bool:
+        """Whether the consent screen must run before connecting."""
+
+        return self._mp_consented_endpoint != self._mp_endpoint()
+
+    def mp_consent_agree(self) -> None:
+        """Consent screen: agree — remember the endpoint and connect."""
+
+        if self.state != "mp_consent":
+            return
+        pending = self._mp_pending_session
+        self._mp_pending_session = None
+        self._mp_consented_endpoint = self._mp_endpoint()
+        self.state = "mp_setup"
+        if pending is None:
+            self.mp_setup_step = "role"
+            return
+        self._mp_open_session_now(*pending)
+
+    def mp_consent_exit(self) -> None:
+        """Consent screen: exit without connecting."""
+
+        if self.state != "mp_consent":
+            return
+        self._mp_pending_session = None
+        self.state = "mp_setup"
+        self.mp_setup_step = "role"
+        self.mp_status = ""
 
     def _mp_connect(self) -> None:
         session = self.mp_session

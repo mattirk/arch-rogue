@@ -58,6 +58,14 @@ Your **name** (asked on first entry, kept between sessions) is shown in the
 lobby and over your head in the dungeon (max 16 characters, control
 characters stripped).
 
+Before the first connection to a server each session, a **consent screen**
+("A Word Before the Gate") states that the game is a hobby project used at
+your own risk, names the exact endpoint about to be contacted, describes the
+encryption state (TLS-verified, or a plaintext warning), and points to the
+project repository. Agreeing is remembered for that endpoint until the game
+is closed or the endpoint changes; Exit returns to the multiplayer menu
+without opening a socket.
+
 ### 2.2 Hosting
 
 *Two will descend* → **Host a new run** → the game draws a 4-character **run

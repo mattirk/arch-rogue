@@ -173,6 +173,7 @@ class RenderingBaseMixin:
             "help",
             "state_overlay",
             # 4.6: the multiplayer setup/lobby screens are reversible.
+            "mp_consent",
             "mp_setup",
             "mp_lobby",
         }
@@ -258,6 +259,7 @@ class RenderingBaseMixin:
             "confirm_exit": self.draw_exit_confirmation,
             # 4.6: pre-run multiplayer screens are full menus; unknown pre-run
             # states must never fall through to dungeon-world rendering.
+            "mp_consent": self.draw_mp_consent,
             "mp_setup": self.draw_mp_setup,
             "mp_lobby": self.draw_mp_lobby,
         }.get(self.state)
