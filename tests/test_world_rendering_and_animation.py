@@ -31,8 +31,7 @@ from arch_rogue.sprites import PixelSpriteAtlas
 
 
 class GraphicsAnimation21Tests(unittest.TestCase):
-    def tearDown(self) -> None:
-        pass
+
 
     def make_game(self, tmpdir: str, seed: int = 2101) -> Game:
         game = Game(

@@ -26,8 +26,7 @@ from arch_rogue.sprites import PixelSpriteAtlas
 
 
 class MovementAnimationPolish35Tests(unittest.TestCase):
-    def tearDown(self) -> None:
-        pass
+
 
     def make_game(self, tmpdir: str, seed: int = 3501) -> Game:
         game = Game(

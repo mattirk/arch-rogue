@@ -326,8 +326,17 @@ class Game(
         save_path: str | Path | None = None,
         mobile: bool | None = None,
         safe_insets: SafeInsets | tuple[int, int, int, int] | None = None,
+        eager_tile_prewarm: bool | None = None,
     ) -> None:
         self.mobile_mode = detect_mobile_runtime() if mobile is None else bool(mobile)
+        # Interactive builds pre-generate every themed tile variant to avoid a
+        # transition hitch. Headless tests build only the variants they render,
+        # unless a cache-contract test explicitly requests eager warming.
+        self.eager_tile_prewarm = (
+            not headless
+            if eager_tile_prewarm is None
+            else bool(eager_tile_prewarm)
+        )
         if self.mobile_mode:
             # SDL otherwise exposes the Android accelerometer as a joystick. Set
             # the hint before subsystem initialization; ControllerManager also
@@ -714,7 +723,7 @@ class Game(
         while self.running:
             performance = getattr(self, "_mobile_performance_monitor", None)
             if performance is not None:
-                performance.begin_frame()
+                performance.begin_frame(self)
 
             suspended = self.mobile_mode and self.mobile_suspended
             started = time.perf_counter()

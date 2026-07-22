@@ -19,8 +19,7 @@ from arch_rogue.sprites import DIRECTIONS
 
 
 class BigBossesTests(unittest.TestCase):
-    def tearDown(self) -> None:
-        pass
+
 
     def make_game(self, tmpdir: str, seed: int = 2323) -> Game:
         game = Game(

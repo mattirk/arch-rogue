@@ -19,8 +19,7 @@ from arch_rogue.game import Game
 
 
 class RunStructureBossesReplayability23Tests(unittest.TestCase):
-    def tearDown(self) -> None:
-        pass
+
 
     def make_game(self, tmpdir: str, seed: int = 2303) -> Game:
         game = Game(

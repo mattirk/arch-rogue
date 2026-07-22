@@ -22,8 +22,7 @@ from arch_rogue.rendering.hud import HUD_ACTION_SKILL_ASSETS
 
 
 class HudPolish25Tests(unittest.TestCase):
-    def tearDown(self) -> None:
-        pass
+
 
     def make_game(self, tmpdir: str, seed: int = 2505) -> Game:
         game = Game(

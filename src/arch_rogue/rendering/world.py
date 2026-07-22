@@ -180,8 +180,8 @@ class RenderingWorldMixin:
             for dirty in dirty_rects:
                 if dirty.width <= 0 or dirty.height <= 0:
                     continue
-                layer.fill((10, 10, 14), dirty)
                 layer.set_clip(dirty)
+                layer.fill((10, 10, 14), dirty)
                 self._blit_floor_entries(
                     layer,
                     [
@@ -195,6 +195,91 @@ class RenderingWorldMixin:
         finally:
             layer.set_clip(previous_clip)
         return len(pending_entries)
+
+    def _recenter_cached_mobile_floor_layer(
+        self,
+        layer: pygame.Surface,
+        old_camera: tuple[float, float],
+        new_camera: tuple[float, float],
+    ) -> bool:
+        """Translate a cached floor and rebuild only the newly exposed strips."""
+
+        shift_x, shift_y = self._mobile_floor_layer_destination(
+            layer.get_size(), layer, old_camera, new_camera
+        )
+        width, height = layer.get_size()
+        if abs(shift_x) >= width or abs(shift_y) >= height:
+            return False
+        if shift_x == 0 and shift_y == 0:
+            return True
+
+        root_screen = self.screen
+        frame_cache = self._frame_cache
+        frame_dark = getattr(self, "_frame_dark", False)
+        self.screen = layer
+        self._frame_cache = {"camera_iso": new_camera}
+        self._frame_dark = False
+        try:
+            all_entries = self._floor_blit_entries()
+        finally:
+            self.screen = root_screen
+            self._frame_cache = frame_cache
+            self._frame_dark = frame_dark
+
+        layer.scroll(shift_x, shift_y)
+        exposed: list[pygame.Rect] = []
+        content_left = 0
+        content_right = width
+        if shift_x > 0:
+            exposed.append(pygame.Rect(0, 0, shift_x, height))
+            content_left = shift_x
+        elif shift_x < 0:
+            exposed.append(pygame.Rect(width + shift_x, 0, -shift_x, height))
+            content_right = width + shift_x
+        horizontal_width = max(0, content_right - content_left)
+        if shift_y > 0 and horizontal_width > 0:
+            exposed.append(pygame.Rect(content_left, 0, horizontal_width, shift_y))
+        elif shift_y < 0 and horizontal_width > 0:
+            exposed.append(
+                pygame.Rect(content_left, height + shift_y, horizontal_width, -shift_y)
+            )
+
+        # Pixels shifted toward an outer edge were composed while their source
+        # sprites were fully inside the old layer. A cold build at the new camera
+        # clips those same overlapping sprites at the edge, so recompose a small
+        # trailing guard band as well. Without it, harmless gutter-only pixels can
+        # differ and later drift into the viewport just before the next recenter.
+        guard_x = min(TILE_W, width)
+        guard_y = min(TILE_H * 2, height)
+        if shift_x > 0:
+            exposed.append(pygame.Rect(width - guard_x, 0, guard_x, height))
+        elif shift_x < 0:
+            exposed.append(pygame.Rect(0, 0, guard_x, height))
+        if shift_y > 0:
+            exposed.append(pygame.Rect(0, height - guard_y, width, guard_y))
+        elif shift_y < 0:
+            exposed.append(pygame.Rect(0, 0, width, guard_y))
+
+        previous_clip = layer.get_clip()
+        try:
+            for dirty in exposed:
+                if dirty.width <= 0 or dirty.height <= 0:
+                    continue
+                layer.set_clip(dirty)
+                layer.fill((10, 10, 14), dirty)
+                self._blit_floor_entries(
+                    layer,
+                    [
+                        entry
+                        for entry in all_entries
+                        if entry[0]
+                        .get_rect(topleft=entry[1])
+                        .colliderect(dirty)
+                    ],
+                )
+        finally:
+            layer.set_clip(previous_clip)
+        return True
 
     def _mobile_floor_layer_destination(
         self,
@@ -279,16 +364,39 @@ class RenderingWorldMixin:
         )
         cache = getattr(self, "_mobile_floor_layer_cache", None)
         rebuild = cache is None or cache[0] != cache_key
+        recenter = False
         if not rebuild:
             assert cache is not None
-            build_cam_x, build_cam_y = cache[1], cache[2]
-            rebuild = (
-                abs(cam_x - build_cam_x) >= margin_x * 0.75
-                or abs(cam_y - build_cam_y) >= margin_y * 0.75
-            )
+            rendered = cache[4]
+            rebuild = not rendered.issubset(self.revealed_tiles)
             if not rebuild:
-                rendered = cache[4]
-                rebuild = not rendered.issubset(self.revealed_tiles)
+                build_cam_x, build_cam_y = cache[1], cache[2]
+                recenter = (
+                    abs(cam_x - build_cam_x) >= margin_x * 0.75
+                    or abs(cam_y - build_cam_y) >= margin_y * 0.75
+                )
+
+        if recenter:
+            assert cache is not None
+            rendered = cache[4]
+            if self._recenter_cached_mobile_floor_layer(
+                cache[3],
+                (cache[1], cache[2]),
+                (cam_x, cam_y),
+            ):
+                cache = (
+                    cache_key,
+                    cam_x,
+                    cam_y,
+                    cache[3],
+                    rendered,
+                )
+                self._mobile_floor_layer_cache = cache
+                self._mobile_floor_cache_recenters = int(
+                    getattr(self, "_mobile_floor_cache_recenters", 0)
+                ) + 1
+            else:
+                rebuild = True
 
         if rebuild:
             layer = pygame.Surface(layer_size).convert()
@@ -451,6 +559,8 @@ class RenderingWorldMixin:
         # the alpha-bucket cache.
         if hasattr(self, "reset_lighting_caches"):
             self.reset_lighting_caches()
+        if not self.eager_tile_prewarm:
+            return
         # Per-kind interior wall face styles (one side face gets distinct art).
         wall_face_styles: list[str | None] = [None]
         for kind in ("quest_room", "bar", "garden"):

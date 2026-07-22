@@ -32,8 +32,7 @@ class ShrineAndSecretTests(unittest.TestCase):
         game.restart(ARCHETYPES[0])
         return game
 
-    def tearDown(self) -> None:
-        pass
+
 
     def test_expanded_content_tables_are_valid(self) -> None:
         self.assertGreaterEqual(len(DUNGEON_THEMES), 5)

@@ -29,8 +29,7 @@ class Rc1RegressionTests(unittest.TestCase):
         if game.story_intro_pending:
             self.assertTrue(game.choose_story_relic_path(0))
 
-    def tearDown(self) -> None:
-        pass
+
 
     def test_dungeon_generation_has_connected_rooms_and_stairs(self) -> None:
         for seed in range(8):

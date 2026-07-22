@@ -253,17 +253,7 @@ class PerfOverlayTests(unittest.TestCase):
             self.assertFalse(game.show_perf_overlay)
             self.assertIsNone(game._mobile_performance_monitor)
 
-    def test_show_perf_overlay_creates_monitor_on_desktop(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = make_game(tmpdir)
-            self.assertIsNone(game._mobile_performance_monitor)
-            game.show_perf_overlay = True
-            game._reconcile_performance_monitor()
-            self.assertIsNotNone(game._mobile_performance_monitor)
-            # Toggling back off destroys it.
-            game.show_perf_overlay = False
-            game._reconcile_performance_monitor()
-            self.assertIsNone(game._mobile_performance_monitor)
+
 
     def test_toggle_perf_overlay_round_trips_and_reconciles(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

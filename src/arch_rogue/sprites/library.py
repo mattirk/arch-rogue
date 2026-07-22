@@ -26,6 +26,7 @@ import json
 import logging
 import math
 from collections import OrderedDict
+from functools import lru_cache
 from dataclasses import dataclass
 from importlib import resources
 from importlib.resources.abc import Traversable
@@ -766,6 +767,12 @@ class AssetSpriteLibrary:
         }
 
 
+@lru_cache(maxsize=1)
+def _shared_procedural_atlas() -> PixelSpriteAtlas:
+    """Build the immutable procedural fallback surfaces once per process."""
+    return PixelSpriteAtlas()
+
+
 class SpriteAtlas:
     """Asset-first sprite facade with the procedural atlas as a safe fallback."""
 
@@ -775,7 +782,10 @@ class SpriteAtlas:
         legacy_graphics: bool = False,
         asset_root: Path | Traversable | None = None,
     ) -> None:
-        self.legacy = PixelSpriteAtlas()
+        # PixelSpriteAtlas eagerly builds static surfaces and never mutates them
+        # after construction. Share that expensive fallback while keeping the
+        # asset library and every derived facade cache instance-local.
+        self.legacy = _shared_procedural_atlas()
         self.assets = AssetSpriteLibrary(asset_root)
         self.legacy_graphics = bool(legacy_graphics)
         self._prop_variant_cache: dict[tuple[object, ...], ResolvedSpriteFrame] = {}

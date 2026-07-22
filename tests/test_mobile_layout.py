@@ -571,13 +571,14 @@ class MobileRenderQualityTests(unittest.TestCase):
             game = make_mobile_game(tmpdir, (1170, 540))
             game.state = "playing"
             self.assertFalse(game.is_current_floor_dark())
-            candidate = next(
+            candidates = [
                 point
                 for point in game.revealed_tiles
                 if game.dungeon.tiles[point[0]][point[1]]
                 in (Tile.FLOOR, Tile.STAIRS)
-            )
-            game.revealed_tiles.remove(candidate)
+            ][:2]
+            self.assertEqual(len(candidates), 2)
+            game.revealed_tiles.difference_update(candidates)
             with patch.dict(os.environ, {"PYGAME_BLEND_ALPHA_SDL2": "1"}):
                 game.draw()
                 first = game._mobile_floor_layer_cache
@@ -592,7 +593,7 @@ class MobileRenderQualityTests(unittest.TestCase):
                 self.assertIs(second[3], first_surface)
 
                 patches_before = getattr(game, "_mobile_floor_cache_patches", 0)
-                game.revealed_tiles.add(candidate)
+                game.revealed_tiles.update(candidates)
                 game.draw()
                 patched = game._mobile_floor_layer_cache
                 self.assertIsNotNone(patched)
@@ -611,12 +612,42 @@ class MobileRenderQualityTests(unittest.TestCase):
                     patched_pixels,
                 )
 
-                game._cam_iso = (cold[1] + cold[3].get_width(), cold[2])
+                recenters_before = getattr(game, "_mobile_floor_cache_recenters", 0)
+                travel_x = int((game.screen.get_width() // 3) * 0.8)
+                travel_y = int((game.screen.get_height() // 3) * 0.8)
+                game._cam_iso = (
+                    cold[1] + travel_x,
+                    cold[2] + travel_y,
+                )
+                game.draw()
+                recentered = game._mobile_floor_layer_cache
+                self.assertIsNotNone(recentered)
+                assert recentered is not None
+                self.assertIs(recentered[3], cold[3])
+                self.assertGreater(
+                    game._mobile_floor_cache_recenters, recenters_before
+                )
+                recentered_pixels = pygame.image.tobytes(recentered[3], "RGB")
+
+                game._mobile_floor_layer_cache = None
+                game.draw()
+                recentered_cold = game._mobile_floor_layer_cache
+                self.assertIsNotNone(recentered_cold)
+                assert recentered_cold is not None
+                self.assertEqual(
+                    pygame.image.tobytes(recentered_cold[3], "RGB"),
+                    recentered_pixels,
+                )
+
+                game._cam_iso = (
+                    recentered_cold[1] + recentered_cold[3].get_width(),
+                    recentered_cold[2],
+                )
                 game.draw()
                 rebuilt = game._mobile_floor_layer_cache
                 self.assertIsNotNone(rebuilt)
                 assert rebuilt is not None
-                self.assertIsNot(rebuilt[3], cold[3])
+                self.assertIsNot(rebuilt[3], recentered_cold[3])
 
     def test_mobile_floor_layer_translation_matches_live_tile_projection(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -768,11 +799,20 @@ class MobileRenderQualityTests(unittest.TestCase):
             game._aim_cone_cache[("test",)] = object()
             game._aim_cone_cache_hits = 7
             game._aim_cone_cache_misses = 2
-            monitor.begin_frame()
+            game._mobile_floor_cache_rebuilds = 4
+            game._mobile_floor_cache_recenters = 6
+            game._mobile_floor_cache_patches = 9
+            monitor.begin_frame(game)
             monitor.record_phase("world", 0.2)
             monitor.record_phase("hud", 0.05)
             monitor.record_phase("flip", 0.7)
             monitor.record_detail_phase("aim", 0.03)
+            game.revealed_tiles.add((-1, -1))
+            game._mobile_floor_cache_rebuilds += 1
+            game._mobile_floor_cache_recenters += 1
+            game._mobile_floor_cache_patches += 1
+            game.sprites.assets.source_load_count += 2
+            game.sprites.assets.frame_build_count += 3
             now[0] = 1.1
             report = monitor.finish_frame(game)
 
@@ -781,6 +821,16 @@ class MobileRenderQualityTests(unittest.TestCase):
             self.assertEqual(emitted, [report])
             self.assertTrue(report.startswith("ARCH_ROGUE_PERF "))
             self.assertIn("fps=0.91", report)
+            self.assertIn(
+                "jank=p50:1100.0,p95:1100.0,max:1100.0,hitches:0/1",
+                report,
+            )
+            self.assertIn(
+                "max_frame=phase:flip:700.0,detail:aim:30.0,"
+                "reveals:+1,rebuilds:+1,recenters:+1,patches:+1,"
+                "loads:+2,builds:+3",
+                report,
+            )
             self.assertIn("world:200.0", report)
             self.assertIn("hud:50.0", report)
             self.assertIn("flip:700.0", report)

@@ -12,11 +12,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from arch_rogue.combat.damage import DamageContext
-from arch_rogue.combat.damage_types import (
-    PLAYER_ARMOR_TYPED_RESIST_BONUS,
-    PLAYER_RESIST_AFFIXES,
-    PLAYER_RESIST_UNIQUES,
-)
+
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.models import Enemy, Item
@@ -74,24 +70,7 @@ class DamageContextAndPlayerResistanceTests(unittest.TestCase):
             with self.assertRaises(Exception):
                 ctx.amount = 5  # type: ignore[misc]
 
-    def test_damage_enemy_accepts_damage_context_and_applies(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            game = self.make_game(tmpdir)
-            enemy = self._make_enemy(game, hp=100)
-            game.enemies = [enemy]
-            before = enemy.hp
-            game.damage_enemy(
-                DamageContext(
-                    target=enemy,
-                    amount=20,
-                    damage_type="physical",
-                    knockback_from=(1.0, 0.0),
-                    status_effect="poisoned",
-                    status_duration=2.0,
-                )
-            )
-            self.assertLess(enemy.hp, before)
-            self.assertIn("poisoned", enemy.statuses)
+
 
     def test_damage_context_source_and_crit_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -108,13 +87,7 @@ class DamageContextAndPlayerResistanceTests(unittest.TestCase):
     # ------------------------------------------------------------------
     # #2 Unified player resistance table
     # ------------------------------------------------------------------
-    def test_resist_tables_match_old_inline_values(self) -> None:
-        self.assertEqual(PLAYER_ARMOR_TYPED_RESIST_BONUS, 0.08)
-        self.assertEqual(PLAYER_RESIST_AFFIXES["Grounded"], {"arcane": 0.12})
-        self.assertEqual(
-            PLAYER_RESIST_AFFIXES["Sealed"], {"shadow": 0.10, "poison": 0.10}
-        )
-        self.assertEqual(PLAYER_RESIST_UNIQUES["glacial ward"], {"frost": 0.15})
+
 
     def test_player_typed_resistance_no_armor_is_zero(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

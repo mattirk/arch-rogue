@@ -56,6 +56,7 @@ class SpriteAssetTests(unittest.TestCase):
             screen_size=size,
             headless=True,
             save_path=Path(tmpdir) / "run.json",
+            eager_tile_prewarm=True,
         )
         game.options_path = Path(tmpdir) / "options.json"
         game.set_legacy_graphics(False)

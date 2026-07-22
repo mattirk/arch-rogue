@@ -25,14 +25,12 @@ from arch_rogue.models import Tile
 
 
 class DungeonSpriteVariants36Tests(unittest.TestCase):
-    def tearDown(self) -> None:
-        pass
-
     def make_game(self, tmpdir: str, seed: int = 3601) -> Game:
         game = Game(
             screen_size=(960, 540),
             headless=True,
             save_path=Path(tmpdir) / "run.json",
+            eager_tile_prewarm=True,
         )
         game.options_path = Path(tmpdir) / "options.json"
         game.rng.seed(seed)

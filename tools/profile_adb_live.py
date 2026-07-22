@@ -70,6 +70,8 @@ KNOWN_SCALARS = (
     "state",
     "fps",
     "frame_ms",
+    "jank",
+    "max_frame",
     "logical",
     "window",
     "viewport",
@@ -294,6 +296,12 @@ def render_dashboard(
         f"frames>budget {c(YELLOW if over_budget else GREEN)}{over_budget}/{len(samples)}{c(RESET)}"
     )
     lines.append(f"  trend     : {spark}")
+    lines.append(
+        f"  frame jank: {cur.get('jank')}"
+    )
+    lines.append(
+        f"  worst frame: {cur.get('max_frame')}"
+    )
     lines.append("")
 
     lines.append(f"  {c(BOLD)}per-phase cost (avg ms over window){c(RESET)}")

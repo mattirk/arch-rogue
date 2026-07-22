@@ -665,6 +665,33 @@ class MobilePerformanceMonitor:
         self._detail_phase_seconds = {
             phase: 0.0 for phase in MOBILE_PERF_DETAIL_PHASES
         }
+        self._current_phase_seconds = {
+            phase: 0.0 for phase in MOBILE_PERF_PHASES
+        }
+        self._current_detail_phase_seconds = {
+            phase: 0.0 for phase in MOBILE_PERF_DETAIL_PHASES
+        }
+        self._frame_samples: list[float] = []
+        self._frame_context_valid = False
+        self._frame_reveals_started = 0
+        self._frame_rebuilds_started = 0
+        self._frame_recenters_started = 0
+        self._frame_patches_started = 0
+        self._frame_loads_started = 0
+        self._frame_builds_started = 0
+        self._max_frame_seconds = 0.0
+        self._max_frame_phase_seconds = {
+            phase: 0.0 for phase in MOBILE_PERF_PHASES
+        }
+        self._max_frame_detail_seconds = {
+            phase: 0.0 for phase in MOBILE_PERF_DETAIL_PHASES
+        }
+        self._max_frame_reveals = 0
+        self._max_frame_rebuilds = 0
+        self._max_frame_recenters = 0
+        self._max_frame_patches = 0
+        self._max_frame_loads = 0
+        self._max_frame_builds = 0
         self._last_cache_stats: dict[str, int] = {}
         self._last_aim_cache_hits = 0
         self._last_aim_cache_misses = 0
@@ -676,23 +703,53 @@ class MobilePerformanceMonitor:
     def _print_line(line: str) -> None:
         print(line, flush=True)
 
-    def begin_frame(self) -> None:
+    def _capture_frame_context(self, game: Any | None) -> None:
+        self._frame_context_valid = game is not None
+        if game is None:
+            return
+        sprites = getattr(game, "sprites", None)
+        assets = getattr(sprites, "assets", None)
+        self._frame_reveals_started = self._safe_len(
+            getattr(game, "revealed_tiles", ())
+        )
+        self._frame_rebuilds_started = int(
+            getattr(game, "_mobile_floor_cache_rebuilds", 0)
+        )
+        self._frame_recenters_started = int(
+            getattr(game, "_mobile_floor_cache_recenters", 0)
+        )
+        self._frame_patches_started = int(
+            getattr(game, "_mobile_floor_cache_patches", 0)
+        )
+        self._frame_loads_started = int(getattr(assets, "source_load_count", 0))
+        self._frame_builds_started = int(getattr(assets, "frame_build_count", 0))
+
+    def begin_frame(self, game: Any | None = None) -> None:
         now = self._clock()
         if self._report_started is None:
             self._report_started = now
         self._frame_started = now
+        for phase in self._current_phase_seconds:
+            self._current_phase_seconds[phase] = 0.0
+        for phase in self._current_detail_phase_seconds:
+            self._current_detail_phase_seconds[phase] = 0.0
+        self._capture_frame_context(game)
 
     def record_phase(self, phase: str, seconds: float) -> None:
         if phase not in self._phase_seconds:
             return
-        self._phase_seconds[phase] += max(0.0, float(seconds))
+        elapsed = max(0.0, float(seconds))
+        self._phase_seconds[phase] += elapsed
+        self._current_phase_seconds[phase] += elapsed
 
     def record_detail_phase(self, phase: str, seconds: float) -> None:
         """Record nested render work without double-counting total frame time."""
 
         if phase not in self._detail_phase_seconds:
             return
-        self._detail_phase_seconds[phase] += max(0.0, float(seconds))
+        elapsed = max(0.0, float(seconds))
+        self._detail_phase_seconds[phase] += elapsed
+        self._current_detail_phase_seconds[phase] += elapsed
 
     @staticmethod
     def _safe_len(value: object) -> int:
@@ -706,17 +763,67 @@ class MobilePerformanceMonitor:
         return f"{int(size[0])}x{int(size[1])}"
 
     def finish_frame(self, game: Any) -> str | None:
-        # Hot path (every frame): no allocations — just accumulate elapsed
-        # time and bump the frame counter. All dict/string/tuple allocations
-        # are deferred to the report-emission path below, which runs at most
-        # once per ``report_interval`` (~5 s). The rolling phase buffers
-        # ``_phase_seconds`` / ``_detail_phase_seconds`` are pre-allocated in
-        # ``__init__`` and zeroed in-place here after a report is emitted.
+        # Hot path (every frame): append one timing sample and update scalar /
+        # pre-allocated phase counters. Dict/string/sort work is deferred to the
+        # report-emission path below, which runs once per ``report_interval``.
         if self._frame_started is None:
             return None
         now = self._clock()
-        self._frame_seconds += max(0.0, now - self._frame_started)
+        frame_seconds = max(0.0, now - self._frame_started)
+        self._frame_seconds += frame_seconds
+        self._frame_samples.append(frame_seconds)
+        sprites = getattr(game, "sprites", None)
+        assets = getattr(sprites, "assets", None)
+        if self._frame_context_valid:
+            reveal_delta = max(
+                0,
+                self._safe_len(getattr(game, "revealed_tiles", ()))
+                - self._frame_reveals_started,
+            )
+            rebuild_delta = max(
+                0,
+                int(getattr(game, "_mobile_floor_cache_rebuilds", 0))
+                - self._frame_rebuilds_started,
+            )
+            recenter_delta = max(
+                0,
+                int(getattr(game, "_mobile_floor_cache_recenters", 0))
+                - self._frame_recenters_started,
+            )
+            patch_delta = max(
+                0,
+                int(getattr(game, "_mobile_floor_cache_patches", 0))
+                - self._frame_patches_started,
+            )
+            load_delta = max(
+                0,
+                int(getattr(assets, "source_load_count", 0))
+                - self._frame_loads_started,
+            )
+            build_delta = max(
+                0,
+                int(getattr(assets, "frame_build_count", 0))
+                - self._frame_builds_started,
+            )
+        else:
+            reveal_delta = rebuild_delta = recenter_delta = 0
+            patch_delta = load_delta = build_delta = 0
+        if frame_seconds >= self._max_frame_seconds:
+            self._max_frame_seconds = frame_seconds
+            for phase in self._max_frame_phase_seconds:
+                self._max_frame_phase_seconds[phase] = self._current_phase_seconds[phase]
+            for phase in self._max_frame_detail_seconds:
+                self._max_frame_detail_seconds[phase] = (
+                    self._current_detail_phase_seconds[phase]
+                )
+            self._max_frame_reveals = reveal_delta
+            self._max_frame_rebuilds = rebuild_delta
+            self._max_frame_recenters = recenter_delta
+            self._max_frame_patches = patch_delta
+            self._max_frame_loads = load_delta
+            self._max_frame_builds = build_delta
         self._frame_started = None
+        self._frame_context_valid = False
         self._frame_count += 1
         report_started = self._report_started if self._report_started is not None else now
         elapsed = max(0.0, now - report_started)
@@ -736,6 +843,34 @@ class MobilePerformanceMonitor:
         }
         measured_ms = sum(phase_ms.values())
         other_ms = max(0.0, frame_ms - measured_ms)
+        ordered_samples = sorted(self._frame_samples)
+
+        def percentile(ratio: float) -> float:
+            index = math.ceil(len(ordered_samples) * ratio) - 1
+            index = max(0, min(len(ordered_samples) - 1, index))
+            return ordered_samples[index]
+
+        frame_p50_ms = percentile(0.50) * 1000.0
+        frame_p95_ms = percentile(0.95) * 1000.0
+        frame_max_ms = self._max_frame_seconds * 1000.0
+        hitch_threshold = max(1.0 / 30.0, percentile(0.50) * 1.5)
+        hitch_count = sum(1 for sample in ordered_samples if sample > hitch_threshold)
+        max_phase = max(
+            MOBILE_PERF_PHASES,
+            key=self._max_frame_phase_seconds.__getitem__,
+        )
+        max_detail = max(
+            MOBILE_PERF_DETAIL_PHASES,
+            key=self._max_frame_detail_seconds.__getitem__,
+        )
+        max_phase_ms = self._max_frame_phase_seconds[max_phase] * 1000.0
+        max_detail_ms = self._max_frame_detail_seconds[max_detail] * 1000.0
+        max_reveals = self._max_frame_reveals
+        max_rebuilds = self._max_frame_rebuilds
+        max_recenters = self._max_frame_recenters
+        max_patches = self._max_frame_patches
+        max_loads = self._max_frame_loads
+        max_builds = self._max_frame_builds
 
         try:
             logical = game.screen.get_size()
@@ -839,7 +974,15 @@ class MobilePerformanceMonitor:
         line = (
             f"{MOBILE_PERF_LOG_PREFIX} "
             f"state={getattr(game, 'state', 'unknown')} fps={fps:.2f} "
-            f"frame_ms={frame_ms:.1f} phase_ms={phase_label},other:{other_ms:.1f} "
+            f"frame_ms={frame_ms:.1f} "
+            f"jank=p50:{frame_p50_ms:.1f},p95:{frame_p95_ms:.1f},"
+            f"max:{frame_max_ms:.1f},hitches:{hitch_count}/{frames} "
+            f"max_frame=phase:{max_phase}:{max_phase_ms:.1f},"
+            f"detail:{max_detail}:{max_detail_ms:.1f},"
+            f"reveals:+{max_reveals},rebuilds:+{max_rebuilds},"
+            f"recenters:+{max_recenters},patches:+{max_patches},"
+            f"loads:+{max_loads},builds:+{max_builds} "
+            f"phase_ms={phase_label},other:{other_ms:.1f} "
             f"render_ms={detail_label} "
             f"logical={self._size_label(logical_size)} "
             f"window={self._size_label(window_size)} "
@@ -866,6 +1009,7 @@ class MobilePerformanceMonitor:
             f"aim_cache=entries:{aim_cache_entries},hits+:{aim_hit_delta},"
             f"misses+:{aim_miss_delta} "
             f"floor_cache=rebuilds:{int(getattr(game, '_mobile_floor_cache_rebuilds', 0))},"
+            f"recenters:{int(getattr(game, '_mobile_floor_cache_recenters', 0))},"
             f"patches:{int(getattr(game, '_mobile_floor_cache_patches', 0))}"
         )
         self.last_report = line
@@ -890,6 +1034,18 @@ class MobilePerformanceMonitor:
             self._phase_seconds[phase] = 0.0
         for phase in self._detail_phase_seconds:
             self._detail_phase_seconds[phase] = 0.0
+        self._frame_samples.clear()
+        self._max_frame_seconds = 0.0
+        self._max_frame_reveals = 0
+        self._max_frame_rebuilds = 0
+        self._max_frame_recenters = 0
+        self._max_frame_patches = 0
+        self._max_frame_loads = 0
+        self._max_frame_builds = 0
+        for phase in self._max_frame_phase_seconds:
+            self._max_frame_phase_seconds[phase] = 0.0
+        for phase in self._max_frame_detail_seconds:
+            self._max_frame_detail_seconds[phase] = 0.0
         return line
 
 

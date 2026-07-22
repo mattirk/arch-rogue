@@ -1,5 +1,44 @@
 # Changelog
 
+## 4.5.3 — Android movement hitch stabilization
+
+Release 4.5.3 removes the periodic Native-resolution Android hitch that occurred while the camera crossed the reusable floor cache's gutter during exploration.
+
+### Fixed
+
+- Replaced camera-travel cold rebuilds of the approximately 3900×1800 Android floor cache with an in-place surface recenter. The cache scrolls by the exact projection delta and redraws only newly exposed strips plus a one-tile trailing guard band.
+- Preserved exact rendering: the recentered floor surface is byte-identical to a cold rebuild, including edge clipping, incremental fog-of-war reveals, and fractional camera translation.
+- Kept true invalidations (floor/theme/render-mode changes, reveal-set replacement, and travel beyond the complete layer) on the existing cold-build fallback.
+
+### Diagnostics
+
+- Android performance telemetry now reports interval frame-time p50/p95/max and relative hitch counts instead of only averages.
+- Each report identifies the worst frame's dominant top-level/detail phase and correlates it with per-frame revealed-tile, floor rebuild/recenter/patch, and sprite load/build deltas.
+- `tools/profile_adb_live.py` displays the new jank distribution and worst-frame cause in its dashboard.
+
+### Test maintenance
+
+- Corrected the stale gameplay and crowd desktop render baselines after confirming the current output is deterministic, and removed the redundant second render from all three fixed-hash snapshot tests.
+- Reused the immutable procedural fallback sprite atlas across `SpriteAtlas` facades while retaining independent asset libraries, graphics-mode state, and derived caches.
+- Headless `Game` instances now generate tile variants on demand by default; interactive desktop and Android builds retain eager prewarming, and cache-contract tests opt into it explicitly.
+- Removed five duplicate or transitional tests plus 13 no-op `tearDown()` hooks without reducing behavioral coverage.
+- Full-suite runtime dropped from 82.712 seconds to 26.281 seconds (about 68% faster).
+
+### Android AVD results
+
+- Tested on the `arch_rogue_perf` SwiftShader AVD at the Native 2340×1080 logical/window/viewport target with the existing 1560×720 gameplay GPU stream.
+- Instrumented 4.5.2 traversal reproduced `86.8–87.1 ms` worst frames; those exact frames spent `39.9–44.4 ms` in floor rendering and each correlated with `rebuilds:+1`.
+- The final 4.5.3 16-input corridor traversal performed five in-place recenters with no travel rebuilds and reduced active-movement worst frames to `48.5–58.0 ms`, within the AVD's ordinary present/render variance.
+- A follow-up doorway/NPC reveal built 10 lazy sprite frames, but sprite loads did not occur on the worst frame; the run remained at a `56.3 ms` maximum with a `2.0 ms` average floor phase.
+
+### Validation
+
+- `python -m compileall src tests` — clean.
+- `python -m unittest tests.test_mobile_layout` — 73 tests pass, including simultaneous multi-tile reveal and diagonal recenter/cold-build pixel comparisons with zero differing pixels.
+- `python -m unittest discover tests -q --durations 40` — all 576 tests pass in 26.281 seconds; the five removed tests were redundant coverage and the two stale render snapshots now match the verified deterministic output.
+- Final debug APK passed source validation, dual-ABI audit, APK v2 signature verification, installation, and package-version verification (`versionName=4.5.3`, `versionCode=102840503`).
+- Save schema remains 5; only informational release metadata advances to 4.5.3.
+
 ## 4.5.2 — Android Native performance stabilization
 
 Release 4.5.2 substantially improves Native-resolution Android performance on the SwiftShader AVD while preserving the 2340×1080 logical/window output and the existing 1560×720 gameplay GPU stream.

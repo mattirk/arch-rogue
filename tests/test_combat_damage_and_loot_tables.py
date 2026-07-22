@@ -19,8 +19,7 @@ from arch_rogue.combat.damage import DamageContext
 
 
 class CombatSkillsLoot22Tests(unittest.TestCase):
-    def tearDown(self) -> None:
-        pass
+
 
     def make_game(
         self, tmpdir: str, archetype_index: int = 0, seed: int = 2202

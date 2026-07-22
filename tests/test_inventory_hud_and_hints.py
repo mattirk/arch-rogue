@@ -20,8 +20,7 @@ from arch_rogue.models import Item, SecretCache, Shrine, Trap
 
 
 class SystemsPolish12Tests(unittest.TestCase):
-    def tearDown(self) -> None:
-        pass
+
 
     def make_game(self, tmpdir: str, seed: int = 1202) -> Game:
         game = Game(

@@ -26,8 +26,7 @@ from arch_rogue.game import Game
 
 
 class SkillTree32Tests(unittest.TestCase):
-    def tearDown(self) -> None:
-        pass
+
 
     def make_game(
         self, tmpdir: str, archetype_index: int = 0, seed: int = 3201
