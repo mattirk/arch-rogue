@@ -132,7 +132,12 @@ from .models import (
     Tile,
     Trap,
 )
-from .options import OptionsMixin, default_mobile_render_quality
+from .options import (
+    DEFAULT_MP_SERVER_HOST,
+    DEFAULT_MP_SERVER_PORT,
+    OptionsMixin,
+    default_mobile_render_quality,
+)
 from .population import PopulationMixin
 from .story import (
     ActiveQuestCutscene,
@@ -387,10 +392,10 @@ class Game(
         self.meta_progress: dict[str, Any] = self.default_meta_progress()
         self.run_history: list[dict[str, Any]] = []
         # 4.6 schema-8 multiplayer options. load_options() overrides from disk;
-        # the endpoint stays unset until the player configures it.
+        # the endpoint starts on the public default server.
         self.mp_player_name = ""
-        self.mp_server_host = ""
-        self.mp_server_port = 0
+        self.mp_server_host = DEFAULT_MP_SERVER_HOST
+        self.mp_server_port = DEFAULT_MP_SERVER_PORT
         self.last_save_error = ""
         self.last_load_error = ""
         self.recovered_interrupted_run = False

@@ -53,6 +53,10 @@ from .mobile import android_runtime_active
 from arch_rogue_protocol import sanitize_player_name
 
 
+DEFAULT_MP_SERVER_HOST = "ar.rita-kasari.fi"
+DEFAULT_MP_SERVER_PORT = 43666
+
+
 def normalize_mp_server_host(value: object) -> str:
     """Sanitize a persisted multiplayer server host/address string."""
 
@@ -989,11 +993,13 @@ class OptionsMixin:
             self.mp_player_name = sanitize_player_name(
                 data.get("mp_player_name", "")
             )
-            self.mp_server_host = normalize_mp_server_host(
-                data.get("mp_server_host", "")
+            self.mp_server_host = (
+                normalize_mp_server_host(data.get("mp_server_host", ""))
+                or DEFAULT_MP_SERVER_HOST
             )
-            self.mp_server_port = normalize_mp_server_port(
-                data.get("mp_server_port", 0)
+            self.mp_server_port = (
+                normalize_mp_server_port(data.get("mp_server_port", 0))
+                or DEFAULT_MP_SERVER_PORT
             )
         except (TypeError, ValueError):
             return False
