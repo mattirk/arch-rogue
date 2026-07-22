@@ -315,12 +315,18 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 
 ### 4.6 Multiplayer with server component
 
-This milestone adds a cooperative two-player mode where two Wardens descend the
-same dungeon together over a network. The desktop client is the primary target;
-mobile follows once the protocol is stable. The backlog item "Multiplayer -> you
-get your own AI generated character with unique sprites and animations" remains
-the long-term direction, but **4.6 ships with the existing archetype sprite
-sets** — unique per-player sprites are out of scope for this milestone.
+This milestone adds a cooperative two-player mode where two players descend the
+same dungeon together over a network. The host and joiner independently choose
+from the existing archetypes (this is not Warden-only co-op); existing archetype
+sprite sets are used for both players. **4.6 targets desktop and Android** — the
+shared codebase runs on both, and the mobile touch UI, soft-keyboard entry,
+app-lifecycle reconnect, and Android performance validation are part of this
+milestone. **Web multiplayer is out of scope for 4.6** — pygbag/Emscripten cannot
+open raw TCP sockets, so it needs a separate WebSocket transport layer that is a
+later milestone. The backlog item "Multiplayer -> you get your own AI
+generated character with unique sprites and animations" remains the long-term
+direction, but **4.6 ships with the existing archetype sprite sets** — unique
+per-player sprites are out of scope for this milestone.
 
 #### Menu changes
 
@@ -337,143 +343,322 @@ sets** — unique per-player sprites are out of scope for this milestone.
 - A dedicated **multiplayer glyph** (generated via Pixellab) is drawn to the
   right of the "Two will descend" row in `MenuTitleMixin.draw_title_menu`,
   following the existing row layout/gap conventions used for the other rows.
+  Add the glyph to the UI asset manifest and use a safe fallback in
+  tests/development when the generated asset is unavailable.
 
 #### Player-name + run-id flow
 
-Selecting "Two will descend" enters a new game state, **`mp_setup`**, that
-walks the local player through two short prompts:
+Selecting "Two will descend" enters a new game state, **`mp_setup`**, driven by a
+sub-mode/step (`name`, `role`, `host_code`, or `join_code`). Do not introduce a
+separate `mp_join` `Game.state`; joining is an `mp_setup` sub-mode. The setup
+sequence is:
 
-1. **Player name** — a short text-entry screen (reuse the menu text-input
-   helpers; cap length at ~16 chars, default to the OS username or "Warden").
-   Stored on `Game` as `self.mp_player_name` and persisted in the save/options
-   blob so it is remembered between sessions.
-2. **Run id generation** — the client generates a run id of the configured
-   length (default **4 characters** from the alphabet
-   `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` — no `0/O/1/I` to avoid ambiguity when
-   read aloud). The length (`MP_RUN_ID_LENGTH`) lives in `constants.py` and can
+`Two will descend` -> player name -> **Host a new run** or **Join a run** ->
+code confirmation/entry -> server `hello`/`welcome` -> `mp_lobby` -> both players
+choose an archetype -> both send `ready` -> server sends `start` -> playing.
+
+1. **Player name** — a short text-entry screen. There is no reusable menu
+   text-input primitive today, so 4.6 adds one shared helper that handles
+   desktop text input, backspace, confirm, cancel, input length limits, and
+   focus cleanup. Name, join-code, host, and port entry must all use it. On
+   Android it drives the OS soft keyboard via `SDL_StartTextInput` /
+   `SDL_TEXTINPUT` and calls `SDL_StopTextInput` on confirm, cancel, and focus
+   loss. Cap the display name at 16 characters and default to a sanitized OS
+   username when available, otherwise `Warden`. Stored on `Game` as
+   `self.mp_player_name` and persisted in the options blob so it is remembered
+   between sessions.
+2. **Host/Join role** — the player chooses to host a new run or join an existing
+   run. A host generates a run id and waits in `mp_lobby`; the host's "Begin
+   descent" button creates/connects to the lobby and does not start the dungeon
+   before a partner has joined. A joiner enters a code explicitly and enters
+   `mp_lobby` only after the server sends `welcome`. When the server accepts the
+   joiner, it sends `partner_joined` to the host; both clients then enter
+   archetype selection. Each player sends their own `ready`, and the server
+   emits exactly one `start` only after both validated archetype selections exist.
+3. **Run id** — the client generates a run id of the configured length (default
+   **4 characters** from the alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` — no
+   `0/O/1/I` to avoid ambiguity when read aloud), using `secrets.choice` rather
+   than game RNG. The length (`MP_RUN_ID_LENGTH`) lives in `constants.py` and can
    later be raised to 8 or 12. The id is displayed large with a "share this code
-   with your partner" note and a "Begin descent" confirm.
+   with your partner" note. A four-character Base32-like code has only about 20
+   bits of entropy, so it is a **room locator, not authentication**; 4.6 is
+   intended for trusted/self-hosted servers, and Internet deployments should
+   configure a longer code and rate-limit connection attempts.
 
-The host (the player who generated the id) immediately proceeds to archetype
-select once the partner joins. The joining player enters the same id (a second
-`mp_setup` sub-mode, `mp_join`) and waits for the host's "partner joined" ack.
+Define and render recoverable setup failures: missing/invalid server endpoint,
+`run_id_in_use`, `run_not_found`, `run_full`, incompatible client revision,
+timeout, and connection failure. A host collision returns to code generation; a
+join failure keeps the entered code editable.
 
 #### Client / server architecture
 
 - A new top-level folder **`server/`** (sibling to `src/`) owns the standalone
-  server component. It is **not** part of the installed `arch_rogue` package;
-  it ships its own `pyproject.toml`/deps and is run independently.
+  server component. It is **not** part of the installed `arch_rogue` package; it
+  ships its own `pyproject.toml`/deps and is run independently.
   - Suggested layout: `server/__init__.py`, `server/protocol.py`,
     `server/room.py`, `server/server.py` (entry point), `server/config.py`.
-  - The server is **stateless for now**: it does not persist runs, accounts, or
-    match history. A run lives only in process memory for the duration of the
-    session and is dropped when both clients disconnect (or after an idle
-    timeout, see below). No database, no auth.
+  - The server is **ephemeral/in-memory**: it retains rooms, slots, selected
+    archetypes, reconnect reservations, activity times, and opaque relayed data
+    in process memory, but persists none of it to disk and uses no database or
+    accounts. A run is dropped when both clients disconnect or after an idle
+    timeout.
+- The wire codec/message schema is **one canonical, stdlib-only shared package**
+  consumed by both projects, exposed through `arch_rogue.net.protocol` for the
+  client facade. The server must use a local path dependency on that package,
+  never a vendored or copied protocol module, so client and server never drift.
+  The shared package must not import Pygame.
 - The client lives in a new package **`src/arch_rogue/net/`**:
-  - `net/client.py` — `MultiplayerClient`, a thin async-ish connector that owns
-    the socket, the send/recv queue, and reconnect/backoff. Composed into `Game`
-    via a `NetMixin` (mirroring the existing mixin pattern) so `Game.run()` drives
-    it each frame.
-  - `net/protocol.py` — the shared wire format (see below). **One** canonical
-    module defines the protocol; the server imports the same module (or a
-    vendored copy) so client and server never drift.
+  - `net/client.py` — `MultiplayerClient`, a thin connector that owns the socket,
+    the send/recv queue, and reconnect/backoff. Composed into `Game` via a
+    `NetMixin` (mirroring the existing mixin pattern) so `Game.run()` drives it
+    each frame.
+  - `net/protocol.py` — re-exports the canonical shared wire codec for the
+    client.
   - `net/messages.py` — typed message dataclasses.
   - `net/__init__.py` — facade re-exporting `MultiplayerClient` and the message
     types, preserving `from arch_rogue.net import MultiplayerClient`.
-- **Server address** is stored in config (defaults TBD by the user). Concretely,
-  add `mp_server_host` / `mp_server_port` keys to the options blob managed by
-  `options.py`, with an in-game Options row to edit them. Defaults are empty
-  until the user provides them; until then multiplayer is unreachable from the
-  menu (the "Two will descend" row can still be selected but the `mp_setup`
-  flow surfaces a "server not configured" notice).
-- The client uses Python's stdlib `socket` + a background receiver thread
-  (no new hard runtime deps for the client). The server may use `asyncio` or a
+- **Server address** is stored in the options blob managed by `options.py`.
+  Bump the options schema from **7 to 8** and add `mp_player_name: str`,
+  `mp_server_host: str`, and `mp_server_port: int`. Defaults are `""`, `""`, and
+  `0`; a usable endpoint requires a non-empty host and port in `1..65535`.
+  Persist these only in the options blob, with migration defaults for all old
+  schemas. Add desktop Options rows for host and port. Until a usable endpoint is
+  configured, multiplayer is unreachable from the menu (the "Two will descend"
+  row can still be selected but the `mp_setup` flow surfaces a "server not
+  configured" notice). No new third-party package is added to the **game**
+  dependency set.
+- The client uses Python's stdlib `socket` plus one background receiver thread.
+  That thread only decodes and enqueues immutable messages: it never mutates
+  `Game`, Pygame objects, or game collections. `NetMixin.poll()` runs on the main
+  thread every frame while a client exists (including setup and lobby, not merely
+  when `mp_active` is true) and performs all state changes. Bound both client
+  queues: coalesce queued snapshots to the newest valid one, retain reliable
+  control events and one-shot intents, tag events with a connection generation so
+  stale reconnect events are ignored, and close/join the receiver thread cleanly
+  on `bye`, menu return, and application exit. The server may use `asyncio` or a
   simple threaded model — pick whichever keeps the server single-file-friendly.
-  No new third-party package is added to the **game** dependency set.
+  The stdlib `socket` + thread transport runs on both desktop and Android (p4a);
+  web is excluded because Emscripten cannot open raw TCP sockets.
 
 #### Protocol (custom, line-delimited JSON over TCP)
 
 A small bespoke protocol rather than pulling in a framework. Rationale: tiny
-message set, no RPC surface, and we want zero new client-side deps.
+message set, no RPC surface, and zero new client-side deps.
 
 - **Transport**: one persistent TCP connection per client, line-delimited JSON
   (one JSON object per `\n`-terminated line). Messages are small and
   human-readable, which makes debugging and hand-testing easy.
-- ** Framing**: each line is `{"t": <type>, ...}`. Unknown `t` values are
-  logged and ignored (forward-compat). A `seq` int on request messages enables
-  lightweight ack correlation; the server echoes `seq` on the matching reply.
-- **Initial message set** (all fields snake_case):
-  - Client -> Server
-    - `hello` — `{t, seq, name, run_id, role}` where `role` is `"host"` or
-      `"join"`. Sent once on connect.
-    - `ready` — `{t, seq, archetype_key}` host signals both players are on the
-      archetype screen and ready; server replies with `start` once both ready.
-    - `state` — `{t, seq, depth, floor_seed, player}` periodic authoritative
-      snapshot from the **host** (host is the simulation authority; the joiner
-      is a read-mostly mirror that streams input intents back).
-    - `intent` — `{t, seq, move_x, move_y, action, target}` joiner's input
-      stream; host applies it to its local sim.
-    - `ping` — `{t, seq, ts}` keepalive.
-    - `bye` — `{t}` graceful disconnect.
-  - Server -> Client
-    - `welcome` — `{t, seq, run_id, you_are, partner_name, partner_ready}`.
-    - `partner_joined` — `{t, partner_name}` host gets this when a joiner lands.
-    - `start` — `{t, floor_seed, host_archetype, joiner_archetype}` both clients
-      transition out of `mp_setup` into the run.
-    - `snapshot` — `{t, depth, players:[...], enemies:[...], items:[...]}`
-      host-authored world snapshot relayed to the joiner (the server is a dumb
-      relay here; see "stateless" note).
-    - `partner_left` — `{t, reason}` one side dropped.
-    - `error` — `{t, code, msg}` e.g. `run_full`, `run_not_found`, `bad_msg`.
-- **Run lifecycle on the server**: when a `hello` with `role="host"` arrives for
-  a run_id that has no room, the server creates an in-memory `Room` and parks
-  the host. When a `hello` with `role="join"` arrives for an existing room with
-  one occupant, the server adds the joiner and emits `partner_joined` to the
-  host and `welcome` to the joiner. **Max 2 players per run for 4.6.** A third
-  `hello` for the same id is rejected with `error code="run_full"`. When either
-  client disconnects, the server notifies the survivor with `partner_left` and
-  tears down the room after a short grace period (so a brief network blip does
-  not orphan the run).
-- **Idleness**: the server drops a room whose both sockets are closed, or after
-  a configurable idle timeout (default ~10 min with no `state`/`intent`/`ping`).
-- **Determinism**: the host owns the floor seed and is the authoritative sim. The
-  joiner renders from `snapshot`s and sends `intent`s. For 4.6 we accept that
-  the joiner's view lags by one round-trip and that divergent enemy AI between
-  snapshots is host-reconciled. Lockstep/rollback is explicitly **out of scope**
-  for 4.6; it is a candidate for a later milestone if co-op feels bad.
+- **Framing**: each line is `{"t": <type>, ...}`. Framing is UTF-8, one JSON
+  **object** per newline-terminated line, with buffered partial/coalesced-line
+  support and a maximum line size of `MP_MAX_MESSAGE_BYTES = 256 * 1024`. Reject
+  malformed UTF-8/JSON, non-object payloads, oversized lines, invalid field
+  types, and non-finite numbers without letting one bad peer crash the room.
+  Apply a short configurable hello timeout (default 10 seconds). Unknown `t`
+  values are logged at a bounded/rate-limited diagnostic level and ignored for
+  forward compatibility; known but invalid or role-forbidden messages receive
+  `error` where it is safe to reply.
+- **Versioning and ordering**: `MP_PROTOCOL_VERSION = 1`. `hello` also carries a
+  content/build revision; the server rejects peers whose revision differs from
+  the room's accepted revision. Client-originated request `seq` values are
+  positive and monotonic per connection; direct replies echo `seq` while
+  unsolicited events do not invent one. Snapshot ordering uses `floor_revision`
+  plus a host `tick`; intent ordering uses a per-player `input_seq`. Add `pong`
+  (the reply to `ping`).
+- **Message set** (all fields snake_case). The server is a relay: it
+  validates/routes messages but never simulates the world.
+  - **Client -> server**
+    - `hello` — `{t, seq, protocol_version, content_revision, name, run_id, role,
+      reconnect_token?}`. `role` is `host` or `join`; a reconnect reclaims the
+      original role only with its token.
+    - `ready` — `{t, seq, archetype_key, run_seed?}`. Each player sends one
+      after choosing; only the host supplies a newly generated 64-bit
+      `run_seed`.
+    - `floor` — host only, sent at initial start and every floor transition.
+      Contains `floor_revision`, `depth`, `floor_seed`, floor-plan metadata, and
+      the complete static dungeon/world descriptor required for a joiner to
+      render the floor without advancing the host RNG.
+    - `snapshot` — host only, `{t, floor_revision, tick, ...}` with the latest
+      dynamic player, enemy, item, projectile, trap, familiar, and relevant
+      world state. (This replaces the earlier single-`player` `state` message:
+      a relay cannot synthesize a multi-entity snapshot from it, and there was
+      no server-to-host path for joiner intents.)
+    - `intent` — joiner only, `{t, input_seq, move_x, move_y, action, target}`.
+      Movement components are finite and clamped to `[-1, 1]`; one-shot actions
+      use a documented finite action enum and a nullable stable target ID.
+    - `run_ended` — host only, with authoritative death/victory/abandon outcome
+      and per-player result summaries.
+    - `ping` — `{t, seq, ts}` keepalive; `bye` — `{t}` graceful disconnect.
+  - **Server -> client**
+    - `welcome` — direct `hello` reply `{t, seq, run_id, you_are, player_id,
+      partner_name?, partner_ready, reconnect_token}`. The reconnect token is a
+      server-generated 128-bit opaque secret bound to that room slot.
+    - `partner_joined`, `ready_ack`, and exactly one `start` event. `start`
+      includes both stable player IDs/archetype keys and the host-provided
+      `run_seed`.
+    - `floor` and `snapshot` — the server relays the host's payload unchanged to
+      the joiner only. The initial `floor` must arrive before snapshots for that
+      revision; a reconnecting joiner receives the latest floor descriptor and
+      fresh snapshot before input is re-enabled.
+    - `intent` — the server relays a validated joiner intent to the host with its
+      authoritative `player_id`; the host, not the server, applies it.
+    - `partner_disconnected`, `partner_rejoined`, and final `partner_left`;
+      `run_ended`, `pong`, and `{t, seq?, code, msg, fatal}` `error` messages
+      (e.g. `run_full`, `run_not_found`, `run_id_in_use`, `bad_msg`).
+- **Entity identity**: every network-visible actor/object uses a stable string
+  `entity_id` supplied by the host or a serialization adapter. Never use Python
+  `id()` as an entity identity. Snapshot application ignores stale
+  `(floor_revision, tick)` pairs.
+- **Room lifecycle**: a host `hello` creates a waiting room only when no room
+  with that code exists; a joiner can enter only a waiting room with exactly one
+  occupant. A third client, duplicate role, late join after `start`, or code
+  collision is rejected deterministically. The room state is
+  `waiting_for_join` -> `selecting` -> `active` -> `closed`. **Max 2 players per
+  run for 4.6.**
+- **Reconnects**: `bye` is final — release that slot immediately and send final
+  `partner_left`. An unexpected socket loss reserves the slot for a configurable
+  30-second grace period, emits `partner_disconnected`, and lets only the
+  reconnect token reclaim it (emitting `partner_rejoined`). On grace expiry,
+  emit final `partner_left`; the remaining client returns safely to the title
+  after showing the loss notice. Reconnect support is process-lifetime only:
+  tokens are not written to disk in 4.6.
+- **Idleness**: the server drops a room whose both slots are closed, or after a
+  configurable idle timeout (default ~10 min), refreshed by accepted `snapshot`,
+  `intent`, or `ping` traffic.
+- **Determinism and authority**: the host process is the sole simulator — it
+  owns RNG, dungeon generation, floor transitions, AI, combat, damage, loot
+  resolution, and run results. The joiner never runs those systems speculatively;
+  it applies floor/snapshot data, renders it, updates its local camera/UI/visual
+  interpolation, and sends input intents. A host-created full static floor
+  descriptor is required even if deterministic seeds are retained for
+  debugging/replay, because the current global RNG sequence also drives story,
+  floor planning, dungeon shape, and population, so a lone `floor_seed` is
+  insufficient to make a joiner reconstruct a floor safely. For 4.6 we accept
+  that the joiner's view lags by one round-trip and that divergent enemy AI
+  between snapshots is host-reconciled. Lockstep/rollback is explicitly **out
+  of scope** for 4.6; it is a candidate for a later milestone if co-op feels bad.
 
 #### Integration with the existing run loop
 
-- New `Game.state` values: `"mp_setup"` (name + id prompts), `"mp_lobby"`
-  (waiting for partner), `"mp_join"` (entering an existing id). The run itself
+- New `Game.state` values: `"mp_setup"` (name + role + code prompts, with
+  sub-modes `name`/`role`/`host_code`/`join_code`) and `"mp_lobby"` (waiting for
+  partner, used only after the server has accepted the session). The run itself
   still uses the existing `"playing"` state; multiplayer-ness is tracked by a
-  `self.mp_active: bool` and `self.mp_role: "host"|"join"|""` on `Game`.
+  `self.mp_active: bool` and `self.mp_role: "host"|"join"|""` on `Game`. Do not
+  introduce a separate `mp_join` state.
 - `RunFlowMixin` gains `begin_multiplayer_run(...)` which mirrors the existing
-  single-player start path but seeds `floor_plan` from the host's seed and
+  single-player start path but seeds the run from the host's `run_seed` and
   stamps both `Player` actors. The joiner's `Player` is constructed locally from
   the `start` message's `joiner_archetype`.
-- `NetMixin.poll()` is called once per `Game.run()` iteration, drains the recv
-  queue, and dispatches messages to handlers that mutate `Game` state. It must
-  be cheap and must not allocate on the hot path when `mp_active` is false.
+- The host's current single `self.player` model must become an explicit stable
+  player collection plus `local_player_id`, while preserving a compatible
+  local-player convenience path where useful for single-player tests. Shared
+  combat, population, rendering, visibility, collision, and serialization code
+  must accept/select an explicit actor rather than silently assuming one
+  player. This is a required gameplay refactor, not something a `NetMixin`
+  alone can solve. Each client's camera, HUD, and fog-of-war center on its local
+  actor.
+- `NetMixin.poll()` is called once per `Game.run()` iteration — after the frame
+  tick and before state-dependent update work — and drains the recv queue to
+  dispatch messages to handlers that mutate `Game` state. It must be cheap and
+  must not allocate on the hot path when no multiplayer client exists. Retain
+  `Game.run()` as the only caller of `clock.tick`.
+- On the host, run the real simulation once per frame. On the joiner, skip
+  AI/RNG/combat simulation and render the latest authoritative state. Start with
+  a bounded cadence of 15 snapshots/sec and 20 coalesced movement intents/sec;
+  transmit one-shot actions promptly and never let a backlog of old snapshots
+  grow unbounded.
 - The combat/population/rendering mixins are **not** forked for multiplayer in
   4.6. The host runs the real sim; the joiner renders `snapshot`-derived actors
   and forwards input. Keeping the combat package shared preserves the
   `from arch_rogue.combat import CombatMixin` contract.
 
+#### First-pass co-op rules
+
+These defaults keep 4.6 compatible with Rogue-like consequences and avoid
+ambiguous host/join behavior:
+
+- Players do not body-block one another. Enemies target the nearest living
+  player, breaking equal-distance ties by stable player ID.
+- Loot, gold, inventory, equipment, XP, and disciplines are player-owned. The
+  first host-validated interaction claims a world item; trading is unavailable.
+  Global world changes are resolved once by the host and replicated.
+- Each living player may fight, move, use their own inventory, and submit an
+  interaction intent. Stairs require all living players to be in range before
+  either player can trigger descent. A defeated player has no revive in 4.6;
+  the shared run ends only when no player remains alive, or when the host emits
+  victory/abandon.
+- To avoid divergent modal UI in the first pass, story/relic/guest choices,
+  shops, and other global dialogue are host-controlled; joiners receive the
+  resolved outcome through authoritative state. No chat, trade, host migration,
+  late join, or independent cutscene-choice UI is included.
+
+#### Persistence and UI integration
+
+- Multiplayer runs never use the ordinary single-player run save. `Resume a
+  saved run` remains single-player only; backgrounding, exit confirmation, and
+  return-to-title must send/close the MP session without overwriting or deleting
+  an existing single-player save. Each client persists only its own options and
+  its own local meta/run-history result after a host `run_ended` event.
+- Add dedicated menu renderers and input/back handling for `mp_setup` and
+  `mp_lobby`; unknown pre-run states must never fall through to dungeon world
+  rendering.
+
+#### Mobile integration
+
+- Add `mp_setup` and `mp_lobby` to the mobile reversible-contexts set in
+  `RenderingBaseMixin._draw_mobile_back_button` and to `mobile_input_context()`
+  so the back button and touch navigation work for the setup/lobby screens. Add
+  explicit touch targets for the Host/Join role choice, code entry, and lobby
+  confirm/cancel via `handle_mobile_tap()`; never fall through to dungeon-world
+  rendering for an unknown pre-run state on mobile.
+- Keep every mobile MP branch gated by `mobile_mode` (or
+  `android_runtime_active()` for import-time checks) so no desktop frame runs
+  the soft-keyboard / mobile touch paths, mirroring the existing mobile
+  isolation rule.
+- Android app lifecycle: when the OS suspends the app (`mobile_suspended`), the
+  MP client pauses outbound traffic and holds its socket; on resume it either
+  resumes normally or, if the socket died during suspension, reconnects using
+  its reconnect token within the 30-second grace window. A clean `bye` on
+  exit-confirmation / return-to-title stays final. This path must not delete or
+  overwrite a single-player save.
+- Validate Android performance on an AVD with the existing profiling workflow
+  (`tools/profile_adb_live.py`); the stress case is snapshot application plus
+  rendering two players. Confirm native resolution stays in use and that
+  `overlays`/`flip` do not regress relative to single-player on the same AVD.
+
 #### Tests
 
 - `tests/test_net_protocol.py` — encode/decode round-trips for every message
-  type, unknown-type tolerance, and the run-id generator's length/alphabet.
+  type, unknown-type tolerance, fragmented/coalesced TCP lines, malformed and
+  oversized messages, non-finite numbers, protocol/content revision mismatch,
+  and the run-id generator's length/alphabet.
 - `tests/test_server_room.py` — `Room` lifecycle: host-only, join, full-run
-  rejection, partner_left, idle timeout, graceful `bye`.
+  rejection, run-id collision, role-forbidden routing, `partner_left`, idle
+  timeout (fake clock), graceful `bye`, reconnect/grace expiry, and
+  `partner_rejoined`.
 - `tests/test_mp_flow.py` — a pair of in-process `MultiplayerClient` instances
   wired to an in-memory server, exercising the `hello` -> `welcome` ->
-  `partner_joined` -> `start` handshake end-to-end without real sockets.
+  `partner_joined` -> `ready` -> `start` handshake end-to-end, hello/ready
+  races, stale snapshot/input rejection, bounded queue shutdown, and
+  host-to-joiner intent relay.
 - All multiplayer tests run headless with the existing dummy SDL drivers; no
-  network access is required (loopback or in-memory transports only).
+  network access is permitted (injectable in-memory transport or loopback
+  sockets only).
+- Add headless mobile-mode coverage for the `mp_setup`/`mp_lobby` touch targets,
+  back-button handling, and the suspend/resume reconnect path (fake clock +
+  in-memory transport); keep all mobile MP branches gated by `mobile_mode` so
+  desktop tests never execute them.
+- Update existing title-navigation, options-schema/row-count, save-version, and
+  UI-layout expectations affected by the fifth title row and schema-8 options.
+  Multiplayer additions must pass the focused modules and then
+  `python -m unittest discover tests` (excluding web tests by default). The 4.6
+  release work also updates `CHANGELOG.md`, `pyproject.toml`,
+  `src/arch_rogue/__init__.py`, `buildozer.spec`, and version assertions together.
 
 #### Out of scope for 4.6
 
+- Web multiplayer (pygbag/Emscripten): raw TCP is unavailable, so it needs a
+  separate WebSocket transport layer — a later milestone.
 - More than 2 players per run.
 - Persistent accounts, matchmaking, or run history.
 - Unique per-player generated sprites (backlog item — keep existing archetype
@@ -495,7 +680,7 @@ message set, no RPC surface, and we want zero new client-side deps.
 - Dash: extended dash/blink skill (skill 4) when key pressed long, character starts "running" and moves faster. This consumes stamina really fast and stops once stamina is spent. When "running" mode activated, dash/blink suffers 1min cooldown. To be used as last resort to run away.
 - Gardens should heal player more slowly. Slow the healing "tick" -> every 5 seconds
 - On mobile, dash direction some times gets "stuck". So  that it does not respect the direction player is moving via joystick. Way to fix: stop moving, look around by touching the screen around player (not by joystick) -> start moving again via joystick and problem is gone
-- We need to generate another version of Arch Rogue text logo where the diamond/relic in the middle is rotating slowly. This will be used in loading screens.
+- We need to generate another version of Arch Rogue text logo where the diamond/relic in the middle is rotating slowly. This will be used in loading screens and website.
 - Generate unique sprites for unique and legendary items
   - Actually, generate unique sprites for all named items in game
   - Also make all items a bit more rare across the board, unique and legenray items enen a bit more rare
