@@ -130,16 +130,17 @@ class _MovementCombatMixin:
         # multiplier follows analog input, status effects, and Time Skip. This
         # keeps authored footsteps synchronized when simulation speed changes
         # without making naturally slow enemy archetypes freeze between frames.
-        if self.player.moving:
-            speed = min(
-                WALK_ANIM_SPEED_CEIL,
-                anim_speed(self.player_walk_cadence())
-                * max(
-                    WALK_ANIM_RUNTIME_SCALE_FLOOR,
-                    self.player.locomotion_anim_scale,
-                ),
-            )
-            self.player.anim_time += dt * WALK_ANIMATION_RATE * speed
+        for actor in self.active_players():
+            if actor.moving:
+                speed = min(
+                    WALK_ANIM_SPEED_CEIL,
+                    anim_speed(self.player_walk_cadence())
+                    * max(
+                        WALK_ANIM_RUNTIME_SCALE_FLOOR,
+                        actor.locomotion_anim_scale,
+                    ),
+                )
+                actor.anim_time += dt * WALK_ANIMATION_RATE * speed
         for enemy in self.enemies:
             if enemy.moving:
                 speed = min(
@@ -185,9 +186,13 @@ class _MovementCombatMixin:
         # a fresh all-actor list for every mover. Most pairs do not overlap, so a
         # squared-distance rejection also avoids their comparatively costly sqrt.
         if actor_is_player:
+            # Players never body-block one another (4.6 co-op rule), so other
+            # players are deliberately absent from a player's contact list.
             others = chain(self.enemies, self.iter_friendly_npcs())
         else:
-            others = chain((self.player,), self.enemies, self.shopkeepers)
+            others = chain(
+                self.active_players(), self.enemies, self.shopkeepers
+            )
 
         for other in others:
             if other is actor:

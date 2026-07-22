@@ -91,6 +91,9 @@ class _ClassSkillsCombatMixin:
 
     def player_cast_class_skill(self) -> None:
         """Dispatch the archetype-specific class skill."""
+        if self.mp_is_joiner():
+            self.mp_queue_action("skill")
+            return
         getattr(self, self._class_skill().cast_method)()
 
     def equipment_class_skill_bonus(self, text: str = "") -> bool:

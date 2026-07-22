@@ -817,6 +817,10 @@ class Enemy:
     windup_attack: str = field(default="", repr=False, compare=False)
     windup_nx: float = field(default=0.0, repr=False, compare=False)
     windup_ny: float = field(default=0.0, repr=False, compare=False)
+    # 4.6 multiplayer: stable network entity id assigned lazily by the host's
+    # serialization adapter (never Python id()). Transient — excluded from run
+    # saves via _TRANSIENT_ENEMY_FIELDS.
+    entity_id: str = field(default="", repr=False, compare=False)
 
     @property
     def alive(self) -> bool:
@@ -872,6 +876,9 @@ class Familiar:
     # resumes with the Spirit Beast immediately pettable and in its normal pose.
     pet_cooldown: float = 0.0
     pet_anim_timer: float = 0.0
+    # Additive 4.6 co-op owner binding: the ``player_id`` this summon follows
+    # and credits. Old saves default to the single-player id.
+    owner_id: str = "p1"
 
     @property
     def alive(self) -> bool:
@@ -926,6 +933,22 @@ class Player:
     locomotion_anim_scale: float = field(default=1.0, repr=False, compare=False)
     # Last rendered authored-sprite direction; transient hysteresis anchor.
     sprite_direction: str = field(default="", repr=False, compare=False)
+    # 4.6 multiplayer identity, appended last to preserve positional calls.
+    # ``player_id`` is the stable network id ("p1" is the single-player and
+    # host default); ``display_name`` is the chosen co-op name (empty when
+    # playing solo). Neither is written to single-player run saves.
+    player_id: str = "p1"
+    display_name: str = ""
+    # 4.6 transient per-player visual state for network partners. The local
+    # player's action pose / hit flash stay on the Game object (the long-
+    # standing single-player contract); a partner's are applied here from
+    # snapshots and intents so both actors can flash and pose independently.
+    action_state: str = field(default="", repr=False, compare=False)
+    action_ttl: float = field(default=0.0, repr=False, compare=False)
+    action_elapsed: float = field(default=0.0, repr=False, compare=False)
+    action_duration: float = field(default=0.0, repr=False, compare=False)
+    hit_flash: float = field(default=0.0, repr=False, compare=False)
+    hit_flash_duration: float = field(default=0.0, repr=False, compare=False)
 
     def has_upgrade(self, key: str) -> bool:
         return key in self.skill_upgrades

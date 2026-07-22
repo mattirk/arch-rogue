@@ -1,0 +1,33 @@
+[project]
+name = "arch-rogue-server"
+version = "4.6.0"
+description = "Ephemeral in-memory relay server for Arch Rogue two-player co-op."
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+]
+# The wire codec is the canonical shared `arch_rogue_protocol` package that
+# lives in this repository at ../src/arch_rogue_protocol. It must be consumed
+# as a local path dependency — never vendored or copied — so the client and
+# server can never drift. Standard metadata cannot express a relative path
+# dependency, so install it explicitly from the repo root:
+#
+#     pip install --no-deps -e .        # from the repository root (game project)
+#     pip install -e server/            # then this server project
+#
+# Running `python -m server.server` from a repo checkout needs no install at
+# all: server/protocol.py falls back to importing the canonical package
+# straight from ../src.
+dependencies = []
+
+[project.scripts]
+arch-rogue-server = "server.server:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["server"]
+package-dir = { server = "." }

@@ -848,9 +848,60 @@ class RenderingHudMixin:
     def draw_ui(self) -> None:
         if getattr(self, "mobile_mode", False):
             self._draw_mobile_ui()
+            self._draw_mp_session_banner()
             return
         with self.fitted_ui_layout((960, 540)):
             self._draw_ui_fitted()
+        self._draw_mp_session_banner()
+
+    def _mp_session_banner_text(self) -> str:
+        """One-line co-op status shown above the world (empty when quiet)."""
+
+        if not getattr(self, "mp_active", False):
+            return ""
+        session = getattr(self, "mp_session", None)
+        if session is not None and session.reconnecting:
+            return "Connection lost — reattempting…"
+        if session is not None and not session.partner_connected:
+            return "Your partner's connection wavers…"
+        local = self.local_player()
+        if local is not None and local.hp <= 0:
+            return "You have fallen — your partner fights on"
+        if self.mp_role == "join":
+            reason = getattr(self, "mp_partner_pause_reason", "")
+            if reason == "story":
+                return "Your partner communes with the story…"
+            if reason == "shop":
+                return "Your partner bargains with a trader…"
+            if reason in ("menu", "paused"):
+                return "Your partner pauses among their belongings…"
+        return ""
+
+    def _draw_mp_session_banner(self) -> None:
+        text = self._mp_session_banner_text()
+        if not text:
+            return
+        width, _height = self.screen.get_size()
+        font = self.small_font
+        label = font.render(text, True, (232, 216, 176))
+        pad_x = self.ui(12)
+        pad_y = self.ui(5)
+        banner = pygame.Rect(
+            0,
+            0,
+            label.get_width() + pad_x * 2,
+            label.get_height() + pad_y * 2,
+        )
+        banner.midtop = (width // 2, self.ui(10))
+        if getattr(self, "mobile_mode", False):
+            banner.top = self.mobile_safe_rect().y + self.ui(8)
+        self.draw_translucent_panel(
+            self.screen,
+            banner,
+            (14, 12, 18, 205),
+            (126, 104, 68, 170),
+        )
+        self.screen.blit(label, (banner.x + pad_x, banner.y + pad_y))
 
     def _mobile_action_rail_surface(
         self,
@@ -2826,6 +2877,15 @@ class RenderingHudMixin:
 
     def draw_archetype_select(self) -> None:
         self.menus.draw_archetype_select()
+
+    def draw_mp_setup(self) -> None:
+        self.menus.draw_mp_setup()
+
+    def draw_mp_lobby(self) -> None:
+        self.menus.draw_mp_lobby()
+
+    def draw_text_input_overlay(self) -> None:
+        self.menus.draw_text_input_overlay()
 
     def draw_state_overlay(self) -> None:
         self.menus.draw_state_overlay()

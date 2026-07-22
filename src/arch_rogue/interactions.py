@@ -339,6 +339,11 @@ class InteractionMixin:
         )
 
     def interact(self) -> None:
+        # 4.6 co-op: the joiner submits an interaction intent; the host
+        # validates and resolves it (first valid claim wins the item).
+        if self.mp_is_joiner():
+            self.mp_queue_action("interact")
+            return
         if self.story_intro_pending:
             self.floaters.append(
                 FloatingText(
@@ -358,9 +363,39 @@ class InteractionMixin:
             return
         shopkeeper = self.nearby_shopkeeper()
         if shopkeeper is not None:
+            # Shops are host-controlled in 4.6: only the host's own actor may
+            # open the modal shop UI; a partner's interact is acknowledged in
+            # the world instead of opening divergent dialogue.
+            if (
+                self.mp_active
+                and self.player.player_id != self.local_player_id
+            ):
+                self.floaters.append(
+                    FloatingText(
+                        "The trader deals with the host",
+                        self.player.x,
+                        self.player.y - 0.5,
+                        (235, 210, 120),
+                        ttl=1.1,
+                    )
+                )
+                return
             self.open_shop(shopkeeper)
             return
         if self.player_near_stairs():
+            # Descent is a shared decision: every living player must stand
+            # near the stairs before either can trigger it.
+            if self.mp_active and not self.mp_all_living_players_near_stairs():
+                self.floaters.append(
+                    FloatingText(
+                        "Both of you must reach the stairs",
+                        self.player.x,
+                        self.player.y - 0.5,
+                        self.theme.accent,
+                        ttl=1.2,
+                    )
+                )
+                return
             if self.current_depth < DUNGEON_DEPTH:
                 self.descend_to_next_depth()
                 return
@@ -384,9 +419,26 @@ class InteractionMixin:
             self.audio.stop_music()
             self.play_sfx("victory")
             self.delete_save()
+            self.mp_notify_run_ended("victory")
             return
         guest = self.nearby_story_guest()
         if guest:
+            # Story dialogue is host-controlled; the partner's actor cannot
+            # open divergent modal choice UI.
+            if (
+                self.mp_active
+                and self.player.player_id != self.local_player_id
+            ):
+                self.floaters.append(
+                    FloatingText(
+                        "The guest awaits the host's word",
+                        self.player.x,
+                        self.player.y - 0.5,
+                        (235, 210, 120),
+                        ttl=1.1,
+                    )
+                )
+                return
             self.talk_to_story_guest(guest)
             return
         secret = self.nearby_secret()

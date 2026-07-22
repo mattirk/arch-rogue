@@ -145,6 +145,33 @@ LIGHT_SHADE_BIAS_Z = 0.55
 
 SlashEffect = tuple[float, float, float, float, float]
 
+# 4.6 multiplayer. The canonical wire contract lives in the stdlib-only
+# `arch_rogue_protocol` package (shared with the standalone server); these
+# re-exports give game code one import site alongside the other constants.
+# `MP_RUN_ID_LENGTH` is the client-generated room-code length — a room
+# locator, not authentication — and can later be raised to 8 or 12.
+from arch_rogue_protocol import (  # noqa: E402
+    MP_INTENT_RATE_HZ,
+    MP_MAX_MESSAGE_BYTES,
+    MP_PLAYER_NAME_MAX_CHARS,
+    MP_PROTOCOL_VERSION,
+    MP_RECONNECT_GRACE_SECONDS,
+    MP_RUN_ID_ALPHABET,
+    MP_RUN_ID_LENGTH,
+    MP_SNAPSHOT_RATE_HZ,
+)
+
+__all_mp__ = (
+    "MP_INTENT_RATE_HZ",
+    "MP_MAX_MESSAGE_BYTES",
+    "MP_PLAYER_NAME_MAX_CHARS",
+    "MP_PROTOCOL_VERSION",
+    "MP_RECONNECT_GRACE_SECONDS",
+    "MP_RUN_ID_ALPHABET",
+    "MP_RUN_ID_LENGTH",
+    "MP_SNAPSHOT_RATE_HZ",
+)
+
 # 4.3.17 frame-rate cap option (schema 7). The order here is also the cycle
 # order used by the Options row. "Unlimited" maps to ``clock.tick(0)``.
 FRAME_RATE_CAP_VALUES: tuple[int | str, ...] = (30, 60, 90, 120, "Unlimited")

@@ -67,6 +67,8 @@ class MenuOptionsMixin:
             ("M", "Static menu/run music", "On" if self.g.music_enabled else "Off"),
             ("L", "Lighting", "On" if self.g._lighting_enabled else "Off"),
             ("N", "Lighting detail", "On" if self.g._lighting_normal_maps else "Off"),
+            ("Enter", "Server host", self.g.mp_server_host_label()),
+            ("Enter", "Server port", self.g.mp_server_port_label()),
         ]
         if not self.g.mobile_mode:
             rows.append(
@@ -78,14 +80,15 @@ class MenuOptionsMixin:
             )
         rows.append(("Enter / O / Backspace", "Return to title", ""))
         # Visual grouping: (row_index, section_title). Row order above is
-        # Display (0-4), Controls (5-6), Audio (7-8), Lights (9-10); an optional
-        # Diagnostics row (desktop only) and the Back row at the end are
-        # intentionally ungrouped at the bottom.
+        # Display (0-4), Controls (5-6), Audio (7-8), Lights (9-10),
+        # Multiplayer (11-12); an optional Diagnostics row (desktop only) and
+        # the Back row at the end are intentionally ungrouped at the bottom.
         sections = [
             (0, "Display"),
             (5, "Controls"),
             (7, "Audio"),
             (9, "Lights"),
+            (11, "Multiplayer"),
         ]
         if not self.g.mobile_mode:
             sections.append((len(rows) - 2, "Diagnostics"))

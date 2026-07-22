@@ -82,6 +82,9 @@ _TRANSIENT_ENEMY_FIELDS = frozenset(
         "windup_attack",
         "windup_nx",
         "windup_ny",
+        # 4.6 multiplayer entity ids are per-session network identities and
+        # never belong in single-player run saves.
+        "entity_id",
     )
 )
 
@@ -225,6 +228,7 @@ class SaveLoadMixin:
             "facing_x": familiar.facing_x,
             "facing_y": familiar.facing_y,
             "command_mode": familiar.command_mode,
+            "owner_id": familiar.owner_id,
         }
 
     def familiar_from_dict(self, data: dict[str, Any]) -> Familiar:
@@ -250,6 +254,7 @@ class SaveLoadMixin:
             facing_x=float(data.get("facing_x", 1.0)),
             facing_y=float(data.get("facing_y", 0.0)),
             command_mode=command_mode,
+            owner_id=str(data.get("owner_id", "p1")),
         )
 
     def light_source_to_dict(self, light: LightSource) -> dict[str, Any]:
@@ -595,6 +600,7 @@ class SaveLoadMixin:
                 ):
                     self.player.x, self.player.y = candidate_x, candidate_y
                     break
+        self.players = [self.player]
         self.player.skill_upgrades = migrate_discipline_keys(
             [str(upgrade) for upgrade in player_data.get("skill_upgrades", [])]
         )
@@ -750,6 +756,11 @@ class SaveLoadMixin:
 
     def save_run(self) -> bool:
         self.last_save_error = ""
+        # 4.6: multiplayer runs never use the single-player run save. Refusing
+        # here (rather than at each call site) guarantees backgrounding, floor
+        # descents, and exit confirmation can never overwrite a solo save.
+        if getattr(self, "mp_active", False):
+            return False
         saving_from_exit_confirmation = (
             self.state == "confirm_exit"
             and getattr(self, "exit_previous_state", "") == "playing"
@@ -789,6 +800,9 @@ class SaveLoadMixin:
         return True
 
     def delete_save(self) -> None:
+        # A co-op death/victory must never delete an existing solo save.
+        if getattr(self, "mp_active", False):
+            return
         try:
             self.save_path.unlink(missing_ok=True)
             self._interrupted_save_path().unlink(missing_ok=True)

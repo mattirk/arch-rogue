@@ -83,8 +83,14 @@ class RenderingBaseMixin:
         monitor = getattr(self, "_mobile_performance_monitor", None)
         safe = self.mobile_safe_rect()
         ui_assets = getattr(self, "ui_assets", None)
+        text_session = getattr(self, "text_input", None)
         common = (
             state,
+            # 4.6: live text entry (Options server host/port) must repaint
+            # per keystroke and blink its caret on the cached mobile menus.
+            getattr(text_session, "target", ""),
+            getattr(text_session, "value", ""),
+            int(self.ui_elapsed * 2.0) if text_session is not None else -1,
             id(self.screen),
             self.screen.get_size(),
             (safe.x, safe.y, safe.width, safe.height),
@@ -112,6 +118,7 @@ class RenderingBaseMixin:
             return common + (
                 int(getattr(self, "title_selection", 0)),
                 bool(self.save_exists()),
+                getattr(self, "mp_title_notice", ""),
             )
         if state == "options":
             return common + (
@@ -165,6 +172,9 @@ class RenderingBaseMixin:
             "character",
             "help",
             "state_overlay",
+            # 4.6: the multiplayer setup/lobby screens are reversible.
+            "mp_setup",
+            "mp_lobby",
         }
         if context == "cutscene" and not getattr(self, "story_intro_pending", False):
             reversible_contexts.add("cutscene")
@@ -246,6 +256,10 @@ class RenderingBaseMixin:
             "about": self.draw_about_screen,
             "archetype_select": self.draw_archetype_select,
             "confirm_exit": self.draw_exit_confirmation,
+            # 4.6: pre-run multiplayer screens are full menus; unknown pre-run
+            # states must never fall through to dungeon-world rendering.
+            "mp_setup": self.draw_mp_setup,
+            "mp_lobby": self.draw_mp_lobby,
         }.get(self.state)
         mobile = bool(getattr(self, "mobile_mode", False))
         cutscene_owns_display = bool(
@@ -280,6 +294,13 @@ class RenderingBaseMixin:
             started = time.perf_counter()
             with self.mobile_full_render_target():
                 menu_draw()
+                # 4.6: modal entry panel for text edited from a non-mp screen
+                # (Options server host/port). mp_setup embeds its own field.
+                if (
+                    getattr(self, "text_input", None) is not None
+                    and self.state != "mp_setup"
+                ):
+                    self.draw_text_input_overlay()
             if performance is not None:
                 performance.record_phase("menu", time.perf_counter() - started)
             self._draw_mobile_back_button()

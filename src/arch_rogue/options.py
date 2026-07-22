@@ -50,6 +50,26 @@ from .content import (
 )
 from .input import normalize_gamepad_mapping, serialize_gamepad_mapping
 from .mobile import android_runtime_active
+from arch_rogue_protocol import sanitize_player_name
+
+
+def normalize_mp_server_host(value: object) -> str:
+    """Sanitize a persisted multiplayer server host/address string."""
+
+    if not isinstance(value, str):
+        return ""
+    host = "".join(char for char in value if char.isprintable())
+    return host.strip()[:128]
+
+
+def normalize_mp_server_port(value: object) -> int:
+    """Coerce a persisted port to an int in 1..65535, or 0 (unset)."""
+
+    try:
+        port = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+    return port if 1 <= port <= 65535 else 0
 
 
 _BASE_DISPLAY_DPI = 96.0
@@ -416,6 +436,21 @@ class OptionsMixin:
                 ),
             )
         )
+
+    def mp_endpoint_configured(self) -> bool:
+        """Whether a usable multiplayer server endpoint is persisted."""
+
+        host = normalize_mp_server_host(getattr(self, "mp_server_host", ""))
+        port = normalize_mp_server_port(getattr(self, "mp_server_port", 0))
+        return bool(host) and 1 <= port <= 65535
+
+    def mp_server_host_label(self) -> str:
+        host = normalize_mp_server_host(getattr(self, "mp_server_host", ""))
+        return host or "Not set"
+
+    def mp_server_port_label(self) -> str:
+        port = normalize_mp_server_port(getattr(self, "mp_server_port", 0))
+        return str(port) if port else "Not set"
 
     def frame_rate_cap_label(self) -> str:
         cap = normalize_frame_rate_cap(
@@ -827,7 +862,7 @@ class OptionsMixin:
     def options_to_dict(self) -> dict[str, Any]:
         return {
             "version": 1,
-            "schema_version": 7,
+            "schema_version": 8,
             "audio_enabled": self.audio_enabled,
             "music_enabled": self.music_enabled,
             "fullscreen": self.fullscreen,
@@ -858,6 +893,18 @@ class OptionsMixin:
             ),
             "show_perf_overlay": bool(
                 getattr(self, "show_perf_overlay", False)
+            ),
+            # Schema v8 (4.6): multiplayer identity + server endpoint. The
+            # endpoint is unset by default; multiplayer stays unreachable from
+            # the menu until a non-empty host and a port in 1..65535 exist.
+            "mp_player_name": sanitize_player_name(
+                getattr(self, "mp_player_name", "")
+            ),
+            "mp_server_host": normalize_mp_server_host(
+                getattr(self, "mp_server_host", "")
+            ),
+            "mp_server_port": normalize_mp_server_port(
+                getattr(self, "mp_server_port", 0)
             ),
         }
 
@@ -937,6 +984,17 @@ class OptionsMixin:
                 data.get("frame_rate_cap", FRAME_RATE_CAP_DEFAULT)
             )
             self.show_perf_overlay = bool(data.get("show_perf_overlay", False))
+            # Schema v8 (4.6): multiplayer name + server endpoint. All older
+            # schemas migrate to the unset defaults ("", "", 0).
+            self.mp_player_name = sanitize_player_name(
+                data.get("mp_player_name", "")
+            )
+            self.mp_server_host = normalize_mp_server_host(
+                data.get("mp_server_host", "")
+            )
+            self.mp_server_port = normalize_mp_server_port(
+                data.get("mp_server_port", 0)
+            )
         except (TypeError, ValueError):
             return False
         frame_pacing = getattr(self, "frame_pacing", None)
@@ -1006,6 +1064,8 @@ class OptionsMixin:
             "about",
             "archetype_select",
             "confirm_exit",
+            "mp_setup",
+            "mp_lobby",
         ):
             return MusicProfile(
                 0xA11CE,

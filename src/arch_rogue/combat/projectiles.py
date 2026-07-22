@@ -156,30 +156,41 @@ class _ProjectilesCombatMixin:
                             kind="burst",
                         )
                         continue
-                player_dx = projectile.x - self.player.x
-                player_dy = projectile.y - self.player.y
-                if (
-                    player_dx * player_dx + player_dy * player_dy
-                    < ENEMY_PROJECTILE_HIT_RADIUS * ENEMY_PROJECTILE_HIT_RADIUS
-                    and self.dungeon.line_of_sight(
-                        projectile.x,
-                        projectile.y,
-                        self.player.x,
-                        self.player.y,
-                    )
-                ):
+                struck_player = None
+                for candidate in self.living_players():
+                    player_dx = projectile.x - candidate.x
+                    player_dy = projectile.y - candidate.y
+                    if (
+                        player_dx * player_dx + player_dy * player_dy
+                        < ENEMY_PROJECTILE_HIT_RADIUS
+                        * ENEMY_PROJECTILE_HIT_RADIUS
+                        and self.dungeon.line_of_sight(
+                            projectile.x,
+                            projectile.y,
+                            candidate.x,
+                            candidate.y,
+                        )
+                    ):
+                        struck_player = candidate
+                        break
+                if struck_player is not None:
                     amount = self.take_player_damage(
                         projectile.damage,
                         source="projectile",
                         damage_type=projectile.damage_type,
+                        victim=struck_player,
                     )
                     if projectile.status_effect == "chilled" and amount > 0:
-                        self.set_player_status("chilled", projectile.status_duration)
+                        self.set_player_status(
+                            "chilled",
+                            projectile.status_duration,
+                            player=struck_player,
+                        )
                     self.floaters.append(
                         FloatingText(
                             f"-{amount}",
-                            self.player.x,
-                            self.player.y - 0.2,
+                            struck_player.x,
+                            struck_player.y - 0.2,
                             (235, 90, 80),
                         )
                     )
@@ -312,19 +323,30 @@ class _ProjectilesCombatMixin:
         return 0
 
     def update_traps(self, _dt: float) -> None:
+        players = self.living_players()
         for trap in self.traps:
             if not trap.active:
                 continue
-            if math.hypot(trap.x - self.player.x, trap.y - self.player.y) > 0.55:
+            victim = next(
+                (
+                    player
+                    for player in players
+                    if math.hypot(trap.x - player.x, trap.y - player.y) <= 0.55
+                ),
+                None,
+            )
+            if victim is None:
                 continue
             trap.active = False
-            amount = self.take_player_damage(trap.damage, source="trap")
+            amount = self.take_player_damage(
+                trap.damage, source="trap", victim=victim
+            )
             self.run_stats.traps_triggered += 1
             self.floaters.append(
                 FloatingText(
                     f"{trap.kind}! -{amount}",
-                    self.player.x,
-                    self.player.y - 0.2,
+                    victim.x,
+                    victim.y - 0.2,
                     (245, 95, 70),
                     ttl=1.2,
                 )

@@ -528,12 +528,26 @@ class RenderingActorMixin:
         self.screen.blit(sprite, rect)
         return rect
 
+    def _player_is_local(self, player: Player) -> bool:
+        return (
+            not getattr(self, "mp_active", False)
+            or player.player_id == self.local_player_id
+        )
+
     def player_visual_state(self, player: Player) -> str:
-        if getattr(self, "player_hit_flash", 0.0) > 0.0:
+        if self._player_is_local(player):
+            if getattr(self, "player_hit_flash", 0.0) > 0.0:
+                return "hit"
+            action_state = getattr(self, "player_action_state", "")
+            if getattr(self, "player_action_ttl", 0.0) > 0.0 and action_state:
+                return action_state
+            return "walk" if player.moving else "idle"
+        # 4.6: a network partner's pose comes from its own transient fields
+        # (applied from snapshots on the joiner, intents on the host).
+        if player.hit_flash > 0.0:
             return "hit"
-        action_state = getattr(self, "player_action_state", "")
-        if getattr(self, "player_action_ttl", 0.0) > 0.0 and action_state:
-            return action_state
+        if player.action_ttl > 0.0 and player.action_state:
+            return player.action_state
         return "walk" if player.moving else "idle"
 
     def enemy_visual_state(self, enemy: Enemy) -> str:
@@ -726,14 +740,22 @@ class RenderingActorMixin:
             previous=player.sprite_direction,
         )
         player.sprite_direction = direction
-        action_elapsed = getattr(self, "player_action_elapsed", 0.0)
-        action_duration = getattr(self, "player_action_duration", 0.0)
-        if state == "hit":
-            hit_ttl = max(0.0, getattr(self, "player_hit_flash", 0.0))
-            action_duration = max(
-                0.01,
-                getattr(self, "player_hit_flash_duration", hit_ttl),
+        is_local = self._player_is_local(player)
+        if is_local:
+            action_elapsed = getattr(self, "player_action_elapsed", 0.0)
+            action_duration = getattr(self, "player_action_duration", 0.0)
+            hit_flash_ttl = getattr(self, "player_hit_flash", 0.0)
+            hit_flash_duration = getattr(
+                self, "player_hit_flash_duration", hit_flash_ttl
             )
+        else:
+            action_elapsed = player.action_elapsed
+            action_duration = player.action_duration
+            hit_flash_ttl = player.hit_flash
+            hit_flash_duration = player.hit_flash_duration
+        if state == "hit":
+            hit_ttl = max(0.0, hit_flash_ttl)
+            action_duration = max(0.01, hit_flash_duration or hit_ttl)
             action_elapsed = max(0.0, action_duration - hit_ttl)
         action_progress = (
             max(0.0, min(1.0, action_elapsed / action_duration))
@@ -772,18 +794,32 @@ class RenderingActorMixin:
             sy,
             sprite.get_width(),
             sprite.get_height(),
-            getattr(self, "player_hit_flash", 0.0),
+            hit_flash_ttl,
             (255, 110, 90),
         )
-        # 4.2: garden healing aura. Drawn after the hit flash so a recent hit
-        # does not mask the green tint, and lazily skipped when no glow timer
-        # is active (the common case in non-garden floors).
-        self.draw_garden_heal_glow(
-            sx,
-            sy,
-            sprite.get_width(),
-            sprite.get_height(),
-        )
+        if is_local:
+            # 4.2: garden healing aura. Drawn after the hit flash so a recent
+            # hit does not mask the green tint, and lazily skipped when no glow
+            # timer is active (the common case in non-garden floors).
+            self.draw_garden_heal_glow(
+                sx,
+                sy,
+                sprite.get_width(),
+                sprite.get_height(),
+            )
+        elif player.display_name:
+            # A network partner carries their chosen name overhead so two
+            # same-archetype descenders stay tellable-apart.
+            label = self._cached_text_surface(
+                self.tiny_font, player.display_name, (222, 210, 176)
+            )
+            self.screen.blit(
+                label,
+                (
+                    sx - label.get_width() // 2,
+                    sy - sprite.get_height() - label.get_height() - 4,
+                ),
+            )
 
     def draw_aim_cone(self) -> None:
         sx, sy = self.world_to_screen(self.player.x, self.player.y)

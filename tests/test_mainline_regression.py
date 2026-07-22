@@ -135,7 +135,8 @@ class DesktopDeterminismTests(unittest.TestCase):
     # processes, so each scenario only needs one render per test invocation.
     # Update a constant only for an intentional rendering change or after
     # proving that an existing baseline is stale.
-    TITLE_HASH = "7b718ed26671705ed2f5b474c1452f11b058dc2285f1c6f45cd737168efcbb3e"
+    # 4.6: five title rows ("One will descend" / "Two will descend" + glyph).
+    TITLE_HASH = "6c4e86a805fc20bd9955567c36fd578b1128fc7193addc3b18c036ac74672d0c"
     GAMEPLAY_HASH = "51c0bb05212a81ed567f9c7547018eaf9d9255de5290f920829ce436afdb9ce4"
     CROWD_HASH = "af7d84f12dc7c8b0b4d6085a6e62d74577f5acce8a42e508065ee1e742098af5"
 

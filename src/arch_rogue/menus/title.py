@@ -58,7 +58,8 @@ class MenuTitleMixin:
         )
         resume_value = "Ready" if self.g.save_exists() else "None"
         rows: list[MenuRow] = [
-            ("N / Enter", "Begin a new descent", ""),
+            ("N / Enter", "One will descend", ""),
+            ("T", "Two will descend", ""),
             ("L / R", "Resume a saved run", resume_value),
             ("O", "Options", ""),
             ("A / C / H / ?", "About, credits, and quick help", ""),
@@ -101,15 +102,31 @@ class MenuTitleMixin:
             keys_in_rows=not modern,
         )
         self.g._title_row_rects = rendered_rows
+        self._draw_multiplayer_glyph(rendered_rows)
         self._draw_parchment_note(
             note_rect,
             "Choose an archetype, follow a seeded dark-fantasy storyline, meet story guests, shape future floors with choices, and break the gate tyrant's seal.",
             modern=modern,
         )
+        mp_notice = getattr(self.g, "mp_title_notice", "")
+        if mp_notice:
+            self.draw_text(
+                mp_notice,
+                self.g.small_font,
+                self.WARNING,
+                pygame.Rect(
+                    note_rect.x,
+                    note_rect.y - self.g.small_font.get_height() - self.u(4),
+                    note_rect.width,
+                    self.g.small_font.get_height(),
+                ),
+                align="center",
+            )
         if modern and show_hints:
             selected_index = max(0, min(self.g.title_selection, len(rows) - 1))
             shortcut_labels = (
-                "New descent",
+                "One will descend",
+                "Two will descend",
                 "Resume saved run",
                 "Options",
                 "About & help",
@@ -123,6 +140,49 @@ class MenuTitleMixin:
             panel,
             "Arrows select · Enter confirms · Esc asks before quitting · Backspace returns from submenus",
         )
+
+    def _draw_multiplayer_glyph(
+        self, rendered_rows: tuple[pygame.Rect, ...]
+    ) -> None:
+        """The two-hooded-figures emblem beside the "Two will descend" row.
+
+        Uses the generated ``menu.glyph.multiplayer`` UI asset when available
+        and falls back to a small procedural two-figure mark in tests or
+        development builds without the asset.
+        """
+
+        if len(rendered_rows) < 2:
+            return
+        row = rendered_rows[1]
+        size = max(12, row.height - self.u(8))
+        rect = pygame.Rect(
+            row.right - size - self.u(10),
+            row.y + (row.height - size) // 2,
+            size,
+            size,
+        )
+        glyph = self.ui_asset("menu.glyph.multiplayer", rect.size)
+        if glyph is not None:
+            self.screen.blit(glyph, rect)
+            return
+        # Fallback: two tiny hooded silhouettes, side by side.
+        color = self.shade(self.accent(), 30)
+        half = rect.width // 2
+        for index in range(2):
+            cx = rect.x + half // 2 + index * half
+            head_r = max(2, rect.height // 6)
+            pygame.draw.circle(
+                self.screen, color, (cx, rect.y + head_r + 1), head_r
+            )
+            pygame.draw.polygon(
+                self.screen,
+                color,
+                (
+                    (cx - head_r - 1, rect.bottom - 1),
+                    (cx, rect.y + head_r),
+                    (cx + head_r + 1, rect.bottom - 1),
+                ),
+            )
 
     def _draw_parchment_note(
         self, rect: pygame.Rect, text: str, *, modern: bool = False

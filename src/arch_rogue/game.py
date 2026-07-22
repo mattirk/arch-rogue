@@ -103,6 +103,8 @@ from .mobile import (
     application_storage_directory,
     detect_mobile_runtime,
 )
+from .net import NetMixin
+from .text_input import TextInputMixin
 from .story import FriendlyNpcRuntimeMixin
 from .models import (
     AmbushBell,
@@ -312,6 +314,8 @@ class Game(
     InteractionMixin,
     InputMixin,
     MobileMixin,
+    NetMixin,
+    TextInputMixin,
     CameraMixin,
 ):
     EXIT_CONFIRMATION_EXIT = 0
@@ -382,6 +386,11 @@ class Game(
         self.legacy_graphics = False
         self.meta_progress: dict[str, Any] = self.default_meta_progress()
         self.run_history: list[dict[str, Any]] = []
+        # 4.6 schema-8 multiplayer options. load_options() overrides from disk;
+        # the endpoint stays unset until the player configures it.
+        self.mp_player_name = ""
+        self.mp_server_host = ""
+        self.mp_server_port = 0
         self.last_save_error = ""
         self.last_load_error = ""
         self.recovered_interrupted_run = False
@@ -569,6 +578,9 @@ class Game(
         self._character_tab_rects: tuple[pygame.Rect, ...] = ()
         self._cutscene_choice_rects: list[pygame.Rect] = []
         self._story_intro_choice_rects: list[pygame.Rect] = []
+        # 4.6 multiplayer session driver + shared single-line text entry.
+        self.text_input = None
+        self.init_net()
         self.menus = MenuRenderer(self, ARCHETYPES, DUNGEON_DEPTH)
         self.init_input()
 
@@ -613,6 +625,24 @@ class Game(
 
     def set_player_action_visual(self, state: str, ttl: float = 0.18) -> None:
         ttl = max(0.0, float(ttl))
+        # 4.6: while the host simulates a network partner's action, the pose
+        # belongs to that actor, not the shared local-player visual globals.
+        acting = getattr(self, "player", None)
+        if (
+            self.mp_active
+            and acting is not None
+            and acting.player_id != self.local_player_id
+        ):
+            if state != acting.action_state or acting.action_ttl <= 0.0:
+                acting.action_elapsed = 0.0
+                acting.action_duration = ttl
+            else:
+                acting.action_duration = max(
+                    acting.action_duration, acting.action_elapsed + ttl
+                )
+            acting.action_state = state
+            acting.action_ttl = max(acting.action_ttl, ttl)
+            return
         starts_new_action = (
             state != self.player_action_state or self.player_action_ttl <= 0.0
         )
@@ -734,6 +764,13 @@ class Game(
                 performance.record_phase("tick", time.perf_counter() - started)
             self.ui_elapsed += dt
 
+            # 4.6 multiplayer pump: after the frame tick, before any
+            # state-dependent work. Cheap two-attribute check when no client
+            # exists; while Android is suspended outbound traffic pauses and
+            # the socket is held (NetMixin.poll early-outs).
+            if not suspended:
+                self.poll()
+
             started = time.perf_counter()
             self.handle_events()
             if performance is not None:
@@ -781,7 +818,11 @@ class Game(
             self.cancel_exit_confirmation()
 
     def return_to_main_menu(self) -> None:
-        if self.exit_previous_state == "playing" and not self.save_run():
+        # A multiplayer session ends with a final `bye` and never writes or
+        # deletes the single-player run save.
+        if self.mp_active or self.mp_session is not None:
+            self.mp_shutdown(send_bye=True)
+        elif self.exit_previous_state == "playing" and not self.save_run():
             return
         if self.mobile_mode:
             self.resume_mobile_audio_focus()
@@ -800,7 +841,9 @@ class Game(
             self.resume_mobile_audio_focus()
 
     def confirm_exit(self) -> None:
-        if self.exit_previous_state == "playing" and not self.save_run():
+        if self.mp_active or self.mp_session is not None:
+            self.mp_shutdown(send_bye=True)
+        elif self.exit_previous_state == "playing" and not self.save_run():
             return
         self.running = False
 
@@ -809,6 +852,10 @@ class Game(
             if self.handle_mobile_lifecycle_event(event):
                 continue
             if self.handle_mobile_finger_event(event):
+                continue
+            # 4.6: the shared text-entry field (player name, join code, server
+            # host/port) consumes typing before any state hotkeys can fire.
+            if self.handle_text_input_event(event):
                 continue
             if event.type == pygame.QUIT:
                 self.request_exit_confirmation()
@@ -859,6 +906,10 @@ class Game(
                         self.state = "title"
                     elif self.state == "controls":
                         self.state = "options"
+                    elif self.state == "mp_setup":
+                        self.mp_back_from_setup_step()
+                    elif self.state == "mp_lobby":
+                        self.mp_leave_lobby()
                     else:
                         self.request_exit_confirmation()
                 elif (
@@ -891,8 +942,9 @@ class Game(
                             )
                         )
                 elif self.state == "title":
-                    # Four title rows: 0=New, 1=Resume, 2=Options, 3=About.
-                    # Resume is only selectable when a save exists.
+                    # Five title rows: 0=One will descend, 1=Two will descend,
+                    # 2=Resume, 3=Options, 4=About. Resume is only selectable
+                    # when a save exists.
                     if event.key in (pygame.K_DOWN, pygame.K_RIGHT, pygame.K_s):
                         self.title_selection = self._next_title_selection(1)
                     elif event.key in (pygame.K_UP, pygame.K_LEFT, pygame.K_w):
@@ -901,6 +953,8 @@ class Game(
                         self._activate_title_selection()
                     elif event.key == pygame.K_n:
                         self.state = "archetype_select"
+                    elif event.key == pygame.K_t:
+                        self.start_mp_setup()
                     elif event.key in (pygame.K_l, pygame.K_r) and self.save_exists():
                         self.load_run()
                     elif event.key == pygame.K_o:
@@ -911,6 +965,49 @@ class Game(
                     elif event.key in (pygame.K_h, pygame.K_SLASH):
                         self.state = "about"
                         self.licenses_scroll = 0
+                elif self.state == "mp_setup":
+                    if event.key == pygame.K_BACKSPACE:
+                        self.mp_back_from_setup_step()
+                    elif self.mp_setup_step == "role":
+                        if event.key in (
+                            pygame.K_UP,
+                            pygame.K_DOWN,
+                            pygame.K_LEFT,
+                            pygame.K_RIGHT,
+                            pygame.K_w,
+                            pygame.K_s,
+                        ):
+                            self.mp_setup_role_cursor = (
+                                self.mp_setup_role_cursor + 1
+                            ) % 2
+                        elif event.key in (pygame.K_RETURN, pygame.K_e):
+                            self.mp_choose_role(self.mp_setup_role_cursor == 0)
+                        elif event.key == pygame.K_h:
+                            self.mp_choose_role(True)
+                        elif event.key == pygame.K_j:
+                            self.mp_choose_role(False)
+                    elif self.mp_setup_step == "host_code":
+                        if event.key in (pygame.K_RETURN, pygame.K_e):
+                            self.mp_begin_hosting()
+                        elif event.key == pygame.K_r:
+                            self.mp_regenerate_host_code()
+                elif self.state == "mp_lobby":
+                    session = self.mp_session
+                    ready = bool(session is not None and session.local_ready)
+                    if event.key == pygame.K_BACKSPACE:
+                        self.mp_leave_lobby()
+                    elif not ready and event.key in (pygame.K_RIGHT, pygame.K_DOWN):
+                        index = (
+                            ARCHETYPES.index(self.selected_archetype) + 1
+                        ) % len(ARCHETYPES)
+                        self.selected_archetype = ARCHETYPES[index]
+                    elif not ready and event.key in (pygame.K_LEFT, pygame.K_UP):
+                        index = (
+                            ARCHETYPES.index(self.selected_archetype) - 1
+                        ) % len(ARCHETYPES)
+                        self.selected_archetype = ARCHETYPES[index]
+                    elif event.key in (pygame.K_RETURN, pygame.K_e):
+                        self.mp_lobby_send_ready()
                 elif self.state == "options":
                     if event.key == pygame.K_a:
                         self.options_cursor = self.OPTIONS_ROW_AUDIO
@@ -1126,10 +1223,15 @@ class Game(
                         else:
                             self.use_inventory_slot(index)
                 elif event.key == pygame.K_r and self.state != "playing":
-                    self.show_help = False
-                    self.inventory_open = False
-                    self.character_menu_open = False
-                    self.state = "archetype_select"
+                    if self.mp_active:
+                        # A finished co-op run returns to the title; restarting
+                        # a new descent is a single-player entry point.
+                        self.mp_end_session_to_title("")
+                    else:
+                        self.show_help = False
+                        self.inventory_open = False
+                        self.character_menu_open = False
+                        self.state = "archetype_select"
                 elif event.key == pygame.K_e and self.state == "playing":
                     self.interact()
                 elif event.key == pygame.K_q and self.state == "playing":
@@ -1295,6 +1397,12 @@ class Game(
             self.input.drain_trigger_slots()
             for cmd in self.input.drain_trigger_commands():
                 self._dispatch_command(cmd)
+        if self.mp_is_joiner():
+            # The joiner never runs AI/RNG/combat simulation: it renders the
+            # latest authoritative snapshot, smooths actors, and sends input
+            # intents (NetMixin.poll handles the outbound cadence).
+            self.mp_update_joiner(dt)
+            return
         menu_pauses_simulation = bool(
             self.active_cutscene is None
             and not self.story_intro_pending
@@ -1348,12 +1456,18 @@ class Game(
             return
         # Sample before update_player() decrements Time Skip so final partial and
         # overlapping slow intervals are integrated consistently at every FPS.
-        time_skip_remaining = self.player.time_skip_timer
+        # In co-op, either player's Time Skip slows the shared enemy simulation.
+        time_skip_remaining = max(
+            (p.time_skip_timer for p in self.active_players()),
+            default=self.player.time_skip_timer,
+        )
         enemy_time_scale = self.enemy_time_scale(
             dt, remaining=time_skip_remaining
         )
         self.update_player_aim()
-        self.update_player(dt)
+        if not (self.mp_active and self.player.hp <= 0):
+            self.update_player(dt)
+        self.mp_apply_remote_intents(dt)
         self.update_friendly_npcs(dt)
         self.update_camera(dt)
         self.update_revealed_tiles()
@@ -1375,7 +1489,23 @@ class Game(
         self.update_floaters(dt)
         self.advance_animation_phases(dt)
 
-        if self.player.hp <= 0 and self.state == "playing":
+        if self.mp_active:
+            # Co-op has no revive: a fallen player spectates, and the shared
+            # run ends only when no player remains alive. The host is the sole
+            # authority for the outcome and announces it to the joiner.
+            if (
+                self.state == "playing"
+                and not any(p.hp > 0 for p in self.active_players())
+            ):
+                if not self.run_stats.cause_of_death:
+                    self.run_stats.cause_of_death = "unknown dungeon violence"
+                self.ambush_bells = []
+                self.finalize_run("death")
+                self.state = "dead"
+                self.audio.stop_music()
+                self.play_sfx("death")
+                self.mp_notify_run_ended("death")
+        elif self.player.hp <= 0 and self.state == "playing":
             if not self.run_stats.cause_of_death:
                 self.run_stats.cause_of_death = "unknown dungeon violence"
             self.ambush_bells = []
@@ -1386,22 +1516,25 @@ class Game(
             self.delete_save()
 
     def update_secrets(self) -> None:
+        players = self.active_players()
         for secret in self.secrets:
             if secret.revealed or secret.opened:
                 continue
-            dx = secret.x - self.player.x
-            dy = secret.y - self.player.y
-            if dx * dx + dy * dy < 1.55 * 1.55:
-                secret.revealed = True
-                self.floaters.append(
-                    FloatingText(
-                        "Secret found",
-                        secret.x,
-                        secret.y - 0.3,
-                        self.theme.accent,
-                        ttl=1.2,
+            for player in players:
+                dx = secret.x - player.x
+                dy = secret.y - player.y
+                if dx * dx + dy * dy < 1.55 * 1.55:
+                    secret.revealed = True
+                    self.floaters.append(
+                        FloatingText(
+                            "Secret found",
+                            secret.x,
+                            secret.y - 0.3,
+                            self.theme.accent,
+                            ttl=1.2,
+                        )
                     )
-                )
+                    break
 
     def update_floaters(self, dt: float) -> None:
         for floater in self.floaters:

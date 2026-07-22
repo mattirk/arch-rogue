@@ -2001,7 +2001,9 @@ class RenderingWorldMixin:
                 drawables.append((enemy.x + enemy.y, "enemy", enemy))
         for familiar in self.familiars:
             drawables.append((familiar.x + familiar.y, "familiar", familiar))
-        drawables.append((self.player.x + self.player.y, "player", self.player))
+        for actor in self.active_players():
+            if actor is self.player or visible(actor.x, actor.y, 0.65):
+                drawables.append((actor.x + actor.y, "player", actor))
         for slash in self.slashes:
             x, y, _ttl, _dx, _dy = slash
             if visible(x, y, 0.55):

@@ -129,12 +129,12 @@ class FrameRateOptionTests(unittest.TestCase):
             self.assertEqual(game.frame_rate_cap, 120)
             self.assertEqual(game.frame_pacing.target_fps, 120)
 
-    def test_default_options_serialize_schema_7_with_cap_and_overlay(self) -> None:
+    def test_default_options_serialize_schema_8_with_cap_and_overlay(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_game(tmpdir)
             self.assertTrue(game.save_options())
             data = json.loads(game.options_path.read_text(encoding="utf-8"))
-            self.assertEqual(data["schema_version"], 7)
+            self.assertEqual(data["schema_version"], 8)
             self.assertEqual(data["frame_rate_cap"], 60)
             self.assertFalse(data["show_perf_overlay"])
 
@@ -224,10 +224,12 @@ class OptionsRowCountTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_game(tmpdir)
             self.assertFalse(game.mobile_mode)
-            self.assertEqual(game.OPTIONS_ROW_COUNT, 13)
-            self.assertEqual(game.OPTIONS_ROW_BACK, 12)
+            self.assertEqual(game.OPTIONS_ROW_COUNT, 15)
+            self.assertEqual(game.OPTIONS_ROW_BACK, 14)
             self.assertEqual(game.OPTIONS_ROW_FRAME_RATE, 4)
-            self.assertEqual(game.OPTIONS_ROW_PERF_OVERLAY, 11)
+            self.assertEqual(game.OPTIONS_ROW_MP_HOST, 11)
+            self.assertEqual(game.OPTIONS_ROW_MP_PORT, 12)
+            self.assertEqual(game.OPTIONS_ROW_PERF_OVERLAY, 13)
 
     def test_mobile_row_count_omits_perf_overlay(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -239,8 +241,8 @@ class OptionsRowCountTests(unittest.TestCase):
             )
             game.options_path = Path(tmpdir) / "options.json"
             self.assertTrue(game.mobile_mode)
-            self.assertEqual(game.OPTIONS_ROW_COUNT, 12)
-            self.assertEqual(game.OPTIONS_ROW_BACK, 11)
+            self.assertEqual(game.OPTIONS_ROW_COUNT, 14)
+            self.assertEqual(game.OPTIONS_ROW_BACK, 13)
 
 
 class PerfOverlayTests(unittest.TestCase):

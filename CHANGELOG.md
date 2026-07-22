@@ -1,5 +1,31 @@
 # Changelog
 
+## 4.6.0 — Two Will Descend: co-op multiplayer with a server component
+
+Release 4.6.0 adds a cooperative two-player mode where a host and a joiner descend the same dungeon together over a network, relayed by a new standalone ephemeral server. Each player picks any archetype; the host runs the authoritative simulation while the joiner renders replicated state and sends input intents. Desktop and Android share the feature; web multiplayer remains a later milestone (pygbag cannot open raw TCP sockets).
+
+### Added
+
+- **"Two will descend"** title row (with a generated Pixellab glyph and a procedural fallback) beside the renamed **"One will descend"** row. Title rows are now `0=One will descend, 1=Two will descend, 2=Resume, 3=Options, 4=About` (`TITLE_ROW_COUNT` 5, `TITLE_RESUME_ROW` 2).
+- New pre-run states: **`mp_setup`** (sub-modes `name`, `role`, `host_code`, `join_code`) and **`mp_lobby`** (partner status + archetype binding + ready flow), with dedicated renderers, keyboard/gamepad dispatch, mobile touch targets, and back-button coverage. Unknown pre-run states never fall through to dungeon-world rendering.
+- A shared **single-line text-input helper** (`arch_rogue.text_input`) used by player-name, join-code, server-host, and server-port entry: desktop typing, length limits, charset filters, focus cleanup, and the Android soft keyboard via SDL text input.
+- **Run codes**: the client generates a 4-character code (`MP_RUN_ID_LENGTH`) from the read-aloud-safe alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` with `secrets.choice` — a room locator, not authentication; servers can configure longer codes.
+- **Canonical wire protocol** package `arch_rogue_protocol` (stdlib-only, line-delimited JSON over TCP, `MP_PROTOCOL_VERSION` 1, 256 KiB line cap, non-finite-number rejection, forward-compatible unknown-type tolerance), re-exported for the game through `arch_rogue.net.protocol` and consumed by the server as a local path dependency so client and server can never drift.
+- **Client package `arch_rogue.net`**: `MultiplayerClient` (stdlib socket + one background receiver thread that only decodes and enqueues immutable messages; bounded queues; queued snapshots coalesce to the newest; connection-generation tagging; clean thread join on bye/menu return/app exit), typed message dataclasses, host↔joiner world sync (`net/sync.py`), and `NetMixin` driving everything from `Game.run()` once per frame.
+- **Standalone relay server** in `server/` (own `pyproject.toml`, `python -m server.server`, default port 43666): ephemeral in-memory rooms (`waiting_for_join → selecting → active → closed`, max 2 players), deterministic rejections (`run_id_in_use`, `run_not_found`, `run_full`, revision mismatch), role-forbidden routing, seq monotonicity, hello timeout, ~10-minute idle timeout, snapshot-coalescing outbound queues, and 128-bit reconnect tokens with a 30-second grace window (`partner_disconnected` / `partner_rejoined` / final `partner_left`).
+- **Co-op rules**: enemies target the nearest living player (ties by stable player id); players never body-block each other; loot/gold/XP/inventory/disciplines are player-owned with host-validated first-claim pickups; stairs require every living player in range; a defeated player spectates (no revive) and the run ends only when no player remains alive; story dialogue, relic choices, and shops stay host-controlled.
+- **Reconnects**: an unexpected socket loss holds the run for 30 seconds on both sides; the reconnect token reclaims the seat, the server replays the latest floor descriptor and snapshot to a rejoined joiner, and Android suspension pauses outbound traffic while holding the socket (resume reconnects if the socket died).
+- Multiplayer HUD touches: partner name overhead, partner lantern light, co-op status banner (partner paused/disconnected/reconnecting, "you have fallen"), and replicated damage floaters on the joiner.
+- Options schema **7 → 8**: `mp_player_name`, `mp_server_host`, `mp_server_port` (defaults `""`, `""`, `0`) with migration for all older schemas, plus new **Multiplayer** Options rows for server host and port (desktop and mobile; multiplayer stays unreachable until a usable endpoint is configured).
+- New test modules: `tests/test_net_protocol.py` (codec/framing/validation/run ids), `tests/test_server_room.py` (room lifecycle on a fake clock), and `tests/test_mp_flow.py` (in-process client pair and two full headless Games over a loopback relay, plus headless mobile-mode taps, back handling, suspend gating, and reconnect-grace expiry).
+
+### Changed
+
+- The single `self.player` model became an explicit stable player collection (`Game.players` + `local_player_id`) with `self.player` retained as the local-player convenience path; combat, projectiles, traps, contacts, familiars (now owner-bound), secrets, animation phases, world drawing, and lighting all accept or iterate explicit players. Warden Time Skip from either player slows the shared enemy simulation.
+- Multiplayer runs never touch the single-player save: `save_run`/`delete_save` refuse under `mp_active`, `Resume a saved run` stays single-player only, and each client records only its own options and run-history result after the host's `run_ended`.
+- The Android package now requests the `INTERNET` permission (the first permission the app has ever needed) so the multiplayer client can open raw TCP sockets to the relay; storage remains app-private and permissionless.
+- Project, runtime, Android package, server, and website release metadata advance to `4.6.0`; options move to schema `8`; run saves remain schema `5`.
+
 ## 4.5.5 — Animated descending spiral stairs
 
 Release 4.5.5 replaces the static stair marker with an authored descending spiral stairwell and a restrained ominous light pulse from the depths.

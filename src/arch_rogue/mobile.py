@@ -2339,8 +2339,65 @@ class MobileMixin:
                         self.character_menu_hovered_node = str(key)
                         self.choose_discipline(str(key))
                         return True
+        elif context == "mp_setup":
+            return self._handle_mp_setup_tap(local)
+        elif context == "mp_lobby":
+            return self._handle_mp_lobby_tap(local)
         elif context in ("about", "help", "state_overlay"):
             self._dispatch_command(Command.BACK)
+            return True
+        return False
+
+    def _handle_mp_setup_tap(self, local: tuple[int, int]) -> bool:
+        """Touch targets for the multiplayer setup steps (4.6)."""
+
+        entry = getattr(self, "_mp_entry_rect", None)
+        step = getattr(self, "mp_setup_step", "name")
+        if isinstance(entry, pygame.Rect) and entry.collidepoint(local):
+            # Tapping the entry field (re)opens the soft keyboard for it.
+            if not self.text_input_active():
+                if step == "name":
+                    self.open_text_input(
+                        target="mp_player_name",
+                        prompt="Name yourself for the descent",
+                        initial=getattr(self, "mp_player_name", ""),
+                        max_length=16,
+                    )
+                elif step == "join_code":
+                    self.mp_open_join_code_input()
+            return True
+        index = self._rect_index(getattr(self, "_mp_row_rects", ()), local)
+        if step == "role" and index is not None:
+            self.mp_setup_role_cursor = index
+            self.mp_choose_role(index == 0)
+            return True
+        if step == "host_code" and index is not None:
+            if index == 0:
+                self.mp_begin_hosting()
+            else:
+                self.mp_regenerate_host_code()
+            return True
+        if step == "name" and self.text_input_active():
+            # A tap outside the field confirms the name (mirrors Enter).
+            self.close_text_input(confirm=True)
+            return True
+        return False
+
+    def _handle_mp_lobby_tap(self, local: tuple[int, int]) -> bool:
+        """Lobby touch targets: tap your own row to cycle archetype, tap the
+        partner row (or anywhere below) to confirm ready."""
+
+        session = getattr(self, "mp_session", None)
+        ready = bool(session is not None and session.local_ready)
+        index = self._rect_index(getattr(self, "_mp_row_rects", ()), local)
+        if index == 0 and not ready:
+            archetype_index = (
+                ARCHETYPES.index(self.selected_archetype) + 1
+            ) % len(ARCHETYPES)
+            self.selected_archetype = ARCHETYPES[archetype_index]
+            return True
+        if index is not None or not ready:
+            self.mp_lobby_send_ready()
             return True
         return False
 

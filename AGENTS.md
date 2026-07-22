@@ -80,6 +80,10 @@ Keep the prototype architecture modular but intentionally small:
 - `src/arch_rogue/dungeon.py` owns procedural map generation and dungeon collision/floor queries.
 - `src/arch_rogue/audio.py` owns mixer setup, procedural sound effects, and per-run procedural NES-style background music generation.
 - `src/arch_rogue/licenses.py` (4.3.17 WS-G) loads the bundled Apache-2.0 `LICENSE.txt` / `NOTICE.txt` assets (with a repo-root fallback for desktop dev) for the in-app About → Open Source Licenses screen so APK installers get Apache-2.0 §4 attribution. `tools/build_android.sh` refreshes the asset copies from the canonical root `LICENSE`/`NOTICE` before each build.
+- `src/arch_rogue/net/` (4.6) owns the multiplayer client: `client.py` (`MultiplayerClient`, stdlib socket + one background receiver thread with bounded, snapshot-coalescing queues), `messages.py` (typed inbound message dataclasses), `sync.py` (host↔joiner floor/snapshot serialization built on the run-save serializers), `mixin.py` (`NetMixin`, the per-frame `poll()` driver, mp_setup/mp_lobby flow, host remote-intent simulation, reconnect grace), and `protocol.py` (facade re-exporting the canonical codec). Preserve `from arch_rogue.net import MultiplayerClient`.
+- `src/arch_rogue_protocol/` (4.6) is the canonical stdlib-only wire codec/message schema shared with the standalone server. It must never import Pygame or `arch_rogue`; the server consumes it as a local path dependency (never vendored).
+- `src/arch_rogue/text_input.py` (4.6) owns the shared single-line text-entry helper (`TextInputMixin`): desktop typing, length limits, charset filters, focus cleanup, and Android soft keyboard via SDL text input. Player-name, join-code, server-host, and server-port entry all use it.
+- `server/` (4.6, sibling to `src/`, not part of the installed game package) is the standalone ephemeral in-memory relay server: `room.py` (transport-agnostic `RoomHub`, fake-clock testable), `server.py` (asyncio shell + entry point), `config.py`, `protocol.py` (path-dependency import of the canonical codec), own `pyproject.toml`.
 - `src/arch_rogue/mobile.py` is part of the mainline module set (not a fork) as of 4.3.17. It owns mobile-only concerns: the Android landscape layout, touch input, app lifecycle, GLES direct presenter, colorkey-RLE alpha optimization, and `MobilePerformanceMonitor` telemetry. Every Android-specific branch is gated by `self.mobile_mode` (or `android_runtime_active()` for import-time checks); no desktop frame executes a GLES/colorkey-RLE/`MobilePerformanceMonitor` branch. The `MobilePerformanceMonitor` is also created on desktop only when the developer opts in via the `show_perf_overlay` option or `ARCH_ROGUE_PERF=1`.
 
 Prefer expanding these focused modules until a new boundary is clearly justified. Avoid introducing many narrow submodules during prototype work.
@@ -308,12 +312,26 @@ This runs the cutscene overlay path headlessly under `cProfile` and writes `buil
 
 Always update CHANGELOG.md, pyproject.toml and other version number references when completing milestones!
 
-### 4.5.x Combat module refactoring - post-release fixes
+### 4.6.x Post multiplayer
 
-- Finishing this up with stairs and possibly some other minor fixes
+- Password confirmation, warning and consent when enabling multiplayer in beta
+  - Terms and contitions etc legal note if enabled
+  - Maybe better still to force user to input server address and then warning
+  - Idea: Show the user default server address e.g "play.ar.game" and force user to type it to connect -> show warning on top
 
 
 ### 4.6 Multiplayer with server component
+
+**Status: shipped in 4.6.0.** The design below was implemented as specified:
+the canonical wire codec lives in the stdlib-only `src/arch_rogue_protocol/`
+package (re-exported via `arch_rogue.net.protocol`, consumed by `server/` as a
+local path dependency), the client lives in `src/arch_rogue/net/` (`client.py`
+transport, `messages.py` typed dataclasses, `sync.py` floor/snapshot
+serialization reusing the run-save serializers, `mixin.py` `NetMixin`), the
+shared text-entry helper is `src/arch_rogue/text_input.py`, and the relay
+server is `server/` (`python -m server.server`, default port 43666). Tests:
+`tests/test_net_protocol.py`, `tests/test_server_room.py`,
+`tests/test_mp_flow.py`.
 
 This milestone adds a cooperative two-player mode where two players descend the
 same dungeon together over a network. The host and joiner independently choose

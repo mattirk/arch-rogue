@@ -86,7 +86,20 @@ class _PlayerCombatMixin:
         source: str = "hit",
         damage_type: str = "physical",
         attacker: Enemy | None = None,
+        victim: "Player | None" = None,
     ) -> int:
+        # 4.6 co-op: damage aimed at a network partner re-enters this same
+        # sink with that actor bound as the acting player, so every
+        # ``self.player`` read below (armor, upgrades, mana, thorns, HP)
+        # resolves against the correct victim.
+        if victim is not None and victim is not self.player:
+            with self.acting_as_player(victim):
+                return self.take_player_damage(
+                    raw_damage,
+                    source=source,
+                    damage_type=damage_type,
+                    attacker=attacker,
+                )
         rogue_evade = 0.18 if self.player.has_upgrade("rogue_smoke") else 0.12
         if self.player_status("smoke") > 0:
             rogue_evade += 0.22
@@ -172,12 +185,22 @@ class _PlayerCombatMixin:
         heavy_hit = amount >= self.player.max_hp * 0.18
         flash = (160, 35, 32) if heavy_hit else (105, 24, 28)
         hit_duration = 0.32 if heavy_hit else 0.22
-        if hit_duration >= self.player_hit_flash:
-            self.player_hit_flash_duration = hit_duration
-        self.player_hit_flash = max(self.player_hit_flash, hit_duration)
-        self.trigger_screen_flash(
-            flash, 0.18 if amount < self.player.max_hp * 0.18 else 0.30
+        victim_is_local = (
+            not self.mp_active
+            or self.player.player_id == self.local_player_id
         )
+        if victim_is_local:
+            if hit_duration >= self.player_hit_flash:
+                self.player_hit_flash_duration = hit_duration
+            self.player_hit_flash = max(self.player_hit_flash, hit_duration)
+            self.trigger_screen_flash(
+                flash, 0.18 if amount < self.player.max_hp * 0.18 else 0.30
+            )
+        else:
+            # The partner's pain shows on their actor, not this screen.
+            if hit_duration >= self.player.hit_flash:
+                self.player.hit_flash_duration = hit_duration
+            self.player.hit_flash = max(self.player.hit_flash, hit_duration)
         self.add_impact(
             self.player.x,
             self.player.y,

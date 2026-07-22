@@ -85,6 +85,9 @@ class _AttacksCombatMixin:
         return is_crit, crit_mult
 
     def player_melee_attack(self) -> None:
+        if self.mp_is_joiner():
+            self.mp_queue_action("melee")
+            return
         stamina_cost = self.melee_stamina_cost()
         if self.player.melee_timer > 0 or self.player.stamina < stamina_cost:
             return
@@ -177,6 +180,9 @@ class _AttacksCombatMixin:
                         self.player.hp = min(self.player.max_hp, self.player.hp + leech)
 
     def player_cast_bolt(self) -> None:
+        if self.mp_is_joiner():
+            self.mp_queue_action("bolt")
+            return
         mana_cost = self.bolt_mana_cost()
         if self.player.bolt_timer > 0 or self.player.mana < mana_cost:
             return

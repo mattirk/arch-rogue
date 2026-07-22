@@ -355,9 +355,12 @@ test ! -e "$sdk"
         with tempfile.TemporaryDirectory() as tmpdir:
             spec = Path(tmpdir) / "buildozer.spec"
             text = (ROOT / "buildozer.spec").read_text(encoding="utf-8")
+            # 4.6 ships INTERNET for multiplayer; blank the real line to
+            # exercise the blank-value rejection.
+            self.assertIn("android.permissions = INTERNET", text)
             text = text.replace(
-                "\n[buildozer]",
-                "\nandroid.permissions = \n\n[buildozer]",
+                "android.permissions = INTERNET",
+                "android.permissions = ",
             )
             spec.write_text(text, encoding="utf-8")
             with self.assertRaisesRegex(

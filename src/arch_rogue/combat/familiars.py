@@ -213,7 +213,10 @@ class _FamiliarsCombatMixin:
         # Always recreate the host from scratch so Spirit Call snaps the
         # familiars to the Acolyte's current position and refreshes stats from
         # the latest build, instead of healing-in-place the old host.
-        self.familiars.clear()
+        # Co-op: only the acting player's own summons are replaced.
+        self.familiars = [
+            f for f in self.familiars if f.owner_id != self.player.player_id
+        ]
         for index in range(max_count):
             angle = (index / max(1, max_count)) * math.tau + 0.7
             offset = 0.9
@@ -237,6 +240,7 @@ class _FamiliarsCombatMixin:
                     champion=champion,
                     facing_x=self.player.facing_x,
                     facing_y=self.player.facing_y,
+                    owner_id=self.player.player_id,
                 )
             )
             self.add_impact(
@@ -389,7 +393,10 @@ class _FamiliarsCombatMixin:
 
         max_hp, damage, speed, attack_cooldown = self.spirit_beast_stats()
         fx, fy = spawn_position
-        self.familiars.clear()
+        # Co-op: only the acting player's own summons are replaced.
+        self.familiars = [
+            f for f in self.familiars if f.owner_id != self.player.player_id
+        ]
         self.familiars.append(
             Familiar(
                 x=fx,
@@ -406,6 +413,7 @@ class _FamiliarsCombatMixin:
                 facing_x=self.player.facing_x,
                 facing_y=self.player.facing_y,
                 command_mode="attack",
+                owner_id=self.player.player_id,
             )
         )
         self.add_impact(
@@ -504,9 +512,19 @@ class _FamiliarsCombatMixin:
             self._familiar_regen(familiar, dt)
         self._cull_dead_familiars()
 
+    def _familiar_owner(self, familiar: Familiar):
+        """The player this summon belongs to (co-op-aware, local fallback)."""
+
+        if self.mp_active:
+            for player in self.active_players():
+                if player.player_id == familiar.owner_id:
+                    return player
+        return self.player
+
     def _familiar_follow_player(self, familiar: Familiar, dt: float) -> None:
-        dx = self.player.x - familiar.x
-        dy = self.player.y - familiar.y
+        owner = self._familiar_owner(familiar)
+        dx = owner.x - familiar.x
+        dy = owner.y - familiar.y
         dist = math.hypot(dx, dy)
         if familiar.kind == "spirit_beast":
             follow_distance = (
@@ -560,8 +578,9 @@ class _FamiliarsCombatMixin:
         new_y = familiar.y + dy
         if not self.dungeon.blocked_for_radius(familiar.x, new_y, radius):
             familiar.y = new_y
-        px_dx = familiar.x - self.player.x
-        px_dy = familiar.y - self.player.y
+        owner = self._familiar_owner(familiar)
+        px_dx = familiar.x - owner.x
+        px_dy = familiar.y - owner.y
         px_dist = math.hypot(px_dx, px_dy)
         min_dist = 0.45
         if 0.001 < px_dist < min_dist:

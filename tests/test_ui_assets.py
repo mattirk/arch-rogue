@@ -71,6 +71,7 @@ class UiAssetTests(unittest.TestCase):
         self.assertEqual(len(action_icon_keys), 23)
         expected = {
             "menu.background.title",
+            "menu.glyph.multiplayer",
             "menu.logo.title",
             "menu.background",
             "cutscene.background",

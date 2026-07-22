@@ -507,9 +507,13 @@ class CommandDispatchTests(unittest.TestCase):
             # skips it (mirrors a fresh install).
             game.save_path.unlink(missing_ok=True)
             game.title_selection = 0
-            # Down skips the disabled Resume row (no save) -> lands on Options.
+            # 4.6 rows: 0=One will descend, 1=Two will descend, 2=Resume,
+            # 3=Options, 4=About. Down lands on the new multiplayer row first.
             game._dispatch_command(Command.DOWN)
-            self.assertEqual(game.title_selection, 2)
+            self.assertEqual(game.title_selection, 1)
+            # Down again skips the disabled Resume row (no save) -> Options.
+            game._dispatch_command(Command.DOWN)
+            self.assertEqual(game.title_selection, 3)
             game._dispatch_command(Command.CONFIRM)
             self.assertEqual(game.state, "options")
 
@@ -861,7 +865,7 @@ class OptionsPersistenceTests(unittest.TestCase):
             self.assertFalse(game.controller_enabled)
             self.assertEqual(game.last_controller_guid, "abc-123")
             data = game.options_to_dict()
-            self.assertEqual(data["schema_version"], 7)
+            self.assertEqual(data["schema_version"], 8)
             self.assertEqual(
                 data["mobile_render_quality"], MOBILE_RENDER_QUALITY_NATIVE
             )

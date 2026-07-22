@@ -90,6 +90,11 @@ class _DisciplinesCombatMixin:
         in a path locked by the commitment limit, or the player has no mastery
         tokens to spend.
         """
+        if self.mp_is_joiner():
+            # Disciplines are player-owned; the host validates and applies the
+            # choice, and the result returns through the next snapshot.
+            self.mp_queue_action("choose_discipline", key)
+            return False
         node = discipline_by_key(key)
         if node is None or node.archetype != self.player.class_name:
             return False

@@ -5,6 +5,10 @@
       "path": "menus/background_title.png",
       "render": "cover"
     },
+    "menu.glyph.multiplayer": {
+      "path": "menus/two_will_descend.png",
+      "render": "scale"
+    },
     "menu.logo.title": {
       "path": "menus/title_logo.png",
       "render": "scale"

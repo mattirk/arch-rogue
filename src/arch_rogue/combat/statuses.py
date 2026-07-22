@@ -35,9 +35,12 @@ class _StatusesCombatMixin:
     def player_status(self, name: str) -> float:
         return float(self.player.status_effects.get(name, 0.0))
 
-    def set_player_status(self, name: str, duration: float) -> None:
-        self.player.status_effects[name] = max(
-            self.player.status_effects.get(name, 0.0), duration
+    def set_player_status(
+        self, name: str, duration: float, player=None
+    ) -> None:
+        target = player if player is not None else self.player
+        target.status_effects[name] = max(
+            target.status_effects.get(name, 0.0), duration
         )
 
     def apply_enemy_status(self, enemy: Enemy, status: str, duration: float) -> None:

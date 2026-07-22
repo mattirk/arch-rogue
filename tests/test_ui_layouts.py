@@ -378,6 +378,9 @@ class UiLayoutTests(unittest.TestCase):
                 game.state = "title"
                 game.title_selection = 1
                 game.draw_title_menu()
+                self.assertEqual(getattr(game, "_menu_shortcut_key"), "T")
+                game.title_selection = 2
+                game.draw_title_menu()
                 title_keys = getattr(game, "_menu_row_key_rects")
                 title_panel = getattr(game, "_last_menu_panel_rect")
                 title_shortcut = getattr(game, "_menu_shortcut_rect")
@@ -1132,7 +1135,7 @@ class UiLayoutTests(unittest.TestCase):
             viewport_rect, scroll, visible_count, total_count = scrollbar.call_args.args
             # ``total_count`` is the full options list length; ``visible_count``
             # is how many rows fit on screen right now.
-            self.assertEqual(total_count, 13)  # fixed options list length (4.3.17: +frame rate cap, +perf overlay)
+            self.assertEqual(total_count, 15)  # fixed options list length (4.6: +server host, +server port)
             # Sanity: the viewport is inside the screen and the visible range
             # really is smaller than the full options list.
             self.assertLess(visible_count, total_count)
@@ -1147,8 +1150,10 @@ class UiLayoutTests(unittest.TestCase):
                 viewport_rect.right - game.ui(2),
             )
 
-            # When the list fits, no scrollbar is drawn and rows keep full width.
-            game = self.make_game(tmpdir, (1600, 1200), scale=1)
+            # When the list fits, no scrollbar is drawn and rows keep full
+            # width. (4.6: two multiplayer rows + a section header made the
+            # list taller, so the fitting window grew with it.)
+            game = self.make_game(tmpdir, (1600, 1400), scale=1)
             game.state = "options"
             game.options_cursor = 0
             game.options_scroll = 0

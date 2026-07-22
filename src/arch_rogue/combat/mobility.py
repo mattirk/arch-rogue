@@ -36,6 +36,9 @@ from ..models import (
 
 class _MobilityCombatMixin:
     def player_dash(self) -> None:
+        if self.mp_is_joiner():
+            self.mp_queue_action("dash")
+            return
         stamina_cost = self.dash_stamina_cost()
         if self.player.dash_timer > 0 or self.player.stamina < stamina_cost:
             return

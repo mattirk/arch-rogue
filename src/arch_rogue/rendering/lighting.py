@@ -461,12 +461,13 @@ class LightingMixin:
                 and min_y - padding <= light.y <= max_y + padding
             )
 
-        # The player and every friendly humanoid carry the same warm lantern.
+        # Every player and friendly humanoid carries the same warm lantern.
         # NPC lights are rebuilt from actor positions each frame, so they follow
         # movement without entering the persistent or transient light lists.
-        lights.append(
-            self._lantern_light(self.player.x, self.player.y, kind="lantern")
-        )
+        for actor in self.active_players():
+            lights.append(
+                self._lantern_light(actor.x, actor.y, kind="lantern")
+            )
         for npc in self.iter_friendly_humanoids():
             if not (
                 min_x - 4 <= npc.x <= max_x + 4

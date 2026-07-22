@@ -76,10 +76,11 @@ class RunFlowMixin:
         return self.save_path.exists()
 
     # --- Title menu navigation -------------------------------------------
-    # Title rows: 0=New descent, 1=Resume, 2=Options, 3=About. Resume (1) is
-    # only selectable when a save exists, so arrow navigation skips it.
-    TITLE_ROW_COUNT = 4
-    TITLE_RESUME_ROW = 1
+    # Title rows (4.6): 0=One will descend, 1=Two will descend, 2=Resume,
+    # 3=Options, 4=About. Resume (2) is only selectable when a save exists,
+    # so arrow navigation skips it.
+    TITLE_ROW_COUNT = 5
+    TITLE_RESUME_ROW = 2
 
     def _title_row_enabled(self, index: int) -> bool:
         if index == self.TITLE_RESUME_ROW:
@@ -103,11 +104,13 @@ class RunFlowMixin:
             return
         if index == 0:
             self.state = "archetype_select"
+        elif index == 1:
+            self.start_mp_setup()
         elif index == self.TITLE_RESUME_ROW:
             self.load_run()
-        elif index == 2:
-            self.state = "options"
         elif index == 3:
+            self.state = "options"
+        elif index == 4:
             self.state = "about"
             self.licenses_scroll = 0
 
@@ -555,6 +558,7 @@ class RunFlowMixin:
             spell_bonus=self.selected_archetype.spell_bonus,
             armor_bonus=self.selected_archetype.armor_bonus,
         )
+        self.players = [self.player]
         self.apply_starting_loadout()
         self.snap_camera_to_player()
         self.revealed_tiles = set()
@@ -612,6 +616,7 @@ class RunFlowMixin:
             self.audio.stop_music()
             self.play_sfx("victory")
             self.delete_save()
+            self.mp_notify_run_ended("victory")
             return
         unanswered_message = self.resolve_unanswered_story_beat()
         self.run_stats.floors_cleared = max(
@@ -703,6 +708,9 @@ class RunFlowMixin:
         )
         self.sync_music()
         self.play_sfx("stairs")
+        if self.mp_active and self.mp_role == "host":
+            self._mp_place_partner_on_new_floor()
+            self.mp_send_floor()
         self.save_run()
 
     # ------------------------------------------------------------------
@@ -877,6 +885,121 @@ class RunFlowMixin:
                 ttl=1.6,
             )
         )
+
+    # --- 4.6 multiplayer run start ------------------------------------------
+
+    def begin_multiplayer_run(
+        self,
+        *,
+        run_seed: int,
+        host_archetype: str,
+        joiner_archetype: str,
+        host_player_id: str,
+        joiner_player_id: str,
+        host_name: str,
+        joiner_name: str,
+    ) -> None:
+        """Start the shared run on the host.
+
+        Mirrors the single-player start path (``restart``) but seeds the run
+        from the server-relayed host ``run_seed`` and stamps both ``Player``
+        actors. The host is the sole simulator; ``mp_active`` is set before
+        ``restart`` so the run-save guard keeps the solo save untouched.
+        """
+
+        from .content import ARCHETYPES
+
+        def archetype_by_name(name: str):
+            return next(
+                (arch for arch in ARCHETYPES if arch.name == name),
+                ARCHETYPES[0],
+            )
+
+        host_arch = archetype_by_name(host_archetype)
+        joiner_arch = archetype_by_name(joiner_archetype)
+        self.mp_active = True
+        self.mp_role = "host"
+        self.local_player_id = host_player_id
+        self.rng.seed(run_seed)
+        self.restart(host_arch)
+        self.player.player_id = host_player_id
+        self.player.display_name = host_name
+        joiner_x, joiner_y = self._mp_free_spawn_near(
+            self.player.x, self.player.y
+        )
+        joiner = Player(
+            joiner_x,
+            joiner_y,
+            class_name=joiner_arch.name,
+            max_hp=joiner_arch.max_hp,
+            hp=joiner_arch.max_hp,
+            max_mana=joiner_arch.max_mana,
+            mana=joiner_arch.max_mana,
+            max_stamina=joiner_arch.max_stamina,
+            stamina=joiner_arch.max_stamina,
+            speed=joiner_arch.speed,
+            melee_bonus=joiner_arch.melee_bonus,
+            spell_bonus=joiner_arch.spell_bonus,
+            armor_bonus=joiner_arch.armor_bonus,
+        )
+        joiner.player_id = joiner_player_id
+        joiner.display_name = joiner_name
+        with self.acting_as_player(joiner):
+            self.apply_starting_loadout()
+        self.players = sorted(
+            [self.player, joiner], key=lambda p: p.player_id
+        )
+        self._mp_entity_counter = 0
+        for enemy in self.enemies:
+            enemy.entity_id = ""
+
+    def _mp_free_spawn_near(self, x: float, y: float) -> tuple[float, float]:
+        """First unblocked tile-center near (x, y) for the partner actor."""
+
+        for offset_x, offset_y in (
+            (1.0, 0.0),
+            (-1.0, 0.0),
+            (0.0, 1.0),
+            (0.0, -1.0),
+            (1.0, 1.0),
+            (-1.0, -1.0),
+            (1.0, -1.0),
+            (-1.0, 1.0),
+            (2.0, 0.0),
+            (0.0, 2.0),
+        ):
+            candidate_x = x + offset_x
+            candidate_y = y + offset_y
+            if not self.dungeon.blocked_for_radius(
+                candidate_x, candidate_y, 0.27, block_stairs=True
+            ):
+                return candidate_x, candidate_y
+        return x, y
+
+    def _mp_place_partner_on_new_floor(self) -> None:
+        """Move and refresh the partner actor after a host floor change."""
+
+        partner = self.partner_player()
+        if partner is None:
+            return
+        partner.x, partner.y = self._mp_free_spawn_near(
+            self.player.x, self.player.y
+        )
+        partner.net_x = None
+        partner.net_y = None
+        partner.melee_timer = 0.0
+        partner.bolt_timer = 0.0
+        partner.dash_timer = 0.0
+        partner.class_skill_timer = 0.0
+        partner.time_skip_timer = 0.0
+        if partner.hp > 0:
+            partner.stamina = min(
+                partner.max_stamina,
+                partner.stamina + partner.max_stamina * 0.25,
+            )
+            partner.mana = min(
+                partner.max_mana, partner.mana + partner.max_mana * 0.25
+            )
 
     def apply_starting_loadout(self) -> None:
         loadouts = {

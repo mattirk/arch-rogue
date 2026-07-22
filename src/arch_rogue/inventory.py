@@ -362,6 +362,9 @@ class InventoryMixin:
         self.sort_inventory()
 
     def drop_inventory_slot(self, index: int) -> None:
+        if self.mp_is_joiner():
+            self.mp_queue_action("drop_slot", str(index))
+            return
         if index < 0 or index >= len(self.player.inventory):
             return
         item = self.player.inventory.pop(index)
@@ -381,6 +384,9 @@ class InventoryMixin:
         self.save_run()
 
     def use_inventory_slot(self, index: int) -> None:
+        if self.mp_is_joiner():
+            self.mp_queue_action("use_slot", str(index))
+            return
         if index < 0 or index >= len(self.player.inventory):
             return
         item = self.player.inventory.pop(index)
@@ -471,6 +477,9 @@ class InventoryMixin:
         )
 
     def use_first_potion(self) -> None:
+        if self.mp_is_joiner():
+            self.mp_queue_action("potion_hp")
+            return
         if self.player.hp >= self.player.max_hp:
             self.floaters.append(
                 FloatingText(
@@ -499,6 +508,9 @@ class InventoryMixin:
         )
 
     def use_first_mana_potion(self) -> None:
+        if self.mp_is_joiner():
+            self.mp_queue_action("potion_mana")
+            return
         if self.player.mana >= self.player.max_mana:
             self.floaters.append(
                 FloatingText(

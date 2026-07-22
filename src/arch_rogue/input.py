@@ -816,9 +816,10 @@ class InputMixin:
 
     # Options menu row order (matches MenuOptionsMixin.draw_options_menu).
     # Grouped: Display (0-4), Controls (5-6), Audio (7-8), Lights (9-10),
-    # Diagnostics (11, desktop only), Back (last). The frame-rate cap row at
-    # index 4 was added in 4.3.17; the perf-overlay row at index 11 is desktop
-    # only, so the total count and the Back index depend on mobile_mode.
+    # Multiplayer (11-12, schema-8 server endpoint), Diagnostics (13, desktop
+    # only), Back (last). The frame-rate cap row at index 4 was added in
+    # 4.3.17; the perf-overlay row is desktop only, so the total count and the
+    # Back index depend on mobile_mode.
     OPTIONS_ROW_FULLSCREEN = 0
     OPTIONS_ROW_DIFFICULTY = 1
     OPTIONS_ROW_UI_SCALE = 2
@@ -830,12 +831,14 @@ class InputMixin:
     OPTIONS_ROW_MUSIC = 8
     OPTIONS_ROW_LIGHTING = 9
     OPTIONS_ROW_LIGHTING_DETAIL = 10
-    OPTIONS_ROW_PERF_OVERLAY = 11
+    OPTIONS_ROW_MP_HOST = 11
+    OPTIONS_ROW_MP_PORT = 12
+    OPTIONS_ROW_PERF_OVERLAY = 13
 
     @property
     def OPTIONS_ROW_COUNT(self) -> int:
-        # 12 rows on mobile (no desktop-only perf-overlay row), 13 on desktop.
-        return 12 if getattr(self, "mobile_mode", False) else 13
+        # 14 rows on mobile (no desktop-only perf-overlay row), 15 on desktop.
+        return 14 if getattr(self, "mobile_mode", False) else 15
 
     @property
     def OPTIONS_ROW_BACK(self) -> int:
@@ -956,6 +959,17 @@ class InputMixin:
                 return True
             return False
 
+        # 4.6: while the shared text-entry field is open, gamepad confirm/back
+        # map to confirm/cancel and navigation is swallowed (typing owns focus).
+        if self.text_input_active():
+            if cmd == Command.CONFIRM:
+                self.close_text_input(confirm=True)
+                return True
+            if cmd == Command.BACK:
+                self.close_text_input(confirm=False)
+                return True
+            return True
+
         if cmd == Command.BACK:
             return self._dispatch_back()
 
@@ -993,6 +1007,10 @@ class InputMixin:
             return False
         if self.state == "archetype_select":
             return self._dispatch_archetype(cmd)
+        if self.state == "mp_setup":
+            return self._dispatch_mp_setup(cmd)
+        if self.state == "mp_lobby":
+            return self._dispatch_mp_lobby(cmd)
 
         if self.state == "playing":
             return self._dispatch_playing(cmd)
@@ -1054,6 +1072,12 @@ class InputMixin:
         if self.state == "archetype_select":
             self.state = "title"
             return True
+        if self.state == "mp_setup":
+            self.mp_back_from_setup_step()
+            return True
+        if self.state == "mp_lobby":
+            self.mp_leave_lobby()
+            return True
         if self.state == "confirm_exit":
             self.cancel_exit_confirmation()
             return True
@@ -1080,6 +1104,55 @@ class InputMixin:
             if self.save_exists():
                 self.title_selection = self.TITLE_RESUME_ROW
                 self._activate_title_selection()
+            return True
+        return False
+
+    def _dispatch_mp_setup(self, cmd: str) -> bool:
+        step = getattr(self, "mp_setup_step", "name")
+        if self.text_input_active():
+            if cmd == Command.CONFIRM:
+                self.close_text_input(confirm=True)
+                return True
+            return False
+        if step == "role":
+            if cmd in (Command.UP, Command.DOWN, Command.LEFT, Command.RIGHT):
+                self.mp_setup_role_cursor = (self.mp_setup_role_cursor + 1) % 2
+                return True
+            if cmd == Command.CONFIRM:
+                self.mp_choose_role(self.mp_setup_role_cursor == 0)
+                return True
+        elif step == "host_code":
+            if cmd == Command.CONFIRM:
+                self.mp_begin_hosting()
+                return True
+            if cmd in (Command.NEXT, Command.PREV, Command.TAB):
+                self.mp_regenerate_host_code()
+                return True
+        elif step == "name" and cmd == Command.CONFIRM:
+            self.mp_setup_step = "role"
+            return True
+        elif step == "join_code" and cmd == Command.CONFIRM:
+            self.mp_open_join_code_input()
+            return True
+        return False
+
+    def _dispatch_mp_lobby(self, cmd: str) -> bool:
+        session = getattr(self, "mp_session", None)
+        ready = bool(session is not None and session.local_ready)
+        if cmd in (Command.LEFT, Command.PREV) and not ready:
+            index = (ARCHETYPES.index(self.selected_archetype) - 1) % len(
+                ARCHETYPES
+            )
+            self.selected_archetype = ARCHETYPES[index]
+            return True
+        if cmd in (Command.RIGHT, Command.NEXT) and not ready:
+            index = (ARCHETYPES.index(self.selected_archetype) + 1) % len(
+                ARCHETYPES
+            )
+            self.selected_archetype = ARCHETYPES[index]
+            return True
+        if cmd == Command.CONFIRM:
+            self.mp_lobby_send_ready()
             return True
         return False
 
@@ -1155,6 +1228,24 @@ class InputMixin:
         elif row == self.OPTIONS_ROW_LIGHTING_DETAIL:
             self._lighting_normal_maps = not self._lighting_normal_maps
             self.save_options()
+        elif row == self.OPTIONS_ROW_MP_HOST:
+            self.open_text_input(
+                target="mp_server_host",
+                prompt="Multiplayer server host",
+                initial=str(getattr(self, "mp_server_host", "")),
+                max_length=128,
+                help_text="Hostname or IP of a trusted Arch Rogue relay server.",
+            )
+        elif row == self.OPTIONS_ROW_MP_PORT:
+            port = getattr(self, "mp_server_port", 0)
+            self.open_text_input(
+                target="mp_server_port",
+                prompt="Multiplayer server port",
+                initial=str(port) if port else "",
+                max_length=5,
+                charset="0123456789",
+                help_text="TCP port 1-65535 (the bundled server defaults to 43666).",
+            )
         elif (
             row == self.OPTIONS_ROW_PERF_OVERLAY
             and not getattr(self, "mobile_mode", False)

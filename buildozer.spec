@@ -13,14 +13,14 @@ package.name = archrogue
 
 # `tools/build_android.sh` rewrites these from pyproject.toml at build time.
 package.domain = org.archrogue
-package.version = 4.5.5
+package.version = 4.6.0
 
 source.dir = src
 source.include_exts = py,png,json,txt
 # Never package host-generated metadata/bytecode from an editable install.
 source.exclude_dirs = __pycache__,arch_rogue.egg-info
 
-version = 4.5.5
+version = 4.6.0
 
 # Landscape-only: the manifest locks orientation so the safe-area layout is the
 # only one the runtime sees.
@@ -70,8 +70,10 @@ android.display_cutout = shortEdges
 android.debug = 1
 android.release_artifact = apk
 
-# No Android permissions are requested. Saves/options use app-private storage,
-# which requires no storage permission.
+# 4.6 multiplayer opens raw TCP sockets to the relay server, which requires
+# the INTERNET permission. Saves/options still use app-private storage, so no
+# storage permission is needed.
+android.permissions = INTERNET
 
 
 # Keep the Python bootstrap quiet; Arch Rogue logs its own lifecycle transitions.

@@ -259,7 +259,7 @@ class MobileRenderQualityTests(unittest.TestCase):
             game._lighting_normal_maps = True
             self.assertTrue(game.save_options())
             saved = json.loads(game.options_path.read_text(encoding="utf-8"))
-            self.assertEqual(saved["schema_version"], 7)
+            self.assertEqual(saved["schema_version"], 8)
             self.assertEqual(
                 saved["mobile_render_quality"], MOBILE_RENDER_QUALITY_BALANCED
             )
@@ -2003,7 +2003,7 @@ class MobileTouchTests(unittest.TestCase):
             )
             game.state = "title"
             game.draw()
-            local_row = game._title_row_rects[2]
+            local_row = game._title_row_rects[3]
             global_point = (
                 local_row.centerx + game.mobile_safe_rect().x,
                 local_row.centery + game.mobile_safe_rect().y,

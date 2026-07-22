@@ -116,6 +116,11 @@ class _EnemiesCombatMixin:
                 dt, remaining=time_skip_remaining
             )
         scaled_dt = dt * time_scale
+        # 4.6 co-op: enemies target the nearest living player, breaking
+        # equal-distance ties by stable player id. Single-player keeps the
+        # zero-allocation fast path (the tuple below is the lone player).
+        players = self.living_players() or self.active_players()
+        single_target = players[0] if len(players) == 1 else None
         for enemy in self.enemies:
             enemy.moving = False
             enemy.locomotion_anim_scale = 0.0
@@ -145,8 +150,18 @@ class _EnemiesCombatMixin:
             if enemy.telegraph == "lured":
                 enemy.telegraph = ""
             enemy.attack_timer = max(0.0, enemy.attack_timer - scaled_dt)
-            player_dx = self.player.x - enemy.x
-            player_dy = self.player.y - enemy.y
+            if single_target is not None:
+                target_player = single_target
+            else:
+                target_player = min(
+                    players,
+                    key=lambda p: (
+                        (p.x - enemy.x) ** 2 + (p.y - enemy.y) ** 2,
+                        p.player_id,
+                    ),
+                )
+            player_dx = target_player.x - enemy.x
+            player_dy = target_player.y - enemy.y
             player_distance = math.hypot(player_dx, player_dy)
             lure = self.ambush_bell_lure_target(enemy)
             if player_distance > enemy.aggro_range and lure is None:
@@ -155,8 +170,8 @@ class _EnemiesCombatMixin:
                 enemy.telegraph = "stunned"
                 continue
 
-            target_x = lure.x if lure is not None else self.player.x
-            target_y = lure.y if lure is not None else self.player.y
+            target_x = lure.x if lure is not None else target_player.x
+            target_y = lure.y if lure is not None else target_player.y
             dx = target_x - enemy.x
             dy = target_y - enemy.y
             distance = math.hypot(dx, dy)
@@ -190,7 +205,7 @@ class _EnemiesCombatMixin:
                 attack_ready
                 and attack_in_range
                 and self.dungeon.line_of_sight(
-                    enemy.x, enemy.y, self.player.x, self.player.y
+                    enemy.x, enemy.y, target_player.x, target_player.y
                 )
             )
 
@@ -255,45 +270,66 @@ class _EnemiesCombatMixin:
                 if distance <= enemy.attack_range and attack_ready and has_los:
                     self._commit_enemy_attack(enemy, "melee")
 
+    def enemy_target_player(self, enemy: Enemy):
+        """Nearest living player for this enemy (ties break by player id)."""
+
+        players = self.living_players() or self.active_players()
+        if len(players) == 1:
+            return players[0]
+        return min(
+            players,
+            key=lambda p: (
+                (p.x - enemy.x) ** 2 + (p.y - enemy.y) ** 2,
+                p.player_id,
+            ),
+        )
+
     def enemy_melee(
         self, enemy: Enemy, *, line_of_sight_confirmed: bool = False
     ) -> None:
+        victim = self.enemy_target_player(enemy)
+        if victim is None:
+            return
         if not line_of_sight_confirmed:
-            distance = math.hypot(enemy.x - self.player.x, enemy.y - self.player.y)
+            distance = math.hypot(enemy.x - victim.x, enemy.y - victim.y)
             if distance > enemy.attack_range or not self.dungeon.line_of_sight(
-                enemy.x, enemy.y, self.player.x, self.player.y
+                enemy.x, enemy.y, victim.x, victim.y
             ):
                 return
         enemy.attack_timer = enemy.attack_cooldown
         enemy.telegraph = "melee"
         raw = enemy.damage + self.rng.randrange(-2, 3)
         amount = self.take_player_damage(
-            raw, source="melee", damage_type=enemy.damage_type, attacker=enemy
+            raw,
+            source="melee",
+            damage_type=enemy.damage_type,
+            attacker=enemy,
+            victim=victim,
         )
         if enemy.damage_type == "poison" and amount > 0:
-            self.set_player_status("poisoned", 1.4)
+            self.set_player_status("poisoned", 1.4, player=victim)
         elif enemy.damage_type == "frost" and amount > 0:
-            self.set_player_status("chilled", 0.9)
+            self.set_player_status("chilled", 0.9, player=victim)
         self.floaters.append(
             FloatingText(
                 f"-{amount}",
-                self.player.x,
-                self.player.y - 0.2,
+                victim.x,
+                victim.y - 0.2,
                 self.damage_type_color(enemy.damage_type),
             )
         )
         self.slashes.append(
             (
-                (enemy.x + self.player.x) * 0.5,
-                (enemy.y + self.player.y) * 0.5,
+                (enemy.x + victim.x) * 0.5,
+                (enemy.y + victim.y) * 0.5,
                 0.14,
                 enemy.facing_x,
                 enemy.facing_y,
             )
         )
         self.add_impact(
-            (enemy.x + self.player.x) * 0.5,
-            (enemy.y + self.player.y) * 0.5,
+            (enemy.x + victim.x) * 0.5,
+            (enemy.y + victim.y) * 0.5,
             (255, 180, 130),
             ttl=0.26,
             radius=0.34,
@@ -309,14 +345,17 @@ class _EnemiesCombatMixin:
         line_of_sight_confirmed: bool = False,
     ) -> None:
         if not line_of_sight_confirmed:
-            distance = math.hypot(enemy.x - self.player.x, enemy.y - self.player.y)
+            victim = self.enemy_target_player(enemy)
+            if victim is None:
+                return
+            distance = math.hypot(enemy.x - victim.x, enemy.y - victim.y)
             cast_range = (
                 max(6.0, enemy.attack_range)
                 if enemy.kind == "boss" or enemy.is_boss_encounter
                 else enemy.attack_range
             )
             if distance > cast_range or not self.dungeon.line_of_sight(
-                enemy.x, enemy.y, self.player.x, self.player.y
+                enemy.x, enemy.y, victim.x, victim.y
             ):
                 return
         enemy.attack_timer = enemy.attack_cooldown

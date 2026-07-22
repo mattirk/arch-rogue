@@ -25,6 +25,7 @@ from .base import MenuBaseMixin, MenuRow
 from .character import MenuCharacterMixin
 from .controls import MenuControlsMixin
 from .inventory import MenuInventoryMixin
+from .mp import MenuMultiplayerMixin
 from .options import MenuOptionsMixin
 from .state_overlay import MenuStateOverlayMixin
 from .title import MenuTitleMixin
@@ -37,6 +38,7 @@ class MenuRenderer(
     MenuControlsMixin,
     MenuCharacterMixin,
     MenuInventoryMixin,
+    MenuMultiplayerMixin,
     MenuStateOverlayMixin,
 ):
     """Centralized menu and overlay renderer.
