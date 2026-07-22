@@ -309,6 +309,14 @@ def validate_build_spec(spec_path: Path, project_root: Path | None = None) -> tu
 
     if app.get("p4a.bootstrap", "").strip() != "sdl2":
         raise ValidationError("Arch Rogue Android builds require p4a.bootstrap = sdl2")
+
+    release_artifact = app.get("android.release_artifact", "").strip()
+    if release_artifact != "apk":
+        raise ValidationError(
+            "android.release_artifact must be 'apk'; other values are passed "
+            "directly to python-for-android and do not produce the public APK"
+        )
+
     commit = app.get("p4a.commit", "").strip().lower()
     if not commit or commit in {"master", "develop"}:
         raise ValidationError("p4a.commit must pin an immutable release commit")

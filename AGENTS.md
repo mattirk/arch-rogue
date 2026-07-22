@@ -310,7 +310,7 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 
 ### 4.5.x Combat module refactoring - post-release fixes
 
-- Android performance is much better with 4.5.2 but still experiences micro-stuttering at times. May be related to new map (or items / enemies) being revealed when moving.
+- We need spiral stairs. Generate 5 variants via MCP, human will review, and select the best one
 
 ### Backlog
 
@@ -338,5 +338,5 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
   - When actors stop, make them wait at that position for a bit longer and do a "dance" move
   - When player and antagonist clash in the middle, make them exchange couple of blows
 - In Archetype selection screen, make the panels containing Archetype names (row.png) a bit more compact in vertical sense (15% for now), keep spacing / alignment clean
-- We need spiral stairs. Generate 5 variants via MCP, human will review, and select the best one
 - On mobile, make the stat container (hp, mana, stamina) fill from bottom to top. Top and bottom ends of the container are a bit more narrow than the middle so take that into account.
+- I get "App not installed" error on Android when trying to update app in place

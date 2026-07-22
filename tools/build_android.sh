@@ -5,8 +5,8 @@
 # Reproducible Arch Rogue Android APK build helper (milestone 4.3.x).
 #
 # Usage:
-#   tools/build_android.sh            # debug APK (unsigned, self-signed at install)
-#   tools/build_android.sh release     # release APK, signed when keystore env is set
+#   tools/build_android.sh             # local debug APK (signed by the host debug key)
+#   tools/build_android.sh release     # official APK; requires persistent signing env
 #
 # Requires the pinned host-side Android tooling:
 #   .venv/bin/python -m pip install -e ".[android]"
@@ -39,6 +39,38 @@ esac
 PYTHON="${PYTHON:-.venv/bin/python}"
 if [ ! -x "$PYTHON" ]; then
   PYTHON="$(command -v python3 || command -v python)"
+fi
+
+configure_release_signing() {
+  local name
+  local missing=()
+  for name in \
+    ARCH_ROGUE_ANDROID_KEYSTORE \
+    ARCH_ROGUE_ANDROID_KEYSTORE_PASSWD \
+    ARCH_ROGUE_ANDROID_KEYALIAS \
+    ARCH_ROGUE_ANDROID_KEYALIAS_PASSWD; do
+    if [ -z "${!name:-}" ]; then
+      missing+=("$name")
+    fi
+  done
+  if [ "${#missing[@]}" -ne 0 ]; then
+    echo "build_android.sh: release signing is required; missing: ${missing[*]}" >&2
+    echo "Configure the persistent Android signing secrets documented in docs/android-beta.md." >&2
+    exit 1
+  fi
+  if [ ! -f "$ARCH_ROGUE_ANDROID_KEYSTORE" ]; then
+    echo "build_android.sh: release keystore not found: $ARCH_ROGUE_ANDROID_KEYSTORE" >&2
+    exit 1
+  fi
+
+  export P4A_RELEASE_KEYSTORE="$ARCH_ROGUE_ANDROID_KEYSTORE"
+  export P4A_RELEASE_KEYSTORE_PASSWD="$ARCH_ROGUE_ANDROID_KEYSTORE_PASSWD"
+  export P4A_RELEASE_KEYALIAS="$ARCH_ROGUE_ANDROID_KEYALIAS"
+  export P4A_RELEASE_KEYALIAS_PASSWD="$ARCH_ROGUE_ANDROID_KEYALIAS_PASSWD"
+}
+
+if [ "$MODE" = "release" ]; then
+  configure_release_signing
 fi
 
 # Read version + app id from pyproject.toml without adding a dependency.
@@ -240,14 +272,6 @@ accept_android_licenses
 run_buildozer() {
   local mode="$1"
   if [ "$mode" = "release" ]; then
-    if [ -n "${ARCH_ROGUE_ANDROID_KEYSTORE:-}" ] && [ -n "${ARCH_ROGUE_ANDROID_KEYALIAS:-}" ]; then
-      export P4A_RELEASE_KEYSTORE="$ARCH_ROGUE_ANDROID_KEYSTORE"
-      export P4A_RELEASE_KEYSTORE_PASSWD="${ARCH_ROGUE_ANDROID_KEYSTORE_PASSWD:-}"
-      export P4A_RELEASE_KEYALIAS="$ARCH_ROGUE_ANDROID_KEYALIAS"
-      export P4A_RELEASE_KEYALIAS_PASSWD="${ARCH_ROGUE_ANDROID_KEYALIAS_PASSWD:-}"
-    else
-      echo "Release keystore env not set; producing unsigned release APK." >&2
-    fi
     "$PYTHON" -m buildozer -v android release
   else
     "$PYTHON" -m buildozer -v android debug
@@ -289,9 +313,9 @@ APK_PATH="${APK_PATHS[0]}"
 "$PYTHON" tools/validate_android_apk.py \
   --project-root . --source-dir src --spec "$SPEC" "$APK_PATH"
 
-# Release integrity: validate the signing block and manifest metadata before an
-# APK can be stamped/uploaded. A ZIP with valid files is not installable unless
-# its APK signature verifies, and stale package/version metadata must not pass.
+# APK integrity: validate the signing block and manifest metadata before an
+# artifact can be stamped/uploaded. Official release builds additionally pin the
+# signer certificate so every published APK remains update-compatible.
 SDK_BUILD_TOOLS_ROOT="${ANDROIDSDK:-$HOME/.buildozer/android/platform/android-sdk}/build-tools"
 BUILD_TOOL_DIRS=()
 while IFS= read -r directory; do
@@ -308,11 +332,84 @@ if [ ! -x "$AAPT" ] || [ ! -x "$APKSIGNER" ]; then
   echo "build_android.sh: aapt/apksigner missing from $BUILD_TOOLS_DIR" >&2
   exit 1
 fi
-"$APKSIGNER" verify --verbose "$APK_PATH"
+verify_apk_signer() {
+  local apk_path="$1"
+  local expected_signer_sha256="${2:-}"
+  local signer_output signer_sha256
+
+  if ! signer_output="$(
+    "$APKSIGNER" verify --verbose --print-certs "$apk_path" 2>&1
+  )"; then
+    printf '%s\n' "$signer_output" >&2
+    echo "build_android.sh: APK signature verification failed" >&2
+    return 1
+  fi
+  printf '%s\n' "$signer_output"
+  if ! printf '%s\n' "$signer_output" | grep -Fxq "Number of signers: 1"; then
+    echo "build_android.sh: APK must have exactly one signer" >&2
+    return 1
+  fi
+
+  signer_sha256="$(
+    printf '%s\n' "$signer_output" \
+      | awk '/certificate SHA-256 digest:/ { print $NF; exit }' \
+      | tr '[:upper:]' '[:lower:]'
+  )"
+  if [[ ! "$signer_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "build_android.sh: could not read one APK signer certificate digest" >&2
+    return 1
+  fi
+  printf 'Android APK signer SHA-256: %s\n' "$signer_sha256"
+
+  if [ -n "$expected_signer_sha256" ] \
+      && [ "$signer_sha256" != "$expected_signer_sha256" ]; then
+    echo "build_android.sh: release signer mismatch" >&2
+    echo "  expected: $expected_signer_sha256" >&2
+    echo "  actual:   $signer_sha256" >&2
+    echo "Refusing to publish an APK that cannot update existing installations." >&2
+    return 1
+  fi
+  VERIFIED_SIGNER_SHA256="$signer_sha256"
+}
+# SIGNER_VERIFICATION_FUNCTION_END
+
+EXPECTED_SIGNER_SHA256=""
+if [ "$MODE" = "release" ]; then
+  OFFICIAL_SIGNER_FILE="android/release-signing-cert.sha256"
+  if [ ! -f "$OFFICIAL_SIGNER_FILE" ]; then
+    echo "build_android.sh: official signer fingerprint is missing: $OFFICIAL_SIGNER_FILE" >&2
+    exit 1
+  fi
+  EXPECTED_SIGNER_SHA256="$(
+    tr -d '[:space:]:' < "$OFFICIAL_SIGNER_FILE" \
+      | tr '[:upper:]' '[:lower:]'
+  )"
+  if [[ ! "$EXPECTED_SIGNER_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "build_android.sh: invalid signer fingerprint in $OFFICIAL_SIGNER_FILE" >&2
+    exit 1
+  fi
+fi
+verify_apk_signer "$APK_PATH" "$EXPECTED_SIGNER_SHA256"
+SIGNER_SHA256="$VERIFIED_SIGNER_SHA256"
+
 BADGING="$("$AAPT" dump badging "$APK_PATH")"
 printf '%s\n' "$BADGING" | grep -Fq "package: name='org.archrogue.archrogue'"
 printf '%s\n' "$BADGING" | grep -Fq "versionName='$VERSION'"
 printf '%s\n' "$BADGING" | grep -Fq "native-code: 'arm64-v8a' 'armeabi-v7a'"
+
+if [ -n "${ARCH_ROGUE_ANDROID_OUTPUT_APK:-}" ]; then
+  case "$ARCH_ROGUE_ANDROID_OUTPUT_APK" in
+    *.apk) ;;
+    *)
+      echo "build_android.sh: ARCH_ROGUE_ANDROID_OUTPUT_APK must end in .apk" >&2
+      exit 1
+      ;;
+  esac
+  mkdir -p "$(dirname "$ARCH_ROGUE_ANDROID_OUTPUT_APK")"
+  cp -- "$APK_PATH" "$ARCH_ROGUE_ANDROID_OUTPUT_APK"
+  cmp --silent "$APK_PATH" "$ARCH_ROGUE_ANDROID_OUTPUT_APK"
+  echo "Validated Android APK handoff: $ARCH_ROGUE_ANDROID_OUTPUT_APK"
+fi
 
 mkdir -p "$(dirname "$NATIVE_STAMP")"
 printf '%s\n' "$NATIVE_FINGERPRINT" > "$NATIVE_STAMP"

@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "version": "4.5.3",
-  "commit": "pending",
+  "version": "4.5.4",
+    "commit": "pending",
   "release_url": "https://github.com/mattirk/arch-rogue/releases",
   "assets": {
     "windows": "https://github.com/mattirk/arch-rogue/releases",

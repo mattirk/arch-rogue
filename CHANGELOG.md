@@ -1,5 +1,33 @@
 # Changelog
 
+## 4.5.4 — Stable Android update signing
+
+Release 4.5.4 fixes Android's generic **App not installed** failure when upgrading between public Arch Rogue APKs.
+
+### Fixed
+
+- Replaced CI's per-runner debug signing with a dedicated, persistently signed release APK restored only from a protected, master-restricted `android-release` GitHub Environment.
+- Made release builds fail before packaging when any keystore path, password, or alias setting is absent instead of allowing an unsigned fallback.
+- Corrected the latent `android.release_artifact = _apk` typo, which made Buildozer call a nonexistent python-for-android command whenever release mode was used, and added a preflight regression guard.
+- Pinned the dedicated official certificate SHA-256 fingerprint and made the APK audit reject unsigned, multiply signed, or validly signed artifacts that use the wrong key.
+- Renamed public/download-site artifacts from `android-debug.apk` to `android-release.apk`; local debug builds remain available for AVD development.
+- Bound CI publication to the exact APK copied by the post-audit build step, preventing a stale file in `bin/` from bypassing signer verification.
+- Kept signing material out of Git, prohibited routine debug-key reuse, and expanded ignores to cover `.keystore`, `.jks`, and `.p12` files.
+
+### Upgrade note
+
+- GitHub-hosted APKs through 4.5.3 used ephemeral debug certificates. Android cannot authorize an in-place update from those builds because their private keys disappeared with the CI runners. Local debug APKs also use machine-specific development keys. All pre-4.5.4 installations must therefore uninstall once before installing the dedicated-key release; upgrades after that preserve app-private saves and options.
+
+### Validation
+
+- Root-cause audit confirmed historical local 4.3.17–4.5.3 APKs shared a workstation debug certificate while GitHub runners did not preserve one; the official 4.5.4 signer is now a separate 4096-bit release-only key with public certificate SHA-256 `1cd7ca29fbc4ea8f54aff940e80e7628581264cb7ce4d3359ac2be3a0bef07c6`.
+- `python -m compileall src tests` — clean.
+- `python -m unittest discover tests` — all 580 tests pass.
+- Signed release build `bin/archrogue-4.5.4-arm64-v8a_armeabi-v7a-release.apk` passed source validation, dual-ABI audit (104 ELF extensions per ABI), APK v2 verification, single-signer enforcement, and dedicated-certificate pinning; 71,905,436 bytes, SHA-256 `1cb51bf61b7fbcdd1790f7251d9b3f6d5da357386f3759d4b05606d57b18ae84`.
+- Verified the CI handoff copy is byte-identical to the audited source APK.
+- On the AVD, the old debug-signed installation reproduced `INSTALL_FAILED_UPDATE_INCOMPATIBLE`; the documented one-time uninstall/install succeeded, a subsequent `adb install -r` with the dedicated signer succeeded, and the non-debuggable 4.5.4 package launched (`versionCode=102840504`).
+- Save schema remains 5; only informational release metadata advances to 4.5.4.
+
 ## 4.5.3 — Android movement hitch stabilization
 
 Release 4.5.3 removes the periodic Native-resolution Android hitch that occurred while the camera crossed the reusable floor cache's gutter during exploration.

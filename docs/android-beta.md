@@ -8,19 +8,39 @@ and reporting issues with the Android build.
 
 ## Install
 
-1. Download `arch-rogue-v<version>-<sha>-android-debug.apk` from the latest
+1. Download `arch-rogue-v<version>-<sha>-android-release.apk` from the latest
    GitHub Release.
 2. On Android 9+ enable "Install unknown apps" for your browser/files app.
-3. Open the APK and confirm the install.  The debug build is self-signed at
-   install time; Android may warn about the unknown developer.
-4. Launch **Arch Rogue**.  The game starts in landscape and stays there.
+3. Open the APK and confirm the install. The APK is signed during CI with the
+   project's private update key; Android may still warn because it is installed
+   outside Google Play.
+4. Launch **Arch Rogue**. The game starts in landscape and stays there.
 
 ## Upgrade
 
-- Install a newer APK over the older one.  Saves and options live in the app's
-  private storage and survive upgrades.
-- If a build is ever incompatible, the in-app `Load run` option is hidden and
-  the previous run save is left untouched so a downgrade can recover it.
+Release 4.5.4 introduces a persistent signing certificate for public Android
+builds. Install later APKs over 4.5.4 or newer; saves and options remain in the
+app's private storage and survive the update.
+
+Public CI APKs through 4.5.3 were mistakenly signed with a new ephemeral debug
+key on every GitHub runner. Android correctly rejects a newer APK when its
+certificate differs, usually showing only **App not installed**. No private key
+from those destroyed runners exists with which to authorize an update. If the
+installed copy came from one of those releases, uninstall **Arch Rogue** once,
+then install 4.5.4. Uninstalling clears that installation's private saves and
+options; subsequent signed-release upgrades preserve them.
+
+To obtain Android's exact reason instead of the generic installer message, use:
+
+```bash
+adb install -r path/to/arch-rogue-v<version>-<sha>-android-release.apk
+```
+
+A pre-4.5.4 signer conflict reports
+`INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package ... signatures do not match
+newer version`. If a build's save schema is ever incompatible instead, the
+in-app `Load run` option is hidden and the previous save is left untouched so a
+downgrade can recover it.
 
 ## Controls
 
@@ -108,11 +128,26 @@ python -m pip install -e ".[android]"
 ./tools/build_android.sh debug
 ```
 
-The APK appears in `bin/`. The build helper runs a source/spec preflight before
-Buildozer and then inspects the finished APK, including every native extension
-inside each ABI's nested Python bundle. `tools/build_android.sh release`
-produces a release APK; set the `ARCH_ROGUE_ANDROID_KEYSTORE*` env vars (see the
-script) to sign it.
+The local debug APK appears in `bin/` and is signed by that workstation's Android
+debug key. It can update only APKs signed by the same key; it is not the public
+release artifact.
+
+The build helper runs a source/spec preflight and then inspects the finished APK,
+including every native extension inside each ABI's nested Python bundle. An
+official release build requires all four signing variables and refuses an
+unsigned APK or a certificate other than the fingerprint committed in
+`android/release-signing-cert.sha256`:
+
+```bash
+export ARCH_ROGUE_ANDROID_KEYSTORE=/secure/path/arch-rogue-release.keystore
+export ARCH_ROGUE_ANDROID_KEYSTORE_PASSWD=<keystore-password>
+export ARCH_ROGUE_ANDROID_KEYALIAS=<key-alias>
+export ARCH_ROGUE_ANDROID_KEYALIAS_PASSWD=<key-password>
+./tools/build_android.sh release
+```
+
+Keep the keystore and passwords private and backed up. Losing this key makes it
+cryptographically impossible to update existing installations.
 
 The checked-in local p4a recipe is deliberately requested as
 `pygame==2.5.7`. Do **not** replace it with `pygame-ce` in `buildozer.spec`:
@@ -145,16 +180,36 @@ meminfo`, and Perfetto for final device-side attribution.
 
 ## CI
 
-The `Build & Release` workflow builds and uploads the debug APK on every push to
-`master`, alongside the Windows, Linux, and macOS binaries.
+The `Build & Release` workflow restores the dedicated release keystore from the
+protected `android-release` GitHub Environment, builds a signed release APK,
+verifies its certificate fingerprint, and uploads that exact audited file
+alongside the Windows, Linux, and macOS binaries. The signed job is restricted to
+`refs/heads/master`; `android-beta` and workflow dispatches targeting another ref
+cannot access the update key.
+
+Create an Environment named `android-release`, restrict its deployment branches
+to protected `master`, enable required-reviewer protection, and define these
+Environment secrets:
+
+- `ARCH_ROGUE_ANDROID_KEYSTORE_BASE64` — base64-encoded keystore bytes
+- `ARCH_ROGUE_ANDROID_KEYSTORE_PASSWD`
+- `ARCH_ROGUE_ANDROID_KEYALIAS`
+- `ARCH_ROGUE_ANDROID_KEYALIAS_PASSWD`
+
+The workflow fails rather than falling back to a fresh debug signer when any
+secret is absent. Encode the keystore without line wrapping before storing it,
+for example `base64 -w 0 /secure/path/arch-rogue-release.keystore` on GNU/Linux.
+The dedicated keystore must not be reused for routine debug builds; it remains
+ignored by Git and must be backed up securely.
 
 ## Known issues
 
 - Safe-area insets are read through a PyJNIus bridge that may return zero on
   vendor builds that hide cutout data; the layout still renders correctly in
   the safe interior.
-- The debug APK is not signed by a Google Play upload key; install it outside
-  Play.  A signed release track is a 4.3.x goal.
+- The APK is signed for stable sideloaded updates but is not distributed through
+  Google Play. Install it outside Play and allow the browser/files app as an
+  installation source.
 - Performance and cutout behavior vary across devices. Performance mode is the
   supported baseline; report the `ARCH_ROGUE_PERF` display/title/gameplay lines,
   Android version, and device model with any issue.

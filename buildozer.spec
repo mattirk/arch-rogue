@@ -13,14 +13,14 @@ package.name = archrogue
 
 # `tools/build_android.sh` rewrites these from pyproject.toml at build time.
 package.domain = org.archrogue
-package.version = 4.5.3
+package.version = 4.5.4
 
 source.dir = src
 source.include_exts = py,png,json,txt
 # Never package host-generated metadata/bytecode from an editable install.
 source.exclude_dirs = __pycache__,arch_rogue.egg-info
 
-version = 4.5.3
+version = 4.5.4
 
 # Landscape-only: the manifest locks orientation so the safe-area layout is the
 # only one the runtime sees.
@@ -68,7 +68,7 @@ android.display_cutout = shortEdges
 
 # Debug build by default.  `tools/build_android.sh release` switches signing on.
 android.debug = 1
-android.release_artifact = _apk
+android.release_artifact = apk
 
 # No Android permissions are requested. Saves/options use app-private storage,
 # which requires no storage permission.

@@ -12,6 +12,8 @@ android-sdk*/
 *.apk
 *.aab
 *.keystore
+*.jks
+*.p12
 web/vendor/
 web/dist/
 .pytest_cache/

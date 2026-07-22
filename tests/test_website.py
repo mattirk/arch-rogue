@@ -105,7 +105,7 @@ class WebsiteTests(unittest.TestCase):
                 "windows": "https://github.com/mattirk/arch-rogue/releases/download/v4.4.0-1234567/arch-rogue-v4.4.0-1234567-windows-x64.exe",
                 "linux": "https://github.com/mattirk/arch-rogue/releases/download/v4.4.0-1234567/arch-rogue-v4.4.0-1234567-linux-x64",
                 "macos": "https://github.com/mattirk/arch-rogue/releases/download/v4.4.0-1234567/arch-rogue-v4.4.0-1234567-macos-universal.zip",
-                "android": "https://github.com/mattirk/arch-rogue/releases/download/v4.4.0-1234567/arch-rogue-v4.4.0-1234567-android-debug.apk",
+                "android": "https://github.com/mattirk/arch-rogue/releases/download/v4.4.0-1234567/arch-rogue-v4.4.0-1234567-android-release.apk",
             },
         )
 

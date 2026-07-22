@@ -519,8 +519,13 @@ jobs:
           if-no-files-found: error
 
   android:
-    name: Build Android APK (debug)
+    name: Build Android APK (signed release)
     needs: test
+    # Never expose the permanent update key to android-beta or a workflow
+    # dispatch targeting another ref. Configure this Environment with a
+    # master-only deployment branch rule and required reviewer protection.
+    if: github.ref == 'refs/heads/master'
+    environment: android-release
     # Keep the native Autotools environment stable instead of following the
     # moving ubuntu-latest image underneath cached p4a/SDK inputs.
     runs-on: ubuntu-24.04
@@ -576,23 +581,39 @@ jobs:
         shell: bash
         run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Build debug APK
-        run: ./tools/build_android.sh debug
-
-      - name: Rename APK
-        shell: bash
+      # Never let Gradle create an ephemeral debug key on a hosted runner. Each
+      # such key produces a valid APK, but Android rejects the next CI build as
+      # INSTALL_FAILED_UPDATE_INCOMPATIBLE because its certificate is different.
+      - name: Restore persistent Android release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ARCH_ROGUE_ANDROID_KEYSTORE_BASE64 }}
         run: |
-          mkdir -p dist/final
-          VERSION="${{ steps.version.outputs.version }}"
-          SHA="${{ steps.sha.outputs.short }}"
-          APK="$(ls -1 bin/*.apk | head -n1)"
-          cp "$APK" "dist/final/arch-rogue-v${VERSION}-${SHA}-android-debug.apk"
-          ls -lh dist/final
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "ARCH_ROGUE_ANDROID_KEYSTORE_BASE64 is not configured" >&2
+            exit 1
+          fi
+          install -d -m 700 "${{ runner.temp }}/arch-rogue-signing"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode \
+            > "${{ runner.temp }}/arch-rogue-signing/release.keystore"
+          chmod 600 "${{ runner.temp }}/arch-rogue-signing/release.keystore"
+
+      - name: Build and hand off signed release APK
+        env:
+          ARCH_ROGUE_ANDROID_KEYSTORE: ${{ runner.temp }}/arch-rogue-signing/release.keystore
+          ARCH_ROGUE_ANDROID_KEYSTORE_PASSWD: ${{ secrets.ARCH_ROGUE_ANDROID_KEYSTORE_PASSWD }}
+          ARCH_ROGUE_ANDROID_KEYALIAS: ${{ secrets.ARCH_ROGUE_ANDROID_KEYALIAS }}
+          ARCH_ROGUE_ANDROID_KEYALIAS_PASSWD: ${{ secrets.ARCH_ROGUE_ANDROID_KEYALIAS_PASSWD }}
+          ARCH_ROGUE_ANDROID_OUTPUT_APK: dist/final/arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-android-release.apk
+        run: ./tools/build_android.sh release
+
+      - name: Show validated release APK
+        run: ls -lh dist/final/arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-android-release.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: arch-rogue-android-debug
+          name: arch-rogue-android-release
           path: dist/final/*.apk
           if-no-files-found: error
 
@@ -627,11 +648,9 @@ jobs:
         with:
           path: release-assets
           merge-multiple: true
-          # All five artifacts are pulled: Linux, Windows, the universal
-          # macOS app ZIP, and the two intermediate single-arch macOS builds
-          # (kept as smaller per-architecture fallbacks).
+          # Pull Linux, Windows, the universal macOS app ZIP, both intermediate
+          # single-arch macOS fallbacks, and the persistently signed Android APK.
           pattern: arch-rogue-*
-          # Includes the Android debug APK produced by the android job.
 
       - name: Restore executable bit on raw Unix binaries
         # The universal app keeps its executable bit inside its `ditto` ZIP.
@@ -662,7 +681,7 @@ jobs:
             - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-universal.zip` — Finder-launchable `Arch Rogue.app` (Apple Silicon + Intel)
             - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-arm64` — macOS Apple Silicon only (smaller)
             - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-x86_64` — macOS Intel only (smaller)
-            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-android-debug.apk` — Android beta debug APK (landscape, self-signed at install)
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-android-release.apk` — signed Android beta APK (landscape; stable in-place updates from 4.5.4 onward)
           files: release-assets/*
           prerelease: true
           make_latest: "false"

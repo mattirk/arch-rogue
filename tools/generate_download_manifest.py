@@ -11,7 +11,7 @@ PLATFORM_SUFFIXES = {
     "windows": "windows-x64.exe",
     "linux": "linux-x64",
     "macos": "macos-universal.zip",
-    "android": "android-debug.apk",
+    "android": "android-release.apk",
 }
 
 

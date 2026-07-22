@@ -130,6 +130,131 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("libtool", android_job)
         self.assertIn("LT_SYS_SYMBOL_USCORE", android_job)
 
+    def test_public_android_apk_uses_persistent_release_signing(self) -> None:
+        workflow = (
+            ROOT / ".github" / "workflows" / "build-release.yml"
+        ).read_text(encoding="utf-8")
+        android_job = workflow[
+            workflow.index("\n  android:") : workflow.index("\n  release:")
+        ]
+        self.assertIn("ARCH_ROGUE_ANDROID_KEYSTORE_BASE64", android_job)
+        self.assertIn("ARCH_ROGUE_ANDROID_KEYSTORE_PASSWD", android_job)
+        self.assertIn("ARCH_ROGUE_ANDROID_KEYALIAS", android_job)
+        self.assertIn("ARCH_ROGUE_ANDROID_KEYALIAS_PASSWD", android_job)
+        self.assertIn("if: github.ref == 'refs/heads/master'", android_job)
+        self.assertIn("environment: android-release", android_job)
+        self.assertIn("./tools/build_android.sh release", android_job)
+        self.assertNotIn("./tools/build_android.sh debug", android_job)
+        self.assertIn("ARCH_ROGUE_ANDROID_OUTPUT_APK", android_job)
+        self.assertNotIn("find bin", android_job)
+        self.assertIn("android-release.apk", android_job)
+
+        fingerprint = (
+            ROOT / "android" / "release-signing-cert.sha256"
+        ).read_text(encoding="ascii").strip()
+        self.assertRegex(fingerprint, r"^[0-9a-f]{64}$")
+
+        build_script = (ROOT / "tools" / "build_android.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("configure_release_signing", build_script)
+        self.assertIn("release-signing-cert.sha256", build_script)
+        self.assertIn("Refusing to publish an APK", build_script)
+
+    def test_signer_verification_rejects_invalid_signing_contracts(self) -> None:
+        build_script = (ROOT / "tools" / "build_android.sh").read_text(
+            encoding="utf-8"
+        )
+        function_start = build_script.index("verify_apk_signer() {")
+        function_end = build_script.index(
+            "\n# SIGNER_VERIFICATION_FUNCTION_END",
+            function_start,
+        )
+        function = build_script[function_start:function_end]
+        expected = "1" * 64
+
+        cases = (
+            (
+                "valid",
+                0,
+                f"Number of signers: 1\nV2 Signer: certificate SHA-256 digest: {expected}\n",
+                expected,
+                True,
+            ),
+            ("unsigned", 1, "DOES NOT VERIFY\n", expected, False),
+            (
+                "multiple",
+                0,
+                f"Number of signers: 2\nV2 Signer: certificate SHA-256 digest: {expected}\n",
+                expected,
+                False,
+            ),
+            (
+                "ten-signers",
+                0,
+                f"Number of signers: 10\nV2 Signer: certificate SHA-256 digest: {expected}\n",
+                expected,
+                False,
+            ),
+            (
+                "mismatch",
+                0,
+                f"Number of signers: 1\nV2 Signer: certificate SHA-256 digest: {'2' * 64}\n",
+                expected,
+                False,
+            ),
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            for name, exit_code, output, fingerprint, should_pass in cases:
+                with self.subTest(case=name):
+                    fake_apksigner = root / f"apksigner-{name}"
+                    fake_apksigner.write_text(
+                        "#!/bin/sh\n"
+                        + "cat <<'EOF'\n"
+                        + output
+                        + "EOF\n"
+                        + f"exit {exit_code}\n",
+                        encoding="utf-8",
+                    )
+                    fake_apksigner.chmod(0o700)
+                    exercise = (
+                        "set -u\n"
+                        + f"APKSIGNER='{fake_apksigner}'\n"
+                        + function
+                        + "\n"
+                        + f"verify_apk_signer ignored.apk '{fingerprint}'\n"
+                    )
+                    result = subprocess.run(
+                        ["bash", "-c", exercise],
+                        cwd=ROOT,
+                        text=True,
+                        capture_output=True,
+                    )
+                    self.assertEqual(result.returncode == 0, should_pass)
+
+    def test_release_build_fails_closed_without_signing_credentials(self) -> None:
+        env = os.environ.copy()
+        for name in (
+            "ARCH_ROGUE_ANDROID_KEYSTORE",
+            "ARCH_ROGUE_ANDROID_KEYSTORE_PASSWD",
+            "ARCH_ROGUE_ANDROID_KEYALIAS",
+            "ARCH_ROGUE_ANDROID_KEYALIAS_PASSWD",
+        ):
+            env.pop(name, None)
+
+        result = subprocess.run(
+            ["bash", "tools/build_android.sh", "release"],
+            cwd=ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("release signing is required", result.stderr)
+        self.assertIn("ARCH_ROGUE_ANDROID_KEYSTORE", result.stderr)
+        self.assertNotIn("Arch Rogue Android build:", result.stdout)
+
     def test_android_sdk_bootstrap_repairs_partial_ci_cache(self) -> None:
         build_script = (ROOT / "tools" / "build_android.sh").read_text(
             encoding="utf-8"
@@ -177,6 +302,22 @@ test ! -e "$sdk"
                 capture_output=True,
             )
 
+
+    def test_build_spec_rejects_invalid_release_artifact_command(self) -> None:
+        for invalid_artifact in ("_apk", "APK"):
+            with self.subTest(artifact=invalid_artifact), tempfile.TemporaryDirectory() as tmpdir:
+                spec = Path(tmpdir) / "buildozer.spec"
+                text = (ROOT / "buildozer.spec").read_text(encoding="utf-8")
+                text = text.replace(
+                    "android.release_artifact = apk",
+                    f"android.release_artifact = {invalid_artifact}",
+                )
+                spec.write_text(text, encoding="utf-8")
+                with self.assertRaisesRegex(
+                    ValidationError,
+                    "android.release_artifact must be 'apk'",
+                ):
+                    validate_build_spec(spec, ROOT)
 
     def test_build_spec_requires_branded_presplash(self) -> None:
         # 4.4.8: the APK loading screen must use the Arch Rogue title logo, not
