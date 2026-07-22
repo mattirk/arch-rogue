@@ -29,7 +29,11 @@ No non-loopback network access occurs; SDL runs on the dummy drivers.
 from __future__ import annotations
 
 import asyncio
+import collections
 import os
+import shutil
+import ssl
+import subprocess
 import tempfile
 import threading
 import time
@@ -39,6 +43,8 @@ from unittest.mock import patch
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+
+import pygame
 
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
@@ -225,6 +231,124 @@ class ClientPairTests(unittest.TestCase):
         client.close()
 
 
+@unittest.skipUnless(shutil.which("openssl"), "openssl CLI required")
+class TlsTransportTests(unittest.TestCase):
+    """TLS end to end: the bundled server terminates, the client verifies.
+
+    Covers the nginx-stream deployment shape too — a client that trusts the
+    server certificate completes the handshake and the newline-JSON protocol
+    runs unchanged on top; wrong-trust and wrong-transport pairings surface
+    clean ``ConnectionFailed``/``ConnectionLost`` events instead of hangs or
+    raw ``ECONNRESET`` tracebacks.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tmpdir = tempfile.TemporaryDirectory()
+        base = Path(cls.tmpdir.name)
+        cls.cert_path = base / "cert.pem"
+        cls.key_path = base / "key.pem"
+        subprocess.run(
+            [
+                "openssl", "req", "-x509",
+                "-newkey", "ec",
+                "-pkeyopt", "ec_paramgen_curve:prime256v1",
+                "-keyout", str(cls.key_path),
+                "-out", str(cls.cert_path),
+                "-days", "2", "-nodes",
+                "-subj", "/CN=localhost",
+                "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        cls.harness = LoopbackServer(
+            tls_cert=str(cls.cert_path), tls_key=str(cls.key_path)
+        )
+        cls.port = cls.harness.start()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.harness.stop()
+        cls.tmpdir.cleanup()
+
+    def _trusting_context(self) -> ssl.SSLContext:
+        # Standard client verification with the self-signed test certificate
+        # pinned as the only trust anchor; hostname checking stays on.
+        return ssl.create_default_context(cafile=str(self.cert_path))
+
+    def test_handshake_and_welcome_over_tls(self) -> None:
+        client = MultiplayerClient(
+            "127.0.0.1",
+            self.port,
+            generation=7,
+            tls=True,
+            tls_context=self._trusting_context(),
+        )
+        client.start()
+        wait_for(client, ("ConnectionUp",))
+        client.send_message(
+            make_hello(
+                seq=1, name="Matti", run_id=generate_run_id(), role="host",
+                content_revision="t",
+            )
+        )
+        welcome, _ = wait_for(client, ("Welcome",))
+        self.assertIsInstance(welcome, Welcome)
+        self.assertEqual(welcome.you_are, "host")
+        client.close(send_bye=True)
+        self.assertFalse(client.running)
+
+    def test_untrusted_certificate_is_rejected(self) -> None:
+        # Default trust store (no our-CA): verification must fail closed
+        # before any protocol byte is sent.
+        client = MultiplayerClient(
+            "127.0.0.1", self.port, generation=8, tls=True
+        )
+        client.start()
+        event, _ = wait_for(client, ("ConnectionFailed",), timeout=10.0)
+        self.assertIn("certificate", event.reason.lower())
+        client.close()
+
+    def test_plaintext_client_to_tls_server_fails_cleanly(self) -> None:
+        # The pre-TLS client against a TLS endpoint: the historical
+        # "errno 104 connection reset by peer". It must surface as a clean
+        # ConnectionLost/ConnectionFailed event, never a hang.
+        client = MultiplayerClient("127.0.0.1", self.port, generation=9)
+        client.start()
+        wait_for(client, ("ConnectionUp",))  # TCP accept precedes TLS reject
+        client.send_message(
+            make_hello(
+                seq=1, name="Doomed", run_id=generate_run_id(), role="host",
+                content_revision="t",
+            )
+        )
+        event, _ = wait_for(
+            client, ("ConnectionLost", "ConnectionFailed"), timeout=10.0
+        )
+        self.assertIn(type(event).__name__, ("ConnectionLost", "ConnectionFailed"))
+        client.close()
+
+    def test_tls_client_to_plaintext_server_fails_cleanly(self) -> None:
+        plain = LoopbackServer()
+        port = plain.start()
+        try:
+            client = MultiplayerClient(
+                "127.0.0.1",
+                port,
+                generation=10,
+                tls=True,
+                tls_context=self._trusting_context(),
+                connect_timeout=1.5,
+            )
+            client.start()
+            event, _ = wait_for(client, ("ConnectionFailed",), timeout=10.0)
+            self.assertTrue(event.reason)
+            client.close()
+        finally:
+            plain.stop()
+
+
 def _pump(games, seconds: float = 0.02, frames: int = 1) -> None:
     for _ in range(frames):
         for game in games:
@@ -265,6 +389,7 @@ class TwoGameFlowTests(unittest.TestCase):
         game.mp_player_name = name
         game.mp_server_host = "127.0.0.1"
         game.mp_server_port = self.port
+        game.mp_server_tls = False  # the loopback relay speaks plain TCP
         return game
 
     def test_lobby_start_snapshot_intent_and_partner_left(self) -> None:
@@ -421,6 +546,77 @@ class TwoGameFlowTests(unittest.TestCase):
             self.assertIsNone(game.mp_session)
 
 
+class JoinerMouseWalkVectorTests(unittest.TestCase):
+    """The joiner's move-intent sampling must include mouse hold-to-walk.
+
+    ``_mp_local_move_vector`` feeds both the outbound 20 Hz intents and the
+    joiner's local facing prediction, so a solo headless run (whose camera
+    and player mirror the joiner's local view) exercises it without a relay.
+    """
+
+    def _make_playing_game(self, tmpdir: str) -> Game:
+        game = Game(
+            screen_size=(640, 360),
+            headless=True,
+            save_path=Path(tmpdir) / "run.json",
+        )
+        game.options_path = Path(tmpdir) / "options.json"
+        game.restart(ARCHETYPES[0])
+        # A live run opens on the story intro; a real joiner walks only
+        # after dismissing it, and the mouse fallback respects the same gate.
+        game.story_intro_pending = False
+        game.active_cutscene = None
+        game.snap_camera_to_player()
+        return game
+
+    def test_held_button_walks_toward_cursor_and_menus_suppress(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_playing_game(tmpdir)
+            cursor = game.world_to_screen(game.player.x + 3.0, game.player.y)
+            with patch("pygame.mouse.get_pressed", return_value=(1, 0, 0)), patch(
+                "pygame.mouse.get_pos", return_value=cursor
+            ):
+                move_x, move_y = game._mp_local_move_vector()
+                self.assertGreater(move_x, 0.9)
+                self.assertLess(abs(move_y), 0.2)
+                # The cursor also aims the local actor, like on the host.
+                self.assertGreater(game.player.facing_x, 0.9)
+                for flag in ("inventory_open", "character_menu_open", "shop_open"):
+                    setattr(game, flag, True)
+                    self.assertEqual(
+                        game._mp_local_move_vector(), (0.0, 0.0), flag
+                    )
+                    setattr(game, flag, False)
+                game.story_intro_pending = True
+                self.assertEqual(game._mp_local_move_vector(), (0.0, 0.0))
+                game.story_intro_pending = False
+
+    def test_release_and_stop_radius_give_zero_vector(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_playing_game(tmpdir)
+            far = game.world_to_screen(game.player.x + 3.0, game.player.y)
+            with patch("pygame.mouse.get_pressed", return_value=(0, 0, 0)), patch(
+                "pygame.mouse.get_pos", return_value=far
+            ):
+                self.assertEqual(game._mp_local_move_vector(), (0.0, 0.0))
+            near = game.world_to_screen(game.player.x + 0.05, game.player.y)
+            with patch("pygame.mouse.get_pressed", return_value=(1, 0, 0)), patch(
+                "pygame.mouse.get_pos", return_value=near
+            ):
+                self.assertEqual(game._mp_local_move_vector(), (0.0, 0.0))
+
+    def test_keyboard_still_takes_priority_over_mouse(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_playing_game(tmpdir)
+            # Cursor to the east, keyboard pressing north: keyboard wins.
+            cursor = game.world_to_screen(game.player.x + 3.0, game.player.y)
+            keys = collections.defaultdict(int, {pygame.K_w: 1})
+            with patch("pygame.key.get_pressed", return_value=keys), patch(
+                "pygame.mouse.get_pressed", return_value=(1, 0, 0)
+            ), patch("pygame.mouse.get_pos", return_value=cursor):
+                self.assertEqual(game._mp_local_move_vector(), (0.0, -1.0))
+
+
 class MobileMultiplayerTests(unittest.TestCase):
     """Headless mobile-mode coverage: touch targets, back handling, and the
     suspend/resume + reconnect-grace paths. All branches stay gated by
@@ -438,6 +634,7 @@ class MobileMultiplayerTests(unittest.TestCase):
         game.mp_player_name = "Pocket"
         game.mp_server_host = "127.0.0.1"
         game.mp_server_port = 1  # loopback, nothing listens: tap tests only
+        game.mp_server_tls = False
         return game
 
     def test_mp_setup_role_rows_are_tappable(self) -> None:

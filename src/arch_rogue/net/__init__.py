@@ -34,6 +34,7 @@ from .client import (
     ConnectionUp,
     InboundMessage,
     MultiplayerClient,
+    default_tls_context,
 )
 from .messages import (
     ByeMessage,
@@ -64,6 +65,7 @@ __all__ = [
     "ConnectionUp",
     "InboundMessage",
     "MultiplayerClient",
+    "default_tls_context",
     "ByeMessage",
     "ErrorMessage",
     "FloorMessage",

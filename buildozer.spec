@@ -40,8 +40,11 @@ presplash.color = #0a0a0f
 
 # The local recipe named `pygame` cross-compiles pygame-ce 2.5.7. Do not put
 # `pygame-ce` here: p4a has no recipe by that name and would bundle a host wheel.
-# PyJNIus is required by the safe-area DisplayCutout bridge.
-requirements = python3,pygame==2.5.7,pyjnius
+# PyJNIus is required by the safe-area DisplayCutout bridge. certifi (pure
+# Python) provides the CA trust anchors for multiplayer TLS verification —
+# Android exposes no OpenSSL-visible system CA bundle to CPython, and without
+# trust anchors the client fails closed on every TLS connect.
+requirements = python3,pygame==2.5.7,pyjnius,certifi
 p4a.bootstrap = sdl2
 p4a.local_recipes = android/recipes
 # python-for-android release 2026.05.09. Pinning the commit keeps recipe, Python,

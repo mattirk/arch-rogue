@@ -392,10 +392,11 @@ class Game(
         self.meta_progress: dict[str, Any] = self.default_meta_progress()
         self.run_history: list[dict[str, Any]] = []
         # 4.6 schema-8 multiplayer options. load_options() overrides from disk;
-        # the endpoint starts on the public default server.
+        # the endpoint starts on the public default server, encrypted.
         self.mp_player_name = ""
         self.mp_server_host = DEFAULT_MP_SERVER_HOST
         self.mp_server_port = DEFAULT_MP_SERVER_PORT
+        self.mp_server_tls = True
         self.last_save_error = ""
         self.last_load_error = ""
         self.recovered_interrupted_run = False

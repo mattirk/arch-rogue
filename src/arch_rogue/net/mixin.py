@@ -372,7 +372,7 @@ class NetMixin:
         )
 
     def _mp_local_move_vector(self) -> tuple[float, float]:
-        """Sample the joiner's movement input (keyboard/controller/touch)."""
+        """Sample the joiner's movement input (keyboard/controller/touch/mouse)."""
 
         keys = pygame.key.get_pressed()
         move_x = float(keys[pygame.K_RIGHT] or keys[pygame.K_d]) - float(
@@ -388,10 +388,40 @@ class NetMixin:
             mobile_x, mobile_y = self.mobile_joystick_world_vector()
             if mobile_x or mobile_y:
                 move_x, move_y = mobile_x, mobile_y
+        elif not (move_x or move_y):
+            move_x, move_y = self._mp_mouse_walk_vector()
         length = math.hypot(move_x, move_y)
         if length > 1.0:
             move_x, move_y = move_x / length, move_y / length
         return move_x, move_y
+
+    def _mp_mouse_walk_vector(self) -> tuple[float, float]:
+        """Joiner's mouse hold-to-walk fallback (mirrors ``update_player``).
+
+        The host steps its own mouse walk exactly to the cursor each frame;
+        the joiner can only send an analog vector, so deflection tapers to
+        zero at the same 0.12-tile stop radius to ease in without orbiting
+        the pointer between 20 Hz intents. Menus and cutscenes suppress it —
+        on the host those states pause the simulation before the mouse is
+        sampled, and joiner-side menu clicks must not double as movement.
+        """
+
+        if (
+            self.inventory_open
+            or self.character_menu_open
+            or self.shop_open
+            or self.active_cutscene is not None
+            or self.story_intro_pending
+        ):
+            return 0.0, 0.0
+        if not pygame.mouse.get_pressed()[0]:
+            return 0.0, 0.0
+        dx, dy = self.face_player_toward_screen_point(*pygame.mouse.get_pos())
+        distance = math.hypot(dx, dy)
+        if distance <= 0.12:
+            return 0.0, 0.0
+        magnitude = min(1.0, (distance - 0.12) * 4.0)
+        return (dx / distance) * magnitude, (dy / distance) * magnitude
 
     # -- inbound dispatch ---------------------------------------------------
 
@@ -954,6 +984,7 @@ class NetMixin:
             str(self.mp_server_host),
             int(self.mp_server_port),
             generation=self.mp_generation,
+            tls=bool(getattr(self, "mp_server_tls", True)),
         )
         self.mp_client = client
         client.start()

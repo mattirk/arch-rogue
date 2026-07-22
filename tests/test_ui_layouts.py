@@ -1135,7 +1135,7 @@ class UiLayoutTests(unittest.TestCase):
             viewport_rect, scroll, visible_count, total_count = scrollbar.call_args.args
             # ``total_count`` is the full options list length; ``visible_count``
             # is how many rows fit on screen right now.
-            self.assertEqual(total_count, 15)  # fixed options list length (4.6: +server host, +server port)
+            self.assertEqual(total_count, 16)  # fixed options list length (4.6: +server host/port/encryption)
             # Sanity: the viewport is inside the screen and the visible range
             # really is smaller than the full options list.
             self.assertLess(visible_count, total_count)

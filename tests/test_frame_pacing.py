@@ -224,12 +224,13 @@ class OptionsRowCountTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_game(tmpdir)
             self.assertFalse(game.mobile_mode)
-            self.assertEqual(game.OPTIONS_ROW_COUNT, 15)
-            self.assertEqual(game.OPTIONS_ROW_BACK, 14)
+            self.assertEqual(game.OPTIONS_ROW_COUNT, 16)
+            self.assertEqual(game.OPTIONS_ROW_BACK, 15)
             self.assertEqual(game.OPTIONS_ROW_FRAME_RATE, 4)
             self.assertEqual(game.OPTIONS_ROW_MP_HOST, 11)
             self.assertEqual(game.OPTIONS_ROW_MP_PORT, 12)
-            self.assertEqual(game.OPTIONS_ROW_PERF_OVERLAY, 13)
+            self.assertEqual(game.OPTIONS_ROW_MP_TLS, 13)
+            self.assertEqual(game.OPTIONS_ROW_PERF_OVERLAY, 14)
 
     def test_mobile_row_count_omits_perf_overlay(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -241,8 +242,8 @@ class OptionsRowCountTests(unittest.TestCase):
             )
             game.options_path = Path(tmpdir) / "options.json"
             self.assertTrue(game.mobile_mode)
-            self.assertEqual(game.OPTIONS_ROW_COUNT, 14)
-            self.assertEqual(game.OPTIONS_ROW_BACK, 13)
+            self.assertEqual(game.OPTIONS_ROW_COUNT, 15)
+            self.assertEqual(game.OPTIONS_ROW_BACK, 14)
 
 
 class PerfOverlayTests(unittest.TestCase):

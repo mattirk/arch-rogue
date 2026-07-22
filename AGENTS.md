@@ -318,7 +318,7 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
   - Terms and contitions etc legal note if enabled
   - Maybe better still to force user to input server address and then warning
   - Idea: Show the user default server address e.g "play.ar.game" and force user to type it to connect -> show warning on top
-
+- Joinint guest does not see action animations e.g time skip or shield bash (or enemies' actions) 
 
 ### 4.6 Multiplayer with server component
 

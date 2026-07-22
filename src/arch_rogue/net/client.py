@@ -27,6 +27,14 @@ The thread only decodes and enqueues immutable typed messages — it never
 mutates ``Game``, Pygame objects, or game collections; all state changes
 happen on the main thread inside ``NetMixin.poll()``.
 
+With ``tls=True`` the connection is wrapped in TLS before ``ConnectionUp``
+fires: the handshake runs in blocking mode under ``connect_timeout``, the
+server certificate chain and hostname are verified against the platform
+trust store (``default_tls_context``), and the select loop then treats the
+``SSLSocket`` like the plain socket plus the two TLS caveats — WantRead/
+WantWrite retries and draining ``pending()`` plaintext that ``select`` on
+the raw fd cannot see.
+
 Queue bounds: queued inbound snapshots are coalesced to the newest one while
 reliable control events keep their order; outbound movement intents and host
 snapshots coalesce by key so a stalled peer never grows an unbounded backlog.
@@ -40,6 +48,7 @@ from __future__ import annotations
 
 import select
 import socket
+import ssl
 import threading
 import time
 from collections import deque
@@ -62,6 +71,7 @@ __all__ = [
     "ConnectionFailed",
     "ConnectionLost",
     "ConnectionClosed",
+    "default_tls_context",
 ]
 
 _RECV_CHUNK_BYTES = 64 * 1024
@@ -117,6 +127,28 @@ def _default_connect(host: str, port: int, timeout: float) -> socket.socket:
     return socket.create_connection((host, port), timeout=timeout)
 
 
+def default_tls_context() -> ssl.SSLContext:
+    """Strict client-side TLS: system trust store, TLS 1.2+, hostname checked.
+
+    ``create_default_context`` already enables ``CERT_REQUIRED`` and hostname
+    verification. On platforms whose Python ships without a system CA bundle
+    (notably python-for-android), fall back to ``certifi`` when it is
+    installed; with no trust anchors at all the handshake fails closed
+    instead of silently trusting any certificate.
+    """
+
+    context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    if context.cert_store_stats().get("x509_ca", 0) == 0:
+        try:
+            import certifi
+        except ImportError:
+            pass
+        else:
+            context.load_verify_locations(cafile=certifi.where())
+    return context
+
+
 class MultiplayerClient:
     """One TCP connection to the relay server, driven by one worker thread."""
 
@@ -129,6 +161,9 @@ class MultiplayerClient:
         connect_timeout: float = 6.0,
         connect_factory: ConnectFactory | None = None,
         sock: socket.socket | None = None,
+        tls: bool = False,
+        tls_context: ssl.SSLContext | None = None,
+        server_hostname: str | None = None,
     ) -> None:
         self.host = host
         self.port = int(port)
@@ -136,6 +171,9 @@ class MultiplayerClient:
         self.connect_timeout = float(connect_timeout)
         self._connect_factory = connect_factory or _default_connect
         self._preconnected = sock
+        self.tls = bool(tls)
+        self._tls_context = tls_context
+        self._server_hostname = server_hostname or host
 
         self._events: deque[ClientEvent] = deque()
         self._events_lock = threading.Lock()
@@ -275,7 +313,17 @@ class MultiplayerClient:
                 sock = self._connect_factory(
                     self.host, self.port, self.connect_timeout
                 )
+            if self.tls:
+                # Handshake in blocking mode under the connect timeout;
+                # certificate chain and hostname are verified here, so
+                # ConnectionUp only ever fires on an authenticated channel.
+                context = self._tls_context or default_tls_context()
+                sock.settimeout(self.connect_timeout)
+                sock = context.wrap_socket(
+                    sock, server_hostname=self._server_hostname
+                )
         except OSError as exc:
+            self._shutdown_socket(sock)
             self._finished.set()
             self._enqueue_event(
                 ConnectionFailed(self.generation, reason=str(exc) or "connect failed")
@@ -327,50 +375,67 @@ class MultiplayerClient:
                         pass
 
                 if sock in readable:
-                    try:
-                        chunk = sock.recv(_RECV_CHUNK_BYTES)
-                    except (BlockingIOError, InterruptedError):
-                        chunk = None
-                    except OSError as exc:
-                        outcome = ConnectionLost(
-                            self.generation, reason=str(exc) or "recv failed"
-                        )
-                        break
-                    if chunk == b"":
-                        if self._closing.is_set():
-                            outcome = ConnectionClosed(self.generation)
-                        else:
-                            outcome = ConnectionLost(
-                                self.generation, reason="server closed the connection"
-                            )
-                        break
-                    if chunk:
+                    while True:
                         try:
-                            lines = framer.feed(chunk)
-                        except ProtocolError as exc:
+                            chunk = sock.recv(_RECV_CHUNK_BYTES)
+                        except (
+                            BlockingIOError,
+                            InterruptedError,
+                            ssl.SSLWantReadError,
+                            ssl.SSLWantWriteError,
+                        ):
+                            chunk = None
+                        except OSError as exc:
                             outcome = ConnectionLost(
-                                self.generation, reason=str(exc)
+                                self.generation, reason=str(exc) or "recv failed"
                             )
                             break
-                        overflow = False
-                        for line in lines:
+                        if chunk == b"":
+                            if self._closing.is_set():
+                                outcome = ConnectionClosed(self.generation)
+                            else:
+                                outcome = ConnectionLost(
+                                    self.generation,
+                                    reason="server closed the connection",
+                                )
+                            break
+                        if chunk:
                             try:
-                                decoded = message_from_dict(decode_message(line))
+                                lines = framer.feed(chunk)
                             except ProtocolError as exc:
                                 outcome = ConnectionLost(
                                     self.generation, reason=str(exc)
                                 )
-                                overflow = True
                                 break
-                            if not self._enqueue_message(decoded):
-                                outcome = ConnectionLost(
-                                    self.generation,
-                                    reason="inbound queue overflow",
-                                )
-                                overflow = True
+                            for line in lines:
+                                try:
+                                    decoded = message_from_dict(
+                                        decode_message(line)
+                                    )
+                                except ProtocolError as exc:
+                                    outcome = ConnectionLost(
+                                        self.generation, reason=str(exc)
+                                    )
+                                    break
+                                if not self._enqueue_message(decoded):
+                                    outcome = ConnectionLost(
+                                        self.generation,
+                                        reason="inbound queue overflow",
+                                    )
+                                    break
+                            if outcome is not None:
                                 break
-                        if overflow:
+                        # One TLS read may decrypt more records than one
+                        # recv returns; drain them now — select() watches
+                        # the raw fd and cannot see buffered plaintext.
+                        if not (
+                            chunk
+                            and isinstance(sock, ssl.SSLSocket)
+                            and sock.pending() > 0
+                        ):
                             break
+                    if outcome is not None:
+                        break
 
                 if sock in writable or (has_outbound and not pending_send):
                     if not pending_send:
@@ -380,7 +445,12 @@ class MultiplayerClient:
                     while pending_send:
                         try:
                             sent = sock.send(pending_send)
-                        except (BlockingIOError, InterruptedError):
+                        except (
+                            BlockingIOError,
+                            InterruptedError,
+                            ssl.SSLWantReadError,
+                            ssl.SSLWantWriteError,
+                        ):
                             break
                         except OSError as exc:
                             outcome = ConnectionLost(

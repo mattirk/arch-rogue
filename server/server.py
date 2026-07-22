@@ -35,6 +35,7 @@ import argparse
 import asyncio
 import contextlib
 import logging
+import ssl
 from collections import deque
 
 from .config import ServerConfig
@@ -135,15 +136,25 @@ class MultiplayerServer:
             return self.config.port
         return int(self._server.sockets[0].getsockname()[1])
 
+    def _tls_context(self) -> ssl.SSLContext | None:
+        if not self.config.tls_cert:
+            return None
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(self.config.tls_cert, self.config.tls_key)
+        return context
+
     async def start(self) -> None:
+        tls = self._tls_context()
         self._server = await asyncio.start_server(
-            self._handle_client, self.config.host, self.config.port
+            self._handle_client, self.config.host, self.config.port, ssl=tls
         )
         self._tick_task = asyncio.create_task(self._tick_loop())
         log.info(
-            "listening on %s:%d (run-id length %d, grace %.0fs, idle %.0fs)",
+            "listening on %s:%d (%s, run-id length %d, grace %.0fs, idle %.0fs)",
             self.config.host,
             self.bound_port,
+            "TLS" if tls is not None else "plain TCP",
             self.config.run_id_length,
             self.config.reconnect_grace,
             self.config.idle_timeout,
@@ -244,6 +255,19 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--max-rooms", type=int, default=defaults.max_rooms)
     parser.add_argument("--log-level", default=defaults.log_level)
+    parser.add_argument(
+        "--tls-cert",
+        default=defaults.tls_cert,
+        help=(
+            "PEM certificate chain for direct TLS termination; omit when a "
+            "reverse proxy (nginx stream) terminates TLS in front"
+        ),
+    )
+    parser.add_argument(
+        "--tls-key",
+        default=defaults.tls_key,
+        help="PEM private key matching --tls-cert",
+    )
     args = parser.parse_args(argv)
 
     config = ServerConfig(
@@ -255,6 +279,8 @@ def main(argv: list[str] | None = None) -> None:
         idle_timeout=args.idle_timeout,
         max_rooms=args.max_rooms,
         log_level=args.log_level,
+        tls_cert=args.tls_cert,
+        tls_key=args.tls_key,
     )
     logging.basicConfig(
         level=getattr(logging, str(config.log_level).upper(), logging.INFO),

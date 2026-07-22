@@ -70,6 +70,10 @@ class ServerConfig:
     idle_timeout: float = MP_ROOM_IDLE_TIMEOUT_SECONDS
     max_rooms: int = 128
     log_level: str = "INFO"
+    # Direct TLS termination (PEM paths). Leave both empty when a reverse
+    # proxy such as nginx terminates TLS in front of this plain-TCP process.
+    tls_cert: str = ""
+    tls_key: str = ""
 
     def __post_init__(self) -> None:
         self.port = int(self.port)
@@ -82,6 +86,12 @@ class ServerConfig:
         self.reconnect_grace = max(0.0, float(self.reconnect_grace))
         self.idle_timeout = max(5.0, float(self.idle_timeout))
         self.max_rooms = max(1, int(self.max_rooms))
+        self.tls_cert = str(self.tls_cert or "").strip()
+        self.tls_key = str(self.tls_key or "").strip()
+        if bool(self.tls_cert) != bool(self.tls_key):
+            raise ValueError(
+                "TLS needs both a certificate and a key (tls_cert + tls_key)"
+            )
 
     @classmethod
     def from_env(cls) -> "ServerConfig":
@@ -102,4 +112,6 @@ class ServerConfig:
             ),
             max_rooms=_env_int("ARCH_ROGUE_MP_MAX_ROOMS", 128),
             log_level=os.environ.get("ARCH_ROGUE_MP_LOG_LEVEL", "INFO"),
+            tls_cert=os.environ.get("ARCH_ROGUE_MP_TLS_CERT", ""),
+            tls_key=os.environ.get("ARCH_ROGUE_MP_TLS_KEY", ""),
         )

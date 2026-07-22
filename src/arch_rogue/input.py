@@ -833,12 +833,13 @@ class InputMixin:
     OPTIONS_ROW_LIGHTING_DETAIL = 10
     OPTIONS_ROW_MP_HOST = 11
     OPTIONS_ROW_MP_PORT = 12
-    OPTIONS_ROW_PERF_OVERLAY = 13
+    OPTIONS_ROW_MP_TLS = 13
+    OPTIONS_ROW_PERF_OVERLAY = 14
 
     @property
     def OPTIONS_ROW_COUNT(self) -> int:
-        # 14 rows on mobile (no desktop-only perf-overlay row), 15 on desktop.
-        return 14 if getattr(self, "mobile_mode", False) else 15
+        # 15 rows on mobile (no desktop-only perf-overlay row), 16 on desktop.
+        return 15 if getattr(self, "mobile_mode", False) else 16
 
     @property
     def OPTIONS_ROW_BACK(self) -> int:
@@ -1246,6 +1247,9 @@ class InputMixin:
                 charset="0123456789",
                 help_text="TCP port 1-65535 (the bundled server defaults to 43666).",
             )
+        elif row == self.OPTIONS_ROW_MP_TLS:
+            self.mp_server_tls = not bool(getattr(self, "mp_server_tls", True))
+            self.save_options()
         elif (
             row == self.OPTIONS_ROW_PERF_OVERLAY
             and not getattr(self, "mobile_mode", False)

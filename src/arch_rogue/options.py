@@ -76,6 +76,16 @@ def normalize_mp_server_port(value: object) -> int:
     return port if 1 <= port <= 65535 else 0
 
 
+def normalize_mp_server_tls(value: object) -> bool:
+    """Coerce the persisted TLS flag; anything malformed stays secure (on)."""
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return True
+
+
 _BASE_DISPLAY_DPI = 96.0
 _XFT_DPI_PATTERN = re.compile(
     r"^\s*Xft\.dpi\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*$",
@@ -455,6 +465,10 @@ class OptionsMixin:
     def mp_server_port_label(self) -> str:
         port = normalize_mp_server_port(getattr(self, "mp_server_port", 0))
         return str(port) if port else "Not set"
+
+    def mp_server_tls_label(self) -> str:
+        tls = normalize_mp_server_tls(getattr(self, "mp_server_tls", True))
+        return "On (certificate verified)" if tls else "Off (plaintext)"
 
     def frame_rate_cap_label(self) -> str:
         cap = normalize_frame_rate_cap(
@@ -910,6 +924,11 @@ class OptionsMixin:
             "mp_server_port": normalize_mp_server_port(
                 getattr(self, "mp_server_port", 0)
             ),
+            # 4.6.x: TLS to the relay server, on by default. Option files
+            # written before the key existed migrate to encrypted.
+            "mp_server_tls": normalize_mp_server_tls(
+                getattr(self, "mp_server_tls", True)
+            ),
         }
 
     def load_options(self) -> bool:
@@ -1000,6 +1019,9 @@ class OptionsMixin:
             self.mp_server_port = (
                 normalize_mp_server_port(data.get("mp_server_port", 0))
                 or DEFAULT_MP_SERVER_PORT
+            )
+            self.mp_server_tls = normalize_mp_server_tls(
+                data.get("mp_server_tls", True)
             )
         except (TypeError, ValueError):
             return False
