@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pygame
+
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
@@ -17,7 +19,6 @@ from arch_rogue.constants import (
     DUNGEON_WALL_VARIANTS,
     TILE_H,
     TILE_W,
-    WORLD_SCALE,
 )
 from arch_rogue.content import ARCHETYPES, DUNGEON_THEMES
 from arch_rogue.game import Game
@@ -97,11 +98,18 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                 # Seven base face styles plus the two bar faces with mounted
                 # sconces are prewarmed for every wall seed.
                 self.assertEqual(len(wall_keys), DUNGEON_WALL_VARIANTS * 9)
-                # Floor exists in normal, shop, guest, bar, and garden forms;
-                # stairs in normal + shop only (special-room stairs keep the
-                # normal slab).
+                # Floor exists in normal, shop, guest, bar, and garden forms.
+                # Stairs prewarm frame zero for every normal/shop variant, then
+                # the remaining pulse frames only for this floor's actual stair
+                # seed so animation starts hitch-free without multiplying memory.
                 self.assertEqual(len(floor_keys), DUNGEON_FLOOR_VARIANTS * 5)
-                self.assertEqual(len(stairs_keys), DUNGEON_FLOOR_VARIANTS * 2)
+                stair_frame_count = game.sprites.world_tile_animation_frame_count(
+                    "stairs"
+                )
+                self.assertEqual(
+                    len(stairs_keys),
+                    DUNGEON_FLOOR_VARIANTS * 2 + stair_frame_count - 1,
+                )
 
                 before = set(game.tile_cache.keys())
                 game.draw()
@@ -180,6 +188,70 @@ class DungeonSpriteVariants36Tests(unittest.TestCase):
                         0,
                         f"variant {v} detail pokes outside the slab diamond",
                     )
+            finally:
+                pass
+
+    def test_authored_stairs_composite_matching_floor_underlay_once(self) -> None:
+        class StubWorldSprites:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def world_tile_surface(
+                self,
+                key: str,
+                *,
+                target_canvas: tuple[int, int],
+                target_anchor: tuple[int, int],
+                tint: tuple[int, int, int],
+                accent: tuple[int, int, int],
+                variant: int,
+                mirror: bool = False,
+                wall_face_style: str | None = None,
+                animation_frame: int = 0,
+            ) -> tuple[pygame.Surface, int, int]:
+                self.calls.append(
+                    {
+                        "key": key,
+                        "target_canvas": target_canvas,
+                        "target_anchor": target_anchor,
+                        "tint": tint,
+                        "accent": accent,
+                        "variant": variant,
+                        "mirror": mirror,
+                        "wall_face_style": wall_face_style,
+                        "animation_frame": animation_frame,
+                    }
+                )
+                surface = pygame.Surface(target_canvas, pygame.SRCALPHA)
+                if key == "floor":
+                    surface.set_at((2, 2), (11, 22, 33, 255))
+                    surface.set_at((10, 10), (44, 55, 66, 255))
+                elif key == "stairs":
+                    surface.set_at((10, 10), (201, 31, 41, 255))
+                return surface, target_anchor[0], target_anchor[1]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            try:
+                sprites = StubWorldSprites()
+                object.__setattr__(game, "sprites", sprites)
+                game.tile_cache.clear()
+
+                first = game.tile_surface(Tile.STAIRS, 3, False)
+                surface, anchor_x, anchor_y = first
+                self.assertEqual(tuple(surface.get_at((2, 2))), (11, 22, 33, 255))
+                self.assertEqual(tuple(surface.get_at((10, 10))), (201, 31, 41, 255))
+                self.assertEqual([call["key"] for call in sprites.calls], ["stairs", "floor"])
+                self.assertEqual(sprites.calls[0]["target_canvas"], sprites.calls[1]["target_canvas"])
+                self.assertEqual(sprites.calls[0]["target_anchor"], sprites.calls[1]["target_anchor"])
+                self.assertEqual(sprites.calls[0]["variant"], sprites.calls[1]["variant"])
+                self.assertEqual(sprites.calls[0]["tint"], game.theme.floor)
+                self.assertEqual(sprites.calls[1]["tint"], game.theme.floor)
+                self.assertEqual((anchor_x, anchor_y), sprites.calls[0]["target_anchor"])
+
+                second = game.tile_surface(Tile.STAIRS, 3, False)
+                self.assertIs(second, first)
+                self.assertEqual(len(sprites.calls), 2)
             finally:
                 pass
 

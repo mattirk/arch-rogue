@@ -24,6 +24,11 @@ from __future__ import annotations
 import math
 import random
 
+from .constants import (
+    STAIR_COLLISION_INSET,
+    STAIR_COLLISION_OFFSET_X,
+    STAIR_COLLISION_OFFSET_Y,
+)
 from .models import Room, SpecialRoom, SpecialRoomDefinition, Tile
 
 MAP_W = 72
@@ -39,9 +44,10 @@ BOSS_ARENA_MIN_H = 10
 BOSS_ARENA_MAX_W = 14
 BOSS_ARENA_MAX_H = 13
 
-# Passable tile kinds (used by the hot `is_floor` path). Module-level so the
-# membership test avoids rebuilding a tuple each call.
+# Floor-like tiles remain transparent to line-of-sight and projectiles. The
+# stair shaft is intentionally excluded from physical walkability below.
 _PASSABLE_TILES = (Tile.FLOOR, Tile.STAIRS, Tile.OPEN_DOOR)
+_WALKABLE_TILES = (Tile.FLOOR, Tile.OPEN_DOOR)
 
 SHOP_ROOM_KIND = "shop"
 QUEST_ROOM_KIND = "quest_room"
@@ -533,15 +539,60 @@ class Dungeon:
                 self.tiles[x][y] = tile
 
     def is_floor(self, x: float, y: float) -> bool:
-        # Hot path (called many times per frame for LOS/movement/collision):
-        # inline the bounds check to avoid the `in_bounds` method call, and use
-        # a module-level tuple for the passable-tile membership test.
+        # Hot LOS/projectile path: stairs are floor-like openings and do not block
+        # sight or projectiles even though actors cannot walk into the shaft.
         tx, ty = int(x), int(y)
         if not (0 <= tx < MAP_W and 0 <= ty < MAP_H):
             return False
         return self.tiles[tx][ty] in _PASSABLE_TILES
 
-    def blocked_for_radius(self, x: float, y: float, radius: float = 0.27) -> bool:
+    def is_walkable(self, x: float, y: float) -> bool:
+        tx, ty = int(x), int(y)
+        if not (0 <= tx < MAP_W and 0 <= ty < MAP_H):
+            return False
+        return self.tiles[tx][ty] in _WALKABLE_TILES
+
+    def stair_collision_footprint(self) -> tuple[float, float, float, float]:
+        """World-space AABB the player may not enter around the stair shaft.
+
+        The footprint is the stair tile cell shifted north to align with the
+        visible circular stairwell (the sprite's shaft center sits above the
+        logical tile center) and inset on every side so the player can approach
+        the masonry rim. LOS/projectiles/enemies are unaffected -- only the
+        player's ``block_stairs`` movement probe uses this.
+        """
+        sx, sy = self.stairs
+        ax = sx + STAIR_COLLISION_OFFSET_X + STAIR_COLLISION_INSET
+        ay = sy + STAIR_COLLISION_OFFSET_Y + STAIR_COLLISION_INSET
+        bx = sx + 1 + STAIR_COLLISION_OFFSET_X - STAIR_COLLISION_INSET
+        by = sy + 1 + STAIR_COLLISION_OFFSET_Y - STAIR_COLLISION_INSET
+        return ax, ay, bx, by
+
+    def _probe_hits_stair(self, x: float, y: float) -> bool:
+        ax, ay, bx, by = self.stair_collision_footprint()
+        return ax <= x < bx and ay <= y < by
+
+    def blocked_for_radius(
+        self,
+        x: float,
+        y: float,
+        radius: float = 0.27,
+        *,
+        block_stairs: bool = False,
+    ) -> bool:
+        if block_stairs:
+            # Player path: stairs block via the shifted/inset footprint so the
+            # collision aligns with the visible artwork. Walls and closed doors
+            # still block through ``is_floor``; stairs themselves are floor-like
+            # for LOS/projectiles and only block this physical probe.
+            for ox in (-radius, radius):
+                for oy in (-radius, radius):
+                    px, py = x + ox, y + oy
+                    if self._probe_hits_stair(px, py):
+                        return True
+                    if not self.is_floor(px, py):
+                        return True
+            return False
         for ox in (-radius, radius):
             for oy in (-radius, radius):
                 if not self.is_floor(x + ox, y + oy):

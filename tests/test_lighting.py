@@ -36,6 +36,9 @@ from arch_rogue.constants import (
     LIGHT_BAR_WALL_ELEVATION,
     LIGHT_LANTERN_COLOR,
     LIGHT_LEVEL_SIGHT_RADIUS,
+    LIGHT_STAIRS_COLOR,
+    LIGHT_STAIRS_INTENSITY,
+    LIGHT_STAIRS_RADIUS,
     LIGHT_TORCH_COLOR,
     LIGHT_TORCH_INTENSITY,
     LIGHT_TORCH_RADIUS,
@@ -120,6 +123,27 @@ class LightingTests(unittest.TestCase):
         self.assertEqual(lantern.radius, DARK_LEVEL_LIGHT_RADIUS)
         self.assertEqual(DARK_LEVEL_LIGHT_RADIUS, LIGHT_LEVEL_SIGHT_RADIUS)
         self.assertEqual(lantern.color, LIGHT_LANTERN_COLOR)
+
+    def test_stairs_add_one_faint_static_violet_light(self) -> None:
+        game = self.make_game(tempfile.mkdtemp())
+        stairs_x, stairs_y = game.dungeon.stairs
+        stair_lights = [
+            light for light in game.light_sources if light.kind == "stairs"
+        ]
+        self.assertEqual(len(stair_lights), 1)
+        light = stair_lights[0]
+        self.assertEqual((light.x, light.y), (stairs_x + 0.5, stairs_y + 0.5))
+        self.assertEqual(light.color, LIGHT_STAIRS_COLOR)
+        self.assertEqual(light.radius, LIGHT_STAIRS_RADIUS)
+        self.assertEqual(light.intensity, LIGHT_STAIRS_INTENSITY)
+        self.assertFalse(light.flicker)
+        self.assertIsNone(light.ttl)
+
+        game._populate_light_sources()
+        self.assertEqual(
+            len([light for light in game.light_sources if light.kind == "stairs"]),
+            1,
+        )
 
     def test_friendly_humanoid_lanterns_follow_npcs_and_exclude_frogs(self) -> None:
         game = self.make_game(tempfile.mkdtemp())

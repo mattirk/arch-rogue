@@ -94,6 +94,72 @@ class GraphicsAnimation21Tests(unittest.TestCase):
             self.assertEqual(tile_surface.call_count, 1)
             self.assertEqual(len(game._tile_render_descriptor_cache), 1)
 
+    def test_stair_animation_uses_frame_specific_cached_descriptors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            x, y = int(game.player.x), int(game.player.y)
+            game.dungeon.tiles[x][y] = Tile.STAIRS
+            game.dungeon.stairs = (x, y)
+            game.revealed_tiles.add((x, y))
+            game.set_current_floor_dark(False)
+            game._tile_render_descriptor_cache = {}
+            game._frame_dark = False
+            fps = float(game.sprites.assets.manifest["world"]["stairs"]["fps"])
+
+            with mock.patch.object(
+                game, "tile_surface", wraps=game.tile_surface
+            ) as tile_surface:
+                game.ui_elapsed = 0.01 / fps
+                dim = game._tile_blit_entry(x, y, Tile.STAIRS)
+                game.ui_elapsed = 1.01 / fps
+                lit = game._tile_blit_entry(x, y, Tile.STAIRS)
+                lit_again = game._tile_blit_entry(x, y, Tile.STAIRS)
+                game.ui_elapsed = 14.01 / fps
+                wrapped = game._tile_blit_entry(x, y, Tile.STAIRS)
+
+            self.assertIsNotNone(dim)
+            self.assertIsNotNone(lit)
+            self.assertIsNotNone(lit_again)
+            self.assertIsNotNone(wrapped)
+            assert dim is not None and lit is not None
+            assert lit_again is not None and wrapped is not None
+            self.assertEqual(tile_surface.call_count, 2)
+            self.assertEqual(len(game._tile_render_descriptor_cache), 2)
+            self.assertIs(lit_again[0], lit[0])
+            self.assertIs(wrapped[0], dim[0])
+            self.assertNotEqual(self.surface_bytes(dim[0]), self.surface_bytes(lit[0]))
+
+    def test_mobile_cached_floor_draws_only_transparent_stair_animation_overlay(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            x, y = int(game.player.x), int(game.player.y)
+            game.dungeon.tiles[x][y] = Tile.STAIRS
+            game.dungeon.stairs = (x, y)
+            game.revealed_tiles.add((x, y))
+            game.set_current_floor_dark(False)
+            fps = float(game.sprites.assets.manifest["world"]["stairs"]["fps"])
+            game.ui_elapsed = 7.01 / fps
+
+            with (
+                mock.patch.object(
+                    game.sprites,
+                    "world_tile_surface",
+                    wraps=game.sprites.world_tile_surface,
+                ) as world_tile_surface,
+                mock.patch.object(
+                    game, "mobile_lightweight_lighting_active", return_value=False
+                ),
+            ):
+                game._draw_mobile_animated_stairs_overlay()
+
+            self.assertEqual(world_tile_surface.call_count, 1)
+            call = world_tile_surface.call_args
+            self.assertEqual(call.args[0], "stairs")
+            self.assertEqual(call.kwargs["animation_frame"], 7)
+            self.assertNotEqual(call.args[0], "floor")
+
     def test_projectile_rotations_reuse_quantized_cache_entries(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)

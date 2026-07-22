@@ -541,6 +541,7 @@ class SaveLoadMixin:
         self.tile_cache.clear()
         self.prewarm_tile_cache()
 
+
         # Milestone 3.8: restore fog-of-war memory for the current floor. Older
         # saves (pre-5) have no memory; the per-frame reveal pass will repopulate
         # around the player on the next update so the floor is never blank.
@@ -578,6 +579,22 @@ class SaveLoadMixin:
             facing_x=float(player_data.get("facing_x", 1.0)),
             facing_y=float(player_data.get("facing_y", 0.0)),
         )
+        # Pre-4.5.5 saves may place the player directly on stairs, which are now
+        # player-solid. Move those saves to the first safe adjacent tile so the
+        # restored run cannot begin trapped inside the shaft collision.
+        player_tile = (int(self.player.x), int(self.player.y))
+        if (
+            self.dungeon.in_bounds(*player_tile)
+            and self.dungeon.tiles[player_tile[0]][player_tile[1]] == Tile.STAIRS
+        ):
+            for offset_x, offset_y in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                candidate_x = player_tile[0] + offset_x + 0.5
+                candidate_y = player_tile[1] + offset_y + 0.5
+                if not self.dungeon.blocked_for_radius(
+                    candidate_x, candidate_y, 0.27, block_stairs=True
+                ):
+                    self.player.x, self.player.y = candidate_x, candidate_y
+                    break
         self.player.skill_upgrades = migrate_discipline_keys(
             [str(upgrade) for upgrade in player_data.get("skill_upgrades", [])]
         )

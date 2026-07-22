@@ -6653,6 +6653,18 @@
     },
     "stairs": {
       "path": "world/stairs.png",
+      "frames": [
+        "world/stairs.png",
+        "world/stairs_001.png",
+        "world/stairs_002.png",
+        "world/stairs_003.png",
+        "world/stairs_004.png",
+        "world/stairs_005.png",
+        "world/stairs_006.png",
+        "world/stairs_007.png"
+      ],
+      "fps": 8.333333,
+      "ping_pong": true,
       "source_anchor": [
         32,
         42

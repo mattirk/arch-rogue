@@ -72,7 +72,9 @@ class MovementAnimationPolish35Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             game.enemies = []
-            game.dungeon.blocked_for_radius = lambda *_args: False  # type: ignore[method-assign]
+            game.dungeon.blocked_for_radius = (  # type: ignore[method-assign]
+                lambda *_args, **_kwargs: False
+            )
             start_x = game.player.x
 
             for fps in (30, 60, 120):

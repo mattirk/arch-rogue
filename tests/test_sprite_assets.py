@@ -218,6 +218,58 @@ class SpriteAssetTests(unittest.TestCase):
                 key,
             )
 
+    def test_stairs_manifest_animation_is_aligned_and_ping_pongs(self) -> None:
+        library = AssetSpriteLibrary()
+        entry = library.manifest["world"]["stairs"]
+        frame_paths = entry["frames"]
+        self.assertEqual(len(frame_paths), 8)
+        self.assertTrue(entry["ping_pong"])
+        self.assertAlmostEqual(entry["fps"], 8.333333)
+
+        frames = [library._source_surface(path) for path in frame_paths]
+        self.assertTrue(all(frame is not None for frame in frames))
+        surfaces = [frame for frame in frames if frame is not None]
+        self.assertEqual(len(surfaces), 8)
+        self.assertTrue(all(surface.get_size() == (64, 64) for surface in surfaces))
+        alpha_masks = [
+            bytes(
+                surface.get_at((x, y)).a
+                for y in range(surface.get_height())
+                for x in range(surface.get_width())
+            )
+            for surface in surfaces
+        ]
+        self.assertTrue(all(mask == alpha_masks[0] for mask in alpha_masks[1:]))
+        self.assertNotEqual(
+            pygame.image.tobytes(surfaces[0], "RGB"),
+            pygame.image.tobytes(surfaces[-1], "RGB"),
+        )
+
+        fps = float(entry["fps"])
+        sequence = [
+            library.world_animation_frame_index("stairs", (step + 0.01) / fps)
+            for step in range(15)
+        ]
+        self.assertEqual(sequence, [0, 1, 2, 3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1, 0])
+
+        world_kwargs = {
+            "target_canvas": (360, 360),
+            "target_anchor": (180, 220),
+            "tint": (104, 106, 118),
+            "accent": (150, 88, 176),
+            "variant": 0,
+        }
+        dim = library.resolve_world("stairs", **world_kwargs, animation_frame=0)
+        bright = library.resolve_world("stairs", **world_kwargs, animation_frame=7)
+        self.assertIsNotNone(dim)
+        self.assertIsNotNone(bright)
+        assert dim is not None and bright is not None
+        self.assertEqual(dim[1:], bright[1:])
+        self.assertNotEqual(
+            pygame.image.tobytes(dim[0], "RGBA"),
+            pygame.image.tobytes(bright[0], "RGBA"),
+        )
+
     def test_story_relic_is_a_faceted_diamond_instead_of_an_owl(self) -> None:
         library = AssetSpriteLibrary()
         entry = library.manifest["items"]["story_relic"]

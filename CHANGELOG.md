@@ -1,5 +1,38 @@
 # Changelog
 
+## 4.5.5 — Animated descending spiral stairs
+
+Release 4.5.5 replaces the static stair marker with an authored descending spiral stairwell and a restrained ominous light pulse from the depths.
+
+### Added
+
+- Added eight aligned 64×64 production staircase frames with a 14-step ping-pong playback sequence at approximately 8.3 FPS, preserving a stable silhouette while the violet shaft illumination rises and falls.
+- Added one low-intensity, short-radius violet static light at the stair shaft so it casts a faint environmental glow without flooding the room.
+- Extended world-asset manifest validation and resolution with optional frame lists, frame rates, ping-pong timing, and frame-specific derived-surface caching.
+
+### Rendering
+
+- Composite the exact floor variant beneath authored stairs using the same texture seed, anchor, tint, and theme material, so the circular opening integrates cleanly instead of exposing neighboring painter overlap or a detached blue slab.
+- Keep desktop and dark-floor stair descriptors frame-aware while retaining static descriptor keys for every other tile type.
+- Preserve Android's reusable opaque floor layer: the cached layer is not rebuilt for the pulse. A single transparent animated stair overlay is drawn above the cached static stair footprint before actors and walls.
+- Prewarm only the seven additional frames for the current floor's actual stair seed after dungeon construction or save restoration, avoiding first-cycle hitches without multiplying every floor/shop tile variant in memory.
+- Legacy procedural graphics remain static and unchanged.
+
+### Gameplay
+
+- Player movement and contact resolution now treat the stair shaft as solid, preventing the character from walking over the opening while keeping the existing adjacent interaction available. The collision footprint is shifted north to align with the visible circular stairwell (the authored sprite's shaft center sits 25 screen pixels above the logical tile center) and inset on all sides so the player can step up to the masonry rim from any direction; previous edge-only inset attempts that left the box centered on the tile are no longer used.
+- Player contact resolution now treats every friendly NPC actor as solid, including shopkeepers, story guests, patrons, dancers, and garden frogs; collision uses the same radius as friendly-NPC movement avoidance.
+- Stairs remain transparent to line-of-sight and projectiles, and enemy movement remains unchanged so scripted bosses that guard the stairs are not trapped at their spawn point.
+- Pre-4.5.5 saves with the player standing directly on stairs relocate to the first safe adjacent tile when restored.
+
+### Validation
+
+- `python -m compileall src tests` — clean.
+- Focused dungeon-tile, sprite-asset, world-animation, movement, friendly-NPC, lighting, mobile-layout, save/metadata, mainline-render, boss, floor-progression, and Android-packaging tests pass.
+- Complete non-web suite: 586 tests pass in 22.536 seconds; `test_website.py` was intentionally excluded per project policy.
+- Built `arch_rogue-4.5.5-py3-none-any.whl` and verified that all eight production stair frames are packaged.
+- Save schema remains 5; informational release metadata advances to 4.5.5.
+
 ## 4.5.4 — Stable Android update signing
 
 Release 4.5.4 fixes Android's generic **App not installed** failure when upgrading between public Arch Rogue APKs.

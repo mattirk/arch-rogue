@@ -34,7 +34,7 @@ class SaveAndMetadataTests(unittest.TestCase):
             if game.story_intro_pending:
                 self.assertTrue(game.choose_story_relic_path(0))
             try:
-                self.assertEqual(arch_rogue.__version__, "4.5.4")
+                self.assertEqual(arch_rogue.__version__, "4.5.5")
                 self.assertIn("Cursed", RARITY_PROFILES)
                 self.assertIn("Twilight Shrine", SHRINE_HINTS)
                 self.assertIn("Moonlit Bargain", SECRET_HINTS)
@@ -43,9 +43,37 @@ class SaveAndMetadataTests(unittest.TestCase):
                 self.assertTrue(game.save_run())
                 saved = json.loads(game.save_path.read_text(encoding="utf-8"))
                 self.assertEqual(saved["version"], 5)
-                self.assertEqual(saved["release"], "4.5.4")
+                self.assertEqual(saved["release"], "4.5.5")
             finally:
                 pass
+
+    def test_pre_455_save_on_stairs_restores_to_adjacent_walkable_tile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            save_path = Path(tmpdir) / "run.json"
+            game = Game(screen_size=(960, 540), headless=True, save_path=save_path)
+            game.rng.seed(455)
+            game.restart(ARCHETYPES[0])
+            if game.story_intro_pending:
+                self.assertTrue(game.choose_story_relic_path(0))
+            stairs = game.dungeon.stairs
+            game.player.x, game.player.y = stairs[0] + 0.5, stairs[1] + 0.5
+            self.assertTrue(game.save_run())
+
+            loaded = Game(screen_size=(960, 540), headless=True, save_path=save_path)
+            loaded.rng.seed(455)
+            self.assertTrue(loaded.load_run())
+            self.assertNotEqual(
+                (int(loaded.player.x), int(loaded.player.y)),
+                loaded.dungeon.stairs,
+            )
+            self.assertFalse(
+                loaded.dungeon.blocked_for_radius(
+                    loaded.player.x,
+                    loaded.player.y,
+                    0.27,
+                    block_stairs=True,
+                )
+            )
 
     def test_run_state_save_and_resume_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

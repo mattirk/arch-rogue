@@ -310,13 +310,181 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 
 ### 4.5.x Combat module refactoring - post-release fixes
 
-- We need spiral stairs. Generate 5 variants via MCP, human will review, and select the best one
+- Finishing this up with stairs and possibly some other minor fixes
+
+
+### 4.6 Multiplayer with server component
+
+This milestone adds a cooperative two-player mode where two Wardens descend the
+same dungeon together over a network. The desktop client is the primary target;
+mobile follows once the protocol is stable. The backlog item "Multiplayer -> you
+get your own AI generated character with unique sprites and animations" remains
+the long-term direction, but **4.6 ships with the existing archetype sprite
+sets** — unique per-player sprites are out of scope for this milestone.
+
+#### Menu changes
+
+- Title screen row 0 is renamed **"Begin a new descent" -> "One will descend"**
+  (single-player path is otherwise unchanged).
+- A new title row is inserted: **"Two will descend"** (the multiplayer entry
+  point; later text may shorten to just "Multiplayer").
+- Title row order becomes: `0=One will descend`, `1=Two will descend`,
+  `2=Resume a saved run`, `3=Options`, `4=About`.
+  - `RunFlowMixin.TITLE_ROW_COUNT` becomes `5`; `TITLE_RESUME_ROW` becomes `2`;
+    the other dispatch branches in `_activate_title_selection` shift to match.
+  - The Resume row's enabled-when-save-exists rule and the `_next_title_selection`
+    skip logic both carry over unchanged.
+- A dedicated **multiplayer glyph** (generated via Pixellab) is drawn to the
+  right of the "Two will descend" row in `MenuTitleMixin.draw_title_menu`,
+  following the existing row layout/gap conventions used for the other rows.
+
+#### Player-name + run-id flow
+
+Selecting "Two will descend" enters a new game state, **`mp_setup`**, that
+walks the local player through two short prompts:
+
+1. **Player name** — a short text-entry screen (reuse the menu text-input
+   helpers; cap length at ~16 chars, default to the OS username or "Warden").
+   Stored on `Game` as `self.mp_player_name` and persisted in the save/options
+   blob so it is remembered between sessions.
+2. **Run id generation** — the client generates a run id of the configured
+   length (default **4 characters** from the alphabet
+   `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` — no `0/O/1/I` to avoid ambiguity when
+   read aloud). The length (`MP_RUN_ID_LENGTH`) lives in `constants.py` and can
+   later be raised to 8 or 12. The id is displayed large with a "share this code
+   with your partner" note and a "Begin descent" confirm.
+
+The host (the player who generated the id) immediately proceeds to archetype
+select once the partner joins. The joining player enters the same id (a second
+`mp_setup` sub-mode, `mp_join`) and waits for the host's "partner joined" ack.
+
+#### Client / server architecture
+
+- A new top-level folder **`server/`** (sibling to `src/`) owns the standalone
+  server component. It is **not** part of the installed `arch_rogue` package;
+  it ships its own `pyproject.toml`/deps and is run independently.
+  - Suggested layout: `server/__init__.py`, `server/protocol.py`,
+    `server/room.py`, `server/server.py` (entry point), `server/config.py`.
+  - The server is **stateless for now**: it does not persist runs, accounts, or
+    match history. A run lives only in process memory for the duration of the
+    session and is dropped when both clients disconnect (or after an idle
+    timeout, see below). No database, no auth.
+- The client lives in a new package **`src/arch_rogue/net/`**:
+  - `net/client.py` — `MultiplayerClient`, a thin async-ish connector that owns
+    the socket, the send/recv queue, and reconnect/backoff. Composed into `Game`
+    via a `NetMixin` (mirroring the existing mixin pattern) so `Game.run()` drives
+    it each frame.
+  - `net/protocol.py` — the shared wire format (see below). **One** canonical
+    module defines the protocol; the server imports the same module (or a
+    vendored copy) so client and server never drift.
+  - `net/messages.py` — typed message dataclasses.
+  - `net/__init__.py` — facade re-exporting `MultiplayerClient` and the message
+    types, preserving `from arch_rogue.net import MultiplayerClient`.
+- **Server address** is stored in config (defaults TBD by the user). Concretely,
+  add `mp_server_host` / `mp_server_port` keys to the options blob managed by
+  `options.py`, with an in-game Options row to edit them. Defaults are empty
+  until the user provides them; until then multiplayer is unreachable from the
+  menu (the "Two will descend" row can still be selected but the `mp_setup`
+  flow surfaces a "server not configured" notice).
+- The client uses Python's stdlib `socket` + a background receiver thread
+  (no new hard runtime deps for the client). The server may use `asyncio` or a
+  simple threaded model — pick whichever keeps the server single-file-friendly.
+  No new third-party package is added to the **game** dependency set.
+
+#### Protocol (custom, line-delimited JSON over TCP)
+
+A small bespoke protocol rather than pulling in a framework. Rationale: tiny
+message set, no RPC surface, and we want zero new client-side deps.
+
+- **Transport**: one persistent TCP connection per client, line-delimited JSON
+  (one JSON object per `\n`-terminated line). Messages are small and
+  human-readable, which makes debugging and hand-testing easy.
+- ** Framing**: each line is `{"t": <type>, ...}`. Unknown `t` values are
+  logged and ignored (forward-compat). A `seq` int on request messages enables
+  lightweight ack correlation; the server echoes `seq` on the matching reply.
+- **Initial message set** (all fields snake_case):
+  - Client -> Server
+    - `hello` — `{t, seq, name, run_id, role}` where `role` is `"host"` or
+      `"join"`. Sent once on connect.
+    - `ready` — `{t, seq, archetype_key}` host signals both players are on the
+      archetype screen and ready; server replies with `start` once both ready.
+    - `state` — `{t, seq, depth, floor_seed, player}` periodic authoritative
+      snapshot from the **host** (host is the simulation authority; the joiner
+      is a read-mostly mirror that streams input intents back).
+    - `intent` — `{t, seq, move_x, move_y, action, target}` joiner's input
+      stream; host applies it to its local sim.
+    - `ping` — `{t, seq, ts}` keepalive.
+    - `bye` — `{t}` graceful disconnect.
+  - Server -> Client
+    - `welcome` — `{t, seq, run_id, you_are, partner_name, partner_ready}`.
+    - `partner_joined` — `{t, partner_name}` host gets this when a joiner lands.
+    - `start` — `{t, floor_seed, host_archetype, joiner_archetype}` both clients
+      transition out of `mp_setup` into the run.
+    - `snapshot` — `{t, depth, players:[...], enemies:[...], items:[...]}`
+      host-authored world snapshot relayed to the joiner (the server is a dumb
+      relay here; see "stateless" note).
+    - `partner_left` — `{t, reason}` one side dropped.
+    - `error` — `{t, code, msg}` e.g. `run_full`, `run_not_found`, `bad_msg`.
+- **Run lifecycle on the server**: when a `hello` with `role="host"` arrives for
+  a run_id that has no room, the server creates an in-memory `Room` and parks
+  the host. When a `hello` with `role="join"` arrives for an existing room with
+  one occupant, the server adds the joiner and emits `partner_joined` to the
+  host and `welcome` to the joiner. **Max 2 players per run for 4.6.** A third
+  `hello` for the same id is rejected with `error code="run_full"`. When either
+  client disconnects, the server notifies the survivor with `partner_left` and
+  tears down the room after a short grace period (so a brief network blip does
+  not orphan the run).
+- **Idleness**: the server drops a room whose both sockets are closed, or after
+  a configurable idle timeout (default ~10 min with no `state`/`intent`/`ping`).
+- **Determinism**: the host owns the floor seed and is the authoritative sim. The
+  joiner renders from `snapshot`s and sends `intent`s. For 4.6 we accept that
+  the joiner's view lags by one round-trip and that divergent enemy AI between
+  snapshots is host-reconciled. Lockstep/rollback is explicitly **out of scope**
+  for 4.6; it is a candidate for a later milestone if co-op feels bad.
+
+#### Integration with the existing run loop
+
+- New `Game.state` values: `"mp_setup"` (name + id prompts), `"mp_lobby"`
+  (waiting for partner), `"mp_join"` (entering an existing id). The run itself
+  still uses the existing `"playing"` state; multiplayer-ness is tracked by a
+  `self.mp_active: bool` and `self.mp_role: "host"|"join"|""` on `Game`.
+- `RunFlowMixin` gains `begin_multiplayer_run(...)` which mirrors the existing
+  single-player start path but seeds `floor_plan` from the host's seed and
+  stamps both `Player` actors. The joiner's `Player` is constructed locally from
+  the `start` message's `joiner_archetype`.
+- `NetMixin.poll()` is called once per `Game.run()` iteration, drains the recv
+  queue, and dispatches messages to handlers that mutate `Game` state. It must
+  be cheap and must not allocate on the hot path when `mp_active` is false.
+- The combat/population/rendering mixins are **not** forked for multiplayer in
+  4.6. The host runs the real sim; the joiner renders `snapshot`-derived actors
+  and forwards input. Keeping the combat package shared preserves the
+  `from arch_rogue.combat import CombatMixin` contract.
+
+#### Tests
+
+- `tests/test_net_protocol.py` — encode/decode round-trips for every message
+  type, unknown-type tolerance, and the run-id generator's length/alphabet.
+- `tests/test_server_room.py` — `Room` lifecycle: host-only, join, full-run
+  rejection, partner_left, idle timeout, graceful `bye`.
+- `tests/test_mp_flow.py` — a pair of in-process `MultiplayerClient` instances
+  wired to an in-memory server, exercising the `hello` -> `welcome` ->
+  `partner_joined` -> `start` handshake end-to-end without real sockets.
+- All multiplayer tests run headless with the existing dummy SDL drivers; no
+  network access is required (loopback or in-memory transports only).
+
+#### Out of scope for 4.6
+
+- More than 2 players per run.
+- Persistent accounts, matchmaking, or run history.
+- Unique per-player generated sprites (backlog item — keep existing archetype
+  sprites).
+- Lockstep/rollback netcode; snapshot + intent relay is the 4.6 model.
+- Spectator mode, chat, voice, or trading between players.
+- Cross-run meta progression tied to multiplayer (single-player and co-op share
+  the same meta pool).
 
 ### Backlog
 
-- We need to make the darkess deepen more on lower levels, dark levels look already good, but also other "normal" levels below 5 should feel more dark. (do not implement this yet, user will explicitly request this feature if needed)
-- The game difficulty starts ok, but gets too easy when player character reaches level 7 or so (not dungeon level, character level). We should either nerf characters, make leveling slower or make enemies harder on lower dungeon depths.
-- Multiplayer -> you get your own AI generated character with unique sprites and animations
 - Maybe add cryptographic randomness in map seed generation
 - Make it so that on Hell difficulty dungeon levels dont end but become progressively harder the deeper you go. 
   - Make settings menu item red & grim when hell is selected.
@@ -329,6 +497,7 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 - On mobile, dash direction some times gets "stuck". So  that it does not respect the direction player is moving via joystick. Way to fix: stop moving, look around by touching the screen around player (not by joystick) -> start moving again via joystick and problem is gone
 - We need to generate another version of Arch Rogue text logo where the diamond/relic in the middle is rotating slowly. This will be used in loading screens.
 - Generate unique sprites for unique and legendary items
+  - Actually, generate unique sprites for all named items in game
   - Also make all items a bit more rare across the board, unique and legenray items enen a bit more rare
 - Use generated asset relic in cutscene instead of procedurally generated (legacy graphics stay the same)
   - Also make the relic float a bit lower (also move the altar a bit lower)
@@ -339,4 +508,10 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
   - When player and antagonist clash in the middle, make them exchange couple of blows
 - In Archetype selection screen, make the panels containing Archetype names (row.png) a bit more compact in vertical sense (15% for now), keep spacing / alignment clean
 - On mobile, make the stat container (hp, mana, stamina) fill from bottom to top. Top and bottom ends of the container are a bit more narrow than the middle so take that into account.
+
+### Bottom-of-the-Barrel
+
 - Draw distance on mobile is a bit too short (concerning walls, floors, etc.). On desktop this seems not to be limited at all (which is good). Sight radius (or light radius) is good both on desktop and mobile and shoud not be changed. Extend mobile draw distance a bit (1 tile per direction should be enough).
+- We need to make the darkess deepen more on lower levels, dark levels look already good, but also other "normal" levels below 5 should feel more dark. (do not implement this yet, user will explicitly request this feature if needed)
+- The game difficulty starts ok, but gets too easy when player character reaches level 7 or so (not dungeon level, character level). We should either nerf characters, make leveling slower or make enemies harder on lower dungeon depths.
+- Multiplayer -> you get your own AI generated character with unique sprites and animations

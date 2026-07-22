@@ -53,11 +53,16 @@ class _MovementCombatMixin:
             radius = BOSS_FOOTPRINT_MOVE_RADIUS
         else:
             radius = 0.27
+        block_stairs = isinstance(actor, Player)
         new_x = actor.x + dx
-        if not self.dungeon.blocked_for_radius(new_x, actor.y, radius):
+        if not self.dungeon.blocked_for_radius(
+            new_x, actor.y, radius, block_stairs=block_stairs
+        ):
             actor.x = new_x
         new_y = actor.y + dy
-        if not self.dungeon.blocked_for_radius(actor.x, new_y, radius):
+        if not self.dungeon.blocked_for_radius(
+            actor.x, new_y, radius, block_stairs=block_stairs
+        ):
             actor.y = new_y
         self.resolve_actor_contacts(actor)
 
@@ -180,7 +185,7 @@ class _MovementCombatMixin:
         # a fresh all-actor list for every mover. Most pairs do not overlap, so a
         # squared-distance rejection also avoids their comparatively costly sqrt.
         if actor_is_player:
-            others = chain(self.enemies, self.shopkeepers)
+            others = chain(self.enemies, self.iter_friendly_npcs())
         else:
             others = chain((self.player,), self.enemies, self.shopkeepers)
 
@@ -194,6 +199,8 @@ class _MovementCombatMixin:
                 other_radius = PLAYER_HIT_RADIUS
             elif isinstance(other, Enemy):
                 other_radius = self.enemy_hit_radius(other)
+            elif actor_is_player:
+                other_radius = self.FRIENDLY_NPC_RADIUS
             else:
                 other_radius = 0.34
             min_distance = actor_radius + other_radius
@@ -210,7 +217,12 @@ class _MovementCombatMixin:
 
             target_x = other.x + nx * min_distance
             target_y = other.y + ny * min_distance
-            if not self.dungeon.blocked_for_radius(target_x, actor.y):
+            block_stairs = isinstance(actor, Player)
+            if not self.dungeon.blocked_for_radius(
+                target_x, actor.y, block_stairs=block_stairs
+            ):
                 actor.x = target_x
-            if not self.dungeon.blocked_for_radius(actor.x, target_y):
+            if not self.dungeon.blocked_for_radius(
+                actor.x, target_y, block_stairs=block_stairs
+            ):
                 actor.y = target_y

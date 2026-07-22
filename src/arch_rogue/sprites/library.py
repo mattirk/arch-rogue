@@ -291,6 +291,21 @@ class AssetSpriteLibrary:
                 float(tint_strength)
             ):
                 raise ValueError("invalid world tint strength")
+            frames = entry.get("frames")
+            if frames is not None:
+                if not isinstance(frames, list) or not frames:
+                    raise ValueError("invalid world animation frame list")
+                for path in frames:
+                    self._validated_path(str(path))
+                fps = entry.get("fps", 6.0)
+                if (
+                    not isinstance(fps, (int, float))
+                    or not math.isfinite(float(fps))
+                    or float(fps) <= 0.0
+                ):
+                    raise ValueError("invalid world animation frame rate")
+                if "ping_pong" in entry and not isinstance(entry["ping_pong"], bool):
+                    raise ValueError("invalid world animation ping-pong flag")
 
     def _validated_path(self, value: str) -> PurePosixPath:
         path = PurePosixPath(value)
@@ -653,6 +668,34 @@ class AssetSpriteLibrary:
             )
         surface.blit(self._clip_overlay(overlay, surface), (0, 0))
 
+    def world_animation_frame_count(self, key: str) -> int:
+        if not self.available:
+            return 1
+        entry = self.manifest["world"].get(key)
+        if not isinstance(entry, dict):
+            return 1
+        frames = entry.get("frames")
+        return len(frames) if isinstance(frames, list) and frames else 1
+
+    def world_animation_frame_index(self, key: str, elapsed: float) -> int:
+        if not self.available:
+            return 0
+        entry = self.manifest["world"].get(key)
+        if not isinstance(entry, dict):
+            return 0
+        frame_count = self.world_animation_frame_count(key)
+        if frame_count <= 1:
+            return 0
+        fps = max(0.01, float(entry.get("fps", 6.0)))
+        step = int(max(0.0, elapsed) * fps)
+        if bool(entry.get("ping_pong", False)):
+            sequence_length = frame_count * 2 - 2
+            step %= sequence_length
+            if step >= frame_count:
+                step = sequence_length - step
+            return step
+        return step % frame_count
+
     def resolve_world(
         self,
         key: str,
@@ -664,14 +707,20 @@ class AssetSpriteLibrary:
         variant: int,
         mirror: bool = False,
         wall_face_style: str | None = None,
+        animation_frame: int = 0,
     ) -> tuple[pygame.Surface, int, int] | None:
         if not self.available:
             return None
         entry = self.manifest["world"].get(key)
         if not isinstance(entry, dict):
             return None
+        source_path = str(entry["path"])
+        frames = entry.get("frames")
+        if isinstance(frames, list) and frames:
+            source_path = str(frames[animation_frame % len(frames)])
         cache_key = (
             key,
+            source_path,
             target_canvas,
             target_anchor,
             tuple(tint),
@@ -683,7 +732,7 @@ class AssetSpriteLibrary:
         cached = self._world_cache.get(cache_key)
         if cached is not None:
             return cached
-        source = self._source_surface(str(entry["path"]))
+        source = self._source_surface(source_path)
         if source is None:
             return None
         should_flip = mirror
@@ -1453,6 +1502,16 @@ class SpriteAtlas:
             f"bar_wall_sconce_{direction.replace('-', '_')}"
         )
 
+    def world_tile_animation_frame_count(self, key: str) -> int:
+        if not self.modern_graphics_active:
+            return 1
+        return self.assets.world_animation_frame_count(key)
+
+    def world_tile_animation_frame(self, key: str, elapsed: float) -> int:
+        if not self.modern_graphics_active:
+            return 0
+        return self.assets.world_animation_frame_index(key, elapsed)
+
     def world_tile_surface(
         self,
         key: str,
@@ -1464,6 +1523,7 @@ class SpriteAtlas:
         variant: int,
         mirror: bool = False,
         wall_face_style: str | None = None,
+        animation_frame: int = 0,
     ) -> tuple[pygame.Surface, int, int] | None:
         if not self.modern_graphics_active:
             return None
@@ -1476,6 +1536,7 @@ class SpriteAtlas:
             variant=variant,
             mirror=mirror,
             wall_face_style=wall_face_style,
+            animation_frame=animation_frame,
         )
 
     def _refresh_public_surfaces(self) -> None:

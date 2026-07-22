@@ -55,6 +55,128 @@ class Rc1RegressionTests(unittest.TestCase):
                 self.assertIn(room.center, reachable)
             self.assertIn(dungeon.stairs, reachable)
 
+    def test_stairs_block_movement_but_allow_adjacent_interaction(self) -> None:
+        game = self.make_game()
+        game.restart(ARCHETYPES[0])
+        self.confirm_story_intro(game)
+        game.enemies = []
+        stairs_x, stairs_y = game.dungeon.stairs
+        center_x, center_y = stairs_x + 0.5, stairs_y + 0.5
+        approach_x, approach_y = stairs_x - 0.28, center_y
+
+        self.assertTrue(game.dungeon.is_floor(center_x, center_y))
+        self.assertFalse(game.dungeon.blocked_for_radius(center_x, center_y, 0.1))
+        self.assertTrue(
+            game.dungeon.blocked_for_radius(
+                center_x, center_y, 0.1, block_stairs=True
+            )
+        )
+        self.assertFalse(
+            game.dungeon.blocked_for_radius(
+                approach_x, approach_y, block_stairs=True
+            )
+        )
+
+        game.player.x, game.player.y = approach_x, approach_y
+        game.move_actor(game.player, 0.08, 0.0)
+        self.assertAlmostEqual(game.player.x, approach_x)
+        self.assertTrue(game.player_near_stairs())
+
+        game.interact()
+        self.assertEqual(game.current_depth, 2)
+
+    def test_stair_collision_footprint_is_shifted_north_to_visible_shaft(self) -> None:
+        game = self.make_game()
+        game.restart(ARCHETYPES[0])
+        self.confirm_story_intro(game)
+        sx, sy = game.dungeon.stairs
+        ax, ay, bx, by = game.dungeon.stair_collision_footprint()
+        # Footprint center sits north of the logical tile center on both axes
+        # (screen-north = -x and -y in the isometric projection).
+        cx, cy = (ax + bx) / 2, (ay + by) / 2
+        self.assertLess(cx, sx + 0.5)
+        self.assertLess(cy, sy + 0.5)
+        # The shift matches the authored sprite's shaft-to-anchor offset.
+        from arch_rogue.constants import (
+            STAIR_COLLISION_INSET,
+            STAIR_COLLISION_OFFSET_X,
+            STAIR_COLLISION_OFFSET_Y,
+        )
+        self.assertAlmostEqual(cx, sx + 0.5 + STAIR_COLLISION_OFFSET_X)
+        self.assertAlmostEqual(cy, sy + 0.5 + STAIR_COLLISION_OFFSET_Y)
+        # Inset shrinks the footprint so the player can approach the rim.
+        self.assertLess(bx - ax, 1.0)
+        self.assertAlmostEqual(bx - ax, 1.0 - 2 * STAIR_COLLISION_INSET)
+
+    def test_stair_collision_is_symmetric_around_shifted_center(self) -> None:
+        game = self.make_game()
+        game.restart(ARCHETYPES[0])
+        self.confirm_story_intro(game)
+        sx, sy = game.dungeon.stairs
+        ax, ay, bx, by = game.dungeon.stair_collision_footprint()
+        cx, cy = (ax + bx) / 2, (ay + by) / 2
+        half = (bx - ax) / 2
+        radius = 0.27
+        # Just inside the blocked ring: blocked on every side.
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            px = cx + dx * (half + radius - 0.02)
+            py = cy + dy * (half + radius - 0.02)
+            self.assertTrue(
+                game.dungeon.blocked_for_radius(px, py, radius, block_stairs=True),
+                f"expected blocked at {(px, py)}",
+            )
+        # Just outside the blocked ring: free on every side (all probes land on
+        # the stair tile, which is floor-like, so no wall interferes).
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            px = cx + dx * (half + radius + 0.03)
+            py = cy + dy * (half + radius + 0.03)
+            self.assertFalse(
+                game.dungeon.blocked_for_radius(px, py, radius, block_stairs=True),
+                f"expected free at {(px, py)}",
+            )
+
+    def test_stair_shaft_center_blocked_and_rim_approachable_from_south(self) -> None:
+        game = self.make_game()
+        game.restart(ARCHETYPES[0])
+        self.confirm_story_intro(game)
+        sx, sy = game.dungeon.stairs
+        ax, ay, bx, by = game.dungeon.stair_collision_footprint()
+        cx, cy = (ax + bx) / 2, (ay + by) / 2
+        radius = 0.27
+        # The visible shaft center is blocked for the player.
+        self.assertTrue(
+            game.dungeon.blocked_for_radius(cx, cy, radius, block_stairs=True)
+        )
+        # A position on the stair tile's south rim -- still on the stair tile
+        # (is_floor True) but south of the footprint -- is reachable. The old
+        # un-shifted box kept the player a full tile south of here.
+        south_rim_x, south_rim_y = cx, by + radius + 0.02
+        self.assertTrue(game.dungeon.is_floor(south_rim_x, south_rim_y))
+        self.assertFalse(
+            game.dungeon.blocked_for_radius(
+                south_rim_x, south_rim_y, radius, block_stairs=True
+            )
+        )
+        # Interaction range is measured from the tile center, so the rim is well
+        # within the descent prompt distance.
+        game.player.x, game.player.y = south_rim_x, south_rim_y
+        self.assertTrue(game.player_near_stairs())
+
+    def test_stairs_remain_transparent_to_los_enemies_and_projectiles(self) -> None:
+        game = self.make_game()
+        game.restart(ARCHETYPES[0])
+        self.confirm_story_intro(game)
+        sx, sy = game.dungeon.stairs
+        cx, cy = sx + 0.5, sy + 0.5
+        # LOS / projectile path treats stairs as floor.
+        self.assertTrue(game.dungeon.is_floor(cx, cy))
+        self.assertFalse(game.dungeon.blocked_for_radius(cx, cy, 0.1))
+        # Enemies use the block_stairs=False path and may occupy the stair tile
+        # (bosses can spawn over the shaft).
+        self.assertFalse(
+            game.dungeon.blocked_for_radius(cx, cy, 0.27, block_stairs=False)
+        )
+
     def test_item_interactions_and_hotkey_behaviors(self) -> None:
         # Shared Game/restart/story-intro setup; each section resets the
         # player state it asserts, so scenarios do not interfere. Nova and

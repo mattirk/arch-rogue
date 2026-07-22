@@ -33,6 +33,20 @@ FPS = DEFAULT_FRAME_RATE  # Deprecated cutoff: 4.4
 WORLD_SCALE = 5
 TILE_W = 64 * WORLD_SCALE
 TILE_H = 32 * WORLD_SCALE
+
+# Descending spiral stairs collision.
+#
+# The authored stair sprite (64x64, source anchor [32, 42]) is composited so the
+# anchor lands on the logical tile center, but the visible circular shaft is
+# centered on source pixel (32, 37) -- 5 source pixels north of the anchor.
+# At WORLD_SCALE=5 that is 25 screen pixels north, which in the isometric
+# projection (screen_y = (x + y) * TILE_H / 2) is a world shift of -25 / 80 =
+# -0.3125 in (x + y), split symmetrically to -0.15625 on each axis. The inset
+# shrinks the footprint so the player can step up to the masonry rim from every
+# direction instead of being kept a full tile away.
+STAIR_COLLISION_OFFSET_X = -0.15625
+STAIR_COLLISION_OFFSET_Y = -0.15625
+STAIR_COLLISION_INSET = 0.15
 MAX_INVENTORY = 20
 DUNGEON_DEPTH = 10
 UI_SCALE = 1
@@ -109,6 +123,11 @@ LIGHT_TORCH_INTENSITY = 0.62
 LIGHT_BAR_WALL_ELEVATION = 0.50
 LIGHT_SHRINE_RADIUS = 2.3
 LIGHT_SHRINE_INTENSITY = 0.55
+# Descending stairs emit only a restrained violet wash; their authored frames
+# carry the stronger local shaft pulse, so this light should not flood the room.
+LIGHT_STAIRS_COLOR = (126, 74, 170)
+LIGHT_STAIRS_RADIUS = 1.45
+LIGHT_STAIRS_INTENSITY = 0.18
 # Transient skill/impact/projectile light tuning.
 LIGHT_SKILL_PULSE_RADIUS = 2.1
 LIGHT_SKILL_PULSE_TTL = 0.28

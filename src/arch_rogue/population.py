@@ -31,6 +31,9 @@ from .constants import (
     LIGHT_BAR_WALL_ELEVATION,
     LIGHT_SHRINE_INTENSITY,
     LIGHT_SHRINE_RADIUS,
+    LIGHT_STAIRS_COLOR,
+    LIGHT_STAIRS_INTENSITY,
+    LIGHT_STAIRS_RADIUS,
     LIGHT_TORCH_COLOR,
     LIGHT_TORCH_INTENSITY,
     LIGHT_TORCH_RADIUS,
@@ -336,6 +339,21 @@ class PopulationMixin:
             if key not in existing:
                 self.light_sources.append(light)
                 existing.add(key)
+
+        stairs_x, stairs_y = self.dungeon.stairs
+        if self.dungeon.in_bounds(stairs_x, stairs_y):
+            add(
+                LightSource(
+                    x=stairs_x + 0.5,
+                    y=stairs_y + 0.5,
+                    radius=LIGHT_STAIRS_RADIUS,
+                    color=LIGHT_STAIRS_COLOR,
+                    intensity=LIGHT_STAIRS_INTENSITY,
+                    ttl=None,
+                    flicker=False,
+                    kind="stairs",
+                )
+            )
 
         for shrine in self.shrines:
             hint = SHRINE_HINTS.get(shrine.kind)

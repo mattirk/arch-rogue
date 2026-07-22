@@ -15,7 +15,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from arch_rogue.constants import TILE_H, TILE_W
+from arch_rogue.constants import PLAYER_HIT_RADIUS, TILE_H, TILE_W
 from arch_rogue.content import ARCHETYPES
 from arch_rogue.dungeon import MAP_H, MAP_W, Dungeon
 from arch_rogue.game import Game
@@ -144,6 +144,23 @@ class FriendlyNpcRuntimeTests(unittest.TestCase):
         self.assertTrue(
             all(getattr(npc, "kind", "") != "garden_frog" for npc in humanoids)
         )
+
+    def test_player_cannot_walk_through_any_friendly_npc_actor(self) -> None:
+        game = self.make_game()
+        game.enemies = []
+        minimum_distance = PLAYER_HIT_RADIUS + game.FRIENDLY_NPC_RADIUS
+
+        for npc in tuple(game.iter_friendly_npcs()):
+            with self.subTest(npc=npc.name):
+                game.player.x = npc.x - minimum_distance - 0.08
+                game.player.y = npc.y
+                game.move_actor(game.player, 0.16, 0.0)
+                distance = math.hypot(
+                    game.player.x - npc.x,
+                    game.player.y - npc.y,
+                )
+                self.assertGreaterEqual(distance, minimum_distance - 1e-9)
+                self.assertLess(game.player.x, npc.x)
 
     def test_friendly_sprite_directions_use_hysteresis(self) -> None:
         game = self.make_game()

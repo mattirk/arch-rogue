@@ -529,7 +529,7 @@ class RunFlowMixin:
         self.apply_floor_plan_for_current_depth()
         self.record_run_start_meta()
         self.tile_cache.clear()
-        self.prewarm_tile_cache()
+        self.prewarm_tile_cache(prewarm_stair_animation=False)
         guest_room = (
             story_beat_index_for_depth(self.story_state, self.current_depth) is not None
         )
@@ -538,6 +538,7 @@ class RunFlowMixin:
             boss_arena=self.current_floor_needs_boss_arena(),
             guest_room=guest_room,
         )
+        self.prewarm_stair_animation_cache()
         start_x, start_y = self.dungeon.rooms[0].center
         self.player = Player(
             start_x + 0.5,
@@ -619,7 +620,7 @@ class RunFlowMixin:
         self.current_depth += 1
         self._apply_story_theme_for_current_depth()
         self.tile_cache.clear()
-        self.prewarm_tile_cache()
+        self.prewarm_tile_cache(prewarm_stair_animation=False)
         guest_room = (
             story_beat_index_for_depth(self.story_state, self.current_depth) is not None
         )
@@ -628,6 +629,7 @@ class RunFlowMixin:
             boss_arena=self.current_floor_needs_boss_arena(),
             guest_room=guest_room,
         )
+        self.prewarm_stair_animation_cache()
         start_x, start_y = self.dungeon.rooms[0].center
         self.player.x = start_x + 0.5
         self.player.y = start_y + 0.5

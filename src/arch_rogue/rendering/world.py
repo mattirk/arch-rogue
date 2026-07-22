@@ -92,8 +92,56 @@ _GOLD_STACK_EXTRA_SALT = 0x71D6B295
 class RenderingWorldMixin:
     def draw_dungeon(self) -> None:
         if self._draw_cached_mobile_floor_layer():
+            self._draw_mobile_animated_stairs_overlay()
             return
         self._blit_floor_entries(self.screen, self._floor_blit_entries())
+
+    def _draw_mobile_animated_stairs_overlay(self) -> None:
+        if self.sprites.world_tile_animation_frame_count("stairs") <= 1:
+            return
+        x, y = self.dungeon.stairs
+        if (
+            not self.dungeon.in_bounds(x, y)
+            or self.dungeon.tiles[x][y] != Tile.STAIRS
+            or self.tile_visibility_alpha(x, y) <= 0
+        ):
+            return
+        sx, sy = self.world_to_screen(x + 0.5, y + 0.5)
+        screen_w, screen_h = self._screen_size()
+        if (
+            sx < -TILE_W
+            or sx > screen_w + TILE_W
+            or sy < -TILE_H
+            or sy > screen_h + TILE_H
+        ):
+            return
+
+        margin = 4 * WORLD_SCALE
+        canvas = (TILE_W + margin * 2, TILE_W + margin * 2)
+        anchor = (canvas[0] // 2, margin + TILE_W * 5 // 8)
+        accent = (
+            self.story_state.accent
+            if getattr(self, "story_state", None) is not None
+            else self.theme.accent
+        )
+        animation_frame = self.sprites.world_tile_animation_frame(
+            "stairs", getattr(self, "ui_elapsed", 0.0)
+        )
+        asset = self.sprites.world_tile_surface(
+            "stairs",
+            target_canvas=canvas,
+            target_anchor=anchor,
+            tint=self.theme.floor,
+            accent=accent,
+            variant=self.tile_seed(x, y),
+            animation_frame=animation_frame,
+        )
+        if asset is None:
+            return
+        surface, anchor_x, anchor_y = asset
+        if self.mobile_lightweight_lighting_active():
+            surface = self.apply_mobile_lightweight_ambient(surface)
+        self.screen.blit(surface, (sx - anchor_x, sy - anchor_y))
 
     @staticmethod
     def _blit_floor_entries(
@@ -465,7 +513,18 @@ class RenderingWorldMixin:
         if descriptor_cache is None:
             descriptor_cache = {}
             self._tile_render_descriptor_cache = descriptor_cache
-        descriptor_key = (x, y, int(tile))
+        animation_frame = (
+            self.sprites.world_tile_animation_frame(
+                "stairs", getattr(self, "ui_elapsed", 0.0)
+            )
+            if tile == Tile.STAIRS
+            else 0
+        )
+        descriptor_key = (
+            (x, y, int(tile), animation_frame)
+            if tile == Tile.STAIRS
+            else (x, y, int(tile))
+        )
         descriptor = descriptor_cache.get(descriptor_key)
         if descriptor is None:
             seed = self.tile_seed(x, y)
@@ -484,6 +543,7 @@ class RenderingWorldMixin:
                 garden_floor=self.is_garden_tile(x, y),
                 wall_face_style=wall_face_style,
                 bar_wall_light_side=bar_wall_light_side,
+                animation_frame=animation_frame,
             )
             descriptor_cache[descriptor_key] = descriptor
         surface, anchor_x, anchor_y = descriptor
@@ -543,7 +603,9 @@ class RenderingWorldMixin:
         h = (x * 73856093) ^ (y * 19349663)
         return h % max(DUNGEON_WALL_VARIANTS, DUNGEON_FLOOR_VARIANTS)
 
-    def prewarm_tile_cache(self) -> None:
+    def prewarm_tile_cache(
+        self, *, prewarm_stair_animation: bool = True
+    ) -> None:
         # Pre-generate every wall/floor/shop texture variant for the current
         # theme so the first frame after a floor transition never pays the
         # procedural-draw cost, and the hot render loop only ever blits cached
@@ -606,6 +668,28 @@ class RenderingWorldMixin:
             for seed in range(DUNGEON_WALL_VARIANTS):
                 for orientation in door_orientations:
                     self.door_tile_surface(tile, seed, orientation)
+        if prewarm_stair_animation:
+            self.prewarm_stair_animation_cache()
+
+    def prewarm_stair_animation_cache(self) -> None:
+        if not self.eager_tile_prewarm:
+            return
+        dungeon = getattr(self, "dungeon", None)
+        frame_count = self.sprites.world_tile_animation_frame_count("stairs")
+        if dungeon is None or frame_count <= 1:
+            return
+        stairs_x, stairs_y = dungeon.stairs
+        if not dungeon.in_bounds(stairs_x, stairs_y):
+            return
+        seed = self.tile_seed(stairs_x, stairs_y)
+        shop_floor = self.is_shop_floor_tile(stairs_x, stairs_y)
+        for animation_frame in range(1, frame_count):
+            self.tile_surface(
+                Tile.STAIRS,
+                seed,
+                shop_floor=shop_floor,
+                animation_frame=animation_frame,
+            )
 
     def is_shop_floor_tile(self, x: int, y: int) -> bool:
         return self.is_special_room_floor_tile(x, y, kind="shop")
@@ -747,6 +831,7 @@ class RenderingWorldMixin:
         garden_floor: bool = False,
         wall_face_style: str | None = None,
         bar_wall_light_side: str | None = None,
+        animation_frame: int = 0,
     ) -> tuple[pygame.Surface, int, int]:
         # ``wall_face_style`` is "<kind>:<side>" (or legacy "left"/"right") and
         # selects which side face of a WALL tile gets distinct interior wall art.
@@ -764,6 +849,8 @@ class RenderingWorldMixin:
             wall_face_style,
             bar_wall_light_side,
         )
+        if tile == Tile.STAIRS:
+            key += (animation_frame,)
         cached = self.tile_cache.get(key)
         if cached:
             return cached
@@ -785,7 +872,10 @@ class RenderingWorldMixin:
             tint = self.mix(self.theme.wall_top, self.theme.wall_left, 0.42)
         elif tile == Tile.STAIRS:
             asset_key = "stairs"
-            tint = self.theme.stair
+            # Authored stairs are cut directly into the floor. Matching the
+            # surrounding floor material keeps their circular masonry rim from
+            # reading as a separate blue slab laid over the tile.
+            tint = self.theme.floor
         elif tile == Tile.CLOSED_DOOR:
             asset_key = "door_closed"
             tint = self.theme.wall_top
@@ -840,19 +930,34 @@ class RenderingWorldMixin:
                 accent=accent,
                 variant=seed,
                 wall_face_style=wall_face_style,
+                animation_frame=animation_frame,
             )
         if asset_surface is not None:
-            wall_surface, wall_anchor_x, wall_anchor_y = asset_surface
+            tile_asset, tile_anchor_x, tile_anchor_y = asset_surface
+            if tile == Tile.STAIRS:
+                floor_asset = self.sprites.world_tile_surface(
+                    "floor",
+                    target_canvas=asset_canvas,
+                    target_anchor=asset_anchor,
+                    tint=self.theme.floor,
+                    accent=accent,
+                    variant=seed,
+                )
+                if floor_asset is not None:
+                    floor_surface, _, _ = floor_asset
+                    composite = floor_surface.copy()
+                    composite.blit(tile_asset, (0, 0))
+                    tile_asset = composite
             if tile == Tile.WALL and bar_wall_light_side is not None:
-                wall_surface = wall_surface.copy()
+                tile_asset = tile_asset.copy()
                 self._draw_bar_wall_light(
-                    wall_surface,
-                    wall_anchor_x,
-                    wall_anchor_y,
+                    tile_asset,
+                    tile_anchor_x,
+                    tile_anchor_y,
                     bar_wall_light_side,
                 )
-            wall_surface = optimize_immutable_alpha_surface(wall_surface)
-            asset_surface = (wall_surface, wall_anchor_x, wall_anchor_y)
+            tile_asset = optimize_immutable_alpha_surface(tile_asset)
+            asset_surface = (tile_asset, tile_anchor_x, tile_anchor_y)
             self.tile_cache[key] = asset_surface
             return asset_surface
 
