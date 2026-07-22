@@ -32,12 +32,15 @@ class ViewportZoomTests(unittest.TestCase):
         game.snap_camera_to_player()
         return game
 
-    def test_default_zoom_is_native_scale(self) -> None:
+    def test_default_zoom_is_max_zoomed_out_on_desktop(self) -> None:
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
-            self.assertAlmostEqual(game.view_zoom, 1.0)
+            # Desktop defaults to the widest view (max zoomed out); mobile keeps
+            # native scale. This is a desktop (non-mobile) fixture.
+            self.assertFalse(game.mobile_mode)
+            self.assertAlmostEqual(game.view_zoom, game.VIEW_ZOOM_MIN)
 
     def test_adjust_view_zoom_clamps_and_steps(self) -> None:
         import tempfile
@@ -63,6 +66,7 @@ class ViewportZoomTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
+            game.view_zoom = 1.0
             pygame.key.set_mods(pygame.KMOD_CTRL)
             try:
                 pygame.event.post(pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=1))

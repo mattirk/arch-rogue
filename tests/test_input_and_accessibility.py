@@ -1082,6 +1082,7 @@ class QuestInfoScrollInputTests(unittest.TestCase):
             self.assertEqual(game.story_panel_scroll, 0)
 
             # Ctrl+wheel keeps zooming the viewport instead of scrolling.
+            game.view_zoom = 1.0
             zoom_before = getattr(game, "view_zoom", 1.0)
             with patch.object(
                 pygame.key, "get_mods", return_value=pygame.KMOD_CTRL

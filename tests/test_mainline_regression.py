@@ -95,6 +95,9 @@ def _render_title_hash(tmpdir: str) -> str:
 def _render_gameplay_hash(tmpdir: str, *, depth: int = 3) -> str:
     game = _make_game(tmpdir)
     _start_run(game)
+    # Pin native zoom: these snapshots verify render determinism, not the
+    # default viewport distance (which now starts maxed out on desktop).
+    game.view_zoom = 1.0
     for _ in range(depth - 1):
         game.descend_to_next_depth()
     game.state = "playing"
@@ -111,6 +114,7 @@ def _render_gameplay_hash(tmpdir: str, *, depth: int = 3) -> str:
 def _render_crowd_hash(tmpdir: str) -> str:
     game = _make_game(tmpdir)
     _start_run(game)
+    game.view_zoom = 1.0
     for _ in range(8):  # deep enough for a populated floor
         game.descend_to_next_depth()
     _prepare_crowd(game)

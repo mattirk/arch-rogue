@@ -24,6 +24,7 @@ Release 4.5.5 replaces the static stair marker with an authored descending spira
 - Player contact resolution now treats every friendly NPC actor as solid, including shopkeepers, story guests, patrons, dancers, and garden frogs; collision uses the same radius as friendly-NPC movement avoidance.
 - Stairs remain transparent to line-of-sight and projectiles, and enemy movement remains unchanged so scripted bosses that guard the stairs are not trapped at their spawn point.
 - Pre-4.5.5 saves with the player standing directly on stairs relocate to the first safe adjacent tile when restored.
+- Desktop now defaults to the widest viewport (max zoomed out) so a fresh run shows more of the dungeon at once; mobile keeps native scale. Ctrl + scroll still zooms in/out at any time.
 
 ### Validation
 
