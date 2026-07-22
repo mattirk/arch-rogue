@@ -1,5 +1,23 @@
 # Changelog
 
+## 4.7.0 — Sealed Descent: multiplayer TLS, host accept gate, and hardening
+
+Release 4.7.0 secures the 4.6 co-op transport and lobby. The client speaks TLS with full certificate verification by default, the bundled server can terminate TLS directly or sit behind an nginx stream proxy, and the host now explicitly admits or turns away whoever answers a run code. Because `content_revision` is the game version, 4.7.0 clients pair only with 4.7.0 clients.
+
+### Added
+
+- **Client TLS** (`MultiplayerClient(tls=...)`): blocking handshake under the connect timeout so `ConnectionUp` only fires on an authenticated channel; chain + hostname verification against the platform trust store via `default_tls_context()` (TLS 1.2+, `certifi` fallback for CA-less Pythons such as python-for-android — bundled in the APK; fails closed with no trust anchors); `SSLWantRead/Write` handling and `SSLSocket.pending()` draining in the select loop.
+- **Server TLS termination**: `--tls-cert/--tls-key` flags and `ARCH_ROGUE_MP_TLS_CERT/_KEY` env vars (PEM, both-or-neither); omit them behind a TLS-terminating reverse proxy.
+- **Options**: `mp_server_tls` (schema v8 key, defaults on; malformed values migrate to on) with a new **Server encryption** row; default endpoint is now `ar.rita-kasari.fi:43666` for fresh installs and configs with an unset endpoint.
+- **Host accept gate**: `partner_joined` now puts the host lobby into a knock state — Enter admits, D turns away (touch rows on mobile); readying is blocked until the knock is answered. Declining sends the new host-only **`kick`** wire message: the server drops the joiner with a fatal `kicked` error (also releasing reconnect-grace reservations), notifies via `partner_left`, and reopens the room on the same code. The kicked joiner returns to code entry with "The host turned you away."
+- Joiner **mouse hold-to-walk**: `_mp_local_move_vector` now samples the held left button toward the cursor (host-identical 0.12-tile stop radius, tapered analog deflection, menu/cutscene suppression) so a joined desktop player can steer with the mouse.
+
+### Fixed
+
+- A malformed host snapshot ends the joiner's session cleanly ("Bad snapshot data from host") instead of crashing the main loop; floor descriptors already had this guard.
+- Inbound wire strings are sanitized at ingestion (`message_from_dict`, floor/snapshot player builders): names through `sanitize_player_name`, ids/codes printable-only and length-capped, error messages capped — a modified peer or relay can no longer feed control characters, RTL overrides, or multi-kilobyte strings into the HUD.
+- The server compares reconnect tokens with `hmac.compare_digest`.
+
 ## 4.6.0 — Two Will Descend: co-op multiplayer with a server component
 
 Release 4.6.0 adds a cooperative two-player mode where a host and a joiner descend the same dungeon together over a network, relayed by a new standalone ephemeral server. Each player picks any archetype; the host runs the authoritative simulation while the joiner renders replicated state and sends input intents. Desktop and Android share the feature; web multiplayer remains a later milestone (pygbag cannot open raw TCP sockets).
