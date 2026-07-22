@@ -29,6 +29,7 @@ calls; tests call directly with a fake clock). Transports are anything with
 
 from __future__ import annotations
 
+import hmac
 import logging
 import time
 from dataclasses import dataclass, field
@@ -40,6 +41,7 @@ from .protocol import (
     ERROR_BAD_REVISION,
     ERROR_BAD_STATE,
     ERROR_BAD_VERSION,
+    ERROR_KICKED,
     ERROR_ROLE_FORBIDDEN,
     ERROR_RUN_FULL,
     ERROR_RUN_ID_IN_USE,
@@ -277,6 +279,7 @@ class RoomHub:
         if message_type not in (
             "hello",
             "ready",
+            "kick",
             "floor",
             "snapshot",
             "intent",
@@ -296,12 +299,13 @@ class RoomHub:
             )
             return
 
-        if message_type in ("ready", "ping"):
+        if message_type in ("ready", "kick", "ping"):
             if not self._accept_seq(connection, message):
                 return
 
         handler = {
             "ready": self._handle_ready,
+            "kick": self._handle_kick,
             "floor": self._handle_floor,
             "snapshot": self._handle_snapshot,
             "intent": self._handle_intent,
@@ -483,7 +487,10 @@ class RoomHub:
         if room is None:
             return False
         for slot in room.slots.values():
-            if slot.reconnect_token != token or slot.left:
+            token_matches = bool(slot.reconnect_token) and hmac.compare_digest(
+                slot.reconnect_token, token
+            )
+            if not token_matches or slot.left:
                 continue
             if slot.connected:
                 # The original socket may be a zombie the transport has not
@@ -635,6 +642,45 @@ class RoomHub:
             host.archetype_key,
             joiner.archetype_key,
         )
+
+    def _handle_kick(
+        self, connection: Connection, room: Room, message: dict
+    ) -> None:
+        """Host turns the joiner away in the lobby (partner accept gate).
+
+        Only meaningful before start: the joiner slot is released with a
+        fatal ``kicked`` error, ``_finalize_slot_departure`` tells the host
+        via ``partner_left``, and the room reopens for another knock.
+        """
+
+        seq = self._reply_seq(message)
+        joiner = room.slot(ROLE_JOIN)
+        if room.started or room.state != ROOM_SELECTING or joiner is None:
+            self._reply_error(
+                connection,
+                ERROR_BAD_STATE,
+                "there is no lobby partner to turn away",
+                seq=seq,
+            )
+            return
+        log.info("room %s: host turned away %r", room.run_id, joiner.name)
+        if joiner.connection is not None:
+            # _fatal finalizes the slot departure, which pops the join seat
+            # and returns the room to waiting-for-join.
+            self._fatal(
+                joiner.connection, ERROR_KICKED, "the host turned you away"
+            )
+        else:
+            # The joiner is inside a reconnect-grace window: release the
+            # reservation directly so the token cannot reclaim the seat.
+            self._finalize_slot_departure(room, joiner)
+        host = room.slot(ROLE_HOST)
+        if host is not None:
+            # The accept gate keeps an honest host from readying while a
+            # knock is pending; reset defensively for modified clients.
+            host.ready = False
+            host.run_seed = None
+        room.touch(self.clock())
 
     def _handle_floor(
         self, connection: Connection, room: Room, message: dict

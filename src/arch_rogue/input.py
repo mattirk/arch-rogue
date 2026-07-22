@@ -1153,7 +1153,8 @@ class InputMixin:
             self.selected_archetype = ARCHETYPES[index]
             return True
         if cmd == Command.CONFIRM:
-            self.mp_lobby_send_ready()
+            # Admits a knocking partner first; otherwise readies up.
+            self.mp_lobby_confirm()
             return True
         return False
 

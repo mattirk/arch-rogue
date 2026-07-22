@@ -32,7 +32,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .protocol import clamp_unit
+from .protocol import clamp_unit, sanitize_player_name
 
 __all__ = [
     "NetMessage",
@@ -167,12 +167,24 @@ class UnknownMessage(NetMessage):
     data: dict[str, Any] = field(compare=False)
 
 
-def _opt_str(value: Any) -> str | None:
-    return str(value) if isinstance(value, str) else None
-
-
 def _opt_int(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _ident(value: Any, cap: int = 64) -> str:
+    """Length-capped printable identifier (ids, archetype keys, codes).
+
+    Ingestion-side defense: the ``make_*`` builders sanitize outbound
+    traffic, but a modified peer or relay is not obliged to use them, and
+    these strings land in session state, HUD notices, and log lines.
+    """
+
+    text = value if isinstance(value, str) else ""
+    return "".join(char for char in text if char.isprintable())[:cap]
+
+
+def _name(value: Any) -> str:
+    return sanitize_player_name(value)
 
 
 def message_from_dict(data: dict[str, Any]) -> NetMessage:
@@ -186,24 +198,27 @@ def message_from_dict(data: dict[str, Any]) -> NetMessage:
     message_type = str(data.get("t", ""))
     try:
         if message_type == "welcome":
+            partner_name = data.get("partner_name")
             return Welcome(
                 seq=int(data.get("seq", 0)),
-                run_id=str(data.get("run_id", "")),
-                you_are=str(data.get("you_are", "")),
-                player_id=str(data.get("player_id", "")),
-                reconnect_token=str(data.get("reconnect_token", "")),
-                partner_name=_opt_str(data.get("partner_name")),
+                run_id=_ident(data.get("run_id", "")),
+                you_are=_ident(data.get("you_are", "")),
+                player_id=_ident(data.get("player_id", "")),
+                reconnect_token=_ident(data.get("reconnect_token", ""), cap=128),
+                partner_name=(
+                    _name(partner_name) if isinstance(partner_name, str) else None
+                ),
                 partner_ready=bool(data.get("partner_ready", False)),
             )
         if message_type == "partner_joined":
             return PartnerJoined(
-                name=str(data.get("name", "")),
-                player_id=str(data.get("player_id", "")),
+                name=_name(data.get("name", "")),
+                player_id=_ident(data.get("player_id", "")),
             )
         if message_type == "partner_rejoined":
             return PartnerRejoined(
-                name=str(data.get("name", "")),
-                player_id=str(data.get("player_id", "")),
+                name=_name(data.get("name", "")),
+                player_id=_ident(data.get("player_id", "")),
             )
         if message_type == "partner_disconnected":
             return PartnerDisconnected(
@@ -213,19 +228,19 @@ def message_from_dict(data: dict[str, Any]) -> NetMessage:
             return PartnerLeft()
         if message_type == "ready_ack":
             return ReadyAck(
-                player_id=str(data.get("player_id", "")),
-                archetype_key=str(data.get("archetype_key", "")),
+                player_id=_ident(data.get("player_id", "")),
+                archetype_key=_ident(data.get("archetype_key", "")),
                 seq=_opt_int(data.get("seq")),
             )
         if message_type == "start":
             return Start(
                 run_seed=int(data.get("run_seed", 0)),
-                host_player_id=str(data.get("host_player_id", "")),
-                host_name=str(data.get("host_name", "")),
-                host_archetype=str(data.get("host_archetype", "")),
-                joiner_player_id=str(data.get("joiner_player_id", "")),
-                joiner_name=str(data.get("joiner_name", "")),
-                joiner_archetype=str(data.get("joiner_archetype", "")),
+                host_player_id=_ident(data.get("host_player_id", "")),
+                host_name=_name(data.get("host_name", "")),
+                host_archetype=_ident(data.get("host_archetype", "")),
+                joiner_player_id=_ident(data.get("joiner_player_id", "")),
+                joiner_name=_name(data.get("joiner_name", "")),
+                joiner_archetype=_ident(data.get("joiner_archetype", "")),
             )
         if message_type == "floor":
             state = data.get("state")
@@ -243,20 +258,29 @@ def message_from_dict(data: dict[str, Any]) -> NetMessage:
                 state=state if isinstance(state, dict) else {},
             )
         if message_type == "intent":
+            target = data.get("target")
             return IntentMessage(
                 input_seq=int(data.get("input_seq", 0)),
-                player_id=str(data.get("player_id", "")),
+                player_id=_ident(data.get("player_id", "")),
                 move_x=clamp_unit(data.get("move_x", 0.0)),
                 move_y=clamp_unit(data.get("move_y", 0.0)),
-                action=str(data.get("action", "")),
-                target=_opt_str(data.get("target")),
+                action=_ident(data.get("action", "")),
+                target=_ident(target) if isinstance(target, str) else None,
             )
         if message_type == "run_ended":
             results = data.get("results", [])
             return RunEndedMessage(
-                outcome=str(data.get("outcome", "")),
+                outcome=_ident(data.get("outcome", "")),
                 results=tuple(
-                    result for result in results if isinstance(result, dict)
+                    {
+                        "player_id": _ident(result.get("player_id", "")),
+                        "name": _name(result.get("name", "")),
+                        "class_name": _ident(result.get("class_name", "")),
+                        "level": int(result.get("level", 0) or 0),
+                        "alive": bool(result.get("alive", False)),
+                    }
+                    for result in results
+                    if isinstance(result, dict)
                 )
                 if isinstance(results, list)
                 else (),
@@ -268,8 +292,8 @@ def message_from_dict(data: dict[str, Any]) -> NetMessage:
             )
         if message_type == "error":
             return ErrorMessage(
-                code=str(data.get("code", "")),
-                msg=str(data.get("msg", "")),
+                code=_ident(data.get("code", "")),
+                msg=_ident(data.get("msg", ""), cap=256),
                 fatal=bool(data.get("fatal", False)),
                 seq=_opt_int(data.get("seq")),
             )

@@ -86,6 +86,7 @@ from .protocol import (
     make_floor,
     make_hello,
     make_intent,
+    make_kick,
     make_ping,
     make_ready,
     make_run_ended,
@@ -109,6 +110,7 @@ _SETUP_ERROR_NOTICES = {
     "bad_revision": "Your game version does not match the host's.",
     "bad_version": "This server speaks a different protocol version.",
     "timeout": "The server timed out the connection.",
+    "kicked": "The host turned you away.",
 }
 
 
@@ -125,6 +127,10 @@ class MpSession:
     partner_ready: bool = False
     partner_archetype: str = ""
     partner_connected: bool = True
+    # Host-side accept gate: True from partner_joined until the host admits
+    # or turns away the knocking joiner. Room codes are locators, not
+    # secrets, so joining is an explicit host decision.
+    partner_pending_accept: bool = False
     local_ready: bool = False
     local_archetype: str = ""
     reconnect_token: str = ""
@@ -447,7 +453,18 @@ class NetMixin:
             session.partner_name = message.name
             session.partner_player_id = message.player_id
             session.partner_connected = True
-            self.mp_status = f"{message.name} has answered the call."
+            session.partner_ready = False
+            session.partner_archetype = ""
+            if session.role == ROLE_HOST and not session.started:
+                # A 4-rune code is a locator, not a secret: whoever knocks
+                # must be admitted explicitly before the descent can begin.
+                session.partner_pending_accept = True
+                self.mp_status = (
+                    f"{message.name or 'A nameless one'} knocks at the gate — "
+                    "Enter admits them, D turns them away."
+                )
+            else:
+                self.mp_status = f"{message.name} has answered the call."
         elif isinstance(message, ReadyAck):
             if message.player_id and message.player_id != session.player_id:
                 session.partner_ready = True
@@ -625,6 +642,55 @@ class NetMixin:
             session.awaiting_floor = True
             self.mp_status = "The host carves the descent…"
 
+    def mp_lobby_confirm(self) -> None:
+        """Lobby confirm: admit a knocking partner first, otherwise ready up."""
+
+        session = self.mp_session
+        if (
+            session is not None
+            and session.role == ROLE_HOST
+            and session.partner_pending_accept
+        ):
+            self.mp_lobby_accept_partner()
+            return
+        self.mp_lobby_send_ready()
+
+    def mp_lobby_accept_partner(self) -> None:
+        """Host: admit the joiner who is knocking at the lobby gate."""
+
+        session = self.mp_session
+        if (
+            session is None
+            or session.role != ROLE_HOST
+            or not session.partner_pending_accept
+        ):
+            return
+        session.partner_pending_accept = False
+        name = session.partner_name or "Your partner"
+        self.mp_status = f"{name} is admitted. Bind your archetype to descend."
+
+    def mp_lobby_decline_partner(self) -> None:
+        """Host: turn away the knocking joiner; the code stays open."""
+
+        session = self.mp_session
+        client = self.mp_client
+        if (
+            session is None
+            or client is None
+            or session.role != ROLE_HOST
+            or not session.partner_pending_accept
+        ):
+            return
+        session.seq += 1
+        client.send_message(make_kick(seq=session.seq))
+        session.partner_pending_accept = False
+        session.partner_name = ""
+        session.partner_player_id = ""
+        session.partner_connected = False
+        session.partner_ready = False
+        session.partner_archetype = ""
+        self.mp_status = "Turned away. The code remains open for another knock."
+
     def mp_lobby_send_ready(self) -> None:
         """Confirm the selected archetype in the lobby (both roles)."""
 
@@ -634,6 +700,11 @@ class NetMixin:
             return
         if session.role == ROLE_HOST and not session.partner_name:
             self.mp_status = "Wait for a partner before beginning the descent."
+            return
+        if session.role == ROLE_HOST and session.partner_pending_accept:
+            self.mp_status = (
+                "Answer the knock first — Enter admits, D turns away."
+            )
             return
         archetype = self.selected_archetype.name
         session.local_archetype = archetype
@@ -685,7 +756,12 @@ class NetMixin:
         if key[0] != session.floor_revision:
             return  # snapshot for a floor we have not applied yet
         session.last_snapshot_key = key
-        sync.apply_snapshot_state(self, message.state)
+        try:
+            sync.apply_snapshot_state(self, message.state)
+        except (KeyError, TypeError, ValueError, IndexError, AttributeError) as exc:
+            # A malformed snapshot must never crash the joiner's main loop;
+            # it ends the session cleanly like a bad floor descriptor does.
+            self._mp_fail_session(f"Bad snapshot data from host: {exc}")
 
     def _mp_on_intent(self, message: IntentMessage, now: float) -> None:
         session = self.mp_session
@@ -775,12 +851,19 @@ class NetMixin:
         if self.mp_active:
             self.mp_end_session_to_title("Your partner has left the run.")
         elif session.phase == "lobby":
+            # After a local decline the partner fields are already empty and
+            # the "turned away" status must survive this echoed partner_left.
+            had_partner = bool(session.partner_name)
             session.partner_name = ""
             session.partner_ready = False
             session.partner_archetype = ""
             session.partner_connected = True
+            session.partner_pending_accept = False
             if session.role == ROLE_HOST:
-                self.mp_status = "Your partner departed. Share the code again."
+                if had_partner:
+                    self.mp_status = (
+                        "Your partner departed. Share the code again."
+                    )
             else:
                 self.mp_end_session_to_title("The host has closed the run.")
 
@@ -805,7 +888,7 @@ class NetMixin:
             # A host collision returns to code generation with a fresh code.
             self.mp_run_id = generate_run_id(MP_RUN_ID_LENGTH)
             self.mp_setup_step = "host_code"
-        elif message.code in ("run_not_found", "run_full", "bad_revision"):
+        elif message.code in ("run_not_found", "run_full", "bad_revision", "kicked"):
             # A join failure keeps the entered code editable.
             self.mp_setup_step = "join_code"
             self.mp_open_join_code_input()

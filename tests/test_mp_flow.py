@@ -409,6 +409,13 @@ class TwoGameFlowTests(unittest.TestCase):
                 _wait_until([host, join], lambda: join.state == "mp_lobby")
                 self.assertEqual(host.mp_session.partner_name, "Partner")
 
+                # The host must admit the knocking joiner before readying.
+                self.assertTrue(host.mp_session.partner_pending_accept)
+                host.mp_lobby_send_ready()
+                self.assertFalse(host.mp_session.local_ready)
+                host.mp_lobby_accept_partner()
+                self.assertFalse(host.mp_session.partner_pending_accept)
+
                 host.selected_archetype = ARCHETYPES[0]  # Warden
                 join.selected_archetype = ARCHETYPES[2]  # Arcanist
                 host.mp_lobby_send_ready()
@@ -615,6 +622,201 @@ class JoinerMouseWalkVectorTests(unittest.TestCase):
                 "pygame.mouse.get_pressed", return_value=(1, 0, 0)
             ), patch("pygame.mouse.get_pos", return_value=cursor):
                 self.assertEqual(game._mp_local_move_vector(), (0.0, -1.0))
+
+
+class HostAcceptGateTests(unittest.TestCase):
+    """The lobby accept gate: a knocking joiner is admitted or turned away."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.harness = LoopbackServer()
+        cls.port = cls.harness.start()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.harness.stop()
+
+    def _make_game(self, tmpdir: str, name: str) -> Game:
+        game = Game(
+            screen_size=(640, 360),
+            headless=True,
+            save_path=Path(tmpdir) / f"{name}_run.json",
+        )
+        game.options_path = Path(tmpdir) / f"{name}_options.json"
+        game.mp_player_name = name
+        game.mp_server_host = "127.0.0.1"
+        game.mp_server_port = self.port
+        game.mp_server_tls = False
+        return game
+
+    def test_decline_kicks_joiner_and_reopens_the_code(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            host = self._make_game(tmpdir, "Matti")
+            first = self._make_game(tmpdir, "Stranger")
+            second = self._make_game(tmpdir, "Friend")
+            try:
+                host.state = "mp_setup"
+                host.mp_setup_step = "host_code"
+                host.mp_run_id = generate_run_id()
+                code = host.mp_run_id
+                host.mp_begin_hosting()
+                _wait_until([host], lambda: host.state == "mp_lobby")
+
+                first.state = "mp_setup"
+                first.mp_setup_step = "join_code"
+                first.mp_submit_join_code(code)
+                _wait_until(
+                    [host, first],
+                    lambda: host.mp_session is not None
+                    and host.mp_session.partner_pending_accept,
+                )
+
+                # Turned away: the joiner lands back in setup with a notice,
+                # the host keeps the lobby with an empty partner seat.
+                host.mp_lobby_decline_partner()
+                _wait_until(
+                    [host, first],
+                    lambda: first.state == "mp_setup"
+                    and first.mp_session is None,
+                )
+                self.assertIn("turned you away", first.mp_notice.lower())
+                self.assertEqual(first.mp_setup_step, "join_code")
+                first.close_text_input(confirm=False)
+                self.assertEqual(host.state, "mp_lobby")
+                self.assertEqual(host.mp_session.partner_name, "")
+                self.assertFalse(host.mp_session.partner_pending_accept)
+
+                # The same code accepts a fresh knock, which can be admitted.
+                second.state = "mp_setup"
+                second.mp_setup_step = "join_code"
+                second.mp_submit_join_code(code)
+                _wait_until(
+                    [host, second],
+                    lambda: host.mp_session is not None
+                    and host.mp_session.partner_pending_accept,
+                )
+                self.assertEqual(host.mp_session.partner_name, "Friend")
+                host.mp_lobby_confirm()  # admits (does not ready up)
+                self.assertFalse(host.mp_session.partner_pending_accept)
+                self.assertFalse(host.mp_session.local_ready)
+                self.assertEqual(second.state, "mp_lobby")
+            finally:
+                host.mp_shutdown(send_bye=False)
+                first.mp_shutdown(send_bye=False)
+                second.mp_shutdown(send_bye=False)
+
+    def test_joiner_never_gates_and_decline_is_host_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_game(tmpdir, "Solo")
+            from arch_rogue.net.mixin import MpSession
+
+            session = MpSession(role="join", phase="lobby")
+            session.partner_name = "Hosty"
+            game.mp_session = session
+            # Neither accept nor decline does anything for a joiner.
+            game.mp_lobby_accept_partner()
+            game.mp_lobby_decline_partner()
+            self.assertFalse(session.partner_pending_accept)
+            self.assertEqual(session.partner_name, "Hosty")
+            game.mp_session = None
+
+
+class HostileDataTests(unittest.TestCase):
+    """Hostile peer payloads: malformed snapshots and unsanitized strings."""
+
+    def _make_game(self, tmpdir: str) -> Game:
+        game = Game(
+            screen_size=(640, 360),
+            headless=True,
+            save_path=Path(tmpdir) / "run.json",
+        )
+        game.options_path = Path(tmpdir) / "options.json"
+        game.mp_server_tls = False
+        return game
+
+    def test_malformed_snapshot_fails_the_session_cleanly(self) -> None:
+        from arch_rogue.models import Player
+        from arch_rogue.net.mixin import MpSession
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_game(tmpdir)
+            session = MpSession(role="join")
+            session.started = True
+            session.floor_revision = 3
+            session.last_snapshot_key = (3, 10)
+            game.mp_session = session
+            actor = Player(1.0, 1.0)
+            actor.player_id = "p2"
+            game.players = [actor]
+            game._mp_on_snapshot(
+                SnapshotMessage(
+                    floor_revision=3,
+                    tick=11,
+                    state={"players": [{"id": "p2", "x": "not-a-number"}]},
+                )
+            )
+            # No exception escaped, and the session ended with a notice.
+            self.assertIsNone(game.mp_session)
+            self.assertIn("snapshot", game.mp_notice.lower())
+
+    def test_inbound_names_are_sanitized_at_ingestion(self) -> None:
+        from arch_rogue.net.messages import message_from_dict
+        from arch_rogue_protocol import MP_PLAYER_NAME_MAX_CHARS
+
+        hostile = "‮evil\x00\r\n\t" + "A" * 5000
+        joined = message_from_dict({"t": "partner_joined", "name": hostile})
+        self.assertLessEqual(len(joined.name), MP_PLAYER_NAME_MAX_CHARS)
+        self.assertTrue(all(c.isprintable() for c in joined.name))
+        self.assertNotIn("‮", joined.name)
+
+        start = message_from_dict(
+            {"t": "start", "host_name": hostile, "joiner_name": hostile}
+        )
+        self.assertLessEqual(len(start.host_name), MP_PLAYER_NAME_MAX_CHARS)
+        self.assertLessEqual(len(start.joiner_name), MP_PLAYER_NAME_MAX_CHARS)
+
+        error = message_from_dict(
+            {"t": "error", "code": "x" * 999, "msg": "y\x00" * 999}
+        )
+        self.assertLessEqual(len(error.code), 64)
+        self.assertLessEqual(len(error.msg), 256)
+        self.assertNotIn("\x00", error.msg)
+
+        ended = message_from_dict(
+            {
+                "t": "run_ended",
+                "outcome": "victory",
+                "results": [{"name": hostile, "level": 3, "alive": True}],
+            }
+        )
+        self.assertLessEqual(
+            len(ended.results[0]["name"]), MP_PLAYER_NAME_MAX_CHARS
+        )
+
+    def test_floor_and_snapshot_display_names_are_sanitized(self) -> None:
+        from arch_rogue.models import Player
+        from arch_rogue.net import sync
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_game(tmpdir)
+            hostile = "bad\x00‮name" + "B" * 500
+            player = sync.build_player_from_full(
+                game, {"x": 1.0, "y": 1.0, "display_name": hostile}
+            )
+            self.assertTrue(all(c.isprintable() for c in player.display_name))
+            self.assertLess(len(player.display_name), 100)
+
+    def test_kick_is_host_only_and_needs_a_seq(self) -> None:
+        from arch_rogue_protocol import (
+            make_kick,
+            role_allowed,
+            validate_client_message,
+        )
+
+        self.assertTrue(role_allowed("kick", "host"))
+        self.assertFalse(role_allowed("kick", "join"))
+        self.assertEqual(validate_client_message({"t": "kick"}), "bad_msg")
+        self.assertEqual(validate_client_message(make_kick(seq=3)), "")
 
 
 class MobileMultiplayerTests(unittest.TestCase):

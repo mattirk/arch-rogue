@@ -1002,6 +1002,8 @@ class Game(
                     ready = bool(session is not None and session.local_ready)
                     if event.key == pygame.K_BACKSPACE:
                         self.mp_leave_lobby()
+                    elif event.key == pygame.K_d:
+                        self.mp_lobby_decline_partner()
                     elif not ready and event.key in (pygame.K_RIGHT, pygame.K_DOWN):
                         index = (
                             ARCHETYPES.index(self.selected_archetype) + 1
@@ -1013,7 +1015,7 @@ class Game(
                         ) % len(ARCHETYPES)
                         self.selected_archetype = ARCHETYPES[index]
                     elif event.key in (pygame.K_RETURN, pygame.K_e):
-                        self.mp_lobby_send_ready()
+                        self.mp_lobby_confirm()
                 elif self.state == "options":
                     if event.key == pygame.K_a:
                         self.options_cursor = self.OPTIONS_ROW_AUDIO

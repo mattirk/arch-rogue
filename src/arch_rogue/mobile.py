@@ -2385,11 +2385,25 @@ class MobileMixin:
 
     def _handle_mp_lobby_tap(self, local: tuple[int, int]) -> bool:
         """Lobby touch targets: tap your own row to cycle archetype, tap the
-        partner row (or anywhere below) to confirm ready."""
+        partner row (or anywhere below) to confirm ready. While a joiner is
+        knocking, only the explicit admit/turn-away rows act."""
 
         session = getattr(self, "mp_session", None)
         ready = bool(session is not None and session.local_ready)
+        pending = bool(
+            session is not None
+            and getattr(session, "partner_pending_accept", False)
+            and getattr(session, "role", "") == "host"
+        )
         index = self._rect_index(getattr(self, "_mp_row_rects", ()), local)
+        if pending:
+            if index == 2:
+                self.mp_lobby_accept_partner()
+                return True
+            if index == 3:
+                self.mp_lobby_decline_partner()
+                return True
+            return False
         if index == 0 and not ready:
             archetype_index = (
                 ARCHETYPES.index(self.selected_archetype) + 1

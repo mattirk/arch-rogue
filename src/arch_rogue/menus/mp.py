@@ -257,6 +257,10 @@ class MenuMultiplayerMixin:
         partner_name = self._mp_session_value("partner_name", "")
         partner_ready = bool(self._mp_session_value("partner_ready", False))
         partner_archetype = self._mp_session_value("partner_archetype", "")
+        pending_accept = bool(
+            role == "host"
+            and self._mp_session_value("partner_pending_accept", False)
+        )
         y = content.y
         if code:
             self.draw_text(
@@ -272,7 +276,9 @@ class MenuMultiplayerMixin:
             f"{self.g.selected_archetype.name} · "
             + ("Ready" if local_ready else "Choosing")
         )
-        if partner_name:
+        if pending_accept:
+            partner_value = "Knocking…"
+        elif partner_name:
             partner_value = (
                 f"{partner_archetype} · Ready"
                 if partner_ready and partner_archetype
@@ -288,13 +294,29 @@ class MenuMultiplayerMixin:
                 partner_value,
             ),
         ]
+        if pending_accept:
+            rows.append(("Enter", f"Admit {partner_name or 'the stranger'}", ""))
+            rows.append(("D", "Turn them away", ""))
         rendered = self.draw_menu_rows(
             rows,
-            pygame.Rect(content.x, y, content.width, self.u(112)),
+            pygame.Rect(
+                content.x,
+                y,
+                content.width,
+                self.u(112 if not pending_accept else 208),
+            ),
             selected_index=0,
         )
         y = (rendered[-1].bottom if rendered else y) + self.u(12)
-        if not local_ready:
+        if pending_accept:
+            y = self.draw_wrapped_text(
+                "The run code is a locator, not a secret — admit only the "
+                "name you shared it with.",
+                self.g.small_font,
+                self.TEXT,
+                pygame.Rect(content.x, y, content.width, self.u(44)),
+            ) + self.u(8)
+        elif not local_ready:
             y = self.draw_wrapped_text(
                 f"Archetype: {self.g.selected_archetype.name} — Left/Right "
                 "changes it, Enter binds it and marks you ready.",
@@ -316,7 +338,9 @@ class MenuMultiplayerMixin:
         self.g._mp_entry_rect = None
         self.draw_footer(
             panel,
-            "Left / Right choose archetype · Enter readies · Backspace leaves",
+            "Enter admits · D turns away · Backspace leaves"
+            if pending_accept
+            else "Left / Right choose archetype · Enter readies · Backspace leaves",
         )
 
     def draw_text_input_overlay(self) -> None:

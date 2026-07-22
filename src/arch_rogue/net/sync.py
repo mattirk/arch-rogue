@@ -42,6 +42,7 @@ from typing import Any
 
 from ..models import FloatingText, Player, Projectile, Tile
 from ..save_system import _TRANSIENT_ENEMY_FIELDS
+from .protocol import sanitize_player_name
 
 # Cadence divider: every Nth snapshot carries the slow wholesale payload.
 SLOW_PAYLOAD_EVERY_TICKS = 5
@@ -160,7 +161,11 @@ def apply_player_fast(game: Any, player: Player, data: dict[str, Any]) -> None:
     player.move_x = float(data.get("mx", player.move_x))
     player.move_y = float(data.get("my", player.move_y))
     player.locomotion_anim_scale = float(data.get("loco", 1.0))
-    player.display_name = str(data.get("name", player.display_name))
+    # Names travel host→joiner inside world payloads; sanitize on ingestion
+    # so a modified peer cannot feed control characters into the HUD.
+    player.display_name = sanitize_player_name(
+        data.get("name", player.display_name)
+    )
     player.class_name = str(data.get("cls", player.class_name))
     timers = data.get("timers")
     if isinstance(timers, list) and len(timers) >= 5:
@@ -251,7 +256,7 @@ def build_player_from_full(game: Any, data: dict[str, Any]) -> Player:
         facing_y=float(data.get("facing_y", 0.0)),
     )
     player.player_id = str(data.get("player_id", "p2"))
-    player.display_name = str(data.get("display_name", ""))
+    player.display_name = sanitize_player_name(data.get("display_name", ""))
     player.skill_upgrades = [
         str(key) for key in data.get("skill_upgrades", [])
     ]
@@ -342,7 +347,7 @@ def apply_floor_state(game: Any, state: dict[str, Any]) -> None:
     game.restore_run_state(data)
     local = game.player
     local.player_id = str(local_data.get("player_id", local_id))
-    local.display_name = str(local_data.get("display_name", ""))
+    local.display_name = sanitize_player_name(local_data.get("display_name", ""))
     players: list[Player] = []
     for entry in players_data:
         if str(entry.get("player_id", "")) == local.player_id:

@@ -62,6 +62,7 @@ __all__ = [
     "ERROR_ROLE_FORBIDDEN",
     "ERROR_BAD_STATE",
     "ERROR_TIMEOUT",
+    "ERROR_KICKED",
     "CLIENT_MESSAGE_TYPES",
     "SERVER_MESSAGE_TYPES",
     "HOST_ONLY_TYPES",
@@ -84,6 +85,7 @@ __all__ = [
     "validate_client_message",
     "make_hello",
     "make_ready",
+    "make_kick",
     "make_intent",
     "make_floor",
     "make_snapshot",
@@ -144,9 +146,21 @@ ERROR_BAD_REVISION = "bad_revision"
 ERROR_ROLE_FORBIDDEN = "role_forbidden"
 ERROR_BAD_STATE = "bad_state"
 ERROR_TIMEOUT = "timeout"
+# 4.6.x: the host turned the joiner away in the lobby (partner accept gate).
+ERROR_KICKED = "kicked"
 
 CLIENT_MESSAGE_TYPES = frozenset(
-    ("hello", "ready", "floor", "snapshot", "intent", "run_ended", "ping", "bye")
+    (
+        "hello",
+        "ready",
+        "kick",
+        "floor",
+        "snapshot",
+        "intent",
+        "run_ended",
+        "ping",
+        "bye",
+    )
 )
 SERVER_MESSAGE_TYPES = frozenset(
     (
@@ -166,7 +180,7 @@ SERVER_MESSAGE_TYPES = frozenset(
         "bye",
     )
 )
-HOST_ONLY_TYPES = frozenset(("floor", "snapshot", "run_ended"))
+HOST_ONLY_TYPES = frozenset(("floor", "snapshot", "run_ended", "kick"))
 JOIN_ONLY_TYPES = frozenset(("intent",))
 
 # Documented finite intent action enum. ``use_slot``/``drop_slot`` carry the
@@ -435,6 +449,9 @@ def validate_client_message(message: dict) -> str:
         run_seed = message.get("run_seed")
         if run_seed is not None and not _is_nonneg_int(run_seed):
             return ERROR_BAD_MSG
+    elif message_type == "kick":
+        if not _is_pos_int(message.get("seq")):
+            return ERROR_BAD_MSG
     elif message_type == "floor":
         if not _is_nonneg_int(message.get("floor_revision")):
             return ERROR_BAD_MSG
@@ -569,6 +586,12 @@ def make_run_ended(*, outcome: str, results: list[dict] | None = None) -> dict:
         "outcome": str(outcome),
         "results": list(results or []),
     }
+
+
+def make_kick(*, seq: int) -> dict:
+    """Host → server: turn away the joiner currently in the lobby."""
+
+    return {"t": "kick", "seq": int(seq)}
 
 
 def make_ping(*, seq: int, ts: float) -> dict:
