@@ -313,7 +313,9 @@
               "actors/acolyte/animations/die/south/frame_003.png",
               "actors/acolyte/animations/die/south/frame_004.png",
               "actors/acolyte/animations/die/south/frame_005.png",
-              "actors/acolyte/animations/die/south/frame_006.png"
+              "actors/acolyte/animations/die/south/frame_006.png",
+              "actors/acolyte/animations/die/south/frame_007.png",
+              "actors/acolyte/animations/die/south/frame_008.png"
             ]
           }
         },
@@ -326,7 +328,9 @@
               "actors/acolyte/animations/dead/south/frame_001.png",
               "actors/acolyte/animations/dead/south/frame_002.png",
               "actors/acolyte/animations/dead/south/frame_003.png",
-              "actors/acolyte/animations/dead/south/frame_004.png"
+              "actors/acolyte/animations/dead/south/frame_004.png",
+              "actors/acolyte/animations/dead/south/frame_005.png",
+              "actors/acolyte/animations/dead/south/frame_006.png"
             ]
           }
         }
@@ -684,7 +688,9 @@
               "actors/arcanist/animations/dead/south/frame_001.png",
               "actors/arcanist/animations/dead/south/frame_002.png",
               "actors/arcanist/animations/dead/south/frame_003.png",
-              "actors/arcanist/animations/dead/south/frame_004.png"
+              "actors/arcanist/animations/dead/south/frame_004.png",
+              "actors/arcanist/animations/dead/south/frame_005.png",
+              "actors/arcanist/animations/dead/south/frame_006.png"
             ]
           }
         }

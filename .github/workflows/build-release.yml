@@ -555,13 +555,46 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[android]"
 
+      # Cache keys must NOT hash buildozer.spec / pyproject.toml wholesale:
+      # both carry the project version, which bumps on every release commit,
+      # so whole-file keys never hit exactly and every run re-uploads multi-GB
+      # cache entries (and churns the 10 GB repo cache quota). Instead, derive
+      # the key from the same native inputs tools/build_android.sh fingerprints
+      # — those only change when the toolchain, recipes, or ABIs really change.
+      - name: Compute native cache key
+        id: nativekey
+        run: |
+          KEY="$(python3 - <<'PY'
+          import configparser, hashlib, tomllib
+          from pathlib import Path
+          config = configparser.ConfigParser(interpolation=None)
+          config.read("buildozer.spec", encoding="utf-8")
+          app = config["app"]
+          digest = hashlib.sha256()
+          for key in ("requirements", "p4a.bootstrap", "p4a.commit", "android.api",
+                      "android.minapi", "android.target_api", "android.ndk",
+                      "android.archs"):
+              digest.update(f"{key}={app.get(key, '')}\n".encode())
+          with open("pyproject.toml", "rb") as fh:
+              pins = tomllib.load(fh)["project"]["optional-dependencies"]["android"]
+          for pin in sorted(pins):
+              digest.update(f"pin={pin}\n".encode())
+          for path in sorted(Path("android/recipes").rglob("*")):
+              if path.is_file():
+                  digest.update(str(path).encode())
+                  digest.update(path.read_bytes())
+          print(digest.hexdigest())
+          PY
+          )"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
       - name: Cache Android SDK/NDK
         uses: actions/cache@v4
         with:
           path: |
             ~/.buildozer/android/platform
             ~/.buildozer/android/packages
-          key: buildozer-android-${{ runner.os }}-${{ hashFiles('buildozer.spec', 'android/recipes/**', 'tools/build_android.sh', 'tools/validate_android_apk.py') }}
+          key: buildozer-android-${{ runner.os }}-${{ steps.nativekey.outputs.key }}
           restore-keys: |
             buildozer-android-${{ runner.os }}-
 
@@ -578,7 +611,7 @@ jobs:
             .buildozer/android/platform/build-*
             .buildozer/android/platform/python-for-android
             .buildozer/android/arch-rogue-native.sha256
-          key: p4a-build-${{ runner.os }}-${{ hashFiles('buildozer.spec', 'pyproject.toml', 'android/recipes/**', 'tools/build_android.sh') }}
+          key: p4a-build-${{ runner.os }}-${{ steps.nativekey.outputs.key }}
           restore-keys: |
             p4a-build-${{ runner.os }}-
 
@@ -594,7 +627,7 @@ jobs:
             ~/.cache/ccache
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: android-ccache-gradle-${{ runner.os }}-${{ hashFiles('buildozer.spec', 'pyproject.toml') }}
+          key: android-ccache-gradle-${{ runner.os }}-${{ steps.nativekey.outputs.key }}
           restore-keys: |
             android-ccache-gradle-${{ runner.os }}-
 
