@@ -292,6 +292,15 @@ def _reconcile_predicted_position(
     if error > 1.44:
         actor.x = target_x
         actor.y = target_y
+    elif not actor.moving:
+        # At rest, authority briefly overshoots the predicted stop (it keeps
+        # the old vector until the zero intent lands, then walks back onto
+        # the claimed stop). Pulling 25% per snapshot rendered that as an
+        # uncomfortable slide; instead ignore sub-0.2-tile error outright
+        # and ease anything larger gently.
+        if error > 0.04:
+            actor.x += dx * 0.1
+            actor.y += dy * 0.1
     elif error > 0.0004:
         actor.x += dx * 0.25
         actor.y += dy * 0.25

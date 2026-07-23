@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.7.6 — The joiner stops where it stopped
+
+Release 4.7.6 removes the last visible seam in joiner movement: after releasing input the character no longer slides forward onto a latency-overshot rest position. The effect was strongest with an Android host, whose slower frames added to the overshoot. Because `content_revision` is the game version, 4.7.6 clients pair only with 4.7.6 clients (the relay itself needs no update — the new intent fields pass through older servers verbatim).
+
+### Fixed
+
+- **Guest slide-on-stop**: the host kept integrating the last movement vector until the joiner's zero intent arrived (up to a 50 ms intent slot + transit + a host frame), so the authoritative rest position overshot the predicted stop by ~latency × walk speed, and reconciliation dragged the joiner's character onto it. Three-part fix:
+  - Movement intents now transmit **on the start/stop edge immediately** instead of waiting out the 20 Hz slot, removing up to 50 ms of overshoot for everyone.
+  - Movement intents carry the joiner's **predicted position** (`px`/`py`, additive optional wire fields). While the remote actor's intent vector is zero the host walks it onto a fresh claim — bounded to one tile, at legal walk speed, through the same collision code as any movement, and suppressed briefly after a dash — so the authoritative stop converges exactly to where the joiner stopped. A modified client gains nothing over ordinary walking.
+  - The joiner's reconciliation is now **stop-aware**: while idle it ignores sub-0.2-tile divergence outright (covering the shrinking transient while the host walks back) and eases anything larger at 10% instead of 25%; dash/teleport-sized divergence still snaps.
+
 ## 4.7.5 — The joiner sees the fight
 
 Release 4.7.5 makes co-op look and feel the same on both screens. The joiner now sees every action animation — the host's swings and casts, its own, the enemies' — plus the transient combat effects (slash arcs, impact rings and bursts, Time Skip's cast ring, death explosions, shared screen flashes) that were previously host-only. The joiner's own character also answers input immediately through client-side movement prediction instead of trailing an intent→snapshot round trip, and a per-door frame hitch in the joiner's world apply is gone. Because `content_revision` is the game version, 4.7.5 clients pair only with 4.7.5 clients.

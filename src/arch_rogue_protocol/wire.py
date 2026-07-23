@@ -480,6 +480,15 @@ def validate_client_message(message: dict) -> str:
         target = message.get("target")
         if target is not None and not isinstance(target, str):
             return ERROR_BAD_MSG
+        # Optional predicted-position claim (4.7.6): both-or-neither, finite.
+        claim_x = message.get("px")
+        claim_y = message.get("py")
+        if (claim_x is None) != (claim_y is None):
+            return ERROR_BAD_MSG
+        if claim_x is not None and not (
+            is_finite_number(claim_x) and is_finite_number(claim_y)
+        ):
+            return ERROR_BAD_MSG
     elif message_type == "run_ended":
         if not isinstance(message.get("outcome"), str):
             return ERROR_BAD_MSG
@@ -546,10 +555,12 @@ def make_intent(
     move_y: float = 0.0,
     action: str = "",
     target: str | None = None,
+    px: float | None = None,
+    py: float | None = None,
 ) -> dict:
     if action not in INTENT_ACTIONS:
         raise ProtocolError(f"unknown intent action {action!r}")
-    return {
+    message = {
         "t": "intent",
         "input_seq": int(input_seq),
         "move_x": clamp_unit(move_x),
@@ -557,6 +568,13 @@ def make_intent(
         "action": action,
         "target": str(target) if target is not None else None,
     }
+    # 4.7.6: a movement intent may carry the joiner's predicted position so
+    # the host can settle the remote actor exactly where the joiner stopped
+    # (additive optional fields; older peers ignore them).
+    if px is not None and py is not None:
+        message["px"] = round(float(px), 3)
+        message["py"] = round(float(py), 3)
+    return message
 
 
 def make_floor(

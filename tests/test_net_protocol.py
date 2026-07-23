@@ -106,6 +106,9 @@ def _every_message() -> list[dict]:
         make_intent(
             input_seq=5, move_x=0.5, move_y=-1.0, action="melee", target=None
         ),
+        make_intent(
+            input_seq=6, move_x=0.0, move_y=0.0, px=12.345, py=6.789
+        ),
         make_run_ended(outcome="victory", results=[{"player_id": "p1"}]),
         make_ping(seq=6, ts=123.5),
         make_pong(seq=6, ts=123.5),
@@ -205,6 +208,21 @@ class CodecRoundTripTests(unittest.TestCase):
         # Defensive clamp on the receive path too.
         self.assertEqual(intent.move_x, 1.0)
         self.assertEqual(intent.move_y, 0.0)
+        # No claim fields -> None; a valid claim parses through.
+        self.assertIsNone(intent.px)
+        self.assertIsNone(intent.py)
+        claimed = message_from_dict(
+            make_intent(input_seq=4, move_x=0.0, move_y=0.0, px=8.25, py=3.5)
+        )
+        assert isinstance(claimed, IntentMessage)
+        self.assertEqual((claimed.px, claimed.py), (8.25, 3.5))
+        hostile_claim = message_from_dict(
+            {"t": "intent", "input_seq": 5, "player_id": "p2", "move_x": 0.0,
+             "move_y": 0.0, "action": "", "target": None,
+             "px": "evil", "py": 1.0}
+        )
+        assert isinstance(hostile_claim, IntentMessage)
+        self.assertIsNone(hostile_claim.px)
 
         error = message_from_dict(
             make_error(code="bad_msg", msg="x", fatal=False)
@@ -348,6 +366,11 @@ class ValidationTests(unittest.TestCase):
              "action": "teleport_hack"},
             {"t": "intent", "input_seq": 1, "move_x": 0.0, "move_y": 0.0,
              "action": "", "target": 5},
+            # 4.7.6 predicted-position claims: both-or-neither, finite only.
+            {"t": "intent", "input_seq": 1, "move_x": 0.0, "move_y": 0.0,
+             "action": "", "px": 4.0},
+            {"t": "intent", "input_seq": 1, "move_x": 0.0, "move_y": 0.0,
+             "action": "", "px": float("nan"), "py": 2.0},
             {"t": "run_ended", "outcome": 3},
             {"t": "ping", "seq": 1, "ts": float("nan")},
         ]

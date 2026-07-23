@@ -32,7 +32,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .protocol import clamp_unit, sanitize_player_name
+from .protocol import clamp_unit, is_finite_number, sanitize_player_name
 
 __all__ = [
     "NetMessage",
@@ -134,6 +134,9 @@ class IntentMessage(NetMessage):
     move_y: float
     action: str
     target: str | None
+    # 4.7.6: optional predicted-position claim carried by movement intents.
+    px: float | None = None
+    py: float | None = None
 
 
 @dataclass(frozen=True)
@@ -259,6 +262,9 @@ def message_from_dict(data: dict[str, Any]) -> NetMessage:
             )
         if message_type == "intent":
             target = data.get("target")
+            claim_x = data.get("px")
+            claim_y = data.get("py")
+            claim_ok = is_finite_number(claim_x) and is_finite_number(claim_y)
             return IntentMessage(
                 input_seq=int(data.get("input_seq", 0)),
                 player_id=_ident(data.get("player_id", "")),
@@ -266,6 +272,8 @@ def message_from_dict(data: dict[str, Any]) -> NetMessage:
                 move_y=clamp_unit(data.get("move_y", 0.0)),
                 action=_ident(data.get("action", "")),
                 target=_ident(target) if isinstance(target, str) else None,
+                px=float(claim_x) if claim_ok else None,
+                py=float(claim_y) if claim_ok else None,
             )
         if message_type == "run_ended":
             results = data.get("results", [])

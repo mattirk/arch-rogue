@@ -172,6 +172,15 @@ class MpSession:
     intent_move_at: float = 0.0
     intent_last_seq: int = 0
     intent_actions: deque = field(default_factory=deque)
+    # Host-side latest joiner predicted-position claim (4.7.6): the remote
+    # actor settles onto it when its movement vector is zero, so the joiner's
+    # predicted stop and the authoritative stop agree instead of the joiner
+    # sliding to a latency-overshot rest position.
+    intent_claim: tuple[float, float] | None = None
+    intent_claim_at: float = 0.0
+    claim_suppressed_until: float = 0.0
+    # Joiner-side last transmitted movement vector for edge-triggered sends.
+    last_move_vector: tuple[float, float] = (0.0, 0.0)
 
 
 class NetMixin:
@@ -362,24 +371,33 @@ class NetMixin:
                 session.next_snapshot_at = now + _SNAPSHOT_INTERVAL
                 self._mp_send_snapshot()
         elif session.role == ROLE_JOIN:
-            if (
-                now >= session.next_intent_at
-                and self.state == "playing"
-                and not session.awaiting_floor
-            ):
-                session.next_intent_at = now + _INTENT_INTERVAL
+            if self.state == "playing" and not session.awaiting_floor:
                 local = self.local_player()
                 if local is not None and local.hp > 0:
                     move_x, move_y = self._mp_local_move_vector()
-                    session.input_seq += 1
-                    client.send_message(
-                        make_intent(
-                            input_seq=session.input_seq,
-                            move_x=move_x,
-                            move_y=move_y,
-                        ),
-                        coalesce_key=COALESCE_MOVE_INTENT,
-                    )
+                    # Starting and (especially) stopping transmit on the same
+                    # frame instead of waiting out the 20 Hz slot: every
+                    # milliseconds of stop latency becomes host-side overshoot
+                    # the joiner would then have to slide onto.
+                    was_moving = session.last_move_vector != (0.0, 0.0)
+                    is_moving = (move_x, move_y) != (0.0, 0.0)
+                    if now >= session.next_intent_at or was_moving != is_moving:
+                        session.next_intent_at = now + _INTENT_INTERVAL
+                        session.last_move_vector = (move_x, move_y)
+                        claim_x = claim_y = None
+                        if self.mp_predicts_local_movement():
+                            claim_x, claim_y = local.x, local.y
+                        session.input_seq += 1
+                        client.send_message(
+                            make_intent(
+                                input_seq=session.input_seq,
+                                move_x=move_x,
+                                move_y=move_y,
+                                px=claim_x,
+                                py=claim_y,
+                            ),
+                            coalesce_key=COALESCE_MOVE_INTENT,
+                        )
 
     def _mp_send_snapshot(self) -> None:
         session = self.mp_session
@@ -896,6 +914,9 @@ class NetMixin:
         else:
             session.intent_move = (message.move_x, message.move_y)
             session.intent_move_at = now
+            if message.px is not None and message.py is not None:
+                session.intent_claim = (message.px, message.py)
+                session.intent_claim_at = now
 
     # -- run lifecycle -------------------------------------------------------
 
@@ -1355,6 +1376,8 @@ class NetMixin:
                     )
             if self.enemy_in_melee_arc():
                 self.player_melee_attack()
+        else:
+            self._mp_settle_remote_on_claim(remote, dt, move_speed)
         remote.melee_timer = max(0.0, remote.melee_timer - dt)
         remote.bolt_timer = max(0.0, remote.bolt_timer - dt)
         remote.dash_timer = max(0.0, remote.dash_timer - dt)
@@ -1410,6 +1433,44 @@ class NetMixin:
             remote.action_elapsed = 0.0
             remote.action_duration = 0.0
 
+    def _mp_settle_remote_on_claim(
+        self, remote: Player, dt: float, move_speed: float
+    ) -> None:
+        """Walk the resting remote actor onto the joiner's predicted stop.
+
+        The host keeps integrating the last movement vector until the zero
+        intent arrives, so its rest position overshoots the joiner's predicted
+        stop by ~latency x speed — which the joiner then rendered as an
+        uncomfortable slide. The claim is followed only while the intent
+        vector is zero, only within one tile (a dashed/teleported actor
+        ignores stale claims until the joiner re-converges), at legal walk
+        speed, and through the same collision code as any movement — so a
+        modified client gains nothing over ordinary walking.
+        """
+
+        session = self.mp_session
+        if session is None or session.intent_claim is None:
+            return
+        now = time.monotonic()
+        if now < session.claim_suppressed_until:
+            return
+        if now - session.intent_claim_at > 1.0:
+            return
+        from ..combat._utils import PLAYER_MOVE_SPEED
+
+        claim_x, claim_y = session.intent_claim
+        dx = claim_x - remote.x
+        dy = claim_y - remote.y
+        distance = math.hypot(dx, dy)
+        if distance <= 0.02 or distance > 1.0:
+            return
+        step = min(distance, move_speed * dt)
+        moved = self.move_actor(
+            remote, (dx / distance) * step, (dy / distance) * step
+        )
+        if moved > 0.0 and dt > 0.0:
+            remote.locomotion_anim_scale = moved / (dt * PLAYER_MOVE_SPEED)
+
     def _mp_dispatch_remote_action(
         self, action: str, target: str | None
     ) -> None:
@@ -1421,6 +1482,12 @@ class NetMixin:
             self.player_cast_class_skill()
         elif action == "dash":
             self.player_dash()
+            # In-flight claims predate the dash; let the joiner snap to the
+            # dashed position before position claims are honored again.
+            session = self.mp_session
+            if session is not None:
+                session.claim_suppressed_until = time.monotonic() + 0.6
+                session.intent_claim = None
         elif action == "potion_hp":
             self.use_first_potion()
         elif action == "potion_mana":

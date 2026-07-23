@@ -1,6 +1,6 @@
 # Arch Rogue Multiplayer — Player Guide, Operations, and Protocol Specification
 
-Applies to game release **4.7.5** (wire protocol version **1**). Covers the
+Applies to game release **4.7.6** (wire protocol version **1**). Covers the
 player-facing co-op flow, running the relay server, the client/server
 architecture, and the complete technical specification of the wire protocol.
 
@@ -255,10 +255,17 @@ between snapshots; collision damage remains exclusively host business.
 
 At 20 Hz the joiner samples movement (keyboard / controller / touch / mouse
 hold-to-walk) into a unit-clamped vector and sends a move intent (coalesced —
-only the newest queued vector survives). One-shot actions (attack, dash,
-potion, interact, slot use, discipline choice) are sent immediately and never
-coalesced; each carries the aim vector in `move_x/move_y`. The host times out
-stale movement 0.6 s after the last intent so a silent joiner stops walking.
+only the newest queued vector survives). Starting or stopping movement sends
+the intent on the same frame instead of waiting out the 20 Hz slot (4.7.6),
+and while the joiner predicts its own movement each move intent also carries
+the predicted position (`px`/`py`): when the remote actor's vector is zero
+the host settles it onto a fresh claim — bounded to one tile, at legal walk
+speed, through normal collision, suppressed briefly after a dash — so the
+authoritative stop matches the joiner's predicted stop instead of a
+latency-overshot point. One-shot actions (attack, dash, potion, interact,
+slot use, discipline choice) are sent immediately and never coalesced; each
+carries the aim vector in `move_x/move_y`. The host times out stale movement
+0.6 s after the last intent so a silent joiner stops walking.
 
 ---
 
@@ -296,7 +303,7 @@ stale movement 0.6 s after the last intent so a silent joiner stops walking.
 - `protocol_version` (integer, currently **1**) is carried in `hello`. A
   mismatch is rejected fatally with `bad_version` before any pairing.
 - `content_revision` (string; the game sends its release version, e.g.
-  `"4.7.5"`) is fixed by the host at room creation; a joiner with a
+  `"4.7.6"`) is fixed by the host at room creation; a joiner with a
   different revision is rejected with `bad_revision`. This intentionally
   fences off cross-version pairs even within one protocol version.
 - Additive message types (e.g. `kick`, added in 4.7.0) do not bump
@@ -485,7 +492,7 @@ envelope fields it needs).
 | `kick` | `seq` | host | Turn away the lobby joiner. Pre-start only. |
 | `floor` | `floor_revision` (non-neg int), `depth` (pos int), `floor_seed` (non-neg int), `state` (object) | host | Relayed. Retained (latest) for rejoin replay. |
 | `snapshot` | `floor_revision`, `tick` (non-neg ints), `state` (object) | host | Relayed with snapshot coalescing. Retained (latest). |
-| `intent` | `input_seq` (non-neg int), `move_x`, `move_y` (finite, clamped to [-1, 1]), `action` (enum, may be `""`), `target`? (str\|null) | joiner | Relayed to the host stamped with the sender's `player_id`; the server re-clamps `move_x`/`move_y` on relay. |
+| `intent` | `input_seq` (non-neg int), `move_x`, `move_y` (finite, clamped to [-1, 1]), `action` (enum, may be `""`), `target`? (str\|null), `px`?/`py`? (finite floats, both-or-neither; 4.7.6 predicted-position claim on movement intents) | joiner | Relayed to the host stamped with the sender's `player_id`; the server re-clamps `move_x`/`move_y` on relay (`px`/`py` pass through and are bounds/collision-validated host-side). |
 | `run_ended` | `outcome` (str), `results` (list of objects) | host | Relayed. Result entries: `player_id`, `name`, `class_name`, `level`, `alive`. |
 | `ping` | `seq`, `ts` (float, sender-local monotonic) | both | Server answers `pong` echoing both. |
 | `bye` | — | both | Graceful leave. No reconnect grace. Partner gets `partner_left`. |

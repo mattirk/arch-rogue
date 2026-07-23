@@ -29,8 +29,10 @@ These tests pin the fixed replication paths plus the joiner-side movement
 prediction and the removal of the per-tile-patch cache rebuild.
 """
 
+import math
 import os
 import tempfile
+import time
 import types
 import unittest
 from pathlib import Path
@@ -323,7 +325,8 @@ class JoinerPredictionTests(unittest.TestCase):
             game.mp_partner_pause_reason = ""
             self.assertTrue(game.mp_predicts_local_movement())
             x, y = game.player.x, game.player.y
-            # Small divergence eases 25% toward authority, no lerp target.
+            # Small divergence while walking eases 25%, no lerp target.
+            game.player.moving = True
             sync.apply_player_fast(game, game.player, {"x": x + 0.4, "y": y})
             self.assertAlmostEqual(game.player.x, x + 0.1, places=5)
             self.assertIsNone(game.player.net_x)
@@ -339,6 +342,143 @@ class JoinerPredictionTests(unittest.TestCase):
             hp = game.player.hp
             sync.apply_player_fast(game, game.player, {"hp": hp - 5})
             self.assertGreater(game.screen_flash_ttl, 0.0)
+
+    def test_idle_reconcile_has_deadband_and_gentle_ease(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = _make_playing_game(tmpdir)
+            _bind_joiner(game)
+            game.state = "playing"
+            game.mp_partner_pause_reason = ""
+            self.assertTrue(game.mp_predicts_local_movement())
+            x, y = game.player.x, game.player.y
+            # Standing still: sub-0.2-tile authority overshoot is ignored.
+            game.player.moving = False
+            sync.apply_player_fast(game, game.player, {"x": x + 0.15, "y": y})
+            self.assertEqual(game.player.x, x)
+            # Larger idle divergence eases at 10%, not the moving 25%.
+            sync.apply_player_fast(game, game.player, {"x": x + 0.5, "y": y})
+            self.assertAlmostEqual(game.player.x, x + 0.05, places=5)
+            # While moving, the original 25% correction still applies.
+            game.player.x = x
+            game.player.moving = True
+            sync.apply_player_fast(game, game.player, {"x": x + 0.4, "y": y})
+            self.assertAlmostEqual(game.player.x, x + 0.1, places=5)
+
+
+class IntentEdgeSendTests(unittest.TestCase):
+    """Start/stop transitions transmit immediately, with position claims."""
+
+    def _joiner_with_stub_client(self, tmpdir: str):
+        game = _make_playing_game(tmpdir)
+        session = _bind_joiner(game)
+        game.state = "playing"
+        game.mp_partner_pause_reason = ""
+        sent: list[dict] = []
+        game.mp_client = types.SimpleNamespace(
+            send_message=lambda message, **kwargs: sent.append(message)
+        )
+        return game, session, sent
+
+    def test_stop_edge_sends_without_waiting_for_the_slot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game, session, sent = self._joiner_with_stub_client(tmpdir)
+            game._mp_local_move_vector = lambda: (1.0, 0.0)
+            game._mp_send_periodic(100.0)
+            intents = [m for m in sent if m.get("t") == "intent"]
+            self.assertEqual(len(intents), 1)
+            self.assertEqual(intents[0]["move_x"], 1.0)
+            self.assertIn("px", intents[0])  # predicted-position claim rides along
+
+            # Release 1 ms later: the slot is not due, the edge still sends.
+            game._mp_local_move_vector = lambda: (0.0, 0.0)
+            game._mp_send_periodic(100.001)
+            intents = [m for m in sent if m.get("t") == "intent"]
+            self.assertEqual(len(intents), 2)
+            self.assertEqual(intents[1]["move_x"], 0.0)
+            self.assertIn("px", intents[1])
+
+            # Still idle, still before the slot: nothing new to say.
+            game._mp_send_periodic(100.002)
+            intents = [m for m in sent if m.get("t") == "intent"]
+            self.assertEqual(len(intents), 2)
+            game.mp_client = None
+
+    def test_claims_pause_with_prediction(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game, session, sent = self._joiner_with_stub_client(tmpdir)
+            game.mp_partner_pause_reason = "story"  # host paused: no prediction
+            game._mp_local_move_vector = lambda: (1.0, 0.0)
+            game._mp_send_periodic(100.0)
+            intents = [m for m in sent if m.get("t") == "intent"]
+            self.assertEqual(len(intents), 1)
+            self.assertNotIn("px", intents[0])
+            game.mp_client = None
+
+
+class HostClaimSettleTests(unittest.TestCase):
+    """The host walks a resting remote actor onto the joiner's claimed stop."""
+
+    def _host_with_remote(self, tmpdir: str):
+        game = _make_playing_game(tmpdir)
+        session = _bind_host(game)
+        remote = sync.build_player_from_full(
+            game,
+            {"player_id": "p2", "x": game.player.x, "y": game.player.y},
+        )
+        game.players.append(remote)
+        session.partner_player_id = "p2"
+        session.intent_move = (0.0, 0.0)
+        session.intent_move_at = time.monotonic()
+        return game, session, remote
+
+    def _free_claim(self, game, remote, distance: float):
+        for dx, dy in ((-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)):
+            if all(
+                not game.dungeon.blocked_for_radius(
+                    remote.x + dx * step, remote.y + dy * step, 0.27,
+                    block_stairs=True,
+                )
+                for step in (0.3, distance)
+            ):
+                return remote.x + dx * distance, remote.y + dy * distance
+        raise AssertionError("no free direction near spawn")
+
+    def test_fresh_claim_settles_the_actor_at_walk_speed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game, session, remote = self._host_with_remote(tmpdir)
+            claim = self._free_claim(game, remote, 0.4)
+            session.intent_claim = claim
+            session.intent_claim_at = time.monotonic()
+            start = (remote.x, remote.y)
+            game.mp_apply_remote_intents(1 / 60)
+            first_step = math.hypot(remote.x - start[0], remote.y - start[1])
+            self.assertGreater(first_step, 0.0)
+            self.assertLess(first_step, 0.08)  # capped at legal walk speed
+            for _ in range(60):
+                game.mp_apply_remote_intents(1 / 60)
+            self.assertLess(
+                math.hypot(remote.x - claim[0], remote.y - claim[1]), 0.05
+            )
+
+    def test_far_stale_and_suppressed_claims_are_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game, session, remote = self._host_with_remote(tmpdir)
+            start = (remote.x, remote.y)
+            # Beyond the one-tile bound (dash/teleport recovery window).
+            session.intent_claim = (remote.x + 3.0, remote.y)
+            session.intent_claim_at = time.monotonic()
+            game.mp_apply_remote_intents(1 / 60)
+            self.assertEqual((remote.x, remote.y), start)
+            # Stale claim.
+            session.intent_claim = self._free_claim(game, remote, 0.4)
+            session.intent_claim_at = time.monotonic() - 2.0
+            game.mp_apply_remote_intents(1 / 60)
+            self.assertEqual((remote.x, remote.y), start)
+            # Fresh but suppressed (post-dash window).
+            session.intent_claim_at = time.monotonic()
+            session.claim_suppressed_until = time.monotonic() + 1.0
+            game.mp_apply_remote_intents(1 / 60)
+            self.assertEqual((remote.x, remote.y), start)
 
 
 if __name__ == "__main__":
