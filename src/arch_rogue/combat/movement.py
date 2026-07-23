@@ -131,6 +131,12 @@ class _MovementCombatMixin:
         # keeps authored footsteps synchronized when simulation speed changes
         # without making naturally slow enemy archetypes freeze between frames.
         for actor in self.active_players():
+            # Death visuals: a fallen actor accrues time on its one-shot "die"
+            # clip (then the looping "dead" idle) instead of walk cadence.
+            if actor.hp <= 0:
+                actor.death_anim_time += dt
+                continue
+            actor.death_anim_time = 0.0
             if actor.moving:
                 speed = min(
                     WALK_ANIM_SPEED_CEIL,

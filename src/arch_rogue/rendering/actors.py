@@ -534,7 +534,17 @@ class RenderingActorMixin:
             or player.player_id == self.local_player_id
         )
 
+    def player_death_clip_seconds(self, player: Player) -> float:
+        seconds = self.sprites.actor_clip_seconds(player.class_name, "die")
+        return seconds if seconds else 1.0
+
     def player_visual_state(self, player: Player) -> str:
+        if player.hp <= 0:
+            # Death trumps every other pose, including the killing blow's
+            # hit flash: the one-shot "die" clip, then the corpse idle.
+            if player.death_anim_time < self.player_death_clip_seconds(player):
+                return "die"
+            return "dead"
         if self._player_is_local(player):
             if getattr(self, "player_hit_flash", 0.0) > 0.0:
                 return "hit"
@@ -757,6 +767,18 @@ class RenderingActorMixin:
             hit_ttl = max(0.0, hit_flash_ttl)
             action_duration = max(0.01, hit_flash_duration or hit_ttl)
             action_elapsed = max(0.0, action_duration - hit_ttl)
+        elif state in ("die", "dead"):
+            # Clip time comes straight from the death timer (the "dead" loop
+            # starts where the one-shot "die" clip ended); frame stepping is
+            # driven by the manifest fps, so no progress override is needed.
+            die_seconds = self.player_death_clip_seconds(player)
+            action_elapsed = (
+                player.death_anim_time
+                if state == "die"
+                else max(0.0, player.death_anim_time - die_seconds)
+            )
+            action_duration = 0.0
+            hit_flash_ttl = 0.0
         action_progress = (
             max(0.0, min(1.0, action_elapsed / action_duration))
             if action_duration > 0.0
@@ -822,6 +844,8 @@ class RenderingActorMixin:
             )
 
     def draw_aim_cone(self) -> None:
+        if self.player.hp <= 0:
+            return
         sx, sy = self.world_to_screen(self.player.x, self.player.y)
         raw_vx, raw_vy = self.iso_screen_direction(
             self.player.facing_x, self.player.facing_y

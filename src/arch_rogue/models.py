@@ -931,6 +931,9 @@ class Player:
     gold: int = 40
     # Runtime-only multiplier for analog/equipment/status-adjusted walk cadence.
     locomotion_anim_scale: float = field(default=1.0, repr=False, compare=False)
+    # Transient seconds since this actor's HP reached zero; drives the one-shot
+    # "die" clip and the looping "dead" corpse idle. Never serialized.
+    death_anim_time: float = field(default=0.0, repr=False, compare=False)
     # Last rendered authored-sprite direction; transient hysteresis anchor.
     sprite_direction: str = field(default="", repr=False, compare=False)
     # 4.6 multiplayer identity, appended last to preserve positional calls.

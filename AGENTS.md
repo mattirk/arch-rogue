@@ -316,9 +316,13 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 ### 4.7 Post multiplayer & beyond
 
 - We need dying/death animations (single direction) also dead/idle (single direction, very small movement) and for all archetypes
+- Maybe try to make guest player experience still more smooth. It's quite ok with 2 desktops (Linux / MAC), but the lag is still noticeable on guest computer. 
+  - Especially noticable lag when quickly turning north/south e.g opposite directions
+  - Are clients able to run multiple threads / processes to handle network and game logic concurrently?
 
 ### Backlog
 
+- Make action skill 1 "a big hit" for all characters (normal hit stays as it is when walking towards enemies, maybe lower it's effectiveness a bit). The hit throws one enemy 4+ tiles away and has long cooldown. Each archetype has unique type of "bit hit" attach (needs to be designed)
 - Maybe add cryptographic randomness in seed (maps, runs, multiplayer) generation
 - Make it so that on Hell difficulty dungeon levels dont end but become progressively harder the deeper you go. 
   - Make settings menu item red & grim when hell is selected.
@@ -345,6 +349,13 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 - row.png sprites are stretched in couple of places e.g Archetype selection screen. let's try to fix this, maybe not scale/stretch at all? or maybe not by much (max 1.5x - 2.0x)
 - If other player is dead and the other clears dungeon level on multiplayer, the previously killed player should respawn on the start of next level
 - In desktop multiplayer, screen "Enter your partners code", make text input text centered in the input field
+- There is still some room to improve feel of multiplayer at least when Android / mobile is other participant
+- Set android build folders as cached in GH CI/CD so we get fast build times
+- Add server deployment to GitHub Actions
+  - There is runner (user will give name)
+  - There are environment variables PORT and SERVER, use as startup parameters for server deployment
+  - Figure out a way to automate server deployment, simple startup script or systemd?
+- On desktop multiplayer, character (or aimcone) is not turning to the mouse cursor direction. Character turns when moving, but not when looking at the cursor. Make a fix that works well and is efficient in mp context.
 
 ### Bottom-of-the-Barrel
 

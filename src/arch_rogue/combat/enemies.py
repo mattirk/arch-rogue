@@ -119,11 +119,16 @@ class _EnemiesCombatMixin:
         # 4.6 co-op: enemies target the nearest living player, breaking
         # equal-distance ties by stable player id. Single-player keeps the
         # zero-allocation fast path (the tuple below is the lone player).
-        players = self.living_players() or self.active_players()
+        living = self.living_players()
+        players = living or self.active_players()
         single_target = players[0] if len(players) == 1 else None
         for enemy in self.enemies:
             enemy.moving = False
             enemy.locomotion_anim_scale = 0.0
+            if not living:
+                # Every descender has fallen: the pack stands down while the
+                # death clip plays out instead of pounding the corpse.
+                continue
             locomotion_scale = enemy.pending_locomotion_scale
             animation_scale = enemy.pending_locomotion_anim_scale
             if locomotion_scale is None or animation_scale is None:

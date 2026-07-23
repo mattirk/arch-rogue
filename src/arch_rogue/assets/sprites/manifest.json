@@ -301,6 +301,34 @@
           },
           "fps": 9.0,
           "loop": true
+        },
+        "die": {
+          "fps": 8.0,
+          "loop": false,
+          "directions": {
+            "south": [
+              "actors/acolyte/animations/die/south/frame_000.png",
+              "actors/acolyte/animations/die/south/frame_001.png",
+              "actors/acolyte/animations/die/south/frame_002.png",
+              "actors/acolyte/animations/die/south/frame_003.png",
+              "actors/acolyte/animations/die/south/frame_004.png",
+              "actors/acolyte/animations/die/south/frame_005.png",
+              "actors/acolyte/animations/die/south/frame_006.png"
+            ]
+          }
+        },
+        "dead": {
+          "fps": 3.0,
+          "loop": true,
+          "directions": {
+            "south": [
+              "actors/acolyte/animations/dead/south/frame_000.png",
+              "actors/acolyte/animations/dead/south/frame_001.png",
+              "actors/acolyte/animations/dead/south/frame_002.png",
+              "actors/acolyte/animations/dead/south/frame_003.png",
+              "actors/acolyte/animations/dead/south/frame_004.png"
+            ]
+          }
         }
       },
       "name": "Acolyte",
@@ -631,6 +659,34 @@
           },
           "fps": 9.0,
           "loop": true
+        },
+        "die": {
+          "fps": 8.0,
+          "loop": false,
+          "directions": {
+            "south": [
+              "actors/arcanist/animations/die/south/frame_000.png",
+              "actors/arcanist/animations/die/south/frame_001.png",
+              "actors/arcanist/animations/die/south/frame_002.png",
+              "actors/arcanist/animations/die/south/frame_003.png",
+              "actors/arcanist/animations/die/south/frame_004.png",
+              "actors/arcanist/animations/die/south/frame_005.png",
+              "actors/arcanist/animations/die/south/frame_006.png"
+            ]
+          }
+        },
+        "dead": {
+          "fps": 3.0,
+          "loop": true,
+          "directions": {
+            "south": [
+              "actors/arcanist/animations/dead/south/frame_000.png",
+              "actors/arcanist/animations/dead/south/frame_001.png",
+              "actors/arcanist/animations/dead/south/frame_002.png",
+              "actors/arcanist/animations/dead/south/frame_003.png",
+              "actors/arcanist/animations/dead/south/frame_004.png"
+            ]
+          }
         }
       },
       "name": "Arcanist",
@@ -3688,6 +3744,35 @@
           },
           "fps": 9.0,
           "loop": true
+        },
+        "die": {
+          "fps": 8.0,
+          "loop": false,
+          "directions": {
+            "south": [
+              "actors/ranger/animations/die/south/frame_000.png",
+              "actors/ranger/animations/die/south/frame_001.png",
+              "actors/ranger/animations/die/south/frame_002.png",
+              "actors/ranger/animations/die/south/frame_003.png",
+              "actors/ranger/animations/die/south/frame_004.png",
+              "actors/ranger/animations/die/south/frame_005.png",
+              "actors/ranger/animations/die/south/frame_006.png",
+              "actors/ranger/animations/die/south/frame_007.png"
+            ]
+          }
+        },
+        "dead": {
+          "fps": 3.0,
+          "loop": true,
+          "directions": {
+            "south": [
+              "actors/ranger/animations/dead/south/frame_000.png",
+              "actors/ranger/animations/dead/south/frame_001.png",
+              "actors/ranger/animations/dead/south/frame_002.png",
+              "actors/ranger/animations/dead/south/frame_003.png",
+              "actors/ranger/animations/dead/south/frame_004.png"
+            ]
+          }
         }
       },
       "name": "Ranger",
@@ -4167,6 +4252,34 @@
           },
           "fps": 9.0,
           "loop": true
+        },
+        "die": {
+          "fps": 8.0,
+          "loop": false,
+          "directions": {
+            "south": [
+              "actors/rogue/animations/die/south/frame_000.png",
+              "actors/rogue/animations/die/south/frame_001.png",
+              "actors/rogue/animations/die/south/frame_002.png",
+              "actors/rogue/animations/die/south/frame_003.png",
+              "actors/rogue/animations/die/south/frame_004.png",
+              "actors/rogue/animations/die/south/frame_005.png",
+              "actors/rogue/animations/die/south/frame_006.png"
+            ]
+          }
+        },
+        "dead": {
+          "fps": 3.0,
+          "loop": true,
+          "directions": {
+            "south": [
+              "actors/rogue/animations/dead/south/frame_000.png",
+              "actors/rogue/animations/dead/south/frame_001.png",
+              "actors/rogue/animations/dead/south/frame_002.png",
+              "actors/rogue/animations/dead/south/frame_003.png",
+              "actors/rogue/animations/dead/south/frame_004.png"
+            ]
+          }
         }
       },
       "name": "Rogue",
@@ -5632,6 +5745,36 @@
           },
           "fps": 9.0,
           "loop": true
+        },
+        "die": {
+          "fps": 8.0,
+          "loop": false,
+          "directions": {
+            "south": [
+              "actors/warden/animations/die/south/frame_000.png",
+              "actors/warden/animations/die/south/frame_001.png",
+              "actors/warden/animations/die/south/frame_002.png",
+              "actors/warden/animations/die/south/frame_003.png",
+              "actors/warden/animations/die/south/frame_004.png",
+              "actors/warden/animations/die/south/frame_005.png",
+              "actors/warden/animations/die/south/frame_006.png"
+            ]
+          }
+        },
+        "dead": {
+          "fps": 3.0,
+          "loop": true,
+          "directions": {
+            "south": [
+              "actors/warden/animations/dead/south/frame_000.png",
+              "actors/warden/animations/dead/south/frame_001.png",
+              "actors/warden/animations/dead/south/frame_002.png",
+              "actors/warden/animations/dead/south/frame_003.png",
+              "actors/warden/animations/dead/south/frame_004.png",
+              "actors/warden/animations/dead/south/frame_005.png",
+              "actors/warden/animations/dead/south/frame_006.png"
+            ]
+          }
         }
       },
       "name": "Warden",

@@ -51,9 +51,9 @@ DIRECTIONS = (
     "west",
     "south-west",
 )
-_ACTION_STATES = frozenset(("attack", "cast", "hit", "dash", "pet"))
+_ACTION_STATES = frozenset(("attack", "cast", "hit", "dash", "pet", "die", "dead"))
 _SUPPORTED_ACTOR_STATES = frozenset(
-    ("idle", "walk", "dance", "attack", "cast", "pet", "act")
+    ("idle", "walk", "dance", "attack", "cast", "pet", "act", "die", "dead")
 )
 GOLD_STACK_ASSET_KEYS = (
     "gold_stack",
@@ -484,6 +484,17 @@ class AssetSpriteLibrary:
             by_direction = clip.get("directions", {})
             frame_paths = by_direction.get(direction)
             used_direction = direction
+            if not frame_paths and by_direction and clip_name in ("die", "dead"):
+                # Death clips are authored single-direction by design: play
+                # them for every facing rather than dropping to a static
+                # rotation frame. Other partial clips keep the matching
+                # rotation fallback so e.g. an east walk never shows the
+                # south-facing frames.
+                fallback = "south" if "south" in by_direction else next(
+                    iter(by_direction)
+                )
+                frame_paths = by_direction.get(fallback)
+                used_direction = fallback
             if frame_paths:
                 fps = max(0.1, float(clip.get("fps", 6.0)))
                 looping = bool(clip.get("loop", True))
@@ -546,6 +557,31 @@ class AssetSpriteLibrary:
         if frame is not None:
             self._resolved_actor_cache.put(identity, frame_cache_key)
         return frame
+
+    def actor_clip_seconds(
+        self, name: str, state: str, *, kind: str = ""
+    ) -> float | None:
+        """Duration in seconds of an authored actor clip, or None if absent."""
+
+        if not self.available:
+            return None
+        slug = self._actor_slug(name, kind)
+        if slug is None:
+            return None
+        entry = self.manifest["actors"].get(slug)
+        if not isinstance(entry, dict):
+            return None
+        clip = entry.get("clips", {}).get(state)
+        if not isinstance(clip, dict):
+            return None
+        by_direction = clip.get("directions", {})
+        frames = max(
+            (len(paths) for paths in by_direction.values() if paths), default=0
+        )
+        if frames <= 0:
+            return None
+        fps = max(0.1, float(clip.get("fps", 6.0)))
+        return frames / fps
 
     def resolve_item(self, slot: str) -> ResolvedSpriteFrame | None:
         if not self.available:
@@ -903,6 +939,13 @@ class SpriteAtlas:
             clip_progress=clip_progress,
             loop_progress=loop_progress,
         )
+
+    def actor_clip_seconds(
+        self, name: str, state: str, *, kind: str = ""
+    ) -> float | None:
+        if not self.modern_graphics_active:
+            return None
+        return self.assets.actor_clip_seconds(name, state, kind=kind)
 
     def player_visual(
         self,

@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.7.7 — Descenders die on screen
+
+Release 4.7.7 gives every player archetype an authored death: a one-shot falling "die" clip followed by a looping "dead" corpse idle with only a faint settling motion. Death is no longer an instant cut to the summary screen — the fall plays out, the corpse rests a beat, and only then does the run end.
+
+### Added
+
+- **Death animations for all five archetypes** (Warden, Rogue, Arcanist, Acolyte, Ranger): PixelLab-authored single-direction `die` (7–8 frames, 8 fps, non-looping) and `dead` (5 frames, 3 fps, looping) clips under `actors/<slug>/animations/{die,dead}/south/`. Death clips are authored south-only by design; the sprite resolver replays them for every facing instead of dropping to a static rotation frame (other partial clips keep the matching-rotation fallback).
+- **Death sequence pacing**: when HP reaches zero the death jingle fires once, music stops, ambush bells clear, and the actor plays `die` then rests on the `dead` loop; the run-summary overlay is held until the clip plus a 0.9 s beat has passed — in solo and in co-op, where the host waits for the last fallen descender's clip before announcing the run's end. A fallen player is a corpse: no movement, actions, regen, or aim cone.
+- **Enemies stand down over the tableau**: once no descender is alive the pack stops moving and attacking instead of pounding the corpse while the death clip plays.
+- `Player.death_anim_time` transient timer (never serialized) drives both clips locally on host and joiner; co-op partners derive the same visuals from their synced HP.
+
 ## 4.7.6 — The joiner stops where it stopped
 
 Release 4.7.6 removes the last visible seam in joiner movement: after releasing input the character no longer slides forward onto a latency-overshot rest position. The effect was strongest with an Android host, whose slower frames added to the overshoot. Because `content_revision` is the game version, 4.7.6 clients pair only with 4.7.6 clients (the relay itself needs no update — the new intent fields pass through older servers verbatim).

@@ -556,6 +556,10 @@ class Game(
         self.player_action_ttl = 0.0
         self.player_action_elapsed = 0.0
         self.player_action_duration = 0.0
+        # Set once when the local player's HP first reaches zero so the death
+        # jingle/music stop fire exactly once while the "die" clip plays out
+        # ahead of the run-summary overlay.
+        self.player_death_sequence_started = False
         # 4.2: garden-room passive healing glow. ``garden_heal_accumulator``
         # banks time until the next +HP tick while standing inside a garden
         # flavor room, and ``garden_heal_glow`` is a transient visual timer
@@ -707,6 +711,7 @@ class Game(
         self.player_action_ttl = 0.0
         self.player_action_elapsed = 0.0
         self.player_action_duration = 0.0
+        self.player_death_sequence_started = False
         # 4.2: garden healing glow is transient and clears with the rest of
         # the visual state on floor transitions / cutscenes / load.
         self.garden_heal_accumulator = 0.0
@@ -1556,7 +1561,9 @@ class Game(
             dt, remaining=time_skip_remaining
         )
         self.update_player_aim()
-        if not (self.mp_active and self.player.hp <= 0):
+        # A fallen player (solo or co-op) is a corpse playing its death clip:
+        # no movement, actions, or regen while the sequence runs.
+        if self.player.hp > 0:
             self.update_player(dt)
         self.mp_apply_remote_intents(dt)
         self.update_friendly_npcs(dt)
@@ -1590,21 +1597,39 @@ class Game(
             ):
                 if not self.run_stats.cause_of_death:
                     self.run_stats.cause_of_death = "unknown dungeon violence"
-                self.ambush_bells = []
-                self.finalize_run("death")
-                self.state = "dead"
-                self.audio.stop_music()
-                self.play_sfx("death")
-                self.mp_notify_run_ended("death")
+                self._begin_player_death_sequence()
+                # Hold the summary until the last fallen descender's death
+                # clip has played and the corpse has rested a beat.
+                if all(
+                    p.death_anim_time >= self._death_overlay_delay(p)
+                    for p in self.active_players()
+                ):
+                    self.finalize_run("death")
+                    self.state = "dead"
+                    self.mp_notify_run_ended("death")
         elif self.player.hp <= 0 and self.state == "playing":
             if not self.run_stats.cause_of_death:
                 self.run_stats.cause_of_death = "unknown dungeon violence"
-            self.ambush_bells = []
-            self.finalize_run("death")
-            self.state = "dead"
-            self.audio.stop_music()
-            self.play_sfx("death")
-            self.delete_save()
+            self._begin_player_death_sequence()
+            if self.player.death_anim_time >= self._death_overlay_delay(
+                self.player
+            ):
+                self.finalize_run("death")
+                self.state = "dead"
+                self.delete_save()
+
+    def _begin_player_death_sequence(self) -> None:
+        if self.player_death_sequence_started:
+            return
+        self.player_death_sequence_started = True
+        self.ambush_bells = []
+        self.audio.stop_music()
+        self.play_sfx("death")
+
+    def _death_overlay_delay(self, player: Player) -> float:
+        """Seconds after HP hits zero before the run-summary overlay appears."""
+
+        return self.player_death_clip_seconds(player) + 0.9
 
     def update_secrets(self) -> None:
         players = self.active_players()
