@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.7.1 — Mobile text entry that survives the soft keyboard
+
+Release 4.7.1 makes text editing usable on Android. The IME slides over the bottom of the screen with no reliable way to know its height, so every mobile text-entry session now renders a keyboard-safe panel pinned to a fixed spot at the top of the safe area — the field being edited stays visible for any keyboard height. The panel is modal and carries its own editing buttons, because some Android keyboards never deliver a backspace key event to SDL at all.
+
+### Added
+
+- **Keyboard-safe mobile entry panel**: player name, join code, and the Options server host/port all edit in one top-anchored panel (prompt, entry field with caret, help line) with **Del / Clear / Cancel / OK** touch buttons, so deleting text never depends on the IME. Tapping the field re-summons a soft keyboard the player dismissed with Android's system back; stray taps are consumed so menu rows dimmed under the veil cannot fire mid-typing; the top-left Back control keeps its role as session cancel. Desktop keeps the centered dialog and embedded mp_setup fields unchanged.
+- The shared text-input helper tracks the uncommitted **IME composition** (`TEXTEDITING`) so predictive keyboards show the word being typed — and deleted — before it commits, and accepts deletion delivered as a bare `\b` control character on an otherwise unmapped key.
+
+### Fixed
+
+- Mobile text boxes could sit underneath the soft keyboard (the centered Options host/port dialog, the mid-screen name/join fields), making editing nearly impossible; deletion silently failed when the IME withheld backspace key events or when the keyboard had been dismissed while the session stayed live.
+
 ## 4.7.0 — Sealed Descent: multiplayer TLS, host accept gate, and hardening
 
 Release 4.7.0 secures the 4.6 co-op transport and lobby. The client speaks TLS with full certificate verification by default, the bundled server can terminate TLS directly or sit behind an nginx stream proxy, and the host now explicitly admits or turns away whoever answers a run code. Because `content_revision` is the game version, 4.7.0 clients pair only with 4.7.0 clients.

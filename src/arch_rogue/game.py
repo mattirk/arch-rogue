@@ -1012,8 +1012,14 @@ class Game(
                         elif event.key == pygame.K_j:
                             self.mp_choose_role(False)
                     elif self.mp_setup_step == "host_code":
-                        if event.key in (pygame.K_RETURN, pygame.K_e):
-                            self.mp_begin_hosting()
+                        if event.key in (pygame.K_UP, pygame.K_DOWN):
+                            step = 1 if event.key == pygame.K_DOWN else -1
+                            self.mp_setup_host_cursor = (
+                                int(getattr(self, "mp_setup_host_cursor", 0))
+                                + step
+                            ) % 2
+                        elif event.key in (pygame.K_RETURN, pygame.K_e):
+                            self.mp_host_code_activate_selected()
                         elif event.key == pygame.K_r:
                             self.mp_regenerate_host_code()
                 elif self.state == "mp_lobby":
@@ -1023,18 +1029,23 @@ class Game(
                         self.mp_leave_lobby()
                     elif event.key == pygame.K_d:
                         self.mp_lobby_decline_partner()
-                    elif not ready and event.key in (pygame.K_RIGHT, pygame.K_DOWN):
+                    elif event.key in (pygame.K_UP, pygame.K_DOWN):
+                        step = 1 if event.key == pygame.K_DOWN else -1
+                        self.mp_lobby_cursor = (
+                            int(getattr(self, "mp_lobby_cursor", 0)) + step
+                        ) % 2
+                    elif not ready and event.key == pygame.K_RIGHT:
                         index = (
                             ARCHETYPES.index(self.selected_archetype) + 1
                         ) % len(ARCHETYPES)
                         self.selected_archetype = ARCHETYPES[index]
-                    elif not ready and event.key in (pygame.K_LEFT, pygame.K_UP):
+                    elif not ready and event.key == pygame.K_LEFT:
                         index = (
                             ARCHETYPES.index(self.selected_archetype) - 1
                         ) % len(ARCHETYPES)
                         self.selected_archetype = ARCHETYPES[index]
                     elif event.key in (pygame.K_RETURN, pygame.K_e):
-                        self.mp_lobby_confirm()
+                        self.mp_lobby_activate_selected()
                 elif self.state == "options":
                     if event.key == pygame.K_a:
                         self.options_cursor = self.OPTIONS_ROW_AUDIO
@@ -1332,6 +1343,24 @@ class Game(
                         self.drop_inventory_slot(index)
                     else:
                         self.use_inventory_slot(index)
+            elif (
+                event.type == pygame.MOUSEBUTTONDOWN
+                and not getattr(event, "touch", False)
+                and event.button == 1
+                and self.state == "mp_lobby"
+            ):
+                # Desktop mouse: the lobby archetype carousel's ‹ › handles
+                # are clickable, mirroring the mobile tap targets.
+                for direction, rect in getattr(
+                    self, "_mp_lobby_arch_arrows", ()
+                ):
+                    if rect.collidepoint(event.pos):
+                        index = (
+                            ARCHETYPES.index(self.selected_archetype)
+                            + direction
+                        ) % len(ARCHETYPES)
+                        self.selected_archetype = ARCHETYPES[index]
+                        break
             elif (
                 event.type == pygame.MOUSEBUTTONDOWN
                 and not getattr(event, "touch", False)

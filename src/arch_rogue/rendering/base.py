@@ -90,6 +90,7 @@ class RenderingBaseMixin:
             # per keystroke and blink its caret on the cached mobile menus.
             getattr(text_session, "target", ""),
             getattr(text_session, "value", ""),
+            getattr(text_session, "composition", ""),
             int(self.ui_elapsed * 2.0) if text_session is not None else -1,
             id(self.screen),
             self.screen.get_size(),
@@ -296,11 +297,12 @@ class RenderingBaseMixin:
             started = time.perf_counter()
             with self.mobile_full_render_target():
                 menu_draw()
-                # 4.6: modal entry panel for text edited from a non-mp screen
-                # (Options server host/port). mp_setup embeds its own field.
-                if (
-                    getattr(self, "text_input", None) is not None
-                    and self.state != "mp_setup"
+                # Modal entry panel for the live session. Desktop mp_setup
+                # embeds its own field; on mobile every session uses the
+                # keyboard-safe top panel so the soft keyboard rising from
+                # the bottom can never cover the field being edited.
+                if getattr(self, "text_input", None) is not None and (
+                    self.state != "mp_setup" or mobile
                 ):
                     self.draw_text_input_overlay()
             if performance is not None:

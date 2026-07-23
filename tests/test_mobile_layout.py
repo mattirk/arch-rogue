@@ -2140,6 +2140,31 @@ class MobileTouchTests(unittest.TestCase):
                 self.assertFalse(game.handle_mobile_tap((220, 250)))
             choose.assert_not_called()
 
+    def test_archetype_row_tap_selects_and_confirm_button_begins(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.state = "archetype_select"
+            game.selected_archetype = ARCHETYPES[0]
+            game._menu_row_rects = tuple(
+                pygame.Rect(180, 120 + index * 60, 400, 52)
+                for index in range(len(ARCHETYPES))
+            )
+            game._archetype_confirm_rect = pygame.Rect(520, 120, 56, 52)
+
+            # Tapping a row only moves the selection — it never starts a run,
+            # even when the row is already selected.
+            with patch.object(game, "restart") as restart:
+                self.assertTrue(game.handle_mobile_tap((300, 200)))
+                self.assertEqual(game.selected_archetype, ARCHETYPES[1])
+                self.assertTrue(game.handle_mobile_tap((300, 200)))
+                self.assertEqual(game.selected_archetype, ARCHETYPES[1])
+            restart.assert_not_called()
+
+            # The confirm button starts the run with the current selection.
+            with patch.object(game, "restart") as restart:
+                self.assertTrue(game.handle_mobile_tap((540, 140)))
+            restart.assert_called_once_with(ARCHETYPES[1])
+
     def test_story_intro_choice_and_choice_free_cutscene_are_tappable(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))

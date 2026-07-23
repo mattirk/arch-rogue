@@ -555,21 +555,8 @@ class UiLayoutTests(unittest.TestCase):
                     preview_rect = getattr(game, "_archetype_preview_rect")
                     skills_text = getattr(game, "_archetype_skills_text")
                     skills_font = getattr(game, "_archetype_skills_font")
-                    description_rect = getattr(game, "_archetype_description_rect")
-                    description_font = getattr(game, "_archetype_description_font")
-                    description_line_h = getattr(
-                        game, "_archetype_description_line_height"
-                    )
-                    description_lines = getattr(game, "_archetype_description_lines")
-                    required_description_h = (
-                        (len(description_lines) - 1) * description_line_h
-                        + description_font.get_height()
-                    )
                     self.assertLessEqual(
                         skills_font.size(skills_text)[0], preview_rect.width
-                    )
-                    self.assertGreaterEqual(
-                        description_rect.height, required_description_h
                     )
                     stat_text_layout = getattr(game, "_last_stat_card_text_layout")
                     self.assertEqual(len(stat_text_layout), 7)

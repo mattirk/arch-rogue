@@ -69,6 +69,21 @@ class UiAssetTests(unittest.TestCase):
             "hud.action.ranger.spirit_beast_angry",
         }
         self.assertEqual(len(action_icon_keys), 23)
+        code_glyph_keys = {
+            f"menu.glyph.code.{char}"
+            for char in "abcdefghijklmnopqrstuvwxyz0123456789"
+        }
+        sigil_keys = {
+            f"menu.glyph.sigil.{name}"
+            for name in (
+                "serpent", "hammer", "skull", "star", "cross", "flame",
+                "ember", "key", "map", "shield", "sword", "coin",
+                "rune_kenaz", "rune_othala", "rune_bind", "rune_ingwaz",
+                "claw", "rune_perth", "rune_branch", "sun", "moon",
+                "sunburst", "rune_berkano", "dragon", "phoenix",
+                "ouroboros", "clock", "infinity",
+            )
+        }
         expected = {
             "menu.background.title",
             "menu.glyph.multiplayer",
@@ -86,6 +101,7 @@ class UiAssetTests(unittest.TestCase):
             "menu.panel.compact",
             "menu.panel.inset",
             "menu.row",
+            "menu.row.selected",
             "hud.panel",
             "hud.dock",
             "hud.action_slot",
@@ -95,7 +111,13 @@ class UiAssetTests(unittest.TestCase):
             "hud.mobile.status_bar_frame",
             "hud.mobile.info_panel",
             "hud.mobile.back",
+            "menu.panel.mp_code",
+            "menu.panel.mp_seal",
+            "menu.panel.mp_carousel",
+            "menu.panel.mp_plain",
             *action_icon_keys,
+            *code_glyph_keys,
+            *sigil_keys,
         }
         self.assertEqual(set(library.manifest["assets"]), expected)
 
@@ -191,6 +213,7 @@ class UiAssetTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn('"assets/sprites/menus/*.png"', pyproject)
+        self.assertIn('"assets/sprites/menus/glyphs/*.png"', pyproject)
         self.assertIn('"assets/sprites/hud/*.png"', pyproject)
 
     def test_generated_brand_icons_preserve_the_diamond_silhouette(self) -> None:

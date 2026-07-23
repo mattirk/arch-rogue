@@ -1140,8 +1140,14 @@ class InputMixin:
                 self.mp_choose_role(self.mp_setup_role_cursor == 0)
                 return True
         elif step == "host_code":
+            if cmd in (Command.UP, Command.DOWN):
+                step_dir = 1 if cmd == Command.DOWN else -1
+                self.mp_setup_host_cursor = (
+                    int(getattr(self, "mp_setup_host_cursor", 0)) + step_dir
+                ) % 2
+                return True
             if cmd == Command.CONFIRM:
-                self.mp_begin_hosting()
+                self.mp_host_code_activate_selected()
                 return True
             if cmd in (Command.NEXT, Command.PREV, Command.TAB):
                 self.mp_regenerate_host_code()
@@ -1157,6 +1163,12 @@ class InputMixin:
     def _dispatch_mp_lobby(self, cmd: str) -> bool:
         session = getattr(self, "mp_session", None)
         ready = bool(session is not None and session.local_ready)
+        if cmd in (Command.UP, Command.DOWN):
+            step = 1 if cmd == Command.DOWN else -1
+            self.mp_lobby_cursor = (
+                int(getattr(self, "mp_lobby_cursor", 0)) + step
+            ) % 2
+            return True
         if cmd in (Command.LEFT, Command.PREV) and not ready:
             index = (ARCHETYPES.index(self.selected_archetype) - 1) % len(
                 ARCHETYPES
@@ -1170,8 +1182,7 @@ class InputMixin:
             self.selected_archetype = ARCHETYPES[index]
             return True
         if cmd == Command.CONFIRM:
-            # Admits a knocking partner first; otherwise readies up.
-            self.mp_lobby_confirm()
+            self.mp_lobby_activate_selected()
             return True
         return False
 

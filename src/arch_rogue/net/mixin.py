@@ -171,6 +171,8 @@ class NetMixin:
         self.mp_role = ""
         self.mp_setup_step = "name"  # name | role | host_code | join_code
         self.mp_setup_role_cursor = 0
+        self.mp_lobby_cursor = 0
+        self.mp_setup_host_cursor = 0
         self.mp_run_id = ""
         self.mp_join_code = ""
         self.mp_notice = ""
@@ -465,6 +467,11 @@ class NetMixin:
                 # A 4-rune code is a locator, not a secret: whoever knocks
                 # must be admitted explicitly before the descent can begin.
                 session.partner_pending_accept = True
+                # Enter must default to Admit while the knock stands.
+                self.mp_lobby_cursor = 0
+                # The "no partner yet" notice is obsolete the moment
+                # someone knocks.
+                self.mp_notice = ""
                 self.mp_status = (
                     f"{message.name or 'A nameless one'} knocks at the gate — "
                     "Enter admits them, D turns them away."
@@ -556,6 +563,7 @@ class NetMixin:
         # Fresh session: enter the lobby.
         session.phase = "lobby"
         self.state = "mp_lobby"
+        self.mp_lobby_cursor = 0
         self.mp_notice = ""
         self.mp_status = (
             "Share the code with your partner."
@@ -661,6 +669,30 @@ class NetMixin:
             return
         self.mp_lobby_send_ready()
 
+    def mp_lobby_activate_selected(self) -> None:
+        """Activate the lobby action row under ``mp_lobby_cursor``.
+
+        While a joiner knocks the rows are Admit / Turn away; otherwise
+        they are Bind-and-ready / Leave the lobby.
+        """
+
+        session = self.mp_session
+        cursor = int(getattr(self, "mp_lobby_cursor", 0)) % 2
+        if (
+            session is not None
+            and session.role == ROLE_HOST
+            and session.partner_pending_accept
+        ):
+            if cursor == 0:
+                self.mp_lobby_accept_partner()
+            else:
+                self.mp_lobby_decline_partner()
+            return
+        if cursor == 0:
+            self.mp_lobby_send_ready()
+        else:
+            self.mp_leave_lobby()
+
     def mp_lobby_accept_partner(self) -> None:
         """Host: admit the joiner who is knocking at the lobby gate."""
 
@@ -705,7 +737,11 @@ class NetMixin:
         if session is None or client is None or session.local_ready:
             return
         if session.role == ROLE_HOST and not session.partner_name:
-            self.mp_status = "Wait for a partner before beginning the descent."
+            # A notice, not a status: the blocked bind must be unmissable.
+            self.mp_notice = (
+                "No partner yet — share the code; binding opens when "
+                "they arrive."
+            )
             return
         if session.role == ROLE_HOST and session.partner_pending_accept:
             self.mp_status = (
@@ -894,6 +930,7 @@ class NetMixin:
             # A host collision returns to code generation with a fresh code.
             self.mp_run_id = generate_run_id(MP_RUN_ID_LENGTH)
             self.mp_setup_step = "host_code"
+            self.mp_setup_host_cursor = 0
         elif message.code in ("run_not_found", "run_full", "bad_revision", "kicked"):
             # A join failure keeps the entered code editable.
             self.mp_setup_step = "join_code"
@@ -1005,6 +1042,7 @@ class NetMixin:
         if host:
             self.mp_run_id = generate_run_id(MP_RUN_ID_LENGTH)
             self.mp_setup_step = "host_code"
+            self.mp_setup_host_cursor = 0
         else:
             self.mp_setup_step = "join_code"
             self.mp_open_join_code_input()
@@ -1021,6 +1059,16 @@ class NetMixin:
             uppercase=True,
             help_text="Ask the host for the four runes above their lobby.",
         )
+
+    def mp_host_code_activate_selected(self) -> None:
+        """Activate the host-code action row under
+        ``mp_setup_host_cursor``: Begin descent, or draw a new code.
+        """
+
+        if int(getattr(self, "mp_setup_host_cursor", 0)) % 2 == 0:
+            self.mp_begin_hosting()
+        else:
+            self.mp_regenerate_host_code()
 
     def mp_regenerate_host_code(self) -> None:
         if self.state == "mp_setup" and self.mp_setup_step == "host_code":

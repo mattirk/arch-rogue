@@ -1042,5 +1042,163 @@ class MobileMultiplayerTests(unittest.TestCase):
                 self.assertFalse((Path(tmpdir) / "run.json").exists())
 
 
+class MobileTextEntryPanelTests(unittest.TestCase):
+    """4.7.1 keyboard-safe mobile text entry.
+
+    The Android soft keyboard slides over the bottom of the display, so the
+    entry panel pins to a fixed spot at the top of the safe area where any
+    keyboard height leaves it visible, and carries Del/Clear/Cancel/OK touch
+    buttons so editing never depends on the IME delivering key events. While
+    a session is live the panel is modal: stray taps are consumed instead of
+    reaching menu rows dimmed under the veil.
+    """
+
+    def _make_mobile_game(self, tmpdir: str) -> Game:
+        game = Game(
+            screen_size=(1280, 720),
+            headless=True,
+            save_path=Path(tmpdir) / "run.json",
+            mobile=True,
+            safe_insets=(48, 12, 24, 16),
+        )
+        game.options_path = Path(tmpdir) / "options.json"
+        return game
+
+    def _open_join_code_entry(self, game: Game, code: str = "") -> None:
+        game.state = "mp_setup"
+        game.mp_setup_step = "join_code"
+        game.mp_join_code = code
+        game.mp_open_join_code_input()
+        game.draw()
+
+    def test_panel_pins_to_the_keyboard_safe_top(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_mobile_game(tmpdir)
+            self._open_join_code_entry(game, "AB")
+            buttons = getattr(game, "_text_input_button_rects", ())
+            self.assertEqual(
+                [action for action, _ in buttons],
+                ["backspace", "clear", "cancel", "confirm"],
+            )
+            # Everything interactive stays inside the top half of the display
+            # so the soft keyboard can never cover the field being edited.
+            height = game.screen.get_height()
+            for rect in (game._mp_entry_rect, *(rect for _, rect in buttons)):
+                self.assertLessEqual(rect.bottom, height // 2)
+            game.close_text_input(confirm=False)
+
+    def test_del_and_clear_buttons_edit_without_ime_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_mobile_game(tmpdir)
+            self._open_join_code_entry(game, "ABCD")
+            buttons = dict(game._text_input_button_rects)
+            self.assertTrue(game.handle_mobile_tap(buttons["backspace"].center))
+            self.assertEqual(game.text_input.value, "ABC")
+            game.handle_mobile_tap(buttons["backspace"].center)
+            self.assertEqual(game.text_input.value, "AB")
+            game.handle_mobile_tap(buttons["clear"].center)
+            self.assertEqual(game.text_input.value, "")
+            self.assertTrue(game.text_input_active())
+            game.handle_mobile_tap(buttons["cancel"].center)
+            self.assertFalse(game.text_input_active())
+            self.assertEqual(game.mp_setup_step, "role")
+
+    def test_ok_button_applies_an_options_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_mobile_game(tmpdir)
+            game.state = "options"
+            game.open_text_input(
+                target="mp_server_host",
+                prompt="Multiplayer server host",
+                initial="relay.example",
+                max_length=128,
+            )
+            game.draw()
+            buttons = dict(game._text_input_button_rects)
+            game.handle_mobile_tap(buttons["confirm"].center)
+            self.assertFalse(game.text_input_active())
+            self.assertEqual(game.mp_server_host, "relay.example")
+
+    def test_stray_taps_cannot_reach_rows_under_the_veil(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_mobile_game(tmpdir)
+            game.state = "options"
+            game.draw()
+            rows = getattr(game, "_menu_row_rects", ())
+            self.assertTrue(rows)
+            game.open_text_input(
+                target="mp_server_port",
+                prompt="Multiplayer server port",
+                initial="43666",
+                max_length=5,
+                charset="0123456789",
+            )
+            game.draw()
+            cursor_before = game.options_cursor
+            # The bottom row sits far below the top-anchored panel.
+            self.assertTrue(game.handle_mobile_tap(rows[-1].center))
+            self.assertTrue(game.text_input_active())
+            self.assertEqual(game.options_cursor, cursor_before)
+            game.close_text_input(confirm=False)
+
+    def test_field_tap_resummons_a_dismissed_keyboard(self) -> None:
+        # Android hides the IME on system back without telling SDL; tapping
+        # the field must call start_text_input again to bring it back.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_mobile_game(tmpdir)
+            self._open_join_code_entry(game)
+            with patch("pygame.key.start_text_input") as start_input:
+                self.assertTrue(
+                    game.handle_mobile_tap(game._mp_entry_rect.center)
+                )
+                self.assertTrue(start_input.called)
+            self.assertTrue(game.text_input_active())
+            game.close_text_input(confirm=False)
+
+    def test_ime_composition_and_bare_backspace_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_mobile_game(tmpdir)
+            game.open_text_input(
+                target="mp_player_name", prompt="Name", initial="Bo"
+            )
+            editing = pygame.event.Event(
+                getattr(pygame, "TEXTEDITING"), {"text": "ha"}
+            )
+            self.assertTrue(game.handle_text_input_event(editing))
+            self.assertEqual(game.text_input.composition, "ha")
+            self.assertEqual(game.text_input.value, "Bo")
+            commit = pygame.event.Event(pygame.TEXTINPUT, {"text": "hat"})
+            self.assertTrue(game.handle_text_input_event(commit))
+            self.assertEqual(game.text_input.value, "Bohat")
+            self.assertEqual(game.text_input.composition, "")
+            # Some IMEs deliver deletion only as a bare \b control character
+            # on an otherwise unmapped key.
+            bare = pygame.event.Event(
+                pygame.KEYDOWN, {"key": 0, "mod": 0, "unicode": "\b"}
+            )
+            self.assertTrue(game.handle_text_input_event(bare))
+            self.assertEqual(game.text_input.value, "Boha")
+            game.close_text_input(confirm=False)
+
+    def test_desktop_dialog_keeps_no_touch_buttons(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(640, 360),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+            )
+            game.options_path = Path(tmpdir) / "options.json"
+            game.state = "options"
+            game.open_text_input(
+                target="mp_server_host",
+                prompt="Multiplayer server host",
+                initial="",
+                max_length=128,
+            )
+            game.draw()
+            self.assertEqual(getattr(game, "_text_input_button_rects", None), ())
+            game.close_text_input(confirm=False)
+
+
 if __name__ == "__main__":
     unittest.main()

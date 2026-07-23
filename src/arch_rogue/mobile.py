@@ -2230,6 +2230,8 @@ class MobileMixin:
     def handle_mobile_tap(self, point: tuple[int, int]) -> bool:
         """Activate direct row/cell taps not covered by persistent nav buttons."""
 
+        if self._handle_text_entry_panel_tap(point):
+            return True
         local = self._safe_local_point(point)
         context = self.mobile_input_context()
         if context == "title":
@@ -2252,13 +2254,13 @@ class MobileMixin:
                 self._dispatch_command(Command.CONFIRM)
                 return True
         elif context == "archetype_select":
+            confirm = getattr(self, "_archetype_confirm_rect", None)
+            if isinstance(confirm, pygame.Rect) and confirm.collidepoint(local):
+                self.restart(self.selected_archetype)
+                return True
             index = self._rect_index(getattr(self, "_menu_row_rects", ()), local)
             if index is not None and index < len(ARCHETYPES):
-                selected = ARCHETYPES[index]
-                if self.selected_archetype == selected:
-                    self.restart(selected)
-                else:
-                    self.selected_archetype = selected
+                self.selected_archetype = ARCHETYPES[index]
                 return True
         elif context == "confirm_exit":
             index = self._rect_index(getattr(self, "_menu_row_rects", ()), local)
@@ -2359,6 +2361,33 @@ class MobileMixin:
             return True
         return False
 
+    def _handle_text_entry_panel_tap(self, point: tuple[int, int]) -> bool:
+        """Route taps while the keyboard-safe text-entry panel is modal.
+
+        The panel owns the whole display during a session: its buttons edit
+        or close the session, tapping the field re-summons a soft keyboard
+        the player dismissed with system back, and stray taps are consumed
+        so menu rows dimmed under the veil can never fire mid-typing.
+        """
+
+        if not self.text_input_active():
+            return False
+        for action, rect in getattr(self, "_text_input_button_rects", ()):
+            if isinstance(rect, pygame.Rect) and rect.collidepoint(point):
+                if action == "backspace":
+                    self.text_input_backspace()
+                elif action == "clear":
+                    self.text_input_clear()
+                elif action == "confirm":
+                    self.close_text_input(confirm=True)
+                elif action == "cancel":
+                    self.close_text_input(confirm=False)
+                return True
+        entry = getattr(self, "_mp_entry_rect", None)
+        if isinstance(entry, pygame.Rect) and entry.collidepoint(point):
+            self.resume_text_input()
+        return True
+
     def _handle_mp_setup_tap(self, local: tuple[int, int]) -> bool:
         """Touch targets for the multiplayer setup steps (4.6)."""
 
@@ -2383,6 +2412,7 @@ class MobileMixin:
             self.mp_choose_role(index == 0)
             return True
         if step == "host_code" and index is not None:
+            self.mp_setup_host_cursor = index % 2
             if index == 0:
                 self.mp_begin_hosting()
             else:
@@ -2395,9 +2425,9 @@ class MobileMixin:
         return False
 
     def _handle_mp_lobby_tap(self, local: tuple[int, int]) -> bool:
-        """Lobby touch targets: tap your own row to cycle archetype, tap the
-        partner row (or anywhere below) to confirm ready. While a joiner is
-        knocking, only the explicit admit/turn-away rows act."""
+        """Lobby touch targets: tap your own row to cycle archetype; the
+        explicit action rows below ready up or leave. While a joiner is
+        knocking, only the admit/turn-away rows act."""
 
         session = getattr(self, "mp_session", None)
         ready = bool(session is not None and session.local_ready)
@@ -2406,6 +2436,15 @@ class MobileMixin:
             and getattr(session, "partner_pending_accept", False)
             and getattr(session, "role", "") == "host"
         )
+        # The hero panel's ‹ › carousel handles (only published while the
+        # archetype may still change) win over the row hitboxes.
+        for direction, rect in getattr(self, "_mp_lobby_arch_arrows", ()):
+            if rect.collidepoint(local):
+                archetype_index = (
+                    ARCHETYPES.index(self.selected_archetype) + direction
+                ) % len(ARCHETYPES)
+                self.selected_archetype = ARCHETYPES[archetype_index]
+                return True
         index = self._rect_index(getattr(self, "_mp_row_rects", ()), local)
         if pending:
             if index == 2:
@@ -2421,8 +2460,13 @@ class MobileMixin:
             ) % len(ARCHETYPES)
             self.selected_archetype = ARCHETYPES[archetype_index]
             return True
-        if index is not None or not ready:
+        if index == 2:
+            self.mp_lobby_cursor = 0
             self.mp_lobby_send_ready()
+            return True
+        if index == 3:
+            self.mp_lobby_cursor = 1
+            self.mp_leave_lobby()
             return True
         return False
 

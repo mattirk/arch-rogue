@@ -71,6 +71,12 @@
       "insets": [14, 14, 14, 14],
       "content_insets": [10, 8, 10, 8]
     },
+    "menu.row.selected": {
+      "path": "menus/row_selected.png",
+      "render": "nine_slice",
+      "insets": [105, 10, 105, 10],
+      "content_insets": [92, 6, 92, 6]
+    },
     "menu.row": {
       "path": "menus/row.png",
       "render": "nine_slice",
@@ -209,6 +215,278 @@
       "render": "nine_slice",
       "insets": [22, 10, 22, 10],
       "content_insets": [8, 4, 8, 4]
+    },
+    "menu.panel.mp_code": {
+      "path": "menus/mp_code_panel.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.a": {
+      "path": "menus/glyphs/code_a.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.b": {
+      "path": "menus/glyphs/code_b.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.c": {
+      "path": "menus/glyphs/code_c.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.d": {
+      "path": "menus/glyphs/code_d.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.e": {
+      "path": "menus/glyphs/code_e.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.f": {
+      "path": "menus/glyphs/code_f.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.g": {
+      "path": "menus/glyphs/code_g.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.h": {
+      "path": "menus/glyphs/code_h.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.i": {
+      "path": "menus/glyphs/code_i.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.j": {
+      "path": "menus/glyphs/code_j.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.k": {
+      "path": "menus/glyphs/code_k.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.l": {
+      "path": "menus/glyphs/code_l.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.m": {
+      "path": "menus/glyphs/code_m.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.n": {
+      "path": "menus/glyphs/code_n.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.o": {
+      "path": "menus/glyphs/code_o.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.p": {
+      "path": "menus/glyphs/code_p.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.q": {
+      "path": "menus/glyphs/code_q.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.r": {
+      "path": "menus/glyphs/code_r.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.s": {
+      "path": "menus/glyphs/code_s.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.t": {
+      "path": "menus/glyphs/code_t.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.u": {
+      "path": "menus/glyphs/code_u.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.v": {
+      "path": "menus/glyphs/code_v.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.w": {
+      "path": "menus/glyphs/code_w.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.x": {
+      "path": "menus/glyphs/code_x.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.y": {
+      "path": "menus/glyphs/code_y.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.z": {
+      "path": "menus/glyphs/code_z.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.0": {
+      "path": "menus/glyphs/code_0.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.1": {
+      "path": "menus/glyphs/code_1.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.2": {
+      "path": "menus/glyphs/code_2.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.3": {
+      "path": "menus/glyphs/code_3.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.4": {
+      "path": "menus/glyphs/code_4.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.5": {
+      "path": "menus/glyphs/code_5.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.6": {
+      "path": "menus/glyphs/code_6.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.7": {
+      "path": "menus/glyphs/code_7.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.8": {
+      "path": "menus/glyphs/code_8.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.9": {
+      "path": "menus/glyphs/code_9.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.serpent": {
+      "path": "menus/glyphs/sigil_serpent.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.hammer": {
+      "path": "menus/glyphs/sigil_hammer.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.skull": {
+      "path": "menus/glyphs/sigil_skull.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.star": {
+      "path": "menus/glyphs/sigil_star.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.cross": {
+      "path": "menus/glyphs/sigil_cross.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.flame": {
+      "path": "menus/glyphs/sigil_flame.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.ember": {
+      "path": "menus/glyphs/sigil_ember.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.key": {
+      "path": "menus/glyphs/sigil_key.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.map": {
+      "path": "menus/glyphs/sigil_map.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.shield": {
+      "path": "menus/glyphs/sigil_shield.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.sword": {
+      "path": "menus/glyphs/sigil_sword.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.coin": {
+      "path": "menus/glyphs/sigil_coin.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.rune_kenaz": {
+      "path": "menus/glyphs/sigil_rune_kenaz.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.rune_othala": {
+      "path": "menus/glyphs/sigil_rune_othala.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.rune_bind": {
+      "path": "menus/glyphs/sigil_rune_bind.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.rune_ingwaz": {
+      "path": "menus/glyphs/sigil_rune_ingwaz.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.claw": {
+      "path": "menus/glyphs/sigil_claw.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.rune_perth": {
+      "path": "menus/glyphs/sigil_rune_perth.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.rune_branch": {
+      "path": "menus/glyphs/sigil_rune_branch.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.sun": {
+      "path": "menus/glyphs/sigil_sun.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.moon": {
+      "path": "menus/glyphs/sigil_moon.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.sunburst": {
+      "path": "menus/glyphs/sigil_sunburst.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.rune_berkano": {
+      "path": "menus/glyphs/sigil_rune_berkano.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.dragon": {
+      "path": "menus/glyphs/sigil_dragon.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.phoenix": {
+      "path": "menus/glyphs/sigil_phoenix.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.ouroboros": {
+      "path": "menus/glyphs/sigil_ouroboros.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.clock": {
+      "path": "menus/glyphs/sigil_clock.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.infinity": {
+      "path": "menus/glyphs/sigil_infinity.png",
+      "render": "scale"
+    },
+    "menu.panel.mp_seal": {
+      "path": "menus/mp_seal_panel.png",
+      "render": "scale"
+    },
+    "menu.panel.mp_carousel": {
+      "path": "menus/mp_carousel_panel.png",
+      "render": "scale"
+    },
+    "menu.panel.mp_plain": {
+      "path": "menus/mp_plain_panel.png",
+      "render": "scale"
     }
   }
 }

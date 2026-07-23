@@ -27,7 +27,11 @@ and server-port entry. It owns desktop typing (TEXTINPUT + backspace/confirm/
 cancel), input length limits, optional charset filters, and focus cleanup.
 On Android it drives the OS soft keyboard through SDL text input
 (``pygame.key.start_text_input`` / ``SDL_TEXTINPUT``) and stops it on
-confirm, cancel, and focus loss.
+confirm, cancel, and focus loss. Composing IMEs stream the pending word
+through ``TEXTEDITING`` before committing it; the session tracks that
+composition so renderers can show it, and the mobile entry panel exposes
+touch buttons (``text_input_backspace`` / ``text_input_clear``) because some
+Android keyboards never deliver a backspace key event at all.
 """
 
 from __future__ import annotations
@@ -48,6 +52,9 @@ class TextInputSession:
     charset: str | None = None
     uppercase: bool = False
     help_text: str = ""
+    # Uncommitted IME composition (Android predictive keyboards). Display
+    # only: it is never part of ``value`` until the IME commits TEXTINPUT.
+    composition: str = ""
 
 
 class TextInputMixin:
@@ -101,6 +108,8 @@ class TextInputMixin:
             # Focus bookkeeping only matters while a session is live.
             return False
         if event.type == pygame.TEXTINPUT:
+            # A commit ends any pending IME composition.
+            session.composition = ""
             appended = self._filter_text_input(
                 getattr(event, "text", ""),
                 charset=session.charset,
@@ -108,6 +117,16 @@ class TextInputMixin:
             )
             if appended:
                 session.value = (session.value + appended)[: session.max_length]
+            return True
+        if event.type == getattr(pygame, "TEXTEDITING", -1):
+            # Composing IMEs (Android predictive keyboards, CJK input) stream
+            # the uncommitted word here; keep it so the entry field can show
+            # what the player is typing (and deleting) before the commit.
+            session.composition = self._filter_text_input(
+                getattr(event, "text", ""),
+                charset=None,
+                uppercase=session.uppercase,
+            )
             return True
         if event.type == getattr(pygame, "WINDOWFOCUSLOST", -1):
             # The soft keyboard/IME goes away with the window focus; the
@@ -119,7 +138,10 @@ class TextInputMixin:
             return False
         if event.type != pygame.KEYDOWN:
             return False
-        if event.key == pygame.K_BACKSPACE:
+        if event.key == pygame.K_BACKSPACE or getattr(event, "unicode", "") == "\b":
+            # Some Android IMEs deliver deletion only as a control character
+            # on an otherwise unmapped key, so match the unicode too.
+            session.composition = ""
             if event.mod & pygame.KMOD_CTRL:
                 session.value = ""
             else:
@@ -146,6 +168,34 @@ class TextInputMixin:
             or pygame.K_0 <= event.key <= pygame.K_9
             or event.key == pygame.K_SPACE
         )
+
+    # -- touch-button edits (mobile entry panel) ------------------------------
+
+    def text_input_backspace(self) -> None:
+        """Delete one trailing character; the panel's Del button uses this so
+        deletion never depends on the IME actually sending a backspace key."""
+
+        session = getattr(self, "text_input", None)
+        if session is None:
+            return
+        session.composition = ""
+        session.value = session.value[:-1]
+
+    def text_input_clear(self) -> None:
+        session = getattr(self, "text_input", None)
+        if session is None:
+            return
+        session.composition = ""
+        session.value = ""
+
+    def resume_text_input(self) -> None:
+        """Re-summon the soft keyboard for the live session.
+
+        Android hides the IME on system back without telling SDL, leaving an
+        active session with no keyboard; tapping the entry field lands here.
+        """
+
+        self._start_sdl_text_input()
 
     # -- integration points ---------------------------------------------------
 

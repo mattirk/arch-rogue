@@ -154,9 +154,9 @@ class MenuCharacterMixin:
         safe = safe.inflate(-self.u(6) * 2, -self.u(4) * 2)
         gap = max(self.u(14), 14)
         list_min = 170 if safe.width >= 500 else 140
-        preview_min = min(220, max(180, int(safe.width * 0.46)))
+        preview_min = min(220, max(160, int(safe.width * 0.30)))
         list_w = min(
-            max(list_min, int(safe.width * 0.31)),
+            max(list_min, int(safe.width * 0.58)),
             max(1, safe.width - gap - preview_min),
         )
         list_rect = pygame.Rect(safe.x, safe.y, list_w, safe.height)
@@ -193,40 +193,147 @@ class MenuCharacterMixin:
     def _draw_archetype_list_modern(
         self, rect: pygame.Rect, selected: Archetype
     ) -> None:
-        heading_h = self.g.font.get_height()
-        self.draw_text(
-            "Classes",
-            self.g.font,
-            self.TITLE,
-            pygame.Rect(rect.x, rect.y, rect.width, heading_h),
+        rows_top = rect.y
+        available_h = max(1, rect.bottom - rows_top)
+        name_font = self.g.font
+        desc_font = self.g.small_font
+        # Two text lines per row: class name plus its description, with the
+        # main menu's row height as the floor when the column runs short.
+        desired_row_h = (
+            name_font.get_height() + desc_font.get_height() + self.u(18)
         )
-        rows_top = rect.y + heading_h + self.u(7)
-        rows_rect = pygame.Rect(
-            rect.x,
-            rows_top,
-            rect.width,
-            max(1, rect.bottom - rows_top),
-        )
-        gap = max(3, self.u(4))
-        row_h = max(
-            self.g.small_font.get_height() + self.u(5),
-            (rows_rect.height - gap * (len(self.archetypes) - 1))
-            // max(1, len(self.archetypes)),
-        )
+        count = max(1, len(self.archetypes))
+
+        def fitted_row_h(row_gap: int) -> int:
+            return min(
+                desired_row_h,
+                max(
+                    name_font.get_height() + self.u(8),
+                    (available_h - row_gap * (count - 1)) // count,
+                ),
+            )
+
+        # Prefer an airy gap; give the space back to the rows when the column
+        # is too short to keep full-height rows with it.
+        gap = max(self.u(12), 12)
+        row_h = fitted_row_h(gap)
+        if row_h < desired_row_h:
+            gap = max(self.u(7), 7)
+            row_h = fitted_row_h(gap)
+        stack_h = row_h * count + gap * (count - 1)
+        rows_top += max(0, (available_h - stack_h) // 2)
+        rows_rect = pygame.Rect(rect.x, rows_top, rect.width, stack_h)
+        # Labels stay empty: the plates come from draw_menu_rows, while the
+        # two-line name/description text is drawn below over each plate.
         rows: list[MenuRow] = [
-            (str(index + 1), archetype.name, "")
-            for index, archetype in enumerate(self.archetypes)
+            (str(index + 1), "", "")
+            for index in range(len(self.archetypes))
         ]
-        self.draw_menu_rows(
+        selected_index = self.archetypes.index(selected)
+        mobile_confirm = bool(getattr(self.g, "mobile_mode", False))
+        rendered = self.draw_menu_rows(
             rows,
             rows_rect,
-            selected_index=self.archetypes.index(selected),
-            body_font=self.g.font,
-            detail_font=self.g.small_font,
+            selected_index=selected_index,
+            body_font=name_font,
+            detail_font=desc_font,
             row_height=row_h,
             row_gap=gap,
             keys_in_rows=False,
+            selected_row_asset="menu.row.selected" if mobile_confirm else None,
         )
+        for index, row_rect in enumerate(rendered):
+            archetype = self.archetypes[index]
+            safe = self.ui_content_rect("menu.row", row_rect)
+            if safe is None:
+                safe = row_rect.inflate(-self.u(16), 0)
+            pad = min(self.u(10), max(6, safe.width // 30))
+            text_rect = pygame.Rect(
+                safe.x + pad,
+                row_rect.y,
+                max(1, safe.width - pad * 2),
+                row_rect.height,
+            )
+            two_lines = (
+                row_rect.height
+                >= name_font.get_height() + desc_font.get_height() + self.u(6)
+            )
+            if two_lines:
+                line_gap = self.u(2)
+                block_h = (
+                    name_font.get_height() + line_gap + desc_font.get_height()
+                )
+                top = row_rect.centery - block_h // 2
+                self.draw_text(
+                    archetype.name,
+                    name_font,
+                    self.TEXT,
+                    pygame.Rect(
+                        text_rect.x, top, text_rect.width, name_font.get_height()
+                    ),
+                )
+                self.draw_text(
+                    archetype.description,
+                    desc_font,
+                    self.MUTED,
+                    pygame.Rect(
+                        text_rect.x,
+                        top + name_font.get_height() + line_gap,
+                        text_rect.width,
+                        desc_font.get_height(),
+                    ),
+                )
+            else:
+                self.draw_text(
+                    archetype.name,
+                    name_font,
+                    self.TEXT,
+                    text_rect,
+                    valign="center",
+                )
+        confirm_rect: pygame.Rect | None = None
+        if mobile_confirm and selected_index < len(rendered):
+            row_rect = rendered[selected_index]
+            confirm_rect = self._archetype_confirm_zone(row_rect)
+            if self.ui_asset("menu.row.selected", row_rect.size) is None:
+                self._draw_archetype_confirm_arrow(
+                    confirm_rect, self.archetype_accent(selected.name)
+                )
+        self._publish_archetype_confirm_rect(confirm_rect)
+
+    def _publish_archetype_confirm_rect(self, rect: pygame.Rect | None) -> None:
+        self.g._archetype_confirm_rect = (
+            rect.inflate(self.u(10), self.u(10)) if rect is not None else None
+        )
+
+    def _archetype_confirm_zone(self, row_rect: pygame.Rect) -> pygame.Rect:
+        """The right-endcap area of the selected row that hosts the arrow."""
+
+        safe = self.ui_content_rect("menu.row.selected", row_rect)
+        if safe is not None and row_rect.right - safe.right >= self.u(18):
+            return pygame.Rect(
+                safe.right,
+                row_rect.y,
+                max(1, row_rect.right - safe.right),
+                row_rect.height,
+            )
+        side = min(row_rect.height, max(1, row_rect.width // 3))
+        return pygame.Rect(row_rect.right - side, row_rect.y, side, row_rect.height)
+
+    def _draw_archetype_confirm_arrow(
+        self, zone: pygame.Rect, accent: Color
+    ) -> None:
+        """Procedural › arrow when the authored selected-row art is missing."""
+
+        cx, cy = zone.center
+        size = max(3, min(zone.width, zone.height) // 4)
+        offset = size // 2
+        points = [
+            (cx - offset, cy - size),
+            (cx + offset, cy),
+            (cx - offset, cy + size),
+        ]
+        pygame.draw.lines(self.screen, accent, False, points, max(2, self.u(2)))
 
     def _draw_archetype_preview_modern(
         self, rect: pygame.Rect, archetype: Archetype
@@ -282,35 +389,14 @@ class MenuCharacterMixin:
             rect.width,
             max(1, stat_rect.y - middle_y - self.u(7)),
         )
-        description_font = (
-            self.g.small_font if rect.width < self.u(300) else self.g.font
-        )
-        description_line_h = max(
-            description_font.get_height() + self.u(3), self.u(18)
-        )
-        description_lines = self.wrap_text(
-            archetype.description, description_font, rect.width
-        )
-        desired_description_h = (
-            (len(description_lines) - 1) * description_line_h
-            + description_font.get_height()
-        )
-        description_h = min(
-            max(description_font.get_height(), desired_description_h),
-            max(1, middle.height - self.u(18)),
-        )
-        desc_rect = pygame.Rect(
-            middle.x,
-            middle.bottom - description_h,
-            middle.width,
-            description_h,
-        )
-        sprite_box = pygame.Rect(
-            middle.x,
-            middle.y,
-            middle.width,
-            max(1, desc_rect.y - middle.y - self.u(5)),
-        )
+        # The archetype description lives in the class rows now, so the sprite
+        # gets the whole middle band. Desktop keeps breathing room above and
+        # below the character instead of filling the band edge to edge.
+        sprite_box = middle.copy()
+        desktop = not bool(getattr(self.g, "mobile_mode", False))
+        if desktop:
+            v_inset = max(self.u(10), sprite_box.height // 12)
+            sprite_box = sprite_box.inflate(0, -v_inset * 2)
         visual = self.g.sprites.player_visual(
             archetype.name,
             "idle",
@@ -324,6 +410,8 @@ class MenuCharacterMixin:
             max(1, sprite_box.height - self.u(12)) / max(1, sprite.get_height()),
             3.4,
         )
+        if desktop:
+            scale *= 0.9
         scale = max(0.15, scale)
         preview = pygame.transform.scale(
             sprite,
@@ -362,17 +450,6 @@ class MenuCharacterMixin:
         self.g._archetype_sprite_rect = preview_rect.copy()
         self.g._archetype_sprite_anchor = preview_anchor
         self.g._archetype_sprite_ground = preview_ground
-        self.g._archetype_description_rect = desc_rect.copy()
-        self.g._archetype_description_font = description_font
-        self.g._archetype_description_line_height = description_line_h
-        self.g._archetype_description_lines = tuple(description_lines)
-        self.draw_wrapped_text(
-            archetype.description,
-            description_font,
-            self.TEXT,
-            desc_rect,
-            description_line_h,
-        )
         stats = [
             ("HP", str(archetype.max_hp)),
             ("Mana", str(archetype.max_mana)),
@@ -533,6 +610,8 @@ class MenuCharacterMixin:
         )
         y = list_top
         rendered_rows: list[pygame.Rect] = []
+        mobile_confirm = bool(getattr(self.g, "mobile_mode", False))
+        confirm_rect: pygame.Rect | None = None
         for index, archetype in enumerate(self.archetypes):
             row = pygame.Rect(inner.x, y, inner.width, row_h)
             rendered_rows.append(row.copy())
@@ -610,6 +689,8 @@ class MenuCharacterMixin:
             else:
                 text_x = row.x + self.u(14)
                 text_w = row.width - self.u(28)
+            if is_selected and mobile_confirm:
+                text_w = max(1, text_w - row_h)
             name_rect = pygame.Rect(
                 text_x,
                 row.y + self.u(3),
@@ -637,8 +718,12 @@ class MenuCharacterMixin:
                 role_rect,
                 valign="center",
             )
+            if is_selected and mobile_confirm:
+                confirm_rect = self._archetype_confirm_zone(row)
+                self._draw_archetype_confirm_arrow(confirm_rect, row_accent)
             y += row_h + gap
         self.g._menu_row_rects = tuple(rendered_rows)
+        self._publish_archetype_confirm_rect(confirm_rect)
 
     def draw_archetype_preview(self, rect: pygame.Rect, archetype: Archetype) -> None:
         compact_fonts = rect.height < self.u(190)
