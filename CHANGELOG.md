@@ -1,8 +1,12 @@
 # Changelog
 
-## 4.7.1 — Mobile text entry that survives the soft keyboard
+## 4.7.4 — Release plumbing fix
 
-Release 4.7.1 makes text editing usable on Android. The IME slides over the bottom of the screen with no reliable way to know its height, so every mobile text-entry session now renders a keyboard-safe panel pinned to a fixed spot at the top of the safe area — the field being edited stays visible for any keyboard height. The panel is modal and carries its own editing buttons, because some Android keyboards never deliver a backspace key event to SDL at all.
+Maintenance release: the save/metadata test pinned an outdated version string, breaking CI after the 4.7.3 bump. The test now checks the saved run's `release` field against `arch_rogue.__version__` instead of a hardcoded literal, and every version source (game, Android packaging, server) is aligned at 4.7.4.
+
+## 4.7.3 — Mobile text entry that survives the soft keyboard
+
+Shipped as 4.7.3 together with the multiplayer kick handling and lobby/character-select UI patch; this entry was originally drafted as 4.7.1 and never republished. Release 4.7.3 makes text editing usable on Android. The IME slides over the bottom of the screen with no reliable way to know its height, so every mobile text-entry session now renders a keyboard-safe panel pinned to a fixed spot at the top of the safe area — the field being edited stays visible for any keyboard height. The panel is modal and carries its own editing buttons, because some Android keyboards never deliver a backspace key event to SDL at all.
 
 ### Added
 
