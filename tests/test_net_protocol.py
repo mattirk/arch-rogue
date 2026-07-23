@@ -107,7 +107,8 @@ def _every_message() -> list[dict]:
             input_seq=5, move_x=0.5, move_y=-1.0, action="melee", target=None
         ),
         make_intent(
-            input_seq=6, move_x=0.0, move_y=0.0, px=12.345, py=6.789
+            input_seq=6, move_x=0.0, move_y=0.0, px=12.345, py=6.789,
+            fx=0.707, fy=-0.707,
         ),
         make_run_ended(outcome="victory", results=[{"player_id": "p1"}]),
         make_ping(seq=6, ts=123.5),
@@ -223,6 +224,29 @@ class CodecRoundTripTests(unittest.TestCase):
         )
         assert isinstance(hostile_claim, IntentMessage)
         self.assertIsNone(hostile_claim.px)
+        # 4.7.9 facing fields: absent -> None; valid parses; hostile drops;
+        # out-of-range clamps to the unit box on receive.
+        self.assertIsNone(intent.fx)
+        self.assertIsNone(intent.fy)
+        faced = message_from_dict(
+            make_intent(input_seq=6, move_x=0.0, move_y=0.0, fx=-1.0, fy=0.25)
+        )
+        assert isinstance(faced, IntentMessage)
+        self.assertEqual((faced.fx, faced.fy), (-1.0, 0.25))
+        hostile_facing = message_from_dict(
+            {"t": "intent", "input_seq": 7, "player_id": "p2", "move_x": 0.0,
+             "move_y": 0.0, "action": "", "target": None,
+             "fx": float("inf"), "fy": 0.5}
+        )
+        assert isinstance(hostile_facing, IntentMessage)
+        self.assertIsNone(hostile_facing.fx)
+        clamped_facing = message_from_dict(
+            {"t": "intent", "input_seq": 8, "player_id": "p2", "move_x": 0.0,
+             "move_y": 0.0, "action": "", "target": None,
+             "fx": 5.0, "fy": -9.0}
+        )
+        assert isinstance(clamped_facing, IntentMessage)
+        self.assertEqual((clamped_facing.fx, clamped_facing.fy), (1.0, -1.0))
 
         error = message_from_dict(
             make_error(code="bad_msg", msg="x", fatal=False)

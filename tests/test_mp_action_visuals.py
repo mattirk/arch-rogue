@@ -36,6 +36,7 @@ import time
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -652,6 +653,145 @@ class TurnEdgeSendTests(unittest.TestCase):
             self.assertEqual(len(intents), 2)
             self.assertEqual(intents[1]["move_y"], 1.0)
             game.mp_client = None
+
+    def test_intents_carry_local_facing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game, session, sent = self._joiner_with_stub_client(tmpdir)
+            game.player.facing_x, game.player.facing_y = 0.0, 1.0
+            game._mp_local_move_vector = lambda: (0.0, 0.0)
+            game._mp_send_periodic(100.0)
+            intents = [m for m in sent if m.get("t") == "intent"]
+            self.assertEqual(len(intents), 1)
+            self.assertEqual((intents[0]["fx"], intents[0]["fy"]), (0.0, 1.0))
+            game.mp_client = None
+
+
+class JoinerMouseAimTests(unittest.TestCase):
+    """4.7.9: the standing joiner turns toward the cursor, like solo play."""
+
+    def _predicting_joiner(self, tmpdir: str) -> Game:
+        game = _make_playing_game(tmpdir)
+        _bind_joiner(game)
+        game.state = "playing"
+        game.mp_partner_pause_reason = ""
+        self.assertTrue(game.mp_predicts_local_movement())
+        return game
+
+    def test_idle_joiner_faces_the_cursor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._predicting_joiner(tmpdir)
+            game.player.facing_x, game.player.facing_y = 1.0, 0.0
+            cursor = game.world_to_screen(
+                game.player.x, game.player.y + 3.0
+            )
+            with patch("pygame.mouse.get_pos", return_value=cursor):
+                game.mp_update_joiner(1 / 60)
+            self.assertGreater(game.player.facing_y, 0.9)
+            self.assertLess(abs(game.player.facing_x), 0.2)
+
+    def test_held_movement_still_owns_facing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._predicting_joiner(tmpdir)
+            cursor = game.world_to_screen(
+                game.player.x, game.player.y + 3.0
+            )
+            game._mp_local_move_vector = lambda: (1.0, 0.0)
+            with patch("pygame.mouse.get_pos", return_value=cursor):
+                game.mp_update_joiner(1 / 60)
+            self.assertGreater(game.player.facing_x, 0.9)
+
+    def test_local_menus_suppress_cursor_aim(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._predicting_joiner(tmpdir)
+            game.player.facing_x, game.player.facing_y = 1.0, 0.0
+            cursor = game.world_to_screen(
+                game.player.x, game.player.y + 3.0
+            )
+            game.inventory_open = True
+            with patch("pygame.mouse.get_pos", return_value=cursor):
+                game.mp_update_joiner(1 / 60)
+            self.assertEqual(
+                (game.player.facing_x, game.player.facing_y), (1.0, 0.0)
+            )
+
+    def test_host_pause_freezes_aim(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._predicting_joiner(tmpdir)
+            game.player.facing_x, game.player.facing_y = 1.0, 0.0
+            game.mp_partner_pause_reason = "story"
+            cursor = game.world_to_screen(
+                game.player.x, game.player.y + 3.0
+            )
+            with patch("pygame.mouse.get_pos", return_value=cursor):
+                game.mp_update_joiner(1 / 60)
+            self.assertEqual(
+                (game.player.facing_x, game.player.facing_y), (1.0, 0.0)
+            )
+
+
+class RemoteFacingApplyTests(unittest.TestCase):
+    """The host turns the idle remote actor toward the replicated aim."""
+
+    def _host_with_remote(self, tmpdir: str):
+        game = _make_playing_game(tmpdir)
+        session = _bind_host(game)
+        remote = sync.build_player_from_full(
+            game,
+            {"player_id": "p2", "x": game.player.x, "y": game.player.y},
+        )
+        game.players.append(remote)
+        session.partner_player_id = "p2"
+        session.intent_move = (0.0, 0.0)
+        session.intent_move_at = time.monotonic()
+        return game, session, remote
+
+    def test_intent_facing_is_stored_from_messages(self) -> None:
+        from arch_rogue.net.messages import IntentMessage
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game, session, remote = self._host_with_remote(tmpdir)
+            game._mp_on_intent(
+                IntentMessage(
+                    input_seq=1,
+                    player_id="p2",
+                    move_x=0.0,
+                    move_y=0.0,
+                    action="",
+                    target=None,
+                    fx=0.6,
+                    fy=0.0,
+                ),
+                100.0,
+            )
+            self.assertEqual(session.intent_facing, (0.6, 0.0))
+
+    def test_idle_remote_actor_adopts_normalized_facing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game, session, remote = self._host_with_remote(tmpdir)
+            remote.facing_x, remote.facing_y = 1.0, 0.0
+            session.intent_facing = (0.0, 0.6)  # renormalizes to unit
+            game.mp_apply_remote_intents(1 / 60)
+            self.assertAlmostEqual(remote.facing_x, 0.0, places=5)
+            self.assertAlmostEqual(remote.facing_y, 1.0, places=5)
+
+    def test_moving_remote_actor_faces_its_movement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game, session, remote = self._host_with_remote(tmpdir)
+            session.intent_move = (-1.0, 0.0)
+            session.intent_move_at = time.monotonic()
+            session.intent_facing = (0.0, 1.0)  # stale aim: movement wins
+            game.mp_apply_remote_intents(1 / 60)
+            self.assertLess(remote.facing_x, -0.9)
+
+    def test_degenerate_facing_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game, session, remote = self._host_with_remote(tmpdir)
+            remote.facing_x, remote.facing_y = 1.0, 0.0
+            session.intent_facing = (0.0, 0.0)
+            game.mp_apply_remote_intents(1 / 60)
+            self.assertEqual(
+                (remote.facing_x, remote.facing_y), (1.0, 0.0)
+            )
 
 
 if __name__ == "__main__":

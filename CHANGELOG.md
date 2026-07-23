@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.7.9 — The joiner looks where you point
+
+Release 4.7.9 fixes desktop co-op aim: the joiner's character (and its aim cone) now turns toward the mouse cursor while standing, exactly like in solo play, and the host sees those turns. The wire change is additive (`fx`/`fy` optional intent fields — the relay forwards them verbatim, no server update needed); because `content_revision` is the game version, 4.7.9 clients pair only with 4.7.9 clients.
+
+### Fixed
+
+- **Joiner never aimed at the cursor while standing**: the per-frame `update_player_aim()` (right stick → arrow keys → mouse cursor) only runs on the host's update path — the joiner early-returns into its reduced update, so its character and aim cone turned only from movement or on the frame of a click/attack. The joiner now runs the same aim resolution each frame, in the host's aim-then-movement order (a held movement vector still owns facing), gated exactly like the mouse-walk fallback: only while prediction is active (host simulation advancing, actor alive) and no local menu, shop, or cutscene is open. Cost is one cursor→world transform per frame — the same the host already pays.
+- **The host never saw the joiner's idle turns**: facing reached the host only through movement vectors and one-shot action aims, so a joiner aiming with the mouse while standing was frozen on the host's screen. Movement intents now carry the joiner's facing (`fx`/`fy`, clamped and validated on ingestion like the 4.7.6 position claim); the host renormalizes and applies it to the remote actor only while its intent vector is zero — movement keeps owning facing in motion, matching the joiner's own rule. No extra messages and no edge-triggering: the facing rides the existing 20 Hz intent cadence and its outbound coalescing, which is plenty for the 8-way sprite while staying mouse-motion-spam-proof. Host→joiner already worked (snapshots carry facing, and the 4.7.8 rule that a predicting joiner owns its own facing is untouched — the echo of your own aim can never flip you back).
+
 ## 4.7.8 — The joiner turns on a dime
 
 Release 4.7.8 removes the guest's remaining movement lag, felt most as a backward yank when quickly reversing direction (north↔south). The wire protocol is unchanged (the relay needs no update); because `content_revision` is the game version, 4.7.8 clients pair only with 4.7.8 clients.

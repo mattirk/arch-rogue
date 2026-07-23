@@ -557,6 +557,8 @@ def make_intent(
     target: str | None = None,
     px: float | None = None,
     py: float | None = None,
+    fx: float | None = None,
+    fy: float | None = None,
 ) -> dict:
     if action not in INTENT_ACTIONS:
         raise ProtocolError(f"unknown intent action {action!r}")
@@ -574,6 +576,12 @@ def make_intent(
     if px is not None and py is not None:
         message["px"] = round(float(px), 3)
         message["py"] = round(float(py), 3)
+    # 4.7.9: a movement intent may carry the joiner's facing so mouse-hover/
+    # right-stick aim — which turns the actor without moving it — reaches the
+    # host's view of the idle remote actor (additive optional fields).
+    if fx is not None and fy is not None:
+        message["fx"] = round(clamp_unit(fx), 3)
+        message["fy"] = round(clamp_unit(fy), 3)
     return message
 
 

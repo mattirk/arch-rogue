@@ -183,6 +183,10 @@ class MpSession:
     intent_claim: tuple[float, float] | None = None
     intent_claim_at: float = 0.0
     claim_suppressed_until: float = 0.0
+    # Host-side latest joiner facing (4.7.9): mouse-hover/right-stick aim
+    # turns the actor without moving it, so movement intents replicate the
+    # facing and the host applies it while the intent vector is zero.
+    intent_facing: tuple[float, float] | None = None
     # Joiner-side last transmitted movement vector for edge-triggered sends.
     last_move_vector: tuple[float, float] = (0.0, 0.0)
 
@@ -432,6 +436,8 @@ class NetMixin:
                                 move_y=move_y,
                                 px=claim_x,
                                 py=claim_y,
+                                fx=local.facing_x,
+                                fy=local.facing_y,
                             ),
                             coalesce_key=COALESCE_MOVE_INTENT,
                         )
@@ -954,6 +960,8 @@ class NetMixin:
             if message.px is not None and message.py is not None:
                 session.intent_claim = (message.px, message.py)
                 session.intent_claim_at = now
+            if message.fx is not None and message.fy is not None:
+                session.intent_facing = (message.fx, message.fy)
 
     # -- run lifecycle -------------------------------------------------------
 
@@ -1414,6 +1422,7 @@ class NetMixin:
             if self.enemy_in_melee_arc():
                 self.player_melee_attack()
         else:
+            self._mp_face_remote_from_intent(remote)
             self._mp_settle_remote_on_claim(remote, dt, move_speed)
         remote.melee_timer = max(0.0, remote.melee_timer - dt)
         remote.bolt_timer = max(0.0, remote.bolt_timer - dt)
@@ -1469,6 +1478,26 @@ class NetMixin:
             remote.action_state = ""
             remote.action_elapsed = 0.0
             remote.action_duration = 0.0
+
+    def _mp_face_remote_from_intent(self, remote: Player) -> None:
+        """Turn the idle remote actor toward the joiner's replicated aim.
+
+        Movement keeps owning facing while the intent vector is nonzero
+        (the same aim-then-movement-wins order the joiner applies locally);
+        the replicated facing covers mouse-hover and right-stick aim, which
+        turn the actor without moving it. Renormalized on application so
+        melee-arc math always sees a unit vector.
+        """
+
+        session = self.mp_session
+        facing = session.intent_facing if session is not None else None
+        if facing is None:
+            return
+        length = math.hypot(facing[0], facing[1])
+        if length < 0.1:
+            return
+        remote.facing_x = facing[0] / length
+        remote.facing_y = facing[1] / length
 
     def _mp_settle_remote_on_claim(
         self, remote: Player, dt: float, move_speed: float
@@ -1577,6 +1606,19 @@ class NetMixin:
                 if projectile.update(dt, self.dungeon)
             ]
         if self.mp_predicts_local_movement():
+            # Aim before movement — the host's update() order — so mouse-
+            # hover/right-stick/arrow aim turns the standing actor and its
+            # aim cone, while a held movement vector overrides facing below.
+            # Local menus suppress aim exactly like the mouse-walk fallback;
+            # the facing replicates to the host inside the movement intents.
+            if not (
+                self.inventory_open
+                or self.character_menu_open
+                or self.shop_open
+                or self.active_cutscene is not None
+                or self.story_intro_pending
+            ):
+                self.update_player_aim()
             # Client-side movement prediction: walk the local actor with the
             # exact host formula (speed, statuses, wall + contact collision)
             # so the joiner's own character answers input immediately instead
