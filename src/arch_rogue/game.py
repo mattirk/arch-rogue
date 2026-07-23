@@ -590,9 +590,28 @@ class Game(
         self.menus = MenuRenderer(self, ARCHETYPES, DUNGEON_DEPTH)
         self.init_input()
 
-    def trigger_screen_flash(self, color: Color, ttl: float = 0.22) -> None:
+    def trigger_screen_flash(
+        self, color: Color, ttl: float = 0.22, *, replicate: bool = True
+    ) -> None:
         self.screen_flash_color = color
         self.screen_flash_ttl = max(self.screen_flash_ttl, ttl)
+        # 4.7.1: shared spectacle flashes (boss falls, darkness shifts) reach
+        # the co-op joiner as fx events. Per-player pain flashes opt out —
+        # each screen flashes for its own wounds only.
+        if replicate:
+            self.mp_record_fx(
+                "f", int(color[0]), int(color[1]), int(color[2]), round(ttl, 2)
+            )
+
+    def add_slash(
+        self, x: float, y: float, ttl: float, dx: float, dy: float
+    ) -> None:
+        """Spawn a melee slash arc (and replicate it to a co-op joiner)."""
+
+        self.slashes.append((x, y, ttl, dx, dy))
+        self.mp_record_fx(
+            "s", round(x, 2), round(y, 2), round(ttl, 2), round(dx, 2), round(dy, 2)
+        )
 
     def add_impact(
         self,
@@ -612,6 +631,22 @@ class Game(
             color = (int(color[0]), int(color[1]), int(color[2]))
         self.impact_effects.append(
             ImpactEffect(x, y, color, ttl, radius, kind, ttl, archetype)
+        )
+        # 4.7.1: every host-side impact (slash sparks, casts, dashes, bursts,
+        # deaths, Time Skip's ring...) replicates to the co-op joiner as an
+        # fx event. mp_record_fx is a no-op unless hosting a started run, so
+        # the joiner re-entering here while applying those events cannot echo.
+        self.mp_record_fx(
+            "i",
+            round(x, 2),
+            round(y, 2),
+            int(color[0]),
+            int(color[1]),
+            int(color[2]),
+            round(ttl, 2),
+            round(radius, 2),
+            kind,
+            archetype,
         )
         # Milestone 3.16 - emit a transient light flare for every impact so
         # casts, dashes, hits, bursts, deaths, and chain-lightning strikes

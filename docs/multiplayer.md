@@ -1,6 +1,6 @@
 # Arch Rogue Multiplayer — Player Guide, Operations, and Protocol Specification
 
-Applies to game release **4.7.0** (wire protocol version **1**). Covers the
+Applies to game release **4.7.5** (wire protocol version **1**). Covers the
 player-facing co-op flow, running the relay server, the client/server
 architecture, and the complete technical specification of the wire protocol.
 
@@ -197,7 +197,12 @@ the server by the DNS name on the certificate (or an IP listed as a SAN).
 The host is the sole simulator. The joiner never runs AI, combat, RNG, or
 loot logic; it renders the latest authoritative snapshot, advances purely
 cosmetic motion (projectile flight, animation clocks, actor smoothing), and
-sends inputs. On the host, the remote player's actor is simulated through
+sends inputs. The one exception (4.7.5) is **local movement prediction**: the
+joiner walks its own actor with the same movement formula and collision code
+as the host so input answers immediately, then reconciles against each
+snapshot (small error eases in, dash/teleport-sized divergence snaps). The
+host remains the authority — prediction pauses whenever the host simulation
+does (story, shops, menus, pending floor). On the host, the remote player's actor is simulated through
 the *same* code paths as the local player (`acting_as_player` context), so
 cooldowns, stamina costs, pickup claims, and upgrade rules are enforced
 server-of-record-side regardless of what a modified client sends.
@@ -233,9 +238,11 @@ Two payload kinds flow host → joiner, both opaque to the server:
   The joiner rebuilds its world through the same code path as loading a save,
   with its own actor as the primary.
 - **Snapshots** (`snapshot` messages at 15 Hz): the fast-changing subset —
-  compact player/enemy/projectile positions, recent floaters, tile patches
-  (diffs against the floor baseline), boss engagement, pause reason, depth,
-  elapsed time, and first-seen enemy spawn records. Every 5th tick (or
+  compact player/enemy/projectile positions (with action poses and attack
+  telegraphs), recent floaters, transient effect events (slashes, impacts,
+  shared screen flashes; sequence-numbered, spawned exactly once), tile
+  patches (diffs against the floor baseline), boss engagement, pause reason,
+  depth, elapsed time, and first-seen enemy spawn records. Every 5th tick (or
   immediately when any world-list length changes) the snapshot also carries a
   `slow` section: full player dicts, items, traps, shrines, secrets,
   familiars, shop state.
@@ -289,7 +296,7 @@ stale movement 0.6 s after the last intent so a silent joiner stops walking.
 - `protocol_version` (integer, currently **1**) is carried in `hello`. A
   mismatch is rejected fatally with `bad_version` before any pairing.
 - `content_revision` (string; the game sends its release version, e.g.
-  `"4.7.0"`) is fixed by the host at room creation; a joiner with a
+  `"4.7.5"`) is fixed by the host at room creation; a joiner with a
   different revision is rejected with `bad_revision`. This intentionally
   fences off cross-version pairs even within one protocol version.
 - Additive message types (e.g. `kick`, added in 4.7.0) do not bump
@@ -519,8 +526,15 @@ pairing), summarized here non-normatively:
   `active_cutscene:null`, `revealed_tiles:[]` (the joiner builds its own
   fog-of-war).
 - `snapshot.state` (fast, every tick): `players` (compact: position, facing,
-  motion, hp/mana/stamina, timers, `name`, class), `enemies` (compact, alive
-  only), `projectiles`, `floaters` (last 10), `tile_patches` (diffs against
+  motion, hp/mana/stamina, timers, `name`, class, and the action pose /
+  hit flash — `act` is `[state, ttl, elapsed, duration]`, serialized from
+  each player's authoritative home so the host's own pose replicates),
+  `enemies` (compact, alive only, incl. windup telegraph and `at` =
+  attack_timer for the strike pose), `projectiles`, `floaters` (last 10),
+  `fx`? (4.7.5: transient effect events — slash arcs, impacts, shared screen
+  flashes — each `[seq, kind, ...]` with a host-monotonic `seq`; a ~5-tick
+  trailing window is resent so coalesced snapshots lose nothing and the
+  joiner spawns each event exactly once), `tile_patches` (diffs against
   the floor baseline), `boss.engaged`, `paused` (host pause reason), `depth`,
   `elapsed`, `spawns`? (full dicts for first-seen enemies).
 - `snapshot.state.slow` (every 5th tick or on list-length change): full

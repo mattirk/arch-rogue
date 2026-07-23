@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.7.5 — The joiner sees the fight
+
+Release 4.7.5 makes co-op look and feel the same on both screens. The joiner now sees every action animation — the host's swings and casts, its own, the enemies' — plus the transient combat effects (slash arcs, impact rings and bursts, Time Skip's cast ring, death explosions, shared screen flashes) that were previously host-only. The joiner's own character also answers input immediately through client-side movement prediction instead of trailing an intent→snapshot round trip, and a per-door frame hitch in the joiner's world apply is gone. Because `content_revision` is the game version, 4.7.5 clients pair only with 4.7.5 clients.
+
+### Fixed
+
+- **Joiner never saw action animations** (4.7 milestone): the host's own pose lives on the Game-global `player_action_*`/`player_hit_flash*` fields, but snapshots serialized the (never-set) actor fields — and the joiner rendered its own actor from its own (never-set) globals. Snapshots now serialize each player's pose from its authoritative home (`act` grew to `[state, ttl, elapsed, duration]`), and the joiner routes its local player's replicated pose and hit flash into the Game globals the renderer reads.
+- **Enemies never left idle/walk on the joiner**: the attack/cast pose window derives from `attack_timer` vs `attack_cooldown`, and compact enemy updates did not carry `attack_timer`. They now do (`at`).
+- **Joiner hitched on every door/tile change**: applying a snapshot tile patch cleared the whole tile cache and re-prewarmed every themed variant. Tile surfaces are position-independent variant caches and the per-position descriptor key includes the tile value, so patches now just update the tiles (and drop the mobile pre-baked floor layer).
+- The joiner's own hit flash (host-validated damage to the remote seat) was applied to actor fields the renderer ignores for the local player; it now reaches the screen, and the joiner synthesizes its own pain screen-flash from the replicated hp drop (the host's own flash no longer implicitly stays host-only by accident but by design: each screen flashes for its own wounds).
+
+### Added
+
+- **Transient fx replication**: the host records slash arcs, impact effects (with color/radius/kind/archetype, so lighting pulses come back too), and shared spectacle screen flashes into a small ring with monotonic sequence numbers; snapshots resend a ~5-tick trailing window (`fx`) so coalesced or dropped snapshots lose nothing, and the joiner spawns each event exactly once. Per-floor rings reset with the floor descriptor; the joiner-side removal burst and blood-impact synthesis are gone (the authoritative death/blood effects replicate instead).
+- **Joiner movement prediction**: the joiner walks its own actor locally with the exact host formula (speed bonuses, chill, wall + contact collision) whenever the host simulation is advancing, reconciling against snapshots (soft 25% easing, instant snap for dash/teleport-sized divergence). Loopback drift after a second of walking measures ~0.02 tiles.
+- **Instant action pose feedback**: queued joiner actions (melee/bolt/skill/dash) pose immediately, gated on the replicated cooldown timers; the host stays authoritative for the effect. Remote actors also ease toward their snapshot positions ~50% faster.
+
 ## 4.7.4 — Release plumbing fix
 
 Maintenance release: the save/metadata test pinned an outdated version string, breaking CI after the 4.7.3 bump. The test now checks the saved run's `release` field against `arch_rogue.__version__` instead of a hardcoded literal, and every version source (game, Android packaging, server) is aligned at 4.7.4.

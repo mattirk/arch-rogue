@@ -97,6 +97,20 @@ from .protocol import (
 
 _PING_INTERVAL_SECONDS = 5.0
 _INTENT_MOVE_TIMEOUT_SECONDS = 0.6
+# Transient-fx replication: ring capacity and how many snapshot ticks an
+# event keeps riding (tolerates coalesced/dropped snapshots without ever
+# re-sending the whole ring forever).
+_FX_RING_CAPACITY = 48
+_FX_REPLAY_TICKS = 5
+# Joiner-side instant pose feedback for queued one-shot actions, mirroring
+# the host's set_player_action_visual calls: action -> (state, ttl, gate
+# timer attribute). The host stays authoritative for the effect itself.
+_ACTION_POSE_PREVIEW = {
+    "melee": ("attack", 0.20, "melee_timer"),
+    "bolt": ("cast", 0.24, "bolt_timer"),
+    "skill": ("cast", 0.32, "class_skill_timer"),
+    "dash": ("dash", 0.22, "dash_timer"),
+}
 _SNAPSHOT_INTERVAL = 1.0 / MP_SNAPSHOT_RATE_HZ
 _INTENT_INTERVAL = 1.0 / MP_INTENT_RATE_HZ
 _RECONNECT_BACKOFF_START = 0.5
@@ -190,6 +204,11 @@ class NetMixin:
         # ``active_players()`` which falls back to ``(self.player,)``.
         self.players: list[Player] = []
         self.local_player_id = "p1"
+        # Host-side transient-fx replication ring (impacts, slashes, screen
+        # flashes) and the joiner-side spawn high-water mark.
+        self._mp_fx_seq = 0
+        self._mp_fx_events: deque = deque(maxlen=_FX_RING_CAPACITY)
+        self._mp_fx_applied_seq = 0
 
     # -- collection helpers -------------------------------------------------
 
@@ -223,6 +242,50 @@ class NetMixin:
 
     def mp_is_host(self) -> bool:
         return self.mp_active and self.mp_role == ROLE_HOST
+
+    def mp_predicts_local_movement(self) -> bool:
+        """Whether the joiner simulates its own actor's movement locally.
+
+        Prediction runs the same movement code as the host, so it stays off
+        exactly when the host's simulation is not advancing (story, shop,
+        menus, pending floor) or the actor cannot act — otherwise the local
+        actor would walk away from a frozen authority and rubber-band.
+        """
+
+        if not self.mp_is_joiner() or self.state != "playing":
+            return False
+        session = self.mp_session
+        if session is None or session.awaiting_floor:
+            return False
+        if self.mp_partner_pause_reason:
+            return False
+        local = self.local_player()
+        return local is not None and local.hp > 0
+
+    # -- transient fx replication -------------------------------------------
+
+    def mp_record_fx(self, kind: str, *payload: Any) -> None:
+        """Host: queue a transient visual for snapshot replication."""
+
+        session = self.mp_session
+        if session is None or not session.started or not self.mp_is_host():
+            return
+        self._mp_fx_seq += 1
+        self._mp_fx_events.append(
+            (session.snapshot_tick, [self._mp_fx_seq, kind, *payload])
+        )
+
+    def mp_collect_fx(self) -> list[list[Any]]:
+        """Host: the replay window of fx events for the snapshot being built."""
+
+        events = self._mp_fx_events
+        if not events:
+            return []
+        session = self.mp_session
+        tick = session.snapshot_tick if session is not None else 0
+        while events and events[0][0] < tick - _FX_REPLAY_TICKS:
+            events.popleft()
+        return [entry for _, entry in events]
 
     @contextmanager
     def acting_as_player(self, player: Player) -> Iterator[None]:
@@ -349,6 +412,9 @@ class NetMixin:
             return
         session.floor_revision += 1
         session.snapshot_tick = 0
+        # Fx from the previous floor must not replay into the fresh one (the
+        # joiner resets its spawn high-water mark when it applies the floor).
+        self._mp_fx_events.clear()
         state = sync.build_floor_state(self)
         client.send_message(
             make_floor(
@@ -384,6 +450,15 @@ class NetMixin:
                 target=target,
             )
         )
+        # Show the pose immediately instead of waiting a round trip for the
+        # snapshot echo. Gated on the replicated cooldown so a press the host
+        # will reject rarely animates; resource shortfalls can still produce
+        # a swing without an effect, which reads as a whiff.
+        preview = _ACTION_POSE_PREVIEW.get(action)
+        if preview is not None:
+            state, ttl, gate_timer = preview
+            if getattr(local, gate_timer, 0.0) <= 0.0:
+                self.set_player_action_visual(state, ttl)
 
     def _mp_local_move_vector(self) -> tuple[float, float]:
         """Sample the joiner's movement input (keyboard/controller/touch/mouse)."""
@@ -981,6 +1056,9 @@ class NetMixin:
         self.mp_partner_pause_reason = ""
         self.players = []
         self.local_player_id = "p1"
+        self._mp_fx_seq = 0
+        self._mp_fx_events.clear()
+        self._mp_fx_applied_seq = 0
 
     # -- setup flow ----------------------------------------------------------
 
@@ -1373,7 +1451,6 @@ class NetMixin:
     def mp_update_joiner(self, dt: float) -> None:
         """The joiner never simulates: it renders authoritative state."""
 
-        session = self.mp_session
         self.update_visual_effects(dt)
         for player in self.players:
             if player.player_id == self.local_player_id:
@@ -1395,20 +1472,41 @@ class NetMixin:
                 for projectile in self.projectiles
                 if projectile.update(dt, self.dungeon)
             ]
-        local = self.local_player()
-        if (
-            local is not None
-            and local.hp > 0
-            and session is not None
-            and not session.awaiting_floor
-        ):
+        if self.mp_predicts_local_movement():
+            # Client-side movement prediction: walk the local actor with the
+            # exact host formula (speed, statuses, wall + contact collision)
+            # so the joiner's own character answers input immediately instead
+            # of trailing an intent->snapshot round trip. Snapshots reconcile
+            # the small residual error in apply_player_fast.
+            from ..combat._utils import PLAYER_MOVE_SPEED
+
+            local = self.local_player()
+            local.moving = False
+            local.locomotion_anim_scale = 0.0
             move_x, move_y = self._mp_local_move_vector()
             if move_x or move_y:
                 length = math.hypot(move_x, move_y)
-                local.facing_x = move_x / length
-                local.facing_y = move_y / length
-                local.moving = True
-                local.locomotion_anim_scale = min(1.0, length)
+                nx, ny = move_x / length, move_y / length
+                local.facing_x = nx
+                local.facing_y = ny
+                equipment_move = max(
+                    -0.25, min(0.30, self.equipment_stat_total("move_speed"))
+                )
+                move_speed = (
+                    PLAYER_MOVE_SPEED
+                    * (1.0 + equipment_move)
+                    * (0.82 if self.player_status("chilled") > 0 else 1.0)
+                )
+                magnitude = min(1.0, length)
+                moved = self.move_actor(
+                    local,
+                    nx * magnitude * move_speed * dt,
+                    ny * magnitude * move_speed * dt,
+                )
+                if moved > 0.0 and dt > 0.0:
+                    local.locomotion_anim_scale = moved / (
+                        dt * PLAYER_MOVE_SPEED
+                    )
         self.update_camera(dt)
         self.update_revealed_tiles()
         self.update_floaters(dt)

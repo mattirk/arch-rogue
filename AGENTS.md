@@ -315,9 +315,7 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 
 ### 4.7 Post multiplayer & beyond
 
-- Joining guest player does not see action animations e.g time skip or shield bash (or enemies' actions) 
 - We need dying/death animations (single direction) also dead/idle (single direction, very small movement) and for all archetypes
-- On mobile single player, we need more clear indicator of Archetype selection confirmation (now it is so that second tap confirms archetype) -> we need a button to selected row which confirms selection
 
 ### Backlog
 

@@ -101,7 +101,7 @@ class _AttacksCombatMixin:
         else:
             tx = self.player.x + self.player.facing_x * 0.9
             ty = self.player.y + self.player.facing_y * 0.9
-        self.slashes.append((tx, ty, 0.18, self.player.facing_x, self.player.facing_y))
+        self.add_slash(tx, ty, 0.18, self.player.facing_x, self.player.facing_y)
         if target:
             targets = [target]
             if self.player.class_name == "Warden":

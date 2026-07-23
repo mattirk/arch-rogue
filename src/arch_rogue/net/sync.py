@@ -101,9 +101,44 @@ def player_full_dict(game: Any, player: Player) -> dict[str, Any]:
     }
 
 
-def player_fast_dict(player: Player) -> dict[str, Any]:
+def _player_pose_fields(
+    game: Any, player: Player
+) -> tuple[list[Any], list[float]]:
+    """The action pose + hit flash for ``player`` from its authoritative home.
+
+    The local player's transient pose lives on Game-global fields (the
+    single-player rendering contract reads ``game.player_action_*`` /
+    ``game.player_hit_flash*`` for the local actor); a network partner's pose
+    lives on its own actor. Serializing from the wrong home is why 4.7.0
+    joiners never saw the host swing, cast, or flash.
+    """
+
+    if player.player_id == getattr(game, "local_player_id", ""):
+        action = [
+            game.player_action_state,
+            round(game.player_action_ttl, 2),
+            round(game.player_action_elapsed, 2),
+            round(game.player_action_duration, 2),
+        ]
+        flash = [
+            round(game.player_hit_flash, 2),
+            round(game.player_hit_flash_duration, 2),
+        ]
+    else:
+        action = [
+            player.action_state,
+            round(player.action_ttl, 2),
+            round(player.action_elapsed, 2),
+            round(player.action_duration, 2),
+        ]
+        flash = [round(player.hit_flash, 2), round(player.hit_flash_duration, 2)]
+    return action, flash
+
+
+def player_fast_dict(game: Any, player: Player) -> dict[str, Any]:
     """Per-tick dynamic player fields (positions, vitals, cooldowns, pose)."""
 
+    action, flash = _player_pose_fields(game, player)
     return {
         "id": player.player_id,
         "x": round(player.x, 3),
@@ -134,17 +169,22 @@ def player_fast_dict(player: Player) -> dict[str, Any]:
             round(player.time_skip_timer, 2),
         ],
         "status": dict(player.status_effects),
-        "act": [player.action_state, round(player.action_ttl, 2)],
-        "hf": [round(player.hit_flash, 2), round(player.hit_flash_duration, 2)],
+        "act": action,
+        "hf": flash,
         "tokens": player.mastery_tokens,
     }
 
 
 def apply_player_fast(game: Any, player: Player, data: dict[str, Any]) -> None:
     old_hp = player.hp
+    is_local = player.player_id == getattr(game, "local_player_id", "")
+    predicted = is_local and bool(game.mp_predicts_local_movement())
     target_x = float(data.get("x", player.x))
     target_y = float(data.get("y", player.y))
-    _set_lerp_target(player, target_x, target_y)
+    if predicted:
+        _reconcile_predicted_position(player, target_x, target_y)
+    else:
+        _set_lerp_target(player, target_x, target_y)
     player.hp = int(data.get("hp", player.hp))
     player.max_hp = int(data.get("mhp", player.max_hp))
     player.mana = float(data.get("mana", player.mana))
@@ -157,10 +197,14 @@ def apply_player_fast(game: Any, player: Player, data: dict[str, Any]) -> None:
     player.gold = int(data.get("gold", player.gold))
     player.facing_x = float(data.get("fx", player.facing_x))
     player.facing_y = float(data.get("fy", player.facing_y))
-    player.moving = bool(data.get("mv", False))
-    player.move_x = float(data.get("mx", player.move_x))
-    player.move_y = float(data.get("my", player.move_y))
-    player.locomotion_anim_scale = float(data.get("loco", 1.0))
+    if not predicted:
+        # A predicting joiner owns its walk state (moving flag, lean vector,
+        # locomotion scale) — the host's echo is ~a round trip stale and
+        # would moonwalk the actor right after the player releases input.
+        player.moving = bool(data.get("mv", False))
+        player.move_x = float(data.get("mx", player.move_x))
+        player.move_y = float(data.get("my", player.move_y))
+        player.locomotion_anim_scale = float(data.get("loco", 1.0))
     # Names travel host→joiner inside world payloads; sanitize on ingestion
     # so a modified peer cannot feed control characters into the HUD.
     player.display_name = sanitize_player_name(
@@ -181,18 +225,78 @@ def apply_player_fast(game: Any, player: Player, data: dict[str, Any]) -> None:
         }
     action = data.get("act")
     if isinstance(action, list) and len(action) >= 2:
-        player.action_state = str(action[0])
-        player.action_ttl = float(action[1])
-        player.action_duration = max(player.action_duration, player.action_ttl)
+        state = str(action[0])
+        ttl = float(action[1])
+        elapsed = float(action[2]) if len(action) >= 3 else 0.0
+        duration = float(action[3]) if len(action) >= 4 else ttl
+        player.action_state = state
+        player.action_ttl = ttl
+        player.action_elapsed = elapsed
+        player.action_duration = max(duration, ttl)
+        if is_local and game.mp_is_joiner():
+            _apply_local_action_pose(game, state, ttl, elapsed, duration)
     flash = data.get("hf")
     if isinstance(flash, list) and len(flash) >= 2:
         player.hit_flash = float(flash[0])
         player.hit_flash_duration = float(flash[1])
+        if is_local and game.mp_is_joiner():
+            # The local player's hit flash renders from the Game globals
+            # (max-merge so a fresher local decay is never rewound).
+            if player.hit_flash > game.player_hit_flash:
+                game.player_hit_flash = player.hit_flash
+                game.player_hit_flash_duration = player.hit_flash_duration
     player.mastery_tokens = int(data.get("tokens", player.mastery_tokens))
-    if player.hp < old_hp:
-        game.add_impact(
-            player.x, player.y, (245, 95, 70), ttl=0.3, radius=0.4, kind="blood"
+    if player.hp < old_hp and is_local and game.mp_is_joiner():
+        # Mirror take_player_damage's local screen feedback for the joiner's
+        # own wounds (the host flashes only for its own). The blood impact
+        # itself arrives through the replicated fx events.
+        amount = old_hp - player.hp
+        heavy_hit = amount >= player.max_hp * 0.18
+        game.trigger_screen_flash(
+            (160, 35, 32) if heavy_hit else (105, 24, 28),
+            0.30 if heavy_hit else 0.18,
         )
+
+
+def _apply_local_action_pose(
+    game: Any, state: str, ttl: float, elapsed: float, duration: float
+) -> None:
+    """Adopt a replicated pose for the joiner's own actor (rendered from the
+    Game-global fields). A pose the joiner already started locally (queued
+    action feedback) is left to play out — the host echo of that same pose
+    would only stretch it by the round trip."""
+
+    if not state:
+        return
+    if game.player_action_ttl > 0.0 and game.player_action_state == state:
+        return
+    game.player_action_state = state
+    game.player_action_ttl = ttl
+    game.player_action_elapsed = elapsed
+    game.player_action_duration = max(duration, ttl)
+
+
+def _reconcile_predicted_position(
+    actor: Any, target_x: float, target_y: float
+) -> None:
+    """Blend a locally predicted actor toward the authoritative position.
+
+    Prediction runs the same movement code as the host, so steady-state error
+    stays tiny; big divergence means a host-side dash/teleport/knockback and
+    snaps. The rest eases at 25% per snapshot (~15 Hz) — invisible in play.
+    """
+
+    dx = target_x - actor.x
+    dy = target_y - actor.y
+    error = dx * dx + dy * dy
+    if error > 1.44:
+        actor.x = target_x
+        actor.y = target_y
+    elif error > 0.0004:
+        actor.x += dx * 0.25
+        actor.y += dy * 0.25
+    actor.net_x = None
+    actor.net_y = None
 
 
 def player_slow_dict(game: Any, player: Player) -> dict[str, Any]:
@@ -357,6 +461,9 @@ def apply_floor_state(game: Any, state: dict[str, Any]) -> None:
     players.sort(key=lambda p: p.player_id)
     game.players = players
     game._mp_tile_baseline = None
+    # The host clears its fx ring alongside each floor send; a fresh floor
+    # (or rejoin replay) must not suppress the new floor's early events.
+    game._mp_fx_applied_seq = 0
     game.snap_camera_to_player()
     game.update_revealed_tiles()
 
@@ -398,6 +505,10 @@ def enemy_compact_dict(enemy: Any) -> dict[str, Any]:
         "wt": round(enemy.windup_time, 3),
         "wd": round(enemy.windup_duration, 3),
         "wa": enemy.windup_attack,
+        # The attack/cast pose window is attack_timer's distance from
+        # attack_cooldown (enemy_visual_state); without it a joiner's enemies
+        # never leave idle/walk while striking.
+        "at": round(enemy.attack_timer, 3),
         "st": {key: round(value, 2) for key, value in enemy.statuses.items()},
     }
 
@@ -418,6 +529,7 @@ def apply_enemy_compact(game: Any, enemy: Any, data: dict[str, Any]) -> None:
     enemy.windup_time = float(data.get("wt", 0.0))
     enemy.windup_duration = float(data.get("wd", 0.0))
     enemy.windup_attack = str(data.get("wa", ""))
+    enemy.attack_timer = float(data.get("at", enemy.attack_timer))
     statuses = data.get("st")
     if isinstance(statuses, dict):
         enemy.statuses = {
@@ -518,7 +630,7 @@ def build_snapshot_state(
                 }
             )
     state: dict[str, Any] = {
-        "players": [player_fast_dict(p) for p in game.players],
+        "players": [player_fast_dict(game, p) for p in game.players],
         "enemies": [enemy_compact_dict(e) for e in game.enemies if e.alive],
         "projectiles": [
             projectile_compact_dict(game, p) for p in game.projectiles
@@ -537,6 +649,9 @@ def build_snapshot_state(
     }
     if spawns:
         state["spawns"] = spawns
+    fx_events = game.mp_collect_fx()
+    if fx_events:
+        state["fx"] = fx_events
     if include_slow:
         state["slow"] = {
             "players": [player_slow_dict(game, p) for p in game.players],
@@ -612,15 +727,8 @@ def apply_snapshot_state(game: Any, state: dict[str, Any]) -> None:
         if enemy.entity_id and enemy.entity_id not in seen_ids
     ]
     if removed:
-        for enemy in removed:
-            game.add_impact(
-                enemy.x,
-                enemy.y,
-                (200, 70, 60),
-                ttl=0.4,
-                radius=0.5,
-                kind="burst",
-            )
+        # Death bursts/loot flashes arrive through the replicated fx events;
+        # synthesizing one per removal here would double them.
         game.enemies = [
             enemy
             for enemy in game.enemies
@@ -670,8 +778,17 @@ def apply_snapshot_state(game: Any, state: dict[str, Any]) -> None:
                     game.dungeon.tiles[x][y] = Tile(tile)
                 except ValueError:
                     continue
-        game.tile_cache.clear()
-        game.prewarm_tile_cache(prewarm_stair_animation=False)
+        # Tile surfaces are variant caches keyed by (tile, seed, style) — not
+        # position — and the per-position descriptor cache keys include the
+        # tile value, so a patched tile misses cleanly and rebuilds lazily.
+        # The old full clear + prewarm here stalled the joiner for the whole
+        # theme's texture generation every time a door opened. Only the
+        # mobile pre-baked floor layer actually depends on tile contents.
+        game._mobile_floor_layer_cache = None
+
+    fx_events = state.get("fx")
+    if isinstance(fx_events, list):
+        _apply_fx_events(game, fx_events)
 
     boss = state.get("boss")
     if isinstance(boss, dict):
@@ -724,10 +841,62 @@ def apply_snapshot_state(game: Any, state: dict[str, Any]) -> None:
                 keeper.met = bool(met)
 
 
+def _apply_fx_events(game: Any, entries: list[Any]) -> None:
+    """Spawn replicated transient visuals (impacts, slashes, screen flashes).
+
+    Each event carries a host-monotonic sequence number; the snapshot resends
+    a short trailing window so coalesced/dropped snapshots lose nothing, and
+    the joiner spawns every event exactly once by high-water mark.
+    """
+
+    last_seq = int(getattr(game, "_mp_fx_applied_seq", 0))
+    newest = last_seq
+    for entry in entries:
+        if not (isinstance(entry, list) and len(entry) >= 2):
+            continue
+        try:
+            seq = int(entry[0])
+        except (TypeError, ValueError):
+            continue
+        if seq <= last_seq:
+            continue
+        newest = max(newest, seq)
+        kind = entry[1]
+        try:
+            if kind == "i" and len(entry) >= 11:
+                game.add_impact(
+                    float(entry[2]),
+                    float(entry[3]),
+                    (int(entry[4]), int(entry[5]), int(entry[6])),
+                    ttl=float(entry[7]),
+                    radius=float(entry[8]),
+                    kind=str(entry[9]),
+                    archetype=str(entry[10]),
+                )
+            elif kind == "s" and len(entry) >= 7:
+                game.slashes.append(
+                    (
+                        float(entry[2]),
+                        float(entry[3]),
+                        float(entry[4]),
+                        float(entry[5]),
+                        float(entry[6]),
+                    )
+                )
+            elif kind == "f" and len(entry) >= 6:
+                game.trigger_screen_flash(
+                    (int(entry[2]), int(entry[3]), int(entry[4])),
+                    float(entry[5]),
+                )
+        except (TypeError, ValueError, IndexError, KeyError):
+            continue
+    game._mp_fx_applied_seq = newest
+
+
 def lerp_networked_actors(game: Any, dt: float) -> None:
     """Ease joiner-side actors toward their authoritative positions."""
 
-    blend = min(1.0, dt * 12.0)
+    blend = min(1.0, dt * 18.0)
     for actor in (*game.players, *game.enemies):
         target_x = getattr(actor, "net_x", None)
         target_y = getattr(actor, "net_y", None)

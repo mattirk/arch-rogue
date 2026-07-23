@@ -194,7 +194,11 @@ class _PlayerCombatMixin:
                 self.player_hit_flash_duration = hit_duration
             self.player_hit_flash = max(self.player_hit_flash, hit_duration)
             self.trigger_screen_flash(
-                flash, 0.18 if amount < self.player.max_hp * 0.18 else 0.30
+                flash,
+                0.18 if amount < self.player.max_hp * 0.18 else 0.30,
+                # The joiner synthesizes its own pain flash from the hp drop
+                # in its snapshot; the host's must not paint both screens.
+                replicate=False,
             )
         else:
             # The partner's pain shows on their actor, not this screen.

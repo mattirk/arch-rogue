@@ -318,14 +318,12 @@ class _EnemiesCombatMixin:
                 self.damage_type_color(enemy.damage_type),
             )
         )
-        self.slashes.append(
-            (
-                (enemy.x + victim.x) * 0.5,
-                (enemy.y + victim.y) * 0.5,
-                0.14,
-                enemy.facing_x,
-                enemy.facing_y,
-            )
+        self.add_slash(
+            (enemy.x + victim.x) * 0.5,
+            (enemy.y + victim.y) * 0.5,
+            0.14,
+            enemy.facing_x,
+            enemy.facing_y,
         )
         self.add_impact(
             (enemy.x + victim.x) * 0.5,
