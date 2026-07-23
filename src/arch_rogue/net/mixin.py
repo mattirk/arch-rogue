@@ -97,6 +97,10 @@ from .protocol import (
 
 _PING_INTERVAL_SECONDS = 5.0
 _INTENT_MOVE_TIMEOUT_SECONDS = 0.6
+# The partner's modal pause reason (4.7.12) rides every 20 Hz intent; after
+# this long without a refresh the host resumes rather than staying frozen
+# behind a silently dropped partner.
+_REMOTE_PAUSE_STALE_SECONDS = 2.0
 # A movement-vector component change beyond this transmits immediately
 # instead of waiting out the 20 Hz slot. Any keyboard direction change
 # clears it; analog easing below it keeps the ordinary cadence.
@@ -187,6 +191,12 @@ class MpSession:
     # turns the actor without moving it, so movement intents replicate the
     # facing and the host applies it while the intent vector is zero.
     intent_facing: tuple[float, float] | None = None
+    # Host-side latest joiner modal pause reason (4.7.12): "shop" while the
+    # partner's local shop UI is open. Refreshed by every intent (20 Hz);
+    # treated as stale after a short silence so a dropped partner cannot
+    # freeze the host's simulation forever.
+    remote_pause_reason: str = ""
+    remote_pause_at: float = 0.0
     # Joiner-side last transmitted movement vector for edge-triggered sends.
     last_move_vector: tuple[float, float] = (0.0, 0.0)
 
@@ -278,6 +288,30 @@ class NetMixin:
             return False
         local = self.local_player()
         return local is not None and local.hp > 0
+
+    def mp_local_pause_reason(self) -> str:
+        """The joiner's own modal pause reason, replicated inside intents.
+
+        Only the shop freezes the shared run from the joiner's side; its
+        inventory/character menus stay browse-while-paused-locally like
+        before 4.7.12.
+        """
+
+        if self.mp_is_joiner() and self.shop_open:
+            return "shop"
+        return ""
+
+    def mp_remote_pause_reason(self) -> str:
+        """Host: the partner's modal pause reason, empty once stale."""
+
+        session = self.mp_session
+        if session is None or not self.mp_is_host() or not session.started:
+            return ""
+        if not session.remote_pause_reason or not session.partner_connected:
+            return ""
+        if time.monotonic() - session.remote_pause_at > _REMOTE_PAUSE_STALE_SECONDS:
+            return ""
+        return session.remote_pause_reason
 
     # -- transient fx replication -------------------------------------------
 
@@ -438,6 +472,7 @@ class NetMixin:
                                 py=claim_y,
                                 fx=local.facing_x,
                                 fy=local.facing_y,
+                                pause=self.mp_local_pause_reason(),
                             ),
                             coalesce_key=COALESCE_MOVE_INTENT,
                         )
@@ -509,6 +544,7 @@ class NetMixin:
                 move_y=aim_y,
                 action=action,
                 target=target,
+                pause=self.mp_local_pause_reason(),
             )
         )
         # Show the pose immediately instead of waiting a round trip for the
@@ -524,6 +560,17 @@ class NetMixin:
     def _mp_local_move_vector(self) -> tuple[float, float]:
         """Sample the joiner's movement input (keyboard/controller/touch/mouse)."""
 
+        # A local modal swallows movement exactly like the host's pause does
+        # for its own actor — otherwise arrow-key shop/menu navigation would
+        # also walk the predicted actor (and ship movement intents).
+        if (
+            self.inventory_open
+            or self.character_menu_open
+            or self.shop_open
+            or self.active_cutscene is not None
+            or self.story_intro_pending
+        ):
+            return 0.0, 0.0
         keys = pygame.key.get_pressed()
         move_x = float(keys[pygame.K_RIGHT] or keys[pygame.K_d]) - float(
             keys[pygame.K_LEFT] or keys[pygame.K_a]
@@ -948,6 +995,8 @@ class NetMixin:
         if message.input_seq <= session.intent_last_seq:
             return  # stale input
         session.intent_last_seq = message.input_seq
+        session.remote_pause_reason = message.pause
+        session.remote_pause_at = now
         if message.action:
             session.intent_actions.append(
                 (message.action, message.target, message.move_x, message.move_y)
@@ -1354,8 +1403,16 @@ class NetMixin:
 
     # -- host-side remote player simulation ----------------------------------
 
-    def mp_apply_remote_intents(self, dt: float) -> None:
-        """Host: move and act the joiner's actor from validated intents."""
+    def mp_apply_remote_intents(self, dt: float, *, paused: bool = False) -> None:
+        """Host: move and act the joiner's actor from validated intents.
+
+        With ``paused=True`` (a modal — either side's — froze the shared
+        simulation) the remote actor neither moves nor fights, but the
+        partner's shop transactions still resolve: the partner's own open
+        shop is exactly what pauses the host, so its buy/sell intents cannot
+        wait for the unpause they themselves gate. Other one-shot actions
+        stay queued for the resume, as before.
+        """
 
         session = self.mp_session
         if session is None or not self.mp_is_host():
@@ -1372,6 +1429,16 @@ class NetMixin:
         if now - session.intent_move_at > _INTENT_MOVE_TIMEOUT_SECONDS:
             move_x = move_y = 0.0
         with self.acting_as_player(remote):
+            if paused:
+                kept: list[tuple] = []
+                while session.intent_actions:
+                    entry = session.intent_actions.popleft()
+                    if entry[0] in ("shop_open", "shop_buy", "shop_sell"):
+                        self._mp_dispatch_remote_action(entry[0], entry[1])
+                    else:
+                        kept.append(entry)
+                session.intent_actions.extend(kept)
+                return
             self._mp_update_remote_player(remote, dt, move_x, move_y)
             while session.intent_actions:
                 action, target, aim_x, aim_y = session.intent_actions.popleft()
@@ -1570,6 +1637,51 @@ class NetMixin:
                 self.drop_inventory_slot(slot)
         elif action == "choose_discipline" and target:
             self.choose_discipline(str(target))
+        elif action in ("shop_open", "shop_buy", "shop_sell"):
+            self._mp_remote_shop_action(action, target)
+
+    def _mp_remote_shop_action(self, action: str, target: str | None) -> None:
+        """Host: resolve the partner's local-shop intents on its actor.
+
+        The partner's shop UI is entirely client-side; the host only marks
+        the keeper met on open and applies validated transactions. The item
+        is addressed by index plus a truncated display name so an index gone
+        stale under snapshot lag is dropped instead of trading the wrong
+        item — the partner simply presses again once its list catches up.
+        """
+
+        parts = (target or "").split(":", 2)
+        try:
+            keeper_index = int(parts[0])
+        except (TypeError, ValueError):
+            return
+        if not 0 <= keeper_index < len(self.shopkeepers):
+            return
+        keeper = self.shopkeepers[keeper_index]
+        dx = keeper.x - self.player.x
+        dy = keeper.y - self.player.y
+        if dx * dx + dy * dy > 2.6 * 2.6:
+            return
+        if action == "shop_open":
+            keeper.met = True
+            return
+        if len(parts) < 3:
+            return
+        try:
+            item_index = int(parts[1])
+        except (TypeError, ValueError):
+            return
+        entries = (
+            keeper.inventory if action == "shop_buy" else self.player.inventory
+        )
+        if not 0 <= item_index < len(entries):
+            return
+        item = entries[item_index]
+        if item.display_name[:40] != parts[2]:
+            return
+        self.shop_execute(
+            keeper, item, "buy" if action == "shop_buy" else "sell"
+        )
 
     @staticmethod
     def _mp_slot_index(target: str | None) -> int | None:
@@ -1584,6 +1696,24 @@ class NetMixin:
     def mp_update_joiner(self, dt: float) -> None:
         """The joiner never simulates: it renders authoritative state."""
 
+        # Mirror the host's stale-shop guard for the joiner's local shop UI:
+        # the keeper must exist and stay in range (the host may reposition
+        # this actor via reconciliation), and a corpse cannot keep trading.
+        if self.shop_open:
+            local = self.local_player()
+            keeper = self.active_shopkeeper
+            if (
+                local is None
+                or local.hp <= 0
+                or keeper is None
+                or keeper not in self.shopkeepers
+            ):
+                self.close_shop()
+            else:
+                shop_dx = keeper.x - local.x
+                shop_dy = keeper.y - local.y
+                if shop_dx * shop_dx + shop_dy * shop_dy > 2.6 * 2.6:
+                    self.close_shop()
         self.update_visual_effects(dt)
         for player in self.players:
             if player.player_id == self.local_player_id:

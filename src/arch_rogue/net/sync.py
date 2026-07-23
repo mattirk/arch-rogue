@@ -722,6 +722,13 @@ def build_snapshot_state(
                 game.familiar_to_dict(familiar) for familiar in game.familiars
             ],
             "shop_met": [bool(keeper.met) for keeper in game.shopkeepers],
+            # 4.7.12: the joiner runs its own local shop UI against these
+            # keeper inventories; without them a host- or partner-side trade
+            # would leave the joiner's browse list stale.
+            "shop_inv": [
+                [game.item_to_dict(item) for item in keeper.inventory]
+                for keeper in game.shopkeepers
+            ],
         }
     return state
 
@@ -736,6 +743,7 @@ def world_list_lengths(game: Any) -> tuple[int, ...]:
         len(game.secrets),
         len(game.familiars),
         *(len(p.inventory) for p in game.players),
+        *(len(keeper.inventory) for keeper in game.shopkeepers),
     )
 
 
@@ -898,6 +906,22 @@ def apply_snapshot_state(game: Any, state: dict[str, Any]) -> None:
         if isinstance(met_flags, list):
             for keeper, met in zip(game.shopkeepers, met_flags):
                 keeper.met = bool(met)
+        shop_inventories = slow.get("shop_inv")
+        if isinstance(shop_inventories, list):
+            # In place: the joiner's open shop UI holds a reference to its
+            # seed-generated keeper object.
+            for keeper, entries in zip(game.shopkeepers, shop_inventories):
+                if not isinstance(entries, list):
+                    continue
+                keeper.inventory[:] = [
+                    item
+                    for item in (
+                        game.item_from_dict(entry) for entry in entries
+                    )
+                    if item is not None
+                ]
+            if game.shop_open:
+                game.clamp_shop_cursor()
 
 
 def _apply_fx_events(game: Any, entries: list[Any]) -> None:

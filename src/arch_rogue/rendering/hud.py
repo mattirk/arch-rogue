@@ -875,6 +875,11 @@ class RenderingHudMixin:
                 return "Your partner bargains with a trader…"
             if reason in ("menu", "paused"):
                 return "Your partner pauses among their belongings…"
+        elif self.mp_role == "host" and not self.shop_open:
+            # The joiner's local shop freezes the host's simulation; explain
+            # the freeze (unless the host is browsing its own shop modal).
+            if self.mp_remote_pause_reason() == "shop":
+                return "Your partner bargains with a trader…"
         return ""
 
     def _draw_mp_session_banner(self) -> None:

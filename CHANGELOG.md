@@ -1,5 +1,20 @@
 # Changelog
 
+## 4.7.12 — The joiner goes shopping
+
+Release 4.7.12 gives the co-op joiner a real shop: interacting with a shopkeeper (or shop sign) opens the shop UI locally on the joiner, trades resolve host-side, and the shared simulation pauses for both players while either one is trading. Talking to a story guest now works from either side too — the dialogue opens on the host, which pauses both. The wire change is three new intent actions (`shop_open`/`shop_buy`/`shop_sell`) and an additive optional `pause` intent field, so **the relay server must be redeployed** (it validates the intent action enum); because `content_revision` is the game version, 4.7.12 clients pair only with 4.7.12 clients.
+
+### Added
+
+- **Joiner-local shop UI**: the joiner opens and browses the shop against its seed-identical floor and snapshot-synced keeper inventories (a new `shop_inv` slow-snapshot payload that also fires immediately when any keeper's list changes). Buy/sell presses ship `shop_buy`/`shop_sell` intents addressed by keeper index, item index, and a truncated display name, so a selection gone stale under snapshot lag is refused instead of trading the wrong item; gold and inventories reconcile through the ordinary snapshot flow.
+- **Shared shop pause**: every joiner intent now carries its local modal pause reason, and the host freezes the shared simulation (with the familiar "Your partner bargains with a trader…" banner, now shown on the host too) while the partner trades — mirroring how the host's own shop has always frozen the joiner. Paused frames still drain the partner's shop intents so trades resolve during the freeze, and a reason that stops refreshing for 2 s expires so a dropped partner cannot freeze the host forever.
+- **Either player can hail a story guest**: a joiner interact near a story guest now opens the choice dialogue on the host (story remains host-controlled) instead of a "the guest awaits the host's word" floater, pausing both players through the existing snapshot pause reason.
+
+### Fixed
+
+- **Guest shop interactions flashed the host's window**: a joiner interact near a shop sign ran the unguarded sign path on the host, opening the host's modal shop against the *joiner's* position and closing it one frame later on the host-range check — a one-frame shop/pause flicker with no dialog for anyone. Remote actors can no longer open the host's shop from either the keeper or the sign path.
+- **Joiner menus no longer double as movement**: arrow-key navigation in the joiner's shop/inventory/character menus also walked the predicted actor (and shipped movement intents), because only the mouse-walk fallback checked for open menus. A local modal now swallows the joiner's movement sampling exactly like the host's pause does for its own actor.
+
 ## 4.7.11 — Raise your fallen partner
 
 Release 4.7.11 adds the co-op Raise: each player can revive their fallen partner once per descent. All logic is host-side and the wire change is additive (a new player field in floor and snapshot payloads); because `content_revision` is the game version, 4.7.11 clients pair only with 4.7.11 clients.

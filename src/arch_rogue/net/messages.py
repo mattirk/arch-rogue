@@ -141,6 +141,9 @@ class IntentMessage(NetMessage):
     # aim turns the actor without moving it).
     fx: float | None = None
     fy: float | None = None
+    # 4.7.12: the joiner's local modal pause reason ("shop" while its shop
+    # UI is open); the host pauses the shared simulation while set.
+    pause: str = ""
 
 
 @dataclass(frozen=True)
@@ -283,6 +286,7 @@ def message_from_dict(data: dict[str, Any]) -> NetMessage:
                 py=float(claim_y) if claim_ok else None,
                 fx=clamp_unit(facing_x) if facing_ok else None,
                 fy=clamp_unit(facing_y) if facing_ok else None,
+                pause=_ident(data.get("pause", ""), cap=16),
             )
         if message_type == "run_ended":
             results = data.get("results", [])

@@ -432,7 +432,29 @@ class InteractionMixin:
     def interact(self) -> None:
         # 4.6 co-op: the joiner submits an interaction intent; the host
         # validates and resolves it (first valid claim wins the item).
+        # 4.7.12: shops are the exception — the joiner opens its own local
+        # shop UI (the floor is seed-identical, keeper inventories are
+        # snapshot-synced) and only transactions go to the host. The checks
+        # that outrank shops in the host's priority order and are readable
+        # from replicated state defer to the host first.
         if self.mp_is_joiner():
+            if (
+                self.nearby_story_relic() is None
+                and self.nearby_raisable_partner() is None
+                and self.nearby_closed_door() is None
+            ):
+                shopkeeper = self.nearby_shopkeeper()
+                if shopkeeper is None:
+                    nearest = self.nearby_item()
+                    if nearest is not None and nearest.slot == "shop_sign":
+                        shopkeeper = self.shopkeeper_for_sign(nearest)
+                if shopkeeper is not None:
+                    self.open_shop(shopkeeper)
+                    self.mp_queue_action(
+                        "shop_open",
+                        target=str(self.shopkeepers.index(shopkeeper)),
+                    )
+                    return
             self.mp_queue_action("interact")
             return
         if self.story_intro_pending:
@@ -458,25 +480,16 @@ class InteractionMixin:
             return
         shopkeeper = self.nearby_shopkeeper()
         if shopkeeper is not None:
-            # Shops are host-controlled in 4.6: only the host's own actor may
-            # open the modal shop UI; a partner's interact is acknowledged in
-            # the world instead of opening divergent dialogue.
-            if (
+            # 4.7.12: the joiner runs its own local shop UI, so a remote
+            # actor's interact near a keeper means its client targeted
+            # something else (position skew) — fall through to the other
+            # checks instead of opening the modal shop on the host.
+            if not (
                 self.mp_active
                 and self.player.player_id != self.local_player_id
             ):
-                self.floaters.append(
-                    FloatingText(
-                        "The trader deals with the host",
-                        self.player.x,
-                        self.player.y - 0.5,
-                        (235, 210, 120),
-                        ttl=1.1,
-                    )
-                )
+                self.open_shop(shopkeeper)
                 return
-            self.open_shop(shopkeeper)
-            return
         if self.player_near_stairs():
             # On Hell, descent is a shared decision: every living player must
             # stand near the stairs before either can trigger it. On lower
@@ -524,22 +537,10 @@ class InteractionMixin:
             return
         guest = self.nearby_story_guest()
         if guest:
-            # Story dialogue is host-controlled; the partner's actor cannot
-            # open divergent modal choice UI.
-            if (
-                self.mp_active
-                and self.player.player_id != self.local_player_id
-            ):
-                self.floaters.append(
-                    FloatingText(
-                        "The guest awaits the host's word",
-                        self.player.x,
-                        self.player.y - 0.5,
-                        (235, 210, 120),
-                        ttl=1.1,
-                    )
-                )
-                return
+            # Story dialogue is host-controlled: whichever player hails the
+            # guest, the modal choice UI opens on the host (the cutscene
+            # pauses the shared simulation, so the partner freezes with a
+            # banner while the host answers for both).
             self.talk_to_story_guest(guest)
             return
         secret = self.nearby_secret()
@@ -556,9 +557,16 @@ class InteractionMixin:
                 self.collect_story_relic(nearest)
                 return
             if nearest.slot == "shop_sign":
-                shopkeeper = self.shopkeeper_for_sign(nearest)
-                if shopkeeper is not None:
-                    self.open_shop(shopkeeper)
+                # The joiner opens its shop locally from the sign; a remote
+                # actor's interact must never open (and range-flicker) the
+                # host's modal shop.
+                if not (
+                    self.mp_active
+                    and self.player.player_id != self.local_player_id
+                ):
+                    shopkeeper = self.shopkeeper_for_sign(nearest)
+                    if shopkeeper is not None:
+                        self.open_shop(shopkeeper)
                 return
             if len(self.player.inventory) >= MAX_INVENTORY:
                 self.floaters.append(

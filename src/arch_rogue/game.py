@@ -1512,6 +1512,7 @@ class Game(
                 self.inventory_open
                 or self.character_menu_open
                 or self.shop_open
+                or self.mp_remote_pause_reason()
                 or (
                     self.mobile_mode
                     and (
@@ -1528,6 +1529,7 @@ class Game(
         if self.active_cutscene is not None:
             self.update_active_cutscene_scroll_input(dt)
             self.update_active_cutscene(dt)
+            self.mp_apply_remote_intents(dt, paused=True)
             self.update_floaters(dt)
             return
         # Validate the shopkeeper is still present and in range. This may close
@@ -1542,11 +1544,15 @@ class Game(
                 if shop_dx * shop_dx + shop_dy * shop_dy > 2.6 * 2.6:
                     self.close_shop()
         if self.story_intro_pending:
+            self.mp_apply_remote_intents(dt, paused=True)
             self.update_floaters(dt)
             return
         # Opening a full-screen mobile overlay pauses the run. Desktop keeps its
         # established help behavior; inventory, character, and shop always pause.
-        if self.inventory_open or self.character_menu_open or self.shop_open or shop_was_open or (
+        # The co-op partner's local shop (mp_remote_pause_reason) pauses the
+        # shared simulation the same way; every paused frame still drains the
+        # partner's shop intents so its trades resolve during the freeze.
+        if self.inventory_open or self.character_menu_open or self.shop_open or shop_was_open or self.mp_remote_pause_reason() or (
             self.mobile_mode
             and (
                 self.show_help
@@ -1554,6 +1560,7 @@ class Game(
                 or self.quest_info_visible
             )
         ):
+            self.mp_apply_remote_intents(dt, paused=True)
             self.update_floaters(dt)
             return
         # Sample before update_player() decrements Time Skip so final partial and

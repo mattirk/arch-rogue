@@ -358,7 +358,8 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 - On mobile, make the stat container (hp, mana, stamina) fill from bottom to top. Top and bottom ends of the container are a bit more narrow than the middle so take that into account.
 - row.png sprites are stretched in couple of places e.g Archetype selection screen. let's try to fix this, maybe not scale/stretch at all? or maybe not by much (max 1.5x - 2.0x)
 - In desktop multiplayer, screen "Enter your partners code", make text input text centered in the input field
-
+- Auto-updater in APK, maybe Mac, other platforms at least in-game notice
+  - Need to think about Windows / Linux packaging anyway
 
 
 ### Bottom-of-the-Barrel

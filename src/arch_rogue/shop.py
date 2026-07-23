@@ -151,7 +151,30 @@ class ShopMixin:
             return False
         self.clamp_shop_cursor()
         item = entries[self.shop_cursor]
-        if self.shop_mode == "buy":
+        # 4.7.12 co-op: the joiner's shop UI is local, but the transaction is
+        # host business — ship an intent carrying keeper/index plus a
+        # truncated display name so a snapshot-lagged stale index is refused
+        # instead of trading the wrong item. State catches up via snapshots.
+        if self.mp_is_joiner():
+            try:
+                keeper_index = self.shopkeepers.index(shopkeeper)
+            except ValueError:
+                return False
+            action = "shop_buy" if self.shop_mode == "buy" else "shop_sell"
+            self.mp_queue_action(
+                action,
+                target=(
+                    f"{keeper_index}:{self.shop_cursor}:"
+                    f"{item.display_name[:40]}"
+                ),
+            )
+            return True
+        return self.shop_execute(shopkeeper, item, self.shop_mode)
+
+    def shop_execute(self, shopkeeper: Shopkeeper, item: Item, mode: str) -> bool:
+        """Apply one validated buy/sell between ``self.player`` and the keeper."""
+
+        if mode == "buy":
             price = self.shop_price(shopkeeper, item)
             if self.player.gold < price:
                 self.floaters.append(

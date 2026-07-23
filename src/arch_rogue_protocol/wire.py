@@ -187,6 +187,9 @@ JOIN_ONLY_TYPES = frozenset(("intent",))
 # inventory slot index in ``target``; ``choose_discipline`` carries the
 # discipline node key; ``interact`` targets the nearest host-validated
 # interactable. Movement fields of an action intent carry the aim vector.
+# 4.7.12 joiner-local shop: ``shop_open`` carries the shopkeeper index in
+# ``target``; ``shop_buy``/``shop_sell`` carry "keeper:index:name" where
+# ``name`` is a truncated display-name check against snapshot-lag staleness.
 INTENT_ACTIONS = (
     "",
     "melee",
@@ -199,6 +202,9 @@ INTENT_ACTIONS = (
     "use_slot",
     "drop_slot",
     "choose_discipline",
+    "shop_open",
+    "shop_buy",
+    "shop_sell",
 )
 
 
@@ -480,6 +486,10 @@ def validate_client_message(message: dict) -> str:
         target = message.get("target")
         if target is not None and not isinstance(target, str):
             return ERROR_BAD_MSG
+        # Optional joiner modal pause reason (4.7.12).
+        pause = message.get("pause")
+        if pause is not None and not isinstance(pause, str):
+            return ERROR_BAD_MSG
         # Optional predicted-position claim (4.7.6): both-or-neither, finite.
         claim_x = message.get("px")
         claim_y = message.get("py")
@@ -559,6 +569,7 @@ def make_intent(
     py: float | None = None,
     fx: float | None = None,
     fy: float | None = None,
+    pause: str = "",
 ) -> dict:
     if action not in INTENT_ACTIONS:
         raise ProtocolError(f"unknown intent action {action!r}")
@@ -582,6 +593,11 @@ def make_intent(
     if fx is not None and fy is not None:
         message["fx"] = round(clamp_unit(fx), 3)
         message["fy"] = round(clamp_unit(fy), 3)
+    # 4.7.12: every intent may carry the joiner's local modal pause reason
+    # ("shop") so the host freezes the shared simulation while its partner
+    # trades (additive optional field; older peers ignore it).
+    if pause:
+        message["pause"] = str(pause)
     return message
 
 
