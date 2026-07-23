@@ -35,7 +35,6 @@ from ..story import (
     SpriteAnimationFrameAsset,
     StageAsset,
     StagePropAsset,
-    format_asset_text,
 )
 
 StagePoint = tuple[float, float]
@@ -2396,30 +2395,6 @@ class RenderingStoryOverlayMixin:
             surface, x, y, sprite_w, sprite_h, actor, pose, color, accent
         )
 
-        label_text = self.cutscene_actor_label(actor)
-        duel = getattr(self, "_frame_duel_state", None)
-        if (
-            actor.id == "guest"
-            and duel is not None
-            and duel.get("guest_hidden", True)
-        ):
-            # Suppress the floating label only while the witness is physically
-            # concealed by the pillar. It returns once they clear the cover.
-            label_text = ""
-        if label_text:
-            label = self._cached_text_surface(self.small_font, label_text, color)
-            label_rect = label.get_rect(
-                center=(x, foot[1] - sprite_h - self.ui(3))
-            )
-            if actor.id == "guest" and duel is not None:
-                # Keep the long witness name on the clear center-facing side of
-                # their body instead of letting the nearest pillar split it.
-                if actor.x >= 0.5:
-                    label_rect.right = x - self.ui(4)
-                else:
-                    label_rect.left = x + self.ui(4)
-            surface.blit(label, label_rect)
-
     def _cutscene_actor_surface(
         self,
         source: pygame.Surface,
@@ -3402,9 +3377,9 @@ class RenderingStoryOverlayMixin:
         color: Color,
         accent: Color,
     ) -> None:
-        # Pose emphasis stays minimal: a guest shudder line and relic surge
-        # rays. Player/enemy attack lines are intentionally omitted so the
-        # sprites read cleanly during the duel.
+        # Pose emphasis stays minimal: a guest shudder line only. Player/enemy
+        # attack lines and the old relic surge rays are intentionally omitted
+        # so the sprites read cleanly during the duel.
         top = y + self.ui(16) - sprite_h
         if actor.id == "guest":
             self.draw_cutscene_guest_prop(
@@ -3418,19 +3393,6 @@ class RenderingStoryOverlayMixin:
                     (x + self.ui(11), top + self.ui(24)),
                     self.ui(1),
                 )
-        elif actor.id == "relic":
-            if pose in ("surge", "reveal"):
-                for angle_index in range(6):
-                    angle = self.elapsed * 0.8 + math.tau * angle_index / 6
-                    start = (
-                        x + int(math.cos(angle) * self.ui(15)),
-                        top + sprite_h // 2 + int(math.sin(angle) * self.ui(12)),
-                    )
-                    end = (
-                        x + int(math.cos(angle) * self.ui(29)),
-                        top + sprite_h // 2 + int(math.sin(angle) * self.ui(23)),
-                    )
-                    pygame.draw.line(surface, (*accent, 118), start, end, self.ui(1))
 
     def draw_cutscene_guest_prop(
         self, surface: pygame.Surface, x: int, y: int, color: Color
@@ -3557,14 +3519,6 @@ class RenderingStoryOverlayMixin:
             except ValueError:
                 return accent
         return accent
-
-    def cutscene_actor_label(self, actor: CutsceneActorAsset) -> str:
-        if self.active_cutscene is None:
-            return ""
-        context = self.active_cutscene.context
-        if not context:
-            context = self.quest_cutscene_context(self.active_cutscene_guest())
-        return format_asset_text(actor.name, context)[:32]
 
     def draw_story_intro_overlay(self) -> None:
         with self.fitted_ui_layout((960, 540)):
@@ -3839,11 +3793,4 @@ class RenderingStoryOverlayMixin:
             surface.blit(sprite, sprite.get_rect(midbottom=foot))
         self.draw_cutscene_actor_pose_effects(
             surface, x, y, sprite_w, sprite_h, actor, pose, color, color
-        )
-        label_text = actor.name[:32]
-        label = self.tiny_font.render(label_text, True, color)
-        label.set_alpha(168)
-        surface.blit(
-            label,
-            label.get_rect(center=(x, foot[1] - sprite_h - self.ui(2))),
         )

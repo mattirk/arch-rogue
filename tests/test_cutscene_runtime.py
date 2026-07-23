@@ -531,8 +531,8 @@ class CutsceneRuntimeTests(CutsceneGameTestCase):
             self.assertTrue(covered["guest_hidden"])
             self.assertEqual(covered["guest"][:2], (0.0, 0.0))
 
-            # The nameplate is absent behind the pillar and returns only after
-            # the witness has visibly cleared it.
+            # Stage actors carry no floating nameplates: rendering the guest
+            # must not touch any font, hidden or visible.
             class FontProbe:
                 def __init__(self) -> None:
                     self.calls: list[str] = []
@@ -576,15 +576,10 @@ class CutsceneRuntimeTests(CutsceneGameTestCase):
             ), patch.object(
                 game,
                 "draw_cutscene_actor_pose_effects",
-            ), patch.object(
-                game,
-                "cutscene_actor_label",
-                return_value="Witness",
             ):
                 render_guest(hidden)
-                self.assertEqual(font_probe.calls, [])
                 render_guest(watching)
-                self.assertEqual(font_probe.calls, ["Witness"])
+                self.assertEqual(font_probe.calls, [])
             game._frame_duel_state = None
 
     def test_duel_clash_flash_uses_cutscene_local_time(self) -> None:

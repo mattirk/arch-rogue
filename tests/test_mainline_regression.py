@@ -138,9 +138,11 @@ class DesktopDeterminismTests(unittest.TestCase):
     # 4.6: five title rows ("One will descend" / "Two will descend" + glyph).
     TITLE_HASH = "6c4e86a805fc20bd9955567c36fd578b1128fc7193addc3b18c036ac74672d0c"
     # 4.7.x: gameplay/crowd rebaselined for the animated (rotating) story
-    # relic frames; the prior constants were already stale on master.
-    GAMEPLAY_HASH = "f58e176d934d4ddb944f0e6dd275d6295ed3e22c84175a599cf071262a7a79ce"
-    CROWD_HASH = "64745091e19e8193326ba1658338227146eccb0594cc721d0a706bed1aa17351"
+    # relic frames, then again for removing the stage nameplates + relic
+    # surge rays (descending re-arms the level-intro cutscene, so these
+    # snapshots include the theater overlay).
+    GAMEPLAY_HASH = "74aa20df29bdc2211d80cd472c5bc013dd711f3e75155ac620a56e01a4618c16"
+    CROWD_HASH = "e8c0b68238f7c9259b482cd1f1f8c1b69afb411f5856a26dc02bca237862c86d"
 
     def test_title_render_is_deterministic_and_matches_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
