@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.7.10 — The fallen descend anyway
+
+Release 4.7.10 changes co-op descent: below Hell difficulty either living player may take the stairs alone, and a fallen partner respawns at the start of the next floor at half health. All logic is host-side; the wire protocol is unchanged (the relay needs no update), and because `content_revision` is the game version, 4.7.10 clients pair only with 4.7.10 clients.
+
+### Changed
+
+- **Dead players respawn on descent**: when the surviving player clears a floor and takes the stairs, the fallen partner is revived at the start of the next floor with half of max HP, statuses cleared, and the death pose reset — the corpse-spectate now lasts only until the survivor descends. The revive replicates to the joiner through the ordinary floor + snapshot flow.
+- **The shared stairs gate is Hell-only**: the rule that every living player must stand within reach of the stairs before either can descend now applies only on Hell difficulty; lower difficulties let either living player descend alone. The gate still counts only living players, so on Hell a lone survivor can descend past a dead partner (who then respawns as above).
+
+### Fixed
+
+- **Host actor was stranded when the joiner triggered the descent**: floor placement after a descent moved only the acting player and the id-relative "partner" (both resolving to the joiner when the joiner interacted with the stairs), leaving the host's own actor at stale old-floor coordinates inside the new map. Placement now walks every non-acting player, so whichever side leads the way, the other actor — living or freshly respawned — spawns beside them with the same cooldown/stamina/mana refresh.
+
 ## 4.7.9 — The joiner looks where you point
 
 Release 4.7.9 fixes desktop co-op aim: the joiner's character (and its aim cone) now turns toward the mouse cursor while standing, exactly like in solo play, and the host sees those turns. The wire change is additive (`fx`/`fy` optional intent fields — the relay forwards them verbatim, no server update needed); because `content_revision` is the game version, 4.7.9 clients pair only with 4.7.9 clients.

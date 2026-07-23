@@ -977,22 +977,33 @@ class RunFlowMixin:
         return x, y
 
     def _mp_place_partner_on_new_floor(self) -> None:
-        """Move and refresh the partner actor after a host floor change."""
+        """Move and refresh every non-acting actor after a host floor change.
 
-        partner = self.partner_player()
-        if partner is None:
-            return
-        partner.x, partner.y = self._mp_free_spawn_near(
-            self.player.x, self.player.y
-        )
-        partner.net_x = None
-        partner.net_y = None
-        partner.melee_timer = 0.0
-        partner.bolt_timer = 0.0
-        partner.dash_timer = 0.0
-        partner.class_skill_timer = 0.0
-        partner.time_skip_timer = 0.0
-        if partner.hp > 0:
+        ``self.player`` is whichever actor triggered the descent (the host
+        simulates a joiner's interact through ``acting_as_player``), so this
+        walks all other players — including the host's own actor when the
+        joiner led the way. A fallen player respawns at the start of the new
+        floor with half health; only Hell requires everyone to survive to the
+        stairs (enforced at the descent trigger).
+        """
+
+        for partner in self.players:
+            if partner is self.player:
+                continue
+            if partner.hp <= 0:
+                partner.hp = max(1, partner.max_hp // 2)
+                partner.status_effects = {}
+                partner.death_anim_time = 0.0
+            partner.x, partner.y = self._mp_free_spawn_near(
+                self.player.x, self.player.y
+            )
+            partner.net_x = None
+            partner.net_y = None
+            partner.melee_timer = 0.0
+            partner.bolt_timer = 0.0
+            partner.dash_timer = 0.0
+            partner.class_skill_timer = 0.0
+            partner.time_skip_timer = 0.0
             partner.stamina = min(
                 partner.max_stamina,
                 partner.stamina + partner.max_stamina * 0.25,

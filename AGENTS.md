@@ -315,9 +315,16 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 
 ### 4.7 Post multiplayer & beyond
 
-- Try to make guest player experience still more smooth on multiplayer. It's playable with 2 desktops (Linux / MAC), but the lag is still noticeable on guest computer.
-  - Especially noticable lag when quickly turning north/south e.g opposite directions
-  - Are clients able to run multiple threads / processes to handle network and game logic concurrently? Just a thought..
+- If other player is dead and the other clears dungeon level on multiplayer, the previously killed player should respawn on the start of next level
+  - On Hell mode both living players must stand near stairs to descend
+- When guest interacts with shopkeeper or guest NPC, the host gets flashing window but nothing else (multiplayer)
+  - The game should pause for both and host sees dialog when guest NPC interaction
+  - When shopkeeper interaction, guest gets the shopkeeper dialog if they interact with the shopkeeper, same for host, game is paused in both cases
+- Player should be able to "Raise" the other player once (multiplayer)
+  - Raise revives other dead player to half health
+  - Use dance animation when on player who raises
+  - Except for Ranger who uses pet animation
+  - Raise can be used once per descent, does not reset between levels, rare shrines grant another raise
 
 #### 4.7 backlog
 
@@ -350,11 +357,9 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 - In Archetype selection screen, make the panels containing Archetype names (row.png) a bit more compact in vertical sense (15% for now), keep spacing / alignment clean
 - On mobile, make the stat container (hp, mana, stamina) fill from bottom to top. Top and bottom ends of the container are a bit more narrow than the middle so take that into account.
 - row.png sprites are stretched in couple of places e.g Archetype selection screen. let's try to fix this, maybe not scale/stretch at all? or maybe not by much (max 1.5x - 2.0x)
-- If other player is dead and the other clears dungeon level on multiplayer, the previously killed player should respawn on the start of next level
 - In desktop multiplayer, screen "Enter your partners code", make text input text centered in the input field
-- There is still some room to improve feel of multiplayer at least when Android / mobile is other participant
 
-- On desktop multiplayer, character (or aimcone) is not turning to the mouse cursor direction. Character turns when moving, but not when looking at the cursor. Make a fix that works well and is efficient in mp context.
+
 
 ### Bottom-of-the-Barrel
 

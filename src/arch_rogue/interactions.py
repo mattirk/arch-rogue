@@ -25,7 +25,13 @@ from __future__ import annotations
 import math
 
 from .constants import DUNGEON_DEPTH, MAX_INVENTORY
-from .content import SECRET_HINTS, SHRINE_HINTS, TRAP_HINTS, InteractionHint
+from .content import (
+    HELL_DIFFICULTY_NAME,
+    SECRET_HINTS,
+    SHRINE_HINTS,
+    TRAP_HINTS,
+    InteractionHint,
+)
 from .models import Color, Enemy, Familiar, FloatingText, Item, SecretCache, Shrine, Trap
 
 
@@ -383,9 +389,15 @@ class InteractionMixin:
             self.open_shop(shopkeeper)
             return
         if self.player_near_stairs():
-            # Descent is a shared decision: every living player must stand
-            # near the stairs before either can trigger it.
-            if self.mp_active and not self.mp_all_living_players_near_stairs():
+            # On Hell, descent is a shared decision: every living player must
+            # stand near the stairs before either can trigger it. On lower
+            # difficulties either living player may descend alone (a fallen
+            # partner respawns at the start of the next floor).
+            if (
+                self.mp_active
+                and self.difficulty_profile().name == HELL_DIFFICULTY_NAME
+                and not self.mp_all_living_players_near_stairs()
+            ):
                 self.floaters.append(
                     FloatingText(
                         "Both of you must reach the stairs",
