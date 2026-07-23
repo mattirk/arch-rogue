@@ -13,8 +13,10 @@ the relay test modules, then deploys on the self-hosted runner
    `~/arch-rogue-relay/releases/<timestamp>-<sha>` (the layout mirrors the repo
    root because `server/protocol.py` resolves the codec at
    `<root>/src/arch_rogue_protocol`).
-2. `~/arch-rogue-relay/env` is rewritten from the runner machine's `PORT` and
-   `SERVER` environment variables — these become the relay's startup
+2. `~/arch-rogue-relay/env` is rewritten from the `PORT` and `SERVER`
+   variables of the GitHub Environment **`ar-rita-kasari-fi`** (the deploy job
+   declares `environment: ar-rita-kasari-fi` and maps them via
+   `${{ vars.PORT }}`/`${{ vars.SERVER }}`) — these become the relay's startup
    parameters `--port`/`--host` via the systemd unit.
 3. The `~/arch-rogue-relay/current` symlink flips to the new release and
    `systemctl --user restart arch-rogue-server` runs.
@@ -40,8 +42,9 @@ systemctl --user enable arch-rogue-server
 loginctl enable-linger "$USER"   # relay survives logout/reboot
 ```
 
-Requirements: `python3` on PATH, the runner service exposing `PORT` and
-`SERVER` in its environment, and nginx already proxying TLS to
+Requirements: `python3` on PATH, the GitHub Environment `ar-rita-kasari-fi`
+defining the variables `PORT` and `SERVER` (Settings → Environments →
+ar-rita-kasari-fi → Environment variables), and nginx already proxying TLS to
 `$SERVER:$PORT`. The unit is a *user* unit — `systemctl --user`/`journalctl
 --user -u arch-rogue-server` are the management commands. The first start will
 fail harmlessly until the first deploy has created

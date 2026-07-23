@@ -6,8 +6,8 @@ name: Deploy Relay Server
 # stream TLS proxy, so a deploy is: copy server/ + src/arch_rogue_protocol/
 # into a timestamped release dir, flip the `current` symlink, restart the
 # systemd user unit, and TCP-probe the port (rolling back on failure).
-# The startup parameters come from the runner machine's PORT and SERVER
-# environment variables. Host provisioning steps live in
+# The startup parameters come from the PORT and SERVER variables of the
+# GitHub Environment "ar-rita-kasari-fi". Host provisioning steps live in
 # server/deploy/arch-rogue-server.service and docs/server-deployment.md.
 #
 # The relay passes gameplay payloads through verbatim and clients pair by
@@ -65,13 +65,20 @@ jobs:
     name: Deploy to arch-rogue-server-1
     needs: test
     runs-on: [self-hosted, arch-rogue-server-1]
+    # PORT and SERVER live as Environment variables on the GitHub Environment
+    # "ar-rita-kasari-fi"; declaring the environment here is what makes
+    # `vars.PORT` / `vars.SERVER` resolve for this job.
+    environment: ar-rita-kasari-fi
+    env:
+      PORT: ${{ vars.PORT }}
+      SERVER: ${{ vars.SERVER }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Check deployment environment
         run: |
           if [ -z "${PORT:-}" ] || [ -z "${SERVER:-}" ]; then
-            echo "::error::PORT and SERVER must be set in the runner environment"
+            echo "::error::PORT and SERVER are empty — define them as variables on the 'ar-rita-kasari-fi' GitHub Environment"
             exit 1
           fi
           command -v python3 >/dev/null || { echo "::error::python3 missing on host"; exit 1; }

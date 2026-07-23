@@ -11,7 +11,8 @@
 #   loginctl enable-linger "$USER"   # keep the service running without a login session
 #
 # The deploy workflow (.github/workflows/deploy-server.yml) writes
-# ~/arch-rogue-relay/env from the runner's PORT/SERVER environment variables,
+# ~/arch-rogue-relay/env from the PORT/SERVER variables of the GitHub
+# Environment "ar-rita-kasari-fi",
 # points the ~/arch-rogue-relay/current symlink at the newest release, and
 # restarts this unit. TLS stays with the nginx stream proxy in front; this
 # process speaks plain TCP on ${SERVER}:${PORT}.
