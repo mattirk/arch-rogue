@@ -573,9 +573,6 @@ class CutsceneRuntimeTests(CutsceneGameTestCase):
             ), patch.object(
                 game,
                 "_draw_stage_contact_shadow",
-            ), patch.object(
-                game,
-                "draw_cutscene_actor_pose_effects",
             ):
                 render_guest(hidden)
                 render_guest(watching)
@@ -1254,20 +1251,20 @@ class TheaterRedesignTests(CutsceneGameTestCase):
     def test_duel_period_and_walk_clip_slow_together(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
-            self.assertAlmostEqual(game.STAGE_ACTOR_TIME_SCALE, 0.40)
-            self.assertAlmostEqual(game.STAGE_DUEL_PERIOD, 9.2)
-            self.assertAlmostEqual(game.STAGE_DUEL_CLIP_TIME_SCALE, 0.50)
+            self.assertAlmostEqual(game.STAGE_ACTOR_TIME_SCALE, 0.33)
+            self.assertAlmostEqual(game.STAGE_DUEL_PERIOD, 11.04)
+            self.assertAlmostEqual(game.STAGE_DUEL_CLIP_TIME_SCALE, 0.42)
             self.assertAlmostEqual(
                 game.STAGE_DUEL_PHASE_APPROACH * game.STAGE_DUEL_PERIOD,
-                2.40,
+                2.88,
             )
             self.assertAlmostEqual(
                 game.STAGE_DUEL_PHASE_CLASH * game.STAGE_DUEL_PERIOD,
-                2.20,
+                2.64,
             )
             self.assertAlmostEqual(
                 game.STAGE_DUEL_PHASE_RETREAT * game.STAGE_DUEL_PERIOD,
-                2.40,
+                2.88,
             )
             asset = game.active_cutscene_asset()
             assert asset is not None and game.active_cutscene is not None

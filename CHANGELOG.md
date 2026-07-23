@@ -1,5 +1,19 @@
 # Changelog
 
+## 4.8.0 — The relic turns
+
+Release 4.8.0 puts the authored relic asset on stage: the story relic is now a slowly rotating animated gem everywhere it appears — the level-intro cutscene, the story-intro tableau, and on the dungeon floor — while legacy graphics keep the historical procedural look. The theater itself was decluttered and slowed so scenes read as a stage play rather than a HUD.
+
+### Added
+
+- **Animated story relic**: an 8-frame seamless 360° spin generated on the same PixelLab object the static sprite came from (frame 0 is pixel-identical to the old art). Item assets now support world-style `frames`/`fps`/`ping_pong` animation in the sprite manifest, resolved through `resolve_item`/`item_visual`.
+
+### Changed
+
+- **The cutscene relic is the authored gem** (modern graphics): the procedural diamond-and-ring drawing is replaced by the rotating asset; it also floats a little lower over the omen altar, and the altar itself moved slightly downstage. Legacy graphics are unchanged.
+- **Clean stage**: floating actor nameplates (player, guest, antagonist, relic) are gone from the cutscene stage and the story-intro tableau, along with the relic's surge-ray flash, the guest's floating prop doodle, and the shudder slash line.
+- **Slower stage**: the whole duel clock is stretched 1.2× (period 9.2 s → 11.04 s with every leg scaled together, so the choreography shape is unchanged), walk clips slowed to match, and declarative stage drift eased from 0.40 to 0.33 — the cast strides a fifth slower.
+
 ## 4.7.12 — The joiner goes shopping
 
 Release 4.7.12 gives the co-op joiner a real shop: interacting with a shopkeeper (or shop sign) opens the shop UI locally on the joiner, trades resolve host-side, and the shared simulation pauses for both players while either one is trading. Talking to a story guest now works from either side too — the dialogue opens on the host, which pauses both. The wire change is three new intent actions (`shop_open`/`shop_buy`/`shop_sell`) and an additive optional `pause` intent field, so **the relay server must be redeployed** (it validates the intent action enum); because `content_revision` is the game version, 4.7.12 clients pair only with 4.7.12 clients.

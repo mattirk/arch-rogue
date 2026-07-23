@@ -313,31 +313,8 @@ This runs the cutscene overlay path headlessly under `cProfile` and writes `buil
 
 Always update CHANGELOG.md, pyproject.toml and other version number references when completing milestones!
 
-### 4.7 Post multiplayer & beyond
+### 4.8 The relic turns once more
 
-- If other player is dead and the other clears dungeon level on multiplayer, the previously killed player should respawn on the start of next level - done
-  - On Hell mode both living players must stand near stairs to descend
-- Player should be able to "Raise" the other player once (multiplayer) - done
-  - Raise revives other dead player to half health
-  - Use dance animation when on player who raises
-  - Except for Ranger who uses pet animation
-  - Raise can be used once per descent, does not reset between levels, rare shrines grant another raise
-- When guest interacts with shopkeeper or guest NPC, the host gets flashing window but nothing else (multiplayer) - done
-  - The game should pause for both and host sees dialog when guest NPC interaction
-  - When shopkeeper interaction, guest gets the shopkeeper dialog if they interact with the shopkeeper, same for host, game is paused in both cases
-
-#### 4.7 backlog
-
-- In desktop multiplayer, screen "Enter your partners code", make text input text centered in the input field - done
-- Make actors on cutscene stage move more slowly, also - done
-  - When actors stop, make them wait at that position for a bit longer and do a "dance" move
-  - When player and antagonist clash in the middle, make them exchange couple of blows
-- On mobile, dash direction some times gets "stuck". So  that it does not respect the direction player is moving via joystick. Way to fix: stop moving, look around by touching the screen around player (not by joystick) -> start moving again via joystick and problem is gone
-- Use generated asset relic in cutscene instead of procedurally generated (legacy graphics stay the same)
-  - Also make the relic float a bit lower (also move the altar a bit lower)
-  - The generated relic should also be animated (rotating slowly)
-  - The same animated relic should be used in game
-  - Generate first version and ask me for confirmation / feedback
 
 ### Backlog
 

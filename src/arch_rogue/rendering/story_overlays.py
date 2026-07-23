@@ -908,7 +908,7 @@ class RenderingStoryOverlayMixin:
     STAGE_FLAME = (208, 138, 74)
     # Stage actors move slowly and gently so the scene reads as a measured
     # tableau rather than a fidgeting crowd.
-    STAGE_ACTOR_TIME_SCALE = 0.40
+    STAGE_ACTOR_TIME_SCALE = 0.33
     STAGE_ACTOR_MOVE_DAMP = 0.6
 
     # Stage depth / sizing (milestone 3.11). The stage floor begins at this
@@ -930,16 +930,19 @@ class RenderingStoryOverlayMixin:
     # clash in the middle, retreat to their marks, pause, and repeat. Phases
     # are expressed as fractions of the loop period so the choreography stays
     # data-independent and allocation-free.
-    STAGE_DUEL_TIMING_REFERENCE = 6.0
-    STAGE_DUEL_PERIOD = 9.2
-    STAGE_DUEL_CLIP_TIME_SCALE = 0.50
-    # Travel is deliberately unhurried: each leg takes 2.4 seconds so the
+    # 4.7.x: the whole duel clock is stretched by 1.2x (every constant below
+    # scales together, so the normalized choreography is unchanged) — the cast
+    # travels the same marks a fifth slower.
+    STAGE_DUEL_TIMING_REFERENCE = 7.2
+    STAGE_DUEL_PERIOD = 11.04
+    STAGE_DUEL_CLIP_TIME_SCALE = 0.42
+    # Travel is deliberately unhurried: each leg takes 2.88 seconds so the
     # duelers stride rather than dart, and the tail past the retreat leaves the
     # cast at their home marks long enough to show all eight audience-facing
     # act frames at the authored 4 FPS with a beat to spare.
-    STAGE_DUEL_PHASE_APPROACH = 2.40 / STAGE_DUEL_PERIOD
-    STAGE_DUEL_PHASE_CLASH = 2.20 / STAGE_DUEL_PERIOD
-    STAGE_DUEL_PHASE_RETREAT = 2.40 / STAGE_DUEL_PERIOD
+    STAGE_DUEL_PHASE_APPROACH = 2.88 / STAGE_DUEL_PERIOD
+    STAGE_DUEL_PHASE_CLASH = 2.64 / STAGE_DUEL_PERIOD
+    STAGE_DUEL_PHASE_RETREAT = 2.88 / STAGE_DUEL_PERIOD
     STAGE_DUEL_GAP = 0.045
     STAGE_DUEL_ANTAGONIST_ALPHA = 0.88
     # The clash is a staged exchange of two blows apiece: the hero strikes,
@@ -2391,9 +2394,6 @@ class RenderingStoryOverlayMixin:
             surface.blit(sprite, dest)
         else:
             surface.blit(sprite, sprite.get_rect(midbottom=foot))
-        self.draw_cutscene_actor_pose_effects(
-            surface, x, y, sprite_w, sprite_h, actor, pose, color, accent
-        )
 
     def _cutscene_actor_surface(
         self,
@@ -3365,113 +3365,6 @@ class RenderingStoryOverlayMixin:
             pygame.draw.circle(sprite, self.shade(color, 50), (27, 34), 2)
         return sprite
 
-    def draw_cutscene_actor_pose_effects(
-        self,
-        surface: pygame.Surface,
-        x: int,
-        y: int,
-        sprite_w: int,
-        sprite_h: int,
-        actor: CutsceneActorAsset,
-        pose: str,
-        color: Color,
-        accent: Color,
-    ) -> None:
-        # Pose emphasis stays minimal: a guest shudder line only. Player/enemy
-        # attack lines and the old relic surge rays are intentionally omitted
-        # so the sprites read cleanly during the duel.
-        top = y + self.ui(16) - sprite_h
-        if actor.id == "guest":
-            self.draw_cutscene_guest_prop(
-                surface, x + sprite_w // 3, top + self.ui(12), color
-            )
-            if pose == "shudder":
-                pygame.draw.line(
-                    surface,
-                    (190, 45, 70, 110),
-                    (x - self.ui(13), top),
-                    (x + self.ui(11), top + self.ui(24)),
-                    self.ui(1),
-                )
-
-    def draw_cutscene_guest_prop(
-        self, surface: pygame.Surface, x: int, y: int, color: Color
-    ) -> None:
-        text = self.cutscene_story_text().lower()
-        if any(term in text for term in ("bell", "toll", "priest", "acolyte")):
-            pygame.draw.arc(
-                surface,
-                (236, 218, 138, 150),
-                (x - self.ui(6), y, self.ui(12), self.ui(14)),
-                math.pi,
-                math.tau,
-                self.ui(1),
-            )
-            pygame.draw.line(
-                surface,
-                (236, 218, 138, 150),
-                (x - self.ui(6), y + self.ui(8)),
-                (x + self.ui(6), y + self.ui(8)),
-                self.ui(1),
-            )
-        elif any(
-            term in text for term in ("lock", "key", "thief", "rogue", "cartographer")
-        ):
-            pygame.draw.circle(
-                surface,
-                (234, 218, 154, 150),
-                (x, y + self.ui(5)),
-                self.ui(4),
-                self.ui(1),
-            )
-            pygame.draw.line(
-                surface,
-                (234, 218, 154, 150),
-                (x + self.ui(4), y + self.ui(5)),
-                (x + self.ui(12), y + self.ui(13)),
-                self.ui(1),
-            )
-        elif any(term in text for term in ("grave", "dead", "bone", "coffin", "crypt")):
-            pygame.draw.circle(
-                surface,
-                (220, 212, 190, 145),
-                (x, y + self.ui(6)),
-                self.ui(5),
-                self.ui(1),
-            )
-            pygame.draw.line(
-                surface,
-                (220, 212, 190, 145),
-                (x - self.ui(5), y + self.ui(14)),
-                (x + self.ui(5), y + self.ui(14)),
-                self.ui(1),
-            )
-        elif any(term in text for term in ("star", "mirror", "dream", "veil")):
-            pygame.draw.circle(
-                surface,
-                (*self.shade(color, 45), 140),
-                (x, y + self.ui(7)),
-                self.ui(7),
-                self.ui(1),
-            )
-            pygame.draw.circle(
-                surface, (*self.shade(color, 45), 140), (x, y + self.ui(7)), self.ui(2)
-            )
-        else:
-            pygame.draw.rect(
-                surface,
-                (224, 206, 168, 130),
-                (x - self.ui(5), y, self.ui(10), self.ui(14)),
-                self.ui(1),
-            )
-            pygame.draw.line(
-                surface,
-                (224, 206, 168, 130),
-                (x - self.ui(3), y + self.ui(4)),
-                (x + self.ui(3), y + self.ui(4)),
-                self.ui(1),
-            )
-
     def cutscene_relic_aspect(self) -> str:
         text = self.cutscene_story_text().lower()
         if any(
@@ -3791,6 +3684,3 @@ class RenderingStoryOverlayMixin:
             )
         else:
             surface.blit(sprite, sprite.get_rect(midbottom=foot))
-        self.draw_cutscene_actor_pose_effects(
-            surface, x, y, sprite_w, sprite_h, actor, pose, color, color
-        )
