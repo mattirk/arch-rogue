@@ -32,15 +32,18 @@ only drops in-flight rooms, which the client reconnect grace absorbs.
 
 ## One-time host provisioning
 
-As the GitHub Actions runner user on `arch-rogue-server-1`:
+The deploy workflow installs and enables the systemd user unit itself on every
+run (`server/deploy/arch-rogue-server.service` is copied to
+`~/.config/systemd/user/`, followed by `daemon-reload` + `enable`), so the
+only manual step on `arch-rogue-server-1` is enabling lingering for the runner
+user so its systemd user manager (and bus) exist without a login session:
 
 ```bash
-mkdir -p ~/.config/systemd/user ~/arch-rogue-relay/releases
-cp server/deploy/arch-rogue-server.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable arch-rogue-server
-loginctl enable-linger "$USER"   # relay survives logout/reboot
+sudo loginctl enable-linger <runner-user>
 ```
+
+Without lingering, `systemctl --user` fails with `Failed to connect to user
+scope bus via local transport`.
 
 Requirements: `python3` on PATH, the GitHub Environment `ar-rita-kasari-fi`
 defining the variables `PORT` and `SERVER` (Settings → Environments →

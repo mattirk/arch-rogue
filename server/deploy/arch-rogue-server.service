@@ -3,12 +3,10 @@
 #
 # Arch Rogue multiplayer relay — systemd user unit template.
 #
-# One-time provisioning on the relay host (as the GitHub Actions runner user):
-#   mkdir -p ~/.config/systemd/user ~/arch-rogue-relay/releases
-#   cp server/deploy/arch-rogue-server.service ~/.config/systemd/user/
-#   systemctl --user daemon-reload
-#   systemctl --user enable arch-rogue-server
-#   loginctl enable-linger "$USER"   # keep the service running without a login session
+# The deploy workflow installs this unit into ~/.config/systemd/user/ and
+# enables it on every deploy; the only manual host step is
+#   sudo loginctl enable-linger <runner-user>
+# so the user's systemd manager runs without a login session.
 #
 # The deploy workflow (.github/workflows/deploy-server.yml) writes
 # ~/arch-rogue-relay/env from the PORT/SERVER variables of the GitHub

@@ -99,6 +99,18 @@ jobs:
           echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
           echo "RELAY_HOME=$RELAY_HOME" >> "$GITHUB_ENV"
 
+      - name: Install/refresh systemd user unit
+        run: |
+          set -euo pipefail
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          # Idempotent: the unit ships with the repo, so every deploy installs
+          # the current template and unit edits roll out with the code. Only
+          # `loginctl enable-linger` remains a manual host step.
+          mkdir -p "$HOME/.config/systemd/user"
+          cp server/deploy/arch-rogue-server.service "$HOME/.config/systemd/user/"
+          systemctl --user daemon-reload
+          systemctl --user enable arch-rogue-server
+
       - name: Activate release and restart service
         run: |
           set -euo pipefail
