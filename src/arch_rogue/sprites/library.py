@@ -276,6 +276,24 @@ class AssetSpriteLibrary:
                         raise ValueError("invalid actor frame list")
                     for path in frame_paths:
                         self._validated_path(str(path))
+        def validate_frames(entry: dict[str, Any], label: str) -> None:
+            frames = entry.get("frames")
+            if frames is None:
+                return
+            if not isinstance(frames, list) or not frames:
+                raise ValueError(f"invalid {label} animation frame list")
+            for path in frames:
+                self._validated_path(str(path))
+            fps = entry.get("fps", 6.0)
+            if (
+                not isinstance(fps, (int, float))
+                or not math.isfinite(float(fps))
+                or float(fps) <= 0.0
+            ):
+                raise ValueError(f"invalid {label} animation frame rate")
+            if "ping_pong" in entry and not isinstance(entry["ping_pong"], bool):
+                raise ValueError(f"invalid {label} animation ping-pong flag")
+
         for category in ("items", "props", "world"):
             label = category.removesuffix("s")
             for entry in data[category].values():
@@ -286,6 +304,7 @@ class AssetSpriteLibrary:
                 validate_aliases(entry, label)
                 validate_scale(entry, "reference_height", label)
                 validate_scale(entry, "target_height", label)
+                validate_frames(entry, label)
         for entry in data["world"].values():
             validate_scale(entry, "reference_width", "world")
             tint_strength = entry.get("tint_strength", 0.5)
@@ -293,21 +312,6 @@ class AssetSpriteLibrary:
                 float(tint_strength)
             ):
                 raise ValueError("invalid world tint strength")
-            frames = entry.get("frames")
-            if frames is not None:
-                if not isinstance(frames, list) or not frames:
-                    raise ValueError("invalid world animation frame list")
-                for path in frames:
-                    self._validated_path(str(path))
-                fps = entry.get("fps", 6.0)
-                if (
-                    not isinstance(fps, (int, float))
-                    or not math.isfinite(float(fps))
-                    or float(fps) <= 0.0
-                ):
-                    raise ValueError("invalid world animation frame rate")
-                if "ping_pong" in entry and not isinstance(entry["ping_pong"], bool):
-                    raise ValueError("invalid world animation ping-pong flag")
 
     def _validated_path(self, value: str) -> PurePosixPath:
         path = PurePosixPath(value)
@@ -589,7 +593,9 @@ class AssetSpriteLibrary:
         fps = max(0.1, float(clip.get("fps", 6.0)))
         return frames / fps
 
-    def resolve_item(self, slot: str) -> ResolvedSpriteFrame | None:
+    def resolve_item(
+        self, slot: str, *, elapsed: float = 0.0
+    ) -> ResolvedSpriteFrame | None:
         if not self.available:
             return None
         key = self._item_aliases.get(str(slot).casefold())
@@ -598,8 +604,14 @@ class AssetSpriteLibrary:
         entry = self.manifest["items"].get(key)
         if not isinstance(entry, dict):
             return None
+        source_path = str(entry["path"])
+        frame_number = 0
+        frames = entry.get("frames")
+        if isinstance(frames, list) and frames:
+            frame_number = self._animation_frame_index(entry, elapsed)
+            source_path = str(frames[frame_number % len(frames)])
         return self._normalized_frame(
-            str(entry["path"]), entry, ("item", key, "idle", "none", 0)
+            source_path, entry, ("item", key, "idle", "none", frame_number)
         )
 
     def resolve_prop(self, key_or_alias: str) -> ResolvedSpriteFrame | None:
@@ -725,7 +737,12 @@ class AssetSpriteLibrary:
         entry = self.manifest["world"].get(key)
         if not isinstance(entry, dict):
             return 0
-        frame_count = self.world_animation_frame_count(key)
+        return self._animation_frame_index(entry, elapsed)
+
+    @staticmethod
+    def _animation_frame_index(entry: dict[str, Any], elapsed: float) -> int:
+        frames = entry.get("frames")
+        frame_count = len(frames) if isinstance(frames, list) and frames else 1
         if frame_count <= 1:
             return 0
         fps = max(0.01, float(entry.get("fps", 6.0)))
@@ -1120,7 +1137,7 @@ class SpriteAtlas:
         self, slot: str, elapsed: float, rarity: str = "Common"
     ) -> ResolvedSpriteFrame:
         if self.modern_graphics_active:
-            asset = self.assets.resolve_item(slot)
+            asset = self.assets.resolve_item(slot, elapsed=elapsed)
             if asset is not None:
                 return asset
         surface = self.legacy.item_frame(slot, elapsed, rarity)

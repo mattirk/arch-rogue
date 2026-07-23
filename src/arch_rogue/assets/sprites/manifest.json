@@ -6262,6 +6262,17 @@
         "story_relic"
       ],
       "path": "items/story_relic.png",
+      "frames": [
+        "items/story_relic.png",
+        "items/story_relic_001.png",
+        "items/story_relic_002.png",
+        "items/story_relic_003.png",
+        "items/story_relic_004.png",
+        "items/story_relic_005.png",
+        "items/story_relic_006.png",
+        "items/story_relic_007.png"
+      ],
+      "fps": 4.0,
       "reference_height": 44,
       "source_anchor": [
         24.0,

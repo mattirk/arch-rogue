@@ -20,7 +20,7 @@
           "name": "{relic_name}",
           "sprite": "relic",
           "x": 0.5,
-          "y": 0.46,
+          "y": 0.54,
           "scale": 1.0,
           "color": "accent"
         },
@@ -278,7 +278,7 @@
             "id": "altar",
             "kind": "altar",
             "x": 0.5,
-            "y": 0.8,
+            "y": 0.84,
             "scale": 0.95,
             "color": "stone"
           },
@@ -417,7 +417,7 @@
           "name": "{relic_name}",
           "sprite": "relic",
           "x": 0.5,
-          "y": 0.44,
+          "y": 0.50,
           "scale": 0.9,
           "color": "accent"
         }

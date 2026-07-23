@@ -62,7 +62,7 @@ class CutsceneRuntimeTests(CutsceneGameTestCase):
 
             # The omen altar remains the solid divider for every tactical plan.
             obstacle = game._cutscene_duel_obstacle(asset, player, antagonist)
-            self.assertEqual(obstacle, (0.5, 0.8))
+            self.assertEqual(obstacle, (0.5, 0.84))
             obs_x = 0.5
 
             def state_at(phase: float):
@@ -969,12 +969,19 @@ class TheaterRedesignTests(CutsceneGameTestCase):
             )
             game._frame_duel_state = None
 
-            # The relic apparition stays procedural by design.
+            # The relic apparition rides the authored rotating gem: an
+            # anchored asset frame that changes with the stage clock.
             relic = asset.actors["relic"]
-            _, relic_anchor = game.cutscene_actor_visual(
+            game.active_cutscene.elapsed = 0.0
+            relic_surface, relic_anchor = game.cutscene_actor_visual(
                 relic, (226, 222, 205), "reveal", "west", False
             )
-            self.assertIsNone(relic_anchor)
+            self.assertIsNotNone(relic_anchor)
+            game.active_cutscene.elapsed = 0.3
+            rotated_surface, _ = game.cutscene_actor_visual(
+                relic, (226, 222, 205), "reveal", "west", False
+            )
+            self.assertIsNot(rotated_surface, relic_surface)
 
             # Legacy graphics keep the historical static/procedural look.
             game.set_legacy_graphics(True)

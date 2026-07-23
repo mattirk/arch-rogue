@@ -137,8 +137,10 @@ class DesktopDeterminismTests(unittest.TestCase):
     # proving that an existing baseline is stale.
     # 4.6: five title rows ("One will descend" / "Two will descend" + glyph).
     TITLE_HASH = "6c4e86a805fc20bd9955567c36fd578b1128fc7193addc3b18c036ac74672d0c"
-    GAMEPLAY_HASH = "51c0bb05212a81ed567f9c7547018eaf9d9255de5290f920829ce436afdb9ce4"
-    CROWD_HASH = "af7d84f12dc7c8b0b4d6085a6e62d74577f5acce8a42e508065ee1e742098af5"
+    # 4.7.x: gameplay/crowd rebaselined for the animated (rotating) story
+    # relic frames; the prior constants were already stale on master.
+    GAMEPLAY_HASH = "f58e176d934d4ddb944f0e6dd275d6295ed3e22c84175a599cf071262a7a79ce"
+    CROWD_HASH = "64745091e19e8193326ba1658338227146eccb0594cc721d0a706bed1aa17351"
 
     def test_title_render_is_deterministic_and_matches_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -2532,8 +2532,15 @@ class RenderingStoryOverlayMixin:
         antagonist request their authored idle/walk/attack/act clips so the stage
         reads as live performers instead of static cutouts. Archetypes whose
         attack group is not authored yet retain the asset library's idle fallback.
-        The relic stays procedural, and legacy graphics keep the historical look.
+        The relic uses the authored rotating gem; legacy graphics keep the
+        historical look.
         """
+        if actor.sprite == "relic" and self.sprites.modern_graphics_active:
+            frame = self.sprites.item_visual(
+                "story_relic", self._cutscene_stage_clock()
+            )
+            if frame.is_asset:
+                return frame.surface, frame.anchor
         if actor.sprite != "relic" and self.sprites.modern_graphics_active:
             duel = getattr(self, "_frame_duel_state", None)
             dueling = duel is not None and actor.id in ("player", "antagonist")
@@ -2924,7 +2931,9 @@ class RenderingStoryOverlayMixin:
             clash_y = _clamp(
                 obs_y + self.STAGE_DUEL_DETOUR_FORWARD + float(tactic["clash_y"]),
                 obs_y + 0.035,
-                self.STAGE_DUEL_DETOUR_MAX_Y,
+                # Same margin the waypoints keep: the travel bob rides on top
+                # of the clash mark, so a mark at the exact cap would overshoot.
+                self.STAGE_DUEL_DETOUR_MAX_Y - 0.01,
             )
             clearance = float(tactic["clearance"])
             if player_on_left:
