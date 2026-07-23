@@ -320,6 +320,14 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
   - Especially noticable lag when quickly turning north/south e.g opposite directions
   - Are clients able to run multiple threads / processes to handle network and game logic concurrently?
 
+#### 4.7 backlog
+
+- Set android build folders as cached in GH CI/CD so we get fast build times
+- Add server deployment to GitHub Actions
+  - There is runner (user will give name)
+  - There are environment variables PORT and SERVER, use as startup parameters for server deployment
+  - Figure out a way to automate server deployment, simple startup script or systemd?
+
 #### 4.7.x Minor updates
 
 **Plan: automated relay-server deployment via GitHub Actions (self-hosted runner `arch-rogue-server-1`)** — implemented: `.github/workflows/deploy-server.yml`, `server/deploy/arch-rogue-server.service`, `server/deploy/probe_port.py`, provisioning guide in `docs/server-deployment.md`.
@@ -370,11 +378,7 @@ Context that shapes the plan: the relay is stdlib-only (`python3 -m server.serve
 - If other player is dead and the other clears dungeon level on multiplayer, the previously killed player should respawn on the start of next level
 - In desktop multiplayer, screen "Enter your partners code", make text input text centered in the input field
 - There is still some room to improve feel of multiplayer at least when Android / mobile is other participant
-- Set android build folders as cached in GH CI/CD so we get fast build times
-- Add server deployment to GitHub Actions
-  - There is runner (user will give name)
-  - There are environment variables PORT and SERVER, use as startup parameters for server deployment
-  - Figure out a way to automate server deployment, simple startup script or systemd?
+
 - On desktop multiplayer, character (or aimcone) is not turning to the mouse cursor direction. Character turns when moving, but not when looking at the cursor. Make a fix that works well and is efficient in mp context.
 
 ### Bottom-of-the-Barrel

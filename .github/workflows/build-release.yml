@@ -565,6 +565,39 @@ jobs:
           restore-keys: |
             buildozer-android-${{ runner.os }}-
 
+      # The project-local p4a build tree holds the cross-compiled native
+      # recipes (libpython, SDL, pygame, ...) for both ABIs plus the Gradle
+      # dist — by far the slowest part of the build. Restoring a stale tree is
+      # safe: tools/build_android.sh fingerprints the native inputs
+      # (.buildozer/android/arch-rogue-native.sha256, cached alongside) and
+      # runs `buildozer android clean` itself when they no longer match.
+      - name: Cache python-for-android build tree
+        uses: actions/cache@v4
+        with:
+          path: |
+            .buildozer/android/platform/build-*
+            .buildozer/android/platform/python-for-android
+            .buildozer/android/arch-rogue-native.sha256
+          key: p4a-build-${{ runner.os }}-${{ hashFiles('buildozer.spec', 'pyproject.toml', 'android/recipes/**', 'tools/build_android.sh') }}
+          restore-keys: |
+            p4a-build-${{ runner.os }}-
+
+      # ccache covers the worst case (native-input change forces a p4a clean:
+      # recompiles become cache hits) and Gradle caches cover the dist
+      # assembly. Both are content-addressed, so a broad restore key is
+      # always useful.
+      - name: Cache ccache and Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.ccache
+            ~/.cache/ccache
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: android-ccache-gradle-${{ runner.os }}-${{ hashFiles('buildozer.spec', 'pyproject.toml') }}
+          restore-keys: |
+            android-ccache-gradle-${{ runner.os }}-
+
       - name: Read version
         id: version
         shell: python
