@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Matti Rita-Kasari
+#
+# Arch Rogue multiplayer relay — systemd user unit template.
+#
+# One-time provisioning on the relay host (as the GitHub Actions runner user):
+#   mkdir -p ~/.config/systemd/user ~/arch-rogue-relay/releases
+#   cp server/deploy/arch-rogue-server.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable arch-rogue-server
+#   loginctl enable-linger "$USER"   # keep the service running without a login session
+#
+# The deploy workflow (.github/workflows/deploy-server.yml) writes
+# ~/arch-rogue-relay/env from the runner's PORT/SERVER environment variables,
+# points the ~/arch-rogue-relay/current symlink at the newest release, and
+# restarts this unit. TLS stays with the nginx stream proxy in front; this
+# process speaks plain TCP on ${SERVER}:${PORT}.
+
+[Unit]
+Description=Arch Rogue multiplayer relay server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+WorkingDirectory=%h/arch-rogue-relay/current
+EnvironmentFile=%h/arch-rogue-relay/env
+ExecStart=/usr/bin/python3 -m server.server --host ${SERVER} --port ${PORT}
+Restart=on-failure
+RestartSec=2
+# The relay is ephemeral and in-memory; a stop only drops in-flight rooms and
+# clients ride it out inside the reconnect grace window.
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

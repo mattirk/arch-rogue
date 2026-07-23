@@ -1,0 +1,127 @@
+name: Deploy Relay Server
+
+# Deploys the standalone multiplayer relay to the production host via the
+# self-hosted runner `arch-rogue-server-1` whenever relay code changes on
+# master. The relay is stdlib-only and speaks plain TCP behind the nginx
+# stream TLS proxy, so a deploy is: copy server/ + src/arch_rogue_protocol/
+# into a timestamped release dir, flip the `current` symlink, restart the
+# systemd user unit, and TCP-probe the port (rolling back on failure).
+# The startup parameters come from the runner machine's PORT and SERVER
+# environment variables. Host provisioning steps live in
+# server/deploy/arch-rogue-server.service and docs/server-deployment.md.
+#
+# The relay passes gameplay payloads through verbatim and clients pair by
+# their own content_revision, so relay deploys are decoupled from game
+# releases; restarting only drops in-flight rooms (covered by the client
+# reconnect grace).
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - server/**
+      - src/arch_rogue_protocol/**
+      - .github/workflows/deploy-server.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Overlapping pushes queue instead of racing the restart; never cancel a
+# deploy mid-flight.
+concurrency:
+  group: deploy-relay-server
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Relay tests (Linux)
+    runs-on: ubuntu-latest
+    env:
+      # Headless SDL drivers: test_net_protocol imports the game client's
+      # net package (pygame) alongside the stdlib-only relay modules.
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Compile-check relay sources
+        run: python -m compileall server src/arch_rogue_protocol
+
+      - name: Run relay test modules
+        run: python -m unittest tests.test_server_room tests.test_net_protocol
+
+  deploy:
+    name: Deploy to arch-rogue-server-1
+    needs: test
+    runs-on: [self-hosted, arch-rogue-server-1]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check deployment environment
+        run: |
+          if [ -z "${PORT:-}" ] || [ -z "${SERVER:-}" ]; then
+            echo "::error::PORT and SERVER must be set in the runner environment"
+            exit 1
+          fi
+          command -v python3 >/dev/null || { echo "::error::python3 missing on host"; exit 1; }
+          echo "Deploying relay bound to ${SERVER}:${PORT}"
+
+      - name: Assemble release
+        run: |
+          set -euo pipefail
+          RELAY_HOME="$HOME/arch-rogue-relay"
+          RELEASE="$RELAY_HOME/releases/$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
+          mkdir -p "$RELEASE/src"
+          # server/protocol.py resolves the codec at <root>/src/arch_rogue_protocol
+          # relative to <root>/server, so the release dir mirrors the repo layout.
+          cp -r server "$RELEASE/server"
+          cp -r src/arch_rogue_protocol "$RELEASE/src/arch_rogue_protocol"
+          find "$RELEASE" -type d -name __pycache__ -exec rm -rf {} +
+          printf 'PORT=%s\nSERVER=%s\n' "$PORT" "$SERVER" > "$RELAY_HOME/env"
+          echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
+          echo "RELAY_HOME=$RELAY_HOME" >> "$GITHUB_ENV"
+
+      - name: Activate release and restart service
+        run: |
+          set -euo pipefail
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          PREVIOUS="$(readlink -f "$RELAY_HOME/current" 2>/dev/null || true)"
+          echo "PREVIOUS=$PREVIOUS" >> "$GITHUB_ENV"
+          ln -sfn "$RELEASE" "$RELAY_HOME/current"
+          systemctl --user restart arch-rogue-server
+
+      - name: Health check (TCP probe, rollback on failure)
+        run: |
+          set -euo pipefail
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          if python3 server/deploy/probe_port.py; then
+            echo "Relay is accepting connections on port $PORT"
+          else
+            echo "::error::Relay did not accept connections within 10s; rolling back"
+            journalctl --user -u arch-rogue-server -n 50 --no-pager || true
+            if [ -n "$PREVIOUS" ] && [ -d "$PREVIOUS" ]; then
+              ln -sfn "$PREVIOUS" "$RELAY_HOME/current"
+              systemctl --user restart arch-rogue-server
+            fi
+            exit 1
+          fi
+
+      - name: Prune old releases (keep 5)
+        run: |
+          set -euo pipefail
+          cd "$RELAY_HOME/releases"
+          CURRENT="$(readlink -f "$RELAY_HOME/current")"
+          ls -1dt "$PWD"/* | tail -n +6 | while read -r dir; do
+            [ "$dir" = "$CURRENT" ] || rm -rf "$dir"
+          done
