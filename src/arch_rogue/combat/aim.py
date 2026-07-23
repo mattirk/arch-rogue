@@ -118,7 +118,10 @@ class _AimCombatMixin:
             self.player.facing_x = dx / length
             self.player.facing_y = dy / length
         elif getattr(self, "aim_input_mode", "mouse") == "touch":
-            point = getattr(self, "_mobile_touch_world_point", None)
+            # Only a live world touch may steer facing; the self-healing
+            # accessor drops a touch whose release event was lost so dash and
+            # skills follow joystick movement again.
+            point = self.active_mobile_world_touch()
             if point is not None:
                 self.face_player_toward_screen_point(*point)
         elif getattr(self, "aim_input_mode", "mouse") != "controller":

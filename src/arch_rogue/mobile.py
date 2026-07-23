@@ -1837,9 +1837,18 @@ class MobileMixin:
         if not getattr(self, "mobile_mode", False):
             return self.mobile_world_viewport().collidepoint(point)
         layout = self.mobile_layout()
-        return layout.world_viewport.collidepoint(point) and not layout.left_rail.collidepoint(
-            point
-        )
+        if not layout.world_viewport.collidepoint(point):
+            return False
+        if layout.left_rail.collidepoint(point):
+            return False
+        # The action rail and everything right of it is grip space: fingers
+        # there are pressing (or resting near) the skill buttons, so a touch
+        # that misses a button must never turn into world aim and hijack the
+        # facing that joystick movement established.
+        margin = max(20, layout.safe_rect.height // 24)
+        if point[0] >= layout.right_rail.left - margin:
+            return False
+        return True
 
     def mobile_input_context(self) -> str:
         if self.state == "confirm_exit":
@@ -1874,9 +1883,18 @@ class MobileMixin:
         )
 
     def active_mobile_world_touch(self) -> tuple[int, int] | None:
-        if self.mobile_world_input_enabled() and self._mobile_touch_world_active:
-            return self._mobile_touch_world_point
-        return None
+        if not (
+            self.mobile_world_input_enabled() and self._mobile_touch_world_active
+        ):
+            return None
+        contact = self._mobile_touch_contacts.get(self._mobile_world_finger)
+        if contact is None or contact.role != "world":
+            # The tracked aim finger vanished without a FINGERUP (palm
+            # rejection, system gesture). Drop the stale touch so facing —
+            # and with it dash direction — follows joystick movement again.
+            self._release_mobile_world_touch()
+            return None
+        return self._mobile_touch_world_point
 
     def mobile_joystick_screen_vector(self) -> tuple[float, float]:
         if not self.mobile_world_input_enabled():
@@ -1921,12 +1939,31 @@ class MobileMixin:
         radius = min(rect.width, rect.height) * 0.55
         return math.hypot(point[0] - rect.centerx, point[1] - rect.centery) <= radius
 
+    def _release_mobile_world_touch(self) -> None:
+        self._mobile_touch_world_point = None
+        self._mobile_world_finger = None
+        self._mobile_touch_world_active = False
+
+    def _drop_stale_mobile_contact(self, key: tuple[int, int]) -> None:
+        """Recover when a finger key reappears without its FINGERUP.
+
+        Android occasionally swallows a release (palm rejection, system
+        gesture interception). If the stale contact owned the joystick or the
+        world aim finger, that role would otherwise stay held forever and keep
+        overriding movement-driven facing.
+        """
+        if self._mobile_touch_contacts.pop(key, None) is None:
+            return
+        if key == self._mobile_joystick_finger:
+            self._mobile_joystick_finger = None
+            self._mobile_joystick_vector = (0.0, 0.0)
+        if key == self._mobile_world_finger:
+            self._release_mobile_world_touch()
+
     def cancel_mobile_touches(self) -> None:
         self._mobile_touch_contacts.clear()
         self._mobile_last_row_tap = None
-        self._mobile_world_finger = None
-        self._mobile_touch_world_point = None
-        self._mobile_touch_world_active = False
+        self._release_mobile_world_touch()
         self._mobile_joystick_finger = None
         self._mobile_joystick_vector = (0.0, 0.0)
 
@@ -2012,6 +2049,7 @@ class MobileMixin:
         key = self._mobile_finger_key(event)
 
         if event.type == getattr(pygame, "FINGERDOWN", -10):
+            self._drop_stale_mobile_contact(key)
             target = self._mobile_target_at(point)
             if target is not None:
                 self._mobile_touch_ripples.append((point[0], point[1], time.monotonic()))
@@ -2084,9 +2122,7 @@ class MobileMixin:
         if contact.role == "world" and key == self._mobile_world_finger:
             if hasattr(self, "player"):
                 self.face_player_toward_screen_point(*point)
-            self._mobile_touch_world_point = None
-            self._mobile_world_finger = None
-            self._mobile_touch_world_active = False
+            self._release_mobile_world_touch()
             return True
         if contact.role in ("tap", "quest_scroll"):
             dx = point[0] - contact.start[0]

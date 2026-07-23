@@ -426,6 +426,7 @@ class MenuMultiplayerMixin:
         active: bool,
         big: bool = False,
         letter_spaced: bool = False,
+        centered: bool = False,
         publish: bool = True,
     ) -> None:
         """One shared single-line entry box with a blinking caret.
@@ -451,12 +452,16 @@ class MenuMultiplayerMixin:
             font,
             self.TEXT,
             text_rect,
+            align="center" if centered else "left",
             valign="center",
         )
         if caret_on:
             text_width = font.size(display)[0] if display else 0
+            text_x = (
+                text_rect.centerx - text_width // 2 if centered else text_rect.x
+            )
             caret_x = min(
-                text_rect.x + text_width + self.u(3), text_rect.right - self.u(2)
+                text_x + text_width + self.u(3), text_rect.right - self.u(2)
             )
             caret_h = font.get_height()
             pygame.draw.line(
@@ -947,6 +952,7 @@ class MenuMultiplayerMixin:
                 active=active and not panel_live,
                 big=True,
                 letter_spaced=True,
+                centered=True,
                 publish=not panel_live,
             )
             y = entry_rect.bottom + self.u(12)

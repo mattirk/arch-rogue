@@ -169,44 +169,137 @@ class CutsceneRuntimeTests(CutsceneGameTestCase):
                 assert state is not None
                 return state
 
+            beats = game.STAGE_DUEL_IMPACT_BEATS
+            self.assertEqual(len(beats), 4)
             opening = clash_at(0.0)
-            first = clash_at(game.STAGE_DUEL_IMPACT_BEATS[0])
-            second = clash_at(game.STAGE_DUEL_IMPACT_BEATS[1])
+            states = [clash_at(beat) for beat in beats]
             closing = clash_at(0.999)
 
             self.assertEqual(opening["action_progress"], {
                 "player": 0.0,
                 "antagonist": 0.0,
             })
-            self.assertAlmostEqual(first["impact_strengths"][0], 1.0)
-            self.assertAlmostEqual(first["impact_strengths"][1], 0.0)
-            self.assertGreater(first["action_progress"]["player"], 0.0)
-            self.assertEqual(first["action_progress"]["antagonist"], 0.0)
-            self.assertAlmostEqual(second["impact_strengths"][0], 0.0)
-            self.assertAlmostEqual(second["impact_strengths"][1], 1.0)
-            self.assertEqual(second["action_progress"]["player"], 1.0)
-            self.assertGreater(second["action_progress"]["antagonist"], 0.0)
-            self.assertEqual(closing["action_progress"]["player"], 1.0)
-            self.assertGreater(closing["action_progress"]["antagonist"], 0.99)
-            for state in (first, second):
+            player_on_left = player.x < antagonist.x
+            for index, state in enumerate(states):
+                # Only this beat's impact pulse is live; the others are silent.
+                for other, strength in enumerate(state["impact_strengths"]):
+                    if other == index:
+                        self.assertAlmostEqual(strength, 1.0)
+                    else:
+                        self.assertAlmostEqual(strength, 0.0)
                 self.assertEqual(state["player"][2], "defy")
                 self.assertEqual(state["antagonist"][2], "threaten")
 
-            player_on_left = player.x < antagonist.x
-            first_antagonist_x = antagonist.x + first["antagonist"][0]
-            second_player_x = player.x + second["player"][0]
-            if player_on_left:
-                self.assertGreater(
-                    first_antagonist_x,
-                    first["meet"]["antagonist"][0],
+                # Even beats are the hero's blows, odd beats the counters; the
+                # striker is mid-swing while the recipient recoils away from
+                # the opponent past their meeting mark.
+                striker = "player" if index % 2 == 0 else "antagonist"
+                recipient = "antagonist" if index % 2 == 0 else "player"
+                self.assertGreater(state["action_progress"][striker], 0.0)
+                self.assertLess(state["action_progress"][striker], 1.0)
+                recipient_home = antagonist if index % 2 == 0 else player
+                recipient_x = recipient_home.x + state[recipient][0]
+                meet_x = state["meet"][recipient][0]
+                recipient_pushed_right = (
+                    player_on_left if recipient == "antagonist"
+                    else not player_on_left
                 )
-                self.assertLess(second_player_x, second["meet"]["player"][0])
-            else:
-                self.assertLess(
-                    first_antagonist_x,
-                    first["meet"]["antagonist"][0],
+                if recipient_pushed_right:
+                    self.assertGreater(recipient_x, meet_x)
+                else:
+                    self.assertLess(recipient_x, meet_x)
+
+            # Each duelist's second blow replays the attack clip: progress
+            # holds at the finished follow-through between windows, then
+            # resets when the next swing window opens.
+            player_windows, antagonist_windows = game.STAGE_DUEL_ATTACK_WINDOWS
+            between = clash_at(
+                (player_windows[0][1] + player_windows[1][0]) * 0.5
+            )
+            self.assertEqual(between["action_progress"]["player"], 1.0)
+            restarted = clash_at(
+                player_windows[1][0]
+                + (player_windows[1][1] - player_windows[1][0]) * 0.1
+            )
+            self.assertLess(restarted["action_progress"]["player"], 0.2)
+            self.assertGreater(restarted["action_progress"]["player"], 0.0)
+            self.assertEqual(closing["action_progress"]["player"], 1.0)
+            self.assertEqual(closing["action_progress"]["antagonist"], 1.0)
+            self.assertGreater(antagonist_windows[1][0], player_windows[1][0])
+
+    def test_duel_stops_hold_longer_and_dance_at_the_waypoint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+
+            # Both mid-leg stops are substantial held beats, not brief pauses.
+            for hold, span in (
+                (game.STAGE_DUEL_APPROACH_HOLD, game.STAGE_DUEL_PHASE_APPROACH),
+                (game.STAGE_DUEL_RETREAT_HOLD, game.STAGE_DUEL_PHASE_RETREAT),
+            ):
+                seconds = (hold[1] - hold[0]) * span * game.STAGE_DUEL_PERIOD
+                self.assertGreaterEqual(seconds, 0.6)
+
+            start, waypoint, end = (0.20, 0.70), (0.42, 0.86), (0.46, 0.88)
+            hold_start, hold_end = game.STAGE_DUEL_APPROACH_HOLD
+
+            def at(local: float, seed: float = 0.0):
+                return game._cutscene_duel_route(
+                    local,
+                    start,
+                    waypoint,
+                    end,
+                    (hold_start, hold_end),
+                    True,
+                    dance_seed=seed,
                 )
-                self.assertGreater(second_player_x, second["meet"]["player"][0])
+
+            # The dance envelope fades to zero at both ends of the hold, so
+            # the travel legs join the stop exactly at the waypoint mark.
+            for boundary in (hold_start, hold_end - 1e-9, hold_end):
+                x, y, moving, _, _ = at(boundary)
+                self.assertAlmostEqual(x, waypoint[0], places=3)
+                self.assertAlmostEqual(y, waypoint[1], places=3)
+
+            # Mid-hold the actor dances around the mark: small side steps with
+            # an upward hop, never reported as travel movement.
+            mid = at(hold_start + (hold_end - hold_start) * 0.375)
+            self.assertFalse(mid[2])
+            self.assertNotAlmostEqual(mid[0], waypoint[0], places=4)
+            self.assertLess(mid[1], waypoint[1])
+            self.assertLessEqual(
+                abs(mid[0] - waypoint[0]), game.STAGE_DUEL_DANCE_STEP_X
+            )
+            self.assertLessEqual(
+                waypoint[1] - mid[1], game.STAGE_DUEL_DANCE_HOP_Y
+            )
+
+            # The dance seed desyncs the two duelers' footwork.
+            mirrored = at(hold_start + (hold_end - hold_start) * 0.375, 0.5)
+            self.assertNotAlmostEqual(mid[0], mirrored[0], places=4)
+
+            # Stopped performers turn to the audience: sampled inside the
+            # approach hold for every tactic delay, both duelists face south.
+            asset = game.active_cutscene_asset()
+            assert asset is not None and game.active_cutscene is not None
+            game.active_cutscene.elapsed = (
+                game.STAGE_DUEL_PHASE_APPROACH * 0.62 * game.STAGE_DUEL_PERIOD
+            )
+            held = game._cutscene_duel_state()
+            assert held is not None
+            self.assertFalse(held["player"][5])
+            self.assertFalse(held["antagonist"][5])
+            self.assertEqual(held["directions"]["player"], "south")
+            self.assertEqual(held["directions"]["antagonist"], "south")
+            game._frame_duel_state = held
+            self.assertEqual(
+                game._cutscene_actor_direction(asset.actors["player"], 0.0),
+                "south",
+            )
+            self.assertEqual(
+                game._cutscene_actor_direction(asset.actors["antagonist"], 0.0),
+                "south",
+            )
+            game._frame_duel_state = None
 
     def test_duel_uses_cutscene_local_time_independent_of_run_time(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -408,6 +501,7 @@ class CutsceneRuntimeTests(CutsceneGameTestCase):
             watch_y = guest.y + watching["guest"][1]
             self.assertFalse(watching["guest_hidden"])
             self.assertFalse(watching["guest"][5])
+            self.assertEqual(watching["directions"]["guest"], "south")
             self.assertGreaterEqual(watch_x, 0.65)
             self.assertLessEqual(watch_x, 0.68)
             self.assertGreaterEqual(watch_y, 0.64)
@@ -1159,19 +1253,19 @@ class TheaterRedesignTests(CutsceneGameTestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)
             self.assertAlmostEqual(game.STAGE_ACTOR_TIME_SCALE, 0.40)
-            self.assertAlmostEqual(game.STAGE_DUEL_PERIOD, 6.9)
-            self.assertAlmostEqual(game.STAGE_DUEL_CLIP_TIME_SCALE, 0.60)
+            self.assertAlmostEqual(game.STAGE_DUEL_PERIOD, 9.2)
+            self.assertAlmostEqual(game.STAGE_DUEL_CLIP_TIME_SCALE, 0.50)
             self.assertAlmostEqual(
                 game.STAGE_DUEL_PHASE_APPROACH * game.STAGE_DUEL_PERIOD,
-                1.80,
+                2.40,
             )
             self.assertAlmostEqual(
                 game.STAGE_DUEL_PHASE_CLASH * game.STAGE_DUEL_PERIOD,
-                1.296,
+                2.20,
             )
             self.assertAlmostEqual(
                 game.STAGE_DUEL_PHASE_RETREAT * game.STAGE_DUEL_PERIOD,
-                1.80,
+                2.40,
             )
             asset = game.active_cutscene_asset()
             assert asset is not None and game.active_cutscene is not None

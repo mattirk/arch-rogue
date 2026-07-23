@@ -1648,7 +1648,7 @@ class InputMixin:
     def _sync_action_aim(self) -> None:
         """Refresh facing for the active controller, touch, or desktop source."""
         if getattr(self, "aim_input_mode", "mouse") == "touch":
-            point = getattr(self, "_mobile_touch_world_point", None)
+            point = self.active_mobile_world_touch()
             if point is not None:
                 self.face_player_toward_screen_point(*point)
             return

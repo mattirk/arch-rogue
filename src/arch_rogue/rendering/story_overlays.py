@@ -932,22 +932,27 @@ class RenderingStoryOverlayMixin:
     # are expressed as fractions of the loop period so the choreography stays
     # data-independent and allocation-free.
     STAGE_DUEL_TIMING_REFERENCE = 6.0
-    STAGE_DUEL_PERIOD = 6.9
-    STAGE_DUEL_CLIP_TIME_SCALE = 0.60
-    # Travel and witness beats are roughly 11% slower while the attack exchange
-    # stays crisp. The remaining two-second audience-facing tail shows all eight
-    # act frames once at the authored 4 FPS.
-    STAGE_DUEL_PHASE_APPROACH = 1.80 / STAGE_DUEL_PERIOD
-    STAGE_DUEL_PHASE_CLASH = 1.296 / STAGE_DUEL_PERIOD
-    STAGE_DUEL_PHASE_RETREAT = 1.80 / STAGE_DUEL_PERIOD
+    STAGE_DUEL_PERIOD = 9.2
+    STAGE_DUEL_CLIP_TIME_SCALE = 0.50
+    # Travel is deliberately unhurried: each leg takes 2.4 seconds so the
+    # duelers stride rather than dart, and the tail past the retreat leaves the
+    # cast at their home marks long enough to show all eight audience-facing
+    # act frames at the authored 4 FPS with a beat to spare.
+    STAGE_DUEL_PHASE_APPROACH = 2.40 / STAGE_DUEL_PERIOD
+    STAGE_DUEL_PHASE_CLASH = 2.20 / STAGE_DUEL_PERIOD
+    STAGE_DUEL_PHASE_RETREAT = 2.40 / STAGE_DUEL_PERIOD
     STAGE_DUEL_GAP = 0.045
     STAGE_DUEL_ANTAGONIST_ALPHA = 0.88
-    # A clash is a staged exchange rather than one held pose: the hero commits
-    # first, then the Gate Warden counters as the hero recovers. Progress is
-    # normalized per actor so differently sized non-looping clips both play in
-    # full, independent of the cutscene's global clock.
-    STAGE_DUEL_ATTACK_WINDOWS = ((0.0, 0.56), (0.42, 1.0))
-    STAGE_DUEL_IMPACT_BEATS = (0.20, 0.62)
+    # The clash is a staged exchange of two blows apiece: the hero strikes,
+    # the Gate Warden counters, and the pair trade a second pair of blows
+    # before breaking apart. Each actor's swing windows replay the non-looping
+    # attack clip once per blow; the impact beats alternate hero/counter and
+    # sit late inside their swing window so contact lands on the follow-through.
+    STAGE_DUEL_ATTACK_WINDOWS = (
+        ((0.0, 0.20), (0.48, 0.68)),
+        ((0.24, 0.44), (0.72, 0.92)),
+    )
+    STAGE_DUEL_IMPACT_BEATS = (0.14, 0.38, 0.62, 0.86)
     STAGE_DUEL_IMPACT_HALF_WIDTH = 0.09
     STAGE_DUEL_IMPACT_HEIGHT = 0.14
     STAGE_DUEL_RECOIL_X = 0.008
@@ -962,10 +967,15 @@ class RenderingStoryOverlayMixin:
     # forward-and-inward, so the path reads as stagecraft footing rather than
     # a straight-line slide. A subtle breathing sway keeps the rest and clash
     # holds alive, and a small desync phase offset stops the two duelers from
-    # moving in perfect lockstep.
+    # moving in perfect lockstep. Mid-leg stops are long held beats where the
+    # actor performs a small two-step dance around the waypoint mark; the step
+    # amplitudes stay well inside the 0.02 obstacle-side margin the tactical
+    # marks guarantee.
     STAGE_DUEL_PATH_BOW = 0.035
-    STAGE_DUEL_APPROACH_HOLD = (0.54, 0.70)
-    STAGE_DUEL_RETREAT_HOLD = (0.38, 0.62)
+    STAGE_DUEL_APPROACH_HOLD = (0.52, 0.80)
+    STAGE_DUEL_RETREAT_HOLD = (0.30, 0.72)
+    STAGE_DUEL_DANCE_STEP_X = 0.008
+    STAGE_DUEL_DANCE_HOP_Y = 0.006
     STAGE_DUEL_BREATH_X = 0.0035
     STAGE_DUEL_BREATH_Y = 0.0025
     # Each cycle picks one deterministic tactical plan from the run/story seed.
@@ -2451,8 +2461,10 @@ class RenderingStoryOverlayMixin:
         """Resolve a sprite facing for the frontal stage projection.
 
         Traveling duelists use the direction of their path through stage depth
-        (including diagonals toward/away from the audience). Held poses face
-        the opponent, while non-duel actors face center stage.
+        (including diagonals toward/away from the audience), and a performer
+        stopped mid-leg turns south to the audience via the duel state's
+        directions map. The clash and home-rest holds face the opponent,
+        while non-duel actors face center stage.
         """
         duel = getattr(self, "_frame_duel_state", None)
         if duel is not None:
@@ -2723,6 +2735,7 @@ class RenderingStoryOverlayMixin:
         end: StagePoint,
         hold: tuple[float, float],
         forward: bool,
+        dance_seed: float = 0.0,
     ) -> tuple[float, float, bool, float, float]:
         hold_start, hold_end = hold
         if local < hold_start:
@@ -2737,7 +2750,16 @@ class RenderingStoryOverlayMixin:
             x, y = _quadratic_bezier(start, control, waypoint, progress)
             return x, y, local > 0.0, waypoint[0] - start[0], waypoint[1] - start[1]
         if local < hold_end:
-            return waypoint[0], waypoint[1], False, 0.0, 0.0
+            # A stop is a held beat, not a freeze: the actor dances a small
+            # two-step around the waypoint mark. The sine envelope fades the
+            # steps in and out so both bezier legs join the hold seamlessly,
+            # and ``dance_seed`` desyncs the two duelers' footwork.
+            hold_local = (local - hold_start) / max(0.001, hold_end - hold_start)
+            envelope = math.sin(math.pi * _clamp(hold_local, 0.0, 1.0))
+            beat = hold_local * math.tau * 2.0 + dance_seed * math.tau
+            step_x = math.sin(beat) * self.STAGE_DUEL_DANCE_STEP_X * envelope
+            hop_y = -abs(math.sin(beat)) * self.STAGE_DUEL_DANCE_HOP_Y * envelope
+            return waypoint[0] + step_x, waypoint[1] + hop_y, False, 0.0, 0.0
         progress = _smoothstep((local - hold_end) / max(0.001, 1.0 - hold_end))
         control = _bezier_control(
             waypoint,
@@ -2746,6 +2768,25 @@ class RenderingStoryOverlayMixin:
         )
         x, y = _quadratic_bezier(waypoint, control, end, progress)
         return x, y, True, end[0] - waypoint[0], end[1] - waypoint[1]
+
+    @staticmethod
+    def _duel_swing_progress(
+        clash_local: float, windows: tuple[tuple[float, float], ...]
+    ) -> float:
+        """Progress through the actor's latest attack swing of the exchange.
+
+        Each window replays the non-looping attack clip once, so an actor
+        lands one blow per window. Between swings the finished follow-through
+        holds at full progress until the next window restarts the clip.
+        """
+        progress = 0.0
+        for start, end in windows:
+            if clash_local < start:
+                break
+            progress = _clamp(
+                (clash_local - start) / max(0.001, end - start), 0.0, 1.0
+            )
+        return progress
 
     def _cutscene_duel_guest_state(
         self,
@@ -2801,6 +2842,9 @@ class RenderingStoryOverlayMixin:
             guest_alpha = 1.0
             guest_scale = 1.0 + math.sin(watch_local * math.pi) * 0.008
             guest_hidden = False
+            # Stopped at the watch mark, the witness turns to the audience
+            # like every other halted performer.
+            guest_direction = "south"
             clash_start = self.STAGE_DUEL_PHASE_APPROACH
             clash_end = clash_start + self.STAGE_DUEL_PHASE_CLASH
             retreat_end = clash_end + self.STAGE_DUEL_PHASE_RETREAT
@@ -2983,13 +3027,23 @@ class RenderingStoryOverlayMixin:
                 meet_a,
                 self.STAGE_DUEL_APPROACH_HOLD,
                 True,
+                dance_seed=0.5,
             )
             pose_p = str(tactic["pose_p"])
             pose_a = str(tactic["pose_a"])
-            if moving_p:
-                direction_p = self._stage_travel_direction(travel_px, travel_py)
-            if moving_a:
-                direction_a = self._stage_travel_direction(travel_ax, travel_ay)
+            # A stopped traveler — waiting out the start delay or dancing at
+            # the waypoint hold — turns to the audience instead of holding a
+            # profile toward the opponent.
+            direction_p = (
+                self._stage_travel_direction(travel_px, travel_py)
+                if moving_p
+                else "south"
+            )
+            direction_a = (
+                self._stage_travel_direction(travel_ax, travel_ay)
+                if moving_a
+                else "south"
+            )
         elif t < p_clash:
             clash_local = (t - p_app) / self.STAGE_DUEL_PHASE_CLASH
             envelope = math.sin(math.pi * _clamp(clash_local, 0.0, 1.0))
@@ -3008,47 +3062,40 @@ class RenderingStoryOverlayMixin:
                 self.STAGE_DUEL_BREATH_Y,
                 envelope,
             )
-            first_beat, second_beat = self.STAGE_DUEL_IMPACT_BEATS
-            impact_strengths = (
+            impact_strengths = tuple(
                 _smoothstep(
                     1.0
-                    - abs(clash_local - first_beat)
+                    - abs(clash_local - beat)
                     / self.STAGE_DUEL_IMPACT_HALF_WIDTH
-                ),
-                _smoothstep(
-                    1.0
-                    - abs(clash_local - second_beat)
-                    / self.STAGE_DUEL_IMPACT_HALF_WIDTH
-                ),
+                )
+                for beat in self.STAGE_DUEL_IMPACT_BEATS
             )
-            player_window, antagonist_window = self.STAGE_DUEL_ATTACK_WINDOWS
+            player_windows, antagonist_windows = self.STAGE_DUEL_ATTACK_WINDOWS
             action_progress = {
-                "player": _clamp(
-                    (clash_local - player_window[0])
-                    / (player_window[1] - player_window[0]),
-                    0.0,
-                    1.0,
-                ),
-                "antagonist": _clamp(
-                    (clash_local - antagonist_window[0])
-                    / (antagonist_window[1] - antagonist_window[0]),
-                    0.0,
-                    1.0,
+                "player": self._duel_swing_progress(clash_local, player_windows),
+                "antagonist": self._duel_swing_progress(
+                    clash_local, antagonist_windows
                 ),
             }
-            # Each impact pushes only its recipient away from the opponent. The
-            # six-pixel-scale recoil reads clearly without violating the altar
-            # side constraint or disturbing the established tactical marks.
+            # Each impact pushes only its recipient away from the opponent:
+            # even beats are the hero's blows landing on the Gate Warden, odd
+            # beats the counters landing on the hero. The six-pixel-scale
+            # recoil reads clearly without violating the altar side constraint
+            # or disturbing the established tactical marks.
             xp = (
                 meet_p[0]
                 + sway_p[0]
-                - inward_p * self.STAGE_DUEL_RECOIL_X * impact_strengths[1]
+                - inward_p
+                * self.STAGE_DUEL_RECOIL_X
+                * max(impact_strengths[1::2], default=0.0)
             )
             yp = meet_p[1] + sway_p[1]
             xa = (
                 meet_a[0]
                 + sway_a[0]
-                - inward_a * self.STAGE_DUEL_RECOIL_X * impact_strengths[0]
+                - inward_a
+                * self.STAGE_DUEL_RECOIL_X
+                * max(impact_strengths[0::2], default=0.0)
             )
             ya = meet_a[1] + sway_a[1]
             pose_p, pose_a = "defy", "threaten"
@@ -3080,12 +3127,19 @@ class RenderingStoryOverlayMixin:
                 home_a,
                 self.STAGE_DUEL_RETREAT_HOLD,
                 False,
+                dance_seed=0.5,
             )
             pose_p, pose_a = "guard", "watch"
-            if moving_p:
-                direction_p = self._stage_travel_direction(travel_px, travel_py)
-            if moving_a:
-                direction_a = self._stage_travel_direction(travel_ax, travel_ay)
+            direction_p = (
+                self._stage_travel_direction(travel_px, travel_py)
+                if moving_p
+                else "south"
+            )
+            direction_a = (
+                self._stage_travel_direction(travel_ax, travel_ay)
+                if moving_a
+                else "south"
+            )
         else:
             rest_local = (t - p_ret) / max(0.001, 1.0 - p_ret)
             home_act_time = max(0.0, (t - p_ret) * self.STAGE_DUEL_PERIOD)
@@ -3169,7 +3223,7 @@ class RenderingStoryOverlayMixin:
         return state
 
     def _draw_duel_clash_flash(self, surface, stage_rect):
-        # Two short spark bursts punctuate the hero's strike and the counter.
+        # A short spark burst punctuates every blow of the traded exchange.
         duel = getattr(self, "_frame_duel_state", None)
         if duel is None:
             return

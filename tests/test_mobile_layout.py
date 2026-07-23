@@ -1710,6 +1710,16 @@ class MobileTouchTests(unittest.TestCase):
     ) -> tuple[float, float]:
         return point[0] / size[0], point[1] / size[1]
 
+    @staticmethod
+    def world_aim_point(game: Game) -> tuple[int, int]:
+        """A right-of-center world point safely left of the action-rail block."""
+        layout = game.mobile_layout()
+        margin = max(20, layout.safe_rect.height // 24)
+        return (
+            layout.right_rail.left - margin - 40,
+            layout.world_viewport.centery,
+        )
+
     def swipe(
         self,
         game: Game,
@@ -1819,6 +1829,111 @@ class MobileTouchTests(unittest.TestCase):
             self.assertFalse(game._mobile_touch_world_active)
             self.assertIsNone(game.active_mobile_world_touch())
 
+    def test_action_rail_and_right_edge_block_world_aim_touches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.draw()
+            layout = game.mobile_layout()
+            size = game._mobile_display_surface().get_size()
+            rail = layout.right_rail
+            gap_point = (
+                rail.centerx,
+                (layout.action_rects[0].bottom + layout.action_rects[1].top) // 2,
+            )
+            edge_point = (layout.display_rect.right - 2, rail.centery)
+            near_point = (rail.left - 4, rail.centery)
+            facing_before = (game.player.facing_x, game.player.facing_y)
+            for index, point in enumerate((gap_point, edge_point, near_point)):
+                with self.subTest(point=point):
+                    self.assertTrue(
+                        game.handle_mobile_finger_event(
+                            self.finger_event(
+                                pygame.FINGERDOWN,
+                                *self.normalized(point, size),
+                                key=(0, 70 + index),
+                            )
+                        )
+                    )
+                    self.assertFalse(game._mobile_touch_world_active)
+                    self.assertIsNone(game.active_mobile_world_touch())
+            self.assertNotEqual(game.aim_input_mode, "touch")
+            self.assertEqual(
+                (game.player.facing_x, game.player.facing_y), facing_before
+            )
+            game.cancel_mobile_touches()
+
+    def test_missed_fingerup_world_touch_recovers_on_key_reuse(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.draw()
+            layout = game.mobile_layout()
+            size = game._mobile_display_surface().get_size()
+            key = (0, 80)
+            self.assertTrue(
+                game.handle_mobile_finger_event(
+                    self.finger_event(
+                        pygame.FINGERDOWN,
+                        *self.normalized(layout.world_viewport.center, size),
+                        key=key,
+                    )
+                )
+            )
+            self.assertTrue(game._mobile_touch_world_active)
+
+            # The release was swallowed; the same finger key next lands on the
+            # joystick. The stale world aim must not survive and keep steering
+            # dash away from the joystick's travel direction.
+            self.assertTrue(
+                game.handle_mobile_finger_event(
+                    self.finger_event(
+                        pygame.FINGERDOWN,
+                        *self.normalized(layout.joystick_rect.center, size),
+                        key=key,
+                    )
+                )
+            )
+            self.assertFalse(game._mobile_touch_world_active)
+            self.assertIsNone(game._mobile_touch_world_point)
+            self.assertIsNone(game._mobile_world_finger)
+            self.assertEqual(game._mobile_joystick_finger, key)
+            game.cancel_mobile_touches()
+
+    def test_stale_world_touch_without_contact_self_heals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.draw()
+            size = game._mobile_display_surface().get_size()
+            self.assertTrue(
+                game.handle_mobile_finger_event(
+                    self.finger_event(
+                        pygame.FINGERDOWN,
+                        *self.normalized(game.mobile_world_viewport().center, size),
+                        key=(0, 81),
+                    )
+                )
+            )
+            self.assertTrue(game._mobile_touch_world_active)
+
+            # Simulate a lost FINGERUP: the contact bookkeeping is gone but the
+            # world touch flags were left behind.
+            game._mobile_touch_contacts.clear()
+            self.assertIsNone(game.active_mobile_world_touch())
+            self.assertFalse(game._mobile_touch_world_active)
+            self.assertIsNone(game._mobile_touch_world_point)
+
+            # With the stale aim dropped, joystick movement steers facing (and
+            # therefore dash direction) again.
+            game._mobile_joystick_vector = (1.0, 0.0)
+            with (
+                patch.object(game, "move_actor", return_value=0.25),
+                patch.object(game, "enemy_in_melee_arc", return_value=False),
+            ):
+                game.update_player(0.1)
+            world_x, world_y = game.mobile_joystick_world_vector()
+            length = math.hypot(world_x, world_y)
+            self.assertAlmostEqual(game.player.facing_x, world_x / length, places=6)
+            self.assertAlmostEqual(game.player.facing_y, world_y / length, places=6)
+
     def test_mobile_camera_focus_stays_in_unobstructed_gameplay_area(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))
@@ -1837,9 +1952,8 @@ class MobileTouchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))
             game.draw()
-            viewport = game.mobile_world_viewport()
             size = game._mobile_display_surface().get_size()
-            point = (viewport.right - 40, viewport.centery)
+            point = self.world_aim_point(game)
             self.assertTrue(
                 game.handle_mobile_finger_event(
                     self.finger_event(
@@ -1865,7 +1979,7 @@ class MobileTouchTests(unittest.TestCase):
             viewport = game.mobile_world_viewport()
             size = game._mobile_display_surface().get_size()
             down_point = viewport.center
-            release_point = (viewport.right - 40, viewport.centery)
+            release_point = self.world_aim_point(game)
             down = self.finger_event(
                 pygame.FINGERDOWN, *self.normalized(down_point, size)
             )
@@ -1934,7 +2048,7 @@ class MobileTouchTests(unittest.TestCase):
                 layout.joystick_rect.right - 2,
                 layout.joystick_rect.centery,
             )
-            world_point = (layout.world_viewport.right - 40, layout.world_viewport.centery)
+            world_point = self.world_aim_point(game)
             skill_point = layout.action_rects[0].center
 
             joystick_down = self.finger_event(

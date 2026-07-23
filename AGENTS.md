@@ -328,11 +328,16 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 
 #### 4.7 backlog
 
-- Some times guest does not gain experience (thus cannot level up). This has happened at least once after being Raised (multiplayer) - done
-- Guest does not gain health in garden (multiplayer) this is also reproduced after being raised, don't know if related - done
-- Bars heal slow (slower than gardens) and quickly sap stamina to zero - done
-- Gardens should heal player more slowly. Slow the healing "tick" -> every 5 seconds - done
-  - Adjust bars accordingly - done
+- In desktop multiplayer, screen "Enter your partners code", make text input text centered in the input field - done
+- Make actors on cutscene stage move more slowly, also - done
+  - When actors stop, make them wait at that position for a bit longer and do a "dance" move
+  - When player and antagonist clash in the middle, make them exchange couple of blows
+- On mobile, dash direction some times gets "stuck". So  that it does not respect the direction player is moving via joystick. Way to fix: stop moving, look around by touching the screen around player (not by joystick) -> start moving again via joystick and problem is gone
+- Use generated asset relic in cutscene instead of procedurally generated (legacy graphics stay the same)
+  - Also make the relic float a bit lower (also move the altar a bit lower)
+  - The generated relic should also be animated (rotating slowly)
+  - The same animated relic should be used in game
+  - Generate first version and ask me for confirmation / feedback
 
 ### Backlog
 
@@ -346,21 +351,13 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 - When in Return mode, spirit beast dashes along Ranger when using dash (action skill 4)
 - Dedicated room decorations for bosses (floor, walls, props). Generate new via Pixellab for bosses up to level 10 and final boss.
 - Dash: extended dash/blink skill (skill 4) when key pressed long, character starts "running" and moves faster. This consumes stamina really fast and stops once stamina is spent. When "running" mode activated, dash/blink suffers 1min cooldown. To be used as last resort to run away.
-- Gardens should heal player more slowly. Slow the healing "tick" -> every 5 seconds
-- On mobile, dash direction some times gets "stuck". So  that it does not respect the direction player is moving via joystick. Way to fix: stop moving, look around by touching the screen around player (not by joystick) -> start moving again via joystick and problem is gone
 - We need to generate another version of Arch Rogue text logo where the diamond/relic in the middle is rotating slowly. This will be used in loading screens and website.
 - Generate unique sprites for unique and legendary items
   - Actually, generate unique sprites for all named items in game
   - Also make all items a bit more rare across the board, unique and legenray items enen a bit more rare
-- Use generated asset relic in cutscene instead of procedurally generated (legacy graphics stay the same)
-  - Also make the relic float a bit lower (also move the altar a bit lower)
 - Make it so that cursed items cannot be removed except via "scroll of remove curse"
   - We need to create new item: scroll of remove curse -> generate new sprite for it too
-- Make actors on cutscene stage move more slowly, also
-  - When actors stop, make them wait at that position for a bit longer and do a "dance" move
-  - When player and antagonist clash in the middle, make them exchange couple of blows
 - On mobile, make the stat container (hp, mana, stamina) fill from bottom to top. Top and bottom ends of the container are a bit more narrow than the middle so take that into account.
-- In desktop multiplayer, screen "Enter your partners code", make text input text centered in the input field
 - Auto-updater in APK, maybe Mac, other platforms at least in-game notice
   - Need to think about Windows / Linux packaging anyway
 
