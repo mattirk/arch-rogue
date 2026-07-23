@@ -831,6 +831,12 @@ class Game(
                 self.update(dt)
                 if performance is not None:
                     performance.record_phase("update", time.perf_counter() - started)
+            # Late co-op outbound pump: intents carry this frame's input and
+            # predicted claim (poll() above ran before event handling), so a
+            # direction reversal reaches the host without an extra frame or
+            # 20 Hz slot of latency. Two attribute checks when not in co-op.
+            if not suspended:
+                self.mp_flush_outbound()
             self.draw()
             if performance is not None:
                 performance.finish_frame(self)

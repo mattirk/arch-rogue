@@ -481,5 +481,178 @@ class HostClaimSettleTests(unittest.TestCase):
             self.assertEqual((remote.x, remote.y), start)
 
 
+class ReversalReconcileTests(unittest.TestCase):
+    """4.7.8: the trailing echo must not brake or yank the moving joiner."""
+
+    def _predicting_joiner(self, tmpdir: str) -> Game:
+        game = _make_playing_game(tmpdir)
+        _bind_joiner(game)
+        game.state = "playing"
+        game.mp_partner_pause_reason = ""
+        self.assertTrue(game.mp_predicts_local_movement())
+        return game
+
+    def test_trailing_echo_within_budget_is_forgiven(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._predicting_joiner(tmpdir)
+            x, y = game.player.x, game.player.y
+            game.player.moving = True
+            game.player.facing_x, game.player.facing_y = 1.0, 0.0
+            # Walking east; the echo trails half a tile behind (west).
+            sync.apply_player_fast(game, game.player, {"x": x - 0.5, "y": y})
+            self.assertEqual((game.player.x, game.player.y), (x, y))
+
+    def test_reversal_echo_does_not_yank_backward(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._predicting_joiner(tmpdir)
+            x, y = game.player.x, game.player.y
+            game.player.moving = True
+            # Just reversed north -> south: prediction faces the new way
+            # while the in-flight echo still sits half a tile the old way.
+            game.player.facing_x, game.player.facing_y = 0.0, 1.0
+            sync.apply_player_fast(game, game.player, {"x": x, "y": y - 0.5})
+            self.assertEqual((game.player.x, game.player.y), (x, y))
+
+    def test_perpendicular_error_still_corrects(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._predicting_joiner(tmpdir)
+            x, y = game.player.x, game.player.y
+            game.player.moving = True
+            game.player.facing_x, game.player.facing_y = 1.0, 0.0
+            # Trailing x-error is forgiven; sideways y-error eases 25%.
+            sync.apply_player_fast(
+                game, game.player, {"x": x - 0.3, "y": y + 0.4}
+            )
+            self.assertAlmostEqual(game.player.x, x, places=5)
+            self.assertAlmostEqual(game.player.y, y + 0.1, places=5)
+
+    def test_trail_beyond_budget_eases_only_the_excess(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._predicting_joiner(tmpdir)
+            x, y = game.player.x, game.player.y
+            game.player.moving = True
+            game.player.facing_x, game.player.facing_y = 1.0, 0.0
+            game.mp_session.rtt_ms = 0.0
+            # Budget at zero RTT: 2.8 x 1.30 x 0.16 = 0.5824 tiles.
+            sync.apply_player_fast(game, game.player, {"x": x - 1.0, "y": y})
+            expected = x - (1.0 - 0.5824) * 0.25
+            self.assertAlmostEqual(game.player.x, expected, places=4)
+
+    def test_rtt_scales_the_forgiven_trail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._predicting_joiner(tmpdir)
+            x, y = game.player.x, game.player.y
+            game.player.moving = True
+            game.player.facing_x, game.player.facing_y = 1.0, 0.0
+            # 200 ms RTT: budget = 2.8 x 1.30 x (0.16 + 0.1) = 0.9464 —
+            # a 0.9-tile trail is pure latency and is left alone.
+            game.mp_session.rtt_ms = 200.0
+            sync.apply_player_fast(game, game.player, {"x": x - 0.9, "y": y})
+            self.assertEqual(game.player.x, x)
+            # The same trail at zero RTT exceeds the budget and eases.
+            game.mp_session.rtt_ms = 0.0
+            sync.apply_player_fast(game, game.player, {"x": x - 0.9, "y": y})
+            self.assertLess(game.player.x, x)
+
+    def test_unexplained_divergence_still_snaps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._predicting_joiner(tmpdir)
+            x, y = game.player.x, game.player.y
+            game.player.moving = True
+            game.player.facing_x, game.player.facing_y = 1.0, 0.0
+            # 2.5 tiles behind: even after the forgiven budget the rest is
+            # teleport-sized, so authority is adopted outright.
+            sync.apply_player_fast(game, game.player, {"x": x - 2.5, "y": y})
+            self.assertAlmostEqual(game.player.x, x - 2.5, places=5)
+
+
+class FacingOwnershipTests(unittest.TestCase):
+    """A predicting joiner owns its facing; the echo applies otherwise."""
+
+    def test_predicting_joiner_keeps_local_facing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = _make_playing_game(tmpdir)
+            _bind_joiner(game)
+            game.state = "playing"
+            game.mp_partner_pause_reason = ""
+            self.assertTrue(game.mp_predicts_local_movement())
+            game.player.facing_x, game.player.facing_y = 0.0, 1.0
+            sync.apply_player_fast(
+                game, game.player, {"fx": 0.0, "fy": -1.0}
+            )
+            self.assertEqual(
+                (game.player.facing_x, game.player.facing_y), (0.0, 1.0)
+            )
+
+    def test_echo_facing_applies_when_prediction_is_off(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = _make_playing_game(tmpdir)
+            _bind_joiner(game)
+            game.state = "playing"
+            game.mp_partner_pause_reason = "story"  # host paused
+            self.assertFalse(game.mp_predicts_local_movement())
+            game.player.facing_x, game.player.facing_y = 0.0, 1.0
+            sync.apply_player_fast(
+                game, game.player, {"fx": 0.0, "fy": -1.0}
+            )
+            self.assertEqual(
+                (game.player.facing_x, game.player.facing_y), (0.0, -1.0)
+            )
+
+
+class TurnEdgeSendTests(unittest.TestCase):
+    """4.7.8: direction changes transmit immediately, like start/stop."""
+
+    def _joiner_with_stub_client(self, tmpdir: str):
+        game = _make_playing_game(tmpdir)
+        session = _bind_joiner(game)
+        game.state = "playing"
+        game.mp_partner_pause_reason = ""
+        sent: list[dict] = []
+        game.mp_client = types.SimpleNamespace(
+            send_message=lambda message, **kwargs: sent.append(message)
+        )
+        return game, session, sent
+
+    def test_reversal_sends_without_waiting_for_the_slot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game, session, sent = self._joiner_with_stub_client(tmpdir)
+            game._mp_local_move_vector = lambda: (0.0, -1.0)  # heading north
+            game._mp_send_periodic(100.0)
+            intents = [m for m in sent if m.get("t") == "intent"]
+            self.assertEqual(len(intents), 1)
+
+            # Reverse to south 1 ms later: the slot is not due, still sends.
+            game._mp_local_move_vector = lambda: (0.0, 1.0)
+            game._mp_send_periodic(100.001)
+            intents = [m for m in sent if m.get("t") == "intent"]
+            self.assertEqual(len(intents), 2)
+            self.assertEqual(intents[1]["move_y"], 1.0)
+
+            # Analog easing below the 0.2 threshold keeps the cadence.
+            game._mp_local_move_vector = lambda: (0.1, 1.0)
+            game._mp_send_periodic(100.002)
+            intents = [m for m in sent if m.get("t") == "intent"]
+            self.assertEqual(len(intents), 2)
+            game.mp_client = None
+
+    def test_flush_outbound_sends_this_frames_turn(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game, session, sent = self._joiner_with_stub_client(tmpdir)
+            game._mp_local_move_vector = lambda: (0.0, -1.0)
+            game._mp_send_periodic(time.monotonic())
+            intents = [m for m in sent if m.get("t") == "intent"]
+            self.assertEqual(len(intents), 1)
+            # The 20 Hz slot is far away; the end-of-frame pump must still
+            # push the reversal out on the frame it happened.
+            session.next_intent_at = time.monotonic() + 10.0
+            game._mp_local_move_vector = lambda: (0.0, 1.0)
+            game.mp_flush_outbound()
+            intents = [m for m in sent if m.get("t") == "intent"]
+            self.assertEqual(len(intents), 2)
+            self.assertEqual(intents[1]["move_y"], 1.0)
+            game.mp_client = None
+
+
 if __name__ == "__main__":
     unittest.main()

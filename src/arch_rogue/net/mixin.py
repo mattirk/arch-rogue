@@ -97,6 +97,10 @@ from .protocol import (
 
 _PING_INTERVAL_SECONDS = 5.0
 _INTENT_MOVE_TIMEOUT_SECONDS = 0.6
+# A movement-vector component change beyond this transmits immediately
+# instead of waiting out the 20 Hz slot. Any keyboard direction change
+# clears it; analog easing below it keeps the ordinary cadence.
+_INTENT_TURN_THRESHOLD = 0.2
 # Transient-fx replication: ring capacity and how many snapshot ticks an
 # event keeps riding (tolerates coalesced/dropped snapshots without ever
 # re-sending the whole ring forever).
@@ -346,6 +350,28 @@ class NetMixin:
             return
         self._mp_send_periodic(now)
 
+    def mp_flush_outbound(self) -> None:
+        """Second outbound pump at the end of the frame's update.
+
+        ``poll()`` runs before event handling, so the keys it samples are a
+        frame stale and its position claim predates this frame's prediction.
+        This pass — after input processing and the update — lets a direction
+        change reach the wire on the frame it happened and stamps claims
+        with the freshly predicted position (host snapshots landing mid-
+        frame likewise serialize this frame's simulation). Every send stays
+        deadline- or edge-gated, so a frame normally transmits from only
+        one of the two pumps.
+        """
+
+        session = self.mp_session
+        if self.mp_client is None or session is None or session.reconnecting:
+            return
+        if getattr(self, "mobile_mode", False) and getattr(
+            self, "mobile_suspended", False
+        ):
+            return
+        self._mp_send_periodic(time.monotonic())
+
     # -- outbound scheduling ------------------------------------------------
 
     def _mp_send_periodic(self, now: float) -> None:
@@ -375,13 +401,24 @@ class NetMixin:
                 local = self.local_player()
                 if local is not None and local.hp > 0:
                     move_x, move_y = self._mp_local_move_vector()
-                    # Starting and (especially) stopping transmit on the same
-                    # frame instead of waiting out the 20 Hz slot: every
-                    # milliseconds of stop latency becomes host-side overshoot
-                    # the joiner would then have to slide onto.
+                    # Starting, stopping, and turning transmit on the same
+                    # frame instead of waiting out the 20 Hz slot: stop
+                    # latency becomes host-side overshoot the joiner slides
+                    # onto, and turn latency keeps the authoritative actor
+                    # walking the old way on a quick reversal.
                     was_moving = session.last_move_vector != (0.0, 0.0)
                     is_moving = (move_x, move_y) != (0.0, 0.0)
-                    if now >= session.next_intent_at or was_moving != is_moving:
+                    turned = (
+                        abs(move_x - session.last_move_vector[0])
+                        > _INTENT_TURN_THRESHOLD
+                        or abs(move_y - session.last_move_vector[1])
+                        > _INTENT_TURN_THRESHOLD
+                    )
+                    if (
+                        now >= session.next_intent_at
+                        or was_moving != is_moving
+                        or turned
+                    ):
                         session.next_intent_at = now + _INTENT_INTERVAL
                         session.last_move_vector = (move_x, move_y)
                         claim_x = claim_y = None

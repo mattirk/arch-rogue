@@ -47,6 +47,16 @@ from .protocol import sanitize_player_name
 # Cadence divider: every Nth snapshot carries the slow wholesale payload.
 SLOW_PAYLOAD_EVERY_TICKS = 5
 
+# Joiner prediction reconciliation: while the joiner's own actor moves, the
+# authoritative echo trails it along the motion axis by roughly
+# speed x (intent latency + transit + snapshot age). That trail is expected,
+# not error — the budget below (in tiles) is how much of it to attribute to
+# latency and forgive, scaled by the measured RTT and capped under the
+# 1.2-tile snap radius so genuine teleports still snap.
+_PREDICTION_PIPELINE_SECONDS = 0.16  # intent slot + snapshot age + 2 frames
+_PREDICTION_LAG_BUDGET_MAX_TILES = 1.1
+_PREDICTION_EQUIPMENT_SPEED_CAP = 1.30
+
 
 # --- entity identity -------------------------------------------------------
 
@@ -182,7 +192,7 @@ def apply_player_fast(game: Any, player: Player, data: dict[str, Any]) -> None:
     target_x = float(data.get("x", player.x))
     target_y = float(data.get("y", player.y))
     if predicted:
-        _reconcile_predicted_position(player, target_x, target_y)
+        _reconcile_predicted_position(game, player, target_x, target_y)
     else:
         _set_lerp_target(player, target_x, target_y)
     player.hp = int(data.get("hp", player.hp))
@@ -195,12 +205,13 @@ def apply_player_fast(game: Any, player: Player, data: dict[str, Any]) -> None:
     player.xp = int(data.get("xp", player.xp))
     player.next_xp = int(data.get("nxp", player.next_xp))
     player.gold = int(data.get("gold", player.gold))
-    player.facing_x = float(data.get("fx", player.facing_x))
-    player.facing_y = float(data.get("fy", player.facing_y))
     if not predicted:
-        # A predicting joiner owns its walk state (moving flag, lean vector,
-        # locomotion scale) — the host's echo is ~a round trip stale and
-        # would moonwalk the actor right after the player releases input.
+        # A predicting joiner owns its walk state (facing, moving flag, lean
+        # vector, locomotion scale) — the host's echo is ~a round trip stale
+        # and would moonwalk the actor right after the player releases input
+        # (and flip the sprite back to the old direction on a quick turn).
+        player.facing_x = float(data.get("fx", player.facing_x))
+        player.facing_y = float(data.get("fy", player.facing_y))
         player.moving = bool(data.get("mv", False))
         player.move_x = float(data.get("mx", player.move_x))
         player.move_y = float(data.get("my", player.move_y))
@@ -276,31 +287,66 @@ def _apply_local_action_pose(
     game.player_action_duration = max(duration, ttl)
 
 
+def _prediction_lag_budget(game: Any) -> float:
+    """Tiles of trailing echo attributable to latency (RTT-scaled, capped)."""
+
+    from ..combat._utils import PLAYER_MOVE_SPEED
+
+    session = getattr(game, "mp_session", None)
+    rtt_ms = float(getattr(session, "rtt_ms", 0.0)) if session is not None else 0.0
+    return min(
+        _PREDICTION_LAG_BUDGET_MAX_TILES,
+        PLAYER_MOVE_SPEED
+        * _PREDICTION_EQUIPMENT_SPEED_CAP
+        * (_PREDICTION_PIPELINE_SECONDS + rtt_ms / 2000.0),
+    )
+
+
 def _reconcile_predicted_position(
-    actor: Any, target_x: float, target_y: float
+    game: Any, actor: Any, target_x: float, target_y: float
 ) -> None:
     """Blend a locally predicted actor toward the authoritative position.
 
-    Prediction runs the same movement code as the host, so steady-state error
+    Prediction runs the same movement code as the host, so genuine error
     stays tiny; big divergence means a host-side dash/teleport/knockback and
-    snaps. The rest eases at 25% per snapshot (~15 Hz) — invisible in play.
+    snaps. While the actor moves, though, the echo *always* trails it along
+    the motion axis by ~speed x latency. Treating that trail as error eroded
+    the prediction back onto the stale echo (re-adding the round trip as felt
+    input lag) and, on a quick direction reversal (the echo keeps travelling
+    the old way for a full round trip), yanked the actor backward — the
+    joiner's north/south turn lag. The trailing component inside the latency
+    budget is therefore forgiven; perpendicular and forward error still ease
+    at 25% per snapshot, and only the unexplained remainder can snap.
     """
 
     dx = target_x - actor.x
     dy = target_y - actor.y
     error = dx * dx + dy * dy
-    if error > 1.44:
-        actor.x = target_x
-        actor.y = target_y
-    elif not actor.moving:
+    if not actor.moving:
         # At rest, authority briefly overshoots the predicted stop (it keeps
         # the old vector until the zero intent lands, then walks back onto
         # the claimed stop). Pulling 25% per snapshot rendered that as an
         # uncomfortable slide; instead ignore sub-0.2-tile error outright
         # and ease anything larger gently.
-        if error > 0.04:
+        if error > 1.44:
+            actor.x = target_x
+            actor.y = target_y
+        elif error > 0.04:
             actor.x += dx * 0.1
             actor.y += dy * 0.1
+        actor.net_x = None
+        actor.net_y = None
+        return
+    along = dx * actor.facing_x + dy * actor.facing_y
+    if along < 0.0:
+        # The echo sits behind the motion axis: forgive the latency trail.
+        forgiven = max(along, -_prediction_lag_budget(game))
+        dx -= actor.facing_x * forgiven
+        dy -= actor.facing_y * forgiven
+        error = dx * dx + dy * dy
+    if error > 1.44:
+        actor.x = target_x
+        actor.y = target_y
     elif error > 0.0004:
         actor.x += dx * 0.25
         actor.y += dy * 0.25

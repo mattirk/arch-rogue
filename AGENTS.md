@@ -315,42 +315,17 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 
 ### 4.7 Post multiplayer & beyond
 
-- We need dying/death animations (single direction) also dead/idle (single direction, very small movement) and for all archetypes
-- Maybe try to make guest player experience still more smooth. It's quite ok with 2 desktops (Linux / MAC), but the lag is still noticeable on guest computer. 
+- Try to make guest player experience still more smooth on multiplayer. It's playable with 2 desktops (Linux / MAC), but the lag is still noticeable on guest computer.
   - Especially noticable lag when quickly turning north/south e.g opposite directions
-  - Are clients able to run multiple threads / processes to handle network and game logic concurrently?
+  - Are clients able to run multiple threads / processes to handle network and game logic concurrently? Just a thought..
 
 #### 4.7 backlog
 
-- Set android build folders as cached in GH CI/CD so we get fast build times
-- Add server deployment to GitHub Actions
-  - There is runner (user will give name)
-  - There are environment variables PORT and SERVER, use as startup parameters for server deployment
-  - Figure out a way to automate server deployment, simple startup script or systemd?
-
-#### 4.7.x Minor updates
-
-**Plan: automated relay-server deployment via GitHub Actions (self-hosted runner `arch-rogue-server-1`)** — implemented: `.github/workflows/deploy-server.yml`, `server/deploy/arch-rogue-server.service`, `server/deploy/probe_port.py`, provisioning guide in `docs/server-deployment.md`.
-
-Context that shapes the plan: the relay is stdlib-only (`python3 -m server.server`, no venv/pip — it imports `src/arch_rogue_protocol` as a path dependency), speaks plain TCP (TLS is terminated by the nginx stream proxy in front of `ar.rita-kasari.fi:43666`), and is ephemeral in-memory, so a restart only drops in-flight rooms — clients reconnect within the reconnect grace. The runner machine exposes environment variables `PORT` and `SERVER`, which become the startup parameters `--port "$PORT" --host "$SERVER"`.
-
-1. **systemd (recommended) over a bare startup script.** A user-level unit `arch-rogue-server.service` gives restart-on-crash, boot persistence (`loginctl enable-linger <runner-user>`), and journald logs — a startup script gives none of that. Commit the unit template as `server/deploy/arch-rogue-server.service`:
-   - `ExecStart=/usr/bin/python3 -m server.server --host ${SERVER} --port ${PORT}`
-   - `EnvironmentFile=%h/arch-rogue-relay/env` (written by the deploy job from the runner's `$PORT`/`$SERVER`)
-   - `WorkingDirectory=%h/arch-rogue-relay/current`, `Restart=on-failure`, `RestartSec=2`
-   - One-time provisioning on the host: install the unit to `~/.config/systemd/user/`, `systemctl --user daemon-reload && systemctl --user enable arch-rogue-server`, enable linger.
-2. **New workflow `.github/workflows/deploy-server.yml`**:
-   - Trigger: `push` to `master` filtered to `paths: [server/**, src/arch_rogue_protocol/**, .github/workflows/deploy-server.yml]`, plus `workflow_dispatch` for manual redeploys/rollbacks.
-   - Gate job on `ubuntu-latest`: run the relay-relevant tests (`tests.test_server_room`, `tests.test_net_protocol`) before touching the server.
-   - Deploy job `runs-on: [self-hosted, arch-rogue-server-1]`, `needs` the gate: checkout; copy `server/` + `src/arch_rogue_protocol/` into a timestamped release dir under `~/arch-rogue-relay/releases/`; write the `env` file from `$PORT`/`$SERVER`; flip the `current` symlink; `systemctl --user restart arch-rogue-server`.
-   - Health check step: python one-liner opens a TCP connection to `127.0.0.1:$PORT` (retry ~10 s); on failure print `journalctl --user -u arch-rogue-server -n 50`, flip `current` back to the previous release, restart, and fail the job.
-3. **Rollback** falls out of the release-dir + symlink layout: keep the last N releases; manual rollback is re-running the workflow via dispatch or flipping the symlink on the host.
-4. **Compatibility note:** the relay passes intent/snapshot payloads through verbatim and pairs clients by their own `content_revision`, so deploying the relay is decoupled from game releases; no client update is required. nginx config is untouched (still plain-TCP upstream on `$PORT`).
-5. **Nice-to-have later:** a `concurrency:` group so overlapping pushes queue instead of racing the restart, and a `workflow_dispatch` input `release=<dir>` for explicit rollback targets.
 
 ### Backlog
 
 - Make action skill 1 "a big hit" for all characters (normal hit stays as it is when walking towards enemies, maybe lower it's effectiveness a bit). The hit throws one enemy 4+ tiles away and has long cooldown. Each archetype has unique type of "bit hit" attach (needs to be designed)
+  - Maybe so that big hit has buildup time so needs to be timed by player
 - Maybe add cryptographic randomness in seed (maps, runs, multiplayer) generation
 - Make it so that on Hell difficulty dungeon levels dont end but become progressively harder the deeper you go. 
   - Make settings menu item red & grim when hell is selected.

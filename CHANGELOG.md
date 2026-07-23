@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.7.8 — The joiner turns on a dime
+
+Release 4.7.8 removes the guest's remaining movement lag, felt most as a backward yank when quickly reversing direction (north↔south). The wire protocol is unchanged (the relay needs no update); because `content_revision` is the game version, 4.7.8 clients pair only with 4.7.8 clients.
+
+### Fixed
+
+- **Guest turn lag / reversal yank**: the joiner predicts its own movement, but reconciliation pulled the predicted actor 25% per snapshot toward the host's echo of its position — an echo that *always* trails the actor along its motion axis by ~walk speed × (intent latency + transit + snapshot age). While walking, that pull steadily eroded the predicted position back onto the latency-stale echo (silently re-adding the round trip as felt input lag), and on a quick direction reversal the host keeps walking the old way for a full round trip, so the trailing error momentarily doubles — a pipeline replay at 80 ms RTT measures a 0.63-tile backward yank against the player's input, and higher RTT could cross the hard 1.2-tile snap. Reconciliation is now direction-aware: the trailing component of the error inside an RTT-scaled latency budget (capped at 1.1 tiles) is forgiven — the same replay measures zero yank — while perpendicular and forward divergence (knockback, host-side blocking, dash/teleport) still eases at the old 25% and snaps beyond 1.2 tiles. At rest, nothing changes — the stop-aware deadband and the host-side claim settle from 4.7.6 already converge the stop exactly.
+- **Reversal intents waited out the 20 Hz slot**: immediate sends fired only on start/stop edges, so flipping north→south while holding keys could sit up to 50 ms before the host learned about it. Any movement-vector component change beyond 0.2 now transmits immediately (analog easing below that keeps the ordinary cadence).
+- **Intents carried the previous frame's keys**: `poll()` runs before event handling, so its outbound pass sampled a frame-stale keyboard state and a claim predating this frame's prediction. `Game.run()` now runs a second, deadline/edge-gated outbound pump (`mp_flush_outbound`) after the update: a reversal reaches the wire on the frame it happened, claims carry the freshly predicted position, and a host snapshot deadline landing mid-frame serializes this frame's simulation instead of last frame's.
+- **Stale facing echo flipped the sprite back**: snapshots overwrote the predicting joiner's `facing_x`/`facing_y` with the host's ~round-trip-stale echo. Prediction re-fixed it while a key was held, but on a quick tap-and-release the character visibly snapped back to the old direction. A predicting joiner now owns its facing exactly like its walk state (moving flag, lean vector, locomotion scale); the echo still applies whenever prediction is off.
+
 ## 4.7.7 — Descenders die on screen
 
 Release 4.7.7 gives every player archetype an authored death: a one-shot falling "die" clip followed by a looping "dead" corpse idle with only a faint settling motion. Death is no longer an instant cut to the summary screen — the fall plays out, the corpse rests a beat, and only then does the run end.
