@@ -317,14 +317,14 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 
 - If other player is dead and the other clears dungeon level on multiplayer, the previously killed player should respawn on the start of next level
   - On Hell mode both living players must stand near stairs to descend
-- When guest interacts with shopkeeper or guest NPC, the host gets flashing window but nothing else (multiplayer)
-  - The game should pause for both and host sees dialog when guest NPC interaction
-  - When shopkeeper interaction, guest gets the shopkeeper dialog if they interact with the shopkeeper, same for host, game is paused in both cases
 - Player should be able to "Raise" the other player once (multiplayer)
   - Raise revives other dead player to half health
   - Use dance animation when on player who raises
   - Except for Ranger who uses pet animation
   - Raise can be used once per descent, does not reset between levels, rare shrines grant another raise
+- When guest interacts with shopkeeper or guest NPC, the host gets flashing window but nothing else (multiplayer)
+  - The game should pause for both and host sees dialog when guest NPC interaction
+  - When shopkeeper interaction, guest gets the shopkeeper dialog if they interact with the shopkeeper, same for host, game is paused in both cases
 
 #### 4.7 backlog
 

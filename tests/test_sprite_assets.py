@@ -431,12 +431,13 @@ class SpriteAssetTests(unittest.TestCase):
             )
             self.assertEqual({frame.key[4] for frame in frames}, {0, 1, 2, 3})
 
-            # The clip is intentionally south-only. Other directions preserve
-            # the library's existing static-rotation fallback.
+            # The clip is intentionally south-only. Since 4.7.11 (co-op
+            # Raise) other facings replay the south frames — the same rule
+            # death clips use — so the flourish animates from any angle.
             fallback = library.resolve_actor(archetype.name, "act", "east", 0.0)
             self.assertIsNotNone(fallback)
             assert fallback is not None
-            self.assertEqual(fallback.key[1:4], (slug, "rotation", "east"))
+            self.assertEqual(fallback.key[1:4], (slug, "act", "south"))
 
     def test_gate_warden_reviewed_animation_set_is_complete_and_wired(self) -> None:
         library = AssetSpriteLibrary()

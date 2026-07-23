@@ -106,6 +106,7 @@ def player_full_dict(game: Any, player: Player) -> dict[str, Any]:
         },
         "skill_upgrades": list(player.skill_upgrades),
         "mastery_tokens": int(player.mastery_tokens),
+        "raise_charges": int(player.raise_charges),
         "status_effects": dict(player.status_effects),
         "gold": player.gold,
     }
@@ -182,6 +183,7 @@ def player_fast_dict(game: Any, player: Player) -> dict[str, Any]:
         "act": action,
         "hf": flash,
         "tokens": player.mastery_tokens,
+        "raises": player.raise_charges,
     }
 
 
@@ -257,6 +259,7 @@ def apply_player_fast(game: Any, player: Player, data: dict[str, Any]) -> None:
                 game.player_hit_flash = player.hit_flash
                 game.player_hit_flash_duration = player.hit_flash_duration
     player.mastery_tokens = int(data.get("tokens", player.mastery_tokens))
+    player.raise_charges = int(data.get("raises", player.raise_charges))
     if player.hp < old_hp and is_local and game.mp_is_joiner():
         # Mirror take_player_damage's local screen feedback for the joiner's
         # own wounds (the host flashes only for its own). The blood impact
@@ -420,6 +423,7 @@ def build_player_from_full(game: Any, data: dict[str, Any]) -> Player:
         str(key) for key in data.get("skill_upgrades", [])
     ]
     player.mastery_tokens = int(data.get("mastery_tokens", 0))
+    player.raise_charges = int(data.get("raise_charges", 1))
     player.status_effects = {
         str(key): float(value)
         for key, value in data.get("status_effects", {}).items()

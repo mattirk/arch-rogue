@@ -69,6 +69,9 @@ SHRINE_HINTS: dict[str, InteractionHint] = {
     "Twilight Shrine": InteractionHint(
         "Twilight Shrine", "Trades blood for a unique relic.", (214, 92, 150)
     ),
+    "Vigil Shrine": InteractionHint(
+        "Vigil Shrine", "Grants another Raise for a fallen ally.", (240, 228, 160)
+    ),
 }
 
 SECRET_HINTS: dict[str, InteractionHint] = {

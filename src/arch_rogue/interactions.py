@@ -40,6 +40,7 @@ class InteractionMixin:
     SPIRIT_BEAST_PET_HEAL = 2
     SPIRIT_BEAST_PET_COOLDOWN = 2.0
     SPIRIT_BEAST_PET_ANIMATION_DURATION = 0.8
+    PARTNER_RAISE_RANGE = 1.6
     _BEAST_DISCIPLINE_KEYS = (
         "ranger_beast_bond",
         "ranger_pack_tactics",
@@ -72,6 +73,16 @@ class InteractionMixin:
                 f"Recover {story_relic.display_name}",
                 self.item_decision_summary(story_relic),
                 self.story_state.accent if self.story_state else self.theme.accent,
+            )
+        fallen_partner = self.nearby_raisable_partner()
+        if fallen_partner is not None:
+            partner_name = fallen_partner.display_name or "your partner"
+            return (
+                "E",
+                f"Raise {partner_name}",
+                "Revive your fallen partner to half health"
+                f" · {self.player.raise_charges} Raise left",
+                (240, 228, 160),
             )
         # Ranger: surface petting as a first-class tappable action on mobile,
         # matching how items/doors/guests advertise their interact prompt.
@@ -189,6 +200,79 @@ class InteractionMixin:
             return ("!", hint.title, hint.detail, hint.color)
         return None
 
+    def nearby_raisable_partner(self):
+        """The fallen co-op partner within reach, if the actor can still Raise."""
+
+        if (
+            not self.mp_active
+            or self.player.hp <= 0
+            or self.player.raise_charges <= 0
+        ):
+            return None
+        for partner in self.players:
+            if partner is self.player or partner.hp > 0:
+                continue
+            if (
+                math.hypot(
+                    partner.x - self.player.x, partner.y - self.player.y
+                )
+                < self.PARTNER_RAISE_RANGE
+            ):
+                return partner
+        return None
+
+    def raise_partner(self, partner) -> bool:
+        """Revive a fallen partner to half health, spending one Raise charge.
+
+        The raiser plays the celebratory "act" flourish over the corpse —
+        except the Ranger, whose authored petting clip fits the gesture.
+        """
+
+        if (
+            partner is None
+            or partner.hp > 0
+            or self.player.raise_charges <= 0
+        ):
+            return False
+        self.player.raise_charges -= 1
+        partner.hp = max(1, partner.max_hp // 2)
+        partner.status_effects = {}
+        partner.death_anim_time = 0.0
+        dx = partner.x - self.player.x
+        dy = partner.y - self.player.y
+        distance = math.hypot(dx, dy)
+        if distance > 0.001:
+            self.player.facing_x = dx / distance
+            self.player.facing_y = dy / distance
+        self.player.moving = False
+        state = "pet" if self.player.class_name == "Ranger" else "act"
+        duration = (
+            self.sprites.actor_clip_seconds(self.player.class_name, state)
+            or 1.0
+        )
+        self.set_player_action_visual(state, duration)
+        partner_name = partner.display_name or "Your partner"
+        self.floaters.append(
+            FloatingText(
+                f"{partner_name} rises again",
+                partner.x,
+                partner.y - 0.6,
+                (240, 228, 160),
+                ttl=1.5,
+            )
+        )
+        self.add_impact(
+            partner.x,
+            partner.y,
+            (240, 228, 160),
+            ttl=0.58,
+            radius=0.68,
+            kind="burst",
+        )
+        self.play_sfx("shrine")
+        self.save_run()
+        return True
+
     def nearby_pettable_spirit_beast(self) -> Familiar | None:
         """Return the closest living, ready Spirit Beast within petting reach."""
         if self.player.class_name != "Ranger":
@@ -222,6 +306,7 @@ class InteractionMixin:
         return not (
             self.story_intro_pending
             or self.nearby_story_relic() is not None
+            or self.nearby_raisable_partner() is not None
             or self.nearby_closed_door() is not None
             or self.nearby_shopkeeper() is not None
             or self.player_near_stairs()
@@ -364,6 +449,10 @@ class InteractionMixin:
         story_relic = self.nearby_story_relic()
         if story_relic is not None:
             self.collect_story_relic(story_relic)
+            return
+        fallen_partner = self.nearby_raisable_partner()
+        if fallen_partner is not None:
+            self.raise_partner(fallen_partner)
             return
         if self.open_nearby_door():
             return
@@ -704,6 +793,9 @@ class InteractionMixin:
                 if granted
                 else "Oath Shrine finds no path left"
             )
+        elif shrine.kind == "Vigil Shrine":
+            self.player.raise_charges += 1
+            message = "Vigil Shrine grants another Raise"
         elif shrine.kind == "Twilight Shrine":
             self.player.hp = max(1, self.player.hp - max(5, self.player.max_hp // 10))
             self.items.append(self._make_unique(self.player.x, self.player.y))

@@ -952,6 +952,9 @@ class Player:
     action_duration: float = field(default=0.0, repr=False, compare=False)
     hit_flash: float = field(default=0.0, repr=False, compare=False)
     hit_flash_duration: float = field(default=0.0, repr=False, compare=False)
+    # 4.7 co-op Raise: how many times this player may revive a fallen partner.
+    # One per descent (never refreshed between floors); Vigil Shrines add one.
+    raise_charges: int = 1
 
     def has_upgrade(self, key: str) -> bool:
         return key in self.skill_upgrades

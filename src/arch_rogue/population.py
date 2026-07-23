@@ -187,7 +187,12 @@ class PopulationMixin:
                 0.04, min(0.46, shrine_chance)
             ):
                 sx, sy = room.random_point(self.rng)
-                self.shrines.append(Shrine(sx, sy, self.rng.choice(SHRINE_TYPES)))
+                shrine_kind = self.rng.choice(SHRINE_TYPES)
+                # Co-op only: rarely a shrine keeps vigil instead, granting
+                # the activating player another Raise for a fallen partner.
+                if self.mp_active and self.rng.random() < 0.10:
+                    shrine_kind = "Vigil Shrine"
+                self.shrines.append(Shrine(sx, sy, shrine_kind))
             if (
                 room_index > 2
                 and not is_final_room

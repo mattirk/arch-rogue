@@ -51,7 +51,9 @@ DIRECTIONS = (
     "west",
     "south-west",
 )
-_ACTION_STATES = frozenset(("attack", "cast", "hit", "dash", "pet", "die", "dead"))
+_ACTION_STATES = frozenset(
+    ("attack", "cast", "hit", "dash", "pet", "act", "die", "dead")
+)
 _SUPPORTED_ACTOR_STATES = frozenset(
     ("idle", "walk", "dance", "attack", "cast", "pet", "act", "die", "dead")
 )
@@ -484,12 +486,16 @@ class AssetSpriteLibrary:
             by_direction = clip.get("directions", {})
             frame_paths = by_direction.get(direction)
             used_direction = direction
-            if not frame_paths and by_direction and clip_name in ("die", "dead"):
-                # Death clips are authored single-direction by design: play
-                # them for every facing rather than dropping to a static
-                # rotation frame. Other partial clips keep the matching
-                # rotation fallback so e.g. an east walk never shows the
-                # south-facing frames.
+            if (
+                not frame_paths
+                and by_direction
+                and clip_name in ("die", "dead", "act")
+            ):
+                # Death and flourish ("act") clips are authored
+                # single-direction by design: play them for every facing
+                # rather than dropping to a static rotation frame. Other
+                # partial clips keep the matching rotation fallback so e.g.
+                # an east walk never shows the south-facing frames.
                 fallback = "south" if "south" in by_direction else next(
                     iter(by_direction)
                 )

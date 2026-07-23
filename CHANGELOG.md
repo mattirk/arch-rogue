@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.7.11 — Raise your fallen partner
+
+Release 4.7.11 adds the co-op Raise: each player can revive their fallen partner once per descent. All logic is host-side and the wire change is additive (a new player field in floor and snapshot payloads); because `content_revision` is the game version, 4.7.11 clients pair only with 4.7.11 clients.
+
+### Added
+
+- **Raise**: standing over the fallen partner's corpse and interacting revives them on the spot to half of max HP, with statuses cleared and the death pose reset. The raiser turns to face the corpse and plays the celebratory "act" flourish over it — except the Ranger, whose authored petting clip fits the gesture. The revive travels the ordinary interact-intent → snapshot path, so either side can raise the other with no new messages.
+- **One Raise per descent**: every player starts the run with a single Raise charge, carried on the player (`raise_charges`, replicated in floor and snapshot payloads so both HUDs agree). Charges never refresh between floors.
+- **Vigil Shrine** (co-op only): rarely a shrine keeps vigil instead of its usual bargain — about one spawned shrine in ten on multiplayer floors — granting the activating player another Raise. It never spawns in solo runs, where a Raise has no one to spend itself on.
+- The interact prompt advertises "Raise <partner>" with the remaining charge count when standing over a raisable corpse, and the sprite resolver now replays the single-direction "act" clip for every facing (the same rule death clips already used) so the flourish animates regardless of where the raiser stands.
+
 ## 4.7.10 — The fallen descend anyway
 
 Release 4.7.10 changes co-op descent: below Hell difficulty either living player may take the stairs alone, and a fallen partner respawns at the start of the next floor at half health. All logic is host-side; the wire protocol is unchanged (the relay needs no update), and because `content_revision` is the game version, 4.7.10 clients pair only with 4.7.10 clients.
