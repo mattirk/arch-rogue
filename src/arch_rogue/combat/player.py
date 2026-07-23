@@ -18,15 +18,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Player damage intake and per-frame update: take_player_damage, thorns reflect, update_player, garden-room healing."""
+"""Player damage intake and per-frame update: take_player_damage, thorns reflect, update_player, refuge-room (garden/bar) effects."""
 # pyright: reportAttributeAccessIssue=false
 from __future__ import annotations
 
 import math
 import pygame
 from ..dungeon import (
+    BAR_ROOM_KIND,
     GARDEN_ROOM_KIND,
 )
+
+# 4.7.12: the bar refuge saps the drinker's stamina fast enough to overpower
+# passive regen (30-38/s) — a full bar drains in roughly a second of lingering.
+_BAR_STAMINA_SAP_PER_SECOND = 130.0
+# Refuge rooms tick one heal per this many seconds of lingering — slow enough
+# to read as a calm refuge, not a heal station worth camping.
+_REFUGE_HEAL_TICK_SECONDS = 5.0
 from ..models import (
     Enemy,
     FloatingText,
@@ -391,43 +399,60 @@ class _PlayerCombatMixin:
             self.player.max_stamina, self.player.stamina + stamina_regen * dt
         )
         self.player.mana = min(self.player.max_mana, self.player.mana + mana_regen * dt)
-        self._update_garden_healing(dt)
+        self.update_refuge_room_effects(dt)
 
-    def _update_garden_healing(self, dt: float) -> None:
-        # 4.2: standing inside an overgrown garden flavor room mends the
-        # player a little. The heal is slow (one +HP tick per second) so it
-        # reads as a calm refuge rather than a full heal station, and it only
-        # ticks while HP is actually missing. Each tick refreshes a greenish
-        # aura the renderer fades out so the player can see the garden is
-        # doing something.
-        if self.player.hp <= 0:
+    def update_refuge_room_effects(self, dt: float) -> None:
+        """Per-actor flavor-room ticks for whoever ``self.player`` is now.
+
+        4.2 gardens / 4.7.12 bars: standing inside a refuge flavor room mends
+        the player a little — one +HP tick per ``_REFUGE_HEAL_TICK_SECONDS``
+        of lingering, so it reads as a calm refuge rather than a heal
+        station, and only while HP is missing.
+        The bar pours at half the garden's pace and quickly saps the
+        drinker's stamina to zero while they linger. The heal accumulator
+        lives on the player, so in co-op the host runs this for the partner's
+        actor too (via ``_mp_update_remote_player``) with independent
+        progress; HP, stamina, and the floater replicate through snapshots.
+        """
+
+        player = self.player
+        if player.hp <= 0:
             return
-        if self.player.hp >= self.player.max_hp:
-            self.garden_heal_accumulator = 0.0
+        special_room = self.dungeon.special_room_at_point(player.x, player.y)
+        kind = special_room.kind if special_room is not None else ""
+        if kind == BAR_ROOM_KIND:
+            player.stamina = max(
+                0.0, player.stamina - _BAR_STAMINA_SAP_PER_SECOND * dt
+            )
+        if (
+            kind not in (GARDEN_ROOM_KIND, BAR_ROOM_KIND)
+            or player.hp >= player.max_hp
+        ):
+            player.garden_heal_accumulator = 0.0
             return
-        special_room = self.dungeon.special_room_at_point(
-            self.player.x, self.player.y
-        )
-        if special_room is None or special_room.kind != GARDEN_ROOM_KIND:
-            self.garden_heal_accumulator = 0.0
+        player.garden_heal_accumulator += dt
+        if player.garden_heal_accumulator < _REFUGE_HEAL_TICK_SECONDS:
             return
-        self.garden_heal_accumulator += dt
-        if self.garden_heal_accumulator < 1.0:
-            return
-        self.garden_heal_accumulator -= 1.0
-        heal = max(2, self.player.max_hp // 25 + 2)
-        healed = min(self.player.max_hp - self.player.hp, heal)
+        player.garden_heal_accumulator -= _REFUGE_HEAL_TICK_SECONDS
+        if kind == GARDEN_ROOM_KIND:
+            heal = max(2, player.max_hp // 25 + 2)
+        else:
+            heal = max(1, player.max_hp // 50 + 1)
+        healed = min(player.max_hp - player.hp, heal)
         if healed <= 0:
             return
-        self.player.hp += healed
-        self.garden_heal_glow_duration = 0.9
-        self.garden_heal_glow = self.garden_heal_glow_duration
+        player.hp += healed
+        if kind == GARDEN_ROOM_KIND and player.player_id == self.local_player_id:
+            # The greenish aura is a local-screen effect; a partner's heal
+            # shows through its replicated floater instead.
+            self.garden_heal_glow_duration = 0.9
+            self.garden_heal_glow = self.garden_heal_glow_duration
         self.floaters.append(
             FloatingText(
-                f"Garden +{healed}",
-                self.player.x,
-                self.player.y - 0.55,
-                (130, 220, 150),
+                f"{'Garden' if kind == GARDEN_ROOM_KIND else 'Bar'} +{healed}",
+                player.x,
+                player.y - 0.55,
+                (130, 220, 150) if kind == GARDEN_ROOM_KIND else (225, 190, 120),
                 ttl=0.95,
             )
         )

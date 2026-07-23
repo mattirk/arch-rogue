@@ -315,19 +315,24 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 
 ### 4.7 Post multiplayer & beyond
 
-- If other player is dead and the other clears dungeon level on multiplayer, the previously killed player should respawn on the start of next level
+- If other player is dead and the other clears dungeon level on multiplayer, the previously killed player should respawn on the start of next level - done
   - On Hell mode both living players must stand near stairs to descend
-- Player should be able to "Raise" the other player once (multiplayer)
+- Player should be able to "Raise" the other player once (multiplayer) - done
   - Raise revives other dead player to half health
   - Use dance animation when on player who raises
   - Except for Ranger who uses pet animation
   - Raise can be used once per descent, does not reset between levels, rare shrines grant another raise
-- When guest interacts with shopkeeper or guest NPC, the host gets flashing window but nothing else (multiplayer)
+- When guest interacts with shopkeeper or guest NPC, the host gets flashing window but nothing else (multiplayer) - done
   - The game should pause for both and host sees dialog when guest NPC interaction
   - When shopkeeper interaction, guest gets the shopkeeper dialog if they interact with the shopkeeper, same for host, game is paused in both cases
 
 #### 4.7 backlog
 
+- Some times guest does not gain experience (thus cannot level up). This has happened at least once after being Raised (multiplayer) - done
+- Guest does not gain health in garden (multiplayer) this is also reproduced after being raised, don't know if related - done
+- Bars heal slow (slower than gardens) and quickly sap stamina to zero - done
+- Gardens should heal player more slowly. Slow the healing "tick" -> every 5 seconds - done
+  - Adjust bars accordingly - done
 
 ### Backlog
 
@@ -354,12 +359,11 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 - Make actors on cutscene stage move more slowly, also
   - When actors stop, make them wait at that position for a bit longer and do a "dance" move
   - When player and antagonist clash in the middle, make them exchange couple of blows
-- In Archetype selection screen, make the panels containing Archetype names (row.png) a bit more compact in vertical sense (15% for now), keep spacing / alignment clean
 - On mobile, make the stat container (hp, mana, stamina) fill from bottom to top. Top and bottom ends of the container are a bit more narrow than the middle so take that into account.
-- row.png sprites are stretched in couple of places e.g Archetype selection screen. let's try to fix this, maybe not scale/stretch at all? or maybe not by much (max 1.5x - 2.0x)
 - In desktop multiplayer, screen "Enter your partners code", make text input text centered in the input field
 - Auto-updater in APK, maybe Mac, other platforms at least in-game notice
   - Need to think about Windows / Linux packaging anyway
+
 
 
 ### Bottom-of-the-Barrel

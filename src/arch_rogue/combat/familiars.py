@@ -494,7 +494,15 @@ class _FamiliarsCombatMixin:
                         familiar.facing_x = dx / dist
                         familiar.facing_y = dy / dist
                     if familiar.attack_timer <= 0:
-                        self._familiar_attack(familiar, target)
+                        # 4.7.12 co-op kill credit: bite as the summoner so
+                        # kill XP/gold and Blood-path lifesteal land on the
+                        # familiar's owner, not whoever ``self.player`` is
+                        # during the host update (a fallen owner defers to
+                        # the current actor via ``player_for_credit``).
+                        with self.acting_as_player(
+                            self.player_for_credit(familiar.owner_id)
+                        ):
+                            self._familiar_attack(familiar, target)
                 elif dist > 0.001:
                     nx, ny = dx / dist, dy / dist
                     familiar.facing_x = nx

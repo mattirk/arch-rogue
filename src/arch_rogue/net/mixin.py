@@ -354,6 +354,21 @@ class NetMixin:
         finally:
             self.player = previous
 
+    def player_for_credit(self, player_id: str) -> Player:
+        """The living player owed a delayed effect (kill XP/gold, leech).
+
+        Resolves projectile/DoT/familiar attribution recorded at fire time.
+        Falls back to the current ``self.player`` when the owner is unknown
+        or has since fallen — a level-up's full refill must never revive a
+        corpse mid-death-animation.
+        """
+
+        if self.mp_active and player_id:
+            for player in self.active_players():
+                if player.player_id == player_id and player.hp > 0:
+                    return player
+        return self.player
+
     # -- per-frame driver ---------------------------------------------------
 
     def poll(self) -> None:
@@ -1451,11 +1466,12 @@ class NetMixin:
     def _mp_update_remote_player(
         self, remote: Player, dt: float, move_x: float, move_y: float
     ) -> None:
-        """Movement, cooldowns, statuses, and regen for the remote actor.
+        """Movement, cooldowns, statuses, regen, and refuge-room effects for
+        the remote actor.
 
-        Mirrors ``update_player`` minus real-input sampling and garden
-        healing. Runs inside ``acting_as_player`` so shared helpers resolve
-        against the remote actor.
+        Mirrors ``update_player`` minus real-input sampling. Runs inside
+        ``acting_as_player`` so shared helpers resolve against the remote
+        actor.
         """
 
         from ..combat._utils import PLAYER_MOVE_SPEED
@@ -1533,6 +1549,10 @@ class NetMixin:
             remote.max_stamina, remote.stamina + stamina_regen * dt
         )
         remote.mana = min(remote.max_mana, remote.mana + mana_regen * dt)
+        # 4.7.12: refuge flavor rooms (garden heal, bar heal + stamina sap)
+        # tick for the partner's actor too — the accumulator lives on the
+        # player, and the joiner sees the result through snapshots.
+        self.update_refuge_room_effects(dt)
         # Decay the partner's transient visual fields (the local player's
         # equivalents decay on the Game object in update_visual_effects).
         remote.hit_flash = max(0.0, remote.hit_flash - dt)

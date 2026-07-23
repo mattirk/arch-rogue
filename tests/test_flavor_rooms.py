@@ -823,11 +823,64 @@ class FlavorRoomTests(unittest.TestCase):
                 tmp.cleanup()
             raise
 
+    def test_bar_room_heals_slower_than_garden_and_saps_stamina(self) -> None:
+        # 4.7.12: the bar refuge pours at half the garden's pace and quickly
+        # drains the drinker's stamina to zero while they linger. No greenish
+        # glow — that aura belongs to the garden.
+        game = self._make_game_with_flavor_room()
+        try:
+            special = game.dungeon.special_room_for_kind(BAR_ROOM_KIND)
+            assert special is not None
+            room = game.dungeon.rooms[special.room_index]
+            cx, cy = room.center
+            game.dungeon.tiles[cx][cy] = Tile.FLOOR
+            game.player.x = cx + 0.5
+            game.player.y = cy + 0.5
+            game.player.hp = max(1, game.player.max_hp - 24)
+            hp_before = game.player.hp
+            game.player.stamina = game.player.max_stamina
+            game.player.garden_heal_accumulator = 0.0
+            game.garden_heal_glow = 0.0
+            game.floaters.clear()
+
+            # A quick sip (one second) saps stamina hard but has not yet
+            # earned a heal tick — the pour is slow.
+            game.update_player(0.6)
+            game.update_player(0.5)
+            self.assertEqual(game.player.hp, hp_before)
+            self.assertLess(
+                game.player.stamina, game.player.max_stamina * 0.25
+            )
+
+            # Lingering a moment longer empties the stamina bar outright.
+            game.update_player(0.8)
+            self.assertEqual(game.player.stamina, 0.0)
+
+            # Crossing the five-second tick: one heal lands at half the
+            # garden's strength, with an amber floater and no garden glow.
+            game.update_player(2.0)
+            game.update_player(2.5)
+            self.assertGreater(game.player.hp, hp_before)
+            self.assertEqual(
+                game.player.hp - hp_before,
+                max(1, game.player.max_hp // 50 + 1),
+            )
+            self.assertEqual(game.garden_heal_glow, 0.0)
+            bar_floaters = [
+                f for f in game.floaters if str(f.text).startswith("Bar +")
+            ]
+            self.assertEqual(len(bar_floaters), 1)
+        finally:
+            tmp = getattr(game, "_flavor_tmpdir", None)
+            if tmp is not None:
+                tmp.cleanup()
+
     def test_garden_room_slowly_heals_player_and_emits_greenish_glow(self) -> None:
-        # 4.2: standing inside an overgrown garden flavor room mends the
-        # player a little (one +HP tick per second) and refreshes a greenish
-        # aura timer the renderer fades out. The heal only ticks while HP is
-        # actually missing and only while standing inside the garden.
+        # 4.2 (retuned 4.7.12): standing inside an overgrown garden flavor
+        # room mends the player a little (one +HP tick per five seconds) and
+        # refreshes a greenish aura timer the renderer fades out. The heal
+        # only ticks while HP is actually missing and only while standing
+        # inside the garden.
         game = self._make_game_with_flavor_room()
         try:
             special = game.dungeon.special_room_for_kind(GARDEN_ROOM_KIND)
@@ -840,18 +893,18 @@ class FlavorRoomTests(unittest.TestCase):
             game.player.y = cy + 0.5
             game.player.hp = max(1, game.player.max_hp - 24)
             hp_before = game.player.hp
-            game.garden_heal_accumulator = 0.0
+            game.player.garden_heal_accumulator = 0.0
             game.garden_heal_glow = 0.0
             game.floaters.clear()
 
-            # Sub-second: accumulator banks time but no tick yet.
-            game.update_player(0.6)
+            # Under the tick threshold: accumulator banks time but no tick yet.
+            game.update_player(2.5)
             self.assertEqual(game.player.hp, hp_before)
             self.assertEqual(game.garden_heal_glow, 0.0)
 
-            # Cross the one-second tick threshold: HP rises, glow activates,
+            # Cross the five-second tick threshold: HP rises, glow activates,
             # and a "Garden +N" floater is emitted.
-            game.update_player(0.5)
+            game.update_player(2.6)
             self.assertGreater(game.player.hp, hp_before)
             self.assertGreater(game.garden_heal_glow, 0.0)
             self.assertGreater(game.garden_heal_glow_duration, 0.0)
@@ -866,16 +919,16 @@ class FlavorRoomTests(unittest.TestCase):
             game.dungeon.tiles[int(outside_x)][int(game.player.y)] = Tile.FLOOR
             game.player.x = outside_x
             hp_in_garden = game.player.hp
-            game.garden_heal_accumulator = 0.0
+            game.player.garden_heal_accumulator = 0.0
             game.update_player(1.6)
             self.assertEqual(game.player.hp, hp_in_garden)
-            self.assertEqual(game.garden_heal_accumulator, 0.0)
+            self.assertEqual(game.player.garden_heal_accumulator, 0.0)
 
             # At full HP, standing in the garden does nothing (no wasted glow).
             game.player.x = cx + 0.5
             game.player.y = cy + 0.5
             game.player.hp = game.player.max_hp
-            game.garden_heal_accumulator = 0.0
+            game.player.garden_heal_accumulator = 0.0
             game.garden_heal_glow = 0.0
             game.update_player(1.6)
             self.assertEqual(game.player.hp, game.player.max_hp)

@@ -85,6 +85,8 @@ _TRANSIENT_ENEMY_FIELDS = frozenset(
         # 4.6 multiplayer entity ids are per-session network identities and
         # never belong in single-player run saves.
         "entity_id",
+        # 4.7.12 kill-credit bookkeeping is host-session-only.
+        "last_player_hit_id",
     )
 )
 

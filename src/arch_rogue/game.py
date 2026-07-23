@@ -560,11 +560,9 @@ class Game(
         # jingle/music stop fire exactly once while the "die" clip plays out
         # ahead of the run-summary overlay.
         self.player_death_sequence_started = False
-        # 4.2: garden-room passive healing glow. ``garden_heal_accumulator``
-        # banks time until the next +HP tick while standing inside a garden
-        # flavor room, and ``garden_heal_glow`` is a transient visual timer
-        # the renderer fades a greenish aura from after each tick.
-        self.garden_heal_accumulator = 0.0
+        # 4.2: garden-room passive healing glow — a transient visual timer
+        # the renderer fades a greenish aura from after each heal tick (the
+        # tick accumulator itself lives per-player since 4.7.12).
         self.garden_heal_glow = 0.0
         self.garden_heal_glow_duration = 0.0
         self.ambient_overlay_cache: dict[tuple[int, int, str, int], pygame.Surface] = {}
@@ -714,7 +712,6 @@ class Game(
         self.player_death_sequence_started = False
         # 4.2: garden healing glow is transient and clears with the rest of
         # the visual state on floor transitions / cutscenes / load.
-        self.garden_heal_accumulator = 0.0
         self.garden_heal_glow = 0.0
         self.garden_heal_glow_duration = 0.0
         # Story text scroll positions reset with the visual/story context.

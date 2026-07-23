@@ -727,6 +727,11 @@ class Projectile:
     #     the model stays free of enemy-list references.
     pierce: int = 0
     homing: float = 0.0
+    # 4.7.12 co-op kill credit: the player who fired this projectile ("p1"/
+    # "p2"), so a hit resolving frames later in the host's own update loop
+    # credits the shooter's XP and gold instead of whoever ``self.player``
+    # happens to be. Empty for enemy bolts and pre-4.7.12 saves.
+    owner_id: str = ""
     # Enemy ids already damaged by this projectile so a piercing bolt does not
     # hit the same foe twice. Lazily populated by the combat loop.
     hit_enemies: set = field(default_factory=set)
@@ -821,6 +826,10 @@ class Enemy:
     # serialization adapter (never Python id()). Transient — excluded from run
     # saves via _TRANSIENT_ENEMY_FIELDS.
     entity_id: str = field(default="", repr=False, compare=False)
+    # 4.7.12 co-op kill credit: the player who last damaged this enemy, so a
+    # delayed death (poison tick) credits the right actor's XP and gold.
+    # Host-only bookkeeping — excluded from saves and spawn payloads.
+    last_player_hit_id: str = field(default="", repr=False, compare=False)
 
     @property
     def alive(self) -> bool:
@@ -955,6 +964,10 @@ class Player:
     # 4.7 co-op Raise: how many times this player may revive a fallen partner.
     # One per descent (never refreshed between floors); Vigil Shrines add one.
     raise_charges: int = 1
+    # 4.7.12: fractional refuge-room healing progress (one +HP tick per full
+    # second inside a garden or bar). Per-player so a co-op partner's refuge
+    # time tracks independently of the host's. Transient, never serialized.
+    garden_heal_accumulator: float = field(default=0.0, repr=False, compare=False)
 
     def has_upgrade(self, key: str) -> bool:
         return key in self.skill_upgrades

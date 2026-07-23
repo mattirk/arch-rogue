@@ -65,6 +65,9 @@ class _DamageCombatMixin:
 
     def damage_enemy(self, ctx: DamageContext) -> None:
         enemy = ctx.target
+        # 4.7.12 co-op kill credit: remember who last hurt this enemy so a
+        # delayed death (poison tick) credits the right player's XP/gold.
+        enemy.last_player_hit_id = self.player.player_id
         amount = ctx.amount
         damage_type = ctx.damage_type
         knockback_from = ctx.knockback_from

@@ -136,11 +136,17 @@ class _StatusesCombatMixin:
             if enemy.statuses.get("poisoned", 0.0) > 0:
                 tick = enemy.statuses.get("_poison_tick", 1.0) - dt
                 if tick <= 0:
-                    enemy.hp -= max(1, int(2 + self.player.level * 0.35))
-                    tick += 1.0
-                    if enemy.hp <= 0:
-                        self.kill_enemy(enemy)
-                        continue
+                    # 4.7.12 co-op kill credit: tick and kill as the player
+                    # who applied the last hit, so a partner's poison kill
+                    # grants the partner the XP and gold.
+                    with self.acting_as_player(
+                        self.player_for_credit(enemy.last_player_hit_id)
+                    ):
+                        enemy.hp -= max(1, int(2 + self.player.level * 0.35))
+                        tick += 1.0
+                        if enemy.hp <= 0:
+                            self.kill_enemy(enemy)
+                            continue
                 enemy.statuses["_poison_tick"] = tick
             expired: list[str] = []
             for status, ttl in list(enemy.statuses.items()):

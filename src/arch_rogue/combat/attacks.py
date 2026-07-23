@@ -289,6 +289,7 @@ class _AttacksCombatMixin:
                     pierce=pierce,
                     homing=homing,
                     archetype=self.player.class_name,
+                    owner_id=self.player.player_id,
                 )
             )
 

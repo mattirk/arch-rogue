@@ -84,28 +84,36 @@ class _ProjectilesCombatMixin:
                         radius=0.38,
                         kind="burst",
                     )
-                    self.damage_enemy(
-                        DamageContext(
-                            target=hit,
-                            amount=projectile.damage,
-                            damage_type=projectile.damage_type,
-                            knockback_from=(projectile.vx, projectile.vy),
-                            status_effect=projectile.status_effect,
-                            status_duration=projectile.status_duration,
-                            source="projectile",
-                        )
-                    )
-                    # Acolyte Spirit Bolt siphons life when the Blood path is
-                    # committed, using the same ramp as Spirit Call familiars.
-                    if projectile.archetype == "Acolyte":
-                        leech = self._acolyte_spell_leech()
-                        if leech:
-                            self.player.hp = min(
-                                self.player.max_hp, self.player.hp + leech
+                    # 4.7.12 co-op kill credit: the hit resolves frames after
+                    # the cast, inside the host's own update loop — act as
+                    # the recorded shooter so damage, kill XP/gold, leech,
+                    # and chain lightning route to whoever actually fired.
+                    with self.acting_as_player(
+                        self.player_for_credit(projectile.owner_id)
+                    ):
+                        self.damage_enemy(
+                            DamageContext(
+                                target=hit,
+                                amount=projectile.damage,
+                                damage_type=projectile.damage_type,
+                                knockback_from=(projectile.vx, projectile.vy),
+                                status_effect=projectile.status_effect,
+                                status_duration=projectile.status_duration,
+                                source="projectile",
                             )
-                    # Milestone 3.7 — Storm-path chain lightning arcs from
-                    # the struck foe to a nearby second target.
-                    self._maybe_chain_lightning(projectile, hit)
+                        )
+                        # Acolyte Spirit Bolt siphons life when the Blood path
+                        # is committed, using the same ramp as Spirit Call
+                        # familiars.
+                        if projectile.archetype == "Acolyte":
+                            leech = self._acolyte_spell_leech()
+                            if leech:
+                                self.player.hp = min(
+                                    self.player.max_hp, self.player.hp + leech
+                                )
+                        # Milestone 3.7 — Storm-path chain lightning arcs from
+                        # the struck foe to a nearby second target.
+                        self._maybe_chain_lightning(projectile, hit)
                     projectile.hit_enemies.add(id(hit))
                     if projectile.pierce > 0:
                         projectile.pierce -= 1
