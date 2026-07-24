@@ -319,7 +319,7 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 ### 4.8.x
 
 - Do not block mutliplayer with different versions, just warn about it and proceed
-- Pinch zoom to mobile
+- Add in-game pinch zoom to mobile
 - Make it more apparent in UI when someone is requesting to join lobby (accept / kick)
 - Machine intelligence - let's spec this before implementation
   - We need better AI for enemies

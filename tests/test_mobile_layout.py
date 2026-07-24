@@ -306,6 +306,25 @@ class MobileRenderQualityTests(unittest.TestCase):
             self.assertEqual(game.mobile_render_quality, MOBILE_RENDER_QUALITY_NATIVE)
             self.assertTrue(game._lighting_normal_maps)
 
+    def test_ultrawide_720p_title_rows_keep_reference_width_at_one_x(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1616, 720))
+            game.ui_scale = 2
+            game.rebuild_fonts()
+            self.assertTrue(game.refresh_automatic_ui_scale())
+            game.state = "title"
+            game.draw()
+
+            panel = getattr(game, "_last_menu_panel_rect", pygame.Rect())
+            rows = game._title_row_rects
+            minimum_row_width = round(game.screen.get_width() * 0.63)
+
+            self.assertEqual(game.ui_scale, 1)
+            self.assertEqual(panel.width, 1086)
+            self.assertEqual(len(rows), 5)
+            self.assertTrue(all(row.width >= minimum_row_width for row in rows))
+            self.assertTrue(all(row.height == 44 for row in rows))
+
     def test_mobile_options_row_labels_and_activates_quality_without_real_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir)

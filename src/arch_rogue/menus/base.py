@@ -1065,7 +1065,18 @@ class MenuBaseMixin:
             if self.menu_input_hints_visible()
             else 0
         )
-        panel_w = min(width - side_margin * 2, self.u(860))
+        panel_width_limit = self.u(860)
+        if getattr(self.g, "mobile_mode", False):
+            # The 860px cap fills the intended share of a 1280x720 reference,
+            # but becomes visibly narrow on modern ultrawide phones that still
+            # select the correct 1x UI scale from their 720px height. Preserve
+            # that reference proportion for touch-first menus without changing
+            # desktop readability limits or the saved/automatic UI scale.
+            panel_width_limit = max(
+                panel_width_limit,
+                round(width * 860 / 1280),
+            )
+        panel_w = min(width - side_margin * 2, panel_width_limit)
         panel_h = max(80, height - top - footer_space - min(self.u(10), 10))
         panel_h = min(panel_h, max(1, height - top - 4))
         rect = pygame.Rect(
