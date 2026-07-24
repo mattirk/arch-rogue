@@ -145,8 +145,6 @@ class MenuMultiplayerMixin:
         rect: pygame.Rect,
         partner_name: str,
         cursor: int,
-        *,
-        mobile: bool,
     ) -> tuple[pygame.Rect, pygame.Rect]:
         """Draw the host's modal accept/kick decision as two large buttons."""
 
@@ -200,7 +198,6 @@ class MenuMultiplayerMixin:
             (
                 accept,
                 "ACCEPT",
-                "TAP" if mobile else "A",
                 self.READY,
                 "menu.glyph.action.accept",
                 "menu.panel.action.accept",
@@ -208,7 +205,6 @@ class MenuMultiplayerMixin:
             (
                 kick,
                 "KICK",
-                "TAP" if mobile else "D",
                 self.BLOOD_LIGHT,
                 "menu.glyph.action.kick",
                 "menu.panel.action.kick",
@@ -217,7 +213,6 @@ class MenuMultiplayerMixin:
         for index, (
             button,
             label,
-            shortcut,
             color,
             glyph_key,
             panel_key,
@@ -288,18 +283,13 @@ class MenuMultiplayerMixin:
                 )
 
             label_h = self.g.font.get_height()
-            shortcut_h = self.g.small_font.get_height()
-            text_h = min(button.height, label_h + shortcut_h + self.u(1))
-            text_y = button.centery - text_h // 2
+            text_y = button.centery - label_h // 2
             glyph_size = max(
                 1,
                 min(self.u(30), max(1, button.height - self.u(12))),
             )
             glyph = self.ui_asset(glyph_key, (glyph_size, glyph_size))
-            text_width = max(
-                self.g.font.size(label)[0],
-                self.g.small_font.size(shortcut)[0],
-            ) + self.u(4)
+            text_width = self.g.font.size(label)[0] + self.u(4)
             content_gap = self.u(5) if glyph is not None else 0
             content_width = text_width + (
                 glyph_size + content_gap if glyph is not None else 0
@@ -319,19 +309,6 @@ class MenuMultiplayerMixin:
                 self.g.font,
                 self.TITLE if selected else self.MUTED,
                 pygame.Rect(content_x, text_y, text_width, label_h),
-                align="center",
-                valign="center",
-            )
-            self.draw_text(
-                shortcut,
-                self.g.small_font,
-                color if selected else self.shade(self.MUTED, -24),
-                pygame.Rect(
-                    content_x,
-                    text_y + label_h,
-                    text_width,
-                    shortcut_h,
-                ),
                 align="center",
                 valign="center",
             )
@@ -1350,7 +1327,6 @@ class MenuMultiplayerMixin:
                 request_rect,
                 partner_name,
                 cursor,
-                mobile=mobile,
             )
             rendered = tuple(seat_rows) + tuple(action_rows)
             self.g._mp_join_request_rect = request_rect.copy()
