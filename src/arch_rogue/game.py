@@ -1068,21 +1068,35 @@ class Game(
                 elif self.state == "mp_lobby":
                     session = self.mp_session
                     ready = bool(session is not None and session.local_ready)
+                    pending_accept = bool(
+                        session is not None
+                        and session.role == "host"
+                        and session.partner_pending_accept
+                    )
                     if event.key == pygame.K_BACKSPACE:
                         self.mp_leave_lobby()
+                    elif pending_accept and event.key == pygame.K_a:
+                        self.mp_lobby_accept_partner()
                     elif event.key == pygame.K_d:
                         self.mp_lobby_decline_partner()
-                    elif event.key in (pygame.K_UP, pygame.K_DOWN):
-                        step = 1 if event.key == pygame.K_DOWN else -1
+                    elif event.key in (pygame.K_UP, pygame.K_DOWN) or (
+                        pending_accept
+                        and event.key in (pygame.K_LEFT, pygame.K_RIGHT)
+                    ):
+                        step = (
+                            1
+                            if event.key in (pygame.K_DOWN, pygame.K_RIGHT)
+                            else -1
+                        )
                         self.mp_lobby_cursor = (
                             int(getattr(self, "mp_lobby_cursor", 0)) + step
                         ) % 2
-                    elif not ready and event.key == pygame.K_RIGHT:
+                    elif not pending_accept and not ready and event.key == pygame.K_RIGHT:
                         index = (
                             ARCHETYPES.index(self.selected_archetype) + 1
                         ) % len(ARCHETYPES)
                         self.selected_archetype = ARCHETYPES[index]
-                    elif not ready and event.key == pygame.K_LEFT:
+                    elif not pending_accept and not ready and event.key == pygame.K_LEFT:
                         index = (
                             ARCHETYPES.index(self.selected_archetype) - 1
                         ) % len(ARCHETYPES)

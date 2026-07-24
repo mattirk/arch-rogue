@@ -73,6 +73,14 @@ class UiAssetTests(unittest.TestCase):
             f"menu.glyph.code.{char}"
             for char in "abcdefghijklmnopqrstuvwxyz0123456789"
         }
+        join_request_glyph_keys = {
+            "menu.glyph.action.accept",
+            "menu.glyph.action.kick",
+        }
+        join_request_panel_keys = {
+            "menu.panel.action.accept",
+            "menu.panel.action.kick",
+        }
         sigil_keys = {
             f"menu.glyph.sigil.{name}"
             for name in (
@@ -117,6 +125,8 @@ class UiAssetTests(unittest.TestCase):
             "menu.panel.mp_plain",
             *action_icon_keys,
             *code_glyph_keys,
+            *join_request_glyph_keys,
+            *join_request_panel_keys,
             *sigil_keys,
         }
         self.assertEqual(set(library.manifest["assets"]), expected)
@@ -147,6 +157,8 @@ class UiAssetTests(unittest.TestCase):
             "menu.panel.inset": (320, 160),
             "menu.row": (520, 44),
             "menu.row.two_descend": (520, 44),
+            "menu.panel.action.accept": (240, 60),
+            "menu.panel.action.kick": (240, 60),
             "hud.panel": (740, 72),
             "hud.dock": (340, 62),
             "hud.action_slot": (54, 54),
@@ -180,7 +192,7 @@ class UiAssetTests(unittest.TestCase):
         )
         self.assertGreater(title_logo.get_at((320, 61)).a, 0)
 
-        for key in action_icon_keys:
+        for key in action_icon_keys | join_request_glyph_keys:
             with self.subTest(action_icon=key):
                 source = library.source(key)
                 self.assertIsNotNone(source)

@@ -140,6 +140,203 @@ class MenuMultiplayerMixin:
         )
         self.draw_text(text, font, color, badge, align="center", valign="center")
 
+    def _draw_mp_join_request_card(
+        self,
+        rect: pygame.Rect,
+        partner_name: str,
+        cursor: int,
+        *,
+        mobile: bool,
+    ) -> tuple[pygame.Rect, pygame.Rect]:
+        """Draw the host's modal accept/kick decision as two large buttons."""
+
+        card = pygame.Rect(rect)
+        radius = max(3, self.u(7))
+        pygame.draw.rect(
+            self.screen,
+            self.mix(self.PANEL_INK, self.WARNING, 0.13),
+            card,
+            border_radius=radius,
+        )
+        pygame.draw.rect(
+            self.screen,
+            self.shade(self.WARNING, -48),
+            card,
+            max(1, self.u(1)),
+            border_radius=radius,
+        )
+        inner_border = card.inflate(-self.u(3), -self.u(3))
+        pygame.draw.rect(
+            self.screen,
+            self.WARNING,
+            inner_border,
+            max(1, self.u(2)),
+            border_radius=max(2, radius - self.u(2)),
+        )
+
+        pad = max(4, self.u(7))
+        inner = card.inflate(-pad * 2, -pad * 2)
+        heading_h = min(
+            max(self.g.small_font.get_height() + self.u(3), self.u(23)),
+            max(1, inner.height // 3),
+        )
+        requester = " ".join(str(partner_name or "A stranger").split())
+        self.draw_text(
+            f"JOIN REQUEST: {requester}",
+            self.g.small_font,
+            self.TITLE,
+            pygame.Rect(inner.x, inner.y, inner.width, heading_h),
+            align="center",
+            valign="center",
+        )
+
+        gap = max(4, self.u(8))
+        buttons_y = inner.y + heading_h + self.u(3)
+        buttons_h = max(1, inner.bottom - buttons_y)
+        button_w = max(1, (inner.width - gap) // 2)
+        accept = pygame.Rect(inner.x, buttons_y, button_w, buttons_h)
+        kick = pygame.Rect(accept.right + gap, buttons_y, button_w, buttons_h)
+        actions = (
+            (
+                accept,
+                "ACCEPT",
+                "TAP" if mobile else "A",
+                self.READY,
+                "menu.glyph.action.accept",
+                "menu.panel.action.accept",
+            ),
+            (
+                kick,
+                "KICK",
+                "TAP" if mobile else "D",
+                self.BLOOD_LIGHT,
+                "menu.glyph.action.kick",
+                "menu.panel.action.kick",
+            ),
+        )
+        for index, (
+            button,
+            label,
+            shortcut,
+            color,
+            glyph_key,
+            panel_key,
+        ) in enumerate(actions):
+            selected = index == cursor
+            panel_art = self.ui_asset(panel_key, button.size)
+            if panel_art is not None:
+                self.screen.blit(panel_art, button)
+            else:
+                pygame.draw.rect(
+                    self.screen,
+                    self.mix(
+                        self.PANEL_INK,
+                        color,
+                        0.34 if selected else 0.20,
+                    ),
+                    button,
+                    border_radius=max(2, self.u(5)),
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    color,
+                    button,
+                    max(1, self.u(1)),
+                    border_radius=max(2, self.u(5)),
+                )
+            if selected:
+                focus = button.inflate(self.u(4), self.u(4))
+                pygame.draw.rect(
+                    self.screen,
+                    self.shade(self.TITLE, 18),
+                    focus,
+                    max(2, self.u(3)),
+                    border_radius=max(3, self.u(7)),
+                )
+                chevron_x = self.u(16)
+                chevron_half_h = max(5, self.u(8))
+                chevron_depth = max(4, self.u(7))
+                pygame.draw.polygon(
+                    self.screen,
+                    self.TITLE,
+                    (
+                        (button.x + chevron_x, button.centery),
+                        (
+                            button.x + chevron_x + chevron_depth,
+                            button.centery - chevron_half_h,
+                        ),
+                        (
+                            button.x + chevron_x + chevron_depth,
+                            button.centery + chevron_half_h,
+                        ),
+                    ),
+                )
+                pygame.draw.polygon(
+                    self.screen,
+                    self.TITLE,
+                    (
+                        (button.right - chevron_x, button.centery),
+                        (
+                            button.right - chevron_x - chevron_depth,
+                            button.centery - chevron_half_h,
+                        ),
+                        (
+                            button.right - chevron_x - chevron_depth,
+                            button.centery + chevron_half_h,
+                        ),
+                    ),
+                )
+
+            label_h = self.g.font.get_height()
+            shortcut_h = self.g.small_font.get_height()
+            text_h = min(button.height, label_h + shortcut_h + self.u(1))
+            text_y = button.centery - text_h // 2
+            glyph_size = max(
+                1,
+                min(self.u(30), max(1, button.height - self.u(12))),
+            )
+            glyph = self.ui_asset(glyph_key, (glyph_size, glyph_size))
+            text_width = max(
+                self.g.font.size(label)[0],
+                self.g.small_font.size(shortcut)[0],
+            ) + self.u(4)
+            content_gap = self.u(5) if glyph is not None else 0
+            content_width = text_width + (
+                glyph_size + content_gap if glyph is not None else 0
+            )
+            content_x = button.centerx - content_width // 2
+            if glyph is not None:
+                glyph_rect = glyph.get_rect(
+                    midleft=(content_x, button.centery)
+                )
+                self.screen.blit(glyph, glyph_rect)
+                content_x = glyph_rect.right + content_gap
+            else:
+                content_x = button.x
+                text_width = button.width
+            self.draw_text(
+                label,
+                self.g.font,
+                self.TITLE if selected else self.MUTED,
+                pygame.Rect(content_x, text_y, text_width, label_h),
+                align="center",
+                valign="center",
+            )
+            self.draw_text(
+                shortcut,
+                self.g.small_font,
+                color if selected else self.shade(self.MUTED, -24),
+                pygame.Rect(
+                    content_x,
+                    text_y + label_h,
+                    text_width,
+                    shortcut_h,
+                ),
+                align="center",
+                valign="center",
+            )
+        return accept, kick
+
     def _draw_mp_archetype_panel(
         self,
         rect: pygame.Rect,
@@ -984,22 +1181,27 @@ class MenuMultiplayerMixin:
         self.draw_footer(panel, footer)
 
     def draw_mp_lobby(self) -> None:
-        panel, content = self.menu_frame(
-            "The Lobby of Two", "Both must bind an archetype to descend"
-        )
-        code = self._mp_session_value("run_id", getattr(self.g, "mp_run_id", ""))
         role = self._mp_session_value("role", "")
-        local_ready = bool(self._mp_session_value("local_ready", False))
-        partner_name = self._mp_session_value("partner_name", "")
-        partner_ready = bool(self._mp_session_value("partner_ready", False))
         pending_accept = bool(
             role == "host"
             and self._mp_session_value("partner_pending_accept", False)
         )
+        subtitle = (
+            "JOIN REQUEST — arrows / D-pad select · confirm chooses"
+            if pending_accept
+            else "Both must bind an archetype to descend"
+        )
+        panel, content = self.menu_frame("The Lobby of Two", subtitle)
+        code = self._mp_session_value("run_id", getattr(self.g, "mp_run_id", ""))
+        local_ready = bool(self._mp_session_value("local_ready", False))
+        partner_name = self._mp_session_value("partner_name", "")
+        partner_ready = bool(self._mp_session_value("partner_ready", False))
         mobile = bool(getattr(self.g, "mobile_mode", False))
         # Carousel handles are re-published every frame by the panel
         # drawing below; start clean so stale rects never take taps.
         self.g._mp_lobby_arch_arrows = ()
+        self.g._mp_join_request_rect = None
+        self.g._mp_join_action_rects = ()
         y = content.y
         if code:
             y = self._draw_mp_code_panel(
@@ -1039,11 +1241,11 @@ class MenuMultiplayerMixin:
             ),
         ]
         if pending_accept:
-            rows.append(("", f"Admit {partner_name or 'the stranger'}", ""))
-            rows.append(("", "Turn them away", ""))
+            rows.append(("A", "Accept join request", ""))
+            rows.append(("D", "Kick requester", ""))
             hint = (
-                "The run code is a locator, not a secret — admit only the "
-                "name you shared it with."
+                "Verify the name before accepting. Kicking keeps this run code "
+                "open for the next request."
             )
         elif not local_ready:
             awaiting_partner = role == "host" and not partner_name
@@ -1125,19 +1327,52 @@ class MenuMultiplayerMixin:
         # The rows sit directly under the code panel; the panel column then
         # matches their vertical extent exactly.
         rows_y = y
-        rendered = self.draw_menu_rows(
-            rows,
-            pygame.Rect(content.x, rows_y, rows_width, rows_height),
-            selected_index=2 + cursor,
-            keys_in_rows=False,
-            row_height=self.u(40),
-            row_gap=self.u(12),
-        )
+        rows_rect = pygame.Rect(content.x, rows_y, rows_width, rows_height)
+        if pending_accept:
+            seat_rows = self.draw_menu_rows(
+                rows[:2],
+                rows_rect,
+                selected_index=-1,
+                keys_in_rows=False,
+                row_height=self.u(40),
+                row_gap=self.u(12),
+            )
+            card_top = (
+                seat_rows[-1].bottom + self.u(8) if seat_rows else rows_y
+            )
+            request_rect = pygame.Rect(
+                content.x,
+                card_top,
+                rows_width,
+                max(1, rows_rect.bottom - card_top),
+            )
+            action_rows = self._draw_mp_join_request_card(
+                request_rect,
+                partner_name,
+                cursor,
+                mobile=mobile,
+            )
+            rendered = tuple(seat_rows) + tuple(action_rows)
+            self.g._mp_join_request_rect = request_rect.copy()
+            self.g._mp_join_action_rects = (
+                ("accept", action_rows[0].copy()),
+                ("kick", action_rows[1].copy()),
+            )
+            rows_bottom = request_rect.bottom
+        else:
+            rendered = self.draw_menu_rows(
+                rows,
+                rows_rect,
+                selected_index=2 + cursor,
+                keys_in_rows=False,
+                row_height=self.u(40),
+                row_gap=self.u(12),
+            )
+            rows_bottom = rendered[-1].bottom if rendered else rows_y
         for row, (badge_text, badge_color) in zip(
             rendered[:2], (local_badge, partner_badge)
         ):
             self._draw_mp_ready_badge(row, badge_text, badge_color)
-        rows_bottom = rendered[-1].bottom if rendered else rows_y
         if wide:
             # The panel column spans exactly the rows' vertical extent, so
             # the two columns share top and bottom edges.
@@ -1183,7 +1418,8 @@ class MenuMultiplayerMixin:
         self.g._mp_entry_rect = None
         self.draw_footer(
             panel,
-            "Up / Down select · Enter confirms · Backspace leaves"
+            "Arrows / D-pad select · Enter / E confirms · A accepts · D kicks"
+            " · Backspace leaves"
             if pending_accept
             else "Up / Down select · Left / Right archetype · Enter confirms"
             " · Backspace leaves",

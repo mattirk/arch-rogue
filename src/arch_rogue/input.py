@@ -1163,6 +1163,28 @@ class InputMixin:
     def _dispatch_mp_lobby(self, cmd: str) -> bool:
         session = getattr(self, "mp_session", None)
         ready = bool(session is not None and session.local_ready)
+        pending_accept = bool(
+            session is not None
+            and getattr(session, "role", "") == "host"
+            and getattr(session, "partner_pending_accept", False)
+        )
+        if pending_accept and cmd in (
+            Command.UP,
+            Command.DOWN,
+            Command.LEFT,
+            Command.RIGHT,
+            Command.PREV,
+            Command.NEXT,
+        ):
+            step = (
+                1
+                if cmd in (Command.DOWN, Command.RIGHT, Command.NEXT)
+                else -1
+            )
+            self.mp_lobby_cursor = (
+                int(getattr(self, "mp_lobby_cursor", 0)) + step
+            ) % 2
+            return True
         if cmd in (Command.UP, Command.DOWN):
             step = 1 if cmd == Command.DOWN else -1
             self.mp_lobby_cursor = (

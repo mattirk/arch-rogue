@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.8.5 — The gate answers in brass
+
+Release 4.8.5 finishes the host's lobby join decision with authored action panels and conventional keyboard/controller selection, making the active ACCEPT or KICK choice immediately readable before anyone enters the run.
+
+### Changed
+
+- **Authored lobby action panels**: ACCEPT now sits on a PixelLab-authored malachite plate and KICK on a matched oxblood plate, both rendered through height-scaled nine-slice borders so their brass ornaments remain crisp from compact windows through 720p mobile. The dedicated check and boot glyphs remain paired with runtime labels.
+- **Complete join-request selection**: bright inward chevrons, a pale-gold focus ring, and muted inactive text expose the highlighted action clearly. Left/Right or Up/Down arrows and controller D-pad move the selection; Enter, E, or controller confirm activates it; direct A/D shortcuts and touch remain available.
+
 ## 4.8.4 — The depths move at a touch
 
 Release 4.8.4 polishes the mobile presentation at ultrawide 720p and adds direct two-finger control over the dungeon view, while keeping gameplay gestures and controls isolated from camera input.
@@ -12,6 +21,7 @@ Release 4.8.4 polishes the mobile presentation at ultrawide 720p and adds direct
 
 - **Ultrawide 720p menu scaling**: mobile panels and authored menu rows now retain their intended roughly two-thirds screen width when the automatically selected 1× UI scale is active, matching the established row proportions instead of stretching across the viewport.
 - **Responsive pinch rendering**: active pinch gestures bypass the mobile floor cache, avoiding repeated rebuilds of oversized cached layers while zoom changes every frame; ordinary gameplay continues to use the cache.
+- **Prominent host join requests**: a pending lobby guest now becomes an explicit gold-framed request card with large green **ACCEPT** and red **KICK** actions, each marked by a dedicated PixelLab-authored brass glyph seated in the existing button panel. The request state replaces the ordinary lobby subtitle, and desktop hosts can answer directly with **A** or **D**. Touch and controller selection continue to use the same guarded accept gate.
 
 ## 4.8.3 — The gate stays open
 

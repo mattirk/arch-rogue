@@ -75,11 +75,13 @@ read aloud). Share the code out-of-band, then *Begin descent* to open the
 lobby.
 
 **The code is a locator, not a secret.** When someone enters it, the host
-lobby shows a knock: *"NAME knocks at the gate."* The host must decide:
+lobby opens a named **ACCEPT / KICK** request:
 
-- **Enter** — admit them; the lobby proceeds to archetype binding.
-- **D** — turn them away. The joiner is disconnected with *"The host turned
-  you away"*, and the same code stays open for another knock.
+- Use **Left / Right** (Up / Down also work) or the controller **D-pad** to
+  highlight an action, then **Enter**, **E**, or controller confirm to choose it.
+- **A** accepts directly; the lobby proceeds to archetype binding.
+- **D** kicks directly. The joiner is disconnected with *"The host turned you
+  away"*, and the same code stays open for another request.
 
 The host cannot ready up while a knock is unanswered, so a run can never
 start with an unvetted partner. Admit only the name you shared the code with
@@ -304,7 +306,7 @@ carries the aim vector in `move_x/move_y`. The host times out stale movement
 - `protocol_version` (integer, currently **1**) is carried in `hello`. A
   mismatch is rejected fatally with `bad_version` before any pairing.
 - `content_revision` (string; the game sends its release version, e.g.
-  `"4.8.4"`) is recorded per seat. A difference is logged and exposed to both
+  `"4.8.5"`) is recorded per seat. A difference is logged and exposed to both
   clients through optional `partner_revision` fields, but does not block
   pairing. Updated clients warn that content drift may desync the run.
 - Additive message types (e.g. `kick`, added in 4.7.0) do not bump

@@ -316,6 +316,8 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 ### 4.8 The relic turns once more
 
 
+
+
 ### 4.8.x
 
 - Do not block mutliplayer with different versions, just warn about it and proceed
@@ -326,7 +328,6 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
   - Each enemy type has tactics related to abilities (at least ranged, melee, boss)
   - Create nice abstractions so we can create different enemy types easily
   - Write nice movement algorithm too
-
 
 ### Backlog
 
@@ -350,6 +351,10 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 - Auto-updater in APK, maybe Mac, other platforms at least in-game notice
   - Need to think about Windows / Linux packaging anyway
 - Familiar animation not working when guest on multiplayer
+- Guiding light to the stairs
+  - When correct story path chosen
+  - Guiding path also guides from relic to stairs after relic is collected
+- Make it so that on mobile, none of menu rows ase selected at any time since on mobile, you dont select, you tap to activate. Exception is archetype selection where tapping selects for preview and button confirms archetype selection.
 
 
 

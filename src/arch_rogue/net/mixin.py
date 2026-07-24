@@ -672,8 +672,8 @@ class NetMixin:
                 # someone knocks.
                 self.mp_notice = ""
                 self.mp_status = (
-                    f"{message.name or 'A nameless one'} knocks at the gate — "
-                    "Enter admits them, D turns them away."
+                    f"{message.name or 'A nameless one'} requests entry — "
+                    "arrows / D-pad select; Enter / E confirms."
                 )
             else:
                 self.mp_status = f"{message.name} has answered the call."
@@ -961,7 +961,7 @@ class NetMixin:
             return
         if session.role == ROLE_HOST and session.partner_pending_accept:
             self.mp_status = (
-                "Answer the knock first — Enter admits, D turns away."
+                "Answer the join request first — select, then Enter / E."
             )
             return
         archetype = self.selected_archetype.name

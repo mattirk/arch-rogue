@@ -953,6 +953,109 @@ class MobileMultiplayerTests(unittest.TestCase):
             game.close_text_input(confirm=False)
             game.mp_shutdown(send_bye=False)
 
+    def test_host_join_request_has_explicit_accept_and_kick_actions(self) -> None:
+        from arch_rogue.net.mixin import MpSession
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_mobile_game(tmpdir)
+            game.state = "mp_lobby"
+            game.mp_session = MpSession(
+                role="host",
+                phase="lobby",
+                run_id="AB2C",
+                partner_name="Friend",
+                partner_pending_accept=True,
+            )
+            game.draw()
+
+            card = getattr(game, "_mp_join_request_rect", None)
+            self.assertIsNotNone(card)
+            assert card is not None
+            actions = dict(getattr(game, "_mp_join_action_rects", ()))
+            self.assertEqual(set(actions), {"accept", "kick"})
+            accept = actions["accept"]
+            kick = actions["kick"]
+            self.assertTrue(card.contains(accept))
+            self.assertTrue(card.contains(kick))
+            self.assertEqual(tuple(game._mp_row_rects[2:]), (accept, kick))
+            self.assertIsNotNone(
+                game.ui_assets.source("menu.glyph.action.accept")
+            )
+            self.assertIsNotNone(
+                game.ui_assets.source("menu.glyph.action.kick")
+            )
+
+            safe = game.mobile_safe_rect()
+            with patch.object(game, "mp_lobby_accept_partner") as accept_partner:
+                self.assertTrue(
+                    game.handle_mobile_tap(
+                        (accept.centerx + safe.x, accept.centery + safe.y)
+                    )
+                )
+                accept_partner.assert_called_once_with()
+            with patch.object(game, "mp_lobby_decline_partner") as kick_partner:
+                self.assertTrue(
+                    game.handle_mobile_tap(
+                        (kick.centerx + safe.x, kick.centery + safe.y)
+                    )
+                )
+                kick_partner.assert_called_once_with()
+
+            pygame.event.clear()
+            with patch.object(game, "mp_lobby_accept_partner") as accept_partner:
+                pygame.event.post(
+                    pygame.event.Event(
+                        pygame.KEYDOWN,
+                        {"key": pygame.K_a, "mod": pygame.KMOD_NONE},
+                    )
+                )
+                game.handle_events()
+                accept_partner.assert_called_once_with()
+
+            game.mp_lobby_cursor = 0
+            self.assertTrue(game._dispatch_mp_lobby(Command.RIGHT))
+            self.assertEqual(game.mp_lobby_cursor, 1)
+            self.assertTrue(game._dispatch_mp_lobby(Command.LEFT))
+            self.assertEqual(game.mp_lobby_cursor, 0)
+            self.assertTrue(game._dispatch_mp_lobby(Command.NEXT))
+            self.assertEqual(game.mp_lobby_cursor, 1)
+            with patch.object(game, "mp_lobby_decline_partner") as kick_partner:
+                self.assertTrue(game._dispatch_mp_lobby(Command.CONFIRM))
+                kick_partner.assert_called_once_with()
+
+            game.mp_lobby_cursor = 0
+            for key, expected_cursor in (
+                (pygame.K_RIGHT, 1),
+                (pygame.K_LEFT, 0),
+                (pygame.K_DOWN, 1),
+                (pygame.K_UP, 0),
+            ):
+                with self.subTest(arrow_key=key):
+                    pygame.event.clear()
+                    pygame.event.post(
+                        pygame.event.Event(
+                            pygame.KEYDOWN,
+                            {"key": key, "mod": pygame.KMOD_NONE},
+                        )
+                    )
+                    game.handle_events()
+                    self.assertEqual(game.mp_lobby_cursor, expected_cursor)
+
+            for key in (pygame.K_RETURN, pygame.K_e):
+                with self.subTest(confirm_key=key):
+                    pygame.event.clear()
+                    with patch.object(
+                        game, "mp_lobby_activate_selected"
+                    ) as activate_selected:
+                        pygame.event.post(
+                            pygame.event.Event(
+                                pygame.KEYDOWN,
+                                {"key": key, "mod": pygame.KMOD_NONE},
+                            )
+                        )
+                        game.handle_events()
+                        activate_selected.assert_called_once_with()
+
     def test_mp_setup_entry_tap_reopens_soft_keyboard(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self._make_mobile_game(tmpdir)

@@ -135,7 +135,7 @@ class DesktopDeterminismTests(unittest.TestCase):
     # processes, so each scenario only needs one render per test invocation.
     # Update a constant only for an intentional rendering change or after
     # proving that an existing baseline is stale.
-    # 4.8.4: title surface unchanged; the release appears in the window caption
+    # 4.8.5: title surface unchanged; the release appears in the window caption
     # and About screen, neither of which is captured by this snapshot.
     TITLE_HASH = "ec90f36ede897a0fb3cd4c1cd3a57474aac09745bb12f7b8c8763b82d4329784"
     # 4.7.x: gameplay/crowd rebaselined for the animated (rotating) story
