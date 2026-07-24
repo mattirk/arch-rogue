@@ -69,18 +69,21 @@ class Welcome(NetMessage):
     reconnect_token: str
     partner_name: str | None
     partner_ready: bool
+    partner_revision: str = ""
 
 
 @dataclass(frozen=True)
 class PartnerJoined(NetMessage):
     name: str
     player_id: str
+    partner_revision: str = ""
 
 
 @dataclass(frozen=True)
 class PartnerRejoined(NetMessage):
     name: str
     player_id: str
+    partner_revision: str = ""
 
 
 @dataclass(frozen=True)
@@ -219,16 +222,19 @@ def message_from_dict(data: dict[str, Any]) -> NetMessage:
                     _name(partner_name) if isinstance(partner_name, str) else None
                 ),
                 partner_ready=bool(data.get("partner_ready", False)),
+                partner_revision=_ident(data.get("partner_revision", "")),
             )
         if message_type == "partner_joined":
             return PartnerJoined(
                 name=_name(data.get("name", "")),
                 player_id=_ident(data.get("player_id", "")),
+                partner_revision=_ident(data.get("partner_revision", "")),
             )
         if message_type == "partner_rejoined":
             return PartnerRejoined(
                 name=_name(data.get("name", "")),
                 player_id=_ident(data.get("player_id", "")),
+                partner_revision=_ident(data.get("partner_revision", "")),
             )
         if message_type == "partner_disconnected":
             return PartnerDisconnected(

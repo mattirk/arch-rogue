@@ -35,9 +35,10 @@ Components:
 | World replication | `src/arch_rogue/net/sync.py` | Floor descriptor + snapshot payload build/apply |
 | Relay server | `server/` | `python -m server.server`; asyncio, in-memory rooms, stdlib only |
 
-Both sides of a pair must run the same game release: the hello carries
-`content_revision` (the game version string) and the server rejects a joiner
-whose revision differs from the host's (`bad_revision`).
+The hello carries `content_revision` (the game version string). Different game
+releases may pair when they share the same wire protocol; both updated clients
+show a compatibility warning and continue. Content drift can still cause
+missing features or desyncs, so matching releases remain recommended.
 
 ---
 
@@ -303,9 +304,9 @@ carries the aim vector in `move_x/move_y`. The host times out stale movement
 - `protocol_version` (integer, currently **1**) is carried in `hello`. A
   mismatch is rejected fatally with `bad_version` before any pairing.
 - `content_revision` (string; the game sends its release version, e.g.
-  `"4.7.6"`) is fixed by the host at room creation; a joiner with a
-  different revision is rejected with `bad_revision`. This intentionally
-  fences off cross-version pairs even within one protocol version.
+  `"4.8.3"`) is recorded per seat. A difference is logged and exposed to both
+  clients through optional `partner_revision` fields, but does not block
+  pairing. Updated clients warn that content drift may desync the run.
 - Additive message types (e.g. `kick`, added in 4.7.0) do not bump
   `protocol_version`: peers that don't know a type ignore it gracefully.
 
@@ -508,13 +509,13 @@ intent's `move_x/move_y` carry the **aim vector**, not movement.
 
 | `t` | Fields | Recipient | Notes |
 |---|---|---|---|
-| `welcome` | `seq` (echoes hello), `run_id`, `you_are` (role), `player_id`, `partner_ready` (bool), `reconnect_token`, `partner_name`? | both | Seat bound. Fresh session or successful token reclaim. |
-| `partner_joined` | `name`, `player_id` | host | A joiner claimed the seat. Triggers the accept gate. |
+| `welcome` | `seq` (echoes hello), `run_id`, `you_are` (role), `player_id`, `partner_ready` (bool), `reconnect_token`, `partner_name`?, `partner_revision`? | both | Seat bound. Fresh session or successful token reclaim. Partner revision is additive and omitted when no partner is present. |
+| `partner_joined` | `name`, `player_id`, `partner_revision`? | host | A joiner claimed the seat. Triggers the accept gate and, when revisions differ, a client warning. |
 | `ready_ack` | `player_id`, `archetype_key` (no `seq`) | partner | The other seat readied. |
 | `start` | `run_seed`, `host_player_id`, `host_name`, `host_archetype`, `joiner_player_id`, `joiner_name`, `joiner_archetype` | both | Both ready and connected. Enter the run. |
 | `floor` / `snapshot` / `intent` / `run_ended` | as sent | partner | Relayed world traffic (see C→S). |
 | `partner_disconnected` | `grace_seconds` (float) | survivor | Partner socket died; grace running. |
-| `partner_rejoined` | `name`, `player_id` | survivor | Token reclaim succeeded. |
+| `partner_rejoined` | `name`, `player_id`, `partner_revision`? | survivor | Token reclaim succeeded; refreshes the compatibility warning if the reconnecting client changed release. |
 | `partner_left` | — | survivor | Departure is final (bye, grace expiry, kick, or pre-start leave). |
 | `pong` | `seq`, `ts` (echoed) | pinger | RTT probe answer. |
 | `error` | `code`, `msg`, `fatal` (bool), `seq`? | offender | See §5.13. `fatal:true` precedes connection close. |
@@ -524,8 +525,9 @@ intent's `move_x/move_y` carry the **aim vector**, not movement.
 
 These objects are **client-defined and server-opaque** — the relay forwards
 and retains them without parsing. Their shape is an implementation contract
-between same-revision clients (which is why `content_revision` gates
-pairing), summarized here non-normatively:
+between clients. Cross-revision pairing is allowed, but incompatible payload
+changes can still cause missing state or desyncs; matching releases remain the
+safest choice. The payload is summarized here non-normatively:
 
 - `floor.state`: the full run-state dictionary (same schema as a save file)
   minus the singular `player`, plus: `players` (full per-player dicts),
@@ -554,7 +556,7 @@ pairing), summarized here non-normatively:
 | `run_id_in_use` | fatal | Hosting with a code that already has a room. |
 | `run_not_found` | fatal | Joining a code with no waiting room (also failed reconnects). |
 | `run_full` | fatal | Room not open for joining / seat taken. |
-| `bad_revision` | fatal | Joiner's `content_revision` ≠ host's. |
+| `bad_revision` | fatal | Legacy relay response for a game-revision mismatch; retained for old-server compatibility. Relays from 4.8.3 onward do not emit it. |
 | `bad_version` | fatal | `protocol_version` mismatch. |
 | `bad_msg` | varies | Structural/seq violation. Fatal pre-hello or on framing violations; non-fatal for an in-room invalid message. |
 | `bad_state` | varies | Message not valid in the current room state (fatal only when the room is closed). |
@@ -563,9 +565,9 @@ pairing), summarized here non-normatively:
 | `kicked` | fatal | The host turned the joiner away (4.7.0). |
 
 Client UX mapping: fatal errors during setup/lobby return to the appropriate
-setup step with a human-readable notice (`kicked`, `run_not_found`,
-`run_full`, `bad_revision` reopen the code entry; `run_id_in_use` redraws a
-host code). Non-fatal in-run errors are diagnostics and ignored.
+setup step with a human-readable notice (`kicked`, `run_not_found`, `run_full`,
+and a legacy relay's `bad_revision` reopen the code entry; `run_id_in_use`
+redraws a host code). Non-fatal in-run errors are diagnostics and ignored.
 
 ### 5.14 Security model
 

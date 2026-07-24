@@ -175,13 +175,19 @@ class RoomLifecycleTests(unittest.TestCase):
         h2.hello(late_conn, run_id="CDEF", role="join")
         self.assertEqual(late.last("error")["code"], "run_full")
 
-    def test_revision_mismatch_rejects_joiner(self) -> None:
+    def test_revision_mismatch_warns_both_peers_and_allows_join(self) -> None:
         h = RoomHubHarness()
-        host_conn, _host = h.connect()
+        host_conn, host = h.connect()
         h.hello(host_conn, run_id="AB2C", role="host", revision="4.6.0")
         join_conn, join = h.connect()
         h.hello(join_conn, run_id="AB2C", role="join", revision="4.6.1")
-        self.assertEqual(join.last("error")["code"], "bad_revision")
+
+        self.assertFalse(join.closed)
+        self.assertEqual(h.hub.rooms["AB2C"].state, "selecting")
+        self.assertEqual(join.last("welcome")["partner_revision"], "4.6.0")
+        self.assertEqual(
+            host.last("partner_joined")["partner_revision"], "4.6.1"
+        )
 
     def test_protocol_version_mismatch_is_fatal(self) -> None:
         h = RoomHubHarness()

@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.8.3 — The gate stays open
+
+Release 4.8.3 lets co-op partners descend together across different game releases. Revision differences are now visible compatibility warnings rather than connection failures, so players can proceed while understanding that content drift may cause desyncs or missing features.
+
+### Changed
+
+- **Non-blocking multiplayer version differences**: the relay admits joiners whose game/content revision differs from the host, logs the mismatch, and sends each peer the other player's revision through backward-compatible optional lobby fields. Updated clients show a warning naming both versions and continue into the ordinary accept-and-archetype flow.
+- **Wire safety remains strict**: `MP_PROTOCOL_VERSION` mismatches are still rejected because incompatible message schemas cannot be relayed safely; this is separate from the user-facing game release number.
+
 ## 4.8.2 — The frame holds at every scale
 
 Release 4.8.2 makes the authored menu-row frame consistent from compact desktop windows through high-resolution Android and near-4K displays, while preserving the accepted 2× mobile and 3× desktop presentation.

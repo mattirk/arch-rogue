@@ -522,6 +522,20 @@ class TwoGameFlowTests(unittest.TestCase):
             self.assertEqual(host_session.intent_move, (1.0, 0.0))
             game.mp_session = None
 
+    def test_game_revision_mismatch_is_a_non_blocking_warning(self) -> None:
+        from arch_rogue import __version__
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self._make_game(tmpdir, "Versioned")
+            game._mp_show_version_warning("0.0.0")
+            self.assertIn("Version warning", game.mp_notice)
+            self.assertIn(__version__, game.mp_notice)
+            self.assertIn("0.0.0", game.mp_notice)
+            self.assertIn("will continue", game.mp_notice)
+
+            game._mp_show_version_warning(__version__)
+            self.assertEqual(game.mp_notice, "")
+
     def test_setup_error_notices_keep_flow_recoverable(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self._make_game(tmpdir, "Lost")

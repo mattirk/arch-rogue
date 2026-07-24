@@ -27,8 +27,9 @@ the relay test modules, then deploys on the self-hosted runner
    ~/arch-rogue-relay/current && systemctl --user restart arch-rogue-server`).
 
 Relay deploys are decoupled from game releases: the relay forwards gameplay
-payloads verbatim and clients pair by their own `content_revision`. A restart
-only drops in-flight rooms, which the client reconnect grace absorbs.
+payloads verbatim, carries each seat's `content_revision` for client warnings,
+and allows different game releases to pair when their wire protocol matches.
+A restart only drops in-flight rooms, which the client reconnect grace absorbs.
 
 ## One-time host provisioning
 

@@ -671,6 +671,7 @@ def make_welcome(
     reconnect_token: str,
     partner_name: str | None = None,
     partner_ready: bool = False,
+    partner_revision: str | None = None,
 ) -> dict:
     message = {
         "t": "welcome",
@@ -683,15 +684,22 @@ def make_welcome(
     }
     if partner_name is not None:
         message["partner_name"] = sanitize_player_name(partner_name)
+    if partner_revision is not None:
+        message["partner_revision"] = str(partner_revision)
     return message
 
 
-def make_partner_joined(*, name: str, player_id: str) -> dict:
-    return {
+def make_partner_joined(
+    *, name: str, player_id: str, partner_revision: str | None = None
+) -> dict:
+    message = {
         "t": "partner_joined",
         "name": sanitize_player_name(name),
         "player_id": str(player_id),
     }
+    if partner_revision is not None:
+        message["partner_revision"] = str(partner_revision)
+    return message
 
 
 def make_ready_ack(*, seq: int, player_id: str, archetype_key: str) -> dict:
@@ -732,12 +740,17 @@ def make_partner_disconnected(*, grace_seconds: float) -> dict:
     }
 
 
-def make_partner_rejoined(*, name: str, player_id: str) -> dict:
-    return {
+def make_partner_rejoined(
+    *, name: str, player_id: str, partner_revision: str | None = None
+) -> dict:
+    message = {
         "t": "partner_rejoined",
         "name": sanitize_player_name(name),
         "player_id": str(player_id),
     }
+    if partner_revision is not None:
+        message["partner_revision"] = str(partner_revision)
+    return message
 
 
 def make_partner_left() -> dict:

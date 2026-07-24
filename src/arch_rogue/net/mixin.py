@@ -123,6 +123,7 @@ _SNAPSHOT_INTERVAL = 1.0 / MP_SNAPSHOT_RATE_HZ
 _INTENT_INTERVAL = 1.0 / MP_INTENT_RATE_HZ
 _RECONNECT_BACKOFF_START = 0.5
 _RECONNECT_BACKOFF_CAP = 4.0
+_VERSION_WARNING_PREFIX = "Version warning:"
 
 # Human-readable notices for recoverable setup failures.
 _SETUP_ERROR_NOTICES = {
@@ -676,6 +677,7 @@ class NetMixin:
                 )
             else:
                 self.mp_status = f"{message.name} has answered the call."
+            self._mp_show_version_warning(message.partner_revision)
         elif isinstance(message, ReadyAck):
             if message.player_id and message.player_id != session.player_id:
                 session.partner_ready = True
@@ -695,6 +697,7 @@ class NetMixin:
                 self._mp_world_notice("Partner connection lost…")
         elif isinstance(message, PartnerRejoined):
             session.partner_connected = True
+            self._mp_show_version_warning(message.partner_revision)
             self.mp_status = f"{message.name or 'Your partner'} has returned."
             if self.state == "playing":
                 self._mp_world_notice("Partner reconnected")
@@ -717,6 +720,19 @@ class NetMixin:
             pass
 
     # -- connection lifecycle ------------------------------------------------
+
+    def _mp_show_version_warning(self, partner_revision: str) -> None:
+        """Warn about game-content drift without blocking the session."""
+
+        revision = str(partner_revision or "").strip()
+        if revision and revision != __version__:
+            self.mp_notice = (
+                f"{_VERSION_WARNING_PREFIX} you use {__version__}; your partner "
+                f"uses {revision}. Multiplayer will continue, but desyncs or "
+                "missing features may occur."
+            )
+        elif self.mp_notice.startswith(_VERSION_WARNING_PREFIX):
+            self.mp_notice = ""
 
     def _mp_on_connected(self) -> None:
         session = self.mp_session
@@ -752,6 +768,7 @@ class NetMixin:
             session.partner_name = message.partner_name
         session.partner_ready = message.partner_ready
         if was_reconnect:
+            self._mp_show_version_warning(message.partner_revision)
             self.mp_status = "Reconnected."
             if session.role == ROLE_HOST and session.started:
                 self.mp_send_floor()
@@ -763,6 +780,7 @@ class NetMixin:
         self.state = "mp_lobby"
         self.mp_lobby_cursor = 0
         self.mp_notice = ""
+        self._mp_show_version_warning(message.partner_revision)
         self.mp_status = (
             "Share the code with your partner."
             if session.role == ROLE_HOST and not session.partner_name
@@ -1106,6 +1124,7 @@ class NetMixin:
             session.partner_archetype = ""
             session.partner_connected = True
             session.partner_pending_accept = False
+            self._mp_show_version_warning("")
             if session.role == ROLE_HOST:
                 if had_partner:
                     self.mp_status = (

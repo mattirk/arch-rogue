@@ -38,7 +38,6 @@ from typing import Any, Callable, Protocol
 from .config import ServerConfig
 from .protocol import (
     ERROR_BAD_MSG,
-    ERROR_BAD_REVISION,
     ERROR_BAD_STATE,
     ERROR_BAD_VERSION,
     ERROR_KICKED,
@@ -126,6 +125,7 @@ class PlayerSlot:
     role: str
     player_id: str
     name: str = ""
+    content_revision: str = ""
     archetype_key: str = ""
     ready: bool = False
     run_seed: int | None = None
@@ -424,6 +424,7 @@ class RoomHub:
                 role=ROLE_HOST,
                 player_id="p1",
                 name=name,
+                content_revision=revision,
                 reconnect_token=generate_reconnect_token(),
             )
             self.rooms[run_id] = room
@@ -455,17 +456,17 @@ class RoomHub:
             )
             return
         if revision != room.content_revision:
-            self._fatal(
-                connection,
-                ERROR_BAD_REVISION,
-                "your game revision does not match the host",
-                seq=seq,
+            log.warning(
+                "room %s: admitting revision mismatch (host=%s, joiner=%s)",
+                run_id,
+                room.content_revision,
+                revision,
             )
-            return
         slot = PlayerSlot(
             role=ROLE_JOIN,
             player_id="p2",
             name=name,
+            content_revision=revision,
             reconnect_token=generate_reconnect_token(),
         )
         room.slots[ROLE_JOIN] = slot
@@ -475,7 +476,11 @@ class RoomHub:
         host = room.slot(ROLE_HOST)
         if host is not None and host.connection is not None:
             host.connection.send(
-                make_partner_joined(name=slot.name, player_id=slot.player_id)
+                make_partner_joined(
+                    name=slot.name,
+                    player_id=slot.player_id,
+                    partner_revision=slot.content_revision,
+                )
             )
         log.info("room %s: %r joined", run_id, name)
 
@@ -503,13 +508,16 @@ class RoomHub:
                     self.connections.discard(stale)
             slot.disconnected_at = None
             slot.name = sanitize_player_name(message["name"]) or slot.name
+            slot.content_revision = str(message["content_revision"])
             room.touch(self.clock())
             self._bind(connection, room, slot, int(message["seq"]))
             partner = room.partner_slot(slot.role)
             if partner is not None and partner.connection is not None:
                 partner.connection.send(
                     make_partner_rejoined(
-                        name=slot.name, player_id=slot.player_id
+                        name=slot.name,
+                        player_id=slot.player_id,
+                        partner_revision=slot.content_revision,
                     )
                 )
             # A rejoined joiner must render from fresh authoritative data
@@ -547,6 +555,11 @@ class RoomHub:
                     else None
                 ),
                 partner_ready=bool(partner is not None and partner.ready),
+                partner_revision=(
+                    partner.content_revision
+                    if partner is not None and (partner.connected or partner.reserved)
+                    else None
+                ),
             )
         )
 

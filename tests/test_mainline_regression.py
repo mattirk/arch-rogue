@@ -135,8 +135,8 @@ class DesktopDeterminismTests(unittest.TestCase):
     # processes, so each scenario only needs one render per test invocation.
     # Update a constant only for an intentional rendering change or after
     # proving that an existing baseline is stale.
-    # 4.8.2: five title rows with compact-height adaptive endcaps and borders.
-    TITLE_HASH = "c68d9ef157cac902a2a73558f51d207c8a2afec80f8ab11dc2e544eefc9c800d"
+    # 4.8.3: 4.8.2 title layout with the updated visible release label.
+    TITLE_HASH = "ec90f36ede897a0fb3cd4c1cd3a57474aac09745bb12f7b8c8763b82d4329784"
     # 4.7.x: gameplay/crowd rebaselined for the animated (rotating) story
     # relic frames, then for removing the stage nameplates + relic surge
     # rays, then for dropping the guest pose effects and the 1.2x slower

@@ -72,6 +72,7 @@ from arch_rogue.net.messages import (
     ErrorMessage,
     FloorMessage,
     IntentMessage,
+    PartnerJoined,
     SnapshotMessage,
     Start,
     UnknownMessage,
@@ -123,8 +124,11 @@ def _every_message() -> list[dict]:
             reconnect_token="beef" * 8,
             partner_name="Matti",
             partner_ready=True,
+            partner_revision="4.8.2",
         ),
-        make_partner_joined(name="Partner", player_id="p2"),
+        make_partner_joined(
+            name="Partner", player_id="p2", partner_revision="4.8.3"
+        ),
         make_ready_ack(seq=2, player_id="p1", archetype_key="Warden"),
         make_start(
             run_seed=7,
@@ -136,7 +140,9 @@ def _every_message() -> list[dict]:
             joiner_archetype="Arcanist",
         ),
         make_partner_disconnected(grace_seconds=30.0),
-        make_partner_rejoined(name="Partner", player_id="p2"),
+        make_partner_rejoined(
+            name="Partner", player_id="p2", partner_revision="4.8.3"
+        ),
         make_partner_left(),
     ]
 
@@ -161,12 +167,23 @@ class CodecRoundTripTests(unittest.TestCase):
                 you_are="host",
                 player_id="p1",
                 reconnect_token="00" * 16,
+                partner_revision="4.8.3",
             )
         )
         self.assertIsInstance(welcome, Welcome)
         assert isinstance(welcome, Welcome)
         self.assertEqual(welcome.player_id, "p1")
         self.assertIsNone(welcome.partner_name)
+        self.assertEqual(welcome.partner_revision, "4.8.3")
+
+        partner_joined = message_from_dict(
+            make_partner_joined(
+                name="Partner", player_id="p2", partner_revision="4.8.2"
+            )
+        )
+        self.assertIsInstance(partner_joined, PartnerJoined)
+        assert isinstance(partner_joined, PartnerJoined)
+        self.assertEqual(partner_joined.partner_revision, "4.8.2")
 
         start = message_from_dict(
             make_start(
