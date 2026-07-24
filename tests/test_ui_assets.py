@@ -120,6 +120,11 @@ class UiAssetTests(unittest.TestCase):
             *sigil_keys,
         }
         self.assertEqual(set(library.manifest["assets"]), expected)
+        for row_key in ("menu.row", "menu.row.selected"):
+            self.assertEqual(
+                library.manifest["assets"][row_key]["shrink_insets_below_height"],
+                88,
+            )
 
         sizes = {
             "menu.background.title": (960, 540),
@@ -265,6 +270,51 @@ class UiAssetTests(unittest.TestCase):
                 self.assertTrue(alpha)
                 self.assertEqual(min(alpha), 255)
                 self.assertEqual(max(alpha), 255)
+
+    def test_menu_rows_preserve_reference_slices_and_adapt_compact_insets(
+        self,
+    ) -> None:
+        library = UiAssetLibrary()
+        for key in ("menu.row", "menu.row.selected"):
+            with self.subTest(key=key):
+                source = library.source(key)
+                self.assertIsNotNone(source)
+                assert source is not None
+
+                # The accepted 2x mobile and 3x desktop row heights retain the
+                # original 105x10 corner slice exactly.
+                source_corner = source.subsurface((0, 0, 105, 10))
+                for size in ((1648, 88), (2496, 132)):
+                    rendered = library.render(key, size)
+                    self.assertIsNotNone(rendered)
+                    assert rendered is not None
+                    self.assertEqual(
+                        pygame.image.tobytes(
+                            rendered.subsurface((0, 0, 105, 10)), "RGBA"
+                        ),
+                        pygame.image.tobytes(source_corner, "RGBA"),
+                    )
+
+                # At 1x, endcaps and border bands contract together instead of
+                # consuming a quarter of the row and crushing its text area.
+                compact = library.render(key, (800, 44))
+                self.assertIsNotNone(compact)
+                assert compact is not None
+                expected_corner = pygame.transform.scale(source_corner, (52, 5))
+                self.assertEqual(
+                    pygame.image.tobytes(
+                        compact.subsurface((0, 0, 52, 5)), "RGBA"
+                    ),
+                    pygame.image.tobytes(expected_corner, "RGBA"),
+                )
+                self.assertEqual(
+                    library.content_rect(key, pygame.Rect(0, 0, 800, 44)),
+                    pygame.Rect(52, 3, 696, 38),
+                )
+                self.assertEqual(
+                    library.content_rect(key, pygame.Rect(0, 0, 1648, 88)),
+                    pygame.Rect(92, 6, 1464, 76),
+                )
 
     def test_story_choice_plate_and_semantic_icons_are_complete(self) -> None:
         library = UiAssetLibrary()
@@ -500,6 +550,33 @@ class UiAssetTests(unittest.TestCase):
                 self.assertTrue(
                     all(first.bottom <= second.y for first, second in zip(group, group[1:]))
                 )
+
+            row_sizes = {
+                (cache_key[-2], cache_key[-1])
+                for cache_key in game.ui_assets._render_cache
+                if cache_key[0] == "menu.row"
+            }
+            self.assertIn(keyboard[0].size, row_sizes)
+            self.assertIn(gamepad[0].size, row_sizes)
+
+            # A long binding such as "Unbound" selects center-plate columns
+            # for the whole gamepad list, so short values do not jump back into
+            # the endcaps on neighboring rows.
+            key_rects = tuple(game._menu_row_key_rects)
+            value_rects = tuple(game._menu_row_value_rects)
+            self.assertEqual(len(key_rects), len(gamepad))
+            self.assertEqual(len(value_rects), len(gamepad))
+            self.assertEqual(len({rect.x for rect in key_rects}), 1)
+            self.assertEqual(len({rect.right for rect in value_rects}), 1)
+            self.assertTrue(
+                all(row.contains(key_rect) for row, key_rect in zip(gamepad, key_rects))
+            )
+            self.assertTrue(
+                all(
+                    row.contains(value_rect)
+                    for row, value_rect in zip(gamepad, value_rects)
+                )
+            )
 
 
 if __name__ == "__main__":

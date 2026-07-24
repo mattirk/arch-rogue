@@ -75,13 +75,15 @@
       "path": "menus/row_selected.png",
       "render": "nine_slice",
       "insets": [105, 10, 105, 10],
-      "content_insets": [92, 6, 92, 6]
+      "content_insets": [92, 6, 92, 6],
+      "shrink_insets_below_height": 88
     },
     "menu.row": {
       "path": "menus/row.png",
       "render": "nine_slice",
       "insets": [105, 10, 105, 10],
-      "content_insets": [92, 6, 92, 6]
+      "content_insets": [92, 6, 92, 6],
+      "shrink_insets_below_height": 88
     },
     "hud.panel": {
       "path": "hud/panel.png",

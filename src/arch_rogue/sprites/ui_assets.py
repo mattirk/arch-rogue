@@ -64,6 +64,7 @@ class UiAssetLibrary:
                 bool,
                 int,
                 int,
+                int,
             ],
             pygame.Surface,
         ] = OrderedDict()
@@ -140,9 +141,18 @@ class UiAssetLibrary:
                 raise ValueError(
                     f"UI asset {key!r} has an invalid scale-insets flag"
                 )
-            if scale_insets and render_mode != "nine_slice":
+            shrink_below = entry.get("shrink_insets_below_height", 0)
+            if type(shrink_below) is not int or shrink_below < 0:
+                raise ValueError(
+                    f"UI asset {key!r} has an invalid compact-insets height"
+                )
+            if (scale_insets or shrink_below) and render_mode != "nine_slice":
                 raise ValueError(
                     f"UI asset {key!r} can scale insets only in nine-slice mode"
+                )
+            if scale_insets and shrink_below:
+                raise ValueError(
+                    f"UI asset {key!r} cannot use both inset-scaling modes"
                 )
 
     @staticmethod
@@ -377,6 +387,26 @@ class UiAssetLibrary:
                 cls._blit_slice(result, source, source_rect, target_rect)
         return result
 
+    @staticmethod
+    def _inset_scale(
+        entry: dict[str, Any], target_height: int, source_height: int
+    ) -> float:
+        """Return the manifest-directed target scale for nine-slice insets.
+
+        Full height scaling is useful for art whose ornaments should grow with
+        the target. ``shrink_insets_below_height`` instead preserves authored
+        insets at normal sizes and only contracts them for compact targets. That
+        keeps wide menu-row endcaps proportional without changing the 2x/3x
+        layouts they were authored around.
+        """
+
+        if entry.get("scale_insets_with_height", False):
+            return target_height / max(1, source_height)
+        shrink_below = entry.get("shrink_insets_below_height", 0)
+        if type(shrink_below) is int and shrink_below > 0:
+            return min(1.0, target_height / shrink_below)
+        return 1.0
+
     def content_rect(self, key: str, rect: pygame.Rect) -> pygame.Rect | None:
         """Return the authored safe-content area for ``key`` inside ``rect``.
 
@@ -410,11 +440,7 @@ class UiAssetLibrary:
                 source_borders = self._validated_insets(entry.get("insets"), key)
             except ValueError:
                 return None
-            inset_scale = (
-                target.height / max(1, source_height)
-                if entry.get("scale_insets_with_height", False)
-                else 1.0
-            )
+            inset_scale = self._inset_scale(entry, target.height, source_height)
             desired_borders = tuple(
                 max(0, round(value * inset_scale)) for value in source_borders
             )
@@ -439,6 +465,12 @@ class UiAssetLibrary:
             right = fitted_content(right, desired_borders[2], target_right)
             top = fitted_content(top, desired_borders[1], target_top)
             bottom = fitted_content(bottom, desired_borders[3], target_bottom)
+            if inset_scale < 1.0:
+                # Compact endcaps remain ornament-only. Keep labels and values
+                # inside the center plate even though the source safe inset
+                # intentionally overlaps the full-size separator by a few pixels.
+                left = max(left, target_left)
+                right = max(right, target_right)
         else:
             left = round(left * target.width / max(1, source_width))
             right = round(right * target.width / max(1, source_width))
@@ -466,6 +498,9 @@ class UiAssetLibrary:
         if not isinstance(render_mode, str) or render_mode not in self.RENDER_MODES:
             return None
         scale_insets = entry.get("scale_insets_with_height", False) is True
+        shrink_below = entry.get("shrink_insets_below_height", 0)
+        if type(shrink_below) is not int:
+            return None
         try:
             path = self._validated_path(entry.get("path"), key)
             insets = (
@@ -482,6 +517,7 @@ class UiAssetLibrary:
             render_mode,
             insets,
             scale_insets,
+            shrink_below,
             target_size[0],
             target_size[1],
         )
@@ -502,7 +538,9 @@ class UiAssetLibrary:
                 rendered = pygame.transform.scale(source, target_size)
             else:
                 assert insets is not None
-                inset_scale = target_size[1] / source.get_height()
+                inset_scale = self._inset_scale(
+                    entry, target_size[1], source.get_height()
+                )
                 target_insets = (
                     (
                         max(0, round(insets[0] * inset_scale)),
@@ -510,7 +548,7 @@ class UiAssetLibrary:
                         max(0, round(insets[2] * inset_scale)),
                         max(0, round(insets[3] * inset_scale)),
                     )
-                    if scale_insets
+                    if scale_insets or shrink_below > 0
                     else None
                 )
                 rendered = self._nine_slice(

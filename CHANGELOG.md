@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.8.2 — The frame holds at every scale
+
+Release 4.8.2 makes the authored menu-row frame consistent from compact desktop windows through high-resolution Android and near-4K displays, while preserving the accepted 2× mobile and 3× desktop presentation.
+
+### Changed
+
+- **Responsive authored menu rows**: `row.png` and its selected variant now contract their nine-slice endcaps and border bands only below the 88 px reference height, keeping compact rows proportional and leaving a long, readable center plate. The high-resolution reference layouts remain pixel-identical, so separate per-resolution assets are unnecessary.
+- **Consistent row typography and controls grids**: keys and values that do not fit inside ornamental endcaps move into aligned center-plate columns for the whole list. Dense Controls rows now retain the authored frame in both columns without clipped bindings or row-to-row alignment jumps, and right-aligned statuses keep clear of the ornament zone.
+
 ## 4.8.1 — The floor shows the way
 
 Release 4.8.1 replaces the procedural guiding-light crack with an authored animated floor tile: while the player stands still, a slow warm-gold pulse rolls tile by tile from the player's feet along the route to the relic — a wave that shows the way; the moment the player moves, the floor is completely calm — plain static tiles, no guidance drawing at all.

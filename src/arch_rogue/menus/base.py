@@ -1367,6 +1367,10 @@ class MenuBaseMixin:
         key_text_pad = min(px(8), max(4, detail_font.get_height() // 3))
         key_limit = max(1, min(rect.width - 1, max(48, int(rect.width * 0.40))))
         widest_key = max((detail_font.size(key)[0] for key, _, _ in rows), default=0)
+        widest_value = max(
+            (detail_font.size(value)[0] for _, _, value in rows if value),
+            default=0,
+        )
         desired_key_w = widest_key + row_inset * 2 + key_text_pad
         base_key_w = min(max(px(108), 108), key_limit)
         key_w = min(key_limit, max(base_key_w, desired_key_w))
@@ -1427,7 +1431,7 @@ class MenuBaseMixin:
                 row_asset is not None
                 and row_safe is not None
                 and row_safe.width >= max(72, row_rect.width // 5)
-                and row_h >= detail_font.get_height() + px(6)
+                and row_h >= detail_font.get_height() + px(3)
             )
             modern_row = row_asset is not None
             if authored_row:
@@ -1484,31 +1488,91 @@ class MenuBaseMixin:
             key_rect = pygame.Rect(row_rect.x, row_rect.y, 0, row_h)
             if authored_row:
                 assert row_safe is not None
+                center_pad = min(px(10), max(6, row_safe.width // 30))
+                center_rect = row_safe.inflate(-center_pad * 2, 0)
                 if keys_in_rows:
                     endcap_pad = min(px(8), max(3, row_h // 8))
-                    key_rect = pygame.Rect(
-                        row_rect.x + endcap_pad,
-                        row_rect.y,
-                        max(1, row_safe.x - row_rect.x - endcap_pad * 2),
-                        row_h,
+                    left_endcap_w = max(0, row_safe.x - row_rect.x)
+                    right_endcap_w = max(0, row_rect.right - row_safe.right)
+                    key_endcap_w = max(
+                        0, left_endcap_w - endcap_pad * 2 - key_text_pad * 2
                     )
-                    label_rect = row_safe.inflate(
-                        -min(px(6), row_safe.width // 12) * 2, 0
+                    value_endcap_w = max(0, right_endcap_w - endcap_pad * 2)
+                    endcaps_fit = (
+                        widest_key <= key_endcap_w
+                        and widest_value <= value_endcap_w
                     )
-                    if value:
-                        value_rect = pygame.Rect(
-                            row_safe.right + endcap_pad,
+                    if endcaps_fit:
+                        key_rect = pygame.Rect(
+                            row_rect.x + endcap_pad,
                             row_rect.y,
-                            max(1, row_rect.right - row_safe.right - endcap_pad * 2),
+                            max(1, left_endcap_w - endcap_pad * 2),
+                            row_h,
+                        )
+                        label_rect = row_safe.inflate(
+                            -min(px(6), row_safe.width // 12) * 2, 0
+                        )
+                        if value:
+                            value_rect = pygame.Rect(
+                                row_safe.right + endcap_pad,
+                                row_rect.y,
+                                max(1, right_endcap_w - endcap_pad * 2),
+                                row_h,
+                            )
+                    else:
+                        # Responsive rows keep their ornate caps compact. When a
+                        # binding/status no longer fits there, use explicit
+                        # columns inside the long center plate rather than
+                        # clipping text or widening the ornaments again.
+                        key_slot_w = min(
+                            max(1, desired_key_w),
+                            max(1, center_rect.width * 2 // 5),
+                        )
+                        key_rect = pygame.Rect(
+                            center_rect.x,
+                            row_rect.y,
+                            key_slot_w,
+                            row_h,
+                        )
+                        label_x = key_rect.right + column_gap
+                        label_right = center_rect.right
+                        if value:
+                            available_for_value = max(
+                                0, center_rect.right - label_x
+                            )
+                            value_limit = min(
+                                max(1, center_rect.width // 3),
+                                max(1, available_for_value // 2),
+                            )
+                            value_w = min(
+                                value_limit,
+                                detail_font.size(value)[0] + value_pad,
+                            )
+                            value_x = center_rect.right - value_w
+                            value_rect = pygame.Rect(
+                                value_x,
+                                row_rect.y,
+                                value_w,
+                                row_h,
+                            )
+                            label_right = value_x - column_gap
+                        label_rect = pygame.Rect(
+                            label_x,
+                            row_rect.y,
+                            max(0, label_right - label_x),
                             row_h,
                         )
                 else:
-                    center_pad = min(px(10), max(6, row_safe.width // 30))
-                    center_rect = row_safe.inflate(-center_pad * 2, 0)
                     label_right = center_rect.right
                     if value:
                         status_right_gap = min(
                             px(18), max(8, center_rect.width // 24)
+                        )
+                        minimum_clearance = min(80, max(1, row_rect.width // 3))
+                        outside_center = row_rect.right - center_rect.right
+                        status_right_gap = max(
+                            status_right_gap,
+                            minimum_clearance - outside_center,
                         )
                         status_limit = max(1, center_rect.width // 2)
                         desired_status_w = detail_font.size(value)[0] + value_pad
@@ -1516,13 +1580,14 @@ class MenuBaseMixin:
                             status_limit,
                             max(desired_status_w, center_rect.width // 4),
                         )
+                        value_x = center_rect.right - status_right_gap - value_w
                         value_rect = pygame.Rect(
-                            center_rect.right - status_right_gap - value_w,
+                            value_x,
                             row_rect.y,
                             value_w,
                             row_h,
                         )
-                        label_right = value_rect.x - column_gap
+                        label_right = value_x - column_gap
                     label_rect = pygame.Rect(
                         center_rect.x,
                         row_rect.y,
@@ -1576,13 +1641,14 @@ class MenuBaseMixin:
                         value_limit,
                         detail_font.size(value)[0] + value_pad,
                     )
+                    value_x = label_right - value_w
                     value_rect = pygame.Rect(
-                        label_right - value_w,
+                        value_x,
                         row_rect.y,
                         value_w,
                         row_h,
                     )
-                    label_right = value_rect.x - column_gap
+                    label_right = value_x - column_gap
                 label_rect = pygame.Rect(
                     label_x,
                     row_rect.y,
