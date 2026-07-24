@@ -86,7 +86,6 @@ class UiAssetTests(unittest.TestCase):
         }
         expected = {
             "menu.background.title",
-            "menu.glyph.multiplayer",
             "menu.logo.title",
             "menu.background",
             "cutscene.background",
@@ -102,6 +101,7 @@ class UiAssetTests(unittest.TestCase):
             "menu.panel.inset",
             "menu.row",
             "menu.row.selected",
+            "menu.row.two_descend",
             "hud.panel",
             "hud.dock",
             "hud.action_slot",
@@ -120,7 +120,11 @@ class UiAssetTests(unittest.TestCase):
             *sigil_keys,
         }
         self.assertEqual(set(library.manifest["assets"]), expected)
-        for row_key in ("menu.row", "menu.row.selected"):
+        for row_key in (
+            "menu.row",
+            "menu.row.selected",
+            "menu.row.two_descend",
+        ):
             self.assertEqual(
                 library.manifest["assets"][row_key]["shrink_insets_below_height"],
                 88,
@@ -142,6 +146,7 @@ class UiAssetTests(unittest.TestCase):
             "menu.panel.compact": (480, 360),
             "menu.panel.inset": (320, 160),
             "menu.row": (520, 44),
+            "menu.row.two_descend": (520, 44),
             "hud.panel": (740, 72),
             "hud.dock": (340, 62),
             "hud.action_slot": (54, 54),
@@ -316,6 +321,33 @@ class UiAssetTests(unittest.TestCase):
                     pygame.Rect(92, 6, 1464, 76),
                 )
 
+        special_key = "menu.row.two_descend"
+        special_entry = library.manifest["assets"][special_key]
+        self.assertEqual(special_entry["insets"], [105, 10, 196, 10])
+        self.assertEqual(special_entry["content_insets"], [92, 6, 183, 6])
+        special = library.source(special_key)
+        default = library.source("menu.row")
+        self.assertIsNotNone(special)
+        self.assertIsNotNone(default)
+        assert special is not None and default is not None
+        self.assertEqual(special.get_size(), default.get_size())
+        self.assertEqual(
+            pygame.image.tobytes(special.subsurface((0, 0, 441, 52)), "RGBA"),
+            pygame.image.tobytes(default.subsurface((0, 0, 441, 52)), "RGBA"),
+        )
+        self.assertNotEqual(
+            pygame.image.tobytes(special.subsurface((441, 0, 182, 52)), "RGBA"),
+            pygame.image.tobytes(default.subsurface((441, 0, 182, 52)), "RGBA"),
+        )
+        self.assertEqual(
+            library.content_rect(special_key, pygame.Rect(0, 0, 800, 44)),
+            pygame.Rect(46, 3, 662, 38),
+        )
+        self.assertEqual(
+            library.content_rect(special_key, pygame.Rect(0, 0, 1648, 88)),
+            pygame.Rect(92, 6, 1373, 76),
+        )
+
     def test_story_choice_plate_and_semantic_icons_are_complete(self) -> None:
         library = UiAssetLibrary()
         panel = library.source("cutscene.choice.panel")
@@ -481,6 +513,7 @@ class UiAssetTests(unittest.TestCase):
                     "menu.logo.title",
                     "menu.panel",
                     "menu.row",
+                    "menu.row.two_descend",
                 }.issubset(menu_keys)
             )
             self.assertTrue(

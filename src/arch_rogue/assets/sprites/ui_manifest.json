@@ -5,10 +5,7 @@
       "path": "menus/background_title.png",
       "render": "cover"
     },
-    "menu.glyph.multiplayer": {
-      "path": "menus/two_will_descend.png",
-      "render": "scale"
-    },
+
     "menu.logo.title": {
       "path": "menus/title_logo.png",
       "render": "scale"
@@ -83,6 +80,13 @@
       "render": "nine_slice",
       "insets": [105, 10, 105, 10],
       "content_insets": [92, 6, 92, 6],
+      "shrink_insets_below_height": 88
+    },
+    "menu.row.two_descend": {
+      "path": "menus/row_two_descend.png",
+      "render": "nine_slice",
+      "insets": [105, 10, 196, 10],
+      "content_insets": [92, 6, 183, 6],
       "shrink_insets_below_height": 88
     },
     "hud.panel": {

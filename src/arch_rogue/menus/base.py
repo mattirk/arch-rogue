@@ -1309,6 +1309,7 @@ class MenuBaseMixin:
         section_header_height: int | None = None,
         keys_in_rows: bool = True,
         selected_row_asset: str | None = None,
+        row_assets: Sequence[str | None] | None = None,
     ) -> tuple[pygame.Rect, ...]:
         """Draw menu rows and return the rectangles that were actually rendered.
 
@@ -1413,10 +1414,15 @@ class MenuBaseMixin:
             rendered_rows.append(row_rect.copy())
             is_selected = index == selected_index
             plate_fill = self.shade(accent, -100) if is_selected else self.PANEL_INK
+            row_override = (
+                row_assets[index]
+                if row_assets is not None and index < len(row_assets)
+                else None
+            )
             row_asset_key = (
                 selected_row_asset
                 if is_selected and selected_row_asset
-                else "menu.row"
+                else row_override or "menu.row"
             )
             row_asset = self.ui_asset(row_asset_key, row_rect.size)
             if row_asset is None and row_asset_key != "menu.row":

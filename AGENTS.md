@@ -316,10 +316,17 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 ### 4.8 The relic turns once more
 
 
-#### 4.8.1 Guiding light cracked
+### 4.8.x
 
-- Guiding light "crack on the floor" needs to be more visible
-  - I'm thinking about generating an animated tile (very similar to current floor tile) using Pixellab. The tiles leading to relic would be subtly animated when the player stops moving. Tiles would be drawn as normal static tiles when player is moving (and we can disable guiding light draw totally when player is moving)
+- Do not block mutliplayer with different versions, just warn about it and proceed
+- Pinch zoom to mobile
+- Make it more apparent in UI when someone is requesting to join lobby (accept / kick)
+- Machine intelligence - let's spec this before implementation
+  - We need better AI for enemies
+  - Each enemy type has tactics related to abilities (at least ranged, melee, boss)
+  - Create nice abstractions so we can create different enemy types easily
+  - Write nice movement algorithm too
+
 
 ### Backlog
 
@@ -342,6 +349,7 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 - On mobile, make the stat container (hp, mana, stamina) fill from bottom to top. Top and bottom ends of the container are a bit more narrow than the middle so take that into account.
 - Auto-updater in APK, maybe Mac, other platforms at least in-game notice
   - Need to think about Windows / Linux packaging anyway
+- Familiar animation not working when guest on multiplayer
 
 
 
