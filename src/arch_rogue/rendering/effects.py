@@ -54,6 +54,13 @@ from ..story import (
     format_asset_text,
 )
 
+# Guiding-floor wave shape: a single crest travels from the player toward the
+# relic, lighting at most WINDOW route tiles at a time (triangular envelope,
+# brightest at the crest center). After the crest runs off the far end of the
+# path it wraps around and sets out from the player again.
+_GUIDANCE_WAVE_WINDOW_TILES = 3
+_GUIDANCE_WAVE_TILES_PER_SECOND = 1.2
+
 # Bounded impact-overlay LRU. Large skill pulses are expensive translucent
 # software surfaces, so Android uses fewer animation buckets while desktop keeps
 # the original cadence. The byte cap prevents a handful of full-room cast rings
@@ -1074,6 +1081,14 @@ class RenderingEffectsMixin:
         route_distance = self.route_distance(route)
         if route_distance < 0.8:
             return
+
+        # 4.8.1: with modern graphics the guidance tiles are rendered inside
+        # the floor pass itself (story_guidance_tile_frames consulted by
+        # _tile_blit_entry), so painter order keeps walls and southern tiles
+        # layered correctly. The procedural carved crack below remains the
+        # legacy-graphics fallback.
+        if self.sprites.world_tile_animation_frame_count("guiding_floor") > 1:
+            return
         # The guidance uses the same carved-groove language as the floor's
         # own variant cracks (`_floor_groove`: shadowed recess + lit lip,
         # anti-aliased) and the same slab color (`theme.floor`), so it reads
@@ -1395,6 +1410,78 @@ class RenderingEffectsMixin:
         self._guidance_glow_content_key = content_key
         self._cache_guidance_glow_blit_areas(glow_layer)
         self._blit_cached_guidance_glow(glow_layer, blit_rect.topleft)
+
+    def story_guidance_tile_frames(self) -> dict[tuple[int, int], int]:
+        # Modern-graphics relic guidance: while the player stands still, a
+        # single wave crest travels along the route to the relic and the
+        # tiles under it are RENDERED AS the authored ``guiding_floor``
+        # animation frames — the floor pass swaps the tile art itself (same
+        # painter order, tint, variant and darkness as any floor tile), so
+        # nothing is ever blitted on top of an already-drawn tile. Returns
+        # the {tile: frame} map for this frame; empty when inactive. While
+        # the player moves the map is empty and the floor stays completely
+        # calm.
+        if self.sprites.world_tile_animation_frame_count("guiding_floor") <= 1:
+            return {}
+        target = self.story_relic_target_position()
+        if (
+            target is None
+            or self.story_intro_pending
+            or not self.story_relic_guidance_enabled
+        ):
+            return {}
+        if bool(getattr(self.player, "moving", False)):
+            self._guidance_idle_since = None
+            return {}
+        route = self.story_relic_guidance_route(target)
+        if self.route_distance(route) < 0.8:
+            return {}
+
+        # The crest sets out from the player's feet each time the player
+        # comes to rest.
+        idle_since = getattr(self, "_guidance_idle_since", None)
+        if idle_since is None:
+            idle_since = self.elapsed
+            self._guidance_idle_since = idle_since
+        idle_elapsed = max(0.0, self.elapsed - idle_since)
+
+        # Route waypoints (player and relic trimmed off) -> unique tile
+        # coords, kept in route order so the crest can travel along the path.
+        player_tile = (int(self.player.x), int(self.player.y))
+        goal_tile = (int(target[0]), int(target[1]))
+        seen: set[tuple[int, int]] = set()
+        tiles: list[tuple[int, int]] = []
+        for wx, wy in route[1:-1]:
+            tile = (int(wx), int(wy))
+            if tile in seen or tile == player_tile or tile == goal_tile:
+                continue
+            seen.add(tile)
+            tiles.append(tile)
+        if not tiles:
+            return {}
+
+        # The frames are a linear ramp (frame 0 = plain floor, last frame =
+        # full rune), so the crest envelope maps directly onto a frame
+        # index. Tiles outside the crest window are simply not in the map
+        # and render as the plain static floor.
+        peak_frame = (
+            self.sprites.world_tile_animation_frame_count("guiding_floor") - 1
+        )
+        window = float(_GUIDANCE_WAVE_WINDOW_TILES)
+        crest = (idle_elapsed * _GUIDANCE_WAVE_TILES_PER_SECOND) % (
+            len(tiles) + window
+        )
+        frames: dict[tuple[int, int], int] = {}
+        for order, (x, y) in enumerate(tiles):
+            distance = crest - order
+            if distance < 0.0 or distance >= window:
+                continue
+            envelope = 1.0 - abs(distance - window / 2.0) / (window / 2.0)
+            frame = round(peak_frame * envelope)
+            if frame <= 0:
+                continue
+            frames[(x, y)] = frame
+        return frames
 
     def story_relic_guidance_route(
         self, target: tuple[float, float]

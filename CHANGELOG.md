@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.8.1 — The floor shows the way
+
+Release 4.8.1 replaces the procedural guiding-light crack with an authored animated floor tile: while the player stands still, a slow warm-gold pulse rolls tile by tile from the player's feet along the route to the relic — a wave that shows the way; the moment the player moves, the floor is completely calm — plain static tiles, no guidance drawing at all.
+
+### Added
+
+- **Animated guiding floor tile** (`guiding_floor`): a 9-frame set built from the PixelLab guiding-light tile — only its golden rune lines (gold-hue masked, brightened to survive the theme tint and darkness pipeline, faded toward the tile border) blend in over the completely untouched stock floor art, so the stone never shifts, brightens, or extrudes; at rest the frames are pixel-identical to the plain floor outside the rune. A single crest travels from the player toward the relic lighting at most 3 route tiles at a time (triangular envelope, ~1.2 tiles/s, wrapping back to the player), and it sets out anew each time the player comes to rest.
+
+### Changed
+
+- **Relic guidance rendering** (modern graphics): tiles under the wave crest are rendered *as* the animated guiding tile inside the regular floor pass — the tile art itself is swapped for the duration, nothing is ever blitted on top of an already-drawn tile — with the same painter order, tint, variant, and darkness treatment as any floor tile. The mobile cached floor layer is bypassed while the wave is active (the player is standing still, so there is no traversal load). Special-room floors keep their own art. The procedural carved-crack guidance remains as the legacy-graphics fallback, and nothing is drawn while the player is moving.
+
 ## 4.8.0 — The relic turns
 
 Release 4.8.0 puts the authored relic asset on stage: the story relic is now a slowly rotating animated gem everywhere it appears — the level-intro cutscene, the story-intro tableau, and on the dungeon floor — while legacy graphics keep the historical procedural look. The theater itself was decluttered and slowed so scenes read as a stage play rather than a HUD.

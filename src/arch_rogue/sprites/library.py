@@ -795,7 +795,14 @@ class AssetSpriteLibrary:
         if source is None:
             return None
         should_flip = mirror
-        if key in ("floor", "garden_floor", "bar_floor", "quest_floor", "shop_floor"):
+        if key in (
+            "floor",
+            "guiding_floor",
+            "garden_floor",
+            "bar_floor",
+            "quest_floor",
+            "shop_floor",
+        ):
             should_flip = should_flip ^ bool(variant % 2)
         if should_flip:
             source = pygame.transform.flip(source, True, False)

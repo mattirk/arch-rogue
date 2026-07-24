@@ -19,6 +19,7 @@ import pygame
 from arch_rogue.constants import DUNGEON_DEPTH
 from arch_rogue.content import STORY_CORPUS
 from arch_rogue.game import ARCHETYPES, Game
+from arch_rogue.models import Tile
 from arch_rogue.story import load_quest_cutscene_library
 from arch_rogue.story import StoryEngine, story_state_to_dict
 
@@ -75,6 +76,13 @@ class StoryModeTests(unittest.TestCase):
                         return_value=route,
                     ),
                     patch.object(game, "tile_visibility_alpha", return_value=255),
+                    # Force the legacy carved-crack path; the modern animated
+                    # guiding_floor tiles are covered by their own test below.
+                    patch.object(
+                        game.sprites,
+                        "world_tile_animation_frame_count",
+                        return_value=1,
+                    ),
                     patch.object(
                         game,
                         "_guidance_glow_layer",
@@ -99,6 +107,83 @@ class StoryModeTests(unittest.TestCase):
                     game.screen.get_width() * game.screen.get_height() // 3,
                 )
                 self.assertNotEqual(pygame.image.tobytes(game.screen, "RGB"), before)
+            finally:
+                game.story_relic_guidance_enabled = False
+
+    def test_story_guidance_draws_animated_guiding_tiles_when_idle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            try:
+                self.confirm_story_intro(game)
+                game.story_relic_guidance_enabled = True
+                game.story_intro_pending = False
+                px = float(game.player.x)
+                py = float(game.player.y)
+                step = 1.0 if int(px) + 4 < len(game.dungeon.tiles) else -1.0
+                route = [(px + step * index, py) for index in range(4)]
+                target = route[-1]
+                for wx, wy in route[1:-1]:
+                    game.dungeon.tiles[int(wx)][int(wy)] = Tile.FLOOR
+                self.assertGreater(
+                    game.sprites.world_tile_animation_frame_count("guiding_floor"),
+                    1,
+                )
+                with (
+                    patch.object(
+                        game,
+                        "story_relic_target_position",
+                        return_value=target,
+                    ),
+                    patch.object(
+                        game,
+                        "story_relic_guidance_route",
+                        return_value=route,
+                    ),
+                    patch.object(game, "tile_visibility_alpha", return_value=255),
+                ):
+                    # Mid-crest while idle: route tiles map to animation
+                    # frames and the floor pass renders those tiles AS the
+                    # guiding tile (different surface than the plain floor).
+                    game.player.moving = False
+                    game._guidance_idle_since = game.elapsed - 0.5
+                    frames = game.story_guidance_tile_frames()
+                    self.assertTrue(frames)
+                    self.assertTrue(
+                        all(1 <= frame <= 8 for frame in frames.values())
+                    )
+                    (gx, gy), gframe = next(iter(frames.items()))
+                    seed = game.tile_seed(gx, gy)
+                    plain = game.tile_surface(Tile.FLOOR, seed)
+                    guiding = game.tile_surface(
+                        Tile.FLOOR, seed, guiding_frame=gframe
+                    )
+                    self.assertNotEqual(
+                        pygame.image.tobytes(plain[0], "RGBA"),
+                        pygame.image.tobytes(guiding[0], "RGBA"),
+                    )
+                    # Special-room floors keep their own art.
+                    shop = game.tile_surface(
+                        Tile.FLOOR, seed, shop_floor=True, guiding_frame=gframe
+                    )
+                    shop_plain = game.tile_surface(
+                        Tile.FLOOR, seed, shop_floor=True
+                    )
+                    self.assertEqual(
+                        pygame.image.tobytes(shop[0], "RGBA"),
+                        pygame.image.tobytes(shop_plain[0], "RGBA"),
+                    )
+
+                    # While moving the map is empty and the idle clock
+                    # resets, so the crest sets out from the player on the
+                    # next stop.
+                    game.player.moving = True
+                    self.assertEqual(game.story_guidance_tile_frames(), {})
+                    self.assertIsNone(game._guidance_idle_since)
+
+                    # The legacy carved crack stays disabled in modern mode.
+                    game.player.moving = False
+                    game.draw_story_relic_guidance()
+                    self.assertIsNone(game._guidance_glow_blit_rect)
             finally:
                 game.story_relic_guidance_enabled = False
 

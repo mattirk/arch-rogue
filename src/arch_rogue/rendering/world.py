@@ -91,7 +91,14 @@ _GOLD_STACK_EXTRA_SALT = 0x71D6B295
 
 class RenderingWorldMixin:
     def draw_dungeon(self) -> None:
-        if self._draw_cached_mobile_floor_layer():
+        # Route tiles under the guidance wave are rendered AS the animated
+        # guiding_floor tile inside the regular floor pass (see
+        # _tile_blit_entry) — never blitted on top of an already-drawn tile.
+        # The mobile cached floor layer cannot host per-frame tile swaps, so
+        # while the wave is active (player standing still, so there is no
+        # traversal load) the cache is bypassed and the per-tile path runs.
+        self._guidance_tile_frames = self.story_guidance_tile_frames()
+        if not self._guidance_tile_frames and self._draw_cached_mobile_floor_layer():
             self._draw_mobile_animated_stairs_overlay()
             return
         self._blit_floor_entries(self.screen, self._floor_blit_entries())
@@ -520,11 +527,17 @@ class RenderingWorldMixin:
             if tile == Tile.STAIRS
             else 0
         )
-        descriptor_key = (
-            (x, y, int(tile), animation_frame)
-            if tile == Tile.STAIRS
-            else (x, y, int(tile))
-        )
+        guiding_frame = 0
+        if tile == Tile.FLOOR:
+            guiding_frame = getattr(self, "_guidance_tile_frames", {}).get(
+                (x, y), 0
+            )
+        if tile == Tile.STAIRS:
+            descriptor_key = (x, y, int(tile), animation_frame)
+        elif guiding_frame:
+            descriptor_key = (x, y, int(tile), "guiding", guiding_frame)
+        else:
+            descriptor_key = (x, y, int(tile))
         descriptor = descriptor_cache.get(descriptor_key)
         if descriptor is None:
             seed = self.tile_seed(x, y)
@@ -544,6 +557,7 @@ class RenderingWorldMixin:
                 wall_face_style=wall_face_style,
                 bar_wall_light_side=bar_wall_light_side,
                 animation_frame=animation_frame,
+                guiding_frame=guiding_frame,
             )
             descriptor_cache[descriptor_key] = descriptor
         surface, anchor_x, anchor_y = descriptor
@@ -832,12 +846,20 @@ class RenderingWorldMixin:
         wall_face_style: str | None = None,
         bar_wall_light_side: str | None = None,
         animation_frame: int = 0,
+        guiding_frame: int = 0,
     ) -> tuple[pygame.Surface, int, int]:
         # ``wall_face_style`` is "<kind>:<side>" (or legacy "left"/"right") and
         # selects which side face of a WALL tile gets distinct interior wall art.
         # ``shop_floor`` / ``guest`` / ``bar_floor`` / ``garden_floor`` select the
         # floor art for the four special-room floor kinds; they are mutually
         # exclusive in practice (a tile belongs to at most one special room).
+        # ``guiding_frame`` > 0 renders a plain FLOOR tile as that frame of the
+        # relic-guidance ``guiding_floor`` animation instead of the static
+        # floor art (special-room floors keep their own art).
+        if guiding_frame and (
+            tile != Tile.FLOOR or shop_floor or guest or bar_floor or garden_floor
+        ):
+            guiding_frame = 0
         key = (
             self.theme.name,
             int(tile),
@@ -851,6 +873,8 @@ class RenderingWorldMixin:
         )
         if tile == Tile.STAIRS:
             key += (animation_frame,)
+        if guiding_frame:
+            key += ("guiding", guiding_frame)
         cached = self.tile_cache.get(key)
         if cached:
             return cached
@@ -890,6 +914,9 @@ class RenderingWorldMixin:
             asset_key = "quest_floor"
         elif shop_floor:
             asset_key = "shop_floor"
+        elif guiding_frame:
+            asset_key = "guiding_floor"
+            animation_frame = guiding_frame
         else:
             asset_key = "floor"
         accent = (

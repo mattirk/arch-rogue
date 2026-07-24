@@ -6795,6 +6795,27 @@
       ],
       "tint_strength": 0.14
     },
+    "guiding_floor": {
+      "path": "world/floor.png",
+      "frames": [
+        "world/floor.png",
+        "world/guiding_floor_001.png",
+        "world/guiding_floor_002.png",
+        "world/guiding_floor_003.png",
+        "world/guiding_floor_004.png",
+        "world/guiding_floor_005.png",
+        "world/guiding_floor_006.png",
+        "world/guiding_floor_007.png",
+        "world/guiding_floor_008.png"
+      ],
+      "fps": 5.0,
+      "ping_pong": true,
+      "source_anchor": [
+        32,
+        40
+      ],
+      "tint_strength": 0.55
+    },
     "quest_floor": {
       "path": "world/quest_floor.png",
       "source_anchor": [

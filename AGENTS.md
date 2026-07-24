@@ -316,6 +316,11 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
 ### 4.8 The relic turns once more
 
 
+#### 4.8.1 Guiding light cracked
+
+- Guiding light "crack on the floor" needs to be more visible
+  - I'm thinking about generating an animated tile (very similar to current floor tile) using Pixellab. The tiles leading to relic would be subtly animated when the player stops moving. Tiles would be drawn as normal static tiles when player is moving (and we can disable guiding light draw totally when player is moving)
+
 ### Backlog
 
 - Make action skill 1 "a big hit" for all characters (normal hit stays as it is when walking towards enemies, maybe lower it's effectiveness a bit). The hit throws one enemy 4+ tiles away and has long cooldown. Each archetype has unique type of "bit hit" attach (needs to be designed)
