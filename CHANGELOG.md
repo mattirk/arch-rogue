@@ -8,7 +8,7 @@ Release 4.8.2 makes the authored menu-row frame consistent from compact desktop 
 
 - **Responsive authored menu rows**: `row.png` and its selected variant now contract their nine-slice endcaps and border bands only below the 88 px reference height, keeping compact rows proportional and leaving a long, readable center plate. The high-resolution reference layouts remain pixel-identical, so separate per-resolution assets are unnecessary.
 - **Consistent row typography and controls grids**: keys and values that do not fit inside ornamental endcaps move into aligned center-plate columns for the whole list. Dense Controls rows now retain the authored frame in both columns without clipped bindings or row-to-row alignment jumps, and right-aligned statuses keep clear of the ornament zone.
-- **Dedicated co-op title row**: only “Two will descend” uses the new twin-entrance endcap; every other menu row retains the original authored endcap. The obsolete overlaid two-figure glyph and procedural fallback are removed. The co-op terminal is twice the original endcap width while preserving the approved narrow entrance arches, with dedicated nine-slice/content insets for compact, mobile, and high-resolution layouts.
+- **Semantic menu-row endcaps**: only “Two will descend” uses the new twin-entrance endcap; ordinary rows retain the original authored endcap, while selected rows use a 1.5×-wide arrow endcap built from the mirrored original left-side frame and a new PixelLab arrow. The obsolete overlaid two-figure glyph and procedural fallback are removed. The co-op and selected terminals have dedicated nine-slice/content insets for compact, mobile, and high-resolution layouts.
 
 ## 4.8.1 — The floor shows the way
 

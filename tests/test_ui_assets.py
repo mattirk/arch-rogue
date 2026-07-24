@@ -312,14 +312,41 @@ class UiAssetTests(unittest.TestCase):
                     ),
                     pygame.image.tobytes(expected_corner, "RGBA"),
                 )
+                expected_compact = (
+                    pygame.Rect(52, 3, 673, 38)
+                    if key == "menu.row.selected"
+                    else pygame.Rect(52, 3, 696, 38)
+                )
+                expected_reference = (
+                    pygame.Rect(92, 6, 1419, 76)
+                    if key == "menu.row.selected"
+                    else pygame.Rect(92, 6, 1464, 76)
+                )
                 self.assertEqual(
                     library.content_rect(key, pygame.Rect(0, 0, 800, 44)),
-                    pygame.Rect(52, 3, 696, 38),
+                    expected_compact,
                 )
                 self.assertEqual(
                     library.content_rect(key, pygame.Rect(0, 0, 1648, 88)),
-                    pygame.Rect(92, 6, 1464, 76),
+                    expected_reference,
                 )
+
+        selected_entry = library.manifest["assets"]["menu.row.selected"]
+        self.assertEqual(selected_entry["insets"], [105, 10, 150, 10])
+        self.assertEqual(selected_entry["content_insets"], [92, 6, 137, 6])
+        selected = library.source("menu.row.selected")
+        default = library.source("menu.row")
+        self.assertIsNotNone(selected)
+        self.assertIsNotNone(default)
+        assert selected is not None and default is not None
+        self.assertEqual(
+            pygame.image.tobytes(selected.subsurface((0, 0, 488, 52)), "RGBA"),
+            pygame.image.tobytes(default.subsurface((0, 0, 488, 52)), "RGBA"),
+        )
+        self.assertNotEqual(
+            pygame.image.tobytes(selected.subsurface((488, 0, 135, 52)), "RGBA"),
+            pygame.image.tobytes(default.subsurface((488, 0, 135, 52)), "RGBA"),
+        )
 
         special_key = "menu.row.two_descend"
         special_entry = library.manifest["assets"][special_key]
@@ -341,7 +368,7 @@ class UiAssetTests(unittest.TestCase):
         )
         self.assertEqual(
             library.content_rect(special_key, pygame.Rect(0, 0, 800, 44)),
-            pygame.Rect(46, 3, 662, 38),
+            pygame.Rect(52, 3, 650, 38),
         )
         self.assertEqual(
             library.content_rect(special_key, pygame.Rect(0, 0, 1648, 88)),

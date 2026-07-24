@@ -71,8 +71,8 @@
     "menu.row.selected": {
       "path": "menus/row_selected.png",
       "render": "nine_slice",
-      "insets": [105, 10, 105, 10],
-      "content_insets": [92, 6, 92, 6],
+      "insets": [105, 10, 150, 10],
+      "content_insets": [92, 6, 137, 6],
       "shrink_insets_below_height": 88
     },
     "menu.row": {
