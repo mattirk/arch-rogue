@@ -355,6 +355,14 @@ Always update CHANGELOG.md, pyproject.toml and other version number references w
   - When correct story path chosen
   - Guiding path also guides from relic to stairs after relic is collected
 - Make it so that on mobile, none of menu rows ase selected at any time since on mobile, you dont select, you tap to activate. Exception is archetype selection where tapping selects for preview and button confirms archetype selection.
+- Add mini games into cutscenes and make story even shorter in amount of text -> more well curated but shorter
+  - Story Mini-Game (main storyline)
+  - Bar Mini-Game
+  - Garden Mini-Game
+  - Soul Mini-Game
+  - Design mini-games so that they work via tapping (touch) and clicking (with mouse)
+  - Make the mini-games simple but engaging, you can lend classic good ideas for a mini-game
+  - Each mini-game supports multiplayer with guest from the start -> now guest also has something to do during cutscenes
 
 
 
