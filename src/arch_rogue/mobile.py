@@ -37,6 +37,8 @@ _FALSE_VALUES = frozenset(("0", "false", "no", "off"))
 MOBILE_PERF_LOG_PREFIX = "ARCH_ROGUE_PERF"
 MOBILE_PERF_REPORT_INTERVAL = 4.0
 MOBILE_DOUBLE_TAP_SECONDS = 0.65
+MOBILE_PINCH_MIN_DISTANCE = 24.0
+MOBILE_PINCH_DEADZONE_RATIO = 0.015
 PYGAME_BLEND_ALPHA_SDL2_ENV = "PYGAME_BLEND_ALPHA_SDL2"
 MOBILE_PERF_PHASES = (
     "tick",
@@ -1064,6 +1066,11 @@ class MobileMixin:
         ] | None = None
         self._mobile_touch_targets: list[MobileTouchTarget] = []
         self._mobile_touch_contacts: dict[tuple[int, int], _TouchContact] = {}
+        self._mobile_pinch_fingers: tuple[
+            tuple[int, int], tuple[int, int]
+        ] | None = None
+        self._mobile_pinch_start_distance = 0.0
+        self._mobile_pinch_start_zoom = float(getattr(self, "view_zoom", 1.0))
         self._mobile_last_row_tap: tuple[str, int, float] | None = None
         # Transient touch-confirmation ripples: (x, y, start_time). Drawn as a
         # brief expanding ring so every successful tap gives immediate visual
@@ -1944,6 +1951,88 @@ class MobileMixin:
         self._mobile_world_finger = None
         self._mobile_touch_world_active = False
 
+    def mobile_pinch_active(self) -> bool:
+        """Return whether two world contacts currently own viewport zoom."""
+        return self._mobile_pinch_fingers is not None
+
+    def _try_begin_mobile_pinch(self) -> bool:
+        """Promote the primary and secondary world contacts into a pinch."""
+        if self.mobile_pinch_active():
+            return True
+        if not self.mobile_world_input_enabled():
+            return False
+        primary_key = self._mobile_world_finger
+        if primary_key is None:
+            return False
+        primary = self._mobile_touch_contacts.get(primary_key)
+        if primary is None or primary.role != "world":
+            return False
+        secondary_entry = next(
+            (
+                (key, contact)
+                for key, contact in self._mobile_touch_contacts.items()
+                if contact.role == "world_secondary"
+            ),
+            None,
+        )
+        if secondary_entry is None:
+            return False
+        secondary_key, secondary = secondary_entry
+        distance = math.hypot(
+            secondary.position[0] - primary.position[0],
+            secondary.position[1] - primary.position[1],
+        )
+        if distance < MOBILE_PINCH_MIN_DISTANCE:
+            return False
+
+        primary.role = "pinch"
+        secondary.role = "pinch"
+        self._mobile_pinch_fingers = (primary_key, secondary_key)
+        self._mobile_pinch_start_distance = distance
+        self._mobile_pinch_start_zoom = float(getattr(self, "view_zoom", 1.0))
+        # Pinching owns both world fingers. Stop the first finger from steering
+        # aim while its span is being interpreted as a camera gesture.
+        self._release_mobile_world_touch()
+        return True
+
+    def _update_mobile_pinch(self) -> bool:
+        fingers = self._mobile_pinch_fingers
+        if fingers is None:
+            return False
+        first = self._mobile_touch_contacts.get(fingers[0])
+        second = self._mobile_touch_contacts.get(fingers[1])
+        if first is None or second is None:
+            self._end_mobile_pinch()
+            return False
+        distance = math.hypot(
+            second.position[0] - first.position[0],
+            second.position[1] - first.position[1],
+        )
+        if self._mobile_pinch_start_distance <= 0.0:
+            return False
+        ratio = distance / self._mobile_pinch_start_distance
+        if abs(ratio - 1.0) <= MOBILE_PINCH_DEADZONE_RATIO:
+            target_zoom = self._mobile_pinch_start_zoom
+        else:
+            target_zoom = self._mobile_pinch_start_zoom * ratio
+        self.set_view_zoom(target_zoom)
+        return True
+
+    def _end_mobile_pinch(self) -> None:
+        fingers = self._mobile_pinch_fingers
+        self._mobile_pinch_fingers = None
+        self._mobile_pinch_start_distance = 0.0
+        self._mobile_pinch_start_zoom = float(getattr(self, "view_zoom", 1.0))
+        self._release_mobile_world_touch()
+        if fingers is None:
+            return
+        # A finger left on the glass after its partner releases is consumed
+        # until it also lifts. It must not suddenly become aim or a world tap.
+        for key in fingers:
+            contact = self._mobile_touch_contacts.get(key)
+            if contact is not None and contact.role == "pinch":
+                contact.role = "pinch_consumed"
+
     def _drop_stale_mobile_contact(self, key: tuple[int, int]) -> None:
         """Recover when a finger key reappears without its FINGERUP.
 
@@ -1954,6 +2043,9 @@ class MobileMixin:
         """
         if self._mobile_touch_contacts.pop(key, None) is None:
             return
+        pinch_fingers = self._mobile_pinch_fingers
+        if pinch_fingers is not None and key in pinch_fingers:
+            self._end_mobile_pinch()
         if key == self._mobile_joystick_finger:
             self._mobile_joystick_finger = None
             self._mobile_joystick_vector = (0.0, 0.0)
@@ -1961,6 +2053,7 @@ class MobileMixin:
             self._release_mobile_world_touch()
 
     def cancel_mobile_touches(self) -> None:
+        self._end_mobile_pinch()
         self._mobile_touch_contacts.clear()
         self._mobile_last_row_tap = None
         self._release_mobile_world_touch()
@@ -2086,7 +2179,17 @@ class MobileMixin:
                 return True
 
             if self.mobile_world_input_enabled() and self.screen_point_in_world_viewport(point):
-                role = "world" if self._mobile_world_finger is None else "world_secondary"
+                if self.mobile_pinch_active():
+                    role = "pinch_consumed"
+                elif self._mobile_world_finger is None:
+                    role = "world"
+                elif any(
+                    contact.role == "world_secondary"
+                    for contact in self._mobile_touch_contacts.values()
+                ):
+                    role = "world_extra"
+                else:
+                    role = "world_secondary"
                 self._mobile_touch_contacts[key] = _TouchContact(role, point, point)
                 if role == "world":
                     self._mobile_world_finger = key
@@ -2095,6 +2198,8 @@ class MobileMixin:
                     self.aim_input_mode = "touch"
                     if hasattr(self, "player"):
                         self.face_player_toward_screen_point(*point)
+                elif role == "world_secondary":
+                    self._try_begin_mobile_pinch()
                 return True
 
             self._mobile_touch_contacts[key] = _TouchContact("tap", point, point)
@@ -2105,7 +2210,14 @@ class MobileMixin:
             return True
         contact.position = point
         if event.type == getattr(pygame, "FINGERMOTION", -11):
-            if contact.role == "joystick" and key == self._mobile_joystick_finger:
+            if contact.role == "pinch":
+                self._update_mobile_pinch()
+            elif (
+                contact.role in ("world", "world_secondary")
+                and self._try_begin_mobile_pinch()
+            ):
+                self._update_mobile_pinch()
+            elif contact.role == "joystick" and key == self._mobile_joystick_finger:
                 self._update_mobile_joystick(point)
             elif contact.role == "world" and key == self._mobile_world_finger:
                 self._mobile_touch_world_point = point
@@ -2114,6 +2226,9 @@ class MobileMixin:
                     self.face_player_toward_screen_point(*point)
             return True
 
+        if contact.role == "pinch":
+            self._update_mobile_pinch()
+            self._end_mobile_pinch()
         self._mobile_touch_contacts.pop(key, None)
         if contact.role == "joystick" and key == self._mobile_joystick_finger:
             self._mobile_joystick_finger = None

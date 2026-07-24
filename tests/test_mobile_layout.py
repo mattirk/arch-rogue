@@ -2036,6 +2036,122 @@ class MobileTouchTests(unittest.TestCase):
                 facing_after_release,
             )
 
+    def test_two_world_fingers_pinch_zoom_and_consume_aim_until_release(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_mobile_game(tmpdir, (1280, 720))
+            game.draw()
+            game.view_zoom = 1.0
+            size = game._mobile_display_surface().get_size()
+            gameplay = game.mobile_layout().gameplay_rect
+            half_span = min(120, max(40, gameplay.width // 6))
+            first_point = (gameplay.centerx - half_span, gameplay.centery)
+            second_point = (gameplay.centerx + half_span, gameplay.centery)
+            outward_point = (gameplay.centerx + half_span * 2, gameplay.centery)
+            far_point = (size[0] - 2, gameplay.centery)
+            inward_point = (first_point[0] + 5, gameplay.centery)
+            first_key = (0, 91)
+            second_key = (0, 92)
+
+            self.assertTrue(game.screen_point_in_world_viewport(first_point))
+            self.assertTrue(game.screen_point_in_world_viewport(second_point))
+            first_down = self.finger_event(
+                pygame.FINGERDOWN,
+                *self.normalized(first_point, size),
+                key=first_key,
+            )
+            second_down = self.finger_event(
+                pygame.FINGERDOWN,
+                *self.normalized(second_point, size),
+                key=second_key,
+            )
+            self.assertTrue(game.handle_mobile_finger_event(first_down))
+            self.assertTrue(game.handle_mobile_finger_event(second_down))
+            self.assertTrue(game.mobile_pinch_active())
+            self.assertFalse(game._mobile_touch_world_active)
+            self.assertIsNone(game.active_mobile_world_touch())
+            self.assertEqual(
+                {contact.role for contact in game._mobile_touch_contacts.values()},
+                {"pinch"},
+            )
+            with (
+                patch(
+                    "arch_rogue.rendering.world.sdl2_alpha_blitter_requested",
+                    return_value=True,
+                ),
+                patch.object(game, "is_current_floor_dark", return_value=False),
+            ):
+                self.assertFalse(game.mobile_opaque_floor_layer_active())
+
+            mapped_first = game.mobile_finger_position(first_down, size)
+            mapped_second = game.mobile_finger_position(second_down, size)
+            initial_distance = math.dist(mapped_first, mapped_second)
+            outward = self.finger_event(
+                pygame.FINGERMOTION,
+                *self.normalized(outward_point, size),
+                key=second_key,
+            )
+            mapped_outward = game.mobile_finger_position(outward, size)
+            expected_zoom = math.dist(mapped_first, mapped_outward) / initial_distance
+            self.assertTrue(game.handle_mobile_finger_event(outward))
+            self.assertAlmostEqual(game.view_zoom, expected_zoom, places=3)
+            self.assertGreater(game.view_zoom, 1.0)
+            game.draw()
+            viewport = game.mobile_world_viewport()
+            self.assertIsNotNone(game._world_layer)
+            assert game._world_layer is not None
+            self.assertEqual(
+                game._world_layer.get_size(),
+                (
+                    max(320, round(viewport.width / game.view_zoom)),
+                    max(240, round(viewport.height / game.view_zoom)),
+                ),
+            )
+
+            far = self.finger_event(
+                pygame.FINGERMOTION,
+                *self.normalized(far_point, size),
+                key=second_key,
+            )
+            self.assertTrue(game.handle_mobile_finger_event(far))
+            self.assertAlmostEqual(game.view_zoom, game.VIEW_ZOOM_MAX)
+
+            inward = self.finger_event(
+                pygame.FINGERMOTION,
+                *self.normalized(inward_point, size),
+                key=second_key,
+            )
+            self.assertTrue(game.handle_mobile_finger_event(inward))
+            self.assertAlmostEqual(game.view_zoom, game.VIEW_ZOOM_MIN)
+
+            second_up = self.finger_event(
+                pygame.FINGERUP,
+                *self.normalized(inward_point, size),
+                key=second_key,
+            )
+            self.assertTrue(game.handle_mobile_finger_event(second_up))
+            self.assertFalse(game.mobile_pinch_active())
+            self.assertEqual(
+                game._mobile_touch_contacts[first_key].role,
+                "pinch_consumed",
+            )
+            released_zoom = game.view_zoom
+            first_motion = self.finger_event(
+                pygame.FINGERMOTION,
+                *self.normalized(outward_point, size),
+                key=first_key,
+            )
+            self.assertTrue(game.handle_mobile_finger_event(first_motion))
+            self.assertEqual(game.view_zoom, released_zoom)
+            self.assertFalse(game._mobile_touch_world_active)
+
+            first_up = self.finger_event(
+                pygame.FINGERUP,
+                *self.normalized(outward_point, size),
+                key=first_key,
+            )
+            self.assertTrue(game.handle_mobile_finger_event(first_up))
+            self.assertEqual(game._mobile_touch_contacts, {})
+
     def test_skill_finger_dispatches_ability_without_world_input(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_mobile_game(tmpdir, (1280, 720))
@@ -2095,6 +2211,7 @@ class MobileTouchTests(unittest.TestCase):
             self.assertGreater(game.mobile_joystick_screen_vector()[0], 0.0)
             self.assertTrue(game._mobile_touch_world_active)
             self.assertEqual(game.aim_input_mode, "touch")
+            self.assertFalse(game.mobile_pinch_active())
 
     def test_world_and_skill_fingers_can_coexist(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

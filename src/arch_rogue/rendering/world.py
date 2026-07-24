@@ -369,6 +369,11 @@ class RenderingWorldMixin:
 
         if not getattr(self, "mobile_mode", False):
             return False
+        # Pinch zoom continuously changes the world-target dimensions. Rebuilding
+        # the oversized guttered cache for every tiny span update costs more than
+        # drawing only the visible floor; the cache resumes after both fingers lift.
+        if self.mobile_pinch_active():
+            return False
         if not sdl2_alpha_blitter_requested() or self.is_current_floor_dark():
             return False
         screen_w, screen_h = self._screen_size()

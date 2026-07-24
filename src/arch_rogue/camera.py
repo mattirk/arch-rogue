@@ -41,13 +41,20 @@ class CameraMixin:
     VIEW_ZOOM_MAX = 1.6
     VIEW_ZOOM_STEP = 1.12
 
+    def set_view_zoom(self, zoom: float) -> None:
+        """Set viewport zoom while enforcing the shared camera limits."""
+        self.view_zoom = max(
+            self.VIEW_ZOOM_MIN,
+            min(self.VIEW_ZOOM_MAX, float(zoom)),
+        )
+
     def adjust_view_zoom(self, notches: float) -> None:
         """Adjust viewport zoom by a number of scroll notches (positive = in)."""
         if not notches:
             return
         factor = self.VIEW_ZOOM_STEP ** notches
         zoom = getattr(self, "view_zoom", 1.0) * factor
-        self.view_zoom = max(self.VIEW_ZOOM_MIN, min(self.VIEW_ZOOM_MAX, zoom))
+        self.set_view_zoom(zoom)
 
     def world_to_iso(self, x: float, y: float) -> tuple[float, float]:
         return (x - y) * TILE_W / 2, (x + y) * TILE_H / 2

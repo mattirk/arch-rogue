@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.8.4 — The depths move at a touch
+
+Release 4.8.4 polishes the mobile presentation at ultrawide 720p and adds direct two-finger control over the dungeon view, while keeping gameplay gestures and controls isolated from camera input.
+
+### Added
+
+- **In-game mobile pinch zoom**: two unobstructed touches on the world continuously zoom the dungeon camera through the existing 0.65×–1.6× range. HUD, joystick, and skill-button contacts cannot start or join a pinch, and a completed pinch consumes its remaining contact until release so it cannot become an aim or tap action.
+
+### Changed
+
+- **Ultrawide 720p menu scaling**: mobile panels and authored menu rows now retain their intended roughly two-thirds screen width when the automatically selected 1× UI scale is active, matching the established row proportions instead of stretching across the viewport.
+- **Responsive pinch rendering**: active pinch gestures bypass the mobile floor cache, avoiding repeated rebuilds of oversized cached layers while zoom changes every frame; ordinary gameplay continues to use the cache.
+
 ## 4.8.3 — The gate stays open
 
 Release 4.8.3 lets co-op partners descend together across different game releases. Revision differences are now visible compatibility warnings rather than connection failures, so players can proceed while understanding that content drift may cause desyncs or missing features.

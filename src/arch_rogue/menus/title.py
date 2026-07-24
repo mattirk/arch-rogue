@@ -634,6 +634,7 @@ class MenuTitleMixin:
             f"Difficulty: {self.g.difficulty_profile().name} — change it from Options; Hell unlocks after one clear.",
             "Resources: stamina powers melee and movement skills; mana powers bolts and class skills. The action rail combines skill icons and cooldowns.",
             "Inventory and character menus open from the left rail. Tap rows and swipe lists to navigate.",
+            "View: pinch with two fingers in the unobstructed dungeon view to zoom in or out.",
             "Discovery: unidentified gear needs scrolls, Insight Shrines, or equipping to reveal.",
             "Dark floors: sight is limited to 4 tiles; monsters navigate normally.",
             "Hazards: traps are single-use but dangerous; shrines and secrets can swing a run.",

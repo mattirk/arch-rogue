@@ -404,8 +404,8 @@ class Game(
         self.screen_flash_color: Color = (0, 0, 0)
         # Viewport zoom ("viewport distance"); adjusted in-game with Ctrl+scroll.
         # Desktop defaults to the widest view (max zoomed out) so players see
-        # more of the dungeon at once; mobile keeps native scale since its
-        # landscape layout and touch targets are tuned for 1.0.
+        # more of the dungeon at once. Mobile starts at native scale and lets
+        # players adjust the world view with a two-finger pinch.
         self.view_zoom = 1.0 if self.mobile_mode else self.VIEW_ZOOM_MIN
         self._world_layer: pygame.Surface | None = None
         # Headless callers (tests, benchmarks, tooling) must not inherit the

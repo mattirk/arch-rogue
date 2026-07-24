@@ -304,7 +304,7 @@ carries the aim vector in `move_x/move_y`. The host times out stale movement
 - `protocol_version` (integer, currently **1**) is carried in `hello`. A
   mismatch is rejected fatally with `bad_version` before any pairing.
 - `content_revision` (string; the game sends its release version, e.g.
-  `"4.8.3"`) is recorded per seat. A difference is logged and exposed to both
+  `"4.8.4"`) is recorded per seat. A difference is logged and exposed to both
   clients through optional `partner_revision` fields, but does not block
   pairing. Updated clients warn that content drift may desync the run.
 - Additive message types (e.g. `kick`, added in 4.7.0) do not bump
