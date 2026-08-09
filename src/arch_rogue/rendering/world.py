@@ -2610,7 +2610,13 @@ class RenderingWorldMixin:
         combat_focus = bool(
             getattr(self, "mobile_mode", False) and visible_enemy_total > 0
         )
-        if self.story_relic_target_position() is not None and not combat_focus:
+        if (
+            self.story_relic_target_position() is not None
+            and not combat_focus
+            # Dark floors draw the guidance after the darkness pass instead
+            # (rendering/base.py), so the light is not crushed by it.
+            and not self.is_current_floor_dark()
+        ):
             guidance_started = time.perf_counter()
             self.draw_story_relic_guidance()
             performance = getattr(self, "_mobile_performance_monitor", None)

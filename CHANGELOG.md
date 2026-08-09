@@ -1,5 +1,43 @@
 # Changelog
 
+## 5.0.2 — The light leads on
+
+Quality-of-descent: the guiding light learns two new tricks and the dark
+stops eating the stairs.
+
+### Added
+
+- **Aid-streak stairs guidance**: keep answering every guest with Aid and
+  the guiding light no longer dies at the relic — once it is recovered, the
+  same light (floor runes, carved-groove glow, and the minimap beacon)
+  leads on to the stairs. One Bargain or Defy anywhere in the run silences
+  the extension for good; the light then only ever guides to the relic.
+- **Sticky stairs marker on dark floors**: once the lantern has touched the
+  stairs, their minimap marker persists for the rest of the floor —
+  off-view it clamps to the card edge as an arrow guiding back through the
+  black. Flavor-room markers keep the strict lantern-only model.
+
+### Changed
+
+- **The guiding light works on dark floors**: it now draws after the
+  darkness pass (instead of inside the world pass, where the dark crushed
+  it) and its lantern clip is relaxed there, so the guest's light visibly
+  leads through the black. Light floors keep the modern floor-tile
+  animation exactly as before.
+
+### Validation
+
+- New suite (`test_stairs_guidance`): streak tracking from story flags,
+  target extension and its minimap beacon, broken-streak and no-story
+  fallbacks, dark-floor overlay rendering (pixel-verified), sticky
+  dark-floor stairs marker with per-floor reset.
+- Runtime, Android package defaults, relay-server metadata, and download
+  metadata report `5.0.2`. Save, options, and multiplayer protocol schemas
+  are unchanged.
+- `python -m compileall src tests`
+- Full non-web test suite
+
+
 ## 5.0.1 — Cloud-ready saves and the Chronicle
 
 Steam Cloud groundwork and a new title-menu screen for the run ledger the

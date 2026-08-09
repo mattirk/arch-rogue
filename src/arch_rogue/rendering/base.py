@@ -827,6 +827,14 @@ class RenderingBaseMixin:
         started = time.perf_counter()
         self.draw_ambient_depth_overlay()
         self.draw_darkness_overlay()
+        if (
+            self.is_current_floor_dark()
+            and self.story_relic_target_position() is not None
+        ):
+            # 5.0.2: on dark floors the guiding light renders on top of the
+            # darkness — the guest's light defies the dark (backlog: "also
+            # on dark levels").
+            self.draw_story_relic_guidance()
         if performance is not None:
             performance.record_detail_phase("ambient", time.perf_counter() - started)
 

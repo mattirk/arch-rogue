@@ -364,7 +364,13 @@ class StoryModeTests(unittest.TestCase):
                 game.interact()
                 self.assertIsNone(game.current_story_relic())
                 self.assertTrue(game.story_relic_collected)
-                self.assertIsNone(game.story_relic_target_position())
+                # 5.0.2: this run's choices are all Aid, so the guiding
+                # light carries on from the recovered relic to the stairs.
+                stairs_x, stairs_y = game.dungeon.stairs
+                self.assertEqual(
+                    game.story_relic_target_position(),
+                    (stairs_x + 0.5, stairs_y + 0.5),
+                )
             finally:
                 pass
 

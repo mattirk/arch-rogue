@@ -140,9 +140,10 @@ class DesktopDeterminismTests(unittest.TestCase):
     # 5.0: rebaselined for the spinning relic diamond in the title logo — the
     # snapshot now captures spin frame int(8 * FIXED_DT * 8.0) = 1 after the 8
     # scripted frames. Determinism re-verified across two processes.
-    # 5.0.1: rebaselined for the sixth title row (Chronicle of descents).
-    # Determinism re-verified across two processes.
-    TITLE_HASH = "4f3dc86e7c0592f79eebedacdd3bad607daa428e8f02bf29e88f3c1e28caf602"
+    # 5.0.1: rebaselined for the sixth title row (Chronicle of descents),
+    # then for the shorter row labels ("Recall descent" / "Chronicle").
+    # Determinism re-verified across two processes each time.
+    TITLE_HASH = "bb8cf87f825bcdc45a7e0ec255babc9ebc09c1cdd056f62f87f056755d267ffd"
     # 4.7.x: gameplay/crowd rebaselined for the animated (rotating) story
     # relic frames, then for removing the stage nameplates + relic surge
     # rays, then for dropping the guest pose effects and the 1.2x slower

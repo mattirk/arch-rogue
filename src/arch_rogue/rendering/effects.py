@@ -1115,7 +1115,13 @@ class RenderingEffectsMixin:
         # _tile_blit_entry), so painter order keeps walls and southern tiles
         # layered correctly. The procedural carved crack below remains the
         # legacy-graphics fallback.
-        if self.sprites.world_tile_animation_frame_count("guiding_floor") > 1:
+        if (
+            self.sprites.world_tile_animation_frame_count("guiding_floor") > 1
+            and not self.is_current_floor_dark()
+        ):
+            # Modern tiles carry the guidance on light floors; dark floors
+            # fall through to this screen-space overlay, drawn after the
+            # darkness pass (5.0.2) so the light leads through the dark.
             return
         # The guidance uses the same carved-groove language as the floor's
         # own variant cracks (`_floor_groove`: shadowed recess + lit lip,
@@ -1221,10 +1227,18 @@ class RenderingEffectsMixin:
         # consecutive samples that sit on a currently-lit tile and only draw
         # those runs. As the player advances, more of the crack lights up and
         # the leading end fades into the dark ahead.
+        dark_floor = self.is_current_floor_dark()
+
         def tile_lit(wx: float, wy: float) -> bool:
             ix, iy = int(wx), int(wy)
             if not self.dungeon.in_bounds(ix, iy):
                 return False
+            if dark_floor:
+                # 5.0.2: on dark floors this overlay draws after the
+                # darkness pass — leading through the dark is the point, so
+                # the whole route stays lit instead of clipping to the
+                # lantern ring.
+                return True
             return self.tile_visibility_alpha(ix, iy) > 0
 
         guidance_view = pygame.Rect(0, 0, screen_w, screen_h).inflate(

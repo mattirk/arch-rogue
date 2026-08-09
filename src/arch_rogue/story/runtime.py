@@ -1388,12 +1388,36 @@ class StoryRuntimeMixin:
     def current_story_relic(self) -> Item | None:
         return next((item for item in self.items if item.slot == "story_relic"), None)
 
+    def story_aid_streak_intact(self) -> bool:
+        """True while every relic choice this run has been Aid.
+
+        The commit path appends ``"{depth}:relic:{choice}"`` to the story
+        flags for each floor, so the streak is simply "every recorded relic
+        flag says aid". One bargain or defy anywhere silences the stairs
+        extension for the rest of the run (5.0.2).
+        """
+        if self.story_state is None:
+            return False
+        choices = [
+            flag.rsplit(":relic:", 1)[1]
+            for flag in self.story_state.flags
+            if ":relic:" in flag
+        ]
+        return bool(choices) and all(choice == "aid" for choice in choices)
+
     def story_relic_target_position(self) -> tuple[float, float] | None:
         relic = self.current_story_relic()
         if relic is not None:
             return relic.x, relic.y
         if not self.story_relic_collected:
             return self.story_relic_position
+        # 5.0.2: an unbroken Aid streak carries the light onward — once the
+        # relic is recovered, the same guidance leads to the stairs. Bargain
+        # floors get relic guidance too, so the streak check (not the
+        # guidance flag) is what keeps this Aid-only.
+        if self.story_relic_guidance_enabled and self.story_aid_streak_intact():
+            stairs_x, stairs_y = self.dungeon.stairs
+            return stairs_x + 0.5, stairs_y + 0.5
         return None
 
     def begin_story_level_intro(self) -> None:
@@ -1661,7 +1685,15 @@ class StoryRuntimeMixin:
                 f"Guest relic: {self.story_relic_choice_label()} — {cues}; {guard}."
             )
         elif self.story_relic_collected:
-            lines.append("Guest relic: recovered; the guest's plea is clearer.")
+            if self.story_relic_guidance_enabled and self.story_aid_streak_intact():
+                lines.append(
+                    "Guest relic: recovered; the grateful light leads on to"
+                    " the stairs."
+                )
+            else:
+                lines.append(
+                    "Guest relic: recovered; the guest's plea is clearer."
+                )
         if mechanics:
             lines.append(f"Story forces: {mechanics}")
         elif self.story_state.log:

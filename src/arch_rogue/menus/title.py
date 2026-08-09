@@ -70,8 +70,8 @@ class MenuTitleMixin:
         rows: list[MenuRow] = [
             ("N / Enter", "One will descend", ""),
             ("T", "Two will descend", ""),
-            ("L / R", "Resume a saved run", resume_value),
-            ("V", "Chronicle of descents", chronicle_value),
+            ("L / R", "Recall descent", resume_value),
+            ("V", "Chronicle", chronicle_value),
             ("O", "Options", ""),
             ("A / C / H / ?", "About, credits, and quick help", ""),
         ]

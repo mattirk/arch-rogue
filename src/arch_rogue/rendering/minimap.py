@@ -454,8 +454,16 @@ class RenderingMinimapMixin:
 
         markers: list[tuple[str, float, float]] = []
         if self.is_current_floor_dark():
+            discovered = state["discovered"]
             for kind, wx, wy in targets:
                 if self.tile_visibility_alpha(int(wx), int(wy)) > 0:
+                    if kind == "stairs":
+                        discovered["stairs"] = True
+                    markers.append((kind, wx, wy))
+                elif kind == "stairs" and discovered.get("stairs"):
+                    # 5.0.2: once the stairs have been seen on a dark floor
+                    # they stay marked — off-window they clamp to the card
+                    # edge as an arrow guiding back through the black.
                     markers.append((kind, wx, wy))
             return markers
 
