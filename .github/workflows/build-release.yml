@@ -629,6 +629,15 @@ jobs:
           restore-keys: |
             p4a-build-${{ runner.os }}-
 
+      # The project-install stage venv must never survive between runs: a
+      # cache saved by a failed run (or a runner-python patch bump) leaves a
+      # half-upgraded pip inside it, `python -m venv` reuses the directory
+      # without reinstalling pip, and the mixed install crashes with
+      # ImportError on the next build. Recreating it is cheap; everything
+      # expensive (native recipes, dists) stays cached above.
+      - name: Drop cached project-install venvs
+        run: rm -rf .buildozer/android/platform/build-*/build/venv
+
       # ccache covers the worst case (native-input change forces a p4a clean:
       # recompiles become cache hits) and Gradle caches cover the dist
       # assembly. Both are content-addressed, so a broad restore key is
