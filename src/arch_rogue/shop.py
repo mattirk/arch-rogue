@@ -1,0 +1,250 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Matti Rita-Kasari
+#
+# AI Provenance & Liability Notice:
+# This repository contains code generated, assisted, or refactored by Artificial
+# Intelligence models. Provided strictly "AS IS" under Apache 2.0 with no warranty
+# of clean IP provenance or non-infringement; downstream users assume all legal
+# and financial risk and should perform their own compliance audits.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# pyright: reportAttributeAccessIssue=false
+from __future__ import annotations
+
+import math
+
+from .constants import MAX_INVENTORY
+from .content import SHOP_PATTER_LINES
+from .models import FloatingText, Item, Shopkeeper
+
+
+class ShopMixin:
+    def nearby_shopkeeper(self, radius: float = 1.35) -> Shopkeeper | None:
+        nearby = [
+            shopkeeper
+            for shopkeeper in self.shopkeepers
+            if math.hypot(shopkeeper.x - self.player.x, shopkeeper.y - self.player.y)
+            < radius
+        ]
+        return min(
+            nearby,
+            key=lambda shopkeeper: math.hypot(
+                shopkeeper.x - self.player.x, shopkeeper.y - self.player.y
+            ),
+            default=None,
+        )
+
+    def shopkeeper_for_sign(self, sign: Item) -> Shopkeeper | None:
+        sign_room = self.dungeon.room_at(sign.x, sign.y)
+        if sign_room is None:
+            return self.nearby_shopkeeper(radius=2.2)
+        room_shopkeepers = [
+            shopkeeper
+            for shopkeeper in self.shopkeepers
+            if self.dungeon.room_at(shopkeeper.x, shopkeeper.y) is sign_room
+        ]
+        if not room_shopkeepers:
+            return self.nearby_shopkeeper(radius=2.2)
+        return min(
+            room_shopkeepers,
+            key=lambda shopkeeper: math.hypot(
+                shopkeeper.x - sign.x, shopkeeper.y - sign.y
+            ),
+        )
+
+    def item_value(self, item: Item) -> int:
+        if item.slot == "potion":
+            return max(8, item.heal // 2)
+        if item.slot == "mana_potion":
+            return max(8, item.mana // 2)
+        if item.slot == "identify":
+            return 18
+        if item.slot == "remove_curse":
+            return 34
+        rarity_bonus = {
+            "Common": 0,
+            "Magic": 18,
+            "Rare": 42,
+            "Unique": 80,
+            "Legendary": 125,
+            "Cursed": 56,
+        }.get(item.rarity, 0)
+        return max(
+            5,
+            12
+            + rarity_bonus
+            + item.power * 5
+            + item.defense * 6
+            + len(item.affixes) * 7,
+        )
+
+    def shop_price(self, shopkeeper: Shopkeeper, item: Item) -> int:
+        return max(1, int(round(self.item_value(item) * shopkeeper.sell_multiplier)))
+
+    def shop_buyback_value(self, shopkeeper: Shopkeeper, item: Item) -> int:
+        return max(1, int(round(self.item_value(item) * shopkeeper.buy_multiplier)))
+
+    def open_shop(self, shopkeeper: Shopkeeper) -> None:
+        shopkeeper.met = True
+        self.active_shopkeeper = shopkeeper
+        self.shop_open = True
+        self.shop_mode = "buy"
+        self.shop_cursor = 0
+        self.inventory_open = False
+        self.character_menu_open = False
+        self.floaters.append(
+            FloatingText(
+                f"{shopkeeper.name}: trade",
+                shopkeeper.x,
+                shopkeeper.y - 0.55,
+                (225, 190, 92),
+                ttl=1.0,
+            )
+        )
+        # 4.9: every shop is a Voss Mortuary Guild counter under Coin-Eye
+        # Pell's franchise; one line of Guild patter per visit. Picked
+        # deterministically from keeper + depth (no shared-RNG draw, so the
+        # co-op joiner's local shop UI stays in sync with the host).
+        patter = SHOP_PATTER_LINES[
+            (len(shopkeeper.name) * 7 + self.current_depth * 3)
+            % len(SHOP_PATTER_LINES)
+        ]
+        self.floaters.append(
+            FloatingText(
+                patter,
+                shopkeeper.x,
+                shopkeeper.y - 0.95,
+                (208, 186, 150),
+                ttl=2.0,
+            )
+        )
+
+    def close_shop(self) -> None:
+        self.shop_open = False
+        self.active_shopkeeper = None
+        self.shop_cursor = 0
+
+    def shop_entries(self) -> list[Item]:
+        if self.active_shopkeeper is None:
+            return []
+        return (
+            self.active_shopkeeper.inventory
+            if self.shop_mode == "buy"
+            else self.player.inventory
+        )
+
+    def clamp_shop_cursor(self) -> None:
+        entries = self.shop_entries()
+        if not entries:
+            self.shop_cursor = 0
+        else:
+            self.shop_cursor = max(0, min(self.shop_cursor, len(entries) - 1))
+
+    def cycle_shop_mode(self) -> None:
+        self.shop_mode = "sell" if self.shop_mode == "buy" else "buy"
+        self.shop_cursor = 0
+
+    def move_shop_selection(self, delta: int) -> None:
+        entries = self.shop_entries()
+        if not entries:
+            self.shop_cursor = 0
+            return
+        self.shop_cursor = (self.shop_cursor + delta) % len(entries)
+
+    def transact_shop_selection(self) -> bool:
+        shopkeeper = self.active_shopkeeper
+        if shopkeeper is None:
+            return False
+        entries = self.shop_entries()
+        if not entries:
+            return False
+        self.clamp_shop_cursor()
+        item = entries[self.shop_cursor]
+        # 4.7.12 co-op: the joiner's shop UI is local, but the transaction is
+        # host business — ship an intent carrying keeper/index plus a
+        # truncated display name so a snapshot-lagged stale index is refused
+        # instead of trading the wrong item. State catches up via snapshots.
+        if self.mp_is_joiner():
+            try:
+                keeper_index = self.shopkeepers.index(shopkeeper)
+            except ValueError:
+                return False
+            action = "shop_buy" if self.shop_mode == "buy" else "shop_sell"
+            self.mp_queue_action(
+                action,
+                target=(
+                    f"{keeper_index}:{self.shop_cursor}:"
+                    f"{item.display_name[:40]}"
+                ),
+            )
+            return True
+        return self.shop_execute(shopkeeper, item, self.shop_mode)
+
+    def shop_execute(self, shopkeeper: Shopkeeper, item: Item, mode: str) -> bool:
+        """Apply one validated buy/sell between ``self.player`` and the keeper."""
+
+        if mode == "buy":
+            price = self.shop_price(shopkeeper, item)
+            if self.player.gold < price:
+                self.floaters.append(
+                    FloatingText(
+                        "Need more gold",
+                        self.player.x,
+                        self.player.y - 0.45,
+                        (235, 210, 120),
+                        ttl=1.0,
+                    )
+                )
+                return False
+            if len(self.player.inventory) >= MAX_INVENTORY:
+                self.floaters.append(
+                    FloatingText(
+                        "Inventory full",
+                        self.player.x,
+                        self.player.y - 0.45,
+                        (235, 210, 120),
+                        ttl=1.0,
+                    )
+                )
+                return False
+            shopkeeper.inventory.remove(item)
+            self.player.inventory.append(item)
+            self.player.gold -= price
+            self.floaters.append(
+                FloatingText(
+                    f"Bought {item.display_name}",
+                    self.player.x,
+                    self.player.y - 0.45,
+                    (210, 230, 180),
+                    ttl=1.0,
+                )
+            )
+        else:
+            value = self.shop_buyback_value(shopkeeper, item)
+            self.player.inventory.remove(item)
+            shopkeeper.inventory.append(item)
+            self.player.gold += value
+            self.floaters.append(
+                FloatingText(
+                    f"Sold {item.display_name}",
+                    self.player.x,
+                    self.player.y - 0.45,
+                    (225, 190, 92),
+                    ttl=1.0,
+                )
+            )
+        self.clamp_shop_cursor()
+        self.play_sfx("pickup")
+        self.save_run()
+        return True

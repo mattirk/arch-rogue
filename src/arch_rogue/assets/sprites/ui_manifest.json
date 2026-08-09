@@ -1,0 +1,1055 @@
+{
+  "format_version": 1,
+  "assets": {
+    "menu.background.title": {
+      "path": "menus/background_title.png",
+      "render": "cover"
+    },
+
+    "menu.logo.title": {
+      "path": "menus/title_logo.png",
+      "render": "scale"
+    },
+
+    "menu.logo.diamond.0": {
+      "path": "menus/logo_diamond_000.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.1": {
+      "path": "menus/logo_diamond_001.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.2": {
+      "path": "menus/logo_diamond_002.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.3": {
+      "path": "menus/logo_diamond_003.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.4": {
+      "path": "menus/logo_diamond_004.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.5": {
+      "path": "menus/logo_diamond_005.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.6": {
+      "path": "menus/logo_diamond_006.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.7": {
+      "path": "menus/logo_diamond_007.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.8": {
+      "path": "menus/logo_diamond_008.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.9": {
+      "path": "menus/logo_diamond_009.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.10": {
+      "path": "menus/logo_diamond_010.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.11": {
+      "path": "menus/logo_diamond_011.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.12": {
+      "path": "menus/logo_diamond_012.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.13": {
+      "path": "menus/logo_diamond_013.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.14": {
+      "path": "menus/logo_diamond_014.png",
+      "render": "scale"
+    },
+    "menu.logo.diamond.15": {
+      "path": "menus/logo_diamond_015.png",
+      "render": "scale"
+    },
+    "menu.background": {
+      "path": "menus/background.png",
+      "render": "scale"
+    },
+    "cutscene.background": {
+      "path": "menus/background_cutscene.png",
+      "render": "cover"
+    },
+    "cutscene.choice.panel": {
+      "path": "menus/story_choice_panel.png",
+      "render": "nine_slice",
+      "insets": [77, 6, 8, 6],
+      "content_insets": [80, 6, 10, 6],
+      "scale_insets_with_height": true
+    },
+    "cutscene.choice.icon.aid": {
+      "path": "menus/story_choice_aid.png",
+      "render": "scale"
+    },
+    "cutscene.choice.icon.soul_preserve": {
+      "path": "menus/story_choice_soul_preserve.png",
+      "render": "scale"
+    },
+    "cutscene.choice.icon.soul_release": {
+      "path": "menus/story_choice_soul_release.png",
+      "render": "scale"
+    },
+    "cutscene.choice.icon.soul_refuse": {
+      "path": "menus/story_choice_soul_refuse.png",
+      "render": "scale"
+    },
+    "cutscene.choice.icon.bargain": {
+      "path": "menus/story_choice_bargain.png",
+      "render": "scale"
+    },
+    "cutscene.choice.icon.defy": {
+      "path": "menus/story_choice_defy.png",
+      "render": "scale"
+    },
+    "cutscene.choice.icon.page": {
+      "path": "menus/story_choice_page.png",
+      "render": "scale"
+    },
+    "stage.backdrop.omen": {
+      "path": "menus/stage_backdrop_omen.png",
+      "render": "cover"
+    },
+    "stage.backdrop.dialogue": {
+      "path": "menus/stage_backdrop_dialogue.png",
+      "render": "cover"
+    },
+    "stage.backdrop.lossless_soul": {
+      "path": "menus/stage_backdrop_lossless_soul.png",
+      "render": "cover"
+    },
+    "stage.curtain.open": {
+      "path": "menus/stage_curtain_open.png",
+      "render": "scale"
+    },
+
+    "menu.panel": {
+      "path": "menus/panel.png",
+      "render": "nine_slice",
+      "insets": [18, 18, 18, 18],
+      "content_insets": [24, 22, 24, 22]
+    },
+    "menu.panel.compact": {
+      "path": "menus/panel_compact.png",
+      "render": "nine_slice",
+      "insets": [21, 18, 21, 18],
+      "content_insets": [24, 22, 24, 22]
+    },
+    "menu.panel.inset": {
+      "path": "menus/panel_inset.png",
+      "render": "nine_slice",
+      "insets": [14, 14, 14, 14],
+      "content_insets": [10, 8, 10, 8]
+    },
+    "menu.panel.discipline.warden": {
+      "path": "menus/discipline_panel_warden.png",
+      "render": "nine_slice",
+      "insets": [192, 0, 80, 0],
+      "content_insets": [188, 34, 84, 34],
+      "scale_insets_with_height": true
+    },
+    "menu.panel.discipline.rogue": {
+      "path": "menus/discipline_panel_rogue.png",
+      "render": "nine_slice",
+      "insets": [192, 0, 80, 0],
+      "content_insets": [192, 38, 84, 38],
+      "scale_insets_with_height": true
+    },
+    "menu.panel.discipline.arcanist": {
+      "path": "menus/discipline_panel_arcanist.png",
+      "render": "nine_slice",
+      "insets": [192, 0, 76, 0],
+      "content_insets": [208, 34, 76, 34],
+      "scale_insets_with_height": true
+    },
+    "menu.panel.discipline.acolyte": {
+      "path": "menus/discipline_panel_acolyte.png",
+      "render": "nine_slice",
+      "insets": [192, 0, 112, 0],
+      "content_insets": [204, 44, 72, 42],
+      "scale_insets_with_height": true
+    },
+    "menu.panel.discipline.ranger": {
+      "path": "menus/discipline_panel_ranger.png",
+      "render": "nine_slice",
+      "insets": [192, 0, 80, 0],
+      "content_insets": [192, 36, 80, 36],
+      "scale_insets_with_height": true
+    },
+    "minigame.socket.story": {
+      "path": "menus/minigame_socket_story.png",
+      "render": "scale",
+      "content_insets": [48, 48, 48, 48]
+    },
+    "minigame.socket.garden": {
+      "path": "menus/minigame_socket_garden.png",
+      "render": "scale",
+      "content_insets": [48, 48, 48, 48]
+    },
+    "minigame.socket.soul": {
+      "path": "menus/minigame_socket_soul.png",
+      "render": "scale",
+      "content_insets": [48, 48, 48, 48]
+    },
+    "menu.row.selected": {
+      "path": "menus/row_selected.png",
+      "render": "nine_slice",
+      "insets": [105, 10, 150, 10],
+      "content_insets": [92, 6, 137, 6],
+      "shrink_insets_below_height": 88
+    },
+    "menu.row": {
+      "path": "menus/row.png",
+      "render": "nine_slice",
+      "insets": [105, 10, 105, 10],
+      "content_insets": [92, 6, 92, 6],
+      "shrink_insets_below_height": 88
+    },
+    "menu.row.two_descend": {
+      "path": "menus/row_two_descend.png",
+      "render": "nine_slice",
+      "insets": [105, 10, 196, 10],
+      "content_insets": [92, 6, 183, 6],
+      "shrink_insets_below_height": 88
+    },
+    "hud.panel": {
+      "path": "hud/panel.png",
+      "render": "nine_slice",
+      "insets": [10, 10, 10, 8],
+      "content_insets": [14, 8, 14, 8]
+    },
+    "hud.dock": {
+      "path": "hud/dock.png",
+      "render": "scale"
+    },
+    "hud.action_slot": {
+      "path": "hud/action_slot.png",
+      "render": "scale",
+      "content_insets": [20, 20, 20, 20]
+    },
+    "hud.mobile.joystick_base": {
+      "path": "hud/mobile_joystick_base.png",
+      "render": "scale"
+    },
+    "hud.mobile.joystick_knob": {
+      "path": "hud/mobile_joystick_knob.png",
+      "render": "scale"
+    },
+    "hud.mobile.status_bar_frame": {
+      "path": "hud/mobile_status_bar_frame.png",
+      "render": "scale"
+    },
+    "hud.mobile.info_panel": {
+      "path": "hud/mobile_info_panel.png",
+      "render": "scale"
+    },
+    "hud.mobile.back": {
+      "path": "hud/mobile_back.png",
+      "render": "scale"
+    },
+    "hud.action.warden.bulwark_slam": {
+      "path": "hud/action_warden_bulwark_slam.png",
+      "render": "scale"
+    },
+    "hud.action.rogue.killing_blow": {
+      "path": "hud/action_rogue_killing_blow.png",
+      "render": "scale"
+    },
+    "hud.action.arcanist.force_slam": {
+      "path": "hud/action_arcanist_force_slam.png",
+      "render": "scale"
+    },
+    "hud.action.acolyte.blood_reap": {
+      "path": "hud/action_acolyte_blood_reap.png",
+      "render": "scale"
+    },
+    "hud.action.ranger.pinning_strike": {
+      "path": "hud/action_ranger_pinning_strike.png",
+      "render": "scale"
+    },
+    "hud.action.warden.guard_bolt": {
+      "path": "hud/action_warden_guard_bolt.png",
+      "render": "scale"
+    },
+    "hud.action.warden.time_skip": {
+      "path": "hud/action_warden_time_skip.png",
+      "render": "scale"
+    },
+    "hud.action.warden.guard_step": {
+      "path": "hud/action_warden_guard_step.png",
+      "render": "scale"
+    },
+    "hud.action.rogue.knife_fan": {
+      "path": "hud/action_rogue_knife_fan.png",
+      "render": "scale"
+    },
+    "hud.action.rogue.ambush_bell": {
+      "path": "hud/action_rogue_ambush_bell.png",
+      "render": "scale"
+    },
+    "hud.action.rogue.shadow_dash": {
+      "path": "hud/action_rogue_shadow_dash.png",
+      "render": "scale"
+    },
+    "hud.action.arcanist.arc_bolt": {
+      "path": "hud/action_arcanist_arc_bolt.png",
+      "render": "scale"
+    },
+    "hud.action.arcanist.frost_nova": {
+      "path": "hud/action_arcanist_frost_nova.png",
+      "render": "scale"
+    },
+    "hud.action.arcanist.blink": {
+      "path": "hud/action_arcanist_blink.png",
+      "render": "scale"
+    },
+    "hud.action.acolyte.spirit_bolt": {
+      "path": "hud/action_acolyte_spirit_bolt.png",
+      "render": "scale"
+    },
+    "hud.action.acolyte.spirit_call": {
+      "path": "hud/action_acolyte_spirit_call.png",
+      "render": "scale"
+    },
+    "hud.action.acolyte.dark_step": {
+      "path": "hud/action_acolyte_dark_step.png",
+      "render": "scale"
+    },
+    "hud.action.ranger.multishot": {
+      "path": "hud/action_ranger_multishot.png",
+      "render": "scale"
+    },
+    "hud.action.ranger.spirit_beast": {
+      "path": "hud/action_ranger_spirit_beast.png",
+      "render": "scale"
+    },
+    "hud.action.ranger.spirit_beast_angry": {
+      "path": "hud/action_ranger_spirit_beast_angry.png",
+      "render": "scale"
+    },
+    "hud.action.ranger.vault": {
+      "path": "hud/action_ranger_vault.png",
+      "render": "scale"
+    },
+    "hud.action.health_potion": {
+      "path": "hud/action_health_potion.png",
+      "render": "scale"
+    },
+    "hud.action.mana_potion": {
+      "path": "hud/action_mana_potion.png",
+      "render": "scale"
+    },
+    "hud.bar": {
+      "path": "hud/bar.png",
+      "render": "nine_slice",
+      "insets": [22, 10, 22, 10],
+      "content_insets": [8, 4, 8, 4]
+    },
+    "menu.panel.mp_code": {
+      "path": "menus/mp_code_panel.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.a": {
+      "path": "menus/glyphs/code_a.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.b": {
+      "path": "menus/glyphs/code_b.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.c": {
+      "path": "menus/glyphs/code_c.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.d": {
+      "path": "menus/glyphs/code_d.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.e": {
+      "path": "menus/glyphs/code_e.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.f": {
+      "path": "menus/glyphs/code_f.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.g": {
+      "path": "menus/glyphs/code_g.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.h": {
+      "path": "menus/glyphs/code_h.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.i": {
+      "path": "menus/glyphs/code_i.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.j": {
+      "path": "menus/glyphs/code_j.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.k": {
+      "path": "menus/glyphs/code_k.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.l": {
+      "path": "menus/glyphs/code_l.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.m": {
+      "path": "menus/glyphs/code_m.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.n": {
+      "path": "menus/glyphs/code_n.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.o": {
+      "path": "menus/glyphs/code_o.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.p": {
+      "path": "menus/glyphs/code_p.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.q": {
+      "path": "menus/glyphs/code_q.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.r": {
+      "path": "menus/glyphs/code_r.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.s": {
+      "path": "menus/glyphs/code_s.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.t": {
+      "path": "menus/glyphs/code_t.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.u": {
+      "path": "menus/glyphs/code_u.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.v": {
+      "path": "menus/glyphs/code_v.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.w": {
+      "path": "menus/glyphs/code_w.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.x": {
+      "path": "menus/glyphs/code_x.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.y": {
+      "path": "menus/glyphs/code_y.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.z": {
+      "path": "menus/glyphs/code_z.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.0": {
+      "path": "menus/glyphs/code_0.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.1": {
+      "path": "menus/glyphs/code_1.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.2": {
+      "path": "menus/glyphs/code_2.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.3": {
+      "path": "menus/glyphs/code_3.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.4": {
+      "path": "menus/glyphs/code_4.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.5": {
+      "path": "menus/glyphs/code_5.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.6": {
+      "path": "menus/glyphs/code_6.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.7": {
+      "path": "menus/glyphs/code_7.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.8": {
+      "path": "menus/glyphs/code_8.png",
+      "render": "scale"
+    },
+    "menu.glyph.code.9": {
+      "path": "menus/glyphs/code_9.png",
+      "render": "scale"
+    },
+    "menu.panel.action.accept": {
+      "path": "menus/action_accept_panel.png",
+      "render": "nine_slice",
+      "insets": [58, 26, 58, 26],
+      "content_insets": [46, 18, 46, 18],
+      "scale_insets_with_height": true
+    },
+    "menu.panel.action.kick": {
+      "path": "menus/action_kick_panel.png",
+      "render": "nine_slice",
+      "insets": [62, 28, 62, 28],
+      "content_insets": [48, 20, 48, 20],
+      "scale_insets_with_height": true
+    },
+    "menu.glyph.action.accept": {
+      "path": "menus/glyphs/action_accept.png",
+      "render": "scale"
+    },
+    "menu.glyph.action.kick": {
+      "path": "menus/glyphs/action_kick.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_bulwark": {
+      "path": "menus/glyphs/discipline_warden_bulwark.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_riposte": {
+      "path": "menus/glyphs/discipline_warden_riposte.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_aegis": {
+      "path": "menus/glyphs/discipline_warden_aegis.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_counter": {
+      "path": "menus/glyphs/discipline_warden_counter.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_bulwark_ward": {
+      "path": "menus/glyphs/discipline_warden_bulwark_ward.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_riposte_edge": {
+      "path": "menus/glyphs/discipline_warden_riposte_edge.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_iron_vow": {
+      "path": "menus/glyphs/discipline_warden_iron_vow.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_reckoning": {
+      "path": "menus/glyphs/discipline_warden_reckoning.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_unbreakable": {
+      "path": "menus/glyphs/discipline_warden_unbreakable.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_final_reckoning": {
+      "path": "menus/glyphs/discipline_warden_final_reckoning.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_smite": {
+      "path": "menus/glyphs/discipline_warden_smite.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_ward": {
+      "path": "menus/glyphs/discipline_warden_ward.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_judgment": {
+      "path": "menus/glyphs/discipline_warden_judgment.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_bulwark_wave": {
+      "path": "menus/glyphs/discipline_warden_bulwark_wave.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_consecrate": {
+      "path": "menus/glyphs/discipline_warden_consecrate.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_stone_aegis": {
+      "path": "menus/glyphs/discipline_warden_stone_aegis.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_divine_wrath": {
+      "path": "menus/glyphs/discipline_warden_divine_wrath.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_unyielding": {
+      "path": "menus/glyphs/discipline_warden_unyielding.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_avatar_of_light": {
+      "path": "menus/glyphs/discipline_warden_avatar_of_light.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.warden_eternal_wall": {
+      "path": "menus/glyphs/discipline_warden_eternal_wall.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_precision": {
+      "path": "menus/glyphs/discipline_rogue_precision.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_smoke": {
+      "path": "menus/glyphs/discipline_rogue_smoke.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_venom": {
+      "path": "menus/glyphs/discipline_rogue_venom.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_shadowstep": {
+      "path": "menus/glyphs/discipline_rogue_shadowstep.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_executioner": {
+      "path": "menus/glyphs/discipline_rogue_executioner.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_night_veil": {
+      "path": "menus/glyphs/discipline_rogue_night_veil.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_crimson_edge": {
+      "path": "menus/glyphs/discipline_rogue_crimson_edge.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_phantom": {
+      "path": "menus/glyphs/discipline_rogue_phantom.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_deathmark": {
+      "path": "menus/glyphs/discipline_rogue_deathmark.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_umbral": {
+      "path": "menus/glyphs/discipline_rogue_umbral.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_trap_craft": {
+      "path": "menus/glyphs/discipline_rogue_trap_craft.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_marksman": {
+      "path": "menus/glyphs/discipline_rogue_marksman.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_venom_trap": {
+      "path": "menus/glyphs/discipline_rogue_venom_trap.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_sharpshot": {
+      "path": "menus/glyphs/discipline_rogue_sharpshot.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_bear_trap": {
+      "path": "menus/glyphs/discipline_rogue_bear_trap.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_deadeye": {
+      "path": "menus/glyphs/discipline_rogue_deadeye.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_trap_master": {
+      "path": "menus/glyphs/discipline_rogue_trap_master.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_eagle_eye": {
+      "path": "menus/glyphs/discipline_rogue_eagle_eye.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_ambush_engineer": {
+      "path": "menus/glyphs/discipline_rogue_ambush_engineer.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.rogue_assassin": {
+      "path": "menus/glyphs/discipline_rogue_assassin.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_splinter": {
+      "path": "menus/glyphs/discipline_arcanist_splinter.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_focus": {
+      "path": "menus/glyphs/discipline_arcanist_focus.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_permafrost": {
+      "path": "menus/glyphs/discipline_arcanist_permafrost.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_overload": {
+      "path": "menus/glyphs/discipline_arcanist_overload.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_glacial": {
+      "path": "menus/glyphs/discipline_arcanist_glacial.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_pierce": {
+      "path": "menus/glyphs/discipline_arcanist_pierce.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_blizzard": {
+      "path": "menus/glyphs/discipline_arcanist_blizzard.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_storm": {
+      "path": "menus/glyphs/discipline_arcanist_storm.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_absolute_zero": {
+      "path": "menus/glyphs/discipline_arcanist_absolute_zero.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_arc_tyrant": {
+      "path": "menus/glyphs/discipline_arcanist_arc_tyrant.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_charge": {
+      "path": "menus/glyphs/discipline_arcanist_charge.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_ward": {
+      "path": "menus/glyphs/discipline_arcanist_ward.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_chain_lightning": {
+      "path": "menus/glyphs/discipline_arcanist_chain_lightning.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_ward_mend": {
+      "path": "menus/glyphs/discipline_arcanist_ward_mend.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_tempest": {
+      "path": "menus/glyphs/discipline_arcanist_tempest.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_ward_overload": {
+      "path": "menus/glyphs/discipline_arcanist_ward_overload.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_storm_caller": {
+      "path": "menus/glyphs/discipline_arcanist_storm_caller.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_aegis": {
+      "path": "menus/glyphs/discipline_arcanist_aegis.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_world_storm": {
+      "path": "menus/glyphs/discipline_arcanist_world_storm.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.arcanist_eternal_aegis": {
+      "path": "menus/glyphs/discipline_arcanist_eternal_aegis.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_sanguine": {
+      "path": "menus/glyphs/discipline_acolyte_sanguine.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_veil": {
+      "path": "menus/glyphs/discipline_acolyte_veil.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_gravebind": {
+      "path": "menus/glyphs/discipline_acolyte_gravebind.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_ashen": {
+      "path": "menus/glyphs/discipline_acolyte_ashen.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_blood_pact": {
+      "path": "menus/glyphs/discipline_acolyte_blood_pact.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_spirit_host": {
+      "path": "menus/glyphs/discipline_acolyte_spirit_host.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_crimson_maw": {
+      "path": "menus/glyphs/discipline_acolyte_crimson_maw.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_grave_chorus": {
+      "path": "menus/glyphs/discipline_acolyte_grave_chorus.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_sanguine_ascendant": {
+      "path": "menus/glyphs/discipline_acolyte_sanguine_ascendant.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_undying_veil": {
+      "path": "menus/glyphs/discipline_acolyte_undying_veil.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_spirit_call": {
+      "path": "menus/glyphs/discipline_acolyte_spirit_call.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_curse": {
+      "path": "menus/glyphs/discipline_acolyte_curse.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_wraith_host": {
+      "path": "menus/glyphs/discipline_acolyte_wraith_host.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_decay": {
+      "path": "menus/glyphs/discipline_acolyte_decay.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_bone_legion": {
+      "path": "menus/glyphs/discipline_acolyte_bone_legion.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_fragility": {
+      "path": "menus/glyphs/discipline_acolyte_fragility.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_wraith_lord": {
+      "path": "menus/glyphs/discipline_acolyte_wraith_lord.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_doom": {
+      "path": "menus/glyphs/discipline_acolyte_doom.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_legion_eternal": {
+      "path": "menus/glyphs/discipline_acolyte_legion_eternal.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.acolyte_eternal_doom": {
+      "path": "menus/glyphs/discipline_acolyte_eternal_doom.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_snare": {
+      "path": "menus/glyphs/discipline_ranger_snare.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_volley": {
+      "path": "menus/glyphs/discipline_ranger_volley.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_beastmark": {
+      "path": "menus/glyphs/discipline_ranger_beastmark.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_rapid": {
+      "path": "menus/glyphs/discipline_ranger_rapid.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_thornfield": {
+      "path": "menus/glyphs/discipline_ranger_thornfield.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_piercing_volley": {
+      "path": "menus/glyphs/discipline_ranger_piercing_volley.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_hunter_drive": {
+      "path": "menus/glyphs/discipline_ranger_hunter_drive.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_storm_volley": {
+      "path": "menus/glyphs/discipline_ranger_storm_volley.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_wild_domination": {
+      "path": "menus/glyphs/discipline_ranger_wild_domination.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_sky_quiver": {
+      "path": "menus/glyphs/discipline_ranger_sky_quiver.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_beast_bond": {
+      "path": "menus/glyphs/discipline_ranger_beast_bond.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_survival": {
+      "path": "menus/glyphs/discipline_ranger_survival.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_pack_tactics": {
+      "path": "menus/glyphs/discipline_ranger_pack_tactics.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_camouflage": {
+      "path": "menus/glyphs/discipline_ranger_camouflage.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_alpha": {
+      "path": "menus/glyphs/discipline_ranger_alpha.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_pathfinder": {
+      "path": "menus/glyphs/discipline_ranger_pathfinder.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_spirit_companion": {
+      "path": "menus/glyphs/discipline_ranger_spirit_companion.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_ambush": {
+      "path": "menus/glyphs/discipline_ranger_ambush.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_primal_lord": {
+      "path": "menus/glyphs/discipline_ranger_primal_lord.png",
+      "render": "scale"
+    },
+    "menu.glyph.discipline.ranger_ghost_step": {
+      "path": "menus/glyphs/discipline_ranger_ghost_step.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.serpent": {
+      "path": "menus/glyphs/sigil_serpent.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.hammer": {
+      "path": "menus/glyphs/sigil_hammer.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.skull": {
+      "path": "menus/glyphs/sigil_skull.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.star": {
+      "path": "menus/glyphs/sigil_star.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.cross": {
+      "path": "menus/glyphs/sigil_cross.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.flame": {
+      "path": "menus/glyphs/sigil_flame.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.ember": {
+      "path": "menus/glyphs/sigil_ember.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.key": {
+      "path": "menus/glyphs/sigil_key.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.map": {
+      "path": "menus/glyphs/sigil_map.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.shield": {
+      "path": "menus/glyphs/sigil_shield.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.sword": {
+      "path": "menus/glyphs/sigil_sword.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.coin": {
+      "path": "menus/glyphs/sigil_coin.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.rune_kenaz": {
+      "path": "menus/glyphs/sigil_rune_kenaz.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.rune_othala": {
+      "path": "menus/glyphs/sigil_rune_othala.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.rune_bind": {
+      "path": "menus/glyphs/sigil_rune_bind.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.rune_ingwaz": {
+      "path": "menus/glyphs/sigil_rune_ingwaz.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.claw": {
+      "path": "menus/glyphs/sigil_claw.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.rune_perth": {
+      "path": "menus/glyphs/sigil_rune_perth.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.rune_branch": {
+      "path": "menus/glyphs/sigil_rune_branch.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.sun": {
+      "path": "menus/glyphs/sigil_sun.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.moon": {
+      "path": "menus/glyphs/sigil_moon.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.sunburst": {
+      "path": "menus/glyphs/sigil_sunburst.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.rune_berkano": {
+      "path": "menus/glyphs/sigil_rune_berkano.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.dragon": {
+      "path": "menus/glyphs/sigil_dragon.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.phoenix": {
+      "path": "menus/glyphs/sigil_phoenix.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.ouroboros": {
+      "path": "menus/glyphs/sigil_ouroboros.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.clock": {
+      "path": "menus/glyphs/sigil_clock.png",
+      "render": "scale"
+    },
+    "menu.glyph.sigil.infinity": {
+      "path": "menus/glyphs/sigil_infinity.png",
+      "render": "scale"
+    },
+    "menu.panel.mp_seal": {
+      "path": "menus/mp_seal_panel.png",
+      "render": "scale"
+    },
+    "menu.panel.mp_carousel": {
+      "path": "menus/mp_carousel_panel.png",
+      "render": "scale"
+    },
+    "menu.panel.mp_plain": {
+      "path": "menus/mp_plain_panel.png",
+      "render": "scale"
+    }
+  }
+}

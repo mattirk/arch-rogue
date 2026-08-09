@@ -1,0 +1,37 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.dist-info/
+build/
+dist/
+bin/
+.buildozer/
+android-ndk*/
+android-sdk*/
+*.apk
+*.aab
+*.keystore
+*.jks
+*.p12
+web/vendor/
+web/dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+stairs/
+stairs_preview.py
+# Manual play-test harness for boss encounters (not a unit test).
+test_boss.py
+gen_relic_previews.py
+guest_template_active.png
+guest_template_resolved.png
+relic_previews/
+ui_scale_reference/
+tools/deploy_deck.sh
+tools/steam/push_deck_artwork.sh
+tools/steam/inject_local_icon.py
+
+# Private deploy repo staging area — transferred out to arch-rogue-deploy, never committed here
+deploy-server/

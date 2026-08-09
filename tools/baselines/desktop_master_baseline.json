@@ -1,0 +1,22 @@
+{
+  "depth": 10,
+  "enemies": 45,
+  "frames": 60,
+  "height": 1440,
+  "lighting": true,
+  "mobile": false,
+  "mobile_quality": "performance",
+  "phases": {
+    "render_ms_per_frame": 22.42883381671466,
+    "update_ms_per_frame": 2.316037449539484
+  },
+  "render_size": [
+    2560,
+    1440
+  ],
+  "scenario": "crowd",
+  "seed": 3161,
+  "warmup": 10,
+  "width": 2560,
+  "zoom": 1.0
+}

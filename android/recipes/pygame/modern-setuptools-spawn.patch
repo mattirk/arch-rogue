@@ -1,0 +1,21 @@
+--- a/setup.py
++++ b/setup.py
+@@ -89,7 +89,8 @@
+     machine_name = platform.machine()
+     if ((machine_name.startswith(("x86", "i686")) or
+         machine_name.lower() == "amd64") and
+-            os.environ.get("MAC_ARCH") != "arm64"):
++            os.environ.get("MAC_ARCH") != "arm64" and
++            not os.environ.get("PYGAME_CROSS_COMPILE")):
+         should_use_avx2 = True
+ 
+     if should_use_avx2:
+@@ -118,7 +119,7 @@
+                 # filename is found, no need to search any further
+                 break
+ 
+-    distutils.ccompiler.spawn(cmd, dry_run=self.dry_run, **kwargs)
++    distutils.ccompiler.CCompiler.__spawn(self, cmd, **kwargs)
+ 
+ 
+ distutils.ccompiler.CCompiler.__spawn = distutils.ccompiler.CCompiler.spawn

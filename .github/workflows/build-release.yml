@@ -1,0 +1,811 @@
+name: Build & Release
+
+# NOTE: this repository is a read-only mirror. The canonical source for this
+# file is tools/public-repo/workflows/build-release.yml in the private master
+# repo (mattirk/arch-rogue-master); every master push there syncs a snapshot
+# here, which triggers this pipeline. Edit it there, not here.
+#
+# On every push to master: run the test suite, build standalone Windows and
+# Linux binaries plus a universal macOS app (arm64 + x86_64) with PyInstaller,
+# and publish all artifacts to a GitHub Release tagged
+# `v<version>-<short-sha>`, where <version> comes from pyproject.toml.
+# Each commit therefore gets its own uniquely-tagged release whose name
+# carries the current project version.
+#
+# The macOS slices are built natively on `macos-15` (arm64) and
+# `macos-15-intel` (x86_64). They remain intact inside `Arch Rogue.app`; a tiny
+# universal Mach-O launcher selects the matching executable at runtime. Do not
+# lipo the PyInstaller one-file executables themselves: each has an appended,
+# architecture-specific Python/SDL archive that `lipo` cannot safely combine.
+# The finished bundle is ad-hoc signed and archived with `ditto` so Finder
+# metadata and executable permissions survive the download.
+
+"on":
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# Default for every job: read-only. Jobs run unpinned third-party code (pip,
+# apt, the p4a toolchain), so none of them may hold a token that can push,
+# publish, or mint OIDC identities. The release and deploy-pages jobs elevate
+# exactly what they need.
+permissions:
+  contents: read
+
+env:
+  # The packaged interpreter is a performance feature: the game is CPU-bound
+  # software rendering, and CPython 3.14 runs it dramatically faster than the
+  # 3.11 these builds used to ship (measured ~30 vs ~50 FPS on the same
+  # hardware). Keep in sync with steam-deploy.yml; pygame-ce ships cp314
+  # wheels for all three OSes and PyInstaller 6.21 supports <3.16.
+  PYTHON_VERSION: "3.14"
+  # Headless SDL drivers so the unittest suite can run Pygame on CI runners
+  # with no display server.
+  SDL_VIDEODRIVER: dummy
+  SDL_AUDIODRIVER: dummy
+
+jobs:
+  test:
+    name: Test (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Compile-check sources
+        run: python -m compileall src tests
+
+      - name: Run test suite
+        run: python -m unittest discover tests
+
+      - name: Run mainline regression guard
+        run: python -m unittest tests.test_mainline_regression
+
+  performance:
+    name: Performance telemetry (Linux)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      # Hosted-runner CPU models and contention vary, so an absolute timing
+      # captured on another machine cannot safely block release packaging.
+      # Keep the comparison visible as telemetry while deterministic render
+      # snapshots in the test job remain the release-blocking regression guard.
+      - name: Compare desktop performance baseline (informational)
+        continue-on-error: true
+        run: |
+          python tools/profile_game.py --scenario crowd --frames 60 --warmup 10 \
+            --width 2560 --height 1440 --top 10 \
+            --compare tools/baselines/desktop_master_baseline.json --threshold 10
+
+      - name: Upload performance profiles
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-performance-profiles
+          path: build/profiles/*.prof
+          if-no-files-found: warn
+          retention-days: 14
+
+  build:
+    name: Build (${{ matrix.asset_suffix }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            exe_name: arch-rogue
+            artifact_name: arch-rogue-linux-x64
+            asset_suffix: linux-x64
+            windowed_flag: ""
+            icon_flag: ""
+          - os: windows-latest
+            platform: windows
+            exe_name: arch-rogue
+            artifact_name: arch-rogue-windows-x64.exe
+            asset_suffix: windows-x64
+            windowed_flag: "--windowed"
+            icon_flag: "--icon dist/ArchRogue.ico"
+          - os: macos-15-intel
+            platform: macos
+            python_arch: x64
+            expected_arch: x86_64
+            exe_name: arch-rogue
+            artifact_name: arch-rogue-macos-x86_64
+            asset_suffix: macos-x86_64
+            # The thin executable is embedded into our own universal .app.
+            windowed_flag: ""
+            icon_flag: ""
+          # Pin the Apple Silicon image instead of relying on the moving
+          # `macos-latest` alias.
+          - os: macos-15
+            platform: macos
+            python_arch: arm64
+            expected_arch: arm64
+            exe_name: arch-rogue
+            artifact_name: arch-rogue-macos-arm64
+            asset_suffix: macos-arm64
+            windowed_flag: ""
+            icon_flag: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          architecture: ${{ matrix.python_arch || 'x64' }}
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          # Pinned: these bytes end up inside the shipped binaries, so the
+          # packager must not float with whatever lands on PyPI.
+          python -m pip install pyinstaller==6.21.0
+
+      - name: Sanity-check Python architecture (macOS only)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "=== python binary arch ==="
+          file "$(command -v python)"
+          echo "=== active architecture ==="
+          python - <<'PY'
+          import platform
+          actual = platform.machine()
+          expected = "${{ matrix.expected_arch }}"
+          print("platform.machine():", actual)
+          if actual != expected:
+              raise SystemExit(f"Expected {expected} Python, got {actual}")
+          PY
+
+      - name: Read version
+        id: version
+        shell: python
+        run: |
+          import tomllib, os
+          with open("pyproject.toml", "rb") as f:
+            data = tomllib.load(f)
+          version = data["project"]["version"]
+          print(f"version={version}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+            out.write(f"version={version}\n")
+
+      - name: Short SHA
+        id: sha
+        shell: bash
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create launcher shim
+        shell: bash
+        run: |
+          # PyInstaller cannot use src/arch_rogue/__main__.py directly as the
+          # entry script: that file uses a relative import (`from .game import
+          # main`) which fails inside the frozen bundle because the top-level
+          # entry has no package parent. This absolute-import shim gives
+          # PyInstaller a clean top-level entry while letting it follow the
+          # import into the arch_rogue package, which then keeps its package
+          # context so all internal relative imports resolve correctly.
+          cat > arch_rogue_launcher.py <<'PY'
+          """PyInstaller entry shim for Arch Rogue."""
+          from arch_rogue.game import main
+
+          if __name__ == "__main__":
+              main()
+          PY
+
+      - name: Create Windows application icon
+        if: runner.os == 'Windows'
+        shell: python
+        run: |
+          import struct
+          from pathlib import Path
+
+          sizes = (16, 32, 64, 128, 256)
+          images = [
+              Path(f"src/arch_rogue/assets/icons/icon_{size}.png").read_bytes()
+              for size in sizes
+          ]
+          header_size = 6 + 16 * len(images)
+          offset = header_size
+          entries = []
+          for size, image in zip(sizes, images):
+              dimension = 0 if size == 256 else size
+              entries.append(
+                  struct.pack(
+                      "<BBBBHHII",
+                      dimension,
+                      dimension,
+                      0,
+                      0,
+                      1,
+                      32,
+                      len(image),
+                      offset,
+                  )
+              )
+              offset += len(image)
+
+          output = Path("dist/ArchRogue.ico")
+          output.parent.mkdir(exist_ok=True)
+          output.write_bytes(
+              struct.pack("<HHH", 0, 1, len(images))
+              + b"".join(entries)
+              + b"".join(images)
+          )
+          print(f"Created {output} ({output.stat().st_size} bytes)")
+
+      - name: Build with PyInstaller
+        shell: bash
+        run: |
+          python -m PyInstaller \
+            --noconfirm \
+            --onefile \
+            ${{ matrix.windowed_flag }} \
+            ${{ matrix.icon_flag }} \
+            --name "${{ matrix.exe_name }}" \
+            --collect-all arch_rogue \
+            --collect-all pygame \
+            --hidden-import=pygame \
+            --hidden-import=pygame._sdl2 \
+            --hidden-import=pygame.base \
+            --hidden-import=pygame.font \
+            --hidden-import=pygame.mixer \
+            arch_rogue_launcher.py
+
+      - name: Verify binary architecture (macOS only)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "=== built binary ==="
+          ls -la dist
+          file "dist/${{ matrix.exe_name }}"
+          lipo -info "dist/${{ matrix.exe_name }}"
+          test "$(lipo -archs "dist/${{ matrix.exe_name }}")" = "${{ matrix.expected_arch }}"
+          echo "Verified architecture: ${{ matrix.expected_arch }}"
+
+      - name: Rename artifact
+        shell: bash
+        run: |
+          mkdir -p dist/final
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sha.outputs.short }}"
+          FINAL="arch-rogue-v${VERSION}-${SHA}-${{ matrix.asset_suffix }}"
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            mv "dist/${{ matrix.exe_name }}.exe" "dist/final/${FINAL}.exe"
+          else
+            mv "dist/${{ matrix.exe_name }}" "dist/final/${FINAL}"
+            chmod +x "dist/final/${FINAL}"
+          fi
+          ls -la dist/final
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/final/*
+          if-no-files-found: error
+
+  combine-macos:
+    name: Package macOS universal app (arm64 + x86_64)
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - name: Checkout (for version + sha helpers)
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        shell: python
+        run: |
+          import tomllib, os
+          with open("pyproject.toml", "rb") as f:
+              data = tomllib.load(f)
+          version = data["project"]["version"]
+          print(f"version={version}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"version={version}\n")
+
+      - name: Short SHA
+        id: sha
+        shell: bash
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Download x86_64 build
+        uses: actions/download-artifact@v4
+        with:
+          name: arch-rogue-macos-x86_64
+          path: macos-x86_64
+
+      - name: Download arm64 build
+        uses: actions/download-artifact@v4
+        with:
+          name: arch-rogue-macos-arm64
+          path: macos-arm64
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== x86_64 ===" && ls -la macos-x86_64
+          echo "=== arm64 ===" && ls -la macos-arm64
+
+      - name: Merge slices into Arch Rogue.app
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sha.outputs.short }}"
+          X86_BIN="macos-x86_64/arch-rogue-v${VERSION}-${SHA}-macos-x86_64"
+          ARM_BIN="macos-arm64/arch-rogue-v${VERSION}-${SHA}-macos-arm64"
+          APP="dist/app/Arch Rogue.app"
+          APP_BINARY="$APP/Contents/MacOS/arch-rogue"
+          X86_APP_BINARY="$APP/Contents/MacOS/arch-rogue-x86_64"
+          ARM_APP_BINARY="$APP/Contents/MacOS/arch-rogue-arm64"
+
+          test -f "$X86_BIN"
+          test -f "$ARM_BIN"
+          echo "x86_64 binary: $X86_BIN"
+          echo "arm64 binary:  $ARM_BIN"
+          echo "Before lipo:"
+          lipo -info "$X86_BIN"
+          lipo -info "$ARM_BIN"
+
+          test "$(lipo -archs "$X86_BIN")" = "x86_64"
+          test "$(lipo -archs "$ARM_BIN")" = "arm64"
+
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+
+          # Build the native macOS icon container from the game's existing PNG
+          # artwork. Finder, the Dock, and the app switcher read this resource.
+          ICONSET="dist/ArchRogue.iconset"
+          mkdir -p "$ICONSET"
+          cp src/arch_rogue/assets/icons/icon_16.png "$ICONSET/icon_16x16.png"
+          cp src/arch_rogue/assets/icons/icon_32.png "$ICONSET/icon_16x16@2x.png"
+          cp src/arch_rogue/assets/icons/icon_32.png "$ICONSET/icon_32x32.png"
+          cp src/arch_rogue/assets/icons/icon_64.png "$ICONSET/icon_32x32@2x.png"
+          cp src/arch_rogue/assets/icons/icon_128.png "$ICONSET/icon_128x128.png"
+          cp src/arch_rogue/assets/icons/icon_256.png "$ICONSET/icon_128x128@2x.png"
+          cp src/arch_rogue/assets/icons/icon_256.png "$ICONSET/icon_256x256.png"
+          cp src/arch_rogue/assets/icons/icon_512.png "$ICONSET/icon_256x256@2x.png"
+          cp src/arch_rogue/assets/icons/icon_512.png "$ICONSET/icon_512x512.png"
+          sips -z 1024 1024 src/arch_rogue/assets/icons/icon_512.png \
+            --out "$ICONSET/icon_512x512@2x.png" >/dev/null
+          iconutil --convert icns "$ICONSET" \
+            --output "$APP/Contents/Resources/ArchRogue.icns"
+
+          cp "$X86_BIN" "$X86_APP_BINARY"
+          cp "$ARM_BIN" "$ARM_APP_BINARY"
+          chmod 755 "$X86_APP_BINARY" "$ARM_APP_BINARY"
+
+          # A universal native launcher lets Finder start one app while keeping
+          # each PyInstaller executable and its appended native payload intact.
+          cat > launcher.c <<'C'
+          #include <mach-o/dyld.h>
+          #include <libgen.h>
+          #include <limits.h>
+          #include <stdio.h>
+          #include <string.h>
+          #include <unistd.h>
+
+          int main(int argc, char **argv) {
+              char executable[PATH_MAX];
+              uint32_t size = sizeof(executable);
+              if (_NSGetExecutablePath(executable, &size) != 0) {
+                  fputs("Arch Rogue: launcher path is too long\n", stderr);
+                  return 1;
+              }
+              const char *binary =
+          #if defined(__arm64__)
+                  "arch-rogue-arm64";
+          #elif defined(__x86_64__)
+                  "arch-rogue-x86_64";
+          #else
+          #error Unsupported macOS architecture
+          #endif
+              char target[PATH_MAX];
+              snprintf(target, sizeof(target), "%s/%s", dirname(executable), binary);
+              argv[0] = target;
+              execv(target, argv);
+              perror("Arch Rogue: unable to start game");
+              return 1;
+          }
+          C
+          clang -arch x86_64 -mmacosx-version-min=11.0 launcher.c -o launcher-x86_64
+          clang -arch arm64 -mmacosx-version-min=11.0 launcher.c -o launcher-arm64
+          lipo -create launcher-x86_64 launcher-arm64 -output "$APP_BINARY"
+          chmod 755 "$APP_BINARY"
+
+          cat > "$APP/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>en</string>
+              <key>CFBundleDisplayName</key>
+              <string>Arch Rogue</string>
+              <key>CFBundleExecutable</key>
+              <string>arch-rogue</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.archrogue.game</string>
+              <key>CFBundleIconFile</key>
+              <string>ArchRogue.icns</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>Arch Rogue</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${VERSION}</string>
+              <key>CFBundleVersion</key>
+              <string>${VERSION}</string>
+              <key>LSApplicationCategoryType</key>
+              <string>public.app-category.role-playing-games</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          PLIST
+
+          echo "Universal launcher and packaged payloads:"
+          test "$(lipo -archs "$APP_BINARY")" = "x86_64 arm64" || \
+            test "$(lipo -archs "$APP_BINARY")" = "arm64 x86_64"
+          test "$(lipo -archs "$X86_APP_BINARY")" = "x86_64"
+          test "$(lipo -archs "$ARM_APP_BINARY")" = "arm64"
+          lipo -info "$APP_BINARY"
+          file "$APP_BINARY"
+          test -s "$APP/Contents/Resources/ArchRogue.icns"
+          test "$(plutil -extract CFBundleIconFile raw "$APP/Contents/Info.plist")" = "ArchRogue.icns"
+          plutil -lint "$APP/Contents/Info.plist"
+
+      - name: Ad-hoc sign app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="dist/app/Arch Rogue.app"
+          # Re-sign after lipo: combining the thin Mach-O slices invalidates
+          # their original signatures. Ad-hoc signing provides valid bundle
+          # integrity; Developer ID signing/notarization can replace this later.
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign --display --verbose=2 "$APP"
+
+      - name: Archive app for Finder-safe distribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sha.outputs.short }}"
+          FINAL="arch-rogue-v${VERSION}-${SHA}-macos-universal.zip"
+          APP="dist/app/Arch Rogue.app"
+          ZIP="dist/final/$FINAL"
+
+          mkdir -p dist/final
+          # `ditto` preserves the bundle layout, executable bit, resource
+          # forks, and extended attributes expected by Finder.
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+
+          # Extract once in CI and verify the exact archive users receive.
+          mkdir -p dist/verify
+          ditto -x -k "$ZIP" dist/verify
+          EXTRACTED_APP="dist/verify/Arch Rogue.app"
+          EXTRACTED_BINARY="$EXTRACTED_APP/Contents/MacOS/arch-rogue"
+          test -x "$EXTRACTED_BINARY"
+          plutil -lint "$EXTRACTED_APP/Contents/Info.plist"
+          lipo -info "$EXTRACTED_BINARY"
+          test -x "$EXTRACTED_APP/Contents/MacOS/arch-rogue-x86_64"
+          test -x "$EXTRACTED_APP/Contents/MacOS/arch-rogue-arm64"
+          test -s "$EXTRACTED_APP/Contents/Resources/ArchRogue.icns"
+          test "$(plutil -extract CFBundleIconFile raw "$EXTRACTED_APP/Contents/Info.plist")" = "ArchRogue.icns"
+          codesign --verify --deep --strict --verbose=2 "$EXTRACTED_APP"
+          ls -lh "$ZIP"
+
+      - name: Upload universal app archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-rogue-macos-universal
+          path: dist/final/*.zip
+          if-no-files-found: error
+
+  android:
+    name: Build Android APK (signed release)
+    needs: test
+    # Never expose the permanent update key to android-beta or a workflow
+    # dispatch targeting another ref. Configure this Environment with a
+    # master-only deployment branch rule and required reviewer protection.
+    if: github.ref == 'refs/heads/master'
+    environment: android-release
+    # Keep the native Autotools environment stable instead of following the
+    # moving ubuntu-latest image underneath cached p4a/SDK inputs.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Android native build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ant autoconf automake autopoint build-essential ccache cmake git \
+            lbzip2 libffi-dev libltdl-dev libssl-dev libtool make \
+            openjdk-17-jdk patch pkg-config unzip wget zip zlib1g-dev
+          command -v autoreconf
+          command -v libtoolize
+          command -v javac
+          ACLOCAL_DIR="$(aclocal --print-ac-dir)"
+          grep -R -q 'AC_DEFUN(\[LT_SYS_SYMBOL_USCORE\]' "$ACLOCAL_DIR"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install pinned Android toolchain + project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[android]"
+
+      # Cache keys must NOT hash buildozer.spec / pyproject.toml wholesale:
+      # both carry the project version, which bumps on every release commit,
+      # so whole-file keys never hit exactly and every run re-uploads multi-GB
+      # cache entries (and churns the 10 GB repo cache quota). Instead, derive
+      # the key from the same native inputs tools/build_android.sh fingerprints
+      # — those only change when the toolchain, recipes, or ABIs really change.
+      - name: Compute native cache key
+        id: nativekey
+        run: |
+          KEY="$(python3 - <<'PY'
+          import configparser, hashlib, tomllib
+          from pathlib import Path
+          config = configparser.ConfigParser(interpolation=None)
+          config.read("buildozer.spec", encoding="utf-8")
+          app = config["app"]
+          digest = hashlib.sha256()
+          for key in ("requirements", "p4a.bootstrap", "p4a.commit", "android.api",
+                      "android.minapi", "android.target_api", "android.ndk",
+                      "android.archs"):
+              digest.update(f"{key}={app.get(key, '')}\n".encode())
+          with open("pyproject.toml", "rb") as fh:
+              pins = tomllib.load(fh)["project"]["optional-dependencies"]["android"]
+          for pin in sorted(pins):
+              digest.update(f"pin={pin}\n".encode())
+          for path in sorted(Path("android/recipes").rglob("*")):
+              if path.is_file():
+                  digest.update(str(path).encode())
+                  digest.update(path.read_bytes())
+          print(digest.hexdigest())
+          PY
+          )"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Android SDK/NDK
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer/android/platform
+            ~/.buildozer/android/packages
+          key: buildozer-android-${{ runner.os }}-${{ steps.nativekey.outputs.key }}
+          restore-keys: |
+            buildozer-android-${{ runner.os }}-
+
+      # The project-local p4a build tree holds the cross-compiled native
+      # recipes (libpython, SDL, pygame, ...) for both ABIs plus the Gradle
+      # dist — by far the slowest part of the build. Restoring a stale tree is
+      # safe: tools/build_android.sh fingerprints the native inputs
+      # (.buildozer/android/arch-rogue-native.sha256, cached alongside) and
+      # runs `buildozer android clean` itself when they no longer match.
+      - name: Cache python-for-android build tree
+        uses: actions/cache@v4
+        with:
+          path: |
+            .buildozer/android/platform/build-*
+            .buildozer/android/platform/python-for-android
+            .buildozer/android/arch-rogue-native.sha256
+          key: p4a-build-${{ runner.os }}-${{ steps.nativekey.outputs.key }}
+          restore-keys: |
+            p4a-build-${{ runner.os }}-
+
+      # ccache covers the worst case (native-input change forces a p4a clean:
+      # recompiles become cache hits) and Gradle caches cover the dist
+      # assembly. Both are content-addressed, so a broad restore key is
+      # always useful.
+      - name: Cache ccache and Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.ccache
+            ~/.cache/ccache
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: android-ccache-gradle-${{ runner.os }}-${{ steps.nativekey.outputs.key }}
+          restore-keys: |
+            android-ccache-gradle-${{ runner.os }}-
+
+      - name: Read version
+        id: version
+        shell: python
+        run: |
+          import tomllib, os
+          with open("pyproject.toml", "rb") as f:
+            data = tomllib.load(f)
+          version = data["project"]["version"]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+            out.write(f"version={version}\n")
+
+      - name: Short SHA
+        id: sha
+        shell: bash
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Never let Gradle create an ephemeral debug key on a hosted runner. Each
+      # such key produces a valid APK, but Android rejects the next CI build as
+      # INSTALL_FAILED_UPDATE_INCOMPATIBLE because its certificate is different.
+      - name: Restore persistent Android release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ARCH_ROGUE_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "ARCH_ROGUE_ANDROID_KEYSTORE_BASE64 is not configured" >&2
+            exit 1
+          fi
+          install -d -m 700 "${{ runner.temp }}/arch-rogue-signing"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode \
+            > "${{ runner.temp }}/arch-rogue-signing/release.keystore"
+          chmod 600 "${{ runner.temp }}/arch-rogue-signing/release.keystore"
+
+      - name: Build and hand off signed release APK
+        env:
+          ARCH_ROGUE_ANDROID_KEYSTORE: ${{ runner.temp }}/arch-rogue-signing/release.keystore
+          ARCH_ROGUE_ANDROID_KEYSTORE_PASSWD: ${{ secrets.ARCH_ROGUE_ANDROID_KEYSTORE_PASSWD }}
+          ARCH_ROGUE_ANDROID_KEYALIAS: ${{ secrets.ARCH_ROGUE_ANDROID_KEYALIAS }}
+          ARCH_ROGUE_ANDROID_KEYALIAS_PASSWD: ${{ secrets.ARCH_ROGUE_ANDROID_KEYALIAS_PASSWD }}
+          ARCH_ROGUE_ANDROID_OUTPUT_APK: dist/final/arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-android-release.apk
+        run: ./tools/build_android.sh release
+
+      - name: Show validated release APK
+        run: ls -lh dist/final/arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-android-release.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-rogue-android-release
+          path: dist/final/*.apk
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    # android-beta pushes run the full regression/build matrix, but only
+    # master may publish a public GitHub release.
+    if: github.ref == 'refs/heads/master'
+    needs: [build, combine-macos, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the release and upload its assets
+      pages: write      # actions/configure-pages
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        shell: python
+        run: |
+          import tomllib, os
+          with open("pyproject.toml", "rb") as f:
+            data = tomllib.load(f)
+          version = data["project"]["version"]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+            out.write(f"version={version}\n")
+
+      - name: Short SHA
+        id: sha
+        shell: bash
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+          # Pull Linux, Windows, the universal macOS app ZIP, both intermediate
+          # single-arch macOS fallbacks, and the persistently signed Android APK.
+          pattern: arch-rogue-*
+
+      - name: Restore executable bit on raw Unix binaries
+        # The universal app keeps its executable bit inside its `ditto` ZIP.
+        # Restore it here only for the raw Linux and thin macOS fallbacks,
+        # because upload-artifact@v4 does not retain file modes.
+        run: |
+          chmod +x release-assets/arch-rogue-*-linux-x64 \
+                 release-assets/arch-rogue-*-macos-arm64 \
+                 release-assets/arch-rogue-*-macos-x86_64 2>/dev/null || true
+          ls -la release-assets
+
+      - name: Create or update release
+        # SHA-pinned: tags are mutable, and this third-party action holds a
+        # contents:write token and controls the exact binaries users download.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}
+          name: Arch Rogue v${{ steps.version.outputs.version }} (${{ steps.sha.outputs.short }})
+          body: |
+            Automated bleeding-edge build from `master` commit ${{ steps.sha.outputs.short }}.
+
+            Download page: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+
+            - Version: ${{ steps.version.outputs.version }}
+            - Commit: ${{ github.sha }}
+
+            Assets:
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-windows-x64.exe` — standalone Windows executable
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-linux-x64` — standalone Linux binary
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-universal.zip` — Finder-launchable `Arch Rogue.app` (Apple Silicon + Intel)
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-arm64` — macOS Apple Silicon only (smaller)
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-macos-x86_64` — macOS Intel only (smaller)
+            - `arch-rogue-v${{ steps.version.outputs.version }}-${{ steps.sha.outputs.short }}-android-release.apk` — signed Android beta APK (landscape; stable in-place updates from 4.5.4 onward)
+          files: release-assets/*
+          prerelease: true
+          make_latest: "false"
+
+      # Generate exact URLs only after the release exists. Arch Rogue releases
+      # are prereleases, so GitHub's /releases/latest/download shortcut cannot
+      # be used: it deliberately ignores prereleases.
+      - name: Generate website download manifest
+        run: |
+          python tools/generate_download_manifest.py \
+            --repository "${{ github.repository }}" \
+            --version "${{ steps.version.outputs.version }}" \
+            --commit "${{ github.sha }}" \
+            --output website/downloads.json
+          touch website/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload website artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website
+
+  deploy-pages:
+    name: Deploy download website
+    if: github.ref == 'refs/heads/master'
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

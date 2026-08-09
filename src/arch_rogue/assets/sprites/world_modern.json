@@ -1,0 +1,232 @@
+{
+  "format_version": 1,
+  "world": {
+    "bar_floor": {
+      "path": "world/modern/bar_floor.png",
+      "source_anchor": [32, 40],
+      "tint_strength": 0.14
+    },
+    "door_closed": {
+      "path": "world/modern/door_closed_left.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_closed_east": {
+      "path": "world/modern/door_closed_right.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_closed_north": {
+      "path": "world/modern/door_closed_left.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_closed_north_east": {
+      "path": "world/modern/door_closed_right.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_closed_north_west": {
+      "path": "world/modern/door_closed_left.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_closed_south": {
+      "path": "world/modern/door_closed_left.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_closed_south_east": {
+      "path": "world/modern/door_closed_left.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_closed_south_west": {
+      "path": "world/modern/door_closed_right.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_closed_west": {
+      "path": "world/modern/door_closed_right.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_open": {
+      "path": "world/modern/door_open_left.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_open_east": {
+      "path": "world/modern/door_open_right.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_open_north": {
+      "path": "world/modern/door_open_left.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_open_north_east": {
+      "path": "world/modern/door_open_right.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_open_north_west": {
+      "path": "world/modern/door_open_left.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_open_south": {
+      "path": "world/modern/door_open_left.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_open_south_east": {
+      "path": "world/modern/door_open_left.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_open_south_west": {
+      "path": "world/modern/door_open_right.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "door_open_west": {
+      "path": "world/modern/door_open_right.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.46
+    },
+    "floor": {
+      "path": "world/modern/floor.png",
+      "source_anchor": [32, 40],
+      "tint_strength": 0.55
+    },
+    "garden_floor": {
+      "path": "world/modern/garden_floor.png",
+      "source_anchor": [32, 40],
+      "tint_strength": 0.14
+    },
+    "guiding_floor": {
+      "path": "world/modern/floor.png",
+      "frames": [
+        "world/modern/floor.png",
+        "world/modern/guiding_floor_001.png",
+        "world/modern/guiding_floor_002.png",
+        "world/modern/guiding_floor_003.png",
+        "world/modern/guiding_floor_004.png",
+        "world/modern/guiding_floor_005.png",
+        "world/modern/guiding_floor_006.png",
+        "world/modern/guiding_floor_007.png",
+        "world/modern/guiding_floor_008.png"
+      ],
+      "fps": 5.0,
+      "ping_pong": true,
+      "source_anchor": [32, 40],
+      "tint_strength": 0.55
+    },
+    "quest_floor": {
+      "path": "world/modern/quest_floor.png",
+      "source_anchor": [32, 40],
+      "tint_strength": 0.2
+    },
+    "shop_floor": {
+      "path": "world/modern/shop_floor.png",
+      "source_anchor": [32, 40],
+      "tint_strength": 0.12
+    },
+    "stairs": {
+      "path": "world/modern/stairs.png",
+      "frames": [
+        "world/modern/stairs.png",
+        "world/modern/stairs_001.png",
+        "world/modern/stairs_002.png",
+        "world/modern/stairs_003.png",
+        "world/modern/stairs_004.png",
+        "world/modern/stairs_005.png",
+        "world/modern/stairs_006.png",
+        "world/modern/stairs_007.png"
+      ],
+      "fps": 8.333333,
+      "ping_pong": true,
+      "source_anchor": [32, 42],
+      "tint_strength": 0.52
+    },
+    "wall": {
+      "path": "world/modern/wall_401.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.62
+    },
+    "wall_bar_left": {
+      "path": "world/modern/wall_bar_left.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.26
+    },
+    "wall_bar_right": {
+      "path": "world/modern/wall_bar_right.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.26
+    },
+    "wall_garden_left": {
+      "path": "world/modern/wall_garden_left.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.26
+    },
+    "wall_garden_right": {
+      "path": "world/modern/wall_garden_right.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.26
+    },
+    "wall_quest_room_left": {
+      "path": "world/modern/wall_quest_room_left.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.32
+    },
+    "wall_quest_room_right": {
+      "path": "world/modern/wall_quest_room_right.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.32
+    },
+    "lossless_soul_floor": {
+      "path": "world/modern/lossless_soul_floor.png",
+      "source_anchor": [32, 40],
+      "tint_strength": 0.14
+    },
+    "wall_lossless_soul_left": {
+      "path": "world/modern/wall_lossless_soul_left.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.26
+    },
+    "wall_lossless_soul_right": {
+      "path": "world/modern/wall_lossless_soul_right.png",
+      "reference_width": 49,
+      "source_anchor": [34, 50],
+      "tint_strength": 0.26
+    }
+  }
+}

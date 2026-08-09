@@ -1,0 +1,53 @@
+[project]
+name = "arch-rogue"
+version = "5.0.1"
+description = "A grim isometric action roguelike with asset-backed sprites, menus, and HUD, procedural legacy graphics, and replayable dungeon runs."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+]
+dependencies = [
+    "pygame-ce>=2.5.0",
+]
+
+[project.optional-dependencies]
+# Build-time only: packaging the game for the web via Pyodide/WASM.
+web = [
+    "pygbag",
+]
+# Host-side Android tooling. Target pygame-ce is cross-compiled by the local
+# python-for-android recipe and is intentionally not installed from a wheel.
+android = [
+    "buildozer==1.6.0",
+    "Cython==0.29.37",
+]
+
+[project.scripts]
+arch-rogue = "arch_rogue.game:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+arch_rogue = [
+    "assets/*.json",
+    "assets/licenses/*.txt",
+    "assets/icons/*.png",
+    "assets/sprites/*.json",
+    "assets/sprites/actors/*/rotations/*.png",
+    "assets/sprites/actors/*/animations/*/*/*.png",
+    "assets/sprites/items/*.png",
+    "assets/sprites/items/named/*.png",
+    "assets/sprites/props/*.png",
+    "assets/sprites/world/hd/*.png",
+    "assets/sprites/world/modern/*.png",
+    "assets/sprites/menus/*.png",
+    "assets/sprites/menus/glyphs/*.png",
+    "assets/sprites/hud/*.png",
+]

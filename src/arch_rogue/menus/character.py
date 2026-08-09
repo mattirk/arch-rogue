@@ -1,0 +1,3018 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Matti Rita-Kasari
+#
+# AI Provenance & Liability Notice:
+# This repository contains code generated, assisted, or refactored by Artificial
+# Intelligence models. Provided strictly "AS IS" under Apache 2.0 with no warranty
+# of clean IP provenance or non-infringement; downstream users assume all legal
+# and financial risk and should perform their own compliance audits.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# pyright: reportAttributeAccessIssue=false, reportUnusedImport=false
+from __future__ import annotations
+
+from typing import NamedTuple, Sequence
+
+import pygame
+
+from ..content import STORY_ARCS
+from ..models import Archetype, Color
+from ..combat.costs import archetype_move_bonus
+from ..steam_deck import is_steam_deck
+
+MenuRow = tuple[str, str, str]
+
+DISCIPLINE_PANEL_ASSETS = {
+    "Warden": "menu.panel.discipline.warden",
+    "Rogue": "menu.panel.discipline.rogue",
+    "Arcanist": "menu.panel.discipline.arcanist",
+    "Acolyte": "menu.panel.discipline.acolyte",
+    "Ranger": "menu.panel.discipline.ranger",
+}
+
+# The selected PixelLab Variant B plates share a 600x192 equal-axis crop and an
+# authored socket center.  Each socket lives inside a protected 192x192
+# full-height nine-slice endcap, so its X/Y scale stays equal while only the
+# text rail stretches horizontally.
+_DISCIPLINE_PANEL_SOURCE_HEIGHT = 192
+_DISCIPLINE_PANEL_MIN_ASPECT = 2.65
+_DISCIPLINE_GLYPH_SCALE = 0.39
+_DISCIPLINE_GLYPH_MIN_SIZE = 9
+_DISCIPLINE_GLYPH_MAX_SIZE = 40
+_DISCIPLINE_SELECTION_RADIUS_RATIO = 0.08
+_DISCIPLINE_SEALED_RED = (132, 74, 74)
+_DISCIPLINE_SOCKET_CENTERS = {
+    archetype: (104, 96)
+    for archetype in DISCIPLINE_PANEL_ASSETS
+}
+MEMORY_TOKEN_EXPLANATION = (
+    "By consuming a memory token, you will remember a discipline "
+    "you have once acquired"
+)
+
+
+class DisciplineTreeData(NamedTuple):
+    """Immutable content indexes reused for every frame of a character sheet."""
+
+    nodes: tuple[object, ...]
+    paths: tuple[str, ...]
+    max_degree: int
+    grid: dict[tuple[int, str], object]
+    by_key: dict[str, object]
+
+
+class DisciplineGridLayout(NamedTuple):
+    """Font/viewport-dependent discipline geometry safe to reuse while open."""
+
+    header_height: int
+    legend_height: int
+    token_height: int
+    hint_height: int
+    footer_height: int
+    gap: int
+    grid_rect: pygame.Rect
+    rows_area: pygame.Rect
+    degree_label_width: int
+    column_gap: int
+    column_width: int
+    row_height: int
+    rows: tuple[tuple[tuple[str, pygame.Rect], ...], ...]
+
+
+def discipline_glyph_asset_key(node_key: str) -> str:
+    """Return the stable authored-asset key for a discipline save ID."""
+
+    return f"menu.glyph.discipline.{node_key}"
+
+
+class MenuCharacterMixin:
+    _ARCHETYPE_PANEL_SCALE = 0.8
+    _ARCHETYPE_PREVIEW_DIRECTIONS: dict[str, str] = {}
+
+    def archetype_preview_direction(self, archetype: Archetype) -> str:
+        return self._ARCHETYPE_PREVIEW_DIRECTIONS.get(archetype.name, "south")
+
+    def _discipline_tree_data(self, archetype: str) -> DisciplineTreeData:
+        cache = getattr(self, "_discipline_tree_cache", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._discipline_tree_cache = cache
+        cached = cache.get(archetype)
+        if cached is not None:
+            return cached
+
+        from ..content import (
+            discipline_paths_for_archetype,
+            disciplines_for_archetype,
+            max_discipline_degree,
+        )
+
+        nodes = disciplines_for_archetype(archetype)
+        paths = discipline_paths_for_archetype(archetype)
+        data = DisciplineTreeData(
+            nodes=nodes,
+            paths=paths,
+            max_degree=max_discipline_degree(archetype),
+            grid={(node.degree, node.path): node for node in nodes},
+            by_key={node.key: node for node in nodes},
+        )
+        cache[archetype] = data
+        return data
+
+    def _discipline_grid_layout(
+        self,
+        archetype: str,
+        rect: pygame.Rect,
+        paths: tuple[str, ...],
+        max_degree: int,
+    ) -> DisciplineGridLayout:
+        cache = getattr(self, "_discipline_grid_layout_cache", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._discipline_grid_layout_cache = cache
+        key = (
+            archetype,
+            tuple(rect),
+            paths,
+            max_degree,
+            id(self.g.tiny_font),
+            id(self.g.small_font),
+            float(self.g.ui_scale_factor()),
+        )
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+
+        tiny_h = self.g.tiny_font.get_height()
+        small_h = self.g.small_font.get_height()
+        gap = self.u(6)
+        header_h = small_h + self.u(6)
+        legend_h = tiny_h + self.u(8)
+        token_h = tiny_h + self.u(4)
+        # Deck: inline plate descriptions no longer fit next to the enlarged
+        # names, so the hover hint is where node copy is read — give it the
+        # standard menu font's height instead of tiny's (5.0: raised from the
+        # small font; ~11 px text on the 7-inch panel was still squint
+        # territory). The taller footer costs the grid ~1 px per degree row.
+        hint_h = (self.g.font.get_height() if is_steam_deck() else tiny_h) + self.u(6)
+        footer_h = legend_h + token_h + hint_h
+        # Match the footer legend's inset: path names need breathing room below
+        # the panel top, and Degree labels should not sit on the left border.
+        panel_pad = max(self.u(8), 8)
+        grid_rect = pygame.Rect(
+            rect.x + panel_pad,
+            rect.y + panel_pad + header_h,
+            max(1, rect.width - panel_pad),
+            max(
+                1,
+                rect.height
+                - panel_pad
+                - header_h
+                - footer_h
+                - gap * 2,
+            ),
+        )
+        degree_label_w = max(
+            self.u(28),
+            self.g.tiny_font.size(f"Degree {max_degree}")[0] + self.u(6),
+        )
+        rows_area = pygame.Rect(
+            grid_rect.x + degree_label_w,
+            grid_rect.y,
+            max(1, grid_rect.width - degree_label_w),
+            grid_rect.height,
+        )
+        col_gap = self.u(6)
+        col_w = max(
+            1, (rows_area.width - col_gap * (len(paths) - 1)) // len(paths)
+        )
+        row_h = max(
+            1, (rows_area.height - gap * (max_degree - 1)) // max_degree
+        )
+        rows = tuple(
+            tuple(
+                (
+                    path,
+                    pygame.Rect(
+                        rows_area.x + col * (col_w + col_gap),
+                        rows_area.y + (degree - 1) * (row_h + gap),
+                        col_w,
+                        row_h,
+                    ),
+                )
+                for col, path in enumerate(paths)
+            )
+            for degree in range(1, max_degree + 1)
+        )
+        layout = DisciplineGridLayout(
+            header_h,
+            legend_h,
+            token_h,
+            hint_h,
+            footer_h,
+            gap,
+            grid_rect,
+            rows_area,
+            degree_label_w,
+            col_gap,
+            col_w,
+            row_h,
+            rows,
+        )
+        # At most a handful of screen/font combinations occur in one session.
+        if len(cache) >= 24:
+            cache.clear()
+        cache[key] = layout
+        return layout
+
+    def draw_archetype_select(self) -> None:
+        with self.g.fitted_ui_layout((960, 540)):
+            library = getattr(self.g, "ui_assets", None)
+            modern = bool(
+                self.asset_ui_active()
+                and library is not None
+                and library.source("menu.panel") is not None
+            )
+            if modern:
+                self._draw_archetype_select_modern()
+            else:
+                self._draw_archetype_select_legacy()
+
+    def _draw_archetype_select_modern(self) -> None:
+        width, height = self.screen.get_size()
+        self.draw_menu_backdrop()
+        selected = self.g.selected_archetype
+        accent = self.archetype_accent(selected.name)
+        side_margin = max(20, min(self.u(36), width // 16))
+        preferred_title_font = self.g.title_font if width >= 800 else self.g.big_font
+        title_font = self.fit_menu_font(
+            preferred_title_font,
+            max_height=max(30, min(48, height // 9)),
+            max_width=max(1, width - side_margin * 2),
+            texts=("Choose Your Archetype",),
+            minimum_size=20,
+        )
+        subtitle_font = self.g.font
+        show_hints = self.menu_input_hints_visible()
+
+        # Header sits lower than the other menus so the carousel stage
+        # breathes inside the backdrop's carved frame.
+        title_rect = pygame.Rect(
+            side_margin,
+            max(24, int(height * 0.075)),
+            width - side_margin * 2,
+            title_font.get_height(),
+        )
+        subtitle_rect = (
+            pygame.Rect(
+                side_margin,
+                title_rect.bottom + self.u(5),
+                width - side_margin * 2,
+                subtitle_font.get_height(),
+            )
+            if show_hints
+            else pygame.Rect(0, 0, 0, 0)
+        )
+        self.g._archetype_title_rect = title_rect.copy()
+        self.g._archetype_subtitle_rect = subtitle_rect.copy()
+        self.draw_text(
+            "Choose Your Archetype",
+            title_font,
+            self.TITLE,
+            title_rect,
+            align="center",
+        )
+        if show_hints:
+            self.draw_text(
+                "Arrow keys select · Enter begins · Backspace returns",
+                subtitle_font,
+                self.MUTED,
+                subtitle_rect,
+                align="center",
+            )
+
+        footer_h = (
+            max(
+                self.menu_shortcut_section_height(self.g.small_font) + self.u(4),
+                self.g.small_font.get_height() + self.u(8),
+                32,
+            )
+            if show_hints
+            else 0
+        )
+        header_bottom = subtitle_rect.bottom if show_hints else title_rect.bottom
+        content = pygame.Rect(
+            side_margin,
+            header_bottom + self.u(8),
+            max(1, width - side_margin * 2),
+            max(1, height - header_bottom - self.u(8) - footer_h - self.u(6)),
+        )
+        self.g._archetype_content_rect = content.copy()
+
+        # Reserve the detail panel height first; the stage line is derived
+        # from it so the panel never collapses on short screens. Height comes
+        # from the content it must hold, not a screen ratio, so the stat
+        # cards stay compact on large canvases.
+        detail_w = min(content.width, max(self.u(320), int(width * 0.66)))
+        stat_cols = self._stat_grid_columns(detail_w, modern=True)
+        stat_rows = max(1, (7 + stat_cols - 1) // stat_cols)
+        stat_need = stat_rows * (
+            self.g.small_font.get_height() + self.u(14)
+        ) + (stat_rows - 1) * self.u(6)
+        detail_need = (
+            self.g.font.get_height()
+            + self.u(4)
+            + self.g.small_font.get_height()
+            + self.u(6)
+            + stat_need
+            + self.u(56)
+        )
+        detail_h = max(self.u(86), min(detail_need, int(content.height * 0.42)))
+        name_block_h = (
+            self.u(34)
+            + self.g.big_font.get_height()
+            + self.u(2)
+            + max(2, self.u(2))
+            + self.u(4)
+            + self.g.small_font.get_height()
+        )
+        # Balance the group: the leftover above the panel splits ~3:1
+        # between sprite headroom and the gap under the detail panel.
+        leftover = max(0, content.height - detail_h - name_block_h - self.u(6))
+        stage_y = max(
+            content.y + self.u(40),
+            content.y + int(leftover * 0.74),
+        )
+        stage_rect, name_bottom = self._draw_archetype_stage_modern(
+            content, selected, stage_y
+        )
+        detail_rect = pygame.Rect(
+            0,
+            0,
+            detail_w,
+            max(1, min(detail_h, content.bottom - name_bottom - self.u(6))),
+        )
+        detail_rect.midtop = (content.centerx, name_bottom + self.u(6))
+        self.g._archetype_panel_reference_rect = detail_rect.copy()
+        self.g._archetype_panel_rect = detail_rect.copy()
+        self.g._archetype_list_rect = stage_rect.copy()
+        self.g._archetype_preview_rect = stage_rect.copy()
+        if detail_rect.height < self.u(60) or not self._draw_archetype_detail_modern(
+            detail_rect, selected, accent
+        ):
+            self._draw_archetype_select_legacy()
+            return
+
+        # Rows are the stage slots; the shortcut chip renders without row
+        # keycaps, matching the other modern menus.
+        self.g._menu_row_key_rects = tuple(
+            pygame.Rect(0, 0, 0, 0) for _ in self.archetypes
+        )
+        if show_hints:
+            shortcut_h = self.menu_shortcut_section_height(self.g.small_font)
+            shortcut_rect = pygame.Rect(
+                detail_rect.x,
+                min(height - shortcut_h - self.u(4), detail_rect.bottom + self.u(4)),
+                detail_rect.width,
+                shortcut_h,
+            )
+            selected_index = self.archetypes.index(selected)
+            self.draw_menu_shortcut_section(
+                shortcut_rect,
+                str(selected_index + 1),
+                f"Select {selected.name}",
+                font=self.g.small_font,
+            )
+            self.g._archetype_shortcut_rect = shortcut_rect.copy()
+        else:
+            self.g._archetype_shortcut_rect = pygame.Rect(0, 0, 0, 0)
+
+    def _archetype_native_scale(self) -> int:
+        """Integer pixel scale for the selection stage sprites."""
+        return 2 if self.screen.get_height() >= 1000 else 1
+
+    def _draw_archetype_stage_modern(
+        self, content: pygame.Rect, selected: Archetype, stage_y: int
+    ) -> tuple[pygame.Rect, int]:
+        """Draw the carousel stage. Returns (stage band rect, name block bottom)."""
+        width = self.screen.get_width()
+        scale = self._archetype_native_scale()
+        count = len(self.archetypes)
+        selected_index = self.archetypes.index(selected)
+        accent = self.archetype_accent(selected.name)
+        wide = width >= 900
+        spread = (
+            min(int(width * 0.18), self.u(230))
+            if wide
+            else max(1, int(width * 0.27))
+        )
+        max_offset = 2 if wide else 1
+
+        name_font = self.g.font
+        big_font = self.g.big_font
+        tag_font = self.g.small_font
+
+        # Fetch side characters first and the selected one last: draw order
+        # layers the selection on top, and the trailing player_visual call is
+        # the selected archetype (callers and tests inspect the last call).
+        order = sorted(
+            enumerate(self.archetypes),
+            key=lambda item: (
+                item[0] == selected_index,
+                -abs(((item[0] - selected_index + count // 2) % count) - count // 2),
+            ),
+        )
+        visuals: list[tuple[int, Archetype, object, int]] = []
+        max_h = 1
+        for index, archetype in order:
+            offset = ((index - selected_index + count // 2) % count) - count // 2
+            visual = self.g.sprites.player_visual(
+                archetype.name,
+                "idle",
+                0.0,
+                self.g.ui_elapsed,
+                direction=self.archetype_preview_direction(archetype),
+                native=True,
+            )
+            visuals.append((offset, archetype, visual, index))
+            max_h = max(max_h, visual.surface.get_height() * scale)
+
+        slot_w = max(self.u(90), min(spread - self.u(6), self.u(220)))
+        band_top = max(content.y, stage_y - max_h - self.u(6))
+        row_rects: dict[int, pygame.Rect] = {}
+        stage_rect = pygame.Rect(
+            content.x, band_top, content.width, stage_y - band_top + self.u(4)
+        )
+
+        # visuals is already ordered sides-first, selected last.
+        for offset, archetype, visual, index in visuals:
+            if abs(offset) > max_offset:
+                row_rects[index] = pygame.Rect(0, 0, 0, 0)
+                continue
+            cx = content.centerx + offset * spread
+            is_selected = offset == 0
+            sprite = visual.surface
+            anchor = visual.anchor
+            if scale != 1:
+                sprite = pygame.transform.scale(
+                    sprite,
+                    (sprite.get_width() * scale, sprite.get_height() * scale),
+                )
+            if not is_selected:
+                sprite = sprite.copy()
+                level = 116 if abs(offset) == 1 else 74
+                sprite.fill(
+                    (level, level, level, 255),
+                    special_flags=pygame.BLEND_RGBA_MULT,
+                )
+            pedestal = pygame.Rect(
+                0,
+                0,
+                max(self.u(40), int(sprite.get_width() * 0.62)),
+                max(5, self.u(8)),
+            )
+            pedestal.midbottom = (cx, stage_y + self.u(4))
+            ped_accent = self.archetype_accent(archetype.name)
+            if is_selected:
+                halo = pygame.Surface(
+                    (pedestal.width * 2, pedestal.height * 2),
+                    pygame.SRCALPHA,
+                )
+                pygame.draw.ellipse(halo, (*ped_accent, 60), halo.get_rect())
+                self.screen.blit(halo, halo.get_rect(center=pedestal.center))
+            shade = pygame.Surface(pedestal.size, pygame.SRCALPHA)
+            pygame.draw.ellipse(
+                shade,
+                (*self.mix(self.PANEL, ped_accent, 0.4 if is_selected else 0.15), 190),
+                shade.get_rect(),
+            )
+            self.screen.blit(shade, pedestal)
+
+            ground = (cx, pedestal.centery)
+            sprite_rect = sprite.get_rect(
+                topleft=(
+                    ground[0] - round(anchor[0] * scale),
+                    ground[1] - round(anchor[1] * scale),
+                )
+            )
+            self.screen.blit(sprite, sprite_rect)
+
+            slot = pygame.Rect(0, 0, slot_w, stage_rect.height + self.u(30))
+            slot.midbottom = (cx, stage_y + self.u(30))
+            row_rects[index] = slot
+
+            if is_selected:
+                self.g._archetype_sprite_box = sprite_rect.inflate(
+                    self.u(8), self.u(8)
+                ).clip(self.screen.get_rect())
+                self.g._archetype_sprite_rect = sprite_rect.copy()
+                self.g._archetype_sprite_anchor = (
+                    round(anchor[0] * scale),
+                    round(anchor[1] * scale),
+                )
+                self.g._archetype_sprite_ground = ground
+            else:
+                label_y = stage_y + self.u(14)
+                self.draw_text(
+                    archetype.name,
+                    name_font,
+                    self.MUTED,
+                    pygame.Rect(
+                        cx - spread // 2, label_y, spread, name_font.get_height()
+                    ),
+                    align="center",
+                )
+
+        name_y = stage_y + self.u(34)
+        self.draw_text(
+            selected.name,
+            big_font,
+            self.TITLE,
+            pygame.Rect(
+                content.centerx - spread, name_y, spread * 2, big_font.get_height()
+            ),
+            align="center",
+        )
+        underline = pygame.Rect(0, 0, self.u(120), max(2, self.u(2)))
+        underline.midtop = (content.centerx, name_y + big_font.get_height() + self.u(2))
+        pygame.draw.rect(
+            self.screen,
+            self.mix(accent, self.PANEL, 0.2),
+            underline,
+            border_radius=underline.height // 2,
+        )
+        tagline = self.class_tagline(selected.name).upper()
+        tag_y = underline.bottom + self.u(4)
+        self.draw_text(
+            tagline,
+            tag_font,
+            accent,
+            pygame.Rect(
+                content.centerx - spread, tag_y, spread * 2, tag_font.get_height()
+            ),
+            align="center",
+        )
+        name_bottom = tag_y + tag_font.get_height()
+
+        self.g._menu_row_rects = tuple(
+            row_rects.get(index, pygame.Rect(0, 0, 0, 0))
+            for index in range(count)
+        )
+
+        confirm_rect: pygame.Rect | None = None
+        if bool(getattr(self.g, "mobile_mode", False)):
+            selected_slot = row_rects.get(selected_index)
+            if selected_slot is not None:
+                confirm_rect = self._archetype_confirm_zone(selected_slot)
+                self._draw_archetype_confirm_arrow(confirm_rect, accent)
+        self._publish_archetype_confirm_rect(confirm_rect)
+        return stage_rect, name_bottom
+
+    def _draw_archetype_detail_modern(
+        self, rect: pygame.Rect, archetype: Archetype, accent: Color
+    ) -> bool:
+        """Skills, wound, and stats inside the authored panel asset."""
+        if not self.panel(rect, accent, alpha=248):
+            return False
+        safe = self.menu_panel_content_rect(rect)
+        if safe is None:
+            return False
+        safe = safe.inflate(-self.u(8) * 2, -self.u(6) * 2)
+
+        skills_text = " · ".join(self.skill_names_for(archetype.name))
+        skills_font = self.fit_menu_font(
+            self.g.font,
+            max_height=self.g.font.get_height(),
+            max_width=max(1, safe.width),
+            texts=(skills_text,),
+            minimum_size=9,
+        )
+        self.g._archetype_skills_text = skills_text
+        self.g._archetype_skills_font = skills_font
+        y = safe.y
+        self.draw_text(
+            skills_text,
+            skills_font,
+            accent,
+            pygame.Rect(safe.x, y, safe.width, skills_font.get_height()),
+            align="center",
+        )
+        y += skills_font.get_height() + self.u(4)
+        arc = STORY_ARCS.get(archetype.name)
+        if arc is not None:
+            wound_font = self.fit_menu_font(
+                self.g.small_font,
+                max_height=self.g.small_font.get_height(),
+                max_width=max(1, safe.width - self.u(6)),
+                texts=(arc.wound,),
+                minimum_size=9,
+            )
+            self.draw_text(
+                arc.wound,
+                wound_font,
+                self.MUTED,
+                pygame.Rect(safe.x, y, safe.width, wound_font.get_height()),
+                align="center",
+            )
+            y += wound_font.get_height() + self.u(6)
+
+        stat_cols = self._stat_grid_columns(safe.width, modern=True)
+        stat_rows = max(1, (7 + stat_cols - 1) // stat_cols)
+        stat_need = stat_rows * (
+            self.g.small_font.get_height() + self.u(14)
+        ) + (stat_rows - 1) * self.u(6)
+        stat_rect = pygame.Rect(
+            safe.x, y, safe.width, max(1, min(stat_need, safe.bottom - y))
+        )
+        stats = [
+            ("HP", str(archetype.max_hp)),
+            ("Mana", str(archetype.max_mana)),
+            ("Stamina", str(archetype.max_stamina)),
+            ("Move", f"{round(archetype_move_bonus(archetype.speed) * 100):+d}%"),
+            ("Melee", f"+{archetype.melee_bonus}"),
+            ("Spell", f"+{archetype.spell_bonus}"),
+            ("DR", f"+{archetype.armor_bonus}"),
+        ]
+        self.g._archetype_stat_rect = stat_rect.copy()
+        self.g._archetype_stat_rects = self.draw_stat_grid(
+            stats, stat_rect, modern=True, cards=True, accent=accent
+        )
+        return True
+
+    def _draw_archetype_list_modern(
+        self, rect: pygame.Rect, selected: Archetype
+    ) -> None:
+        rows_top = rect.y
+        available_h = max(1, rect.bottom - rows_top)
+        name_font = self.g.font
+        desc_font = self.g.small_font
+        # Two text lines per row: class name plus its description, with the
+        # main menu's row height as the floor when the column runs short.
+        desired_row_h = (
+            name_font.get_height() + desc_font.get_height() + self.u(18)
+        )
+        count = max(1, len(self.archetypes))
+
+        def fitted_row_h(row_gap: int) -> int:
+            return min(
+                desired_row_h,
+                max(
+                    name_font.get_height() + self.u(8),
+                    (available_h - row_gap * (count - 1)) // count,
+                ),
+            )
+
+        # Prefer an airy gap; give the space back to the rows when the column
+        # is too short to keep full-height rows with it.
+        gap = max(self.u(12), 12)
+        row_h = fitted_row_h(gap)
+        if row_h < desired_row_h:
+            gap = max(self.u(7), 7)
+            row_h = fitted_row_h(gap)
+        stack_h = row_h * count + gap * (count - 1)
+        rows_top += max(0, (available_h - stack_h) // 2)
+        rows_rect = pygame.Rect(rect.x, rows_top, rect.width, stack_h)
+        # Labels stay empty: the plates come from draw_menu_rows, while the
+        # two-line name/description text is drawn below over each plate.
+        rows: list[MenuRow] = [
+            (str(index + 1), "", "")
+            for index in range(len(self.archetypes))
+        ]
+        selected_index = self.archetypes.index(selected)
+        mobile_confirm = bool(getattr(self.g, "mobile_mode", False))
+        rendered = self.draw_menu_rows(
+            rows,
+            rows_rect,
+            selected_index=selected_index,
+            body_font=name_font,
+            detail_font=desc_font,
+            row_height=row_h,
+            row_gap=gap,
+            keys_in_rows=False,
+            selected_row_asset="menu.row.selected" if mobile_confirm else None,
+        )
+        for index, row_rect in enumerate(rendered):
+            archetype = self.archetypes[index]
+            safe = self.ui_content_rect("menu.row", row_rect)
+            if safe is None:
+                safe = row_rect.inflate(-self.u(16), 0)
+            pad = min(self.u(10), max(6, safe.width // 30))
+            text_rect = pygame.Rect(
+                safe.x + pad,
+                row_rect.y,
+                max(1, safe.width - pad * 2),
+                row_rect.height,
+            )
+            two_lines = (
+                row_rect.height
+                >= name_font.get_height() + desc_font.get_height() + self.u(6)
+            )
+            if two_lines:
+                line_gap = self.u(2)
+                block_h = (
+                    name_font.get_height() + line_gap + desc_font.get_height()
+                )
+                top = row_rect.centery - block_h // 2
+                self.draw_text(
+                    archetype.name,
+                    name_font,
+                    self.TEXT,
+                    pygame.Rect(
+                        text_rect.x, top, text_rect.width, name_font.get_height()
+                    ),
+                )
+                self.draw_text(
+                    archetype.description,
+                    desc_font,
+                    self.MUTED,
+                    pygame.Rect(
+                        text_rect.x,
+                        top + name_font.get_height() + line_gap,
+                        text_rect.width,
+                        desc_font.get_height(),
+                    ),
+                )
+            else:
+                self.draw_text(
+                    archetype.name,
+                    name_font,
+                    self.TEXT,
+                    text_rect,
+                    valign="center",
+                )
+        confirm_rect: pygame.Rect | None = None
+        if mobile_confirm and selected_index < len(rendered):
+            row_rect = rendered[selected_index]
+            confirm_rect = self._archetype_confirm_zone(row_rect)
+            if self.ui_asset("menu.row.selected", row_rect.size) is None:
+                self._draw_archetype_confirm_arrow(
+                    confirm_rect, self.archetype_accent(selected.name)
+                )
+        self._publish_archetype_confirm_rect(confirm_rect)
+
+    def _publish_archetype_confirm_rect(self, rect: pygame.Rect | None) -> None:
+        self.g._archetype_confirm_rect = (
+            rect.inflate(self.u(10), self.u(10)) if rect is not None else None
+        )
+
+    def _archetype_confirm_zone(self, row_rect: pygame.Rect) -> pygame.Rect:
+        """The right-endcap area of the selected row that hosts the arrow."""
+
+        safe = self.ui_content_rect("menu.row.selected", row_rect)
+        if safe is not None and row_rect.right - safe.right >= self.u(18):
+            return pygame.Rect(
+                safe.right,
+                row_rect.y,
+                max(1, row_rect.right - safe.right),
+                row_rect.height,
+            )
+        side = min(row_rect.height, max(1, row_rect.width // 3))
+        return pygame.Rect(row_rect.right - side, row_rect.y, side, row_rect.height)
+
+    def _draw_archetype_confirm_arrow(
+        self, zone: pygame.Rect, accent: Color
+    ) -> None:
+        """Procedural › arrow when the authored selected-row art is missing."""
+
+        cx, cy = zone.center
+        size = max(3, min(zone.width, zone.height) // 4)
+        offset = size // 2
+        points = [
+            (cx - offset, cy - size),
+            (cx + offset, cy),
+            (cx - offset, cy + size),
+        ]
+        pygame.draw.lines(self.screen, accent, False, points, max(2, self.u(2)))
+
+    def _draw_archetype_preview_modern(
+        self, rect: pygame.Rect, archetype: Archetype
+    ) -> None:
+        accent = self.archetype_accent(archetype.name)
+        name_font = self.fit_menu_font(
+            self.g.big_font,
+            max_height=max(22, rect.height // 7),
+            max_width=max(1, rect.width),
+            texts=(archetype.name,),
+            minimum_size=16,
+        )
+        self.draw_text(
+            archetype.name,
+            name_font,
+            self.TITLE,
+            pygame.Rect(rect.x, rect.y, rect.width, name_font.get_height()),
+            align="center",
+        )
+        skills_y = rect.y + name_font.get_height() + self.u(2)
+        skills_text = " · ".join(self.skill_names_for(archetype.name))
+        skills_font = self.fit_menu_font(
+            self.g.small_font,
+            max_height=self.g.small_font.get_height(),
+            max_width=max(1, rect.width),
+            texts=(skills_text,),
+            minimum_size=9,
+        )
+        self.g._archetype_skills_text = skills_text
+        self.g._archetype_skills_font = skills_font
+        self.draw_text(
+            skills_text,
+            skills_font,
+            accent,
+            pygame.Rect(rect.x, skills_y, rect.width, skills_font.get_height()),
+            align="center",
+        )
+
+        # 4.9: the archetype's canonical wound, the one line of story the
+        # select screen carries. The oath and secret stay below ground.
+        wound_h = 0
+        arc = STORY_ARCS.get(archetype.name)
+        if arc is not None:
+            wound_y = skills_y + skills_font.get_height() + self.u(3)
+            wound_font = self.fit_menu_font(
+                self.g.small_font,
+                max_height=self.g.small_font.get_height(),
+                max_width=max(1, rect.width - self.u(6)),
+                texts=(arc.wound,),
+                minimum_size=9,
+            )
+            self.draw_text(
+                arc.wound,
+                wound_font,
+                self.MUTED,
+                pygame.Rect(
+                    rect.x, wound_y, rect.width, wound_font.get_height()
+                ),
+                align="center",
+            )
+            wound_h = wound_font.get_height() + self.u(3)
+
+        middle_y = skills_y + skills_font.get_height() + wound_h + self.u(7)
+        stat_gap = max(self.u(4), 5)
+        stat_columns = self._stat_grid_columns(rect.width, modern=True)
+        stat_rows = max(1, (7 + stat_columns - 1) // stat_columns)
+        stat_cell_h = max(self.g.small_font.get_height() + self.u(3), self.u(18))
+        desired_stat_h = stat_rows * stat_cell_h + (stat_rows - 1) * stat_gap
+        stat_h = min(
+            max(desired_stat_h, self.u(56)),
+            max(1, rect.bottom - middle_y - self.u(24)),
+        )
+        stat_rect = pygame.Rect(rect.x, rect.bottom - stat_h, rect.width, stat_h)
+        middle = pygame.Rect(
+            rect.x,
+            middle_y,
+            rect.width,
+            max(1, stat_rect.y - middle_y - self.u(7)),
+        )
+        # The archetype description lives in the class rows now, so the sprite
+        # gets the whole middle band. Desktop keeps breathing room above and
+        # below the character instead of filling the band edge to edge.
+        sprite_box = middle.copy()
+        desktop = not bool(getattr(self.g, "mobile_mode", False))
+        if desktop:
+            v_inset = max(self.u(10), sprite_box.height // 12)
+            sprite_box = sprite_box.inflate(0, -v_inset * 2)
+        visual = self.g.sprites.player_visual(
+            archetype.name,
+            "idle",
+            0.0,
+            self.g.ui_elapsed,
+            direction=self.archetype_preview_direction(archetype),
+        )
+        sprite = visual.surface
+        scale = min(
+            max(1, sprite_box.width - self.u(20)) / max(1, sprite.get_width()),
+            max(1, sprite_box.height - self.u(12)) / max(1, sprite.get_height()),
+            3.4,
+        )
+        if desktop:
+            scale *= 0.9
+        scale = max(0.15, scale)
+        preview = pygame.transform.scale(
+            sprite,
+            (
+                max(1, round(sprite.get_width() * scale)),
+                max(1, round(sprite.get_height() * scale)),
+            ),
+        )
+        preview_anchor = (
+            round(visual.anchor[0] * preview.get_width() / max(1, sprite.get_width())),
+            round(visual.anchor[1] * preview.get_height() / max(1, sprite.get_height())),
+        )
+        pedestal = pygame.Rect(
+            0,
+            0,
+            min(sprite_box.width, preview.get_width() + self.u(26)),
+            max(5, self.u(9)),
+        )
+        pedestal.midbottom = (sprite_box.centerx, sprite_box.bottom - self.u(2))
+        glow = pygame.Surface(
+            (max(1, pedestal.width), max(1, pedestal.height * 2)), pygame.SRCALPHA
+        )
+        pygame.draw.ellipse(glow, (*accent, 42), glow.get_rect())
+        self.screen.blit(glow, glow.get_rect(center=pedestal.center))
+        # Asset frames are cropped independently, so their canvas centers move.
+        # Pin the authored ground anchor to the pedestal instead.
+        preview_ground = (sprite_box.centerx, pedestal.centery)
+        preview_rect = preview.get_rect(
+            topleft=(
+                preview_ground[0] - preview_anchor[0],
+                preview_ground[1] - preview_anchor[1],
+            )
+        )
+        self.screen.blit(preview, preview_rect)
+        self.g._archetype_sprite_box = sprite_box.copy()
+        self.g._archetype_sprite_rect = preview_rect.copy()
+        self.g._archetype_sprite_anchor = preview_anchor
+        self.g._archetype_sprite_ground = preview_ground
+        stats = [
+            ("HP", str(archetype.max_hp)),
+            ("Mana", str(archetype.max_mana)),
+            ("Stamina", str(archetype.max_stamina)),
+            ("Move", f"{round(archetype_move_bonus(archetype.speed) * 100):+d}%"),
+            ("Melee", f"+{archetype.melee_bonus}"),
+            ("Spell", f"+{archetype.spell_bonus}"),
+            ("DR", f"+{archetype.armor_bonus}"),
+        ]
+        self.g._archetype_stat_rect = stat_rect.copy()
+        self.g._archetype_stat_rects = self.draw_stat_grid(
+            stats, stat_rect, modern=True, cards=True, accent=accent
+        )
+
+    def _draw_archetype_select_legacy(self) -> None:
+        width, height = self.screen.get_size()
+        self.draw_menu_backdrop()
+        selected = self.g.selected_archetype
+        accent = self.archetype_accent(selected.name)
+
+        title_font = self.g.title_font if height >= self.u(330) else self.g.big_font
+        subtitle_font = self.g.font
+        show_hints = self.menu_input_hints_visible()
+        title_h = title_font.get_height()
+        top_margin = max(self.u(12), int(height * 0.04))
+        self.draw_text(
+            "Choose Your Archetype",
+            title_font,
+            self.TITLE,
+            pygame.Rect(28, top_margin, width - 56, title_h),
+            align="center",
+        )
+        subtitle_y = top_margin + title_h + self.u(5)
+        if show_hints:
+            self.draw_text(
+                "Arrow keys select · Enter begins · Backspace returns",
+                subtitle_font,
+                self.MUTED,
+                pygame.Rect(32, subtitle_y, width - 64, subtitle_font.get_height()),
+                align="center",
+            )
+
+        footer_h = (
+            max(self.u(30), self.g.small_font.get_height() + self.u(14))
+            if show_hints
+            else 0
+        )
+        header_bottom = (
+            subtitle_y + subtitle_font.get_height()
+            if show_hints
+            else top_margin + title_h
+        )
+        content_top = header_bottom + self.u(14)
+        content_margin = max(self.u(14), 18)
+        content = pygame.Rect(
+            content_margin,
+            content_top,
+            max(1, width - content_margin * 2),
+            max(1, height - content_top - footer_h - self.u(8)),
+        )
+        if content.height < 230:
+            content.y = max(86, content.y - (230 - content.height))
+            content.height = max(1, min(230, height - content.y - footer_h - 10))
+
+        compact = width < max(620, self.u(360)) or content.width < self.u(360)
+        gap = max(self.u(8), 12)
+        base_list_w = min(self.u(250), max(self.u(180), int(content.width * 0.36)))
+        preview_min_w = min(self.u(250), max(self.u(180), int(content.width * 0.28)))
+        list_w = (
+            min(base_list_w * 4, max(base_list_w, content.width - gap - preview_min_w))
+            if not compact
+            else content.width
+        )
+        if compact:
+            min_preview_h = min(max(self.u(110), 110), max(1, content.height - gap - 1))
+            preferred_list_h = min(
+                max(self.u(128), content.height // 2), content.height
+            )
+            if content.height > gap + min_preview_h:
+                list_h = min(preferred_list_h, content.height - gap - min_preview_h)
+                list_h = max(1, list_h)
+                preview_y = content.y + list_h + gap
+                preview_h = max(1, content.bottom - preview_y)
+            else:
+                list_h = max(1, content.height // 2)
+                preview_y = content.y + list_h
+                preview_h = max(1, content.bottom - preview_y)
+            list_rect = pygame.Rect(content.x, content.y, content.width, list_h)
+            preview_rect = pygame.Rect(content.x, preview_y, content.width, preview_h)
+        else:
+            list_rect = pygame.Rect(content.x, content.y, list_w, content.height)
+            preview_rect = pygame.Rect(
+                list_rect.right + gap,
+                content.y,
+                content.right - list_rect.right - gap,
+                content.height,
+            )
+
+        self.panel(list_rect, accent, alpha=248)
+        self.panel(preview_rect, accent, alpha=248)
+        preview_header_cover = pygame.Rect(
+            preview_rect.x + self.u(6),
+            preview_rect.y + self.u(4),
+            preview_rect.width - self.u(12),
+            self.g.big_font.get_height() + self.u(16),
+        )
+        pygame.draw.rect(self.screen, self.PANEL, preview_header_cover)
+        self.draw_archetype_list(list_rect, selected)
+        self.draw_archetype_preview(preview_rect, selected)
+
+        if show_hints:
+            footer_font = self.g.small_font
+            self.draw_text(
+                f"Press 1-{min(len(self.archetypes), 9)} to jump directly to a class",
+                footer_font,
+                self.WARNING,
+                pygame.Rect(32, height - footer_h, width - 64, footer_h - 4),
+                align="center",
+                valign="center",
+            )
+
+    def draw_archetype_list(self, rect: pygame.Rect, selected: Archetype) -> None:
+        compact_fonts = rect.height < self.u(190)
+        heading_font = self.g.font if compact_fonts else self.g.heading_font
+        name_font_large = self.g.font
+        row_font = self.g.small_font
+        show_hints = self.menu_input_hints_visible()
+        inner = rect.inflate(-self.u(22), -self.u(22))
+        header_rect = pygame.Rect(
+            inner.x,
+            inner.y - self.u(2),
+            inner.width,
+            heading_font.get_height() + self.u(10),
+        )
+        pygame.draw.rect(self.screen, self.PANEL_INK, header_rect)
+        self.draw_text(
+            "Classes",
+            heading_font,
+            self.TITLE,
+            pygame.Rect(inner.x, inner.y, inner.width, heading_font.get_height()),
+        )
+        header_line_y = inner.y + heading_font.get_height() + self.u(6)
+        pygame.draw.line(
+            self.screen,
+            self.shade(self.archetype_accent(selected.name), 18),
+            (inner.x, header_line_y),
+            (inner.right, header_line_y),
+            max(1, self.u(1)),
+        )
+        list_top = header_line_y + self.u(10)
+        gap = max(self.u(4), 5)
+        available_rows_h = max(
+            1, inner.bottom - list_top - gap * (len(self.archetypes) - 1)
+        )
+        row_h = max(
+            self.g.small_font.get_height() + self.u(18),
+            min(self.u(74), available_rows_h // len(self.archetypes)),
+        )
+        y = list_top
+        rendered_rows: list[pygame.Rect] = []
+        mobile_confirm = bool(getattr(self.g, "mobile_mode", False))
+        confirm_rect: pygame.Rect | None = None
+        for index, archetype in enumerate(self.archetypes):
+            row = pygame.Rect(inner.x, y, inner.width, row_h)
+            rendered_rows.append(row.copy())
+            is_selected = archetype == selected
+            row_accent = self.archetype_accent(archetype.name)
+            if is_selected:
+                # Selected: gold-tinted plate with a soft inner glow.
+                fill = self.shade(row_accent, -100)
+                pygame.draw.rect(self.screen, fill, row, border_radius=self.u(7))
+                glow = pygame.Surface(row.size, pygame.SRCALPHA)
+                pygame.draw.rect(
+                    glow,
+                    (*row_accent, 36),
+                    glow.get_rect(),
+                    border_radius=self.u(7),
+                )
+                self.screen.blit(glow, row)
+            else:
+                pygame.draw.rect(
+                    self.screen, self.PANEL_INK, row, border_radius=self.u(7)
+                )
+            border = row_accent if is_selected else self.IRON
+            radius = self.u(7)
+            pygame.draw.rect(
+                self.screen, border, row, max(1, self.u(1)), border_radius=radius
+            )
+            if is_selected:
+                strip = pygame.Rect(
+                    row.x, row.y + self.u(4), self.u(4), row.height - self.u(8)
+                )
+                pygame.draw.rect(
+                    self.screen, row_accent, strip, border_radius=self.u(3)
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    self.shade(row_accent, 40),
+                    strip,
+                    border_radius=self.u(3),
+                )
+            if show_hints:
+                # Sigil badge — iron plate with the class number etched in gold.
+                badge_size = min(self.u(34), row_h - self.u(10))
+                badge = pygame.Rect(
+                    row.x + self.u(10),
+                    row.y + (row_h - badge_size) // 2,
+                    badge_size,
+                    badge_size,
+                )
+                pygame.draw.rect(
+                    self.screen, self.IRON_DARK, badge, border_radius=self.u(5)
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    self.IRON,
+                    badge.inflate(-self.u(2), -self.u(2)),
+                    border_radius=self.u(4),
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    border,
+                    badge,
+                    max(1, self.u(1)),
+                    border_radius=self.u(5),
+                )
+                self.draw_text(
+                    str(index + 1),
+                    row_font,
+                    self.TITLE if is_selected else self.IRON_LIGHT,
+                    badge,
+                    align="center",
+                    valign="center",
+                )
+                text_x = badge.right + self.u(14)
+                text_w = row.width - badge.width - self.u(28)
+            else:
+                text_x = row.x + self.u(14)
+                text_w = row.width - self.u(28)
+            if is_selected and mobile_confirm:
+                text_w = max(1, text_w - row_h)
+            name_rect = pygame.Rect(
+                text_x,
+                row.y + self.u(3),
+                text_w,
+                max(1, row_h // 2 - 2),
+            )
+            name_font = name_font_large if row_h >= 46 else row_font
+            self.draw_text(
+                archetype.name,
+                name_font,
+                self.TITLE if is_selected else self.TEXT,
+                name_rect,
+                valign="center",
+            )
+            role_rect = pygame.Rect(
+                text_x,
+                row.centery + self.u(2),
+                text_w,
+                max(1, row_h // 2 - 6),
+            )
+            self.draw_text(
+                self.class_tagline(archetype.name),
+                row_font,
+                self.MUTED,
+                role_rect,
+                valign="center",
+            )
+            if is_selected and mobile_confirm:
+                confirm_rect = self._archetype_confirm_zone(row)
+                self._draw_archetype_confirm_arrow(confirm_rect, row_accent)
+            y += row_h + gap
+        self.g._menu_row_rects = tuple(rendered_rows)
+        self._publish_archetype_confirm_rect(confirm_rect)
+
+    def draw_archetype_preview(self, rect: pygame.Rect, archetype: Archetype) -> None:
+        compact_fonts = rect.height < self.u(190)
+        accent = self.archetype_accent(archetype.name)
+        name_font = self.g.heading_font if compact_fonts else self.g.big_font
+        detail_font = self.g.small_font if compact_fonts else self.g.font
+        inner = rect.inflate(-self.u(28), -self.u(24))
+        name_h = name_font.get_height()
+        name_rect = pygame.Rect(
+            inner.x, inner.y + self.u(5), inner.width, name_h + self.u(8)
+        )
+        # Parchment name plaque.
+        plaque = pygame.Surface(name_rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(
+            plaque,
+            (214, 196, 150, 24),
+            plaque.get_rect(),
+            border_radius=self.u(6),
+        )
+        pygame.draw.rect(
+            plaque,
+            (*accent, 90),
+            plaque.get_rect(),
+            max(1, self.u(1)),
+            border_radius=self.u(6),
+        )
+        self.screen.blit(plaque, name_rect)
+        self.draw_text(
+            archetype.name,
+            name_font,
+            self.TITLE,
+            name_rect,
+            align="center",
+            valign="center",
+        )
+        skill_names = self.skill_names_for(archetype.name)
+        skills_y = name_rect.bottom + self.u(8)
+        self.draw_text(
+            " · ".join(skill_names),
+            detail_font,
+            accent,
+            pygame.Rect(inner.x, skills_y, inner.width, detail_font.get_height()),
+            align="center",
+        )
+        divider_y = skills_y + detail_font.get_height() + self.u(12)
+        # Ornamental divider — thin line with a center diamond.
+        pygame.draw.line(
+            self.screen,
+            self.shade(accent, -16),
+            (inner.x + 8, divider_y),
+            (inner.right - 8, divider_y),
+            max(1, self.u(1)),
+        )
+        cx = inner.centerx
+        dr = self.u(3)
+        pygame.draw.polygon(
+            self.screen,
+            accent,
+            [
+                (cx, divider_y - dr),
+                (cx + dr, divider_y),
+                (cx, divider_y + dr),
+                (cx - dr, divider_y),
+            ],
+        )
+
+        visual = self.g.sprites.player_visual(
+            archetype.name,
+            "idle",
+            0.0,
+            self.g.ui_elapsed,
+            direction=self.archetype_preview_direction(archetype),
+        )
+        sprite = visual.surface
+        sprite_max_h = max(128, int(inner.height * (0.58 if compact_fonts else 0.68)))
+        sprite_max_w = max(140, int(inner.width * 0.88))
+        scale = min(
+            sprite_max_w / sprite.get_width(), sprite_max_h / sprite.get_height()
+        )
+        scale = max(1.0, min(4.5, scale))
+        preview = pygame.transform.scale(
+            sprite,
+            (
+                max(1, int(sprite.get_width() * scale)),
+                max(1, int(sprite.get_height() * scale)),
+            ),
+        )
+        preview_anchor = (
+            round(visual.anchor[0] * preview.get_width() / max(1, sprite.get_width())),
+            round(visual.anchor[1] * preview.get_height() / max(1, sprite.get_height())),
+        )
+        sprite_y = divider_y + self.u(8)
+        pedestal = pygame.Rect(0, 0, preview.get_width() + self.u(40), self.u(18))
+        pedestal.center = (inner.centerx, sprite_y + preview.get_height() + 8)
+        # Pedestal glow — a soft elliptical halo in the class accent.
+        glow = pygame.Surface((pedestal.width, pedestal.height * 2), pygame.SRCALPHA)
+        for i in range(3):
+            alpha = 60 - i * 16
+            pygame.draw.ellipse(
+                glow,
+                (*accent, alpha),
+                glow.get_rect().inflate(-i * self.u(6), -i * self.u(4)),
+            )
+        self.screen.blit(glow, glow.get_rect(center=pedestal.center))
+        # Pedestal base — a thin stone slab.
+        pygame.draw.ellipse(self.screen, self.STONE_SHADOW, pedestal)
+        pygame.draw.ellipse(
+            self.screen,
+            self.STONE_LIGHT,
+            pedestal,
+            max(1, self.u(1)),
+        )
+        preview_ground = (inner.centerx, pedestal.centery + 2)
+        preview_rect = preview.get_rect(
+            topleft=(
+                preview_ground[0] - preview_anchor[0],
+                preview_ground[1] - preview_anchor[1],
+            )
+        )
+        self.screen.blit(preview, preview_rect)
+        self.g._archetype_sprite_rect = preview_rect.copy()
+        self.g._archetype_sprite_anchor = preview_anchor
+        self.g._archetype_sprite_ground = preview_ground
+
+        text_top = pedestal.bottom + self.u(10)
+        stat_h = max(self.u(96), self.g.small_font.get_height() * 4 + self.u(22))
+        desc_rect = pygame.Rect(
+            inner.x,
+            text_top,
+            inner.width,
+            max(30, inner.bottom - text_top - stat_h - 12),
+        )
+        self.draw_wrapped_text(
+            archetype.description,
+            detail_font,
+            self.TEXT,
+            desc_rect,
+            max(detail_font.get_height() + self.u(2), self.u(18)),
+        )
+
+        stats = [
+            ("HP", str(archetype.max_hp)),
+            ("Mana", str(archetype.max_mana)),
+            ("Stamina", str(archetype.max_stamina)),
+            ("Move", f"{round(archetype_move_bonus(archetype.speed) * 100):+d}%"),
+            ("Melee", f"+{archetype.melee_bonus}"),
+            ("Spell", f"+{archetype.spell_bonus}"),
+            ("DR", f"+{archetype.armor_bonus}"),
+        ]
+        self.draw_stat_grid(
+            stats, pygame.Rect(inner.x, inner.bottom - stat_h, inner.width, stat_h)
+        )
+
+    def _stat_grid_columns(
+        self, width: int, *, modern: bool, count: int | None = None
+    ) -> int:
+        if not modern:
+            return 4 if width >= self.u(260) else 3
+        # Nine stats (4.11.0: + Spell) fit two balanced rows of 5/4 on wide
+        # panels instead of a lopsided 4/4/1 third row.
+        if count is not None and count >= 9 and width >= self.u(460):
+            return 5
+        if width >= self.u(360):
+            return 4
+        if width >= self.u(220):
+            return 3
+        return 2
+
+    def draw_stat_grid(
+        self,
+        stats: list[tuple[str, str]],
+        rect: pygame.Rect,
+        *,
+        modern: bool = False,
+        cards: bool = False,
+        accent: Color | None = None,
+    ) -> list[pygame.Rect]:
+        stat_font = self.g.small_font
+        columns = self._stat_grid_columns(
+            rect.width, modern=modern, count=len(stats)
+        )
+        gap = max(self.u(4), 5)
+        row_count = max(1, (len(stats) + columns - 1) // columns)
+        # Every stat draws: a third row shrinks the cells rather than being
+        # clipped (the pre-4.11.0 legacy path silently dropped overflow rows).
+        max_rows = row_count
+        cell_w = (rect.width - gap * (columns - 1)) // columns
+        cell_h = (
+            max(1, (rect.height - gap * (row_count - 1)) // row_count)
+            if modern
+            else max(
+                stat_font.get_height() + self.u(12),
+                (rect.height - gap * (row_count - 1)) // row_count,
+            )
+        )
+        cells: list[pygame.Rect] = []
+        card_text_layout: list[
+            tuple[str, pygame.font.Font, pygame.Rect, str, pygame.Rect]
+        ] = []
+        stat_colors: dict[str, Color] = {
+            "HP": (215, 88, 82),
+            "Mana": (92, 150, 235),
+            "Stamina": (118, 192, 112),
+            "Speed": (220, 190, 105),
+            "Melee": (225, 145, 90),
+            "Spell": (168, 125, 230),
+            "DR": (170, 185, 205),
+        }
+        for index, (label, value) in enumerate(stats):
+            row = index // columns
+            col = index % columns
+            if row >= max_rows:
+                break
+            cell = pygame.Rect(
+                rect.x + col * (cell_w + gap),
+                rect.y + row * (cell_h + gap),
+                cell_w,
+                cell_h,
+            )
+            cells.append(cell.copy())
+            if modern and cards:
+                tone = stat_colors.get(label, accent or self.WARNING)
+                panel_asset = self.ui_asset("hud.bar", cell.size)
+                if panel_asset is not None:
+                    self.screen.blit(panel_asset, cell)
+                else:
+                    pygame.draw.rect(
+                        self.screen, self.PANEL_INK, cell, border_radius=self.u(4)
+                    )
+                    pygame.draw.rect(
+                        self.screen,
+                        self.shade(tone, -48),
+                        cell,
+                        max(1, self.u(1)),
+                        border_radius=self.u(4),
+                    )
+                line_pad = min(max(4, self.u(6)), max(1, cell.width // 4))
+                pygame.draw.line(
+                    self.screen,
+                    self.shade(tone, -18),
+                    (cell.x + line_pad, cell.bottom - max(2, self.u(3))),
+                    (cell.right - line_pad, cell.bottom - max(2, self.u(3))),
+                    max(1, self.u(1)),
+                )
+                text_pad = min(max(4, self.u(5)), max(1, cell.width // 5))
+                content = cell.inflate(-text_pad * 2, -max(2, self.u(2)) * 2)
+                value_w = min(
+                    max(stat_font.size(value)[0], content.width // 4),
+                    max(1, content.width // 2),
+                )
+                value_rect = pygame.Rect(
+                    content.right - value_w,
+                    content.y,
+                    value_w,
+                    content.height,
+                )
+                label_rect = pygame.Rect(
+                    content.x,
+                    content.y,
+                    max(1, value_rect.x - content.x - self.u(3)),
+                    content.height,
+                )
+                label_font = self.fit_menu_font(
+                    stat_font,
+                    max_height=max(1, content.height),
+                    max_width=max(1, label_rect.width),
+                    texts=(label,),
+                    minimum_size=9,
+                )
+                card_text_layout.append(
+                    (label, label_font, label_rect.copy(), value, value_rect.copy())
+                )
+                self.draw_text(
+                    label, label_font, tone, label_rect, valign="center"
+                )
+                self.draw_text(
+                    value,
+                    stat_font,
+                    self.TITLE,
+                    value_rect,
+                    align="right",
+                    valign="center",
+                )
+                continue
+
+            if not modern:
+                # Procedural mode keeps the original recessed stat cells.
+                pygame.draw.rect(
+                    self.screen, self.PANEL_INK, cell, border_radius=self.u(5)
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    self.STONE_LIGHT,
+                    cell,
+                    max(1, self.u(1)),
+                    border_radius=self.u(5),
+                )
+                pygame.draw.line(
+                    self.screen,
+                    self.IRON,
+                    (cell.x + self.u(4), cell.y + self.u(1)),
+                    (cell.right - self.u(4), cell.y + self.u(1)),
+                    max(1, self.u(1)),
+                )
+            self.draw_text(
+                label,
+                stat_font,
+                self.MUTED,
+                pygame.Rect(cell.x + self.u(7), cell.y, cell.width // 2, cell.height),
+                valign="center",
+            )
+            self.draw_text(
+                value,
+                stat_font,
+                self.WARNING,
+                pygame.Rect(
+                    cell.centerx, cell.y, cell.width // 2 - self.u(7), cell.height
+                ),
+                align="right",
+                valign="center",
+            )
+        if cards:
+            self.g._last_stat_card_text_layout = tuple(card_text_layout)
+        return cells
+
+    def archetype_accent(self, name: str) -> Color:
+        colors: dict[str, Color] = {
+            "Warden": (235, 205, 120),
+            "Rogue": (170, 230, 150),
+            "Arcanist": (120, 210, 255),
+            "Acolyte": (220, 95, 140),
+            "Ranger": (150, 215, 105),
+        }
+        return colors[name] if name in colors else self.accent()
+
+    def class_tagline(self, name: str) -> str:
+        return {
+            "Warden": "armored cleaver",
+            "Rogue": "crit skirmisher",
+            "Arcanist": "arc caster",
+            "Acolyte": "blood priest",
+            "Ranger": "mobile marksman",
+        }.get(name, "adventurer")
+
+    def skill_names_for(self, name: str) -> tuple[str, str, str, str]:
+        # Mirrors CombatMixin.skill_names — slot 1 is the Big Hit since 4.10.
+        return {
+            "Warden": ("Bulwark Slam", "Guard Bolt", "Time Skip", "Guard Step"),
+            "Rogue": ("Killing Blow", "Knife Fan", "Ambush Bell", "Shadow Dash"),
+            "Arcanist": ("Force Slam", "Arc Bolt", "Frost Nova", "Blink"),
+            "Acolyte": ("Blood Reap", "Spirit Bolt", "Spirit Call", "Dark Step"),
+            "Ranger": ("Pinning Strike", "Multishot", "Spirit Beast", "Vault"),
+        }.get(name, ("Smash", "Bolt", "Nova", "Dash"))
+
+    def _draw_character_section_panel(
+        self, name: str, rect: pygame.Rect, accent: Color | None = None
+    ) -> pygame.Rect:
+        content, _used_asset = self.inset_panel(rect, accent)
+        self.g._character_inset_rects[name] = rect.copy()
+        self.g._character_inset_content_rects[name] = content.copy()
+        return content
+
+    def draw_character_menu(self) -> None:
+        with self.g.fitted_ui_layout((960, 540)):
+            self._draw_character_menu_fitted()
+
+    def _draw_character_menu_fitted(self) -> None:
+        width, height = self.screen.get_size()
+        dim = pygame.Surface((width, height), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 92))
+        self.screen.blit(dim, (0, 0))
+
+        margin = max(self.u(18), 20)
+        box_w = min(max(self.u(560), int(width * 0.72)), width - margin * 2)
+        box_h = min(max(self.u(400), int(height * 0.82)), height - margin * 2)
+        legacy_box = pygame.Rect(
+            (width - box_w) // 2,
+            (height - box_h) // 2,
+            box_w,
+            box_h,
+        )
+        box = legacy_box
+        short_layout = height < 440
+        modern_requested = self.asset_ui_active()
+        if modern_requested:
+            if short_layout:
+                side_margin = max(16, min(self.u(20), width // 32))
+                vertical_margin = max(8, min(self.u(10), height // 36))
+                minimum_w, minimum_h = 600, 340
+                width_ratio, height_ratio = 0.94, 0.94
+            else:
+                side_margin = max(22, min(self.u(42), width // 16))
+                vertical_margin = max(18, min(self.u(32), height // 18))
+                minimum_w, minimum_h = 560, 400
+                width_ratio, height_ratio = 0.88, 0.88
+            box_w = min(
+                max(1, width - side_margin * 2),
+                max(minimum_w, round(width * width_ratio)),
+            )
+            box_h = min(
+                max(1, height - vertical_margin * 2),
+                max(minimum_h, round(height * height_ratio)),
+            )
+            box = pygame.Rect(
+                (width - box_w) // 2,
+                (height - box_h) // 2,
+                box_w,
+                box_h,
+            )
+            if self.menu_panel_content_rect(box) is None:
+                box = legacy_box
+        used_asset = self.panel(box, self.accent(), alpha=250)
+        self._character_asset_panel = used_asset
+
+        gap = max(self.u(8), 10)
+        safe = self.menu_panel_content_rect(box) if used_asset else None
+        if safe is not None:
+            inner = safe.inflate(-self.u(5) * 2, -self.u(3) * 2)
+            gap = max(self.u(5), 5) if short_layout else max(self.u(6), 7)
+        else:
+            pad = max(self.u(16), 18)
+            inner = box.inflate(-pad * 2, -pad * 2)
+        self.g._character_panel_rect = box.copy()
+        self.g._character_content_rect = inner.copy()
+        self.g._character_inset_rects = {}
+        self.g._character_inset_content_rects = {}
+        # Hitboxes from a previously-rendered Disciplines tab must never remain
+        # active after switching back to Overview on touch devices.
+        self.g._discipline_cells = {}
+        self.g._discipline_visual_layouts = {}
+        self.g._discipline_detail_layout = {}
+        self.g._discipline_footer_layout = {}
+        self.g._discipline_selection_outline = None
+        self.g._discipline_inline_descriptions = False
+        player = self.g.player
+        title_h = self.g.font.get_height()
+        small_h = self.g.small_font.get_height()
+        tiny_h = self.g.tiny_font.get_height()
+        show_hints = self.menu_input_hints_visible()
+
+        close_w = (
+            min(
+                max(
+                    self.u(150),
+                    self.g.small_font.size("C/Esc closes · Tab switches tabs")[0]
+                    + self.u(20),
+                ),
+                inner.width // 2,
+            )
+            if show_hints
+            else 0
+        )
+        title_width = inner.width - close_w - (gap if close_w else 0)
+        self.draw_text(
+            "Character",
+            self.g.font,
+            self.accent(),
+            pygame.Rect(inner.x, inner.y, title_width, title_h),
+        )
+        close_rect = pygame.Rect(inner.right - close_w, inner.y, close_w, title_h)
+        if show_hints:
+            if not used_asset:
+                pygame.draw.rect(
+                    self.screen, self.PANEL_INK, close_rect, border_radius=self.u(6)
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    self.IRON,
+                    close_rect,
+                    max(1, self.u(1)),
+                    border_radius=self.u(6),
+                )
+            self.draw_text(
+                "C/Esc closes · Tab switches tabs",
+                self.g.small_font,
+                self.MUTED,
+                close_rect.inflate(-self.u(8), 0),
+                align="center",
+                valign="center",
+            )
+
+        subtitle_y = inner.y + title_h + self.u(5)
+        # Milestone 3.3: surface unspent memory tokens in the subtitle so the
+        # player knows to open the Disciplines tab and spend them.
+        memory_tokens = self.g.player.memory_tokens
+        token_text = (
+            f" · {memory_tokens} Memory Token{'s' if memory_tokens != 1 else ''}"
+            if memory_tokens > 0
+            else ""
+        )
+        subtitle = (
+            f"{player.class_name} · Level {player.level} · "
+            f"XP {player.xp}/{player.next_xp}{token_text}"
+        )
+        subtitle_color = self.WARNING if memory_tokens > 0 else self.TEXT
+        self.draw_text(
+            subtitle,
+            self.g.small_font,
+            subtitle_color,
+            pygame.Rect(inner.x, subtitle_y, inner.width, small_h),
+        )
+
+        # Tab strip — Overview and Disciplines. Tab/Left/Right switch while the
+        # menu is open. The active tab is highlighted; the inactive one dims.
+        tab_y = subtitle_y + small_h + self.u(4)
+        tab_h = max(self.u(22), small_h + self.u(6))
+        tab_gap = self.u(6)
+        tab_w = (inner.width - tab_gap) // 2
+        overview_tab = pygame.Rect(inner.x, tab_y, tab_w, tab_h)
+        tree_tab = pygame.Rect(inner.x + tab_w + tab_gap, tab_y, tab_w, tab_h)
+        active_tab = self.g.character_menu_tab
+        self.g._character_tab_rects = (overview_tab.copy(), tree_tab.copy())
+        overview_label = "Overview (1)" if show_hints else "Overview"
+        disciplines_label = "Disciplines (2)" if show_hints else "Disciplines"
+        self._draw_character_tab(overview_tab, overview_label, active_tab == "overview")
+        self._draw_character_tab(
+            tree_tab, disciplines_label, active_tab == "disciplines"
+        )
+
+        stats_y = tab_y + tab_h + gap
+        content_top = stats_y
+        content_bottom = inner.bottom
+
+        if active_tab == "disciplines":
+            discipline_rect = pygame.Rect(
+                inner.x,
+                content_top,
+                inner.width,
+                max(1, content_bottom - content_top),
+            )
+            discipline_content = (
+                self._draw_character_section_panel(
+                    "disciplines", discipline_rect, self.g.skill_color()
+                )
+                if used_asset
+                else discipline_rect
+            )
+            self._draw_character_disciplines(discipline_content)
+            return
+
+        # The ninth cell surfaces the slot-3 class skill under its own name
+        # (4.11.0: every class used to fall through to the Arcanist's "Nova"
+        # row). Labels follow skill_names(); values follow the "Beast DMG"
+        # convention where the skill deals damage.
+        if player.class_name == "Arcanist":
+            # Surface the Frost Nova reach so Nova-path picks are legible:
+            # blast radius in tiles, or "Room" at the two-full-path max effect.
+            reach = (
+                "Room"
+                if self.g.nova_engulfs_room()
+                else f"{self.g.nova_radius():.1f}"
+            )
+            class_skill_stat = ("Nova", f"{self.g.nova_damage_type().title()} {reach}")
+        elif player.class_name == "Ranger":
+            _beast_hp, beast_damage, _beast_speed, _beast_cooldown = (
+                self.g.spirit_beast_stats()
+            )
+            class_skill_stat = ("Beast DMG", str(beast_damage))
+        elif player.class_name == "Rogue":
+            class_skill_stat = (
+                "Bell DMG",
+                str(self.g.ambush_bell_tuning().primary_damage),
+            )
+        elif player.class_name == "Acolyte":
+            _spirit_hp, spirit_damage = self.g.familiar_stats()
+            class_skill_stat = ("Spirit DMG", str(spirit_damage))
+        elif player.class_name == "Warden":
+            class_skill_stat = (
+                "Time Skip",
+                f"{self.g.time_skip_duration():.1f}s",
+            )
+        else:  # pragma: no cover - no sixth archetype exists
+            class_skill_stat = ("Skill", self.g._class_skill().bonus_term)
+        stats = [
+            ("HP", f"{int(player.hp)}/{player.max_hp}"),
+            ("Mana", f"{int(player.mana)}/{player.max_mana}"),
+            ("Stamina", f"{int(player.stamina)}/{player.max_stamina}"),
+            # 5.0: the real, clamped move-speed multiplier locomotion uses
+            # (archetype + gear + disciplines + shrine), not the old inert
+            # ``player.speed`` rating.
+            ("Move", f"{round(self.g.player_move_speed() * 100):+d}%"),
+            ("Melee", str(player.melee_damage())),
+            # 4.11.0: base bolt damage, so spell_bonus picks read as a stat.
+            ("Spell", str(player.spell_damage())),
+            ("Armor", str(player.armor())),
+            ("Weapon", self.g.weapon_damage_type().title()),
+            class_skill_stat,
+        ]
+        # Panel height follows the real row count: nine stats wrap to three
+        # rows on narrow layouts and the panel must grow with them (the
+        # per-row constants preserve the former two-row heights exactly).
+        stat_columns = self._stat_grid_columns(
+            inner.width, modern=used_asset, count=len(stats)
+        )
+        stat_rows = max(1, (len(stats) + stat_columns - 1) // stat_columns)
+        if used_asset and short_layout:
+            stats_h = max(
+                self.u(29 * stat_rows), (small_h + self.u(7)) * stat_rows
+            )
+        else:
+            stats_h = max(
+                self.u((39 if used_asset else 36) * stat_rows),
+                (small_h + self.u(12)) * stat_rows,
+            )
+        stats_rect = pygame.Rect(inner.x, stats_y, inner.width, stats_h)
+        stats_content = (
+            self._draw_character_section_panel(
+                "stats", stats_rect, self.g.skill_color()
+            )
+            if used_asset
+            else stats_rect
+        )
+        self.draw_stat_grid(stats, stats_content, modern=used_asset)
+
+        content_y = stats_y + stats_h + gap
+        content_h = max(1, inner.bottom - content_y)
+        if used_asset and short_layout:
+            columns, rows = 4, 1
+        else:
+            columns = 2 if inner.width >= self.u(420) else 1
+            rows = 2 if columns == 2 else 4
+        card_gap = gap
+        card_w = (inner.width - card_gap * (columns - 1)) // columns
+        card_h = (content_h - card_gap * (rows - 1)) // rows
+
+        def card_rect(index: int) -> pygame.Rect:
+            col = index % columns
+            row = index // columns
+            return pygame.Rect(
+                inner.x + col * (card_w + card_gap),
+                content_y + row * (card_h + card_gap),
+                card_w,
+                max(1, card_h),
+            )
+
+        def draw_card(
+            name: str,
+            rect: pygame.Rect,
+            title: str,
+            lines: Sequence[tuple[str, Color]],
+            accent: Color | None = None,
+        ) -> None:
+            accent = accent or self.accent()
+            modern = bool(getattr(self, "_character_asset_panel", False))
+            content = rect
+            if modern:
+                content = self._draw_character_section_panel(name, rect, accent)
+            else:
+                pygame.draw.rect(
+                    self.screen, self.PANEL_INK, rect, border_radius=self.u(8)
+                )
+
+            wash = pygame.Surface(content.size, pygame.SRCALPHA)
+            pygame.draw.rect(
+                wash,
+                (*accent, 14 if modern else 18),
+                wash.get_rect(),
+                border_radius=self.u(6 if modern else 8),
+            )
+            self.screen.blit(wash, content)
+            if not modern:
+                pygame.draw.rect(
+                    self.screen,
+                    accent,
+                    rect,
+                    max(1, self.u(1)),
+                    border_radius=self.u(8),
+                )
+                strip = pygame.Rect(
+                    rect.x + self.u(8),
+                    rect.y + self.u(4),
+                    rect.width - self.u(16),
+                    self.u(2),
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    self.shade(accent, 30),
+                    strip,
+                    border_radius=self.u(1),
+                )
+            card_pad = max(self.u(3), 3) if modern else max(self.u(9), 9)
+            self.draw_text(
+                title,
+                self.g.small_font,
+                self.WARNING,
+                pygame.Rect(
+                    content.x + card_pad,
+                    content.y + card_pad,
+                    content.width - card_pad * 2,
+                    small_h,
+                ),
+            )
+            y = content.y + card_pad + small_h + self.u(6)
+            line_h = max(tiny_h + self.u(3), self.u(15))
+            text_w = max(1, content.width - card_pad * 2)
+            for line, color in lines:
+                for wrapped in self.wrap_text(line, self.g.tiny_font, text_w):
+                    if y + tiny_h > content.bottom - card_pad:
+                        return
+                    self.draw_text(
+                        wrapped,
+                        self.g.tiny_font,
+                        color,
+                        pygame.Rect(content.x + card_pad, y, text_w, line_h),
+                    )
+                    y += line_h
+
+        bighit_name, bolt_name, class_skill_name, dash_name = self.g.skill_names()
+        if used_asset and short_layout:
+            skill_lines = [
+                (f"1 {bighit_name} · {self.g.bighit_stamina_cost()} STM", self.TEXT),
+                (f"2 {bolt_name} · {self.g.bolt_mana_cost()} MP", self.TEXT),
+                (
+                    f"3 {class_skill_name} · {self.g.class_skill_mana_cost()} MP",
+                    self.TEXT,
+                ),
+                (f"4 {dash_name} · {self.g.dash_stamina_cost()} STM", self.TEXT),
+            ]
+        else:
+            skill_lines = [
+                (f"1 {bighit_name} · {self.g.bighit_stamina_cost()} stamina", self.TEXT),
+                (f"2 {bolt_name} · {self.g.bolt_mana_cost()} mana", self.TEXT),
+                (
+                    f"3 {class_skill_name} · {self.g.class_skill_mana_cost()} mana",
+                    self.TEXT,
+                ),
+                (f"4 {dash_name} · {self.g.dash_stamina_cost()} stamina", self.TEXT),
+            ]
+
+        weapon = player.equipment.get("weapon")
+        armor = player.equipment.get("armor")
+        equipment_lines = [
+            (
+                weapon.label if weapon else "Weapon: Training Sword (+0 dmg)",
+                self.item_color(weapon) if weapon else self.MUTED,
+            ),
+            (
+                armor.label if armor else "Armor: Cloth (+0 armor)",
+                self.item_color(armor) if armor else self.MUTED,
+            ),
+            (f"Bolt type: {self.g.bolt_damage_type().title()}", self.MUTED),
+        ]
+
+        upgrades = self.g.acquired_discipline_summaries()
+        upgrade_lines = (
+            [(name, self.TEXT) for name, _description in upgrades[:4]]
+            if upgrades
+            else [("No skill upgrades yet", self.MUTED)]
+        )
+
+        status_lines: list[tuple[str, Color]] = []
+        active_statuses = [
+            f"{name.title()} {ttl:.1f}s"
+            for name, ttl in player.status_effects.items()
+            if ttl > 0
+        ]
+        status_lines.extend((line, self.TEXT) for line in active_statuses[:2])
+        for item in (weapon, armor):
+            if item is None or item.unidentified:
+                continue
+            if item.skill_bonus:
+                status_lines.append((f"Skill: {item.skill_bonus}", self.WARNING))
+            if item.proc_effect:
+                chance = (
+                    f" {int(round(item.proc_chance * 100))}%"
+                    if 0.0 < item.proc_chance < 1.0
+                    else ""
+                )
+                status_lines.append((f"Proc: {item.proc_effect}{chance}", self.WARNING))
+            if item.unique_effect:
+                status_lines.append((f"Unique: {item.unique_effect}", self.TITLE))
+            if item.attack_speed:
+                status_lines.append(
+                    (f"{item.attack_speed:+.0%} attack speed", self.TEXT)
+                )
+            if item.cast_speed:
+                status_lines.append((f"{item.cast_speed:+.0%} cast speed", self.TEXT))
+            if item.move_speed:
+                status_lines.append((f"{item.move_speed:+.0%} movement", self.TEXT))
+            if item.thorns:
+                status_lines.append((f"{item.thorns} thorns", self.TEXT))
+            if item.lifesteal:
+                status_lines.append((f"{item.lifesteal:.0%} lifesteal", self.TEXT))
+            if item.cursed:
+                status_lines.append(("Cursed bargain active", (220, 95, 140)))
+        if not status_lines:
+            status_lines.append(("No active statuses or procs", self.MUTED))
+
+        draw_card(
+            "skills", card_rect(0), "Skills", skill_lines, self.g.skill_color()
+        )
+        draw_card(
+            "equipment", card_rect(1), "Equipment", equipment_lines, self.accent()
+        )
+        draw_card(
+            "upgrades", card_rect(2), "Upgrades", upgrade_lines, self.g.skill_color()
+        )
+        draw_card(
+            "status", card_rect(3), "Status & Procs", status_lines[:4], self.accent()
+        )
+
+    def _draw_character_tab(self, rect: pygame.Rect, label: str, active: bool) -> None:
+        accent = self.g.skill_color() if active else self.IRON
+        fill = self.PANEL_2 if active else self.PANEL_INK
+        modern = bool(getattr(self, "_character_asset_panel", False))
+        if active or not modern:
+            pygame.draw.rect(self.screen, fill, rect, border_radius=self.u(6))
+        if not modern:
+            pygame.draw.rect(
+                self.screen,
+                accent,
+                rect,
+                max(1, self.u(1)),
+                border_radius=self.u(6),
+            )
+        if active:
+            strip = pygame.Rect(
+                rect.x + self.u(6),
+                rect.bottom - self.u(3),
+                rect.width - self.u(12),
+                self.u(2),
+            )
+            pygame.draw.rect(
+                self.screen, self.shade(accent, 30), strip, border_radius=self.u(1)
+            )
+        self.draw_text(
+            label,
+            self.g.small_font,
+            self.TEXT if active else self.MUTED,
+            rect.inflate(-self.u(10), 0),
+            align="center",
+            valign="center",
+        )
+
+    def _draw_character_disciplines(self, rect: pygame.Rect) -> None:
+        """Render the archetype discipline tree as a degree x path grid.
+
+        Each row is a degree (1..5, top to bottom). Each column is a path route.
+        Nodes are drawn as small cards with state-tinted borders:
+            chosen   — gold border, filled
+            available — accent border, ready to pick on level-up/shrine
+            locked   — iron border, prerequisites unmet
+        A legend and hint line explain the colors and how to gain nodes.
+        Hovering an available node with the mouse previews the combo tier it
+        would unlock.
+        """
+        # This geometry is consumed by responsive-layout checks. Reset it before
+        # validating content so an archetype with no tree cannot leave a stale
+        # footer from the previously rendered character/tab.
+        self.g._discipline_footer_layout = {}
+
+        from ..content import (
+            MAX_COMMITTED_PATHS,
+            committed_paths,
+        )
+
+        player = self.g.player
+        archetype = player.class_name
+        tree = self._discipline_tree_data(archetype)
+        nodes = tree.nodes
+        paths = tree.paths
+        max_degree = tree.max_degree
+        if not nodes or not paths or max_degree <= 0:
+            self.draw_text(
+                "No disciplines defined for this archetype.",
+                self.g.small_font,
+                self.MUTED,
+                rect,
+                align="center",
+                valign="center",
+            )
+            return
+
+        grid = tree.grid
+
+        tiny_h = self.g.tiny_font.get_height()
+        small_h = self.g.small_font.get_height()
+        pad = max(self.u(10), 10)
+
+        # Acquired-node set, reused by the path headers and their lock checks.
+        acquired = set(player.skill_upgrades)
+
+        # Completed paths still tint their path-name header, but status and
+        # availability prose stays out of the top of the discipline tree.
+        completed, current_melee, current_spell, current_hp = self.g.combo_state()
+        layout = self._discipline_grid_layout(
+            archetype, rect, paths, max_degree
+        )
+        header_h = layout.header_height
+        legend_h = layout.legend_height
+        token_h = layout.token_height
+        hint_h = layout.hint_height
+        footer_h = layout.footer_height
+        gap = layout.gap
+        grid_rect = layout.grid_rect
+        rows_area = layout.rows_area
+        degree_label_w = layout.degree_label_width
+        col_gap = layout.column_gap
+        col_w = layout.column_width
+        row_h = layout.row_height
+        panel_pad = max(self.u(8), 8)
+        self.g._discipline_inline_descriptions = (
+            self._all_discipline_descriptions_fit(
+                nodes,
+                archetype,
+                pygame.Rect(0, 0, col_w, row_h),
+            )
+        )
+
+        # Path headers. The node-title seal color communicates paths closed by
+        # the two-path commitment limit without adding text to the headers.
+        committed = committed_paths(acquired, archetype)
+        committed_set = set(committed)
+        path_limit_reached = len(committed) >= MAX_COMMITTED_PATHS
+        available = tuple(
+            node
+            for node in nodes
+            if node.key not in acquired
+            and not (path_limit_reached and node.path not in committed_set)
+            and all(prereq in acquired for prereq in node.prerequisites)
+        )
+        available_keys = {node.key for node in available}
+        state_by_key = {
+            node.key: (
+                "chosen"
+                if node.key in acquired
+                else "path_locked"
+                if path_limit_reached and node.path not in committed_set
+                else "available"
+                if node.key in available_keys
+                else "locked"
+            )
+            for node in nodes
+        }
+        for col, path in enumerate(paths):
+            col_x = rows_area.x + col * (col_w + col_gap)
+            if path in completed:
+                header_color = self.WARNING
+            elif path in committed_set:
+                header_color = self.TEXT
+            elif path_limit_reached:
+                header_color = self.MUTED
+            else:
+                header_color = self.MUTED
+            label = path
+            self.draw_text(
+                label,
+                self.g.small_font,
+                header_color,
+                pygame.Rect(
+                    col_x,
+                    rect.y + panel_pad,
+                    col_w,
+                    header_h,
+                ),
+                align="center",
+                valign="center",
+            )
+
+        # Reset the mouse-hover cell map; repopulated as nodes are drawn so
+        # `handle_events` can map mouse positions to node keys next frame.
+        self.g._discipline_cells = {}
+        self.g._discipline_visual_layouts = {}
+        self.g._discipline_detail_layout = {}
+
+        # Degree rows.
+        for degree in range(1, max_degree + 1):
+            row_y = rows_area.y + (degree - 1) * (row_h + gap)
+            # Degree label in the gutter.
+            self.draw_text(
+                f"Degree {degree}",
+                self.g.tiny_font,
+                self.MUTED,
+                pygame.Rect(grid_rect.x, row_y, degree_label_w, row_h),
+                align="left",
+                valign="center",
+            )
+            for path, cell in layout.rows[degree - 1]:
+                node = grid.get((degree, path))
+                if node is None:
+                    # Empty cell — a faint placeholder keeps the grid aligned.
+                    pygame.draw.rect(
+                        self.screen,
+                        self.PANEL_INK,
+                        cell,
+                        border_radius=self.u(6),
+                    )
+                    pygame.draw.rect(
+                        self.screen,
+                        self.IRON_DARK,
+                        cell,
+                        max(1, self.u(1)),
+                        border_radius=self.u(6),
+                    )
+                    continue
+                self._draw_discipline_cell(
+                    node,
+                    cell,
+                    pad,
+                    tiny_h,
+                    small_h,
+                    state=state_by_key[node.key],
+                )
+                self.g._discipline_cells[node.key] = cell
+                # Hover highlight — follow the compact authored plate while
+                # preserving the full grid cell as its forgiving hit target.
+                if self.g.character_menu_hovered_node == node.key:
+                    visual = self.g._discipline_visual_layouts.get(node.key, {})
+                    panel_rect = pygame.Rect(visual.get("panel", cell))
+                    highlight = panel_rect.copy()
+                    library = getattr(self.g, "ui_assets", None)
+                    panel_key = DISCIPLINE_PANEL_ASSETS.get(node.archetype)
+                    if (
+                        visual
+                        and self.asset_ui_active()
+                        and library is not None
+                        and panel_key is not None
+                    ):
+                        panel_surface = library.render(panel_key, panel_rect.size)
+                        if panel_surface is not None:
+                            visible_bounds = (
+                                self._discipline_panel_visible_bounds(
+                                    panel_key,
+                                    panel_surface,
+                                )
+                            )
+                            if visible_bounds.width > 0 and visible_bounds.height > 0:
+                                highlight = visible_bounds.move(panel_rect.topleft)
+                    outline_width = 1
+                    outline_radius = max(
+                        1,
+                        round(
+                            highlight.height
+                            * _DISCIPLINE_SELECTION_RADIUS_RATIO
+                        ),
+                    )
+                    pygame.draw.rect(
+                        self.screen,
+                        self.TEXT,
+                        highlight,
+                        outline_width,
+                        border_radius=outline_radius,
+                    )
+                    self.g._discipline_selection_outline = {
+                        "node_key": node.key,
+                        "panel": panel_rect.copy(),
+                        "rect": highlight.copy(),
+                        "width": outline_width,
+                        "radius": outline_radius,
+                    }
+
+        # Legend + token status + hint footer.
+        legend_y = grid_rect.bottom + gap
+        legend_rect = pygame.Rect(rect.x, legend_y, rect.width, legend_h)
+        footer_pad = max(self.u(8), 8)
+        footer_inner_x = legend_rect.x + footer_pad
+        footer_inner_w = max(1, legend_rect.width - footer_pad * 2)
+        sw_h = max(self.u(10), tiny_h)
+        sw_gap = self.u(6)
+        x = footer_inner_x
+        samples = (
+            (self.WARNING, "Chosen"),
+            (self.g.skill_color(), "Available"),
+            (self.IRON, "Locked"),
+            (_DISCIPLINE_SEALED_RED, "Sealed"),
+        )
+        legend_items: list[dict[str, object]] = []
+        for color, label in samples:
+            sw_rect = pygame.Rect(x, legend_rect.y, sw_h, sw_h)
+            pygame.draw.rect(
+                self.screen, self.PANEL_INK, sw_rect, border_radius=self.u(2)
+            )
+            pygame.draw.rect(
+                self.screen, color, sw_rect, max(1, self.u(1)), border_radius=self.u(2)
+            )
+            text_rect = pygame.Rect(
+                x + sw_h + sw_gap,
+                legend_rect.y,
+                self.g.tiny_font.size(label)[0],
+                sw_h,
+            )
+            self.draw_text(
+                label, self.g.tiny_font, self.TEXT, text_rect, valign="center"
+            )
+            legend_items.append(
+                {
+                    "label": label,
+                    "swatch": sw_rect.copy(),
+                    "text": text_rect.copy(),
+                }
+            )
+            x = text_rect.right + self.u(16)
+        # Available count on the right of the legend.
+        count_text = f"{len(available)} path{'s' if len(available) != 1 else ''} ready"
+        count_w = self.g.tiny_font.size(count_text)[0]
+        count_rect = pygame.Rect(
+            legend_rect.right - footer_pad - count_w,
+            legend_rect.y,
+            count_w,
+            sw_h,
+        )
+        self.draw_text(
+            count_text,
+            self.g.tiny_font,
+            self.g.skill_color() if available else self.MUTED,
+            count_rect,
+            valign="center",
+        )
+
+        token_y = legend_rect.bottom
+        token_rect = pygame.Rect(
+            footer_inner_x,
+            token_y,
+            footer_inner_w,
+            token_h,
+        )
+        memory_tokens = max(0, int(player.memory_tokens))
+        token_text = (
+            f"+{memory_tokens} memory token"
+            f"{'s' if memory_tokens != 1 else ''} available"
+            if memory_tokens > 0
+            else ""
+        )
+        if token_text:
+            self.draw_text(
+                token_text,
+                self.g.tiny_font,
+                self.WARNING,
+                token_rect,
+                valign="center",
+            )
+
+        hint_y = token_rect.bottom
+        hint_rect = pygame.Rect(
+            footer_inner_x,
+            hint_y,
+            footer_inner_w,
+            hint_h,
+        )
+        footer_rect = pygame.Rect(
+            rect.x,
+            legend_y,
+            rect.width,
+            footer_h,
+        )
+        self.g._discipline_footer_layout = {
+            "footer": footer_rect.copy(),
+            "padding": footer_pad,
+            "legend": legend_rect.copy(),
+            "legend_items": tuple(legend_items),
+            "ready": count_rect.copy(),
+            "ready_text": count_text,
+            "tokens": token_rect.copy(),
+            "token_text": token_text,
+            "hint": hint_rect.copy(),
+        }
+        # Milestone 3.3: if the player is hovering an available node, preview
+        # the combo tier it would unlock; otherwise explain the memory-token
+        # fiction behind acquiring a Discipline.
+        hovered_key = self.g.character_menu_hovered_node
+        hint_text = MEMORY_TOKEN_EXPLANATION
+        hint_color = self.MUTED
+        # Deck reads node copy exclusively from this bar, so prefer the
+        # standard menu font (5.0); fit_menu_font shrinks the rare
+        # over-long description back into the row.
+        hint_preferred = (
+            self.g.font if is_steam_deck() else self.g.tiny_font
+        )
+        hint_font = hint_preferred
+        if hovered_key:
+            hovered = tree.by_key.get(hovered_key)
+            if hovered is not None:
+                state = state_by_key[hovered.key]
+                detail_core = f"{hovered.name} — {hovered.description}"
+                detail_suffix = ""
+                if state == "available":
+                    p_melee, p_spell, p_hp = self.g.combo_preview(hovered)
+                    if (p_melee, p_spell, p_hp) != (
+                        current_melee,
+                        current_spell,
+                        current_hp,
+                    ):
+                        detail_suffix = (
+                            f" · Pick: +{p_melee}m/+{p_spell}s/+{p_hp}hp"
+                        )
+                        hint_color = self.WARNING
+                    elif self.g.player.memory_tokens > 0:
+                        detail_suffix = " · Ready: 1 memory token"
+                        hint_color = self.g.skill_color()
+                    else:
+                        detail_suffix = " · No memory token"
+                elif state == "chosen":
+                    detail_suffix = " · Chosen"
+                    hint_color = self.WARNING
+                elif state == "path_locked":
+                    detail_suffix = f" · Sealed: max {MAX_COMMITTED_PATHS} paths"
+                    hint_color = _DISCIPLINE_SEALED_RED
+                else:
+                    detail_suffix = " · Locked"
+                hint_text = detail_core + detail_suffix
+                hint_font = self.fit_menu_font(
+                    hint_preferred,
+                    max_height=hint_rect.height,
+                    max_width=hint_rect.width,
+                    texts=(hint_text,),
+                    minimum_size=8,
+                )
+                # The complete discipline description is more important than a
+                # redundant state tag on the smallest window.  State remains
+                # visible in the socket/name color and legend above.
+                if hint_font.size(hint_text)[0] > hint_rect.width:
+                    hint_text = detail_core
+                    hint_font = self.fit_menu_font(
+                        hint_preferred,
+                        max_height=hint_rect.height,
+                        max_width=hint_rect.width,
+                        texts=(hint_text,),
+                        minimum_size=8,
+                    )
+                self.g._discipline_detail_layout = {
+                    "node_key": hovered.key,
+                    "rect": hint_rect.copy(),
+                    "font": hint_font,
+                    "text": hint_text,
+                    "description": detail_core,
+                }
+        self.draw_text(
+            hint_text,
+            hint_font,
+            hint_color,
+            hint_rect,
+            align="center",
+            valign="center",
+        )
+
+    def _draw_discipline_cell(
+        self,
+        node,
+        cell: pygame.Rect,
+        pad: int,
+        tiny_h: int,
+        small_h: int,
+        *,
+        state: str | None = None,
+    ) -> None:
+        if state is None:
+            state = self.g.discipline_state(node)
+        # Milestone 3.7 - "path_locked" nodes are sealed by the two-path
+        # commitment limit and render with a dim red wash so they read as a
+        # deliberate specialization seal rather than a prereq gate.
+        if state == "chosen":
+            border = self.WARNING
+            fill = self.PANEL_2
+            name_color = self.WARNING
+        elif state == "available":
+            border = self.g.skill_color()
+            fill = self.PANEL_2
+            name_color = self.TEXT
+        elif state == "path_locked":
+            border = _DISCIPLINE_SEALED_RED
+            fill = self.PANEL_INK
+            name_color = _DISCIPLINE_SEALED_RED
+        else:
+            border = self.IRON
+            fill = self.PANEL_INK
+            name_color = self.MUTED
+
+        library = getattr(self.g, "ui_assets", None)
+        panel_key = DISCIPLINE_PANEL_ASSETS.get(node.archetype)
+        panel_surface = None
+        panel_content = None
+        if (
+            self.asset_ui_active()
+            and library is not None
+            and panel_key is not None
+        ):
+            panel_rect = self._discipline_panel_rect(cell)
+            panel_surface = library.render(panel_key, panel_rect.size)
+            panel_content = (
+                library.content_rect(panel_key, panel_rect)
+                if panel_surface is not None
+                else None
+            )
+        else:
+            panel_rect = cell
+        if panel_surface is not None and panel_content is not None:
+            if self._draw_authored_discipline_cell(
+                node,
+                cell,
+                panel_rect,
+                panel_content,
+                state,
+                name_color,
+                library,
+                panel_surface,
+            ):
+                return
+
+        pygame.draw.rect(self.screen, fill, cell, border_radius=self.u(6))
+        # Soft state-tinted wash.
+        wash = pygame.Surface(cell.size, pygame.SRCALPHA)
+        wash_alpha = 36 if state == "chosen" else (22 if state == "available" else 0)
+        if wash_alpha:
+            pygame.draw.rect(
+                wash,
+                (*border, wash_alpha),
+                wash.get_rect(),
+                border_radius=self.u(6),
+            )
+            self.screen.blit(wash, cell)
+        pygame.draw.rect(
+            self.screen,
+            border,
+            cell,
+            max(1, self.u(1)),
+            border_radius=self.u(6),
+        )
+
+        inner = cell.inflate(-pad * 2, -pad)
+        minimum_detail_h = small_h + self.u(2) + tiny_h
+        if inner.height < minimum_detail_h:
+            self.draw_text(
+                self.ellipsize(node.name, self.g.tiny_font, inner.width),
+                self.g.tiny_font,
+                name_color,
+                inner,
+                align="center",
+                valign="center",
+            )
+            return
+
+        name_rect = pygame.Rect(inner.x, inner.y, inner.width, small_h)
+        self.draw_text(
+            self.ellipsize(node.name, self.g.small_font, name_rect.width),
+            self.g.small_font,
+            name_color,
+            name_rect,
+            align="center",
+            valign="center",
+        )
+        desc_rect = pygame.Rect(
+            inner.x,
+            name_rect.bottom + self.u(2),
+            inner.width,
+            inner.bottom - name_rect.bottom - self.u(2),
+        )
+        # Wrap the description into the remaining space; show as many lines as fit.
+        description_font = self._discipline_description_font()
+        lines = self.wrap_text(node.description, description_font, desc_rect.width)
+        line_h = description_font.get_height() + self.u(2)
+        y = desc_rect.y
+        shown = 0
+        max_lines = max(1, desc_rect.height // line_h)
+        for line in lines[:max_lines]:
+            self.draw_text(
+                line,
+                description_font,
+                self.TEXT if state != "locked" else self.MUTED,
+                pygame.Rect(desc_rect.x, y, desc_rect.width, line_h),
+                align="center",
+                valign="top",
+            )
+            y += line_h
+            shown += 1
+        if shown == 0:
+            self.draw_text(
+                self.ellipsize(
+                    node.description,
+                    description_font,
+                    desc_rect.width,
+                ),
+                description_font,
+                self.MUTED,
+                desc_rect,
+                align="center",
+                valign="center",
+            )
+
+    def _draw_authored_discipline_cell(
+        self,
+        node,
+        cell: pygame.Rect,
+        panel_rect: pygame.Rect,
+        panel_content: pygame.Rect,
+        state: str,
+        name_color,
+        library,
+        panel_surface: pygame.Surface,
+    ) -> bool:
+        """Seat one discipline glyph and complete text inside authored art."""
+
+        glyph_rect, text_rect = self._authored_discipline_geometry(
+            node.archetype,
+            panel_rect,
+            panel_content,
+        )
+        socket_center = glyph_rect.center
+        glyph = library.render(
+            discipline_glyph_asset_key(node.key),
+            glyph_rect.size,
+        )
+        if glyph is None:
+            return False
+
+        self.screen.blit(panel_surface, panel_rect)
+        # Keep the authored socket unobstructed; state remains readable through
+        # the node-name treatment, hover outline, and legend.
+        self.screen.blit(glyph, glyph_rect)
+
+        name_font, name_lines = self._fit_discipline_name(node.name, text_rect)
+        name_gap = max(1, self.u(1))
+        name_line_h = name_font.get_height()
+        name_h = len(name_lines) * name_line_h + name_gap * (len(name_lines) - 1)
+
+        description_gap = max(1, self.u(1))
+        description_font = self._discipline_description_font()
+        description_lines: tuple[str, ...] = ()
+        description_h = 0
+        description_fits = False
+        if bool(getattr(self.g, "_discipline_inline_descriptions", False)):
+            description_lines = tuple(
+                self.wrap_text(
+                    node.description,
+                    description_font,
+                    text_rect.width,
+                )
+            )
+            description_h = (
+                len(description_lines) * description_font.get_height()
+                + description_gap * max(0, len(description_lines) - 1)
+            )
+            description_fits = (
+                " ".join(description_lines) == node.description
+                and name_h + self.u(2) + description_h <= text_rect.height
+            )
+
+        block_h = (
+            name_h + self.u(2) + description_h if description_fits else name_h
+        )
+        block_y = text_rect.y + max(0, (text_rect.height - block_h) // 2)
+        name_rect = pygame.Rect(text_rect.x, block_y, text_rect.width, name_h)
+        self._draw_discipline_lines(
+            name_lines,
+            name_font,
+            name_color,
+            name_rect,
+            name_gap,
+        )
+
+        description_rect = pygame.Rect(text_rect.x, name_rect.bottom, 0, 0)
+        if description_fits:
+            description_rect = pygame.Rect(
+                text_rect.x,
+                name_rect.bottom + self.u(2),
+                text_rect.width,
+                description_h,
+            )
+            self._draw_discipline_lines(
+                description_lines,
+                description_font,
+                self.TEXT if state not in ("locked", "path_locked") else self.MUTED,
+                description_rect,
+                description_gap,
+            )
+
+        self.g._discipline_visual_layouts[node.key] = {
+            "cell": cell.copy(),
+            "panel": panel_rect.copy(),
+            "panel_content": panel_content.copy(),
+            "socket_center": socket_center,
+            "glyph": glyph_rect.copy(),
+            "text": text_rect.copy(),
+            "name": name_rect.copy(),
+            "name_font": name_font,
+            "name_lines": tuple(name_lines),
+            "description": description_rect.copy() if description_fits else None,
+            "description_font": description_font if description_fits else None,
+            "description_lines": (
+                description_lines if description_fits else ()
+            ),
+        }
+        return True
+
+    @staticmethod
+    def _discipline_panel_rect(cell: pygame.Rect) -> pygame.Rect:
+        """Keep authored endcaps readable inside unusually tall grid cells."""
+
+        max_height = max(1, int(cell.width / _DISCIPLINE_PANEL_MIN_ASPECT))
+        panel = pygame.Rect(cell.x, cell.y, cell.width, min(cell.height, max_height))
+        panel.centery = cell.centery
+        return panel
+
+    def _authored_discipline_geometry(
+        self,
+        archetype: str,
+        panel_rect: pygame.Rect,
+        panel_content: pygame.Rect,
+    ) -> tuple[pygame.Rect, pygame.Rect]:
+        """Return fitted socket-glyph and safe text rectangles for one plate."""
+
+        socket_center = self._discipline_socket_center(archetype, panel_rect)
+        desired_glyph_size = min(
+            _DISCIPLINE_GLYPH_MAX_SIZE,
+            max(
+                _DISCIPLINE_GLYPH_MIN_SIZE,
+                round(panel_rect.height * _DISCIPLINE_GLYPH_SCALE),
+            ),
+        )
+        # Bound the square symmetrically around the socket center instead of
+        # clamping it afterward: clamping would move the glyph off-center on a
+        # very small custom layout.
+        centered_size_limit = max(
+            1,
+            min(
+                2 * max(0, socket_center[0] - panel_rect.left),
+                2 * max(0, panel_rect.right - socket_center[0]),
+                2 * max(0, socket_center[1] - panel_rect.top),
+                2 * max(0, panel_rect.bottom - socket_center[1]),
+            ),
+        )
+        glyph_size = min(desired_glyph_size, centered_size_limit)
+        glyph_rect = pygame.Rect(0, 0, glyph_size, glyph_size)
+        glyph_rect.center = socket_center
+
+        text_rect = panel_content.inflate(-self.u(2) * 2, 0)
+        # Defensive geometry for malformed custom manifests: keep text inside
+        # the plate and to the right of the live glyph even when a safe inset
+        # is too optimistic.
+        text_rect = text_rect.clip(panel_rect)
+        text_left = glyph_rect.right + max(1, self.u(3))
+        if text_left > text_rect.x:
+            text_rect.width = max(1, text_rect.right - text_left)
+            text_rect.x = min(text_left, text_rect.right - 1)
+        return glyph_rect, text_rect
+
+    @staticmethod
+    def _discipline_socket_center(
+        archetype: str,
+        panel_rect: pygame.Rect,
+    ) -> tuple[int, int]:
+        """Map an authored source socket center into its scaled left endcap."""
+
+        socket_x, socket_y = _DISCIPLINE_SOCKET_CENTERS[archetype]
+        panel_scale = panel_rect.height / _DISCIPLINE_PANEL_SOURCE_HEIGHT
+        return (
+            panel_rect.x + round(socket_x * panel_scale),
+            panel_rect.y + round(socket_y * panel_scale),
+        )
+
+    def _all_discipline_descriptions_fit(
+        self,
+        nodes,
+        archetype: str,
+        sample_cell: pygame.Rect,
+    ) -> bool:
+        """Keep card hierarchy uniform: show every inline detail or none."""
+
+        # Deck: the 7-inch panel renders inline copy at ~1 mm — illegible.
+        # The plate belongs to the enlarged name; descriptions live in the
+        # (also enlarged) hover hint bar instead.
+        if is_steam_deck():
+            return False
+        library = getattr(self.g, "ui_assets", None)
+        panel_key = DISCIPLINE_PANEL_ASSETS.get(archetype)
+        if (
+            not self.asset_ui_active()
+            or library is None
+            or panel_key is None
+        ):
+            return False
+        panel_rect = self._discipline_panel_rect(sample_cell)
+        cache_key = (
+            archetype,
+            panel_rect.size,
+            id(library),
+            id(self._discipline_name_preferred_font()),
+            id(self.g.tiny_font),
+            self.u(1),
+            self.u(2),
+        )
+        cached = getattr(self.g, "_discipline_description_fit_cache", None)
+        if cached is not None and cached[0] == cache_key:
+            return cached[1]
+        if library.render(panel_key, panel_rect.size) is None:
+            return False
+        panel_content = library.content_rect(panel_key, panel_rect)
+        if panel_content is None:
+            return False
+        glyph_rect, text_rect = self._authored_discipline_geometry(
+            archetype,
+            panel_rect,
+            panel_content,
+        )
+        description_font = self._discipline_description_font()
+        name_gap = max(1, self.u(1))
+        description_gap = max(1, self.u(1))
+        for node in nodes:
+            glyph = library.render(
+                discipline_glyph_asset_key(node.key),
+                glyph_rect.size,
+            )
+            if glyph is None:
+                return False
+            name_font, name_lines = self._fit_discipline_name(node.name, text_rect)
+            name_h = (
+                len(name_lines) * name_font.get_height()
+                + name_gap * max(0, len(name_lines) - 1)
+            )
+            description_lines = tuple(
+                self.wrap_text(
+                    node.description,
+                    description_font,
+                    text_rect.width,
+                )
+            )
+            description_h = (
+                len(description_lines) * description_font.get_height()
+                + description_gap * max(0, len(description_lines) - 1)
+            )
+            if (
+                " ".join(description_lines) != node.description
+                or name_h + self.u(2) + description_h > text_rect.height
+            ):
+                self.g._discipline_description_fit_cache = (cache_key, False)
+                return False
+        self.g._discipline_description_fit_cache = (cache_key, True)
+        return True
+
+    def _discipline_description_font(self) -> pygame.font.Font:
+        """Return the dedicated smaller font used only for inline node copy."""
+
+        preferred = self.g.tiny_font
+        target_height = max(
+            1,
+            preferred.get_height() - max(1, self.u(2)),
+        )
+        cache_key = (
+            preferred.get_height(),
+            preferred.get_point_size(),
+            target_height,
+        )
+        cached = getattr(self, "_discipline_description_font_choice", None)
+        if cached is not None and cached[0] == cache_key:
+            return cached[1]
+        font = self.fit_menu_font(
+            preferred,
+            max_height=target_height,
+            max_width=32767,
+            minimum_size=8,
+        )
+        self._discipline_description_font_choice = (cache_key, font)
+        return font
+
+    def _discipline_panel_visible_bounds(
+        self,
+        panel_key: str,
+        panel_surface: pygame.Surface,
+    ) -> pygame.Rect:
+        """Return cached bounds honoring alpha and Android colorkey surfaces."""
+
+        cache_key = (
+            panel_key,
+            panel_surface.get_size(),
+            id(panel_surface),
+        )
+        cached = getattr(self, "_discipline_panel_bounds_choice", None)
+        if cached is not None and cached[0] == cache_key:
+            return cached[1].copy()
+
+        components = pygame.mask.from_surface(
+            panel_surface,
+            0,
+        ).get_bounding_rects()
+        if components:
+            bounds = components[0].copy()
+            for component in components[1:]:
+                bounds.union_ip(component)
+        else:
+            bounds = pygame.Rect(0, 0, 0, 0)
+        self._discipline_panel_bounds_choice = (cache_key, bounds.copy())
+        return bounds
+
+    def _discipline_name_preferred_font(self) -> pygame.font.Font:
+        """Return the starting font for node names before shrink-to-fit.
+
+        ``fit_menu_font`` only ever shrinks, so this choice is the upper bound
+        on name size. On the Steam Deck the logical canvas is the 7-inch
+        1280×800 panel itself (UI scale 1), where ``small_font`` names come out
+        roughly 1.5 mm tall — start from the main body font instead and let the
+        plate geometry shrink it back only where a name is genuinely long.
+        """
+
+        if is_steam_deck():
+            return self.g.font
+        return self.g.small_font
+
+    def _fit_discipline_name(
+        self,
+        text: str,
+        rect: pygame.Rect,
+    ) -> tuple[pygame.font.Font, tuple[str, ...]]:
+        """Fit a complete node name in one line, or at most three wrapped lines."""
+
+        preferred = self._discipline_name_preferred_font()
+        cache = getattr(self, "_discipline_name_fit_cache", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._discipline_name_fit_cache = cache
+        cache_key = (
+            text,
+            rect.size,
+            id(preferred),
+            id(self.g.tiny_font),
+            float(self.g.ui_scale_factor()),
+        )
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        one_line = self.fit_menu_font(
+            preferred,
+            max_height=rect.height,
+            max_width=rect.width,
+            texts=(text,),
+            minimum_size=8,
+        )
+        one_line_fits = (
+            one_line.get_height() <= rect.height
+            and self._text_size(one_line, text)[0] <= rect.width
+        )
+        # Deck: a shrunk-to-width single line stays near the small sizes this
+        # path is meant to escape, so only accept it at full preferred size and
+        # otherwise pick whichever wrap yields the tallest glyphs.
+        if one_line_fits and (
+            not is_steam_deck()
+            or one_line.get_height() >= preferred.get_height()
+        ):
+            result = (one_line, (text,))
+            cache[cache_key] = result
+            return result
+
+        best: tuple[pygame.font.Font, tuple[str, ...]] | None = (
+            (one_line, (text,)) if one_line_fits else None
+        )
+        line_gap = max(1, self.u(1))
+        words = tuple(text.split())
+        for maximum_lines in (2, 3):
+            line_budget = max(
+                1,
+                (rect.height - line_gap * (maximum_lines - 1)) // maximum_lines,
+            )
+            font = self.fit_menu_font(
+                preferred,
+                max_height=line_budget,
+                max_width=rect.width,
+                texts=words,
+                minimum_size=8,
+            )
+            lines = tuple(self.wrap_text(text, font, rect.width))
+            used_height = (
+                len(lines) * font.get_height()
+                + line_gap * max(0, len(lines) - 1)
+            )
+            if (
+                len(lines) <= maximum_lines
+                and " ".join(lines) == text
+                and used_height <= rect.height
+            ):
+                if best is None or font.get_height() > best[0].get_height():
+                    best = (font, lines)
+                if not is_steam_deck():
+                    break
+
+        if best is not None:
+            if len(cache) >= 256:
+                cache.clear()
+            cache[cache_key] = best
+            return best
+
+        # This is reachable only for a malformed, nearly zero-width custom
+        # panel.  Keep the legacy bounded fallback instead of drawing outside it.
+        result = (
+            self.g.tiny_font,
+            (self.ellipsize(text, self.g.tiny_font, rect.width),),
+        )
+        cache[cache_key] = result
+        return result
+
+    def _draw_discipline_lines(
+        self,
+        lines: Sequence[str],
+        font: pygame.font.Font,
+        color,
+        rect: pygame.Rect,
+        gap: int,
+    ) -> None:
+        line_h = font.get_height()
+        y = rect.y
+        for line in lines:
+            self.draw_text(
+                line,
+                font,
+                color,
+                pygame.Rect(rect.x, y, rect.width, line_h),
+                align="center",
+                valign="center",
+            )
+            y += line_h + gap

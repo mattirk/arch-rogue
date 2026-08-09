@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080a0f">
+  <meta name="description" content="Arch Rogue privacy policy: no accounts, no tracking, and what the multiplayer relay sees.">
+  <title>Arch Rogue — Privacy Policy</title>
+  <link rel="icon" href="assets/icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .legal { max-width: 720px; margin: 0 auto; padding: 0 22px 40px; color: #b5b0a6; font-size: .92rem; line-height: 1.65; }
+    .legal h2 { text-align: left; margin: 34px 0 10px; font-size: 1.15rem; }
+    .legal h1 { font-size: clamp(1.5rem, 4vw, 2rem); margin: 26px 0 4px; text-align: center; }
+    .legal .updated { text-align: center; color: #77746f; font-size: .78rem; margin: 0 0 18px; }
+    .legal ul { padding-left: 1.2em; }
+    .legal li { margin: 5px 0; }
+    .legal a { color: #99948a; }
+  </style>
+</head>
+<body>
+  <div class="embers" aria-hidden="true"></div>
+  <main class="page-shell">
+    <header class="hero">
+      <a href="./"><img class="logo" src="assets/title_logo.png" width="640" height="122" alt="Arch Rogue"></a>
+    </header>
+
+    <article class="legal">
+      <h1>Privacy Policy</h1>
+      <p class="updated">Last updated: 2 August 2026</p>
+
+      <p>The short version: Arch Rogue has <strong>no accounts, no sign-up, no
+      ads, no analytics, and no tracking</strong>. The game does not collect or
+      transmit personal data. The only time any data about you reaches us is
+      when you play online co-op, and even then it is the minimum a
+      connection needs to work.</p>
+
+      <h2>The game on your device</h2>
+      <p>Saved runs, options, and progression are stored as plain files on
+      your own device and never leave it. The game sends no telemetry, crash
+      reports, or usage statistics.</p>
+
+      <h2>Online co-op (the multiplayer relay)</h2>
+      <p>Two-player co-op connects both players through a relay server we
+      operate. The relay is account-less: you never provide an email,
+      password, or identity. To operate the service it processes:</p>
+      <ul>
+        <li><strong>Your IP address and connection metadata</strong> — required
+        to route traffic, held in memory for the duration of the
+        connection.</li>
+        <li><strong>The room code and the display name you type</strong> —
+        shared with your co-op partner and visible in short-lived operational
+        server logs alongside connection events.</li>
+        <li><strong>Gameplay data</strong> — positions, actions, and game
+        state, passed verbatim between the two players and never stored.</li>
+      </ul>
+      <p>Rooms are transient: when a session ends or times out, the room and
+      its state are gone. Operational logs are kept only for troubleshooting
+      and are rotated automatically by the host system; they are never
+      analysed, sold, shared, or used for any purpose other than running the
+      service.</p>
+
+      <h2>This website</h2>
+      <p>This site is static and sets no cookies. It is hosted on GitHub
+      Pages, so GitHub may process standard web-server request data (such as
+      IP addresses) as described in
+      <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener">GitHub's privacy statement</a>.</p>
+
+      <h2>Steam</h2>
+      <p>If you play through Steam, Valve processes your Steam account data
+      (achievements, playtime, cloud saves) under
+      <a href="https://store.steampowered.com/privacy_agreement/" rel="noopener">Valve's privacy policy</a>.
+      We only receive the anonymous, aggregate statistics Steam shows every
+      developer.</p>
+
+      <h2>Your rights &amp; contact</h2>
+      <p>Since we hold no account and no persistent personal data about you,
+      there is usually nothing for us to look up, correct, or delete — but if
+      you have any question or request under the GDPR or other privacy law,
+      reach the developer through the
+      <a href="https://github.com/mattirk/arch-rogue/issues" rel="noopener">project's issue tracker</a>
+      or the support contact listed on the game's Steam store page.
+      The data controller for the multiplayer relay is the Arch Rogue
+      developer (Finland).</p>
+
+      <h2>Changes</h2>
+      <p>If the game ever collects anything beyond what is described here
+      (for example opt-in crash reporting), this policy will be updated first
+      and the date above will change.</p>
+    </article>
+  </main>
+
+  <footer>
+    <p>Arch Rogue is open source under Apache-2.0.</p>
+    <nav aria-label="Project links">
+      <a href="./">Downloads</a>
+      <a href="https://github.com/mattirk/arch-rogue">Source</a>
+      <a href="https://github.com/mattirk/arch-rogue/issues">Report an issue</a>
+    </nav>
+  </footer>
+</body>
+</html>

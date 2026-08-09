@@ -1,0 +1,348 @@
+{
+  "version": 1,
+  "_comment": [
+    "The Steam achievement catalogue. Every id here must also exist in App Admin",
+    "with the same id (Valve calls it the API Name); name/description are mirrored",
+    "here so tests and any future in-game list read from one source.",
+    "",
+    "Triggers are declarative and evaluated by arch_rogue.achievements against the",
+    "fact table that module builds from meta_progress plus the run that just ended.",
+    "Grammar:",
+    "  {\"counter\": <name>, \"at_least\": N}   {\"counter\": <name>, \"at_most\": N}",
+    "  {\"set\": <name>, \"contains\": \"x\"}    {\"set\": <name>, \"contains_all\": [..]}",
+    "  {\"set\": <name>, \"size_at_least\": N}  {\"all_of\": [<trigger>, ..]}",
+    "Facts prefixed run. describe only the run that just ended; the rest are",
+    "lifetime totals. tests/test_achievements.py asserts every fact named here",
+    "actually exists and that boss/archetype/theme literals match the content."
+  ],
+  "achievements": [
+    {
+      "id": "ACH_DEPTH_3",
+      "name": "Past the Threshold",
+      "description": "Reach depth 3.",
+      "hidden": false,
+      "trigger": { "counter": "best_depth", "at_least": 3 }
+    },
+    {
+      "id": "ACH_DEPTH_5",
+      "name": "Halfway Buried",
+      "description": "Reach depth 5.",
+      "hidden": false,
+      "trigger": { "counter": "best_depth", "at_least": 5 }
+    },
+    {
+      "id": "ACH_DEPTH_8",
+      "name": "Where the Light Fails",
+      "description": "Reach depth 8.",
+      "hidden": false,
+      "trigger": { "counter": "best_depth", "at_least": 8 }
+    },
+    {
+      "id": "ACH_DEPTH_10",
+      "name": "At the Gate",
+      "description": "Reach depth 10.",
+      "hidden": false,
+      "trigger": { "counter": "best_depth", "at_least": 10 }
+    },
+    {
+      "id": "ACH_FIRST_CLEAR",
+      "name": "The Gate Answered",
+      "description": "Complete a run.",
+      "hidden": false,
+      "trigger": { "counter": "clears", "at_least": 1 }
+    },
+    {
+      "id": "ACH_CLEARS_10",
+      "name": "Ten Descents Deep",
+      "description": "Complete ten runs.",
+      "hidden": false,
+      "trigger": { "counter": "clears", "at_least": 10 }
+    },
+    {
+      "id": "ACH_CLEAR_HARD",
+      "name": "No Safety Nets",
+      "description": "Complete a run on Hard.",
+      "hidden": false,
+      "trigger": { "set": "clears_by_difficulty", "contains": "Hard" }
+    },
+    {
+      "id": "ACH_CLEAR_HELL",
+      "name": "Hell Held Nothing",
+      "description": "Complete a run on Hell.",
+      "hidden": false,
+      "trigger": { "set": "clears_by_difficulty", "contains": "Hell" }
+    },
+    {
+      "id": "ACH_CLEAR_WARDEN",
+      "name": "The Warden's Vigil",
+      "description": "Complete a run as the Warden.",
+      "hidden": false,
+      "trigger": { "set": "clears_by_archetype", "contains": "Warden" }
+    },
+    {
+      "id": "ACH_CLEAR_ROGUE",
+      "name": "The Rogue's Exit",
+      "description": "Complete a run as the Rogue.",
+      "hidden": false,
+      "trigger": { "set": "clears_by_archetype", "contains": "Rogue" }
+    },
+    {
+      "id": "ACH_CLEAR_ARCANIST",
+      "name": "The Arcanist's Proof",
+      "description": "Complete a run as the Arcanist.",
+      "hidden": false,
+      "trigger": { "set": "clears_by_archetype", "contains": "Arcanist" }
+    },
+    {
+      "id": "ACH_CLEAR_ACOLYTE",
+      "name": "The Acolyte's Rite",
+      "description": "Complete a run as the Acolyte.",
+      "hidden": false,
+      "trigger": { "set": "clears_by_archetype", "contains": "Acolyte" }
+    },
+    {
+      "id": "ACH_CLEAR_RANGER",
+      "name": "The Ranger's Mark",
+      "description": "Complete a run as the Ranger.",
+      "hidden": false,
+      "trigger": { "set": "clears_by_archetype", "contains": "Ranger" }
+    },
+    {
+      "id": "ACH_CLEAR_EVERY_ARCHETYPE",
+      "name": "Five Ways Down",
+      "description": "Complete a run with every archetype.",
+      "hidden": false,
+      "trigger": {
+        "set": "clears_by_archetype",
+        "contains_all": ["Warden", "Rogue", "Arcanist", "Acolyte", "Ranger"]
+      }
+    },
+    {
+      "id": "ACH_BOSS_ASH_GALLOWS",
+      "name": "Ember Scars",
+      "description": "Defeat the Ash Gallows Knight.",
+      "hidden": false,
+      "trigger": { "set": "bosses_defeated", "contains": "Ash Gallows Knight" }
+    },
+    {
+      "id": "ACH_BOSS_MYCELIAL_MATRON",
+      "name": "Spore and Silence",
+      "description": "Defeat the Mycelial Matron.",
+      "hidden": false,
+      "trigger": { "set": "bosses_defeated", "contains": "Mycelial Matron" }
+    },
+    {
+      "id": "ACH_BOSS_RIME_CHANTER",
+      "name": "The Ninth Bell Stilled",
+      "description": "Defeat the Rime Chanter of the Ninth Bell.",
+      "hidden": false,
+      "trigger": {
+        "set": "bosses_defeated",
+        "contains": "Rime Chanter of the Ninth Bell"
+      }
+    },
+    {
+      "id": "ACH_BOSS_VOID_SENTINEL",
+      "name": "Unrunes the Guard",
+      "description": "Defeat the Voidbound Rune Sentinel.",
+      "hidden": false,
+      "trigger": {
+        "set": "bosses_defeated",
+        "contains": "Voidbound Rune Sentinel"
+      }
+    },
+    {
+      "id": "ACH_BOSS_GATE_TYRANT",
+      "name": "The Tyrant Kneels",
+      "description": "Defeat the Dread Gate Tyrant.",
+      "hidden": false,
+      "trigger": { "set": "bosses_defeated", "contains": "Dread Gate Tyrant" }
+    },
+    {
+      "id": "ACH_BOSS_BESTIARY",
+      "name": "Nothing Left Guarding",
+      "description": "Defeat all five floor bosses.",
+      "hidden": false,
+      "trigger": {
+        "set": "bosses_defeated",
+        "contains_all": [
+          "Ash Gallows Knight",
+          "Mycelial Matron",
+          "Rime Chanter of the Ninth Bell",
+          "Voidbound Rune Sentinel",
+          "Dread Gate Tyrant"
+        ]
+      }
+    },
+    {
+      "id": "ACH_GATE_AID",
+      "name": "You Offered Help",
+      "description": "Answer the Gate by aiding it.",
+      "hidden": true,
+      "trigger": { "set": "story_verbs", "contains": "aid" }
+    },
+    {
+      "id": "ACH_GATE_BARGAIN",
+      "name": "You Named a Price",
+      "description": "Answer the Gate by bargaining with it.",
+      "hidden": true,
+      "trigger": { "set": "story_verbs", "contains": "bargain" }
+    },
+    {
+      "id": "ACH_GATE_DEFY",
+      "name": "You Said No",
+      "description": "Answer the Gate by defying it.",
+      "hidden": true,
+      "trigger": { "set": "story_verbs", "contains": "defy" }
+    },
+    {
+      "id": "ACH_GATE_ALL_ANSWERS",
+      "name": "Every Answer Given",
+      "description": "Answer the Gate all three ways.",
+      "hidden": true,
+      "trigger": {
+        "set": "story_verbs",
+        "contains_all": ["aid", "bargain", "defy"]
+      }
+    },
+    {
+      "id": "ACH_THEMES_ALL",
+      "name": "Cartographer of the Dark",
+      "description": "Descend through every dungeon theme.",
+      "hidden": false,
+      "trigger": {
+        "set": "themes_seen",
+        "contains_all": [
+          "Crypt of Ash",
+          "Fungal Catacombs",
+          "Violet Reliquary",
+          "Sunken Bastion",
+          "Frozen Ossuary",
+          "Obsidian Foundry",
+          "Moonlit Aquifer",
+          "Thornbound Vault"
+        ]
+      }
+    },
+    {
+      "id": "ACH_MODIFIERS_ALL",
+      "name": "Every Omen Read",
+      "description": "Start a run under every run modifier.",
+      "hidden": false,
+      "trigger": {
+        "set": "modifiers_seen",
+        "contains_all": [
+          "Blood Moon",
+          "Restless Depths",
+          "Treasure Draught",
+          "Trap-Laced",
+          "Thin Veil",
+          "Starved Depths",
+          "Elite Hunt",
+          "Cursed Bargains"
+        ]
+      }
+    },
+    {
+      "id": "ACH_LEGENDARY_10",
+      "name": "The Hoard Remembers",
+      "description": "Discover ten different unique or legendary items.",
+      "hidden": false,
+      "trigger": { "set": "legendary_loot_seen", "size_at_least": 10 }
+    },
+    {
+      "id": "ACH_SECRETS_25",
+      "name": "Nothing Stays Hidden",
+      "description": "Open twenty-five secret caches.",
+      "hidden": false,
+      "trigger": { "counter": "lifetime_secrets", "at_least": 25 }
+    },
+    {
+      "id": "ACH_SHRINES_20",
+      "name": "Devout Enough",
+      "description": "Use twenty shrines.",
+      "hidden": false,
+      "trigger": { "counter": "lifetime_shrines", "at_least": 20 }
+    },
+    {
+      "id": "ACH_KILLS_1000",
+      "name": "A Thousand Reasons",
+      "description": "Kill a thousand enemies.",
+      "hidden": false,
+      "trigger": { "counter": "lifetime_kills", "at_least": 1000 }
+    },
+    {
+      "id": "ACH_RUNS_50",
+      "name": "It Keeps Calling",
+      "description": "Start fifty runs.",
+      "hidden": false,
+      "trigger": { "counter": "runs_started", "at_least": 50 }
+    },
+    {
+      "id": "ACH_COOP_RUN",
+      "name": "Someone Else's Torch",
+      "description": "Finish a run in co-op.",
+      "hidden": false,
+      "trigger": { "set": "run.flags", "contains": "coop" }
+    },
+    {
+      "id": "ACH_COOP_CLEAR",
+      "name": "Two Out of Ten",
+      "description": "Complete a run in co-op.",
+      "hidden": false,
+      "trigger": { "counter": "coop_clears", "at_least": 1 }
+    },
+    {
+      "id": "ACH_DEPTH_1_DEATH",
+      "name": "That Was Fast",
+      "description": "Die on depth 1.",
+      "hidden": true,
+      "trigger": {
+        "all_of": [
+          { "set": "run.outcome", "contains": "death" },
+          { "counter": "run.depth", "at_most": 1 }
+        ]
+      }
+    },
+    {
+      "id": "ACH_DRY_CLEAR",
+      "name": "Sober Descent",
+      "description": "Complete a run without drinking a single potion.",
+      "hidden": false,
+      "trigger": {
+        "all_of": [
+          { "set": "run.outcome", "contains": "victory" },
+          { "counter": "run.potions_used", "at_most": 0 }
+        ]
+      }
+    },
+    {
+      "id": "ACH_BAR_PILGRIM",
+      "name": "The Toast Pilgrimage",
+      "description": "Drink at every bar a single run rolled.",
+      "hidden": true,
+      "trigger": { "set": "run.flags", "contains": "bar_pilgrim" }
+    },
+    {
+      "id": "ACH_WALLFACER",
+      "name": "Wall Facer",
+      "description": "Face the wall 100 times.",
+      "hidden": false,
+      "trigger": { "counter": "lifetime_wall_touches", "at_least": 100 }
+    },
+    {
+      "id": "ACH_ELITE_HUNTER",
+      "name": "Elite Hunt",
+      "description": "Kill ten elites in one run.",
+      "hidden": false,
+      "trigger": { "counter": "run.elites_killed", "at_least": 10 }
+    },
+    {
+      "id": "ACH_CHALLENGER",
+      "name": "Asked For It",
+      "description": "Clear three challenge rooms in one run.",
+      "hidden": false,
+      "trigger": { "counter": "run.challenge_rooms_cleared", "at_least": 3 }
+    }
+  ]
+}

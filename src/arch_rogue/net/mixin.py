@@ -1,0 +1,2094 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Matti Rita-Kasari
+#
+# AI Provenance & Liability Notice:
+# This repository contains code generated, assisted, or refactored by Artificial
+# Intelligence models. Provided strictly "AS IS" under Apache 2.0 with no warranty
+# of clean IP provenance or non-infringement; downstream users assume all legal
+# and financial risk and should perform their own compliance audits.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""``NetMixin`` — the Game-side driver of a 4.6 co-op session.
+
+``poll()`` runs once per ``Game.run()`` iteration on the main thread while a
+client exists (setup and lobby included) and performs every state change; the
+background receiver thread only ever decodes and enqueues. When no session
+exists the poll is a two-attribute check and allocates nothing.
+
+The mixin owns: the ``mp_setup``/``mp_lobby`` flow, the handshake, host
+snapshot/floor emission, joiner intent emission, remote-intent application on
+the host, the reconnect window, and session teardown.
+"""
+
+from __future__ import annotations
+
+import math
+import time
+from collections import deque
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import Any, Iterator
+
+import pygame
+
+from .. import __version__
+from ..constants import (
+    MP_INTENT_RATE_HZ,
+    MP_RECONNECT_GRACE_SECONDS,
+    MP_RUN_ID_LENGTH,
+    MP_SNAPSHOT_RATE_HZ,
+)
+from ..models import FloatingText, Player
+from ..story.minigames import (
+    decode_mini_game_intent,
+    decode_mini_game_ready_intent,
+    encode_mini_game_intent,
+    encode_mini_game_ready_intent,
+)
+from . import sync
+from .client import (
+    ConnectionClosed,
+    ConnectionFailed,
+    ConnectionLost,
+    ConnectionUp,
+    InboundMessage,
+    MultiplayerClient,
+    COALESCE_MOVE_INTENT,
+    COALESCE_SNAPSHOT,
+)
+from .messages import (
+    ByeMessage,
+    ErrorMessage,
+    FloorMessage,
+    IntentMessage,
+    PartnerDisconnected,
+    PartnerJoined,
+    PartnerLeft,
+    PartnerRejoined,
+    PongMessage,
+    ReadyAck,
+    RunEndedMessage,
+    SnapshotMessage,
+    Start,
+    UnknownMessage,
+    Welcome,
+)
+from .protocol import (
+    ROLE_HOST,
+    ROLE_JOIN,
+    generate_run_id,
+    is_valid_run_id,
+    make_floor,
+    make_hello,
+    make_intent,
+    make_kick,
+    make_ping,
+    make_ready,
+    make_run_ended,
+    make_snapshot,
+    normalize_run_id,
+    sanitize_player_name,
+)
+
+_PING_INTERVAL_SECONDS = 5.0
+_INTENT_MOVE_TIMEOUT_SECONDS = 0.6
+# The partner's modal pause reason (4.7.12) rides every 20 Hz intent; after
+# this long without a refresh the host resumes rather than staying frozen
+# behind a silently dropped partner.
+_REMOTE_PAUSE_STALE_SECONDS = 2.0
+# A movement-vector component change beyond this transmits immediately
+# instead of waiting out the 20 Hz slot. Any keyboard direction change
+# clears it; analog easing below it keeps the ordinary cadence.
+_INTENT_TURN_THRESHOLD = 0.2
+# Transient-fx replication: ring capacity and how many snapshot ticks an
+# event keeps riding (tolerates coalesced/dropped snapshots without ever
+# re-sending the whole ring forever).
+_FX_RING_CAPACITY = 48
+_FX_REPLAY_TICKS = 5
+# Joiner-side instant pose feedback for queued one-shot actions, mirroring
+# the host's set_player_action_visual calls: action -> (state, ttl, gate
+# timer attribute). The host stays authoritative for the effect itself.
+_ACTION_POSE_PREVIEW = {
+    "melee": ("attack", 0.20, "melee_timer"),
+    "bolt": ("cast", 0.24, "bolt_timer"),
+    "skill": ("cast", 0.32, "class_skill_timer"),
+    "dash": ("dash", 0.22, "dash_timer"),
+    # Big Hit windup: the slow-motion cast pose spans the 0.9 s charge so the
+    # joiner sees their own windup start instantly; the host's ``_charging``
+    # status arrives with the next snapshot and drives ring/HUD/half-speed.
+    "bighit": ("cast", 0.9, "bighit_timer"),
+}
+_SNAPSHOT_INTERVAL = 1.0 / MP_SNAPSHOT_RATE_HZ
+_INTENT_INTERVAL = 1.0 / MP_INTENT_RATE_HZ
+_RECONNECT_BACKOFF_START = 0.5
+_RECONNECT_BACKOFF_CAP = 4.0
+_VERSION_WARNING_PREFIX = "Version warning:"
+
+# Human-readable notices for recoverable setup failures.
+_SETUP_ERROR_NOTICES = {
+    "run_id_in_use": "That code is already hosting a run — a fresh code was drawn.",
+    "run_not_found": "No run is waiting behind that code.",
+    "run_full": "That run already has two players.",
+    "bad_revision": "Your game version does not match the host's.",
+    "bad_version": "This server speaks a different protocol version.",
+    "timeout": "The server timed out the connection.",
+    "kicked": "The host turned you away.",
+}
+
+
+@dataclass
+class MpSession:
+    """Transient co-op session state (never persisted)."""
+
+    role: str = ""
+    phase: str = "setup"  # setup | lobby | active | ended
+    run_id: str = ""
+    player_id: str = ""
+    partner_player_id: str = ""
+    partner_name: str = ""
+    partner_ready: bool = False
+    partner_archetype: str = ""
+    partner_connected: bool = True
+    # Host-side accept gate: True from partner_joined until the host admits
+    # or turns away the knocking joiner. Room codes are locators, not
+    # secrets, so joining is an explicit host decision.
+    partner_pending_accept: bool = False
+    local_ready: bool = False
+    local_archetype: str = ""
+    reconnect_token: str = ""
+    seq: int = 0
+    started: bool = False
+    run_seed: int = 0
+    floor_revision: int = 0
+    last_snapshot_key: tuple[int, int] = (-1, -1)
+    snapshot_tick: int = 0
+    next_snapshot_at: float = 0.0
+    next_intent_at: float = 0.0
+    next_ping_at: float = 0.0
+    last_world_lengths: tuple = ()
+    input_seq: int = 0
+    # Reconnect bookkeeping (client side of the 30-second grace window).
+    reconnecting: bool = False
+    reconnect_deadline: float = 0.0
+    next_reconnect_at: float = 0.0
+    reconnect_backoff: float = _RECONNECT_BACKOFF_START
+    awaiting_floor: bool = False
+    rtt_ms: float = 0.0
+    ping_sent_at: dict[int, float] = field(default_factory=dict)
+    # Host-side latest joiner movement intent + queued one-shot actions.
+    intent_move: tuple[float, float] = (0.0, 0.0)
+    intent_move_at: float = 0.0
+    intent_last_seq: int = 0
+    intent_actions: deque = field(default_factory=deque)
+    # Host-side mini-game presses stay separate from actor actions.  They are
+    # drained while the story modal pauses world simulation; keeping the
+    # queues separate also lets us discard latent combat without losing a
+    # valid cooperative press.
+    intent_mini_game_inputs: deque = field(default_factory=deque)
+    # Consecutive Story/Soul presses may be emitted from one 15 Hz snapshot.
+    # Once the first revision-stamped press is accepted, this chain lets later
+    # ordered presses from that same snapshot rebase onto the exact resulting
+    # host revision. Garden targets never rebase because the next bloom is not
+    # visible yet. Any host/timer mutation breaks the equality and therefore
+    # breaks the chain without turning a delayed press into a mistake.
+    mini_game_chain_instance: int = 0
+    mini_game_chain_wire_revision: int = -1
+    mini_game_chain_state_revision: int = -1
+    # Host-side latest joiner predicted-position claim (4.7.6): the remote
+    # actor settles onto it when its movement vector is zero, so the joiner's
+    # predicted stop and the authoritative stop agree instead of the joiner
+    # sliding to a latency-overshot rest position.
+    intent_claim: tuple[float, float] | None = None
+    intent_claim_at: float = 0.0
+    claim_suppressed_until: float = 0.0
+    # Host-side latest joiner facing (4.7.9): mouse-hover/right-stick aim
+    # turns the actor without moving it, so movement intents replicate the
+    # facing and the host applies it while the intent vector is zero.
+    intent_facing: tuple[float, float] | None = None
+    # Host-side latest joiner modal pause reason (4.7.12): "shop" while the
+    # partner's local shop UI is open. Refreshed by every intent (20 Hz);
+    # treated as stale after a short silence so a dropped partner cannot
+    # freeze the host's simulation forever.
+    remote_pause_reason: str = ""
+    remote_pause_at: float = 0.0
+    # Joiner-side last transmitted movement vector for edge-triggered sends.
+    last_move_vector: tuple[float, float] = (0.0, 0.0)
+
+
+class NetMixin:
+    """Composed into ``Game``; see module docstring."""
+
+    def init_net(self) -> None:
+        self.mp_client: MultiplayerClient | None = None
+        self.mp_session: MpSession | None = None
+        self.mp_generation = 0
+        self.mp_active = False
+        self.mp_role = ""
+        self.mp_setup_step = "name"  # name | role | host_code | join_code
+        self.mp_setup_role_cursor = 0
+        self.mp_lobby_cursor = 0
+        self.mp_setup_host_cursor = 0
+        self.mp_run_id = ""
+        self.mp_join_code = ""
+        self.mp_notice = ""
+        self.mp_status = ""
+        self.mp_title_notice = ""
+        self.mp_partner_pause_reason = ""
+        # 4.7: connection consent gate. Consent is per-launch, per-endpoint
+        # and never persisted: every session reaffirms it before the first
+        # socket to a given server is opened.
+        self.mp_consent_cursor = 0
+        self._mp_consented_endpoint: tuple[str, int] | None = None
+        self._mp_pending_session: tuple[str, str] | None = None
+        # The stable player collection. Single-player logic keeps using the
+        # plain ``self.player`` attribute; multiplayer-aware code paths call
+        # ``active_players()`` which falls back to ``(self.player,)``.
+        self.players: list[Player] = []
+        self.local_player_id = "p1"
+        # Host-side transient-fx replication ring (impacts, slashes, screen
+        # flashes) and the joiner-side spawn high-water mark.
+        self._mp_fx_seq = 0
+        self._mp_fx_events: deque = deque(maxlen=_FX_RING_CAPACITY)
+        self._mp_fx_applied_seq = 0
+
+    # -- collection helpers -------------------------------------------------
+
+    def active_players(self) -> tuple[Player, ...]:
+        """Every player actor in the current run (multiplayer-aware)."""
+
+        if self.mp_active and len(self.players) > 1:
+            return tuple(self.players)
+        player = getattr(self, "player", None)
+        return (player,) if player is not None else ()
+
+    def living_players(self) -> tuple[Player, ...]:
+        return tuple(p for p in self.active_players() if p.hp > 0)
+
+    def local_player(self) -> Player | None:
+        for player in self.players:
+            if player.player_id == self.local_player_id:
+                return player
+        return getattr(self, "player", None)
+
+    def partner_player(self) -> Player | None:
+        if not self.mp_active:
+            return None
+        for player in self.players:
+            if player.player_id != self.local_player_id:
+                return player
+        return None
+
+    def mp_is_joiner(self) -> bool:
+        return self.mp_active and self.mp_role == ROLE_JOIN
+
+    def mp_is_host(self) -> bool:
+        return self.mp_active and self.mp_role == ROLE_HOST
+
+    def mp_predicts_local_movement(self) -> bool:
+        """Whether the joiner simulates its own actor's movement locally.
+
+        Prediction runs the same movement code as the host, so it stays off
+        exactly when the host's simulation is not advancing (story, shop,
+        menus, pending floor) or the actor cannot act — otherwise the local
+        actor would walk away from a frozen authority and rubber-band.
+        """
+
+        if not self.mp_is_joiner() or self.state != "playing":
+            return False
+        session = self.mp_session
+        if session is None or session.awaiting_floor:
+            return False
+        if self.mp_partner_pause_reason:
+            return False
+        local = self.local_player()
+        return local is not None and local.hp > 0
+
+    def mp_local_pause_reason(self) -> str:
+        """The joiner's own modal pause reason, replicated inside intents.
+
+        Shop and cooperative mini-game overlays freeze the shared run from the
+        joiner's side; inventory/character menus stay browse-while-paused-
+        locally like before 4.7.12.
+        """
+
+        if self.mp_is_joiner():
+            if getattr(self, "active_mini_game", None) is not None:
+                return "minigame"
+            if self.shop_open:
+                return "shop"
+        return ""
+
+    def mp_remote_pause_reason(self) -> str:
+        """Host: the partner's modal pause reason, empty once stale."""
+
+        session = self.mp_session
+        if session is None or not self.mp_is_host() or not session.started:
+            return ""
+        if not session.remote_pause_reason or not session.partner_connected:
+            return ""
+        if (
+            session.remote_pause_reason == "minigame"
+            and getattr(self, "active_mini_game", None) is None
+        ):
+            # The guest may render the result for one snapshot after the host
+            # has cleared it.  Do not let that short-lived echo freeze combat.
+            return ""
+        if time.monotonic() - session.remote_pause_at > _REMOTE_PAUSE_STALE_SECONDS:
+            return ""
+        return session.remote_pause_reason
+
+    # -- transient fx replication -------------------------------------------
+
+    def mp_record_fx(self, kind: str, *payload: Any) -> None:
+        """Host: queue a transient visual for snapshot replication."""
+
+        session = self.mp_session
+        if session is None or not session.started or not self.mp_is_host():
+            return
+        self._mp_fx_seq += 1
+        self._mp_fx_events.append(
+            (session.snapshot_tick, [self._mp_fx_seq, kind, *payload])
+        )
+
+    def mp_collect_fx(self) -> list[list[Any]]:
+        """Host: the replay window of fx events for the snapshot being built."""
+
+        events = self._mp_fx_events
+        if not events:
+            return []
+        session = self.mp_session
+        tick = session.snapshot_tick if session is not None else 0
+        while events and events[0][0] < tick - _FX_REPLAY_TICKS:
+            events.popleft()
+        return [entry for _, entry in events]
+
+    @contextmanager
+    def acting_as_player(self, player: Player) -> Iterator[None]:
+        """Temporarily make ``player`` the acting ``self.player``.
+
+        The host simulates the joiner's actor through the same combat,
+        inventory, and interaction code paths as the local player: XP, gold,
+        loot claims, and cooldowns all route to the acting player.
+        """
+
+        previous = self.player
+        self.player = player
+        try:
+            yield
+        finally:
+            self.player = previous
+
+    def player_for_credit(self, player_id: str) -> Player:
+        """The living player owed a delayed effect (kill XP/gold, leech).
+
+        Resolves projectile/DoT/familiar attribution recorded at fire time.
+        Falls back to the current ``self.player`` when the owner is unknown
+        or has since fallen — a level-up's full refill must never revive a
+        corpse mid-death-animation.
+        """
+
+        if self.mp_active and player_id:
+            for player in self.active_players():
+                if player.player_id == player_id and player.hp > 0:
+                    return player
+        return self.player
+
+    # -- per-frame driver ---------------------------------------------------
+
+    def poll(self) -> None:
+        """Main-thread pump; cheap when no multiplayer client exists."""
+
+        client = self.mp_client
+        session = self.mp_session
+        if client is None and session is None:
+            return
+        if getattr(self, "mobile_mode", False) and getattr(
+            self, "mobile_suspended", False
+        ):
+            # Android background: pause outbound traffic and hold the socket.
+            # Inbound stays queued (bounded, snapshots coalesced) until resume.
+            return
+        now = time.monotonic()
+        if client is not None:
+            for event in client.poll_events():
+                if event.generation != self.mp_generation:
+                    continue
+                self._mp_handle_event(event, now)
+                # Handlers may tear the session down mid-drain.
+                if self.mp_client is None and self.mp_session is None:
+                    return
+        session = self.mp_session
+        if session is None:
+            return
+        if session.reconnecting:
+            self._mp_drive_reconnect(now)
+            return
+        if self.mp_client is None:
+            return
+        self._mp_send_periodic(now)
+
+    def mp_flush_outbound(self) -> None:
+        """Second outbound pump at the end of the frame's update.
+
+        ``poll()`` runs before event handling, so the keys it samples are a
+        frame stale and its position claim predates this frame's prediction.
+        This pass — after input processing and the update — lets a direction
+        change reach the wire on the frame it happened and stamps claims
+        with the freshly predicted position (host snapshots landing mid-
+        frame likewise serialize this frame's simulation). Every send stays
+        deadline- or edge-gated, so a frame normally transmits from only
+        one of the two pumps.
+        """
+
+        session = self.mp_session
+        if self.mp_client is None or session is None or session.reconnecting:
+            return
+        if getattr(self, "mobile_mode", False) and getattr(
+            self, "mobile_suspended", False
+        ):
+            return
+        self._mp_send_periodic(time.monotonic())
+
+    # -- outbound scheduling ------------------------------------------------
+
+    def _mp_send_periodic(self, now: float) -> None:
+        session = self.mp_session
+        client = self.mp_client
+        if session is None or client is None:
+            return
+        if not session.player_id:
+            # No welcome yet: nothing may precede (or race) the hello.
+            return
+        if now >= session.next_ping_at:
+            session.next_ping_at = now + _PING_INTERVAL_SECONDS
+            session.seq += 1
+            session.ping_sent_at[session.seq] = now
+            if len(session.ping_sent_at) > 8:
+                oldest = min(session.ping_sent_at)
+                session.ping_sent_at.pop(oldest, None)
+            client.send_message(make_ping(seq=session.seq, ts=now))
+        if not (self.mp_active and session.started):
+            return
+        if session.role == ROLE_HOST:
+            if now >= session.next_snapshot_at and self.players:
+                session.next_snapshot_at = now + _SNAPSHOT_INTERVAL
+                self._mp_send_snapshot()
+        elif session.role == ROLE_JOIN:
+            if self.state == "playing" and not session.awaiting_floor:
+                local = self.local_player()
+                if local is not None and local.hp > 0:
+                    move_x, move_y = self._mp_local_move_vector()
+                    # Starting, stopping, and turning transmit on the same
+                    # frame instead of waiting out the 20 Hz slot: stop
+                    # latency becomes host-side overshoot the joiner slides
+                    # onto, and turn latency keeps the authoritative actor
+                    # walking the old way on a quick reversal.
+                    was_moving = session.last_move_vector != (0.0, 0.0)
+                    is_moving = (move_x, move_y) != (0.0, 0.0)
+                    turned = (
+                        abs(move_x - session.last_move_vector[0])
+                        > _INTENT_TURN_THRESHOLD
+                        or abs(move_y - session.last_move_vector[1])
+                        > _INTENT_TURN_THRESHOLD
+                    )
+                    if (
+                        now >= session.next_intent_at
+                        or was_moving != is_moving
+                        or turned
+                    ):
+                        session.next_intent_at = now + _INTENT_INTERVAL
+                        session.last_move_vector = (move_x, move_y)
+                        claim_x = claim_y = None
+                        if self.mp_predicts_local_movement():
+                            claim_x, claim_y = local.x, local.y
+                        session.input_seq += 1
+                        client.send_message(
+                            make_intent(
+                                input_seq=session.input_seq,
+                                move_x=move_x,
+                                move_y=move_y,
+                                px=claim_x,
+                                py=claim_y,
+                                fx=local.facing_x,
+                                fy=local.facing_y,
+                                pause=self.mp_local_pause_reason(),
+                            ),
+                            coalesce_key=COALESCE_MOVE_INTENT,
+                        )
+
+    def _mp_send_snapshot(self) -> None:
+        session = self.mp_session
+        client = self.mp_client
+        if session is None or client is None:
+            return
+        session.snapshot_tick += 1
+        lengths = sync.world_list_lengths(self)
+        include_slow = (
+            session.snapshot_tick % sync.SLOW_PAYLOAD_EVERY_TICKS == 0
+            or lengths != session.last_world_lengths
+        )
+        session.last_world_lengths = lengths
+        state = sync.build_snapshot_state(self, include_slow=include_slow)
+        client.send_message(
+            make_snapshot(
+                floor_revision=session.floor_revision,
+                tick=session.snapshot_tick,
+                state=state,
+            ),
+            coalesce_key=COALESCE_SNAPSHOT,
+        )
+
+    def mp_send_floor(self) -> None:
+        """Host: serialize and send the full static floor descriptor."""
+
+        session = self.mp_session
+        client = self.mp_client
+        if session is None or client is None or session.role != ROLE_HOST:
+            return
+        session.floor_revision += 1
+        session.snapshot_tick = 0
+        # Fx from the previous floor must not replay into the fresh one (the
+        # joiner resets its spawn high-water mark when it applies the floor).
+        self._mp_fx_events.clear()
+        state = sync.build_floor_state(self)
+        client.send_message(
+            make_floor(
+                floor_revision=session.floor_revision,
+                depth=self.current_depth,
+                floor_seed=session.run_seed,
+                state=state,
+            )
+        )
+        # Follow with a fresh snapshot so the joiner starts from live state.
+        session.next_snapshot_at = 0.0
+
+    def mp_queue_action(self, action: str, target: str | None = None) -> None:
+        """Joiner: transmit a one-shot action intent promptly (never coalesced)."""
+
+        session = self.mp_session
+        client = self.mp_client
+        if session is None or client is None or not self.mp_is_joiner():
+            return
+        if session.awaiting_floor or self.state != "playing":
+            return
+        local = self.local_player()
+        if local is None or local.hp <= 0:
+            return
+        aim_x, aim_y = local.facing_x, local.facing_y
+        session.input_seq += 1
+        client.send_message(
+            make_intent(
+                input_seq=session.input_seq,
+                move_x=aim_x,
+                move_y=aim_y,
+                action=action,
+                target=target,
+                pause=self.mp_local_pause_reason(),
+            )
+        )
+        # Show the pose immediately instead of waiting a round trip for the
+        # snapshot echo. Gated on the replicated cooldown so a press the host
+        # will reject rarely animates; resource shortfalls can still produce
+        # a swing without an effect, which reads as a whiff.
+        preview = _ACTION_POSE_PREVIEW.get(action)
+        if preview is not None:
+            state, ttl, gate_timer = preview
+            if getattr(local, gate_timer, 0.0) <= 0.0:
+                self.set_player_action_visual(state, ttl)
+
+    def mp_queue_mini_game_cell(self, cell: int) -> bool:
+        """Joiner: send one revision-guarded cooperative mini-game press.
+
+        This deliberately does not use the actor-alive or combat-preview gates
+        in :meth:`mp_queue_action`: the modal has its own validation, and its
+        one-shot input must wake the socket immediately rather than waiting for
+        the 20 Hz movement cadence.
+        """
+
+        session = self.mp_session
+        client = self.mp_client
+        state = getattr(self, "active_mini_game", None)
+        if (
+            session is None
+            or client is None
+            or not self.mp_is_joiner()
+            or session.awaiting_floor
+            or self.state != "playing"
+            or state is None
+            or getattr(state, "phase", "") != "play"
+        ):
+            return False
+        try:
+            cell = int(cell)
+        except (TypeError, ValueError):
+            return False
+        board = getattr(state, "board", ())
+        if not 0 <= cell < len(board):
+            return False
+        session.input_seq += 1
+        return bool(
+            client.send_message(
+                make_intent(
+                    input_seq=session.input_seq,
+                    action="minigame",
+                    target=encode_mini_game_intent(state, cell),
+                    pause="minigame",
+                )
+            )
+        )
+
+    def mp_queue_mini_game_ready(self) -> bool:
+        """Joiner: immediately send an instance-scoped ready confirmation."""
+
+        session = self.mp_session
+        client = self.mp_client
+        state = getattr(self, "active_mini_game", None)
+        if (
+            session is None
+            or client is None
+            or not self.mp_is_joiner()
+            or session.awaiting_floor
+            or self.state != "playing"
+            or state is None
+            or getattr(state, "phase", "") != "ready"
+        ):
+            return False
+        session.input_seq += 1
+        return bool(
+            client.send_message(
+                make_intent(
+                    input_seq=session.input_seq,
+                    action="minigame",
+                    target=encode_mini_game_ready_intent(state),
+                    pause="minigame",
+                )
+            )
+        )
+
+    def _mp_local_move_vector(self) -> tuple[float, float]:
+        """Sample the joiner's movement input (keyboard/controller/touch/mouse)."""
+
+        # A local modal swallows movement exactly like the host's pause does
+        # for its own actor — otherwise arrow-key shop/menu navigation would
+        # also walk the predicted actor (and ship movement intents).
+        if (
+            self.inventory_open
+            or self.character_menu_open
+            or self.shop_open
+            or self.active_cutscene is not None
+            or self.story_intro_pending
+            or getattr(self, "active_mini_game", None) is not None
+        ):
+            return 0.0, 0.0
+        keys = pygame.key.get_pressed()
+        move_x = float(keys[pygame.K_RIGHT] or keys[pygame.K_d]) - float(
+            keys[pygame.K_LEFT] or keys[pygame.K_a]
+        )
+        move_y = float(keys[pygame.K_DOWN] or keys[pygame.K_s]) - float(
+            keys[pygame.K_UP] or keys[pygame.K_w]
+        )
+        controller_x, controller_y = self.input.left_vec()
+        if controller_x or controller_y:
+            move_x, move_y = controller_x, controller_y
+        elif getattr(self, "mobile_mode", False):
+            mobile_x, mobile_y = self.mobile_joystick_world_vector()
+            if mobile_x or mobile_y:
+                move_x, move_y = mobile_x, mobile_y
+        elif not (move_x or move_y):
+            move_x, move_y = self._mp_mouse_walk_vector()
+        length = math.hypot(move_x, move_y)
+        if length > 1.0:
+            move_x, move_y = move_x / length, move_y / length
+        return move_x, move_y
+
+    def _mp_mouse_walk_vector(self) -> tuple[float, float]:
+        """Joiner's mouse hold-to-walk fallback (mirrors ``update_player``).
+
+        The host steps its own mouse walk exactly to the cursor each frame;
+        the joiner can only send an analog vector, so deflection tapers to
+        zero at the same 0.12-tile stop radius to ease in without orbiting
+        the pointer between 20 Hz intents. Menus and cutscenes suppress it —
+        on the host those states pause the simulation before the mouse is
+        sampled, and joiner-side menu clicks must not double as movement.
+        """
+
+        if (
+            self.inventory_open
+            or self.character_menu_open
+            or self.shop_open
+            or self.active_cutscene is not None
+            or self.story_intro_pending
+            or getattr(self, "active_mini_game", None) is not None
+        ):
+            return 0.0, 0.0
+        if not pygame.mouse.get_pressed()[0]:
+            return 0.0, 0.0
+        dx, dy = self.face_player_toward_screen_point(*pygame.mouse.get_pos())
+        distance = math.hypot(dx, dy)
+        if distance <= 0.12:
+            return 0.0, 0.0
+        magnitude = min(1.0, (distance - 0.12) * 4.0)
+        return (dx / distance) * magnitude, (dy / distance) * magnitude
+
+    # -- inbound dispatch ---------------------------------------------------
+
+    def _mp_handle_event(self, event: Any, now: float) -> None:
+        session = self.mp_session
+        if isinstance(event, ConnectionUp):
+            self._mp_on_connected()
+            return
+        if isinstance(event, ConnectionFailed):
+            self._mp_on_connection_failed(event.reason, now)
+            return
+        if isinstance(event, ConnectionLost):
+            self._mp_on_connection_lost(event.reason, now)
+            return
+        if isinstance(event, ConnectionClosed):
+            return
+        if not isinstance(event, InboundMessage) or session is None:
+            return
+        message = event.message
+        if isinstance(message, Welcome):
+            self._mp_on_welcome(message)
+        elif isinstance(message, PartnerJoined):
+            session.partner_name = message.name
+            session.partner_player_id = message.player_id
+            session.partner_connected = True
+            session.partner_ready = False
+            session.partner_archetype = ""
+            if session.role == ROLE_HOST and not session.started:
+                # A 4-rune code is a locator, not a secret: whoever knocks
+                # must be admitted explicitly before the descent can begin.
+                session.partner_pending_accept = True
+                # Enter must default to Admit while the knock stands.
+                self.mp_lobby_cursor = 0
+                # The "no partner yet" notice is obsolete the moment
+                # someone knocks.
+                self.mp_notice = ""
+                self.mp_status = (
+                    f"{message.name or 'A nameless one'} requests entry — "
+                    "arrows / D-pad select; Enter / E confirms."
+                )
+            else:
+                self.mp_status = f"{message.name} has answered the call."
+            self._mp_show_version_warning(message.partner_revision)
+        elif isinstance(message, ReadyAck):
+            if message.player_id and message.player_id != session.player_id:
+                session.partner_ready = True
+                session.partner_archetype = message.archetype_key
+        elif isinstance(message, Start):
+            self._mp_on_start(message)
+        elif isinstance(message, FloorMessage):
+            self._mp_on_floor(message)
+        elif isinstance(message, SnapshotMessage):
+            self._mp_on_snapshot(message)
+        elif isinstance(message, IntentMessage):
+            self._mp_on_intent(message, now)
+        elif isinstance(message, PartnerDisconnected):
+            session.partner_connected = False
+            self.mp_status = "Partner connection lost — the dungeon holds…"
+            if self.state == "playing":
+                self._mp_world_notice("Partner connection lost…")
+        elif isinstance(message, PartnerRejoined):
+            session.partner_connected = True
+            self._mp_show_version_warning(message.partner_revision)
+            self.mp_status = f"{message.name or 'Your partner'} has returned."
+            if self.state == "playing":
+                self._mp_world_notice("Partner reconnected")
+            if session.role == ROLE_HOST and session.started:
+                self.mp_send_floor()
+        elif isinstance(message, PartnerLeft):
+            self._mp_on_partner_left()
+        elif isinstance(message, RunEndedMessage):
+            self._mp_on_run_ended(message)
+        elif isinstance(message, PongMessage):
+            sent = session.ping_sent_at.pop(message.seq, None)
+            if sent is not None:
+                session.rtt_ms = max(0.0, (now - sent) * 1000.0)
+        elif isinstance(message, ErrorMessage):
+            self._mp_on_error(message)
+        elif isinstance(message, ByeMessage):
+            self._mp_on_partner_left()
+        elif isinstance(message, UnknownMessage):
+            # Forward compatibility: ignore quietly.
+            pass
+
+    # -- connection lifecycle ------------------------------------------------
+
+    def _mp_show_version_warning(self, partner_revision: str) -> None:
+        """Warn about game-content drift without blocking the session."""
+
+        revision = str(partner_revision or "").strip()
+        if revision and revision != __version__:
+            self.mp_notice = (
+                f"{_VERSION_WARNING_PREFIX} you use {__version__}; your partner "
+                f"uses {revision}. Multiplayer will continue, but desyncs or "
+                "missing features may occur."
+            )
+        elif self.mp_notice.startswith(_VERSION_WARNING_PREFIX):
+            self.mp_notice = ""
+
+    def _mp_on_connected(self) -> None:
+        session = self.mp_session
+        client = self.mp_client
+        if session is None or client is None:
+            return
+        session.seq += 1
+        client.send_message(
+            make_hello(
+                seq=session.seq,
+                name=self.mp_player_name or "Warden",
+                run_id=session.run_id,
+                role=session.role,
+                content_revision=__version__,
+                reconnect_token=session.reconnect_token,
+            )
+        )
+        self.mp_status = "Reaching the far shore…"
+
+    def _mp_on_welcome(self, message: Welcome) -> None:
+        session = self.mp_session
+        if session is None:
+            return
+        was_reconnect = session.reconnecting
+        session.reconnecting = False
+        session.reconnect_backoff = _RECONNECT_BACKOFF_START
+        session.player_id = message.player_id
+        session.reconnect_token = message.reconnect_token
+        session.run_id = message.run_id
+        self.mp_run_id = message.run_id
+        self.local_player_id = message.player_id
+        if message.partner_name is not None:
+            session.partner_name = message.partner_name
+        session.partner_ready = message.partner_ready
+        if was_reconnect:
+            self._mp_show_version_warning(message.partner_revision)
+            self.mp_status = "Reconnected."
+            if session.role == ROLE_HOST and session.started:
+                self.mp_send_floor()
+            elif session.role == ROLE_JOIN and session.started:
+                session.awaiting_floor = True
+            return
+        # Fresh session: enter the lobby.
+        session.phase = "lobby"
+        self.state = "mp_lobby"
+        self.mp_lobby_cursor = 0
+        self.mp_notice = ""
+        self._mp_show_version_warning(message.partner_revision)
+        self.mp_status = (
+            "Share the code with your partner."
+            if session.role == ROLE_HOST and not session.partner_name
+            else "Choose your archetype."
+        )
+
+    def _mp_on_connection_failed(self, reason: str, now: float) -> None:
+        session = self.mp_session
+        self._mp_drop_client()
+        if session is None:
+            return
+        if session.reconnecting:
+            self._mp_schedule_reconnect(now)
+            return
+        self.mp_notice = f"Could not reach the server: {reason or 'unreachable'}"
+        self.mp_status = ""
+        self.mp_session = None
+        if self.state == "mp_lobby":
+            self.state = "mp_setup"
+        if self.mp_setup_step not in ("host_code", "join_code"):
+            self.mp_setup_step = "role"
+
+    def _mp_on_connection_lost(self, reason: str, now: float) -> None:
+        session = self.mp_session
+        self._mp_drop_client()
+        if session is None:
+            return
+        if session.reconnect_token and (session.started or session.phase == "lobby"):
+            if not session.reconnecting:
+                session.reconnecting = True
+                session.reconnect_deadline = now + MP_RECONNECT_GRACE_SECONDS
+                session.reconnect_backoff = _RECONNECT_BACKOFF_START
+                session.next_reconnect_at = now
+                self.mp_status = "Connection lost — reattempting…"
+                if self.state == "playing":
+                    self._mp_world_notice("Connection lost — reattempting…")
+            return
+        self._mp_fail_session(f"Connection lost: {reason or 'socket closed'}")
+
+    def _mp_drive_reconnect(self, now: float) -> None:
+        session = self.mp_session
+        if session is None or not session.reconnecting:
+            return
+        if now > session.reconnect_deadline:
+            self._mp_fail_session(
+                "Could not reconnect within the grace period."
+            )
+            return
+        if self.mp_client is not None or now < session.next_reconnect_at:
+            return
+        session.reconnect_backoff = min(
+            _RECONNECT_BACKOFF_CAP, session.reconnect_backoff * 2.0
+        )
+        session.next_reconnect_at = now + session.reconnect_backoff
+        self._mp_connect()
+
+    def _mp_schedule_reconnect(self, now: float) -> None:
+        session = self.mp_session
+        if session is None:
+            return
+        if now > session.reconnect_deadline:
+            self._mp_fail_session("Could not reconnect within the grace period.")
+
+    # -- lobby / start -------------------------------------------------------
+
+    def _mp_on_start(self, message: Start) -> None:
+        session = self.mp_session
+        if session is None or session.started:
+            return
+        session.started = True
+        session.run_seed = message.run_seed
+        session.phase = "active"
+        if session.role == ROLE_HOST:
+            session.partner_player_id = message.joiner_player_id
+            session.partner_name = message.joiner_name
+            self.begin_multiplayer_run(
+                run_seed=message.run_seed,
+                host_archetype=message.host_archetype,
+                joiner_archetype=message.joiner_archetype,
+                host_player_id=message.host_player_id,
+                joiner_player_id=message.joiner_player_id,
+                host_name=message.host_name,
+                joiner_name=message.joiner_name,
+            )
+            self.mp_send_floor()
+        else:
+            session.partner_player_id = message.host_player_id
+            session.partner_name = message.host_name
+            session.awaiting_floor = True
+            self.mp_status = "The host carves the descent…"
+
+    def mp_lobby_confirm(self) -> None:
+        """Lobby confirm: admit a knocking partner first, otherwise ready up."""
+
+        session = self.mp_session
+        if (
+            session is not None
+            and session.role == ROLE_HOST
+            and session.partner_pending_accept
+        ):
+            self.mp_lobby_accept_partner()
+            return
+        self.mp_lobby_send_ready()
+
+    def mp_lobby_activate_selected(self) -> None:
+        """Activate the lobby action row under ``mp_lobby_cursor``.
+
+        While a joiner knocks the rows are Admit / Turn away; otherwise
+        they are Bind-and-ready / Leave the lobby.
+        """
+
+        session = self.mp_session
+        cursor = int(getattr(self, "mp_lobby_cursor", 0)) % 2
+        if (
+            session is not None
+            and session.role == ROLE_HOST
+            and session.partner_pending_accept
+        ):
+            if cursor == 0:
+                self.mp_lobby_accept_partner()
+            else:
+                self.mp_lobby_decline_partner()
+            return
+        if cursor == 0:
+            self.mp_lobby_send_ready()
+        else:
+            self.mp_leave_lobby()
+
+    def mp_lobby_accept_partner(self) -> None:
+        """Host: admit the joiner who is knocking at the lobby gate."""
+
+        session = self.mp_session
+        if (
+            session is None
+            or session.role != ROLE_HOST
+            or not session.partner_pending_accept
+        ):
+            return
+        session.partner_pending_accept = False
+        name = session.partner_name or "Your partner"
+        self.mp_status = f"{name} is admitted. Bind your archetype to descend."
+
+    def mp_lobby_decline_partner(self) -> None:
+        """Host: turn away the knocking joiner; the code stays open."""
+
+        session = self.mp_session
+        client = self.mp_client
+        if (
+            session is None
+            or client is None
+            or session.role != ROLE_HOST
+            or not session.partner_pending_accept
+        ):
+            return
+        session.seq += 1
+        client.send_message(make_kick(seq=session.seq))
+        session.partner_pending_accept = False
+        session.partner_name = ""
+        session.partner_player_id = ""
+        session.partner_connected = False
+        session.partner_ready = False
+        session.partner_archetype = ""
+        self.mp_status = "Turned away. The code remains open for another knock."
+
+    def mp_lobby_send_ready(self) -> None:
+        """Confirm the selected archetype in the lobby (both roles)."""
+
+        session = self.mp_session
+        client = self.mp_client
+        if session is None or client is None or session.local_ready:
+            return
+        if session.role == ROLE_HOST and not session.partner_name:
+            # A notice, not a status: the blocked bind must be unmissable.
+            self.mp_notice = (
+                "No partner yet — share the code; binding opens when "
+                "they arrive."
+            )
+            return
+        if session.role == ROLE_HOST and session.partner_pending_accept:
+            self.mp_status = (
+                "Answer the join request first — select, then Enter / E."
+            )
+            return
+        archetype = self.selected_archetype.name
+        session.local_archetype = archetype
+        session.local_ready = True
+        session.seq += 1
+        run_seed = None
+        if session.role == ROLE_HOST:
+            # A fresh 64-bit seed from the OS entropy pool, never game RNG.
+            import secrets as _secrets
+
+            run_seed = _secrets.randbits(63)
+        client.send_message(
+            make_ready(seq=session.seq, archetype_key=archetype, run_seed=run_seed)
+        )
+        self.mp_status = "Bound. Waiting for your partner…"
+
+    # -- world messages ------------------------------------------------------
+
+    def _mp_on_floor(self, message: FloorMessage) -> None:
+        session = self.mp_session
+        if session is None or session.role != ROLE_JOIN:
+            return
+        if message.floor_revision <= 0:
+            return
+        try:
+            sync.apply_floor_state(self, message.state)
+        except (KeyError, TypeError, ValueError) as exc:
+            self._mp_fail_session(f"Bad floor data from host: {exc}")
+            return
+        session.floor_revision = message.floor_revision
+        session.last_snapshot_key = (message.floor_revision, -1)
+        session.awaiting_floor = False
+        self.mp_active = True
+        self.mp_role = ROLE_JOIN
+        self.state = "playing"
+
+    def _mp_on_snapshot(self, message: SnapshotMessage) -> None:
+        session = self.mp_session
+        if session is None or session.role != ROLE_JOIN:
+            return
+        if session.awaiting_floor:
+            return
+        key = (message.floor_revision, message.tick)
+        if (
+            key[0] < session.last_snapshot_key[0]
+            or key <= session.last_snapshot_key
+        ):
+            return  # stale revision/tick: ignore
+        if key[0] != session.floor_revision:
+            return  # snapshot for a floor we have not applied yet
+        session.last_snapshot_key = key
+        try:
+            sync.apply_snapshot_state(self, message.state)
+        except (KeyError, TypeError, ValueError, IndexError, AttributeError) as exc:
+            # A malformed snapshot must never crash the joiner's main loop;
+            # it ends the session cleanly like a bad floor descriptor does.
+            self._mp_fail_session(f"Bad snapshot data from host: {exc}")
+
+    def _mp_on_intent(self, message: IntentMessage, now: float) -> None:
+        session = self.mp_session
+        if session is None or session.role != ROLE_HOST or not session.started:
+            return
+        if message.input_seq <= session.intent_last_seq:
+            return  # stale input
+        session.intent_last_seq = message.input_seq
+        session.remote_pause_reason = message.pause
+        session.remote_pause_at = now
+        if message.action == "minigame":
+            # Keep modal input out of the actor-action queue: world simulation
+            # is paused during mini-games, but these presses must still drain.
+            session.intent_mini_game_inputs.append(
+                (message.target, message.player_id)
+            )
+            if len(session.intent_mini_game_inputs) > 32:
+                session.intent_mini_game_inputs.popleft()
+            return
+        if getattr(self, "active_mini_game", None) is not None:
+            # A stale gameplay key sampled before the guest received the modal
+            # snapshot must not become movement or a burst of attacks when the
+            # cutscene ends.
+            session.intent_actions.clear()
+            session.intent_move = (0.0, 0.0)
+            session.intent_claim = None
+            session.intent_facing = None
+            return
+        if message.action:
+            session.intent_actions.append(
+                (message.action, message.target, message.move_x, message.move_y)
+            )
+            if len(session.intent_actions) > 32:
+                session.intent_actions.popleft()
+        else:
+            session.intent_move = (message.move_x, message.move_y)
+            session.intent_move_at = now
+            if message.px is not None and message.py is not None:
+                session.intent_claim = (message.px, message.py)
+                session.intent_claim_at = now
+            if message.fx is not None and message.fy is not None:
+                session.intent_facing = (message.fx, message.fy)
+
+    def _mp_apply_remote_mini_game_inputs(self) -> None:
+        """Host: validate and apply queued guest presses during the modal."""
+
+        session = self.mp_session
+        state = getattr(self, "active_mini_game", None)
+        if session is None:
+            return
+        if state is None:
+            session.intent_mini_game_inputs.clear()
+            session.mini_game_chain_instance = 0
+            session.mini_game_chain_wire_revision = -1
+            session.mini_game_chain_state_revision = -1
+            return
+        submit_cell = getattr(self, "submit_mini_game_cell", None)
+        submit_ready = getattr(self, "submit_mini_game_ready", None)
+        if not callable(submit_cell) and not callable(submit_ready):
+            session.intent_mini_game_inputs.clear()
+            return
+        while session.intent_mini_game_inputs:
+            target, player_id = session.intent_mini_game_inputs.popleft()
+            expected_partner = session.partner_player_id
+            player_id = str(player_id or expected_partner or "p2")
+            if expected_partner and player_id != expected_partner:
+                continue
+            ready_instance_id = decode_mini_game_ready_intent(target)
+            if ready_instance_id is not None:
+                session.mini_game_chain_instance = 0
+                session.mini_game_chain_wire_revision = -1
+                session.mini_game_chain_state_revision = -1
+                if (
+                    callable(submit_ready)
+                    and ready_instance_id
+                    == int(getattr(state, "instance_id", -1))
+                ):
+                    submit_ready(player_id=player_id)
+                continue
+            decoded = decode_mini_game_intent(target)
+            if decoded is None or not callable(submit_cell):
+                continue
+            instance_id, revision, cell = decoded
+            if instance_id != int(getattr(state, "instance_id", -1)):
+                continue
+            current_revision = int(getattr(state, "revision", -1))
+            expected_revision = revision
+            if revision != current_revision:
+                chained = (
+                    getattr(state, "kind", "") in ("story", "soul")
+                    and session.mini_game_chain_instance == instance_id
+                    and session.mini_game_chain_wire_revision == revision
+                    and session.mini_game_chain_state_revision
+                    == current_revision
+                )
+                if not chained:
+                    continue
+                expected_revision = current_revision
+            changed = submit_cell(
+                cell,
+                player_id=player_id,
+                expected_revision=expected_revision,
+            )
+            if changed:
+                session.mini_game_chain_instance = instance_id
+                session.mini_game_chain_wire_revision = revision
+                session.mini_game_chain_state_revision = int(
+                    getattr(state, "revision", current_revision)
+                )
+            else:
+                # A locked/duplicate/invalid press ends an ordered burst. The
+                # next accepted press must match a fresh authoritative token.
+                session.mini_game_chain_instance = 0
+                session.mini_game_chain_wire_revision = -1
+                session.mini_game_chain_state_revision = -1
+
+    # -- run lifecycle -------------------------------------------------------
+
+    def mp_notify_run_ended(self, outcome: str) -> None:
+        """Host: broadcast the authoritative end of the shared run."""
+
+        session = self.mp_session
+        client = self.mp_client
+        if (
+            session is None
+            or client is None
+            or session.role != ROLE_HOST
+            or not session.started
+        ):
+            return
+        results = [
+            {
+                "player_id": player.player_id,
+                "name": player.display_name,
+                "class_name": player.class_name,
+                "level": player.level,
+                "alive": player.hp > 0,
+            }
+            for player in self.players
+        ]
+        client.send_message(make_run_ended(outcome=outcome, results=results))
+
+    def _mp_on_run_ended(self, message: RunEndedMessage) -> None:
+        session = self.mp_session
+        if session is None or session.role != ROLE_JOIN or not self.mp_active:
+            return
+        outcome = message.outcome
+        self.mp_record_local_result(outcome)
+        self.ambush_bells = []
+        self.audio.stop_music()
+        if outcome == "victory":
+            self.state = "victory"
+            self.play_sfx("victory")
+        else:
+            self.state = "dead"
+            if not self.run_stats.cause_of_death:
+                self.run_stats.cause_of_death = "the shared descent failed"
+            self.play_sfx("death")
+
+    def mp_record_local_result(self, outcome: str) -> None:
+        """Record this client's own run result after the host's ``run_ended``.
+
+        Only the joiner gets here -- the host ends its run through
+        ``finalize_run`` -- so this is the joining client's single funnel into
+        meta-progression and achievements. Until 4.9.21 it wrote a run-history
+        entry and nothing else, which made every co-op clear invisible to the
+        joiner's best depth, clear count, boss ledger and achievements.
+        """
+
+        local = self.local_player()
+        self.record_run_meta(
+            outcome,
+            archetype_name=local.class_name if local is not None else "",
+            coop=True,
+        )
+        record = {
+            "outcome": outcome,
+            "class": local.class_name if local is not None else "",
+            "depth": self.current_depth,
+            "time": int(self.elapsed),
+            "difficulty": self.difficulty_profile().name,
+            "modifier": self.run_modifier.name,
+            "kills": self.run_stats.kills,
+            "bosses": list(self.run_stats.defeated_bosses[-4:]),
+            "notable_loot": list(self.run_stats.notable_loot[-4:]),
+            "cause": self.run_stats.cause_of_death,
+            "multiplayer": True,
+            "ended": time.strftime("%Y-%m-%d"),
+        }
+        self.run_history.append(record)
+        del self.run_history[:-12]
+        self.save_options()
+
+    def _mp_on_partner_left(self) -> None:
+        session = self.mp_session
+        if session is None:
+            return
+        if self.mp_active:
+            self.mp_end_session_to_title("Your partner has left the run.")
+        elif session.phase == "lobby":
+            # After a local decline the partner fields are already empty and
+            # the "turned away" status must survive this echoed partner_left.
+            had_partner = bool(session.partner_name)
+            session.partner_name = ""
+            session.partner_ready = False
+            session.partner_archetype = ""
+            session.partner_connected = True
+            session.partner_pending_accept = False
+            self._mp_show_version_warning("")
+            if session.role == ROLE_HOST:
+                if had_partner:
+                    self.mp_status = (
+                        "Your partner departed. Share the code again."
+                    )
+            else:
+                self.mp_end_session_to_title("The host has closed the run.")
+
+    def _mp_on_error(self, message: ErrorMessage) -> None:
+        session = self.mp_session
+        if session is None:
+            return
+        notice = _SETUP_ERROR_NOTICES.get(message.code, message.msg or message.code)
+        if not message.fatal and session.started:
+            return  # non-fatal in-run errors are diagnostics
+        if self.mp_active:
+            if message.fatal:
+                self.mp_end_session_to_title(notice)
+            return
+        # Setup/lobby failures are recoverable: back to the right step.
+        self._mp_drop_client()
+        self.mp_session = None
+        self.mp_notice = notice
+        self.mp_status = ""
+        self.state = "mp_setup"
+        if message.code == "run_id_in_use":
+            # A host collision returns to code generation with a fresh code.
+            self.mp_run_id = generate_run_id(MP_RUN_ID_LENGTH)
+            self.mp_setup_step = "host_code"
+            self.mp_setup_host_cursor = 0
+        elif message.code in ("run_not_found", "run_full", "bad_revision", "kicked"):
+            # A join failure keeps the entered code editable.
+            self.mp_setup_step = "join_code"
+            self.mp_open_join_code_input()
+        else:
+            self.mp_setup_step = "role"
+
+    def _mp_fail_session(self, notice: str) -> None:
+        if self.mp_active:
+            self.mp_end_session_to_title(notice)
+            return
+        self._mp_drop_client()
+        self.mp_session = None
+        self.mp_status = ""
+        self.mp_notice = notice
+        if self.state in ("mp_lobby",):
+            self.state = "mp_setup"
+            self.mp_setup_step = "role"
+
+    def mp_end_session_to_title(self, notice: str) -> None:
+        """End the co-op run and return safely to the title screen."""
+
+        self.mp_shutdown(send_bye=True)
+        self.mp_title_notice = notice
+        self.show_help = False
+        self.inventory_open = False
+        self.character_menu_open = False
+        self.mobile_hub_open = False
+        self.quest_info_visible = False
+        self.close_shop()
+        self.active_cutscene = None
+        self.story_intro_pending = False
+        self.state = "title"
+        self.exit_previous_state = "title"
+        self.sync_music()
+
+    def mp_shutdown(self, *, send_bye: bool) -> None:
+        """Tear down the client/session. Never touches single-player saves."""
+
+        client = self.mp_client
+        self.mp_client = None
+        if client is not None:
+            client.close(send_bye=send_bye)
+        self.mp_session = None
+        self.mp_active = False
+        self.mp_role = ""
+        self.mp_status = ""
+        self.mp_partner_pause_reason = ""
+        self.players = []
+        self.local_player_id = "p1"
+        self._mp_fx_seq = 0
+        self._mp_fx_events.clear()
+        self._mp_fx_applied_seq = 0
+
+    # -- setup flow ----------------------------------------------------------
+
+    def start_mp_setup(self) -> None:
+        """Enter ``mp_setup`` from the title's "Two will descend" row."""
+
+        self.mp_shutdown(send_bye=True)
+        self.mp_notice = ""
+        self.mp_status = ""
+        self.mp_title_notice = ""
+        self.mp_join_code = ""
+        self.mp_run_id = ""
+        self.mp_setup_role_cursor = 0
+        self.state = "mp_setup"
+        self.mp_setup_step = "name"
+        initial = self.mp_player_name or sanitize_player_name(
+            self._mp_default_name()
+        )
+        self.open_text_input(
+            target="mp_player_name",
+            prompt="Name yourself for the descent",
+            initial=initial,
+            max_length=16,
+            help_text="Shown to your partner. Kept between sessions.",
+        )
+
+    @staticmethod
+    def _mp_default_name() -> str:
+        from .protocol import default_player_name
+
+        return default_player_name()
+
+    def mp_confirm_player_name(self, value: str) -> None:
+        name = sanitize_player_name(value) or sanitize_player_name(
+            self._mp_default_name()
+        )
+        self.mp_player_name = name
+        self.save_options()
+        if self.state == "mp_setup" and self.mp_setup_step == "name":
+            self.mp_setup_step = "role"
+
+    def mp_text_input_cancelled(self, target: str) -> None:
+        if self.state != "mp_setup":
+            return
+        if target == "mp_player_name":
+            self.mp_back_to_title()
+        elif target == "mp_join_code":
+            self.mp_setup_step = "role"
+
+    def mp_choose_role(self, host: bool) -> None:
+        if self.state != "mp_setup":
+            return
+        self.mp_notice = ""
+        if not self.mp_endpoint_configured():
+            self.mp_notice = (
+                "Server not configured — set the server host and port in Options."
+            )
+            return
+        if host:
+            self.mp_run_id = generate_run_id(MP_RUN_ID_LENGTH)
+            self.mp_setup_step = "host_code"
+            self.mp_setup_host_cursor = 0
+        else:
+            self.mp_setup_step = "join_code"
+            self.mp_open_join_code_input()
+
+    def mp_open_join_code_input(self) -> None:
+        from .protocol import MP_RUN_ID_ALPHABET
+
+        self.open_text_input(
+            target="mp_join_code",
+            prompt="Enter your partner's code",
+            initial=self.mp_join_code,
+            max_length=MP_RUN_ID_LENGTH,
+            charset=MP_RUN_ID_ALPHABET,
+            uppercase=True,
+            help_text="Ask the host for the four runes above their lobby.",
+        )
+
+    def mp_host_code_activate_selected(self) -> None:
+        """Activate the host-code action row under
+        ``mp_setup_host_cursor``: Begin descent, or draw a new code.
+        """
+
+        if int(getattr(self, "mp_setup_host_cursor", 0)) % 2 == 0:
+            self.mp_begin_hosting()
+        else:
+            self.mp_regenerate_host_code()
+
+    def mp_regenerate_host_code(self) -> None:
+        if self.state == "mp_setup" and self.mp_setup_step == "host_code":
+            self.mp_run_id = generate_run_id(MP_RUN_ID_LENGTH)
+            self.mp_notice = ""
+
+    def mp_begin_hosting(self) -> None:
+        """Host: connect and open the lobby for this code."""
+
+        if self.state != "mp_setup" or self.mp_setup_step != "host_code":
+            return
+        if not self.mp_run_id:
+            self.mp_run_id = generate_run_id(MP_RUN_ID_LENGTH)
+        self._mp_open_session(ROLE_HOST, self.mp_run_id)
+
+    def mp_submit_join_code(self, value: str) -> None:
+        code = normalize_run_id(value)
+        self.mp_join_code = code
+        if self.state != "mp_setup":
+            return
+        if not is_valid_run_id(code, length=MP_RUN_ID_LENGTH):
+            self.mp_notice = (
+                f"A run code is {MP_RUN_ID_LENGTH} runes — no 0, O, 1, or I."
+            )
+            self.mp_setup_step = "join_code"
+            self.mp_open_join_code_input()
+            return
+        self._mp_open_session(ROLE_JOIN, code)
+
+    def _mp_open_session(self, role: str, run_id: str) -> None:
+        if not self.mp_endpoint_configured():
+            self.mp_notice = (
+                "Server not configured — set the server host and port in Options."
+            )
+            self.mp_setup_step = "role"
+            return
+        if self.mp_consent_required():
+            # No socket may be opened before the player has read and agreed
+            # to the connection notice for this endpoint.
+            self._mp_pending_session = (role, run_id)
+            self.mp_consent_cursor = 0
+            self.state = "mp_consent"
+            return
+        self._mp_open_session_now(role, run_id)
+
+    def _mp_open_session_now(self, role: str, run_id: str) -> None:
+        self._mp_drop_client()
+        self.mp_session = MpSession(role=role, run_id=run_id)
+        self.mp_role = role
+        self.mp_notice = ""
+        self.mp_status = "Knocking on the server gate…"
+        self._mp_connect()
+
+    # -- connection consent gate ---------------------------------------------
+
+    def _mp_endpoint(self) -> tuple[str, int]:
+        return (
+            str(getattr(self, "mp_server_host", "")).strip(),
+            int(getattr(self, "mp_server_port", 0)),
+        )
+
+    def mp_consent_required(self) -> bool:
+        """Whether the consent screen must run before connecting."""
+
+        return self._mp_consented_endpoint != self._mp_endpoint()
+
+    def mp_consent_agree(self) -> None:
+        """Consent screen: agree — remember the endpoint and connect."""
+
+        if self.state != "mp_consent":
+            return
+        pending = self._mp_pending_session
+        self._mp_pending_session = None
+        self._mp_consented_endpoint = self._mp_endpoint()
+        self.state = "mp_setup"
+        if pending is None:
+            self.mp_setup_step = "role"
+            return
+        self._mp_open_session_now(*pending)
+
+    def mp_consent_exit(self) -> None:
+        """Consent screen: exit without connecting."""
+
+        if self.state != "mp_consent":
+            return
+        self._mp_pending_session = None
+        self.state = "mp_setup"
+        self.mp_setup_step = "role"
+        self.mp_status = ""
+
+    def _mp_connect(self) -> None:
+        session = self.mp_session
+        if session is None:
+            return
+        self.mp_generation += 1
+        client = MultiplayerClient(
+            str(self.mp_server_host),
+            int(self.mp_server_port),
+            generation=self.mp_generation,
+            tls=bool(getattr(self, "mp_server_tls", True)),
+        )
+        self.mp_client = client
+        client.start()
+
+    def _mp_drop_client(self) -> None:
+        client = self.mp_client
+        self.mp_client = None
+        if client is not None:
+            client.close(send_bye=False)
+
+    def mp_back_from_setup_step(self) -> None:
+        """One step back inside mp_setup; leaves to title from the first step."""
+
+        if self.text_input_active():
+            self.close_text_input(confirm=False)
+            return
+        step = self.mp_setup_step
+        if step == "name":
+            self.mp_back_to_title()
+        elif step == "role":
+            self.mp_back_to_title()
+        elif step in ("host_code", "join_code"):
+            self._mp_drop_client()
+            self.mp_session = None
+            self.mp_status = ""
+            self.mp_setup_step = "role"
+
+    def mp_leave_lobby(self) -> None:
+        self.mp_shutdown(send_bye=True)
+        self.state = "mp_setup"
+        self.mp_setup_step = "role"
+        self.mp_status = ""
+
+    def mp_back_to_title(self) -> None:
+        self.mp_shutdown(send_bye=True)
+        if self.text_input_active():
+            self.close_text_input(confirm=False)
+        self.state = "title"
+
+    # -- host-side remote player simulation ----------------------------------
+
+    def mp_apply_remote_intents(self, dt: float, *, paused: bool = False) -> None:
+        """Host: move and act the joiner's actor from validated intents.
+
+        With ``paused=True`` (a modal — either side's — froze the shared
+        simulation) the remote actor neither moves nor fights, but the
+        partner's shop transactions still resolve: the partner's own open
+        shop is exactly what pauses the host, so its buy/sell intents cannot
+        wait for the unpause they themselves gate. Other one-shot actions
+        stay queued for the resume, as before.
+        """
+
+        session = self.mp_session
+        if session is None or not self.mp_is_host():
+            return
+        if getattr(self, "active_mini_game", None) is not None:
+            # Mini-game input belongs to the shared story modal, not the
+            # partner actor.  Process it even when that actor has fallen, and
+            # neutralize every latent world input before returning.
+            session.intent_move = (0.0, 0.0)
+            session.intent_move_at = 0.0
+            session.intent_claim = None
+            session.intent_facing = None
+            session.intent_actions.clear()
+            self._mp_apply_remote_mini_game_inputs()
+            return
+        # Inputs for a game that just closed must never leak into the next one.
+        session.intent_mini_game_inputs.clear()
+        session.mini_game_chain_instance = 0
+        session.mini_game_chain_wire_revision = -1
+        session.mini_game_chain_state_revision = -1
+        remote = self.partner_player()
+        if remote is None:
+            return
+        if remote.hp <= 0:
+            session.intent_actions.clear()
+            session.intent_move = (0.0, 0.0)
+            return
+        now = time.monotonic()
+        move_x, move_y = session.intent_move
+        if now - session.intent_move_at > _INTENT_MOVE_TIMEOUT_SECONDS:
+            move_x = move_y = 0.0
+        with self.acting_as_player(remote):
+            if paused:
+                kept: list[tuple] = []
+                while session.intent_actions:
+                    entry = session.intent_actions.popleft()
+                    if entry[0] in ("shop_open", "shop_buy", "shop_sell"):
+                        self._mp_dispatch_remote_action(entry[0], entry[1])
+                    else:
+                        kept.append(entry)
+                session.intent_actions.extend(kept)
+                return
+            self._mp_update_remote_player(remote, dt, move_x, move_y)
+            while session.intent_actions:
+                action, target, aim_x, aim_y = session.intent_actions.popleft()
+                if aim_x or aim_y:
+                    length = math.hypot(aim_x, aim_y)
+                    remote.facing_x = aim_x / length
+                    remote.facing_y = aim_y / length
+                self._mp_dispatch_remote_action(action, target)
+
+    def _mp_update_remote_player(
+        self, remote: Player, dt: float, move_x: float, move_y: float
+    ) -> None:
+        """Movement, cooldowns, statuses, regen, and refuge-room effects for
+        the remote actor.
+
+        Mirrors ``update_player`` minus real-input sampling. Runs inside
+        ``acting_as_player`` so shared helpers resolve against the remote
+        actor.
+        """
+
+        from ..combat._utils import PLAYER_MOVE_SPEED
+
+        remote.moving = False
+        remote.locomotion_anim_scale = 0.0
+        move_speed = (
+            PLAYER_MOVE_SPEED
+            * (1.0 + self.player_move_speed())
+            * (0.82 if self.player_status("chilled") > 0 else 1.0)
+            * (0.5 if self.player_big_hit_charging() else 1.0)
+        )
+        if move_x or move_y:
+            length = math.hypot(move_x, move_y)
+            if length > 0.0:
+                nx, ny = move_x / length, move_y / length
+                remote.facing_x = nx
+                remote.facing_y = ny
+                magnitude = min(1.0, length)
+                moved = self.move_actor(
+                    remote,
+                    nx * magnitude * move_speed * dt,
+                    ny * magnitude * move_speed * dt,
+                )
+                if moved > 0.0 and dt > 0.0:
+                    remote.locomotion_anim_scale = moved / (
+                        dt * PLAYER_MOVE_SPEED
+                    )
+            if self.enemy_in_melee_arc():
+                self.player_melee_attack()
+        else:
+            self._mp_face_remote_from_intent(remote)
+            self._mp_settle_remote_on_claim(remote, dt, move_speed)
+        remote.melee_timer = max(0.0, remote.melee_timer - dt)
+        remote.bolt_timer = max(0.0, remote.bolt_timer - dt)
+        remote.dash_timer = max(0.0, remote.dash_timer - dt)
+        remote.class_skill_timer = max(0.0, remote.class_skill_timer - dt)
+        remote.time_skip_timer = max(0.0, remote.time_skip_timer - dt)
+        # Big Hit charge/cooldown for the partner actor — runs inside
+        # acting_as_player, so a completed charge fires with the partner as
+        # the acting player (damage credit, riders, floaters all theirs).
+        self._update_big_hit(dt)
+        if self.player_status("poisoned") > 0:
+            tick = remote.status_effects.get("_poison_tick", 1.0) - dt
+            if tick <= 0:
+                poison_damage = max(1, self.current_depth // 3 + 1)
+                remote.hp -= poison_damage
+                tick += 1.0
+                self.floaters.append(
+                    FloatingText(
+                        f"Poison -{poison_damage}",
+                        remote.x,
+                        remote.y - 0.55,
+                        self.damage_type_color("poison"),
+                        ttl=0.75,
+                    )
+                )
+            remote.status_effects["_poison_tick"] = tick
+        next_statuses: dict[str, float] = {}
+        for status, ttl in remote.status_effects.items():
+            if status.startswith("_"):
+                next_statuses[status] = ttl
+                continue
+            ttl -= dt
+            if ttl > 0:
+                next_statuses[status] = ttl
+        if "poisoned" not in next_statuses:
+            next_statuses.pop("_poison_tick", None)
+        remote.status_effects = next_statuses
+        from ..combat.costs import player_recovery_rates
+
+        stamina_regen, mana_regen = player_recovery_rates(remote)
+        remote.stamina = min(
+            remote.max_stamina, remote.stamina + stamina_regen * dt
+        )
+        remote.mana = min(remote.max_mana, remote.mana + mana_regen * dt)
+        # 4.7.12: refuge flavor rooms (garden heal, bar heal + stamina sap)
+        # tick for the partner's actor too — the accumulator lives on the
+        # player, and the joiner sees the result through snapshots.
+        self.update_refuge_room_effects(dt)
+        # Decay the partner's transient visual fields (the local player's
+        # equivalents decay on the Game object in update_visual_effects).
+        remote.hit_flash = max(0.0, remote.hit_flash - dt)
+        if remote.hit_flash <= 0.0:
+            remote.hit_flash_duration = 0.0
+        if remote.action_ttl > 0.0:
+            remote.action_elapsed += dt
+        remote.action_ttl = max(0.0, remote.action_ttl - dt)
+        if remote.action_ttl <= 0.0:
+            remote.action_state = ""
+            remote.action_elapsed = 0.0
+            remote.action_duration = 0.0
+
+    def _mp_face_remote_from_intent(self, remote: Player) -> None:
+        """Turn the idle remote actor toward the joiner's replicated aim.
+
+        Movement keeps owning facing while the intent vector is nonzero
+        (the same aim-then-movement-wins order the joiner applies locally);
+        the replicated facing covers mouse-hover and right-stick aim, which
+        turn the actor without moving it. Renormalized on application so
+        melee-arc math always sees a unit vector.
+        """
+
+        session = self.mp_session
+        facing = session.intent_facing if session is not None else None
+        if facing is None:
+            return
+        length = math.hypot(facing[0], facing[1])
+        if length < 0.1:
+            return
+        remote.facing_x = facing[0] / length
+        remote.facing_y = facing[1] / length
+
+    def _mp_settle_remote_on_claim(
+        self, remote: Player, dt: float, move_speed: float
+    ) -> None:
+        """Walk the resting remote actor onto the joiner's predicted stop.
+
+        The host keeps integrating the last movement vector until the zero
+        intent arrives, so its rest position overshoots the joiner's predicted
+        stop by ~latency x speed — which the joiner then rendered as an
+        uncomfortable slide. The claim is followed only while the intent
+        vector is zero, only within one tile (a dashed/teleported actor
+        ignores stale claims until the joiner re-converges), at legal walk
+        speed, and through the same collision code as any movement — so a
+        modified client gains nothing over ordinary walking.
+        """
+
+        session = self.mp_session
+        if session is None or session.intent_claim is None:
+            return
+        now = time.monotonic()
+        if now < session.claim_suppressed_until:
+            return
+        if now - session.intent_claim_at > 1.0:
+            return
+        from ..combat._utils import PLAYER_MOVE_SPEED
+
+        claim_x, claim_y = session.intent_claim
+        dx = claim_x - remote.x
+        dy = claim_y - remote.y
+        distance = math.hypot(dx, dy)
+        if distance <= 0.02 or distance > 1.0:
+            return
+        step = min(distance, move_speed * dt)
+        moved = self.move_actor(
+            remote, (dx / distance) * step, (dy / distance) * step
+        )
+        if moved > 0.0 and dt > 0.0:
+            remote.locomotion_anim_scale = moved / (dt * PLAYER_MOVE_SPEED)
+
+    def _mp_dispatch_remote_action(
+        self, action: str, target: str | None
+    ) -> None:
+        if action == "melee":
+            self.player_melee_attack()
+        elif action == "bighit":
+            self.player_big_hit()
+        elif action == "bighit_release":
+            self.player_big_hit_release()
+        elif action == "bolt":
+            self.player_cast_bolt()
+        elif action == "skill":
+            self.player_cast_class_skill()
+        elif action == "dash":
+            self.player_dash()
+            # In-flight claims predate the dash; let the joiner snap to the
+            # dashed position before position claims are honored again.
+            session = self.mp_session
+            if session is not None:
+                session.claim_suppressed_until = time.monotonic() + 0.6
+                session.intent_claim = None
+        elif action == "potion_hp":
+            self.use_first_potion()
+        elif action == "potion_mana":
+            self.use_first_mana_potion()
+        elif action == "interact":
+            self.interact()
+        elif action == "use_slot":
+            slot = self._mp_slot_index(target)
+            if slot is not None:
+                self.use_inventory_slot(slot)
+        elif action == "drop_slot":
+            slot = self._mp_slot_index(target)
+            if slot is not None:
+                self.drop_inventory_slot(slot)
+        elif action == "choose_discipline" and target:
+            self.choose_discipline(str(target))
+        elif action in ("shop_open", "shop_buy", "shop_sell"):
+            self._mp_remote_shop_action(action, target)
+
+    def _mp_remote_shop_action(self, action: str, target: str | None) -> None:
+        """Host: resolve the partner's local-shop intents on its actor.
+
+        The partner's shop UI is entirely client-side; the host only marks
+        the keeper met on open and applies validated transactions. The item
+        is addressed by index plus a truncated display name so an index gone
+        stale under snapshot lag is dropped instead of trading the wrong
+        item — the partner simply presses again once its list catches up.
+        """
+
+        parts = (target or "").split(":", 2)
+        try:
+            keeper_index = int(parts[0])
+        except (TypeError, ValueError):
+            return
+        if not 0 <= keeper_index < len(self.shopkeepers):
+            return
+        keeper = self.shopkeepers[keeper_index]
+        dx = keeper.x - self.player.x
+        dy = keeper.y - self.player.y
+        if dx * dx + dy * dy > 2.6 * 2.6:
+            return
+        if action == "shop_open":
+            keeper.met = True
+            return
+        if len(parts) < 3:
+            return
+        try:
+            item_index = int(parts[1])
+        except (TypeError, ValueError):
+            return
+        entries = (
+            keeper.inventory if action == "shop_buy" else self.player.inventory
+        )
+        if not 0 <= item_index < len(entries):
+            return
+        item = entries[item_index]
+        if item.display_name[:40] != parts[2]:
+            return
+        self.shop_execute(
+            keeper, item, "buy" if action == "shop_buy" else "sell"
+        )
+
+    @staticmethod
+    def _mp_slot_index(target: str | None) -> int | None:
+        try:
+            slot = int(str(target))
+        except (TypeError, ValueError):
+            return None
+        return slot if 0 <= slot < 64 else None
+
+    # -- joiner-side reduced update -------------------------------------------
+
+    def mp_update_joiner(self, dt: float) -> None:
+        """The joiner never simulates: it renders authoritative state."""
+
+        # Mirror the host's stale-shop guard for the joiner's local shop UI:
+        # the keeper must exist and stay in range (the host may reposition
+        # this actor via reconciliation), and a corpse cannot keep trading.
+        if self.shop_open:
+            local = self.local_player()
+            keeper = self.active_shopkeeper
+            if (
+                local is None
+                or local.hp <= 0
+                or keeper is None
+                or keeper not in self.shopkeepers
+            ):
+                self.close_shop()
+            else:
+                shop_dx = keeper.x - local.x
+                shop_dy = keeper.y - local.y
+                if shop_dx * shop_dx + shop_dy * shop_dy > 2.6 * 2.6:
+                    self.close_shop()
+        self.update_visual_effects(dt)
+        for player in self.players:
+            # Smooth the replicated Big Hit charge between 15 Hz snapshots so
+            # the windup ring and HUD fill glide instead of stepping. Purely
+            # cosmetic: every snapshot overwrites status_effects wholesale,
+            # and the host alone decides commit/fire.
+            charging = player.status_effects.get("_charging", 0.0)
+            if charging > 0.0:
+                player.status_effects["_charging"] = max(0.001, charging - dt)
+            if player.player_id == self.local_player_id:
+                continue
+            player.hit_flash = max(0.0, player.hit_flash - dt)
+            if player.hit_flash <= 0.0:
+                player.hit_flash_duration = 0.0
+            if player.action_ttl > 0.0:
+                player.action_elapsed += dt
+            player.action_ttl = max(0.0, player.action_ttl - dt)
+            if player.action_ttl <= 0.0:
+                player.action_state = ""
+        sync.lerp_networked_actors(self, dt)
+        # Advance projectiles ballistically between snapshots (render motion
+        # only — collision damage is exclusively host business).
+        if self.projectiles:
+            self.projectiles = [
+                projectile
+                for projectile in self.projectiles
+                if projectile.update(dt, self.dungeon)
+            ]
+        if self.mp_predicts_local_movement():
+            # Aim before movement — the host's update() order — so mouse-
+            # hover/right-stick/arrow aim turns the standing actor and its
+            # aim cone, while a held movement vector overrides facing below.
+            # Local menus suppress aim exactly like the mouse-walk fallback;
+            # the facing replicates to the host inside the movement intents.
+            if not (
+                self.inventory_open
+                or self.character_menu_open
+                or self.shop_open
+                or self.active_cutscene is not None
+                or self.story_intro_pending
+            ):
+                self.update_player_aim()
+            # Client-side movement prediction: walk the local actor with the
+            # exact host formula (speed, statuses, wall + contact collision)
+            # so the joiner's own character answers input immediately instead
+            # of trailing an intent->snapshot round trip. Snapshots reconcile
+            # the small residual error in apply_player_fast.
+            from ..combat._utils import PLAYER_MOVE_SPEED
+
+            local = self.local_player()
+            local.moving = False
+            local.locomotion_anim_scale = 0.0
+            move_x, move_y = self._mp_local_move_vector()
+            if move_x or move_y:
+                length = math.hypot(move_x, move_y)
+                nx, ny = move_x / length, move_y / length
+                local.facing_x = nx
+                local.facing_y = ny
+                move_speed = (
+                    PLAYER_MOVE_SPEED
+                    * (1.0 + self.player_move_speed())
+                    * (0.82 if self.player_status("chilled") > 0 else 1.0)
+                    * (0.5 if self.player_big_hit_charging() else 1.0)
+                )
+                magnitude = min(1.0, length)
+                moved = self.move_actor(
+                    local,
+                    nx * magnitude * move_speed * dt,
+                    ny * magnitude * move_speed * dt,
+                )
+                if moved > 0.0 and dt > 0.0:
+                    local.locomotion_anim_scale = moved / (
+                        dt * PLAYER_MOVE_SPEED
+                    )
+        self.update_camera(dt)
+        self.update_revealed_tiles()
+        self.update_floaters(dt)
+        self.advance_animation_phases(dt)
+
+    # -- shared helpers -------------------------------------------------------
+
+    def _mp_world_notice(self, text: str) -> None:
+        player = getattr(self, "player", None)
+        if player is None:
+            return
+        self.floaters.append(
+            FloatingText(
+                text,
+                player.x,
+                player.y - 0.8,
+                (235, 220, 170),
+                ttl=1.6,
+            )
+        )
+
+    def mp_all_living_players_near_stairs(self) -> bool:
+        """Stairs gate: every living player must be in range to descend."""
+
+        living = self.living_players()
+        if not living:
+            return False
+        stairs_x, stairs_y = self.dungeon.stairs
+        for player in living:
+            if (
+                math.hypot(
+                    player.x - (stairs_x + 0.5), player.y - (stairs_y + 0.5)
+                )
+                >= 2.2
+            ):
+                return False
+        return True
