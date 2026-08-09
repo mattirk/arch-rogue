@@ -43,6 +43,14 @@ host's uplink.
   outbound backlog — enough to tell a saturated uplink from a slow
   frame loop from a lossy link.
 
+### Removed
+
+- **The experimental pygbag web build** (`web/`, `pygbag.ini`, the ``web``
+  optional dependency group, and the emscripten platform guards). It never
+  supported multiplayer (no raw TCP in the browser) and had fallen behind
+  the desktop/Android targets; the download site under `website/` is
+  unaffected.
+
 ## 5.0.2 — The light leads on
 
 Quality-of-descent: the guiding light learns two new tricks and the dark

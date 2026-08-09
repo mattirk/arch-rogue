@@ -251,10 +251,9 @@ In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from t
 
 - Quest cutscene and story-corpus content is computer generated and not human-authored. Story is mostly slop and may be replaced with more engaging content in future versions.
 - Music and sound effects are procedural/static cues; there is no hand-authored soundtrack asset pipeline yet.
-- The packaged HD world set increases wheel and web-bundle size; Modern and Legacy graphics remain available for constrained systems.
+- The packaged HD world set increases wheel size; Modern and Legacy graphics remain available for constrained systems.
 - Save files are local JSON and are not cloud-synced.
-- Multiplayer is two-player co-op only (desktop and Android); web multiplayer is not available because pygbag cannot open raw TCP sockets.
-- The experimental web build exists in `web/` but is not part of the default test run.
+- Multiplayer is two-player co-op only (desktop and Android).
 
 ## License
 

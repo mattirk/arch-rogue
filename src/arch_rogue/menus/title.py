@@ -67,14 +67,21 @@ class MenuTitleMixin:
         resume_value = "Ready" if self.g.save_exists() else "None"
         recorded = len(getattr(self.g, "run_history", ()))
         chronicle_value = f"{recorded} recorded" if recorded else "None"
-        rows: list[MenuRow] = [
-            ("N / Enter", "One will descend", ""),
-            ("T", "Two will descend", ""),
-            ("L / R", "Recall descent", resume_value),
-            ("V", "Chronicle", chronicle_value),
-            ("O", "Options", ""),
-            ("A / C / H / ?", "About, credits, and quick help", ""),
+        # Each row carries its compact shortcut-section label so the two
+        # lists can never drift apart (the Chronicle row first landed without
+        # a label and crashed the hint lookup on the last row).
+        row_specs: list[tuple[MenuRow, str]] = [
+            (("N / Enter", "One will descend", ""), "One will descend"),
+            (("T", "Two will descend", ""), "Two will descend"),
+            (("L / R", "Recall descent", resume_value), "Resume saved run"),
+            (("V", "Chronicle", chronicle_value), "Chronicle"),
+            (("O", "Options", ""), "Options"),
+            (
+                ("A / C / H / ?", "About, credits, and quick help", ""),
+                "About & help",
+            ),
         ]
+        rows: list[MenuRow] = [spec[0] for spec in row_specs]
         modern = bool(getattr(self, "_last_menu_frame_used_asset", False))
         show_hints = self.menu_input_hints_visible()
         shortcut_h = (
@@ -135,17 +142,11 @@ class MenuTitleMixin:
             )
         if modern and show_hints:
             selected_index = max(0, min(self.g.title_selection, len(rows) - 1))
-            shortcut_labels = (
-                "One will descend",
-                "Two will descend",
-                "Resume saved run",
-                "Options",
-                "About & help",
-            )
+            selected_keys, _, _ = row_specs[selected_index][0]
             self.draw_menu_shortcut_section(
                 shortcut_rect,
-                rows[selected_index][0],
-                shortcut_labels[selected_index],
+                selected_keys,
+                row_specs[selected_index][1],
             )
         self.draw_footer(
             panel,

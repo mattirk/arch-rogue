@@ -243,7 +243,7 @@ class LightingMixin:
     """Continuous colored lighting, composed into ``RenderingMixin``.
 
     All state is lazily initialised on first use so the mixin is safe to mix
-    into ``Game`` even when lighting is disabled (the web/Off path never pays
+    into ``Game`` even when lighting is disabled (the lighting-Off path never pays
     for the buffers).
     """
 

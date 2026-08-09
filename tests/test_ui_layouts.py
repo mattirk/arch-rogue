@@ -70,6 +70,18 @@ class UiLayoutTests(unittest.TestCase):
             for index in range(8)
         ]
 
+    def test_title_menu_draws_every_selectable_row(self) -> None:
+        # Regression (5.1.0): the Chronicle row landed in rows/activation but
+        # not in the shortcut-hint labels, so selecting the last title row
+        # crashed the modern-menu hint lookup with an IndexError.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            game.state = "title"
+            for selection in range(game.TITLE_ROW_COUNT):
+                game.title_selection = selection
+                game._static_menu_last_signature = None
+                game.draw()
+
     def test_content_rect_validation_scaling_and_missing_resource(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

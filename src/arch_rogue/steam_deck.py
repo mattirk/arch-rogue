@@ -62,7 +62,7 @@ __all__ = ("is_steam_deck", "steam_deck_model", "clear_detection_cache")
 _DECK_PRODUCT_NAMES: frozenset[str] = frozenset({"Jupiter", "Galileo"})
 
 # World-readable DMI sysfs paths. Resolved lazily so import never fails on a
-# platform without /sys (Windows, macOS, Emscripten, Android).
+# platform without /sys (Windows, macOS, Android).
 _BOARD_VENDOR_PATH = "/sys/devices/virtual/dmi/id/board_vendor"
 _PRODUCT_NAME_PATH = "/sys/devices/virtual/dmi/id/product_name"
 
@@ -103,7 +103,7 @@ def _detect() -> tuple[bool, str | None]:
         return False, None
 
     # Off-Linux there is no /sys DMI tree. Keep this check first so Windows,
-    # macOS, Emscripten, and Android short-circuit without a filesystem probe.
+    # macOS, and Android short-circuit without a filesystem probe.
     if sys.platform not in {"linux", "linux2"}:
         return False, None
 

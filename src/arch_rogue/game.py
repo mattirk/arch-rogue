@@ -432,7 +432,7 @@ class Game(
         self.hell_unlocked_this_run = False
         # Milestone 3.16 - continuous colored lighting options. Normal maps stay
         # on by default on desktop, but fresh mobile installs avoid their cold
-        # ARM cache spike. The web build forces lighting off in web/main.make_game.
+        # ARM cache spike.
         self._lighting_enabled = True
         self._lighting_normal_maps = not self.mobile_mode
         # 4.3.17 schema-7 options. Defaults keep desktop telemetry silent and a

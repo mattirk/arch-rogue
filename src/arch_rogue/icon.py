@@ -23,8 +23,8 @@
 
 The Arch Rogue logo is a PixelLab-authored faceted diamond relic, shipped as
 PNG assets in ``arch_rogue.assets.icons`` at several sizes. These helpers load
-them via :mod:`importlib.resources` so the icons resolve
-both under a normal install and inside the pygbag/Pyodide web bundle.
+them via :mod:`importlib.resources` so the icons resolve regardless of how
+the package is installed or bundled.
 """
 
 from __future__ import annotations
@@ -74,12 +74,10 @@ def load_icon(size: int) -> pygame.Surface | None:
     except (FileNotFoundError, ModuleNotFoundError, OSError):
         return None
     try:
-        # ``pygame.image.load`` accepts a file-like on desktop pygame-ce, but
-        # the pygame-web/Pyodide runtime raises ``RuntimeError`` ("can't access
-        # resource on platform") for file-like image sources. The icon is
-        # cosmetic (window/taskbar icon + title crest), so degrade to ``None``
-        # on any platform that cannot decode it rather than crashing ``Game``
-        # construction.
+        # Exotic pygame ports have raised ``RuntimeError`` for file-like
+        # image sources. The icon is cosmetic (window/taskbar icon + title
+        # crest), so degrade to ``None`` on any platform that cannot decode
+        # it rather than crashing ``Game`` construction.
         surface = pygame.image.load(io.BytesIO(data))
     except (pygame.error, RuntimeError, OSError, ValueError):
         return None

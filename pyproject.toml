@@ -13,10 +13,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Build-time only: packaging the game for the web via Pyodide/WASM.
-web = [
-    "pygbag",
-]
 # Host-side Android tooling. Target pygame-ce is cross-compiled by the local
 # python-for-android recipe and is intentionally not installed from a wheel.
 android = [

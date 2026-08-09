@@ -1,6 +1,6 @@
 # Arch Rogue download site
 
-This directory is the static GitHub Pages site for Arch Rogue downloads. It is intentionally separate from the experimental pygbag game build in `web/`.
+This directory is the static GitHub Pages site for Arch Rogue downloads.
 
 ## Local preview
 

@@ -96,9 +96,10 @@ class RunFlowMixin:
         return self.save_path.exists()
 
     # --- Title menu navigation -------------------------------------------
-    # Title rows (4.6): 0=One will descend, 1=Two will descend, 2=Resume,
-    # 3=Options, 4=About. Resume (2) is only selectable when a save exists,
-    # so arrow navigation skips it.
+    # Title rows: 0=One will descend, 1=Two will descend, 2=Resume,
+    # 3=Chronicle, 4=Options, 5=About. Resume (2) is only selectable when a
+    # save exists, so arrow navigation skips it. The renderer's row_specs in
+    # menus/title.py must list the same rows in the same order.
     TITLE_ROW_COUNT = 6
     TITLE_RESUME_ROW = 2
     TITLE_CHRONICLE_ROW = 3

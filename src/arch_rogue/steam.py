@@ -3,14 +3,14 @@
 """Optional Steamworks integration for the Steam distribution of the game.
 
 Steam builds are one of several distribution channels (GitHub Releases, itch,
-Android, pygbag web), so every entry point here is designed to degrade to a
+Android), so every entry point here is designed to degrade to a
 silent no-op rather than to fail. The facade is unavailable whenever any of the
 following is true, and none of them are errors:
 
 * no numeric App ID is configured (see :data:`STEAM_APP_ID` / ``ARCH_ROGUE_STEAM_APPID``),
 * the ``steam_api`` shared library is not bundled next to the executable,
 * the Steam client is not running or does not own the app,
-* the platform is Android or Emscripten.
+* the platform is Android.
 
 Only Steam depots ship the shared library, so a GitHub-release build of the very
 same executable simply reports ``available == False`` and queues achievement
@@ -248,7 +248,7 @@ class SteamIntegration:
         if os.environ.get(DISABLE_ENV, "").strip():
             self._status = f"disabled by {DISABLE_ENV}"
             return False
-        if sys.platform.startswith(("android", "emscripten")):
+        if sys.platform.startswith("android"):
             self._status = f"unsupported platform {sys.platform}"
             return False
         if self.app_id is None:
