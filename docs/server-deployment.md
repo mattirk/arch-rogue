@@ -1,16 +1,17 @@
 # Relay Server Deployment
 
 The multiplayer relay (`server/`, stdlib-only, plain TCP behind the nginx
-stream TLS proxy) is currently deployed **manually** — the automated GitHub
-Actions deploy is offline. The old in-repo workflow was removed on purpose:
-it ran on a self-hosted runner on the production host, and a self-hosted
-runner must never be attached to a public repo (a fork pull request can
-target it by label and execute code on the server). A replacement workflow
-living in a private deploy repo is prepared but parked; the seed for it is
-kept outside this repo (locally in `deploy-server/`, gitignored).
+stream TLS proxy) deploys via `.github/workflows/server-deploy.yml` in THIS
+repo (restored 5.0.1): automatically on master pushes touching `server/**`
+or `src/arch_rogue_protocol/**`, or manually via workflow_dispatch (the
+`ref` input rolls back to any commit). The self-hosted runner
+`arch-rogue-server-1` is the production host — safe only because this repo
+is private (no fork PRs); the runner must never be registered on the public
+mirror, and if this repo ever goes public again the workflow goes first.
+The pre-restore parking rationale (2026-08-07) is in the workflow header.
 
-A manual deploy follows the same steps the workflow automated (release dir,
-symlink flip, restart, probe), described below.
+The steps below describe what the workflow does, which doubles as the
+manual-deploy procedure if Actions is ever unavailable.
 
 ## How a deploy works
 
@@ -19,8 +20,8 @@ symlink flip, restart, probe), described below.
    root because `server/protocol.py` resolves the codec at
    `<root>/src/arch_rogue_protocol`).
 2. `~/arch-rogue-relay/env` is rewritten from the `PORT` and `SERVER`
-   variables of the GitHub Environment **`ar-rita-kasari-fi`** on the
-   `arch-rogue-deploy` repo (the deploy job
+   variables of the GitHub Environment **`ar-rita-kasari-fi`** on this repo
+   (`mattirk/arch-rogue-master`; the deploy job
    declares `environment: ar-rita-kasari-fi` and maps them via
    `${{ vars.PORT }}`/`${{ vars.SERVER }}`) — these become the relay's startup
    parameters `--port`/`--host` via the systemd unit.
