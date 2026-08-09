@@ -310,6 +310,7 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: dist/final/*
           if-no-files-found: error
+          retention-days: 2
 
   combine-macos:
     name: Package macOS universal app (arm64 + x86_64)
@@ -531,6 +532,7 @@ jobs:
           name: arch-rogue-macos-universal
           path: dist/final/*.zip
           if-no-files-found: error
+          retention-days: 2
 
   android:
     name: Build Android APK (signed release)
@@ -720,6 +722,7 @@ jobs:
           name: arch-rogue-android-release
           path: dist/final/*.apk
           if-no-files-found: error
+          retention-days: 2
 
   release:
     name: Publish GitHub Release
