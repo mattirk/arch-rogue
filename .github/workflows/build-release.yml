@@ -687,6 +687,21 @@ jobs:
             > "${{ runner.temp }}/arch-rogue-signing/release.keystore"
           chmod 600 "${{ runner.temp }}/arch-rogue-signing/release.keystore"
 
+      # p4a's project-install stage builds one shared venv, upgrades its pip
+      # to PyPI latest, then re-runs `python -m venv` for the second ABI —
+      # and venv's ensurepip force-reinstalls (--ignore-installed) the
+      # OLDER bundled pip over the upgraded tree. When a pip release moves
+      # internals (pip 26.2 split pip._internal.build_env), the resulting
+      # union cannot import and the whole toolchain create dies. Pinning pip
+      # to hostpython's bundled version turns the upgrade into a no-op, so
+      # every ensurepip re-stomp is same-version and harmless.
+      # UPDATE THE PIN when the p4a python3 recipe bumps CPython (the
+      # failure mode of a stale pin is exactly this ImportError again).
+      - name: Constrain pip to hostpython's bundled version
+        run: |
+          printf 'pip==25.3\n' > "${{ runner.temp }}/pip-constraint.txt"
+          echo "PIP_CONSTRAINT=${{ runner.temp }}/pip-constraint.txt" >> "$GITHUB_ENV"
+
       - name: Build and hand off signed release APK
         env:
           ARCH_ROGUE_ANDROID_KEYSTORE: ${{ runner.temp }}/arch-rogue-signing/release.keystore
