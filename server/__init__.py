@@ -31,4 +31,4 @@ The wire codec is the canonical shared ``arch_rogue_protocol`` package (a
 local path dependency — never vendored) re-exported via :mod:`server.protocol`.
 """
 
-__version__ = "5.0.2"
+__version__ = "5.1.0"

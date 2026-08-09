@@ -1,5 +1,48 @@
 # Changelog
 
+## 5.1.0 — The far shore draws near
+
+Co-op latency work, guest side first: the world a joiner sees now runs a
+round trip closer to the host's, and deep floors no longer drown the
+host's uplink.
+
+### Changed
+
+- **TCP_NODELAY on the game connection**: small intents and every
+  snapshot's trailing segment used to wait out Nagle's algorithm in the
+  kernel — up to an RTT per message. Guest actions and world updates now
+  leave the socket the moment they are written (the relay side already
+  did; multiplayer protocol is now v3, so the relay must be redeployed
+  alongside this release).
+- **30 Hz snapshots** (up from 15) with **area-of-interest enemy
+  replication**: per-tick enemy updates now cover only the ~16 tiles
+  around either player — beyond every viewport, but a fraction of the
+  floor — with bosses always included. Idle enemies also drop their
+  default-valued fields from the wire. Deep floors fall from ~200 KiB/s
+  of host upload to a stable few dozen, which is what makes the doubled
+  rate affordable on residential uplinks.
+- **Explicit enemy removals**: death now travels as a replayed
+  ``gone`` event plus a per-slow-payload alive-id reconcile list instead
+  of "absent from the list means dead" — the change that lets the area
+  of interest omit far enemies safely (and the reason for protocol v3).
+- **Action-triggered snapshots**: when the host resolves a guest's
+  attack, dash, potion, or trade, the resulting snapshot ships the same
+  frame instead of waiting out the snapshot slot — combat feedback on
+  the guest loses up to another 33 ms.
+- **Change-gated slow payloads**: shop stock, NPC rosters, inventories,
+  and floor item lists resend only when their content changed (full
+  refresh every 2 s as a loss backstop), cutting steady-state bandwidth
+  and the guest-side rebuild churn that came with re-applying them
+  three times a second.
+
+### Added
+
+- **Net diagnostics line on the performance overlay**: with the Options
+  performance overlay enabled during a co-op session, one extra line
+  shows RTT, throughput in/out, applied snapshot rate and age, and any
+  outbound backlog — enough to tell a saturated uplink from a slow
+  frame loop from a lossy link.
+
 ## 5.0.2 — The light leads on
 
 Quality-of-descent: the guiding light learns two new tricks and the dark

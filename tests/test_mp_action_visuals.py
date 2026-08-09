@@ -45,6 +45,7 @@ from arch_rogue.content import ARCHETYPES
 from arch_rogue.game import Game
 from arch_rogue.models import Tile
 from arch_rogue.net import sync
+from arch_rogue.net.mixin import _FX_REPLAY_TICKS
 from arch_rogue.net.mixin import MpSession
 from arch_rogue.net.protocol import ROLE_HOST, ROLE_JOIN
 
@@ -238,8 +239,8 @@ class FxEventReplicationTests(unittest.TestCase):
             game.add_impact(1.0, 1.0, (9, 9, 9), ttl=0.2, radius=0.3, kind="spark")
             state = sync.build_snapshot_state(game, include_slow=False)
             self.assertEqual(len(state.get("fx", [])), 1)
-            # Events expire out of the replay window after a few ticks.
-            session.snapshot_tick += 10
+            # Events expire once the ~330 ms replay window has passed.
+            session.snapshot_tick += _FX_REPLAY_TICKS + 1
             state = sync.build_snapshot_state(game, include_slow=False)
             self.assertNotIn("fx", state)
 
@@ -313,7 +314,7 @@ class JoinerWorldApplyTests(unittest.TestCase):
             self.assertEqual(game.dungeon.tiles[x][y], Tile.FLOOR)
             self.assertIs(game.tile_cache.get("__sentinel__"), sentinel)
 
-    def test_removed_enemy_no_longer_bursts_locally(self) -> None:
+    def test_gone_event_removes_enemy_without_local_burst(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = _make_playing_game(tmpdir)
             _bind_joiner(game)
@@ -328,9 +329,38 @@ class JoinerWorldApplyTests(unittest.TestCase):
             sync.apply_snapshot_state(
                 game, {"players": [], "enemies": survivors}
             )
+            # Protocol v3: absence from the compact list means out of the
+            # area of interest, not dead — the enemy stays, frozen.
+            self.assertIn(doomed, game.enemies)
+            sync.apply_snapshot_state(
+                game,
+                {
+                    "players": [],
+                    "enemies": survivors,
+                    "fx": [[1, "x", doomed.entity_id]],
+                },
+            )
             self.assertNotIn(doomed, game.enemies)
-            # The authoritative death burst arrives via fx events instead.
+            # The authoritative death burst arrives via its own fx events.
             self.assertEqual(len(game.impact_effects), 0)
+
+    def test_eids_reconcile_drops_enemies_whose_gone_event_was_lost(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = _make_playing_game(tmpdir)
+            _bind_joiner(game)
+            sync.assign_entity_ids(game)
+            doomed = game.enemies[0]
+            survivor_ids = [
+                e.entity_id for e in game.enemies if e is not doomed
+            ]
+            sync.apply_snapshot_state(
+                game,
+                {"players": [], "enemies": [], "slow": {"eids": survivor_ids}},
+            )
+            self.assertNotIn(doomed, game.enemies)
+            self.assertEqual(len(game.enemies), len(survivor_ids))
 
 
 class JoinerPredictionTests(unittest.TestCase):

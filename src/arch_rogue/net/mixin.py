@@ -103,19 +103,20 @@ from .protocol import (
 
 _PING_INTERVAL_SECONDS = 5.0
 _INTENT_MOVE_TIMEOUT_SECONDS = 0.6
-# The partner's modal pause reason (4.7.12) rides every 20 Hz intent; after
+# The partner's modal pause reason (4.7.12) rides every 30 Hz intent; after
 # this long without a refresh the host resumes rather than staying frozen
 # behind a silently dropped partner.
 _REMOTE_PAUSE_STALE_SECONDS = 2.0
 # A movement-vector component change beyond this transmits immediately
-# instead of waiting out the 20 Hz slot. Any keyboard direction change
+# instead of waiting out the 30 Hz slot. Any keyboard direction change
 # clears it; analog easing below it keeps the ordinary cadence.
 _INTENT_TURN_THRESHOLD = 0.2
 # Transient-fx replication: ring capacity and how many snapshot ticks an
 # event keeps riding (tolerates coalesced/dropped snapshots without ever
-# re-sending the whole ring forever).
-_FX_RING_CAPACITY = 48
-_FX_REPLAY_TICKS = 5
+# re-sending the whole ring forever). 10 ticks at 30 Hz keeps the ~330 ms
+# replay window the 15 Hz era had; entity-gone events ride the same ring.
+_FX_RING_CAPACITY = 96
+_FX_REPLAY_TICKS = 10
 # Joiner-side instant pose feedback for queued one-shot actions, mirroring
 # the host's set_player_action_visual calls: action -> (state, ttl, gate
 # timer attribute). The host stays authoritative for the effect itself.
@@ -131,6 +132,11 @@ _ACTION_POSE_PREVIEW = {
 }
 _SNAPSHOT_INTERVAL = 1.0 / MP_SNAPSHOT_RATE_HZ
 _INTENT_INTERVAL = 1.0 / MP_INTENT_RATE_HZ
+# Floor for urgent (action-triggered) snapshots: a burst of guest actions can
+# at most briefly double the snapshot rate, never run away with it.
+_URGENT_SNAPSHOT_MIN_SPACING = _SNAPSHOT_INTERVAL / 2.0
+# The net diagnostics overlay line re-renders at most this often.
+_NET_OVERLAY_REFRESH_SECONDS = 0.5
 _RECONNECT_BACKOFF_START = 0.5
 _RECONNECT_BACKOFF_CAP = 4.0
 _VERSION_WARNING_PREFIX = "Version warning:"
@@ -174,6 +180,7 @@ class MpSession:
     last_snapshot_key: tuple[int, int] = (-1, -1)
     snapshot_tick: int = 0
     next_snapshot_at: float = 0.0
+    last_snapshot_sent_at: float = 0.0
     next_intent_at: float = 0.0
     next_ping_at: float = 0.0
     last_world_lengths: tuple = ()
@@ -196,7 +203,7 @@ class MpSession:
     # queues separate also lets us discard latent combat without losing a
     # valid cooperative press.
     intent_mini_game_inputs: deque = field(default_factory=deque)
-    # Consecutive Story/Soul presses may be emitted from one 15 Hz snapshot.
+    # Consecutive Story/Soul presses may be emitted from one snapshot.
     # Once the first revision-stamped press is accepted, this chain lets later
     # ordered presses from that same snapshot rebase onto the exact resulting
     # host revision. Garden targets never rebase because the next bloom is not
@@ -217,7 +224,7 @@ class MpSession:
     # facing and the host applies it while the intent vector is zero.
     intent_facing: tuple[float, float] | None = None
     # Host-side latest joiner modal pause reason (4.7.12): "shop" while the
-    # partner's local shop UI is open. Refreshed by every intent (20 Hz);
+    # partner's local shop UI is open. Refreshed by every intent (30 Hz);
     # treated as stale after a short silence so a dropped partner cannot
     # freeze the host's simulation forever.
     remote_pause_reason: str = ""
@@ -257,10 +264,16 @@ class NetMixin:
         self.players: list[Player] = []
         self.local_player_id = "p1"
         # Host-side transient-fx replication ring (impacts, slashes, screen
-        # flashes) and the joiner-side spawn high-water mark.
+        # flashes, entity-gone events) and the joiner-side spawn high-water
+        # mark.
         self._mp_fx_seq = 0
         self._mp_fx_events: deque = deque(maxlen=_FX_RING_CAPACITY)
         self._mp_fx_applied_seq = 0
+        # Net diagnostics overlay state: last applied-snapshot time, the
+        # previous counter sample for rate math, and the cached overlay line.
+        self._mp_last_snapshot_applied_at = 0.0
+        self._mp_net_prev_sample: tuple[float, dict] | None = None
+        self._mp_net_overlay_cache: tuple[float, str] | None = None
 
     # -- collection helpers -------------------------------------------------
 
@@ -372,6 +385,65 @@ class NetMixin:
         while events and events[0][0] < tick - _FX_REPLAY_TICKS:
             events.popleft()
         return [entry for _, entry in events]
+
+    # -- net diagnostics ------------------------------------------------------
+
+    def mp_net_overlay_text(self) -> str:
+        """One compact net-stats line for the performance overlay.
+
+        Empty outside an active session. Rebuilt at most every
+        ``_NET_OVERLAY_REFRESH_SECONDS`` so the overlay surface cache in the
+        renderer is not invalidated per frame.
+        """
+
+        session = self.mp_session
+        client = self.mp_client
+        if session is None or client is None or not session.started:
+            return ""
+        now = time.monotonic()
+        cached = self._mp_net_overlay_cache
+        if cached is not None and now - cached[0] < _NET_OVERLAY_REFRESH_SECONDS:
+            return cached[1]
+        stats = client.stats()
+        previous = self._mp_net_prev_sample
+        self._mp_net_prev_sample = (now, stats)
+        if previous is None:
+            self._mp_net_overlay_cache = (now, "")
+            return ""
+        elapsed = max(1e-6, now - previous[0])
+
+        def rate(key: str) -> float:
+            # A reconnect swaps in a fresh client whose counters restart.
+            return max(0.0, (stats[key] - previous[1].get(key, 0)) / elapsed)
+
+        parts = [
+            "net {} rtt {:>3.0f}ms".format(
+                "host" if session.role == ROLE_HOST else "join",
+                session.rtt_ms,
+            ),
+            "in {:.0f} out {:.0f} KiB/s".format(
+                rate("bytes_in") / 1024.0, rate("bytes_out") / 1024.0
+            ),
+        ]
+        if session.role == ROLE_JOIN:
+            age_ms = (
+                (now - self._mp_last_snapshot_applied_at) * 1000.0
+                if self._mp_last_snapshot_applied_at
+                else 0.0
+            )
+            parts.append(
+                "snap {:.0f}/s age {:>3.0f}ms".format(
+                    rate("snapshots_in"), min(age_ms, 999.0)
+                )
+            )
+        queued = stats["outbound_queued"]
+        coalesced = rate("snapshots_coalesced") + rate("outbound_coalesced")
+        if queued or coalesced:
+            # Backlog forming: the link (or the peer) is not keeping up.
+            parts.append(f"q{queued} coal {coalesced:.0f}/s")
+        line = "  ".join(parts)
+        self._mp_net_overlay_cache = (now, line)
+        return line
 
     @contextmanager
     def acting_as_player(self, player: Player) -> Iterator[None]:
@@ -490,7 +562,7 @@ class NetMixin:
                 if local is not None and local.hp > 0:
                     move_x, move_y = self._mp_local_move_vector()
                     # Starting, stopping, and turning transmit on the same
-                    # frame instead of waiting out the 20 Hz slot: stop
+                    # frame instead of waiting out the 30 Hz slot: stop
                     # latency becomes host-side overshoot the joiner slides
                     # onto, and turn latency keeps the authoritative actor
                     # walking the old way on a quick reversal.
@@ -534,12 +606,21 @@ class NetMixin:
             return
         session.snapshot_tick += 1
         lengths = sync.world_list_lengths(self)
-        include_slow = (
-            session.snapshot_tick % sync.SLOW_PAYLOAD_EVERY_TICKS == 0
+        # A length change bypasses the section change gate entirely: the
+        # pickup/trade/death that moved a count must replicate now even if a
+        # section's serialized form happens to collide with the cache.
+        full_slow = (
+            session.snapshot_tick % sync.SLOW_FULL_REFRESH_TICKS == 0
             or lengths != session.last_world_lengths
         )
+        include_slow = (
+            full_slow
+            or session.snapshot_tick % sync.SLOW_PAYLOAD_EVERY_TICKS == 0
+        )
         session.last_world_lengths = lengths
-        state = sync.build_snapshot_state(self, include_slow=include_slow)
+        state = sync.build_snapshot_state(
+            self, include_slow=include_slow, full_slow=full_slow
+        )
         client.send_message(
             make_snapshot(
                 floor_revision=session.floor_revision,
@@ -547,6 +628,25 @@ class NetMixin:
                 state=state,
             ),
             coalesce_key=COALESCE_SNAPSHOT,
+        )
+        session.last_snapshot_sent_at = time.monotonic()
+
+    def _mp_request_urgent_snapshot(self) -> None:
+        """Host: pull the next snapshot forward to this frame.
+
+        Called after a guest one-shot action resolves so its result (swing,
+        bolt, potion, trade) ships with ``mp_flush_outbound`` at the end of
+        this frame instead of waiting out the snapshot slot. The minimum
+        spacing keeps a burst of actions from more than briefly doubling
+        the snapshot rate.
+        """
+
+        session = self.mp_session
+        if session is None or not self.mp_is_host() or not session.started:
+            return
+        earliest = session.last_snapshot_sent_at + _URGENT_SNAPSHOT_MIN_SPACING
+        session.next_snapshot_at = min(
+            session.next_snapshot_at, max(time.monotonic(), earliest)
         )
 
     def mp_send_floor(self) -> None:
@@ -613,7 +713,7 @@ class NetMixin:
         This deliberately does not use the actor-alive or combat-preview gates
         in :meth:`mp_queue_action`: the modal has its own validation, and its
         one-shot input must wake the socket immediately rather than waiting for
-        the 20 Hz movement cadence.
+        the 30 Hz movement cadence.
         """
 
         session = self.mp_session
@@ -718,7 +818,7 @@ class NetMixin:
         The host steps its own mouse walk exactly to the cursor each frame;
         the joiner can only send an analog vector, so deflection tapers to
         zero at the same 0.12-tile stop radius to ease in without orbiting
-        the pointer between 20 Hz intents. Menus and cutscenes suppress it —
+        the pointer between 30 Hz intents. Menus and cutscenes suppress it —
         on the host those states pause the simulation before the mouse is
         sampled, and joiner-side menu clicks must not double as movement.
         """
@@ -1119,6 +1219,7 @@ class NetMixin:
         if key[0] != session.floor_revision:
             return  # snapshot for a floor we have not applied yet
         session.last_snapshot_key = key
+        self._mp_last_snapshot_applied_at = time.monotonic()
         try:
             sync.apply_snapshot_state(self, message.state)
         except (KeyError, TypeError, ValueError, IndexError, AttributeError) as exc:
@@ -1417,6 +1518,9 @@ class NetMixin:
         self._mp_fx_seq = 0
         self._mp_fx_events.clear()
         self._mp_fx_applied_seq = 0
+        self._mp_last_snapshot_applied_at = 0.0
+        self._mp_net_prev_sample = None
+        self._mp_net_overlay_cache = None
 
     # -- setup flow ----------------------------------------------------------
 
@@ -1687,6 +1791,7 @@ class NetMixin:
         move_x, move_y = session.intent_move
         if now - session.intent_move_at > _INTENT_MOVE_TIMEOUT_SECONDS:
             move_x = move_y = 0.0
+        dispatched = False
         with self.acting_as_player(remote):
             if paused:
                 kept: list[tuple] = []
@@ -1694,9 +1799,12 @@ class NetMixin:
                     entry = session.intent_actions.popleft()
                     if entry[0] in ("shop_open", "shop_buy", "shop_sell"):
                         self._mp_dispatch_remote_action(entry[0], entry[1])
+                        dispatched = True
                     else:
                         kept.append(entry)
                 session.intent_actions.extend(kept)
+                if dispatched:
+                    self._mp_request_urgent_snapshot()
                 return
             self._mp_update_remote_player(remote, dt, move_x, move_y)
             while session.intent_actions:
@@ -1706,6 +1814,11 @@ class NetMixin:
                     remote.facing_x = aim_x / length
                     remote.facing_y = aim_y / length
                 self._mp_dispatch_remote_action(action, target)
+                dispatched = True
+        if dispatched:
+            # The action's outcome must not wait out the snapshot slot: ship
+            # it with this frame's end-of-update flush.
+            self._mp_request_urgent_snapshot()
 
     def _mp_update_remote_player(
         self, remote: Player, dt: float, move_x: float, move_y: float
@@ -1983,7 +2096,7 @@ class NetMixin:
                     self.close_shop()
         self.update_visual_effects(dt)
         for player in self.players:
-            # Smooth the replicated Big Hit charge between 15 Hz snapshots so
+            # Smooth the replicated Big Hit charge between snapshots so
             # the windup ring and HUD fill glide instead of stepping. Purely
             # cosmetic: every snapshot overwrites status_effects wholesale,
             # and the host alone decides commit/fire.

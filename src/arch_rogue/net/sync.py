@@ -25,19 +25,25 @@ The **floor descriptor** is the complete static state a joiner needs to
 render a floor without advancing the host RNG — it reuses the run-save
 serializers (``serialize_run_state`` / ``restore_run_state``) so the wire
 format cannot drift from the proven save format. **Snapshots** carry the
-dynamic world at ``MP_SNAPSHOT_RATE_HZ``: player actors every tick, plus a
-slower wholesale refresh of item/trap/shrine/secret/guest/familiar lists and
-player inventories (``slow``) that also fires immediately when list lengths
-change.
+dynamic world at ``MP_SNAPSHOT_RATE_HZ``: player actors every tick, enemies
+only inside the area of interest around the players (protocol v3), plus a
+slower refresh of item/trap/shrine/secret/guest/familiar lists and player
+inventories (``slow``) whose sections are sent only when their content
+changed since the last send — with a periodic full refresh, and an
+immediate one whenever list lengths change.
 
 Entity identity: every network-visible enemy gets a stable string
 ``entity_id`` from :func:`assign_entity_ids` (a monotonic per-run counter on
 the host — never Python ``id()``). Snapshot application ignores stale
-``(floor_revision, tick)`` pairs at the mixin layer.
+``(floor_revision, tick)`` pairs at the mixin layer. Enemy *removal* is
+explicit since protocol v3: a ``gone`` event on the fx ring per death plus
+the ``eids`` alive-id list in every slow payload as the lost-event backstop
+— an enemy merely absent from the compact list is out of range, not dead.
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from ..dungeon import GARDEN_ROOM_KIND, LOSSLESS_SOUL_ROOM_KIND
@@ -47,8 +53,21 @@ from ..story import story_guest_from_dict, story_guest_to_dict
 from ..story.minigames import MiniGameState
 from .protocol import sanitize_player_name
 
-# Cadence divider: every Nth snapshot carries the slow wholesale payload.
-SLOW_PAYLOAD_EVERY_TICKS = 5
+# Cadence divider: every Nth snapshot runs the slow-section change check
+# (~3 Hz at the 30 Hz snapshot rate) and carries whatever sections changed.
+SLOW_PAYLOAD_EVERY_TICKS = 10
+# Every Nth snapshot resends every slow section regardless of the change
+# cache (~2 s): bounds how stale a guest can go when the one snapshot that
+# carried a changed section was coalesced away by the relay or client.
+SLOW_FULL_REFRESH_TICKS = 60
+
+# Area of interest: enemies farther than this from every player are omitted
+# from the per-tick compact list (they are fogged and cannot be on screen —
+# the widest viewport at maximum zoom-out shows ~13 tiles of world distance).
+# Bosses (size >= 2) always replicate so their HUD bar and arena presence
+# never depend on distance.
+AOI_RADIUS_TILES = 16.0
+_AOI_RADIUS_SQ = AOI_RADIUS_TILES * AOI_RADIUS_TILES
 
 # Joiner prediction reconciliation: while the joiner's own actor moves, the
 # authoritative echo trails it along the motion axis by roughly
@@ -61,7 +80,7 @@ _PREDICTION_LAG_BUDGET_MAX_TILES = 1.1
 _PREDICTION_EQUIPMENT_SPEED_CAP = 1.30
 
 # Finished Garden/Soul interludes are monotonic floor state, so their compact
-# room records ride the slow payload rather than every 15 Hz snapshot.  Codes
+# room records ride the slow payload rather than every fast snapshot.  Codes
 # are intentionally allowlisted and the list is capped even for malformed
 # locally constructed dungeons.
 _MINI_INTERLUDE_ROOM_LIMIT = 8
@@ -514,6 +533,14 @@ def build_floor_state(game: Any) -> dict[str, Any]:
     # Record the tile baseline snapshots diff against.
     game._mp_tile_baseline = [list(column) for column in game.dungeon.tiles]
     game._mp_sent_enemy_ids = {enemy.entity_id for enemy in game.enemies}
+    # Removal tracking baseline (protocol v3): deaths after this point emit
+    # explicit gone events instead of relying on list omission.
+    game._mp_alive_enemy_ids = {
+        enemy.entity_id for enemy in game.enemies if enemy.alive
+    }
+    # Empty slow-section change cache: the first slow check on the new floor
+    # resends every section once, then settles into change-gated sends.
+    game._mp_slow_sent_sections = {}
     return data
 
 
@@ -574,7 +601,7 @@ def _set_lerp_target(actor: Any, x: float, y: float) -> None:
     """Store the authoritative position for between-snapshot smoothing.
 
     Distant corrections snap immediately (teleports, floor starts); small
-    ones ease in the joiner's update loop so 15 Hz snapshots read as motion.
+    ones ease in the joiner's update loop so 30 Hz snapshots read as motion.
     """
 
     dx = x - actor.x
@@ -590,26 +617,45 @@ def _set_lerp_target(actor: Any, x: float, y: float) -> None:
 
 
 def enemy_compact_dict(enemy: Any) -> dict[str, Any]:
-    return {
+    """Per-tick enemy fields; keys at their default value are omitted.
+
+    Omission means "default", never "keep": :func:`apply_enemy_compact`
+    resets every optional key to its default when absent, so a coalesced or
+    dropped snapshot can never wedge a telegraph, pose, or status ring on
+    the joiner. Idle enemies shrink to roughly half the bytes of a
+    telegraphing one, which is what makes 30 Hz affordable.
+    """
+
+    data: dict[str, Any] = {
         "id": enemy.entity_id,
         "x": round(enemy.x, 3),
         "y": round(enemy.y, 3),
         "hp": enemy.hp,
         "fx": round(enemy.facing_x, 3),
         "fy": round(enemy.facing_y, 3),
-        "mv": enemy.moving,
-        "mx": round(enemy.move_x, 3),
-        "my": round(enemy.move_y, 3),
-        "tg": enemy.telegraph,
-        "wt": round(enemy.windup_time, 3),
-        "wd": round(enemy.windup_duration, 3),
-        "wa": enemy.windup_attack,
-        # The attack/cast pose window is attack_timer's distance from
-        # attack_cooldown (enemy_visual_state); without it a joiner's enemies
-        # never leave idle/walk while striking.
-        "at": round(enemy.attack_timer, 3),
-        "st": {key: round(value, 2) for key, value in enemy.statuses.items()},
     }
+    if enemy.moving:
+        data["mv"] = True
+        data["mx"] = round(enemy.move_x, 3)
+        data["my"] = round(enemy.move_y, 3)
+    if enemy.telegraph:
+        data["tg"] = enemy.telegraph
+    if enemy.windup_time:
+        data["wt"] = round(enemy.windup_time, 3)
+    if enemy.windup_duration:
+        data["wd"] = round(enemy.windup_duration, 3)
+    if enemy.windup_attack:
+        data["wa"] = enemy.windup_attack
+    # The attack/cast pose window is attack_timer's distance from
+    # attack_cooldown (enemy_visual_state); without it a joiner's enemies
+    # never leave idle/walk while striking.
+    if enemy.attack_timer:
+        data["at"] = round(enemy.attack_timer, 3)
+    if enemy.statuses:
+        data["st"] = {
+            key: round(value, 2) for key, value in enemy.statuses.items()
+        }
+    return data
 
 
 def apply_enemy_compact(game: Any, enemy: Any, data: dict[str, Any]) -> None:
@@ -628,12 +674,13 @@ def apply_enemy_compact(game: Any, enemy: Any, data: dict[str, Any]) -> None:
     enemy.windup_time = float(data.get("wt", 0.0))
     enemy.windup_duration = float(data.get("wd", 0.0))
     enemy.windup_attack = str(data.get("wa", ""))
-    enemy.attack_timer = float(data.get("at", enemy.attack_timer))
+    enemy.attack_timer = float(data.get("at", 0.0))
     statuses = data.get("st")
-    if isinstance(statuses, dict):
-        enemy.statuses = {
-            str(key): float(value) for key, value in statuses.items()
-        }
+    enemy.statuses = (
+        {str(key): float(value) for key, value in statuses.items()}
+        if isinstance(statuses, dict)
+        else {}
+    )
     if enemy.hp < old_hp:
         game.enemy_hit_flashes[id(enemy)] = 0.16
         game.enemy_hit_flash_durations[id(enemy)] = 0.16
@@ -708,8 +755,25 @@ def host_pause_reason(game: Any) -> str:
     return ""
 
 
+def _enemy_in_aoi(enemy: Any, anchors: list[tuple[float, float]]) -> bool:
+    """Whether ``enemy`` is close enough to any player to replicate per tick.
+
+    Bosses always replicate: their HUD bar and arena presence must never
+    depend on who stands where.
+    """
+
+    if enemy.size >= 2:
+        return True
+    for anchor_x, anchor_y in anchors:
+        dx = enemy.x - anchor_x
+        dy = enemy.y - anchor_y
+        if dx * dx + dy * dy <= _AOI_RADIUS_SQ:
+            return True
+    return False
+
+
 def build_snapshot_state(
-    game: Any, *, include_slow: bool
+    game: Any, *, include_slow: bool, full_slow: bool = False
 ) -> dict[str, Any]:
     assign_entity_ids(game)
     sent_ids = getattr(game, "_mp_sent_enemy_ids", None)
@@ -730,9 +794,23 @@ def build_snapshot_state(
                     "entity_id": enemy.entity_id,
                 }
             )
+    # Explicit removals (protocol v3): every enemy that left the alive set
+    # since the previous snapshot rides the fx ring as a replayed ``gone``
+    # event, applied exactly once by sequence high-water mark on the joiner.
+    alive_ids = {e.entity_id for e in game.enemies if e.alive}
+    prev_alive = getattr(game, "_mp_alive_enemy_ids", None)
+    if prev_alive:
+        for gone_id in prev_alive - alive_ids:
+            game.mp_record_fx("x", gone_id)
+    game._mp_alive_enemy_ids = alive_ids
+    anchors = [(p.x, p.y) for p in game.players]
     state: dict[str, Any] = {
         "players": [player_fast_dict(game, p) for p in game.players],
-        "enemies": [enemy_compact_dict(e) for e in game.enemies if e.alive],
+        "enemies": [
+            enemy_compact_dict(e)
+            for e in game.enemies
+            if e.alive and (not anchors or _enemy_in_aoi(e, anchors))
+        ],
         "projectiles": [
             projectile_compact_dict(game, p) for p in game.projectiles
         ],
@@ -761,7 +839,7 @@ def build_snapshot_state(
     if fx_events:
         state["fx"] = fx_events
     if include_slow:
-        slow = {
+        sections = {
             "players": [player_slow_dict(game, p) for p in game.players],
             "items": [game.item_to_dict(item) for item in game.items],
             "traps": [dict(trap.__dict__) for trap in game.traps],
@@ -793,7 +871,25 @@ def build_snapshot_state(
         }
         mini_interludes = _mini_interlude_room_state(game)
         if mini_interludes:
-            slow["room_games"] = mini_interludes
+            sections["room_games"] = mini_interludes
+        # Change gate: a section is sent only when its serialized form
+        # differs from the last one sent (or on a full refresh). The alive
+        # enemy id list always rides so a joiner can drop enemies whose
+        # ``gone`` events were lost to snapshot coalescing.
+        cache = getattr(game, "_mp_slow_sent_sections", None)
+        if cache is None:
+            cache = {}
+            game._mp_slow_sent_sections = cache
+        slow: dict[str, Any] = {"eids": sorted(alive_ids)}
+        for key, section in sections.items():
+            try:
+                serialized = json.dumps(section, separators=(",", ":"))
+            except (TypeError, ValueError):
+                serialized = None
+            if full_slow or serialized is None or cache.get(key) != serialized:
+                slow[key] = section
+                if serialized is not None:
+                    cache[key] = serialized
         state["slow"] = slow
     return state
 
@@ -965,28 +1061,16 @@ def apply_snapshot_state(game: Any, state: dict[str, Any]) -> None:
         enemies_by_id[entity_id] = enemy
 
     compact = state.get("enemies", [])
-    seen_ids: set[str] = set()
     for entry in compact:
         if not isinstance(entry, dict):
             continue
-        entity_id = str(entry.get("id", ""))
-        seen_ids.add(entity_id)
-        enemy = enemies_by_id.get(entity_id)
+        enemy = enemies_by_id.get(str(entry.get("id", "")))
         if enemy is not None:
             apply_enemy_compact(game, enemy, entry)
-    removed = [
-        enemy
-        for enemy in game.enemies
-        if enemy.entity_id and enemy.entity_id not in seen_ids
-    ]
-    if removed:
-        # Death bursts/loot flashes arrive through the replicated fx events;
-        # synthesizing one per removal here would double them.
-        game.enemies = [
-            enemy
-            for enemy in game.enemies
-            if not enemy.entity_id or enemy.entity_id in seen_ids
-        ]
+    # Protocol v3: an enemy absent from the compact list is out of the area
+    # of interest, not dead — it stays frozen behind the fog. Removal is
+    # explicit: a ``gone`` fx event per death (applied in _apply_fx_events)
+    # with the slow payload's ``eids`` list as the lost-event backstop.
 
     projectiles = state.get("projectiles")
     if isinstance(projectiles, list):
@@ -1064,7 +1148,7 @@ def apply_snapshot_state(game: Any, state: dict[str, Any]) -> None:
             and current.kind == candidate.kind
         ):
             # Preserve identity so guest-side cosmetic countdown smoothing and
-            # renderer caches survive the 15 Hz authoritative reconciliation.
+            # renderer caches survive the 30 Hz authoritative reconciliation.
             current.__dict__.update(candidate.__dict__)
         else:
             game.active_mini_game = candidate
@@ -1074,6 +1158,17 @@ def apply_snapshot_state(game: Any, state: dict[str, Any]) -> None:
 
     slow = state.get("slow")
     if isinstance(slow, dict):
+        eids = slow.get("eids")
+        if isinstance(eids, list):
+            # Reconcile against the authoritative alive set: drop any enemy
+            # whose ``gone`` event was lost to coalescing. No death visuals
+            # here — those rode the (equally lost) fx events.
+            alive = {str(entity_id) for entity_id in eids}
+            game.enemies = [
+                enemy
+                for enemy in game.enemies
+                if not enemy.entity_id or enemy.entity_id in alive
+            ]
         for entry in slow.get("players", []):
             if not isinstance(entry, dict):
                 continue
@@ -1277,15 +1372,30 @@ def _apply_fx_events(game: Any, entries: list[Any]) -> None:
                     color=(int(entry[4]), int(entry[5]), int(entry[6])),
                     ttl=float(entry[7]),
                 )
+            elif kind == "x" and len(entry) >= 3:
+                # Entity gone (protocol v3): the explicit removal that used
+                # to be compact-list omission. Death bursts/loot flashes ride
+                # their own fx events, exactly as before.
+                gone_id = str(entry[2])
+                game.enemies = [
+                    enemy
+                    for enemy in game.enemies
+                    if enemy.entity_id != gone_id
+                ]
         except (TypeError, ValueError, IndexError, KeyError):
             continue
     game._mp_fx_applied_seq = newest
 
 
 def lerp_networked_actors(game: Any, dt: float) -> None:
-    """Ease joiner-side actors toward their authoritative positions."""
+    """Ease joiner-side actors toward their authoritative positions.
 
-    blend = min(1.0, dt * 18.0)
+    24/s (up from 18/s in the 15 Hz era): 30 Hz snapshots halve the
+    per-snapshot correction distance, so a stronger blend converges ~33 ms
+    behind authority without the stepping a strong blend showed at 15 Hz.
+    """
+
+    blend = min(1.0, dt * 24.0)
     for actor in (
         *game.players,
         *game.enemies,

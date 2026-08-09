@@ -2848,6 +2848,13 @@ class MobileMixin:
         if monitor is None:
             return
         lines = (monitor.overlay_text, monitor.overlay_detail_text)
+        # During a co-op session the same overlay carries one net line (RTT,
+        # throughput, snapshot rate/age, backlog); rebuilt at most twice a
+        # second so it rarely invalidates the cached surface below.
+        net_overlay = getattr(self, "mp_net_overlay_text", None)
+        net_line = net_overlay() if callable(net_overlay) else ""
+        if net_line:
+            lines = lines + (net_line,)
         font = self.tiny_font
         cache = getattr(self, "_mobile_perf_overlay_cache", None)
         if cache is None or cache[0] != lines or cache[1] != id(font):

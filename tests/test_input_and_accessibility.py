@@ -23,13 +23,16 @@ from arch_rogue.options import (  # noqa: E402
     ui_scale_from_display_scale,
 )
 from arch_rogue.input import (  # noqa: E402
+    GAMEPAD_MAPPING_VERSION,
     Command,
     ControllerManager,
     add_missing_deck_gameplay_aliases,
     default_gamepad_mapping,
     hat_commands,
+    heal_gamepad_trigger_slots,
     key_command,
     mapped_joybutton_command,
+    migrate_legacy_gamepad_layout,
     normalize_gamepad_mapping,
     serialize_gamepad_mapping,
 )
@@ -179,6 +182,175 @@ class InputMappingTests(unittest.TestCase):
         self.assertEqual(
             mapping["gameplay_buttons"][16], Command.OPEN_DISCIPLINES
         )
+
+    def test_deck_alias_skips_trigger_bound_command(self) -> None:
+        # A player who bound mana potion to a trigger must not gain the R1
+        # alias: buttons win over triggers at save time, so the alias would
+        # blank the trigger slot on the next save.
+        mapping = normalize_gamepad_mapping(
+            {
+                "gameplay_buttons": {"0": Command.INTERACT},
+                "triggers": [Command.ABILITY_6, Command.ABILITY_4],
+            }
+        )
+        add_missing_deck_gameplay_aliases(mapping)
+        self.assertNotIn(9, mapping["gameplay_buttons"])
+        self.assertEqual(
+            mapping["gameplay_buttons"][16], Command.OPEN_DISCIPLINES
+        )
+        self.assertEqual(
+            mapping["triggers"], [Command.ABILITY_6, Command.ABILITY_4]
+        )
+
+    # The pre-Steam-merge (≤ 2026-07-31) default layout exactly as old builds
+    # persisted it: A=melee, LT=dash, RT=interact.
+    LEGACY_DEFAULT_PROFILE = {
+        "gameplay_buttons": {
+            "0": Command.ABILITY_1,
+            "1": Command.BACK,
+            "2": Command.ABILITY_2,
+            "3": Command.ABILITY_3,
+            "4": Command.ABILITY_5,
+            "5": Command.ABILITY_6,
+            "6": Command.INVENTORY,
+            "7": Command.CHARACTER,
+        },
+        "triggers": [Command.ABILITY_4, Command.INTERACT],
+    }
+
+    def test_legacy_default_profile_migrates_to_current_defaults(self) -> None:
+        mapping = normalize_gamepad_mapping(dict(self.LEGACY_DEFAULT_PROFILE))
+        self.assertTrue(migrate_legacy_gamepad_layout(mapping))
+        with patch("arch_rogue.input.is_steam_deck", return_value=False):
+            expected = default_gamepad_mapping()
+        self.assertEqual(
+            mapping["gameplay_buttons"], expected["gameplay_buttons"]
+        )
+        self.assertEqual(mapping["triggers"], [Command.ABILITY_1, Command.ABILITY_4])
+
+    def test_legacy_default_profile_with_deck_aliases_keeps_aliases(self) -> None:
+        profile = {
+            "gameplay_buttons": dict(
+                self.LEGACY_DEFAULT_PROFILE["gameplay_buttons"],
+                **{"9": Command.ABILITY_6, "16": Command.OPEN_DISCIPLINES},
+            ),
+            "triggers": list(self.LEGACY_DEFAULT_PROFILE["triggers"]),
+        }
+        mapping = normalize_gamepad_mapping(profile)
+        self.assertTrue(migrate_legacy_gamepad_layout(mapping))
+        self.assertEqual(mapping["gameplay_buttons"][0], Command.INTERACT)
+        self.assertEqual(mapping["gameplay_buttons"][9], Command.ABILITY_6)
+        self.assertEqual(
+            mapping["gameplay_buttons"][16], Command.OPEN_DISCIPLINES
+        )
+        self.assertEqual(mapping["triggers"], [Command.ABILITY_1, Command.ABILITY_4])
+
+    def test_customized_legacy_profile_is_not_migrated(self) -> None:
+        profile = {
+            "gameplay_buttons": dict(
+                self.LEGACY_DEFAULT_PROFILE["gameplay_buttons"],
+                **{"3": Command.ABILITY_5, "4": Command.ABILITY_3},
+            ),
+            "triggers": list(self.LEGACY_DEFAULT_PROFILE["triggers"]),
+        }
+        mapping = normalize_gamepad_mapping(profile)
+        before_buttons = dict(mapping["gameplay_buttons"])
+        before_triggers = list(mapping["triggers"])
+        self.assertFalse(migrate_legacy_gamepad_layout(mapping))
+        self.assertEqual(mapping["gameplay_buttons"], before_buttons)
+        self.assertEqual(mapping["triggers"], before_triggers)
+
+    def test_heal_restores_unbound_default_trigger_commands(self) -> None:
+        # Blanked slots whose commands are reachable nowhere else are damage
+        # (the historical dedupe/alias interaction) and get their defaults back.
+        mapping = normalize_gamepad_mapping(
+            {
+                "gameplay_buttons": {"0": Command.INTERACT},
+                "triggers": ["", ""],
+            }
+        )
+        self.assertTrue(heal_gamepad_trigger_slots(mapping))
+        self.assertEqual(mapping["triggers"], [Command.ABILITY_1, Command.ABILITY_4])
+
+    def test_heal_respects_deliberate_button_binding(self) -> None:
+        # Melee moved to a face button on purpose: its blank trigger slot must
+        # stay blank, while the truly unbound dash still heals.
+        mapping = normalize_gamepad_mapping(
+            {
+                "gameplay_buttons": {"2": Command.ABILITY_1},
+                "triggers": ["", ""],
+            }
+        )
+        self.assertTrue(heal_gamepad_trigger_slots(mapping))
+        self.assertEqual(mapping["triggers"], ["", Command.ABILITY_4])
+
+    def test_heal_never_stomps_an_occupied_slot(self) -> None:
+        mapping = normalize_gamepad_mapping(
+            {
+                "gameplay_buttons": {"0": Command.INTERACT},
+                "triggers": [Command.ABILITY_6, Command.ABILITY_1],
+            }
+        )
+        self.assertFalse(heal_gamepad_trigger_slots(mapping))
+        self.assertEqual(
+            mapping["triggers"], [Command.ABILITY_6, Command.ABILITY_1]
+        )
+
+    def test_options_load_migrates_and_stamps_mapping_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.options_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "gamepad_mapping": self.LEGACY_DEFAULT_PROFILE,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("arch_rogue.options.is_steam_deck", return_value=False):
+                self.assertTrue(game.load_options())
+            self.assertEqual(
+                game.gamepad_mapping["triggers"],
+                [Command.ABILITY_1, Command.ABILITY_4],
+            )
+            self.assertEqual(
+                game.gamepad_mapping["gameplay_buttons"][0], Command.INTERACT
+            )
+            game.save_options()
+            saved = json.loads(game.options_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                saved["gamepad_mapping_version"], GAMEPAD_MAPPING_VERSION
+            )
+            self.assertEqual(
+                saved["gamepad_mapping"]["triggers"],
+                [Command.ABILITY_1, Command.ABILITY_4],
+            )
+
+    def test_options_load_heals_blanked_triggers_without_migration(self) -> None:
+        # A current-version file damaged by the old dedupe/alias interaction:
+        # version stamp is current, so only the self-heal path may touch it.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            game.options_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "gamepad_mapping_version": GAMEPAD_MAPPING_VERSION,
+                        "gamepad_mapping": {
+                            "gameplay_buttons": {"0": Command.INTERACT},
+                            "triggers": ["", ""],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("arch_rogue.options.is_steam_deck", return_value=False):
+                self.assertTrue(game.load_options())
+            self.assertEqual(
+                game.gamepad_mapping["triggers"],
+                [Command.ABILITY_1, Command.ABILITY_4],
+            )
 
     def test_key_command_navigation_keys(self) -> None:
         self.assertEqual(key_command(pygame.K_UP, 0), Command.UP)

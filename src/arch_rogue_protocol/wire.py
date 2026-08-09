@@ -106,7 +106,12 @@ __all__ = [
 # Version 2 (4.10): the ``bighit`` / ``bighit_release`` intent pair — a v1
 # server would reject the new actions as ProtocolError, so the version gates
 # the mismatch up front with the friendlier bad_version notice.
-MP_PROTOCOL_VERSION = 2
+# Version 3 (5.1): area-of-interest snapshots. Enemy removal moved from
+# omission (every absent id = dead) to explicit ``gone`` fx events plus the
+# slow-payload ``eids`` reconcile list; a v2 peer fed v3 snapshots would
+# delete every out-of-range enemy and never get it back, so the version
+# gates the pairing up front.
+MP_PROTOCOL_VERSION = 3
 MP_MAX_MESSAGE_BYTES = 256 * 1024
 
 # Run ids are room locators, not authentication: the alphabet drops 0/O/1/I so
@@ -123,8 +128,11 @@ MP_ROOM_IDLE_TIMEOUT_SECONDS = 600.0
 
 # Bounded cadences shared by host snapshot emission and joiner intent
 # coalescing. Kept here so both sides of the wire agree on the contract.
-MP_SNAPSHOT_RATE_HZ = 15.0
-MP_INTENT_RATE_HZ = 20.0
+# 5.1: 30 Hz snapshots halve the slot wait and the between-snapshot easing
+# trail; the bytes stay affordable because compact enemy updates are limited
+# to the area of interest around the players.
+MP_SNAPSHOT_RATE_HZ = 30.0
+MP_INTENT_RATE_HZ = 30.0
 
 ROLE_HOST = "host"
 ROLE_JOIN = "join"

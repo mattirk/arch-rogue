@@ -360,12 +360,122 @@ def default_gamepad_mapping(
 def add_missing_deck_gameplay_aliases(
     mapping: dict[str, dict[int, str] | list[str]],
 ) -> None:
-    """One-time migration for Deck aliases added after controller profiles."""
+    """One-time migration for Deck aliases added after controller profiles.
+
+    A command the player bound to a trigger must not gain a button alias:
+    save-time dedupe lets buttons win over triggers, so the injected alias
+    would silently blank the player's trigger slot on the next save.
+    """
     buttons = mapping.get("gameplay_buttons", {})
     if not isinstance(buttons, dict):
         return
+    triggers = mapping.get("triggers", [])
+    trigger_bound = (
+        {cmd for cmd in triggers if cmd} if isinstance(triggers, list) else set()
+    )
     for button, cmd in DECK_GAMEPLAY_BUTTON_COMMANDS.items():
+        if cmd in trigger_bound:
+            continue
         buttons.setdefault(button, cmd)
+
+
+# Version stamp for the persisted gamepad mapping, written to options as
+# "gamepad_mapping_version". Bump when the shipped default layout changes so
+# load_options can tell a deliberate player profile from stale defaults that
+# an old build persisted verbatim.
+#   1 — initial controller support (2026-07-06): A=melee, LT=dash, RT=interact.
+#   2 — Steam-merge redesign (2026-07-31): A=interact, LT=melee/Big Hit,
+#       RT=dash. Saved profiles override defaults, so version-1 files kept the
+#       old layout forever; on the Deck this surfaced as "triggers stopped
+#       working" after the 5.0.1 storage migration resurrected July profiles.
+GAMEPAD_MAPPING_VERSION = 2
+
+# Every default layout an earlier build ever persisted, deck aliases aside.
+# serialize_gamepad_mapping always wrote the full mapping, so a profile that
+# matches one of these was never customized and is safe to re-default.
+_LEGACY_DEFAULT_LAYOUTS: tuple[
+    tuple[dict[int, str], tuple[str, ...]], ...
+] = (
+    (
+        {
+            0: Command.ABILITY_1,
+            1: Command.BACK,
+            2: Command.ABILITY_2,
+            3: Command.ABILITY_3,
+            4: Command.ABILITY_5,
+            5: Command.ABILITY_6,
+            6: Command.INVENTORY,
+            7: Command.CHARACTER,
+        },
+        (Command.ABILITY_4, Command.INTERACT),
+    ),
+)
+
+
+def migrate_legacy_gamepad_layout(
+    mapping: dict[str, dict[int, str] | list[str]],
+) -> bool:
+    """Re-default a persisted mapping that is exactly an old shipped default.
+
+    Called for option files whose gamepad_mapping_version predates
+    GAMEPAD_MAPPING_VERSION. Any customized profile is left alone — only a
+    verbatim copy of an earlier default layout is replaced, because that
+    player never chose it; an old build simply wrote its defaults to disk.
+    Deck alias entries are ignored for the comparison and kept afterwards.
+    """
+    buttons = mapping.get("gameplay_buttons", {})
+    triggers = mapping.get("triggers", [])
+    if not isinstance(buttons, dict) or not isinstance(triggers, list):
+        return False
+    aliases = {
+        button: cmd
+        for button, cmd in buttons.items()
+        if DECK_GAMEPLAY_BUTTON_COMMANDS.get(button) == cmd
+    }
+    bare_buttons = {
+        button: cmd for button, cmd in buttons.items() if button not in aliases
+    }
+    bare_triggers = tuple(cmd for cmd in triggers if cmd)
+    for legacy_buttons, legacy_triggers in _LEGACY_DEFAULT_LAYOUTS:
+        if bare_buttons == legacy_buttons and bare_triggers == legacy_triggers:
+            new_buttons: dict[int, str] = dict(GAMEPLAY_BUTTON_COMMANDS)
+            new_buttons.update(aliases)
+            mapping["gameplay_buttons"] = new_buttons
+            mapping["triggers"] = list(TRIGGER_COMMANDS)
+            return True
+    return False
+
+
+def heal_gamepad_trigger_slots(
+    mapping: dict[str, dict[int, str] | list[str]],
+) -> bool:
+    """Rebind default trigger commands that are bound to nothing at all.
+
+    Save-time dedupe historically blanked a trigger slot whenever its command
+    also appeared on a button — including buttons injected by the Deck alias
+    migration — leaving the slot as a persisted "" with no way to notice short
+    of the Controls menu. A blank slot whose default command is still reachable
+    elsewhere is a deliberate layout and stays blank; one whose default command
+    is bound nowhere is damage, and gets its default back.
+    """
+    buttons = mapping.get("gameplay_buttons", {})
+    triggers = mapping.get("triggers", [])
+    if not isinstance(buttons, dict) or not isinstance(triggers, list):
+        return False
+    bound = set(buttons.values()) | {cmd for cmd in triggers if cmd}
+    changed = False
+    for slot, cmd in enumerate(TRIGGER_COMMANDS):
+        if cmd in bound:
+            continue
+        while len(triggers) <= slot:
+            triggers.append("")
+        if not triggers[slot]:
+            triggers[slot] = cmd
+            bound.add(cmd)
+            changed = True
+    if changed and "triggers" not in mapping:
+        mapping["triggers"] = triggers
+    return changed
 
 
 def normalize_gamepad_mapping(data: object) -> dict[str, dict[int, str] | list[str]]:

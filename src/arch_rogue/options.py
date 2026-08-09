@@ -56,7 +56,10 @@ from .content import (
 )
 from .input import (
     DECK_GAMEPAD_PROFILE_VERSION,
+    GAMEPAD_MAPPING_VERSION,
     add_missing_deck_gameplay_aliases,
+    heal_gamepad_trigger_slots,
+    migrate_legacy_gamepad_layout,
     normalize_gamepad_mapping,
     serialize_gamepad_mapping,
 )
@@ -940,6 +943,7 @@ class OptionsMixin:
             "controller_enabled": getattr(self, "controller_enabled", True),
             "last_controller_guid": getattr(self, "last_controller_guid", ""),
             "deck_gamepad_profile_version": DECK_GAMEPAD_PROFILE_VERSION,
+            "gamepad_mapping_version": GAMEPAD_MAPPING_VERSION,
             "gamepad_mapping": serialize_gamepad_mapping(
                 normalize_gamepad_mapping(getattr(self, "gamepad_mapping", None))
             ),
@@ -1055,6 +1059,16 @@ class OptionsMixin:
             self.gamepad_mapping = normalize_gamepad_mapping(
                 data.get("gamepad_mapping")
             )
+            # 5.0.2: re-default profiles that are a verbatim copy of an old
+            # shipped layout (pre-Steam-merge files kept LT=dash forever and
+            # read as "triggers broken"), then heal trigger slots whose
+            # command ended up bound nowhere. Migration is gated on the
+            # version stamp; healing is idempotent and runs on every load.
+            mapping_version = data.get("gamepad_mapping_version", 0)
+            if not isinstance(mapping_version, int):
+                mapping_version = 0
+            if mapping_version < GAMEPAD_MAPPING_VERSION:
+                migrate_legacy_gamepad_layout(self.gamepad_mapping)
             deck_profile_version = data.get("deck_gamepad_profile_version", 0)
             if not isinstance(deck_profile_version, int):
                 deck_profile_version = 0
@@ -1063,6 +1077,7 @@ class OptionsMixin:
                 and deck_profile_version < DECK_GAMEPAD_PROFILE_VERSION
             ):
                 add_missing_deck_gameplay_aliases(self.gamepad_mapping)
+            heal_gamepad_trigger_slots(self.gamepad_mapping)
             # Milestone 3.16 - continuous lighting. Pre-v6 mobile files already
             # serialized the old True default, so a no-quality migration must
             # explicitly switch normal maps off to avoid the cold ARM cache spike.

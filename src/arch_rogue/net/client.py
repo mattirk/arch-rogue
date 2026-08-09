@@ -184,6 +184,15 @@ class MultiplayerClient:
         self._sock: socket.socket | None = None
         self._closing = threading.Event()
         self._finished = threading.Event()
+        # Lightweight I/O counters for the net diagnostics overlay. Written
+        # by the worker thread, read by the main thread via stats(); each
+        # access holds the lock only long enough to bump or copy integers.
+        self._stats_lock = threading.Lock()
+        self._bytes_in = 0
+        self._bytes_out = 0
+        self._snapshots_in = 0
+        self._snapshots_coalesced = 0
+        self._outbound_coalesced = 0
         # A socketpair wakes the selector immediately when the main thread
         # queues a message or requests close, so one-shot intents go out
         # promptly instead of waiting for the select timeout.
@@ -224,6 +233,8 @@ class MultiplayerClient:
                 and self._outbound[-1][0] == coalesce_key
             ):
                 self._outbound[-1] = (coalesce_key, payload)
+                with self._stats_lock:
+                    self._outbound_coalesced += 1
             else:
                 if len(self._outbound) >= _OUTBOUND_QUEUE_LIMIT:
                     return False
@@ -240,6 +251,21 @@ class MultiplayerClient:
             events = list(self._events)
             self._events.clear()
         return events
+
+    def stats(self) -> dict[str, int]:
+        """Cumulative I/O counters for the net diagnostics overlay."""
+
+        with self._outbound_lock:
+            queued = len(self._outbound)
+        with self._stats_lock:
+            return {
+                "bytes_in": self._bytes_in,
+                "bytes_out": self._bytes_out,
+                "snapshots_in": self._snapshots_in,
+                "snapshots_coalesced": self._snapshots_coalesced,
+                "outbound_coalesced": self._outbound_coalesced,
+                "outbound_queued": queued,
+            }
 
     def close(self, *, send_bye: bool = False) -> None:
         """Request shutdown and join the worker thread.
@@ -291,6 +317,9 @@ class MultiplayerClient:
     def _enqueue_message(self, message: NetMessage) -> bool:
         """Enqueue one inbound message, coalescing consecutive snapshots."""
 
+        if isinstance(message, SnapshotMessage):
+            with self._stats_lock:
+                self._snapshots_in += 1
         with self._events_lock:
             if isinstance(message, SnapshotMessage):
                 tail = self._events[-1] if self._events else None
@@ -298,6 +327,8 @@ class MultiplayerClient:
                     tail.message, SnapshotMessage
                 ):
                     self._events[-1] = InboundMessage(self.generation, message)
+                    with self._stats_lock:
+                        self._snapshots_coalesced += 1
                     return True
             if len(self._events) >= _INBOUND_QUEUE_LIMIT:
                 return False
@@ -313,6 +344,15 @@ class MultiplayerClient:
                 sock = self._connect_factory(
                     self.host, self.port, self.connect_timeout
                 )
+            # Disable Nagle: intents are small and ride behind un-ACKed
+            # predecessors, and every snapshot's trailing partial segment
+            # carries the newline the framer needs — with Nagle on, both
+            # wait up to an RTT in the kernel. The relay side is already
+            # TCP_NODELAY via asyncio's transport default.
+            try:
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except OSError:
+                pass  # non-TCP test transports (socketpairs) have no Nagle
             if self.tls:
                 # Handshake in blocking mode under the connect timeout;
                 # certificate chain and hostname are verified here, so
@@ -400,6 +440,8 @@ class MultiplayerClient:
                                 )
                             break
                         if chunk:
+                            with self._stats_lock:
+                                self._bytes_in += len(chunk)
                             try:
                                 lines = framer.feed(chunk)
                             except ProtocolError as exc:
@@ -457,6 +499,8 @@ class MultiplayerClient:
                                 self.generation, reason=str(exc) or "send failed"
                             )
                             break
+                        with self._stats_lock:
+                            self._bytes_out += sent
                         pending_send = pending_send[sent:]
                         if not pending_send:
                             with self._outbound_lock:
