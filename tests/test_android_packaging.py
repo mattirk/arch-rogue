@@ -113,6 +113,24 @@ def write_apk(
 
 
 class AndroidSourceContractTests(unittest.TestCase):
+    @staticmethod
+    def _build_release_workflow() -> str:
+        """The public Build & Release workflow, wherever this tree keeps it.
+
+        Since the 5.0.1 repo split the master repo authors it under
+        tools/public-repo/workflows/ (mirrored into .github/workflows/ in
+        the public repo), so the same test must resolve either location.
+        """
+        root = ROOT
+        candidates = (
+            root / "tools" / "public-repo" / "workflows" / "build-release.yml",
+            root / ".github" / "workflows" / "build-release.yml",
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate.read_text(encoding="utf-8")
+        raise AssertionError("build-release.yml not found in either location")
+
     def test_checked_in_source_and_spec_pass_preflight(self) -> None:
         validate_source_tree(ROOT / "src")
         self.assertEqual(
@@ -121,9 +139,7 @@ class AndroidSourceContractTests(unittest.TestCase):
         )
 
     def test_android_workflow_installs_libtool_macro_prerequisites(self) -> None:
-        workflow = (
-            ROOT / ".github" / "workflows" / "build-release.yml"
-        ).read_text(encoding="utf-8")
+        workflow = self._build_release_workflow()
         android_job = workflow[workflow.index("\n  android:") :]
         self.assertIn("runs-on: ubuntu-24.04", android_job)
         self.assertIn("libltdl-dev", android_job)
@@ -131,9 +147,7 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("LT_SYS_SYMBOL_USCORE", android_job)
 
     def test_public_android_apk_uses_persistent_release_signing(self) -> None:
-        workflow = (
-            ROOT / ".github" / "workflows" / "build-release.yml"
-        ).read_text(encoding="utf-8")
+        workflow = self._build_release_workflow()
         android_job = workflow[
             workflow.index("\n  android:") : workflow.index("\n  release:")
         ]
