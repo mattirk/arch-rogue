@@ -150,11 +150,12 @@ h2 { font-size: clamp(1.35rem, 3vw, 1.8rem); }
 .rule { height: 1px; background: linear-gradient(90deg, transparent, var(--line)); }
 .rule:last-child { background: linear-gradient(90deg, var(--line), transparent); }
 
-.download-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 30px; }
+.download-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; margin-top: 30px; }
 .download-badge {
   position: relative;
   display: flex;
-  width: 100%;
+  width: 244px;
+  max-width: 100%;
   min-width: 0;
   min-height: 116px;
   align-items: center;
@@ -231,10 +232,6 @@ footer a:hover, footer a:focus-visible { color: var(--gold); }
   to { transform: translate3d(0, -62vh, 0); }
 }
 
-@media (max-width: 900px) {
-  .download-grid { grid-template-columns: repeat(2, 1fr); }
-}
-
 @media (max-width: 560px) {
   .page-shell { width: min(100% - 20px, 1120px); padding-top: 28px; }
   .hero { margin-bottom: 25px; }
@@ -243,8 +240,7 @@ footer a:hover, footer a:focus-visible { color: var(--gold); }
   .feature-list { flex-direction: column; gap: 6px; }
   .downloads { padding: 25px 16px; }
   .section-heading { grid-template-columns: 25px 1fr 25px; gap: 8px; }
-  .download-grid { grid-template-columns: 1fr; }
-  .download-badge { width: min(100%, 390px); justify-self: center; }
+  .download-badge { width: min(100%, 390px); }
   footer { flex-direction: column; align-items: center; text-align: center; }
   footer nav { flex-wrap: wrap; justify-content: center; }
 }
