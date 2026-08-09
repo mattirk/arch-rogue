@@ -162,6 +162,23 @@ class RoomLifecycleTests(unittest.TestCase):
         # The original room survives the collision untouched.
         self.assertIn("AB2C", h.hub.rooms)
 
+    def test_room_cap_rejects_new_hosts_with_server_full(self) -> None:
+        # The capacity cap is deliberate, so it carries its own error code —
+        # run_full would read as "that room has two players" on the client.
+        h = RoomHubHarness(max_rooms=1)
+        first_conn, _first = h.connect()
+        h.hello(first_conn, run_id="AB2C", role="host")
+        second_conn, second = h.connect()
+        h.hello(second_conn, run_id="CDEF", role="host")
+        error = second.last("error")
+        self.assertEqual(error["code"], "server_full")
+        self.assertTrue(error["fatal"])
+        self.assertTrue(second.closed)
+        # Joining the existing room is still allowed at the cap.
+        join_conn, join = h.connect()
+        h.hello(join_conn, run_id="AB2C", role="join")
+        self.assertNotIn("error", join.types())
+
     def test_third_client_and_late_join_are_rejected(self) -> None:
         h = RoomHubHarness()
         h.pair()

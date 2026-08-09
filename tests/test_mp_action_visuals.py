@@ -244,6 +244,71 @@ class FxEventReplicationTests(unittest.TestCase):
             state = sync.build_snapshot_state(game, include_slow=False)
             self.assertNotIn("fx", state)
 
+    def test_wall_face_touch_replicates_with_the_toucher_id(self) -> None:
+        # 5.1: the host resolves the joiner's face-wall touch even when the
+        # host itself does not run HD graphics, replicates one "wf" event
+        # carrying the toucher, and never credits its own ledger for it.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            host = _make_playing_game(tmpdir)
+            _bind_host(host)
+            host.graphics_tier = "modern"
+            partner = sync.build_player_from_full(
+                host, {"player_id": "p2", "x": 1.0, "y": 1.0}
+            )
+            host.players.append(partner)
+            spot = next(
+                (x, y)
+                for x in range(1, len(host.dungeon.tiles) - 1)
+                for y in range(1, len(host.dungeon.tiles[x]) - 1)
+                if host.dungeon.tiles[x][y] == Tile.FLOOR
+                and host.dungeon.tiles[x + 1][y] == Tile.WALL
+            )
+            partner.x, partner.y = spot[0] + 0.5, spot[1] + 0.5
+            host.tile_seed = lambda x, y: host.SECRET_FACE_WALL_VARIANT
+            touches = int(
+                host.meta_progress.get("lifetime_wall_touches", 0) or 0
+            )
+            with host.acting_as_player(partner):
+                self.assertTrue(host.touch_secret_face_wall())
+            events = [e for e in host.mp_collect_fx() if e[1] == "wf"]
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0][4], "p2")
+            self.assertEqual(
+                int(host.meta_progress.get("lifetime_wall_touches", 0) or 0),
+                touches,
+            )
+
+    def test_wall_face_event_credits_only_the_local_toucher(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            join = _make_playing_game(tmpdir)
+            _bind_joiner(join)  # local player is p2
+            join.graphics_tier = "hd"
+            animations: list[tuple[int, int]] = []
+            join.start_wall_face_animation = (
+                lambda x, y: animations.append((x, y))
+            )
+            before = int(
+                join.meta_progress.get("lifetime_wall_touches", 0) or 0
+            )
+            sync._apply_fx_events(join, [[41, "wf", 5, 6, "p2"]])
+            self.assertEqual(animations, [(5, 6)])
+            self.assertEqual(
+                int(join.meta_progress["lifetime_wall_touches"]), before + 1
+            )
+            # The partner's touch animates here but credits nothing.
+            sync._apply_fx_events(join, [[42, "wf", 7, 8, "p1"]])
+            self.assertEqual(animations[-1], (7, 8))
+            self.assertEqual(
+                int(join.meta_progress["lifetime_wall_touches"]), before + 1
+            )
+            # Outside HD there is no face wall to see or credit.
+            join.graphics_tier = "modern"
+            sync._apply_fx_events(join, [[43, "wf", 9, 9, "p2"]])
+            self.assertEqual(len(animations), 2)
+            self.assertEqual(
+                int(join.meta_progress["lifetime_wall_touches"]), before + 1
+            )
+
     def test_single_player_records_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = _make_playing_game(tmpdir)

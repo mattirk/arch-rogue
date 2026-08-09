@@ -45,6 +45,7 @@ from .protocol import (
     ERROR_RUN_FULL,
     ERROR_RUN_ID_IN_USE,
     ERROR_RUN_NOT_FOUND,
+    ERROR_SERVER_FULL,
     ERROR_TIMEOUT,
     MP_PROTOCOL_VERSION,
     ROLE_HOST,
@@ -407,9 +408,12 @@ class RoomHub:
                 )
                 return
             if len(self.rooms) >= self.config.max_rooms:
+                # The room cap is a deliberate security posture, not a fault;
+                # the dedicated code lets clients present it as expected
+                # behavior rather than "that run already has two players".
                 self._fatal(
                     connection,
-                    ERROR_RUN_FULL,
+                    ERROR_SERVER_FULL,
                     "the server is at its room limit",
                     seq=seq,
                 )

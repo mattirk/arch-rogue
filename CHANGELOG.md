@@ -34,6 +34,9 @@ host's uplink.
   refresh every 2 s as a loss backstop), cutting steady-state bandwidth
   and the guest-side rebuild churn that came with re-applying them
   three times a second.
+- **Allowlist-based public snapshot**: the public repository sync now
+  mirrors only an explicit list of paths, so new files and folders in
+  the development tree stay private unless deliberately published.
 
 ### Added
 
@@ -42,6 +45,19 @@ host's uplink.
   shows RTT, throughput in/out, applied snapshot rate and age, and any
   outbound backlog — enough to tell a saturated uplink from a slow
   frame loop from a lossy link.
+- **A clear notice when the relay is at capacity**: the server's room
+  cap is deliberate, so hitting it while hosting now explains itself
+  ("try again in a little while") and keeps your drawn code ready for a
+  one-press retry, instead of claiming the run already had two players.
+
+### Fixed
+
+- **Wall facing works for the co-op guest**: touching the hidden face
+  wall as the joiner now plays the face animation on the joiner's own
+  screen and counts toward their Wall Facer tally (the host resolves
+  the touch and replicates it; previously the animation played on the
+  host's screen and the guest got nothing). The host's graphics tier no
+  longer gates the partner's touch either.
 
 ### Removed
 

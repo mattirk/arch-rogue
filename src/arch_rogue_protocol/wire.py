@@ -54,6 +54,7 @@ __all__ = [
     "ROOM_CLOSED",
     "ROOM_STATES",
     "ERROR_RUN_FULL",
+    "ERROR_SERVER_FULL",
     "ERROR_RUN_NOT_FOUND",
     "ERROR_RUN_ID_IN_USE",
     "ERROR_BAD_MSG",
@@ -149,6 +150,10 @@ ROOM_STATES = (
 )
 
 ERROR_RUN_FULL = "run_full"
+# 5.1: the whole server is at its deliberate room cap (a security posture,
+# not a fault) — distinct from ``run_full`` so the client can present it as
+# expected behavior instead of "that room has two players".
+ERROR_SERVER_FULL = "server_full"
 ERROR_RUN_NOT_FOUND = "run_not_found"
 ERROR_RUN_ID_IN_USE = "run_id_in_use"
 ERROR_BAD_MSG = "bad_msg"

@@ -688,7 +688,14 @@ class InteractionMixin:
     SECRET_FACE_WALL_VARIANT = 2
 
     def nearby_secret_face_wall(self) -> tuple[int, int] | None:
-        if not self._hd_world_graphics_selected():
+        # The HD gate is about the local player's visuals. When the host
+        # resolves a joiner's interact intent, the joiner's own tier decides
+        # what it sees (fx application re-checks it), so the host's tier
+        # must not eat the partner's touch.
+        acting_for_partner = (
+            self.mp_active and self.player.player_id != self.local_player_id
+        )
+        if not self._hd_world_graphics_selected() and not acting_for_partner:
             return None
         px, py = self.player.x, self.player.y
         cx, cy = int(px), int(py)
@@ -712,9 +719,13 @@ class InteractionMixin:
         if wall is None:
             return False
         self.start_wall_face_animation(*wall)
+        # Replicate the touch so the joiner sees the face form and the
+        # toucher's own client credits its ledger (no-op outside hosting).
+        self.mp_record_fx("wf", wall[0], wall[1], self.player.player_id)
         # Wall Facer credits the local ledger only: when the host resolves a
         # joiner's interact intent, the acting player is remote and the touch
-        # must not count toward the host's own lifetime tally.
+        # must not count toward the host's own lifetime tally — the joiner
+        # records it when the replicated event lands.
         if not (
             self.mp_active and self.player.player_id != self.local_player_id
         ):

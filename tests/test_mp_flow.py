@@ -1317,5 +1317,39 @@ class MobileTextEntryPanelTests(unittest.TestCase):
             game.close_text_input(confirm=False)
 
 
+class ServerFullNoticeTests(unittest.TestCase):
+    """The deliberate room cap presents as expected behavior, not a fault."""
+
+    def test_server_full_keeps_the_host_code_for_a_quick_retry(self) -> None:
+        from arch_rogue.net.messages import ErrorMessage
+        from arch_rogue.net.mixin import MpSession
+        from arch_rogue.net.protocol import ROLE_HOST
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = Game(
+                screen_size=(640, 360),
+                headless=True,
+                save_path=Path(tmpdir) / "run.json",
+            )
+            game.options_path = Path(tmpdir) / "options.json"
+            game.state = "mp_setup"
+            game.mp_setup_step = "host_code"
+            game.mp_run_id = "AB2C"
+            game.mp_session = MpSession(role=ROLE_HOST, run_id="AB2C")
+            game._mp_on_error(
+                ErrorMessage(
+                    code="server_full",
+                    msg="the server is at its room limit",
+                    fatal=True,
+                    seq=1,
+                )
+            )
+            self.assertIn("intentional", game.mp_notice)
+            self.assertEqual(game.state, "mp_setup")
+            self.assertEqual(game.mp_setup_step, "host_code")
+            self.assertEqual(game.mp_run_id, "AB2C")  # same code, one retry
+            self.assertIsNone(game.mp_session)
+
+
 if __name__ == "__main__":
     unittest.main()

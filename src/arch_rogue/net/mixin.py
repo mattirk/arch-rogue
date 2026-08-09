@@ -146,6 +146,11 @@ _SETUP_ERROR_NOTICES = {
     "run_id_in_use": "That code is already hosting a run — a fresh code was drawn.",
     "run_not_found": "No run is waiting behind that code.",
     "run_full": "That run already has two players.",
+    # Deliberate capacity cap on the relay — expected behavior, not a fault.
+    "server_full": (
+        "The server is hosting its full number of runs right now — the cap "
+        "is intentional. Try again in a little while."
+    ),
     "bad_revision": "Your game version does not match the host's.",
     "bad_version": "This server speaks a different protocol version.",
     "timeout": "The server timed out the connection.",
@@ -1463,6 +1468,11 @@ class NetMixin:
         if message.code == "run_id_in_use":
             # A host collision returns to code generation with a fresh code.
             self.mp_run_id = generate_run_id(MP_RUN_ID_LENGTH)
+            self.mp_setup_step = "host_code"
+            self.mp_setup_host_cursor = 0
+        elif message.code == "server_full":
+            # Capacity cap reached while hosting: keep the drawn code so the
+            # retry is a single confirm once a room frees up.
             self.mp_setup_step = "host_code"
             self.mp_setup_host_cursor = 0
         elif message.code in ("run_not_found", "run_full", "bad_revision", "kicked"):

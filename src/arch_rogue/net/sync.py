@@ -1382,6 +1382,15 @@ def _apply_fx_events(game: Any, entries: list[Any]) -> None:
                     for enemy in game.enemies
                     if enemy.entity_id != gone_id
                 ]
+            elif kind == "wf" and len(entry) >= 5:
+                # Hidden face-wall touch (5.1): the host resolves the touch,
+                # every peer plays the tile-anchored animation, and only the
+                # toucher's own client credits its Wall Facer ledger. The HD
+                # gate mirrors solo behavior — other tiers have no face wall.
+                if game._hd_world_graphics_selected():
+                    game.start_wall_face_animation(int(entry[2]), int(entry[3]))
+                    if str(entry[4]) == getattr(game, "local_player_id", ""):
+                        game.record_wall_face_touch()
         except (TypeError, ValueError, IndexError, KeyError):
             continue
     game._mp_fx_applied_seq = newest
