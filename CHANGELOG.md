@@ -1,5 +1,32 @@
 # Changelog
 
+## 5.2.0 — The tyrants learn to swing
+
+Floor bosses finally move like they mean it: cleaned-up idle and walk
+cycles across all eight facings, and brand-new attack animations that
+play for both melee blows and casts.
+
+### Added
+
+- **Boss attack animations**: all five floor bosses (Ash Gallows
+  Knight, Mycelial Matron, Rime Chanter, Voidbound Rune Sentinel, Dread
+  Gate Tyrant) now have authored 8-direction attack clips that play
+  when a committed attack fires. Bosses use the attack clip for casts
+  too, until dedicated cast clips are authored.
+- **`last_attack_kind` enemy field**: the literal kind of the attack
+  that fired ("melee"/"cast"), set at windup resolution and replicated
+  to joiners in the enemy snapshot (optional `lk` key — absent from old
+  hosts, ignored gracefully). Bosses carry flavor text in `telegraph`,
+  so the attack/cast pose window now keys off this instead.
+
+### Changed
+
+- **Boss idle/walk cleanup**: regenerated the directions where
+  equipment popped in and out mid-loop, apparel changed color, auras
+  flickered, or an entire facing drifted off-model (most visibly the
+  Voidbound Rune Sentinel's west profile and the Rime Chanter's hood
+  and staff).
+
 ## 5.1.0 — The far shore draws near
 
 Co-op latency work, guest side first: the world a joiner sees now runs a
