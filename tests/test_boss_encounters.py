@@ -146,6 +146,112 @@ class BigBossesTests(unittest.TestCase):
                 game.dungeon.blocked_for_radius(fb.x, fb.y, radius)
             )
 
+    def test_wide_probe_detects_thin_obstacle_under_center(self) -> None:
+        # Regression: blocked_for_radius sampled only the four footprint
+        # corners, and a 2x2 boss's corners sit 1.64 tiles apart — a
+        # one-tile-thick obstacle under the center (a freshly sealed doorway
+        # strip) passed undetected, so the seal-time nudge never ran and the
+        # boss froze inside the door.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            self.populate_floor(game, 3)
+            fb = next(e for e in game.enemies if e.role == "floor_boss")
+            room = game.dungeon.room_at(fb.x, fb.y)
+            assert room is not None
+            cx, cy = room.center
+            # Interior spot with all eight neighbors open, then a lone
+            # CLOSED_DOOR under the probe center: corners all land on floor.
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    game.dungeon.tiles[cx + dx][cy + dy] = Tile.FLOOR
+            game.dungeon.tiles[cx][cy] = Tile.CLOSED_DOOR
+            try:
+                self.assertTrue(
+                    game.dungeon.blocked_for_radius(cx + 0.5, cy + 0.5, 0.82)
+                )
+            finally:
+                game.dungeon.tiles[cx][cy] = Tile.FLOOR
+
+    def test_boss_astride_two_wide_seal_seam_is_freed_when_doors_seal(
+        self,
+    ) -> None:
+        # Regression: corridors are two tiles wide, so a boss meeting the
+        # player mid-doorway stands astride the seam between the two sealed
+        # tiles with all four footprint corners on open corridor/room floor.
+        # The old corner-only probe reported the spot clear, skipped the
+        # seal-time nudge, and left the boss buried in the new wall.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            self.populate_floor(game, 3)
+            fb = next(e for e in game.enemies if e.role == "floor_boss")
+            room = game.dungeon.room_at(fb.x, fb.y)
+            assert room is not None
+            sealed = game.dungeon.seal_room_openings(room)
+            seam = None
+            for x0, y0, _tile in sealed:
+                for x1, y1, _tile1 in sealed:
+                    if abs(x0 - x1) + abs(y0 - y1) != 1:
+                        continue
+                    px = (x0 + x1) / 2 + 0.5
+                    py = (y0 + y1) / 2 + 0.5
+                    corners_open = all(
+                        game.dungeon.is_floor(px + ox, py + oy)
+                        for ox in (-0.82, 0.82)
+                        for oy in (-0.82, 0.82)
+                    )
+                    if corners_open:
+                        seam = (px, py)
+                        break
+                if seam is not None:
+                    break
+            self.assertIsNotNone(
+                seam, "no two-wide sealed opening with open corners found"
+            )
+            assert seam is not None
+            # The fixed probe sees the sealed strip under the center.
+            self.assertTrue(
+                game.dungeon.blocked_for_radius(seam[0], seam[1], 0.82)
+            )
+            game.dungeon.restore_tiles(sealed)
+
+            fb.x, fb.y = seam
+            cx, cy = room.center
+            game.player.x = cx + 0.5
+            game.player.y = cy + 0.5
+            game.update_boss_encounter()
+            self.assertTrue(game.boss_engaged)
+            self.assertFalse(
+                game.dungeon.blocked_for_radius(fb.x, fb.y, 0.82)
+            )
+
+    def test_boss_shoved_onto_seal_mid_fight_recovers_next_frame(self) -> None:
+        # Watchdog: body-contact shoves can walk the wide footprint onto
+        # sealed geometry after the engage-frame nudge already ran; the
+        # per-frame check must pull the boss back out instead of leaving it
+        # frozen (move_actor only validates destinations).
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = self.make_game(tmpdir)
+            self.populate_floor(game, 3)
+            fb = next(e for e in game.enemies if e.role == "floor_boss")
+            room = game.dungeon.room_at(fb.x, fb.y)
+            assert room is not None
+            cx, cy = room.center
+            game.player.x = cx + 0.5
+            game.player.y = cy + 0.5
+            game.update_boss_encounter()
+            self.assertTrue(game.boss_engaged)
+            self.assertGreater(len(game.boss_sealed_tiles), 0)
+
+            sx, sy, _tile = game.boss_sealed_tiles[0]
+            fb.x, fb.y = sx + 0.5, sy + 0.5
+            self.assertTrue(
+                game.dungeon.blocked_for_radius(fb.x, fb.y, 0.82)
+            )
+            game.update_boss_encounter()
+            self.assertFalse(
+                game.dungeon.blocked_for_radius(fb.x, fb.y, 0.82)
+            )
+
     def test_floor_guardian_blocks_solo_stairs_until_killed(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir)

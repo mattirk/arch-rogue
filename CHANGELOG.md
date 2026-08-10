@@ -1,5 +1,61 @@
 # Changelog
 
+## 5.2.1 — Three small mercies
+
+A toast that actually refreshes, one guiding light instead of two, and
+bosses kept out of the masonry.
+
+### Fixed
+
+- **The toast restores stamina recovery to normal**: since 4.7.12 the bar
+  refuge sapped stamina at 130/s for as long as anyone stood inside — the
+  tapped barrel's +10 evaporated in under a tenth of a second and the bar
+  pinned the drinker at zero for the whole visit, which read exactly as
+  "drinking broke my recovery". The sap now ends the moment the bar's one
+  toast is taken (gated on the room's persisted, co-op-replicated
+  `barrel_drunk` state), so after the drink passive regen runs at the
+  normal 30-38/s — for the co-op partner too, since each bar pours exactly
+  one drink. Untoasted bars sap exactly as before.
+- **One guiding light on dark floors, and it is the floor animation**:
+  5.0.2's "the light leads through the dark" pass re-enabled the legacy
+  carved-line overlay on dark levels without disabling the modern floor
+  animation, so both rendered at once (most visible on the Deck's
+  max-zoomed default view). With modern graphics the authored
+  `guiding_floor` animation now carries the guidance on every floor — the
+  lantern bounds its reach in the dark, and the minimap thread still
+  traces the full route into the black — while the carved line survives
+  only as the legacy-graphics fallback, still drawn after the darkness
+  pass there.
+- **Bosses can no longer be sealed into the arena walls.** Four
+  cooperating fixes: (1) `blocked_for_radius` sampled only the four
+  footprint corners, and a 2x2 boss's corners sit 1.64 tiles apart — a
+  boss parked mid-doorway (corridors are two tiles wide) straddled the
+  freshly sealed strip with every corner on open floor, so the seal-time
+  rescue nudge saw "not blocked" and left it buried, permanently frozen
+  since movement only validates destinations. Footprints wider than a
+  tile now probe a 3x3 grid that visits every overlapped tile; narrow
+  probes keep the historical 4-corner sweep byte-for-byte. (2)
+  Body-contact shoves validated the pushed actor's new spot with the
+  default 0.27 radius — mid-fight contact could walk the boss's 0.82
+  footprint into sealed geometry; shoves now use the same move radius as
+  `move_actor`. (3) The seal-time nudge's interior scan could fail
+  silently; it now falls back to the arena center rather than ever
+  leaving an enemy inside a wall. (4) A per-frame watchdog during the
+  sealed fight re-nudges the boss if anything still lands its footprint
+  on sealed geometry.
+
+### Validation
+
+- New regressions: toasted-bar recovery solo and for the co-op partner
+  (`test_flavor_rooms`, `test_bar_toast`, `test_mp_credit`), dark-floor
+  overlay deference to the floor animation plus the legacy carve-line
+  fallback (`test_stairs_guidance`), and the wide-probe blind spot, the
+  two-wide seal-seam burial, and the mid-fight shove watchdog
+  (`test_boss_encounters`).
+- Runtime, Android package defaults, relay-server metadata, and download
+  metadata report `5.2.1`. Save, options, and multiplayer protocol
+  schemas are unchanged.
+
 ## 5.2.0 — The tyrants learn to swing
 
 Floor bosses finally move like they mean it: cleaned-up idle and walk

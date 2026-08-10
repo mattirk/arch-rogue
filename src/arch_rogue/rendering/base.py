@@ -833,7 +833,11 @@ class RenderingBaseMixin:
         ):
             # 5.0.2: on dark floors the guiding light renders on top of the
             # darkness — the guest's light defies the dark (backlog: "also
-            # on dark levels").
+            # on dark levels"). With modern guidance tiles the call no-ops:
+            # the floor pass already carries the guidance as the authored
+            # floor animation, so only the legacy carve-line tier paints
+            # here (drawing the line alongside the floor runes was the
+            # dark-floor double-guidance bug).
             self.draw_story_relic_guidance()
         if performance is not None:
             performance.record_detail_phase("ambient", time.perf_counter() - started)

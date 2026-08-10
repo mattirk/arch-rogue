@@ -188,8 +188,10 @@ class FamiliarKillCreditTests(unittest.TestCase):
 
 
 class RemoteRefugeRoomTests(unittest.TestCase):
-    def _room(self, kind: str):
-        return types.SimpleNamespace(kind=kind)
+    def _room(self, kind: str, **state):
+        # Mirrors the real SpecialRoom contract: ``state`` always exists
+        # (an empty dict is an untoasted bar).
+        return types.SimpleNamespace(kind=kind, state=dict(state))
 
     def test_partner_heals_in_garden_without_host_glow(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -223,6 +225,20 @@ class RemoteRefugeRoomTests(unittest.TestCase):
                 partner.hp - hp_before, max(1, partner.max_hp // 50 + 1)
             )
             self.assertEqual(partner.stamina, 0.0)
+
+    def test_partner_keeps_stamina_in_toasted_bar(self) -> None:
+        # Once the bar's toast is taken (barrel_drunk on the room), the sap
+        # ends for everyone in the room — the partner included.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = _make_host_game_with_partner(tmpdir)
+            partner = game.players[1]
+            partner.stamina = partner.max_stamina
+            game.dungeon.special_room_at_point = (
+                lambda x, y: self._room(BAR_ROOM_KIND, barrel_drunk=True)
+            )
+            with game.acting_as_player(partner):
+                game._mp_update_remote_player(partner, 5.5, 0.0, 0.0)
+            self.assertEqual(partner.stamina, partner.max_stamina)
 
     def test_host_and_partner_accumulators_are_independent(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

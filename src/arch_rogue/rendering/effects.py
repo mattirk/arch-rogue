@@ -1113,15 +1113,15 @@ class RenderingEffectsMixin:
         # 4.8.1: with modern graphics the guidance tiles are rendered inside
         # the floor pass itself (story_guidance_tile_frames consulted by
         # _tile_blit_entry), so painter order keeps walls and southern tiles
-        # layered correctly. The procedural carved crack below remains the
-        # legacy-graphics fallback.
-        if (
-            self.sprites.world_tile_animation_frame_count("guiding_floor") > 1
-            and not self.is_current_floor_dark()
-        ):
-            # Modern tiles carry the guidance on light floors; dark floors
-            # fall through to this screen-space overlay, drawn after the
-            # darkness pass (5.0.2) so the light leads through the dark.
+        # layered correctly — on dark floors too, where the lantern simply
+        # bounds how far along the route the runes show (the 5.0.2 dark-floor
+        # carve-line comeback drew this screen-space crack *on top of* the
+        # still-active floor animation). The procedural carved crack below
+        # remains the legacy-graphics fallback; on legacy dark floors it is
+        # drawn after the darkness pass (rendering/base.py) so that tier's
+        # light still leads through the black.
+        if self.sprites.world_tile_animation_frame_count("guiding_floor") > 1:
+            # Modern tiles carry the guidance on every floor.
             return
         # The guidance uses the same carved-groove language as the floor's
         # own variant cracks (`_floor_groove`: shadowed recess + lit lip,

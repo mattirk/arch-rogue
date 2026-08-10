@@ -25,8 +25,11 @@ Three related quality-of-descent features:
 - an unbroken all-Aid choice streak extends the guiding light from the
   recovered relic onward to the stairs (one bargain/defy anywhere in the
   run silences the extension);
-- the guiding light renders on dark floors (drawn after the darkness pass
-  instead of inside the world pass, with the lantern clip relaxed);
+- the guiding light works on dark floors: with modern graphics the authored
+  guiding_floor animation carries the guidance in the floor pass on every
+  floor (the lantern bounds its reach in the dark), while the legacy
+  carve-line fallback draws after the darkness pass with the lantern clip
+  relaxed;
 - the minimap's stairs marker is sticky on dark floors once seen, so the
   edge arrow can guide back through the black.
 """
@@ -38,6 +41,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -125,7 +129,11 @@ class AidStreakTests(unittest.TestCase):
 
 
 class DarkFloorGuidanceTests(unittest.TestCase):
-    def test_overlay_draws_on_dark_floors_despite_modern_tiles(self) -> None:
+    def test_overlay_defers_to_floor_animation_on_dark_floors(self) -> None:
+        # Regression: the carve-line overlay used to come back on dark floors
+        # even with modern guidance tiles active, double-drawing beside the
+        # authored floor animation. The overlay must defer to the floor pass
+        # on every floor; dark levels are no exception.
         with tempfile.TemporaryDirectory() as tmpdir:
             game = make_game(tmpdir)
             choose_aid(game)
@@ -145,10 +153,39 @@ class DarkFloorGuidanceTests(unittest.TestCase):
                 pygame.image.tobytes(game.screen, "RGB"), before
             )
 
-            # Dark floor: the same call must paint the carved-groove overlay
-            # (drawn after the darkness pass in the real frame).
+            # Dark floor: still nothing — the guidance stays the floor
+            # animation instead of the drawn line.
             game.is_current_floor_dark = lambda: True
             game.draw_story_relic_guidance()
+            self.assertEqual(
+                pygame.image.tobytes(game.screen, "RGB"), before
+            )
+
+            # And the floor animation is genuinely active on the dark floor:
+            # once the player has stood still for a moment, the travelling
+            # crest assigns guiding_floor frames to route tiles.
+            game.player.moving = False
+            game.story_guidance_tile_frames()  # arms the idle clock
+            game.elapsed += 1.25  # crest reaches mid-window over the route
+            self.assertTrue(game.story_guidance_tile_frames())
+
+    def test_legacy_carve_line_still_leads_on_dark_floors(self) -> None:
+        # Without modern guidance tiles (legacy graphics / missing assets)
+        # the carve line remains the dark-floor guidance, drawn after the
+        # darkness pass (5.0.2).
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_game(tmpdir)
+            choose_aid(game)
+            game.camera_x, game.camera_y = game.player.x, game.player.y
+            game.is_current_floor_dark = lambda: True
+            game.screen.fill((0, 0, 0))
+            before = pygame.image.tobytes(game.screen, "RGB")
+            with mock.patch.object(
+                game.sprites,
+                "world_tile_animation_frame_count",
+                return_value=1,
+            ):
+                game.draw_story_relic_guidance()
             self.assertNotEqual(
                 pygame.image.tobytes(game.screen, "RGB"), before
             )

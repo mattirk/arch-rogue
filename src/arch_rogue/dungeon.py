@@ -842,13 +842,23 @@ class Dungeon:
             if wall_depth_relief > 0.0
             else 0.0
         )
+        # A footprint wider than a tile (radius >= 0.5, i.e. the 2x2 bosses)
+        # can straddle a one-tile-thick obstacle — e.g. the doorway strip a
+        # boss-arena seal just closed under its center — with all four
+        # corners on open floor, so wide probes also sample the middle of
+        # each axis (3x3 grid, which visits every tile the square footprint
+        # overlaps for radius < 1). Narrow probes keep the historical
+        # 4-corner sweep; their corners already visit every overlapped tile.
+        offsets = (
+            (-radius, 0.0, radius) if radius >= 0.5 else (-radius, radius)
+        )
         if block_stairs:
             # Player path: stairs block via the shifted/inset footprint so the
             # collision aligns with the visible artwork. Walls and closed doors
             # still block through ``is_floor``; stairs themselves are floor-like
             # for LOS/projectiles and only block this physical probe.
-            for ox in (-radius, radius):
-                for oy in (-radius, radius):
+            for ox in offsets:
+                for oy in offsets:
                     px, py = x + ox, y + oy
                     if self._probe_hits_stair(px, py):
                         return True
@@ -862,8 +872,8 @@ class Dungeon:
                     if furnishings and self._probe_hits_solid_furnishing(px, py):
                         return True
             return False
-        for ox in (-radius, radius):
-            for oy in (-radius, radius):
+        for ox in offsets:
+            for oy in offsets:
                 px, py = x + ox, y + oy
                 if not self.is_floor(px, py) and (
                     wall_inset <= 0.0

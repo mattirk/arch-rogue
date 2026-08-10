@@ -148,6 +148,12 @@ class BarToastTestCase(unittest.TestCase):
             self.assertEqual(game.run_stats.bars_toasted, toasted_before + 1)
             self.assertTrue(bar.state.get("barrel_drunk"))
             self.assertGreater(game.player.hp, hp_before)
+            # The toast restores stamina recovery to normal: lingering in the
+            # bar no longer saps, so the drink's stamina sticks and passive
+            # regen climbs from there.
+            game.player.stamina = 10.0
+            game.update_player(0.5)
+            self.assertGreater(game.player.stamina, 10.0)
             # The single drink is spent: no further prompt, no second toast.
             self.assertIsNone(game.nearby_tapped_bar_barrel())
             game.interact()

@@ -1082,6 +1082,13 @@ class RunFlowMixin:
             # Boss moved/replaced on a different floor than the sealed one: clean
             # up stale seals before engaging the new arena.
             self.unseal_boss_room()
+        elif boss.size >= 2:
+            # Watchdog for the sealed fight: body-contact shoves can walk the
+            # wide boss footprint onto sealed geometry mid-fight, and an actor
+            # whose current position is blocked can never move again
+            # (move_actor only validates destinations). Cheap when clear —
+            # one footprint probe — and re-nudges the boss inward otherwise.
+            self.ensure_enemy_safe_in_boss_arena(boss_room, boss)
 
     def boss_arena_enemy_radius(self, enemy: Enemy) -> float:
         try:
@@ -1181,7 +1188,14 @@ class RunFlowMixin:
                 if best is None or distance < best[0]:
                     best = (distance, px, py)
         if best is None:
-            return False
+            # Degenerate arena: no interior tile clears the footprint probe.
+            # Land on the room center anyway — overlapping another actor
+            # resolves through contact separation, whereas leaving the enemy
+            # buried in sealed geometry freezes it for the whole fight.
+            center_x, center_y = room.center
+            enemy.x, enemy.y = center_x + 0.5, center_y + 0.5
+            enemy.moving = False
+            return True
         enemy.x, enemy.y = best[1], best[2]
         enemy.moving = False
         return True

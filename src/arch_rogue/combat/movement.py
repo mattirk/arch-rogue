@@ -349,9 +349,18 @@ class _MovementCombatMixin:
             wall_depth_relief = (
                 ACTOR_GROUND_DEPTH_OFFSET if block_stairs else 0.0
             )
+            # Same wall probe move_actor uses: a shove must respect the 2x2
+            # boss footprint too, or contact can park the boss inside a wall
+            # (most visibly the boss-arena seal strip) where it freezes.
+            move_radius = (
+                BOSS_FOOTPRINT_MOVE_RADIUS
+                if isinstance(actor, Enemy) and actor.size >= 2
+                else ACTOR_MOVE_COLLISION_RADIUS
+            )
             if not self.dungeon.blocked_for_radius(
                 target_x,
                 actor.y,
+                move_radius,
                 block_stairs=block_stairs,
                 wall_depth_relief=wall_depth_relief,
             ):
@@ -359,6 +368,7 @@ class _MovementCombatMixin:
             if not self.dungeon.blocked_for_radius(
                 actor.x,
                 target_y,
+                move_radius,
                 block_stairs=block_stairs,
                 wall_depth_relief=wall_depth_relief,
             ):
@@ -446,9 +456,18 @@ class _MovementCombatMixin:
         target_y = other.y + ny * min_distance
         block_stairs = isinstance(actor, Player)
         wall_depth_relief = ACTOR_GROUND_DEPTH_OFFSET if block_stairs else 0.0
+        # Same wall probe move_actor uses: a shove must respect the 2x2 boss
+        # footprint too, or contact can park the boss inside a wall (most
+        # visibly the boss-arena seal strip) where it freezes.
+        move_radius = (
+            BOSS_FOOTPRINT_MOVE_RADIUS
+            if isinstance(actor, Enemy) and actor.size >= 2
+            else ACTOR_MOVE_COLLISION_RADIUS
+        )
         if not self.dungeon.blocked_for_radius(
             target_x,
             actor.y,
+            move_radius,
             block_stairs=block_stairs,
             wall_depth_relief=wall_depth_relief,
         ):
@@ -456,6 +475,7 @@ class _MovementCombatMixin:
         if not self.dungeon.blocked_for_radius(
             actor.x,
             target_y,
+            move_radius,
             block_stairs=block_stairs,
             wall_depth_relief=wall_depth_relief,
         ):

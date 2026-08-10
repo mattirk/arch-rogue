@@ -32,6 +32,8 @@ from ..dungeon import (
 
 # 4.7.12: the bar refuge saps the drinker's stamina fast enough to overpower
 # passive regen (30-38/s) — a full bar drains in roughly a second of lingering.
+# The sap lasts only until the bar's tapped barrel is drunk: once the toast is
+# taken the room stops sapping, so stamina recovery runs normal again.
 _BAR_STAMINA_SAP_PER_SECOND = 130.0
 # Refuge rooms tick one heal per this many seconds of lingering — slow enough
 # to read as a calm refuge, not a heal station worth camping.
@@ -413,7 +415,9 @@ class _PlayerCombatMixin:
         of lingering, so it reads as a calm refuge rather than a heal
         station, and only while HP is missing.
         The bar pours at half the garden's pace and quickly saps the
-        drinker's stamina to zero while they linger. The heal accumulator
+        drinker's stamina to zero while they linger — until the bar's one
+        toast is claimed: with ``barrel_drunk`` set on the room, the sap
+        ends and recovery runs normal again. The heal accumulator
         lives on the player, so in co-op the host runs this for the partner's
         actor too (via ``_mp_update_remote_player``) with independent
         progress; HP, stamina, and the floater replicate through snapshots.
@@ -424,7 +428,11 @@ class _PlayerCombatMixin:
             return
         special_room = self.dungeon.special_room_at_point(player.x, player.y)
         kind = special_room.kind if special_room is not None else ""
-        if kind == BAR_ROOM_KIND:
+        if (
+            kind == BAR_ROOM_KIND
+            and special_room is not None
+            and not special_room.state.get("barrel_drunk")
+        ):
             player.stamina = max(
                 0.0, player.stamina - _BAR_STAMINA_SAP_PER_SECOND * dt
             )

@@ -826,8 +826,9 @@ class FlavorRoomTests(unittest.TestCase):
 
     def test_bar_room_heals_slower_than_garden_and_saps_stamina(self) -> None:
         # 4.7.12: the bar refuge pours at half the garden's pace and quickly
-        # drains the drinker's stamina to zero while they linger. No greenish
-        # glow — that aura belongs to the garden.
+        # drains the drinker's stamina to zero while they linger (the bar's
+        # toast not yet taken). No greenish glow — that aura belongs to the
+        # garden.
         game = self._make_game_with_flavor_room()
         try:
             special = game.dungeon.special_room_for_kind(BAR_ROOM_KIND)
@@ -871,6 +872,41 @@ class FlavorRoomTests(unittest.TestCase):
                 f for f in game.floaters if str(f.text).startswith("Bar +")
             ]
             self.assertEqual(len(bar_floaters), 1)
+        finally:
+            tmp = getattr(game, "_flavor_tmpdir", None)
+            if tmp is not None:
+                tmp.cleanup()
+
+    def test_toasted_bar_stops_sapping_and_recovery_runs_normal(self) -> None:
+        # Backlog: "when drinking from the barrel / toasting in bar, restore
+        # stamina recovery to normal" — once the bar's one toast is taken
+        # (``barrel_drunk`` set on the room), the refuge stops overpowering
+        # passive regen and the stamina bar refills while lingering inside.
+        game = self._make_game_with_flavor_room()
+        try:
+            special = game.dungeon.special_room_for_kind(BAR_ROOM_KIND)
+            assert special is not None
+            special.state["barrel_drunk"] = True
+            room = game.dungeon.rooms[special.room_index]
+            cx, cy = room.center
+            game.dungeon.tiles[cx][cy] = Tile.FLOOR
+            game.player.x = cx + 0.5
+            game.player.y = cy + 0.5
+            game.player.stamina = 0.0
+
+            # Normal passive regen (30-38/s) instead of the 130/s sap.
+            from arch_rogue.combat.costs import player_recovery_rates
+
+            stamina_rate, _mana_rate = player_recovery_rates(game.player)
+            game.update_player(0.5)
+            self.assertGreater(game.player.stamina, 10.0)
+            game.update_player(1.0)
+            game.update_player(1.0)
+            self.assertAlmostEqual(
+                game.player.stamina,
+                min(game.player.max_stamina, stamina_rate * 2.5),
+                places=4,
+            )
         finally:
             tmp = getattr(game, "_flavor_tmpdir", None)
             if tmp is not None:
