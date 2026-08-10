@@ -81,7 +81,12 @@ class MenuBaseMixin:
         self.archetypes = archetypes
         self.dungeon_depth = dungeon_depth
         self._menu_font_cache: dict[int, pygame.font.Font] = {}
-        self._menu_backdrop_cache: tuple[object, pygame.Surface] | None = None
+        self._menu_backdrop_cache: (
+            tuple[object, pygame.Surface, int] | None
+        ) = None
+        # Bottom of the safe area inside the backdrop's painted frame; None
+        # until a backdrop draws (draw_menu_backdrop refreshes it every frame).
+        self._menu_backdrop_safe_bottom: int | None = None
         self._menu_text_cache: OrderedDict[
             tuple[int, str, Color, int], pygame.Surface
         ] = OrderedDict()
@@ -740,7 +745,9 @@ class MenuBaseMixin:
         )
         asset = self.ui_asset(key, (width, height))
         if asset is None and key != "menu.background":
-            asset = self.ui_asset("menu.background", (width, height))
+            key = "menu.background"
+            asset = self.ui_asset(key, (width, height))
+        self._menu_backdrop_safe_bottom = height
         if asset is not None:
             cache_key = (
                 key,
@@ -759,8 +766,20 @@ class MenuBaseMixin:
                 wash = pygame.Surface((width, height), pygame.SRCALPHA)
                 wash.fill((*self.shade(accent, -126), 34))
                 backdrop.blit(wash, (0, 0))
-                cached = (cache_key, backdrop)
+                # The authored backdrops paint an ornamental frame along the
+                # screen edges. Capture the safe area inside it so footer
+                # hints keep to the dark floor instead of landing on the
+                # frame's gold rail (exactly where they ended up on the
+                # Deck's 800px-tall panel). Resolved only on rebuild: the
+                # content_rect source lookup must not re-decode the PNG every
+                # frame once the source LRU rotates it out.
+                safe = self.ui_content_rect(
+                    key, pygame.Rect(0, 0, width, height)
+                )
+                safe_bottom = safe.bottom if safe is not None else height
+                cached = (cache_key, backdrop, safe_bottom)
                 self._menu_backdrop_cache = cached
+            self._menu_backdrop_safe_bottom = cached[2]
             self.screen.blit(cached[1], (0, 0))
             return
 
@@ -1221,6 +1240,10 @@ class MenuBaseMixin:
             if self.menu_input_hints_visible()
             else 0
         )
+        if footer_space:
+            # The panel yields the backdrop frame's height so the footer band
+            # sits fully on the dark floor inside the painted frame.
+            footer_space += height - self._menu_backdrop_bottom_limit(height)
         panel_width_limit = self.u(860)
         if getattr(self.g, "mobile_mode", False):
             # The 860px cap fills the intended share of a 1280x720 reference,
@@ -1344,6 +1367,14 @@ class MenuBaseMixin:
             max(1, self.u(1)),
         )
 
+    def _menu_backdrop_bottom_limit(self, height: int) -> int:
+        """Lowest y menu hint text may reach: above the backdrop's painted frame."""
+
+        safe_bottom = getattr(self, "_menu_backdrop_safe_bottom", None)
+        if safe_bottom is None:
+            return height
+        return max(0, min(height, int(safe_bottom)))
+
     def draw_footer(
         self,
         panel: pygame.Rect,
@@ -1353,9 +1384,10 @@ class MenuBaseMixin:
         if not self.menu_input_hints_visible():
             return
         width, height = self.screen.get_size()
+        bottom_limit = self._menu_backdrop_bottom_limit(height)
         margin = min(max(self.u(18), 28), max(16, width // 12))
         available_width = max(1, width - margin * 2)
-        footer_room = max(10, height - panel.bottom - 4)
+        footer_room = max(10, bottom_limit - panel.bottom - 4)
         footer_font = self.fit_menu_font(
             font or self.g.small_font,
             max_height=max(10, min(max(18, height // 18), footer_room)),
@@ -1368,13 +1400,14 @@ class MenuBaseMixin:
         rect = pygame.Rect(
             margin,
             min(
-                height - footer_font.get_height() - bottom_pad,
+                bottom_limit - footer_font.get_height() - bottom_pad,
                 panel.bottom + panel_gap,
             ),
             available_width,
             footer_font.get_height()
             + min(self.u(4), max(2, footer_font.get_height() // 3)),
         )
+        self.g._menu_footer_rect = rect.copy()
         self.draw_text(text, footer_font, self.MUTED, rect, align="center")
 
     def menu_shortcut_section_height(

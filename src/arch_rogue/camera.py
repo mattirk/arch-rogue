@@ -31,6 +31,7 @@ from .constants import (
     WORLD_SCALE,
 )
 from .dungeon import MAP_H, MAP_W
+from .steam_deck import is_steam_deck
 
 
 class CameraMixin:
@@ -84,7 +85,8 @@ class CameraMixin:
         Mobile starts at native scale and adjusts by pinch. Desktop starts at
         the widest view so players see more of the dungeon, except on the HD
         tier, whose high-resolution art carries a closer default of roughly
-        two zoom notches in from the widest view. The HD default sits exactly
+        two zoom notches in from the widest view. The Steam Deck stays at the
+        widest view even on HD. The HD default sits exactly
         on the smallest render bucket (0.8, vs. 0.65 * 1.12**2 = 0.815): with
         a zero residual the world renders straight into the display with no
         oversized intermediate layer and no full-frame composite scale, and
@@ -93,6 +95,12 @@ class CameraMixin:
         """
         if getattr(self, "mobile_mode", False):
             return 1.0
+        # The Deck's 7-inch 1280x800 panel shows few tiles at the HD default,
+        # so it always starts at the widest view; pinch zoom still adjusts
+        # from there. The 0.8-bucket zero-residual economy is a desktop
+        # optimization the small panel-native canvas does not need.
+        if is_steam_deck():
+            return self.VIEW_ZOOM_MIN
         zoom = self.VIEW_ZOOM_MIN
         if getattr(self, "graphics_tier", GRAPHICS_TIER_DEFAULT) == GRAPHICS_TIER_HD:
             zoom = self.WORLD_RENDER_SCALE_BUCKETS[0]

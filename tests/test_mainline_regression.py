@@ -141,9 +141,11 @@ class DesktopDeterminismTests(unittest.TestCase):
     # snapshot now captures spin frame int(8 * FIXED_DT * 8.0) = 1 after the 8
     # scripted frames. Determinism re-verified across two processes.
     # 5.0.1: rebaselined for the sixth title row (Chronicle of descents),
-    # then for the shorter row labels ("Recall descent" / "Chronicle").
+    # then for the shorter row labels ("Recall descent" / "Chronicle"),
+    # then for the stretched (was cover-cropped) title backdrop and the
+    # footer hints moving inside the backdrop's painted frame.
     # Determinism re-verified across two processes each time.
-    TITLE_HASH = "bb8cf87f825bcdc45a7e0ec255babc9ebc09c1cdd056f62f87f056755d267ffd"
+    TITLE_HASH = "2507ef62b5777027d7e8bbf9ee22b0b2cc4a1b3212d323b44780689d114f8a10"
     # 4.7.x: gameplay/crowd rebaselined for the animated (rotating) story
     # relic frames, then for removing the stage nameplates + relic surge
     # rays, then for dropping the guest pose effects and the 1.2x slower

@@ -781,6 +781,28 @@ class UiAssetTests(unittest.TestCase):
             self.assertLessEqual(len(game.ui_assets._render_cache), 256)
             self.assertLessEqual(len(game.ui_assets._source_cache), 16)
 
+    def test_menu_footer_clears_the_backdrop_frame(self) -> None:
+        # The authored menu backdrops paint an ornamental frame along the
+        # screen edges (content_insets in the manifest). The footer hint line
+        # must sit between the panel and the frame's inner edge — on the
+        # Deck's 16:10 panel it used to land straight on the title frame's
+        # gold rail.
+        for state in ("title", "options"):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                game = self.make_game(tmpdir, (1280, 800))
+                game.state = state
+                game.draw()
+                safe_bottom = game.menus._menu_backdrop_safe_bottom
+                self.assertIsNotNone(safe_bottom)
+                # The frame insets are live: the safe area ends above the
+                # screen bottom, and the footer keeps entirely inside it,
+                # below the menu panel.
+                self.assertLess(safe_bottom, game.screen.get_height())
+                footer = game._menu_footer_rect
+                panel = game._last_menu_panel_rect
+                self.assertLessEqual(footer.bottom, safe_bottom)
+                self.assertGreaterEqual(footer.y, panel.bottom)
+
     def test_compact_controls_keep_rows_visible_and_contained(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             game = self.make_game(tmpdir, (640, 480))

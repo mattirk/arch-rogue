@@ -3,7 +3,8 @@
   "assets": {
     "menu.background.title": {
       "path": "menus/background_title.png",
-      "render": "cover"
+      "render": "scale",
+      "content_insets": [16, 15, 16, 14]
     },
 
     "menu.logo.title": {
@@ -77,7 +78,8 @@
     },
     "menu.background": {
       "path": "menus/background.png",
-      "render": "scale"
+      "render": "scale",
+      "content_insets": [16, 17, 16, 14]
     },
     "cutscene.background": {
       "path": "menus/background_cutscene.png",

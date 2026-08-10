@@ -381,6 +381,37 @@ class DeckGraphicsTierDefaultTests(unittest.TestCase):
             )
 
 
+class DeckDefaultZoomTests(unittest.TestCase):
+    """The Deck's 7-inch panel starts at the widest view even on HD."""
+
+    def setUp(self) -> None:
+        clear_deck()
+
+    def tearDown(self) -> None:
+        clear_deck()
+
+    def test_on_deck_hd_defaults_to_widest_zoom(self) -> None:
+        with patch_deck_on(), tempfile.TemporaryDirectory() as tmpdir:
+            game = make_desktop_game(tmpdir)
+            self.assertEqual(game.graphics_tier, GRAPHICS_TIER_HD)
+            self.assertEqual(game.default_view_zoom(), game.VIEW_ZOOM_MIN)
+            self.assertEqual(game.view_zoom, game.VIEW_ZOOM_MIN)
+
+    def test_off_deck_hd_keeps_the_bucket_aligned_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = make_desktop_game(tmpdir)
+            self.assertEqual(game.graphics_tier, GRAPHICS_TIER_HD)
+            self.assertEqual(
+                game.default_view_zoom(), game.WORLD_RENDER_SCALE_BUCKETS[0]
+            )
+
+    def test_on_deck_pinch_zoom_still_adjusts_from_the_default(self) -> None:
+        with patch_deck_on(), tempfile.TemporaryDirectory() as tmpdir:
+            game = make_desktop_game(tmpdir)
+            game.set_view_zoom(game.view_zoom * 1.4)
+            self.assertGreater(game.view_zoom, game.VIEW_ZOOM_MIN)
+
+
 class DeckTouchscreenTests(unittest.TestCase):
     def setUp(self) -> None:
         clear_deck()
