@@ -938,6 +938,11 @@ class Enemy:
     windup_attack: str = field(default="", repr=False, compare=False)
     windup_nx: float = field(default=0.0, repr=False, compare=False)
     windup_ny: float = field(default=0.0, repr=False, compare=False)
+    # Broad kind of the last attack that actually fired ("melee"/"cast"), set by
+    # ``_fire_committed_attack``. Drives the attack/cast pose for enemies whose
+    # ``telegraph`` is flavor text rather than the literal kind (bosses firing
+    # authored abilities). Transient.
+    last_attack_kind: str = field(default="", repr=False, compare=False)
     # 4.8.9 machine intelligence, all transient (host-session AI state):
     # per-ability rotation cooldowns; idle/engaged perception state; target
     # memory (last position the target was noticed at, pursued while

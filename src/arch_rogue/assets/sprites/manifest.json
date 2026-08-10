@@ -949,6 +949,60 @@
           },
           "fps": 9.0,
           "loop": true
+        },
+        "attack": {
+          "directions": {
+            "east": [
+              "actors/ash_gallows_knight/animations/attack/east/frame_000.png",
+              "actors/ash_gallows_knight/animations/attack/east/frame_001.png",
+              "actors/ash_gallows_knight/animations/attack/east/frame_002.png",
+              "actors/ash_gallows_knight/animations/attack/east/frame_003.png"
+            ],
+            "north": [
+              "actors/ash_gallows_knight/animations/attack/north/frame_000.png",
+              "actors/ash_gallows_knight/animations/attack/north/frame_001.png",
+              "actors/ash_gallows_knight/animations/attack/north/frame_002.png",
+              "actors/ash_gallows_knight/animations/attack/north/frame_003.png"
+            ],
+            "north-east": [
+              "actors/ash_gallows_knight/animations/attack/north-east/frame_000.png",
+              "actors/ash_gallows_knight/animations/attack/north-east/frame_001.png",
+              "actors/ash_gallows_knight/animations/attack/north-east/frame_002.png",
+              "actors/ash_gallows_knight/animations/attack/north-east/frame_003.png"
+            ],
+            "north-west": [
+              "actors/ash_gallows_knight/animations/attack/north-west/frame_000.png",
+              "actors/ash_gallows_knight/animations/attack/north-west/frame_001.png",
+              "actors/ash_gallows_knight/animations/attack/north-west/frame_002.png",
+              "actors/ash_gallows_knight/animations/attack/north-west/frame_003.png"
+            ],
+            "south": [
+              "actors/ash_gallows_knight/animations/attack/south/frame_000.png",
+              "actors/ash_gallows_knight/animations/attack/south/frame_001.png",
+              "actors/ash_gallows_knight/animations/attack/south/frame_002.png",
+              "actors/ash_gallows_knight/animations/attack/south/frame_003.png"
+            ],
+            "south-east": [
+              "actors/ash_gallows_knight/animations/attack/south-east/frame_000.png",
+              "actors/ash_gallows_knight/animations/attack/south-east/frame_001.png",
+              "actors/ash_gallows_knight/animations/attack/south-east/frame_002.png",
+              "actors/ash_gallows_knight/animations/attack/south-east/frame_003.png"
+            ],
+            "south-west": [
+              "actors/ash_gallows_knight/animations/attack/south-west/frame_000.png",
+              "actors/ash_gallows_knight/animations/attack/south-west/frame_001.png",
+              "actors/ash_gallows_knight/animations/attack/south-west/frame_002.png",
+              "actors/ash_gallows_knight/animations/attack/south-west/frame_003.png"
+            ],
+            "west": [
+              "actors/ash_gallows_knight/animations/attack/west/frame_000.png",
+              "actors/ash_gallows_knight/animations/attack/west/frame_001.png",
+              "actors/ash_gallows_knight/animations/attack/west/frame_002.png",
+              "actors/ash_gallows_knight/animations/attack/west/frame_003.png"
+            ]
+          },
+          "fps": 12.0,
+          "loop": false
         }
       },
       "name": "Ash Gallows Knight",
@@ -2558,6 +2612,60 @@
           },
           "fps": 9.0,
           "loop": true
+        },
+        "attack": {
+          "directions": {
+            "east": [
+              "actors/gate_tyrant/animations/attack/east/frame_000.png",
+              "actors/gate_tyrant/animations/attack/east/frame_001.png",
+              "actors/gate_tyrant/animations/attack/east/frame_002.png",
+              "actors/gate_tyrant/animations/attack/east/frame_003.png"
+            ],
+            "north": [
+              "actors/gate_tyrant/animations/attack/north/frame_000.png",
+              "actors/gate_tyrant/animations/attack/north/frame_001.png",
+              "actors/gate_tyrant/animations/attack/north/frame_002.png",
+              "actors/gate_tyrant/animations/attack/north/frame_003.png"
+            ],
+            "north-east": [
+              "actors/gate_tyrant/animations/attack/north-east/frame_000.png",
+              "actors/gate_tyrant/animations/attack/north-east/frame_001.png",
+              "actors/gate_tyrant/animations/attack/north-east/frame_002.png",
+              "actors/gate_tyrant/animations/attack/north-east/frame_003.png"
+            ],
+            "north-west": [
+              "actors/gate_tyrant/animations/attack/north-west/frame_000.png",
+              "actors/gate_tyrant/animations/attack/north-west/frame_001.png",
+              "actors/gate_tyrant/animations/attack/north-west/frame_002.png",
+              "actors/gate_tyrant/animations/attack/north-west/frame_003.png"
+            ],
+            "south": [
+              "actors/gate_tyrant/animations/attack/south/frame_000.png",
+              "actors/gate_tyrant/animations/attack/south/frame_001.png",
+              "actors/gate_tyrant/animations/attack/south/frame_002.png",
+              "actors/gate_tyrant/animations/attack/south/frame_003.png"
+            ],
+            "south-east": [
+              "actors/gate_tyrant/animations/attack/south-east/frame_000.png",
+              "actors/gate_tyrant/animations/attack/south-east/frame_001.png",
+              "actors/gate_tyrant/animations/attack/south-east/frame_002.png",
+              "actors/gate_tyrant/animations/attack/south-east/frame_003.png"
+            ],
+            "south-west": [
+              "actors/gate_tyrant/animations/attack/south-west/frame_000.png",
+              "actors/gate_tyrant/animations/attack/south-west/frame_001.png",
+              "actors/gate_tyrant/animations/attack/south-west/frame_002.png",
+              "actors/gate_tyrant/animations/attack/south-west/frame_003.png"
+            ],
+            "west": [
+              "actors/gate_tyrant/animations/attack/west/frame_000.png",
+              "actors/gate_tyrant/animations/attack/west/frame_001.png",
+              "actors/gate_tyrant/animations/attack/west/frame_002.png",
+              "actors/gate_tyrant/animations/attack/west/frame_003.png"
+            ]
+          },
+          "fps": 12.0,
+          "loop": false
         }
       },
       "name": "Gate Tyrant",
@@ -3409,6 +3517,60 @@
           },
           "fps": 9.0,
           "loop": true
+        },
+        "attack": {
+          "directions": {
+            "east": [
+              "actors/mycelial_matron/animations/attack/east/frame_000.png",
+              "actors/mycelial_matron/animations/attack/east/frame_001.png",
+              "actors/mycelial_matron/animations/attack/east/frame_002.png",
+              "actors/mycelial_matron/animations/attack/east/frame_003.png"
+            ],
+            "north": [
+              "actors/mycelial_matron/animations/attack/north/frame_000.png",
+              "actors/mycelial_matron/animations/attack/north/frame_001.png",
+              "actors/mycelial_matron/animations/attack/north/frame_002.png",
+              "actors/mycelial_matron/animations/attack/north/frame_003.png"
+            ],
+            "north-east": [
+              "actors/mycelial_matron/animations/attack/north-east/frame_000.png",
+              "actors/mycelial_matron/animations/attack/north-east/frame_001.png",
+              "actors/mycelial_matron/animations/attack/north-east/frame_002.png",
+              "actors/mycelial_matron/animations/attack/north-east/frame_003.png"
+            ],
+            "north-west": [
+              "actors/mycelial_matron/animations/attack/north-west/frame_000.png",
+              "actors/mycelial_matron/animations/attack/north-west/frame_001.png",
+              "actors/mycelial_matron/animations/attack/north-west/frame_002.png",
+              "actors/mycelial_matron/animations/attack/north-west/frame_003.png"
+            ],
+            "south": [
+              "actors/mycelial_matron/animations/attack/south/frame_000.png",
+              "actors/mycelial_matron/animations/attack/south/frame_001.png",
+              "actors/mycelial_matron/animations/attack/south/frame_002.png",
+              "actors/mycelial_matron/animations/attack/south/frame_003.png"
+            ],
+            "south-east": [
+              "actors/mycelial_matron/animations/attack/south-east/frame_000.png",
+              "actors/mycelial_matron/animations/attack/south-east/frame_001.png",
+              "actors/mycelial_matron/animations/attack/south-east/frame_002.png",
+              "actors/mycelial_matron/animations/attack/south-east/frame_003.png"
+            ],
+            "south-west": [
+              "actors/mycelial_matron/animations/attack/south-west/frame_000.png",
+              "actors/mycelial_matron/animations/attack/south-west/frame_001.png",
+              "actors/mycelial_matron/animations/attack/south-west/frame_002.png",
+              "actors/mycelial_matron/animations/attack/south-west/frame_003.png"
+            ],
+            "west": [
+              "actors/mycelial_matron/animations/attack/west/frame_000.png",
+              "actors/mycelial_matron/animations/attack/west/frame_001.png",
+              "actors/mycelial_matron/animations/attack/west/frame_002.png",
+              "actors/mycelial_matron/animations/attack/west/frame_003.png"
+            ]
+          },
+          "fps": 12.0,
+          "loop": false
         }
       },
       "name": "Mycelial Matron",
@@ -4212,6 +4374,60 @@
           },
           "fps": 9.0,
           "loop": true
+        },
+        "attack": {
+          "directions": {
+            "east": [
+              "actors/rime_chanter/animations/attack/east/frame_000.png",
+              "actors/rime_chanter/animations/attack/east/frame_001.png",
+              "actors/rime_chanter/animations/attack/east/frame_002.png",
+              "actors/rime_chanter/animations/attack/east/frame_003.png"
+            ],
+            "north": [
+              "actors/rime_chanter/animations/attack/north/frame_000.png",
+              "actors/rime_chanter/animations/attack/north/frame_001.png",
+              "actors/rime_chanter/animations/attack/north/frame_002.png",
+              "actors/rime_chanter/animations/attack/north/frame_003.png"
+            ],
+            "north-east": [
+              "actors/rime_chanter/animations/attack/north-east/frame_000.png",
+              "actors/rime_chanter/animations/attack/north-east/frame_001.png",
+              "actors/rime_chanter/animations/attack/north-east/frame_002.png",
+              "actors/rime_chanter/animations/attack/north-east/frame_003.png"
+            ],
+            "north-west": [
+              "actors/rime_chanter/animations/attack/north-west/frame_000.png",
+              "actors/rime_chanter/animations/attack/north-west/frame_001.png",
+              "actors/rime_chanter/animations/attack/north-west/frame_002.png",
+              "actors/rime_chanter/animations/attack/north-west/frame_003.png"
+            ],
+            "south": [
+              "actors/rime_chanter/animations/attack/south/frame_000.png",
+              "actors/rime_chanter/animations/attack/south/frame_001.png",
+              "actors/rime_chanter/animations/attack/south/frame_002.png",
+              "actors/rime_chanter/animations/attack/south/frame_003.png"
+            ],
+            "south-east": [
+              "actors/rime_chanter/animations/attack/south-east/frame_000.png",
+              "actors/rime_chanter/animations/attack/south-east/frame_001.png",
+              "actors/rime_chanter/animations/attack/south-east/frame_002.png",
+              "actors/rime_chanter/animations/attack/south-east/frame_003.png"
+            ],
+            "south-west": [
+              "actors/rime_chanter/animations/attack/south-west/frame_000.png",
+              "actors/rime_chanter/animations/attack/south-west/frame_001.png",
+              "actors/rime_chanter/animations/attack/south-west/frame_002.png",
+              "actors/rime_chanter/animations/attack/south-west/frame_003.png"
+            ],
+            "west": [
+              "actors/rime_chanter/animations/attack/west/frame_000.png",
+              "actors/rime_chanter/animations/attack/west/frame_001.png",
+              "actors/rime_chanter/animations/attack/west/frame_002.png",
+              "actors/rime_chanter/animations/attack/west/frame_003.png"
+            ]
+          },
+          "fps": 12.0,
+          "loop": false
         }
       },
       "name": "Rime Chanter",
@@ -5786,6 +6002,60 @@
           },
           "fps": 9.0,
           "loop": true
+        },
+        "attack": {
+          "directions": {
+            "east": [
+              "actors/voidbound_rune_sentinel/animations/attack/east/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/attack/east/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/attack/east/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/attack/east/frame_003.png"
+            ],
+            "north": [
+              "actors/voidbound_rune_sentinel/animations/attack/north/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/attack/north/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/attack/north/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/attack/north/frame_003.png"
+            ],
+            "north-east": [
+              "actors/voidbound_rune_sentinel/animations/attack/north-east/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/attack/north-east/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/attack/north-east/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/attack/north-east/frame_003.png"
+            ],
+            "north-west": [
+              "actors/voidbound_rune_sentinel/animations/attack/north-west/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/attack/north-west/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/attack/north-west/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/attack/north-west/frame_003.png"
+            ],
+            "south": [
+              "actors/voidbound_rune_sentinel/animations/attack/south/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/attack/south/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/attack/south/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/attack/south/frame_003.png"
+            ],
+            "south-east": [
+              "actors/voidbound_rune_sentinel/animations/attack/south-east/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/attack/south-east/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/attack/south-east/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/attack/south-east/frame_003.png"
+            ],
+            "south-west": [
+              "actors/voidbound_rune_sentinel/animations/attack/south-west/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/attack/south-west/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/attack/south-west/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/attack/south-west/frame_003.png"
+            ],
+            "west": [
+              "actors/voidbound_rune_sentinel/animations/attack/west/frame_000.png",
+              "actors/voidbound_rune_sentinel/animations/attack/west/frame_001.png",
+              "actors/voidbound_rune_sentinel/animations/attack/west/frame_002.png",
+              "actors/voidbound_rune_sentinel/animations/attack/west/frame_003.png"
+            ]
+          },
+          "fps": 12.0,
+          "loop": false
         }
       },
       "name": "Voidbound Rune Sentinel",

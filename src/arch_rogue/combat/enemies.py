@@ -188,6 +188,12 @@ class _EnemiesCombatMixin:
         if not attack:
             return
         ability = ABILITY_INDEX.get(attack)
+        if ability is not None and ability.effect in ("bolt", "fan"):
+            enemy.last_attack_kind = "cast"
+        elif ability is None and attack == LEGACY_CAST_KEY:
+            enemy.last_attack_kind = "cast"
+        else:
+            enemy.last_attack_kind = "melee"
         if ability is None:
             if attack == LEGACY_CAST_KEY:
                 self.enemy_cast(

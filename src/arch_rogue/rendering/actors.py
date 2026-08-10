@@ -646,9 +646,16 @@ class RenderingActorMixin:
         if getattr(self, "enemy_hit_flashes", {}).get(id(enemy), 0.0) > 0.0:
             return "hit"
         just_attacked = enemy.attack_timer > max(0.0, enemy.attack_cooldown - 0.22)
-        if just_attacked and enemy.telegraph == "cast":
+        # Bosses carry flavor text in ``telegraph``; the literal kind of the
+        # attack that fired lives in ``last_attack_kind`` (replicated to
+        # joiners alongside ``attack_timer``).
+        attack_kind = enemy.last_attack_kind or enemy.telegraph
+        if just_attacked and enemy.is_boss_encounter and attack_kind in ("melee", "cast"):
+            # Bosses only author an ``attack`` clip; use it for casts too.
+            return "attack"
+        if just_attacked and attack_kind == "cast":
             return "cast"
-        if just_attacked and enemy.telegraph == "melee":
+        if just_attacked and attack_kind == "melee":
             return "attack"
         return "walk" if enemy.moving else "idle"
 

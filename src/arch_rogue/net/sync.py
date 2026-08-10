@@ -651,6 +651,8 @@ def enemy_compact_dict(enemy: Any) -> dict[str, Any]:
     # never leave idle/walk while striking.
     if enemy.attack_timer:
         data["at"] = round(enemy.attack_timer, 3)
+    if enemy.last_attack_kind:
+        data["lk"] = enemy.last_attack_kind
     if enemy.statuses:
         data["st"] = {
             key: round(value, 2) for key, value in enemy.statuses.items()
@@ -675,6 +677,7 @@ def apply_enemy_compact(game: Any, enemy: Any, data: dict[str, Any]) -> None:
     enemy.windup_duration = float(data.get("wd", 0.0))
     enemy.windup_attack = str(data.get("wa", ""))
     enemy.attack_timer = float(data.get("at", 0.0))
+    enemy.last_attack_kind = str(data.get("lk", ""))
     statuses = data.get("st")
     enemy.statuses = (
         {str(key): float(value) for key, value in statuses.items()}
