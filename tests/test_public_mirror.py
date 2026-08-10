@@ -46,6 +46,10 @@ def _touch(root: Path, relative: str) -> None:
 
 
 @unittest.skipIf(shutil.which("rsync") is None, "rsync is not installed")
+@unittest.skipUnless(
+    SCRIPT.exists(),
+    "mirror script is master-only (not allowlisted into the public snapshot)",
+)
 class PublicMirrorSnapshotTests(unittest.TestCase):
     def _build_fake_master(self, root: Path) -> None:
         for relative in (
