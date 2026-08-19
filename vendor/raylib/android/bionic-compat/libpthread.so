@@ -1,0 +1,6 @@
+/* Odin dev-2026-07 emits -lpthread for Linux-subtarget Android builds.
+ * Android's pthread API is part of Bionic libc and NDK r28c intentionally
+ * ships no standalone libpthread. Keep this linker-only compatibility shim
+ * ahead of the NDK search path; no libpthread dependency may reach an APK.
+ */
+INPUT(-lc)

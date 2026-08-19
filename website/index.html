@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080a0f">
-  <meta name="description" content="Download Arch Rogue for Windows, Linux, macOS, and Android, or wishlist it on Steam.">
-  <meta property="og:title" content="Arch Rogue Downloads">
-  <meta property="og:description" content="Get the latest Arch Rogue build for your platform.">
+  <meta name="description" content="Download Arch Rogue Odin 6.0.0-alpha.21 for Linux x64 or Android. Windows and macOS are coming soon; Steam is wishlist and store only.">
+  <meta property="og:title" content="Arch Rogue Odin Downloads">
+  <meta property="og:description" content="Get the latest Arch Rogue Odin alpha for Linux x64 or Android.">
   <meta property="og:image" content="assets/icon.png">
-  <title>Arch Rogue Downloads</title>
+  <title>Arch Rogue Odin Downloads</title>
   <link rel="icon" href="assets/icon.png">
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
@@ -17,8 +17,8 @@
   <div class="embers" aria-hidden="true"></div>
   <main class="page-shell">
     <header class="hero">
-      <!-- Animated variant (4.10.3): the diamond relic spins; title_logo.png
-           stays as the static fallback used by capsules and older embeds. -->
+      <!-- The diamond relic spins here; title_logo.png remains the static
+           fallback used by capsules and older embeds. -->
       <img class="logo" src="assets/title_logo_spin.gif" width="640" height="122" alt="Arch Rogue">
     </header>
 
@@ -36,37 +36,37 @@
       <div class="section-heading">
         <span class="rule" aria-hidden="true"></span>
         <div>
-          <p class="kicker">Latest bleeding-edge build</p>
+          <p class="kicker">Odin 6.0.0-alpha.21 · bleeding-edge build</p>
           <h2 id="download-title">Choose your platform</h2>
         </div>
         <span class="rule" aria-hidden="true"></span>
       </div>
 
       <div class="download-grid">
-        <a class="download-badge" data-platform="windows" href="https://github.com/mattirk/arch-rogue/releases" rel="noopener">
+        <a class="download-badge is-unavailable" data-platform="windows" role="link" aria-disabled="true" tabindex="-1">
           <span class="platform-icon-frame"><img src="assets/platform-windows.png" width="192" height="192" alt=""></span>
-          <span class="badge-copy"><small>Download for</small><strong>Windows</strong><span>64-bit executable</span></span>
+          <span class="badge-copy"><small>Coming soon</small><strong>Windows</strong><span>64-bit build in development</span></span>
         </a>
         <a class="download-badge" data-platform="linux" href="https://github.com/mattirk/arch-rogue/releases" rel="noopener">
           <span class="platform-icon-frame"><img src="assets/platform-linux.png" width="192" height="192" alt=""></span>
-          <span class="badge-copy"><small>Download for</small><strong>Linux</strong><span>64-bit binary</span></span>
+          <span class="badge-copy"><small>Download for</small><strong>Linux</strong><span>x64 tar.gz archive</span></span>
         </a>
-        <a class="download-badge" data-platform="macos" href="https://github.com/mattirk/arch-rogue/releases" rel="noopener">
+        <a class="download-badge is-unavailable" data-platform="macos" role="link" aria-disabled="true" tabindex="-1">
           <span class="platform-icon-frame"><img src="assets/platform-macos.png" width="192" height="192" alt=""></span>
-          <span class="badge-copy"><small>Download for</small><strong>macOS</strong><span>Apple Silicon + Intel</span></span>
+          <span class="badge-copy"><small>Coming soon</small><strong>macOS</strong><span>Desktop build in development</span></span>
         </a>
         <a class="download-badge" data-platform="android" href="https://github.com/mattirk/arch-rogue/releases" rel="noopener">
           <span class="platform-icon-frame"><img src="assets/platform-android.png" width="192" height="192" alt=""></span>
-          <span class="badge-copy"><small>Download for</small><strong>Android</strong><span class="badge-sub">APK<em class="beta-tag">Beta</em></span></span>
+          <span class="badge-copy"><small>Download for</small><strong>Android</strong><span class="badge-sub">Signed APK<em class="alpha-tag">Alpha</em></span></span>
         </a>
         <a class="download-badge" href="https://store.steampowered.com/app/5031380/" rel="noopener">
           <span class="platform-icon-frame"><img src="assets/platform-steam.png" width="192" height="192" alt=""></span>
-          <span class="badge-copy"><small>Wishlist on</small><strong>Steam</strong><span>Store page</span></span>
+          <span class="badge-copy"><small>Wishlist on</small><strong>Steam</strong><span>Store page only</span></span>
         </a>
       </div>
 
-      <p class="release-status" data-release-status role="status" aria-live="polite">Loading the latest release…</p>
-      <p class="install-note">These are automated prerelease builds. Windows and macOS packages are not yet store-signed; Android may ask you to allow installation from this source.</p>
+      <p class="release-status" data-release-status role="status" aria-live="polite">Loading release details…</p>
+      <p class="install-note">Linux and Android are automated alpha builds. The Android APK is signed, but Android may ask you to allow installation from this source. Windows and macOS builds are coming soon; Steam currently links to the wishlist and store page only.</p>
     </section>
   </main>
 
@@ -79,6 +79,6 @@
       <a href="privacy.html">Privacy</a>
     </nav>
   </footer>
-  <noscript><p class="noscript">JavaScript is disabled. The download buttons open the GitHub releases page.</p></noscript>
+  <noscript><p class="noscript">JavaScript is disabled. Linux and Android open the GitHub releases page; Windows and macOS are coming soon.</p></noscript>
 </body>
 </html>

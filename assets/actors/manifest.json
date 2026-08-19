@@ -1,0 +1,1081 @@
+{
+ "actors": {
+  "acolyte": {
+   "anchor": [
+    0.5,
+    0.8164
+   ],
+   "canvas_world": 58.15,
+   "cell": 256,
+   "clips": {
+    "attack": {
+     "fps": 12.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "af97236ba7772b151bb5545dc6a7be96833bded6a05cb620ab0f50c56b88c6d2"
+    },
+    "cast": {
+     "fps": 10.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "9c0f39ceebc35ab65379e31e369e4e9926aec33be3d55aaa09269e1e2832560b"
+    },
+    "dead": {
+     "fps": 3.0,
+     "frames": 5,
+     "loop": true,
+     "rows": 8,
+     "sha256": "da9c70e203bdfb5eed8cbadd882f6206286162b5407ee9d46c1839c01397a615"
+    },
+    "die": {
+     "fps": 8.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "3c2fe9c72f3434cbf0c619d7fdd4d530456154a0da44496fd69bc191ebb47f90"
+    },
+    "idle": {
+     "fps": 5.0,
+     "frames": 7,
+     "loop": true,
+     "rows": 8,
+     "sha256": "7eb1e8ea8d88266489520aa6627941e323e65a231d8a20fd7a7d029f540d026d"
+    },
+    "preview_idle": {
+     "fps": 5.0,
+     "frames": 7,
+     "loop": true,
+     "rows": 1,
+     "sha256": "d7f2245f469c5827e097f5d9e10f762d8749b3b47d8f791383074c77f349be6e"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "bf5c0102e121266bbbc07d996ffd9dfa86881f3cac76b5015fa1a25e9c02cc4e"
+    }
+   },
+   "source_canvas": [
+    256,
+    256
+   ]
+  },
+  "arcanist": {
+   "anchor": [
+    0.5,
+    0.8203
+   ],
+   "canvas_world": 57.8,
+   "cell": 256,
+   "clips": {
+    "attack": {
+     "fps": 12.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "9904b73a8d2f67ad787f72c9dc872bf6f354ff626c72bfc0f075bc5d65da4377"
+    },
+    "cast": {
+     "fps": 10.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "715a76dfc37789f3b83321d553a89751fcb09cb1a274300167d2ac7e89c42f49"
+    },
+    "dead": {
+     "fps": 3.0,
+     "frames": 5,
+     "loop": true,
+     "rows": 8,
+     "sha256": "770d784f66f14e691b3c27e29b763c69c3a11b008431a8f9d1ffaaea22704bda"
+    },
+    "die": {
+     "fps": 8.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "53dc49e3e4f878a0f01948059e0519d7073941c41f813ad1c380d9e31de75f48"
+    },
+    "idle": {
+     "fps": 5.0,
+     "frames": 7,
+     "loop": true,
+     "rows": 8,
+     "sha256": "1caea716dd72427be2e5ad0c9edf9bf37cbce5942a958dcb944040976a6aea16"
+    },
+    "preview_idle": {
+     "fps": 5.0,
+     "frames": 7,
+     "loop": true,
+     "rows": 1,
+     "sha256": "70803c13d4e7c1b50a4bfb221787ece8221cd878433a9ab68529ba41ed7d1a0d"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "c2e9ced916befc49be80d0b4575c94cdd4cf4d5e65d5985a72a3ef2285ec1012"
+    }
+   },
+   "source_canvas": [
+    256,
+    256
+   ]
+  },
+  "ash_gallows_knight": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "canvas_world": 101.0,
+   "cell": 224,
+   "clips": {
+    "attack": {
+     "fps": 12.0,
+     "frames": 4,
+     "loop": false,
+     "rows": 8,
+     "sha256": "50a932c7207298fcf8dbca1bc77c0ea8a29d90ec25f2b7e3fea6178e587ccefb"
+    },
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "8c4acb489d7fe9e1a92b7d3ffb52f07ebf2396d70dc53608e5b3cd9743678426"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "41b2b8be438acb33d206c619e3b0f83c55101b0ed75291d1705837ed25f5dd3e"
+    }
+   },
+   "source_canvas": [
+    224,
+    224
+   ]
+  },
+  "ash_hound": {
+   "anchor": [
+    0.5,
+    0.7946
+   ],
+   "canvas_world": 33.04,
+   "cell": 112,
+   "clips": {
+    "idle": {
+     "fps": 5.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "767543304a40dcff33188b4ab9b1390d2592ecbbd24a7c1476eb880799235888"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "de9234ff9ece00883dca72bee465388379df94f498f8f44cead621e92e69242a"
+    }
+   },
+   "source_canvas": [
+    112,
+    112
+   ]
+  },
+  "bar_dancer": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "canvas_world": 72.17,
+   "cell": 244,
+   "clips": {
+    "dance": {
+     "fps": 8.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "abb74d3a56ccb559e806c21f4d7b2c022d4df20856013169df5e50bfd151f00d"
+    },
+    "walk": {
+     "fps": 8.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "414d53278d441a3f23dc638ce8e2f830ddbe7edd710a4bc0cf57b9b4709eb69b"
+    }
+   },
+   "source_canvas": [
+    244,
+    244
+   ]
+  },
+  "bone_imp": {
+   "anchor": [
+    0.5,
+    0.7339
+   ],
+   "canvas_world": 47.08,
+   "cell": 124,
+   "clips": {
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "051f0665c8242dd641835cde6ce4e580689c2c1d2fca7a606b302223325813cd"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "1f84dd09a934f63bcd7e4abe2031fdc0f000a92b2f5153fc979e211b0ad5918b"
+    }
+   },
+   "source_canvas": [
+    124,
+    124
+   ]
+  },
+  "crypt_brute": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "canvas_world": 79.85,
+   "cell": 220,
+   "clips": {
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "a0cba53def5b3a9ecdfbdb7215e942855e0d4cf80c1815a835bbaf1cff01f60b"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "23c117d70cbcaba542435c2d77c14859f00a0779cb4a3b7390b82851d897d658"
+    }
+   },
+   "source_canvas": [
+    220,
+    220
+   ]
+  },
+  "cultist": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "canvas_world": 67.13,
+   "cell": 184,
+   "clips": {
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "c4dc9e7f4f06d04b9d61e6190b0240b0f6b962dc44ce4144398deec3adcf432e"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "4b777141b09aaa5b2d8de4f5299b434015be66ea9fd4c94991c87694d0c8210a"
+    }
+   },
+   "source_canvas": [
+    184,
+    184
+   ]
+  },
+  "familiar_crow": {
+   "anchor": [
+    0.5,
+    0.9412
+   ],
+   "canvas_world": 24.4,
+   "cell": 136,
+   "clips": {
+    "idle": {
+     "fps": 5.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "8b7f1991c329afc1610d1a159abc0fe05f257833201b5d76fd589e72e93f4f20"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "49041e706898989cb1147429272ed42ac4ff8775ece6fc881d57411b6438aa2d"
+    }
+   },
+   "source_canvas": [
+    136,
+    136
+   ]
+  },
+  "familiar_wisp": {
+   "anchor": [
+    0.5,
+    0.7216
+   ],
+   "canvas_world": 37.81,
+   "cell": 97,
+   "clips": {
+    "idle": {
+     "fps": 5.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "6a882a56647c6b938aa3700ee085cb49a1541cda1eb436c9332a550d510d3c9c"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "54e1729d59415c3ff4c87903e1adfb75c08549d1120e9f7009c486baca16d0fa"
+    }
+   },
+   "source_canvas": [
+    97,
+    97
+   ]
+  },
+  "garden_frog": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "canvas_world": 35.72,
+   "cell": 240,
+   "clips": {
+    "dance": {
+     "fps": 8.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "e62b9b03187138b7da01192c19ec6b3a628d838bfad4f0cfc6d1602256026889"
+    },
+    "walk": {
+     "fps": 8.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "0d3495229d6deddd8a70cce82ff172749234c039990b1a26aa36c56a2c2df0bf"
+    }
+   },
+   "source_canvas": [
+    240,
+    240
+   ]
+  },
+  "gate_tyrant": {
+   "anchor": [
+    0.5,
+    0.754
+   ],
+   "canvas_world": 112.8,
+   "cell": 252,
+   "clips": {
+    "attack": {
+     "fps": 12.0,
+     "frames": 4,
+     "loop": false,
+     "rows": 8,
+     "sha256": "92e88bc29bba7a0b37c34d0c829c7703a62b8e4d32b7144c6a834ca301e6ce90"
+    },
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "d39c9ce6fb873c632dc6a0848ba31247cd7e8b692348edf7faf7132178951fc9"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "0e3d1686070d8ef5c8c4765356667d341455b3c05515f92a2019c576ac190d92"
+    }
+   },
+   "source_canvas": [
+    252,
+    252
+   ]
+  },
+  "gate_warden": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "canvas_world": 77.6,
+   "cell": 208,
+   "clips": {
+    "attack": {
+     "fps": 12.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "55ce49ca53429baa52e5eac510cfae310f1fcae005f3b0a97032d451b9a5ae13"
+    },
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "2db21683026cfa05d49253a727c9f1d496d2d27de35c99f0bed9b202521cde87"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "4f56d3e6b4d1d7c1241b1d151ea5af1aecb99745530e51a108e44feee70186b8"
+    }
+   },
+   "source_canvas": [
+    208,
+    208
+   ]
+  },
+  "ghoul": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "canvas_world": 67.03,
+   "cell": 188,
+   "clips": {
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "52e731ba22354e5866ca27e0b360287478e23f430e832e9be1da8fa3a23dbbfd"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "b565d7376df48c9ae7402a4e57eaee5c6d4276cd7f02c8e19fe47ebd94910e11"
+    }
+   },
+   "source_canvas": [
+    188,
+    188
+   ]
+  },
+  "grave_archer": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "canvas_world": 67.84,
+   "cell": 188,
+   "clips": {
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "8edbc6404b7d3fff00e37952920e592bd93dbd4e140979fd9d7ef11775fc361f"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "7ad6b2aa4ebea7984cebcd8358d6b47730e38f5ae06818d4219cbb3e3541ecc2"
+    }
+   },
+   "source_canvas": [
+    188,
+    188
+   ]
+  },
+  "hollow_knight": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "canvas_world": 75.04,
+   "cell": 208,
+   "clips": {
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "097ad9d918069af8ef055d543d267d266cd30c212eb17315d0dcb2d3a06509d4"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "230178c568df5c6f652254dbee4d746f7c8f110d582ab8afeabff76ca2c0d0ab"
+    }
+   },
+   "source_canvas": [
+    208,
+    208
+   ]
+  },
+  "lossless_soul": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "canvas_world": 70.4,
+   "cell": 244,
+   "clips": {
+    "dance": {
+     "fps": 8.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "f96032d78a28c4ef2895da5f6ba827e43dc67a54d644d26c36f96a5b6441fa6a"
+    },
+    "walk": {
+     "fps": 8.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "2d8c6633bc08ebed20c166d55106ddb696fbe3b0143271809f1ed68878c3fff0"
+    }
+   },
+   "source_canvas": [
+    244,
+    244
+   ]
+  },
+  "mycelial_matron": {
+   "anchor": [
+    0.5,
+    0.7548
+   ],
+   "canvas_world": 99.2,
+   "cell": 208,
+   "clips": {
+    "attack": {
+     "fps": 12.0,
+     "frames": 4,
+     "loop": false,
+     "rows": 8,
+     "sha256": "ae784b7a81b6cdad35d0f9c24ca17509c5ffbdf28748e6d6335a40b6a36a29e4"
+    },
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "8429102510a1340deec816dfee2f09d535425611ad041e8fa88d0052c0b3da87"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "1edecccb5fea36cb78cb6da12555a6659a2c109fa981bb764109e56c68149a45"
+    }
+   },
+   "source_canvas": [
+    208,
+    208
+   ]
+  },
+  "plague_toad": {
+   "anchor": [
+    0.5,
+    0.7439
+   ],
+   "canvas_world": 53.45,
+   "cell": 164,
+   "clips": {
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "6a7db8e94b1e1b1efcf5b0ffb2349ecd8cf5c6ae9222b9e5865056150859ee8c"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "5f74003924a79cb7bc6dcafbeda55fefaad2bb824287081a5283c67f9bde9cfa"
+    }
+   },
+   "source_canvas": [
+    164,
+    164
+   ]
+  },
+  "ranger": {
+   "anchor": [
+    0.5,
+    0.8242
+   ],
+   "canvas_world": 62.81,
+   "cell": 256,
+   "clips": {
+    "attack": {
+     "fps": 12.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "ef0239a7880b45c77c3d749ea9c06b881c1e2d737b7172bffe5fd1fe0d9c9174"
+    },
+    "cast": {
+     "fps": 10.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "4bcb607f91afba6d9c1efb663d672be7319dddbb3045e72cf6a08c6cd86e0b4e"
+    },
+    "dead": {
+     "fps": 3.0,
+     "frames": 5,
+     "loop": true,
+     "rows": 8,
+     "sha256": "e39483fb711313b7a83d7d6ea34b6c305c3260c7441a6e7da023ae60896debc6"
+    },
+    "die": {
+     "fps": 8.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "5c68987a725c17ca9f4251e15153af2a815063e78cb3a8f6563381cb095b53e4"
+    },
+    "idle": {
+     "fps": 5.0,
+     "frames": 7,
+     "loop": true,
+     "rows": 8,
+     "sha256": "e259cea35b8cf924b6a546e7ad39af03e42826a13b62560434af9af15ec8a0e1"
+    },
+    "pet": {
+     "fps": 10.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "e62aa3db78dd3a2d2d59067c9796e1e83f09a55a8ff1d051ba007f0d621acf5f"
+    },
+    "preview_idle": {
+     "fps": 5.0,
+     "frames": 7,
+     "loop": true,
+     "rows": 1,
+     "sha256": "663f1fac256fe1ddcd2643e69d08efd936a87a2f4420bff12037962a055b6692"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "959edbc0d119344dfb179e5df00afdf62753ce5115be8f0a520b69e4fa4044a4"
+    }
+   },
+   "source_canvas": [
+    256,
+    256
+   ]
+  },
+  "rime_chanter": {
+   "anchor": [
+    0.5,
+    0.7547
+   ],
+   "canvas_world": 100.14,
+   "cell": 212,
+   "clips": {
+    "attack": {
+     "fps": 12.0,
+     "frames": 4,
+     "loop": false,
+     "rows": 8,
+     "sha256": "922ebb31383ec1ec2e2b079aefaf814b98f2490cb81d2305135b159e713db4c9"
+    },
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "f866f25cfb2efe963703d8b2273b7a61ecae61634989921612c72877707a7a95"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "f4d92341631e8e3df67cf864d5d4172e1f19bd6a151da8e787a73d9f894291e6"
+    }
+   },
+   "source_canvas": [
+    212,
+    212
+   ]
+  },
+  "rogue": {
+   "anchor": [
+    0.5,
+    0.832
+   ],
+   "canvas_world": 55.42,
+   "cell": 256,
+   "clips": {
+    "attack": {
+     "fps": 12.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "693bbf0060886f274ded411d27b18b779e05a5bfb97ca32e47782382ee653484"
+    },
+    "cast": {
+     "fps": 10.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "02b0f1e274507f28a9f9de0434663bc78deef5317b3173e66ce6b8cf6da20d0a"
+    },
+    "dead": {
+     "fps": 3.0,
+     "frames": 5,
+     "loop": true,
+     "rows": 8,
+     "sha256": "1a37889fed9f71b7edf67cdacf968beaeb5532cc93b0ed29e847822f2f4fc849"
+    },
+    "die": {
+     "fps": 8.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "98a78f961b93f034caa250922295216eca1843136252ceb9299ec7f99fff7a26"
+    },
+    "idle": {
+     "fps": 5.0,
+     "frames": 7,
+     "loop": true,
+     "rows": 8,
+     "sha256": "9b61190c1eba88d5508d036999f037ac935b2eb0396d9159f177525b54a7ad13"
+    },
+    "preview_idle": {
+     "fps": 5.0,
+     "frames": 7,
+     "loop": true,
+     "rows": 1,
+     "sha256": "f1f63b77bfd950a5673635e96bf334901b9b2bf662d6156dc12f7e72ef570e63"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "cfaa59e33542eaf50995f524b254eb4286d71b69bc5a7eecc72a185635798463"
+    }
+   },
+   "source_canvas": [
+    256,
+    256
+   ]
+  },
+  "rune_sentinel": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "canvas_world": 70.4,
+   "cell": 184,
+   "clips": {
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "0cf60171e1b2cc6796f9b4cc82364c2d80bfa493b93427cf6de7378cf9d1706f"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "1510a83b89d242c25a9222c941eaac0c00d1363847b80bbf3a824bf9f0c72200"
+    }
+   },
+   "source_canvas": [
+    184,
+    184
+   ]
+  },
+  "shopkeeper": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "canvas_world": 71.19,
+   "cell": 180,
+   "clips": {
+    "dance": {
+     "fps": 8.0,
+     "frames": 16,
+     "loop": true,
+     "rows": 8,
+     "sha256": "fdb9023f6f94371030345f23628505b382f6dc7e6ab4b3a3d79da913e419fdfd"
+    },
+    "idle": {
+     "fps": 8.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "7a8f4315b013df6d698cc82ae34fb0655136a761a5ba84b3e742a8688d930bc7"
+    },
+    "walk": {
+     "fps": 8.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "4f7561ac9c06f4839294bc170d16cf82cf4347854efddcea29d7b58d96a0f8b5"
+    }
+   },
+   "source_canvas": [
+    180,
+    180
+   ]
+  },
+  "spirit_beast": {
+   "anchor": [
+    0.5,
+    0.6902
+   ],
+   "canvas_world": 61.01,
+   "cell": 184,
+   "clips": {
+    "attack": {
+     "fps": 18.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "6584660954c25f1bc652dd267beb1217dab6eed29ea0457277d08cb6b998bfc7"
+    },
+    "idle": {
+     "fps": 5.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "0568cd01096f31f7164ea957fec0a6a67fb628a651ab7d94c64a7b35e09c3506"
+    },
+    "pet": {
+     "fps": 10.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "bbb60dd935bb790c54c0c2ae4ff8c354e92d2c4f3295e787a086614f5db91f63"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "978f9b67f22793d833292c4570405935cab1acc146e48dfb4843a8cc27e9f56d"
+    }
+   },
+   "source_canvas": [
+    184,
+    184
+   ]
+  },
+  "story_guest": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "canvas_world": 71.19,
+   "cell": 180,
+   "clips": {
+    "dance": {
+     "fps": 8.0,
+     "frames": 16,
+     "loop": true,
+     "rows": 8,
+     "sha256": "591366eaf1f785acc35a52fb3f60bc30f31be2b0e9c385d9c39a6ef07ef82685"
+    },
+    "idle": {
+     "fps": 8.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "d8cefdd39a026b0d7618b7d504461637a8ffaab2fcfabba04e4f5a84cc4e8c3e"
+    },
+    "walk": {
+     "fps": 8.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "3f35199fcb3cdc7327ca93cf5a7bb209455e447584459a0e576245a7ea35a001"
+    }
+   },
+   "source_canvas": [
+    180,
+    180
+   ]
+  },
+  "venom_skitter": {
+   "anchor": [
+    0.5,
+    0.7372
+   ],
+   "canvas_world": 53.12,
+   "cell": 156,
+   "clips": {
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "e188c34b99c000cd01ade5b71846952c94ba820b3beed8acf7c2261c685c94d5"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "f2abba08d051316f96632ff7be47e749327143e45637a9f91836f48a2ff5e0f5"
+    }
+   },
+   "source_canvas": [
+    156,
+    156
+   ]
+  },
+  "voidbound_rune_sentinel": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "canvas_world": 101.96,
+   "cell": 208,
+   "clips": {
+    "attack": {
+     "fps": 12.0,
+     "frames": 4,
+     "loop": false,
+     "rows": 8,
+     "sha256": "7ec8db602a8f6ec5c51d7a0d0bf8491424aa11dcf09608cb798e33ec5b2e6dd5"
+    },
+    "idle": {
+     "fps": 5.0,
+     "frames": 4,
+     "loop": true,
+     "rows": 8,
+     "sha256": "5c890d1ee18d060967f7048c9053852766026c4d7a7b67e765296110a1508161"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 6,
+     "loop": true,
+     "rows": 8,
+     "sha256": "40abfde6dc4046e4ea7778bbbc66139a3e463a3d06402e956117f78eda7a7430"
+    }
+   },
+   "source_canvas": [
+    208,
+    208
+   ]
+  },
+  "warden": {
+   "anchor": [
+    0.5,
+    0.832
+   ],
+   "canvas_world": 56.08,
+   "cell": 256,
+   "clips": {
+    "attack": {
+     "fps": 12.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "8746897764ec3dc95d10e0b7f8e27e15d9582655fed20b1b33dd81c0403c8fd8"
+    },
+    "cast": {
+     "fps": 10.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "36edd066af0b5d8dbc45f109ef1d47ad38907126771cb171bb49dbd460447ddb"
+    },
+    "dead": {
+     "fps": 3.0,
+     "frames": 5,
+     "loop": true,
+     "rows": 8,
+     "sha256": "615876b5a66827c8b7eac120688ba8e63c12bde5c1357d54330d762daab86f66"
+    },
+    "die": {
+     "fps": 8.0,
+     "frames": 8,
+     "loop": false,
+     "rows": 8,
+     "sha256": "81f33b7a87c95e9e403b16964c10cd587225d2cabc2f2223413a5d32ca9068c9"
+    },
+    "idle": {
+     "fps": 5.0,
+     "frames": 7,
+     "loop": true,
+     "rows": 8,
+     "sha256": "efae8c348262218cc93feadd51e0215400f02e8e90baeda610805f14aef379d8"
+    },
+    "preview_idle": {
+     "fps": 5.0,
+     "frames": 7,
+     "loop": true,
+     "rows": 1,
+     "sha256": "4c0bffff88fa14c8b0efcd87bf9ed2d856b413e05d9f7a54dc51b395f2a99b46"
+    },
+    "walk": {
+     "fps": 9.0,
+     "frames": 8,
+     "loop": true,
+     "rows": 8,
+     "sha256": "6db5b2eb76fd59fcd212bb884c5656b469d52d45991b6d9b7077265d586cba96"
+    }
+   },
+   "source_canvas": [
+    256,
+    256
+   ]
+  }
+ },
+ "cell": 128,
+ "directions": [
+  "south",
+  "south-east",
+  "east",
+  "north-east",
+  "north",
+  "north-west",
+  "west",
+  "south-west"
+ ],
+ "format": 2,
+ "native_cells": true
+}

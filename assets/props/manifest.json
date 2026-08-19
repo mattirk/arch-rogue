@@ -1,0 +1,213 @@
+{
+ "format": 1,
+ "props": {
+  "bar_barrel": {
+   "anchor": [
+    0.5,
+    0.7422
+   ],
+   "path": "bar_barrel.png",
+   "world_height": 40.0
+  },
+  "bar_table": {
+   "anchor": [
+    0.5,
+    0.7422
+   ],
+   "path": "bar_table.png",
+   "world_height": 38.2
+  },
+  "bar_wall_sconce_south_east": {
+   "anchor": [
+    0.6176,
+    0.5
+   ],
+   "path": "bar_wall_sconce_south_east.png",
+   "world_height": 16.8
+  },
+  "bar_wall_sconce_south_west": {
+   "anchor": [
+    0.3824,
+    0.5
+   ],
+   "path": "bar_wall_sconce_south_west.png",
+   "world_height": 16.8
+  },
+  "gold_stack": {
+   "anchor": [
+    0.475,
+    0.6875
+   ],
+   "path": "gold_stack.png",
+   "world_height": 9.2
+  },
+  "gold_stack_02": {
+   "anchor": [
+    0.4625,
+    0.775
+   ],
+   "path": "gold_stack_02.png",
+   "world_height": 9.2
+  },
+  "gold_stack_03": {
+   "anchor": [
+    0.4875,
+    0.8125
+   ],
+   "path": "gold_stack_03.png",
+   "world_height": 9.2
+  },
+  "gold_stack_04": {
+   "anchor": [
+    0.5125,
+    0.6625
+   ],
+   "path": "gold_stack_04.png",
+   "world_height": 9.2
+  },
+  "gold_stack_05": {
+   "anchor": [
+    0.5,
+    0.8375
+   ],
+   "path": "gold_stack_05.png",
+   "world_height": 9.2
+  },
+  "lossless_room_brazier": {
+   "anchor": [
+    0.5,
+    0.7422
+   ],
+   "path": "lossless_room_brazier.png",
+   "world_height": 40.0
+  },
+  "lossless_room_chimes": {
+   "anchor": [
+    0.5,
+    0.7422
+   ],
+   "path": "lossless_room_chimes.png",
+   "world_height": 40.0
+  },
+  "lossless_room_mirror": {
+   "anchor": [
+    0.5,
+    0.7422
+   ],
+   "path": "lossless_room_mirror.png",
+   "world_height": 40.0
+  },
+  "lossless_room_reliquary": {
+   "anchor": [
+    0.5,
+    0.7422
+   ],
+   "path": "lossless_room_reliquary.png",
+   "world_height": 40.0
+  },
+  "secret_cache": {
+   "anchor": [
+    0.5,
+    0.8042
+   ],
+   "path": "secret_cache.png",
+   "world_height": 42.66
+  },
+  "shop_sign": {
+   "anchor": [
+    0.5,
+    0.9375
+   ],
+   "path": "shop_sign.png",
+   "world_height": 17.2
+  },
+  "shrine_fortune": {
+   "anchor": [
+    0.5,
+    0.7407
+   ],
+   "path": "shrine_fortune.png",
+   "world_height": 32.0
+  },
+  "shrine_haste": {
+   "anchor": [
+    0.5,
+    0.8159
+   ],
+   "path": "shrine_haste.png",
+   "world_height": 45.72
+  },
+  "shrine_insight": {
+   "anchor": [
+    0.5,
+    0.8486
+   ],
+   "path": "shrine_insight.png",
+   "world_height": 56.26
+  },
+  "shrine_mending": {
+   "anchor": [
+    0.5,
+    0.7815
+   ],
+   "path": "shrine_mending.png",
+   "world_height": 38.08
+  },
+  "shrine_oath": {
+   "anchor": [
+    0.5,
+    0.8246
+   ],
+   "path": "shrine_oath.png",
+   "world_height": 48.0
+  },
+  "shrine_twilight": {
+   "anchor": [
+    0.5,
+    0.75
+   ],
+   "path": "shrine_twilight.png",
+   "world_height": 33.15
+  },
+  "shrine_war": {
+   "anchor": [
+    0.5,
+    0.7415
+   ],
+   "path": "shrine_war.png",
+   "world_height": 32.0
+  },
+  "trap_poison": {
+   "anchor": [
+    0.5,
+    0.875
+   ],
+   "path": "trap_poison.png",
+   "world_height": 11.6
+  },
+  "trap_rune": {
+   "anchor": [
+    0.5,
+    0.8984
+   ],
+   "path": "trap_rune.png",
+   "world_height": 10.8
+  },
+  "trap_spike": {
+   "anchor": [
+    0.5,
+    0.9453
+   ],
+   "path": "trap_spike.png",
+   "world_height": 12.0
+  },
+  "ambush_bell": {
+   "anchor": [
+    0.5,
+    0.9583
+   ],
+   "path": "ambush_bell.png",
+   "world_height": 12.0
+  }
+ }
+}

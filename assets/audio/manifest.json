@@ -1,0 +1,134 @@
+{
+  "channels": 1,
+  "cues": {
+    "bell": {
+      "duration_ms": 720,
+      "file": "bell.wav",
+      "sha256": "9c78cb0275297c2cf36b1dc3741a93787beaf5ff116084b8a3f6669ab31efa14",
+      "usage": "runtime"
+    },
+    "bolt": {
+      "duration_ms": 130,
+      "file": "bolt.wav",
+      "sha256": "bf25c3b03813c4dbd89672db07a819edebfee9ab179da566d3e910e0caa9bebe",
+      "usage": "runtime"
+    },
+    "boss": {
+      "duration_ms": 660,
+      "file": "boss.wav",
+      "sha256": "7a972d308cc169b4e7c47526db91a2f4b13670c14f1d92373c3b9853b7ba294f",
+      "usage": "runtime"
+    },
+    "death": {
+      "duration_ms": 550,
+      "file": "death.wav",
+      "sha256": "58950564b88db1647feecd443e2229702f353386cbfcd748efb55988683f7867",
+      "usage": "runtime"
+    },
+    "door": {
+      "duration_ms": 160,
+      "file": "door.wav",
+      "sha256": "342f5e1e3adc97570c56f8ea26ff046ca665e112a24d61deeeafeb615ad313bc",
+      "usage": "runtime"
+    },
+    "drink": {
+      "duration_ms": 300,
+      "file": "drink.wav",
+      "sha256": "ffe008beb5e097ff13175b1bcf42f5762837412f517bddae7ac6790593431998",
+      "usage": "runtime"
+    },
+    "hit": {
+      "duration_ms": 140,
+      "file": "hit.wav",
+      "sha256": "fec2697fded4d929e8e8dc4fc64648229fc2cd511d14317be3104571bb7d48cc",
+      "usage": "runtime"
+    },
+    "hurt": {
+      "duration_ms": 180,
+      "file": "hurt.wav",
+      "sha256": "237c898826a83ec073e9c798d58179d0b3775514244582081cbc29a7d67ea341",
+      "usage": "runtime"
+    },
+    "levelup": {
+      "duration_ms": 420,
+      "file": "levelup.wav",
+      "sha256": "18ee4a3abc676f70b9cba53040eedef2bdd56ce6f0942cbbebf0e85474a80c14",
+      "usage": "runtime"
+    },
+    "pickup": {
+      "duration_ms": 110,
+      "file": "pickup.wav",
+      "sha256": "3bf2bd5079c5cd85683ccf9f881d4fb85a861a3e19383741d6e40821252039c7",
+      "usage": "runtime"
+    },
+    "potion": {
+      "duration_ms": 200,
+      "file": "potion.wav",
+      "sha256": "7e7665409f6b4adb733e4fc283da490e96f49a6693b5a5d9f65cc9944bcc1fb3",
+      "usage": "runtime"
+    },
+    "secret": {
+      "duration_ms": 420,
+      "file": "secret.wav",
+      "sha256": "e00656e8c89c512a74949f1602efd05ee85c38239c45e019777ca1e0d4b28951",
+      "usage": "runtime"
+    },
+    "shrine": {
+      "duration_ms": 720,
+      "file": "shrine.wav",
+      "sha256": "fe7153468ba64206cbd0b297adc923d79185b01104dddf33041783c4c60d2f88",
+      "usage": "runtime"
+    },
+    "stairs": {
+      "duration_ms": 380,
+      "file": "stairs.wav",
+      "sha256": "f8db2bf0fc159a02ca0e284dd5d60cce84b947ae4c429056d41923298a5f8350",
+      "usage": "runtime"
+    },
+    "start": {
+      "duration_ms": 480,
+      "file": "start.wav",
+      "sha256": "65373a1d392cc367d1892bb0e4e7fe731609a06feaa16f5ad2b0f5098136763f",
+      "usage": "runtime"
+    },
+    "swing": {
+      "duration_ms": 100,
+      "file": "swing.wav",
+      "sha256": "90b996ea8905ae09b4175fe37120a576b7b4d51bd06e6b920aa6a9f3a29bf304",
+      "usage": "runtime"
+    },
+    "trap": {
+      "duration_ms": 200,
+      "file": "trap.wav",
+      "sha256": "23fda02938f15a304cbf0e51fdf7b5c8486656fedf4d3d14d5f7a1092c25fadd",
+      "usage": "runtime"
+    },
+    "ui_back": {
+      "duration_ms": 110,
+      "file": "ui_back.wav",
+      "sha256": "1eb6ac42ff0c33fd69ea63f192e7d9d17b19c7d8d01e8a22713aee049179bb71",
+      "usage": "runtime"
+    },
+    "ui_confirm": {
+      "duration_ms": 130,
+      "file": "ui_confirm.wav",
+      "sha256": "87ca5fa6276f7021554d7dca7d985d1763f7089df4e7d40406452ef87ea0b812",
+      "usage": "runtime"
+    },
+    "ui_nav": {
+      "duration_ms": 45,
+      "file": "ui_nav.wav",
+      "sha256": "346c4f75f536c9254f3aa4e19571efd355817cccb769fb78669549f024fa4244",
+      "usage": "runtime"
+    },
+    "victory": {
+      "duration_ms": 900,
+      "file": "victory.wav",
+      "sha256": "e1520c39c55720f8f8bed13eeab2142f821bae5e882564fbfffd612659f36927",
+      "usage": "runtime"
+    }
+  },
+  "format_version": 1,
+  "sample_rate": 22050,
+  "sample_size_bits": 16
+}

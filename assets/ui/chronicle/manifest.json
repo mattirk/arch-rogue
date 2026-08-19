@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "generator": "PixelLab",
+  "assets": [
+    {
+      "key": "chronicle.ledger.frame",
+      "file": "ledger_frame.png",
+      "width": 417,
+      "height": 321,
+      "sha256": "52d658e93e41d93b8ea594d7f665576c9ea3dce8c4a253d8eeb155505f42412b"
+    },
+    {
+      "key": "chronicle.content.panel",
+      "file": "content_panel.png",
+      "width": 528,
+      "height": 383,
+      "sha256": "be3d70a33eb1a4b434fd6546bd14d35f5dfe0d8b4d12832d64f869b3dee31150"
+    },
+    {
+      "key": "chronicle.filter.panel",
+      "file": "filter_panel.png",
+      "width": 355,
+      "height": 152,
+      "sha256": "2913836b0c07b559df296fcafa2bbfab9471c7f7488ba5e1d7b10c6f2a8903bd"
+    },
+    {
+      "key": "chronicle.outcome.seals",
+      "file": "outcome_seals.png",
+      "width": 256,
+      "height": 128,
+      "sha256": "cab211f88ce570840a1d44110b9eb9937988df9ba1dfe2f8e4714a233a461a62"
+    },
+    {
+      "key": "chronicle.empty.ledger",
+      "file": "unwritten_ledger.png",
+      "width": 256,
+      "height": 256,
+      "sha256": "0bcb5469f9e0f7939fa5ed55a2b9aac099b6045a699fa76378b398bf33633ae9"
+    }
+  ]
+}

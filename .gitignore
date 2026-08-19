@@ -1,4 +1,5 @@
 .venv/
+.venv_host/
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -7,6 +8,14 @@ build/
 dist/
 bin/
 .buildozer/
+
+# Odin/Android generated state
+.odin-cache/
+.gradle/
+.gradle-home/
+.android-sdk/
+.cxx/
+local.properties
 android-ndk*/
 android-sdk*/
 *.apk
@@ -27,9 +36,9 @@ guest_template_active.png
 guest_template_resolved.png
 relic_previews/
 ui_scale_reference/
-tools/deploy_deck.sh
-tools/steam/push_deck_artwork.sh
-tools/steam/inject_local_icon.py
+arch-rogue-python/tools/deploy_deck.sh
+arch-rogue-python/tools/steam/push_deck_artwork.sh
+arch-rogue-python/tools/steam/inject_local_icon.py
 
 # Private deploy repo staging area — transferred out to arch-rogue-deploy, never committed here
 deploy-server/

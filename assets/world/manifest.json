@@ -1,0 +1,803 @@
+{
+ "items": {
+  "armor": {
+   "anchor": [
+    0.5,
+    0.9792
+   ],
+   "file": "item_armor.png",
+   "world_h": 14.84
+  },
+  "identify": {
+   "anchor": [
+    0.5,
+    0.9583
+   ],
+   "file": "item_identify.png",
+   "world_h": 12.95
+  },
+  "mana_potion": {
+   "anchor": [
+    0.5,
+    0.9583
+   ],
+   "file": "item_mana_potion.png",
+   "world_h": 12.65
+  },
+  "named.ash_pike": {
+   "anchor": [
+    0.5,
+    1.0
+   ],
+   "file": "item_ash_pike.png",
+   "world_h": 13.63
+  },
+  "named.beastlord_harness": {
+   "anchor": [
+    0.5,
+    0.9688
+   ],
+   "file": "item_beastlord_harness.png",
+   "world_h": 15.01
+  },
+  "named.blizzard_mantle": {
+   "anchor": [
+    0.5,
+    0.9688
+   ],
+   "file": "item_blizzard_mantle.png",
+   "world_h": 14.51
+  },
+  "named.blood_psalm": {
+   "anchor": [
+    0.5,
+    0.9688
+   ],
+   "file": "item_blood_psalm.png",
+   "world_h": 15.09
+  },
+  "named.boneweave_mantle": {
+   "anchor": [
+    0.5,
+    0.9688
+   ],
+   "file": "item_boneweave_mantle.png",
+   "world_h": 15.01
+  },
+  "named.bulwark_first_gate": {
+   "anchor": [
+    0.5,
+    0.9688
+   ],
+   "file": "item_bulwark_first_gate.png",
+   "world_h": 14.51
+  },
+  "named.chain_vest": {
+   "anchor": [
+    0.5,
+    0.9375
+   ],
+   "file": "item_chain_vest.png",
+   "world_h": 16.12
+  },
+  "named.choir_of_bone": {
+   "anchor": [
+    0.5,
+    0.9688
+   ],
+   "file": "item_choir_of_bone.png",
+   "world_h": 14.51
+  },
+  "named.emberbrand": {
+   "anchor": [
+    0.5,
+    1.0
+   ],
+   "file": "item_emberbrand.png",
+   "world_h": 13.63
+  },
+  "named.foxstep_leathers": {
+   "anchor": [
+    0.5,
+    0.9688
+   ],
+   "file": "item_foxstep_leathers.png",
+   "world_h": 14.51
+  },
+  "named.frostwake": {
+   "anchor": [
+    0.5,
+    1.0
+   ],
+   "file": "item_frostwake.png",
+   "world_h": 13.63
+  },
+  "named.grave_knife": {
+   "anchor": [
+    0.4688,
+    0.9688
+   ],
+   "file": "item_grave_knife.png",
+   "world_h": 14.57
+  },
+  "named.hunter_axe": {
+   "anchor": [
+    0.5,
+    0.9688
+   ],
+   "file": "item_hunter_axe.png",
+   "world_h": 15.64
+  },
+  "named.iron_sword": {
+   "anchor": [
+    0.5,
+    0.9688
+   ],
+   "file": "item_iron_sword.png",
+   "world_h": 14.08
+  },
+  "named.leather_jerkin": {
+   "anchor": [
+    0.5,
+    0.9688
+   ],
+   "file": "item_leather_jerkin.png",
+   "world_h": 14.51
+  },
+  "named.nightglass_daggers": {
+   "anchor": [
+    0.5,
+    0.9375
+   ],
+   "file": "item_nightglass_daggers.png",
+   "world_h": 14.57
+  },
+  "named.oathwall_carapace": {
+   "anchor": [
+    0.5,
+    0.9688
+   ],
+   "file": "item_oathwall_carapace.png",
+   "world_h": 15.01
+  },
+  "named.pilgrims_plate": {
+   "anchor": [
+    0.5,
+    0.9688
+   ],
+   "file": "item_pilgrims_plate.png",
+   "world_h": 15.01
+  },
+  "named.reckoners_brand": {
+   "anchor": [
+    0.5,
+    1.0
+   ],
+   "file": "item_reckoners_brand.png",
+   "world_h": 13.63
+  },
+  "named.runed_saber": {
+   "anchor": [
+    0.4688,
+    1.0
+   ],
+   "file": "item_runed_saber.png",
+   "world_h": 13.63
+  },
+  "named.skyfang_bow": {
+   "anchor": [
+    0.5,
+    1.0
+   ],
+   "file": "item_skyfang_bow.png",
+   "world_h": 13.63
+  },
+  "named.splinter_star": {
+   "anchor": [
+    0.5,
+    0.9688
+   ],
+   "file": "item_splinter_star.png",
+   "world_h": 14.08
+  },
+  "named.warden_mail": {
+   "anchor": [
+    0.5,
+    0.9688
+   ],
+   "file": "item_warden_mail.png",
+   "world_h": 14.51
+  },
+  "potion": {
+   "anchor": [
+    0.5,
+    0.9583
+   ],
+   "file": "item_potion.png",
+   "world_h": 12.95
+  },
+  "remove_curse": {
+   "anchor": [
+    0.5,
+    0.9375
+   ],
+   "file": "item_remove_curse.png",
+   "world_h": 13.26
+  },
+  "story_relic": {
+   "anchor": [
+    0.5,
+    0.9792
+   ],
+   "file": "item_story_relic.png",
+   "world_h": 16.58
+  },
+  "weapon": {
+   "anchor": [
+    0.5,
+    0.9792
+   ],
+   "file": "item_weapon.png",
+   "world_h": 14.08
+  }
+ },
+ "world": {
+  "bar_floor": {
+   "anchor": [
+    256,
+    320
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 512,
+   "tint": 0.14,
+   "variants": [
+    "bar_floor.png"
+   ]
+  },
+  "door_closed": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_closed_left.png"
+   ]
+  },
+  "door_closed_east": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_closed_right.png"
+   ]
+  },
+  "door_closed_north": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_closed_left.png"
+   ]
+  },
+  "door_closed_north_east": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_closed_right.png"
+   ]
+  },
+  "door_closed_north_west": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_closed_left.png"
+   ]
+  },
+  "door_closed_south": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_closed_left.png"
+   ]
+  },
+  "door_closed_south_east": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_closed_left.png"
+   ]
+  },
+  "door_closed_south_west": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_closed_right.png"
+   ]
+  },
+  "door_closed_west": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_closed_right.png"
+   ]
+  },
+  "door_open": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_open_left.png"
+   ]
+  },
+  "door_open_east": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_open_right.png"
+   ]
+  },
+  "door_open_north": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_open_left.png"
+   ]
+  },
+  "door_open_north_east": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_open_right.png"
+   ]
+  },
+  "door_open_north_west": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_open_left.png"
+   ]
+  },
+  "door_open_south": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_open_left.png"
+   ]
+  },
+  "door_open_south_east": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_open_left.png"
+   ]
+  },
+  "door_open_south_west": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_open_right.png"
+   ]
+  },
+  "door_open_west": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.46,
+   "variants": [
+    "door_open_right.png"
+   ]
+  },
+  "floor": {
+   "anchor": [
+    256,
+    320
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 512,
+   "tint": 0.55,
+   "variants": [
+    "floor.png",
+    "floor_002.png",
+    "floor_003.png",
+    "floor_004.png"
+   ]
+  },
+  "garden_floor": {
+   "anchor": [
+    256,
+    320
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 512,
+   "tint": 0.14,
+   "variants": [
+    "garden_floor.png"
+   ]
+  },
+  "guiding_floor": {
+   "anchor": [
+    256,
+    320
+   ],
+   "fps": 5.0,
+   "frames": [],
+   "ping_pong": true,
+   "ref_width": 512,
+   "tint": 0.55,
+   "variants": [
+    "floor.png",
+    "floor_002.png",
+    "floor_003.png",
+    "floor_004.png"
+   ]
+  },
+  "guiding_overlay": {
+   "anchor": [
+    256,
+    320
+   ],
+   "fps": 5.0,
+   "frames": [
+    "guiding_overlay_001.png",
+    "guiding_overlay_002.png",
+    "guiding_overlay_003.png",
+    "guiding_overlay_004.png",
+    "guiding_overlay_005.png",
+    "guiding_overlay_006.png",
+    "guiding_overlay_007.png",
+    "guiding_overlay_008.png"
+   ],
+   "ping_pong": true,
+   "ref_width": 512,
+   "tint": 0.55,
+   "variants": []
+  },
+  "lossless_soul_floor": {
+   "anchor": [
+    256,
+    320
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 512,
+   "tint": 0.14,
+   "variants": [
+    "lossless_soul_floor.png"
+   ]
+  },
+  "quest_floor": {
+   "anchor": [
+    256,
+    320
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 512,
+   "tint": 0.2,
+   "variants": [
+    "quest_floor.png"
+   ]
+  },
+  "shop_floor": {
+   "anchor": [
+    256,
+    320
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 512,
+   "tint": 0.12,
+   "variants": [
+    "shop_floor.png"
+   ]
+  },
+  "stairs": {
+   "anchor": [
+    256,
+    336
+   ],
+   "fps": 8.333333,
+   "frames": [
+    "stairs.png",
+    "stairs_001.png",
+    "stairs_002.png",
+    "stairs_003.png",
+    "stairs_004.png",
+    "stairs_005.png",
+    "stairs_006.png",
+    "stairs_007.png"
+   ],
+   "ping_pong": true,
+   "ref_width": 512,
+   "tint": 0.52,
+   "variants": [
+    "stairs.png"
+   ]
+  },
+  "wall": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.62,
+   "variants": [
+    "wall_401.png",
+    "wall_402.png",
+    "wall_403.png",
+    "wall_404.png",
+    "wall_405.png",
+    "wall_406.png",
+    "wall_407.png",
+    "wall_408.png",
+    "wall_409.png",
+    "wall_410.png"
+   ]
+  },
+  "wall_bar_left": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.26,
+   "variants": [
+    "wall_bar_left.png"
+   ]
+  },
+  "wall_bar_right": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.26,
+   "variants": [
+    "wall_bar_right.png"
+   ]
+  },
+  "wall_face": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 6.0,
+   "frames": [
+    "wall_403.png",
+    "wall_face_001.png",
+    "wall_face_002.png",
+    "wall_face_003.png",
+    "wall_face_003.png",
+    "wall_face_002.png",
+    "wall_face_001.png"
+   ],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.62,
+   "variants": [
+    "wall_403.png"
+   ]
+  },
+  "wall_garden_left": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.26,
+   "variants": [
+    "wall_garden_left.png"
+   ]
+  },
+  "wall_garden_right": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.26,
+   "variants": [
+    "wall_garden_right.png"
+   ]
+  },
+  "wall_lossless_soul_left": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.26,
+   "variants": [
+    "wall_lossless_soul_left.png"
+   ]
+  },
+  "wall_lossless_soul_right": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.26,
+   "variants": [
+    "wall_lossless_soul_right.png"
+   ]
+  },
+  "wall_quest_room_left": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.32,
+   "variants": [
+    "wall_quest_room_left.png"
+   ]
+  },
+  "wall_quest_room_right": {
+   "anchor": [
+    256,
+    384
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 392,
+   "tint": 0.32,
+   "variants": [
+    "wall_quest_room_right.png"
+   ]
+  }
+ }
+}

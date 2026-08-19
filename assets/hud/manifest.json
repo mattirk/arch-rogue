@@ -1,0 +1,218 @@
+{
+ "format_version": 1,
+ "icons": {
+  "hud.action.acolyte.blood_reap": {
+   "file": "action_acolyte_blood_reap.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.acolyte.dark_step": {
+   "file": "action_acolyte_dark_step.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.acolyte.spirit_bolt": {
+   "file": "action_acolyte_spirit_bolt.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.acolyte.spirit_call": {
+   "file": "action_acolyte_spirit_call.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.arcanist.arc_bolt": {
+   "file": "action_arcanist_arc_bolt.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.arcanist.blink": {
+   "file": "action_arcanist_blink.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.arcanist.force_slam": {
+   "file": "action_arcanist_force_slam.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.arcanist.frost_nova": {
+   "file": "action_arcanist_frost_nova.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.health_potion": {
+   "file": "action_health_potion.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.mana_potion": {
+   "file": "action_mana_potion.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.ranger.multishot": {
+   "file": "action_ranger_multishot.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.ranger.pinning_strike": {
+   "file": "action_ranger_pinning_strike.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.ranger.spirit_beast": {
+   "file": "action_ranger_spirit_beast.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.ranger.spirit_beast_angry": {
+   "file": "action_ranger_spirit_beast_angry.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.ranger.vault": {
+   "file": "action_ranger_vault.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.rogue.ambush_bell": {
+   "file": "action_rogue_ambush_bell.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.rogue.killing_blow": {
+   "file": "action_rogue_killing_blow.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.rogue.knife_fan": {
+   "file": "action_rogue_knife_fan.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.rogue.shadow_dash": {
+   "file": "action_rogue_shadow_dash.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.warden.bulwark_slam": {
+   "file": "action_warden_bulwark_slam.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.warden.guard_bolt": {
+   "file": "action_warden_guard_bolt.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.warden.guard_step": {
+   "file": "action_warden_guard_step.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action.warden.time_skip": {
+   "file": "action_warden_time_skip.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  "hud.action_slot": {
+   "file": "action_slot.png",
+   "size": [
+    159,
+    159
+   ]
+  }
+ },
+ "loadouts": {
+  "acolyte": [
+   "hud.action.acolyte.blood_reap",
+   "hud.action.acolyte.spirit_bolt",
+   "hud.action.acolyte.spirit_call",
+   "hud.action.acolyte.dark_step",
+   "hud.action.health_potion",
+   "hud.action.mana_potion"
+  ],
+  "arcanist": [
+   "hud.action.arcanist.force_slam",
+   "hud.action.arcanist.arc_bolt",
+   "hud.action.arcanist.frost_nova",
+   "hud.action.arcanist.blink",
+   "hud.action.health_potion",
+   "hud.action.mana_potion"
+  ],
+  "ranger": [
+   "hud.action.ranger.pinning_strike",
+   "hud.action.ranger.multishot",
+   "hud.action.ranger.spirit_beast",
+   "hud.action.ranger.vault",
+   "hud.action.health_potion",
+   "hud.action.mana_potion"
+  ],
+  "rogue": [
+   "hud.action.rogue.killing_blow",
+   "hud.action.rogue.knife_fan",
+   "hud.action.rogue.ambush_bell",
+   "hud.action.rogue.shadow_dash",
+   "hud.action.health_potion",
+   "hud.action.mana_potion"
+  ],
+  "warden": [
+   "hud.action.warden.bulwark_slam",
+   "hud.action.warden.guard_bolt",
+   "hud.action.warden.time_skip",
+   "hud.action.warden.guard_step",
+   "hud.action.health_potion",
+   "hud.action.mana_potion"
+  ]
+ },
+ "variants": {
+  "ranger_spirit_beast_attack": "hud.action.ranger.spirit_beast_angry"
+ }
+}

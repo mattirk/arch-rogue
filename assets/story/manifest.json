@@ -1,0 +1,330 @@
+{
+  "asset_count": 81,
+  "assets": {
+    "cutscene.choice.icon.aid": {
+      "file": "icons/choices/aid.png",
+      "sha256": "7f4c9c27bf0da9243918b42a8a5b45dc286c261b1998556de96f57e93409d5e8"
+    },
+    "cutscene.choice.icon.bargain": {
+      "file": "icons/choices/bargain.png",
+      "sha256": "6023fe99cebc8275b6f0ee2c17f2905363450adfff5feeded35f11dc7bb88d82"
+    },
+    "cutscene.choice.icon.defy": {
+      "file": "icons/choices/defy.png",
+      "sha256": "40c9c7f0022b0be8cc598eb8f38ec123e85ab7d45122e3ca21ab185cce6f4201"
+    },
+    "cutscene.choice.icon.page": {
+      "file": "icons/choices/page.png",
+      "sha256": "6cf83ebf584c6a5260d7de213fc35417ab59f5ea46afd792c10329d17e9410f6"
+    },
+    "cutscene.choice.icon.soul_preserve": {
+      "file": "icons/choices/soul_preserve.png",
+      "sha256": "2a9ad155a373f475e4e11fa556c261a2d75c2b264573c29c06646881331aeb87"
+    },
+    "cutscene.choice.icon.soul_refuse": {
+      "file": "icons/choices/soul_refuse.png",
+      "sha256": "d2688d0579017c0357ab1d5dd4bc06392c47592093b6e19a570da3c6f058e879"
+    },
+    "cutscene.choice.icon.soul_release": {
+      "file": "icons/choices/soul_release.png",
+      "sha256": "dd18c54d974fd232597b101ea027e05dc42fb8c61be54889f0b3b2b654c76c8a"
+    },
+    "stage.backdrop.lossless_soul": {
+      "file": "backdrops/lossless_soul.png",
+      "sha256": "49bad2b215f9cf17dadc8666780d18eff1460f673d4dc76fd20c433f12dd1fa9"
+    },
+    "story.ending.acolyte.the_broken_bell": {
+      "file": "backdrops/endings/acolyte/the_broken_bell.png",
+      "sha256": "12700e40f7c3a11155b1cce23ad271bc16674594944f959caebf3f9b30b86a38"
+    },
+    "story.ending.acolyte.the_returned_confession": {
+      "file": "backdrops/endings/acolyte/the_returned_confession.png",
+      "sha256": "7ab9ac562196afdb7450b7f42f94b94bd36aa13d25a9593cabae2283d8c8b788"
+    },
+    "story.ending.acolyte.the_true_funeral": {
+      "file": "backdrops/endings/acolyte/the_true_funeral.png",
+      "sha256": "137699939401c8070c8dc3edee2f446ac52c12a84f3f38eed6f01c891067bdbc"
+    },
+    "story.ending.arcanist.the_answered_proof": {
+      "file": "backdrops/endings/arcanist/the_answered_proof.png",
+      "sha256": "8660e8e49cee12022dca5610d67c1ed777b7bfd8b883e664b3d058fc8eb0ef06"
+    },
+    "story.ending.arcanist.the_restored_name": {
+      "file": "backdrops/endings/arcanist/the_restored_name.png",
+      "sha256": "29160c3ad8ccc58bd6268cd1a58b27253701b94d0072db3559ddf948ab93ef1b"
+    },
+    "story.ending.arcanist.the_standing_argument": {
+      "file": "backdrops/endings/arcanist/the_standing_argument.png",
+      "sha256": "c4145711d06356f1082defc5b39dab28c1996e3c0a4a31c48eb9ac829007a417"
+    },
+    "story.ending.ranger.the_hunt_without_arrows": {
+      "file": "backdrops/endings/ranger/the_hunt_without_arrows.png",
+      "sha256": "848b56b21c253a9aa2e8cb5cb736e2778f4cda8033cbb09694a5b4cc943e6347"
+    },
+    "story.ending.ranger.the_next_white_thing": {
+      "file": "backdrops/endings/ranger/the_next_white_thing.png",
+      "sha256": "04377afeaeb4940f8aefd1bd43713c876421169ef847ad52dea1ca57f7cade3d"
+    },
+    "story.ending.ranger.the_old_way": {
+      "file": "backdrops/endings/ranger/the_old_way.png",
+      "sha256": "bd094a481ca76b3a69a3b7103aeed58287da6c1ffb5ed59480cf1c5eec7deef8"
+    },
+    "story.ending.rogue.the_emptied_market": {
+      "file": "backdrops/endings/rogue/the_emptied_market.png",
+      "sha256": "8533abe27cef7fe74c32c9889d5de9044cb86e56e70c934afe921866bc4e592d"
+    },
+    "story.ending.rogue.the_honest_purchase": {
+      "file": "backdrops/endings/rogue/the_honest_purchase.png",
+      "sha256": "dd22492a458c962b5f0570583d7f7ca35dcee3f32de1d67440768dd6d38f0296"
+    },
+    "story.ending.rogue.the_standing_debt": {
+      "file": "backdrops/endings/rogue/the_standing_debt.png",
+      "sha256": "dcc48f21a435a53ec34fbf1e9ce509391fb3aed1c2b999035d5372b3446fb7db"
+    },
+    "story.ending.warden.no_more_doors": {
+      "file": "backdrops/endings/warden/no_more_doors.png",
+      "sha256": "f59601455c44aa2e0660a85115838d31aff6cf827a607ca71bc4b67acc61b220"
+    },
+    "story.ending.warden.the_fair_scale": {
+      "file": "backdrops/endings/warden/the_fair_scale.png",
+      "sha256": "744a7e8bea6c51f85dedf20fac5759fe72370513cf6bfad9150a844316037900"
+    },
+    "story.ending.warden.the_held_door": {
+      "file": "backdrops/endings/warden/the_held_door.png",
+      "sha256": "f009edb758087182dba8f3e5c5b281be722fdc36e434c6aa2e6888fefc6aacd0"
+    },
+    "story.guest.antlered_hunter": {
+      "file": "backdrops/guests/antlered_hunter.png",
+      "sha256": "df5690af27beec5c3c0f7e19d00e7fbd76aea15e958c93caac80661ef7c3a0a4"
+    },
+    "story.guest.ash_pilgrim": {
+      "file": "backdrops/guests/ash_pilgrim.png",
+      "sha256": "0002fc662f6ba9dcb020b31fc6de4957182f40fc3ed27730750819642d7302a0"
+    },
+    "story.guest.bone_mender": {
+      "file": "backdrops/guests/bone_mender.png",
+      "sha256": "47eb5ba23fbc1ac0531c6c99e53a8c6e585470f4b64baa9eebad7c0b78c95e1d"
+    },
+    "story.guest.drowned_heir": {
+      "file": "backdrops/guests/drowned_heir.png",
+      "sha256": "346f81d25e2de587045af9c4966b5db3f9f2082d1b077cb5b6e29733edaa1702"
+    },
+    "story.guest.furnace_heretic": {
+      "file": "backdrops/guests/furnace_heretic.png",
+      "sha256": "6f495a7b06cdb463c7a63b928fa6868fa878d7944d9563825415a1a949b279a1"
+    },
+    "story.guest.grave_witch": {
+      "file": "backdrops/guests/grave_witch.png",
+      "sha256": "32ebd0ce0bb211cc86f55791db291f924277dedfcb65455e740b9313390568fd"
+    },
+    "story.guest.lost_cartographer": {
+      "file": "backdrops/guests/lost_cartographer.png",
+      "sha256": "3c8e9bbd24a54f34465f2e92057632856f4dec60825995edf6a4ba5fbdc5689d"
+    },
+    "story.guest.mirror_scribe": {
+      "file": "backdrops/guests/mirror_scribe.png",
+      "sha256": "9aaffdd78b5e72457de0bde99148f3ca63f269dbc3daa8db61b46cc7db6f9e72"
+    },
+    "story.guest.mortuary_broker": {
+      "file": "backdrops/guests/mortuary_broker.png",
+      "sha256": "64c1dde589bc6819b159eb24ccfb638dc9adda4f0e6fca1b95172be2bae40fbc"
+    },
+    "story.guest.oathless_knight": {
+      "file": "backdrops/guests/oathless_knight.png",
+      "sha256": "1df61b552d52ee4059df6a4c4751fbf2af53f9e158e169fc510bfdf97926fab0"
+    },
+    "story.omen.crypt_of_ash": {
+      "file": "backdrops/omens/crypt_of_ash.png",
+      "sha256": "4caec3182f2535548d74aa772b0a6febd267afe54fbb275e04d6709bae6e50aa"
+    },
+    "story.omen.frozen_ossuary": {
+      "file": "backdrops/omens/frozen_ossuary.png",
+      "sha256": "80ae24bbd021f42d569e40644677833b0cd2d9849f51f08c10d3703876ce3843"
+    },
+    "story.omen.fungal_catacombs": {
+      "file": "backdrops/omens/fungal_catacombs.png",
+      "sha256": "a41d64330f936ca7b47782e33951ddc237092ab06f042fabf6852f3f92b8b240"
+    },
+    "story.omen.moonlit_aquifer": {
+      "file": "backdrops/omens/moonlit_aquifer.png",
+      "sha256": "62ad861c243f2379911d1d6ed4f72a1ba83ae28f8add31498cda2162344e64f5"
+    },
+    "story.omen.obsidian_foundry": {
+      "file": "backdrops/omens/obsidian_foundry.png",
+      "sha256": "67d6592918e9273507680e0af9480cb3a6a831084a0acc809e3af3a030eb06e2"
+    },
+    "story.omen.sunken_bastion": {
+      "file": "backdrops/omens/sunken_bastion.png",
+      "sha256": "f385121c6c4b725a0efa3ba7734006534db1c01d4d57afab3f15e6c17195a968"
+    },
+    "story.omen.thornbound_vault": {
+      "file": "backdrops/omens/thornbound_vault.png",
+      "sha256": "41a8906cfe904b6d67388558526c4c205e210085799573cbaa3911261414c528"
+    },
+    "story.omen.violet_reliquary": {
+      "file": "backdrops/omens/violet_reliquary.png",
+      "sha256": "fc20d11807ce937b0d597776acee23237019a598f998d212cb54bdadd05bbddd"
+    },
+    "story.portrait.antlered_hunter.mael_whitehorn": {
+      "file": "portraits/antlered_hunter/mael_whitehorn.png",
+      "sha256": "bf03dc4a40104729e6b5b00e1ff7147938279737b35b8525ff62daacc95bac39"
+    },
+    "story.portrait.antlered_hunter.quiet_hart": {
+      "file": "portraits/antlered_hunter/quiet_hart.png",
+      "sha256": "ffdd18dccd43758704ee47b0216e9fc6bd5b145b412ffb396c1d2a2f3a47070c"
+    },
+    "story.portrait.antlered_hunter.sable_of_the_moon_hunt": {
+      "file": "portraits/antlered_hunter/sable_of_the_moon_hunt.png",
+      "sha256": "fad059bef31ca057c2e8a8f5ef57c2f502b114c2e6a6332ddfa450ff0aedb55a"
+    },
+    "story.portrait.ash_pilgrim.harl_the_sooted": {
+      "file": "portraits/ash_pilgrim/harl_the_sooted.png",
+      "sha256": "7b51ef47d9aafab758216234bfff8436a0a815258b7592da1dc8473326c7be0a"
+    },
+    "story.portrait.ash_pilgrim.old_ember_jesk": {
+      "file": "portraits/ash_pilgrim/old_ember_jesk.png",
+      "sha256": "4635517530143be8a16a3acf6d3cc9e426f6174ffabdd41ad4f6b444e18bd359"
+    },
+    "story.portrait.ash_pilgrim.sister_kharra": {
+      "file": "portraits/ash_pilgrim/sister_kharra.png",
+      "sha256": "09206b16e3e0f228178d64b5a83b20e70268034651f43c69abf297ab2908664d"
+    },
+    "story.portrait.bone_mender.kell_of_white_thread": {
+      "file": "portraits/bone_mender/kell_of_white_thread.png",
+      "sha256": "e0a00ef144a90a393225a699b50f91aa25e1b5710cbf78c5b7c5ce2774552e7b"
+    },
+    "story.portrait.bone_mender.mara_sutured": {
+      "file": "portraits/bone_mender/mara_sutured.png",
+      "sha256": "403eb80092f7dafedaff25fc88f523b271a9c2dc0f595771cf2bee727990998a"
+    },
+    "story.portrait.bone_mender.saint_not_yet": {
+      "file": "portraits/bone_mender/saint_not_yet.png",
+      "sha256": "b300158e3c795845d3ef4918c486235feedaf4066e84ac8bf335c46da580a441"
+    },
+    "story.portrait.drowned_heir.blue_lipped_child": {
+      "file": "portraits/drowned_heir/blue_lipped_child.png",
+      "sha256": "24d24971288c45ea16e277613b330877e8d40748df7569451e7aad49754f3e14"
+    },
+    "story.portrait.drowned_heir.lysa_underwave": {
+      "file": "portraits/drowned_heir/lysa_underwave.png",
+      "sha256": "595d107e562a2359cdcb9a8b056886f4fae46557cc747fc4d9fd925ef45026b9"
+    },
+    "story.portrait.drowned_heir.prince_nerian": {
+      "file": "portraits/drowned_heir/prince_nerian.png",
+      "sha256": "85f7a2695a52a28a168e855bf3c65e86277c8e365c091e258735165cdb171d5b"
+    },
+    "story.portrait.furnace_heretic.brass_thumb_oren": {
+      "file": "portraits/furnace_heretic/brass_thumb_oren.png",
+      "sha256": "3e41abc4c395ef9e4e2607b9a654975bdb4bf9ffd371ea8e4b71d0fcf1fd2bd2"
+    },
+    "story.portrait.furnace_heretic.devra_cogprayer": {
+      "file": "portraits/furnace_heretic/devra_cogprayer.png",
+      "sha256": "2e01248c2b52d517d1da27e390dfde5206c681b6ecfbed52e3fc78dff666f00b"
+    },
+    "story.portrait.furnace_heretic.malk_the_quenched": {
+      "file": "portraits/furnace_heretic/malk_the_quenched.png",
+      "sha256": "c373a4c9eb84744ce3fef716b511fb0485ac19c1a080c07f52c07c074e0e1c24"
+    },
+    "story.portrait.grave_witch.edda_crowmilk": {
+      "file": "portraits/grave_witch/edda_crowmilk.png",
+      "sha256": "675e8d175758c7283638c394b0a0c81f7a6764c4962b5cf4629a6cd715132955"
+    },
+    "story.portrait.grave_witch.mother_hush": {
+      "file": "portraits/grave_witch/mother_hush.png",
+      "sha256": "fd1e34e4fc8200e38d550c77d359ec87e79711768d59db0a1b15de052a73bdce"
+    },
+    "story.portrait.grave_witch.vespera_thorne": {
+      "file": "portraits/grave_witch/vespera_thorne.png",
+      "sha256": "14b8e7c4f36fb41f1c08853b20b2274e0637c537fb8660782b6e1c27960f5488"
+    },
+    "story.portrait.lost_cartographer.ammar_without_roads": {
+      "file": "portraits/lost_cartographer/ammar_without_roads.png",
+      "sha256": "937dd8cbe9e47a1d2e82409df7463f3fbc4c95d0ca9d2834c4b393e5368eb23f"
+    },
+    "story.portrait.lost_cartographer.fen_chalkhand": {
+      "file": "portraits/lost_cartographer/fen_chalkhand.png",
+      "sha256": "641d0b16112861d0e9d9b8b0ebe881988a9f08d51c116da379cb5b223007d13c"
+    },
+    "story.portrait.lost_cartographer.sella_of_the_fold": {
+      "file": "portraits/lost_cartographer/sella_of_the_fold.png",
+      "sha256": "73fb7bfb65057a270adb7fc4a3ac3a0313f3322c2b67f168012f139fe04ef3c1"
+    },
+    "story.portrait.mirror_scribe.iosef_of_the_glass": {
+      "file": "portraits/mirror_scribe/iosef_of_the_glass.png",
+      "sha256": "f5e16c6a40111378641b624b7d64c058827d5f72f1610c17d8a5d3554dfcd479"
+    },
+    "story.portrait.mirror_scribe.nim_rue": {
+      "file": "portraits/mirror_scribe/nim_rue.png",
+      "sha256": "26c6f637ba4bfd81cac1575958323c2efe8e89365fa00321344c6c836ca8de1f"
+    },
+    "story.portrait.mirror_scribe.tallow_quill": {
+      "file": "portraits/mirror_scribe/tallow_quill.png",
+      "sha256": "010eeaf1c2a5aac4d9b53e9d7322d86eac0c0d4cf4c3b89d55696f5a6106a530"
+    },
+    "story.portrait.mortuary_broker.coin_eye_pell": {
+      "file": "portraits/mortuary_broker/coin_eye_pell.png",
+      "sha256": "baf6f04264f6da92a35366bc53fd140a7c8396b8a1746c984cd8966703bb0c41"
+    },
+    "story.portrait.mortuary_broker.madam_nacre": {
+      "file": "portraits/mortuary_broker/madam_nacre.png",
+      "sha256": "58a24ae0331d620343a777e51ad3f4be41bc023795cfaca63d02ffd1126fcf67"
+    },
+    "story.portrait.mortuary_broker.voss_factor_ilm": {
+      "file": "portraits/mortuary_broker/voss_factor_ilm.png",
+      "sha256": "7ac8c6c73f19622df9d4e3442162a3259a846db9644a1f6e7c1a179d3dfea53a"
+    },
+    "story.portrait.oathless_knight.dame_vey": {
+      "file": "portraits/oathless_knight/dame_vey.png",
+      "sha256": "262507c3a893505f0106e477006b59b217b9fc6f12b74261cfa3e29a238377ee"
+    },
+    "story.portrait.oathless_knight.rook_of_voss": {
+      "file": "portraits/oathless_knight/rook_of_voss.png",
+      "sha256": "516471bbc0966033558f05495bea5b5470b41cf4d3d57642cd66f813f764505a"
+    },
+    "story.portrait.oathless_knight.ser_caldus": {
+      "file": "portraits/oathless_knight/ser_caldus.png",
+      "sha256": "b8dee8e1dac9f8255b84c8f142653d638848ec2db7779bf2d84c5dfcdf92f34e"
+    },
+    "story.relic.asterion_nail": {
+      "file": "icons/relics/asterion_nail.png",
+      "sha256": "dfdc361bebcacc99c8b9dc45f54e2da30818a8bc9311924fb45eec8210e42a22"
+    },
+    "story.relic.cinder_key_of_khar": {
+      "file": "icons/relics/cinder_key_of_khar.png",
+      "sha256": "68775306789ccdace51cb7aafef6f3a949c00eaef04158096153e44fc804462c"
+    },
+    "story.relic.crown_of_antlers_and_teeth": {
+      "file": "icons/relics/crown_of_antlers_and_teeth.png",
+      "sha256": "74e0ef1fee74f215b7d1652a25c5c542e52c4aa803c40a98825fa2d36b908da6"
+    },
+    "story.relic.heartseed_reliquary": {
+      "file": "icons/relics/heartseed_reliquary.png",
+      "sha256": "c2b2dc98eb9a71f6b3ec881de2c7082b167176b3cf302045548303329db58575"
+    },
+    "story.relic.lantern_of_unburied_roads": {
+      "file": "icons/relics/lantern_of_unburied_roads.png",
+      "sha256": "407184bf4c1a67cf2124a0e14e6eb9e091bbcdfb980dca5ae2a8a6db8e939f52"
+    },
+    "story.relic.mire_saints_bell": {
+      "file": "icons/relics/mire_saints_bell.png",
+      "sha256": "66152db58f1908ccd9a2ef497cb6bbed4844e448c1d7fdf64da09c08669a35b3"
+    },
+    "story.relic.mirror_psalter": {
+      "file": "icons/relics/mirror_psalter.png",
+      "sha256": "4c5d18df42c4cae260d2a3b630d76906ae9c4fb1ad62bda9a5d5988b5cf8d4a6"
+    },
+    "story.relic.oath_eaters_chain": {
+      "file": "icons/relics/oath_eaters_chain.png",
+      "sha256": "a7232deda34d6e099b0227b13e45757ac2eaf33081d1a375c7c0f74130fc8850"
+    },
+    "story.relic.vessel_of_last_rain": {
+      "file": "icons/relics/vessel_of_last_rain.png",
+      "sha256": "cc0d9fdf0d9e9285c3b809eac0e614b3b3251317aac1a51964ad22b90ace2b2d"
+    },
+    "story.relic.wormscript_map": {
+      "file": "icons/relics/wormscript_map.png",
+      "sha256": "9b3851a481dde588176d25d1581646db1d003d4ab5cec3ab55c49f68e7e4ee0a"
+    }
+  },
+  "format_version": 1
+}

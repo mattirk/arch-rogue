@@ -1,0 +1,185 @@
+diff --git a/src/platforms/rcore_android.c b/src/platforms/rcore_android.c
+index e21cc03..2ac902d 100644
+--- a/src/platforms/rcore_android.c
++++ b/src/platforms/rcore_android.c
+@@ -43,6 +43,7 @@
+ #include <android/window.h>             // Required for: AWINDOW_FLAG_FULLSCREEN definition and others
+ #include <android/log.h>                // Required for: Android log system: __android_log_vprint()
+ #include <android/asset_manager.h>      // Required for: AAssetManager
++#include <android/api-level.h>          // Required for: android_get_device_api_level()
+ //#include <android/sensor.h>           // Required for: Android sensors functions (accelerometer, gyroscope, light...)
+ 
+ #include <errno.h>                      // Required for: error types
+@@ -83,5 +84,92 @@ extern CoreData CORE;                   // Global CORE state context
+ static PlatformData platform = { 0 };   // Platform specific data
+ 
++// Arch Rogue's NativeActivity bridge. These process-local facts deliberately
++// stay outside raylib's public API; the vendored Odin binding exposes them only
++// for Android builds. Lifecycle callbacks share the native game thread; Android's
++// Java back callback arrives on the UI thread and uses atomic compiler builtins.
++enum {
++    ARCH_ROGUE_ANDROID_EVENT_START = 1u << 0,
++    ARCH_ROGUE_ANDROID_EVENT_RESUME = 1u << 1,
++    ARCH_ROGUE_ANDROID_EVENT_INIT_WINDOW = 1u << 2,
++    ARCH_ROGUE_ANDROID_EVENT_GAINED_FOCUS = 1u << 3,
++    ARCH_ROGUE_ANDROID_EVENT_PAUSE = 1u << 4,
++    ARCH_ROGUE_ANDROID_EVENT_LOST_FOCUS = 1u << 5,
++    ARCH_ROGUE_ANDROID_EVENT_TERM_WINDOW = 1u << 6,
++    ARCH_ROGUE_ANDROID_EVENT_STOP = 1u << 7,
++    ARCH_ROGUE_ANDROID_EVENT_DESTROY = 1u << 8,
++    ARCH_ROGUE_ANDROID_EVENT_LOW_MEMORY = 1u << 9,
++    ARCH_ROGUE_ANDROID_EVENT_CONFIG_CHANGED = 1u << 10,
++    ARCH_ROGUE_ANDROID_EVENT_CONTENT_RECT_CHANGED = 1u << 11
++};
++
++static unsigned int archRogueLifecycleEvents = 0;
++static unsigned int archRogueBackPresses = 0;
++
++JNIEXPORT void JNICALL Java_org_archrogue_archrogue_odin_ArchRogueActivity_nativeOnBackPressed(
++    JNIEnv *env, jclass activityClass)
++{
++    (void)env;
++    (void)activityClass;
++    __atomic_fetch_add(&archRogueBackPresses, 1u, __ATOMIC_RELEASE);
++}
++
++__attribute__((visibility("default"))) unsigned int ArchRogueAndroidDrainBackPresses(void)
++{
++    return __atomic_exchange_n(&archRogueBackPresses, 0u, __ATOMIC_ACQ_REL);
++}
++
++__attribute__((visibility("default"))) unsigned int ArchRogueAndroidDrainLifecycleEvents(void)
++{
++    unsigned int events = archRogueLifecycleEvents;
++    archRogueLifecycleEvents = 0;
++    return events;
++}
++
++__attribute__((visibility("default"))) const char *ArchRogueAndroidInternalDataPath(void)
++{
++    if ((platform.app == NULL) || (platform.app->activity == NULL)) return NULL;
++    return platform.app->activity->internalDataPath;
++}
++
++__attribute__((visibility("default"))) int ArchRogueAndroidGetSafeInsets(int *left, int *top, int *right, int *bottom)
++{
++    if ((left == NULL) || (top == NULL) || (right == NULL) || (bottom == NULL) ||
++        (platform.app == NULL) || (platform.app->window == NULL)) return 0;
++
++    int width = ANativeWindow_getWidth(platform.app->window);
++    int height = ANativeWindow_getHeight(platform.app->window);
++    ARect rect = platform.app->contentRect;
++    if ((rect.right <= rect.left) || (rect.bottom <= rect.top))
++    {
++        rect.left = 0;
++        rect.top = 0;
++        rect.right = width;
++        rect.bottom = height;
++    }
++
++    *left = (rect.left > 0)? rect.left : 0;
++    *top = (rect.top > 0)? rect.top : 0;
++    *right = (width > rect.right)? width - rect.right : 0;
++    *bottom = (height > rect.bottom)? height - rect.bottom : 0;
++    return 1;
++}
++
++__attribute__((visibility("default"))) int ArchRogueAndroidIsInteractive(void)
++{
++    return (platform.app != NULL) && platform.appEnabled &&
++        (platform.app->window != NULL) && (platform.surface != EGL_NO_SURFACE);
++}
++
++__attribute__((visibility("default"))) int ArchRogueAndroidApiLevel(void)
++{
++    return android_get_device_api_level();
++}
++
++__attribute__((visibility("default"))) void ArchRogueAndroidLog(const char *message)
++{
++    if (message != NULL) __android_log_write(ANDROID_LOG_INFO, "ArchRogue", message);
++}
++
+ //----------------------------------------------------------------------------------
+ // Local Variables Definition
+ //----------------------------------------------------------------------------------
+@@ -1044,10 +1119,14 @@ static void AndroidCommandCallback(struct android_app *app, int32_t cmd)
+     switch (cmd)
+     {
+         case APP_CMD_START:
+         {
++            archRogueLifecycleEvents |= ARCH_ROGUE_ANDROID_EVENT_START;
+             //rendering = true;
+         } break;
+-        case APP_CMD_RESUME: break;
++        case APP_CMD_RESUME:
++        {
++            archRogueLifecycleEvents |= ARCH_ROGUE_ANDROID_EVENT_RESUME;
++        } break;
+         case APP_CMD_INIT_WINDOW:
+         {
+             if (app->window != NULL)
+@@ -1119,18 +1198,24 @@ static void AndroidCommandCallback(struct android_app *app, int32_t cmd)
+                     SetRandomSeed((unsigned int)time(NULL));
+                 }
++                archRogueLifecycleEvents |= ARCH_ROGUE_ANDROID_EVENT_INIT_WINDOW;
+             }
+         } break;
+         case APP_CMD_GAINED_FOCUS:
+         {
+             platform.appEnabled = true;
+             FLAG_CLEAR(CORE.Window.flags, FLAG_WINDOW_UNFOCUSED);
++            archRogueLifecycleEvents |= ARCH_ROGUE_ANDROID_EVENT_GAINED_FOCUS;
+             //ResumeMusicStream();
+         } break;
+-        case APP_CMD_PAUSE: break;
++        case APP_CMD_PAUSE:
++        {
++            archRogueLifecycleEvents |= ARCH_ROGUE_ANDROID_EVENT_PAUSE;
++        } break;
+         case APP_CMD_LOST_FOCUS:
+         {
+             platform.appEnabled = false;
+             FLAG_SET(CORE.Window.flags, FLAG_WINDOW_UNFOCUSED);
++            archRogueLifecycleEvents |= ARCH_ROGUE_ANDROID_EVENT_LOST_FOCUS;
+             //PauseMusicStream();
+         } break;
+         case APP_CMD_TERM_WINDOW:
+@@ -1155,19 +1240,35 @@ static void AndroidCommandCallback(struct android_app *app, int32_t cmd)
+                 platform.contextRebindRequired = true;
+             }
++            archRogueLifecycleEvents |= ARCH_ROGUE_ANDROID_EVENT_TERM_WINDOW;
+             // If 'platform.device' is already set to 'EGL_NO_DISPLAY'
+             // this means that the user has already called 'CloseWindow()'
+ 
+         } break;
+         case APP_CMD_SAVE_STATE: break;
+-        case APP_CMD_STOP: break;
+-        case APP_CMD_DESTROY: break;
++        case APP_CMD_STOP:
++        {
++            archRogueLifecycleEvents |= ARCH_ROGUE_ANDROID_EVENT_STOP;
++        } break;
++        case APP_CMD_DESTROY:
++        {
++            archRogueLifecycleEvents |= ARCH_ROGUE_ANDROID_EVENT_DESTROY;
++        } break;
++        case APP_CMD_LOW_MEMORY:
++        {
++            archRogueLifecycleEvents |= ARCH_ROGUE_ANDROID_EVENT_LOW_MEMORY;
++        } break;
+         case APP_CMD_CONFIG_CHANGED:
+         {
++            archRogueLifecycleEvents |= ARCH_ROGUE_ANDROID_EVENT_CONFIG_CHANGED;
+             //AConfiguration_fromAssetManager(platform.app->config, platform.app->activity->assetManager);
+             //print_cur_config(platform.app);
+ 
+             // Check screen orientation here!
+         } break;
++        case APP_CMD_CONTENT_RECT_CHANGED:
++        {
++            archRogueLifecycleEvents |= ARCH_ROGUE_ANDROID_EVENT_CONTENT_RECT_CHANGED;
++        } break;
+         default: break;
+     }
+ }

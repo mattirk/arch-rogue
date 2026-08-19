@@ -1,286 +1,120 @@
-# ![Arch Rogue](src/arch_rogue/assets/sprites/menus/title_logo.png)
+# ![Arch Rogue](website/assets/title_logo.png)
 
-Arch Rogue is a modernized take on the classic Rogue formula: a grim, replayable isometric action-RPG dungeon crawler built with Python and Pygame CE. Procedural dungeons, permanent consequences, scarce resources, and unidentified treasure meet real-time combat, loot-driven builds, and a seeded dark-fantasy storyline.
+Arch Rogue is a grim isometric action-RPG roguelike built with [Odin](https://odin-lang.org/) and [raylib](https://www.raylib.com/). It combines deterministic procedural dungeons, real-time combat, random loot, permanent consequences, and a seeded dark-fantasy story.
 
-## Download
+The active game now lives at the repository root. `src/`, `assets/`, `tests/`, `android/`, and `build.sh` are the canonical Odin project. The former Python/Pygame implementation is archived under `arch-rogue-python/`; it remains useful for archaeology and parity checks, but it is not an active development or runtime dependency.
 
-Get the latest automated build for Windows, Linux, macOS, or Android from the [Arch Rogue download site](https://mattirk.github.io/arch-rogue/). These are bleeding-edge prerelease builds; developers can also install from source below.
+## Downloads and platform status
 
-## Features
+Bleeding-edge prerelease builds are published on the [Arch Rogue download site](https://mattirk.github.io/arch-rogue/).
 
-**Dungeon & exploration**
-- 10-depth procedural dungeon with rooms, corridors, chokepoints, secrets, traps, and themed biomes.
-- Floor plans pace the whole run: escalating threat, biome variety, elites and bosses
-- Dark floors lit only by your lantern, normal floors revealed as you explore
-- Data-driven special rooms (shops, quest-guest rooms) with a pluggable handler model for future room types.
+| Platform | Status |
+| --- | --- |
+| Linux | Available |
+| Android | Available as a native Odin/raylib alpha build |
+| Windows | Deferred |
+| macOS | Deferred |
+| Steam / Steam Deck integration | Deferred |
+| Multiplayer | Deferred |
 
-**Combat**
-- Real-time isometric combat with melee arcs, ranged bolts, arc novas, and a dash, plus stamina/mana/cooldowns and readable enemy telegraphs.
-- Enemy elites with named modifiers and distinct telegraphs, Oathbound minibosses, and floor bosses (Ash Gallows Knight, Mycelial Matron, Rime Chanter, Voidbound Rune Sentinel) culminating in the Dread Gate Tyrant.
-- Encounter templates shape each floor: elite packs, ruin ambushes, treasure rooms, and optional challenge rooms.
+This is an alpha release. Save formats are versioned and defensive, but gameplay, presentation, and platform contracts can still change before 6.0.
 
-**Progression & loot**
+## Highlights
+
+- Deterministic ten-depth runs with procedural rooms, corridors, doors, boss arenas, eight dungeon themes, dark floors, line-of-sight fog of war, and an isometric minimap.
 - Five archetypes: Warden, Rogue, Arcanist, Acolyte, and Ranger.
-- Skill system with active abilities, passive talents, branch commitment, combo bonuses, Oath Shrines, and Forgotten Skill Altars.
-- Loot rarity tiers (Common, Magic, Rare, Legendary, Unique, Cursed) with an ARPG-style affix vocabulary — damage types, resistances, lifesteal, thorns, proc effects, attack/cast/move speed, and skill bonuses.
-- Unidentified items, tempting cursed bargains, and unique items with special effects.
+- Fixed-step real-time combat with class kits, typed damage and statuses, elites, minibosses, five bosses, familiars, and a full discipline tree.
+- Loot with rarity tiers, affixes, unidentified and cursed equipment, consumables, and thirteen named uniques.
+- Traps, shrines, secrets, Shops, Bars, Gardens, Quest rooms, and the Hall of Unlost Echoes.
+- A deterministic story engine with guests, relic choices, minigames, run consequences, and fifteen endings.
+- Local save/resume, recovery-safe writes, persistent options, and the Chronicle run history.
+- Authored PixelLab actor, world, UI, story, and effect art with point-sampled rendering.
+- Keyboard/mouse and remappable gamepad input on Linux; native multi-touch, lifecycle, and semantic Back handling on Android.
 
-**Story & world**
-- Seeded dark-fantasy storyline with story guests, Aid/Bargain/Defy relic choices, and quest cutscenes driven by a dialogue-tree asset pipeline.
-- Shrines (Mending, Insight, War, Haste, Fortune, Oath, Twilight) and secrets (Hidden Cache, Cursed Reliquary, Sealed Armory, Moonlit Bargain, and more).
-- Discoverable lore through items, shrines, enemy factions, and rare encounters.
+See `PARITY.md` for the port ledger and `ARCHITECTURE.md` for design decisions, subsystem ownership, and hard boundaries.
 
-**Run lifecycle**
-- Four difficulty levels — Easy, Medium (default), Hard, and Hell (unlocked after a clear).
-- Lightweight meta-progression (best depth, clears, discoveries, defeated bosses, notable loot, unlocks) that opens options without removing run tension.
-- Versioned run saves with resume from the title screen, plus persistent options.
-- End-of-run summaries covering cause of death, loot, bosses, secrets, story choices, and mastery.
+## Build on Linux
 
-**Presentation & input**
-- High-resolution directional asset sprites for all five archetypes, the complete enemy and boss roster, NPCs, familiars, and loot, plus HD isometric dungeon tiles.
-- Three graphics tiers: HD world masters (the default and future development target), the original lower-resolution Modern world, and a complete procedural Legacy renderer. Modern and Legacy remain supported compatibility paths.
-- Cached idle/run/action animation playback, theme-aware world recoloring, and normal-map lighting.
-- Procedural NES-style music and sound effects.
-- Keyboard/mouse and full gamepad support with remappable bindings, deadzones, and hot-plug.
-- Accessibility touches: aim assist, adjustable UI scale, scrollable settings, and an in-run help overlay.
+### Requirements
 
-## Architecture
+- A Linux development host
+- Bash
+- Odin `dev-2026-07:301c287de` available as `odin`
+- The normal Linux graphics, windowing, and audio development libraries required by raylib
 
-This project uses vibe architecture: module boundaries stay intentionally small and evolve when new features or file size make a seam worthwhile. The 3.1 refactor preserves `arch_rogue.game.Game`, `arch_rogue.game:main`, `arch_rogue.rendering.RenderingMixin`, `arch_rogue.menus.MenuRenderer`, and `arch_rogue.content` as stable public import points while splitting large implementation files into focused modules.
+The raylib 6.0 binding and pinned static libraries are included under `vendor/raylib/`; a separate raylib installation is not required.
 
-Current ownership:
-
-- `src/arch_rogue/game.py` owns `Game` construction, high-level app state, main loop wiring, and `main()`.
-- Runtime behavior is composed through mixins: `camera.py`, `options.py`, `run_flow.py`, `population.py`, `combat.py`, `story_runtime.py`, `inventory.py`, `shop.py`, `interactions.py`, and `save_system.py`.
-- `src/arch_rogue/rendering/` owns world, actor, effects, HUD, and story/cutscene drawing behind the compatible `RenderingMixin` export.
-- `src/arch_rogue/menus/` owns reusable title/options/character/inventory/state overlay rendering behind the compatible `MenuRenderer` export.
-- `src/arch_rogue/content/` owns content-table modules for definitions, archetypes, enemies, equipment, difficulty, interactables, progression, and story corpus behind the compatible `arch_rogue.content` facade.
-- `src/arch_rogue/sprite_assets.py` owns packaged sprite loading, directional animation resolution, anchors, tinting, bounded caches, and per-resource fallback; `sprites.py` remains the compatible procedural legacy atlas.
-- `src/arch_rogue/story.py`, `dungeon.py`, `audio.py`, `models.py`, and `constants.py` remain focused support modules.
-
-## Requirements
-
-- Python 3.11 or newer
-- Pygame CE 2.5 or newer, installed through the project dependencies
-
-## Install
-
-From a checkout of this repository:
+Run every command from the repository root. The wrapper also relocates itself correctly when invoked from another current directory.
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -e .
+./build.sh check
+./build.sh test
+./build.sh build
+./build.sh run
+./build.sh release
 ```
 
-## Run
+- `check` runs `odin check src -vet`.
+- `test` runs the headless deterministic Odin test package with vetting enabled.
+- `build` creates a debug executable at `build/archrogue`.
+- `run` builds and starts the debug game.
+- `release` creates an optimized executable at `build/archrogue`.
+
+Additional Odin arguments may be appended after the command.
+
+## Build for Android
+
+Android is a native `NativeActivity` package using the same Odin/raylib game loop as Linux. It targets API 35, supports API 28 and newer, and packages `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
+
+The pinned Android toolchain requires JDK 17, Android build-tools 35.0.0, NDK `28.2.13676358`, and a populated offline Gradle/AGP cache. Start with preflight; it reports exact missing components.
 
 ```bash
-python -m arch_rogue
+./build.sh android-preflight
+./build.sh android-debug
+./build.sh android-install
+./build.sh android-audit
+./build.sh android-smoke --serial emulator-5554
 ```
 
-or, after install:
+A signed release APK and AAB require the signing environment documented in `android/README.md`:
 
 ```bash
-arch-rogue
+./build.sh android-release
 ```
 
-## Compile and Test
+Android outputs are written under `build/android/`. See `android/README.md` for toolchain provisioning, application IDs, signing, AVD smoke testing, ABI auditing, and the NativeActivity/Back bridge.
 
-Run development commands from the repository root after installing the editable package in a virtual environment.
+## Repository layout
 
-Compile/syntax-check the source and tests with Python bytecode compilation:
-
-```bash
-python -m compileall src tests
+```text
+src/                 Odin package and game entry point
+assets/              canonical game-ready art, audio, shaders, and manifests
+tests/               headless deterministic Odin tests
+android/             pinned native Android Gradle package
+tools/               asset verification, capture, profiling, and Android tooling
+vendor/raylib/       pinned raylib 6.0 binding and platform archives
+website/             download-site source and branding
+arch-rogue-python/   archived legacy Python/Pygame source tree
+build.sh             check, test, build, run, release, and Android wrapper
 ```
 
-Run the full automated test suite with `unittest`:
+The active Odin build must not read code or assets from `arch-rogue-python/`. `assets/` is the only canonical runtime art tree.
 
-```bash
-python -m unittest discover tests
-```
+## Development notes
 
-Run a focused test module while iterating on a specific change:
+- Simulation uses a 60 Hz fixed timestep and seeded PCG streams. Rendering must not mutate simulation state.
+- Simulation and content code remain raylib-free so the test package can run headlessly.
+- Linux and Android are the only current release targets. Do not imply support for deferred platforms in release notes or download copy.
+- The project is still awaiting final human side-by-side visual parity signoff and broader physical-device Android retesting noted in `PARITY.md`.
 
-```bash
-python -m unittest tests.test_dark_levels
-```
+## Licenses and notices
 
-Notes:
+Arch Rogue source and binaries are distributed under the [Apache License 2.0](LICENSE). Required notices, bundled-dependency attribution, and the AI provenance/liability notice are in [NOTICE](NOTICE).
 
-- The project uses Python's built-in `unittest`; `pytest` is not required.
-- Test modules configure dummy SDL video/audio drivers for headless Pygame runs.
-- Prefer running the focused test module for your change first, then the full suite before submitting.
+raylib 6.0 is bundled under the zlib/libpng license; its complete text is in [`vendor/raylib/LICENSE`](vendor/raylib/LICENSE), with Android archive provenance under `vendor/raylib/android/PROVENANCE.md`. Android packages include exact Arch Rogue and raylib license copies under their packaged `assets/licenses/` directory.
 
-## Profile Performance
-
-Use the deterministic fixed-step harness to profile simulation and rendering separately without frame-limit sleep or human input:
-
-```bash
-.venv/bin/python tools/profile_game.py --scenario crowd --frames 240
-```
-
-`--scenario quiet` profiles an unmodified generated floor; `crowd` clusters the generated population into an open arena to stress collisions, combat effects, sprites, and lighting. Use `--graphics-tier legacy|modern|hd`, `--no-lighting`, `--depth`, `--zoom`, and `--output-dir` for focused comparisons. For the Android layout and logical framebuffer modes, pass the physical device size plus `--mobile --mobile-quality performance` (or `balanced` / `native`), for example `--width 2340 --height 1080`. The harness prints cumulative hotspots, render/viewport dimensions, asset-cache activity, and separate `cProfile` files for update and render work under `build/profiles/` by default.
-
-## Controls
-
-Arch Rogue supports keyboard/mouse and gamepad. Gamepad bindings can be remapped from the Controls menu (Options → Controls).
-
-### Gameplay
-
-| Control | Action |
-| --- | --- |
-| Hold Left Mouse | Move toward / aim at the cursor; slash enemies in the melee arc |
-| Left Click | Face the cursor and slash if an enemy is in the melee arc |
-| Arrow Keys | Keyboard aim / face direction |
-| `1` | Melee slash |
-| `2` | Cast ranged bolt |
-| `3` | Cast arc nova |
-| `4` | Dash toward aim direction |
-| `5` | Drink best matching health potion |
-| `6` | Drink best matching mana potion |
-| `7`-`9` | Use / equip inventory slot 7-9 |
-| `E` | Interact: pick up loot, use shrine, reveal secret, descend stairs, open story guest dialogue |
-| `I` | Toggle inventory |
-| `C` | Toggle character sheet (Overview + Disciplines tabs) |
-| Click/tap memory-token panel | Open the character sheet on Disciplines |
-| `Q` | Toggle quest HUD info |
-| `H` or `?` | Toggle in-run help overlay |
-| `Esc` | Close overlays, or save and quit from gameplay |
-
-### Inventory (while open)
-
-| Control | Action |
-| --- | --- |
-| `Up` / `W`, `Down` / `X` | Move selection |
-| `Tab` | Cycle sort mode |
-| `S` | Sort inventory |
-| `PageUp` / `PageDown` | Jump selection by a page |
-| `Home` / `End` | Jump to first / last slot |
-| `Return` / `E` | Use selected slot |
-| `Delete` / `Backspace` | Drop selected slot |
-| `1`-`9` | Use slot 1-9 |
-| `Shift` + `1`-`9` | Drop slot 1-9 |
-
-### Character sheet (while open)
-
-| Control | Action |
-| --- | --- |
-| `Tab` / `1` / `2` / `←` / `→` | Switch Overview and Disciplines tabs |
-| Click discipline (Disciplines) | Spend a memory token to acquire it |
-
-### Shop (while open)
-
-| Control | Action |
-| --- | --- |
-| `Tab` | Cycle buy / sell mode |
-| `Up` / `W`, `Down` / `S` / `X` | Move selection |
-| `Return` / `E` | Buy / sell selected |
-| `Backspace` / `Q` | Close shop |
-
-### Story & cutscenes
-
-| Control | Action |
-| --- | --- |
-| `1`-`3` | Choose Aid / Bargain / Defy (bind the guest relic) |
-| `1`-`9` | Choose a dialogue option |
-| `Return` / `Space` / `E` | Advance narration |
-
-### Title & menus
-
-| Control | Action |
-| --- | --- |
-| `↑` / `↓` / `←` / `→` / `W` / `S` | Navigate title and lists |
-| `Return` | Activate selection |
-| `N` | New run |
-| `L` / `R` | Resume saved run |
-| `O` | Options |
-| `A` / `C` / `H` / `?` | About / help |
-| `1`-`5` / `←` / `→` | Choose archetype |
-| `Backspace` | Back to title |
-| `Esc` | Quit |
-
-### Options
-
-| Control | Action |
-| --- | --- |
-| `A` / `M` / `F` / `D` | Toggle audio, music, fullscreen, or cycle difficulty |
-| `G` | Cycle Legacy / Modern / HD graphics |
-| `L` / `N` | Toggle lighting / normal-map lighting detail |
-| `+` / `-` | Adjust UI scale |
-| Arrow keys / D-pad | Navigate all rows; Left / Right cycles the selected setting |
-| `Return` | Toggle the selected row |
-| `Backspace` / `O` | Back to title |
-
-The Graphics setting chooses the art and world-rendering path:
-
-- **Legacy** uses the procedural renderer.
-- **Modern** uses authored actors, props, menus, and HUD with the original
-  lower-resolution world sprites.
-- **HD** uses the shared authored presentation plus the high-resolution world
-  masters and native-detail zoom pipeline. HD is the default and the target for
-  future visual development; Modern and Legacy remain supported for
-  compatibility and constrained systems.
-
-On Android, Graphics is independent of **Render quality**. Graphics chooses the
-source art and world-detail pipeline, while Performance / Balanced / Native
-choose the logical framebuffer resolution. Any graphics tier can be combined
-with any render-quality mode. `Ctrl+Alt+L` remains a compatibility shortcut
-that switches between Legacy and the last selected authored tier.
-
-### Gamepad
-
-Left stick or D-pad moves, the right stick aims, face buttons trigger combat abilities, and the triggers handle dash and interact. Menu navigation, inventory, shop, character sheet, and cutscene selection all work on pad. Bindings are remappable from the Controls menu, with deadzone and hot-plug support.
-
-### Android (beta)
-
-The Android beta provides a landscape-only build with the same gameplay. Touch and drag inside the central viewport to move/aim, tap the six skill badges on the right rail, use the left rail for HP/MP/Stamina and Inventory/Character/Quest/Help, and use the on-screen Back/arrows/Select buttons in menus. Android Back closes the top overlay or opens the pause sheet. See `docs/android-beta.md` for install, upgrade, build, and known-issue notes; releases from 4.5.4 onward use one persistent APK signer so future versions can update in place.
-
-### Multiplayer (two-player co-op)
-
-**Two will descend** on the title screen starts a cooperative run: one player hosts and shares a 4-character run code, the other joins with it, the host admits them at the lobby gate, and both descend the same dungeon (host-authoritative simulation, TLS to the relay server with certificate verification by default). Server host/port/encryption live in Options → Multiplayer; a stateless relay server ships in `server/`. See `docs/multiplayer.md` for the player guide, server operations (including nginx TLS termination and hardening), architecture, and the full wire-protocol specification.
-
-## Goal
-
-Explore 10 dungeon depths, survive enemies and traps, identify and equip loot, use shrines wisely, resolve or ignore story guest dilemmas, and reach the exit stairs. Press `E` on stairs to descend. On depth 10, defeat the story-marked gate tyrant before using the stairs to complete the run.
-
-In-progress runs are saved to `~/.arch_rogue_run.json` and can be resumed from the title screen. Death and victory clear the saved run. Options are saved to `~/.arch_rogue_options.json`.
-
-## Known Issues
-
-- Quest cutscene and story-corpus content is computer generated and not human-authored. Story is mostly slop and may be replaced with more engaging content in future versions.
-- Music and sound effects are procedural/static cues; there is no hand-authored soundtrack asset pipeline yet.
-- The packaged HD world set increases wheel size; Modern and Legacy graphics remain available for constrained systems.
-- Save files are local JSON and are not cloud-synced.
-- Multiplayer is two-player co-op only (desktop and Android).
-
-## License
-
-This project is licensed under the Apache License, Version 2.0 (see `LICENSE`).
-
-### Trademark Notice
-
-The "Arch Rogue" name and the octahedron crest logo are trademarks of the
-project author and are **not** part of the Apache-2.0 copyright grant
-(Apache-2.0 §6 reserves trademark rights). The OSS license covers copyright in
-the source code; it does not grant permission to use the Arch Rogue name or logo
-for branding, derivative product names, or promotion without separate written
-permission. Third-party bundled libraries retain their own trademarks, which
-are likewise not granted by this project's license.
-
-### AI Provenance & Liability Notice
-
-This repository contains code generated, assisted, or refactored by Artificial Intelligence models.
-
-Pursuant to the accompanying Apache 2.0 License, this software is provided strictly "AS IS", without warranties of any kind regarding its intellectual property status, clean provenance, or non-infringement.
-
-- For Downstream Users: The maintainer does not guarantee that this code is completely free of third-party copyright claims or copyleft license contamination. By utilizing, modifying, or distributing this code, you assume all legal and financial risks associated with its use. You are strongly advised to perform your own code-matching and compliance audits before integrating this software into commercial or production environments.
-
-## Credits
-
-Design, code, asset sprites, procedural legacy art, procedural story corpus, and procedural audio by the Arch Rogue project. Built with Python and [Pygame CE](https://pyga.me/). Much of this project is computer generated and not reviewed by a human.
+The **Arch Rogue** name and octahedron crest are trademarks of the project author and are not granted for derivative branding by Apache-2.0.
 
 ## Changelog
 
-See `CHANGELOG.md` for release notes.
+See `CHANGELOG.md` for release history and current unreleased work.
