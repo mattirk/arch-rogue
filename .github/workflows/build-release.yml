@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ODIN_RELEASE: dev-2026-07
+  ODIN_SOURCE_TAG: dev-2026-07
 
 jobs:
   linux:
@@ -55,22 +55,41 @@ jobs:
             xauth \
             xvfb
 
-      - name: Set up pinned monthly Odin
+      - name: Build exact Odin tag from source
         uses: laytan/setup-odin@8536d8fa450ec6f1bd9ddc84bbaaf16296c0051d # v2
         with:
-          token: ${{ github.token }}
-          release: ${{ env.ODIN_RELEASE }}
+          release: "false"
+          branch: ${{ env.ODIN_SOURCE_TAG }}
+          llvm-version: "21"
+          build-type: release
+          cache: "false"
 
       - name: Verify exact Odin snapshot
         shell: bash
         run: |
           set -euo pipefail
           expected="$(sed -n 's/^ODIN_VERSION=//p' android/toolchain.properties)"
+          expected_commit="$(sed -n 's/^ODIN_COMMIT=//p' android/toolchain.properties)"
+          [[ "$ODIN_SOURCE_TAG" == "${expected%%:*}" ]] || {
+            echo "Odin source tag $ODIN_SOURCE_TAG does not match $expected" >&2
+            exit 1
+          }
+          actual_commit="$(git -C "$HOME/odin" rev-parse HEAD)"
+          [[ "$actual_commit" == "$expected_commit" ]] || {
+            echo "expected Odin source commit $expected_commit, found $actual_commit" >&2
+            exit 1
+          }
           actual="$(odin version 2>&1 | sed -n '1p')"
           if [[ "$actual" != "odin version $expected" && "$actual" != "$expected" ]]; then
             echo "expected Odin $expected, found $actual" >&2
             exit 1
           fi
+          expected_backend="$(sed -n 's/^ODIN_BACKEND_LLVM_VERSION=//p' android/toolchain.properties)"
+          actual_backend="$(odin report 2>&1 | sed -n 's/^[[:space:]]*Backend: LLVM //p' | sed -n '1p')"
+          [[ "$actual_backend" == "$expected_backend" ]] || {
+            echo "expected Odin LLVM backend $expected_backend, found ${actual_backend:-unknown}" >&2
+            exit 1
+          }
 
       - name: Read release metadata
         id: metadata
@@ -194,11 +213,14 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up pinned monthly Odin
+      - name: Build exact Odin tag from source
         uses: laytan/setup-odin@8536d8fa450ec6f1bd9ddc84bbaaf16296c0051d # v2
         with:
-          token: ${{ github.token }}
-          release: ${{ env.ODIN_RELEASE }}
+          release: "false"
+          branch: ${{ env.ODIN_SOURCE_TAG }}
+          llvm-version: "21"
+          build-type: release
+          cache: "false"
 
       - name: Install Android host prerequisites and exact Clang 22.1.8
         shell: bash
@@ -216,11 +238,27 @@ jobs:
           sudo apt-get install -y --no-install-recommends clang-22
 
           expected_odin="$(sed -n 's/^ODIN_VERSION=//p' android/toolchain.properties)"
+          expected_odin_commit="$(sed -n 's/^ODIN_COMMIT=//p' android/toolchain.properties)"
+          [[ "$ODIN_SOURCE_TAG" == "${expected_odin%%:*}" ]] || {
+            echo "Odin source tag $ODIN_SOURCE_TAG does not match $expected_odin" >&2
+            exit 1
+          }
+          actual_odin_commit="$(git -C "$HOME/odin" rev-parse HEAD)"
+          [[ "$actual_odin_commit" == "$expected_odin_commit" ]] || {
+            echo "expected Odin source commit $expected_odin_commit, found $actual_odin_commit" >&2
+            exit 1
+          }
           actual_odin="$(odin version 2>&1 | sed -n '1p')"
           if [[ "$actual_odin" != "odin version $expected_odin" && "$actual_odin" != "$expected_odin" ]]; then
             echo "expected Odin $expected_odin, found $actual_odin" >&2
             exit 1
           fi
+          expected_odin_backend="$(sed -n 's/^ODIN_BACKEND_LLVM_VERSION=//p' android/toolchain.properties)"
+          actual_odin_backend="$(odin report 2>&1 | sed -n 's/^[[:space:]]*Backend: LLVM //p' | sed -n '1p')"
+          [[ "$actual_odin_backend" == "$expected_odin_backend" ]] || {
+            echo "expected Odin LLVM backend $expected_odin_backend, found ${actual_odin_backend:-unknown}" >&2
+            exit 1
+          }
           clang_bin="$(command -v clang-22)"
           clang_version="$($clang_bin --version | sed -n '1s/^.*clang version \([^ ]*\).*$/\1/p')"
           [[ "$clang_version" == '22.1.8' ]] || {

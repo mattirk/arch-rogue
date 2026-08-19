@@ -11,7 +11,7 @@ compilation, clean asset staging, signing gates, and final artifact audits.
 
 `toolchain.properties` pins:
 
-- Odin `dev-2026-07:301c287de` and Clang `22.1.8` for the audited Android IR bridge
+- Odin `dev-2026-07:301c287de`, built with LLVM `21.1.8`, and Clang `22.1.8` for the audited Android IR bridge
 - Gradle `8.14.3` and Android Gradle Plugin `8.11.0`
 - JDK major `17`
 - `minSdk 28`, `compileSdk 35`, `targetSdk 35`
@@ -19,6 +19,11 @@ compilation, clean asset staging, signing gates, and final artifact audits.
 - Android NDK `28.2.13676358` (r28c)
 - raylib `6.0`, its source checksum, and all three Android archive checksums
 - `arm64-v8a`, `armeabi-v7a`, and `x86_64` as the exact packaged ABI set and order
+
+CI builds the `dev-2026-07` tag from source with LLVM 21 because its published
+Linux archive was produced before the tag was finalized and reports the earlier
+`ab0131c` nightly revision. Post-setup checks remain fail-closed on the full
+`301c287de` source commit, compiler version, and LLVM `21.1.8` backend.
 
 If preflight reports missing Android components, install exactly the package IDs
 it prints. For the default `/opt/android-sdk` location the complete command is:

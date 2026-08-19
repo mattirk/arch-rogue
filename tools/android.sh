@@ -67,7 +67,7 @@ property_value() {
 validate_toolchain_contract() {
     local variable
     for variable in \
-        ODIN_VERSION ODIN_IR_CLANG_VERSION JAVA_MAJOR GRADLE_VERSION GRADLE_DISTRIBUTION_SHA256 \
+        ODIN_VERSION ODIN_COMMIT ODIN_BACKEND_LLVM_VERSION ODIN_IR_CLANG_VERSION JAVA_MAJOR GRADLE_VERSION GRADLE_DISTRIBUTION_SHA256 \
         GRADLE_WRAPPER_JAR_SHA256 AGP_VERSION MIN_SDK COMPILE_SDK TARGET_SDK \
         BUILD_TOOLS_VERSION NDK_VERSION ANDROID_ABIS RELEASE_APPLICATION_ID \
         DEBUG_APPLICATION_ID RAYLIB_VERSION RAYLIB_COMMIT RAYLIB_SOURCE_URL \
@@ -76,6 +76,8 @@ validate_toolchain_contract() {
         [[ -n "${!variable:-}" ]] || die "toolchain property is missing: $variable"
     done
 
+    [[ "$ODIN_BACKEND_LLVM_VERSION" == "21.1.8" ]] || \
+        die "ODIN_BACKEND_LLVM_VERSION must remain 21.1.8"
     [[ "$JAVA_MAJOR" == "17" ]] || die "JAVA_MAJOR must remain 17"
     [[ "$GRADLE_VERSION" == "8.14.3" ]] || die "GRADLE_VERSION must remain 8.14.3"
     [[ "$AGP_VERSION" == "8.11.0" ]] || die "AGP_VERSION must remain 8.11.0"
@@ -97,6 +99,9 @@ validate_toolchain_contract() {
         BUNDLETOOL_SHA256; do
         [[ "${!variable}" =~ ^[0-9a-f]{64}$ ]] || die "$variable must be one lowercase SHA-256 digest"
     done
+    [[ "$ODIN_COMMIT" =~ ^[0-9a-f]{40}$ ]] || die "ODIN_COMMIT must be one full Git commit"
+    [[ "$ODIN_VERSION" == *":${ODIN_COMMIT:0:9}" ]] || \
+        die "ODIN_VERSION must end with the pinned ODIN_COMMIT abbreviation"
     [[ "$RAYLIB_COMMIT" =~ ^[0-9a-f]{40}$ ]] || die "RAYLIB_COMMIT must be one full Git commit"
 }
 
@@ -142,6 +147,15 @@ check_odin() {
     detected="$(odin version 2>&1 | sed -n '1p')"
     [[ "$detected" == "odin version $ODIN_VERSION" || "$detected" == "$ODIN_VERSION" ]] || \
         die "expected Odin $ODIN_VERSION, found $detected"
+
+    local odin_report
+    local backend_version
+    if ! odin_report="$(odin report 2>&1)"; then
+        die "could not inspect the Odin backend: $odin_report"
+    fi
+    backend_version="$(sed -n 's/^[[:space:]]*Backend: LLVM //p' <<<"$odin_report" | sed -n '1p')"
+    [[ "$backend_version" == "$ODIN_BACKEND_LLVM_VERSION" ]] || \
+        die "expected Odin LLVM backend $ODIN_BACKEND_LLVM_VERSION, found ${backend_version:-unknown}"
 
     # The pinned Odin revision emits LLVM 21 IR, but its Android shared-library
     # path eagerly installs _odin_entry_point as DT_INIT on arm64 and selects

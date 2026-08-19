@@ -18,6 +18,12 @@
   configured keystore and final artifacts against a committed certificate
   fingerprint. Mirror assembly rejects destructive source-overlapping destinations
   and trusts only the reviewed GitHub ED25519 host key.
+- Fixed Linux/public CI compiler setup for the July 2026 Odin toolchain. The
+  official `dev-2026-07` prebuilt archive identifies itself as the earlier
+  `dev-2026-07-nightly:ab0131c`, while the finalized tag and Android contract are
+  `dev-2026-07:301c287de`. CI now builds that exact source commit with the validated
+  LLVM `21.1.8` backend and checks the full Git revision, compiler version, and
+  backend instead of accepting the stale release binary.
 - Fixed an Android 17 AAudio/miniaudio shutdown race that could abort the native
   process on Back or make a suspended game appear unable to resume. Ordinary
   focus/surface restoration now preserves the existing audio device, while

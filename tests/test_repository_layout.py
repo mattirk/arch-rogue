@@ -37,6 +37,16 @@ class RepositoryLayoutTests(unittest.TestCase):
             with self.subTest(relative=relative):
                 self.assertTrue((ROOT / relative).exists(), relative)
 
+        toolchain = (ROOT / "android" / "toolchain.properties").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("ODIN_VERSION=dev-2026-07:301c287de", toolchain)
+        self.assertIn(
+            "ODIN_COMMIT=301c287de90393608fb7c5b260210e1e67caf0fd",
+            toolchain,
+        )
+        self.assertIn("ODIN_BACKEND_LLVM_VERSION=21.1.8", toolchain)
+
         self.assertFalse((ROOT / "ar-odin").exists())
         for retired_root_path in (
             "pyproject.toml",
@@ -78,10 +88,28 @@ class RepositoryLayoutTests(unittest.TestCase):
             "tests.test_repository_layout",
             "tools/mirror_public_snapshot.sh",
             '"arch-rogue-python/**"',
+            "ODIN_SOURCE_TAG: dev-2026-07",
+            'release: "false"',
+            "branch: ${{ env.ODIN_SOURCE_TAG }}",
+            'llvm-version: "21"',
+            "build-type: release",
+            "ODIN_COMMIT",
+            "ODIN_BACKEND_LLVM_VERSION",
+            'git -C "$HOME/odin" rev-parse HEAD',
         ):
             self.assertIn(command, workflow)
-        for legacy in ("pip install", "pyproject.toml", "pygame", "buildozer"):
-            self.assertNotIn(legacy, workflow.lower())
+        for legacy in (
+            "pip install",
+            "pyproject.toml",
+            "pygame",
+            "buildozer",
+            "ODIN_RELEASE",
+        ):
+            self.assertNotIn(legacy.lower(), workflow.lower())
+        self.assertEqual(
+            workflow.count("uses: laytan/setup-odin@"),
+            workflow.count('release: "false"'),
+        )
 
     def test_public_release_is_odin_linux_android_only(self) -> None:
         workflow_path = (
@@ -105,6 +133,14 @@ class RepositoryLayoutTests(unittest.TestCase):
             "retention-days: 7",
             "publish-release:",
             "prepare-pages:",
+            "ODIN_SOURCE_TAG: dev-2026-07",
+            'release: "false"',
+            "branch: ${{ env.ODIN_SOURCE_TAG }}",
+            'llvm-version: "21"',
+            "build-type: release",
+            "ODIN_COMMIT",
+            "ODIN_BACKEND_LLVM_VERSION",
+            'git -C "$HOME/odin" rev-parse HEAD',
         ):
             self.assertIn(contract, workflow)
         for legacy in (
@@ -114,8 +150,13 @@ class RepositoryLayoutTests(unittest.TestCase):
             "steam-deploy",
             "server-deploy",
             "sha7",
+            "ODIN_RELEASE",
         ):
-            self.assertNotIn(legacy, workflow.lower())
+            self.assertNotIn(legacy.lower(), workflow.lower())
+        self.assertEqual(
+            workflow.count("uses: laytan/setup-odin@"),
+            workflow.count('release: "false"'),
+        )
 
         release_job = workflow.partition("  publish-release:")[2].partition(
             "  prepare-pages:"
