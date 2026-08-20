@@ -220,6 +220,26 @@ class RepositoryLayoutTests(unittest.TestCase):
                 )
         self.assertIsNone(android_audit.aab_sensor_landscape_value("<activity />"))
 
+    def test_aab_signature_audit_allows_pinned_self_signed_certificate(self) -> None:
+        self_signed_report = """jar verified.
+
+Warning:
+This jar contains entries whose signer certificate is self-signed.
+"""
+        android_audit.audit_jarsigner_report(self_signed_report)
+
+        with self.assertRaisesRegex(android_audit.AuditError, "not covered"):
+            android_audit.audit_jarsigner_report(
+                "jar verified.\nThis jar contains unsigned entries.\n"
+            )
+        with self.assertRaisesRegex(android_audit.AuditError, "did not confirm"):
+            android_audit.audit_jarsigner_report("jar is unsigned.\n")
+
+        source = (ROOT / "tools" / "android_audit.py").read_text(encoding="utf-8")
+        self.assertIn('["jarsigner", "-verify", "-verbose"', source)
+        self.assertNotIn('["jarsigner", "-verify", "-strict"', source)
+        self.assertIn("exactly one JAR signature block", source)
+
     def test_android_release_certificate_is_repository_pinned(self) -> None:
         fingerprint = (
             ROOT / "android" / "release-signing-cert.sha256"

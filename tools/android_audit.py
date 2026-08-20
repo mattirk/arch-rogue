@@ -460,6 +460,18 @@ def normalize_fingerprint(value: str) -> str:
     return re.sub(r"[^0-9a-f]", "", value.lower())
 
 
+def audit_jarsigner_report(report: str) -> None:
+    require(
+        re.search(r"^\s*jar verified\.?\s*$", report, re.IGNORECASE | re.MULTILINE)
+        is not None,
+        "jarsigner did not confirm that the AAB signature is valid",
+    )
+    require(
+        "unsigned entries" not in report.lower(),
+        "AAB contains entries that are not covered by its JAR signature",
+    )
+
+
 def package_attribute(package_line: str, name: str) -> str:
     match = re.search(rf"\b{re.escape(name)}='([^']*)'", package_line)
     require(match is not None, f"aapt package metadata omitted {name}")
@@ -624,7 +636,8 @@ def command_aab(args: argparse.Namespace) -> None:
     for permission in FORBIDDEN_NETWORK_PERMISSIONS:
         require(permission not in manifest, f"unexpected network permission in AAB: {permission}")
 
-    run_checked(["jarsigner", "-verify", "-strict", "-verbose", "-certs", str(bundle)])
+    signature_report = run_checked(["jarsigner", "-verify", "-verbose", str(bundle)])
+    audit_jarsigner_report(signature_report)
     cert = run_checked(["keytool", "-printcert", "-jarfile", str(bundle)])
     cert_match = re.search(r"SHA256:\s*([0-9A-F:]+)", cert, re.IGNORECASE)
     require(cert_match is not None, "cannot read AAB signer SHA-256 fingerprint")
@@ -636,6 +649,15 @@ def command_aab(args: argparse.Namespace) -> None:
 
     with zipfile.ZipFile(bundle) as archive:
         names = validate_zip_structure(archive)
+        signature_blocks = {
+            name
+            for name in names
+            if re.fullmatch(r"META-INF/[^/]+\.(?:RSA|DSA|EC)", name, re.IGNORECASE)
+        }
+        require(
+            len(signature_blocks) == 1,
+            f"AAB must contain exactly one JAR signature block, found {sorted(signature_blocks)}",
+        )
         compare_packaged_assets(archive, names, root, "base/")
         audit_packaged_dex(archive, names, "base/")
         audit_packaged_native(archive, names, "base/", readelf, require_uncompressed=False)
