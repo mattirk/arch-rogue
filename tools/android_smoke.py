@@ -352,7 +352,7 @@ class AndroidSmoke:
 
 
 def default_apk(root: Path) -> Path:
-    candidates = sorted((root / "build" / "android" / "outputs").glob("*-android-debug.apk"))
+    candidates = sorted((root / "build" / "android" / "outputs").glob("Arch-Rogue-debug.apk"))
     if len(candidates) != 1:
         raise SmokeError(
             "expected one deterministic debug APK under build/android/outputs; "

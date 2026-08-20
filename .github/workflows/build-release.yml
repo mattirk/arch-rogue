@@ -351,15 +351,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="${{ needs.linux.outputs.version }}"
-          sha12="${{ needs.linux.outputs.sha12 }}"
           source_root="build/android/outputs"
           final_root="dist/android"
           install -d "$final_root"
-          install -m 0644 "$source_root/archrogue-${version}-android-release.apk" \
-            "$final_root/arch-rogue-v${version}-${sha12}-android-release.apk"
-          install -m 0644 "$source_root/archrogue-${version}-android-release.aab" \
-            "$final_root/arch-rogue-v${version}-${sha12}-android-release.aab"
+          install -m 0644 "$source_root/Arch-Rogue.apk" "$final_root/Arch-Rogue.apk"
+          install -m 0644 "$source_root/Arch-Rogue.aab" "$final_root/Arch-Rogue.aab"
           ls -lh "$final_root"
 
       - name: Remove restored signing material
@@ -398,8 +394,8 @@ jobs:
           version="${{ needs.linux.outputs.version }}"
           sha12="${{ needs.linux.outputs.sha12 }}"
           test -f "release-assets/arch-rogue-v${version}-${sha12}-linux-x64.tar.gz"
-          test -f "release-assets/arch-rogue-v${version}-${sha12}-android-release.apk"
-          test -f "release-assets/arch-rogue-v${version}-${sha12}-android-release.aab"
+          test -f "release-assets/Arch-Rogue.apk"
+          test -f "release-assets/Arch-Rogue.aab"
           test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 3
           ls -lh release-assets
 
@@ -410,12 +406,12 @@ jobs:
           name: Arch Rogue v${{ needs.linux.outputs.version }} (${{ needs.linux.outputs.sha12 }})
           target_commitish: ${{ github.sha }}
           body: |
-            Automated Odin + raylib prerelease from `master` commit `${{ github.sha }}`.
+            Automated Arch Rogue prerelease from `master` commit `${{ github.sha }}`.
 
-            Commit-addressed artifacts:
+            Release artifacts:
             - `arch-rogue-v${{ needs.linux.outputs.version }}-${{ needs.linux.outputs.sha12 }}-linux-x64.tar.gz` — Linux x64 launcher, binary, assets, and licenses
-            - `arch-rogue-v${{ needs.linux.outputs.version }}-${{ needs.linux.outputs.sha12 }}-android-release.apk` — signed Android install package
-            - `arch-rogue-v${{ needs.linux.outputs.version }}-${{ needs.linux.outputs.sha12 }}-android-release.aab` — signed Android App Bundle
+            - `Arch-Rogue.apk` — signed Android install package
+            - `Arch-Rogue.aab` — signed Android App Bundle
           files: release-assets/*
           fail_on_unmatched_files: true
           prerelease: true

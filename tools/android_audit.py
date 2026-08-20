@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict, stdlib-only audits for Arch Rogue Odin Android inputs and artifacts."""
+"""Strict, stdlib-only audits for Arch Rogue Android inputs and artifacts."""
 
 from __future__ import annotations
 

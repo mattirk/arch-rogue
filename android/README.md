@@ -1,4 +1,4 @@
-# Arch Rogue Odin Android packaging
+# Arch Rogue Android packaging
 
 This directory is a native-first Android `NativeActivity` project. Gameplay and
 the sole game loop remain Odin/raylib; a small custom Java activity owns Android
@@ -73,13 +73,21 @@ force-stop/relaunch, and app-private Resume.
 It checks logcat markers and writes screenshots plus `smoke.log` under
 `build/android/smoke/`.
 
-The alpha identities are deliberately isolated from the archived legacy
-application and from each other:
+The installed app and launcher label are simply `Arch Rogue`. Build artifacts
+use stable product-facing names:
+
+- debug APK: `build/android/outputs/Arch-Rogue-debug.apk`
+- release APK: `build/android/outputs/Arch-Rogue.apk`
+- release bundle: `build/android/outputs/Arch-Rogue.aab`
+
+The internal alpha application IDs remain deliberately isolated from the
+archived legacy application and from each other so signed updates continue to
+work:
 
 - debug: `org.archrogue.archrogue.odin.alpha.debug`
 - release: `org.archrogue.archrogue.odin.alpha`
 
-The official unsuffixed identity is never produced by this project.
+The official unsuffixed application ID is never produced by this project.
 
 ## Activity and Back bridge
 

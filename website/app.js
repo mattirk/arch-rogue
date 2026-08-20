@@ -85,7 +85,7 @@
     const version = typeof manifest.version === "string" && manifest.version.trim()
       ? manifest.version.trim()
       : null;
-    releaseLink.textContent = version ? `Arch Rogue Odin v${version}` : "Latest Arch Rogue release";
+    releaseLink.textContent = version ? `Arch Rogue v${version}` : "Latest Arch Rogue release";
 
     const build = typeof manifest.commit === "string" && /^[0-9a-f]{12}$/i.test(manifest.commit)
       ? ` · build ${manifest.commit}`

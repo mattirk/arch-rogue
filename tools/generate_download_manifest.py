@@ -8,11 +8,11 @@ import json
 import re
 from pathlib import Path
 
-PLATFORM_ARTIFACT_SUFFIXES: dict[str, str | None] = {
+PLATFORM_ARTIFACT_FILENAMES: dict[str, str | None] = {
     "windows": None,
-    "linux": "linux-x64.tar.gz",
+    "linux": "{base}-linux-x64.tar.gz",
     "macos": None,
-    "android": "android-release.apk",
+    "android": "Arch-Rogue.apk",
 }
 _REPOSITORY_RE = re.compile(
     r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9._-]+"
@@ -53,10 +53,11 @@ def build_manifest(repository: str, version: str, commit: str) -> dict[str, obje
     filename_base = f"arch-rogue-v{version}-{short_commit}"
 
     assets: dict[str, dict[str, object]] = {}
-    for platform, suffix in PLATFORM_ARTIFACT_SUFFIXES.items():
-        entry: dict[str, object] = {"available": suffix is not None}
-        if suffix is not None:
-            entry["url"] = f"{asset_base}/{filename_base}-{suffix}"
+    for platform, filename_template in PLATFORM_ARTIFACT_FILENAMES.items():
+        entry: dict[str, object] = {"available": filename_template is not None}
+        if filename_template is not None:
+            filename = filename_template.format(base=filename_base)
+            entry["url"] = f"{asset_base}/{filename}"
         assets[platform] = entry
 
     return {

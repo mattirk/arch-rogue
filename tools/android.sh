@@ -416,9 +416,9 @@ load_version_metadata() {
     VERSION_NAME="$(property_value "$GENERATED_ROOT/version.properties" versionName)"
     VERSION_CODE="$(property_value "$GENERATED_ROOT/version.properties" versionCode)"
     [[ -n "$VERSION_NAME" && "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || die "generated version metadata is incomplete"
-    DEBUG_APK="$OUTPUT_ROOT/archrogue-$VERSION_NAME-android-debug.apk"
-    RELEASE_APK="$OUTPUT_ROOT/archrogue-$VERSION_NAME-android-release.apk"
-    RELEASE_AAB="$OUTPUT_ROOT/archrogue-$VERSION_NAME-android-release.aab"
+    DEBUG_APK="$OUTPUT_ROOT/Arch-Rogue-debug.apk"
+    RELEASE_APK="$OUTPUT_ROOT/Arch-Rogue.apk"
+    RELEASE_AAB="$OUTPUT_ROOT/Arch-Rogue.aab"
 }
 
 preflight() {
@@ -799,7 +799,7 @@ audit_existing() {
                         check_release_signing
                         audit_apk "$explicit" "$RELEASE_APPLICATION_ID" "$RELEASE_CERT_SHA256"
                         ;;
-                    *) die "APK package id is not an Arch Rogue Odin alpha id: ${package_id:-missing}" ;;
+                    *) die "APK package id is not an Arch Rogue alpha id: ${package_id:-missing}" ;;
                 esac
                 ;;
             *) die "audit input must be an APK or AAB: $explicit" ;;

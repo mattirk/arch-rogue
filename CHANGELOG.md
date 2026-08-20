@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Replaced the provisional Android launcher mark with a PixelLab-authored Arch
+  Rogue relic medallion across legacy square, round, adaptive, and Android 13
+  themed-icon variants. The installed app, local APK/AAB outputs, public release
+  assets, download site, and other product-facing labels now use `Arch Rogue`
+  without treating the Odin implementation language as part of the game title.
 - Promoted the Odin/raylib project from `ar-odin/` to the repository root and
   moved the retired Python/Pygame implementation into `arch-rogue-python/` as an
   archived reference tree. Root build, asset, Android, documentation, CI, and
