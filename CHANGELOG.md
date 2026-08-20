@@ -24,6 +24,11 @@
   `dev-2026-07:301c287de`. CI now builds that exact source commit with the validated
   LLVM `21.1.8` backend and checks only the authoritative full Git revision and
   backend instead of comparing Odin's variable-length displayed hash.
+- Made the vendored Linux raylib 6.0 archive link on the Ubuntu 22.04 release
+  baseline by normalizing four C23-only glibc imports to their ABI-compatible
+  C99/legacy symbols. The transformed archive now has pinned provenance and
+  SHA-256 metadata, and CI verifies its exact members and rejects any remaining
+  `__isoc23_*` imports before building.
 - Fixed an Android 17 AAudio/miniaudio shutdown race that could abort the native
   process on Back or make a suspended game appear unable to resume. Ordinary
   focus/surface restoration now preserves the existing audio device, while
