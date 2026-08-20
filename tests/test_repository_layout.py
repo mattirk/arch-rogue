@@ -170,6 +170,8 @@ class RepositoryLayoutTests(unittest.TestCase):
             "      - name: Install pinned Android SDK and NDK"
         )[2].partition("      - name: Verify Android SDK cache contents")[0]
         for contract in (
+            'hosted_sdk_root=/usr/local/lib/android/sdk',
+            '$hosted_sdk_root/cmdline-tools/latest/bin/sdkmanager',
             '--channel=0 --verbose',
             'license_status="${PIPESTATUS[1]}"',
             'sdkmanager --licenses failed with exit code',

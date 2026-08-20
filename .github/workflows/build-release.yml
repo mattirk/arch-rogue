@@ -258,9 +258,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager_candidate="$(command -v sdkmanager || true)"
-          [[ -n "$sdkmanager_candidate" ]] || {
-            echo "sdkmanager is not available on the hosted runner PATH" >&2
+          hosted_sdk_root=/usr/local/lib/android/sdk
+          sdkmanager_candidate="$hosted_sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$sdkmanager_candidate" ]]; then
+            sdkmanager_candidate="$(command -v sdkmanager || true)"
+          fi
+          [[ -n "$sdkmanager_candidate" && -x "$sdkmanager_candidate" ]] || {
+            echo "sdkmanager was not found in $hosted_sdk_root or on PATH" >&2
             exit 1
           }
           sdkmanager_bin="$(readlink -f "$sdkmanager_candidate")"
