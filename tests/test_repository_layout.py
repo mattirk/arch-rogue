@@ -179,6 +179,14 @@ class RepositoryLayoutTests(unittest.TestCase):
             self.assertIn(contract, android_sdk_install)
         self.assertNotIn("--licenses >/dev/null || true", android_sdk_install)
 
+        gradle_provision = workflow.partition(
+            "      - name: Provision Gradle, AGP, and AAPT2 once with network access"
+        )[2].partition("      - name: Restore release keystore")[0]
+        self.assertIn(":app:processDebugResources", gradle_provision)
+        self.assertIn("-x :app:verifyStagedInputs", gradle_provision)
+        self.assertNotIn(":app:tasks", gradle_provision)
+        self.assertNotIn("--offline", gradle_provision)
+
         release_job = workflow.partition("  publish-release:")[2].partition(
             "  prepare-pages:"
         )[0]
