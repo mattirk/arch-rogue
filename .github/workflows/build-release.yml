@@ -448,7 +448,9 @@ jobs:
           tar --sort=name --owner=0 --group=0 --numeric-owner \
             --transform 's,^dist,arch-rogue-web,' \
             -czf "dist/$archive" -C build/web dist
-          tar -tzf "dist/$archive" | head -5
+          archive_listing="$RUNNER_TEMP/arch-rogue-web-archive.txt"
+          tar -tzf "dist/$archive" > "$archive_listing"
+          sed -n '1,5p' "$archive_listing"
           echo "archive=dist/$archive" >> "$GITHUB_OUTPUT"
 
       # This exact audited archive feeds both the prerelease and the Pages

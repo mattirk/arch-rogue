@@ -213,6 +213,14 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertIn("local -a dependency_mode=(--offline)", android_tool)
         self.assertIn("1) dependency_mode=()", android_tool)
 
+        web_package = workflow.partition(
+            "      - name: Stage release-named web archive"
+        )[2].partition("      - name: Upload web release archive")[0]
+        self.assertIn('archive_listing="$RUNNER_TEMP/arch-rogue-web-archive.txt"', web_package)
+        self.assertIn('tar -tzf "dist/$archive" > "$archive_listing"', web_package)
+        self.assertIn("sed -n '1,5p' \"$archive_listing\"", web_package)
+        self.assertNotIn("| head", web_package)
+
         release_job = workflow.partition("  publish-release:")[2].partition(
             "  prepare-pages:"
         )[0]
