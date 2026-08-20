@@ -186,6 +186,7 @@ Run :: struct {
 	nav:          Nav_Field, // player-tracking route field (MX.2.3)
 	sfx:          [dynamic]Sfx_Kind, // drained by the audio layer each frame
 	feel:         [dynamic]Feel_Event, // deterministic presentation events
+	hitstop_ticks: int, // impact-freeze ticks pending; transient, never saved
 	dark_floor:   bool,
 	theme_index:  int,
 	explored:     [MAP_W][MAP_H]bool, // fog-of-war memory (lit floors render it)
@@ -1317,6 +1318,8 @@ run_regenerate_floor :: proc(run: ^Run, boss_arena: bool) {
 	player.bighit_timer = 0
 	player.bighit_charge = 0
 	player.swing_timer = 0
+	player.melee_commit_timer = 0
+	run.hitstop_ticks = 0
 	player_clear_visual_action(player)
 	player.hit_flash = 0
 	player.hit_flash_duration = 0

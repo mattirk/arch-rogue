@@ -10,6 +10,14 @@ import "core:strings"
 
 INTERACT_STAIRS_RADIUS :: 1.35
 ATTACK_SWING_SECONDS :: 0.45 // attack clip playback window per swing
+// 2026-08 feel feedback: a basic swing opens with a movement plant and a
+// connected swing freezes the sim for a beat. Deliberate deviations from the
+// pygame game, which let swings happen mid-stride with no impact pause. The
+// plant must stay under the 0.20 s melee cooldown floor so held attacks keep
+// a walk phase between swings.
+MELEE_COMMIT_SECONDS :: 0.14 // plant window: walk input ignored, aim facing held
+HITSTOP_HIT_TICKS :: 2 // sim ticks swallowed when a basic swing connects
+HITSTOP_HEAVY_TICKS :: 4 // a beat longer when the swing crits or kills
 HIT_FLASH_SECONDS :: 0.25
 DAMAGE_NUMBER_SECONDS :: 0.9
 ENEMY_PROJECTILE_TTL :: 1.8
@@ -144,6 +152,7 @@ Player :: struct {
 	bighit_charge: f32, // remaining charge time; 0 when idle
 	time_skip_timer: f32,
 	swing_timer:  f32, // attack clip playback remaining
+	melee_commit_timer: f32, // basic-swing plant window remaining (rides the save like swing_timer)
 	potion_timer: f32,
 	hit_flash:    f32,
 	hit_flash_duration: f32,
@@ -948,6 +957,21 @@ sim_tick :: proc(run: ^Run, move: Vec2) {
 // this only for its final step into the 0.12-tile cursor dead zone; keyboard
 // and every headless simulation caller pass -1 for the ordinary full step.
 sim_tick_limited :: proc(run: ^Run, move: Vec2, max_move_step: f32, auto_melee := false) {
+	// Impact freeze: a connected basic swing swallows whole sim ticks so every
+	// combat clock pauses in step — a frozen tick is consumed, not simulated.
+	// Interpolation spans collapse to the settled pose so render-alpha resets
+	// cannot re-glide actors mid-freeze. Feel events tick outside the sim
+	// (app_tick) and keep playing through the freeze.
+	if run.hitstop_ticks > 0 {
+		run.hitstop_ticks -= 1
+		run.player.prev_pos = run.player.pos
+		for &enemy in run.enemies do enemy.prev_pos = enemy.pos
+		for &p in run.projectiles do p.prev_pos = p.pos
+		for &f in run.familiars do f.prev_pos = f.pos
+		room_npc_snapshot_live_positions(run)
+		story_snapshot_friendly_npc_positions(run)
+		return
+	}
 	enemy_dt := enemy_sim_dt(run) // sample Time Skip before its player clock advances
 	tick_player(run, move, max_move_step)
 	if run.player.moving do run.player.guidance_idle_elapsed = 0
@@ -1143,6 +1167,10 @@ tick_player :: proc(run: ^Run, move: Vec2, max_move_step: f32) {
 	}
 
 	player.moving = false
+	// 2026-08 feel feedback: the front of a basic swing plants the player and
+	// keeps the swing's aim facing, so hitting reads as its own action instead
+	// of a drive-by (the pygame game imposed no such lock).
+	if player.melee_commit_timer > 0 do return
 	if move == {} do return
 	magnitude := min(f32(1), math.hypot(move.x, move.y))
 	if max_move_step >= 0 do magnitude = 1 // mouse target distance is not stick deflection
@@ -1154,6 +1182,9 @@ tick_player :: proc(run: ^Run, move: Vec2, max_move_step: f32) {
 	if max_move_step >= 0 do step = min(step, max_move_step)
 	before := player.pos
 	slide_move(&run.dungeon, &player.pos, dir * step, block_stairs = true)
+	// Contact resolution belongs to the move itself (pygame move_actor), so the
+	// walk animation below sees the post-contact displacement.
+	resolve_player_enemy_contacts(run)
 	displacement := player.pos - before
 	distance := math.hypot(displacement.x, displacement.y)
 	player.moving = distance > 0
@@ -1183,6 +1214,7 @@ tick_player_clocks :: proc(run: ^Run) {
 	player.bighit_timer = max(0, player.bighit_timer - SIM_DT)
 	player.time_skip_timer = max(0, player.time_skip_timer - SIM_DT)
 	player.swing_timer = max(0, player.swing_timer - SIM_DT)
+	player.melee_commit_timer = max(0, player.melee_commit_timer - SIM_DT)
 	player.potion_timer = max(0, player.potion_timer - SIM_DT)
 	flash_duration := player.hit_flash_duration > 0 ? player.hit_flash_duration : f32(HIT_FLASH_SECONDS)
 	player.hit_flash = max(0, player.hit_flash - SIM_DT / flash_duration)
@@ -2240,6 +2272,40 @@ separate_enemies :: proc(run: ^Run) {
 	}
 }
 
+// combat/movement.py:293-375, the player-as-mover half of
+// resolve_actor_contacts: a move never leaves the player overlapping an enemy
+// body. The mover is placed back at contact distance along the pair normal,
+// axis-separated against the same wall probe the move itself used, so walking
+// neither shoves enemies nor climbs over a wall-pinned one. The enemy-as-mover
+// half is separate_enemies above; the parity gap that let the player ram and
+// stand on cornered enemies was this half missing (feedback 2026-08).
+resolve_player_enemy_contacts :: proc(run: ^Run) {
+	player := &run.player
+	for &enemy in run.enemies {
+		if enemy.hp <= 0 do continue
+		min_dist := f32(PLAYER_HIT_RADIUS) + enemy_hit_radius(&enemy)
+		delta := player.pos - enemy.pos
+		dist_sq := delta.x * delta.x + delta.y * delta.y
+		if dist_sq >= min_dist * min_dist do continue
+		n: Vec2
+		if dist_sq > 1e-6 {
+			n = delta / math.sqrt(dist_sq)
+		} else {
+			// movement.py:341-344: stacked centers separate against the mover's
+			// facing, east as the final fallback.
+			n = -player.facing
+			if math.hypot(n.x, n.y) <= 0.001 do n = {1, 0}
+		}
+		target := enemy.pos + n * min_dist
+		if !blocked_for_radius(&run.dungeon, target.x, player.pos.y, block_stairs = true) {
+			player.pos.x = target.x
+		}
+		if !blocked_for_radius(&run.dungeon, player.pos.x, target.y, block_stairs = true) {
+			player.pos.y = target.y
+		}
+	}
+}
+
 // combat/enemies.py alert_enemy: engaging refreshes memory every frame; only
 // the idle->engaged transition broadcasts, one hop, pure 4-tile circle.
 alert_enemy :: proc(run: ^Run, enemy: ^Enemy, target: Vec2) {
@@ -2528,6 +2594,7 @@ player_melee :: proc(run: ^Run, aim: Vec2) {
 	if player.melee_timer > 0 || player.stamina < f32(cost) do return
 	player.stamina -= f32(cost)
 	player.melee_timer = player_melee_cooldown(player)
+	player.melee_commit_timer = MELEE_COMMIT_SECONDS // whiffs commit too
 	start_swing(player, aim)
 	feel_emit_slash(run,player_slash_origin(run,player.facing),player.facing)
 	append(&run.sfx, Sfx_Kind.Swing)
@@ -2643,11 +2710,13 @@ strike_arc :: proc(run: ^Run, facing: Vec2, reach: f32, dmg: int, knockback: f32
 	}
 	precision_rank := player_precision_rank(player)
 	melee_leech := player.archetype == .Acolyte ? acolyte_melee_leech(player) : 0
+	killed := false
 	for i in 0 ..< target_count {
 		target, target_dir := targets[i], target_dirs[i]
 		damage := i == 0 ? hit_damage : max(1, int(f32(hit_damage) * BIGHIT_CLEAVE_FACTOR))
 		damage = story_apply_player_damage(run, damage)
 		_ = player_damage_enemy(run,target,damage,damage_type,status,has_status,status_duration)
+		if target.hp <= 0 do killed = true
 		if melee_leech > 0 && player.hp < player.max_hp {
 			heal := min(player.max_hp - player.hp, melee_leech)
 			player.hp += heal
@@ -2659,6 +2728,10 @@ strike_arc :: proc(run: ^Run, facing: Vec2, reach: f32, dmg: int, knockback: f32
 		// Big Hit (v0/decay ≈ 0.16 tiles) instead of an instant teleport slide.
 		if knockback > 0 && target_dir != {} do enemy_start_knockback(run, target, target_dir * knockback)
 	}
+	// Impact freeze (2026-08 feel feedback): one pulse per connected swing, a
+	// beat longer when it crits or kills. max() so cleave targets never stack.
+	pulse := critical || killed ? HITSTOP_HEAVY_TICKS : HITSTOP_HIT_TICKS
+	run.hitstop_ticks = max(run.hitstop_ticks, pulse)
 }
 
 // --- Interaction -----------------------------------------------------------

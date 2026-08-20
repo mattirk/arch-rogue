@@ -17,6 +17,7 @@ mx2_arena :: proc(run: ^ar.Run) {
 		for y in 6 ..= 16 do run.dungeon.tiles[x][y] = .Floor
 	}
 	run.dungeon.bar_furnishings = {}
+	run.hitstop_ticks = 0 // a fresh scene never inherits an earlier swing's freeze
 	run.player.pos = {10.5, 10.5}
 	run.player.prev_pos = run.player.pos
 	run.player.facing = {1, 0}

@@ -1337,11 +1337,13 @@ mx6_capture_reset :: proc(app:^App,direction:Vec2) -> Vec2 {
 	player.bighit_charge=0
 	player.time_skip_timer=0
 	player.swing_timer=0
+	player.melee_commit_timer=0
 	player.potion_timer=0
 	player.hit_flash=0
 	player.hit_flash_duration=0
 	player.statuses={}
 	player.poison_tick=0
+	run.hitstop_ticks=0
 	player_clear_visual_action(player)
 	return player.facing
 }

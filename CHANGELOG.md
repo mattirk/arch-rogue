@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Basic melee reads as a committed action (2026-08 feel feedback): a swing now
+  opens with a 0.14 s movement plant that also holds the swing's aim facing,
+  and a connected swing freezes the sim for 2 ticks — 4 on a crit or killing
+  blow — while slashes, lights, and the camera keep playing through the freeze.
+  Both are deliberate deviations from the pygame game, which let swings happen
+  mid-stride with no impact pause. Dashing cancels the plant.
+- Restored the player-as-mover half of the pygame contact resolution
+  (`combat/movement.py` `resolve_actor_contacts`), which the port had dropped:
+  walking and dashing now place the player back at body-contact distance
+  instead of shoving through enemies. This removes the regression where the
+  player could ram enemies around and walk over a wall-pinned one, then attack
+  from inside its body.
 - Replaced the provisional Android launcher mark with a PixelLab-authored Arch
   Rogue relic medallion across legacy square, round, adaptive, and Android 13
   themed-icon variants. The center uses the canonical title-logo relic at its

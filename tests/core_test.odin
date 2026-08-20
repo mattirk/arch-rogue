@@ -326,6 +326,7 @@ player_melee_kills_and_grants_xp :: proc(t: ^testing.T) {
 		run.player.stamina = 100
 		ar.player_melee(&run, aim)
 	}
+	run.hitstop_ticks = 0 // the sweep, not the killing swing's freeze, is under test
 	ar.sim_tick(&run, {}) // sweep the corpse
 	testing.expect(t, len(run.enemies) == 0, "dead ghoul must be removed")
 	testing.expect(t, run.player.xp == ar.ENEMY_DEFS[.Ghoul].xp, "kill must grant xp")

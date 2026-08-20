@@ -179,6 +179,7 @@ mx3_gravebind_binds_and_echoes_on_kill :: proc(t: ^testing.T) {
 	run.enemies[0].hp = 0
 	run.player.hp = 100
 	run.player.mana = 10
+	run.hitstop_ticks = 0 // the grave echo, not the impact freeze, is under test
 	ar.sim_tick(&run, {})
 	testing.expectf(t, run.player.hp >= 100 + 4, "grave echo healed to %v, want at least +4", run.player.hp)
 	testing.expect(t, run.player.mana >= 12, "grave echo restores 2 mana")
