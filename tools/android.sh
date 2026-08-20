@@ -653,10 +653,16 @@ build_all_native() {
 }
 
 run_gradle() {
-    [[ -n "$GRADLE_BIN" && -x "$GRADLE_BIN" ]] || die "offline Gradle binary was not established by preflight"
+    [[ -n "$GRADLE_BIN" && -x "$GRADLE_BIN" ]] || die "Gradle binary was not established by preflight"
+    local -a dependency_mode=(--offline)
+    case "${ARCH_ROGUE_GRADLE_ONLINE:-0}" in
+        0) ;;
+        1) dependency_mode=() ;;
+        *) die "ARCH_ROGUE_GRADLE_ONLINE must be 0 or 1" ;;
+    esac
     (
         cd "$ANDROID_DIR"
-        "$GRADLE_BIN" --offline --no-daemon --stacktrace --warning-mode=all "$@"
+        "$GRADLE_BIN" "${dependency_mode[@]}" --no-daemon --stacktrace --warning-mode=all "$@"
     )
 }
 
@@ -706,7 +712,7 @@ build_debug() {
     preflight build
     clean_and_stage
     build_all_native debug
-    log "packaging debug APK with Gradle in offline mode"
+    log "packaging debug APK with pinned Gradle dependencies"
     run_gradle :app:assembleDebug
     local gradle_apk
     gradle_apk="$(single_output "$ANDROID_DIR/app/build/outputs/apk/debug" '*.apk')"
@@ -719,7 +725,7 @@ build_release() {
     preflight release
     clean_and_stage
     build_all_native release
-    log "packaging signed alpha release APK and AAB with Gradle in offline mode"
+    log "packaging signed alpha release APK and AAB with pinned Gradle dependencies"
     run_gradle :app:assembleRelease :app:bundleRelease
     local gradle_apk
     local gradle_aab

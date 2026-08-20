@@ -316,10 +316,8 @@ jobs:
           path: .gradle-home
           key: gradle-linux-8.14.3-agp8.11.0-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties', 'android/toolchain.properties') }}
 
-      - name: Provision Gradle, AGP, and AAPT2 once with network access
-        run: |
-          bash android/gradlew -p android --no-daemon --stacktrace \
-            :app:processDebugResources -x :app:verifyStagedInputs
+      - name: Provision pinned Gradle and AGP with network access
+        run: bash android/gradlew -p android --no-daemon --stacktrace :app:tasks
 
       - name: Restore release keystore
         env:
@@ -336,10 +334,13 @@ jobs:
             > "$RUNNER_TEMP/arch-rogue-signing/release.keystore"
           chmod 0600 "$RUNNER_TEMP/arch-rogue-signing/release.keystore"
 
-      - name: Build and audit signed release APK and AAB offline
+      - name: Build and audit signed release APK and AAB
         # Preserve the existing Python-era environment secret names and map
         # them to the clearer local names used by the Odin build wrapper.
+        # Hosted CI may resolve transitive tools selected by the pinned AGP;
+        # local Android builds remain offline unless explicitly opted in.
         env:
+          ARCH_ROGUE_GRADLE_ONLINE: "1"
           ARCH_ROGUE_ANDROID_KEYSTORE: ${{ runner.temp }}/arch-rogue-signing/release.keystore
           ARCH_ROGUE_ANDROID_STORE_PASSWORD: ${{ secrets.ARCH_ROGUE_ANDROID_KEYSTORE_PASSWD }}
           ARCH_ROGUE_ANDROID_KEY_ALIAS: ${{ secrets.ARCH_ROGUE_ANDROID_KEYALIAS }}

@@ -180,12 +180,16 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertNotIn("--licenses >/dev/null || true", android_sdk_install)
 
         gradle_provision = workflow.partition(
-            "      - name: Provision Gradle, AGP, and AAPT2 once with network access"
+            "      - name: Provision pinned Gradle and AGP with network access"
         )[2].partition("      - name: Restore release keystore")[0]
-        self.assertIn(":app:processDebugResources", gradle_provision)
-        self.assertIn("-x :app:verifyStagedInputs", gradle_provision)
-        self.assertNotIn(":app:tasks", gradle_provision)
+        self.assertIn(":app:tasks", gradle_provision)
         self.assertNotIn("--offline", gradle_provision)
+        self.assertIn('ARCH_ROGUE_GRADLE_ONLINE: "1"', workflow)
+
+        android_tool = (ROOT / "tools" / "android.sh").read_text(encoding="utf-8")
+        self.assertIn('ARCH_ROGUE_GRADLE_ONLINE:-0', android_tool)
+        self.assertIn("local -a dependency_mode=(--offline)", android_tool)
+        self.assertIn("1) dependency_mode=()", android_tool)
 
         release_job = workflow.partition("  publish-release:")[2].partition(
             "  prepare-pages:"
