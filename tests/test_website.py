@@ -93,6 +93,7 @@ class WebsiteTests(unittest.TestCase):
             "assets/panel.png",
             "assets/panel_inset.png",
             "assets/row.png",
+            "assets/platform-web.png",
             "assets/platform-windows.png",
             "assets/platform-linux.png",
             "assets/platform-macos.png",
@@ -113,7 +114,8 @@ class WebsiteTests(unittest.TestCase):
         self.assertNotIn("6.0.0-alpha.21", page)
         self.assertIn("Play now", page)
         self.assertIn("Desktop WebGL2 alpha", page)
-        self.assertIn(".play-glyph", styles)
+        self.assertIn('src="assets/platform-web.png"', page)
+        self.assertNotIn(".play-glyph", styles)
         self.assertNotIn("Arch Rogue Odin", page + script)
         self.assertIn("x64 tar.gz archive", page)
         self.assertIn("Signed APK", page)

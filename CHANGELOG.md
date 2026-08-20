@@ -15,8 +15,9 @@
   rejects links and unsafe members, reruns `web-audit`, enforces the Pages size
   and symlink boundaries, and publishes one combined download/play site. A
   retrying post-deploy probe verifies `play/` and `play/packs.json`.
-- The download site gains an accessible browser Play card and documents
-  origin-scoped IndexedDB saves. GitHub Pages controls its own cache and
+- The download site gains an accessible browser Play card with a new
+  PixelLab-authored gold-and-violet portal icon, and documents origin-scoped
+  IndexedDB saves. GitHub Pages controls its own cache and
   compression headers, so the self-hosted Brotli wire budget and
   immutable/no-cache behavior are not claimed for the Pages endpoint.
 
