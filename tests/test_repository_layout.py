@@ -6,6 +6,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from tools import android_audit
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PRIVATE_PUBLIC_WORKFLOW = (
@@ -201,6 +203,22 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertNotIn("pages: write", release_job)
         self.assertIn("pages: write", pages_job)
         self.assertNotIn("contents: write", pages_job)
+
+    def test_aab_orientation_audit_accepts_bundletool_enum_formats(self) -> None:
+        for value in ("sensorLandscape", "6", "0x6", "0x00000006"):
+            with self.subTest(value=value):
+                manifest = f'<activity android:screenOrientation="{value}" />'
+                self.assertEqual(
+                    android_audit.aab_sensor_landscape_value(manifest),
+                    value,
+                )
+        for value in ("portrait", "1", "0x1"):
+            with self.subTest(value=value):
+                manifest = f'<activity android:screenOrientation="{value}" />'
+                self.assertIsNone(
+                    android_audit.aab_sensor_landscape_value(manifest)
+                )
+        self.assertIsNone(android_audit.aab_sensor_landscape_value("<activity />"))
 
     def test_android_release_certificate_is_repository_pinned(self) -> None:
         fingerprint = (

@@ -578,6 +578,20 @@ def bundletool_manifest(bundletool: Path, bundle: Path) -> str:
     ])
 
 
+def aab_sensor_landscape_value(manifest: str) -> str | None:
+    match = re.search(r'\bandroid:screenOrientation="([^"]+)"', manifest)
+    if match is None:
+        return None
+    value = match.group(1)
+    if value == "sensorLandscape":
+        return value
+    try:
+        base = 16 if value.lower().startswith("0x") else 10
+        return value if int(value, base) == 6 else None
+    except ValueError:
+        return None
+
+
 def command_aab(args: argparse.Namespace) -> None:
     bundle = Path(args.file).resolve()
     root = Path(args.root).resolve()
@@ -597,7 +611,12 @@ def command_aab(args: argparse.Namespace) -> None:
     require("org.archrogue.archrogue.odin.ArchRogueActivity" in manifest, "AAB Arch Rogue NativeActivity subclass is missing")
     require('android:hasCode="true"' in manifest, "AAB application android:hasCode is not true")
     require('android:enableOnBackInvokedCallback="true"' in manifest, "AAB modern Android Back callback is not enabled")
-    require('android:screenOrientation="sensorLandscape"' in manifest, "AAB sensorLandscape orientation is missing")
+    orientation_match = re.search(r'\bandroid:screenOrientation="([^"]+)"', manifest)
+    orientation_value = orientation_match.group(1) if orientation_match is not None else None
+    require(
+        aab_sensor_landscape_value(manifest) is not None,
+        f"AAB sensorLandscape orientation is missing or invalid: {orientation_value!r}",
+    )
     require(
         'android:glEsVersion="131072"' in manifest or 'android:glEsVersion="0x00020000"' in manifest,
         "AAB GLES2 requirement is missing",
