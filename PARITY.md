@@ -1197,6 +1197,7 @@ exists.
 - More impact on basic hit, maybe player needs to stop while hitting to make hitting more distinct action
 - You can now ram enemies and walk over them (when the enemy is backed or cornered against a wall), make it so that you cannot overlap with enemies easily when walking over them and attacking them
 - BUG: During a run, lossless soul suddenly appeared in boss room and became interactable after boss defeat. On another run Liss appeared in random room.
+- Generate nice looking Android icons via pixellab. Previous ones look a bit cheap.
 
 ## Working agreements for the parity push
 

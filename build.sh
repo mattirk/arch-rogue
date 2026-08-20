@@ -13,11 +13,11 @@ case "$cmd" in
   release) odin build src   -out:build/archrogue       -vet -o:speed "$@" ;;
   check)   odin check src   -vet "$@" ;;
   test)              odin test  tests -out:build/archrogue_tests -vet "$@" ;;
-  android-preflight) exec ./tools/android.sh preflight "$@" ;;
-  android-debug)     exec ./tools/android.sh debug "$@" ;;
-  android-release)   exec ./tools/android.sh release "$@" ;;
-  android-install)   exec ./tools/android.sh install "$@" ;;
-  android-audit)     exec ./tools/android.sh audit "$@" ;;
+  android-preflight) exec bash ./tools/android.sh preflight "$@" ;;
+  android-debug)     exec bash ./tools/android.sh debug "$@" ;;
+  android-release)   exec bash ./tools/android.sh release "$@" ;;
+  android-install)   exec bash ./tools/android.sh install "$@" ;;
+  android-audit)     exec bash ./tools/android.sh audit "$@" ;;
   android-smoke)     exec python3 ./tools/android_smoke.py "$@" ;;
   *)
     echo "usage: build.sh [run|build|release|check|test|android-preflight|android-debug|android-release|android-install|android-audit|android-smoke] [args]" >&2

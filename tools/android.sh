@@ -99,9 +99,9 @@ validate_toolchain_contract() {
         BUNDLETOOL_SHA256; do
         [[ "${!variable}" =~ ^[0-9a-f]{64}$ ]] || die "$variable must be one lowercase SHA-256 digest"
     done
+    [[ "$ODIN_VERSION" =~ ^dev-[0-9]{4}-[0-9]{2}$ ]] || \
+        die "ODIN_VERSION must be one monthly source tag"
     [[ "$ODIN_COMMIT" =~ ^[0-9a-f]{40}$ ]] || die "ODIN_COMMIT must be one full Git commit"
-    [[ "$ODIN_VERSION" == *":${ODIN_COMMIT:0:9}" ]] || \
-        die "ODIN_VERSION must end with the pinned ODIN_COMMIT abbreviation"
     [[ "$RAYLIB_COMMIT" =~ ^[0-9a-f]{40}$ ]] || die "RAYLIB_COMMIT must be one full Git commit"
 }
 
@@ -144,9 +144,15 @@ check_java() {
 check_odin() {
     require_command odin
     local detected
+    local version_prefix
+    local reported_commit
     detected="$(odin version 2>&1 | sed -n '1p')"
-    [[ "$detected" == "odin version $ODIN_VERSION" || "$detected" == "$ODIN_VERSION" ]] || \
-        die "expected Odin $ODIN_VERSION, found $detected"
+    version_prefix="odin version $ODIN_VERSION:"
+    [[ "$detected" == "$version_prefix"* ]] || \
+        die "expected Odin source tag $ODIN_VERSION, found $detected"
+    reported_commit="${detected#"$version_prefix"}"
+    [[ "$reported_commit" =~ ^[0-9a-f]{7,40}$ && "$ODIN_COMMIT" == "$reported_commit"* ]] || \
+        die "Odin reported revision ${reported_commit:-missing}, which is not a prefix of $ODIN_COMMIT"
 
     local odin_report
     local backend_version
@@ -258,7 +264,6 @@ check_sdk() {
 
 check_gradle_offline() {
     require_file "$ANDROID_DIR/gradlew"
-    [[ -x "$ANDROID_DIR/gradlew" ]] || die "Gradle wrapper is not executable: $ANDROID_DIR/gradlew"
     require_file "$ANDROID_DIR/gradle/wrapper/gradle-wrapper.jar"
     require_file "$ANDROID_DIR/gradle/wrapper/gradle-wrapper.properties"
 
@@ -411,9 +416,9 @@ load_version_metadata() {
     VERSION_NAME="$(property_value "$GENERATED_ROOT/version.properties" versionName)"
     VERSION_CODE="$(property_value "$GENERATED_ROOT/version.properties" versionCode)"
     [[ -n "$VERSION_NAME" && "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || die "generated version metadata is incomplete"
-    DEBUG_APK="$OUTPUT_ROOT/archrogue-$VERSION_NAME-android-debug.apk"
-    RELEASE_APK="$OUTPUT_ROOT/archrogue-$VERSION_NAME-android-release.apk"
-    RELEASE_AAB="$OUTPUT_ROOT/archrogue-$VERSION_NAME-android-release.aab"
+    DEBUG_APK="$OUTPUT_ROOT/Arch-Rogue-debug.apk"
+    RELEASE_APK="$OUTPUT_ROOT/Arch-Rogue.apk"
+    RELEASE_AAB="$OUTPUT_ROOT/Arch-Rogue.aab"
 }
 
 preflight() {
@@ -648,10 +653,16 @@ build_all_native() {
 }
 
 run_gradle() {
-    [[ -n "$GRADLE_BIN" && -x "$GRADLE_BIN" ]] || die "offline Gradle binary was not established by preflight"
+    [[ -n "$GRADLE_BIN" && -x "$GRADLE_BIN" ]] || die "Gradle binary was not established by preflight"
+    local -a dependency_mode=(--offline)
+    case "${ARCH_ROGUE_GRADLE_ONLINE:-0}" in
+        0) ;;
+        1) dependency_mode=() ;;
+        *) die "ARCH_ROGUE_GRADLE_ONLINE must be 0 or 1" ;;
+    esac
     (
         cd "$ANDROID_DIR"
-        "$GRADLE_BIN" --offline --no-daemon --stacktrace --warning-mode=all "$@"
+        "$GRADLE_BIN" "${dependency_mode[@]}" --no-daemon --stacktrace --warning-mode=all "$@"
     )
 }
 
@@ -701,7 +712,7 @@ build_debug() {
     preflight build
     clean_and_stage
     build_all_native debug
-    log "packaging debug APK with Gradle in offline mode"
+    log "packaging debug APK with pinned Gradle dependencies"
     run_gradle :app:assembleDebug
     local gradle_apk
     gradle_apk="$(single_output "$ANDROID_DIR/app/build/outputs/apk/debug" '*.apk')"
@@ -714,7 +725,7 @@ build_release() {
     preflight release
     clean_and_stage
     build_all_native release
-    log "packaging signed alpha release APK and AAB with Gradle in offline mode"
+    log "packaging signed alpha release APK and AAB with pinned Gradle dependencies"
     run_gradle :app:assembleRelease :app:bundleRelease
     local gradle_apk
     local gradle_aab
@@ -788,7 +799,7 @@ audit_existing() {
                         check_release_signing
                         audit_apk "$explicit" "$RELEASE_APPLICATION_ID" "$RELEASE_CERT_SHA256"
                         ;;
-                    *) die "APK package id is not an Arch Rogue Odin alpha id: ${package_id:-missing}" ;;
+                    *) die "APK package id is not an Arch Rogue alpha id: ${package_id:-missing}" ;;
                 esac
                 ;;
             *) die "audit input must be an APK or AAB: $explicit" ;;

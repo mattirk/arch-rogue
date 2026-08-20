@@ -6,6 +6,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from tools import android_audit
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PRIVATE_PUBLIC_WORKFLOW = (
@@ -25,7 +27,10 @@ class RepositoryLayoutTests(unittest.TestCase):
             "android/toolchain.properties",
             "android/release-signing-cert.sha256",
             "tools/android.sh",
+            "tools/verify_linux_raylib.py",
             "vendor/raylib/raylib.odin",
+            "vendor/raylib/linux/PROVENANCE.md",
+            "vendor/raylib/linux/SHA256SUMS",
             "ARCHITECTURE.md",
             "PARITY.md",
             "CHANGELOG.md",
@@ -40,12 +45,17 @@ class RepositoryLayoutTests(unittest.TestCase):
         toolchain = (ROOT / "android" / "toolchain.properties").read_text(
             encoding="utf-8"
         )
-        self.assertIn("ODIN_VERSION=dev-2026-07:301c287de", toolchain)
+        self.assertIn("ODIN_VERSION=dev-2026-07", toolchain)
         self.assertIn(
             "ODIN_COMMIT=301c287de90393608fb7c5b260210e1e67caf0fd",
             toolchain,
         )
         self.assertIn("ODIN_BACKEND_LLVM_VERSION=21.1.8", toolchain)
+
+        gradle_properties = (ROOT / "android" / "gradle.properties").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("android.enableResourceOptimizations=false", gradle_properties)
 
         self.assertFalse((ROOT / "ar-odin").exists())
         for retired_root_path in (
@@ -79,12 +89,13 @@ class RepositoryLayoutTests(unittest.TestCase):
             encoding="utf-8"
         )
         for command in (
-            "./build.sh check",
-            "./build.sh test",
-            "./build.sh release",
+            "bash build.sh check",
+            "bash build.sh test",
+            "bash build.sh release",
             "tools/verify_actor_assets.py",
             "tools/verify_story_assets.py",
             "tools/verify_chronicle_assets.py",
+            "tools/verify_linux_raylib.py",
             "tests.test_repository_layout",
             "tools/mirror_public_snapshot.sh",
             '"arch-rogue-python/**"',
@@ -104,6 +115,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             "pygame",
             "buildozer",
             "ODIN_RELEASE",
+            "odin version",
         ):
             self.assertNotIn(legacy.lower(), workflow.lower())
         self.assertEqual(
@@ -119,14 +131,16 @@ class RepositoryLayoutTests(unittest.TestCase):
         for contract in (
             "branches: [master]",
             "runs-on: ubuntu-22.04",
-            "./build.sh check",
-            "./build.sh test",
-            "./build.sh release",
-            "./tools/android.sh release",
+            "bash build.sh check",
+            "bash build.sh test",
+            "bash build.sh release",
+            "bash tools/android.sh release",
+            "bash android/gradlew",
             "linux-x64.tar.gz",
-            "android-release.apk",
-            "android-release.aab",
+            "Arch-Rogue.apk",
+            "Arch-Rogue.aab",
             "tools/generate_download_manifest.py",
+            "tools/verify_linux_raylib.py",
             "actions/deploy-pages@",
             '"arch-rogue-python/**"',
             "sha12:",
@@ -151,12 +165,38 @@ class RepositoryLayoutTests(unittest.TestCase):
             "server-deploy",
             "sha7",
             "ODIN_RELEASE",
+            "odin version",
         ):
             self.assertNotIn(legacy.lower(), workflow.lower())
         self.assertEqual(
             workflow.count("uses: laytan/setup-odin@"),
             workflow.count('release: "false"'),
         )
+
+        android_sdk_install = workflow.partition(
+            "      - name: Install pinned Android SDK and NDK"
+        )[2].partition("      - name: Verify Android SDK cache contents")[0]
+        for contract in (
+            'hosted_sdk_root=/usr/local/lib/android/sdk',
+            '$hosted_sdk_root/cmdline-tools/latest/bin/sdkmanager',
+            '--channel=0 --verbose',
+            'license_status="${PIPESTATUS[1]}"',
+            'sdkmanager --licenses failed with exit code',
+        ):
+            self.assertIn(contract, android_sdk_install)
+        self.assertNotIn("--licenses >/dev/null || true", android_sdk_install)
+
+        gradle_provision = workflow.partition(
+            "      - name: Provision pinned Gradle and AGP with network access"
+        )[2].partition("      - name: Restore release keystore")[0]
+        self.assertIn(":app:tasks", gradle_provision)
+        self.assertNotIn("--offline", gradle_provision)
+        self.assertIn('ARCH_ROGUE_GRADLE_ONLINE: "1"', workflow)
+
+        android_tool = (ROOT / "tools" / "android.sh").read_text(encoding="utf-8")
+        self.assertIn('ARCH_ROGUE_GRADLE_ONLINE:-0', android_tool)
+        self.assertIn("local -a dependency_mode=(--offline)", android_tool)
+        self.assertIn("1) dependency_mode=()", android_tool)
 
         release_job = workflow.partition("  publish-release:")[2].partition(
             "  prepare-pages:"
@@ -168,6 +208,42 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertNotIn("pages: write", release_job)
         self.assertIn("pages: write", pages_job)
         self.assertNotIn("contents: write", pages_job)
+
+    def test_aab_orientation_audit_accepts_bundletool_enum_formats(self) -> None:
+        for value in ("sensorLandscape", "6", "0x6", "0x00000006"):
+            with self.subTest(value=value):
+                manifest = f'<activity android:screenOrientation="{value}" />'
+                self.assertEqual(
+                    android_audit.aab_sensor_landscape_value(manifest),
+                    value,
+                )
+        for value in ("portrait", "1", "0x1"):
+            with self.subTest(value=value):
+                manifest = f'<activity android:screenOrientation="{value}" />'
+                self.assertIsNone(
+                    android_audit.aab_sensor_landscape_value(manifest)
+                )
+        self.assertIsNone(android_audit.aab_sensor_landscape_value("<activity />"))
+
+    def test_aab_signature_audit_allows_pinned_self_signed_certificate(self) -> None:
+        self_signed_report = """jar verified.
+
+Warning:
+This jar contains entries whose signer certificate is self-signed.
+"""
+        android_audit.audit_jarsigner_report(self_signed_report)
+
+        with self.assertRaisesRegex(android_audit.AuditError, "not covered"):
+            android_audit.audit_jarsigner_report(
+                "jar verified.\nThis jar contains unsigned entries.\n"
+            )
+        with self.assertRaisesRegex(android_audit.AuditError, "did not confirm"):
+            android_audit.audit_jarsigner_report("jar is unsigned.\n")
+
+        source = (ROOT / "tools" / "android_audit.py").read_text(encoding="utf-8")
+        self.assertIn('["jarsigner", "-verify", "-verbose"', source)
+        self.assertNotIn('["jarsigner", "-verify", "-strict"', source)
+        self.assertIn("exactly one JAR signature block", source)
 
     def test_android_release_certificate_is_repository_pinned(self) -> None:
         fingerprint = (

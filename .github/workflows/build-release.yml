@@ -40,6 +40,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
+            binutils \
             file \
             libasound2-dev \
             libgl1-mesa-dev \
@@ -68,28 +69,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected="$(sed -n 's/^ODIN_VERSION=//p' android/toolchain.properties)"
           expected_commit="$(sed -n 's/^ODIN_COMMIT=//p' android/toolchain.properties)"
-          [[ "$ODIN_SOURCE_TAG" == "${expected%%:*}" ]] || {
-            echo "Odin source tag $ODIN_SOURCE_TAG does not match $expected" >&2
-            exit 1
-          }
           actual_commit="$(git -C "$HOME/odin" rev-parse HEAD)"
           [[ "$actual_commit" == "$expected_commit" ]] || {
             echo "expected Odin source commit $expected_commit, found $actual_commit" >&2
             exit 1
           }
-          actual="$(odin version 2>&1 | sed -n '1p')"
-          if [[ "$actual" != "odin version $expected" && "$actual" != "$expected" ]]; then
-            echo "expected Odin $expected, found $actual" >&2
-            exit 1
-          fi
           expected_backend="$(sed -n 's/^ODIN_BACKEND_LLVM_VERSION=//p' android/toolchain.properties)"
           actual_backend="$(odin report 2>&1 | sed -n 's/^[[:space:]]*Backend: LLVM //p' | sed -n '1p')"
           [[ "$actual_backend" == "$expected_backend" ]] || {
             echo "expected Odin LLVM backend $expected_backend, found ${actual_backend:-unknown}" >&2
             exit 1
           }
+
+      - name: Verify Linux raylib ABI baseline
+        run: python3 tools/verify_linux_raylib.py
 
       - name: Read release metadata
         id: metadata
@@ -102,13 +96,13 @@ jobs:
           echo "sha12=${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
 
       - name: Check Odin sources
-        run: ./build.sh check
+        run: bash build.sh check
 
       - name: Run Odin tests
-        run: ./build.sh test
+        run: bash build.sh test
 
       - name: Build optimized Linux binary
-        run: ./build.sh release
+        run: bash build.sh release
 
       - name: Verify authored asset packs
         run: |
@@ -237,28 +231,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends clang-22
 
-          expected_odin="$(sed -n 's/^ODIN_VERSION=//p' android/toolchain.properties)"
           expected_odin_commit="$(sed -n 's/^ODIN_COMMIT=//p' android/toolchain.properties)"
-          [[ "$ODIN_SOURCE_TAG" == "${expected_odin%%:*}" ]] || {
-            echo "Odin source tag $ODIN_SOURCE_TAG does not match $expected_odin" >&2
-            exit 1
-          }
           actual_odin_commit="$(git -C "$HOME/odin" rev-parse HEAD)"
           [[ "$actual_odin_commit" == "$expected_odin_commit" ]] || {
             echo "expected Odin source commit $expected_odin_commit, found $actual_odin_commit" >&2
             exit 1
           }
-          actual_odin="$(odin version 2>&1 | sed -n '1p')"
-          if [[ "$actual_odin" != "odin version $expected_odin" && "$actual_odin" != "$expected_odin" ]]; then
-            echo "expected Odin $expected_odin, found $actual_odin" >&2
-            exit 1
-          fi
-          expected_odin_backend="$(sed -n 's/^ODIN_BACKEND_LLVM_VERSION=//p' android/toolchain.properties)"
-          actual_odin_backend="$(odin report 2>&1 | sed -n 's/^[[:space:]]*Backend: LLVM //p' | sed -n '1p')"
-          [[ "$actual_odin_backend" == "$expected_odin_backend" ]] || {
-            echo "expected Odin LLVM backend $expected_odin_backend, found ${actual_odin_backend:-unknown}" >&2
-            exit 1
-          }
+
           clang_bin="$(command -v clang-22)"
           clang_version="$($clang_bin --version | sed -n '1s/^.*clang version \([^ ]*\).*$/\1/p')"
           [[ "$clang_version" == '22.1.8' ]] || {
@@ -279,10 +258,38 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager_bin="$(command -v sdkmanager)"
-          mkdir -p "$ANDROID_SDK_ROOT"
-          yes | "$sdkmanager_bin" --sdk_root="$ANDROID_SDK_ROOT" --licenses >/dev/null || true
-          "$sdkmanager_bin" --sdk_root="$ANDROID_SDK_ROOT" \
+          hosted_sdk_root=/usr/local/lib/android/sdk
+          sdkmanager_candidate="$hosted_sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$sdkmanager_candidate" ]]; then
+            sdkmanager_candidate="$(command -v sdkmanager || true)"
+          fi
+          [[ -n "$sdkmanager_candidate" && -x "$sdkmanager_candidate" ]] || {
+            echo "sdkmanager was not found in $hosted_sdk_root or on PATH" >&2
+            exit 1
+          }
+          sdkmanager_bin="$(readlink -f "$sdkmanager_candidate")"
+          hosted_sdk_root="$(cd -- "$(dirname -- "$sdkmanager_bin")/../../.." && pwd -P)"
+          echo "Using sdkmanager: $sdkmanager_bin"
+          echo "Hosted Android SDK: $hosted_sdk_root"
+          echo "Cached Android SDK: $ANDROID_SDK_ROOT"
+
+          install -d "$ANDROID_SDK_ROOT/licenses"
+          if [[ -d "$hosted_sdk_root/licenses" ]]; then
+            cp -a "$hosted_sdk_root/licenses/." "$ANDROID_SDK_ROOT/licenses/"
+          fi
+
+          set +e
+          set +o pipefail
+          yes | "$sdkmanager_bin" --sdk_root="$ANDROID_SDK_ROOT" --licenses
+          license_status="${PIPESTATUS[1]}"
+          set -o pipefail
+          set -e
+          [[ "$license_status" -eq 0 ]] || {
+            echo "sdkmanager --licenses failed with exit code $license_status" >&2
+            exit "$license_status"
+          }
+
+          "$sdkmanager_bin" --sdk_root="$ANDROID_SDK_ROOT" --channel=0 --verbose \
             'platform-tools' \
             'platforms;android-35' \
             'build-tools;35.0.0' \
@@ -309,8 +316,8 @@ jobs:
           path: .gradle-home
           key: gradle-linux-8.14.3-agp8.11.0-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties', 'android/toolchain.properties') }}
 
-      - name: Provision Gradle and AGP once with network access
-        run: android/gradlew -p android --no-daemon --stacktrace :app:tasks
+      - name: Provision pinned Gradle and AGP with network access
+        run: bash android/gradlew -p android --no-daemon --stacktrace :app:tasks
 
       - name: Restore release keystore
         env:
@@ -327,29 +334,28 @@ jobs:
             > "$RUNNER_TEMP/arch-rogue-signing/release.keystore"
           chmod 0600 "$RUNNER_TEMP/arch-rogue-signing/release.keystore"
 
-      - name: Build and audit signed release APK and AAB offline
+      - name: Build and audit signed release APK and AAB
         # Preserve the existing Python-era environment secret names and map
         # them to the clearer local names used by the Odin build wrapper.
+        # Hosted CI may resolve transitive tools selected by the pinned AGP;
+        # local Android builds remain offline unless explicitly opted in.
         env:
+          ARCH_ROGUE_GRADLE_ONLINE: "1"
           ARCH_ROGUE_ANDROID_KEYSTORE: ${{ runner.temp }}/arch-rogue-signing/release.keystore
           ARCH_ROGUE_ANDROID_STORE_PASSWORD: ${{ secrets.ARCH_ROGUE_ANDROID_KEYSTORE_PASSWD }}
           ARCH_ROGUE_ANDROID_KEY_ALIAS: ${{ secrets.ARCH_ROGUE_ANDROID_KEYALIAS }}
           ARCH_ROGUE_ANDROID_KEY_PASSWORD: ${{ secrets.ARCH_ROGUE_ANDROID_KEYALIAS_PASSWD }}
-        run: ./tools/android.sh release
+        run: bash tools/android.sh release
 
       - name: Stage release-named Android artifacts
         shell: bash
         run: |
           set -euo pipefail
-          version="${{ needs.linux.outputs.version }}"
-          sha12="${{ needs.linux.outputs.sha12 }}"
           source_root="build/android/outputs"
           final_root="dist/android"
           install -d "$final_root"
-          install -m 0644 "$source_root/archrogue-${version}-android-release.apk" \
-            "$final_root/arch-rogue-v${version}-${sha12}-android-release.apk"
-          install -m 0644 "$source_root/archrogue-${version}-android-release.aab" \
-            "$final_root/arch-rogue-v${version}-${sha12}-android-release.aab"
+          install -m 0644 "$source_root/Arch-Rogue.apk" "$final_root/Arch-Rogue.apk"
+          install -m 0644 "$source_root/Arch-Rogue.aab" "$final_root/Arch-Rogue.aab"
           ls -lh "$final_root"
 
       - name: Remove restored signing material
@@ -388,8 +394,8 @@ jobs:
           version="${{ needs.linux.outputs.version }}"
           sha12="${{ needs.linux.outputs.sha12 }}"
           test -f "release-assets/arch-rogue-v${version}-${sha12}-linux-x64.tar.gz"
-          test -f "release-assets/arch-rogue-v${version}-${sha12}-android-release.apk"
-          test -f "release-assets/arch-rogue-v${version}-${sha12}-android-release.aab"
+          test -f "release-assets/Arch-Rogue.apk"
+          test -f "release-assets/Arch-Rogue.aab"
           test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 3
           ls -lh release-assets
 
@@ -400,12 +406,12 @@ jobs:
           name: Arch Rogue v${{ needs.linux.outputs.version }} (${{ needs.linux.outputs.sha12 }})
           target_commitish: ${{ github.sha }}
           body: |
-            Automated Odin + raylib prerelease from `master` commit `${{ github.sha }}`.
+            Automated Arch Rogue prerelease from `master` commit `${{ github.sha }}`.
 
-            Commit-addressed artifacts:
+            Release artifacts:
             - `arch-rogue-v${{ needs.linux.outputs.version }}-${{ needs.linux.outputs.sha12 }}-linux-x64.tar.gz` — Linux x64 launcher, binary, assets, and licenses
-            - `arch-rogue-v${{ needs.linux.outputs.version }}-${{ needs.linux.outputs.sha12 }}-android-release.apk` — signed Android install package
-            - `arch-rogue-v${{ needs.linux.outputs.version }}-${{ needs.linux.outputs.sha12 }}-android-release.aab` — signed Android App Bundle
+            - `Arch-Rogue.apk` — signed Android install package
+            - `Arch-Rogue.aab` — signed Android App Bundle
           files: release-assets/*
           fail_on_unmatched_files: true
           prerelease: true

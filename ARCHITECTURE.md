@@ -71,9 +71,12 @@ version metadata but is no longer an active development target.
   (raygui omitted — its foreign import is unguarded and we don't use it)
   together with the real `linux/libraylib.a` fetched from
   `odin-lang/Odin@dev-2026-07` and sha256-verified against the upstream LFS
-  pointer (`1199fb5b…`). Imports use `../vendor/raylib`. This also pins
-  raylib 6.0 regardless of system state and keeps builds static and
-  reproducible.
+  pointer (`1199fb5b…`). The upstream archive's four C23-only glibc imports are
+  deterministically normalized to their C99/legacy ABI equivalents so the
+  Ubuntu 22.04 / glibc 2.35 release baseline can link it; the transformed hash,
+  member set, and provenance are pinned under `vendor/raylib/linux/` and checked
+  by `tools/verify_linux_raylib.py`. Imports use `../vendor/raylib`. This pins
+  raylib 6.0 regardless of system state and keeps builds static and reproducible.
 - **2026-08-14 — Story is deterministic simulation; panels are presentation.**
   `story.odin`, `story_content.odin`, and `story_runtime.odin` own the seeded
   corpus, run consequences, guests, minigames, and modal reducer without

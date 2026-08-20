@@ -1,4 +1,4 @@
-# Arch Rogue Odin Android packaging
+# Arch Rogue Android packaging
 
 This directory is a native-first Android `NativeActivity` project. Gameplay and
 the sole game loop remain Odin/raylib; a small custom Java activity owns Android
@@ -11,7 +11,7 @@ compilation, clean asset staging, signing gates, and final artifact audits.
 
 `toolchain.properties` pins:
 
-- Odin `dev-2026-07:301c287de`, built with LLVM `21.1.8`, and Clang `22.1.8` for the audited Android IR bridge
+- Odin tag `dev-2026-07` at commit `301c287de90393608fb7c5b260210e1e67caf0fd`, built with LLVM `21.1.8`, and Clang `22.1.8` for the audited Android IR bridge
 - Gradle `8.14.3` and Android Gradle Plugin `8.11.0`
 - JDK major `17`
 - `minSdk 28`, `compileSdk 35`, `targetSdk 35`
@@ -22,8 +22,8 @@ compilation, clean asset staging, signing gates, and final artifact audits.
 
 CI builds the `dev-2026-07` tag from source with LLVM 21 because its published
 Linux archive was produced before the tag was finalized and reports the earlier
-`ab0131c` nightly revision. Post-setup checks remain fail-closed on the full
-`301c287de` source commit, compiler version, and LLVM `21.1.8` backend.
+`ab0131c` nightly revision. Post-setup checks remain fail-closed on the full source commit
+and LLVM `21.1.8` backend; Odin's variable-length displayed hash is not compared.
 
 If preflight reports missing Android components, install exactly the package IDs
 it prints. For the default `/opt/android-sdk` location the complete command is:
@@ -73,13 +73,21 @@ force-stop/relaunch, and app-private Resume.
 It checks logcat markers and writes screenshots plus `smoke.log` under
 `build/android/smoke/`.
 
-The alpha identities are deliberately isolated from the archived legacy
-application and from each other:
+The installed app and launcher label are simply `Arch Rogue`. Build artifacts
+use stable product-facing names:
+
+- debug APK: `build/android/outputs/Arch-Rogue-debug.apk`
+- release APK: `build/android/outputs/Arch-Rogue.apk`
+- release bundle: `build/android/outputs/Arch-Rogue.aab`
+
+The internal alpha application IDs remain deliberately isolated from the
+archived legacy application and from each other so signed updates continue to
+work:
 
 - debug: `org.archrogue.archrogue.odin.alpha.debug`
 - release: `org.archrogue.archrogue.odin.alpha`
 
-The official unsuffixed identity is never produced by this project.
+The official unsuffixed application ID is never produced by this project.
 
 ## Activity and Back bridge
 

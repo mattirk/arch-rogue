@@ -93,11 +93,12 @@ class WebsiteTests(unittest.TestCase):
         # Kept but intentionally unreferenced by the site itself.
         self.assertTrue((WEBSITE / "assets/title_logo.png").is_file())
 
-    def test_site_copy_matches_current_odin_release_contract(self) -> None:
+    def test_site_copy_matches_current_release_contract(self) -> None:
         page = (WEBSITE / "index.html").read_text(encoding="utf-8")
         script = (WEBSITE / "app.js").read_text(encoding="utf-8")
         styles = (WEBSITE / "styles.css").read_text(encoding="utf-8")
-        self.assertIn("Odin 6.0.0-alpha.21", page)
+        self.assertIn("Version 6.0.0-alpha.21", page)
+        self.assertNotIn("Arch Rogue Odin", page + script)
         self.assertIn("x64 tar.gz archive", page)
         self.assertIn("Signed APK", page)
         self.assertGreaterEqual(page.count("Coming soon"), 2)
@@ -168,7 +169,7 @@ class WebsiteTests(unittest.TestCase):
                 "macos": {"available": False},
                 "android": {
                     "available": True,
-                    "url": "https://github.com/mattirk/arch-rogue/releases/download/v6.0.0-alpha.21-1234567890ab/arch-rogue-v6.0.0-alpha.21-1234567890ab-android-release.apk",
+                    "url": "https://github.com/mattirk/arch-rogue/releases/download/v6.0.0-alpha.21-1234567890ab/Arch-Rogue.apk",
                 },
             },
         )

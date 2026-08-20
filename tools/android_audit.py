@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict, stdlib-only audits for Arch Rogue Odin Android inputs and artifacts."""
+"""Strict, stdlib-only audits for Arch Rogue Android inputs and artifacts."""
 
 from __future__ import annotations
 
@@ -460,6 +460,18 @@ def normalize_fingerprint(value: str) -> str:
     return re.sub(r"[^0-9a-f]", "", value.lower())
 
 
+def audit_jarsigner_report(report: str) -> None:
+    require(
+        re.search(r"^\s*jar verified\.?\s*$", report, re.IGNORECASE | re.MULTILINE)
+        is not None,
+        "jarsigner did not confirm that the AAB signature is valid",
+    )
+    require(
+        "unsigned entries" not in report.lower(),
+        "AAB contains entries that are not covered by its JAR signature",
+    )
+
+
 def package_attribute(package_line: str, name: str) -> str:
     match = re.search(rf"\b{re.escape(name)}='([^']*)'", package_line)
     require(match is not None, f"aapt package metadata omitted {name}")
@@ -578,6 +590,20 @@ def bundletool_manifest(bundletool: Path, bundle: Path) -> str:
     ])
 
 
+def aab_sensor_landscape_value(manifest: str) -> str | None:
+    match = re.search(r'\bandroid:screenOrientation="([^"]+)"', manifest)
+    if match is None:
+        return None
+    value = match.group(1)
+    if value == "sensorLandscape":
+        return value
+    try:
+        base = 16 if value.lower().startswith("0x") else 10
+        return value if int(value, base) == 6 else None
+    except ValueError:
+        return None
+
+
 def command_aab(args: argparse.Namespace) -> None:
     bundle = Path(args.file).resolve()
     root = Path(args.root).resolve()
@@ -597,7 +623,12 @@ def command_aab(args: argparse.Namespace) -> None:
     require("org.archrogue.archrogue.odin.ArchRogueActivity" in manifest, "AAB Arch Rogue NativeActivity subclass is missing")
     require('android:hasCode="true"' in manifest, "AAB application android:hasCode is not true")
     require('android:enableOnBackInvokedCallback="true"' in manifest, "AAB modern Android Back callback is not enabled")
-    require('android:screenOrientation="sensorLandscape"' in manifest, "AAB sensorLandscape orientation is missing")
+    orientation_match = re.search(r'\bandroid:screenOrientation="([^"]+)"', manifest)
+    orientation_value = orientation_match.group(1) if orientation_match is not None else None
+    require(
+        aab_sensor_landscape_value(manifest) is not None,
+        f"AAB sensorLandscape orientation is missing or invalid: {orientation_value!r}",
+    )
     require(
         'android:glEsVersion="131072"' in manifest or 'android:glEsVersion="0x00020000"' in manifest,
         "AAB GLES2 requirement is missing",
@@ -605,7 +636,8 @@ def command_aab(args: argparse.Namespace) -> None:
     for permission in FORBIDDEN_NETWORK_PERMISSIONS:
         require(permission not in manifest, f"unexpected network permission in AAB: {permission}")
 
-    run_checked(["jarsigner", "-verify", "-strict", "-verbose", "-certs", str(bundle)])
+    signature_report = run_checked(["jarsigner", "-verify", "-verbose", str(bundle)])
+    audit_jarsigner_report(signature_report)
     cert = run_checked(["keytool", "-printcert", "-jarfile", str(bundle)])
     cert_match = re.search(r"SHA256:\s*([0-9A-F:]+)", cert, re.IGNORECASE)
     require(cert_match is not None, "cannot read AAB signer SHA-256 fingerprint")
@@ -617,6 +649,15 @@ def command_aab(args: argparse.Namespace) -> None:
 
     with zipfile.ZipFile(bundle) as archive:
         names = validate_zip_structure(archive)
+        signature_blocks = {
+            name
+            for name in names
+            if re.fullmatch(r"META-INF/[^/]+\.(?:RSA|DSA|EC)", name, re.IGNORECASE)
+        }
+        require(
+            len(signature_blocks) == 1,
+            f"AAB must contain exactly one JAR signature block, found {sorted(signature_blocks)}",
+        )
         compare_packaged_assets(archive, names, root, "base/")
         audit_packaged_dex(archive, names, "base/")
         audit_packaged_native(archive, names, "base/", readelf, require_uncompressed=False)

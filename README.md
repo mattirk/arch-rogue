@@ -39,7 +39,7 @@ See `PARITY.md` for the port ledger and `ARCHITECTURE.md` for design decisions, 
 
 - A Linux development host
 - Bash
-- Odin `dev-2026-07:301c287de` available as `odin`
+- Odin tag `dev-2026-07` at commit `301c287de90393608fb7c5b260210e1e67caf0fd`, available as `odin`
 - The normal Linux graphics, windowing, and audio development libraries required by raylib
 
 The raylib 6.0 binding and pinned static libraries are included under `vendor/raylib/`; a separate raylib installation is not required.
