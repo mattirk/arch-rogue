@@ -40,7 +40,7 @@ class RepositoryLayoutTests(unittest.TestCase):
         toolchain = (ROOT / "android" / "toolchain.properties").read_text(
             encoding="utf-8"
         )
-        self.assertIn("ODIN_VERSION=dev-2026-07:301c287de", toolchain)
+        self.assertIn("ODIN_VERSION=dev-2026-07", toolchain)
         self.assertIn(
             "ODIN_COMMIT=301c287de90393608fb7c5b260210e1e67caf0fd",
             toolchain,
@@ -79,9 +79,9 @@ class RepositoryLayoutTests(unittest.TestCase):
             encoding="utf-8"
         )
         for command in (
-            "./build.sh check",
-            "./build.sh test",
-            "./build.sh release",
+            "bash build.sh check",
+            "bash build.sh test",
+            "bash build.sh release",
             "tools/verify_actor_assets.py",
             "tools/verify_story_assets.py",
             "tools/verify_chronicle_assets.py",
@@ -104,6 +104,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             "pygame",
             "buildozer",
             "ODIN_RELEASE",
+            "odin version",
         ):
             self.assertNotIn(legacy.lower(), workflow.lower())
         self.assertEqual(
@@ -119,10 +120,11 @@ class RepositoryLayoutTests(unittest.TestCase):
         for contract in (
             "branches: [master]",
             "runs-on: ubuntu-22.04",
-            "./build.sh check",
-            "./build.sh test",
-            "./build.sh release",
-            "./tools/android.sh release",
+            "bash build.sh check",
+            "bash build.sh test",
+            "bash build.sh release",
+            "bash tools/android.sh release",
+            "bash android/gradlew",
             "linux-x64.tar.gz",
             "android-release.apk",
             "android-release.aab",
@@ -151,6 +153,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             "server-deploy",
             "sha7",
             "ODIN_RELEASE",
+            "odin version",
         ):
             self.assertNotIn(legacy.lower(), workflow.lower())
         self.assertEqual(

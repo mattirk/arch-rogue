@@ -22,8 +22,8 @@
   official `dev-2026-07` prebuilt archive identifies itself as the earlier
   `dev-2026-07-nightly:ab0131c`, while the finalized tag and Android contract are
   `dev-2026-07:301c287de`. CI now builds that exact source commit with the validated
-  LLVM `21.1.8` backend and checks the full Git revision, compiler version, and
-  backend instead of accepting the stale release binary.
+  LLVM `21.1.8` backend and checks only the authoritative full Git revision and
+  backend instead of comparing Odin's variable-length displayed hash.
 - Fixed an Android 17 AAudio/miniaudio shutdown race that could abort the native
   process on Back or make a suspended game appear unable to resume. Ordinary
   focus/surface restoration now preserves the existing audio device, while

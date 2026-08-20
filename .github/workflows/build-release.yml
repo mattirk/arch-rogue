@@ -68,22 +68,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected="$(sed -n 's/^ODIN_VERSION=//p' android/toolchain.properties)"
           expected_commit="$(sed -n 's/^ODIN_COMMIT=//p' android/toolchain.properties)"
-          [[ "$ODIN_SOURCE_TAG" == "${expected%%:*}" ]] || {
-            echo "Odin source tag $ODIN_SOURCE_TAG does not match $expected" >&2
-            exit 1
-          }
           actual_commit="$(git -C "$HOME/odin" rev-parse HEAD)"
           [[ "$actual_commit" == "$expected_commit" ]] || {
             echo "expected Odin source commit $expected_commit, found $actual_commit" >&2
             exit 1
           }
-          actual="$(odin version 2>&1 | sed -n '1p')"
-          if [[ "$actual" != "odin version $expected" && "$actual" != "$expected" ]]; then
-            echo "expected Odin $expected, found $actual" >&2
-            exit 1
-          fi
           expected_backend="$(sed -n 's/^ODIN_BACKEND_LLVM_VERSION=//p' android/toolchain.properties)"
           actual_backend="$(odin report 2>&1 | sed -n 's/^[[:space:]]*Backend: LLVM //p' | sed -n '1p')"
           [[ "$actual_backend" == "$expected_backend" ]] || {
@@ -102,13 +92,13 @@ jobs:
           echo "sha12=${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
 
       - name: Check Odin sources
-        run: ./build.sh check
+        run: bash build.sh check
 
       - name: Run Odin tests
-        run: ./build.sh test
+        run: bash build.sh test
 
       - name: Build optimized Linux binary
-        run: ./build.sh release
+        run: bash build.sh release
 
       - name: Verify authored asset packs
         run: |
@@ -237,28 +227,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends clang-22
 
-          expected_odin="$(sed -n 's/^ODIN_VERSION=//p' android/toolchain.properties)"
           expected_odin_commit="$(sed -n 's/^ODIN_COMMIT=//p' android/toolchain.properties)"
-          [[ "$ODIN_SOURCE_TAG" == "${expected_odin%%:*}" ]] || {
-            echo "Odin source tag $ODIN_SOURCE_TAG does not match $expected_odin" >&2
-            exit 1
-          }
           actual_odin_commit="$(git -C "$HOME/odin" rev-parse HEAD)"
           [[ "$actual_odin_commit" == "$expected_odin_commit" ]] || {
             echo "expected Odin source commit $expected_odin_commit, found $actual_odin_commit" >&2
             exit 1
           }
-          actual_odin="$(odin version 2>&1 | sed -n '1p')"
-          if [[ "$actual_odin" != "odin version $expected_odin" && "$actual_odin" != "$expected_odin" ]]; then
-            echo "expected Odin $expected_odin, found $actual_odin" >&2
-            exit 1
-          fi
-          expected_odin_backend="$(sed -n 's/^ODIN_BACKEND_LLVM_VERSION=//p' android/toolchain.properties)"
-          actual_odin_backend="$(odin report 2>&1 | sed -n 's/^[[:space:]]*Backend: LLVM //p' | sed -n '1p')"
-          [[ "$actual_odin_backend" == "$expected_odin_backend" ]] || {
-            echo "expected Odin LLVM backend $expected_odin_backend, found ${actual_odin_backend:-unknown}" >&2
-            exit 1
-          }
+
           clang_bin="$(command -v clang-22)"
           clang_version="$($clang_bin --version | sed -n '1s/^.*clang version \([^ ]*\).*$/\1/p')"
           [[ "$clang_version" == '22.1.8' ]] || {
@@ -310,7 +285,7 @@ jobs:
           key: gradle-linux-8.14.3-agp8.11.0-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties', 'android/toolchain.properties') }}
 
       - name: Provision Gradle and AGP once with network access
-        run: android/gradlew -p android --no-daemon --stacktrace :app:tasks
+        run: bash android/gradlew -p android --no-daemon --stacktrace :app:tasks
 
       - name: Restore release keystore
         env:
@@ -335,7 +310,7 @@ jobs:
           ARCH_ROGUE_ANDROID_STORE_PASSWORD: ${{ secrets.ARCH_ROGUE_ANDROID_KEYSTORE_PASSWD }}
           ARCH_ROGUE_ANDROID_KEY_ALIAS: ${{ secrets.ARCH_ROGUE_ANDROID_KEYALIAS }}
           ARCH_ROGUE_ANDROID_KEY_PASSWORD: ${{ secrets.ARCH_ROGUE_ANDROID_KEYALIAS_PASSWD }}
-        run: ./tools/android.sh release
+        run: bash tools/android.sh release
 
       - name: Stage release-named Android artifacts
         shell: bash

@@ -99,9 +99,9 @@ validate_toolchain_contract() {
         BUNDLETOOL_SHA256; do
         [[ "${!variable}" =~ ^[0-9a-f]{64}$ ]] || die "$variable must be one lowercase SHA-256 digest"
     done
+    [[ "$ODIN_VERSION" =~ ^dev-[0-9]{4}-[0-9]{2}$ ]] || \
+        die "ODIN_VERSION must be one monthly source tag"
     [[ "$ODIN_COMMIT" =~ ^[0-9a-f]{40}$ ]] || die "ODIN_COMMIT must be one full Git commit"
-    [[ "$ODIN_VERSION" == *":${ODIN_COMMIT:0:9}" ]] || \
-        die "ODIN_VERSION must end with the pinned ODIN_COMMIT abbreviation"
     [[ "$RAYLIB_COMMIT" =~ ^[0-9a-f]{40}$ ]] || die "RAYLIB_COMMIT must be one full Git commit"
 }
 
@@ -144,9 +144,15 @@ check_java() {
 check_odin() {
     require_command odin
     local detected
+    local version_prefix
+    local reported_commit
     detected="$(odin version 2>&1 | sed -n '1p')"
-    [[ "$detected" == "odin version $ODIN_VERSION" || "$detected" == "$ODIN_VERSION" ]] || \
-        die "expected Odin $ODIN_VERSION, found $detected"
+    version_prefix="odin version $ODIN_VERSION:"
+    [[ "$detected" == "$version_prefix"* ]] || \
+        die "expected Odin source tag $ODIN_VERSION, found $detected"
+    reported_commit="${detected#"$version_prefix"}"
+    [[ "$reported_commit" =~ ^[0-9a-f]{7,40}$ && "$ODIN_COMMIT" == "$reported_commit"* ]] || \
+        die "Odin reported revision ${reported_commit:-missing}, which is not a prefix of $ODIN_COMMIT"
 
     local odin_report
     local backend_version
@@ -258,7 +264,6 @@ check_sdk() {
 
 check_gradle_offline() {
     require_file "$ANDROID_DIR/gradlew"
-    [[ -x "$ANDROID_DIR/gradlew" ]] || die "Gradle wrapper is not executable: $ANDROID_DIR/gradlew"
     require_file "$ANDROID_DIR/gradle/wrapper/gradle-wrapper.jar"
     require_file "$ANDROID_DIR/gradle/wrapper/gradle-wrapper.properties"
 
