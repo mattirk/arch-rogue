@@ -166,6 +166,17 @@ class RepositoryLayoutTests(unittest.TestCase):
             workflow.count('release: "false"'),
         )
 
+        android_sdk_install = workflow.partition(
+            "      - name: Install pinned Android SDK and NDK"
+        )[2].partition("      - name: Verify Android SDK cache contents")[0]
+        for contract in (
+            '--channel=0 --verbose',
+            'license_status="${PIPESTATUS[1]}"',
+            'sdkmanager --licenses failed with exit code',
+        ):
+            self.assertIn(contract, android_sdk_install)
+        self.assertNotIn("--licenses >/dev/null || true", android_sdk_install)
+
         release_job = workflow.partition("  publish-release:")[2].partition(
             "  prepare-pages:"
         )[0]

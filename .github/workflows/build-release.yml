@@ -258,10 +258,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager_bin="$(command -v sdkmanager)"
-          mkdir -p "$ANDROID_SDK_ROOT"
-          yes | "$sdkmanager_bin" --sdk_root="$ANDROID_SDK_ROOT" --licenses >/dev/null || true
-          "$sdkmanager_bin" --sdk_root="$ANDROID_SDK_ROOT" \
+          sdkmanager_candidate="$(command -v sdkmanager || true)"
+          [[ -n "$sdkmanager_candidate" ]] || {
+            echo "sdkmanager is not available on the hosted runner PATH" >&2
+            exit 1
+          }
+          sdkmanager_bin="$(readlink -f "$sdkmanager_candidate")"
+          hosted_sdk_root="$(cd -- "$(dirname -- "$sdkmanager_bin")/../../.." && pwd -P)"
+          echo "Using sdkmanager: $sdkmanager_bin"
+          echo "Hosted Android SDK: $hosted_sdk_root"
+          echo "Cached Android SDK: $ANDROID_SDK_ROOT"
+
+          install -d "$ANDROID_SDK_ROOT/licenses"
+          if [[ -d "$hosted_sdk_root/licenses" ]]; then
+            cp -a "$hosted_sdk_root/licenses/." "$ANDROID_SDK_ROOT/licenses/"
+          fi
+
+          set +e
+          set +o pipefail
+          yes | "$sdkmanager_bin" --sdk_root="$ANDROID_SDK_ROOT" --licenses
+          license_status="${PIPESTATUS[1]}"
+          set -o pipefail
+          set -e
+          [[ "$license_status" -eq 0 ]] || {
+            echo "sdkmanager --licenses failed with exit code $license_status" >&2
+            exit "$license_status"
+          }
+
+          "$sdkmanager_bin" --sdk_root="$ANDROID_SDK_ROOT" --channel=0 --verbose \
             'platform-tools' \
             'platforms;android-35' \
             'build-tools;35.0.0' \
