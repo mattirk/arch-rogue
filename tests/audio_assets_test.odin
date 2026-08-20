@@ -122,9 +122,17 @@ m10_sim_sfx_mapping_and_dispatch_gate_are_stable :: proc(t: ^testing.T) {
 	_,quiet:=ar.audio_cue_for_intent(ar.Intent{move={1,0},interact=true})
 	testing.expect(t,!quiet,"ordinary gameplay intent must not emit a menu cue")
 
+	got,ok=ar.audio_cue_for_transition(ar.Intent{confirm=true},.Title,.Select)
+	testing.expect(t,ok&&got==.Ui_Confirm,"ordinary confirmation transitions must keep the UI cue")
+	_,quiet=ar.audio_cue_for_transition(ar.Intent{confirm=true},.Select,.Playing)
+	testing.expect(t,!quiet,"Select -> Playing must leave Start as the sole authored cue")
+	got,ok=ar.audio_cue_for_transition(ar.Intent{menu_delta=1},.Playing,.Playing)
+	testing.expect(t,ok&&got==.Ui_Navigate,"stable-mode navigation must retain its cue")
+
 	// These calls remain headless because the dispatch gate returns before any
 	// raylib function when the device is not ready.
 	audio: ar.Audio
+	testing.expect(t,!ar.audio_any_cue_playing(&audio),"an uninitialized audio registry cannot have a playing cue")
 	ar.audio_set_enabled(&audio, false)
 	testing.expect(t, !audio.enabled)
 	for cue in ar.Audio_Cue do ar.audio_play_cue(&audio, cue)

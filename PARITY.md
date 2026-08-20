@@ -1183,18 +1183,21 @@ exists.
 
 #### MX-backlog — Tasks that come to mind while working on the parity push
 
+- Remove highlight around tile when mouse is over it (yellow-ish outline)
+- We want nice looking custom cursor ingame -> generate with pixellab and implement into game -> subtle but grim looking -> generate unique cursor per archetype
 - Rare (double check item tiers first) items need to be better. Make rare items stats somewhere between rolled and unique. If unique is always 3x better than best rolled, make rare items 1.5-2x better than best rolled (they are still rolled too ofc)
 - Make shrines, relics and items shine through walls like actors do (also guiding light glow)
 - There is weird text description / tooltip when descending (looking at stairs) -> make more "storylike", not informative about game mechanics
 - Speed stat effect / shrine effect, is this fixed yet?
+- On web, there is sound glitch when story cutscene opens
+- Deploy web version on GH pages in /play/ url
 
-- Boss sprites look a bit low resolution -> make sure no downscaling or resolution/quality loss happens at any point when importing assets from pixellab or baking into Odin port
-  - Including NPC sprites and other assets
+
+- BUG: During a run, lossless soul suddenly appeared in boss room and became interactable after boss defeat. On another run Liss appeared in random room.
+- Font needs to be checked on Odin build -> pick actually good looking one (FULLSCREEN text on web build triggered this, it looks better than ingame text) -> may need to implement some font loading -> let's first try the same font as in web version e.g "ARCH ROGUE The session has ended. Your progress is saved in this browser. Reload the page to descend again." looks good and neutral
 - Make sure text fits in all panels
   - Known issues: "Tyrant is dead" -panel
 
-- Main menu / other menu frames are too massive looking -> generate new, a bit more delicate frames, also place them to the very edges of the screen -> generate Pixellab frames so that they fit well with these requirements
-- BUG: During a run, lossless soul suddenly appeared in boss room and became interactable after boss defeat. On another run Liss appeared in random room.
 
 ## Working agreements for the parity push
 

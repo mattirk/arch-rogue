@@ -16,6 +16,7 @@ class SiteParser(HTMLParser):
         self.platforms: list[str] = []
         self.platform_attributes: dict[str, dict[str, str | None]] = {}
         self.images: list[dict[str, str | None]] = []
+        self.links: list[dict[str, str | None]] = []
         self.status_regions: int = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -26,6 +27,8 @@ class SiteParser(HTMLParser):
             self.platform_attributes[platform] = values
         if tag == "img":
             self.images.append(values)
+        if tag == "a":
+            self.links.append(values)
         if values.get("role") == "status" and values.get("aria-live"):
             self.status_regions += 1
 
@@ -67,6 +70,15 @@ class WebsiteTests(unittest.TestCase):
                     "https://github.com/mattirk/arch-rogue/releases"
                 ))
 
+        play_links = [link for link in parser.links if link.get("data-play-link") == "true"]
+        self.assertEqual(len(play_links), 1)
+        play = play_links[0]
+        self.assertEqual(play.get("href"), "play/")
+        self.assertEqual(play.get("aria-label"), "Play Arch Rogue in your browser")
+        self.assertIsNone(play.get("aria-disabled"))
+        self.assertIn("play-badge", str(play.get("class") or "").split())
+        self.assertNotIn('href="/play/"', (WEBSITE / "index.html").read_text(encoding="utf-8"))
+
     def test_referenced_local_assets_exist(self) -> None:
         page = (WEBSITE / "index.html").read_text(encoding="utf-8")
         styles = (WEBSITE / "styles.css").read_text(encoding="utf-8")
@@ -97,7 +109,11 @@ class WebsiteTests(unittest.TestCase):
         page = (WEBSITE / "index.html").read_text(encoding="utf-8")
         script = (WEBSITE / "app.js").read_text(encoding="utf-8")
         styles = (WEBSITE / "styles.css").read_text(encoding="utf-8")
-        self.assertIn("Version 6.0.0-alpha.21", page)
+        self.assertIn("Version 6.0.0-alpha.23", page)
+        self.assertNotIn("6.0.0-alpha.21", page)
+        self.assertIn("Play now", page)
+        self.assertIn("Desktop WebGL2 alpha", page)
+        self.assertIn(".play-glyph", styles)
         self.assertNotIn("Arch Rogue Odin", page + script)
         self.assertIn("x64 tar.gz archive", page)
         self.assertIn("Signed APK", page)
@@ -124,6 +140,9 @@ class WebsiteTests(unittest.TestCase):
         self.assertIn("deferred online features", privacy)
         self.assertIn("not included in the", privacy)
         self.assertIn("no telemetry", privacy)
+        self.assertIn("indexeddb site data", privacy)
+        self.assertIn("best-effort", privacy)
+        self.assertIn("clearing site data", privacy)
         self.assertNotIn("multiplayer relay", privacy)
         self.assertNotIn("two-player co-op", privacy)
         self.assertNotIn("achievements", privacy)
@@ -148,15 +167,15 @@ class WebsiteTests(unittest.TestCase):
         module = load_manifest_module()
         manifest = module.build_manifest(
             "mattirk/arch-rogue",
-            "6.0.0-alpha.21",
+            "6.0.0-alpha.23",
             "1234567890abcdef",
         )
         self.assertEqual(manifest["schema"], 2)
-        self.assertEqual(manifest["version"], "6.0.0-alpha.21")
+        self.assertEqual(manifest["version"], "6.0.0-alpha.23")
         self.assertEqual(manifest["commit"], "1234567890ab")
         self.assertEqual(
             manifest["release_url"],
-            "https://github.com/mattirk/arch-rogue/releases/tag/v6.0.0-alpha.21-1234567890ab",
+            "https://github.com/mattirk/arch-rogue/releases/tag/v6.0.0-alpha.23-1234567890ab",
         )
         self.assertEqual(
             manifest["assets"],
@@ -164,19 +183,19 @@ class WebsiteTests(unittest.TestCase):
                 "windows": {"available": False},
                 "linux": {
                     "available": True,
-                    "url": "https://github.com/mattirk/arch-rogue/releases/download/v6.0.0-alpha.21-1234567890ab/arch-rogue-v6.0.0-alpha.21-1234567890ab-linux-x64.tar.gz",
+                    "url": "https://github.com/mattirk/arch-rogue/releases/download/v6.0.0-alpha.23-1234567890ab/arch-rogue-v6.0.0-alpha.23-1234567890ab-linux-x64.tar.gz",
                 },
                 "macos": {"available": False},
                 "android": {
                     "available": True,
-                    "url": "https://github.com/mattirk/arch-rogue/releases/download/v6.0.0-alpha.21-1234567890ab/Arch-Rogue.apk",
+                    "url": "https://github.com/mattirk/arch-rogue/releases/download/v6.0.0-alpha.23-1234567890ab/Arch-Rogue.apk",
                 },
             },
         )
 
     def test_generator_rejects_invalid_release_inputs(self) -> None:
         module = load_manifest_module()
-        valid = ("mattirk/arch-rogue", "6.0.0-alpha.21", "1234567890ab")
+        valid = ("mattirk/arch-rogue", "6.0.0-alpha.23", "1234567890ab")
         invalid_values = (
             (("mattirk", valid[1], valid[2]), "repository without name"),
             (("mattirk/arch-rogue/extra", valid[1], valid[2]), "repository with extra path"),
@@ -195,7 +214,7 @@ class WebsiteTests(unittest.TestCase):
     def test_committed_manifest_is_valid_safe_schema_2_fallback(self) -> None:
         manifest = json.loads((WEBSITE / "downloads.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["schema"], 2)
-        self.assertEqual(manifest["version"], "6.0.0-alpha.21")
+        self.assertEqual(manifest["version"], "6.0.0-alpha.23")
         self.assertEqual(manifest["commit"], "pending")
         self.assertCountEqual(manifest["assets"], ["windows", "linux", "macos", "android"])
         self.assertEqual(manifest["assets"]["windows"], {"available": False})

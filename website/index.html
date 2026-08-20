@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080a0f">
-  <meta name="description" content="Download Arch Rogue 6.0.0-alpha.21 for Linux x64 or Android. Windows and macOS are coming soon; Steam is wishlist and store only.">
-  <meta property="og:title" content="Arch Rogue Downloads">
-  <meta property="og:description" content="Get the latest Arch Rogue alpha for Linux x64 or Android.">
+  <meta name="description" content="Play Arch Rogue 6.0.0-alpha.23 in a desktop WebGL2 browser, or download the alpha for Linux x64 or Android.">
+  <meta property="og:title" content="Arch Rogue — Play & Download">
+  <meta property="og:description" content="Play the latest Arch Rogue alpha in your browser or download it for Linux x64 or Android.">
   <meta property="og:image" content="assets/icon.png">
-  <title>Arch Rogue Downloads</title>
+  <title>Arch Rogue — Play & Downloads</title>
   <link rel="icon" href="assets/icon.png">
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
@@ -36,13 +36,17 @@
       <div class="section-heading">
         <span class="rule" aria-hidden="true"></span>
         <div>
-          <p class="kicker">Version 6.0.0-alpha.21 · bleeding-edge build</p>
+          <p class="kicker">Version 6.0.0-alpha.23 · bleeding-edge build</p>
           <h2 id="download-title">Choose your platform</h2>
         </div>
         <span class="rule" aria-hidden="true"></span>
       </div>
 
       <div class="download-grid">
+        <a class="download-badge play-badge" data-play-link="true" href="play/" aria-label="Play Arch Rogue in your browser">
+          <span class="platform-icon-frame play-icon-frame" aria-hidden="true"><span class="play-glyph">▶</span></span>
+          <span class="badge-copy"><small>Play now</small><strong>Web</strong><span>Desktop WebGL2 alpha</span></span>
+        </a>
         <a class="download-badge is-unavailable" data-platform="windows" role="link" aria-disabled="true" tabindex="-1">
           <span class="platform-icon-frame"><img src="assets/platform-windows.png" width="192" height="192" alt=""></span>
           <span class="badge-copy"><small>Coming soon</small><strong>Windows</strong><span>64-bit build in development</span></span>
@@ -66,7 +70,7 @@
       </div>
 
       <p class="release-status" data-release-status role="status" aria-live="polite">Loading release details…</p>
-      <p class="install-note">Linux and Android are automated alpha builds. The Android APK is signed, but Android may ask you to allow installation from this source. Windows and macOS builds are coming soon; Steam currently links to the wishlist and store page only.</p>
+      <p class="install-note">Web play requires a current desktop Chromium-family or Firefox browser with WebGL2; browser saves stay in this site's IndexedDB storage. Linux and Android are automated alpha builds. The Android APK is signed, but Android may ask you to allow installation from this source. Windows and macOS builds are coming soon; Steam currently links to the wishlist and store page only.</p>
     </section>
   </main>
 
@@ -79,6 +83,6 @@
       <a href="privacy.html">Privacy</a>
     </nav>
   </footer>
-  <noscript><p class="noscript">JavaScript is disabled. Linux and Android open the GitHub releases page; Windows and macOS are coming soon.</p></noscript>
+  <noscript><p class="noscript">JavaScript is disabled, so browser play is unavailable. Linux and Android downloads remain available from GitHub Releases.</p></noscript>
 </body>
 </html>

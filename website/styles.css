@@ -207,6 +207,18 @@ h2 { font-size: clamp(1.35rem, 3vw, 1.8rem); }
   width: 50px;
   height: 50px;
 }
+.play-badge .play-icon-frame {
+  background: radial-gradient(circle, rgba(214, 173, 90, .2), rgba(20, 18, 26, .72) 68%);
+}
+.play-glyph {
+  color: var(--gold-bright);
+  font-family: Cinzel, Georgia, serif;
+  font-size: 2.25rem;
+  line-height: 1;
+  text-shadow: 0 2px #331b17, 0 0 12px rgba(214, 173, 90, .5);
+  transform: translateX(2px);
+}
+.play-badge .badge-copy strong { color: var(--gold-bright); }
 .badge-copy { position: relative; z-index: 1; display: flex; min-width: 0; flex-direction: column; }
 .badge-copy small { color: var(--muted); font-size: .7rem; line-height: 1; }
 .badge-copy strong { margin: 3px 0 5px; color: #f0dfb2; font-family: Cinzel, Georgia, serif; font-size: clamp(.9rem, 1.4vw, 1.08rem); line-height: 1.05; text-shadow: 0 2px #1b0e0c; }

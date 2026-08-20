@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Arch Rogue</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #0b0a0d; color: #cfc6b8; overflow: hidden;
+    font-family: 'EB Garamond', Garamond, Georgia, 'Times New Roman', serif;
+  }
+  #ar-stage { position: fixed; inset: 0; }
+  canvas.emscripten {
+    display: block; width: 100%; height: 100%;
+    image-rendering: pixelated; outline: none; background: #0b0a0d;
+  }
+  .ar-overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px;
+    background: #0b0a0d; z-index: 10; text-align: center; padding: 24px;
+  }
+  .ar-overlay[hidden] { display: none; }
+  .ar-title { font-size: 28px; letter-spacing: 3px; color: #b8a878; }
+  .ar-sub { font-size: 14px; color: #8f8574; max-width: 34em; line-height: 1.5; }
+  #ar-progress { width: min(420px, 70vw); height: 10px; border: 1px solid #4a4234; background: #14121a; }
+  #ar-progress-fill { width: 0%; height: 100%; background: #7a2f2f; transition: width .15s linear; }
+  #ar-fullscreen {
+    position: fixed; right: 10px; top: 10px; z-index: 5;
+    background: rgba(20, 18, 26, .75); color: #b8a878;
+    border: 1px solid #4a4234; padding: 6px 10px; cursor: pointer;
+    font-family: inherit; font-size: 12px; letter-spacing: 1px;
+  }
+  #ar-fullscreen:hover { color: #e0d0a0; }
+  #ar-pack-chip {
+    position: fixed; left: 10px; bottom: 10px; z-index: 5;
+    background: rgba(20, 18, 26, .75); color: #8f8574;
+    border: 1px solid #4a4234; padding: 4px 10px;
+    font-family: inherit; font-size: 11px; letter-spacing: 1px;
+  }
+  #ar-pack-chip[hidden] { display: none; }
+</style>
+</head>
+<body>
+<div id="ar-stage">
+  <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+</div>
+<button id="ar-fullscreen" hidden aria-label="Toggle fullscreen">FULLSCREEN</button>
+<div id="ar-pack-chip" hidden></div>
+
+<div class="ar-overlay" id="ar-loading">
+  <div class="ar-title">ARCH ROGUE</div>
+  <div id="ar-progress"><div id="ar-progress-fill"></div></div>
+  <div class="ar-sub" id="ar-loading-text">Preparing the descent&hellip;</div>
+</div>
+
+<div class="ar-overlay" id="ar-unsupported" hidden>
+  <div class="ar-title">ARCH ROGUE</div>
+  <div class="ar-sub" id="ar-unsupported-text">
+    This browser cannot run Arch Rogue: WebGL2 is required.
+    Please use a current desktop Chromium-family or Firefox release with
+    hardware acceleration enabled.
+  </div>
+</div>
+
+<div class="ar-overlay" id="ar-ended" hidden>
+  <div class="ar-title">ARCH ROGUE</div>
+  <div class="ar-sub">The session has ended. Your progress is saved in this browser.
+    Reload the page to descend again.</div>
+</div>
+
+<template id="ar-runtime">
+{{{ SCRIPT }}}
+</template>
+
+<script>
+(function () {
+  'use strict';
+  // High-DPI policy: clamp devicePixelRatio to bound fill-rate cost. 1.0 keeps
+  // framebuffer == CSS pixels, which also guarantees correct pointer mapping;
+  // raise deliberately only with measured input + perf evidence.
+  var AR_MAX_DPR = 1.0;
+  var canvas = document.getElementById('canvas');
+  var loading = document.getElementById('ar-loading');
+  var loadingText = document.getElementById('ar-loading-text');
+  var progressFill = document.getElementById('ar-progress-fill');
+  var fullscreenButton = document.getElementById('ar-fullscreen');
+
+  function showOverlay(id, message) {
+    var overlay = document.getElementById(id);
+    if (message) {
+      var text = overlay.querySelector('.ar-sub');
+      if (text) text.textContent = message;
+    }
+    loading.hidden = true;
+    overlay.hidden = false;
+  }
+
+  // WebGL2 gate: probe before downloading the runtime at all.
+  var probe = null;
+  try { probe = document.createElement('canvas').getContext('webgl2'); } catch (error) { probe = null; }
+  if (!probe) {
+    showOverlay('ar-unsupported');
+    return;
+  }
+
+  function deviceScale() {
+    return Math.min(window.devicePixelRatio || 1, AR_MAX_DPR);
+  }
+
+  function sizeCanvasBacking() {
+    var scale = deviceScale();
+    var width = Math.max(320, Math.round(canvas.clientWidth * scale));
+    var height = Math.max(240, Math.round(canvas.clientHeight * scale));
+    return { width: width, height: height };
+  }
+
+  // Initial backing size before the runtime boots; ar_js_canvas_width/height
+  // read canvas.width/height during game_init.
+  var initial = sizeCanvasBacking();
+  canvas.width = initial.width;
+  canvas.height = initial.height;
+
+  var runtimeReady = false;
+  var reportEndpoint = null;
+  var consoleDefects = { errors: 0, warnings: 0 };
+  try {
+    var reportParam = new URLSearchParams(location.search).get('report');
+    if (reportParam && reportParam.charAt(0) === '/') {
+      reportEndpoint = reportParam;
+      var realError = console.error.bind(console);
+      var realWarn = console.warn.bind(console);
+      console.error = function () { consoleDefects.errors += 1; realError.apply(null, arguments); };
+      console.warn = function () { consoleDefects.warnings += 1; realWarn.apply(null, arguments); };
+    }
+  } catch (error) { reportEndpoint = null; }
+  function postReport(line) {
+    if (!reportEndpoint) return;
+    try { fetch(reportEndpoint, { method: 'POST', body: line, keepalive: true }).catch(function () {}); }
+    catch (error) { /* best-effort */ }
+  }
+  var packChip = document.getElementById('ar-pack-chip');
+  var packStates = {};
+  var packRenderPending = false;
+
+  function renderPackChip() {
+    var active = Object.keys(packStates).filter(function (name) {
+      var state = packStates[name].state;
+      return state === 'fetching' || state === 'materializing';
+    });
+    if (active.length === 0) { packChip.hidden = true; return; }
+    var parts = active.map(function (name) {
+      var s = packStates[name];
+      var pct = s.total ? Math.round((s.loaded / s.total) * 100) : 0;
+      return name.replace('archetype-', '') + ' ' + pct + '%';
+    });
+    packChip.textContent = 'streaming ' + parts.join(' · ');
+    packChip.hidden = false;
+  }
+
+  function schedulePackChipRender() {
+    if (packRenderPending) return;
+    packRenderPending = true;
+    requestAnimationFrame(function () {
+      packRenderPending = false;
+      renderPackChip();
+    });
+  }
+
+  window.Module = {
+    canvas: canvas,
+    get arReportEndpoint() { return reportEndpoint; },
+    locateFile: function (path) {
+      if (window.AR_FILE_MANIFEST && window.AR_FILE_MANIFEST[path]) {
+        return window.AR_FILE_MANIFEST[path];
+      }
+      return path;
+    },
+    arShell: {
+      bootComplete: function () {
+        loading.hidden = true;
+        fullscreenButton.hidden = false;
+        canvas.focus();
+      },
+      bootFailed: function (message) {
+        showOverlay('ar-unsupported', 'Arch Rogue failed to start: ' + (message || 'unknown error'));
+      },
+      gameEnded: function () {
+        postReport('MX_WEB_DONE ' + JSON.stringify(consoleDefects));
+        showOverlay('ar-ended');
+      },
+      packProgress: function (progress) {
+        packStates[progress.name] = progress;
+        schedulePackChipRender();
+      },
+    },
+    setStatus: function (status) {
+      if (!status) return;
+      var match = /\((\d+(\.\d+)?)\/(\d+(\.\d+)?)\)/.exec(status);
+      if (match) {
+        var ratio = parseFloat(match[1]) / parseFloat(match[3]);
+        progressFill.style.width = Math.round(ratio * 100) + '%';
+        loadingText.textContent = 'Downloading… ' + Math.round(ratio * 100) + '%';
+      } else {
+        loadingText.textContent = status;
+      }
+    },
+    onRuntimeInitialized: function () {
+      runtimeReady = true;
+
+      document.addEventListener('visibilitychange', function () {
+        Module._ar_web_set_visible(document.visibilityState === 'visible' ? 1 : 0);
+      });
+      window.addEventListener('pagehide', function () {
+        Module._ar_web_pagehide();
+      });
+
+      var resizeTimer = 0;
+      function applyResize() {
+        var next = sizeCanvasBacking();
+        Module._ar_web_resize(next.width, next.height);
+      }
+      new ResizeObserver(function () {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(applyResize, 120);
+      }).observe(canvas);
+
+      // Browser audio requires a user gesture: create the audio device inside
+      // the first gesture callback so the AudioContext starts running.
+      var unlocked = false;
+      function unlockAudio() {
+        if (unlocked || !runtimeReady) return;
+        unlocked = true;
+        Module._ar_web_audio_unlock();
+        ['pointerdown', 'keydown', 'touchstart'].forEach(function (name) {
+          window.removeEventListener(name, unlockAudio, true);
+        });
+      }
+      ['pointerdown', 'keydown', 'touchstart'].forEach(function (name) {
+        window.addEventListener(name, unlockAudio, true);
+      });
+    },
+  };
+
+  fullscreenButton.addEventListener('click', function () {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(function () {});
+    } else {
+      canvas.requestFullscreen().catch(function () {});
+    }
+    canvas.focus();
+  });
+
+  fetch('packs.json', { cache: 'no-cache' }).then(function (response) {
+    return response.ok ? response.json() : null;
+  }).then(function (manifest) {
+    Module.arPacks = manifest;
+  }).catch(function () { Module.arPacks = null; });
+
+  // Inject the Emscripten runtime script (kept inert inside the template until
+  // the WebGL2 gate has passed).
+  var template = document.getElementById('ar-runtime');
+  template.content.querySelectorAll('script').forEach(function (inert) {
+    var script = document.createElement('script');
+    if (inert.src) { script.src = inert.src; script.async = true; }
+    else { script.textContent = inert.textContent; }
+    document.body.appendChild(script);
+  });
+})();
+</script>
+</body>
+</html>

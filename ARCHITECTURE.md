@@ -108,6 +108,51 @@ version metadata but is no longer an active development target.
   ARMv7 baseline, whose link also localizes pinned Odin `__fixunsdfdi` before NDK
   compiler-rt resolution.
 
+- **2026-08-20 — Web platform: freestanding wasm32 + Emscripten link, not
+  js_wasm32.** The web build compiles `src` with
+  `-target:freestanding_wasm32 -build-mode:obj` and links with `emcc` against
+  a vendored, checksummed raylib 6.0 `PLATFORM_WEB` archive
+  (`vendor/raylib/wasm/`, `GRAPHICS_API_OPENGL_ES3`, WebGL2-only — no GLES2
+  fallback matrix). Odin's own wasm page allocator must never run: Emscripten's
+  sbrk owns the pinned heap (`INITIAL_MEMORY` 256 MiB, growth disabled,
+  verified by `web-audit` inside the wasm memory section), so the web context
+  uses a dlmalloc-backed allocator plus a fixed frame temp arena. Foreign
+  imports resolve statically by passing `-define:RAYLIB_WASM_LIB=env.o` (a
+  bare name keeps plain symbol names; a path becomes a wasm import-module
+  prefix).
+- **2026-08-20 — Explicit runtime phases; no ASYNCIFY.** `main :: proc`'s body
+  became shared `game_init`/`game_frame`/`game_shutdown`; desktop/Android loop
+  over them, the browser drives them from `requestAnimationFrame` via a small
+  C `main` + `emscripten_set_main_loop(fps=0)`. Boot waits for asynchronous
+  IndexedDB hydration by polling a flag from the frame callback instead of
+  ASYNCIFY. raylib's web `WindowShouldClose` calls `emscripten_sleep` and is
+  compile-guarded off the web path; tab return calls
+  `mobile_fixed_step_reset(discard_next_dt=true)` so the hidden-tab gap is
+  discarded rather than replayed.
+- **2026-08-20 — Web persistence is the desktop byte contract over an
+  IndexedDB mirror.** The six storage primitives (`exists/read/write/remove/
+  replace/sync-parent`) are reimplemented over an in-memory `path -> bytes`
+  map hydrated once at boot and flushed asynchronously per mutation; the
+  shared durable-write, tmp/bak recovery, quarantine, migration, and Chronicle
+  logic run unchanged, storing byte-identical documents under the same key
+  strings. No Wasm threads, no cross-origin isolation. Lifecycle checkpoints
+  on `visibilitychange`/`pagehide` are best-effort by design — browsers do not
+  guarantee final writes, and the docs say so instead of pretending.
+- **2026-08-20 — Web payload split is by role, not depth.** Themes are rolled
+  per floor from the full table and carry tints, not art, so a "deep floor
+  art" pack cannot exist. The initial payload (engine + UI + HUD + audio +
+  world + props + enemies + familiars + story art + archetype previews, ~19 MB
+  on the wire Brotli'd) is enforced against the declared budget in
+  `web/toolchain.properties`; per-archetype clips, social actors, and bosses
+  ship as seven content-addressed, digest-verified `.arpack` blobs fetched at
+  run start and re-resolved per actor on arrival, with procedural fallbacks
+  covering the gap.
+- **2026-08-20 — Browser audio initializes one frame after the unlock
+  gesture.** Creating the miniaudio device synchronously inside the gesture
+  callback tramples Emscripten GLFW's keyboard hooks and leaves the keyboard
+  dead; the gesture only arms a flag and `game_frame` initializes audio on the
+  next tick, which still holds transient user activation.
+
 ## Hard rules
 
 1. Self-contained active project: no build- or run-time references into
@@ -246,6 +291,19 @@ physical retest; ARMv7 runtime was not testable because the current AVD has no
 32-bit ABI. Multiplayer, Steam integration, and achievements remain deferred.
 Legacy graphics + perf overlays are dropped. Matti's M6 side-by-side visual
 signoff on a display machine also remains open.
+
+MX-web is complete at 6.0.0-alpha.23: the game builds, boots, saves, and
+recovers in the browser behind `./build.sh web-build`/`web-audit`, 15 headless
+smoke scenarios and the crowded-floor profiling gate pass in Chromium and
+Firefox, and the release workflow attaches an audited web archive. The public
+workflow reuses that exact artifact for the GitHub Pages play surface at
+`/arch-rogue/play/`, validating its single archive root and auditing the staged
+copy before deployment. Lazy-pack files materialize one per browser frame and
+actor textures adopt one per game frame only while authored SFX are quiet, so
+the first story modal does not starve raylib/miniaudio's main-thread web mixer.
+The Brotli budget and immutable/no-cache headers remain self-hosted contracts
+because Pages controls its own delivery headers. Safari
+and mobile browsers are not yet validated.
 
 ## Testing
 

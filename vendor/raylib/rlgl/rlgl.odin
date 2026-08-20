@@ -113,7 +113,7 @@ import rl "../."
 VERSION :: "6.0"
 
 RAYLIB_SHARED  :: #config(RAYLIB_SHARED, false)
-RAYLIB_WASM_LIB :: #config(RAYLIB_WASM_LIB, "../wasm/libraylib.a")
+RAYLIB_WASM_LIB :: #config(RAYLIB_WASM_LIB, "../wasm/libraylib.web.a")
 RAYLIB_ANDROID :: #config(RAYLIB_ANDROID, false)
 
 // Note: We pull in the full raylib library. If you want a truly stand-alone rlgl, then:

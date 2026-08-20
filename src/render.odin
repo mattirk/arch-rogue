@@ -410,8 +410,8 @@ draw_mobile_context_controls :: proc(view:^View,app:^App) {
 		}
 		font:i32=24
 		label:=fmt.ctprintf("%s",prompt)
-		x:=i32(ui_design_width()*.5)-rl.MeasureText(label,font)/2
-		rl.DrawText(label,x,i32(ui_design_height()*.5)-42,font,COLOR_TITLE)
+		x:=i32(ui_design_width()*.5)-ui_measure_text(label,font)/2
+		ui_draw_text(label,x,i32(ui_design_height()*.5)-42,font,COLOR_TITLE)
 		confirm,cancel:=mobile_guard_button_rects(layout)
 		draw_mobile_button(confirm,"CONFIRM",{176,214,126,255})
 		draw_mobile_button(cancel,"CANCEL",{220,116,102,255})
@@ -514,9 +514,42 @@ void main() {
 }
 `
 
+// WebGL2 (OpenGL ES 3.0) port of the GLES2 variant above; raylib's ES3 web
+// build supplies the matching default vertex shader.
+@(private = "file")
+EFFECT_MASK_SHADER_FS_ES3 :: `#version 300 es
+precision highp float;
+in vec2 fragTexCoord;
+in vec4 fragColor;
+out vec4 finalColor;
+
+uniform sampler2D texture0;
+uniform sampler2D u_visibility;
+uniform vec2 u_screen_size;
+uniform vec2 u_render_size;
+uniform vec4 u_mask_rect;
+
+void main() {
+    vec4 source = texture(texture0, fragTexCoord) * fragColor;
+    vec2 screen = vec2(
+        gl_FragCoord.x / u_render_size.x * u_screen_size.x,
+        (u_render_size.y - gl_FragCoord.y) / u_render_size.y * u_screen_size.y
+    );
+    vec2 visibility_uv = (screen - u_mask_rect.xy) / u_mask_rect.zw;
+    if (visibility_uv.x < 0.0 || visibility_uv.y < 0.0 ||
+        visibility_uv.x > 1.0 || visibility_uv.y > 1.0) {
+        finalColor = vec4(0.0);
+        return;
+    }
+    float visible = texture(u_visibility, visibility_uv).r;
+    finalColor = vec4(source.rgb, source.a * visible);
+}
+`
+
 @(private = "file")
 effect_mask_shader_source :: proc() -> cstring {
 	when ARCH_ROGUE_ANDROID do return cstring(EFFECT_MASK_SHADER_FS_GLES2)
+	when ARCH_ROGUE_WEB do return cstring(EFFECT_MASK_SHADER_FS_ES3)
 	return cstring(EFFECT_MASK_SHADER_FS)
 }
 
@@ -1367,7 +1400,7 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 				(enemy.ranged || enemy.role == .Miniboss || enemy.role == .Boss) {
 				w := rl.Vector2(world_from_tile(item.feet))
 				head := sprites.loaded ? sprites.canvas_world*sprites.anchor.y : f32(40)
-				rl.DrawText("!",i32(w.x)-3,i32(w.y-head-12),18,rl.Color(DAMAGE_TYPE_COLORS[enemy.damage_type]))
+				ui_draw_text("!",i32(w.x)-3,i32(w.y-head-12),18,rl.Color(DAMAGE_TYPE_COLORS[enemy.damage_type]))
 			}
 		case .Familiar:
 			familiar := &app.run.familiars[item.index]
@@ -2247,9 +2280,9 @@ draw_item_labels :: proc(view: ^View, app: ^App) {
 		w := rl.Vector2(world_from_tile(g.pos))
 		color := g.item.kind == .Weapon || g.item.kind == .Armor ? rl.Color(RARITIES[item_visible_rarity(g.item)].color) : COLOR_TEXT
 		label := fmt.ctprintf("%s", item_display_name(g.item))
-		width := rl.MeasureText(label, 10)
+		width := ui_measure_text(label, 10)
 		if effect_ok,effect_active := begin_effect_visibility(view,app,true,g.pos);effect_ok {
-			rl.DrawText(label, i32(w.x) - width / 2, i32(w.y) - 26, 10, color)
+			ui_draw_text(label, i32(w.x) - width / 2, i32(w.y) - 26, 10, color)
 			end_effect_visibility(effect_active)
 		}
 	}
@@ -2439,9 +2472,9 @@ draw_damage_numbers :: proc(view: ^View, app: ^App) {
 			label = fmt.ctprintf("%s", n.text)
 			size = 11
 		}
-		width := rl.MeasureText(label, size)
+		width := ui_measure_text(label, size)
 		if effect_ok,effect_active := begin_effect_visibility(view,app,true,n.pos);effect_ok {
-			rl.DrawText(label, i32(w.x) - width / 2, i32(pos_y), size, rl.Fade(color, 1 - t * t))
+			ui_draw_text(label, i32(w.x) - width / 2, i32(pos_y), size, rl.Fade(color, 1 - t * t))
 			end_effect_visibility(effect_active)
 		}
 	}
@@ -2560,11 +2593,11 @@ wrap_text_lines :: proc(text: string, size: i32, max_width: i32, buf: ^[4]string
 	remaining := text
 	for len(remaining) > 0 && count < len(buf) {
 		take := len(remaining)
-		if rl.MeasureText(fmt.ctprintf("%s", remaining), size) > max_width {
+		if ui_measure_text(fmt.ctprintf("%s", remaining), size) > max_width {
 			take = 0
 			for i in 1 ..< len(remaining) {
 				if remaining[i] != ' ' do continue
-				if rl.MeasureText(fmt.ctprintf("%s", remaining[:i]), size) > max_width do break
+				if ui_measure_text(fmt.ctprintf("%s", remaining[:i]), size) > max_width do break
 				take = i
 			}
 			if take == 0 do take = len(remaining) // single unbreakable run
@@ -2587,25 +2620,25 @@ draw_overlay :: proc(view: ^View, app: ^App, assets: ^Assets) {
 	if !view.mobile_mode {
 		plan := run_floor_plan(run)
 		mod := RUN_MODIFIERS[run.modifier]
-		rl.DrawText(
+		ui_draw_text(
 			fmt.ctprintf("Depth %v/%v · %s%s", run.depth, DUNGEON_DEPTH, THEMES[run.theme_index].name, run.dark_floor ? " · Dark" : ""),
 			8, 8, 18, COLOR_TITLE,
 		)
 		// The detail lines yield to the engaged boss bar's centered name band.
 		if !run.boss_engaged {
-			rl.DrawText(fmt.ctprintf("%s · %s", mod.name, mod.description), 8, 30, 14, COLOR_TEXT_DIM)
+			ui_draw_text(fmt.ctprintf("%s · %s", mod.name, mod.description), 8, 30, 14, COLOR_TEXT_DIM)
 			// Wrapped clear of the minimap card on the right.
 			summary_width := i32(presentation.width) - i32(MINIMAP_CARD_WIDTH) - 40
 			lines: [4]string
 			line_count := wrap_text_lines(floor_plan_summary(plan), 14, summary_width, &lines)
 			for i in 0 ..< line_count {
-				rl.DrawText(fmt.ctprintf("%s", lines[i]), 8, 48 + i32(i) * 18, 14, COLOR_TEXT_DIM)
+				ui_draw_text(fmt.ctprintf("%s", lines[i]), 8, 48 + i32(i) * 18, 14, COLOR_TEXT_DIM)
 			}
 		}
 		if app.dev_controls {
-			rl.DrawText("Arch Rogue " + VERSION, 8, 70, 18, COLOR_TEXT)
+			ui_draw_text("Arch Rogue " + VERSION, 8, 70, 18, COLOR_TEXT)
 			rl.DrawFPS(i32(presentation.width) - 100, 8)
-			rl.DrawText(
+			ui_draw_text(
 				fmt.ctprintf(
 					"%s | depth %v%s | seed %x | tile %v",
 					ARCHETYPES[run.player.archetype].name, run.depth,
@@ -2635,8 +2668,8 @@ draw_overlay :: proc(view: ^View, app: ^App, assets: ^Assets) {
 			prompt_label = fmt.tprintf("A%s", prompt[1:])
 		}
 		label := fmt.ctprintf("%s", prompt_label)
-		width := rl.MeasureText(label, 22)
-		rl.DrawText(label, i32(prompt_center_x)-width/2, prompt_y, 22, COLOR_HOVER)
+		width := ui_measure_text(label, 22)
+		ui_draw_text(label, i32(prompt_center_x)-width/2, prompt_y, 22, COLOR_HOVER)
 	}
 	preview := stairs_preview(run)
 	if preview != "" {
@@ -2646,8 +2679,8 @@ draw_overlay :: proc(view: ^View, app: ^App, assets: ^Assets) {
 		base_y := prompt_y - 5 - i32(line_count) * 19
 		for i in 0 ..< line_count {
 			label := fmt.ctprintf("%s", lines[i])
-			width := rl.MeasureText(label, 15)
-			rl.DrawText(label, i32(prompt_center_x)-width/2, base_y + i32(i) * 19, 15, COLOR_TEXT_DIM)
+			width := ui_measure_text(label, 15)
+			ui_draw_text(label, i32(prompt_center_x)-width/2, base_y + i32(i) * 19, 15, COLOR_TEXT_DIM)
 		}
 	}
 
@@ -2673,16 +2706,16 @@ draw_overlay :: proc(view: ^View, app: ^App, assets: ^Assets) {
 		}
 		glyph := ui_ouroboros_glyph(assets)
 		_ = draw_ui_glyph(glyph, {rect.x+10,rect.y+12,26,26})
-		rl.DrawText(fmt.ctprintf("+%v Memory",run.player.memory_tokens),i32(rect.x+43),i32(rect.y+8),16,COLOR_TITLE)
-		rl.DrawText("Open Disciplines",i32(rect.x+43),i32(rect.y+28),12,COLOR_TEXT)
+		ui_draw_text(fmt.ctprintf("+%v Memory",run.player.memory_tokens),i32(rect.x+43),i32(rect.y+8),16,COLOR_TITLE)
+		ui_draw_text("Open Disciplines",i32(rect.x+43),i32(rect.y+28),12,COLOR_TEXT)
 	}
 
 	if app.dev_controls && !view.mobile_mode {
-		rl.DrawText(
+		ui_draw_text(
 			"WASD/arrows: move | LMB: move + melee | 1-4: actions | 5/6: potions | E: interact | I: bag | C: character | Esc: pause",
 			8, i32(presentation.height) - 28, 16, COLOR_TEXT_DIM,
 		)
-		rl.DrawText("DEV  N: descend   R: reroll run   B: boss arena", 8, 114, 14, rl.Fade(COLOR_HOVER, 0.72))
+		ui_draw_text("DEV  N: descend   R: reroll run   B: boss arena", 8, 114, 14, rl.Fade(COLOR_HOVER, 0.72))
 	}
 }
 
@@ -2697,11 +2730,11 @@ draw_arrival_card :: proc(app: ^App) {
 	alpha := clamp(run.arrival_timer / ARRIVAL_FADE_SECONDS, 0, 1)
 	theme := THEMES[run.theme_index]
 	title := fmt.ctprintf("Depth %v/%v", run.depth, DUNGEON_DEPTH)
-	title_width := rl.MeasureText(title, 30)
-	rl.DrawText(title, i32(presentation.width*.5)-title_width/2, 104, 30, rl.Fade(COLOR_TITLE, alpha))
+	title_width := ui_measure_text(title, 30)
+	ui_draw_text(title, i32(presentation.width*.5)-title_width/2, 104, 30, rl.Fade(COLOR_TITLE, alpha))
 	sub := fmt.ctprintf("%s · %s", theme.name, theme.flavor)
-	sub_width := rl.MeasureText(sub, 16)
-	rl.DrawText(sub, i32(presentation.width*.5)-sub_width/2, 140, 16, rl.Fade(rl.Color(theme.accent), alpha))
+	sub_width := ui_measure_text(sub, 16)
+	ui_draw_text(sub, i32(presentation.width*.5)-sub_width/2, 140, 16, rl.Fade(rl.Color(theme.accent), alpha))
 }
 
 @(private = "file")
@@ -2945,8 +2978,8 @@ draw_mobile_button :: proc(rect: Mobile_Rect, label: cstring, accent: rl.Color =
 	rl.DrawRectangleRounded(design, .25, 8, rl.Fade(rl.Color{12,10,17,255}, .82))
 	rl.DrawRectangleRoundedLinesEx(design, .25, 8, 2, rl.Fade(accent, .82))
 	font := i32(clamp(design.height * .28, f32(11), f32(22)))
-	width := rl.MeasureText(label, font)
-	rl.DrawText(label, i32(design.x + (design.width-f32(width))*.5), i32(design.y+(design.height-f32(font))*.5), font, accent)
+	width := ui_measure_text(label, font)
+	ui_draw_text(label, i32(design.x + (design.width-f32(width))*.5), i32(design.y+(design.height-f32(font))*.5), font, accent)
 }
 
 @(private = "file")
@@ -2988,8 +3021,8 @@ draw_mobile_resource :: proc(
 		rl.DrawRectangleRoundedLinesEx(design, .16, 8, 1, rl.Fade(COLOR_TITLE, .72))
 	}
 	font := i32(clamp(design.width * .30, f32(7), f32(11)))
-	width := rl.MeasureText(label, font)
-	rl.DrawText(
+	width := ui_measure_text(label, font)
+	ui_draw_text(
 		label,
 		i32(design.x + (design.width - f32(width)) * .5),
 		i32(inner_design.y + 2),
@@ -3049,12 +3082,12 @@ draw_mobile_hud_button :: proc(
 	rl.DrawRectangleRounded(inner,.22,6,rl.Fade(rl.Color{5,4,8,255},.56))
 	if emphasized do rl.DrawRectangleRoundedLinesEx(inner,.22,6,2,rl.Fade(accent,.90))
 	font := i32(clamp(design.height*.24,f32(10),f32(18)))
-	for font > 9 && rl.MeasureText(label,font) > i32(design.width*.72) do font -= 1
-	width := rl.MeasureText(label,font)
+	for font > 9 && ui_measure_text(label,font) > i32(design.width*.72) do font -= 1
+	width := ui_measure_text(label,font)
 	x := i32(design.x+(design.width-f32(width))*.5)
 	y := i32(design.y+(design.height-f32(font))*.5)
-	rl.DrawText(label,x+1,y+1,font,rl.Fade(rl.BLACK,.92))
-	rl.DrawText(label,x,y,font,accent)
+	ui_draw_text(label,x+1,y+1,font,rl.Fade(rl.BLACK,.92))
+	ui_draw_text(label,x,y,font,accent)
 }
 
 @(private = "file")
@@ -3092,7 +3125,7 @@ draw_mobile_action_slot :: proc(app:^App,assets:^Assets,rect:Mobile_Rect,slot:in
 	if timer:=timers[slot-1];timer>0 {
 		rl.DrawRectangleRounded(design,.2,6,rl.Fade(rl.BLACK,.56))
 		text:=fmt.ctprintf("%.1f",timer);font:=i32(clamp(design.height*.22,f32(10),f32(18)))
-		rl.DrawText(text,i32(design.x+(design.width-f32(rl.MeasureText(text,font)))*.5),i32(design.y+(design.height-f32(font))*.5),font,COLOR_TEXT)
+		ui_draw_text(text,i32(design.x+(design.width-f32(ui_measure_text(text,font)))*.5),i32(design.y+(design.height-f32(font))*.5),font,COLOR_TEXT)
 	}
 	if slot==1&&bighit_charging(player) {
 		progress:=clamp(1-player.bighit_charge/BIGHIT_CHARGE_TIME,0,1)
@@ -3103,7 +3136,7 @@ draw_mobile_action_slot :: proc(app:^App,assets:^Assets,rect:Mobile_Rect,slot:in
 	count:cstring
 	if slot==5 do count=fmt.ctprintf("x%v",player.heal_potions)
 	if slot==6 do count=fmt.ctprintf("x%v",player.mana_potions)
-	if count!=nil do rl.DrawText(count,i32(design.x+4),i32(design.y+design.height-15),11,rl.WHITE)
+	if count!=nil do ui_draw_text(count,i32(design.x+4),i32(design.y+design.height-15),11,rl.WHITE)
 }
 
 @(private = "file")
@@ -3152,9 +3185,9 @@ draw_player_resources :: proc(player: ^Player, assets: ^Assets, rect: rl.Rectang
 
 @(private = "file")
 draw_player_resource_value :: proc(bar: rl.Rectangle, value: cstring, font_size: i32) {
-	x := i32(bar.x+bar.width)-rl.MeasureText(value, font_size)-7
+	x := i32(bar.x+bar.width)-ui_measure_text(value, font_size)-7
 	y := i32(bar.y+(bar.height-f32(font_size))*.5)
-	rl.DrawText(value, x, y, font_size, COLOR_TEXT)
+	ui_draw_text(value, x, y, font_size, COLOR_TEXT)
 }
 
 @(private = "file")
@@ -3183,8 +3216,8 @@ draw_player_stat_row :: proc(content: rl.Rectangle, row: int, label, value: cstr
 	y := i32(content.y)+4+i32(row)*20
 	x := i32(content.x)+3
 	right := i32(content.x+content.width)-3
-	rl.DrawText(label, x, y, 13, COLOR_TEXT_DIM)
-	rl.DrawText(value, right-rl.MeasureText(value, 13), y, 13, value_color)
+	ui_draw_text(label, x, y, 13, COLOR_TEXT_DIM)
+	ui_draw_text(value, right-ui_measure_text(value, 13), y, 13, value_color)
 }
 
 @(private = "file")
@@ -3230,19 +3263,19 @@ draw_action_bar :: proc(app: ^App, assets: ^Assets, dock_rect: rl.Rectangle) {
 			if !ready do icon_tint = rl.Fade(rl.WHITE,.35)
 			rl.DrawTexturePro(icon.tex,{0,0,f32(icon.size[0]),f32(icon.size[1])},{f32(bx+5),f32(y+5),38,38},{0,0},0,icon_tint)
 		} else {
-			rl.DrawText(fmt.ctprintf("%v",slot),bx+18,y+13,18,COLOR_TEXT)
+			ui_draw_text(fmt.ctprintf("%v",slot),bx+18,y+13,18,COLOR_TEXT)
 		}
 		if timer := timers[slot-1]; timer > 0 {
 			rl.DrawRectangle(bx+4,y+4,40,40,rl.Fade(rl.BLACK,.56))
-			rl.DrawText(fmt.ctprintf("%.1f",timer),bx+11,y+17,12,COLOR_TEXT)
+			ui_draw_text(fmt.ctprintf("%.1f",timer),bx+11,y+17,12,COLOR_TEXT)
 		}
 		if slot == 1 && bighit_charging(player) {
 			progress := clamp(1-player.bighit_charge/BIGHIT_CHARGE_TIME,0,1)
 			charge_color := bighit_committed(player) ? rl.Color{230,92,65,255} : COLOR_TITLE
 			rl.DrawRectangle(bx+4,y+40-i32(36*progress),40,i32(36*progress),rl.Fade(charge_color,.48))
-			rl.DrawText("HOLD",bx+9,y+18,10,COLOR_TEXT)
+			ui_draw_text("HOLD",bx+9,y+18,10,COLOR_TEXT)
 		}
-		rl.DrawText(fmt.ctprintf("%v",slot),bx+3,y+2,10,COLOR_TITLE)
+		ui_draw_text(fmt.ctprintf("%v",slot),bx+3,y+2,10,COLOR_TITLE)
 	}
 }
 
@@ -3276,8 +3309,7 @@ draw_boss_bar :: proc(app: ^App) {
 		x := sw / 2 - w / 2
 		y: i32 = 64
 		name := fmt.ctprintf("%s", enemy_display_name(&enemy))
-		name_w := rl.MeasureText(name, 20)
-		rl.DrawText(name, sw / 2 - name_w / 2, y - 24, 20, rl.Color(enemy.color))
+		ui_draw_text_fitted_centered(name, sw / 2, y - 24, 20, 14, sw - 80, rl.Color(enemy.color))
 		frac := clamp(f32(enemy.hp) / f32(max(enemy.max_hp, 1)), 0, 1)
 		rl.DrawRectangle(x, y, w, 12, rl.Fade(rl.BLACK, 0.65))
 		rl.DrawRectangle(x, y, i32(f32(w) * frac), 12, rl.Color(enemy.color))
@@ -3301,27 +3333,28 @@ draw_victory_overlay :: proc(app: ^App,assets:^Assets) {
 	}
 	title := fmt.ctprintf("%s",title_text)
 	title_size: i32 = 44
-	for title_size > 28 && rl.MeasureText(title,title_size) > i32(panel.width)-64 do title_size -= 2
-	rl.DrawText(title,i32(presentation.width*.5)-rl.MeasureText(title,title_size)/2,i32(panel.y+42),title_size,COLOR_TITLE)
+	for title_size > 28 && ui_measure_text(title,title_size) > i32(panel.width)-64 do title_size -= 2
+	ui_draw_text(title,i32(presentation.width*.5)-ui_measure_text(title,title_size)/2,i32(panel.y+42),title_size,COLOR_TITLE)
 	p:=&app.run.player
+	inner_width:=i32(panel.width)-64
 	summary:=fmt.ctprintf("The tyrant is dead. Depth %v conquered  -  level %v  -  %v kills  -  %v gold",app.run.depth,p.level,app.run.kills,p.gold)
-	rl.DrawText(summary,i32(presentation.width*.5)-rl.MeasureText(summary,20)/2,i32(panel.y+126),20,COLOR_TEXT)
-	draw_run_ledger_lines(app,presentation.width,i32(panel.y+152))
+	ui_draw_text_fitted_centered(summary,i32(presentation.width*.5),i32(panel.y+126),20,14,inner_width,COLOR_TEXT)
+	draw_run_ledger_lines(app,presentation.width,i32(panel.y+152),inner_width)
 	hint:cstring="R / Esc / click: choose another archetype"
-	rl.DrawText(hint,i32(presentation.width*.5)-rl.MeasureText(hint,20)/2,i32(panel.y+206),20,COLOR_TEXT_DIM)
+	ui_draw_text_fitted_centered(hint,i32(presentation.width*.5),i32(panel.y+206),20,14,inner_width,COLOR_TEXT_DIM)
 }
 
 // The MX.5 run ledger under both end-of-run summaries: modifier, counters,
 // and the last notable finds (state_overlay.py rows, concise Odin layout).
 @(private = "file")
-draw_run_ledger_lines :: proc(app: ^App, width: f32, y: i32) {
+draw_run_ledger_lines :: proc(app: ^App, width: f32, y: i32, max_width: i32) {
 	run := &app.run
 	ledger := fmt.ctprintf(
 		"%s · shrines %v · secrets %v · traps sprung %v · challenges %v · bars %v/%v",
 		RUN_MODIFIERS[run.modifier].name, run.shrines_used, run.secrets_opened,
 		run.traps_triggered, run.challenge_rooms_cleared, run.bars_toasted, run.bars_visited,
 	)
-	rl.DrawText(ledger, i32(width*.5)-rl.MeasureText(ledger,16)/2, y, 16, COLOR_TEXT_DIM)
+	ui_draw_text_fitted_centered(ledger, i32(width*.5), y, 16, 12, max_width, COLOR_TEXT_DIM)
 	if run.notable_count > 0 {
 		notable: string
 		start := max(0, run.notable_count - 3)
@@ -3331,7 +3364,7 @@ draw_run_ledger_lines :: proc(app: ^App, width: f32, y: i32) {
 			notable = notable == "" ? label : fmt.tprintf("%s, %s", notable, label)
 		}
 		line := fmt.ctprintf("Notable: %s", notable)
-		rl.DrawText(line, i32(width*.5)-rl.MeasureText(line,16)/2, y+22, 16, COLOR_TEXT_DIM)
+		ui_draw_text_fitted_centered(line, i32(width*.5), y+22, 16, 12, max_width, COLOR_TEXT_DIM)
 	}
 }
 
@@ -3343,10 +3376,11 @@ draw_death_overlay :: proc(app: ^App,assets:^Assets) {
 	panel:=rl.Rectangle{presentation.width*.5-350,presentation.height*.5-125,700,250}
 	draw_menu_panel_chrome(assets,panel)
 	title:cstring="YOU HAVE FALLEN"
-	rl.DrawText(title,i32(presentation.width*.5)-rl.MeasureText(title,40)/2,i32(panel.y+38),40,rl.Color{200,60,50,255})
+	inner_width:=i32(panel.width)-64
+	ui_draw_text(title,i32(presentation.width*.5)-ui_measure_text(title,40)/2,i32(panel.y+38),40,rl.Color{200,60,50,255})
 	summary:=fmt.ctprintf("Depth %v reached  -  level %v  -  %v kills  -  %v gold",app.run.depth,app.run.player.level,app.run.kills,app.run.player.gold)
-	rl.DrawText(summary,i32(presentation.width*.5)-rl.MeasureText(summary,20)/2,i32(panel.y+116),20,COLOR_TEXT)
-	draw_run_ledger_lines(app,presentation.width,i32(panel.y+140))
+	ui_draw_text_fitted_centered(summary,i32(presentation.width*.5),i32(panel.y+116),20,14,inner_width,COLOR_TEXT)
+	draw_run_ledger_lines(app,presentation.width,i32(panel.y+140),inner_width)
 	hint:cstring="R / Esc / click: choose another archetype"
-	rl.DrawText(hint,i32(presentation.width*.5)-rl.MeasureText(hint,20)/2,i32(panel.y+192),20,COLOR_TEXT_DIM)
+	ui_draw_text_fitted_centered(hint,i32(presentation.width*.5),i32(panel.y+192),20,14,inner_width,COLOR_TEXT_DIM)
 }

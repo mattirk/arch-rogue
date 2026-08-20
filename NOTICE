@@ -21,6 +21,15 @@ components for image, font, model, compression, random-number, and audio format
 support. Their attribution notices remain in the raylib source distribution at
 https://github.com/raysan5/raylib/tree/6.0/src/external.
 
+Bundled font
+------------
+
+The game UI uses EB Garamond Medium (version 1.002), Copyright 2017 The EB
+Garamond Project Authors (https://github.com/octaviopardo/EBGaramond12),
+licensed under the SIL Open Font License, Version 1.1. The complete license
+text ships beside the font as `assets/ui/fonts/OFL.txt` and applies to the
+font file only, not to the rest of Arch Rogue.
+
 This native Odin distribution does not bundle Python, Pygame, SDL, OpenSSL,
 PyJNIus, or python-for-android.
 

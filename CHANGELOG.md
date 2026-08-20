@@ -2,6 +2,104 @@
 
 ## Unreleased
 
+- Fixed the web-only sound glitch when the opening story cutscene appears. The
+  Select-to-Playing transition now uses `Start` as its sole cue, lazy packs
+  materialize at most one file per browser animation frame, and actor textures
+  adopt at most one per game frame only while authored SFX are quiet. This
+  avoids starving raylib/miniaudio's main-thread `ScriptProcessorNode` callback
+  during first-run generation, checkpointing, and pack arrival.
+- The public mirror's release workflow now deploys the exact audited
+  `arch-rogue-v<version>-<sha12>-web.tar.gz` payload to GitHub Pages at the
+  site-relative `play/` path. `prepare-pages` downloads rather than rebuilds
+  the web artifact, validates and strips exactly one `arch-rogue-web/` root,
+  rejects links and unsafe members, reruns `web-audit`, enforces the Pages size
+  and symlink boundaries, and publishes one combined download/play site. A
+  retrying post-deploy probe verifies `play/` and `play/packs.json`.
+- The download site gains an accessible browser Play card and documents
+  origin-scoped IndexedDB saves. GitHub Pages controls its own cache and
+  compression headers, so the self-hosted Brotli wire budget and
+  immutable/no-cache behavior are not claimed for the Pages endpoint.
+
+## 6.0.0-alpha.23 — The gate opens in the browser
+
+- The UI has a real typeface: EB Garamond Medium (SIL OFL 1.1, bundled with
+  its license under `assets/ui/fonts/`) replaces raylib's built-in pixel font
+  across every panel, HUD, and overlay on all platforms, matching the serif
+  the web shell established. All text routes through new
+  `ui_draw_text`/`ui_measure_text` seams that scale sizes 1.18x to compensate
+  Garamond's small x-height, re-center each line on the caller's band (menu
+  and pause rows sit visually centered in their plates again), and fall back
+  to the default font if the file is missing. The web shell's CSS stack now
+  prefers EB Garamond too.
+- Panel text can no longer escape its chrome: the victory and death summaries,
+  the run ledger, the notable-loot line, and the boss nameplate shrink to fit
+  their panels and ellipsize at the size floor. New `victory_panel` and
+  `dead_panel` MX7 capture scenarios stage a worst-case run (longest modifier,
+  saturated counters, three long notable finds) so overflow regressions are
+  visible in one screenshot — this covers the known "Tyrant is dead" panel
+  overflow.
+
+- MX-web platform milestone: Arch Rogue now ships a native Odin/raylib
+  WebAssembly build. The pinned Emscripten `6.0.7` toolchain links the game
+  against a new checksummed, reproducible raylib 6.0 `PLATFORM_WEB` archive
+  (`vendor/raylib/wasm/`, OpenGL ES 3.0), and `./build.sh` gains canonical
+  `web-preflight`, `web-build`, `web-audit`, and `web-serve` commands.
+- Runtime ownership is now explicit `game_init` / `game_frame` /
+  `game_shutdown` phases shared by every platform: desktop/Android drive them
+  from the existing blocking loop, the browser drives them from
+  `requestAnimationFrame` through a small C entry. Production web builds use
+  no ASYNCIFY, the deterministic fixed 60 Hz simulation is preserved, and tab
+  return discards the hidden gap so the accumulator cannot catch-up spiral.
+  raylib's web `WindowShouldClose` (which internally sleeps) is never called.
+- The wasm-hostile runtime surface now compiles out cleanly behind the
+  platform seam: the `core:thread` save worker, `core:os`/env dev toggles,
+  temp-dir perf harnesses, and capture scenarios moved into
+  `src/main_desktop.odin`, with shared capture staging in
+  `src/capture_stage.odin` and the web entry in `src/main_web.odin`.
+- Web persistence is asynchronous IndexedDB behind the same byte-level
+  storage primitives: the shared DTO, checksum, migration, tmp/bak recovery,
+  and Chronicle logic run unchanged against an in-memory mirror hydrated at
+  boot and flushed asynchronously — no Wasm threads and no cross-origin
+  isolation. Lifecycle checkpoints fire on `visibilitychange`/`pagehide` and
+  are documented as best-effort; browsers do not guarantee final writes.
+- The initial download is split and content-addressed: a ~19 MB-on-the-wire
+  core payload (engine + UI + world + enemies + previews) against a declared
+  and audited 28 MiB budget, plus seven lazily fetched, digest-verified packs
+  (per-archetype clips, social actors, bosses; 40.8 MB deferred) that stream
+  at run start and re-resolve their sprites on arrival. Outputs ship with
+  Brotli siblings and load behind a visible progress bar with no runtime CDN
+  dependency.
+- The Emscripten heap is pinned (`INITIAL_MEMORY` 256 MiB, growth disabled)
+  and `web-audit` verifies the pin inside the wasm memory section itself,
+  alongside the budget, content addressing, pack digests, ASYNCIFY absence,
+  and CDN-reference absence. Measured crowded-floor use is ~24 MiB dynamic
+  heap.
+- WebGL2 is required and gated before the runtime downloads; there is no
+  WebGL1/GLES2 fallback. The lighting and mist shaders gained
+  `#version 300 es` variants. High-DPI cost is bounded by a deliberate
+  devicePixelRatio clamp (1.0 for this alpha, one shell constant to raise).
+  Browser audio initializes on the first user gesture — deferred one frame,
+  because creating the device inside the gesture callback tramples GLFW's
+  keyboard hooks.
+- New zero-dependency Node harnesses cover the milestone gates:
+  `tools/web_smoke.mjs` (14 scenarios — boot, gesture audio unlock, run
+  start, lazy packs, suspend checkpoint, save/reload continuity, tmp/bak
+  recovery of a corrupted primary, resize, fullscreen, cached reload,
+  synthetic controller, clean console) and `tools/web_profile.mjs`
+  (deterministic crowded floor at 1280×720 CSS after warmup; gates on a
+  bounded long-frame count — no interval above two vsync periods — plus a
+  main-thread busy budget, never a raw p95 frame-interval threshold).
+  Headless Chromium and Firefox both pass: 0 long frames, busy p95 2.8 ms /
+  4.0 ms against a 12.5 ms budget, clean consoles.
+- The public release workflow gains a `web` job that builds, audits, and
+  attaches `arch-rogue-v<version>-<sha12>-web.tar.gz` as a release artifact;
+  private CI checks the freestanding wasm32 target; the public snapshot
+  allowlists the new `web/` tree. Where the web build deploys as a playable
+  page remains a deliberately open product decision.
+- Declared browser baseline for this alpha: current desktop Chromium-family
+  and Firefox releases with WebGL2. Safari and mobile browsers are not yet
+  validated and are not claimed.
+
 - Basic melee reads as a committed action (2026-08 feel feedback): a swing now
   opens with a 0.14 s movement plant that also holds the swing's aim facing,
   and a connected swing freezes the sim for 2 ticks — 4 on a crit or killing

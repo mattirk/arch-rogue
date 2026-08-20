@@ -193,6 +193,17 @@ audio_cue_for_intent :: proc(intent: Intent) -> (Audio_Cue, bool) {
 	return {}, false
 }
 
+// Starting a run already owns the authored Start cue. Suppress the generic
+// confirmation for that transition so reducers can finish before any new UI
+// sound begins and the opening cue is not doubled.
+audio_cue_for_transition :: proc(intent: Intent, mode_before, mode_after: App_Mode) -> (Audio_Cue, bool) {
+	cue, has_cue := audio_cue_for_intent(intent)
+	if has_cue && cue == .Ui_Confirm && mode_before == .Select && mode_after == .Playing {
+		return {}, false
+	}
+	return cue, has_cue
+}
+
 audio_init :: proc(audio: ^Audio) {
 	if audio == nil do return
 	// A repeated device init must not leak buffers or reset the saved SFX option.
@@ -211,7 +222,7 @@ audio_init :: proc(audio: ^Audio) {
 	// of attempting to initialize a second device.
 	if !rl.IsAudioDeviceReady() do rl.InitAudioDevice()
 	if !rl.IsAudioDeviceReady() {
-		fmt.eprintln("audio: no device, running silent")
+		platform_log(fmt.tprint("audio: no device, running silent"))
 		return
 	}
 	audio.ready = true
@@ -223,13 +234,13 @@ audio_init :: proc(audio: ^Audio) {
 		// LoadSound() already uses raylib's asset-aware file-data callback.
 		when !ARCH_ROGUE_ANDROID {
 			if !rl.FileExists(path) {
-				fmt.eprintf("audio: missing cue %s (%s)\n", AUDIO_CUE_KEYS[cue], path)
+				platform_log(fmt.tprintf("audio: missing cue %s (%s)", AUDIO_CUE_KEYS[cue], path))
 				continue
 			}
 		}
 		sound := rl.LoadSound(path)
 		if !rl.IsSoundValid(sound) {
-			fmt.eprintf("audio: invalid cue %s (%s)\n", AUDIO_CUE_KEYS[cue], path)
+			platform_log(fmt.tprintf("audio: invalid cue %s (%s)", AUDIO_CUE_KEYS[cue], path))
 			continue
 		}
 		rl.SetSoundVolume(sound, 0.8)
@@ -242,6 +253,19 @@ audio_init :: proc(audio: ^Audio) {
 // volume. Future music therefore remains independent from the Audio cues option.
 audio_set_enabled :: proc(audio: ^Audio, enabled: bool) {
 	audio.enabled = enabled
+}
+
+// Lazy web asset adoption waits for a quiet authored-SFX window. The query is
+// intentionally independent of the enabled preference: a cue dispatched just
+// before that option changed must still be allowed to finish.
+audio_any_cue_playing :: proc(audio: ^Audio) -> bool {
+	if audio == nil || !audio.ready do return false
+	for cue in Audio_Cue {
+		if cue not_in audio.loaded do continue
+		sound := audio.sounds[cue]
+		if rl.IsSoundValid(sound) && rl.IsSoundPlaying(sound) do return true
+	}
+	return false
 }
 
 audio_suspend :: proc(audio: ^Audio) {

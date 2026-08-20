@@ -19,8 +19,12 @@ case "$cmd" in
   android-install)   exec bash ./tools/android.sh install "$@" ;;
   android-audit)     exec bash ./tools/android.sh audit "$@" ;;
   android-smoke)     exec python3 ./tools/android_smoke.py "$@" ;;
+  web-preflight)     exec bash ./tools/web.sh preflight "$@" ;;
+  web-build)         exec bash ./tools/web.sh build "$@" ;;
+  web-audit)         exec bash ./tools/web.sh audit "$@" ;;
+  web-serve)         exec bash ./tools/web.sh serve "$@" ;;
   *)
-    echo "usage: build.sh [run|build|release|check|test|android-preflight|android-debug|android-release|android-install|android-audit|android-smoke] [args]" >&2
+    echo "usage: build.sh [run|build|release|check|test|android-preflight|android-debug|android-release|android-install|android-audit|android-smoke|web-preflight|web-build|web-audit|web-serve] [args]" >&2
     exit 2
     ;;
 esac

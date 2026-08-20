@@ -372,9 +372,98 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+
+  web:
+    name: Build and audit WebAssembly distribution
+    needs: linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Build exact Odin tag from source
+        uses: laytan/setup-odin@8536d8fa450ec6f1bd9ddc84bbaaf16296c0051d # v2
+        with:
+          release: "false"
+          branch: ${{ env.ODIN_SOURCE_TAG }}
+          llvm-version: "21"
+          build-type: release
+          cache: "false"
+
+      - name: Verify exact Odin snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_commit="$(sed -n 's/^ODIN_COMMIT=//p' android/toolchain.properties)"
+          actual_commit="$(git -C "$HOME/odin" rev-parse HEAD)"
+          [[ "$actual_commit" == "$expected_commit" ]] || {
+            echo "expected Odin source commit $expected_commit, found $actual_commit" >&2
+            exit 1
+          }
+
+      - name: Install web build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends brotli
+
+      - name: Restore pinned Emscripten SDK
+        id: emsdk-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/emsdk
+          key: emsdk-${{ hashFiles('web/toolchain.properties') }}
+
+      - name: Install pinned Emscripten SDK
+        if: steps.emsdk-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          emsdk_version="$(sed -n 's/^EMSDK_VERSION=//p' web/toolchain.properties)"
+          git clone https://github.com/emscripten-core/emsdk.git "$HOME/emsdk"
+          "$HOME/emsdk/emsdk" install "$emsdk_version"
+          "$HOME/emsdk/emsdk" activate "$emsdk_version"
+
+      - name: Activate pinned Emscripten SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          emsdk_version="$(sed -n 's/^EMSDK_VERSION=//p' web/toolchain.properties)"
+          "$HOME/emsdk/emsdk" activate "$emsdk_version"
+
+      - name: Preflight, build, and audit web distribution
+        run: bash build.sh web-build
+
+      - name: Stage release-named web archive
+        id: webpackage
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.linux.outputs.version }}"
+          sha12="${{ needs.linux.outputs.sha12 }}"
+          archive="arch-rogue-v${version}-${sha12}-web.tar.gz"
+          install -d dist
+          tar --sort=name --owner=0 --group=0 --numeric-owner \
+            --transform 's,^dist,arch-rogue-web,' \
+            -czf "dist/$archive" -C build/web dist
+          tar -tzf "dist/$archive" | head -5
+          echo "archive=dist/$archive" >> "$GITHUB_OUTPUT"
+
+      # This exact audited archive feeds both the prerelease and the Pages
+      # /play deployment. The Pages job downloads it rather than rebuilding.
+      - name: Upload web release archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arch-rogue-web
+          path: ${{ steps.webpackage.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 7
+
   publish-release:
     name: Publish automatic prerelease
-    needs: [linux, android]
+    needs: [linux, android, web]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -396,7 +485,8 @@ jobs:
           test -f "release-assets/arch-rogue-v${version}-${sha12}-linux-x64.tar.gz"
           test -f "release-assets/Arch-Rogue.apk"
           test -f "release-assets/Arch-Rogue.aab"
-          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 3
+          test -f "release-assets/arch-rogue-v${version}-${sha12}-web.tar.gz"
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 4
           ls -lh release-assets
 
       - name: Create or update automatic prerelease
@@ -412,6 +502,7 @@ jobs:
             - `arch-rogue-v${{ needs.linux.outputs.version }}-${{ needs.linux.outputs.sha12 }}-linux-x64.tar.gz` — Linux x64 launcher, binary, assets, and licenses
             - `Arch-Rogue.apk` — signed Android install package
             - `Arch-Rogue.aab` — signed Android App Bundle
+            - `arch-rogue-v${{ needs.linux.outputs.version }}-${{ needs.linux.outputs.sha12 }}-web.tar.gz` — audited, self-hostable WebAssembly (WebGL2) build
           files: release-assets/*
           fail_on_unmatched_files: true
           prerelease: true
@@ -419,7 +510,7 @@ jobs:
 
   prepare-pages:
     name: Prepare download website
-    needs: [linux, android, publish-release]
+    needs: [linux, android, web, publish-release]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -431,39 +522,136 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Generate schema-2 website manifest
+      - name: Download audited web release archive
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: arch-rogue-web
+          path: pages-input/web
+
+      - name: Assemble Pages site and playable web build
         shell: bash
+        env:
+          VERSION: ${{ needs.linux.outputs.version }}
+          SHA12: ${{ needs.linux.outputs.sha12 }}
         run: |
           set -euo pipefail
+          pages_root="build/pages"
+          play_root="$pages_root/play"
+          archive="pages-input/web/arch-rogue-v${VERSION}-${SHA12}-web.tar.gz"
+
+          test -f "$archive"
+          rm -rf "$pages_root"
+          install -d "$play_root"
+          cp -a website/. "$pages_root/"
           python3 tools/generate_download_manifest.py \
             --repository "${{ github.repository }}" \
-            --version "${{ needs.linux.outputs.version }}" \
+            --version "$VERSION" \
             --commit "${{ github.sha }}" \
-            --output website/downloads.json
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
+            --output "$pages_root/downloads.json"
+          touch "$pages_root/.nojekyll"
 
-          path = Path("website/downloads.json")
-          manifest = json.loads(path.read_text(encoding="utf-8"))
-          if manifest.get("schema") != 2:
-              raise SystemExit("tools/generate_download_manifest.py must emit schema 2")
+          # Validate every tar member before writing anything. The release
+          # archive must contain exactly one ordinary arch-rogue-web root;
+          # links, devices, duplicate paths, traversal, and extra roots fail.
+          python3 - "$archive" "$play_root" <<'PY'
+          from __future__ import annotations
+
+          import shutil
+          import sys
+          import tarfile
+          from pathlib import Path, PurePosixPath
+
+          ARCHIVE_ROOT = "arch-rogue-web"
+          archive = Path(sys.argv[1])
+          play_root = Path(sys.argv[2])
+          seen: set[PurePosixPath] = set()
+          validated: list[tuple[tarfile.TarInfo, tuple[str, ...]]] = []
+
+          with tarfile.open(archive, "r:gz") as bundle:
+              members = bundle.getmembers()
+              if not members:
+                  raise SystemExit("web Pages archive is empty")
+
+              roots: set[str] = set()
+              root_entries = 0
+              for member in members:
+                  raw_name = member.name
+                  if raw_name.startswith(("/", "./")) or "\\" in raw_name:
+                      raise SystemExit(f"unsafe web Pages archive path: {raw_name!r}")
+                  parts = PurePosixPath(raw_name).parts
+                  if not parts or any(part in {"", ".", ".."} for part in parts):
+                      raise SystemExit(f"unsafe web Pages archive path: {raw_name!r}")
+                  roots.add(parts[0])
+                  if tuple(parts) == (ARCHIVE_ROOT,):
+                      root_entries += 1
+                      if not member.isdir():
+                          raise SystemExit("web Pages archive root must be a directory")
+                  if member.issym() or member.islnk():
+                      raise SystemExit(f"web Pages archive contains a link: {raw_name}")
+                  if not (member.isfile() or member.isdir()):
+                      raise SystemExit(f"web Pages archive contains a special entry: {raw_name}")
+
+                  relative = PurePosixPath(*parts[1:])
+                  if relative in seen:
+                      raise SystemExit(f"duplicate web Pages archive path: {relative}")
+                  seen.add(relative)
+                  validated.append((member, tuple(parts)))
+
+              if roots != {ARCHIVE_ROOT} or root_entries != 1:
+                  raise SystemExit(
+                      "web Pages archive must contain exactly one arch-rogue-web root"
+                  )
+
+              for member, parts in validated:
+                  relative_parts = parts[1:]
+                  if not relative_parts:
+                      continue
+                  target = play_root.joinpath(*relative_parts)
+                  if member.isdir():
+                      target.mkdir(parents=True, exist_ok=True)
+                      continue
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  source = bundle.extractfile(member)
+                  if source is None:
+                      raise SystemExit(f"cannot read web Pages archive member: {member.name}")
+                  with source, target.open("xb") as output:
+                      shutil.copyfileobj(source, output)
+                  target.chmod(member.mode & 0o777 or 0o644)
           PY
-          touch website/.nojekyll
+
+          test -f "$play_root/index.html"
+          test -f "$play_root/packs.json"
+          test -d "$play_root/packs"
+          test ! -e "$play_root/arch-rogue-web"
+          python3 tools/web_audit.py --dist "$play_root"
+
+          python3 - "$pages_root" <<'PY'
+          from pathlib import Path
+          import sys
+
+          root = Path(sys.argv[1])
+          links = [path for path in root.rglob("*") if path.is_symlink()]
+          if links:
+              raise SystemExit(f"Pages site contains symbolic links: {links}")
+          total = sum(path.stat().st_size for path in root.rglob("*") if path.is_file())
+          if total >= 1_000_000_000:
+              raise SystemExit(f"Pages site is not below 1 GB: {total} bytes")
+          print(f"Pages site ready: {total} bytes at {root}")
+          PY
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
 
-      - name: Upload website for Pages
+      - name: Upload website and game for Pages
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
-          path: website
+          path: build/pages
 
   deploy-pages:
     name: Deploy download website
     needs: prepare-pages
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       pages: write
       id-token: write
@@ -477,3 +665,33 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+
+      - name: Verify deployed play route
+        shell: bash
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          base="${PAGE_URL%/}/"
+          index_file="$RUNNER_TEMP/arch-rogue-pages-index.html"
+          packs_file="$RUNNER_TEMP/arch-rogue-pages-packs.json"
+          retry=(
+            --fail --silent --show-error --location
+            --retry 12 --retry-delay 5 --retry-max-time 180 --retry-all-errors
+          )
+
+          # Keep these site-relative to page_url: project Pages currently lives
+          # below /arch-rogue/, while a future custom domain may live at /.
+          curl "${retry[@]}" --output "$index_file" "${base}play/"
+          curl "${retry[@]}" --output "$packs_file" "${base}play/packs.json"
+          grep -Fq 'window.AR_FILE_MANIFEST' "$index_file"
+          python3 - "$packs_file" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if manifest.get("schema") != 1 or not manifest.get("packs"):
+              raise SystemExit("deployed play/packs.json is invalid")
+          print(f"deployed play route exposes {len(manifest['packs'])} asset packs")
+          PY

@@ -372,7 +372,7 @@ STORY_RELICS := [Story_Relic_Id]Story_Relic{
 	.Wormscript_Map = {
 		name = "Wormscript Map", form = "a vellum map tattooed by blind grave-worms",
 		temptation = "it predicts which rooms hunger for guests or graves",
-		doom = "the map adds rooms whenever the bearer hesitates", slug = "wormscript_map",
+		doom = "the map adds plausible rooms whenever the bearer hesitates", slug = "wormscript_map",
 	},
 	.Vessel_Of_Last_Rain = {
 		name = "Vessel of Last Rain", form = "a cracked urn of water from a drowned coronation",
@@ -445,7 +445,7 @@ STORY_GUEST_TEMPLATES := [Story_Guest_Role_Id]Story_Guest_Template{
 		pairs = {
 			{"records the yous that chose worse", "'I've recorded the yous that chose worse. Care to stay ahead of them? The margin between you is thinner tonight.'"},
 			{"erases omens for the price of certainty", "'One omen, erased, for the price of your certainty. The Worms let us unwrite the future, never the doubt.'"},
-			{"needs a signature before the Worms notice", "'Sign before the Worms notice. They always notice -- an unsigned page is the only crime they hang scribes for.'"},
+			{"mourns the Scriptorium's tireless new voice", "'The Scriptorium writes ten thousand endings a night now. One voice, every page, and every tale opens: in a world where. No one reads them; the worms eat them as slop. They call it abundance.'"},
 		},
 	},
 	.Antlered_Hunter = {
@@ -476,7 +476,7 @@ STORY_GUEST_TEMPLATES := [Story_Guest_Role_Id]Story_Guest_Template{
 		name_slugs = {"ammar_without_roads", "fen_chalkhand", "sella_of_the_fold"},
 		voice = "rushed and ink-stained",
 		pairs = {
-			{"has mapped a floor that isn't yet", "'This floor doesn't exist yet -- I've mapped it anyway. The dungeon reads my drafts and builds to spec when flattered.'"},
+			{"has mapped a floor that isn't yet", "'This floor doesn't exist yet -- I've mapped it anyway, in confident ink. The dungeon reads my drafts and builds to spec when flattered.'"},
 			{"unmaps one room that shouldn't exist", "'Choose one room that should never exist. I'll unmap it, and the dungeon will pretend it never meant to.'"},
 			{"angers walls until they show secrets", "'Anger the walls and secrets show. Voss masons hid their shame behind plaster; the stones still flinch when accused.'"},
 		},
@@ -498,7 +498,7 @@ STORY_GUEST_TEMPLATES := [Story_Guest_Role_Id]Story_Guest_Template{
 		name_slugs = {"brass_thumb_oren", "malk_the_quenched", "devra_cogprayer"},
 		voice = "half-mad with relief",
 		pairs = {
-			{"hears the machine he broke praying", "'I broke the sacred machine and now it prays to me. The Pulley built engines to reach heaven; mine got homesick.'"},
+			{"hears the machine he broke praying", "'I broke the sacred machine and now it prays to me. The Pulley built engines to reach heaven; mine got homesick. It writes hymns now -- endless, tireless, almost good.'"},
 			{"sells the weak points of constructs", "'Spare me from the order and I'll show you where constructs rust. Even the Sentinel has a seam its founders regretted.'"},
 			{"offers fuel that improves loot and traps", "'Forbidden fuel: better loot, worse traps. The dungeon burns brighter when you feed it what it's not allowed.'"},
 		},
@@ -541,7 +541,7 @@ STORY_DILEMMAS := [Story_Dilemma_Id]Story_Dilemma{
 		title = "The False Sanctuary", setup = "a safe room is staged one comfort too perfectly",
 		intents = {.Aid = "warn the guest away", .Bargain = "take what comfort you can", .Defy = "tear down every charm"},
 		outcomes = {.Aid = "Real sanctuary answers your restraint.", .Bargain = "The false room pays in gear and hidden needles.", .Defy = "The angry walls reveal the foes they hid."},
-		truth = "The dungeon builds traps out of comfort; a room this kind is asking for something in return.",
+		truth = "The dungeon builds its comforts from rooms it has eaten -- warmth copied, never felt. A room this kind is asking for something in return.",
 	},
 	.Coin_Eyed_Corpse = {
 		title = "The Coin-Eyed Corpse", setup = "a corpse offers coins for a death you haven't suffered",
@@ -571,7 +571,7 @@ STORY_DILEMMAS := [Story_Dilemma_Id]Story_Dilemma{
 		title = "The Choir Without Throats", setup = "unseen singers chant a verse built from your lost chances",
 		intents = {.Aid = "answer with silence", .Bargain = "answer with a secret refrain", .Defy = "answer with steel on stone"},
 		outcomes = {.Aid = "Silence calms the floor; quiet help appears.", .Bargain = "The refrain buys occult reward, echoed in traps.", .Defy = "The broken verse calls armed witnesses."},
-		truth = "The Choir sings with the voices of those who never chose; answer wrongly and yours joins the verse.",
+		truth = "The Choir sings with the voices of those who never chose, averaged into one voice that belongs to no one; answer wrongly and yours joins the verse.",
 	},
 	.Last_Guests_Mask = {
 		title = "The Last Guest's Mask", setup = "a face flickers between friend, foe, and your reflection",
@@ -703,7 +703,7 @@ STORY_ENDINGS := [Archetype_Id][Story_Choice_Verb]Story_Ending{
 	},
 	.Arcanist = {
 		.Aid = {"The Answered Proof", "At the open Gate you speak the counter-sigil into the dream. The proof completes, and concludes, and stops being true. The bones go quiet. Above, the black gap in the sky lets one star back in. Nobody will know it was you. That was the proof all along.", "the_answered_proof"},
-		.Bargain = {"The Restored Name", "Rue writes your name into the Ledger's first page. The Worms' fee: the proof stands, unanswered. You are cited, titled, real. Some nights you feel the door turn over in its sleep, in your bones.", "the_restored_name"},
+		.Bargain = {"The Restored Name", "Rue writes your name into the Ledger's first page. The Worms' fee: the proof stands, unanswered. You are cited, titled, real. Three of the four citations check out. Some nights you feel the door turn over in its sleep, in your bones.", "the_restored_name"},
 		.Defy = {"The Standing Argument", "You let the proof finish -- and step into the opening seal to argue with what it finds. The seal dreams a door; you dream a wall; the debate does not end. You were right. Being right, it turns out, is a place. You live there now.", "the_standing_argument"},
 	},
 	.Acolyte = {

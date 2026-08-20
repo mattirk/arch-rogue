@@ -31,6 +31,16 @@ class RepositoryLayoutTests(unittest.TestCase):
             "vendor/raylib/raylib.odin",
             "vendor/raylib/linux/PROVENANCE.md",
             "vendor/raylib/linux/SHA256SUMS",
+            "vendor/raylib/wasm/PROVENANCE.md",
+            "vendor/raylib/wasm/SHA256SUMS",
+            "web/toolchain.properties",
+            "web/shell.html",
+            "web/library_archrogue.js",
+            "web/main_web.c",
+            "src/main_web.odin",
+            "tools/web.sh",
+            "tools/web_audit.py",
+            "tools/rebuild_raylib_web.sh",
             "ARCHITECTURE.md",
             "PARITY.md",
             "CHANGELOG.md",
@@ -92,6 +102,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             "bash build.sh check",
             "bash build.sh test",
             "bash build.sh release",
+            "-target:freestanding_wasm32",
             "tools/verify_actor_assets.py",
             "tools/verify_story_assets.py",
             "tools/verify_chronicle_assets.py",
@@ -123,7 +134,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             workflow.count('release: "false"'),
         )
 
-    def test_public_release_is_odin_linux_android_only(self) -> None:
+    def test_public_release_covers_odin_linux_android_web(self) -> None:
         workflow_path = (
             PRIVATE_PUBLIC_WORKFLOW if IS_PRIVATE_MASTER else PUBLIC_SNAPSHOT_WORKFLOW
         )
@@ -136,9 +147,13 @@ class RepositoryLayoutTests(unittest.TestCase):
             "bash build.sh release",
             "bash tools/android.sh release",
             "bash android/gradlew",
+            "bash build.sh web-build",
             "linux-x64.tar.gz",
             "Arch-Rogue.apk",
             "Arch-Rogue.aab",
+            "-web.tar.gz",
+            "web/toolchain.properties",
+            "emscripten-core/emsdk",
             "tools/generate_download_manifest.py",
             "tools/verify_linux_raylib.py",
             "actions/deploy-pages@",
@@ -204,10 +219,51 @@ class RepositoryLayoutTests(unittest.TestCase):
         pages_job = workflow.partition("  prepare-pages:")[2].partition(
             "  deploy-pages:"
         )[0]
+        deploy_job = workflow.partition("  deploy-pages:")[2]
         self.assertIn("contents: write", release_job)
         self.assertNotIn("pages: write", release_job)
+        self.assertIn(
+            'test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 4',
+            release_job,
+        )
         self.assertIn("pages: write", pages_job)
         self.assertNotIn("contents: write", pages_job)
+
+        for contract in (
+            "actions/download-artifact@",
+            "name: arch-rogue-web",
+            "path: pages-input/web",
+            'pages_root="build/pages"',
+            'play_root="$pages_root/play"',
+            'ARCHIVE_ROOT = "arch-rogue-web"',
+            "member.issym() or member.islnk()",
+            "roots != {ARCHIVE_ROOT} or root_entries != 1",
+            'test -f "$play_root/index.html"',
+            'test -f "$play_root/packs.json"',
+            'test -d "$play_root/packs"',
+            'test ! -e "$play_root/arch-rogue-web"',
+            'python3 tools/web_audit.py --dist "$play_root"',
+            "1_000_000_000",
+            "Pages site contains symbolic links",
+            "path: build/pages",
+        ):
+            self.assertIn(contract, pages_job)
+        self.assertNotIn("bash build.sh web-build", pages_job)
+        self.assertNotIn("path: website", pages_job)
+
+        web_smoke = (ROOT / "tools" / "web_smoke.mjs").read_text(encoding="utf-8")
+        self.assertIn("--entry-path", web_smoke)
+        self.assertIn("entryPath.includes('..')", web_smoke)
+
+        for contract in (
+            "timeout-minutes: 20",
+            'base="${PAGE_URL%/}/"',
+            '"${base}play/"',
+            '"${base}play/packs.json"',
+            "--retry-all-errors",
+            "deployed play/packs.json is invalid",
+        ):
+            self.assertIn(contract, deploy_job)
 
     def test_aab_orientation_audit_accepts_bundletool_enum_formats(self) -> None:
         for value in ("sensorLandscape", "6", "0x6", "0x00000006"):

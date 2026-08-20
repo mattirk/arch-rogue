@@ -2,17 +2,10 @@ package archrogue
 
 import "base:runtime"
 import "core:fmt"
-import "core:math"
-import "core:os"
-import filepath "core:path/filepath"
-import "core:strconv"
 import "core:strings"
-import "core:time"
-import "core:thread"
-import chan "core:sync/chan"
 import rl "../vendor/raylib"
 
-VERSION :: "6.0.0-alpha.21"
+VERSION :: "6.0.0-alpha.23"
 
 // Spiral-of-death guard: clamp huge frame gaps (debugger pause, window drag).
 MAX_FRAME_DT :: 0.25
@@ -167,117 +160,8 @@ storage_paths_destroy :: proc(paths:^Storage_Paths) {
 	paths^={}
 }
 
-storage_ensure_directory :: proc(directory:string)->bool {
-	if directory=="" do return false
-	when ARCH_ROGUE_ANDROID {
-		// NativeActivity's internalDataPath already exists. Bionic's mkdir wrapper
-		// avoids both core:os mkdir_all's SELinux-denied `/` walk and Odin's raw
-		// legacy mkdir syscall, which Android's seccomp policy rejects.
-		created:=platform_android_create_private_directory(directory)
-		ready:=os.is_directory(directory)
-		if !created&&!ready {
-			platform_log(fmt.tprintf("ARCH_ROGUE_STORAGE_ERROR libc mkdir failed path=%s",directory))
-			return false
-		}
-		return ready
-	} else {
-		// Odin's os.mkdir_all reports .Exist when every path component already
-		// exists. That is the normal second-launch case, not a persistence failure.
-		mkdir_err:=os.mkdir_all(directory)
-		ready:=os.is_directory(directory)
-		if mkdir_err!=nil&&!ready do return false
-		return ready
-	}
-}
-
-storage_paths_from_directory :: proc(directory:string) -> (paths:Storage_Paths,ok:bool) {
-	if directory=="" do return {},false
-	owned_directory:=strings.clone(directory)
-	options,options_err:=filepath.join([]string{owned_directory,"options.json"},context.allocator)
-	profile,profile_err:=filepath.join([]string{owned_directory,"profile.json"},context.allocator)
-	run,run_err:=filepath.join([]string{owned_directory,"run.json"},context.allocator)
-	if options_err!=nil||profile_err!=nil||run_err!=nil {
-		delete(owned_directory);delete(options);delete(profile);delete(run);return {},false
-	}
-	return {directory=owned_directory,options=options,profile=profile,run=run},true
-}
-
-platform_storage_paths :: proc() -> (paths:Storage_Paths,ok:bool) {
-	data_dir:string
-	when ARCH_ROGUE_ANDROID {
-		data_dir=platform_android_internal_data_path()
-		if data_dir=="" {
-			platform_log("ARCH_ROGUE_STORAGE_ERROR NativeActivity internalDataPath is unavailable")
-			return {},false
-		}
-		platform_log(fmt.tprintf("ARCH_ROGUE_STORAGE_ROOT path=%s",data_dir))
-	} else {
-		data_err:os.Error
-		data_dir,data_err=os.user_data_dir(context.allocator)
-		if data_err!=nil do return {},false
-	}
-	defer delete(data_dir)
-	directory_name:=ARCH_ROGUE_ANDROID?ANDROID_APP_DATA_DIRECTORY_NAME:APP_DATA_DIRECTORY_NAME
-	directory,join_err:=filepath.join([]string{data_dir,directory_name},context.allocator)
-	if join_err!=nil do return {},false
-	if !storage_ensure_directory(directory) {delete(directory);return {},false}
-	options,options_err:=filepath.join([]string{directory,"options.json"},context.allocator)
-	profile,profile_err:=filepath.join([]string{directory,"profile.json"},context.allocator)
-	run,run_err:=filepath.join([]string{directory,"run.json"},context.allocator)
-	if options_err!=nil||profile_err!=nil||run_err!=nil {
-		delete(directory);delete(options);delete(profile);delete(run);return {},false
-	}
-	when ARCH_ROGUE_ANDROID do platform_log(fmt.tprintf("ARCH_ROGUE_STORAGE_READY path=%s",directory))
-	return {directory=directory,options=options,profile=profile,run=run},true
-}
-
-platform_legacy_options_path :: proc() -> string {
-	when ARCH_ROGUE_ANDROID do return ""
-	config_dir,config_err:=os.user_config_dir(context.allocator)
-	if config_err!=nil do return ""
-	defer delete(config_dir)
-	dir,join_err:=filepath.join([]string{config_dir,"arch-rogue-raylib"},context.allocator)
-	if join_err!=nil do return ""
-	defer delete(dir)
-	path,path_err:=filepath.join([]string{dir,"options.json"},context.allocator)
-	if path_err!=nil do return ""
-	return path
-}
-
 storage_artifact_path :: proc(primary,suffix:string) -> string {
 	return fmt.aprintf("%s.%s",primary,suffix)
-}
-
-storage_file_exists :: proc(path:string) -> bool {
-	info,err:=os.stat(path,context.allocator)
-	if err!=nil do return false
-	os.file_info_delete(info,context.allocator)
-	return true
-}
-
-storage_remove_file :: proc(path:string) -> bool {
-	when ARCH_ROGUE_ANDROID do return platform_android_remove_file(path)
-	return os.remove(path)==nil
-}
-
-storage_read_bounded :: proc(path:string,max_bytes:int) -> ([]byte,Persistence_Decode_Status) {
-	info,stat_err:=os.stat(path,context.allocator)
-	if stat_err!=nil do return nil,.Missing
-	size:=info.size
-	os.file_info_delete(info,context.allocator)
-	if size<0||size>i64(max_bytes) do return nil,.Oversize
-	when ARCH_ROGUE_ANDROID {
-		data:=make([]byte,int(size),context.allocator)
-		if !platform_android_read_file_exact(path,data) {
-			delete(data)
-			return nil,.Corrupt
-		}
-		return data,.Valid
-	} else {
-		data,read_err:=os.read_entire_file_from_path(path,context.allocator)
-		if read_err!=nil do return nil,.Corrupt
-		return data,.Valid
-	}
 }
 
 storage_max_bytes :: proc(kind:Persistence_Document_Kind)->int {
@@ -285,45 +169,9 @@ storage_max_bytes :: proc(kind:Persistence_Document_Kind)->int {
 	return 0
 }
 
-storage_sync_parent :: proc(path:string)->bool {
-	when ARCH_ROGUE_ANDROID {
-		return platform_android_sync_directory(filepath.dir(path))
-	} else when ODIN_OS==.Windows {
-		// Windows directory handles require backup-semantics flags. Each metadata
-		// replacement below instead uses MOVEFILE_WRITE_THROUGH.
-		return true
-	} else {
-		parent:=filepath.dir(path)
-		directory,open_err:=os.open(parent)
-		if open_err!=nil do return false
-		ok:=os.sync(directory)==nil
-		if close_err:=os.close(directory);close_err!=nil do ok=false
-		return ok
-	}
-}
-
-
-storage_write_synced :: proc(path:string,data:[]byte)->bool {
-	when ARCH_ROGUE_ANDROID {
-		ok:=platform_android_write_file_synced(path,data)
-		if ok do ok=storage_sync_parent(path)
-		if !ok do _=storage_remove_file(path)
-		return ok
-	} else {
-		file,open_err:=os.create(path)
-		if open_err!=nil do return false
-		written,write_err:=os.write(file,data)
-		ok:=write_err==nil&&written==len(data)&&os.flush(file)==nil&&os.sync(file)==nil
-		if close_err:=os.close(file);close_err!=nil do ok=false
-		if ok do ok=storage_sync_parent(path)
-		if !ok do _=storage_remove_file(path)
-		return ok
-	}
-}
-
 storage_quarantine_file :: proc(path:string) -> bool {
 	if !storage_file_exists(path) do return true
-	quarantine:=fmt.aprintf("%s.corrupt-%d",path,time.tick_now())
+	quarantine:=fmt.aprintf("%s.corrupt-%d",path,platform_tick_us())
 	defer delete(quarantine)
 	return storage_replace_write_through(path,quarantine)&&storage_sync_parent(path)
 }
@@ -440,13 +288,6 @@ Save_Completion :: struct {
 	success:bool,
 }
 
-Save_Worker :: struct {
-	jobs:chan.Chan(Save_Job),
-	completions:chan.Chan(Save_Completion),
-	thread:^thread.Thread,
-	ready:bool,
-}
-
 save_job_destroy :: proc(job:^Save_Job) {
 	if job==nil do return
 	allocator:=job.allocator
@@ -460,122 +301,6 @@ save_job_destroy :: proc(job:^Save_Job) {
 		free(job.run_payload,allocator)
 	}
 	job^={}
-}
-
-save_worker_batch_add :: proc(batch:^[3]Save_Job,count:^int,job:Save_Job) {
-	pending:=job
-	if batch==nil||count==nil {save_job_destroy(&pending);return}
-	for i in 0..<count^ {
-		if batch[i].kind!=pending.kind do continue
-		if pending.revision>=batch[i].revision {
-			save_job_destroy(&batch[i])
-			batch[i]=pending
-		} else do save_job_destroy(&pending)
-		return
-	}
-	if count^>=len(batch^) {save_job_destroy(&pending);return}
-	batch[count^]=pending
-	count^+=1
-}
-
-save_worker_process_job :: proc(worker:^Save_Worker,job:^Save_Job) {
-	if worker==nil||job==nil do return
-	worker_allocator:=context.allocator
-	if job.allocator.procedure!=nil do context.allocator=job.allocator
-	encoded:=job.data
-	encoded_owned:=false
-	encode_ok:=len(encoded)>0
-	if job.kind==.Run&&job.run_payload!=nil {
-		encoded,encode_ok=persistence_encode_run_payload(job.run_payload,job.run_id,job.revision,job.written_at_utc)
-		encoded_owned=true
-	}
-	success:=encode_ok&&storage_write_document_durable(job.path,job.kind,encoded)
-	if encoded_owned do delete(encoded,job.allocator)
-	_=chan.send(worker.completions,Save_Completion{kind=job.kind,revision=job.revision,success=success})
-	save_job_destroy(job)
-	context.allocator=worker_allocator
-}
-
-save_worker_loop :: proc(worker:^Save_Worker) {
-	if worker==nil do return
-	for {
-		job,ok:=chan.recv(worker.jobs)
-		if !ok do return
-		if job.stop {save_job_destroy(&job);return}
-		// One local slot per document domain. A burst retains the newest revision
-		// of each domain without re-enqueueing into the worker's own bounded queue.
-		batch:[3]Save_Job
-		batch_count:=0
-		save_worker_batch_add(&batch,&batch_count,job)
-		stop_after_batch:=false
-		for {
-			next,has_next:=chan.try_recv(worker.jobs);if !has_next do break
-			if next.stop {
-				save_job_destroy(&next)
-				stop_after_batch=true
-				break
-			}
-			save_worker_batch_add(&batch,&batch_count,next)
-		}
-		for i in 0..<batch_count do save_worker_process_job(worker,&batch[i])
-		if stop_after_batch do return
-	}
-}
-
-save_worker_init :: proc(worker:^Save_Worker)->bool {
-	if worker==nil do return false
-	jobs,jobs_err:=chan.create(chan.Chan(Save_Job),8,context.allocator)
-	completions,completion_err:=chan.create(chan.Chan(Save_Completion),16,context.allocator)
-	if jobs_err!=.None||completion_err!=.None {if jobs.impl!=nil do chan.destroy(jobs);if completions.impl!=nil do chan.destroy(completions);return false}
-	worker.jobs=jobs;worker.completions=completions;worker.ready=true
-	worker.thread=thread.create_and_start_with_poly_data(worker,save_worker_loop)
-	return worker.thread!=nil
-}
-
-// Takes ownership of data whether enqueueing succeeds or fails. Job data is
-// copied to the process heap before crossing threads; test and arena allocators
-// remain confined to the producer thread that owns them.
-save_worker_enqueue :: proc(worker:^Save_Worker,kind:Persistence_Document_Kind,path:string,data:[]byte,revision:u64)->bool {
-	source_allocator:=context.allocator
-	allocator:=runtime.heap_allocator()
-	owned_data:=make([]byte,len(data),allocator)
-	copy(owned_data,data)
-	delete(data,source_allocator)
-	job:=Save_Job{
-		kind=kind,path=strings.clone(path,allocator),data=owned_data,
-		revision=revision,allocator=allocator,
-	}
-	if worker!=nil&&worker.ready&&len(owned_data)>0&&chan.try_send(worker.jobs,job) do return true
-	// Never evict a different document domain from the bounded queue. The caller
-	// keeps that domain dirty and retries after backoff.
-	save_job_destroy(&job);return false
-}
-
-save_worker_enqueue_run :: proc(
-	worker:^Save_Worker,
-	path,run_id,written_at_utc:string,
-	payload:^Run_Save_Payload,
-	revision:u64,
-)->bool {
-	allocator:=runtime.heap_allocator()
-	job:=Save_Job{
-		kind=.Run,path=strings.clone(path,allocator),revision=revision,
-		run_id=strings.clone(run_id,allocator),written_at_utc=strings.clone(written_at_utc,allocator),
-		run_payload=payload,allocator=allocator,
-	}
-	if worker!=nil&&worker.ready&&run_id!=""&&chan.try_send(worker.jobs,job) do return true
-	save_job_destroy(&job)
-	return false
-}
-
-save_worker_shutdown :: proc(worker:^Save_Worker) {
-	if worker==nil||!worker.ready do return
-	_=chan.send(worker.jobs,Save_Job{stop=true})
-	thread.join(worker.thread);thread.destroy(worker.thread)
-	for {job,ok:=chan.try_recv(worker.jobs);if !ok do break;save_job_destroy(&job)}
-	chan.close(worker.jobs);chan.close(worker.completions)
-	chan.destroy(worker.jobs);chan.destroy(worker.completions)
-	worker^={}
 }
 
 Persistence_Coordinator :: struct {
@@ -598,14 +323,12 @@ Persistence_Coordinator :: struct {
 	save_wait_presented:bool,
 }
 
-persistence_utc_now :: proc()->string {
-	value,ok:=time.time_to_rfc3339(time.now(),include_nanos=true,allocator=context.allocator)
-	if !ok do return "1970-01-01T00:00:00Z"
-	return value
+persistence_utc_now :: proc() -> string {
+	return platform_now_utc_rfc3339()
 }
 
 persistence_new_profile_id :: proc(seed:u64)->string {
-	source:=fmt.aprintf("arch-rogue:%016x:%d",seed,time.tick_now());defer delete(source)
+	source:=fmt.aprintf("arch-rogue:%016x:%d",seed,platform_tick_us());defer delete(source)
 	hashed:=persistence_sha256(transmute([]byte)(source))
 	if len(hashed)<32 do return fmt.aprintf("local-%016x",seed)
 	result:=strings.clone(hashed[:32]);delete(hashed);return result
@@ -665,9 +388,9 @@ persistence_write_run_sync :: proc(coordinator:^Persistence_Coordinator,app:^App
 
 persistence_enqueue_run :: proc(coordinator:^Persistence_Coordinator,app:^App)->bool {
 	if coordinator==nil||app==nil||!coordinator.ready||coordinator.run_write_in_flight do return false
-	snapshot_begin:=time.tick_now()
+	snapshot_begin:=platform_tick_ms_f64()
 	defer {
-		elapsed:=time.duration_milliseconds(time.tick_diff(snapshot_begin,time.tick_now()))
+		elapsed:=platform_tick_ms_f64()-snapshot_begin
 		coordinator.run_snapshot_count+=1
 		coordinator.run_snapshot_total_ms+=elapsed
 		coordinator.run_snapshot_max_ms=max(coordinator.run_snapshot_max_ms,elapsed)
@@ -676,7 +399,7 @@ persistence_enqueue_run :: proc(coordinator:^Persistence_Coordinator,app:^App)->
 	run_ensure_persisted_entity_ids(&app.run)
 	revision:=max(coordinator.run_revision+1,app.run.revision+1)
 	written:=persistence_utc_now();defer delete(written)
-	allocator:=runtime.heap_allocator()
+	allocator:=platform_save_allocator()
 	payload:=new(Run_Save_Payload,allocator)
 	payload^=run_save_payload_clone_from_app(app,allocator)
 	if !run_payload_validate(payload) {run_save_payload_destroy(payload,allocator);free(payload,allocator);return false}
@@ -701,7 +424,7 @@ persistence_enqueue_options :: proc(coordinator:^Persistence_Coordinator,app:^Ap
 persistence_poll_completions :: proc(coordinator:^Persistence_Coordinator,app:^App) {
 	if coordinator==nil||app==nil||!coordinator.worker.ready do return
 	for {
-		completion,ok:=chan.try_recv(coordinator.worker.completions);if !ok do break
+		completion,ok:=save_worker_try_completion(&coordinator.worker);if !ok do break
 		switch completion.kind {
 		case .Options:
 			if completion.success do coordinator.options_revision=max(coordinator.options_revision,completion.revision)
@@ -717,13 +440,6 @@ persistence_poll_completions :: proc(coordinator:^Persistence_Coordinator,app:^A
 			}
 		}
 	}
-}
-
-persistence_drain_worker :: proc(coordinator:^Persistence_Coordinator)->bool {
-	if coordinator==nil||!coordinator.ready do return false
-	save_worker_shutdown(&coordinator.worker)
-	coordinator.run_write_in_flight=false
-	return save_worker_init(&coordinator.worker)
 }
 
 persistence_quarantine_run :: proc(coordinator:^Persistence_Coordinator)->bool {
@@ -945,30 +661,6 @@ persistence_update_scheduler :: proc(coordinator:^Persistence_Coordinator,app:^A
 	if app.run_critical||quiet||deadline do _=persistence_enqueue_run(coordinator,app)
 }
 
-// Lifecycle checkpointing bypasses Save_Wait's presentation gate. It snapshots
-// the latest frozen fixed tick, coalesces behind any older run write, and waits
-// only for the caller's bounded budget; the worker remains alive on timeout.
-persistence_flush_for_suspend :: proc(
-	coordinator:^Persistence_Coordinator,
-	app:^App,
-	budget:time.Duration=250*time.Millisecond,
-)->bool {
-	if coordinator==nil||app==nil||!coordinator.ready||app.run.run_id==""||app.run.terminal!=.Active do return false
-	app.run_dirty=true
-	app.run_critical=true
-	app.run_dirty_serial+=1
-	start:=time.tick_now()
-	for {
-		persistence_poll_completions(coordinator,app)
-		if !coordinator.run_write_in_flight&&app.run_dirty {
-			_=persistence_enqueue_run(coordinator,app)
-		}
-		if !coordinator.run_write_in_flight&&!app.run_dirty do return true
-		if time.tick_diff(start,time.tick_now())>=budget do return false
-		time.sleep(2*time.Millisecond)
-	}
-}
-
 persistence_coordinator_init :: proc(coordinator:^Persistence_Coordinator,app:^App,seed:u64)->bool {
 	if coordinator==nil||app==nil do return false
 	paths,paths_ok:=platform_storage_paths();if !paths_ok do return false
@@ -1039,11 +731,21 @@ persistence_coordinator_init :: proc(coordinator:^Persistence_Coordinator,app:^A
 }
 
 apply_platform_effects :: proc(app:^App,view:^View,audio:^Audio,effects:bit_set[Platform_Effect]) {
-	if .Apply_Window in effects && !ARCH_ROGUE_ANDROID {
-		borderless:=rl.IsWindowState({.BORDERLESS_WINDOWED_MODE})
-		if borderless!=app.options.fullscreen do rl.ToggleBorderlessWindowed()
+	when ARCH_ROGUE_WEB {
+		// Fullscreen is the browser Fullscreen API on the canvas; it needs the
+		// user's transient activation, which an option-row click still holds by
+		// the time this effect runs inside the same requestAnimationFrame turn.
+		if .Apply_Window in effects do web_apply_fullscreen(app.options.fullscreen)
+		// No Apply_FPS: SetTargetFPS busy-waits inside EndDrawing, which would
+		// burn a browser thread. requestAnimationFrame owns presentation pacing
+		// and the fixed-step accumulator keeps simulation at 60 Hz regardless.
+	} else {
+		if .Apply_Window in effects && !ARCH_ROGUE_ANDROID {
+			borderless:=rl.IsWindowState({.BORDERLESS_WINDOWED_MODE})
+			if borderless!=app.options.fullscreen do rl.ToggleBorderlessWindowed()
+		}
+		if .Apply_FPS in effects do rl.SetTargetFPS(i32(frame_rate_cap_target(app.options.frame_rate_cap)))
 	}
-	if .Apply_FPS in effects do rl.SetTargetFPS(i32(frame_rate_cap_target(app.options.frame_rate_cap)))
 	if .Apply_Zoom in effects do view_apply_base_zoom(view,app.options.view_zoom)
 	if .Apply_Audio in effects do audio_set_enabled(audio,app.options.audio_enabled)
 	// Save_Options is consumed by the MX-save coordinator after platform effects.
@@ -1139,1055 +841,262 @@ platform_apply_lifecycle_result :: proc(
 	}
 }
 
-// Dev-only MX.6 screenshot staging. The harness lives in the platform entry
-// point so ordinary simulation and renderer APIs stay free of capture concerns.
-@(private = "file")
-MX6_Capture_Scenario :: enum u8 {
+// Explicit runtime phases shared by every platform entry. Desktop and Android
+// run game_init + game_frame inside a blocking loop; the web entry drives the
+// same three phases from browser requestAnimationFrame. Production web builds
+// must not use ASYNCIFY, so no phase may block on presentation or IO timing.
+
+Dev_Open_Panel :: enum u8 {
 	None,
-	Melee,
-	Big_Hit,
-	Bolt,
-	Class_Skill,
-	Dash,
-	Enemy_Base_Melee,
-	Enemy_Base_Ranged,
-	Enemy_Strike,
-	Enemy_Bolt,
-	Enemy_Fan,
-	Enemy_Nova,
-	Boss_Attack,
-	Boss_Cast,
-	Familiar_Wisp,
-	Familiar_Crow,
-	Familiar_Beast,
-	Fow_Nova,
-}
-
-@(private = "file")
-dev_archetype_from_env :: proc(value:string) -> (Archetype_Id,bool) {
-	switch value {
-	case "warden":   return .Warden,true
-	case "rogue":    return .Rogue,true
-	case "arcanist": return .Arcanist,true
-	case "acolyte":  return .Acolyte,true
-	case "ranger":   return .Ranger,true
-	}
-	if index,ok:=strconv.parse_int(value);ok && 0<=index && index<len(Archetype_Id) {
-		return Archetype_Id(index),true
-	}
-	return {},false
-}
-
-MX_Story_Capture_Scenario :: enum u8 {
-	None,
-	Omen_Initial,
-	Relic_Choices,
-	Guest,
-	Soul,
-	Ending,
-}
-
-mx_story_capture_scenario_from_env :: proc(value: string) -> MX_Story_Capture_Scenario {
-	switch value {
-	case "omen_initial":  return .Omen_Initial
-	case "relic_choices": return .Relic_Choices
-	case "guest":         return .Guest
-	case "soul":          return .Soul
-	case "ending":        return .Ending
-	}
-	return .None
-}
-
-MX_Save_Capture_Scenario :: enum u8 {
-	None,
-	Empty,
-	Populated,
-	Victories,
-	Fallen,
-	Recovery,
-	Abandon,
-}
-
-mx_save_capture_scenario_from_env :: proc(value:string)->MX_Save_Capture_Scenario {
-	switch value {
-	case "empty":return .Empty
-	case "populated":return .Populated
-	case "victories":return .Victories
-	case "fallen":return .Fallen
-	case "recovery":return .Recovery
-	case "abandon":return .Abandon
-	}
-	return .None
-}
-
-@(private = "file")
-mx6_capture_scenario_from_env :: proc(value:string) -> MX6_Capture_Scenario {
-	switch value {
-	case "melee":              return .Melee
-	case "big_hit":            return .Big_Hit
-	case "bolt":               return .Bolt
-	case "class":              return .Class_Skill
-	case "dash":               return .Dash
-	case "enemy_base_melee":   return .Enemy_Base_Melee
-	case "enemy_base_ranged":  return .Enemy_Base_Ranged
-	case "enemy_strike":       return .Enemy_Strike
-	case "enemy_bolt":         return .Enemy_Bolt
-	case "enemy_fan":          return .Enemy_Fan
-	case "enemy_nova":         return .Enemy_Nova
-	case "boss_attack":        return .Boss_Attack
-	case "boss_cast":          return .Boss_Cast
-	case "familiar_wisp":      return .Familiar_Wisp
-	case "familiar_crow":      return .Familiar_Crow
-	case "familiar_beast":     return .Familiar_Beast
-	case "fow_nova":           return .Fow_Nova
-	}
-	return .None
-}
-
-@(private = "file")
-mx6_capture_direction_from_env :: proc(value:string) -> (Vec2,bool) {
-	// Names are screen-space; vectors are tile-space before isometric projection.
-	switch value {
-	case "south":      return { 1, 1},true
-	case "south-east": return { 1, 0},true
-	case "east":       return { 1,-1},true
-	case "north-east": return { 0,-1},true
-	case "north":      return {-1,-1},true
-	case "north-west": return {-1, 0},true
-	case "west":       return {-1, 1},true
-	case "south-west": return { 0, 1},true
-	}
-	return {},false
-}
-
-@(private = "file")
-mx6_capture_unit :: proc(direction:Vec2) -> Vec2 {
-	length:=math.hypot(direction.x,direction.y)
-	return length>1e-5?direction/length:Vec2{1,1}/math.sqrt(f32(2))
-}
-
-@(private = "file")
-mx6_capture_place :: proc(
-	run:^Run,
-	origin,direction:Vec2,
-	distance,radius:f32,
-) -> (Vec2,bool) {
-	if run==nil do return {},false
-	unit:=mx6_capture_unit(direction)
-	// Step inward deterministically if a small room or furnishing clips the ideal
-	// composition. No gameplay RNG is consumed by capture placement.
-	for step in 0..<16 {
-		d:=distance-f32(step)*.08
-		if d<.55 do break
-		candidate:=origin+unit*d
-		if blocked_for_radius(&run.dungeon,candidate.x,candidate.y,radius,block_stairs=true) do continue
-		if !line_of_sight(&run.dungeon,origin.x,origin.y,candidate.x,candidate.y) do continue
-		return candidate,true
-	}
-	return origin,false
-}
-
-@(private = "file")
-mx6_capture_reset :: proc(app:^App,direction:Vec2) -> Vec2 {
-	run:=&app.run
-	restore_sealed(&run.dungeon,run.sealed[:])
-	clear(&run.sealed)
-	clear(&run.enemies)
-	clear(&run.projectiles)
-	clear(&run.familiars)
-	clear(&run.bells)
-	clear(&run.numbers)
-	clear(&run.ground_items)
-	clear(&run.sfx)
-	clear_feel_events(run)
-	clear(&run.traps)
-	clear(&run.shrines)
-	clear(&run.secrets)
-	run.nav={}
-	run.boss_engaged=false
-	// Artificial first-room bosses must not be recovered into a generated final
-	// arena by the encounter watchdog during the one-step real commit below.
-	run.dungeon.boss_arena=false
-	run.arrival_timer=0
-	run.wall_face_timer=0
-	run.wall_touches=0
-	run.shop_requested=false
-	run.refuge={}
-
-	app.death_pending=false
-	app.death_timer=0
-	app.inventory_open=false
-	app.character_open=false
-	app.shop_open=false
-	app_clear_play_input(app)
-
-	player:=&run.player
-	player.pos=run_spawn_point(run)
-	player.prev_pos=player.pos
-	player.facing=mx6_capture_unit(direction)
-	player.moving=false
-	player.hp=player.max_hp
-	player.mana=f32(player.max_mana)
-	player.stamina=f32(player.max_stamina)
-	player.melee_timer=0
-	player.bolt_timer=0
-	player.dash_timer=0
-	player.class_skill_timer=0
-	player.bighit_timer=0
-	player.bighit_charge=0
-	player.time_skip_timer=0
-	player.swing_timer=0
-	player.melee_commit_timer=0
-	player.potion_timer=0
-	player.hit_flash=0
-	player.hit_flash_duration=0
-	player.statuses={}
-	player.poison_tick=0
-	run.hitstop_ticks=0
-	player_clear_visual_action(player)
-	return player.facing
-}
-
-@(private = "file")
-mx6_capture_shift_player :: proc(run:^Run,direction:Vec2,distance:f32) {
-	if run==nil do return
-	candidate:=run.player.pos+mx6_capture_unit(direction)*distance
-	if blocked_for_radius(
-		&run.dungeon,candidate.x,candidate.y,ACTOR_MOVE_COLLISION_RADIUS,block_stairs=true,
-	) {
-		return
-	}
-	run.player.pos=candidate
-	run.player.prev_pos=candidate
-}
-
-@(private = "file")
-mx6_capture_enemy :: proc(
-	run:^Run,
-	kind:Enemy_Kind,
-	pos,facing:Vec2,
-	pending:int,
-	ability:Ability_Id={},
-	has_ability:=false,
-) {
-	enemy:=enemy_make(kind,pos,run.depth)
-	enemy.prev_pos=pos
-	enemy.facing=facing
-	enemy.aggro_range=max(enemy.aggro_range,f32(12))
-	enemy.cooldown=0
-	if has_ability {
-		enemy.ability_count=1
-		enemy.abilities[0]=ability
-	}
-	enemy_ensure_id(run,&enemy)
-	enemy_begin_windup(&enemy,0,pending,facing)
-	append(&run.enemies,enemy)
-	// The public fixed-step path commits the windup, emits semantic effects and
-	// creates real projectiles/damage. Follow-up ticks reach a readable action
-	// frame while the freshly emitted feel events remain unaged.
-	for _ in 0..<5 do sim_tick(run,{})
-}
-
-@(private = "file")
-mx6_capture_boss :: proc(run:^Run,pos,facing:Vec2,ability:Ability_Id) {
-	def:=BOSS_DEFS[Boss_Id.Gate_Tyrant]
-	boss:=Enemy{
-		kind=.Ghoul,
-		boss_id=.Gate_Tyrant,
-		name=def.name,
-		role=.Boss,
-		elite_mod=-1,
-		final_boss=def.final_boss,
-		big=true,
-		pos=pos,
-		prev_pos=pos,
-		facing=facing,
-		hp=def.max_hp,
-		max_hp=def.max_hp,
-		damage=def.damage,
-		xp=def.xp,
-		speed=def.speed,
-		aggro_range=def.aggro_range,
-		attack_range=def.attack_range,
-		attack_cd_s=def.attack_cooldown,
-		ranged=def.attack_range>=2,
-		color=def.color,
-		damage_type=def.damage_type,
-		abilities={ability,ability},
-		ability_count=1,
-		pending_ability=PENDING_BASE_ATTACK,
-		last_ability=-1,
-	}
-	enemy_ensure_id(run,&boss)
-	enemy_begin_windup(&boss,0,0,facing)
-	append(&run.enemies,boss)
-	run.boss_engaged=true
-	for _ in 0..<5 do sim_tick(run,{})
-}
-
-@(private = "file")
-mx6_capture_familiar :: proc(run:^Run,direction:Vec2,kind:Familiar_Kind) {
-	spawned:=false
-	switch kind {
-	case .Wisp:
-		spawned=player_cast_spirit_call_rank(run,0)
-	case .Crow:
-		spawned=player_cast_spirit_call_rank(run,1)
-	case .Spirit_Beast:
-		spawned=player_cast_spirit_beast_rank(run,0)
-	case .Bar_Dancer:
-	}
-	if !spawned || len(run.familiars)==0 do return
-
-	// The summon was only the public construction path; isolate the requested
-	// attack/fallback moment before driving companion AI against a real target.
-	clear(&run.numbers)
-	clear(&run.sfx)
-	clear_feel_events(run)
-	player_clear_visual_action(&run.player)
-	familiar:=&run.familiars[0]
-	facing:=mx6_capture_unit(direction)
-	if pos,ok:=mx6_capture_place(run,run.player.pos,facing,.78,FAMILIAR_MOVE_COLLISION_RADIUS);ok {
-		familiar.pos=pos
-		familiar.prev_pos=pos
-	}
-	familiar.facing=facing
-	familiar.move_dir=facing
-	familiar.command=.Attack
-	familiar.attack_timer=0
-	familiar.attack_anim_timer=0
-	familiar.moving=false
-
-	target_pos,ok:=mx6_capture_place(run,familiar.pos,facing,.82,ACTOR_MOVE_COLLISION_RADIUS)
-	if !ok do return
-	target:=enemy_make(.Ghoul,target_pos,run.depth)
-	target.prev_pos=target_pos
-	target.facing=-facing
-	target.hp=max(target.hp,200)
-	target.max_hp=target.hp
-	target.cooldown=100
-	target.aggro_range=0
-	enemy_ensure_id(run,&target)
-	append(&run.enemies,target)
-	tick_familiars_dt(run,.01)
-	tick_familiars_dt(run,.10)
-}
-
-@(private = "file")
-mx6_stage_capture :: proc(app:^App,view:^View,scenario:MX6_Capture_Scenario,direction:Vec2) {
-	if app==nil || view==nil || app.mode!=.Playing || scenario==.None do return
-	run:=&app.run
-	facing:=mx6_capture_reset(app,direction)
-	player:=&run.player
-	if .Enemy_Base_Melee<=scenario && scenario<=.Boss_Cast {
-		mx6_capture_shift_player(run,facing,.45)
-	}
-
-	switch scenario {
-	case .Melee:
-		player_melee(run,facing)
-		player_tick_visual_action(player,.08)
-	case .Big_Hit:
-		if player_big_hit_begin(run,facing) {
-			player_big_hit_fire(run)
-			player_tick_visual_action(player,.10)
-		}
-	case .Bolt:
-		if player_cast_bolt(run,facing) {
-			for _ in 0..<5 do sim_tick(run,{})
-		}
-	case .Class_Skill:
-		if player_cast_class_skill(run,facing) {
-			player_tick_visual_action(player,.12)
-		}
-	case .Dash:
-		if player_dash(run,facing) do player_tick_visual_action(player,.08)
-	case .Enemy_Base_Melee:
-		if pos,ok:=mx6_capture_place(run,player.pos,-facing,1.15,ACTOR_MOVE_COLLISION_RADIUS);ok {
-			mx6_capture_enemy(run,.Gate_Warden,pos,facing,PENDING_BASE_ATTACK)
-		}
-	case .Enemy_Base_Ranged:
-		if pos,ok:=mx6_capture_place(run,player.pos,-facing,1.85,ACTOR_MOVE_COLLISION_RADIUS);ok {
-			mx6_capture_enemy(run,.Grave_Archer,pos,facing,PENDING_BASE_ATTACK)
-		}
-	case .Enemy_Strike:
-		if pos,ok:=mx6_capture_place(run,player.pos,-facing,1.15,ACTOR_MOVE_COLLISION_RADIUS);ok {
-			mx6_capture_enemy(run,.Gate_Warden,pos,facing,0,.Gate_Strike,true)
-		}
-	case .Enemy_Bolt:
-		if pos,ok:=mx6_capture_place(run,player.pos,-facing,2.25,ACTOR_MOVE_COLLISION_RADIUS);ok {
-			mx6_capture_enemy(run,.Cultist,pos,facing,0,.Arcane_Lance,true)
-		}
-	case .Enemy_Fan:
-		if pos,ok:=mx6_capture_place(run,player.pos,-facing,2.25,ACTOR_MOVE_COLLISION_RADIUS);ok {
-			mx6_capture_enemy(run,.Grave_Archer,pos,facing,0,.Frost_Fan,true)
-		}
-	case .Enemy_Nova:
-		if pos,ok:=mx6_capture_place(run,player.pos,-facing,1.75,ACTOR_MOVE_COLLISION_RADIUS);ok {
-			mx6_capture_enemy(run,.Plague_Toad,pos,facing,0,.Ember_Nova,true)
-		}
-	case .Boss_Attack:
-		if pos,ok:=mx6_capture_place(run,player.pos,-facing,1.40,BOSS_MOVE_RADIUS);ok {
-			mx6_capture_boss(run,pos,facing,.Gate_Strike)
-		}
-	case .Boss_Cast:
-		if pos,ok:=mx6_capture_place(run,player.pos,-facing,2.25,BOSS_MOVE_RADIUS);ok {
-			// Semantic Cast deliberately resolves through the boss Attack sheet.
-			mx6_capture_boss(run,pos,facing,.Shadow_Volley)
-		}
-	case .Familiar_Wisp:
-		mx6_capture_familiar(run,facing,.Wisp)
-	case .Familiar_Crow:
-		mx6_capture_familiar(run,facing,.Crow)
-	case .Familiar_Beast:
-		mx6_capture_familiar(run,facing,.Spirit_Beast)
-	case .Fow_Nova:
-		// Put the caster beside the first room's north-west wall. The live-LOS
-		// shader must clip this wide ring at the room boundary even with lighting
-		// disabled; reveal-mode comparison intentionally bypasses the clip.
-		room:=run.dungeon.rooms_buf[0]
-		player.pos={f32(room.x)+1.2,f32(room.y)+1.2}
-		player.prev_pos=player.pos
-		player.facing={-1,-1}/math.sqrt(f32(2))
-		feel_emit(
-			run,.Nova,player.pos,ARCHETYPE_SKILL_COLORS[.Arcanist],.48,3.8,
-			direction=player.facing,style=.Arcanist,priority=.High,
-		)
-		// Half-life makes the projected ring cross both adjacent walls, turning
-		// this into a real per-fragment FOW test instead of an origin-only check.
-		run.feel[len(run.feel)-1].remaining=.24
-	case .None:
-	}
-
-	player.prev_pos=player.pos
-	player.moving=false
-	run.arrival_timer=0
-	refresh_visibility(run)
-	view_center_on(view,world_from_tile(player.pos))
-}
-
-MX7_Capture_Scenario :: enum u8 {
-	None,
-	Baseline,
-	Door,
-	Stairs,
+	Inventory,
+	Character,
 	Shop,
-	Bar,
-	Garden,
-	Boss,
-	Crowd,
-	Loot,
-	Trap,
-	Shrine,
-	Secret,
-	Fow,
 }
 
-mx7_capture_scenario_from_env :: proc(value: string) -> MX7_Capture_Scenario {
-	switch value {
-	case "baseline": return .Baseline
-	case "door": return .Door
-	case "stairs": return .Stairs
-	case "shop": return .Shop
-	case "bar": return .Bar
-	case "garden": return .Garden
-	case "boss": return .Boss
-	case "crowd": return .Crowd
-	case "loot": return .Loot
-	case "trap": return .Trap
-	case "shrine": return .Shrine
-	case "secret": return .Secret
-	case "fow": return .Fow
-	}
-	return .None
+Game_Boot_Config :: struct {
+	window_width:              int,
+	window_height:             int,
+	seed:                      u64,
+	shot_path:                 string,
+	shot_frame:                int,
+	capture_scenario:          MX6_Capture_Scenario,
+	mx7_capture_scenario:      MX7_Capture_Scenario,
+	mx_story_capture_scenario: MX_Story_Capture_Scenario,
+	mx_save_capture_scenario:  MX_Save_Capture_Scenario,
+	mx7_theme:                 int,
+	mx7_dark:                  int,
+	mx7_open_door:             bool,
+	mx7_perf_enabled:          bool,
+	mx_save_perf_enabled:      bool,
+	perf_warmup:               int,
+	perf_frames:               int,
+	capture_direction:         Vec2,
+	dev_play:                  bool,
+	dev_archetype:             Archetype_Id,
+	dev_archetype_valid:       bool,
+	dev_depth:                 int,
+	dev_open:                  Dev_Open_Panel,
+	dev_bag:                   int,
+	dev_spawn_stairs:          bool,
+	dev_zoom:                  f32,
+	dev_zoom_valid:            bool,
+	dev_reveal:                bool,
+	dev_controls:              bool,
+	dev_mist_off:              bool,
+	dev_lighting:              int,
+	save_trace:                bool,
+	perf_storage_directory:    string,
 }
 
-@(private = "file")
-mx7_capture_room :: proc(run: ^Run, scenario: MX7_Capture_Scenario) -> (room: Room, room_index: int) {
-	if run == nil || run.dungeon.room_count == 0 do return {},-1
-	kind := Special_Room_Kind.None
-	#partial switch scenario {
-	case .Shop: kind = .Shop
-	case .Bar: kind = .Bar
-	case .Garden: kind = .Garden
-	case:
-	}
-	if kind != .None {
-		if special,found := special_room_for_kind(&run.dungeon,kind); found && 0 <= special.room_index && special.room_index < run.dungeon.room_count {
-			return run.dungeon.rooms_buf[special.room_index],special.room_index
-		}
-	}
-	if scenario == .Boss || scenario == .Stairs {
-		room_index = run.dungeon.room_count-1
-	} else {
-		room_index = min(1,run.dungeon.room_count-1)
-	}
-	return run.dungeon.rooms_buf[room_index],room_index
-}
-
-@(private = "file")
-mx7_force_special_room :: proc(run: ^Run, kind: Special_Room_Kind, room_index: int) -> bool {
-	if run == nil || room_index < 0 || room_index >= run.dungeon.room_count do return false
-	room := run.dungeon.rooms_buf[room_index]
-	center := room_center(room)
-	// Capture-only authored chamber: close the full perimeter around the existing
-	// interior and leave one west-facing doorway. This cannot affect real floors.
-	for x in room.x..<room.x+room.w {
-		run.dungeon.tiles[x][room.y] = .Wall
-		run.dungeon.tiles[x][room.y+room.h-1] = .Wall
-	}
-	for y in room.y..<room.y+room.h {
-		run.dungeon.tiles[room.x][y] = .Wall
-		run.dungeon.tiles[room.x+room.w-1][y] = .Wall
-	}
-	run.dungeon.tiles[room.x][center.y] = .Closed_Door
-	run.dungeon.special_rooms_buf = {}
-	run.dungeon.special_rooms_buf[0] = {kind,room_index}
-	run.dungeon.special_room_count = 1
-	run.dungeon.bar_furnishings = {}
-	run.dungeon.shop_gold = {}
-	plan_bar_furnishings(&run.dungeon)
-	plan_shop_gold(&run.dungeon)
-	run.has_shopkeeper = false
-	run.shopkeeper = {}
-	if kind == .Shop {
-		run.shopkeeper = shopkeeper_make(run.seed,run.depth,room,room_index)
-		run.has_shopkeeper = true
-	}
-	room_npc_initialize_ambient_residents(run)
-	return true
-}
-
-@(private = "file")
-mx7_clear_dynamic_world :: proc(run: ^Run) {
-	if run == nil do return
-	clear(&run.enemies)
-	clear(&run.projectiles)
-	clear(&run.familiars)
-	clear(&run.bells)
-	clear(&run.numbers)
-	clear(&run.ground_items)
-	clear(&run.traps)
-	clear(&run.shrines)
-	clear(&run.secrets)
-	clear_feel_events(run)
-	clear(&run.sfx)
-	run.dungeon.solid_props = {}
-	run.next_enemy_id = 0
-	run.next_familiar_id = 0
-	run.boss_engaged = false
-}
-
-@(private = "file")
-mx7_stage_crowd :: proc(run: ^Run, center: Vec2) -> int {
-	if run == nil do return 0
-	clear(&run.enemies)
-	kinds := [8]Enemy_Kind{.Ghoul,.Grave_Archer,.Cultist,.Gate_Warden,.Crypt_Brute,.Plague_Toad,.Ash_Hound,.Bone_Imp}
-	offsets := [12]Vec2{{-2,-1},{-1,-2},{0,-2},{1,-2},{2,-1},{2,0},{2,1},{1,2},{0,2},{-1,2},{-2,1},{-2,0}}
-	for offset,i in offsets {
-		pos := center+offset
-		if blocked_for_radius(&run.dungeon,pos.x,pos.y,ACTOR_MOVE_COLLISION_RADIUS,block_stairs=true) do continue
-		enemy := enemy_make(kinds[i%len(kinds)],pos,run.depth)
-		enemy.prev_pos = pos
-		enemy.cooldown = 100
-		enemy_ensure_id(run,&enemy)
-		append(&run.enemies,enemy)
-	}
-	loot_rng := rng_make(derive_seed(run.seed,0x50455246),stream=11)
-	for offset in ([4]Vec2{{-.6,-.6},{.6,-.6},{-.6,.6},{.6,.6}}) do append(&run.ground_items,make_loot(&loot_rng,center+offset,run=run))
-	return len(run.enemies)
-}
-
-@(private = "file")
-mx7_stage_dressing :: proc(run: ^Run, scenario: MX7_Capture_Scenario, center: Vec2) {
-	if run == nil do return
-	#partial switch scenario {
-	case .Loot:
-		clear(&run.ground_items)
-		loot_rng := rng_make(derive_seed(run.seed,0x4D5837),stream=11)
-		for offset in ([5]Vec2{{-.8,0},{.8,0},{0,-.8},{0,.8},{.7,.7}}) {
-			append(&run.ground_items,make_loot(&loot_rng,center+offset,run=run))
-		}
-	case .Trap:
-		clear(&run.traps)
-		offsets := [3]Vec2{{-.8,.25},{.8,.25},{0,-.85}}
-		for kind in Trap_Kind {
-			append(&run.traps,Trap{pos=center+offsets[int(kind)],kind=kind,damage=18,active=true,revealed=true,reveal_progress=1})
-		}
-	case .Shrine:
-		clear(&run.shrines)
-		append(&run.shrines,Shrine{pos=center+{.8,0},kind=.Twilight})
-	case .Secret:
-		clear(&run.secrets)
-		append(&run.secrets,Secret{pos=center+{.8,0},kind=.Hidden_Cache,revealed=true})
-	case .Crowd:
-		_ = mx7_stage_crowd(run,center)
-	case:
+game_boot_config_default :: proc() -> Game_Boot_Config {
+	return {
+		window_width = 1280,
+		window_height = 720,
+		shot_frame = 40,
+		mx7_theme = -1,
+		mx7_dark = -1,
+		dev_lighting = -1,
+		perf_warmup = 120,
+		perf_frames = 600,
+		capture_direction = {1, 1},
 	}
 }
 
-mx7_stage_capture :: proc(app: ^App, view: ^View, scenario: MX7_Capture_Scenario, theme_index: int, dark_override: int, open_door := false) -> bool {
-	if app == nil || view == nil || app.mode != .Playing || scenario == .None do return false
-	run := &app.run
-	if 0 <= theme_index && theme_index < len(THEMES) do run.theme_index = theme_index
-	if dark_override >= 0 do run.dark_floor = dark_override != 0
-	run.arrival_timer = 0
-	app.inventory_open,app.character_open,app.shop_open = false,false,false
-	app.story_minigame = {}
-	app_story_close_panel(app)
-	room,room_index := mx7_capture_room(run,scenario)
-	if room_index < 0 do return false
-	mx7_clear_dynamic_world(run)
-	if scenario == .Shop && !mx7_force_special_room(run,.Shop,room_index) do return false
-	if scenario == .Bar && !mx7_force_special_room(run,.Bar,room_index) do return false
-	if scenario == .Garden && !mx7_force_special_room(run,.Garden,room_index) do return false
-	center_tile := room_center(room)
-	center := Vec2{f32(center_tile.x)+.5,f32(center_tile.y)+.5}
-	player_pos := center+Vec2{-1.2,.8}
-	if scenario == .Stairs {
-		s := run.dungeon.stairs
-		center = {f32(s.x)+.5,f32(s.y)+.5}
-		player_pos = center+{-2,0}
-	} else if scenario == .Fow {
-		player_pos = {f32(room.x)+1.2,f32(room.y)+1.2}
-		center = player_pos
-	} else if scenario == .Door {
-		found_door := false
-		for x in 0..<MAP_W {
-			for y in 0..<MAP_H {
-				kind := run.dungeon.tiles[x][y]
-				if kind != .Closed_Door && kind != .Open_Door do continue
-				if open_door do run.dungeon.tiles[x][y] = .Open_Door
-				else do run.dungeon.tiles[x][y] = .Closed_Door
-				center = {f32(x)+.5,f32(y)+.5}
-				spots := [4]Vec2{{f32(x)+1.5,f32(y)+.5},{f32(x)-.5,f32(y)+.5},{f32(x)+.5,f32(y)+1.5},{f32(x)+.5,f32(y)-.5}}
-				for spot in spots {
-					if !blocked_for_radius(&run.dungeon,spot.x,spot.y,ACTOR_MOVE_COLLISION_RADIUS,block_stairs=true) {
-						player_pos=spot
-						found_door=true
-						break
-					}
-				}
-				if !found_door do continue
-				break
-			}
-			if found_door do break
-		}
-		if !found_door do return false
-	}
-	if blocked_for_radius(&run.dungeon,player_pos.x,player_pos.y,ACTOR_MOVE_COLLISION_RADIUS,block_stairs=true) {
-		player_pos = center
-	}
-	run.player.pos = player_pos
-	run.player.prev_pos = player_pos
-	run.player.facing = {1,0}
-	run.player.moving = false
-	if scenario == .Boss do mx6_capture_boss(run,center,{-1,0},.Shadow_Volley)
-	mx7_stage_dressing(run,scenario,center)
-	if scenario == .Fow {
-		feel_emit(run,.Nova,player_pos,ARCHETYPE_SKILL_COLORS[.Arcanist],.48,3.8,direction={-1,-1},style=.Arcanist,priority=.High)
-		run.feel[len(run.feel)-1].remaining = .24
-	}
-	refresh_visibility(run)
-	// Baselines model a previously visited stairs tile so normal and dark cards
-	// both exercise the persistent off-viewport guidance arrow.
-	if scenario == .Baseline {
-		s := run.dungeon.stairs
-		if dungeon_in_bounds(s.x,s.y) do run.explored[s.x][s.y] = true
-	}
-	view_center_on(view,world_from_tile(center))
-	return true
+Game_Runtime :: struct {
+	config:               Game_Boot_Config,
+	assets:               Assets,
+	audio:                Audio,
+	app:                  App,
+	platform:             Platform_Runtime,
+	persistence:          Persistence_Coordinator,
+	view:                 View,
+	controller:           Controller_Runtime,
+	fixed_step:           Mobile_Fixed_Step_State,
+	frame_count:          int,
+	fixed_capture:        bool,
+	perf_enabled:         bool,
+	perf_samples:         [dynamic]f32,
+	perf_resources_ready: bool,
+	capture_stage_ok:     bool,
+	running:              bool,
 }
 
-mx7_stage_perf :: proc(app: ^App, view: ^View, theme_index: int, dark_override: int) -> bool {
-	if app == nil || view == nil || app.mode != .Playing do return false
-	run := &app.run
-	if 0 <= theme_index && theme_index < len(THEMES) do run.theme_index = theme_index
-	if dark_override >= 0 do run.dark_floor = dark_override != 0
-	mx7_clear_dynamic_world(run)
-	// Dedicated synthetic 16×16 arena guarantees the visible workload rather
-	// than inheriting generated special rooms, doors, or furnishings.
-	run.dungeon.special_rooms_buf = {}
-	run.dungeon.special_room_count = 0
-	run.dungeon.bar_furnishings = {}
-	run.dungeon.shop_gold = {}
-	run.has_shopkeeper = false
-	run.shopkeeper = {}
-	run.ambient_residents = {}
-	for x in 0..<MAP_W do for y in 0..<MAP_H do run.dungeon.tiles[x][y]=.Wall
-	arena := Room{24,24,16,16}
-	run.dungeon.room_count=1
-	run.dungeon.rooms_buf[0]=arena
-	for x in arena.x+1..<arena.x+arena.w-1 do for y in arena.y+1..<arena.y+arena.h-1 do run.dungeon.tiles[x][y]=.Floor
-	run.dungeon.stairs={arena.x+arena.w-2,arena.y+arena.h-2}
-	run.dungeon.tiles[run.dungeon.stairs.x][run.dungeon.stairs.y]=.Stairs
-	center_tile := room_center(arena)
-	center := Vec2{f32(center_tile.x)+.5,f32(center_tile.y)+.5}
-	run.player.pos = center
-	run.player.prev_pos = center
-	run.player.facing = {1,0}
-	run.player.moving = false
-	run.player.hp = run.player.max_hp
-	run.arrival_timer = 0
-	if mx7_stage_crowd(run,center) != 12 do return false
-	// Fixed persistent visual load is refreshed after each simulation pass.
-	mx7_perf_refresh_visuals(run)
-	append(&run.shrines,Shrine{pos=center+{2.3,0},kind=.Twilight})
-	append(&run.traps,Trap{pos=center+{-2.3,0},kind=.Rune,damage=18,active=true,revealed=true,reveal_progress=1})
-	refresh_visibility(run)
-	view_center_on(view,world_from_tile(center))
-	return true
-}
-
-mx7_perf_refresh_visuals :: proc(run: ^Run) {
-	if run == nil do return
-	center := run.player.pos
-	clear(&run.projectiles)
-	clear(&run.numbers)
-	clear_feel_events(run)
-	for i in 0..<24 {
-		angle := f32(i)*math.TAU/24
-		direction := Vec2{math.cos(angle),math.sin(angle)}
-		pos := center+direction*(1+f32(i%3)*.45)
-		append(&run.projectiles,Projectile{pos=pos,prev_pos=pos,vel=direction,visual=Projectile_Visual(i%len(Projectile_Visual)),visual_age=f32(i)*.07,damage=1,ttl=100,color=DAMAGE_TYPE_COLORS[Damage_Type(i%len(Damage_Type))]})
-		feel_emit(run,Feel_Kind(i%(len(Feel_Kind)-1)),pos,DAMAGE_TYPE_COLORS[Damage_Type(i%len(Damage_Type))],100,.55,direction={1,0})
-		append(&run.numbers,Damage_Number{pos=pos,value=10+i,kind=.Damage_Dealt,damage_type=Damage_Type(i%len(Damage_Type))})
-	}
-}
-
-mx_story_stage_capture :: proc(app: ^App, scenario: MX_Story_Capture_Scenario) -> bool {
-	if app == nil || app.mode != .Playing || scenario == .None do return false
-	app.inventory_open,app.character_open,app.shop_open = false,false,false
-	app.story_minigame = {}
-	app_story_close_panel(app)
-
-	switch scenario {
-	case .Omen_Initial:
-		beat := story_current_beat(&app.run)
-		if beat == nil do return false
-		app.run.story.relic = .Asterion_Nail
-		if !app_story_open_omen(app) do return false
-		app.story_panel.node_elapsed = 0
-	case .Relic_Choices:
-		beat := story_current_beat(&app.run)
-		if beat == nil do return false
-		app.run.story.relic = .Crown_Of_Antlers_And_Teeth
-		if !app_story_open_omen(app) do return false
-		app_story_panel_reveal(app)
-		app.story_panel.choice_cursor = 1
-	case .Guest:
-		guest_index := -1
-		for guest, index in app.run.story_runtime.guests {
-			if guest.role == .Antlered_Hunter && guest.variant == 2 {
-				guest_index = index
-				break
-			}
-		}
-		if guest_index < 0 do return false
-		guest := &app.run.story_runtime.guests[guest_index]
-		guest.witness = false
-		guest.resolved = false
-		if !app_story_open_guest_dialogue(app,guest_index) do return false
-		app_story_panel_reveal(app)
-		app.story_panel.choice_cursor = 2
-	case .Soul:
-		app.run.depth = 7
-		room_index := min(1,app.run.dungeon.room_count-1)
-		if room_index < 0 do return false
-		app.run.dungeon.special_room_count = 1
-		app.run.dungeon.special_rooms_buf[0] = {.Hall_Of_Unlost_Echoes,room_index}
-		app.run.story_runtime.soul = {}
-		app.run.story_runtime.hall = {}
-		index := app.run.depth-1
-		app.run.story_runtime.hall_ledgers[index] = {}
-		app.run.story_runtime.soul_games[index] = {valid=true,room_index=room_index,outcome=.Won}
-		story_populate_floor(&app.run)
-		if !app.run.story_runtime.soul.present || !app_story_open_lossless_soul(app) do return false
-		app_story_panel_reveal(app)
-		app.story_panel.choice_cursor = 1
-	case .Ending:
-		app.run.story.flags.gate = .Unresolved
-		if !story_record_gate_choice(&app.run.story,.Aid) do return false
-		app.run.story_runtime.epilogue_stage = .Ending
-		if !app_story_open_epilogue(app) do return false
-		app_story_panel_reveal(app)
-	case .None:
-		return false
-	}
-	return app.story_panel.active && !app.story_minigame.active
-}
-
-mx_save_stage_capture :: proc(app:^App,scenario:MX_Save_Capture_Scenario)->bool {
-	if app==nil||scenario==.None do return false
-	profile_destroy(&app.profile)
-	profile_init(&app.profile,"mx-save-capture")
-	app.chronicle={archetype_filter=-1,difficulty_filter=-1,focus=.Timeline}
-	app.active_run_damaged=false;app.active_run_available=false;app.confirm_index=0
-	if scenario==.Recovery {app.active_run_damaged=true;app.mode=.Recovery;return true}
-	if scenario==.Abandon {app.active_run_available=true;app.mode=.Abandon_Confirm;return true}
-	if scenario!=.Empty {
-		for i in 0..<14 {
-			victory:=i%3==0
-			run_id:=fmt.aprintf("capture-run-%02d",i)
-			record:=Chronicle_Record{
-				record_schema_version=CHRONICLE_RECORD_SCHEMA_VERSION,
-				run_id=run_id,outcome=victory?.Victory:.Fallen,
-				archetype=Archetype_Id(i%len(Archetype_Id)),difficulty=Difficulty_Id(i%len(Difficulty_Id)),
-				seed=u64(0xA700+i),deepest_floor=1+i%DUNGEON_DEPTH,
-				started_at_utc="2026-08-17T18:00:00Z",ended_at_utc="2026-08-17T18:42:00Z",
-				active_ticks=u64((12+i*4)*SIM_HZ*60),final_level=2+i%9,kills=8+i*7,
-				traps_triggered=i%5,shrines_used=1+i%4,secrets_opened=i%3,
-				bars_visited=3,bars_toasted=i%4,challenge_rooms_cleared=i%2,
-				run_modifier=Run_Modifier_Id(i%len(Run_Modifier_Id)),
-				cause_of_death=victory?"":"void_sentinel",
-				story_relic_id="Asterion_Nail",story_ending_id=victory?"the_held_door":"",
-			}
-			record.visited_theme_ids[0]="crypt_of_ash";record.visited_theme_count=1
-			record.defeated_boss_ids[0]="ash_gallows";record.defeated_boss_count=1
-			record.notable_items[0]={item_id="asterion_nail",display_name="Asterion Nail",rarity=.Unique};record.notable_count=1
-			_=profile_finalize_record(&app.profile,&record)
-			delete(run_id)
-		}
-	}
-	app.chronicle.outcome=.All
-	if scenario==.Victories do app.chronicle.outcome=.Victories
-	if scenario==.Fallen do app.chronicle.outcome=.Fallen
-	app.mode=.Chronicle
-	return true
-}
-
-@(private = "file")
-mx7_perf_percentile :: proc(samples: []f32, fraction: f32) -> f32 {
-	if len(samples) == 0 do return 0
-	index := clamp(int(math.ceil(fraction*f32(len(samples))))-1,0,len(samples)-1)
-	return samples[index]
-}
-
-main :: proc() {
-	window_width,window_height := 1280,720
-	if value := os.get_env("ARCH_ROGUE_CAPTURE_WIDTH",context.temp_allocator); value != "" {
-		if parsed,ok := strconv.parse_int(value); ok do window_width = clamp(parsed,640,7680)
-	}
-	if value := os.get_env("ARCH_ROGUE_CAPTURE_HEIGHT",context.temp_allocator); value != "" {
-		if parsed,ok := strconv.parse_int(value); ok do window_height = clamp(parsed,480,4320)
-	}
+game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
+	rt.config = boot
+	config := &rt.config
 	when ARCH_ROGUE_ANDROID {
 		// Zero requests raylib's physical NativeWindow dimensions instead of a
 		// scaled 1280x720 framebuffer. Android owns one fullscreen surface.
 		rl.SetConfigFlags({.FULLSCREEN_MODE})
 		rl.InitWindow(0,0,"Arch Rogue " + VERSION)
+	} else when ARCH_ROGUE_WEB {
+		// The shell owns canvas CSS size; the boot config carries the initial
+		// framebuffer size and later browser resizes flow through SetWindowSize.
+		rl.InitWindow(i32(config.window_width), i32(config.window_height), "Arch Rogue " + VERSION)
 	} else {
 		rl.SetConfigFlags({.WINDOW_RESIZABLE})
-		rl.InitWindow(i32(window_width), i32(window_height), "Arch Rogue " + VERSION)
+		rl.InitWindow(i32(config.window_width), i32(config.window_height), "Arch Rogue " + VERSION)
 		rl.SetWindowMinSize(640,480)
 	}
-	defer rl.CloseWindow()
 	rl.SetExitKey(.KEY_NULL) // ESC navigates, it does not quit
 
-	// Dev hooks: ARCH_ROGUE_SEED pins the run seed for repro; ARCH_ROGUE_ZOOM
-	// sets initial zoom; ARCH_ROGUE_SHOT saves a screenshot (path relative to
-	// cwd) at frame 40 and exits. ARCH_ROGUE_PLAY skips archetype select, with
-	// ARCH_ROGUE_ARCHETYPE optionally selecting its class first. Capture staging
-	// remains inert unless one of the dedicated MX capture variables names a scenario.
-	seed := u64(time.now()._nsec)
-	if env := os.get_env("ARCH_ROGUE_SEED", context.temp_allocator); env != "" {
-		if v, seed_ok := strconv.parse_u64(env); seed_ok do seed = v
-	}
-	shot_path := os.get_env("ARCH_ROGUE_SHOT", context.allocator)
-	shot_frame := 40
-	if env := os.get_env("ARCH_ROGUE_SHOT_FRAME", context.temp_allocator); env != "" {
-		if v, frame_ok := strconv.parse_int(env); frame_ok do shot_frame = v
-	}
-	capture_scenario:=mx6_capture_scenario_from_env(os.get_env("ARCH_ROGUE_MX6_CAPTURE",context.temp_allocator))
-	mx7_capture_scenario:=mx7_capture_scenario_from_env(os.get_env("ARCH_ROGUE_MX7_CAPTURE",context.temp_allocator))
-	mx_story_capture_scenario:=mx_story_capture_scenario_from_env(os.get_env("ARCH_ROGUE_MX_STORY_CAPTURE",context.temp_allocator))
-	mx_save_capture_scenario:=mx_save_capture_scenario_from_env(os.get_env("ARCH_ROGUE_MX_SAVE_CAPTURE",context.temp_allocator))
-	mx7_theme:=-1
-	if value:=os.get_env("ARCH_ROGUE_CAPTURE_THEME",context.temp_allocator);value!="" {
-		if parsed,ok:=strconv.parse_int(value);ok do mx7_theme=parsed
-	}
-	mx7_dark:=-1
-	if value:=os.get_env("ARCH_ROGUE_CAPTURE_DARK",context.temp_allocator);value!="" {
-		if parsed,ok:=strconv.parse_int(value);ok do mx7_dark=parsed
-	}
-	mx7_open_door:=os.get_env("ARCH_ROGUE_CAPTURE_DOOR",context.temp_allocator)=="open"
-	mx7_perf_enabled:=os.get_env("ARCH_ROGUE_MX7_PERF",context.temp_allocator)!=""
-	mx_save_perf_enabled:=os.get_env("ARCH_ROGUE_MX_SAVE_PERF",context.temp_allocator)!=""
-	perf_enabled:=mx7_perf_enabled||mx_save_perf_enabled
-	if (mx_story_capture_scenario != .None || mx_save_capture_scenario != .None) &&
-		(int(rl.GetScreenWidth()) != window_width || int(rl.GetScreenHeight()) != window_height) {
-		fmt.eprintln("UI_CAPTURE_ERROR requested window dimensions were not honored")
-		return
-	}
-	perf_warmup:=120
-	perf_frames:=600
-	if value:=os.get_env("ARCH_ROGUE_PERF_WARMUP",context.temp_allocator);value!="" {
-		if parsed,ok:=strconv.parse_int(value);ok do perf_warmup=max(0,parsed)
-	}
-	if value:=os.get_env("ARCH_ROGUE_PERF_FRAMES",context.temp_allocator);value!="" {
-		if parsed,ok:=strconv.parse_int(value);ok do perf_frames=max(1,parsed)
-	}
-	capture_direction:=Vec2{1,1}
-	if direction,ok:=mx6_capture_direction_from_env(os.get_env("ARCH_ROGUE_CAPTURE_DIR",context.temp_allocator));ok {
-		capture_direction=direction
+	if (config.mx_story_capture_scenario != .None || config.mx_save_capture_scenario != .None) &&
+		(int(rl.GetScreenWidth()) != config.window_width || int(rl.GetScreenHeight()) != config.window_height) {
+		platform_log("UI_CAPTURE_ERROR requested window dimensions were not honored")
+		rl.CloseWindow()
+		return false
 	}
 
-	assets: Assets
-	assets_load(&assets)
-	defer assets_unload(&assets)
-	audio: Audio
-	audio_init(&audio)
-	defer audio_shutdown(&audio)
-
-	app: App
-	app_init(&app, seed)
-	platform:Platform_Runtime
-	platform_runtime_init(&platform,app.mode)
-	if platform.mobile do app.input_modality=.Touch
-	persistence:Persistence_Coordinator
-	perf_storage_directory:string
-	defer {
-		if perf_storage_directory!="" {
-			_=os.remove_all(perf_storage_directory)
-			delete(perf_storage_directory)
-		}
+	assets_load(&rt.assets)
+	when ARCH_ROGUE_WEB {
+		// Browser audio contexts start suspended until a user gesture. The web
+		// entry initializes audio from the first gesture callback instead.
+	} else {
+		audio_init(&rt.audio)
 	}
-	dev_play_enabled:=os.get_env("ARCH_ROGUE_PLAY",context.temp_allocator)!=""
-	normal_persistence_enabled:=capture_scenario==.None&&mx7_capture_scenario==.None&&mx_story_capture_scenario==.None&&mx_save_capture_scenario==.None&&
-		!mx7_perf_enabled&&shot_path==""&&!dev_play_enabled
-	if mx_save_perf_enabled {
-		directory,directory_err:=os.make_directory_temp("","arch-rogue-mx-save-perf-*",context.allocator)
-		if directory_err!=nil {
-			fmt.eprintln("MX_SAVE_PERF_ERROR temporary storage unavailable")
-			return
-		}
-		perf_storage_directory=directory
-		paths,paths_ok:=storage_paths_from_directory(perf_storage_directory)
-		if !paths_ok {
-			fmt.eprintln("MX_SAVE_PERF_ERROR temporary paths unavailable")
-			return
-		}
-		persistence={paths=paths,ready=true}
-		if !save_worker_init(&persistence.worker) {
-			storage_paths_destroy(&persistence.paths)
-			persistence={}
-			fmt.eprintln("MX_SAVE_PERF_ERROR save worker unavailable")
-			return
+
+	app_init(&rt.app, config.seed)
+	platform_runtime_init(&rt.platform, rt.app.mode)
+	if rt.platform.mobile do rt.app.input_modality = .Touch
+
+	rt.fixed_capture = config.capture_scenario != .None || config.mx7_capture_scenario != .None ||
+		config.mx_story_capture_scenario != .None || config.mx_save_capture_scenario != .None
+	rt.perf_enabled = config.mx7_perf_enabled || config.mx_save_perf_enabled
+	normal_persistence_enabled := !rt.fixed_capture && !config.mx7_perf_enabled &&
+		!config.mx_save_perf_enabled && config.shot_path == "" && !config.dev_play
+	if config.mx_save_perf_enabled {
+		when ARCH_ROGUE_WEB {
+			platform_log("MX_SAVE_PERF_ERROR unsupported on web")
+			game_init_fail_before_view(rt)
+			return false
+		} else {
+			paths, paths_ok := storage_paths_from_directory(config.perf_storage_directory)
+			if config.perf_storage_directory == "" || !paths_ok {
+				platform_log("MX_SAVE_PERF_ERROR temporary paths unavailable")
+				game_init_fail_before_view(rt)
+				return false
+			}
+			rt.persistence = {paths = paths, ready = true}
+			if !save_worker_init(&rt.persistence.worker) {
+				storage_paths_destroy(&rt.persistence.paths)
+				rt.persistence = {}
+				platform_log("MX_SAVE_PERF_ERROR save worker unavailable")
+				game_init_fail_before_view(rt)
+				return false
+			}
 		}
 	} else if normal_persistence_enabled {
-		persistence_ready:=persistence_coordinator_init(&persistence,&app,seed)
-		if !persistence_ready&&os.get_env("ARCH_ROGUE_SAVE_TRACE",context.temp_allocator)!="" {
-			fmt.eprintln("MX_SAVE_TRACE persistence coordinator initialization failed")
+		persistence_ready := persistence_coordinator_init(&rt.persistence, &rt.app, config.seed)
+		if !persistence_ready && config.save_trace {
+			platform_log("MX_SAVE_TRACE persistence coordinator initialization failed")
 		}
 	}
-	if app.profile.profile_id=="" {
-		profile_id:=persistence_new_profile_id(seed);profile_init(&app.profile,profile_id);delete(profile_id)
+	if rt.app.profile.profile_id == "" {
+		profile_id := persistence_new_profile_id(config.seed)
+		profile_init(&rt.app.profile, profile_id)
+		delete(profile_id)
 	}
-	defer profile_destroy(&app.profile)
-	defer run_destroy(&app.run)
-	defer persistence_coordinator_destroy(&persistence)
-	if capture_scenario!=.None || mx7_capture_scenario!=.None || mx_story_capture_scenario!=.None || mx_save_capture_scenario!=.None || perf_enabled {
+	when ARCH_ROGUE_WEB {
+		// Browser fullscreen is transient and gesture-gated; never restore it
+		// from persisted options at boot. The user re-enters it via the shell
+		// button or the options row.
+		rt.app.options.fullscreen = false
+	}
+	if rt.fixed_capture || rt.perf_enabled {
 		// Validation profiles are complete and ephemeral: persisted user graphics,
 		// accessibility, difficulty, and zoom cannot change acceptance workloads.
-		app.options.fullscreen=false
-		if mx_save_capture_scenario!=.None&&window_width==3840&&window_height==2160 do app.options.fullscreen=true
-		app.options.audio_enabled=false
-		app.options.view_zoom=OPTIONS_VIEW_ZOOM_DEFAULT
-		if capture_scenario!=.None {
-			app.options.mist_enabled=false
+		rt.app.options.fullscreen = false
+		if config.mx_save_capture_scenario != .None && config.window_width == 3840 && config.window_height == 2160 {
+			rt.app.options.fullscreen = true
 		}
-		if mx7_capture_scenario!=.None || mx_story_capture_scenario!=.None || mx_save_capture_scenario!=.None {
-			app.options.lighting_enabled=true
-			app.options.mist_enabled=false
-			app.options.minimap_visible=true
+		rt.app.options.audio_enabled = false
+		rt.app.options.view_zoom = OPTIONS_VIEW_ZOOM_DEFAULT
+		if config.capture_scenario != .None {
+			rt.app.options.mist_enabled = false
 		}
-		if perf_enabled {
-			app.options.lighting_enabled=true
-			app.options.mist_enabled=true
-			app.options.minimap_visible=false
-			app.options.difficulty=.Medium
+		if config.mx7_capture_scenario != .None || config.mx_story_capture_scenario != .None ||
+			config.mx_save_capture_scenario != .None {
+			rt.app.options.lighting_enabled = true
+			rt.app.options.mist_enabled = false
+			rt.app.options.minimap_visible = true
 		}
-		if capture_scenario!=.None {
-			if value:=os.get_env("ARCH_ROGUE_LIGHTING",context.temp_allocator);value!="" do app.options.lighting_enabled=value!="0"
+		if rt.perf_enabled {
+			rt.app.options.lighting_enabled = true
+			rt.app.options.mist_enabled = true
+			rt.app.options.minimap_visible = false
+			rt.app.options.difficulty = .Medium
 		}
-	}
-	app.minimap_visible=app.options.minimap_visible
-	view: View
-	view_init(&view)
-	platform_bind_view_layout(&platform,&view)
-	if platform.mobile&&!view_mobile_shader_preflight(&view) do platform_log("ARCH_ROGUE_ANDROID_ERROR required GLES shaders failed preflight")
-	defer view_shutdown(&view)
-	controller: Controller_Runtime
-	apply_platform_effects(&app,&view,&audio,{.Apply_Window,.Apply_FPS,.Apply_Zoom,.Apply_Audio})
-	if perf_enabled do rl.SetTargetFPS(0)
-	if capture_scenario==.None && mx7_capture_scenario==.None && mx_story_capture_scenario==.None && mx_save_capture_scenario==.None && !perf_enabled {
-		if env := os.get_env("ARCH_ROGUE_ZOOM", context.temp_allocator); env != "" {
-			if v, zoom_ok := strconv.parse_f32(env); zoom_ok do view_apply_base_zoom(&view,v,clamp_to_options=false)
+		if config.capture_scenario != .None && config.dev_lighting >= 0 {
+			rt.app.options.lighting_enabled = config.dev_lighting != 0
 		}
 	}
-	if os.get_env("ARCH_ROGUE_REVEAL", context.temp_allocator) != "" {
-		app.dev_reveal = true
+	rt.app.minimap_visible = rt.app.options.minimap_visible
+	view_init(&rt.view)
+	platform_bind_view_layout(&rt.platform, &rt.view)
+	if rt.platform.mobile && !view_mobile_shader_preflight(&rt.view) {
+		platform_log("ARCH_ROGUE_ANDROID_ERROR required GLES shaders failed preflight")
 	}
+	rt.controller = {}
+	apply_platform_effects(&rt.app, &rt.view, &rt.audio, {.Apply_Window, .Apply_FPS, .Apply_Zoom, .Apply_Audio})
+	if rt.perf_enabled do rl.SetTargetFPS(0)
+	if !rt.fixed_capture && !rt.perf_enabled && config.dev_zoom_valid {
+		view_apply_base_zoom(&rt.view, config.dev_zoom, clamp_to_options = false)
+	}
+	if config.dev_reveal do rt.app.dev_reveal = true
 	// Unpersisted A/B hook for benchmarks and screenshot comparisons.
-	if !perf_enabled && os.get_env("ARCH_ROGUE_MIST", context.temp_allocator) == "0" {
-		app.options.mist_enabled = false
-	}
-	if os.get_env("ARCH_ROGUE_DEV", context.temp_allocator) != "" {
-		app.dev_controls = true
-	}
-	if os.get_env("ARCH_ROGUE_PLAY", context.temp_allocator) != "" {
-		_ = app_apply(&app, Intent{confirm = true}) // Title -> Select
-		if archetype,ok:=dev_archetype_from_env(os.get_env("ARCH_ROGUE_ARCHETYPE",context.temp_allocator));ok {
-			app.select_index=int(archetype)
+	if !rt.perf_enabled && config.dev_mist_off do rt.app.options.mist_enabled = false
+	if config.dev_controls do rt.app.dev_controls = true
+	if config.dev_play {
+		_ = app_apply(&rt.app, Intent{confirm = true}) // Title -> Select
+		if config.dev_archetype_valid {
+			rt.app.select_index = int(config.dev_archetype)
 		}
-		if app_apply(&app, Intent{confirm = true}) { // Select -> Playing
-			assets_activate_player(&assets,app.run.player.archetype)
-			view_center_on(&view, world_from_tile(run_spawn_point(&app.run)))
+		if app_apply(&rt.app, Intent{confirm = true}) { // Select -> Playing
+			assets_activate_player(&rt.assets, rt.app.run.player.archetype)
+			view_center_on(&rt.view, world_from_tile(run_spawn_point(&rt.app.run)))
 		}
 		// Dev: start deeper / spawn at the stairs room (boss arenas).
-		if env := os.get_env("ARCH_ROGUE_DEPTH", context.temp_allocator); env != "" {
-			if v, depth_ok := strconv.parse_int(env); depth_ok {
-				for app.run.depth < v do run_descend(&app.run)
-				view_center_on(&view, world_from_tile(run_spawn_point(&app.run)))
+		if config.dev_depth > 0 {
+			for rt.app.run.depth < config.dev_depth do run_descend(&rt.app.run)
+			view_center_on(&rt.view, world_from_tile(run_spawn_point(&rt.app.run)))
+		}
+		// Dev: open a panel immediately for UI screenshots. dev_bag copies up to
+		// n shopkeeper stock items into the bag so item rows and the selected-item
+		// panel can be captured without playing to loot.
+		switch config.dev_open {
+		case .Inventory: rt.app.inventory_open = true
+		case .Character: rt.app.character_open = true
+		case .Shop: rt.app.shop_open = true
+		case .None:
+		}
+		if config.dev_bag > 0 && rt.app.run.has_shopkeeper {
+			keeper := &rt.app.run.shopkeeper
+			player := &rt.app.run.player
+			for i in 0 ..< min(config.dev_bag, keeper.stock_count) {
+				if player.bag_count >= BAG_CAPACITY do break
+				player.bag[player.bag_count] = keeper.stock[i]
+				player.bag_count += 1
 			}
 		}
-		// Dev: open a panel immediately for UI screenshots. ARCH_ROGUE_BAG=n
-		// copies up to n shopkeeper stock items into the bag so item rows and
-		// the selected-item panel can be captured without playing to loot.
-		switch os.get_env("ARCH_ROGUE_OPEN", context.temp_allocator) {
-		case "inventory": app.inventory_open = true
-		case "character": app.character_open = true
-		case "shop": app.shop_open = true
-		}
-		if env := os.get_env("ARCH_ROGUE_BAG", context.temp_allocator); env != "" {
-			if count, bag_ok := strconv.parse_int(env); bag_ok && app.run.has_shopkeeper {
-				keeper := &app.run.shopkeeper
-				player := &app.run.player
-				for i in 0 ..< min(count, keeper.stock_count) {
-					if player.bag_count >= BAG_CAPACITY do break
-					player.bag[player.bag_count] = keeper.stock[i]
-					player.bag_count += 1
-				}
-			}
-		}
-		if perf_enabled {
-			if app.story_panel.active {
-				app_story_panel_reveal(&app)
-				_=app_apply(&app,Intent{confirm=true})
+		if rt.perf_enabled {
+			if rt.app.story_panel.active {
+				app_story_panel_reveal(&rt.app)
+				_ = app_apply(&rt.app, Intent{confirm = true})
 			}
 			// Raw dev descent queues the target floor's omen. Profiling needs an
 			// active crowded floor, not a frozen modal, so discard only the pending
 			// presentation request after retaining the generated story state.
-			app.run.story_runtime.requests={}
-			app_story_runtime_reset(&app)
-			if !mx7_stage_perf(&app,&view,mx7_theme,mx7_dark) {
-				fmt.eprintln("MX7_PERF_ERROR staging failed")
-				return
+			rt.app.run.story_runtime.requests = {}
+			app_story_runtime_reset(&rt.app)
+			if !mx7_stage_perf(&rt.app, &rt.view, config.mx7_theme, config.mx7_dark) {
+				platform_log("MX7_PERF_ERROR staging failed")
+				game_init_fail_after_view(rt)
+				return false
 			}
-			app.minimap_visible=false
+			rt.app.minimap_visible = false
 		}
-		if os.get_env("ARCH_ROGUE_SPAWN", context.temp_allocator) == "stairs" {
-			s := app.run.dungeon.stairs
+		if config.dev_spawn_stairs {
+			s := rt.app.run.dungeon.stairs
 			spots := [4]Vec2{
 				{f32(s.x) - 2.5, f32(s.y) + 0.5},
 				{f32(s.x) + 0.5, f32(s.y) - 2.5},
@@ -2195,10 +1104,10 @@ main :: proc() {
 				{f32(s.x) + 0.5, f32(s.y) + 3.5},
 			}
 			for spot in spots {
-				if !blocked_for_radius(&app.run.dungeon, spot.x, spot.y, block_stairs = true) {
-					app.run.player.pos = spot
-					app.run.player.prev_pos = spot
-					view_center_on(&view, world_from_tile(spot))
+				if !blocked_for_radius(&rt.app.run.dungeon, spot.x, spot.y, block_stairs = true) {
+					rt.app.run.player.pos = spot
+					rt.app.run.player.prev_pos = spot
+					view_center_on(&rt.view, world_from_tile(spot))
 					break
 				}
 			}
@@ -2207,208 +1116,316 @@ main :: proc() {
 
 	// Sim advances in fixed SIM_DT steps; rendering runs at display rate and
 	// interpolates between the last two sim states.
-	fixed_step:Mobile_Fixed_Step_State
-	frame_count := 0
-	perf_samples := make([dynamic]f32,0,perf_frames)
-	defer delete(perf_samples)
-	perf_resources_ready := true
-	capture_stage_ok := true
-	for !app.quit_requested {
-		if platform.mobile {
-			lifecycle_result:=platform_reduce_android_events(&platform,&app)
-			platform_apply_lifecycle_result(
-				&platform,lifecycle_result,&app,&view,&assets,&audio,&controller,&persistence,&fixed_step,
-			)
-			if platform.lifecycle.destroyed {
-				app.quit_requested=true
-				continue
-			}
-			if !mobile_lifecycle_interactive(&platform.lifecycle) {
-				persistence_update_scheduler(&persistence,&app,rl.GetTime())
-				platform_wait_suspended(&platform)
-				free_all(context.temp_allocator)
-				continue
-			}
-		}
-		if rl.WindowShouldClose()&&app.mode!=.Save_Wait&&app.mode!=.Save_Error {
-			live_run:=platform_live_descent(&app)
-			if platform.mobile {
-				if persistence.ready&&live_run do _=persistence_flush_for_suspend(&persistence,&app)
-				app.quit_requested=true
-				continue
-			} else if persistence.ready&&live_run {
-				app.persistence_request=.Save_Quit;app.persistence_return=.Paused;app.mode=.Save_Wait
-				persistence.save_wait_presented=false
-				app_clear_play_input(&app)
-			} else {
-				app.quit_requested=true
-				continue
-			}
-		}
-		raw_frame_dt := rl.GetFrameTime()
-		frame_dt := min(raw_frame_dt, f32(MAX_FRAME_DT))
-		fixed_capture := capture_scenario != .None || mx7_capture_scenario != .None || mx_story_capture_scenario != .None || mx_save_capture_scenario != .None
-		if fixed_capture do frame_dt = SIM_DT
-		if platform.resume_gate do frame_dt=0
+	rt.fixed_step = {}
+	rt.frame_count = 0
+	rt.perf_samples = make([dynamic]f32, 0, config.perf_frames)
+	rt.perf_resources_ready = true
+	rt.capture_stage_ok = true
+	rt.running = true
+	return true
+}
 
-		view_update(&view, frame_dt)
-		mode_was := app.mode
-		shop_was_open := app.shop_open
-		intent: Intent
-		resume_gate_was:=platform.resume_gate
-		if !fixed_capture do intent = platform_collect_intent(&platform,&app,&view,&controller)
-		if resume_gate_was&&!platform.resume_gate&&app.mode==.Playing do audio_resume(&audio)
-		if cue, has_cue := audio_cue_for_intent(intent); has_cue do audio_play_cue(&audio,cue)
-		if app_apply(&app, intent) {
-			if mode_was == .Select && app.mode == .Playing {
-				assets_activate_player(&assets,app.run.player.archetype)
-			}
-			view_center_on(&view, world_from_tile(run_spawn_point(&app.run)))
-		}
-		if platform.mobile&&!platform.resume_gate&&mode_was!=.Playing&&app.mode==.Playing do audio_resume(&audio)
-		if app.mode==.Save_Wait&&mode_was!=.Save_Wait {
-			persistence.save_wait_presented=false
-			if !persistence.ready do persistence_fail_request(&app,app.persistence_request,.Write,app.persistence_return)
-		}
-		if shop_was_open != app.shop_open do view_clear_menu_click(&view)
-		if mode_was != app.mode && (mode_was == .Select || app.mode == .Select) {
-			view_clear_menu_click(&view)
-		}
-		if card(app.platform_effects)>0 {
-			effects:=app.platform_effects
-			apply_platform_effects(&app,&view,&audio,effects)
-			if .Save_Options in effects&&persistence.ready do _=persistence_enqueue_options(&persistence,&app)
-			app.platform_effects={}
-		}
-		if mx_save_perf_enabled&&frame_count==perf_warmup {
-			persistence.run_snapshot_count=0
-			persistence.run_snapshot_total_ms=0
-			persistence.run_snapshot_max_ms=0
-		}
-		if mx_save_perf_enabled&&frame_count>=perf_warmup&&(frame_count-perf_warmup)%60==0&&
-			!persistence.run_write_in_flight {
-			app.run_dirty=true
-			app.run_critical=true
-			app.run_dirty_serial+=1
-		}
-		persistence_update_scheduler(&persistence,&app,rl.GetTime())
-		if app.mode==.Resume_Veil&&mode_was!=.Resume_Veil {
-			assets_activate_player(&assets,app.run.player.archetype)
-			view_center_on(&view,world_from_tile(app.run.player.pos))
-			controller={}
-			view_clear_menu_click(&view)
-		}
+@(private = "file")
+game_init_fail_before_view :: proc(rt: ^Game_Runtime) {
+	persistence_coordinator_destroy(&rt.persistence)
+	run_destroy(&rt.app.run)
+	profile_destroy(&rt.app.profile)
+	game_shutdown_audio(rt)
+	assets_unload(&rt.assets)
+	rl.CloseWindow()
+}
 
-		if fixed_capture {
-			app_tick(&app)
-			mobile_fixed_step_reset(&fixed_step)
-		} else {
-			simulation_enabled:=!platform.resume_gate&&(!platform.mobile||mobile_lifecycle_interactive(&platform.lifecycle))
-			steps:=mobile_fixed_step_advance(&fixed_step,frame_dt,SIM_DT,f32(MAX_FRAME_DT),simulation_enabled)
-			for _ in 0..<steps do app_tick(&app)
-		}
-		persistence_update_scheduler(&persistence,&app,rl.GetTime())
-		if perf_enabled do mx7_perf_refresh_visuals(&app.run)
-		alpha := fixed_capture ? f32(1) : fixed_step.accumulator / SIM_DT
-		// Modal/non-playing states freeze at the latest authoritative pose.
-		// Otherwise a >60 Hz renderer repeatedly interpolates the final movement
-		// segment while the inventory, death, or victory overlay pauses the sim.
-		if app.mode != .Playing || app.inventory_open || app.character_open || app.shop_open ||
-			app_play_modal_open(&app) {
-			alpha = 1
-		}
-		audio_drain(&audio, &app.run)
+@(private = "file")
+game_init_fail_after_view :: proc(rt: ^Game_Runtime) {
+	view_shutdown(&rt.view)
+	persistence_coordinator_destroy(&rt.persistence)
+	run_destroy(&rt.app.run)
+	profile_destroy(&rt.app.profile)
+	game_shutdown_audio(rt)
+	assets_unload(&rt.assets)
+	rl.CloseWindow()
+}
 
-		if app.mode == .Playing && !app.inventory_open && !app.character_open && !app.shop_open &&
-			!app_play_modal_open(&app) {
-			player := &app.run.player
-			pos := player.prev_pos + (player.pos - player.prev_pos) * alpha
-			view_follow(&view, world_from_tile(pos), frame_dt)
-		}
-
-		// Stage on the exact frame that will be captured, after ordinary simulation
-		// and immediately before rendering, so transient action/effect state is fresh.
-		if shot_path!="" && frame_count+1==shot_frame {
-			if capture_scenario!=.None do mx6_stage_capture(&app,&view,capture_scenario,capture_direction)
-			if mx7_capture_scenario!=.None do capture_stage_ok=mx7_stage_capture(&app,&view,mx7_capture_scenario,mx7_theme,mx7_dark,mx7_open_door)
-			if mx_story_capture_scenario!=.None do capture_stage_ok=mx_story_stage_capture(&app,mx_story_capture_scenario)
-			if mx_save_capture_scenario!=.None do capture_stage_ok=mx_save_stage_capture(&app,mx_save_capture_scenario)
-			if !capture_stage_ok {
-				fmt.eprintln("CAPTURE_ERROR staging failed")
-				break
-			}
-			alpha=1
-		}
-		draw_frame(&view, &app, &assets, alpha)
-		if platform.mobile&&!platform.ready_marker_emitted {
-			mist_shader_ready:=view.mist!=nil&&view.mist.ready&&view.mist.shader_ok
-			if assets_ready(&assets)&&view.effect_mask_shader_ready&&mist_shader_ready&&persistence.ready&&audio_loaded_cue_count(&audio)>0 {
-				platform.ready_marker_emitted=true
-				platform_log(fmt.tprintf(
-					"ARCH_ROGUE_READY version=%s native=%dx%d assets=%d shaders=2/2 storage=ok audio=%d",
-					VERSION,platform.metrics.surface_width,platform.metrics.surface_height,
-					assets_loaded_texture_count(&assets),audio_loaded_cue_count(&audio),
-				))
-			}
-		}
-		if app.mode==.Save_Wait do persistence.save_wait_presented=true
-
-		frame_count += 1
-		if perf_enabled && frame_count > perf_warmup {
-			mist_ready := view.mist != nil && view.mist.ready && view.mist.shader_ok && view.mist.field_ready
-			perf_resources_ready = perf_resources_ready && view.lighting_ready && view.effect_mask_shader_ready && mist_ready
-			append(&perf_samples,raw_frame_dt*1000)
-			if len(perf_samples) >= perf_frames {
-				for i in 1..<len(perf_samples) {
-					value:=perf_samples[i]
-					j:=i
-					for j>0 && perf_samples[j-1]>value {
-						perf_samples[j]=perf_samples[j-1]
-						j-=1
-					}
-					perf_samples[j]=value
-				}
-				total:f32
-				for sample in perf_samples do total+=sample
-				mean:=total/f32(len(perf_samples))
-				p95:=mx7_perf_percentile(perf_samples[:],.95)
-				p99:=mx7_perf_percentile(perf_samples[:],.99)
-				max_ms:=perf_samples[len(perf_samples)-1]
-				if mx_save_perf_enabled {
-					_=persistence_drain_worker(&persistence)
-					saved_data,saved_status:=storage_recover_document(persistence.paths.run,.Run)
-					save_valid:=false
-					if saved_status==.Valid {
-						document,decoded:=persistence_decode_run(saved_data)
-						save_valid=decoded==.Valid&&document.payload.terminal==.Active
-						run_document_destroy(&document)
-					}
-					delete(saved_data)
-					snapshot_mean:=persistence.run_snapshot_count>0?persistence.run_snapshot_total_ms/f64(persistence.run_snapshot_count):f64(0)
-					mist_ready=view.mist!=nil&&view.mist.ready&&view.mist.shader_ok&&view.mist.field_ready
-					mist_allocated:=view.mist!=nil
-					mist_texture_ready:=mist_allocated&&view.mist.ready
-					mist_shader_ready:=mist_allocated&&view.mist.shader_ok
-					mist_field_ready:=mist_allocated&&view.mist.field_ready
-					fmt.printf("MX_SAVE_PERF {{\"frames\":%d,\"mean_ms\":%.3f,\"p95_ms\":%.3f,\"p99_ms\":%.3f,\"max_ms\":%.3f,\"mean_fps\":%.2f,\"snapshot_count\":%d,\"snapshot_mean_ms\":%.3f,\"snapshot_max_ms\":%.3f,\"save_valid\":%v,\"lighting_ready\":%v,\"effect_ready\":%v,\"mist_ready\":%v,\"mist_allocated\":%v,\"mist_texture_ready\":%v,\"mist_shader_ready\":%v,\"mist_field_ready\":%v,\"mist_enabled\":%v,\"modal_open\":%v,\"mode\":\"%v\",\"resources_ready\":%v}}\n",
-						len(perf_samples),mean,p95,p99,max_ms,mean>0?1000/mean:f32(0),
-						persistence.run_snapshot_count,snapshot_mean,persistence.run_snapshot_max_ms,
-						save_valid,view.lighting_ready,view.effect_mask_shader_ready,mist_ready,
-						mist_allocated,mist_texture_ready,mist_shader_ready,mist_field_ready,
-						app.options.mist_enabled,app_play_modal_open(&app),app.mode,perf_resources_ready)
-				} else {
-					fmt.printf("MX7_PERF {{\"frames\":%d,\"mean_ms\":%.3f,\"p95_ms\":%.3f,\"p99_ms\":%.3f,\"max_ms\":%.3f,\"mean_fps\":%.2f,\"resources_ready\":%v}}\n",len(perf_samples),mean,p95,p99,max_ms,mean>0?1000/mean:f32(0),perf_resources_ready)
-				}
-				break
-			}
-		}
-		if shot_path != "" && frame_count == shot_frame && capture_stage_ok {
-			rl.TakeScreenshot(strings.clone_to_cstring(shot_path, context.temp_allocator))
-			break
-		}
-
-		free_all(context.temp_allocator)
+@(private = "file")
+game_shutdown_audio :: proc(rt: ^Game_Runtime) {
+	when ARCH_ROGUE_WEB {
+		// Audio initializes lazily on the first browser gesture and may never
+		// have been created; there is no meaningful device teardown on web.
+		if rt.audio.ready do audio_shutdown(&rt.audio)
+	} else {
+		audio_shutdown(&rt.audio)
 	}
+}
+
+game_frame :: proc(rt: ^Game_Runtime) -> bool {
+	if !rt.running do return false
+	config := &rt.config
+	app := &rt.app
+	if app.quit_requested {
+		rt.running = false
+		return false
+	}
+	if rt.platform.mobile {
+		lifecycle_result := platform_reduce_android_events(&rt.platform, app)
+		platform_apply_lifecycle_result(
+			&rt.platform, lifecycle_result, app, &rt.view, &rt.assets, &rt.audio,
+			&rt.controller, &rt.persistence, &rt.fixed_step,
+		)
+		if rt.platform.lifecycle.destroyed {
+			app.quit_requested = true
+			return true
+		}
+		if !mobile_lifecycle_interactive(&rt.platform.lifecycle) {
+			persistence_update_scheduler(&rt.persistence, app, rl.GetTime())
+			platform_wait_suspended(&rt.platform)
+			free_all(context.temp_allocator)
+			return true
+		}
+	}
+	when ARCH_ROGUE_WEB {
+		if web_consume_audio_unlock() && !rt.audio.ready {
+			audio_init(&rt.audio)
+			audio_set_enabled(&rt.audio, app.options.audio_enabled)
+		}
+		if web_consume_visibility_resume() {
+			// requestAnimationFrame stops while the tab is hidden. Discard the
+			// stale frame gap so the fixed-step accumulator cannot catch-up
+			// spiral past MAX_FRAME_DT on tab return.
+			mobile_fixed_step_reset(&rt.fixed_step, discard_next_dt = true)
+		}
+	}
+	when !ARCH_ROGUE_WEB {
+		// raylib's web WindowShouldClose yields via emscripten_sleep, which is
+		// forbidden without ASYNCIFY. Browsers close tabs, not windows: the web
+		// quit path is the in-game state machine plus pagehide checkpoints.
+		if rl.WindowShouldClose() && app.mode != .Save_Wait && app.mode != .Save_Error {
+			live_run := platform_live_descent(app)
+			if rt.platform.mobile {
+				if rt.persistence.ready && live_run do _ = persistence_flush_for_suspend(&rt.persistence, app)
+				app.quit_requested = true
+				return true
+			} else if rt.persistence.ready && live_run {
+				app.persistence_request = .Save_Quit
+				app.persistence_return = .Paused
+				app.mode = .Save_Wait
+				rt.persistence.save_wait_presented = false
+				app_clear_play_input(app)
+			} else {
+				app.quit_requested = true
+				return true
+			}
+		}
+	}
+	raw_frame_dt := rl.GetFrameTime()
+	frame_dt := min(raw_frame_dt, f32(MAX_FRAME_DT))
+	if rt.fixed_capture do frame_dt = SIM_DT
+	if rt.platform.resume_gate do frame_dt = 0
+
+	view_update(&rt.view, frame_dt)
+	mode_was := app.mode
+	shop_was_open := app.shop_open
+	intent: Intent
+	resume_gate_was := rt.platform.resume_gate
+	if !rt.fixed_capture do intent = platform_collect_intent(&rt.platform, app, &rt.view, &rt.controller)
+	if resume_gate_was && !rt.platform.resume_gate && app.mode == .Playing do audio_resume(&rt.audio)
+	if app_apply(app, intent) {
+		if mode_was == .Select && app.mode == .Playing {
+			assets_activate_player(&rt.assets, app.run.player.archetype)
+		}
+		view_center_on(&rt.view, world_from_tile(run_spawn_point(&app.run)))
+	}
+	// Reducers can generate a floor or rebuild presentation resources. Start
+	// ordinary UI cues only after that work has completed.
+	if cue, has_cue := audio_cue_for_transition(intent, mode_was, app.mode); has_cue do audio_play_cue(&rt.audio, cue)
+	if rt.platform.mobile && !rt.platform.resume_gate && mode_was != .Playing && app.mode == .Playing do audio_resume(&rt.audio)
+	if app.mode == .Save_Wait && mode_was != .Save_Wait {
+		rt.persistence.save_wait_presented = false
+		if !rt.persistence.ready do persistence_fail_request(app, app.persistence_request, .Write, app.persistence_return)
+	}
+	if shop_was_open != app.shop_open do view_clear_menu_click(&rt.view)
+	if mode_was != app.mode && (mode_was == .Select || app.mode == .Select) {
+		view_clear_menu_click(&rt.view)
+	}
+	when ARCH_ROGUE_WEB {
+		// Entering a run is the fetch point for the lazy web asset packs: the
+		// chosen archetype's full clips, social-room actors, and boss sheets
+		// stream in behind procedural fallbacks and adopt on arrival.
+		if mode_was != app.mode && app.mode == .Playing && (mode_was == .Select || mode_was == .Resume_Veil) {
+			web_packs_on_run_start(app.run.player.archetype)
+		}
+	}
+	if card(app.platform_effects) > 0 {
+		effects := app.platform_effects
+		apply_platform_effects(app, &rt.view, &rt.audio, effects)
+		if .Save_Options in effects && rt.persistence.ready do _ = persistence_enqueue_options(&rt.persistence, app)
+		app.platform_effects = {}
+	}
+	if config.mx_save_perf_enabled && rt.frame_count == config.perf_warmup {
+		rt.persistence.run_snapshot_count = 0
+		rt.persistence.run_snapshot_total_ms = 0
+		rt.persistence.run_snapshot_max_ms = 0
+	}
+	if config.mx_save_perf_enabled && rt.frame_count >= config.perf_warmup &&
+		(rt.frame_count - config.perf_warmup) % 60 == 0 && !rt.persistence.run_write_in_flight {
+		app.run_dirty = true
+		app.run_critical = true
+		app.run_dirty_serial += 1
+	}
+	persistence_update_scheduler(&rt.persistence, app, rl.GetTime())
+	if app.mode == .Resume_Veil && mode_was != .Resume_Veil {
+		assets_activate_player(&rt.assets, app.run.player.archetype)
+		view_center_on(&rt.view, world_from_tile(app.run.player.pos))
+		rt.controller = {}
+		view_clear_menu_click(&rt.view)
+	}
+
+	if rt.fixed_capture {
+		app_tick(app)
+		mobile_fixed_step_reset(&rt.fixed_step)
+	} else {
+		simulation_enabled := !rt.platform.resume_gate && (!rt.platform.mobile || mobile_lifecycle_interactive(&rt.platform.lifecycle))
+		steps := mobile_fixed_step_advance(&rt.fixed_step, frame_dt, SIM_DT, f32(MAX_FRAME_DT), simulation_enabled)
+		for _ in 0 ..< steps do app_tick(app)
+	}
+	persistence_update_scheduler(&rt.persistence, app, rl.GetTime())
+	if rt.perf_enabled do mx7_perf_refresh_visuals(&app.run)
+	alpha := rt.fixed_capture ? f32(1) : rt.fixed_step.accumulator / SIM_DT
+	// Modal/non-playing states freeze at the latest authoritative pose.
+	// Otherwise a >60 Hz renderer repeatedly interpolates the final movement
+	// segment while the inventory, death, or victory overlay pauses the sim.
+	if app.mode != .Playing || app.inventory_open || app.character_open || app.shop_open ||
+		app_play_modal_open(app) {
+		alpha = 1
+	}
+	audio_drain(&rt.audio, &app.run)
+	when ARCH_ROGUE_WEB {
+		// Pack callbacks only queue ownership. Adopt one actor in a quiet SFX
+		// window so the main-thread miniaudio callback is never starved mid-cue.
+		web_pack_adoptions_tick(rt)
+	}
+
+	if app.mode == .Playing && !app.inventory_open && !app.character_open && !app.shop_open &&
+		!app_play_modal_open(app) {
+		player := &app.run.player
+		pos := player.prev_pos + (player.pos - player.prev_pos) * alpha
+		view_follow(&rt.view, world_from_tile(pos), frame_dt)
+	}
+
+	// Stage on the exact frame that will be captured, after ordinary simulation
+	// and immediately before rendering, so transient action/effect state is fresh.
+	if config.shot_path != "" && rt.frame_count + 1 == config.shot_frame {
+		if config.capture_scenario != .None do mx6_stage_capture(app, &rt.view, config.capture_scenario, config.capture_direction)
+		if config.mx7_capture_scenario != .None do rt.capture_stage_ok = mx7_stage_capture(app, &rt.view, config.mx7_capture_scenario, config.mx7_theme, config.mx7_dark, config.mx7_open_door)
+		if config.mx_story_capture_scenario != .None do rt.capture_stage_ok = mx_story_stage_capture(app, config.mx_story_capture_scenario)
+		if config.mx_save_capture_scenario != .None do rt.capture_stage_ok = mx_save_stage_capture(app, config.mx_save_capture_scenario)
+		if !rt.capture_stage_ok {
+			platform_log("CAPTURE_ERROR staging failed")
+			rt.running = false
+			return false
+		}
+		alpha = 1
+	}
+	draw_frame(&rt.view, app, &rt.assets, alpha)
+	if rt.platform.mobile && !rt.platform.ready_marker_emitted {
+		mist_shader_ready := rt.view.mist != nil && rt.view.mist.ready && rt.view.mist.shader_ok
+		if assets_ready(&rt.assets) && rt.view.effect_mask_shader_ready && mist_shader_ready && rt.persistence.ready && audio_loaded_cue_count(&rt.audio) > 0 {
+			rt.platform.ready_marker_emitted = true
+			platform_log(fmt.tprintf(
+				"ARCH_ROGUE_READY version=%s native=%dx%d assets=%d shaders=2/2 storage=ok audio=%d",
+				VERSION, rt.platform.metrics.surface_width, rt.platform.metrics.surface_height,
+				assets_loaded_texture_count(&rt.assets), audio_loaded_cue_count(&rt.audio),
+			))
+		}
+	}
+	if app.mode == .Save_Wait do rt.persistence.save_wait_presented = true
+
+	rt.frame_count += 1
+	if rt.perf_enabled && rt.frame_count > config.perf_warmup {
+		mist_ready := rt.view.mist != nil && rt.view.mist.ready && rt.view.mist.shader_ok && rt.view.mist.field_ready
+		rt.perf_resources_ready = rt.perf_resources_ready && rt.view.lighting_ready && rt.view.effect_mask_shader_ready && mist_ready
+		append(&rt.perf_samples, raw_frame_dt * 1000)
+		if len(rt.perf_samples) >= config.perf_frames {
+			game_report_perf(rt)
+			rt.running = false
+			return false
+		}
+	}
+	if config.shot_path != "" && rt.frame_count == config.shot_frame && rt.capture_stage_ok {
+		rl.TakeScreenshot(strings.clone_to_cstring(config.shot_path, context.temp_allocator))
+		rt.running = false
+		return false
+	}
+
+	free_all(context.temp_allocator)
+	return true
+}
+
+@(private = "file")
+game_report_perf :: proc(rt: ^Game_Runtime) {
+	config := &rt.config
+	app := &rt.app
+	for i in 1 ..< len(rt.perf_samples) {
+		value := rt.perf_samples[i]
+		j := i
+		for j > 0 && rt.perf_samples[j-1] > value {
+			rt.perf_samples[j] = rt.perf_samples[j-1]
+			j -= 1
+		}
+		rt.perf_samples[j] = value
+	}
+	total: f32
+	long_frames := 0
+	for sample in rt.perf_samples {
+		total += sample
+		// The web acceptance gate bounds frame intervals at two 60 Hz vsync
+		// periods rather than a raw p95 threshold.
+		if sample > 33.34 do long_frames += 1
+	}
+	mean := total / f32(len(rt.perf_samples))
+	p95 := mx7_perf_percentile(rt.perf_samples[:], .95)
+	p99 := mx7_perf_percentile(rt.perf_samples[:], .99)
+	max_ms := rt.perf_samples[len(rt.perf_samples)-1]
+	if config.mx_save_perf_enabled {
+		_ = persistence_drain_worker(&rt.persistence)
+		saved_data, saved_status := storage_recover_document(rt.persistence.paths.run, .Run)
+		save_valid := false
+		if saved_status == .Valid {
+			document, decoded := persistence_decode_run(saved_data)
+			save_valid = decoded == .Valid && document.payload.terminal == .Active
+			run_document_destroy(&document)
+		}
+		delete(saved_data)
+		snapshot_mean := rt.persistence.run_snapshot_count > 0 ? rt.persistence.run_snapshot_total_ms / f64(rt.persistence.run_snapshot_count) : f64(0)
+		mist_allocated := rt.view.mist != nil
+		mist_texture_ready := mist_allocated && rt.view.mist.ready
+		mist_shader_ready := mist_allocated && rt.view.mist.shader_ok
+		mist_field_ready := mist_allocated && rt.view.mist.field_ready
+		mist_ready := mist_allocated && rt.view.mist.ready && rt.view.mist.shader_ok && rt.view.mist.field_ready
+		report := fmt.tprintf("MX_SAVE_PERF {{\"frames\":%d,\"mean_ms\":%.3f,\"p95_ms\":%.3f,\"p99_ms\":%.3f,\"max_ms\":%.3f,\"mean_fps\":%.2f,\"snapshot_count\":%d,\"snapshot_mean_ms\":%.3f,\"snapshot_max_ms\":%.3f,\"save_valid\":%v,\"lighting_ready\":%v,\"effect_ready\":%v,\"mist_ready\":%v,\"mist_allocated\":%v,\"mist_texture_ready\":%v,\"mist_shader_ready\":%v,\"mist_field_ready\":%v,\"mist_enabled\":%v,\"modal_open\":%v,\"mode\":\"%v\",\"resources_ready\":%v}}",
+			len(rt.perf_samples), mean, p95, p99, max_ms, mean > 0 ? 1000/mean : f32(0),
+			rt.persistence.run_snapshot_count, snapshot_mean, rt.persistence.run_snapshot_max_ms,
+			save_valid, rt.view.lighting_ready, rt.view.effect_mask_shader_ready, mist_ready,
+			mist_allocated, mist_texture_ready, mist_shader_ready, mist_field_ready,
+			app.options.mist_enabled, app_play_modal_open(app), app.mode, rt.perf_resources_ready)
+		platform_report_line(report)
+	} else {
+		report := fmt.tprintf("MX7_PERF {{\"frames\":%d,\"mean_ms\":%.3f,\"p95_ms\":%.3f,\"p99_ms\":%.3f,\"max_ms\":%.3f,\"mean_fps\":%.2f,\"long_frames_33ms\":%d,\"resources_ready\":%v}}",
+			len(rt.perf_samples), mean, p95, p99, max_ms, mean > 0 ? 1000/mean : f32(0), long_frames, rt.perf_resources_ready)
+		platform_report_line(report)
+	}
+}
+
+game_shutdown :: proc(rt: ^Game_Runtime) {
+	view_shutdown(&rt.view)
+	delete(rt.perf_samples)
+	rt.perf_samples = nil
+	persistence_coordinator_destroy(&rt.persistence)
+	run_destroy(&rt.app.run)
+	profile_destroy(&rt.app.profile)
+	game_shutdown_audio(rt)
+	assets_unload(&rt.assets)
+	rl.CloseWindow()
+	rt.running = false
 }
 
 // Translate raw input into sim intents; the sim never sees raylib.

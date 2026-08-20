@@ -646,16 +646,26 @@ title_flow_transitions :: proc(t: ^testing.T) {
 	ar.app_init(&app, ar.derive_seed(11, 0))
 	defer ar.run_destroy(&app.run)
 	testing.expect(t, app.mode == .Title, "boot must land on the title screen")
-	ar.app_apply(&app, ar.Intent{confirm = true})
+	confirm := ar.Intent{confirm = true}
+	mode_was := app.mode
+	ar.app_apply(&app, confirm)
+	cue, has_cue := ar.audio_cue_for_transition(confirm, mode_was, app.mode)
 	testing.expect(t, app.mode == .Select, "Enter on title must open archetype select")
+	testing.expect(t,has_cue&&cue==.Ui_Confirm,"Title -> Select must retain ordinary confirmation audio")
 	ar.app_apply(&app, ar.Intent{back = true})
 	testing.expect(t, app.mode == .Title, "Esc in select must return to title")
-	ar.app_apply(&app, ar.Intent{confirm = true})
-	ar.app_apply(&app, ar.Intent{confirm = true})
+	ar.app_apply(&app, confirm)
+	mode_was = app.mode
+	ar.app_apply(&app, confirm)
+	_, has_cue = ar.audio_cue_for_transition(confirm, mode_was, app.mode)
 	testing.expect(t, app.mode == .Playing, "confirm twice must start a run")
-	has_start:=false
-	for cue in app.run.sfx do if cue==.Start do has_start=true
-	testing.expect(t,has_start,"starting a selected archetype must emit Start exactly through the sim queue")
+	testing.expect(t,!has_cue,"Select -> Playing must suppress the generic confirmation cue")
+	start_count:=0
+	for queued in app.run.sfx {
+		testing.expect(t,queued==.Start,"starting a run must not queue a second semantic cue")
+		if queued==.Start do start_count+=1
+	}
+	testing.expect(t,start_count==1,"starting a selected archetype must emit exactly one Start cue")
 }
 
 @(test)

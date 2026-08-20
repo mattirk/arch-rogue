@@ -179,9 +179,76 @@ void main() {
 }
 `
 
+// WebGL2 (OpenGL ES 3.0) port of the GLES2 variant above.
+@(private = "file")
+MIST_SHADER_FS_ES3 :: `#version 300 es
+precision highp float;
+in vec2 fragTexCoord;
+in vec4 fragColor;
+out vec4 finalColor;
+
+uniform sampler2D texture0;
+uniform float u_time;
+uniform vec2 u_lattice;
+uniform float u_push_max;
+uniform vec4 u_color;
+
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+float fbm(vec2 p) {
+    float v = 0.0;
+    float amp = 0.5;
+    for (int i = 0; i < 4; i++) {
+        v += amp * vnoise(p);
+        p = p * 2.03 + vec2(17.7, 9.2);
+        amp *= 0.5;
+    }
+    return v;
+}
+
+void main() {
+    vec4 field = texture(texture0, fragTexCoord);
+    float vis = field.a;
+    if (vis <= 0.004) { finalColor = vec4(0.0); return; }
+    float iu = fragTexCoord.x * u_lattice.x - 0.5;
+    float iv = fragTexCoord.y * u_lattice.x - 0.5;
+    float du = iu - u_lattice.y;
+    vec2 tile = vec2((iv + 1.0 + du) * 0.5, (iv + 1.0 - du) * 0.5);
+    vec2 push = (field.rg * 2.0 - 1.0) * u_push_max;
+    float part = field.b;
+    vec2 p = tile - push;
+    vec2 wind = vec2(0.050, -0.034);
+    float t = u_time;
+    float banks = fbm(p * 0.55 + wind * t);
+    float warp = fbm(p * 1.4 - wind * t * 0.7 + banks * 1.35);
+    float mist = fbm(p * 2.3 + vec2(warp * 1.25, warp * 0.9) + wind * t * 1.6);
+    float body = smoothstep(0.38, 0.85, banks * 0.62 + mist * 0.58);
+    float haze = 0.07 + 0.06 * mist;
+    float breathe = 0.90 + 0.10 * sin(t * 0.35 + banks * 6.2831);
+    float density = clamp(haze + body, 0.0, 1.0) * breathe;
+    density *= (1.0 - part) * vis;
+    vec3 rgb = u_color.rgb * (0.82 + 0.30 * mist);
+    finalColor = vec4(rgb, density * u_color.a) * fragColor;
+}
+`
+
 @(private = "file")
 mist_shader_source :: proc() -> cstring {
 	when ARCH_ROGUE_ANDROID do return cstring(MIST_SHADER_FS_GLES2)
+	when ARCH_ROGUE_WEB do return cstring(MIST_SHADER_FS_ES3)
 	return cstring(MIST_SHADER_FS)
 }
 

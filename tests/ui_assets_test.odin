@@ -10,6 +10,7 @@ import "core:fmt"
 import "core:os"
 import "core:testing"
 import ar "../src"
+import rl "../vendor/raylib"
 
 @(private = "file")
 ui_test_u32_be :: proc(data: []u8, offset: int) -> u32 {
@@ -125,6 +126,32 @@ mx_android_mobile_hud_imports_are_exact_pygame_assets :: proc(t:^testing.T) {
 @(private = "file")
 ui_test_abs_f32 :: proc(value: f32) -> f32 {
 	return value < 0 ? -value : value
+}
+
+@(test)
+menu_rows_keep_text_stable_and_clear_every_arrow_endcap :: proc(t: ^testing.T) {
+	targets := [5]rl.Rectangle{
+		{0,0,600,44}, // options
+		{0,0,430,34}, // controls
+		{0,0,360,38}, // inventory
+		{0,0,180,34}, // character tabs
+		{0,0,150,30}, // shop tabs
+	}
+	for target in targets {
+		plain, plain_ok := ar.ui_chrome_content_rect_from_def(ar.ui_chrome_def(.Menu_Row),target)
+		selected, selected_ok := ar.ui_chrome_content_rect_from_def(ar.ui_chrome_def(.Menu_Row_Selected),target)
+		stable, stable_ok := ar.menu_row_content_rect(target)
+		testing.expect(t,plain_ok && selected_ok && stable_ok,"menu row content metadata must resolve headlessly")
+		if !plain_ok || !selected_ok || !stable_ok do continue
+
+		plain_right := plain.x+plain.width
+		selected_right := selected.x+selected.width
+		stable_right := stable.x+stable.width
+		testing.expect(t,selected_right < plain_right,"selected menu row must reserve its larger right arrow endcap")
+		testing.expect(t,ui_test_abs_f32(stable.x-max(plain.x,selected.x)) < .01,"stable menu text rail changed its left anchor")
+		testing.expect(t,ui_test_abs_f32(stable_right-min(plain_right,selected_right)) < .01,"stable menu text rail can overlap a row-state endcap")
+		testing.expect(t,stable.width >= 48,"supported menu row collapsed below its usable text width")
+	}
 }
 
 @(test)

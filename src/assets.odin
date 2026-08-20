@@ -947,6 +947,8 @@ Assets :: struct {
 	ui_chrome:                  [UI_Chrome_Id]UI_Chrome_Asset,
 	ui_logo_animation:          UI_Logo_Animation,
 	ui_glyph_atlas:             UI_Glyph_Atlas,
+	ui_font:                    rl.Font,
+	ui_font_loaded:             bool,
 	story:                      Story_Art_Assets,
 	load_complete:              bool,
 }
@@ -972,7 +974,7 @@ assets_read_owned :: proc(path: string) -> ([]u8, bool) {
 	raw := rl.LoadFileData(fmt.ctprintf("%s", path), &data_size)
 	if raw == nil || data_size <= 0 {
 		if raw != nil do rl.UnloadFileData(raw)
-		fmt.eprintf("assets: failed to read %s\n", path)
+		platform_log(fmt.tprintf("assets: failed to read %s", path))
 		return nil, false
 	}
 	defer rl.UnloadFileData(raw)
@@ -1050,6 +1052,7 @@ assets_load_summary :: proc(assets: ^Assets) -> (summary: Assets_Load_Summary) {
 	}
 	if assets.ui_logo_animation.tex.id != 0 do summary.ui += 1
 	if assets.ui_glyph_atlas.tex.id != 0 do summary.ui += 1
+	if assets.ui_font_loaded do summary.ui += 1
 	summary.story = assets_story_texture_count(assets)
 	summary.total = summary.actors + summary.action_icons + summary.world + summary.items +
 		summary.props + summary.ui + summary.story
@@ -1067,8 +1070,8 @@ assets_ready :: proc(assets: ^Assets) -> bool {
 
 assets_log_load_summary :: proc(assets: ^Assets) {
 	summary := assets_load_summary(assets)
-	fmt.printf(
-		"assets: ready=%v textures=%d (actors=%d actions=%d world=%d items=%d props=%d ui=%d story=%d)\n",
+	platform_log(fmt.tprintf(
+		"assets: ready=%v textures=%d (actors=%d actions=%d world=%d items=%d props=%d ui=%d story=%d)",
 		summary.ready,
 		summary.total,
 		summary.actors,
@@ -1078,7 +1081,7 @@ assets_log_load_summary :: proc(assets: ^Assets) {
 		summary.props,
 		summary.ui,
 		summary.story,
-	)
+	))
 }
 
 // Stable flattened order used only by manifest tooling/validation. Runtime
@@ -1296,7 +1299,7 @@ load_story_assets :: proc(assets: ^Assets) {
 	assets_unload_story(assets)
 	data, read_ok := assets_read_owned("assets/story/manifest.json")
 	if !read_ok {
-		fmt.eprintln("assets: no MX-story art manifest found, using procedural story fallbacks")
+		platform_log(fmt.tprint("assets: no MX-story art manifest found, using procedural story fallbacks"))
 		return
 	}
 	defer delete(data)
@@ -1306,7 +1309,7 @@ load_story_assets :: proc(assets: ^Assets) {
 	defer mem.dynamic_arena_destroy(&arena)
 	manifest: Story_Art_Manifest
 	if !story_manifest_decode(data, &manifest, &arena) {
-		fmt.eprintln("assets: story manifest does not match the strict typed MX-story registry")
+		platform_log(fmt.tprint("assets: story manifest does not match the strict typed MX-story registry"))
 		return
 	}
 	assets.story.manifest_valid = true
@@ -1552,14 +1555,14 @@ assets_load :: proc(assets: ^Assets) {
 
 	data, read_ok := assets_read_owned("assets/actors/manifest.json")
 	if !read_ok {
-		fmt.eprintln("assets: actor manifest missing, using placeholder actors")
+		platform_log(fmt.tprint("assets: actor manifest missing, using placeholder actors"))
 	} else {
 		defer delete(data)
 		manifest: Baked_Manifest
 		if err := json.unmarshal(data, &manifest); err != nil {
-			fmt.eprintln("assets: manifest parse failed:", err)
+			platform_log(fmt.tprint("assets: manifest parse failed:", err))
 		} else if manifest.format != 2 || !manifest.native_cells {
-			fmt.eprintln("assets: actor manifest is not a native-resolution pack")
+			platform_log(fmt.tprint("assets: actor manifest is not a native-resolution pack"))
 		} else {
 			for id in Archetype_Id {
 				assets.archetypes[id] = load_actor_sprites(
@@ -1587,6 +1590,7 @@ assets_load :: proc(assets: ^Assets) {
 	load_action_assets(assets)
 	load_mobile_hud_assets(assets)
 	load_ui_assets(assets)
+	load_ui_font(assets)
 	load_story_assets(assets)
 	load_world_assets(assets)
 	load_prop_assets(assets)
@@ -1611,13 +1615,13 @@ Baked_Prop_Entry :: struct {
 load_prop_assets :: proc(assets: ^Assets) {
 	data, read_ok := assets_read_owned("assets/props/manifest.json")
 	if !read_ok {
-		fmt.eprintln("assets: prop manifest missing, using geometry fallbacks")
+		platform_log(fmt.tprint("assets: prop manifest missing, using geometry fallbacks"))
 		return
 	}
 	defer delete(data)
 	manifest: Baked_Prop_Manifest
 	if err := json.unmarshal(data, &manifest); err != nil {
-		fmt.eprintln("assets: prop manifest parse failed:", err)
+		platform_log(fmt.tprint("assets: prop manifest parse failed:", err))
 		return
 	}
 	for key in Prop_Key {
@@ -1627,6 +1631,32 @@ load_prop_assets :: proc(assets: ^Assets) {
 		if tex.id == 0 do continue
 		assets.props[key] = {tex = tex, anchor = entry.anchor, world_height = entry.world_height, loaded = true}
 	}
+}
+
+// The single bundled UI typeface (EB Garamond, SIL OFL 1.1; license ships
+// beside the file). Loaded once at a large base size over the strict Latin-1
+// glyph contract enforced by tests/text_glyphs_test.odin, then scaled per
+// draw through the ui_draw_text/ui_measure_text seam.
+UI_FONT_FILE :: "assets/ui/fonts/EBGaramond-Medium.ttf"
+UI_FONT_BASE_SIZE :: 96
+
+@(private = "file")
+load_ui_font :: proc(assets: ^Assets) {
+	codepoints: [0xE0]rune
+	for i in 0 ..< len(codepoints) do codepoints[i] = rune(0x20 + i)
+	font := rl.LoadFontEx(UI_FONT_FILE, UI_FONT_BASE_SIZE, raw_data(codepoints[:]), i32(len(codepoints)))
+	if font.texture.id == 0 || font.glyphCount <= 0 {
+		platform_log(fmt.tprint("assets: UI font missing, using raylib default text"))
+		ui_set_active_font({}, false)
+		return
+	}
+	// Text draws at many scales; a large base plus trilinear mipmaps keeps
+	// minified text readable and magnified headers acceptably smooth.
+	rl.GenTextureMipmaps(&font.texture)
+	rl.SetTextureFilter(font.texture, .TRILINEAR)
+	assets.ui_font = font
+	assets.ui_font_loaded = true
+	ui_set_active_font(font, true)
 }
 
 // JSON mirror of the canonical action-HUD manifest schema.
@@ -1655,14 +1685,14 @@ action_icon_from_key :: proc(key: string) -> (Action_Icon, bool) {
 load_action_assets :: proc(assets: ^Assets) {
 	data, read_ok := assets_read_owned("assets/hud/manifest.json")
 	if !read_ok {
-		fmt.eprintln("assets: action HUD manifest missing, using placeholder icons")
+		platform_log(fmt.tprint("assets: action HUD manifest missing, using placeholder icons"))
 		return
 	}
 	defer delete(data)
 
 	manifest: Baked_Action_Manifest
 	if err := json.unmarshal(data, &manifest); err != nil {
-		fmt.eprintln("assets: action HUD manifest parse failed:", err)
+		platform_log(fmt.tprint("assets: action HUD manifest parse failed:", err))
 		return
 	}
 
@@ -1909,13 +1939,13 @@ Baked_Item_Entry :: struct {
 load_world_assets :: proc(assets: ^Assets) {
 	data, read_ok := assets_read_owned("assets/world/manifest.json")
 	if !read_ok {
-		fmt.eprintln("assets: world manifest missing, using debug geometry")
+		platform_log(fmt.tprint("assets: world manifest missing, using debug geometry"))
 		return
 	}
 	defer delete(data)
 	manifest: Baked_World_Manifest
 	if err := json.unmarshal(data, &manifest); err != nil {
-		fmt.eprintln("assets: world manifest parse failed:", err)
+		platform_log(fmt.tprint("assets: world manifest parse failed:", err))
 		return
 	}
 
@@ -1972,7 +2002,7 @@ load_actor_texture :: proc(path:cstring,cell,frames,rows:int)->rl.Texture2D {
 	tex:=rl.LoadTexture(path)
 	if tex.id==0 do return {}
 	if int(tex.width)!=frames*cell||int(tex.height)!=rows*cell {
-		fmt.eprintln("assets: actor sheet geometry mismatch:",path)
+		platform_log(fmt.tprint("assets: actor sheet geometry mismatch:",path))
 		rl.UnloadTexture(tex)
 		return {}
 	}
@@ -1992,7 +2022,7 @@ load_actor_sprites :: proc(
 	if !found do return sprites
 	sprites.cell = baked.cell > 0 ? baked.cell : manifest.cell
 	if baked.source_canvas[0]!=sprites.cell||baked.source_canvas[1]!=sprites.cell {
-		fmt.eprintln("assets: actor source cell was resampled:",name)
+		platform_log(fmt.tprint("assets: actor source cell was resampled:",name))
 		return sprites
 	}
 	sprites.canvas_world = baked.canvas_world
@@ -2109,6 +2139,8 @@ assets_unload :: proc(assets: ^Assets) {
 	assets_unload_ui(assets)
 	assets_unload_actor_textures(assets)
 	assets_unload_story(assets)
+	if assets.ui_font_loaded do rl.UnloadFont(assets.ui_font)
+	ui_set_active_font({}, false)
 	assets^ = {}
 }
 
@@ -2117,4 +2149,77 @@ assets_unload :: proc(assets: ^Assets) {
 // safe no-op after this call.
 assets_unload_actors :: proc(assets: ^Assets) {
 	assets_unload(assets)
+}
+
+when ARCH_ROGUE_WEB {
+
+// Re-resolve lazily fetched actors after their pack lands in MEMFS. Pack
+// arrivals are rare, so re-parsing the small boot manifest here is cheaper
+// than retaining it for the whole session.
+assets_web_adopt_actors :: proc(assets: ^Assets, names: []string, active: Archetype_Id, active_valid: bool) {
+	if assets == nil || len(names) == 0 do return
+	data, read_ok := assets_read_owned("assets/actors/manifest.json")
+	if !read_ok do return
+	defer delete(data)
+	manifest: Baked_Manifest
+	if err := json.unmarshal(data, &manifest); err != nil {
+		platform_log(fmt.tprint("assets: web pack manifest re-parse failed:", err))
+		return
+	}
+	for name in names {
+		if assets_web_adopt_archetype(assets, &manifest, name, active, active_valid) do continue
+		if assets_web_adopt_slot(assets, &manifest, name) do continue
+		platform_log(fmt.tprintf("assets: web pack delivered unknown actor %s", name))
+	}
+}
+
+@(private = "file")
+assets_web_adopt_archetype :: proc(assets: ^Assets, manifest: ^Baked_Manifest, name: string, active: Archetype_Id, active_valid: bool) -> bool {
+	for id in Archetype_Id {
+		if ARCHETYPES[id].sprite != name do continue
+		// Previews shipped in the core payload; the full 8-direction set only
+		// becomes GPU-resident for the archetype that is actually being played.
+		if active_valid && id == active do assets_activate_player(assets, id)
+		return true
+	}
+	return false
+}
+
+@(private = "file")
+assets_web_adopt_slot :: proc(assets: ^Assets, manifest: ^Baked_Manifest, name: string) -> bool {
+	for kind in Enemy_Kind {
+		if ENEMY_DEFS[kind].sprite == name {
+			assets_web_replace_sprites(&assets.enemies[kind], manifest, name)
+			return true
+		}
+	}
+	for id in Boss_Id {
+		if BOSS_DEFS[id].sprite == name {
+			assets_web_replace_sprites(&assets.bosses[id], manifest, name)
+			return true
+		}
+	}
+	switch name {
+	case "familiar_wisp": assets_web_replace_sprites(&assets.familiar_wisp, manifest, name)
+	case "familiar_crow": assets_web_replace_sprites(&assets.familiar_crow, manifest, name)
+	case "spirit_beast": assets_web_replace_sprites(&assets.spirit_beast, manifest, name)
+	case "shopkeeper": assets_web_replace_sprites(&assets.shopkeeper, manifest, name)
+	case "bar_dancer": assets_web_replace_sprites(&assets.bar_dancer, manifest, name)
+	case "garden_frog": assets_web_replace_sprites(&assets.garden_frog, manifest, name)
+	case "story_guest": assets_web_replace_sprites(&assets.story_guest, manifest, name)
+	case "lossless_soul": assets_web_replace_sprites(&assets.lossless_soul, manifest, name)
+	case:
+		return false
+	}
+	return true
+}
+
+@(private = "file")
+assets_web_replace_sprites :: proc(slot: ^Actor_Sprites, manifest: ^Baked_Manifest, name: string) {
+	for &clip in slot.clips {
+		if clip.tex.id != 0 do rl.UnloadTexture(clip.tex)
+	}
+	slot^ = load_actor_sprites(manifest, name)
+}
+
 }
