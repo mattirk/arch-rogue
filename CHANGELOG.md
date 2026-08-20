@@ -4,7 +4,8 @@
 
 - Replaced the provisional Android launcher mark with a PixelLab-authored Arch
   Rogue relic medallion across legacy square, round, adaptive, and Android 13
-  themed-icon variants. The installed app, local APK/AAB outputs, public release
+  themed-icon variants. The center uses the canonical title-logo relic at its
+  original aspect ratio over the unchanged etched-rune medallion. The installed app, local APK/AAB outputs, public release
   assets, download site, and other product-facing labels now use `Arch Rogue`
   without treating the Odin implementation language as part of the game title.
   Release resource-path shortening is disabled because AAPT2 can emit paths that
