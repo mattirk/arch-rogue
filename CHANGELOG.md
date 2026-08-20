@@ -7,6 +7,8 @@
   themed-icon variants. The installed app, local APK/AAB outputs, public release
   assets, download site, and other product-facing labels now use `Arch Rogue`
   without treating the Odin implementation language as part of the game title.
+  Release resource-path shortening is disabled because AAPT2 can emit paths that
+  differ only by case, which the cross-filesystem-safe Android audit rejects.
 - Promoted the Odin/raylib project from `ar-odin/` to the repository root and
   moved the retired Python/Pygame implementation into `arch-rogue-python/` as an
   archived reference tree. Root build, asset, Android, documentation, CI, and

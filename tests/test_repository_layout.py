@@ -52,6 +52,11 @@ class RepositoryLayoutTests(unittest.TestCase):
         )
         self.assertIn("ODIN_BACKEND_LLVM_VERSION=21.1.8", toolchain)
 
+        gradle_properties = (ROOT / "android" / "gradle.properties").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("android.enableResourceOptimizations=false", gradle_properties)
+
         self.assertFalse((ROOT / "ar-odin").exists())
         for retired_root_path in (
             "pyproject.toml",
