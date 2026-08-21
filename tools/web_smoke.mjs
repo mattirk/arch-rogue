@@ -223,6 +223,7 @@ try {
       axes: [0, 0, 0, 0],
       buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })),
     };
+    window.__arSmokePad = pad;
     navigator.getGamepads = () => [pad];
     const ev = new Event('gamepadconnected');
     Object.defineProperty(ev, 'gamepad', { value: pad });
@@ -232,6 +233,19 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 600));
   state = await probe(page);
   record('controller-visible', state.gamepad === true, `gamepad=${state.gamepad}`);
+
+  // Stadia and other browser-standard pads expose LT/RT as buttons 6/7 with
+  // only four stick axes. Exercise that exact shape rather than six-axis input.
+  await page.evaluate(`(() => {
+    const pad = window.__arSmokePad;
+    pad.buttons[6] = { pressed: true, touched: true, value: 1 };
+    pad.buttons[7] = { pressed: true, touched: true, value: 1 };
+    pad.timestamp = performance.now();
+  })()`);
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  state = await probe(page);
+  record('controller-button-triggers', state.left_trigger === true && state.right_trigger === true,
+    `lt=${state.left_trigger} rt=${state.right_trigger} axes=4`);
 
   // --- clean console across the whole session ------------------------------
   const defects = consoleDefects(page);

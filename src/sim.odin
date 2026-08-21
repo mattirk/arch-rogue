@@ -484,7 +484,7 @@ story_enemy_combat_target :: proc(run: ^Run, enemy: ^Enemy) -> (target: Story_Co
 	guest_limit := min(len(run.story_runtime.guests), STORY_BEAT_COUNT)
 	for i in 0 ..< guest_limit {
 		guest := &run.story_runtime.guests[i]
-		if guest.witness || !guest.resolved || !guest.ally || !guest.alive || guest.hp <= 0 do continue
+		if guest.depth != run.depth || guest.witness || !guest.resolved || !guest.ally || !guest.alive || guest.hp <= 0 do continue
 		delta := guest.pos - enemy.pos
 		distance_sq := delta.x * delta.x + delta.y * delta.y
 		if distance_sq < best_sq {
@@ -507,7 +507,7 @@ story_combat_target_alive :: proc(run: ^Run, target: Story_Combat_Target) -> boo
 	case .Guest:
 		if target.guest_index < 0 || target.guest_index >= len(run.story_runtime.guests) do return false
 		guest := &run.story_runtime.guests[target.guest_index]
-		return guest.ally && guest.alive && guest.hp > 0 && !guest.witness
+		return guest.depth == run.depth && guest.ally && guest.alive && guest.hp > 0 && !guest.witness
 	case .Soul:
 		soul := &run.story_runtime.soul
 		return soul.present && soul.armed && soul.alive && soul.hp > 0
@@ -560,7 +560,7 @@ story_projectile_target :: proc(run: ^Run, pos: Vec2) -> (target: Story_Combat_T
 	guest_limit := min(len(run.story_runtime.guests), STORY_BEAT_COUNT)
 	for i in 0 ..< guest_limit {
 		guest := &run.story_runtime.guests[i]
-		if guest.witness || !guest.ally || !guest.alive || guest.hp <= 0 do continue
+		if guest.depth != run.depth || guest.witness || !guest.ally || !guest.alive || guest.hp <= 0 do continue
 		delta := guest.pos - pos
 		if delta.x * delta.x + delta.y * delta.y >= ENEMY_PROJECTILE_HIT_RADIUS * ENEMY_PROJECTILE_HIT_RADIUS do continue
 		if !line_of_sight(&run.dungeon, pos.x, pos.y, guest.pos.x, guest.pos.y) do continue
@@ -1947,7 +1947,7 @@ commit_ability :: proc(run: ^Run, enemy: ^Enemy, idx: int, aim: Vec2) {
 		guest_limit := min(len(run.story_runtime.guests), STORY_BEAT_COUNT)
 		for i in 0 ..< guest_limit {
 			guest := &run.story_runtime.guests[i]
-			if guest.witness || !guest.ally || !guest.alive || guest.hp <= 0 do continue
+			if guest.depth != run.depth || guest.witness || !guest.ally || !guest.alive || guest.hp <= 0 do continue
 			delta := guest.pos - enemy.pos
 			if math.hypot(delta.x, delta.y) > reach || !line_of_sight(&run.dungeon, enemy.pos.x, enemy.pos.y, guest.pos.x, guest.pos.y) do continue
 			_ = story_damage_combat_target(run, {kind = .Guest, guest_index = i, pos = guest.pos}, dmg + rng_range(&run.combat_rng, -2, 3))

@@ -432,3 +432,46 @@ archetype_pointer_confirm_suppresses_mouse_until_release :: proc(t: ^testing.T) 
 	ar.app_apply(&app, ar.Intent{mouse_released = true})
 	testing.expect(t, !app.mouse_input_blocked, "release must re-enable gameplay mouse input")
 }
+
+@(test)
+held_movement_survives_noop_interact_without_forcing_critical_save :: proc(t: ^testing.T) {
+	app: ar.App
+	ar.app_init(&app, ar.derive_seed(54, 0))
+	defer ar.run_destroy(&app.run)
+	ar.run_start(&app.run, app.seed, .Warden)
+	app.run.run_id = "input-interact-test"
+	app.mode = .Playing
+	app.story_panel = {}
+	app.run.story_runtime.requests = {}
+	clear(&app.run.ground_items)
+	clear(&app.run.shrines)
+	clear(&app.run.secrets)
+	app.run.has_shopkeeper = false
+	center := ar.room_center(app.run.dungeon.rooms_buf[0])
+	app.run.player.pos = {f32(center.x)+.5,f32(center.y)+.5}
+	app.run.player.prev_pos = app.run.player.pos
+	testing.expect(t, !ar.player_interaction_available(&app.run), "fixture must exercise an ordinary no-op interaction")
+
+	app.run_dirty = false
+	app.run_critical = false
+	serial := app.run_dirty_serial
+	_ = ar.app_apply(&app, ar.Intent{move={1,0},interact=true})
+	testing.expect(t, app.move_input == ar.Vec2{1,0}, "Interact must not clear held movement")
+	testing.expect(t, app.run_dirty && app.run_dirty_serial == serial+1, "Interact must retain normal autosave tracking")
+	testing.expect(t, !app.run_critical, "no-op Interact must not force synchronous web checkpointing")
+}
+
+@(test)
+browser_standard_gamepad_buttons_drive_trigger_edges_without_trigger_axes :: proc(t: ^testing.T) {
+	state: ar.Controller_Trigger_State
+	pressed := ar.controller_trigger_sample(false, 0, true)
+	testing.expect(t, pressed == 1, "button-backed browser trigger must produce a pressed sample")
+	testing.expect(t, ar.controller_resolve_trigger(pressed, &state) == .Pressed, "button-backed trigger must emit its press edge")
+
+	released := ar.controller_trigger_sample(false, 0, false)
+	testing.expect(t, released == 0, "released four-axis browser trigger must return to zero")
+	testing.expect(t, ar.controller_resolve_trigger(released, &state) == .Released, "button-backed trigger must emit its release edge")
+
+	testing.expect(t, ar.controller_trigger_sample(true, .7, false) == .7, "native analog trigger axis must remain intact")
+	testing.expect(t, ar.controller_trigger_sample(false, .7, false) == 0, "unavailable trigger axis must not leak a stale value")
+}

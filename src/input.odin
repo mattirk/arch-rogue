@@ -396,6 +396,15 @@ Controller_Trigger_Edge :: enum {
 	Released,
 }
 
+// Browser-standard gamepads commonly expose LT/RT as buttons 6/7 and report
+// only four stick axes. Prefer the digital/pressure-button signal when down,
+// while retaining the analog trigger axis used by native raylib backends.
+controller_trigger_sample :: proc(axis_available: bool, axis_value: f32, button_down: bool) -> f32 {
+	if button_down do return 1
+	if axis_available do return axis_value
+	return 0
+}
+
 controller_resolve_trigger :: proc(value: f32, state: ^Controller_Trigger_State) -> Controller_Trigger_Edge {
 	if state == nil do return .None
 	pressed := value > CONTROLLER_TRIGGER_THRESHOLD

@@ -139,6 +139,10 @@ dungeon_generate :: proc(rng: ^Pcg32, opts := Dungeon_Options{}) -> (d: Dungeon,
 			d.stairs = room_center(d.rooms_buf[d.room_count - 1])
 			d.tiles[d.stairs.x][d.stairs.y] = .Stairs
 			place_doors(&d, rng, opts)
+			// Story actors are authored for their dedicated sealed rooms. Retry the
+			// floor rather than letting population fall back into an ordinary room.
+			if opts.quest_requested && !d.special_room_plan.quest_placed do continue
+			if opts.force_hall && !d.special_room_plan.hall_placed do continue
 			return d, true
 		}
 	}

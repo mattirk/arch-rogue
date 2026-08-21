@@ -101,6 +101,50 @@ story_mechanics_lossless_soul_verdicts_arm_keeper_and_liss :: proc(t:^testing.T)
 }
 
 @(test)
+story_mechanics_floor_local_actors_do_not_leak_into_later_rooms :: proc(t:^testing.T) {
+	run:=story_mechanics_run(61202)
+	defer ar.run_destroy(&run)
+
+	guest:=ar.story_current_guest(&run)
+	quest,has_quest:=ar.special_room_for_kind(&run.dungeon,.Quest)
+	testing.expect(t,guest!=nil&&has_quest,"story floor must place its guest in a Quest room")
+	if guest!=nil&&has_quest {
+		center:=ar.room_center(run.dungeon.rooms_buf[quest.room_index])
+		expected:=ar.Vec2{f32(center.x)+.5,f32(center.y)+.5}
+		testing.expect(t,guest.pos==expected&&guest.motion.room_index==quest.room_index,"guest fell back into an ordinary room")
+		guest.resolved=true
+		guest.ally=true
+		guest.hp=max(guest.hp,1)
+	}
+
+	// Reproduce a Hall floor followed by a floor without one. The old Soul must
+	// disappear instead of reusing its coordinates in the new dungeon.
+	run.depth=7
+	run.dungeon.special_room_count=1
+	run.dungeon.special_rooms_buf[0]={.Hall_Of_Unlost_Echoes,1}
+	ar.story_populate_floor(&run)
+	testing.expect(t,run.story_runtime.soul.present,"Hall fixture did not spawn Soul")
+	old_soul_pos:=run.story_runtime.soul.pos
+	run.depth=8
+	run.dungeon.special_room_count=0
+	ar.story_populate_floor(&run)
+	testing.expect(t,!run.story_runtime.soul.present,"prior-floor Soul leaked into a floor without a Hall")
+	run.player.pos=old_soul_pos
+	testing.expect(t,ar.story_nearby_lossless_soul(&run)==nil,"stale Soul remained interactable on the later floor")
+
+	// A resolved guest from an earlier depth is historical state, not a hidden
+	// combatant in the current floor's geometry.
+	if guest!=nil {
+		enemy:=ar.enemy_make(.Ghoul,guest.pos+ar.Vec2{1,0},run.depth)
+		append(&run.enemies,enemy)
+		guest_pos:=guest.pos
+		enemy_hp:=run.enemies[len(run.enemies)-1].hp
+		ar.story_tick_friendly_npc_combat(&run,1)
+		testing.expect(t,guest.pos==guest_pos&&run.enemies[len(run.enemies)-1].hp==enemy_hp,"prior-floor guest moved or fought on the current floor")
+	}
+}
+
+@(test)
 story_mechanics_final_stairs_request_epilogue_without_legacy_victory :: proc(t:^testing.T) {
 	run:=story_mechanics_run(61301)
 	defer ar.run_destroy(&run)

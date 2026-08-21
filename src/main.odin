@@ -30,6 +30,27 @@ RAYLIB_GAMEPAD_BUTTONS := [Controller_Button]rl.GamepadButton{
 	.Dpad_Up=.LEFT_FACE_UP,.Dpad_Down=.LEFT_FACE_DOWN,.Dpad_Left=.LEFT_FACE_LEFT,.Dpad_Right=.LEFT_FACE_RIGHT,
 }
 
+@(rodata)
+RAYLIB_GAMEPAD_TRIGGER_AXES := [Controller_Trigger]rl.GamepadAxis{
+	.Left=.LEFT_TRIGGER,
+	.Right=.RIGHT_TRIGGER,
+}
+
+@(rodata)
+RAYLIB_GAMEPAD_TRIGGER_BUTTONS := [Controller_Trigger]rl.GamepadButton{
+	.Left=.LEFT_TRIGGER_2,
+	.Right=.RIGHT_TRIGGER_2,
+}
+
+controller_raylib_trigger_sample :: proc(gamepad: int, trigger: Controller_Trigger) -> f32 {
+	axis := RAYLIB_GAMEPAD_TRIGGER_AXES[trigger]
+	axis_available := int(rl.GetGamepadAxisCount(i32(gamepad))) > int(axis)
+	axis_value: f32
+	if axis_available do axis_value = rl.GetGamepadAxisMovement(i32(gamepad),axis)
+	button_down := rl.IsGamepadButtonDown(i32(gamepad),RAYLIB_GAMEPAD_TRIGGER_BUTTONS[trigger])
+	return controller_trigger_sample(axis_available,axis_value,button_down)
+}
+
 collect_controller_intent :: proc(app:^App,state:^Controller_Runtime,intent:^Intent) {
 	state.right_aim_this_frame = false
 	if !app.options.controller_enabled {
@@ -60,8 +81,7 @@ collect_controller_intent :: proc(app:^App,state:^Controller_Runtime,intent:^Int
 			}
 		}
 		for trigger in Controller_Trigger {
-			axis:=trigger==.Left?rl.GamepadAxis.LEFT_TRIGGER:rl.GamepadAxis.RIGHT_TRIGGER
-			raw:=rl.GetGamepadAxisMovement(i32(pad),axis)
+			raw:=controller_raylib_trigger_sample(pad,trigger)
 			edge := controller_resolve_trigger(raw,&state.triggers[trigger])
 			if edge == .Released && controller_trigger_command(&app.options.gamepad_mapping,trigger)==.Ability_1 {
 				intent.action1_released = true
@@ -105,8 +125,7 @@ collect_controller_intent :: proc(app:^App,state:^Controller_Runtime,intent:^Int
 		}
 	}
 	for trigger in Controller_Trigger {
-		axis:=trigger==.Left?rl.GamepadAxis.LEFT_TRIGGER:rl.GamepadAxis.RIGHT_TRIGGER
-		raw:=rl.GetGamepadAxisMovement(i32(pad),axis)
+		raw:=controller_raylib_trigger_sample(pad,trigger)
 		edge:=controller_resolve_trigger(raw,&state.triggers[trigger])
 		if edge==.Pressed {
 			state.aim_mode = true

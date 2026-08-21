@@ -750,6 +750,8 @@ ar_web_smoke_probe :: proc "c" () -> [^]u8 {
 	depth := 0
 	frame_count := 0
 	gamepad := false
+	left_trigger := false
+	right_trigger := false
 	packs_resident := 0
 	packs_adopting := 0
 	if web_runtime != nil {
@@ -763,6 +765,10 @@ ar_web_smoke_probe :: proc "c" () -> [^]u8 {
 		depth = web_runtime.app.run.depth
 		frame_count = web_runtime.frame_count
 		gamepad = bool(rl.IsGamepadAvailable(0))
+		if gamepad {
+			left_trigger = controller_raylib_trigger_sample(0,.Left) > CONTROLLER_TRIGGER_THRESHOLD
+			right_trigger = controller_raylib_trigger_sample(0,.Right) > CONTROLLER_TRIGGER_THRESHOLD
+		}
 	}
 	for _, status in web_packs {
 		if status == .Resident do packs_resident += 1
@@ -770,9 +776,9 @@ ar_web_smoke_probe :: proc "c" () -> [^]u8 {
 	}
 	encoded := fmt.bprintf(
 		web_probe_buffer[:len(web_probe_buffer)-1],
-		"{{\"state\":\"%v\",\"mode\":\"%s\",\"audio_ready\":%v,\"audio_playing\":%v,\"storage_ready\":%v,\"resume_available\":%v,\"run_active\":%v,\"modal_open\":%v,\"depth\":%d,\"frame_count\":%d,\"gamepad\":%v,\"packs_resident\":%d,\"packs_adopting\":%d,\"screen_w\":%d,\"screen_h\":%d,\"heap_dynamic_bytes\":%d,\"hydrated\":%v}}",
+		"{{\"state\":\"%v\",\"mode\":\"%s\",\"audio_ready\":%v,\"audio_playing\":%v,\"storage_ready\":%v,\"resume_available\":%v,\"run_active\":%v,\"modal_open\":%v,\"depth\":%d,\"frame_count\":%d,\"gamepad\":%v,\"left_trigger\":%v,\"right_trigger\":%v,\"packs_resident\":%d,\"packs_adopting\":%d,\"screen_w\":%d,\"screen_h\":%d,\"heap_dynamic_bytes\":%d,\"hydrated\":%v}}",
 		web_boot_state, mode, audio_ready, audio_playing, storage_ready, resume_available, run_active,
-		modal_open, depth, frame_count, gamepad, packs_resident, packs_adopting,
+		modal_open, depth, frame_count, gamepad, left_trigger, right_trigger, packs_resident, packs_adopting,
 		int(rl.GetScreenWidth()), int(rl.GetScreenHeight()),
 		web_dynamic_heap_bytes(), web_store_hydrated,
 	)

@@ -137,6 +137,29 @@ story_rooms_plan_is_deterministic_ordered_distinct_and_legacy_stable :: proc(t: 
 }
 
 @(test)
+story_requested_rooms_never_fall_back_to_spawn_or_boss_rooms :: proc(t: ^testing.T) {
+	arena_modes := [2]bool{false, true}
+	for seed in 1 ..= 128 {
+		for boss_arena in arena_modes {
+			d, ok := story_generate(u64(seed), {
+				boss_arena = boss_arena,
+				story_rooms = true,
+				quest_requested = true,
+				force_hall = true,
+			})
+			testing.expectf(t, ok, "requested story rooms failed for seed %v (boss=%v)", seed, boss_arena)
+			if !ok do continue
+			quest, has_quest := ar.special_room_for_kind(&d, .Quest)
+			hall, has_hall := ar.special_room_for_kind(&d, .Hall_Of_Unlost_Echoes)
+			testing.expectf(t, has_quest && d.special_room_plan.quest_placed, "seed %v lost mandatory Quest room", seed)
+			testing.expectf(t, has_hall && d.special_room_plan.hall_placed, "seed %v lost forced Hall", seed)
+			if has_quest do testing.expect(t, quest.room_index > 0 && quest.room_index < d.room_count - 1, "Quest used spawn/final room")
+			if has_hall do testing.expect(t, hall.room_index > 0 && hall.room_index < d.room_count - 1, "Hall used spawn/final room")
+		}
+	}
+}
+
+@(test)
 story_hall_roll_is_normal_and_force_only_overrides_failure :: proc(t: ^testing.T) {
 	evaluated, passed := 0, 0
 	for seed in 1 ..= 240 {

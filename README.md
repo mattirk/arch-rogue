@@ -90,15 +90,19 @@ Android outputs are written under `build/android/`. See `android/README.md` for 
 ## Repository layout
 
 ```text
-src/                 Odin package and game entry point
-assets/              canonical game-ready art, audio, shaders, and manifests
-tests/               headless deterministic Odin tests
-android/             pinned native Android Gradle package
-tools/               asset verification, capture, profiling, and Android tooling
-vendor/raylib/       pinned raylib 6.0 binding and platform archives
-website/             download-site source and branding
-arch-rogue-python/   archived legacy Python/Pygame source tree
-build.sh             check, test, build, run, release, and Android wrapper
+src/                   active Odin package: shared runtime, simulation, UI, and platform entries
+assets/                sole canonical game-ready art, audio, shaders, fonts, and manifests
+tests/                 headless deterministic Odin tests plus repository/site contract tests
+android/               pinned Gradle NativeActivity package and narrow Java platform shell
+web/                   pinned Emscripten contract, browser shell, JS bridge, and RAF driver
+tools/                 build, audit, asset verification, capture, smoke, and profiling tooling
+tools/public-repo/     canonical workflows overlaid into the filtered public repository
+vendor/raylib/         raylib 6.0 Odin binding and pinned Linux, Android, and Web archives
+website/               GitHub Pages download-site source; CI stages the web build under play/
+.github/workflows/     active CI entrypoints: private mirror automation or public release workflow
+build/                 generated local artifacts and validation evidence; never canonical source
+arch-rogue-python/     archived read-only Python/Pygame implementation for historical reference
+build.sh               canonical Linux, Android, and Web command wrapper
 ```
 
 The active Odin build must not read code or assets from `arch-rogue-python/`. `assets/` is the only canonical runtime art tree.
@@ -107,7 +111,7 @@ The active Odin build must not read code or assets from `arch-rogue-python/`. `a
 
 - Simulation uses a 60 Hz fixed timestep and seeded PCG streams. Rendering must not mutate simulation state.
 - Simulation and content code remain raylib-free so the test package can run headlessly.
-- Linux and Android are the only current release targets. Do not imply support for deferred platforms in release notes or download copy.
+- Linux, native Android, and desktop WebAssembly/WebGL2 are the current release targets. Windows, macOS, Steam integration, and multiplayer remain deferred.
 - The project is still awaiting final human side-by-side visual parity signoff and broader physical-device Android retesting noted in `PARITY.md`.
 
 ## Licenses and notices

@@ -388,8 +388,9 @@ story_current_guest :: proc(run: ^Run) -> ^Story_Guest {
 story_spawn_current_guest :: proc(run: ^Run) {
 	beat := story_current_beat(run)
 	if beat == nil do return
-	room_index := 0
-	if special,found := special_room_for_kind(&run.dungeon,.Quest); found do room_index = special.room_index
+	special, found := special_room_for_kind(&run.dungeon,.Quest)
+	if !found do return
+	room_index := special.room_index
 	pos := story_room_position(&run.dungeon,room_index)
 	index := story_guest_index_for_depth(run,run.depth)
 	if index >= 0 {
@@ -410,6 +411,9 @@ story_spawn_current_guest :: proc(run: ^Run) {
 
 @(private = "file")
 story_spawn_lossless_soul :: proc(run: ^Run) {
+	// Soul is floor-local. Clear the prior floor before looking for this floor's
+	// Hall, otherwise its old coordinates become valid in unrelated geometry.
+	run.story_runtime.soul = {}
 	special,found := special_room_for_kind(&run.dungeon,.Hall_Of_Unlost_Echoes)
 	if !found do return
 	index := clamp(run.depth,1,STORY_BEAT_COUNT)-1
@@ -458,7 +462,7 @@ story_position_available :: proc(run: ^Run, pos: Vec2, ignore_friendly := false)
 	if run == nil || blocked_for_radius(&run.dungeon,pos.x,pos.y,STORY_NPC_RADIUS) do return false
 	if story_distance_sq(pos,run.player.pos) < .52 do return false
 	if !ignore_friendly {
-		for &guest in run.story_runtime.guests do if guest.alive && story_distance_sq(pos,guest.pos)<.46 do return false
+		for &guest in run.story_runtime.guests do if guest.depth==run.depth&&guest.alive&&story_distance_sq(pos,guest.pos)<.46 do return false
 		soul:=&run.story_runtime.soul;if soul.present&&soul.alive&&story_distance_sq(pos,soul.pos)<.46 do return false
 	}
 	return true
@@ -1177,7 +1181,7 @@ story_snapshot_friendly_npc_positions :: proc(run:^Run) {if run==nil do return;f
 story_tick_friendly_npc_movement :: proc(run:^Run,elapsed,dt:f32) {
 	if run==nil do return
 	for &guest in run.story_runtime.guests {
-		if !guest.alive||guest.witness||guest.ally do continue
+		if guest.depth!=run.depth||!guest.alive||guest.witness||guest.ally do continue
 		hold:=!guest.resolved&&story_distance_sq(guest.pos,run.player.pos)<=STORY_NPC_HOLD_RANGE*STORY_NPC_HOLD_RANGE&&
 			line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,guest.pos.x,guest.pos.y)
 		room_npc_motion_tick(run,&guest.pos,&guest.motion,hold,false,elapsed,dt)
@@ -1219,6 +1223,6 @@ story_tick_ally :: proc(run:^Run,pos:^Vec2,motion:^Story_Npc_Motion,attack_timer
 
 story_tick_friendly_npc_combat :: proc(run:^Run,dt:f32) {
 	if run==nil do return
-	for &guest in run.story_runtime.guests {if guest.witness||!guest.resolved||!guest.ally||!guest.alive||guest.hp<=0 do continue;story_tick_ally(run,&guest.pos,&guest.motion,&guest.attack_timer,STORY_GUEST_ALLY_STATS,dt)}
+	for &guest in run.story_runtime.guests {if guest.depth!=run.depth||guest.witness||!guest.resolved||!guest.ally||!guest.alive||guest.hp<=0 do continue;story_tick_ally(run,&guest.pos,&guest.motion,&guest.attack_timer,STORY_GUEST_ALLY_STATS,dt)}
 	soul:=&run.story_runtime.soul;if soul.present&&soul.armed&&soul.alive&&soul.hp>0 do story_tick_ally(run,&soul.pos,&soul.motion,&soul.attack_timer,STORY_SOUL_ALLY_STATS,dt)
 }

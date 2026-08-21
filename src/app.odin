@@ -1071,7 +1071,10 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 				return false
 			}
 			floor_changed = player_interact(&app.run)
-			app_mark_run_dirty(app,critical=true)
+			// Web persistence encodes synchronously into the IndexedDB mirror. Only a
+			// floor transition needs an immediate checkpoint; ordinary and no-op
+			// interactions use the existing quiet/deadline autosave debounce.
+			app_mark_run_dirty(app,critical=floor_changed)
 			if floor_changed do _ = app_story_process_requests(app,include_omen=true)
 			if app.run.shop_requested {
 				app.run.shop_requested = false
