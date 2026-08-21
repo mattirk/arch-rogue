@@ -104,6 +104,9 @@ class PublicMirrorSnapshotTests(unittest.TestCase):
             "stray_root_secret.txt",
             # Root tools that must remain private.
             "tools/set_public_android_secrets.sh",
+            "tools/steam/render_build_scripts.py",
+            # The Steam plan and estate notes never reach the mirror.
+            "STEAM.md",
             # Python archive content that may never reach the mirror.
             "arch-rogue-python/.github/workflows/server-deploy.yml",
             "arch-rogue-python/.github/workflows/steam-deploy.yml",
@@ -358,8 +361,10 @@ class PublicMirrorSnapshotTests(unittest.TestCase):
     def test_validate_only_rejects_forbidden_paths(self) -> None:
         forbidden = (
             "AGENTS.md",
+            "STEAM.md",
             ".agents/private.txt",
             "tools/mirror_public_snapshot.sh",
+            "tools/steam/app_build.vdf",
             "arch-rogue-python/.github/workflows/release.yml",
             "arch-rogue-python/nested/.github/workflows/release.yml",
             "arch-rogue-python/nested/tools/public-repo/workflows/release.yml",

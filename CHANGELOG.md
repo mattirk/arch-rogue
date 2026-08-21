@@ -1,6 +1,66 @@
 # Changelog
 
-## Unreleased
+## 6.0.0-alpha.24 — The gate answers to Steam
+
+Steam parity re-enters per `STEAM.md`: the game-side S1 facade, the S2
+achievement funnel, and the S5 Linux release pipeline land together. Real-SDK
+verification on a Steam machine, partner-site configuration, the Windows lane,
+and Deck hardware validation remain tracked in that plan.
+
+- **Steamworks facade (S1).** A thin runtime binding over the flat C API in
+  `src/steam.odin`, loaded with `core:dynlib` so one binary serves every
+  distribution: with the library and client present it initializes (InitFlat
+  preferred, legacy Init fallback, accessors probed newest-first from a data
+  table); absent either, the game is behaviorally unchanged. DRM-free stance
+  kept with `RestartAppIfNecessary` at startup. Unlocks queue durably to
+  `steam_queue.json` beside the save primaries and replay on the next
+  connected session; entries dequeue only after `StoreStats` accepts the
+  batch, and a startup reconciliation re-pushes any cached grant Steam does
+  not report as achieved — so a lost queue degrades to a slower path, never a
+  lost unlock. `ARCH_ROGUE_NO_STEAM=1` force-disables; `ARCH_ROGUE_STEAM_APPID`
+  overrides the pinned App ID; the status line names the exact failing step.
+  Simulation and the save worker never touch Steam (hard rule 2 extension);
+  the web build compiles a stub.
+- **Achievement funnel (S2).** The 39-entry catalogue authored in Steamworks
+  App Admin is now a typed table in `src/achievements.odin` with the pygame
+  trigger grammar, evaluated at exactly two points: terminal run finalization
+  (after the Chronicle append, inside the same profile write) and startup
+  (retroactive first-Steam-launch grants). The granted cache marks only after
+  a durable queue write. The co-op pair stays authored but dormant until the
+  MP milestone (STEAM.md decision 1). The four authored Steam stats
+  (runs_started, clears, best_depth, lifetime_kills) publish from the profile.
+- **Profile schema v2.** Chronicle retention prunes at 512 records, so
+  lifetime achievement facts get merge-safe union sets and counters in
+  `profile.json`: victories by difficulty and archetype, bosses defeated,
+  gate verbs, themes and modifiers seen, distinct uniques found, lifetime
+  secrets/shrines/wall touches, and the granted-achievement cache. v1
+  profiles migrate in place: hash-verified against the retained v1 payload
+  shape, aggregates seeded from retained Chronicle records (gate verbs derive
+  from recorded ending slugs), and the upgraded document written back.
+- **Run schema v2.** `potions_used` and `elites_killed` now persist so a
+  resumed run cannot falsely earn Sober Descent or lose Elite Hunt progress.
+  v1 active runs migrate transparently on resume with the same retained-shape
+  hash verification and rewrite as v2 at the next checkpoint. Old binaries
+  correctly report newer documents as incompatible rather than corrupt.
+- **Release pipeline (S5, code side).** `./build.sh steam-linux` stages the
+  Linux depot content (`arch-rogue` under the existing App Admin launch-option
+  name, the canonical `assets/` tree, licenses, `libsteam_api.so` when
+  supplied) and smoke-boots the staged bundle for real via the new
+  `ARCH_ROGUE_SMOKE_TEST` hook — a bundle that cannot reach its title screen
+  fails before any depot. `tools/steam/render_build_scripts.py` is the single
+  description of an upload (App ID cross-checked against the source pin;
+  `SetLive default` refused). A private-only `steam-deploy.yml` workflow
+  builds, tests, fetches the SDK from the private repo, stages, packs with
+  executable bits preserved, and publishes through steamcmd with the plain-VDF
+  `config.vdf` contract. The mirror allowlist, `FORBIDDEN_PATHS`, and the
+  repository-layout tests now pin `STEAM.md`, `tools/steam/`, and the deploy
+  workflow as never-public.
+- 18 new headless tests (391 total) cover the catalogue contract against the
+  content tables, retroactive and terminal evaluation, the dormant co-op
+  pair, aggregate application and merge, both schema migrations from
+  committed fixture shapes, queue durability and corruption, and the facade
+  driven end to end against a fake flat-API symbol table (init, drain,
+  store-confirm gating, missing-symbol diagnosis, reconciliation).
 
 - Fixed the web-only sound glitch when the opening story cutscene appears. The
   Select-to-Playing transition now uses `Start` as its sole cue, lazy packs

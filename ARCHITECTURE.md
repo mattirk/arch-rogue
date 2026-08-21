@@ -163,9 +163,12 @@ version metadata but is no longer an active development target.
    files — `main`, `render`, `render_mist`, `ui`, `assets`, `audio`. Simulation files
    (`sim`, `sim_nav`, `combat_depth`, `companions`, `population`, `dungeon`, `content`,
    `core_*`, `app`, `input`, `mobile`, `options`, `progression`, `shop`, `story`,
-   `story_content`, `story_runtime`, `special_rooms`, `feel`, `visuals`) stay raylib-free so they run headless under
+   `story_content`, `story_runtime`, `special_rooms`, `feel`, `visuals`, `achievements`) stay raylib-free so they run headless under
    `odin test` (the rewrite's equivalent of the dummy-SDL test culture).
    Enforced by convention now (`grep 'rl\.'`), CI lint later.
+   The same boundary applies to Steamworks: only the platform facade
+   (`steam`, with its `steam_web` stub) touches the Steam API, driven from the
+   main loop's frame pump; simulation and the save worker stay Steam-free.
 3. Data-driven content: archetypes, enemies, bosses, items, affixes as Odin
    constant tables — type-checked at compile time, zero parse cost — ported
    from the archived `arch-rogue-python/src/arch_rogue/content/` tables.
@@ -193,6 +196,10 @@ version metadata but is no longer an active development target.
     options.odin       difficulty profiles, option values/defaults/normalization
     persistence.odin   versioned JSON DTOs, checksums, migrations, Chronicle/profile
                        operations, run snapshot/restore conversion (raylib-free)
+    achievements.odin  Steam achievement catalogue + declarative trigger
+                       evaluation over profile/run facts (raylib- and Steam-free)
+    steam.odin         Steamworks flat-API facade: runtime dynlib binding,
+                       offline unlock queue, frame pump (steam_web.odin stubs it)
     storage_replace_nonwindows.odin / storage_replace_windows.odin
                        atomic POSIX replacement / Windows write-through replacement
     progression.odin   100-node discipline table, tokens, acquisition/effect coverage
@@ -288,7 +295,11 @@ the raylib rebuild is checksum-identical, and API-34 x86_64 plus forced
 ARM64-translation smoke cover Options/Back. Matti confirmed an earlier ARM64 APK
 starts on a physical device, but the alpha.21 Options/gesture fixes still need a
 physical retest; ARMv7 runtime was not testable because the current AVD has no
-32-bit ABI. Multiplayer, Steam integration, and achievements remain deferred.
+32-bit ABI. Multiplayer remains deferred. Steam integration re-entered at
+6.0.0-alpha.24 (STEAM.md): the Steamworks facade, the 39-achievement funnel
+with profile schema-2 lifetime aggregates, and the private Linux depot
+pipeline are in; partner-site configuration, real-SDK verification, the
+Windows lane, and Deck hardware validation remain per that plan.
 Legacy graphics + perf overlays are dropped. Matti's M6 side-by-side visual
 signoff on a display machine also remains open.
 

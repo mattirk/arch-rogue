@@ -750,6 +750,7 @@ player_use_potion :: proc(run: ^Run, kind: Item_Kind) {
 		p.mana_potions -= 1
 		p.mana = min(f32(p.max_mana), p.mana + MANA_POTION_AMOUNT)
 	}
+	run.potions_used += 1
 	p.potion_timer = POTION_COOLDOWN
 	append(&run.sfx, Sfx_Kind.Potion)
 }
@@ -2507,7 +2508,7 @@ sweep_dead_enemies :: proc(run: ^Run) {
 				append(&run.numbers, Damage_Number{pos = run.player.pos, kind = .Text, text = "Story echo"})
 			}
 			gold := rng_range(&run.loot_rng, GOLD_MIN, GOLD_MAX + 1) + run.depth * 2
-			if enemy.role == .Elite do gold += 8
+			if enemy.role == .Elite {gold += 8;run.elites_killed += 1}
 			if enemy.role == .Miniboss || enemy.role == .Boss do gold += 18
 			run.player.gold += gold
 			append(&run.numbers, Damage_Number{pos = enemy.pos, kind = .Gold, value = gold})

@@ -5,7 +5,7 @@ import "core:fmt"
 import "core:strings"
 import rl "../vendor/raylib"
 
-VERSION :: "6.0.0-alpha.23"
+VERSION :: "6.0.0-alpha.24"
 
 // Spiral-of-death guard: clamp huge frame gaps (debugger pause, window drag).
 MAX_FRAME_DT :: 0.25
@@ -325,6 +325,7 @@ save_job_destroy :: proc(job:^Save_Job) {
 Persistence_Coordinator :: struct {
 	paths:Storage_Paths,
 	worker:Save_Worker,
+	steam:^Steam_State, // terminal finalization feeds the achievement funnel
 	ready:bool,
 	options_revision:u64,
 	profile_revision:u64,
@@ -485,14 +486,15 @@ persistence_recover_documents :: proc(coordinator:^Persistence_Coordinator,app:^
 	if coordinator==nil||app==nil do return false
 	if app.profile_save_damaged {
 		data,status:=storage_recover_document(coordinator.paths.profile,.Profile)
-		if status==.Valid {
+		if status==.Valid||status==.Migrated {
 			loaded,revision,decoded:=persistence_decode_profile(data)
-			if decoded==.Valid {
+			if decoded==.Valid||decoded==.Migrated {
 				profile_destroy(&app.profile)
 				app.profile=loaded
 				coordinator.profile_revision=revision
 				coordinator.profile_blocked=false
 				app.profile_save_damaged=false
+				if decoded==.Migrated do _=persistence_write_profile_sync(coordinator,app)
 			}
 		}
 		delete(data)
@@ -549,25 +551,45 @@ persistence_fail_request :: proc(app:^App,request:Persistence_Request,error_kind
 	app.persistence_return=return_mode;app.confirm_index=0;app.mode=.Save_Error
 }
 
-persistence_restore_active_run :: proc(coordinator:^Persistence_Coordinator,app:^App)->(bool,Persistence_Error_Kind) {
-	if coordinator==nil||app==nil do return false,.Load
+persistence_restore_active_run :: proc(coordinator:^Persistence_Coordinator,app:^App)->(restored:bool,migrated:bool,error:Persistence_Error_Kind) {
+	if coordinator==nil||app==nil do return false,false,.Load
 	data,status:=storage_recover_document(coordinator.paths.run,.Run)
 	if status!=.Valid&&status!=.Migrated {
 		delete(data)
 		app.active_run_damaged=status!=.Missing
-		return false,status==.Future?.Future:.Load
+		return false,false,status==.Future?.Future:.Load
 	}
 	document,decoded:=persistence_decode_run(data);delete(data)
-	if decoded!=.Valid||document.payload.terminal!=.Active||!app_install_run_document(app,&document) {
+	if (decoded!=.Valid&&decoded!=.Migrated)||document.payload.terminal!=.Active||!app_install_run_document(app,&document) {
 		run_document_destroy(&document)
 		app.active_run_damaged=true
-		return false,.Corrupt
+		return false,false,.Corrupt
 	}
 	run_document_destroy(&document)
 	coordinator.run_revision=app.run.revision
 	app.active_run_available=true
 	app.active_run_damaged=false
-	return true,.None
+	return true,decoded==.Migrated,.None
+}
+
+// The one achievement funnel (STEAM.md S2): evaluate against the granted
+// cache, durably queue the Steam push first, and only then mark the cache, so
+// a failed queue write re-evaluates later instead of losing an unlock. On
+// platforms without a queue (web, Android) nothing is cached and evaluation
+// simply repeats — reconciliation on a Steam desktop covers cloud-moved
+// profiles. Returns true when the profile changed and needs a write.
+persistence_apply_achievements :: proc(coordinator:^Persistence_Coordinator,app:^App,has_run:bool,facts:Run_Terminal_Facts)->bool {
+	if coordinator==nil||app==nil do return false
+	newly:[len(Achievement_Id)]Achievement_Id
+	count:=achievements_evaluate(&app.profile,has_run,facts,&newly)
+	changed:=false
+	for i in 0..<count {
+		def:=ACHIEVEMENT_DEFS[newly[i]]
+		if coordinator.steam!=nil&&steam_queue_achievement(coordinator.steam,def.api_id) {
+			if profile_mark_achievement_granted(&app.profile,def.api_id) do changed=true
+		}
+	}
+	return changed
 }
 
 persistence_finalize_terminal :: proc(coordinator:^Persistence_Coordinator,app:^App,request:Persistence_Request)->bool {
@@ -577,7 +599,15 @@ persistence_finalize_terminal :: proc(coordinator:^Persistence_Coordinator,app:^
 	if !persistence_write_run_sync(coordinator,app) do return false
 	outcome:=app.run.terminal==.Victory?Chronicle_Outcome.Victory:Chronicle_Outcome.Fallen
 	record:=chronicle_record_from_run(&app.run,outcome);defer chronicle_record_destroy(&record)
-	_=profile_finalize_record(&app.profile,&record)
+	facts:=run_terminal_facts(&app.run,outcome)
+	// Aggregates apply only on the first finalization of this run_id, so
+	// crash-recovery replay cannot double-count; the achievement evaluation
+	// itself is idempotent through the granted cache either way.
+	if profile_finalize_record(&app.profile,&record) {
+		profile_apply_terminal_facts(&app.profile,&record,&facts)
+	}
+	_=persistence_apply_achievements(coordinator,app,true,facts)
+	steam_publish_stats(coordinator.steam,&app.profile)
 	app.profile.revision=max(app.profile.revision,coordinator.profile_revision+1)
 	if !persistence_write_profile_sync(coordinator,app) do return false
 	app.run.finalization=.Profile_Committed
@@ -593,10 +623,13 @@ persistence_process_request :: proc(coordinator:^Persistence_Coordinator,app:^Ap
 	switch request {
 	case .Resume:
 		if coordinator.run_write_in_flight do return
-		restored,error_kind:=persistence_restore_active_run(coordinator,app)
+		restored,migrated,error_kind:=persistence_restore_active_run(coordinator,app)
 		if !restored {persistence_fail_request(app,request,error_kind,.Title);return}
 		app.persistence_request=.None;app.persistence_error=.None;app.mode=.Resume_Veil
 		app.run_dirty=false;app.run_critical=false
+		// A schema-migrated run rewrites promptly so the on-disk document
+		// upgrades to the current version without waiting for gameplay.
+		if migrated do app_mark_run_dirty(app)
 	case .Save_Checkpoint:
 		app.persistence_request=.None
 		if !persistence_write_profile_sync(coordinator,app) {
@@ -618,7 +651,7 @@ persistence_process_request :: proc(coordinator:^Persistence_Coordinator,app:^Ap
 		// without a preceding Resume and remains crash-safe before artifact removal.
 		// Loaded runs and retries retain their in-memory marker state.
 		if app.run.run_id=="" {
-			restored,error_kind:=persistence_restore_active_run(coordinator,app)
+			restored,_,error_kind:=persistence_restore_active_run(coordinator,app)
 			if !restored {persistence_fail_request(app,request,error_kind,.Title);return}
 		}
 		app.run.terminal=.Abandoned
@@ -687,11 +720,13 @@ persistence_coordinator_init :: proc(coordinator:^Persistence_Coordinator,app:^A
 	if !save_worker_init(&coordinator.worker) {storage_paths_destroy(&coordinator.paths);coordinator.ready=false;return false}
 
 	profile_existed:=false
+	profile_migrated:=false
 	profile_data,profile_status:=storage_recover_document(coordinator.paths.profile,.Profile)
-	if profile_status==.Valid {
+	if profile_status==.Valid||profile_status==.Migrated {
 		profile,revision,decoded:=persistence_decode_profile(profile_data)
-		if decoded==.Valid {
+		if decoded==.Valid||decoded==.Migrated {
 			app.profile=profile;coordinator.profile_revision=revision;profile_existed=true
+			profile_migrated=decoded==.Migrated
 		} else {
 			coordinator.profile_blocked=true;app.profile_save_damaged=true
 		}
@@ -723,13 +758,13 @@ persistence_coordinator_init :: proc(coordinator:^Persistence_Coordinator,app:^A
 	delete(options_data)
 	if !profile_existed&&legacy_hell do app.profile.hell_unlocked=true
 	options_normalize(&app.options,app.profile.hell_unlocked)
-	if !coordinator.profile_blocked&&(profile_status==.Missing||(!profile_existed&&legacy_hell)) do _=persistence_write_profile_sync(coordinator,app)
+	if !coordinator.profile_blocked&&(profile_status==.Missing||profile_migrated||(!profile_existed&&legacy_hell)) do _=persistence_write_profile_sync(coordinator,app)
 	if !coordinator.options_blocked&&(options_status==.Missing||options_status==.Migrated) do _=persistence_write_options_sync(coordinator,app)
 
 	run_data,run_status:=storage_recover_document(coordinator.paths.run,.Run)
-	if run_status==.Valid {
+	if run_status==.Valid||run_status==.Migrated {
 		document,decoded:=persistence_decode_run(run_data)
-		if decoded==.Valid {
+		if decoded==.Valid||decoded==.Migrated {
 			coordinator.run_revision=document.revision
 			if document.payload.terminal==.Active {
 				app.active_run_available=true
@@ -904,6 +939,7 @@ Game_Boot_Config :: struct {
 	dev_mist_off:              bool,
 	dev_lighting:              int,
 	save_trace:                bool,
+	smoke_frames:              int, // >0: draw N frames, then exit 0 (depot smoke gate)
 	perf_storage_directory:    string,
 }
 
@@ -928,6 +964,7 @@ Game_Runtime :: struct {
 	app:                  App,
 	platform:             Platform_Runtime,
 	persistence:          Persistence_Coordinator,
+	steam:                Steam_State,
 	view:                 View,
 	controller:           Controller_Runtime,
 	fixed_step:           Mobile_Fixed_Step_State,
@@ -1014,6 +1051,19 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 		profile_id := persistence_new_profile_id(config.seed)
 		profile_init(&rt.app.profile, profile_id)
 		delete(profile_id)
+	}
+	rt.persistence.steam = &rt.steam
+	if rt.persistence.ready {
+		// DRM-free stance kept from pygame: a bare download relaunches through
+		// Steam via RestartAppIfNecessary, which surfaces here as a quit.
+		if steam_startup(&rt.steam, rt.persistence.paths.directory) {
+			rt.app.quit_requested = true
+		}
+		// Retroactive first-Steam-launch grants: a veteran profile earns its
+		// achievements at startup, not after one more run.
+		if persistence_apply_achievements(&rt.persistence, &rt.app, false, {}) {
+			_ = persistence_write_profile_sync(&rt.persistence, &rt.app)
+		}
 	}
 	when ARCH_ROGUE_WEB {
 		// Browser fullscreen is transient and gesture-gated; never restore it
@@ -1307,6 +1357,7 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 		for _ in 0 ..< steps do app_tick(app)
 	}
 	persistence_update_scheduler(&rt.persistence, app, rl.GetTime())
+	steam_frame(&rt.steam, &app.profile)
 	if rt.perf_enabled do mx7_perf_refresh_visuals(&app.run)
 	alpha := rt.fixed_capture ? f32(1) : rt.fixed_step.accumulator / SIM_DT
 	// Modal/non-playing states freeze at the latest authoritative pose.
@@ -1438,6 +1489,7 @@ game_shutdown :: proc(rt: ^Game_Runtime) {
 	view_shutdown(&rt.view)
 	delete(rt.perf_samples)
 	rt.perf_samples = nil
+	steam_shutdown(&rt.steam)
 	persistence_coordinator_destroy(&rt.persistence)
 	run_destroy(&rt.app.run)
 	profile_destroy(&rt.app.profile)

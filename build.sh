@@ -23,8 +23,9 @@ case "$cmd" in
   web-build)         exec bash ./tools/web.sh build "$@" ;;
   web-audit)         exec bash ./tools/web.sh audit "$@" ;;
   web-serve)         exec bash ./tools/web.sh serve "$@" ;;
+  steam-linux)       exec bash ./tools/steam/build_steam_linux.sh "$@" ;;
   *)
-    echo "usage: build.sh [run|build|release|check|test|android-preflight|android-debug|android-release|android-install|android-audit|android-smoke|web-preflight|web-build|web-audit|web-serve] [args]" >&2
+    echo "usage: build.sh [run|build|release|check|test|android-preflight|android-debug|android-release|android-install|android-audit|android-smoke|web-preflight|web-build|web-audit|web-serve|steam-linux] [args]" >&2
     exit 2
     ;;
 esac

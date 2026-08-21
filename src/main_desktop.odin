@@ -418,6 +418,13 @@ game_boot_config_from_env :: proc() -> Game_Boot_Config {
 		config.dev_lighting = value != "0" ? 1 : 0
 	}
 	config.save_trace = os.get_env("ARCH_ROGUE_SAVE_TRACE", context.temp_allocator) != ""
+	// Depot smoke gate (STEAM.md S5): ARCH_ROGUE_SMOKE_TEST=1 draws a few real
+	// frames and exits 0, so a bundle that cannot reach its title screen fails
+	// in CI instead of shipping. A numeric value overrides the frame count.
+	if value := os.get_env("ARCH_ROGUE_SMOKE_TEST", context.temp_allocator); value != "" {
+		config.smoke_frames = 5
+		if parsed, ok := strconv.parse_int(value); ok && parsed > 1 do config.smoke_frames = parsed
+	}
 	return config
 }
 
@@ -442,6 +449,15 @@ main :: proc() {
 	rt := new(Game_Runtime)
 	defer free(rt)
 	if !game_init(rt, config) do return
-	for game_frame(rt) {}
+	smoke_remaining := config.smoke_frames
+	for game_frame(rt) {
+		if config.smoke_frames > 0 {
+			smoke_remaining -= 1
+			if smoke_remaining <= 0 {
+				platform_log("ARCH_ROGUE_SMOKE_TEST ok")
+				rt.app.quit_requested = true
+			}
+		}
+	}
 	game_shutdown(rt)
 }

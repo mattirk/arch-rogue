@@ -15,7 +15,7 @@ Bleeding-edge prerelease builds are published on the [Arch Rogue download site](
 | Web (WebAssembly) | [Play in a browser](https://mattirk.github.io/arch-rogue/play/) using the exact audited release archive. Requires a current desktop Chromium-family or Firefox browser with WebGL2 |
 | Windows | Deferred |
 | macOS | Deferred |
-| Steam / Steam Deck integration | Deferred |
+| Steam / Steam Deck integration | In progress: the game-side Steamworks integration (achievements, offline queue, cloud-ready saves) is built; store release pending |
 | Multiplayer | Deferred |
 
 The public workflow deploys the same content-addressed web archive attached to each prerelease. The Brotli wire budget and immutable/no-cache policy are self-hosted contracts validated by `web-audit` and `web-serve`; GitHub Pages controls its own compression and cache headers, so those delivery claims are not applied to the Pages endpoint.
@@ -111,7 +111,7 @@ The active Odin build must not read code or assets from `arch-rogue-python/`. `a
 
 - Simulation uses a 60 Hz fixed timestep and seeded PCG streams. Rendering must not mutate simulation state.
 - Simulation and content code remain raylib-free so the test package can run headlessly.
-- Linux, native Android, and desktop WebAssembly/WebGL2 are the current release targets. Windows, macOS, Steam integration, and multiplayer remain deferred.
+- Linux, native Android, and desktop WebAssembly/WebGL2 are the current release targets. The game-side Steam integration is built and a Steam release is being prepared; Windows, macOS, and multiplayer remain deferred.
 - The project is still awaiting final human side-by-side visual parity signoff and broader physical-device Android retesting noted in `PARITY.md`.
 
 ## Licenses and notices

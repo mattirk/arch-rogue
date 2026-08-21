@@ -12,10 +12,13 @@ import "core:math/bits"
 import "core:strings"
 
 OPTIONS_DOCUMENT_SCHEMA_VERSION :: 2
-PROFILE_DOCUMENT_SCHEMA_VERSION :: 1
-RUN_DOCUMENT_SCHEMA_VERSION     :: 1
+PROFILE_DOCUMENT_SCHEMA_VERSION :: 2
+PROFILE_DOCUMENT_SCHEMA_V1      :: 1
+RUN_DOCUMENT_SCHEMA_VERSION     :: 2
+RUN_DOCUMENT_SCHEMA_V1          :: 1
 CHRONICLE_RECORD_SCHEMA_VERSION :: 1
 LEGACY_OPTIONS_SCHEMA_VERSION   :: 1
+PROFILE_MAX_GRANTED_ACHIEVEMENTS :: 64
 
 PERSISTENCE_MAX_STRING_BYTES :: 4096
 PERSISTENCE_OPTIONS_MAX_BYTES :: 256 * 1024
@@ -156,7 +159,48 @@ Profile_State :: struct {
 	discovered_endings:[32]string,
 	discovered_ending_count:int,
 	chronicle:        [dynamic]Chronicle_Record,
+	// Steam-parity lifetime aggregates (profile schema v2). Chronicle retention
+	// prunes at 512 records, so lifetime achievement triggers keep their own
+	// merge-safe union sets and counters here, keyed by stable save-id strings.
+	victory_difficulty_ids: [len(Difficulty_Id)]string,
+	victory_difficulty_count: int,
+	victory_archetype_ids: [len(Archetype_Id)]string,
+	victory_archetype_count: int,
+	lifetime_boss_ids: [len(Boss_Id)]string,
+	lifetime_boss_count: int,
+	story_verb_ids: [len(Story_Choice_Verb)]string,
+	story_verb_count: int,
+	theme_ids_seen: [len(THEMES)]string,
+	theme_seen_count: int,
+	modifier_ids_seen: [len(Run_Modifier_Id)]string,
+	modifier_seen_count: int,
+	unique_item_ids_seen: [len(UNIQUE_DEFS)]string,
+	unique_seen_count: int,
+	lifetime_secrets: u64,
+	lifetime_shrines: u64,
+	lifetime_wall_touches: u64,
+	granted_achievement_ids: [PROFILE_MAX_GRANTED_ACHIEVEMENTS]string,
+	granted_achievement_count: int,
 	owns_strings:     bool, // runtime-only; omitted from Profile_Payload
+}
+
+@(rodata)
+ARCHETYPE_SAVE_IDS := [Archetype_Id]string{
+	.Warden="warden", .Rogue="rogue", .Arcanist="arcanist",
+	.Acolyte="acolyte", .Ranger="ranger",
+}
+
+@(rodata)
+STORY_VERB_SAVE_IDS := [Story_Choice_Verb]string{
+	.Aid="aid", .Bargain="bargain", .Defy="defy",
+}
+
+@(rodata)
+MODIFIER_SAVE_IDS := [Run_Modifier_Id]string{
+	.Blood_Moon="blood_moon", .Restless_Depths="restless_depths",
+	.Treasure_Draught="treasure_draught", .Trap_Laced="trap_laced",
+	.Thin_Veil="thin_veil", .Starved_Depths="starved_depths",
+	.Elite_Hunt="elite_hunt", .Cursed_Bargains="cursed_bargains",
 }
 
 @(rodata)
@@ -295,6 +339,41 @@ Profile_Payload :: struct {
 	discovered_endings:[32]string,
 	discovered_ending_count:int,
 	chronicle:        [dynamic]Chronicle_Record,
+	victory_difficulty_ids: [len(Difficulty_Id)]string,
+	victory_difficulty_count: int,
+	victory_archetype_ids: [len(Archetype_Id)]string,
+	victory_archetype_count: int,
+	lifetime_boss_ids: [len(Boss_Id)]string,
+	lifetime_boss_count: int,
+	story_verb_ids: [len(Story_Choice_Verb)]string,
+	story_verb_count: int,
+	theme_ids_seen: [len(THEMES)]string,
+	theme_seen_count: int,
+	modifier_ids_seen: [len(Run_Modifier_Id)]string,
+	modifier_seen_count: int,
+	unique_item_ids_seen: [len(UNIQUE_DEFS)]string,
+	unique_seen_count: int,
+	lifetime_secrets: u64,
+	lifetime_shrines: u64,
+	lifetime_wall_touches: u64,
+	granted_achievement_ids: [PROFILE_MAX_GRANTED_ACHIEVEMENTS]string,
+	granted_achievement_count: int,
+}
+
+// Retained schema-1 payload shape. Migration decodes and hash-verifies v1
+// documents against this exact struct, then converts; do not evolve it.
+Profile_Payload_V1 :: struct {
+	profile_id:       string,
+	hell_unlocked:    bool,
+	run_sequence:     u64,
+	lifetime_started: u64,
+	lifetime_descents:u64,
+	lifetime_victories:u64,
+	lifetime_kills:   u64,
+	best_depth:       int,
+	discovered_endings:[32]string,
+	discovered_ending_count:int,
+	chronicle:        [dynamic]Chronicle_Record,
 }
 
 Profile_Document :: struct {
@@ -307,7 +386,81 @@ Profile_Document :: struct {
 	payload:        Profile_Payload,
 }
 
+Profile_Document_V1 :: struct {
+	schema_version: int,
+	game_release:   string,
+	document_id:    string,
+	revision:       u64,
+	written_at_utc: string,
+	payload_sha256: string,
+	payload:        Profile_Payload_V1,
+}
+
 Run_Save_Payload :: struct {
+	active_ticks:   u64,
+	started_at_utc: string,
+	ended_at_utc:   string,
+	terminal:       Run_Terminal_State,
+	finalization:   Run_Finalization_Phase,
+	seed:           u64,
+	depth:          int,
+	difficulty:     Difficulty_Id,
+	dungeon:        Dungeon,
+	player:         Player,
+	enemies:        [dynamic]Enemy,
+	next_enemy_id:  u32,
+	next_familiar_id:u32,
+	next_save_entity_id:u64,
+	storm_cast_counter:u32,
+	floor_epoch:    u32,
+	projectiles:    [dynamic]Projectile,
+	familiars:      [dynamic]Familiar,
+	bells:          [dynamic]Ambush_Bell,
+	ground_items:   [dynamic]Ground_Item,
+	shopkeeper:     Shopkeeper,
+	has_shopkeeper: bool,
+	ambient_residents:Ambient_Room_Npc_Set,
+	refuge:         Refuge_State,
+	shop_requested: bool,
+	loot_rng:       Pcg32,
+	combat_rng:     Pcg32,
+	dark_floor:     bool,
+	theme_index:    int,
+	explored:       [MAP_W][MAP_H]bool,
+	boss_engaged:   bool,
+	sealed:         [dynamic]Sealed_Tile,
+	tyrant_dead:    bool,
+	victory:        bool,
+	kills:          int,
+	modifier:       Run_Modifier_Id,
+	plan:           [DUNGEON_DEPTH]Floor_Plan,
+	story:          Story_State,
+	story_runtime:  Story_Run_Runtime,
+	story_panel:    Story_Panel_State,
+	story_minigame: Story_Minigame_State,
+	story_minigame_cursor:int,
+	bars_visited:   int,
+	bars_toasted:   int,
+	challenge_rooms_cleared:int,
+	traps:          [dynamic]Trap,
+	shrines:        [dynamic]Shrine,
+	secrets:        [dynamic]Secret,
+	traps_triggered:int,
+	shrines_used:   int,
+	secrets_opened: int,
+	notable_loot:   [MAX_NOTABLE_LOOT]Notable_Loot,
+	notable_count:  int,
+	visited_themes: [len(THEMES)]bool,
+	defeated_bosses:[Boss_Id]bool,
+	last_damage_source:string,
+	wall_touches:   int,
+	potions_used:   int, // schema v2: Steam achievement run facts must survive resume
+	elites_killed:  int, // schema v2
+}
+
+// Retained schema-1 payload shape for migration decode + hash verification.
+// Field-for-field the alpha.23 layout; do not evolve it.
+Run_Save_Payload_V1 :: struct {
 	active_ticks:   u64,
 	started_at_utc: string,
 	ended_at_utc:   string,
@@ -376,6 +529,51 @@ Run_Document :: struct {
 	written_at_utc: string,
 	payload_sha256: string,
 	payload:        Run_Save_Payload,
+}
+
+Run_Document_V1 :: struct {
+	schema_version: int,
+	game_release:   string,
+	document_id:    string,
+	run_id:         string,
+	revision:       u64,
+	written_at_utc: string,
+	payload_sha256: string,
+	payload:        Run_Save_Payload_V1,
+}
+
+// Ownership-transferring v1 -> v2 conversion; the v1 payload is zeroed.
+run_payload_from_v1 :: proc(v1: ^Run_Save_Payload_V1) -> Run_Save_Payload {
+	if v1 == nil do return {}
+	payload := Run_Save_Payload{
+		active_ticks=v1.active_ticks, started_at_utc=v1.started_at_utc,
+		ended_at_utc=v1.ended_at_utc, terminal=v1.terminal,
+		finalization=v1.finalization, seed=v1.seed, depth=v1.depth,
+		difficulty=v1.difficulty, dungeon=v1.dungeon, player=v1.player,
+		enemies=v1.enemies, next_enemy_id=v1.next_enemy_id,
+		next_familiar_id=v1.next_familiar_id, next_save_entity_id=v1.next_save_entity_id,
+		storm_cast_counter=v1.storm_cast_counter, floor_epoch=v1.floor_epoch,
+		projectiles=v1.projectiles, familiars=v1.familiars, bells=v1.bells,
+		ground_items=v1.ground_items, shopkeeper=v1.shopkeeper,
+		has_shopkeeper=v1.has_shopkeeper, ambient_residents=v1.ambient_residents,
+		refuge=v1.refuge, shop_requested=v1.shop_requested, loot_rng=v1.loot_rng,
+		combat_rng=v1.combat_rng, dark_floor=v1.dark_floor, theme_index=v1.theme_index,
+		explored=v1.explored, boss_engaged=v1.boss_engaged, sealed=v1.sealed,
+		tyrant_dead=v1.tyrant_dead, victory=v1.victory, kills=v1.kills,
+		modifier=v1.modifier, plan=v1.plan, story=v1.story,
+		story_runtime=v1.story_runtime, story_panel=v1.story_panel,
+		story_minigame=v1.story_minigame, story_minigame_cursor=v1.story_minigame_cursor,
+		bars_visited=v1.bars_visited, bars_toasted=v1.bars_toasted,
+		challenge_rooms_cleared=v1.challenge_rooms_cleared,
+		traps=v1.traps, shrines=v1.shrines, secrets=v1.secrets,
+		traps_triggered=v1.traps_triggered, shrines_used=v1.shrines_used,
+		secrets_opened=v1.secrets_opened, notable_loot=v1.notable_loot,
+		notable_count=v1.notable_count, visited_themes=v1.visited_themes,
+		defeated_bosses=v1.defeated_bosses, last_damage_source=v1.last_damage_source,
+		wall_touches=v1.wall_touches,
+	}
+	v1^ = {}
+	return payload
 }
 
 Document_Probe :: struct {
@@ -761,9 +959,38 @@ profile_destroy :: proc(profile: ^Profile_State) {
 		delete(profile.profile_id)
 		for i in 0 ..< clamp(profile.discovered_ending_count,0,len(profile.discovered_endings)) do delete(profile.discovered_endings[i])
 		for &record in profile.chronicle do chronicle_record_destroy(&record)
+		for i in 0 ..< clamp(profile.victory_difficulty_count,0,len(profile.victory_difficulty_ids)) do delete(profile.victory_difficulty_ids[i])
+		for i in 0 ..< clamp(profile.victory_archetype_count,0,len(profile.victory_archetype_ids)) do delete(profile.victory_archetype_ids[i])
+		for i in 0 ..< clamp(profile.lifetime_boss_count,0,len(profile.lifetime_boss_ids)) do delete(profile.lifetime_boss_ids[i])
+		for i in 0 ..< clamp(profile.story_verb_count,0,len(profile.story_verb_ids)) do delete(profile.story_verb_ids[i])
+		for i in 0 ..< clamp(profile.theme_seen_count,0,len(profile.theme_ids_seen)) do delete(profile.theme_ids_seen[i])
+		for i in 0 ..< clamp(profile.modifier_seen_count,0,len(profile.modifier_ids_seen)) do delete(profile.modifier_ids_seen[i])
+		for i in 0 ..< clamp(profile.unique_seen_count,0,len(profile.unique_item_ids_seen)) do delete(profile.unique_item_ids_seen[i])
+		for i in 0 ..< clamp(profile.granted_achievement_count,0,len(profile.granted_achievement_ids)) do delete(profile.granted_achievement_ids[i])
 	}
 	delete(profile.chronicle)
 	profile^ = {}
+}
+
+// Bounded, deduplicating union add for the profile's stable-id string sets.
+// Returns true when the id was newly added (the caller owns marking dirty).
+profile_string_set_add :: proc(ids: []string, count: ^int, id: string) -> bool {
+	if count == nil || id == "" do return false
+	for i in 0 ..< clamp(count^,0,len(ids)) {
+		if ids[i] == id do return false
+	}
+	if count^ < 0 || count^ >= len(ids) do return false
+	ids[count^] = persistence_clone_string(id)
+	count^ += 1
+	return true
+}
+
+profile_string_set_contains :: proc(ids: []string, count: int, id: string) -> bool {
+	if id == "" do return false
+	for i in 0 ..< clamp(count,0,len(ids)) {
+		if ids[i] == id do return true
+	}
+	return false
 }
 
 profile_unlock_hell :: proc(profile: ^Profile_State) -> bool {
@@ -818,6 +1045,98 @@ profile_finalize_record :: proc(profile: ^Profile_State, record: ^Chronicle_Reco
 	return true
 }
 
+// Per-run facts the achievement funnel needs beyond the Chronicle record.
+// Built from the live Run at the terminal-finalization choke point.
+Run_Terminal_Facts :: struct {
+	outcome:        Chronicle_Outcome,
+	depth:          int,
+	potions_used:   int,
+	elites_killed:  int,
+	challenge_rooms_cleared: int,
+	wall_touches:   int,
+	bar_pilgrim:    bool,
+	gate_verb:      Story_Choice_Verb,
+	gate_verb_valid: bool,
+}
+
+run_terminal_facts :: proc(run: ^Run, outcome: Chronicle_Outcome) -> Run_Terminal_Facts {
+	if run == nil do return {}
+	facts := Run_Terminal_Facts{
+		outcome=outcome, depth=run.depth,
+		potions_used=run.potions_used, elites_killed=run.elites_killed,
+		challenge_rooms_cleared=run.challenge_rooms_cleared,
+		wall_touches=run.wall_touches,
+		// Mirrors maybe_summon_bar_dancer's all-bars-toasted condition.
+		bar_pilgrim=run.bars_visited > 0 && run.bars_toasted >= run.bars_visited,
+	}
+	facts.gate_verb, facts.gate_verb_valid = story_verb_from_resolution(run.story.flags.gate)
+	return facts
+}
+
+// Derive the gate verb from a recorded ending slug (used when seeding v1
+// profiles, where only the Chronicle record survives).
+persistence_verb_from_ending_id :: proc(ending_id: string) -> (Story_Choice_Verb, bool) {
+	if ending_id == "" do return {}, false
+	for archetype in Archetype_Id {
+		for verb in Story_Choice_Verb {
+			if STORY_ENDINGS[archetype][verb].slug == ending_id do return verb, true
+		}
+	}
+	return {}, false
+}
+
+// Fold one finished run into the lifetime aggregates. Callers gate this on
+// profile_finalize_record returning true so crash-recovery re-finalization by
+// run_id can never double-apply; both mutations land in the same profile write.
+profile_apply_terminal_facts :: proc(profile: ^Profile_State, record: ^Chronicle_Record, facts: ^Run_Terminal_Facts) {
+	if profile == nil || record == nil || facts == nil do return
+	if record.outcome == .Victory {
+		_ = profile_string_set_add(profile.victory_difficulty_ids[:], &profile.victory_difficulty_count, DIFFICULTY_SAVE_IDS[record.difficulty])
+		_ = profile_string_set_add(profile.victory_archetype_ids[:], &profile.victory_archetype_count, ARCHETYPE_SAVE_IDS[record.archetype])
+	}
+	for i in 0 ..< clamp(record.defeated_boss_count,0,len(record.defeated_boss_ids)) {
+		_ = profile_string_set_add(profile.lifetime_boss_ids[:], &profile.lifetime_boss_count, record.defeated_boss_ids[i])
+	}
+	for i in 0 ..< clamp(record.visited_theme_count,0,len(record.visited_theme_ids)) {
+		_ = profile_string_set_add(profile.theme_ids_seen[:], &profile.theme_seen_count, record.visited_theme_ids[i])
+	}
+	_ = profile_string_set_add(profile.modifier_ids_seen[:], &profile.modifier_seen_count, MODIFIER_SAVE_IDS[record.run_modifier])
+	for i in 0 ..< clamp(record.notable_count,0,len(record.notable_items)) {
+		item := &record.notable_items[i]
+		if item.rarity != .Unique do continue
+		_ = profile_string_set_add(profile.unique_item_ids_seen[:], &profile.unique_seen_count, item.item_id)
+	}
+	if facts.gate_verb_valid {
+		_ = profile_string_set_add(profile.story_verb_ids[:], &profile.story_verb_count, STORY_VERB_SAVE_IDS[facts.gate_verb])
+	}
+	profile.lifetime_secrets += u64(max(0, record.secrets_opened))
+	profile.lifetime_shrines += u64(max(0, record.shrines_used))
+	profile.lifetime_wall_touches += u64(max(0, facts.wall_touches))
+}
+
+// One-time v1 -> v2 seeding: rebuild what the retained Chronicle records can
+// prove. Counters seeded this way under-count anything beyond the 512-record
+// retention window; wall touches and per-run potion/elite facts are not
+// derivable from records and start at zero. Documented in STEAM.md S2.
+profile_seed_aggregates_from_chronicle :: proc(profile: ^Profile_State) {
+	if profile == nil do return
+	for &record in profile.chronicle {
+		facts := Run_Terminal_Facts{outcome=record.outcome, depth=record.deepest_floor}
+		facts.gate_verb, facts.gate_verb_valid = persistence_verb_from_ending_id(record.story_ending_id)
+		profile_apply_terminal_facts(profile, &record, &facts)
+	}
+}
+
+profile_achievement_granted :: proc(profile: ^Profile_State, api_id: string) -> bool {
+	if profile == nil do return false
+	return profile_string_set_contains(profile.granted_achievement_ids[:], profile.granted_achievement_count, api_id)
+}
+
+profile_mark_achievement_granted :: proc(profile: ^Profile_State, api_id: string) -> bool {
+	if profile == nil do return false
+	return profile_string_set_add(profile.granted_achievement_ids[:], &profile.granted_achievement_count, api_id)
+}
+
 profile_merge :: proc(destination: ^Profile_State, incoming: ^Profile_State) {
 	if destination == nil || incoming == nil do return
 	destination.hell_unlocked = destination.hell_unlocked || incoming.hell_unlocked
@@ -836,6 +1155,17 @@ profile_merge :: proc(destination: ^Profile_State, incoming: ^Profile_State) {
 		chronicle_record_destroy(&destination.chronicle[0])
 		ordered_remove(&destination.chronicle, 0)
 	}
+	for i in 0 ..< clamp(incoming.victory_difficulty_count,0,len(incoming.victory_difficulty_ids)) do _ = profile_string_set_add(destination.victory_difficulty_ids[:], &destination.victory_difficulty_count, incoming.victory_difficulty_ids[i])
+	for i in 0 ..< clamp(incoming.victory_archetype_count,0,len(incoming.victory_archetype_ids)) do _ = profile_string_set_add(destination.victory_archetype_ids[:], &destination.victory_archetype_count, incoming.victory_archetype_ids[i])
+	for i in 0 ..< clamp(incoming.lifetime_boss_count,0,len(incoming.lifetime_boss_ids)) do _ = profile_string_set_add(destination.lifetime_boss_ids[:], &destination.lifetime_boss_count, incoming.lifetime_boss_ids[i])
+	for i in 0 ..< clamp(incoming.story_verb_count,0,len(incoming.story_verb_ids)) do _ = profile_string_set_add(destination.story_verb_ids[:], &destination.story_verb_count, incoming.story_verb_ids[i])
+	for i in 0 ..< clamp(incoming.theme_seen_count,0,len(incoming.theme_ids_seen)) do _ = profile_string_set_add(destination.theme_ids_seen[:], &destination.theme_seen_count, incoming.theme_ids_seen[i])
+	for i in 0 ..< clamp(incoming.modifier_seen_count,0,len(incoming.modifier_ids_seen)) do _ = profile_string_set_add(destination.modifier_ids_seen[:], &destination.modifier_seen_count, incoming.modifier_ids_seen[i])
+	for i in 0 ..< clamp(incoming.unique_seen_count,0,len(incoming.unique_item_ids_seen)) do _ = profile_string_set_add(destination.unique_item_ids_seen[:], &destination.unique_seen_count, incoming.unique_item_ids_seen[i])
+	for i in 0 ..< clamp(incoming.granted_achievement_count,0,len(incoming.granted_achievement_ids)) do _ = profile_string_set_add(destination.granted_achievement_ids[:], &destination.granted_achievement_count, incoming.granted_achievement_ids[i])
+	destination.lifetime_secrets = max(destination.lifetime_secrets, incoming.lifetime_secrets)
+	destination.lifetime_shrines = max(destination.lifetime_shrines, incoming.lifetime_shrines)
+	destination.lifetime_wall_touches = max(destination.lifetime_wall_touches, incoming.lifetime_wall_touches)
 }
 
 chronicle_record_matches :: proc(record: ^Chronicle_Record, view: ^Chronicle_View_State) -> bool {
@@ -882,6 +1212,25 @@ profile_payload_from_profile :: proc(profile: ^Profile_State) -> Profile_Payload
 		discovered_endings=profile.discovered_endings,
 		discovered_ending_count=profile.discovered_ending_count,
 		chronicle=profile.chronicle,
+		victory_difficulty_ids=profile.victory_difficulty_ids,
+		victory_difficulty_count=profile.victory_difficulty_count,
+		victory_archetype_ids=profile.victory_archetype_ids,
+		victory_archetype_count=profile.victory_archetype_count,
+		lifetime_boss_ids=profile.lifetime_boss_ids,
+		lifetime_boss_count=profile.lifetime_boss_count,
+		story_verb_ids=profile.story_verb_ids,
+		story_verb_count=profile.story_verb_count,
+		theme_ids_seen=profile.theme_ids_seen,
+		theme_seen_count=profile.theme_seen_count,
+		modifier_ids_seen=profile.modifier_ids_seen,
+		modifier_seen_count=profile.modifier_seen_count,
+		unique_item_ids_seen=profile.unique_item_ids_seen,
+		unique_seen_count=profile.unique_seen_count,
+		lifetime_secrets=profile.lifetime_secrets,
+		lifetime_shrines=profile.lifetime_shrines,
+		lifetime_wall_touches=profile.lifetime_wall_touches,
+		granted_achievement_ids=profile.granted_achievement_ids,
+		granted_achievement_count=profile.granted_achievement_count,
 	}
 }
 
@@ -892,10 +1241,39 @@ profile_payload_destroy :: proc(payload: ^Profile_Payload) {
 		discovered_endings=payload.discovered_endings,
 		discovered_ending_count=payload.discovered_ending_count,
 		chronicle=payload.chronicle,
+		victory_difficulty_ids=payload.victory_difficulty_ids,
+		victory_difficulty_count=payload.victory_difficulty_count,
+		victory_archetype_ids=payload.victory_archetype_ids,
+		victory_archetype_count=payload.victory_archetype_count,
+		lifetime_boss_ids=payload.lifetime_boss_ids,
+		lifetime_boss_count=payload.lifetime_boss_count,
+		story_verb_ids=payload.story_verb_ids,
+		story_verb_count=payload.story_verb_count,
+		theme_ids_seen=payload.theme_ids_seen,
+		theme_seen_count=payload.theme_seen_count,
+		modifier_ids_seen=payload.modifier_ids_seen,
+		modifier_seen_count=payload.modifier_seen_count,
+		unique_item_ids_seen=payload.unique_item_ids_seen,
+		unique_seen_count=payload.unique_seen_count,
+		granted_achievement_ids=payload.granted_achievement_ids,
+		granted_achievement_count=payload.granted_achievement_count,
 		owns_strings=true,
 	}
 	payload^ = {}
 	profile_destroy(&profile)
+}
+
+@(private = "file")
+profile_state_counts_valid :: proc(profile: ^Profile_State) -> bool {
+	if profile.victory_difficulty_count < 0 || profile.victory_difficulty_count > len(profile.victory_difficulty_ids) do return false
+	if profile.victory_archetype_count < 0 || profile.victory_archetype_count > len(profile.victory_archetype_ids) do return false
+	if profile.lifetime_boss_count < 0 || profile.lifetime_boss_count > len(profile.lifetime_boss_ids) do return false
+	if profile.story_verb_count < 0 || profile.story_verb_count > len(profile.story_verb_ids) do return false
+	if profile.theme_seen_count < 0 || profile.theme_seen_count > len(profile.theme_ids_seen) do return false
+	if profile.modifier_seen_count < 0 || profile.modifier_seen_count > len(profile.modifier_ids_seen) do return false
+	if profile.unique_seen_count < 0 || profile.unique_seen_count > len(profile.unique_item_ids_seen) do return false
+	if profile.granted_achievement_count < 0 || profile.granted_achievement_count > len(profile.granted_achievement_ids) do return false
+	return true
 }
 
 persistence_encode_profile :: proc(profile: ^Profile_State, revision: u64, written_at_utc: string) -> ([]byte, bool) {
@@ -918,6 +1296,82 @@ persistence_encode_profile :: proc(profile: ^Profile_State, revision: u64, writt
 	return persistence_marshal(document)
 }
 
+@(private = "file")
+persistence_profile_records_valid :: proc(profile: ^Profile_State) -> bool {
+	for &record in profile.chronicle {
+		if record.run_id == "" || record.notable_count < 0 || record.notable_count > MAX_NOTABLE_LOOT ||
+			record.visited_theme_count < 0 || record.visited_theme_count > CHRONICLE_MAX_THEMES ||
+			record.defeated_boss_count < 0 || record.defeated_boss_count > CHRONICLE_MAX_BOSSES {
+			return false
+		}
+	}
+	return true
+}
+
+// Schema-1 branch: hash-verify against the retained v1 payload shape, then
+// seed the v2 lifetime aggregates from the retained Chronicle records. The
+// caller persists the upgraded document on a .Migrated result.
+@(private = "file")
+persistence_decode_profile_v1 :: proc(data: []byte) -> (Profile_State, u64, Persistence_Decode_Status) {
+	document: Profile_Document_V1
+	if err := json.unmarshal(data, &document); err != nil do return {}, 0, .Corrupt
+	delete(document.game_release)
+	delete(document.document_id)
+	delete(document.written_at_utc)
+	defer delete(document.payload_sha256)
+	destroy_v1_payload :: proc(payload: ^Profile_Payload_V1) {
+		wrapper := Profile_Payload{
+			profile_id=payload.profile_id,
+			discovered_endings=payload.discovered_endings,
+			discovered_ending_count=payload.discovered_ending_count,
+			chronicle=payload.chronicle,
+		}
+		payload^ = {}
+		profile_payload_destroy(&wrapper)
+	}
+	payload_bytes, ok := persistence_marshal(document.payload)
+	if !ok {
+		destroy_v1_payload(&document.payload)
+		return {}, 0, .Corrupt
+	}
+	computed := persistence_sha256(payload_bytes)
+	delete(payload_bytes)
+	defer delete(computed)
+	if computed == "" || computed != document.payload_sha256 {
+		destroy_v1_payload(&document.payload)
+		return {}, 0, .Corrupt
+	}
+	payload := document.payload
+	document.payload = {}
+	if payload.profile_id == "" || payload.discovered_ending_count < 0 ||
+		payload.discovered_ending_count > len(payload.discovered_endings) || len(payload.chronicle) > CHRONICLE_MAX_RECORDS {
+		destroy_v1_payload(&payload)
+		return {}, 0, .Corrupt
+	}
+	profile := Profile_State{
+		profile_id=payload.profile_id,
+		revision=document.revision,
+		hell_unlocked=payload.hell_unlocked,
+		run_sequence=payload.run_sequence,
+		lifetime_started=payload.lifetime_started,
+		lifetime_descents=payload.lifetime_descents,
+		lifetime_victories=payload.lifetime_victories,
+		lifetime_kills=payload.lifetime_kills,
+		best_depth=payload.best_depth,
+		discovered_endings=payload.discovered_endings,
+		discovered_ending_count=payload.discovered_ending_count,
+		chronicle=payload.chronicle,
+		owns_strings=true,
+	}
+	payload = {}
+	if !persistence_profile_records_valid(&profile) {
+		profile_destroy(&profile)
+		return {}, 0, .Corrupt
+	}
+	profile_seed_aggregates_from_chronicle(&profile)
+	return profile, document.revision, .Migrated
+}
+
 persistence_decode_profile :: proc(data: []byte) -> (Profile_State, u64, Persistence_Decode_Status) {
 	if !persistence_json_preflight(data, PERSISTENCE_PROFILE_MAX_BYTES) do return {}, 0, .Oversize
 	probe: Document_Probe
@@ -927,6 +1381,7 @@ persistence_decode_profile :: proc(data: []byte) -> (Profile_State, u64, Persist
 		delete(probe.written_at_utc); delete(probe.payload_sha256)
 	}
 	if probe.schema_version > PROFILE_DOCUMENT_SCHEMA_VERSION do return {}, 0, .Future
+	if probe.schema_version == PROFILE_DOCUMENT_SCHEMA_V1 do return persistence_decode_profile_v1(data)
 	if probe.schema_version != PROFILE_DOCUMENT_SCHEMA_VERSION do return {}, 0, .Corrupt
 	document: Profile_Document
 	if err := json.unmarshal(data, &document); err != nil do return {}, 0, .Corrupt
@@ -966,16 +1421,31 @@ persistence_decode_profile :: proc(data: []byte) -> (Profile_State, u64, Persist
 		discovered_endings=payload.discovered_endings,
 		discovered_ending_count=payload.discovered_ending_count,
 		chronicle=payload.chronicle,
+		victory_difficulty_ids=payload.victory_difficulty_ids,
+		victory_difficulty_count=payload.victory_difficulty_count,
+		victory_archetype_ids=payload.victory_archetype_ids,
+		victory_archetype_count=payload.victory_archetype_count,
+		lifetime_boss_ids=payload.lifetime_boss_ids,
+		lifetime_boss_count=payload.lifetime_boss_count,
+		story_verb_ids=payload.story_verb_ids,
+		story_verb_count=payload.story_verb_count,
+		theme_ids_seen=payload.theme_ids_seen,
+		theme_seen_count=payload.theme_seen_count,
+		modifier_ids_seen=payload.modifier_ids_seen,
+		modifier_seen_count=payload.modifier_seen_count,
+		unique_item_ids_seen=payload.unique_item_ids_seen,
+		unique_seen_count=payload.unique_seen_count,
+		lifetime_secrets=payload.lifetime_secrets,
+		lifetime_shrines=payload.lifetime_shrines,
+		lifetime_wall_touches=payload.lifetime_wall_touches,
+		granted_achievement_ids=payload.granted_achievement_ids,
+		granted_achievement_count=payload.granted_achievement_count,
 		owns_strings=true,
 	}
 	payload = {}
-	for &record in profile.chronicle {
-		if record.run_id == "" || record.notable_count < 0 || record.notable_count > MAX_NOTABLE_LOOT ||
-			record.visited_theme_count < 0 || record.visited_theme_count > CHRONICLE_MAX_THEMES ||
-			record.defeated_boss_count < 0 || record.defeated_boss_count > CHRONICLE_MAX_BOSSES {
-			profile_destroy(&profile)
-			return {}, 0, .Corrupt
-		}
+	if !persistence_profile_records_valid(&profile) || !profile_state_counts_valid(&profile) {
+		profile_destroy(&profile)
+		return {}, 0, .Corrupt
 	}
 	return profile, document.revision, .Valid
 }
@@ -1036,6 +1506,7 @@ run_save_payload_from_app :: proc(app: ^App) -> Run_Save_Payload {
 		notable_count=run.notable_count, visited_themes=run.visited_themes,
 		defeated_bosses=run.defeated_bosses, last_damage_source=run.last_damage_source,
 		wall_touches=run.wall_touches,
+		potions_used=run.potions_used, elites_killed=run.elites_killed,
 	}
 }
 
@@ -1184,6 +1655,7 @@ run_payload_validate :: proc(payload: ^Run_Save_Payload) -> bool {
 		return false
 	}
 	if payload.notable_count < 0 || payload.notable_count > MAX_NOTABLE_LOOT do return false
+	if payload.potions_used < 0 || payload.elites_killed < 0 do return false
 	if payload.player.bag_count < 0 || payload.player.bag_count > BAG_CAPACITY do return false
 	if payload.shopkeeper.stock_count < 0 || payload.shopkeeper.stock_count > SHOP_STOCK_CAPACITY do return false
 	if payload.story.log.count<0||payload.story.log.count>STORY_LOG_CAP do return false
@@ -1291,6 +1763,7 @@ run_take_payload :: proc(payload: ^Run_Save_Payload, allocator := context.alloca
 		notable_count=payload.notable_count, visited_themes=payload.visited_themes,
 		defeated_bosses=payload.defeated_bosses,
 		last_damage_source=payload.last_damage_source, wall_touches=payload.wall_touches,
+		potions_used=payload.potions_used, elites_killed=payload.elites_killed,
 	}
 	panel = payload.story_panel
 	minigame = payload.story_minigame
@@ -1314,6 +1787,40 @@ run_document_destroy :: proc(document: ^Run_Document) {
 	document^ = {}
 }
 
+// Schema-1 branch: the stored hash covers the v1 payload marshal, so verify
+// against the retained v1 shape before converting. Conversion moves ownership;
+// the returned document is a normal v2 document with the new counters zeroed.
+@(private = "file")
+persistence_decode_run_v1 :: proc(data: []byte) -> (Run_Document, Persistence_Decode_Status) {
+	v1: Run_Document_V1
+	if err := json.unmarshal(data, &v1); err != nil do return {}, .Corrupt
+	document := Run_Document{
+		schema_version=RUN_DOCUMENT_SCHEMA_VERSION,
+		game_release=v1.game_release,
+		document_id=v1.document_id,
+		run_id=v1.run_id,
+		revision=v1.revision,
+		written_at_utc=v1.written_at_utc,
+		payload_sha256=v1.payload_sha256,
+	}
+	payload_bytes, ok := persistence_marshal(v1.payload)
+	document.payload = run_payload_from_v1(&v1.payload)
+	if !ok {
+		run_document_destroy(&document)
+		return {}, .Corrupt
+	}
+	computed := persistence_sha256(payload_bytes)
+	delete(payload_bytes)
+	defer delete(computed)
+	if computed == "" || computed != document.payload_sha256 ||
+		document.run_id == "" || document.run_id != document.document_id ||
+		!run_payload_validate(&document.payload) {
+		run_document_destroy(&document)
+		return {}, .Corrupt
+	}
+	return document, .Migrated
+}
+
 persistence_decode_run :: proc(data: []byte) -> (Run_Document, Persistence_Decode_Status) {
 	if !persistence_json_preflight(data, PERSISTENCE_RUN_MAX_BYTES) do return {}, .Oversize
 	probe: Document_Probe
@@ -1323,6 +1830,7 @@ persistence_decode_run :: proc(data: []byte) -> (Run_Document, Persistence_Decod
 		delete(probe.written_at_utc); delete(probe.payload_sha256)
 	}
 	if probe.schema_version > RUN_DOCUMENT_SCHEMA_VERSION do return {}, .Future
+	if probe.schema_version == RUN_DOCUMENT_SCHEMA_V1 do return persistence_decode_run_v1(data)
 	if probe.schema_version != RUN_DOCUMENT_SCHEMA_VERSION do return {}, .Corrupt
 	document: Run_Document
 	if err := json.unmarshal(data, &document); err != nil do return {}, .Corrupt
@@ -1450,14 +1958,14 @@ persistence_document_probe :: proc(kind: Persistence_Document_Kind, data: []byte
 		return revision, persistence_clone_string("options"), status
 	case .Profile:
 		profile, rev, decoded := persistence_decode_profile(data)
-		if decoded == .Valid {
+		if decoded == .Valid || decoded == .Migrated {
 			identity = persistence_clone_string(profile.profile_id)
 		}
 		profile_destroy(&profile)
 		return rev, identity, decoded
 	case .Run:
 		document, decoded := persistence_decode_run(data)
-		if decoded == .Valid {
+		if decoded == .Valid || decoded == .Migrated {
 			revision = document.revision
 			identity = persistence_clone_string(document.run_id)
 		}

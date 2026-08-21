@@ -222,6 +222,8 @@ Run :: struct {
 	wall_face_tile:  [2]int,
 	wall_face_timer: f32, // counts down; renderer derives the frame
 	wall_touches:    int,
+	potions_used:    int, // persisted run facts for the Steam achievement funnel
+	elites_killed:   int,
 }
 
 ARRIVAL_TITLE_SECONDS :: 2.4
