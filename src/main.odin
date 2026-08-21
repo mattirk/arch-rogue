@@ -1500,36 +1500,13 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 		if rl.IsKeyPressed(.Q) {intent.menu_index=int(Title_Action.Quit);intent.menu_index_valid=true;intent.confirm=true}
 		if rl.IsKeyPressed(.ESCAPE) do intent.back=true
 	case .Select:
-		if mouse_moved {
-			if index, found := select_slot_at(app,mouse); found {
-				intent.menu_index = index
-				intent.menu_index_valid = true
-			}
-		}
 		if rl.IsMouseButtonPressed(.LEFT) {
-			current_index, current_found := select_slot_at(app, mouse)
-			design_mouse := ui_screen_to_design(mouse)
-			previous_region_hit := view.archetype_click_rect_valid &&
-				rl.CheckCollisionPointRec(design_mouse, view.archetype_click_rect)
-			index, found, confirm := desktop_resolve_reflow_menu_click(
-				&view.menu_click,
-				.Archetype,
-				current_index,
-				current_found,
-				previous_region_hit,
-				rl.GetTime(),
-			)
-			if found {
-				intent.menu_index = index
-				intent.menu_index_valid = true
-				intent.confirm = confirm
-				intent.pointer_confirm = confirm
-				if confirm {
-					view.archetype_click_rect_valid = false
-				} else {
-					view.archetype_click_rect = select_slot_rect(app, index)
-					view.archetype_click_rect_valid = true
-				}
+			if index, found := select_slot_at(app, mouse); found {
+				click_intent := desktop_archetype_click_intent(app.select_index, index)
+				intent.menu_index = click_intent.menu_index
+				intent.menu_index_valid = click_intent.menu_index_valid
+				intent.confirm = intent.confirm || click_intent.confirm
+				intent.pointer_confirm = intent.pointer_confirm || click_intent.pointer_confirm
 			}
 		}
 		if rl.IsKeyPressed(.UP) || rl.IsKeyPressed(.LEFT) do intent.menu_delta -= 1

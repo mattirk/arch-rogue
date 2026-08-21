@@ -335,57 +335,30 @@ minimap_zoom_resets_but_session_preferences_survive_new_run :: proc(t: ^testing.
 @(test)
 menu_double_click_requires_same_context_row_and_interval :: proc(t: ^testing.T) {
 	state: ar.Desktop_Click_State
-	testing.expect(t, !ar.desktop_register_menu_click(&state, .Archetype, 2, 1.0), "first click only selects")
-	testing.expect(t, ar.desktop_register_menu_click(&state, .Archetype, 2, 1.44), "same row inside 0.45 s must confirm")
+	testing.expect(t, !ar.desktop_register_menu_click(&state, .Inventory, 2, 1.0), "first click only selects")
+	testing.expect(t, ar.desktop_register_menu_click(&state, .Inventory, 2, 1.44), "same row inside 0.45 s must confirm")
 	testing.expect(t, !state.valid, "successful pair must be consumed")
 
 	state = {}
-	_ = ar.desktop_register_menu_click(&state, .Archetype, 1, 2.0)
-	testing.expect(t, !ar.desktop_register_menu_click(&state, .Archetype, 2, 2.1), "different row must not confirm")
-	testing.expect(t, !ar.desktop_register_menu_click(&state, .Inventory, 2, 2.2), "different menu must not confirm")
-	testing.expect(t, !ar.desktop_register_menu_click(&state, .Inventory, 2, 2.7), "expired interval must not confirm")
-	testing.expect(t, !ar.desktop_register_menu_click(&state, .Inventory, 2, 2.6), "backwards timestamp must not confirm")
+	_ = ar.desktop_register_menu_click(&state, .Inventory, 1, 2.0)
+	testing.expect(t, !ar.desktop_register_menu_click(&state, .Inventory, 2, 2.1), "different row must not confirm")
+	testing.expect(t, !ar.desktop_register_menu_click(&state, .Shop, 2, 2.2), "different menu must not confirm")
+	testing.expect(t, !ar.desktop_register_menu_click(&state, .Shop, 2, 2.7), "expired interval must not confirm")
+	testing.expect(t, !ar.desktop_register_menu_click(&state, .Shop, 2, 2.6), "backwards timestamp must not confirm")
 }
 
 @(test)
-reflowing_archetype_double_click_keeps_first_slot_target :: proc(t: ^testing.T) {
-	state: ar.Desktop_Click_State
-	index, found, confirm := ar.desktop_resolve_reflow_menu_click(
-		&state, .Archetype, 3, true, false, 1.0,
-	)
-	testing.expect(t, found && index == 3 && !confirm, "first side-slot click must preview its archetype")
+archetype_mouse_click_selects_sides_and_confirms_center :: proc(t: ^testing.T) {
+	preview := ar.desktop_archetype_click_intent(2, 3)
+	testing.expect(t, preview.menu_index_valid && preview.menu_index == 3, "clicking a side archetype must select it")
+	testing.expect(t, !preview.confirm && !preview.pointer_confirm, "clicking a side archetype must not begin descent")
 
-	// Recentring puts another actor under the stationary pointer. Hitting the
-	// saved first-click region must still complete the original pair.
-	index, found, confirm = ar.desktop_resolve_reflow_menu_click(
-		&state, .Archetype, 4, true, true, 1.40,
-	)
-	testing.expect(t, found && index == 3 && confirm, "stationary second click must confirm the recentered archetype")
-	testing.expect(t, !state.valid, "successful reflow pair must be consumed")
+	confirm := ar.desktop_archetype_click_intent(3, 3)
+	testing.expect(t, confirm.menu_index_valid && confirm.menu_index == 3, "the selected archetype must remain targeted")
+	testing.expect(t, confirm.confirm && confirm.pointer_confirm, "clicking the selected archetype must begin descent")
 
-	state = {}
-	_, _, _ = ar.desktop_resolve_reflow_menu_click(&state, .Archetype, 1, true, false, 2.0)
-	index, found, confirm = ar.desktop_resolve_reflow_menu_click(
-		&state, .Archetype, 2, true, false, 2.1,
-	)
-	testing.expect(t, found && index == 2 && !confirm, "a deliberate click outside the saved region must preview the new actor")
-}
-
-@(test)
-archetype_click_pair_is_cleared_across_select_transitions :: proc(t: ^testing.T) {
-	view: ar.View
-	view.menu_click = {
-		click_context = .Archetype,
-		index = 2,
-		time = 1.0,
-		valid = true,
-	}
-	view.archetype_click_rect_valid = true
-	ar.view_clear_menu_click(&view)
-	testing.expect(t, !view.menu_click.valid, "leaving Select must discard the pending click pair")
-	testing.expect(t, !view.archetype_click_rect_valid, "leaving Select must discard its pre-reflow hit region")
-	_, pending := ar.desktop_pending_menu_click(&view.menu_click, .Archetype, 1.1)
-	testing.expect(t, !pending, "a reopened Select screen must start a fresh double-click contract")
+	invalid := ar.desktop_archetype_click_intent(3, -1)
+	testing.expect(t, !invalid.menu_index_valid && !invalid.confirm, "clicks outside carousel archetypes must be ignored")
 }
 
 @(test)
@@ -421,7 +394,7 @@ archetype_pointer_confirm_suppresses_mouse_until_release :: proc(t: ^testing.T) 
 	defer ar.run_destroy(&app.run)
 	app.mode = .Select
 	ar.app_apply(&app, ar.Intent{confirm = true, pointer_confirm = true})
-	testing.expect(t, app.mode == .Playing && app.mouse_input_blocked, "double-click start must consume its held button")
+	testing.expect(t, app.mode == .Playing && app.mouse_input_blocked, "carousel click start must consume its held button")
 
 	target := app.run.player.pos + ar.Vec2{4, 0}
 	ar.app_apply(&app, ar.Intent{

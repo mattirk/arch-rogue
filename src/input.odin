@@ -460,7 +460,6 @@ Desktop_Input :: struct {
 
 Menu_Click_Context :: enum {
 	None,
-	Archetype,
 	Inventory,
 	Shop,
 	Shop_Buy,
@@ -500,41 +499,14 @@ desktop_register_menu_click :: proc(
 	return false
 }
 
-// A reflowing menu may move the clicked row between presses (the archetype
-// carousel recenters after its first click). Keep the original row addressable
-// for exactly the same 0.45-second contract as an ordinary double click.
-desktop_pending_menu_click :: proc(
-	state: ^Desktop_Click_State,
-	click_context: Menu_Click_Context,
-	now: f64,
-) -> (index: int, pending: bool) {
-	if state == nil || !state.valid || state.click_context != click_context ||
-		now < state.time || now - state.time > MENU_MOUSE_DOUBLE_CLICK_SECONDS {
-		return 0, false
+desktop_archetype_click_intent :: proc(selected_index, clicked_index: int) -> Intent {
+	if clicked_index < 0 || clicked_index >= len(Archetype_Id) do return {}
+	return {
+		menu_index = clicked_index,
+		menu_index_valid = true,
+		confirm = clicked_index == selected_index,
+		pointer_confirm = clicked_index == selected_index,
 	}
-	return state.index, true
-}
-
-// Resolve a click in a menu whose geometry changed after the first press. A
-// hit on the saved first-click region targets that original row; otherwise the
-// caller's current hit test wins. The click registration itself stays shared
-// with static inventory/shop rows.
-desktop_resolve_reflow_menu_click :: proc(
-	state: ^Desktop_Click_State,
-	click_context: Menu_Click_Context,
-	current_index: int,
-	current_found: bool,
-	previous_region_hit: bool,
-	now: f64,
-) -> (index: int, found: bool, confirm: bool) {
-	index, found = current_index, current_found
-	if pending_index, pending := desktop_pending_menu_click(state, click_context, now);
-		pending && previous_region_hit {
-		index, found = pending_index, true
-	}
-	if !found do return
-	confirm = desktop_register_menu_click(state, click_context, index, now)
-	return
 }
 
 desktop_move_vector :: proc(left, right, up, down: bool) -> Vec2 {

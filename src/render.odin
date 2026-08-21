@@ -37,10 +37,6 @@ View :: struct {
 	hovered:       [2]int,
 	hovered_valid: bool,
 	menu_click:    Desktop_Click_State,
-	// Design-space region from the first carousel click. It remains stable while
-	// the selected archetype recenters, so a stationary second click still lands.
-	archetype_click_rect:       rl.Rectangle,
-	archetype_click_rect_valid: bool,
 	lightmap:      rl.RenderTexture2D, // final screen-space multiply lightmap
 	light_glow:    rl.RenderTexture2D, // radial lights before live-LOS clipping
 	light_tex:     rl.Texture2D, // shared radial gradient for lights/shadows/auras
@@ -235,13 +231,10 @@ view_init :: proc(view: ^View) {
 	view_apply_base_zoom(view, DEFAULT_ZOOM)
 }
 
-// Menu click pairs never cross screen-context boundaries. In particular, an
-// archetype preview click cannot become a confirm after leaving/reopening Select.
+// Menu click pairs never cross screen-context boundaries.
 view_clear_menu_click :: proc(view: ^View) {
 	if view == nil do return
 	view.menu_click = {}
-	view.archetype_click_rect = {}
-	view.archetype_click_rect_valid = false
 }
 
 @(private = "file")
