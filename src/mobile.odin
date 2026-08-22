@@ -325,15 +325,7 @@ mobile_joystick_screen_vector :: proc(layout: ^Mobile_Layout, point: Vec2) -> Ve
 }
 
 mobile_joystick_to_tile_vector :: proc(screen: Vec2) -> Vec2 {
-	magnitude := min(f32(1), math.hypot(screen.x, screen.y))
-	if magnitude <= 0 do return {}
-	world := Vec2{
-		screen.x / TILE_W + screen.y / TILE_H,
-		screen.y / TILE_H - screen.x / TILE_W,
-	}
-	world_length := math.hypot(world.x, world.y)
-	if world_length <= 0 do return {}
-	return world / world_length * magnitude
+	return screen_stick_to_tile_vector(screen)
 }
 
 // --- Plain camera transform -------------------------------------------------
@@ -656,6 +648,7 @@ mobile_intent_merge :: proc(destination: ^Intent, source: Intent) {
 	if destination == nil do return
 	if destination.move == {} do destination.move = source.move
 	if destination.aim == {} do destination.aim = source.aim
+	destination.aim_live = destination.aim_live || source.aim_live
 	if source.mouse_walk do destination.mouse_walk = true
 	if source.mouse_press {
 		destination.mouse_press = true
@@ -1237,6 +1230,9 @@ mobile_touch_finish_frame :: proc(
 	}
 	if state.aim_owned && !state.pinch_active {
 		result.intent.aim = mobile_world_touch_aim(environment.camera, environment.player_tile, state.aim_point)
+		// A finger on the aim surface is an actively pointed device: it may own
+		// idle facing, unlike a desktop cursor merely parked somewhere.
+		result.intent.aim_live = true
 	}
 	if state.pinch_active {
 		zoom := mobile_touch_update_pinch(state, environment)

@@ -25,9 +25,9 @@ audio_u32_le :: proc(data: []u8, offset: int) -> u32 {
 
 @(test)
 m10_audio_manifest_and_wavs_are_complete :: proc(t: ^testing.T) {
-	data, read_err := os.read_entire_file_from_path("assets/audio/manifest.json", context.allocator)
+	data, read_err := os.read_entire_file_from_path("assets/audio/sfx/manifest.json", context.allocator)
 	if read_err != nil {
-		testing.expect(t, false, "assets/audio/manifest.json missing - run tools/gen_sfx.py")
+		testing.expect(t, false, "assets/audio/sfx/manifest.json missing - run tools/gen_sfx.py")
 		return
 	}
 	defer delete(data)
@@ -72,7 +72,7 @@ m10_audio_manifest_and_wavs_are_complete :: proc(t: ^testing.T) {
 		}
 		testing.expectf(t, entry["usage"].(json.String) == expected_usage, "%v usage differs from registry", key)
 
-		path := fmt.aprintf("assets/audio/%s", file)
+		path := fmt.aprintf("assets/audio/sfx/%s", file)
 		wav, wav_err := os.read_entire_file_from_path(path, context.allocator)
 		testing.expectf(t, wav_err == nil, "%v references missing WAV %v", key, path)
 		if wav_err != nil {

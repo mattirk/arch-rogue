@@ -2705,7 +2705,7 @@ draw_overlay :: proc(view: ^View, app: ^App, assets: ^Assets) {
 
 	if app.dev_controls && !view.mobile_mode {
 		ui_draw_text(
-			"WASD/arrows: move | LMB: move + melee | 1-4: actions | 5/6: potions | E: interact | I: bag | C: character | Esc: pause",
+			"Arrows: move | LMB: move + melee | 1-4: actions | 5/6: potions | E: interact | I: bag | C: character | Esc: pause",
 			8, i32(presentation.height) - 28, 16, COLOR_TEXT_DIM,
 		)
 		ui_draw_text("DEV  N: descend   R: reroll run   B: boss arena", 8, 114, 14, rl.Fade(COLOR_HOVER, 0.72))

@@ -162,11 +162,19 @@ build() {
     rm -rf "$DIST_DIR"
     mkdir -p "$DIST_DIR"
 
+    # Odin versions have disagreed on the emitted object extension (.o vs .obj
+    # for the same -out). Purge both spellings before compiling and hard-fail
+    # if the requested name is missing, so a toolchain change can never make
+    # the link below silently reuse a stale object again.
+    WASM_OBJ="$BUILD_ROOT/archrogue.wasm.o"
+    rm -f "$BUILD_ROOT/archrogue.wasm.o" "$BUILD_ROOT/archrogue.wasm.obj"
+
     log "building Odin wasm object (release, vetted)"
     odin build "$ROOT_DIR/src" \
         -target:freestanding_wasm32 -build-mode:obj -vet -o:speed \
         -define:RAYLIB_WASM_LIB=env.o \
-        -out:"$BUILD_ROOT/archrogue.wasm.o"
+        -out:"$WASM_OBJ"
+    [[ -f "$WASM_OBJ" ]] || die "odin did not produce $WASM_OBJ (object naming changed?)"
 
     log "splitting payload: core staging + lazy packs"
     python3 "$SCRIPT_DIR/web_pack_assets.py" \
@@ -175,7 +183,7 @@ build() {
         --manifest "$DIST_DIR/packs.json"
 
     log "linking with Emscripten (WebGL2-only, pinned heap, no ASYNCIFY)"
-    emcc "$BUILD_ROOT/archrogue.wasm.obj" \
+    emcc "$WASM_OBJ" \
         "$ROOT_DIR/web/main_web.c" \
         "$VENDOR_ROOT/libraylib.web.a" \
         --js-library "$ROOT_DIR/web/library_archrogue.js" \

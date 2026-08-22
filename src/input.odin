@@ -1,8 +1,8 @@
 package archrogue
 
 // Raylib-free desktop input resolution. main.odin samples platform state into
-// this flat snapshot; tests exercise the exact pygame-compatible bindings
-// without opening a window or linking input behavior to render timing.
+// this flat snapshot; tests exercise the exact desktop bindings without
+// opening a window or linking input behavior to render timing.
 
 import "core:math"
 
@@ -509,13 +509,32 @@ desktop_archetype_click_intent :: proc(selected_index, clicked_index: int) -> In
 	}
 }
 
+// Arrow keys follow the screen compass: Up walks screen-north, which is the
+// tile-space diagonal (-1,-1) under the 2:1 iso projection. Two adjacent
+// arrows sum to a tile axis, so screen-diagonal walking hugs the grid.
+// tick_player clamps the magnitude, so the diagonal sums stay full speed.
 desktop_move_vector :: proc(left, right, up, down: bool) -> Vec2 {
 	move: Vec2
-	if right do move.x += 1
-	if left  do move.x -= 1
-	if down  do move.y += 1
-	if up    do move.y -= 1
+	if right do move += {1, -1}
+	if left  do move += {-1, 1}
+	if down  do move += {1, 1}
+	if up    do move += {-1, -1}
 	return move
+}
+
+// A stick deflection is a screen-space direction. Return the tile-space move
+// with the same magnitude so analog walk speed survives the projection; this
+// is the exact conversion the mobile virtual joystick already applies.
+screen_stick_to_tile_vector :: proc(screen: Vec2) -> Vec2 {
+	magnitude := min(f32(1), math.hypot(screen.x, screen.y))
+	if magnitude <= 0 do return {}
+	world := Vec2{
+		screen.x / TILE_W + screen.y / TILE_H,
+		screen.y / TILE_H - screen.x / TILE_W,
+	}
+	world_length := math.hypot(world.x, world.y)
+	if world_length <= 0 do return {}
+	return world / world_length * magnitude
 }
 
 CONTROLLER_AIM_SNAP_RANGE :: f32(5.0)

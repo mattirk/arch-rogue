@@ -215,6 +215,11 @@ DIFFICULTY_SAVE_IDS := [Difficulty_Id]string{
 }
 
 @(rodata)
+MUSIC_VOLUME_SAVE_IDS := [Music_Volume]string{
+	.Off="off", .Quarter="25", .Half="50", .Three_Quarter="75", .Full="100",
+}
+
+@(rodata)
 INPUT_COMMAND_SAVE_IDS := [Input_Command]string{
 	.None="none", .Up="up", .Down="down", .Left="left", .Right="right",
 	.Confirm="confirm", .Back="back", .Tab="tab", .Help="help",
@@ -297,6 +302,7 @@ Options_Payload :: struct {
 	button_bindings:    [len(Controller_Button)]Option_Binding_DTO,
 	trigger_bindings:   [len(Controller_Trigger)]Option_Binding_DTO,
 	audio_enabled:      bool,
+	music_volume_id:    string, // additive 2026-08: absent in older documents
 	lighting_enabled:   bool,
 	mist_enabled:       bool,
 	minimap_visible:    bool,
@@ -746,6 +752,7 @@ options_payload_from_options :: proc(options: Options) -> Options_Payload {
 		difficulty_id=DIFFICULTY_SAVE_IDS[difficulty_is_valid(options.difficulty) ? options.difficulty : DEFAULT_DIFFICULTY],
 		controller_enabled=options.controller_enabled,
 		audio_enabled=options.audio_enabled,
+		music_volume_id=MUSIC_VOLUME_SAVE_IDS[music_volume_normalize(options.music_volume)],
 		lighting_enabled=options.lighting_enabled,
 		mist_enabled=options.mist_enabled,
 		minimap_visible=options.minimap_visible,
@@ -769,6 +776,7 @@ options_payload_destroy :: proc(payload: ^Options_Payload) {
 	if payload == nil do return
 	delete(payload.frame_rate_cap_id)
 	delete(payload.difficulty_id)
+	delete(payload.music_volume_id)
 	for &binding in payload.button_bindings {
 		delete(binding.input_id)
 		delete(binding.command_id)
@@ -792,6 +800,11 @@ options_from_payload :: proc(payload: ^Options_Payload, hell_unlocked: bool) -> 
 	options.difficulty = Difficulty_Id(difficulty_index)
 	options.controller_enabled = payload.controller_enabled
 	options.audio_enabled = payload.audio_enabled
+	// Additive field: an absent or unrecognized id keeps the default instead
+	// of failing the document, so pre-music option files stay valid.
+	if music_index := persistence_string_enum(MUSIC_VOLUME_SAVE_IDS, payload.music_volume_id, -1); music_index >= 0 {
+		options.music_volume = Music_Volume(music_index)
+	}
 	options.lighting_enabled = payload.lighting_enabled
 	options.mist_enabled = payload.mist_enabled
 	options.minimap_visible = payload.minimap_visible

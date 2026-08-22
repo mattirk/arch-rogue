@@ -1190,7 +1190,7 @@ options_panel_rect :: proc(app: ^App) -> rl.Rectangle {
 options_row_rect_in_panel :: proc(panel: rl.Rectangle, index: int) -> rl.Rectangle {
 	top_padding := clamp(panel.height*.10, f32(52), f32(65))
 	bottom_padding := clamp(panel.height*.07, f32(34), f32(45))
-	pitch := max(f32(32), (panel.height-top_padding-bottom_padding)/10)
+	pitch := max(f32(32), (panel.height-top_padding-bottom_padding)/11)
 	row_height := min(f32(44), max(f32(28), pitch-5))
 	return {panel.x+30, panel.y+top_padding+f32(index)*pitch, panel.width-60, row_height}
 }
@@ -1202,7 +1202,7 @@ options_row_rect :: proc(app: ^App, index: int) -> rl.Rectangle {
 options_row_at :: proc(app: ^App, point: rl.Vector2) -> (int,bool) {
 	design_point := ui_screen_to_design(point)
 	panel := options_panel_rect(app)
-	for i in 0..<10 {
+	for i in 0..<11 {
 		if rl.CheckCollisionPointRec(design_point,options_row_rect_in_panel(panel,i)) do return i,true
 	}
 	return 0,false
@@ -1217,11 +1217,11 @@ draw_options_screen :: proc(app: ^App, assets: ^Assets) {
 	panel := options_panel_rect(app)
 	draw_menu_panel_chrome(assets,panel)
 	ui_draw_text("OPTIONS",i32(panel.x+30),i32(panel.y+20),28,COLOR_TITLE)
-	labels := [10]cstring{
+	labels := [11]cstring{
 		"Fullscreen","Frame rate cap","View zoom","Difficulty","Controls",
-		"Controller","Audio cues","Lighting","Mist","Return",
+		"Controller","Audio cues","Music","Lighting","Mist","Return",
 	}
-	values := [10]cstring{
+	values := [11]cstring{
 		on_off(app.options.fullscreen),
 		fmt.ctprintf("%s",frame_rate_cap_label(app.options.frame_rate_cap)),
 		fmt.ctprintf("%.2fx",app.options.view_zoom),
@@ -1229,6 +1229,7 @@ draw_options_screen :: proc(app: ^App, assets: ^Assets) {
 		"View bindings",
 		on_off(app.options.controller_enabled),
 		on_off(app.options.audio_enabled),
+		fmt.ctprintf("%s",MUSIC_VOLUME_LABELS[music_volume_normalize(app.options.music_volume)]),
 		on_off(app.options.lighting_enabled),
 		on_off(app.options.mist_enabled),
 		"",
@@ -1249,7 +1250,7 @@ draw_options_screen :: proc(app: ^App, assets: ^Assets) {
 			ui_draw_text(values[i],i32(content.x+content.width-f32(w)),i32(value_y),16,selected?COLOR_TITLE:COLOR_TEXT_DIM)
 		}
 	}
-	ui_draw_text("Arrows/WASD change  |  Enter select  |  Esc return",i32(panel.x+30),i32(panel.y+panel.height-27),14,COLOR_TEXT_DIM)
+	ui_draw_text("Arrows change  |  Enter select  |  Esc return",i32(panel.x+30),i32(panel.y+panel.height-27),14,COLOR_TEXT_DIM)
 }
 
 controls_panel_rect :: proc(app: ^App) -> rl.Rectangle {
@@ -1300,7 +1301,7 @@ draw_controls_screen :: proc(app: ^App, assets: ^Assets) {
 	draw_menu_panel_chrome(assets,panel)
 	ui_draw_text("CONTROLS",i32(panel.x+28),i32(panel.y+18),28,COLOR_TITLE)
 	keyboard := [13]cstring{
-		"WASD / arrows       Move", "Mouse               Aim / walk",
+		"Arrows              Move", "Mouse               Aim / walk",
 		"1                   Big Hit", "2                   Bolt",
 		"3                   Class skill", "4                   Dash",
 		"5                   Health potion", "6                   Mana potion",
@@ -1713,7 +1714,7 @@ draw_character_panel :: proc(app: ^App, assets: ^Assets) {
 			ui_draw_text(detail,i32(panel.x+40),i32(panel.y+514),detail_size,COLOR_TEXT)
 		}
 	}
-	ui_draw_text("Tab/1/2: tabs   Arrows/WASD: choose   Enter: learn   C/Esc: close",i32(panel.x+36),i32(panel.y+568),13,COLOR_TEXT_DIM)
+	ui_draw_text("Tab/1/2: tabs   Arrows: choose   Enter: learn   C/Esc: close",i32(panel.x+36),i32(panel.y+568),13,COLOR_TEXT_DIM)
 }
 
 shop_panel_rect :: proc() -> rl.Rectangle {return menu_panel(620,570)}
@@ -1892,7 +1893,7 @@ draw_inventory_panel :: proc(app: ^App, assets: ^Assets) {
 			x + 24, y + 108, 11, COLOR_TEXT_DIM,
 		)
 	}
-	ui_draw_text("Up/W Down/X | Enter/E or 1-9: use/equip", x + 24, y + 496, 11, COLOR_TEXT_DIM)
+	ui_draw_text("Up/Down | Enter/E or 1-9: use/equip", x + 24, y + 496, 11, COLOR_TEXT_DIM)
 	ui_draw_text("Tab/S: sort | Del/Shift+1-9: drop | I/Esc", x + 24, y + 515, 11, COLOR_TEXT_DIM)
 }
 
@@ -3219,7 +3220,7 @@ draw_story_minigame_modal :: proc(app: ^App, assets: ^Assets, layout: ^Story_Min
 	switch state.phase {
 	case .Ready:   footer = "Confirm or tap a seal to begin"
 	case .Preview: footer = "Watch the board"
-	case .Play:    footer = "Arrows/WASD choose | Enter or tap a seal"
+	case .Play:    footer = "Arrows choose | Enter or tap a seal"
 	case .Result:  footer = state.outcome == .Won ? "Reward secured" : "No boon -- consequences still move forward"
 	}
 	story_ui_draw_centered(footer, layout.footer, layout.footer_font, max(i32(8), layout.footer_font - 2), COLOR_TEXT_DIM)

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""One-off SFX bake: synthesizes the authored sound set into assets/audio/.
+"""One-off SFX bake: synthesizes the authored sound set into assets/audio/sfx/.
 
 Stdlib-only (wave + math). These are authored assets in the pipeline sense:
-the runtime only ever loads .wav files from assets/audio/ and can be handed
-better takes later without a code change. Mono 16-bit 22050 Hz, short and
-dry. This bake intentionally defines no background-music policy or slots.
+the runtime only ever loads .wav files from assets/audio/sfx/ and can be
+handed better takes later without a code change. Mono 16-bit 22050 Hz, short
+and dry. Background music lives separately in assets/audio/bgm/ (SOUND.md).
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import wave
 from pathlib import Path
 
 RATE = 22050
-OUT = Path(__file__).resolve().parent.parent / "assets" / "audio"
+OUT = Path(__file__).resolve().parent.parent / "assets" / "audio" / "sfx"
 
 rng = random.Random(6)  # deterministic bake
 manifest_cues: dict[str, dict[str, object]] = {}

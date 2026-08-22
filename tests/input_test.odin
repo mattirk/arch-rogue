@@ -8,19 +8,32 @@ import "core:testing"
 import ar "../src"
 
 @(test)
-desktop_world_axis_movement_matches_pygame :: proc(t: ^testing.T) {
+desktop_arrow_movement_follows_screen_compass :: proc(t: ^testing.T) {
+	// Screen north/south/east/west are the tile-space diagonals of the 2:1
+	// iso projection; adjacent arrows sum to a tile axis.
 	intent := ar.desktop_gameplay_intent(ar.Desktop_Input{right = true}, .Warden)
-	testing.expect(t, intent.move == ar.Vec2{1, 0}, "D/right must move world +x")
+	testing.expect(t, intent.move == ar.Vec2{1, -1}, "Right must walk screen-east")
 	intent = ar.desktop_gameplay_intent(ar.Desktop_Input{left = true}, .Warden)
-	testing.expect(t, intent.move == ar.Vec2{-1, 0}, "A/left must move world -x")
+	testing.expect(t, intent.move == ar.Vec2{-1, 1}, "Left must walk screen-west")
 	intent = ar.desktop_gameplay_intent(ar.Desktop_Input{up = true}, .Warden)
-	testing.expect(t, intent.move == ar.Vec2{0, -1}, "W/up must move world -y")
+	testing.expect(t, intent.move == ar.Vec2{-1, -1}, "Up must walk screen-north")
 	intent = ar.desktop_gameplay_intent(ar.Desktop_Input{down = true}, .Warden)
-	testing.expect(t, intent.move == ar.Vec2{0, 1}, "S/down must move world +y")
+	testing.expect(t, intent.move == ar.Vec2{1, 1}, "Down must walk screen-south")
 	intent = ar.desktop_gameplay_intent(ar.Desktop_Input{right = true, up = true}, .Warden)
-	testing.expect(t, intent.move == ar.Vec2{1, -1}, "diagonal input must preserve both world axes")
+	testing.expect(t, intent.move == ar.Vec2{0, -2}, "Up+Right must walk the north-east tile axis")
 	intent = ar.desktop_gameplay_intent(ar.Desktop_Input{left = true, right = true}, .Warden)
 	testing.expect(t, intent.move == ar.Vec2{}, "opposing directions must cancel")
+}
+
+@(test)
+controller_stick_movement_follows_screen_compass :: proc(t: ^testing.T) {
+	north := ar.screen_stick_to_tile_vector({0, -1})
+	testing.expect(t, abs(north.x + math.SQRT_TWO / 2) < 1e-5 && abs(north.y + math.SQRT_TWO / 2) < 1e-5, "stick up must walk screen-north at full speed")
+	east := ar.screen_stick_to_tile_vector({1, 0})
+	testing.expect(t, abs(east.x - math.SQRT_TWO / 2) < 1e-5 && abs(east.y + math.SQRT_TWO / 2) < 1e-5, "stick right must walk screen-east")
+	half := ar.screen_stick_to_tile_vector({0, 0.5})
+	testing.expect(t, abs(math.hypot(half.x, half.y) - 0.5) < 1e-5, "partial deflection must keep its analog magnitude")
+	testing.expect(t, ar.screen_stick_to_tile_vector({}) == ar.Vec2{}, "a centered stick must stay idle")
 }
 
 @(test)
@@ -56,7 +69,7 @@ keyboard_movement_overrides_held_mouse_walk :: proc(t: ^testing.T) {
 		mouse_target = {20, 20},
 	}
 	intent := ar.desktop_gameplay_intent(raw, .Warden)
-	testing.expect(t, intent.move == ar.Vec2{1, 0}, "keyboard movement must survive")
+	testing.expect(t, intent.move == ar.Vec2{1, -1}, "keyboard movement must survive")
 	testing.expect(t, !intent.mouse_walk, "held mouse must yield to keyboard")
 
 	raw.right = false
@@ -98,10 +111,84 @@ idle_mouse_aim_updates_facing_without_attacking :: proc(t: ^testing.T) {
 	clear(&app.run.enemies)
 	stamina := app.run.player.stamina
 
-	ar.app_apply(&app, ar.Intent{aim = {0, -3}})
+	ar.app_apply(&app, ar.Intent{aim = {0, -3}, aim_live = true})
 	ar.app_tick(&app)
 	testing.expect(t, abs(app.run.player.facing.x) < 1e-5 && abs(app.run.player.facing.y + 1) < 1e-5, "idle facing must follow cursor aim")
 	testing.expect(t, app.run.player.melee_timer == 0 && app.run.player.stamina == stamina, "idle aim must not swing")
+}
+
+@(test)
+parked_cursor_keeps_last_movement_heading :: proc(t: ^testing.T) {
+	app: ar.App
+	ar.app_init(&app, ar.derive_seed(55, 0))
+	defer ar.run_destroy(&app.run)
+	ar.run_start(&app.run, app.seed, .Warden)
+	app.mode = .Playing
+	clear(&app.run.enemies)
+
+	ar.app_apply(&app, ar.Intent{move = {1, -1}})
+	ar.app_tick(&app)
+	heading := app.run.player.facing
+	testing.expect(t, heading.x > 0 && heading.y < 0, "movement must set the heading")
+
+	// The cursor rests somewhere without moving: aim arrives without aim_live,
+	// so stopping must keep the last keyboard/controller heading.
+	ar.app_apply(&app, ar.Intent{aim = {0, -3}})
+	ar.app_tick(&app)
+	testing.expect(t, app.run.player.facing == heading, "a parked cursor must not steal the stopped heading")
+
+	ar.app_apply(&app, ar.Intent{aim = {-3, 0}, aim_live = true})
+	ar.app_tick(&app)
+	testing.expect(t, app.run.player.facing.x < -0.99, "a moved cursor must retake idle facing")
+}
+
+@(test)
+diagonal_release_stagger_keeps_committed_heading :: proc(t: ^testing.T) {
+	run: ar.Run
+	defer ar.run_destroy(&run)
+	ar.run_start(&run, ar.derive_seed(56, 0), .Warden)
+	clear(&run.enemies)
+
+	// Hold the north-east tile axis past the commit window, then model the
+	// staggered release: one trailing tick of Up alone before full stop.
+	for _ in 0 ..< 10 do ar.sim_tick(&run, {0, -2})
+	ar.sim_tick(&run, {-1, -1})
+	ar.sim_tick(&run, {})
+	testing.expect(t, abs(run.player.facing.x) < 1e-5 && abs(run.player.facing.y + 1) < 1e-5, "stop must restore the committed diagonal heading")
+
+	// A deliberate tap with no prior committed heading must still turn.
+	for _ in 0 ..< 3 do ar.sim_tick(&run, {1, 1})
+	ar.sim_tick(&run, {})
+	south := f32(math.SQRT_TWO / 2)
+	testing.expect(t, abs(run.player.facing.x - south) < 1e-4 && abs(run.player.facing.y - south) < 1e-4, "a short tap must keep its own heading")
+}
+
+@(test)
+keyboard_fire_follows_retained_heading :: proc(t: ^testing.T) {
+	app: ar.App
+	ar.app_init(&app, ar.derive_seed(57, 0))
+	defer ar.run_destroy(&app.run)
+	ar.run_start(&app.run, app.seed, .Warden)
+	app.mode = .Playing
+	clear(&app.run.enemies)
+
+	ar.app_apply(&app, ar.Intent{move = {0, -2}})
+	for _ in 0 ..< 10 do ar.app_tick(&app)
+	ar.app_apply(&app, ar.Intent{})
+	ar.app_tick(&app)
+	heading := app.run.player.facing
+
+	// Keyboard owns aim: the intent carries no cursor direction, so the bolt
+	// must fly along the retained heading and leave facing untouched.
+	ar.app_apply(&app, ar.Intent{actions = {false, true, false, false}})
+	ar.app_tick(&app)
+	testing.expect(t, app.run.player.facing == heading, "firing must not turn a keyboard-driven character")
+	testing.expect(t, len(app.run.projectiles) > 0, "bolt must launch")
+	if len(app.run.projectiles) > 0 {
+		vel := app.run.projectiles[0].vel
+		speed := math.hypot(vel.x, vel.y)
+		testing.expect(t, speed > 0 && abs(vel.x / speed - heading.x) < 1e-4 && abs(vel.y / speed - heading.y) < 1e-4, "bolt must fly along the retained heading")
+	}
 }
 
 @(test)
@@ -167,7 +254,7 @@ mouse_press_aim_is_independent_of_keyboard_steering :: proc(t: ^testing.T) {
 		mouse_press_aim = {-1, 0},
 	}
 	intent := ar.desktop_gameplay_intent(raw, .Warden)
-	testing.expect(t, intent.move == ar.Vec2{1, 0} && !intent.mouse_walk, "keyboard must still own movement")
+	testing.expect(t, intent.move == ar.Vec2{1, -1} && !intent.mouse_walk, "keyboard must still own movement")
 	testing.expect(t, intent.mouse_press && intent.mouse_press_aim == ar.Vec2{-1, 0}, "click edge must retain cursor aim")
 }
 
@@ -228,10 +315,10 @@ mouse_aim_respects_facing_dead_zone :: proc(t: ^testing.T) {
 	clear(&app.run.enemies)
 	app.run.player.facing = {1, 0}
 
-	ar.app_apply(&app, ar.Intent{aim = {0, 0.01}})
+	ar.app_apply(&app, ar.Intent{aim = {0, 0.01}, aim_live = true})
 	ar.app_tick(&app)
 	testing.expect(t, app.run.player.facing == ar.Vec2{1, 0}, "cursor jitter at the player's feet must not turn them")
-	ar.app_apply(&app, ar.Intent{aim = {0, 0.06}})
+	ar.app_apply(&app, ar.Intent{aim = {0, 0.06}, aim_live = true})
 	ar.app_tick(&app)
 	testing.expect(t, abs(app.run.player.facing.x) < 1e-5 && app.run.player.facing.y > 0.99, "aim outside 0.05 tiles must update facing")
 }

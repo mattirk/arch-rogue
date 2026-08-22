@@ -20,6 +20,10 @@ Controller_Runtime :: struct {
 	triggers:      [Controller_Trigger]Controller_Trigger_State,
 	aim_mode:      bool,
 	right_aim_this_frame: bool,
+	// Arrow movement claims aim ownership from the mouse, exactly like
+	// aim_mode does for pads: a parked cursor then neither aims abilities nor
+	// turns the idle character until the mouse moves or clicks again.
+	keyboard_aim:  bool,
 }
 
 @(rodata)
@@ -53,16 +57,20 @@ controller_raylib_trigger_sample :: proc(gamepad: int, trigger: Controller_Trigg
 
 collect_controller_intent :: proc(app:^App,state:^Controller_Runtime,intent:^Intent) {
 	state.right_aim_this_frame = false
-	if !app.options.controller_enabled {
-		state^={}
-		return
-	}
 	pad:=-1
-	for candidate in 0..<MAX_GAMEPADS {
-		if rl.IsGamepadAvailable(i32(candidate)) {pad=candidate;break}
+	if app.options.controller_enabled {
+		for candidate in 0..<MAX_GAMEPADS {
+			if rl.IsGamepadAvailable(i32(candidate)) {pad=candidate;break}
+		}
 	}
 	if pad<0 {
+		// Reset the pad-local latches, but keyboard aim ownership is keyboard
+		// state that merely rides in this runtime: it must survive the frames
+		// without a pad (a plain state^={} here wiped it every frame, handing
+		// ability aim back to the parked cursor).
+		keyboard_aim := state.keyboard_aim
 		state^={}
+		state.keyboard_aim = keyboard_aim
 		return
 	}
 	state.gamepad=pad
@@ -101,13 +109,16 @@ collect_controller_intent :: proc(app:^App,state:^Controller_Runtime,intent:^Int
 	left:=controller_resolve_stick(left_raw,&state.left_stick)
 	if left != {} do state.aim_mode = true
 	if gameplay {
-		if left!={} do intent.move=left
+		// Sticks steer by screen compass like the mobile joystick: convert the
+		// screen-space deflection into tile space before the sim sees it.
+		if left!={} do intent.move=screen_stick_to_tile_vector(left)
 		right_raw:=Vec2{rl.GetGamepadAxisMovement(i32(pad),.RIGHT_X),rl.GetGamepadAxisMovement(i32(pad),.RIGHT_Y)}
 		right:=controller_resolve_stick(right_raw,&state.right_stick)
 		if right!={} {
 			state.aim_mode = true
 			state.right_aim_this_frame = true
-			intent.aim=controller_snap_aim(&app.run,right)
+			intent.aim=controller_snap_aim(&app.run,screen_stick_to_tile_vector(right))
+			intent.aim_live=true
 		}
 	} else {
 		if command:=controller_resolve_menu_stick(left,&state.menu_stick);command!=.None {
@@ -147,6 +158,7 @@ collect_controller_intent :: proc(app:^App,state:^Controller_Runtime,intent:^Int
 merge_gameplay_intent :: proc(dst:^Intent,src:Intent) {
 	if dst.move=={} do dst.move=src.move
 	if dst.aim=={} do dst.aim=src.aim
+	dst.aim_live=dst.aim_live||src.aim_live
 	dst.mouse_walk=src.mouse_walk
 	dst.mouse_press=src.mouse_press
 	dst.mouse_press_aim=src.mouse_press_aim
@@ -967,6 +979,7 @@ Game_Runtime :: struct {
 	steam:                Steam_State,
 	view:                 View,
 	controller:           Controller_Runtime,
+	music:                Music_Director,
 	fixed_step:           Mobile_Fixed_Step_State,
 	frame_count:          int,
 	fixed_capture:        bool,
@@ -1107,7 +1120,14 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 	}
 	rt.controller = {}
 	apply_platform_effects(&rt.app, &rt.view, &rt.audio, {.Apply_Window, .Apply_FPS, .Apply_Zoom, .Apply_Audio})
-	if rt.perf_enabled do rl.SetTargetFPS(0)
+	if rt.perf_enabled {
+		rl.SetTargetFPS(0)
+		when !ARCH_ROGUE_WEB {
+			// Desktop performance evidence must include a real gameplay mix, not
+			// finish before the 9.6-second one-stream boot intro hands off.
+			rt.audio.music_library.has_boot = false
+		}
+	}
 	if !rt.fixed_capture && !rt.perf_enabled && config.dev_zoom_valid {
 		view_apply_base_zoom(&rt.view, config.dev_zoom, clamp_to_options = false)
 	}
@@ -1368,6 +1388,21 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 		alpha = 1
 	}
 	audio_drain(&rt.audio, &app.run)
+	// The Loop advances on presentation frames, never sim ticks: music keeps
+	// playing through menus and pause, starts at audio-ready (the web gesture
+	// gate), and freezes while suspended. The clock is disciplined by the live
+	// PCM mixer's callback cursor so boundary events land on audible frames.
+	music_runtime := music_runtime_state_for(app)
+	if rt.audio.ready && !rt.audio.suspended {
+		reference_ms := audio_music_reference_phase_ms(&rt.audio, &rt.music)
+		music_director_update(&rt.music, &rt.audio.music_library, music_mix_for(app), f64(frame_dt) * 1000, reference_ms)
+	}
+	audio_music_update(
+		&rt.audio,
+		&rt.music,
+		MUSIC_VOLUME_FACTORS[music_volume_normalize(app.options.music_volume)],
+		music_runtime,
+	)
 	when ARCH_ROGUE_WEB {
 		// Pack callbacks only queue ownership. Adopt one actor in a quiet SFX
 		// window so the main-thread miniaudio callback is never starved mid-cue.
@@ -1413,6 +1448,14 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 	if rt.perf_enabled && rt.frame_count > config.perf_warmup {
 		mist_ready := rt.view.mist != nil && rt.view.mist.ready && rt.view.mist.shader_ok && rt.view.mist.field_ready
 		rt.perf_resources_ready = rt.perf_resources_ready && rt.view.lighting_ready && rt.view.effect_mask_shader_ready && mist_ready
+		when !ARCH_ROGUE_WEB {
+			music_ready := rt.audio.ready &&
+				audio_music_loaded_stream_count(&rt.audio) == 1 &&
+				audio_music_active_layer_count(&rt.audio) > 0 &&
+				audio_music_callback_service_count(&rt.audio) > 0 &&
+				rt.audio.music_recovery_count == 0
+			rt.perf_resources_ready = rt.perf_resources_ready && music_ready
+		}
 		append(&rt.perf_samples, raw_frame_dt * 1000)
 		if len(rt.perf_samples) >= config.perf_frames {
 			game_report_perf(rt)
@@ -1479,8 +1522,11 @@ game_report_perf :: proc(rt: ^Game_Runtime) {
 			app.options.mist_enabled, app_play_modal_open(app), app.mode, rt.perf_resources_ready)
 		platform_report_line(report)
 	} else {
-		report := fmt.tprintf("MX7_PERF {{\"frames\":%d,\"mean_ms\":%.3f,\"p95_ms\":%.3f,\"p99_ms\":%.3f,\"max_ms\":%.3f,\"mean_fps\":%.2f,\"long_frames_33ms\":%d,\"resources_ready\":%v}}",
-			len(rt.perf_samples), mean, p95, p99, max_ms, mean > 0 ? 1000/mean : f32(0), long_frames, rt.perf_resources_ready)
+		report := fmt.tprintf("MX7_PERF {{\"frames\":%d,\"mean_ms\":%.3f,\"p95_ms\":%.3f,\"p99_ms\":%.3f,\"max_ms\":%.3f,\"mean_fps\":%.2f,\"long_frames_33ms\":%d,\"music_mix\":\"%s\",\"music_streams\":%d,\"music_layers\":%d,\"music_callbacks\":%d,\"music_recoveries\":%d,\"resources_ready\":%v}}",
+			len(rt.perf_samples), mean, p95, p99, max_ms, mean > 0 ? 1000/mean : f32(0), long_frames,
+			rt.music.active_mix, audio_music_loaded_stream_count(&rt.audio),
+			audio_music_active_layer_count(&rt.audio), audio_music_callback_service_count(&rt.audio),
+			rt.audio.music_recovery_count, rt.perf_resources_ready)
 		platform_report_line(report)
 	}
 }
@@ -1509,6 +1555,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 	collect_controller_intent(app,controller,&intent)
 	if mouse_used && !controller.right_aim_this_frame {
 		controller.aim_mode = false
+		controller.keyboard_aim = false
 		if app.mode == .Playing do intent.aim = {}
 	}
 	intent.toggle_fullscreen = rl.IsKeyPressed(.F11)
@@ -1542,8 +1589,8 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 		if rl.IsMouseButtonPressed(.LEFT) {
 			if index,found:=title_row_at(mouse);found {intent.menu_index=index;intent.menu_index_valid=true;intent.confirm=true}
 		}
-		if rl.IsKeyPressed(.UP)||rl.IsKeyPressed(.W) do intent.menu_delta-=1
-		if rl.IsKeyPressed(.DOWN)||rl.IsKeyPressed(.S) do intent.menu_delta+=1
+		if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
+		if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
 		if rl.IsKeyPressed(.ENTER)||rl.IsKeyPressed(.KP_ENTER) do intent.confirm=true
 		if rl.IsKeyPressed(.R) {intent.menu_index=int(Title_Action.Resume);intent.menu_index_valid=true;intent.confirm=true}
 		if rl.IsKeyPressed(.N) {intent.menu_index=int(Title_Action.New_Run);intent.menu_index_valid=true;intent.confirm=true}
@@ -1581,13 +1628,13 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 		// inventory action can leak through the paused live scene.
 		if app_play_modal_open(app) {
 			if app_story_minigame_active(app) {
-				if rl.IsKeyPressed(.LEFT)||rl.IsKeyPressed(.A) do intent.menu_horizontal-=1
-				if rl.IsKeyPressed(.RIGHT)||rl.IsKeyPressed(.D) do intent.menu_horizontal+=1
-				if rl.IsKeyPressed(.UP)||rl.IsKeyPressed(.W) do intent.menu_delta-=1
-				if rl.IsKeyPressed(.DOWN)||rl.IsKeyPressed(.S) do intent.menu_delta+=1
+				if rl.IsKeyPressed(.LEFT) do intent.menu_horizontal-=1
+				if rl.IsKeyPressed(.RIGHT) do intent.menu_horizontal+=1
+				if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
+				if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
 			} else {
-				if rl.IsKeyPressed(.UP)||rl.IsKeyPressed(.W)||rl.IsKeyPressed(.LEFT)||rl.IsKeyPressed(.A) do intent.menu_delta-=1
-				if rl.IsKeyPressed(.DOWN)||rl.IsKeyPressed(.S)||rl.IsKeyPressed(.RIGHT)||rl.IsKeyPressed(.D) do intent.menu_delta+=1
+				if rl.IsKeyPressed(.UP)||rl.IsKeyPressed(.LEFT) do intent.menu_delta-=1
+				if rl.IsKeyPressed(.DOWN)||rl.IsKeyPressed(.RIGHT) do intent.menu_delta+=1
 			}
 			if rl.IsKeyPressed(.ENTER)||rl.IsKeyPressed(.KP_ENTER)||rl.IsKeyPressed(.SPACE)||rl.IsKeyPressed(.E) do intent.confirm=true
 			if rl.IsKeyPressed(.ESCAPE)||rl.IsKeyPressed(.BACKSPACE) do intent.back=true
@@ -1624,10 +1671,10 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			// 1/2 are absolute tabs; directions enter and traverse the 4x5
 			// discipline grid. This closes the pygame desktop sheet's otherwise
 			// mouse/controller-only horizontal-navigation gap.
-			if rl.IsKeyPressed(.LEFT)||rl.IsKeyPressed(.A) do intent.menu_horizontal-=1
-			if rl.IsKeyPressed(.RIGHT)||rl.IsKeyPressed(.D) do intent.menu_horizontal+=1
-			if rl.IsKeyPressed(.UP)||rl.IsKeyPressed(.W) do intent.menu_delta-=1
-			if rl.IsKeyPressed(.DOWN)||rl.IsKeyPressed(.S) do intent.menu_delta+=1
+			if rl.IsKeyPressed(.LEFT) do intent.menu_horizontal-=1
+			if rl.IsKeyPressed(.RIGHT) do intent.menu_horizontal+=1
+			if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
+			if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
 			if mouse_moved && app.character_tab==.Disciplines {
 				if index,found:=discipline_cell_at(mouse);found {intent.menu_index=index;intent.menu_index_valid=true}
 			}
@@ -1654,10 +1701,10 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 					}
 				}
 				if rl.IsKeyPressed(.TAB) do intent.tab=true
-			if rl.IsKeyPressed(.LEFT)||rl.IsKeyPressed(.A) do intent.menu_horizontal-=1
-			if rl.IsKeyPressed(.RIGHT)||rl.IsKeyPressed(.D) do intent.menu_horizontal+=1
-			if rl.IsKeyPressed(.UP)||rl.IsKeyPressed(.W) do intent.menu_delta-=1
-			if rl.IsKeyPressed(.DOWN)||rl.IsKeyPressed(.S)||rl.IsKeyPressed(.X) do intent.menu_delta+=1
+			if rl.IsKeyPressed(.LEFT) do intent.menu_horizontal-=1
+			if rl.IsKeyPressed(.RIGHT) do intent.menu_horizontal+=1
+			if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
+			if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
 			if mouse_moved {if index,found:=shop_row_at(app,mouse);found {intent.menu_index=index;intent.menu_index_valid=true}}
 			if rl.IsMouseButtonPressed(.LEFT) {
 				if index,found:=shop_row_at(app,mouse);found {
@@ -1688,8 +1735,8 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 					intent.confirm = menu_mouse_double_clicked(view, .Inventory, index)
 				}
 			}
-			if rl.IsKeyPressed(.W) || rl.IsKeyPressed(.UP) do intent.menu_delta -= 1
-			if rl.IsKeyPressed(.X) || rl.IsKeyPressed(.DOWN) do intent.menu_delta += 1
+			if rl.IsKeyPressed(.UP) do intent.menu_delta -= 1
+			if rl.IsKeyPressed(.DOWN) do intent.menu_delta += 1
 			if rl.IsKeyPressed(.PAGE_UP) do intent.menu_delta -= 5
 			if rl.IsKeyPressed(.PAGE_DOWN) do intent.menu_delta += 5
 			if rl.IsKeyPressed(.HOME) && app.run.player.bag_count > 0 {
@@ -1729,19 +1776,24 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 
 		mouse_tile := tile_from_world(Vec2(rl.GetScreenToWorld2D(mouse, view.camera)))
 		aim := mouse_tile - app.run.player.pos
-			arrow_aim := desktop_move_vector(
+		arrow_aim := desktop_move_vector(
 			rl.IsKeyDown(.LEFT), rl.IsKeyDown(.RIGHT),
 			rl.IsKeyDown(.UP), rl.IsKeyDown(.DOWN),
-			)
-			if arrow_aim != {} {
-				aim = arrow_aim
-				if !controller.right_aim_this_frame do intent.aim = {}
-			}
+		)
+		if arrow_aim != {} {
+			controller.keyboard_aim = true
+			aim = arrow_aim
+			if !controller.right_aim_this_frame do intent.aim = {}
+		} else if controller.keyboard_aim {
+			// Keyboard owns aim: drop the parked cursor's direction so
+			// abilities and idle facing fall back to the retained heading.
+			aim = {}
+		}
 		raw := Desktop_Input{
-			left = rl.IsKeyDown(.A) || rl.IsKeyDown(.LEFT),
-			right = rl.IsKeyDown(.D) || rl.IsKeyDown(.RIGHT),
-			up = rl.IsKeyDown(.W) || rl.IsKeyDown(.UP),
-			down = rl.IsKeyDown(.S) || rl.IsKeyDown(.DOWN),
+			left = rl.IsKeyDown(.LEFT),
+			right = rl.IsKeyDown(.RIGHT),
+			up = rl.IsKeyDown(.UP),
+			down = rl.IsKeyDown(.DOWN),
 			aim = aim,
 			mouse_left = rl.IsMouseButtonDown(.LEFT),
 			mouse_left_pressed = rl.IsMouseButtonPressed(.LEFT),
@@ -1761,6 +1813,10 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 		}
 		desktop_intent:=desktop_gameplay_intent(raw, app.run.player.archetype)
 		merge_gameplay_intent(&intent,desktop_intent)
+		// Only an actively pointed device may own idle facing downstream. The
+		// controller's passive snap-aim fallback stays non-live on purpose, and
+		// a parked cursor no longer steals the last keyboard/pad heading.
+		if mouse_used || arrow_aim != {} do intent.aim_live = true
 
 		if app.dev_controls {
 			if rl.IsKeyPressed(.N) do intent.descend = true
@@ -1770,17 +1826,17 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 	case .Paused:
 		if mouse_moved {if index,found:=pause_row_at(mouse);found {intent.menu_index=index;intent.menu_index_valid=true}}
 		if rl.IsMouseButtonPressed(.LEFT) {if index,found:=pause_row_at(mouse);found {intent.menu_index=index;intent.menu_index_valid=true;intent.confirm=true;intent.pointer_confirm=true}}
-		if rl.IsKeyPressed(.UP)||rl.IsKeyPressed(.W) do intent.menu_delta-=1
-		if rl.IsKeyPressed(.DOWN)||rl.IsKeyPressed(.S) do intent.menu_delta+=1
+		if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
+		if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
 		if rl.IsKeyPressed(.ENTER)||rl.IsKeyPressed(.KP_ENTER) do intent.confirm=true
 		if rl.IsKeyPressed(.ESCAPE)||rl.IsKeyPressed(.BACKSPACE) do intent.back=true
 	case .Options:
 		if mouse_moved {if index,found:=options_row_at(app,mouse);found {intent.menu_index=index;intent.menu_index_valid=true}}
 		if rl.IsMouseButtonPressed(.LEFT) {if index,found:=options_row_at(app,mouse);found {intent.menu_index=index;intent.menu_index_valid=true;intent.confirm=true}}
-		if rl.IsKeyPressed(.UP)||rl.IsKeyPressed(.W) do intent.menu_delta-=1
-		if rl.IsKeyPressed(.DOWN)||rl.IsKeyPressed(.S) do intent.menu_delta+=1
-		if rl.IsKeyPressed(.LEFT)||rl.IsKeyPressed(.A) do intent.menu_horizontal-=1
-		if rl.IsKeyPressed(.RIGHT)||rl.IsKeyPressed(.D) do intent.menu_horizontal+=1
+		if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
+		if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
+		if rl.IsKeyPressed(.LEFT) do intent.menu_horizontal-=1
+		if rl.IsKeyPressed(.RIGHT) do intent.menu_horizontal+=1
 		if rl.IsKeyPressed(.ENTER)||rl.IsKeyPressed(.KP_ENTER) do intent.confirm=true
 		if rl.IsKeyPressed(.ESCAPE)||rl.IsKeyPressed(.BACKSPACE)||rl.IsKeyPressed(.O) do intent.back=true
 	case .Controls:
@@ -1791,10 +1847,10 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			if index,found:=controls_row_at(app,mouse);found {intent.menu_index=index;intent.menu_index_valid=true;intent.confirm=true}
 		}
 		if !app.controls_capture {
-			if rl.IsKeyPressed(.UP)||rl.IsKeyPressed(.W) do intent.menu_delta-=1
-			if rl.IsKeyPressed(.DOWN)||rl.IsKeyPressed(.S) do intent.menu_delta+=1
-			if rl.IsKeyPressed(.LEFT)||rl.IsKeyPressed(.A) do intent.menu_horizontal-=1
-			if rl.IsKeyPressed(.RIGHT)||rl.IsKeyPressed(.D) do intent.menu_horizontal+=1
+			if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
+			if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
+			if rl.IsKeyPressed(.LEFT) do intent.menu_horizontal-=1
+			if rl.IsKeyPressed(.RIGHT) do intent.menu_horizontal+=1
 			if rl.IsKeyPressed(.ENTER)||rl.IsKeyPressed(.KP_ENTER) do intent.confirm=true
 		}
 		if rl.IsKeyPressed(.ESCAPE)||rl.IsKeyPressed(.BACKSPACE) do intent.back=true
@@ -1811,25 +1867,25 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			}
 		}
 		if wheel!=0 {intent.menu_delta=-int(wheel);if intent.menu_delta==0 do intent.menu_delta=wheel>0?-1:1}
-		if rl.IsKeyPressed(.UP)||rl.IsKeyPressed(.W)||rl.IsKeyPressed(.PAGE_UP) do intent.menu_delta-=1
-		if rl.IsKeyPressed(.DOWN)||rl.IsKeyPressed(.S)||rl.IsKeyPressed(.PAGE_DOWN) do intent.menu_delta+=1
-		if rl.IsKeyPressed(.LEFT)||rl.IsKeyPressed(.A) do intent.menu_horizontal-=1
-		if rl.IsKeyPressed(.RIGHT)||rl.IsKeyPressed(.D) do intent.menu_horizontal+=1
+		if rl.IsKeyPressed(.UP)||rl.IsKeyPressed(.PAGE_UP) do intent.menu_delta-=1
+		if rl.IsKeyPressed(.DOWN)||rl.IsKeyPressed(.PAGE_DOWN) do intent.menu_delta+=1
+		if rl.IsKeyPressed(.LEFT) do intent.menu_horizontal-=1
+		if rl.IsKeyPressed(.RIGHT) do intent.menu_horizontal+=1
 		if rl.IsKeyPressed(.TAB) do intent.tab=true
 		if rl.IsKeyPressed(.ENTER)||rl.IsKeyPressed(.KP_ENTER) do intent.confirm=true
 		if rl.IsKeyPressed(.ESCAPE)||rl.IsKeyPressed(.BACKSPACE) do intent.back=true
 	case .Abandon_Confirm:
 		if mouse_moved {if index,found:=choice_overlay_row_at(mouse,2);found {intent.menu_index=index;intent.menu_index_valid=true}}
 		if rl.IsMouseButtonPressed(.LEFT) {if index,found:=choice_overlay_row_at(mouse,2);found {intent.menu_index=index;intent.menu_index_valid=true;intent.confirm=true}}
-		if rl.IsKeyPressed(.UP)||rl.IsKeyPressed(.W) do intent.menu_delta-=1
-		if rl.IsKeyPressed(.DOWN)||rl.IsKeyPressed(.S) do intent.menu_delta+=1
+		if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
+		if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
 		if rl.IsKeyPressed(.ENTER)||rl.IsKeyPressed(.KP_ENTER) do intent.confirm=true
 		if rl.IsKeyPressed(.ESCAPE)||rl.IsKeyPressed(.BACKSPACE) do intent.back=true
 	case .Recovery, .Save_Error:
 		if mouse_moved {if index,found:=choice_overlay_row_at(mouse,3);found {intent.menu_index=index;intent.menu_index_valid=true}}
 		if rl.IsMouseButtonPressed(.LEFT) {if index,found:=choice_overlay_row_at(mouse,3);found {intent.menu_index=index;intent.menu_index_valid=true;intent.confirm=true}}
-		if rl.IsKeyPressed(.UP)||rl.IsKeyPressed(.W) do intent.menu_delta-=1
-		if rl.IsKeyPressed(.DOWN)||rl.IsKeyPressed(.S) do intent.menu_delta+=1
+		if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
+		if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
 		if rl.IsKeyPressed(.ENTER)||rl.IsKeyPressed(.KP_ENTER) do intent.confirm=true
 		if rl.IsKeyPressed(.ESCAPE)||rl.IsKeyPressed(.BACKSPACE) do intent.back=true
 	case .Save_Wait:

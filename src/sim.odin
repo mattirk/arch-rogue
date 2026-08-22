@@ -28,6 +28,12 @@ LARGE_ENEMY_HIT_RADIUS :: 0.52
 ENEMY_PROJECTILE_HIT_RADIUS :: 0.52 // enemy bolts vs the player
 ENEMY_SEPARATION_RADIUS :: 0.55
 PLAYER_MOVE_SPEED :: 2.8
+// Facing keeps the last *committed* movement heading when locomotion stops:
+// a direction must be held this long to become the stop heading, so the 1-2
+// single-axis ticks from staggered two-arrow releases (or stick spring-back)
+// cannot rotate a diagonal walk's facing at the stop edge.
+HEADING_COMMIT_SECONDS :: f32(0.12)
+HEADING_TURN_COS :: f32(0.86) // ~30 degrees: any 45-degree 8-way step restarts the hold
 ARCHETYPE_MOVE_RATING_BASELINE :: 3.5
 WALK_ANIMATION_RATE :: 0.8
 WALK_ANIM_SPEED_FLOOR :: 2.2
@@ -131,6 +137,8 @@ Player :: struct {
 	prev_pos:     Vec2, // last sim tick, for render interpolation
 	facing:       Vec2, // tile-space direction, last nonzero move or aim
 	moving:       bool,
+	heading_stable: Vec2, // movement heading held >= HEADING_COMMIT_SECONDS in this burst
+	heading_hold:   f32,  // seconds the current movement direction has been held
 	anim_time:    f32,
 	sim_elapsed:  f32, // fixed-step run-local clock for deterministic story NPC motion
 	guidance_idle_elapsed: f32, // resets on movement/activation; drives the floor-light crest
@@ -1172,10 +1180,27 @@ tick_player :: proc(run: ^Run, move: Vec2, max_move_step: f32) {
 	// keeps the swing's aim facing, so hitting reads as its own action instead
 	// of a drive-by (the pygame game imposed no such lock).
 	if player.melee_commit_timer > 0 do return
-	if move == {} do return
+	if move == {} {
+		// Stop edge: if the final direction was only a sub-commit blip (key
+		// release stagger, stick spring-back), restore the committed heading.
+		if player.heading_stable != {} && player.heading_hold < HEADING_COMMIT_SECONDS {
+			player.facing = player.heading_stable
+		}
+		player.heading_stable = {}
+		player.heading_hold = 0
+		return
+	}
 	magnitude := min(f32(1), math.hypot(move.x, move.y))
 	if max_move_step >= 0 do magnitude = 1 // mouse target distance is not stick deflection
 	dir := linalg.normalize0(move)
+	// player.facing still holds the previous moving tick's direction here, so
+	// it doubles as the reference for the heading-commit clock.
+	if dir.x * player.facing.x + dir.y * player.facing.y >= HEADING_TURN_COS {
+		player.heading_hold += SIM_DT
+	} else {
+		player.heading_hold = SIM_DT
+	}
+	if player.heading_hold >= HEADING_COMMIT_SECONDS do player.heading_stable = dir
 	speed := player_speed(player)
 	full_step := speed * SIM_DT
 	step := full_step * magnitude

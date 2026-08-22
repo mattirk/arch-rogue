@@ -105,6 +105,7 @@ achievement_catalogue_matches_app_admin_contract :: proc(t:^testing.T) {
 			fmt.tprintf("%v api id %s must match authored order entry %s",id,def.api_id,steam_expected_api_ids[index]))
 		testing.expect(t,strings.has_prefix(def.api_id,"ACH_"),"api ids carry the ACH_ prefix contract")
 		testing.expect(t,def.title!="","every achievement carries its App Admin title")
+		testing.expect(t,def.description!="","every achievement carries its App Admin description")
 		testing.expect(t,def.condition_count>=1&&def.condition_count<=len(def.conditions),"condition count bounded")
 		for other in ar.Achievement_Id {
 			if other!=id&&ar.ACHIEVEMENT_DEFS[other].api_id==def.api_id {
@@ -148,6 +149,16 @@ achievement_triggers_read_real_facts_and_content :: proc(t:^testing.T) {
 			case .None:
 			}
 		}
+	}
+	// Hidden flags are part of the authored App Admin contract: exactly the
+	// six spoiler achievements (the four Gate answers, the depth-1 death,
+	// and the Bar pilgrimage) are hidden.
+	hidden_expected:=[6]ar.Achievement_Id{.Gate_Aid,.Gate_Bargain,.Gate_Defy,.Gate_All_Answers,.Depth_1_Death,.Bar_Pilgrim}
+	for id in ar.Achievement_Id {
+		expected:=false
+		for hidden_id in hidden_expected do if id==hidden_id do expected=true
+		testing.expect(t,ar.ACHIEVEMENT_DEFS[id].hidden==expected,
+			fmt.tprintf("%v hidden flag must match the authored catalogue",id))
 	}
 	// Set capacities are the completion targets: pin them to the content tables.
 	testing.expect_value(t,len(profile.victory_archetype_ids),len(ar.Archetype_Id))

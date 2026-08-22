@@ -754,6 +754,17 @@ ar_web_smoke_probe :: proc "c" () -> [^]u8 {
 	right_trigger := false
 	packs_resident := 0
 	packs_adopting := 0
+	facing: Vec2
+	aim_input: Vec2
+	aim_live := false
+	keyboard_aim := false
+	bolt_cooldown := f32(0)
+	music_mix := ""
+	music_phase := f64(0)
+	music_streams := 0
+	music_layers := 0
+	music_callbacks := u32(0)
+	music_recoveries := 0
 	if web_runtime != nil {
 		mode = fmt.tprintf("%v", web_runtime.app.mode)
 		audio_ready = web_runtime.audio.ready
@@ -769,6 +780,17 @@ ar_web_smoke_probe :: proc "c" () -> [^]u8 {
 			left_trigger = controller_raylib_trigger_sample(0,.Left) > CONTROLLER_TRIGGER_THRESHOLD
 			right_trigger = controller_raylib_trigger_sample(0,.Right) > CONTROLLER_TRIGGER_THRESHOLD
 		}
+		facing = web_runtime.app.run.player.facing
+		aim_input = web_runtime.app.aim_input
+		aim_live = web_runtime.app.aim_live
+		keyboard_aim = web_runtime.controller.keyboard_aim
+		bolt_cooldown = web_runtime.app.run.player.bolt_timer
+		music_mix = web_runtime.music.active_mix
+		music_phase = music_phase_ms(&web_runtime.music, &web_runtime.audio.music_library)
+		music_streams = audio_music_loaded_stream_count(&web_runtime.audio)
+		music_layers = audio_music_active_layer_count(&web_runtime.audio)
+		music_callbacks = audio_music_callback_service_count(&web_runtime.audio)
+		music_recoveries = web_runtime.audio.music_recovery_count
 	}
 	for _, status in web_packs {
 		if status == .Resident do packs_resident += 1
@@ -776,11 +798,13 @@ ar_web_smoke_probe :: proc "c" () -> [^]u8 {
 	}
 	encoded := fmt.bprintf(
 		web_probe_buffer[:len(web_probe_buffer)-1],
-		"{{\"state\":\"%v\",\"mode\":\"%s\",\"audio_ready\":%v,\"audio_playing\":%v,\"storage_ready\":%v,\"resume_available\":%v,\"run_active\":%v,\"modal_open\":%v,\"depth\":%d,\"frame_count\":%d,\"gamepad\":%v,\"left_trigger\":%v,\"right_trigger\":%v,\"packs_resident\":%d,\"packs_adopting\":%d,\"screen_w\":%d,\"screen_h\":%d,\"heap_dynamic_bytes\":%d,\"hydrated\":%v}}",
+		"{{\"state\":\"%v\",\"mode\":\"%s\",\"audio_ready\":%v,\"audio_playing\":%v,\"storage_ready\":%v,\"resume_available\":%v,\"run_active\":%v,\"modal_open\":%v,\"depth\":%d,\"frame_count\":%d,\"gamepad\":%v,\"left_trigger\":%v,\"right_trigger\":%v,\"packs_resident\":%d,\"packs_adopting\":%d,\"screen_w\":%d,\"screen_h\":%d,\"heap_dynamic_bytes\":%d,\"hydrated\":%v,\"facing_x\":%.4f,\"facing_y\":%.4f,\"aim_x\":%.4f,\"aim_y\":%.4f,\"aim_live\":%v,\"keyboard_aim\":%v,\"bolt_cooldown\":%.3f,\"music_mix\":\"%s\",\"music_phase_ms\":%.0f,\"music_streams\":%d,\"music_layers\":%d,\"music_callbacks\":%d,\"music_recoveries\":%d}}",
 		web_boot_state, mode, audio_ready, audio_playing, storage_ready, resume_available, run_active,
 		modal_open, depth, frame_count, gamepad, left_trigger, right_trigger, packs_resident, packs_adopting,
 		int(rl.GetScreenWidth()), int(rl.GetScreenHeight()),
 		web_dynamic_heap_bytes(), web_store_hydrated,
+		facing.x, facing.y, aim_input.x, aim_input.y, aim_live, keyboard_aim, bolt_cooldown,
+		music_mix, music_phase, music_streams, music_layers, music_callbacks, music_recoveries,
 	)
 	web_probe_buffer[len(encoded)] = 0
 	return raw_data(web_probe_buffer[:])

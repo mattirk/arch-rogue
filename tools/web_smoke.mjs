@@ -96,6 +96,11 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 400));
   state = await probe(page);
   record('audio-unlock', state.audio_ready === true, `audio_ready=${state.audio_ready}`);
+  record('music-boot-intro', state.music_mix === 'menu_boot' && state.music_streams === 1 &&
+    state.music_layers === 1 && state.music_callbacks > 0,
+    `mix=${state.music_mix} streams=${state.music_streams} layers=${state.music_layers} callbacks=${state.music_callbacks} phase=${state.music_phase_ms} heap=${(state.heap_dynamic_bytes / (1024 * 1024)).toFixed(1)}MiB`);
+  record('music-stream-stable', state.music_recoveries === 0,
+    `recoveries=${state.music_recoveries}`);
 
   // --- start a run; lazy packs stream and adopt -----------------------------
   await page.key('n', 'KeyN', 78); // Title hotkey: New Run -> Select
@@ -107,6 +112,11 @@ try {
   record('run-start', state.run_active && state.mode === 'Playing', `depth=${state.depth}`);
   record('opening-story-modal', state.modal_open === true,
     `modal_open=${state.modal_open} audio_playing=${state.audio_playing}`);
+  // The 9.6 s boot intro ignores the selector until its boundary, so shortly
+  // after run start the director is either still in the intro or already on
+  // the modal's cutscene mix (which has no tracks yet: authored silence).
+  record('music-selector-follows-run', state.music_mix === 'menu_boot' || state.music_mix === 'cutscene',
+    `mix=${state.music_mix}`);
   const packDeadline = Date.now() + 180000;
   let residentSeen = 0;
   while (Date.now() < packDeadline) {
@@ -120,9 +130,9 @@ try {
     `resident=${state.packs_resident} adopting=${state.packs_adopting}`);
 
   // --- play a little, then lifecycle checkpoint ----------------------------
-  await page.keyEvent('keydown', 'd', 'KeyD', 68);
+  await page.keyEvent('keydown', 'ArrowRight', 'ArrowRight', 39);
   await new Promise((resolve) => setTimeout(resolve, 900));
-  await page.keyEvent('keyup', 'd', 'KeyD', 68);
+  await page.keyEvent('keyup', 'ArrowRight', 'ArrowRight', 39);
   await page.evaluate('Module._ar_web_set_visible(0); true');
   const checkpoint = await page.waitForConsole(/ARCH_ROGUE_SUSPEND_CHECKPOINT/, { timeoutMs: 5000 });
   await page.evaluate('Module._ar_web_set_visible(1); true');

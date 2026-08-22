@@ -114,6 +114,7 @@ App :: struct {
 	story_minigame_cursor: int,
 	move_input:     Vec2, // held keyboard movement, applied every sim tick
 	aim_input:      Vec2, // live desktop cursor/arrow aim in tile space
+	aim_live:       bool, // aim_input came from an actively pointed device this frame
 	mouse_walk:     bool, // held LMB fallback when no movement key is down
 	mouse_target:   Vec2,
 	mouse_press_pending: bool, // latched until a fixed tick sees a short click
@@ -233,6 +234,7 @@ ARRIVAL_FADE_SECONDS :: 0.55
 Intent :: struct {
 	move:             Vec2, // tile-space, unnormalized sum of held keys
 	aim:              Vec2, // tile-space direction from player toward the cursor
+	aim_live:         bool, // aim device actively pointed this frame; a parked cursor is not live
 	mouse_walk:       bool,
 	mouse_press:      bool,
 	mouse_press_aim:  Vec2,
@@ -502,9 +504,11 @@ app_tick :: proc(app: ^App) {
 		if app.inventory_open || app.character_open || app.shop_open do return
 		app.run.active_ticks += 1
 
-		// Mouse aim owns idle facing; keyboard movement overwrites it in
-		// tick_player, exactly like combat/aim.py -> combat/player.py.
-		if app.move_input == {} && aim_outside_dead_zone(app.aim_input) {
+		// An actively pointed device (moved/held mouse, touch aim, right stick)
+		// owns idle facing; keyboard movement overwrites it in tick_player. A
+		// parked cursor is not live, so stopping keeps the last heading instead
+		// of snapping toward wherever the mouse happens to rest.
+		if app.move_input == {} && app.aim_live && aim_outside_dead_zone(app.aim_input) {
 			app.run.player.facing = linalg.normalize0(app.aim_input)
 		}
 
@@ -567,6 +571,7 @@ app_tick :: proc(app: ^App) {
 app_clear_play_input :: proc(app: ^App) {
 	app.move_input = {}
 	app.aim_input = {}
+	app.aim_live = false
 	app.mouse_walk = false
 	app.mouse_press_pending = false
 }
@@ -794,8 +799,8 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 			app_leave_options(app)
 			return false
 		}
-		if intent.menu_index_valid do app.options_index = clamp(intent.menu_index, 0, 9)
-		app.options_index = ((app.options_index + intent.menu_delta) % 10 + 10) % 10
+		if intent.menu_index_valid do app.options_index = clamp(intent.menu_index, 0, 10)
+		app.options_index = ((app.options_index + intent.menu_delta) % 11 + 11) % 11
 		direction := intent.menu_horizontal
 		if direction == 0 && intent.confirm do direction = 1
 		if direction != 0 {
@@ -827,12 +832,15 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 				app.options.audio_enabled = !app.options.audio_enabled
 				app_mark_options_changed(app, {Platform_Effect.Apply_Audio})
 			case 7:
-				app.options.lighting_enabled = !app.options.lighting_enabled
+				options_cycle_music_volume(&app.options, direction)
 				app_mark_options_changed(app)
 			case 8:
+				app.options.lighting_enabled = !app.options.lighting_enabled
+				app_mark_options_changed(app)
+			case 9:
 				app.options.mist_enabled = !app.options.mist_enabled
 				app_mark_options_changed(app)
-			case 9: app_leave_options(app)
+			case 10: app_leave_options(app)
 			}
 		}
 	case .Controls:
@@ -1052,6 +1060,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 		}
 		app.move_input = intent.move
 		app.aim_input = intent.aim
+		app.aim_live = intent.aim_live
 		app.mouse_walk = !app.mouse_input_blocked && intent.mouse_walk && intent.move == {}
 		app.mouse_target = intent.mouse_target
 		if !app.mouse_input_blocked && intent.mouse_press {
