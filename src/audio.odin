@@ -140,6 +140,32 @@ MUSIC_SAMPLE_RATE :: 48_000
 MUSIC_CHANNELS    :: 2
 MUSIC_SAMPLE_SIZE :: 16
 
+// The music master bus uses an intentionally audible, allocation-free tape
+// stage before a stereo-linked zero-lookahead peak limiter. The authored stems
+// are quiet enough that subtle drive stayed nearly linear, so this stage uses
+// strong pre-drive, asymmetric soft saturation for even/odd harmonics, and a
+// one-pole high-frequency rolloff. A DC blocker removes the bias produced by
+// the asymmetric transfer. The limiter's instantaneous attack catches the
+// current sample and returns to unity over roughly 100 ms without adding delay.
+MUSIC_SATURATION_DRIVE          :: f32(4.352)
+MUSIC_SATURATION_MIX            :: f32(1.00)
+MUSIC_TAPE_BIAS                 :: f32(0.08)
+MUSIC_TAPE_OUTPUT_GAIN          :: f32(0.55)
+MUSIC_TAPE_TONE_ALPHA           :: f32(0.65)
+MUSIC_TAPE_DC_BLOCK_COEFFICIENT :: f32(0.9987)
+MUSIC_LIMITER_CEILING           :: f32(0.8912509)
+MUSIC_LIMITER_RELEASE_PER_FRAME :: f32(0.00020831)
+
+Music_Master_DSP :: struct {
+	tape_tone_left:      f32,
+	tape_tone_right:     f32,
+	tape_dc_input_left:  f32,
+	tape_dc_input_right: f32,
+	tape_dc_output_left: f32,
+	tape_dc_output_right: f32,
+	limiter_gain:        f32,
+}
+
 // Each authored OGG is decoded once into its own immutable PCM layer. The
 // callback mixes these layers live, so the director retains independent gain
 // control without asking several Vorbis decoders to refill under raylib's
@@ -168,11 +194,16 @@ Audio :: struct {
 	music_stream_paused:    bool,
 	music_stage:            Music_Stage,
 	music_stage_valid:      bool,
-	music_target_gain_bits: [MUSIC_MAX_ASSETS]u32, // atomically published f32 values
-	music_published_gains:  [MUSIC_MAX_ASSETS]f32, // render-thread write cache
-	music_published_valid:  [MUSIC_MAX_ASSETS]bool,
-	music_callback_gains:   [MUSIC_MAX_ASSETS]f32, // audio callback owns while playing
-	music_cursor_frame:     u32,                   // atomic next frame to render
+	music_target_gain_bits:       [MUSIC_MAX_ASSETS]u32, // atomically published f32 values
+	music_published_gains:        [MUSIC_MAX_ASSETS]f32, // render-thread write cache
+	music_published_valid:        [MUSIC_MAX_ASSETS]bool,
+	music_callback_gains:         [MUSIC_MAX_ASSETS]f32, // audio callback owns while playing
+	music_master_target_bits:     u32,                   // atomically published post-DSP user gain
+	music_master_published_gain:  f32,                   // render-thread write cache
+	music_master_published_valid: bool,
+	music_callback_master_gain:   f32,                   // audio callback owns while playing
+	music_master_dsp:             Music_Master_DSP,      // audio callback owns while playing
+	music_cursor_frame:           u32,                   // atomic next frame to render
 	music_reference_frame:  u32,                   // atomic start of audible device block
 	music_callback_count:   u32,                   // atomic health telemetry
 	music_active_layers:    int,
@@ -410,6 +441,65 @@ audio_music_load_gain :: proc "contextless" (source: ^u32) -> f32 {
 	return transmute(f32)audio_music_load_u32(source)
 }
 
+audio_music_master_dsp_reset :: proc "contextless" (dsp: ^Music_Master_DSP) {
+	if dsp == nil do return
+	dsp^ = {limiter_gain = 1}
+}
+
+// Biased softsign saturation remains monotonic at any input level. Subtracting
+// the zero-input response keeps exact silence at zero while retaining the
+// asymmetry that gives the fully wet stage an audible tape-like even harmonic.
+audio_music_saturate_sample :: proc "contextless" (sample: f32) -> f32 {
+	driven := sample * MUSIC_SATURATION_DRIVE + MUSIC_TAPE_BIAS
+	shaped := driven / (1 + abs(driven))
+	bias_floor := MUSIC_TAPE_BIAS / (1 + abs(MUSIC_TAPE_BIAS))
+	wet := (shaped - bias_floor) * MUSIC_TAPE_OUTPUT_GAIN
+	return sample + (wet - sample) * MUSIC_SATURATION_MIX
+}
+
+// A cheap stateful tone stage precedes the waveshaper, approximating tape's
+// high-frequency softening. The post-shaper DC blocker protects bass headroom
+// from the deliberate transfer asymmetry without introducing lookahead.
+audio_music_tape_frame :: proc "contextless" (
+	dsp: ^Music_Master_DSP,
+	left, right: f32,
+) -> (tape_left, tape_right: f32) {
+	if dsp == nil do return
+	dsp.tape_tone_left += (left - dsp.tape_tone_left) * MUSIC_TAPE_TONE_ALPHA
+	dsp.tape_tone_right += (right - dsp.tape_tone_right) * MUSIC_TAPE_TONE_ALPHA
+	shaped_left := audio_music_saturate_sample(dsp.tape_tone_left)
+	shaped_right := audio_music_saturate_sample(dsp.tape_tone_right)
+	tape_left = shaped_left - dsp.tape_dc_input_left + MUSIC_TAPE_DC_BLOCK_COEFFICIENT * dsp.tape_dc_output_left
+	tape_right = shaped_right - dsp.tape_dc_input_right + MUSIC_TAPE_DC_BLOCK_COEFFICIENT * dsp.tape_dc_output_right
+	dsp.tape_dc_input_left = shaped_left
+	dsp.tape_dc_input_right = shaped_right
+	dsp.tape_dc_output_left = tape_left
+	dsp.tape_dc_output_right = tape_right
+	return
+}
+
+// One detector and one envelope preserve the stereo image. Attack is
+// instantaneous because there is intentionally no lookahead; saturation ahead
+// of the limiter softens the transient edge that this zero-latency choice can
+// otherwise expose.
+audio_music_limit_frame :: proc "contextless" (
+	dsp: ^Music_Master_DSP,
+	left, right: f32,
+) -> (limited_left, limited_right: f32) {
+	if dsp == nil do return
+	gain := dsp.limiter_gain
+	if gain <= 0 || gain > 1 do gain = 1
+	gain += (1 - gain) * MUSIC_LIMITER_RELEASE_PER_FRAME
+	peak := max(abs(left), abs(right))
+	if peak > MUSIC_LIMITER_CEILING {
+		gain = min(gain, MUSIC_LIMITER_CEILING / peak)
+	}
+	dsp.limiter_gain = gain
+	limited_left = clamp(left * gain, -MUSIC_LIMITER_CEILING, MUSIC_LIMITER_CEILING)
+	limited_right = clamp(right * gain, -MUSIC_LIMITER_CEILING, MUSIC_LIMITER_CEILING)
+	return
+}
+
 @(private = "file")
 audio_music_asset_index_for :: proc(audio: ^Audio, file: string) -> (int, bool) {
 	if audio == nil do return 0, false
@@ -444,6 +534,10 @@ audio_music_mix_callback :: proc "c" (buffer_data: rawptr, frames: u32) #no_boun
 		target_gains[asset_index] = audio_music_load_gain(&audio.music_target_gain_bits[asset_index])
 	}
 
+	master_target := clamp(audio_music_load_gain(&audio.music_master_target_bits), 0, 1)
+	master_gain := audio.music_callback_master_gain
+	master_step := (master_target - master_gain) / f32(frame_count)
+
 	for asset_index in 0 ..< audio.music_asset_count {
 		asset := &audio.music_assets[asset_index]
 		if !asset.ready || asset.wave.data == nil do continue
@@ -465,15 +559,21 @@ audio_music_mix_callback :: proc "c" (buffer_data: rawptr, frames: u32) #no_boun
 		audio.music_callback_gains[asset_index] = target_gain
 	}
 
-	// Match the device clipping that separate raylib streams previously reached
-	// after summing, while keeping the one callback stream finite and bounded.
-	for sample_index in 0 ..< sample_count {
-		if output[sample_index] > 1 {
-			output[sample_index] = 1
-		} else if output[sample_index] < -1 {
-			output[sample_index] = -1
-		}
+	// Process the summed music bus before applying the user's volume preference,
+	// so changing that option does not change saturation or limiter behavior.
+	for frame_index in 0 ..< frame_count {
+		output_index := frame_index * MUSIC_CHANNELS
+		left, right := audio_music_tape_frame(
+			&audio.music_master_dsp,
+			output[output_index],
+			output[output_index + 1],
+		)
+		left, right = audio_music_limit_frame(&audio.music_master_dsp, left, right)
+		master_gain += master_step
+		output[output_index] = left * master_gain
+		output[output_index + 1] = right * master_gain
 	}
+	audio.music_callback_master_gain = master_target
 	cursor = (cursor + frame_count) % loop_frames
 	audio_music_store_u32(&audio.music_cursor_frame, u32(cursor))
 	audio_music_add_u32(&audio.music_callback_count, 1)
@@ -499,6 +599,11 @@ audio_music_stop_mixer :: proc(audio: ^Audio) {
 	audio.music_published_gains = {}
 	audio.music_published_valid = {}
 	audio.music_callback_gains = {}
+	audio.music_master_target_bits = 0
+	audio.music_master_published_gain = 0
+	audio.music_master_published_valid = false
+	audio.music_callback_master_gain = 0
+	audio.music_master_dsp = {}
 	audio.music_cursor_frame = 0
 	audio.music_reference_frame = 0
 	audio.music_callback_count = 0
@@ -588,6 +693,7 @@ audio_music_create_mixer :: proc(audio: ^Audio) {
 	}
 	audio.music_stream = stream
 	audio.music_stream_loaded = true
+	audio_music_master_dsp_reset(&audio.music_master_dsp)
 	audio_music_callback_audio = audio
 	rl.SetAudioStreamCallback(stream, audio_music_mix_callback)
 }
@@ -626,7 +732,6 @@ audio_music_load_library :: proc(audio: ^Audio) {
 audio_music_publish_targets :: proc(
 	audio: ^Audio,
 	director: ^Music_Director,
-	master_volume: f32,
 	runtime: Music_Runtime_State,
 ) {
 	gains: [MUSIC_MAX_ASSETS]f32
@@ -634,7 +739,7 @@ audio_music_publish_targets :: proc(
 		if !state.active do continue
 		if asset_index, found := audio_music_asset_index_for(audio, state.file); found && audio.music_assets[asset_index].ready {
 			runtime_gain := music_track_runtime_gain(state.authored, runtime)
-			gains[asset_index] = clamp(state.volume * master_volume * runtime_gain, 0, 1)
+			gains[asset_index] = clamp(state.volume * runtime_gain, 0, 1)
 		}
 		// Every PCM layer advances on the common callback cursor even while
 		// inaudible, so an entering layer is already at state.seek_ms.
@@ -649,6 +754,16 @@ audio_music_publish_targets :: proc(
 			audio.music_published_valid[asset_index] = true
 		}
 		if gain > 0.0005 do audio.music_active_layers += 1
+	}
+}
+
+@(private = "file")
+audio_music_publish_master :: proc(audio: ^Audio, master_volume: f32) {
+	gain := clamp(master_volume, 0, 1)
+	if !audio.music_master_published_valid || abs(audio.music_master_published_gain - gain) > 0.0001 {
+		audio_music_store_gain(&audio.music_master_target_bits, gain)
+		audio.music_master_published_gain = gain
+		audio.music_master_published_valid = true
 	}
 }
 
@@ -670,6 +785,8 @@ audio_music_adopt_targets :: proc(audio: ^Audio) {
 	for asset_index in 0 ..< audio.music_asset_count {
 		audio.music_callback_gains[asset_index] = audio_music_load_gain(&audio.music_target_gain_bits[asset_index])
 	}
+	audio.music_callback_master_gain = clamp(audio_music_load_gain(&audio.music_master_target_bits), 0, 1)
+	audio_music_master_dsp_reset(&audio.music_master_dsp)
 }
 
 @(private = "file")
@@ -714,7 +831,8 @@ audio_music_update :: proc(
 			break
 		}
 	}
-	audio_music_publish_targets(audio, director, max(master_volume, 0), runtime)
+	audio_music_publish_targets(audio, director, runtime)
+	audio_music_publish_master(audio, master_volume)
 	if master_volume <= 0 {
 		if audio.music_stream_started {
 			rl.StopAudioStream(audio.music_stream)

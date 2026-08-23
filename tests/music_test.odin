@@ -2,8 +2,8 @@ package archrogue_tests
 
 // Headless music-model tests per SOUND.md: the composer document, the
 // screen -> mix selector, and the director's boot intro, alternate cycles,
-// and phase-locked crossfades. Playback (the raylib live mixer) stays untested
-// here; the real-device soak and web smoke harness cover it end to end.
+// phase-locked crossfades, and the pure music-master DSP. Device playback stays
+// in the real-device soak and web smoke harnesses.
 
 import "core:os"
 import "core:fmt"
@@ -375,6 +375,47 @@ music_unknown_track_condition_rejects_document :: proc(t: ^testing.T) {
 	library, ok := ar.music_library_parse(document)
 	defer ar.music_library_destroy(&library)
 	testing.expect(t, !ok, "an unknown runtime condition must reject the mix document")
+}
+
+@(test)
+music_master_tape_saturation_is_audible_biased_and_monotonic :: proc(t: ^testing.T) {
+	quiet := ar.audio_music_saturate_sample(0.1)
+	positive := ar.audio_music_saturate_sample(1)
+	negative := ar.audio_music_saturate_sample(-1)
+	hot := ar.audio_music_saturate_sample(2)
+
+	testing.expect(t, ar.audio_music_saturate_sample(0) == 0, "saturation must preserve exact silence")
+	testing.expect(t, quiet > 0.14 && quiet < 0.15, "fully wet tape saturation must audibly color quiet authored stems")
+	testing.expect(t, abs(negative) > positive && abs(positive + negative) > 0.05,
+		"tape bias must make positive and negative saturation intentionally asymmetric")
+	testing.expect(t, positive > quiet && hot > positive, "the softsign transfer curve must remain strictly monotonic")
+	testing.expect(t, hot < 0.5, "hot sums must be strongly compressed before limiting")
+
+	dsp: ar.Music_Master_DSP
+	ar.audio_music_master_dsp_reset(&dsp)
+	left, right := ar.audio_music_tape_frame(&dsp, 0, 0)
+	testing.expect(t, left == 0 && right == 0, "the stateful tape stage must preserve exact stereo silence")
+}
+
+@(test)
+music_master_limiter_is_stereo_linked_bounded_and_releases :: proc(t: ^testing.T) {
+	dsp: ar.Music_Master_DSP
+	ar.audio_music_master_dsp_reset(&dsp)
+	left, right := ar.audio_music_limit_frame(&dsp, 2, 1)
+
+	testing.expect(t, abs(left) <= ar.MUSIC_LIMITER_CEILING && abs(right) <= ar.MUSIC_LIMITER_CEILING,
+		"the zero-lookahead attack must catch the current stereo frame")
+	testing.expect(t, abs(right * 2 - left) < 1e-5,
+		"one linked gain must preserve the stereo image")
+	reduced_gain := dsp.limiter_gain
+	testing.expect(t, reduced_gain > 0 && reduced_gain < 1, "a hot frame must engage gain reduction")
+
+	for _ in 0 ..< ar.MUSIC_SAMPLE_RATE do _, _ = ar.audio_music_limit_frame(&dsp, 0, 0)
+	testing.expect(t, dsp.limiter_gain > reduced_gain && dsp.limiter_gain > 0.99 && dsp.limiter_gain <= 1,
+		"silence must release smoothly back toward unity without overshoot")
+
+	ar.audio_music_master_dsp_reset(&dsp)
+	testing.expect(t, dsp.limiter_gain == 1, "hard mixer resets must clear prior gain reduction")
 }
 
 @(private = "file")
