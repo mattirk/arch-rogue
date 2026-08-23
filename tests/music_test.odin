@@ -66,8 +66,9 @@ music_mixes_document_parses_and_references_real_files :: proc(t: ^testing.T) {
 		testing.expect(t, dungeon.tracks[5].file == "ambience_strings.ogg" && dungeon.tracks[5].condition == .Dungeon_Bar_Ducked,
 			"the dungeon strings must duck near the Bar")
 		testing.expect(t,
-			dungeon.tracks[6].file == "lead_glorious_horn.ogg" && dungeon.tracks[6].condition == .Dungeon_Elite_Horn_Bar_Ducked,
-			"the elite horn must combine its proximity gate with Bar ducking",
+			dungeon.tracks[6].file == "lead_glorious_horn.ogg" && dungeon.tracks[6].condition == .Dungeon_Elite_Horn_Bar_Ducked &&
+			dungeon.tracks[6].volume == 0.7,
+			"the elite horn must combine its proximity gate and Bar ducking at 70% volume",
 		)
 		testing.expect(t, dungeon.tracks[7].file == "bar_guitar.ogg" && dungeon.tracks[7].condition == .Dungeon_Bar_Music,
 			"Bar guitar must fade in on the shared Bar envelope")
@@ -106,18 +107,18 @@ music_mixes_document_parses_and_references_real_files :: proc(t: ^testing.T) {
 			"boss battle must retain the same phase-locked conditional choir")
 		testing.expect(t,
 			battle.tracks[4].file == "lead_guitar_low.ogg" && battle.tracks[4].condition == .Boss_Guitar_Low &&
-			battle.tracks[4].volume == 0.75,
-			"boss battle low guitar must carry its runtime condition at 75% volume",
+			battle.tracks[4].volume == 0.6375,
+			"boss battle low guitar must carry its runtime condition at 63.75% volume",
 		)
 		testing.expect(t,
 			battle.tracks[5].file == "lead_guitar_mid.ogg" && battle.tracks[5].condition == .Boss_Guitar_Mid &&
-			battle.tracks[5].volume == 0.75,
-			"boss battle mid guitar must carry its runtime condition at 75% volume",
+			battle.tracks[5].volume == 0.6375,
+			"boss battle mid guitar must carry its runtime condition at 63.75% volume",
 		)
 		testing.expect(t,
 			battle.tracks[6].file == "lead_guitar_high.ogg" && battle.tracks[6].condition == .Boss_Guitar_High &&
-			battle.tracks[6].volume == 0.75,
-			"boss battle high guitar must carry its runtime condition at 75% volume",
+			battle.tracks[6].volume == 0.6375,
+			"boss battle high guitar must carry its runtime condition at 63.75% volume",
 		)
 	}
 	// Boss Battle and Dungeon share only grim bass. All nine incoming Dungeon
@@ -385,7 +386,7 @@ music_master_tape_saturation_is_audible_biased_and_monotonic :: proc(t: ^testing
 	hot := ar.audio_music_saturate_sample(2)
 
 	testing.expect(t, ar.audio_music_saturate_sample(0) == 0, "saturation must preserve exact silence")
-	testing.expect(t, quiet > 0.14 && quiet < 0.15, "fully wet tape saturation must audibly color quiet authored stems")
+	testing.expect(t, quiet > 0.13 && quiet < 0.14, "fully wet tape saturation must audibly color quiet authored stems")
 	testing.expect(t, abs(negative) > positive && abs(positive + negative) > 0.05,
 		"tape bias must make positive and negative saturation intentionally asymmetric")
 	testing.expect(t, positive > quiet && hot > positive, "the softsign transfer curve must remain strictly monotonic")

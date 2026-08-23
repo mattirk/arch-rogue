@@ -2602,31 +2602,44 @@ wrap_text_lines :: proc(text: string, size: i32, max_width: i32, buf: ^[4]string
 	return
 }
 
+// Persistent desktop HUD labels are deliberately terse. Full modifier, risk,
+// and reward prose belongs to transient previews and menus, not the live world.
+hud_location_text :: proc(run: ^Run) -> string {
+	if run == nil do return ""
+	return fmt.tprintf(
+		"Dungeon %d/%d · %s%s",
+		run.depth,
+		DUNGEON_DEPTH,
+		THEMES[run.theme_index].name,
+		run.dark_floor ? " · Dark" : "",
+	)
+}
+
+hud_floor_text :: proc(run: ^Run) -> string {
+	if run == nil do return ""
+	plan := run_floor_plan(run)
+	label := fmt.tprintf(
+		"Threat %d · %s · %s",
+		plan.threat_level,
+		RUN_MODIFIERS[run.modifier].name,
+		ENCOUNTER_TEMPLATES[plan.encounter].title,
+	)
+	if plan.has_boss do label = fmt.tprintf("%s · Boss", label)
+	return label
+}
+
 @(private = "file")
 draw_overlay :: proc(view: ^View, app: ^App, assets: ^Assets) {
 	presentation := ui_begin_presentation()
 	defer ui_end_presentation()
 	run := &app.run
-	// Desktop keeps the detailed run header. On mobile the authored resource
-	// cluster owns the upper-left corner and the sparse layout leaves the world
-	// unobstructed, matching the hand-held HUD composition.
+	// Mobile's authored resource cluster owns this corner. Desktop uses two
+	// fixed, non-wrapping lines so the live world is not covered by run prose.
 	if !view.mobile_mode {
-		plan := run_floor_plan(run)
-		mod := RUN_MODIFIERS[run.modifier]
-		ui_draw_text(
-			fmt.ctprintf("Depth %v/%v · %s%s", run.depth, DUNGEON_DEPTH, THEMES[run.theme_index].name, run.dark_floor ? " · Dark" : ""),
-			8, 8, 18, COLOR_TITLE,
-		)
-		// The detail lines yield to the engaged boss bar's centered name band.
+		ui_draw_text(fmt.ctprintf("%s", hud_location_text(run)), 8, 8, 16, COLOR_TITLE)
+		// The detail line yields to the engaged boss bar's centered name band.
 		if !run.boss_engaged {
-			ui_draw_text(fmt.ctprintf("%s · %s", mod.name, mod.description), 8, 30, 14, COLOR_TEXT_DIM)
-			// Wrapped clear of the minimap card on the right.
-			summary_width := i32(presentation.width) - i32(MINIMAP_CARD_WIDTH) - 40
-			lines: [4]string
-			line_count := wrap_text_lines(floor_plan_summary(plan), 14, summary_width, &lines)
-			for i in 0 ..< line_count {
-				ui_draw_text(fmt.ctprintf("%s", lines[i]), 8, 48 + i32(i) * 18, 14, COLOR_TEXT_DIM)
-			}
+			ui_draw_text(fmt.ctprintf("%s", hud_floor_text(run)), 8, 27, 12, COLOR_TEXT_DIM)
 		}
 		if app.dev_controls {
 			ui_draw_text("Arch Rogue " + VERSION, 8, 70, 18, COLOR_TEXT)

@@ -147,7 +147,7 @@ MUSIC_SAMPLE_SIZE :: 16
 // one-pole high-frequency rolloff. A DC blocker removes the bias produced by
 // the asymmetric transfer. The limiter's instantaneous attack catches the
 // current sample and returns to unity over roughly 100 ms without adding delay.
-MUSIC_SATURATION_DRIVE          :: f32(4.352)
+MUSIC_SATURATION_DRIVE          :: f32(4.00)
 MUSIC_SATURATION_MIX            :: f32(1.00)
 MUSIC_TAPE_BIAS                 :: f32(0.08)
 MUSIC_TAPE_OUTPUT_GAIN          :: f32(0.55)

@@ -118,6 +118,7 @@ The active Odin build must not read code or assets from `arch-rogue-python/`. `a
 - Linux, native Android, and desktop WebAssembly/WebGL2 are the current release targets. The game-side Steam integration is built and a Steam release is being prepared; Windows, macOS, and multiplayer remain deferred.
 - The project is still awaiting final human side-by-side visual parity signoff and broader physical-device Android retesting noted in `PARITY.md`.
 
+
 ## Licenses and notices
 
 Arch Rogue source and binaries are distributed under the [Apache License 2.0](LICENSE). Required notices, bundled-dependency attribution, and the AI provenance/liability notice are in [NOTICE](NOTICE).

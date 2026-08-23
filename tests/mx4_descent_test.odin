@@ -52,6 +52,26 @@ floor_plan_is_deterministic_and_authored :: proc(t: ^testing.T) {
 }
 
 @(test)
+in_game_floor_hud_is_compact_and_omits_plan_prose :: proc(t: ^testing.T) {
+	run: ar.Run
+	ar.run_start(&run, ar.derive_seed(22, 0), .Warden)
+	defer ar.run_destroy(&run)
+	plan := ar.run_floor_plan(&run)
+	modifier := ar.RUN_MODIFIERS[run.modifier]
+	encounter := ar.ENCOUNTER_TEMPLATES[plan.encounter]
+
+	location := ar.hud_location_text(&run)
+	detail := ar.hud_floor_text(&run)
+	testing.expect(t, strings.contains(location, "Dungeon 1/10"), "location uses the full Dungeon label")
+	testing.expect(t, strings.contains(location, ar.THEMES[run.theme_index].name), "location retains the floor theme")
+	testing.expect(t, !strings.contains(location, "Depth"), "persistent HUD avoids duplicate depth wording")
+	testing.expect(t, strings.contains(detail, "Threat ") && strings.contains(detail, modifier.name) && strings.contains(detail, encounter.title),
+		"compact detail retains the full Threat label, modifier, and encounter names")
+	testing.expect(t, !strings.contains(detail, modifier.description) && !strings.contains(detail, "reward:"),
+		"persistent HUD omits modifier descriptions, risk prose, and reward prose")
+}
+
+@(test)
 generated_floors_follow_the_plan :: proc(t: ^testing.T) {
 	run: ar.Run
 	ar.run_start(&run, ar.derive_seed(23, 0), .Warden)
@@ -180,10 +200,9 @@ stairs_preview_tells_the_next_floor :: proc(t: ^testing.T) {
 	run.player.pos = {f32(stairs.x) + 0.5, f32(stairs.y) + 0.5}
 	preview := ar.stairs_preview(&run)
 	next := run.plan[run.depth]
-	testing.expect(t, preview != "", "usable stairs must preview the next floor")
-	testing.expect(t, strings.contains(preview, ar.THEMES[next.theme_index].name), "the preview names the next theme")
-	testing.expect(t, strings.contains(preview, "Threat"), "the preview carries the threat line")
-	testing.expect(t, strings.contains(preview, next.reward_hint), "the preview carries the reward hint")
+	testing.expect(t, preview == ar.THEMES[next.theme_index].name, "usable stairs show only the next floor theme")
+	testing.expect(t, !strings.contains(preview, "Threat") && !strings.contains(preview, next.reward_hint),
+		"stairs HUD omits encounter, threat, and reward prose")
 
 	// Away from the stairs there is nothing to preview.
 	run.player.pos = ar.run_spawn_point(&run)

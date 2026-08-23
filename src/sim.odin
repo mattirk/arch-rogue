@@ -2935,12 +2935,12 @@ player_interaction_available :: proc(run: ^Run) -> bool {
 	return found
 }
 
-// Next-floor preview under the stairs prompt (interactions.py:156-180): the
-// authored plan tells the truth about the coming theme, risks, and reward.
-// Empty away from usable stairs. Temp-allocator string; render each frame.
+// Compact next-floor label under the stairs prompt. Detailed encounter, risk,
+// and reward prose stays out of the live interaction HUD.
+// Empty away from usable stairs.
 stairs_preview :: proc(run: ^Run) -> string {
 	if run.depth >= DUNGEON_DEPTH || !player_near_stairs(run) do return ""
 	if run_floor_plan(run).has_boss && boss_alive(run) do return ""
 	next := &run.plan[run.depth] // depth is 1-based: this is the depth+1 entry
-	return fmt.tprintf("Next: %s · %s", THEMES[next.theme_index].name, floor_plan_summary(next))
+	return THEMES[next.theme_index].name
 }

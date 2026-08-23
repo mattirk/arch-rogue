@@ -665,7 +665,6 @@ draw_select_screen :: proc(app: ^App, assets: ^Assets) {
 	ui_draw_text(blurb, i32(content.x+(content.width-f32(ui_measure_text(blurb,blurb_size)))*.5), i32(content.y+10), blurb_size, COLOR_TEXT)
 	stats := fmt.ctprintf("HP %v     Mana %v     Stamina %v     Speed %.2f", def.max_hp, def.max_mana, def.max_stamina, def.speed)
 	ui_draw_text(stats, i32(content.x+(content.width-f32(ui_measure_text(stats,16)))*.5), i32(content.y+48), 16, COLOR_TITLE)
-	ui_draw_text("South idle preview | click once to inspect, twice to begin", i32(content.x+(content.width-f32(ui_measure_text("South idle preview | click once to inspect, twice to begin",13)))*.5), i32(content.y+78), 13, COLOR_TEXT_DIM)
 
 	hint: cstring = "Arrows: choose   1-5: begin   Enter: confirm   Backspace: return   F11: fullscreen"
 	ui_draw_text(hint, i32(center_x)-ui_measure_text(hint,14)/2, i32(layout.y+layout.height)-27, 14, COLOR_TEXT_DIM)
