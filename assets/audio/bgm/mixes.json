@@ -1,7 +1,7 @@
 {
   "format_version": 1,
   "loop_ms": 19200,
-  "crossfade_ms": 1500,
+  "crossfade_ms": 1000,
   "boot": { "mix": "menu_boot", "length_scale": 0.5 },
   "mixes": {
     "menu_boot": {
@@ -17,31 +17,38 @@
       ]
     },
     "dungeon": {
-      "crossfade_ms": 500,
+      "crossfade_ms": 1000,
       "tracks": [
         { "file": "ambience_grim_bass.ogg", "volume": 1.0, "mute": false, "effects": [] },
         { "file": "beat_low.ogg", "volume": 1.0, "mute": false, "effects": [] },
-        { "file": "lead_harp.ogg", "volume": 1.0, "mute": false, "effects": [] },
-        { "file": "lead_pad.ogg", "volume": 1.0, "mute": false, "effects": [] },
-        { "file": "ambience_strings.ogg", "volume": 1.0, "mute": false, "effects": [] }
+        { "file": "lead_harp.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_bar_ducked", "effects": [] },
+        { "file": "lead_harp_two.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_quest_harp_bar_ducked", "effects": [] },
+        { "file": "lead_pad.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_bar_ducked", "effects": [] },
+        { "file": "ambience_strings.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_bar_ducked", "effects": [] },
+        { "file": "lead_glorious_horn.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_elite_horn_bar_ducked", "effects": [] },
+        { "file": "bar_guitar.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_bar_music", "effects": [] },
+        { "file": "bar_melody_flute.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_bar_music", "effects": [] }
       ]
     },
     "boss": {
-      "crossfade_ms": 500,
+      "crossfade_ms": 1000,
       "tracks": [
         { "file": "ambience_grim_bass.ogg", "volume": 1.0, "mute": false, "effects": [] },
         { "file": "beat_high.ogg", "volume": 1.0, "mute": false, "effects": [] },
-        { "file": "lead_grim_horn.ogg", "volume": 1.0, "mute": false, "effects": [] }
+        { "file": "lead_grim_horn.ogg", "volume": 1.0, "mute": false, "effects": [] },
+        { "file": "ambience_choir.ogg", "volume": 1.0, "mute": false, "condition": "boss_choir", "effects": [] }
       ]
     },
     "boss_battle": {
-      "crossfade_ms": 500,
+      "crossfade_ms": 1000,
       "tracks": [
         { "file": "ambience_grim_bass.ogg", "volume": 1.0, "mute": false, "effects": [] },
         { "file": "beat_high.ogg", "volume": 1.0, "mute": false, "effects": [] },
-        { "file": "lead_guitar_low.ogg", "volume": 1.0, "mute": false, "condition": "boss_guitar_low", "effects": [] },
-        { "file": "lead_guitar_mid.ogg", "volume": 1.0, "mute": false, "condition": "boss_guitar_mid", "effects": [] },
-        { "file": "lead_guitar_high.ogg", "volume": 1.0, "mute": false, "condition": "boss_guitar_high", "effects": [] }
+        { "file": "ambience_alasin.ogg", "volume": 1.0, "mute": false, "effects": [] },
+        { "file": "ambience_choir.ogg", "volume": 1.0, "mute": false, "condition": "boss_choir", "effects": [] },
+        { "file": "lead_guitar_low.ogg", "volume": 0.75, "mute": false, "condition": "boss_guitar_low", "effects": [] },
+        { "file": "lead_guitar_mid.ogg", "volume": 0.75, "mute": false, "condition": "boss_guitar_mid", "effects": [] },
+        { "file": "lead_guitar_high.ogg", "volume": 0.75, "mute": false, "condition": "boss_guitar_high", "effects": [] }
       ]
     }
   }

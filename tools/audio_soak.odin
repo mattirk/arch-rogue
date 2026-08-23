@@ -26,8 +26,8 @@ main :: proc() {
 	}
 
 	// Exercise every music route without spending 9.6 seconds in the authored
-	// boot intro. Each ten-second cycle covers Menu→Dungeon→Boss→Boss Battle,
-	// all three health-driven guitar tiers, then Boss Battle→Dungeon.
+	// boot intro. Each ten-second cycle covers Menu→Dungeon (both proximity
+	// stems)→Boss→Boss Battle (Alasin, all guitar tiers, and choir)→Dungeon.
 	audio.music_library.has_boot = false
 	director: ar.Music_Director
 	start_ms := f64(time.tick_now()._nsec) / 1e6
@@ -41,6 +41,10 @@ main :: proc() {
 	stalls := 0
 	guitar_exclusivity_failures := 0
 	seen_low, seen_mid, seen_high := false, false, false
+	seen_glorious_zero, seen_glorious_half, seen_glorious_full := false, false, false
+	seen_quest_zero, seen_quest_half, seen_quest_full := false, false, false
+	seen_choir_zero, seen_choir_half, seen_choir_full := false, false, false
+	glorious_gain, quest_harp_gain, bar_gain, choir_gain: f32
 
 	for {
 		now_ms := f64(time.tick_now()._nsec) / 1e6
@@ -51,13 +55,22 @@ main :: proc() {
 		segment_ms := int(elapsed_ms) % 10_000
 		desired := ar.MUSIC_MIX_MENU
 		runtime: ar.Music_Runtime_State
+		glorious_target, quest_harp_target, bar_target, choir_target: f32
 		tier_elapsed_ms := 0
 		if segment_ms >= 1_000 && segment_ms < 2_500 {
 			desired = ar.MUSIC_MIX_DUNGEON
+			if segment_ms >= 2_000 {
+				glorious_target = 1
+				quest_harp_target = 1
+			} else if segment_ms >= 1_500 {
+				glorious_target = 0.5
+				quest_harp_target = 0.5
+			}
 		} else if segment_ms >= 2_500 && segment_ms < 4_000 {
 			desired = ar.MUSIC_MIX_BOSS
 		} else if segment_ms >= 4_000 && segment_ms < 8_500 {
 			desired = ar.MUSIC_MIX_BOSS_BATTLE
+			if segment_ms >= 5_000 do choir_target = 1
 			if segment_ms < 5_500 {
 				runtime.boss_guitar_tier = .Low
 				tier_elapsed_ms = segment_ms - 4_000
@@ -70,7 +83,40 @@ main :: proc() {
 			}
 		} else if segment_ms >= 8_500 {
 			desired = ar.MUSIC_MIX_DUNGEON
+			runtime.boss_guitar_tier = .High
+			glorious_target = 1
+			quest_harp_target = 1
+			if segment_ms >= 9_000 do bar_target = 1
 		}
+		glorious_fade := glorious_target < glorious_gain ? ar.MUSIC_ELITE_HORN_RELEASE_SECONDS : ar.MUSIC_ELITE_HORN_ATTACK_SECONDS
+		glorious_gain = ar.music_gain_slew(
+			glorious_gain,
+			glorious_target,
+			f32(dt_ms / 1000),
+			glorious_fade,
+		)
+		quest_harp_gain = ar.music_gain_slew(
+			quest_harp_gain,
+			quest_harp_target,
+			f32(dt_ms / 1000),
+			ar.MUSIC_QUEST_HARP_FADE_SECONDS,
+		)
+		bar_gain = ar.music_gain_slew(
+			bar_gain,
+			bar_target,
+			f32(dt_ms / 1000),
+			ar.MUSIC_BAR_FADE_SECONDS,
+		)
+		choir_gain = ar.music_gain_slew(
+			choir_gain,
+			choir_target,
+			f32(dt_ms / 1000),
+			ar.MUSIC_BOSS_CHOIR_FADE_SECONDS,
+		)
+		runtime.boss_choir_gain = choir_gain
+		runtime.dungeon_elite_horn_gain = glorious_gain
+		runtime.dungeon_quest_harp_gain = quest_harp_gain
+		runtime.dungeon_bar_gain = bar_gain
 
 		reference_ms := ar.audio_music_reference_phase_ms(&audio, &director)
 		ar.music_director_update(&director, &audio.music_library, desired, dt_ms, reference_ms)
@@ -78,7 +124,28 @@ main :: proc() {
 
 		streams := ar.audio_music_loaded_stream_count(&audio)
 		max_streams = max(max_streams, streams)
-		max_layers = max(max_layers, ar.audio_music_active_layer_count(&audio))
+		layers := ar.audio_music_active_layer_count(&audio)
+		max_layers = max(max_layers, layers)
+		if desired == ar.MUSIC_MIX_DUNGEON {
+			if runtime.dungeon_elite_horn_gain <= 0.0005 && runtime.dungeon_quest_harp_gain <= 0.0005 && layers == 5 {
+				seen_glorious_zero = true
+				seen_quest_zero = true
+			}
+			if abs(runtime.dungeon_elite_horn_gain - 0.5) < 0.001 &&
+			   abs(runtime.dungeon_quest_harp_gain - 0.5) < 0.001 && layers == 7 {
+				seen_glorious_half = true
+				seen_quest_half = true
+			}
+			if runtime.dungeon_elite_horn_gain == 1 && runtime.dungeon_quest_harp_gain == 1 && layers == 7 {
+				seen_glorious_full = true
+				seen_quest_full = true
+			}
+		}
+		if desired == ar.MUSIC_MIX_BOSS_BATTLE {
+			if segment_ms >= 4_600 && runtime.boss_choir_gain <= 0.0005 && layers == 4 do seen_choir_zero = true
+			if 0.4 < runtime.boss_choir_gain && runtime.boss_choir_gain < 0.6 && layers == 5 do seen_choir_half = true
+			if runtime.boss_choir_gain == 1 && layers == 5 do seen_choir_full = true
+		}
 		if desired == ar.MUSIC_MIX_BOSS_BATTLE && tier_elapsed_ms >= 600 {
 			audible_guitars := 0
 			for state in director.slots {
@@ -118,12 +185,18 @@ main :: proc() {
 
 	callback_count := ar.audio_music_callback_service_count(&audio) - callback_start
 	passed := stalls == 0 && audio.music_recovery_count == 0 && max_streams == 1 &&
-		max_layers == 7 && int(callback_count) > seconds * 20 && frames > seconds * 40 &&
-		guitar_exclusivity_failures == 0 && seen_low && seen_mid && seen_high
+		max_layers == 11 && int(callback_count) > seconds * 20 && frames > seconds * 40 &&
+		guitar_exclusivity_failures == 0 && seen_low && seen_mid && seen_high &&
+		seen_glorious_zero && seen_glorious_half && seen_glorious_full &&
+		seen_quest_zero && seen_quest_half && seen_quest_full &&
+		seen_choir_zero && seen_choir_half && seen_choir_full
 	fmt.printf(
-		"AUDIO_SOAK {{\"seconds\":%d,\"frames\":%d,\"max_streams\":%d,\"max_layers\":%d,\"callbacks\":%d,\"recoveries\":%d,\"stalls\":%d,\"guitar_exclusivity_failures\":%d,\"seen_low\":%v,\"seen_mid\":%v,\"seen_high\":%v,\"passed\":%v}}\n",
+		"AUDIO_SOAK {{\"seconds\":%d,\"frames\":%d,\"max_streams\":%d,\"max_layers\":%d,\"callbacks\":%d,\"recoveries\":%d,\"stalls\":%d,\"guitar_exclusivity_failures\":%d,\"seen_low\":%v,\"seen_mid\":%v,\"seen_high\":%v,\"seen_glorious_zero\":%v,\"seen_glorious_half\":%v,\"seen_glorious_full\":%v,\"seen_quest_zero\":%v,\"seen_quest_half\":%v,\"seen_quest_full\":%v,\"seen_choir_zero\":%v,\"seen_choir_half\":%v,\"seen_choir_full\":%v,\"passed\":%v}}\n",
 		seconds, frames, max_streams, max_layers, callback_count, audio.music_recovery_count, stalls,
-		guitar_exclusivity_failures, seen_low, seen_mid, seen_high, passed,
+		guitar_exclusivity_failures, seen_low, seen_mid, seen_high,
+		seen_glorious_zero, seen_glorious_half, seen_glorious_full,
+		seen_quest_zero, seen_quest_half, seen_quest_full,
+		seen_choir_zero, seen_choir_half, seen_choir_full, passed,
 	)
 	if !passed do os.exit(1)
 }

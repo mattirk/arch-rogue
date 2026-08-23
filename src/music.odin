@@ -9,9 +9,18 @@ import "core:encoding/json"
 import "core:strings"
 import "core:math"
 
-MUSIC_DEFAULT_CROSSFADE_MS :: f64(1500)
-MUSIC_MAX_SLOTS :: 12
-MUSIC_MIXES_DOCUMENT_PATH :: "assets/audio/bgm/mixes.json"
+MUSIC_DEFAULT_CROSSFADE_MS              :: f64(1000)
+MUSIC_ELITE_HORN_FULL_DISTANCE_TILES    :: f32(4)
+MUSIC_ELITE_HORN_SILENT_DISTANCE_TILES  :: f32(12)
+MUSIC_ELITE_HORN_ATTACK_SECONDS         :: f32(0.5)
+MUSIC_ELITE_HORN_RELEASE_SECONDS        :: f32(2)
+MUSIC_QUEST_HARP_SILENT_DISTANCE_TILES :: f32(8)
+MUSIC_QUEST_HARP_FADE_SECONDS          :: f32(0.5)
+MUSIC_BAR_SILENT_DISTANCE_TILES        :: f32(8)
+MUSIC_BAR_FADE_SECONDS                 :: f32(0.5)
+MUSIC_BOSS_CHOIR_FADE_SECONDS          :: f32(0.5)
+MUSIC_MAX_SLOTS                        :: 15
+MUSIC_MIXES_DOCUMENT_PATH              :: "assets/audio/bgm/mixes.json"
 
 MUSIC_MIX_MENU        :: "menu"
 MUSIC_MIX_DUNGEON     :: "dungeon"
@@ -35,6 +44,13 @@ Music_Track_Condition :: enum u8 {
 	Boss_Guitar_Low,
 	Boss_Guitar_Mid,
 	Boss_Guitar_High,
+	Boss_Choir,
+	Dungeon_Elite_Horn,
+	Dungeon_Quest_Harp,
+	Dungeon_Bar_Ducked,
+	Dungeon_Elite_Horn_Bar_Ducked,
+	Dungeon_Quest_Harp_Bar_Ducked,
+	Dungeon_Bar_Music,
 }
 
 Music_Boss_Guitar_Tier :: enum u8 {
@@ -44,7 +60,11 @@ Music_Boss_Guitar_Tier :: enum u8 {
 }
 
 Music_Runtime_State :: struct {
-	boss_guitar_tier: Music_Boss_Guitar_Tier,
+	boss_guitar_tier:        Music_Boss_Guitar_Tier,
+	boss_choir_gain:         f32,
+	dungeon_elite_horn_gain: f32,
+	dungeon_quest_harp_gain: f32,
+	dungeon_bar_gain:        f32,
 }
 
 Music_Mix_Track :: struct {
@@ -145,10 +165,17 @@ music_effect_kind_parse :: proc(id: string) -> (Music_Effect_Kind, bool) {
 @(private = "file")
 music_track_condition_parse :: proc(id: string) -> (Music_Track_Condition, bool) {
 	switch id {
-	case "":                 return .Always, true
-	case "boss_guitar_low":  return .Boss_Guitar_Low, true
-	case "boss_guitar_mid":  return .Boss_Guitar_Mid, true
-	case "boss_guitar_high": return .Boss_Guitar_High, true
+	case "":                   return .Always, true
+	case "boss_guitar_low":    return .Boss_Guitar_Low, true
+	case "boss_guitar_mid":    return .Boss_Guitar_Mid, true
+	case "boss_guitar_high":   return .Boss_Guitar_High, true
+	case "boss_choir":         return .Boss_Choir, true
+	case "dungeon_elite_horn":                 return .Dungeon_Elite_Horn, true
+	case "dungeon_quest_harp":                 return .Dungeon_Quest_Harp, true
+	case "dungeon_bar_ducked":                 return .Dungeon_Bar_Ducked, true
+	case "dungeon_elite_horn_bar_ducked":      return .Dungeon_Elite_Horn_Bar_Ducked, true
+	case "dungeon_quest_harp_bar_ducked":      return .Dungeon_Quest_Harp_Bar_Ducked, true
+	case "dungeon_bar_music":                  return .Dungeon_Bar_Music, true
 	}
 	return .Always, false
 }
@@ -241,17 +268,166 @@ music_boss_guitar_for_health :: proc(hp, max_hp: int) -> Music_Boss_Guitar_Tier 
 	return .Low
 }
 
-music_runtime_state_for :: proc(app: ^App) -> Music_Runtime_State {
+music_elite_horn_gain_for_distance :: proc(distance: f32) -> f32 {
+	span := MUSIC_ELITE_HORN_SILENT_DISTANCE_TILES - MUSIC_ELITE_HORN_FULL_DISTANCE_TILES
+	progress := clamp(
+		(MUSIC_ELITE_HORN_SILENT_DISTANCE_TILES - max(distance, 0)) / span,
+		0,
+		1,
+	)
+	// Smoothstep has zero slope at silence and full volume, so ordinary movement
+	// across either boundary cannot introduce a gain discontinuity.
+	return progress * progress * (3 - 2 * progress)
+}
+
+music_dungeon_elite_horn_gain :: proc(run: ^Run) -> f32 {
+	if run == nil do return 0
+	nearest_distance_squared := MUSIC_ELITE_HORN_SILENT_DISTANCE_TILES * MUSIC_ELITE_HORN_SILENT_DISTANCE_TILES
+	for &enemy in run.enemies {
+		if enemy.hp <= 0 || enemy.role != .Elite do continue
+		delta := enemy.pos - run.player.pos
+		distance_squared := delta.x * delta.x + delta.y * delta.y
+		nearest_distance_squared = min(nearest_distance_squared, distance_squared)
+	}
+	return music_elite_horn_gain_for_distance(math.sqrt(nearest_distance_squared))
+}
+
+music_quest_harp_gain_for_distance :: proc(distance: f32) -> f32 {
+	progress := clamp(
+		1 - max(distance, 0) / MUSIC_QUEST_HARP_SILENT_DISTANCE_TILES,
+		0,
+		1,
+	)
+	return progress * progress * (3 - 2 * progress)
+}
+
+@(private = "file")
+music_point_room_distance :: proc(position: Vec2, room: Room) -> f32 {
+	left, top := f32(room.x), f32(room.y)
+	right, bottom := f32(room.x + room.w), f32(room.y + room.h)
+	dx, dy: f32
+	if position.x < left {
+		dx = left - position.x
+	} else if position.x > right {
+		dx = position.x - right
+	}
+	if position.y < top {
+		dy = top - position.y
+	} else if position.y > bottom {
+		dy = position.y - bottom
+	}
+	return math.hypot(dx, dy)
+}
+
+music_dungeon_quest_harp_gain :: proc(run: ^Run) -> f32 {
+	if run == nil do return 0
+	quest, found := special_room_for_kind(&run.dungeon, .Quest)
+	if !found || quest.room_index < 0 || quest.room_index >= run.dungeon.room_count do return 0
+	room := run.dungeon.rooms_buf[quest.room_index]
+	distance := music_point_room_distance(run.player.pos, room)
+	return music_quest_harp_gain_for_distance(distance)
+}
+
+music_dungeon_bar_gain :: proc(run: ^Run) -> f32 {
+	if run == nil do return 0
+	bar, found := special_room_for_kind(&run.dungeon, .Bar)
+	if !found || bar.room_index < 0 || bar.room_index >= run.dungeon.room_count do return 0
+	room := run.dungeon.rooms_buf[bar.room_index]
+	distance := music_point_room_distance(run.player.pos, room)
+	progress := clamp(1 - max(distance, 0) / MUSIC_BAR_SILENT_DISTANCE_TILES, 0, 1)
+	return progress * progress * (3 - 2 * progress)
+}
+
+music_gain_slew :: proc(current, target, dt, full_scale_seconds: f32) -> f32 {
+	to := clamp(target, 0, 1)
+	from := clamp(current, 0, 1)
+	if full_scale_seconds <= 0 do return to
+	max_step := max(dt, 0) / full_scale_seconds
+	if to > from do return min(to, from + max_step)
+	return max(to, from - max_step)
+}
+
+music_boss_choir_gain :: proc(run: ^Run) -> f32 {
+	if run == nil do return 0
+	for &enemy in run.enemies {
+		if enemy.role != .Boss || enemy.hp <= 0 || enemy.max_hp <= 0 do continue
+		if enemy.hp * 2 < enemy.max_hp do return 1
+	}
+	return 0
+}
+
+music_runtime_state_for :: proc(
+	app: ^App,
+	dungeon_conditions_enabled: bool = true,
+	boss_conditions_enabled: bool = true,
+) -> Music_Runtime_State {
 	if app == nil do return {}
-	return {boss_guitar_tier = music_boss_guitar_for_health(app.run.player.hp, app.run.player.max_hp)}
+	elite_horn_gain, quest_harp_gain, bar_gain, boss_choir_gain: f32
+	if dungeon_conditions_enabled {
+		elite_horn_gain = music_dungeon_elite_horn_gain(&app.run)
+		quest_harp_gain = music_dungeon_quest_harp_gain(&app.run)
+		bar_gain = music_dungeon_bar_gain(&app.run)
+	}
+	if boss_conditions_enabled do boss_choir_gain = music_boss_choir_gain(&app.run)
+	return {
+		boss_guitar_tier        = music_boss_guitar_for_health(app.run.player.hp, app.run.player.max_hp),
+		boss_choir_gain         = boss_choir_gain,
+		dungeon_elite_horn_gain = elite_horn_gain,
+		dungeon_quest_harp_gain = quest_harp_gain,
+		dungeon_bar_gain        = bar_gain,
+	}
+}
+
+music_runtime_state_update :: proc(
+	state: ^Music_Runtime_State,
+	app: ^App,
+	dungeon_conditions_enabled: bool,
+	boss_conditions_enabled: bool,
+	dt: f32,
+) {
+	if state == nil do return
+	target := music_runtime_state_for(app, dungeon_conditions_enabled, boss_conditions_enabled)
+	state.boss_guitar_tier = target.boss_guitar_tier
+	state.boss_choir_gain = music_gain_slew(
+		state.boss_choir_gain,
+		target.boss_choir_gain,
+		dt,
+		MUSIC_BOSS_CHOIR_FADE_SECONDS,
+	)
+	elite_horn_fade := target.dungeon_elite_horn_gain < state.dungeon_elite_horn_gain ? MUSIC_ELITE_HORN_RELEASE_SECONDS : MUSIC_ELITE_HORN_ATTACK_SECONDS
+	state.dungeon_elite_horn_gain = music_gain_slew(
+		state.dungeon_elite_horn_gain,
+		target.dungeon_elite_horn_gain,
+		dt,
+		elite_horn_fade,
+	)
+	state.dungeon_quest_harp_gain = music_gain_slew(
+		state.dungeon_quest_harp_gain,
+		target.dungeon_quest_harp_gain,
+		dt,
+		MUSIC_QUEST_HARP_FADE_SECONDS,
+	)
+	state.dungeon_bar_gain = music_gain_slew(
+		state.dungeon_bar_gain,
+		target.dungeon_bar_gain,
+		dt,
+		MUSIC_BAR_FADE_SECONDS,
+	)
 }
 
 music_track_runtime_gain :: proc(track: Music_Mix_Track, runtime: Music_Runtime_State) -> f32 {
 	switch track.condition {
-	case .Always:           return 1
-	case .Boss_Guitar_Low:  return runtime.boss_guitar_tier == .Low ? 1 : 0
-	case .Boss_Guitar_Mid:  return runtime.boss_guitar_tier == .Mid ? 1 : 0
-	case .Boss_Guitar_High: return runtime.boss_guitar_tier == .High ? 1 : 0
+	case .Always:              return 1
+	case .Boss_Guitar_Low:     return runtime.boss_guitar_tier == .Low ? 1 : 0
+	case .Boss_Guitar_Mid:     return runtime.boss_guitar_tier == .Mid ? 1 : 0
+	case .Boss_Guitar_High:    return runtime.boss_guitar_tier == .High ? 1 : 0
+	case .Boss_Choir:          return clamp(runtime.boss_choir_gain, 0, 1)
+	case .Dungeon_Elite_Horn:             return clamp(runtime.dungeon_elite_horn_gain, 0, 1)
+	case .Dungeon_Quest_Harp:             return clamp(runtime.dungeon_quest_harp_gain, 0, 1)
+	case .Dungeon_Bar_Ducked:             return 1 - clamp(runtime.dungeon_bar_gain, 0, 1)
+	case .Dungeon_Elite_Horn_Bar_Ducked:  return clamp(runtime.dungeon_elite_horn_gain, 0, 1) * (1 - clamp(runtime.dungeon_bar_gain, 0, 1))
+	case .Dungeon_Quest_Harp_Bar_Ducked:  return clamp(runtime.dungeon_quest_harp_gain, 0, 1) * (1 - clamp(runtime.dungeon_bar_gain, 0, 1))
+	case .Dungeon_Bar_Music:              return clamp(runtime.dungeon_bar_gain, 0, 1)
 	}
 	return 1
 }

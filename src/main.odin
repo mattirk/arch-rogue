@@ -980,6 +980,7 @@ Game_Runtime :: struct {
 	view:                 View,
 	controller:           Controller_Runtime,
 	music:                Music_Director,
+	music_runtime:        Music_Runtime_State,
 	fixed_step:           Mobile_Fixed_Step_State,
 	frame_count:          int,
 	fixed_capture:        bool,
@@ -1392,16 +1393,23 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 	// playing through menus and pause, starts at audio-ready (the web gesture
 	// gate), and freezes while suspended. The clock is disciplined by the live
 	// PCM mixer's callback cursor so boundary events land on audible frames.
-	music_runtime := music_runtime_state_for(app)
+	desired_music_mix := music_mix_for(app)
+	music_runtime_state_update(
+		&rt.music_runtime,
+		app,
+		desired_music_mix == MUSIC_MIX_DUNGEON,
+		desired_music_mix == MUSIC_MIX_BOSS || desired_music_mix == MUSIC_MIX_BOSS_BATTLE,
+		frame_dt,
+	)
 	if rt.audio.ready && !rt.audio.suspended {
 		reference_ms := audio_music_reference_phase_ms(&rt.audio, &rt.music)
-		music_director_update(&rt.music, &rt.audio.music_library, music_mix_for(app), f64(frame_dt) * 1000, reference_ms)
+		music_director_update(&rt.music, &rt.audio.music_library, desired_music_mix, f64(frame_dt) * 1000, reference_ms)
 	}
 	audio_music_update(
 		&rt.audio,
 		&rt.music,
 		MUSIC_VOLUME_FACTORS[music_volume_normalize(app.options.music_volume)],
-		music_runtime,
+		rt.music_runtime,
 	)
 	when ARCH_ROGUE_WEB {
 		// Pack callbacks only queue ownership. Adopt one actor in a quiet SFX

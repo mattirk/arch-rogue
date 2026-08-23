@@ -22,7 +22,7 @@ music_mixes_document_parses_and_references_real_files :: proc(t: ^testing.T) {
 	defer ar.music_library_destroy(&library)
 	testing.expect(t, ok && library.loaded, "mixes.json must parse")
 	testing.expect(t, library.loop_ms == 19200, "loop_ms must match the authored 19200")
-	testing.expect(t, library.crossfade_ms == 1500, "the document default crossfade must stay at 1500 ms")
+	testing.expect(t, library.crossfade_ms == 1000, "the document default crossfade must be 1 second")
 	testing.expect(t, library.has_boot && library.boot.mix == "menu_boot", "boot must arm the menu_boot intro")
 	testing.expect(t, abs(library.boot.length_scale - 0.5) < 1e-5, "boot intro must run at 50% length")
 
@@ -48,14 +48,31 @@ music_mixes_document_parses_and_references_real_files :: proc(t: ^testing.T) {
 		testing.expect(t, false, "dungeon mix must exist")
 		return
 	}
-	testing.expect(t, dungeon.crossfade_ms == 500, "transitions into dungeon must crossfade for 500 ms")
-	testing.expect(t, len(dungeon.tracks) == 5, "dungeon must expose all five live stems")
-	if len(dungeon.tracks) == 5 {
-		testing.expect(t, dungeon.tracks[0].file == "ambience_grim_bass.ogg", "dungeon must include grim bass")
-		testing.expect(t, dungeon.tracks[1].file == "beat_low.ogg", "dungeon must include the low beat")
-		testing.expect(t, dungeon.tracks[2].file == "lead_harp.ogg", "dungeon must include harp")
-		testing.expect(t, dungeon.tracks[3].file == "lead_pad.ogg", "dungeon must include pad")
-		testing.expect(t, dungeon.tracks[4].file == "ambience_strings.ogg", "dungeon must include strings")
+	testing.expect(t, dungeon.crossfade_ms == 1000, "transitions into dungeon must crossfade for 1 second")
+	testing.expect(t, len(dungeon.tracks) == 9, "dungeon must expose all nine live stems")
+	if len(dungeon.tracks) == 9 {
+		testing.expect(t, dungeon.tracks[0].file == "ambience_grim_bass.ogg" && dungeon.tracks[0].condition == .Always,
+			"dungeon grim bass must remain outside Bar ducking")
+		testing.expect(t, dungeon.tracks[1].file == "beat_low.ogg" && dungeon.tracks[1].condition == .Always,
+			"dungeon low beat must remain outside Bar ducking")
+		testing.expect(t, dungeon.tracks[2].file == "lead_harp.ogg" && dungeon.tracks[2].condition == .Dungeon_Bar_Ducked,
+			"the original dungeon harp must duck near the Bar")
+		testing.expect(t,
+			dungeon.tracks[3].file == "lead_harp_two.ogg" && dungeon.tracks[3].condition == .Dungeon_Quest_Harp_Bar_Ducked,
+			"the second harp must combine its Quest gate with Bar ducking",
+		)
+		testing.expect(t, dungeon.tracks[4].file == "lead_pad.ogg" && dungeon.tracks[4].condition == .Dungeon_Bar_Ducked,
+			"the dungeon pad must duck near the Bar")
+		testing.expect(t, dungeon.tracks[5].file == "ambience_strings.ogg" && dungeon.tracks[5].condition == .Dungeon_Bar_Ducked,
+			"the dungeon strings must duck near the Bar")
+		testing.expect(t,
+			dungeon.tracks[6].file == "lead_glorious_horn.ogg" && dungeon.tracks[6].condition == .Dungeon_Elite_Horn_Bar_Ducked,
+			"the elite horn must combine its proximity gate with Bar ducking",
+		)
+		testing.expect(t, dungeon.tracks[7].file == "bar_guitar.ogg" && dungeon.tracks[7].condition == .Dungeon_Bar_Music,
+			"Bar guitar must fade in on the shared Bar envelope")
+		testing.expect(t, dungeon.tracks[8].file == "bar_melody_flute.ogg" && dungeon.tracks[8].condition == .Dungeon_Bar_Music,
+			"Bar flute must fade in on the shared Bar envelope")
 	}
 
 	boss := ar.music_library_mix(&library, "boss")
@@ -63,34 +80,51 @@ music_mixes_document_parses_and_references_real_files :: proc(t: ^testing.T) {
 		testing.expect(t, false, "boss mix must exist")
 		return
 	}
-	testing.expect(t, boss.crossfade_ms == 500, "transitions into boss must crossfade for 500 ms")
-	testing.expect(t, len(boss.tracks) == 3, "boss must expose all three live stems")
-	if len(boss.tracks) == 3 {
+	testing.expect(t, boss.crossfade_ms == 1000, "transitions into boss must crossfade for 1 second")
+	testing.expect(t, len(boss.tracks) == 4, "boss must expose all four live stems")
+	if len(boss.tracks) == 4 {
 		testing.expect(t, boss.tracks[0].file == "ambience_grim_bass.ogg", "boss must include grim bass")
 		testing.expect(t, boss.tracks[1].file == "beat_high.ogg", "boss must include the high beat")
 		testing.expect(t, boss.tracks[2].file == "lead_grim_horn.ogg", "boss must include grim horn")
+		testing.expect(t, boss.tracks[3].file == "ambience_choir.ogg" && boss.tracks[3].condition == .Boss_Choir,
+			"waiting boss mix must carry the phase-locked conditional choir")
 	}
 	battle := ar.music_library_mix(&library, "boss_battle")
 	if battle == nil {
 		testing.expect(t, false, "boss_battle mix must exist")
 		return
 	}
-	testing.expect(t, battle.crossfade_ms == 500, "transitions into the active battle must crossfade for 500 ms")
-	testing.expect(t, len(battle.tracks) == 5, "boss battle must expose bass, beat, and all three guitar tiers")
-	if len(battle.tracks) == 5 {
+	testing.expect(t, battle.crossfade_ms == 1000, "transitions into the active battle must crossfade for 1 second")
+	testing.expect(t, len(battle.tracks) == 7,
+		"boss battle must expose bass, beat, Alasin, choir, and all three guitar tiers")
+	if len(battle.tracks) == 7 {
 		testing.expect(t, battle.tracks[0].file == "ambience_grim_bass.ogg", "boss battle must include grim bass")
 		testing.expect(t, battle.tracks[1].file == "beat_high.ogg", "boss battle must include the high beat")
-		testing.expect(t, battle.tracks[2].file == "lead_guitar_low.ogg" && battle.tracks[2].condition == .Boss_Guitar_Low,
-			"boss battle low guitar must carry its runtime condition")
-		testing.expect(t, battle.tracks[3].file == "lead_guitar_mid.ogg" && battle.tracks[3].condition == .Boss_Guitar_Mid,
-			"boss battle mid guitar must carry its runtime condition")
-		testing.expect(t, battle.tracks[4].file == "lead_guitar_high.ogg" && battle.tracks[4].condition == .Boss_Guitar_High,
-			"boss battle high guitar must carry its runtime condition")
+		testing.expect(t, battle.tracks[2].file == "ambience_alasin.ogg" && battle.tracks[2].condition == .Always,
+			"boss battle must play Alasin continuously")
+		testing.expect(t, battle.tracks[3].file == "ambience_choir.ogg" && battle.tracks[3].condition == .Boss_Choir,
+			"boss battle must retain the same phase-locked conditional choir")
+		testing.expect(t,
+			battle.tracks[4].file == "lead_guitar_low.ogg" && battle.tracks[4].condition == .Boss_Guitar_Low &&
+			battle.tracks[4].volume == 0.75,
+			"boss battle low guitar must carry its runtime condition at 75% volume",
+		)
+		testing.expect(t,
+			battle.tracks[5].file == "lead_guitar_mid.ogg" && battle.tracks[5].condition == .Boss_Guitar_Mid &&
+			battle.tracks[5].volume == 0.75,
+			"boss battle mid guitar must carry its runtime condition at 75% volume",
+		)
+		testing.expect(t,
+			battle.tracks[6].file == "lead_guitar_high.ogg" && battle.tracks[6].condition == .Boss_Guitar_High &&
+			battle.tracks[6].volume == 0.75,
+			"boss battle high guitar must carry its runtime condition at 75% volume",
+		)
 	}
-	// Boss Battle and Dungeon share only grim bass. All five incoming Dungeon
-	// slots plus four outgoing-only battle slots must coexist for the 500 ms
-	// return crossfade, even though only one guitar tier is audible.
-	testing.expect(t, ar.MUSIC_MAX_SLOTS >= 9, "Boss Battle/Dungeon crossfade must fit all nine unique slots")
+	// Boss Battle and Dungeon share only grim bass. All nine incoming Dungeon
+	// slots plus six outgoing-only battle slots must coexist for the 1-second
+	// return crossfade, even though several dynamic stems may be gated.
+	testing.expect(t, ar.MUSIC_MAX_SLOTS >= 15, "Boss Battle/Dungeon crossfade must fit all fifteen unique slots")
+	testing.expect(t, ar.MUSIC_MAX_ASSETS >= 16, "the PCM cache must fit all sixteen unique authored assets")
 
 	for mix in library.mixes {
 		for track in mix.tracks {
@@ -175,6 +209,172 @@ music_boss_guitar_tiers_follow_player_health_exclusively :: proc(t: ^testing.T) 
 		}
 		testing.expectf(t, audible == 1, "tier %v must enable exactly one guitar, got %d", tier, audible)
 	}
+}
+
+@(test)
+music_boss_choir_fades_in_strictly_below_half_boss_health :: proc(t: ^testing.T) {
+	run: ar.Run
+	defer delete(run.enemies)
+	run.player.hp = 1
+	run.player.max_hp = 100
+	append(&run.enemies, ar.Enemy{role = .Boss, hp = 100, max_hp = 100})
+
+	testing.expect(t, ar.music_boss_choir_gain(&run) == 0, "full boss health must keep the choir muted")
+	run.enemies[0].hp = 50
+	testing.expect(t, ar.music_boss_choir_gain(&run) == 0, "exactly 50% boss health must remain muted")
+	run.enemies[0].hp = 49
+	testing.expect(t, ar.music_boss_choir_gain(&run) == 1, "below 50% boss health must target full choir")
+	run.enemies[0].hp = 0
+	testing.expect(t, ar.music_boss_choir_gain(&run) == 0, "a defeated boss must fade the choir out")
+	run.enemies[0] = {role = .Normal, hp = 1, max_hp = 100}
+	testing.expect(t, ar.music_boss_choir_gain(&run) == 0, "low-health ordinary enemies must not trigger boss choir")
+
+	track := ar.Music_Mix_Track{condition = .Boss_Choir}
+	testing.expect(t, ar.music_track_runtime_gain(track, {}) == 0, "boss choir must be runtime-muted by default")
+	testing.expect(t, ar.music_track_runtime_gain(track, {boss_choir_gain = 0.5}) == 0.5,
+		"boss choir condition must preserve the fade envelope")
+}
+
+@(test)
+music_dungeon_elite_horn_uses_absolute_distance_and_smooth_gain :: proc(t: ^testing.T) {
+	run: ar.Run
+	defer delete(run.enemies)
+	run.player.pos = {}
+	append(&run.enemies, ar.Enemy{role = .Elite, hp = 10, max_hp = 10, pos = {12, 0}})
+
+	testing.expect(t, ar.music_dungeon_elite_horn_gain(&run) == 0,
+		"horn must begin at 0% twelve tiles from the nearest elite")
+	run.enemies[0].pos = {10, 0}
+	testing.expect(t, abs(ar.music_dungeon_elite_horn_gain(&run) - 0.15625) < 1e-5,
+		"horn must follow the smooth absolute-distance curve without room or LOS gates")
+	run.enemies[0].pos = {8, 0}
+	testing.expect(t, abs(ar.music_dungeon_elite_horn_gain(&run) - 0.5) < 1e-5,
+		"eight tiles must be the 50% midpoint of the smooth curve")
+	run.enemies[0].pos = {4, 0}
+	testing.expect(t, ar.music_dungeon_elite_horn_gain(&run) == 1,
+		"four tiles or fewer must reach 100%")
+
+	run.enemies[0].role = .Normal
+	testing.expect(t, ar.music_dungeon_elite_horn_gain(&run) == 0, "ordinary enemies must not trigger the horn")
+	run.enemies[0].role = .Elite
+	run.enemies[0].hp = 0
+	testing.expect(t, ar.music_dungeon_elite_horn_gain(&run) == 0, "a defeated elite must mute the horn target")
+	run.enemies[0] = {role = .Elite, hp = 10, max_hp = 10, pos = {12, 0}}
+	append(&run.enemies, ar.Enemy{role = .Elite, hp = 10, max_hp = 10, pos = {4, 0}})
+	testing.expect(t, ar.music_dungeon_elite_horn_gain(&run) == 1,
+		"the nearest living elite anywhere on the floor must control the gain")
+
+	near_silent := ar.music_elite_horn_gain_for_distance(11.99)
+	testing.expect(t, near_silent > 0 && near_silent < 0.001,
+		"the curve must leave silence continuously instead of snapping in")
+	track := ar.Music_Mix_Track{condition = .Dungeon_Elite_Horn}
+	testing.expect(t, ar.music_track_runtime_gain(track, {}) == 0, "the glorious horn must be runtime-muted by default")
+	testing.expect(t, ar.music_track_runtime_gain(track, {dungeon_elite_horn_gain = 0.5}) == 0.5,
+		"the runtime gate must preserve intermediate distance gain")
+}
+
+@(test)
+music_dungeon_quest_harp_follows_room_distance_and_reaches_full_inside :: proc(t: ^testing.T) {
+	run: ar.Run
+	run.dungeon.room_count = 2
+	run.dungeon.rooms_buf[1] = {20, 20, 10, 8}
+	run.dungeon.special_room_count = 1
+	run.dungeon.special_rooms_buf[0] = {.Quest, 1}
+
+	run.player.pos = {12, 24}
+	testing.expect(t, ar.music_dungeon_quest_harp_gain(&run) == 0,
+		"second harp must begin at 0% eight tiles from the Quest room")
+	run.player.pos = {16, 24}
+	testing.expect(t, abs(ar.music_dungeon_quest_harp_gain(&run) - 0.5) < 1e-5,
+		"second harp must reach 50% four tiles from the Quest room")
+	run.player.pos = {20.5, 24}
+	testing.expect(t, ar.music_dungeon_quest_harp_gain(&run) == 1,
+		"second harp must reach 100% inside the Quest room")
+
+	original := ar.Music_Mix_Track{condition = .Always}
+	second := ar.Music_Mix_Track{condition = .Dungeon_Quest_Harp}
+	runtime := ar.Music_Runtime_State{dungeon_quest_harp_gain = 1}
+	testing.expect(t, ar.music_track_runtime_gain(original, runtime) == 1 &&
+		ar.music_track_runtime_gain(second, runtime) == 1,
+		"both dungeon harps must publish 100% gain inside the Quest room")
+	run.dungeon.special_room_count = 0
+	testing.expect(t, ar.music_dungeon_quest_harp_gain(&run) == 0,
+		"floors without a Quest room must keep the second harp muted")
+}
+
+@(test)
+music_dungeon_bar_tracks_replace_non_core_stems_by_room_distance :: proc(t: ^testing.T) {
+	run: ar.Run
+	run.dungeon.room_count = 2
+	run.dungeon.rooms_buf[1] = {20, 20, 10, 8}
+	run.dungeon.special_room_count = 1
+	run.dungeon.special_rooms_buf[0] = {.Bar, 1}
+
+	run.player.pos = {12, 24}
+	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 0,
+		"Bar stems must be silent eight tiles from the room")
+	run.player.pos = {16, 24}
+	testing.expect(t, abs(ar.music_dungeon_bar_gain(&run) - 0.5) < 1e-5,
+		"Bar stems and ducking must reach their midpoint four tiles out")
+	run.player.pos = {20.5, 24}
+	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 1,
+		"Bar stems must reach full gain inside the room")
+
+	runtime := ar.Music_Runtime_State{
+		dungeon_bar_gain = 1,
+		dungeon_elite_horn_gain = 1,
+		dungeon_quest_harp_gain = 1,
+	}
+	testing.expect(t, ar.music_track_runtime_gain({file = "ambience_grim_bass.ogg", condition = .Always}, runtime) == 1,
+		"grim bass must remain full inside the Bar")
+	testing.expect(t, ar.music_track_runtime_gain({file = "beat_low.ogg", condition = .Always}, runtime) == 1,
+		"low beat must remain full inside the Bar")
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Bar_Ducked}, runtime) == 0,
+		"ordinary Dungeon stems must be fully ducked inside the Bar")
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Elite_Horn_Bar_Ducked}, runtime) == 0,
+		"the elite horn must be fully ducked inside the Bar")
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Quest_Harp_Bar_Ducked}, runtime) == 0,
+		"the Quest harp must be fully ducked inside the Bar")
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Bar_Music}, runtime) == 1,
+		"both Bar stems must be full inside the room")
+
+	run.dungeon.special_room_count = 0
+	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 0,
+		"floors without a Bar must keep its stems silent and Dungeon layers unducked")
+}
+
+@(test)
+music_elite_horn_runtime_gain_slews_abrupt_targets :: proc(t: ^testing.T) {
+	app: ar.App
+	defer delete(app.run.enemies)
+	app.run.player.pos = {}
+	append(&app.run.enemies, ar.Enemy{role = .Elite, hp = 10, max_hp = 10, pos = {4, 0}})
+	state: ar.Music_Runtime_State
+	ar.music_runtime_state_update(&state, &app, true, false, 0.1)
+	testing.expect(t, abs(state.dungeon_elite_horn_gain - 0.2) < 1e-5,
+		"the elite horn must retain its 500 ms proximity attack")
+
+	state.dungeon_elite_horn_gain = 1
+	app.run.enemies[0].hp = 0
+	ar.music_runtime_state_update(&state, &app, true, false, 0.1)
+	testing.expect(t, abs(state.dungeon_elite_horn_gain - 0.95) < 1e-5,
+		"killing the elite must select the 2-second horn release")
+	testing.expect(t, ar.music_gain_slew(0.4, 0.8, 0, ar.MUSIC_ELITE_HORN_ATTACK_SECONDS) == 0.4,
+		"a suspended frame must freeze the gain envelope")
+	testing.expect(t, ar.music_gain_slew(0, 0.3, 1, ar.MUSIC_ELITE_HORN_ATTACK_SECONDS) == 0.3,
+		"the slew must clamp at a nearby target without overshoot")
+}
+
+@(test)
+music_unknown_track_condition_rejects_document :: proc(t: ^testing.T) {
+	document := transmute([]u8)string(`{
+	  "format_version": 1,
+	  "loop_ms": 1000,
+	  "mixes": {"main": {"tracks": [{"file": "a.ogg", "volume": 1.0, "condition": "unknown"}]}}
+	}`)
+	library, ok := ar.music_library_parse(document)
+	defer ar.music_library_destroy(&library)
+	testing.expect(t, !ok, "an unknown runtime condition must reject the mix document")
 }
 
 @(private = "file")
