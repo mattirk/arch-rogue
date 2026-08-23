@@ -5,17 +5,20 @@ export LC_ALL=C
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+PROJECT_TOOLCHAIN_FILE="$ROOT_DIR/toolchain.properties"
 TOOLCHAIN_FILE="$ROOT_DIR/web/toolchain.properties"
 VENDOR_ROOT="$ROOT_DIR/vendor/raylib/wasm"
 SOURCE_ARCHIVE=""
 REFRESH_CHECKSUMS=false
 
-if [[ ! -f "$TOOLCHAIN_FILE" ]]; then
-    printf 'raylib-web: missing toolchain properties: %s\n' "$TOOLCHAIN_FILE" >&2
-    exit 1
-fi
-# shellcheck disable=SC1090
-source "$TOOLCHAIN_FILE"
+for properties_file in "$PROJECT_TOOLCHAIN_FILE" "$TOOLCHAIN_FILE"; do
+    if [[ ! -f "$properties_file" ]]; then
+        printf 'raylib-web: missing toolchain properties: %s\n' "$properties_file" >&2
+        exit 1
+    fi
+    # shellcheck disable=SC1090
+    source "$properties_file"
+done
 
 log() {
     printf 'raylib-web: %s\n' "$*"

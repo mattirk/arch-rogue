@@ -21,6 +21,7 @@ class RepositoryLayoutTests(unittest.TestCase):
     def test_odin_project_is_canonical_at_root(self) -> None:
         for relative in (
             "build.sh",
+            "toolchain.properties",
             "src/main.odin",
             "tests/core_test.odin",
             "assets",
@@ -52,15 +53,29 @@ class RepositoryLayoutTests(unittest.TestCase):
             with self.subTest(relative=relative):
                 self.assertTrue((ROOT / relative).exists(), relative)
 
-        toolchain = (ROOT / "android" / "toolchain.properties").read_text(
-            encoding="utf-8"
-        )
+        toolchain = (ROOT / "toolchain.properties").read_text(encoding="utf-8")
         self.assertIn("ODIN_VERSION=dev-2026-07", toolchain)
         self.assertIn(
             "ODIN_COMMIT=301c287de90393608fb7c5b260210e1e67caf0fd",
             toolchain,
         )
         self.assertIn("ODIN_BACKEND_LLVM_VERSION=21.1.8", toolchain)
+        self.assertIn("RAYLIB_VERSION=6.0", toolchain)
+
+        for platform_contract in (
+            ROOT / "android" / "toolchain.properties",
+            ROOT / "web" / "toolchain.properties",
+        ):
+            platform_text = platform_contract.read_text(encoding="utf-8")
+            self.assertNotIn("ODIN_VERSION=", platform_text)
+            self.assertNotIn("RAYLIB_VERSION=", platform_text)
+
+        build_wrapper = (ROOT / "build.sh").read_text(encoding="utf-8")
+        self.assertIn("verify_toolchain linux", build_wrapper)
+        self.assertIn("verify_toolchain odin", build_wrapper)
+        web_wrapper = (ROOT / "tools" / "web.sh").read_text(encoding="utf-8")
+        self.assertIn('verify_toolchain.sh" odin', web_wrapper)
+        self.assertIn('WASM_OBJ="$BUILD_ROOT/archrogue.wasm.obj"', web_wrapper)
 
         gradle_properties = (ROOT / "android" / "gradle.properties").read_text(
             encoding="utf-8"
@@ -113,14 +128,12 @@ class RepositoryLayoutTests(unittest.TestCase):
             "tests.test_repository_layout",
             "tools/mirror_public_snapshot.sh",
             '"arch-rogue-python/**"',
-            "ODIN_SOURCE_TAG: dev-2026-07",
+            "tools/verify_toolchain.sh metadata",
+            "tools/verify_toolchain.sh odin",
             'release: "false"',
-            "branch: ${{ env.ODIN_SOURCE_TAG }}",
-            'llvm-version: "21"',
+            "branch: ${{ steps.toolchain.outputs.odin_version }}",
+            "llvm-version: ${{ steps.toolchain.outputs.odin_llvm_major }}",
             "build-type: release",
-            "ODIN_COMMIT",
-            "ODIN_BACKEND_LLVM_VERSION",
-            'git -C "$HOME/odin" rev-parse HEAD',
         ):
             self.assertIn(command, workflow)
         for legacy in (
@@ -165,14 +178,12 @@ class RepositoryLayoutTests(unittest.TestCase):
             "retention-days: 7",
             "publish-release:",
             "prepare-pages:",
-            "ODIN_SOURCE_TAG: dev-2026-07",
+            "tools/verify_toolchain.sh metadata",
+            "tools/verify_toolchain.sh odin",
             'release: "false"',
-            "branch: ${{ env.ODIN_SOURCE_TAG }}",
-            'llvm-version: "21"',
+            "branch: ${{ steps.toolchain.outputs.odin_version }}",
+            "llvm-version: ${{ steps.toolchain.outputs.odin_llvm_major }}",
             "build-type: release",
-            "ODIN_COMMIT",
-            "ODIN_BACKEND_LLVM_VERSION",
-            'git -C "$HOME/odin" rev-parse HEAD',
         ):
             self.assertIn(contract, workflow)
         for legacy in (

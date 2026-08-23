@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 LINUX_VENDOR = ROOT / "vendor" / "raylib" / "linux"
 ARCHIVE = LINUX_VENDOR / "libraylib.a"
 CHECKSUMS = LINUX_VENDOR / "SHA256SUMS"
+PROVENANCE = LINUX_VENDOR / "PROVENANCE.md"
+TOOLCHAIN = ROOT / "toolchain.properties"
 EXPECTED_MEMBERS = [
     "rcore.o",
     "rshapes.o",
@@ -40,6 +42,21 @@ def tool_output(*command: str) -> str:
 
 
 def main() -> int:
+    properties = {}
+    for line in TOOLCHAIN.read_text(encoding="utf-8").splitlines():
+        if line and not line.startswith("#") and "=" in line:
+            key, value = line.split("=", 1)
+            properties[key] = value
+    for name in ("ODIN_VERSION", "RAYLIB_VERSION"):
+        if not properties.get(name):
+            raise SystemExit(f"{name} is missing from {TOOLCHAIN}")
+
+    provenance = PROVENANCE.read_text(encoding="utf-8")
+    if f"odin-lang/Odin@{properties['ODIN_VERSION']}" not in provenance:
+        raise SystemExit("Linux raylib provenance does not match pinned Odin version")
+    if f"raylib {properties['RAYLIB_VERSION']}" not in provenance:
+        raise SystemExit("Linux raylib provenance does not match pinned raylib version")
+
     checksum_fields = CHECKSUMS.read_text(encoding="utf-8").strip().split()
     if len(checksum_fields) != 2 or checksum_fields[1] != "libraylib.a":
         raise SystemExit("Linux raylib SHA256SUMS must contain exactly libraylib.a")

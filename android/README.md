@@ -9,9 +9,9 @@ compilation, clean asset staging, signing gates, and final artifact audits.
 
 ## Pinned contract
 
-`toolchain.properties` pins:
+Root `../toolchain.properties` pins shared Odin and raylib source identity; Android's `toolchain.properties` adds:
 
-- Odin tag `dev-2026-07` at commit `301c287de90393608fb7c5b260210e1e67caf0fd`, built with LLVM `21.1.8`, and Clang `22.1.8` for the audited Android IR bridge
+- Clang `22.1.8` for the audited Android IR bridge (the shared contract pins Odin `dev-2026-07` at commit `301c287de90393608fb7c5b260210e1e67caf0fd`, built with LLVM `21.1.8`)
 - Gradle `8.14.3` and Android Gradle Plugin `8.11.0`
 - JDK major `17`
 - `minSdk 28`, `compileSdk 35`, `targetSdk 35`

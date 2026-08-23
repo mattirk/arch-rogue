@@ -6,6 +6,7 @@ export LC_ALL=C
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 ANDROID_DIR="$ROOT_DIR/android"
+PROJECT_TOOLCHAIN_FILE="$ROOT_DIR/toolchain.properties"
 TOOLCHAIN_FILE="$ANDROID_DIR/toolchain.properties"
 BUILD_ROOT="$ROOT_DIR/build/android"
 GENERATED_ROOT="$BUILD_ROOT/generated"
@@ -15,16 +16,19 @@ OUTPUT_ROOT="$BUILD_ROOT/outputs"
 AUDITOR="$SCRIPT_DIR/android_audit.py"
 BIONIC_COMPAT_DIR="$ROOT_DIR/vendor/raylib/android/bionic-compat"
 BIONIC_COMPAT_FILE="$BIONIC_COMPAT_DIR/libpthread.so"
-BUNDLETOOL="$ANDROID_DIR/tools/bundletool-all-1.18.1.jar"
+BUNDLETOOL=""
 RELEASE_SIGNING_CERT_FILE="$ANDROID_DIR/release-signing-cert.sha256"
 
-if [[ ! -f "$TOOLCHAIN_FILE" ]]; then
-    printf 'android: missing toolchain file: %s\n' "$TOOLCHAIN_FILE" >&2
-    exit 1
-fi
-# This file is deliberately both shell-sourceable and Java Properties syntax.
-# shellcheck disable=SC1090
-source "$TOOLCHAIN_FILE"
+for properties_file in "$PROJECT_TOOLCHAIN_FILE" "$TOOLCHAIN_FILE"; do
+    if [[ ! -f "$properties_file" ]]; then
+        printf 'android: missing toolchain file: %s\n' "$properties_file" >&2
+        exit 1
+    fi
+    # These files are deliberately both shell-sourceable and Java Properties syntax.
+    # shellcheck disable=SC1090
+    source "$properties_file"
+done
+BUNDLETOOL="$ANDROID_DIR/tools/bundletool-all-$BUNDLETOOL_VERSION.jar"
 
 SDK_ROOT=""
 NDK_ROOT=""
@@ -142,26 +146,7 @@ check_java() {
 }
 
 check_odin() {
-    require_command odin
-    local detected
-    local version_prefix
-    local reported_commit
-    detected="$(odin version 2>&1 | sed -n '1p')"
-    version_prefix="odin version $ODIN_VERSION:"
-    [[ "$detected" == "$version_prefix"* ]] || \
-        die "expected Odin source tag $ODIN_VERSION, found $detected"
-    reported_commit="${detected#"$version_prefix"}"
-    [[ "$reported_commit" =~ ^[0-9a-f]{7,40}$ && "$ODIN_COMMIT" == "$reported_commit"* ]] || \
-        die "Odin reported revision ${reported_commit:-missing}, which is not a prefix of $ODIN_COMMIT"
-
-    local odin_report
-    local backend_version
-    if ! odin_report="$(odin report 2>&1)"; then
-        die "could not inspect the Odin backend: $odin_report"
-    fi
-    backend_version="$(sed -n 's/^[[:space:]]*Backend: LLVM //p' <<<"$odin_report" | sed -n '1p')"
-    [[ "$backend_version" == "$ODIN_BACKEND_LLVM_VERSION" ]] || \
-        die "expected Odin LLVM backend $ODIN_BACKEND_LLVM_VERSION, found ${backend_version:-unknown}"
+    bash "$SCRIPT_DIR/verify_toolchain.sh" odin
 
     # The pinned Odin revision emits LLVM 21 IR, but its Android shared-library
     # path eagerly installs _odin_entry_point as DT_INIT on arm64 and selects
@@ -438,12 +423,12 @@ preflight() {
 
     validate_toolchain_contract
     resolve_toolchain_paths
-    check_java
-    check_sdk
-    check_vendor_and_inputs
     if [[ "$mode" != "audit" ]]; then
         check_odin
     fi
+    check_java
+    check_sdk
+    check_vendor_and_inputs
     if [[ "$mode" == "release" ]]; then
         check_release_signing
     fi

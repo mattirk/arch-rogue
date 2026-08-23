@@ -42,14 +42,17 @@ See `PARITY.md` for the port ledger and `ARCHITECTURE.md` for design decisions, 
 
 - A Linux development host
 - Bash
-- Odin tag `dev-2026-07` at commit `301c287de90393608fb7c5b260210e1e67caf0fd`, available as `odin`
+- The exact Odin tag, source commit, and LLVM backend recorded in root `toolchain.properties`, available as `odin`
 - The normal Linux graphics, windowing, and audio development libraries required by raylib
 
-The raylib 6.0 binding and pinned static libraries are included under `vendor/raylib/`; a separate raylib installation is not required.
+`build.sh` verifies the ambient Odin executable before every compile, check, or test, so local builds cannot silently differ from CI/CD. At the current pin this requires Odin `dev-2026-07` at commit `301c287de90393608fb7c5b260210e1e67caf0fd`, built with LLVM `21.1.8`; a newer distro package is intentionally rejected. CI reads its `setup-odin` inputs from the same root contract and runs the same verifier.
+
+The raylib 6.0 binding and checksum-pinned static libraries are included under `vendor/raylib/`; a separate raylib installation is not required. Root `toolchain.properties` owns project-wide Odin and raylib source pins, while `android/toolchain.properties` and `web/toolchain.properties` contain only platform-specific additions.
 
 Run every command from the repository root. The wrapper also relocates itself correctly when invoked from another current directory.
 
 ```bash
+./build.sh toolchain
 ./build.sh check
 ./build.sh test
 ./build.sh build
@@ -57,6 +60,7 @@ Run every command from the repository root. The wrapper also relocates itself co
 ./build.sh release
 ```
 
+- `toolchain` verifies the exact Odin identity/backend and vendored Linux raylib archive without compiling.
 - `check` runs `odin check src -vet`.
 - `test` runs the headless deterministic Odin test package with vetting enabled.
 - `build` creates a debug executable at `build/archrogue`.

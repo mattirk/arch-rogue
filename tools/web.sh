@@ -7,6 +7,7 @@ export LC_ALL=C
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+PROJECT_TOOLCHAIN_FILE="$ROOT_DIR/toolchain.properties"
 TOOLCHAIN_FILE="$ROOT_DIR/web/toolchain.properties"
 VENDOR_ROOT="$ROOT_DIR/vendor/raylib/wasm"
 BUILD_ROOT="$ROOT_DIR/build/web"
@@ -54,9 +55,12 @@ property_value() {
 }
 
 load_toolchain() {
-    require_file "$TOOLCHAIN_FILE"
-    # shellcheck disable=SC1090
-    source "$TOOLCHAIN_FILE"
+    local properties_file
+    for properties_file in "$PROJECT_TOOLCHAIN_FILE" "$TOOLCHAIN_FILE"; do
+        require_file "$properties_file"
+        # shellcheck disable=SC1090
+        source "$properties_file"
+    done
 }
 
 validate_toolchain_contract() {
@@ -131,11 +135,11 @@ load_version() {
 
 preflight() {
     log "host: $(uname -s) $(uname -m)"
-    require_command odin
     require_command python3
     require_command sha256sum
     load_toolchain
     validate_toolchain_contract
+    bash "$SCRIPT_DIR/verify_toolchain.sh" odin
     resolve_emsdk
     check_vendor
     load_version
@@ -162,19 +166,19 @@ build() {
     rm -rf "$DIST_DIR"
     mkdir -p "$DIST_DIR"
 
-    # Odin versions have disagreed on the emitted object extension (.o vs .obj
-    # for the same -out). Purge both spellings before compiling and hard-fail
-    # if the requested name is missing, so a toolchain change can never make
-    # the link below silently reuse a stale object again.
-    WASM_OBJ="$BUILD_ROOT/archrogue.wasm.o"
-    rm -f "$BUILD_ROOT/archrogue.wasm.o" "$BUILD_ROOT/archrogue.wasm.obj"
+    # Pinned Odin dev-2026-07 rewrites an object-mode .o request to .obj.
+    # Require that exact behavior after preflight verifies the compiler, and
+    # purge both names so the linker can never consume a stale object.
+    WASM_OBJ_REQUEST="$BUILD_ROOT/archrogue.wasm.o"
+    WASM_OBJ="$BUILD_ROOT/archrogue.wasm.obj"
+    rm -f "$WASM_OBJ_REQUEST" "$WASM_OBJ"
 
     log "building Odin wasm object (release, vetted)"
     odin build "$ROOT_DIR/src" \
         -target:freestanding_wasm32 -build-mode:obj -vet -o:speed \
         -define:RAYLIB_WASM_LIB=env.o \
-        -out:"$WASM_OBJ"
-    [[ -f "$WASM_OBJ" ]] || die "odin did not produce $WASM_OBJ (object naming changed?)"
+        -out:"$WASM_OBJ_REQUEST"
+    [[ -s "$WASM_OBJ" ]] || die "pinned Odin $ODIN_VERSION did not produce expected object $WASM_OBJ"
 
     log "splitting payload: core staging + lazy packs"
     python3 "$SCRIPT_DIR/web_pack_assets.py" \

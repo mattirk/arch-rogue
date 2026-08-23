@@ -7,12 +7,17 @@ cmd="${1:-run}"
 shift || true
 mkdir -p build
 
+verify_toolchain() {
+  bash ./tools/verify_toolchain.sh "$1"
+}
+
 case "$cmd" in
-  run)     odin run   src   -out:build/archrogue       -vet -debug   "$@" ;;
-  build)   odin build src   -out:build/archrogue       -vet -debug   "$@" ;;
-  release) odin build src   -out:build/archrogue       -vet -o:speed "$@" ;;
-  check)   odin check src   -vet "$@" ;;
-  test)              odin test  tests -out:build/archrogue_tests -vet "$@" ;;
+  toolchain) exec bash ./tools/verify_toolchain.sh linux ;;
+  run)     verify_toolchain linux; odin run   src   -out:build/archrogue       -vet -debug   "$@" ;;
+  build)   verify_toolchain linux; odin build src   -out:build/archrogue       -vet -debug   "$@" ;;
+  release) verify_toolchain linux; odin build src   -out:build/archrogue       -vet -o:speed "$@" ;;
+  check)   verify_toolchain odin;  odin check src   -vet "$@" ;;
+  test)    verify_toolchain odin;  odin test  tests -out:build/archrogue_tests -vet "$@" ;;
   android-preflight) exec bash ./tools/android.sh preflight "$@" ;;
   android-debug)     exec bash ./tools/android.sh debug "$@" ;;
   android-release)   exec bash ./tools/android.sh release "$@" ;;
@@ -25,7 +30,7 @@ case "$cmd" in
   web-serve)         exec bash ./tools/web.sh serve "$@" ;;
   steam-linux)       exec bash ./tools/steam/build_steam_linux.sh "$@" ;;
   *)
-    echo "usage: build.sh [run|build|release|check|test|android-preflight|android-debug|android-release|android-install|android-audit|android-smoke|web-preflight|web-build|web-audit|web-serve|steam-linux] [args]" >&2
+    echo "usage: build.sh [toolchain|run|build|release|check|test|android-preflight|android-debug|android-release|android-install|android-audit|android-smoke|web-preflight|web-build|web-audit|web-serve|steam-linux] [args]" >&2
     exit 2
     ;;
 esac

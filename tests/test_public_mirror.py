@@ -64,6 +64,7 @@ class PublicMirrorSnapshotTests(unittest.TestCase):
             "LICENSE",
             "NOTICE",
             "build.sh",
+            "toolchain.properties",
             "android/README.md",
             "android/release-signing-cert.sha256",
             "assets/actors/player.png",
@@ -182,6 +183,7 @@ class PublicMirrorSnapshotTests(unittest.TestCase):
                 "LICENSE",
                 "NOTICE",
                 "build.sh",
+                "toolchain.properties",
                 "android",
                 "assets",
                 "src",
@@ -198,6 +200,7 @@ class PublicMirrorSnapshotTests(unittest.TestCase):
 
             for relative in (
                 "build.sh",
+                "toolchain.properties",
                 "src/main.odin",
                 "src/app.odin",
                 "tests/core_test.odin",
@@ -338,6 +341,7 @@ class PublicMirrorSnapshotTests(unittest.TestCase):
     def test_required_odin_snapshot_files_are_validated(self) -> None:
         required = (
             "build.sh",
+            "toolchain.properties",
             "src/main.odin",
             "src/app.odin",
             "tests/core_test.odin",

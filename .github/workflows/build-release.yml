@@ -18,9 +18,6 @@ concurrency:
   group: public-release-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  ODIN_SOURCE_TAG: dev-2026-07
-
 jobs:
   linux:
     name: Validate and package Linux x64
@@ -35,6 +32,11 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+
+      - name: Read pinned toolchain metadata
+        id: toolchain
+        shell: bash
+        run: bash tools/verify_toolchain.sh metadata >> "$GITHUB_OUTPUT"
 
       - name: Install raylib, Xvfb, and verifier dependencies
         run: |
@@ -60,27 +62,13 @@ jobs:
         uses: laytan/setup-odin@8536d8fa450ec6f1bd9ddc84bbaaf16296c0051d # v2
         with:
           release: "false"
-          branch: ${{ env.ODIN_SOURCE_TAG }}
-          llvm-version: "21"
+          branch: ${{ steps.toolchain.outputs.odin_version }}
+          llvm-version: ${{ steps.toolchain.outputs.odin_llvm_major }}
           build-type: release
           cache: "false"
 
       - name: Verify exact Odin snapshot
-        shell: bash
-        run: |
-          set -euo pipefail
-          expected_commit="$(sed -n 's/^ODIN_COMMIT=//p' android/toolchain.properties)"
-          actual_commit="$(git -C "$HOME/odin" rev-parse HEAD)"
-          [[ "$actual_commit" == "$expected_commit" ]] || {
-            echo "expected Odin source commit $expected_commit, found $actual_commit" >&2
-            exit 1
-          }
-          expected_backend="$(sed -n 's/^ODIN_BACKEND_LLVM_VERSION=//p' android/toolchain.properties)"
-          actual_backend="$(odin report 2>&1 | sed -n 's/^[[:space:]]*Backend: LLVM //p' | sed -n '1p')"
-          [[ "$actual_backend" == "$expected_backend" ]] || {
-            echo "expected Odin LLVM backend $expected_backend, found ${actual_backend:-unknown}" >&2
-            exit 1
-          }
+        run: bash tools/verify_toolchain.sh odin
 
       - name: Verify Linux raylib ABI baseline
         run: python3 tools/verify_linux_raylib.py
@@ -201,47 +189,50 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up JDK 17
+      - name: Read pinned toolchain metadata
+        id: toolchain
+        shell: bash
+        run: bash tools/verify_toolchain.sh metadata >> "$GITHUB_OUTPUT"
+
+      - name: Set up pinned JDK
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: ${{ steps.toolchain.outputs.java_major }}
 
       - name: Build exact Odin tag from source
         uses: laytan/setup-odin@8536d8fa450ec6f1bd9ddc84bbaaf16296c0051d # v2
         with:
           release: "false"
-          branch: ${{ env.ODIN_SOURCE_TAG }}
-          llvm-version: "21"
+          branch: ${{ steps.toolchain.outputs.odin_version }}
+          llvm-version: ${{ steps.toolchain.outputs.odin_llvm_major }}
           build-type: release
           cache: "false"
 
-      - name: Install Android host prerequisites and exact Clang 22.1.8
+      - name: Verify exact Odin snapshot
+        run: bash tools/verify_toolchain.sh odin
+
+      - name: Install pinned Android host prerequisites and Clang
         shell: bash
         run: |
           set -euo pipefail
+          clang_version="${{ steps.toolchain.outputs.odin_ir_clang_version }}"
+          clang_major="${{ steps.toolchain.outputs.odin_ir_clang_major }}"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ca-certificates curl gnupg unzip xz-utils zip
           curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key \
             | sudo gpg --dearmor --yes \
                 --output /usr/share/keyrings/apt.llvm.org.gpg
-          echo 'deb [signed-by=/usr/share/keyrings/apt.llvm.org.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-22 main' \
-            | sudo tee /etc/apt/sources.list.d/llvm-22.list >/dev/null
+          echo "deb [signed-by=/usr/share/keyrings/apt.llvm.org.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-$clang_major main" \
+            | sudo tee "/etc/apt/sources.list.d/llvm-$clang_major.list" >/dev/null
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang-22
+          sudo apt-get install -y --no-install-recommends "clang-$clang_major"
 
-          expected_odin_commit="$(sed -n 's/^ODIN_COMMIT=//p' android/toolchain.properties)"
-          actual_odin_commit="$(git -C "$HOME/odin" rev-parse HEAD)"
-          [[ "$actual_odin_commit" == "$expected_odin_commit" ]] || {
-            echo "expected Odin source commit $expected_odin_commit, found $actual_odin_commit" >&2
-            exit 1
-          }
-
-          clang_bin="$(command -v clang-22)"
-          clang_version="$($clang_bin --version | sed -n '1s/^.*clang version \([^ ]*\).*$/\1/p')"
-          [[ "$clang_version" == '22.1.8' ]] || {
-            echo "expected Clang 22.1.8, found ${clang_version:-unknown}" >&2
+          clang_bin="$(command -v "clang-$clang_major")"
+          actual_clang_version="$($clang_bin --version | sed -n '1s/^.*clang version \([^ ]*\).*$/\1/p')"
+          [[ "$actual_clang_version" == "$clang_version" ]] || {
+            echo "expected Clang $clang_version, found ${actual_clang_version:-unknown}" >&2
             exit 1
           }
           echo "ODIN_ANDROID_IR_CLANG=$clang_bin" >> "$GITHUB_ENV"
@@ -251,13 +242,14 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .android-sdk
-          key: android-sdk-linux-platform35-build-tools35.0.0-ndk28.2.13676358
+          key: android-sdk-linux-platform${{ steps.toolchain.outputs.compile_sdk }}-build-tools${{ steps.toolchain.outputs.build_tools_version }}-ndk${{ steps.toolchain.outputs.ndk_version }}
 
       - name: Install pinned Android SDK and NDK
         if: steps.android-sdk-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
+          source android/toolchain.properties
           hosted_sdk_root=/usr/local/lib/android/sdk
           sdkmanager_candidate="$hosted_sdk_root/cmdline-tools/latest/bin/sdkmanager"
           if [[ ! -x "$sdkmanager_candidate" ]]; then
@@ -291,16 +283,17 @@ jobs:
 
           "$sdkmanager_bin" --sdk_root="$ANDROID_SDK_ROOT" --channel=0 --verbose \
             'platform-tools' \
-            'platforms;android-35' \
-            'build-tools;35.0.0' \
-            'ndk;28.2.13676358'
+            "platforms;android-$COMPILE_SDK" \
+            "build-tools;$BUILD_TOOLS_VERSION" \
+            "ndk;$NDK_VERSION"
 
       - name: Verify Android SDK cache contents
         run: |
+          source android/toolchain.properties
           test -x "$ANDROID_SDK_ROOT/platform-tools/adb"
-          test -f "$ANDROID_SDK_ROOT/platforms/android-35/android.jar"
-          test -x "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
-          test -f "$ANDROID_SDK_ROOT/ndk/28.2.13676358/source.properties"
+          test -f "$ANDROID_SDK_ROOT/platforms/android-$COMPILE_SDK/android.jar"
+          test -x "$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS_VERSION/apksigner"
+          test -f "$ANDROID_SDK_ROOT/ndk/$NDK_VERSION/source.properties"
 
       - name: Generate Gradle configuration metadata
         run: |
@@ -314,7 +307,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .gradle-home
-          key: gradle-linux-8.14.3-agp8.11.0-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties', 'android/toolchain.properties') }}
+          key: gradle-linux-${{ steps.toolchain.outputs.gradle_version }}-agp${{ steps.toolchain.outputs.agp_version }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties', 'android/toolchain.properties') }}
 
       - name: Provision pinned Gradle and AGP with network access
         run: bash android/gradlew -p android --no-daemon --stacktrace :app:tasks
@@ -384,25 +377,22 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Read pinned toolchain metadata
+        id: toolchain
+        shell: bash
+        run: bash tools/verify_toolchain.sh metadata >> "$GITHUB_OUTPUT"
+
       - name: Build exact Odin tag from source
         uses: laytan/setup-odin@8536d8fa450ec6f1bd9ddc84bbaaf16296c0051d # v2
         with:
           release: "false"
-          branch: ${{ env.ODIN_SOURCE_TAG }}
-          llvm-version: "21"
+          branch: ${{ steps.toolchain.outputs.odin_version }}
+          llvm-version: ${{ steps.toolchain.outputs.odin_llvm_major }}
           build-type: release
           cache: "false"
 
       - name: Verify exact Odin snapshot
-        shell: bash
-        run: |
-          set -euo pipefail
-          expected_commit="$(sed -n 's/^ODIN_COMMIT=//p' android/toolchain.properties)"
-          actual_commit="$(git -C "$HOME/odin" rev-parse HEAD)"
-          [[ "$actual_commit" == "$expected_commit" ]] || {
-            echo "expected Odin source commit $expected_commit, found $actual_commit" >&2
-            exit 1
-          }
+        run: bash tools/verify_toolchain.sh odin
 
       - name: Install web build prerequisites
         run: |
@@ -421,7 +411,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          emsdk_version="$(sed -n 's/^EMSDK_VERSION=//p' web/toolchain.properties)"
+          emsdk_version="${{ steps.toolchain.outputs.emsdk_version }}"
           git clone https://github.com/emscripten-core/emsdk.git "$HOME/emsdk"
           "$HOME/emsdk/emsdk" install "$emsdk_version"
           "$HOME/emsdk/emsdk" activate "$emsdk_version"
@@ -430,7 +420,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          emsdk_version="$(sed -n 's/^EMSDK_VERSION=//p' web/toolchain.properties)"
+          emsdk_version="${{ steps.toolchain.outputs.emsdk_version }}"
           "$HOME/emsdk/emsdk" activate "$emsdk_version"
 
       - name: Preflight, build, and audit web distribution
