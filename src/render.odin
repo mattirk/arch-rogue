@@ -2691,7 +2691,13 @@ draw_overlay :: proc(view: ^View, app: ^App, assets: ^Assets) {
 	}
 
 	draw_player_hud(view, app, assets)
-	if app.minimap_visible && !view.mobile_mode do draw_minimap(app, assets)
+	if app.minimap_visible && (!view.mobile_mode || view.mobile_layout_valid) {
+		minimap_card := minimap_design_rect()
+		if view.mobile_mode && view.mobile_layout_valid {
+			minimap_card = mobile_rect_to_design(view.mobile_layout.minimap)
+		}
+		draw_minimap(app, assets, minimap_card)
+	}
 	if run.player.memory_tokens > 0 && !app.inventory_open && !app.character_open && !app.shop_open {
 		rect := memory_token_prompt_rect()
 		if view.mobile_mode && view.mobile_layout_valid {
@@ -2843,14 +2849,14 @@ draw_minimap_block :: proc(center: Vec2, half_w, half_h, lift: f32, color: rl.Co
 	rl.DrawTriangle(top,bottom,right,top_color)
 }
 
-// Fixed-size, player-centered isometric card. Wheel zoom changes map detail,
-// never the card dimensions; guidance uses a target beacon or viewport-edge
+// Player-centered isometric card. Desktop uses a fixed card while mobile takes
+// its compact safe-area layout rectangle. Zoom changes map detail, not card
+// dimensions; guidance uses a target beacon or viewport-edge
 // direction arrow without revealing the route through unexplored terrain.
 @(private = "file")
-draw_minimap :: proc(app: ^App, assets: ^Assets) {
+draw_minimap :: proc(app: ^App, assets: ^Assets, card: rl.Rectangle) {
 	run := &app.run
 	theme := &THEMES[run.theme_index]
-	card := minimap_design_rect()
 	panel := ui_chrome_asset(assets,.Hud_Panel)
 	if !draw_ui_chrome(panel,card) {
 		rl.DrawRectangleRec(card,rl.Fade(rl.BLACK,.72))

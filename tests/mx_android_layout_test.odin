@@ -142,6 +142,17 @@ mx_android_native_layout_covers_requested_landscape_classes :: proc(t: ^testing.
 		testing.expectf(t, !ar.mobile_rects_overlap(layout.left_rail, layout.gameplay_rect), "%s left rail overlaps gameplay", test_case.name)
 		testing.expectf(t, !ar.mobile_rects_overlap(layout.right_rail, layout.gameplay_rect), "%s right rail overlaps gameplay", test_case.name)
 		testing.expectf(t, !ar.mobile_rects_overlap(layout.left_rail, layout.right_rail), "%s rails overlap", test_case.name)
+		mx_android_expect_inside(t, layout.gameplay_rect, layout.minimap, "minimap")
+		testing.expectf(t, !ar.mobile_rects_overlap(layout.minimap, layout.right_rail), "%s minimap overlaps the action rail", test_case.name)
+		testing.expectf(t,
+			math.abs(layout.minimap.width/layout.minimap.height-ar.MOBILE_MINIMAP_ASPECT) < 1e-4,
+			"%s minimap aspect changed", test_case.name,
+		)
+		testing.expectf(t,
+			ar.mobile_rect_right(layout.minimap) < ar.mobile_rect_right(layout.gameplay_rect) &&
+			layout.minimap.y > layout.gameplay_rect.y,
+			"%s minimap must be inset from the gameplay region's top-right corner", test_case.name,
+		)
 
 		minimum := f32(48) * ar.mobile_density(test_case.metrics)
 		testing.expectf(t, layout.minimum_target_px + 1e-4 >= minimum, "%s target scale fell below 48dp", test_case.name)

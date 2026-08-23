@@ -15,6 +15,9 @@ MOBILE_MAX_TOUCH_CONTACTS      :: 10
 MOBILE_MAX_TOUCH_EVENTS        :: MOBILE_MAX_TOUCH_CONTACTS * 2
 MOBILE_MAX_DIRECT_TARGETS      :: 128
 MOBILE_STATUS_BAR_ASPECT       :: f32(98) / f32(455)
+MOBILE_MINIMAP_ASPECT          :: f32(MINIMAP_CARD_WIDTH) / f32(MINIMAP_CARD_HEIGHT)
+MOBILE_MINIMAP_HEIGHT_FRACTION :: f32(0.16)
+MOBILE_MINIMAP_WIDTH_FRACTION  :: f32(0.22)
 MOBILE_GEOMETRY_EPSILON        :: f32(0.001)
 
 // --- Physical geometry ------------------------------------------------------
@@ -57,6 +60,7 @@ Mobile_Layout :: struct {
 	left_rail:         Mobile_Rect,
 	right_rail:        Mobile_Rect,
 	world_focus:       Vec2,
+	minimap:           Mobile_Rect,
 	joystick:          Mobile_Rect,
 	action_slots:      [6]Mobile_Rect,
 	interact:          Mobile_Rect,
@@ -229,6 +233,18 @@ mobile_layout_build :: proc(metrics: Mobile_Display_Metrics) -> (layout: Mobile_
 	layout.world_focus = {
 		layout.gameplay_rect.x + layout.gameplay_rect.width * .5,
 		layout.gameplay_rect.y + layout.gameplay_rect.height * CAMERA_FOCUS_Y,
+	}
+	minimap_margin := max(f32(8), 6 * density)
+	minimap_height := min(
+		layout.gameplay_rect.height * MOBILE_MINIMAP_HEIGHT_FRACTION,
+		layout.gameplay_rect.width * MOBILE_MINIMAP_WIDTH_FRACTION / MOBILE_MINIMAP_ASPECT,
+	)
+	minimap_width := minimap_height * MOBILE_MINIMAP_ASPECT
+	layout.minimap = {
+		mobile_rect_right(layout.gameplay_rect) - minimap_margin - minimap_width,
+		layout.gameplay_rect.y + minimap_margin,
+		minimap_width,
+		minimap_height,
 	}
 
 	stack_height := action_size * 6 + action_gap * 5
