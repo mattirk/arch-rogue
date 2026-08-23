@@ -11,6 +11,7 @@ import "core:fmt"
 import "core:os"
 import filepath "core:path/filepath"
 import "core:strings"
+import "core:sync"
 import "core:testing"
 import ar "../src"
 
@@ -507,6 +508,10 @@ steam_queue_survives_restart_and_dedupes :: proc(t:^testing.T) {
 
 // --- Facade against a fake flat-API table ------------------------------------
 
+// Flat Steam callbacks do not carry user data, so this fake necessarily uses
+// file-global state. Serialize its tests: Odin runs tests concurrently, and a
+// parallel fake_reset would otherwise rewrite another test's active session.
+@(private="file") fake_api_mutex:sync.Mutex
 @(private="file") fake_run_callbacks_count:int
 @(private="file") fake_store_count:int
 @(private="file") fake_store_result:bool
@@ -583,6 +588,8 @@ fake_resolver_without_set :: proc(user:rawptr,name:string)->rawptr {
 
 @(test)
 steam_facade_ready_flow_drains_queue :: proc(t:^testing.T) {
+	sync.mutex_lock(&fake_api_mutex)
+	defer sync.mutex_unlock(&fake_api_mutex)
 	fake_reset()
 	dir,ok:=steam_temp_dir(t)
 	if !ok do return
@@ -613,6 +620,8 @@ steam_facade_ready_flow_drains_queue :: proc(t:^testing.T) {
 
 @(test)
 steam_facade_keeps_queue_until_store_confirms :: proc(t:^testing.T) {
+	sync.mutex_lock(&fake_api_mutex)
+	defer sync.mutex_unlock(&fake_api_mutex)
 	fake_reset()
 	fake_store_result=false
 	dir,ok:=steam_temp_dir(t)
@@ -635,6 +644,8 @@ steam_facade_keeps_queue_until_store_confirms :: proc(t:^testing.T) {
 
 @(test)
 steam_facade_reports_missing_symbol :: proc(t:^testing.T) {
+	sync.mutex_lock(&fake_api_mutex)
+	defer sync.mutex_unlock(&fake_api_mutex)
 	fake_reset()
 	state:ar.Steam_State
 	testing.expect(t,!ar.steam_bind(&state,fake_resolver_without_set,nil))
@@ -647,6 +658,8 @@ steam_facade_reports_missing_symbol :: proc(t:^testing.T) {
 steam_reconciliation_repushes_cached_grants :: proc(t:^testing.T) {
 	// A profile that granted offline (or on another device via cloud sync)
 	// re-pushes anything Steam does not report as achieved.
+	sync.mutex_lock(&fake_api_mutex)
+	defer sync.mutex_unlock(&fake_api_mutex)
 	fake_reset()
 	fake_achieved_response=false
 	dir,ok:=steam_temp_dir(t)
