@@ -73,6 +73,17 @@ and Deck hardware validation remain tracked in that plan.
   gesture-gated Web Audio device starts, so its first main-thread callback is
   not blocked by codec work and the unlock still occurs within Chrome's
   transient user-activation window.
+- Story cutscenes and terminal death/victory screens now switch to the authored
+  Menu mix instead of selecting the undefined silent Cutscene mix and allowing
+  the prior dungeon mix to linger.
+- Dungeon special-room music now uses composable, phase-locked spatial stem
+  groups rather than Bar-specific condition combinations or discrete room
+  mixes. Quest harp intensity and Bar replacement still crossfade continuously
+  over the existing eight-tile approach, while Garden applies a smooth
+  final-priority duck so only `ambience_grim_bass` and `beat_low` remain inside,
+  including throughout the in-room Wake the Moonbloom minigame. A reproducible
+  special-room save generator now emits validated Bar and Garden `run.json`
+  fixtures under `build/{bar,garden}-test-save/` for direct listening checks.
 - The public mirror's release workflow now deploys the exact audited
   `arch-rogue-v<version>-<sha12>-web.tar.gz` payload to GitHub Pages at the
   site-relative `play/` path. `prepare-pages` downloads rather than rebuilds

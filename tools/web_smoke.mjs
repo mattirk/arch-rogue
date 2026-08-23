@@ -114,8 +114,8 @@ try {
     `modal_open=${state.modal_open} audio_playing=${state.audio_playing}`);
   // The 9.6 s boot intro ignores the selector until its boundary, so shortly
   // after run start the director is either still in the intro or already on
-  // the modal's cutscene mix (which has no tracks yet: authored silence).
-  record('music-selector-follows-run', state.music_mix === 'menu_boot' || state.music_mix === 'cutscene',
+  // the menu mix selected by the opening story modal.
+  record('music-selector-follows-run', state.music_mix === 'menu_boot' || state.music_mix === 'menu',
     `mix=${state.music_mix}`);
   const packDeadline = Date.now() + 180000;
   let residentSeen = 0;

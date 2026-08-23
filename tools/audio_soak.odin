@@ -44,7 +44,8 @@ main :: proc() {
 	seen_glorious_zero, seen_glorious_half, seen_glorious_full := false, false, false
 	seen_quest_zero, seen_quest_half, seen_quest_full := false, false, false
 	seen_choir_zero, seen_choir_half, seen_choir_full := false, false, false
-	glorious_gain, quest_harp_gain, bar_gain, choir_gain: f32
+	seen_garden_core_only := false
+	glorious_gain, quest_harp_gain, bar_gain, garden_gain, choir_gain: f32
 
 	for {
 		now_ms := f64(time.tick_now()._nsec) / 1e6
@@ -55,7 +56,7 @@ main :: proc() {
 		segment_ms := int(elapsed_ms) % 10_000
 		desired := ar.MUSIC_MIX_MENU
 		runtime: ar.Music_Runtime_State
-		glorious_target, quest_harp_target, bar_target, choir_target: f32
+		glorious_target, quest_harp_target, bar_target, garden_target, choir_target: f32
 		tier_elapsed_ms := 0
 		if segment_ms >= 1_000 && segment_ms < 2_500 {
 			desired = ar.MUSIC_MIX_DUNGEON
@@ -87,6 +88,7 @@ main :: proc() {
 			glorious_target = 1
 			quest_harp_target = 1
 			if segment_ms >= 9_000 do bar_target = 1
+			if segment_ms >= 9_400 do garden_target = 1
 		}
 		glorious_fade := glorious_target < glorious_gain ? ar.MUSIC_ELITE_HORN_RELEASE_SECONDS : ar.MUSIC_ELITE_HORN_ATTACK_SECONDS
 		glorious_gain = ar.music_gain_slew(
@@ -107,6 +109,12 @@ main :: proc() {
 			f32(dt_ms / 1000),
 			ar.MUSIC_BAR_FADE_SECONDS,
 		)
+		garden_gain = ar.music_gain_slew(
+			garden_gain,
+			garden_target,
+			f32(dt_ms / 1000),
+			ar.MUSIC_GARDEN_FADE_SECONDS,
+		)
 		choir_gain = ar.music_gain_slew(
 			choir_gain,
 			choir_target,
@@ -117,6 +125,7 @@ main :: proc() {
 		runtime.dungeon_elite_horn_gain = glorious_gain
 		runtime.dungeon_quest_harp_gain = quest_harp_gain
 		runtime.dungeon_bar_gain = bar_gain
+		runtime.dungeon_garden_gain = garden_gain
 
 		reference_ms := ar.audio_music_reference_phase_ms(&audio, &director)
 		ar.music_director_update(&director, &audio.music_library, desired, dt_ms, reference_ms)
@@ -140,6 +149,7 @@ main :: proc() {
 				seen_glorious_full = true
 				seen_quest_full = true
 			}
+			if runtime.dungeon_garden_gain == 1 && layers == 2 do seen_garden_core_only = true
 		}
 		if desired == ar.MUSIC_MIX_BOSS_BATTLE {
 			if segment_ms >= 4_600 && runtime.boss_choir_gain <= 0.0005 && layers == 4 do seen_choir_zero = true
@@ -184,19 +194,23 @@ main :: proc() {
 	}
 
 	callback_count := ar.audio_music_callback_service_count(&audio) - callback_start
+	// Spatial room envelopes intentionally overlap while they crossfade. During
+	// the synthetic Boss Battle -> Dungeon -> Bar hand-off this permits one more
+	// simultaneously non-zero layer than the old Bar-specific gates, still well
+	// below the 16-asset cache and always on the single callback stream.
 	passed := stalls == 0 && audio.music_recovery_count == 0 && max_streams == 1 &&
-		max_layers == 11 && int(callback_count) > seconds * 20 && frames > seconds * 40 &&
+		max_layers >= 11 && max_layers <= 12 && int(callback_count) > seconds * 20 && frames > seconds * 40 &&
 		guitar_exclusivity_failures == 0 && seen_low && seen_mid && seen_high &&
 		seen_glorious_zero && seen_glorious_half && seen_glorious_full &&
 		seen_quest_zero && seen_quest_half && seen_quest_full &&
-		seen_choir_zero && seen_choir_half && seen_choir_full
+		seen_choir_zero && seen_choir_half && seen_choir_full && seen_garden_core_only
 	fmt.printf(
-		"AUDIO_SOAK {{\"seconds\":%d,\"frames\":%d,\"max_streams\":%d,\"max_layers\":%d,\"callbacks\":%d,\"recoveries\":%d,\"stalls\":%d,\"guitar_exclusivity_failures\":%d,\"seen_low\":%v,\"seen_mid\":%v,\"seen_high\":%v,\"seen_glorious_zero\":%v,\"seen_glorious_half\":%v,\"seen_glorious_full\":%v,\"seen_quest_zero\":%v,\"seen_quest_half\":%v,\"seen_quest_full\":%v,\"seen_choir_zero\":%v,\"seen_choir_half\":%v,\"seen_choir_full\":%v,\"passed\":%v}}\n",
+		"AUDIO_SOAK {{\"seconds\":%d,\"frames\":%d,\"max_streams\":%d,\"max_layers\":%d,\"callbacks\":%d,\"recoveries\":%d,\"stalls\":%d,\"guitar_exclusivity_failures\":%d,\"seen_low\":%v,\"seen_mid\":%v,\"seen_high\":%v,\"seen_glorious_zero\":%v,\"seen_glorious_half\":%v,\"seen_glorious_full\":%v,\"seen_quest_zero\":%v,\"seen_quest_half\":%v,\"seen_quest_full\":%v,\"seen_choir_zero\":%v,\"seen_choir_half\":%v,\"seen_choir_full\":%v,\"seen_garden_core_only\":%v,\"passed\":%v}}\n",
 		seconds, frames, max_streams, max_layers, callback_count, audio.music_recovery_count, stalls,
 		guitar_exclusivity_failures, seen_low, seen_mid, seen_high,
 		seen_glorious_zero, seen_glorious_half, seen_glorious_full,
 		seen_quest_zero, seen_quest_half, seen_quest_full,
-		seen_choir_zero, seen_choir_half, seen_choir_full, passed,
+		seen_choir_zero, seen_choir_half, seen_choir_full, seen_garden_core_only, passed,
 	)
 	if !passed do os.exit(1)
 }

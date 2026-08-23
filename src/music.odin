@@ -18,6 +18,8 @@ MUSIC_QUEST_HARP_SILENT_DISTANCE_TILES :: f32(8)
 MUSIC_QUEST_HARP_FADE_SECONDS          :: f32(0.5)
 MUSIC_BAR_SILENT_DISTANCE_TILES        :: f32(8)
 MUSIC_BAR_FADE_SECONDS                 :: f32(0.5)
+MUSIC_GARDEN_SILENT_DISTANCE_TILES     :: f32(8)
+MUSIC_GARDEN_FADE_SECONDS              :: f32(0.5)
 MUSIC_BOSS_CHOIR_FADE_SECONDS          :: f32(0.5)
 MUSIC_MAX_SLOTS                        :: 15
 MUSIC_MIXES_DOCUMENT_PATH              :: "assets/audio/bgm/mixes.json"
@@ -26,7 +28,6 @@ MUSIC_MIX_MENU        :: "menu"
 MUSIC_MIX_DUNGEON     :: "dungeon"
 MUSIC_MIX_BOSS        :: "boss"
 MUSIC_MIX_BOSS_BATTLE :: "boss_battle"
-MUSIC_MIX_CUTSCENE    :: "cutscene"
 
 Music_Effect_Kind :: enum u8 {
 	Gain,
@@ -45,11 +46,9 @@ Music_Track_Condition :: enum u8 {
 	Boss_Guitar_Mid,
 	Boss_Guitar_High,
 	Boss_Choir,
-	Dungeon_Elite_Horn,
-	Dungeon_Quest_Harp,
-	Dungeon_Bar_Ducked,
-	Dungeon_Elite_Horn_Bar_Ducked,
-	Dungeon_Quest_Harp_Bar_Ducked,
+	Dungeon_Default_Music,
+	Dungeon_Elite_Music,
+	Dungeon_Quest_Music,
 	Dungeon_Bar_Music,
 }
 
@@ -65,6 +64,7 @@ Music_Runtime_State :: struct {
 	dungeon_elite_horn_gain: f32,
 	dungeon_quest_harp_gain: f32,
 	dungeon_bar_gain:        f32,
+	dungeon_garden_gain:     f32,
 }
 
 Music_Mix_Track :: struct {
@@ -170,12 +170,10 @@ music_track_condition_parse :: proc(id: string) -> (Music_Track_Condition, bool)
 	case "boss_guitar_mid":    return .Boss_Guitar_Mid, true
 	case "boss_guitar_high":   return .Boss_Guitar_High, true
 	case "boss_choir":         return .Boss_Choir, true
-	case "dungeon_elite_horn":                 return .Dungeon_Elite_Horn, true
-	case "dungeon_quest_harp":                 return .Dungeon_Quest_Harp, true
-	case "dungeon_bar_ducked":                 return .Dungeon_Bar_Ducked, true
-	case "dungeon_elite_horn_bar_ducked":      return .Dungeon_Elite_Horn_Bar_Ducked, true
-	case "dungeon_quest_harp_bar_ducked":      return .Dungeon_Quest_Harp_Bar_Ducked, true
-	case "dungeon_bar_music":                  return .Dungeon_Bar_Music, true
+	case "dungeon_default_music": return .Dungeon_Default_Music, true
+	case "dungeon_elite_music":   return .Dungeon_Elite_Music, true
+	case "dungeon_quest_music":   return .Dungeon_Quest_Music, true
+	case "dungeon_bar_music":     return .Dungeon_Bar_Music, true
 	}
 	return .Always, false
 }
@@ -319,23 +317,27 @@ music_point_room_distance :: proc(position: Vec2, room: Room) -> f32 {
 	return math.hypot(dx, dy)
 }
 
-music_dungeon_quest_harp_gain :: proc(run: ^Run) -> f32 {
-	if run == nil do return 0
-	quest, found := special_room_for_kind(&run.dungeon, .Quest)
-	if !found || quest.room_index < 0 || quest.room_index >= run.dungeon.room_count do return 0
-	room := run.dungeon.rooms_buf[quest.room_index]
+@(private = "file")
+music_special_room_gain :: proc(run: ^Run, kind: Special_Room_Kind, silent_distance: f32) -> f32 {
+	if run == nil || silent_distance <= 0 do return 0
+	special, found := special_room_for_kind(&run.dungeon, kind)
+	if !found || special.room_index < 0 || special.room_index >= run.dungeon.room_count do return 0
+	room := run.dungeon.rooms_buf[special.room_index]
 	distance := music_point_room_distance(run.player.pos, room)
-	return music_quest_harp_gain_for_distance(distance)
+	progress := clamp(1 - max(distance, 0) / silent_distance, 0, 1)
+	return progress * progress * (3 - 2 * progress)
+}
+
+music_dungeon_quest_harp_gain :: proc(run: ^Run) -> f32 {
+	return music_special_room_gain(run, .Quest, MUSIC_QUEST_HARP_SILENT_DISTANCE_TILES)
 }
 
 music_dungeon_bar_gain :: proc(run: ^Run) -> f32 {
-	if run == nil do return 0
-	bar, found := special_room_for_kind(&run.dungeon, .Bar)
-	if !found || bar.room_index < 0 || bar.room_index >= run.dungeon.room_count do return 0
-	room := run.dungeon.rooms_buf[bar.room_index]
-	distance := music_point_room_distance(run.player.pos, room)
-	progress := clamp(1 - max(distance, 0) / MUSIC_BAR_SILENT_DISTANCE_TILES, 0, 1)
-	return progress * progress * (3 - 2 * progress)
+	return music_special_room_gain(run, .Bar, MUSIC_BAR_SILENT_DISTANCE_TILES)
+}
+
+music_dungeon_garden_gain :: proc(run: ^Run) -> f32 {
+	return music_special_room_gain(run, .Garden, MUSIC_GARDEN_SILENT_DISTANCE_TILES)
 }
 
 music_gain_slew :: proc(current, target, dt, full_scale_seconds: f32) -> f32 {
@@ -362,11 +364,12 @@ music_runtime_state_for :: proc(
 	boss_conditions_enabled: bool = true,
 ) -> Music_Runtime_State {
 	if app == nil do return {}
-	elite_horn_gain, quest_harp_gain, bar_gain, boss_choir_gain: f32
+	elite_horn_gain, quest_harp_gain, bar_gain, garden_gain, boss_choir_gain: f32
 	if dungeon_conditions_enabled {
 		elite_horn_gain = music_dungeon_elite_horn_gain(&app.run)
 		quest_harp_gain = music_dungeon_quest_harp_gain(&app.run)
 		bar_gain = music_dungeon_bar_gain(&app.run)
+		garden_gain = music_dungeon_garden_gain(&app.run)
 	}
 	if boss_conditions_enabled do boss_choir_gain = music_boss_choir_gain(&app.run)
 	return {
@@ -375,6 +378,7 @@ music_runtime_state_for :: proc(
 		dungeon_elite_horn_gain = elite_horn_gain,
 		dungeon_quest_harp_gain = quest_harp_gain,
 		dungeon_bar_gain        = bar_gain,
+		dungeon_garden_gain     = garden_gain,
 	}
 }
 
@@ -413,6 +417,12 @@ music_runtime_state_update :: proc(
 		dt,
 		MUSIC_BAR_FADE_SECONDS,
 	)
+	state.dungeon_garden_gain = music_gain_slew(
+		state.dungeon_garden_gain,
+		target.dungeon_garden_gain,
+		dt,
+		MUSIC_GARDEN_FADE_SECONDS,
+	)
 }
 
 music_track_runtime_gain :: proc(track: Music_Mix_Track, runtime: Music_Runtime_State) -> f32 {
@@ -421,23 +431,32 @@ music_track_runtime_gain :: proc(track: Music_Mix_Track, runtime: Music_Runtime_
 	case .Boss_Guitar_Low:     return runtime.boss_guitar_tier == .Low ? 1 : 0
 	case .Boss_Guitar_Mid:     return runtime.boss_guitar_tier == .Mid ? 1 : 0
 	case .Boss_Guitar_High:    return runtime.boss_guitar_tier == .High ? 1 : 0
-	case .Boss_Choir:          return clamp(runtime.boss_choir_gain, 0, 1)
-	case .Dungeon_Elite_Horn:             return clamp(runtime.dungeon_elite_horn_gain, 0, 1)
-	case .Dungeon_Quest_Harp:             return clamp(runtime.dungeon_quest_harp_gain, 0, 1)
-	case .Dungeon_Bar_Ducked:             return 1 - clamp(runtime.dungeon_bar_gain, 0, 1)
-	case .Dungeon_Elite_Horn_Bar_Ducked:  return clamp(runtime.dungeon_elite_horn_gain, 0, 1) * (1 - clamp(runtime.dungeon_bar_gain, 0, 1))
-	case .Dungeon_Quest_Harp_Bar_Ducked:  return clamp(runtime.dungeon_quest_harp_gain, 0, 1) * (1 - clamp(runtime.dungeon_bar_gain, 0, 1))
-	case .Dungeon_Bar_Music:              return clamp(runtime.dungeon_bar_gain, 0, 1)
+	case .Boss_Choir: return clamp(runtime.boss_choir_gain, 0, 1)
+	case .Dungeon_Default_Music, .Dungeon_Elite_Music, .Dungeon_Quest_Music, .Dungeon_Bar_Music:
+		// Spatial rooms are phase-locked stem groups inside the Dungeon mix, not
+		// discrete top-level mixes. Bar replaces the ordinary/Quest/Elite layers;
+		// Garden has final priority and leaves only the two unconditional core stems.
+		spatial_duck := (1 - clamp(runtime.dungeon_bar_gain, 0, 1)) *
+			(1 - clamp(runtime.dungeon_garden_gain, 0, 1))
+		if track.condition == .Dungeon_Default_Music do return spatial_duck
+		if track.condition == .Dungeon_Elite_Music do return clamp(runtime.dungeon_elite_horn_gain, 0, 1) * spatial_duck
+		if track.condition == .Dungeon_Quest_Music do return clamp(runtime.dungeon_quest_harp_gain, 0, 1) * spatial_duck
+		if track.condition == .Dungeon_Bar_Music do return clamp(runtime.dungeon_bar_gain, 0, 1) * (1 - clamp(runtime.dungeon_garden_gain, 0, 1))
+		return 0
 	}
 	return 1
 }
 
-// Pure app-state -> mix-name mapping (SOUND.md selection table). Undefined
-// names resolve to the empty mix downstream, which is authored silence.
+// Pure app-state -> mix-name mapping (SOUND.md selection table).
 music_mix_for :: proc(app: ^App) -> string {
 	if app == nil do return MUSIC_MIX_MENU
 	playing_mix :: proc(app: ^App) -> string {
-		if app_play_modal_open(app) do return MUSIC_MIX_CUTSCENE
+		// Wake the Moonbloom is an in-room Garden interaction, not a score-changing
+		// cutscene. Keep its spatial Dungeon layers so Garden remains bass + low beat.
+		if app_story_minigame_active(app) && app.story_minigame.kind == .Wake_The_Moonbloom {
+			return MUSIC_MIX_DUNGEON
+		}
+		if app_play_modal_open(app) do return MUSIC_MIX_MENU
 		if run_floor_plan(&app.run).has_boss && boss_alive(&app.run) {
 			if app.run.boss_engaged do return MUSIC_MIX_BOSS_BATTLE
 			return MUSIC_MIX_BOSS
@@ -454,7 +473,7 @@ music_mix_for :: proc(app: ^App) -> string {
 	case .Save_Wait, .Save_Error:
 		return app.persistence_return == .Paused ? playing_mix(app) : MUSIC_MIX_MENU
 	case .Dead, .Victory:
-		return MUSIC_MIX_CUTSCENE
+		return MUSIC_MIX_MENU
 	}
 	return MUSIC_MIX_MENU
 }
