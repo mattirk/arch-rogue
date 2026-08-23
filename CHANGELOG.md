@@ -68,6 +68,11 @@ and Deck hardware validation remain tracked in that plan.
   adopt at most one per game frame only while authored SFX are quiet. This
   avoids starving raylib/miniaudio's main-thread `ScriptProcessorNode` callback
   during first-run generation, checkpointing, and pack arrival.
+- Fixed the separate one-time web music stutter at audio unlock. All long OGG
+  stems now decode into device-independent PCM during game boot, before the
+  gesture-gated Web Audio device starts, so its first main-thread callback is
+  not blocked by codec work and the unlock still occurs within Chrome's
+  transient user-activation window.
 - The public mirror's release workflow now deploys the exact audited
   `arch-rogue-v<version>-<sha12>-web.tar.gz` payload to GitHub Pages at the
   site-relative `play/` path. `prepare-pages` downloads rather than rebuilds

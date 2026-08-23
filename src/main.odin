@@ -1019,8 +1019,10 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 
 	assets_load(&rt.assets)
 	when ARCH_ROGUE_WEB {
-		// Browser audio contexts start suspended until a user gesture. The web
-		// entry initializes audio from the first gesture callback instead.
+		// Decode device-independent music PCM during boot. Browser audio itself
+		// remains gesture-gated, but its unlock frame then does no long codec work
+		// that could starve the first main-thread callback.
+		audio_preload_music(&rt.audio)
 	} else {
 		audio_init(&rt.audio)
 	}
@@ -1239,9 +1241,11 @@ game_init_fail_after_view :: proc(rt: ^Game_Runtime) {
 @(private = "file")
 game_shutdown_audio :: proc(rt: ^Game_Runtime) {
 	when ARCH_ROGUE_WEB {
-		// Audio initializes lazily on the first browser gesture and may never
-		// have been created; there is no meaningful device teardown on web.
-		if rt.audio.ready do audio_shutdown(&rt.audio)
+		// The device initializes lazily on the first browser gesture, but decoded
+		// music PCM exists from boot and must also be released if no gesture came.
+		if rt.audio.ready || rt.audio.music_library.loaded || rt.audio.music_asset_count > 0 {
+			audio_shutdown(&rt.audio)
+		}
 	} else {
 		audio_shutdown(&rt.audio)
 	}

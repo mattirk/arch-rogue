@@ -284,10 +284,31 @@ audio_init :: proc(audio: ^Audio) {
 	suspended := audio.suspended
 	if !audio.initialized do enabled = true
 	if audio.ready do audio_shutdown(audio)
-	audio^ = Audio{
-		enabled = enabled,
-		suspended = suspended,
-		initialized = true,
+
+	// Web decodes music during game boot, before the user gesture. Preserve that
+	// device-independent PCM while resetting the device-backed audio state so the
+	// unlock frame can create Web Audio immediately, while transient activation
+	// is still valid.
+	when ARCH_ROGUE_WEB {
+		preloaded_library := audio.music_library
+		preloaded_assets := audio.music_assets
+		preloaded_asset_count := audio.music_asset_count
+		preloaded_loop_frames := audio.music_loop_frames
+		audio^ = Audio{
+			enabled = enabled,
+			suspended = suspended,
+			initialized = true,
+		}
+		audio.music_library = preloaded_library
+		audio.music_assets = preloaded_assets
+		audio.music_asset_count = preloaded_asset_count
+		audio.music_loop_frames = preloaded_loop_frames
+	} else {
+		audio^ = Audio{
+			enabled = enabled,
+			suspended = suspended,
+			initialized = true,
+		}
 	}
 
 	// A NativeActivity can enter main more than once while Android retains the
@@ -320,7 +341,11 @@ audio_init :: proc(audio: ^Audio) {
 		audio.sounds[cue] = sound
 		audio.loaded += {cue}
 	}
-	audio_music_load_library(audio)
+	when ARCH_ROGUE_WEB {
+		audio_music_create_mixer(audio)
+	} else {
+		audio_music_load_library(audio)
+	}
 }
 
 // This setting gates SFX at dispatch instead of changing raylib's master
@@ -700,8 +725,11 @@ audio_music_create_mixer :: proc(audio: ^Audio) {
 
 // Load the composer document and decode every referenced OGG through raylib's
 // asset-aware file reader. This works with Android's AAssetManager and the web
-// preload filesystem without relying on POSIX paths.
-audio_music_load_library :: proc(audio: ^Audio) {
+// preload filesystem without relying on POSIX paths. Decoding is deliberately
+// separate from creating the device-backed mixer so web can finish this
+// main-thread work before starting its main-thread audio callback.
+@(private = "file")
+audio_music_preload_library :: proc(audio: ^Audio) {
 	if audio == nil do return
 	audio_music_stop_mixer(audio)
 	audio_music_unload_assets(audio)
@@ -721,11 +749,22 @@ audio_music_load_library :: proc(audio: ^Audio) {
 	}
 	audio.music_library = library
 	audio_music_preload_assets(audio)
-	audio_music_create_mixer(audio)
 	platform_log(fmt.tprintf(
 		"music: library loaded (%d mixes, loop %.0f ms)",
 		len(library.mixes), library.loop_ms,
 	))
+}
+
+// Web calls this during ordinary game boot, before Web Audio is gesture-unlocked,
+// so expensive OGG decoding cannot starve the first live callback.
+audio_preload_music :: proc(audio: ^Audio) {
+	audio_music_preload_library(audio)
+}
+
+@(private = "file")
+audio_music_load_library :: proc(audio: ^Audio) {
+	audio_music_preload_library(audio)
+	audio_music_create_mixer(audio)
 }
 
 @(private = "file")
