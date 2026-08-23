@@ -238,7 +238,7 @@ DISCIPLINE_PATH_LAYOUT := [Archetype_Id][DISCIPLINE_PATHS_PER_ARCHETYPE]Discipli
 DISCIPLINES := [Discipline_Id]Discipline_Def{
 	.Warden_Bulwark = {
 		key = "warden_bulwark",
-		name = "Bulwark Training",
+		name = "Shield Drill",
 		description = "Shield Bash becomes a slower, wider cleave.",
 		archetype = .Warden,
 		path = .Warden_Bulwark,
@@ -282,7 +282,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Warden_Aegis = {
 		key = "warden_aegis",
-		name = "Aegis Discipline",
+		name = "Aegis Lore",
 		description = "Guard Step briefly hardens the Warden; Shield Bash becomes a farther-reaching holy stun, and counters also stun.",
 		archetype = .Warden,
 		path = .Warden_Bulwark,
@@ -304,7 +304,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Warden_Counter = {
 		key = "warden_counter",
-		name = "Counter Stance",
+		name = "Counter Form",
 		description = "Improves melee power and stamina reserves.",
 		archetype = .Warden,
 		path = .Warden_Riposte,
@@ -414,7 +414,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Warden_Unbreakable = {
 		key = "warden_unbreakable",
-		name = "Unbreakable Bulwark",
+		name = "Iron Bastion",
 		description = "Grants the path's greatest armor and vitality boost, with deeper stamina reserves.",
 		archetype = .Warden,
 		path = .Warden_Bulwark,
@@ -436,7 +436,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Warden_Final_Reckoning = {
 		key = "warden_final_reckoning",
-		name = "Final Reckoning",
+		name = "Last Judgment",
 		description = "Greatly improves melee power, Guard Bolt damage, and stamina reserves.",
 		archetype = .Warden,
 		path = .Warden_Riposte,
@@ -480,7 +480,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Warden_Ward = {
 		key = "warden_ward",
-		name = "Temporal Sigil",
+		name = "Chronal Sigil",
 		description = "Time Skip costs less mana, cools down faster, and lasts a beat longer.",
 		archetype = .Warden,
 		path = .Warden_Time,
@@ -524,7 +524,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Warden_Bulwark_Wave = {
 		key = "warden_bulwark_wave",
-		name = "Time Skip",
+		name = "Stolen Beat",
 		description = "Time Skip lasts longer and its cast pulse briefly stuns and delays nearby foes.",
 		archetype = .Warden,
 		path = .Warden_Time,
@@ -612,7 +612,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Warden_Unyielding = {
 		key = "warden_unyielding",
-		name = "Temporal Aegis",
+		name = "Epoch Aegis",
 		description = "While Time Skip is active the Warden takes reduced damage.",
 		archetype = .Warden,
 		path = .Warden_Time,
@@ -634,7 +634,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Warden_Avatar_Of_Light = {
 		key = "warden_avatar_of_light",
-		name = "Avatar of Light",
+		name = "Lightborn",
 		description = "Grants the path's greatest Guard Bolt and mana boost while strengthening vitality.",
 		archetype = .Warden,
 		path = .Warden_Vow,
@@ -656,7 +656,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Warden_Eternal_Wall = {
 		key = "warden_eternal_wall",
-		name = "Eternal Moment",
+		name = "Echoed Hour",
 		description = "Kills while Time Skip is active refund much of the slot's cooldown.",
 		archetype = .Warden,
 		path = .Warden_Time,
@@ -678,7 +678,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Rogue_Precision = {
 		key = "rogue_precision",
-		name = "Killing Precision",
+		name = "Killer's Edge",
 		description = "Melee gains poisonous critical strikes and costs less stamina; Ambush Bell's damage and criticals improve.",
 		archetype = .Rogue,
 		path = .Rogue_Precision,
@@ -898,7 +898,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Rogue_Trap_Craft = {
 		key = "rogue_trap_craft",
-		name = "Bellwright's Hand",
+		name = "Bellcraft",
 		description = "Ambush Bell arms faster, lasts longer, lures from farther away, and strikes harder.",
 		archetype = .Rogue,
 		path = .Rogue_Traps,
@@ -1074,7 +1074,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Rogue_Ambush_Engineer = {
 		key = "rogue_ambush_engineer",
-		name = "Cursed Bellwright",
+		name = "Hex Bell",
 		description = "Ambush Bell arms faster, reaches farther, and hits harder; kills hasten recovery and restore mana.",
 		archetype = .Rogue,
 		path = .Rogue_Traps,
@@ -1118,7 +1118,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Arcanist_Splinter = {
 		key = "arcanist_splinter",
-		name = "Splintered Arcana",
+		name = "Arc Shards",
 		description = "Arc Bolt splinters into longer-lived shards.",
 		archetype = .Arcanist,
 		path = .Arcanist_Bolt,
@@ -1162,7 +1162,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Arcanist_Permafrost = {
 		key = "arcanist_permafrost",
-		name = "Permafrost Sigils",
+		name = "Frost Sigils",
 		description = "Frost Nova spreads wider and chills longer while Mage Strike chills foes.",
 		archetype = .Arcanist,
 		path = .Arcanist_Nova,
@@ -1250,7 +1250,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Arcanist_Blizzard = {
 		key = "arcanist_blizzard",
-		name = "Blizzard Heart",
+		name = "Frost Heart",
 		description = "Frost Nova reaches farther while armor and spellcraft improve.",
 		archetype = .Arcanist,
 		path = .Arcanist_Nova,
@@ -1382,7 +1382,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Arcanist_Chain_Lightning = {
 		key = "arcanist_chain_lightning",
-		name = "Chain Lightning",
+		name = "Chain Bolt",
 		description = "The cast's shared Storm charge arcs from the earliest Arc Bolt impact to a nearby foe at reduced damage.",
 		archetype = .Arcanist,
 		path = .Arcanist_Storm,
@@ -1602,7 +1602,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Acolyte_Gravebind = {
 		key = "acolyte_gravebind",
-		name = "Gravebind Covenant",
+		name = "Grave Pact",
 		description = "Blood attacks bind foes and siphon more health; killing bound foes while wounded restores health and mana.",
 		archetype = .Acolyte,
 		path = .Acolyte_Blood,
@@ -1734,7 +1734,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Acolyte_Sanguine_Ascendant = {
 		key = "acolyte_sanguine_ascendant",
-		name = "Sanguine Ascendant",
+		name = "Blood Zenith",
 		description = "Blood attacks reach their strongest life-siphoning form.",
 		archetype = .Acolyte,
 		path = .Acolyte_Blood,
@@ -1822,7 +1822,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Acolyte_Wraith_Host = {
 		key = "acolyte_wraith_host",
-		name = "Crow Companion",
+		name = "Crow Ally",
 		description = "The crow familiar grows heartier.",
 		archetype = .Acolyte,
 		path = .Acolyte_Spirit,
@@ -2042,7 +2042,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Ranger_Beastmark = {
 		key = "ranger_beastmark",
-		name = "Beastmark Pursuit",
+		name = "Beast Hunt",
 		description = "Hawk Slash snares foes; Vault refunds stamina and hastens Multishot; already-snared foes take more damage.",
 		archetype = .Ranger,
 		path = .Ranger_Control,
@@ -2108,7 +2108,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Ranger_Piercing_Volley = {
 		key = "ranger_piercing_volley",
-		name = "Piercing Volley",
+		name = "Pierce Fan",
 		description = "Multishot arrows pierce through foes.",
 		archetype = .Ranger,
 		path = .Ranger_Volley,
@@ -2130,7 +2130,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Ranger_Hunter_Drive = {
 		key = "ranger_hunter_drive",
-		name = "Hunter's Drive",
+		name = "Hunt Drive",
 		description = "Improves melee power and stamina reserves, and quickens your stride.",
 		archetype = .Ranger,
 		path = .Ranger_Control,
@@ -2174,7 +2174,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Ranger_Wild_Domination = {
 		key = "ranger_wild_domination",
-		name = "Wild Domination",
+		name = "Wild Reign",
 		description = "Improves spellcraft and stamina reserves, and quickens your stride.",
 		archetype = .Ranger,
 		path = .Ranger_Control,
@@ -2350,7 +2350,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	},
 	.Ranger_Spirit_Companion = {
 		key = "ranger_spirit_companion",
-		name = "Spirit Companion",
+		name = "Spirit Ally",
 		description = "Spirit Beast gains arcane bites, health, damage, speed, and stronger recovery from petting.",
 		archetype = .Ranger,
 		path = .Ranger_Beast,

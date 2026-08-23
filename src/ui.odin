@@ -707,7 +707,7 @@ draw_pause_panel :: proc(app: ^App, assets: ^Assets) {
 	rl.DrawRectangleRec({0,0,presentation.width,presentation.height},rl.Fade(rl.BLACK,.62))
 	draw_menu_panel_chrome(assets,panel)
 	ui_draw_text("DESCENT PAUSED",i32(panel.x+32),i32(panel.y+24),28,COLOR_TITLE)
-	labels := [len(Pause_Action)]cstring{"Resume","Options","Save & Return to Title","Save & Quit"}
+	labels := [len(Pause_Action)]cstring{"Resume","Options","Save & Return","Save & Quit"}
 	for label,i in labels {
 		rect := pause_row_rect(i)
 		selected := ui_navigation_selected(app,i==app.pause_index)
@@ -1170,7 +1170,8 @@ draw_resume_veil :: proc(app:^App,assets:^Assets) {
 	rl.DrawRectangleRec({0,0,presentation.width,presentation.height},rl.Fade(rl.BLACK,.54))
 	panel:=menu_panel(520,170);draw_menu_panel_chrome(assets,panel)
 	ui_draw_text("DESCENT RESTORED",i32(panel.x+30),i32(panel.y+30),28,COLOR_TITLE)
-	ui_draw_text("The fixed moment waits. Tap or press Enter / A to continue.",i32(panel.x+30),i32(panel.y+84),16,COLOR_TEXT)
+	ui_draw_text("The fixed moment waits.",i32(panel.x+30),i32(panel.y+80),16,COLOR_TEXT)
+	ui_draw_text("Tap or press Enter / A to continue.",i32(panel.x+30),i32(panel.y+104),16,COLOR_TEXT)
 }
 
 options_layout_bounds :: proc(app: ^App) -> rl.Rectangle {
@@ -1410,68 +1411,34 @@ draw_character_card_line :: proc(rect: rl.Rectangle, row: int, text: cstring, co
 	ui_draw_text(text, i32(rect.x+14), i32(rect.y+31+f32(row*21)), font_size, color)
 }
 
-// Keep each discipline name and state as one compact, vertically centered text
-// block inside the imported plate rail. Genuine name outliers wrap at the word
-// boundary that minimizes the wider line.
+DISCIPLINE_NAME_FONT_SIZE  :: i32(9)
+DISCIPLINE_STATE_FONT_SIZE :: i32(8)
+DISCIPLINE_TEXT_LEFT_INSET :: f32(1)
+
+Discipline_Text_Draw :: struct {
+	name:        string,
+	state_label: cstring,
+	text_rect:   rl.Rectangle,
+	color:       rl.Color,
+}
+
+// Keeping the two lines fixed prevents neighboring cards from changing visual
+// weight based on label length. This intentionally has no inner-rail scissor:
+// the final text pass must remain visible over decorative panel-frame pixels.
 @(private = "file")
 draw_discipline_text :: proc(name: string, state_label: cstring, text_rect: rl.Rectangle, color: rl.Color) {
-	// Scissor in physical pixels because this function draws inside the fitted
-	// design-space camera. Even a future unbroken identifier cannot cross rails.
-	presentation := ui_presentation()
-	rl.BeginScissorMode(
-		i32(text_rect.x*presentation.scale),
-		i32(text_rect.y*presentation.scale),
-		max(1,i32(text_rect.width*presentation.scale)),
-		max(1,i32(text_rect.height*presentation.scale)),
-	)
-	defer rl.EndScissorMode()
-
 	text := fmt.ctprintf("%s", name)
-	font_size: i32 = 12
-	for font_size > 9 && ui_measure_text(text, font_size) > i32(text_rect.width) do font_size -= 1
-	if ui_measure_text(text, font_size) <= i32(text_rect.width) {
-		block_h := f32(font_size+11)
-		y := text_rect.y+max(f32(0),(text_rect.height-block_h)*.5)
-		ui_draw_text(text,i32(text_rect.x),i32(y),font_size,color)
-		ui_draw_text(state_label,i32(text_rect.x),i32(y)+font_size+1,10,color)
-		return
-	}
-
-	split_index := -1
-	best_width := max(i32)
-	for i in 1 ..< len(name)-1 {
-		if name[i] != ' ' do continue
-		left := fmt.ctprintf("%s", name[:i])
-		right := fmt.ctprintf("%s", name[i+1:])
-		line_width := max(ui_measure_text(left, 10), ui_measure_text(right, 10))
-		if line_width < best_width {
-			split_index = i
-			best_width = line_width
-		}
-	}
-	if split_index >= 0 {
-		left := fmt.ctprintf("%s", name[:split_index])
-		right := fmt.ctprintf("%s", name[split_index+1:])
-		font_size = 10
-		for font_size > 7 &&
-			max(ui_measure_text(left, font_size), ui_measure_text(right, font_size)) > i32(text_rect.width) {
-			font_size -= 1
-		}
-		block_h := f32(font_size*2+12)
-		y := text_rect.y+max(f32(0),(text_rect.height-block_h)*.5)
-		ui_draw_text(left,i32(text_rect.x),i32(y),font_size,color)
-		ui_draw_text(right,i32(text_rect.x),i32(y)+font_size+1,font_size,color)
-		ui_draw_text(state_label,i32(text_rect.x),i32(y)+font_size*2+2,10,color)
-		return
-	}
-
-	// Defensive fallback for a future unbroken identifier. The scissor above is
-	// the hard containment guarantee if the 5px readability floor still exceeds.
-	for font_size > 5 && ui_measure_text(text, font_size) > i32(text_rect.width) do font_size -= 1
-	block_h := f32(font_size+11)
+	block_h := f32(DISCIPLINE_NAME_FONT_SIZE+DISCIPLINE_STATE_FONT_SIZE+1)
 	y := text_rect.y+max(f32(0),(text_rect.height-block_h)*.5)
-	ui_draw_text(text,i32(text_rect.x),i32(y),font_size,color)
-	ui_draw_text(state_label,i32(text_rect.x),i32(y)+font_size+1,10,color)
+	text_x := i32(text_rect.x+DISCIPLINE_TEXT_LEFT_INSET)
+	ui_draw_text(text,text_x,i32(y),DISCIPLINE_NAME_FONT_SIZE,color)
+	ui_draw_text(
+		state_label,
+		text_x,
+		i32(y)+DISCIPLINE_NAME_FONT_SIZE+1,
+		DISCIPLINE_STATE_FONT_SIZE,
+		color,
+	)
 }
 
 @(private = "file")
@@ -1505,13 +1472,22 @@ draw_character_panel :: proc(app: ^App, assets: ^Assets) {
 		glyph:=ui_ouroboros_glyph(assets)
 		draw_ui_glyph(glyph,{panel.x+panel.width-59,panel.y+56,22,22},player.memory_tokens>0?rl.WHITE:rl.Color{115,115,126,210})
 	}
-	for label,tab in ([2]cstring{"Overview","Disciplines"}) {
-		rect := character_tab_rect(Character_Tab(tab))
+	tab_labels := [2]cstring{"Overview","Disciplines"}
+	tab_rects: [2]rl.Rectangle
+	tab_contents: [2]rl.Rectangle
+	for _,tab in tab_labels {
+		tab_rects[tab] = character_tab_rect(Character_Tab(tab))
 		selected:=int(app.character_tab)==tab
-		content:=draw_menu_row_chrome(assets,rect,selected)
-		font:i32 = 16
-		for font > 10 && ui_measure_text(label,font) > i32(content.width-6) do font -= 1
-		ui_draw_text(label,i32(content.x+(content.width-f32(ui_measure_text(label,font)))*.5),i32(rect.y+(rect.height-f32(font))*.5),font,selected?COLOR_TITLE:COLOR_TEXT_DIM)
+		tab_contents[tab]=draw_menu_row_chrome(assets,tab_rects[tab],selected)
+	}
+	tab_font:i32 = 16
+	for label,tab in tab_labels {
+		for tab_font > 10 && ui_measure_text(label,tab_font) > i32(tab_contents[tab].width-6) do tab_font -= 1
+	}
+	for label,tab in tab_labels {
+		rect,content := tab_rects[tab],tab_contents[tab]
+		selected:=int(app.character_tab)==tab
+		ui_draw_text(label,i32(content.x+(content.width-f32(ui_measure_text(label,tab_font)))*.5),i32(rect.y+(rect.height-f32(tab_font))*.5),tab_font,selected?COLOR_TITLE:COLOR_TEXT_DIM)
 	}
 	if app.character_tab==.Overview {
 		class_stat: cstring
@@ -1653,6 +1629,7 @@ draw_character_panel :: proc(app: ^App, assets: ^Assets) {
 
 		draw_character_card_line(cards[3],3,fmt.ctprintf("Attack %+.0f%%  Cast %+.0f%%  Thorns %v  Leech %.0f%%",player_attack_speed(player)*100,player_cast_speed(player)*100,player_thorns(player),player_lifesteal(player)*100))
 	} else {
+		discipline_text_draws: [DISCIPLINE_PATHS_PER_ARCHETYPE*DISCIPLINE_DEGREES]Discipline_Text_Draw
 		for column in 0..<DISCIPLINE_PATHS_PER_ARCHETYPE {
 			path,_:=discipline_path_at(player.archetype,column)
 			ui_draw_text(fmt.ctprintf("%s",DISCIPLINE_PATH_LABELS[path]),i32(panel.x+46+f32(column*182)),i32(panel.y+108),16,COLOR_TITLE)
@@ -1692,9 +1669,15 @@ draw_character_panel :: proc(app: ^App, assets: ^Assets) {
 				case .Path_Locked: state_label = "PATH SEALED"
 				case .Locked: state_label = "LOCKED"
 				}
-				// The row already communicates degree; omitting the redundant number
-				// leaves enough authored rail for long capstone names.
-				draw_discipline_text(def.name,state_label,text_rect,color)
+				// Defer labels until every plate, glyph, and selection outline has
+				// landed so no later card artwork can cover their pixels.
+				draw_index := column*DISCIPLINE_DEGREES+degree
+				discipline_text_draws[draw_index] = {
+					name = def.name,
+					state_label = state_label,
+					text_rect = text_rect,
+					color = color,
+				}
 			}
 		}
 		if id,found:=character_selected_discipline(app);found {
@@ -1711,6 +1694,10 @@ draw_character_panel :: proc(app: ^App, assets: ^Assets) {
 			detail_size:i32 = 13
 			for detail_size > 8 && ui_measure_text(detail,detail_size) > i32(panel.width-80) do detail_size -= 1
 			ui_draw_text(detail,i32(panel.x+40),i32(panel.y+514),detail_size,COLOR_TEXT)
+		}
+		// Topmost discipline-card pass: text is never followed by plate art.
+		for text_draw in discipline_text_draws {
+			draw_discipline_text(text_draw.name,text_draw.state_label,text_draw.text_rect,text_draw.color)
 		}
 	}
 	ui_draw_text("Tab/1/2: tabs   Arrows: choose   Enter: learn   C/Esc: close",i32(panel.x+36),i32(panel.y+568),13,COLOR_TEXT_DIM)
@@ -3244,9 +3231,9 @@ draw_story_modal :: proc(app: ^App, assets: ^Assets, viewport_w, viewport_h: int
 // ---------------------------------------------------------------------------
 // UI typeface. All panel/HUD text draws route through these signature-
 // compatible replacements for rl.DrawText/rl.MeasureText: they render the
-// bundled Noto Serif (assets/ui/fonts, SIL OFL 1.1) when it is resident and
-// fall back to raylib's default font when it is not (missing file, procedural
-// fallback boot, or a mid-rebuild window on Android surface recreation).
+// active bundled face in uppercase when it is resident and fall back to
+// raylib's default font when it is not (missing file, procedural fallback
+// boot, or a mid-rebuild window on Android surface recreation).
 
 @(private)
 ui_active_font: rl.Font
@@ -3259,44 +3246,62 @@ ui_set_active_font :: proc(font: rl.Font, valid: bool) {
 	ui_active_font_valid = valid
 }
 
-// Garamond carries a small x-height, so at a given em size it reads smaller
-// than the default font the layouts were tuned against. Every draw and
-// measurement scales through this one factor to compensate; layout code keeps
-// passing its original design sizes.
-UI_FONT_SIZE_SCALE :: 1.18
+// Keep font sizing centralized so typeface trials do not require retuning every
+// caller. Edit Undo's cap height fits the original design sizes directly.
+UI_FONT_SIZE_SCALE :: 1.0
 
 @(private)
 ui_scaled_text_size :: proc(size: i32) -> f32 {
 	return f32(size) * UI_FONT_SIZE_SCALE
 }
 
-// Serif advances carry their own fit; extra tracking only at tiny sizes where
-// the minified atlas otherwise lets glyphs touch.
+// Extra tracking only at tiny sizes where the minified atlas otherwise lets
+// glyphs touch.
 @(private)
 ui_text_spacing :: proc(size: i32) -> f32 {
 	return size < 14 ? 0.5 : 0
 }
 
 // Callers position text assuming the drawn line occupies [y, y+size], and row
-// layouts center that band inside their plates. The compensated size grows the
-// em box, so re-center it on the caller's band and lift it slightly: Garamond
-// reserves tall ascender headroom that otherwise sinks the lowercase body
-// below a plate's visual center.
-UI_FONT_OPTICAL_RISE :: 0.05
+// layouts center that band inside their plates. Keep an optical adjustment here
+// for font-specific vertical tuning.
+UI_FONT_OPTICAL_RISE :: 0.0
+
+UI_TEXT_TRANSFORM_CAPACITY :: 4096
+
+// English UI copy and generated labels are ASCII. Transforming at this shared
+// seam keeps draw and measurement identical without allocating every frame.
+@(private)
+ui_uppercase_text :: proc(text: cstring, buffer: ^[UI_TEXT_TRANSFORM_CAPACITY]u8) -> cstring {
+	if text == nil do return text
+	source := string(text)
+	if len(source) >= len(buffer) do return text
+	for index in 0 ..< len(source) {
+		value := source[index]
+		if value >= 'a' && value <= 'z' do value -= 'a' - 'A'
+		buffer[index] = value
+	}
+	buffer[len(source)] = 0
+	return cstring(&buffer[0])
+}
 
 ui_draw_text :: proc(text: cstring, x, y, size: i32, color: rl.Color) {
+	uppercase_buffer: [UI_TEXT_TRANSFORM_CAPACITY]u8
+	uppercase := ui_uppercase_text(text, &uppercase_buffer)
 	if !ui_active_font_valid {
-		rl.DrawText(text, x, y, size, color)
+		rl.DrawText(uppercase, x, y, size, color)
 		return
 	}
 	scaled := ui_scaled_text_size(size)
 	draw_y := f32(y) + (f32(size) - scaled) * .5 - f32(size) * UI_FONT_OPTICAL_RISE
-	rl.DrawTextEx(ui_active_font, text, {f32(x), draw_y}, scaled, ui_text_spacing(size), color)
+	rl.DrawTextEx(ui_active_font, uppercase, {f32(x), draw_y}, scaled, ui_text_spacing(size), color)
 }
 
 ui_measure_text :: proc(text: cstring, size: i32) -> i32 {
-	if !ui_active_font_valid do return rl.MeasureText(text, size)
-	return i32(rl.MeasureTextEx(ui_active_font, text, ui_scaled_text_size(size), ui_text_spacing(size)).x + .5)
+	uppercase_buffer: [UI_TEXT_TRANSFORM_CAPACITY]u8
+	uppercase := ui_uppercase_text(text, &uppercase_buffer)
+	if !ui_active_font_valid do return rl.MeasureText(uppercase, size)
+	return i32(rl.MeasureTextEx(ui_active_font, uppercase, ui_scaled_text_size(size), ui_text_spacing(size)).x + .5)
 }
 
 // Draw centered on center_x, shrinking from size down to min_size until the

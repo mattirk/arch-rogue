@@ -1633,11 +1633,10 @@ load_prop_assets :: proc(assets: ^Assets) {
 	}
 }
 
-// The single bundled UI typeface (EB Garamond, SIL OFL 1.1; license ships
-// beside the file). Loaded once at a large base size over the strict Latin-1
-// glyph contract enforced by tests/text_glyphs_test.odin, then scaled per
-// draw through the ui_draw_text/ui_measure_text seam.
-UI_FONT_FILE :: "assets/ui/fonts/EBGaramond-Medium.ttf"
+// The active UI typeface. Loaded once at a large base size over the strict
+// Latin-1 glyph contract enforced by tests/text_glyphs_test.odin, then scaled
+// and uppercased through the ui_draw_text/ui_measure_text seam.
+UI_FONT_FILE :: "assets/ui/fonts/EditUndoBRK.ttf"
 UI_FONT_BASE_SIZE :: 96
 
 @(private = "file")

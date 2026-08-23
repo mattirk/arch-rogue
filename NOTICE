@@ -30,11 +30,18 @@ https://github.com/raysan5/raylib/tree/6.0/src/external.
 Bundled font
 ------------
 
-The game UI uses EB Garamond Medium (version 1.002), Copyright 2017 The EB
-Garamond Project Authors (https://github.com/octaviopardo/EBGaramond12),
-licensed under the SIL Open Font License, Version 1.1. The complete license
-text ships beside the font as `assets/ui/fonts/OFL.txt` and applies to the
-font file only, not to the rest of Arch Rogue.
+The game UI uses Edit Undo BRK (version 2.04), created by Brian Kent of
+ÆNIGMA FONTS. The author's original freeware terms ship intact beside the font
+as `assets/ui/fonts/editundo.txt`. Those terms permit personal and commercial
+use, require the text file to remain intact when the font is redistributed,
+and prohibit selling or distributing the font itself for profit or altering it
+without the author's permission.
+
+EB Garamond Medium (version 1.002), Copyright 2017 The EB Garamond Project
+Authors (https://github.com/octaviopardo/EBGaramond12), remains bundled under
+the SIL Open Font License, Version 1.1. Its complete license text ships as
+`assets/ui/fonts/OFL.txt` and applies to that font file only, not to the rest
+of Arch Rogue.
 
 This native Odin distribution does not bundle Python, Pygame, SDL, OpenSSL,
 PyJNIus, or python-for-android.
