@@ -227,13 +227,12 @@ options_and_controls_fit_inside_responsive_menu_frame :: proc(t: ^testing.T) {
 }
 
 @(test)
-menu_title_relic_is_centered_and_spin_matches_pygame_timing :: proc(t: ^testing.T) {
+menu_title_logo_is_centered_and_spin_matches_pygame_timing :: proc(t: ^testing.T) {
 	for size in ([4][2]f32{{640, 480}, {1280, 720}, {1920, 1200}, {2560, 1080}}) {
 		safe := ar.menu_background_content_rect(size[0], size[1])
 		rect := ar.title_logo_rect(size[0], size[1])
-		relic_source_center := f32(ar.UI_LOGO_DIAMOND_SOURCE_RECT[0]) + f32(ar.UI_LOGO_DIAMOND_SOURCE_RECT[2]) * .5
-		relic_center := rect.x + relic_source_center / 640 * rect.width
-		testing.expect(t, ui_test_abs_f32(relic_center - size[0] * .5) < .01, "title relic is not on screen center")
+		logo_center := rect.x + rect.width*.5
+		testing.expect(t, ui_test_abs_f32(logo_center - (safe.x+safe.width*.5)) < .01, "title logo is not horizontally centered")
 		testing.expect(t, ui_test_abs_f32(rect.y - max(safe.y+18, size[1]*.17)) < .01, "title logo does not honor frame-safe placement")
 		testing.expect(t, ui_test_abs_f32(rect.width * 122 - rect.height * 640) < .1, "title logo aspect ratio changed")
 		testing.expect(t, rect.x >= safe.x && rect.y >= safe.y && rect.x+rect.width <= safe.x+safe.width, "title logo falls outside frame-safe viewport")

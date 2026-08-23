@@ -447,8 +447,7 @@ title_logo_rect :: proc(width, height: f32) -> rl.Rectangle {
 	layout := menu_background_content_rect(width, height)
 	logo_width := max(f32(1), min(f32(560), layout.width-80))
 	logo_height := logo_width * 122 / 640
-	relic_center_x := f32(UI_LOGO_DIAMOND_SOURCE_RECT[0]) + f32(UI_LOGO_DIAMOND_SOURCE_RECT[2]) * .5
-	logo_x := layout.x + layout.width*.5 - relic_center_x / 640 * logo_width
+	logo_x := layout.x + (layout.width-logo_width)*.5
 	logo_y := max(layout.y+18, height*.17)
 	return {logo_x, logo_y, logo_width, logo_height}
 }
