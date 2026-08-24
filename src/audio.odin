@@ -147,8 +147,8 @@ MUSIC_SAMPLE_SIZE :: 16
 // one-pole high-frequency rolloff. A DC blocker removes the bias produced by
 // the asymmetric transfer. The limiter's instantaneous attack catches the
 // current sample and returns to unity over roughly 100 ms without adding delay.
-MUSIC_SATURATION_DRIVE          :: f32(4.00)
-MUSIC_SATURATION_MIX            :: f32(1.00)
+MUSIC_SATURATION_DRIVE          :: f32(3.00)
+MUSIC_SATURATION_MIX            :: f32(0.80)
 MUSIC_TAPE_BIAS                 :: f32(0.08)
 MUSIC_TAPE_OUTPUT_GAIN          :: f32(0.55)
 MUSIC_TAPE_TONE_ALPHA           :: f32(0.65)
@@ -473,7 +473,7 @@ audio_music_master_dsp_reset :: proc "contextless" (dsp: ^Music_Master_DSP) {
 
 // Biased softsign saturation remains monotonic at any input level. Subtracting
 // the zero-input response keeps exact silence at zero while retaining the
-// asymmetry that gives the fully wet stage an audible tape-like even harmonic.
+// asymmetry that gives the parallel tape stage an audible even harmonic.
 audio_music_saturate_sample :: proc "contextless" (sample: f32) -> f32 {
 	driven := sample * MUSIC_SATURATION_DRIVE + MUSIC_TAPE_BIAS
 	shaped := driven / (1 + abs(driven))
