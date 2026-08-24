@@ -398,6 +398,8 @@ tick_combat_statuses :: proc(run: ^Run) {
 			player.hp -= damage
 			run.last_damage_source="poison"
 			mark_player_hit_flash(player,damage)
+			heavy := player.hp <= 0 || damage >= max(8, player.max_hp / 4)
+			sfx_emit(run, heavy ? Sfx_Bank.Player_Hurt_Heavy : Sfx_Bank.Player_Hurt_Light)
 			append(&run.numbers, Damage_Number{pos=player.pos, value=damage, kind=.Damage_Taken, damage_type=.Poison})
 			feel_emit_player_hurt(run,damage)
 			player.poison_tick += 1
@@ -414,6 +416,7 @@ tick_combat_statuses :: proc(run: ^Run) {
 				damage := max(1, int(2 + f32(player.level) * 0.35))
 				enemy.hp -= damage
 				mark_enemy_hit_flash(&enemy)
+				sfx_emit_enemy_impact(run, &enemy, damage)
 				append(&run.numbers, Damage_Number{pos=enemy.pos, value=damage, kind=.Damage_Dealt, damage_type=.Poison})
 				feel_emit_enemy_hit(run,&enemy,.Poison)
 				enemy.poison_tick += 1
@@ -431,6 +434,25 @@ beastmark_snare_amp :: proc(run: ^Run, enemy: ^Enemy, damage: int) -> int {
 	return int(math.round(f32(damage) * 1.22))
 }
 
+@(private = "file")
+sfx_enemy_hit_is_heavy :: proc(enemy: ^Enemy, damage: int, forced: bool = false) -> bool {
+	if forced do return true
+	return enemy != nil && damage >= max(8, enemy.max_hp / 4)
+}
+
+@(private = "file")
+sfx_emit_enemy_impact :: proc(run: ^Run, enemy: ^Enemy, damage: int, forced_heavy: bool = false) {
+	lethal := enemy.hp <= 0
+	heavy := sfx_enemy_hit_is_heavy(enemy, damage, forced_heavy)
+	sfx_emit(
+		run,
+		sfx_enemy_impact_bank(enemy, lethal, heavy),
+		enemy.pos,
+		spatial = true,
+		emitter_id = u64(enemy.entity_id),
+	)
+}
+
 damage_enemy_typed :: proc(run: ^Run, enemy: ^Enemy, raw: int, damage_type: Damage_Type) -> int {
 	if enemy == nil || enemy.hp <= 0 do return 0
 	damage := enemy_damage_after_resistance(enemy, max(1, raw), damage_type)
@@ -438,7 +460,7 @@ damage_enemy_typed :: proc(run: ^Run, enemy: ^Enemy, raw: int, damage_type: Dama
 	enemy.hp -= damage
 	mark_enemy_hit_flash(enemy)
 	alert_enemy(run, enemy, run.player.pos) // damage engages and wakes the pack
-	append(&run.sfx, Sfx_Kind.Hit)
+	sfx_emit_enemy_impact(run, enemy, damage)
 	append(&run.numbers, Damage_Number{pos=enemy.pos, value=damage, kind=.Damage_Dealt, damage_type=damage_type})
 	feel_emit_enemy_hit(run,enemy,damage_type)
 	return damage
@@ -450,7 +472,7 @@ damage_enemy_direct :: proc(run: ^Run, enemy: ^Enemy, raw: int, damage_type: Dam
 	enemy.hp -= damage
 	mark_enemy_hit_flash(enemy)
 	alert_enemy(run, enemy, run.player.pos) // damage engages and wakes the pack
-	append(&run.sfx, Sfx_Kind.Hit)
+	sfx_emit_enemy_impact(run, enemy, damage)
 	append(&run.numbers, Damage_Number{pos=enemy.pos, value=damage, kind=.Damage_Dealt, damage_type=damage_type})
 	feel_emit_enemy_hit(run,enemy,damage_type)
 	return damage
@@ -482,12 +504,15 @@ damage_player_typed :: proc(run: ^Run, raw: int, damage_type: Damage_Type, melee
 		damage = max(1, int(math.round(f32(damage) * (1 - resist))))
 	}
 	if player_has_cursed_equipment(player) && (damage_type == .Shadow || damage_type == .Poison) do damage += 1
+	mitigated := damage < max(1, raw)
 	player.hp -= damage
 	if source_id!="" do run.last_damage_source=source_id
 	else if attacker!=nil do run.last_damage_source=persistence_enemy_source_id(attacker)
 	else do run.last_damage_source="hostile_magic"
 	mark_player_hit_flash(player,damage)
-	append(&run.sfx, Sfx_Kind.Hurt)
+	if mitigated do sfx_emit(run, .Shield_Block)
+	heavy := player.hp <= 0 || damage >= max(8, player.max_hp / 4)
+	sfx_emit(run, heavy ? Sfx_Bank.Player_Hurt_Heavy : Sfx_Bank.Player_Hurt_Light)
 	append(&run.numbers, Damage_Number{pos=player.pos, value=damage, kind=.Damage_Taken, damage_type=damage_type})
 	feel_emit_player_hurt(run,damage)
 	// Riposte Guard: a taken melee hit answers with a holy counterattack, and
@@ -543,6 +568,7 @@ player_damage_enemy :: proc(
 	status := Status_Kind.Poisoned,
 	has_status := false,
 	status_duration: f32 = 0,
+	heavy := false,
 ) -> int {
 	if enemy == nil || enemy.hp <= 0 do return 0
 	damage := enemy_damage_after_resistance(enemy, max(1, raw), damage_type)
@@ -566,7 +592,7 @@ player_damage_enemy :: proc(
 	enemy.hp -= damage
 	mark_enemy_hit_flash(enemy)
 	alert_enemy(run, enemy, run.player.pos) // damage engages and wakes the pack
-	append(&run.sfx, Sfx_Kind.Hit)
+	sfx_emit_enemy_impact(run, enemy, damage, heavy)
 	append(&run.numbers, Damage_Number{pos=enemy.pos, value=damage, kind=.Damage_Dealt, damage_type=damage_type})
 	feel_emit_enemy_hit(run,enemy,damage_type)
 	if roll_equipped_proc(run, .Chain) do try_chain_proc(run, enemy, damage)
@@ -640,15 +666,17 @@ player_big_hit_begin :: proc(run: ^Run, aim: Vec2) -> bool {
 	player.bighit_charge = BIGHIT_CHARGE_TIME
 	player.swing_timer = BIGHIT_CHARGE_TIME
 	player_start_visual_action(player,.Cast,PLAYER_BIG_HIT_CAST_SECONDS)
+	sfx_emit(run, .Big_Hit_Charge, player.pos, spatial = true)
 	return true
 }
 
-player_big_hit_release :: proc(player: ^Player) -> bool {
+player_big_hit_release :: proc(player: ^Player, run: ^Run = nil) -> bool {
 	if !bighit_charging(player) || bighit_committed(player) do return false
 	player.bighit_charge = 0
 	player.bighit_timer = max(player.bighit_timer, f32(BIGHIT_CANCEL_COOLDOWN))
 	player.swing_timer = 0
 	if player.visual_action == .Cast do player_clear_visual_action(player)
+	sfx_stop_bank(run, .Big_Hit_Charge)
 	return true
 }
 
@@ -666,6 +694,7 @@ enemy_in_arc :: proc(run: ^Run, enemy: ^Enemy, facing: Vec2, reach: f32) -> (mat
 
 player_big_hit_fire :: proc(run: ^Run) {
 	player := &run.player
+	sfx_stop_bank(run, .Big_Hit_Charge)
 	player.bighit_charge = 0
 	player.bighit_timer = BIGHIT_COOLDOWN
 	player.swing_timer = ATTACK_SWING_SECONDS
@@ -683,7 +712,7 @@ player_big_hit_fire :: proc(run: ^Run) {
 	strike_pos := player.pos+facing*.9
 	if primary != nil do strike_pos=(player.pos+primary.pos)*.5
 	feel_emit_slash(run,strike_pos,player.facing,heavy=true)
-	append(&run.sfx,Sfx_Kind.Swing)
+	sfx_emit(run, .Big_Hit_Release, strike_pos, spatial = true)
 	total := 0
 	for &enemy in run.enemies {
 		if enemy.hp <= 0 do continue
@@ -698,7 +727,7 @@ player_big_hit_fire :: proc(run: ^Run) {
 			append(&run.numbers, Damage_Number{pos=enemy.pos, kind=.Text, text="Critical"})
 		}
 		damage = story_apply_player_damage(run, damage)
-		_ = player_damage_enemy(run, &enemy, damage, player_weapon_damage_type(player))
+		_ = player_damage_enemy(run, &enemy, damage, player_weapon_damage_type(player), heavy = true)
 		total += damage
 		throw_tiles: f32 = player.archetype == .Ranger ? BIGHIT_THROW_TILES_RANGER : BIGHIT_THROW_TILES
 		if enemy.big do throw_tiles *= BIGHIT_BOSS_THROW_FACTOR
@@ -720,6 +749,30 @@ tick_big_hit :: proc(run: ^Run) {
 	if player.bighit_charge <= 0 do return
 	player.bighit_charge -= SIM_DT
 	if player.bighit_charge <= 0 do player_big_hit_fire(run)
+}
+
+@(private = "file")
+sfx_player_bolt_bank :: proc(player: ^Player, damage_type: Damage_Type, projectile_count: int) -> Sfx_Bank {
+	switch player.archetype {
+	case .Warden:   return .Warden_Guard_Bolt
+	case .Arcanist: return .Shadow_Cast
+	case .Ranger:   return projectile_count > 1 ? Sfx_Bank.Arrow_Volley : Sfx_Bank.Bow_Release_Light
+	case .Rogue, .Acolyte:
+	}
+	switch damage_type {
+	case .Fire:           return .Fire_Cast
+	case .Frost:          return .Frost_Cast
+	case .Shadow, .Poison:return .Shadow_Cast
+	case .Arcane, .Holy:  return .Arcane_Cast
+	case .Physical:
+		switch player.archetype {
+		case .Acolyte: return .Shadow_Cast
+		case .Arcanist, .Warden: return .Arcane_Cast
+		case .Rogue: return .Physical_Throw
+		case .Ranger: return .Bow_Release_Light
+		}
+	}
+	return .Arcane_Cast
 }
 
 player_cast_bolt :: proc(run: ^Run, aim: Vec2) -> bool {
@@ -824,7 +877,7 @@ player_cast_bolt :: proc(run: ^Run, aim: Vec2) -> bool {
 			from_player=true, ttl=ttl, color=DAMAGE_TYPE_COLORS[type],
 		})
 	}
-	append(&run.sfx, Sfx_Kind.Bolt)
+	sfx_emit(run, sfx_player_bolt_bank(player, type, count), player.pos, spatial = true)
 	return true
 }
 
@@ -832,7 +885,7 @@ player_dash :: proc(run: ^Run, aim: Vec2) -> bool {
 	player := &run.player
 	if bighit_charging(player) {
 		if bighit_committed(player) do return false
-		_ = player_big_hit_release(player)
+		_ = player_big_hit_release(player, run)
 	}
 	cost := player_dash_stamina_cost(player)
 	if player.dash_timer > 0 || player.stamina < f32(cost) do return false
@@ -853,15 +906,20 @@ player_dash :: proc(run: ^Run, aim: Vec2) -> bool {
 	color := ARCHETYPE_SKILL_COLORS[player.archetype]
 	feel_emit(run,.Dash,start,color,.24,.34,player.facing,phase=.Start,style=style,priority=.High)
 	feel_emit(run,.Dash,player.pos,color,.26,.42,player.facing,phase=.End,style=style,priority=.High)
+	sfx_emit(run, sfx_player_dash_bank(player.archetype), start, spatial = true)
+	stealth_activated := false
 	// Dash riders (mobility.py:82-95): Shadow Dash smoke, Guard Step's brief
 	// Aegis hardening, and the Vault stamina/Multishot refund.
 	if player.archetype == .Rogue && player_has_discipline(player, .Rogue_Smoke) {
 		player_apply_status(player, .Smoke, 0.9)
+		stealth_activated = true
 	}
 	// Foxstep Leathers vanish regardless of class (mobility.py:84-85).
 	if player_has_unique_effect(player, .Vanish_On_Dash) {
 		player_apply_status(player, .Smoke, 0.8)
+		stealth_activated = true
 	}
+	if stealth_activated do sfx_emit(run, .Rogue_Stealth, player.pos, spatial = true)
 	if player.archetype == .Warden && (player_has_discipline(player, .Warden_Aegis) ||
 		player_has_skill_bonus(player, .Dash_Guard)) {
 		player_apply_status(player, .Aegis, 0.85)
@@ -899,6 +957,7 @@ cast_time_skip :: proc(run: ^Run) -> bool {
 		}
 	}
 	append(&run.numbers, Damage_Number{pos=player.pos, kind=.Text, text="Time Skip"})
+	sfx_emit(run, .Warden_Time_Skip, player.pos, spatial = true)
 	return true
 }
 
@@ -952,7 +1011,7 @@ cast_nova :: proc(run: ^Run) -> bool {
 		if distance > .001 do slide_move(&run.dungeon, &enemy.pos, delta/distance*.18)
 	}
 	append(&run.numbers, Damage_Number{pos=player.pos, kind=.Text, text="Frost Nova"})
-	append(&run.sfx, Sfx_Kind.Bolt)
+	sfx_emit(run, .Arcanist_Nova, player.pos, spatial = true)
 	return true
 }
 
@@ -992,7 +1051,8 @@ cast_ambush_bell :: proc(run: ^Run) -> bool {
 	)
 	player_apply_status(player, .Smoke, bell.smoke_duration)
 	append(&run.numbers, Damage_Number{pos=run.bells[0].pos, kind=.Text, text="Ambush Bell"})
-	append(&run.sfx,Sfx_Kind.Bell)
+	sfx_emit(run, .Rogue_Bell_Cast, bell.pos, spatial = true)
+	sfx_emit(run, .Rogue_Stealth, player.pos, spatial = true)
 	return true
 }
 
@@ -1169,7 +1229,8 @@ detonate_bell :: proc(run: ^Run, bell: ^Ambush_Bell, primary: ^Enemy, expired: b
 		}
 		if refunded do append(&run.numbers, Damage_Number{pos=player.pos, kind=.Text, text="Bell Reprise"})
 	}
-	append(&run.sfx, Sfx_Kind.Bell)
+	sfx_emit(run, .Rogue_Bell_Detonate, bell.pos, spatial = true)
+	sfx_emit(run, .Rogue_Stealth, player.pos, spatial = true)
 }
 
 tick_ambush_bells :: proc(run: ^Run, dt: f32) {

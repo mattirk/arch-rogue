@@ -1218,7 +1218,7 @@ draw_options_screen :: proc(app: ^App, assets: ^Assets) {
 	ui_draw_text("OPTIONS",i32(panel.x+30),i32(panel.y+20),28,COLOR_TITLE)
 	labels := [11]cstring{
 		"Fullscreen","Frame rate cap","View zoom","Difficulty","Controls",
-		"Controller","Audio cues","Music","Lighting","Mist","Return",
+		"Controller","SFX volume","Music volume","Lighting","Mist","Return",
 	}
 	values := [11]cstring{
 		on_off(app.options.fullscreen),
@@ -1227,8 +1227,8 @@ draw_options_screen :: proc(app: ^App, assets: ^Assets) {
 		fmt.ctprintf("%s",difficulty_profile(app.options.difficulty).name),
 		"View bindings",
 		on_off(app.options.controller_enabled),
-		on_off(app.options.audio_enabled),
-		fmt.ctprintf("%s",MUSIC_VOLUME_LABELS[music_volume_normalize(app.options.music_volume)]),
+		fmt.ctprintf("%d%%",audio_volume_percent(app.options.sfx_volume)),
+		fmt.ctprintf("%d%%",audio_volume_percent(app.options.music_volume)),
 		on_off(app.options.lighting_enabled),
 		on_off(app.options.mist_enabled),
 		"",

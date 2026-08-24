@@ -206,8 +206,10 @@ traps_reveal_trigger_and_count :: proc(t: ^testing.T) {
 	testing.expect(t, run.player.hp < hp_before, "the trap must wound")
 	testing.expect(t, run.traps_triggered == 1, "the run ledger counts the trigger")
 	has_cue := false
-	for cue in run.sfx do if cue == .Trap do has_cue = true
-	testing.expect(t, has_cue, "triggering emits the trap cue")
+	for cue in run.sfx do if cue.bank == .Trap_Spike {
+		has_cue = cue.spatial && cue.pos == spot
+	}
+	testing.expect(t, has_cue, "triggering emits spatial Trap_Spike at the trap")
 
 	hp_mid := run.player.hp
 	ar.tick_traps(&run, ar.SIM_DT)

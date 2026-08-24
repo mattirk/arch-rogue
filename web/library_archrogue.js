@@ -262,33 +262,39 @@ addToLibrary({
 
   // Fetch and digest packs concurrently, but materialize their files through
   // ARWeb's single RAF queue. Wasm is notified only after every file for that
-  // pack is resident in MEMFS; actor texture adoption is queued separately.
+  // pack is resident in MEMFS; actor/SFX adoption is queued separately.
   ar_js_pack_request__deps: ['$ARWeb', '$FS', 'malloc', 'free'],
   ar_js_pack_request: function (namePtr, nameLen) {
     var name = UTF8ToString(namePtr, nameLen);
     var settled = false;
-    var report = function (ok, actorsCsv) {
+    var report = function (ok, actorsCsv, sfxBanksCsv) {
       var nameBytes = lengthBytesUTF8(name);
       var namePointer = _malloc(nameBytes + 1);
       stringToUTF8(name, namePointer, nameBytes + 1);
       var actorBytes = lengthBytesUTF8(actorsCsv);
       var actorPointer = _malloc(actorBytes + 1);
       stringToUTF8(actorsCsv, actorPointer, actorBytes + 1);
-      Module['_ar_web_pack_loaded'](namePointer, nameBytes, actorPointer, actorBytes, ok ? 1 : 0);
+      var sfxBytes = lengthBytesUTF8(sfxBanksCsv);
+      var sfxPointer = _malloc(sfxBytes + 1);
+      stringToUTF8(sfxBanksCsv, sfxPointer, sfxBytes + 1);
+      Module['_ar_web_pack_loaded'](
+        namePointer, nameBytes, actorPointer, actorBytes, sfxPointer, sfxBytes, ok ? 1 : 0
+      );
       _free(namePointer);
       _free(actorPointer);
+      _free(sfxPointer);
     };
     var fail = function () {
       if (settled) return;
       settled = true;
       ARWeb.shellHook('packProgress', { name: name, state: 'failed' });
-      report(false, '');
+      report(false, '', '');
     };
     var complete = function () {
       if (settled) return;
       settled = true;
       ARWeb.shellHook('packProgress', { name: name, state: 'done' });
-      report(true, (info.actors || []).join(','));
+      report(true, (info.actors || []).join(','), (info.sfx_banks || []).join(','));
     };
     var manifest = Module['arPacks'];
     var info = manifest && manifest.packs && manifest.packs[name];

@@ -1,134 +1,3297 @@
 {
-  "channels": 1,
-  "cues": {
-    "bell": {
-      "duration_ms": 720,
-      "file": "bell.wav",
-      "sha256": "9c78cb0275297c2cf36b1dc3741a93787beaf5ff116084b8a3f6669ab31efa14",
-      "usage": "runtime"
+  "audio_format": {
+    "channels": 2,
+    "codec": "pcm_s16le",
+    "sample_rate": 48000,
+    "sample_size_bits": 16
+  },
+  "banks": {
+    "acolyte_spirit_call": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "acolyte_spirit_call_01.wav",
+          "frame_count": 38400,
+          "sha256": "64d09c17bb1a7fb863e2211ad400d4f5482ce7b4692008f614b472d7e0ce879a"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "acolyte_spirit_call_02.wav",
+          "frame_count": 38400,
+          "sha256": "5d7ba22b50b5baeeab5178c0ca45e4a9ac4b2ea143a60088a2b1eb5532971f6f"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "acolyte_spirit_call_03.wav",
+          "frame_count": 38400,
+          "sha256": "5a7f9a8e1c2544143c2dbad8fbdb268ac6e4cd7365ffc42be1ca0075e9b728b2"
+        }
+      ],
+      "gain": 0.7,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
     },
-    "bolt": {
-      "duration_ms": 130,
-      "file": "bolt.wav",
-      "sha256": "bf25c3b03813c4dbd89672db07a819edebfee9ab179da566d3e910e0caa9bebe",
-      "usage": "runtime"
+    "arcane_cast": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "arcane_cast_01.wav",
+          "frame_count": 38400,
+          "sha256": "7e9c55d115042f1760a296d70b86cce0949060489d71c6b80a6321644e29837d"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "arcane_cast_02.wav",
+          "frame_count": 38400,
+          "sha256": "5ccda85970c3b567ddc811085ab7d39e0c5a8bb409badaa0d0b1748078a4c719"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "arcane_cast_03.wav",
+          "frame_count": 38400,
+          "sha256": "e4560ccce28cc13aa75893ef8cca28fe4336286ae635d621915220499bbf722e"
+        }
+      ],
+      "gain": 0.68,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
     },
-    "boss": {
-      "duration_ms": 660,
-      "file": "boss.wav",
-      "sha256": "7a972d308cc169b4e7c47526db91a2f4b13670c14f1d92373c3b9853b7ba294f",
-      "usage": "runtime"
+    "arcanist_nova": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "arcanist_nova_01.wav",
+          "frame_count": 38400,
+          "sha256": "96d8dfceeb90c574119164f69436f91f2a9981fd33705cc2e478ccfe83d1e87c"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "arcanist_nova_02.wav",
+          "frame_count": 38400,
+          "sha256": "6fb884d5775d27dffdff1d33df27cc3dddef20c2d3c554954326b2ff6006e7c7"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "arcanist_nova_03.wav",
+          "frame_count": 38400,
+          "sha256": "9c994808670ce6585f05ca23a35741d8bddfb87fe7df548c688fe311972d2603"
+        }
+      ],
+      "gain": 0.72,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
     },
-    "death": {
-      "duration_ms": 550,
-      "file": "death.wav",
-      "sha256": "58950564b88db1647feecd443e2229702f353386cbfcd748efb55988683f7867",
-      "usage": "runtime"
+    "arrow_volley": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "arrow_volley_01.wav",
+          "frame_count": 38400,
+          "sha256": "d1ca0b24a044f734fa31e6d542f74a8fe2706315507a4b068bfbc02785f73d71"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "arrow_volley_02.wav",
+          "frame_count": 38400,
+          "sha256": "6f79bead71a2c6d003d56fb88406333b4b2737eda52731010f8db5ce5c784450"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "arrow_volley_03.wav",
+          "frame_count": 38400,
+          "sha256": "1964933c74188e391b8c07b6167eb67dfbf07ae1bb03b0cc2343ea43e37844c4"
+        }
+      ],
+      "gain": 0.68,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
     },
-    "door": {
-      "duration_ms": 160,
-      "file": "door.wav",
-      "sha256": "342f5e1e3adc97570c56f8ea26ff046ca665e112a24d61deeeafeb615ad313bc",
-      "usage": "runtime"
+    "ash_gallows_cleave": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 161512,
+          "duration_ms": 841,
+          "file": "ash_gallows_cleave_01.wav",
+          "frame_count": 40367,
+          "sha256": "f8be06bb234e586bbf6fb9f3bd0d9c53cc10a19b1767eada0836772cc1acd05f"
+        },
+        {
+          "byte_size": 156604,
+          "duration_ms": 815,
+          "file": "ash_gallows_cleave_02.wav",
+          "frame_count": 39140,
+          "sha256": "43b38709250b3629a110926f287cab67ad24b1fea00eeea4bd0c39785552e874"
+        }
+      ],
+      "gain": 0.74,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
     },
-    "drink": {
-      "duration_ms": 300,
-      "file": "drink.wav",
-      "sha256": "ffe008beb5e097ff13175b1bcf42f5762837412f517bddae7ac6790593431998",
-      "usage": "runtime"
+    "ash_gallows_nova": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "ash_gallows_nova_01.wav",
+          "frame_count": 120000,
+          "sha256": "1603b40e9999609f99012615146d37646e4396933525afe0a65e40bdadb50670"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "ash_gallows_nova_02.wav",
+          "frame_count": 120000,
+          "sha256": "df7370bc4c0140037cfb6af1e86b0a22798485363802f7a97bc4481d3842e7aa"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "ash_gallows_nova_03.wav",
+          "frame_count": 120000,
+          "sha256": "462ae3059ac33da481eb676587e3b36fb40cabaa54349ed55c1ba19a0f79d5e4"
+        }
+      ],
+      "gain": 0.76,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
     },
-    "hit": {
-      "duration_ms": 140,
-      "file": "hit.wav",
-      "sha256": "fec2697fded4d929e8e8dc4fc64648229fc2cd511d14317be3104571bb7d48cc",
-      "usage": "runtime"
+    "bar_toast": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 154572,
+          "duration_ms": 805,
+          "file": "bar_toast_01.wav",
+          "frame_count": 38632,
+          "sha256": "0d18639e04e4c49e99d0cb931acba5112de975452294ae5aaf818dbd49d98edf"
+        },
+        {
+          "byte_size": 143116,
+          "duration_ms": 745,
+          "file": "bar_toast_02.wav",
+          "frame_count": 35768,
+          "sha256": "15a40686615c43a539c07e7aed2f3f65127d85e87595dd10617d53e1e048505a"
+        },
+        {
+          "byte_size": 141836,
+          "duration_ms": 739,
+          "file": "bar_toast_03.wav",
+          "frame_count": 35448,
+          "sha256": "205c3f09b3239537a43333e3d53879e5d3c0eec85066ed04c890ec9371f23032"
+        }
+      ],
+      "gain": 0.64,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": false
     },
-    "hurt": {
-      "duration_ms": 180,
-      "file": "hurt.wav",
-      "sha256": "237c898826a83ec073e9c798d58179d0b3775514244582081cbc29a7d67ea341",
-      "usage": "runtime"
+    "big_hit_charge": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "big_hit_charge_01.wav",
+          "frame_count": 38400,
+          "sha256": "039a70a2c2f3ff43e5889a43d177dc4b6b4b0b72ebc999633ce808cd87559694"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "big_hit_charge_02.wav",
+          "frame_count": 38400,
+          "sha256": "19e137b5af63c4072287c7754279229c3f113a6029b71e19fc4131add756f3a2"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "big_hit_charge_03.wav",
+          "frame_count": 38400,
+          "sha256": "d88c610c6f4b1c8279d2911453e5c89dbf2825a92e1eae2e185d6d846cd37032"
+        }
+      ],
+      "gain": 0.64,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
     },
-    "levelup": {
-      "duration_ms": 420,
-      "file": "levelup.wav",
-      "sha256": "18ee4a3abc676f70b9cba53040eedef2bdd56ce6f0942cbbebf0e85474a80c14",
-      "usage": "runtime"
+    "big_hit_release": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "big_hit_release_01.wav",
+          "frame_count": 38400,
+          "sha256": "028a5267dd9faf018de8fe60f27ab9ccf7bf395dcd57e6f6850da9a741b81ccf"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "big_hit_release_02.wav",
+          "frame_count": 38400,
+          "sha256": "ff89e267a33864a330d9f0d5a876166ee39053bb99a2d2268e6b388b21171307"
+        }
+      ],
+      "gain": 0.76,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
     },
-    "pickup": {
-      "duration_ms": 110,
-      "file": "pickup.wav",
-      "sha256": "3bf2bd5079c5cd85683ccf9f881d4fb85a861a3e19383741d6e40821252039c7",
-      "usage": "runtime"
+    "boss_defeat": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "boss_defeat_01.wav",
+          "frame_count": 120000,
+          "sha256": "6a5dd8585872d94bc11db7164349ab01e6bd3792380bb022a469f9e8c4a4d223"
+        },
+        {
+          "byte_size": 402148,
+          "duration_ms": 2094,
+          "file": "boss_defeat_02.wav",
+          "frame_count": 100526,
+          "sha256": "6be6967fa8b71290bb3aa662f6a396233a7c56e89529956e95c01a828309d1e0"
+        }
+      ],
+      "gain": 0.78,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
     },
-    "potion": {
-      "duration_ms": 200,
-      "file": "potion.wav",
-      "sha256": "7e7665409f6b4adb733e4fc283da490e96f49a6693b5a5d9f65cc9944bcc1fb3",
-      "usage": "runtime"
+    "boss_engage": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "boss_engage_01.wav",
+          "frame_count": 120000,
+          "sha256": "5400a5c51a93f67163c55cbfa2bfa9b3cabb5d8fa1fd1c0a066a097a3c00540b"
+        }
+      ],
+      "gain": 0.78,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
     },
-    "secret": {
-      "duration_ms": 420,
-      "file": "secret.wav",
-      "sha256": "e00656e8c89c512a74949f1602efd05ee85c38239c45e019777ca1e0d4b28951",
-      "usage": "runtime"
+    "boss_gate_close": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 466960,
+          "duration_ms": 2432,
+          "file": "boss_gate_close_01.wav",
+          "frame_count": 116729,
+          "sha256": "7c632dd3742bed81bc3eed23aa7ee85e581ae828ed50c2297999a5df520c8005"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "boss_gate_close_02.wav",
+          "frame_count": 120000,
+          "sha256": "d9eccab7da4cee62a3c45e44946d2640d485198cc55dae985ed9b6841aa71430"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "boss_gate_close_03.wav",
+          "frame_count": 120000,
+          "sha256": "bf1e79632247a0b1013313796a79a01315b3862aef9e9d9cf9e81ff19b028f9c"
+        }
+      ],
+      "gain": 0.74,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
     },
-    "shrine": {
-      "duration_ms": 720,
-      "file": "shrine.wav",
-      "sha256": "fe7153468ba64206cbd0b297adc923d79185b01104dddf33041783c4c60d2f88",
-      "usage": "runtime"
+    "boss_gate_open": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 202392,
+          "duration_ms": 1054,
+          "file": "boss_gate_open_01.wav",
+          "frame_count": 50587,
+          "sha256": "fed99b4727b78b67e2d2491454fc329bef72654c124634ea184f91c79566b35a"
+        },
+        {
+          "byte_size": 168424,
+          "duration_ms": 877,
+          "file": "boss_gate_open_02.wav",
+          "frame_count": 42095,
+          "sha256": "a8da09856c55ac542df5850f0982a8f9000382c93c8ffb7b908f5225c53875cd"
+        },
+        {
+          "byte_size": 158580,
+          "duration_ms": 826,
+          "file": "boss_gate_open_03.wav",
+          "frame_count": 39634,
+          "sha256": "f5a3ab78958a448946dcdec0ce49527a2d95cf9b389e64c6d26df38f640fd923"
+        }
+      ],
+      "gain": 0.7,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
     },
-    "stairs": {
-      "duration_ms": 380,
-      "file": "stairs.wav",
-      "sha256": "f8db2bf0fc159a02ca0e284dd5d60cce84b947ae4c429056d41923298a5f8350",
-      "usage": "runtime"
+    "bow_release_heavy": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "bow_release_heavy_01.wav",
+          "frame_count": 38400,
+          "sha256": "39582e004c02c8eb1bbb8e5736ec7d227864727b732c20350a773223b15c4c93"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "bow_release_heavy_02.wav",
+          "frame_count": 38400,
+          "sha256": "1fc0b01458a682633e7136fd0862238945612ffc2a25502f0666f35fdc0582db"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "bow_release_heavy_03.wav",
+          "frame_count": 38400,
+          "sha256": "66c843f740696bdb63d4fb2b291bec924a39c0db15c6452100db105a97b64e96"
+        }
+      ],
+      "gain": 0.7,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
     },
-    "start": {
-      "duration_ms": 480,
-      "file": "start.wav",
-      "sha256": "65373a1d392cc367d1892bb0e4e7fe731609a06feaa16f5ad2b0f5098136763f",
-      "usage": "runtime"
+    "bow_release_light": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 66668,
+          "duration_ms": 347,
+          "file": "bow_release_light_01.wav",
+          "frame_count": 16656,
+          "sha256": "e55a3376450d81301ec319d8d27ba757125e241389b19bdabaecf8fd132c57de"
+        },
+        {
+          "byte_size": 44332,
+          "duration_ms": 231,
+          "file": "bow_release_light_02.wav",
+          "frame_count": 11072,
+          "sha256": "ebe8e8a75c50c23d08b3470cc5b3bd69e4ab6e507bc770ca340895b190ce1fd7"
+        },
+        {
+          "byte_size": 47916,
+          "duration_ms": 249,
+          "file": "bow_release_light_03.wav",
+          "frame_count": 11968,
+          "sha256": "a2349362625682098bd138c872d72ffc30fb434845e8069e73f151c692c06218"
+        }
+      ],
+      "gain": 0.64,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
     },
-    "swing": {
-      "duration_ms": 100,
-      "file": "swing.wav",
-      "sha256": "90b996ea8905ae09b4175fe37120a576b7b4d51bd06e6b920aa6a9f3a29bf304",
-      "usage": "runtime"
+    "coin_pickup_light": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 94752,
+          "duration_ms": 493,
+          "file": "coin_pickup_light_01.wav",
+          "frame_count": 23677,
+          "sha256": "b493ba3eb5bf955dcf14b30587e7ef292ca89ce8f0d227e4105f3f4bd200c64f"
+        },
+        {
+          "byte_size": 92940,
+          "duration_ms": 484,
+          "file": "coin_pickup_light_02.wav",
+          "frame_count": 23224,
+          "sha256": "4bb06c504f2061f772a7ff7912a9f8fd6a65fbae3ab5c9fc2cd9d111850e9519"
+        },
+        {
+          "byte_size": 90752,
+          "duration_ms": 472,
+          "file": "coin_pickup_light_03.wav",
+          "frame_count": 22677,
+          "sha256": "09bfc7f492c06102dd9d2ca0af10e6eb35aafe0c5b4b38af9a238ae9aee5217a"
+        }
+      ],
+      "gain": 0.62,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": false
     },
-    "trap": {
-      "duration_ms": 200,
-      "file": "trap.wav",
-      "sha256": "23fda02938f15a304cbf0e51fdf7b5c8486656fedf4d3d14d5f7a1092c25fadd",
-      "usage": "runtime"
+    "coin_pickup_medium": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 89700,
+          "duration_ms": 467,
+          "file": "coin_pickup_medium_01.wav",
+          "frame_count": 22414,
+          "sha256": "1bbcbf1373576581c4241dd9b08d68cda674e21349aa2f5d84a3767d6e9ab41f"
+        },
+        {
+          "byte_size": 94176,
+          "duration_ms": 490,
+          "file": "coin_pickup_medium_02.wav",
+          "frame_count": 23533,
+          "sha256": "41c1d97da7889919f4f96f4e062850da27b38c697bd7c4ff69d8b059673551e6"
+        },
+        {
+          "byte_size": 115804,
+          "duration_ms": 603,
+          "file": "coin_pickup_medium_03.wav",
+          "frame_count": 28940,
+          "sha256": "155d6fa8387da23965985443c75cadaac131fc320e0159beeba2303599047450"
+        }
+      ],
+      "gain": 0.66,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": false
+    },
+    "dash_arcane": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "dash_arcane_01.wav",
+          "frame_count": 38400,
+          "sha256": "bb3d5eedd5e9b9b679e9617e967a507bf64f816eb3bf78980d33f857955d0f3e"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "dash_arcane_02.wav",
+          "frame_count": 38400,
+          "sha256": "8e7e4d518609d2cc79651ede3d57f307dcac5170532126111eb328132f6947fe"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "dash_arcane_03.wav",
+          "frame_count": 38400,
+          "sha256": "d7c7011279b8bdd165e04da92f42fe5ebd112cc4be064af15d00b7d745300ce7"
+        }
+      ],
+      "gain": 0.6,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "dash_armored": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "dash_armored_01.wav",
+          "frame_count": 38400,
+          "sha256": "2070eabab114c665260cfd1b83ad978b8a1a5b18eb940d53a5fb472106b1031a"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "dash_armored_02.wav",
+          "frame_count": 38400,
+          "sha256": "1d0d4ad9c28e0adfbbf59bd748e93843450f09918b208fd42379a162dc5c0763"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "dash_armored_03.wav",
+          "frame_count": 38400,
+          "sha256": "185db5b24e1fff9fe8b6e6eeca73f9bfcce362c9006a33bda3899edf95a4cff0"
+        }
+      ],
+      "gain": 0.64,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "dash_cloth_light": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "dash_cloth_light_01.wav",
+          "frame_count": 38400,
+          "sha256": "c144070f0ca0141ac499b5b52e05acda882b41c388fbe30bf90952235ee014a1"
+        },
+        {
+          "byte_size": 136148,
+          "duration_ms": 709,
+          "file": "dash_cloth_light_02.wav",
+          "frame_count": 34026,
+          "sha256": "b289f0fef71536a875f499b6c0e67baa001eb42ea7d72c1b9f139ca4bce168c5"
+        },
+        {
+          "byte_size": 150560,
+          "duration_ms": 784,
+          "file": "dash_cloth_light_03.wav",
+          "frame_count": 37629,
+          "sha256": "fd25bd1ccdfb2af0f4a38bdb80ee378ede6778f82198c8212a27464ad60c08b3"
+        }
+      ],
+      "gain": 0.58,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "dash_occult": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "dash_occult_01.wav",
+          "frame_count": 38400,
+          "sha256": "0c0a82504b7283de0ef83c2223e2748d743ae2b3f515ea72e03eb96f5d439331"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "dash_occult_02.wav",
+          "frame_count": 38400,
+          "sha256": "106e0c5eac62886113f92fe2b32a7bdc444c7d35d6a57cad94b1c12d19144490"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "dash_occult_03.wav",
+          "frame_count": 38400,
+          "sha256": "56bcca1f53a00d45ef652f63192b5882b89f7f11c24b3f8fb5ea5f48cf478027"
+        }
+      ],
+      "gain": 0.6,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "door_open": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 124372,
+          "duration_ms": 648,
+          "file": "door_open_01.wav",
+          "frame_count": 31082,
+          "sha256": "42fe4da2bd928ab19ad452a0087f7d9ac5943434a492dd4875b056499533c30b"
+        },
+        {
+          "byte_size": 114880,
+          "duration_ms": 598,
+          "file": "door_open_02.wav",
+          "frame_count": 28709,
+          "sha256": "fc03373859dd3718953d7b8bcf94be6f4c37abd64493ea82734c835337b5ef76"
+        },
+        {
+          "byte_size": 121536,
+          "duration_ms": 633,
+          "file": "door_open_03.wav",
+          "frame_count": 30373,
+          "sha256": "588a63b588e368e7dc67aeea83f1bcf643cc41d3a4983cd390fa0f2d6d4594cf"
+        }
+      ],
+      "gain": 0.7,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "enemy_arcane_cast": {
+      "cooldown_ms": 45,
+      "files": [
+        {
+          "byte_size": 427640,
+          "duration_ms": 2227,
+          "file": "enemy_arcane_cast_01.wav",
+          "frame_count": 106899,
+          "sha256": "657613f49a22101b0e9235bfe8fa91a4631d385a45b9898993c208a02ecf7ea3"
+        },
+        {
+          "byte_size": 434828,
+          "duration_ms": 2265,
+          "file": "enemy_arcane_cast_02.wav",
+          "frame_count": 108696,
+          "sha256": "8a1463c9ad2801bf2064006d86395cc28cf0158524aac5f38b277ddec34283d1"
+        },
+        {
+          "byte_size": 435152,
+          "duration_ms": 2266,
+          "file": "enemy_arcane_cast_03.wav",
+          "frame_count": 108777,
+          "sha256": "7d223735f6189e2604595f9234ab85c3cd51d7771845c9a146fe03603bb7b01e"
+        }
+      ],
+      "gain": 0.58,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 3,
+      "priority": "medium",
+      "spatial": true
+    },
+    "enemy_attack_armored": {
+      "cooldown_ms": 45,
+      "files": [
+        {
+          "byte_size": 75108,
+          "duration_ms": 391,
+          "file": "enemy_attack_armored_01.wav",
+          "frame_count": 18766,
+          "sha256": "901d45ae3f4656c6ed8c3daab0455276e679477e31449159aa1a65b515d4e309"
+        },
+        {
+          "byte_size": 82960,
+          "duration_ms": 432,
+          "file": "enemy_attack_armored_02.wav",
+          "frame_count": 20729,
+          "sha256": "2d3ac8b6c2addb5c8b9c4e7eca89d13805c188486ce073bd94cb850396deb167"
+        },
+        {
+          "byte_size": 80904,
+          "duration_ms": 421,
+          "file": "enemy_attack_armored_03.wav",
+          "frame_count": 20215,
+          "sha256": "4eadfbb5f1fa90fe2cd0154e3fee2afef9e460d1821ed34fab9d30c76fec7767"
+        }
+      ],
+      "gain": 0.66,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 3,
+      "priority": "medium",
+      "spatial": true
+    },
+    "enemy_attack_brute": {
+      "cooldown_ms": 45,
+      "files": [
+        {
+          "byte_size": 161196,
+          "duration_ms": 839,
+          "file": "enemy_attack_brute_01.wav",
+          "frame_count": 40288,
+          "sha256": "420682a9cc4524516385dcf6c054031c446c1e0a88002e362e2a1ce08da97daa"
+        },
+        {
+          "byte_size": 164148,
+          "duration_ms": 855,
+          "file": "enemy_attack_brute_02.wav",
+          "frame_count": 41026,
+          "sha256": "49ef8e28fdbe4da43226384b0703e74da6f9f66f1f36ea596b781a56c5cdd117"
+        },
+        {
+          "byte_size": 155852,
+          "duration_ms": 812,
+          "file": "enemy_attack_brute_03.wav",
+          "frame_count": 38952,
+          "sha256": "ed06316a6e6e7ec59f9a4e82fe01d5b0146368244adf2e66737a5a3bc7e58e38"
+        }
+      ],
+      "gain": 0.68,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 3,
+      "priority": "medium",
+      "spatial": true
+    },
+    "enemy_attack_light": {
+      "cooldown_ms": 45,
+      "files": [
+        {
+          "byte_size": 68060,
+          "duration_ms": 354,
+          "file": "enemy_attack_light_01.wav",
+          "frame_count": 17004,
+          "sha256": "b8d52f2fc848c09986952076593bf492fde786aca55095680a58a319c6c87db8"
+        },
+        {
+          "byte_size": 69748,
+          "duration_ms": 363,
+          "file": "enemy_attack_light_02.wav",
+          "frame_count": 17426,
+          "sha256": "c58debc457d7b34dd93018c9505cec091132c26c95366d59eaa64e78b0f210a8"
+        },
+        {
+          "byte_size": 78976,
+          "duration_ms": 411,
+          "file": "enemy_attack_light_03.wav",
+          "frame_count": 19733,
+          "sha256": "870248d37e2d855a2e1218f079501363ab768fc3198083018f30ce7f1a08a4a8"
+        }
+      ],
+      "gain": 0.58,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 3,
+      "priority": "medium",
+      "spatial": true
+    },
+    "enemy_bow_release": {
+      "cooldown_ms": 45,
+      "files": [
+        {
+          "byte_size": 48044,
+          "duration_ms": 250,
+          "file": "enemy_bow_release_01.wav",
+          "frame_count": 12000,
+          "sha256": "e1731ec75913fa9b56a12196a3ea5c9abc284a853ac60b5dcd363babd6453dab"
+        },
+        {
+          "byte_size": 47076,
+          "duration_ms": 245,
+          "file": "enemy_bow_release_02.wav",
+          "frame_count": 11758,
+          "sha256": "48e0677719a5126bfebbe41887978d619a341492bf8ca19627b6098c9c0e1b55"
+        },
+        {
+          "byte_size": 54708,
+          "duration_ms": 285,
+          "file": "enemy_bow_release_03.wav",
+          "frame_count": 13666,
+          "sha256": "f762af86048d4acff115ca6243159313540cf02ea3cddac7fa259f4f3c26c8d5"
+        }
+      ],
+      "gain": 0.6,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 3,
+      "priority": "medium",
+      "spatial": true
+    },
+    "enemy_poison_cast": {
+      "cooldown_ms": 45,
+      "files": [
+        {
+          "byte_size": 457500,
+          "duration_ms": 2383,
+          "file": "enemy_poison_cast_01.wav",
+          "frame_count": 114364,
+          "sha256": "f8f6eff31a5c7c1c7a1f2e9603c5452a676a84c372d45cc972dc2bbef787d816"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "enemy_poison_cast_02.wav",
+          "frame_count": 120000,
+          "sha256": "d0c08ac18c1c810cc8c92583cae51dde4ce32427d3f8582953d1948052d5b2a4"
+        },
+        {
+          "byte_size": 463236,
+          "duration_ms": 2412,
+          "file": "enemy_poison_cast_03.wav",
+          "frame_count": 115798,
+          "sha256": "0b80bb741d61d6882e00495c5051f34ec867ed5c994a5a2c975b70c6581e3810"
+        }
+      ],
+      "gain": 0.58,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 3,
+      "priority": "medium",
+      "spatial": true
+    },
+    "epilogue_bell": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 323564,
+          "duration_ms": 1685,
+          "file": "epilogue_bell_01.wav",
+          "frame_count": 80880,
+          "sha256": "262890a7a58723f8dccca40015228539ff62d8a296fd7019e5f883808c00e747"
+        }
+      ],
+      "gain": 0.72,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
+    },
+    "fire_cast": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "fire_cast_01.wav",
+          "frame_count": 38400,
+          "sha256": "f5eb5a734c112bf81529096c00f15a29bcdc3408a9dbef233b60bdce8b411caf"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "fire_cast_02.wav",
+          "frame_count": 38400,
+          "sha256": "5aa159da885d05799754368ba986e42167f796852c2bf81be143187cfa9f22bd"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "fire_cast_03.wav",
+          "frame_count": 38400,
+          "sha256": "4ed441c29bae9ca4fb233f95d0aaa40adc750153402b58a443ea014fcb5595b3"
+        }
+      ],
+      "gain": 0.68,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "frost_cast": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "frost_cast_01.wav",
+          "frame_count": 38400,
+          "sha256": "35a1ebf1464a3b8dcea96028067c1cc6597fccaa295791cb59e320b63c53f18e"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "frost_cast_02.wav",
+          "frame_count": 38400,
+          "sha256": "3402da12dc37daedcc723cc2f4d4861aafea1f3f8f7d8cb0c25c6f05adc32edc"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "frost_cast_03.wav",
+          "frame_count": 38400,
+          "sha256": "d212006fd3e79d22f4a0627803d5790d3570beb560b0cf47822eeb6205801f3f"
+        }
+      ],
+      "gain": 0.68,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "gate_tyrant_strike": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 84932,
+          "duration_ms": 442,
+          "file": "gate_tyrant_strike_01.wav",
+          "frame_count": 21222,
+          "sha256": "91f555a7644f368c0f5a45900db5e4f774adfe9f79c21b2ec09adbca69648d07"
+        },
+        {
+          "byte_size": 79492,
+          "duration_ms": 414,
+          "file": "gate_tyrant_strike_02.wav",
+          "frame_count": 19862,
+          "sha256": "b29c2ed1908f1157f80e8f20b96835e553ac8d40e6972fc8a14cb5e5794063c4"
+        }
+      ],
+      "gain": 0.76,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "gate_tyrant_volley": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "gate_tyrant_volley_01.wav",
+          "frame_count": 120000,
+          "sha256": "b724fdc10a398358b82dbb6b09cfec74e6fcdf6627a58d04eac3bce53cb2a351"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "gate_tyrant_volley_02.wav",
+          "frame_count": 120000,
+          "sha256": "979f4493de1e39855d9f9da69f042d6eca68b46e82b18e015c000f0b1e4099a0"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "gate_tyrant_volley_03.wav",
+          "frame_count": 120000,
+          "sha256": "bc39534ed64c3ef95953fab1d0da562584bbc15b2255aa1e3a8a13bf4be594b5"
+        }
+      ],
+      "gain": 0.7,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "impact_armor": {
+      "cooldown_ms": 25,
+      "files": [
+        {
+          "byte_size": 159080,
+          "duration_ms": 828,
+          "file": "impact_armor_01.wav",
+          "frame_count": 39759,
+          "sha256": "bab30594306ebac8be24783bbdad8d883fd50d6faf47a73e0cec4dbfa78da6e2"
+        },
+        {
+          "byte_size": 173408,
+          "duration_ms": 903,
+          "file": "impact_armor_02.wav",
+          "frame_count": 43341,
+          "sha256": "e2da04f535d82a07883c9b1684729d9d9ee784e5fbbde1cbfaa2af4fb3a660e5"
+        },
+        {
+          "byte_size": 152188,
+          "duration_ms": 792,
+          "file": "impact_armor_03.wav",
+          "frame_count": 38036,
+          "sha256": "dae35bcac64c419549a82c404a24a7b944bda088bf645752b6cdd8ec360bd378"
+        }
+      ],
+      "gain": 0.38,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 3,
+      "priority": "medium",
+      "spatial": true
+    },
+    "impact_bone_lethal": {
+      "cooldown_ms": 25,
+      "files": [
+        {
+          "byte_size": 141124,
+          "duration_ms": 735,
+          "file": "impact_bone_lethal_01.wav",
+          "frame_count": 35270,
+          "sha256": "2e2e0dfa20154beadf1d05c1a3ab11feadd679181ba1e132e4880f842e04bffc"
+        },
+        {
+          "byte_size": 138468,
+          "duration_ms": 721,
+          "file": "impact_bone_lethal_02.wav",
+          "frame_count": 34606,
+          "sha256": "44ce7f49d3d87f6b4ae5da2afe9ccb35b6c9dcaadb04fa0332d26d15533be475"
+        },
+        {
+          "byte_size": 148640,
+          "duration_ms": 774,
+          "file": "impact_bone_lethal_03.wav",
+          "frame_count": 37149,
+          "sha256": "22fe4e1b874d4601c39e229b8602f692023bc614d3b79c8b83f4efdcbdbe42ed"
+        }
+      ],
+      "gain": 0.39,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 3,
+      "priority": "medium",
+      "spatial": true
+    },
+    "impact_flesh": {
+      "cooldown_ms": 25,
+      "files": [
+        {
+          "byte_size": 40168,
+          "duration_ms": 209,
+          "file": "impact_flesh_01.wav",
+          "frame_count": 10031,
+          "sha256": "2b928ab9ed2305876e6f44f62753707d4c2eace2aab70d29623a268adec5806f"
+        },
+        {
+          "byte_size": 46360,
+          "duration_ms": 241,
+          "file": "impact_flesh_02.wav",
+          "frame_count": 11579,
+          "sha256": "31c68f279b859f4532be2d3dc50c9675208c2a6b1789a23f630ebb2e5750fdb9"
+        },
+        {
+          "byte_size": 41060,
+          "duration_ms": 214,
+          "file": "impact_flesh_03.wav",
+          "frame_count": 10254,
+          "sha256": "9a0d26d1275f768f93015ef7821f99da6d7c008f9c8935ad1922c71183fc32f4"
+        }
+      ],
+      "gain": 0.38,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 3,
+      "priority": "medium",
+      "spatial": true
+    },
+    "impact_generic": {
+      "cooldown_ms": 25,
+      "files": [
+        {
+          "byte_size": 45752,
+          "duration_ms": 238,
+          "file": "impact_generic_01.wav",
+          "frame_count": 11427,
+          "sha256": "f2d49751d94454bb6d63dd4df6d89fd3ec70cf46881b31e8375a898f1b70d888"
+        },
+        {
+          "byte_size": 52424,
+          "duration_ms": 273,
+          "file": "impact_generic_02.wav",
+          "frame_count": 13095,
+          "sha256": "abb1def6b35b8e68ff3265c74d71386875558a78061771dbdc2acfd0f2cddf3d"
+        },
+        {
+          "byte_size": 60300,
+          "duration_ms": 314,
+          "file": "impact_generic_03.wav",
+          "frame_count": 15064,
+          "sha256": "d60d2ae2130a8c51b4d1bd7d9bb9211dd99ec4c0e55cb65162bca8d0aad84276"
+        }
+      ],
+      "gain": 0.39,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 3,
+      "priority": "medium",
+      "spatial": true
+    },
+    "impact_heavy": {
+      "cooldown_ms": 25,
+      "files": [
+        {
+          "byte_size": 40080,
+          "duration_ms": 209,
+          "file": "impact_heavy_01.wav",
+          "frame_count": 10009,
+          "sha256": "82f215bcdc6d3c63c31f9a99b4a7619ffaebdc62e8c322bd03ab40f68b872fa8"
+        },
+        {
+          "byte_size": 35928,
+          "duration_ms": 187,
+          "file": "impact_heavy_02.wav",
+          "frame_count": 8971,
+          "sha256": "80ca38b933b3fb8637aa98e6799ad038d4ff0d019c0512497ca893bbfa6fe6ab"
+        },
+        {
+          "byte_size": 32392,
+          "duration_ms": 168,
+          "file": "impact_heavy_03.wav",
+          "frame_count": 8087,
+          "sha256": "f0d280e77e63dacd6f2a32bd5ab3cb05118b173fba3865b8bcce2290638241b6"
+        }
+      ],
+      "gain": 0.4,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 3,
+      "priority": "medium",
+      "spatial": true
+    },
+    "impact_lethal": {
+      "cooldown_ms": 25,
+      "files": [
+        {
+          "byte_size": 156672,
+          "duration_ms": 816,
+          "file": "impact_lethal_01.wav",
+          "frame_count": 39157,
+          "sha256": "72fae3a82e4ec95ce62ff0b20dc2e464abc59dad2da0d20da69d06ee5beb9340"
+        },
+        {
+          "byte_size": 213800,
+          "duration_ms": 1113,
+          "file": "impact_lethal_02.wav",
+          "frame_count": 53439,
+          "sha256": "1bdea2a6dda48e4025df6bb11251af1e4c0292ef30d0464ea5b6dcd1530dfe04"
+        },
+        {
+          "byte_size": 157292,
+          "duration_ms": 819,
+          "file": "impact_lethal_03.wav",
+          "frame_count": 39312,
+          "sha256": "80976fc9b5f0d00431509f8e4e397ed4f0ede768c5b4c1901d80ca3c8cdc77a5"
+        }
+      ],
+      "gain": 0.4,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 3,
+      "priority": "medium",
+      "spatial": true
+    },
+    "item_drop": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 131376,
+          "duration_ms": 684,
+          "file": "item_drop_01.wav",
+          "frame_count": 32833,
+          "sha256": "8682f45ad98dbf559dc6e5ed1ddb6531bf7550c596c5afb2e70e55237b567b00"
+        },
+        {
+          "byte_size": 131192,
+          "duration_ms": 683,
+          "file": "item_drop_02.wav",
+          "frame_count": 32787,
+          "sha256": "c952507a4dd3cd194a08b48b057ba88017a7d9eaf1eb4364b3ce267fe2433f23"
+        },
+        {
+          "byte_size": 133692,
+          "duration_ms": 696,
+          "file": "item_drop_03.wav",
+          "frame_count": 33412,
+          "sha256": "36a85829a9b9bd500aecb3ad89262a5001751b6a24fa32230299e3af1432ace5"
+        }
+      ],
+      "gain": 0.5,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "item_pickup_common": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 232164,
+          "duration_ms": 1209,
+          "file": "item_pickup_common_01.wav",
+          "frame_count": 58030,
+          "sha256": "67aa9050ea4b15cbb9bb30d05a25b1a1b7da2f535a9e815cf731e017a558e539"
+        },
+        {
+          "byte_size": 242400,
+          "duration_ms": 1262,
+          "file": "item_pickup_common_02.wav",
+          "frame_count": 60589,
+          "sha256": "e449b0d8521103e7bdb313fe5047ef33e97d64da675d75f0f741ceb30e831788"
+        },
+        {
+          "byte_size": 248456,
+          "duration_ms": 1294,
+          "file": "item_pickup_common_03.wav",
+          "frame_count": 62103,
+          "sha256": "12aeab6e2a7d2b1f888088f4ae2a3024a1aec509023d43846c02cc682885c580"
+        }
+      ],
+      "gain": 0.52,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": false
+    },
+    "item_pickup_cursed": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 366488,
+          "duration_ms": 1909,
+          "file": "item_pickup_cursed_01.wav",
+          "frame_count": 91611,
+          "sha256": "6ffcfe355338b20c8e0be3e92db37cd227928d331656ec9344a26bcc14167908"
+        },
+        {
+          "byte_size": 390984,
+          "duration_ms": 2036,
+          "file": "item_pickup_cursed_02.wav",
+          "frame_count": 97735,
+          "sha256": "c14236c3417799731ef3339045d2a6fbc7f057ae5591e5992bd17a6900ed4545"
+        },
+        {
+          "byte_size": 391480,
+          "duration_ms": 2039,
+          "file": "item_pickup_cursed_03.wav",
+          "frame_count": 97859,
+          "sha256": "da33730ef65c7ab3cac08ad778f56ae621a576c73ae1751e597b54d135b6e7a7"
+        }
+      ],
+      "gain": 0.66,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": false
+    },
+    "item_pickup_rare": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 127528,
+          "duration_ms": 664,
+          "file": "item_pickup_rare_01.wav",
+          "frame_count": 31871,
+          "sha256": "c575fe3476cb7ff3bacb597c77a36119eb003a5fafd612b05da3208e67b22887"
+        },
+        {
+          "byte_size": 89128,
+          "duration_ms": 464,
+          "file": "item_pickup_rare_02.wav",
+          "frame_count": 22271,
+          "sha256": "0600b6bec35be549021093ed2ce2eee79968ff6a308cfcb89ceb043d6975adc6"
+        }
+      ],
+      "gain": 0.6,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": false
+    },
+    "item_pickup_unique": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 416548,
+          "duration_ms": 2169,
+          "file": "item_pickup_unique_01.wav",
+          "frame_count": 104126,
+          "sha256": "e9bb69a8df79e01b4362a532cd9b80bcd8ec19f5502db415f07fc75c2320072a"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "item_pickup_unique_02.wav",
+          "frame_count": 120000,
+          "sha256": "3c8695a0b2f9ba67fc57807fc9c658dcd1caed69ac0dad05467a7d3a7a07ec78"
+        }
+      ],
+      "gain": 0.72,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": false
+    },
+    "level_up": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "level_up_01.wav",
+          "frame_count": 120000,
+          "sha256": "6a5dd8585872d94bc11db7164349ab01e6bd3792380bb022a469f9e8c4a4d223"
+        },
+        {
+          "byte_size": 402148,
+          "duration_ms": 2094,
+          "file": "level_up_02.wav",
+          "frame_count": 100526,
+          "sha256": "6be6967fa8b71290bb3aa662f6a396233a7c56e89529956e95c01a828309d1e0"
+        }
+      ],
+      "gain": 0.78,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
+    },
+    "lock_denied": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 85540,
+          "duration_ms": 445,
+          "file": "lock_denied_01.wav",
+          "frame_count": 21374,
+          "sha256": "f5c377634e2e97073d717848b6d5418f23e46d0fe3b6d008e8708fb36bc4cb69"
+        },
+        {
+          "byte_size": 74152,
+          "duration_ms": 386,
+          "file": "lock_denied_02.wav",
+          "frame_count": 18527,
+          "sha256": "5fd26f78e946f0cf334c78e1d0da17e025c051ac416103bacdaaccbdab316381"
+        },
+        {
+          "byte_size": 63780,
+          "duration_ms": 332,
+          "file": "lock_denied_03.wav",
+          "frame_count": 15934,
+          "sha256": "aea168459ebe1b86f4bd41177e8cdc7e22e89615e812c67e7ca21dd93bd02f2e"
+        }
+      ],
+      "gain": 0.66,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 1,
+      "priority": "critical",
+      "spatial": true
+    },
+    "melee_swing_acolyte": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 87160,
+          "duration_ms": 454,
+          "file": "melee_swing_acolyte_01.wav",
+          "frame_count": 21779,
+          "sha256": "5fb480844dd8872da9d8338c3c9ff3e8329f0c39ff8d032c46d634ae9d00c2a4"
+        },
+        {
+          "byte_size": 85968,
+          "duration_ms": 448,
+          "file": "melee_swing_acolyte_02.wav",
+          "frame_count": 21481,
+          "sha256": "53ac41f062b00de32094d706c915f98ae8574d3101be04d0ce54b86b803c7e71"
+        },
+        {
+          "byte_size": 118692,
+          "duration_ms": 618,
+          "file": "melee_swing_acolyte_03.wav",
+          "frame_count": 29662,
+          "sha256": "08be7b48becf88e6d0190a38d3717c92494d8c3b7b1ea3ade0891e77780ad333"
+        }
+      ],
+      "gain": 0.66,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "melee_swing_arcanist": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 114220,
+          "duration_ms": 595,
+          "file": "melee_swing_arcanist_01.wav",
+          "frame_count": 28544,
+          "sha256": "3bf1e9b4fc60735ef3aeb399066219c66c411e3c52083723254a280386b0b97f"
+        },
+        {
+          "byte_size": 113708,
+          "duration_ms": 592,
+          "file": "melee_swing_arcanist_02.wav",
+          "frame_count": 28416,
+          "sha256": "9893164e8321805bf0f2187ef4d8a4567022b9903e44d872d2af518fe0b37ff9"
+        },
+        {
+          "byte_size": 109084,
+          "duration_ms": 568,
+          "file": "melee_swing_arcanist_03.wav",
+          "frame_count": 27260,
+          "sha256": "e6b0ba7a2fc6b15447788e4098e0ddbe4ddb70d60ee4195d1741d4f46ac669b9"
+        }
+      ],
+      "gain": 0.64,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "melee_swing_ranger": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 101080,
+          "duration_ms": 526,
+          "file": "melee_swing_ranger_01.wav",
+          "frame_count": 25259,
+          "sha256": "1262d0cbb249ff4bddc5044b600762bd6f90761559299d04073eebe14bfb99df"
+        },
+        {
+          "byte_size": 88948,
+          "duration_ms": 463,
+          "file": "melee_swing_ranger_02.wav",
+          "frame_count": 22226,
+          "sha256": "a29b805b29e25b325601ea09a31e20566b6ffc358d7d8f4acae57e3e8a4f72f3"
+        },
+        {
+          "byte_size": 92120,
+          "duration_ms": 480,
+          "file": "melee_swing_ranger_03.wav",
+          "frame_count": 23019,
+          "sha256": "6ba7cc311552079d52ec3fd5761d557fe43113c93a3c92fa7dd8f72f39e8a7f2"
+        }
+      ],
+      "gain": 0.66,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "melee_swing_rogue": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 54144,
+          "duration_ms": 282,
+          "file": "melee_swing_rogue_01.wav",
+          "frame_count": 13525,
+          "sha256": "49125aa2d5cffa380e7d6d940e58589ee471a4c6ae65c0e2e7b5a23c37072998"
+        },
+        {
+          "byte_size": 67816,
+          "duration_ms": 353,
+          "file": "melee_swing_rogue_02.wav",
+          "frame_count": 16943,
+          "sha256": "4d3e03892e0042af1d5a7c87d7ef57ba3352896ca8de2b13f1856f77ddc21147"
+        },
+        {
+          "byte_size": 57004,
+          "duration_ms": 297,
+          "file": "melee_swing_rogue_03.wav",
+          "frame_count": 14240,
+          "sha256": "bb3e339cca19080728f427b94948012c0bb4248b0fadc66b9e2ce1331e9811b1"
+        }
+      ],
+      "gain": 0.66,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "melee_swing_warden": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 68612,
+          "duration_ms": 357,
+          "file": "melee_swing_warden_01.wav",
+          "frame_count": 17142,
+          "sha256": "5f50222122c11db179ba1615ee29bd2ed135f58aa34b8ddb947430375b73bead"
+        },
+        {
+          "byte_size": 81916,
+          "duration_ms": 426,
+          "file": "melee_swing_warden_02.wav",
+          "frame_count": 20468,
+          "sha256": "712fb47b6e885fdae3f7d8cd8b2a311f1c40f4d8fb1a47daa2241a7832de3e3c"
+        },
+        {
+          "byte_size": 81800,
+          "duration_ms": 426,
+          "file": "melee_swing_warden_03.wav",
+          "frame_count": 20439,
+          "sha256": "ee6fd8986fab786beb241a6feb9455a67e73c226c08ae080dd62b9a33cca4fc3"
+        }
+      ],
+      "gain": 0.72,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "mycelial_spore_volley": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "mycelial_spore_volley_01.wav",
+          "frame_count": 120000,
+          "sha256": "b724fdc10a398358b82dbb6b09cfec74e6fcdf6627a58d04eac3bce53cb2a351"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "mycelial_spore_volley_02.wav",
+          "frame_count": 120000,
+          "sha256": "979f4493de1e39855d9f9da69f042d6eca68b46e82b18e015c000f0b1e4099a0"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "mycelial_spore_volley_03.wav",
+          "frame_count": 120000,
+          "sha256": "bc39534ed64c3ef95953fab1d0da562584bbc15b2255aa1e3a8a13bf4be594b5"
+        }
+      ],
+      "gain": 0.68,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "physical_throw": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 134748,
+          "duration_ms": 702,
+          "file": "physical_throw_01.wav",
+          "frame_count": 33676,
+          "sha256": "5390cc3975ea6289ff3295753c915fa621ca3040d577e1b88492dcf227d16f87"
+        },
+        {
+          "byte_size": 130768,
+          "duration_ms": 681,
+          "file": "physical_throw_02.wav",
+          "frame_count": 32681,
+          "sha256": "27c9fea18e770b1142c6825c35d2542145979422f39fc009fcbee53e0df42c14"
+        },
+        {
+          "byte_size": 121764,
+          "duration_ms": 634,
+          "file": "physical_throw_03.wav",
+          "frame_count": 30430,
+          "sha256": "3f1911bf062c111c81c57a53373315e7a802cc4760f56ab2ce33ec074d25978f"
+        }
+      ],
+      "gain": 0.64,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "player_death": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 99060,
+          "duration_ms": 516,
+          "file": "player_death_01.wav",
+          "frame_count": 24754,
+          "sha256": "9ee70340e60e904abb970475471f511d2147f59f820591f03e163fdb28ae8203"
+        },
+        {
+          "byte_size": 91708,
+          "duration_ms": 477,
+          "file": "player_death_02.wav",
+          "frame_count": 22916,
+          "sha256": "c0b8547b3c6da42430a7745b5a41b1188c500b60edcc9d96b6543654a27177d3"
+        },
+        {
+          "byte_size": 103884,
+          "duration_ms": 541,
+          "file": "player_death_03.wav",
+          "frame_count": 25960,
+          "sha256": "a3eec55eb2e5edca77f58ac6cce06ec912bce82890cb7f91e9bb05b5ad70f92a"
+        }
+      ],
+      "gain": 0.48,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 1,
+      "priority": "critical",
+      "spatial": false
+    },
+    "player_hurt_heavy": {
+      "cooldown_ms": 120,
+      "files": [
+        {
+          "byte_size": 250760,
+          "duration_ms": 1306,
+          "file": "player_hurt_heavy_01.wav",
+          "frame_count": 62679,
+          "sha256": "b7ef1427cc2f509ca081c9a0e3e5a5226b41481a71b3b63ee0acef809ccd9135"
+        },
+        {
+          "byte_size": 250572,
+          "duration_ms": 1305,
+          "file": "player_hurt_heavy_02.wav",
+          "frame_count": 62632,
+          "sha256": "0f2eb872de94f735933ab3c3df5082affca8a449c623532e3645450ca39e52f2"
+        },
+        {
+          "byte_size": 195672,
+          "duration_ms": 1019,
+          "file": "player_hurt_heavy_03.wav",
+          "frame_count": 48907,
+          "sha256": "d998709c12c91335ffc18dab66c60c120fc43177f3199b2090b884433aa25a1d"
+        }
+      ],
+      "gain": 0.4,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 1,
+      "priority": "critical",
+      "spatial": false
+    },
+    "player_hurt_light": {
+      "cooldown_ms": 120,
+      "files": [
+        {
+          "byte_size": 40080,
+          "duration_ms": 209,
+          "file": "player_hurt_light_01.wav",
+          "frame_count": 10009,
+          "sha256": "82f215bcdc6d3c63c31f9a99b4a7619ffaebdc62e8c322bd03ab40f68b872fa8"
+        },
+        {
+          "byte_size": 35928,
+          "duration_ms": 187,
+          "file": "player_hurt_light_02.wav",
+          "frame_count": 8971,
+          "sha256": "80ca38b933b3fb8637aa98e6799ad038d4ff0d019c0512497ca893bbfa6fe6ab"
+        },
+        {
+          "byte_size": 32392,
+          "duration_ms": 168,
+          "file": "player_hurt_light_03.wav",
+          "frame_count": 8087,
+          "sha256": "f0d280e77e63dacd6f2a32bd5ab3cb05118b173fba3865b8bcce2290638241b6"
+        }
+      ],
+      "gain": 0.42,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 1,
+      "priority": "critical",
+      "spatial": false
+    },
+    "potion_drink": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 165452,
+          "duration_ms": 862,
+          "file": "potion_drink_01.wav",
+          "frame_count": 41352,
+          "sha256": "425d53f91e1ce3ca8aef29a4facdb6572512595f2cc395afc1211bfe1b04a1eb"
+        },
+        {
+          "byte_size": 158256,
+          "duration_ms": 824,
+          "file": "potion_drink_02.wav",
+          "frame_count": 39553,
+          "sha256": "a113528c3827d08091bb6da5ab6129a9c23c7ff8b6c3b98bb79c305f93a3a540"
+        },
+        {
+          "byte_size": 153768,
+          "duration_ms": 801,
+          "file": "potion_drink_03.wav",
+          "frame_count": 38431,
+          "sha256": "fd791dbdfd95d893f08c45b7a40d211759c2de9f2b33f25406a6509dd46d5536"
+        }
+      ],
+      "gain": 0.72,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": false
+    },
+    "ranger_beast_command": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 57704,
+          "duration_ms": 300,
+          "file": "ranger_beast_command_01.wav",
+          "frame_count": 14415,
+          "sha256": "42f6f9d92ac1a192c913149a873ca4006634108c69b8376a1c8c99da93d7b219"
+        },
+        {
+          "byte_size": 72108,
+          "duration_ms": 375,
+          "file": "ranger_beast_command_02.wav",
+          "frame_count": 18016,
+          "sha256": "9015b45a0ca507650a2a44eea6f1df070471b899dec7d3568b3f850f889b99b1"
+        }
+      ],
+      "gain": 0.44,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": false
+    },
+    "ranger_beast_summon": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "ranger_beast_summon_01.wav",
+          "frame_count": 38400,
+          "sha256": "44e946991adf294a30f25fa53e7ae1fd7886139152d1bbf0a5c85701b2dddd92"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "ranger_beast_summon_02.wav",
+          "frame_count": 38400,
+          "sha256": "75a591aaca91ccd42f046bc0ba04e81561c6f318776ca9e859d1d06edf7d5c98"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "ranger_beast_summon_03.wav",
+          "frame_count": 38400,
+          "sha256": "a8bdb87a7db6e5bd9e338092fceabb3b8c71f9c9b607985b2e6386b2ea515d5f"
+        }
+      ],
+      "gain": 0.68,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
+    },
+    "relic_recovered": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 416548,
+          "duration_ms": 2169,
+          "file": "relic_recovered_01.wav",
+          "frame_count": 104126,
+          "sha256": "e9bb69a8df79e01b4362a532cd9b80bcd8ec19f5502db415f07fc75c2320072a"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "relic_recovered_02.wav",
+          "frame_count": 120000,
+          "sha256": "3c8695a0b2f9ba67fc57807fc9c658dcd1caed69ac0dad05467a7d3a7a07ec78"
+        }
+      ],
+      "gain": 0.72,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
+    },
+    "rime_frost_fan": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 352436,
+          "duration_ms": 1835,
+          "file": "rime_frost_fan_01.wav",
+          "frame_count": 88098,
+          "sha256": "b595446d0cd2da1ec2f981fd0fbc5be56d3d14c5cdaa54a28060e677ab9d2988"
+        },
+        {
+          "byte_size": 326192,
+          "duration_ms": 1699,
+          "file": "rime_frost_fan_02.wav",
+          "frame_count": 81537,
+          "sha256": "7a4443dd2032cde5a3ace407bcb29825ff3427c6b5d71fefc42e8d2642d54faf"
+        }
+      ],
+      "gain": 0.7,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "rogue_bell_cast": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "rogue_bell_cast_01.wav",
+          "frame_count": 38400,
+          "sha256": "5ca1f13424e862c31b9a32deaad7f01cf0f5152fd726e26d9e838cd4f2c43a58"
+        }
+      ],
+      "gain": 0.68,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
+    },
+    "rogue_bell_detonate": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "rogue_bell_detonate_01.wav",
+          "frame_count": 38400,
+          "sha256": "b8af095845e4fc2ffacc84e30586fdc5a85578490cb270c7d8d0f60976898b47"
+        }
+      ],
+      "gain": 0.72,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
+    },
+    "rogue_stealth": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "rogue_stealth_01.wav",
+          "frame_count": 38400,
+          "sha256": "6db0a4c4efe6dc0988f417734d0d166c2902f2c4670d692a3f6c4706e59367dc"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "rogue_stealth_02.wav",
+          "frame_count": 38400,
+          "sha256": "8346e2ee1f5fa09ae9a2f9c541579a948e5e3ca37593a5e12a23d9fcaae04b32"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "rogue_stealth_03.wav",
+          "frame_count": 38400,
+          "sha256": "5f3801d6fb52005e7ea1a1b0b23ba0ad7b9eb3fb25b1a3d19acbd77a7c14f030"
+        }
+      ],
+      "gain": 0.64,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
+    },
+    "run_start": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 239176,
+          "duration_ms": 1245,
+          "file": "run_start_01.wav",
+          "frame_count": 59783,
+          "sha256": "d518b2c9174efb4b429179c7adcee48de92cb494e4ec6130e075dc86edc61a2f"
+        },
+        {
+          "byte_size": 144440,
+          "duration_ms": 752,
+          "file": "run_start_02.wav",
+          "frame_count": 36099,
+          "sha256": "246b19f3509e90e91158a523268b9b87c6b44b5f78a99f7237cc0c4ba8fd582e"
+        }
+      ],
+      "gain": 0.7,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
+    },
+    "secret_unlock": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 70128,
+          "duration_ms": 365,
+          "file": "secret_unlock_01.wav",
+          "frame_count": 17521,
+          "sha256": "ecffb1bd8d4decfb36074dd1d9759384c982542a4795034b481ea3546f701781"
+        },
+        {
+          "byte_size": 77820,
+          "duration_ms": 405,
+          "file": "secret_unlock_02.wav",
+          "frame_count": 19444,
+          "sha256": "2d74192b8214db10d745d50d6fad379f8025ee4c5b72e8d6028dd235d6df5118"
+        },
+        {
+          "byte_size": 79416,
+          "duration_ms": 413,
+          "file": "secret_unlock_03.wav",
+          "frame_count": 19843,
+          "sha256": "dba81de6f54ffddd92c2ab2bdd1db4efd57d07fdfb3a7f4256a7fc6fc108d490"
+        }
+      ],
+      "gain": 0.66,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "shadow_cast": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "shadow_cast_01.wav",
+          "frame_count": 38400,
+          "sha256": "bfcbb3213967190dc0b6d2118e8dd658feb9553100614f7f2c6fa79e85c63cc4"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "shadow_cast_02.wav",
+          "frame_count": 38400,
+          "sha256": "efbee8bba12f6986491c2113c2e21974d10e2fad0233721be479aea366ca21ba"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "shadow_cast_03.wav",
+          "frame_count": 38400,
+          "sha256": "4cdfca9a4129ff52c9898075a38426a0e6f2959bf769545ea98732a645d2efb3"
+        }
+      ],
+      "gain": 0.64,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "shield_block": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 112472,
+          "duration_ms": 586,
+          "file": "shield_block_01.wav",
+          "frame_count": 28107,
+          "sha256": "33ffea379cf1c9354e79976c4513c15eaba39a89348f70448c89ced47bc97231"
+        },
+        {
+          "byte_size": 126840,
+          "duration_ms": 660,
+          "file": "shield_block_02.wav",
+          "frame_count": 31699,
+          "sha256": "1a913f9e6691b87bac5cd87d43688a6fe1d8318a078ea249c8f272bced5228ee"
+        },
+        {
+          "byte_size": 113156,
+          "duration_ms": 589,
+          "file": "shield_block_03.wav",
+          "frame_count": 28278,
+          "sha256": "a7c868b7100c0ecfc7bacd193f06d4b8b0ac111f74f0bacd5def68d7508d3d21"
+        }
+      ],
+      "gain": 0.76,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "shrine_fortune": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 127528,
+          "duration_ms": 664,
+          "file": "shrine_fortune_01.wav",
+          "frame_count": 31871,
+          "sha256": "c575fe3476cb7ff3bacb597c77a36119eb003a5fafd612b05da3208e67b22887"
+        },
+        {
+          "byte_size": 89128,
+          "duration_ms": 464,
+          "file": "shrine_fortune_02.wav",
+          "frame_count": 22271,
+          "sha256": "0600b6bec35be549021093ed2ce2eee79968ff6a308cfcb89ceb043d6975adc6"
+        }
+      ],
+      "gain": 0.6,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "shrine_haste": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 470212,
+          "duration_ms": 2449,
+          "file": "shrine_haste_01.wav",
+          "frame_count": 117542,
+          "sha256": "27a0816f096fd6491d9977741c5c39352704d0c0ba1c89622d207ea35380b814"
+        },
+        {
+          "byte_size": 457604,
+          "duration_ms": 2383,
+          "file": "shrine_haste_02.wav",
+          "frame_count": 114390,
+          "sha256": "e3293737215a661c3be73b770d44644d4921cf3952b904c68abbbfbf4dde39a2"
+        },
+        {
+          "byte_size": 468160,
+          "duration_ms": 2438,
+          "file": "shrine_haste_03.wav",
+          "frame_count": 117029,
+          "sha256": "97f99e5da8db79b73dfd9ad764551385b871b8e9c9e14365ddb45f93a8b98276"
+        }
+      ],
+      "gain": 0.68,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "shrine_insight": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "shrine_insight_01.wav",
+          "frame_count": 120000,
+          "sha256": "41d5949b141b4139b4dd1117e9eb77518d59e65f6ef7004eec867ebf9d990c9d"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "shrine_insight_02.wav",
+          "frame_count": 120000,
+          "sha256": "3ffe0ddbf8dce6399d94a5f583426449e1ec15ffaf6b570ddda4d1b124fdebaa"
+        }
+      ],
+      "gain": 0.68,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "shrine_mending": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "shrine_mending_01.wav",
+          "frame_count": 120000,
+          "sha256": "62bdae732bb34583b2da62a9a21f6829e68707174c2d708743b29ce1b863d16e"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "shrine_mending_02.wav",
+          "frame_count": 120000,
+          "sha256": "7929821844d93e2584275260630e546067f3b66f6061af7fcda4040e47b0f08b"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "shrine_mending_03.wav",
+          "frame_count": 120000,
+          "sha256": "6a8fa871776b627a2978e1b36f3ce611cb17d49c3470cf242067cd5cea009489"
+        }
+      ],
+      "gain": 0.62,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "shrine_oath": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 398764,
+          "duration_ms": 2077,
+          "file": "shrine_oath_01.wav",
+          "frame_count": 99680,
+          "sha256": "59ca5a024299b1d19be0463cb2debcd301d230a30d0d11e112708169e867604a"
+        },
+        {
+          "byte_size": 388752,
+          "duration_ms": 2025,
+          "file": "shrine_oath_02.wav",
+          "frame_count": 97177,
+          "sha256": "68b30ca1c69cdd82227a818f4afe5306c6f8c7d3f74f0e91ca5061e434871888"
+        },
+        {
+          "byte_size": 395856,
+          "duration_ms": 2062,
+          "file": "shrine_oath_03.wav",
+          "frame_count": 98953,
+          "sha256": "55b2374001f1ef80aecf21d3591d74763bda3590084c2394055c3a64d536f9cb"
+        }
+      ],
+      "gain": 0.68,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "shrine_twilight": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 416548,
+          "duration_ms": 2169,
+          "file": "shrine_twilight_01.wav",
+          "frame_count": 104126,
+          "sha256": "e9bb69a8df79e01b4362a532cd9b80bcd8ec19f5502db415f07fc75c2320072a"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "shrine_twilight_02.wav",
+          "frame_count": 120000,
+          "sha256": "3c8695a0b2f9ba67fc57807fc9c658dcd1caed69ac0dad05467a7d3a7a07ec78"
+        }
+      ],
+      "gain": 0.66,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "shrine_war": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "shrine_war_01.wav",
+          "frame_count": 120000,
+          "sha256": "aa1167606dc4fb9fa4264af40e870edf5b0c296c60476fd8d7cd4c2e97827669"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "shrine_war_02.wav",
+          "frame_count": 120000,
+          "sha256": "f1cb0ad7fbdb868181eee1abf64c3edc8ac61ad7817c791d3d02503cc962977d"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "shrine_war_03.wav",
+          "frame_count": 120000,
+          "sha256": "a1e8eba5f1cc32086fc12d56f8eca0b4d19f5fa86d1612ff29d2bdad74e9070f"
+        }
+      ],
+      "gain": 0.72,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "stairs_descend": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 93324,
+          "duration_ms": 486,
+          "file": "stairs_descend_01.wav",
+          "frame_count": 23320,
+          "sha256": "0998245cf52c2e37d8b306f94ebbb31540bcf9e7c36e3fdff2051cee3c54088c"
+        },
+        {
+          "byte_size": 107356,
+          "duration_ms": 559,
+          "file": "stairs_descend_02.wav",
+          "frame_count": 26828,
+          "sha256": "e1929e0de31f01dd9e4c5e99c287e8726fba491faed18fd88f471c0f688b0dee"
+        },
+        {
+          "byte_size": 119768,
+          "duration_ms": 624,
+          "file": "stairs_descend_03.wav",
+          "frame_count": 29931,
+          "sha256": "bc68b3a97e24a382d0c7099948c51ad0db7365ca627931f147a724b4fd7cd03d"
+        }
+      ],
+      "gain": 0.66,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
+    "step_armor_heavy": {
+      "cooldown_ms": 90,
+      "files": [
+        {
+          "byte_size": 83360,
+          "duration_ms": 434,
+          "file": "step_armor_heavy_01.wav",
+          "frame_count": 20829,
+          "sha256": "5f50ccd060e6c0026042e337be3cb0a6d36b696a08381c3690567d2bf44acae8"
+        },
+        {
+          "byte_size": 77492,
+          "duration_ms": 403,
+          "file": "step_armor_heavy_02.wav",
+          "frame_count": 19362,
+          "sha256": "5bc530b1921139ba76873d12d632124b75d2bfe7152547a2eead6c95017f6148"
+        },
+        {
+          "byte_size": 72120,
+          "duration_ms": 375,
+          "file": "step_armor_heavy_03.wav",
+          "frame_count": 18019,
+          "sha256": "78fb36c308dd6de56d8f0ecb4c7bc2563e43741ab0a69287902d7de4232bea4b"
+        }
+      ],
+      "gain": 0.43,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 4,
+      "priority": "low",
+      "spatial": true
+    },
+    "step_armor_light": {
+      "cooldown_ms": 90,
+      "files": [
+        {
+          "byte_size": 74848,
+          "duration_ms": 390,
+          "file": "step_armor_light_01.wav",
+          "frame_count": 18701,
+          "sha256": "ef340b02ba9a6c1b1bfcea44836b2ef2a0f61516e0891c3a252c84c5e8228d55"
+        },
+        {
+          "byte_size": 71204,
+          "duration_ms": 371,
+          "file": "step_armor_light_02.wav",
+          "frame_count": 17790,
+          "sha256": "ac87feecabe1b4ff5b75ef26d96c99b75fe9ab5b03f088bcb7804b7577d17b99"
+        },
+        {
+          "byte_size": 83484,
+          "duration_ms": 435,
+          "file": "step_armor_light_03.wav",
+          "frame_count": 20860,
+          "sha256": "fa6690e5bd488924802ee7fbd6426bf66ea79e24057e67c5b18e0f09b79c2006"
+        }
+      ],
+      "gain": 0.36,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 4,
+      "priority": "low",
+      "spatial": true
+    },
+    "step_armor_medium": {
+      "cooldown_ms": 90,
+      "files": [
+        {
+          "byte_size": 86216,
+          "duration_ms": 449,
+          "file": "step_armor_medium_01.wav",
+          "frame_count": 21543,
+          "sha256": "7e02ea9386a13607f535533f0e3bf8e887ebbfb37884590d4ae6e98d6287ce95"
+        },
+        {
+          "byte_size": 101008,
+          "duration_ms": 526,
+          "file": "step_armor_medium_02.wav",
+          "frame_count": 25241,
+          "sha256": "8ed9e5b1eb82981ebb6616c21359b967a41a3e43efdda389f9d7fa0ba7182c9b"
+        },
+        {
+          "byte_size": 100628,
+          "duration_ms": 524,
+          "file": "step_armor_medium_03.wav",
+          "frame_count": 25146,
+          "sha256": "4fee2493ab0879253db87ec872dca9d865777b708290c577cd4c3a511d0633a7"
+        }
+      ],
+      "gain": 0.39,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 4,
+      "priority": "low",
+      "spatial": true
+    },
+    "step_boot_dirt": {
+      "cooldown_ms": 90,
+      "files": [
+        {
+          "byte_size": 56828,
+          "duration_ms": 296,
+          "file": "step_boot_dirt_01.wav",
+          "frame_count": 14196,
+          "sha256": "f27932871b70fa23a496191ab6674db38ba9f547d0e45d93b1146e09991714ac"
+        },
+        {
+          "byte_size": 51948,
+          "duration_ms": 270,
+          "file": "step_boot_dirt_02.wav",
+          "frame_count": 12976,
+          "sha256": "5558f5d8facf75db40b9c11bdce5d594645071e9ba5509959f7124737cb6a211"
+        },
+        {
+          "byte_size": 52716,
+          "duration_ms": 274,
+          "file": "step_boot_dirt_03.wav",
+          "frame_count": 13168,
+          "sha256": "a2b12c8d41e27cfc74bac7cbc98f0b8e111d4e8249ff916fd51004653610e6ab"
+        }
+      ],
+      "gain": 0.36,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 4,
+      "priority": "low",
+      "spatial": true
+    },
+    "step_boot_dirt_light": {
+      "cooldown_ms": 90,
+      "files": [
+        {
+          "byte_size": 62544,
+          "duration_ms": 326,
+          "file": "step_boot_dirt_light_01.wav",
+          "frame_count": 15625,
+          "sha256": "dc3cfbf2870396d2eb62469d6baf1020f31c2d5288c087ca6519b97f9ab22076"
+        },
+        {
+          "byte_size": 62376,
+          "duration_ms": 325,
+          "file": "step_boot_dirt_light_02.wav",
+          "frame_count": 15583,
+          "sha256": "9e6d9fc2b6447720839af51c959448bcde9cc91a564f1c1ae36d90bfe8dc1dc2"
+        },
+        {
+          "byte_size": 62328,
+          "duration_ms": 324,
+          "file": "step_boot_dirt_light_03.wav",
+          "frame_count": 15571,
+          "sha256": "95f27a8296ee454d889adefc5fff5fbadf039d0c83fb038262d586975fb2d485"
+        }
+      ],
+      "gain": 0.32,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 4,
+      "priority": "low",
+      "spatial": true
+    },
+    "step_boot_grass": {
+      "cooldown_ms": 90,
+      "files": [
+        {
+          "byte_size": 51492,
+          "duration_ms": 268,
+          "file": "step_boot_grass_01.wav",
+          "frame_count": 12862,
+          "sha256": "3529765efb626c67ea5da04b4676ed58a60e473ced2943d9f74bb7339633b8cf"
+        },
+        {
+          "byte_size": 53364,
+          "duration_ms": 278,
+          "file": "step_boot_grass_02.wav",
+          "frame_count": 13330,
+          "sha256": "b24dd20a378efd110b4469dabb26e768e9989bf81b067f51c310f5540b3d416b"
+        },
+        {
+          "byte_size": 52376,
+          "duration_ms": 273,
+          "file": "step_boot_grass_03.wav",
+          "frame_count": 13083,
+          "sha256": "00b97e2197666a7983e839aa321ce376b719e2b6d608141b84d822a39f65af9e"
+        }
+      ],
+      "gain": 0.32,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 4,
+      "priority": "low",
+      "spatial": true
+    },
+    "step_boot_hard": {
+      "cooldown_ms": 90,
+      "files": [
+        {
+          "byte_size": 56024,
+          "duration_ms": 292,
+          "file": "step_boot_hard_01.wav",
+          "frame_count": 13995,
+          "sha256": "0237ca9a3aef0a999f95a0880be31600570d40c609dc5afdabc0cbd944322a28"
+        },
+        {
+          "byte_size": 66944,
+          "duration_ms": 348,
+          "file": "step_boot_hard_02.wav",
+          "frame_count": 16725,
+          "sha256": "5f756abbf943f2eeb69a00264b14e7475252a6771df8ceade8f7239a7b2af61e"
+        },
+        {
+          "byte_size": 57252,
+          "duration_ms": 298,
+          "file": "step_boot_hard_03.wav",
+          "frame_count": 14302,
+          "sha256": "affe5934d05a484e0790bb71598705cd3938409ece705ec649d90429de7eabb6"
+        }
+      ],
+      "gain": 0.36,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 4,
+      "priority": "low",
+      "spatial": true
+    },
+    "step_boot_hard_light": {
+      "cooldown_ms": 90,
+      "files": [
+        {
+          "byte_size": 60992,
+          "duration_ms": 317,
+          "file": "step_boot_hard_light_01.wav",
+          "frame_count": 15237,
+          "sha256": "39954a3fa197d5f2c537a8a3726b152baa754c7cca8c66db3e5062b9725ab555"
+        },
+        {
+          "byte_size": 55856,
+          "duration_ms": 291,
+          "file": "step_boot_hard_light_02.wav",
+          "frame_count": 13953,
+          "sha256": "97a8e94e97934f72b8a79d1b760840ef0fd30d6647fd4b0eb57c2e62670c2227"
+        },
+        {
+          "byte_size": 55636,
+          "duration_ms": 290,
+          "file": "step_boot_hard_light_03.wav",
+          "frame_count": 13898,
+          "sha256": "7c29e031c2928269e05809f0da23315cc9086099e86c8d2c4f94bdc144d9dd23"
+        }
+      ],
+      "gain": 0.32,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 4,
+      "priority": "low",
+      "spatial": true
+    },
+    "step_creature_heavy": {
+      "cooldown_ms": 90,
+      "files": [
+        {
+          "byte_size": 61904,
+          "duration_ms": 322,
+          "file": "step_creature_heavy_01.wav",
+          "frame_count": 15465,
+          "sha256": "28da452048f3dd8fdc18506ab58ca8206a2b367bbaf2ec1c36fc64be9df41e6b"
+        },
+        {
+          "byte_size": 71096,
+          "duration_ms": 370,
+          "file": "step_creature_heavy_02.wav",
+          "frame_count": 17763,
+          "sha256": "b88f596ae6bcb82c7b5ba7bf22c654ac455ee55bb9c6f2611f5dba08518a1873"
+        },
+        {
+          "byte_size": 57384,
+          "duration_ms": 299,
+          "file": "step_creature_heavy_03.wav",
+          "frame_count": 14335,
+          "sha256": "ea9a3274f8e5f2cc4071fd3abaa85e2325881ebd27b1b431e0c877a038aa52c4"
+        }
+      ],
+      "gain": 0.5,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 4,
+      "priority": "low",
+      "spatial": true
+    },
+    "story_consequence": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 430008,
+          "duration_ms": 2239,
+          "file": "story_consequence_01.wav",
+          "frame_count": 107491,
+          "sha256": "1058b73ee340f23e08ce3c781f0bc58c92ab512eaa2e678e14bfc3a597be7c8e"
+        },
+        {
+          "byte_size": 430540,
+          "duration_ms": 2242,
+          "file": "story_consequence_02.wav",
+          "frame_count": 107624,
+          "sha256": "4b30c8c4c5e979b221582d16fca933cf938ae6f3371f57bc619b9ab54e2db4ff"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "story_consequence_03.wav",
+          "frame_count": 120000,
+          "sha256": "7a36ac6fa58648d3ee1db79caec70ff220bda6cf54a44f25c0c7a268c0cc1d86"
+        }
+      ],
+      "gain": 0.7,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
+    },
+    "trap_needle": {
+      "cooldown_ms": 120,
+      "files": [
+        {
+          "byte_size": 108680,
+          "duration_ms": 566,
+          "file": "trap_needle_01.wav",
+          "frame_count": 27159,
+          "sha256": "e38bef24dbb1852cd4ecaee1cbab3f77a6664282d170c0601763a47332f17e94"
+        },
+        {
+          "byte_size": 130012,
+          "duration_ms": 677,
+          "file": "trap_needle_02.wav",
+          "frame_count": 32492,
+          "sha256": "9970b2e61e98177dfafb65376791e3e2b25c8b23e5d340ebf1c82c528909b6f9"
+        },
+        {
+          "byte_size": 126232,
+          "duration_ms": 657,
+          "file": "trap_needle_03.wav",
+          "frame_count": 31547,
+          "sha256": "3227b9aeeadbb8d03851aa08755f3aee36912de1fe5c7765b1db6bb2128c0372"
+        }
+      ],
+      "gain": 0.68,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 1,
+      "priority": "critical",
+      "spatial": true
+    },
+    "trap_rune": {
+      "cooldown_ms": 120,
+      "files": [
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "trap_rune_01.wav",
+          "frame_count": 120000,
+          "sha256": "d515c7adee073e5670b4d8deb7cdbc0a8d528f667e3b58d65dd610bed4419cdd"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "trap_rune_02.wav",
+          "frame_count": 120000,
+          "sha256": "dde3c9c3a03654b2c6355ed09fa7e9642ec467b11bdf731244c779c01be6bcee"
+        },
+        {
+          "byte_size": 480044,
+          "duration_ms": 2500,
+          "file": "trap_rune_03.wav",
+          "frame_count": 120000,
+          "sha256": "496738237130ce78bd6b3fe25df470ba0ed3fd3a0c79f726c3f2050e22707344"
+        }
+      ],
+      "gain": 0.72,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 1,
+      "priority": "critical",
+      "spatial": true
+    },
+    "trap_spike": {
+      "cooldown_ms": 120,
+      "files": [
+        {
+          "byte_size": 146388,
+          "duration_ms": 762,
+          "file": "trap_spike_01.wav",
+          "frame_count": 36586,
+          "sha256": "d69057eff215ec21b8c7dd9fd66a9cf3689e4c2daa16dfb8b6d3ee978c2a4905"
+        },
+        {
+          "byte_size": 160500,
+          "duration_ms": 836,
+          "file": "trap_spike_02.wav",
+          "frame_count": 40114,
+          "sha256": "19472cc150866ad96be0328cfd1985bd2d40f7c913a614f6e3febac0b7e72c72"
+        },
+        {
+          "byte_size": 153432,
+          "duration_ms": 799,
+          "file": "trap_spike_03.wav",
+          "frame_count": 38347,
+          "sha256": "ef564d5ea7e14337fdec2f1c3a7758a3129d5c712259c2702b3551093a0b5837"
+        }
+      ],
+      "gain": 0.76,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 1,
+      "priority": "critical",
+      "spatial": true
     },
     "ui_back": {
-      "duration_ms": 110,
-      "file": "ui_back.wav",
-      "sha256": "1eb6ac42ff0c33fd69ea63f192e7d9d17b19c7d8d01e8a22713aee049179bb71",
-      "usage": "runtime"
+      "cooldown_ms": 80,
+      "files": [
+        {
+          "byte_size": 20112,
+          "duration_ms": 105,
+          "file": "ui_back_01.wav",
+          "frame_count": 5017,
+          "sha256": "85be5cafc67481c9a9b34f5f5e1d35bd09a41d655cc00ec29263573efc551842"
+        },
+        {
+          "byte_size": 18188,
+          "duration_ms": 95,
+          "file": "ui_back_02.wav",
+          "frame_count": 4536,
+          "sha256": "2e3a2cb080895248c39fdc29af575a226371cacbbf24b9bb21a7105586e41f08"
+        },
+        {
+          "byte_size": 22972,
+          "duration_ms": 119,
+          "file": "ui_back_03.wav",
+          "frame_count": 5732,
+          "sha256": "6e2e72e11816bb9316b51270fe414bf1c7bcba299c3cda53c6684b954cc67b8e"
+        }
+      ],
+      "gain": 0.48,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 1,
+      "priority": "medium",
+      "spatial": false
     },
     "ui_confirm": {
-      "duration_ms": 130,
-      "file": "ui_confirm.wav",
-      "sha256": "87ca5fa6276f7021554d7dca7d985d1763f7089df4e7d40406452ef87ea0b812",
-      "usage": "runtime"
+      "cooldown_ms": 80,
+      "files": [
+        {
+          "byte_size": 126856,
+          "duration_ms": 660,
+          "file": "ui_confirm_01.wav",
+          "frame_count": 31703,
+          "sha256": "35b4c440e9072cc86036e12f9c65385435ac099358be6f33294bd3751622b063"
+        },
+        {
+          "byte_size": 119976,
+          "duration_ms": 625,
+          "file": "ui_confirm_02.wav",
+          "frame_count": 29983,
+          "sha256": "bf1e965cff7d6c446635480e9988511a7acdabe6fc9a788fd28def80a885d2ee"
+        },
+        {
+          "byte_size": 111484,
+          "duration_ms": 580,
+          "file": "ui_confirm_03.wav",
+          "frame_count": 27860,
+          "sha256": "88d835f8c9b91049b63adc63e30a9b85352624300bf8ca0d891f6b31008d9c8d"
+        }
+      ],
+      "gain": 0.52,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 1,
+      "priority": "medium",
+      "spatial": false
     },
-    "ui_nav": {
-      "duration_ms": 45,
-      "file": "ui_nav.wav",
-      "sha256": "346c4f75f536c9254f3aa4e19571efd355817cccb769fb78669549f024fa4244",
-      "usage": "runtime"
+    "ui_equip": {
+      "cooldown_ms": 80,
+      "files": [
+        {
+          "byte_size": 57900,
+          "duration_ms": 301,
+          "file": "ui_equip_01.wav",
+          "frame_count": 14464,
+          "sha256": "aacfb2bcb5392446898b225376a413c3b61dc7f10bd6a24054e0ff1edf689877"
+        },
+        {
+          "byte_size": 41768,
+          "duration_ms": 217,
+          "file": "ui_equip_02.wav",
+          "frame_count": 10431,
+          "sha256": "1dbb6f56aa74c2975a17a1f59643261d17f362330c1b4cf09140d2ed88964836"
+        }
+      ],
+      "gain": 0.5,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 1,
+      "priority": "medium",
+      "spatial": false
+    },
+    "ui_navigate": {
+      "cooldown_ms": 50,
+      "files": [
+        {
+          "byte_size": 10528,
+          "duration_ms": 55,
+          "file": "ui_navigate_01.wav",
+          "frame_count": 2621,
+          "sha256": "8659192f055537768c01aa7e4399ef9881a8d6d0e6e643475508e64949b9bfaa"
+        },
+        {
+          "byte_size": 10428,
+          "duration_ms": 54,
+          "file": "ui_navigate_02.wav",
+          "frame_count": 2596,
+          "sha256": "f2e05980e223c561be7984b59824f1a9df54bab77ee1a7a09588a75b761c5e4e"
+        },
+        {
+          "byte_size": 10284,
+          "duration_ms": 53,
+          "file": "ui_navigate_03.wav",
+          "frame_count": 2560,
+          "sha256": "a40e9d0ba8c0c8577129164f335e8fd49c231386a38117b37b23c9cf7021487c"
+        }
+      ],
+      "gain": 0.38,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 1,
+      "priority": "medium",
+      "spatial": false
+    },
+    "ui_purchase": {
+      "cooldown_ms": 80,
+      "files": [
+        {
+          "byte_size": 232164,
+          "duration_ms": 1209,
+          "file": "ui_purchase_01.wav",
+          "frame_count": 58030,
+          "sha256": "67aa9050ea4b15cbb9bb30d05a25b1a1b7da2f535a9e815cf731e017a558e539"
+        },
+        {
+          "byte_size": 242400,
+          "duration_ms": 1262,
+          "file": "ui_purchase_02.wav",
+          "frame_count": 60589,
+          "sha256": "e449b0d8521103e7bdb313fe5047ef33e97d64da675d75f0f741ceb30e831788"
+        },
+        {
+          "byte_size": 248456,
+          "duration_ms": 1294,
+          "file": "ui_purchase_03.wav",
+          "frame_count": 62103,
+          "sha256": "12aeab6e2a7d2b1f888088f4ae2a3024a1aec509023d43846c02cc682885c580"
+        }
+      ],
+      "gain": 0.52,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 1,
+      "priority": "medium",
+      "spatial": false
+    },
+    "ui_reject": {
+      "cooldown_ms": 80,
+      "files": [
+        {
+          "byte_size": 129888,
+          "duration_ms": 676,
+          "file": "ui_reject_01.wav",
+          "frame_count": 32461,
+          "sha256": "fd69d00b9e53d5ccd8d522997f5e99f73fc0276cd44864ee5e79e6e066541b8e"
+        }
+      ],
+      "gain": 0.55,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 1,
+      "priority": "critical",
+      "spatial": false
     },
     "victory": {
-      "duration_ms": 900,
-      "file": "victory.wav",
-      "sha256": "e1520c39c55720f8f8bed13eeab2142f821bae5e882564fbfffd612659f36927",
-      "usage": "runtime"
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 470212,
+          "duration_ms": 2449,
+          "file": "victory_01.wav",
+          "frame_count": 117542,
+          "sha256": "27a0816f096fd6491d9977741c5c39352704d0c0ba1c89622d207ea35380b814"
+        },
+        {
+          "byte_size": 457604,
+          "duration_ms": 2383,
+          "file": "victory_02.wav",
+          "frame_count": 114390,
+          "sha256": "e3293737215a661c3be73b770d44644d4921cf3952b904c68abbbfbf4dde39a2"
+        },
+        {
+          "byte_size": 468160,
+          "duration_ms": 2438,
+          "file": "victory_03.wav",
+          "frame_count": 117029,
+          "sha256": "97f99e5da8db79b73dfd9ad764551385b871b8e9c9e14365ddb45f93a8b98276"
+        }
+      ],
+      "gain": 0.82,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        1.0,
+        1.0
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
+    },
+    "void_arcane_lance": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 218416,
+          "duration_ms": 1137,
+          "file": "void_arcane_lance_01.wav",
+          "frame_count": 54593,
+          "sha256": "1ba7f54618153fc27e7c20db84e9d94ec1895267e00e65c31259bbccda2a5552"
+        },
+        {
+          "byte_size": 235172,
+          "duration_ms": 1225,
+          "file": "void_arcane_lance_02.wav",
+          "frame_count": 58782,
+          "sha256": "ac633e9c134a2ee35ebac53c71e6498bd57d63ed193919f1d5f06df61affa6f6"
+        }
+      ],
+      "gain": 0.72,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "warden_guard_bolt": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 134748,
+          "duration_ms": 702,
+          "file": "warden_guard_bolt_01.wav",
+          "frame_count": 33676,
+          "sha256": "5390cc3975ea6289ff3295753c915fa621ca3040d577e1b88492dcf227d16f87"
+        },
+        {
+          "byte_size": 130768,
+          "duration_ms": 681,
+          "file": "warden_guard_bolt_02.wav",
+          "frame_count": 32681,
+          "sha256": "27c9fea18e770b1142c6825c35d2542145979422f39fc009fcbee53e0df42c14"
+        },
+        {
+          "byte_size": 121764,
+          "duration_ms": 634,
+          "file": "warden_guard_bolt_03.wav",
+          "frame_count": 30430,
+          "sha256": "3f1911bf062c111c81c57a53373315e7a802cc4760f56ab2ce33ec074d25978f"
+        }
+      ],
+      "gain": 0.64,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": true
+    },
+    "warden_time_skip": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "warden_time_skip_01.wav",
+          "frame_count": 38400,
+          "sha256": "6219a6824c198c461cf77162eb3c164c006c8731a93bde96795b98c2f0d6b952"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "warden_time_skip_02.wav",
+          "frame_count": 38400,
+          "sha256": "020dc91966bd28658a590900bbf2744ca61199c698e61bb2eadcf0c334c6c22c"
+        },
+        {
+          "byte_size": 153644,
+          "duration_ms": 800,
+          "file": "warden_time_skip_03.wav",
+          "frame_count": 38400,
+          "sha256": "55e2828db665813581a62e19e7e75ac06c057501cfdabccb5f0aa1a266ef86e4"
+        }
+      ],
+      "gain": 0.72,
+      "max_duration_ms": 800,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "high",
+      "spatial": false
     }
   },
-  "format_version": 1,
-  "sample_rate": 22050,
-  "sample_size_bits": 16
+  "file_count": 271,
+  "format_version": 2,
+  "total_duration_ms": 265118,
+  "total_runtime_bytes": 50913496
 }

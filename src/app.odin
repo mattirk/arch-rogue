@@ -102,6 +102,9 @@ App :: struct {
 	options_return: App_Mode,
 	quit_requested: bool,
 	platform_effects: bit_set[Platform_Effect],
+	ui_sfx_bank:     Sfx_Bank, // transient reducer decision, consumed after app_apply
+	ui_sfx_override: bool,
+	ui_sfx_suppress: bool,
 	input_modality:      Mobile_Input_Modality,
 	mobile_guard:        Mobile_Guard_State,
 	mobile_utility_open: bool,
@@ -185,7 +188,7 @@ Run :: struct {
 	loot_rng:     Pcg32, // kill-drop stream, consumed across the floor's life
 	combat_rng:   Pcg32, // independent crit/proc/familiar stream
 	nav:          Nav_Field, // player-tracking route field (MX.2.3)
-	sfx:          [dynamic]Sfx_Kind, // drained by the audio layer each frame
+	sfx:          [dynamic]Sfx_Event, // transient; drained by the audio layer each frame
 	feel:         [dynamic]Feel_Event, // deterministic presentation events
 	hitstop_ticks: int, // impact-freeze ticks pending; transient, never saved
 	dark_floor:   bool,
@@ -563,7 +566,7 @@ app_tick :: proc(app: ^App) {
 			player_start_visual_action(&app.run.player,.Die,PLAYER_DIE_SECONDS)
 			app_request_terminal(app, .Death)
 			app_clear_play_input(app)
-			append(&app.run.sfx, Sfx_Kind.Death)
+			sfx_emit(&app.run, .Player_Death)
 		}
 	}
 }
@@ -691,11 +694,17 @@ app_mark_run_dirty :: proc(app: ^App, critical := false) {
 
 // Returns true when the floor changed and the camera should snap to spawn.
 app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
+	// UI feedback is an app-apply result, not persistent app state. Main consumes
+	// it immediately after this reducer returns.
+	app.ui_sfx_bank = {}
+	app.ui_sfx_override = false
+	app.ui_sfx_suppress = false
+
 	// Release edges remain global across paused/modal screens so a cancellable
 	// Big Hit can never become stuck merely because its key was released there.
 	if intent.action1_released && (app.mode == .Playing || app.mode == .Paused ||
 		app.mode == .Options || app.mode == .Controls) {
-		_ = player_big_hit_release(&app.run.player)
+		_ = player_big_hit_release(&app.run.player, &app.run)
 	}
 	if intent.toggle_fullscreen && !ARCH_ROGUE_ANDROID {
 		app.options.fullscreen = !app.options.fullscreen
@@ -759,7 +768,8 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 		app.select_index = ((app.select_index + intent.menu_delta + intent.menu_horizontal) % n + n) % n
 		if intent.confirm {
 			app_begin_new_run(app, app.seed, Archetype_Id(app.select_index))
-			append(&app.run.sfx,Sfx_Kind.Start)
+			sfx_emit(&app.run, .Run_Start)
+			app.ui_sfx_suppress = true
 			app_reset_run_ui(app)
 			app.mouse_input_blocked = intent.pointer_confirm
 			app.mode = .Playing
@@ -825,11 +835,11 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 				app.controls_capture = false
 				app.controls_status = ""
 			case 5:
-				_ = player_big_hit_release(&app.run.player)
+				_ = player_big_hit_release(&app.run.player, &app.run)
 				app.options.controller_enabled = !app.options.controller_enabled
 				app_mark_options_changed(app)
 			case 6:
-				app.options.audio_enabled = !app.options.audio_enabled
+				options_cycle_sfx_volume(&app.options, direction)
 				app_mark_options_changed(app, {Platform_Effect.Apply_Audio})
 			case 7:
 				options_cycle_music_volume(&app.options, direction)
@@ -862,7 +872,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 			}
 			if has_input {
 				if result == .Applied {
-					_ = player_big_hit_release(&app.run.player)
+					_ = player_big_hit_release(&app.run.player, &app.run)
 					app.controls_capture = false
 					app.controls_status = "Binding saved"
 					app_mark_options_changed(app)
@@ -955,7 +965,15 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 				app.inv_index += intent.menu_delta
 				inventory_clamp_selection(app)
 				if intent.confirm {
+					item_kind := app.run.player.bag[app.inv_index].kind
+					equip_attempt := item_kind == .Weapon || item_kind == .Armor
+					equip_allowed := (item_kind == .Weapon && (!app.run.player.has_weapon || !app.run.player.weapon.cursed)) ||
+						(item_kind == .Armor && (!app.run.player.has_armor || !app.run.player.armor.cursed))
 					equip_from_bag(&app.run.player, app.inv_index)
+					if equip_attempt {
+						app.ui_sfx_bank = equip_allowed ? .Ui_Equip : .Ui_Reject
+						app.ui_sfx_override = true
+					}
 					app_mark_run_dirty(app)
 					inventory_clamp_selection(app)
 				}
@@ -1038,15 +1056,24 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 					}
 					if transaction.result == .Success {
 						app_mark_run_dirty(app,critical=true)
-						append(&app.run.sfx, Sfx_Kind.Pickup)
+						app.ui_sfx_bank = .Ui_Purchase
+						app.ui_sfx_override = true
+						sfx_emit(&app.run, .Coin_Pickup_Light)
 						append(&app.run.numbers, Damage_Number{pos=app.run.player.pos,kind=.Text,text=app.shop_mode == .Buy ? "Bought" : "Sold"})
-					} else if transaction.result == .Insufficient_Gold {
-						append(&app.run.numbers, Damage_Number{pos=app.run.player.pos,kind=.Text,text="Need more gold"})
-					} else if transaction.result == .Inventory_Full {
-						append(&app.run.numbers, Damage_Number{pos=app.run.player.pos,kind=.Text,text="Inventory full"})
+					} else {
+						app.ui_sfx_bank = .Ui_Reject
+						app.ui_sfx_override = true
+						if transaction.result == .Insufficient_Gold {
+							append(&app.run.numbers, Damage_Number{pos=app.run.player.pos,kind=.Text,text="Need more gold"})
+						} else if transaction.result == .Inventory_Full {
+							append(&app.run.numbers, Damage_Number{pos=app.run.player.pos,kind=.Text,text="Inventory full"})
+						}
 					}
 					shop_clamp_selection(app)
 				}
+			} else if intent.confirm {
+				app.ui_sfx_bank = .Ui_Reject
+				app.ui_sfx_override = true
 			}
 			return false
 		}
@@ -1315,7 +1342,9 @@ run_descend :: proc(run: ^Run) {
 }
 
 run_regenerate_floor :: proc(run: ^Run, boss_arena: bool) {
+	was_charging := bighit_charging(&run.player)
 	run_generate_floor(run, boss_arena)
+	if was_charging do sfx_stop_bank(run, .Big_Hit_Charge)
 	run.player.pos = run_spawn_point(run)
 	run.player.prev_pos = run.player.pos
 	story_refresh_relic_guidance(run)

@@ -270,8 +270,9 @@ m9_dry_barrel_falls_through_to_loot_and_furnishings_are_solid :: proc(t:^testing
 				run.player.stamina=0
 				_ = ar.player_interact(&run)
 				has_drink_cue:=false
-				for cue in run.sfx do if cue==.Drink do has_drink_cue=true
-				testing.expect(t,run.refuge.bar_toasted&&has_drink_cue,"first tapped-barrel interaction must toast and emit Drink")
+				barrel_pos:=ar.Vec2{f32(barrel.x)+.5,f32(barrel.y)+.5}
+				for cue in run.sfx do if cue.bank==.Bar_Toast do has_drink_cue=cue.spatial&&cue.pos==barrel_pos
+				testing.expect(t,run.refuge.bar_toasted&&has_drink_cue,"first tapped-barrel interaction must toast and emit spatial Bar_Toast")
 				heal_before:=run.player.heal_potions
 				append(&run.ground_items,ar.Ground_Item{item=ar.Item{kind=.Heal_Potion,name="Test Flask"},pos=run.player.pos})
 				_ = ar.player_interact(&run)

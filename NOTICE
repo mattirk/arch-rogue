@@ -14,6 +14,18 @@ Music credits
 All music tracks were composed by Jarkko Sillanpää and Matti Rita-Kasari,
 recorded at Hellish Dungeon Studio.
 
+Third-party runtime sound effects
+---------------------------------
+
+Where present in game distributions, runtime sound effects derived from a
+commercially licensed third-party library are not provided under Apache License
+2.0. Those sounds, the purchased source library, and their runtime derivatives
+remain subject to their separate license. The public source
+snapshot excludes every licensed WAV and retains only an integrity manifest,
+code, and setup documentation. No permission is granted to extract or
+redistribute the sounds independently of the game; recipients must comply with
+the applicable third-party license and publisher terms.
+
 Bundled runtime dependency
 --------------------------
 

@@ -42,3 +42,7 @@ arch-rogue-python/tools/steam/inject_local_icon.py
 
 # Private deploy repo staging area — transferred out to arch-rogue-deploy, never committed here
 deploy-server/
+
+# Public mirror: licensed runtime SFX are injected privately
+/assets/audio/sfx/*.wav
+/arch-rogue-sfx-runtime*.tar.gz

@@ -33,6 +33,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Inject manifest-locked licensed SFX
+        env:
+          ARCH_ROGUE_SFX_RELEASE_API_URL: https://api.github.com/repos/mattirk/arch-rogue-master/releases/tags/sfx-runtime
+          ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION: ${{ secrets.ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION }}
+        run: bash tools/fetch_private_sfx.sh
+
       - name: Read pinned toolchain metadata
         id: toolchain
         shell: bash
@@ -99,7 +105,7 @@ jobs:
           python3 tools/verify_chronicle_assets.py
 
       - name: Run public-mirror and website regressions
-        run: python3 -m unittest tests.test_public_mirror tests.test_website tests.test_repository_layout
+        run: python3 -m unittest tests.test_sfx_bundle tests.test_public_mirror tests.test_website tests.test_repository_layout
 
       - name: Assemble Linux distribution
         id: package
@@ -188,6 +194,12 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+
+      - name: Inject manifest-locked licensed SFX
+        env:
+          ARCH_ROGUE_SFX_RELEASE_API_URL: https://api.github.com/repos/mattirk/arch-rogue-master/releases/tags/sfx-runtime
+          ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION: ${{ secrets.ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION }}
+        run: bash tools/fetch_private_sfx.sh
 
       - name: Read pinned toolchain metadata
         id: toolchain
@@ -376,6 +388,12 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+
+      - name: Inject manifest-locked licensed SFX
+        env:
+          ARCH_ROGUE_SFX_RELEASE_API_URL: https://api.github.com/repos/mattirk/arch-rogue-master/releases/tags/sfx-runtime
+          ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION: ${{ secrets.ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION }}
+        run: bash tools/fetch_private_sfx.sh
 
       - name: Read pinned toolchain metadata
         id: toolchain

@@ -4,135 +4,134 @@ package archrogue
 // Missing or invalid files degrade to silence; gameplay never depends on audio.
 
 import "core:fmt"
+import "core:math"
 import "core:sync"
 import rl "../vendor/raylib"
 
-Audio_Cue :: enum {
-	Swing,
-	Hit,
-	Hurt,
-	Bolt,
-	Pickup,
-	Potion,
-	Level_Up,
-	Stairs,
-	Death,
-	Door,
-	Start,
-	Ui_Navigate,
-	Ui_Confirm,
-	Ui_Back,
-	Bell,
-	Boss,
-	Victory,
-	Drink,
-	Trap,
-	Shrine,
-	Secret,
+SFX_MAX_VARIANTS :: 3
+SFX_VOICE_CAP_DESKTOP :: 24
+SFX_VOICE_CAP_CONSTRAINED :: 16
+SFX_FOOTSTEP_TRACKERS :: 256
+SFX_PLAYER_STEP_INTERVAL_SECONDS :: f32(0.98)
+SFX_ENEMY_STEP_INTERVAL_SECONDS  :: f32(0.84)
+SFX_MASTER_OUTPUT_GAIN           :: f32(0.50)
+
+Sfx_Bank_Def :: struct {
+	key:          string,
+	variant_count: u8,
+	gain:         f32,
+	pitch_min:    f32,
+	pitch_max:    f32,
+	cooldown_s:   f32,
+	priority:     u8,
+	polyphony:    u8,
+	spatial:      bool,
+	max_distance: f32,
 }
 
-Audio_Cue_Usage :: enum {
-	Runtime,
-	Future_Emitter,
-}
-
+// Metadata mirrors manifest v2; filenames are always <key>_NN.wav. Spatial
+// banks use a conservative ten-tile falloff with limited stereo separation.
 @(rodata)
-AUDIO_CUE_KEYS := [Audio_Cue]string{
-	.Swing       = "swing",
-	.Hit         = "hit",
-	.Hurt        = "hurt",
-	.Bolt        = "bolt",
-	.Pickup      = "pickup",
-	.Potion      = "potion",
-	.Level_Up    = "levelup",
-	.Stairs      = "stairs",
-	.Death       = "death",
-	.Door        = "door",
-	.Start       = "start",
-	.Ui_Navigate = "ui_nav",
-	.Ui_Confirm  = "ui_confirm",
-	.Ui_Back     = "ui_back",
-	.Bell        = "bell",
-	.Boss        = "boss",
-	.Victory     = "victory",
-	.Drink       = "drink",
-	.Trap        = "trap",
-	.Shrine      = "shrine",
-	.Secret      = "secret",
-}
-
-@(rodata)
-AUDIO_CUE_FILES := [Audio_Cue]string{
-	.Swing       = "swing.wav",
-	.Hit         = "hit.wav",
-	.Hurt        = "hurt.wav",
-	.Bolt        = "bolt.wav",
-	.Pickup      = "pickup.wav",
-	.Potion      = "potion.wav",
-	.Level_Up    = "levelup.wav",
-	.Stairs      = "stairs.wav",
-	.Death       = "death.wav",
-	.Door        = "door.wav",
-	.Start       = "start.wav",
-	.Ui_Navigate = "ui_nav.wav",
-	.Ui_Confirm  = "ui_confirm.wav",
-	.Ui_Back     = "ui_back.wav",
-	.Bell        = "bell.wav",
-	.Boss        = "boss.wav",
-	.Victory     = "victory.wav",
-	.Drink       = "drink.wav",
-	.Trap        = "trap.wav",
-	.Shrine      = "shrine.wav",
-	.Secret      = "secret.wav",
-}
-
-@(rodata)
-AUDIO_CUE_USAGE := [Audio_Cue]Audio_Cue_Usage{
-	.Swing       = .Runtime,
-	.Hit         = .Runtime,
-	.Hurt        = .Runtime,
-	.Bolt        = .Runtime,
-	.Pickup      = .Runtime,
-	.Potion      = .Runtime,
-	.Level_Up    = .Runtime,
-	.Stairs      = .Runtime,
-	.Death       = .Runtime,
-	.Door        = .Runtime,
-	.Start       = .Runtime,
-	.Ui_Navigate = .Runtime,
-	.Ui_Confirm  = .Runtime,
-	.Ui_Back     = .Runtime,
-	.Bell        = .Runtime,
-	.Boss        = .Runtime,
-	.Victory     = .Runtime,
-	.Drink       = .Runtime,
-	.Trap        = .Runtime, // MX.5: live trap/shrine/secret systems emit them
-	.Shrine      = .Runtime,
-	.Secret      = .Runtime,
-}
-
-// Kept as a compatibility table for code/tests that address simulation SFX by
-// filename. New platform/UI call sites should use Audio_Cue + audio_play_cue.
-@(rodata)
-SFX_FILES := [Sfx_Kind]string{
-	.Swing    = "swing",
-	.Hit      = "hit",
-	.Hurt     = "hurt",
-	.Bolt     = "bolt",
-	.Pickup   = "pickup",
-	.Potion   = "potion",
-	.Level_Up = "levelup",
-	.Stairs   = "stairs",
-	.Death    = "death",
-	.Door     = "door",
-	.Start    = "start",
-	.Bell     = "bell",
-	.Boss     = "boss",
-	.Victory  = "victory",
-	.Drink    = "drink",
-	.Trap     = "trap",
-	.Shrine   = "shrine",
-	.Secret   = "secret",
+SFX_BANK_DEFS := [Sfx_Bank]Sfx_Bank_Def{
+	.Ui_Navigate={key="ui_navigate",variant_count=3,gain=0.38,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.05,priority=6,polyphony=1,spatial=false,max_distance=0},
+	.Ui_Confirm={key="ui_confirm",variant_count=3,gain=0.52,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.08,priority=6,polyphony=1,spatial=false,max_distance=0},
+	.Ui_Back={key="ui_back",variant_count=3,gain=0.48,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.08,priority=6,polyphony=1,spatial=false,max_distance=0},
+	.Ui_Reject={key="ui_reject",variant_count=1,gain=0.55,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.08,priority=15,polyphony=1,spatial=false,max_distance=0},
+	.Ui_Equip={key="ui_equip",variant_count=2,gain=0.5,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.08,priority=6,polyphony=1,spatial=false,max_distance=0},
+	.Ui_Purchase={key="ui_purchase",variant_count=3,gain=0.52,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.08,priority=6,polyphony=1,spatial=false,max_distance=0},
+	.Run_Start={key="run_start",variant_count=2,gain=0.7,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Level_Up={key="level_up",variant_count=2,gain=0.78,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Victory={key="victory",variant_count=3,gain=0.82,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Story_Consequence={key="story_consequence",variant_count=3,gain=0.7,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Relic_Recovered={key="relic_recovered",variant_count=2,gain=0.72,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Epilogue_Bell={key="epilogue_bell",variant_count=1,gain=0.72,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Melee_Swing_Warden={key="melee_swing_warden",variant_count=3,gain=0.72,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Melee_Swing_Rogue={key="melee_swing_rogue",variant_count=3,gain=0.66,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Melee_Swing_Arcanist={key="melee_swing_arcanist",variant_count=3,gain=0.64,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Melee_Swing_Acolyte={key="melee_swing_acolyte",variant_count=3,gain=0.66,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Melee_Swing_Ranger={key="melee_swing_ranger",variant_count=3,gain=0.66,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Big_Hit_Charge={key="big_hit_charge",variant_count=3,gain=0.64,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Big_Hit_Release={key="big_hit_release",variant_count=2,gain=0.76,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Dash_Cloth_Light={key="dash_cloth_light",variant_count=3,gain=0.58,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Dash_Armored={key="dash_armored",variant_count=3,gain=0.64,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Dash_Arcane={key="dash_arcane",variant_count=3,gain=0.6,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Dash_Occult={key="dash_occult",variant_count=3,gain=0.6,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Shield_Block={key="shield_block",variant_count=3,gain=0.76,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Player_Hurt_Light={key="player_hurt_light",variant_count=3,gain=0.42,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.12,priority=15,polyphony=1,spatial=false,max_distance=0},
+	.Player_Hurt_Heavy={key="player_hurt_heavy",variant_count=3,gain=0.40,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.12,priority=15,polyphony=1,spatial=false,max_distance=0},
+	.Player_Death={key="player_death",variant_count=3,gain=0.48,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=15,polyphony=1,spatial=false,max_distance=0},
+	.Bow_Release_Light={key="bow_release_light",variant_count=3,gain=0.64,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Bow_Release_Heavy={key="bow_release_heavy",variant_count=3,gain=0.7,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Arrow_Volley={key="arrow_volley",variant_count=3,gain=0.68,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Physical_Throw={key="physical_throw",variant_count=3,gain=0.64,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Warden_Guard_Bolt={key="warden_guard_bolt",variant_count=3,gain=0.64,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Arcane_Cast={key="arcane_cast",variant_count=3,gain=0.68,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Fire_Cast={key="fire_cast",variant_count=3,gain=0.68,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Frost_Cast={key="frost_cast",variant_count=3,gain=0.68,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Shadow_Cast={key="shadow_cast",variant_count=3,gain=0.64,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Warden_Time_Skip={key="warden_time_skip",variant_count=3,gain=0.72,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Rogue_Bell_Cast={key="rogue_bell_cast",variant_count=1,gain=0.68,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Rogue_Bell_Detonate={key="rogue_bell_detonate",variant_count=1,gain=0.72,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Rogue_Stealth={key="rogue_stealth",variant_count=3,gain=0.64,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Arcanist_Nova={key="arcanist_nova",variant_count=3,gain=0.72,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Acolyte_Spirit_Call={key="acolyte_spirit_call",variant_count=3,gain=0.7,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Ranger_Beast_Summon={key="ranger_beast_summon",variant_count=3,gain=0.68,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Ranger_Beast_Command={key="ranger_beast_command",variant_count=2,gain=0.44,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=false,max_distance=0},
+	.Impact_Generic={key="impact_generic",variant_count=3,gain=0.39,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.025,priority=6,polyphony=3,spatial=true,max_distance=10},
+	.Impact_Flesh={key="impact_flesh",variant_count=3,gain=0.38,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.025,priority=6,polyphony=3,spatial=true,max_distance=10},
+	.Impact_Armor={key="impact_armor",variant_count=3,gain=0.38,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.025,priority=6,polyphony=3,spatial=true,max_distance=10},
+	.Impact_Heavy={key="impact_heavy",variant_count=3,gain=0.40,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.025,priority=6,polyphony=3,spatial=true,max_distance=10},
+	.Impact_Lethal={key="impact_lethal",variant_count=3,gain=0.40,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.025,priority=6,polyphony=3,spatial=true,max_distance=10},
+	.Impact_Bone_Lethal={key="impact_bone_lethal",variant_count=3,gain=0.39,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.025,priority=6,polyphony=3,spatial=true,max_distance=10},
+	.Coin_Pickup_Light={key="coin_pickup_light",variant_count=3,gain=0.62,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=false,max_distance=0},
+	.Coin_Pickup_Medium={key="coin_pickup_medium",variant_count=3,gain=0.66,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=false,max_distance=0},
+	.Item_Pickup_Common={key="item_pickup_common",variant_count=3,gain=0.52,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=6,polyphony=2,spatial=false,max_distance=0},
+	.Item_Pickup_Rare={key="item_pickup_rare",variant_count=2,gain=0.6,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=6,polyphony=2,spatial=false,max_distance=0},
+	.Item_Pickup_Unique={key="item_pickup_unique",variant_count=2,gain=0.72,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=6,polyphony=2,spatial=false,max_distance=0},
+	.Item_Pickup_Cursed={key="item_pickup_cursed",variant_count=3,gain=0.66,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=6,polyphony=2,spatial=false,max_distance=0},
+	.Item_Drop={key="item_drop",variant_count=3,gain=0.5,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Potion_Drink={key="potion_drink",variant_count=3,gain=0.72,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=false,max_distance=0},
+	.Bar_Toast={key="bar_toast",variant_count=3,gain=0.64,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=false,max_distance=0},
+	.Enemy_Attack_Light={key="enemy_attack_light",variant_count=3,gain=0.58,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.045,priority=6,polyphony=3,spatial=true,max_distance=10},
+	.Enemy_Attack_Brute={key="enemy_attack_brute",variant_count=3,gain=0.68,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.045,priority=6,polyphony=3,spatial=true,max_distance=10},
+	.Enemy_Attack_Armored={key="enemy_attack_armored",variant_count=3,gain=0.66,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.045,priority=6,polyphony=3,spatial=true,max_distance=10},
+	.Enemy_Bow_Release={key="enemy_bow_release",variant_count=3,gain=0.6,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.045,priority=6,polyphony=3,spatial=true,max_distance=10},
+	.Enemy_Arcane_Cast={key="enemy_arcane_cast",variant_count=3,gain=0.58,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.045,priority=6,polyphony=3,spatial=true,max_distance=10},
+	.Enemy_Poison_Cast={key="enemy_poison_cast",variant_count=3,gain=0.58,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.045,priority=6,polyphony=3,spatial=true,max_distance=10},
+	.Boss_Engage={key="boss_engage",variant_count=1,gain=0.78,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Boss_Defeat={key="boss_defeat",variant_count=2,gain=0.78,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Ash_Gallows_Cleave={key="ash_gallows_cleave",variant_count=2,gain=0.74,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Ash_Gallows_Nova={key="ash_gallows_nova",variant_count=3,gain=0.76,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Mycelial_Spore_Volley={key="mycelial_spore_volley",variant_count=3,gain=0.68,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Rime_Frost_Fan={key="rime_frost_fan",variant_count=2,gain=0.7,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Void_Arcane_Lance={key="void_arcane_lance",variant_count=2,gain=0.72,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Gate_Tyrant_Strike={key="gate_tyrant_strike",variant_count=2,gain=0.76,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Gate_Tyrant_Volley={key="gate_tyrant_volley",variant_count=3,gain=0.7,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Door_Open={key="door_open",variant_count=3,gain=0.7,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Lock_Denied={key="lock_denied",variant_count=3,gain=0.66,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=15,polyphony=1,spatial=true,max_distance=10},
+	.Boss_Gate_Close={key="boss_gate_close",variant_count=3,gain=0.74,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Boss_Gate_Open={key="boss_gate_open",variant_count=3,gain=0.7,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
+	.Stairs_Descend={key="stairs_descend",variant_count=3,gain=0.66,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Trap_Spike={key="trap_spike",variant_count=3,gain=0.76,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.12,priority=15,polyphony=1,spatial=true,max_distance=10},
+	.Trap_Rune={key="trap_rune",variant_count=3,gain=0.72,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.12,priority=15,polyphony=1,spatial=true,max_distance=10},
+	.Trap_Needle={key="trap_needle",variant_count=3,gain=0.68,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.12,priority=15,polyphony=1,spatial=true,max_distance=10},
+	.Shrine_Mending={key="shrine_mending",variant_count=3,gain=0.62,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Shrine_Insight={key="shrine_insight",variant_count=2,gain=0.68,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Shrine_War={key="shrine_war",variant_count=3,gain=0.72,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Shrine_Haste={key="shrine_haste",variant_count=3,gain=0.68,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Shrine_Fortune={key="shrine_fortune",variant_count=2,gain=0.6,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Shrine_Oath={key="shrine_oath",variant_count=3,gain=0.68,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Shrine_Twilight={key="shrine_twilight",variant_count=2,gain=0.66,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Secret_Unlock={key="secret_unlock",variant_count=3,gain=0.66,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
+	.Step_Boot_Hard={key="step_boot_hard",variant_count=3,gain=0.36,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
+	.Step_Boot_Hard_Light={key="step_boot_hard_light",variant_count=3,gain=0.32,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
+	.Step_Boot_Dirt={key="step_boot_dirt",variant_count=3,gain=0.36,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
+	.Step_Boot_Dirt_Light={key="step_boot_dirt_light",variant_count=3,gain=0.32,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
+	.Step_Boot_Grass={key="step_boot_grass",variant_count=3,gain=0.32,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
+	.Step_Armor_Light={key="step_armor_light",variant_count=3,gain=0.36,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
+	.Step_Armor_Medium={key="step_armor_medium",variant_count=3,gain=0.39,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
+	.Step_Armor_Heavy={key="step_armor_heavy",variant_count=3,gain=0.43,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
+	.Step_Creature_Heavy={key="step_creature_heavy",variant_count=3,gain=0.5,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
 }
 
 MUSIC_MAX_ASSETS  :: 16
@@ -147,8 +146,8 @@ MUSIC_SAMPLE_SIZE :: 16
 // one-pole high-frequency rolloff. A DC blocker removes the bias produced by
 // the asymmetric transfer. The limiter's instantaneous attack catches the
 // current sample and returns to unity over roughly 100 ms without adding delay.
-MUSIC_SATURATION_DRIVE          :: f32(4.00)
-MUSIC_SATURATION_MIX            :: f32(1.00)
+MUSIC_SATURATION_DRIVE          :: f32(3.00)
+MUSIC_SATURATION_MIX            :: f32(0.80)
 MUSIC_TAPE_BIAS                 :: f32(0.08)
 MUSIC_TAPE_OUTPUT_GAIN          :: f32(0.55)
 MUSIC_TAPE_TONE_ALPHA           :: f32(0.65)
@@ -176,11 +175,40 @@ Music_PCM_Asset :: struct {
 	ready: bool,
 }
 
+Sfx_Loaded_Bank :: struct {
+	sounds:       [SFX_MAX_VARIANTS]rl.Sound,
+	loaded:       [SFX_MAX_VARIANTS]bool,
+	loaded_count: u8,
+	next_variant:    u8,
+	last_play_s:     f64,
+	last_emitter_id: u64,
+}
+
+Sfx_Active_Voice :: struct {
+	active:      bool,
+	bank:        Sfx_Bank, // resolved loaded bank
+	source_bank: Sfx_Bank, // semantic bank that requested this voice
+	variant:     u8,
+	priority:    u8,
+	serial:      u64,
+}
+
+Sfx_Footstep_Tracker :: struct {
+	valid:      bool,
+	emitter_id: u64,
+	phase:      i64,
+}
+
 Audio :: struct {
-	sounds:      [Audio_Cue]rl.Sound,
-	loaded:      bit_set[Audio_Cue],
+	sfx_banks:  [Sfx_Bank]Sfx_Loaded_Bank,
+	voices:     [SFX_VOICE_CAP_DESKTOP]Sfx_Active_Voice,
+	voice_serial: u64,
+	footsteps:  [SFX_FOOTSTEP_TRACKERS]Sfx_Footstep_Tracker,
+	player_step_phase: i64,
+	player_step_valid: bool,
 	ready:       bool,
 	enabled:     bool,
+	sfx_gain:    f32,
 	suspended:   bool,
 	initialized: bool,
 
@@ -219,9 +247,7 @@ audio_music_callback_audio: ^Audio
 
 audio_loaded_cue_count :: proc(audio: ^Audio) -> (count: int) {
 	if audio == nil do return
-	for cue in Audio_Cue {
-		if cue in audio.loaded do count += 1
-	}
+	for bank in Sfx_Bank do count += int(audio.sfx_banks[bank].loaded_count)
 	return
 }
 
@@ -230,34 +256,9 @@ audio_ready_for_playback :: proc(audio: ^Audio) -> bool {
 	return audio != nil && audio.ready && !audio.suspended && audio_loaded_cue_count(audio) > 0
 }
 
-audio_cue_for_sfx :: proc(kind: Sfx_Kind) -> Audio_Cue {
-	switch kind {
-	case .Swing:    return .Swing
-	case .Hit:      return .Hit
-	case .Hurt:     return .Hurt
-	case .Bolt:     return .Bolt
-	case .Pickup:   return .Pickup
-	case .Potion:   return .Potion
-	case .Level_Up: return .Level_Up
-	case .Stairs:   return .Stairs
-	case .Death:    return .Death
-	case .Door:     return .Door
-	case .Start:    return .Start
-	case .Bell:     return .Bell
-	case .Boss:     return .Boss
-	case .Victory:  return .Victory
-	case .Drink:    return .Drink
-	case .Trap:     return .Trap
-	case .Shrine:   return .Shrine
-	case .Secret:   return .Secret
-	}
-	return .Swing
-}
-
 // Pure semantic routing shared by the raw platform bridge and headless tests.
-// A frame emits at most one menu cue, with Back taking precedence just as it
-// does in the reducer/navigation flow.
-audio_cue_for_intent :: proc(intent: Intent) -> (Audio_Cue, bool) {
+// A frame emits at most one menu bank, with Back taking reducer priority.
+audio_cue_for_intent :: proc(intent: Intent) -> (Sfx_Bank, bool) {
 	if intent.back do return .Ui_Back, true
 	if intent.confirm do return .Ui_Confirm, true
 	if intent.menu_delta != 0 || intent.menu_horizontal != 0 || intent.tab {
@@ -266,23 +267,146 @@ audio_cue_for_intent :: proc(intent: Intent) -> (Audio_Cue, bool) {
 	return {}, false
 }
 
-// Starting a run already owns the authored Start cue. Suppress the generic
-// confirmation for that transition so reducers can finish before any new UI
-// sound begins and the opening cue is not doubled.
-audio_cue_for_transition :: proc(intent: Intent, mode_before, mode_after: App_Mode) -> (Audio_Cue, bool) {
-	cue, has_cue := audio_cue_for_intent(intent)
-	if has_cue && cue == .Ui_Confirm && mode_before == .Select && mode_after == .Playing {
+// Starting a run owns Run_Start, so Select -> Playing suppresses Ui_Confirm.
+audio_cue_for_transition :: proc(intent: Intent, mode_before, mode_after: App_Mode) -> (Sfx_Bank, bool) {
+	bank, has_bank := audio_cue_for_intent(intent)
+	if has_bank && bank == .Ui_Confirm && mode_before == .Select && mode_after == .Playing {
 		return {}, false
 	}
-	return cue, has_cue
+	return bank, has_bank
+}
+
+@(private = "file")
+audio_sfx_gain :: proc(def: Sfx_Bank_Def) -> f32 { return def.gain > 0 ? def.gain : .78 }
+@(private = "file")
+audio_sfx_pitch_min :: proc(def: Sfx_Bank_Def) -> f32 { return def.pitch_min > 0 ? def.pitch_min : .96 }
+@(private = "file")
+audio_sfx_pitch_max :: proc(def: Sfx_Bank_Def) -> f32 { return def.pitch_max > 0 ? def.pitch_max : 1.04 }
+@(private = "file")
+audio_sfx_cooldown :: proc(def: Sfx_Bank_Def) -> f64 { return def.cooldown_s > 0 ? f64(def.cooldown_s) : .018 }
+@(private = "file")
+audio_sfx_priority :: proc(def: Sfx_Bank_Def) -> u8 { return def.priority > 0 ? def.priority : 6 }
+@(private = "file")
+audio_sfx_polyphony :: proc(def: Sfx_Bank_Def) -> int { return def.polyphony > 0 ? int(def.polyphony) : min(3, int(def.variant_count)) }
+@(private = "file")
+audio_sfx_distance :: proc(def: Sfx_Bank_Def) -> f32 { return def.max_distance > 0 ? def.max_distance : 10 }
+
+@(private = "file")
+audio_sfx_voice_cap :: proc() -> int {
+	when ARCH_ROGUE_WEB || ARCH_ROGUE_ANDROID do return SFX_VOICE_CAP_CONSTRAINED
+	return SFX_VOICE_CAP_DESKTOP
+}
+
+@(private = "file")
+audio_sfx_hash :: proc(value: u64) -> u64 {
+	hash := (value ~ (value >> 30)) * 0xbf58476d1ce4e5b9
+	hash = (hash ~ (hash >> 27)) * 0x94d049bb133111eb
+	return hash ~ (hash >> 31)
+}
+
+// The web preload keeps exactly these banks. Every lazy bank maps directly to
+// one of them, so fallback resolution is bounded to one step.
+audio_sfx_bank_is_core :: proc(bank: Sfx_Bank) -> bool {
+	#partial switch bank {
+	case .Ui_Navigate, .Ui_Confirm, .Ui_Back, .Ui_Reject, .Ui_Equip, .Ui_Purchase,
+	     .Run_Start, .Level_Up, .Victory, .Story_Consequence, .Relic_Recovered, .Epilogue_Bell,
+	     .Player_Hurt_Light, .Player_Hurt_Heavy, .Player_Death,
+	     .Melee_Swing_Arcanist, .Dash_Cloth_Light, .Warden_Guard_Bolt,
+	     .Arcane_Cast, .Shadow_Cast, .Impact_Generic,
+	     .Item_Pickup_Common, .Potion_Drink, .Enemy_Attack_Light, .Boss_Engage,
+	     .Door_Open, .Trap_Spike, .Shrine_Mending, .Step_Boot_Grass:
+		return true
+	}
+	return false
+}
+
+audio_sfx_fallback_bank :: proc(bank: Sfx_Bank) -> Sfx_Bank {
+	#partial switch bank {
+	case .Melee_Swing_Warden, .Melee_Swing_Rogue, .Melee_Swing_Acolyte, .Melee_Swing_Ranger:
+		return .Melee_Swing_Arcanist
+	case .Dash_Armored, .Dash_Arcane, .Dash_Occult:
+		return .Dash_Cloth_Light
+	case .Fire_Cast, .Frost_Cast, .Warden_Time_Skip, .Rogue_Bell_Cast,
+	     .Rogue_Bell_Detonate, .Rogue_Stealth, .Arcanist_Nova, .Acolyte_Spirit_Call,
+	     .Ranger_Beast_Summon, .Ranger_Beast_Command, .Enemy_Arcane_Cast, .Enemy_Poison_Cast:
+		return .Arcane_Cast
+	case .Big_Hit_Charge, .Big_Hit_Release, .Shield_Block, .Bow_Release_Light,
+	     .Bow_Release_Heavy, .Arrow_Volley, .Physical_Throw, .Impact_Flesh,
+	     .Impact_Armor, .Impact_Heavy, .Impact_Lethal, .Impact_Bone_Lethal:
+		return .Impact_Generic
+	case .Coin_Pickup_Light, .Coin_Pickup_Medium, .Item_Pickup_Rare,
+	     .Item_Pickup_Unique, .Item_Pickup_Cursed, .Item_Drop:
+		return .Item_Pickup_Common
+	case .Bar_Toast:
+		return .Potion_Drink
+	case .Enemy_Attack_Brute, .Enemy_Attack_Armored, .Enemy_Bow_Release:
+		return .Enemy_Attack_Light
+	case .Boss_Defeat, .Ash_Gallows_Cleave, .Ash_Gallows_Nova, .Mycelial_Spore_Volley,
+	     .Rime_Frost_Fan, .Void_Arcane_Lance, .Gate_Tyrant_Strike, .Gate_Tyrant_Volley:
+		return .Boss_Engage
+	case .Lock_Denied, .Boss_Gate_Close, .Boss_Gate_Open, .Stairs_Descend, .Secret_Unlock:
+		return .Door_Open
+	case .Trap_Rune, .Trap_Needle:
+		return .Trap_Spike
+	case .Shrine_Insight, .Shrine_War, .Shrine_Haste, .Shrine_Fortune, .Shrine_Oath, .Shrine_Twilight:
+		return .Shrine_Mending
+	case .Step_Boot_Hard, .Step_Boot_Hard_Light, .Step_Boot_Dirt, .Step_Boot_Dirt_Light,
+	     .Step_Armor_Light, .Step_Armor_Medium, .Step_Armor_Heavy, .Step_Creature_Heavy:
+		return .Step_Boot_Grass
+	}
+	return bank
+}
+
+@(private = "file")
+audio_sfx_load_bank :: proc(audio: ^Audio, bank: Sfx_Bank, log_missing: bool = true) {
+	if audio == nil || !audio.ready do return
+	def := SFX_BANK_DEFS[bank]
+	loaded := &audio.sfx_banks[bank]
+	for variant in 0 ..< min(int(def.variant_count), SFX_MAX_VARIANTS) {
+		if loaded.loaded[variant] do continue
+		path := fmt.ctprintf("assets/audio/sfx/%s_%02d.wav", def.key, variant + 1)
+		// Android assets are loaded through raylib's AAssetManager callback.
+		when !ARCH_ROGUE_ANDROID {
+			if !rl.FileExists(path) {
+				if log_missing do platform_log(fmt.tprintf("audio: missing SFX %s (%s)", def.key, path))
+				continue
+			}
+		}
+		sound := rl.LoadSound(path)
+		if !rl.IsSoundValid(sound) {
+			platform_log(fmt.tprintf("audio: invalid SFX %s (%s)", def.key, path))
+			continue
+		}
+		loaded.sounds[variant] = sound
+		loaded.loaded[variant] = true
+		loaded.loaded_count += 1
+	}
+}
+
+// Called only after the pack bridge has materialized every WAV into MEMFS.
+// Returning false while the device is locked leaves the adoption item queued.
+audio_web_adopt_sfx_bank :: proc(audio: ^Audio, key: string) -> bool {
+	when !ARCH_ROGUE_WEB do return true
+	if audio == nil || !audio.ready do return false
+	for bank in Sfx_Bank {
+		if SFX_BANK_DEFS[bank].key != key do continue
+		audio_sfx_load_bank(audio, bank, log_missing = true)
+		return true
+	}
+	platform_log(fmt.tprintf("audio: unknown web SFX bank %s", key))
+	return true
 }
 
 audio_init :: proc(audio: ^Audio) {
 	if audio == nil do return
 	// A repeated device init must not leak buffers or reset the saved SFX option.
 	enabled := audio.enabled
+	sfx_gain := audio.sfx_gain
 	suspended := audio.suspended
-	if !audio.initialized do enabled = true
+	if !audio.initialized {
+		enabled = true
+		sfx_gain = SFX_MASTER_OUTPUT_GAIN
+	}
 	if audio.ready do audio_shutdown(audio)
 
 	// Web decodes music during game boot, before the user gesture. Preserve that
@@ -296,6 +420,7 @@ audio_init :: proc(audio: ^Audio) {
 		preloaded_loop_frames := audio.music_loop_frames
 		audio^ = Audio{
 			enabled = enabled,
+			sfx_gain = sfx_gain,
 			suspended = suspended,
 			initialized = true,
 		}
@@ -306,6 +431,7 @@ audio_init :: proc(audio: ^Audio) {
 	} else {
 		audio^ = Audio{
 			enabled = enabled,
+			sfx_gain = sfx_gain,
 			suspended = suspended,
 			initialized = true,
 		}
@@ -321,25 +447,13 @@ audio_init :: proc(audio: ^Audio) {
 	}
 	audio.ready = true
 
-	for cue in Audio_Cue {
-		path := fmt.ctprintf("assets/audio/sfx/%s", AUDIO_CUE_FILES[cue])
-		// Android assets live behind AAssetManager and are not POSIX paths, so
-		// raylib FileExists() always reports false for a valid packaged cue.
-		// LoadSound() already uses raylib's asset-aware file-data callback.
-		when !ARCH_ROGUE_ANDROID {
-			if !rl.FileExists(path) {
-				platform_log(fmt.tprintf("audio: missing cue %s (%s)", AUDIO_CUE_KEYS[cue], path))
-				continue
-			}
+	for bank in Sfx_Bank {
+		audio.sfx_banks[bank].last_play_s = -1000
+		when ARCH_ROGUE_WEB {
+			audio_sfx_load_bank(audio, bank, log_missing = false)
+		} else {
+			audio_sfx_load_bank(audio, bank)
 		}
-		sound := rl.LoadSound(path)
-		if !rl.IsSoundValid(sound) {
-			platform_log(fmt.tprintf("audio: invalid cue %s (%s)", AUDIO_CUE_KEYS[cue], path))
-			continue
-		}
-		rl.SetSoundVolume(sound, 0.8)
-		audio.sounds[cue] = sound
-		audio.loaded += {cue}
 	}
 	when ARCH_ROGUE_WEB {
 		audio_music_create_mixer(audio)
@@ -348,34 +462,52 @@ audio_init :: proc(audio: ^Audio) {
 	}
 }
 
-// This setting gates SFX at dispatch instead of changing raylib's master
-// volume. Future music therefore remains independent from the Audio cues option.
+// SFX uses its own master gain at dispatch; music remains on the independent
+// post-DSP master path. The boolean wrapper remains for headless/platform callers.
+audio_set_volume :: proc(audio: ^Audio, level: f32) {
+	if audio == nil do return
+	// The user-facing 0-100% range is relative to the deliberately restrained
+	// SFX bus. At 100%, authored bank gains reach half their former output.
+	audio.sfx_gain = clamp(level, f32(0), f32(1)) * SFX_MASTER_OUTPUT_GAIN
+	audio.enabled = audio.sfx_gain > 0
+}
+
 audio_set_enabled :: proc(audio: ^Audio, enabled: bool) {
-	audio.enabled = enabled
+	audio_set_volume(audio, enabled ? 1 : 0)
 }
 
 // Lazy web asset adoption waits for a quiet authored-SFX window. The query is
-// intentionally independent of the enabled preference: a cue dispatched just
-// before that option changed must still be allowed to finish.
+// intentionally independent of the enabled preference.
 audio_any_cue_playing :: proc(audio: ^Audio) -> bool {
 	if audio == nil || !audio.ready do return false
-	for cue in Audio_Cue {
-		if cue not_in audio.loaded do continue
-		sound := audio.sounds[cue]
-		if rl.IsSoundValid(sound) && rl.IsSoundPlaying(sound) do return true
+	for bank in Sfx_Bank {
+		loaded := &audio.sfx_banks[bank]
+		for variant in 0 ..< SFX_MAX_VARIANTS {
+			if loaded.loaded[variant] && rl.IsSoundValid(loaded.sounds[variant]) && rl.IsSoundPlaying(loaded.sounds[variant]) do return true
+		}
 	}
 	return false
+}
+
+@(private = "file")
+audio_sfx_stop_all :: proc(audio: ^Audio) {
+	if audio == nil || !audio.ready do return
+	for bank in Sfx_Bank {
+		loaded := &audio.sfx_banks[bank]
+		for variant in 0 ..< SFX_MAX_VARIANTS {
+			if !loaded.loaded[variant] do continue
+			sound := loaded.sounds[variant]
+			if rl.IsSoundValid(sound) && rl.IsSoundPlaying(sound) do rl.StopSound(sound)
+		}
+	}
+	audio.voices = {}
 }
 
 audio_suspend :: proc(audio: ^Audio) {
 	if audio == nil || audio.suspended do return
 	audio.suspended = true
 	if !audio.ready do return
-	for cue in Audio_Cue {
-		if cue not_in audio.loaded do continue
-		sound := audio.sounds[cue]
-		if rl.IsSoundValid(sound) && rl.IsSoundPlaying(sound) do rl.StopSound(sound)
-	}
+	audio_sfx_stop_all(audio)
 	audio_music_suspend(audio)
 }
 
@@ -388,37 +520,155 @@ audio_shutdown :: proc(audio: ^Audio) {
 	if audio == nil do return
 	audio_music_shutdown(audio)
 	if audio.ready {
-		for cue in Audio_Cue {
-			if cue not_in audio.loaded do continue
-			sound := audio.sounds[cue]
-			if rl.IsSoundValid(sound) {
-				rl.StopSound(sound)
-				rl.UnloadSound(sound)
+		audio_sfx_stop_all(audio)
+		for bank in Sfx_Bank {
+			loaded := &audio.sfx_banks[bank]
+			for variant in 0 ..< SFX_MAX_VARIANTS {
+				if loaded.loaded[variant] && rl.IsSoundValid(loaded.sounds[variant]) do rl.UnloadSound(loaded.sounds[variant])
 			}
 		}
-		// Android 17's AAudio callback can outlive miniaudio's teardown just long
-		// enough to lock an already-destroyed mutex. Keep the backend process-owned:
-		// a same-process NativeActivity relaunch reuses it, while process death lets
-		// Android reclaim it. The game-owned sound buffers are still released above.
-		when !ARCH_ROGUE_ANDROID {
-			rl.CloseAudioDevice()
-		}
+		// Android keeps the process-owned backend across NativeActivity relaunch.
+		when !ARCH_ROGUE_ANDROID do rl.CloseAudioDevice()
 	}
-	audio.sounds = {}
-	audio.loaded = {}
+	audio.sfx_banks = {}
+	audio.voices = {}
 	audio.ready = false
 }
 
-audio_play_cue :: proc(audio: ^Audio, cue: Audio_Cue) {
-	if audio == nil || !audio.ready || !audio.enabled || audio.suspended || cue not_in audio.loaded do return
-	sound := audio.sounds[cue]
-	if rl.IsSoundValid(sound) do rl.PlaySound(sound)
+@(private = "file")
+audio_sfx_refresh_voices :: proc(audio: ^Audio) {
+	for &voice in audio.voices[:audio_sfx_voice_cap()] {
+		if !voice.active do continue
+		loaded := &audio.sfx_banks[voice.bank]
+		variant := int(voice.variant)
+		if variant >= SFX_MAX_VARIANTS || !loaded.loaded[variant] || !rl.IsSoundPlaying(loaded.sounds[variant]) do voice = {}
+	}
 }
 
-// Compatibility entry point for the raylib-free simulation event queue.
-audio_play :: proc(audio: ^Audio, kind: Sfx_Kind) {
-	audio_play_cue(audio, audio_cue_for_sfx(kind))
+@(private = "file")
+audio_sfx_stop_voice :: proc(audio: ^Audio, index: int) {
+	voice := &audio.voices[index]
+	if !voice.active do return
+	loaded := &audio.sfx_banks[voice.bank]
+	variant := int(voice.variant)
+	if variant < SFX_MAX_VARIANTS && loaded.loaded[variant] && rl.IsSoundValid(loaded.sounds[variant]) do rl.StopSound(loaded.sounds[variant])
+	voice^ = {}
 }
+
+// Stop only voices started for this semantic bank. Keeping source_bank distinct
+// from the resolved web fallback prevents canceling unrelated fallback sounds.
+audio_stop_bank :: proc(audio: ^Audio, bank: Sfx_Bank) {
+	if audio == nil || !audio.ready do return
+	audio_sfx_refresh_voices(audio)
+	for &voice, index in audio.voices[:audio_sfx_voice_cap()] {
+		if voice.active && voice.source_bank == bank do audio_sfx_stop_voice(audio, index)
+	}
+}
+
+@(private = "file")
+audio_sfx_claim_voice :: proc(audio: ^Audio, bank: Sfx_Bank, priority: u8, polyphony: int) -> (int, bool) {
+	cap := audio_sfx_voice_cap()
+	free_index := -1
+	bank_count := 0
+	oldest_bank_index := -1
+	oldest_bank_serial := max(u64)
+	steal_index := -1
+	steal_priority := max(u8)
+	steal_serial := max(u64)
+	for &voice, index in audio.voices[:cap] {
+		if !voice.active {
+			if free_index < 0 do free_index = index
+			continue
+		}
+		if voice.bank == bank {
+			bank_count += 1
+			if voice.serial < oldest_bank_serial { oldest_bank_serial = voice.serial; oldest_bank_index = index }
+		}
+		if voice.priority <= priority && (voice.priority < steal_priority || (voice.priority == steal_priority && voice.serial < steal_serial)) {
+			steal_priority = voice.priority
+			steal_serial = voice.serial
+			steal_index = index
+		}
+	}
+	if bank_count >= polyphony && oldest_bank_index >= 0 {
+		audio_sfx_stop_voice(audio, oldest_bank_index)
+		return oldest_bank_index, true
+	}
+	if free_index >= 0 do return free_index, true
+	if steal_index >= 0 {
+		audio_sfx_stop_voice(audio, steal_index)
+		return steal_index, true
+	}
+	return -1, false
+}
+
+audio_play_bank :: proc(
+	audio: ^Audio,
+	bank: Sfx_Bank,
+	pos: Vec2 = {},
+	spatial: bool = false,
+	emitter_id: u64 = 0,
+	listener_pos: Vec2 = {},
+) {
+	if audio == nil || !audio.ready || !audio.enabled || audio.suspended do return
+	resolved_bank := bank
+	if audio.sfx_banks[resolved_bank].loaded_count == 0 {
+		resolved_bank = audio_sfx_fallback_bank(resolved_bank)
+	}
+	def := SFX_BANK_DEFS[resolved_bank]
+	loaded := &audio.sfx_banks[resolved_bank]
+	if loaded.loaded_count == 0 do return
+	now := rl.GetTime()
+	// Cooldown suppresses one emitter chattering, not distinct same-bank events
+	// in a crowd; audio_drain deliberately performs no frame-kind dedup.
+	if emitter_id == loaded.last_emitter_id && now - loaded.last_play_s < audio_sfx_cooldown(def) do return
+
+	gain := audio_sfx_gain(def) * audio.sfx_gain
+	pan := f32(0)
+	use_spatial := spatial || def.spatial
+	if use_spatial {
+		delta := pos - listener_pos
+		distance := f32(math.sqrt(f64(delta.x * delta.x + delta.y * delta.y)))
+		max_distance := audio_sfx_distance(def)
+		if distance >= max_distance do return
+		gain *= clamp(1 - distance / max_distance, f32(.14), f32(1))
+		pan = clamp((delta.x - delta.y) / max_distance * .35, f32(-.35), f32(.35))
+	}
+
+	audio_sfx_refresh_voices(audio)
+	priority := audio_sfx_priority(def)
+	voice_index, claimed := audio_sfx_claim_voice(audio, resolved_bank, priority, audio_sfx_polyphony(def))
+	if !claimed do return
+
+	variant := int(loaded.next_variant) % max(1, int(def.variant_count))
+	for offset in 0 ..< int(def.variant_count) {
+		candidate := (variant + offset) % int(def.variant_count)
+		if loaded.loaded[candidate] { variant = candidate; break }
+	}
+	// A raylib Sound handle is one playback voice. Retire its previous serial if
+	// round robin reaches it before IsSoundPlaying reports completion.
+	for &voice, index in audio.voices[:audio_sfx_voice_cap()] {
+		if index != voice_index && voice.active && voice.bank == resolved_bank && int(voice.variant) == variant do audio_sfx_stop_voice(audio, index)
+	}
+
+	audio.voice_serial += 1
+	if audio.voice_serial == 0 do audio.voice_serial = 1
+	hash := audio_sfx_hash(emitter_id ~ u64(resolved_bank) << 40 ~ audio.voice_serial)
+	unit := f32(hash & 0xffff) / f32(0xffff)
+	pitch_min, pitch_max := audio_sfx_pitch_min(def), audio_sfx_pitch_max(def)
+	sound := loaded.sounds[variant]
+	rl.SetSoundVolume(sound, gain)
+	rl.SetSoundPitch(sound, pitch_min + (pitch_max - pitch_min) * unit)
+	rl.SetSoundPan(sound, pan)
+	rl.PlaySound(sound)
+	loaded.next_variant = u8((variant + 1) % int(def.variant_count))
+	loaded.last_play_s = now
+	loaded.last_emitter_id = emitter_id
+	audio.voices[voice_index] = {active=true,bank=resolved_bank,source_bank=bank,variant=u8(variant),priority=priority,serial=audio.voice_serial}
+}
+
+// Compatibility name retained for platform callers while its type is semantic.
+audio_play_cue :: proc(audio: ^Audio, bank: Sfx_Bank) { audio_play_bank(audio, bank) }
 
 // --- live background-music mixing -------------------------------------------
 // The raylib-free Music_Director owns phase and per-track envelopes. This layer
@@ -473,7 +723,7 @@ audio_music_master_dsp_reset :: proc "contextless" (dsp: ^Music_Master_DSP) {
 
 // Biased softsign saturation remains monotonic at any input level. Subtracting
 // the zero-input response keeps exact silence at zero while retaining the
-// asymmetry that gives the fully wet stage an audible tape-like even harmonic.
+// asymmetry that gives the parallel tape stage an audible even harmonic.
 audio_music_saturate_sample :: proc "contextless" (sample: f32) -> f32 {
 	driven := sample * MUSIC_SATURATION_DRIVE + MUSIC_TAPE_BIAS
 	shaped := driven / (1 + abs(driven))
@@ -947,19 +1197,63 @@ audio_music_shutdown :: proc(audio: ^Audio) {
 	music_library_destroy(&audio.music_library)
 }
 
-// Drain the sim's event queue, playing each kind at most once per frame so a
-// multishot volley or crowd swing doesn't stack into a blowout.
+audio_player_step_bank :: proc(run: ^Run) -> Sfx_Bank {
+	// One deliberately soft family keeps every archetype consistent across floor
+	// themes while retaining all three authored grass variants.
+	_ = run
+	return .Step_Boot_Grass
+}
+
+@(private = "file")
+audio_step_phase :: proc(anim_time, interval: f32) -> i64 {
+	return i64(math.floor(f64(anim_time) / f64(interval)))
+}
+
+@(private = "file")
+audio_drain_footsteps :: proc(audio: ^Audio, run: ^Run) {
+	player := &run.player
+	if player.moving && player.hp > 0 {
+		phase := audio_step_phase(player.anim_time, SFX_PLAYER_STEP_INTERVAL_SECONDS)
+		if !audio.player_step_valid || phase != audio.player_step_phase {
+			audio.player_step_valid = true
+			audio.player_step_phase = phase
+			audio_play_bank(audio, audio_player_step_bank(run), player.pos, false, 1, player.pos)
+		}
+	} else {
+		audio.player_step_valid = false
+	}
+
+	for &enemy in run.enemies {
+		if !enemy.moving || enemy.hp <= 0 do continue
+		phase := audio_step_phase(enemy.anim_time, SFX_ENEMY_STEP_INTERVAL_SECONDS)
+		emitter_id := u64(enemy.entity_id) + 2
+		tracker := &audio.footsteps[int(audio_sfx_hash(emitter_id) % SFX_FOOTSTEP_TRACKERS)]
+		if tracker.valid && tracker.emitter_id == emitter_id && tracker.phase == phase do continue
+		tracker^ = {valid=true,emitter_id=emitter_id,phase=phase}
+		// Ordinary small enemies stay quiet enough for combat readability. Heavy
+		// creatures and ranked enemies receive the authored creature tread.
+		if enemy.kind == .Crypt_Brute || enemy.kind == .Rune_Sentinel || enemy.kind == .Hollow_Knight ||
+			enemy.kind == .Gate_Warden || enemy.role != .Normal {
+			audio_play_bank(audio, .Step_Creature_Heavy, enemy.pos, true, emitter_id, player.pos)
+		}
+	}
+}
+
+// Every semantic event is offered to the voice allocator in queue order. There
+// is deliberately no same-bank frame dedup; cooldown/polyphony/priority are
+// presentation policy, and the queue is always cleared even while silent.
 audio_drain :: proc(audio: ^Audio, run: ^Run) {
 	if run == nil do return
-	if audio == nil || audio.suspended {
-		clear(&run.sfx)
-		return
+	defer clear(&run.sfx)
+	if audio == nil || audio.suspended do return
+	listener := run.player.pos
+	for event in run.sfx {
+		switch event.kind {
+		case .Play:
+			audio_play_bank(audio, event.bank, event.pos, event.spatial, event.emitter_id, listener)
+		case .Stop_Bank:
+			audio_stop_bank(audio, event.bank)
+		}
 	}
-	seen: bit_set[Sfx_Kind]
-	for kind in run.sfx {
-		if kind in seen do continue
-		seen += {kind}
-		audio_play(audio, kind)
-	}
-	clear(&run.sfx)
+	audio_drain_footsteps(audio, run)
 }

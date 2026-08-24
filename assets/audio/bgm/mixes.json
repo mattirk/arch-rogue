@@ -26,8 +26,8 @@
         { "file": "lead_pad.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_default_music", "effects": [] },
         { "file": "ambience_strings.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_default_music", "effects": [] },
         { "file": "lead_glorious_horn.ogg", "volume": 0.7, "mute": false, "condition": "dungeon_elite_music", "effects": [] },
-        { "file": "bar_guitar.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_bar_music", "effects": [] },
-        { "file": "bar_melody_flute.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_bar_music", "effects": [] }
+        { "file": "bar_guitar.ogg", "volume": 0.8, "mute": false, "condition": "dungeon_bar_music", "effects": [] },
+        { "file": "bar_melody_flute.ogg", "volume": 0.85, "mute": false, "condition": "dungeon_bar_music", "effects": [] }
       ]
     },
     "boss": {

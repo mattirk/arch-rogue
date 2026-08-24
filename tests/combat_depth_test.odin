@@ -331,6 +331,9 @@ m8_dash_cancels_only_an_uncommitted_big_hit :: proc(t: ^testing.T) {
 	testing.expect(t, near_f32(stamina_before - run.player.stamina, ar.BIGHIT_STAMINA_COST), "Big Hit must spend its stamina on press")
 	testing.expect(t, !ar.bighit_committed(&run.player), "a fresh Big Hit must still be cancellable")
 	testing.expect(t, ar.player_dash(&run, {1, 0}), "dash should cancel an uncommitted charge and execute")
+	has_charge_stop := false
+	for event in run.sfx do if event.kind == .Stop_Bank && event.bank == .Big_Hit_Charge do has_charge_stop = true
+	testing.expect(t, has_charge_stop, "dash cancellation must stop the Big Hit charge bank")
 	testing.expect(t, !ar.bighit_charging(&run.player), "dash must clear the uncommitted charge")
 	testing.expect(t, near_f32(run.player.bighit_timer, ar.BIGHIT_CANCEL_COOLDOWN), "cancelled Big Hit must use its short cooldown")
 	testing.expect(t, near_f32(run.player.dash_timer, ar.player_dash_cooldown(&run.player)), "the cancelling dash must start its own cooldown")
@@ -338,6 +341,7 @@ m8_dash_cancels_only_an_uncommitted_big_hit :: proc(t: ^testing.T) {
 	run.player.bighit_timer = 0
 	run.player.dash_timer = 0
 	run.player.stamina = f32(run.player.max_stamina)
+	clear(&run.sfx)
 	testing.expect(t, ar.player_big_hit_begin(&run, {1, 0}), "second Big Hit should begin")
 	run.player.bighit_charge = ar.BIGHIT_CHARGE_TIME * (1 - ar.BIGHIT_COMMIT_FRACTION) - .001
 	testing.expect(t, ar.bighit_committed(&run.player), "half-charged Big Hit must commit")
@@ -349,6 +353,13 @@ m8_dash_cancels_only_an_uncommitted_big_hit :: proc(t: ^testing.T) {
 
 	run.player.bighit_charge = ar.SIM_DT * .5
 	ar.tick_big_hit(&run)
+	has_charge_stop = false
+	has_release := false
+	for event in run.sfx {
+		if event.kind == .Stop_Bank && event.bank == .Big_Hit_Charge do has_charge_stop = true
+		if event.kind == .Play && event.bank == .Big_Hit_Release do has_release = true
+	}
+	testing.expect(t, has_charge_stop && has_release, "completed Big Hit must stop charge audio before its release cue")
 	testing.expect(t, !ar.bighit_charging(&run.player), "completed charge must fire")
 	testing.expect(t, near_f32(run.player.bighit_timer, ar.BIGHIT_COOLDOWN), "completed Big Hit must pay the full cooldown")
 }
@@ -408,8 +419,11 @@ m8_ambush_bell_arms_lures_and_backstabs :: proc(t: ^testing.T) {
 	testing.expect(t, near_f32(mana_before-run.player.mana, 18) && near_f32(run.player.class_skill_timer, 3.2), "Ambush Bell cost/cooldown changed")
 	testing.expect(t, len(run.bells) == 1, "Ambush Bell must replace the active lure")
 	bell_cues:=0
-	for cue in run.sfx do if cue==.Bell do bell_cues+=1
-	testing.expect(t,bell_cues==1,"placing an Ambush Bell must emit exactly one Bell cue")
+	for cue in run.sfx do if cue.bank==.Rogue_Bell_Cast {
+		bell_cues+=1
+		testing.expect(t,cue.spatial&&cue.pos==run.bells[0].pos,"Rogue_Bell_Cast must be spatial at the planted bell")
+	}
+	testing.expect(t,bell_cues==1,"placing an Ambush Bell must emit exactly one Rogue_Bell_Cast cue")
 	if len(run.bells) == 0 do return
 	bell_pos := run.bells[0].pos
 	testing.expect(t, near_f32(run.bells[0].arm_timer, .34) && near_f32(run.bells[0].lifetime, 6), "Ambush Bell arming/lifetime changed")
@@ -433,8 +447,11 @@ m8_ambush_bell_arms_lures_and_backstabs :: proc(t: ^testing.T) {
 	testing.expect(t, len(run.bells) == 0, "triggered bell must be consumed")
 	testing.expectf(t, hp_before-run.enemies[0].hp == 35, "facing primary bell hit dealt %v, want 35", hp_before-run.enemies[0].hp)
 	bell_cues=0
-	for cue in run.sfx do if cue==.Bell do bell_cues+=1
-	testing.expect(t,bell_cues==1,"detonating an Ambush Bell must emit exactly one Bell cue")
+	for cue in run.sfx do if cue.bank==.Rogue_Bell_Detonate {
+		bell_cues+=1
+		testing.expect(t,cue.spatial&&cue.pos==bell_pos,"Rogue_Bell_Detonate must be spatial at the consumed bell")
+	}
+	testing.expect(t,bell_cues==1,"detonating an Ambush Bell must emit exactly one Rogue_Bell_Detonate cue")
 }
 
 @(test)

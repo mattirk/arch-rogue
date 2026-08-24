@@ -622,22 +622,34 @@ sim_emits_sfx_events :: proc(t: ^testing.T) {
 
 	ar.player_melee(&run, {1, 0})
 	has_swing := false
-	for e in run.sfx do if e == .Swing do has_swing = true
-	testing.expect(t, has_swing, "melee must emit Swing")
+	for e in run.sfx {
+		if e.bank == .Melee_Swing_Warden {
+			has_swing = e.spatial && e.pos == run.player.pos
+		}
+	}
+	testing.expect(t, has_swing, "Warden melee must emit a spatial Melee_Swing_Warden at the player")
 
 	clear(&run.sfx)
 	run.player.hp = 50
 	ar.player_use_potion(&run, .Heal_Potion)
 	has_potion := false
-	for e in run.sfx do if e == .Potion do has_potion = true
-	testing.expect(t, has_potion, "potion must emit Potion")
+	for e in run.sfx {
+		if e.bank == .Potion_Drink {
+			has_potion = !e.spatial
+		}
+	}
+	testing.expect(t, has_potion, "potion must emit non-spatial Potion_Drink")
 
 	clear(&run.sfx)
 	ar.run_descend(&run) // dev descend does not emit; interact path does
 	ar.damage_player(&run, 20)
 	has_hurt := false
-	for e in run.sfx do if e == .Hurt do has_hurt = true
-	testing.expect(t, has_hurt, "taking damage must emit Hurt")
+	for e in run.sfx {
+		if e.bank == .Player_Hurt_Light {
+			has_hurt = !e.spatial
+		}
+	}
+	testing.expect(t, has_hurt, "taking 20 damage must emit non-spatial Player_Hurt_Light")
 }
 
 @(test)
@@ -662,10 +674,13 @@ title_flow_transitions :: proc(t: ^testing.T) {
 	testing.expect(t,!has_cue,"Select -> Playing must suppress the generic confirmation cue")
 	start_count:=0
 	for queued in app.run.sfx {
-		testing.expect(t,queued==.Start,"starting a run must not queue a second semantic cue")
-		if queued==.Start do start_count+=1
+		testing.expect(t,queued.bank==.Run_Start,"starting a run must not queue a second semantic cue")
+		if queued.bank==.Run_Start {
+			start_count+=1
+			testing.expect(t,!queued.spatial,"Run_Start must be non-spatial")
+		}
 	}
-	testing.expect(t,start_count==1,"starting a selected archetype must emit exactly one Start cue")
+	testing.expect(t,start_count==1,"starting a selected archetype must emit exactly one Run_Start cue")
 }
 
 @(test)
@@ -1101,12 +1116,23 @@ boss_seal_gating_and_victory :: proc(t: ^testing.T) {
 	arena := ar.dungeon_rooms(&run.dungeon)[run.dungeon.room_count - 1]
 	run.player.pos = {f32(arena.x) + 1.5, f32(arena.y) + 1.5}
 	run.player.prev_pos = run.player.pos
+	boss_pos := ar.Vec2{}
+	for &enemy in run.enemies do if enemy.role == .Boss do boss_pos = enemy.pos
 	clear(&run.sfx)
 	ar.sim_tick(&run, {})
 	testing.expect(t, run.boss_engaged, "entering the arena must engage the boss")
 	has_boss_engage_cue:=false
-	for cue in run.sfx do if cue==.Boss do has_boss_engage_cue=true
-	testing.expect(t,has_boss_engage_cue,"arena engagement must emit the semantic Boss cue")
+	has_gate_close_cue:=false
+	for cue in run.sfx {
+		if cue.bank==.Boss_Engage {
+			has_boss_engage_cue=!cue.spatial
+		}
+		if cue.bank==.Boss_Gate_Close {
+			has_gate_close_cue=cue.spatial&&cue.pos==boss_pos
+		}
+	}
+	testing.expect(t,has_boss_engage_cue,"arena engagement must emit non-spatial Boss_Engage")
+	testing.expect(t,has_gate_close_cue,"arena engagement must emit spatial Boss_Gate_Close at the boss")
 	testing.expect(t, len(run.sealed) > 0, "the seal must close at least one opening")
 	for s in run.sealed {
 		testing.expect(t, run.dungeon.tiles[s.x][s.y] == .Closed_Door, "sealed openings become locked doors")
@@ -1121,14 +1147,26 @@ boss_seal_gating_and_victory :: proc(t: ^testing.T) {
 
 	// Kill the boss: seal restores, stairs open.
 	for &enemy in run.enemies {
-		if enemy.role == .Boss do enemy.hp = 0
+		if enemy.role == .Boss {
+			boss_pos = enemy.pos
+			enemy.hp = 0
+		}
 	}
 	clear(&run.sfx)
 	ar.sim_tick(&run, {})
 	testing.expect(t, !run.boss_engaged, "boss death must break the seal")
 	has_boss_death_cue:=false
-	for cue in run.sfx do if cue==.Boss do has_boss_death_cue=true
-	testing.expect(t,has_boss_death_cue,"boss death must emit the semantic Boss cue")
+	has_gate_open_cue:=false
+	for cue in run.sfx {
+		if cue.bank==.Boss_Defeat {
+			has_boss_death_cue=!cue.spatial
+		}
+		if cue.bank==.Boss_Gate_Open {
+			has_gate_open_cue=cue.spatial&&cue.pos==boss_pos
+		}
+	}
+	testing.expect(t,has_boss_death_cue,"boss death must emit non-spatial Boss_Defeat")
+	testing.expect(t,has_gate_open_cue,"boss death must emit spatial Boss_Gate_Open at the boss")
 	testing.expect(t, len(run.sealed) == 0, "sealed list must clear")
 	testing.expect(t, ar.player_interact(&run), "stairs must open after the kill")
 	testing.expect(t, run.depth == depth_before + 1, "descend must proceed")
@@ -1148,14 +1186,14 @@ boss_seal_gating_and_victory :: proc(t: ^testing.T) {
 	_ = ar.player_interact(&run)
 	testing.expect(t, run.story_runtime.requests.epilogue, "stairs after the Tyrant must request the epilogue")
 	testing.expect(t, !run.victory, "final stairs must not bypass the authored epilogue")
-	for cue in run.sfx do testing.expect(t, cue != .Victory, "final stairs emitted Victory before the bell")
+	for cue in run.sfx do testing.expect(t, cue.bank != .Victory, "final stairs emitted Victory before the bell")
 
 	testing.expect(t, ar.story_record_gate_choice(&run.story, .Aid), "the Gate choice must resolve before the bell")
 	run.story_runtime.epilogue_stage = .Bell
 	testing.expect(t, ar.story_complete_bell_victory(&run), "ringing the final bell must claim victory")
 	has_victory_cue:=false
-	for cue in run.sfx do if cue==.Victory do has_victory_cue=true
-	testing.expect(t,has_victory_cue,"the final bell must emit Victory")
+	for cue in run.sfx do if cue.bank==.Victory do has_victory_cue=!cue.spatial
+	testing.expect(t,has_victory_cue,"the final bell must emit non-spatial Victory")
 }
 
 @(test)
@@ -1180,14 +1218,17 @@ player_death_enters_dead_mode :: proc(t: ^testing.T) {
 	testing.expect(t,!app.mobile_utility_open,"death must dismiss the transient mobile utility drawer")
 	testing.expect(t, app.run.player.hit_flash == 0, "death presentation must clear the lethal-hit flash")
 	death_cues:=0
-	for cue in app.run.sfx do if cue==.Death do death_cues+=1
-	testing.expect(t,death_cues==1,"death must emit exactly one cue")
+	for cue in app.run.sfx do if cue.bank==.Player_Death {
+		death_cues+=1
+		testing.expect(t,!cue.spatial,"Player_Death must be non-spatial")
+	}
+	testing.expect(t,death_cues==1,"death must emit exactly one Player_Death cue")
 	death_ticks := int(ar.PLAYER_DEATH_OVERLAY_DELAY/ar.SIM_DT)+2
 	for _ in 0..<death_ticks do ar.app_tick(&app)
 	testing.expect(t, app.mode == .Dead, "death summary must follow the die/dead presentation")
 	death_cues=0
-	for cue in app.run.sfx do if cue==.Death do death_cues+=1
-	testing.expect(t,death_cues==1,"death presentation must not repeat its cue")
+	for cue in app.run.sfx do if cue.bank==.Player_Death do death_cues+=1
+	testing.expect(t,death_cues==1,"death presentation must not repeat its Player_Death cue")
 	ar.app_apply(&app, ar.Intent{back = true})
 	testing.expect(t, app.mode == .Title, "R/back/click from Dead must return to the title shell")
 }

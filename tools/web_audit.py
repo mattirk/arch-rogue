@@ -22,8 +22,18 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+CORE_SFX_BANKS = {
+    "ui_navigate", "ui_confirm", "ui_back", "ui_reject", "ui_equip", "ui_purchase",
+    "run_start", "level_up", "victory", "story_consequence", "relic_recovered",
+    "epilogue_bell", "player_hurt_light", "player_hurt_heavy", "player_death",
+    "melee_swing_arcanist", "dash_cloth_light", "warden_guard_bolt", "arcane_cast",
+    "shadow_cast", "impact_generic",
+    "item_pickup_common", "enemy_attack_light", "boss_engage", "door_open",
+    "trap_spike", "shrine_mending", "step_boot_grass", "potion_drink",
+}
 
 failures: list[str] = []
 
@@ -54,6 +64,28 @@ def wire_size(path: Path) -> tuple[int, bool]:
     if brotli.is_file():
         return brotli.stat().st_size, True
     return path.stat().st_size, False
+
+
+def parse_arpack_index(data: bytes) -> list[dict[str, Any]]:
+    if not data.startswith(b"ARPACK1\n") or len(data) < 12:
+        raise ValueError("bad magic/header")
+    index_length = int.from_bytes(data[8:12], "little")
+    index_end = 12 + index_length
+    if index_end > len(data):
+        raise ValueError("index exceeds payload")
+    index = json.loads(data[12:index_end])
+    if not isinstance(index, list):
+        raise ValueError("index is not an array")
+    for entry in index:
+        if not isinstance(entry, dict) or not {"path", "offset", "size"} <= entry.keys():
+            raise ValueError("index entry metadata is incomplete")
+        if not isinstance(entry["path"], str) or not entry["path"].startswith("/assets/"):
+            raise ValueError("index entry path is invalid")
+        if not isinstance(entry["offset"], int) or not isinstance(entry["size"], int):
+            raise ValueError("index entry range is invalid")
+        if entry["offset"] < 0 or entry["size"] < 0 or index_end + entry["offset"] + entry["size"] > len(data):
+            raise ValueError("index entry exceeds payload")
+    return index
 
 
 def parse_wasm_memory_limits(wasm: bytes) -> tuple[int, int | None]:
@@ -171,10 +203,27 @@ def main() -> int:
     # --- packs -------------------------------------------------------------
     if packs_json.is_file():
         packs = json.loads(packs_json.read_text())
-        if packs.get("schema") != 1 or not packs.get("packs"):
+        if packs.get("schema") != 2 or not packs.get("packs"):
             fail("packs.json schema/content invalid")
+        elif set(packs.get("core_sfx_banks", [])) != CORE_SFX_BANKS:
+            fail("packs.json core_sfx_banks metadata differs from the required staged set")
         else:
+            sfx_manifest = json.loads((REPO_ROOT / "assets" / "audio" / "sfx" / "manifest.json").read_text())
+            canonical_banks = sfx_manifest["banks"]
+            bank_owners: dict[str, list[str]] = {}
+            bank_paths: dict[str, list[str]] = {}
+            all_pack_paths: set[str] = set()
             for name, info in sorted(packs["packs"].items()):
+                actors = info.get("actors")
+                sfx_banks = info.get("sfx_banks")
+                if not isinstance(actors, list) or not all(isinstance(actor, str) and actor for actor in actors):
+                    fail(f"pack {name} has invalid/missing actors metadata")
+                    actors = []
+                if not isinstance(sfx_banks, list) or not all(isinstance(bank, str) and bank for bank in sfx_banks):
+                    fail(f"pack {name} has invalid/missing sfx_banks metadata")
+                    sfx_banks = []
+                if not actors and not sfx_banks:
+                    fail(f"pack {name} lists neither actors nor SFX banks")
                 blob = dist / info["url"]
                 if not blob.is_file():
                     fail(f"pack blob missing: {info['url']}")
@@ -184,10 +233,54 @@ def main() -> int:
                     fail(f"pack {name} size mismatch")
                 if hashlib.sha256(data).hexdigest() != info["sha256"]:
                     fail(f"pack {name} digest mismatch")
-                if not data.startswith(b"ARPACK1\n"):
-                    fail(f"pack {name} has bad magic")
-                if not info.get("actors"):
-                    fail(f"pack {name} lists no actors")
+                try:
+                    index = parse_arpack_index(data)
+                except (ValueError, json.JSONDecodeError) as error:
+                    fail(f"pack {name} index invalid: {error}")
+                    continue
+                if len(index) != info.get("files"):
+                    fail(f"pack {name} file count metadata mismatch")
+                paths = [entry["path"] for entry in index]
+                duplicate_paths = all_pack_paths.intersection(paths)
+                if duplicate_paths:
+                    fail(f"pack {name} duplicates paths from another pack: {sorted(duplicate_paths)}")
+                all_pack_paths.update(paths)
+                for actor in actors:
+                    prefix = f"/assets/actors/{actor}/"
+                    if not any(path.startswith(prefix) for path in paths):
+                        fail(f"pack {name} actor metadata has no files: {actor}")
+                for bank in sfx_banks:
+                    metadata = canonical_banks.get(bank)
+                    if not isinstance(metadata, dict):
+                        fail(f"pack {name} references unknown SFX bank {bank}")
+                        metadata = {"files": []}
+                    canonical_paths = {
+                        f"/assets/audio/sfx/{entry['file']}"
+                        for entry in metadata["files"]
+                    }
+                    matches = [path for path in paths if path in canonical_paths]
+                    bank_owners.setdefault(bank, []).append(name)
+                    bank_paths.setdefault(bank, []).extend(matches)
+
+            if set(bank_owners) != set(canonical_banks):
+                fail("pack SFX metadata does not cover every canonical bank")
+            for bank, metadata in canonical_banks.items():
+                owners = bank_owners.get(bank, [])
+                canonical_files = {
+                    f"/assets/audio/sfx/{entry['file']}"
+                    for entry in metadata["files"]
+                }
+                expected_files = set(canonical_files)
+                if bank in CORE_SFX_BANKS:
+                    if owners != ["sfx-world"]:
+                        fail(f"core SFX bank {bank} must upgrade only from sfx-world")
+                    staged = min(metadata["files"], key=lambda entry: entry["byte_size"])["file"]
+                    expected_files.remove(f"/assets/audio/sfx/{staged}")
+                elif len(owners) != 1:
+                    fail(f"non-core SFX bank {bank} must belong to exactly one pack")
+                actual_files = set(bank_paths.get(bank, []))
+                if actual_files != expected_files:
+                    fail(f"pack variants for {bank} differ from canonical upgrade set")
             lazy_total = sum(info["bytes"] for info in packs["packs"].values())
             note(f"lazy packs: {len(packs['packs'])} totalling {lazy_total/1e6:.1f} MB (excluded from budget)")
 
