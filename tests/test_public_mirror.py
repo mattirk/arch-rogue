@@ -68,10 +68,16 @@ class PublicMirrorSnapshotTests(unittest.TestCase):
             "android/README.md",
             "android/release-signing-cert.sha256",
             "assets/actors/player.png",
+            "assets/audio/sfx/manifest.json",
+            "assets/audio/sfx/README.md",
+            "assets/audio/sfx/licensed_01.wav",
+            "arch-rogue-sfx-runtime-private.tar.gz",
             "src/main.odin",
             "src/app.odin",
             "tests/core_test.odin",
             "tools/android.sh",
+            "tools/sfx_bundle.py",
+            "tools/fetch_private_sfx.sh",
             "vendor/raylib/raylib.odin",
             "vendor/raylib/wasm/SHA256SUMS",
             "web/toolchain.properties",
@@ -209,7 +215,11 @@ class PublicMirrorSnapshotTests(unittest.TestCase):
                 "android/README.md",
                 "android/release-signing-cert.sha256",
                 "assets/actors/player.png",
+                "assets/audio/sfx/manifest.json",
+                "assets/audio/sfx/README.md",
                 "tools/android.sh",
+                "tools/sfx_bundle.py",
+                "tools/fetch_private_sfx.sh",
                 "web/toolchain.properties",
                 "web/shell.html",
                 "src/main_web.odin",
@@ -266,6 +276,8 @@ class PublicMirrorSnapshotTests(unittest.TestCase):
                 "arch-rogue-python/tools/public-repo",
                 "arch-rogue-python/tools/set_public_android_secrets.sh",
                 "assets/__pycache__",
+                "assets/audio/sfx/licensed_01.wav",
+                "arch-rogue-sfx-runtime-private.tar.gz",
                 "src/.odin-cache",
                 "tests/.pytest_cache",
                 "tools/.ruff_cache",
@@ -280,6 +292,27 @@ class PublicMirrorSnapshotTests(unittest.TestCase):
                     (destination / relative).exists(),
                     f"leaked into mirror: {relative}",
                 )
+            public_gitignore = (destination / ".gitignore").read_text(encoding="utf-8")
+            self.assertIn("/assets/audio/sfx/*.wav", public_gitignore)
+            self.assertIn("/arch-rogue-sfx-runtime*.tar.gz", public_gitignore)
+
+    def test_validate_only_rejects_injected_licensed_sfx(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "master"
+            destination = Path(tmpdir) / "public"
+            self._build_fake_master(root)
+            _ = self._run_mirror(root, destination, check=True)
+
+            _write(destination, "assets/audio/sfx/injected.wav", "licensed bytes\n")
+            result = self._run_mirror(root, destination, validate_only=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("licensed runtime SFX WAV present", result.stderr)
+
+            (destination / "assets/audio/sfx/injected.wav").unlink()
+            _write(destination, "assets/arch-rogue-sfx-runtime-leak.tar.gz", "private bundle\n")
+            result = self._run_mirror(root, destination, validate_only=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("private runtime SFX bundle present", result.stderr)
 
     def test_root_workflow_overlay_and_stale_deletion(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

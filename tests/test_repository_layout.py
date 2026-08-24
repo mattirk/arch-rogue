@@ -125,6 +125,8 @@ class RepositoryLayoutTests(unittest.TestCase):
             "tools/verify_story_assets.py",
             "tools/verify_chronicle_assets.py",
             "tools/verify_linux_raylib.py",
+            "tools/sfx_bundle.py verify",
+            "tests.test_sfx_bundle",
             "tests.test_repository_layout",
             "tools/mirror_public_snapshot.sh",
             '"arch-rogue-python/**"',
@@ -150,6 +152,20 @@ class RepositoryLayoutTests(unittest.TestCase):
             workflow.count('release: "false"'),
         )
 
+        mirror_workflow = (ROOT / ".github" / "workflows" / "mirror-public.yml").read_text(
+            encoding="utf-8"
+        )
+        for contract in (
+            "contents: write",
+            "python3 tools/sfx_bundle.py verify",
+            "python3 tools/sfx_bundle.py create",
+            'tag="sfx-runtime"',
+            "gh release upload",
+            "gh release create",
+            "bash tools/mirror_public_snapshot.sh /tmp/public",
+        ):
+            self.assertIn(contract, mirror_workflow)
+
     def test_public_release_covers_odin_linux_android_web(self) -> None:
         workflow_path = (
             PRIVATE_PUBLIC_WORKFLOW if IS_PRIVATE_MASTER else PUBLIC_SNAPSHOT_WORKFLOW
@@ -172,6 +188,10 @@ class RepositoryLayoutTests(unittest.TestCase):
             "emscripten-core/emsdk",
             "tools/generate_download_manifest.py",
             "tools/verify_linux_raylib.py",
+            "tools/fetch_private_sfx.sh",
+            "releases/tags/sfx-runtime",
+            "secrets.ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION",
+            "tests.test_sfx_bundle",
             "actions/deploy-pages@",
             '"arch-rogue-python/**"',
             "sha12:",
@@ -201,6 +221,10 @@ class RepositoryLayoutTests(unittest.TestCase):
             workflow.count("uses: laytan/setup-odin@"),
             workflow.count('release: "false"'),
         )
+        self.assertEqual(workflow.count("run: bash tools/fetch_private_sfx.sh"), 3)
+        self.assertNotIn("secrets.ARCH_ROGUE_SFX_BUNDLE_URL", workflow)
+        self.assertNotIn("secrets.ARCH_ROGUE_SFX_BUNDLE_SHA256", workflow)
+        self.assertNotIn("arch-rogue-sfx-runtime.tar.gz", workflow)
 
         android_sdk_install = workflow.partition(
             "      - name: Install pinned Android SDK and NDK"

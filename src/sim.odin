@@ -555,10 +555,11 @@ story_damage_combat_target :: proc(run: ^Run, target: Story_Combat_Target, raw: 
 		return 0
 	}
 	append(&run.numbers, Damage_Number{pos = pos, value = damage, kind = .Damage_Taken})
-	append(&run.sfx, Sfx_Kind.Hurt)
 	if fallen {
 		append(&run.numbers, Damage_Number{pos = pos, kind = .Text, text = "Story ally falls"})
-		append(&run.sfx, Sfx_Kind.Death)
+		sfx_emit(run, .Impact_Lethal, pos, spatial = true)
+	} else {
+		sfx_emit(run, .Impact_Flesh, pos, spatial = true)
 	}
 	return damage
 }
@@ -641,28 +642,6 @@ enemy_ensure_id :: proc(run: ^Run, enemy: ^Enemy) -> u32 {
 	return enemy.entity_id
 }
 
-// Sound events the sim emits; the audio layer drains them each frame.
-// Raylib-free by design (hard rule 2).
-Sfx_Kind :: enum {
-	Swing,
-	Hit,
-	Hurt,
-	Bolt,
-	Pickup,
-	Potion,
-	Level_Up,
-	Stairs,
-	Death,
-	Door,
-	Start,
-	Bell,
-	Boss,
-	Victory,
-	Drink,
-	Trap,
-	Shrine,
-	Secret,
-}
 
 Number_Kind :: enum {
 	Damage_Dealt,
@@ -739,7 +718,7 @@ player_gain_xp :: proc(run: ^Run, amount: int) {
 		p.stamina = f32(p.max_stamina)
 		p.memory_tokens += 1
 		append(&run.numbers, Damage_Number{pos = p.pos, kind = .Text, text = "LEVEL UP!"})
-		append(&run.sfx, Sfx_Kind.Level_Up)
+		sfx_emit(run, .Level_Up)
 	}
 }
 
@@ -760,7 +739,7 @@ player_use_potion :: proc(run: ^Run, kind: Item_Kind) {
 	}
 	run.potions_used += 1
 	p.potion_timer = POTION_COOLDOWN
-	append(&run.sfx, Sfx_Kind.Potion)
+	sfx_emit(run, .Potion_Drink)
 }
 
 // Equip the bag item at index, swapping any currently equipped piece back
@@ -921,6 +900,7 @@ sort_bag :: proc(p: ^Player, mode: Inventory_Sort_Mode) {
 	}
 }
 
+
 drop_from_bag :: proc(run: ^Run, index: int) -> bool {
 	p := &run.player
 	if index < 0 || index >= p.bag_count do return false
@@ -933,7 +913,7 @@ drop_from_bag :: proc(run: ^Run, index: int) -> bool {
 	}
 	append(&run.ground_items, Ground_Item{item = item, pos = drop_pos})
 	append(&run.numbers, Damage_Number{pos = p.pos, kind = .Text, text = item_display_name(item)})
-	append(&run.sfx, Sfx_Kind.Pickup)
+	sfx_emit(run, .Item_Drop, drop_pos, spatial = true)
 	return true
 }
 
@@ -1285,7 +1265,7 @@ pick_up_nearby_item :: proc(run: ^Run) -> bool {
 	}
 	record_notable_loot(run, g.item) // interactions.py:665 manual pickup path
 	append(&run.numbers, Damage_Number{pos = g.pos, kind = .Text, text = item_display_name(g.item)})
-	append(&run.sfx, Sfx_Kind.Pickup)
+	sfx_emit(run, sfx_item_pickup_bank(g.item.rarity))
 	unordered_remove(&run.ground_items, nearest)
 	return true
 }
@@ -1873,8 +1853,9 @@ commit_enemy_attack :: proc(run: ^Run, enemy: ^Enemy) {
 			enemy_start_visual_action(enemy, enemy.ranged ? .Cast : .Attack)
 			if enemy.ranged {
 				spawn_enemy_bolt(run, enemy, enemy.windup_aim, enemy.damage, ENEMY_BOLT_SPEED, 0, enemy.damage_type, {}, false, 0)
-				append(&run.sfx, Sfx_Kind.Bolt)
+				sfx_emit(run, sfx_enemy_attack_bank(enemy), enemy.pos, spatial = true, emitter_id = u64(enemy.entity_id))
 			} else {
+				sfx_emit(run, sfx_enemy_attack_bank(enemy), enemy.pos, spatial = true, emitter_id = u64(enemy.entity_id))
 				raw := enemy.damage + rng_range(&run.combat_rng, -2, 3)
 				_ = story_damage_combat_target(run, target, raw)
 				feel_emit_enemy_slash(run, (enemy.pos + target.pos) * .5, enemy.windup_aim, enemy.color)
@@ -1910,11 +1891,12 @@ commit_enemy_attack :: proc(run: ^Run, enemy: ^Enemy) {
 		} else {
 			spawn_enemy_bolt(run, enemy, aim, enemy.damage, ENEMY_BOLT_SPEED, 0, enemy.damage_type, status, has_status, duration)
 		}
-		append(&run.sfx, Sfx_Kind.Bolt)
+		sfx_emit(run, sfx_enemy_attack_bank(enemy), enemy.pos, spatial = true, emitter_id = u64(enemy.entity_id))
 		return
 	}
 	// Once the tell starts, pygame commits the melee hit. Walking out during
 	// the short windup does not silently cancel it; defensive actions counter it.
+	sfx_emit(run, sfx_enemy_attack_bank(enemy), enemy.pos, spatial = true, emitter_id = u64(enemy.entity_id))
 	feel_emit_enemy_slash(run, (enemy.pos + run.player.pos) * .5, aim, enemy.color)
 	raw := enemy.damage + rng_range(&run.combat_rng, -2, 3)
 	dealt := damage_player_typed(run, raw, enemy.damage_type, melee=true, attacker=enemy)
@@ -1937,6 +1919,7 @@ commit_ability :: proc(run: ^Run, enemy: ^Enemy, idx: int, aim: Vec2) {
 	enemy.last_ability = idx
 	dmg := max(1, int(math.round(f32(enemy.damage) * ab.dmg_mult)))
 	reach := ab.attack_range > 0 ? ab.attack_range : enemy.attack_range
+	sfx_emit(run, sfx_ability_bank(enemy.abilities[idx]), enemy.pos, spatial = true, emitter_id = u64(enemy.entity_id))
 
 	switch ab.effect {
 	case .Strike:
@@ -1949,7 +1932,6 @@ commit_ability :: proc(run: ^Run, enemy: ^Enemy, idx: int, aim: Vec2) {
 	case .Bolt:
 		feel_emit_enemy_cast(run, enemy, .36)
 		spawn_enemy_bolt(run, enemy, aim, dmg, ab.proj_speed, 0, enemy.damage_type, ab.status, ab.has_status, ab.status_duration)
-		append(&run.sfx, Sfx_Kind.Bolt)
 	case .Fan:
 		feel_emit_enemy_cast(run, enemy, .36)
 		count := max(1, ab.proj_count)
@@ -1960,7 +1942,6 @@ commit_ability :: proc(run: ^Run, enemy: ^Enemy, idx: int, aim: Vec2) {
 			}
 			spawn_enemy_bolt(run, enemy, aim, dmg, ab.proj_speed, offset, enemy.damage_type, ab.status, ab.has_status, ab.status_duration)
 		}
-		append(&run.sfx, Sfx_Kind.Bolt)
 	case .Nova:
 		feel_emit_enemy_nova(run, enemy, reach)
 		to := run.player.pos - enemy.pos
@@ -1985,7 +1966,6 @@ commit_ability :: proc(run: ^Run, enemy: ^Enemy, idx: int, aim: Vec2) {
 				_ = story_damage_combat_target(run, {kind = .Soul, guest_index = -1, pos = soul.pos}, dmg + rng_range(&run.combat_rng, -2, 3))
 			}
 		}
-		append(&run.sfx, Sfx_Kind.Bolt)
 	}
 }
 
@@ -2247,8 +2227,8 @@ tick_boss_encounter :: proc(run: ^Run) {
 		if room_contains_point(boss_room, run.player.pos.x, run.player.pos.y) &&
 			engage_boss_room(run, boss_room, &enemy) {
 			append(&run.numbers, Damage_Number{pos = run.player.pos, kind = .Text, text = "The gate seals behind you..."})
-			append(&run.sfx, Sfx_Kind.Door)
-			append(&run.sfx, Sfx_Kind.Boss)
+			sfx_emit(run, .Boss_Gate_Close, enemy.pos, spatial = true, emitter_id = u64(enemy.entity_id))
+			sfx_emit(run, .Boss_Engage)
 		}
 		return
 	}
@@ -2537,6 +2517,8 @@ sweep_dead_enemies :: proc(run: ^Run) {
 			if enemy.role == .Miniboss || enemy.role == .Boss do gold += 18
 			run.player.gold += gold
 			append(&run.numbers, Damage_Number{pos = enemy.pos, kind = .Gold, value = gold})
+			coin_bank := enemy.role == .Miniboss || enemy.role == .Boss ? Sfx_Bank.Coin_Pickup_Medium : Sfx_Bank.Coin_Pickup_Light
+			sfx_emit(run, coin_bank)
 			// MX.5 reward contract (damage.py:255-450): the Tyrant guarantees a
 			// named Unique; floor guardians and every Oathbound/challenge
 			// miniboss guarantee Rare equipment; the ordinary 28% roll below
@@ -2572,7 +2554,8 @@ sweep_dead_enemies :: proc(run: ^Run) {
 				run.boss_engaged = false
 				if enemy.final_boss do run.tyrant_dead = true
 				append(&run.numbers, Damage_Number{pos = enemy.pos, kind = .Text, text = "The seal breaks!"})
-				append(&run.sfx,Sfx_Kind.Boss)
+				sfx_emit(run, .Boss_Gate_Open, enemy.pos, spatial = true, emitter_id = u64(enemy.entity_id))
+				sfx_emit(run, .Boss_Defeat)
 			}
 			run.kills += 1
 			unordered_remove(&run.enemies, i)
@@ -2623,7 +2606,7 @@ player_melee :: proc(run: ^Run, aim: Vec2) {
 	player.melee_commit_timer = MELEE_COMMIT_SECONDS // whiffs commit too
 	start_swing(player, aim)
 	feel_emit_slash(run,player_slash_origin(run,player.facing),player.facing)
-	append(&run.sfx, Sfx_Kind.Swing)
+	sfx_emit(run, sfx_player_melee_bank(player.archetype), player.pos, spatial = true)
 
 	strike_arc(run, player.facing, PLAYER_MELEE_RANGE, player_melee_damage(player), knockback = KNOCKBACK_SPEED)
 }
@@ -2793,11 +2776,13 @@ player_interact :: proc(run: ^Run) -> (floor_changed: bool) {
 	if door, found := nearby_closed_door(&run.dungeon, run.player.pos.x, run.player.pos.y); found {
 		if door_is_sealed(run, door) {
 			append(&run.numbers, Damage_Number{pos = run.player.pos, kind = .Text, text = "Sealed by the boss"})
+			sfx_emit(run, .Lock_Denied)
 			return false
 		}
 		open_door(&run.dungeon, door.x, door.y)
 		refresh_visibility(run)
-		append(&run.sfx, Sfx_Kind.Door)
+		door_pos := Vec2{f32(door.x) + 0.5, f32(door.y) + 0.5}
+		sfx_emit(run, .Door_Open, door_pos, spatial = true)
 		return false
 	}
 	if player_near_shop(run) {
@@ -2818,10 +2803,11 @@ player_interact :: proc(run: ^Run) -> (floor_changed: bool) {
 				return false
 			}
 			run.victory = true
-			append(&run.sfx, Sfx_Kind.Victory)
+			sfx_emit(run, .Victory)
 			return false
 		}
-		append(&run.sfx, Sfx_Kind.Stairs)
+		stairs_pos := Vec2{f32(run.dungeon.stairs.x) + 0.5, f32(run.dungeon.stairs.y) + 0.5}
+		sfx_emit(run, .Stairs_Descend, stairs_pos, spatial = true)
 		run_descend(run)
 		return true
 	}
@@ -2842,7 +2828,8 @@ player_interact :: proc(run: ^Run) -> (floor_changed: bool) {
 	if barrel, found := run_barrel_tile(run); found && !run.refuge.bar_toasted && barrel_in_drink_range(run.player.pos, barrel) {
 		if run_toast_bar(run) {
 			append(&run.numbers, Damage_Number{pos=run.player.pos,kind=.Text,text="A grim toast"})
-			append(&run.sfx, Sfx_Kind.Drink)
+			bar_pos := Vec2{f32(barrel.x) + 0.5, f32(barrel.y) + 0.5}
+			sfx_emit(run, .Bar_Toast, bar_pos, spatial = true)
 		}
 		return false
 	}

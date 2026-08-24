@@ -813,7 +813,7 @@ apply_platform_effects :: proc(app:^App,view:^View,audio:^Audio,effects:bit_set[
 		if .Apply_FPS in effects do rl.SetTargetFPS(i32(frame_rate_cap_target(app.options.frame_rate_cap)))
 	}
 	if .Apply_Zoom in effects do view_apply_base_zoom(view,app.options.view_zoom)
-	if .Apply_Audio in effects do audio_set_enabled(audio,app.options.audio_enabled)
+	if .Apply_Audio in effects do audio_set_volume(audio, audio_volume_factor(app.options.sfx_volume))
 	// Save_Options is consumed by the MX-save coordinator after platform effects.
 }
 
@@ -1095,6 +1095,7 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 			rt.app.options.fullscreen = true
 		}
 		rt.app.options.audio_enabled = false
+		rt.app.options.sfx_volume = .Off
 		rt.app.options.view_zoom = OPTIONS_VIEW_ZOOM_DEFAULT
 		if config.capture_scenario != .None {
 			rt.app.options.mist_enabled = false
@@ -1279,7 +1280,7 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 	when ARCH_ROGUE_WEB {
 		if web_consume_audio_unlock() && !rt.audio.ready {
 			audio_init(&rt.audio)
-			audio_set_enabled(&rt.audio, app.options.audio_enabled)
+			audio_set_volume(&rt.audio, audio_volume_factor(app.options.sfx_volume))
 		}
 		if web_consume_visibility_resume() {
 			// requestAnimationFrame stops while the tab is hidden. Discard the
@@ -1328,9 +1329,14 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 		}
 		view_center_on(&rt.view, world_from_tile(run_spawn_point(&app.run)))
 	}
-	// Reducers can generate a floor or rebuild presentation resources. Start
-	// ordinary UI cues only after that work has completed.
-	if cue, has_cue := audio_cue_for_transition(intent, mode_was, app.mode); has_cue do audio_play_cue(&rt.audio, cue)
+	// Reducers can generate a floor or rebuild presentation resources. Start UI
+	// banks only after that work has completed, and let semantic reducer outcomes
+	// replace or suppress the generic intent bank without double-playing it.
+	if app.ui_sfx_override {
+		audio_play_bank(&rt.audio, app.ui_sfx_bank)
+	} else if !app.ui_sfx_suppress {
+		if bank, has_bank := audio_cue_for_transition(intent, mode_was, app.mode); has_bank do audio_play_bank(&rt.audio, bank)
+	}
 	if rt.platform.mobile && !rt.platform.resume_gate && mode_was != .Playing && app.mode == .Playing do audio_resume(&rt.audio)
 	if app.mode == .Save_Wait && mode_was != .Save_Wait {
 		rt.persistence.save_wait_presented = false
@@ -1412,7 +1418,7 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 	audio_music_update(
 		&rt.audio,
 		&rt.music,
-		MUSIC_VOLUME_FACTORS[music_volume_normalize(app.options.music_volume)],
+		audio_volume_factor(app.options.music_volume),
 		rt.music_runtime,
 	)
 	when ARCH_ROGUE_WEB {

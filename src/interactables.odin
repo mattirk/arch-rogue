@@ -88,7 +88,7 @@ tick_traps :: proc(run: ^Run, dt: f32) {
 		run.traps_triggered += 1
 		append(&run.numbers, Damage_Number{pos = player.pos, kind = .Text, text = def.trigger_text})
 		feel_emit(run, .Burst, trap.pos, def.hint_color, 0.46, 0.58)
-		append(&run.sfx, Sfx_Kind.Trap)
+		sfx_emit(run, sfx_trap_bank(trap.kind), trap.pos, spatial = true, emitter_id = trap.entity_id)
 	}
 }
 
@@ -222,7 +222,7 @@ activate_shrine :: proc(run: ^Run, shrine: ^Shrine) {
 		if !grant_random_discipline(run) {
 			append(&run.numbers, Damage_Number{pos = player.pos, kind = .Text, text = "Oath Shrine finds no path left"})
 			feel_emit(run, .Burst, shrine.pos, def.color, 0.58, 0.68)
-			append(&run.sfx, Sfx_Kind.Shrine)
+			sfx_emit(run, sfx_shrine_bank(shrine.kind), shrine.pos, spatial = true, emitter_id = shrine.entity_id)
 			return
 		}
 	case .Twilight:
@@ -233,7 +233,7 @@ activate_shrine :: proc(run: ^Run, shrine: ^Shrine) {
 	}
 	append(&run.numbers, Damage_Number{pos = player.pos, kind = .Text, text = def.message})
 	feel_emit(run, .Burst, shrine.pos, def.color, 0.58, 0.68)
-	append(&run.sfx, Sfx_Kind.Shrine)
+	sfx_emit(run, sfx_shrine_bank(shrine.kind), shrine.pos, spatial = true, emitter_id = shrine.entity_id)
 }
 
 // Oath Shrine / Forgotten Skill Altar: one free eligible discipline, chosen
@@ -403,7 +403,7 @@ open_secret :: proc(run: ^Run, secret: ^Secret) {
 		append(&run.numbers, Damage_Number{pos = secret.pos, kind = .Text, text = def.message})
 	}
 	feel_emit(run, .Burst, secret.pos, secret_color(run, secret.kind), 0.52, 0.62)
-	append(&run.sfx, Sfx_Kind.Secret)
+	sfx_emit(run, .Secret_Unlock, secret.pos, spatial = true, emitter_id = secret.entity_id)
 }
 
 // --- Placement (population.py:161-261) --------------------------------------

@@ -73,10 +73,16 @@ music_mixes_document_parses_and_references_real_files :: proc(t: ^testing.T) {
 			dungeon.tracks[6].volume == 0.7,
 			"the elite horn must use its proximity stem group at 70% volume",
 		)
-		testing.expect(t, dungeon.tracks[7].file == "bar_guitar.ogg" && dungeon.tracks[7].condition == .Dungeon_Bar_Music,
-			"Bar guitar must fade in on the shared Bar envelope")
-		testing.expect(t, dungeon.tracks[8].file == "bar_melody_flute.ogg" && dungeon.tracks[8].condition == .Dungeon_Bar_Music,
-			"Bar flute must fade in on the shared Bar envelope")
+		testing.expect(t,
+			dungeon.tracks[7].file == "bar_guitar.ogg" && dungeon.tracks[7].condition == .Dungeon_Bar_Music &&
+			dungeon.tracks[7].volume == 0.8,
+			"Bar guitar must use the shared Bar envelope with reduced pre-saturation gain",
+		)
+		testing.expect(t,
+			dungeon.tracks[8].file == "bar_melody_flute.ogg" && dungeon.tracks[8].condition == .Dungeon_Bar_Music &&
+			dungeon.tracks[8].volume == 0.85,
+			"Bar flute must use the shared Bar envelope at 85% authored gain",
+		)
 	}
 
 	boss := ar.music_library_mix(&library, "boss")
@@ -437,12 +443,14 @@ music_master_tape_saturation_is_audible_biased_and_monotonic :: proc(t: ^testing
 	negative := ar.audio_music_saturate_sample(-1)
 	hot := ar.audio_music_saturate_sample(2)
 
+	testing.expect(t, ar.MUSIC_SATURATION_DRIVE == 3, "music tape drive must remain at the approved lighter 3x level")
+	testing.expect(t, ar.MUSIC_SATURATION_MIX == 0.8, "music tape stage must remain 80% wet")
 	testing.expect(t, ar.audio_music_saturate_sample(0) == 0, "saturation must preserve exact silence")
-	testing.expect(t, quiet > 0.13 && quiet < 0.14, "fully wet tape saturation must audibly color quiet authored stems")
+	testing.expect(t, quiet > 0.10 && quiet < 0.12, "parallel tape saturation must gently color quiet authored stems")
 	testing.expect(t, abs(negative) > positive && abs(positive + negative) > 0.05,
 		"tape bias must make positive and negative saturation intentionally asymmetric")
 	testing.expect(t, positive > quiet && hot > positive, "the softsign transfer curve must remain strictly monotonic")
-	testing.expect(t, hot < 0.5, "hot sums must be strongly compressed before limiting")
+	testing.expect(t, hot < 0.8, "hot sums must remain compressed before limiting with 20% clean blend")
 
 	dsp: ar.Music_Master_DSP
 	ar.audio_music_master_dsp_reset(&dsp)

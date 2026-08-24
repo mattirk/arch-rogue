@@ -334,7 +334,7 @@ player_cast_spirit_call_rank :: proc(run: ^Run, spirit_rank: int) -> bool {
 		)
 	}
 	append(&run.numbers, Damage_Number{pos = player.pos, kind = .Text, text = "Spirit Call"})
-	append(&run.sfx, Sfx_Kind.Hit)
+	sfx_emit(run, .Acolyte_Spirit_Call, player.pos, spatial = true)
 	return true
 }
 
@@ -478,7 +478,7 @@ player_cast_spirit_beast_rank :: proc(run: ^Run, beast_rank: int, equipment_bonu
 			run,.Command,beast.pos,ARCHETYPE_SKILL_COLORS[.Ranger],.28,.34,
 			direction=beast.facing,style=.Ranger,priority=.High,
 		)
-		append(&run.sfx, Sfx_Kind.Hit)
+		sfx_emit(run, .Ranger_Beast_Command, beast.pos, spatial = true, emitter_id = u64(beast.entity_id))
 		player_start_visual_action(player,.Cast,PLAYER_BEAST_COMMAND_ACTION_SECONDS)
 		return true
 	}
@@ -507,7 +507,7 @@ player_cast_spirit_beast_rank :: proc(run: ^Run, beast_rank: int, equipment_bonu
 		phase=.Arrival,style=.Ranger,priority=.High,
 	)
 	append(&run.numbers, Damage_Number{pos = player.pos, kind = .Text, text = "Spirit Beast"})
-	append(&run.sfx, Sfx_Kind.Hit)
+	sfx_emit(run, .Ranger_Beast_Summon, spawn, spatial = true, emitter_id = u64(beast.entity_id))
 	return true
 }
 

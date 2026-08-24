@@ -6,6 +6,8 @@ package archrogue_tests
 // storage artifact naming reused as IndexedDB keys, and the fixed-step
 // clamp/discard behavior the browser tab-return path depends on.
 
+import "core:os"
+import "core:strings"
 import "core:testing"
 import ar "../src"
 
@@ -52,6 +54,33 @@ mx_web_storage_artifact_names_stay_stable_for_indexeddb_keys :: proc(t: ^testing
 	testing.expect(t, ar.storage_max_bytes(.Options) == ar.PERSISTENCE_OPTIONS_MAX_BYTES, "options cap mapping")
 	testing.expect(t, ar.storage_max_bytes(.Profile) == ar.PERSISTENCE_PROFILE_MAX_BYTES, "profile cap mapping")
 	testing.expect(t, ar.storage_max_bytes(.Run) == ar.PERSISTENCE_RUN_MAX_BYTES, "run cap mapping")
+}
+
+@(test)
+mx_web_lazy_pack_source_contract_carries_actors_and_sfx :: proc(t: ^testing.T) {
+	packer, packer_err := os.read_entire_file_from_path("tools/web_pack_assets.py", context.allocator)
+	testing.expect(t, packer_err == nil, "web packer source is missing")
+	if packer_err == nil {
+		defer delete(packer)
+		text := string(packer)
+		testing.expect(t, strings.contains(text, "\"schema\": 2"), "ARPACK manifest schema must remain 2")
+		testing.expect(t, strings.contains(text, "\"sfx-world\""), "remaining semantic SFX need a world pack")
+		testing.expect(t, strings.contains(text, "\"sfx_banks\""), "pack metadata must carry SFX bank names")
+		testing.expect(t, strings.contains(text, "\"core_sfx_banks\""), "manifest must identify staged banks that receive upgrades")
+		testing.expect(t, strings.contains(text, "sorted((known - assigned) | CORE_SFX_BANKS)"), "sfx-world must upgrade every core bank")
+		testing.expect(t, strings.contains(text, "if path != staged_core_sfx.get(bank)"), "packs must exclude each staged core path")
+		testing.expect(t, strings.contains(text, "if path in packed_sfx_files"), "core staging must exclude lazy SFX WAVs")
+	}
+
+	bridge, bridge_err := os.read_entire_file_from_path("web/library_archrogue.js", context.allocator)
+	testing.expect(t, bridge_err == nil, "web pack bridge source is missing")
+	if bridge_err == nil {
+		defer delete(bridge)
+		text := string(bridge)
+		testing.expect(t, strings.contains(text, "materializeNextPackFile"), "pack files must retain RAF materialization")
+		testing.expect(t, strings.contains(text, "(info.sfx_banks || []).join(',')"), "bridge must forward SFX-bank metadata")
+		testing.expect(t, strings.contains(text, "sfxPointer, sfxBytes"), "wasm callback must receive SFX-bank CSV")
+	}
 }
 
 @(test)

@@ -215,8 +215,10 @@ DIFFICULTY_SAVE_IDS := [Difficulty_Id]string{
 }
 
 @(rodata)
-MUSIC_VOLUME_SAVE_IDS := [Music_Volume]string{
-	.Off="off", .Quarter="25", .Half="50", .Three_Quarter="75", .Full="100",
+AUDIO_VOLUME_SAVE_IDS := [Audio_Volume]string{
+	.Off="0", .Percent_10="10", .Percent_20="20", .Percent_30="30",
+	.Percent_40="40", .Percent_50="50", .Percent_60="60", .Percent_70="70",
+	.Percent_80="80", .Percent_90="90", .Full="100",
 }
 
 @(rodata)
@@ -301,8 +303,9 @@ Options_Payload :: struct {
 	controller_enabled: bool,
 	button_bindings:    [len(Controller_Button)]Option_Binding_DTO,
 	trigger_bindings:   [len(Controller_Trigger)]Option_Binding_DTO,
-	audio_enabled:      bool,
-	music_volume_id:    string, // additive 2026-08: absent in older documents
+	audio_enabled:      bool,   // compatibility field for pre-volume documents
+	sfx_volume_id:      string, // additive 2026-08: absent in older documents
+	music_volume_id:    string, // additive 2026-08: accepts legacy 25% steps
 	lighting_enabled:   bool,
 	mist_enabled:       bool,
 	minimap_visible:    bool,
@@ -744,15 +747,31 @@ persistence_string_enum :: proc(ids: [$N]string, value: string, fallback: int) -
 	return fallback
 }
 
+persistence_audio_volume_id :: proc(value: string, fallback: Audio_Volume) -> Audio_Volume {
+	if index := persistence_string_enum(AUDIO_VOLUME_SAVE_IDS, value, -1); index >= 0 {
+		return Audio_Volume(index)
+	}
+	// Music saves from the previous five-step contract retain their nearest 10%.
+	switch value {
+	case "off": return .Off
+	case "25":  return .Percent_30
+	case "75":  return .Percent_80
+	}
+	return fallback
+}
+
 options_payload_from_options :: proc(options: Options) -> Options_Payload {
+	sfx_volume := audio_volume_normalize(options.sfx_volume, DEFAULT_SFX_VOLUME)
+	if !options.audio_enabled do sfx_volume = .Off
 	payload := Options_Payload{
 		fullscreen=options.fullscreen,
 		frame_rate_cap_id=FRAME_RATE_CAP_SAVE_IDS[frame_rate_cap_normalize(options.frame_rate_cap)],
 		view_zoom=options.view_zoom,
 		difficulty_id=DIFFICULTY_SAVE_IDS[difficulty_is_valid(options.difficulty) ? options.difficulty : DEFAULT_DIFFICULTY],
 		controller_enabled=options.controller_enabled,
-		audio_enabled=options.audio_enabled,
-		music_volume_id=MUSIC_VOLUME_SAVE_IDS[music_volume_normalize(options.music_volume)],
+		audio_enabled=sfx_volume != .Off,
+		sfx_volume_id=AUDIO_VOLUME_SAVE_IDS[sfx_volume],
+		music_volume_id=AUDIO_VOLUME_SAVE_IDS[audio_volume_normalize(options.music_volume, DEFAULT_MUSIC_VOLUME)],
 		lighting_enabled=options.lighting_enabled,
 		mist_enabled=options.mist_enabled,
 		minimap_visible=options.minimap_visible,
@@ -776,6 +795,7 @@ options_payload_destroy :: proc(payload: ^Options_Payload) {
 	if payload == nil do return
 	delete(payload.frame_rate_cap_id)
 	delete(payload.difficulty_id)
+	delete(payload.sfx_volume_id)
 	delete(payload.music_volume_id)
 	for &binding in payload.button_bindings {
 		delete(binding.input_id)
@@ -799,12 +819,14 @@ options_from_payload :: proc(payload: ^Options_Payload, hell_unlocked: bool) -> 
 	options.view_zoom = payload.view_zoom
 	options.difficulty = Difficulty_Id(difficulty_index)
 	options.controller_enabled = payload.controller_enabled
-	options.audio_enabled = payload.audio_enabled
-	// Additive field: an absent or unrecognized id keeps the default instead
-	// of failing the document, so pre-music option files stay valid.
-	if music_index := persistence_string_enum(MUSIC_VOLUME_SAVE_IDS, payload.music_volume_id, -1); music_index >= 0 {
-		options.music_volume = Music_Volume(music_index)
-	}
+	// Pre-volume documents carry only audio_enabled. New documents persist the
+	// exact 10% step while retaining that boolean for backward compatibility.
+	options.sfx_volume = persistence_audio_volume_id(
+		payload.sfx_volume_id,
+		payload.audio_enabled ? DEFAULT_SFX_VOLUME : Audio_Volume.Off,
+	)
+	options.audio_enabled = options.sfx_volume != .Off
+	options.music_volume = persistence_audio_volume_id(payload.music_volume_id, DEFAULT_MUSIC_VOLUME)
 	options.lighting_enabled = payload.lighting_enabled
 	options.mist_enabled = payload.mist_enabled
 	options.minimap_visible = payload.minimap_visible
@@ -886,7 +908,10 @@ persistence_decode_options :: proc(data: []byte, hell_unlocked := false) -> (
 			fullscreen=legacy.fullscreen, frame_rate_cap=legacy.frame_rate_cap,
 			view_zoom=legacy.view_zoom, difficulty=legacy.difficulty,
 			controller_enabled=legacy.controller_enabled, gamepad_mapping=legacy.gamepad_mapping,
-			audio_enabled=legacy.audio_enabled, lighting_enabled=legacy.lighting_enabled,
+			audio_enabled=legacy.audio_enabled,
+			sfx_volume=legacy.audio_enabled ? Audio_Volume.Full : Audio_Volume.Off,
+			music_volume=DEFAULT_MUSIC_VOLUME,
+			lighting_enabled=legacy.lighting_enabled,
 			mist_enabled=legacy.mist_enabled, minimap_visible=legacy.minimap_visible,
 		}
 		options_normalize(&options, legacy.hell_unlocked)

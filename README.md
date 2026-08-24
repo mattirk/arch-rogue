@@ -111,6 +111,38 @@ build.sh               canonical Linux, Android, and Web command wrapper
 
 The active Odin build must not read code or assets from `arch-rogue-python/`. `assets/` is the only canonical runtime art tree.
 
+### Licensed SFX in public source builds
+
+Arch Rogue uses **Action RPG SFX Pack v2**, acquired through the Unity Asset
+Store. Its runtime WAV derivatives are not Apache-2.0 content and are excluded
+from the public Git repository. The public tree retains
+`assets/audio/sfx/manifest.json` as an integrity lock and
+`assets/audio/sfx/README.md` with manual import/injection instructions. The game
+and source checks degrade safely to silence when these files are absent; full
+audio tests and release packages require an authorized complete injection.
+
+Before mirroring source, private CI verifies the WAV set and automatically
+creates or refreshes the `arch-rogue-sfx-runtime.tar.gz` asset on the private
+`sfx-runtime` release. Public Linux, Android, and web jobs resolve the current
+asset through that stable release tag, inject it independently, validate every
+WAV against the committed manifest, and delete the downloaded bundle before
+uploading only integrated game artifacts.
+
+The public repository needs only one Actions secret:
+
+- `ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION`: the complete HTTP Authorization header
+  value, such as `Bearer …`, for a fine-grained token with read-only access to
+  `mattirk/arch-rogue-master`.
+
+The release API URL and asset name are stable, non-secret workflow constants.
+An optional `ARCH_ROGUE_SFX_BUNDLE_SHA256` environment value remains supported
+for manual/custom runners, but public automation does not require it because
+every extracted WAV is already locked by the manifest's SHA-256 and size.
+
+Never store the bundle, raw source pack, or individual WAVs in the public
+repository, public workflow artifacts, public caches, or public release assets
+outside the integrated game distributions.
+
 ## Development notes
 
 - Simulation uses a 60 Hz fixed timestep and seeded PCG streams. Rendering must not mutate simulation state.
@@ -121,7 +153,7 @@ The active Odin build must not read code or assets from `arch-rogue-python/`. `a
 
 ## Licenses and notices
 
-Arch Rogue source and binaries are distributed under the [Apache License 2.0](LICENSE). Required notices, bundled-dependency attribution, and the AI provenance/liability notice are in [NOTICE](NOTICE).
+Arch Rogue source and original project content are distributed under the [Apache License 2.0](LICENSE). Third-party fonts, raylib, and licensed runtime SFX retain their own terms and are not relicensed under Apache-2.0. Required notices, bundled-dependency attribution, and the AI provenance/liability notice are in [NOTICE](NOTICE).
 
 raylib 6.0 is bundled under the zlib/libpng license; its complete text is in [`vendor/raylib/LICENSE`](vendor/raylib/LICENSE), with Android archive provenance under `vendor/raylib/android/PROVENANCE.md`. Android packages include exact Arch Rogue and raylib license copies under their packaged `assets/licenses/` directory.
 

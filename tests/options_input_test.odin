@@ -98,6 +98,19 @@ m9_option_defaults_normalize_and_cycle :: proc(t: ^testing.T) {
 	testing.expect(t, m9_near(options.view_zoom, 2.0))
 	testing.expect(t, options.difficulty == .Medium)
 	testing.expect(t, options.controller_enabled && options.audio_enabled && options.lighting_enabled)
+	testing.expect(t, options.sfx_volume == .Percent_50 && options.music_volume == .Full)
+	ar.options_cycle_sfx_volume(&options, -1)
+	ar.options_cycle_music_volume(&options, -1)
+	testing.expect(t, options.sfx_volume == .Percent_40 && options.music_volume == .Percent_90,
+		"SFX and music controls must move in 10% steps from their independent defaults")
+	for _ in 0 ..< 4 do ar.options_cycle_sfx_volume(&options, -1)
+	testing.expect(t, options.sfx_volume == .Off && !options.audio_enabled)
+	ar.options_cycle_sfx_volume(&options)
+	testing.expect(t, options.sfx_volume == .Percent_10 && options.audio_enabled)
+	testing.expect(t, ar.persistence_audio_volume_id("25", .Off) == .Percent_30)
+	testing.expect(t, ar.persistence_audio_volume_id("75", .Off) == .Percent_80)
+	options.sfx_volume = .Full
+	options.music_volume = .Full
 
 	ar.options_cycle_frame_rate_cap(&options)
 	testing.expect(t, options.frame_rate_cap == .FPS_90)
@@ -279,7 +292,9 @@ m9_options_document_round_trip_and_malformed_fallback :: proc(t:^testing.T) {
 	options.frame_rate_cap=.FPS_120
 	options.view_zoom=3.1
 	options.difficulty=.Hell
-	options.audio_enabled=false
+	options.audio_enabled=true
+	options.sfx_volume=.Percent_40
+	options.music_volume=.Percent_70
 	options.lighting_enabled=false
 	options.minimap_visible=false
 	_ = ar.controller_remap_button(&options.gamepad_mapping,.A,.Ability_2)

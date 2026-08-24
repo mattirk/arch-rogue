@@ -241,42 +241,53 @@ OPTIONS_VIEW_ZOOM_MIN     :: f32(0.8125)
 OPTIONS_VIEW_ZOOM_MAX     :: f32(4.0)
 OPTIONS_VIEW_ZOOM_STEP    :: f32(1.12)
 
-// Music master level as an enum, not a float: the options row cycles through
-// authored steps, and an absent field in an older saved document decodes to
-// a recognizable default instead of an ambiguous 0.0 (which would silence
-// music for every existing player).
-Music_Volume :: enum u8 {
+// SFX and music use the same discrete 0-100% master scale. Persisting an enum
+// instead of a float keeps malformed saves recognizable and makes every menu
+// adjustment exactly ten percentage points.
+Audio_Volume :: enum u8 {
 	Off,
-	Quarter,
-	Half,
-	Three_Quarter,
+	Percent_10,
+	Percent_20,
+	Percent_30,
+	Percent_40,
+	Percent_50,
+	Percent_60,
+	Percent_70,
+	Percent_80,
+	Percent_90,
 	Full,
 }
 
 @(rodata)
-MUSIC_VOLUME_FACTORS := [Music_Volume]f32{
-	.Off = 0, .Quarter = 0.25, .Half = 0.5, .Three_Quarter = 0.75, .Full = 1,
+AUDIO_VOLUME_FACTORS := [Audio_Volume]f32{
+	.Off = 0, .Percent_10 = .1, .Percent_20 = .2, .Percent_30 = .3,
+	.Percent_40 = .4, .Percent_50 = .5, .Percent_60 = .6, .Percent_70 = .7,
+	.Percent_80 = .8, .Percent_90 = .9, .Full = 1,
 }
 
-@(rodata)
-MUSIC_VOLUME_LABELS := [Music_Volume]string{
-	.Off = "Off", .Quarter = "25%", .Half = "50%", .Three_Quarter = "75%", .Full = "100%",
-}
+DEFAULT_SFX_VOLUME   :: Audio_Volume.Percent_50
+DEFAULT_MUSIC_VOLUME :: Audio_Volume.Full
 
-DEFAULT_MUSIC_VOLUME :: Music_Volume.Full
-
-music_volume_normalize :: proc(volume: Music_Volume) -> Music_Volume {
+audio_volume_normalize :: proc(volume: Audio_Volume, fallback: Audio_Volume = .Full) -> Audio_Volume {
 	i := int(volume)
-	if i < 0 || i >= len(Music_Volume) do return DEFAULT_MUSIC_VOLUME
+	if i < 0 || i >= len(Audio_Volume) do return fallback
 	return volume
 }
 
-music_volume_cycle :: proc(volume: Music_Volume, direction: int = 1) -> Music_Volume {
-	current := music_volume_normalize(volume)
+audio_volume_cycle :: proc(volume: Audio_Volume, direction: int = 1) -> Audio_Volume {
+	current := audio_volume_normalize(volume)
 	if direction == 0 do return current
 	delta := direction > 0 ? 1 : -1
-	count := len(Music_Volume)
-	return Music_Volume(((int(current) + delta) % count + count) % count)
+	count := len(Audio_Volume)
+	return Audio_Volume(((int(current) + delta) % count + count) % count)
+}
+
+audio_volume_factor :: proc(volume: Audio_Volume) -> f32 {
+	return AUDIO_VOLUME_FACTORS[audio_volume_normalize(volume)]
+}
+
+audio_volume_percent :: proc(volume: Audio_Volume) -> int {
+	return int(audio_volume_normalize(volume)) * 10
 }
 
 Options :: struct {
@@ -286,8 +297,9 @@ Options :: struct {
 	difficulty:        Difficulty_Id,
 	controller_enabled: bool,
 	gamepad_mapping:    Controller_Mapping,
-	audio_enabled:      bool,
-	music_volume:       Music_Volume,
+	audio_enabled:      bool, // compatibility mirror: sfx_volume != Off
+	sfx_volume:         Audio_Volume,
+	music_volume:       Audio_Volume,
 	lighting_enabled:   bool,
 	mist_enabled:       bool,
 	minimap_visible:    bool,
@@ -302,6 +314,7 @@ options_default :: proc() -> Options {
 		controller_enabled = true,
 		gamepad_mapping = controller_default_mapping(),
 		audio_enabled = true,
+		sfx_volume = DEFAULT_SFX_VOLUME,
 		music_volume = DEFAULT_MUSIC_VOLUME,
 		lighting_enabled = true,
 		mist_enabled = true,
@@ -347,12 +360,21 @@ options_normalize :: proc(options: ^Options, hell_unlocked := false) {
 	options.frame_rate_cap = frame_rate_cap_normalize(options.frame_rate_cap)
 	options.view_zoom = view_zoom_normalize(options.view_zoom)
 	options.difficulty = difficulty_normalize(options.difficulty, hell_unlocked)
-	options.music_volume = music_volume_normalize(options.music_volume)
+	options.sfx_volume = audio_volume_normalize(options.sfx_volume, DEFAULT_SFX_VOLUME)
+	options.music_volume = audio_volume_normalize(options.music_volume, DEFAULT_MUSIC_VOLUME)
+	options.audio_enabled = options.sfx_volume != .Off
 	controller_mapping_normalize(&options.gamepad_mapping)
 }
 
+options_cycle_sfx_volume :: proc(options: ^Options, direction: int = 1) {
+	if options == nil do return
+	options.sfx_volume = audio_volume_cycle(options.sfx_volume, direction)
+	options.audio_enabled = options.sfx_volume != .Off
+}
+
 options_cycle_music_volume :: proc(options: ^Options, direction: int = 1) {
-	options.music_volume = music_volume_cycle(options.music_volume, direction)
+	if options == nil do return
+	options.music_volume = audio_volume_cycle(options.music_volume, direction)
 }
 
 options_cycle_frame_rate_cap :: proc(options: ^Options, direction: int = 1) {

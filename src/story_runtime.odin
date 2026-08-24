@@ -563,7 +563,7 @@ story_commit_relic_path :: proc(run: ^Run, verb: Story_Choice_Verb) -> bool {
 	if guidance do _=story_build_guidance_path(run,position)
 	story_set_guidance_wave_active(run,guidance)
 	append(&run.numbers,Damage_Number{pos=run.player.pos,kind=.Text,text=guidance?"The relic answers with a path":"The relic light goes silent"})
-	append(&run.sfx,Sfx_Kind.Shrine)
+	sfx_emit(run, .Story_Consequence)
 	return true
 }
 
@@ -583,7 +583,7 @@ story_collect_relic_echo :: proc(run: ^Run) -> bool {
 	relic:=&run.story_runtime.relic;relic.present=false;relic.collected=true
 	if 1<=relic.depth&&relic.depth<=STORY_BEAT_COUNT do run.story_runtime.relic_records[relic.depth-1].collected=true
 	append(&run.numbers,Damage_Number{pos=relic.position,kind=.Text,text="Relic echo recovered"})
-	append(&run.sfx,Sfx_Kind.Pickup)
+	sfx_emit(run, .Relic_Recovered)
 	story_refresh_relic_guidance(run)
 	return true
 }
@@ -715,7 +715,7 @@ story_resolve_guest_choice :: proc(run: ^Run, guest: ^Story_Guest, verb: Story_C
 	case .Defy:
 		player_gain_xp(run,24+run.depth*3);story_spawn_choice_hunter(run,guest.pos)
 	}
-	append(&run.numbers,Damage_Number{pos=guest.pos,kind=.Text,text="Story changed"});append(&run.sfx,Sfx_Kind.Shrine)
+	append(&run.numbers,Damage_Number{pos=guest.pos,kind=.Text,text="Story changed"});sfx_emit(run, .Story_Consequence)
 	return true
 }
 
@@ -791,7 +791,7 @@ story_resolve_lossless_soul :: proc(run: ^Run, verdict: Story_Soul_Verdict) -> b
 	room_npc_motion_wait(&soul.motion,soul.pos)
 	switch verdict {case .Preserve:effects:Story_Effects;effects[.Healing_Echo]=.05;story_add_effects(&run.story,effects);case .Release:effects:Story_Effects;effects[.Enemy_Pressure]=-.04;story_add_effects(&run.story,effects);case .Refuse,.Unresolved:}
 	if (verdict==.Preserve||verdict==.Release)&&run.depth>=7 do _=story_learn_true_name(&run.story,.Liss)
-	append(&run.sfx,Sfx_Kind.Shrine);return true
+	sfx_emit(run, .Story_Consequence);return true
 }
 
 story_request_epilogue :: proc(run: ^Run) -> bool {
@@ -812,7 +812,7 @@ story_handle_final_stairs_request :: proc(run: ^Run) -> bool {
 
 story_complete_bell_victory :: proc(run: ^Run) -> bool {
 	if run==nil||run.story_runtime.epilogue_stage!=.Bell||run.story.flags.gate==.Unresolved||run.victory do return false
-	run.story_runtime.epilogue_stage=.Completed;run.victory=true;append(&run.sfx,Sfx_Kind.Bell);append(&run.sfx,Sfx_Kind.Victory);return true
+	run.story_runtime.epilogue_stage=.Completed;run.victory=true;sfx_emit(run, .Epilogue_Bell);sfx_emit(run, .Victory);return true
 }
 
 story_item_is_relic_touched :: proc(item: ^Item) -> bool {
@@ -1121,7 +1121,7 @@ app_story_start_wake_the_moonbloom :: proc(app:^App,room_index:int)->bool{return
 app_story_start_mirror_the_unlost :: proc(app:^App,room_index:int)->bool{return app_story_start_minigame(app,.Mirror_The_Unlost,room_index)}
 
 @(private = "file")
-app_story_grant_minigame_reward :: proc(app:^App,kind:Story_Minigame_Kind) {player:=&app.run.player;switch kind {case .Bind_The_Page:player.hp=player.max_hp;player.discipline_melee_bonus+=1;case .Wake_The_Moonbloom:player.max_hp+=5;if player.hp>0 do player.hp=min(player.max_hp,player.hp+5);player.max_mana+=5;player.mana=min(f32(player.max_mana),player.mana+5);case .Mirror_The_Unlost:player.max_mana+=5;player.mana=min(f32(player.max_mana),player.mana+5);player.discipline_spell_bonus+=1;case .None:};append(&app.run.sfx,Sfx_Kind.Shrine)}
+app_story_grant_minigame_reward :: proc(app:^App,kind:Story_Minigame_Kind) {player:=&app.run.player;switch kind {case .Bind_The_Page:player.hp=player.max_hp;player.discipline_melee_bonus+=1;case .Wake_The_Moonbloom:player.max_hp+=5;if player.hp>0 do player.hp=min(player.max_hp,player.hp+5);player.max_mana+=5;player.mana=min(f32(player.max_mana),player.mana+5);case .Mirror_The_Unlost:player.max_mana+=5;player.mana=min(f32(player.max_mana),player.mana+5);player.discipline_spell_bonus+=1;case .None:};sfx_emit(&app.run, .Story_Consequence)}
 
 app_story_finalize_minigame :: proc(app:^App)->bool {
 	if app==nil||!app.story_minigame.active||app.story_minigame.phase!=.Result||app.story_minigame.outcome==.None do return false
@@ -1218,7 +1218,7 @@ story_tick_ally :: proc(run:^Run,pos:^Vec2,motion:^Story_Npc_Motion,attack_timer
 		return
 	}
 	room_npc_motion_wait(motion,pos^)
-	if attack_timer^<=0&&distance<=stats.attack_range&&line_of_sight(&run.dungeon,pos.x,pos.y,target.pos.x,target.pos.y) {dealt:=player_damage_enemy(run,target,stats.damage,stats.damage_type);if dealt>0 {append(&run.numbers,Damage_Number{pos=target.pos,value=dealt,kind=.Damage_Dealt});append(&run.sfx,Sfx_Kind.Hit)};attack_timer^=stats.attack_cd}
+	if attack_timer^<=0&&distance<=stats.attack_range&&line_of_sight(&run.dungeon,pos.x,pos.y,target.pos.x,target.pos.y) {dealt:=player_damage_enemy(run,target,stats.damage,stats.damage_type);if dealt>0 do append(&run.numbers,Damage_Number{pos=target.pos,value=dealt,kind=.Damage_Dealt});attack_timer^=stats.attack_cd}
 }
 
 story_tick_friendly_npc_combat :: proc(run:^Run,dt:f32) {

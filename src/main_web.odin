@@ -589,13 +589,15 @@ ar_web_tick :: proc "c" () -> i32 {
 
 // ---------------------------------------------------------------------------
 // Lazy asset packs: the JS bridge verifies and materializes one file per RAF.
-// Successful callbacks transfer owned actor names into this queue; game_frame
-// adopts at most one actor after SFX drain, and only while authored audio is
-// quiet. Current packs contain at most five actors; keep the bridge bound at
-// eight so malformed or future manifests cannot grow an unbounded callback.
+// Successful callbacks transfer owned actor and SFX-bank names into this
+// queue. game_frame adopts at most one item after SFX drain, and only while
+// authored audio is quiet. Bounds prevent malformed manifests from growing an
+// unbounded callback; the current semantic registry has 98 banks.
 
 @(private = "file")
 WEB_PACK_ACTOR_CAP :: 8
+@(private = "file")
+WEB_PACK_SFX_CAP :: 128
 
 @(private = "file")
 Web_Pack_Status :: enum u8 {
@@ -608,10 +610,13 @@ Web_Pack_Status :: enum u8 {
 
 @(private = "file")
 Web_Pack_Adoption_Job :: struct {
-	name:        string,
-	actors:      [WEB_PACK_ACTOR_CAP]string,
-	actor_count: int,
-	next_actor:  int,
+	name:           string,
+	actors:         [WEB_PACK_ACTOR_CAP]string,
+	actor_count:    int,
+	next_actor:     int,
+	sfx_banks:      [WEB_PACK_SFX_CAP]string,
+	sfx_bank_count: int,
+	next_sfx_bank:  int,
 }
 
 @(private = "file")
@@ -634,6 +639,7 @@ web_pack_adoption_job_destroy :: proc(job: ^Web_Pack_Adoption_Job) {
 	if job == nil do return
 	delete(job.name)
 	for index in 0 ..< job.actor_count do delete(job.actors[index])
+	for index in 0 ..< job.sfx_bank_count do delete(job.sfx_banks[index])
 	job^ = {}
 }
 
@@ -656,6 +662,7 @@ web_packs_on_run_start :: proc(archetype: Archetype_Id) {
 	web_pack_request(fmt.tprintf("archetype-%s", ARCHETYPES[archetype].sprite))
 	web_pack_request("social")
 	web_pack_request("bosses")
+	web_pack_request("sfx-world")
 }
 
 web_pack_adoptions_tick :: proc(rt: ^Game_Runtime) {
@@ -674,15 +681,34 @@ web_pack_adoptions_tick :: proc(rt: ^Game_Runtime) {
 		job.next_actor += 1
 	}
 	if job.next_actor < job.actor_count do return
+	if job.next_sfx_bank < job.sfx_bank_count {
+		sfx_index := job.next_sfx_bank
+		if !audio_web_adopt_sfx_bank(&rt.audio, job.sfx_banks[sfx_index]) do return
+		job.next_sfx_bank += 1
+	}
+	if job.next_sfx_bank < job.sfx_bank_count do return
 
 	web_pack_set(job.name, .Resident)
-	platform_log(fmt.tprintf("ARCH_ROGUE_WEB_PACK resident name=%s actors=%d", job.name, job.actor_count))
+	platform_log(fmt.tprintf(
+		"ARCH_ROGUE_WEB_PACK resident name=%s actors=%d sfx_banks=%d",
+		job.name,
+		job.actor_count,
+		job.sfx_bank_count,
+	))
 	web_pack_adoption_job_destroy(job)
 	ordered_remove(&web_pack_adoptions, 0)
 }
 
 @(export)
-ar_web_pack_loaded :: proc "c" (name_ptr: [^]u8, name_len: i32, actors_ptr: [^]u8, actors_len: i32, ok: i32) {
+ar_web_pack_loaded :: proc "c" (
+	name_ptr: [^]u8,
+	name_len: i32,
+	actors_ptr: [^]u8,
+	actors_len: i32,
+	sfx_banks_ptr: [^]u8,
+	sfx_banks_len: i32,
+	ok: i32,
+) {
 	context = web_context_value
 	if !web_context_ready || name_len <= 0 || web_boot_state != .Running || web_runtime == nil do return
 	name := string(name_ptr[:name_len])
@@ -705,9 +731,26 @@ ar_web_pack_loaded :: proc "c" (name_ptr: [^]u8, name_len: i32, actors_ptr: [^]u
 		job.actor_count += 1
 		rest = rest[comma+1:]
 	}
+	rest = sfx_banks_len > 0 ? string(sfx_banks_ptr[:sfx_banks_len]) : ""
+	for len(rest) > 0 && job.sfx_bank_count < len(job.sfx_banks) {
+		comma := strings.index_byte(rest, ',')
+		if comma < 0 {
+			job.sfx_banks[job.sfx_bank_count] = strings.clone(rest)
+			job.sfx_bank_count += 1
+			break
+		}
+		job.sfx_banks[job.sfx_bank_count] = strings.clone(rest[:comma])
+		job.sfx_bank_count += 1
+		rest = rest[comma+1:]
+	}
 	append(&web_pack_adoptions, job)
 	web_pack_set(name, .Adopting)
-	platform_log(fmt.tprintf("ARCH_ROGUE_WEB_PACK adopting name=%s actors=%d", name, job.actor_count))
+	platform_log(fmt.tprintf(
+		"ARCH_ROGUE_WEB_PACK adopting name=%s actors=%d sfx_banks=%d",
+		name,
+		job.actor_count,
+		job.sfx_bank_count,
+	))
 }
 
 // ---------------------------------------------------------------------------

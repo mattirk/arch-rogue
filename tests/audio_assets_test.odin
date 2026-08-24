@@ -1,12 +1,13 @@
 package archrogue_tests
 
-// Headless contract for the authored M10 SFX bake. This validates the
-// semantic registry, committed manifest, and PCM headers without opening an
-// audio device.
+// Headless contract for semantic SFX v2. This validates the typed bank
+// registry, committed manifest, and every PCM variant without an audio device.
 
 import "core:encoding/json"
 import "core:fmt"
+import "core:math"
 import "core:os"
+import "core:strings"
 import "core:testing"
 import ar "../src"
 
@@ -23,11 +24,27 @@ audio_u32_le :: proc(data: []u8, offset: int) -> u32 {
 		u32(data[offset + 3]) << 24
 }
 
+@(private = "file")
+audio_near :: proc(a, b: f32) -> bool {
+	return math.abs(a - b) < .0001
+}
+
+@(private = "file")
+audio_priority_value :: proc(name: string) -> u8 {
+	switch name {
+	case "low":      return 2
+	case "medium":   return 6
+	case "high":     return 10
+	case "critical": return 15
+	}
+	return 0
+}
+
 @(test)
-m10_audio_manifest_and_wavs_are_complete :: proc(t: ^testing.T) {
+semantic_audio_manifest_and_wavs_are_complete :: proc(t: ^testing.T) {
 	data, read_err := os.read_entire_file_from_path("assets/audio/sfx/manifest.json", context.allocator)
 	if read_err != nil {
-		testing.expect(t, false, "assets/audio/sfx/manifest.json missing - run tools/gen_sfx.py")
+		testing.expect(t, false, "assets/audio/sfx/manifest.json is missing")
 		return
 	}
 	defer delete(data)
@@ -38,104 +55,185 @@ m10_audio_manifest_and_wavs_are_complete :: proc(t: ^testing.T) {
 	defer json.destroy_value(value)
 
 	root := value.(json.Object)
-	testing.expect(t, int(root["format_version"].(json.Float)) == 1, "audio manifest format changed")
-	testing.expect(t, int(root["sample_rate"].(json.Float)) == 22050, "audio sample rate changed")
-	testing.expect(t, int(root["sample_size_bits"].(json.Float)) == 16, "audio bit depth changed")
-	testing.expect(t, int(root["channels"].(json.Float)) == 1, "audio channel count changed")
-	cues := root["cues"].(json.Object)
-	testing.expectf(t, len(cues) == len(ar.AUDIO_CUE_KEYS), "manifest has %v cues, registry has %v", len(cues), len(ar.AUDIO_CUE_KEYS))
+	testing.expect(t, int(root["format_version"].(json.Float)) == 2, "semantic SFX manifest must remain v2")
+	format := root["audio_format"].(json.Object)
+	testing.expect(t, int(format["sample_rate"].(json.Float)) == 48000, "SFX must remain 48 kHz")
+	testing.expect(t, int(format["sample_size_bits"].(json.Float)) == 16, "SFX must remain 16-bit")
+	testing.expect(t, int(format["channels"].(json.Float)) == 2, "SFX must remain stereo")
+	testing.expect(t, format["codec"].(json.String) == "pcm_s16le", "SFX codec contract changed")
 
-	future_count := 0
-	for cue in ar.Audio_Cue {
-		key := ar.AUDIO_CUE_KEYS[cue]
-		file := ar.AUDIO_CUE_FILES[cue]
-		testing.expectf(t, len(key) > 0 && len(file) > 4, "cue %v has an empty key/file", cue)
-
-		for other in ar.Audio_Cue {
-			if int(other) <= int(cue) do continue
-			testing.expectf(t, key != ar.AUDIO_CUE_KEYS[other], "duplicate audio key %v", key)
-			testing.expectf(t, file != ar.AUDIO_CUE_FILES[other], "duplicate audio file %v", file)
+	banks := root["banks"].(json.Object)
+	testing.expectf(t, len(banks) == len(ar.SFX_BANK_DEFS), "manifest has %v banks, registry has %v", len(banks), len(ar.SFX_BANK_DEFS))
+	// Public source snapshots intentionally contain no licensed WAVs. Preserve
+	// full metadata validation there and reject partial injections; private and
+	// release CI additionally run tools/sfx_bundle.py verify for strict hashes.
+	licensed_sfx_present := os.exists("assets/audio/sfx/ui_navigate_01.wav")
+	file_count := 0
+	for bank in ar.Sfx_Bank {
+		def := ar.SFX_BANK_DEFS[bank]
+		testing.expectf(t, len(def.key) > 0, "bank %v has an empty key", bank)
+		testing.expectf(t, 1 <= def.variant_count && def.variant_count <= ar.SFX_MAX_VARIANTS, "%v has invalid variant count %v", def.key, def.variant_count)
+		for other in ar.Sfx_Bank {
+			if int(other) <= int(bank) do continue
+			testing.expectf(t, def.key != ar.SFX_BANK_DEFS[other].key, "duplicate SFX bank key %v", def.key)
 		}
 
-		entry_value, found := cues[key]
-		testing.expectf(t, found, "audio cue %v missing from manifest", key)
+		entry_value, found := banks[def.key]
+		testing.expectf(t, found, "SFX bank %v is missing from manifest", def.key)
 		if !found do continue
 		entry := entry_value.(json.Object)
-		testing.expectf(t, entry["file"].(json.String) == file, "%v file differs from registry", key)
-		testing.expectf(t, len(entry["sha256"].(json.String)) == 64, "%v has no bake checksum", key)
-		testing.expectf(t, entry["duration_ms"].(json.Float) > 0, "%v has invalid duration", key)
+		files := entry["files"].(json.Array)
+		testing.expectf(t, len(files) == int(def.variant_count), "%v variant count differs from registry", def.key)
+		testing.expectf(t, audio_near(f32(entry["gain"].(json.Float)), def.gain), "%v gain differs from registry", def.key)
+		pitch := entry["pitch_range"].(json.Array)
+		testing.expectf(t, len(pitch) == 2 && audio_near(f32(pitch[0].(json.Float)), def.pitch_min) && audio_near(f32(pitch[1].(json.Float)), def.pitch_max), "%v pitch differs from registry", def.key)
+		testing.expectf(t, audio_near(f32(entry["cooldown_ms"].(json.Float)) / 1000, def.cooldown_s), "%v cooldown differs from registry", def.key)
+		testing.expectf(t, int(entry["polyphony"].(json.Float)) == int(def.polyphony), "%v polyphony differs from registry", def.key)
+		testing.expectf(t, audio_priority_value(entry["priority"].(json.String)) == def.priority, "%v priority differs from registry", def.key)
+		testing.expectf(t, entry["spatial"].(json.Boolean) == def.spatial, "%v spatial policy differs from registry", def.key)
 
-		expected_usage := "runtime"
-		if ar.AUDIO_CUE_USAGE[cue] == .Future_Emitter {
-			expected_usage = "future_emitter"
-			future_count += 1
-		}
-		testing.expectf(t, entry["usage"].(json.String) == expected_usage, "%v usage differs from registry", key)
+		for file_value, variant in files {
+			file_count += 1
+			file_entry := file_value.(json.Object)
+			expected_file := fmt.aprintf("%s_%02d.wav", def.key, variant + 1)
+			file := file_entry["file"].(json.String)
+			testing.expectf(t, file == expected_file, "%v variant filename differs from registry", def.key)
+			testing.expectf(t, len(file_entry["sha256"].(json.String)) == 64, "%v has no bake checksum", file)
+			duration_ms := file_entry["duration_ms"].(json.Float)
+			testing.expectf(t, duration_ms > 0, "%v has invalid duration", file)
+			max_duration_ms := entry["max_duration_ms"].(json.Float)
+			testing.expectf(t, max_duration_ms == 800 || max_duration_ms == 2500,
+				"%v has an invalid runtime duration policy", def.key)
+			testing.expectf(t, duration_ms <= max_duration_ms,
+				"%v exceeds its %.0f ms runtime SFX cap", file, max_duration_ms)
 
-		path := fmt.aprintf("assets/audio/sfx/%s", file)
-		wav, wav_err := os.read_entire_file_from_path(path, context.allocator)
-		testing.expectf(t, wav_err == nil, "%v references missing WAV %v", key, path)
-		if wav_err != nil {
+			path := fmt.aprintf("assets/audio/sfx/%s", file)
+			if !licensed_sfx_present {
+				testing.expectf(t, !os.exists(path), "public/no-SFX mode found a partial licensed asset: %v", path)
+				delete(expected_file)
+				delete(path)
+				continue
+			}
+			wav, wav_err := os.read_entire_file_from_path(path, context.allocator)
+			testing.expectf(t, wav_err == nil, "%v references missing WAV %v", def.key, path)
+			if wav_err != nil {
+				delete(expected_file)
+				delete(path)
+				continue
+			}
+			valid_header := len(wav) >= 44 &&
+				wav[0] == 'R' && wav[1] == 'I' && wav[2] == 'F' && wav[3] == 'F' &&
+				wav[8] == 'W' && wav[9] == 'A' && wav[10] == 'V' && wav[11] == 'E' &&
+				wav[12] == 'f' && wav[13] == 'm' && wav[14] == 't' && wav[15] == ' ' &&
+				wav[36] == 'd' && wav[37] == 'a' && wav[38] == 't' && wav[39] == 'a'
+			testing.expectf(t, valid_header, "%v is not a canonical PCM WAV", path)
+			if valid_header {
+				testing.expectf(t, audio_u32_le(wav, 4) + 8 == u32(len(wav)), "%v RIFF length is malformed", path)
+				testing.expectf(t, audio_u16_le(wav, 20) == 1, "%v must contain PCM", path)
+				testing.expectf(t, audio_u16_le(wav, 22) == 2, "%v must be stereo", path)
+				testing.expectf(t, audio_u32_le(wav, 24) == 48000, "%v must be 48 kHz", path)
+				testing.expectf(t, audio_u16_le(wav, 34) == 16, "%v must be 16-bit", path)
+				testing.expectf(t, audio_u32_le(wav, 40) + 44 == u32(len(wav)), "%v PCM payload is malformed", path)
+				testing.expectf(t, int(file_entry["byte_size"].(json.Float)) == len(wav), "%v byte size differs from manifest", path)
+			}
+			delete(wav)
+			delete(expected_file)
 			delete(path)
-			continue
 		}
-
-		valid_header := len(wav) >= 44 &&
-			wav[0] == 'R' && wav[1] == 'I' && wav[2] == 'F' && wav[3] == 'F' &&
-			wav[8] == 'W' && wav[9] == 'A' && wav[10] == 'V' && wav[11] == 'E' &&
-			wav[12] == 'f' && wav[13] == 'm' && wav[14] == 't' && wav[15] == ' ' &&
-			wav[36] == 'd' && wav[37] == 'a' && wav[38] == 't' && wav[39] == 'a'
-		testing.expectf(t, valid_header, "%v is not a canonical PCM WAV", path)
-		if valid_header {
-			testing.expectf(t, audio_u32_le(wav, 4) + 8 == u32(len(wav)), "%v RIFF length is malformed", path)
-			testing.expectf(t, audio_u16_le(wav, 20) == 1, "%v must contain PCM", path)
-			testing.expectf(t, audio_u16_le(wav, 22) == 1, "%v must be mono", path)
-			testing.expectf(t, audio_u32_le(wav, 24) == 22050, "%v must be 22050 Hz", path)
-			testing.expectf(t, audio_u16_le(wav, 34) == 16, "%v must be 16-bit", path)
-			testing.expectf(t, audio_u32_le(wav, 40) + 44 == u32(len(wav)), "%v PCM payload is malformed", path)
-		}
-		delete(wav)
-		delete(path)
 	}
-	// MX.5 flipped trap/shrine/secret to runtime; every authored cue now has a
-	// live emitter.
-	testing.expect(t, future_count == 0, "no cue should await a future emitter")
+	testing.expectf(t, file_count == int(root["file_count"].(json.Float)), "manifest file_count %v differs from enumerated %v", root["file_count"], file_count)
 }
 
 @(test)
-m10_sim_sfx_mapping_and_dispatch_gate_are_stable :: proc(t: ^testing.T) {
-	expected := [ar.Sfx_Kind]ar.Audio_Cue{
-		.Swing = .Swing, .Hit = .Hit, .Hurt = .Hurt, .Bolt = .Bolt,
-		.Pickup = .Pickup, .Potion = .Potion, .Level_Up = .Level_Up,
-		.Stairs = .Stairs, .Death = .Death, .Door = .Door,
-		.Start = .Start, .Bell = .Bell, .Boss = .Boss, .Victory = .Victory,
-		.Drink = .Drink, .Trap = .Trap, .Shrine = .Shrine, .Secret = .Secret,
+semantic_sfx_routing_and_dispatch_gate_are_stable :: proc(t: ^testing.T) {
+	testing.expect(t, audio_near(ar.SFX_PLAYER_STEP_INTERVAL_SECONDS, .98), "player footsteps must retain the chosen 980 ms interval")
+	testing.expect(t, audio_near(ar.SFX_ENEMY_STEP_INTERVAL_SECONDS, .84), "enemy heavy footsteps must retain the chosen 840 ms interval")
+	testing.expect(t, audio_near(ar.SFX_MASTER_OUTPUT_GAIN, .50), "100% SFX must remain capped at half the former master output")
+	step_run: ar.Run
+	for theme in 0 ..< len(ar.THEMES) {
+		step_run.theme_index = theme
+		testing.expectf(t, ar.audio_player_step_bank(&step_run) == .Step_Boot_Grass,
+			"theme %v changed the universal player grass-footstep bank", theme)
 	}
-	for kind in ar.Sfx_Kind do testing.expect(t, ar.audio_cue_for_sfx(kind) == expected[kind])
+	testing.expect(t, ar.sfx_player_melee_bank(.Warden) == .Melee_Swing_Warden)
+	testing.expect(t, ar.sfx_player_melee_bank(.Rogue) == .Melee_Swing_Rogue)
+	testing.expect(t, ar.sfx_player_dash_bank(.Arcanist) == .Dash_Arcane)
+	testing.expect(t, ar.sfx_player_dash_bank(.Acolyte) == .Dash_Occult)
+	testing.expect(t, ar.sfx_item_pickup_bank(.Legendary) == .Item_Pickup_Unique)
+	testing.expect(t, ar.sfx_item_pickup_bank(.Cursed) == .Item_Pickup_Cursed)
+	testing.expect(t, ar.sfx_trap_bank(.Needle) == .Trap_Needle)
+	testing.expect(t, ar.sfx_shrine_bank(.Twilight) == .Shrine_Twilight)
+	testing.expect(t, ar.sfx_ability_bank(.Arcane_Lance) == .Void_Arcane_Lance)
 
-	got,ok:=ar.audio_cue_for_intent(ar.Intent{back=true,confirm=true})
-	testing.expect(t,ok&&got==.Ui_Back,"Back must own semantic UI-cue priority")
-	got,ok=ar.audio_cue_for_intent(ar.Intent{confirm=true})
-	testing.expect(t,ok&&got==.Ui_Confirm,"Confirm must route to its semantic UI cue")
-	got,ok=ar.audio_cue_for_intent(ar.Intent{menu_horizontal=1})
-	testing.expect(t,ok&&got==.Ui_Navigate,"navigation must route to its semantic UI cue")
-	_,quiet:=ar.audio_cue_for_intent(ar.Intent{move={1,0},interact=true})
-	testing.expect(t,!quiet,"ordinary gameplay intent must not emit a menu cue")
+	warden_run: ar.Run
+	ar.run_start(&warden_run, ar.derive_seed(90201, 0), .Warden)
+	clear(&warden_run.sfx)
+	warden_run.player.mana = f32(warden_run.player.max_mana)
+	testing.expect(t, ar.player_cast_bolt(&warden_run, {1, 0}), "Warden Guard Bolt must cast")
+	testing.expect(t, len(warden_run.sfx) > 0 && warden_run.sfx[len(warden_run.sfx)-1].bank == .Warden_Guard_Bolt,
+		"Warden Guard Bolt must emit its projectile-first semantic bank")
+	ar.run_destroy(&warden_run)
 
-	got,ok=ar.audio_cue_for_transition(ar.Intent{confirm=true},.Title,.Select)
-	testing.expect(t,ok&&got==.Ui_Confirm,"ordinary confirmation transitions must keep the UI cue")
-	_,quiet=ar.audio_cue_for_transition(ar.Intent{confirm=true},.Select,.Playing)
-	testing.expect(t,!quiet,"Select -> Playing must leave Start as the sole authored cue")
-	got,ok=ar.audio_cue_for_transition(ar.Intent{menu_delta=1},.Playing,.Playing)
-	testing.expect(t,ok&&got==.Ui_Navigate,"stable-mode navigation must retain its cue")
+	arcanist_run: ar.Run
+	ar.run_start(&arcanist_run, ar.derive_seed(90202, 0), .Arcanist)
+	clear(&arcanist_run.sfx)
+	arcanist_run.player.mana = f32(arcanist_run.player.max_mana)
+	testing.expect(t, ar.player_cast_bolt(&arcanist_run, {1, 0}), "Arcanist Arc Bolt must cast")
+	testing.expect(t, len(arcanist_run.sfx) > 0 && arcanist_run.sfx[len(arcanist_run.sfx)-1].bank == .Shadow_Cast,
+		"Arcanist Arc Bolt must emit the same semantic bank as Acolyte Spirit Bolt")
+	ar.run_destroy(&arcanist_run)
 
-	// These calls remain headless because the dispatch gate returns before any
-	// raylib function when the device is not ready.
+	core_count := 0
+	for bank in ar.Sfx_Bank {
+		fallback := ar.audio_sfx_fallback_bank(bank)
+		testing.expectf(t, ar.audio_sfx_bank_is_core(fallback), "%v fallback %v is not staged core", bank, fallback)
+		testing.expectf(t, ar.audio_sfx_fallback_bank(fallback) == fallback, "%v fallback does not terminate at %v", bank, fallback)
+		if ar.audio_sfx_bank_is_core(bank) {
+			core_count += 1
+			testing.expectf(t, fallback == bank, "core bank %v must be a fallback fixed point", bank)
+		} else {
+			testing.expectf(t, fallback != bank, "lazy bank %v has no semantic fallback", bank)
+		}
+	}
+	testing.expect(t, core_count == 29, "web core SFX set changed without updating the pack contract")
+
+	audio_source, audio_source_err := os.read_entire_file_from_path("src/audio.odin", context.allocator)
+	testing.expect(t, audio_source_err == nil, "audio source is missing")
+	if audio_source_err == nil {
+		defer delete(audio_source)
+		text := string(audio_source)
+		testing.expect(t, strings.contains(text, "if loaded.loaded[variant] do continue"), "web SFX upgrades must skip already-loaded core variants")
+		testing.expect(t, strings.contains(text, "audio_sfx_load_bank(audio, bank, log_missing = true)"), "web adoption must retry the shared idempotent bank loader")
+	}
+
+	got, ok := ar.audio_cue_for_intent(ar.Intent{back=true, confirm=true})
+	testing.expect(t, ok && got == .Ui_Back, "Back must own semantic UI-bank priority")
+	got, ok = ar.audio_cue_for_intent(ar.Intent{confirm=true})
+	testing.expect(t, ok && got == .Ui_Confirm, "Confirm must route to its semantic UI bank")
+	got, ok = ar.audio_cue_for_intent(ar.Intent{menu_horizontal=1})
+	testing.expect(t, ok && got == .Ui_Navigate, "navigation must route to its semantic UI bank")
+	_, quiet := ar.audio_cue_for_transition(ar.Intent{confirm=true}, .Select, .Playing)
+	testing.expect(t, !quiet, "Select -> Playing must leave Run_Start as the sole bank")
+
+	run: ar.Run
+	for i in 0 ..< ar.MAX_SFX_EVENTS_PER_FRAME + 8 do ar.sfx_emit(&run, .Impact_Generic, emitter_id=u64(i))
+	testing.expect(t, len(run.sfx) == ar.MAX_SFX_EVENTS_PER_FRAME, "semantic SFX queue must be bounded")
+	ar.sfx_stop_bank(&run, .Big_Hit_Charge)
+	testing.expect(t, len(run.sfx) == ar.MAX_SFX_EVENTS_PER_FRAME, "stop controls must preserve the queue bound")
+	testing.expect(t, run.sfx[len(run.sfx)-1].kind == .Stop_Bank && run.sfx[len(run.sfx)-1].bank == .Big_Hit_Charge,
+		"stop controls must replace a queued play when the frame queue is saturated")
+	defer delete(run.sfx)
+
+	// Dispatch remains headless because every playback entry returns before
+	// touching raylib when the audio device is not ready.
 	audio: ar.Audio
-	testing.expect(t,!ar.audio_any_cue_playing(&audio),"an uninitialized audio registry cannot have a playing cue")
+	testing.expect(t, !ar.audio_any_cue_playing(&audio))
+	ar.audio_set_volume(&audio, .5)
+	testing.expect(t, audio_near(audio.sfx_gain, .25) && audio.enabled,
+		"50% SFX must resolve to one quarter of the former master output")
 	ar.audio_set_enabled(&audio, false)
-	testing.expect(t, !audio.enabled)
-	for cue in ar.Audio_Cue do ar.audio_play_cue(&audio, cue)
-	ar.audio_set_enabled(&audio, true)
-	testing.expect(t, audio.enabled)
+	testing.expect(t, audio.sfx_gain == 0 && !audio.enabled)
+	for bank in ar.Sfx_Bank do ar.audio_play_bank(&audio, bank)
+	ar.audio_drain(&audio, &run)
+	testing.expect(t, len(run.sfx) == 0, "audio_drain must clear safely while silent")
 }
