@@ -8,6 +8,11 @@ set +x
 : "${ARCH_ROGUE_SFX_RELEASE_API_URL:?ARCH_ROGUE_SFX_RELEASE_API_URL is required}"
 : "${ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION:?ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION is required}"
 ARCH_ROGUE_SFX_BUNDLE_NAME="${ARCH_ROGUE_SFX_BUNDLE_NAME:-arch-rogue-sfx-runtime.tar.gz}"
+authorization="$ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION"
+case "$authorization" in
+  "Bearer "*|"bearer "*|"token "*) ;;
+  *) authorization="Bearer $authorization" ;;
+esac
 
 if [[ ! "$ARCH_ROGUE_SFX_RELEASE_API_URL" =~ ^https:// ]]; then
   echo "licensed SFX release API URL must use HTTPS" >&2
@@ -32,7 +37,7 @@ curl \
   --proto '=https' --proto-redir '=https' --tlsv1.2 \
   --retry 3 --retry-all-errors \
   --header 'Accept: application/vnd.github+json' \
-  --header "Authorization: $ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION" \
+  --header "Authorization: $authorization" \
   --output "$metadata" \
   "$ARCH_ROGUE_SFX_RELEASE_API_URL"
 
@@ -59,7 +64,7 @@ curl \
   --proto '=https' --proto-redir '=https' --tlsv1.2 \
   --retry 3 --retry-all-errors \
   --header 'Accept: application/octet-stream' \
-  --header "Authorization: $ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION" \
+  --header "Authorization: $authorization" \
   --output "$bundle" \
   "$asset_url"
 

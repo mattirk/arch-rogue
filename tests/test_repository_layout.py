@@ -226,6 +226,15 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertNotIn("secrets.ARCH_ROGUE_SFX_BUNDLE_SHA256", workflow)
         self.assertNotIn("arch-rogue-sfx-runtime.tar.gz", workflow)
 
+        sfx_fetch = (ROOT / "tools" / "fetch_private_sfx.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('authorization="Bearer $authorization"', sfx_fetch)
+        self.assertEqual(sfx_fetch.count('Authorization: $authorization'), 2)
+        self.assertNotIn(
+            'Authorization: $ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION', sfx_fetch
+        )
+
         android_sdk_install = workflow.partition(
             "      - name: Install pinned Android SDK and NDK"
         )[2].partition("      - name: Verify Android SDK cache contents")[0]
