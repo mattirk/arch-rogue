@@ -55,8 +55,11 @@ music_mixes_document_parses_and_references_real_files :: proc(t: ^testing.T) {
 			"dungeon grim bass must remain outside spatial-room ducking")
 		testing.expect(t, dungeon.tracks[1].file == "beat_low.ogg" && dungeon.tracks[1].condition == .Always,
 			"dungeon low beat must remain outside spatial-room ducking")
-		testing.expect(t, dungeon.tracks[2].file == "lead_harp.ogg" && dungeon.tracks[2].condition == .Dungeon_Default_Music,
-			"the original dungeon harp must use the default spatial stem group")
+		testing.expect(t,
+			dungeon.tracks[2].file == "lead_harp.ogg" && dungeon.tracks[2].condition == .Dungeon_Default_Music &&
+			dungeon.tracks[2].alternate,
+			"the original dungeon harp must alternate within the default spatial stem group",
+		)
 		testing.expect(t,
 			dungeon.tracks[3].file == "lead_harp_two.ogg" && dungeon.tracks[3].condition == .Dungeon_Quest_Music,
 			"the second harp must use the Quest proximity stem group",

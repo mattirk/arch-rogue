@@ -21,7 +21,7 @@
       "tracks": [
         { "file": "ambience_grim_bass.ogg", "volume": 1.0, "mute": false, "effects": [] },
         { "file": "beat_low.ogg", "volume": 1.0, "mute": false, "effects": [] },
-        { "file": "lead_harp.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_default_music", "effects": [] },
+        { "file": "lead_harp.ogg", "volume": 1.0, "mute": false, "alternate": true, "condition": "dungeon_default_music", "effects": [] },
         { "file": "lead_harp_two.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_quest_music", "effects": [] },
         { "file": "lead_pad.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_default_music", "effects": [] },
         { "file": "ambience_strings.ogg", "volume": 1.0, "mute": false, "condition": "dungeon_default_music", "effects": [] },
