@@ -316,6 +316,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             '"${base}play/"',
             '"${base}play/packs.json"',
             "--retry-all-errors",
+            'manifest.get("schema") != 2',
             "deployed play/packs.json is invalid",
         ):
             self.assertIn(contract, deploy_job)

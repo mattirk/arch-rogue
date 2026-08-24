@@ -701,7 +701,7 @@ jobs:
           from pathlib import Path
 
           manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          if manifest.get("schema") != 1 or not manifest.get("packs"):
+          if manifest.get("schema") != 2 or not manifest.get("packs"):
               raise SystemExit("deployed play/packs.json is invalid")
           print(f"deployed play route exposes {len(manifest['packs'])} asset packs")
           PY
