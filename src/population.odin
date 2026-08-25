@@ -469,7 +469,44 @@ enemy_make :: proc(kind: Enemy_Kind, pos: Vec2, depth: int) -> Enemy {
 
 // --- Loot rolls (population.py _make_loot / _make_equipment) ---------------
 
-make_loot :: proc(rng: ^Pcg32, pos: Vec2, curse_bonus := f32(0), run: ^Run = nil) -> Ground_Item {
+RARE_WEAPON_POWER_CAP :: 16
+RARE_ARMOR_DEFENSE_CAP :: 12
+RARE_WEAPON_POWER_CAP_SHALLOW :: 10
+RARE_ARMOR_DEFENSE_CAP_SHALLOW :: 6
+RARE_ROLL_DEPTH_GAIN_PER_FLOOR :: f32(0.03)
+ORDINARY_UNIQUE_DROP_CHANCE :: f32(0.001)
+ORDINARY_UNIQUE_LOOT_BONUS_SCALE :: f32(0.05)
+ORDINARY_UNIQUE_DROP_CHANCE_CAP :: f32(0.025)
+
+rare_primary_cap :: proc(slot: Item_Kind, depth: int) -> int {
+	floor := clamp(depth, 1, DUNGEON_DEPTH)
+	progress := floor - 1
+	switch slot {
+	case .Weapon:
+		return RARE_WEAPON_POWER_CAP_SHALLOW + progress * (RARE_WEAPON_POWER_CAP - RARE_WEAPON_POWER_CAP_SHALLOW) / (DUNGEON_DEPTH - 1)
+	case .Armor:
+		return RARE_ARMOR_DEFENSE_CAP_SHALLOW + progress * (RARE_ARMOR_DEFENSE_CAP - RARE_ARMOR_DEFENSE_CAP_SHALLOW) / (DUNGEON_DEPTH - 1)
+	case .Heal_Potion, .Mana_Potion, .Identify_Scroll, .Remove_Curse_Scroll:
+		return 0
+	}
+	return 0
+}
+
+rare_roll_profile :: proc(depth: int) -> Rarity_Profile {
+	profile := RARITIES[Rarity.Rare]
+	depth_gain := f32(clamp(depth, 1, DUNGEON_DEPTH) - 1) * RARE_ROLL_DEPTH_GAIN_PER_FLOOR
+	profile.roll_lo += depth_gain
+	profile.roll_hi += depth_gain
+	return profile
+}
+
+ordinary_unique_drop_chance :: proc(run: ^Run) -> f32 {
+	if run == nil do return 0
+	loot_bonus := RUN_MODIFIERS[run.modifier].loot_bonus + story_effect_clamped(run, .Loot_Bonus, 0, .25)
+	return clamp(ORDINARY_UNIQUE_DROP_CHANCE + loot_bonus * ORDINARY_UNIQUE_LOOT_BONUS_SCALE, 0, ORDINARY_UNIQUE_DROP_CHANCE_CAP)
+}
+
+make_loot :: proc(rng: ^Pcg32, pos: Vec2, curse_bonus := f32(0), run: ^Run = nil, depth := 1) -> Ground_Item {
 	roll := rng_f32(rng)
 	if roll < 0.24 {
 		return {item = {kind = .Heal_Potion, name = "Minor Healing Potion", icon = ICON_HEAL_POTION}, pos = pos}
@@ -483,16 +520,17 @@ make_loot :: proc(rng: ^Pcg32, pos: Vec2, curse_bonus := f32(0), run: ^Run = nil
 	if roll < 0.455 {
 		return {item = {kind = .Remove_Curse_Scroll, name = "Scroll of Remove Curse", icon = ICON_REMOVE_CURSE_SCROLL, rarity = .Magic}, pos = pos}
 	}
-	// The 0.3% unique jackpot, widened by the run modifier's loot pressure
-	// (population.py _make_loot). Run-less callers (shop stock) skip it.
-	if run != nil {
-		loot_bonus := RUN_MODIFIERS[run.modifier].loot_bonus + story_effect_clamped(run, .Loot_Bonus, 0, .25)
-		if roll > 0.997 - loot_bonus * .25 do return {item = make_unique(rng, run.player.archetype, run.depth), pos = pos}
+	// Ordinary named Uniques are intentionally exceptional. Loot pressure can
+	// widen the 0.1% jackpot modestly, while guaranteed Tyrant rewards remain
+	// on their separate kill-reward path. Run-less callers cannot roll one.
+	if run != nil && roll > 1 - ordinary_unique_drop_chance(run) {
+		return {item = make_unique(rng, run.player.archetype, run.depth), pos = pos}
 	}
 	slot: Item_Kind = roll < 0.70 ? .Weapon : .Armor
 	rarity: Rarity = rng_chance(rng, 0.34) ? .Rare : .Magic
 	if rng_chance(rng, 0.20) do rarity = .Common
-	return {item = make_equipment(rng, slot, rarity, curse_bonus, run), pos = pos}
+	item_depth := run != nil ? run.depth : depth
+	return {item = make_equipment(rng, slot, rarity, curse_bonus, run, item_depth), pos = pos}
 }
 
 story_empower_equipment :: proc(run: ^Run, rng: ^Pcg32, item: ^Item, guaranteed := false) -> bool {
@@ -512,7 +550,7 @@ story_empower_equipment :: proc(run: ^Run, rng: ^Pcg32, item: ^Item, guaranteed 
 	return true
 }
 
-make_equipment :: proc(rng: ^Pcg32, slot: Item_Kind, rarity: Rarity, curse_bonus := f32(0), run: ^Run = nil) -> Item {
+make_equipment :: proc(rng: ^Pcg32, slot: Item_Kind, rarity: Rarity, curse_bonus := f32(0), run: ^Run = nil, depth := 1) -> Item {
 	item: Item
 	item.kind = slot
 	item.rarity = rarity
@@ -527,20 +565,26 @@ make_equipment :: proc(rng: ^Pcg32, slot: Item_Kind, rarity: Rarity, curse_bonus
 		item.icon = base.icon
 		item.defense = base.value
 	}
-	roll_affixes(rng, &item)
+	item_depth := run != nil ? run.depth : depth
+	roll_affixes(rng, &item, item_depth)
 	// 8% base curse chance; run modifier and story curse pressure add directly.
 	story_curse := run != nil ? story_effect_clamped(run, .Curse_Bonus, 0, .18) : f32(0)
 	if rarity != .Common && rng_chance(rng, 0.08 + curse_bonus + story_curse) do apply_cursed_bargain(&item)
 	if run != nil do _ = story_empower_equipment(run, rng, &item)
 	item.unidentified = rarity != .Common && rng_chance(rng, 0.45)
-	item.power = min(item.power, 7)
-	item.defense = min(item.defense, 4)
+	if rarity == .Rare {
+		item.power = min(item.power, rare_primary_cap(.Weapon, item_depth))
+		item.defense = min(item.defense, rare_primary_cap(.Armor, item_depth))
+	} else {
+		item.power = min(item.power, 7)
+		item.defense = min(item.defense, 4)
+	}
 	return item
 }
 
 @(private = "file")
-roll_affixes :: proc(rng: ^Pcg32, item: ^Item) {
-	profile := RARITIES[item.rarity]
+roll_affixes :: proc(rng: ^Pcg32, item: ^Item, depth: int) {
+	profile := item.rarity == .Rare ? rare_roll_profile(depth) : RARITIES[item.rarity]
 	attempts := 0
 	for item.affix_count < profile.affixes && attempts < 20 {
 		attempts += 1

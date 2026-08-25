@@ -34,7 +34,7 @@ This is an alpha release. Save formats are versioned and defensive, but gameplay
 - Authored PixelLab actor, world, UI, story, and effect art with point-sampled rendering.
 - Keyboard/mouse and remappable gamepad input on Linux; native multi-touch, lifecycle, and semantic Back handling on Android.
 
-See `PARITY.md` for the port ledger and `ARCHITECTURE.md` for design decisions, subsystem ownership, and hard boundaries.
+See `PARITY.md` for the port ledger, `ARCHITECTURE.md` for design decisions and subsystem boundaries, and `ITEM_BALANCE.md` for the review tables covering Rare rolls and fixed named Unique stats.
 
 ## Build on Linux
 

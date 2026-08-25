@@ -1541,6 +1541,7 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 			motion:^Room_Npc_Motion
 			sprites:^Actor_Sprites
 			frog:=false
+			bar_dancer:=false
 			if item.index==0 {
 				motion=&app.run.shopkeeper.motion
 				sprites=&assets.shopkeeper
@@ -1549,7 +1550,9 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 				motion=&resident.motion
 				frog=resident.kind==.Garden_Frog
 				switch resident.kind {
-				case .Bar_Dancer:       sprites=&assets.bar_dancer
+				case .Bar_Dancer:
+					sprites=&assets.bar_dancer
+					bar_dancer=true
 				case .Garden_Frog:      sprites=&assets.garden_frog
 				case .Soulless_Clanker: sprites=&assets.soulless_clanker
 				case .String:            sprites=&assets.string_guitarist
@@ -1562,7 +1565,7 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 			string_guitarist:=item.index>0 && app.run.ambient_residents.items[item.index-1].kind==.String
 			if clanker do gesture_clip=.Interact
 			if string_guitarist do gesture_clip=.Idle
-			clip,clip_time:=room_npc_visual_clip(motion,sprites,world_time,gesture_clip)
+			clip,clip_time:=room_npc_visual_clip(motion,sprites,world_time,gesture_clip,bar_dancer)
 			draw_contact_shadow(view,item.feet,frog?18:clanker?13:26,frog?8:clanker?6:11,motion.moving)
 			draw_actor(assets,sprites,clip,facing,clip_time,item.feet,rl.WHITE,0)
 		case .Prop:
@@ -1613,16 +1616,25 @@ story_actor_render_pos :: proc(actor: ^$T, alpha: f32) -> Vec2 {
 }
 
 @(private = "file")
-room_npc_visual_clip :: proc(motion: ^Room_Npc_Motion, sprites: ^Actor_Sprites, world_time: f32, gesture_clip := Clip_Kind.Dance) -> (clip: Clip_Kind, clip_time: f32) {
+room_npc_visual_clip :: proc(
+	motion: ^Room_Npc_Motion,
+	sprites: ^Actor_Sprites,
+	world_time: f32,
+	gesture_clip := Clip_Kind.Dance,
+	always_gesture := false,
+) -> (clip: Clip_Kind, clip_time: f32) {
 	if motion == nil do return .Idle,0
 	if motion.moving {
 		return .Walk,motion.anim_time
 	}
+	if always_gesture {
+		return gesture_clip,world_time
+	}
 	if motion.dancing {
 		return gesture_clip,motion.anim_time
 	}
-	// Bar dancers, frogs, and the Soul have no Idle clip. Their waiting pose is
-	// exactly Dance frame zero; only an explicit Dancing state advances it.
+	// Frogs and the Soul have no Idle clip. Their waiting pose is exactly Dance
+	// frame zero; only an explicit Dancing state advances it.
 	if sprites != nil && sprites.clips[.Idle].valid {
 		return .Idle,visual_idle_clip_time(world_time,u32(motion.seed))
 	}

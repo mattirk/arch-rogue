@@ -67,10 +67,10 @@ shopkeeper_make :: proc(seed: u64, depth: int, room: Room, room_index := -1) -> 
 	shop_stock_append(&keeper, Item{kind = .Mana_Potion, name = "Lesser Mana Potion", icon = ICON_MANA_POTION})
 	shop_stock_append(&keeper, Item{kind = .Identify_Scroll, name = "Scroll of Identify", icon = ICON_IDENTIFY_SCROLL})
 	shop_stock_append(&keeper, Item{kind = .Remove_Curse_Scroll, name = "Scroll of Remove Curse", icon = ICON_REMOVE_CURSE_SCROLL, rarity = .Magic})
-	shop_stock_append(&keeper, make_equipment(&rng, .Weapon, .Magic))
-	shop_stock_append(&keeper, make_equipment(&rng, .Armor, .Magic))
+	shop_stock_append(&keeper, make_equipment(&rng, .Weapon, .Magic, depth=depth))
+	shop_stock_append(&keeper, make_equipment(&rng, .Armor, .Magic, depth=depth))
 	if depth >= 3 || rng_chance(&rng, 0.35) {
-		shop_stock_append(&keeper, make_loot(&rng, {}).item)
+		shop_stock_append(&keeper, make_loot(&rng, {}, depth=depth).item)
 	}
 	return keeper
 }

@@ -438,6 +438,40 @@ loot_rolls_deterministic_and_valid :: proc(t: ^testing.T) {
 }
 
 @(test)
+rare_loot_scales_with_depth_and_respects_new_caps :: proc(t: ^testing.T) {
+	testing.expect(t, ar.rare_primary_cap(.Weapon, 1) == 10, "depth-1 Rare weapon cap")
+	testing.expect(t, ar.rare_primary_cap(.Armor, 1) == 6, "depth-1 Rare armor cap")
+	testing.expect(t, ar.rare_primary_cap(.Weapon, ar.DUNGEON_DEPTH) == 16, "deep Rare weapon cap")
+	testing.expect(t, ar.rare_primary_cap(.Armor, ar.DUNGEON_DEPTH) == 12, "deep Rare armor cap")
+	shallow_profile := ar.rare_roll_profile(1)
+	deep_profile := ar.rare_roll_profile(ar.DUNGEON_DEPTH)
+	testing.expect(t, deep_profile.roll_lo > shallow_profile.roll_lo && deep_profile.roll_hi > shallow_profile.roll_hi, "deeper Rare affixes must roll higher")
+
+	rng := ar.rng_make(ar.derive_seed(991, 7), 2)
+	max_power, max_defense := 0, 0
+	for _ in 0 ..< 2048 {
+		weapon := ar.make_equipment(&rng, .Weapon, .Rare, depth=ar.DUNGEON_DEPTH)
+		armor := ar.make_equipment(&rng, .Armor, .Rare, depth=ar.DUNGEON_DEPTH)
+		testing.expectf(t, weapon.power <= ar.RARE_WEAPON_POWER_CAP, "Rare weapon power %v exceeds cap", weapon.power)
+		testing.expectf(t, armor.defense <= ar.RARE_ARMOR_DEFENSE_CAP, "Rare armor defense %v exceeds cap", armor.defense)
+		max_power = max(max_power, weapon.power)
+		max_defense = max(max_defense, armor.defense)
+	}
+	testing.expectf(t, max_power == ar.RARE_WEAPON_POWER_CAP, "deep Rare weapons never reached cap (max %v)", max_power)
+	testing.expectf(t, max_defense == ar.RARE_ARMOR_DEFENSE_CAP, "deep Rare armor never reached cap (max %v)", max_defense)
+}
+
+@(test)
+ordinary_unique_jackpot_is_lower_and_bounded :: proc(t: ^testing.T) {
+	testing.expect(t, ar.ORDINARY_UNIQUE_DROP_CHANCE == 0.001, "ordinary Unique base chance must be 0.1%")
+	run := ar.Run{modifier = .Treasure_Draught}
+	chance := ar.ordinary_unique_drop_chance(&run)
+	testing.expect(t, chance > ar.ORDINARY_UNIQUE_DROP_CHANCE, "loot-positive modifier should still improve the Unique jackpot")
+	testing.expect(t, chance < 0.01, "Treasure Draught ordinary Unique chance should remain below 1% without story bonuses")
+	testing.expect(t, chance <= ar.ORDINARY_UNIQUE_DROP_CHANCE_CAP, "ordinary Unique chance exceeds hard cap")
+}
+
+@(test)
 m8_action_hud_manifest_is_complete :: proc(t: ^testing.T) {
 	data, read_err := os.read_entire_file_from_path("assets/hud/manifest.json", context.allocator)
 	if read_err != nil {
