@@ -217,6 +217,28 @@ m9_shop_modal_trades_scrolls_and_pauses :: proc(t:^testing.T) {
 }
 
 @(test)
+bar_sconces_move_off_center_doors :: proc(t:^testing.T) {
+	d:ar.Dungeon
+	room:=ar.Room{10,10,9,9}
+	center:=ar.room_center(room)
+	d.room_count=1
+	d.rooms_buf[0]=room
+	d.special_rooms_buf[0]={.Bar,0}
+	d.special_room_count=1
+	d.tiles[center.x][room.y]=.Closed_Door
+	d.tiles[room.x][center.y]=.Open_Door
+
+	sconces,found:=ar.bar_sconce_positions(&d)
+	testing.expect(t,found,"Bar must retain both sconces when its center mounts are doors")
+	north_tile:=[2]int{int(math.floor(sconces[0].x)),int(math.floor(sconces[0].y))}
+	west_tile:=[2]int{int(math.floor(sconces[1].x)),int(math.floor(sconces[1].y))}
+	testing.expect(t,north_tile==[2]int{center.x+1,room.y},"north sconce must move to the nearest wall beside its center door")
+	testing.expect(t,west_tile==[2]int{room.x,center.y+1},"west sconce must move to the nearest wall beside its center door")
+	testing.expect(t,d.tiles[north_tile.x][north_tile.y]==.Wall&&d.tiles[west_tile.x][west_tile.y]==.Wall,
+		"relocated Bar sconces must mount only on wall tiles")
+}
+
+@(test)
 m9_dry_barrel_falls_through_to_loot_and_furnishings_are_solid :: proc(t:^testing.T) {
 	bar_count:=0
 	dry_interaction_checked:=false
@@ -232,11 +254,16 @@ m9_dry_barrel_falls_through_to_loot_and_furnishings_are_solid :: proc(t:^testing
 		layout:=ar.bar_furnishing_layout(&run.dungeon)
 		room:=run.dungeon.rooms_buf[special.room_index]
 		sconces,has_sconces:=ar.bar_sconce_positions(&run.dungeon)
-		bar_center:=ar.room_center(room)
 		testing.expect(t,has_sconces,"generated Bar must expose its wall sconces")
-		testing.expect(t,sconces[0]==ar.Vec2{f32(bar_center.x)+.125,f32(room.y)+.625},
+		north_sconce_tile:=[2]int{int(math.floor(sconces[0].x)),int(math.floor(sconces[0].y))}
+		west_sconce_tile:=[2]int{int(math.floor(sconces[1].x)),int(math.floor(sconces[1].y))}
+		testing.expect(t,north_sconce_tile.y==room.y&&run.dungeon.tiles[north_sconce_tile.x][north_sconce_tile.y]==.Wall,
+			"north Bar sconce must mount on the visible north wall, never on a door")
+		testing.expect(t,west_sconce_tile.x==room.x&&run.dungeon.tiles[west_sconce_tile.x][west_sconce_tile.y]==.Wall,
+			"west Bar sconce must mount on the visible west wall, never on a door")
+		testing.expect(t,sconces[0]==ar.Vec2{f32(north_sconce_tile.x)+.125,f32(room.y)+.625},
 			"north-wall sconce must sit high on the visible wall face instead of its center seam")
-		testing.expect(t,sconces[1]==ar.Vec2{f32(room.x)+.625,f32(bar_center.y)+.125},
+		testing.expect(t,sconces[1]==ar.Vec2{f32(room.x)+.625,f32(west_sconce_tile.y)+.125},
 			"west-wall sconce must sit high on the visible wall face instead of its center seam")
 		desired:=2+min(2,max(0,(room.w-2)*(room.h-2))/28)
 		testing.expectf(t,layout.barrel_count>=1&&layout.barrel_count<=desired&&layout.table_count>=1&&layout.table_count<=desired,

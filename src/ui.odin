@@ -770,7 +770,7 @@ draw_select_screen :: proc(app: ^App, assets: ^Assets) {
 	draw_select_stat_panel(assets, .Spell, stat_rects[.Spell], "SPELL", fmt.ctprintf("%v", stats.spell))
 	draw_select_stat_panel(assets, .Armor, stat_rects[.Armor], "ARMOR", fmt.ctprintf("%v", stats.armor))
 
-	hint: cstring = "Arrows: choose   1-5: begin   Enter: confirm   Backspace: return   F11: fullscreen"
+	hint: cstring = "Arrows: choose   Enter: confirm   Backspace: return   F11: fullscreen"
 	ui_draw_text(hint, i32(center_x)-ui_measure_text(hint,14)/2, i32(layout.y+layout.height)-27, 14, COLOR_TEXT_DIM)
 }
 

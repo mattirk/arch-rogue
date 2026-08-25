@@ -1181,15 +1181,6 @@ multiplayer/network permissions, Steam/achievements/cloud, updater behavior,
 iOS, and inventing a soft-keyboard screen before a real text-entry feature
 exists.
 
-#### MX-backlog — Tasks that come to mind while working on the parity push
-
-- Remove highlight around floor tile when mouse is over it (yellow-ish outline)
-- We want nice looking custom cursor ingame -> generate with pixellab and implement into game -> subtle but grim looking -> generate unique cursor per archetype
-- Rare (double check item tiers first) items need to be better. Make rare items stats somewhere between rolled and unique. If unique is always 3x better than best rolled, make rare items 1.5-2x better than best rolled (they are still rolled too ofc)
-- Make shrines, relics and items shine through walls like actors do (also guiding light glow)
-- There is weird text description / tooltip when descending (looking at stairs) -> make more "storylike", not informative about game mechanics
-- Speed stat effect / shrine effect, is this fixed yet?
-
 
 
 ## Working agreements for the parity push

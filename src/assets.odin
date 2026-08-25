@@ -227,6 +227,10 @@ UI_LOGO_DIAMOND_SOURCE_RECT :: [4]int{266, 24, 70, 74}
 UI_GLYPH_ATLAS_FILE :: "assets/ui/glyph_atlas.png"
 UI_GLYPH_ATLAS_CELL :: 32
 UI_GLYPH_ATLAS_COLUMNS :: 10
+UI_CURSOR_FILE :: "assets/ui/cursor/obsidian_spearhead.png"
+UI_CURSOR_SIZE :: 32
+UI_CURSOR_DRAW_SCALE :: f32(1.5)
+UI_CURSOR_HOTSPOT :: [2]f32{2, 1}
 UI_GLYPH_OUROBOROS_KEY :: "menu.glyph.sigil.ouroboros"
 
 UI_Chrome_Def :: struct {
@@ -1007,6 +1011,7 @@ Assets :: struct {
 	ui_chrome:                  [UI_Chrome_Id]UI_Chrome_Asset,
 	ui_logo_animation:          UI_Logo_Animation,
 	ui_glyph_atlas:             UI_Glyph_Atlas,
+	ui_cursor:                  rl.Texture2D,
 	ui_font:                    rl.Font,
 	ui_font_loaded:             bool,
 	story:                      Story_Art_Assets,
@@ -1114,6 +1119,7 @@ assets_load_summary :: proc(assets: ^Assets) -> (summary: Assets_Load_Summary) {
 	}
 	if assets.ui_logo_animation.tex.id != 0 do summary.ui += 1
 	if assets.ui_glyph_atlas.tex.id != 0 do summary.ui += 1
+	if assets.ui_cursor.id != 0 do summary.ui += 1
 	if assets.ui_font_loaded do summary.ui += 1
 	summary.story = assets_story_texture_count(assets)
 	summary.total = summary.actors + summary.action_icons + summary.world + summary.items +
@@ -1899,6 +1905,16 @@ load_ui_assets :: proc(assets: ^Assets) {
 
 	atlas_rows := (UI_DISCIPLINE_GLYPH_COUNT + UI_STORY_SIGIL_COUNT + UI_GLYPH_ATLAS_COLUMNS - 1) /
 		UI_GLYPH_ATLAS_COLUMNS
+	cursor_tex := rl.LoadTexture(fmt.ctprintf("%s", UI_CURSOR_FILE))
+	if cursor_tex.id != 0 {
+		if cursor_tex.width == UI_CURSOR_SIZE && cursor_tex.height == UI_CURSOR_SIZE {
+			rl.SetTextureFilter(cursor_tex, .POINT)
+			assets.ui_cursor = cursor_tex
+		} else {
+			rl.UnloadTexture(cursor_tex)
+		}
+	}
+
 	atlas_tex := rl.LoadTexture(fmt.ctprintf("%s", UI_GLYPH_ATLAS_FILE))
 	assets.ui_glyph_atlas.tex = atlas_tex
 	assets.ui_glyph_atlas.size = {
@@ -1928,9 +1944,11 @@ assets_unload_ui :: proc(assets: ^Assets) {
 	}
 	if assets.ui_logo_animation.tex.id != 0 do rl.UnloadTexture(assets.ui_logo_animation.tex)
 	if assets.ui_glyph_atlas.tex.id != 0 do rl.UnloadTexture(assets.ui_glyph_atlas.tex)
+	if assets.ui_cursor.id != 0 do rl.UnloadTexture(assets.ui_cursor)
 	assets.ui_chrome = {}
 	assets.ui_logo_animation = {}
 	assets.ui_glyph_atlas = {}
+	assets.ui_cursor = {}
 }
 
 ui_chrome_def :: proc(id: UI_Chrome_Id) -> UI_Chrome_Def {

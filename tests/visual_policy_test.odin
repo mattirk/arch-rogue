@@ -64,6 +64,10 @@ visual_wall_ghost_rejects_grazes_and_ramps_real_occlusion :: proc(t: ^testing.T)
 	testing.expect(t, ar.visual_ghost_target(.90) == 1, "fully swallowed actor must reach full ghost")
 	eased := ar.visual_ghost_ease(0, 1, 1.0/60.0)
 	testing.expect(t, eased > .25 && eased < .30, "60 Hz ghost fade should match pygame's ~28%% pull")
+	testing.expect(t,ar.VISUAL_RELIC_GHOST_SPRITE_ALPHA>ar.VISUAL_GHOST_SPRITE_ALPHA&&ar.VISUAL_RELIC_GHOST_SPRITE_ALPHA<=1,
+		"small relic ghosts must remain more legible than actors without exceeding valid alpha")
+	testing.expect(t,ar.VISUAL_RELIC_GHOST_AURA_ALPHA>ar.VISUAL_GHOST_AURA_ALPHA&&ar.VISUAL_RELIC_GHOST_AURA_ALPHA<=1,
+		"relic wall aura must be stronger than the actor aura without exceeding valid alpha")
 }
 
 @(test)

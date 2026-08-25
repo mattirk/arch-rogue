@@ -381,8 +381,35 @@ draw_frame :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 		draw_story_modal(app,assets,int(rl.GetScreenWidth()),int(rl.GetScreenHeight()))
 	}
 	if view.mobile_mode && view.mobile_layout_valid do draw_mobile_context_controls(view,app)
+	draw_custom_cursor(view, app, assets)
 
 	rl.EndDrawing()
+}
+
+@(private = "file")
+draw_custom_cursor :: proc(view: ^View, app: ^App, assets: ^Assets) {
+	if view == nil || app == nil || assets == nil do return
+	custom_cursor_active := !view.mobile_mode && assets.ui_cursor.id != 0
+	if !custom_cursor_active {
+		if !view.mobile_mode do rl.ShowCursor()
+		return
+	}
+
+	rl.HideCursor()
+	mouse := rl.GetMousePosition()
+	draw_size := f32(UI_CURSOR_SIZE) * UI_CURSOR_DRAW_SCALE
+	hotspot := rl.Vector2{
+		UI_CURSOR_HOTSPOT[0] * UI_CURSOR_DRAW_SCALE,
+		UI_CURSOR_HOTSPOT[1] * UI_CURSOR_DRAW_SCALE,
+	}
+	rl.DrawTexturePro(
+		assets.ui_cursor,
+		{0, 0, f32(UI_CURSOR_SIZE), f32(UI_CURSOR_SIZE)},
+		{mouse.x - hotspot.x, mouse.y - hotspot.y, draw_size, draw_size},
+		{},
+		0,
+		rl.WHITE,
+	)
 }
 
 @(private = "file")
@@ -987,6 +1014,7 @@ Ghost_Actor_Kind :: enum {
 	Player,
 	Enemy,
 	Familiar,
+	Story_Relic,
 }
 
 @(private = "file")
@@ -1512,7 +1540,13 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 			draw_contact_shadow(view,item.feet,22,9,false)
 			draw_ground_item(assets, &app.run.ground_items[item.index])
 		case .Story_Relic:
-			draw_story_relic_world(view,assets,&app.run,world_time)
+			tex,src,dst:=draw_story_relic_world(view,assets,&app.run,world_time)
+			if dst.width>0&&dst.height>0 {
+				append(&ghost_actors,Ghost_Actor{
+					depth=item.depth,kind=.Story_Relic,key=0x400000000,
+					tex=tex,src=src,dst=dst,feet=item.feet,tint=story_world_accent(&app.run),
+				})
+			}
 		case .Bell:
 			bell := &app.run.bells[item.index]
 			armed := bell.arm_timer <= 0
@@ -1601,10 +1635,6 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 	}
 	draw_item_labels(view,app)
 	draw_damage_numbers(view,app)
-
-	if view.hovered_valid && (app.dev_reveal || app.run.visible[view.hovered.x][view.hovered.y]) {
-		draw_iso_tile_outline({f32(view.hovered.x), f32(view.hovered.y)}, COLOR_HOVER)
-	}
 }
 
 @(private = "file")
@@ -1715,7 +1745,7 @@ draw_story_relic_world :: proc(
 	assets: ^Assets,
 	run: ^Run,
 	world_time: f32,
-) {
+) -> (tex: rl.Texture2D, src, dst: rl.Rectangle) {
 	if run == nil do return
 	relic := &run.story_runtime.relic
 	if !relic.present || relic.collected do return
@@ -1735,11 +1765,12 @@ draw_story_relic_world :: proc(
 	if icon != nil && icon.valid && icon.tex.id != 0 {
 		h: f32 = STORY_RELIC_WORLD_ICON_HEIGHT
 		w := icon.tex.height > 0 ? h*f32(icon.tex.width)/f32(icon.tex.height) : h
-		rl.DrawTexturePro(
-			icon.tex,{0,0,f32(icon.tex.width),f32(icon.tex.height)},
-			{center.x-w*.5,center.y-h*.5,w,h},{0,0},0,rl.WHITE,
-		)
+		tex=icon.tex
+		src={0,0,f32(icon.tex.width),f32(icon.tex.height)}
+		dst={center.x-w*.5,center.y-h*.5,w,h}
+		rl.DrawTexturePro(tex,src,dst,{0,0},0,rl.WHITE)
 	} else {
+		dst={center.x-9,center.y-9,18,18}
 		dark := rl.Color{u8(f32(accent.r)*.34),u8(f32(accent.g)*.34),u8(f32(accent.b)*.42),255}
 		rl.DrawPoly(center,4,9,45,dark)
 		rl.DrawPoly(center,4,5.5,45,accent)
@@ -1750,6 +1781,7 @@ draw_story_relic_world :: proc(
 		mote := center+rl.Vector2{math.cos(angle)*15,math.sin(angle)*7}
 		rl.DrawCircleV(mote,1.4,rl.Fade(accent,.72+.18*pulse))
 	}
+	return
 }
 
 STORY_RELIC_WORLD_ICON_HEIGHT :: f32(20)
@@ -2387,13 +2419,16 @@ draw_actor_wall_ghosts :: proc(view: ^View, app: ^App, actors: []Ghost_Actor, oc
 	next: [MAX_GHOST_WEIGHT_TRACKS]Ghost_Weight
 	next_count := 0
 	for actor in actors {
-		// Trim transparent cell margins for the trigger calculation, but re-draw
-		// the exact authored frame if the actor is genuinely swallowed by a wall.
-		body := rl.Rectangle{
-			actor.dst.x + actor.dst.width * .16,
-			actor.dst.y + actor.dst.height * .04,
-			actor.dst.width * .68,
-			actor.dst.height * .92,
+		// Trim transparent actor-cell margins for the trigger calculation, but use
+		// the relic's already-tight world icon rectangle without another inset.
+		body := actor.dst
+		if actor.kind != .Story_Relic {
+			body = {
+				actor.dst.x + actor.dst.width * .16,
+				actor.dst.y + actor.dst.height * .04,
+				actor.dst.width * .68,
+				actor.dst.height * .92,
+			}
 		}
 		body_area := body.width * body.height
 		if body_area <= 0 do continue
@@ -2426,21 +2461,38 @@ draw_actor_wall_ghosts :: proc(view: ^View, app: ^App, actors: []Ghost_Actor, oc
 		if weight < VISUAL_GHOST_WEIGHT_FLOOR do continue
 
 		center := rl.Vector2{actor.dst.x+actor.dst.width*.5,actor.dst.y+actor.dst.height*.5}
+		relic_ghost := actor.kind == .Story_Relic
+		aura_scale_x := relic_ghost ? f32(2.4) : f32(1.65)
+		aura_scale_y := relic_ghost ? f32(2.0) : f32(1.10)
 		aura_dst := rl.Rectangle{
-			center.x-actor.dst.width*1.65*.5,
-			center.y-actor.dst.height*1.10*.5,
-			actor.dst.width*1.65,
-			actor.dst.height*1.10,
+			center.x-actor.dst.width*aura_scale_x*.5,
+			center.y-actor.dst.height*aura_scale_y*.5,
+			actor.dst.width*aura_scale_x,
+			actor.dst.height*aura_scale_y,
 		}
+		aura_color := relic_ghost ? actor.tint : rl.Color{238,226,196,255}
+		aura_alpha := relic_ghost ? VISUAL_RELIC_GHOST_AURA_ALPHA : VISUAL_GHOST_AURA_ALPHA
 		rl.BeginBlendMode(.ADDITIVE)
 		rl.DrawTexturePro(
 			view.light_tex,{0,0,256,256},aura_dst,{0,0},0,
-			rl.Fade(rl.Color{238,226,196,255},VISUAL_GHOST_AURA_ALPHA*weight*weight),
+			rl.Fade(aura_color,aura_alpha*weight*weight),
 		)
 		rl.EndBlendMode()
-		ghost_tint := actor.tint
-		ghost_tint.a = u8(clamp(f32(ghost_tint.a)*VISUAL_GHOST_SPRITE_ALPHA*weight,0,255))
-		rl.DrawTexturePro(actor.tex,actor.src,actor.dst,{0,0},0,ghost_tint)
+		if relic_ghost {
+			ghost_alpha:=VISUAL_RELIC_GHOST_SPRITE_ALPHA*weight
+			if actor.tex.id!=0 {
+				rl.DrawTexturePro(actor.tex,actor.src,actor.dst,{0,0},0,rl.Fade(rl.WHITE,ghost_alpha))
+			} else {
+				dark:=rl.Color{u8(f32(actor.tint.r)*.34),u8(f32(actor.tint.g)*.34),u8(f32(actor.tint.b)*.42),255}
+				rl.DrawPoly(center,4,9,45,rl.Fade(dark,ghost_alpha))
+				rl.DrawPoly(center,4,5.5,45,rl.Fade(actor.tint,ghost_alpha))
+				rl.DrawPolyLinesEx(center,4,9,45,1.2,rl.Fade(rl.WHITE,.82*ghost_alpha))
+			}
+		} else {
+			ghost_tint := actor.tint
+			ghost_tint.a = u8(clamp(f32(ghost_tint.a)*VISUAL_GHOST_SPRITE_ALPHA*weight,0,255))
+			rl.DrawTexturePro(actor.tex,actor.src,actor.dst,{0,0},0,ghost_tint)
+		}
 	}
 	view.ghost_weights = next
 	view.ghost_weight_count = next_count

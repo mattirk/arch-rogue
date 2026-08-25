@@ -1080,18 +1080,47 @@ solid_prop_remove :: proc(d: ^Dungeon, tile: [2]int) {
 	}
 }
 
+@(private = "file")
+bar_sconce_wall_coordinate :: proc(
+	d: ^Dungeon,
+	center, low, high, fixed: int,
+	north_wall: bool,
+) -> (coordinate: int, found: bool) {
+	max_distance := max(center-low, high-center)
+	for distance in 0 ..= max_distance {
+		for side in ([2]int{1,-1}) {
+			candidate := center + side*distance
+			if candidate < low || candidate > high do continue
+			x, y := fixed, candidate
+			if north_wall do x, y = candidate, fixed
+			// Door art owns the whole wall prism. Requiring a real wall here also
+			// protects against any future pass-through opening kind, not only the
+			// current open/closed door pair.
+			if d.tiles[x][y] == .Wall do return candidate, true
+		}
+	}
+	return
+}
+
 bar_sconce_positions :: proc(d: ^Dungeon) -> (positions: [2]Vec2, found: bool) {
 	if d==nil do return
 	special,has_bar:=special_room_for_kind(d,.Bar)
 	if !has_bar do return
 	room:=d.rooms_buf[special.room_index]
 	center:=room_center(room)
+	north_x,north_found:=bar_sconce_wall_coordinate(
+		d,center.x,room.x+1,room.x+room.w-2,room.y,true,
+	)
+	west_y,west_found:=bar_sconce_wall_coordinate(
+		d,center.y,room.y+1,room.y+room.h-2,room.x,false,
+	)
+	if !north_found || !west_found do return
 	// Pull each mount off the block's center seam and onto its camera-visible
 	// face. The opposing half-tile components move 16 world pixels sideways;
 	// subtracting an eighth tile from both axes then lifts it 4 world pixels
 	// toward the top of the face without changing that horizontal placement.
-	positions[0]={f32(center.x)+.125,f32(room.y)+.625}
-	positions[1]={f32(room.x)+.625,f32(center.y)+.125}
+	positions[0]={f32(north_x)+.125,f32(room.y)+.625}
+	positions[1]={f32(room.x)+.625,f32(west_y)+.125}
 	return positions,true
 }
 
