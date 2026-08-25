@@ -74,14 +74,14 @@ music_mixes_document_parses_and_references_real_files :: proc(t: ^testing.T) {
 			"the elite horn must use its proximity stem group at 70% volume",
 		)
 		testing.expect(t,
-			dungeon.tracks[7].file == "bar_guitar.ogg" && dungeon.tracks[7].condition == .Dungeon_Bar_Music &&
+			dungeon.tracks[7].file == "bar_guitar.ogg" && dungeon.tracks[7].condition == .Dungeon_String_Guitar_Music &&
 			dungeon.tracks[7].volume == 0.8,
-			"Bar guitar must use the shared Bar envelope with reduced pre-saturation gain",
+			"Bar guitar must use String's dedicated proximity envelope with reduced pre-saturation gain",
 		)
 		testing.expect(t,
 			dungeon.tracks[8].file == "bar_melody_flute.ogg" && dungeon.tracks[8].condition == .Dungeon_Bar_Music &&
-			dungeon.tracks[8].volume == 0.85,
-			"Bar flute must use the shared Bar envelope at 85% authored gain",
+			dungeon.tracks[8].volume == 0.85 && dungeon.tracks[8].alternate,
+			"Bar flute must use the shared Bar envelope at 85% authored gain and alternate each Loop cycle",
 		)
 	}
 
@@ -320,44 +320,90 @@ music_dungeon_quest_harp_follows_room_distance_and_reaches_full_inside :: proc(t
 }
 
 @(test)
-music_dungeon_bar_tracks_replace_non_core_stems_by_room_distance :: proc(t: ^testing.T) {
+music_dungeon_bar_flute_stays_room_bound_while_guitar_follows_string :: proc(t: ^testing.T) {
 	run: ar.Run
+	defer delete(run.familiars)
 	run.dungeon.room_count = 2
 	run.dungeon.rooms_buf[1] = {20, 20, 10, 8}
 	run.dungeon.special_room_count = 1
 	run.dungeon.special_rooms_buf[0] = {.Bar, 1}
+	run.ambient_residents.count = 1
+	run.ambient_residents.items[0] = {active = true, kind = .String}
 
+	// Before recruitment active resident String uses the exact Bar-room envelope
+	// used by the flute and by ordinary Dungeon-layer ducking.
 	run.player.pos = {12, 24}
-	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 0,
-		"Bar stems must be silent eight tiles from the room")
+	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 0 && ar.music_dungeon_string_guitar_gain(&run) == 0,
+		"unrecruited Bar stems must be silent eight tiles from the room")
 	run.player.pos = {16, 24}
-	testing.expect(t, abs(ar.music_dungeon_bar_gain(&run) - 0.5) < 1e-5,
-		"Bar stems and ducking must reach their midpoint four tiles out")
+	testing.expect(t, abs(ar.music_dungeon_bar_gain(&run) - 0.5) < 1e-5 &&
+		abs(ar.music_dungeon_string_guitar_gain(&run) - 0.5) < 1e-5,
+		"unrecruited guitar and flute must share the Bar midpoint")
 	run.player.pos = {20.5, 24}
-	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 1,
-		"Bar stems must reach full gain inside the room")
+	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 1 && ar.music_dungeon_string_guitar_gain(&run) == 1,
+		"unrecruited guitar and flute must be full inside the Bar")
 
-	runtime := ar.Music_Runtime_State{
+	bar_runtime := ar.Music_Runtime_State{
 		dungeon_bar_gain = 1,
+		dungeon_string_guitar_gain = 1,
 		dungeon_elite_horn_gain = 1,
 		dungeon_quest_harp_gain = 1,
 	}
-	testing.expect(t, ar.music_track_runtime_gain({file = "ambience_grim_bass.ogg", condition = .Always}, runtime) == 1,
+	testing.expect(t, ar.music_track_runtime_gain({file = "ambience_grim_bass.ogg", condition = .Always}, bar_runtime) == 1,
 		"grim bass must remain full inside the Bar")
-	testing.expect(t, ar.music_track_runtime_gain({file = "beat_low.ogg", condition = .Always}, runtime) == 1,
+	testing.expect(t, ar.music_track_runtime_gain({file = "beat_low.ogg", condition = .Always}, bar_runtime) == 1,
 		"low beat must remain full inside the Bar")
-	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Default_Music}, runtime) == 0,
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Default_Music}, bar_runtime) == 0,
 		"ordinary Dungeon stems must be fully ducked inside the Bar")
-	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Elite_Music}, runtime) == 0,
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Elite_Music}, bar_runtime) == 0,
 		"the elite horn must be fully ducked inside the Bar")
-	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Quest_Music}, runtime) == 0,
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Quest_Music}, bar_runtime) == 0,
 		"the Quest harp must be fully ducked inside the Bar")
-	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Bar_Music}, runtime) == 1,
-		"both Bar stems must be full inside the room")
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Bar_Music}, bar_runtime) == 1,
+		"the Bar flute must be full inside the room")
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_String_Guitar_Music}, bar_runtime) == 1,
+		"the unrecruited guitar must be full inside the room")
 
+	// Once String is recruited, only the guitar uses the same 4-full/12-silent
+	// smoothstep curve as the elite horn. Room membership and LOS are irrelevant.
+	run.player.pos = {}
+	run.ambient_residents.items[0].active = false
+	append(&run.familiars, ar.Familiar{kind = .String, hp = 10, max_hp = 10, pos = {12, 0}})
+	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 0 && ar.music_dungeon_string_guitar_gain(&run) == 0,
+		"String's guitar must be silent at twelve tiles without carrying Bar proximity")
+	run.familiars[0].pos = {10, 0}
+	testing.expect(t, abs(ar.music_dungeon_string_guitar_gain(&run) - 0.15625) < 1e-5,
+		"String's guitar must reuse the elite smoothstep curve")
+	run.familiars[0].pos = {8, 0}
+	testing.expect(t, abs(ar.music_dungeon_string_guitar_gain(&run) - 0.5) < 1e-5,
+		"String's guitar must reach 50% at eight tiles")
+	run.familiars[0].pos = {4, 0}
+	testing.expect(t, ar.music_dungeon_string_guitar_gain(&run) == 1,
+		"String's guitar must be full at four tiles or fewer")
+
+	string_runtime := ar.Music_Runtime_State{
+		dungeon_string_guitar_gain = 1,
+		dungeon_elite_horn_gain = 1,
+		dungeon_quest_harp_gain = 1,
+	}
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_String_Guitar_Music}, string_runtime) == 1,
+		"recruited String must carry only the guitar")
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Bar_Music}, string_runtime) == 0,
+		"String proximity must not carry the Bar flute")
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Default_Music}, string_runtime) == 1 &&
+		ar.music_track_runtime_gain({condition = .Dungeon_Elite_Music}, string_runtime) == 1 &&
+		ar.music_track_runtime_gain({condition = .Dungeon_Quest_Music}, string_runtime) == 1,
+		"String proximity must not carry Bar-room ducking")
+
+	// A dead recruited String is no longer a guitar source; the retired resident
+	// must not make the instrument teleport back to the Bar.
+	run.familiars[0].hp = 0
+	run.player.pos = {20.5, 24}
+	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 1 && ar.music_dungeon_string_guitar_gain(&run) == 0,
+		"dead recruited String must stop the guitar without changing Bar flute proximity")
 	run.dungeon.special_room_count = 0
-	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 0,
-		"floors without a Bar must keep its stems silent and Dungeon layers unducked")
+	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 0 && ar.music_dungeon_string_guitar_gain(&run) == 0,
+		"without a living String or Bar both Bar instruments must be silent")
 }
 
 @(test)
@@ -381,6 +427,7 @@ music_dungeon_garden_ducks_every_non_core_stem_by_room_distance :: proc(t: ^test
 	runtime := ar.Music_Runtime_State{
 		dungeon_garden_gain = 1,
 		dungeon_bar_gain = 1,
+		dungeon_string_guitar_gain = 1,
 		dungeon_elite_horn_gain = 1,
 		dungeon_quest_harp_gain = 1,
 	}
@@ -395,7 +442,9 @@ music_dungeon_garden_ducks_every_non_core_stem_by_room_distance :: proc(t: ^test
 	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Quest_Music}, runtime) == 0,
 		"the Quest harp must be silent inside the Garden")
 	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Bar_Music}, runtime) == 0,
-		"Garden priority must silence Bar stems even if proximity envelopes overlap")
+		"Garden priority must silence the Bar flute even if proximity envelopes overlap")
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_String_Guitar_Music}, runtime) == 0,
+		"Garden priority must silence String's guitar even away from the Bar")
 
 	run.dungeon.special_room_count = 0
 	testing.expect(t, ar.music_dungeon_garden_gain(&run) == 0,
@@ -425,6 +474,26 @@ music_elite_horn_runtime_gain_slews_abrupt_targets :: proc(t: ^testing.T) {
 }
 
 @(test)
+music_string_guitar_runtime_gain_uses_bar_fade_duration :: proc(t: ^testing.T) {
+	app: ar.App
+	defer delete(app.run.familiars)
+	app.run.player.pos = {}
+	append(&app.run.familiars, ar.Familiar{kind = .String, hp = 10, max_hp = 10, pos = {4, 0}})
+	state: ar.Music_Runtime_State
+	ar.music_runtime_state_update(&state, &app, true, false, 0.1)
+	testing.expect(t, abs(state.dungeon_string_guitar_gain - 0.2) < 1e-5,
+		"String's guitar must use the Bar envelope's 500 ms attack")
+	testing.expect(t, state.dungeon_bar_gain == 0,
+		"String's guitar attack must not create Bar-room ducking")
+
+	state.dungeon_string_guitar_gain = 1
+	app.run.familiars[0].pos = {12, 0}
+	ar.music_runtime_state_update(&state, &app, true, false, 0.1)
+	testing.expect(t, abs(state.dungeon_string_guitar_gain - 0.8) < 1e-5,
+		"String's guitar must use the Bar envelope's 500 ms release")
+}
+
+@(test)
 music_unknown_track_condition_rejects_document :: proc(t: ^testing.T) {
 	document := transmute([]u8)string(`{
 	  "format_version": 1,
@@ -444,13 +513,13 @@ music_master_tape_saturation_is_audible_biased_and_monotonic :: proc(t: ^testing
 	hot := ar.audio_music_saturate_sample(2)
 
 	testing.expect(t, ar.MUSIC_SATURATION_DRIVE == 3, "music tape drive must remain at the approved lighter 3x level")
-	testing.expect(t, ar.MUSIC_SATURATION_MIX == 0.8, "music tape stage must remain 80% wet")
+	testing.expect(t, ar.MUSIC_SATURATION_MIX == 0.5, "music tape stage must remain a 50/50 wet-dry blend")
 	testing.expect(t, ar.audio_music_saturate_sample(0) == 0, "saturation must preserve exact silence")
 	testing.expect(t, quiet > 0.10 && quiet < 0.12, "parallel tape saturation must gently color quiet authored stems")
-	testing.expect(t, abs(negative) > positive && abs(positive + negative) > 0.05,
+	testing.expect(t, abs(negative) > positive && abs(positive + negative) > 0.03,
 		"tape bias must make positive and negative saturation intentionally asymmetric")
 	testing.expect(t, positive > quiet && hot > positive, "the softsign transfer curve must remain strictly monotonic")
-	testing.expect(t, hot < 0.8, "hot sums must remain compressed before limiting with 20% clean blend")
+	testing.expect(t, hot < 1.25, "hot sums must remain compressed before limiting with a 50% clean blend")
 
 	dsp: ar.Music_Master_DSP
 	ar.audio_music_master_dsp_reset(&dsp)

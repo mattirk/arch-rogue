@@ -234,9 +234,9 @@ FRAME_RATE_CAP_LABELS := [Frame_Rate_Cap]string{
 }
 
 // Camera zoom is inverse to viewing height: smaller values show more world.
-// Keep the accepted 2.0 default, restore the 4.0 close-view cap, and allow a
+// Default to a wider 1.3 view, retain the 4.0 close-view cap, and allow a
 // 0.8125 high/wide view that spans roughly twice the former 1.625 minimum.
-OPTIONS_VIEW_ZOOM_DEFAULT :: f32(2.0)
+OPTIONS_VIEW_ZOOM_DEFAULT :: f32(1.3)
 OPTIONS_VIEW_ZOOM_MIN     :: f32(0.8125)
 OPTIONS_VIEW_ZOOM_MAX     :: f32(4.0)
 OPTIONS_VIEW_ZOOM_STEP    :: f32(1.12)

@@ -15,8 +15,11 @@ Save_Scenario :: struct {
 	path:       string,
 }
 
-walkable_room_position :: proc(run: ^ar.Run, room: ar.Room) -> (ar.Vec2, bool) {
+walkable_room_position :: proc(run: ^ar.Run, room: ar.Room, focus: ^ar.Vec2 = nil) -> (ar.Vec2, bool) {
 	if run == nil do return {}, false
+	best: ar.Vec2
+	best_distance := max(f32)
+	found := false
 	for y in room.y + 1 ..< room.y + room.h - 1 {
 		for x in room.x + 1 ..< room.x + room.w - 1 {
 			#partial switch run.dungeon.tiles[x][y] {
@@ -33,10 +36,19 @@ walkable_room_position :: proc(run: ^ar.Run, room: ar.Room) -> (ar.Vec2, bool) {
 					break
 				}
 			}
-			if !occupied do return {f32(x) + 0.5, f32(y) + 0.5}, true
+			if occupied do continue
+			candidate := ar.Vec2{f32(x) + 0.5, f32(y) + 0.5}
+			if focus == nil do return candidate, true
+			delta := candidate-focus^
+			distance := delta.x*delta.x+delta.y*delta.y
+			if distance < best_distance {
+				best = candidate
+				best_distance = distance
+				found = true
+			}
 		}
 	}
-	return {}, false
+	return best, found
 }
 
 clear_combat_hazards :: proc(run: ^ar.Run) {
@@ -78,7 +90,17 @@ generate_save :: proc(scenario: Save_Scenario) -> bool {
 		}
 		room := app.run.dungeon.rooms_buf[special.room_index]
 		clear_combat_hazards(&app.run)
-		position, positioned := walkable_room_position(&app.run, room)
+		focus: ^ar.Vec2
+		for i in 0 ..< app.run.ambient_residents.count {
+			resident := &app.run.ambient_residents.items[i]
+			wanted := scenario.kind == .Bar ? resident.kind == .String :
+				scenario.kind == .Hall_Of_Unlost_Echoes ? resident.kind == .Soulless_Clanker : false
+			if resident.active && wanted {
+				focus = &resident.pos
+				break
+			}
+		}
+		position, positioned := walkable_room_position(&app.run, room, focus)
 		if !positioned {
 			ar.run_destroy(&app.run)
 			continue
@@ -94,8 +116,18 @@ generate_save :: proc(scenario: Save_Scenario) -> bool {
 		app.mode = .Playing
 		ar.refresh_visibility(&app.run)
 
-		if room_gain(&app.run, scenario.kind) != 1 {
+		if (scenario.kind == .Bar || scenario.kind == .Garden) && room_gain(&app.run, scenario.kind) != 1 {
 			fmt.eprintf("%s candidate did not reach full room music gain\n", scenario.name)
+			ar.run_destroy(&app.run)
+			continue
+		}
+		if (scenario.kind == .Bar || scenario.kind == .Hall_Of_Unlost_Echoes) && focus == nil {
+			fmt.eprintf("%s candidate unexpectedly has no recruitable resident\n", scenario.name)
+			ar.run_destroy(&app.run)
+			continue
+		}
+		if scenario.kind == .Bar && ar.string_nearby(&app.run) == nil {
+			fmt.eprintln("Bar candidate did not place the player within greeting range of String")
 			ar.run_destroy(&app.run)
 			continue
 		}
@@ -129,10 +161,12 @@ generate_save :: proc(scenario: Save_Scenario) -> bool {
 		installed := ar.app_install_run_document(&loaded, &document)
 		decoded_special, decoded_found := ar.special_room_for_kind(&loaded.run.dungeon, scenario.kind)
 		decoded_gain := room_gain(&loaded.run, scenario.kind)
-		contents_valid := scenario.kind == .Bar ? loaded.run.dungeon.bar_furnishings.count > 0 :
+		contents_valid := scenario.kind == .Bar ? loaded.run.dungeon.bar_furnishings.count > 0 && ar.string_nearby(&loaded.run) != nil :
 			loaded.run.ambient_residents.count > 0
+		music_valid := scenario.kind == .Hall_Of_Unlost_Echoes || decoded_gain == 1
+		position_valid := ar.special_room_kind_at_point(&loaded.run.dungeon,loaded.run.player.pos.x,loaded.run.player.pos.y) == scenario.kind
 		valid := installed && decoded_found && decoded_special.room_index == special.room_index &&
-			decoded_gain == 1 && contents_valid
+			music_valid && position_valid && contents_valid
 		ar.run_document_destroy(&document)
 		ar.run_destroy(&loaded.run)
 		if !valid {
@@ -169,11 +203,21 @@ generate_save :: proc(scenario: Save_Scenario) -> bool {
 }
 
 main :: proc() {
-	scenarios := [2]Save_Scenario{
+	scenarios := [3]Save_Scenario{
 		{kind = .Bar, name = "bar", seed_start = 0xBAA000, path = "build/bar-test-save/run.json"},
 		{kind = .Garden, name = "garden", seed_start = 0x6A2D000, path = "build/garden-test-save/run.json"},
+		{kind = .Hall_Of_Unlost_Echoes, name = "soul", seed_start = 0x5011000, path = "build/soul-test-save/run.json"},
 	}
+	requested := ""
+	if len(os.args) > 1 do requested = os.args[1]
+	matched := false
 	for scenario in scenarios {
+		if requested != "" && requested != scenario.name do continue
+		matched = true
 		if !generate_save(scenario) do os.exit(1)
+	}
+	if !matched {
+		fmt.eprintln("unknown scenario: ", requested)
+		os.exit(2)
 	}
 }

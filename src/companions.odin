@@ -48,6 +48,8 @@ Familiar_Kind :: enum u8 {
 	Crow,
 	Spirit_Beast,
 	Bar_Dancer,
+	Soulless_Clanker,
+	String,
 }
 
 // 4.8.7 immortal Bar Dancer (combat/familiars.py:58-65): the depth-10 reward
@@ -58,6 +60,16 @@ BAR_DANCER_HP     :: 46
 BAR_DANCER_DAMAGE :: 7
 BAR_DANCER_SPEED  :: f32(3.5)
 BAR_DANCER_ACCENT :: [4]u8{224, 126, 72, 255}
+
+SOULLESS_CLANKER_HP              :: 38
+SOULLESS_CLANKER_DAMAGE          :: 8
+SOULLESS_CLANKER_SPEED           :: f32(2.65)
+SOULLESS_CLANKER_ATTACK_COOLDOWN :: f32(0.9)
+
+STRING_HP              :: 34
+STRING_DAMAGE          :: 7
+STRING_SPEED           :: f32(3.15)
+STRING_ATTACK_COOLDOWN :: f32(0.85)
 
 Familiar_Command :: enum u8 {
 	Attack,
@@ -625,10 +637,14 @@ familiar_attack :: proc(run: ^Run, familiar: ^Familiar, enemy: ^Enemy) {
 			slide_move(&run.dungeon, &enemy.pos, familiar.facing * 0.22)
 		}
 	} else {
-		// The reveler strikes with heels and tankard, not spirit magic
-		// (familiars.py:180-183); spirit hosts stay shadow.
-		strike_type: Damage_Type = familiar.kind == .Bar_Dancer ? .Physical : .Shadow
+		// The reveler and recruited room companions strike physically;
+		// class-summoned spirit hosts remain shadow damage.
+		physical := familiar.kind == .Bar_Dancer || familiar.kind == .Soulless_Clanker || familiar.kind == .String
+		strike_type: Damage_Type = physical ? .Physical : .Shadow
 		_ = damage_enemy_direct(run, enemy, max(1, damage), strike_type)
+		if familiar.kind == .Soulless_Clanker {
+			sfx_emit(run,.Soulless_Clanker,familiar.pos,spatial=true,emitter_id=u64(familiar.entity_id))
+		}
 	}
 	// Blood-bound familiars siphon health to the Acolyte on every hit; the
 	// ladder reads live so later Blood purchases deepen an existing host's
@@ -713,12 +729,13 @@ tick_familiars_dt :: proc(run: ^Run, dt: f32) {
 	cull_dead_familiars(run)
 }
 
-// Recasting a class summon replaces the caster's own hosts. The Bar Dancer is
-// a run reward, not a summon slot, so she survives every recast.
+// Recasting a class summon replaces the caster's own hosts. Recruited room
+// companions and the Bar Dancer reward are not summon slots, so they survive.
 clear_summoned_familiars :: proc(run: ^Run) {
 	write := 0
 	for read in 0 ..< len(run.familiars) {
-		if run.familiars[read].kind != .Bar_Dancer do continue
+		kind := run.familiars[read].kind
+		if kind != .Bar_Dancer && kind != .Soulless_Clanker && kind != .String do continue
 		if write != read do run.familiars[write] = run.familiars[read]
 		write += 1
 	}
@@ -727,6 +744,62 @@ clear_summoned_familiars :: proc(run: ^Run) {
 
 // The all-bars-toasted summon (combat/familiars.py:192-241): idempotent, and
 // callers gate it to depth 10 (arrival and the completing toast itself).
+living_soulless_clanker :: proc(run: ^Run) -> ^Familiar {
+	if run == nil do return nil
+	for &familiar in run.familiars {
+		if familiar.kind == .Soulless_Clanker && familiar.hp > 0 do return &familiar
+	}
+	return nil
+}
+
+soulless_clanker_join :: proc(run: ^Run, resident: ^Ambient_Room_Npc) -> bool {
+	if run == nil || resident == nil || !resident.active || resident.kind != .Soulless_Clanker do return false
+	if living_soulless_clanker(run) != nil do return false
+	clanker := make_familiar(Familiar_Stats{
+		hp=SOULLESS_CLANKER_HP,
+		damage=SOULLESS_CLANKER_DAMAGE,
+		speed=SOULLESS_CLANKER_SPEED,
+		attack_cooldown=SOULLESS_CLANKER_ATTACK_COOLDOWN,
+		count=1,
+		kind=.Soulless_Clanker,
+	},resident.pos,resident.motion.facing,0)
+	run.next_familiar_id += 1
+	if run.next_familiar_id == 0 do run.next_familiar_id = 1
+	clanker.entity_id = run.next_familiar_id
+	clanker.attack_anim_timer = FAMILIAR_ATTACK_ANIMATION_TIME
+	append(&run.familiars,clanker)
+	resident.active = false
+	return true
+}
+
+living_string :: proc(run: ^Run) -> ^Familiar {
+	if run == nil do return nil
+	for &familiar in run.familiars {
+		if familiar.kind == .String && familiar.hp > 0 do return &familiar
+	}
+	return nil
+}
+
+string_join :: proc(run: ^Run, resident: ^Ambient_Room_Npc) -> bool {
+	if run == nil || resident == nil || !resident.active || resident.kind != .String do return false
+	if living_string(run) != nil do return false
+	guitarist := make_familiar(Familiar_Stats{
+		hp=STRING_HP,
+		damage=STRING_DAMAGE,
+		speed=STRING_SPEED,
+		attack_cooldown=STRING_ATTACK_COOLDOWN,
+		count=1,
+		kind=.String,
+	},resident.pos,resident.motion.facing,0)
+	run.next_familiar_id += 1
+	if run.next_familiar_id == 0 do run.next_familiar_id = 1
+	guitarist.entity_id = run.next_familiar_id
+	guitarist.attack_anim_timer = FAMILIAR_ATTACK_ANIMATION_TIME
+	append(&run.familiars,guitarist)
+	resident.active = false
+	return true
+}
+
 maybe_summon_bar_dancer :: proc(run: ^Run) -> bool {
 	if run == nil do return false
 	if run.bars_visited <= 0 || run.bars_toasted < run.bars_visited do return false

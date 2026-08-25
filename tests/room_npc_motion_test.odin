@@ -76,7 +76,7 @@ room_npc_profiles_all_walk_and_dance_without_leaving_the_room :: proc(t:^testing
 	defer ar.run_destroy(&run)
 	center_tile:=ar.room_center(run.dungeon.rooms_buf[0])
 	home:=ar.Vec2{f32(center_tile.x)+.5,f32(center_tile.y)+.5}
-	profiles:=[5]ar.Room_Npc_Profile_Id{.Shopkeeper,.Bar_Dancer,.Garden_Frog,.Story_Guest,.Lossless_Soul}
+	profiles:=[7]ar.Room_Npc_Profile_Id{.Shopkeeper,.Bar_Dancer,.Garden_Frog,.Story_Guest,.Lossless_Soul,.Soulless_Clanker,.String}
 	for profile,i in profiles {
 		pos:=home
 		motion:=ar.room_npc_motion_make(home,0,ar.derive_seed(run.seed,u64(i+1)*0xA11CE),profile)
@@ -88,7 +88,8 @@ room_npc_profiles_all_walk_and_dance_without_leaving_the_room :: proc(t:^testing
 			testing.expectf(t,ar.room_contains_interior_tile(run.dungeon.rooms_buf[0],int(pos.x),int(pos.y)),"profile %v escaped its room",profile)
 		}
 		testing.expectf(t,moved,"profile %v never walked",profile)
-		testing.expectf(t,danced,"profile %v never entered explicit Dance",profile)
+		if profile != .Soulless_Clanker do testing.expectf(t,danced,"profile %v never entered explicit Dance",profile)
+		else do testing.expect(t,!danced,"Clanker interaction gesture must never trigger as ambient motion")
 	}
 }
 
@@ -100,24 +101,34 @@ ambient_resident_set_is_fixed_capacity_and_comes_from_actor_layouts :: proc(t:^t
 	for x in 0..<ar.MAP_W do for y in 0..<ar.MAP_H do run.dungeon.tiles[x][y]=.Wall
 	bar:=ar.Room{8,8,10,9}
 	garden:=ar.Room{24,8,10,9}
-	run.dungeon.room_count=2
+	hall:=ar.Room{40,8,10,9}
+	run.dungeon.room_count=3
 	run.dungeon.rooms_buf[0]=bar
 	run.dungeon.rooms_buf[1]=garden
+	run.dungeon.rooms_buf[2]=hall
 	room_npc_test_carve_room(&run.dungeon,bar)
 	room_npc_test_carve_room(&run.dungeon,garden)
+	room_npc_test_carve_room(&run.dungeon,hall)
 	run.dungeon.special_rooms_buf[0]={.Bar,0}
 	run.dungeon.special_rooms_buf[1]={.Garden,1}
-	run.dungeon.special_room_count=2
+	run.dungeon.special_rooms_buf[2]={.Hall_Of_Unlost_Echoes,2}
+	run.dungeon.special_room_count=3
 	ar.plan_bar_furnishings(&run.dungeon)
 	ar.room_npc_initialize_ambient_residents(&run)
-	testing.expect(t,run.ambient_residents.count==ar.MAX_AMBIENT_ROOM_RESIDENTS,"Bar plus Garden must fill exactly one dancer and two frog slots")
-	bar_count,frog_count:=0,0
+	testing.expect(t,run.ambient_residents.count==5,"Bar, Garden, and Hall must fill the five-resident ambient capacity")
+	bar_count,string_count,frog_count,clanker_count:=0,0,0,0
 	for i in 0..<run.ambient_residents.count {
 		resident:=run.ambient_residents.items[i]
 		testing.expect(t,resident.active&&resident.prev_pos==resident.pos,"resident initialization must collapse interpolation history")
-		switch resident.kind {case .Bar_Dancer:bar_count+=1;case .Garden_Frog:frog_count+=1}
+		switch resident.kind {
+		case .Bar_Dancer:       bar_count+=1
+		case .Garden_Frog:      frog_count+=1
+		case .Soulless_Clanker: clanker_count+=1
+		case .String:           string_count+=1
+		}
 	}
-	testing.expect(t,bar_count==1&&frog_count==2,"ambient resident kinds no longer match special-room actor layouts")
+	testing.expect(t,bar_count==1&&string_count==1&&frog_count==2&&clanker_count==1,
+		"ambient resident kinds no longer match special-room actor layouts")
 }
 
 @(test)
@@ -140,6 +151,85 @@ ambient_residents_pause_for_hostiles_and_hold_to_face_interactions :: proc(t:^te
 	ar.room_npc_tick_live(&run,2*ar.SIM_DT,ar.SIM_DT)
 	testing.expect(t,frog.motion.holding&&!frog.motion.moving&&!frog.motion.dancing,"nearby interaction must hold the frog in place")
 	testing.expect(t,frog.motion.facing.x>.9&&abs(frog.motion.facing.y)<.1,"held resident must face the player")
+}
+
+@(test)
+soulless_clanker_spawns_in_hall_and_clanks_on_interaction :: proc(t:^testing.T) {
+	run:=room_npc_test_run(.Hall_Of_Unlost_Echoes,71045)
+	defer ar.run_destroy(&run)
+	testing.expect(t,run.ambient_residents.count==1,"Hall must contain one ambient Soulless Clanker")
+	clanker:=&run.ambient_residents.items[0]
+	testing.expect(t,clanker.active&&clanker.kind==.Soulless_Clanker,"Hall resident must be the Soulless Clanker")
+	hall:=run.dungeon.rooms_buf[0]
+	center:=ar.room_center(hall)
+	testing.expect(t,int(clanker.pos.x)!=center.x,"Clanker must not overlap the Lossless Soul center anchor")
+	run.player.pos=clanker.pos+ar.Vec2{.5,0}
+	run.player.prev_pos=run.player.pos
+	testing.expect(t,ar.interact_prompt(&run)=="E: greet the Soulless Clanker","Clanker prompt must identify the NPC")
+	clanker_pos:=clanker.pos
+	_ = ar.player_interact(&run)
+	testing.expect(t,!clanker.active,"greeting must retire the room-resident Clanker")
+	testing.expect(t,len(run.familiars)==1&&run.familiars[0].kind==.Soulless_Clanker,"greeting must create exactly one Clanker familiar")
+	joined:=&run.familiars[0]
+	testing.expect(t,joined.pos==clanker_pos&&joined.prev_pos==clanker_pos,"Clanker familiar must inherit the resident position without interpolation drift")
+	testing.expect(t,joined.max_hp==ar.SOULLESS_CLANKER_HP&&joined.damage==ar.SOULLESS_CLANKER_DAMAGE,"Clanker familiar must receive its authored combat stats")
+	testing.expect(t,len(run.numbers)==1&&run.numbers[0].text=="Clank, clank, clank!","interaction must emit the exact Clanker line")
+	testing.expect(t,len(run.sfx)==1&&run.sfx[0].bank==.Soulless_Clanker&&run.sfx[0].spatial,"interaction must emit the spatial Clanker SFX")
+	testing.expect(t,ar.interact_prompt(&run)=="","joined Clanker must no longer advertise the room interaction")
+
+	run.player.pos=clanker_pos+ar.Vec2{3,0}
+	follow_start:=joined.pos
+	ar.tick_familiars_dt(&run,.5)
+	testing.expect(t,joined.pos.x>follow_start.x,"joined Clanker must follow the player")
+	enemy:=ar.enemy_make(.Ghoul,joined.pos+ar.Vec2{.8,0},1)
+	enemy.hp=100
+	enemy.max_hp=100
+	enemy.cooldown=999
+	append(&run.enemies,enemy)
+	ar.tick_familiars_dt(&run,.01)
+	testing.expect(t,run.enemies[0].hp<100&&joined.attack_anim_timer>0,"joined Clanker must attack a nearby enemy")
+}
+
+@(test)
+string_plays_in_bar_and_joins_as_a_guitar_familiar :: proc(t:^testing.T) {
+	run:=room_npc_test_run(.Bar,71047)
+	defer ar.run_destroy(&run)
+	testing.expect(t,run.ambient_residents.count==2,"Bar must contain its dancer and String")
+	guitarist:=&run.ambient_residents.items[1]
+	testing.expect(t,guitarist.active&&guitarist.kind==.String,"second Bar resident must be String")
+	bar_layout:=ar.special_room_actor_layout(&run.dungeon,.Bar)
+	testing.expect(t,bar_layout.count==2&&guitarist.pos==ar.Vec2{f32(bar_layout.tiles[1].x)+.5,f32(bar_layout.tiles[1].y)+.5},
+		"String must use the second reserved Bar actor anchor")
+	for i in 0..<run.dungeon.bar_furnishings.count {
+		testing.expect(t,run.dungeon.bar_furnishings.tiles[i]!=bar_layout.tiles[1],"Bar furnishing overlaps String's reserved anchor")
+	}
+
+	run.player.pos=guitarist.pos+ar.Vec2{.5,0}
+	run.player.prev_pos=run.player.pos
+	testing.expect(t,ar.interact_prompt(&run)=="E: greet String","String prompt must identify the guitarist")
+	string_pos:=guitarist.pos
+	_ = ar.player_interact(&run)
+	testing.expect(t,!guitarist.active,"greeting must retire room-resident String")
+	testing.expect(t,len(run.familiars)==1&&run.familiars[0].kind==.String,"greeting must create exactly one String familiar")
+	joined:=&run.familiars[0]
+	testing.expect(t,joined.pos==string_pos&&joined.prev_pos==string_pos,"String familiar must inherit the resident position")
+	testing.expect(t,joined.max_hp==ar.STRING_HP&&joined.damage==ar.STRING_DAMAGE&&joined.speed==ar.STRING_SPEED,
+		"String familiar must receive authored combat stats")
+	testing.expect(t,len(run.numbers)==1&&run.numbers[0].text=="String joins you, high-strung from human overwork.",
+		"String interaction must explain his overworked high-strung state")
+	testing.expect(t,ar.interact_prompt(&run)=="","joined String must no longer advertise the room interaction")
+
+	run.player.pos=string_pos+ar.Vec2{3,0}
+	follow_start:=joined.pos
+	ar.tick_familiars_dt(&run,.5)
+	testing.expect(t,joined.pos.x>follow_start.x,"joined String must follow the player")
+	enemy:=ar.enemy_make(.Ghoul,joined.pos+ar.Vec2{.8,0},1)
+	enemy.hp,enemy.max_hp,enemy.cooldown=100,100,999
+	append(&run.enemies,enemy)
+	ar.tick_familiars_dt(&run,.01)
+	testing.expect(t,run.enemies[0].hp<100&&joined.attack_anim_timer>0,"joined String must attack a nearby enemy")
+	ar.clear_summoned_familiars(&run)
+	testing.expect(t,len(run.familiars)==1&&run.familiars[0].kind==.String,"class summon recasts must not dismiss String")
 }
 
 @(test)

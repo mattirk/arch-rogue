@@ -231,6 +231,13 @@ m9_dry_barrel_falls_through_to_loot_and_furnishings_are_solid :: proc(t:^testing
 		bar_count+=1
 		layout:=ar.bar_furnishing_layout(&run.dungeon)
 		room:=run.dungeon.rooms_buf[special.room_index]
+		sconces,has_sconces:=ar.bar_sconce_positions(&run.dungeon)
+		bar_center:=ar.room_center(room)
+		testing.expect(t,has_sconces,"generated Bar must expose its wall sconces")
+		testing.expect(t,sconces[0]==ar.Vec2{f32(bar_center.x)+.125,f32(room.y)+.625},
+			"north-wall sconce must sit high on the visible wall face instead of its center seam")
+		testing.expect(t,sconces[1]==ar.Vec2{f32(room.x)+.625,f32(bar_center.y)+.125},
+			"west-wall sconce must sit high on the visible wall face instead of its center seam")
 		desired:=2+min(2,max(0,(room.w-2)*(room.h-2))/28)
 		testing.expectf(t,layout.barrel_count>=1&&layout.barrel_count<=desired&&layout.table_count>=1&&layout.table_count<=desired,
 			"bar room %v requested up to %v barrels/tables, got %v/%v",special.room_index,desired,layout.barrel_count,layout.table_count)
@@ -293,7 +300,7 @@ m9_special_actor_anchors_are_placement_only_and_population_reserved :: proc(t:^t
 		ar.run_start(&run,u64(1000+seed),.Warden)
 		for special in ar.special_rooms(&run.dungeon) {
 			actors:=ar.special_room_actor_layout(&run.dungeon,special.kind)
-			expected:=special.kind==.Garden?2:1
+			expected:=(special.kind==.Bar||special.kind==.Garden||special.kind==.Hall_Of_Unlost_Echoes)?2:1
 			testing.expectf(t,actors.count==expected,"%v room has %v actor anchors, want %v",special.kind,actors.count,expected)
 			seen[special.kind]=true
 			for i in 0..<actors.count {

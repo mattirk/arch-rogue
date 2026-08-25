@@ -2477,6 +2477,41 @@
       "priority": "medium",
       "spatial": true
     },
+    "soulless_clanker": {
+      "cooldown_ms": 40,
+      "files": [
+        {
+          "byte_size": 70128,
+          "duration_ms": 365,
+          "file": "soulless_clanker_01.wav",
+          "frame_count": 17521,
+          "sha256": "ecffb1bd8d4decfb36074dd1d9759384c982542a4795034b481ea3546f701781"
+        },
+        {
+          "byte_size": 77820,
+          "duration_ms": 405,
+          "file": "soulless_clanker_02.wav",
+          "frame_count": 19444,
+          "sha256": "2d74192b8214db10d745d50d6fad379f8025ee4c5b72e8d6028dd235d6df5118"
+        },
+        {
+          "byte_size": 79416,
+          "duration_ms": 413,
+          "file": "soulless_clanker_03.wav",
+          "frame_count": 19843,
+          "sha256": "dba81de6f54ffddd92c2ab2bdd1db4efd57d07fdfb3a7f4256a7fc6fc108d490"
+        }
+      ],
+      "gain": 0.7,
+      "max_duration_ms": 2500,
+      "pitch_range": [
+        0.97,
+        1.03
+      ],
+      "polyphony": 2,
+      "priority": "medium",
+      "spatial": true
+    },
     "stairs_descend": {
       "cooldown_ms": 40,
       "files": [
@@ -2712,7 +2747,7 @@
           "sha256": "00b97e2197666a7983e839aa321ce376b719e2b6d608141b84d822a39f65af9e"
         }
       ],
-      "gain": 0.32,
+      "gain": 0.12,
       "max_duration_ms": 2500,
       "pitch_range": [
         0.97,
@@ -3290,8 +3325,8 @@
       "spatial": false
     }
   },
-  "file_count": 271,
+  "file_count": 274,
   "format_version": 2,
-  "total_duration_ms": 265118,
-  "total_runtime_bytes": 50913496
+  "total_duration_ms": 266301,
+  "total_runtime_bytes": 51140860
 }

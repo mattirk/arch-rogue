@@ -76,6 +76,61 @@ feel_player_cannot_walk_over_wall_pinned_enemy :: proc(t: ^testing.T) {
 }
 
 @(test)
+feel_player_cannot_walk_over_friendly_npcs :: proc(t: ^testing.T) {
+	run: ar.Run
+	feel_arena(&run, 9402)
+	defer ar.run_destroy(&run)
+	contact := f32(ar.PLAYER_HIT_RADIUS) + ar.ROOM_NPC_RADIUS
+	labels := [4]string{"shopkeeper", "ambient resident", "story guest", "Lossless Soul"}
+
+	for label, kind in labels {
+		run.has_shopkeeper = false
+		run.ambient_residents = {}
+		clear(&run.story_runtime.guests)
+		run.story_runtime.soul = {}
+		run.player.pos = {10.5, 10.5}
+		run.player.prev_pos = run.player.pos
+		run.player.facing = {1, 0}
+		body_pos: ^ar.Vec2
+		switch kind {
+		case 0:
+			run.has_shopkeeper = true
+			run.shopkeeper.pos = {12.5, 10.5}
+			run.shopkeeper.prev_pos = run.shopkeeper.pos
+			run.shopkeeper.motion.room_index = -1
+			body_pos = &run.shopkeeper.pos
+		case 1:
+			run.ambient_residents.count = 1
+			resident := &run.ambient_residents.items[0]
+			resident.active = true
+			resident.pos = {12.5, 10.5}
+			resident.prev_pos = resident.pos
+			resident.motion.room_index = -1
+			body_pos = &resident.pos
+		case 2:
+			append(&run.story_runtime.guests, ar.Story_Guest{
+				depth = run.depth, pos = {12.5, 10.5}, prev_pos = {12.5, 10.5},
+				alive = true, witness = true,
+			})
+			body_pos = &run.story_runtime.guests[0].pos
+		case 3:
+			soul := &run.story_runtime.soul
+			soul.present = true
+			soul.alive = true
+			soul.pos = {12.5, 10.5}
+			soul.prev_pos = soul.pos
+			soul.motion.room_index = -1
+			body_pos = &soul.pos
+		}
+
+		for _ in 0 ..< 180 do ar.sim_tick(&run, {1, 0})
+		gap := feel_gap(run.player.pos, body_pos^)
+		testing.expectf(t, gap >= contact - 0.03, "the player walked over the %s", label)
+		testing.expectf(t, run.player.pos.x < body_pos.x, "the player crossed through the %s", label)
+	}
+}
+
+@(test)
 feel_dash_never_lands_inside_an_enemy_body :: proc(t: ^testing.T) {
 	run: ar.Run
 	feel_arena(&run, 9402)
@@ -87,6 +142,22 @@ feel_dash_never_lands_inside_an_enemy_body :: proc(t: ^testing.T) {
 	contact := f32(ar.PLAYER_HIT_RADIUS) + ar.ENEMY_HIT_RADIUS
 	gap := feel_gap(run.player.pos, run.enemies[0].pos)
 	testing.expect(t, gap >= contact - 0.03, "a dash may pass through a body but never terminate inside it")
+}
+
+@(test)
+feel_dash_never_lands_inside_a_friendly_npc :: proc(t: ^testing.T) {
+	run: ar.Run
+	feel_arena(&run, 9403)
+	defer ar.run_destroy(&run)
+	run.has_shopkeeper = true
+	run.shopkeeper.pos = {12.5, 10.5}
+	run.shopkeeper.prev_pos = run.shopkeeper.pos
+	run.shopkeeper.motion.room_index = -1
+
+	testing.expect(t, ar.player_dash(&run, {1, 0}), "the test dash must fire")
+	contact := f32(ar.PLAYER_HIT_RADIUS) + ar.ROOM_NPC_RADIUS
+	gap := feel_gap(run.player.pos, run.shopkeeper.pos)
+	testing.expect(t, gap >= contact - 0.03, "a dash must not terminate inside a friendly NPC")
 }
 
 @(test)

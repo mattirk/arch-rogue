@@ -24,7 +24,10 @@ Special_Room :: struct {
 
 ROOM_NPC_RADIUS :: f32(0.27)
 ROOM_NPC_INTERACTION_HOLD_RANGE :: f32(1.45)
-MAX_AMBIENT_ROOM_RESIDENTS :: 3
+MAX_AMBIENT_ROOM_RESIDENTS :: 5
+
+SOULLESS_CLANKER_INTERACT_RANGE :: f32(1.35)
+STRING_INTERACT_RANGE            :: f32(1.35)
 
 Room_Npc_Motion_State :: enum u8 {
 	Waiting,
@@ -39,6 +42,8 @@ Room_Npc_Profile_Id :: enum u8 {
 	Garden_Frog,
 	Story_Guest,
 	Lossless_Soul,
+	Soulless_Clanker,
+	String,
 }
 
 Room_Npc_Profile :: struct {
@@ -81,6 +86,8 @@ Story_Npc_Motion :: Room_Npc_Motion
 Ambient_Room_Npc_Kind :: enum u8 {
 	Bar_Dancer,
 	Garden_Frog,
+	Soulless_Clanker,
+	String,
 }
 
 Ambient_Room_Npc :: struct {
@@ -572,14 +579,16 @@ plan_bar_furnishings :: proc(d: ^Dungeon) {
 	special,found:=special_room_for_kind(d,.Bar)
 	if !found do return
 	room:=d.rooms_buf[special.room_index]
-	center:=room_center(room)
+	actor_layout:=special_room_actor_layout(d,.Bar)
 	wall_pool,table_pool,all_pool:[MAX_BAR_CANDIDATES][2]int
 	wall_count,table_count,all_count:=0,0,0
 	for y in room.y+1..<room.y+room.h-1 {
 		for x in room.x+1..<room.x+room.w-1 {
 			tile:=[2]int{x,y}
-			// The dancer owns the center, and doorway fronts stay an open aisle.
-			if tile==center||tile_is_door_front(d,room,tile) do continue
+			// Both resident anchors stay clear, and doorway fronts remain an open aisle.
+			actor_tile:=false
+			for i in 0..<actor_layout.count do if tile==actor_layout.tiles[i] {actor_tile=true;break}
+			if actor_tile||tile_is_door_front(d,room,tile) do continue
 			if all_count<MAX_BAR_CANDIDATES {
 				all_pool[all_count]=tile
 				all_count+=1
@@ -644,9 +653,23 @@ special_room_actor_layout :: proc(d: ^Dungeon, kind: Special_Room_Kind) -> (layo
 	room:=d.rooms_buf[special.room_index]
 	center:=room_center(room)
 	switch kind {
-	case .Shop,.Bar,.Quest,.Hall_Of_Unlost_Echoes:
+	case .Shop,.Quest:
 		layout.tiles[0]=center
 		layout.count=1
+	case .Bar:
+		// The dancer keeps the established center anchor. String plays far enough
+		// west that both residents have distinct interaction radii.
+		layout.tiles[0]=center
+		string_anchor:=[2]int{max(room.x+1,center.x-2),center.y}
+		if string_anchor==center do string_anchor={min(room.x+room.w-2,center.x+1),center.y}
+		layout.tiles[1]=string_anchor
+		layout.count=layout.tiles[0]==layout.tiles[1]?1:2
+	case .Hall_Of_Unlost_Echoes:
+		// The Lossless Soul keeps the center anchor. The Clanker stands far
+		// enough west that each resident owns a distinct interaction radius.
+		layout.tiles[0]=center
+		layout.tiles[1]={max(room.x+1,center.x-2),center.y}
+		layout.count=layout.tiles[0]==layout.tiles[1]?1:2
 	case .Garden:
 		layout.tiles[0]={max(room.x+1,center.x-1),center.y}
 		layout.tiles[1]={min(room.x+room.w-2,center.x+1),center.y}
@@ -692,6 +715,10 @@ room_npc_profile :: proc(id: Room_Npc_Profile_Id) -> Room_Npc_Profile {
 		return {speed=.76,leash=3.4,dance_chance=.14,rest_min=.8,rest_max=1.75,dance_min=1.15,dance_max=2.05}
 	case .Lossless_Soul:
 		return {speed=.64,leash=3.35,dance_chance=.28,rest_min=.55,rest_max=1.35,dance_min=1.25,dance_max=2.35}
+	case .Soulless_Clanker:
+		return {speed=.36,leash=1.15,dance_chance=0,rest_min=1.4,rest_max=2.8,dance_min=.8,dance_max=1.1}
+	case .String:
+		return {speed=.42,leash=1.4,dance_chance=.88,rest_min=.25,rest_max=.65,dance_min=1.8,dance_max=3.4}
 	}
 	return {}
 }
@@ -737,6 +764,18 @@ room_npc_motion_set_moving :: proc(motion: ^Room_Npc_Motion, moving: bool) {
 	if motion == nil do return
 	if moving do room_npc_set_state(motion,.Moving)
 	else do room_npc_set_state(motion,.Waiting)
+}
+
+room_npc_motion_gesture :: proc(motion: ^Room_Npc_Motion, pos: Vec2, duration: f32) {
+	if motion == nil do return
+	motion.target = pos
+	room_npc_set_state(motion,.Dancing)
+	motion.state_duration = max(duration,f32(.1))
+}
+
+room_npc_face_toward :: proc(motion: ^Room_Npc_Motion, pos, focus: Vec2) {
+	if motion == nil do return
+	room_npc_face(pos,focus,&motion.facing)
 }
 
 room_npc_motion_cancel_dance :: proc(motion: ^Room_Npc_Motion, pos: Vec2) {
@@ -931,17 +970,31 @@ room_has_living_hostile :: proc(run: ^Run, room_index: int) -> bool {
 room_npc_initialize_ambient_residents :: proc(run: ^Run) {
 	if run == nil do return
 	run.ambient_residents = {}
-	kinds := [2]Special_Room_Kind{.Bar,.Garden}
+	kinds := [3]Special_Room_Kind{.Bar,.Garden,.Hall_Of_Unlost_Echoes}
 	for special_kind in kinds {
 		special, found := special_room_for_kind(&run.dungeon,special_kind)
 		if !found || special.room_index < 0 || special.room_index >= run.dungeon.room_count do continue
 		layout := special_room_actor_layout(&run.dungeon,special_kind)
-		for i in 0..<layout.count {
+		if special_kind == .Hall_Of_Unlost_Echoes && living_soulless_clanker(run) != nil do continue
+		start := special_kind == .Hall_Of_Unlost_Echoes ? 1 : 0
+		for i in start..<layout.count {
+			kind: Ambient_Room_Npc_Kind
+			profile: Room_Npc_Profile_Id
+			switch special_kind {
+			case .Bar:
+				kind = i == 0 ? .Bar_Dancer : .String
+				profile = i == 0 ? .Bar_Dancer : .String
+				if kind == .String && living_string(run) != nil do continue
+			case .Garden:
+				kind,profile = .Garden_Frog,.Garden_Frog
+			case .Hall_Of_Unlost_Echoes:
+				kind,profile = .Soulless_Clanker,.Soulless_Clanker
+			case .None,.Shop,.Quest:
+				continue
+			}
 			if run.ambient_residents.count >= MAX_AMBIENT_ROOM_RESIDENTS do return
 			tile := layout.tiles[i]
 			pos := Vec2{f32(tile.x)+.5,f32(tile.y)+.5}
-			kind := special_kind == .Bar ? Ambient_Room_Npc_Kind.Bar_Dancer : .Garden_Frog
-			profile := special_kind == .Bar ? Room_Npc_Profile_Id.Bar_Dancer : .Garden_Frog
 			salt := u64(run.depth)<<48 ~ u64(special.room_index+1)<<24 ~ u64(int(special_kind)+1)<<16 ~ u64(i+1)*0x9E37
 			seed := derive_seed(run.seed,salt)
 			index := run.ambient_residents.count
@@ -977,6 +1030,9 @@ room_npc_tick_live :: proc(run: ^Run, elapsed, dt: f32) {
 		if !resident.active do continue
 		hold := math.hypot(resident.pos.x-run.player.pos.x,resident.pos.y-run.player.pos.y) <= ROOM_NPC_INTERACTION_HOLD_RANGE &&
 			line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,resident.pos.x,resident.pos.y)
+		// An explicit interaction gesture must finish even while the player
+		// remains in hold range; ordinary ambient gestures still yield to facing.
+		if resident.kind == .Soulless_Clanker && resident.motion.dancing do hold = false
 		paused := room_has_living_hostile(run,resident.motion.room_index)
 		room_npc_motion_tick(run,&resident.pos,&resident.motion,hold,paused,elapsed,dt)
 	}
@@ -1030,9 +1086,12 @@ bar_sconce_positions :: proc(d: ^Dungeon) -> (positions: [2]Vec2, found: bool) {
 	if !has_bar do return
 	room:=d.rooms_buf[special.room_index]
 	center:=room_center(room)
-	// Midpoints on the two camera-visible faces: north and west.
-	positions[0]={f32(center.x)+.5,f32(room.y)+.5}
-	positions[1]={f32(room.x)+.5,f32(center.y)+.5}
+	// Pull each mount off the block's center seam and onto its camera-visible
+	// face. The opposing half-tile components move 16 world pixels sideways;
+	// subtracting an eighth tile from both axes then lifts it 4 world pixels
+	// toward the top of the face without changing that horizontal placement.
+	positions[0]={f32(center.x)+.125,f32(room.y)+.625}
+	positions[1]={f32(room.x)+.625,f32(center.y)+.125}
 	return positions,true
 }
 

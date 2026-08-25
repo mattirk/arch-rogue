@@ -1197,6 +1197,30 @@ boss_seal_gating_and_victory :: proc(t: ^testing.T) {
 }
 
 @(test)
+new_runs_advance_seed_after_every_terminal_outcome :: proc(t: ^testing.T) {
+	app: ar.App
+	ar.app_init(&app, 0x5EED)
+	defer ar.run_destroy(&app.run)
+
+	outcomes := [3]ar.Run_Terminal_State{.Death, .Victory, .Abandoned}
+	seeds: [4]u64
+	for outcome, i in outcomes {
+		ar.app_begin_new_run(&app, .Warden)
+		seeds[i] = app.run.seed
+		testing.expect(t, app.seed != app.run.seed, "starting a run must prepare a different seed for the next run")
+		app.run.terminal = outcome
+	}
+	ar.app_begin_new_run(&app, .Warden)
+	seeds[3] = app.run.seed
+
+	for seed, i in seeds {
+		for previous in 0 ..< i {
+			testing.expectf(t, seed != seeds[previous], "run %v reused seed %v from run %v", i + 1, seed, previous + 1)
+		}
+	}
+}
+
+@(test)
 player_death_enters_dead_mode :: proc(t: ^testing.T) {
 	app: ar.App
 	ar.app_init(&app, ar.derive_seed(11, 0))
@@ -1475,10 +1499,11 @@ baked_manifest_is_valid :: proc(t: ^testing.T) {
 			}
 		}
 	}
-	special_actor_clips := [3]struct{name:string,clips:[]string}{
+	special_actor_clips := [4]struct{name:string,clips:[]string}{
 		{"shopkeeper",[]string{"idle","walk","dance"}},
 		{"bar_dancer",[]string{"walk","dance"}},
 		{"garden_frog",[]string{"walk","dance"}},
+		{"string",[]string{"idle","walk","attack"}},
 	}
 	for expected in special_actor_clips {
 		entry,found:=actors[expected.name]

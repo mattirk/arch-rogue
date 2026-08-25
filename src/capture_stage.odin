@@ -299,7 +299,7 @@ mx6_capture_familiar :: proc(run:^Run,direction:Vec2,kind:Familiar_Kind) {
 		spawned=player_cast_spirit_call_rank(run,1)
 	case .Spirit_Beast:
 		spawned=player_cast_spirit_beast_rank(run,0)
-	case .Bar_Dancer:
+	case .Bar_Dancer, .Soulless_Clanker, .String:
 	}
 	if !spawned || len(run.familiars)==0 do return
 

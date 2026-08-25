@@ -63,6 +63,7 @@ Sfx_Bank :: enum {
 	Item_Drop,
 	Potion_Drink,
 	Bar_Toast,
+	Soulless_Clanker,
 	Enemy_Attack_Light,
 	Enemy_Attack_Brute,
 	Enemy_Attack_Armored,

@@ -92,6 +92,7 @@ SFX_BANK_DEFS := [Sfx_Bank]Sfx_Bank_Def{
 	.Item_Drop={key="item_drop",variant_count=3,gain=0.5,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
 	.Potion_Drink={key="potion_drink",variant_count=3,gain=0.72,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=false,max_distance=0},
 	.Bar_Toast={key="bar_toast",variant_count=3,gain=0.64,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=false,max_distance=0},
+	.Soulless_Clanker={key="soulless_clanker",variant_count=3,gain=0.7,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=6,polyphony=2,spatial=true,max_distance=10},
 	.Enemy_Attack_Light={key="enemy_attack_light",variant_count=3,gain=0.58,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.045,priority=6,polyphony=3,spatial=true,max_distance=10},
 	.Enemy_Attack_Brute={key="enemy_attack_brute",variant_count=3,gain=0.68,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.045,priority=6,polyphony=3,spatial=true,max_distance=10},
 	.Enemy_Attack_Armored={key="enemy_attack_armored",variant_count=3,gain=0.66,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.045,priority=6,polyphony=3,spatial=true,max_distance=10},
@@ -127,7 +128,7 @@ SFX_BANK_DEFS := [Sfx_Bank]Sfx_Bank_Def{
 	.Step_Boot_Hard_Light={key="step_boot_hard_light",variant_count=3,gain=0.32,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
 	.Step_Boot_Dirt={key="step_boot_dirt",variant_count=3,gain=0.36,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
 	.Step_Boot_Dirt_Light={key="step_boot_dirt_light",variant_count=3,gain=0.32,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
-	.Step_Boot_Grass={key="step_boot_grass",variant_count=3,gain=0.32,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
+	.Step_Boot_Grass={key="step_boot_grass",variant_count=3,gain=0.12,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
 	.Step_Armor_Light={key="step_armor_light",variant_count=3,gain=0.36,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
 	.Step_Armor_Medium={key="step_armor_medium",variant_count=3,gain=0.39,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
 	.Step_Armor_Heavy={key="step_armor_heavy",variant_count=3,gain=0.43,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
@@ -147,7 +148,7 @@ MUSIC_SAMPLE_SIZE :: 16
 // the asymmetric transfer. The limiter's instantaneous attack catches the
 // current sample and returns to unity over roughly 100 ms without adding delay.
 MUSIC_SATURATION_DRIVE          :: f32(3.00)
-MUSIC_SATURATION_MIX            :: f32(0.80)
+MUSIC_SATURATION_MIX            :: f32(0.50)
 MUSIC_TAPE_BIAS                 :: f32(0.08)
 MUSIC_TAPE_OUTPUT_GAIN          :: f32(0.55)
 MUSIC_TAPE_TONE_ALPHA           :: f32(0.65)
@@ -339,6 +340,8 @@ audio_sfx_fallback_bank :: proc(bank: Sfx_Bank) -> Sfx_Bank {
 		return .Item_Pickup_Common
 	case .Bar_Toast:
 		return .Potion_Drink
+	case .Soulless_Clanker:
+		return .Impact_Generic
 	case .Enemy_Attack_Brute, .Enemy_Attack_Armored, .Enemy_Bow_Release:
 		return .Enemy_Attack_Light
 	case .Boss_Defeat, .Ash_Gallows_Cleave, .Ash_Gallows_Nova, .Mycelial_Spore_Volley,

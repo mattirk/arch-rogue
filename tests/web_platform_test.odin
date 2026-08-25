@@ -70,6 +70,8 @@ mx_web_lazy_pack_source_contract_carries_actors_and_sfx :: proc(t: ^testing.T) {
 		testing.expect(t, strings.contains(text, "sorted((known - assigned) | CORE_SFX_BANKS)"), "sfx-world must upgrade every core bank")
 		testing.expect(t, strings.contains(text, "if path != staged_core_sfx.get(bank)"), "packs must exclude each staged core path")
 		testing.expect(t, strings.contains(text, "if path in packed_sfx_files"), "core staging must exclude lazy SFX WAVs")
+		testing.expect(t, strings.contains(text, "\"soulless_clanker\"") && strings.contains(text, "\"string\""),
+			"social actor pack must carry recruited room companions")
 	}
 
 	bridge, bridge_err := os.read_entire_file_from_path("web/library_archrogue.js", context.allocator)

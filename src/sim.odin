@@ -979,6 +979,7 @@ sim_tick_limited :: proc(run: ^Run, move: Vec2, max_move_step: f32, auto_melee :
 	story_snapshot_friendly_npc_positions(run)
 	room_npc_tick_live(run, run.player.sim_elapsed, SIM_DT)
 	story_tick_friendly_npc_movement(run, run.player.sim_elapsed, SIM_DT)
+	resolve_player_friendly_contacts(run)
 	story_refresh_guidance_if_needed(run)
 	refresh_visibility(run)
 	tick_ambush_bells(run, SIM_DT)
@@ -1191,6 +1192,7 @@ tick_player :: proc(run: ^Run, move: Vec2, max_move_step: f32) {
 	// Contact resolution belongs to the move itself (pygame move_actor), so the
 	// walk animation below sees the post-contact displacement.
 	resolve_player_enemy_contacts(run)
+	resolve_player_friendly_contacts(run)
 	displacement := player.pos - before
 	distance := math.hypot(displacement.x, displacement.y)
 	player.moving = distance > 0
@@ -2285,31 +2287,49 @@ separate_enemies :: proc(run: ^Run) {
 // neither shoves enemies nor climbs over a wall-pinned one. The enemy-as-mover
 // half is separate_enemies above; the parity gap that let the player ram and
 // stand on cornered enemies was this half missing (feedback 2026-08).
-resolve_player_enemy_contacts :: proc(run: ^Run) {
+resolve_player_body_contact :: proc(run: ^Run, body_pos: Vec2, body_radius: f32) {
 	player := &run.player
+	min_dist := f32(PLAYER_HIT_RADIUS) + body_radius
+	delta := player.pos - body_pos
+	dist_sq := delta.x * delta.x + delta.y * delta.y
+	if dist_sq >= min_dist * min_dist do return
+	n: Vec2
+	if dist_sq > 1e-6 {
+		n = delta / math.sqrt(dist_sq)
+	} else {
+		// movement.py:341-344: stacked centers separate against the mover's
+		// facing, east as the final fallback.
+		n = -player.facing
+		if math.hypot(n.x, n.y) <= 0.001 do n = {1, 0}
+	}
+	target := body_pos + n * min_dist
+	if !blocked_for_radius(&run.dungeon, target.x, player.pos.y, block_stairs = true) {
+		player.pos.x = target.x
+	}
+	if !blocked_for_radius(&run.dungeon, player.pos.x, target.y, block_stairs = true) {
+		player.pos.y = target.y
+	}
+}
+
+resolve_player_enemy_contacts :: proc(run: ^Run) {
 	for &enemy in run.enemies {
 		if enemy.hp <= 0 do continue
-		min_dist := f32(PLAYER_HIT_RADIUS) + enemy_hit_radius(&enemy)
-		delta := player.pos - enemy.pos
-		dist_sq := delta.x * delta.x + delta.y * delta.y
-		if dist_sq >= min_dist * min_dist do continue
-		n: Vec2
-		if dist_sq > 1e-6 {
-			n = delta / math.sqrt(dist_sq)
-		} else {
-			// movement.py:341-344: stacked centers separate against the mover's
-			// facing, east as the final fallback.
-			n = -player.facing
-			if math.hypot(n.x, n.y) <= 0.001 do n = {1, 0}
-		}
-		target := enemy.pos + n * min_dist
-		if !blocked_for_radius(&run.dungeon, target.x, player.pos.y, block_stairs = true) {
-			player.pos.x = target.x
-		}
-		if !blocked_for_radius(&run.dungeon, player.pos.x, target.y, block_stairs = true) {
-			player.pos.y = target.y
-		}
+		resolve_player_body_contact(run, enemy.pos, enemy_hit_radius(&enemy))
 	}
+}
+
+resolve_player_friendly_contacts :: proc(run: ^Run) {
+	if run == nil do return
+	if run.has_shopkeeper do resolve_player_body_contact(run, run.shopkeeper.pos, ROOM_NPC_RADIUS)
+	for i in 0 ..< min(run.ambient_residents.count, len(run.ambient_residents.items)) {
+		resident := &run.ambient_residents.items[i]
+		if resident.active do resolve_player_body_contact(run, resident.pos, ROOM_NPC_RADIUS)
+	}
+	for &guest in run.story_runtime.guests {
+		if guest.depth == run.depth && guest.alive do resolve_player_body_contact(run, guest.pos, STORY_NPC_RADIUS)
+	}
+	soul := &run.story_runtime.soul
+	if soul.present && soul.alive do resolve_player_body_contact(run, soul.pos, STORY_NPC_RADIUS)
 }
 
 // combat/enemies.py alert_enemy: engaging refreshes memory every frame; only
@@ -2768,8 +2788,57 @@ player_near_shop :: proc(run: ^Run) -> bool {
 	return math.hypot(sign_delta.x, sign_delta.y) < 1.35
 }
 
+soulless_clanker_nearby :: proc(run: ^Run) -> ^Ambient_Room_Npc {
+	if run == nil do return nil
+	for i in 0..<run.ambient_residents.count {
+		resident := &run.ambient_residents.items[i]
+		if !resident.active || resident.kind != .Soulless_Clanker do continue
+		delta := resident.pos-run.player.pos
+		if math.hypot(delta.x,delta.y) <= SOULLESS_CLANKER_INTERACT_RANGE &&
+			line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,resident.pos.x,resident.pos.y) {
+			return resident
+		}
+	}
+	return nil
+}
+
+soulless_clanker_interact :: proc(run: ^Run) -> bool {
+	clanker := soulless_clanker_nearby(run)
+	if clanker == nil do return false
+	room_npc_face_toward(&clanker.motion,clanker.pos,run.player.pos)
+	pos := clanker.pos
+	if !soulless_clanker_join(run,clanker) do return false
+	append(&run.numbers,Damage_Number{pos=pos,kind=.Text,text="Clank, clank, clank!"})
+	sfx_emit(run,.Soulless_Clanker,pos,spatial=true)
+	return true
+}
+
+string_nearby :: proc(run: ^Run) -> ^Ambient_Room_Npc {
+	if run == nil do return nil
+	for i in 0..<run.ambient_residents.count {
+		resident := &run.ambient_residents.items[i]
+		if !resident.active || resident.kind != .String do continue
+		delta := resident.pos-run.player.pos
+		if math.hypot(delta.x,delta.y) <= STRING_INTERACT_RANGE &&
+			line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,resident.pos.x,resident.pos.y) {
+			return resident
+		}
+	}
+	return nil
+}
+
+string_interact :: proc(run: ^Run) -> bool {
+	guitarist := string_nearby(run)
+	if guitarist == nil do return false
+	room_npc_face_toward(&guitarist.motion,guitarist.pos,run.player.pos)
+	pos := guitarist.pos
+	if !string_join(run,guitarist) do return false
+	append(&run.numbers,Damage_Number{pos=pos,kind=.Text,text="String joins you, high-strung from human overwork."})
+	return true
+}
+
 // Exact story-aware E priority: relic; doors; shop; stairs/final epilogue;
-// unresolved guest; Lossless Soul; Garden frog; then ordinary world actions.
+// unresolved guest; Lossless Soul; recruited room NPCs; Garden frog; then ordinary world actions.
 player_interact :: proc(run: ^Run) -> (floor_changed: bool) {
 	run.shop_requested = false
 	if story_request_relic_collection(run) do return false
@@ -2813,6 +2882,8 @@ player_interact :: proc(run: ^Run) -> (floor_changed: bool) {
 	}
 	if story_request_guest_dialogue(run) do return false
 	if story_request_lossless_soul(run) do return false
+	if soulless_clanker_interact(run) do return false
+	if string_interact(run) do return false
 	// A completed Moonbloom game is no longer an interaction target; E must
 	// continue down the chain to secrets, loot, petting, and wall touches.
 	if story_request_garden_moonbloom(run) do return false
@@ -2865,6 +2936,8 @@ interact_prompt :: proc(run: ^Run) -> string {
 	}
 	if guest := story_nearby_guest(run); guest != nil do return fmt.tprintf("E: answer %s", guest.name)
 	if soul := story_nearby_lossless_soul(run); soul != nil do return "E: speak with the Lossless Soul"
+	if soulless_clanker_nearby(run) != nil do return "E: greet the Soulless Clanker"
+	if string_nearby(run) != nil do return "E: greet String"
 	if _, _, frog_nearby := story_nearby_garden_frog(run); frog_nearby {
 		ledger := &run.story_runtime.garden_games[clamp(run.depth, 1, STORY_BEAT_COUNT) - 1]
 		if ledger.outcome == .None do return "E: wake the moonbloom"

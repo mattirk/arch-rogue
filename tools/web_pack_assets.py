@@ -31,7 +31,7 @@ SFX_MANIFEST = SFX_ROOT / "manifest.json"
 MAGIC = b"ARPACK1\n"
 
 ARCHETYPES = ["warden", "rogue", "arcanist", "acolyte", "ranger"]
-SOCIAL_ACTORS = ["bar_dancer", "garden_frog", "lossless_soul", "shopkeeper", "story_guest"]
+SOCIAL_ACTORS = ["bar_dancer", "garden_frog", "lossless_soul", "shopkeeper", "soulless_clanker", "story_guest", "string"]
 BOSS_ACTORS = [
     "ash_gallows_knight",
     "gate_tyrant",
@@ -92,8 +92,8 @@ def pack_definitions(sfx_banks: dict[str, dict[str, Any]]) -> dict[str, dict[str
         banks = ARCHETYPE_SFX_BANKS[actor]
         packs[f"archetype-{actor}"] = {"actors": [actor], "sfx_banks": banks}
         assigned.update(banks)
-    packs["social"] = {"actors": SOCIAL_ACTORS, "sfx_banks": ["bar_toast"]}
-    assigned.add("bar_toast")
+    packs["social"] = {"actors": SOCIAL_ACTORS, "sfx_banks": ["bar_toast", "soulless_clanker"]}
+    assigned.update(("bar_toast", "soulless_clanker"))
     packs["bosses"] = {"actors": BOSS_ACTORS, "sfx_banks": BOSS_SFX_BANKS}
     assigned.update(BOSS_SFX_BANKS)
 

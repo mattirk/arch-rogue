@@ -380,6 +380,11 @@ mx_save_busy_run_round_trip_restores_danger_story_and_rng :: proc(t:^testing.T) 
 	_=ar.player_cast_bolt(&source.run,{1,0})
 	if len(source.run.traps)>0 {source.run.traps[0].revealed=true;source.run.traps[0].reveal_progress=.72}
 	source.run.explored[int(source.run.player.pos.x)][int(source.run.player.pos.y)]=true
+	append(&source.run.familiars,ar.Familiar{
+		entity_id=9001,kind=.String,command=.Attack,pos=source.run.player.pos,prev_pos=source.run.player.pos,
+		facing={1,0},hp=ar.STRING_HP,max_hp=ar.STRING_HP,damage=ar.STRING_DAMAGE,speed=ar.STRING_SPEED,
+		attack_range=ar.FAMILIAR_ATTACK_RANGE,attack_cooldown=ar.STRING_ATTACK_COOLDOWN,
+	})
 	loot_before,combat_before:=source.run.loot_rng,source.run.combat_rng
 	data,encoded:=ar.persistence_encode_run(&source,9,"2026-08-17T10:01:00Z")
 	testing.expect(t,encoded,"busy run must encode")
@@ -397,6 +402,9 @@ mx_save_busy_run_round_trip_restores_danger_story_and_rng :: proc(t:^testing.T) 
 	testing.expect(t,restored.run.run_id==source.run.run_id&&restored.run.seed==source.run.seed)
 	testing.expect(t,restored.run.player.hp==source.run.player.hp&&restored.run.player.bighit_charge==source.run.player.bighit_charge)
 	testing.expect(t,len(restored.run.enemies)==len(source.run.enemies)&&len(restored.run.projectiles)==len(source.run.projectiles))
+	restored_string:=ar.living_string(&restored.run)
+	testing.expect(t,restored_string!=nil&&restored_string.entity_id==9001&&restored_string.damage==ar.STRING_DAMAGE,
+		"recruited String familiar must survive run-document round trip")
 	testing.expect(t,restored.run.loot_rng==loot_before&&restored.run.combat_rng==combat_before)
 	testing.expect(t,restored.run.visible[int(restored.run.player.pos.x)][int(restored.run.player.pos.y)])
 	testing.expect(t,len(restored.run.sfx)==0&&len(restored.run.numbers)==0&&len(restored.run.feel)==0,"presentation queues must be rebuilt, not restored")

@@ -897,7 +897,9 @@ player_dash :: proc(run: ^Run, aim: Vec2) -> bool {
 	if player_has_discipline(player, .Rogue_Smoke) do steps += 2
 	if player_has_skill_bonus(player, .Dash_Tempo) || player_has_skill_bonus(player, .Dash_Guard) do steps += 1
 	for _ in 0 ..< steps do slide_move(&run.dungeon, &player.pos, player.facing * 0.20, block_stairs=true)
-	resolve_player_enemy_contacts(run) // a dash may pass through but never land inside a body
+	// A dash may pass through actors but never land inside a solid body.
+	resolve_player_enemy_contacts(run)
+	resolve_player_friendly_contacts(run)
 	player.prev_pos = player.pos
 	player.melee_commit_timer = 0 // dashing cancels a swing's plant window
 	player.swing_timer = .22

@@ -1225,9 +1225,11 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 		if sconce_positions,has_sconces:=bar_sconce_positions(d);has_sconces {
 			for pos,i in sconce_positions do if app.dev_reveal||tile_pos_visible(app,pos) {
 				key:=i==0?Prop_Key.Bar_Sconce_L:Prop_Key.Bar_Sconce_R
-				// Mount art draws after the wall block at the same tile so the
-				// visible face cannot occlude its own sconce.
-				append(&items,Draw_Item{depth=pos.x+pos.y+.2,kind=.Prop,feet=pos,index=int(key)})
+				// Positioning a mount higher on an isometric face reduces pos.x+pos.y,
+				// so derive painter depth from its wall tile instead. The mount must
+				// always draw just after that wall and before actors inside the room.
+				wall_depth:=f32(int(math.floor(pos.x))+int(math.floor(pos.y)))
+				append(&items,Draw_Item{depth=wall_depth+VISUAL_WALL_PAINTER_DEPTH_OFFSET+.18,kind=.Prop,feet=pos,index=int(key)})
 			}
 		}
 	}
@@ -1397,9 +1399,19 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 			}
 		case .Familiar:
 			familiar := &app.run.familiars[item.index]
-			sprites := familiar.kind == .Wisp ? &assets.familiar_wisp : familiar.kind == .Crow ? &assets.familiar_crow : familiar.kind == .Bar_Dancer ? &assets.bar_dancer : &assets.spirit_beast
-			attacking := visual_familiar_uses_attack_pose(familiar.attack_anim_timer, sprites.clips[.Attack].valid)
-			clip := attacking ? Clip_Kind.Attack : familiar.moving ? Clip_Kind.Walk : Clip_Kind.Idle
+			sprites:^Actor_Sprites
+			switch familiar.kind {
+			case .Wisp:              sprites=&assets.familiar_wisp
+			case .Crow:              sprites=&assets.familiar_crow
+			case .Spirit_Beast:      sprites=&assets.spirit_beast
+			case .Bar_Dancer:        sprites=&assets.bar_dancer
+			case .Soulless_Clanker:  sprites=&assets.soulless_clanker
+			case .String:             sprites=&assets.string_guitarist
+			}
+			clanker:=familiar.kind==.Soulless_Clanker
+			attack_clip_kind:=clanker?Clip_Kind.Interact:Clip_Kind.Attack
+			attacking := visual_familiar_uses_attack_pose(familiar.attack_anim_timer, sprites.clips[attack_clip_kind].valid)
+			clip := attacking ? attack_clip_kind : familiar.moving ? Clip_Kind.Walk : Clip_Kind.Idle
 			clip_time := (clip == .Idle) ? visual_idle_clip_time(world_time,familiar.entity_id) : familiar.anim_time
 			if familiar.kind == .Bar_Dancer && clip != .Walk {
 				// Her baked clips are walk/dance: she dances whether idling or
@@ -1417,10 +1429,10 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 					pet_clip.frames,
 					pet_clip.fps,
 				)
-			} else if clip == .Attack {
+			} else if clip == .Attack || clip == .Interact {
 				// The attack clip runs on its own clock; locomotion anim_time
-				// stalls while the familiar bites in place (MX.3).
-				attack_clip := &sprites.clips[.Attack]
+				// stalls while the familiar attacks in place (MX.3).
+				attack_clip := &sprites.clips[clip]
 				attack_elapsed := max(0, FAMILIAR_ATTACK_ANIMATION_TIME-familiar.attack_anim_timer)
 				clip_time = normalized_action_clip_time(
 					attack_elapsed/FAMILIAR_ATTACK_ANIMATION_TIME,
@@ -1428,7 +1440,9 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 					attack_clip.fps,
 				)
 			}
-			draw_contact_shadow(view,item.feet,familiar.champion?30:familiar.kind==.Spirit_Beast?26:18,10,familiar.moving)
+			shadow_w:=familiar.champion?f32(30):familiar.kind==.Spirit_Beast?f32(26):clanker?f32(13):f32(18)
+			shadow_h:=clanker?f32(6):f32(10)
+			draw_contact_shadow(view,item.feet,shadow_w,shadow_h,familiar.moving)
 			tex,src,dst,drawn := draw_actor(assets, sprites, clip, familiar.facing, clip_time, item.feet, rl.WHITE, 0)
 			if drawn {
 				key := 0x300000000 + u64(familiar.entity_id)
@@ -1534,12 +1548,22 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 				resident:=&app.run.ambient_residents.items[item.index-1]
 				motion=&resident.motion
 				frog=resident.kind==.Garden_Frog
-				sprites=resident.kind==.Bar_Dancer?&assets.bar_dancer:&assets.garden_frog
+				switch resident.kind {
+				case .Bar_Dancer:       sprites=&assets.bar_dancer
+				case .Garden_Frog:      sprites=&assets.garden_frog
+				case .Soulless_Clanker: sprites=&assets.soulless_clanker
+				case .String:            sprites=&assets.string_guitarist
+				}
 			}
 			facing:=motion.facing
 			if facing=={} do facing={0,1}
-			clip,clip_time:=room_npc_visual_clip(motion,sprites,world_time)
-			draw_contact_shadow(view,item.feet,frog?18:26,frog?8:11,motion.moving)
+			gesture_clip:=Clip_Kind.Dance
+			clanker:=item.index>0 && app.run.ambient_residents.items[item.index-1].kind==.Soulless_Clanker
+			string_guitarist:=item.index>0 && app.run.ambient_residents.items[item.index-1].kind==.String
+			if clanker do gesture_clip=.Interact
+			if string_guitarist do gesture_clip=.Idle
+			clip,clip_time:=room_npc_visual_clip(motion,sprites,world_time,gesture_clip)
+			draw_contact_shadow(view,item.feet,frog?18:clanker?13:26,frog?8:clanker?6:11,motion.moving)
 			draw_actor(assets,sprites,clip,facing,clip_time,item.feet,rl.WHITE,0)
 		case .Prop:
 			prop_key := Prop_Key(item.index)
@@ -1589,13 +1613,13 @@ story_actor_render_pos :: proc(actor: ^$T, alpha: f32) -> Vec2 {
 }
 
 @(private = "file")
-room_npc_visual_clip :: proc(motion: ^Room_Npc_Motion, sprites: ^Actor_Sprites, world_time: f32) -> (clip: Clip_Kind, clip_time: f32) {
+room_npc_visual_clip :: proc(motion: ^Room_Npc_Motion, sprites: ^Actor_Sprites, world_time: f32, gesture_clip := Clip_Kind.Dance) -> (clip: Clip_Kind, clip_time: f32) {
 	if motion == nil do return .Idle,0
 	if motion.moving {
 		return .Walk,motion.anim_time
 	}
 	if motion.dancing {
-		return .Dance,motion.anim_time
+		return gesture_clip,motion.anim_time
 	}
 	// Bar dancers, frogs, and the Soul have no Idle clip. Their waiting pose is
 	// exactly Dance frame zero; only an explicit Dancing state advances it.

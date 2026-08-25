@@ -645,8 +645,16 @@ app_unlock_hell :: proc(app: ^App) {
 	}
 }
 
-app_begin_new_run :: proc(app: ^App, seed: u64, archetype: Archetype_Id) {
+next_run_seed :: proc(seed: u64) -> u64 {
+	next := splitmix64(seed)
+	if next == seed do return seed ~ 0x9E3779B97F4A7C15
+	return next
+}
+
+app_begin_new_run :: proc(app: ^App, archetype: Archetype_Id) {
 	if app == nil do return
+	seed := app.seed
+	app.seed = next_run_seed(seed)
 	run_destroy(&app.run)
 	app.run = {}
 	run_start(&app.run, seed, archetype, app.options.difficulty)
@@ -767,7 +775,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 		if intent.menu_index_valid do app.select_index = clamp(intent.menu_index, 0, n - 1)
 		app.select_index = ((app.select_index + intent.menu_delta + intent.menu_horizontal) % n + n) % n
 		if intent.confirm {
-			app_begin_new_run(app, app.seed, Archetype_Id(app.select_index))
+			app_begin_new_run(app, Archetype_Id(app.select_index))
 			sfx_emit(&app.run, .Run_Start)
 			app.ui_sfx_suppress = true
 			app_reset_run_ui(app)
@@ -1137,7 +1145,8 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 			return true
 		}
 		if intent.new_run {
-			app_begin_new_run(app, derive_seed(app.run.seed, app.tick ~ 0xC0FFEE), app.run.player.archetype)
+			app.seed = derive_seed(app.run.seed, app.tick ~ 0xC0FFEE)
+			app_begin_new_run(app, app.run.player.archetype)
 			app_reset_run_ui(app)
 			_ = app_story_process_requests(app,include_omen=true)
 			return true

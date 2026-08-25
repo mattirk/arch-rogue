@@ -54,7 +54,7 @@ m10_walk_phase_helper_matches_pygame_cadence_and_floor :: proc(t: ^testing.T) {
 m10_camera_constants_and_exponential_follow_match_pygame :: proc(t:^testing.T) {
 	testing.expect(t,m10_near(ar.CAMERA_FOLLOW_RATE,14))
 	testing.expect(t,m10_near(ar.CAMERA_FOCUS_Y,.48))
-	testing.expect(t,m10_near(ar.OPTIONS_VIEW_ZOOM_DEFAULT,2.0))
+	testing.expect(t,m10_near(ar.OPTIONS_VIEW_ZOOM_DEFAULT,1.3))
 	testing.expect(t,m10_near(ar.OPTIONS_VIEW_ZOOM_MIN,.8125))
 	testing.expect(t,m10_near(ar.OPTIONS_VIEW_ZOOM_MAX,4.0))
 	expected:=f32(1-math.exp(f32(-14.0/60.0)))

@@ -50,6 +50,7 @@ Music_Track_Condition :: enum u8 {
 	Dungeon_Elite_Music,
 	Dungeon_Quest_Music,
 	Dungeon_Bar_Music,
+	Dungeon_String_Guitar_Music,
 }
 
 Music_Boss_Guitar_Tier :: enum u8 {
@@ -63,8 +64,9 @@ Music_Runtime_State :: struct {
 	boss_choir_gain:         f32,
 	dungeon_elite_horn_gain: f32,
 	dungeon_quest_harp_gain: f32,
-	dungeon_bar_gain:        f32,
-	dungeon_garden_gain:     f32,
+	dungeon_bar_gain:           f32,
+	dungeon_garden_gain:        f32,
+	dungeon_string_guitar_gain: f32,
 }
 
 Music_Mix_Track :: struct {
@@ -172,8 +174,9 @@ music_track_condition_parse :: proc(id: string) -> (Music_Track_Condition, bool)
 	case "boss_choir":         return .Boss_Choir, true
 	case "dungeon_default_music": return .Dungeon_Default_Music, true
 	case "dungeon_elite_music":   return .Dungeon_Elite_Music, true
-	case "dungeon_quest_music":   return .Dungeon_Quest_Music, true
-	case "dungeon_bar_music":     return .Dungeon_Bar_Music, true
+	case "dungeon_quest_music":        return .Dungeon_Quest_Music, true
+	case "dungeon_bar_music":          return .Dungeon_Bar_Music, true
+	case "dungeon_string_guitar_music": return .Dungeon_String_Guitar_Music, true
 	}
 	return .Always, false
 }
@@ -336,6 +339,19 @@ music_dungeon_bar_gain :: proc(run: ^Run) -> f32 {
 	return music_special_room_gain(run, .Bar, MUSIC_BAR_SILENT_DISTANCE_TILES)
 }
 
+music_dungeon_string_guitar_gain :: proc(run: ^Run) -> f32 {
+	if run == nil do return 0
+	if guitarist := living_string(run); guitarist != nil {
+		delta := guitarist.pos - run.player.pos
+		return music_elite_horn_gain_for_distance(math.hypot(delta.x, delta.y))
+	}
+	for i in 0..<run.ambient_residents.count {
+		resident:=&run.ambient_residents.items[i]
+		if resident.active && resident.kind==.String do return music_dungeon_bar_gain(run)
+	}
+	return 0
+}
+
 music_dungeon_garden_gain :: proc(run: ^Run) -> f32 {
 	return music_special_room_gain(run, .Garden, MUSIC_GARDEN_SILENT_DISTANCE_TILES)
 }
@@ -364,12 +380,13 @@ music_runtime_state_for :: proc(
 	boss_conditions_enabled: bool = true,
 ) -> Music_Runtime_State {
 	if app == nil do return {}
-	elite_horn_gain, quest_harp_gain, bar_gain, garden_gain, boss_choir_gain: f32
+	elite_horn_gain, quest_harp_gain, bar_gain, garden_gain, string_guitar_gain, boss_choir_gain: f32
 	if dungeon_conditions_enabled {
 		elite_horn_gain = music_dungeon_elite_horn_gain(&app.run)
 		quest_harp_gain = music_dungeon_quest_harp_gain(&app.run)
 		bar_gain = music_dungeon_bar_gain(&app.run)
 		garden_gain = music_dungeon_garden_gain(&app.run)
+		string_guitar_gain = music_dungeon_string_guitar_gain(&app.run)
 	}
 	if boss_conditions_enabled do boss_choir_gain = music_boss_choir_gain(&app.run)
 	return {
@@ -377,8 +394,9 @@ music_runtime_state_for :: proc(
 		boss_choir_gain         = boss_choir_gain,
 		dungeon_elite_horn_gain = elite_horn_gain,
 		dungeon_quest_harp_gain = quest_harp_gain,
-		dungeon_bar_gain        = bar_gain,
-		dungeon_garden_gain     = garden_gain,
+		dungeon_bar_gain           = bar_gain,
+		dungeon_garden_gain        = garden_gain,
+		dungeon_string_guitar_gain = string_guitar_gain,
 	}
 }
 
@@ -423,6 +441,12 @@ music_runtime_state_update :: proc(
 		dt,
 		MUSIC_GARDEN_FADE_SECONDS,
 	)
+	state.dungeon_string_guitar_gain = music_gain_slew(
+		state.dungeon_string_guitar_gain,
+		target.dungeon_string_guitar_gain,
+		dt,
+		MUSIC_BAR_FADE_SECONDS,
+	)
 }
 
 music_track_runtime_gain :: proc(track: Music_Mix_Track, runtime: Music_Runtime_State) -> f32 {
@@ -432,16 +456,17 @@ music_track_runtime_gain :: proc(track: Music_Mix_Track, runtime: Music_Runtime_
 	case .Boss_Guitar_Mid:     return runtime.boss_guitar_tier == .Mid ? 1 : 0
 	case .Boss_Guitar_High:    return runtime.boss_guitar_tier == .High ? 1 : 0
 	case .Boss_Choir: return clamp(runtime.boss_choir_gain, 0, 1)
-	case .Dungeon_Default_Music, .Dungeon_Elite_Music, .Dungeon_Quest_Music, .Dungeon_Bar_Music:
+	case .Dungeon_Default_Music, .Dungeon_Elite_Music, .Dungeon_Quest_Music, .Dungeon_Bar_Music, .Dungeon_String_Guitar_Music:
 		// Spatial rooms are phase-locked stem groups inside the Dungeon mix, not
-		// discrete top-level mixes. Bar replaces the ordinary/Quest/Elite layers;
-		// Garden has final priority and leaves only the two unconditional core stems.
+		// discrete top-level mixes. Only Bar-room proximity ducks ordinary layers;
+		// recruited String carries the guitar alone. Garden retains final priority.
 		spatial_duck := (1 - clamp(runtime.dungeon_bar_gain, 0, 1)) *
 			(1 - clamp(runtime.dungeon_garden_gain, 0, 1))
 		if track.condition == .Dungeon_Default_Music do return spatial_duck
 		if track.condition == .Dungeon_Elite_Music do return clamp(runtime.dungeon_elite_horn_gain, 0, 1) * spatial_duck
 		if track.condition == .Dungeon_Quest_Music do return clamp(runtime.dungeon_quest_harp_gain, 0, 1) * spatial_duck
 		if track.condition == .Dungeon_Bar_Music do return clamp(runtime.dungeon_bar_gain, 0, 1) * (1 - clamp(runtime.dungeon_garden_gain, 0, 1))
+		if track.condition == .Dungeon_String_Guitar_Music do return clamp(runtime.dungeon_string_guitar_gain, 0, 1) * (1 - clamp(runtime.dungeon_garden_gain, 0, 1))
 		return 0
 	}
 	return 1
