@@ -94,6 +94,91 @@ mx1_ui_registry_has_complete_typed_chrome :: proc(t: ^testing.T) {
 }
 
 @(test)
+archetype_selection_uses_complete_effective_level_one_stats :: proc(t: ^testing.T) {
+	expected_melee := [ar.Archetype_Id]int{
+		.Warden = 15, .Rogue = 17, .Arcanist = 12, .Acolyte = 13, .Ranger = 15,
+	}
+	expected_spell := [ar.Archetype_Id]int{
+		.Warden = 16, .Rogue = 16, .Arcanist = 25, .Acolyte = 21, .Ranger = 18,
+	}
+	expected_armor := [ar.Archetype_Id]int{
+		.Warden = 2, .Rogue = 0, .Arcanist = 0, .Acolyte = 1, .Ranger = 0,
+	}
+	expected_speed := [ar.Archetype_Id]f32{
+		.Warden = 2.68, .Rogue = 3.16, .Arcanist = 2.60, .Acolyte = 2.64, .Ranger = 2.96,
+	}
+	for archetype in ar.Archetype_Id {
+		stats := ar.archetype_preview_stats(archetype)
+		def := ar.ARCHETYPES[archetype]
+		testing.expect(t, stats.health == def.max_hp && stats.mana == def.max_mana && stats.stamina == def.max_stamina)
+		testing.expectf(t, stats.melee == expected_melee[archetype], "%v preview melee is %v", archetype, stats.melee)
+		testing.expectf(t, stats.spell == expected_spell[archetype], "%v preview spell is %v", archetype, stats.spell)
+		testing.expectf(t, stats.armor == expected_armor[archetype], "%v preview armor is %v", archetype, stats.armor)
+		testing.expectf(t, ui_test_abs_f32(stats.move_speed-expected_speed[archetype]) < .001, "%v preview speed is %.3f", archetype, stats.move_speed)
+	}
+}
+
+@(test)
+archetype_stat_panels_have_stable_art_and_layout :: proc(t: ^testing.T) {
+	expected_chrome := [ar.Select_Stat_Id]ar.UI_Chrome_Id{
+		.Health = .Stat_Health,
+		.Mana = .Stat_Mana,
+		.Stamina = .Stat_Stamina,
+		.Movement = .Stat_Movement,
+		.Melee = .Stat_Melee,
+		.Spell = .Stat_Spell,
+		.Armor = .Stat_Armor,
+	}
+	for id in ar.Select_Stat_Id {
+		chrome := expected_chrome[id]
+		testing.expect(t, ar.SELECT_STAT_CHROME[id] == chrome)
+		def := ar.UI_CHROME_DEFS[chrome]
+		testing.expect(t, def.render == .Nine_Slice && def.source_size == [2]int{328, 85})
+		testing.expect(t, def.scale_insets_with_height && def.has_content_insets)
+	}
+
+	content := rl.Rectangle{20, 30, 732, 170}
+	rects := ar.select_stat_rects(content)
+	for id in ar.Select_Stat_Id {
+		rect := rects[id]
+		testing.expect(t, rect.x >= content.x && rect.y >= content.y)
+		testing.expect(t, rect.x+rect.width <= content.x+content.width+.01)
+		testing.expect(t, rect.y+rect.height <= content.y+content.height+.01)
+		testing.expect(t, rect.width >= 250 && rect.width <= 264.01 && rect.height >= 30)
+	}
+	testing.expect(t, rects[.Health].x+rects[.Health].width < rects[.Melee].x)
+	group_center := (rects[.Health].x+rects[.Armor].x+rects[.Armor].width)*.5
+	testing.expect(t, ui_test_abs_f32(group_center-(content.x+content.width*.5)) < .01)
+	testing.expect(t, rects[.Movement].y > rects[.Stamina].y)
+
+	expected_art := [7]struct{path, sha256: string}{
+		{"assets/ui/chrome/stat_health.png", "d90be5e517cc689ea632fd1b6dfaa55f06c7655939753b05b90a112c59eebe20"},
+		{"assets/ui/chrome/stat_mana.png", "8a8df97249064c354e6dfdb4d3beb522bff97533e7d505836036813437545e7e"},
+		{"assets/ui/chrome/stat_stamina.png", "2bda2a1fef8577d1f01ab445543867c0106a2a7f11f7ba91a9affdd87b65edbf"},
+		{"assets/ui/chrome/stat_movement.png", "020e14de8cb5d0a46055501f5a63e01174052facd5d0d7c8f36c8c5fad51df4b"},
+		{"assets/ui/chrome/stat_melee.png", "09bbb4b8245bba72e9ccc33f6d61462aacef8daf420901792982479e281b0166"},
+		{"assets/ui/chrome/stat_spell.png", "97cc29ccbe8b193fc90435050159b6f2b57ae6bb304a0e90bdff042b4515f398"},
+		{"assets/ui/chrome/stat_armor.png", "b6a66a1d73f8f7d7816dbce69d841726e538bb7a2e5a683cfb321dff968e3c30"},
+	}
+	for item in expected_art {
+		size, ok := ui_test_png_size(t, item.path)
+		if ok do testing.expect(t, size == [2]int{328, 85})
+		data, read_err := os.read_entire_file_from_path(item.path, context.allocator)
+		testing.expect(t, read_err == nil)
+		if read_err != nil do continue
+		digest := hash.hash_bytes(.SHA256, data, context.allocator)
+		delete(data)
+		encoded, encode_err := hex.encode(digest, context.allocator)
+		delete(digest)
+		testing.expect(t, encode_err == .None)
+		if encode_err == .None {
+			testing.expectf(t, string(encoded) == item.sha256, "%s hash changed", item.path)
+			delete(encoded)
+		}
+	}
+}
+
+@(test)
 mx_android_mobile_hud_imports_are_exact_pygame_assets :: proc(t:^testing.T) {
 	testing.expect(t,len(ar.MOBILE_HUD_ASSET_DEFS)==ar.MOBILE_HUD_ASSET_COUNT)
 	expected_hashes:=[ar.Mobile_Hud_Asset_Id]string{

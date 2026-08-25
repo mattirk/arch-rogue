@@ -619,6 +619,103 @@ draw_select_actor :: proc(app: ^App, assets: ^Assets, slot: Select_Slot) {
 	rl.DrawTexturePro(clip.tex, source, destination, {}, 0, tint)
 }
 
+Select_Stat_Id :: enum u8 {
+	Health,
+	Mana,
+	Stamina,
+	Movement,
+	Melee,
+	Spell,
+	Armor,
+}
+
+SELECT_STAT_CHROME := [Select_Stat_Id]UI_Chrome_Id{
+	.Health = .Stat_Health,
+	.Mana = .Stat_Mana,
+	.Stamina = .Stat_Stamina,
+	.Movement = .Stat_Movement,
+	.Melee = .Stat_Melee,
+	.Spell = .Stat_Spell,
+	.Armor = .Stat_Armor,
+}
+
+Archetype_Preview_Stats :: struct {
+	health:     int,
+	mana:       int,
+	stamina:    int,
+	move_speed: f32,
+	melee:      int,
+	spell:      int,
+	armor:      int,
+}
+
+archetype_preview_stats :: proc(archetype: Archetype_Id) -> Archetype_Preview_Stats {
+	def := ARCHETYPES[archetype]
+	player := Player{archetype=archetype, level=1}
+	return {
+		health = def.max_hp,
+		mana = def.max_mana,
+		stamina = def.max_stamina,
+		move_speed = player_speed(&player),
+		melee = player_melee_damage(&player),
+		spell = player_spell_damage(&player, BOLT_BASE_DAMAGE),
+		armor = player_armor(&player),
+	}
+}
+
+select_stat_rects :: proc(content: rl.Rectangle) -> [Select_Stat_Id]rl.Rectangle {
+	result: [Select_Stat_Id]rl.Rectangle
+	column_gap: f32 = 8
+	row_gap: f32 = 3
+	stats_top := content.y + 28
+	stats_height := max(f32(1), content.y + content.height - stats_top)
+	row_height := max(f32(1), (stats_height - row_gap*3) / 4)
+	column_width := min(f32(264), max(f32(1), (content.width - column_gap) * .5))
+	group_width := column_width*2 + column_gap
+	left_x := content.x + (content.width-group_width)*.5
+	right_x := left_x + column_width + column_gap
+	result[.Health] = {left_x, stats_top, column_width, row_height}
+	result[.Mana] = {left_x, stats_top+(row_height+row_gap), column_width, row_height}
+	result[.Stamina] = {left_x, stats_top+(row_height+row_gap)*2, column_width, row_height}
+	result[.Movement] = {left_x, stats_top+(row_height+row_gap)*3, column_width, row_height}
+	result[.Melee] = {right_x, stats_top, column_width, row_height}
+	result[.Spell] = {right_x, stats_top+(row_height+row_gap), column_width, row_height}
+	result[.Armor] = {right_x, stats_top+(row_height+row_gap)*2, column_width, row_height}
+	return result
+}
+
+@(private = "file")
+draw_select_stat_panel :: proc(
+	assets: ^Assets,
+	id: Select_Stat_Id,
+	rect: rl.Rectangle,
+	label, value: cstring,
+) {
+	text_rect := rect
+	drawn := false
+	if assets != nil {
+		asset := ui_chrome_asset(assets, SELECT_STAT_CHROME[id])
+		drawn = draw_ui_chrome(asset, rect)
+		if drawn {
+			if content, ok := ui_chrome_content_rect(asset, rect); ok do text_rect = content
+		}
+	}
+	if !drawn {
+		rl.DrawRectangleRounded(rect, .12, 5, rl.Color{28, 26, 34, 242})
+		rl.DrawRectangleRoundedLinesEx(rect, .12, 5, 1, rl.Fade(COLOR_TEXT_DIM, .55))
+		text_rect = {rect.x+10, rect.y+4, max(f32(1), rect.width-20), max(f32(1), rect.height-8)}
+	}
+
+	label_size: i32 = 13
+	value_size: i32 = 14
+	value_width := ui_measure_text(value, value_size)
+	for label_size > 10 && ui_measure_text(label, label_size)+value_width+8 > i32(text_rect.width) do label_size -= 1
+	label_y := text_rect.y + (text_rect.height-f32(label_size))*.5
+	value_y := text_rect.y + (text_rect.height-f32(value_size))*.5
+	ui_draw_text(label, i32(text_rect.x), i32(label_y), label_size, COLOR_TEXT)
+	ui_draw_text(value, i32(text_rect.x+text_rect.width-f32(value_width)), i32(value_y), value_size, COLOR_TITLE)
+}
+
 draw_select_screen :: proc(app: ^App, assets: ^Assets) {
 	_ = ui_begin_presentation()
 	defer ui_end_presentation()
@@ -655,15 +752,23 @@ draw_select_screen :: proc(app: ^App, assets: ^Assets) {
 
 	detail_y := selected_slot.feet.y+78
 	detail_h := clamp(layout.y+layout.height-detail_y-42, f32(112), f32(214))
-	detail_w := min(f32(780), layout.width-40)
+	detail_w := min(f32(624), layout.width-40)
 	detail := rl.Rectangle{center_x-detail_w*.5, detail_y, detail_w, detail_h}
 	content := draw_menu_panel_chrome(assets, detail)
 	blurb := fmt.ctprintf("%s", def.blurb)
-	blurb_size: i32 = 17
+	blurb_size: i32 = 16
 	for blurb_size > 10 && ui_measure_text(blurb, blurb_size) > i32(content.width-24) do blurb_size -= 1
-	ui_draw_text(blurb, i32(content.x+(content.width-f32(ui_measure_text(blurb,blurb_size)))*.5), i32(content.y+10), blurb_size, COLOR_TEXT)
-	stats := fmt.ctprintf("HP %v     Mana %v     Stamina %v     Speed %.2f", def.max_hp, def.max_mana, def.max_stamina, def.speed)
-	ui_draw_text(stats, i32(content.x+(content.width-f32(ui_measure_text(stats,16)))*.5), i32(content.y+48), 16, COLOR_TITLE)
+	ui_draw_text(blurb, i32(content.x+(content.width-f32(ui_measure_text(blurb,blurb_size)))*.5), i32(content.y+3), blurb_size, COLOR_TEXT)
+
+	stats := archetype_preview_stats(selected)
+	stat_rects := select_stat_rects(content)
+	draw_select_stat_panel(assets, .Health, stat_rects[.Health], "HEALTH", fmt.ctprintf("%v", stats.health))
+	draw_select_stat_panel(assets, .Mana, stat_rects[.Mana], "MANA", fmt.ctprintf("%v", stats.mana))
+	draw_select_stat_panel(assets, .Stamina, stat_rects[.Stamina], "STAMINA", fmt.ctprintf("%v", stats.stamina))
+	draw_select_stat_panel(assets, .Movement, stat_rects[.Movement], "MOVE SPEED", fmt.ctprintf("%.2f TILES/S", stats.move_speed))
+	draw_select_stat_panel(assets, .Melee, stat_rects[.Melee], "MELEE", fmt.ctprintf("%v", stats.melee))
+	draw_select_stat_panel(assets, .Spell, stat_rects[.Spell], "SPELL", fmt.ctprintf("%v", stats.spell))
+	draw_select_stat_panel(assets, .Armor, stat_rects[.Armor], "ARMOR", fmt.ctprintf("%v", stats.armor))
 
 	hint: cstring = "Arrows: choose   1-5: begin   Enter: confirm   Backspace: return   F11: fullscreen"
 	ui_draw_text(hint, i32(center_x)-ui_measure_text(hint,14)/2, i32(layout.y+layout.height)-27, 14, COLOR_TEXT_DIM)
@@ -1106,15 +1211,26 @@ chronicle_filter_at :: proc(point:rl.Vector2) -> (Chronicle_Focus,bool) {
 }
 
 @(private = "file")
-draw_choice_overlay :: proc(app:^App,assets:^Assets,title:cstring,body:cstring,labels:[]cstring) {
+draw_choice_overlay :: proc(app:^App,assets:^Assets,title:cstring,body:string,labels:[]cstring) {
 	presentation:=ui_begin_presentation();defer ui_end_presentation()
 	rl.DrawRectangleRec({0,0,presentation.width,presentation.height},rl.Fade(rl.BLACK,.72))
-	panel:=menu_panel(560,i32(300+max(0,len(labels)-2)*52))
+	body_font:i32=16
+	body_line_height:=f32(21)
+	body_lines:[STORY_UI_MAX_TEXT_LINES]Story_UI_Text_Line
+	body_line_count:=max(1,story_ui_wrap_text(body,500,body_font,&body_lines))
+	rows_y:=f32(118)+f32(body_line_count-1)*body_line_height
+	base_height:=f32(300+max(0,len(labels)-2)*52)
+	content_height:=rows_y+f32(len(labels))*54+20
+	panel:=menu_panel(560,i32(max(base_height,content_height)))
 	draw_menu_panel_chrome(assets,panel)
 	ui_draw_text(title,i32(panel.x+30),i32(panel.y+24),27,COLOR_TITLE)
-	ui_draw_text(body,i32(panel.x+30),i32(panel.y+66),16,COLOR_TEXT)
+	for line_index in 0..<body_line_count {
+		line:=body_lines[line_index]
+		line_text:=fmt.ctprintf("%s",body[line.start:line.end])
+		ui_draw_text(line_text,i32(panel.x+30),i32(panel.y+66+f32(line_index)*body_line_height),body_font,COLOR_TEXT)
+	}
 	for label,index in labels {
-		rect:=rl.Rectangle{panel.x+34,panel.y+118+f32(index)*54,panel.width-68,44}
+		rect:=rl.Rectangle{panel.x+34,panel.y+rows_y+f32(index)*54,panel.width-68,44}
 		selected:=ui_navigation_selected(app,index==app.confirm_index)
 		content:=draw_menu_row_chrome(assets,rect,selected)
 		ui_draw_text(label,i32(content.x),i32(rect.y+11),18,selected?COLOR_TITLE:COLOR_TEXT)
@@ -1130,7 +1246,7 @@ draw_recovery_screen :: proc(app:^App,assets:^Assets) {
 	labels:=[3]cstring{"Retry best backup recovery","Quarantine save and begin anew","Back to title"}
 	if app.profile_save_damaged||app.options_save_damaged {
 		title:cstring="DAMAGED LOCAL RECORDS"
-		body:cstring="Profile or option data failed validation. Recover it or preserve the bytes in quarantine."
+		body:string="Profile or option data failed validation. Recover it or preserve the bytes in quarantine."
 		if app.profile_save_damaged&&!app.options_save_damaged {
 			title="DAMAGED PROFILE"
 			body="Chronicle and unlock data failed validation. Recover it or preserve the bytes in quarantine."

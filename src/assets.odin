@@ -188,6 +188,13 @@ UI_Chrome_Id :: enum u8 {
 	Menu_Panel_Inset,
 	Menu_Row,
 	Menu_Row_Selected,
+	Stat_Health,
+	Stat_Mana,
+	Stat_Stamina,
+	Stat_Movement,
+	Stat_Melee,
+	Stat_Spell,
+	Stat_Armor,
 	Hud_Panel,
 	Hud_Bar,
 	Hud_Dock,
@@ -208,7 +215,7 @@ UI_Chrome_Id :: enum u8 {
 	Chronicle_Outcome_Seals,
 }
 
-UI_CHROME_COUNT :: 27
+UI_CHROME_COUNT :: 34
 UI_DISCIPLINE_GLYPH_COUNT :: DISCIPLINE_COUNT
 UI_STORY_SIGIL_COUNT :: len(Story_Sigil_Id)
 UI_LOGO_DIAMOND_ATLAS_FILE :: "assets/ui/logo/diamond_atlas.png"
@@ -289,6 +296,55 @@ UI_CHROME_DEFS := [UI_Chrome_Id]UI_Chrome_Def{
 		insets = {105, 10, 150, 10}, has_insets = true,
 		content_insets = {92, 6, 137, 6}, has_content_insets = true,
 		shrink_insets_below_height = 88,
+	},
+	.Stat_Health = {
+		key = "menu.stat.health", file = "chrome/stat_health.png",
+		render = .Nine_Slice, source_size = {328, 85},
+		insets = {100, 12, 18, 12}, has_insets = true,
+		content_insets = {120, 18, 18, 18}, has_content_insets = true,
+		scale_insets_with_height = true,
+	},
+	.Stat_Mana = {
+		key = "menu.stat.mana", file = "chrome/stat_mana.png",
+		render = .Nine_Slice, source_size = {328, 85},
+		insets = {100, 12, 18, 12}, has_insets = true,
+		content_insets = {120, 18, 18, 18}, has_content_insets = true,
+		scale_insets_with_height = true,
+	},
+	.Stat_Stamina = {
+		key = "menu.stat.stamina", file = "chrome/stat_stamina.png",
+		render = .Nine_Slice, source_size = {328, 85},
+		insets = {100, 12, 18, 12}, has_insets = true,
+		content_insets = {120, 18, 18, 18}, has_content_insets = true,
+		scale_insets_with_height = true,
+	},
+	.Stat_Movement = {
+		key = "menu.stat.movement", file = "chrome/stat_movement.png",
+		render = .Nine_Slice, source_size = {328, 85},
+		insets = {100, 12, 18, 12}, has_insets = true,
+		content_insets = {120, 18, 18, 18}, has_content_insets = true,
+		scale_insets_with_height = true,
+	},
+	.Stat_Melee = {
+		key = "menu.stat.melee", file = "chrome/stat_melee.png",
+		render = .Nine_Slice, source_size = {328, 85},
+		insets = {100, 12, 18, 12}, has_insets = true,
+		content_insets = {120, 18, 18, 18}, has_content_insets = true,
+		scale_insets_with_height = true,
+	},
+	.Stat_Spell = {
+		key = "menu.stat.spell", file = "chrome/stat_spell.png",
+		render = .Nine_Slice, source_size = {328, 85},
+		insets = {100, 12, 18, 12}, has_insets = true,
+		content_insets = {120, 18, 18, 18}, has_content_insets = true,
+		scale_insets_with_height = true,
+	},
+	.Stat_Armor = {
+		key = "menu.stat.armor", file = "chrome/stat_armor.png",
+		render = .Nine_Slice, source_size = {328, 85},
+		insets = {100, 12, 18, 12}, has_insets = true,
+		content_insets = {120, 18, 18, 18}, has_content_insets = true,
+		scale_insets_with_height = true,
 	},
 	.Hud_Panel = {
 		key = "hud.panel", file = "chrome/hud_panel.png",

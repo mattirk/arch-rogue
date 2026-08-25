@@ -130,6 +130,7 @@ difficulty_profile :: proc(difficulty: Difficulty_Id) -> Difficulty_Profile {
 	return DIFFICULTY_PROFILES[normalized]
 }
 
+
 // Cycles one row in either direction. Hell is absent, rather than merely
 // skipped after selection, until the first clear unlocks it.
 difficulty_cycle :: proc(difficulty: Difficulty_Id, hell_unlocked: bool, direction: int = 1) -> Difficulty_Id {

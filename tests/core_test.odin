@@ -778,9 +778,17 @@ enemy_roster_complete :: proc(t: ^testing.T) {
 		testing.expectf(t, def.max_hp > 0 && def.speed > 0 && def.weight > 0, "%v zeroed stats", kind)
 	}
 	testing.expect(t, ar.ENEMY_DEFS[.Gate_Warden].final_room_only, "Gate Warden guards only the final room")
+	expected_boss_health := [ar.Boss_Id]int{
+		.Ash_Gallows = 350,
+		.Mycelial_Matron = 250,
+		.Rime_Chanter = 200,
+		.Void_Sentinel = 300,
+		.Gate_Tyrant = 600,
+	}
 	for id in ar.Boss_Id {
 		def := ar.BOSS_DEFS[id]
 		testing.expectf(t, def.name != "" && def.sprite != "" && def.ability_count > 0, "%v incomplete", id)
+		testing.expectf(t, def.max_hp == expected_boss_health[id], "%v authored HP is %v, want %v", id, def.max_hp, expected_boss_health[id])
 	}
 }
 
@@ -799,6 +807,7 @@ elite_and_miniboss_math :: proc(t: ^testing.T) {
 	testing.expect(t, mini.role == .Miniboss, "role must be Miniboss")
 	testing.expect(t, mini.max_hp > ar.ENEMY_DEFS[mini.kind].max_hp, "miniboss must be tougher")
 }
+
 
 @(test)
 final_boss_post_scaling_matches_pygame :: proc(t: ^testing.T) {

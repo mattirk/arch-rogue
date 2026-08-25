@@ -1331,7 +1331,8 @@ tick_enemies :: proc(run: ^Run, dt: f32) {
 			enemy.knockback_vel *= math.exp(-f32(KNOCKBACK_DECAY_RATE) * dt)
 			if math.hypot(enemy.knockback_vel.x, enemy.knockback_vel.y) < .01 do enemy.knockback_vel = {}
 		}
-		if knocked_back do continue
+		// Knockback is displacement, not incapacitation. Only an explicit stun
+		// prevents the enemy from advancing its windup or choosing an action.
 		if enemy.statuses[.Stunned] > 0 do continue
 
 		// A committed tell owns the tick before any fresh player/ally target scan.

@@ -204,9 +204,28 @@ feel_connected_swing_freezes_the_sim :: proc(t: ^testing.T) {
 }
 
 @(test)
-feel_lethal_swing_freezes_longer :: proc(t: ^testing.T) {
+feel_ordinary_knockback_does_not_pause_enemy_windup :: proc(t: ^testing.T) {
 	run: ar.Run
 	feel_arena(&run, 9405)
+	defer ar.run_destroy(&run)
+	append(&run.enemies, feel_grunt({11.5, 10.5}))
+	enemy := &run.enemies[0]
+	ar.enemy_begin_windup(enemy, ar.ENEMY_MELEE_WINDUP, ar.PENDING_BASE_ATTACK, {-1, 0})
+
+	ar.player_melee(&run, {1, 0})
+	testing.expect(t, enemy.knockback_vel != {}, "an ordinary connected swing must retain its physical nudge")
+	for _ in 0 ..< ar.HITSTOP_HIT_TICKS do ar.sim_tick(&run, {})
+	windup_before := enemy.windup
+	ar.sim_tick(&run, {})
+
+	testing.expect(t, enemy.knockback_vel != {}, "the windup must resume while residual knockback is still decaying")
+	testing.expect(t, enemy.windup < windup_before, "ordinary knockback must not incapacitate or pause an enemy windup")
+}
+
+@(test)
+feel_lethal_swing_freezes_longer :: proc(t: ^testing.T) {
+	run: ar.Run
+	feel_arena(&run, 9406)
 	defer ar.run_destroy(&run)
 	dying := feel_grunt({11.5, 10.5})
 	dying.hp = 1
