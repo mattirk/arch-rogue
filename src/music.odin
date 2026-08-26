@@ -21,7 +21,7 @@ MUSIC_BAR_FADE_SECONDS                 :: f32(0.5)
 MUSIC_GARDEN_SILENT_DISTANCE_TILES     :: f32(8)
 MUSIC_GARDEN_FADE_SECONDS              :: f32(0.5)
 MUSIC_BOSS_CHOIR_FADE_SECONDS          :: f32(0.5)
-MUSIC_MAX_SLOTS                        :: 15
+MUSIC_MAX_SLOTS                        :: 16
 MUSIC_MIXES_DOCUMENT_PATH              :: "assets/audio/bgm/mixes.json"
 
 MUSIC_MIX_MENU        :: "menu"
@@ -47,8 +47,10 @@ Music_Track_Condition :: enum u8 {
 	Boss_Guitar_High,
 	Boss_Choir,
 	Dungeon_Default_Music,
+	Dungeon_Primary_Harp,
 	Dungeon_Elite_Music,
 	Dungeon_Quest_Music,
+	Dungeon_Quest_Garden_Harp,
 	Dungeon_Bar_Music,
 	Dungeon_String_Guitar_Music,
 }
@@ -72,6 +74,7 @@ Music_Runtime_State :: struct {
 Music_Mix_Track :: struct {
 	file:      string, // file name under assets/audio/bgm/
 	volume:    f32,    // authored slot balance 0..1
+	pan:       f32,    // authored stereo balance: -1 fully left, +1 fully right
 	mute:      bool,   // authored mute: slot declared, contributes silence
 	alternate: bool,   // audible on even Loop cycles, silent on odd ones
 	condition: Music_Track_Condition,
@@ -110,6 +113,7 @@ Music_Effect_DTO :: struct {
 Music_Track_DTO :: struct {
 	file:      string,
 	volume:    f32,
+	pan:       f32,
 	mute:      bool,
 	alternate: bool,
 	condition: string,
@@ -172,9 +176,11 @@ music_track_condition_parse :: proc(id: string) -> (Music_Track_Condition, bool)
 	case "boss_guitar_mid":    return .Boss_Guitar_Mid, true
 	case "boss_guitar_high":   return .Boss_Guitar_High, true
 	case "boss_choir":         return .Boss_Choir, true
-	case "dungeon_default_music": return .Dungeon_Default_Music, true
-	case "dungeon_elite_music":   return .Dungeon_Elite_Music, true
+	case "dungeon_default_music":      return .Dungeon_Default_Music, true
+	case "dungeon_primary_harp":       return .Dungeon_Primary_Harp, true
+	case "dungeon_elite_music":        return .Dungeon_Elite_Music, true
 	case "dungeon_quest_music":        return .Dungeon_Quest_Music, true
+	case "dungeon_quest_garden_harp":  return .Dungeon_Quest_Garden_Harp, true
 	case "dungeon_bar_music":          return .Dungeon_Bar_Music, true
 	case "dungeon_string_guitar_music": return .Dungeon_String_Guitar_Music, true
 	}
@@ -212,6 +218,7 @@ music_library_parse :: proc(data: []byte) -> (library: Music_Library, ok: bool) 
 			track := &mix.tracks[track_index]
 			track.file = strings.clone(track_dto.file)
 			track.volume = clamp(track_dto.volume, 0, 1)
+			track.pan = clamp(track_dto.pan, -1, 1)
 			track.mute = track_dto.mute
 			track.alternate = track_dto.alternate
 			track.condition, _ = music_track_condition_parse(track_dto.condition)
@@ -449,24 +456,34 @@ music_runtime_state_update :: proc(
 	)
 }
 
-music_track_runtime_gain :: proc(track: Music_Mix_Track, runtime: Music_Runtime_State) -> f32 {
+music_track_runtime_gain :: proc(track: Music_Mix_Track, runtime: Music_Runtime_State, cycle: int = 0) -> f32 {
 	switch track.condition {
 	case .Always:              return 1
 	case .Boss_Guitar_Low:     return runtime.boss_guitar_tier == .Low ? 1 : 0
 	case .Boss_Guitar_Mid:     return runtime.boss_guitar_tier == .Mid ? 1 : 0
 	case .Boss_Guitar_High:    return runtime.boss_guitar_tier == .High ? 1 : 0
 	case .Boss_Choir: return clamp(runtime.boss_choir_gain, 0, 1)
-	case .Dungeon_Default_Music, .Dungeon_Elite_Music, .Dungeon_Quest_Music, .Dungeon_Bar_Music, .Dungeon_String_Guitar_Music:
+	case .Dungeon_Default_Music, .Dungeon_Primary_Harp, .Dungeon_Elite_Music, .Dungeon_Quest_Music, .Dungeon_Quest_Garden_Harp, .Dungeon_Bar_Music, .Dungeon_String_Guitar_Music:
 		// Spatial rooms are phase-locked stem groups inside the Dungeon mix, not
-		// discrete top-level mixes. Only Bar-room proximity ducks ordinary layers;
-		// recruited String carries the guitar alone. Garden retains final priority.
-		spatial_duck := (1 - clamp(runtime.dungeon_bar_gain, 0, 1)) *
-			(1 - clamp(runtime.dungeon_garden_gain, 0, 1))
+		// discrete top-level mixes. Bar proximity ducks ordinary layers, while
+		// Garden has final priority and supplies its own alternating third harp.
+		bar_duck := 1 - clamp(runtime.dungeon_bar_gain, 0, 1)
+		garden_gain := clamp(runtime.dungeon_garden_gain, 0, 1)
+		garden_duck := 1 - garden_gain
+		spatial_duck := bar_duck * garden_duck
+		quest_gain := clamp(runtime.dungeon_quest_harp_gain, 0, 1)
+		alternate_gain: f32 = cycle % 2 == 0 ? 1 : 0
 		if track.condition == .Dungeon_Default_Music do return spatial_duck
+		if track.condition == .Dungeon_Primary_Harp do return max(alternate_gain, quest_gain) * spatial_duck
 		if track.condition == .Dungeon_Elite_Music do return clamp(runtime.dungeon_elite_horn_gain, 0, 1) * spatial_duck
-		if track.condition == .Dungeon_Quest_Music do return clamp(runtime.dungeon_quest_harp_gain, 0, 1) * spatial_duck
-		if track.condition == .Dungeon_Bar_Music do return clamp(runtime.dungeon_bar_gain, 0, 1) * (1 - clamp(runtime.dungeon_garden_gain, 0, 1))
-		if track.condition == .Dungeon_String_Guitar_Music do return clamp(runtime.dungeon_string_guitar_gain, 0, 1) * (1 - clamp(runtime.dungeon_garden_gain, 0, 1))
+		if track.condition == .Dungeon_Quest_Music do return quest_gain * spatial_duck
+		if track.condition == .Dungeon_Quest_Garden_Harp {
+			quest_component := quest_gain * spatial_duck
+			garden_component := garden_gain * alternate_gain * 0.5
+			return max(quest_component, garden_component)
+		}
+		if track.condition == .Dungeon_Bar_Music do return clamp(runtime.dungeon_bar_gain, 0, 1) * garden_duck
+		if track.condition == .Dungeon_String_Guitar_Music do return clamp(runtime.dungeon_string_guitar_gain, 0, 1) * garden_duck
 		return 0
 	}
 	return 1
@@ -501,6 +518,13 @@ music_mix_for :: proc(app: ^App) -> string {
 		return MUSIC_MIX_MENU
 	}
 	return MUSIC_MIX_MENU
+}
+
+music_pan_channel_gains :: proc "contextless" (pan: f32) -> (left, right: f32) {
+	balance := clamp(pan, -1, 1)
+	left = balance > 0 ? 1 - balance : 1
+	right = balance < 0 ? 1 + balance : 1
+	return
 }
 
 // --- director ----------------------------------------------------------------

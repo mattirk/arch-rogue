@@ -49,38 +49,44 @@ music_mixes_document_parses_and_references_real_files :: proc(t: ^testing.T) {
 		return
 	}
 	testing.expect(t, dungeon.crossfade_ms == 1000, "transitions into dungeon must crossfade for 1 second")
-	testing.expect(t, len(dungeon.tracks) == 9, "dungeon must expose all nine live stems")
-	if len(dungeon.tracks) == 9 {
+	testing.expect(t, len(dungeon.tracks) == 10, "dungeon must expose all ten live stems")
+	if len(dungeon.tracks) == 10 {
 		testing.expect(t, dungeon.tracks[0].file == "ambience_grim_bass.ogg" && dungeon.tracks[0].condition == .Always,
 			"dungeon grim bass must remain outside spatial-room ducking")
 		testing.expect(t, dungeon.tracks[1].file == "beat_low.ogg" && dungeon.tracks[1].condition == .Always,
 			"dungeon low beat must remain outside spatial-room ducking")
 		testing.expect(t,
-			dungeon.tracks[2].file == "lead_harp.ogg" && dungeon.tracks[2].condition == .Dungeon_Default_Music &&
-			dungeon.tracks[2].alternate,
-			"the original dungeon harp must alternate within the default spatial stem group",
+			dungeon.tracks[2].file == "lead_harp.ogg" && dungeon.tracks[2].condition == .Dungeon_Primary_Harp &&
+			abs(dungeon.tracks[2].pan + 0.6) < 1e-5 && !dungeon.tracks[2].alternate,
+			"the original harp must use its Quest-aware runtime alternation rule and pan 60% left",
 		)
 		testing.expect(t,
-			dungeon.tracks[3].file == "lead_harp_two.ogg" && dungeon.tracks[3].condition == .Dungeon_Quest_Music,
-			"the second harp must use the Quest proximity stem group",
+			dungeon.tracks[3].file == "lead_harp_two.ogg" && dungeon.tracks[3].condition == .Dungeon_Quest_Music &&
+			abs(dungeon.tracks[3].pan - 0.6) < 1e-5,
+			"the second harp must use the Quest proximity stem group and pan 60% right",
 		)
-		testing.expect(t, dungeon.tracks[4].file == "lead_pad.ogg" && dungeon.tracks[4].condition == .Dungeon_Default_Music,
+		testing.expect(t,
+			dungeon.tracks[4].file == "lead_harp_three.ogg" &&
+			dungeon.tracks[4].condition == .Dungeon_Quest_Garden_Harp && dungeon.tracks[4].volume == 1,
+			"the third harp must serve the full Quest arrangement with Garden attenuation applied at runtime",
+		)
+		testing.expect(t, dungeon.tracks[5].file == "lead_pad.ogg" && dungeon.tracks[5].condition == .Dungeon_Default_Music,
 			"the dungeon pad must use the default spatial stem group")
-		testing.expect(t, dungeon.tracks[5].file == "ambience_strings.ogg" && dungeon.tracks[5].condition == .Dungeon_Default_Music,
+		testing.expect(t, dungeon.tracks[6].file == "ambience_strings.ogg" && dungeon.tracks[6].condition == .Dungeon_Default_Music,
 			"the dungeon strings must use the default spatial stem group")
 		testing.expect(t,
-			dungeon.tracks[6].file == "lead_glorious_horn.ogg" && dungeon.tracks[6].condition == .Dungeon_Elite_Music &&
-			dungeon.tracks[6].volume == 0.7,
+			dungeon.tracks[7].file == "lead_glorious_horn.ogg" && dungeon.tracks[7].condition == .Dungeon_Elite_Music &&
+			dungeon.tracks[7].volume == 0.7,
 			"the elite horn must use its proximity stem group at 70% volume",
 		)
 		testing.expect(t,
-			dungeon.tracks[7].file == "bar_guitar.ogg" && dungeon.tracks[7].condition == .Dungeon_String_Guitar_Music &&
-			dungeon.tracks[7].volume == 0.8,
+			dungeon.tracks[8].file == "bar_guitar.ogg" && dungeon.tracks[8].condition == .Dungeon_String_Guitar_Music &&
+			dungeon.tracks[8].volume == 0.8,
 			"Bar guitar must use String's dedicated proximity envelope with reduced pre-saturation gain",
 		)
 		testing.expect(t,
-			dungeon.tracks[8].file == "bar_melody_flute.ogg" && dungeon.tracks[8].condition == .Dungeon_Bar_Music &&
-			dungeon.tracks[8].volume == 0.85 && dungeon.tracks[8].alternate,
+			dungeon.tracks[9].file == "bar_melody_flute.ogg" && dungeon.tracks[9].condition == .Dungeon_Bar_Music &&
+			dungeon.tracks[9].volume == 0.85 && dungeon.tracks[9].alternate,
 			"Bar flute must use the shared Bar envelope at 85% authored gain and alternate each Loop cycle",
 		)
 	}
@@ -130,11 +136,11 @@ music_mixes_document_parses_and_references_real_files :: proc(t: ^testing.T) {
 			"boss battle high guitar must carry its runtime condition at 63.75% volume",
 		)
 	}
-	// Boss Battle and Dungeon share only grim bass. All nine incoming Dungeon
+	// Boss Battle and Dungeon share only grim bass. All ten incoming Dungeon
 	// slots plus six outgoing-only battle slots must coexist for the 1-second
 	// return crossfade, even though several dynamic stems may be gated.
-	testing.expect(t, ar.MUSIC_MAX_SLOTS >= 15, "Boss Battle/Dungeon crossfade must fit all fifteen unique slots")
-	testing.expect(t, ar.MUSIC_MAX_ASSETS >= 16, "the PCM cache must fit all sixteen unique authored assets")
+	testing.expect(t, ar.MUSIC_MAX_SLOTS >= 16, "Boss Battle/Dungeon crossfade must fit all sixteen unique slots")
+	testing.expect(t, ar.MUSIC_MAX_ASSETS >= 17, "the PCM cache must fit all seventeen unique authored assets")
 
 	for mix in library.mixes {
 		for track in mix.tracks {
@@ -308,12 +314,16 @@ music_dungeon_quest_harp_follows_room_distance_and_reaches_full_inside :: proc(t
 	testing.expect(t, ar.music_dungeon_quest_harp_gain(&run) == 1,
 		"second harp must reach 100% inside the Quest room")
 
-	original := ar.Music_Mix_Track{condition = .Dungeon_Default_Music}
+	primary := ar.Music_Mix_Track{condition = .Dungeon_Primary_Harp}
 	second := ar.Music_Mix_Track{condition = .Dungeon_Quest_Music}
+	third := ar.Music_Mix_Track{condition = .Dungeon_Quest_Garden_Harp}
 	runtime := ar.Music_Runtime_State{dungeon_quest_harp_gain = 1}
-	testing.expect(t, ar.music_track_runtime_gain(original, runtime) == 1 &&
-		ar.music_track_runtime_gain(second, runtime) == 1,
-		"both dungeon harps must publish 100% gain inside the Quest room when no higher-priority room is near")
+	for cycle in 0 ..= 1 {
+		testing.expect(t, ar.music_track_runtime_gain(primary, runtime, cycle) == 1 &&
+			ar.music_track_runtime_gain(second, runtime, cycle) == 1 &&
+			ar.music_track_runtime_gain(third, runtime, cycle) == 1,
+			"all three harps must publish together inside the Quest room on every loop cycle")
+	}
 	run.dungeon.special_room_count = 0
 	testing.expect(t, ar.music_dungeon_quest_harp_gain(&run) == 0,
 		"floors without a Quest room must keep the second harp muted")
@@ -445,6 +455,11 @@ music_dungeon_garden_ducks_every_non_core_stem_by_room_distance :: proc(t: ^test
 		"Garden priority must silence the Bar flute even if proximity envelopes overlap")
 	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_String_Guitar_Music}, runtime) == 0,
 		"Garden priority must silence String's guitar even away from the Bar")
+	third_harp := ar.Music_Mix_Track{condition = .Dungeon_Quest_Garden_Harp, volume = 1}
+	testing.expect(t, ar.music_track_runtime_gain(third_harp, runtime, 0) == 0.5,
+		"the third harp must join the Garden at 50% volume on its active loop")
+	testing.expect(t, ar.music_track_runtime_gain(third_harp, runtime, 1) == 0,
+		"the third harp must alternate out of the Garden on the following loop")
 
 	run.dungeon.special_room_count = 0
 	testing.expect(t, ar.music_dungeon_garden_gain(&run) == 0,
@@ -503,6 +518,18 @@ music_unknown_track_condition_rejects_document :: proc(t: ^testing.T) {
 	library, ok := ar.music_library_parse(document)
 	defer ar.music_library_destroy(&library)
 	testing.expect(t, !ok, "an unknown runtime condition must reject the mix document")
+}
+
+@(test)
+music_pan_channel_balance_preserves_near_side :: proc(t: ^testing.T) {
+	left, right := ar.music_pan_channel_gains(-0.6)
+	testing.expect(t, abs(left - 1) < 1e-5 && abs(right - 0.4) < 1e-5,
+		"60% left pan must preserve the left channel and reduce the right to 40%")
+	left, right = ar.music_pan_channel_gains(0.6)
+	testing.expect(t, abs(left - 0.4) < 1e-5 && abs(right - 1) < 1e-5,
+		"60% right pan must reduce the left channel to 40% and preserve the right")
+	left, right = ar.music_pan_channel_gains(2)
+	testing.expect(t, left == 0 && right == 1, "pan must clamp to its authored range")
 }
 
 @(test)

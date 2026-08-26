@@ -135,7 +135,7 @@ SFX_BANK_DEFS := [Sfx_Bank]Sfx_Bank_Def{
 	.Step_Creature_Heavy={key="step_creature_heavy",variant_count=3,gain=0.5,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
 }
 
-MUSIC_MAX_ASSETS  :: 16
+MUSIC_MAX_ASSETS  :: 17
 MUSIC_SAMPLE_RATE :: 48_000
 MUSIC_CHANNELS    :: 2
 MUSIC_SAMPLE_SIZE :: 16
@@ -227,6 +227,10 @@ Audio :: struct {
 	music_published_gains:        [MUSIC_MAX_ASSETS]f32, // render-thread write cache
 	music_published_valid:        [MUSIC_MAX_ASSETS]bool,
 	music_callback_gains:         [MUSIC_MAX_ASSETS]f32, // audio callback owns while playing
+	music_target_pan_bits:        [MUSIC_MAX_ASSETS]u32,
+	music_published_pans:         [MUSIC_MAX_ASSETS]f32,
+	music_pan_published_valid:    [MUSIC_MAX_ASSETS]bool,
+	music_callback_pans:          [MUSIC_MAX_ASSETS]f32,
 	music_master_target_bits:     u32,                   // atomically published post-DSP user gain
 	music_master_published_gain:  f32,                   // render-thread write cache
 	music_master_published_valid: bool,
@@ -808,8 +812,10 @@ audio_music_mix_callback :: proc "c" (buffer_data: rawptr, frames: u32) #no_boun
 	// Snapshot all atomic controls before mixing. A frame may publish new gains
 	// concurrently, but one callback block always uses one tightly sampled set.
 	target_gains: [MUSIC_MAX_ASSETS]f32
+	target_pans: [MUSIC_MAX_ASSETS]f32
 	for asset_index in 0 ..< audio.music_asset_count {
 		target_gains[asset_index] = audio_music_load_gain(&audio.music_target_gain_bits[asset_index])
+		target_pans[asset_index] = audio_music_load_gain(&audio.music_target_pan_bits[asset_index])
 	}
 
 	master_target := clamp(audio_music_load_gain(&audio.music_master_target_bits), 0, 1)
@@ -821,20 +827,26 @@ audio_music_mix_callback :: proc "c" (buffer_data: rawptr, frames: u32) #no_boun
 		if !asset.ready || asset.wave.data == nil do continue
 		target_gain := target_gains[asset_index]
 		gain := audio.music_callback_gains[asset_index]
+		target_pan := target_pans[asset_index]
+		pan := audio.music_callback_pans[asset_index]
 		if target_gain == 0 && gain == 0 do continue
 		gain_step := (target_gain - gain) / f32(frame_count)
+		pan_step := (target_pan - pan) / f32(frame_count)
 		source := cast([^]i16)asset.wave.data
 		source_cursor := cursor
 		for frame_index in 0 ..< frame_count {
 			gain += gain_step
+			pan += pan_step
+			pan_left, pan_right := music_pan_channel_gains(pan)
 			source_index := source_cursor * MUSIC_CHANNELS
 			output_index := frame_index * MUSIC_CHANNELS
-			output[output_index] += f32(source[source_index]) * (gain / 32768.0)
-			output[output_index + 1] += f32(source[source_index + 1]) * (gain / 32768.0)
+			output[output_index] += f32(source[source_index]) * (gain * pan_left / 32768.0)
+			output[output_index + 1] += f32(source[source_index + 1]) * (gain * pan_right / 32768.0)
 			source_cursor += 1
 			if source_cursor >= loop_frames do source_cursor = 0
 		}
 		audio.music_callback_gains[asset_index] = target_gain
+		audio.music_callback_pans[asset_index] = target_pan
 	}
 
 	// Process the summed music bus before applying the user's volume preference,
@@ -877,6 +889,10 @@ audio_music_stop_mixer :: proc(audio: ^Audio) {
 	audio.music_published_gains = {}
 	audio.music_published_valid = {}
 	audio.music_callback_gains = {}
+	audio.music_target_pan_bits = {}
+	audio.music_published_pans = {}
+	audio.music_pan_published_valid = {}
+	audio.music_callback_pans = {}
 	audio.music_master_target_bits = 0
 	audio.music_master_published_gain = 0
 	audio.music_master_published_valid = false
@@ -1027,11 +1043,13 @@ audio_music_publish_targets :: proc(
 	runtime: Music_Runtime_State,
 ) {
 	gains: [MUSIC_MAX_ASSETS]f32
+	pans: [MUSIC_MAX_ASSETS]f32
 	for &state in director.slots {
 		if !state.active do continue
 		if asset_index, found := audio_music_asset_index_for(audio, state.file); found && audio.music_assets[asset_index].ready {
-			runtime_gain := music_track_runtime_gain(state.authored, runtime)
+			runtime_gain := music_track_runtime_gain(state.authored, runtime, director.cycle)
 			gains[asset_index] = clamp(state.volume * runtime_gain, 0, 1)
+			pans[asset_index] = clamp(state.authored.pan, -1, 1)
 		}
 		// Every PCM layer advances on the common callback cursor even while
 		// inaudible, so an entering layer is already at state.seek_ms.
@@ -1044,6 +1062,12 @@ audio_music_publish_targets :: proc(
 			audio_music_store_gain(&audio.music_target_gain_bits[asset_index], gain)
 			audio.music_published_gains[asset_index] = gain
 			audio.music_published_valid[asset_index] = true
+		}
+		pan := pans[asset_index]
+		if !audio.music_pan_published_valid[asset_index] || abs(audio.music_published_pans[asset_index] - pan) > 0.0001 {
+			audio_music_store_gain(&audio.music_target_pan_bits[asset_index], pan)
+			audio.music_published_pans[asset_index] = pan
+			audio.music_pan_published_valid[asset_index] = true
 		}
 		if gain > 0.0005 do audio.music_active_layers += 1
 	}
@@ -1076,6 +1100,7 @@ audio_music_set_cursor :: proc(audio: ^Audio, phase_ms: f64) {
 audio_music_adopt_targets :: proc(audio: ^Audio) {
 	for asset_index in 0 ..< audio.music_asset_count {
 		audio.music_callback_gains[asset_index] = audio_music_load_gain(&audio.music_target_gain_bits[asset_index])
+		audio.music_callback_pans[asset_index] = audio_music_load_gain(&audio.music_target_pan_bits[asset_index])
 	}
 	audio.music_callback_master_gain = clamp(audio_music_load_gain(&audio.music_master_target_bits), 0, 1)
 	audio_music_master_dsp_reset(&audio.music_master_dsp)

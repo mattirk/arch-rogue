@@ -9,10 +9,11 @@ TEST_TIMESTAMP :: "2026-08-23T00:00:00Z"
 MAX_SEED_ATTEMPTS :: 1024
 
 Save_Scenario :: struct {
-	kind:       ar.Special_Room_Kind,
-	name:       string,
-	seed_start: u64,
-	path:       string,
+	kind:              ar.Special_Room_Kind,
+	name:              string,
+	seed_start:        u64,
+	path:              string,
+	relic_behind_wall: bool,
 }
 
 walkable_room_position :: proc(run: ^ar.Run, room: ar.Room, focus: ^ar.Vec2 = nil) -> (ar.Vec2, bool) {
@@ -34,6 +35,14 @@ walkable_room_position :: proc(run: ^ar.Run, room: ar.Room, focus: ^ar.Vec2 = ni
 				if resident.active && int(resident.pos.x) == x && int(resident.pos.y) == y {
 					occupied = true
 					break
+				}
+			}
+			if !occupied {
+				for &guest in run.story_runtime.guests {
+					if guest.alive && guest.depth == run.depth && int(guest.pos.x) == x && int(guest.pos.y) == y {
+						occupied = true
+						break
+					}
 				}
 			}
 			if occupied do continue
@@ -91,6 +100,8 @@ generate_save :: proc(scenario: Save_Scenario) -> bool {
 		room := app.run.dungeon.rooms_buf[special.room_index]
 		clear_combat_hazards(&app.run)
 		focus: ^ar.Vec2
+		room_focus: ar.Vec2
+		relic_position: ar.Vec2
 		for i in 0 ..< app.run.ambient_residents.count {
 			resident := &app.run.ambient_residents.items[i]
 			wanted := scenario.kind == .Bar ? resident.kind == .String :
@@ -99,6 +110,25 @@ generate_save :: proc(scenario: Save_Scenario) -> bool {
 				focus = &resident.pos
 				break
 			}
+		}
+		if scenario.relic_behind_wall {
+			// Keep the relic on a visible interior tile but pull it toward both
+			// southeast wall prisms so the isometric depth pass must ghost it.
+			relic_position={
+				f32(room.x+room.w-2)+.72,
+				f32(room.y+room.h-2)+.72,
+			}
+			relic_tile:=[2]int{int(relic_position.x),int(relic_position.y)}
+			east_wall:=[2]int{room.x+room.w-1,relic_tile.y}
+			south_wall:=[2]int{relic_tile.x,room.y+room.h-1}
+			if app.run.dungeon.tiles[east_wall.x][east_wall.y]!=.Wall ||
+				app.run.dungeon.tiles[south_wall.x][south_wall.y]!=.Wall {
+				ar.run_destroy(&app.run)
+				continue
+			}
+			center:=ar.room_center(room)
+			room_focus={f32(center.x)+.5,f32(center.y)+.5}
+			focus=&room_focus
 		}
 		position, positioned := walkable_room_position(&app.run, room, focus)
 		if !positioned {
@@ -109,6 +139,18 @@ generate_save :: proc(scenario: Save_Scenario) -> bool {
 		app.run.player.pos = position
 		app.run.player.prev_pos = position
 		app.run.player.facing = {}
+		if scenario.relic_behind_wall {
+			app.run.story_runtime.requests={}
+			app.run.story_runtime.relic={
+				relic=app.run.story.relic,
+				depth=app.run.depth,
+				position=relic_position,
+				present=true,
+			}
+			record:=&app.run.story_runtime.relic_records[app.run.depth-1]
+			record^={committed=true,path=.Defy,position=relic_position}
+			app.story_panel={}
+		}
 		delete(app.run.run_id)
 		delete(app.run.started_at_utc)
 		app.run.run_id = strings.clone(fmt.tprintf("%s-test-seed-%d", scenario.name, seed))
@@ -161,9 +203,26 @@ generate_save :: proc(scenario: Save_Scenario) -> bool {
 		installed := ar.app_install_run_document(&loaded, &document)
 		decoded_special, decoded_found := ar.special_room_for_kind(&loaded.run.dungeon, scenario.kind)
 		decoded_gain := room_gain(&loaded.run, scenario.kind)
-		contents_valid := scenario.kind == .Bar ? loaded.run.dungeon.bar_furnishings.count > 0 && ar.string_nearby(&loaded.run) != nil :
-			loaded.run.ambient_residents.count > 0
-		music_valid := scenario.kind == .Hall_Of_Unlost_Echoes || decoded_gain == 1
+		contents_valid := true
+		switch scenario.kind {
+		case .Bar:
+			contents_valid=loaded.run.dungeon.bar_furnishings.count>0&&ar.string_nearby(&loaded.run)!=nil
+		case .Garden,.Hall_Of_Unlost_Echoes:
+			contents_valid=loaded.run.ambient_residents.count>0
+		case .Quest:
+			if scenario.relic_behind_wall {
+				relic:=&loaded.run.story_runtime.relic
+				relic_tile:=[2]int{int(relic.position.x),int(relic.position.y)}
+				east_wall:=[2]int{room.x+room.w-1,relic_tile.y}
+				south_wall:=[2]int{relic_tile.x,room.y+room.h-1}
+				contents_valid=relic.present&&!relic.collected&&relic.position==relic_position&&
+					loaded.run.dungeon.tiles[east_wall.x][east_wall.y]==.Wall&&
+					loaded.run.dungeon.tiles[south_wall.x][south_wall.y]==.Wall&&
+					ar.special_room_kind_at_point(&loaded.run.dungeon,relic.position.x,relic.position.y)==.Quest
+			}
+		case .None,.Shop:
+		}
+		music_valid := (scenario.kind != .Bar && scenario.kind != .Garden) || decoded_gain == 1
 		position_valid := ar.special_room_kind_at_point(&loaded.run.dungeon,loaded.run.player.pos.x,loaded.run.player.pos.y) == scenario.kind
 		valid := installed && decoded_found && decoded_special.room_index == special.room_index &&
 			music_valid && position_valid && contents_valid
@@ -192,9 +251,11 @@ generate_save :: proc(scenario: Save_Scenario) -> bool {
 		delete(data)
 
 		fmt.println("wrote ", scenario.path)
-		fmt.printf("kind=%s seed=%d depth=%d room=%d player=(%.1f, %.1f) gain=%.1f\n",
+		fmt.printf("kind=%s seed=%d depth=%d room=%d player=(%.2f, %.2f) gain=%.1f",
 			scenario.name, seed, app.run.depth, special.room_index, position.x, position.y,
 			room_gain(&app.run, scenario.kind))
+		if scenario.relic_behind_wall do fmt.printf(" relic=(%.2f, %.2f)",relic_position.x,relic_position.y)
+		fmt.println()
 		ar.run_destroy(&app.run)
 		return true
 	}
@@ -203,10 +264,12 @@ generate_save :: proc(scenario: Save_Scenario) -> bool {
 }
 
 main :: proc() {
-	scenarios := [3]Save_Scenario{
+	scenarios := [4]Save_Scenario{
 		{kind = .Bar, name = "bar", seed_start = 0xBAA000, path = "build/bar-test-save/run.json"},
 		{kind = .Garden, name = "garden", seed_start = 0x6A2D000, path = "build/garden-test-save/run.json"},
 		{kind = .Hall_Of_Unlost_Echoes, name = "soul", seed_start = 0x5011000, path = "build/soul-test-save/run.json"},
+		{kind = .Quest, name = "quest-relic-wall", seed_start = 0x0CE57000,
+			path = "build/quest-relic-wall-test-save/run.json", relic_behind_wall = true},
 	}
 	requested := ""
 	if len(os.args) > 1 do requested = os.args[1]
