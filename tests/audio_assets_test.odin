@@ -25,6 +25,36 @@ audio_u32_le :: proc(data: []u8, offset: int) -> u32 {
 }
 
 @(private = "file")
+audio_i16_le :: proc(data: []u8, offset: int) -> i32 {
+	value := i32(audio_u16_le(data,offset))
+	if value >= 0x8000 do value -= 0x10000
+	return value
+}
+
+@(private = "file")
+audio_peak_window_ms :: proc(wav: []u8) -> int {
+	if len(wav) < 44 do return -1
+	payload_bytes := min(int(audio_u32_le(wav,40)),len(wav)-44)
+	frame_count := payload_bytes/4 // stereo PCM16
+	window_frames := 480 // 10 ms at 48 kHz
+	best_energy: i64 = -1
+	best_frame := 0
+	for start:=0;start<frame_count;start+=window_frames {
+		finish := min(start+window_frames,frame_count)
+		energy: i64
+		for frame in start..<finish {
+			offset := 44+frame*4
+			left := i64(audio_i16_le(wav,offset))
+			right := i64(audio_i16_le(wav,offset+2))
+			mid := left+right
+			energy += mid*mid
+		}
+		if energy > best_energy {best_energy,best_frame=energy,start}
+	}
+	return best_frame*1000/48000
+}
+
+@(private = "file")
 audio_near :: proc(a, b: f32) -> bool {
 	return math.abs(a - b) < .0001
 }
@@ -135,6 +165,11 @@ semantic_audio_manifest_and_wavs_are_complete :: proc(t: ^testing.T) {
 				testing.expectf(t, audio_u16_le(wav, 34) == 16, "%v must be 16-bit", path)
 				testing.expectf(t, audio_u32_le(wav, 40) + 44 == u32(len(wav)), "%v PCM payload is malformed", path)
 				testing.expectf(t, int(file_entry["byte_size"].(json.Float)) == len(wav), "%v byte size differs from manifest", path)
+				if def.key == "warden_time_skip" {
+					peak_ms := audio_peak_window_ms(wav)
+					testing.expectf(t,300<=peak_ms&&peak_ms<=340,
+						"%v principal impact is at %v ms, want 300-340 ms cast alignment",path,peak_ms)
+				}
 			}
 			delete(wav)
 			delete(expected_file)
@@ -172,6 +207,12 @@ semantic_sfx_routing_and_dispatch_gate_are_stable :: proc(t: ^testing.T) {
 	testing.expect(t, ar.player_cast_bolt(&warden_run, {1, 0}), "Warden Guard Bolt must cast")
 	testing.expect(t, len(warden_run.sfx) > 0 && warden_run.sfx[len(warden_run.sfx)-1].bank == .Warden_Guard_Bolt,
 		"Warden Guard Bolt must emit its projectile-first semantic bank")
+	clear(&warden_run.sfx)
+	warden_run.player.mana = f32(warden_run.player.max_mana)
+	testing.expect(t,ar.player_cast_class_skill(&warden_run,{1,0}),"Warden Time Skip must cast")
+	testing.expect(t,len(warden_run.sfx)>0&&warden_run.sfx[len(warden_run.sfx)-1].bank==.Warden_Time_Skip&&
+		!warden_run.sfx[len(warden_run.sfx)-1].spatial,
+		"Warden Time Skip must emit its authored non-spatial bank")
 	ar.run_destroy(&warden_run)
 
 	arcanist_run: ar.Run

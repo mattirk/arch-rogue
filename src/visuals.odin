@@ -104,6 +104,21 @@ visual_idle_clip_time :: proc(world_time: f32, stable_id: u32 = 0) -> f32 {
 	return world_time + f32(stable_id % 17) * .137
 }
 
+VISUAL_MINIBOSS_FOIL_PERIOD :: f32(3.4)
+
+visual_miniboss_effect_enabled :: proc(role: Enemy_Role) -> bool {
+	return role == .Miniboss
+}
+
+visual_miniboss_effect_phase :: proc(stable_id: u32) -> f32 {
+	return f32(stable_id % 23) / 23
+}
+
+visual_miniboss_foil_progress :: proc(world_time: f32, stable_id: u32) -> f32 {
+	phase := world_time / VISUAL_MINIBOSS_FOIL_PERIOD + visual_miniboss_effect_phase(stable_id)
+	return phase - math.floor(phase)
+}
+
 // MX.6 combat-readability geometry. All helpers use raylib-free world-pixel
 // offsets so the renderer only translates plans into draw calls.
 

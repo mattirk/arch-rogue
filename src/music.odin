@@ -9,12 +9,12 @@ import "core:encoding/json"
 import "core:strings"
 import "core:math"
 
-MUSIC_DEFAULT_CROSSFADE_MS              :: f64(1000)
-MUSIC_ELITE_HORN_FULL_DISTANCE_TILES    :: f32(4)
-MUSIC_ELITE_HORN_SILENT_DISTANCE_TILES  :: f32(12)
-MUSIC_ELITE_HORN_ATTACK_SECONDS         :: f32(0.5)
-MUSIC_ELITE_HORN_RELEASE_SECONDS        :: f32(2)
-MUSIC_QUEST_HARP_SILENT_DISTANCE_TILES :: f32(8)
+MUSIC_DEFAULT_CROSSFADE_MS                       :: f64(1000)
+MUSIC_DIRECT_PROXIMITY_FULL_DISTANCE_TILES       :: f32(4)
+MUSIC_DIRECT_PROXIMITY_SILENT_DISTANCE_TILES     :: f32(12)
+MUSIC_GLORIOUS_HORN_ATTACK_SECONDS                :: f32(0.5)
+MUSIC_GLORIOUS_HORN_RELEASE_SECONDS               :: f32(2)
+MUSIC_QUEST_HARP_SILENT_DISTANCE_TILES            :: f32(8)
 MUSIC_QUEST_HARP_FADE_SECONDS          :: f32(0.5)
 MUSIC_BAR_SILENT_DISTANCE_TILES        :: f32(8)
 MUSIC_BAR_FADE_SECONDS                 :: f32(0.5)
@@ -48,7 +48,7 @@ Music_Track_Condition :: enum u8 {
 	Boss_Choir,
 	Dungeon_Default_Music,
 	Dungeon_Primary_Harp,
-	Dungeon_Elite_Music,
+	Dungeon_Miniboss_Music,
 	Dungeon_Quest_Music,
 	Dungeon_Quest_Garden_Harp,
 	Dungeon_Bar_Music,
@@ -64,7 +64,7 @@ Music_Boss_Guitar_Tier :: enum u8 {
 Music_Runtime_State :: struct {
 	boss_guitar_tier:        Music_Boss_Guitar_Tier,
 	boss_choir_gain:         f32,
-	dungeon_elite_horn_gain: f32,
+	dungeon_miniboss_horn_gain: f32,
 	dungeon_quest_harp_gain: f32,
 	dungeon_bar_gain:           f32,
 	dungeon_garden_gain:        f32,
@@ -178,7 +178,7 @@ music_track_condition_parse :: proc(id: string) -> (Music_Track_Condition, bool)
 	case "boss_choir":         return .Boss_Choir, true
 	case "dungeon_default_music":      return .Dungeon_Default_Music, true
 	case "dungeon_primary_harp":       return .Dungeon_Primary_Harp, true
-	case "dungeon_elite_music":        return .Dungeon_Elite_Music, true
+	case "dungeon_miniboss_music":     return .Dungeon_Miniboss_Music, true
 	case "dungeon_quest_music":        return .Dungeon_Quest_Music, true
 	case "dungeon_quest_garden_harp":  return .Dungeon_Quest_Garden_Harp, true
 	case "dungeon_bar_music":          return .Dungeon_Bar_Music, true
@@ -276,10 +276,10 @@ music_boss_guitar_for_health :: proc(hp, max_hp: int) -> Music_Boss_Guitar_Tier 
 	return .Low
 }
 
-music_elite_horn_gain_for_distance :: proc(distance: f32) -> f32 {
-	span := MUSIC_ELITE_HORN_SILENT_DISTANCE_TILES - MUSIC_ELITE_HORN_FULL_DISTANCE_TILES
+music_direct_proximity_gain_for_distance :: proc(distance: f32) -> f32 {
+	span := MUSIC_DIRECT_PROXIMITY_SILENT_DISTANCE_TILES - MUSIC_DIRECT_PROXIMITY_FULL_DISTANCE_TILES
 	progress := clamp(
-		(MUSIC_ELITE_HORN_SILENT_DISTANCE_TILES - max(distance, 0)) / span,
+		(MUSIC_DIRECT_PROXIMITY_SILENT_DISTANCE_TILES - max(distance, 0)) / span,
 		0,
 		1,
 	)
@@ -288,16 +288,16 @@ music_elite_horn_gain_for_distance :: proc(distance: f32) -> f32 {
 	return progress * progress * (3 - 2 * progress)
 }
 
-music_dungeon_elite_horn_gain :: proc(run: ^Run) -> f32 {
+music_dungeon_miniboss_horn_gain :: proc(run: ^Run) -> f32 {
 	if run == nil do return 0
-	nearest_distance_squared := MUSIC_ELITE_HORN_SILENT_DISTANCE_TILES * MUSIC_ELITE_HORN_SILENT_DISTANCE_TILES
+	nearest_distance_squared := MUSIC_DIRECT_PROXIMITY_SILENT_DISTANCE_TILES * MUSIC_DIRECT_PROXIMITY_SILENT_DISTANCE_TILES
 	for &enemy in run.enemies {
-		if enemy.hp <= 0 || enemy.role != .Elite do continue
+		if enemy.hp <= 0 || enemy.role != .Miniboss do continue
 		delta := enemy.pos - run.player.pos
 		distance_squared := delta.x * delta.x + delta.y * delta.y
 		nearest_distance_squared = min(nearest_distance_squared, distance_squared)
 	}
-	return music_elite_horn_gain_for_distance(math.sqrt(nearest_distance_squared))
+	return music_direct_proximity_gain_for_distance(math.sqrt(nearest_distance_squared))
 }
 
 music_quest_harp_gain_for_distance :: proc(distance: f32) -> f32 {
@@ -350,7 +350,7 @@ music_dungeon_string_guitar_gain :: proc(run: ^Run) -> f32 {
 	if run == nil do return 0
 	if guitarist := living_string(run); guitarist != nil {
 		delta := guitarist.pos - run.player.pos
-		return music_elite_horn_gain_for_distance(math.hypot(delta.x, delta.y))
+		return music_direct_proximity_gain_for_distance(math.hypot(delta.x, delta.y))
 	}
 	for i in 0..<run.ambient_residents.count {
 		resident:=&run.ambient_residents.items[i]
@@ -387,9 +387,9 @@ music_runtime_state_for :: proc(
 	boss_conditions_enabled: bool = true,
 ) -> Music_Runtime_State {
 	if app == nil do return {}
-	elite_horn_gain, quest_harp_gain, bar_gain, garden_gain, string_guitar_gain, boss_choir_gain: f32
+	miniboss_horn_gain, quest_harp_gain, bar_gain, garden_gain, string_guitar_gain, boss_choir_gain: f32
 	if dungeon_conditions_enabled {
-		elite_horn_gain = music_dungeon_elite_horn_gain(&app.run)
+		miniboss_horn_gain = music_dungeon_miniboss_horn_gain(&app.run)
 		quest_harp_gain = music_dungeon_quest_harp_gain(&app.run)
 		bar_gain = music_dungeon_bar_gain(&app.run)
 		garden_gain = music_dungeon_garden_gain(&app.run)
@@ -399,7 +399,7 @@ music_runtime_state_for :: proc(
 	return {
 		boss_guitar_tier        = music_boss_guitar_for_health(app.run.player.hp, app.run.player.max_hp),
 		boss_choir_gain         = boss_choir_gain,
-		dungeon_elite_horn_gain = elite_horn_gain,
+		dungeon_miniboss_horn_gain = miniboss_horn_gain,
 		dungeon_quest_harp_gain = quest_harp_gain,
 		dungeon_bar_gain           = bar_gain,
 		dungeon_garden_gain        = garden_gain,
@@ -423,12 +423,12 @@ music_runtime_state_update :: proc(
 		dt,
 		MUSIC_BOSS_CHOIR_FADE_SECONDS,
 	)
-	elite_horn_fade := target.dungeon_elite_horn_gain < state.dungeon_elite_horn_gain ? MUSIC_ELITE_HORN_RELEASE_SECONDS : MUSIC_ELITE_HORN_ATTACK_SECONDS
-	state.dungeon_elite_horn_gain = music_gain_slew(
-		state.dungeon_elite_horn_gain,
-		target.dungeon_elite_horn_gain,
+	miniboss_horn_fade := target.dungeon_miniboss_horn_gain < state.dungeon_miniboss_horn_gain ? MUSIC_GLORIOUS_HORN_RELEASE_SECONDS : MUSIC_GLORIOUS_HORN_ATTACK_SECONDS
+	state.dungeon_miniboss_horn_gain = music_gain_slew(
+		state.dungeon_miniboss_horn_gain,
+		target.dungeon_miniboss_horn_gain,
 		dt,
-		elite_horn_fade,
+		miniboss_horn_fade,
 	)
 	state.dungeon_quest_harp_gain = music_gain_slew(
 		state.dungeon_quest_harp_gain,
@@ -463,7 +463,7 @@ music_track_runtime_gain :: proc(track: Music_Mix_Track, runtime: Music_Runtime_
 	case .Boss_Guitar_Mid:     return runtime.boss_guitar_tier == .Mid ? 1 : 0
 	case .Boss_Guitar_High:    return runtime.boss_guitar_tier == .High ? 1 : 0
 	case .Boss_Choir: return clamp(runtime.boss_choir_gain, 0, 1)
-	case .Dungeon_Default_Music, .Dungeon_Primary_Harp, .Dungeon_Elite_Music, .Dungeon_Quest_Music, .Dungeon_Quest_Garden_Harp, .Dungeon_Bar_Music, .Dungeon_String_Guitar_Music:
+	case .Dungeon_Default_Music, .Dungeon_Primary_Harp, .Dungeon_Miniboss_Music, .Dungeon_Quest_Music, .Dungeon_Quest_Garden_Harp, .Dungeon_Bar_Music, .Dungeon_String_Guitar_Music:
 		// Spatial rooms are phase-locked stem groups inside the Dungeon mix, not
 		// discrete top-level mixes. Bar proximity ducks ordinary layers, while
 		// Garden has final priority and supplies its own alternating third harp.
@@ -477,7 +477,7 @@ music_track_runtime_gain :: proc(track: Music_Mix_Track, runtime: Music_Runtime_
 		garden_alternate_gain: f32 = cycle % 2 == 0 ? 1 : 0
 		if track.condition == .Dungeon_Default_Music do return spatial_duck
 		if track.condition == .Dungeon_Primary_Harp do return max(primary_harp_gain, quest_gain) * spatial_duck
-		if track.condition == .Dungeon_Elite_Music do return clamp(runtime.dungeon_elite_horn_gain, 0, 1) * spatial_duck
+		if track.condition == .Dungeon_Miniboss_Music do return clamp(runtime.dungeon_miniboss_horn_gain, 0, 1) * spatial_duck
 		if track.condition == .Dungeon_Quest_Music do return max(secondary_harp_gain, quest_gain) * spatial_duck
 		if track.condition == .Dungeon_Quest_Garden_Harp {
 			quest_component := quest_gain * spatial_duck

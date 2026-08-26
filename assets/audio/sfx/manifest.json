@@ -3297,21 +3297,21 @@
           "duration_ms": 800,
           "file": "warden_time_skip_01.wav",
           "frame_count": 38400,
-          "sha256": "6219a6824c198c461cf77162eb3c164c006c8731a93bde96795b98c2f0d6b952"
+          "sha256": "d8cf8a30192571a6fda507793b06afdea4309a3f92e800c6e2b7f9dc56b0bc38"
         },
         {
           "byte_size": 153644,
           "duration_ms": 800,
           "file": "warden_time_skip_02.wav",
           "frame_count": 38400,
-          "sha256": "020dc91966bd28658a590900bbf2744ca61199c698e61bb2eadcf0c334c6c22c"
+          "sha256": "2725b406e1fd19c96e28ec035bad3d359514920440f43573a00e11b519c831a7"
         },
         {
           "byte_size": 153644,
           "duration_ms": 800,
           "file": "warden_time_skip_03.wav",
           "frame_count": 38400,
-          "sha256": "55e2828db665813581a62e19e7e75ac06c057501cfdabccb5f0aa1a266ef86e4"
+          "sha256": "f9461acad6fb180ede328fe1b24ab90b7d34d3965037af17b378a0d464ad3aad"
         }
       ],
       "gain": 0.72,

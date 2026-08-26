@@ -836,10 +836,11 @@ elite_and_miniboss_math :: proc(t: ^testing.T) {
 	testing.expect(t, abs(elite.speed - 1.56 * 1.18) < 1e-4, "Frenzied speed off")
 	testing.expect(t, elite.role == .Elite, "role must be Elite")
 
-	rng := ar.rng_make(7)
-	mini := ar.make_miniboss(&rng, {10, 10}, 1)
+	mini := ar.enemy_make(.Ghoul, {10, 10}, 1)
+	ar.promote_miniboss(&mini, {214, 176, 120, 255})
 	testing.expect(t, mini.role == .Miniboss, "role must be Miniboss")
-	testing.expect(t, mini.max_hp > ar.ENEMY_DEFS[mini.kind].max_hp, "miniboss must be tougher")
+	testing.expectf(t, mini.max_hp == 105 && mini.hp == 105,
+		"miniboss HP is %v/%v, want fixed 2.5x Ghoul HP (105)", mini.hp, mini.max_hp)
 }
 
 

@@ -2834,7 +2834,7 @@ string_interact :: proc(run: ^Run) -> bool {
 	room_npc_face_toward(&guitarist.motion,guitarist.pos,run.player.pos)
 	pos := guitarist.pos
 	if !string_join(run,guitarist) do return false
-	append(&run.numbers,Damage_Number{pos=pos,kind=.Text,text="String joins you, high-strung from human overwork."})
+	append(&run.numbers,Damage_Number{pos=pos,kind=.Text,text=string_join_response(run)})
 	return true
 }
 

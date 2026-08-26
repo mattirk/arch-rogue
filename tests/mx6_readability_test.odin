@@ -91,6 +91,22 @@ mx6_first_event :: proc(run: ^ar.Run, kind: ar.Feel_Kind) -> ^ar.Feel_Event {
 }
 
 @(test)
+mx6_miniboss_foil_policy_excludes_elites_and_is_deterministic :: proc(t: ^testing.T) {
+	testing.expect(t, !ar.visual_miniboss_effect_enabled(.Normal), "normal enemies must not receive the Oathbound treatment")
+	testing.expect(t, !ar.visual_miniboss_effect_enabled(.Elite), "elites must not receive the Oathbound treatment")
+	testing.expect(t, ar.visual_miniboss_effect_enabled(.Miniboss), "minibosses must receive the Oathbound treatment")
+	testing.expect(t, !ar.visual_miniboss_effect_enabled(.Boss), "boss presentation remains separate from the Oathbound treatment")
+
+	start := ar.visual_miniboss_foil_progress(2.5, 17)
+	repeat := ar.visual_miniboss_foil_progress(2.5, 17)
+	wrapped := ar.visual_miniboss_foil_progress(2.5 + ar.VISUAL_MINIBOSS_FOIL_PERIOD, 17)
+	other := ar.visual_miniboss_foil_progress(2.5, 18)
+	testing.expect(t, mx6_near(start, repeat) && mx6_near(start, wrapped),
+		"miniboss foil phase must be deterministic and periodic")
+	testing.expect(t, !mx6_near(start, other), "stable ids must stagger miniboss foil sweeps")
+}
+
+@(test)
 mx6_continuous_aim_survives_sprite_row_quantization :: proc(t: ^testing.T) {
 	straight := ar.Vec2{1, 0}
 	fine_aim := ar.Vec2{1, .12}

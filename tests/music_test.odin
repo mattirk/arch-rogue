@@ -75,9 +75,9 @@ music_mixes_document_parses_and_references_real_files :: proc(t: ^testing.T) {
 		testing.expect(t, dungeon.tracks[6].file == "ambience_strings.ogg" && dungeon.tracks[6].condition == .Dungeon_Default_Music,
 			"the dungeon strings must use the default spatial stem group")
 		testing.expect(t,
-			dungeon.tracks[7].file == "lead_glorious_horn.ogg" && dungeon.tracks[7].condition == .Dungeon_Elite_Music &&
+			dungeon.tracks[7].file == "lead_glorious_horn.ogg" && dungeon.tracks[7].condition == .Dungeon_Miniboss_Music &&
 			dungeon.tracks[7].volume == 0.7,
-			"the elite horn must use its proximity stem group at 70% volume",
+			"the glorious horn must use its miniboss proximity stem group at 70% volume",
 		)
 		testing.expect(t,
 			dungeon.tracks[8].file == "bar_guitar.ogg" && dungeon.tracks[8].condition == .Dungeon_String_Guitar_Music &&
@@ -259,40 +259,47 @@ music_boss_choir_fades_in_strictly_below_half_boss_health :: proc(t: ^testing.T)
 }
 
 @(test)
-music_dungeon_elite_horn_uses_absolute_distance_and_smooth_gain :: proc(t: ^testing.T) {
+music_dungeon_miniboss_horn_uses_direct_euclidean_distance_and_smooth_gain :: proc(t: ^testing.T) {
 	run: ar.Run
 	defer delete(run.enemies)
 	run.player.pos = {}
-	append(&run.enemies, ar.Enemy{role = .Elite, hp = 10, max_hp = 10, pos = {12, 0}})
+	append(&run.enemies, ar.Enemy{role = .Elite, hp = 10, max_hp = 10, pos = {4, 0}})
 
-	testing.expect(t, ar.music_dungeon_elite_horn_gain(&run) == 0,
-		"horn must begin at 0% twelve tiles from the nearest elite")
+	testing.expect(t, ar.music_dungeon_miniboss_horn_gain(&run) == 0,
+		"a living Elite must not trigger the glorious horn")
+	run.enemies[0].role = .Miniboss
+	testing.expect(t, ar.music_dungeon_miniboss_horn_gain(&run) == 1,
+		"a living Miniboss within four tiles must trigger the glorious horn at 100%")
+	run.enemies[0].pos = {12, 0}
+	testing.expect(t, ar.music_dungeon_miniboss_horn_gain(&run) == 0,
+		"horn must begin at 0% twelve tiles from the nearest living miniboss")
 	run.enemies[0].pos = {10, 0}
-	testing.expect(t, abs(ar.music_dungeon_elite_horn_gain(&run) - 0.15625) < 1e-5,
-		"horn must follow the smooth absolute-distance curve without room or LOS gates")
-	run.enemies[0].pos = {8, 0}
-	testing.expect(t, abs(ar.music_dungeon_elite_horn_gain(&run) - 0.5) < 1e-5,
-		"eight tiles must be the 50% midpoint of the smooth curve")
+	testing.expect(t, abs(ar.music_dungeon_miniboss_horn_gain(&run) - 0.15625) < 1e-5,
+		"horn must follow the smooth direct-distance curve without room or LOS gates")
+	run.enemies[0].pos = {6.4, 4.8}
+	testing.expect(t, abs(ar.music_dungeon_miniboss_horn_gain(&run) - 0.5) < 1e-5,
+		"direct Euclidean distance of eight tiles must be the 50% midpoint")
 	run.enemies[0].pos = {4, 0}
-	testing.expect(t, ar.music_dungeon_elite_horn_gain(&run) == 1,
+	testing.expect(t, ar.music_dungeon_miniboss_horn_gain(&run) == 1,
 		"four tiles or fewer must reach 100%")
 
 	run.enemies[0].role = .Normal
-	testing.expect(t, ar.music_dungeon_elite_horn_gain(&run) == 0, "ordinary enemies must not trigger the horn")
-	run.enemies[0].role = .Elite
+	testing.expect(t, ar.music_dungeon_miniboss_horn_gain(&run) == 0, "ordinary enemies must not trigger the horn")
+	run.enemies[0].role = .Miniboss
 	run.enemies[0].hp = 0
-	testing.expect(t, ar.music_dungeon_elite_horn_gain(&run) == 0, "a defeated elite must mute the horn target")
-	run.enemies[0] = {role = .Elite, hp = 10, max_hp = 10, pos = {12, 0}}
-	append(&run.enemies, ar.Enemy{role = .Elite, hp = 10, max_hp = 10, pos = {4, 0}})
-	testing.expect(t, ar.music_dungeon_elite_horn_gain(&run) == 1,
-		"the nearest living elite anywhere on the floor must control the gain")
+	testing.expect(t, ar.music_dungeon_miniboss_horn_gain(&run) == 0, "a defeated miniboss must mute the horn target")
+	run.enemies[0] = {role = .Elite, hp = 10, max_hp = 10, pos = {1, 0}}
+	append(&run.enemies, ar.Enemy{role = .Miniboss, hp = 10, max_hp = 10, pos = {12, 0}})
+	append(&run.enemies, ar.Enemy{role = .Miniboss, hp = 10, max_hp = 10, pos = {4, 0}})
+	testing.expect(t, ar.music_dungeon_miniboss_horn_gain(&run) == 1,
+		"the nearest living miniboss anywhere on the floor must control the gain while Elites are ignored")
 
-	near_silent := ar.music_elite_horn_gain_for_distance(11.99)
+	near_silent := ar.music_direct_proximity_gain_for_distance(11.99)
 	testing.expect(t, near_silent > 0 && near_silent < 0.001,
 		"the curve must leave silence continuously instead of snapping in")
-	track := ar.Music_Mix_Track{condition = .Dungeon_Elite_Music}
+	track := ar.Music_Mix_Track{condition = .Dungeon_Miniboss_Music}
 	testing.expect(t, ar.music_track_runtime_gain(track, {}) == 0, "the glorious horn must be runtime-muted by default")
-	testing.expect(t, ar.music_track_runtime_gain(track, {dungeon_elite_horn_gain = 0.5}) == 0.5,
+	testing.expect(t, ar.music_track_runtime_gain(track, {dungeon_miniboss_horn_gain = 0.5}) == 0.5,
 		"the runtime gate must preserve intermediate distance gain")
 }
 
@@ -370,7 +377,7 @@ music_dungeon_bar_flute_stays_room_bound_while_guitar_follows_string :: proc(t: 
 	bar_runtime := ar.Music_Runtime_State{
 		dungeon_bar_gain = 1,
 		dungeon_string_guitar_gain = 1,
-		dungeon_elite_horn_gain = 1,
+		dungeon_miniboss_horn_gain = 1,
 		dungeon_quest_harp_gain = 1,
 	}
 	testing.expect(t, ar.music_track_runtime_gain({file = "ambience_grim_bass.ogg", condition = .Always}, bar_runtime) == 1,
@@ -379,8 +386,8 @@ music_dungeon_bar_flute_stays_room_bound_while_guitar_follows_string :: proc(t: 
 		"low beat must remain full inside the Bar")
 	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Default_Music}, bar_runtime) == 0,
 		"ordinary Dungeon stems must be fully ducked inside the Bar")
-	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Elite_Music}, bar_runtime) == 0,
-		"the elite horn must be fully ducked inside the Bar")
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Miniboss_Music}, bar_runtime) == 0,
+		"the glorious horn must be fully ducked inside the Bar")
 	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Quest_Music}, bar_runtime) == 0,
 		"the Quest harp must be fully ducked inside the Bar")
 	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Bar_Music}, bar_runtime) == 1,
@@ -389,7 +396,7 @@ music_dungeon_bar_flute_stays_room_bound_while_guitar_follows_string :: proc(t: 
 		"the unrecruited guitar must be full inside the room")
 
 	// Once String is recruited, only the guitar uses the same 4-full/12-silent
-	// smoothstep curve as the elite horn. Room membership and LOS are irrelevant.
+	// direct-proximity smoothstep curve. Room membership and LOS are irrelevant.
 	run.player.pos = {}
 	run.ambient_residents.items[0].active = false
 	append(&run.familiars, ar.Familiar{kind = .String, hp = 10, max_hp = 10, pos = {12, 0}})
@@ -397,7 +404,7 @@ music_dungeon_bar_flute_stays_room_bound_while_guitar_follows_string :: proc(t: 
 		"String's guitar must be silent at twelve tiles without carrying Bar proximity")
 	run.familiars[0].pos = {10, 0}
 	testing.expect(t, abs(ar.music_dungeon_string_guitar_gain(&run) - 0.15625) < 1e-5,
-		"String's guitar must reuse the elite smoothstep curve")
+		"String's guitar must reuse the direct-proximity smoothstep curve")
 	run.familiars[0].pos = {8, 0}
 	testing.expect(t, abs(ar.music_dungeon_string_guitar_gain(&run) - 0.5) < 1e-5,
 		"String's guitar must reach 50% at eight tiles")
@@ -407,7 +414,7 @@ music_dungeon_bar_flute_stays_room_bound_while_guitar_follows_string :: proc(t: 
 
 	string_runtime := ar.Music_Runtime_State{
 		dungeon_string_guitar_gain = 1,
-		dungeon_elite_horn_gain = 1,
+		dungeon_miniboss_horn_gain = 1,
 		dungeon_quest_harp_gain = 1,
 	}
 	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_String_Guitar_Music}, string_runtime) == 1,
@@ -415,7 +422,7 @@ music_dungeon_bar_flute_stays_room_bound_while_guitar_follows_string :: proc(t: 
 	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Bar_Music}, string_runtime) == 0,
 		"String proximity must not carry the Bar flute")
 	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Default_Music}, string_runtime) == 1 &&
-		ar.music_track_runtime_gain({condition = .Dungeon_Elite_Music}, string_runtime) == 1 &&
+		ar.music_track_runtime_gain({condition = .Dungeon_Miniboss_Music}, string_runtime) == 1 &&
 		ar.music_track_runtime_gain({condition = .Dungeon_Quest_Music}, string_runtime) == 1,
 		"String proximity must not carry Bar-room ducking")
 
@@ -452,7 +459,7 @@ music_dungeon_garden_ducks_every_non_core_stem_by_room_distance :: proc(t: ^test
 		dungeon_garden_gain = 1,
 		dungeon_bar_gain = 1,
 		dungeon_string_guitar_gain = 1,
-		dungeon_elite_horn_gain = 1,
+		dungeon_miniboss_horn_gain = 1,
 		dungeon_quest_harp_gain = 1,
 	}
 	testing.expect(t, ar.music_track_runtime_gain({file = "ambience_grim_bass.ogg", condition = .Always}, runtime) == 1,
@@ -461,8 +468,8 @@ music_dungeon_garden_ducks_every_non_core_stem_by_room_distance :: proc(t: ^test
 		"low beat must remain full inside the Garden")
 	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Default_Music}, runtime) == 0,
 		"ordinary Dungeon stems must be silent inside the Garden")
-	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Elite_Music}, runtime) == 0,
-		"the elite horn must be silent inside the Garden")
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Miniboss_Music}, runtime) == 0,
+		"the glorious horn must be silent inside the Garden")
 	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Quest_Music}, runtime) == 0,
 		"the Quest harp must be silent inside the Garden")
 	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Bar_Music}, runtime) == 0,
@@ -481,24 +488,24 @@ music_dungeon_garden_ducks_every_non_core_stem_by_room_distance :: proc(t: ^test
 }
 
 @(test)
-music_elite_horn_runtime_gain_slews_abrupt_targets :: proc(t: ^testing.T) {
+music_glorious_horn_runtime_gain_slews_abrupt_miniboss_targets :: proc(t: ^testing.T) {
 	app: ar.App
 	defer delete(app.run.enemies)
 	app.run.player.pos = {}
-	append(&app.run.enemies, ar.Enemy{role = .Elite, hp = 10, max_hp = 10, pos = {4, 0}})
+	append(&app.run.enemies, ar.Enemy{role = .Miniboss, hp = 10, max_hp = 10, pos = {4, 0}})
 	state: ar.Music_Runtime_State
 	ar.music_runtime_state_update(&state, &app, true, false, 0.1)
-	testing.expect(t, abs(state.dungeon_elite_horn_gain - 0.2) < 1e-5,
-		"the elite horn must retain its 500 ms proximity attack")
+	testing.expect(t, abs(state.dungeon_miniboss_horn_gain - 0.2) < 1e-5,
+		"the glorious horn must retain its 500 ms proximity attack")
 
-	state.dungeon_elite_horn_gain = 1
+	state.dungeon_miniboss_horn_gain = 1
 	app.run.enemies[0].hp = 0
 	ar.music_runtime_state_update(&state, &app, true, false, 0.1)
-	testing.expect(t, abs(state.dungeon_elite_horn_gain - 0.95) < 1e-5,
-		"killing the elite must select the 2-second horn release")
-	testing.expect(t, ar.music_gain_slew(0.4, 0.8, 0, ar.MUSIC_ELITE_HORN_ATTACK_SECONDS) == 0.4,
+	testing.expect(t, abs(state.dungeon_miniboss_horn_gain - 0.95) < 1e-5,
+		"killing the miniboss must select the 2-second horn release")
+	testing.expect(t, ar.music_gain_slew(0.4, 0.8, 0, ar.MUSIC_GLORIOUS_HORN_ATTACK_SECONDS) == 0.4,
 		"a suspended frame must freeze the gain envelope")
-	testing.expect(t, ar.music_gain_slew(0, 0.3, 1, ar.MUSIC_ELITE_HORN_ATTACK_SECONDS) == 0.3,
+	testing.expect(t, ar.music_gain_slew(0, 0.3, 1, ar.MUSIC_GLORIOUS_HORN_ATTACK_SECONDS) == 0.3,
 		"the slew must clamp at a nearby target without overshoot")
 }
 

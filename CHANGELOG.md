@@ -62,6 +62,7 @@ and Deck hardware validation remain tracked in that plan.
   driven end to end against a fake flat-API symbol table (init, drain,
   store-confirm gating, missing-symbol diagnosis, reconciliation).
 
+- Fixed Warden Time Skip being effectively silent. Its non-spatial bank is no longer queued through the zero-distance spatial path, and the licensed composite is now imported from 0.48 seconds so its original 0.80–0.81-second shield/thud transient lands at the 0.32–0.33-second cast commit instead of being faded out by the generic 0.8-second action cap.
 - Fixed the web-only sound glitch when the opening story cutscene appears. The
   Select-to-Playing transition now uses `Start` as its sole cue, lazy packs
   materialize at most one file per browser animation frame, and actor textures

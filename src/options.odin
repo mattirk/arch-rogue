@@ -266,7 +266,7 @@ AUDIO_VOLUME_FACTORS := [Audio_Volume]f32{
 	.Percent_80 = .8, .Percent_90 = .9, .Full = 1,
 }
 
-DEFAULT_SFX_VOLUME   :: Audio_Volume.Percent_50
+DEFAULT_SFX_VOLUME   :: Audio_Volume.Percent_40
 DEFAULT_MUSIC_VOLUME :: Audio_Volume.Full
 
 audio_volume_normalize :: proc(volume: Audio_Volume, fallback: Audio_Volume = .Full) -> Audio_Volume {

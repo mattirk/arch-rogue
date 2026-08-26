@@ -79,7 +79,7 @@ capture warden melee
 
 for scenario in \
   enemy_base_melee enemy_base_ranged enemy_strike \
-  enemy_bolt enemy_fan enemy_nova \
+  enemy_bolt enemy_fan enemy_nova miniboss \
   boss_attack boss_cast; do
   capture warden "$scenario"
 done

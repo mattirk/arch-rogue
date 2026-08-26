@@ -22,6 +22,7 @@ MX6_Capture_Scenario :: enum u8 {
 	Enemy_Bolt,
 	Enemy_Fan,
 	Enemy_Nova,
+	Miniboss,
 	Boss_Attack,
 	Boss_Cast,
 	Familiar_Wisp,
@@ -99,6 +100,7 @@ mx6_capture_scenario_from_env :: proc(value:string) -> MX6_Capture_Scenario {
 	case "enemy_bolt":         return .Enemy_Bolt
 	case "enemy_fan":          return .Enemy_Fan
 	case "enemy_nova":         return .Enemy_Nova
+	case "miniboss":           return .Miniboss
 	case "boss_attack":        return .Boss_Attack
 	case "boss_cast":          return .Boss_Cast
 	case "familiar_wisp":      return .Familiar_Wisp
@@ -183,6 +185,8 @@ mx6_capture_reset :: proc(app:^App,direction:Vec2) -> Vec2 {
 	app.inventory_open=false
 	app.character_open=false
 	app.shop_open=false
+	app_story_close_panel(app)
+	app.story_minigame={}
 	app_clear_play_input(app)
 
 	player:=&run.player
@@ -388,6 +392,17 @@ mx6_stage_capture :: proc(app:^App,view:^View,scenario:MX6_Capture_Scenario,dire
 	case .Enemy_Nova:
 		if pos,ok:=mx6_capture_place(run,player.pos,-facing,1.75,ACTOR_MOVE_COLLISION_RADIUS);ok {
 			mx6_capture_enemy(run,.Plague_Toad,pos,facing,0,.Ember_Nova,true)
+		}
+	case .Miniboss:
+		if pos,ok:=mx6_capture_place(run,player.pos,-facing,1.55,ACTOR_MOVE_COLLISION_RADIUS);ok {
+			enemy:=enemy_make(.Crypt_Brute,pos,run.depth)
+			enemy.prev_pos=pos
+			enemy.facing=facing
+			enemy.cooldown=100
+			enemy.aggro_range=0
+			promote_miniboss(&enemy,THEMES[run.theme_index].accent)
+			enemy_ensure_id(run,&enemy)
+			append(&run.enemies,enemy)
 		}
 	case .Boss_Attack:
 		if pos,ok:=mx6_capture_place(run,player.pos,-facing,1.40,BOSS_MOVE_RADIUS);ok {

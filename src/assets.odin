@@ -229,7 +229,8 @@ UI_GLYPH_ATLAS_CELL :: 32
 UI_GLYPH_ATLAS_COLUMNS :: 10
 UI_CURSOR_FILE :: "assets/ui/cursor/obsidian_spearhead.png"
 UI_CURSOR_SIZE :: 32
-UI_CURSOR_DRAW_SCALE :: f32(1.5)
+UI_CURSOR_WEB_DRAW_SCALE :: f32(0.75)    // 24 CSS px with the web framebuffer's DPR clamp
+UI_CURSOR_NATIVE_DRAW_SCALE :: f32(1.5) // 48 window px; native compositor applies display scaling
 UI_CURSOR_HOTSPOT :: [2]f32{2, 1}
 UI_GLYPH_OUROBOROS_KEY :: "menu.glyph.sigil.ouroboros"
 

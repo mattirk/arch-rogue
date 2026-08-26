@@ -959,7 +959,9 @@ cast_time_skip :: proc(run: ^Run) -> bool {
 		}
 	}
 	append(&run.numbers, Damage_Number{pos=player.pos, kind=.Text, text="Time Skip"})
-	sfx_emit(run, .Warden_Time_Skip, player.pos, spatial = true)
+	// Player-owned global cue: its authored bank is non-spatial. Marking it
+	// spatial would combine with max_distance=0 and suppress the loaded sound.
+	sfx_emit(run,.Warden_Time_Skip)
 	return true
 }
 

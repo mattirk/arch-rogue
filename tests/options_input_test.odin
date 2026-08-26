@@ -98,12 +98,12 @@ m9_option_defaults_normalize_and_cycle :: proc(t: ^testing.T) {
 	testing.expect(t, m9_near(options.view_zoom, 1.3))
 	testing.expect(t, options.difficulty == .Medium)
 	testing.expect(t, options.controller_enabled && options.audio_enabled && options.lighting_enabled)
-	testing.expect(t, options.sfx_volume == .Percent_50 && options.music_volume == .Full)
+	testing.expect(t, options.sfx_volume == .Percent_40 && options.music_volume == .Full)
 	ar.options_cycle_sfx_volume(&options, -1)
 	ar.options_cycle_music_volume(&options, -1)
-	testing.expect(t, options.sfx_volume == .Percent_40 && options.music_volume == .Percent_90,
+	testing.expect(t, options.sfx_volume == .Percent_30 && options.music_volume == .Percent_90,
 		"SFX and music controls must move in 10% steps from their independent defaults")
-	for _ in 0 ..< 4 do ar.options_cycle_sfx_volume(&options, -1)
+	for _ in 0 ..< 3 do ar.options_cycle_sfx_volume(&options, -1)
 	testing.expect(t, options.sfx_volume == .Off && !options.audio_enabled)
 	ar.options_cycle_sfx_volume(&options)
 	testing.expect(t, options.sfx_volume == .Percent_10 && options.audio_enabled)

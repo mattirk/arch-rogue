@@ -70,6 +70,24 @@ STRING_HP              :: 34
 STRING_DAMAGE          :: 7
 STRING_SPEED           :: f32(3.15)
 STRING_ATTACK_COOLDOWN :: f32(0.85)
+STRING_JOIN_RESPONSE_SALT :: u64(0x535452494E475F4A)
+
+@(rodata)
+STRING_JOIN_RESPONSES := [?]string{
+	"A sour chord. String joins you.",
+	"A crooked melody joins your descent.",
+	"The dungeon inherits the next verse.",
+	"A minor key follows at your heels.",
+	"The next verse belongs to the dead.",
+	"No applause. String follows anyway.",
+}
+
+string_join_response :: proc(run: ^Run) -> string {
+	if run == nil do return STRING_JOIN_RESPONSES[0]
+	response_seed := derive_seed(run.seed, STRING_JOIN_RESPONSE_SALT)
+	response_seed = derive_seed(response_seed, u64(max(run.depth, 1)))
+	return STRING_JOIN_RESPONSES[int(response_seed % u64(len(STRING_JOIN_RESPONSES)))]
+}
 
 Familiar_Command :: enum u8 {
 	Attack,

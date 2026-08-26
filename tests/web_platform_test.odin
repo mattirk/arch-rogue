@@ -29,6 +29,7 @@ mx_web_capture_parsers_accept_the_documented_vocabulary :: proc(t: ^testing.T) {
 	testing.expect(t, ar.mx7_capture_scenario_from_env("crowd") == .Crowd, "mx7 crowd scenario parses")
 	testing.expect(t, ar.mx7_capture_scenario_from_env("nonsense") == .None, "unknown mx7 scenario is inert")
 	testing.expect(t, ar.mx6_capture_scenario_from_env("boss_cast") == .Boss_Cast, "mx6 boss_cast parses")
+	testing.expect(t, ar.mx6_capture_scenario_from_env("miniboss") == .Miniboss, "mx6 miniboss parses")
 	testing.expect(t, ar.mx_story_capture_scenario_from_env("relic_choices") == .Relic_Choices, "story scenario parses")
 	testing.expect(t, ar.mx_save_capture_scenario_from_env("recovery") == .Recovery, "save scenario parses")
 	direction, ok := ar.mx6_capture_direction_from_env("north-west")

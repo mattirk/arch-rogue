@@ -90,7 +90,7 @@ main :: proc() {
 			if segment_ms >= 9_000 do bar_target = 1
 			if segment_ms >= 9_400 do garden_target = 1
 		}
-		glorious_fade := glorious_target < glorious_gain ? ar.MUSIC_ELITE_HORN_RELEASE_SECONDS : ar.MUSIC_ELITE_HORN_ATTACK_SECONDS
+		glorious_fade := glorious_target < glorious_gain ? ar.MUSIC_GLORIOUS_HORN_RELEASE_SECONDS : ar.MUSIC_GLORIOUS_HORN_ATTACK_SECONDS
 		glorious_gain = ar.music_gain_slew(
 			glorious_gain,
 			glorious_target,
@@ -122,7 +122,7 @@ main :: proc() {
 			ar.MUSIC_BOSS_CHOIR_FADE_SECONDS,
 		)
 		runtime.boss_choir_gain = choir_gain
-		runtime.dungeon_elite_horn_gain = glorious_gain
+		runtime.dungeon_miniboss_horn_gain = glorious_gain
 		runtime.dungeon_quest_harp_gain = quest_harp_gain
 		runtime.dungeon_bar_gain = bar_gain
 		runtime.dungeon_garden_gain = garden_gain
@@ -136,16 +136,16 @@ main :: proc() {
 		layers := ar.audio_music_active_layer_count(&audio)
 		max_layers = max(max_layers, layers)
 		if desired == ar.MUSIC_MIX_DUNGEON {
-			if runtime.dungeon_elite_horn_gain <= 0.0005 && runtime.dungeon_quest_harp_gain <= 0.0005 && layers == 5 {
+			if runtime.dungeon_miniboss_horn_gain <= 0.0005 && runtime.dungeon_quest_harp_gain <= 0.0005 && layers == 5 {
 				seen_glorious_zero = true
 				seen_quest_zero = true
 			}
-			if abs(runtime.dungeon_elite_horn_gain - 0.5) < 0.001 &&
+			if abs(runtime.dungeon_miniboss_horn_gain - 0.5) < 0.001 &&
 			   abs(runtime.dungeon_quest_harp_gain - 0.5) < 0.001 && layers == 7 {
 				seen_glorious_half = true
 				seen_quest_half = true
 			}
-			if runtime.dungeon_elite_horn_gain == 1 && runtime.dungeon_quest_harp_gain == 1 && layers == 7 {
+			if runtime.dungeon_miniboss_horn_gain == 1 && runtime.dungeon_quest_harp_gain == 1 && layers == 7 {
 				seen_glorious_full = true
 				seen_quest_full = true
 			}

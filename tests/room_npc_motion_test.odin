@@ -208,6 +208,7 @@ string_plays_in_bar_and_joins_as_a_guitar_familiar :: proc(t:^testing.T) {
 	run.player.prev_pos=run.player.pos
 	testing.expect(t,ar.interact_prompt(&run)=="E: greet String","String prompt must identify the guitarist")
 	string_pos:=guitarist.pos
+	expected_response:=ar.string_join_response(&run)
 	_ = ar.player_interact(&run)
 	testing.expect(t,!guitarist.active,"greeting must retire room-resident String")
 	testing.expect(t,len(run.familiars)==1&&run.familiars[0].kind==.String,"greeting must create exactly one String familiar")
@@ -215,8 +216,16 @@ string_plays_in_bar_and_joins_as_a_guitar_familiar :: proc(t:^testing.T) {
 	testing.expect(t,joined.pos==string_pos&&joined.prev_pos==string_pos,"String familiar must inherit the resident position")
 	testing.expect(t,joined.max_hp==ar.STRING_HP&&joined.damage==ar.STRING_DAMAGE&&joined.speed==ar.STRING_SPEED,
 		"String familiar must receive authored combat stats")
-	testing.expect(t,len(run.numbers)==1&&run.numbers[0].text=="String joins you, high-strung from human overwork.",
-		"String interaction must explain his overworked high-strung state")
+	testing.expect(t,len(run.numbers)==1&&run.numbers[0].text==expected_response,
+		"String interaction must use the deterministic join-response table")
+	testing.expect(t,len(ar.STRING_JOIN_RESPONSES)==6&&
+		ar.STRING_JOIN_RESPONSES[0]=="A sour chord. String joins you."&&
+		ar.STRING_JOIN_RESPONSES[1]=="A crooked melody joins your descent."&&
+		ar.STRING_JOIN_RESPONSES[2]=="The dungeon inherits the next verse."&&
+		ar.STRING_JOIN_RESPONSES[3]=="A minor key follows at your heels."&&
+		ar.STRING_JOIN_RESPONSES[4]=="The next verse belongs to the dead."&&
+		ar.STRING_JOIN_RESPONSES[5]=="No applause. String follows anyway.",
+		"String join-response table changed")
 	testing.expect(t,ar.interact_prompt(&run)=="","joined String must no longer advertise the room interaction")
 
 	run.player.pos=string_pos+ar.Vec2{3,0}

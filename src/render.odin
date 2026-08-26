@@ -31,6 +31,13 @@ Ghost_Weight :: struct {
 	weight: f32,
 }
 
+Miniboss_Sprite_Effect :: struct {
+	enabled:    bool,
+	color:      rl.Color,
+	world_time: f32,
+	stable_id:  u32,
+}
+
 View :: struct {
 	camera:        rl.Camera2D,
 	base_zoom:     f32, // persisted 720p design-space zoom; camera.zoom is framebuffer-scaled
@@ -387,6 +394,15 @@ draw_frame :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 }
 
 @(private = "file")
+cursor_draw_scale :: proc() -> f32 {
+	// The web framebuffer is clamped to CSS pixels. Native window coordinates
+	// are already transformed by the desktop compositor, so applying raylib's
+	// reported DPI here would scale the cursor twice on some Linux desktops.
+	when ARCH_ROGUE_WEB do return UI_CURSOR_WEB_DRAW_SCALE
+	return UI_CURSOR_NATIVE_DRAW_SCALE
+}
+
+@(private = "file")
 draw_custom_cursor :: proc(view: ^View, app: ^App, assets: ^Assets) {
 	if view == nil || app == nil || assets == nil do return
 	custom_cursor_active := !view.mobile_mode && assets.ui_cursor.id != 0
@@ -397,10 +413,11 @@ draw_custom_cursor :: proc(view: ^View, app: ^App, assets: ^Assets) {
 
 	rl.HideCursor()
 	mouse := rl.GetMousePosition()
-	draw_size := f32(UI_CURSOR_SIZE) * UI_CURSOR_DRAW_SCALE
+	scale := cursor_draw_scale()
+	draw_size := f32(UI_CURSOR_SIZE) * scale
 	hotspot := rl.Vector2{
-		UI_CURSOR_HOTSPOT[0] * UI_CURSOR_DRAW_SCALE,
-		UI_CURSOR_HOTSPOT[1] * UI_CURSOR_DRAW_SCALE,
+		UI_CURSOR_HOTSPOT[0] * scale,
+		UI_CURSOR_HOTSPOT[1] * scale,
 	}
 	rl.DrawTexturePro(
 		assets.ui_cursor,
@@ -882,6 +899,17 @@ update_lightmap :: proc(view: ^View, app: ^App, alpha: f32) -> bool {
 		if !app.dev_reveal && !tile_pos_visible(app, p.pos) do continue
 		pf := p.prev_pos + (p.pos - p.prev_pos) * alpha
 		draw_light(view, pf, 1.1, rl.Fade(rl.Color(p.color), 0.8), PROJECTILE_LIFT)
+	}
+	// Oathbound minibosses carry a restrained body light. It is rendered into
+	// the same live-LOS-clipped target as every other source, so the glow never
+	// announces a miniboss through walls or remembered fog.
+	for &enemy in run.enemies {
+		if enemy.hp <= 0 || !visual_miniboss_effect_enabled(enemy.role) do continue
+		if !app.dev_reveal && !tile_pos_visible(app, enemy.pos) do continue
+		efeet := enemy.prev_pos + (enemy.pos - enemy.prev_pos) * alpha
+		phase := visual_miniboss_effect_phase(enemy.entity_id) * math.TAU
+		pulse := .30 + .06 * math.sin(world_time * 2.2 + phase)
+		draw_light(view, efeet, 1.35, rl.Fade(rl.Color(enemy.color), pulse), 13)
 	}
 	// Semantic feel lights join the same pre-mask glow target as every other
 	// source. The live-LOS multiply below clips their complete footprint, not
@@ -1391,17 +1419,20 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 			if status_color, active := actor_status_tint(&enemy.statuses); active do tint = status_color
 			draw_contact_shadow(view,item.feet,enemy.big?78:enemy.kind==.Gate_Warden||enemy.kind==.Crypt_Brute?38:32,enemy.big?18:12,enemy.moving)
 			compact_cues_visible := app.dev_reveal || effect_fallback_compact_visible(app,item.feet)
-			if enemy.role != .Normal && compact_cues_visible {
-				// Elite/boss ground tell: a pulsing ring in the actor's own
-				// palette — elites carry their modifier's color shift and
-				// Oathbound minibosses the theme accent (MX.2.5).
-				w := rl.Vector2(world_from_tile(item.feet))
-				ring := rl.Color(enemy.color)
-				pulse := 0.5 + 0.3 * math.sin(f32(app.tick) * SIM_DT * 5)
-				rl.BeginBlendMode(.ADDITIVE)
-				radius_h: f32 = enemy.big ? 34 : 18
-				rl.DrawEllipse(i32(w.x), i32(w.y), radius_h, radius_h * 0.5, rl.Fade(ring, 0.28 * pulse))
-				rl.EndBlendMode()
+			if compact_cues_visible {
+				if visual_miniboss_effect_enabled(enemy.role) {
+					draw_miniboss_ground_seal(item.feet,rl.Color(enemy.color),world_time,enemy.entity_id)
+				} else if enemy.role == .Boss {
+					// Boss presentation remains its own rank language; elites no longer
+					// inherit a persistent ground treatment.
+					w := rl.Vector2(world_from_tile(item.feet))
+					ring := rl.Color(enemy.color)
+					pulse := 0.5 + 0.3 * math.sin(world_time * 5)
+					rl.BeginBlendMode(.ADDITIVE)
+					radius_h: f32 = enemy.big ? 34 : 18
+					rl.DrawEllipse(i32(w.x),i32(w.y),radius_h,radius_h*.5,rl.Fade(ring,.28*pulse))
+					rl.EndBlendMode()
+				}
 			}
 			if enemy.ai == .Windup && compact_cues_visible {
 				w := rl.Vector2(world_from_tile(item.feet))
@@ -1412,7 +1443,15 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 				rl.DrawEllipseLinesV(w,radius_h,radius_h*.5,rl.Fade(color,(120.0/255.0)*remaining))
 				rl.DrawEllipseLinesV(w,radius_h+1,radius_h*.5+1,rl.Fade(color,(90.0/255.0)*remaining))
 			}
-			tex,src,dst,drawn := draw_actor(assets, sprites, clip, enemy.facing, clip_time, item.feet, tint, enemy.hit_flash)
+			miniboss_effect := Miniboss_Sprite_Effect{}
+			if visual_miniboss_effect_enabled(enemy.role) {
+				miniboss_effect = {
+					enabled=true,color=rl.Color(enemy.color),world_time=world_time,stable_id=enemy.entity_id,
+				}
+			}
+			tex,src,dst,drawn := draw_actor(
+				assets,sprites,clip,enemy.facing,clip_time,item.feet,tint,enemy.hit_flash,miniboss_effect,
+			)
 			if drawn {
 				key := 0x200000000 + u64(enemy.entity_id)
 				if enemy.entity_id == 0 do key += u64(item.index+1)
@@ -2361,12 +2400,109 @@ draw_contact_shadow :: proc(view: ^View, feet: Vec2, width, height: f32, moving:
 	rl.DrawTexturePro(view.light_tex,{0,0,256,256},dst,{0,0},0,rl.Fade(rl.BLACK,alpha))
 }
 
+@(private = "file")
+draw_miniboss_ground_seal :: proc(feet: Vec2, color: rl.Color, world_time: f32, stable_id: u32) {
+	center := rl.Vector2(world_from_tile(feet))
+	phase := world_time*.52 + visual_miniboss_effect_phase(stable_id)*math.TAU
+	pulse := .72 + .14*math.sin(world_time*2.2+phase)
+	rx,ry := f32(21),f32(10.5)
+	rl.BeginBlendMode(.ADDITIVE)
+	rl.DrawEllipse(i32(center.x),i32(center.y),rx,ry,rl.Fade(color,.10*pulse))
+	rl.DrawEllipseLinesV(center,rx,ry,rl.Fade(color,.26*pulse))
+	for index in 0..<8 {
+		start_angle := phase + f32(index)*math.TAU/8 + .10
+		end_angle := start_angle + .38
+		start := center+rl.Vector2{math.cos(start_angle)*rx,math.sin(start_angle)*ry}
+		finish := center+rl.Vector2{math.cos(end_angle)*rx,math.sin(end_angle)*ry}
+		rl.DrawLineEx(start,finish,1.35,rl.Fade(color,.72*pulse))
+	}
+	rl.EndBlendMode()
+}
+
+@(private = "file")
+draw_miniboss_sprite_halo :: proc(tex: rl.Texture2D, src, dst: rl.Rectangle, effect: Miniboss_Sprite_Effect) {
+	if !effect.enabled do return
+	phase := visual_miniboss_effect_phase(effect.stable_id)*math.TAU
+	pulse := .78+.22*math.sin(effect.world_time*2.2+phase)
+	offsets := [8]rl.Vector2{
+		{-1.15,0},{1.15,0},{0,-1.15},{0,1.15},
+		{-.8,-.8},{.8,-.8},{-.8,.8},{.8,.8},
+	}
+	rl.BeginBlendMode(.ADDITIVE)
+	for offset in offsets {
+		shifted := dst
+		shifted.x += offset.x
+		shifted.y += offset.y
+		rl.DrawTexturePro(tex,src,shifted,{0,0},0,rl.Fade(effect.color,.065*pulse))
+	}
+	rl.EndBlendMode()
+}
+
+@(private = "file")
+draw_miniboss_sprite_foil :: proc(tex: rl.Texture2D, src, dst: rl.Rectangle, effect: Miniboss_Sprite_Effect) {
+	if !effect.enabled do return
+	// Four horizontal slices offset the narrow highlight into a stepped diagonal.
+	// Source and destination rectangles are cropped together, so transparent
+	// sprite pixels remain transparent without an extra mask texture or blur pass.
+	travel := visual_miniboss_foil_progress(effect.world_time,effect.stable_id)*1.6-.3
+	rl.BeginBlendMode(.ADDITIVE)
+	for row in 0..<4 {
+		y0 := f32(row)/4
+		y1 := f32(row+1)/4
+		ymid := (y0+y1)*.5
+		center := travel+(.5-ymid)*.34
+		x0 := max(f32(0),center-.075)
+		x1 := min(f32(1),center+.075)
+		if x1 <= x0 do continue
+		strip_src := rl.Rectangle{
+			src.x+src.width*x0,src.y+src.height*y0,
+			src.width*(x1-x0),src.height*(y1-y0),
+		}
+		strip_dst := rl.Rectangle{
+			dst.x+dst.width*x0,dst.y+dst.height*y0,
+			dst.width*(x1-x0),dst.height*(y1-y0),
+		}
+		rl.DrawTexturePro(tex,strip_src,strip_dst,{0,0},0,rl.Fade(effect.color,.30))
+
+		core_x0 := max(x0,center-.022)
+		core_x1 := min(x1,center+.022)
+		if core_x1 > core_x0 {
+			core_src := rl.Rectangle{
+				src.x+src.width*core_x0,src.y+src.height*y0,
+				src.width*(core_x1-core_x0),src.height*(y1-y0),
+			}
+			core_dst := rl.Rectangle{
+				dst.x+dst.width*core_x0,dst.y+dst.height*y0,
+				dst.width*(core_x1-core_x0),dst.height*(y1-y0),
+			}
+			rl.DrawTexturePro(tex,core_src,core_dst,{0,0},0,rl.Fade(rl.WHITE,.20))
+		}
+	}
+	rl.EndBlendMode()
+}
+
 // Draw an actor sprite anchored at its feet (a tile-space point). The returned
 // frame geometry is reused by the post-painter wall-ghost pass.
 @(private = "file")
-draw_actor :: proc(assets: ^Assets, sprites: ^Actor_Sprites, clip_kind: Clip_Kind, facing: Vec2, time: f32, feet: Vec2, tint: rl.Color, flash: f32) -> (tex: rl.Texture2D, src, dst: rl.Rectangle, drawn: bool) {
+draw_actor :: proc(
+	assets: ^Assets,
+	sprites: ^Actor_Sprites,
+	clip_kind: Clip_Kind,
+	facing: Vec2,
+	time: f32,
+	feet: Vec2,
+	tint: rl.Color,
+	flash: f32,
+	miniboss_effect := Miniboss_Sprite_Effect{},
+) -> (tex: rl.Texture2D, src, dst: rl.Rectangle, drawn: bool) {
 	if !sprites.loaded {
-		rl.DrawCircleV(rl.Vector2(world_from_tile(feet)), 10, COLOR_PLACEHOLDER)
+		center := rl.Vector2(world_from_tile(feet))
+		if miniboss_effect.enabled {
+			rl.BeginBlendMode(.ADDITIVE)
+			rl.DrawCircleV(center,14,rl.Fade(miniboss_effect.color,.24))
+			rl.EndBlendMode()
+		}
+		rl.DrawCircleV(center,10,COLOR_PLACEHOLDER)
 		return
 	}
 	clip := sprites.clips[clip_kind]
@@ -2389,10 +2525,12 @@ draw_actor :: proc(assets: ^Assets, sprites: ^Actor_Sprites, clip_kind: Clip_Kin
 	w := rl.Vector2(world_from_tile(feet))
 	dst = {w.x - sprites.anchor.x * size, w.y - sprites.anchor.y * size, size, size}
 	tex = clip.tex
-	rl.DrawTexturePro(tex, src, dst, {0, 0}, 0, tint)
+	draw_miniboss_sprite_halo(tex,src,dst,miniboss_effect)
+	rl.DrawTexturePro(tex,src,dst,{0,0},0,tint)
+	draw_miniboss_sprite_foil(tex,src,dst,miniboss_effect)
 	if flash > 0 {
 		rl.BeginBlendMode(.ADDITIVE)
-		rl.DrawTexturePro(tex, src, dst, {0, 0}, 0, rl.Fade(rl.WHITE, flash * 0.8))
+		rl.DrawTexturePro(tex,src,dst,{0,0},0,rl.Fade(rl.WHITE,flash*.8))
 		rl.EndBlendMode()
 	}
 	drawn = true
@@ -2509,9 +2647,20 @@ draw_enemy_bar :: proc(enemy: ^Enemy, sprites: ^Actor_Sprites, feet: Vec2) {
 	head := sprites.loaded ? sprites.canvas_world * sprites.anchor.y * 0.85 : 40
 	w := rl.Vector2(world_from_tile(feet))
 	frac := clamp(f32(enemy.hp) / f32(enemy.max_hp), 0, 1)
-	rl.DrawRectangleV({w.x - 12, w.y - head - 5}, {24, 3}, rl.Fade(rl.BLACK, 0.6))
-	rl.DrawRectangleV({w.x - 12, w.y - head - 5}, {24 * frac, 3}, rl.Color{200, 60, 50, 255})
-	pip_x := w.x - 12
+	miniboss := visual_miniboss_effect_enabled(enemy.role)
+	bar_width: f32 = miniboss ? 30 : 24
+	bar_height: f32 = miniboss ? 4 : 3
+	bar := rl.Rectangle{w.x-bar_width*.5,w.y-head-6,bar_width,bar_height}
+	rl.DrawRectangleRec(bar,rl.Fade(rl.BLACK,.68))
+	fill := bar
+	fill.width *= frac
+	rl.DrawRectangleRec(fill,rl.Color{200,60,50,255})
+	if miniboss {
+		accent := rl.Color(enemy.color)
+		rl.DrawRectangleLinesEx(bar,1,rl.Fade(accent,.82))
+		rl.DrawPoly({bar.x-4,bar.y+bar.height*.5},4,2.8,45,accent)
+	}
+	pip_x := bar.x
 	for status in Status_Kind {
 		if enemy.statuses[status] <= 0 do continue
 		rl.DrawRectangleV({pip_x, w.y-head-11}, {4,4}, rl.Color(STATUS_DEFS[status].color))

@@ -617,7 +617,7 @@ miniboss_chance :: proc(depth: int, bonus := f32(0)) -> f32 {
 	return clamp(0.015 + f32(depth) * 0.006 + bonus, 0, 0.22)
 }
 
-MINIBOSS_HP_MULT :: 1.85
+MINIBOSS_HP_MULT :: 2.5
 MINIBOSS_DAMAGE_BONUS :: 3
 MINIBOSS_XP_BONUS :: 34
 FLOOR_BOSS_HP_MULT :: 1.85

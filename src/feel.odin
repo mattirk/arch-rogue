@@ -221,7 +221,6 @@ feel_emit_enemy_slash :: proc(run: ^Run, pos, direction: Vec2, color: [4]u8) {
 feel_enemy_cast_color :: proc(run: ^Run, enemy: ^Enemy) -> [4]u8 {
 	if enemy == nil do return DAMAGE_TYPE_COLORS[.Arcane]
 	color := DAMAGE_TYPE_COLORS[enemy.damage_type]
-	if enemy.role == .Elite do color = mix_color_u8(color, {245,100,235,255}, .35)
 	if run != nil && (enemy.role == .Miniboss || enemy.role == .Boss) {
 		color = THEMES[clamp(run.theme_index, 0, len(THEMES)-1)].accent
 	}
