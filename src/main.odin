@@ -829,10 +829,12 @@ platform_rebuild_graphics :: proc(runtime:^Platform_Runtime,view:^View,assets:^A
 	if runtime==nil||view==nil||assets==nil||app==nil do return
 	target:=view.camera.target
 	base_zoom:=view.base_zoom
+	cursor_disabled:=view.cursor_disabled
 	view_shutdown(view)
 	assets_unload(assets)
 	assets_load(assets)
 	view_init(view)
+	view.cursor_disabled=cursor_disabled
 	if runtime.mobile&&!view_mobile_shader_preflight(view) do platform_log("ARCH_ROGUE_ANDROID_ERROR required GLES shaders failed after surface restore")
 	view.camera.target=target
 	view_apply_base_zoom(view,base_zoom)
@@ -922,6 +924,7 @@ Dev_Open_Panel :: enum u8 {
 Game_Boot_Config :: struct {
 	window_width:              int,
 	window_height:             int,
+	steam_deck:                bool,
 	seed:                      u64,
 	shot_path:                 string,
 	shot_frame:                int,
@@ -1118,6 +1121,7 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 	}
 	rt.app.minimap_visible = rt.app.options.minimap_visible
 	view_init(&rt.view)
+	rt.view.cursor_disabled = config.steam_deck
 	platform_bind_view_layout(&rt.platform, &rt.view)
 	if rt.platform.mobile && !view_mobile_shader_preflight(&rt.view) {
 		platform_log("ARCH_ROGUE_ANDROID_ERROR required GLES shaders failed preflight")

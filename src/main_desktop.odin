@@ -347,6 +347,7 @@ platform_report_line :: proc(line: string) {
 @(private = "file")
 game_boot_config_from_env :: proc() -> Game_Boot_Config {
 	config := game_boot_config_default()
+	config.steam_deck = os.get_env("SteamDeck", context.temp_allocator) == "1"
 	if value := os.get_env("ARCH_ROGUE_CAPTURE_WIDTH", context.temp_allocator); value != "" {
 		if parsed, ok := strconv.parse_int(value); ok do config.window_width = clamp(parsed, 640, 7680)
 	}

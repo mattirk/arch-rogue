@@ -63,6 +63,7 @@ View :: struct {
 	ghost_floor_epoch: u32,
 	ghost_weights: [MAX_GHOST_WEIGHT_TRACKS]Ghost_Weight,
 	ghost_weight_count: int,
+	cursor_disabled:       bool,
 	mobile_mode:           bool,
 	mobile_layout:         Mobile_Layout,
 	mobile_layout_valid:   bool,
@@ -405,6 +406,10 @@ cursor_draw_scale :: proc() -> f32 {
 @(private = "file")
 draw_custom_cursor :: proc(view: ^View, app: ^App, assets: ^Assets) {
 	if view == nil || app == nil || assets == nil do return
+	if view.cursor_disabled {
+		rl.HideCursor()
+		return
+	}
 	custom_cursor_active := !view.mobile_mode && assets.ui_cursor.id != 0
 	if !custom_cursor_active {
 		if !view.mobile_mode do rl.ShowCursor()
