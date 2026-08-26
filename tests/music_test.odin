@@ -63,7 +63,7 @@ music_mixes_document_parses_and_references_real_files :: proc(t: ^testing.T) {
 		testing.expect(t,
 			dungeon.tracks[3].file == "lead_harp_two.ogg" && dungeon.tracks[3].condition == .Dungeon_Quest_Music &&
 			abs(dungeon.tracks[3].pan - 0.6) < 1e-5,
-			"the second harp must use the Quest proximity stem group and pan 60% right",
+			"the second harp must alternate in base Dungeon, join the Quest proximity group, and pan 60% right",
 		)
 		testing.expect(t,
 			dungeon.tracks[4].file == "lead_harp_three.ogg" &&
@@ -317,8 +317,22 @@ music_dungeon_quest_harp_follows_room_distance_and_reaches_full_inside :: proc(t
 	primary := ar.Music_Mix_Track{condition = .Dungeon_Primary_Harp}
 	second := ar.Music_Mix_Track{condition = .Dungeon_Quest_Music}
 	third := ar.Music_Mix_Track{condition = .Dungeon_Quest_Garden_Harp}
+	base_runtime: ar.Music_Runtime_State
+	testing.expect(t, ar.music_track_runtime_gain(primary, base_runtime, 0) == 1 &&
+		ar.music_track_runtime_gain(second, base_runtime, 0) == 0,
+		"base Dungeon cycle zero must play only lead_harp")
+	testing.expect(t, ar.music_track_runtime_gain(primary, base_runtime, 1) == 0 &&
+		ar.music_track_runtime_gain(second, base_runtime, 1) == 0,
+		"base Dungeon cycle one must contain no harp")
+	testing.expect(t, ar.music_track_runtime_gain(primary, base_runtime, 2) == 0 &&
+		ar.music_track_runtime_gain(second, base_runtime, 2) == 1,
+		"base Dungeon cycle two must play only lead_harp_two")
+	testing.expect(t, ar.music_track_runtime_gain(primary, base_runtime, 3) == 0 &&
+		ar.music_track_runtime_gain(second, base_runtime, 3) == 0,
+		"base Dungeon cycle three must contain no harp")
+
 	runtime := ar.Music_Runtime_State{dungeon_quest_harp_gain = 1}
-	for cycle in 0 ..= 1 {
+	for cycle in 0 ..< 4 {
 		testing.expect(t, ar.music_track_runtime_gain(primary, runtime, cycle) == 1 &&
 			ar.music_track_runtime_gain(second, runtime, cycle) == 1 &&
 			ar.music_track_runtime_gain(third, runtime, cycle) == 1,

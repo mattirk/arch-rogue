@@ -472,14 +472,16 @@ music_track_runtime_gain :: proc(track: Music_Mix_Track, runtime: Music_Runtime_
 		garden_duck := 1 - garden_gain
 		spatial_duck := bar_duck * garden_duck
 		quest_gain := clamp(runtime.dungeon_quest_harp_gain, 0, 1)
-		alternate_gain: f32 = cycle % 2 == 0 ? 1 : 0
+		primary_harp_gain: f32 = cycle % 4 == 0 ? 1 : 0
+		secondary_harp_gain: f32 = cycle % 4 == 2 ? 1 : 0
+		garden_alternate_gain: f32 = cycle % 2 == 0 ? 1 : 0
 		if track.condition == .Dungeon_Default_Music do return spatial_duck
-		if track.condition == .Dungeon_Primary_Harp do return max(alternate_gain, quest_gain) * spatial_duck
+		if track.condition == .Dungeon_Primary_Harp do return max(primary_harp_gain, quest_gain) * spatial_duck
 		if track.condition == .Dungeon_Elite_Music do return clamp(runtime.dungeon_elite_horn_gain, 0, 1) * spatial_duck
-		if track.condition == .Dungeon_Quest_Music do return quest_gain * spatial_duck
+		if track.condition == .Dungeon_Quest_Music do return max(secondary_harp_gain, quest_gain) * spatial_duck
 		if track.condition == .Dungeon_Quest_Garden_Harp {
 			quest_component := quest_gain * spatial_duck
-			garden_component := garden_gain * alternate_gain * 0.5
+			garden_component := garden_gain * garden_alternate_gain * 0.5
 			return max(quest_component, garden_component)
 		}
 		if track.condition == .Dungeon_Bar_Music do return clamp(runtime.dungeon_bar_gain, 0, 1) * garden_duck
