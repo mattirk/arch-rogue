@@ -99,6 +99,9 @@ m9_option_defaults_normalize_and_cycle :: proc(t: ^testing.T) {
 	testing.expect(t, options.difficulty == .Medium)
 	testing.expect(t, options.controller_enabled && options.audio_enabled && options.lighting_enabled)
 	testing.expect(t, options.sfx_volume == .Percent_40 && options.music_volume == .Full)
+	mobile_options := ar.options_default()
+	ar.options_apply_mobile_fresh_defaults(&mobile_options)
+	testing.expect(t, m9_near(mobile_options.view_zoom, 2.0), "fresh mobile options must default to 2x zoom")
 	ar.options_cycle_sfx_volume(&options, -1)
 	ar.options_cycle_music_volume(&options, -1)
 	testing.expect(t, options.sfx_volume == .Percent_30 && options.music_volume == .Percent_90,

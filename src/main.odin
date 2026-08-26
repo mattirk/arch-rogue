@@ -1032,7 +1032,10 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 
 	app_init(&rt.app, config.seed)
 	platform_runtime_init(&rt.platform, rt.app.mode)
-	if rt.platform.mobile do rt.app.input_modality = .Touch
+	if rt.platform.mobile {
+		rt.app.input_modality = .Touch
+		options_apply_mobile_fresh_defaults(&rt.app.options)
+	}
 
 	rt.fixed_capture = config.capture_scenario != .None || config.mx7_capture_scenario != .None ||
 		config.mx_story_capture_scenario != .None || config.mx_save_capture_scenario != .None

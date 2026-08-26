@@ -237,9 +237,10 @@ FRAME_RATE_CAP_LABELS := [Frame_Rate_Cap]string{
 // Camera zoom is inverse to viewing height: smaller values show more world.
 // Default to a wider 1.3 view, retain the 4.0 close-view cap, and allow a
 // 0.8125 high/wide view that spans roughly twice the former 1.625 minimum.
-OPTIONS_VIEW_ZOOM_DEFAULT :: f32(1.3)
-OPTIONS_VIEW_ZOOM_MIN     :: f32(0.8125)
-OPTIONS_VIEW_ZOOM_MAX     :: f32(4.0)
+OPTIONS_VIEW_ZOOM_DEFAULT        :: f32(1.3)
+OPTIONS_MOBILE_VIEW_ZOOM_DEFAULT :: f32(2.0)
+OPTIONS_VIEW_ZOOM_MIN            :: f32(0.8125)
+OPTIONS_VIEW_ZOOM_MAX            :: f32(4.0)
 OPTIONS_VIEW_ZOOM_STEP    :: f32(1.12)
 
 // SFX and music use the same discrete 0-100% master scale. Persisting an enum
@@ -355,6 +356,13 @@ view_zoom_cycle :: proc(zoom: f32, direction: int = 1) -> f32 {
 	if direction == 0 do return current
 	factor := direction > 0 ? OPTIONS_VIEW_ZOOM_STEP : 1 / OPTIONS_VIEW_ZOOM_STEP
 	return view_zoom_normalize(current * factor)
+}
+
+// Applied only before persistence loading, so an existing mobile user's saved
+// zoom always wins over this fresh-install platform default.
+options_apply_mobile_fresh_defaults :: proc(options: ^Options) {
+	if options == nil do return
+	options.view_zoom = OPTIONS_MOBILE_VIEW_ZOOM_DEFAULT
 }
 
 options_normalize :: proc(options: ^Options, hell_unlocked := false) {
