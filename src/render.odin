@@ -1723,7 +1723,9 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 			motion := &keeper.motion
 			facing := motion.facing
 			if facing == {} do facing = {1,1}
-			clip,clip_time := room_npc_visual_clip(motion,&assets.lossless_soul,world_time)
+			clip,clip_time := visual_lossless_soul_clip(
+				keeper.armed,motion.moving,motion.dancing,motion.anim_time,world_time,
+			)
 			accent := story_world_accent(&app.run)
 			w := rl.Vector2(world_from_tile(item.feet))
 			pulse := .5 + .5 * math.sin(world_time*2.4+item.feet.y)

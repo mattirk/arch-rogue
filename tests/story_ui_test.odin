@@ -25,6 +25,19 @@ mx_story_panel_geometry_is_compact_readable_and_shared_with_hit_testing :: proc(
 		width, height := resolution.x, resolution.y
 		layout := ar.story_panel_ui_layout(width, height, ar.STORY_CHOICE_COUNT)
 		body_fonts[resolution_index] = layout.body_font
+		soul_app:ar.App
+		soul_app.story_panel={active=true,kind=.Soul,node=.Soul_Reflection}
+		reflection:=ar.story_modal_layout(&soul_app,width,height).panel
+		soul_app.story_panel.node=.Soul_Settled
+		settled:=ar.story_modal_layout(&soul_app,width,height).panel
+		testing.expectf(t,reflection.choice_count==ar.STORY_CHOICE_COUNT&&settled.choice_count==0,
+			"%vx%v Soul completion must reserve choice geometry without exposing rows",width,height)
+		testing.expectf(t,settled.portrait==reflection.portrait,
+			"%vx%v Soul completion moved or resized the relic socket container",width,height)
+		testing.expectf(t,settled.speaker==reflection.speaker&&settled.narration==reflection.narration,
+			"%vx%v Soul completion text no longer shares normal quest-cutscene placement",width,height)
+		testing.expectf(t,story_ui_non_overlapping(settled.portrait,settled.narration),
+			"%vx%v Soul completion relic container is not left of its text",width,height)
 
 		testing.expectf(t, ar.story_ui_rect_contains_rect(layout.viewport, layout.panel), "%vx%v panel escaped its viewport", width, height)
 		testing.expectf(t, layout.panel.width < f32(width) && layout.panel.height < f32(height), "%vx%v modal must leave live-game framing visible", width, height)

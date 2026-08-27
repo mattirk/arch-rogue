@@ -2496,6 +2496,23 @@ story_minigame_ui_layout :: proc(
 	return
 }
 
+@(private = "file")
+story_panel_layout_for_app :: proc(
+	app: ^App,
+	viewport_w, viewport_h, choice_count: int,
+) -> Story_Panel_UI_Layout {
+	geometry_choice_count := choice_count
+	if app != nil && app.story_panel.node == .Soul_Settled && choice_count == 0 {
+		// Completion has no selectable rows, but its portrait/socket and narration
+		// must stay in the same upper content rail as the preceding three-choice
+		// Soul reflection instead of expanding into the empty row area.
+		geometry_choice_count = STORY_CHOICE_COUNT
+	}
+	layout := story_panel_ui_layout(viewport_w,viewport_h,geometry_choice_count)
+	layout.choice_count = choice_count
+	return layout
+}
+
 story_modal_layout :: proc(app: ^App, viewport_w, viewport_h: int) -> (layout: Story_Modal_Layout) {
 	if app == nil do return
 	if app_story_minigame_active(app) && !app_story_soul_hunt_active(app) {
@@ -2509,7 +2526,7 @@ story_modal_layout :: proc(app: ^App, viewport_w, viewport_h: int) -> (layout: S
 	if app_story_panel_active(app) {
 		choices := app_story_panel_choices(app)
 		layout.kind = .Panel
-		layout.panel = story_panel_ui_layout(viewport_w, viewport_h, choices.count)
+		layout.panel = story_panel_layout_for_app(app,viewport_w,viewport_h,choices.count)
 	}
 	return
 }
@@ -2543,7 +2560,7 @@ story_panel_choice_at :: proc(
 ) -> (index: int, found: bool) {
 	if !app_story_panel_active(app) do return 0, false
 	choices := app_story_panel_choices(app)
-	layout := story_panel_ui_layout(viewport_w, viewport_h, choices.count)
+	layout := story_panel_layout_for_app(app,viewport_w,viewport_h,choices.count)
 	return story_panel_ui_choice_at(&layout, point)
 }
 
@@ -2580,7 +2597,7 @@ story_modal_hit_test :: proc(
 	}
 	if app_story_panel_active(app) {
 		choices := app_story_panel_choices(app)
-		layout := story_panel_ui_layout(viewport_w, viewport_h, choices.count)
+		layout := story_panel_layout_for_app(app,viewport_w,viewport_h,choices.count)
 		if app_story_panel_narration_complete(app) {
 			if row, found := story_panel_ui_choice_at(&layout, point); found {
 				return {.Choice, row}

@@ -74,6 +74,16 @@ visual_wall_ghost_rejects_grazes_and_ramps_real_occlusion :: proc(t: ^testing.T)
 visual_idle_clock_animates_without_touching_locomotion_phase :: proc(t: ^testing.T) {
 	testing.expect(t,ar.visual_idle_clip_time(1,4)>ar.visual_idle_clip_time(.5,4),"idle render clock must advance with world time")
 	testing.expect(t,ar.visual_idle_clip_time(1,4)!=ar.visual_idle_clip_time(1,5),"stable actor IDs should de-sync idle phases")
+	clip,clip_time:=ar.visual_lossless_soul_clip(false,false,false,3,4)
+	testing.expect(t,clip==.Dance&&clip_time==0,"unresolved waiting Soul must retain its deliberate still pose")
+	clip,clip_time=ar.visual_lossless_soul_clip(true,false,false,3,4)
+	testing.expect(t,clip==.Dance&&clip_time==4,"armed Soul must loop its only idle-capable clip after Mistbound")
+	_,next_time:=ar.visual_lossless_soul_clip(true,false,false,3,5)
+	testing.expect(t,next_time>clip_time,"armed Soul idle animation must advance with the world presentation clock")
+	clip,clip_time=ar.visual_lossless_soul_clip(true,true,false,3,4)
+	testing.expect(t,clip==.Walk&&clip_time==3,"armed Soul locomotion must retain its simulation animation clock")
+	clip,clip_time=ar.visual_lossless_soul_clip(false,false,true,3,4)
+	testing.expect(t,clip==.Dance&&clip_time==3,"explicit pre-verdict gestures must retain their simulation animation clock")
 	testing.expect(t,ar.VISUAL_WALL_PAINTER_DEPTH_OFFSET>1,"walls/doors must deterministically paint after same-tile actors")
 }
 

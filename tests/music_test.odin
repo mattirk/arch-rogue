@@ -670,7 +670,7 @@ music_mistbound_wait_uses_current_loop_unless_under_five_seconds_remain :: proc(
 	ar.music_director_update(&director, &library, ar.MUSIC_MIX_SOUL_HUNT_WAIT, 0)
 	ar.music_director_update(&director, &library, ar.MUSIC_MIX_SOUL_HUNT_WAIT, 5000)
 	testing.expect(t, !ar.music_mistbound_wait_update(&director, &library, &app) &&
-		director.mistbound_wait.target_cycle == 1,
+		director.mistbound_wait.target_clock_ms == 10000,
 		"exactly five seconds remaining must finish the current loop")
 	remaining_ms, total_ms := ar.music_mistbound_wait_progress_ms(&director, &library)
 	testing.expect(t, remaining_ms == 5000 && total_ms == 5000,
@@ -701,20 +701,23 @@ music_mistbound_wait_uses_current_loop_unless_under_five_seconds_remain :: proc(
 	ar.music_director_update(&director, &library, ar.MUSIC_MIX_SOUL_HUNT_WAIT, 0)
 	ar.music_director_update(&director, &library, ar.MUSIC_MIX_SOUL_HUNT_WAIT, 5001)
 	testing.expect(t, !ar.music_mistbound_wait_update(&director, &library, &app) &&
-		director.mistbound_wait.target_cycle == 2,
-		"less than five seconds remaining must schedule one additional full loop")
+		director.mistbound_wait.target_clock_ms == 15000,
+		"less than five seconds remaining must target the following loop midpoint")
 	remaining_ms, total_ms = ar.music_mistbound_wait_progress_ms(&director, &library)
-	testing.expect(t, remaining_ms == 14999 && total_ms == 14999,
-		"the visible wait timer must include the short remainder and next complete loop")
+	testing.expect(t, remaining_ms == 9999 && total_ms == 9999,
+		"the visible wait timer must include the short remainder and half the next loop")
 	ar.music_director_update(&director, &library, ar.MUSIC_MIX_SOUL_HUNT_WAIT, 4999)
 	testing.expect(t, !ar.music_mistbound_wait_update(&director, &library, &app),
 		"the near boundary must retain kellopeli_one for the next complete loop")
 	remaining_ms, total_ms = ar.music_mistbound_wait_progress_ms(&director, &library)
-	testing.expect(t, remaining_ms == 10000 && total_ms == 14999,
-		"the visible wait timer must show one full loop after the near wrap")
-	ar.music_director_update(&director, &library, ar.MUSIC_MIX_SOUL_HUNT_WAIT, 10000)
+	testing.expect(t, remaining_ms == 5000 && total_ms == 9999,
+		"the visible wait timer must show half a loop after the near wrap")
+	ar.music_director_update(&director, &library, ar.MUSIC_MIX_SOUL_HUNT_WAIT, 5000)
 	testing.expect(t, ar.music_mistbound_wait_update(&director, &library, &app),
-		"the additional complete loop boundary must release the chase")
+		"the following loop midpoint must release the chase")
+	beat = music_slot_for(&director,"beat_low.ogg")
+	testing.expect(t,beat!=nil&&beat.start_pending&&beat.seek_ms==5000,
+		"new hunt stems must enter at the authored loop midpoint")
 }
 
 @(test)

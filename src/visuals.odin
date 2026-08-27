@@ -104,6 +104,20 @@ visual_idle_clip_time :: proc(world_time: f32, stable_id: u32 = 0) -> f32 {
 	return world_time + f32(stable_id % 17) * .137
 }
 
+// The Lossless Soul has authored Walk and Dance clips but no Idle clip. Before
+// a verdict, Waiting deliberately holds Dance frame zero between ambient
+// gestures. Once armed as an ally, the same looping Dance clip becomes its idle
+// animation so settling the Mistbound result cannot leave the NPC frozen.
+visual_lossless_soul_clip :: proc(
+	armed, moving, dancing: bool,
+	anim_time, world_time: f32,
+) -> (clip: Clip_Kind, clip_time: f32) {
+	if moving do return .Walk,anim_time
+	if dancing do return .Dance,anim_time
+	if armed do return .Dance,world_time
+	return .Dance,0
+}
+
 VISUAL_MINIBOSS_FOIL_PERIOD :: f32(3.4)
 
 visual_miniboss_effect_enabled :: proc(role: Enemy_Role) -> bool {

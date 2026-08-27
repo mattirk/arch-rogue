@@ -38,17 +38,20 @@ behavior, fresh-install mobile zoom, and default SFX balance.
   sprite, chamber-specific mist field, apparition condensation and dissolution,
   additive capture fragments, score/miss/timer overlay, and two spatial capture
   cues make the chase readable. Hall chimes explain that walking scatters the
-  dead, and world text now renders after the lighting multiply so interaction
-  hints remain legible in darkness.
+  dead, the armed Lossless Soul now keeps its authored looping animation after
+  the hunt instead of freezing on Dance frame zero, and its no-choice completion
+  dialog retains the normal quest-cutscene relic container to the left of its
+  text instead of expanding into the absent choice rows. World text renders
+  after the lighting multiply so interaction hints remain legible in darkness.
 - **Adaptive Soul-room score.** `kellopeli_one` now fades in over the Hall's
   eight-tile approach while every Dungeon layer except `ambience_grim_bass` and
   `beat_low` fades out. Lossless Soul dialogue keeps that in-room arrangement
   rather than switching to Menu music. The chamber wait immediately plays
   `ambience_grim_bass + kellopeli_one + kellopeli_two` without the beat; if fewer
-  than five seconds remain it waits through one complete additional loop. The
+  than five seconds remain it waits through half of the following loop. The
   reused hunt bar visibly counts that wait down to zero, then the fixed-step
   chase hard-adds full-volume `beat_low`, 50% `ambience_choir`, and full-volume
-  `ambience_alasin` on the selected wrap. Missing tracks or a failed audio device degrade to immediate, playable
+  `ambience_alasin` at that loop midpoint. Missing tracks or a failed audio device degrade to immediate, playable
   silence rather than blocking the encounter.
 - **Live mixer and asset integration.** The music cache now supports 19 decoded
   phase-locked stems and 17 simultaneous transition slots. The Mistbound ghost

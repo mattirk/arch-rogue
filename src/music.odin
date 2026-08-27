@@ -23,6 +23,7 @@ MUSIC_GARDEN_FADE_SECONDS              :: f32(0.5)
 MUSIC_SOUL_ROOM_SILENT_DISTANCE_TILES  :: f32(8)
 MUSIC_SOUL_ROOM_FADE_SECONDS           :: f32(0.5)
 MUSIC_MISTBOUND_MIN_WAIT_MS            :: f64(5000)
+MUSIC_MISTBOUND_EXTRA_LOOP_SCALE       :: f64(0.5)
 MUSIC_BOSS_CHOIR_FADE_SECONDS          :: f32(0.5)
 MUSIC_MAX_SLOTS                        :: 17
 MUSIC_MIXES_DOCUMENT_PATH              :: "assets/audio/bgm/mixes.json"
@@ -593,10 +594,10 @@ Music_Slot :: struct {
 }
 
 Music_Mistbound_Wait :: struct {
-	instance_id:  int,
-	target_cycle: int,
-	total_ms:     f64,
-	released:     bool,
+	instance_id:    int,
+	target_clock_ms: f64,
+	total_ms:       f64,
+	released:       bool,
 }
 
 Music_Director :: struct {
@@ -718,9 +719,9 @@ music_enter_mix :: proc(
 
 // Arm the Mistbound chase against the currently audible Loop. Preview holds
 // both kellopeli stems with grim bass until the next wrap, unless less than five
-// seconds remain; in that case it deliberately waits through one additional
-// complete loop. The released mix is snapped on the chosen boundary so the low
-// beat, choir, and Alasin ambience enter with the chase at their authored levels.
+// seconds remain; in that case it waits through the first half of the following
+// loop. The released mix is snapped on the chosen phase so the low beat, choir,
+// and Alasin ambience enter with the chase at their authored levels.
 music_mistbound_wait_update :: proc(
 	director: ^Music_Director,
 	library: ^Music_Library,
@@ -738,15 +739,16 @@ music_mistbound_wait_update :: proc(
 	if wait.instance_id != instance_id {
 		phase_ms := clamp(music_phase_ms(director, library), 0, library.loop_ms)
 		remaining_ms := library.loop_ms - phase_ms
-		cycles_to_wait := remaining_ms < MUSIC_MISTBOUND_MIN_WAIT_MS ? 2 : 1
+		extra_ms := remaining_ms < MUSIC_MISTBOUND_MIN_WAIT_MS ? library.loop_ms*MUSIC_MISTBOUND_EXTRA_LOOP_SCALE : 0
+		target_clock_ms := f64(director.cycle+1)*library.loop_ms+extra_ms
 		wait^ = {
 			instance_id = instance_id,
-			target_cycle = director.cycle + cycles_to_wait,
-			total_ms = remaining_ms + f64(cycles_to_wait - 1) * library.loop_ms,
+			target_clock_ms = target_clock_ms,
+			total_ms = remaining_ms+extra_ms,
 		}
 	}
 	if wait.released do return true
-	if director.cycle < wait.target_cycle do return false
+	if director.clock_ms < wait.target_clock_ms do return false
 
 	music_enter_mix(
 		director,
@@ -769,7 +771,7 @@ music_mistbound_wait_progress_ms :: proc(
 	total_ms = max(wait.total_ms, 0)
 	if wait.released do return 0, total_ms
 	remaining_ms = clamp(
-		f64(wait.target_cycle) * library.loop_ms - director.clock_ms,
+		wait.target_clock_ms-director.clock_ms,
 		0,
 		total_ms,
 	)
