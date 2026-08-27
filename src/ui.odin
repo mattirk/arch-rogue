@@ -2498,7 +2498,7 @@ story_minigame_ui_layout :: proc(
 
 story_modal_layout :: proc(app: ^App, viewport_w, viewport_h: int) -> (layout: Story_Modal_Layout) {
 	if app == nil do return
-	if app_story_minigame_active(app) {
+	if app_story_minigame_active(app) && !app_story_soul_hunt_active(app) {
 		columns, _ := app_story_minigame_grid(app)
 		layout.kind = .Minigame
 		layout.minigame = story_minigame_ui_layout(
@@ -2552,7 +2552,7 @@ story_minigame_cell_at :: proc(
 	viewport_w, viewport_h: int,
 	point: Vec2,
 ) -> (index: int, found: bool) {
-	if !app_story_minigame_active(app) do return 0, false
+	if !app_story_minigame_active(app) || app_story_soul_hunt_active(app) do return 0, false
 	columns, _ := app_story_minigame_grid(app)
 	layout := story_minigame_ui_layout(viewport_w, viewport_h, app.story_minigame.board_count, columns)
 	return story_minigame_ui_cell_at(&layout, point)
@@ -2567,7 +2567,7 @@ story_modal_hit_test :: proc(
 	point: Vec2,
 ) -> Story_Modal_Hit {
 	if app == nil do return {}
-	if app_story_minigame_active(app) {
+	if app_story_minigame_active(app) && !app_story_soul_hunt_active(app) {
 		columns, _ := app_story_minigame_grid(app)
 		layout := story_minigame_ui_layout(viewport_w, viewport_h, app.story_minigame.board_count, columns)
 		if cell, found := story_minigame_ui_cell_at(&layout, point); found {
@@ -2619,10 +2619,7 @@ story_minigame_cell_view :: proc(
 			view.face_up = true
 			view.active = cell == state.active_cell
 		case .Mirror_The_Unlost:
-			view.face_up = view.matched
-			for index in 0 ..< state.revealed_count {
-				if state.revealed[index] == cell do view.face_up = true
-			}
+			// The mist chase is rendered in world space and has no modal cells.
 		case .None:
 		}
 	case .Result:

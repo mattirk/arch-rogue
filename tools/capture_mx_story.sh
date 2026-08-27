@@ -116,6 +116,7 @@ scenarios=(
   "relic_choices acolyte"
   "guest ranger"
   "soul warden"
+  "mistbound rogue"
   "ending arcanist"
 )
 resolutions=(

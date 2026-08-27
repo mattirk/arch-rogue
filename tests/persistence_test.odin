@@ -419,6 +419,79 @@ mx_save_busy_run_round_trip_restores_danger_story_and_rng :: proc(t:^testing.T) 
 }
 
 @(test)
+mx_save_active_soul_hunt_round_trip_preserves_floor_until_exact_return :: proc(t:^testing.T) {
+	source:=mx_save_start_app(0x5A7E51)
+	defer mx_save_destroy_app(&source)
+	ar.app_story_close_panel(&source)
+	source.run.depth=7
+	source.run.story_runtime.hall={seen=true,met=true,room_index=0,verdict=.Release}
+	source.run.story_runtime.hall_ledgers[6]={valid=true,met=true,room_index=0,verdict=.Release}
+	origin:=source.run.player.pos
+	source.run.player.dash_timer=.61
+	stairs:=source.run.dungeon.stairs
+	source.run.story_runtime.relic={
+		relic=source.run.story.relic,depth=source.run.depth,
+		position={f32(stairs.x)+.5,f32(stairs.y)+.5},present=true,guidance=true,
+	}
+	ar.refresh_visibility(&source.run)
+	ar.story_refresh_relic_guidance(&source.run)
+	testing.expect(t,len(source.run.story_runtime.guidance_path)>0,"hunt save fixture needs live real-floor guidance")
+	explored_before:=source.run.explored
+	dungeon_before:=source.run.dungeon
+	loot_before,combat_before:=source.run.loot_rng,source.run.combat_rng
+	enemy_count:=len(source.run.enemies)
+	first_enemy_hp,first_enemy_pos:=0,ar.Vec2{}
+	if enemy_count>0 {first_enemy_hp=source.run.enemies[0].hp;first_enemy_pos=source.run.enemies[0].pos}
+	testing.expect(t,ar.app_story_start_mirror_the_unlost(&source,0),"active hunt save fixture did not start")
+	source.story_soul_hunt_music_ready=true
+	for _ in 0..<8 {
+		if source.story_minigame.phase==.Play do break
+		_=ar.story_soul_hunt_tick(&source,{},.25)
+	}
+	testing.expect(t,ar.story_soul_hunt_state_valid(&source.run,&source.story_minigame),"active hunt save fixture is invalid")
+
+	data,encoded:=ar.persistence_encode_run(&source,31,"2026-08-17T10:01:00Z")
+	testing.expect(t,encoded,"active hunt must encode")
+	if !encoded do return
+	defer delete(data)
+	document,status:=ar.persistence_decode_run(data)
+	testing.expect(t,status==.Valid,"active hunt document must decode")
+	defer ar.run_document_destroy(&document)
+	restored:ar.App
+	ar.app_init(&restored,999)
+	defer ar.run_destroy(&restored.run)
+	testing.expect(t,ar.app_install_run_document(&restored,&document),"active hunt document must install")
+	testing.expect(t,ar.app_story_soul_hunt_active(&restored)&&
+		ar.story_soul_hunt_state_valid(&restored.run,&restored.story_minigame),
+		"installed hunt must remain active and semantically valid")
+	testing.expect(t,restored.run.player.pos==source.run.player.pos&&restored.run.explored==explored_before,
+		"restore must not reveal the real dungeon from virtual-room coordinates")
+	testing.expect(t,restored.run.dungeon==dungeon_before&&restored.run.loot_rng==loot_before&&restored.run.combat_rng==combat_before,
+		"active hunt restore changed real-floor geometry or RNG")
+	testing.expect(t,len(restored.run.story_runtime.guidance_path)==0,
+		"virtual-room restore must defer derived guidance until return")
+
+	restored.mode=.Playing
+	for _ in 0..<10 do ar.app_tick(&restored)
+	testing.expect(t,len(restored.run.enemies)==enemy_count&&restored.run.loot_rng==loot_before&&restored.run.combat_rng==combat_before,
+		"real-floor entities or RNG advanced behind a restored hunt")
+	if enemy_count>0 do testing.expect(t,restored.run.enemies[0].hp==first_enemy_hp&&restored.run.enemies[0].pos==first_enemy_pos,
+		"real-floor enemy state advanced behind a restored hunt")
+	restored.story_minigame.phase=.Result
+	restored.story_minigame.outcome=.Lost
+	restored.story_minigame.active_cell=-1
+	restored.story_minigame.result_time=0
+	testing.expect(t,ar.app_story_finalize_minigame(&restored),"restored hunt result did not finalize")
+	testing.expect(t,restored.run.player.pos==origin&&restored.run.player.prev_pos==origin&&restored.run.player.dash_timer==.61,
+		"restored hunt must return exact position and pre-hunt dash cooldown")
+	testing.expect(t,restored.run.explored==explored_before&&restored.run.visible[int(origin.x)][int(origin.y)],
+		"real-floor visibility must rebuild from the restored return position")
+	testing.expect(t,len(restored.run.story_runtime.guidance_path)>0&&
+		restored.run.story_runtime.guidance_path[0]==[2]int{int(origin.x),int(origin.y)},
+		"real-floor guidance must rebuild only after return")
+}
+
+@(test)
 mx_save_failed_restore_never_partially_mutates_app :: proc(t:^testing.T) {
 	app:=mx_save_start_app(0xBAD5A7E)
 	defer mx_save_destroy_app(&app)

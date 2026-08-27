@@ -15,6 +15,7 @@ Sfx_Bank :: enum {
 	Victory,
 	Story_Consequence,
 	Relic_Recovered,
+	Mistbound_Ghost_Capture,
 	Epilogue_Bell,
 	Melee_Swing_Warden,
 	Melee_Swing_Rogue,

@@ -44,6 +44,7 @@ SFX_BANK_DEFS := [Sfx_Bank]Sfx_Bank_Def{
 	.Victory={key="victory",variant_count=3,gain=0.82,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
 	.Story_Consequence={key="story_consequence",variant_count=3,gain=0.7,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
 	.Relic_Recovered={key="relic_recovered",variant_count=2,gain=0.72,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
+	.Mistbound_Ghost_Capture={key="mistbound_ghost_capture",variant_count=2,gain=0.66,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
 	.Epilogue_Bell={key="epilogue_bell",variant_count=1,gain=0.72,pitch_min=1.0,pitch_max=1.0,cooldown_s=0.04,priority=10,polyphony=2,spatial=false,max_distance=0},
 	.Melee_Swing_Warden={key="melee_swing_warden",variant_count=3,gain=0.72,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
 	.Melee_Swing_Rogue={key="melee_swing_rogue",variant_count=3,gain=0.66,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.04,priority=10,polyphony=2,spatial=true,max_distance=10},
@@ -135,7 +136,7 @@ SFX_BANK_DEFS := [Sfx_Bank]Sfx_Bank_Def{
 	.Step_Creature_Heavy={key="step_creature_heavy",variant_count=3,gain=0.5,pitch_min=0.97,pitch_max=1.03,cooldown_s=0.09,priority=2,polyphony=4,spatial=true,max_distance=10},
 }
 
-MUSIC_MAX_ASSETS  :: 17
+MUSIC_MAX_ASSETS  :: 19
 MUSIC_SAMPLE_RATE :: 48_000
 MUSIC_CHANNELS    :: 2
 MUSIC_SAMPLE_SIZE :: 16
@@ -327,6 +328,8 @@ audio_sfx_bank_is_core :: proc(bank: Sfx_Bank) -> bool {
 
 audio_sfx_fallback_bank :: proc(bank: Sfx_Bank) -> Sfx_Bank {
 	#partial switch bank {
+	case .Mistbound_Ghost_Capture:
+		return .Relic_Recovered
 	case .Melee_Swing_Warden, .Melee_Swing_Rogue, .Melee_Swing_Acolyte, .Melee_Swing_Ranger:
 		return .Melee_Swing_Arcanist
 	case .Dash_Armored, .Dash_Arcane, .Dash_Occult:

@@ -49,45 +49,104 @@ music_mixes_document_parses_and_references_real_files :: proc(t: ^testing.T) {
 		return
 	}
 	testing.expect(t, dungeon.crossfade_ms == 1000, "transitions into dungeon must crossfade for 1 second")
-	testing.expect(t, len(dungeon.tracks) == 10, "dungeon must expose all ten live stems")
-	if len(dungeon.tracks) == 10 {
+	testing.expect(t, len(dungeon.tracks) == 11, "dungeon must expose all eleven live stems")
+	if len(dungeon.tracks) == 11 {
 		testing.expect(t, dungeon.tracks[0].file == "ambience_grim_bass.ogg" && dungeon.tracks[0].condition == .Always,
 			"dungeon grim bass must remain outside spatial-room ducking")
-		testing.expect(t, dungeon.tracks[1].file == "beat_low.ogg" && dungeon.tracks[1].condition == .Always,
-			"dungeon low beat must remain outside spatial-room ducking")
+		testing.expect(t, dungeon.tracks[1].file == "beat_low.ogg" && dungeon.tracks[1].condition == .Dungeon_Low_Beat,
+			"dungeon low beat must remain independently controllable and audible in the Soul room")
 		testing.expect(t,
-			dungeon.tracks[2].file == "lead_harp.ogg" && dungeon.tracks[2].condition == .Dungeon_Primary_Harp &&
-			abs(dungeon.tracks[2].pan + 0.6) < 1e-5 && !dungeon.tracks[2].alternate,
+			dungeon.tracks[2].file == "kellopeli_one.ogg" && dungeon.tracks[2].condition == .Dungeon_Soul_Room_Music,
+			"kellopeli_one must use the Soul-room proximity envelope",
+		)
+		testing.expect(t,
+			dungeon.tracks[3].file == "lead_harp.ogg" && dungeon.tracks[3].condition == .Dungeon_Primary_Harp &&
+			abs(dungeon.tracks[3].pan + 0.6) < 1e-5 && !dungeon.tracks[3].alternate,
 			"the original harp must use its Quest-aware runtime alternation rule and pan 60% left",
 		)
 		testing.expect(t,
-			dungeon.tracks[3].file == "lead_harp_two.ogg" && dungeon.tracks[3].condition == .Dungeon_Quest_Music &&
-			abs(dungeon.tracks[3].pan - 0.6) < 1e-5,
+			dungeon.tracks[4].file == "lead_harp_two.ogg" && dungeon.tracks[4].condition == .Dungeon_Quest_Music &&
+			abs(dungeon.tracks[4].pan - 0.6) < 1e-5,
 			"the second harp must alternate in base Dungeon, join the Quest proximity group, and pan 60% right",
 		)
 		testing.expect(t,
-			dungeon.tracks[4].file == "lead_harp_three.ogg" &&
-			dungeon.tracks[4].condition == .Dungeon_Quest_Garden_Harp && dungeon.tracks[4].volume == 1,
+			dungeon.tracks[5].file == "lead_harp_three.ogg" &&
+			dungeon.tracks[5].condition == .Dungeon_Quest_Garden_Harp && dungeon.tracks[5].volume == 1,
 			"the third harp must serve the full Quest arrangement with Garden attenuation applied at runtime",
 		)
-		testing.expect(t, dungeon.tracks[5].file == "lead_pad.ogg" && dungeon.tracks[5].condition == .Dungeon_Default_Music,
+		testing.expect(t, dungeon.tracks[6].file == "lead_pad.ogg" && dungeon.tracks[6].condition == .Dungeon_Default_Music,
 			"the dungeon pad must use the default spatial stem group")
-		testing.expect(t, dungeon.tracks[6].file == "ambience_strings.ogg" && dungeon.tracks[6].condition == .Dungeon_Default_Music,
+		testing.expect(t, dungeon.tracks[7].file == "ambience_strings.ogg" && dungeon.tracks[7].condition == .Dungeon_Default_Music,
 			"the dungeon strings must use the default spatial stem group")
 		testing.expect(t,
-			dungeon.tracks[7].file == "lead_glorious_horn.ogg" && dungeon.tracks[7].condition == .Dungeon_Miniboss_Music &&
-			dungeon.tracks[7].volume == 0.7,
+			dungeon.tracks[8].file == "lead_glorious_horn.ogg" && dungeon.tracks[8].condition == .Dungeon_Miniboss_Music &&
+			dungeon.tracks[8].volume == 0.7,
 			"the glorious horn must use its miniboss proximity stem group at 70% volume",
 		)
 		testing.expect(t,
-			dungeon.tracks[8].file == "bar_guitar.ogg" && dungeon.tracks[8].condition == .Dungeon_String_Guitar_Music &&
-			dungeon.tracks[8].volume == 0.8,
+			dungeon.tracks[9].file == "bar_guitar.ogg" && dungeon.tracks[9].condition == .Dungeon_String_Guitar_Music &&
+			dungeon.tracks[9].volume == 0.8,
 			"Bar guitar must use String's dedicated proximity envelope with reduced pre-saturation gain",
 		)
 		testing.expect(t,
-			dungeon.tracks[9].file == "bar_melody_flute.ogg" && dungeon.tracks[9].condition == .Dungeon_Bar_Music &&
-			dungeon.tracks[9].volume == 0.85 && dungeon.tracks[9].alternate,
+			dungeon.tracks[10].file == "bar_melody_flute.ogg" && dungeon.tracks[10].condition == .Dungeon_Bar_Music &&
+			dungeon.tracks[10].volume == 0.85 && dungeon.tracks[10].alternate,
 			"Bar flute must use the shared Bar envelope at 85% authored gain and alternate each Loop cycle",
+		)
+	}
+
+	soul_hunt_wait := ar.music_library_mix(&library, ar.MUSIC_MIX_SOUL_HUNT_WAIT)
+	if soul_hunt_wait == nil {
+		testing.expect(t, false, "mistbound_chamber_wait mix must exist")
+		return
+	}
+	testing.expect(t, soul_hunt_wait.crossfade_ms == 1,
+		"the Mistbound waiting mix must enter immediately at the current Loop phase")
+	testing.expect(t, len(soul_hunt_wait.tracks) == 3,
+		"the Mistbound waiting mix must expose grim bass and both kellopeli stems without a beat")
+	if len(soul_hunt_wait.tracks) == 3 {
+		testing.expect(t, soul_hunt_wait.tracks[0].file == "ambience_grim_bass.ogg" && soul_hunt_wait.tracks[0].volume == 1,
+			"the Mistbound wait must retain grim bass at full authored gain")
+		testing.expect(t, soul_hunt_wait.tracks[1].file == "kellopeli_one.ogg" && soul_hunt_wait.tracks[1].volume == 1,
+			"the Mistbound wait must retain kellopeli_one at full authored gain")
+		testing.expect(t, soul_hunt_wait.tracks[2].file == "kellopeli_two.ogg" && soul_hunt_wait.tracks[2].volume == 1,
+			"the Mistbound wait must add kellopeli_two at full authored gain")
+	}
+
+	soul_hunt := ar.music_library_mix(&library, ar.MUSIC_MIX_SOUL_HUNT)
+	if soul_hunt == nil {
+		testing.expect(t, false, "mistbound_chamber mix must exist")
+		return
+	}
+	testing.expect(t, soul_hunt.crossfade_ms == 1, "the Mistbound Chamber mix must hard-enter at its selected Loop boundary")
+	testing.expect(t, abs(f32(library.loop_ms / 1000) - ar.STORY_SOUL_HUNT_TIME_LIMIT_SECONDS) < 1e-5,
+		"the Mistbound Chamber active timer must equal exactly one authored music loop")
+	testing.expect(t, len(soul_hunt.tracks) == 6,
+		"the active Mistbound Chamber must expose its six-stem hunt arrangement")
+	if len(soul_hunt.tracks) == 6 {
+		testing.expect(t,
+			soul_hunt.tracks[0].file == "ambience_grim_bass.ogg" && soul_hunt.tracks[0].volume == 1,
+			"the Mistbound Chamber must retain grim bass at full authored gain",
+		)
+		testing.expect(t,
+			soul_hunt.tracks[1].file == "kellopeli_one.ogg" && soul_hunt.tracks[1].volume == 1,
+			"the Mistbound Chamber must retain kellopeli_one at full authored gain",
+		)
+		testing.expect(t,
+			soul_hunt.tracks[2].file == "kellopeli_two.ogg" && soul_hunt.tracks[2].volume == 1,
+			"the Mistbound Chamber must retain kellopeli_two at full authored gain",
+		)
+		testing.expect(t,
+			soul_hunt.tracks[3].file == "beat_low.ogg" && soul_hunt.tracks[3].volume == 1,
+			"the active hunt must add beat_low at full authored gain",
+		)
+		testing.expect(t,
+			soul_hunt.tracks[4].file == "ambience_choir.ogg" && soul_hunt.tracks[4].volume == 0.5,
+			"the active hunt must add ambience_choir at half authored gain",
+		)
+		testing.expect(t,
+			soul_hunt.tracks[5].file == "ambience_alasin.ogg" && soul_hunt.tracks[5].volume == 1,
+			"the active hunt must add ambience_alasin at full authored gain",
 		)
 	}
 
@@ -136,11 +195,11 @@ music_mixes_document_parses_and_references_real_files :: proc(t: ^testing.T) {
 			"boss battle high guitar must carry its runtime condition at 63.75% volume",
 		)
 	}
-	// Boss Battle and Dungeon share only grim bass. All ten incoming Dungeon
+	// Boss Battle and Dungeon share only grim bass. All eleven incoming Dungeon
 	// slots plus six outgoing-only battle slots must coexist for the 1-second
 	// return crossfade, even though several dynamic stems may be gated.
-	testing.expect(t, ar.MUSIC_MAX_SLOTS >= 16, "Boss Battle/Dungeon crossfade must fit all sixteen unique slots")
-	testing.expect(t, ar.MUSIC_MAX_ASSETS >= 17, "the PCM cache must fit all seventeen unique authored assets")
+	testing.expect(t, ar.MUSIC_MAX_SLOTS >= 17, "Boss Battle/Dungeon crossfade must fit all seventeen unique slots")
+	testing.expect(t, ar.MUSIC_MAX_ASSETS >= 19, "the PCM cache must fit all nineteen unique authored assets")
 
 	for mix in library.mixes {
 		for track in mix.tracks {
@@ -189,6 +248,9 @@ music_selector_maps_screens_to_mixes :: proc(t: ^testing.T) {
 
 	app.story_panel.active = true
 	testing.expect(t, ar.music_mix_for(&app) == ar.MUSIC_MIX_MENU, "a story modal switches from gameplay to the menu mix")
+	app.story_panel.kind = .Soul
+	testing.expect(t, ar.music_mix_for(&app) == ar.MUSIC_MIX_DUNGEON,
+		"Lossless Soul dialogue must retain the Soul-room proximity arrangement")
 	app.story_panel = {}
 	app.story_minigame = {active = true, kind = .Wake_The_Moonbloom}
 	testing.expect(t, ar.music_mix_for(&app) == ar.MUSIC_MIX_DUNGEON,
@@ -196,6 +258,17 @@ music_selector_maps_screens_to_mixes :: proc(t: ^testing.T) {
 	app.story_minigame.kind = .Bind_The_Page
 	testing.expect(t, ar.music_mix_for(&app) == ar.MUSIC_MIX_MENU,
 		"non-Garden minigames remain score-changing story modals")
+	app.story_minigame.kind = .Mirror_The_Unlost
+	app.story_minigame.phase = .Preview
+	testing.expect(t, ar.music_mix_for(&app) == ar.MUSIC_MIX_SOUL_HUNT_WAIT,
+		"the Mistbound waiting stage must play grim bass with both kellopeli stems and no beat")
+	app.story_soul_hunt_music_ready = true
+	testing.expect(t, ar.music_mix_for(&app) == ar.MUSIC_MIX_SOUL_HUNT,
+		"the selected Loop boundary must expose the Mistbound Chamber mix before the next fixed tick")
+	app.story_soul_hunt_music_ready = false
+	app.story_minigame.phase = .Play
+	testing.expect(t, ar.music_mix_for(&app) == ar.MUSIC_MIX_SOUL_HUNT,
+		"the active Lossless Soul hunt must retain the Mistbound Chamber mix")
 	app.story_minigame = {}
 
 	app.mode = .Paused
@@ -527,6 +600,121 @@ music_string_guitar_runtime_gain_uses_bar_fade_duration :: proc(t: ^testing.T) {
 	ar.music_runtime_state_update(&state, &app, true, false, 0.1)
 	testing.expect(t, abs(state.dungeon_string_guitar_gain - 0.8) < 1e-5,
 		"String's guitar must use the Bar envelope's 500 ms release")
+}
+
+@(test)
+music_soul_room_proximity_keeps_grim_bass_low_beat_and_kellopeli_one :: proc(t: ^testing.T) {
+	run: ar.Run
+	run.dungeon.room_count = 2
+	run.dungeon.rooms_buf[1] = {20, 20, 10, 8}
+	run.dungeon.special_room_count = 1
+	run.dungeon.special_rooms_buf[0] = {.Hall_Of_Unlost_Echoes, 1}
+
+	run.player.pos = {12, 24}
+	testing.expect(t, ar.music_dungeon_soul_room_gain(&run) == 0,
+		"kellopeli_one must begin at silence eight tiles from the Soul room")
+	run.player.pos = {16, 24}
+	testing.expect(t, abs(ar.music_dungeon_soul_room_gain(&run) - 0.5) < 1e-5,
+		"kellopeli_one must reach half gain four tiles from the Soul room")
+	run.player.pos = {20.5, 24}
+	testing.expect(t, ar.music_dungeon_soul_room_gain(&run) == 1,
+		"kellopeli_one must reach full gain inside the Soul room")
+
+	runtime := ar.Music_Runtime_State{dungeon_soul_room_gain = 1}
+	testing.expect(t, ar.music_track_runtime_gain({file = "ambience_grim_bass.ogg", condition = .Always}, runtime) == 1,
+		"grim bass must remain full inside the Soul room")
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Low_Beat}, runtime) == 1,
+		"the low beat must remain at full gain inside the Soul room")
+	testing.expect(t, ar.music_track_runtime_gain({condition = .Dungeon_Soul_Room_Music}, runtime) == 1,
+		"kellopeli_one must reach full gain inside the Soul room")
+	ducked := [7]ar.Music_Track_Condition{
+		.Dungeon_Default_Music, .Dungeon_Primary_Harp, .Dungeon_Miniboss_Music,
+		.Dungeon_Quest_Music, .Dungeon_Quest_Garden_Harp, .Dungeon_Bar_Music,
+		.Dungeon_String_Guitar_Music,
+	}
+	for condition in ducked do testing.expect(t, ar.music_track_runtime_gain({condition = condition}, runtime) == 0,
+		"every Dungeon layer except grim bass, low beat, and kellopeli_one must mute inside the Soul room")
+}
+
+@(private = "file")
+MISTBOUND_WAIT_TEST_DOC :: `{
+  "format_version": 1,
+  "loop_ms": 10000,
+  "mixes": {
+    "mistbound_chamber_wait": {"tracks": [
+      {"file": "ambience_grim_bass.ogg", "volume": 1.0},
+      {"file": "kellopeli_one.ogg", "volume": 1.0},
+      {"file": "kellopeli_two.ogg", "volume": 1.0}
+    ]},
+    "mistbound_chamber": {"tracks": [
+      {"file": "ambience_grim_bass.ogg", "volume": 1.0},
+      {"file": "kellopeli_one.ogg", "volume": 1.0},
+      {"file": "kellopeli_two.ogg", "volume": 1.0},
+      {"file": "beat_low.ogg", "volume": 1.0},
+      {"file": "ambience_choir.ogg", "volume": 0.5},
+      {"file": "ambience_alasin.ogg", "volume": 1.0}
+    ]}
+  }
+}`
+
+@(test)
+music_mistbound_wait_uses_current_loop_unless_under_five_seconds_remain :: proc(t: ^testing.T) {
+	library, ok := ar.music_library_parse(transmute([]u8)string(MISTBOUND_WAIT_TEST_DOC))
+	defer ar.music_library_destroy(&library)
+	testing.expect(t, ok, "Mistbound wait fixture must parse")
+	app := ar.App{story_minigame = {
+		active = true, kind = .Mirror_The_Unlost, phase = .Preview, instance_id = 1,
+	}}
+	director: ar.Music_Director
+
+	ar.music_director_update(&director, &library, ar.MUSIC_MIX_SOUL_HUNT_WAIT, 0)
+	ar.music_director_update(&director, &library, ar.MUSIC_MIX_SOUL_HUNT_WAIT, 5000)
+	testing.expect(t, !ar.music_mistbound_wait_update(&director, &library, &app) &&
+		director.mistbound_wait.target_cycle == 1,
+		"exactly five seconds remaining must finish the current loop")
+	remaining_ms, total_ms := ar.music_mistbound_wait_progress_ms(&director, &library)
+	testing.expect(t, remaining_ms == 5000 && total_ms == 5000,
+		"the visible wait timer must start at the exact selected five-second interval")
+	ar.music_director_update(&director, &library, ar.MUSIC_MIX_SOUL_HUNT_WAIT, 5000)
+	testing.expect(t, ar.music_mistbound_wait_update(&director, &library, &app),
+		"the current loop boundary must release the chase")
+	remaining_ms, total_ms = ar.music_mistbound_wait_progress_ms(&director, &library)
+	testing.expect(t, remaining_ms == 0 && total_ms == 5000,
+		"the visible wait timer must reach zero on the release boundary")
+	testing.expect(t, director.active_mix == ar.MUSIC_MIX_SOUL_HUNT,
+		"the release must enter the Mistbound mix on the selected boundary")
+	bass := music_slot_for(&director, "ambience_grim_bass.ogg")
+	one := music_slot_for(&director, "kellopeli_one.ogg")
+	two := music_slot_for(&director, "kellopeli_two.ogg")
+	beat := music_slot_for(&director, "beat_low.ogg")
+	choir := music_slot_for(&director, "ambience_choir.ogg")
+	alasin := music_slot_for(&director, "ambience_alasin.ogg")
+	testing.expect(t,
+		bass != nil && one != nil && two != nil && beat != nil && choir != nil && alasin != nil &&
+		bass.volume == 1 && one.volume == 1 && two.volume == 1 && beat.volume == 1 &&
+		choir.volume == 0.5 && alasin.volume == 1,
+		"the boundary must retain the wait stems and hard-add beat_low, half ambience_choir, and ambience_alasin",
+	)
+
+	director = {}
+	app.story_minigame.instance_id = 2
+	ar.music_director_update(&director, &library, ar.MUSIC_MIX_SOUL_HUNT_WAIT, 0)
+	ar.music_director_update(&director, &library, ar.MUSIC_MIX_SOUL_HUNT_WAIT, 5001)
+	testing.expect(t, !ar.music_mistbound_wait_update(&director, &library, &app) &&
+		director.mistbound_wait.target_cycle == 2,
+		"less than five seconds remaining must schedule one additional full loop")
+	remaining_ms, total_ms = ar.music_mistbound_wait_progress_ms(&director, &library)
+	testing.expect(t, remaining_ms == 14999 && total_ms == 14999,
+		"the visible wait timer must include the short remainder and next complete loop")
+	ar.music_director_update(&director, &library, ar.MUSIC_MIX_SOUL_HUNT_WAIT, 4999)
+	testing.expect(t, !ar.music_mistbound_wait_update(&director, &library, &app),
+		"the near boundary must retain kellopeli_one for the next complete loop")
+	remaining_ms, total_ms = ar.music_mistbound_wait_progress_ms(&director, &library)
+	testing.expect(t, remaining_ms == 10000 && total_ms == 14999,
+		"the visible wait timer must show one full loop after the near wrap")
+	ar.music_director_update(&director, &library, ar.MUSIC_MIX_SOUL_HUNT_WAIT, 10000)
+	testing.expect(t, ar.music_mistbound_wait_update(&director, &library, &app),
+		"the additional complete loop boundary must release the chase")
 }
 
 @(test)

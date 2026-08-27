@@ -573,6 +573,11 @@ controller_snap_aim :: proc(run: ^Run, aim: Vec2) -> Vec2 {
 	return found ? best_aim : aim
 }
 
+controller_scene_aim :: proc(run:^Run,aim:Vec2,allow_target_snap:=true)->Vec2 {
+	if !allow_target_snap do return aim
+	return controller_snap_aim(run,aim)
+}
+
 desktop_gameplay_intent :: proc(input: Desktop_Input, archetype: Archetype_Id) -> Intent {
 	_ = archetype // slots are uniform in M8; retained for the stable resolver API
 	intent: Intent

@@ -20,8 +20,32 @@ STORY_GUEST_INTERACT_RANGE :: f32(1.25)
 STORY_GARDEN_INTERACT_RANGE :: f32(1.35)
 STORY_RESULT_SECONDS :: f32(1.25)
 STORY_GARDEN_TARGET_SECONDS :: f32(1.55)
-STORY_SOUL_MISMATCH_SECONDS :: f32(0.68)
 STORY_NARRATION_SPEED :: f32(2.25)
+
+// The Hall's third story challenge is a world-space chase rather than a modal
+// board.  It lives at stable tile coordinates only while the alternate scene is
+// active; the ordinary Dungeon remains untouched and is restored verbatim.
+// Exactly one 19.2-second authored music loop; keep synchronized with
+// assets/audio/bgm/mixes.json and the music contract test.
+STORY_SOUL_HUNT_TIME_LIMIT_SECONDS :: f32(19.2)
+STORY_SOUL_HUNT_RESPAWN_SECONDS    :: f32(0.42)
+STORY_SOUL_HUNT_DASH_COOLDOWN   :: f32(0.24)
+STORY_SOUL_HUNT_DASH_DISTANCE   :: f32(2.45)
+STORY_SOUL_HUNT_DASH_STEPS      :: 14
+STORY_SOUL_HUNT_CATCH_RADIUS        :: f32(0.66)
+STORY_SOUL_HUNT_WALK_DISPEL_RADIUS  :: f32(0.90)
+STORY_SOUL_HUNT_SITE_COUNT          :: 12
+
+STORY_SOUL_HUNT_ROOM  :: Room{x=25,y=28,w=20,h=16}
+STORY_SOUL_HUNT_START :: Vec2{35.0,35.5}
+
+@(rodata)
+STORY_SOUL_HUNT_SITES := [STORY_SOUL_HUNT_SITE_COUNT]Vec2{
+	{30.5,31.5},{34.5,30.5},{39.5,31.5},{42.0,34.5},
+	{41.5,38.5},{38.5,41.0},{34.0,41.0},{29.5,39.0},
+	{28.5,35.0},{32.5,34.5},{38.0,35.5},{35.0,38.5},
+}
+
 
 Story_Relic_Path :: enum u8 {
 	Unchosen,
@@ -300,6 +324,12 @@ Story_Minigame_State :: struct {
 	feedback_time:    f32,
 }
 
+Story_Soul_Hunt_Profile :: struct {
+	goal:          int,
+	time_limit:    f32,
+	ghost_seconds: f32,
+}
+
 Story_Ally_Stats :: struct {
 	max_hp:       int,
 	damage:       int,
@@ -316,6 +346,77 @@ STORY_SOUL_ALLY_STATS  :: Story_Ally_Stats{24, 8, 4.2, 1.5, 1.7, .Arcane}
 story_distance_sq :: proc(a, b: Vec2) -> f32 {
 	d := a - b
 	return d.x*d.x + d.y*d.y
+}
+
+@(private = "file")
+story_point_segment_distance_sq :: proc(point, start, finish: Vec2) -> f32 {
+	segment:=finish-start
+	length_sq:=segment.x*segment.x+segment.y*segment.y
+	if length_sq<=.000001 do return story_distance_sq(point,start)
+	to_point:=point-start
+	t:=clamp((to_point.x*segment.x+to_point.y*segment.y)/length_sq,f32(0),f32(1))
+	return story_distance_sq(point,start+segment*t)
+}
+
+story_soul_hunt_profile :: proc(verdict: Story_Soul_Verdict) -> Story_Soul_Hunt_Profile {
+	// Refusing the mirror asks for the most captures and exposes each ghost for
+	// the shortest time. Preserve is intentionally the most forgiving answer;
+	// Release sits between them.
+	switch verdict {
+	case .Preserve: return {goal=6,time_limit=STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,ghost_seconds=.92}
+	case .Release:  return {goal=8,time_limit=STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,ghost_seconds=.72}
+	case .Refuse:   return {goal=12,time_limit=STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,ghost_seconds=.54}
+	case .Unresolved:
+	}
+	return {goal=8,time_limit=STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,ghost_seconds=.72}
+}
+
+story_soul_hunt_target_position :: proc(state: ^Story_Minigame_State) -> (Vec2, bool) {
+	if state == nil || state.active_cell < 0 || state.active_cell >= len(STORY_SOUL_HUNT_SITES) do return {}, false
+	return STORY_SOUL_HUNT_SITES[state.active_cell], true
+}
+
+
+story_soul_hunt_inside_room :: proc(pos: Vec2) -> bool {
+	room := STORY_SOUL_HUNT_ROOM
+	inset := f32(.58)
+	return pos.x >= f32(room.x+1)+inset && pos.x <= f32(room.x+room.w-1)-inset &&
+		pos.y >= f32(room.y+1)+inset && pos.y <= f32(room.y+room.h-1)-inset
+}
+
+story_soul_hunt_position_open :: proc(pos: Vec2) -> bool {
+	return story_soul_hunt_inside_room(pos)
+}
+
+@(private = "file")
+story_soul_hunt_slide :: proc(state: ^Story_Minigame_State, pos: ^Vec2, delta: Vec2) {
+	if state == nil || pos == nil do return
+	x := Vec2{pos.x+delta.x,pos.y}
+	if story_soul_hunt_position_open(x) do pos.x=x.x
+	y := Vec2{pos.x,pos.y+delta.y}
+	if story_soul_hunt_position_open(y) do pos.y=y.y
+}
+
+@(private = "file")
+story_soul_hunt_spawn_ghost :: proc(state: ^Story_Minigame_State, verdict: Story_Soul_Verdict, player_pos: Vec2) {
+	if state == nil || state.phase != .Play || state.outcome != .None do return
+	profile := story_soul_hunt_profile(verdict)
+	salt := u64(max(0,state.score))*131+u64(max(0,state.mistakes))*313+u64(max(0,state.revision))*17
+	rng := rng_make(state.seed~0x6d697374626f756e~salt,stream=31)
+	start := rng_below(&rng,len(STORY_SOUL_HUNT_SITES))
+	fallback, fallback_distance := -1, max(f32)
+	for offset in 0..<len(STORY_SOUL_HUNT_SITES) {
+		candidate := (start+offset)%len(STORY_SOUL_HUNT_SITES)
+		if candidate == state.last_cell do continue
+		distance := math.sqrt(story_distance_sq(player_pos,STORY_SOUL_HUNT_SITES[candidate]))
+		if distance >= 1.35 && distance <= 3.20 {
+			state.active_cell=candidate;state.target_time=profile.ghost_seconds;state.revision+=1
+			return
+		}
+		if distance >= 1.0 && distance < fallback_distance {fallback,fallback_distance=candidate,distance}
+	}
+	if fallback < 0 do fallback=(start+1)%len(STORY_SOUL_HUNT_SITES)
+	state.active_cell=fallback;state.target_time=profile.ghost_seconds;state.revision+=1
 }
 
 @(private = "file")
@@ -822,12 +923,12 @@ story_item_is_relic_touched :: proc(item: ^Item) -> bool {
 // --- Deterministic minigames ------------------------------------------------
 
 story_minigame_title :: proc(kind: Story_Minigame_Kind) -> string {
-	switch kind {case .Bind_The_Page:return "Bind the Page";case .Wake_The_Moonbloom:return "Wake the Moonbloom";case .Mirror_The_Unlost:return "Mirror the Unlost";case .None:}
+	switch kind {case .Bind_The_Page:return "Bind the Page";case .Wake_The_Moonbloom:return "Wake the Moonbloom";case .Mirror_The_Unlost:return "Chase the Mistbound";case .None:}
 	return ""
 }
 
 story_minigame_instruction :: proc(kind: Story_Minigame_Kind) -> string {
-	switch kind {case .Bind_The_Page:return "Remember the lit runes, then repeat them in order.";case .Wake_The_Moonbloom:return "Touch each waking bloom before its light folds shut.";case .Mirror_The_Unlost:return "Turn two seals at a time and reunite every mirrored pair.";case .None:}
+	switch kind {case .Bind_The_Page:return "Remember the lit runes, then repeat them in order.";case .Wake_The_Moonbloom:return "Touch each waking bloom before its light folds shut.";case .Mirror_The_Unlost:return "Catch each ghost before it dissolves. Walking cannot bind it.";case .None:}
 	return ""
 }
 
@@ -859,8 +960,8 @@ story_create_minigame :: proc(run: ^Run,kind: Story_Minigame_Kind,room_index: in
 		pool:=[9]Story_Sigil_Id{.Sun,.Moon,.Star,.Flame,.Serpent,.Ouroboros,.Phoenix,.Dragon,.Cross};story_shuffle_sigils(pool[:],&rng);state.board_count=9;for i in 0..<9 do state.board[i]=pool[i]
 		state.goal=min(8,6+max(0,run.depth-1)/5);state.active_cell=story_next_garden_cell(&state);state.target_time=STORY_GARDEN_TARGET_SECONDS
 	case .Mirror_The_Unlost:
-		pool:=[6]Story_Sigil_Id{.Infinity,.Key,.Clock,.Moon,.Phoenix,.Ouroboros};story_shuffle_sigils(pool[:],&rng);pairs:=run.depth<8?3:4;state.goal=pairs;state.board_count=pairs*2
-		for i in 0..<pairs {state.board[i]=pool[i];state.board[i+pairs]=pool[i]};story_shuffle_sigils(state.board[:state.board_count],&rng)
+		profile:=story_soul_hunt_profile(run.story_runtime.hall.verdict)
+		state.phase=.Preview;state.goal=profile.goal;state.time_left=profile.time_limit;state.board_count=STORY_SOUL_HUNT_SITE_COUNT
 	case .None:
 	}
 	return state
@@ -900,11 +1001,9 @@ story_minigame_press :: proc(state: ^Story_Minigame_State, cell, expected_revisi
 		state.last_correct=cell==state.active_cell
 		if state.last_correct {state.score+=1;if state.score>=state.goal {story_minigame_finish(state,true)} else {state.active_cell=story_next_garden_cell(state);state.target_time=max(f32(1.15),STORY_GARDEN_TARGET_SECONDS-f32(state.score)*.055)}} else {state.mistakes+=1;state.time_left=max(f32(0),state.time_left-.45)}
 	case .Mirror_The_Unlost:
-		if state.lock_time>0||state.matched[cell] do return false
-		for i in 0..<state.revealed_count do if state.revealed[i]==cell do return false
-		if state.revealed_count==0 {state.revealed[0]=cell;state.revealed_count=1;state.last_correct=true;state.revision+=1;return true}
-		first:=state.revealed[0];state.revealed[1]=cell;state.revealed_count=2;state.last_correct=state.board[first]==state.board[cell]
-		if state.last_correct {state.matched[first]=true;state.matched[cell]=true;state.revealed_count=0;state.score+=1;if state.score>=state.goal do story_minigame_finish(state,true)} else {state.mistakes+=1;state.lock_time=STORY_SOUL_MISMATCH_SECONDS}
+		// The replacement is world-space and accepts captures only from
+		// story_soul_hunt_dash; modal cell presses are deliberately inert.
+		return false
 	case .None:return false
 	}
 	state.revision+=1;return true
@@ -912,18 +1011,120 @@ story_minigame_press :: proc(state: ^Story_Minigame_State, cell, expected_revisi
 
 story_minigame_tick :: proc(state: ^Story_Minigame_State, dt: f32) -> bool {
 	if state==nil||!state.active do return false
+	if state.kind==.Mirror_The_Unlost do return false
 	step_dt:=clamp(dt,f32(0),f32(.25));state.feedback_time=max(f32(0),state.feedback_time-step_dt)
 	switch state.phase {
 	case .Ready:return false
 	case .Preview:
 		state.elapsed+=step_dt
-		if state.elapsed>=story_minigame_preview_duration(state) {state.phase=.Play;state.elapsed=0;switch state.kind {case .Bind_The_Page:state.time_left=7.5;case .Wake_The_Moonbloom:state.time_left=9;case .Mirror_The_Unlost:state.time_left=12;case .None:};state.revision+=1}
+		if state.elapsed>=story_minigame_preview_duration(state) {state.phase=.Play;state.elapsed=0;switch state.kind {case .Bind_The_Page:state.time_left=7.5;case .Wake_The_Moonbloom:state.time_left=9;case .Mirror_The_Unlost:case .None:};state.revision+=1}
 	case .Play:
 		state.elapsed+=step_dt;state.time_left=max(f32(0),state.time_left-step_dt)
 		if state.kind==.Wake_The_Moonbloom {state.target_time=max(f32(0),state.target_time-step_dt);if state.target_time<=0&&state.outcome==.None {state.mistakes+=1;state.active_cell=story_next_garden_cell(state);state.target_time=max(f32(1.15),STORY_GARDEN_TARGET_SECONDS-f32(state.score)*.055);state.last_cell=-1;state.last_correct=false;state.feedback_time=.28;state.revision+=1}}
-		if state.kind==.Mirror_The_Unlost&&state.lock_time>0 {state.lock_time=max(f32(0),state.lock_time-step_dt);if state.lock_time<=0 {state.revealed_count=0;state.revision+=1}}
 		if state.time_left<=0&&state.outcome==.None do story_minigame_finish(state,state.score>=state.goal)
 	case .Result:state.result_time=max(f32(0),state.result_time-step_dt);return state.result_time<=0
+	}
+	return false
+}
+
+@(private = "file")
+story_soul_hunt_miss_active_target :: proc(state:^Story_Minigame_State) {
+	if state==nil||state.active_cell<0 do return
+	state.last_cell=state.active_cell;state.active_cell=-1;state.target_time=0
+	state.mistakes+=1;state.last_correct=false;state.feedback_time=.30
+	state.lock_time=STORY_SOUL_HUNT_RESPAWN_SECONDS;state.revision+=1
+}
+
+@(private = "file")
+story_soul_hunt_walk_dispels_target :: proc(state:^Story_Minigame_State, start, finish:Vec2) -> bool {
+	target,active:=story_soul_hunt_target_position(state)
+	if !active do return false
+	radius_sq:=STORY_SOUL_HUNT_WALK_DISPEL_RADIUS*STORY_SOUL_HUNT_WALK_DISPEL_RADIUS
+	if story_point_segment_distance_sq(target,start,finish)>radius_sq do return false
+	story_soul_hunt_miss_active_target(state)
+	return true
+}
+
+@(private = "file")
+story_soul_hunt_capture_at :: proc(app: ^App, pos: Vec2) -> bool {
+	if app == nil || !app_story_soul_hunt_active(app) do return false
+	state:=&app.story_minigame
+	if state.phase!=.Play||state.outcome!=.None do return false
+	target,active:=story_soul_hunt_target_position(state)
+	if !active||story_distance_sq(pos,target)>STORY_SOUL_HUNT_CATCH_RADIUS*STORY_SOUL_HUNT_CATCH_RADIUS do return false
+	state.last_cell=state.active_cell;state.active_cell=-1;state.target_time=0;state.lock_time=STORY_SOUL_HUNT_RESPAWN_SECONDS
+	state.score+=1;state.last_correct=true;state.feedback_time=.42;state.revision+=1
+	sfx_emit(&app.run,.Mistbound_Ghost_Capture,target,spatial=true)
+	if state.score>=state.goal do story_minigame_finish(state,true)
+	return true
+}
+
+story_soul_hunt_dash :: proc(app: ^App, aim: Vec2) -> bool {
+	if app==nil||!app_story_soul_hunt_active(app)||app.story_minigame.phase!=.Play do return false
+	player:=&app.run.player
+	if player.dash_timer>0 do return false
+	dash_aim:=aim;magnitude:=math.hypot(dash_aim.x,dash_aim.y)
+	if magnitude<=.001 do dash_aim=player.facing;magnitude=math.hypot(dash_aim.x,dash_aim.y)
+	if magnitude<=.001 do return false
+	direction:=dash_aim/magnitude;start:=player.pos
+	player.prev_pos=start;player.facing=direction;player.moving=false
+	step:=STORY_SOUL_HUNT_DASH_DISTANCE/f32(STORY_SOUL_HUNT_DASH_STEPS)
+	for _ in 0..<STORY_SOUL_HUNT_DASH_STEPS {
+		before:=player.pos
+		story_soul_hunt_slide(&app.story_minigame,&player.pos,direction*step)
+		if player.pos==before do break
+		_=story_soul_hunt_capture_at(app,player.pos)
+	}
+	if player.pos==start do return false
+	player.dash_timer=STORY_SOUL_HUNT_DASH_COOLDOWN
+	player_start_visual_action(player,.Dash,PLAYER_DASH_ACTION_SECONDS)
+	feel_emit(&app.run,.Dash,start,ARCHETYPE_SKILL_COLORS[player.archetype],.24,.34,direction,phase=.Start,style=feel_style_for_archetype(player.archetype),priority=.High)
+	feel_emit(&app.run,.Dash,player.pos,ARCHETYPE_SKILL_COLORS[player.archetype],.26,.42,direction,phase=.End,style=feel_style_for_archetype(player.archetype),priority=.High)
+	sfx_emit(&app.run,sfx_player_dash_bank(player.archetype),start,spatial=true)
+	return true
+}
+
+story_soul_hunt_tick :: proc(app: ^App, move: Vec2, dt: f32) -> bool {
+	if app==nil||!app_story_soul_hunt_active(app) do return false
+	state:=&app.story_minigame;player:=&app.run.player;step_dt:=clamp(dt,f32(0),f32(.25))
+	player.prev_pos=player.pos;player.moving=false;player.sim_elapsed+=step_dt
+	player_tick_visual_action(player,step_dt);player.dash_timer=max(f32(0),player.dash_timer-step_dt)
+	state.feedback_time=max(f32(0),state.feedback_time-step_dt)
+	switch state.phase {
+	case .Ready:
+		state.phase=.Preview;state.elapsed=0;state.revision+=1
+	case .Preview:
+		state.elapsed+=step_dt
+		if app.story_soul_hunt_music_ready {
+			app.story_soul_hunt_music_ready=false
+			app.story_soul_hunt_wait_remaining_s=0
+			app.story_soul_hunt_wait_total_s=0
+			profile:=story_soul_hunt_profile(app.run.story_runtime.hall.verdict)
+			state.phase=.Play;state.elapsed=0;state.time_left=profile.time_limit;state.lock_time=0
+			story_soul_hunt_spawn_ghost(state,app.run.story_runtime.hall.verdict,player.pos)
+		}
+	case .Play:
+		state.elapsed+=step_dt;state.time_left=max(f32(0),state.time_left-step_dt)
+		magnitude:=min(f32(1),math.hypot(move.x,move.y))
+		if magnitude>.001 {
+			direction:=move/math.hypot(move.x,move.y);before:=player.pos
+			planned:=player_speed(player)*step_dt*magnitude
+			_=story_soul_hunt_walk_dispels_target(state,before,before+direction*planned)
+			story_soul_hunt_slide(state,&player.pos,direction*planned)
+			distance:=math.hypot(player.pos.x-before.x,player.pos.y-before.y)
+			player.moving=distance>0;player.facing=direction
+			player.anim_time+=walk_animation_advance(step_dt,PLAYER_MOVE_SPEED,distance,PLAYER_MOVE_SPEED*step_dt)
+		}
+		if state.active_cell>=0 {
+			state.target_time=max(f32(0),state.target_time-step_dt)
+			if state.target_time<=0 do story_soul_hunt_miss_active_target(state)
+		} else if state.outcome==.None {
+			state.lock_time=max(f32(0),state.lock_time-step_dt)
+			if state.lock_time<=0 do story_soul_hunt_spawn_ghost(state,app.run.story_runtime.hall.verdict,player.pos)
+		}
+		if state.time_left<=0&&state.outcome==.None do story_minigame_finish(state,false)
+	case .Result:
+		state.elapsed+=step_dt;state.result_time=max(f32(0),state.result_time-step_dt);return state.result_time<=0
 	}
 	return false
 }
@@ -1018,6 +1219,12 @@ app_story_soul_reflection_text :: proc(app: ^App) {
 app_story_soul_settled_text :: proc(app: ^App) {
 	verdict:=app.run.story_runtime.hall.verdict;text:="The chimes hold their breath, waiting for your answer."
 	switch verdict {case .Preserve:text="The hall keeps your memory whole -- pain and all. Nothing of you fades here.";case .Release:text="Your memory rests here lightly. It remains, yet it no longer rules your next turning.";case .Refuse:text="You kept your history your own. The mirror holds no copy of you.";case .Unresolved:}
+	index:=clamp(app.run.depth,1,STORY_BEAT_COUNT)-1
+	switch app.run.story_runtime.soul_games[index].outcome {
+	case .Won:text=fmt.tprintf("%s The mistbound dead answer your passage and fall quiet.",text)
+	case .Lost:text=fmt.tprintf("%s The last ghosts dissolve before you can bind them.",text)
+	case .None:
+	}
 	if (verdict==.Preserve||verdict==.Release)&&story_true_name_known(&app.run.story,.Liss) do text=fmt.tprintf("%s ...My name is Liss Voss. Keep that too. Names open what they love -- say mine at the door, not his.",text)
 	story_panel_set_text(&app.story_panel,text)
 }
@@ -1065,13 +1272,13 @@ app_story_open_lossless_soul :: proc(app: ^App)->bool {
 	index:=clamp(app.run.depth,1,STORY_BEAT_COUNT)-1;ledger:=&app.run.story_runtime.hall_ledgers[index];ledger.met=true;app.run.story_runtime.hall.met=true;app.run.story_runtime.soul.met=true
 	node:=ledger.verdict==.Unresolved?Story_Panel_Node.Soul_Reflection:.Soul_Settled
 	app.story_panel={active=true,kind=.Soul,node=node,guest_index=-1};app_story_rebuild_panel_text(app);app_clear_play_input(app)
-	if ledger.verdict==.Unresolved&&app.run.story_runtime.soul_games[index].outcome==.None do _=app_story_start_minigame(app,.Mirror_The_Unlost,ledger.room_index)
 	return true
 }
 
 app_story_panel_active :: proc(app: ^App)->bool {return app!=nil&&app.story_panel.active}
 app_story_minigame_active :: proc(app: ^App)->bool {return app!=nil&&app.story_minigame.active}
-app_play_modal_open :: proc(app: ^App)->bool {return app_story_panel_active(app)||app_story_minigame_active(app)}
+app_story_soul_hunt_active :: proc(app: ^App)->bool {return app_story_minigame_active(app)&&app.story_minigame.kind==.Mirror_The_Unlost}
+app_play_modal_open :: proc(app: ^App)->bool {return app_story_panel_active(app)||(app_story_minigame_active(app)&&!app_story_soul_hunt_active(app))}
 
 app_story_current_speaker :: proc(app: ^App)->string {
 	if app==nil||!app.story_panel.active do return ""
@@ -1114,23 +1321,142 @@ app_story_start_minigame :: proc(app: ^App,kind:Story_Minigame_Kind,room_index:=
 	if app==nil||kind==.None||app.story_minigame.active do return false
 	index:=clamp(app.run.depth,1,STORY_BEAT_COUNT)-1
 	switch kind {case .Bind_The_Page:if app.run.story_runtime.bind_results[index]!=.None do return false;case .Wake_The_Moonbloom:if app.run.story_runtime.garden_games[index].outcome!=.None do return false;case .Mirror_The_Unlost:if app.run.story_runtime.soul_games[index].outcome!=.None do return false;case .None:return false}
-	app.story_minigame=story_create_minigame(&app.run,kind,room_index,continuation,has_continuation);app.story_minigame_cursor=0;app_clear_play_input(app);return app.story_minigame.active
+	app.story_minigame=story_create_minigame(&app.run,kind,room_index,continuation,has_continuation);app.story_minigame_cursor=0;app.story_soul_hunt_music_ready=false;app.story_soul_hunt_wait_remaining_s=0;app.story_soul_hunt_wait_total_s=0;app_clear_play_input(app);return app.story_minigame.active
 }
 app_story_start_bind_the_page :: proc(app:^App,verb:Story_Choice_Verb)->bool{return app_story_start_minigame(app,.Bind_The_Page,-1,verb,true)}
 app_story_start_wake_the_moonbloom :: proc(app:^App,room_index:int)->bool{return app_story_start_minigame(app,.Wake_The_Moonbloom,room_index)}
-app_story_start_mirror_the_unlost :: proc(app:^App,room_index:int)->bool{return app_story_start_minigame(app,.Mirror_The_Unlost,room_index)}
+app_story_start_mirror_the_unlost :: proc(app:^App,room_index:int)->bool {
+	if app==nil||app.run.story_runtime.hall.verdict==.Unresolved do return false
+	return_pos:=app.run.player.pos
+	if !app_story_start_minigame(app,.Mirror_The_Unlost,room_index) do return false
+	// Reuse the old board state's integer sequence storage for the exact f32
+	// return-coordinate bits. This keeps schema-v1/v2 JSON shapes and checksums
+	// stable without introducing positional rounding on return.
+	app.story_minigame.sequence[0]=int(transmute(u32)return_pos.x)
+	app.story_minigame.sequence[1]=int(transmute(u32)return_pos.y)
+	app.story_minigame.sequence_count=2
+	app.story_minigame.revealed[0]=int(transmute(u32)app.run.player.dash_timer)
+	app.story_minigame.revealed_count=1
+	player:=&app.run.player;player.pos=STORY_SOUL_HUNT_START;player.prev_pos=player.pos;player.moving=false
+	player.heading_stable={};player.heading_hold=0;player.visual_action=.None;player.action_time=0;player.action_duration=0;player.dash_timer=0
+	app_clear_play_input(app)
+	return true
+}
 
 @(private = "file")
-app_story_grant_minigame_reward :: proc(app:^App,kind:Story_Minigame_Kind) {player:=&app.run.player;switch kind {case .Bind_The_Page:player.hp=player.max_hp;player.discipline_melee_bonus+=1;case .Wake_The_Moonbloom:player.max_hp+=5;if player.hp>0 do player.hp=min(player.max_hp,player.hp+5);player.max_mana+=5;player.mana=min(f32(player.max_mana),player.mana+5);case .Mirror_The_Unlost:player.max_mana+=5;player.mana=min(f32(player.max_mana),player.mana+5);player.discipline_spell_bonus+=1;case .None:};sfx_emit(&app.run, .Story_Consequence)}
+app_story_grant_minigame_reward :: proc(app:^App,state:^Story_Minigame_State) {
+	if app==nil||state==nil do return
+	player:=&app.run.player
+	switch state.kind {
+	case .Bind_The_Page:player.hp=player.max_hp;player.discipline_melee_bonus+=1
+	case .Wake_The_Moonbloom:player.max_hp+=5;if player.hp>0 do player.hp=min(player.max_hp,player.hp+5);player.max_mana+=5;player.mana=min(f32(player.max_mana),player.mana+5)
+	case .Mirror_The_Unlost:
+		switch app.run.story_runtime.hall.verdict {
+		case .Preserve:player.max_mana+=5;player.mana=f32(player.max_mana)
+		case .Release:player.max_mana+=5;player.mana=f32(player.max_mana);player.discipline_spell_bonus+=1
+		case .Refuse:player.max_mana+=10;player.mana=f32(player.max_mana);player.discipline_spell_bonus+=1;player.memory_tokens+=1
+		case .Unresolved:
+		}
+	case .None:
+	}
+	sfx_emit(&app.run,.Story_Consequence)
+}
+
+@(private = "file")
+story_soul_hunt_return_position :: proc(state:^Story_Minigame_State,run:^Run)->Vec2 {
+	if state!=nil&&state.sequence_count>=2 {
+		return {transmute(f32)u32(state.sequence[0]),transmute(f32)u32(state.sequence[1])}
+	}
+	if run!=nil&&run.story_runtime.soul.present do return run.story_runtime.soul.pos+Vec2{0,.8}
+	return run!=nil?run.player.pos:Vec2{}
+}
+
+story_soul_hunt_return_position_valid :: proc(run:^Run,state:^Story_Minigame_State)->bool {
+	if run==nil||state==nil||state.sequence_count!=2 do return false
+	position:=story_soul_hunt_return_position(state,run)
+	if math.is_nan(position.x)||math.is_nan(position.y)||math.is_inf(position.x)||math.is_inf(position.y) do return false
+	if !dungeon_in_bounds(int(position.x),int(position.y)) do return false
+	return !blocked_for_radius(&run.dungeon,position.x,position.y,PLAYER_HIT_RADIUS,block_stairs=true)
+}
+
+story_soul_hunt_state_valid :: proc(run:^Run,state:^Story_Minigame_State)->bool {
+	if run==nil||state==nil||!state.active||state.kind!=.Mirror_The_Unlost do return false
+	verdict:=run.story_runtime.hall.verdict
+	if verdict==.Unresolved||state.depth!=run.depth||state.instance_id<=0 do return false
+	profile:=story_soul_hunt_profile(verdict)
+	if state.goal!=profile.goal||state.board_count!=STORY_SOUL_HUNT_SITE_COUNT||state.sequence_count!=2||state.revealed_count!=1 do return false
+	if !story_soul_hunt_return_position_valid(run,state)||!story_soul_hunt_inside_room(run.player.pos) do return false
+	original_dash:=transmute(f32)u32(state.revealed[0])
+	if math.is_nan(original_dash)||math.is_inf(original_dash)||original_dash<0 do return false
+	values:=[6]f32{state.elapsed,state.time_left,state.target_time,state.lock_time,state.result_time,state.feedback_time}
+	for value in values do if math.is_nan(value)||math.is_inf(value)||value<0 do return false
+	if state.time_left>profile.time_limit+.01||state.target_time>profile.ghost_seconds+.01||state.lock_time>STORY_SOUL_HUNT_RESPAWN_SECONDS+.01 do return false
+	if state.active_cell < -1 || state.active_cell >= STORY_SOUL_HUNT_SITE_COUNT do return false
+	switch state.phase {
+	case .Preview:
+		return state.outcome==.None&&state.active_cell==-1
+	case .Play:
+		return state.outcome==.None
+	case .Result:
+		return state.outcome!=.None&&state.active_cell==-1
+	case .Ready:
+	}
+	return false
+}
+
+@(private = "file")
+story_soul_hunt_original_dash_timer :: proc(state:^Story_Minigame_State)->f32 {
+	if state==nil||state.revealed_count<1 do return 0
+	value:=transmute(f32)u32(state.revealed[0])
+	if math.is_nan(value)||math.is_inf(value)||value<0 do return 0
+	return value
+}
+
+@(private = "file")
+story_soul_hunt_safe_return_position :: proc(run:^Run,state:^Story_Minigame_State)->Vec2 {
+	if run==nil do return {}
+	if story_soul_hunt_return_position_valid(run,state) do return story_soul_hunt_return_position(state,run)
+	// Legacy pair-board saves never left the real floor, so retain their current
+	// position when it is still a legal player footprint.
+	if run.story_runtime.hall.verdict==.Unresolved&&
+		!blocked_for_radius(&run.dungeon,run.player.pos.x,run.player.pos.y,PLAYER_HIT_RADIUS,block_stairs=true) {
+		return run.player.pos
+	}
+	if run.story_runtime.soul.present {
+		candidate:=story_near_position(run,run.story_runtime.soul.pos,.8)
+		if !blocked_for_radius(&run.dungeon,candidate.x,candidate.y,PLAYER_HIT_RADIUS,block_stairs=true) do return candidate
+	}
+	return run_spawn_point(run)
+}
+
+@(private = "file")
+story_soul_hunt_restore_world :: proc(run:^Run,state:^Story_Minigame_State) {
+	if run==nil do return
+	legacy_dash_timer:=run.player.dash_timer
+	run.player.pos=story_soul_hunt_safe_return_position(run,state)
+	run.player.prev_pos=run.player.pos;run.player.moving=false
+	// Removed pair-board saves used revealed[] for card state. Only a committed
+	// world-hunt state owns the raw cooldown bits stored there; legacy recovery
+	// preserves the player's already-persisted dungeon cooldown.
+	if run.story_runtime.hall.verdict==.Unresolved do run.player.dash_timer=legacy_dash_timer
+	else do run.player.dash_timer=story_soul_hunt_original_dash_timer(state)
+	run.player.visual_action=.None;run.player.action_time=0;run.player.action_duration=0
+	run.visible={};run.nav={}
+	refresh_visibility(run)
+	story_refresh_relic_guidance(run)
+}
 
 app_story_finalize_minigame :: proc(app:^App)->bool {
 	if app==nil||!app.story_minigame.active||app.story_minigame.phase!=.Result||app.story_minigame.outcome==.None do return false
 	state:=app.story_minigame;index:=clamp(state.depth,1,STORY_BEAT_COUNT)-1;new_result:=false
 	switch state.kind {case .Bind_The_Page:if app.run.story_runtime.bind_results[index]==.None {app.run.story_runtime.bind_results[index]=state.outcome;new_result=true};case .Wake_The_Moonbloom:ledger:=&app.run.story_runtime.garden_games[index];if ledger.outcome==.None {ledger.valid=true;ledger.room_index=state.room_index;ledger.outcome=state.outcome;new_result=true};case .Mirror_The_Unlost:ledger:=&app.run.story_runtime.soul_games[index];if ledger.outcome==.None {ledger.valid=true;ledger.room_index=state.room_index;ledger.outcome=state.outcome;new_result=true};case .None:return false}
-	app.story_minigame={};app.story_minigame_cursor=0
-	if new_result&&state.outcome==.Won do app_story_grant_minigame_reward(app,state.kind)
+	if state.kind==.Mirror_The_Unlost {
+		story_soul_hunt_restore_world(&app.run,&state)
+	}
+	app.story_minigame={};app.story_minigame_cursor=0;app.story_soul_hunt_music_ready=false;app.story_soul_hunt_wait_remaining_s=0;app.story_soul_hunt_wait_total_s=0
+	if new_result&&state.outcome==.Won do app_story_grant_minigame_reward(app,&state)
 	if state.kind==.Bind_The_Page&&state.has_continuation {_=story_commit_relic_path(&app.run,state.continuation);app_story_close_panel(app)}
-	if state.kind==.Mirror_The_Unlost&&app.story_panel.active&&app.story_panel.node==.Soul_Reflection {app.story_panel.node_elapsed=0;app_story_rebuild_panel_text(app)}
+	if state.kind==.Mirror_The_Unlost {app.story_panel={active=true,kind=.Soul,node=.Soul_Settled,guest_index=-1};app_story_rebuild_panel_text(app)}
 	app_clear_play_input(app);return true
 }
 
@@ -1150,7 +1476,14 @@ app_story_choose_panel_option :: proc(app:^App,choice:Story_Panel_Choice) {
 	case .Epilogue_Gate:if choice.has_verb&&story_record_gate_choice(&app.run.story,choice.verb) {app.run.story_runtime.epilogue_stage=.Ending;_=app_story_set_panel_node(app,.Epilogue_Ending)}
 	case .Epilogue_Ending:app.run.story_runtime.epilogue_stage=.Bell;_=app_story_set_panel_node(app,.Epilogue_Bell)
 	case .Epilogue_Bell:if story_complete_bell_victory(&app.run) do app_story_close_panel(app)
-	case .Soul_Reflection:if choice.has_verdict&&story_resolve_lossless_soul(&app.run,choice.verdict) do _=app_story_set_panel_node(app,.Soul_Settled)
+	case .Soul_Reflection:
+		if choice.has_verdict&&story_resolve_lossless_soul(&app.run,choice.verdict) {
+			index:=clamp(app.run.depth,1,STORY_BEAT_COUNT)-1;room_index:=app.run.story_runtime.hall_ledgers[index].room_index
+			app_story_close_panel(app)
+			if !app_story_start_mirror_the_unlost(app,room_index) {
+				app.story_panel={active=true,kind=.Soul,node=.Soul_Settled,guest_index=-1};app_story_rebuild_panel_text(app)
+			}
+		}
 	case .Soul_Settled,.None:app_story_close_panel(app)
 	}
 }
@@ -1160,10 +1493,25 @@ app_story_reduce_panel :: proc(app:^App,intent:Intent) {if intent.back {if !app.
 
 app_story_reduce_modal :: proc(app:^App,intent:Intent) {if app==nil do return;app_clear_play_input(app);if app.story_minigame.active {app_story_reduce_minigame(app,intent);return};if app.story_panel.active do app_story_reduce_panel(app,intent)}
 app_story_tick_modal :: proc(app:^App,dt:f32) {if app==nil do return;if app.story_minigame.active {if story_minigame_tick(&app.story_minigame,dt) do _=app_story_finalize_minigame(app);return};if app.story_panel.active {app.story_panel.elapsed+=dt;app.story_panel.node_elapsed+=dt}}
-app_story_runtime_reset :: proc(app:^App) {if app==nil do return;app.story_panel={};app.story_minigame={};app.story_minigame_cursor=0}
+app_story_runtime_reset :: proc(app:^App) {if app==nil do return;app.story_panel={};app.story_minigame={};app.story_minigame_cursor=0;app.story_soul_hunt_music_ready=false;app.story_soul_hunt_wait_remaining_s=0;app.story_soul_hunt_wait_total_s=0}
+
+// Saves made by the removed pair-board implementation used the same enum value
+// but had no encoded return coordinate and no verdict yet. Resume them at the
+// question instead of interpreting their board cells as a live chase. Invalid
+// current-hunt saves also return safely to the real floor without a reward.
+app_story_normalize_soul_hunt_after_restore :: proc(app:^App) {
+	if app==nil||!app_story_soul_hunt_active(app) do return
+	if story_soul_hunt_state_valid(&app.run,&app.story_minigame) do return
+	state:=app.story_minigame
+	story_soul_hunt_restore_world(&app.run,&state)
+	app.story_minigame={};app.story_minigame_cursor=0
+	node:=app.run.story_runtime.hall.verdict==.Unresolved?Story_Panel_Node.Soul_Reflection:.Soul_Settled
+	app.story_panel={active=true,kind=.Soul,node=node,guest_index=-1}
+	app_story_rebuild_panel_text(app);app_clear_play_input(app)
+}
 
 app_story_process_requests :: proc(app:^App,include_omen:=false)->bool {
-	if app==nil||app.mode!=.Playing||app_play_modal_open(app) do return false
+	if app==nil||app.mode!=.Playing||app_play_modal_open(app)||app_story_soul_hunt_active(app) do return false
 	requests:=&app.run.story_runtime.requests
 	if requests.collect_relic {requests.collect_relic=false;_=story_collect_relic_echo(&app.run);app_clear_play_input(app);return true}
 	if requests.epilogue {requests.epilogue=false;return app_story_open_epilogue(app)}

@@ -1895,6 +1895,7 @@ persistence_decode_run :: proc(data: []byte) -> (Run_Document, Persistence_Decod
 app_install_run_document :: proc(app: ^App, document: ^Run_Document) -> bool {
 	if app == nil || document == nil || document.run_id == "" || !run_payload_validate(&document.payload) do return false
 	temporary, panel, minigame, cursor := run_take_payload(&document.payload)
+	restoring_soul_hunt := minigame.active && minigame.kind == .Mirror_The_Unlost
 	temporary.run_id = document.run_id
 	document.run_id = ""
 	temporary.revision = document.revision
@@ -1930,8 +1931,15 @@ app_install_run_document :: proc(app: ^App, document: ^Run_Document) -> bool {
 	temporary.sfx = nil
 	temporary.feel = nil
 	temporary.story_runtime.guidance_path = nil
-	refresh_visibility(&temporary)
-	story_refresh_relic_guidance(&temporary)
+	// A hunt save stores the player inside a virtual presentation room while
+	// `temporary.dungeon` remains the untouched real floor. Rebuilding LOS or
+	// guidance from those virtual coordinates would corrupt explored state.
+	// Valid hunts rebuild after returning; malformed/legacy states are repaired
+	// by app_story_normalize_soul_hunt_after_restore after installation.
+	if !restoring_soul_hunt {
+		refresh_visibility(&temporary)
+		story_refresh_relic_guidance(&temporary)
+	}
 	old := app.run
 	app.run = temporary
 	temporary = {}

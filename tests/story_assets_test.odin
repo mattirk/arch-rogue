@@ -354,13 +354,14 @@ mx_story_existing_actor_sheets_match_loader_contract :: proc(t: ^testing.T) {
 	if parse_err != nil do return
 	testing.expect(t,manifest.format==2&&manifest.native_cells,"story actors require the native-resolution actor pack")
 
-	expected := [2]struct {
+	expected := [3]struct {
 		name:  string,
 		cell:  int,
 		clips: []string,
 	}{
 		{"story_guest", 180, []string{"idle", "walk", "dance"}},
 		{"lossless_soul", 244, []string{"walk", "dance"}},
+		{"mistbound_ghost", 156, []string{"idle"}},
 	}
 	for actor_expected in expected {
 		actor, found := manifest.actors[actor_expected.name]

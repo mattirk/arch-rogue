@@ -31,7 +31,7 @@ SFX_MANIFEST = SFX_ROOT / "manifest.json"
 MAGIC = b"ARPACK1\n"
 
 ARCHETYPES = ["warden", "rogue", "arcanist", "acolyte", "ranger"]
-SOCIAL_ACTORS = ["bar_dancer", "garden_frog", "lossless_soul", "shopkeeper", "soulless_clanker", "story_guest", "string"]
+SOCIAL_ACTORS = ["bar_dancer", "garden_frog", "lossless_soul", "mistbound_ghost", "shopkeeper", "soulless_clanker", "story_guest", "string"]
 BOSS_ACTORS = [
     "ash_gallows_knight",
     "gate_tyrant",

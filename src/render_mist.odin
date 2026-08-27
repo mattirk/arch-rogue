@@ -24,6 +24,7 @@ Mist_Field :: struct {
 	shader_ok:    bool,
 	shader_tried: bool,
 	field_ready:  bool, // at least one update since the last reset
+	soul_hunt:    bool, // alternate chamber field; reset before returning to the dungeon
 	seed:         u64,
 	depth:        int,
 	floor_epoch:  u32,
@@ -297,6 +298,7 @@ mist_shader_preflight :: proc(view:^View)->bool {
 mist_reset_field :: proc(mist: ^Mist_Field, run: ^Run) {
 	mist.thin = {}
 	mist.push = {}
+	mist.soul_hunt = false
 	mist.seed = run.seed
 	mist.depth = run.depth
 	mist.floor_epoch = run.floor_epoch
@@ -339,6 +341,12 @@ mist_site_sample :: proc(view: ^View, app: ^App, iu, iv: int) -> [4]f32 {
 	y := (iv - u) / 2
 	if !dungeon_in_bounds(x, y) do return {}
 	mist := view.mist
+	if mist.soul_hunt {
+		room := STORY_SOUL_HUNT_ROOM
+		if x <= room.x || x >= room.x+room.w-1 || y <= room.y || y >= room.y+room.h-1 do return {}
+		push := mist.push[x][y]
+		return {push.x, push.y, mist.thin[x][y], 1}
+	}
 	vis := view.visible_mask.values[x][y]
 	if !app.run.dark_floor {
 		vis = max(vis, view.explored_mask.values[x][y] * VISUAL_MIST_MEMORY_LEVEL)
@@ -381,7 +389,7 @@ mist_update :: proc(view: ^View, app: ^App, alpha: f32) {
 	mist := ensure_mist_resources(view)
 	if mist == nil do return
 	run := &app.run
-	if mist.seed != run.seed || mist.depth != run.depth || mist.floor_epoch != run.floor_epoch {
+	if mist.soul_hunt || mist.seed != run.seed || mist.depth != run.depth || mist.floor_epoch != run.floor_epoch {
 		mist_reset_field(mist, run)
 	}
 	// Visibility gating rides the same eased masks lighting uses; keep them
@@ -421,15 +429,62 @@ mist_update :: proc(view: ^View, app: ^App, alpha: f32) {
 	mist_upload(view, app)
 }
 
+// The chamber borrows the same drifting, actor-parted field as the dungeon,
+// but gates it to the alternate room instead of consulting the saved floor's
+// visibility and population. The render cache is discarded on return.
+mist_update_soul_hunt :: proc(view: ^View, app: ^App, alpha: f32) {
+	mist := ensure_mist_resources(view)
+	if mist == nil || app == nil do return
+	if !mist.soul_hunt {
+		mist.thin = {}
+		mist.push = {}
+		mist.soul_hunt = true
+		mist.field_ready = false
+	}
+
+	dt := view.frame_dt
+	room := STORY_SOUL_HUNT_ROOM
+	for x in room.x+1 ..< room.x+room.w-1 {
+		for y in room.y+1 ..< room.y+room.h-1 {
+			mist.thin[x][y] = visual_mist_recover(mist.thin[x][y], dt)
+			mist.push[x][y] = visual_mist_push_decay(mist.push[x][y], dt)
+		}
+	}
+
+	player := &app.run.player
+	feet := player.prev_pos + (player.pos-player.prev_pos)*alpha
+	mist_stamp_actor(mist,feet,(player.pos-player.prev_pos)/SIM_DT,1.15,dt)
+	if ghost, active := story_soul_hunt_target_position(&app.story_minigame); active {
+		// A small pocket makes the silhouette condense out of the bank instead
+		// of reading as a sprite placed on top of it.
+		mist_stamp_actor(mist,ghost,{},.72,dt)
+	}
+	mist_upload(view,app)
+}
+
+// The return dialogue freezes simulation, and Mist can be disabled mid-hunt,
+// so invalidate the chamber texture immediately. Keep soul_hunt set: the next
+// enabled chamber update starts from the cleared wake, while the next ordinary
+// update performs a full dungeon reset.
+mist_invalidate_soul_hunt :: proc(view:^View) {
+	if view==nil||view.mist==nil||!view.mist.soul_hunt do return
+	if view.mist.field_ready {
+		view.mist.thin={}
+		view.mist.push={}
+	}
+	view.mist.field_ready=false
+}
+
 // Drawn inside the world camera after actors, before labels/numbers, so the
 // mist reads as a layer the dungeon sits in while text stays crisp and the
 // screen-space lightmap multiply still lights it.
-mist_draw :: proc(view: ^View, time: f32) {
+mist_draw :: proc(view: ^View, time: f32, opacity_scale: f32 = 1) {
 	mist := view.mist
 	if mist == nil || !mist.ready || !mist.shader_ok || !mist.field_ready do return
 	t := time
 	rl.SetShaderValue(mist.shader, mist.loc_time, &t, .FLOAT)
 	color := MIST_COLOR
+	color[3] = clamp(color[3]*opacity_scale,f32(0),f32(1))
 	rl.SetShaderValue(mist.shader, mist.loc_color, &color, .VEC4)
 	dst := rl.Rectangle{
 		-f32(VISUAL_LATTICE_OFFSET * TILE_HALF_W) - f32(TILE_HALF_W) * .5,

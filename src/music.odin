@@ -20,14 +20,19 @@ MUSIC_BAR_SILENT_DISTANCE_TILES        :: f32(8)
 MUSIC_BAR_FADE_SECONDS                 :: f32(0.5)
 MUSIC_GARDEN_SILENT_DISTANCE_TILES     :: f32(8)
 MUSIC_GARDEN_FADE_SECONDS              :: f32(0.5)
+MUSIC_SOUL_ROOM_SILENT_DISTANCE_TILES  :: f32(8)
+MUSIC_SOUL_ROOM_FADE_SECONDS           :: f32(0.5)
+MUSIC_MISTBOUND_MIN_WAIT_MS            :: f64(5000)
 MUSIC_BOSS_CHOIR_FADE_SECONDS          :: f32(0.5)
-MUSIC_MAX_SLOTS                        :: 16
+MUSIC_MAX_SLOTS                        :: 17
 MUSIC_MIXES_DOCUMENT_PATH              :: "assets/audio/bgm/mixes.json"
 
-MUSIC_MIX_MENU        :: "menu"
-MUSIC_MIX_DUNGEON     :: "dungeon"
-MUSIC_MIX_BOSS        :: "boss"
-MUSIC_MIX_BOSS_BATTLE :: "boss_battle"
+MUSIC_MIX_MENU           :: "menu"
+MUSIC_MIX_DUNGEON        :: "dungeon"
+MUSIC_MIX_SOUL_HUNT_WAIT :: "mistbound_chamber_wait"
+MUSIC_MIX_SOUL_HUNT      :: "mistbound_chamber"
+MUSIC_MIX_BOSS           :: "boss"
+MUSIC_MIX_BOSS_BATTLE    :: "boss_battle"
 
 Music_Effect_Kind :: enum u8 {
 	Gain,
@@ -47,6 +52,8 @@ Music_Track_Condition :: enum u8 {
 	Boss_Guitar_High,
 	Boss_Choir,
 	Dungeon_Default_Music,
+	Dungeon_Low_Beat,
+	Dungeon_Soul_Room_Music,
 	Dungeon_Primary_Harp,
 	Dungeon_Miniboss_Music,
 	Dungeon_Quest_Music,
@@ -68,6 +75,7 @@ Music_Runtime_State :: struct {
 	dungeon_quest_harp_gain: f32,
 	dungeon_bar_gain:           f32,
 	dungeon_garden_gain:        f32,
+	dungeon_soul_room_gain:     f32,
 	dungeon_string_guitar_gain: f32,
 }
 
@@ -177,6 +185,8 @@ music_track_condition_parse :: proc(id: string) -> (Music_Track_Condition, bool)
 	case "boss_guitar_high":   return .Boss_Guitar_High, true
 	case "boss_choir":         return .Boss_Choir, true
 	case "dungeon_default_music":      return .Dungeon_Default_Music, true
+	case "dungeon_low_beat":           return .Dungeon_Low_Beat, true
+	case "dungeon_soul_room_music":    return .Dungeon_Soul_Room_Music, true
 	case "dungeon_primary_harp":       return .Dungeon_Primary_Harp, true
 	case "dungeon_miniboss_music":     return .Dungeon_Miniboss_Music, true
 	case "dungeon_quest_music":        return .Dungeon_Quest_Music, true
@@ -363,6 +373,10 @@ music_dungeon_garden_gain :: proc(run: ^Run) -> f32 {
 	return music_special_room_gain(run, .Garden, MUSIC_GARDEN_SILENT_DISTANCE_TILES)
 }
 
+music_dungeon_soul_room_gain :: proc(run: ^Run) -> f32 {
+	return music_special_room_gain(run, .Hall_Of_Unlost_Echoes, MUSIC_SOUL_ROOM_SILENT_DISTANCE_TILES)
+}
+
 music_gain_slew :: proc(current, target, dt, full_scale_seconds: f32) -> f32 {
 	to := clamp(target, 0, 1)
 	from := clamp(current, 0, 1)
@@ -387,12 +401,16 @@ music_runtime_state_for :: proc(
 	boss_conditions_enabled: bool = true,
 ) -> Music_Runtime_State {
 	if app == nil do return {}
-	miniboss_horn_gain, quest_harp_gain, bar_gain, garden_gain, string_guitar_gain, boss_choir_gain: f32
+	miniboss_horn_gain, quest_harp_gain, bar_gain, garden_gain, soul_room_gain, string_guitar_gain, boss_choir_gain: f32
 	if dungeon_conditions_enabled {
 		miniboss_horn_gain = music_dungeon_miniboss_horn_gain(&app.run)
 		quest_harp_gain = music_dungeon_quest_harp_gain(&app.run)
 		bar_gain = music_dungeon_bar_gain(&app.run)
 		garden_gain = music_dungeon_garden_gain(&app.run)
+		soul_room_gain = music_dungeon_soul_room_gain(&app.run)
+		// The alternate Mistbound scene uses virtual coordinates. Keep the Soul-room
+		// arrangement at full gain while its Preview phase waits on the music loop.
+		if app_story_soul_hunt_active(app) && app.story_minigame.phase == .Preview do soul_room_gain = 1
 		string_guitar_gain = music_dungeon_string_guitar_gain(&app.run)
 	}
 	if boss_conditions_enabled do boss_choir_gain = music_boss_choir_gain(&app.run)
@@ -403,6 +421,7 @@ music_runtime_state_for :: proc(
 		dungeon_quest_harp_gain = quest_harp_gain,
 		dungeon_bar_gain           = bar_gain,
 		dungeon_garden_gain        = garden_gain,
+		dungeon_soul_room_gain     = soul_room_gain,
 		dungeon_string_guitar_gain = string_guitar_gain,
 	}
 }
@@ -448,6 +467,12 @@ music_runtime_state_update :: proc(
 		dt,
 		MUSIC_GARDEN_FADE_SECONDS,
 	)
+	state.dungeon_soul_room_gain = music_gain_slew(
+		state.dungeon_soul_room_gain,
+		target.dungeon_soul_room_gain,
+		dt,
+		MUSIC_SOUL_ROOM_FADE_SECONDS,
+	)
 	state.dungeon_string_guitar_gain = music_gain_slew(
 		state.dungeon_string_guitar_gain,
 		target.dungeon_string_guitar_gain,
@@ -463,14 +488,20 @@ music_track_runtime_gain :: proc(track: Music_Mix_Track, runtime: Music_Runtime_
 	case .Boss_Guitar_Mid:     return runtime.boss_guitar_tier == .Mid ? 1 : 0
 	case .Boss_Guitar_High:    return runtime.boss_guitar_tier == .High ? 1 : 0
 	case .Boss_Choir: return clamp(runtime.boss_choir_gain, 0, 1)
+	case .Dungeon_Low_Beat:
+		return 1
+	case .Dungeon_Soul_Room_Music:
+		return clamp(runtime.dungeon_soul_room_gain, 0, 1)
 	case .Dungeon_Default_Music, .Dungeon_Primary_Harp, .Dungeon_Miniboss_Music, .Dungeon_Quest_Music, .Dungeon_Quest_Garden_Harp, .Dungeon_Bar_Music, .Dungeon_String_Guitar_Music:
 		// Spatial rooms are phase-locked stem groups inside the Dungeon mix, not
-		// discrete top-level mixes. Bar proximity ducks ordinary layers, while
-		// Garden has final priority and supplies its own alternating third harp.
+		// discrete top-level mixes. Bar proximity ducks ordinary layers, Garden
+		// overrides Bar, and the Soul room finally ducks every layer except its
+		// dedicated stem, the low beat, and the always-on grim bass.
 		bar_duck := 1 - clamp(runtime.dungeon_bar_gain, 0, 1)
 		garden_gain := clamp(runtime.dungeon_garden_gain, 0, 1)
 		garden_duck := 1 - garden_gain
-		spatial_duck := bar_duck * garden_duck
+		soul_duck := 1 - clamp(runtime.dungeon_soul_room_gain, 0, 1)
+		spatial_duck := bar_duck * garden_duck * soul_duck
 		quest_gain := clamp(runtime.dungeon_quest_harp_gain, 0, 1)
 		primary_harp_gain: f32 = cycle % 4 == 0 ? 1 : 0
 		secondary_harp_gain: f32 = cycle % 4 == 2 ? 1 : 0
@@ -495,6 +526,16 @@ music_track_runtime_gain :: proc(track: Music_Mix_Track, runtime: Music_Runtime_
 music_mix_for :: proc(app: ^App) -> string {
 	if app == nil do return MUSIC_MIX_MENU
 	playing_mix :: proc(app: ^App) -> string {
+		if app_story_soul_hunt_active(app) {
+			if app.story_minigame.phase == .Play || app.story_minigame.phase == .Result ||
+			   app.story_soul_hunt_music_ready {
+				return MUSIC_MIX_SOUL_HUNT
+			}
+			return MUSIC_MIX_SOUL_HUNT_WAIT
+		}
+		// Lossless Soul dialogue is an in-room interaction and must retain the
+		// proximity arrangement instead of switching to menu music.
+		if app.story_panel.active && app.story_panel.kind == .Soul do return MUSIC_MIX_DUNGEON
 		// Wake the Moonbloom is an in-room Garden interaction, not a score-changing
 		// cutscene. Keep its spatial Dungeon layers so Garden remains bass + low beat.
 		if app_story_minigame_active(app) && app.story_minigame.kind == .Wake_The_Moonbloom {
@@ -551,12 +592,20 @@ Music_Slot :: struct {
 	authored:         Music_Mix_Track,
 }
 
+Music_Mistbound_Wait :: struct {
+	instance_id:  int,
+	target_cycle: int,
+	total_ms:     f64,
+	released:     bool,
+}
+
 Music_Director :: struct {
-	stage:      Music_Stage,
-	active_mix: string,
-	clock_ms:   f64, // ms since the current stage epoch (monotonic per stage)
-	cycle:      int, // completed full cycles in Steady
-	slots:      [MUSIC_MAX_SLOTS]Music_Slot,
+	stage:          Music_Stage,
+	active_mix:     string,
+	clock_ms:       f64, // ms since the current stage epoch (monotonic per stage)
+	cycle:          int, // completed full cycles in Steady
+	mistbound_wait: Music_Mistbound_Wait,
+	slots:          [MUSIC_MAX_SLOTS]Music_Slot,
 }
 
 music_phase_ms :: proc(director: ^Music_Director, library: ^Music_Library) -> f64 {
@@ -665,6 +714,66 @@ music_enter_mix :: proc(
 			music_slot_begin_fade(&slot, 0, fade_ms, snap)
 		}
 	}
+}
+
+// Arm the Mistbound chase against the currently audible Loop. Preview holds
+// both kellopeli stems with grim bass until the next wrap, unless less than five
+// seconds remain; in that case it deliberately waits through one additional
+// complete loop. The released mix is snapped on the chosen boundary so the low
+// beat, choir, and Alasin ambience enter with the chase at their authored levels.
+music_mistbound_wait_update :: proc(
+	director: ^Music_Director,
+	library: ^Music_Library,
+	app: ^App,
+) -> bool {
+	if director == nil || library == nil || app == nil || !library.loaded do return false
+	if !app_story_soul_hunt_active(app) || app.story_minigame.phase != .Preview {
+		director.mistbound_wait = {}
+		return false
+	}
+	if director.stage != .Steady do return false
+
+	wait := &director.mistbound_wait
+	instance_id := app.story_minigame.instance_id
+	if wait.instance_id != instance_id {
+		phase_ms := clamp(music_phase_ms(director, library), 0, library.loop_ms)
+		remaining_ms := library.loop_ms - phase_ms
+		cycles_to_wait := remaining_ms < MUSIC_MISTBOUND_MIN_WAIT_MS ? 2 : 1
+		wait^ = {
+			instance_id = instance_id,
+			target_cycle = director.cycle + cycles_to_wait,
+			total_ms = remaining_ms + f64(cycles_to_wait - 1) * library.loop_ms,
+		}
+	}
+	if wait.released do return true
+	if director.cycle < wait.target_cycle do return false
+
+	music_enter_mix(
+		director,
+		library,
+		MUSIC_MIX_SOUL_HUNT,
+		music_phase_ms(director, library),
+		snap = true,
+	)
+	wait.released = true
+	return true
+}
+
+music_mistbound_wait_progress_ms :: proc(
+	director: ^Music_Director,
+	library: ^Music_Library,
+) -> (remaining_ms, total_ms: f64) {
+	if director == nil || library == nil || !library.loaded do return
+	wait := &director.mistbound_wait
+	if wait.instance_id <= 0 do return
+	total_ms = max(wait.total_ms, 0)
+	if wait.released do return 0, total_ms
+	remaining_ms = clamp(
+		f64(wait.target_cycle) * library.loop_ms - director.clock_ms,
+		0,
+		total_ms,
+	)
+	return
 }
 
 // Advance the Loop clock and slot envelopes by one presentation frame.

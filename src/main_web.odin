@@ -595,7 +595,7 @@ ar_web_tick :: proc "c" () -> i32 {
 // unbounded callback; the current semantic registry has 98 banks.
 
 @(private = "file")
-WEB_PACK_ACTOR_CAP :: 8
+WEB_PACK_ACTOR_CAP :: 12
 @(private = "file")
 WEB_PACK_SFX_CAP :: 128
 

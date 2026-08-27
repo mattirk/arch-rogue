@@ -1000,6 +1000,7 @@ Assets :: struct {
 	garden_frog:                Actor_Sprites,
 	story_guest:                Actor_Sprites,
 	lossless_soul:              Actor_Sprites,
+	mistbound_ghost:            Actor_Sprites,
 	soulless_clanker:           Actor_Sprites,
 	string_guitarist:           Actor_Sprites,
 	action_icons:               [Action_Icon]Action_Icon_Asset,
@@ -1070,6 +1071,7 @@ assets_actor_texture_count :: proc(assets: ^Assets) -> (count: int) {
 	count += count_sprites(&assets.garden_frog)
 	count += count_sprites(&assets.story_guest)
 	count += count_sprites(&assets.lossless_soul)
+	count += count_sprites(&assets.mistbound_ghost)
 	count += count_sprites(&assets.soulless_clanker)
 	count += count_sprites(&assets.string_guitarist)
 	return
@@ -1654,6 +1656,7 @@ assets_load :: proc(assets: ^Assets) {
 			assets.garden_frog = load_actor_sprites(&manifest, "garden_frog")
 			assets.story_guest = load_actor_sprites(&manifest, "story_guest")
 			assets.lossless_soul = load_actor_sprites(&manifest, "lossless_soul")
+			assets.mistbound_ghost = load_actor_sprites(&manifest, "mistbound_ghost")
 			assets.soulless_clanker = load_actor_sprites(&manifest, "soulless_clanker")
 			assets.string_guitarist = load_actor_sprites(&manifest, "string")
 		}
@@ -2190,6 +2193,7 @@ assets_unload_actor_textures :: proc(assets: ^Assets) {
 	unload_sprites(&assets.garden_frog)
 	unload_sprites(&assets.story_guest)
 	unload_sprites(&assets.lossless_soul)
+	unload_sprites(&assets.mistbound_ghost)
 	unload_sprites(&assets.soulless_clanker)
 	unload_sprites(&assets.string_guitarist)
 }
@@ -2292,6 +2296,7 @@ assets_web_adopt_slot :: proc(assets: ^Assets, manifest: ^Baked_Manifest, name: 
 	case "garden_frog": assets_web_replace_sprites(&assets.garden_frog, manifest, name)
 	case "story_guest": assets_web_replace_sprites(&assets.story_guest, manifest, name)
 	case "lossless_soul": assets_web_replace_sprites(&assets.lossless_soul, manifest, name)
+	case "mistbound_ghost": assets_web_replace_sprites(&assets.mistbound_ghost, manifest, name)
 	case "soulless_clanker": assets_web_replace_sprites(&assets.soulless_clanker, manifest, name)
 	case "string": assets_web_replace_sprites(&assets.string_guitarist, manifest, name)
 	case:

@@ -164,6 +164,20 @@ mx_story_modal_hit_test_maps_pointer_intent_without_raylib_state :: proc(t: ^tes
 	app.story_minigame.phase = .Ready
 	hit = ar.story_modal_hit_test(&app, 3840, 2160, story_ui_center(minigame_layout.minigame.title))
 	testing.expect(t, hit.kind == .Panel && hit.index == -1, "Ready-phase panel click must start without inventing a cell index")
+
+	app.story_minigame = {
+		active = true,
+		kind = .Mirror_The_Unlost,
+		phase = .Play,
+		board_count = 8,
+	}
+	hunt_layout := ar.story_modal_layout(&app, 3840, 2160)
+	testing.expect(t, hunt_layout.kind == .None, "the active Lossless Soul hunt must stay in the world instead of opening a modal layout")
+	hunt_point := story_ui_center(minigame_layout.minigame.cells[7])
+	hit = ar.story_modal_hit_test(&app, 3840, 2160, hunt_point)
+	testing.expect(t, hit.kind == .None, "the active Lossless Soul hunt must not expose modal pointer hits")
+	_, hunt_cell_found := ar.story_minigame_cell_at(&app, 3840, 2160, hunt_point)
+	testing.expect(t, !hunt_cell_found, "the active Lossless Soul hunt must not expose legacy board cells")
 }
 
 @(test)
@@ -192,14 +206,4 @@ mx_story_minigame_cell_views_cover_ready_preview_play_and_result :: proc(t: ^tes
 	moon := ar.Story_Minigame_State{active = true, kind = .Wake_The_Moonbloom, phase = .Play, board_count = 9, active_cell = 5}
 	view = ar.story_minigame_cell_view(&moon, 5, 0)
 	testing.expect(t, view.face_up && view.active, "Moonbloom Play must identify the live target")
-
-	mirror := ar.Story_Minigame_State{active = true, kind = .Mirror_The_Unlost, phase = .Play, board_count = 8, revealed = {3, 0}, revealed_count = 1}
-	mirror.matched[1] = true
-	testing.expect(t, ar.story_minigame_cell_view(&mirror, 1, 0).face_up, "matched Mirror seal must stay face up")
-	testing.expect(t, ar.story_minigame_cell_view(&mirror, 3, 0).face_up, "currently revealed Mirror seal must be face up")
-	testing.expect(t, !ar.story_minigame_cell_view(&mirror, 4, 0).face_up, "unmatched hidden Mirror seal must stay face down")
-	mirror.phase = .Preview
-	testing.expect(t, ar.story_minigame_cell_view(&mirror, 4, 0).face_up, "Mirror Preview must reveal the board")
-	mirror.phase = .Result
-	testing.expect(t, ar.story_minigame_cell_view(&mirror, 4, 0).face_up, "Mirror Result must reveal the board")
 }

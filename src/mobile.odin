@@ -658,6 +658,31 @@ mobile_gameplay_target_set :: proc(
 	return set
 }
 
+// The mist chase needs only movement, dash, and a directly reachable pause.
+// Suppressing the other action targets avoids advertising frozen-world combat,
+// inventory, character, or interaction controls inside the virtual room.
+mobile_soul_hunt_target_set :: proc(
+	layout: ^Mobile_Layout,
+	input_context: Mobile_Input_Context_Key,
+	utility_open := false,
+) -> Mobile_Target_Set {
+	set: Mobile_Target_Set
+	if layout == nil do return set
+	mobile_target_set_init(&set,input_context,layout.revision)
+	_ = mobile_target_set_add(&set,{
+		id=103,kind=.Control,rect=layout.action_slots[3],enabled=true,control=.Ability_4,
+	})
+	_ = mobile_target_set_add(&set,{
+		id=200,kind=.Control,rect=layout.interact,enabled=true,control=.Utility_Toggle,
+	})
+	if utility_open {
+		_ = mobile_target_set_add(&set,{
+			id=203,kind=.Control,rect=layout.pause,enabled=true,control=.Pause,
+		})
+	}
+	return set
+}
+
 // Merge another semantic source after the destination. Continuous controller
 // movement/aim therefore retains today's priority, while edge actions combine.
 mobile_intent_merge :: proc(destination: ^Intent, source: Intent) {

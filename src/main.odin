@@ -5,7 +5,7 @@ import "core:fmt"
 import "core:strings"
 import rl "../vendor/raylib"
 
-VERSION :: "6.0.0-alpha.24"
+VERSION :: "6.0.0-alpha.25"
 
 // Spiral-of-death guard: clamp huge frame gaps (debugger pause, window drag).
 MAX_FRAME_DT :: 0.25
@@ -117,7 +117,8 @@ collect_controller_intent :: proc(app:^App,state:^Controller_Runtime,intent:^Int
 		if right!={} {
 			state.aim_mode = true
 			state.right_aim_this_frame = true
-			intent.aim=controller_snap_aim(&app.run,screen_stick_to_tile_vector(right))
+			raw_aim:=screen_stick_to_tile_vector(right)
+			intent.aim=controller_scene_aim(&app.run,raw_aim,!app_story_soul_hunt_active(app))
 			intent.aim_live=true
 		}
 	} else {
@@ -151,7 +152,7 @@ collect_controller_intent :: proc(app:^App,state:^Controller_Runtime,intent:^Int
 		}
 	}
 	if gameplay && state.aim_mode && intent.aim == {} {
-		intent.aim = controller_snap_aim(&app.run,app.run.player.facing)
+		intent.aim=controller_scene_aim(&app.run,app.run.player.facing,!app_story_soul_hunt_active(app))
 	}
 }
 
@@ -1411,6 +1412,33 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 	// gate), and freezes while suspended. The clock is disciplined by the live
 	// PCM mixer's callback cursor so boundary events land on audible frames.
 	desired_music_mix := music_mix_for(app)
+	if rt.audio.ready && !rt.audio.suspended {
+		if rt.audio.music_library.loaded {
+			reference_ms := audio_music_reference_phase_ms(&rt.audio, &rt.music)
+			music_director_update(&rt.music, &rt.audio.music_library, desired_music_mix, f64(frame_dt) * 1000, reference_ms)
+			mistbound_released := music_mistbound_wait_update(&rt.music, &rt.audio.music_library, app)
+			wait_remaining_ms, wait_total_ms := music_mistbound_wait_progress_ms(&rt.music, &rt.audio.music_library)
+			app.story_soul_hunt_wait_remaining_s = f32(wait_remaining_ms / 1000)
+			app.story_soul_hunt_wait_total_s = f32(wait_total_ms / 1000)
+			if mistbound_released {
+				app.story_soul_hunt_music_ready = true
+				desired_music_mix = MUSIC_MIX_SOUL_HUNT
+			}
+		} else if app_story_soul_hunt_active(app) && app.story_minigame.phase == .Preview {
+			// Missing audio must degrade to silence, never block gameplay forever.
+			app.story_soul_hunt_music_ready = true
+			app.story_soul_hunt_wait_remaining_s = 0
+			app.story_soul_hunt_wait_total_s = 0
+			desired_music_mix = MUSIC_MIX_SOUL_HUNT
+		}
+	} else if rt.audio.initialized && !rt.audio.ready && app_story_soul_hunt_active(app) &&
+	          app.story_minigame.phase == .Preview {
+		// A failed audio device has no Loop to await; preserve playable silence.
+		app.story_soul_hunt_music_ready = true
+		app.story_soul_hunt_wait_remaining_s = 0
+		app.story_soul_hunt_wait_total_s = 0
+		desired_music_mix = MUSIC_MIX_SOUL_HUNT
+	}
 	music_runtime_state_update(
 		&rt.music_runtime,
 		app,
@@ -1418,10 +1446,6 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 		desired_music_mix == MUSIC_MIX_BOSS || desired_music_mix == MUSIC_MIX_BOSS_BATTLE,
 		frame_dt,
 	)
-	if rt.audio.ready && !rt.audio.suspended {
-		reference_ms := audio_music_reference_phase_ms(&rt.audio, &rt.music)
-		music_director_update(&rt.music, &rt.audio.music_library, desired_music_mix, f64(frame_dt) * 1000, reference_ms)
-	}
 	audio_music_update(
 		&rt.audio,
 		&rt.music,
@@ -1434,7 +1458,12 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 		web_pack_adoptions_tick(rt)
 	}
 
-	if app.mode == .Playing && !app.inventory_open && !app.character_open && !app.shop_open &&
+	if app.mode==.Playing&&app_story_soul_hunt_active(app) {
+		player:=&app.run.player;pos:=player.prev_pos+(player.pos-player.prev_pos)*alpha
+		view_center_on(&rt.view,world_from_tile(pos))
+	} else if app.mode==.Playing&&app.story_panel.active&&app.story_panel.kind==.Soul&&app.story_panel.node==.Soul_Settled {
+		view_center_on(&rt.view,world_from_tile(app.run.player.pos))
+	} else if app.mode == .Playing && !app.inventory_open && !app.character_open && !app.shop_open &&
 		!app_play_modal_open(app) {
 		player := &app.run.player
 		pos := player.prev_pos + (player.pos - player.prev_pos) * alpha
@@ -1453,6 +1482,7 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 			rt.running = false
 			return false
 		}
+		if app.mode==.Playing&&app_story_soul_hunt_active(app) do view_center_on(&rt.view,world_from_tile(app.run.player.pos))
 		alpha = 1
 	}
 	draw_frame(&rt.view, app, &rt.assets, alpha)

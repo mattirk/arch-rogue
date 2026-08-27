@@ -373,6 +373,8 @@ platform_mobile_build_targets :: proc(runtime: ^Platform_Runtime, app: ^App) -> 
 				enabled = app.run.player.bag_count > 0)
 			platform_mobile_add_target(&set, layout, 1031, .Guard_Request_Drop, drop,
 				enabled = app.run.player.bag_count > 0)
+		} else if app_story_soul_hunt_active(app) {
+			set = mobile_soul_hunt_target_set(layout,context_key,app.mobile_utility_open)
 		} else {
 			set = mobile_gameplay_target_set(
 				layout,

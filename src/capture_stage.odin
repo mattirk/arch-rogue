@@ -51,6 +51,7 @@ MX_Story_Capture_Scenario :: enum u8 {
 	Relic_Choices,
 	Guest,
 	Soul,
+	Mistbound,
 	Ending,
 }
 
@@ -60,6 +61,7 @@ mx_story_capture_scenario_from_env :: proc(value: string) -> MX_Story_Capture_Sc
 	case "relic_choices": return .Relic_Choices
 	case "guest":         return .Guest
 	case "soul":          return .Soul
+	case "mistbound":     return .Mistbound
 	case "ending":        return .Ending
 	}
 	return .None
@@ -791,6 +793,35 @@ mx_story_stage_capture :: proc(app: ^App, scenario: MX_Story_Capture_Scenario) -
 		if !app.run.story_runtime.soul.present || !app_story_open_lossless_soul(app) do return false
 		app_story_panel_reveal(app)
 		app.story_panel.choice_cursor = 1
+	case .Mistbound:
+		app.run.depth = 7
+		room_index := min(1,app.run.dungeon.room_count-1)
+		if room_index < 0 do return false
+		app.run.dungeon.special_room_count = 1
+		app.run.dungeon.special_rooms_buf[0] = {.Hall_Of_Unlost_Echoes,room_index}
+		app.run.story_runtime.soul = {}
+		app.run.story_runtime.hall = {}
+		index := app.run.depth-1
+		app.run.story_runtime.hall_ledgers[index] = {}
+		app.run.story_runtime.soul_games[index] = {}
+		story_populate_floor(&app.run)
+		if !app.run.story_runtime.soul.present||
+			!story_resolve_lossless_soul(&app.run,.Release)||
+			!app_story_start_mirror_the_unlost(app,room_index) {
+			return false
+		}
+		// Capture staging bypasses the live audio-boundary wait so the requested
+		// frame can deterministically show the active chase.
+		app.story_soul_hunt_music_ready=true
+		for _ in 0..<8 {
+			if app.story_minigame.phase==.Play do break
+			_=story_soul_hunt_tick(app,{},.25)
+		}
+		if app.story_minigame.phase!=.Play||app.story_minigame.active_cell<0 do return false
+		// Let the first apparition finish condensing so the visual fixture shows
+		// the authored target rather than only its opening bank of mist.
+		_=story_soul_hunt_tick(app,{},.18)
+		app.options.mist_enabled=true
 	case .Ending:
 		app.run.story.flags.gate = .Unresolved
 		if !story_record_gate_choice(&app.run.story,.Aid) do return false
@@ -800,6 +831,7 @@ mx_story_stage_capture :: proc(app: ^App, scenario: MX_Story_Capture_Scenario) -
 	case .None:
 		return false
 	}
+	if scenario==.Mistbound do return app_story_soul_hunt_active(app)&&!app.story_panel.active
 	return app.story_panel.active && !app.story_minigame.active
 }
 

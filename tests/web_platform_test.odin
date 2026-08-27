@@ -73,6 +73,17 @@ mx_web_lazy_pack_source_contract_carries_actors_and_sfx :: proc(t: ^testing.T) {
 		testing.expect(t, strings.contains(text, "if path in packed_sfx_files"), "core staging must exclude lazy SFX WAVs")
 		testing.expect(t, strings.contains(text, "\"soulless_clanker\"") && strings.contains(text, "\"string\""),
 			"social actor pack must carry recruited room companions")
+		testing.expect(t, strings.contains(text, "\"mistbound_ghost\""),
+			"social actor pack must carry the Mistbound Chamber ghost")
+	}
+
+	web_entry, web_entry_err := os.read_entire_file_from_path("src/main_web.odin", context.allocator)
+	testing.expect(t, web_entry_err == nil, "web entry source is missing")
+	if web_entry_err == nil {
+		defer delete(web_entry)
+		text := string(web_entry)
+		testing.expect(t, strings.contains(text, "WEB_PACK_ACTOR_CAP :: 12"),
+			"web actor adoption capacity must retain headroom for the expanded social pack")
 	}
 
 	bridge, bridge_err := os.read_entire_file_from_path("web/library_archrogue.js", context.allocator)

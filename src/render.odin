@@ -323,13 +323,22 @@ draw_frame :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 	view.lighting_ready = false
 	if draws_run {
 		ensure_radial_texture(view) // contact shadows remain when lighting is off
-		update_effect_visibility(view, app)
-		if app.options.lighting_enabled do view.lighting_ready = update_lightmap(view, app, alpha)
+		if !app_story_soul_hunt_active(app) {
+			mist_invalidate_soul_hunt(view)
+			update_effect_visibility(view, app)
+			if app.options.lighting_enabled do view.lighting_ready = update_lightmap(view, app, alpha)
+		}
 		// Mist simulation advances only while the world does; pause/panels/death
 		// freeze the field exactly like the deterministic animation clock.
 		sim_live := app.mode == .Playing && !app.inventory_open && !app.character_open && !app.shop_open &&
 			!app_play_modal_open(app)
-		if app.options.mist_enabled && sim_live do mist_update(view, app, alpha)
+		if sim_live {
+			if app_story_soul_hunt_active(app) {
+				if app.options.mist_enabled do mist_update_soul_hunt(view,app,alpha)
+				else do mist_invalidate_soul_hunt(view)
+			}
+			else if app.options.mist_enabled do mist_update(view,app,alpha)
+		}
 	}
 
 	rl.BeginDrawing()
@@ -477,6 +486,13 @@ draw_mobile_context_controls :: proc(view:^View,app:^App) {
 
 @(private = "file")
 draw_run_scene :: proc(view:^View,app:^App,assets:^Assets,alpha:f32) {
+	if app_story_soul_hunt_active(app) {
+		rl.BeginMode2D(view.camera)
+		draw_soul_hunt_world(view,app,assets,alpha)
+		rl.EndMode2D()
+		draw_soul_hunt_overlay(view,app,assets)
+		return
+	}
 	rl.BeginMode2D(view.camera)
 	draw_world(view,app,assets,alpha)
 	rl.EndMode2D()
@@ -485,7 +501,155 @@ draw_run_scene :: proc(view:^View,app:^App,assets:^Assets,alpha:f32) {
 		rl.DrawTextureRec(view.lightmap.texture,{0,0,f32(view.lightmap.texture.width),-f32(view.lightmap.texture.height)},{0,0},rl.WHITE)
 		rl.EndBlendMode()
 	}
+	// Text notifications render after the lighting multiply so room-edge labels
+	// remain fully legible even when their glyph bounds extend into darkness.
+	rl.BeginMode2D(view.camera)
+	draw_text_notifications(app)
+	rl.EndMode2D()
 	draw_overlay(view,app,assets)
+}
+
+Soul_Hunt_Draw_Kind :: enum u8 {Ghost,Player}
+Soul_Hunt_Draw_Item :: struct {kind:Soul_Hunt_Draw_Kind,index:int,feet:Vec2,depth:f32,alpha:f32}
+
+
+@(private = "file")
+draw_soul_hunt_capture_effect :: proc(feet:Vec2,feedback_time:f32) {
+	progress:=clamp(1-feedback_time/.42,f32(0),f32(1))
+	life:=1-progress
+	center:=rl.Vector2(world_from_tile(feet))-rl.Vector2{0,13+progress*9}
+	accent:=rl.Fade(rl.Color{151,232,238,255},life)
+	bright:=rl.Fade(rl.Color{226,255,250,255},life*life)
+	rl.BeginBlendMode(.ADDITIVE)
+	// Tight, angular soul fragments replace the old floor-spanning ring. Their
+	// horizontal reach stays inside one isometric tile even at edge spawn sites.
+	for i in 0..<6 {
+		side:=f32(-1)
+		if i%2!=0 do side=1
+		rank:=f32(i/2)
+		outer:=rl.Vector2{side*(13-rank*3)*(1-progress*.58),f32(8-rank*5)-progress*17}
+		tip:=center+outer
+		inward:=center+outer*.38
+		rl.DrawLineEx(tip,inward,1.4+life*.9,accent)
+		shard_h:=f32(3)+life*2
+		rl.DrawTriangle(
+			tip-rl.Vector2{2,0},
+			tip+rl.Vector2{2,0},
+			tip-rl.Vector2{0,shard_h},
+			bright,
+		)
+	}
+	rl.DrawLineEx(center+rl.Vector2{0,8},center-rl.Vector2{0,12+progress*8},2.0,bright)
+	rl.EndBlendMode()
+}
+
+@(private = "file")
+draw_soul_hunt_player :: proc(view:^View,app:^App,assets:^Assets,feet:Vec2,world_time:f32) {
+	player:=&app.run.player
+	draw_contact_shadow(view,feet,34,13,player.moving)
+	clip:=player.moving?Clip_Kind.Walk:Clip_Kind.Idle
+	clip_time:=player.moving?player.anim_time:visual_idle_clip_time(world_time)
+	if player.visual_action==.Dash {
+		clip=.Walk;action_clip:=&assets.archetypes[player.archetype].clips[clip]
+		clip_time=normalized_action_clip_time(player_visual_action_progress(player),action_clip.frames,action_clip.fps)
+	}
+	draw_actor(assets,&assets.archetypes[player.archetype],clip,player.facing,clip_time,feet,rl.WHITE,0)
+}
+
+@(private = "file")
+draw_soul_hunt_ghost_fallback :: proc(feet:Vec2,alpha,world_time:f32) {
+	center:=rl.Vector2(world_from_tile(feet))-rl.Vector2{0,16+math.sin(world_time*5)*2}
+	rl.BeginBlendMode(.ADDITIVE)
+	rl.DrawCircleV(center,18,rl.Fade(rl.Color{95,174,198,255},.13*alpha))
+	rl.DrawCircleV(center,9,rl.Fade(rl.Color{178,232,238,255},.48*alpha))
+	rl.EndBlendMode()
+	rl.DrawTriangle(center+rl.Vector2{-8,3},center+rl.Vector2{8,3},center+rl.Vector2{0,24},rl.Fade(rl.Color{92,124,153,255},.72*alpha))
+	rl.DrawCircleV(center-rl.Vector2{0,4},5,rl.Fade(rl.Color{221,244,242,255},.88*alpha))
+}
+
+@(private = "file")
+draw_soul_hunt_world :: proc(view:^View,app:^App,assets:^Assets,alpha:f32) {
+	state:=&app.story_minigame;room:=STORY_SOUL_HUNT_ROOM
+	world_time:=app.run.player.sim_elapsed+alpha*SIM_DT
+	floor:=&assets.world[.Lossless_Soul_Floor]
+	// A thin exposed underside makes the unenclosed floor read as a slab hanging
+	// over the void, without introducing wall geometry or additional collision.
+	drop:=rl.Vector2{0,8}
+	for x in room.x+1..<room.x+room.w-1 {
+		_,_,b,l:=tile_corners({f32(x),f32(room.y+room.h-2)})
+		rl.DrawTriangle(l,l+drop,b+drop,{11,13,20,255})
+		rl.DrawTriangle(l,b+drop,b,{17,20,29,255})
+	}
+	for y in room.y+1..<room.y+room.h-1 {
+		_,r,b,_:=tile_corners({f32(room.x+room.w-2),f32(y)})
+		rl.DrawTriangle(b,b+drop,r+drop,{9,11,17,255})
+		rl.DrawTriangle(b,r+drop,r,{14,17,25,255})
+	}
+	for y in room.y+1..<room.y+room.h-1 {
+		for x in room.x+1..<room.x+room.w-1 {
+			tile:=Vec2{f32(x),f32(y)}
+			if floor.loaded do draw_world_sprite(floor,tile,visual_floor_variant(state.seed,state.depth,0,x,y),0,{116,132,150,255})
+			else do draw_iso_tile_fill(tile,{25,30,42,255})
+		}
+	}
+	items:[2]Soul_Hunt_Draw_Item;count:=0
+	if ghost,active:=story_soul_hunt_target_position(state);active {
+		ghost_profile:=story_soul_hunt_profile(app.run.story_runtime.hall.verdict)
+		appeared:=clamp((ghost_profile.ghost_seconds-state.target_time)/.16,f32(0),f32(1))
+		dissolving:=clamp(state.target_time/.20,f32(0),f32(1))
+		ghost_alpha:=min(appeared,dissolving)
+		items[count]={kind=.Ghost,index=state.active_cell,feet=ghost,depth=ghost.x+ghost.y,alpha=ghost_alpha};count+=1
+	}
+	feet:=app.run.player.prev_pos+(app.run.player.pos-app.run.player.prev_pos)*alpha
+	items[count]={kind=.Player,feet=feet,depth=feet.x+feet.y,alpha=1};count+=1
+	for i in 1..<count {
+		item:=items[i];j:=i
+		for j>0&&items[j-1].depth>item.depth {items[j]=items[j-1];j-=1}
+		items[j]=item
+	}
+	for i in 0..<count {
+		item:=items[i]
+		switch item.kind {
+		case .Ghost:
+			if assets.mistbound_ghost.loaded&&assets.mistbound_ghost.clips[.Idle].valid {
+				facing:=app.run.player.pos-item.feet;if facing=={} do facing={0,1}
+				draw_actor(assets,&assets.mistbound_ghost,.Idle,facing,visual_idle_clip_time(world_time,u32(item.index+1)),item.feet,rl.Fade(rl.WHITE,item.alpha),0)
+			} else do draw_soul_hunt_ghost_fallback(item.feet,item.alpha,world_time)
+		case .Player:draw_soul_hunt_player(view,app,assets,item.feet,world_time)
+		}
+	}
+	if app.options.mist_enabled&&view.mist!=nil&&view.mist.soul_hunt do mist_draw(view,world_time,1.58)
+	if state.feedback_time>0&&state.last_correct&&0<=state.last_cell&&state.last_cell<len(STORY_SOUL_HUNT_SITES) {
+		draw_soul_hunt_capture_effect(STORY_SOUL_HUNT_SITES[state.last_cell],state.feedback_time)
+	}
+}
+
+@(private = "file")
+draw_soul_hunt_overlay :: proc(view:^View,app:^App,assets:^Assets) {
+	presentation:=ui_begin_presentation();defer ui_end_presentation()
+	state:=&app.story_minigame;profile:=story_soul_hunt_profile(app.run.story_runtime.hall.verdict)
+	title:=cstring("THE MISTBOUND CHAMBER");title_w:=ui_measure_text(title,22)
+	ui_draw_text(title,i32((presentation.width-f32(title_w))*.5),18,22,{190,222,226,255})
+	message:="The floor hangs over nothingness. Watch the mist."
+	if state.phase==.Play do message="CATCH THE GHOST BEFORE IT DISSOLVES"
+	if state.phase==.Result do message=state.outcome==.Won?"THE MIST REMEMBERS YOUR PASSAGE":"THE LAST SHAPE DISSOLVES"
+	message_w:=ui_measure_text(fmt.ctprintf("%s",message),15)
+	ui_draw_text(fmt.ctprintf("%s",message),i32((presentation.width-f32(message_w))*.5),47,15,COLOR_TEXT)
+	bar_w:=min(f32(390),presentation.width*.48);bar_x:=(presentation.width-bar_w)*.5
+	remaining:=clamp(state.time_left/max(profile.time_limit,f32(.001)),f32(0),f32(1))
+	if state.phase==.Preview {
+		remaining=clamp(
+			app.story_soul_hunt_wait_remaining_s/max(app.story_soul_hunt_wait_total_s,f32(.001)),
+			f32(0),f32(1),
+		)
+	}
+	rl.DrawRectangleRec({bar_x,72,bar_w,9},rl.Fade(rl.Color{9,11,18,255},.88))
+	rl.DrawRectangleRec({bar_x,72,bar_w*remaining,9},{112,188,201,230})
+	rl.DrawRectangleLinesEx({bar_x,72,bar_w,9},1,{173,211,216,180})
+	progress:=fmt.ctprintf("GHOSTS  %v / %v     MISSED  %v",state.score,state.goal,state.mistakes)
+	if state.phase==.Preview do progress=fmt.ctprintf("HUNT BEGINS IN  %.1f",max(app.story_soul_hunt_wait_remaining_s,f32(0)))
+	progress_w:=ui_measure_text(progress,14);ui_draw_text(progress,i32((presentation.width-f32(progress_w))*.5),88,14,COLOR_TITLE)
+	draw_player_hud(view,app,assets)
 }
 
 // --- Lighting and transient visibility -------------------------------------
@@ -2676,6 +2840,7 @@ draw_enemy_bar :: proc(enemy: ^Enemy, sprites: ^Actor_Sprites, feet: Vec2) {
 @(private = "file")
 draw_damage_numbers :: proc(view: ^View, app: ^App) {
 	for &n in app.run.numbers {
+		if n.kind==.Text do continue
 		if !app.dev_reveal && !tile_pos_visible(app, n.pos) do continue
 		t := n.age / DAMAGE_NUMBER_SECONDS
 		w := rl.Vector2(world_from_tile(n.pos))
@@ -2703,15 +2868,29 @@ draw_damage_numbers :: proc(view: ^View, app: ^App) {
 			color = {225, 190, 92, 255}
 			label = fmt.ctprintf("+%vg", n.value)
 		case .Text:
-			color = {235, 205, 120, 255}
-			label = fmt.ctprintf("%s", n.text)
-			size = 11
+			continue
 		}
 		width := ui_measure_text(label, size)
+		x:=i32(w.x)-width/2
 		if effect_ok,effect_active := begin_effect_visibility(view,app,true,n.pos);effect_ok {
-			ui_draw_text(label, i32(w.x) - width / 2, i32(pos_y), size, rl.Fade(color, 1 - t * t))
+			ui_draw_text(label,x,i32(pos_y),size,rl.Fade(color,1-t*t))
 			end_effect_visibility(effect_active)
 		}
+	}
+}
+
+@(private = "file")
+draw_text_notifications :: proc(app: ^App) {
+	if app == nil do return
+	for &n in app.run.numbers {
+		if n.kind != .Text || (!app.dev_reveal && !tile_pos_visible(app, n.pos)) do continue
+		t := n.age / DAMAGE_NUMBER_SECONDS
+		world := rl.Vector2(world_from_tile(n.pos))
+		label := fmt.ctprintf("%s", n.text)
+		size: i32 = 11
+		width := ui_measure_text(label, size)
+		color := rl.Fade(rl.Color{235, 205, 120, 255}, 1-t*t)
+		ui_draw_text(label, i32(world.x)-width/2, i32(world.y-44-t*20), size, color)
 	}
 }
 
@@ -3370,6 +3549,7 @@ draw_mobile_action_slot :: proc(app:^App,assets:^Assets,rect:Mobile_Rect,slot:in
 	case 5: ready=ready&&player.heal_potions>0&&player.hp<player.max_hp
 	case 6: ready=ready&&player.mana_potions>0&&player.mana<f32(player.max_mana)
 	}
+	if slot==4&&app_story_soul_hunt_active(app) do ready=player.dash_timer<=0
 	pad:=design.width*.12
 	if icon.valid {
 		icon_tint := rl.WHITE
@@ -3406,6 +3586,12 @@ draw_mobile_player_hud :: proc(view:^View,app:^App,assets:^Assets) {
 		!app.character_open&&!app.shop_open&&!app_play_modal_open(app)
 	if !gameplay_controls_visible do return
 	draw_mobile_joystick(assets,layout.joystick,view.mobile_joystick_vector)
+	if app_story_soul_hunt_active(app) {
+		draw_mobile_action_slot(app,assets,layout.action_slots[3],4)
+		if app.mobile_utility_open do draw_mobile_hud_button(assets,layout.pause,"MENU",COLOR_TEXT)
+		draw_mobile_hud_button(assets,layout.interact,"A",COLOR_TITLE,app.mobile_utility_open)
+		return
+	}
 	for i in 0..<len(layout.action_slots) do draw_mobile_action_slot(app,assets,layout.action_slots[i],i+1)
 
 	interaction_available:=player_interaction_available(&app.run)

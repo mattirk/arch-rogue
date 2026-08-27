@@ -81,6 +81,17 @@ mx_android_gameplay_target_vocabulary_maps_to_shared_commands :: proc(t: ^testin
 	testing.expect(t, contextual.count == 7 && primary_found && primary.control == .Interact,
 		"a contextual interaction must replace the drawer toggle and suppress expanded utilities")
 
+	hunt_closed:=ar.mobile_soul_hunt_target_set(&layout,environment.input_context)
+	hunt_dash,dash_found:=ar.mobile_target_by_id(&hunt_closed,103)
+	hunt_primary,hunt_primary_found:=ar.mobile_target_by_id(&hunt_closed,200)
+	testing.expect(t,hunt_closed.count==2&&dash_found&&hunt_dash.control==.Ability_4&&
+		hunt_primary_found&&hunt_primary.control==.Utility_Toggle,
+		"closed hunt HUD must expose only dash and its utility toggle")
+	hunt_open:=ar.mobile_soul_hunt_target_set(&layout,environment.input_context,true)
+	hunt_menu,hunt_menu_found:=ar.mobile_target_by_id(&hunt_open,203)
+	testing.expect(t,hunt_open.count==3&&hunt_menu_found&&hunt_menu.control==.Pause,
+		"expanded hunt HUD must expose a direct touch pause without frozen-world controls")
+
 	controls := [11]ar.Mobile_Control{
 		.Ability_1,
 		.Ability_2,
@@ -180,6 +191,21 @@ mx_android_primary_a_drawer_is_transient_and_contextual :: proc(t: ^testing.T) {
 		testing.expect(t, !app.mobile_utility_open,
 			"entering interaction range must dismiss a previously expanded utility drawer")
 	}
+}
+
+@(test)
+mx_android_soul_hunt_drawer_keeps_touch_pause_reachable :: proc(t:^testing.T) {
+	app:ar.App
+	ar.app_init(&app,7142)
+	defer ar.run_destroy(&app.run)
+	ar.run_start(&app.run,app.seed,.Warden)
+	app.mode=.Playing
+	app.story_minigame={active=true,kind=.Mirror_The_Unlost,phase=.Play}
+	_=ar.app_apply(&app,ar.Intent{toggle_mobile_utility=true})
+	testing.expect(t,app.mobile_utility_open,"hunt A control must open its pause drawer")
+	_=ar.app_apply(&app,ar.Intent{back=true})
+	testing.expect(t,app.mode==.Paused&&ar.app_story_soul_hunt_active(&app),
+		"hunt Menu control must pause without abandoning the encounter")
 }
 
 @(test)

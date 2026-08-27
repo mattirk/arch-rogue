@@ -1,5 +1,72 @@
 # Changelog
 
+## 6.0.0-alpha.25 — The mist keeps time
+
+The Hall of Unlost Echoes now resolves through the Mistbound Chamber: a
+world-space dash hunt with verdict-scaled pressure, exact dungeon restoration,
+and a score that carries the Soul room's music into a synchronized six-stem
+chase. This release also tightens native/web cursor presentation, Steam Deck
+behavior, fresh-install mobile zoom, and default SFX balance.
+
+- **Mistbound Chamber ghost hunt.** The Lossless Soul's former modal matching
+  board has been replaced by a deterministic chase across a wall-less platform
+  suspended over the void. Preserve, Release, or Refuse teleports the player
+  into the chamber; ghosts condense at stable sites and must be captured by
+  dashing through them, while walking into one disperses it as a miss. The
+  active hunt lasts exactly one 19.2-second authored music loop.
+- **Verdict-scaled stakes and rewards.** Preserve is the forgiving route at six
+  captures with 0.92-second ghosts, Release asks for eight at 0.72 seconds, and
+  Refuse demands twelve at 0.54 seconds. A win restores mana and grants +5 maximum
+  mana for Preserve; Release adds the same mana plus one spell-discipline
+  bonus; Refuse grants +10 maximum mana, one spell bonus, and one Memory Token.
+  A loss returns the player safely without granting the hunt reward.
+- **Frozen-floor and persistence contract.** The alternate chamber freezes the
+  real dungeon's enemies, floor clocks, combat RNG, exploration, visibility,
+  and relic guidance. Completion restores the exact pre-hunt coordinate and
+  original dash cooldown. Active hunts round-trip through save/resume without
+  revealing or mutating the underlying floor; malformed current states and
+  legacy pair-board saves recover into safe Lossless Soul dialogue instead of
+  stranding the player in virtual coordinates.
+- **Input and mobile behavior.** Pause remains available inside the hunt,
+  live cursor/right-stick aim turns the player during the movement-locked wait
+  and active hunt, controller aim no longer snaps against actors on the frozen
+  real floor, and the chamber's mobile controls expose only movement, dash, and
+  an immediately reachable Menu action. Fresh mobile installs now start at 2.0 world zoom;
+  existing persisted zoom remains authoritative, and desktop/web retain the
+  1.3 default.
+- **Mistbound visual and gameplay feedback.** A dedicated eight-direction ghost
+  sprite, chamber-specific mist field, apparition condensation and dissolution,
+  additive capture fragments, score/miss/timer overlay, and two spatial capture
+  cues make the chase readable. Hall chimes explain that walking scatters the
+  dead, and world text now renders after the lighting multiply so interaction
+  hints remain legible in darkness.
+- **Adaptive Soul-room score.** `kellopeli_one` now fades in over the Hall's
+  eight-tile approach while every Dungeon layer except `ambience_grim_bass` and
+  `beat_low` fades out. Lossless Soul dialogue keeps that in-room arrangement
+  rather than switching to Menu music. The chamber wait immediately plays
+  `ambience_grim_bass + kellopeli_one + kellopeli_two` without the beat; if fewer
+  than five seconds remain it waits through one complete additional loop. The
+  reused hunt bar visibly counts that wait down to zero, then the fixed-step
+  chase hard-adds full-volume `beat_low`, 50% `ambience_choir`, and full-volume
+  `ambience_alasin` on the selected wrap. Missing tracks or a failed audio device degrade to immediate, playable
+  silence rather than blocking the encounter.
+- **Live mixer and asset integration.** The music cache now supports 19 decoded
+  phase-locked stems and 17 simultaneous transition slots. The Mistbound ghost
+  joins the social-actor web pack, browser actor-adoption capacity rises to 12,
+  and the SFX manifest includes both new capture variants. The authored
+  `kellopeli` stems remain 48 kHz stereo and sample-exactly 19.2 seconds.
+- **Cursor and default-volume polish.** Native cursor rendering is fixed at 48
+  window pixels while web uses 24 CSS pixels, avoiding Linux DPI double-scaling
+  and oversized output under the web DPR clamp. `SteamDeck=1` suppresses the
+  custom cursor, including after surface rebuilds. Fresh options now default
+  SFX to 40%; existing saved volume choices continue to win.
+- **Validation.** The headless suite now contains 440 tests, up from the 391
+  recorded by alpha.24. New coverage pins chamber determinism, verdict profiles,
+  dash-only capture, pause/input behavior, exact floor restoration, active-hunt
+  persistence and legacy recovery, chimes interaction, spatial Soul-room
+  ducking, the strict five-second loop rule, visible countdown progress, and
+  the wait-to-hunt stem boundary entry.
+
 ## 6.0.0-alpha.24 — The gate answers to Steam
 
 Steam parity re-enters per `STEAM.md`: the game-side S1 facade, the S2

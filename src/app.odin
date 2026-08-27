@@ -115,6 +115,9 @@ App :: struct {
 	story_panel:    Story_Panel_State,
 	story_minigame: Story_Minigame_State,
 	story_minigame_cursor: int,
+	story_soul_hunt_music_ready:         bool, // transient audio-boundary release signal
+	story_soul_hunt_wait_remaining_s:   f32,  // presentation countdown from the live Loop
+	story_soul_hunt_wait_total_s:       f32,
 	move_input:     Vec2, // held keyboard movement, applied every sim tick
 	aim_input:      Vec2, // live desktop cursor/arrow aim in tile space
 	aim_live:       bool, // aim_input came from an actively pointed device this frame
@@ -464,8 +467,12 @@ app_reset_run_ui_after_restore :: proc(app: ^App) {
 	app.discipline_column = 0
 	app.discipline_degree = 0
 	app.minimap_zoom = MINIMAP_ZOOM_DEFAULT
+	app.story_soul_hunt_music_ready = false
+	app.story_soul_hunt_wait_remaining_s = 0
+	app.story_soul_hunt_wait_total_s = 0
 	app_clear_play_input(app)
 	app.mouse_input_blocked = true
+	app_story_normalize_soul_hunt_after_restore(app)
 	app_story_restore_panel_text(app)
 }
 
@@ -480,6 +487,28 @@ app_tick :: proc(app: ^App) {
 		return
 	}
 	if app.mode == .Playing {
+		if app_story_soul_hunt_active(app) {
+			tick_feel_events(&app.run,SIM_DT)
+			move: Vec2
+			if app.story_minigame.phase == .Play {
+				move = app.move_input
+				if move=={}&&app.mouse_walk {
+					to_cursor:=app.mouse_target-app.run.player.pos
+					if math.hypot(to_cursor.x,to_cursor.y)>MOUSE_WALK_STOP_RADIUS do move=to_cursor
+				}
+			}
+			// Preview accepts live pointing for facing but deliberately sends no
+			// locomotion into the hunt. During Play this mirrors ordinary gameplay:
+			// idle cursor/right-stick aim turns the player, while movement owns facing.
+			if move=={}&&app.aim_live&&aim_outside_dead_zone(app.aim_input) {
+				app.run.player.facing=linalg.normalize0(app.aim_input)
+			}
+			finished:=story_soul_hunt_tick(app,move,SIM_DT)
+			app.run.active_ticks+=1
+			if finished do _=app_story_finalize_minigame(app)
+			app_mark_run_dirty(app,critical=finished)
+			return
+		}
 		if app_play_modal_open(app) {
 			app_story_tick_modal(app,SIM_DT)
 			app.run.active_ticks += 1
@@ -904,9 +933,23 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 			app.controls_status = "Press a controller button or trigger"
 		}
 	case .Playing:
-		if app.mouse_input_blocked && intent.mouse_released do app.mouse_input_blocked = false
-		story_request_processed := app_story_process_requests(app)
-		if app_play_modal_open(app) {
+			if app.mouse_input_blocked && intent.mouse_released do app.mouse_input_blocked = false
+			story_request_processed := app_story_process_requests(app)
+			if app_story_soul_hunt_active(app) {
+				if intent.toggle_mobile_utility do app.mobile_utility_open=!app.mobile_utility_open
+				if intent.back||intent.quit {
+					app.mode=.Paused;app.pause_index=0;app_clear_play_input(app);return false
+				}
+				app.move_input=intent.move;app.aim_input=intent.aim;app.aim_live=intent.aim_live
+				app.mouse_walk=!app.mouse_input_blocked&&intent.mouse_walk&&intent.move=={}
+				app.mouse_target=intent.mouse_target
+				action_aim:=intent.aim;if !aim_outside_dead_zone(action_aim) do action_aim=app.run.player.facing
+				if intent.actions[3] {
+					if story_soul_hunt_dash(app,action_aim) do app_mark_run_dirty(app,critical=true)
+				}
+				return false
+			}
+			if app_play_modal_open(app) {
 			app.mobile_utility_open = false
 			app_story_reduce_modal(app,intent)
 			if intent.confirm || intent.pointer_confirm do app_mark_run_dirty(app,critical=true)

@@ -151,6 +151,8 @@ m9_controller_aim_snap_prefers_visible_target_near_stick_line :: proc(t:^testing
 	run.visible[tx][ty]=true
 	snapped:=ar.controller_snap_aim(&run,{1,0})
 	testing.expect(t,snapped.y>0&&abs(math.hypot(snapped.x,snapped.y)-1)<1e-4,"right-stick aim must snap to a visible target inside the aim cone")
+	testing.expect(t,ar.controller_scene_aim(&run,{1,0},false)==ar.Vec2{1,0},
+		"virtual-room controller aim must bypass targets frozen in the real dungeon")
 	run.visible[tx][ty]=false
 	testing.expect(t,ar.controller_snap_aim(&run,{1,0})==ar.Vec2{1,0},"hidden targets must never attract controller aim")
 }

@@ -2838,8 +2838,33 @@ string_interact :: proc(run: ^Run) -> bool {
 	return true
 }
 
+LOSSLESS_SOUL_CHIMES_INTERACT_RANGE :: f32(1.55)
+LOSSLESS_SOUL_CHIMES_HINT :: "Footsteps scatter ghosts. What skill could reach them.."
+
+lossless_soul_chimes_nearby :: proc(run:^Run) -> (Vec2,bool) {
+	if run==nil do return {},false
+	layout:=&run.dungeon.hall_furnishings
+	for i in 0..<layout.count {
+		if layout.kinds[i]!=.Chimes do continue
+		tile:=layout.tiles[i]
+		pos:=Vec2{f32(tile.x)+.5,f32(tile.y)+.5}
+		if math.hypot(pos.x-run.player.pos.x,pos.y-run.player.pos.y)>LOSSLESS_SOUL_CHIMES_INTERACT_RANGE do continue
+		if !line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,pos.x,pos.y) do continue
+		return pos,true
+	}
+	return {},false
+}
+
+lossless_soul_chimes_interact :: proc(run:^Run) -> bool {
+	if run==nil do return false
+	pos,nearby:=lossless_soul_chimes_nearby(run)
+	if !nearby do return false
+	append(&run.numbers,Damage_Number{pos=pos,kind=.Text,text=LOSSLESS_SOUL_CHIMES_HINT})
+	return true
+}
+
 // Exact story-aware E priority: relic; doors; shop; stairs/final epilogue;
-// unresolved guest; Lossless Soul; recruited room NPCs; Garden frog; then ordinary world actions.
+// unresolved guest; Lossless Soul; recruited room NPCs; Hall chimes; Garden frog; then ordinary world actions.
 player_interact :: proc(run: ^Run) -> (floor_changed: bool) {
 	run.shop_requested = false
 	if story_request_relic_collection(run) do return false
@@ -2885,6 +2910,7 @@ player_interact :: proc(run: ^Run) -> (floor_changed: bool) {
 	if story_request_lossless_soul(run) do return false
 	if soulless_clanker_interact(run) do return false
 	if string_interact(run) do return false
+	if lossless_soul_chimes_interact(run) do return false
 	// A completed Moonbloom game is no longer an interaction target; E must
 	// continue down the chain to secrets, loot, petting, and wall touches.
 	if story_request_garden_moonbloom(run) do return false
@@ -2939,6 +2965,7 @@ interact_prompt :: proc(run: ^Run) -> string {
 	if soul := story_nearby_lossless_soul(run); soul != nil do return "E: speak with the Lossless Soul"
 	if soulless_clanker_nearby(run) != nil do return "E: greet the Soulless Clanker"
 	if string_nearby(run) != nil do return "E: greet String"
+	if _,chimes_nearby:=lossless_soul_chimes_nearby(run);chimes_nearby do return "E: listen to the unlost chimes"
 	if _, _, frog_nearby := story_nearby_garden_frog(run); frog_nearby {
 		ledger := &run.story_runtime.garden_games[clamp(run.depth, 1, STORY_BEAT_COUNT) - 1]
 		if ledger.outcome == .None do return "E: wake the moonbloom"
