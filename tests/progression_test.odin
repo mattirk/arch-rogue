@@ -195,9 +195,20 @@ m9_every_discipline_has_explicit_effect_coverage :: proc(t: ^testing.T) {
 	testing.expectf(t, deferred == 0, "deferred coverage has %v rows, want 0", deferred)
 	testing.expectf(t, fully == 72, "fully-wired coverage has %v rows, want 72", fully)
 	warden_reach := ar.DISCIPLINE_MECHANICS[.Warden_Bulwark_Ward].text
-	warden_stun := ar.DISCIPLINE_MECHANICS[.Warden_Aegis].text
+	warden_aegis := ar.DISCIPLINE_MECHANICS[.Warden_Aegis].text
 	testing.expect(t, strings.contains(warden_reach, "4 targets") && strings.contains(warden_reach, "1.90 tiles"), "Warden's Ward must expose cleave width and reach")
-	testing.expect(t, strings.contains(warden_stun, "0.35s") && strings.contains(warden_stun, "STUN"), "Aegis Lore must expose its stun duration")
+	testing.expect(t, strings.contains(warden_aegis, ".35s stun") && strings.contains(warden_aegis, "45% cap"), "Aegis Lore must expose its stun and resistance cap")
+
+	riposte := ar.DISCIPLINE_MECHANICS[.Warden_Riposte].text
+	cast_pulse := ar.DISCIPLINE_MECHANICS[.Warden_Bulwark_Wave].text
+	arcanist_ward := ar.DISCIPLINE_MECHANICS[.Arcanist_Ward].text
+	world_storm := ar.DISCIPLINE_MECHANICS[.Arcanist_World_Storm].text
+	acolyte_veil := ar.DISCIPLINE_MECHANICS[.Acolyte_Veil].text
+	testing.expect(t, strings.contains(riposte, "non-gear armor") && strings.contains(riposte, "knockback"), "Riposte must expose its armor boundary and knockback")
+	testing.expect(t, strings.contains(cast_pulse, "LOS"), "Time Skip's cast pulse must expose its line-of-sight requirement")
+	testing.expect(t, strings.contains(arcanist_ward, "+1.5/s") && !strings.contains(arcanist_ward, "class total"), "Arcanist Ward must show only its stackable mana-regeneration increment")
+	testing.expect(t, strings.contains(world_storm, "elite+ priority"), "World Storm must expose elite and boss priority")
+	testing.expect(t, strings.contains(acolyte_veil, "block up to 5") && strings.contains(acolyte_veil, "take 1+") && strings.contains(acolyte_veil, "Spirit Call -2 mana") && strings.contains(acolyte_veil, "regen +2/s"), "Veil must expose its exact shield, Spirit Call, and regeneration contracts")
 }
 
 @(test)
@@ -361,4 +372,26 @@ m9_acquiring_beast_rank_refreshes_a_living_companion :: proc(t: ^testing.T) {
 		testing.expect(t, beast.max_hp == want.hp && beast.hp == old_hp+hp_gain, "refresh must preserve missing HP while adding the new maximum")
 		testing.expect(t, beast.damage == want.damage && beast.speed == want.speed && beast.attack_cooldown == want.attack_cooldown, "refresh did not apply rank-one Beast stats")
 	}
+}
+
+@(test)
+m9_sanguine_blood_binds_an_active_spirit_call_familiar :: proc(t: ^testing.T) {
+	run: ar.Run
+	ar.run_start(&run, ar.derive_seed(9105, 0), .Acolyte)
+	defer ar.run_destroy(&run)
+
+	testing.expect(t, ar.player_cast_spirit_call(&run), "fresh rank-zero Spirit Call failed")
+	testing.expect(t, len(run.familiars) == 1, "rank-zero Spirit Call must summon one familiar")
+	if len(run.familiars) != 1 do return
+
+	familiar_id := run.familiars[0].entity_id
+	testing.expect(t, run.familiars[0].kind == .Wisp && run.familiars[0].hp > 0 && !run.familiars[0].lifesteal, "fresh living Wisp must not begin blood-bound")
+
+	run.player.memory_tokens = 1
+	result := ar.run_try_acquire_discipline(&run, .Acolyte_Sanguine)
+	testing.expect(t, result == .Acquired, "Sanguine acquisition failed")
+	testing.expect(t, len(run.familiars) == 1, "Sanguine acquisition must not replace the active familiar")
+	if len(run.familiars) != 1 do return
+
+	testing.expect(t, run.familiars[0].entity_id == familiar_id && run.familiars[0].kind == .Wisp && run.familiars[0].hp > 0 && run.familiars[0].lifesteal, "Sanguine must blood-bind the same active living Wisp")
 }

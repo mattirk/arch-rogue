@@ -37,6 +37,7 @@ Shop_Transaction_Result :: enum {
 	Invalid_Selection,
 	Insufficient_Gold,
 	Inventory_Full,
+	Potion_Full,
 	Shop_Full,
 }
 
@@ -159,9 +160,16 @@ shop_buy :: proc(keeper: ^Shopkeeper, player: ^Player, stock_index: int) -> Shop
 	if needs_bag && player.bag_count >= BAG_CAPACITY {
 		return {result = .Inventory_Full, item = item, gold = price}
 	}
+	if item.kind == .Heal_Potion && player.heal_potions >= POTION_CAPACITY ||
+	   item.kind == .Mana_Potion && player.mana_potions >= POTION_CAPACITY {
+		return {result = .Potion_Full, item = item, gold = price}
+	}
 
-	// All validation is complete before the first mutation.
-	shop_stock_remove(keeper, stock_index)
+	// All validation is complete before the first mutation. Consumable potion
+	// rows are permanent stock; equipment and scrolls remain one-off wares.
+	if needs_bag {
+		shop_stock_remove(keeper, stock_index)
+	}
 	#partial switch item.kind {
 	case .Heal_Potion:
 		player.heal_potions += 1

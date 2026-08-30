@@ -1118,6 +1118,8 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 							append(&app.run.numbers, Damage_Number{pos=app.run.player.pos,kind=.Text,text="Need more gold"})
 						} else if transaction.result == .Inventory_Full {
 							append(&app.run.numbers, Damage_Number{pos=app.run.player.pos,kind=.Text,text="Inventory full"})
+						} else if transaction.result == .Potion_Full {
+							append(&app.run.numbers, Damage_Number{pos=app.run.player.pos,kind=.Text,text="Potion limit reached"})
 						}
 					}
 					shop_clamp_selection(app)

@@ -2519,11 +2519,11 @@ DISCIPLINE_MECHANICS := [Discipline_Id]Discipline_Mechanic_Summary{
 	.Ranger_Ghost_Step = {},
 
 	.Warden_Bulwark = {.Melee, "CLEAVE  2 targets | 1.77 tiles | 62% secondary | +0.02s attack cooldown"},
-	.Warden_Riposte = {.Defense, "MELEE GUARD  -2 damage | HOLY COUNTER  level + armor (min 2) | 1.6 knockback"},
-	.Warden_Aegis = {.Defense, "CLEAVE  3 targets / 1.83 tiles | HOLY STUN  0.35s | AEGIS  0.85s / +24% resist"},
+	.Warden_Riposte = {.Defense, "MELEE GUARD  -2 dmg | COUNTER  level + non-gear armor (min 2) | 1.6 knockback"},
+	.Warden_Aegis = {.Defense, "AEGIS  3-target cleave / 1.83t | .35s stun | .85s / +24% resist (45% cap)"},
 	.Warden_Bulwark_Ward = {.Melee, "CLEAVE  4 targets | 1.90 tiles | 62% secondary"},
 	.Warden_Ward = {.Spell, "TIME SKIP  17 mana | 2.90s base cooldown | 3.50s duration"},
-	.Warden_Bulwark_Wave = {.Control, "TIME SKIP  4.50s | CAST PULSE  2.60 tiles / 0.35s stun / 0.45s attack delay"},
+	.Warden_Bulwark_Wave = {.Control, "TIME SKIP  4.5s | PULSE  2.6t LOS / .35s stun / .45s delay"},
 	.Warden_Stone_Aegis = {.Control, "TIME SKIP  enemy speed 40% -> 30%"},
 	.Warden_Unyielding = {.Defense, "TIME SKIP  +20% all resist | 45% total resist cap"},
 	.Warden_Eternal_Wall = {.Spell, "TIME SKIP KILL  refund 40% of current class-skill cooldown"},
@@ -2553,15 +2553,15 @@ DISCIPLINE_MECHANICS := [Discipline_Id]Discipline_Mechanic_Summary{
 	.Arcanist_Absolute_Zero = {.Spell, "FROST NOVA  5.20 tiles | ROOM-WIDE at 2 mastered paths (line of sight)"},
 	.Arcanist_Arc_Tyrant = {.Spell, "ARC BOLT HOMING  0.85 strength / 6.50-tile seek radius"},
 	.Arcanist_Charge = {.Resource, "ARC BOLT  -1 mana | 6 mana before equipment | 4 mana floor"},
-	.Arcanist_Ward = {.Resource, "MANA REGEN  +1.5/s | 5.0/s class total"},
+	.Arcanist_Ward = {.Resource, "MANA REGEN  +1.5/s"},
 	.Arcanist_Chain_Lightning = {.Spell, "STORM CHAIN  1 hop / 2.60 tiles / 55% damage"},
 	.Arcanist_Tempest = {.Spell, "STORM CHAIN  2 hops / 2.80 tiles / 55% damage each"},
 	.Arcanist_Storm_Caller = {.Spell, "STORM CHAIN  3 hops / 3.20 tiles | elite and boss priority"},
-	.Arcanist_World_Storm = {.Spell, "STORM CHAIN  4 hops / 3.60 tiles / 55% damage each"},
+	.Arcanist_World_Storm = {.Spell, "STORM CHAIN  4 hops / 3.6t / 55% dmg | elite+ priority"},
 
-	.Acolyte_Sanguine = {.Resource, "BLOOD LEECH  +2 HP per melee target / +3 HP per bolt or familiar hit"},
-	.Acolyte_Veil = {.Defense, "MANA SHIELD  spend 4 mana / prevent 5 damage | SPIRIT CALL  12 mana | +2 mana/s"},
-	.Acolyte_Gravebind = {.Control, "BOUND  melee 1.10s / bolt 1.20s / 38% slow | KILL  +4 + depth/2 HP, +2 mana"},
+	.Acolyte_Sanguine = {.Resource, "BLOOD LEECH  melee +2 HP/target | bolt/familiar +3 HP/hit"},
+	.Acolyte_Veil = {.Defense, "VEIL  4 mana: block up to 5 (take 1+) | Spirit Call -2 mana | regen +2/s"},
+	.Acolyte_Gravebind = {.Control, "GRAVE PACT  leech 3 melee / 4 spell | bind 1.1/1.2s | kill +HP/+2 mana"},
 	.Acolyte_Blood_Pact = {.Resource, "BLOOD LEECH  4 melee / 5 spell HP | LIFESTEAL  +3% (24% cap)"},
 	.Acolyte_Crimson_Maw = {.Resource, "BLOOD LEECH  5 melee / 7 spell HP"},
 	.Acolyte_Sanguine_Ascendant = {.Resource, "BLOOD LEECH  6 melee / 8 spell HP"},
@@ -2795,15 +2795,24 @@ discipline_try_acquire :: proc(player: ^Player, id: Discipline_Id) -> Discipline
 	return .Acquired
 }
 
-// Runtime-facing acquisition adds the one canonical live-actor side effect:
-// choosing a Beast node immediately refreshes an already-summoned companion.
+// Runtime-facing acquisition adds the two canonical live-actor side effects:
+// Beast nodes immediately refresh an already-summoned Spirit Beast, while
+// Sanguine blood-binds already-summoned living Spirit Call Wisps and Crows.
 // Character UI should call this wrapper; tests and save reconstruction can use
 // discipline_try_acquire directly when only Player state exists.
 run_try_acquire_discipline :: proc(run: ^Run, id: Discipline_Id) -> Discipline_Acquire_Result {
 	if run == nil do return .Wrong_Archetype
 	result := discipline_try_acquire(&run.player, id)
-	if result == .Acquired && DISCIPLINES[id].path == .Ranger_Beast {
-		refresh_active_spirit_beast(run, discipline_path_rank(&run.player, .Ranger_Beast), player_has_skill_bonus(&run.player, .Spirit_Beast_Bond))
+	if result == .Acquired {
+		if DISCIPLINES[id].path == .Ranger_Beast {
+			refresh_active_spirit_beast(run, discipline_path_rank(&run.player, .Ranger_Beast), player_has_skill_bonus(&run.player, .Spirit_Beast_Bond))
+		} else if id == .Acolyte_Sanguine {
+			for &familiar in run.familiars {
+				if familiar.hp > 0 && (familiar.kind == .Wisp || familiar.kind == .Crow) {
+					familiar.lifesteal = true
+				}
+			}
+		}
 	}
 	return result
 }

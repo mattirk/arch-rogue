@@ -569,6 +569,25 @@ pickup_requires_interact_then_equips_and_bags :: proc(t: ^testing.T) {
 }
 
 @(test)
+potion_pickups_respect_per_type_capacity :: proc(t: ^testing.T) {
+	run: ar.Run
+	ar.run_start(&run, ar.derive_seed(12, 0), .Warden)
+	defer ar.run_destroy(&run)
+	clear(&run.ground_items)
+	run.player.heal_potions = ar.POTION_CAPACITY
+	run.player.mana_potions = ar.POTION_CAPACITY
+
+	append(&run.ground_items, ar.Ground_Item{item = ar.Item{kind = .Heal_Potion, name = "Health Flask"}, pos = run.player.pos})
+	testing.expect(t, !ar.player_interact(&run), "health potion pickup must fail at capacity")
+	testing.expect(t, run.player.heal_potions == ar.POTION_CAPACITY && len(run.ground_items) == 1, "rejected health potion must remain on the ground")
+
+	clear(&run.ground_items)
+	append(&run.ground_items, ar.Ground_Item{item = ar.Item{kind = .Mana_Potion, name = "Mana Flask"}, pos = run.player.pos})
+	testing.expect(t, !ar.player_interact(&run), "mana potion pickup must fail at capacity")
+	testing.expect(t, run.player.mana_potions == ar.POTION_CAPACITY && len(run.ground_items) == 1, "rejected mana potion must remain on the ground")
+}
+
+@(test)
 potions_heal_capped_and_gated :: proc(t: ^testing.T) {
 	run: ar.Run
 	ar.run_start(&run, ar.derive_seed(11, 0), .Warden)

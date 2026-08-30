@@ -1803,6 +1803,9 @@ run_take_payload :: proc(payload: ^Run_Save_Payload, allocator := context.alloca
 		last_damage_source=payload.last_damage_source, wall_touches=payload.wall_touches,
 		potions_used=payload.potions_used, elites_killed=payload.elites_killed,
 	}
+	// Older save documents may predate the bounded potion inventory.
+	run.player.heal_potions = clamp(run.player.heal_potions, 0, POTION_CAPACITY)
+	run.player.mana_potions = clamp(run.player.mana_potions, 0, POTION_CAPACITY)
 	panel = payload.story_panel
 	minigame = payload.story_minigame
 	cursor = payload.story_minigame_cursor

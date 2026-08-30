@@ -169,6 +169,10 @@ visual_aim_cone :: proc(facing: Vec2) -> Visual_Aim_Cone {
 	}
 }
 
+// A restrained x-ray repeat keeps danger tells legible beneath foreground wall
+// geometry without revealing windups whose enemy origin is outside live sight.
+VISUAL_ENEMY_TELEGRAPH_WALL_ALPHA :: f32(0.40)
+
 Visual_Enemy_Telegraph_Kind :: enum u8 {
 	None,
 	Melee,

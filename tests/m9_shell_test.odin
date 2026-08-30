@@ -196,7 +196,8 @@ m9_shop_modal_trades_scrolls_and_pauses :: proc(t:^testing.T) {
 	testing.expect(t,app.run.player.melee_timer==1,"shop must pause the simulation")
 	stock_before:=app.run.shopkeeper.stock_count
 	ar.app_apply(&app,ar.Intent{confirm=true})
-	testing.expect(t,app.run.player.heal_potions==heal_before+1&&app.run.player.gold==1000-price&&app.run.shopkeeper.stock_count==stock_before-1,"buy row must transact atomically through App")
+	ar.app_apply(&app,ar.Intent{confirm=true})
+	testing.expect(t,app.run.player.heal_potions==heal_before+2&&app.run.player.gold==1000-price*2&&app.run.shopkeeper.stock_count==stock_before,"permanent potion row must support repeated atomic purchases through App")
 
 	for i in 0..<ar.BAG_CAPACITY do app.run.player.bag[i]=ar.Item{kind=.Weapon,name="Trade Blade",power=i+1}
 	app.run.player.bag_count=ar.BAG_CAPACITY

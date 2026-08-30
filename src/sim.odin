@@ -9,6 +9,7 @@ import "core:math/linalg"
 import "core:strings"
 
 INTERACT_STAIRS_RADIUS :: 1.35
+POTION_CAPACITY :: 10 // independent carrying limit for health and mana potions
 ATTACK_SWING_SECONDS :: 0.45 // attack clip playback window per swing
 // 2026-08 feel feedback: a basic swing opens with a movement plant and a
 // connected swing freezes the sim for a beat. Deliberate deviations from the
@@ -1265,8 +1266,16 @@ pick_up_nearby_item :: proc(run: ^Run) -> bool {
 	g := &run.ground_items[nearest]
 	switch g.item.kind {
 		case .Heal_Potion:
+			if player.heal_potions >= POTION_CAPACITY {
+				append(&run.numbers, Damage_Number{pos = player.pos, kind = .Text, text = "Potion limit reached"})
+				return false
+			}
 			player.heal_potions += 1
 		case .Mana_Potion:
+			if player.mana_potions >= POTION_CAPACITY {
+				append(&run.numbers, Damage_Number{pos = player.pos, kind = .Text, text = "Potion limit reached"})
+				return false
+			}
 			player.mana_potions += 1
 		case .Weapon, .Armor, .Identify_Scroll, .Remove_Curse_Scroll:
 			if !try_take_item(player, g.item) {

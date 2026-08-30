@@ -1823,6 +1823,9 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 	}
 
 	draw_actor_wall_ghosts(view,app,ghost_actors[:],occluders[:])
+	// Repeat live enemy tells above wall geometry at restrained opacity. The
+	// ordinary floor pass remains the primary tell; this is only its x-ray trace.
+	draw_enemy_attack_telegraphs_through_walls(app,alpha)
 	if app.options.mist_enabled {
 		// The shader clock follows simulation time so inventory, pause, and story
 		// modals freeze both the disturbance field and its drifting noise body.
@@ -2075,7 +2078,7 @@ draw_hall_furnishing :: proc(
 }
 
 @(private = "file")
-draw_enemy_telegraph_arrow :: proc(origin,direction:rl.Vector2,length:f32,color:rl.Color,alpha:f32) {
+draw_enemy_telegraph_arrow :: proc(origin,direction:rl.Vector2,length:f32,color:rl.Color,alpha:f32,opacity_scale:=f32(1)) {
 	perpendicular := rl.Vector2{-direction.y,direction.x}
 	tail := origin+direction*9
 	tip := origin+direction*length
@@ -2083,15 +2086,15 @@ draw_enemy_telegraph_arrow :: proc(origin,direction:rl.Vector2,length:f32,color:
 	feather_base := tail-direction*6
 	// Keep the low-opacity effect readable through silhouette rather than fill:
 	// one shaft, an open arrowhead, and two short tail feathers.
-	rl.DrawLineEx(tail,tip,1.2,rl.Fade(color,alpha*.82))
-	rl.DrawLineEx(tip,head_base + perpendicular*2.5,1.4,rl.Fade(color,alpha))
-	rl.DrawLineEx(tip,head_base - perpendicular*2.5,1.4,rl.Fade(color,alpha))
-	rl.DrawLineEx(tail,feather_base + perpendicular*3,1,rl.Fade(color,alpha*.62))
-	rl.DrawLineEx(tail,feather_base - perpendicular*3,1,rl.Fade(color,alpha*.62))
+	rl.DrawLineEx(tail,tip,1.2,rl.Fade(color,alpha*.82*opacity_scale))
+	rl.DrawLineEx(tip,head_base + perpendicular*2.5,1.4,rl.Fade(color,alpha*opacity_scale))
+	rl.DrawLineEx(tip,head_base - perpendicular*2.5,1.4,rl.Fade(color,alpha*opacity_scale))
+	rl.DrawLineEx(tail,feather_base + perpendicular*3,1,rl.Fade(color,alpha*.62*opacity_scale))
+	rl.DrawLineEx(tail,feather_base - perpendicular*3,1,rl.Fade(color,alpha*.62*opacity_scale))
 }
 
 @(private = "file")
-draw_enemy_attack_telegraph :: proc(enemy:^Enemy,feet:Vec2,compact:=false) {
+draw_enemy_attack_telegraph :: proc(enemy:^Enemy,feet:Vec2,compact:=false,opacity_scale:=f32(1)) {
 	plan := visual_enemy_telegraph(enemy)
 	if !plan.valid do return
 	origin := rl.Vector2(world_from_tile(feet))
@@ -2105,11 +2108,11 @@ draw_enemy_attack_telegraph :: proc(enemy:^Enemy,feet:Vec2,compact:=false) {
 	// origin pulse, and only a few fine strokes. No opaque danger footprint or UI.
 	rl.BeginBlendMode(.ADDITIVE)
 	ring_radius := 15-3*progress
-	rl.DrawEllipseLinesV(origin,ring_radius,ring_radius*.5,rl.Fade(color,.13+.10*progress))
+	rl.DrawEllipseLinesV(origin,ring_radius,ring_radius*.5,rl.Fade(color,(.13+.10*progress)*opacity_scale))
 	for i in 0..<3 {
 		angle := f32(i)*math.TAU/3+progress*.8
 		mote := origin+rl.Vector2{math.cos(angle)*ring_radius,math.sin(angle)*ring_radius*.5}
-		rl.DrawCircleV(mote,1.3,rl.Fade(color,.10+.08*progress))
+		rl.DrawCircleV(mote,1.3,rl.Fade(color,(.10+.08*progress)*opacity_scale))
 	}
 	if compact {
 		rl.EndBlendMode()
@@ -2121,13 +2124,13 @@ draw_enemy_attack_telegraph :: proc(enemy:^Enemy,feet:Vec2,compact:=false) {
 		center := origin+direction*(plan.large?f32(23):f32(19))
 		radius:f32 = plan.large?15:12
 		angle := math.atan2(direction.y,direction.x)*180/math.PI
-		rl.DrawRing(center,radius-2,radius,angle-52,angle+52,14,rl.Fade(color,.15+.12*progress))
+		rl.DrawRing(center,radius-2,radius,angle-52,angle+52,14,rl.Fade(color,(.15+.12*progress)*opacity_scale))
 		stroke_offset := perpendicular*5
-		rl.DrawLineEx(origin+direction*8-stroke_offset,center+direction*8-stroke_offset*.35,1,rl.Fade(color,.07+.07*progress))
-		rl.DrawLineEx(origin+direction*8+stroke_offset,center+direction*8+stroke_offset*.35,1,rl.Fade(color,.07+.07*progress))
+		rl.DrawLineEx(origin+direction*8-stroke_offset,center+direction*8-stroke_offset*.35,1,rl.Fade(color,(.07+.07*progress)*opacity_scale))
+		rl.DrawLineEx(origin+direction*8+stroke_offset,center+direction*8+stroke_offset*.35,1,rl.Fade(color,(.07+.07*progress)*opacity_scale))
 	case .Bolt:
 		length:f32 = plan.large?58:48
-		draw_enemy_telegraph_arrow(origin,direction,length+progress*7,color,.18+.14*progress)
+		draw_enemy_telegraph_arrow(origin,direction,length+progress*7,color,.18+.14*progress,opacity_scale)
 	case .Fan:
 		tile_perpendicular := Vec2{-plan.aim.y,plan.aim.x}
 		count := min(3,plan.projectile_count)
@@ -2138,13 +2141,13 @@ draw_enemy_attack_telegraph :: proc(enemy:^Enemy,feet:Vec2,compact:=false) {
 			sample /= math.hypot(sample.x,sample.y)
 			sample_direction := rl.Vector2(visual_iso_direction(sample))
 			length:f32 = plan.large?58:48
-			draw_enemy_telegraph_arrow(origin,sample_direction,length+progress*6,color,.12+.10*progress)
+			draw_enemy_telegraph_arrow(origin,sample_direction,length+progress*6,color,.12+.10*progress,opacity_scale)
 		}
 	case .Nova:
 		radii := visual_iso_radial_radii(plan.attack_range,1)
 		pulse := .84+.16*progress
-		rl.DrawEllipseLinesV(origin,radii.x,radii.y,rl.Fade(color,.10+.08*progress))
-		rl.DrawEllipseLinesV(origin,radii.x*pulse,radii.y*pulse,rl.Fade(color,.06+.06*progress))
+		rl.DrawEllipseLinesV(origin,radii.x,radii.y,rl.Fade(color,(.10+.08*progress)*opacity_scale))
+		rl.DrawEllipseLinesV(origin,radii.x*pulse,radii.y*pulse,rl.Fade(color,(.06+.06*progress)*opacity_scale))
 	case .None:
 	}
 	rl.EndBlendMode()
@@ -2170,6 +2173,19 @@ draw_enemy_attack_telegraphs :: proc(view:^View,app:^App,alpha:f32) {
 		if enemy.ai!=.Windup||enemy.hp<=0||!effect_fallback_compact_visible(app,enemy.pos) do continue
 		feet:=enemy.prev_pos+(enemy.pos-enemy.prev_pos)*alpha
 		draw_enemy_attack_telegraph(&enemy,feet,true)
+	}
+}
+
+@(private = "file")
+draw_enemy_attack_telegraphs_through_walls :: proc(app:^App,alpha:f32) {
+	if app==nil do return
+	for &enemy in app.run.enemies {
+		if enemy.ai!=.Windup||enemy.hp<=0 do continue
+		// Do not turn the x-ray trace into an enemy detector: only repeat tells
+		// whose committed attacker is already inside the live visibility field.
+		if !app.dev_reveal&&!tile_pos_visible(app,enemy.pos) do continue
+		feet:=enemy.prev_pos+(enemy.pos-enemy.prev_pos)*alpha
+		draw_enemy_attack_telegraph(&enemy,feet,opacity_scale=VISUAL_ENEMY_TELEGRAPH_WALL_ALPHA)
 	}
 }
 
@@ -3724,9 +3740,9 @@ draw_player_resource_value :: proc(bar: rl.Rectangle, value: cstring, font_size:
 draw_player_item_panel :: proc(player: ^Player, assets: ^Assets, rect: rl.Rectangle) {
 	content := draw_player_hud_panel(assets, rect)
 	draw_player_stat_row(content, 0, "GOLD", fmt.ctprintf("%v", player.gold), rl.Color{235,205,120,255})
-	draw_player_stat_row(content, 1, "BAG", fmt.ctprintf("%v / %v  [I]", player.bag_count, BAG_CAPACITY), COLOR_TEXT)
-	draw_player_stat_row(content, 2, "HEALTH POTION", fmt.ctprintf("x%v  [5]", player.heal_potions), rl.Color{224,82,68,255})
-	draw_player_stat_row(content, 3, "MANA POTION", fmt.ctprintf("x%v  [6]", player.mana_potions), rl.Color{92,142,235,255})
+	draw_player_stat_row(content, 1, "BAG", fmt.ctprintf("%v / %v", player.bag_count, BAG_CAPACITY), COLOR_TEXT)
+	draw_player_stat_row(content, 2, "HEALTH POTION", fmt.ctprintf("%v / %v", player.heal_potions, POTION_CAPACITY), rl.Color{224,82,68,255})
+	draw_player_stat_row(content, 3, "MANA POTION", fmt.ctprintf("%v / %v", player.mana_potions, POTION_CAPACITY), rl.Color{92,142,235,255})
 }
 
 @(private = "file")

@@ -148,13 +148,32 @@ m9_shop_transactions_are_atomic :: proc(t: ^testing.T) {
 	testing.expect(t, poor_keeper == poor_keeper_before && poor == poor_before, "failed purchase partially mutated inventories")
 
 	keeper := ar.shopkeeper_make(44, 1, room)
-	buyer := ar.Player{gold = 100}
-	price := ar.shop_price(&keeper, keeper.stock[0])
+	buyer := ar.Player{gold = 1000}
+	heal_price := ar.shop_price(&keeper, keeper.stock[0])
+	mana_price := ar.shop_price(&keeper, keeper.stock[1])
 	stock_before := keeper.stock_count
-	bought := ar.shop_buy(&keeper, &buyer, 0)
-	testing.expect(t, bought.result == .Success && bought.gold == price, "valid purchase failed")
-	testing.expect(t, keeper.stock_count == stock_before - 1, "purchase did not remove one stock row")
-	testing.expect(t, buyer.gold == 100 - price && buyer.heal_potions == 1, "potion purchase did not update player atomically")
+	first_heal := ar.shop_buy(&keeper, &buyer, 0)
+	second_heal := ar.shop_buy(&keeper, &buyer, 0)
+	mana := ar.shop_buy(&keeper, &buyer, 1)
+	testing.expect(t, first_heal.result == .Success && first_heal.gold == heal_price, "valid healing-potion purchase failed")
+	testing.expect(t, second_heal.result == .Success && mana.result == .Success, "shopkeeper must allow repeated health and mana potion purchases")
+	testing.expect(t, keeper.stock_count == stock_before, "potion purchases must preserve their permanent stock rows")
+	testing.expect(t, keeper.stock[0].kind == .Heal_Potion && keeper.stock[1].kind == .Mana_Potion, "permanent potion stock rows changed after purchase")
+	testing.expect(t, buyer.gold == 1000 - heal_price * 2 - mana_price && buyer.heal_potions == 2 && buyer.mana_potions == 1, "potion purchases did not update player atomically")
+
+	gear_index := 4
+	gear_price := ar.shop_price(&keeper, keeper.stock[gear_index])
+	gear := ar.shop_buy(&keeper, &buyer, gear_index)
+	testing.expect(t, gear.result == .Success && gear.gold == gear_price, "valid equipment purchase failed")
+	testing.expect(t, keeper.stock_count == stock_before - 1, "one-off equipment purchase did not remove its stock row")
+
+	capped_keeper := ar.shopkeeper_make(45, 1, room)
+	capped_buyer := ar.Player{gold = 1000, heal_potions = ar.POTION_CAPACITY, mana_potions = ar.POTION_CAPACITY}
+	capped_keeper_before, capped_buyer_before := capped_keeper, capped_buyer
+	heal_blocked := ar.shop_buy(&capped_keeper, &capped_buyer, 0)
+	mana_blocked := ar.shop_buy(&capped_keeper, &capped_buyer, 1)
+	testing.expect(t, heal_blocked.result == .Potion_Full && mana_blocked.result == .Potion_Full, "shop must reject potions at their per-type carrying limits")
+	testing.expect(t, capped_keeper == capped_keeper_before && capped_buyer == capped_buyer_before, "capped potion purchase partially mutated stock, gold, or player inventory")
 
 	full_keeper := ar.shopkeeper_make(55, 1, room)
 	full := ar.Player{gold = 10000, bag_count = ar.BAG_CAPACITY}
