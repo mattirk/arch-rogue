@@ -650,7 +650,6 @@ web_pack_adoptions_shutdown :: proc() {
 	web_pack_adoptions = nil
 }
 
-@(private = "file")
 web_pack_request :: proc(name: string) {
 	status := web_packs[name] or_else .Absent
 	if status == .Fetching || status == .Adopting || status == .Resident do return
