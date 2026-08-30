@@ -248,6 +248,61 @@ mx3_fan_counts_follow_discipline_tiers :: proc(t: ^testing.T) {
 }
 
 @(test)
+mx3_warden_vow_adds_modest_ranked_mana_regen :: proc(t: ^testing.T) {
+	player := ar.Player{archetype = .Warden}
+	testing.expect(t, mx3_near(ar.player_mana_regen(&player), 2.5), "fresh Warden uses 2.5 mana/s baseline")
+	player.acquired_disciplines[.Warden_Smite] = true
+	testing.expect(t, mx3_near(ar.player_mana_regen(&player), 2.75), "Vow rank 1 adds 0.25 mana/s")
+	player.acquired_disciplines[.Warden_Judgment] = true
+	player.acquired_disciplines[.Warden_Consecrate] = true
+	player.acquired_disciplines[.Warden_Divine_Wrath] = true
+	player.acquired_disciplines[.Warden_Avatar_Of_Light] = true
+	testing.expect(t, mx3_near(ar.player_mana_regen(&player), 3.75), "mastered Vow adds 1.25 mana/s")
+}
+
+@(test)
+mx3_rogue_marksman_shapes_and_hastens_knife_fan :: proc(t: ^testing.T) {
+	run: ar.Run
+	ar.run_start(&run, ar.derive_seed(9320, 0), .Rogue)
+	defer ar.run_destroy(&run)
+	mx3_arena(&run)
+
+	fire_fan :: proc(run: ^ar.Run) {
+		clear(&run.projectiles)
+		run.player.bolt_timer = 0
+		run.player.mana = 200
+		_ = ar.player_cast_bolt(run, {1, 0})
+	}
+
+	run.player.acquired_disciplines[.Rogue_Marksman] = true
+	fire_fan(&run)
+	testing.expectf(t, len(run.projectiles) == 3, "Marksman Knife Fan spawned %v blades, want 3", len(run.projectiles))
+	if len(run.projectiles) == 3 {
+		testing.expect(t, run.projectiles[0].vel.y < 0 && mx3_near(run.projectiles[1].vel.y, 0) && run.projectiles[2].vel.y > 0, "Marksman fan must retain a centered blade")
+		testing.expect(t, run.projectiles[1].damage-run.projectiles[0].damage == 4 && run.projectiles[1].damage-run.projectiles[2].damage == 4, "Marksman side blades lose 4 damage")
+	}
+
+	run.player.acquired_disciplines[.Rogue_Sharpshot] = true
+	fire_fan(&run)
+	if len(run.projectiles) == 3 {
+		testing.expect(t, run.projectiles[1].damage-run.projectiles[0].damage == 2 && run.projectiles[1].damage-run.projectiles[2].damage == 2, "Sharpshot side blades lose only 2 damage")
+	}
+
+	run.player.acquired_disciplines[.Rogue_Deadeye] = true
+	fire_fan(&run)
+	for p in run.projectiles do testing.expect(t, p.pierce == 1, "Deadeye blades pierce once")
+
+	run.player.acquired_disciplines[.Rogue_Eagle_Eye] = true
+	fire_fan(&run)
+	testing.expectf(t, len(run.projectiles) == 5, "Eagle Eye Knife Fan spawned %v blades, want 5", len(run.projectiles))
+
+	run.player.acquired_disciplines[.Rogue_Assassin] = true
+	fire_fan(&run)
+	testing.expect(t, mx3_near(200-run.player.mana, 8), "Assassin Knife Fan costs 8 mana")
+	testing.expect(t, mx3_near(run.player.bolt_timer, 0.40), "Assassin Knife Fan uses a 0.40s base cooldown")
+}
+
+@(test)
 mx3_arcanist_fans_pierce_and_splinter_ttl :: proc(t: ^testing.T) {
 	run: ar.Run
 	ar.run_start(&run, ar.derive_seed(9309, 0), .Arcanist)

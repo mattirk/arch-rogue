@@ -1207,6 +1207,21 @@ tick_player :: proc(run: ^Run, move: Vec2, max_move_step: f32) {
 	player.facing = dir
 }
 
+player_mana_regen :: proc(player: ^Player) -> f32 {
+	if player == nil do return 0
+	regen: f32 = player.archetype == .Arcanist ? ARCANIST_MANA_REGEN : PLAYER_MANA_REGEN
+	// Discipline recovery riders (costs.py:39-79), plus the Odin-native Vow
+	// sustain ladder: deliberately modest beside dedicated caster paths.
+	if player.archetype == .Warden {
+		regen += f32(discipline_path_rank(player, .Warden_Vow)) * 0.25
+	}
+	if player_has_discipline(player, .Arcanist_Focus) do regen += 2.5
+	if player_has_discipline(player, .Arcanist_Ward) do regen += 1.5
+	if player_has_discipline(player, .Acolyte_Veil) do regen += 2.0
+	if player_has_discipline(player, .Acolyte_Curse) do regen += 1.5
+	return regen
+}
+
 @(private = "file")
 tick_player_clocks :: proc(run: ^Run) {
 	player := &run.player
@@ -1228,15 +1243,9 @@ tick_player_clocks :: proc(run: ^Run) {
 	player.hit_flash = max(0, player.hit_flash - SIM_DT / flash_duration)
 	if player.hit_flash <= 0 do player.hit_flash_duration = 0
 	stamina_regen: f32 = player.archetype == .Ranger ? RANGER_STAMINA_REGEN : PLAYER_STAMINA_REGEN
-	mana_regen: f32 = player.archetype == .Arcanist ? ARCANIST_MANA_REGEN : PLAYER_MANA_REGEN
-	// Discipline recovery riders (costs.py:39-79).
 	if player_has_discipline(player, .Ranger_Snare) do stamina_regen += 4
-	if player_has_discipline(player, .Arcanist_Focus) do mana_regen += 2.5
-	if player_has_discipline(player, .Arcanist_Ward) do mana_regen += 1.5
-	if player_has_discipline(player, .Acolyte_Veil) do mana_regen += 2.0
-	if player_has_discipline(player, .Acolyte_Curse) do mana_regen += 1.5
 	player.stamina = min(f32(player.max_stamina), player.stamina + stamina_regen * SIM_DT)
-	player.mana = min(f32(player.max_mana), player.mana + mana_regen * SIM_DT)
+	player.mana = min(f32(player.max_mana), player.mana + player_mana_regen(player) * SIM_DT)
 }
 
 @(private = "file")

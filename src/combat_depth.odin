@@ -234,6 +234,7 @@ player_melee_cooldown :: proc(player: ^Player) -> f32 {
 player_bolt_mana_cost :: proc(player: ^Player) -> int {
 	cost := (player.archetype == .Arcanist || player.archetype == .Ranger) ? 7 : 10
 	if player.archetype == .Arcanist && player_has_discipline(player, .Arcanist_Charge) do cost -= 1
+	if player.archetype == .Rogue && player_has_discipline(player, .Rogue_Assassin) do cost -= 2
 	if player_has_bolt_bonus(player) do cost -= 1
 	if player_has_cursed_equipment(player) do cost += 1
 	return max(4, cost)
@@ -241,6 +242,7 @@ player_bolt_mana_cost :: proc(player: ^Player) -> int {
 
 player_bolt_cooldown :: proc(player: ^Player) -> f32 {
 	cooldown: f32 = (player.archetype == .Arcanist || player.archetype == .Ranger) ? 0.38 : 0.48
+	if player.archetype == .Rogue && player_has_discipline(player, .Rogue_Assassin) do cooldown -= 0.08
 	if player_has_bolt_bonus(player) do cooldown -= 0.04
 	return max(0.22, cooldown * (1 - player_cast_speed(player)))
 }
@@ -817,6 +819,12 @@ player_cast_bolt :: proc(run: ^Run, aim: Vec2) -> bool {
 		case player_has_discipline(player, .Arcanist_Splinter):
 			angles, count = {-0.06, 0.06, 0, 0, 0, 0, 0, 0}, 2
 		}
+	} else if player.archetype == .Rogue && player_has_discipline(player, .Rogue_Marksman) {
+		if player_has_discipline(player, .Rogue_Eagle_Eye) {
+			angles, count = {-0.24, -0.11, 0, 0.11, 0.24, 0, 0, 0}, 5
+		} else {
+			angles, count = {-0.14, 0, 0.14, 0, 0, 0, 0, 0}, 3
+		}
 	}
 	if player_has_bolt_bonus(player) && count < 5 {
 		merge_fan_pair(&angles, &count, 0.18)
@@ -836,6 +844,7 @@ player_cast_bolt :: proc(run: ^Run, aim: Vec2) -> bool {
 		else if player_has_discipline(player, .Arcanist_Overload) do pierce = 1
 	}
 	if player.archetype == .Ranger && player_has_discipline(player, .Ranger_Piercing_Volley) do pierce = max(pierce, 1)
+	if player.archetype == .Rogue && player_has_discipline(player, .Rogue_Deadeye) do pierce = max(pierce, 1)
 	if player_has_skill_bonus(player, .Bolt_Pierce) do pierce = max(pierce, 1)
 
 	homing: f32
@@ -864,12 +873,14 @@ player_cast_bolt :: proc(run: ^Run, aim: Vec2) -> bool {
 			player_has_discipline(player, .Arcanist_World_Storm))
 	if storm_chain do run.storm_cast_counter += 1
 
+	side_damage_penalty := 4
+	if player.archetype == .Rogue && player_has_discipline(player, .Rogue_Sharpshot) do side_damage_penalty = 2
 	for i in 0 ..< count {
 		angle := angles[i]
 		dir := vec_rotate(player.facing, angle)
 		append(&run.projectiles, Projectile{
 			pos=player.pos, prev_pos=player.pos, vel=dir*BOLT_SPEED,
-			damage=abs(angle) <= 0.001 ? damage : max(1, damage-4), damage_type=type,
+			damage=abs(angle) <= 0.001 ? damage : max(1, damage-side_damage_penalty), damage_type=type,
 			status=status, has_status=has_status, status_duration=duration,
 			pierce=pierce, homing=homing,
 			storm_chain=storm_chain, storm_cast=run.storm_cast_counter,

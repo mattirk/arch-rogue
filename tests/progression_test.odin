@@ -3,6 +3,7 @@ package archrogue_tests
 // Headless M9 discipline-tree tests. The table is the only progression source
 // of truth; UI code only selects stable IDs and calls these pure rules.
 
+import "core:strings"
 import "core:testing"
 import ar "../src"
 
@@ -97,6 +98,38 @@ m9_discipline_table_is_complete_structured_and_unique :: proc(t: ^testing.T) {
 }
 
 @(test)
+m9_discipline_numeric_summaries_cover_every_authored_bonus :: proc(t: ^testing.T) {
+	for id in ar.Discipline_Id {
+		def := ar.DISCIPLINES[id]
+		expected := [ar.Discipline_Stat_Kind]f32{
+			.Health = f32(def.max_hp_bonus),
+			.Mana = f32(def.max_mana_bonus),
+			.Stamina = f32(def.max_stamina_bonus),
+			.Melee = f32(def.melee_bonus),
+			.Spell = f32(def.spell_bonus),
+			.Armor = f32(def.armor_bonus),
+			.Move_Speed = def.speed_bonus * 25,
+		}
+		expected_count := 0
+		for amount in expected {
+			if amount != 0 do expected_count += 1
+		}
+
+		bonuses, count := ar.discipline_stat_bonuses(def)
+		testing.expectf(t, count == expected_count && count > 0, "%v numeric summary has %v rows, want %v", id, count, expected_count)
+		seen: [ar.Discipline_Stat_Kind]bool
+		for bonus in bonuses[:count] {
+			testing.expectf(t, !seen[bonus.kind], "%v numeric summary repeats %v", id, bonus.kind)
+			seen[bonus.kind] = true
+			testing.expectf(t, abs(bonus.amount-expected[bonus.kind]) < PROGRESSION_EPS, "%v %v displays %.3f, want %.3f", id, bonus.kind, bonus.amount, expected[bonus.kind])
+		}
+		for amount, kind in expected {
+			testing.expectf(t, seen[kind] == (amount != 0), "%v numeric summary coverage differs for %v", id, kind)
+		}
+	}
+}
+
+@(test)
 m9_discipline_stats_match_canonical_aggregate :: proc(t: ^testing.T) {
 	expected := [ar.Archetype_Id]Discipline_Aggregate{
 		.Warden = {20, 17, 25, 30, 132, 64, 76, 0},
@@ -131,21 +164,40 @@ m9_discipline_stats_match_canonical_aggregate :: proc(t: ^testing.T) {
 m9_every_discipline_has_explicit_effect_coverage :: proc(t: ^testing.T) {
 	untracked, stats_only, partial, deferred, fully := 0, 0, 0, 0, 0
 	for id in ar.Discipline_Id {
-		switch ar.DISCIPLINES[id].effect_coverage {
+		coverage := ar.DISCIPLINES[id].effect_coverage
+		mechanic := ar.DISCIPLINE_MECHANICS[id]
+		switch coverage {
 		case .Untracked: untracked += 1
-		case .Stats_Only: stats_only += 1
+		case .Stats_Only:
+			stats_only += 1
+			testing.expectf(t, mechanic.kind == .None && mechanic.text == "", "%v is stats-only but has a bespoke mechanic summary", id)
 		case .Partially_Wired: partial += 1
 		case .Deferred: deferred += 1
-		case .Fully_Wired: fully += 1
+		case .Fully_Wired:
+			fully += 1
+			testing.expectf(t, mechanic.kind != .None && mechanic.text != "", "%v is fully wired but lacks a mechanic summary", id)
+			testing.expectf(t, strings.contains(mechanic.text, "  "), "%v mechanic summary must separate its effect name from values", id)
+			has_number := false
+			for character in mechanic.text {
+				if character >= '0' && character <= '9' {
+					has_number = true
+					break
+				}
+			}
+			testing.expectf(t, has_number, "%v mechanic summary must expose numeric behavior", id)
 		}
 	}
 	// MX.3 wired every formerly Deferred/Partially_Wired node; the ledger must
 	// stay clean so a regressing edit is caught by count, not by playtest.
 	testing.expectf(t, untracked == 0, "%v disciplines have untracked effects", untracked)
-	testing.expectf(t, stats_only == 38, "stats-only coverage has %v rows, want 38", stats_only)
+	testing.expectf(t, stats_only == 28, "stats-only coverage has %v rows, want 28", stats_only)
 	testing.expectf(t, partial == 0, "partially-wired coverage has %v rows, want 0", partial)
 	testing.expectf(t, deferred == 0, "deferred coverage has %v rows, want 0", deferred)
-	testing.expectf(t, fully == 62, "fully-wired coverage has %v rows, want 62", fully)
+	testing.expectf(t, fully == 72, "fully-wired coverage has %v rows, want 72", fully)
+	warden_reach := ar.DISCIPLINE_MECHANICS[.Warden_Bulwark_Ward].text
+	warden_stun := ar.DISCIPLINE_MECHANICS[.Warden_Aegis].text
+	testing.expect(t, strings.contains(warden_reach, "4 targets") && strings.contains(warden_reach, "1.90 tiles"), "Warden's Ward must expose cleave width and reach")
+	testing.expect(t, strings.contains(warden_stun, "0.35s") && strings.contains(warden_stun, "STUN"), "Aegis Lore must expose its stun duration")
 }
 
 @(test)

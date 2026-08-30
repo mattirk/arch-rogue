@@ -450,10 +450,10 @@ mx8_discipline_ledger_is_clean :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expectf(t, untracked == 0, "%v disciplines have untracked effects", untracked)
-	testing.expectf(t, stats_only == 38, "stats-only coverage has %v rows, want 38", stats_only)
+	testing.expectf(t, stats_only == 28, "stats-only coverage has %v rows, want 28", stats_only)
 	testing.expectf(t, partial == 0, "partially-wired coverage has %v rows, want 0", partial)
 	testing.expectf(t, deferred == 0, "deferred coverage has %v rows, want 0", deferred)
-	testing.expectf(t, fully == 62, "fully-wired coverage has %v rows, want 62", fully)
+	testing.expectf(t, fully == 72, "fully-wired coverage has %v rows, want 72", fully)
 	testing.expectf(t, stats_only + fully == 100, "total discipline count is %v, want 100", stats_only + fully)
 }
 

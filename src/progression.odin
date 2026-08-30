@@ -196,6 +196,42 @@ Discipline_Def :: struct {
 	effect_coverage:          Discipline_Effect_Coverage,
 }
 
+Discipline_Stat_Kind :: enum u8 {
+	Health,
+	Mana,
+	Stamina,
+	Melee,
+	Spell,
+	Armor,
+	Move_Speed,
+}
+
+DISCIPLINE_STAT_BONUS_CAPACITY :: len(Discipline_Stat_Kind)
+
+// Amount is the player-facing value: flat points for pools/combat stats and
+// percentage points for movement. Movement's authored rating is converted by
+// the same 25% factor used by player_speed.
+Discipline_Stat_Bonus :: struct {
+	kind:   Discipline_Stat_Kind,
+	amount: f32,
+}
+
+Discipline_Mechanic_Kind :: enum u8 {
+	None,
+	Melee,
+	Defense,
+	Mobility,
+	Spell,
+	Control,
+	Summon,
+	Resource,
+}
+
+Discipline_Mechanic_Summary :: struct {
+	kind: Discipline_Mechanic_Kind,
+	text: string,
+}
+
 Discipline_Path_Def :: struct {
 	name:      string,
 	archetype: Archetype_Id,
@@ -459,7 +495,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	.Warden_Smite = {
 		key = "warden_smite",
 		name = "Smite Oath",
-		description = "Strengthens Guard Bolt and expands mana reserves.",
+		description = "Strengthens Guard Bolt, expands mana reserves, and begins the Vow's mana recovery.",
 		archetype = .Warden,
 		path = .Warden_Vow,
 		degree = 1,
@@ -476,7 +512,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 		cross_path_tag = .None,
 		cross_path_bonus_melee = 0,
 		cross_path_bonus_spell = 0,
-		effect_coverage = .Stats_Only,
+		effect_coverage = .Fully_Wired,
 	},
 	.Warden_Ward = {
 		key = "warden_ward",
@@ -503,7 +539,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	.Warden_Judgment = {
 		key = "warden_judgment",
 		name = "Judgment",
-		description = "Further strengthens Guard Bolt and mana reserves.",
+		description = "Further strengthens Guard Bolt, mana reserves, and Vow mana recovery.",
 		archetype = .Warden,
 		path = .Warden_Vow,
 		degree = 2,
@@ -520,7 +556,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 		cross_path_tag = .None,
 		cross_path_bonus_melee = 0,
 		cross_path_bonus_spell = 0,
-		effect_coverage = .Stats_Only,
+		effect_coverage = .Fully_Wired,
 	},
 	.Warden_Bulwark_Wave = {
 		key = "warden_bulwark_wave",
@@ -547,7 +583,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	.Warden_Consecrate = {
 		key = "warden_consecrate",
 		name = "Consecration",
-		description = "Deepens Guard Bolt damage and mana reserves.",
+		description = "Deepens Guard Bolt damage, mana reserves, and Vow mana recovery.",
 		archetype = .Warden,
 		path = .Warden_Vow,
 		degree = 3,
@@ -564,7 +600,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 		cross_path_tag = .None,
 		cross_path_bonus_melee = 0,
 		cross_path_bonus_spell = 0,
-		effect_coverage = .Stats_Only,
+		effect_coverage = .Fully_Wired,
 	},
 	.Warden_Stone_Aegis = {
 		key = "warden_stone_aegis",
@@ -591,7 +627,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	.Warden_Divine_Wrath = {
 		key = "warden_divine_wrath",
 		name = "Divine Wrath",
-		description = "Greatly strengthens Guard Bolt and mana reserves.",
+		description = "Greatly strengthens Guard Bolt, mana reserves, and Vow mana recovery.",
 		archetype = .Warden,
 		path = .Warden_Vow,
 		degree = 4,
@@ -608,7 +644,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 		cross_path_tag = .Counter,
 		cross_path_bonus_melee = 0,
 		cross_path_bonus_spell = 1,
-		effect_coverage = .Stats_Only,
+		effect_coverage = .Fully_Wired,
 	},
 	.Warden_Unyielding = {
 		key = "warden_unyielding",
@@ -635,7 +671,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	.Warden_Avatar_Of_Light = {
 		key = "warden_avatar_of_light",
 		name = "Lightborn",
-		description = "Grants the path's greatest Guard Bolt and mana boost while strengthening vitality.",
+		description = "Grants the path's greatest Guard Bolt, mana, vitality, and Vow recovery boost.",
 		archetype = .Warden,
 		path = .Warden_Vow,
 		degree = 5,
@@ -652,7 +688,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 		cross_path_tag = .None,
 		cross_path_bonus_melee = 0,
 		cross_path_bonus_spell = 0,
-		effect_coverage = .Stats_Only,
+		effect_coverage = .Fully_Wired,
 	},
 	.Warden_Eternal_Wall = {
 		key = "warden_eternal_wall",
@@ -921,7 +957,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	.Rogue_Marksman = {
 		key = "rogue_marksman",
 		name = "Marksman",
-		description = "Improves bolt damage, melee power, and stamina reserves.",
+		description = "Knife Fan spreads into three blades while bolt, melee, and stamina improve.",
 		archetype = .Rogue,
 		path = .Rogue_Marksman,
 		degree = 1,
@@ -938,7 +974,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 		cross_path_tag = .None,
 		cross_path_bonus_melee = 0,
 		cross_path_bonus_spell = 0,
-		effect_coverage = .Stats_Only,
+		effect_coverage = .Fully_Wired,
 	},
 	.Rogue_Venom_Trap = {
 		key = "rogue_venom_trap",
@@ -965,7 +1001,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	.Rogue_Sharpshot = {
 		key = "rogue_sharpshot",
 		name = "Sharpshot",
-		description = "Further improves bolt damage, melee power, and stamina reserves.",
+		description = "Knife Fan's side blades retain more damage while bolt, melee, and stamina improve.",
 		archetype = .Rogue,
 		path = .Rogue_Marksman,
 		degree = 2,
@@ -982,7 +1018,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 		cross_path_tag = .None,
 		cross_path_bonus_melee = 0,
 		cross_path_bonus_spell = 0,
-		effect_coverage = .Stats_Only,
+		effect_coverage = .Fully_Wired,
 	},
 	.Rogue_Bear_Trap = {
 		key = "rogue_bear_trap",
@@ -1009,7 +1045,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	.Rogue_Deadeye = {
 		key = "rogue_deadeye",
 		name = "Deadeye",
-		description = "Greatly improves bolt damage, melee power, and stamina reserves.",
+		description = "Knife Fan pierces through one additional foe while bolt, melee, and stamina improve.",
 		archetype = .Rogue,
 		path = .Rogue_Marksman,
 		degree = 3,
@@ -1026,7 +1062,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 		cross_path_tag = .None,
 		cross_path_bonus_melee = 0,
 		cross_path_bonus_spell = 0,
-		effect_coverage = .Stats_Only,
+		effect_coverage = .Fully_Wired,
 	},
 	.Rogue_Trap_Master = {
 		key = "rogue_trap_master",
@@ -1053,7 +1089,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	.Rogue_Eagle_Eye = {
 		key = "rogue_eagle_eye",
 		name = "Eagle Eye",
-		description = "Further improves bolt damage, melee power, and stamina reserves.",
+		description = "Knife Fan expands to five blades while bolt, melee, and stamina improve.",
 		archetype = .Rogue,
 		path = .Rogue_Marksman,
 		degree = 4,
@@ -1070,7 +1106,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 		cross_path_tag = .Stealth,
 		cross_path_bonus_melee = 1,
 		cross_path_bonus_spell = 0,
-		effect_coverage = .Stats_Only,
+		effect_coverage = .Fully_Wired,
 	},
 	.Rogue_Ambush_Engineer = {
 		key = "rogue_ambush_engineer",
@@ -1097,7 +1133,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 	.Rogue_Assassin = {
 		key = "rogue_assassin",
 		name = "Assassin",
-		description = "Grants the path's greatest bolt and melee power boost, with deeper stamina reserves.",
+		description = "Knife Fan costs less mana and recovers faster alongside the path's greatest power boost.",
 		archetype = .Rogue,
 		path = .Rogue_Marksman,
 		degree = 5,
@@ -1114,7 +1150,7 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 		cross_path_tag = .None,
 		cross_path_bonus_melee = 0,
 		cross_path_bonus_spell = 0,
-		effect_coverage = .Stats_Only,
+		effect_coverage = .Fully_Wired,
 	},
 	.Arcanist_Splinter = {
 		key = "arcanist_splinter",
@@ -2436,6 +2472,153 @@ DISCIPLINES := [Discipline_Id]Discipline_Def{
 		cross_path_bonus_spell = 0,
 		effect_coverage = .Stats_Only,
 	},
+}
+
+// Bespoke mechanics are kept separate from direct stat bonuses so the
+// discipline UI can show exact runtime behavior without returning to prose.
+// Values mirror the active consumers in combat_depth, sim, and companions.
+@(rodata)
+DISCIPLINE_MECHANICS := [Discipline_Id]Discipline_Mechanic_Summary{
+	.Warden_Counter = {},
+	.Warden_Riposte_Edge = {},
+	.Warden_Iron_Vow = {},
+	.Warden_Reckoning = {},
+	.Warden_Unbreakable = {},
+	.Warden_Final_Reckoning = {},
+	.Warden_Smite = {.Resource, "VOW MANA REGEN  +0.25/s | 2.75/s class total"},
+	.Warden_Judgment = {.Resource, "VOW MANA REGEN  +0.25/s | 3.00/s class total"},
+	.Warden_Consecrate = {.Resource, "VOW MANA REGEN  +0.25/s | 3.25/s class total"},
+	.Warden_Divine_Wrath = {.Resource, "VOW MANA REGEN  +0.25/s | 3.50/s class total"},
+	.Warden_Avatar_Of_Light = {.Resource, "VOW MANA REGEN  +0.25/s | 3.75/s class total"},
+	.Rogue_Shadowstep = {},
+	.Rogue_Phantom = {},
+	.Rogue_Marksman = {.Melee, "KNIFE FAN  3 blades / 16.0-degree fan / -4 side damage"},
+	.Rogue_Sharpshot = {.Melee, "KNIFE FAN SIDE BLADES  -2 damage instead of -4"},
+	.Rogue_Deadeye = {.Melee, "KNIFE FAN  1 pierce / up to 2 targets / 70% damage after first hit"},
+	.Rogue_Eagle_Eye = {.Melee, "KNIFE FAN  5 blades / 27.5-degree fan / 1 pierce each"},
+	.Rogue_Assassin = {.Melee, "KNIFE FAN  8 mana / 0.40s base cooldown"},
+	.Arcanist_Ward_Mend = {},
+	.Arcanist_Ward_Overload = {},
+	.Arcanist_Aegis = {},
+	.Arcanist_Eternal_Aegis = {},
+	.Acolyte_Ashen = {},
+	.Acolyte_Spirit_Host = {},
+	.Acolyte_Grave_Chorus = {},
+	.Acolyte_Undying_Veil = {},
+	.Acolyte_Decay = {},
+	.Acolyte_Fragility = {},
+	.Acolyte_Doom = {},
+	.Acolyte_Eternal_Doom = {},
+	.Ranger_Thornfield = {},
+	.Ranger_Hunter_Drive = {},
+	.Ranger_Wild_Domination = {},
+	.Ranger_Survival = {},
+	.Ranger_Camouflage = {},
+	.Ranger_Pathfinder = {},
+	.Ranger_Ambush = {},
+	.Ranger_Ghost_Step = {},
+
+	.Warden_Bulwark = {.Melee, "CLEAVE  2 targets | 1.77 tiles | 62% secondary | +0.02s attack cooldown"},
+	.Warden_Riposte = {.Defense, "MELEE GUARD  -2 damage | HOLY COUNTER  level + armor (min 2) | 1.6 knockback"},
+	.Warden_Aegis = {.Defense, "CLEAVE  3 targets / 1.83 tiles | HOLY STUN  0.35s | AEGIS  0.85s / +24% resist"},
+	.Warden_Bulwark_Ward = {.Melee, "CLEAVE  4 targets | 1.90 tiles | 62% secondary"},
+	.Warden_Ward = {.Spell, "TIME SKIP  17 mana | 2.90s base cooldown | 3.50s duration"},
+	.Warden_Bulwark_Wave = {.Control, "TIME SKIP  4.50s | CAST PULSE  2.60 tiles / 0.35s stun / 0.45s attack delay"},
+	.Warden_Stone_Aegis = {.Control, "TIME SKIP  enemy speed 40% -> 30%"},
+	.Warden_Unyielding = {.Defense, "TIME SKIP  +20% all resist | 45% total resist cap"},
+	.Warden_Eternal_Wall = {.Spell, "TIME SKIP KILL  refund 40% of current class-skill cooldown"},
+
+	.Rogue_Precision = {.Melee, "MELEE  7 stamina | 15% crit / x1.60 | BIG HIT  30% crit | BELL  +3 damage"},
+	.Rogue_Smoke = {.Mobility, "DASH  2.00 tiles / 10 stamina / 0.90s smoke | EVADE  18% + 22% while smoked"},
+	.Rogue_Venom = {.Control, "KNIFE POISON  2.00s | MELEE CRIT  20% / x1.75 / 2.20s poison | BELL  +4 damage"},
+	.Rogue_Executioner = {.Melee, "BELL  +5 damage vs poisoned, otherwise +3 | MELEE CRIT  28% / x1.95"},
+	.Rogue_Night_Veil = {.Defense, "BELL SMOKE  +0.16s | 0.90s total"},
+	.Rogue_Crimson_Edge = {.Melee, "BELL DAMAGE  x1.12 | MELEE CRIT  34% / x2.10"},
+	.Rogue_Deathmark = {.Melee, "BELL DAMAGE  x1.20 | MELEE CRIT  40% / x2.25 | BIG HIT  80% crit"},
+	.Rogue_Umbral = {.Defense, "BELL SMOKE  +0.18s | 1.08s total"},
+	.Rogue_Trap_Craft = {.Control, "BELL  0.30s arm / 6.35s life / 6.35-tile lure / +1 damage"},
+	.Rogue_Venom_Trap = {.Control, "BELL  2.45s poison | 50% splash"},
+	.Rogue_Bear_Trap = {.Control, "BELL  +4 damage / 1.00-tile trigger / 1.05s snare / x1.24 facing hit"},
+	.Rogue_Trap_Master = {.Control, "BELL  6.80 lure / 2.01 blast / 55% splash / 2.80s poison / 0.45s splash snare"},
+	.Rogue_Ambush_Engineer = {.Control, "BELL  0.25s arm / 7.05 lure / 2.15 blast / 58% splash | KILL  +4 mana / 1.05s cooldown"},
+
+	.Arcanist_Splinter = {.Spell, "ARC BOLT  2 shards / 1.55s flight / 13.95-tile travel / -4 side damage"},
+	.Arcanist_Focus = {.Spell, "FROST NOVA  +0.55 radius / 3.00 tiles total | MANA REGEN  +2.5/s"},
+	.Arcanist_Permafrost = {.Control, "FROST NOVA  3.55 tiles / 1.90s chill | MELEE CHILL  1.00s"},
+	.Arcanist_Overload = {.Spell, "ARC BOLT  3 projectiles / 1 pierce / up to 2 targets each"},
+	.Arcanist_Glacial = {.Spell, "FROST NOVA  +0.55 radius | 4.10 tiles total"},
+	.Arcanist_Pierce = {.Spell, "ARC BOLT  2 pierces / up to 3 targets each"},
+	.Arcanist_Blizzard = {.Spell, "FROST NOVA  +0.55 radius | 4.65 tiles total"},
+	.Arcanist_Storm = {.Spell, "ARC BOLT PIERCE  82% damage retained per pass (was 70%)"},
+	.Arcanist_Absolute_Zero = {.Spell, "FROST NOVA  5.20 tiles | ROOM-WIDE at 2 mastered paths (line of sight)"},
+	.Arcanist_Arc_Tyrant = {.Spell, "ARC BOLT HOMING  0.85 strength / 6.50-tile seek radius"},
+	.Arcanist_Charge = {.Resource, "ARC BOLT  -1 mana | 6 mana before equipment | 4 mana floor"},
+	.Arcanist_Ward = {.Resource, "MANA REGEN  +1.5/s | 5.0/s class total"},
+	.Arcanist_Chain_Lightning = {.Spell, "STORM CHAIN  1 hop / 2.60 tiles / 55% damage"},
+	.Arcanist_Tempest = {.Spell, "STORM CHAIN  2 hops / 2.80 tiles / 55% damage each"},
+	.Arcanist_Storm_Caller = {.Spell, "STORM CHAIN  3 hops / 3.20 tiles | elite and boss priority"},
+	.Arcanist_World_Storm = {.Spell, "STORM CHAIN  4 hops / 3.60 tiles / 55% damage each"},
+
+	.Acolyte_Sanguine = {.Resource, "BLOOD LEECH  +2 HP per melee target / +3 HP per bolt or familiar hit"},
+	.Acolyte_Veil = {.Defense, "MANA SHIELD  spend 4 mana / prevent 5 damage | SPIRIT CALL  12 mana | +2 mana/s"},
+	.Acolyte_Gravebind = {.Control, "BOUND  melee 1.10s / bolt 1.20s / 38% slow | KILL  +4 + depth/2 HP, +2 mana"},
+	.Acolyte_Blood_Pact = {.Resource, "BLOOD LEECH  4 melee / 5 spell HP | LIFESTEAL  +3% (24% cap)"},
+	.Acolyte_Crimson_Maw = {.Resource, "BLOOD LEECH  5 melee / 7 spell HP"},
+	.Acolyte_Sanguine_Ascendant = {.Resource, "BLOOD LEECH  6 melee / 8 spell HP"},
+	.Acolyte_Spirit_Call = {.Summon, "SPIRIT CALL  1 crow / 32 HP / 8-10 damage"},
+	.Acolyte_Curse = {.Resource, "MANA REGEN  +1.5/s | 4.0/s class total"},
+	.Acolyte_Wraith_Host = {.Summon, "SPIRIT CALL  1 crow / 42 HP / 8-10 damage"},
+	.Acolyte_Bone_Legion = {.Summon, "SPIRIT CALL  2 crows / 42 HP each / 10-12 damage"},
+	.Acolyte_Wraith_Lord = {.Summon, "SPIRIT CALL  2 crows (1 champion) / 66 HP each / 14-16 damage"},
+	.Acolyte_Legion_Eternal = {.Summon, "SPIRIT CALL  3 eternal crows / 82 HP each / 14-16 damage / 10 HP/s"},
+
+	.Ranger_Snare = {.Control, "ARROW SNARE  1.10s / 55% slow | STAMINA REGEN  +4/s"},
+	.Ranger_Volley = {.Melee, "MULTISHOT  3 arrows / 18.3-degree fan / -4 side damage"},
+	.Ranger_Beastmark = {.Control, "MELEE SNARE  1.15s | SNARED DAMAGE  x1.22 | VAULT  +8 stamina / bolt ready in 0.12s"},
+	.Ranger_Rapid = {.Melee, "MULTISHOT  4 arrows / 22.9-degree fan / -4 damage each"},
+	.Ranger_Piercing_Volley = {.Melee, "MULTISHOT  1 pierce / up to 2 targets / 70% damage after first hit"},
+	.Ranger_Storm_Volley = {.Melee, "MULTISHOT  5 arrows / 32.1-degree fan / 1 pierce each"},
+	.Ranger_Sky_Quiver = {.Melee, "MULTISHOT HOMING  0.75 strength / 6.50-tile seek radius"},
+	.Ranger_Beast_Bond = {.Summon, "SPIRIT BEAST  74 HP / 14-16 damage / 3.55 speed / 0.86s attack / 4 pet heal"},
+	.Ranger_Pack_Tactics = {.Summon, "SPIRIT BEAST  82 HP / 16-18 damage / 0.78s attack / x1.25 vs snared / 8 pet heal"},
+	.Ranger_Alpha = {.Summon, "SPIRIT BEAST  100 HP / 19-21 damage / 3.70 speed / 0.22-tile shove / 16 pet heal"},
+	.Ranger_Spirit_Companion = {.Summon, "SPIRIT BEAST  114 HP / 22-24 arcane damage / 3.80 speed / 0.73s attack / 32 pet heal"},
+	.Ranger_Primal_Lord = {.Summon, "SPIRIT BEAST  138 HP / 26-28 damage / 3.90 speed / x1.35 vs elite+ / 64 pet heal"},
+}
+
+discipline_stat_bonuses :: proc(def: Discipline_Def) -> (
+	bonuses: [DISCIPLINE_STAT_BONUS_CAPACITY]Discipline_Stat_Bonus,
+	count: int,
+) {
+	if def.max_hp_bonus != 0 {
+		bonuses[count] = {.Health, f32(def.max_hp_bonus)}
+		count += 1
+	}
+	if def.max_mana_bonus != 0 {
+		bonuses[count] = {.Mana, f32(def.max_mana_bonus)}
+		count += 1
+	}
+	if def.max_stamina_bonus != 0 {
+		bonuses[count] = {.Stamina, f32(def.max_stamina_bonus)}
+		count += 1
+	}
+	if def.melee_bonus != 0 {
+		bonuses[count] = {.Melee, f32(def.melee_bonus)}
+		count += 1
+	}
+	if def.spell_bonus != 0 {
+		bonuses[count] = {.Spell, f32(def.spell_bonus)}
+		count += 1
+	}
+	if def.armor_bonus != 0 {
+		bonuses[count] = {.Armor, f32(def.armor_bonus)}
+		count += 1
+	}
+	if def.speed_bonus != 0 {
+		bonuses[count] = {.Move_Speed, def.speed_bonus * 25}
+		count += 1
+	}
+	return
 }
 
 Discipline_State :: enum u8 {

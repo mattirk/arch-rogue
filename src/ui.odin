@@ -1530,6 +1530,42 @@ DISCIPLINE_NAME_FONT_SIZE  :: i32(9)
 DISCIPLINE_STATE_FONT_SIZE :: i32(8)
 DISCIPLINE_TEXT_LEFT_INSET :: f32(1)
 
+@(rodata)
+DISCIPLINE_STAT_LABELS := [Discipline_Stat_Kind]cstring{
+	.Health = "HEALTH",
+	.Mana = "MANA",
+	.Stamina = "STAMINA",
+	.Melee = "MELEE",
+	.Spell = "SPELL",
+	.Armor = "ARMOR",
+	.Move_Speed = "MOVE SPEED",
+}
+
+// Labels keep the footer readable without color perception; color supplies a
+// fast second channel matching the resource and combat identities used in HUD.
+@(rodata)
+DISCIPLINE_STAT_COLORS := [Discipline_Stat_Kind]rl.Color{
+	.Health = {224, 82, 68, 255},
+	.Mana = {92, 142, 235, 255},
+	.Stamina = {112, 190, 92, 255},
+	.Melee = {232, 146, 72, 255},
+	.Spell = {180, 118, 232, 255},
+	.Armor = {166, 178, 196, 255},
+	.Move_Speed = {88, 196, 196, 255},
+}
+
+@(rodata)
+DISCIPLINE_MECHANIC_COLORS := [Discipline_Mechanic_Kind]rl.Color{
+	.None = COLOR_TEXT_DIM,
+	.Melee = {232, 146, 72, 255},
+	.Defense = {166, 178, 196, 255},
+	.Mobility = {88, 196, 196, 255},
+	.Spell = {180, 118, 232, 255},
+	.Control = {110, 160, 232, 255},
+	.Summon = {126, 196, 112, 255},
+	.Resource = COLOR_TITLE,
+}
+
 Discipline_Text_Draw :: struct {
 	name:        string,
 	state_label: cstring,
@@ -1554,6 +1590,71 @@ draw_discipline_text :: proc(name: string, state_label: cstring, text_rect: rl.R
 		DISCIPLINE_STATE_FONT_SIZE,
 		color,
 	)
+}
+
+@(private = "file")
+draw_discipline_numeric_detail :: proc(
+	id: Discipline_Id,
+	status: cstring,
+	status_color: rl.Color,
+	panel: rl.Rectangle,
+) {
+	def := DISCIPLINES[id]
+	heading_y := i32(panel.y + 508)
+	ui_draw_text("BONUSES", i32(panel.x + 40), heading_y, 10, COLOR_TEXT_DIM)
+	status_width := ui_measure_text(status, 10)
+	ui_draw_text(status, i32(panel.x + panel.width - 40) - status_width, heading_y, 10, status_color)
+
+	bonuses, count := discipline_stat_bonuses(def)
+	x := panel.x + 40
+	stat_y := i32(panel.y + 526)
+	for bonus, index in bonuses[:count] {
+		if index > 0 {
+			separator: cstring = "  |  "
+			ui_draw_text(separator, i32(x), stat_y, 14, COLOR_TEXT_DIM)
+			x += f32(ui_measure_text(separator, 14))
+		}
+		text: cstring
+		if bonus.kind == .Move_Speed {
+			text = fmt.ctprintf("+%.1f%% %s", bonus.amount, DISCIPLINE_STAT_LABELS[bonus.kind])
+		} else {
+			text = fmt.ctprintf("+%.0f %s", bonus.amount, DISCIPLINE_STAT_LABELS[bonus.kind])
+		}
+		ui_draw_text(text, i32(x), stat_y, 14, DISCIPLINE_STAT_COLORS[bonus.kind])
+		x += f32(ui_measure_text(text, 14))
+	}
+
+	mechanic := DISCIPLINE_MECHANICS[id]
+	if mechanic.kind != .None && mechanic.text != "" {
+		section_label: cstring = "EFFECT"
+		mechanic_x := i32(panel.x + 40)
+		mechanic_y := i32(panel.y + 548)
+		ui_draw_text(section_label, mechanic_x, mechanic_y, 10, COLOR_TEXT_DIM)
+		mechanic_x += ui_measure_text(section_label, 10) + 12
+
+		separator := strings.index(mechanic.text, "  ")
+		if separator > 0 {
+			name := fmt.ctprintf("%s", mechanic.text[:separator])
+			values := fmt.ctprintf("%s", mechanic.text[separator+2:])
+			name_size: i32 = 10
+			values_size: i32 = 10
+			name_width := ui_measure_text(name, name_size)
+			badge_width := name_width + 10
+			values_x := mechanic_x + badge_width + 8
+			available_width := i32(panel.x + panel.width - 40) - values_x
+			for values_size > 8 && ui_measure_text(values, values_size) > available_width do values_size -= 1
+
+			color := DISCIPLINE_MECHANIC_COLORS[mechanic.kind]
+			badge := rl.Rectangle{f32(mechanic_x), f32(mechanic_y-3), f32(badge_width), 17}
+			rl.DrawRectangleRounded(badge, .28, 4, rl.Fade(color, .16))
+			rl.DrawRectangleRoundedLinesEx(badge, .28, 4, 1, rl.Fade(color, .68))
+			ui_draw_text(name, mechanic_x+5, mechanic_y, name_size, color)
+			ui_draw_text(values, values_x, mechanic_y-(values_size-10)/2, values_size, COLOR_TEXT)
+		} else {
+			mechanic_text := fmt.ctprintf("%s", mechanic.text)
+			ui_draw_text(mechanic_text, mechanic_x, mechanic_y, 10, DISCIPLINE_MECHANIC_COLORS[mechanic.kind])
+		}
+	}
 }
 
 @(private = "file")
@@ -1796,19 +1897,27 @@ draw_character_panel :: proc(app: ^App, assets: ^Assets) {
 			}
 		}
 		if id,found:=character_selected_discipline(app);found {
-			def:=DISCIPLINES[id]
 			state := discipline_state(player, id)
-			suffix: cstring
+			status: cstring
+			status_color := COLOR_TEXT_DIM
 			switch state {
-			case .Chosen: suffix = "  [chosen]"
-			case .Available: suffix = player.memory_tokens > 0 ? "  [cost: 1 memory]" : "  [no memory token]"
-			case .Path_Locked: suffix = "  [sealed: maximum two paths]"
-			case .Locked: suffix = "  [prerequisite locked]"
+			case .Chosen:
+				status = "CHOSEN"
+				status_color = rl.Color{126,214,92,255}
+			case .Available:
+				if player.memory_tokens > 0 {
+					status = "COST: 1 MEMORY"
+					status_color = COLOR_TITLE
+				} else {
+					status = "NO MEMORY TOKEN"
+				}
+			case .Path_Locked:
+				status = "SEALED: MAXIMUM TWO PATHS"
+				status_color = rl.Color{180,86,104,255}
+			case .Locked:
+				status = "PREREQUISITE LOCKED"
 			}
-			detail := fmt.ctprintf("%s%s",def.description,suffix)
-			detail_size:i32 = 13
-			for detail_size > 8 && ui_measure_text(detail,detail_size) > i32(panel.width-80) do detail_size -= 1
-			ui_draw_text(detail,i32(panel.x+40),i32(panel.y+514),detail_size,COLOR_TEXT)
+			draw_discipline_numeric_detail(id,status,status_color,panel)
 		}
 		// Topmost discipline-card pass: text is never followed by plate art.
 		for text_draw in discipline_text_draws {
