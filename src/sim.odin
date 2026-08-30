@@ -1221,6 +1221,15 @@ tick_player :: proc(run: ^Run, move: Vec2, max_move_step: f32) {
 	player.facing = dir
 }
 
+player_stamina_regen_rate :: proc(player: ^Player) -> f32 {
+	if player == nil do return 0
+	regen := ARCHETYPE_STAMINA_REGEN[player.archetype]
+	if player_has_discipline(player, .Ranger_Snare) {
+		regen += RANGER_SNARE_STAMINA_REGEN_BONUS
+	}
+	return regen
+}
+
 player_mana_regen :: proc(player: ^Player) -> f32 {
 	if player == nil do return 0
 	regen: f32 = player.archetype == .Arcanist ? ARCANIST_MANA_REGEN : PLAYER_MANA_REGEN
@@ -1244,6 +1253,7 @@ tick_player_clocks :: proc(run: ^Run) {
 	// Pygame attempts this frame's actions before advancing recovery clocks.
 	// Keeping the same order makes held auto-melee cadence deterministic at the
 	// cooldown boundary rather than firing one fixed tick early.
+	dash_recovery_active := player.dash_timer > 0
 	player.melee_timer = max(0, player.melee_timer - SIM_DT)
 	player.bolt_timer = max(0, player.bolt_timer - SIM_DT)
 	player.dash_timer = max(0, player.dash_timer - SIM_DT)
@@ -1256,9 +1266,15 @@ tick_player_clocks :: proc(run: ^Run) {
 	flash_duration := player.hit_flash_duration > 0 ? player.hit_flash_duration : f32(HIT_FLASH_SECONDS)
 	player.hit_flash = max(0, player.hit_flash - SIM_DT / flash_duration)
 	if player.hit_flash <= 0 do player.hit_flash_duration = 0
-	stamina_regen: f32 = player.archetype == .Ranger ? RANGER_STAMINA_REGEN : PLAYER_STAMINA_REGEN
-	if player_has_discipline(player, .Ranger_Snare) do stamina_regen += 4
-	player.stamina = min(f32(player.max_stamina), player.stamina + stamina_regen * SIM_DT)
+	// A dash spends from the burst pool; passive recovery resumes only after its
+	// cooldown has fully elapsed. Otherwise every class refunds at least one dash
+	// before the next legal activation and stamina can never be exhausted.
+	if !dash_recovery_active {
+		player.stamina = min(
+			f32(player.max_stamina),
+			player.stamina + player_stamina_regen_rate(player) * SIM_DT,
+		)
+	}
 	player.mana = min(f32(player.max_mana), player.mana + player_mana_regen(player) * SIM_DT)
 }
 

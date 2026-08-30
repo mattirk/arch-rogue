@@ -137,6 +137,26 @@ m9_shop_values_use_python_ties_to_even :: proc(t: ^testing.T) {
 }
 
 @(test)
+m9_potion_purchase_prices_scale_with_matching_carried_count :: proc(t: ^testing.T) {
+	keeper := ar.shopkeeper_make(43, 1, ar.Room{10, 12, 8, 8})
+	heal := keeper.stock[0]
+	mana := keeper.stock[1]
+	expected_heal := [ar.POTION_CAPACITY + 1]int{20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70}
+	expected_mana := [ar.POTION_CAPACITY + 1]int{14, 18, 21, 24, 28, 32, 35, 38, 42, 46, 49}
+	for owned in 0 ..= ar.POTION_CAPACITY {
+		player := ar.Player{heal_potions = owned, mana_potions = owned}
+		testing.expectf(t, ar.shop_purchase_price(&keeper, &player, heal) == expected_heal[owned], "health potion at %v carried cost %v, want %v", owned, ar.shop_purchase_price(&keeper, &player, heal), expected_heal[owned])
+		testing.expectf(t, ar.shop_purchase_price(&keeper, &player, mana) == expected_mana[owned], "mana potion at %v carried cost %v, want %v", owned, ar.shop_purchase_price(&keeper, &player, mana), expected_mana[owned])
+	}
+
+	split := ar.Player{heal_potions = 2, mana_potions = 7}
+	testing.expect(t, ar.shop_purchase_price(&keeper, &split, heal) == 30, "mana inventory must not raise health-potion price")
+	testing.expect(t, ar.shop_purchase_price(&keeper, &split, mana) == 38, "health inventory must not raise mana-potion price")
+	gear := keeper.stock[4]
+	testing.expect(t, ar.shop_purchase_price(&keeper, &split, gear) == ar.shop_price(&keeper, gear), "carried potions must not change equipment prices")
+}
+
+@(test)
 m9_shop_transactions_are_atomic :: proc(t: ^testing.T) {
 	room := ar.Room{10, 12, 8, 8}
 
@@ -149,20 +169,21 @@ m9_shop_transactions_are_atomic :: proc(t: ^testing.T) {
 
 	keeper := ar.shopkeeper_make(44, 1, room)
 	buyer := ar.Player{gold = 1000}
-	heal_price := ar.shop_price(&keeper, keeper.stock[0])
-	mana_price := ar.shop_price(&keeper, keeper.stock[1])
+	first_heal_price := ar.shop_purchase_price(&keeper, &buyer, keeper.stock[0])
 	stock_before := keeper.stock_count
 	first_heal := ar.shop_buy(&keeper, &buyer, 0)
+	second_heal_price := ar.shop_purchase_price(&keeper, &buyer, keeper.stock[0])
 	second_heal := ar.shop_buy(&keeper, &buyer, 0)
+	mana_price := ar.shop_purchase_price(&keeper, &buyer, keeper.stock[1])
 	mana := ar.shop_buy(&keeper, &buyer, 1)
-	testing.expect(t, first_heal.result == .Success && first_heal.gold == heal_price, "valid healing-potion purchase failed")
-	testing.expect(t, second_heal.result == .Success && mana.result == .Success, "shopkeeper must allow repeated health and mana potion purchases")
+	testing.expect(t, first_heal.result == .Success && first_heal.gold == first_heal_price, "valid healing-potion purchase failed")
+	testing.expect(t, second_heal.result == .Success && second_heal.gold == second_heal_price && mana.result == .Success && mana.gold == mana_price, "shopkeeper must charge scaled repeated potion prices")
 	testing.expect(t, keeper.stock_count == stock_before, "potion purchases must preserve their permanent stock rows")
 	testing.expect(t, keeper.stock[0].kind == .Heal_Potion && keeper.stock[1].kind == .Mana_Potion, "permanent potion stock rows changed after purchase")
-	testing.expect(t, buyer.gold == 1000 - heal_price * 2 - mana_price && buyer.heal_potions == 2 && buyer.mana_potions == 1, "potion purchases did not update player atomically")
+	testing.expect(t, buyer.gold == 1000 - first_heal_price - second_heal_price - mana_price && buyer.heal_potions == 2 && buyer.mana_potions == 1, "potion purchases did not update player atomically")
 
 	gear_index := 4
-	gear_price := ar.shop_price(&keeper, keeper.stock[gear_index])
+	gear_price := ar.shop_purchase_price(&keeper, &buyer, keeper.stock[gear_index])
 	gear := ar.shop_buy(&keeper, &buyer, gear_index)
 	testing.expect(t, gear.result == .Success && gear.gold == gear_price, "valid equipment purchase failed")
 	testing.expect(t, keeper.stock_count == stock_before - 1, "one-off equipment purchase did not remove its stock row")

@@ -2088,7 +2088,7 @@ draw_shop_panel :: proc(app:^App,assets:^Assets){
 	visible_end := min(total, app.shop_scroll + SHOP_VISIBLE_ROWS)
 	for i in app.shop_scroll..<visible_end {
 		item:=app.shop_mode==.Buy?keeper.stock[i]:app.run.player.bag[i]
-		price:=app.shop_mode==.Buy?shop_price(keeper,item):shop_buyback_value(keeper,item)
+		price:=app.shop_mode==.Buy?shop_purchase_price(keeper,&app.run.player,item):shop_buyback_value(keeper,item)
 		rect:=shop_row_rect(i - app.shop_scroll)
 		selected:=ui_navigation_selected(app,i==app.shop_index)
 		content:=draw_menu_row_chrome(assets,rect,selected)

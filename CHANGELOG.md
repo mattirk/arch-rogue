@@ -5,8 +5,8 @@
 A new Soulless Clanker prologue records whether the player wants narrative
 content before the title screen, while Story Off preserves the dungeon's rooms,
 relics, and minigames. This release also sharpens combat and discipline
-readability, bounds potion carrying, retunes Mistbound presentation and music,
-and roots the Ranger's Pet ritual.
+readability, bounds potion carrying, makes dash stamina exhaustible, retunes
+Mistbound presentation and music, and roots the Ranger's Pet ritual.
 
 - **One-time Clanker story choice.** Clean profiles and migrated options without
   a recorded answer now open a two-choice scene before the title screen.
@@ -31,10 +31,11 @@ and roots the Ranger's Pet ritual.
   restrained 40% trace repeats through foreground walls only for attackers
   already in live sight, keeping danger readable without revealing unseen foes.
 - **Bounded, replenishable potions.** Health and mana potions now have separate
-  carrying limits of 10, shown against capacity in the HUD. Full-cap pickups
-  stay on the floor, shops keep potion rows available for repeated purchases
-  until the relevant cap is reached, rejection feedback is explicit, and older
-  saves clamp safely to the new limits.
+  carrying limits of 10, shown against capacity in the HUD. Permanent shop rows
+  charge 25% of the base price for each matching flask already carried, so
+  health and mana scarcity scale independently and spending a potion lowers its
+  next price. Full-cap pickups stay on the floor, rejection feedback is
+  explicit, and older saves clamp safely to the new limits.
 - **Mistbound challenge and presentation tuning.** Preserve, Release, and Refuse
   now ask for 6, 8, and 12 captures with 0.92, 0.72, and 0.54-second ghost
   windows. Live aim still turns the player during the locked wait and hunt; the
@@ -45,16 +46,23 @@ and roots the Ranger's Pet ritual.
   fewer than five seconds left wait only to the following half-loop boundary.
   The Clanker prologue likewise holds the boot score and hands it to the menu
   without pausing, rewinding, or losing the shared musical phase.
+- **Exhaustible archetype stamina.** Passive recovery is now 20/s for Warden,
+  18/s for Rogue, 14/s for Arcanist, 16/s for Acolyte, and 22/s for Ranger,
+  with Barbed Snares retaining its +4/s bonus. Recovery pauses throughout dash
+  cooldown, giving fresh archetypes finite bursts of 6, 10, 5, 5, and 10
+  consecutive dashes respectively; Beast Hunt's Vault refund extends Ranger's
+  burst substantially without making it infinite.
 - **Rooted Ranger Pet action.** Keyboard, controller, touch, and click-to-walk
   locomotion can no longer pull the Ranger away or trigger movement auto-melee
   during the paired 0.8-second pose. Ranger and Spirit Beast remain stationary
   and out of their walk states while recovery, status, resource, enemy, and
   world clocks continue normally.
-- **Validation.** The headless suite now contains 462 passing tests, up from the
+- **Validation.** The headless suite now contains 464 passing tests, up from the
   440 recorded for alpha.25. New coverage pins first-boot choice and migration,
   Story-Off generation and relic guidance, discipline summaries and mechanics,
-  telegraph policy, potion/shop atomicity, Mistbound music and UI boundaries,
-  Lossless Soul presentation, and the full Pet movement lock.
+  telegraph policy, inventory-scaled potion pricing and shop atomicity,
+  archetype stamina recovery and dash exhaustion, Mistbound music and UI
+  boundaries, Lossless Soul presentation, and the full Pet movement lock.
 
 ## 6.0.0-alpha.25 — The mist keeps time
 

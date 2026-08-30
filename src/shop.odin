@@ -8,6 +8,7 @@ import "core:math"
 SHOP_STOCK_CAPACITY :: 32
 SHOP_SELL_MULTIPLIER :: 1.15
 SHOP_BUY_MULTIPLIER :: 0.45
+SHOP_POTION_OWNED_PRICE_STEP :: f64(0.25)
 
 @(rodata)
 SHOPKEEPER_NAMES := [5]string{
@@ -141,6 +142,26 @@ shop_price :: proc(keeper: ^Shopkeeper, item: Item) -> int {
 	return max(1, round_to_even(f64(item_shop_value(item)) * multiplier))
 }
 
+// Potion scarcity is local to the matching carried stack: each flask already
+// owned adds 25% of that potion's base list price. The existing ties-to-even
+// rule keeps every displayed and charged value deterministic.
+shop_purchase_price :: proc(keeper: ^Shopkeeper, player: ^Player, item: Item) -> int {
+	price := shop_price(keeper, item)
+	if player == nil do return price
+	owned: int
+	switch item.kind {
+	case .Heal_Potion:
+		owned = player.heal_potions
+	case .Mana_Potion:
+		owned = player.mana_potions
+	case .Identify_Scroll, .Remove_Curse_Scroll, .Weapon, .Armor:
+		return price
+	}
+	owned = clamp(owned, 0, POTION_CAPACITY)
+	surcharge := round_to_even(f64(price) * SHOP_POTION_OWNED_PRICE_STEP * f64(owned))
+	return max(1, price + surcharge)
+}
+
 shop_buyback_value :: proc(keeper: ^Shopkeeper, item: Item) -> int {
 	multiplier := SHOP_BUY_MULTIPLIER
 	if keeper != nil && keeper.buy_multiplier > 0 do multiplier = keeper.buy_multiplier
@@ -152,7 +173,7 @@ shop_buy :: proc(keeper: ^Shopkeeper, player: ^Player, stock_index: int) -> Shop
 		return {result = .Invalid_Selection}
 	}
 	item := keeper.stock[stock_index]
-	price := shop_price(keeper, item)
+	price := shop_purchase_price(keeper, player, item)
 	if player.gold < price {
 		return {result = .Insufficient_Gold, item = item, gold = price}
 	}

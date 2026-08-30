@@ -188,7 +188,7 @@ m9_shop_modal_trades_scrolls_and_pauses :: proc(t:^testing.T) {
 	app.run.has_shopkeeper=true
 	app.run.player.gold=1000
 	heal_before:=app.run.player.heal_potions
-	price:=ar.shop_price(&app.run.shopkeeper,app.run.shopkeeper.stock[0])
+	first_price:=ar.shop_purchase_price(&app.run.shopkeeper,&app.run.player,app.run.shopkeeper.stock[0])
 	ar.app_apply(&app,ar.Intent{interact=true})
 	testing.expect(t,app.shop_open&&app.shop_mode==.Buy,"interact near keeper must open Buy mode")
 	app.run.player.melee_timer=1
@@ -196,8 +196,9 @@ m9_shop_modal_trades_scrolls_and_pauses :: proc(t:^testing.T) {
 	testing.expect(t,app.run.player.melee_timer==1,"shop must pause the simulation")
 	stock_before:=app.run.shopkeeper.stock_count
 	ar.app_apply(&app,ar.Intent{confirm=true})
+	second_price:=ar.shop_purchase_price(&app.run.shopkeeper,&app.run.player,app.run.shopkeeper.stock[0])
 	ar.app_apply(&app,ar.Intent{confirm=true})
-	testing.expect(t,app.run.player.heal_potions==heal_before+2&&app.run.player.gold==1000-price*2&&app.run.shopkeeper.stock_count==stock_before,"permanent potion row must support repeated atomic purchases through App")
+	testing.expect(t,app.run.player.heal_potions==heal_before+2&&app.run.player.gold==1000-first_price-second_price&&app.run.shopkeeper.stock_count==stock_before,"permanent potion row must support repeated scaled purchases through App")
 
 	for i in 0..<ar.BAG_CAPACITY do app.run.player.bag[i]=ar.Item{kind=.Weapon,name="Trade Blade",power=i+1}
 	app.run.player.bag_count=ar.BAG_CAPACITY

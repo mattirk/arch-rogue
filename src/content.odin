@@ -821,8 +821,19 @@ KNOCKBACK_DECAY_RATE :: 10.0
 KNOCKBACK_CHAIN_MIN_SPEED :: 4.0
 KNOCKBACK_CHAIN_TRANSFER :: 0.85
 KNOCKBACK_CHAIN_ARC_DOT :: 0.35
-PLAYER_STAMINA_REGEN :: 30.0
-RANGER_STAMINA_REGEN :: 38.0
+// Odin-native stamina economy: recovery pauses during the dash cooldown, so
+// these rates govern between-engagement refill instead of refunding each dash.
+// Warden/Ranger recover strongly, Rogue carries the deepest burst reserve,
+// Acolyte stays balanced, and Arcanist relies least on physical stamina.
+@(rodata)
+ARCHETYPE_STAMINA_REGEN := [Archetype_Id]f32{
+	.Warden   = 20,
+	.Rogue    = 18,
+	.Arcanist = 14,
+	.Acolyte  = 16,
+	.Ranger   = 22,
+}
+RANGER_SNARE_STAMINA_REGEN_BONUS :: f32(4)
 PLAYER_MANA_REGEN :: 2.5
 ARCANIST_MANA_REGEN :: 3.5
 

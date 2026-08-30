@@ -364,6 +364,67 @@ m8_dash_cancels_only_an_uncommitted_big_hit :: proc(t: ^testing.T) {
 	testing.expect(t, near_f32(run.player.bighit_timer, ar.BIGHIT_COOLDOWN), "completed Big Hit must pay the full cooldown")
 }
 
+@(private = "file")
+m8_spam_dash_until_exhausted :: proc(run: ^ar.Run, limit: int) -> int {
+	dashes := 0
+	for dashes < limit {
+		if !ar.player_dash(run, {1, 0}) do break
+		dashes += 1
+		recovery_ticks := 0
+		for run.player.dash_timer > 0 && recovery_ticks < 120 {
+			ar.sim_tick(run, {})
+			recovery_ticks += 1
+		}
+		if recovery_ticks >= 120 do break
+	}
+	return dashes
+}
+
+@(test)
+m8_archetype_stamina_recovery_makes_dash_bursts_exhaustible :: proc(t: ^testing.T) {
+	expected_rates := [ar.Archetype_Id]f32{
+		.Warden = 20, .Rogue = 18, .Arcanist = 14, .Acolyte = 16, .Ranger = 22,
+	}
+	expected_burst_dashes := [ar.Archetype_Id]int{
+		.Warden = 6, .Rogue = 10, .Arcanist = 5, .Acolyte = 5, .Ranger = 10,
+	}
+
+	for archetype in ar.Archetype_Id {
+		run: ar.Run
+		ar.run_start(&run, ar.derive_seed(8120 + u64(archetype), 0), archetype)
+		m8_prepare_arena(&run)
+		run.dungeon.room_count = 0
+		run.dungeon.special_room_count = 0
+
+		rate := ar.player_stamina_regen_rate(&run.player)
+		testing.expectf(t, near_f32(rate, expected_rates[archetype]), "%v stamina regen %.2f, want %.2f", archetype, rate, expected_rates[archetype])
+		dashes := m8_spam_dash_until_exhausted(&run, 64)
+		cost := ar.player_dash_stamina_cost(&run.player)
+		testing.expectf(t, dashes == expected_burst_dashes[archetype], "%v sustained %v dashes, want %v", archetype, dashes, expected_burst_dashes[archetype])
+		testing.expectf(t, run.player.stamina < f32(cost), "%v should stop below its next %v-stamina dash", archetype, cost)
+
+		stamina_before := run.player.stamina
+		ar.sim_tick(&run, {})
+		testing.expectf(t, near_f32(run.player.stamina, stamina_before + rate * ar.SIM_DT), "%v stamina recovery did not resume after dash cooldown", archetype)
+		ar.run_destroy(&run)
+	}
+
+	// Barbed Snares and Beast Hunt deliberately stretch Ranger mobility through
+	// +4/s recovery and an immediate +8 Vault refund, but cannot make it infinite.
+	run: ar.Run
+	ar.run_start(&run, ar.derive_seed(8128, 0), .Ranger)
+	m8_prepare_arena(&run)
+	run.dungeon.room_count = 0
+	run.dungeon.special_room_count = 0
+	run.player.acquired_disciplines[.Ranger_Snare] = true
+	run.player.acquired_disciplines[.Ranger_Beastmark] = true
+	testing.expect(t, near_f32(ar.player_stamina_regen_rate(&run.player), 26), "Barbed Snares should add +4 stamina/s")
+	dashes := m8_spam_dash_until_exhausted(&run, 64)
+	testing.expectf(t, dashes == 28, "Beast Hunt Ranger sustained %v dashes, want 28 before exhaustion", dashes)
+	testing.expect(t, run.player.stamina < f32(ar.player_dash_stamina_cost(&run.player)), "Beast Hunt Ranger must still run out of Vault stamina")
+	ar.run_destroy(&run)
+}
+
 @(test)
 m8_time_skip_slows_only_enemy_clocks :: proc(t: ^testing.T) {
 	run: ar.Run
