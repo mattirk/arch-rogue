@@ -159,6 +159,48 @@ mx6_enemy_pending_actions_classify_every_attack_family :: proc(t: ^testing.T) {
 }
 
 @(test)
+mx6_enemy_windup_telegraphs_cover_every_attack_family_and_count_down :: proc(t:^testing.T) {
+	enemy:=ar.enemy_make(.Ghoul,{},1)
+	enemy.attack_range=1.25
+	ar.enemy_begin_windup(&enemy,.5,ar.PENDING_BASE_ATTACK,{3,4})
+	melee:=ar.visual_enemy_telegraph(&enemy)
+	testing.expect(t,melee.valid&&melee.kind==.Melee,"base melee windup must produce a directional melee tell")
+	testing.expect(t,mx6_near(melee.aim.x,.6)&&mx6_near(melee.aim.y,.8),"telegraph must retain normalized committed aim")
+	testing.expect(t,melee.progress==0&&!melee.imminent,"a fresh windup must begin at zero progress without an impact warning")
+
+	enemy.windup=.2
+	late:=ar.visual_enemy_telegraph(&enemy)
+	testing.expect(t,late.progress>melee.progress&&late.imminent,"the tell must grow urgent and mark the final attack window")
+
+	enemy.ranged=true
+	enemy.attack_range=5
+	ranged:=ar.visual_enemy_telegraph(&enemy)
+	testing.expect(t,ranged.kind==.Bolt&&mx6_near(ranged.attack_range,5),"base ranged windup must show its projectile lane")
+	enemy.big=true
+	fan:=ar.visual_enemy_telegraph(&enemy)
+	testing.expect(t,fan.kind==.Fan&&fan.projectile_count==3&&fan.spread>0,"large base casters must expose their three-projectile fan")
+
+	enemy.big=false
+	enemy.ranged=false
+	enemy.ability_count=1
+	enemy.pending_ability=0
+	abilities:=[4]ar.Ability_Id{.Gate_Strike,.Arcane_Lance,.Frost_Fan,.Ember_Nova}
+	kinds:=[4]ar.Visual_Enemy_Telegraph_Kind{.Melee,.Bolt,.Fan,.Nova}
+	for ability,index in abilities {
+		enemy.abilities[0]=ability
+		plan:=ar.visual_enemy_telegraph(&enemy)
+		testing.expectf(t,plan.valid&&plan.kind==kinds[index],"%v telegraph classified as %v, want %v",ability,plan.kind,kinds[index])
+	}
+	enemy.pending_ability=ar.PENDING_LEGACY_CAST
+	legacy:=ar.visual_enemy_telegraph(&enemy)
+	testing.expect(t,legacy.kind==.Fan&&legacy.projectile_count==3&&legacy.attack_range>=4,"legacy boss casts must retain a readable fan tell")
+
+	enemy.ai=.Chase
+	testing.expect(t,!ar.visual_enemy_telegraph(&enemy).valid,"non-windup enemies must not leak attack tells")
+	testing.expect(t,!ar.visual_enemy_telegraph(nil).valid,"nil telegraph input must be inert")
+}
+
+@(test)
 mx6_authored_enemy_commits_emit_their_semantic_actions :: proc(t: ^testing.T) {
 	abilities := [4]ar.Ability_Id{.Gate_Strike, .Arcane_Lance, .Frost_Fan, .Ember_Nova}
 	kinds := [4]ar.Enemy_Action_Kind{.Attack, .Cast, .Cast, .Cast}

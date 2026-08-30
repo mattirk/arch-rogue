@@ -1350,6 +1350,9 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 	} else if effect_fallback_compact_visible(app,feet) {
 		draw_player_aim_tick(app,feet)
 	}
+	// Enemy tells share the same floor-level pass so their additive accents remain
+	// below actors and props; the visibility mask clips the nova edge at live LOS.
+	draw_enemy_attack_telegraphs(view,app,alpha)
 
 	story_relic := &app.run.story_runtime.relic
 	if app.run.story_runtime.initialized && story_relic.present && !story_relic.collected &&
@@ -1603,15 +1606,7 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 					rl.EndBlendMode()
 				}
 			}
-			if enemy.ai == .Windup && compact_cues_visible {
-				w := rl.Vector2(world_from_tile(item.feet))
-				remaining := enemy.windup_duration > 0 ? clamp(enemy.windup/enemy.windup_duration,0,1) : f32(0)
-				progress := 1-remaining
-				radius_h := 10+10*progress
-				color := rl.Color(DAMAGE_TYPE_COLORS[enemy.damage_type])
-				rl.DrawEllipseLinesV(w,radius_h,radius_h*.5,rl.Fade(color,(120.0/255.0)*remaining))
-				rl.DrawEllipseLinesV(w,radius_h+1,radius_h*.5+1,rl.Fade(color,(90.0/255.0)*remaining))
-			}
+
 			miniboss_effect := Miniboss_Sprite_Effect{}
 			if visual_miniboss_effect_enabled(enemy.role) {
 				miniboss_effect = {
@@ -1627,12 +1622,6 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 				append(&ghost_actors,Ghost_Actor{depth=item.depth,kind=.Enemy,index=item.index,key=key,tex=tex,src=src,dst=dst,feet=item.feet,big=enemy.big,tint=tint})
 			}
 			if compact_cues_visible do draw_enemy_bar(enemy,sprites,item.feet)
-			if compact_cues_visible && enemy.ai == .Windup && enemy.windup <= .28 &&
-				(enemy.ranged || enemy.role == .Miniboss || enemy.role == .Boss) {
-				w := rl.Vector2(world_from_tile(item.feet))
-				head := sprites.loaded ? sprites.canvas_world*sprites.anchor.y : f32(40)
-				ui_draw_text("!",i32(w.x)-3,i32(w.y-head-12),18,rl.Color(DAMAGE_TYPE_COLORS[enemy.damage_type]))
-			}
 		case .Familiar:
 			familiar := &app.run.familiars[item.index]
 			sprites:^Actor_Sprites
@@ -2082,6 +2071,105 @@ draw_hall_furnishing :: proc(
 		rl.DrawRectangleV({world.x-14,world.y-28},{28,12},rl.Color{70,54,80,255})
 		rl.DrawRectangleLinesEx({world.x-17,world.y-31,34,18},2,bright)
 		rl.DrawPoly({world.x,world.y-22},4,4,45,accent)
+	}
+}
+
+@(private = "file")
+draw_enemy_telegraph_arrow :: proc(origin,direction:rl.Vector2,length:f32,color:rl.Color,alpha:f32) {
+	perpendicular := rl.Vector2{-direction.y,direction.x}
+	tail := origin+direction*9
+	tip := origin+direction*length
+	head_base := tip-direction*4.5
+	feather_base := tail-direction*6
+	// Keep the low-opacity effect readable through silhouette rather than fill:
+	// one shaft, an open arrowhead, and two short tail feathers.
+	rl.DrawLineEx(tail,tip,1.2,rl.Fade(color,alpha*.82))
+	rl.DrawLineEx(tip,head_base + perpendicular*2.5,1.4,rl.Fade(color,alpha))
+	rl.DrawLineEx(tip,head_base - perpendicular*2.5,1.4,rl.Fade(color,alpha))
+	rl.DrawLineEx(tail,feather_base + perpendicular*3,1,rl.Fade(color,alpha*.62))
+	rl.DrawLineEx(tail,feather_base - perpendicular*3,1,rl.Fade(color,alpha*.62))
+}
+
+@(private = "file")
+draw_enemy_attack_telegraph :: proc(enemy:^Enemy,feet:Vec2,compact:=false) {
+	plan := visual_enemy_telegraph(enemy)
+	if !plan.valid do return
+	origin := rl.Vector2(world_from_tile(feet))
+	color := rl.Color(DAMAGE_TYPE_COLORS[enemy.damage_type])
+	progress := plan.progress
+	direction := rl.Vector2(visual_iso_direction(plan.aim))
+	if direction == {} do return
+	perpendicular := rl.Vector2{-direction.y,direction.x}
+
+	// Match the established Cast/Dash/Slash language: additive color, a small
+	// origin pulse, and only a few fine strokes. No opaque danger footprint or UI.
+	rl.BeginBlendMode(.ADDITIVE)
+	ring_radius := 15-3*progress
+	rl.DrawEllipseLinesV(origin,ring_radius,ring_radius*.5,rl.Fade(color,.13+.10*progress))
+	for i in 0..<3 {
+		angle := f32(i)*math.TAU/3+progress*.8
+		mote := origin+rl.Vector2{math.cos(angle)*ring_radius,math.sin(angle)*ring_radius*.5}
+		rl.DrawCircleV(mote,1.3,rl.Fade(color,.10+.08*progress))
+	}
+	if compact {
+		rl.EndBlendMode()
+		return
+	}
+
+	switch plan.kind {
+	case .Melee:
+		center := origin+direction*(plan.large?f32(23):f32(19))
+		radius:f32 = plan.large?15:12
+		angle := math.atan2(direction.y,direction.x)*180/math.PI
+		rl.DrawRing(center,radius-2,radius,angle-52,angle+52,14,rl.Fade(color,.15+.12*progress))
+		stroke_offset := perpendicular*5
+		rl.DrawLineEx(origin+direction*8-stroke_offset,center+direction*8-stroke_offset*.35,1,rl.Fade(color,.07+.07*progress))
+		rl.DrawLineEx(origin+direction*8+stroke_offset,center+direction*8+stroke_offset*.35,1,rl.Fade(color,.07+.07*progress))
+	case .Bolt:
+		length:f32 = plan.large?58:48
+		draw_enemy_telegraph_arrow(origin,direction,length+progress*7,color,.18+.14*progress)
+	case .Fan:
+		tile_perpendicular := Vec2{-plan.aim.y,plan.aim.x}
+		count := min(3,plan.projectile_count)
+		for i in 0..<count {
+			offset:f32
+			if count>1 do offset=plan.spread*(f32(i)/f32(count-1)*2-1)
+			sample := plan.aim+tile_perpendicular*offset
+			sample /= math.hypot(sample.x,sample.y)
+			sample_direction := rl.Vector2(visual_iso_direction(sample))
+			length:f32 = plan.large?58:48
+			draw_enemy_telegraph_arrow(origin,sample_direction,length+progress*6,color,.12+.10*progress)
+		}
+	case .Nova:
+		radii := visual_iso_radial_radii(plan.attack_range,1)
+		pulse := .84+.16*progress
+		rl.DrawEllipseLinesV(origin,radii.x,radii.y,rl.Fade(color,.10+.08*progress))
+		rl.DrawEllipseLinesV(origin,radii.x*pulse,radii.y*pulse,rl.Fade(color,.06+.06*progress))
+	case .None:
+	}
+	rl.EndBlendMode()
+}
+
+@(private = "file")
+draw_enemy_attack_telegraphs :: proc(view:^View,app:^App,alpha:f32) {
+	if view==nil||app==nil do return
+	full := app.dev_reveal||(view.effect_mask_shader_ready&&view.visible_mask.ready)
+	if full {
+		if effect_ok,effect_active:=begin_effect_visibility(view,app);effect_ok {
+			for &enemy in app.run.enemies {
+				if enemy.ai!=.Windup||enemy.hp<=0 do continue
+				if !app.dev_reveal&&!tile_pos_visible(app,enemy.pos) do continue
+				feet:=enemy.prev_pos+(enemy.pos-enemy.prev_pos)*alpha
+				draw_enemy_attack_telegraph(&enemy,feet)
+			}
+			end_effect_visibility(effect_active)
+		}
+		return
+	}
+	for &enemy in app.run.enemies {
+		if enemy.ai!=.Windup||enemy.hp<=0||!effect_fallback_compact_visible(app,enemy.pos) do continue
+		feet:=enemy.prev_pos+(enemy.pos-enemy.prev_pos)*alpha
+		draw_enemy_attack_telegraph(&enemy,feet,true)
 	}
 }
 

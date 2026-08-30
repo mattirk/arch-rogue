@@ -169,6 +169,84 @@ visual_aim_cone :: proc(facing: Vec2) -> Visual_Aim_Cone {
 	}
 }
 
+Visual_Enemy_Telegraph_Kind :: enum u8 {
+	None,
+	Melee,
+	Bolt,
+	Fan,
+	Nova,
+}
+
+Visual_Enemy_Telegraph :: struct {
+	valid:            bool,
+	kind:             Visual_Enemy_Telegraph_Kind,
+	aim:              Vec2,
+	attack_range:     f32,
+	spread:           f32,
+	projectile_count: int,
+	progress:         f32,
+	imminent:         bool,
+	large:            bool,
+}
+
+// Classify the committed attack while it is winding up. The renderer uses this
+// plan to draw an honest directional or radial tell without consulting mutable
+// gameplay state of its own.
+visual_enemy_telegraph :: proc(enemy: ^Enemy) -> Visual_Enemy_Telegraph {
+	if enemy == nil || enemy.hp <= 0 || enemy.ai != .Windup do return {}
+
+	aim := enemy.windup_aim
+	if aim == {} do aim = enemy.facing
+	length := math.hypot(aim.x, aim.y)
+	if length <= 1e-5 do return {}
+	aim /= length
+
+	result := Visual_Enemy_Telegraph{
+		valid = true,
+		kind = .Melee,
+		aim = aim,
+		attack_range = max(f32(.85), enemy.attack_range),
+		projectile_count = 1,
+		large = enemy.big || enemy.role == .Miniboss || enemy.role == .Boss,
+	}
+	if enemy.windup_duration > 0 {
+		result.progress = clamp(1-enemy.windup/enemy.windup_duration,f32(0),f32(1))
+	} else {
+		result.progress = 1
+	}
+	result.imminent = enemy.windup_duration <= 0 ||
+		enemy.windup <= min(f32(.28),enemy.windup_duration*f32(.65))
+
+	pending := enemy.pending_ability
+	if pending >= 0 && pending < enemy.ability_count {
+		ability := ABILITY_DEFS[enemy.abilities[pending]]
+		if ability.attack_range > 0 do result.attack_range = ability.attack_range
+		result.spread = ability.spread
+		result.projectile_count = max(1,ability.proj_count)
+		switch ability.effect {
+		case .Strike: result.kind = .Melee
+		case .Bolt:   result.kind = .Bolt
+		case .Fan:    result.kind = .Fan
+		case .Nova:   result.kind = .Nova
+		}
+		return result
+	}
+
+	if pending == PENDING_LEGACY_CAST {
+		result.kind = .Fan
+		result.attack_range = max(f32(4),result.attack_range)
+		result.spread = .28
+		result.projectile_count = 3
+	} else if pending != PENDING_LEGACY_MELEE && enemy.ranged {
+		result.kind = enemy.big ? .Fan : .Bolt
+		if enemy.big {
+			result.spread = .28
+			result.projectile_count = 3
+		}
+	}
+	return result
+}
+
 // A tile-space circle projects to an axis-aligned world-space ellipse. The
 // returned Vec2 stores horizontal radius in x and vertical radius in y.
 visual_iso_radial_radii :: proc(radius_tiles, progress: f32) -> Vec2 {
