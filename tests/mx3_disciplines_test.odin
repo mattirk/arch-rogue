@@ -567,12 +567,23 @@ mx3_petting_readiness_pose_and_cooldown :: proc(t: ^testing.T) {
 	testing.expect(t, beast.facing.x < 0 && player.facing.x > 0, "the pair face each other")
 	testing.expect(t, ar.nearby_pettable_spirit_beast(&run) == nil, "cooldown suppresses immediate re-pets")
 
-	// The beast is fully suspended while the ritual plays.
-	pos_before := beast.pos
-	append(&run.enemies, mx3_dummy(beast.pos + ar.Vec2{1.0, 0}))
-	ar.tick_familiars_dt(&run, 0.1)
-	testing.expect(t, beast.pos == pos_before, "a petted beast neither moves nor fights")
-	testing.expect(t, run.enemies[0].hp == run.enemies[0].max_hp, "a petted beast does not attack")
+	// Held locomotion cannot pull either half out of the paired pose or trigger
+	// movement auto-melee. Both remain rooted until the Pet action completes.
+	player_pos_before := player.pos
+	beast_pos_before := beast.pos
+	append(&run.enemies, mx3_dummy(player.pos + ar.Vec2{0, 0.8}))
+	enemy_hp_before := run.enemies[0].hp
+	pet_ticks := 0
+	for player.visual_action == .Pet && pet_ticks < 100 {
+		ar.sim_tick_limited(&run, {0, 1}, -1, auto_melee = true)
+		testing.expect(t, player.pos == player_pos_before, "the Ranger must remain rooted throughout Pet")
+		testing.expect(t, beast.pos == beast_pos_before, "the Spirit Beast must remain rooted throughout Pet")
+		testing.expect(t, !player.moving && !beast.moving, "both Pet actors must remain in non-locomotion state")
+		testing.expect(t, run.enemies[0].hp == enemy_hp_before, "held movement must not auto-melee during Pet")
+		pet_ticks += 1
+	}
+	testing.expect(t, player.visual_action == .None, "the Pet action should complete within its authored duration")
+	testing.expect(t, pet_ticks > 1, "the Pet movement lock must cover more than its start tick")
 
 	// The pickup fallback outranks petting in the interact chain.
 	beast.pet_cooldown = 0

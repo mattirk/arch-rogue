@@ -305,6 +305,8 @@ Options :: struct {
 	lighting_enabled:   bool,
 	mist_enabled:       bool,
 	minimap_visible:    bool,
+	story_enabled:      bool, // narrative layer for the *next* run; rooms/minigames remain
+	story_decided:      bool, // the one-time first-boot Clanker question was answered
 }
 
 options_default :: proc() -> Options {
@@ -321,6 +323,8 @@ options_default :: proc() -> Options {
 		lighting_enabled = true,
 		mist_enabled = true,
 		minimap_visible = true,
+		story_enabled = true,
+		story_decided = false,
 	}
 }
 

@@ -24,6 +24,9 @@ MUSIC_SOUL_ROOM_SILENT_DISTANCE_TILES  :: f32(8)
 MUSIC_SOUL_ROOM_FADE_SECONDS           :: f32(0.5)
 MUSIC_MISTBOUND_MIN_WAIT_MS            :: f64(5000)
 MUSIC_MISTBOUND_EXTRA_LOOP_SCALE       :: f64(0.5)
+// The first-boot question shares the Mistbound minimum: its release targets
+// the first 0%/50% grid point at least this far after the decision.
+MUSIC_BOOT_RELEASE_MIN_MS              :: MUSIC_MISTBOUND_MIN_WAIT_MS
 MUSIC_BOSS_CHOIR_FADE_SECONDS          :: f32(0.5)
 MUSIC_MAX_SLOTS                        :: 17
 MUSIC_MIXES_DOCUMENT_PATH              :: "assets/audio/bgm/mixes.json"
@@ -550,7 +553,7 @@ music_mix_for :: proc(app: ^App) -> string {
 		return MUSIC_MIX_DUNGEON
 	}
 	switch app.mode {
-	case .Title, .Select, .Chronicle, .Abandon_Confirm, .Recovery:
+	case .Title, .Story_Decision, .Select, .Chronicle, .Abandon_Confirm, .Recovery:
 		return MUSIC_MIX_MENU
 	case .Playing, .Paused, .Resume_Veil:
 		return playing_mix(app)
@@ -562,6 +565,14 @@ music_mix_for :: proc(app: ^App) -> string {
 		return MUSIC_MIX_MENU
 	}
 	return MUSIC_MIX_MENU
+}
+
+// The unanswered first-boot question holds the boot intro: the shared cursor
+// free-runs through the full track, and the menu hand-off is deferred to the
+// first scaled-grid point (0%/50% of the loop) at least the Mistbound five
+// seconds after the decision lands.
+music_hold_boot_intro :: proc(app: ^App) -> bool {
+	return app != nil && app.mode == .Story_Decision && app.story_decision_phase == .Ask
 }
 
 music_pan_channel_gains :: proc "contextless" (pan: f32) -> (left, right: f32) {
@@ -601,12 +612,14 @@ Music_Mistbound_Wait :: struct {
 }
 
 Music_Director :: struct {
-	stage:          Music_Stage,
-	active_mix:     string,
-	clock_ms:       f64, // ms since the current stage epoch (monotonic per stage)
-	cycle:          int, // completed full cycles in Steady
-	mistbound_wait: Music_Mistbound_Wait,
-	slots:          [MUSIC_MAX_SLOTS]Music_Slot,
+	stage:           Music_Stage,
+	active_mix:      string,
+	clock_ms:        f64, // ms since the current stage epoch (monotonic per stage)
+	cycle:           int, // completed full cycles in Steady
+	boot_handoff_ms:         f64, // Boot-clock hand-off target, always on the scaled-length grid
+	boot_handoff_continuous: bool, // held story intro keeps the live PCM cursor at hand-off
+	mistbound_wait:          Music_Mistbound_Wait,
+	slots:           [MUSIC_MAX_SLOTS]Music_Slot,
 }
 
 music_phase_ms :: proc(director: ^Music_Director, library: ^Music_Library) -> f64 {
@@ -797,6 +810,7 @@ music_director_update :: proc(
 	desired_mix: string,
 	dt_ms: f64,
 	reference_phase_ms: f64 = -1,
+	hold_boot: bool = false,
 ) {
 	if director == nil || library == nil || !library.loaded do return
 
@@ -805,6 +819,8 @@ music_director_update :: proc(
 			director.stage = .Boot
 			director.clock_ms = 0
 			director.cycle = 0
+			director.boot_handoff_ms = library.loop_ms * f64(library.boot.length_scale)
+			director.boot_handoff_continuous = false
 			music_enter_mix(director, library, library.boot.mix, 0, snap = true)
 		} else {
 			director.stage = .Steady
@@ -822,9 +838,16 @@ music_director_update :: proc(
 		switch director.stage {
 		case .Idle:
 		case .Boot:
-			// The intro stream starts at zero, so its file position is the
-			// clock. Trust it outright.
-			director.clock_ms = reference_phase_ms
+			// The intro rides the same free-running wrapped cursor as Steady
+			// (the platform never seeks mid-playback), so a held intro that
+			// outlives one full loop must correct by the shortest wrapped
+			// distance to stay monotonic toward its hand-off target.
+			expected := math.mod(director.clock_ms, library.loop_ms)
+			diff := reference_phase_ms - expected
+			half := library.loop_ms * 0.5
+			for diff > half do diff -= library.loop_ms
+			for diff < -half do diff += library.loop_ms
+			director.clock_ms = max(0, director.clock_ms + diff)
 		case .Steady:
 			// Steady phase wraps: correct by the shortest wrapped distance so
 			// a reference sitting just past a loop boundary the clock has not
@@ -843,17 +866,41 @@ music_director_update :: proc(
 	switch director.stage {
 	case .Idle:
 	case .Boot:
-		// The intro runs exactly one scaled cycle, ignoring the selector until
-		// the boundary (the selector never names the boot mix, so a desired-mix
-		// comparison here would abort the intro on its first frame). At the
-		// boundary it hands off hard to whatever the selector wants right then,
-		// resetting the Loop epoch and the shared PCM cursor to the loop top.
-		boundary := library.loop_ms * f64(library.boot.length_scale)
-		if director.clock_ms >= boundary {
+		// The intro ignores the selector until its hand-off (the selector
+		// never names the boot mix, so a desired-mix comparison here would
+		// abort the intro on its first frame). Its shared PCM cursor free-runs
+		// through the full authored loop. An ordinary boot resets to the loop
+		// top at its initial scaled boundary. The first-boot question instead
+		// pushes the target to the first 0%/50% grid point at least the
+		// Mistbound minimum ahead, then preserves the live cursor phase so the
+		// retained beat is never cut by a device-level pause/rewind.
+		step := library.loop_ms * f64(library.boot.length_scale)
+		if hold_boot {
+			director.boot_handoff_continuous = true
+			if step > 0 {
+				director.boot_handoff_ms = step * math.ceil((director.clock_ms + MUSIC_BOOT_RELEASE_MIN_MS) / step)
+			}
+		}
+		if !hold_boot && director.clock_ms >= director.boot_handoff_ms {
+			handoff_phase_ms := f64(0)
+			reseek_survivors := true
+			if director.boot_handoff_continuous && library.loop_ms > 0 {
+				// The held intro and menu share one PCM cursor. Keep its actual grid
+				// phase so beat_low is never cut by a device-level pause/rewind.
+				handoff_phase_ms = math.mod(director.clock_ms, library.loop_ms)
+				reseek_survivors = false
+			}
 			director.stage = .Steady
-			director.clock_ms = 0
+			director.clock_ms = handoff_phase_ms
 			director.cycle = 0
-			music_enter_mix(director, library, desired_mix, 0, snap = true, reseek_survivors = true)
+			music_enter_mix(
+				director,
+				library,
+				desired_mix,
+				handoff_phase_ms,
+				snap = true,
+				reseek_survivors = reseek_survivors,
+			)
 		}
 	case .Steady:
 		// Monotonic: a small backwards reference correction right after a

@@ -1151,6 +1151,16 @@ audio_music_update :: proc(
 			break
 		}
 	}
+	stage_reset := audio.music_stream_started && audio.music_stage_valid &&
+		audio.music_stage != director.stage && !director.boot_handoff_continuous &&
+		master_volume > 0 && !audio.suspended
+	if stage_reset && !audio.music_stream_paused {
+		// Quiesce the callback before exposing the incoming mix. Publishing first
+		// could render one block of menu stems at the old boot cursor before the
+		// epoch reset, producing a tiny but audible out-of-sync pre-roll.
+		rl.PauseAudioStream(audio.music_stream)
+		audio.music_stream_paused = true
+	}
 	audio_music_publish_targets(audio, director, runtime)
 	audio_music_publish_master(audio, master_volume)
 	if master_volume <= 0 {
@@ -1174,13 +1184,11 @@ audio_music_update :: proc(
 		return
 	}
 
-	// The boot hand-off resets the Loop epoch. Pause under raylib's audio lock,
-	// reset the one shared cursor, then resume; ordinary mix changes never seek.
-	if audio.music_stage_valid && audio.music_stage != director.stage {
-		if !audio.music_stream_paused {
-			rl.PauseAudioStream(audio.music_stream)
-			audio.music_stream_paused = true
-		}
+	// An ordinary boot hand-off resets the Loop epoch. The held story intro is
+	// deliberately continuous, so its stage change publishes phase-locked menu
+	// stems without pausing or seeking the live beat. Ordinary mix changes also
+	// never seek.
+	if stage_reset {
 		audio_music_set_cursor(audio, phase_ms)
 		audio_music_adopt_targets(audio)
 		rl.ResumeAudioStream(audio.music_stream)

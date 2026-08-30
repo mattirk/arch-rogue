@@ -53,6 +53,8 @@ MX_Story_Capture_Scenario :: enum u8 {
 	Soul,
 	Mistbound,
 	Ending,
+	Decision_Ask,
+	Decision_Depart,
 }
 
 mx_story_capture_scenario_from_env :: proc(value: string) -> MX_Story_Capture_Scenario {
@@ -63,6 +65,8 @@ mx_story_capture_scenario_from_env :: proc(value: string) -> MX_Story_Capture_Sc
 	case "soul":          return .Soul
 	case "mistbound":     return .Mistbound
 	case "ending":        return .Ending
+	case "decision_ask":    return .Decision_Ask
+	case "decision_depart": return .Decision_Depart
 	}
 	return .None
 }
@@ -744,7 +748,23 @@ mx7_perf_refresh_visuals :: proc(run: ^Run) {
 }
 
 mx_story_stage_capture :: proc(app: ^App, scenario: MX_Story_Capture_Scenario) -> bool {
-	if app == nil || app.mode != .Playing || scenario == .None do return false
+	if app == nil || scenario == .None do return false
+	// The first-boot decision is a menu scene: it stages from any mode and
+	// authors its own clocks. Capture profiles disable mist globally, but this
+	// scene's minimal bank is part of its composition, so restore it here.
+	if scenario == .Decision_Ask || scenario == .Decision_Depart {
+		app_begin_story_decision(app)
+		app.options.mist_enabled = true
+		app.story_decision_elapsed = 2.0
+		if scenario == .Decision_Depart {
+			app.story_decision_yes = false
+			app.story_decision_phase = .Depart
+			app.story_decision_elapsed = 3.2
+			app.story_decision_timer = 1.15
+		}
+		return true
+	}
+	if app.mode != .Playing do return false
 	app.inventory_open,app.character_open,app.shop_open = false,false,false
 	app.story_minigame = {}
 	app_story_close_panel(app)
@@ -828,6 +848,8 @@ mx_story_stage_capture :: proc(app: ^App, scenario: MX_Story_Capture_Scenario) -
 		app.run.story_runtime.epilogue_stage = .Ending
 		if !app_story_open_epilogue(app) do return false
 		app_story_panel_reveal(app)
+	case .Decision_Ask, .Decision_Depart:
+		return false // staged before the Playing gate above
 	case .None:
 		return false
 	}

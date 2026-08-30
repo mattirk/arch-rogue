@@ -475,6 +475,90 @@ mist_invalidate_soul_hunt :: proc(view:^View) {
 	view.mist.field_ready=false
 }
 
+// --- Menu mist ---------------------------------------------------------------
+// The first-boot decision scene needs a thin bank without any Run: the same
+// drifting-noise shader is fed a synthetic field texture whose alpha is a
+// vertical density ramp (neutral push, no parting). Kept separate from the
+// dungeon field so lattice uniforms and floor-reset logic never cross.
+
+MENU_MIST_FIELD_SIZE :: 96
+MENU_MIST_LATTICE    :: f32(26) // virtual tiles across the drawn rect; sets noise scale
+
+Menu_Mist :: struct {
+	texture:   rl.Texture2D,
+	shader:    rl.Shader,
+	loc_time:  i32,
+	loc_color: i32,
+	ready:     bool,
+	shader_ok: bool,
+	tried:     bool,
+}
+
+@(private = "file")
+ensure_menu_mist_resources :: proc(view: ^View) -> ^Menu_Mist {
+	mist := &view.menu_mist
+	if !mist.tried {
+		mist.tried = true
+		img := rl.GenImageColor(MENU_MIST_FIELD_SIZE, MENU_MIST_FIELD_SIZE, rl.BLANK)
+		if img.data != nil {
+			pixels := ([^]rl.Color)(img.data)
+			for row in 0 ..< MENU_MIST_FIELD_SIZE {
+				// Density ramps toward the rect's bottom edge like ground fog.
+				v := f32(row) / f32(MENU_MIST_FIELD_SIZE - 1)
+				alpha := u8(clamp(math.pow(v, f32(1.35))*255 + .5, 0, 255))
+				for column in 0 ..< MENU_MIST_FIELD_SIZE {
+					pixels[row*MENU_MIST_FIELD_SIZE+column] = {127, 127, 0, alpha}
+				}
+			}
+			mist.texture = rl.LoadTextureFromImage(img)
+			if rl.IsTextureValid(mist.texture) {
+				rl.SetTextureFilter(mist.texture, .BILINEAR)
+				rl.SetTextureWrap(mist.texture, .CLAMP)
+				mist.ready = true
+			}
+		}
+		rl.UnloadImage(img)
+		mist.shader = rl.LoadShaderFromMemory(nil, mist_shader_source())
+		if rl.IsShaderValid(mist.shader) {
+			mist.loc_time = rl.GetShaderLocation(mist.shader, "u_time")
+			mist.loc_color = rl.GetShaderLocation(mist.shader, "u_color")
+			lattice := [2]f32{MENU_MIST_LATTICE, MENU_MIST_LATTICE*.5}
+			rl.SetShaderValue(mist.shader, rl.GetShaderLocation(mist.shader, "u_lattice"), &lattice, .VEC2)
+			push_max := f32(VISUAL_MIST_PUSH_MAX)
+			rl.SetShaderValue(mist.shader, rl.GetShaderLocation(mist.shader, "u_push_max"), &push_max, .FLOAT)
+			mist.shader_ok = true
+		}
+	}
+	return mist.ready && mist.shader_ok ? mist : nil
+}
+
+// Screen/design-space band of drifting mist for menu scenes; no Run required.
+menu_mist_draw :: proc(view: ^View, time: f32, dst: rl.Rectangle, opacity_scale: f32 = 1) {
+	if view == nil do return
+	mist := ensure_menu_mist_resources(view)
+	if mist == nil do return
+	t := time
+	rl.SetShaderValue(mist.shader, mist.loc_time, &t, .FLOAT)
+	color := MIST_COLOR
+	color[3] = clamp(color[3]*opacity_scale, f32(0), f32(1))
+	rl.SetShaderValue(mist.shader, mist.loc_color, &color, .VEC4)
+	rl.BeginShaderMode(mist.shader)
+	rl.DrawTexturePro(
+		mist.texture,
+		{0, 0, f32(MENU_MIST_FIELD_SIZE), f32(MENU_MIST_FIELD_SIZE)},
+		dst,
+		{0, 0}, 0, rl.WHITE,
+	)
+	rl.EndShaderMode()
+}
+
+menu_mist_shutdown :: proc(mist: ^Menu_Mist) {
+	if mist == nil do return
+	if mist.ready do rl.UnloadTexture(mist.texture)
+	if mist.shader_ok do rl.UnloadShader(mist.shader)
+	mist^ = {}
+}
+
 // Drawn inside the world camera after actors, before labels/numbers, so the
 // mist reads as a layer the dungeon sits in while text stays crisp and the
 // screen-space lightmap multiply still lights it.

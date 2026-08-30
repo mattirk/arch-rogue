@@ -519,6 +519,116 @@ title_row_at :: proc(point: rl.Vector2) -> (index: int, found: bool) {
 	return 0, false
 }
 
+// --- First-boot story decision ----------------------------------------------
+// The Soulless Clanker alone on a dark screen asks whether the player will
+// listen to a machine. Yes keeps the story layer for future runs; No mutes it.
+// The chosen option's side is also the direction the machine walks away toward.
+
+STORY_DECISION_QUESTION : cstring : "Would you listen to a machine?"
+
+story_decision_option_rect :: proc(index: int) -> rl.Rectangle {
+	width := ui_design_width()
+	height := ui_design_height()
+	spread := clamp(width*.21, f32(170), f32(300))
+	center_x := width*.5 + (index == 0 ? -spread : spread)
+	return {center_x-95, height*.74, 190, 46}
+}
+
+story_decision_option_at :: proc(point: rl.Vector2) -> (index: int, found: bool) {
+	design_point := ui_screen_to_design(point)
+	for i in 0 ..< STORY_DECISION_OPTION_COUNT {
+		if rl.CheckCollisionPointRec(design_point, story_decision_option_rect(i)) do return i, true
+	}
+	return 0, false
+}
+
+draw_story_decision_screen :: proc(view: ^View, app: ^App, assets: ^Assets) {
+	presentation := ui_begin_presentation()
+	defer ui_end_presentation()
+	width, height := presentation.width, presentation.height
+
+	depart := app.story_decision_phase == .Depart
+	progress := depart ? clamp(app.story_decision_timer/STORY_DECISION_DEPART_SECONDS, f32(0), f32(1)) : f32(0)
+	fade_in := clamp(app.story_decision_elapsed/.9, f32(0), f32(1))
+	ask_alpha := depart ? clamp(1-app.story_decision_timer/.35, f32(0), f32(1)) : fade_in
+	options_alpha := depart ? ask_alpha : clamp((app.story_decision_elapsed-.5)/.6, f32(0), f32(1))
+
+	feet := rl.Vector2{width*.5, height*.60}
+	if depart {
+		direction := app.story_decision_yes ? f32(-1) : f32(1)
+		feet.x += direction * progress * width * .55
+	}
+	// Walk-off dissolve: hold full presence, then melt into the dark before the
+	// scene hands over to the Title.
+	sprite_alpha := fade_in
+	if depart do sprite_alpha = 1 - clamp((progress-.5)/.4, f32(0), f32(1))
+
+	// Minimal ground mist: a bank behind the machine and a thinner veil ahead
+	// of its feet, both riding the dungeon's drifting-noise shader.
+	mist_top := height*.52
+	if app.options.mist_enabled {
+		menu_mist_draw(view, app.story_decision_elapsed, {0, mist_top, width, height-mist_top}, .60*fade_in)
+	}
+
+	sprite_size := clamp(height*.24, f32(120), f32(200))
+	if sprite_alpha > 0 {
+		rl.DrawEllipse(i32(feet.x), i32(feet.y+4), 26, 8, rl.Fade(rl.BLACK, .40*sprite_alpha))
+		sprites := &assets.soulless_clanker
+		clip_kind := depart ? Clip_Kind.Walk : Clip_Kind.Idle
+		clip := sprites.clips[clip_kind]
+		if sprites.loaded && clip.valid && clip.frames > 0 && sprites.cell > 0 {
+			// Rows follow the 8-direction sheet order: 1 looks down-right,
+			// 7 down-left; the walk-off keeps the side-facing 2/6 rows.
+			row := app.story_decision_index == 0 ? 7 : 1
+			if depart do row = app.story_decision_yes ? 6 : 2
+			clip_time := depart ? app.story_decision_timer : app.story_decision_elapsed
+			frame := int(clip_time*clip.fps)
+			frame = clip.loop ? frame%clip.frames : min(frame, clip.frames-1)
+			cell := f32(sprites.cell)
+			source := rl.Rectangle{f32(frame)*cell, f32(row)*cell, cell, cell}
+			destination := rl.Rectangle{
+				feet.x - sprites.anchor.x*sprite_size,
+				feet.y - sprites.anchor.y*sprite_size,
+				sprite_size, sprite_size,
+			}
+			rl.DrawTexturePro(clip.tex, source, destination, {}, 0, rl.Fade(rl.WHITE, sprite_alpha))
+		} else {
+			// Web streams the social actor pack lazily; a soft silhouette keeps
+			// the scene composed until the sheets arrive.
+			body := rl.Fade(rl.Color{96,102,118,255}, .5*sprite_alpha)
+			rl.DrawEllipse(i32(feet.x), i32(feet.y-sprite_size*.34), sprite_size*.15, sprite_size*.28, body)
+			rl.DrawCircle(i32(feet.x), i32(feet.y-sprite_size*.68), sprite_size*.11, body)
+		}
+	}
+	if app.options.mist_enabled {
+		front_top := height*.60 + 8
+		menu_mist_draw(view, app.story_decision_elapsed+11.7, {0, front_top, width, height-front_top}, .32*fade_in)
+	}
+
+	if ask_alpha > 0 {
+		ui_draw_text_fitted_centered(
+			STORY_DECISION_QUESTION, i32(width*.5), i32(height*.26), 30, 18, i32(width)-120,
+			rl.Fade(COLOR_TEXT, ask_alpha),
+		)
+	}
+	if options_alpha > 0 {
+		labels := [STORY_DECISION_OPTION_COUNT]cstring{"Yes","No"}
+		for label, index in labels {
+			rect := story_decision_option_rect(index)
+			selected := ui_navigation_selected(app, index == app.story_decision_index)
+			fill := selected ? COLOR_ROW_SELECTED : COLOR_ROW
+			rl.DrawRectangleRec(rect, rl.Fade(fill, .92*options_alpha))
+			outline := selected ? COLOR_TITLE : rl.Color{62,55,76,255}
+			rl.DrawRectangleLinesEx(rect, 1, rl.Fade(outline, options_alpha))
+			w := ui_measure_text(label, 22)
+			color := selected ? COLOR_TITLE : COLOR_TEXT
+			ui_draw_text(label, i32(rect.x+(rect.width-f32(w))*.5), i32(rect.y+11), 22, rl.Fade(color, options_alpha))
+		}
+		hint: cstring = "Arrows choose  |  Enter decide"
+		ui_draw_text_fitted_centered(hint, i32(width*.5), i32(height)-44, 14, 12, i32(width)-80, rl.Fade(COLOR_TEXT_DIM, .8*options_alpha))
+	}
+}
+
 Select_Slot :: struct {
 	archetype:  Archetype_Id,
 	offset:     int,
@@ -1305,7 +1415,7 @@ options_panel_rect :: proc(app: ^App) -> rl.Rectangle {
 options_row_rect_in_panel :: proc(panel: rl.Rectangle, index: int) -> rl.Rectangle {
 	top_padding := clamp(panel.height*.10, f32(52), f32(65))
 	bottom_padding := clamp(panel.height*.07, f32(34), f32(45))
-	pitch := max(f32(32), (panel.height-top_padding-bottom_padding)/11)
+	pitch := max(f32(32), (panel.height-top_padding-bottom_padding)/12)
 	row_height := min(f32(44), max(f32(28), pitch-5))
 	return {panel.x+30, panel.y+top_padding+f32(index)*pitch, panel.width-60, row_height}
 }
@@ -1317,7 +1427,7 @@ options_row_rect :: proc(app: ^App, index: int) -> rl.Rectangle {
 options_row_at :: proc(app: ^App, point: rl.Vector2) -> (int,bool) {
 	design_point := ui_screen_to_design(point)
 	panel := options_panel_rect(app)
-	for i in 0..<11 {
+	for i in 0..<12 {
 		if rl.CheckCollisionPointRec(design_point,options_row_rect_in_panel(panel,i)) do return i,true
 	}
 	return 0,false
@@ -1332,11 +1442,11 @@ draw_options_screen :: proc(app: ^App, assets: ^Assets) {
 	panel := options_panel_rect(app)
 	draw_menu_panel_chrome(assets,panel)
 	ui_draw_text("OPTIONS",i32(panel.x+30),i32(panel.y+20),28,COLOR_TITLE)
-	labels := [11]cstring{
+	labels := [12]cstring{
 		"Fullscreen","Frame rate cap","View zoom","Difficulty","Controls",
-		"Controller","SFX volume","Music volume","Lighting","Mist","Return",
+		"Controller","SFX volume","Music volume","Lighting","Mist","Story","Return",
 	}
-	values := [11]cstring{
+	values := [12]cstring{
 		on_off(app.options.fullscreen),
 		fmt.ctprintf("%s",frame_rate_cap_label(app.options.frame_rate_cap)),
 		fmt.ctprintf("%.2fx",app.options.view_zoom),
@@ -1347,6 +1457,7 @@ draw_options_screen :: proc(app: ^App, assets: ^Assets) {
 		fmt.ctprintf("%d%%",audio_volume_percent(app.options.music_volume)),
 		on_off(app.options.lighting_enabled),
 		on_off(app.options.mist_enabled),
+		on_off(app.options.story_enabled),
 		"",
 	}
 	when ARCH_ROGUE_ANDROID {

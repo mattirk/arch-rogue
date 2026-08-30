@@ -847,6 +847,99 @@ music_boot_intro_hands_off_at_scaled_boundary :: proc(t: ^testing.T) {
 }
 
 @(test)
+music_boot_hold_free_runs_and_hands_off_on_the_grid :: proc(t: ^testing.T) {
+	library := music_test_library(t)
+	defer ar.music_library_destroy(&library)
+	director: ar.Music_Director
+
+	ar.music_director_update(&director, &library, "main", 0, hold_boot = true)
+	testing.expect(t, director.stage == .Boot && director.active_mix == "intro", "the armed boot intro must start first")
+	slot_a := music_slot_for(&director, "a.ogg")
+	testing.expect(t, slot_a != nil, "the intro slot must exist")
+	slot_a.start_pending = false // platform would consume the start
+
+	// Held boundaries free-run: no restarts, no reseeks, no menu layers. The
+	// one shared cursor simply plays on through the full loop.
+	ar.music_director_update(&director, &library, "main", 501, hold_boot = true)
+	testing.expect(t, director.stage == .Boot && director.active_mix == "intro", "the held intro must keep playing")
+	testing.expectf(t, director.clock_ms > 500, "the held clock must free-run past the pass, got %.1f", director.clock_ms)
+	testing.expect(t, !slot_a.start_pending, "a held boundary must never reseek the shared cursor")
+	testing.expect(t, music_slot_for(&director, "b.ogg") == nil, "the menu layers must not enter while the question holds")
+
+	// Releasing at 501 ms freezes the target on the grid with the minimum out:
+	// 500 * ceil((501 + 5000) / 500) = 6000, a 0% point of the full loop.
+	// The decision frame and eventual hand-off must not restart or seek the
+	// live cursor.
+	ar.music_director_update(&director, &library, "main", 0)
+	testing.expect(t, director.stage == .Boot && director.clock_ms > 500,
+		"releasing Yes/No must leave the free-running intro in place")
+	testing.expect(t, !slot_a.start_pending,
+		"releasing Yes/No must not schedule a cursor seek")
+	ar.music_director_update(&director, &library, "main", 5497)
+	testing.expectf(t, director.stage == .Boot, "the hand-off must wait for the grid target, clock %.1f", director.clock_ms)
+	ar.music_director_update(&director, &library, "main", 3)
+	testing.expect(t, director.stage == .Steady && director.active_mix == "main", "the grid target must hand off into the Loop")
+	testing.expectf(t, director.clock_ms > 0 && director.clock_ms < 3 && director.cycle == 0,
+		"the held hand-off must preserve its live grid phase, got %.1f", director.clock_ms)
+	testing.expect(t, director.boot_handoff_continuous,
+		"the platform must not pause or seek the shared cursor at a held hand-off")
+	slot_a = music_slot_for(&director, "a.ogg")
+	testing.expect(t, slot_a != nil && !slot_a.start_pending,
+		"the surviving intro beat must continue without a reseek")
+}
+
+@(private = "file")
+MUSIC_BOOT_HOLD_TEST_DOC :: `{
+  "format_version": 1,
+  "loop_ms": 19200,
+  "boot": { "mix": "intro", "length_scale": 0.5 },
+  "mixes": {
+    "intro": { "tracks": [ { "file": "a.ogg", "volume": 1.0 } ] },
+    "main": {
+      "tracks": [
+        { "file": "a.ogg", "volume": 1.0 },
+        { "file": "b.ogg", "volume": 1.0 }
+      ]
+    }
+  }
+}`
+
+@(test)
+music_boot_release_respects_the_five_second_minimum :: proc(t: ^testing.T) {
+	library, ok := ar.music_library_parse(transmute([]u8)string(MUSIC_BOOT_HOLD_TEST_DOC))
+	testing.expect(t, ok, "boot hold document must parse")
+	defer ar.music_library_destroy(&library)
+	director: ar.Music_Director
+
+	// An early decision (2.0 s in, 7.6 s to the boundary) keeps the very
+	// first 50% grid point as its hand-off: the minimum is already satisfied.
+	ar.music_director_update(&director, &library, "main", 0, hold_boot = true)
+	ar.music_director_update(&director, &library, "main", 2000, hold_boot = true)
+	ar.music_director_update(&director, &library, "main", 0)
+	testing.expect(t, director.stage == .Boot, "the released intro still plays toward the boundary")
+	ar.music_director_update(&director, &library, "main", 7599)
+	testing.expect(t, director.stage == .Boot, "the hand-off must not fire before the 50% grid point")
+	ar.music_director_update(&director, &library, "main", 2)
+	testing.expect(t, director.stage == .Steady && director.active_mix == "main",
+		"a release with the minimum satisfied must hand off at the very next grid point")
+
+	// A late decision (7.0 s in, 2.6 s left) must play through that boundary
+	// and land on the next grid point — the full-loop top — never mid-pass.
+	director = {}
+	ar.music_director_update(&director, &library, "main", 0, hold_boot = true)
+	ar.music_director_update(&director, &library, "main", 7000, hold_boot = true)
+	ar.music_director_update(&director, &library, "main", 0)
+	ar.music_director_update(&director, &library, "main", 2601)
+	testing.expect(t, director.stage == .Boot && director.active_mix == "intro",
+		"a release under the minimum must play through the boundary, not hand off")
+	ar.music_director_update(&director, &library, "main", 9598)
+	testing.expect(t, director.stage == .Boot, "the hand-off must wait for the full-loop top")
+	ar.music_director_update(&director, &library, "main", 2)
+	testing.expect(t, director.stage == .Steady && director.active_mix == "main",
+		"the deferred hand-off must fire exactly at the next grid point")
+}
+
+@(test)
 music_alternate_slot_toggles_each_cycle :: proc(t: ^testing.T) {
 	library := music_test_library(t)
 	defer ar.music_library_destroy(&library)

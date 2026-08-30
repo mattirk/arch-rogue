@@ -968,7 +968,8 @@ sim_tick_limited :: proc(run: ^Run, move: Vec2, max_move_step: f32, auto_melee :
 	else do run.player.guidance_idle_elapsed += SIM_DT
 	// Player input resolves before enemies, as it does in Game.update(). Empty
 	// arcs do not spend stamina or begin a cooldown.
-	if auto_melee && run.player.hp > 0 && enemy_in_melee_arc(run, run.player.facing) {
+	if auto_melee && run.player.hp > 0 && run.player.visual_action != .Pet &&
+		enemy_in_melee_arc(run, run.player.facing) {
 		player_melee(run, run.player.facing)
 	}
 	tick_player_clocks(run)
@@ -1065,12 +1066,21 @@ refresh_visibility :: proc(run: ^Run) {
 }
 
 story_route_target :: proc(run: ^Run) -> (target: Vec2, enabled: bool) {
-	if run == nil do return {}, false
-	if !run.story_runtime.initialized {
-		stairs := run.dungeon.stairs
-		return {f32(stairs.x) + .5, f32(stairs.y) + .5}, true
-	}
+	if !story_content_enabled(run) do return {}, false
 	relic := &run.story_runtime.relic
+	if !run.story_runtime.initialized {
+		// Depth one remains unguided. Recovering it unlocks guidance to each later
+		// relic, then to that floor's stairs; one missed relic breaks the chain.
+		if relic.present && !relic.collected && relic.guidance &&
+			story_aid_relic_streak_intact(run,include_current=false) {
+			return relic.position, true
+		}
+		if relic.collected && relic.guidance_to_stairs && story_aid_relic_streak_intact(run) {
+			stairs := run.dungeon.stairs
+			return {f32(stairs.x) + .5, f32(stairs.y) + .5}, true
+		}
+		return {}, false
+	}
 	if !relic.guidance do return {}, false
 	if relic.present && !relic.collected do return relic.position, true
 	if relic.collected && relic.guidance_to_stairs && story_aid_relic_streak_intact(run) {
@@ -1158,6 +1168,9 @@ tick_player :: proc(run: ^Run, move: Vec2, max_move_step: f32) {
 	}
 
 	player.moving = false
+	// Pet is a paired rooted pose: locomotion stays locked while ordinary clocks
+	// continue below (arch-rogue-python/src/arch_rogue/combat/player.py:263-340).
+	if player.visual_action == .Pet do return
 	// 2026-08 feel feedback: the front of a basic swing plants the player and
 	// keeps the swing's aim facing, so hitting reads as its own action instead
 	// of a drive-by (the pygame game imposed no such lock).
@@ -2984,7 +2997,7 @@ interact_prompt :: proc(run: ^Run) -> string {
 	if soulless_clanker_nearby(run) != nil do return "E: greet the Soulless Clanker"
 	if string_nearby(run) != nil do return "E: greet String"
 	if _,chimes_nearby:=lossless_soul_chimes_nearby(run);chimes_nearby do return "E: listen to the unlost chimes"
-	if _, _, frog_nearby := story_nearby_garden_frog(run); frog_nearby {
+	if _, _, frog_nearby := story_nearby_garden_frog(run); frog_nearby && story_content_enabled(run) {
 		ledger := &run.story_runtime.garden_games[clamp(run.depth, 1, STORY_BEAT_COUNT) - 1]
 		if ledger.outcome == .None do return "E: wake the moonbloom"
 	}

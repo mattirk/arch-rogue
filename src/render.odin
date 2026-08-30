@@ -60,6 +60,7 @@ View :: struct {
 	frame_dt:      f32,
 	lighting_ready: bool, // current-frame compositor readiness, never just requested state
 	mist:          ^Mist_Field, // heap-owned: its lattice buffers would bloat View's stack frame
+	menu_mist:     Menu_Mist, // run-free drifting band for the first-boot scene
 	ghost_floor_epoch: u32,
 	ghost_weights: [MAX_GHOST_WEIGHT_TRACKS]Ghost_Weight,
 	ghost_weight_count: int,
@@ -263,6 +264,7 @@ view_shutdown :: proc(view: ^View) {
 	visual_mask_shutdown(&view.explored_mask)
 	visual_mask_shutdown(&view.visible_mask)
 	mist_shutdown(view.mist)
+	menu_mist_shutdown(&view.menu_mist)
 	view^ = {}
 }
 
@@ -347,6 +349,8 @@ draw_frame :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 	switch app.mode {
 	case .Title:
 		draw_title_screen(app, assets)
+	case .Story_Decision:
+		draw_story_decision_screen(view, app, assets)
 	case .Select:
 		draw_select_screen(app, assets)
 	case .Playing:
@@ -1059,7 +1063,7 @@ update_lightmap :: proc(view: ^View, app: ^App, alpha: f32) -> bool {
 		draw_light(view, stairs_pos, 2.2, {240, 190, 120, 235}, 0)
 	}
 	story_relic := &run.story_runtime.relic
-	if run.story_runtime.initialized && story_relic.present && !story_relic.collected &&
+	if story_content_enabled(run) && story_relic.present && !story_relic.collected &&
 		(app.dev_reveal || tile_pos_visible(app, story_relic.position)) {
 		pulse := .72 + .18 * math.sin(world_time * 4.1 + story_relic.position.x)
 		draw_light(view, story_relic.position, 1.55, rl.Fade(rl.Color(run.story.accent), pulse), 8)
@@ -1241,7 +1245,7 @@ Ghost_Occluder :: struct {
 // ordinary tiles outside the crest and all special-room slabs stay untouched.
 @(private = "file")
 story_guidance_frame_map :: proc(run: ^Run, peak_frame: int) -> (frames: [MAP_W][MAP_H]u8) {
-	if run == nil || !run.story_runtime.initialized || run.player.moving || peak_frame <= 0 do return
+	if !story_content_enabled(run) || run.player.moving || peak_frame <= 0 do return
 	_, enabled := story_route_target(run)
 	if !enabled do return
 	path := story_relic_guidance_path(run)
@@ -1355,7 +1359,7 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 	draw_enemy_attack_telegraphs(view,app,alpha)
 
 	story_relic := &app.run.story_runtime.relic
-	if app.run.story_runtime.initialized && story_relic.present && !story_relic.collected &&
+	if story_content_enabled(&app.run) && story_relic.present && !story_relic.collected &&
 		(app.dev_reveal || tile_pos_visible(app,story_relic.position)) {
 		append(&items,Draw_Item{depth=story_relic.position.x+story_relic.position.y-.01,kind=.Story_Relic,feet=story_relic.position})
 	}
@@ -3459,7 +3463,7 @@ draw_minimap :: proc(app: ^App, assets: ^Assets, card: rl.Rectangle) {
 
 	// Draw guidance after landmarks, matching pygame so an active stairs target
 	// remains visibly distinguished from the ordinary discovered-stairs glyph.
-	if run.story_runtime.initialized {
+	if story_content_enabled(run) {
 		target, enabled := story_route_target(run)
 		if enabled {
 			projected := minimap_project_relative(target-run.player.pos,center,app.minimap_zoom)

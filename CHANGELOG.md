@@ -1,5 +1,61 @@
 # Changelog
 
+## 6.0.0-alpha.26 — The machine asks first
+
+A new Soulless Clanker prologue records whether the player wants narrative
+content before the title screen, while Story Off preserves the dungeon's rooms,
+relics, and minigames. This release also sharpens combat and discipline
+readability, bounds potion carrying, retunes Mistbound presentation and music,
+and roots the Ranger's Pet ritual.
+
+- **One-time Clanker story choice.** Clean profiles and migrated options without
+  a recorded answer now open a two-choice scene before the title screen.
+  Keyboard, pointer, controller, and touch are supported; the answer persists
+  immediately, the directional walk-and-fade farewell is skippable, and Story
+  remains editable in Options for the next run.
+- **Story Off keeps dungeon gameplay.** Disabling narrative suppresses omens,
+  story panels and effects, choices, and the epilogue without removing Quest,
+  Bar, Garden, or Hall rooms, their friendly NPCs, relics, or the three authored
+  minigames. A deterministic Aid-route relic trail begins with the first find
+  and is permanently lost when a floor's relic is missed; existing Story-Off
+  saves gain the runtime state and current-floor relic without a floor rebuild.
+- **Clearer disciplines with completed effects.** Every discipline now exposes
+  color-coded numeric bonuses, acquisition state, and compact categorized
+  effect summaries instead of a shrinking prose footer. Warden Vow ranks each
+  add +0.25 mana per second, Rogue Marksman develops Knife Fan from three to
+  five blades with stronger side shots and pierce, then lowers its final mana
+  cost and cooldown, and Sanguine immediately blood-binds an active Spirit Call
+  Wisp or Crow.
+- **Attack-specific enemy telegraphs.** Windups now draw grounded melee arcs,
+  projectile lanes and fans, or nova rings from the exact committed aim. A
+  restrained 40% trace repeats through foreground walls only for attackers
+  already in live sight, keeping danger readable without revealing unseen foes.
+- **Bounded, replenishable potions.** Health and mana potions now have separate
+  carrying limits of 10, shown against capacity in the HUD. Full-cap pickups
+  stay on the floor, shops keep potion rows available for repeated purchases
+  until the relevant cap is reached, rejection feedback is explicit, and older
+  saves clamp safely to the new limits.
+- **Mistbound challenge and presentation tuning.** Preserve, Release, and Refuse
+  now ask for 6, 8, and 12 captures with 0.92, 0.72, and 0.54-second ghost
+  windows. Live aim still turns the player during the locked wait and hunt; the
+  armed Lossless Soul keeps its authored looping motion afterward, and its
+  no-choice completion panel retains the normal relic-and-text geometry.
+- **Phase-locked story score.** The Soul room retains its low beat, the chamber
+  moves from a beatless three-stem wait into a six-stem hunt, and arrivals with
+  fewer than five seconds left wait only to the following half-loop boundary.
+  The Clanker prologue likewise holds the boot score and hands it to the menu
+  without pausing, rewinding, or losing the shared musical phase.
+- **Rooted Ranger Pet action.** Keyboard, controller, touch, and click-to-walk
+  locomotion can no longer pull the Ranger away or trigger movement auto-melee
+  during the paired 0.8-second pose. Ranger and Spirit Beast remain stationary
+  and out of their walk states while recovery, status, resource, enemy, and
+  world clocks continue normally.
+- **Validation.** The headless suite now contains 462 passing tests, up from the
+  440 recorded for alpha.25. New coverage pins first-boot choice and migration,
+  Story-Off generation and relic guidance, discipline summaries and mechanics,
+  telegraph policy, potion/shop atomicity, Mistbound music and UI boundaries,
+  Lossless Soul presentation, and the full Pet movement lock.
+
 ## 6.0.0-alpha.25 — The mist keeps time
 
 The Hall of Unlost Echoes now resolves through the Mistbound Chamber: a
@@ -8,6 +64,18 @@ and a score that carries the Soul room's music into a synchronized six-stem
 chase. This release also tightens native/web cursor presentation, Steam Deck
 behavior, fresh-install mobile zoom, and default SFX balance.
 
+- **Story Off keeps dungeon gameplay.** Disabling narrative now removes omen,
+  dialogue-choice, story-effect, and epilogue delivery without removing Quest,
+  Bar, Garden, Hall/Soul-room, relic, or minigame content. Quest NPCs remain as
+  friendly non-interactive idlers. Story-off relics follow a deterministic Aid
+  path: guidance stays hidden until the first relic is recovered, then points to
+  each later relic and onward to its stairs. It is permanently lost if any
+  floor's relic is left behind. Bind the Page launches
+  directly on its authored floors, Garden frogs still offer Wake the Moonbloom,
+  and the Lossless Soul enters Chase the Mistbound directly through the Release
+  profile without opening story panels. Existing story-off saves gain the
+  content substrate and current-floor relic in place without rebuilding their
+  saved dungeon.
 - **Mistbound Chamber ghost hunt.** The Lossless Soul's former modal matching
   board has been replaced by a deterministic chase across a wall-less platform
   suspended over the void. Preserve, Release, or Refuse teleports the player

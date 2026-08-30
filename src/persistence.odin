@@ -11,7 +11,8 @@ import "core:math"
 import "core:math/bits"
 import "core:strings"
 
-OPTIONS_DOCUMENT_SCHEMA_VERSION :: 2
+OPTIONS_DOCUMENT_SCHEMA_VERSION :: 3
+OPTIONS_DOCUMENT_SCHEMA_V2      :: 2
 PROFILE_DOCUMENT_SCHEMA_VERSION :: 2
 PROFILE_DOCUMENT_SCHEMA_V1      :: 1
 RUN_DOCUMENT_SCHEMA_VERSION     :: 2
@@ -309,6 +310,37 @@ Options_Payload :: struct {
 	lighting_enabled:   bool,
 	mist_enabled:       bool,
 	minimap_visible:    bool,
+	story_enabled:      bool, // v3: narrative layer for the next run
+	story_decided:      bool, // v3: the first-boot Clanker question was answered
+}
+
+// Schema v2 payload retained verbatim. A v2 document's checksum covers exactly
+// this field set, so migration re-marshals this struct — never the current
+// one — to verify integrity before adopting defaults for the v3 fields.
+Options_Payload_V2 :: struct {
+	fullscreen:         bool,
+	frame_rate_cap_id:  string,
+	view_zoom:          f32,
+	difficulty_id:      string,
+	controller_enabled: bool,
+	button_bindings:    [len(Controller_Button)]Option_Binding_DTO,
+	trigger_bindings:   [len(Controller_Trigger)]Option_Binding_DTO,
+	audio_enabled:      bool,
+	sfx_volume_id:      string,
+	music_volume_id:    string,
+	lighting_enabled:   bool,
+	mist_enabled:       bool,
+	minimap_visible:    bool,
+}
+
+Options_Document_V2 :: struct {
+	schema_version: int,
+	game_release:   string,
+	document_id:    string,
+	revision:       u64,
+	written_at_utc: string,
+	payload_sha256: string,
+	payload:        Options_Payload_V2,
 }
 
 Legacy_Options_File_V1 :: struct {
@@ -775,6 +807,8 @@ options_payload_from_options :: proc(options: Options) -> Options_Payload {
 		lighting_enabled=options.lighting_enabled,
 		mist_enabled=options.mist_enabled,
 		minimap_visible=options.minimap_visible,
+		story_enabled=options.story_enabled,
+		story_decided=options.story_decided,
 	}
 	for button in Controller_Button {
 		payload.button_bindings[button] = {
@@ -808,6 +842,47 @@ options_payload_destroy :: proc(payload: ^Options_Payload) {
 	payload^ = {}
 }
 
+options_payload_v2_destroy :: proc(payload: ^Options_Payload_V2) {
+	if payload == nil do return
+	delete(payload.frame_rate_cap_id)
+	delete(payload.difficulty_id)
+	delete(payload.sfx_volume_id)
+	delete(payload.music_volume_id)
+	for &binding in payload.button_bindings {
+		delete(binding.input_id)
+		delete(binding.command_id)
+	}
+	for &binding in payload.trigger_bindings {
+		delete(binding.input_id)
+		delete(binding.command_id)
+	}
+	payload^ = {}
+}
+
+// Upgrade view that shares the v2 payload's strings (the caller keeps ownership
+// and destroys only the v2 struct). Missing v3 fields take explicit defaults:
+// migrated users keep the story on, and the first-boot question is still owed.
+options_payload_from_v2 :: proc(payload: ^Options_Payload_V2) -> Options_Payload {
+	if payload == nil do return {}
+	return {
+		fullscreen=payload.fullscreen,
+		frame_rate_cap_id=payload.frame_rate_cap_id,
+		view_zoom=payload.view_zoom,
+		difficulty_id=payload.difficulty_id,
+		controller_enabled=payload.controller_enabled,
+		button_bindings=payload.button_bindings,
+		trigger_bindings=payload.trigger_bindings,
+		audio_enabled=payload.audio_enabled,
+		sfx_volume_id=payload.sfx_volume_id,
+		music_volume_id=payload.music_volume_id,
+		lighting_enabled=payload.lighting_enabled,
+		mist_enabled=payload.mist_enabled,
+		minimap_visible=payload.minimap_visible,
+		story_enabled=true,
+		story_decided=false,
+	}
+}
+
 options_from_payload :: proc(payload: ^Options_Payload, hell_unlocked: bool) -> (Options, bool) {
 	if payload == nil do return options_default(), false
 	options := options_default()
@@ -830,6 +905,8 @@ options_from_payload :: proc(payload: ^Options_Payload, hell_unlocked: bool) -> 
 	options.lighting_enabled = payload.lighting_enabled
 	options.mist_enabled = payload.mist_enabled
 	options.minimap_visible = payload.minimap_visible
+	options.story_enabled = payload.story_enabled
+	options.story_decided = payload.story_decided
 	mapping := controller_default_mapping()
 	for binding in payload.button_bindings {
 		input_index := persistence_string_enum(CONTROLLER_BUTTON_SAVE_IDS, binding.input_id, -1)
@@ -913,11 +990,32 @@ persistence_decode_options :: proc(data: []byte, hell_unlocked := false) -> (
 			music_volume=DEFAULT_MUSIC_VOLUME,
 			lighting_enabled=legacy.lighting_enabled,
 			mist_enabled=legacy.mist_enabled, minimap_visible=legacy.minimap_visible,
+			story_enabled=true,
 		}
 		options_normalize(&options, legacy.hell_unlocked)
 		return options, legacy.hell_unlocked, 0, .Migrated
 	}
 	if probe.schema_version > OPTIONS_DOCUMENT_SCHEMA_VERSION do return options, false, 0, .Future
+	if probe.schema_version == OPTIONS_DOCUMENT_SCHEMA_V2 {
+		document: Options_Document_V2
+		if err := json.unmarshal(data, &document); err != nil do return options, false, 0, .Corrupt
+		defer {
+			delete(document.game_release); delete(document.document_id)
+			delete(document.written_at_utc); delete(document.payload_sha256)
+			options_payload_v2_destroy(&document.payload)
+		}
+		if document.document_id != "options" do return options, false, 0, .Corrupt
+		payload_bytes, ok := persistence_marshal(document.payload)
+		if !ok do return options, false, 0, .Corrupt
+		computed := persistence_sha256(payload_bytes)
+		delete(payload_bytes)
+		defer delete(computed)
+		if computed == "" || computed != document.payload_sha256 do return options, false, 0, .Corrupt
+		upgraded := options_payload_from_v2(&document.payload)
+		decoded, valid := options_from_payload(&upgraded, hell_unlocked)
+		if !valid do return options, false, 0, .Corrupt
+		return decoded, false, document.revision, .Migrated
+	}
 	if probe.schema_version != OPTIONS_DOCUMENT_SCHEMA_VERSION do return options, false, 0, .Corrupt
 	document: Options_Document
 	if err := json.unmarshal(data, &document); err != nil do return options, false, 0, .Corrupt
@@ -1934,6 +2032,14 @@ app_install_run_document :: proc(app: ^App, document: ^Run_Document) -> bool {
 	temporary.sfx = nil
 	temporary.feel = nil
 	temporary.story_runtime.guidance_path = nil
+	// Pre-content-split Story Off saves carried an empty story runtime. Preserve
+	// their exact current floor while enabling relics/flavor minigames now and
+	// Quest/Hall planning on the next generated floor. Suppress the migration-only
+	// relic cue; the owned buffers remain attached for normal destruction.
+	if story_enable_content_for_legacy_run(&temporary) {
+		clear(&temporary.numbers)
+		clear(&temporary.sfx)
+	}
 	// A hunt save stores the player inside a virtual presentation room while
 	// `temporary.dungeon` remains the untouched real floor. Rebuilding LOS or
 	// guidance from those virtual coordinates would corrupt explored state.

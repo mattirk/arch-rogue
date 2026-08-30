@@ -41,6 +41,7 @@ PLAYER_DEATH_OVERLAY_DELAY :: PLAYER_DIE_SECONDS + 0.9
 
 App_Mode :: enum {
 	Title,
+	Story_Decision,
 	Select,
 	Playing,
 	Paused,
@@ -55,6 +56,16 @@ App_Mode :: enum {
 	Dead,
 	Victory,
 }
+
+// First-boot Clanker question: the Ask phase holds the Yes/No choice; Depart
+// plays the walk-off toward the chosen side before handing over to the Title.
+Story_Decision_Phase :: enum u8 {
+	Ask,
+	Depart,
+}
+
+STORY_DECISION_OPTION_COUNT   :: 2
+STORY_DECISION_DEPART_SECONDS :: f32(2.8)
 
 Title_Action :: enum u8 {
 	Resume,
@@ -99,6 +110,11 @@ App :: struct {
 	title_index:    int,
 	pause_index:    int,
 	options_index:  int,
+	story_decision_phase:   Story_Decision_Phase,
+	story_decision_index:   int,
+	story_decision_yes:     bool,
+	story_decision_elapsed: f32, // scene clock: mist drift, fade-in, idle animation
+	story_decision_timer:   f32, // Depart-phase progress toward the Title handoff
 	options_return: App_Mode,
 	quit_requested: bool,
 	platform_effects: bit_set[Platform_Effect],
@@ -482,6 +498,14 @@ aim_outside_dead_zone :: proc(aim: Vec2) -> bool {
 
 app_tick :: proc(app: ^App) {
 	app.tick += 1
+	if app.mode == .Story_Decision {
+		app.story_decision_elapsed += SIM_DT
+		if app.story_decision_phase == .Depart {
+			app.story_decision_timer += SIM_DT
+			if app.story_decision_timer >= STORY_DECISION_DEPART_SECONDS do app.mode = .Title
+		}
+		return
+	}
 	if app.mode == .Resume_Veil || app.mode == .Save_Wait || app.mode == .Save_Error ||
 		app.mode == .Recovery || app.mode == .Abandon_Confirm || app.mode == .Chronicle {
 		return
@@ -654,6 +678,24 @@ character_selected_discipline :: proc(app: ^App) -> (Discipline_Id, bool) {
 	return discipline_at(path, app.discipline_degree + 1)
 }
 
+// The one-time Clanker question runs only while no clean options document
+// records an answer; damaged documents defer to the recovery flow instead so
+// the question can never shadow it.
+app_story_decision_pending :: proc(app: ^App) -> bool {
+	if app == nil do return false
+	return !app.options.story_decided && !app.options_save_damaged && !app.profile_save_damaged
+}
+
+app_begin_story_decision :: proc(app: ^App) {
+	if app == nil do return
+	app.mode = .Story_Decision
+	app.story_decision_phase = .Ask
+	app.story_decision_index = 0
+	app.story_decision_yes = false
+	app.story_decision_elapsed = 0
+	app.story_decision_timer = 0
+}
+
 app_enter_options :: proc(app: ^App, from: App_Mode) {
 	app.options_return = from
 	app.options_index = 0
@@ -686,7 +728,7 @@ app_begin_new_run :: proc(app: ^App, archetype: Archetype_Id) {
 	app.seed = next_run_seed(seed)
 	run_destroy(&app.run)
 	app.run = {}
-	run_start(&app.run, seed, archetype, app.options.difficulty)
+	run_start(&app.run, seed, archetype, app.options.difficulty, app.options.story_enabled)
 	app.run.run_id = profile_begin_run(&app.profile, seed)
 	app.profile.revision += 1
 	app.active_run_available = true
@@ -753,6 +795,32 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 	}
 
 	switch app.mode {
+	case .Story_Decision:
+		if intent.quit {
+			app.quit_requested = true
+			return false
+		}
+		if app.story_decision_phase == .Depart {
+			// The decision is already recorded; the farewell walk is skippable.
+			if intent.confirm || intent.back do app.mode = .Title
+			return false
+		}
+		if intent.menu_index_valid do app.story_decision_index = clamp(intent.menu_index, 0, STORY_DECISION_OPTION_COUNT-1)
+		if delta := intent.menu_horizontal + intent.menu_delta; delta != 0 {
+			count := STORY_DECISION_OPTION_COUNT
+			app.story_decision_index = ((app.story_decision_index + delta) % count + count) % count
+		}
+		if intent.confirm {
+			app.story_decision_yes = app.story_decision_index == 0
+			app.options.story_enabled = app.story_decision_yes
+			app.options.story_decided = true
+			app_mark_options_changed(app)
+			app.story_decision_phase = .Depart
+			app.story_decision_timer = 0
+			// The machine answers with its own voice instead of the generic click.
+			app.ui_sfx_bank = .Soulless_Clanker
+			app.ui_sfx_override = true
+		}
 	case .Title:
 		if intent.back || intent.quit {
 			app.quit_requested = true
@@ -846,8 +914,8 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 			app_leave_options(app)
 			return false
 		}
-		if intent.menu_index_valid do app.options_index = clamp(intent.menu_index, 0, 10)
-		app.options_index = ((app.options_index + intent.menu_delta) % 11 + 11) % 11
+		if intent.menu_index_valid do app.options_index = clamp(intent.menu_index, 0, 11)
+		app.options_index = ((app.options_index + intent.menu_delta) % 12 + 12) % 12
 		direction := intent.menu_horizontal
 		if direction == 0 && intent.confirm do direction = 1
 		if direction != 0 {
@@ -887,7 +955,12 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 			case 9:
 				app.options.mist_enabled = !app.options.mist_enabled
 				app_mark_options_changed(app)
-			case 10: app_leave_options(app)
+			case 10:
+				// Snapshotted at run start like difficulty; flipping it mid-run
+				// affects the next descent, never the one in progress.
+				app.options.story_enabled = !app.options.story_enabled
+				app_mark_options_changed(app)
+			case 11: app_leave_options(app)
 			}
 		}
 	case .Controls:
@@ -1348,7 +1421,7 @@ run_destroy :: proc(run: ^Run, allocator := context.allocator) {
 	run.save_owned_strings = nil
 }
 
-run_start :: proc(run: ^Run, seed: u64, archetype: Archetype_Id, difficulty := DEFAULT_DIFFICULTY) {
+run_start :: proc(run: ^Run, seed: u64, archetype: Archetype_Id, difficulty := DEFAULT_DIFFICULTY, story_enabled := true) {
 	run.seed = seed
 	run.revision = 0
 	run.active_ticks = 0
@@ -1381,7 +1454,11 @@ run_start :: proc(run: ^Run, seed: u64, archetype: Archetype_Id, difficulty := D
 	// The whole descent is authored before the first floor exists: the floor
 	// generator and populater read theme/darkness/boss/encounter from the plan.
 	run.plan, run.modifier = generate_run_plan(seed)
-	story_run_initialize(run,archetype)
+	// The mechanical content runtime always exists so relics, flavor rooms, and
+	// minigames survive Story Off. Its initialized bit remains the narrative
+	// policy: dialogue/choices, omen panels, story effects, and the epilogue
+	// stay disabled.
+	story_run_initialize(run,archetype,story_enabled)
 	// Keep floor_epoch monotonic when this Run storage is reused for New Run;
 	// renderer caches must never mistake a new floor for the previous one.
 	run_generate_floor(run)
@@ -1440,12 +1517,12 @@ run_generate_floor :: proc(run: ^Run, boss_arena := false) {
 	story_prepare_floor(run)
 	rng := rng_make(derive_seed(run.seed, u64(run.depth)))
 	arena := boss_arena || plan.has_boss
-	story_floor := run.story_runtime.initialized && 1 <= run.depth && run.depth <= STORY_BEAT_COUNT
+	content_floor := story_content_enabled(run) && 1 <= run.depth && run.depth <= STORY_BEAT_COUNT
 	dungeon, ok := dungeon_generate(&rng, {
 		boss_arena = arena,
-		story_rooms = story_floor,
-		quest_requested = story_floor,
-		force_hall = story_floor && story_should_force_hall(run),
+		story_rooms = content_floor,
+		quest_requested = content_floor,
+		force_hall = content_floor && story_should_force_hall(run),
 	})
 	assert(ok, "dungeon generation exhausted retries")
 	run.dungeon = dungeon

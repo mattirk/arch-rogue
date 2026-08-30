@@ -57,6 +57,72 @@ story_mechanics_relic_collection_and_aid_streak_control_guidance :: proc(t:^test
 	run.story_runtime.relic_records[1]={committed=true,path=.Bargain,collected=true,guidance=true,guidance_to_stairs=true}
 	_,enabled=ar.story_route_target(&run)
 	testing.expect(t,!enabled,"one Bargain must permanently break Aid-only stairs guidance")
+
+	// Missing any earlier Aid relic also breaks the extension. Recovering a
+	// later relic must not restore the arrow after the player left one behind.
+	run.story_runtime.relic_records[0].collected=false
+	run.story_runtime.relic_records[1].path=.Aid
+	run.story_runtime.relic={depth=2,collected=true,guidance=true,guidance_to_stairs=true}
+	_,enabled=ar.story_route_target(&run)
+	testing.expect(t,!enabled,"a missed earlier relic must permanently break stairs guidance")
+}
+
+@(test)
+story_mechanics_story_disabled_first_relic_unlocks_later_relic_guidance :: proc(t:^testing.T) {
+	run:ar.Run
+	ar.run_start(&run,ar.derive_seed(61010,0),.Warden,.Medium,false)
+	defer ar.run_destroy(&run)
+	target,enabled:=ar.story_route_target(&run)
+	testing.expect(t,!enabled&&target=={}&&run.story_runtime.relic.present,
+		"story-off depth one must not reveal its uncollected relic")
+	run.player.pos=run.story_runtime.relic.position
+	testing.expect(t,ar.story_collect_relic_echo(&run),"story-off relic must remain recoverable")
+	target,enabled=ar.story_route_target(&run)
+	stairs:=ar.Vec2{f32(run.dungeon.stairs.x)+.5,f32(run.dungeon.stairs.y)+.5}
+	testing.expect(t,enabled&&target==stairs,"recovering the first story-off relic must reveal stairs guidance")
+
+	ar.run_descend(&run)
+	target,enabled=ar.story_route_target(&run)
+	testing.expect(t,enabled&&target==run.story_runtime.relic.position,
+		"an intact story-off streak must guide from the player to the next relic")
+	path:=ar.story_relic_guidance_path(&run)
+	testing.expect(t,run.player.guidance_wave_active&&len(path)>1,
+		"later-floor relic guidance must build a visible world path")
+	if len(path)>0 {
+		player_tile:=[2]int{int(run.player.pos.x),int(run.player.pos.y)}
+		relic_tile:=[2]int{int(run.story_runtime.relic.position.x),int(run.story_runtime.relic.position.y)}
+		testing.expect(t,path[0]==player_tile&&path[len(path)-1]==relic_tile,
+			"later-floor guidance path must connect the player and relic")
+	}
+	run.player.pos=run.story_runtime.relic.position
+	testing.expect(t,ar.story_collect_relic_echo(&run),"guided later relic must remain recoverable")
+	target,enabled=ar.story_route_target(&run)
+	stairs=ar.Vec2{f32(run.dungeon.stairs.x)+.5,f32(run.dungeon.stairs.y)+.5}
+	testing.expect(t,enabled&&target==stairs,
+		"recovering a guided later relic must redirect guidance to its stairs")
+}
+
+@(test)
+story_mechanics_story_disabled_missed_relic_breaks_guidance :: proc(t:^testing.T) {
+	run:ar.Run
+	ar.run_start(&run,ar.derive_seed(61011,0),.Warden,.Medium,false)
+	defer ar.run_destroy(&run)
+	run.player.pos=run.story_runtime.relic.position
+	testing.expect(t,ar.story_collect_relic_echo(&run),"depth-one relic must unlock story-off guidance")
+	ar.run_descend(&run)
+	_,enabled:=ar.story_route_target(&run)
+	testing.expect(t,enabled,"the unlocked arrow must guide to depth two's relic")
+
+	// Leave depth two's relic behind. Depth three and every later floor must stay
+	// unguided even if the player finds and recovers another relic unaided.
+	ar.run_descend(&run)
+	_,enabled=ar.story_route_target(&run)
+	testing.expect(t,!enabled&&!run.player.guidance_wave_active&&len(run.story_runtime.guidance_path)==0,
+		"leaving one guided relic undiscovered must remove the arrow")
+	run.player.pos=run.story_runtime.relic.position
+	testing.expect(t,ar.story_collect_relic_echo(&run),"later story-off relic must remain recoverable")
+	_,enabled=ar.story_route_target(&run)
+	testing.expect(t,!enabled,"one missed relic must permanently break story-off guidance")
 }
 
 @(test)

@@ -330,6 +330,66 @@ mx_save_options_envelope_is_semantic_checksummed_and_future_safe :: proc(t:^test
 	ar.options_payload_destroy(&document.payload)
 }
 
+// A v2 options document checksums exactly the pre-story field set. Migration
+// must verify that hash against the retained v2 payload struct, keep every v2
+// field, and give the v3 story fields their explicit defaults: story stays on
+// and the first-boot Clanker question is still owed.
+@(test)
+mx_save_options_v2_document_migrates_with_story_defaults :: proc(t:^testing.T) {
+	options:=ar.options_default()
+	options.fullscreen=false
+	options.difficulty=.Hard
+	options.sfx_volume=.Percent_20
+	options.mist_enabled=false
+	_=ar.controller_remap_button(&options.gamepad_mapping,.X,.Ability_6)
+	current:=ar.options_payload_from_options(options)
+	v2:=ar.Options_Payload_V2{
+		fullscreen=current.fullscreen,
+		frame_rate_cap_id=current.frame_rate_cap_id,
+		view_zoom=current.view_zoom,
+		difficulty_id=current.difficulty_id,
+		controller_enabled=current.controller_enabled,
+		button_bindings=current.button_bindings,
+		trigger_bindings=current.trigger_bindings,
+		audio_enabled=current.audio_enabled,
+		sfx_volume_id=current.sfx_volume_id,
+		music_volume_id=current.music_volume_id,
+		lighting_enabled=current.lighting_enabled,
+		mist_enabled=current.mist_enabled,
+		minimap_visible=current.minimap_visible,
+	}
+	payload_bytes,payload_ok:=ar.persistence_marshal(v2)
+	testing.expect(t,payload_ok)
+	hash:=ar.persistence_sha256(payload_bytes)
+	delete(payload_bytes)
+	defer delete(hash)
+	document:=ar.Options_Document_V2{
+		schema_version=ar.OPTIONS_DOCUMENT_SCHEMA_V2,
+		game_release="6.0.0-alpha.23",
+		document_id="options",
+		revision=11,
+		written_at_utc="2026-08-30T00:00:00Z",
+		payload_sha256=hash,
+		payload=v2,
+	}
+	data,data_err:=json.marshal(document,ar.persistence_json_options(),allocator=context.allocator)
+	testing.expect(t,data_err==nil)
+	defer delete(data)
+	loaded,legacy_hell,revision,status:=ar.persistence_decode_options(data,true)
+	testing.expect(t,status==.Migrated&&!legacy_hell&&revision==11,"v2 options document must migrate in place")
+	testing.expect(t,loaded.story_enabled&&!loaded.story_decided,"migrated documents keep story on and still owe the question")
+	testing.expect(t,loaded==options,"every v2 field must survive migration unchanged")
+
+	tampered:=v2
+	tampered.mist_enabled=!tampered.mist_enabled
+	document.payload=tampered // stale v2 checksum
+	corrupt_data,corrupt_err:=json.marshal(document,ar.persistence_json_options(),allocator=context.allocator)
+	testing.expect(t,corrupt_err==nil)
+	defer delete(corrupt_data)
+	_,_,_,corrupt_status:=ar.persistence_decode_options(corrupt_data,true)
+	testing.expect(t,corrupt_status==.Corrupt,"v2 payload mutation must still be caught by SHA-256")
+}
+
 @(test)
 mx_save_profile_chronicle_deduplicates_retains_512_and_keeps_lifetime_totals :: proc(t:^testing.T) {
 	profile:ar.Profile_State

@@ -300,6 +300,8 @@ m9_options_document_round_trip_and_malformed_fallback :: proc(t:^testing.T) {
 	options.music_volume=.Percent_70
 	options.lighting_enabled=false
 	options.minimap_visible=false
+	options.story_enabled=false
+	options.story_decided=true
 	_ = ar.controller_remap_button(&options.gamepad_mapping,.A,.Ability_2)
 	data,encoded:=ar.persistence_encode_options(options,7,"2026-08-17T00:00:00Z")
 	testing.expect(t,encoded,"options envelope encoding failed")

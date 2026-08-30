@@ -253,6 +253,16 @@ platform_mobile_build_targets :: proc(runtime: ^Platform_Runtime, app: ^App) -> 
 				platform_mobile_rect_from_design(title_row_rect(i)), index = i,
 				enabled = title_action_enabled(app, Title_Action(i)))
 		}
+	case .Story_Decision:
+		if app.story_decision_phase == .Ask {
+			for i in 0 ..< STORY_DECISION_OPTION_COUNT {
+				platform_mobile_add_target(&set, layout, 730 + i, .Menu_Activate,
+					platform_mobile_rect_from_design(story_decision_option_rect(i)), index = i)
+			}
+		} else {
+			// A tap anywhere skips the farewell walk.
+			platform_mobile_add_target(&set, layout, 732, .Menu_Activate, layout.safe_rect)
+		}
 	case .Select:
 		for i in 0 ..< len(Archetype_Id) {
 			platform_mobile_add_target(&set, layout, 200 + i, .Archetype_Preview,
@@ -268,7 +278,7 @@ platform_mobile_build_targets :: proc(runtime: ^Platform_Runtime, app: ^App) -> 
 		// Fullscreen is a desktop window effect; Android owns one native surface.
 		// Keep its disabled row as an inert target so neighboring 48 dp expansion
 		// cannot activate Frame rate cap through the visible fullscreen row.
-		for i in 0 ..< 10 {
+		for i in 0 ..< 11 {
 			platform_mobile_add_target(&set, layout, 400 + i, .Menu_Activate,
 				platform_mobile_rect_from_design(options_row_rect(app, i)), index = i,
 				enabled = i != 0)

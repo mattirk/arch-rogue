@@ -118,6 +118,8 @@ mx_story_capture_staging_uses_reachable_production_panel_states :: proc(t: ^test
 	testing.expect(t,ar.mx_story_capture_scenario_from_env("soul")==.Soul,"Soul capture parser changed")
 	testing.expect(t,ar.mx_story_capture_scenario_from_env("mistbound")==.Mistbound,"Mistbound capture parser changed")
 	testing.expect(t,ar.mx_story_capture_scenario_from_env("ending")==.Ending,"ending capture parser changed")
+	testing.expect(t,ar.mx_story_capture_scenario_from_env("decision_ask")==.Decision_Ask,"decision ask capture parser changed")
+	testing.expect(t,ar.mx_story_capture_scenario_from_env("decision_depart")==.Decision_Depart,"decision depart capture parser changed")
 	testing.expect(t,ar.mx_story_capture_scenario_from_env("unknown")==.None,"unknown capture scenario must stay inert")
 
 	fixtures := [6]struct {
@@ -164,8 +166,20 @@ mx_story_capture_staging_uses_reachable_production_panel_states :: proc(t: ^test
 		case .Ending:
 			choices:=ar.app_story_panel_choices(&app)
 			testing.expect(t,app.story_panel.node==.Epilogue_Ending&&identity.has_ending&&identity.ending_verb==.Aid&&choices.count==1,"ending capture must use the Arcanist Aid ending and page action")
+		case .Decision_Ask,.Decision_Depart: // menu-scene captures, staged below without a run
 		case .None:
 		}
+		ar.run_destroy(&app.run)
+	}
+
+	// The first-boot decision stages from any mode and needs no run.
+	{
+		app: ar.App
+		ar.app_init(&app,7301)
+		testing.expect(t,ar.mx_story_stage_capture(&app,.Decision_Ask)&&app.mode==.Story_Decision&&
+			app.story_decision_phase==.Ask&&app.options.mist_enabled,"decision ask capture must stage the question scene")
+		testing.expect(t,ar.mx_story_stage_capture(&app,.Decision_Depart)&&app.story_decision_phase==.Depart&&
+			!app.story_decision_yes&&app.story_decision_timer>0,"decision depart capture must stage the walk-off")
 		ar.run_destroy(&app.run)
 	}
 }

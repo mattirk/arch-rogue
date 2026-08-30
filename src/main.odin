@@ -5,7 +5,7 @@ import "core:fmt"
 import "core:strings"
 import rl "../vendor/raylib"
 
-VERSION :: "6.0.0-alpha.25"
+VERSION :: "6.0.0-alpha.26"
 
 // Spiral-of-death guard: clamp huge frame gaps (debugger pause, window drag).
 MAX_FRAME_DT :: 0.25
@@ -1075,6 +1075,12 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 		profile_init(&rt.app.profile, profile_id)
 		delete(profile_id)
 	}
+	// The one-time Clanker question runs before the Title on any boot whose
+	// clean options document does not yet record an answer. Capture, perf, and
+	// dev shells skip persistence entirely and must never see it.
+	if normal_persistence_enabled && app_story_decision_pending(&rt.app) {
+		app_begin_story_decision(&rt.app)
+	}
 	rt.persistence.steam = &rt.steam
 	if rt.persistence.ready {
 		// DRM-free stance kept from pygame: a bare download relaunches through
@@ -1093,6 +1099,9 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 		// from persisted options at boot. The user re-enters it via the shell
 		// button or the options row.
 		rt.app.options.fullscreen = false
+		// The Clanker sheets live in the lazy social pack normally fetched at
+		// run start; the first-boot scene wants them streaming immediately.
+		if rt.app.mode == .Story_Decision do web_pack_request("social")
 	}
 	if rt.fixed_capture || rt.perf_enabled {
 		// Validation profiles are complete and ephemeral: persisted user graphics,
@@ -1415,7 +1424,7 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 	if rt.audio.ready && !rt.audio.suspended {
 		if rt.audio.music_library.loaded {
 			reference_ms := audio_music_reference_phase_ms(&rt.audio, &rt.music)
-			music_director_update(&rt.music, &rt.audio.music_library, desired_music_mix, f64(frame_dt) * 1000, reference_ms)
+			music_director_update(&rt.music, &rt.audio.music_library, desired_music_mix, f64(frame_dt) * 1000, reference_ms, music_hold_boot_intro(app))
 			mistbound_released := music_mistbound_wait_update(&rt.music, &rt.audio.music_library, app)
 			wait_remaining_ms, wait_total_ms := music_mistbound_wait_progress_ms(&rt.music, &rt.audio.music_library)
 			app.story_soul_hunt_wait_remaining_s = f32(wait_remaining_ms / 1000)
@@ -1637,6 +1646,27 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 	}
 
 	switch app.mode {
+	case .Story_Decision:
+		if app.story_decision_phase == .Ask {
+			if mouse_moved {
+				if index,found:=story_decision_option_at(mouse);found {intent.menu_index=index;intent.menu_index_valid=true}
+			}
+			if rl.IsMouseButtonPressed(.LEFT) {
+				if index,found:=story_decision_option_at(mouse);found {intent.menu_index=index;intent.menu_index_valid=true;intent.confirm=true}
+			}
+			if rl.IsKeyPressed(.LEFT) do intent.menu_horizontal-=1
+			if rl.IsKeyPressed(.RIGHT) do intent.menu_horizontal+=1
+			if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
+			if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
+			if rl.IsKeyPressed(.Y) {intent.menu_index=0;intent.menu_index_valid=true;intent.confirm=true}
+			if rl.IsKeyPressed(.N) {intent.menu_index=1;intent.menu_index_valid=true;intent.confirm=true}
+			if rl.IsKeyPressed(.ENTER)||rl.IsKeyPressed(.KP_ENTER) do intent.confirm=true
+		} else {
+			// Any press skips the farewell walk.
+			if rl.IsKeyPressed(.ENTER)||rl.IsKeyPressed(.KP_ENTER)||rl.IsKeyPressed(.ESCAPE)||rl.IsMouseButtonPressed(.LEFT) {
+				intent.confirm=true
+			}
+		}
 	case .Title:
 		if mouse_moved {
 			if index,found:=title_row_at(mouse);found {intent.menu_index=index;intent.menu_index_valid=true}

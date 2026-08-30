@@ -432,18 +432,36 @@ story_run_destroy :: proc(run: ^Run, allocator := context.allocator) {
 	run.story_runtime = {}
 }
 
-story_run_initialize :: proc(run: ^Run, archetype: Archetype_Id) {
+story_run_initialize :: proc(run: ^Run, archetype: Archetype_Id, narrative_enabled := true) {
 	if run == nil do return
 	story_run_destroy(run)
 	starting_theme := Story_Motif_Id(clamp(run.plan[0].theme_index,0,len(Story_Motif_Id)-1))
 	run.story = story_generate(run.seed, archetype, 1, starting_theme, run.modifier)
 	run.story_runtime = {
-		initialized=true,
+		initialized=narrative_enabled,
 		run_number=1,
 		guests=make([dynamic]Story_Guest,0,STORY_BEAT_COUNT*2),
 		guidance_path=make([dynamic][2]int,0,MAP_W*MAP_H),
 	}
-	for i in 0..<STORY_BEAT_COUNT do run.plan[i].theme_index = int(run.story.beats[i].motif)
+	if narrative_enabled {
+		for i in 0..<STORY_BEAT_COUNT do run.plan[i].theme_index = int(run.story.beats[i].motif)
+	}
+}
+
+// Runtime initialization remains the narrative switch for save compatibility.
+// A generated run number identifies the shared relic/room/minigame substrate.
+story_content_enabled :: proc(run: ^Run) -> bool {
+	return run != nil && (run.story_runtime.initialized || run.story_runtime.run_number > 0)
+}
+
+// Story-off saves from before the content split have neither narrative state
+// nor the shared mechanical runtime. Upgrade them in place without rebuilding
+// their saved dungeon; future floors resume Quest/Hall and minigame planning.
+story_enable_content_for_legacy_run :: proc(run: ^Run) -> bool {
+	if run==nil||story_content_enabled(run) do return false
+	story_run_initialize(run,run.player.archetype,false)
+	if 1<=run.depth&&run.depth<=STORY_BEAT_COUNT do _=story_commit_relic_path(run,.Aid)
+	return true
 }
 
 story_current_beat :: proc(run: ^Run) -> ^Story_Beat {
@@ -452,15 +470,17 @@ story_current_beat :: proc(run: ^Run) -> ^Story_Beat {
 }
 
 story_prepare_floor :: proc(run: ^Run) {
-	if run == nil || !run.story_runtime.initialized do return
-	if beat := story_current_beat(run); beat != nil do run.plan[run.depth-1].theme_index = int(beat.motif)
+	if !story_content_enabled(run) do return
+	if run.story_runtime.initialized {
+		if beat := story_current_beat(run); beat != nil do run.plan[run.depth-1].theme_index = int(beat.motif)
+	}
 	run.story_runtime.requests = {}
 	run.story_runtime.relic = {}
 	clear(&run.story_runtime.guidance_path)
 }
 
 story_should_force_hall :: proc(run: ^Run) -> bool {
-	return run != nil && run.story_runtime.initialized && run.depth >= 7 && !run.story_runtime.hall.seen
+	return story_content_enabled(run) && run.depth >= 7 && !run.story_runtime.hall.seen
 }
 
 @(private = "file")
@@ -487,7 +507,8 @@ story_current_guest :: proc(run: ^Run) -> ^Story_Guest {
 
 @(private = "file")
 story_spawn_current_guest :: proc(run: ^Run) {
-	beat := story_current_beat(run)
+	if !story_content_enabled(run) do return
+	beat := story_beat_for_depth(&run.story,run.depth)
 	if beat == nil do return
 	special, found := special_room_for_kind(&run.dungeon,.Quest)
 	if !found do return
@@ -498,14 +519,21 @@ story_spawn_current_guest :: proc(run: ^Run) {
 		guest := &run.story_runtime.guests[index]
 		guest.pos,guest.prev_pos = pos,pos
 		guest.motion = story_motion_make(pos,room_index,run.story.stream_seed~u64(run.depth)*0x9E3779B1)
+		if !run.story_runtime.initialized {
+			guest.resolved=true
+			guest.resolution=.Unanswered
+			guest.ally=false
+		}
 		return
 	}
 	max_hp := 30 + run.depth*3
+	resolved := beat.resolution!=.Unresolved || !run.story_runtime.initialized
+	resolution := run.story_runtime.initialized ? beat.resolution : Story_Resolution.Unanswered
 	guest := Story_Guest{
 		depth=run.depth,beat_index=run.depth-1,role=beat.guest_role,variant=beat.guest_variant,
 		name=beat.guest_name,motive=beat.guest_motive,dialogue=beat.dialogue,
 		pos=pos,prev_pos=pos,motion=story_motion_make(pos,room_index,run.story.stream_seed~u64(run.depth)*0x9E3779B1),
-		resolution=beat.resolution,resolved=beat.resolution!=.Unresolved,alive=true,hp=max_hp,max_hp=max_hp,
+		resolution=resolution,resolved=resolved,ally=false,alive=true,hp=max_hp,max_hp=max_hp,
 	}
 	append(&run.story_runtime.guests,guest)
 }
@@ -580,15 +608,20 @@ story_near_position :: proc(run: ^Run, origin: Vec2, distance := f32(1.0)) -> Ve
 }
 
 story_populate_floor :: proc(run: ^Run) {
-	if run == nil || !run.story_runtime.initialized || run.depth<1 || run.depth>STORY_BEAT_COUNT do return
+	if !story_content_enabled(run) || run.depth<1 || run.depth>STORY_BEAT_COUNT do return
 	story_spawn_current_guest(run)
+	if run.story_runtime.initialized do story_spawn_gate_witnesses(run)
 	story_spawn_lossless_soul(run)
-	story_spawn_gate_witnesses(run)
 	index := run.depth-1
 	record := &run.story_runtime.relic_records[index]
 	if !record.committed {
 		record.choice_order = story_relic_choice_order(run,run.depth)
-		run.story_runtime.requests.omen=true
+		bind_floor := run.depth==5 || run.depth==8 || run.depth==9
+		if run.story_runtime.initialized || bind_floor && run.story_runtime.bind_results[index]==.None {
+			run.story_runtime.requests.omen=true
+		} else {
+			_=story_commit_relic_path(run,.Aid)
+		}
 	} else if !record.collected {
 		run.story_runtime.relic={relic=run.story.relic,depth=run.depth,position=record.position,present=true,guidance=record.guidance,guardian=record.guardian,guidance_to_stairs=record.guidance_to_stairs}
 		if record.guardian do story_spawn_relic_guardian(run,record.position)
@@ -652,7 +685,7 @@ story_spawn_relic_guardian :: proc(run: ^Run, position: Vec2) {
 }
 
 story_commit_relic_path :: proc(run: ^Run, verb: Story_Choice_Verb) -> bool {
-	if run==nil||!run.story_runtime.initialized||run.depth<1||run.depth>STORY_BEAT_COUNT do return false
+	if !story_content_enabled(run)||run.depth<1||run.depth>STORY_BEAT_COUNT do return false
 	record:=&run.story_runtime.relic_records[run.depth-1]
 	if record.committed do return false
 	path:=story_relic_path_from_verb(verb);if path==.Unchosen do return false
@@ -661,8 +694,12 @@ story_commit_relic_path :: proc(run: ^Run, verb: Story_Choice_Verb) -> bool {
 	record.committed=true;record.path=path;record.position=position;record.guidance=guidance;record.guardian=guardian;record.guidance_to_stairs=guidance
 	run.story_runtime.relic={relic=run.story.relic,depth=run.depth,position=position,present=true,guidance=guidance,guardian=guardian,guidance_to_stairs=guidance}
 	if guardian do story_spawn_relic_guardian(run,position)
-	if guidance do _=story_build_guidance_path(run,position)
-	story_set_guidance_wave_active(run,guidance)
+	// Story Off keeps depth one hidden, then guides to later relics while every
+	// earlier floor has an uninterrupted recovered Aid record.
+	guide_to_relic := guidance && (run.story_runtime.initialized ||
+		story_aid_relic_streak_intact(run,include_current=false))
+	if guide_to_relic do _=story_build_guidance_path(run,position)
+	story_set_guidance_wave_active(run,guide_to_relic)
 	append(&run.numbers,Damage_Number{pos=run.player.pos,kind=.Text,text=guidance?"The relic answers with a path":"The relic light goes silent"})
 	sfx_emit(run, .Story_Consequence)
 	return true
@@ -689,16 +726,18 @@ story_collect_relic_echo :: proc(run: ^Run) -> bool {
 	return true
 }
 
-story_aid_relic_streak_intact :: proc(run: ^Run) -> bool {
-	if run==nil||!run.story_runtime.initialized do return false
-	seen:=false
-	for i in 0..<clamp(run.depth,1,STORY_BEAT_COUNT) {
+story_aid_relic_streak_intact :: proc(run: ^Run, include_current := true) -> bool {
+	if !story_content_enabled(run) do return false
+	limit:=clamp(run.depth,1,STORY_BEAT_COUNT)
+	if !include_current do limit-=1
+	if limit<=0 do return false
+	for i in 0..<limit {
 		record:=run.story_runtime.relic_records[i]
-		if !record.committed do continue
-		seen=true
-		if record.path!=.Aid do return false
+		// Every completed floor needs an explicit recovered Aid record. This also
+		// treats skipping a Bind floor before its relic is committed as a miss.
+		if !record.committed||record.path!=.Aid||!record.collected do return false
 	}
-	return seen
+	return true
 }
 
 story_relic_guidance_path :: proc(run: ^Run) -> [][2]int {
@@ -829,7 +868,9 @@ story_resolve_current_unanswered :: proc(run: ^Run) -> bool {
 }
 
 story_nearby_lossless_soul :: proc(run: ^Run) -> ^Lossless_Soul {
-	if run==nil do return nil
+	if !story_content_enabled(run) do return nil
+	index:=clamp(run.depth,1,STORY_BEAT_COUNT)-1
+	if !run.story_runtime.initialized&&run.story_runtime.soul_games[index].outcome!=.None do return nil
 	soul:=&run.story_runtime.soul
 	if !soul.present||!soul.alive||story_distance_sq(soul.pos,run.player.pos)>STORY_GUEST_INTERACT_RANGE*STORY_GUEST_INTERACT_RANGE do return nil
 	if !line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,soul.pos.x,soul.pos.y) do return nil
@@ -867,6 +908,7 @@ story_request_lossless_soul :: proc(run: ^Run) -> bool {
 }
 
 story_request_garden_moonbloom :: proc(run: ^Run) -> bool {
+	if !story_content_enabled(run) do return false
 	_,room,found:=story_nearby_garden_frog(run);if !found do return false
 	index:=clamp(run.depth,1,STORY_BEAT_COUNT)-1
 	if run.story_runtime.garden_games[index].outcome!=.None do return false
@@ -1456,7 +1498,7 @@ app_story_finalize_minigame :: proc(app:^App)->bool {
 	app.story_minigame={};app.story_minigame_cursor=0;app.story_soul_hunt_music_ready=false;app.story_soul_hunt_wait_remaining_s=0;app.story_soul_hunt_wait_total_s=0
 	if new_result&&state.outcome==.Won do app_story_grant_minigame_reward(app,&state)
 	if state.kind==.Bind_The_Page&&state.has_continuation {_=story_commit_relic_path(&app.run,state.continuation);app_story_close_panel(app)}
-	if state.kind==.Mirror_The_Unlost {app.story_panel={active=true,kind=.Soul,node=.Soul_Settled,guest_index=-1};app_story_rebuild_panel_text(app)}
+	if state.kind==.Mirror_The_Unlost&&app.run.story_runtime.initialized {app.story_panel={active=true,kind=.Soul,node=.Soul_Settled,guest_index=-1};app_story_rebuild_panel_text(app)}
 	app_clear_play_input(app);return true
 }
 
@@ -1505,9 +1547,14 @@ app_story_normalize_soul_hunt_after_restore :: proc(app:^App) {
 	state:=app.story_minigame
 	story_soul_hunt_restore_world(&app.run,&state)
 	app.story_minigame={};app.story_minigame_cursor=0
-	node:=app.run.story_runtime.hall.verdict==.Unresolved?Story_Panel_Node.Soul_Reflection:.Soul_Settled
-	app.story_panel={active=true,kind=.Soul,node=node,guest_index=-1}
-	app_story_rebuild_panel_text(app);app_clear_play_input(app)
+	if app.run.story_runtime.initialized {
+		node:=app.run.story_runtime.hall.verdict==.Unresolved?Story_Panel_Node.Soul_Reflection:.Soul_Settled
+		app.story_panel={active=true,kind=.Soul,node=node,guest_index=-1}
+		app_story_rebuild_panel_text(app)
+	} else {
+		app.story_panel={}
+	}
+	app_clear_play_input(app)
 }
 
 app_story_process_requests :: proc(app:^App,include_omen:=false)->bool {
@@ -1515,9 +1562,27 @@ app_story_process_requests :: proc(app:^App,include_omen:=false)->bool {
 	requests:=&app.run.story_runtime.requests
 	if requests.collect_relic {requests.collect_relic=false;_=story_collect_relic_echo(&app.run);app_clear_play_input(app);return true}
 	if requests.epilogue {requests.epilogue=false;return app_story_open_epilogue(app)}
-	if include_omen&&requests.omen {requests.omen=false;return app_story_open_omen(app)}
+	if include_omen&&requests.omen {
+		requests.omen=false
+		if app.run.story_runtime.initialized do return app_story_open_omen(app)
+		index:=clamp(app.run.depth,1,STORY_BEAT_COUNT)-1
+		bind_floor:=app.run.depth==5||app.run.depth==8||app.run.depth==9
+		if bind_floor&&app.run.story_runtime.bind_results[index]==.None {
+			return app_story_start_bind_the_page(app,.Aid)
+		}
+		committed:=story_commit_relic_path(&app.run,.Aid)
+		if committed do app_clear_play_input(app)
+		return committed
+	}
 	if requests.guest {index:=requests.guest_index;requests.guest=false;return app_story_open_guest_dialogue(app,index)}
-	if requests.soul {requests.soul=false;return app_story_open_lossless_soul(app)}
+	if requests.soul {
+		requests.soul=false
+		if app.run.story_runtime.initialized do return app_story_open_lossless_soul(app)
+		index:=clamp(app.run.depth,1,STORY_BEAT_COUNT)-1
+		ledger:=&app.run.story_runtime.hall_ledgers[index]
+		if ledger.verdict==.Unresolved&&!story_resolve_lossless_soul(&app.run,.Release) do return false
+		return app_story_start_mirror_the_unlost(app,ledger.room_index)
+	}
 	if requests.garden {room:=requests.garden_room;requests.garden=false;return app_story_start_wake_the_moonbloom(app,room)}
 	return false
 }
