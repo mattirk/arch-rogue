@@ -42,6 +42,8 @@ story_decision_no_mutes_story_and_walks_off_to_title :: proc(t:^testing.T) {
 	// A pointer press lands index and confirm together, like the title rows.
 	_=ar.app_apply(&app,{menu_index=1,menu_index_valid=true,confirm=true})
 	testing.expect(t,app.story_decision_phase==.Depart&&!app.story_decision_yes)
+	testing.expect(t,string(ar.story_decision_notice(false))=="Story mode disabled. Enable it anytime in Options.",
+		"the No departure must explain how to restore story mode")
 	testing.expect(t,!app.options.story_enabled&&app.options.story_decided,"the decision must land in options")
 	testing.expect(t,.Save_Options in app.platform_effects,"the decision must persist immediately")
 	testing.expect(t,app.ui_sfx_override&&app.ui_sfx_bank==.Soulless_Clanker,"the machine answers in its own voice")
@@ -62,6 +64,8 @@ story_decision_yes_keeps_story_and_confirm_skips_the_walk :: proc(t:^testing.T) 
 	ar.app_begin_story_decision(&app)
 	_=ar.app_apply(&app,{confirm=true}) // default cursor is Yes
 	testing.expect(t,app.story_decision_yes&&app.options.story_enabled&&app.options.story_decided)
+	testing.expect(t,string(ar.story_decision_notice(true))=="Story mode enabled. Change it anytime in Options.",
+		"the Yes departure must explain that the choice remains configurable")
 	testing.expect(t,app.mode==.Story_Decision&&app.story_decision_phase==.Depart)
 	_=ar.app_apply(&app,{confirm=true})
 	testing.expect(t,app.mode==.Title,"confirm during the walk-off must skip to the title")

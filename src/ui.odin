@@ -524,7 +524,13 @@ title_row_at :: proc(point: rl.Vector2) -> (index: int, found: bool) {
 // listen to a machine. Yes keeps the story layer for future runs; No mutes it.
 // The chosen option's side is also the direction the machine walks away toward.
 
-STORY_DECISION_QUESTION : cstring : "Would you listen to a machine?"
+STORY_DECISION_QUESTION        : cstring : "Would you listen to a machine?"
+STORY_DECISION_ENABLED_NOTICE  : cstring : "Story mode enabled. Change it anytime in Options."
+STORY_DECISION_DISABLED_NOTICE : cstring : "Story mode disabled. Enable it anytime in Options."
+
+story_decision_notice :: proc(enabled: bool) -> cstring {
+	return enabled ? STORY_DECISION_ENABLED_NOTICE : STORY_DECISION_DISABLED_NOTICE
+}
 
 story_decision_option_rect :: proc(index: int) -> rl.Rectangle {
 	width := ui_design_width()
@@ -552,6 +558,13 @@ draw_story_decision_screen :: proc(view: ^View, app: ^App, assets: ^Assets) {
 	fade_in := clamp(app.story_decision_elapsed/.9, f32(0), f32(1))
 	ask_alpha := depart ? clamp(1-app.story_decision_timer/.35, f32(0), f32(1)) : fade_in
 	options_alpha := depart ? ask_alpha : clamp((app.story_decision_elapsed-.5)/.6, f32(0), f32(1))
+	notice_alpha := f32(0)
+	if depart {
+		notice_alpha = min(
+			clamp(app.story_decision_timer/.25, f32(0), f32(1)),
+			clamp((STORY_DECISION_DEPART_SECONDS-app.story_decision_timer)/.45, f32(0), f32(1)),
+		)
+	}
 
 	feet := rl.Vector2{width*.5, height*.60}
 	if depart {
@@ -609,6 +622,12 @@ draw_story_decision_screen :: proc(view: ^View, app: ^App, assets: ^Assets) {
 		ui_draw_text_fitted_centered(
 			STORY_DECISION_QUESTION, i32(width*.5), i32(height*.26), 30, 18, i32(width)-120,
 			rl.Fade(COLOR_TEXT, ask_alpha),
+		)
+	}
+	if notice_alpha > 0 {
+		ui_draw_text_fitted_centered(
+			story_decision_notice(app.story_decision_yes), i32(width*.5), i32(height*.26), 24, 15, i32(width)-120,
+			rl.Fade(COLOR_TITLE, notice_alpha),
 		)
 	}
 	if options_alpha > 0 {

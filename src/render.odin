@@ -1827,8 +1827,10 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 	}
 
 	draw_actor_wall_ghosts(view,app,ghost_actors[:],occluders[:])
-	// Repeat live enemy tells above wall geometry at restrained opacity. The
-	// ordinary floor pass remains the primary tell; this is only its x-ray trace.
+	// Repeat live projectiles and enemy tells above wall geometry at restrained
+	// opacity. Their ordinary depth-sorted passes remain primary; these are only
+	// x-ray traces for effects already inside the live visibility field.
+	draw_projectiles_through_walls(app,alpha)
 	draw_enemy_attack_telegraphs_through_walls(app,alpha)
 	if app.options.mist_enabled {
 		// The shader clock follows simulation time so inventory, pause, and story
@@ -2194,6 +2196,16 @@ draw_enemy_attack_telegraphs_through_walls :: proc(app:^App,alpha:f32) {
 }
 
 @(private = "file")
+draw_projectiles_through_walls :: proc(app:^App,alpha:f32) {
+	if app==nil do return
+	for &projectile in app.run.projectiles {
+		if !tile_pos_visible(app,projectile.pos) do continue
+		feet:=projectile.prev_pos+(projectile.pos-projectile.prev_pos)*alpha
+		draw_projectile(&projectile,feet,alpha,opacity_scale=VISUAL_PROJECTILE_WALL_ALPHA)
+	}
+}
+
+@(private = "file")
 draw_player_aim_tick :: proc(app: ^App, feet: Vec2) {
 	if app == nil do return
 	direction := visual_iso_direction(app.run.player.facing)
@@ -2227,23 +2239,25 @@ draw_player_aim_cone :: proc(app: ^App, feet: Vec2) {
 }
 
 @(private = "file")
-draw_projectile :: proc(projectile: ^Projectile, feet: Vec2, alpha: f32, trails := true) {
+draw_projectile :: proc(projectile: ^Projectile, feet: Vec2, alpha: f32, trails := true, opacity_scale := f32(1)) {
 	if projectile == nil do return
+	opacity := clamp(opacity_scale,f32(0),f32(1))
 	center := rl.Vector2(world_from_tile(feet)) - rl.Vector2{0, PROJECTILE_LIFT}
 	color := rl.Color(projectile.color)
+	body := rl.Fade(color,opacity)
 	age := visual_projectile_render_age(projectile.visual_age, alpha)
 	trail_samples := visual_projectile_trails(projectile.vel, age)
 	if trails do for trail in trail_samples {
 		if trail.alpha <= 0 do continue
 		pos := center + rl.Vector2(trail.offset)
-		rl.DrawEllipse(i32(pos.x),i32(pos.y),trail.radius*1.5,trail.radius*.72,rl.Fade(color,trail.alpha))
+		rl.DrawEllipse(i32(pos.x),i32(pos.y),trail.radius*1.5,trail.radius*.72,rl.Fade(color,trail.alpha*opacity))
 	}
 	frame := visual_projectile_frame(age)
 	pulse := .86 + .10 * math.sin((f32(frame)+.5) * math.PI*.5)
 	angle := visual_projectile_rotation(projectile.vel)
-	bright := rl.Color(mix_color_u8(projectile.color,{255,255,255,255},.42))
+	bright := rl.Fade(rl.Color(mix_color_u8(projectile.color,{255,255,255,255},.42)),opacity)
 	rl.BeginBlendMode(.ADDITIVE)
-	rl.DrawCircleV(center,8+f32(frame&1),rl.Fade(color,.25*pulse))
+	rl.DrawCircleV(center,8+f32(frame&1),rl.Fade(color,.25*pulse*opacity))
 	rl.EndBlendMode()
 
 	// Raylib-native silhouettes preserve owner/archetype identity; typed color
@@ -2251,10 +2265,10 @@ draw_projectile :: proc(projectile: ^Projectile, feet: Vec2, alpha: f32, trails 
 	// so projectiles can never disappear because a texture failed to load.
 	switch projectile.visual {
 	case .Enemy_Void:
-		rl.DrawPoly(center,6,5.2,angle+30,color)
+		rl.DrawPoly(center,6,5.2,angle+30,body)
 		rl.DrawPolyLinesEx(center,6,6.1,angle+30,1.2,bright)
 	case .Warden_Guard:
-		rl.DrawPoly(center,4,5.8,angle+45,color)
+		rl.DrawPoly(center,4,5.8,angle+45,body)
 		rl.DrawPolyLinesEx(center,4,6.5,angle+45,1.4,bright)
 	case .Rogue_Dagger:
 		dir := rl.Vector2{math.cos(angle*math.PI/180),math.sin(angle*math.PI/180)}
@@ -2262,23 +2276,23 @@ draw_projectile :: proc(projectile: ^Projectile, feet: Vec2, alpha: f32, trails 
 		tip := center+dir*9
 		left := center-dir*5+perp*2.4
 		right := center-dir*5-perp*2.4
-		rl.DrawTriangle(tip,left,right,color)
+		rl.DrawTriangle(tip,left,right,body)
 		rl.DrawLineEx(left,tip,1.2,bright)
 		rl.DrawLineEx(right,tip,1.2,bright)
 	case .Arcanist_Arc:
-		rl.DrawRing(center,2.2,5.7,angle-135,angle+135,12,color)
+		rl.DrawRing(center,2.2,5.7,angle-135,angle+135,12,body)
 		rl.DrawCircleV(center,2.3,bright)
 	case .Acolyte_Spirit:
 		for i in 0..<3 {
 			orb_angle := age*240+f32(i)*120
 			offset := rl.Vector2{math.cos(orb_angle*math.PI/180)*4.5,math.sin(orb_angle*math.PI/180)*2.5}
-			rl.DrawCircleV(center+offset,2.4,rl.Fade(color,.82))
+			rl.DrawCircleV(center+offset,2.4,rl.Fade(color,.82*opacity))
 		}
 		rl.DrawCircleV(center,3.2,bright)
 	case .Ranger_Arrow:
 		dir := rl.Vector2{math.cos(angle*math.PI/180),math.sin(angle*math.PI/180)}
 		perp := rl.Vector2{-dir.y,dir.x}
-		rl.DrawLineEx(center-dir*7,center+dir*8,2,color)
+		rl.DrawLineEx(center-dir*7,center+dir*8,2,body)
 		rl.DrawTriangle(center+dir*9,center+dir*4+perp*3,center+dir*4-perp*3,bright)
 	}
 }

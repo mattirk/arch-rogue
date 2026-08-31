@@ -13,7 +13,7 @@ Difficulty_Id :: enum u8 {
 	Hell,
 }
 
-DEFAULT_DIFFICULTY :: Difficulty_Id.Medium
+DEFAULT_DIFFICULTY :: Difficulty_Id.Easy
 HELL_DIFFICULTY    :: Difficulty_Id.Hell
 
 Difficulty_Profile :: struct {
@@ -39,7 +39,7 @@ Difficulty_Profile :: struct {
 DIFFICULTY_PROFILES := [Difficulty_Id]Difficulty_Profile{
 	.Easy = {
 		name = "Easy",
-		description = "Still dangerous: tougher enemies, real ambush pressure, and fewer safety nets.",
+		description = "Default: still dangerous, with tougher enemies, real ambush pressure, and fewer safety nets.",
 		enemy_hp_multiplier = 1.76,
 		enemy_damage_multiplier = 1.64,
 		enemy_damage_bonus = 1,
@@ -57,15 +57,15 @@ DIFFICULTY_PROFILES := [Difficulty_Id]Difficulty_Profile{
 	},
 	.Medium = {
 		name = "Medium",
-		description = "Default: severe pressure with doubled monster durability, damage, traps, and room threats.",
+		description = "Severe pressure with doubled monster durability, damage, traps, and room threats.",
 		enemy_hp_multiplier = 2.36,
 		enemy_damage_multiplier = 2.30,
 		enemy_damage_bonus = 2,
 		enemy_speed_multiplier = 1.14,
 		enemy_attack_cooldown_multiplier = 0.82,
 		enemy_aggro_bonus = 1.40,
-		enemy_count_bonus = 1,
-		enemy_extra_chance = 0.70,
+		enemy_count_bonus = 0,
+		enemy_extra_chance = 0.50,
 		elite_bonus = 0.05,
 		miniboss_bonus = 0.03,
 		trap_chance_bonus = 0.10,
@@ -82,7 +82,7 @@ DIFFICULTY_PROFILES := [Difficulty_Id]Difficulty_Profile{
 		enemy_speed_multiplier = 1.18,
 		enemy_attack_cooldown_multiplier = 0.74,
 		enemy_aggro_bonus = 2.50,
-		enemy_count_bonus = 2,
+		enemy_count_bonus = 1,
 		enemy_extra_chance = 0.75,
 		elite_bonus = 0.16,
 		miniboss_bonus = 0.085,
@@ -117,7 +117,7 @@ difficulty_is_valid :: proc(difficulty: Difficulty_Id) -> bool {
 }
 
 // A malformed value, or persisted Hell before its first-clear unlock, falls
-// back to Medium just like OptionsMixin.sanitize_difficulty_name.
+// back to the current default difficulty.
 difficulty_normalize :: proc(difficulty: Difficulty_Id, hell_unlocked: bool) -> Difficulty_Id {
 	if !difficulty_is_valid(difficulty) do return DEFAULT_DIFFICULTY
 	if difficulty == .Hell && !hell_unlocked do return DEFAULT_DIFFICULTY

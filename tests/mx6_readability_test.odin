@@ -169,6 +169,8 @@ mx6_enemy_windup_telegraphs_cover_every_attack_family_and_count_down :: proc(t:^
 	testing.expect(t,melee.progress==0&&!melee.imminent,"a fresh windup must begin at zero progress without an impact warning")
 	testing.expect(t,ar.VISUAL_ENEMY_TELEGRAPH_WALL_ALPHA>=.35&&ar.VISUAL_ENEMY_TELEGRAPH_WALL_ALPHA<=.5,
 		"through-wall telegraph trace must remain prominent but subordinate to the normal tell")
+	testing.expect(t,ar.VISUAL_PROJECTILE_WALL_ALPHA==ar.VISUAL_ENEMY_TELEGRAPH_WALL_ALPHA,
+		"live projectiles and telegraph arrows must share one through-wall opacity")
 
 	enemy.windup=.2
 	late:=ar.visual_enemy_telegraph(&enemy)

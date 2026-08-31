@@ -15,22 +15,22 @@ m9_near :: proc(a, b: f32, epsilon: f32 = 1e-5) -> bool {
 }
 
 @(test)
-m9_difficulty_table_matches_pygame :: proc(t: ^testing.T) {
+m9_difficulty_table_and_default_match_contract :: proc(t: ^testing.T) {
 	expected := [ar.Difficulty_Id]ar.Difficulty_Profile{
 		.Easy = {
 			"Easy",
-			"Still dangerous: tougher enemies, real ambush pressure, and fewer safety nets.",
+			"Default: still dangerous, with tougher enemies, real ambush pressure, and fewer safety nets.",
 			1.76, 1.64, 1, 1.08, .90, .60, 0, .35, .03, .015, .05, 1.50, 0, 0,
 		},
 		.Medium = {
 			"Medium",
-			"Default: severe pressure with doubled monster durability, damage, traps, and room threats.",
-			2.36, 2.30, 2, 1.14, .82, 1.40, 1, .70, .05, .03, .10, 2.20, -.08, -.04,
+			"Severe pressure with doubled monster durability, damage, traps, and room threats.",
+			2.36, 2.30, 2, 1.14, .82, 1.40, 0, .50, .05, .03, .10, 2.20, -.08, -.04,
 		},
 		.Hard = {
 			"Hard",
 			"Brutal density, crushing hits, relentless attacks, and scarce recovery.",
-			2.85, 2.60, 5, 1.18, .74, 2.50, 2, .75, .16, .085, .25, 2.55, -.13, -.065,
+			2.85, 2.60, 5, 1.18, .74, 2.50, 1, .75, .16, .085, .25, 2.55, -.13, -.065,
 		},
 		.Hell = {
 			"Hell",
@@ -46,7 +46,7 @@ m9_difficulty_table_matches_pygame :: proc(t: ^testing.T) {
 			difficulty,
 		)
 	}
-	testing.expect(t, ar.DEFAULT_DIFFICULTY == .Medium, "fresh runs must default to Medium")
+	testing.expect(t, ar.DEFAULT_DIFFICULTY == .Easy, "fresh runs must default to Easy")
 }
 
 @(test)
@@ -58,11 +58,11 @@ m9_difficulty_lock_normalization_and_cycle :: proc(t: ^testing.T) {
 	testing.expect(t, ar.difficulty_cycle(.Hell, true) == .Easy)
 	testing.expect(t, ar.difficulty_cycle(.Easy, false, -1) == .Hard)
 	testing.expect(t, ar.difficulty_cycle(.Easy, true, -1) == .Hell)
-	testing.expect(t, ar.difficulty_normalize(.Hell, false) == .Medium, "locked Hell must sanitize to Medium")
+	testing.expect(t, ar.difficulty_normalize(.Hell, false) == .Easy, "locked Hell must sanitize to Easy")
 
 	bad_value := 99
 	bad := ar.Difficulty_Id(bad_value)
-	testing.expect(t, ar.difficulty_normalize(bad, true) == .Medium, "malformed difficulty must sanitize to Medium")
+	testing.expect(t, ar.difficulty_normalize(bad, true) == .Easy, "malformed difficulty must sanitize to Easy")
 }
 
 @(test)
@@ -80,8 +80,8 @@ m9_difficulty_apply_helpers_match_order_and_clamps :: proc(t: ^testing.T) {
 	testing.expect(t, m9_near(stats.attack_cooldown, .35), "enemy cooldown must clamp at .35 seconds")
 	testing.expect(t, m9_near(stats.aggro_range, 4.4))
 
-	testing.expect(t, ar.difficulty_enemy_count(2, .Hard, .74) == 5, "count bonus must precede the extra roll")
-	testing.expect(t, ar.difficulty_enemy_count(2, .Hard, .75) == 4, "extra chance uses a strict less-than roll")
+	testing.expect(t, ar.difficulty_enemy_count(2, .Hard, .74) == 4, "count bonus must precede the extra roll")
+	testing.expect(t, ar.difficulty_enemy_count(2, .Hard, .75) == 3, "extra chance uses a strict less-than roll")
 	testing.expect(t, m9_near(ar.difficulty_elite_chance(.50, .Hard), .55), "elite chance cap changed")
 	testing.expect(t, m9_near(ar.difficulty_miniboss_chance(.10, .Hell), .22), "miniboss chance cap changed")
 	testing.expect(t, m9_near(ar.difficulty_trap_chance(.35, .Hell), .70), "trap chance cap changed")
@@ -96,7 +96,7 @@ m9_option_defaults_normalize_and_cycle :: proc(t: ^testing.T) {
 	testing.expect(t, options.fullscreen, "fresh desktop install must be fullscreen")
 	testing.expect(t, options.frame_rate_cap == .FPS_60 && ar.frame_rate_cap_target(options.frame_rate_cap) == 60)
 	testing.expect(t, m9_near(options.view_zoom, 1.3))
-	testing.expect(t, options.difficulty == .Medium)
+	testing.expect(t, options.difficulty == .Easy)
 	testing.expect(t, options.controller_enabled && options.audio_enabled && options.lighting_enabled)
 	testing.expect(t, options.sfx_volume == .Percent_40 && options.music_volume == .Full)
 	mobile_options := ar.options_default()
@@ -152,7 +152,7 @@ m9_option_defaults_normalize_and_cycle :: proc(t: ^testing.T) {
 	ar.options_normalize(&options,false)
 	testing.expect(t, options.frame_rate_cap == .FPS_60)
 	testing.expect(t, m9_near(options.view_zoom, ar.OPTIONS_VIEW_ZOOM_DEFAULT))
-	testing.expect(t, options.difficulty == .Medium)
+	testing.expect(t, options.difficulty == .Easy)
 }
 
 @(test)
