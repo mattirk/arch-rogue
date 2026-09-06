@@ -940,6 +940,30 @@ mx_save_corruption_is_isolated_between_options_profile_and_run :: proc(t:^testin
 }
 
 @(test)
+mx_save_replace_unicode_paths_releases_owned_conversion_buffers :: proc(t:^testing.T) {
+	paths,ok:=mx_save_temp_paths(t)
+	if !ok do return
+	defer mx_save_cleanup_paths(&paths)
+	source,source_err:=filepath.join([]string{paths.directory,"väliaikainen-保存.tmp"},context.allocator)
+	defer delete(source)
+	destination,destination_err:=filepath.join([]string{paths.directory,"päätös-保存.json"},context.allocator)
+	defer delete(destination)
+	testing.expect(t,source_err==nil&&destination_err==nil)
+	if source_err!=nil||destination_err!=nil do return
+	for i in 0..<3 {
+		data:=fmt.aprintf("revision-%d",i)
+		defer delete(data)
+		testing.expect(t,ar.storage_write_synced(source,transmute([]byte)data))
+		testing.expect(t,ar.storage_replace_write_through(source,destination))
+		testing.expect(t,!ar.storage_file_exists(source))
+		loaded,status:=ar.storage_read_bounded(destination,1024)
+		defer delete(loaded)
+		testing.expect(t,status==.Valid&&string(loaded)==data)
+	}
+	testing.expect(t,!ar.storage_replace_write_through(source,destination),"missing source must fail cleanly")
+}
+
+@(test)
 mx_save_abandon_removes_all_run_artifacts_without_chronicle_or_backup_resurrection :: proc(t:^testing.T) {
 	paths,paths_ok:=mx_save_temp_paths(t)
 	if !paths_ok do return

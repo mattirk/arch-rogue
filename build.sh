@@ -20,10 +20,17 @@ case "$cmd" in
   test)
     verify_toolchain odin
     test_output=build/archrogue_tests
+    test_platform_flags=()
     case "$(uname -s)" in
-      MINGW*|MSYS*|CYGWIN*) test_output+=.exe ;;
+      MINGW*|MSYS*|CYGWIN*)
+        test_output+=.exe
+        # Persistence fixtures nest large by-value records. Match the Linux
+        # test stack reserve instead of inheriting MSVC's smaller default.
+        test_platform_flags=(-extra-linker-flags:/STACK:8388608 -define:ODIN_TEST_LOG_STATE_CHANGES=true)
+        export MSYS2_ARG_CONV_EXCL="${MSYS2_ARG_CONV_EXCL:+$MSYS2_ARG_CONV_EXCL;}-extra-linker-flags:"
+        ;;
     esac
-    odin test tests "-out:$test_output" -vet "$@"
+    odin test tests "-out:$test_output" -vet -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true "${test_platform_flags[@]}" "$@"
     ;;
   android-preflight) exec bash ./tools/android.sh preflight "$@" ;;
   android-debug)     exec bash ./tools/android.sh debug "$@" ;;

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix mismatched allocator ownership in Windows save-path conversion and an
+  invalid string free in the input test fixture. Make allocator errors fail
+  headless tests; reserve an 8 MiB Windows test stack and log test transitions
+  to diagnose abrupt native exits.
 - Add native Windows x64 CI with pinned Odin/raylib inputs, PE and asset audits,
   headless tests, isolated software-OpenGL smoke, and a GitHub release ZIP.
 - Publish Linux and Windows Steam depots together after both build gates;

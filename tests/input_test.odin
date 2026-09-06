@@ -4,6 +4,7 @@ package archrogue_tests
 // Desktop_Input -> Intent and all held-input simulation behavior are pure.
 
 import "core:math"
+import "core:strings"
 import "core:testing"
 import ar "../src"
 
@@ -548,7 +549,7 @@ held_movement_survives_noop_interact_without_forcing_critical_save :: proc(t: ^t
 	ar.app_init(&app, ar.derive_seed(54, 0))
 	defer ar.run_destroy(&app.run)
 	ar.run_start(&app.run, app.seed, .Warden)
-	app.run.run_id = "input-interact-test"
+	app.run.run_id = strings.clone("input-interact-test")
 	app.mode = .Playing
 	app.story_panel = {}
 	app.run.story_runtime.requests = {}

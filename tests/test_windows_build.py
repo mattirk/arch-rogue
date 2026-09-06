@@ -61,10 +61,13 @@ class WindowsAuditTests(unittest.TestCase):
                     )
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     suffix = '.exe' if windows else ''
-                    self.assertEqual(arguments.read_text().splitlines(), [
+                    expected = [
                         'test', 'tests', f'-out:build/archrogue_tests{suffix}',
-                        '-vet', '-define:ODIN_TEST_THREADS=1',
-                    ])
+                        '-vet', '-define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true',
+                    ]
+                    if windows:
+                        expected += ['-extra-linker-flags:/STACK:8388608', '-define:ODIN_TEST_LOG_STATE_CHANGES=true']
+                    self.assertEqual(arguments.read_text().splitlines(), expected + ['-define:ODIN_TEST_THREADS=1'])
 
     @unittest.skipIf(os.name == 'nt', 'fake POSIX executables model Git Bash output')
     def test_windows_compiler_pin_accepts_crlf_and_rejects_revision_or_backend_drift(self):
