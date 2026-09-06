@@ -42,11 +42,28 @@ class WindowsAuditTests(unittest.TestCase):
             uname.write_text('#!/bin/sh\nprintf "MINGW64_NT-10.0\\n"\n')
             uname.chmod(0o755)
             env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'], ODIN_SOURCE_DIR=str(root / 'no-checkout'))
-            for revision, backend, succeeds in [('301c287de', '20.1.0', True), ('ab0131c', '20.1.0', False), ('301c287de', '21.1.8', False)]:
-                odin.write_text(f'#!/bin/sh\nif [ "$1" = version ]; then printf "odin version dev-2026-07:{revision}\\r\\n"; else printf "Backend: LLVM {backend}\\r\\n"; fi\n')
-                odin.chmod(0o755)
-                result = subprocess.run(['bash', str(ROOT / 'tools/verify_toolchain.sh'), 'odin'], env=env, capture_output=True, text=True)
-                self.assertEqual(result.returncode == 0, succeeds, result.stdout + result.stderr)
+            odin.write_text('#!/bin/sh\nif [ "$1" = version ]; then printf "%s\\r\\n" "$FAKE_ODIN_BANNER"; else printf "Backend: LLVM %s\\r\\n" "$FAKE_ODIN_BACKEND"; fi\n')
+            odin.chmod(0o755)
+            executables = [
+                'odin', 'odin.exe', '/opt/odin/odin',
+                r'D:\a\arch-rogue-master\arch-rogue-master\build\windows\toolchain\odin\odin.exe',
+                r'C:\Program Files\Odin\odin.exe',
+                'D:/a/arch-rogue-master/build/windows/toolchain/odin/odin.exe',
+            ]
+            for executable in executables:
+                for version, revision, backend, succeeds in [
+                    ('dev-2026-07', '301c287', '20.1.0', True),
+                    ('dev-2026-07', '301c287de', '20.1.0', True),
+                    ('dev-2026-07', 'ab0131c', '20.1.0', False),
+                    ('dev-2026-07', '301c287de', '21.1.8', False),
+                    ('dev-2026-06', '301c287de', '20.1.0', False),
+                    ('dev-2026-07', '301c287 extra', '20.1.0', False),
+                ]:
+                    banner = f'{executable} version {version}:{revision}'
+                    with self.subTest(banner=banner, backend=backend):
+                        env.update(FAKE_ODIN_BANNER=banner, FAKE_ODIN_BACKEND=backend)
+                        result = subprocess.run(['bash', str(ROOT / 'tools/verify_toolchain.sh'), 'odin'], env=env, capture_output=True, text=True)
+                        self.assertEqual(result.returncode == 0, succeeds, result.stdout + result.stderr)
 
     def test_pinned_archive(self):
         audit.verify_raylib()

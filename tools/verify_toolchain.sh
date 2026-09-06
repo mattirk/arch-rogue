@@ -66,12 +66,19 @@ emit_metadata() {
 verify_odin() {
     command -v odin >/dev/null 2>&1 || fail "Odin is missing; install $ODIN_VERSION at $ODIN_COMMIT with LLVM $ODIN_BACKEND_LLVM_VERSION"
 
-    local detected version_prefix reported_commit
+    local detected version_banner version_prefix reported_commit
     detected="$(odin version 2>&1 | tr -d '\r' | sed -n '1p')"
+    # Odin prints argv[0], which can be an absolute Windows executable path.
+    # Normalize only the executable spelling; keep version/revision checks exact.
+    version_banner="${detected//\\//}"
+    version_banner="${version_banner##*/}"
     version_prefix="odin version $ODIN_VERSION:"
-    [[ "$detected" == "$version_prefix"* ]] || \
+    if [[ "$version_banner" == "odin.exe "* ]]; then
+        version_prefix="odin.exe version $ODIN_VERSION:"
+    fi
+    [[ "$version_banner" == "$version_prefix"* ]] || \
         fail "expected $ODIN_VERSION at $ODIN_COMMIT, found ${detected:-unknown}; see README.md toolchain setup"
-    reported_commit="${detected#"$version_prefix"}"
+    reported_commit="${version_banner#"$version_prefix"}"
     [[ "$reported_commit" =~ ^[0-9a-f]{7,40}$ && "$ODIN_COMMIT" == "$reported_commit"* ]] || \
         fail "Odin reported revision ${reported_commit:-missing}, not pinned $ODIN_COMMIT"
 
