@@ -724,7 +724,7 @@ special_room_wall_world_key :: proc(kind: Special_Room_Kind, left_face: bool) ->
 MAX_WORLD_FRAMES :: 10
 
 // HD world sprite: `variants` are a per-tile static choice (10 wall faces,
-// 4 floor slabs), `frames` are a time animation (stairs), optionally
+// 8 floor slabs), `frames` are a time animation (stairs), optionally
 // ping-pong. Drawn at TILE_W / ref_width so any source resolution spans
 // exactly its authored tile footprint.
 World_Sprite :: struct {

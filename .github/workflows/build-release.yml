@@ -104,6 +104,7 @@ jobs:
           python3 tools/verify_story_assets.py
           python3 tools/verify_turn_page_assets.py
           python3 tools/verify_chronicle_assets.py
+          python3 tools/verify_floor_assets.py
 
       - name: Run public-mirror and website regressions
         run: python3 -m unittest tests.test_sfx_bundle tests.test_public_mirror tests.test_website tests.test_repository_layout

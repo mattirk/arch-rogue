@@ -124,20 +124,43 @@ mx7_floor_variants_are_seeded_without_coordinate_bands :: proc(t: ^testing.T) {
 	first := ar.visual_floor_variant(seed,3,2,10,11)
 	testing.expect(t,first == ar.visual_floor_variant(seed,3,2,10,11),"floor variant changed without regenerating the floor")
 
-	counts: [4]int
+	counts: [8]int
 	diagonal_mask: u8
 	changed_on_next_floor := 0
 	for x in 0..<16 {
 		for y in 0..<16 {
-			variant := ar.visual_floor_variant(seed,3,2,x,y) % 4
+			variant := ar.visual_floor_variant(seed,3,2,x,y) & 7
 			counts[variant] += 1
 			if x == y do diagonal_mask |= u8(1 << u32(variant))
-			if ar.visual_floor_variant(seed,4,3,x,y) % 4 != variant do changed_on_next_floor += 1
+			if ar.visual_floor_variant(seed,4,3,x,y) & 7 != variant do changed_on_next_floor += 1
 		}
 	}
-	for count in counts do testing.expect(t,count >= 32 && count <= 96,"floor hash stopped distributing all four rotations")
-	testing.expect(t,diagonal_mask == 0x0f,"floor rotations fell back into a constant diagonal generation band")
-	testing.expect(t,changed_on_next_floor > 128,"floor rotation field did not change enough across generated floors")
+	for count in counts do testing.expect(t,count >= 16 && count <= 64,"floor hash stopped distributing all eight slab variants")
+	diagonal_variants := 0
+	for i in 0..<8 do if diagonal_mask & u8(1 << u32(i)) != 0 do diagonal_variants += 1
+	testing.expect(t,diagonal_variants >= 6,"floor variants fell back into diagonal generation bands")
+	testing.expect(t,changed_on_next_floor > 192,"floor variant field did not change enough across generated floors")
+}
+
+@(test)
+mx7_charcoal_floor_matches_approved_seed_71_layout :: proc(t: ^testing.T) {
+	// Approved V2 review: rows are y, columns are x; indices address the eight
+	// canonical manifest entries. The seed selects placement, not new pixels.
+	expected := [7][7]int{
+		{6,7,6,1,3,6,1},
+		{5,7,7,7,4,2,0},
+		{1,1,5,3,7,6,7},
+		{7,2,7,4,1,3,4},
+		{2,7,4,3,2,2,7},
+		{3,3,5,5,4,7,7},
+		{1,0,5,7,0,7,0},
+	}
+	for row,y in expected do for variant,x in row {
+		// Equivalent to the renderer's normalized modulo-eight selection even
+		// when the 32-bit target represents the hash as a signed int.
+		actual := ar.visual_floor_variant(71,1,0,x,y) & 7
+		testing.expectf(t,actual == variant,"approved floor placement changed at (%v,%v): %v != %v",x,y,actual,variant)
+	}
 }
 
 @(test)

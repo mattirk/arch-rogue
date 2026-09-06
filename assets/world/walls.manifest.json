@@ -1,0 +1,189 @@
+{
+  "description": "Human-approved wall 403 variation sheet, extracted into existing runtime wall slots.",
+  "generation": "Built-in imagegen; wall_403 structural reference with existing crack, hole, damp, lichen, fissure, vine, masonry and carved-mark motifs.",
+  "source_sheet_sha256": "8b625730ded132adad6b52b950de8364372950672c217c48a3990f2b80d20e4b",
+  "processing": "tools/normalize_wall_assets.py: one affine top-plane map preserves the raised slab; smooth side-plane mapping fits the shared 2:1 prism. Nearest opaque source stone fills missing edge samples without exposing transparent RGB. Exact 392px span, x=256 center, ground center y=384.",
+  "assets": {
+    "wall_401.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        60,
+        56,
+        453,
+        483
+      ],
+      "sha256": "5e8bd39fb92dc95215f162fadffcb4840c06d9270f942a7d7033250a7faadb83",
+      "extracted_source_sha256": "7cbe2f784cc829882f324a99b20344bde317ec17a3cc4c9516b9781277ef6409"
+    },
+    "wall_402.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        60,
+        56,
+        453,
+        483
+      ],
+      "sha256": "b1231ff80af4f9be81c1e2ce66467cc18d193e91bd8039115284067e2366d6bf",
+      "extracted_source_sha256": "c9f5a82abde1cbac5fa0c19f4c66ce6f3ef3adad408772788145540cda41dd56"
+    },
+    "wall_403.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        60,
+        56,
+        453,
+        483
+      ],
+      "sha256": "cdc5f6ccade6956cefd6b09937574ea67350224dd218d06f4f10b2a8c482fa61",
+      "extracted_source_sha256": "a403bbabd2e4b039af7108edd013df177b9dbb7844eb43a5438930d06f4c70bc"
+    },
+    "wall_404.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        60,
+        56,
+        453,
+        483
+      ],
+      "sha256": "5c3a50b5fc9fc60a1508e27c6441661904903a29f85c7238fa89135d0537906a",
+      "extracted_source_sha256": "627425942fbf0187a8e369c03f342844002b3ff67b8533b9a0821d6b7d1ad88f"
+    },
+    "wall_405.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        60,
+        56,
+        453,
+        483
+      ],
+      "sha256": "4ecc316291da98453ba08f4c39007a24251348bf932e9b7340ccd1f99fd09aa1",
+      "extracted_source_sha256": "713983b738376f019bf17baaa33519ec5e5bbf48cf5ebdbe6c14500bec04d3e1"
+    },
+    "wall_406.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        60,
+        56,
+        453,
+        483
+      ],
+      "sha256": "d497bd0c1dff95a69e1aae7c6c67fb66c668be60cf7995cfea1aa14a08e0350f",
+      "extracted_source_sha256": "f8d90ccac5ac968ad361f9d0807396d15cfb9c93968f3e9295cc2cec76fb544f"
+    },
+    "wall_407.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        60,
+        56,
+        453,
+        483
+      ],
+      "sha256": "cc24ba51494fe1f9c35e4ddbc9d59df6d0b9a997733abe041c3d1065168bbd57",
+      "extracted_source_sha256": "1c35f727aaa03cdda0fb4c5633d236fc68f704b7b9c033662f1d81e351315b5f"
+    },
+    "wall_408.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        60,
+        56,
+        453,
+        483
+      ],
+      "sha256": "97b940af03268e38cacf7f8e55c9937a7d4808d21f95749e93048412c192a705",
+      "extracted_source_sha256": "ff61483038e899a45345b7a5ebd6cced6018ab82c7d1ed6a5396153556ef71b6"
+    },
+    "wall_409.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        60,
+        56,
+        453,
+        483
+      ],
+      "sha256": "5fe658ba39cdbadf92775cf0cdff07923013ce55c4f2d19373b52033a6b053c5",
+      "extracted_source_sha256": "f695d22c6706cab610b81ce5bc8b3a743f33be84b6e3bb1e8499f4f53ab5c7c0"
+    },
+    "wall_410.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        60,
+        56,
+        453,
+        483
+      ],
+      "sha256": "24c0c8b423c093d58d3ad78593e8c9d6178ceeb8945beb2bc813d1b5ce75faaf",
+      "extracted_source_sha256": "dbe1dc27522df34b76e73303eb1be9b7b1d6b8daa0e70a4fc050f01743fdd824"
+    }
+  },
+  "geometry": {
+    "anchor": [
+      256,
+      384
+    ],
+    "ref_width": 392,
+    "top_corners": [
+      [
+        256,
+        56
+      ],
+      [
+        452,
+        154
+      ],
+      [
+        256,
+        252
+      ],
+      [
+        60,
+        154
+      ]
+    ],
+    "ground_corners": [
+      [
+        256,
+        286
+      ],
+      [
+        452,
+        384
+      ],
+      [
+        256,
+        482
+      ],
+      [
+        60,
+        384
+      ]
+    ],
+    "wall_height": 230
+  },
+  "rear_edge_detail": {
+    "generator": "built-in imagegen",
+    "source_sha256": "f9e1d02e4c2e33b82ff9cc42164c96f52045d42ba9d633c06caca7eb2c671549",
+    "processing": "tools/coarsen_wall_edges.py; bounded luminance detail in 12px bands inside the northwest/northeast rear edges; source alpha and all other pixels preserved.",
+    "prompt": "Subtle irregular chipped gray stone, broken edge highlights, tiny shallow nicks, weathering and small pits only along the two uppermost outer rear diagonal edges; preserve 2:1 silhouette, raised center slab, wall faces and palette."
+  },
+  "rear_edge_chips": {
+    "processing": "tools/chip_wall_edges.py, after coarse texture pass",
+    "edges": [
+      "northwest",
+      "northeast"
+    ],
+    "chips_per_edge": 6,
+    "maximum_depth_px": 3,
+    "seed": "0x57414c4c + wall variant number",
+    "policy": "Transparent shallow wedges only; surviving RGB/alpha unchanged; preserve rear apex and both lateral corners."
+  }
+}

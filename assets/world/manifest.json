@@ -522,7 +522,11 @@
     "floor.png",
     "floor_002.png",
     "floor_003.png",
-    "floor_004.png"
+    "floor_004.png",
+    "floor_005.png",
+    "floor_006.png",
+    "floor_007.png",
+    "floor_008.png"
    ]
   },
   "garden_floor": {
@@ -553,7 +557,11 @@
     "floor.png",
     "floor_002.png",
     "floor_003.png",
-    "floor_004.png"
+    "floor_004.png",
+    "floor_005.png",
+    "floor_006.png",
+    "floor_007.png",
+    "floor_008.png"
    ]
   },
   "guiding_overlay": {

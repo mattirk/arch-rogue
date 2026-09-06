@@ -2,6 +2,20 @@
 
 ## 6.0.0-alpha.27 — Turn the Page
 
+- Replace the four basic floor sprites with the eight approved V2 charcoal
+  slabs, including varied stone lengths, cross-joints, wear and chips. Keep
+  matching edges, existing anchors and theme lighting; special-room art is
+  unchanged. Pin the approved Seed 71 placement and asset hashes, and verify
+  all tile joins in CI.
+- Replace dungeon wall variants 401–410 with the approved wall-403-based
+  artwork, rectified to a shared 2:1 wall prism so cap and ground edges join
+  straight in both grid directions. Preserve runtime anchors and record asset
+  hashes; verify actual alpha silhouettes as well as dimensions.
+- Keep raised wall slabs straight during normalization and fill transparent
+  source chips with adjacent stone rather than exposing black RGB at joins.
+- Add subtle coarse stone detail to both upper rear edges of every dungeon
+  wall variant, plus varied shallow silhouette chips on those edges. Preserve
+  the raised slab artwork, corner positions and remaining prism boundaries.
 - Give Mistbound ghosts 0.20 seconds longer to catch: 1.12 seconds for Preserve,
   0.92 for Release, and 0.74 for Refuse.
 - Lower the default SFX volume to 30%, preserving saved volume preferences.

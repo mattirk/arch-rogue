@@ -147,10 +147,10 @@ visual_turn_page_ink_wisp :: proc(seed:u64,age:f32,index:int)->Visual_Turn_Page_
 	}
 }
 
-// Static floor art commonly has four rotated variants. A linear coordinate
-// expression creates obvious diagonal bands after modulo-four selection, so
-// hash the floor identity and both tile axes instead. The result is stable for
-// a generated floor but changes with the run, depth, or regeneration epoch.
+// The basic floor has eight compatible charcoal slab variants. Hash the floor
+// identity and both tile axes to avoid the diagonal bands a linear coordinate
+// expression creates. Selection is stable for a generated floor but changes
+// with the run, depth, or regeneration epoch.
 VISUAL_FLOOR_VARIANT_SALT :: u64(0x464C4F4F525F5641)
 
 visual_floor_variant :: proc(seed: u64, depth: int, epoch: u32, x, y: int) -> int {

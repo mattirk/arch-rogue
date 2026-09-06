@@ -1,0 +1,153 @@
+{
+  "description": "Human-approved V2 varied charcoal slabs for ordinary dungeon floors, including the shared base under the guiding overlay.",
+  "generation": "Existing floor stone artwork with PixelLab-derived weathering, prepared into connected D flagstone, mapped to the D5 charcoal palette, then varied locally in slab subdivision, joint position and surface wear.",
+  "processing": "Approved 512x512 RGBA sprites copied byte for byte into canonical asset slots; no regeneration, color adjustment or resampling during installation.",
+  "review": {
+    "selection": "V2 - Varied slabs",
+    "palette": "D5 - Charcoal",
+    "layout_seed": 71,
+    "seed_scope": "Review tile placement only; all eight approved tile images are shared by the review seeds. This is not a gameplay or texture-generation seed.",
+    "historical_review_directory": "build/wall-refinement-basic-2026/d5-variation/02-varied-slabs",
+    "runtime_source": "Canonical PNGs in assets/world; no review staging files are loaded or regenerated at runtime."
+  },
+  "source_quality": {
+    "approval": "User approved V2 with the Seed 71 review layout for implementation.",
+    "continuity": "Shared textured 12px source-plane collar and matching mortar profiles allow every directed pair of the eight variants to join along both isometric axes.",
+    "variation": "Interior slab lengths, subdivisions and cross-joint positions vary with stone shading, mottled wear, pits and occasional hairline fractures.",
+    "geometry": "All variants retain the reviewed D5 alpha silhouette and lower masonry lip; the canonical walking plane has a 2:1 diamond footprint."
+  },
+  "assets": {
+    "floor.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        0,
+        192,
+        512,
+        478
+      ],
+      "sha256": "9b23579d337ac9b822d2dd728feecab91868196a47c9a992ac19bcde5c1ff8e7",
+      "approved_source_sha256": "9b23579d337ac9b822d2dd728feecab91868196a47c9a992ac19bcde5c1ff8e7"
+    },
+    "floor_002.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        0,
+        192,
+        512,
+        478
+      ],
+      "sha256": "ed883a65859993f06fac640830399db37e7744aab0fbc25204ea42c70161eef5",
+      "approved_source_sha256": "ed883a65859993f06fac640830399db37e7744aab0fbc25204ea42c70161eef5"
+    },
+    "floor_003.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        0,
+        192,
+        512,
+        478
+      ],
+      "sha256": "67a7e9c60a9f6003b1ce0731bd9de7939c7219dfac23f4ef2461c838e7431db4",
+      "approved_source_sha256": "67a7e9c60a9f6003b1ce0731bd9de7939c7219dfac23f4ef2461c838e7431db4"
+    },
+    "floor_004.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        0,
+        192,
+        512,
+        478
+      ],
+      "sha256": "19bdbb8b76da24a1bb0d0c2c1878c3c04aa2136b6a8a6637ced743451b772ffd",
+      "approved_source_sha256": "19bdbb8b76da24a1bb0d0c2c1878c3c04aa2136b6a8a6637ced743451b772ffd"
+    },
+    "floor_005.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        0,
+        192,
+        512,
+        478
+      ],
+      "sha256": "4ae4c6278d7bdeecb39da1365ddf0b0ebcef53f76a92968dfd0bfb3e4ec9f7bc",
+      "approved_source_sha256": "4ae4c6278d7bdeecb39da1365ddf0b0ebcef53f76a92968dfd0bfb3e4ec9f7bc"
+    },
+    "floor_006.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        0,
+        192,
+        512,
+        478
+      ],
+      "sha256": "d493b35c5677d238afbc75325798bfca2ce9a0047c0e054dcdda2f1af9b69edf",
+      "approved_source_sha256": "d493b35c5677d238afbc75325798bfca2ce9a0047c0e054dcdda2f1af9b69edf"
+    },
+    "floor_007.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        0,
+        192,
+        512,
+        478
+      ],
+      "sha256": "522b269b435728412ba4070179aed8923e0ec963ea636a6157a9978cc2516589",
+      "approved_source_sha256": "522b269b435728412ba4070179aed8923e0ec963ea636a6157a9978cc2516589"
+    },
+    "floor_008.png": {
+      "width": 512,
+      "height": 512,
+      "alpha_bounds": [
+        0,
+        192,
+        512,
+        478
+      ],
+      "sha256": "5864ad584cb1b909ed422f91f34a23e00963bf7cde6f617513c78658ff9aa030",
+      "approved_source_sha256": "5864ad584cb1b909ed422f91f34a23e00963bf7cde6f617513c78658ff9aa030"
+    }
+  },
+  "geometry": {
+    "anchor": [
+      256,
+      320
+    ],
+    "ref_width": 512,
+    "top_corners": [
+      [
+        256,
+        192
+      ],
+      [
+        512,
+        320
+      ],
+      [
+        256,
+        448
+      ],
+      [
+        0,
+        320
+      ]
+    ],
+    "top_plane": [
+      256,
+      256
+    ],
+    "shared_collar_px": 12,
+    "alpha_sha256": "d38de3bbd0bec16947b345512e7875c548f6bd83db76ebc07817def70db15139"
+  },
+  "continuity": {
+    "directed_pair_count": 128,
+    "axes": 2,
+    "policy": "Final exported RGBA boundary samples must match for every ordered variant pair; every sampled walking-plane pixel must be opaque."
+  }
+}
