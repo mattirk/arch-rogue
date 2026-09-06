@@ -53,7 +53,12 @@ class WindowsAuditTests(unittest.TestCase):
                  patch.object(windows_build, 'pe_imports'), \
                  patch.object(windows_build.subprocess, 'run') as run:
                 windows_build.build()
-                self.assertEqual(run.call_args_list[0].args[0], [str(bash), 'tools/verify_toolchain.sh', 'odin'])
+                verification_command = run.call_args_list[0].args[0]
+                # resolve() expands Windows 8.3 paths such as RUNNER~1.
+                # Check the selected file, not its short/long path spelling.
+                self.assertTrue(Path(verification_command[0]).samefile(bash))
+                self.assertFalse(Path(verification_command[0]).samefile(wsl))
+                self.assertEqual(verification_command[1:], ['tools/verify_toolchain.sh', 'odin'])
                 self.assertEqual(run.call_args_list[1].args[0][0:3], ['odin', 'build', 'src'])
                 bash.unlink()
                 with self.assertRaisesRegex(SystemExit, 'Git for Windows Bash was not found'):
