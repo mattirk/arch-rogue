@@ -257,7 +257,7 @@ music_selector_maps_screens_to_mixes :: proc(t: ^testing.T) {
 		"the Garden minigame must retain spatial Dungeon music")
 	app.story_minigame.kind = .Bind_The_Page
 	testing.expect(t, ar.music_mix_for(&app) == ar.MUSIC_MIX_MENU,
-		"non-Garden minigames remain score-changing story modals")
+		"Turn the Page retains its existing manuscript music")
 	app.story_minigame.kind = .Mirror_The_Unlost
 	app.story_minigame.phase = .Preview
 	testing.expect(t, ar.music_mix_for(&app) == ar.MUSIC_MIX_SOUL_HUNT_WAIT,

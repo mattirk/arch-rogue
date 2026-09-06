@@ -389,3 +389,17 @@ Environment variables read at startup (all optional):
   bypassed accidentally.
 - Live input can be driven with `xdotool keydown --window <id> d` etc. while
   a delayed SHOT runs — how walk/facing/camera-follow get verified headlessly.
+
+## Turn the Page alternate world (6.0.0-alpha.27)
+
+The scheduled `Bind_The_Page` ledger identity now launches the manuscript
+challenge in `src/turn_page.odin`. The real dungeon remains resident and frozen;
+only explicitly captured player presentation fields and dash cooldown are
+borrowed, then restored before reward and relic continuation. Rendering reads
+an independent tile lattice and never queries dungeon LOS at virtual positions.
+
+Run schema 3 adds a fixed-size `Turn_Page_State` payload. The existing minigame
+struct remains unchanged so schema-1/2 JSON checksum verification can use exact
+retained payload shapes. Legacy modal Bind saves restart safely instead of
+interpreting board indices as world coordinates. See [TURNPAGE_MINIGAME.md](TURNPAGE_MINIGAME.md)
+for generation, collision, playback and acceptance details.

@@ -2754,7 +2754,7 @@ story_panel_layout_for_app :: proc(
 
 story_modal_layout :: proc(app: ^App, viewport_w, viewport_h: int) -> (layout: Story_Modal_Layout) {
 	if app == nil do return
-	if app_story_minigame_active(app) && !app_story_soul_hunt_active(app) {
+	if app_story_minigame_active(app) && !app_story_world_minigame_active(app) {
 		columns, _ := app_story_minigame_grid(app)
 		layout.kind = .Minigame
 		layout.minigame = story_minigame_ui_layout(
@@ -2808,7 +2808,7 @@ story_minigame_cell_at :: proc(
 	viewport_w, viewport_h: int,
 	point: Vec2,
 ) -> (index: int, found: bool) {
-	if !app_story_minigame_active(app) || app_story_soul_hunt_active(app) do return 0, false
+	if !app_story_minigame_active(app) || app_story_world_minigame_active(app) do return 0, false
 	columns, _ := app_story_minigame_grid(app)
 	layout := story_minigame_ui_layout(viewport_w, viewport_h, app.story_minigame.board_count, columns)
 	return story_minigame_ui_cell_at(&layout, point)
@@ -2823,7 +2823,7 @@ story_modal_hit_test :: proc(
 	point: Vec2,
 ) -> Story_Modal_Hit {
 	if app == nil do return {}
-	if app_story_minigame_active(app) && !app_story_soul_hunt_active(app) {
+	if app_story_minigame_active(app) && !app_story_world_minigame_active(app) {
 		columns, _ := app_story_minigame_grid(app)
 		layout := story_minigame_ui_layout(viewport_w, viewport_h, app.story_minigame.board_count, columns)
 		if cell, found := story_minigame_ui_cell_at(&layout, point); found {
@@ -2855,7 +2855,7 @@ story_minigame_cell_view :: proc(
 	state: ^Story_Minigame_State,
 	cell, cursor: int,
 ) -> (view: Story_Minigame_Cell_View) {
-	if state == nil || cell < 0 || cell >= state.board_count do return
+	if state == nil || state.kind != .Wake_The_Moonbloom || cell < 0 || cell >= state.board_count do return
 	view.selected = cell == cursor && (state.phase == .Ready || state.phase == .Play)
 	view.matched = state.matched[cell]
 	view.last_correct = cell == state.last_cell && state.last_correct
@@ -2865,12 +2865,10 @@ story_minigame_cell_view :: proc(
 		view.face_up = false
 	case .Preview:
 		view.face_up = true
-		if state.kind == .Bind_The_Page do view.active = cell == story_minigame_preview_cell(state)
 		if state.kind == .Wake_The_Moonbloom do view.active = cell == state.active_cell
 	case .Play:
 		switch state.kind {
-		case .Bind_The_Page:
-			view.face_up = true
+		case .Bind_The_Page: // world-space; no cells
 		case .Wake_The_Moonbloom:
 			view.face_up = true
 			view.active = cell == state.active_cell

@@ -7,6 +7,146 @@ package archrogue
 
 import "core:math"
 
+// World art uses one uniform scale and places its authored anchor at the tile
+// center. The manuscript slab shares the Mist chamber's silhouette and anchor,
+// so intact tiles and fragments can use this same placement without distortion.
+visual_world_sprite_layout :: proc(tile, texture_size, anchor:Vec2, scale:f32)->(position,size:Vec2) {
+	return world_from_tile(tile+{.5,.5})-anchor*scale,texture_size*scale
+}
+
+// Both ritual slabs have their top-face center at source y=304 and anchor at
+// y=320, scaled by 64/512. Keep manuscript ink on that surface, above the sides.
+VISUAL_TURN_PAGE_SURFACE_OFFSET :: Vec2{0,-2}
+
+// A restrained, rigid roll of the manuscript island. Reuse the saved player
+// clock borrowed by this world so pauses, page changes and resume cannot reset
+// the motion; no presentation accumulator enters authoritative state.
+VISUAL_TURN_PAGE_ROLL_DEGREES :: f32(8)
+VISUAL_TURN_PAGE_ROLL_SECONDS :: f32(60)
+VISUAL_TURN_PAGE_DRIFT_PIXELS :: f32(3)
+VISUAL_TURN_PAGE_DRIFT_SECONDS :: f32(12)
+
+Visual_Turn_Page_Motion :: struct {
+	rotation: f32, // raylib Camera2D degrees
+	drift: Vec2, // world pixels, applied along the screen axes before zoom
+}
+
+visual_turn_page_motion_age :: proc(app:^App,alpha:f32)->f32 {
+	if !app_story_turn_page_active(app) do return 0
+	render_alpha:=app.mode==.Playing?clamp(alpha,f32(0),f32(1)):f32(1)
+	return max(f32(0),app.run.player.sim_elapsed-app.turn_page.return_player.sim_elapsed-(1-render_alpha)*SIM_DT)
+}
+
+visual_turn_page_motion :: proc(age:f32)->Visual_Turn_Page_Motion {
+	time:=max(f32(0),age)
+	return {
+		VISUAL_TURN_PAGE_ROLL_DEGREES*math.sin(time*(2*math.PI/VISUAL_TURN_PAGE_ROLL_SECONDS)),
+		{0,VISUAL_TURN_PAGE_DRIFT_PIXELS*math.sin(time*(2*math.PI/VISUAL_TURN_PAGE_DRIFT_SECONDS))},
+	}
+}
+
+visual_turn_page_motion_point :: proc(point:Vec2,motion:Visual_Turn_Page_Motion)->Vec2 {
+	center:=world_from_tile({TURN_PAGE_SIZE*.5,TURN_PAGE_SIZE*.5})
+	return center+vec_rotate(point-center,motion.rotation*math.PI/180)+motion.drift
+}
+
+// Four distant scraps share a slow orbit, with bounded individual phase drift.
+// Quarter-turn spacing keeps the void sparse even during a long game. Their
+// offsets live below the island in the unrolled camera, so the island's motion
+// and their different radii suggest depth without moving any gameplay geometry.
+VISUAL_TURN_PAGE_PARCHMENT_COUNT :: 4
+
+Visual_Turn_Page_Parchment :: struct {
+	offset: Vec2, // world pixels relative to the manuscript center, before roll
+	width, rotation, opacity: f32,
+	variant: int,
+}
+
+visual_turn_page_parchment :: proc(seed:u64,age:f32,index:int)->Visual_Turn_Page_Parchment {
+	if index<0 || index>=VISUAL_TURN_PAGE_PARCHMENT_COUNT do return {}
+	time:=max(f32(0),age)
+	key:=splitmix64(seed~0x70617263686d656e)
+	sample:=splitmix64(key~u64(index))
+	// Explicit unsigned bytes keep the seed mapping identical on wasm32/native.
+	phase:=f32(key&0xffff)/65536*(2*math.PI)
+	period:=110+f32((key>>16)&0xff)/255*15
+	jitter:=(f32(sample&0xff)/255-.5)*.18
+	flutter_phase:=f32((sample>>8)&0xff)/255*(2*math.PI)
+	angle:=phase+f32(index)*(math.PI*.5)+time*(2*math.PI/period)+jitter+
+		.10*math.sin(time*(2*math.PI/f32(85+index*17))+flutter_phase)
+	radius:=Vec2{350+f32(index)*28+f32((sample>>16)&0xff)/255*8,
+		180+f32(index)*18+f32((sample>>24)&0xff)/255*6}
+	below:=35+f32(index)*8+f32((sample>>32)&0xff)/255*6
+	fade:=clamp(time*.5,f32(0),f32(1))
+	fade=fade*fade*(3-2*fade)
+	return {
+		offset={math.cos(angle)*radius.x,math.sin(angle)*radius.y+below},
+		width=14+f32(index)*3+f32((sample>>40)&0xff)/255,
+		rotation=flutter_phase*180/math.PI+18*math.sin(time*(2*math.PI/f32(44+index*9))+phase),
+		opacity=(.12+f32(index)*.027+f32((sample>>48)&0xff)/255*.019)*fade,
+		variant=(index+int((key>>24)%3))%3,
+	}
+}
+
+// Only one distant scrawl can appear at once. Its complete fade precedes a
+// long empty interval, so switching the motif or flank never makes it jump
+// visibly. These traces share the saved presentation clock, not route state.
+VISUAL_TURN_PAGE_VOID_GLYPH_COUNT :: 1
+VISUAL_TURN_PAGE_VOID_GLYPH_VISIBLE_SECONDS :: f32(18)
+VISUAL_TURN_PAGE_VOID_GLYPH_PERIOD_SECONDS :: f32(28)
+VISUAL_TURN_PAGE_INK_WISP_COUNT :: 2
+
+Visual_Turn_Page_Trace :: struct {
+	offset: Vec2, // world pixels relative to the manuscript center, before roll
+	width, rotation, opacity: f32,
+	variant: int,
+}
+
+visual_turn_page_void_glyph :: proc(seed:u64,age:f32)->Visual_Turn_Page_Trace {
+	time:=max(f32(0),age)
+	cycle:=math.floor(time/VISUAL_TURN_PAGE_VOID_GLYPH_PERIOD_SECONDS)
+	local_age:=time-cycle*VISUAL_TURN_PAGE_VOID_GLYPH_PERIOD_SECONDS
+	if local_age>=VISUAL_TURN_PAGE_VOID_GLYPH_VISIBLE_SECONDS do return {}
+	key:=splitmix64(seed~0x766f69645f72756e)
+	sample:=splitmix64(key~u64(cycle))
+	side:=(u64(cycle)+(key&1))%2==0?f32(-1):f32(1)
+	vertical:=(sample&1)==0?f32(-1):f32(1)
+	phase:=f32((sample>>8)&0xff)/255*(2*math.PI)
+	fade:=math.sin(local_age*(math.PI/VISUAL_TURN_PAGE_VOID_GLYPH_VISIBLE_SECONDS))
+	return {
+		offset={side*(318+f32((sample>>16)&0xff)/255*55)+6*math.sin(local_age*.08+phase),
+			vertical*(85+f32((sample>>24)&0xff)/255*50)+5*math.cos(local_age*.065+phase)},
+		width=130+f32((sample>>32)&0xff)/255*50,
+		rotation=(f32((sample>>40)&0xff)/255-.5)*24+3*math.sin(local_age*.06+phase),
+		opacity=.055*fade*fade,
+		variant=int((u64(cycle)+(key>>1)%3)%3),
+	}
+}
+
+// Broken ink lines move through the outer void in two opposing lanes. Their
+// nearly shared orbit prevents clustering; the sparse sprite alpha supplies
+// the gaps, and a constant faint opacity avoids a distracting haze or pulse.
+visual_turn_page_ink_wisp :: proc(seed:u64,age:f32,index:int)->Visual_Turn_Page_Trace {
+	if index<0 || index>=VISUAL_TURN_PAGE_INK_WISP_COUNT do return {}
+	time:=max(f32(0),age)
+	key:=splitmix64(seed~0x766f69645f696e6b)
+	sample:=splitmix64(key~u64(index))
+	phase:=f32(key&0xffff)/65536*(2*math.PI)
+	period:=195+f32((key>>16)&0xff)/255*35
+	angle:=phase+f32(index)*math.PI-time*(2*math.PI/period)+
+		.07*math.sin(time*.019+f32(index)*math.PI)
+	radius:=Vec2{360+f32((sample>>8)&0xff)/255*90,200+f32((sample>>16)&0xff)/255*60}
+	fade:=clamp(time/3,f32(0),f32(1))
+	fade=fade*fade*(3-2*fade)
+	return {
+		offset={math.cos(angle)*radius.x,math.sin(angle)*radius.y+25},
+		width=65+f32((sample>>24)&0xff)/255*45,
+		rotation=angle*180/math.PI+90+6*math.sin(time*.035+phase),
+		opacity=(.025+f32((sample>>32)&0xff)/255*.020)*fade,
+		variant=0,
+	}
+}
+
 // Static floor art commonly has four rotated variants. A linear coordinate
 // expression creates obvious diagonal bands after modulo-four selection, so
 // hash the floor identity and both tile axes instead. The result is stable for
@@ -18,6 +158,28 @@ visual_floor_variant :: proc(seed: u64, depth: int, epoch: u32, x, y: int) -> in
 	coordinate_key := (u64(x) << 32) | u64(y)
 	floor_seed := derive_seed(derive_seed(seed, VISUAL_FLOOR_VARIANT_SALT), floor_key)
 	return int(u32(splitmix64(floor_seed ~ splitmix64(coordinate_key))))
+}
+
+// Select fifteen distinct cells with a private visual stream: three of each
+// stain/glyph, with the other 85 slabs plain. Never redistribute after falls.
+// Build once per draw; no allocation or authoritative RNG/state changes.
+VISUAL_TURN_PAGE_SPECIAL_LIMIT :: 3
+
+visual_turn_page_floor_variants :: proc(state:^Story_Minigame_State)->[TURN_PAGE_SIZE][TURN_PAGE_SIZE]int {
+	page:=min(state.score,max(0,state.goal-1)) // winning still shows the final page
+	key:=(u64(state.depth)<<32)|u64(page)
+	rng:=rng_make(derive_seed(derive_seed(state.seed,0x696e6b5f73746f6e),key))
+	cells:[TURN_PAGE_SIZE*TURN_PAGE_SIZE]int
+	for i in 0..<len(cells) do cells[i]=i
+	variants:[TURN_PAGE_SIZE][TURN_PAGE_SIZE]int
+	// Partial Fisher-Yates samples without replacement and avoids full-board work.
+	for i in 0..<5*VISUAL_TURN_PAGE_SPECIAL_LIMIT {
+		j:=i+rng_below(&rng,len(cells)-i)
+		cells[i],cells[j]=cells[j],cells[i]
+		cell:=cells[i]
+		variants[cell%TURN_PAGE_SIZE][cell/TURN_PAGE_SIZE]=1+i/VISUAL_TURN_PAGE_SPECIAL_LIMIT
+	}
+	return variants
 }
 
 // Pygame 3.16 ambient model: theme-tinted light floors darken continuously

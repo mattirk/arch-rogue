@@ -1,0 +1,286 @@
+{
+  "format_version": 4,
+  "animation": {
+    "mode": "textured_fragments",
+    "source": "selected_floor_variant",
+    "pieces": 8,
+    "duration_seconds": 0.9,
+    "clock": "interpolated_simulation",
+    "loop": false
+  },
+  "files": {
+    "floor.png": {
+      "size": [
+        512,
+        512
+      ],
+      "anchor": [
+        256,
+        320
+      ],
+      "ref_width": 512,
+      "generator": "PixelLab Inpaint",
+      "job_id": "369f9c7a-0ff4-45cb-a1a3-b4b7ce77f359",
+      "prompt": "Replace the masked top surface of this isometric dungeon floor slab with ONE broad, flat, continuous blue-grey weathered limestone flagstone for an ancient scriptorium. Remove the circular well, octagonal ring, dark central recess, radial seams and small paver divisions completely; fill them flush with stone. Fine restrained painted pixel-art texture, subtly chipped worn stone, gentle parchment-grey mottling, tiny faint incised manuscript marks near the outer perimeter, quiet clear center. Match the reference's existing stone colors, high-definition pixel detail and upper-left lighting. The entire 512-pixel wide diamond is ONE slab, not four smaller tiles. Preserve exactly the unmasked outer silhouette, bevel, side walls, thickness, full-width 2:1 projection, canvas position and transparent background. No raised decoration, central icon, book, legible text, glow, cross seams, new hole, plinth or pedestal.",
+      "sha256": "45d4b44a5f5ecb8d7678be1596c2254ae8371675c2cd0c237899cab4307294f7",
+      "top_face_size": [
+        512,
+        256
+      ]
+    },
+    "ink.png": {
+      "size": [
+        512,
+        512
+      ],
+      "anchor": [
+        256,
+        256
+      ],
+      "ref_width": 600,
+      "generator": "PixelLab Create Image Pro",
+      "job_id": "2169c013-22b6-4f1e-91e3-28e66d681a4b",
+      "prompt": "A single magical INK OVERLAY sprite on fully transparent background. High-definition 512x512 PNG for a dark fantasy isometric stone floor. Draw ONLY thin luminous pale-turquoise calligraphic manuscript strokes forming a graceful four-corner sigil: four separated, delicate rows of tiny ancient glyphs arranged along a flat 2:1 isometric diamond. Airy fine lines, subtle cyan bloom immediately around the strokes, a little graceful trailing ink. Diamond corners approximately (256,160), (448,256), (256,352), (64,256). The center stays mostly clear so a game numeral can be placed there. Absolutely no stone, no physical tile, no book, no plinth, no blocks, no floor, no pedestal, no background, no shadow. This is a transparent light-and-ink DECAL to composite on an existing tile. Continuous thin elegant strokes, very fine high-resolution painted pixel art, no thick outline and no coarse pixels. Dark occult mood, beautiful crisp luminous details. No readable modern text, no Arabic numerals, no giant center icon, no 3D height. One flat four-corner planar ink sigil on transparency.",
+      "sha256": "0c6c7b9be54d4ef2baa5276d5bc4b275efccf6a284f25f82ad076f5aae7f828a"
+    },
+    "floor_ink_spill.png": {
+      "size": [
+        512,
+        512
+      ],
+      "anchor": [
+        256,
+        320
+      ],
+      "ref_width": 512,
+      "top_face_size": [
+        512,
+        256
+      ],
+      "generator": "PixelLab Inpaint",
+      "job_id": "cfd77f78-8319-46c2-bbc3-2cfaabce9457",
+      "prompt": "Add a small flat ink marking inside this masked patch of the stone top. Preserve the surrounding original mottled blue-grey limestone exactly. Within the patch, keep the same stone texture wherever there is no ink. Use only a few uneven MATTE DARK GREY brush strokes: no broad background wash, no overall purple coating, no new border, no uniform fill and no changed stone pattern. Restrained worn dry ink, clearly hand drawn by someone unskilled. Keep at least 65 percent of the patch as visible original stone. Flatten the marking onto the existing 2:1 isometric plane. A small accidental ink spill on the rear-left portion of the slab: an irregular thumb-sized puddle, four unequal nearby drops and a faint diluted wash drifting toward the middle. Restrained and organic, asymmetrical, no deliberate symbol. Keep at least three quarters of the face mostly clean. Keep the complete original 512x512 canvas, transparent silhouette, bevel, slab thickness, placement and side walls exactly unchanged. No glow, cyan, gold, lettering, numeral or physical object.",
+      "seed": 9810,
+      "sha256": "6fe865043c8f1d4a695b9e321f7f4a53b21117a621ed1832125da70ddc0d493d",
+      "base_file": "floor.png",
+      "base_sha256": "45d4b44a5f5ecb8d7678be1596c2254ae8371675c2cd0c237899cab4307294f7",
+      "edit_mask": {
+        "shape": "ellipse",
+        "bounds": [
+          80,
+          230,
+          302,
+          338
+        ]
+      },
+      "motif": "ink_spill"
+    },
+    "floor_ink_smear.png": {
+      "size": [
+        512,
+        512
+      ],
+      "anchor": [
+        256,
+        320
+      ],
+      "ref_width": 512,
+      "top_face_size": [
+        512,
+        256
+      ],
+      "generator": "PixelLab Inpaint",
+      "job_id": "d8af1304-39b1-49f7-a482-f140741bc248",
+      "prompt": "Add a small flat ink marking inside this masked patch of the stone top. Preserve the surrounding original mottled blue-grey limestone exactly. Within the patch, keep the same stone texture wherever there is no ink. Use only a few uneven MATTE DARK GREY brush strokes: no broad background wash, no overall purple coating, no new border, no uniform fill and no changed stone pattern. Restrained worn dry ink, clearly hand drawn by someone unskilled. Keep at least 65 percent of the patch as visible original stone. Flatten the marking onto the existing 2:1 isometric plane. A messy wiped ink stain toward the front-right half: two short irregular dry-brush swipes with frayed bristles, a rubbed-out oval blot and several tiny specks. Weathered, low contrast, with transparent stone grain showing through. No deliberate symbol. Keep at least two thirds of the face mostly clean. Keep the complete original 512x512 canvas, transparent silhouette, bevel, slab thickness, placement and side walls exactly unchanged. No glow, cyan, gold, lettering, numeral or physical object.",
+      "seed": 9811,
+      "sha256": "a24f2ea7c0b0dbecf3195c060c38af40e669d92205ce30e16aeea004853091f4",
+      "base_file": "floor.png",
+      "base_sha256": "45d4b44a5f5ecb8d7678be1596c2254ae8371675c2cd0c237899cab4307294f7",
+      "edit_mask": {
+        "shape": "ellipse",
+        "bounds": [
+          182,
+          274,
+          418,
+          376
+        ]
+      },
+      "motif": "ink_smear"
+    },
+    "floor_glyph_serpent.png": {
+      "size": [
+        512,
+        512
+      ],
+      "anchor": [
+        256,
+        320
+      ],
+      "ref_width": 512,
+      "top_face_size": [
+        512,
+        256
+      ],
+      "generator": "PixelLab Inpaint",
+      "job_id": "d94582bb-0c45-4860-97f1-ceb749b270cb",
+      "prompt": "Add a small flat ink marking inside this masked patch of the stone top. Preserve the surrounding original mottled blue-grey limestone exactly. Within the patch, keep the same stone texture wherever there is no ink. Use only a few uneven MATTE DARK GREY brush strokes: no broad background wash, no overall purple coating, no new border, no uniform fill and no changed stone pattern. Restrained worn dry ink, clearly hand drawn by someone unskilled. Keep at least 65 percent of the patch as visible original stone. Flatten the marking onto the existing 2:1 isometric plane. One poorly hand-drawn SERPENT glyph, based on a simple slender S-shaped curled snake sigil: a tiny blunt head at the upper end, crooked upper curl and loose lower tail curl. Scrawl it slightly off center with a blunt ink brush, about one third of the slab width. Wobbly lopsided line, one clumsy retraced stroke, broken dry ink and two stray drops. Recognizable simple snake doodle, not an actual snake or a polished emblem. Keep the complete original 512x512 canvas, transparent silhouette, bevel, slab thickness, placement and side walls exactly unchanged. No glow, cyan, gold, lettering, numeral or physical object.",
+      "seed": 9812,
+      "sha256": "5000e91cd2ae1a7b00a46c73f6ab5629271e6de340b1ba1b8aba918e8e433b2f",
+      "base_file": "floor.png",
+      "base_sha256": "45d4b44a5f5ecb8d7678be1596c2254ae8371675c2cd0c237899cab4307294f7",
+      "edit_mask": {
+        "shape": "ellipse",
+        "bounds": [
+          138,
+          244,
+          374,
+          364
+        ]
+      },
+      "motif": "serpent",
+      "legacy_art_reference": {
+        "file": "arch-rogue-python/src/arch_rogue/assets/sprites/menus/glyphs/sigil_serpent.png",
+        "sha256": "93cf7c57f0ea1c2368a7e18994f93632ce303b516a1252f7528307f56f3c68d8",
+        "usage": "historical visual reference only"
+      }
+    },
+    "floor_glyph_key.png": {
+      "size": [
+        512,
+        512
+      ],
+      "anchor": [
+        256,
+        320
+      ],
+      "ref_width": 512,
+      "top_face_size": [
+        512,
+        256
+      ],
+      "generator": "PixelLab Inpaint",
+      "job_id": "bb29a8e8-289c-4eea-9ef9-f57c15b53ab1",
+      "prompt": "Add a small flat ink marking inside this masked patch of the stone top. Preserve the surrounding original mottled blue-grey limestone exactly. Within the patch, keep the same stone texture wherever there is no ink. Use only a few uneven MATTE DARK GREY brush strokes: no broad background wash, no overall purple coating, no new border, no uniform fill and no changed stone pattern. Restrained worn dry ink, clearly hand drawn by someone unskilled. Keep at least 65 percent of the patch as visible original stone. Flatten the marking onto the existing 2:1 isometric plane. One poorly hand-drawn KEY glyph, based on the simple sigil of an open circular bow above a long stem with two tiny teeth on one side at its lower end. Scrawl this lopsided old key diagonally across part of the slab, about one third of the slab width. Wobbly imperfect circle, uneven handle, clumsy teeth, one small ink blot where the brush paused and a half-erased extra stroke. An amateur flat ink doodle, not a physical key or polished icon. Keep the complete original 512x512 canvas, transparent silhouette, bevel, slab thickness, placement and side walls exactly unchanged. No glow, cyan, gold, lettering, numeral or physical object.",
+      "seed": 9813,
+      "sha256": "e857ae63c7b8afd5b1f3ed1d65410eb7a8386bf28a876dbe8ea7aa8b83f76f98",
+      "base_file": "floor.png",
+      "base_sha256": "45d4b44a5f5ecb8d7678be1596c2254ae8371675c2cd0c237899cab4307294f7",
+      "edit_mask": {
+        "shape": "ellipse",
+        "bounds": [
+          138,
+          244,
+          374,
+          364
+        ]
+      },
+      "motif": "key",
+      "legacy_art_reference": {
+        "file": "arch-rogue-python/src/arch_rogue/assets/sprites/menus/glyphs/sigil_key.png",
+        "sha256": "ebe45be18545f10c8d6bec8dc43e859c1e570682aefb695ddb5697af314c802d",
+        "usage": "historical visual reference only"
+      }
+    },
+    "floor_glyph_moon.png": {
+      "size": [
+        512,
+        512
+      ],
+      "anchor": [
+        256,
+        320
+      ],
+      "ref_width": 512,
+      "top_face_size": [
+        512,
+        256
+      ],
+      "generator": "PixelLab Inpaint",
+      "job_id": "c0976739-044d-4632-b7bc-8ee32c64c790",
+      "prompt": "Add a small flat ink marking inside this masked patch of the stone top. Preserve the surrounding original mottled blue-grey limestone exactly. Within the patch, keep the same stone texture wherever there is no ink. Use only a few uneven MATTE DARK GREY brush strokes: no broad background wash, no overall purple coating, no new border, no uniform fill and no changed stone pattern. Restrained worn dry ink, clearly hand drawn by someone unskilled. Keep at least 65 percent of the patch as visible original stone. Flatten the marking onto the existing 2:1 isometric plane. One poorly hand-drawn CRESCENT MOON glyph, based on a thin simple crescent opening to the right with two pointed horns. Scrawl it off center, about one third of the slab width. Unequal horns, wavering broken brush line, a clumsy doubled inner curve, a tiny ink thumbprint and a few pin-sized drops nearby. A worn amateur moon doodle flattened onto the floor plane, not a circular seal or polished icon. Keep the complete original 512x512 canvas, transparent silhouette, bevel, slab thickness, placement and side walls exactly unchanged. No glow, cyan, gold, lettering, numeral or physical object.",
+      "seed": 9814,
+      "sha256": "a2ff79dd67367f9e20eacc507f28eca83fbfbd8a90bd4fd055fec1cf39f363c9",
+      "base_file": "floor.png",
+      "base_sha256": "45d4b44a5f5ecb8d7678be1596c2254ae8371675c2cd0c237899cab4307294f7",
+      "edit_mask": {
+        "shape": "ellipse",
+        "bounds": [
+          138,
+          244,
+          374,
+          364
+        ]
+      },
+      "motif": "moon",
+      "legacy_art_reference": {
+        "file": "arch-rogue-python/src/arch_rogue/assets/sprites/menus/glyphs/sigil_moon.png",
+        "sha256": "e1cf26b5926ab7ee5a731b8dbf470121a9a6bee3c4048e414731062e79a596ff",
+        "usage": "historical visual reference only"
+      }
+    }
+  },
+  "geometry_reference": {
+    "file": "assets/world/lossless_soul_floor.png",
+    "sha256": "0d3966aa7c0be99f2b28d7ae148a6e97b9335a75374fee81f578f61ff14cb09c",
+    "world_key": "lossless_soul_floor",
+    "top_face_corners": [
+      [
+        256,
+        176
+      ],
+      [
+        512,
+        304
+      ],
+      [
+        256,
+        432
+      ],
+      [
+        0,
+        304
+      ]
+    ],
+    "side_depth": 80,
+    "surface_mask": [
+      [
+        256,
+        182
+      ],
+      [
+        504,
+        304
+      ],
+      [
+        256,
+        426
+      ],
+      [
+        8,
+        304
+      ]
+    ]
+  },
+  "floor_variants": [
+    "floor.png",
+    "floor_ink_spill.png",
+    "floor_ink_smear.png",
+    "floor_glyph_serpent.png",
+    "floor_glyph_key.png",
+    "floor_glyph_moon.png"
+  ],
+  "variant_policy": {
+    "selection": "seeded_per_page_without_replacement",
+    "special_variant_counts": [
+      3,
+      3,
+      3,
+      3,
+      3
+    ],
+    "plain_count": 85,
+    "seed_salt": "0x696e6b5f73746f6e",
+    "route_dependent": false
+  },
+  "historical_sigil_vocabulary": "arch-rogue-python/src/arch_rogue/menus/mp.py:_MP_SEAL_SIGILS / arch-rogue-python/src/arch_rogue/constants.py:SHARED_SIGIL_NAMES"
+}

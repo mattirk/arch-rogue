@@ -530,6 +530,7 @@ music_track_runtime_gain :: proc(track: Music_Mix_Track, runtime: Music_Runtime_
 music_mix_for :: proc(app: ^App) -> string {
 	if app == nil do return MUSIC_MIX_MENU
 	playing_mix :: proc(app: ^App) -> string {
+		if app_story_turn_page_active(app) do return MUSIC_MIX_MENU
 		if app_story_soul_hunt_active(app) {
 			if app.story_minigame.phase == .Play || app.story_minigame.phase == .Result ||
 			   app.story_soul_hunt_music_ready {

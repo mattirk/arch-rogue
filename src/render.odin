@@ -9,6 +9,7 @@ import "core:fmt"
 import "core:math"
 import "core:slice"
 import rl "../vendor/raylib"
+import rgl "../vendor/raylib/rlgl"
 
 VISUAL_LATTICE_OFFSET :: MAP_H - 1
 VISUAL_LATTICE_SIZE :: MAP_W + MAP_H - 1
@@ -40,6 +41,9 @@ Miniboss_Sprite_Effect :: struct {
 
 View :: struct {
 	camera:        rl.Camera2D,
+	turn_page_camera_base: rl.Camera2D,
+	turn_page_camera_applied: bool,
+	turn_page_motion: Visual_Turn_Page_Motion,
 	base_zoom:     f32, // persisted 720p design-space zoom; camera.zoom is framebuffer-scaled
 	hovered:       [2]int,
 	hovered_valid: bool,
@@ -193,14 +197,8 @@ world_sprite_frame :: proc(sprite: ^World_Sprite, variant: int, time: f32) -> rl
 world_sprite_rect :: proc(sprite: ^World_Sprite, tile: Vec2, variant: int, time: f32) -> (rl.Texture2D, rl.Rectangle) {
 	tex := world_sprite_frame(sprite, variant, time)
 	if tex.id == 0 do return {}, {}
-	center := rl.Vector2(world_from_tile(tile + {0.5, 0.5}))
-	w := f32(tex.width) * sprite.scale
-	h := f32(tex.height) * sprite.scale
-	return tex, rl.Rectangle{
-		center.x - sprite.anchor.x * sprite.scale,
-		center.y - sprite.anchor.y * sprite.scale,
-		w, h,
-	}
+	position,size:=visual_world_sprite_layout(tile,{f32(tex.width),f32(tex.height)},sprite.anchor,sprite.scale)
+	return tex,{position.x,position.y,size.x,size.y}
 }
 
 @(private = "file")
@@ -232,8 +230,12 @@ draw_world_sprite_frame :: proc(sprite: ^World_Sprite, tile: Vec2, frame: int, t
 
 view_apply_base_zoom :: proc(view: ^View, base_zoom: f32, clamp_to_options := true) {
 	if view == nil do return
+	posed:=view.turn_page_camera_applied
+	motion:=view.turn_page_motion
+	view_clear_turn_page_motion(view)
 	view.base_zoom = clamp_to_options ? view_zoom_normalize(base_zoom) : max(f32(.05), base_zoom)
 	view.camera.zoom = effective_view_zoom(view.base_zoom, int(rl.GetRenderHeight()))
+	if posed do view_apply_turn_page_motion(view,motion)
 }
 
 view_init :: proc(view: ^View) {
@@ -269,15 +271,18 @@ view_shutdown :: proc(view: ^View) {
 }
 
 view_center_on :: proc(view: ^View, world: Vec2) {
+	view_clear_turn_page_motion(view)
 	view.camera.target = rl.Vector2(world)
 }
 
 view_follow :: proc(view: ^View, world: Vec2, dt: f32) {
+	view_clear_turn_page_motion(view)
 	target := rl.Vector2(world)
 	view.camera.target += (target - view.camera.target) * camera_follow_fraction(dt)
 }
 
 view_update :: proc(view: ^View, dt: f32) {
+	view_clear_turn_page_motion(view)
 	view.frame_dt = max(f32(0), dt)
 	cam := &view.camera
 	// Borderless toggles and free window resizing can change framebuffer height
@@ -305,12 +310,11 @@ view_zoom_at_cursor :: proc(view: ^View, wheel: f32) {
 	if view == nil || wheel == 0 do return
 	// Canonical desktop zoom remains centered on the followed actor. Change the
 	// persisted design-space zoom, never the resolution-scaled camera value.
-	view.base_zoom = clamp(
+	view_apply_base_zoom(view,clamp(
 		view.base_zoom * math.pow(f32(ZOOM_STEP), wheel),
 		ZOOM_MIN,
 		ZOOM_MAX,
-	)
-	view.camera.zoom = effective_view_zoom(view.base_zoom, int(rl.GetRenderHeight()))
+	))
 }
 
 menu_mouse_double_clicked :: proc(view: ^View, click_context: Menu_Click_Context, index: int) -> bool {
@@ -325,7 +329,7 @@ draw_frame :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 	view.lighting_ready = false
 	if draws_run {
 		ensure_radial_texture(view) // contact shadows remain when lighting is off
-		if !app_story_soul_hunt_active(app) {
+		if !app_story_world_minigame_active(app) {
 			mist_invalidate_soul_hunt(view)
 			update_effect_visibility(view, app)
 			if app.options.lighting_enabled do view.lighting_ready = update_lightmap(view, app, alpha)
@@ -339,7 +343,7 @@ draw_frame :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 				if app.options.mist_enabled do mist_update_soul_hunt(view,app,alpha)
 				else do mist_invalidate_soul_hunt(view)
 			}
-			else if app.options.mist_enabled do mist_update(view,app,alpha)
+			else if app.options.mist_enabled&&!app_story_turn_page_active(app) do mist_update(view,app,alpha)
 		}
 	}
 
@@ -490,6 +494,14 @@ draw_mobile_context_controls :: proc(view:^View,app:^App) {
 
 @(private = "file")
 draw_run_scene :: proc(view:^View,app:^App,assets:^Assets,alpha:f32) {
+	if app_story_turn_page_active(app) {
+		draw_turn_page_void(view,app,assets,alpha)
+		rl.BeginMode2D(view.camera)
+		draw_turn_page_world(view,app,assets,alpha)
+		rl.EndMode2D()
+		draw_turn_page_overlay(view,app,assets)
+		return
+	}
 	if app_story_soul_hunt_active(app) {
 		rl.BeginMode2D(view.camera)
 		draw_soul_hunt_world(view,app,assets,alpha)
@@ -557,7 +569,13 @@ draw_soul_hunt_player :: proc(view:^View,app:^App,assets:^Assets,feet:Vec2,world
 		clip=.Walk;action_clip:=&assets.archetypes[player.archetype].clips[clip]
 		clip_time=normalized_action_clip_time(player_visual_action_progress(player),action_clip.frames,action_clip.fps)
 	}
-	draw_actor(assets,&assets.archetypes[player.archetype],clip,player.facing,clip_time,feet,rl.WHITE,0)
+	facing:=player.facing
+	if app_story_turn_page_active(app) {
+		turn_page_begin_upright(world_from_tile(feet),view.camera.rotation)
+		facing=tile_from_world(vec_rotate(world_from_tile(facing),view.camera.rotation*math.PI/180))
+	}
+	draw_actor(assets,&assets.archetypes[player.archetype],clip,facing,clip_time,feet,rl.WHITE,0)
+	if app_story_turn_page_active(app) do rgl.PopMatrix()
 }
 
 @(private = "file")
@@ -2447,7 +2465,7 @@ draw_world_feel_event :: proc(event: ^Feel_Event) {
 
 @(private = "file")
 draw_screen_feel :: proc(app: ^App) {
-	if app == nil do return
+	if app == nil || app_story_turn_page_active(app) do return
 	for &event in app.run.feel {
 		if event.kind != .Screen_Flash do continue
 		if !feel_event_visible(&event,tile_pos_visible(app,event.pos),app.dev_reveal) do continue
@@ -3673,7 +3691,8 @@ draw_mobile_action_slot :: proc(app:^App,assets:^Assets,rect:Mobile_Rect,slot:in
 	case 5: ready=ready&&player.heal_potions>0&&player.hp<player.max_hp
 	case 6: ready=ready&&player.mana_potions>0&&player.mana<f32(player.max_mana)
 	}
-	if slot==4&&app_story_soul_hunt_active(app) do ready=player.dash_timer<=0
+	if slot==4&&app_story_world_minigame_active(app) do ready=player.dash_timer<=0
+	if slot==4&&app_story_turn_page_active(app) do ready=ready&&app.story_minigame.phase==.Play&&!app.turn_page.fall_active
 	pad:=design.width*.12
 	if icon.valid {
 		icon_tint := rl.WHITE
@@ -3710,7 +3729,7 @@ draw_mobile_player_hud :: proc(view:^View,app:^App,assets:^Assets) {
 		!app.character_open&&!app.shop_open&&!app_play_modal_open(app)
 	if !gameplay_controls_visible do return
 	draw_mobile_joystick(assets,layout.joystick,view.mobile_joystick_vector)
-	if app_story_soul_hunt_active(app) {
+	if app_story_world_minigame_active(app) {
 		draw_mobile_action_slot(app,assets,layout.action_slots[3],4)
 		if app.mobile_utility_open do draw_mobile_hud_button(assets,layout.pause,"MENU",COLOR_TEXT)
 		draw_mobile_hud_button(assets,layout.interact,"A",COLOR_TITLE,app.mobile_utility_open)
@@ -3801,6 +3820,7 @@ draw_action_bar :: proc(app: ^App, assets: ^Assets, dock_rect: rl.Rectangle) {
 	x := i32(dock_rect.x+(dock_rect.width-f32(total_width))*.5)
 	y := i32(dock_rect.y+14)
 	for slot in 1 ..= ACTION_SLOT_COUNT {
+		if app_story_turn_page_active(app)&&slot!=4 do continue
 		bx := x+i32(slot-1)*(slot_size+slot_gap)
 		icon := action_icon_for_slot(assets,player.archetype,slot)
 		if slot == 3 && player.archetype == .Ranger && beast != nil {
@@ -3822,6 +3842,7 @@ draw_action_bar :: proc(app: ^App, assets: ^Assets, dock_rect: rl.Rectangle) {
 		case 5: ready = ready && player.heal_potions > 0 && player.hp < player.max_hp
 		case 6: ready = ready && player.mana_potions > 0 && player.mana < f32(player.max_mana)
 		}
+		if app_story_turn_page_active(app) do ready=slot==4&&player.dash_timer<=0&&app.story_minigame.phase==.Play&&!app.turn_page.fall_active
 		if icon.valid {
 			icon_tint := rl.WHITE
 			if !ready do icon_tint = rl.Fade(rl.WHITE,.35)
@@ -3947,4 +3968,301 @@ draw_death_overlay :: proc(app: ^App,assets:^Assets) {
 	draw_run_ledger_lines(app,presentation.width,i32(panel.y+140),inner_width)
 	hint:cstring="R / Esc / click: choose another archetype"
 	ui_draw_text_fitted_centered(hint,i32(presentation.width*.5),i32(panel.y+192),20,14,inner_width,COLOR_TEXT_DIM)
+}
+
+// All void details sit behind the island and use private camera copies. The
+// distant traces follow less than the parchment; no camera/input state changes.
+@(private = "file")
+draw_turn_page_void :: proc(view:^View,app:^App,assets:^Assets,alpha:f32) {
+	camera:=view.turn_page_camera_applied?view.turn_page_camera_base:view.camera
+	center:=world_from_tile({TURN_PAGE_SIZE*.5,TURN_PAGE_SIZE*.5})
+	age:=visual_turn_page_motion_age(app,alpha)
+	seed:=app.story_minigame.seed
+	distant:=camera
+	distant.target=rl.Vector2(center+(Vec2(camera.target)-center)*.12)
+	rl.BeginMode2D(distant)
+	// A single incomplete scrawl fades fully away before another can appear.
+	glyph:=visual_turn_page_void_glyph(seed,age)
+	draw_turn_page_void_trace(&assets.world[.Turn_Page_Void_Glyph],glyph,center,{175,180,195,255})
+	for index in 0..<VISUAL_TURN_PAGE_INK_WISP_COUNT {
+		wisp:=visual_turn_page_ink_wisp(seed,age,index)
+		draw_turn_page_void_trace(&assets.world[.Turn_Page_Ink_Wisp],wisp,center,{184,193,210,255})
+	}
+	rl.EndMode2D()
+
+	sprite:=&assets.world[.Turn_Page_Parchment]
+	camera.target=rl.Vector2(center+(Vec2(camera.target)-center)*.30)
+	rl.BeginMode2D(camera)
+	for index in 0..<VISUAL_TURN_PAGE_PARCHMENT_COUNT {
+		scrap:=visual_turn_page_parchment(seed,age,index)
+		if scrap.opacity<=0 do continue
+		tex:=world_sprite_frame(sprite,scrap.variant,0)
+		if tex.id==0 do continue
+		size:=Vec2{scrap.width,scrap.width*f32(tex.height)/f32(tex.width)}
+		at:=center+scrap.offset
+		rl.DrawTexturePro(tex,{0,0,f32(tex.width),f32(tex.height)},
+			{at.x,at.y,size.x,size.y},rl.Vector2(size*.5),scrap.rotation,
+			rl.Fade(rl.Color{159,165,181,255},scrap.opacity))
+	}
+	rl.EndMode2D()
+}
+
+@(private = "file")
+draw_turn_page_void_trace :: proc(sprite:^World_Sprite,trace:Visual_Turn_Page_Trace,center:Vec2,tint:rl.Color) {
+	if trace.opacity<=0 do return
+	tex:=world_sprite_frame(sprite,trace.variant,0)
+	if tex.id==0 do return
+	size:=Vec2{trace.width,trace.width*f32(tex.height)/f32(tex.width)}
+	at:=center+trace.offset
+	rl.DrawTexturePro(tex,{0,0,f32(tex.width),f32(tex.height)},
+		{at.x,at.y,size.x,size.y},rl.Vector2(size*.5),trace.rotation,rl.Fade(tint,trace.opacity))
+}
+
+// Retain the unposed camera for ordinary following, zoom and scene return.
+// Preparation is idempotent and runs before input as well as before drawing.
+view_clear_turn_page_motion :: proc(view:^View) {
+	if view.turn_page_camera_applied {
+		view.camera=view.turn_page_camera_base
+		view.turn_page_camera_applied=false
+	}
+}
+
+@(private = "file")
+view_apply_turn_page_motion :: proc(view:^View,motion:Visual_Turn_Page_Motion) {
+	view_clear_turn_page_motion(view)
+	view.turn_page_camera_base=view.camera
+	view.turn_page_camera_applied=true
+	view.turn_page_motion=motion
+	center:=world_from_tile({TURN_PAGE_SIZE*.5,TURN_PAGE_SIZE*.5})
+	// Rotate around the island center even when a close zoom follows the player.
+	view.camera.offset+=rl.Vector2(center-Vec2(view.camera.target)+motion.drift)*view.camera.zoom
+	view.camera.target=rl.Vector2(center)
+	view.camera.rotation=motion.rotation
+}
+
+view_prepare_turn_page_motion :: proc(view:^View,app:^App,alpha:f32) {
+	view_clear_turn_page_motion(view)
+	if !app_story_turn_page_active(app) do return
+	view_apply_turn_page_motion(view,visual_turn_page_motion(visual_turn_page_motion_age(app,alpha)))
+}
+
+// Counter-rotate a billboard about its anchor inside the posed world camera.
+// Floor shadows and inlaid artwork remain on the rotating surface.
+@(private = "file")
+turn_page_begin_upright :: proc(anchor:Vec2,rotation:f32) {
+	rgl.PushMatrix()
+	rgl.Translatef(anchor.x,anchor.y,0)
+	rgl.Rotatef(-rotation,0,0,1)
+	rgl.Translatef(-anchor.x,-anchor.y,0)
+}
+
+// Keep the compact platform in view; at closer zooms follow within its bounds.
+// This uses the same player/board coordinates as picking and the normal camera.
+view_center_on_turn_page :: proc(view: ^View, feet: Vec2) {
+	view_clear_turn_page_motion(view)
+	center:=world_from_tile({TURN_PAGE_SIZE*.5,TURN_PAGE_SIZE*.5})
+	target:=world_from_tile(feet)
+	half_view:=Vec2{f32(rl.GetScreenWidth())*.5/view.camera.zoom,f32(rl.GetScreenHeight())*.32/view.camera.zoom}
+	// The diamond stays within these extents throughout the bounded +/-8 degree
+	// roll; the 20px margin includes its underside and the 3px screen-axis drift.
+	radius:=Vec2{TURN_PAGE_SIZE*TILE_W*.5+20,TURN_PAGE_SIZE*TILE_H*.5+20}
+	travel:=Vec2{max(f32(0),radius.x-half_view.x),max(f32(0),radius.y-half_view.y)}
+	view_center_on(view,{clamp(target.x,center.x-travel.x,center.x+travel.x),clamp(target.y,center.y-travel.y,center.y+travel.y)})
+}
+
+@(private = "file")
+turn_page_ease :: proc(a,b,value:f32)->f32 {
+	t:=clamp((value-a)/(b-a),f32(0),f32(1))
+	return t*t*(3-2*t)
+}
+
+@(private = "file")
+draw_turn_page_floor :: proc(sprite:^World_Sprite,tile:Vec2,variant:int,tint:rl.Color) {
+	draw_world_sprite(sprite,tile,variant,0,tint)
+}
+
+// Eight irregular pieces partition the original HD texture without resampling
+// it or allocating an animation sheet. Each bounded Voronoi polygon retains its
+// exact UVs, so the assembled frame has no texture swim or silhouette changes.
+@(private = "file")
+TURN_PAGE_SHARD_SEEDS :: [8]Vec2{{.50,.43},{.28,.55},{.71,.54},{.14,.70},{.47,.64},{.86,.72},{.36,.85},{.65,.87}}
+
+@(private = "file")
+draw_turn_page_shards :: proc(sprite:^World_Sprite,tile:Vec2,variant:int,age,rotation:f32) {
+	tex,dst:=world_sprite_rect(sprite,tile,variant,0)
+	if tex.id==0 do return
+	rgl.SetTexture(tex.id)
+	rgl.Begin(rgl.QUADS)
+	for seed,index in TURN_PAGE_SHARD_SEEDS {
+		polygon:[16]Vec2;polygon[0]={0,0};polygon[1]={0,1};polygon[2]={1,1};polygon[3]={1,0}
+		count:=4
+		for other,j in TURN_PAGE_SHARD_SEEDS {
+			if j==index do continue
+			normal:=other-seed
+			cut:=(other.x*other.x+other.y*other.y-seed.x*seed.x-seed.y*seed.y)*.5
+			clipped:[16]Vec2;next_count:=0
+			for i in 0..<count {
+				a:=polygon[i];b:=polygon[(i+1)%count]
+				da:=a.x*normal.x+a.y*normal.y-cut;db:=b.x*normal.x+b.y*normal.y-cut
+				if da<=0 {clipped[next_count]=a;next_count+=1}
+				if (da<=0)!=(db<=0) {clipped[next_count]=a+(b-a)*(da/(da-db));next_count+=1}
+			}
+			polygon=clipped;count=next_count
+		}
+		life:=clamp((age-.08-f32((index*3)%7)*.012)/.68,f32(0),f32(1))
+		opacity:=1-turn_page_ease(.45,1,life)
+		if opacity<=0 do continue
+		angle:=f32(index%2==0?1:-1)*life*(.16+f32(index%3)*.12)
+		cs:=math.cos(angle);sn:=math.sin(angle)
+		scale:=1-.026*turn_page_ease(0,.10,age)-.48*life*life
+		pivot:=Vec2{dst.x+seed.x*dst.width,dst.y+seed.y*dst.height}
+		drop:=vec_rotate(Vec2{(seed.x-.5)*life*12,life*life*(55+f32(index%3)*7)},-rotation*math.PI/180)
+		tint:=rl.Fade(rl.Color{u8(255-life*80),u8(255-life*86),u8(255-life*65),255},opacity)
+		rgl.Color4ub(tint.r,tint.g,tint.b,tint.a)
+		for i in 1..<count-1 {
+			// A degenerate quad retains raylib's textured batching and winding.
+			for uv in ([4]Vec2{polygon[0],polygon[i],polygon[i+1],polygon[i+1]}) {
+				local:=Vec2{(uv.x-seed.x)*dst.width,(uv.y-seed.y)*dst.height}*scale
+				at:=pivot+drop+Vec2{local.x*cs-local.y*sn,local.x*sn+local.y*cs}
+				rgl.TexCoord2f(uv.x,uv.y);rgl.Vertex2f(at.x,at.y)
+			}
+		}
+	}
+	rgl.End()
+	rgl.SetTexture(0)
+}
+
+@(private = "file")
+draw_turn_page_falling_player :: proc(view:^View,app:^App,assets:^Assets,age:f32) {
+	p:=&app.run.player;sprites:=&assets.archetypes[p.archetype]
+	if !sprites.loaded || age>=.82 do return
+	clip:=sprites.clips[.Walk]
+	if !clip.valid do clip=sprites.clips[.Idle]
+	if !clip.valid do return
+	progress:=clamp((age-.06)/.70,f32(0),f32(1))
+	lean:=turn_page_ease(0,.24,age)
+	feet:=p.pos+(turn_page_center(app.turn_page.fall_cell)-p.pos)*lean
+	center:=world_from_tile(feet)+vec_rotate(Vec2{0,progress*progress*67},-view.camera.rotation*math.PI/180)
+	turn_page_begin_upright(center,view.camera.rotation)
+	defer rgl.PopMatrix()
+	size:=sprites.canvas_world*(1-.50*progress*progress)
+	frame:=clamp(int((p.anim_time+age*.65)*clip.fps)%max(1,clip.frames),0,max(0,clip.frames-1))
+	cell:=f32(sprites.cell)
+	src:=rl.Rectangle{f32(frame)*cell,f32(sprite_row_for_facing(tile_from_world(vec_rotate(world_from_tile(p.facing),view.camera.rotation*math.PI/180))))*cell,cell,cell}
+	rotation:=f32(p.facing.x>p.facing.y?1:-1)*progress*16
+	tint:=rl.Fade(rl.Color{u8(255-progress*100),u8(255-progress*105),u8(255-progress*85),255},1-turn_page_ease(.55,1,progress))
+	rl.DrawTexturePro(clip.tex,src,{center.x,center.y,size,size},rl.Vector2(sprites.anchor)*size,rotation,tint)
+}
+
+// The manuscript world has no dungeon fog, actors or collision queries. Draw
+// the fall within the floor's painter order so foreground stone hides the
+// descending player and fragments naturally.
+draw_turn_page_world :: proc(view:^View,app:^App,assets:^Assets,alpha:f32) {
+	page:=&app.turn_page;state:=&app.story_minigame
+	render_alpha:=app.mode==.Playing?alpha:f32(1)
+	age:=max(f32(0),page.fall_elapsed-(1-render_alpha)*SIM_DT)
+	world_time:=app.run.player.sim_elapsed-(1-render_alpha)*SIM_DT
+	base:=&assets.world[.Turn_Page_Hidden]
+	variants:=visual_turn_page_floor_variants(state)
+	for depth in 0..<TURN_PAGE_SIZE*2-1 {
+		for x in 0..<TURN_PAGE_SIZE {
+			y:=depth-x
+			if y<0||y>=TURN_PAGE_SIZE do continue
+			tile:=Vec2{f32(x),f32(y)};kind:=page.tiles[x][y]
+			variant:=variants[x][y]
+			falling:=page.fall_active&&page.fall_cell==[2]int{x,y}
+			if falling {
+				gap:=false
+				for i in 0..<page.length do if page.route[i]==page.fall_cell&&page.gaps[i] {gap=true;break}
+				if !gap&&age<TURN_PAGE_FALL_SECONDS do draw_turn_page_shards(base,tile,variant,age,view.camera.rotation)
+				draw_turn_page_falling_player(view,app,assets,age)
+				continue
+			}
+			if kind==.Gone do continue
+			shade:=u8(222+(x*17+y*29+x*y*5)%7*4)
+			if base.loaded {draw_turn_page_floor(base,tile,variant,{shade,shade,255,255})}
+			else {draw_iso_tile_fill(tile,{62,69,83,255})}
+			if kind==.Revealed_Safe||kind==.Confirmed {
+				glow:=f32(.84)+math.sin(world_time*2.4)*.09
+				if state.phase==.Preview do glow*=turn_page_ease(0,.12,state.elapsed)*(1-turn_page_ease(turn_page_profile(state.depth,state.score).reveal-.20,turn_page_profile(state.depth,state.score).reveal,state.elapsed))
+				// Light the stone itself as well as the fine ink; the whole safe
+				// cell must remain legible at the normal desktop/mobile zoom.
+				draw_turn_page_floor(base,tile,variant,rl.Fade(rl.Color{110,238,209,255},glow*.64))
+				ink,rect:=world_sprite_rect(&assets.world[.Turn_Page_Safe],tile,0,0)
+				// The generated decal is a flat diamond; project its native pixels
+				// onto the 2:1 floor without baking a smaller, resampled source PNG.
+				if ink.id!=0 {
+					center:=rl.Vector2(world_from_tile(tile+{.5,.5}))
+					rect.y=center.y+(rect.y-center.y)*.5+VISUAL_TURN_PAGE_SURFACE_OFFSET.y;rect.height*=.5
+					rl.DrawTexturePro(ink,{0,0,f32(ink.width),f32(ink.height)},rect,{0,0},0,rl.Fade(rl.WHITE,glow))
+				}
+			}
+		}
+	}
+	if page.fall_active&&(page.fall_cell.x<0||page.fall_cell.y<0||page.fall_cell.x>=TURN_PAGE_SIZE||page.fall_cell.y>=TURN_PAGE_SIZE) {
+		draw_turn_page_falling_player(view,app,assets,age)
+	}
+	// Fine inlaid directional stitches and small numerals retain the shape and
+	// order cues while the floor's material and illumination carry the route.
+	for i in 0..<page.length {
+		shown:=state.phase==.Preview||i<=state.step
+		if !shown do continue
+		center:=rl.Vector2(world_from_tile(turn_page_center(page.route[i]))+VISUAL_TURN_PAGE_SURFACE_OFFSET)
+		ink:=rl.Color{166,230,218,225}
+		if state.phase==.Preview {
+			profile:=turn_page_profile(state.depth,state.score)
+			ink=rl.Fade(ink,turn_page_ease(0,.10,state.elapsed)*(1-turn_page_ease(profile.reveal-.20,profile.reveal,state.elapsed)))
+		}
+		if i>0 {
+			previous:=rl.Vector2(world_from_tile(turn_page_center(page.route[i-1]))+VISUAL_TURN_PAGE_SURFACE_OFFSET)
+			for stitch in 0..<4 {
+				a:=previous+(center-previous)*(.22+f32(stitch)*.15)
+				b:=previous+(center-previous)*(.31+f32(stitch)*.15)
+				rl.DrawLineEx(a,b,.8,ink)
+			}
+			mid:=(previous+center)*.5;dir:=(center-previous)*.10
+			perp:=rl.Vector2{-dir.y,dir.x}*.45
+			rl.DrawLineEx(mid-dir+perp,mid,.8,ink);rl.DrawLineEx(mid-dir-perp,mid,.8,ink)
+		}
+		if !page.gaps[i] {
+			turn_page_begin_upright(Vec2(center),view.camera.rotation)
+			label:=fmt.ctprintf("%d",i+1)
+			x:=i32(center.x)-ui_measure_text(label,10)/2;y:=i32(center.y)-5
+			ui_draw_text(label,x+1,y+1,10,rl.Fade(rl.Color{15,28,35,255},f32(ink.a)/255))
+			ui_draw_text(label,x,y,10,ink)
+			rgl.PopMatrix()
+		} else {
+			rl.DrawLineEx(center+{-5,-3},center+{5,3},1.2,ink)
+			rl.DrawLineEx(center+{-5,3},center+{5,-3},1.2,ink)
+		}
+	}
+	seal:=rl.Vector2(world_from_tile(turn_page_center(page.route[page.length-1]))+VISUAL_TURN_PAGE_SURFACE_OFFSET)
+	for i in 0..<32 {
+		a:=f32(i)*math.PI*2/32;b:=f32(i+1)*math.PI*2/32
+		rl.DrawLineEx(seal+rl.Vector2{math.cos(a)*11,math.sin(a)*5.5},seal+rl.Vector2{math.cos(b)*11,math.sin(b)*5.5},.8,{211,187,130,230})
+	}
+	p:=&app.run.player;feet:=p.prev_pos+(p.pos-p.prev_pos)*render_alpha
+	if !page.fall_active do draw_soul_hunt_player(view,app,assets,feet,world_time)
+}
+
+draw_turn_page_overlay :: proc(view: ^View, app: ^App, assets: ^Assets) {
+	presentation:=ui_begin_presentation();defer ui_end_presentation()
+	state:=&app.story_minigame;profile:=turn_page_profile(state.depth,state.score)
+	panel_w:=min(f32(620),presentation.width*.86)
+	rl.DrawRectangleRounded({(presentation.width-panel_w)*.5,8,panel_w,101},.12,8,{10,12,19,235})
+	title:=cstring("TURN THE PAGE")
+	ui_draw_text(title,i32((presentation.width-f32(ui_measure_text(title,22)))*.5),18,22,{190,235,226,255})
+	message:=cstring("FOLLOW THE REMEMBERED PATH - DASH ACROSS GAPS")
+	if state.phase==.Preview do message="REMEMBER THE NUMBERED PATH - X MARKS A DASH GAP"
+	if app.turn_page.fall_active do message="THE PAGE TEARS - RETURNING TO THE START"
+	if state.phase==.Result do message=state.outcome==.Won?"THE MANUSCRIPT ACCEPTS YOUR PASSAGE":"THE INK FADES - YOUR VOW REMAINS"
+	ui_draw_text(message,i32((presentation.width-f32(ui_measure_text(message,14)))*.5),47,14,COLOR_TEXT)
+	bar_w:=min(f32(390),presentation.width*.48);bar_x:=(presentation.width-bar_w)*.5
+	remaining:=state.time_left/profile.budget
+	if state.phase==.Preview do remaining=1-state.elapsed/profile.reveal
+	rl.DrawRectangleRec({bar_x,72,bar_w,9},{9,11,18,230})
+	rl.DrawRectangleRec({bar_x,72,bar_w*clamp(remaining,f32(0),f32(1)),9},{112,201,188,230})
+	progress:=fmt.ctprintf("PAGE %d / %d     %.1f s     MISTAKES %d",min(state.score+1,state.goal),state.goal,state.time_left,state.mistakes)
+	ui_draw_text(progress,i32((presentation.width-f32(ui_measure_text(progress,14)))*.5),88,14,COLOR_TITLE)
+	draw_player_hud(view,app,assets)
 }

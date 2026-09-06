@@ -340,8 +340,8 @@ mobile_joystick_screen_vector :: proc(layout: ^Mobile_Layout, point: Vec2) -> Ve
 	return {dx / magnitude * strength, dy / magnitude * strength}
 }
 
-mobile_joystick_to_tile_vector :: proc(screen: Vec2) -> Vec2 {
-	return screen_stick_to_tile_vector(screen)
+mobile_joystick_to_tile_vector :: proc(screen: Vec2, camera_rotation: f32 = 0) -> Vec2 {
+	return screen_stick_to_tile_vector(screen, camera_rotation)
 }
 
 // --- Plain camera transform -------------------------------------------------
@@ -350,12 +350,13 @@ Mobile_Camera_Transform :: struct {
 	target_world: Vec2,
 	offset_px:    Vec2,
 	zoom:         f32,
+	rotation:     f32, // degrees, matching Camera2D
 }
 
 mobile_screen_to_world :: proc(transform: Mobile_Camera_Transform, screen: Vec2) -> Vec2 {
 	zoom := transform.zoom
 	if zoom <= 0 || math.is_nan(zoom) || math.is_inf(zoom) do zoom = 1
-	return transform.target_world + (screen - transform.offset_px) / zoom
+	return transform.target_world + input_camera_unrotate_vector(screen - transform.offset_px, transform.rotation) / zoom
 }
 
 mobile_screen_to_tile :: proc(transform: Mobile_Camera_Transform, screen: Vec2) -> Vec2 {
@@ -1267,7 +1268,7 @@ mobile_touch_finish_frame :: proc(
 ) {
 	if state == nil || environment == nil || result == nil || !environment.gameplay do return
 	if state.joystick_owned {
-		result.intent.move = mobile_joystick_to_tile_vector(state.joystick_vector)
+		result.intent.move = mobile_joystick_to_tile_vector(state.joystick_vector, environment.camera.rotation)
 	}
 	if state.aim_owned && !state.pinch_active {
 		result.intent.aim = mobile_world_touch_aim(environment.camera, environment.player_tile, state.aim_point)

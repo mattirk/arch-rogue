@@ -102,6 +102,7 @@ jobs:
         run: |
           python3 tools/verify_actor_assets.py
           python3 tools/verify_story_assets.py
+          python3 tools/verify_turn_page_assets.py
           python3 tools/verify_chronicle_assets.py
 
       - name: Run public-mirror and website regressions

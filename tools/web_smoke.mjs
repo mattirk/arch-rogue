@@ -87,7 +87,7 @@ try {
   // --- boot + clean console -------------------------------------------------
   let page = await bootPage(browser);
   let state = await probe(page);
-  record('boot', state.mode === 'Title' && state.storage_ready && state.hydrated,
+  record('boot', ['Title', 'Story_Decision'].includes(state.mode) && state.storage_ready && state.hydrated,
     `mode=${state.mode} storage=${state.storage_ready}`);
   record('boot-audio-deferred', state.audio_ready === false, 'audio must wait for a gesture');
 
@@ -101,6 +101,17 @@ try {
     `mix=${state.music_mix} streams=${state.music_streams} layers=${state.music_layers} callbacks=${state.music_callbacks} phase=${state.music_phase_ms} heap=${(state.heap_dynamic_bytes / (1024 * 1024)).toFixed(1)}MiB`);
   record('music-stream-stable', state.music_recoveries === 0,
     `recoveries=${state.music_recoveries}`);
+
+  // Fresh alpha.26+ profiles ask about narrative before the title. Keep Yes
+  // so the opening-story and save/resume checks below exercise their fixtures.
+  if (state.mode === 'Story_Decision') {
+    await page.key('Enter', 'Enter', 13);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await page.key('Enter', 'Enter', 13); // skip the recorded-choice farewell
+    await page.waitFor('JSON.parse(UTF8ToString(Module._ar_web_smoke_probe())).mode === "Title"',
+      { timeoutMs: 10000, label: 'title after first-boot story choice' });
+    record('first-boot-story-choice', true, 'accepted narrative and reached Title');
+  }
 
   // --- start a run; lazy packs stream and adopt -----------------------------
   await page.key('n', 'KeyN', 78); // Title hotkey: New Run -> Select

@@ -55,6 +55,9 @@ MX_Story_Capture_Scenario :: enum u8 {
 	Ending,
 	Decision_Ask,
 	Decision_Depart,
+	Turn_Page,
+	Turn_Page_Traverse,
+	Turn_Page_Fall,
 }
 
 mx_story_capture_scenario_from_env :: proc(value: string) -> MX_Story_Capture_Scenario {
@@ -63,6 +66,9 @@ mx_story_capture_scenario_from_env :: proc(value: string) -> MX_Story_Capture_Sc
 	case "relic_choices": return .Relic_Choices
 	case "guest":         return .Guest
 	case "soul":          return .Soul
+	case "turn_page": return .Turn_Page
+	case "turn_page_traverse": return .Turn_Page_Traverse
+	case "turn_page_fall": return .Turn_Page_Fall
 	case "mistbound":     return .Mistbound
 	case "ending":        return .Ending
 	case "decision_ask":    return .Decision_Ask
@@ -842,6 +848,28 @@ mx_story_stage_capture :: proc(app: ^App, scenario: MX_Story_Capture_Scenario) -
 		// the authored target rather than only its opening bank of mist.
 		_=story_soul_hunt_tick(app,{},.18)
 		app.options.mist_enabled=true
+	case .Turn_Page, .Turn_Page_Traverse, .Turn_Page_Fall:
+		app.run.depth=9;app.run.story_runtime.bind_results[8]=.None
+		if !app_story_start_bind_the_page(app,.Aid) do return false
+		app.story_minigame.score=1;turn_page_begin_page(app)
+		if scenario==.Turn_Page do _=turn_page_tick(app,{},.18)
+		if scenario!=.Turn_Page {
+			for _ in 0..<5 do _=turn_page_tick(app,{},.25)
+			if scenario==.Turn_Page_Fall {
+				forward:=turn_page_center(app.turn_page.route[1])-turn_page_center(app.turn_page.route[0])
+				wrong:=Vec2{forward.y,-forward.x}
+				inward:=Vec2{TURN_PAGE_SIZE*.5,TURN_PAGE_SIZE*.5}-app.run.player.pos
+				if wrong.x*inward.x+wrong.y*inward.y<0 do wrong=-wrong
+				_=turn_page_dash(app,wrong);_=turn_page_tick(app,{},.25);_=turn_page_tick(app,{},.10)
+			} else {
+				turn_page_move(app,turn_page_center(app.turn_page.route[1])-app.run.player.pos,false)
+				_=turn_page_dash(app,turn_page_center(app.turn_page.route[3])-app.run.player.pos)
+			}
+		}
+		// Capture the settled void at a visible roll angle; live gameplay never
+		// advances this clock without simulation. Phase/timer/fall state stay staged.
+		app.run.player.sim_elapsed=app.turn_page.return_player.sim_elapsed+9
+		return app_story_turn_page_active(app)&&!app.story_panel.active
 	case .Ending:
 		app.run.story.flags.gate = .Unresolved
 		if !story_record_gate_choice(&app.run.story,.Aid) do return false

@@ -363,12 +363,12 @@ story_soul_hunt_profile :: proc(verdict: Story_Soul_Verdict) -> Story_Soul_Hunt_
 	// the shortest time. Preserve is intentionally the most forgiving answer;
 	// Release sits between them.
 	switch verdict {
-	case .Preserve: return {goal=6,time_limit=STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,ghost_seconds=.92}
-	case .Release:  return {goal=8,time_limit=STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,ghost_seconds=.72}
-	case .Refuse:   return {goal=12,time_limit=STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,ghost_seconds=.54}
+	case .Preserve: return {goal=6,time_limit=STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,ghost_seconds=1.12}
+	case .Release:  return {goal=8,time_limit=STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,ghost_seconds=.92}
+	case .Refuse:   return {goal=12,time_limit=STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,ghost_seconds=.74}
 	case .Unresolved:
 	}
-	return {goal=8,time_limit=STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,ghost_seconds=.72}
+	return {goal=8,time_limit=STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,ghost_seconds=.92}
 }
 
 story_soul_hunt_target_position :: proc(state: ^Story_Minigame_State) -> (Vec2, bool) {
@@ -965,12 +965,12 @@ story_item_is_relic_touched :: proc(item: ^Item) -> bool {
 // --- Deterministic minigames ------------------------------------------------
 
 story_minigame_title :: proc(kind: Story_Minigame_Kind) -> string {
-	switch kind {case .Bind_The_Page:return "Bind the Page";case .Wake_The_Moonbloom:return "Wake the Moonbloom";case .Mirror_The_Unlost:return "Chase the Mistbound";case .None:}
+	switch kind {case .Bind_The_Page:return "Turn the Page";case .Wake_The_Moonbloom:return "Wake the Moonbloom";case .Mirror_The_Unlost:return "Chase the Mistbound";case .None:}
 	return ""
 }
 
 story_minigame_instruction :: proc(kind: Story_Minigame_Kind) -> string {
-	switch kind {case .Bind_The_Page:return "Remember the lit runes, then repeat them in order.";case .Wake_The_Moonbloom:return "Touch each waking bloom before its light folds shut.";case .Mirror_The_Unlost:return "Catch each ghost before it dissolves. Walking cannot bind it.";case .None:}
+	switch kind {case .Bind_The_Page:return "Remember the path. Walk its tiles in order; dash across torn gaps.";case .Wake_The_Moonbloom:return "Touch each waking bloom before its light folds shut.";case .Mirror_The_Unlost:return "Catch each ghost before it dissolves. Walking cannot bind it.";case .None:}
 	return ""
 }
 
@@ -995,9 +995,8 @@ story_create_minigame :: proc(run: ^Run,kind: Story_Minigame_Kind,room_index: in
 	state:=Story_Minigame_State{active=true,kind=kind,phase=.Ready,instance_id=run.story_runtime.minigame_counter,seed=seed,depth=run.depth,room_index=room_index,continuation=continuation,has_continuation=has_continuation,active_cell=-1,last_cell=-1}
 	switch kind {
 	case .Bind_The_Page:
-		pool:=[6]Story_Sigil_Id{.Key,.Clock,.Sun,.Moon,.Sword,.Shield};story_shuffle_sigils(pool[:],&rng);state.board_count=6;for i in 0..<6 do state.board[i]=pool[i]
-		state.sequence_count=min(6,3+max(0,run.depth-1)/3);state.goal=state.sequence_count
-		for i in 0..<state.sequence_count {cell:=rng_below(&rng,state.board_count);if i>0&&cell==state.sequence[i-1] do cell=(cell+1+rng_below(&rng,state.board_count-1))%state.board_count;state.sequence[i]=cell}
+		profile:=turn_page_profile(run.depth,0)
+		state.phase=.Preview;state.goal=profile.pages;state.time_left=profile.budget
 	case .Wake_The_Moonbloom:
 		pool:=[9]Story_Sigil_Id{.Sun,.Moon,.Star,.Flame,.Serpent,.Ouroboros,.Phoenix,.Dragon,.Cross};story_shuffle_sigils(pool[:],&rng);state.board_count=9;for i in 0..<9 do state.board[i]=pool[i]
 		state.goal=min(8,6+max(0,run.depth-1)/5);state.active_cell=story_next_garden_cell(&state);state.target_time=STORY_GARDEN_TARGET_SECONDS
@@ -1016,17 +1015,9 @@ story_minigame_confirm_ready :: proc(state: ^Story_Minigame_State) -> bool {
 
 story_minigame_preview_duration :: proc(state: ^Story_Minigame_State) -> f32 {
 	if state==nil do return 0
-	return state.kind==.Bind_The_Page?.55*f32(state.sequence_count)+.55:.85
+	return state.kind==.Bind_The_Page?turn_page_profile(state.depth,state.score).reveal:.85
 }
 
-story_minigame_preview_cell :: proc(state: ^Story_Minigame_State) -> int {
-	if state==nil||state.kind!=.Bind_The_Page||state.phase!=.Preview do return -1
-	elapsed:=max(f32(0),state.elapsed-.30);index:=int(elapsed/.55);pulse:=math.mod(elapsed,.55)<.38
-	if pulse&&0<=index&&index<state.sequence_count do return state.sequence[index]
-	return -1
-}
-
-@(private = "file")
 story_minigame_finish :: proc(state: ^Story_Minigame_State, won: bool) {
 	if state==nil||state.outcome!=.None do return
 	state.outcome=won?.Won:.Lost;state.phase=.Result;state.result_time=STORY_RESULT_SECONDS;state.active_cell=-1;state.target_time=0;state.lock_time=0;state.revision+=1
@@ -1037,8 +1028,7 @@ story_minigame_press :: proc(state: ^Story_Minigame_State, cell, expected_revisi
 	state.last_cell=cell;state.feedback_time=.42
 	switch state.kind {
 	case .Bind_The_Page:
-		expected:=state.step<state.sequence_count?state.sequence[state.step]:-1;state.last_correct=cell==expected
-		if state.last_correct {state.step+=1;state.score=state.step;if state.step>=state.goal do story_minigame_finish(state,true)} else {state.mistakes+=1;state.time_left=max(f32(0),state.time_left-.65)}
+		return false
 	case .Wake_The_Moonbloom:
 		state.last_correct=cell==state.active_cell
 		if state.last_correct {state.score+=1;if state.score>=state.goal {story_minigame_finish(state,true)} else {state.active_cell=story_next_garden_cell(state);state.target_time=max(f32(1.15),STORY_GARDEN_TARGET_SECONDS-f32(state.score)*.055)}} else {state.mistakes+=1;state.time_left=max(f32(0),state.time_left-.45)}
@@ -1053,7 +1043,7 @@ story_minigame_press :: proc(state: ^Story_Minigame_State, cell, expected_revisi
 
 story_minigame_tick :: proc(state: ^Story_Minigame_State, dt: f32) -> bool {
 	if state==nil||!state.active do return false
-	if state.kind==.Mirror_The_Unlost do return false
+	if state.kind==.Mirror_The_Unlost||state.kind==.Bind_The_Page do return false
 	step_dt:=clamp(dt,f32(0),f32(.25));state.feedback_time=max(f32(0),state.feedback_time-step_dt)
 	switch state.phase {
 	case .Ready:return false
@@ -1320,7 +1310,7 @@ app_story_open_lossless_soul :: proc(app: ^App)->bool {
 app_story_panel_active :: proc(app: ^App)->bool {return app!=nil&&app.story_panel.active}
 app_story_minigame_active :: proc(app: ^App)->bool {return app!=nil&&app.story_minigame.active}
 app_story_soul_hunt_active :: proc(app: ^App)->bool {return app_story_minigame_active(app)&&app.story_minigame.kind==.Mirror_The_Unlost}
-app_play_modal_open :: proc(app: ^App)->bool {return app_story_panel_active(app)||(app_story_minigame_active(app)&&!app_story_soul_hunt_active(app))}
+app_play_modal_open :: proc(app: ^App)->bool {return app_story_panel_active(app)||(app_story_minigame_active(app)&&!app_story_world_minigame_active(app))}
 
 app_story_current_speaker :: proc(app: ^App)->string {
 	if app==nil||!app.story_panel.active do return ""
@@ -1363,7 +1353,7 @@ app_story_start_minigame :: proc(app: ^App,kind:Story_Minigame_Kind,room_index:=
 	if app==nil||kind==.None||app.story_minigame.active do return false
 	index:=clamp(app.run.depth,1,STORY_BEAT_COUNT)-1
 	switch kind {case .Bind_The_Page:if app.run.story_runtime.bind_results[index]!=.None do return false;case .Wake_The_Moonbloom:if app.run.story_runtime.garden_games[index].outcome!=.None do return false;case .Mirror_The_Unlost:if app.run.story_runtime.soul_games[index].outcome!=.None do return false;case .None:return false}
-	app.story_minigame=story_create_minigame(&app.run,kind,room_index,continuation,has_continuation);app.story_minigame_cursor=0;app.story_soul_hunt_music_ready=false;app.story_soul_hunt_wait_remaining_s=0;app.story_soul_hunt_wait_total_s=0;app_clear_play_input(app);return app.story_minigame.active
+	app.story_minigame=story_create_minigame(&app.run,kind,room_index,continuation,has_continuation);app.story_minigame_cursor=0;app.story_soul_hunt_music_ready=false;app.story_soul_hunt_wait_remaining_s=0;app.story_soul_hunt_wait_total_s=0;app_clear_play_input(app);if kind==.Bind_The_Page do app_story_start_turn_page(app);return app.story_minigame.active
 }
 app_story_start_bind_the_page :: proc(app:^App,verb:Story_Choice_Verb)->bool{return app_story_start_minigame(app,.Bind_The_Page,-1,verb,true)}
 app_story_start_wake_the_moonbloom :: proc(app:^App,room_index:int)->bool{return app_story_start_minigame(app,.Wake_The_Moonbloom,room_index)}
@@ -1495,6 +1485,9 @@ app_story_finalize_minigame :: proc(app:^App)->bool {
 	if state.kind==.Mirror_The_Unlost {
 		story_soul_hunt_restore_world(&app.run,&state)
 	}
+	if state.kind==.Bind_The_Page && app.turn_page.version==1 {
+		turn_page_restore_player(&app.run.player,app.turn_page.return_player);app.turn_page={}
+	}
 	app.story_minigame={};app.story_minigame_cursor=0;app.story_soul_hunt_music_ready=false;app.story_soul_hunt_wait_remaining_s=0;app.story_soul_hunt_wait_total_s=0
 	if new_result&&state.outcome==.Won do app_story_grant_minigame_reward(app,&state)
 	if state.kind==.Bind_The_Page&&state.has_continuation {_=story_commit_relic_path(&app.run,state.continuation);app_story_close_panel(app)}
@@ -1502,7 +1495,7 @@ app_story_finalize_minigame :: proc(app:^App)->bool {
 	app_clear_play_input(app);return true
 }
 
-app_story_minigame_grid :: proc(app:^App)->(columns,rows:int) {if app==nil||!app.story_minigame.active do return 0,0;count:=app.story_minigame.board_count;columns=count==8?4:3;rows=(count+columns-1)/columns;return}
+app_story_minigame_grid :: proc(app:^App)->(columns,rows:int) {if app==nil||!app.story_minigame.active||app_story_world_minigame_active(app) do return 0,0;count:=app.story_minigame.board_count;columns=count==8?4:3;rows=(count+columns-1)/columns;return}
 
 @(private = "file")
 app_story_move_minigame_cursor :: proc(app:^App,horizontal,vertical:int) {columns,rows:=app_story_minigame_grid(app);if columns<=0||rows<=0 do return;count:=app.story_minigame.board_count;x:=app.story_minigame_cursor%columns;y:=app.story_minigame_cursor/columns;x=((x+horizontal)%columns+columns)%columns;y=((y+vertical)%rows+rows)%rows;candidate:=y*columns+x;if candidate>=count do candidate=count-1;app.story_minigame_cursor=clamp(candidate,0,max(0,count-1))}
@@ -1535,7 +1528,7 @@ app_story_reduce_panel :: proc(app:^App,intent:Intent) {if intent.back {if !app.
 
 app_story_reduce_modal :: proc(app:^App,intent:Intent) {if app==nil do return;app_clear_play_input(app);if app.story_minigame.active {app_story_reduce_minigame(app,intent);return};if app.story_panel.active do app_story_reduce_panel(app,intent)}
 app_story_tick_modal :: proc(app:^App,dt:f32) {if app==nil do return;if app.story_minigame.active {if story_minigame_tick(&app.story_minigame,dt) do _=app_story_finalize_minigame(app);return};if app.story_panel.active {app.story_panel.elapsed+=dt;app.story_panel.node_elapsed+=dt}}
-app_story_runtime_reset :: proc(app:^App) {if app==nil do return;app.story_panel={};app.story_minigame={};app.story_minigame_cursor=0;app.story_soul_hunt_music_ready=false;app.story_soul_hunt_wait_remaining_s=0;app.story_soul_hunt_wait_total_s=0}
+app_story_runtime_reset :: proc(app:^App) {if app==nil do return;app.story_panel={};app.story_minigame={};app.turn_page={};app.story_minigame_cursor=0;app.story_soul_hunt_music_ready=false;app.story_soul_hunt_wait_remaining_s=0;app.story_soul_hunt_wait_total_s=0}
 
 // Saves made by the removed pair-board implementation used the same enum value
 // but had no encoded return coordinate and no verdict yet. Resume them at the
@@ -1558,7 +1551,7 @@ app_story_normalize_soul_hunt_after_restore :: proc(app:^App) {
 }
 
 app_story_process_requests :: proc(app:^App,include_omen:=false)->bool {
-	if app==nil||app.mode!=.Playing||app_play_modal_open(app)||app_story_soul_hunt_active(app) do return false
+	if app==nil||app.mode!=.Playing||app_play_modal_open(app)||app_story_world_minigame_active(app) do return false
 	requests:=&app.run.story_runtime.requests
 	if requests.collect_relic {requests.collect_relic=false;_=story_collect_relic_echo(&app.run);app_clear_play_input(app);return true}
 	if requests.epilogue {requests.epilogue=false;return app_story_open_epilogue(app)}

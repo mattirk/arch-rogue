@@ -1,5 +1,63 @@
 # Changelog
 
+## 6.0.0-alpha.27 — Turn the Page
+
+- Give Mistbound ghosts 0.20 seconds longer to catch: 1.12 seconds for Preserve,
+  0.92 for Release, and 0.74 for Refuse.
+- Lower the default SFX volume to 30%, preserving saved volume preferences.
+- Add the final Turn the Page void layer for human review: one incomplete
+  scrawl fades over 18 seconds with 10-second empty intervals, accompanied
+  by two faint broken ink wisps. The traces sit behind parchment and stone,
+  share pause/save continuity, and keep the approved island motion unchanged.
+- Add phase-two Turn the Page void ambience for human review: four dim torn
+  parchment scraps using three generated sprites, slow separated orbits,
+  subtle tumbling and camera parallax below the floor. Pause/save continuity
+  shares the approved island clock. Parchment ambience approved before phase three.
+- Add phase-one Turn the Page motion for human review: a slow +/-8-degree
+  island roll and subtle vertical drift, upright player/route labels, and
+  screen-correct keyboard/controller/touch controls. Pause and save/resume
+  retain the pose; floor geometry and traversal rules remain unchanged.
+  Platform motion approved; parchment and ink use separate review phases.
+- Replace Bind the Page at depths 5, 8, and 9 with a world-space manuscript
+  memory challenge: numbered route reveals, ordered traversal, persistent ink
+  stitches, dash-only gaps, and a cracked-tile fall/reset sequence.
+- Prove deterministic cardinal routes and validate the player's swept foot
+  contact through movement and dash. Wrong steps cost time without damaging HP,
+  equipment, currency, or permanent stats. Completing every page retains the
+  full heal and +1 melee bonus; either result commits the selected relic path once.
+- Make manuscript traversal more forgiving with a 0.12-cell foot-contact
+  radius and dash braking that accepts off-center landings. Preserve wrong-step
+  detection, ordered traversal and dash-only gaps.
+- Block movement into fallen tiles and empty space without repeating the fall
+  or charging another mistake. Marked route gaps stop walking but remain
+  crossable by dash; interrupted jumps require a supported landing.
+- Freeze the dungeon and restore exact player position, facing, action state,
+  dash cooldown and animation clocks. Reuse mouse/controller aiming, pause,
+  mobile movement/Dash/Menu, and alternate-world camera/interpolation seams.
+- Introduce run-save schema 3 with the route, progress, fall phase and exact
+  return data. Verify schema-1/2 checksums against their retained payload shapes;
+  legacy modal Bind saves restart safely at the first manuscript page.
+- Generate native 512×512 PixelLab stone and ink art using the Soul room floor
+  as the quality reference. Animate cracks and eight textured falling fragments
+  continuously, with player descent and foreground floor occlusion. Fit the
+  platform in view and match walking cadence to actual movement distance.
+- Match the Mist chamber's slab dimensions with a PixelLab surface inpaint:
+  one full-cell flagstone, the same 64×32 face, 10-pixel stone sides and anchor.
+  Intact tiles and falling fragments use standard world-sprite placement;
+  route ink follows the slab's surface. Cover shared placement and exposed
+  edge alignment with zoom/pan regression tests.
+- Cap each decorative floor variant at three tiles per Turn the Page board,
+  leaving 85 plain slabs; falls preserve the original decoration layout.
+- Add two ink-stain and three rough serpent/key/moon glyph variants, using
+  the archived Pygame multiplayer verification seals as art references.
+  Seeded decoration stays independent of the safe route and persists through
+  reveal, collapse, retry and save/resume. All variants retain the slab geometry.
+- Pin source pixels, prompts, anchors and SHA-256 contracts under
+  `assets/world/turn_page/`, and verify assets in private and public CI.
+  Add reproducible desktop, mobile-layout and Chromium
+  capture harnesses. Update browser smoke to complete the first-boot narrative
+  choice before its gameplay and save/resume checks.
+
 ## 6.0.0-alpha.26 — The machine asks first
 
 A new Soulless Clanker prologue records whether the player wants narrative

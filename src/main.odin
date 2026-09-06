@@ -5,7 +5,7 @@ import "core:fmt"
 import "core:strings"
 import rl "../vendor/raylib"
 
-VERSION :: "6.0.0-alpha.26"
+VERSION :: "6.0.0-alpha.27"
 
 // Spiral-of-death guard: clamp huge frame gaps (debugger pause, window drag).
 MAX_FRAME_DT :: 0.25
@@ -55,7 +55,7 @@ controller_raylib_trigger_sample :: proc(gamepad: int, trigger: Controller_Trigg
 	return controller_trigger_sample(axis_available,axis_value,button_down)
 }
 
-collect_controller_intent :: proc(app:^App,state:^Controller_Runtime,intent:^Intent) {
+collect_controller_intent :: proc(app:^App,state:^Controller_Runtime,intent:^Intent,camera_rotation:f32=0) {
 	state.right_aim_this_frame = false
 	pad:=-1
 	if app.options.controller_enabled {
@@ -111,14 +111,14 @@ collect_controller_intent :: proc(app:^App,state:^Controller_Runtime,intent:^Int
 	if gameplay {
 		// Sticks steer by screen compass like the mobile joystick: convert the
 		// screen-space deflection into tile space before the sim sees it.
-		if left!={} do intent.move=screen_stick_to_tile_vector(left)
+		if left!={} do intent.move=screen_stick_to_tile_vector(left,camera_rotation)
 		right_raw:=Vec2{rl.GetGamepadAxisMovement(i32(pad),.RIGHT_X),rl.GetGamepadAxisMovement(i32(pad),.RIGHT_Y)}
 		right:=controller_resolve_stick(right_raw,&state.right_stick)
 		if right!={} {
 			state.aim_mode = true
 			state.right_aim_this_frame = true
-			raw_aim:=screen_stick_to_tile_vector(right)
-			intent.aim=controller_scene_aim(&app.run,raw_aim,!app_story_soul_hunt_active(app))
+			raw_aim:=screen_stick_to_tile_vector(right,camera_rotation)
+			intent.aim=controller_scene_aim(&app.run,raw_aim,!app_story_world_minigame_active(app))
 			intent.aim_live=true
 		}
 	} else {
@@ -152,7 +152,7 @@ collect_controller_intent :: proc(app:^App,state:^Controller_Runtime,intent:^Int
 		}
 	}
 	if gameplay && state.aim_mode && intent.aim == {} {
-		intent.aim=controller_scene_aim(&app.run,app.run.player.facing,!app_story_soul_hunt_active(app))
+		intent.aim=controller_scene_aim(&app.run,app.run.player.facing,!app_story_world_minigame_active(app))
 	}
 }
 
@@ -828,6 +828,7 @@ platform_bind_view_layout :: proc(runtime:^Platform_Runtime,view:^View) {
 
 platform_rebuild_graphics :: proc(runtime:^Platform_Runtime,view:^View,assets:^Assets,app:^App) {
 	if runtime==nil||view==nil||assets==nil||app==nil do return
+	view_clear_turn_page_motion(view)
 	target:=view.camera.target
 	base_zoom:=view.base_zoom
 	cursor_disabled:=view.cursor_disabled
@@ -932,6 +933,7 @@ Game_Boot_Config :: struct {
 	capture_scenario:          MX6_Capture_Scenario,
 	mx7_capture_scenario:      MX7_Capture_Scenario,
 	mx_story_capture_scenario: MX_Story_Capture_Scenario,
+	capture_mobile: bool,
 	mx_save_capture_scenario:  MX_Save_Capture_Scenario,
 	mx7_theme:                 int,
 	mx7_dark:                  int,
@@ -988,6 +990,8 @@ Game_Runtime :: struct {
 	fixed_step:           Mobile_Fixed_Step_State,
 	frame_count:          int,
 	fixed_capture:        bool,
+	capture_staged: bool,
+	world_minigame_was_active: bool,
 	perf_enabled:         bool,
 	perf_samples:         [dynamic]f32,
 	perf_resources_ready: bool,
@@ -1163,6 +1167,9 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 		}
 		if app_apply(&rt.app, Intent{confirm = true}) { // Select -> Playing
 			assets_activate_player(&rt.assets, rt.app.run.player.archetype)
+			when ARCH_ROGUE_WEB {
+				if config.mx_story_capture_scenario!=.None do web_packs_on_run_start(rt.app.run.player.archetype)
+			}
 			view_center_on(&rt.view, world_from_tile(run_spawn_point(&rt.app.run)))
 		}
 		// Dev: start deeper / spawn at the stairs room (boss arenas).
@@ -1334,11 +1341,13 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 	if rt.platform.resume_gate do frame_dt = 0
 
 	view_update(&rt.view, frame_dt)
+	view_prepare_turn_page_motion(&rt.view,app,f32(rt.fixed_step.accumulator/SIM_DT))
 	mode_was := app.mode
 	shop_was_open := app.shop_open
 	intent: Intent
 	resume_gate_was := rt.platform.resume_gate
 	if !rt.fixed_capture do intent = platform_collect_intent(&rt.platform, app, &rt.view, &rt.controller)
+	view_clear_turn_page_motion(&rt.view)
 	if resume_gate_was && !rt.platform.resume_gate && app.mode == .Playing do audio_resume(&rt.audio)
 	if app_apply(app, intent) {
 		if mode_was == .Select && app.mode == .Playing {
@@ -1397,7 +1406,7 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 	}
 
 	if rt.fixed_capture {
-		app_tick(app)
+		if !rt.capture_staged do app_tick(app)
 		mobile_fixed_step_reset(&rt.fixed_step)
 	} else {
 		simulation_enabled := !rt.platform.resume_gate && (!rt.platform.mobile || mobile_lifecycle_interactive(&rt.platform.lifecycle))
@@ -1467,9 +1476,15 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 		web_pack_adoptions_tick(rt)
 	}
 
-	if app.mode==.Playing&&app_story_soul_hunt_active(app) {
+	world_minigame_active:=app_story_world_minigame_active(app)
+	returned_from_world_minigame:=rt.world_minigame_was_active&&!world_minigame_active
+	rt.world_minigame_was_active=world_minigame_active
+	if returned_from_world_minigame {
+		view_center_on(&rt.view,world_from_tile(app.run.player.pos))
+	} else if app.mode==.Playing&&world_minigame_active {
 		player:=&app.run.player;pos:=player.prev_pos+(player.pos-player.prev_pos)*alpha
-		view_center_on(&rt.view,world_from_tile(pos))
+		if app_story_turn_page_active(app) {view_center_on_turn_page(&rt.view,pos)}
+		else {view_center_on(&rt.view,world_from_tile(pos))}
 	} else if app.mode==.Playing&&app.story_panel.active&&app.story_panel.kind==.Soul&&app.story_panel.node==.Soul_Settled {
 		view_center_on(&rt.view,world_from_tile(app.run.player.pos))
 	} else if app.mode == .Playing && !app.inventory_open && !app.character_open && !app.shop_open &&
@@ -1481,7 +1496,12 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 
 	// Stage on the exact frame that will be captured, after ordinary simulation
 	// and immediately before rendering, so transient action/effect state is fresh.
-	if config.shot_path != "" && rt.frame_count + 1 == config.shot_frame {
+	stage_capture:=config.shot_path != "" && rt.frame_count + 1 == config.shot_frame
+	when ARCH_ROGUE_WEB {
+		actor:=&rt.assets.archetypes[app.run.player.archetype]
+		stage_capture=config.mx_story_capture_scenario!=.None&&!rt.capture_staged&&rt.frame_count>=120&&actor.clips[.Idle].valid&&actor.clips[.Walk].valid
+	}
+	if stage_capture {
 		if config.capture_scenario != .None do mx6_stage_capture(app, &rt.view, config.capture_scenario, config.capture_direction)
 		if config.mx7_capture_scenario != .None do rt.capture_stage_ok = mx7_stage_capture(app, &rt.view, config.mx7_capture_scenario, config.mx7_theme, config.mx7_dark, config.mx7_open_door)
 		if config.mx_story_capture_scenario != .None do rt.capture_stage_ok = mx_story_stage_capture(app, config.mx_story_capture_scenario)
@@ -1491,9 +1511,20 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 			rt.running = false
 			return false
 		}
-		if app.mode==.Playing&&app_story_soul_hunt_active(app) do view_center_on(&rt.view,world_from_tile(app.run.player.pos))
+		if app.mode==.Playing&&app_story_world_minigame_active(app) {
+			if app_story_turn_page_active(app) {view_center_on_turn_page(&rt.view,app.run.player.pos)}
+			else {view_center_on(&rt.view,world_from_tile(app.run.player.pos))}
+		}
+		if config.capture_mobile {
+			layout,status:=mobile_layout_build({surface_width=int(rl.GetScreenWidth()),surface_height=int(rl.GetScreenHeight()),density=1,revision=1})
+			rt.view.mobile_mode=true;rt.view.mobile_layout=layout;rt.view.mobile_layout_valid=status==.Valid
+			rt.view.camera.offset=rl.Vector2(layout.world_focus)
+		}
+		rt.capture_staged=true
+		platform_log("ARCH_ROGUE_STORY_CAPTURE ready")
 		alpha = 1
 	}
+	view_prepare_turn_page_motion(&rt.view,app,alpha)
 	draw_frame(&rt.view, app, &rt.assets, alpha)
 	if rt.platform.mobile && !rt.platform.ready_marker_emitted {
 		mist_shader_ready := rt.view.mist != nil && rt.view.mist.ready && rt.view.mist.shader_ok
@@ -1616,7 +1647,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 	mouse_moved := mouse_delta.x != 0 || mouse_delta.y != 0
 	mouse_used := mouse_moved || rl.IsMouseButtonPressed(.LEFT) || rl.IsMouseButtonDown(.LEFT)
 	ctrl_down := rl.IsKeyDown(.LEFT_CONTROL) || rl.IsKeyDown(.RIGHT_CONTROL)
-	collect_controller_intent(app,controller,&intent)
+	collect_controller_intent(app,controller,&intent,view.camera.rotation)
 	if mouse_used && !controller.right_aim_this_frame {
 		controller.aim_mode = false
 		controller.keyboard_aim = false
@@ -1864,6 +1895,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 		arrow_aim := desktop_move_vector(
 			rl.IsKeyDown(.LEFT), rl.IsKeyDown(.RIGHT),
 			rl.IsKeyDown(.UP), rl.IsKeyDown(.DOWN),
+			view.camera.rotation,
 		)
 		if arrow_aim != {} {
 			controller.keyboard_aim = true
@@ -1879,6 +1911,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			right = rl.IsKeyDown(.RIGHT),
 			up = rl.IsKeyDown(.UP),
 			down = rl.IsKeyDown(.DOWN),
+			camera_rotation = view.camera.rotation,
 			aim = aim,
 			mouse_left = rl.IsMouseButtonDown(.LEFT),
 			mouse_left_pressed = rl.IsMouseButtonPressed(.LEFT),

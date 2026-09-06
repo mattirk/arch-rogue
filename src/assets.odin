@@ -648,6 +648,11 @@ World_Key :: enum {
 	Door_Closed_R,
 	Door_Open_L,
 	Door_Open_R,
+	Turn_Page_Hidden,
+	Turn_Page_Safe,
+	Turn_Page_Parchment,
+	Turn_Page_Void_Glyph,
+	Turn_Page_Ink_Wisp,
 	Wall_Face, // transient wall-touch clip (MX.5); frames start/end on wall_403
 }
 
@@ -675,6 +680,11 @@ WORLD_KEY_NAMES := [World_Key]string {
 	.Door_Open_L   = "door_open",
 	.Door_Open_R   = "door_open_east",
 	.Wall_Face     = "wall_face",
+	.Turn_Page_Hidden = "turn_page_hidden",
+	.Turn_Page_Safe = "turn_page_safe",
+	.Turn_Page_Parchment = "turn_page_parchment",
+	.Turn_Page_Void_Glyph = "turn_page_void_glyph",
+	.Turn_Page_Ink_Wisp = "turn_page_ink_wisp",
 }
 
 // Pick the authored visible face from the wall run around a doorway. Pygame's

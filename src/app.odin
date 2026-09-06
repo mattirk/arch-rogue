@@ -130,6 +130,7 @@ App :: struct {
 	run:            Run,
 	story_panel:    Story_Panel_State,
 	story_minigame: Story_Minigame_State,
+	turn_page: Turn_Page_State,
 	story_minigame_cursor: int,
 	story_soul_hunt_music_ready:         bool, // transient audio-boundary release signal
 	story_soul_hunt_wait_remaining_s:   f32,  // presentation countdown from the live Loop
@@ -489,6 +490,7 @@ app_reset_run_ui_after_restore :: proc(app: ^App) {
 	app_clear_play_input(app)
 	app.mouse_input_blocked = true
 	app_story_normalize_soul_hunt_after_restore(app)
+	app_story_normalize_turn_page_after_restore(app)
 	app_story_restore_panel_text(app)
 }
 
@@ -510,9 +512,10 @@ app_tick :: proc(app: ^App) {
 		app.mode == .Recovery || app.mode == .Abandon_Confirm || app.mode == .Chronicle {
 		return
 	}
+	if app_story_turn_page_active(app)&&app.mode!=.Playing do return
 	if app.mode == .Playing {
-		if app_story_soul_hunt_active(app) {
-			tick_feel_events(&app.run,SIM_DT)
+		if app_story_world_minigame_active(app) {
+			if !app_story_turn_page_active(app) do tick_feel_events(&app.run,SIM_DT)
 			move: Vec2
 			if app.story_minigame.phase == .Play {
 				move = app.move_input
@@ -527,8 +530,8 @@ app_tick :: proc(app: ^App) {
 			if move=={}&&app.aim_live&&aim_outside_dead_zone(app.aim_input) {
 				app.run.player.facing=linalg.normalize0(app.aim_input)
 			}
-			finished:=story_soul_hunt_tick(app,move,SIM_DT)
-			app.run.active_ticks+=1
+			finished:=false
+			if app_story_turn_page_active(app) {finished=turn_page_tick(app,move,SIM_DT)} else {finished=story_soul_hunt_tick(app,move,SIM_DT);app.run.active_ticks+=1}
 			if finished do _=app_story_finalize_minigame(app)
 			app_mark_run_dirty(app,critical=finished)
 			return
@@ -1008,7 +1011,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 	case .Playing:
 			if app.mouse_input_blocked && intent.mouse_released do app.mouse_input_blocked = false
 			story_request_processed := app_story_process_requests(app)
-			if app_story_soul_hunt_active(app) {
+			if app_story_world_minigame_active(app) {
 				if intent.toggle_mobile_utility do app.mobile_utility_open=!app.mobile_utility_open
 				if intent.back||intent.quit {
 					app.mode=.Paused;app.pause_index=0;app_clear_play_input(app);return false
@@ -1018,7 +1021,9 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 				app.mouse_target=intent.mouse_target
 				action_aim:=intent.aim;if !aim_outside_dead_zone(action_aim) do action_aim=app.run.player.facing
 				if intent.actions[3] {
-					if story_soul_hunt_dash(app,action_aim) do app_mark_run_dirty(app,critical=true)
+					dashed:=false
+					if app_story_turn_page_active(app) {dashed=turn_page_dash(app,action_aim)} else {dashed=story_soul_hunt_dash(app,action_aim)}
+					if dashed do app_mark_run_dirty(app,critical=true)
 				}
 				return false
 			}

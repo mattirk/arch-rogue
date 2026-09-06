@@ -494,6 +494,9 @@ web_boot_config :: proc() -> Game_Boot_Config {
 	if value := web_query_param("depth", buffer[:]); value != "" {
 		if parsed, ok := strconv.parse_int(value); ok do config.dev_depth = parsed
 	}
+	config.mx_story_capture_scenario=mx_story_capture_scenario_from_env(web_query_param("story_capture",buffer[:]))
+	config.capture_mobile=web_query_param("capture_mobile",buffer[:])=="1"
+	if config.mx_story_capture_scenario!=.None do config.dev_play=true
 	config.mx7_perf_enabled = web_query_param("mx7_perf", buffer[:]) != ""
 	if value := web_query_param("perf_frames", buffer[:]); value != "" {
 		if parsed, ok := strconv.parse_int(value); ok do config.perf_frames = max(1, parsed)

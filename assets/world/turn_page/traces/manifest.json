@@ -1,0 +1,103 @@
+{
+  "format_version": 1,
+  "generated_at": "2026-09-06",
+  "purpose": "Three incomplete distant glyph scrawls and one broken ink wisp for Turn the Page phase 3 void ambience; static sprites drawn with subtle read-only presentation opacity and motion.",
+  "source_processing": "Exact native PixelLab Pro PNG output; no offline image editing or resampling.",
+  "files": {
+    "glyph_serpent.png": {
+      "generator": "PixelLab Pro",
+      "job_id": "e2b058db-1d31-4ee1-b150-2d979a803f81",
+      "prompt": "A single isolated incomplete badly hand-drawn ink scrawl as a high quality dark fantasy game sprite, front facing flat mark with no perspective. Thin neutral pale grey-white dry-brush strokes, ragged broken edges and missing portions, uneven human drawing. Clearly readable neutral light strokes, the game renderer supplies the final low opacity. One simple symbol only, centered filling about70percent of256canvas with transparent padding. Real transparent background. NO stone, tile, parchment, page, backing, smoke, glow, magic particles, outer circle, border, shadow, letters, numbers or text. Refined hand-painted pixel art with subtle dry ink texture. Symbol: a crooked upright S-shaped snake scrawl, curling inward at its lower tail and a small bent head at upper right, visibly missing two short sections of body; no scales or realistic animal body. This is a rough serpent doodle rather than typography.",
+      "seed": 970801,
+      "size": [
+        256,
+        256
+      ],
+      "art_reference": {
+        "file": "assets/world/turn_page/floor_glyph_serpent.png",
+        "sha256": "5000e91cd2ae1a7b00a46c73f6ab5629271e6de340b1ba1b8aba918e8e433b2f",
+        "usage": "Read-only visual vocabulary reference; no runtime dependency."
+      },
+      "sha256": "5b951b38fc548782fd1f178581023c9d940b48e36e4d5c6725133d5df377f3de",
+      "alpha_bounds": [
+        74,
+        38,
+        186,
+        222
+      ],
+      "size_bytes": 2685,
+      "download_url": "https://api.pixellab.ai/mcp/images/e2b058db-1d31-4ee1-b150-2d979a803f81/download"
+    },
+    "glyph_key.png": {
+      "generator": "PixelLab Pro",
+      "job_id": "5e357578-0416-44e4-81b2-29ade28d65b2",
+      "prompt": "A single isolated incomplete badly hand-drawn ink scrawl as a high quality dark fantasy game sprite, front facing flat mark with no perspective. Thin neutral pale grey-white dry-brush strokes, ragged broken edges and missing portions, uneven human drawing. Clearly readable neutral light strokes, the game renderer supplies the final low opacity. One simple symbol only, centered filling about70percent of256canvas with transparent padding. Real transparent background. NO stone, tile, parchment, page, backing, smoke, glow, magic particles, outer circle, border, shadow, letters, numbers or text. Refined hand-painted pixel art with subtle dry ink texture. Symbol: a lopsided old key doodle, incomplete open round bow at upper right, bent crooked stem descending diagonally left, two uneven small teeth at lower left. Bow visibly broken with a missing section, stem partly dry and interrupted. No three dimensional metallic key object.",
+      "seed": 970802,
+      "size": [
+        256,
+        256
+      ],
+      "art_reference": {
+        "file": "assets/world/turn_page/floor_glyph_key.png",
+        "sha256": "e857ae63c7b8afd5b1f3ed1d65410eb7a8386bf28a876dbe8ea7aa8b83f76f98",
+        "usage": "Read-only visual vocabulary reference; no runtime dependency."
+      },
+      "sha256": "f216886a11e32f2c77c7bdac28977ea7971348b12611beb2b0ed04af1304a500",
+      "alpha_bounds": [
+        47,
+        35,
+        214,
+        223
+      ],
+      "size_bytes": 3268,
+      "download_url": "https://api.pixellab.ai/mcp/images/5e357578-0416-44e4-81b2-29ade28d65b2/download"
+    },
+    "glyph_moon.png": {
+      "generator": "PixelLab Pro",
+      "job_id": "574698f1-f932-49ff-919c-572b4213ef49",
+      "prompt": "Create a thin incomplete roughly hand-drawn crescent moon ink glyph on transparent background, matching ONLY the broken crescent silhouette and dry-brush scrawl style of the reference. Make all visible main strokes a BRIGHT PALE SILVER WHITE color approximately RGB220,224,226, clearly bright and opaque. NOT dark grey and NOT transparent faint ink. The renderer will later dim this asset; the delivered strokes must be bright. Thin irregular broken crescent outline, horns facing right, several conspicuous missing sections, no filled crescent body. Neutral white ragged ink with dry-brush edge. Flat front view. Center the one symbol in256canvas with about25pixels clear transparent padding. Background entirely transparent; no grey backing, no glow, no lighting aura, no stone, no paper, no circle, no stars, no text.",
+      "seed": 970807,
+      "size": [
+        256,
+        256
+      ],
+      "art_reference": {
+        "file": "assets/world/turn_page/floor_glyph_moon.png",
+        "sha256": "a2ff79dd67367f9e20eacc507f28eca83fbfbd8a90bd4fd055fec1cf39f363c9",
+        "usage": "Read-only visual vocabulary reference; no runtime dependency."
+      },
+      "generation_reference": {
+        "job_id": "d029007f-c6a2-40f3-8840-6710a42f4a43",
+        "usage": "Only broken crescent silhouette and dry-brush scrawl style. Replace dark grey ink with bright pale silver-white ink."
+      },
+      "sha256": "a02fad158693b482495b24f4617653904a54843e13a6a2ff6f046150324a3bd4",
+      "alpha_bounds": [
+        30,
+        26,
+        225,
+        230
+      ],
+      "size_bytes": 2817,
+      "download_url": "https://api.pixellab.ai/mcp/images/574698f1-f932-49ff-919c-572b4213ef49/download"
+    },
+    "ink_wisp.png": {
+      "generator": "PixelLab Pro",
+      "job_id": "3ff8b719-0f25-4840-b707-7d17d9ec7c18",
+      "prompt": "ONE gently curved ink trail made from exactly THREE disconnected small thin brushstroke dashes. Flat pale grey-white dry ink only on transparent background. Arrange the three dashes in a single almost straight row ascending gently from lower left to upper right, with wide clear gaps between the dashes. Each dash has ragged dry-brush edges and tapered ends. All three dashes are roughly equal thin width. This is one shallow arc, never a zigzag or S curl. Marks occupy a diagonal band only30pixels thick across the center of256canvas. High quality game sprite; roughly70percent canvas width; generous transparent padding. NO ribbon, NO loops, NO coils, NO knot, NO central dot, NO eye, NO snake, NO repeatedcurves, NO smoke, NO cloud, NO glow, NO background, NO paper, NO text.",
+      "seed": 970806,
+      "size": [
+        256,
+        256
+      ],
+      "sha256": "6d2e6fe35d538aa49fe8392ad8a1927d025fcd8412bad627e0cd2689b76d1183",
+      "alpha_bounds": [
+        29,
+        83,
+        234,
+        191
+      ],
+      "size_bytes": 1557,
+      "download_url": "https://api.pixellab.ai/mcp/images/3ff8b719-0f25-4840-b707-7d17d9ec7c18/download"
+    }
+  }
+}

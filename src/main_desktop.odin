@@ -363,6 +363,7 @@ game_boot_config_from_env :: proc() -> Game_Boot_Config {
 	if env := os.get_env("ARCH_ROGUE_SEED", context.temp_allocator); env != "" {
 		if v, seed_ok := strconv.parse_u64(env); seed_ok do config.seed = v
 	}
+	config.capture_mobile = os.get_env("ARCH_ROGUE_CAPTURE_MOBILE", context.temp_allocator) == "1"
 	config.shot_path = os.get_env("ARCH_ROGUE_SHOT", context.allocator)
 	if env := os.get_env("ARCH_ROGUE_SHOT_FRAME", context.temp_allocator); env != "" {
 		if v, frame_ok := strconv.parse_int(env); frame_ok do config.shot_frame = v

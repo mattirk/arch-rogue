@@ -383,7 +383,7 @@ platform_mobile_build_targets :: proc(runtime: ^Platform_Runtime, app: ^App) -> 
 				enabled = app.run.player.bag_count > 0)
 			platform_mobile_add_target(&set, layout, 1031, .Guard_Request_Drop, drop,
 				enabled = app.run.player.bag_count > 0)
-		} else if app_story_soul_hunt_active(app) {
+		} else if app_story_world_minigame_active(app) {
 			set = mobile_soul_hunt_target_set(layout,context_key,app.mobile_utility_open)
 		} else {
 			set = mobile_gameplay_target_set(
@@ -490,7 +490,7 @@ platform_collect_mobile_intent :: proc(
 		intent.toggle_fullscreen = false
 		if platform_intent_has_navigation(intent) do app.input_modality = .Keyboard_Mouse
 	} else {
-		collect_controller_intent(app, controller, &intent)
+		collect_controller_intent(app, controller, &intent, view.camera.rotation)
 	}
 	back_pressed := rl.IsKeyPressed(.BACK)
 	when ARCH_ROGUE_ANDROID {
@@ -515,6 +515,7 @@ platform_collect_mobile_intent :: proc(
 			target_world = Vec2(view.camera.target),
 			offset_px = Vec2(view.camera.offset),
 			zoom = view.camera.zoom,
+			rotation = view.camera.rotation,
 		},
 		player_tile = app.run.player.pos,
 		current_view_zoom = view.base_zoom,

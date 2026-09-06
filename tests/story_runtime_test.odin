@@ -122,7 +122,7 @@ mx_story_capture_staging_uses_reachable_production_panel_states :: proc(t: ^test
 	testing.expect(t,ar.mx_story_capture_scenario_from_env("decision_depart")==.Decision_Depart,"decision depart capture parser changed")
 	testing.expect(t,ar.mx_story_capture_scenario_from_env("unknown")==.None,"unknown capture scenario must stay inert")
 
-	fixtures := [6]struct {
+	fixtures := [9]struct {
 		scenario:  ar.MX_Story_Capture_Scenario,
 		archetype: ar.Archetype_Id,
 	}{
@@ -132,12 +132,17 @@ mx_story_capture_staging_uses_reachable_production_panel_states :: proc(t: ^test
 		{.Soul,.Warden},
 		{.Mistbound,.Rogue},
 		{.Ending,.Arcanist},
+		{.Turn_Page,.Warden},
+		{.Turn_Page_Traverse,.Rogue},
+		{.Turn_Page_Fall,.Arcanist},
 	}
 	for fixture in fixtures {
 		app: ar.App
 		story_runtime_start_app(&app,ar.derive_seed(520199+u64(fixture.scenario),0),fixture.archetype)
 		ok := ar.mx_story_stage_capture(&app,fixture.scenario)
-		if fixture.scenario==.Mistbound {
+		if ar.app_story_turn_page_active(&app) {
+			testing.expect(t,ok&&!app.story_panel.active,"Turn the Page capture must stage an alternate world")
+		} else if fixture.scenario==.Mistbound {
 			testing.expectf(t,ok&&ar.app_story_soul_hunt_active(&app)&&!app.story_panel.active,
 				"%v capture did not stage the world-space hunt",fixture.scenario)
 		} else {
@@ -166,6 +171,8 @@ mx_story_capture_staging_uses_reachable_production_panel_states :: proc(t: ^test
 		case .Ending:
 			choices:=ar.app_story_panel_choices(&app)
 			testing.expect(t,app.story_panel.node==.Epilogue_Ending&&identity.has_ending&&identity.ending_verb==.Aid&&choices.count==1,"ending capture must use the Arcanist Aid ending and page action")
+		case .Turn_Page,.Turn_Page_Traverse,.Turn_Page_Fall:
+			testing.expect(t,ar.turn_page_route_valid(&app.turn_page))
 		case .Decision_Ask,.Decision_Depart: // menu-scene captures, staged below without a run
 		case .None:
 		}
@@ -215,7 +222,7 @@ mx_story_runtime_modal_minigames_are_deterministic_and_winnable :: proc(t:^testi
 	ar.run_start(&run,ar.derive_seed(520103,0),.Rogue)
 	defer ar.run_destroy(&run)
 
-	kinds:=[2]ar.Story_Minigame_Kind{.Bind_The_Page,.Wake_The_Moonbloom}
+	kinds:=[1]ar.Story_Minigame_Kind{.Wake_The_Moonbloom}
 	for kind in kinds {
 		a:=ar.story_create_minigame(&run,kind,3,.Aid,kind==.Bind_The_Page)
 		// Reset only the instance counter so this probes deterministic construction
@@ -243,9 +250,9 @@ mx_story_runtime_soul_hunt_profiles_scale_by_verdict_and_replay :: proc(t:^testi
 		time_limit:f32,
 		ghost_seconds:f32,
 	}{
-		{.Preserve,6,ar.STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,.92},
-		{.Release,8,ar.STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,.72},
-		{.Refuse,12,ar.STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,.54},
+		{.Preserve,6,ar.STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,1.12},
+		{.Release,8,ar.STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,.92},
+		{.Refuse,12,ar.STORY_SOUL_HUNT_TIME_LIMIT_SECONDS,.74},
 	}
 	run:ar.Run
 	ar.run_start(&run,ar.derive_seed(520105,0),.Rogue)

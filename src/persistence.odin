@@ -15,7 +15,8 @@ OPTIONS_DOCUMENT_SCHEMA_VERSION :: 3
 OPTIONS_DOCUMENT_SCHEMA_V2      :: 2
 PROFILE_DOCUMENT_SCHEMA_VERSION :: 2
 PROFILE_DOCUMENT_SCHEMA_V1      :: 1
-RUN_DOCUMENT_SCHEMA_VERSION     :: 2
+RUN_DOCUMENT_SCHEMA_VERSION     :: 3
+RUN_DOCUMENT_SCHEMA_V2          :: 2
 RUN_DOCUMENT_SCHEMA_V1          :: 1
 CHRONICLE_RECORD_SCHEMA_VERSION :: 1
 LEGACY_OPTIONS_SCHEMA_VERSION   :: 1
@@ -438,6 +439,70 @@ Profile_Document_V1 :: struct {
 }
 
 Run_Save_Payload :: struct {
+	turn_page: Turn_Page_State,
+	active_ticks:   u64,
+	started_at_utc: string,
+	ended_at_utc:   string,
+	terminal:       Run_Terminal_State,
+	finalization:   Run_Finalization_Phase,
+	seed:           u64,
+	depth:          int,
+	difficulty:     Difficulty_Id,
+	dungeon:        Dungeon,
+	player:         Player,
+	enemies:        [dynamic]Enemy,
+	next_enemy_id:  u32,
+	next_familiar_id:u32,
+	next_save_entity_id:u64,
+	storm_cast_counter:u32,
+	floor_epoch:    u32,
+	projectiles:    [dynamic]Projectile,
+	familiars:      [dynamic]Familiar,
+	bells:          [dynamic]Ambush_Bell,
+	ground_items:   [dynamic]Ground_Item,
+	shopkeeper:     Shopkeeper,
+	has_shopkeeper: bool,
+	ambient_residents:Ambient_Room_Npc_Set,
+	refuge:         Refuge_State,
+	shop_requested: bool,
+	loot_rng:       Pcg32,
+	combat_rng:     Pcg32,
+	dark_floor:     bool,
+	theme_index:    int,
+	explored:       [MAP_W][MAP_H]bool,
+	boss_engaged:   bool,
+	sealed:         [dynamic]Sealed_Tile,
+	tyrant_dead:    bool,
+	victory:        bool,
+	kills:          int,
+	modifier:       Run_Modifier_Id,
+	plan:           [DUNGEON_DEPTH]Floor_Plan,
+	story:          Story_State,
+	story_runtime:  Story_Run_Runtime,
+	story_panel:    Story_Panel_State,
+	story_minigame: Story_Minigame_State,
+	story_minigame_cursor:int,
+	bars_visited:   int,
+	bars_toasted:   int,
+	challenge_rooms_cleared:int,
+	traps:          [dynamic]Trap,
+	shrines:        [dynamic]Shrine,
+	secrets:        [dynamic]Secret,
+	traps_triggered:int,
+	shrines_used:   int,
+	secrets_opened: int,
+	notable_loot:   [MAX_NOTABLE_LOOT]Notable_Loot,
+	notable_count:  int,
+	visited_themes: [len(THEMES)]bool,
+	defeated_bosses:[Boss_Id]bool,
+	last_damage_source:string,
+	wall_touches:   int,
+	potions_used:   int, // schema v2: Steam achievement run facts must survive resume
+	elites_killed:  int, // schema v2
+}
+
+// Retained schema-2 payload for checksum verification before migration.
+Run_Save_Payload_V2 :: struct {
 	active_ticks:   u64,
 	started_at_utc: string,
 	ended_at_utc:   string,
@@ -581,6 +646,17 @@ Run_Document_V1 :: struct {
 	written_at_utc: string,
 	payload_sha256: string,
 	payload:        Run_Save_Payload_V1,
+}
+
+Run_Document_V2 :: struct {
+	schema_version: int,
+	game_release:   string,
+	document_id:    string,
+	run_id:         string,
+	revision:       u64,
+	written_at_utc: string,
+	payload_sha256: string,
+	payload:        Run_Save_Payload_V2,
 }
 
 // Ownership-transferring v1 -> v2 conversion; the v1 payload is zeroed.
@@ -1634,6 +1710,7 @@ run_save_payload_from_app :: proc(app: ^App) -> Run_Save_Payload {
 		victory=run.victory, kills=run.kills, modifier=run.modifier, plan=run.plan,
 		story=run.story, story_runtime=story_runtime, story_panel=panel,
 		story_minigame=app.story_minigame, story_minigame_cursor=app.story_minigame_cursor,
+		turn_page=app.turn_page,
 		bars_visited=run.bars_visited, bars_toasted=run.bars_toasted,
 		challenge_rooms_cleared=run.challenge_rooms_cleared,
 		traps=run.traps, shrines=run.shrines, secrets=run.secrets,
@@ -1778,6 +1855,7 @@ persistence_encode_run :: proc(app: ^App, revision: u64, written_at_utc: string)
 
 run_payload_validate :: proc(payload: ^Run_Save_Payload) -> bool {
 	if payload == nil do return false
+	if !turn_page_saved_state_valid(payload) do return false
 	if payload.depth < 1 || payload.depth > DUNGEON_DEPTH do return false
 	if !difficulty_is_valid(payload.difficulty) do return false
 	if int(payload.player.archetype) < 0 || int(payload.player.archetype) >= len(Archetype_Id) do return false
@@ -1928,7 +2006,7 @@ run_document_destroy :: proc(document: ^Run_Document) {
 
 // Schema-1 branch: the stored hash covers the v1 payload marshal, so verify
 // against the retained v1 shape before converting. Conversion moves ownership;
-// the returned document is a normal v2 document with the new counters zeroed.
+// the returned document uses the current schema with the new counters zeroed.
 @(private = "file")
 persistence_decode_run_v1 :: proc(data: []byte) -> (Run_Document, Persistence_Decode_Status) {
 	v1: Run_Document_V1
@@ -1960,6 +2038,36 @@ persistence_decode_run_v1 :: proc(data: []byte) -> (Run_Document, Persistence_De
 	return document, .Migrated
 }
 
+persistence_decode_run_v2 :: proc(data: []byte) -> (Run_Document, Persistence_Decode_Status) {
+	v2: Run_Document_V2
+	if err := json.unmarshal(data, &v2); err != nil do return {}, .Corrupt
+	document := Run_Document{
+		schema_version=RUN_DOCUMENT_SCHEMA_VERSION,
+		game_release=v2.game_release,
+		document_id=v2.document_id,
+		run_id=v2.run_id,
+		revision=v2.revision,
+		written_at_utc=v2.written_at_utc,
+		payload_sha256=v2.payload_sha256,
+	}
+	payload_bytes, ok := persistence_marshal(v2.payload)
+	document.payload = run_payload_from_v2(&v2.payload)
+	if !ok {
+		run_document_destroy(&document)
+		return {}, .Corrupt
+	}
+	computed := persistence_sha256(payload_bytes)
+	delete(payload_bytes)
+	defer delete(computed)
+	if computed == "" || computed != document.payload_sha256 ||
+		document.run_id == "" || document.run_id != document.document_id ||
+		!run_payload_validate(&document.payload) {
+		run_document_destroy(&document)
+		return {}, .Corrupt
+	}
+	return document, .Migrated
+}
+
 persistence_decode_run :: proc(data: []byte) -> (Run_Document, Persistence_Decode_Status) {
 	if !persistence_json_preflight(data, PERSISTENCE_RUN_MAX_BYTES) do return {}, .Oversize
 	probe: Document_Probe
@@ -1970,6 +2078,7 @@ persistence_decode_run :: proc(data: []byte) -> (Run_Document, Persistence_Decod
 	}
 	if probe.schema_version > RUN_DOCUMENT_SCHEMA_VERSION do return {}, .Future
 	if probe.schema_version == RUN_DOCUMENT_SCHEMA_V1 do return persistence_decode_run_v1(data)
+	if probe.schema_version == RUN_DOCUMENT_SCHEMA_V2 do return persistence_decode_run_v2(data)
 	if probe.schema_version != RUN_DOCUMENT_SCHEMA_VERSION do return {}, .Corrupt
 	document: Run_Document
 	if err := json.unmarshal(data, &document); err != nil do return {}, .Corrupt
@@ -1995,37 +2104,41 @@ persistence_decode_run :: proc(data: []byte) -> (Run_Document, Persistence_Decod
 
 app_install_run_document :: proc(app: ^App, document: ^Run_Document) -> bool {
 	if app == nil || document == nil || document.run_id == "" || !run_payload_validate(&document.payload) do return false
+	turn_page:=document.payload.turn_page
 	temporary, panel, minigame, cursor := run_take_payload(&document.payload)
-	restoring_soul_hunt := minigame.active && minigame.kind == .Mirror_The_Unlost
+	restoring_turn_page := minigame.active && minigame.kind == .Bind_The_Page && turn_page.version==1
+	restoring_soul_hunt := minigame.active && (minigame.kind == .Mirror_The_Unlost || restoring_turn_page)
 	temporary.run_id = document.run_id
 	document.run_id = ""
 	temporary.revision = document.revision
 	// Reconstruct presentation and derived gameplay queries from authoritative state.
-	temporary.player.prev_pos = temporary.player.pos
-	temporary.player.moving = false
-	temporary.player.anim_time = 0
-	temporary.player.hit_flash = 0
-	temporary.player.hit_flash_duration = 0
-	for &enemy in temporary.enemies {
-		enemy.prev_pos = enemy.pos
-		enemy.anim_time = 0
-		enemy.hit_flash = 0
-		enemy.hit_flash_duration = 0
-		enemy.moving = false
+	if !restoring_turn_page {
+		temporary.player.prev_pos = temporary.player.pos
+		temporary.player.moving = false
+		temporary.player.anim_time = 0
+		temporary.player.hit_flash = 0
+		temporary.player.hit_flash_duration = 0
+		for &enemy in temporary.enemies {
+			enemy.prev_pos = enemy.pos
+			enemy.anim_time = 0
+			enemy.hit_flash = 0
+			enemy.hit_flash_duration = 0
+			enemy.moving = false
+		}
+		for &projectile in temporary.projectiles {
+			projectile.prev_pos = projectile.pos
+			projectile.visual_age = 0
+		}
+		for &familiar in temporary.familiars {
+			familiar.prev_pos = familiar.pos
+			familiar.anim_time = 0
+			familiar.moving = false
+		}
+		for &resident in temporary.ambient_residents.items do resident.prev_pos = resident.pos
+		temporary.shopkeeper.prev_pos = temporary.shopkeeper.pos
+		for &guest in temporary.story_runtime.guests do guest.prev_pos = guest.pos
+		temporary.story_runtime.soul.prev_pos = temporary.story_runtime.soul.pos
 	}
-	for &projectile in temporary.projectiles {
-		projectile.prev_pos = projectile.pos
-		projectile.visual_age = 0
-	}
-	for &familiar in temporary.familiars {
-		familiar.prev_pos = familiar.pos
-		familiar.anim_time = 0
-		familiar.moving = false
-	}
-	for &resident in temporary.ambient_residents.items do resident.prev_pos = resident.pos
-	temporary.shopkeeper.prev_pos = temporary.shopkeeper.pos
-	for &guest in temporary.story_runtime.guests do guest.prev_pos = guest.pos
-	temporary.story_runtime.soul.prev_pos = temporary.story_runtime.soul.pos
 	temporary.visible = {}
 	temporary.nav = {}
 	temporary.numbers = nil
@@ -2045,6 +2158,13 @@ app_install_run_document :: proc(app: ^App, document: ^Run_Document) -> bool {
 	// guidance from those virtual coordinates would corrupt explored state.
 	// Valid hunts rebuild after returning; malformed/legacy states are repaired
 	// by app_story_normalize_soul_hunt_after_restore after installation.
+	if restoring_turn_page {
+		virtual_pos:=temporary.player.pos
+		temporary.player.pos=turn_page.return_player.pos
+		refresh_visibility(&temporary)
+		story_refresh_relic_guidance(&temporary)
+		temporary.player.pos=virtual_pos
+	}
 	if !restoring_soul_hunt {
 		refresh_visibility(&temporary)
 		story_refresh_relic_guidance(&temporary)
@@ -2054,6 +2174,7 @@ app_install_run_document :: proc(app: ^App, document: ^Run_Document) -> bool {
 	temporary = {}
 	run_destroy(&old)
 	app.story_panel = panel
+	app.turn_page = turn_page
 	app.story_minigame = minigame
 	app.story_minigame_cursor = cursor
 	app_reset_run_ui_after_restore(app)
@@ -2128,4 +2249,68 @@ persistence_document_probe :: proc(kind: Persistence_Document_Kind, data: []byte
 		return revision, identity, decoded
 	}
 	return 0, "", .Corrupt
+}
+
+run_payload_from_v2 :: proc(v2: ^Run_Save_Payload_V2) -> Run_Save_Payload {
+	return {
+		active_ticks=v2.active_ticks,
+		started_at_utc=v2.started_at_utc,
+		ended_at_utc=v2.ended_at_utc,
+		terminal=v2.terminal,
+		finalization=v2.finalization,
+		seed=v2.seed,
+		depth=v2.depth,
+		difficulty=v2.difficulty,
+		dungeon=v2.dungeon,
+		player=v2.player,
+		enemies=v2.enemies,
+		next_enemy_id=v2.next_enemy_id,
+		next_familiar_id=v2.next_familiar_id,
+		next_save_entity_id=v2.next_save_entity_id,
+		storm_cast_counter=v2.storm_cast_counter,
+		floor_epoch=v2.floor_epoch,
+		projectiles=v2.projectiles,
+		familiars=v2.familiars,
+		bells=v2.bells,
+		ground_items=v2.ground_items,
+		shopkeeper=v2.shopkeeper,
+		has_shopkeeper=v2.has_shopkeeper,
+		ambient_residents=v2.ambient_residents,
+		refuge=v2.refuge,
+		shop_requested=v2.shop_requested,
+		loot_rng=v2.loot_rng,
+		combat_rng=v2.combat_rng,
+		dark_floor=v2.dark_floor,
+		theme_index=v2.theme_index,
+		explored=v2.explored,
+		boss_engaged=v2.boss_engaged,
+		sealed=v2.sealed,
+		tyrant_dead=v2.tyrant_dead,
+		victory=v2.victory,
+		kills=v2.kills,
+		modifier=v2.modifier,
+		plan=v2.plan,
+		story=v2.story,
+		story_runtime=v2.story_runtime,
+		story_panel=v2.story_panel,
+		story_minigame=v2.story_minigame,
+		story_minigame_cursor=v2.story_minigame_cursor,
+		bars_visited=v2.bars_visited,
+		bars_toasted=v2.bars_toasted,
+		challenge_rooms_cleared=v2.challenge_rooms_cleared,
+		traps=v2.traps,
+		shrines=v2.shrines,
+		secrets=v2.secrets,
+		traps_triggered=v2.traps_triggered,
+		shrines_used=v2.shrines_used,
+		secrets_opened=v2.secrets_opened,
+		notable_loot=v2.notable_loot,
+		notable_count=v2.notable_count,
+		visited_themes=v2.visited_themes,
+		defeated_bosses=v2.defeated_bosses,
+		last_damage_source=v2.last_damage_source,
+		wall_touches=v2.wall_touches,
+		potions_used=v2.potions_used,
+		elites_killed=v2.elites_killed,
+	}
 }

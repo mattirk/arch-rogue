@@ -209,6 +209,56 @@ mx_android_soul_hunt_drawer_keeps_touch_pause_reachable :: proc(t:^testing.T) {
 }
 
 @(test)
+mx_android_rotating_camera_unprojects_world_touch_with_zoom_and_drift :: proc(t: ^testing.T) {
+	player := ar.Vec2{4.5, 5.5}
+	target_tile := ar.Vec2{6, 3}
+	for rotation in ([4]f32{-8, 0, 8, 90}) {
+		for zoom in ([3]f32{.5, 1, 2.5}) {
+			camera := ar.Mobile_Camera_Transform{
+				target_world = ar.world_from_tile({5, 5}),
+				offset_px = {810, 477},
+				zoom = zoom,
+				rotation = rotation,
+			}
+			screen := camera.offset_px + ar.vec_rotate(ar.world_from_tile(target_tile) - camera.target_world, rotation * f32(math.PI / 180)) * zoom
+			aim := ar.mobile_world_touch_aim(camera, player, screen)
+			testing.expect(t, math.hypot(aim.x - (target_tile.x - player.x), aim.y - (target_tile.y - player.y)) < 1e-4,
+				"world touch must resolve the same tile through camera rotation, zoom, and vertical drift")
+		}
+	}
+}
+
+@(test)
+mx_android_held_contacts_follow_changing_camera_rotation :: proc(t: ^testing.T) {
+	layout: ar.Mobile_Layout
+	targets: ar.Mobile_Target_Set
+	environment := mx_android_gameplay_fixture(&layout, &targets)
+	state: ar.Mobile_Touch_State
+	joystick_point := ar.mobile_rect_center(layout.joystick) + ar.Vec2{layout.joystick.width * .25, 0}
+	aim_point := layout.world_focus + ar.Vec2{120, 20}
+	snapshot := mx_android_snapshot([]ar.Mobile_Touch_Point{
+		{id = 10, position = joystick_point},
+		{id = 20, position = aim_point},
+	})
+	for rotation in ([3]f32{0, 8, -8}) {
+		environment.camera.rotation = rotation
+		result := ar.mobile_touch_process_snapshot(&state, snapshot, &environment)
+		move_screen := ar.vec_rotate(ar.world_from_tile(result.intent.move), rotation * f32(math.PI / 180))
+		testing.expect(t, move_screen.x > 0 && abs(move_screen.y) < 1e-4,
+			"a held east joystick must continue moving screen-east while the floor turns")
+		strength := ar.mobile_joystick_screen_vector(&layout, joystick_point)
+		testing.expect(t, abs(math.hypot(result.intent.move.x, result.intent.move.y) - math.hypot(strength.x, strength.y)) < 1e-5,
+			"camera rotation must preserve virtual joystick strength")
+		aim_screen := environment.camera.offset_px + ar.vec_rotate(
+			ar.world_from_tile(environment.player_tile + result.intent.aim) - environment.camera.target_world,
+			rotation * f32(math.PI / 180),
+		) * environment.camera.zoom
+		testing.expect(t, math.hypot(aim_screen.x - aim_point.x, aim_screen.y - aim_point.y) < 1e-4 && result.intent.aim_live,
+			"a held world contact must keep aiming at its screen position without another down event")
+	}
+}
+
+@(test)
 mx_android_stable_ids_support_move_aim_held_big_hit_and_other_action :: proc(t: ^testing.T) {
 	layout: ar.Mobile_Layout
 	targets: ar.Mobile_Target_Set

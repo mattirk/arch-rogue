@@ -642,6 +642,85 @@
     "stairs.png"
    ]
   },
+  "turn_page_hidden": {
+   "anchor": [
+    256,
+    320
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 512,
+   "tint": 0.0,
+   "variants": [
+    "turn_page/floor.png",
+    "turn_page/floor_ink_spill.png",
+    "turn_page/floor_ink_smear.png",
+    "turn_page/floor_glyph_serpent.png",
+    "turn_page/floor_glyph_key.png",
+    "turn_page/floor_glyph_moon.png"
+   ]
+  },
+  "turn_page_ink_wisp": {
+   "anchor": [
+    128,
+    128
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 256,
+   "tint": 0.0,
+   "variants": [
+    "turn_page/traces/ink_wisp.png"
+   ]
+  },
+  "turn_page_parchment": {
+   "anchor": [
+    128,
+    128
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 256,
+   "tint": 0.0,
+   "variants": [
+    "turn_page/void/parchment_01.png",
+    "turn_page/void/parchment_02.png",
+    "turn_page/void/parchment_03.png"
+   ]
+  },
+  "turn_page_safe": {
+   "anchor": [
+    256,
+    256
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 600,
+   "tint": 0.0,
+   "variants": [
+    "turn_page/ink.png"
+   ]
+  },
+  "turn_page_void_glyph": {
+   "anchor": [
+    128,
+    128
+   ],
+   "fps": 0.0,
+   "frames": [],
+   "ping_pong": false,
+   "ref_width": 256,
+   "tint": 0.0,
+   "variants": [
+    "turn_page/traces/glyph_serpent.png",
+    "turn_page/traces/glyph_key.png",
+    "turn_page/traces/glyph_moon.png"
+   ]
+  },
   "wall": {
    "anchor": [
     256,

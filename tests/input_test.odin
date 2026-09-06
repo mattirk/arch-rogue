@@ -37,6 +37,55 @@ controller_stick_movement_follows_screen_compass :: proc(t: ^testing.T) {
 }
 
 @(test)
+rotating_camera_preserves_keyboard_screen_heading_and_existing_aim :: proc(t: ^testing.T) {
+	inputs := [8]ar.Desktop_Input{
+		{left = true}, {right = true}, {up = true}, {down = true},
+		{left = true, up = true}, {left = true, down = true},
+		{right = true, up = true}, {right = true, down = true},
+	}
+	for input in inputs {
+		ordinary := ar.desktop_gameplay_intent(input, .Warden).move
+		ordinary_screen := ar.world_from_tile(ordinary)
+		for rotation in ([3]f32{-8, 0, 8}) {
+			raw := input
+			raw.camera_rotation = rotation
+			raw.aim = {0.25, -0.75}
+			raw.mouse_press_aim = {-1, 0.2}
+			raw.mouse_target = {6, 3}
+			intent := ar.desktop_gameplay_intent(raw, .Warden)
+			screen := ar.vec_rotate(ar.world_from_tile(intent.move), rotation * f32(math.PI / 180))
+			cross := screen.x * ordinary_screen.y - screen.y * ordinary_screen.x
+			dot := screen.x * ordinary_screen.x + screen.y * ordinary_screen.y
+			testing.expect(t, abs(cross) < .005 && dot > 0, "keyboard movement must retain its screen heading as the floor turns")
+			testing.expect(t, abs(math.hypot(intent.move.x, intent.move.y) - math.hypot(ordinary.x, ordinary.y)) < 1e-5,
+				"the camera must not change keyboard movement strength")
+			testing.expect(t, intent.aim == raw.aim && intent.mouse_press_aim == raw.mouse_press_aim && intent.mouse_target == raw.mouse_target,
+				"tile-space facing and pointer targets must not rotate a second time")
+			if rotation == 0 do testing.expect(t, intent.move == ordinary, "ordinary dungeon movement must remain exact")
+		}
+	}
+	testing.expect(t, ar.desktop_move_vector(true, true, false, false, 8) == {}, "opposing arrows must remain idle during rotation")
+}
+
+@(test)
+rotating_camera_preserves_stick_screen_heading_and_analog_strength :: proc(t: ^testing.T) {
+	for rotation in ([3]f32{-8, 0, 8}) {
+		for stick in ([5]ar.Vec2{{1, 0}, {0, -1}, {.3, .4}, {-1, 1}, {}}) {
+			move := ar.screen_stick_to_tile_vector(stick, rotation)
+			testing.expect(t, abs(math.hypot(move.x, move.y) - min(f32(1), math.hypot(stick.x, stick.y))) < 1e-5,
+				"turning must preserve analog movement/aim strength")
+			if stick == {} {
+				testing.expect(t, move == {}, "a centered stick must remain idle")
+				continue
+			}
+			screen := ar.vec_rotate(ar.world_from_tile(move), rotation * f32(math.PI / 180))
+			testing.expect(t, abs(screen.x * stick.y - screen.y * stick.x) < 1e-4 && screen.x * stick.x + screen.y * stick.y > 0,
+				"both controller sticks must follow the visible screen compass")
+		}
+	}
+}
+
+@(test)
 desktop_action_slots_and_inert_buttons_match_current_parity :: proc(t: ^testing.T) {
 	intent := ar.desktop_gameplay_intent(ar.Desktop_Input{
 		abilities = {true, true, true, true, false, false}, ability1_released = true,

@@ -98,15 +98,15 @@ m9_option_defaults_normalize_and_cycle :: proc(t: ^testing.T) {
 	testing.expect(t, m9_near(options.view_zoom, 1.3))
 	testing.expect(t, options.difficulty == .Easy)
 	testing.expect(t, options.controller_enabled && options.audio_enabled && options.lighting_enabled)
-	testing.expect(t, options.sfx_volume == .Percent_40 && options.music_volume == .Full)
+	testing.expect(t, options.sfx_volume == .Percent_30 && options.music_volume == .Full)
 	mobile_options := ar.options_default()
 	ar.options_apply_mobile_fresh_defaults(&mobile_options)
 	testing.expect(t, m9_near(mobile_options.view_zoom, 2.0), "fresh mobile options must default to 2x zoom")
 	ar.options_cycle_sfx_volume(&options, -1)
 	ar.options_cycle_music_volume(&options, -1)
-	testing.expect(t, options.sfx_volume == .Percent_30 && options.music_volume == .Percent_90,
+	testing.expect(t, options.sfx_volume == .Percent_20 && options.music_volume == .Percent_90,
 		"SFX and music controls must move in 10% steps from their independent defaults")
-	for _ in 0 ..< 3 do ar.options_cycle_sfx_volume(&options, -1)
+	for _ in 0 ..< 2 do ar.options_cycle_sfx_volume(&options, -1)
 	testing.expect(t, options.sfx_volume == .Off && !options.audio_enabled)
 	ar.options_cycle_sfx_volume(&options)
 	testing.expect(t, options.sfx_volume == .Percent_10 && options.audio_enabled)

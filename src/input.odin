@@ -442,6 +442,7 @@ Desktop_Input :: struct {
 	right: bool,
 	up:    bool,
 	down:  bool,
+	camera_rotation: f32, // degrees; zero preserves the ordinary dungeon compass
 
 	aim:          Vec2,
 	mouse_left:   bool,
@@ -513,24 +514,38 @@ desktop_archetype_click_intent :: proc(selected_index, clicked_index: int) -> In
 // tile-space diagonal (-1,-1) under the 2:1 iso projection. Two adjacent
 // arrows sum to a tile axis, so screen-diagonal walking hugs the grid.
 // tick_player clamps the magnitude, so the diagonal sums stay full speed.
-desktop_move_vector :: proc(left, right, up, down: bool) -> Vec2 {
+desktop_move_vector :: proc(left, right, up, down: bool, camera_rotation: f32 = 0) -> Vec2 {
 	move: Vec2
 	if right do move += {1, -1}
 	if left  do move += {-1, 1}
 	if down  do move += {1, 1}
 	if up    do move += {-1, -1}
-	return move
+	if camera_rotation == 0 || move == {} do return move
+	// Keep the established keyboard compass and its strength, then undo the
+	// camera turn in projected world space before returning tile coordinates.
+	world := input_camera_unrotate_vector(world_from_tile(move), camera_rotation)
+	rotated := tile_from_world(world)
+	return rotated / math.hypot(rotated.x, rotated.y) * math.hypot(move.x, move.y)
+}
+
+// raylib Camera2D rotates world vectors clockwise in screen coordinates.
+// All screen-based devices share this inverse; retained tile-space facing
+// and already-unprojected pointer aims must never pass through it again.
+input_camera_unrotate_vector :: proc(screen: Vec2, camera_rotation: f32) -> Vec2 {
+	if camera_rotation == 0 do return screen
+	return vec_rotate(screen, -camera_rotation * f32(math.PI / 180))
 }
 
 // A stick deflection is a screen-space direction. Return the tile-space move
 // with the same magnitude so analog walk speed survives the projection; this
 // is the exact conversion the mobile virtual joystick already applies.
-screen_stick_to_tile_vector :: proc(screen: Vec2) -> Vec2 {
+screen_stick_to_tile_vector :: proc(screen: Vec2, camera_rotation: f32 = 0) -> Vec2 {
 	magnitude := min(f32(1), math.hypot(screen.x, screen.y))
 	if magnitude <= 0 do return {}
+	projected := input_camera_unrotate_vector(screen, camera_rotation)
 	world := Vec2{
-		screen.x / TILE_W + screen.y / TILE_H,
-		screen.y / TILE_H - screen.x / TILE_W,
+		projected.x / TILE_W + projected.y / TILE_H,
+		projected.y / TILE_H - projected.x / TILE_W,
 	}
 	world_length := math.hypot(world.x, world.y)
 	if world_length <= 0 do return {}
@@ -581,7 +596,7 @@ controller_scene_aim :: proc(run:^Run,aim:Vec2,allow_target_snap:=true)->Vec2 {
 desktop_gameplay_intent :: proc(input: Desktop_Input, archetype: Archetype_Id) -> Intent {
 	_ = archetype // slots are uniform in M8; retained for the stable resolver API
 	intent: Intent
-	intent.move = desktop_move_vector(input.left, input.right, input.up, input.down)
+	intent.move = desktop_move_vector(input.left, input.right, input.up, input.down, input.camera_rotation)
 	intent.aim = input.aim
 	intent.mouse_target = input.mouse_target
 	// Keyboard movement has priority over held-LMB walking.

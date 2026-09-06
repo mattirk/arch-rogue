@@ -195,28 +195,14 @@ mx_story_modal_hit_test_maps_pointer_intent_without_raylib_state :: proc(t: ^tes
 
 @(test)
 mx_story_minigame_cell_views_cover_ready_preview_play_and_result :: proc(t: ^testing.T) {
-	bind := ar.Story_Minigame_State{
-		active = true,
-		kind = .Bind_The_Page,
-		phase = .Ready,
-		board_count = 6,
-		sequence_count = 1,
-		sequence = {2, 0, 0, 0, 0, 0},
-	}
-	view := ar.story_minigame_cell_view(&bind, 2, 2)
-	testing.expect(t, !view.face_up && view.selected, "Ready board must show selectable sealed cells")
-	bind.phase = .Preview
-	bind.elapsed = .31
-	view = ar.story_minigame_cell_view(&bind, 2, 0)
-	testing.expect(t, view.face_up && view.active && !view.selected, "Bind Preview must reveal and pulse the runtime preview cell")
-	bind.phase = .Play
-	view = ar.story_minigame_cell_view(&bind, 4, 4)
-	testing.expect(t, view.face_up && view.selected, "Bind Play must keep sigils readable and expose keyboard cursor")
-	bind.phase = .Result
-	view = ar.story_minigame_cell_view(&bind, 4, 4)
-	testing.expect(t, view.face_up && !view.selected, "Result board must reveal without an actionable cursor")
+	bind := ar.Story_Minigame_State{active=true,kind=.Bind_The_Page,board_count=6}
+ for phase in ar.Story_Minigame_Phase {
+  bind.phase=phase
+  view:=ar.story_minigame_cell_view(&bind,2,2)
+  testing.expect(t,!view.face_up&&!view.selected&&!view.active,"Turn the Page must never expose the removed modal board")
+ }
 
 	moon := ar.Story_Minigame_State{active = true, kind = .Wake_The_Moonbloom, phase = .Play, board_count = 9, active_cell = 5}
-	view = ar.story_minigame_cell_view(&moon, 5, 0)
+	view := ar.story_minigame_cell_view(&moon, 5, 0)
 	testing.expect(t, view.face_up && view.active, "Moonbloom Play must identify the live target")
 }
