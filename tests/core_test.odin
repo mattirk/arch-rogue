@@ -789,6 +789,338 @@ fog_of_war_reveals_and_remembers :: proc(t: ^testing.T) {
 	testing.expect(t, run.explored[seen_x][seen_y], "explored memory must persist")
 }
 
+// Visibility-only fixtures need neither run_start allocations nor simulation ticks.
+@(private = "file")
+fog_of_war_open_floor :: proc(run: ^ar.Run, dark: bool) {
+	for x in 0 ..< ar.MAP_W {
+		for y in 0 ..< ar.MAP_H do run.dungeon.tiles[x][y] = .Floor
+	}
+	run.player.pos = {20.5, 20.5}
+	run.player.facing = {1, 0}
+	run.dark_floor = dark
+}
+
+// Independent legacy discovery oracle: scatter opaque faces only from baseline
+// LOS-clear transparent cells. Do not use the new range predicate here.
+@(private = "file")
+fog_of_war_legacy_reveal :: proc(d: ^ar.Dungeon, pos: ar.Vec2) -> (revealed: [ar.MAP_W][ar.MAP_H]bool) {
+	for x in 0 ..< ar.MAP_W {
+		for y in 0 ..< ar.MAP_H {
+			tx, ty := f32(x) + .5, f32(y) + .5
+			dx, dy := tx - pos.x, ty - pos.y
+			if dx * dx + dy * dy > 16 || !ar.is_floor(d, tx, ty) do continue
+			if !ar.line_of_sight(d, pos.x, pos.y, tx, ty) do continue
+			revealed[x][y] = true
+			for ox in -1 ..= 1 {
+				for oy in -1 ..= 1 {
+					nx, ny := x + ox, y + oy
+					if !ar.dungeon_in_bounds(nx, ny) do continue
+					if d.tiles[nx][ny] == .Wall || d.tiles[nx][ny] == .Closed_Door {
+						revealed[nx][ny] = true
+					}
+				}
+			}
+		}
+	}
+	cx, cy := int(pos.x), int(pos.y)
+	if ar.dungeon_in_bounds(cx, cy) do revealed[cx][cy] = true
+	return
+}
+
+@(test)
+fog_of_war_sight_range_boundaries :: proc(t: ^testing.T) {
+	cases := [?]struct {
+		distance: f32,
+		fresh, circle, forward: bool,
+	}{
+		{0, true, true, true},
+		{3.999, true, true, true},
+		{4, true, true, true},
+		{4.001, false, true, true},
+		{4.999, false, true, true},
+		{5, false, true, true},
+		{5.001, false, false, true},
+		{5.999, false, false, true},
+		{6, false, false, true},
+		{6.001, false, false, false},
+	}
+	for dir in ([4]ar.Vec2{{1, 0}, {0, 1}, {-1, 0}, {0, -1}}) {
+		for c in cases {
+			offset := dir * c.distance
+			for facing, i in ([4]ar.Vec2{dir, -dir, {-dir.y, dir.x}, {}}) {
+				testing.expectf(t, ar.player_sight_in_range(offset, facing, false) == c.fresh,
+					"fresh offset=%v facing=%v must use radius 4", offset, facing)
+				want := i == 0 ? c.forward : c.circle
+				testing.expectf(t, ar.player_sight_in_range(offset, facing, true) == want,
+					"known offset=%v facing=%v must use circle 5 / forward 6", offset, facing)
+			}
+		}
+	}
+	// Integer Pythagorean offsets keep the diagonal radius-5 boundary exact.
+	for offset in ([8]ar.Vec2{{3, 4}, {4, 3}, {-3, 4}, {-4, 3}, {3, -4}, {4, -3}, {-3, -4}, {-4, -3}}) {
+		for facing in ([4]ar.Vec2{{1, 0}, {0, -1}, {-3, -7}, {}}) {
+			testing.expectf(t, ar.player_sight_in_range(offset, facing, true), "radius 5 is omnidirectional: %v / %v", offset, facing)
+			testing.expect(t, !ar.player_sight_in_range(offset, facing, false), "unknown diagonal tiles must not gain range")
+		}
+	}
+	testing.expect(t, !ar.player_sight_in_range({3, 3}, {1, 1}, false), "fresh radius is Euclidean, not a four-tile square")
+}
+
+@(test)
+fog_of_war_sight_cone_is_tile_space_and_scale_invariant :: proc(t: ^testing.T) {
+	// Every offset is strictly outside the radius-5 circle but inside radius 6.
+	cases := [?]struct {
+		offset, facing: ar.Vec2,
+		inside: bool,
+	}{
+		{{5.5, 0}, {1, 0}, true},
+		{{4, 4}, {1, 0}, true},
+		{{4.001, 4}, {1, 0}, true},
+		{{4, 4.001}, {1, 0}, false},
+		{{4, -4}, {1, 0}, true},
+		{{4.001, -4}, {1, 0}, true},
+		{{4, -4.001}, {1, 0}, false},
+		{{-4, 4}, {1, 0}, false},
+		{{-4, -4}, {1, 0}, false},
+		{{0, 5.5}, {1, 0}, false},
+		{{5.5, 0}, {1, 1}, true},
+		{{5.5, .001}, {1, 1}, true},
+		{{5.5, -.001}, {1, 1}, false},
+		{{0, 5.5}, {1, 1}, true},
+		{{.001, 5.5}, {1, 1}, true},
+		{{-.001, 5.5}, {1, 1}, false},
+		{{-4, -4}, {1, 1}, false},
+		{{1.75, 5.25}, {2, 1}, true},
+		{{1.75, 5.251}, {2, 1}, false},
+		{{5.25, -1.75}, {2, 1}, true},
+		{{5.25, -1.751}, {2, 1}, false},
+	}
+	for c in cases {
+		for scale in ([3]f32{.125, 1, 9}) {
+			facing := c.facing * scale
+			testing.expectf(t, ar.player_sight_in_range(c.offset, facing, true) == c.inside,
+				"inclusive tile-space +/-45 degrees: offset=%v facing=%v want=%v", c.offset, facing, c.inside)
+			testing.expect(t, !ar.player_sight_in_range(c.offset, facing, false), "a cone never discovers fresh targets")
+		}
+		testing.expect(t, !ar.player_sight_in_range(c.offset, {}, true), "zero facing must not create a cone")
+	}
+}
+
+@(test)
+fog_of_war_refresh_does_not_expand_discovery :: proc(t: ^testing.T) {
+	for dark in ([2]bool{false, true}) {
+		run: ar.Run
+		fog_of_war_open_floor(&run, dark)
+		run.dungeon.tiles[22][20] = .Stairs
+		run.dungeon.tiles[20][22] = .Open_Door
+		// These two faces have only diagonal support from the radius-4 frontier.
+		run.dungeon.tiles[25][21] = .Wall
+		run.dungeon.tiles[21][25] = .Closed_Door
+		run.dungeon.tiles[26][21] = .Wall
+		run.dungeon.tiles[21][26] = .Closed_Door
+		run.loot_rng = ar.rng_make(71)
+		run.combat_rng = ar.rng_make(93)
+		loot_before, combat_before := run.loot_rng, run.combat_rng
+		baseline := fog_of_war_legacy_reveal(&run.dungeon, run.player.pos)
+		for pass in 0 ..< 3 {
+			for facing in ([6]ar.Vec2{{1, 0}, {1, 1}, {0, -1}, {-1, 0}, {}, {9, 0}}) {
+				run.player.facing = facing
+				ar.refresh_visibility(&run)
+				testing.expectf(t, run.explored == baseline, "stationary discovery grew: dark=%v pass=%v facing=%v", dark, pass, facing)
+				testing.expectf(t, run.visible == baseline, "fresh live footprint must match legacy reveal: dark=%v facing=%v", dark, facing)
+			}
+		}
+		testing.expect(t, run.visible[25][21] && run.visible[21][25], "baseline diagonal floor support must reveal both opaque kinds")
+		testing.expect(t, !run.explored[26][21] && !run.explored[21][26], "visible opaque cells must not propagate discovery")
+		testing.expect(t, run.loot_rng == loot_before && run.combat_rng == combat_before, "visibility must not consume run RNG streams")
+	}
+}
+
+@(test)
+fog_of_war_revisit_extends_live_visibility :: proc(t: ^testing.T) {
+	for dark in ([2]bool{false, true}) {
+		run: ar.Run
+		fog_of_war_open_floor(&run, dark)
+		origin := run.player.pos
+		ar.refresh_visibility(&run)
+		testing.expect(t, run.visible[24][20] && !run.explored[25][20] && !run.explored[26][20], "first visit must stop transparent discovery at 4")
+		for x in 21 ..= 26 {
+			run.player.pos = {f32(x) + .5, origin.y}
+			ar.refresh_visibility(&run)
+		}
+		testing.expect(t, run.explored[20][20] && !run.visible[20][20], "leaving a tile retains memory, not live visibility behind the cone")
+		run.player.pos = {32.5, origin.y}
+		ar.refresh_visibility(&run)
+		testing.expect(t, run.explored[26][20] && !run.visible[26][20], "dark floors also remember internally without keeping distant tiles live")
+		memory := run.explored
+		run.player.pos = origin
+		ar.refresh_visibility(&run)
+		testing.expectf(t, run.visible[25][20] && run.visible[26][20], "revisiting the same position gains the known 5/6 ranges: dark=%v", dark)
+		testing.expect(t, !run.visible[27][20] && run.explored[27][20], "remembered floor past radius 6 stays non-live")
+		testing.expectf(t, run.explored == memory, "returning must neither lose memory nor discover bonus neighbors: dark=%v", dark)
+	}
+}
+
+@(test)
+fog_of_war_turning_moves_explored_cone :: proc(t: ^testing.T) {
+	for dark in ([2]bool{false, true}) {
+		run: ar.Run
+		fog_of_war_open_floor(&run, dark)
+		run.player.pos = {20.25, 20.75}
+		for x in 0 ..< ar.MAP_W {
+			for y in 0 ..< ar.MAP_H do run.explored[x][y] = true
+		}
+		memory := run.explored
+		for facing in ([7]ar.Vec2{{1, 0}, {0, 3}, {-1, 0}, {0, -.25}, {1, 1}, {-2, 3}, {}}) {
+			run.player.facing = facing
+			ar.refresh_visibility(&run)
+			// Geometry is tested independently above; this checks refresh wiring,
+			// clearing the previous cone, and using tile centers without projection.
+			expected: [ar.MAP_W][ar.MAP_H]bool
+			for x in 0 ..< ar.MAP_W {
+				for y in 0 ..< ar.MAP_H {
+					offset := ar.Vec2{f32(x) + .5, f32(y) + .5} - run.player.pos
+					expected[x][y] = ar.player_sight_in_range(offset, facing, true)
+				}
+			}
+			testing.expectf(t, run.visible == expected, "turn must replace the live cone: dark=%v facing=%v", dark, facing)
+			testing.expect(t, run.explored == memory, "turning must preserve the complete explored grid")
+		}
+	}
+}
+
+@(test)
+fog_of_war_sparse_explored_targets_do_not_discover_neighbors :: proc(t: ^testing.T) {
+	for dark in ([2]bool{false, true}) {
+		for distance in 5 ..= 6 {
+			for sign in ([2]int{-1, 1}) {
+				run: ar.Run
+				fog_of_war_open_floor(&run, dark)
+				// Radius 5 works facing away; radius 6 requires facing toward it.
+				run.player.facing = {f32(distance == 5 ? -sign : sign), 0}
+				tx, y := 20 + sign * distance, 20
+				face_x, behind_x := tx + sign, tx + 2 * sign
+				run.explored[tx][y] = true
+				// Also reject an unknown opaque face at exactly 6, not just beyond it.
+				run.dungeon.tiles[face_x][y] = sign < 0 ? .Wall : .Closed_Door
+				for kind, i in ([2]ar.Tile_Kind{.Wall, .Closed_Door}) {
+					fy := y - 1 + 2 * i
+					run.dungeon.tiles[face_x][fy] = kind
+					run.dungeon.tiles[behind_x][fy] = kind
+					run.explored[behind_x][fy] = true
+				}
+				baseline := fog_of_war_legacy_reveal(&run.dungeon, run.player.pos)
+				expected := run.explored
+				for x in 0 ..< ar.MAP_W {
+					for yy in 0 ..< ar.MAP_H do expected[x][yy] = expected[x][yy] || baseline[x][yy]
+				}
+				for pass in 0 ..< 3 {
+					ar.refresh_visibility(&run)
+					testing.expectf(t, run.visible[tx][y], "isolated known floor needs no explored LOS path: dark=%v range=%v sign=%v", dark, distance, sign)
+					testing.expect(t, !run.visible[tx - sign][y - 1] && !run.visible[tx][y - 1] && !run.visible[tx][y + 1], "bonus support cannot light even range-eligible unknown transparent neighbors")
+					testing.expect(t, !run.visible[face_x][y - 1] && !run.visible[face_x][y] && !run.visible[face_x][y + 1], "bonus support cannot reveal unknown walls or doors")
+					testing.expectf(t, run.explored == expected, "bonus leaked discovery: dark=%v range=%v sign=%v pass=%v", dark, distance, sign, pass)
+				}
+				// The same faces may show once already explored, even outside radius 6.
+				for fy in ([2]int{y - 1, y + 1}) {
+					run.explored[face_x][fy] = true
+					expected[face_x][fy] = true
+				}
+				ar.refresh_visibility(&run)
+				testing.expect(t, run.visible[face_x][y - 1] && run.visible[face_x][y + 1], "known opaque faces retain the diagonal silhouette extra cell")
+				testing.expect(t, !run.visible[behind_x][y - 1] && !run.visible[behind_x][y + 1], "known opaque faces cannot support another opaque layer")
+				testing.expect(t, !run.visible[face_x][y], "known silhouettes must not reveal the unknown opaque tile between their faces")
+				testing.expect(t, !run.visible[tx - sign][y - 1], "known silhouettes must not light a range-eligible unknown floor")
+				testing.expect(t, run.explored == expected, "known silhouettes must not change any other discovery bit")
+			}
+		}
+	}
+}
+
+@(test)
+fog_of_war_explored_targets_respect_occlusion :: proc(t: ^testing.T) {
+	cases := [?]struct {
+		name: string,
+		kind: ar.Tile_Kind,
+		corner: bool,
+	}{
+		{"wall", .Wall, false},
+		{"closed door", .Closed_Door, false},
+		{"wall corner", .Wall, true},
+		{"mixed closed corner", .Closed_Door, true},
+	}
+	for dark in ([2]bool{false, true}) {
+		for c in cases {
+			run: ar.Run
+			fog_of_war_open_floor(&run, dark)
+			run.dungeon.tiles[21][20] = c.kind
+			run.explored[21][20] = true
+			offsets := [3][2]int{{2, 0}, {5, 0}, {6, 0}}
+			if c.corner {
+				run.dungeon.tiles[20][21] = .Wall
+				run.explored[20][21] = true
+				run.player.facing = {1, 1}
+				offsets = {{1, 1}, {3, 3}, {4, 4}}
+			}
+			for off in offsets do run.explored[20 + off.x][20 + off.y] = true
+			ar.refresh_visibility(&run)
+			for off in offsets {
+				target := run.player.pos + ar.Vec2{f32(off.x), f32(off.y)}
+				testing.expect(t, ar.player_sight_in_range(target - run.player.pos, run.player.facing, true), "occlusion target must be geometrically in range")
+				testing.expectf(t, !ar.line_of_sight(&run.dungeon, run.player.pos.x, run.player.pos.y, target.x, target.y), "%v fixture must block LOS to %v", c.name, off)
+				testing.expectf(t, !run.visible[20 + off.x][20 + off.y] && run.explored[20 + off.x][20 + off.y], "%v blocks known target %v without erasing memory: dark=%v", c.name, off, dark)
+			}
+			testing.expect(t, run.visible[21][20], "the blocking face itself must remain visible through baseline floor support")
+			// Removing one flank opens a corner; opening a door restores straight LOS.
+			run.dungeon.tiles[21][20] = c.kind == .Closed_Door ? .Open_Door : .Floor
+			ar.refresh_visibility(&run)
+			for off in offsets {
+				testing.expectf(t, run.visible[20 + off.x][20 + off.y], "opening %v must restore known target %v: dark=%v", c.name, off, dark)
+			}
+		}
+	}
+}
+
+@(test)
+fog_of_war_map_edges_preserve_sight_and_memory :: proc(t: ^testing.T) {
+	corners := [4][2]int{{0, 0}, {ar.MAP_W - 1, 0}, {0, ar.MAP_H - 1}, {ar.MAP_W - 1, ar.MAP_H - 1}}
+	for dark in ([2]bool{false, true}) {
+		for corner in corners {
+			run: ar.Run
+			fog_of_war_open_floor(&run, dark)
+			run.player.pos = {f32(corner.x) + .5, f32(corner.y) + .5}
+			sx, sy := corner.x == 0 ? 1 : -1, corner.y == 0 ? 1 : -1
+			inward := ar.Vec2{f32(sx), f32(sy)}
+			for distance in 5 ..= 7 {
+				run.explored[corner.x + distance * sx][corner.y] = true
+				run.explored[corner.x][corner.y + distance * sy] = true
+			}
+			run.dungeon.tiles[corner.x + 7 * sx][corner.y] = .Wall
+			run.dungeon.tiles[corner.x][corner.y + 7 * sy] = .Closed_Door
+			far_x, far_y := ar.MAP_W - 1 - corner.x, ar.MAP_H - 1 - corner.y
+			run.explored[far_x][far_y] = true
+			baseline := fog_of_war_legacy_reveal(&run.dungeon, run.player.pos)
+			expected := run.explored
+			for x in 0 ..< ar.MAP_W {
+				for y in 0 ..< ar.MAP_H do expected[x][y] = expected[x][y] || baseline[x][y]
+			}
+			for facing, i in ([3]ar.Vec2{inward, -inward, {}}) {
+				run.player.facing = facing
+				run.visible[far_x][far_y] = true
+				ar.refresh_visibility(&run)
+				testing.expect(t, run.visible[corner.x][corner.y], "player at a map corner must remain visible")
+				testing.expect(t, run.visible[corner.x + 5 * sx][corner.y] && run.visible[corner.x][corner.y + 5 * sy], "edge clipping must preserve omnidirectional range 5")
+				for distance in 6 ..= 7 {
+					testing.expectf(t, run.visible[corner.x + distance * sx][corner.y] == (i == 0) && run.visible[corner.x][corner.y + distance * sy] == (i == 0),
+						"corner=%v dark=%v facing=%v must bound cone floors and supported opaque faces at distance %v", corner, dark, facing, distance)
+				}
+				testing.expect(t, !run.visible[far_x][far_y], "refresh must clear stale visibility outside its clipped search")
+				testing.expectf(t, run.explored == expected, "edge reveal must match baseline plus prior memory: corner=%v dark=%v facing=%v", corner, dark, facing)
+			}
+		}
+	}
+}
+
 @(test)
 route_to_stairs_connects :: proc(t: ^testing.T) {
 	run: ar.Run

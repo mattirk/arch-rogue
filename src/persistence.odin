@@ -2159,11 +2159,12 @@ app_install_run_document :: proc(app: ^App, document: ^Run_Document) -> bool {
 	// Valid hunts rebuild after returning; malformed/legacy states are repaired
 	// by app_story_normalize_soul_hunt_after_restore after installation.
 	if restoring_turn_page {
-		virtual_pos:=temporary.player.pos
+		virtual_pos,virtual_facing:=temporary.player.pos,temporary.player.facing
 		temporary.player.pos=turn_page.return_player.pos
+		temporary.player.facing=turn_page.return_player.facing
 		refresh_visibility(&temporary)
 		story_refresh_relic_guidance(&temporary)
-		temporary.player.pos=virtual_pos
+		temporary.player.pos,temporary.player.facing=virtual_pos,virtual_facing
 	}
 	if !restoring_soul_hunt {
 		refresh_visibility(&temporary)

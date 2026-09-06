@@ -300,6 +300,54 @@ turn_page_save_resume_replays_preview_traversal_fall_and_result :: proc(t: ^test
 }
 
 @(test)
+turn_page_save_resume_restores_dungeon_facing_cone :: proc(t: ^testing.T) {
+	app:=turn_page_test_start(5)
+	defer ar.run_destroy(&app.run)
+	app.run.run_id=ar.persistence_clone_string("turn-page-facing-test")
+	// Perpendicular known targets at radius 6 distinguish the dungeon return
+	// heading from the virtual heading without depending on generated walls.
+	for x in 19..=27 do for y in 19..=27 do app.run.dungeon.tiles[x][y]=.Floor
+	app.turn_page.return_player.pos={20.5,20.5}
+	app.turn_page.return_player.prev_pos=app.turn_page.return_player.pos
+	app.turn_page.return_player.facing={1,0}
+	app.run.player.facing={0,1}
+	app.run.explored[26][20]=true
+	app.run.explored[20][26]=true
+	virtual_player:=ar.turn_page_capture_player(&app.run.player)
+	return_player:=app.turn_page.return_player
+
+	bytes,ok:=ar.persistence_encode_run(&app,1,"2026-09-06T12:00:00Z")
+	defer delete(bytes)
+	testing.expect(t,ok)
+	if !ok do return
+	document,status:=ar.persistence_decode_run(bytes)
+	defer ar.run_document_destroy(&document)
+	testing.expect(t,status==.Valid)
+	if status!=.Valid do return
+	resumed:ar.App
+	defer ar.run_destroy(&resumed.run)
+	installed:=ar.app_install_run_document(&resumed,&document)
+	testing.expect(t,installed)
+	if !installed do return
+	testing.expect(t,ar.app_story_turn_page_active(&resumed),"save must resume the active page")
+	testing.expect(t,ar.turn_page_capture_player(&resumed.run.player)==virtual_player,
+		"rebuilding dungeon visibility must restore the virtual player position and facing")
+
+	turn_page_test_reveal(&resumed)
+	resumed.story_minigame.time_left=.01
+	_=ar.turn_page_tick(&resumed,{},ar.SIM_DT)
+	testing.expect(t,ar.app_story_finalize_minigame(&resumed))
+	// No ordinary simulation tick may repair the cone before these assertions.
+	testing.expect(t,ar.turn_page_capture_player(&resumed.run.player)==return_player)
+	testing.expect(t,resumed.run.visible[26][20],
+		"known radius-6 target in the return heading must be live immediately on return")
+	testing.expect(t,!resumed.run.visible[20][26],
+		"the saved virtual heading must not select the dungeon visibility cone")
+	testing.expect(t,resumed.run.explored[26][20]&&resumed.run.explored[20][26],
+		"both cone targets must retain their explored memory")
+}
+
+@(test)
 turn_page_schema_two_modal_migrates_without_coordinate_reinterpretation :: proc(t: ^testing.T) {
 	app:=turn_page_test_start(5)
 	defer ar.run_destroy(&app.run)

@@ -1447,6 +1447,18 @@ story_soul_hunt_original_dash_timer :: proc(state:^Story_Minigame_State)->f32 {
 @(private = "file")
 story_soul_hunt_safe_return_position :: proc(run:^Run,state:^Story_Minigame_State)->Vec2 {
 	if run==nil do return {}
+	if state!=nil&&state.outcome==.Lost do return run_spawn_point(run)
+	if state!=nil&&state.outcome==.Won {
+		// The Soul can move away from its Hall; anchor victory to the room,
+		// not the NPC or the position where its dialogue was opened.
+		special,found:=special_room_for_kind(&run.dungeon,.Hall_Of_Unlost_Echoes)
+		if found {
+			origin:=story_room_position(&run.dungeon,special.room_index)
+			candidate:=story_near_position(run,origin,.8)
+			if !blocked_for_radius(&run.dungeon,candidate.x,candidate.y,PLAYER_HIT_RADIUS,block_stairs=true) do return candidate
+		}
+		return run_spawn_point(run)
+	}
 	if story_soul_hunt_return_position_valid(run,state) do return story_soul_hunt_return_position(state,run)
 	// Legacy pair-board saves never left the real floor, so retain their current
 	// position when it is still a legal player footprint.

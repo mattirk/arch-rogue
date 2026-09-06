@@ -1008,16 +1008,27 @@ tick_refuge :: proc(run: ^Run) {
 	}
 }
 
-// Fog of war: LOS-based reveal within SIGHT_RADIUS. line_of_sight skips its
-// endpoints, so wall tiles adjacent to lit floor reveal correctly while
-// tiles BEHIND walls stay dark (the pygame fog-over-walls fix, by
-// construction). `visible` is rebuilt every tick; `explored` accumulates
-// (lit floors render the memory, dark floors ignore it).
+// Range only; callers still require unobstructed LOS. Squared projection
+// avoids per-tile normalization and accepts both unit and raw input facing.
+player_sight_in_range :: proc(offset, facing: Vec2, explored: bool) -> bool {
+	distance_sq := linalg.dot(offset, offset)
+	if distance_sq <= SIGHT_RADIUS * SIGHT_RADIUS do return true
+	if !explored do return false
+	if distance_sq <= EXPLORED_SIGHT_RADIUS * EXPLORED_SIGHT_RADIUS do return true
+	if distance_sq > EXPLORED_FACING_SIGHT_RADIUS * EXPLORED_FACING_SIGHT_RADIUS do return false
+	forward := linalg.dot(offset, facing)
+	return forward > 0 && forward * forward >=
+		distance_sq * linalg.dot(facing, facing) * EXPLORED_SIGHT_CONE_COS_SQUARED
+}
+
+// Discovery stays within SIGHT_RADIUS plus the adjacent opaque faces. Already
+// explored tiles gain one tile of live sight, then another in the facing cone.
+// Both floor types retain this memory; only lit floors render it outside LOS.
 refresh_visibility :: proc(run: ^Run) {
 	run.visible = {}
 	px, py := run.player.pos.x, run.player.pos.y
 	cx, cy := int(px), int(py)
-	reach := int(SIGHT_RADIUS) + 1
+	reach := int(EXPLORED_FACING_SIGHT_RADIUS) + 1
 
 	// Pass 1: transparent tiles reveal by LOS to their centers. Closed doors
 	// are opaque and join walls in pass 2; marching toward their center enters
@@ -1028,8 +1039,8 @@ refresh_visibility :: proc(run: ^Run) {
 			tile := run.dungeon.tiles[x][y]
 			if tile == .Wall || tile == .Closed_Door do continue
 			tx, ty := f32(x) + 0.5, f32(y) + 0.5
-			dx, dy := tx - px, ty - py
-			if dx * dx + dy * dy > SIGHT_RADIUS * SIGHT_RADIUS do continue
+			offset := Vec2{tx - px, ty - py}
+			if !player_sight_in_range(offset, run.player.facing, run.explored[x][y]) do continue
 			if !line_of_sight(&run.dungeon, px, py, tx, ty) do continue
 			run.visible[x][y] = true
 			run.explored[x][y] = true
@@ -1040,13 +1051,14 @@ refresh_visibility :: proc(run: ^Run) {
 		run.explored[cx][cy] = true
 	}
 
-	// Pass 2: an opaque wall or closed door shows when any adjacent transparent
-	// tile is visibly lit — the face you can see, never the space beyond it.
+	// Pass 2: opaque faces need adjacent live transparent support. Only support
+	// inside the original reveal radius may discover an unknown face; bonus
+	// visibility must not grow memory through walls or closed doors.
 	for y in max(0, cy - reach - 1) ..= min(MAP_H - 1, cy + reach + 1) {
 		for x in max(0, cx - reach - 1) ..= min(MAP_W - 1, cx + reach + 1) {
 			tile := run.dungeon.tiles[x][y]
 			if tile != .Wall && tile != .Closed_Door do continue
-			neighbor_lit := false
+			neighbor_lit, neighbor_reveals := false, false
 			for dy in -1 ..= 1 {
 				for dx in -1 ..= 1 {
 					nx, ny := x + dx, y + dy
@@ -1054,12 +1066,16 @@ refresh_visibility :: proc(run: ^Run) {
 					neighbor := run.dungeon.tiles[nx][ny]
 					if neighbor != .Wall && neighbor != .Closed_Door && run.visible[nx][ny] {
 						neighbor_lit = true
+						rx, ry := f32(nx) + .5 - px, f32(ny) + .5 - py
+						if rx * rx + ry * ry <= SIGHT_RADIUS * SIGHT_RADIUS {
+							neighbor_reveals = true
+						}
 					}
 				}
 			}
-			if neighbor_lit {
+			if neighbor_reveals || (run.explored[x][y] && neighbor_lit) {
 				run.visible[x][y] = true
-				run.explored[x][y] = true
+				if neighbor_reveals do run.explored[x][y] = true
 			}
 		}
 	}

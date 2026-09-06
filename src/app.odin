@@ -213,8 +213,8 @@ Run :: struct {
 	hitstop_ticks: int, // impact-freeze ticks pending; transient, never saved
 	dark_floor:   bool,
 	theme_index:  int,
-	explored:     [MAP_W][MAP_H]bool, // fog-of-war memory (lit floors render it)
-	visible:      [MAP_W][MAP_H]bool, // current LOS visibility, sim-refreshed
+	explored:     [MAP_W][MAP_H]bool, // discovery memory; both floor types use it for bonus sight
+	visible:      [MAP_W][MAP_H]bool, // current LOS including explored-only reach, sim-refreshed
 	boss_engaged: bool,
 	sealed:       [dynamic]Sealed_Tile, // arena seal, restored on boss death
 	tyrant_dead:  bool,

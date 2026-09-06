@@ -75,11 +75,11 @@ View :: struct {
 	mobile_joystick_vector:Vec2,
 }
 
-// Lighting: the world multiplies against a screen-space lightmap. Both floor
-// types use the canonical four-tile lantern/sight reach; deeper normal floors
-// lose ambient continuously while dark floors keep a near-black wash.
-LIGHT_RADIUS_DARK :: 4.0 // DARK_LEVEL_LIGHT_RADIUS, in tiles
-LIGHT_RADIUS_LIT :: 4.0
+// Lighting covers the longest explored-only sight reach; the authoritative
+// live mask still clips it to the discovery circle or explored circle/cone.
+// Deeper normal floors lose ambient; dark floors keep a near-black wash.
+LIGHT_RADIUS_DARK :: EXPLORED_FACING_SIGHT_RADIUS
+LIGHT_RADIUS_LIT :: EXPLORED_FACING_SIGHT_RADIUS
 
 DEFAULT_ZOOM :: OPTIONS_VIEW_ZOOM_DEFAULT
 ZOOM_MIN :: OPTIONS_VIEW_ZOOM_MIN

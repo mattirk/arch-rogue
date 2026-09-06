@@ -395,7 +395,7 @@ mx_story_runtime_soul_hunt_platform_has_no_interior_obstacles :: proc(t:^testing
 }
 
 @(test)
-mx_story_runtime_soul_hunt_returns_exactly_and_rewards_each_verdict_once :: proc(t:^testing.T) {
+mx_story_runtime_soul_hunt_returns_to_soul_room_and_rewards_each_verdict_once :: proc(t:^testing.T) {
 	fixtures:=[3]struct {
 		verdict:ar.Story_Soul_Verdict,
 		row:int,
@@ -420,12 +420,16 @@ mx_story_runtime_soul_hunt_returns_exactly_and_rewards_each_verdict_once :: proc
 		testing.expectf(t,app.run.story_runtime.hall.verdict==fixture.verdict,"%v verdict was not committed",fixture.verdict)
 		testing.expectf(t,story_runtime_win_soul_hunt(&app),"%v Soul hunt did not reach Won",fixture.verdict)
 		completed:=app.story_minigame
+		app.run.story_runtime.soul.pos=origin
 		testing.expect(t,ar.app_story_finalize_minigame(&app),"won Soul hunt did not finalize")
 		ledger:=app.run.story_runtime.soul_games[app.run.depth-1]
 		testing.expect(t,ledger.valid&&ledger.room_index==room_index&&ledger.outcome==.Won,
 			"Soul hunt result did not commit to its per-depth ledger")
-		testing.expect(t,app.run.player.pos==origin&&app.run.player.prev_pos==origin,
-			"Soul hunt must return to the exact saved floor coordinate")
+		_,return_room,in_room:=ar.dungeon_room_at_point(&app.run.dungeon,app.run.player.pos.x,app.run.player.pos.y)
+		testing.expect(t,in_room&&return_room==room_index&&app.run.player.prev_pos==app.run.player.pos&&app.run.player.pos!=origin,
+			"won Soul hunt must return to the Soul room even when entered elsewhere")
+		testing.expect(t,!ar.blocked_for_radius(&app.run.dungeon,app.run.player.pos.x,app.run.player.pos.y,
+			ar.PLAYER_HIT_RADIUS,block_stairs=true),"Soul-room return must have a clear player footprint")
 		testing.expect(t,app.run.player.dash_timer==.73,
 			"Soul hunt must restore the real-floor dash cooldown instead of refreshing it")
 		testing.expect(t,app.story_panel.active&&app.story_panel.node==.Soul_Settled&&!app.story_minigame.active,
@@ -448,18 +452,23 @@ mx_story_runtime_soul_hunt_returns_exactly_and_rewards_each_verdict_once :: proc
 @(test)
 mx_story_runtime_lost_soul_hunt_returns_without_reward :: proc(t:^testing.T) {
 	app:ar.App
-	origin,_,staged:=story_runtime_stage_soul_question(&app,ar.derive_seed(5201101,0))
+	_,_,staged:=story_runtime_stage_soul_question(&app,ar.derive_seed(5201101,0))
 	defer ar.run_destroy(&app.run)
 	testing.expect(t,staged,"Soul question fixture failed")
 	app.run.player.max_mana=40;app.run.player.mana=3
 	app.run.player.discipline_spell_bonus=2;app.run.player.memory_tokens=4
+	spawn:=ar.run_spawn_point(&app.run)
+	app.run.player.pos=app.run.story_runtime.soul.pos
+	testing.expect(t,app.run.player.pos!=spawn,"loss fixture must enter from outside the starting room")
 	story_runtime_reveal_and_confirm(&app,2)
-	app.story_minigame.phase=.Result;app.story_minigame.outcome=.Lost
-	app.story_minigame.active_cell=-1;app.story_minigame.result_time=0
+	testing.expect(t,story_runtime_advance_soul_hunt_to_play(&app),"loss fixture must reach Play")
+	app.story_minigame.time_left=.01
+	_=ar.story_soul_hunt_tick(&app,{},.02)
+	testing.expect(t,app.story_minigame.outcome==.Lost,"uncaptured ghosts at timeout must lose the hunt")
 	testing.expect(t,ar.app_story_finalize_minigame(&app),"lost Soul hunt did not finalize")
-	testing.expect(t,app.run.player.pos==origin&&app.run.player.max_mana==40&&app.run.player.mana==3&&
+	testing.expect(t,app.run.player.pos==spawn&&app.run.player.prev_pos==spawn&&app.run.player.max_mana==40&&app.run.player.mana==3&&
 		app.run.player.discipline_spell_bonus==2&&app.run.player.memory_tokens==4,
-		"lost Soul hunt must return without granting its verdict reward")
+		"lost Soul hunt must return to the floor start without granting its verdict reward")
 }
 
 @(test)

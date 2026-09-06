@@ -791,7 +791,10 @@ ENEMY_CAST_WINDUP :: 0.5
 ENEMY_BOLT_SPEED :: 6.0
 RANGED_PREFERRED_RANGE :: 3.5 // kite band from DEFAULT_RANGED_TACTIC
 RANGED_MIN_RANGE :: 2.5
-SIGHT_RADIUS :: 4.0 // LIGHT_LEVEL_SIGHT_RADIUS == DARK_LEVEL_LIGHT_RADIUS
+SIGHT_RADIUS :: 4.0 // new-area discovery; explored-only sight must not increase this
+EXPLORED_SIGHT_RADIUS :: SIGHT_RADIUS + 1.0
+EXPLORED_FACING_SIGHT_RADIUS :: EXPLORED_SIGHT_RADIUS + 1.0
+EXPLORED_SIGHT_CONE_COS_SQUARED :: 0.5 // 90-degree cone: +/-45 degrees in tile space
 
 // MX.2 boss ability selection (combat/abilities.py).
 ENEMY_BOSS_WINDUP :: 0.25

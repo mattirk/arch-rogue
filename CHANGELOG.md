@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Preserve the 4-tile fog discovery radius while extending live sight on
+  explored terrain to 5 tiles in all directions and 6 tiles within a 90-degree
+  facing cone. Apply this on normal and dark floors, keep wall/door occlusion
+  and discovery unchanged, and extend LOS-clipped lantern coverage to match.
 - Package the required x64 Visual C++ runtime beside both Windows executables
   (standalone and Steam), sourcing it from the linking toolset's redistributable
   directory. Audit the complete runtime dependency set and reject missing,
