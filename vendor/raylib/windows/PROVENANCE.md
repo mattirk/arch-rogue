@@ -9,7 +9,11 @@ https://media.githubusercontent.com/media/odin-lang/Odin/301c287de90393608fb7c5b
 The committed SHA256SUMS matches that revision's Git LFS object ID; size is
 5,297,172 bytes. It contains the seven raylib/GLFW x64 COFF object modules and
 an embedded Windows resource. The binding uses the same static CRT exclusion
-as upstream Odin. No raylib DLL or compiler runtime DLL is packaged.
+as upstream Odin. Its COFF directives request `MSVCRT`: static raylib does
+not imply a static C runtime. Windows packages therefore include required
+`vcruntime140*.dll` files from the linked Visual Studio toolset's x64
+redistributable directory. No raylib DLL is packaged. Runtime binaries remain
+build inputs/packaged dependencies, never committed source files.
 
 Source identity: raylib 6.0, upstream commit
 `dbc56a87da87d973a9c5baa4e7438a9d20121d28` (root toolchain.properties).

@@ -41,10 +41,18 @@ software OpenGL 3.3 on hosted runners; its DLLs are copied only into the
 temporary smoke directory. They never enter the ZIP or Steam payload. Local
 smoke uses the machine's graphics driver when that variable is absent.
 
+The vendored static raylib library uses the dynamic Visual C++ runtime.
+Packaging copies required `vcruntime140.dll` / `vcruntime140_1.dll` files from
+`VCToolsRedistDir/x64/Microsoft.VC*.CRT/` beside the executable. CI exports
+`VCToolsRedistDir` from the same VS developer environment used for linking.
+Runtime files are included only in distributions, not committed to source.
+This follows Microsoft's [app-local deployment guidance](https://learn.microsoft.com/en-us/cpp/windows/determining-which-dlls-to-redistribute?view=msvc-170).
+
 `windows-audit` also runs on Linux. It verifies the static library hash, PE32+
-x64 identity, executable/DLL type, system-only imports, exact root entries,
-and source-matching assets/licenses. Missing Steam runtime, `steam_appid.txt`,
-compiler runtime DLL dependencies and extra Mesa files fail the audit.
+x64 identity, executable/DLL type, system imports plus the complete required
+app-local VC runtime dependency set, exact root entries, and source-matching
+assets/licenses. Missing or wrong-architecture runtime DLLs, unknown DLL
+dependencies, `steam_appid.txt`, and extra Mesa files fail the audit.
 
 For the private Steam build, place the authorized SDK redistributable
 `steam_api64.dll` in `build/steam/sdk/`, then run `./build.sh steam-windows`.

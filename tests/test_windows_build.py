@@ -34,6 +34,42 @@ def fixture_pe(*, machine=0x8664, dll=False, dependency='KERNEL32.dll') -> bytes
 
 
 class WindowsAuditTests(unittest.TestCase):
+    def test_package_includes_and_audits_required_x64_vc_runtime_closure(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            binary = root / 'build/windows/archrogue.exe'
+            binary.parent.mkdir(parents=True)
+            binary.write_bytes(fixture_pe(dependency='VCRUNTIME140.dll'))
+            (root / 'assets').mkdir()
+            (root / 'assets/tile.png').write_bytes(b'asset')
+            (root / 'vendor/raylib').mkdir(parents=True)
+            for name in ('LICENSE', 'NOTICE', 'vendor/raylib/LICENSE'):
+                (root / name).write_text(name)
+            redist = root / 'redist'
+            crt = redist / 'x64/Microsoft.VC143.CRT'
+            crt.mkdir(parents=True)
+            (crt / 'vcruntime140.dll').write_bytes(fixture_pe(dll=True, dependency='vcruntime140_1.dll'))
+            (crt / 'vcruntime140_1.dll').write_bytes(fixture_pe(dll=True))
+            (crt / 'msvcp140.dll').write_bytes(b'not needed')
+            with patch.object(windows_build, 'ROOT', root), patch.object(audit, 'ROOT', root), \
+                 patch.dict(os.environ, {'VCToolsRedistDir': str(redist)}):
+                bundle = windows_build.stage()
+                self.assertEqual({p.name for p in bundle.glob('*.dll')}, audit.VC_RUNTIME_DLLS)
+                self.assertEqual(audit.digest(bundle / 'vcruntime140.dll'), audit.digest(crt / 'vcruntime140.dll'))
+                audit.audit_bundle(bundle)
+                (bundle / 'vcruntime140_1.dll').unlink()
+                with self.assertRaisesRegex(ValueError, 'missing app-local runtime'):
+                    audit.audit_bundle(bundle)
+                (bundle / 'vcruntime140_1.dll').write_bytes(fixture_pe(dll=True, machine=0x14c))
+                with self.assertRaisesRegex(ValueError, 'expected Windows x64'):
+                    audit.audit_bundle(bundle)
+                (bundle / 'vcruntime140_1.dll').write_bytes(fixture_pe(dll=True, dependency='unshipped.dll'))
+                with self.assertRaisesRegex(ValueError, 'non-system DLL imports'):
+                    audit.audit_bundle(bundle)
+                (crt / 'vcruntime140_1.dll').unlink()
+                with self.assertRaisesRegex(SystemExit, 'Expected one x64 redistributable'):
+                    windows_build.stage()
+
     def test_build_uses_git_bash_when_wsl_bash_is_first_on_path(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

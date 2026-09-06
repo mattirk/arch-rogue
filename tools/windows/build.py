@@ -11,9 +11,9 @@ import tempfile
 from pathlib import Path
 
 if __package__:
-    from .audit import ROOT, audit_bundle, pe_imports, verify_raylib
+    from .audit import ROOT, VC_RUNTIME_DLLS, audit_bundle, pe_imports, verify_raylib
 else:
-    from audit import ROOT, audit_bundle, pe_imports, verify_raylib
+    from audit import ROOT, VC_RUNTIME_DLLS, audit_bundle, pe_imports, verify_raylib
 
 
 def git_bash() -> str:
@@ -35,7 +35,27 @@ def build() -> None:
     output = ROOT / 'build/windows/archrogue.exe'
     output.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(['odin', 'build', 'src', f'-out:{output}', '-target:windows_amd64', '-vet', '-o:speed'], cwd=ROOT, check=True)
-    pe_imports(output)
+    pe_imports(output, allow_vc_runtime=True)
+
+
+def stage_vc_runtime(binary: Path, *, dll: bool = False) -> None:
+    pending = pe_imports(binary, dll=dll, allow_vc_runtime=True) & VC_RUNTIME_DLLS
+    copied: set[str] = set()
+    while pending:
+        name = pending.pop()
+        if name in copied:
+            continue
+        redist = os.environ.get('VCToolsRedistDir')
+        if not redist:
+            raise SystemExit('VCToolsRedistDir is required to package the Visual C++ runtime; run the VS x64 developer environment or tools/windows/setup.ps1')
+        candidates = list(Path(redist).glob(f'x64/Microsoft.VC*.CRT/{name}'))
+        if len(candidates) != 1:
+            raise SystemExit(f'Expected one x64 redistributable {name} under {redist}, found {len(candidates)}')
+        source = candidates[0]
+        imports = pe_imports(source, dll=True, allow_vc_runtime=True)
+        shutil.copy2(source, binary.parent / name)
+        copied.add(name)
+        pending |= (imports & VC_RUNTIME_DLLS) - copied
 
 
 def stage() -> Path:
@@ -44,6 +64,7 @@ def stage() -> Path:
     destination.mkdir(parents=True)
     executable = 'archrogue.exe'
     shutil.copy2(ROOT / 'build/windows/archrogue.exe', destination / executable)
+    stage_vc_runtime(destination / executable)
     shutil.copytree(ROOT / 'assets', destination / 'assets')
     (destination / 'licenses').mkdir()
     for source, name in [('LICENSE', 'LICENSE'), ('NOTICE', 'NOTICE'), ('vendor/raylib/LICENSE', 'raylib-LICENSE')]:
@@ -51,7 +72,10 @@ def stage() -> Path:
     (destination / 'README.txt').write_text(
         f'Arch Rogue for Windows x64\n\nExtract the entire folder, then launch {executable}.\n'
         'Keep assets and licenses beside the executable.\n'
-        'Saves are stored in your local application-data directory under arch-rogue.\n', encoding='utf-8')
+        'Saves are stored in your local application-data directory under arch-rogue.\n'
+        'Bundled Visual C++ runtime DLLs are Microsoft redistributable components,\n'
+        'not covered by the project Apache license. Deployment information:\n'
+        'https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files\n', encoding='utf-8')
     audit_bundle(destination)
     return destination
 

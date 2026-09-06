@@ -58,7 +58,7 @@ if ($LASTEXITCODE -ne 0) { throw 'VsDevCmd failed' }
 foreach ($line in $variables) {
     if ($line -match '^([^=]+)=(.*)$') {
         $key = $Matches[1]; $value = $Matches[2]
-        if ($key -in @('INCLUDE', 'LIB', 'LIBPATH', 'VCToolsInstallDir', 'WindowsSdkDir', 'WindowsSDKVersion')) {
+        if ($key -in @('INCLUDE', 'LIB', 'LIBPATH', 'VCToolsInstallDir', 'VCToolsRedistDir', 'WindowsSdkDir', 'WindowsSDKVersion')) {
             "$key=$value" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
         }
         if ($key -ieq 'Path') {

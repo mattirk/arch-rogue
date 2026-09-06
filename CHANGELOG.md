@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Package the required x64 Visual C++ runtime beside both Windows executables
+  (standalone and Steam), sourcing it from the linking toolset's redistributable
+  directory. Audit the complete runtime dependency set and reject missing,
+  wrong-architecture, or unexpected DLLs.
 - Fix mismatched allocator ownership in Windows save-path conversion and an
   invalid string free in the input test fixture. Make allocator errors fail
   headless tests; reserve an 8 MiB Windows test stack and log test transitions

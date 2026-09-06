@@ -9,6 +9,7 @@ import struct
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+VC_RUNTIME_DLLS = {'vcruntime140.dll', 'vcruntime140_1.dll'}
 SYSTEM_DLLS = {
     'kernel32.dll', 'user32.dll', 'gdi32.dll', 'shell32.dll', 'winmm.dll',
     'advapi32.dll', 'ole32.dll', 'oleaut32.dll', 'uuid.dll', 'opengl32.dll',
@@ -33,7 +34,7 @@ def verify_raylib() -> None:
         raise ValueError('Windows raylib is not a static archive')
 
 
-def pe_imports(path: Path, *, dll: bool = False) -> set[str]:
+def pe_imports(path: Path, *, dll: bool = False, allow_vc_runtime: bool = False) -> set[str]:
     data = path.read_bytes()
     if data[:2] != b'MZ' or len(data) < 64:
         raise ValueError(f'{path}: not a PE binary')
@@ -76,9 +77,27 @@ def pe_imports(path: Path, *, dll: bool = False) -> set[str]:
             imports.add(name)
             pos += 20
     unexpected = {name for name in imports if name not in SYSTEM_DLLS and not name.startswith(('api-ms-win-crt-', 'api-ms-win-core-'))}
+    if allow_vc_runtime:
+        unexpected -= VC_RUNTIME_DLLS
     if unexpected:
         raise ValueError(f'{path}: non-system DLL imports: {sorted(unexpected)}')
     return imports
+
+
+def required_vc_runtime(binary: Path, *, dll: bool = False) -> set[str]:
+    """Validate the complete app-local runtime closure, including DLL identity."""
+    pending = pe_imports(binary, dll=dll, allow_vc_runtime=True) & VC_RUNTIME_DLLS
+    required: set[str] = set()
+    while pending:
+        name = pending.pop()
+        if name in required:
+            continue
+        runtime = binary.parent / name
+        if not runtime.is_file() or runtime.is_symlink():
+            raise ValueError(f'{binary}: missing app-local runtime {name}')
+        required.add(name)
+        pending |= (pe_imports(runtime, dll=True, allow_vc_runtime=True) & VC_RUNTIME_DLLS) - required
+    return required
 
 
 def tree_digests(root: Path) -> dict[str, str]:
@@ -94,14 +113,14 @@ def tree_digests(root: Path) -> dict[str, str]:
 def audit_bundle(bundle: Path, *, steam: bool = False) -> None:
     executable = 'arch-rogue.exe' if steam else 'archrogue.exe'
     expected = {executable, 'assets', 'licenses', 'README.txt'}
+    expected |= required_vc_runtime(bundle / executable)
     if steam:
         expected.add('steam_api64.dll')
+        if (bundle / 'steam_api64.dll').is_file():
+            expected |= required_vc_runtime(bundle / 'steam_api64.dll', dll=True)
     actual = {p.name for p in bundle.iterdir()}
     if actual != expected:
         raise ValueError(f'Unexpected bundle entries: missing={expected-actual}, extra={actual-expected}')
-    pe_imports(bundle / executable)
-    if steam:
-        pe_imports(bundle / 'steam_api64.dll', dll=True)
     if tree_digests(bundle / 'assets') != tree_digests(ROOT / 'assets'):
         raise ValueError('Packaged assets differ from canonical assets')
     licenses = {'LICENSE': ROOT / 'LICENSE', 'NOTICE': ROOT / 'NOTICE', 'raylib-LICENSE': ROOT / 'vendor/raylib/LICENSE'}
