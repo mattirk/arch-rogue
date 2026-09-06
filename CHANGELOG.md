@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Add native Windows x64 CI with pinned Odin/raylib inputs, PE and asset audits,
+  headless tests, isolated software-OpenGL smoke, and a GitHub release ZIP.
+- Publish Linux and Windows Steam depots together after both build gates;
+  require both SDK runtimes and keep dry runs free of steamcmd authentication.
+- Resolve Windows assets beside the executable, isolate smoke-test saves,
+  and remove the unsupported macOS Steam requirements claim. Native Windows
+  CI execution and real hardware/Steam acceptance remain pending.
+
 ## 6.0.0-alpha.27 — Turn the Page
 
 - Replace the four basic floor sprites with the eight approved V2 charcoal

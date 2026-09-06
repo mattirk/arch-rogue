@@ -119,7 +119,8 @@ class WebsiteTests(unittest.TestCase):
         self.assertNotIn("Arch Rogue Odin", page + script)
         self.assertIn("x64 tar.gz archive", page)
         self.assertIn("Signed APK", page)
-        self.assertGreaterEqual(page.count("Coming soon"), 2)
+        self.assertIn("x64 ZIP archive", page)
+        self.assertIn("macOS is not supported", page)
         self.assertIn("Store page only", page)
         self.assertIn('[aria-disabled="true"]', styles)
         self.assertNotIn("Descend. Adapt. Survive.", page)
@@ -182,7 +183,10 @@ class WebsiteTests(unittest.TestCase):
         self.assertEqual(
             manifest["assets"],
             {
-                "windows": {"available": False},
+                "windows": {
+                    "available": True,
+                    "url": "https://github.com/mattirk/arch-rogue/releases/download/v6.0.0-alpha.23-1234567890ab/arch-rogue-v6.0.0-alpha.23-1234567890ab-windows-x64.zip",
+                },
                 "linux": {
                     "available": True,
                     "url": "https://github.com/mattirk/arch-rogue/releases/download/v6.0.0-alpha.23-1234567890ab/arch-rogue-v6.0.0-alpha.23-1234567890ab-linux-x64.tar.gz",

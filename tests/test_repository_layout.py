@@ -166,7 +166,7 @@ class RepositoryLayoutTests(unittest.TestCase):
         ):
             self.assertIn(contract, mirror_workflow)
 
-    def test_public_release_covers_odin_linux_android_web(self) -> None:
+    def test_public_release_covers_odin_linux_windows_android_web(self) -> None:
         workflow_path = (
             PRIVATE_PUBLIC_WORKFLOW if IS_PRIVATE_MASTER else PUBLIC_SNAPSHOT_WORKFLOW
         )
@@ -181,6 +181,10 @@ class RepositoryLayoutTests(unittest.TestCase):
             "bash android/gradlew",
             "bash build.sh web-build",
             "linux-x64.tar.gz",
+            "windows-x64.zip",
+            "runs-on: windows-2022",
+            "bash build.sh windows-package",
+            "./tools/windows/setup.ps1",
             "Arch-Rogue.apk",
             "Arch-Rogue.aab",
             "-web.tar.gz",
@@ -221,7 +225,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             workflow.count("uses: laytan/setup-odin@"),
             workflow.count('release: "false"'),
         )
-        self.assertEqual(workflow.count("run: bash tools/fetch_private_sfx.sh"), 3)
+        self.assertEqual(workflow.count("run: bash tools/fetch_private_sfx.sh"), 4)
         self.assertNotIn("secrets.ARCH_ROGUE_SFX_BUNDLE_URL", workflow)
         self.assertNotIn("secrets.ARCH_ROGUE_SFX_BUNDLE_SHA256", workflow)
         self.assertNotIn("arch-rogue-sfx-runtime.tar.gz", workflow)
@@ -278,7 +282,7 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertIn("contents: write", release_job)
         self.assertNotIn("pages: write", release_job)
         self.assertIn(
-            'test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 4',
+            'test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 5',
             release_job,
         )
         self.assertIn("pages: write", pages_job)

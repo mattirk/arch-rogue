@@ -67,7 +67,7 @@ verify_odin() {
     command -v odin >/dev/null 2>&1 || fail "Odin is missing; install $ODIN_VERSION at $ODIN_COMMIT with LLVM $ODIN_BACKEND_LLVM_VERSION"
 
     local detected version_prefix reported_commit
-    detected="$(odin version 2>&1 | sed -n '1p')"
+    detected="$(odin version 2>&1 | tr -d '\r' | sed -n '1p')"
     version_prefix="odin version $ODIN_VERSION:"
     [[ "$detected" == "$version_prefix"* ]] || \
         fail "expected $ODIN_VERSION at $ODIN_COMMIT, found ${detected:-unknown}; see README.md toolchain setup"
@@ -75,15 +75,27 @@ verify_odin() {
     [[ "$reported_commit" =~ ^[0-9a-f]{7,40}$ && "$ODIN_COMMIT" == "$reported_commit"* ]] || \
         fail "Odin reported revision ${reported_commit:-missing}, not pinned $ODIN_COMMIT"
 
-    local report backend_version
+    local report backend_version expected_backend
+    expected_backend="$ODIN_BACKEND_LLVM_VERSION"
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*)
+            # The pinned Odin source includes a Windows LLVM runtime at
+            # 20.1.0; Linux builds retain the shared 21.1.8 backend contract.
+            source "$ROOT_DIR/tools/windows/toolchain.properties"
+            expected_backend="$ODIN_WINDOWS_BACKEND_LLVM_VERSION"
+            ;;
+    esac
     if ! report="$(odin report 2>&1)"; then
         fail "could not inspect the Odin backend: $report"
     fi
-    backend_version="$(sed -n 's/^[[:space:]]*Backend: LLVM //p' <<<"$report" | sed -n '1p')"
-    [[ "$backend_version" == "$ODIN_BACKEND_LLVM_VERSION" ]] || \
-        fail "expected Odin LLVM backend $ODIN_BACKEND_LLVM_VERSION, found ${backend_version:-unknown}"
+    backend_version="$(tr -d '\r' <<<"$report" | sed -n 's/^[[:space:]]*Backend: LLVM //p' | sed -n '1p')"
+    [[ "$backend_version" == "$expected_backend" ]] || \
+        fail "expected Odin LLVM backend $expected_backend, found ${backend_version:-unknown}"
 
     local source_dir="${ODIN_SOURCE_DIR:-$HOME/odin}"
+    if command -v cygpath >/dev/null 2>&1; then
+        source_dir="$(cygpath -u "$source_dir")"
+    fi
     if [[ -d "$source_dir/.git" ]]; then
         local source_commit
         source_commit="$(git -C "$source_dir" rev-parse HEAD 2>/dev/null)" || \

@@ -1047,7 +1047,7 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 	rt.perf_enabled = config.mx7_perf_enabled || config.mx_save_perf_enabled
 	normal_persistence_enabled := !rt.fixed_capture && !config.mx7_perf_enabled &&
 		!config.mx_save_perf_enabled && config.shot_path == "" && !config.dev_play
-	if config.mx_save_perf_enabled {
+	if config.mx_save_perf_enabled || config.smoke_frames > 0 {
 		when ARCH_ROGUE_WEB {
 			platform_log("MX_SAVE_PERF_ERROR unsupported on web")
 			game_init_fail_before_view(rt)

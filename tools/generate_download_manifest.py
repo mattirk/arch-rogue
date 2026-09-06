@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 
 PLATFORM_ARTIFACT_FILENAMES: dict[str, str | None] = {
-    "windows": None,
+    "windows": "{base}-windows-x64.zip",
     "linux": "{base}-linux-x64.tar.gz",
     "macos": None,
     "android": "Arch-Rogue.apk",

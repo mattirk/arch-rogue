@@ -107,7 +107,7 @@ jobs:
           python3 tools/verify_floor_assets.py
 
       - name: Run public-mirror and website regressions
-        run: python3 -m unittest tests.test_sfx_bundle tests.test_public_mirror tests.test_website tests.test_repository_layout
+        run: python3 -m unittest tests.test_sfx_bundle tests.test_public_mirror tests.test_website tests.test_repository_layout tests.test_windows_build
 
       - name: Assemble Linux distribution
         id: package
@@ -178,6 +178,54 @@ jobs:
         with:
           name: arch-rogue-linux-x64
           path: ${{ steps.package.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    needs: linux
+    name: Validate and package Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Preserve canonical file bytes
+        run: git config --global core.autocrlf false
+
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Inject manifest-locked licensed SFX
+        env:
+          ARCH_ROGUE_SFX_RELEASE_API_URL: https://api.github.com/repos/mattirk/arch-rogue-master/releases/tags/sfx-runtime
+          ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION: ${{ secrets.ARCH_ROGUE_SFX_BUNDLE_AUTHORIZATION }}
+        run: bash tools/fetch_private_sfx.sh
+
+      - name: Install pinned Windows Odin and smoke graphics runtime
+        shell: pwsh
+        run: ./tools/windows/setup.ps1
+
+      - name: Verify compiler and Windows raylib
+        run: |
+          bash tools/verify_toolchain.sh odin
+          bash build.sh windows-audit
+
+      - name: Check Windows sources and run native headless tests
+        run: |
+          bash build.sh check
+          bash build.sh test
+
+      - name: Build, audit, smoke, and ZIP Windows distribution
+        run: bash build.sh windows-package
+
+      - name: Upload Windows release archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arch-rogue-windows-x64
+          path: dist/*-windows-x64.zip
           if-no-files-found: error
           retention-days: 7
 
@@ -475,7 +523,7 @@ jobs:
 
   publish-release:
     name: Publish automatic prerelease
-    needs: [linux, android, web]
+    needs: [linux, windows, android, web]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -495,10 +543,11 @@ jobs:
           version="${{ needs.linux.outputs.version }}"
           sha12="${{ needs.linux.outputs.sha12 }}"
           test -f "release-assets/arch-rogue-v${version}-${sha12}-linux-x64.tar.gz"
+          test -f "release-assets/arch-rogue-v${version}-${sha12}-windows-x64.zip"
           test -f "release-assets/Arch-Rogue.apk"
           test -f "release-assets/Arch-Rogue.aab"
           test -f "release-assets/arch-rogue-v${version}-${sha12}-web.tar.gz"
-          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 4
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 5
           ls -lh release-assets
 
       - name: Create or update automatic prerelease
@@ -512,6 +561,7 @@ jobs:
 
             Release artifacts:
             - `arch-rogue-v${{ needs.linux.outputs.version }}-${{ needs.linux.outputs.sha12 }}-linux-x64.tar.gz` — Linux x64 launcher, binary, assets, and licenses
+            - `arch-rogue-v${{ needs.linux.outputs.version }}-${{ needs.linux.outputs.sha12 }}-windows-x64.zip` — Windows x64 executable, assets, and licenses
             - `Arch-Rogue.apk` — signed Android install package
             - `Arch-Rogue.aab` — signed Android App Bundle
             - `arch-rogue-v${{ needs.linux.outputs.version }}-${{ needs.linux.outputs.sha12 }}-web.tar.gz` — audited, self-hostable WebAssembly (WebGL2) build
@@ -522,7 +572,7 @@ jobs:
 
   prepare-pages:
     name: Prepare download website
-    needs: [linux, android, web, publish-release]
+    needs: [linux, windows, android, web, publish-release]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

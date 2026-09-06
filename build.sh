@@ -29,8 +29,12 @@ case "$cmd" in
   web-audit)         exec bash ./tools/web.sh audit "$@" ;;
   web-serve)         exec bash ./tools/web.sh serve "$@" ;;
   steam-linux)       exec bash ./tools/steam/build_steam_linux.sh "$@" ;;
+  windows-release)   exec python3 ./tools/windows/build.py build "$@" ;;
+  windows-package)   exec python3 ./tools/windows/build.py package "$@" ;;
+  windows-audit)     exec python3 ./tools/windows/audit.py "$@" ;;
+  steam-windows)     exec python3 ./tools/steam/build_steam_windows.py "$@" ;;
   *)
-    echo "usage: build.sh [toolchain|run|build|release|check|test|android-preflight|android-debug|android-release|android-install|android-audit|android-smoke|web-preflight|web-build|web-audit|web-serve|steam-linux] [args]" >&2
+    echo "usage: build.sh [toolchain|run|build|release|check|test|android-preflight|android-debug|android-release|android-install|android-audit|android-smoke|web-preflight|web-build|web-audit|web-serve|windows-release|windows-package|windows-audit|steam-linux|steam-windows] [args]" >&2
     exit 2
     ;;
 esac

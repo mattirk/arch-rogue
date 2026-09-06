@@ -13,8 +13,8 @@ Bleeding-edge prerelease builds are published on the [Arch Rogue download site](
 | Linux | Available |
 | Android | Available as a native Odin/raylib alpha build |
 | Web (WebAssembly) | [Play in a browser](https://mattirk.github.io/arch-rogue/play/) using the exact audited release archive. Requires a current desktop Chromium-family or Firefox browser with WebGL2 |
-| Windows | Deferred |
-| macOS | Deferred |
+| Windows | Native x64 ZIP and Steam CI lanes configured; first CI run and hardware acceptance pending |
+| macOS | Unsupported |
 | Steam / Steam Deck integration | In progress: the game-side Steamworks integration (achievements, offline queue, cloud-ready saves) is built; store release pending |
 | Multiplayer | Deferred |
 
@@ -45,7 +45,7 @@ See `PARITY.md` for the port ledger, `ARCHITECTURE.md` for design decisions and 
 - The exact Odin tag, source commit, and LLVM backend recorded in root `toolchain.properties`, available as `odin`
 - The normal Linux graphics, windowing, and audio development libraries required by raylib
 
-`build.sh` verifies the ambient Odin executable before every compile, check, or test, so local builds cannot silently differ from CI/CD. At the current pin this requires Odin `dev-2026-07` at commit `301c287de90393608fb7c5b260210e1e67caf0fd`, built with LLVM `21.1.8`; a newer distro package is intentionally rejected. CI reads its `setup-odin` inputs from the same root contract and runs the same verifier.
+`build.sh` verifies the ambient Odin executable before every compile, check, or test, so local builds cannot silently differ from CI/CD. The native Windows lane uses the same source commit with the source tree's separately pinned Windows LLVM 20.1.0 backend; the following LLVM pin applies to Linux. At the current pin this requires Odin `dev-2026-07` at commit `301c287de90393608fb7c5b260210e1e67caf0fd`, built with LLVM `21.1.8`; a newer distro package is intentionally rejected. CI reads its `setup-odin` inputs from the same root contract and runs the same verifier.
 
 The raylib 6.0 binding and checksum-pinned static libraries are included under `vendor/raylib/`; a separate raylib installation is not required. Root `toolchain.properties` owns project-wide Odin and raylib source pins, while `android/toolchain.properties` and `web/toolchain.properties` contain only platform-specific additions.
 
@@ -68,6 +68,13 @@ Run every command from the repository root. The wrapper also relocates itself co
 - `release` creates an optimized executable at `build/archrogue`.
 
 Additional Odin arguments may be appended after the command.
+
+## Build for Windows
+
+Native Windows x64 CI produces a ZIP for GitHub releases and a separate Steam
+depot. Use `./build.sh windows-package` from Git Bash with the pinned Odin
+compiler and VS 2022 x64 C++ tools. See [Windows build instructions](tools/windows/README.md)
+for setup, audits, smoke testing, and outstanding hardware acceptance.
 
 ## Build for Android
 
@@ -147,7 +154,7 @@ outside the integrated game distributions.
 
 - Simulation uses a 60 Hz fixed timestep and seeded PCG streams. Rendering must not mutate simulation state.
 - Simulation and content code remain raylib-free so the test package can run headlessly.
-- Linux, native Android, and desktop WebAssembly/WebGL2 are the current release targets. The game-side Steam integration is built and a Steam release is being prepared; Windows, macOS, and multiplayer remain deferred.
+- Linux, native Android, and desktop WebAssembly/WebGL2 are the current release targets. The game-side Steam integration is built and a Steam release is being prepared; Windows now has native CI packaging pending runtime acceptance; multiplayer is coming soon and macOS is unsupported.
 - The project is still awaiting final human side-by-side visual parity signoff and broader physical-device Android retesting noted in `PARITY.md`.
 
 

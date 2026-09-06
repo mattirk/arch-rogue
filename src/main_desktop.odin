@@ -431,9 +431,18 @@ game_boot_config_from_env :: proc() -> Game_Boot_Config {
 }
 
 main :: proc() {
+	when ODIN_OS == .Windows {
+		// Explorer, shortcuts, and Steam can supply a different working directory.
+		// The Windows distribution keeps assets beside the executable.
+		exe_directory, exe_directory_err := os.get_executable_directory(context.temp_allocator)
+		if exe_directory_err != nil || os.change_directory(exe_directory) != nil {
+			fmt.eprintln("Could not select the application directory")
+			os.exit(1)
+		}
+	}
 	config := game_boot_config_from_env()
 	defer delete(config.shot_path)
-	if config.mx_save_perf_enabled {
+	if config.mx_save_perf_enabled || config.smoke_frames > 0 {
 		directory, directory_err := os.make_directory_temp("", "arch-rogue-mx-save-perf-*", context.allocator)
 		if directory_err != nil {
 			fmt.eprintln("MX_SAVE_PERF_ERROR temporary storage unavailable")
