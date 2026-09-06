@@ -17,7 +17,14 @@ case "$cmd" in
   build)   verify_toolchain linux; odin build src   -out:build/archrogue       -vet -debug   "$@" ;;
   release) verify_toolchain linux; odin build src   -out:build/archrogue       -vet -o:speed "$@" ;;
   check)   verify_toolchain odin;  odin check src   -vet "$@" ;;
-  test)    verify_toolchain odin;  odin test  tests -out:build/archrogue_tests -vet "$@" ;;
+  test)
+    verify_toolchain odin
+    test_output=build/archrogue_tests
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*) test_output+=.exe ;;
+    esac
+    odin test tests "-out:$test_output" -vet "$@"
+    ;;
   android-preflight) exec bash ./tools/android.sh preflight "$@" ;;
   android-debug)     exec bash ./tools/android.sh debug "$@" ;;
   android-release)   exec bash ./tools/android.sh release "$@" ;;

@@ -34,6 +34,39 @@ def fixture_pe(*, machine=0x8664, dll=False, dependency='KERNEL32.dll') -> bytes
 
 class WindowsAuditTests(unittest.TestCase):
     @unittest.skipIf(os.name == 'nt', 'fake POSIX executables model Git Bash output')
+    def test_wrapper_uses_native_test_extension_and_preserves_arguments(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            odin = root / 'odin'
+            odin.write_text(
+                '#!/bin/sh\ncase "$1" in\n'
+                'version) printf "odin version dev-2026-07:301c287\\r\\n" ;;\n'
+                'report) printf "Backend: LLVM %s\\r\\n" "$FAKE_ODIN_BACKEND" ;;\n'
+                '*) printf "%s\\n" "$@" > "$FAKE_ODIN_ARGS" ;;\nesac\n'
+            )
+            odin.chmod(0o755)
+            uname = root / 'uname'
+            uname.write_text('#!/bin/sh\nprintf "%s\\n" "$FAKE_HOST"\n')
+            uname.chmod(0o755)
+            arguments = root / 'arguments.txt'
+            env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'],
+                       ODIN_SOURCE_DIR=str(root / 'no-checkout'), FAKE_ODIN_ARGS=str(arguments))
+            for host in ('Linux', 'MINGW64_NT-10.0', 'MSYS_NT-10.0', 'CYGWIN_NT-10.0'):
+                with self.subTest(host=host):
+                    windows = host != 'Linux'
+                    env.update(FAKE_HOST=host, FAKE_ODIN_BACKEND='20.1.0' if windows else '21.1.8')
+                    result = subprocess.run(
+                        ['bash', str(ROOT / 'build.sh'), 'test', '-define:ODIN_TEST_THREADS=1'],
+                        cwd=root, env=env, capture_output=True, text=True,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    suffix = '.exe' if windows else ''
+                    self.assertEqual(arguments.read_text().splitlines(), [
+                        'test', 'tests', f'-out:build/archrogue_tests{suffix}',
+                        '-vet', '-define:ODIN_TEST_THREADS=1',
+                    ])
+
+    @unittest.skipIf(os.name == 'nt', 'fake POSIX executables model Git Bash output')
     def test_windows_compiler_pin_accepts_crlf_and_rejects_revision_or_backend_drift(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
