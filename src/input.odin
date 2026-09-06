@@ -459,6 +459,44 @@ Desktop_Input :: struct {
 	back:             bool,
 }
 
+// Positive raylib wheel values move up; fractional trackpad events still
+// advance a row, while multi-notch events retain their magnitude.
+desktop_wheel_steps :: proc(wheel: f32) -> int {
+	if wheel == 0 do return 0
+	steps := int(wheel)
+	if steps == 0 do steps = wheel > 0 ? 1 : -1
+	return steps
+}
+
+desktop_wheel_intent :: proc(app: ^App, wheel: f32, ctrl_down, over_minimap: bool) -> (intent: Intent, view_zoom: f32) {
+	if app == nil || wheel == 0 do return
+	steps := desktop_wheel_steps(wheel)
+	switch app.mode {
+	case .Playing:
+		if app.death_pending do return
+		// Modal ownership takes precedence over Ctrl+wheel and minimap zoom.
+		if app_play_modal_open(app) {
+			if !app_story_minigame_active(app) do intent.menu_delta = -steps
+		} else if app.inventory_open || app.shop_open {
+			intent.menu_scroll = -steps
+		} else if app.character_open {
+			intent.menu_delta = -steps
+		} else if ctrl_down {
+			view_zoom = wheel
+		} else if app.minimap_visible && over_minimap {
+			intent.minimap_zoom = steps
+		}
+	case .Title, .Select, .Paused, .Options, .Chronicle, .Abandon_Confirm, .Recovery, .Save_Error:
+		intent.menu_delta = -steps
+	case .Controls:
+		if !app.controls_capture do intent.menu_delta = -steps
+	case .Story_Decision:
+		if app.story_decision_phase == .Ask do intent.menu_delta = -steps
+	case .Save_Wait, .Resume_Veil, .Dead, .Victory:
+	}
+	return
+}
+
 Menu_Click_Context :: enum {
 	None,
 	Inventory,

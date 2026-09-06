@@ -237,6 +237,7 @@ UI_GLYPH_OUROBOROS_KEY :: "menu.glyph.sigil.ouroboros"
 UI_Chrome_Def :: struct {
 	key:                         string,
 	file:                        string,
+	fill_color:                  rl.Color, // optional backing for transparent panel art
 	render:                      UI_Render_Mode,
 	source_size:                 [2]int,
 	insets:                      [4]int, // left, top, right, bottom
@@ -272,35 +273,39 @@ UI_CHROME_DEFS := [UI_Chrome_Id]UI_Chrome_Def{
 	},
 	.Menu_Panel = {
 		key = "menu.panel", file = "chrome/menu_panel.png",
-		render = .Nine_Slice, source_size = {459, 268},
-		insets = {18, 18, 18, 18}, has_insets = true,
+		fill_color = {16, 16, 20, 255},
+		render = .Nine_Slice, source_size = {256, 192},
+		insets = {24, 24, 24, 24}, has_insets = true,
 		content_insets = {24, 22, 24, 22}, has_content_insets = true,
 	},
 	.Menu_Panel_Compact = {
 		key = "menu.panel.compact", file = "chrome/menu_panel_compact.png",
-		render = .Nine_Slice, source_size = {348, 274},
-		insets = {21, 18, 21, 18}, has_insets = true,
+		fill_color = {16, 16, 20, 255},
+		render = .Nine_Slice, source_size = {256, 192},
+		insets = {24, 24, 24, 24}, has_insets = true,
 		content_insets = {24, 22, 24, 22}, has_content_insets = true,
 	},
 	.Menu_Panel_Inset = {
 		key = "menu.panel.inset", file = "chrome/menu_panel_inset.png",
-		render = .Nine_Slice, source_size = {161, 81},
-		insets = {14, 14, 14, 14}, has_insets = true,
-		content_insets = {10, 8, 10, 8}, has_content_insets = true,
+		fill_color = {16, 16, 20, 255},
+		render = .Nine_Slice, source_size = {256, 192},
+		insets = {24, 24, 24, 24}, has_insets = true,
+		content_insets = {28, 16, 28, 16}, has_content_insets = true,
+		shrink_insets_below_height = 264,
 	},
 	.Menu_Row = {
 		key = "menu.row", file = "chrome/menu_row.png",
-		render = .Nine_Slice, source_size = {623, 52},
-		insets = {105, 10, 105, 10}, has_insets = true,
-		content_insets = {92, 6, 92, 6}, has_content_insets = true,
-		shrink_insets_below_height = 88,
+		render = .Nine_Slice, source_size = {256, 80},
+		insets = {16, 12, 16, 12}, has_insets = true,
+		content_insets = {40, 14, 40, 14}, has_content_insets = true,
+		shrink_insets_below_height = 80,
 	},
 	.Menu_Row_Selected = {
 		key = "menu.row.selected", file = "chrome/menu_row_selected.png",
-		render = .Nine_Slice, source_size = {623, 52},
-		insets = {105, 10, 150, 10}, has_insets = true,
-		content_insets = {92, 6, 137, 6}, has_content_insets = true,
-		shrink_insets_below_height = 88,
+		render = .Nine_Slice, source_size = {256, 80},
+		insets = {16, 12, 16, 12}, has_insets = true,
+		content_insets = {40, 14, 40, 14}, has_content_insets = true,
+		shrink_insets_below_height = 80,
 	},
 	.Stat_Health = {
 		key = "menu.stat.health", file = "chrome/stat_health.png",
@@ -578,6 +583,7 @@ UI_DISCIPLINE_GLYPH_KEYS := [Discipline_Id]string{
 
 UI_Chrome_Asset :: struct {
 	tex:                         rl.Texture2D,
+	fill_color:                  rl.Color,
 	render:                      UI_Render_Mode,
 	source_size:                 [2]int,
 	insets:                      [4]int,
@@ -1854,6 +1860,7 @@ ranger_spirit_beast_action_icon :: proc(
 @(private = "file")
 ui_chrome_metadata :: proc(def: UI_Chrome_Def) -> UI_Chrome_Asset {
 	return UI_Chrome_Asset {
+		fill_color = def.fill_color,
 		render = def.render,
 		source_size = def.source_size,
 		insets = def.insets,

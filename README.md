@@ -36,6 +36,21 @@ This is an alpha release. Save formats are versioned and defensive, but gameplay
 
 See `PARITY.md` for the port ledger, `ARCHITECTURE.md` for design decisions and subsystem boundaries, and `ITEM_BALANCE.md` for the review tables covering Rare rolls and fixed named Unique stats.
 
+## Inventory and menu controls
+
+- Use the mouse wheel to navigate menus and scroll inventory/shop lists.
+- In inventory (`I`), hover or tap an equipped weapon/armor to preview it. `Tab`
+  or controller `RB` cycles bag → weapon → armor; Up/Down and the D-pad also
+  navigate between equipped slots and bag rows. Equipped previews are read-only.
+- `Enter`/`E` or a double-click uses/equips the selected bag item; `1`–`9` targets
+  a bag item directly. `Delete` drops the selected bag item; `Shift+1`–`9` drops
+  that numbered bag item.
+- `S` sorts the bag; Left/Right (including the D-pad), `Shift+S`, controller `X`
+  (unless remapped to Character), or the sort buttons choose the sort mode.
+  In shops, `Tab`/Left/Right switches Buy/Sell.
+- During gameplay, `Ctrl+wheel` zooms the world; plain wheel over the minimap
+  zooms only the minimap. Open menus take priority over both zoom controls.
+
 ## Build on Linux
 
 ### Requirements

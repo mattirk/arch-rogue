@@ -169,9 +169,13 @@ m9_inventory_consumes_gamepad_tab_and_drop_semantics :: proc(t:^testing.T) {
 	app.run.player.bag[0]=ar.Item{kind=.Weapon,name="Spare Blade",power=2}
 	app.run.player.bag_count=1
 	ar.app_apply(&app,ar.Intent{tab=true})
-	testing.expect(t,app.inv_sort_mode==.Rarity,"controller RB/Tab must cycle inventory sorting")
+	testing.expect(t,app.inv_focus==.Weapon&&app.inv_sort_mode==.Type,"controller RB/Tab must preview equipment without sorting")
 	ground_before:=len(app.run.ground_items)
 	ar.app_apply(&app,ar.Intent{inv_drop=true})
+	testing.expect(t,app.run.player.bag_count==1&&len(app.run.ground_items)==ground_before,"controller Y must not drop a hidden bag row while previewing equipment")
+	ar.app_apply(&app,ar.Intent{interact=true})
+	testing.expect(t,app.inv_sort_mode==.Rarity&&app.inv_focus==.Weapon,"controller X must cycle sorting without stealing preview focus")
+	ar.app_apply(&app,ar.Intent{menu_index=0,menu_index_valid=true,inv_drop=true})
 	testing.expect(t,app.run.player.bag_count==0&&len(app.run.ground_items)==ground_before+1,"controller Y/Help must drop the selected bag row")
 }
 

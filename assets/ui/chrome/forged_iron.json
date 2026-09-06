@@ -1,0 +1,64 @@
+{
+  "service": "PixelLab",
+  "import_date": "2026-09-06",
+  "notes": "Approved Forged iron panel family with variant 07 Small plates normal/selected rows. PixelLab frames with original Forged iron interior colors restored; typed metadata adapts 256x80 row sources to menu and tab heights. Roomier 48px item rows retained. Runtime uses local canonical assets only.",
+  "assets": [
+    {
+      "file": "menu_panel.png",
+      "size": [
+        256,
+        192
+      ],
+      "sha256": "97e959742185395240a8c64bf937e30d1514702a4c365bb635b5922d38ee2470",
+      "pixellab_job_id": "3b7f64f2-1124-4a8e-ab70-d249d218b526"
+    },
+    {
+      "file": "menu_panel_compact.png",
+      "size": [
+        256,
+        192
+      ],
+      "sha256": "97e959742185395240a8c64bf937e30d1514702a4c365bb635b5922d38ee2470",
+      "pixellab_job_id": "3b7f64f2-1124-4a8e-ab70-d249d218b526"
+    },
+    {
+      "file": "menu_panel_inset.png",
+      "size": [
+        256,
+        192
+      ],
+      "sha256": "97e959742185395240a8c64bf937e30d1514702a4c365bb635b5922d38ee2470",
+      "pixellab_job_id": "3b7f64f2-1124-4a8e-ab70-d249d218b526"
+    },
+    {
+      "file": "menu_row.png",
+      "size": [
+        256,
+        80
+      ],
+      "sha256": "3ba0caecf0040a7ac346d2e8c5d9e2592df5f48f9ecdc0324772f535cb6ecdab",
+      "pixellab_job_id": "7b444b37-6f98-4b6f-a3ef-da4c7bc78fe6",
+      "variant": "07 Small plates",
+      "processing": {
+        "operation": "Connected interior fill replacement, bounded to content region; frame preserved",
+        "fill": "#151219",
+        "reference": "original Forged iron row normal"
+      }
+    },
+    {
+      "file": "menu_row_selected.png",
+      "size": [
+        256,
+        80
+      ],
+      "sha256": "db0553102e35fc6e1986d50c93c641aa4866de4ee9e041dce825d3b6bf461304",
+      "pixellab_job_id": "90268671-c521-4a92-b483-816c29f6c92c",
+      "variant": "07 Small plates",
+      "processing": {
+        "operation": "Connected interior fill replacement, bounded to content region; frame preserved",
+        "fill": "#2A333C",
+        "reference": "original Forged iron row selected"
+      }
+    }
+  ]
+}

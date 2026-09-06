@@ -8,6 +8,7 @@ import "core:crypto/hash"
 import "core:encoding/hex"
 import "core:fmt"
 import "core:os"
+import "core:strings"
 import "core:testing"
 import ar "../src"
 import rl "../vendor/raylib"
@@ -214,11 +215,42 @@ ui_test_abs_f32 :: proc(value: f32) -> f32 {
 }
 
 @(test)
-menu_rows_keep_text_stable_and_clear_every_arrow_endcap :: proc(t: ^testing.T) {
+forged_iron_ui_imports_match_approved_pixellab_art :: proc(t: ^testing.T) {
+	expected := [5]struct{id: ar.UI_Chrome_Id, sha256: string}{
+		{.Menu_Panel, "97e959742185395240a8c64bf937e30d1514702a4c365bb635b5922d38ee2470"},
+		{.Menu_Panel_Compact, "97e959742185395240a8c64bf937e30d1514702a4c365bb635b5922d38ee2470"},
+		{.Menu_Panel_Inset, "97e959742185395240a8c64bf937e30d1514702a4c365bb635b5922d38ee2470"},
+		{.Menu_Row, "3ba0caecf0040a7ac346d2e8c5d9e2592df5f48f9ecdc0324772f535cb6ecdab"},
+		{.Menu_Row_Selected, "db0553102e35fc6e1986d50c93c641aa4866de4ee9e041dce825d3b6bf461304"},
+	}
+	for item in expected {
+		def := ar.UI_CHROME_DEFS[item.id]
+		path := fmt.aprintf("assets/ui/%s", def.file)
+		defer delete(path)
+		data, read_err := os.read_entire_file_from_path(path, context.allocator)
+		testing.expect(t, read_err == nil)
+		if read_err != nil do continue
+		digest := hash.hash_bytes(.SHA256, data, context.allocator)
+		delete(data)
+		encoded, encode_err := hex.encode(digest, context.allocator)
+		delete(digest)
+		testing.expect(t, encode_err == .None)
+		if encode_err == .None {
+			testing.expectf(t, string(encoded) == item.sha256, "%s differs from approved PixelLab art", path)
+			delete(encoded)
+		}
+		if item.id == .Menu_Panel || item.id == .Menu_Panel_Compact || item.id == .Menu_Panel_Inset {
+			testing.expect(t, def.fill_color == rl.Color{16,16,20,255}, "transparent iron frames need an opaque dark backing")
+		}
+	}
+}
+
+@(test)
+menu_rows_keep_text_stable_and_clear_iron_endcaps :: proc(t: ^testing.T) {
 	targets := [5]rl.Rectangle{
 		{0,0,600,44}, // options
 		{0,0,430,34}, // controls
-		{0,0,360,38}, // inventory
+		{0,0,360,ar.ITEM_ROW_HEIGHT}, // inventory
 		{0,0,180,34}, // character tabs
 		{0,0,150,30}, // shop tabs
 	}
@@ -232,7 +264,8 @@ menu_rows_keep_text_stable_and_clear_every_arrow_endcap :: proc(t: ^testing.T) {
 		plain_right := plain.x+plain.width
 		selected_right := selected.x+selected.width
 		stable_right := stable.x+stable.width
-		testing.expect(t,selected_right < plain_right,"selected menu row must reserve its larger right arrow endcap")
+		testing.expect(t,plain == selected,"iron row states must keep identical text placement")
+		testing.expect(t,selected_right == plain_right,"iron row states must keep identical right margins")
 		testing.expect(t,ui_test_abs_f32(stable.x-max(plain.x,selected.x)) < .01,"stable menu text rail changed its left anchor")
 		testing.expect(t,ui_test_abs_f32(stable_right-min(plain_right,selected_right)) < .01,"stable menu text rail can overlap a row-state endcap")
 		testing.expect(t,stable.width >= 48,"supported menu row collapsed below its usable text width")
@@ -406,6 +439,277 @@ mx_save_chronicle_layout_is_readable_at_compact_deck_desktop_and_4k :: proc(t:^t
 			testing.expect(t,!layout.compact&&layout.timeline.x+layout.timeline.width<=layout.detail.x,"wide Chronicle must use master/detail columns")
 		}
 	}
+}
+
+// Proportional uppercase advances and small-font tracking, deliberately unlike
+// a character-count estimate. No raylib font, texture, or global font mutation.
+@(private = "file")
+ui_test_inventory_measure :: proc(text: string, size: i32) -> i32 {
+	width: f32
+	count := 0
+	for character in text {
+		upper := character
+		if upper >= 'a' && upper <= 'z' do upper -= 'a'-'A'
+		advance: f32 = .60
+		switch upper {
+		case ' ': advance = .34
+		case 'I', '!', '.', ':', '|': advance = .28
+		case 'M', 'W': advance = .85
+		}
+		width += advance*f32(size)
+		if count > 0 && size < 14 do width += .5
+		count += 1
+	}
+	return i32(width+.5)
+}
+
+@(private = "file")
+ui_test_rect_inside :: proc(inner, outer: rl.Rectangle) -> bool {
+	return inner.x >= outer.x-.01 && inner.y >= outer.y-.01 &&
+		inner.width >= 0 && inner.height >= 0 &&
+		inner.x+inner.width <= outer.x+outer.width+.01 &&
+		inner.y+inner.height <= outer.y+outer.height+.01
+}
+
+@(test)
+inventory_ui_fitted_and_wrapped_text_uses_measured_width :: proc(t: ^testing.T) {
+	texts := [5]string{
+		"! Storm-touched greatsword of the forgotten moon",
+		"Grave-hungering, of the occult, of alacrity",
+		"Cursed bargain: stronger, slower handling.\n\nPower 2147483647 | lightning damage",
+		"éclatéclatéclatéclatéclatéclatéclat",
+		"WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+	}
+	for text in texts {
+		for width in ([7]f32{0, 5, 16, 48, 120, 241, 359}) {
+			fit := ar.ui_fit_text_line(text, width, 16, 12, ui_test_inventory_measure)
+			testing.expect(t, fit.font >= 12 && fit.font <= 16, "row fitting must retain a readable size floor")
+			testing.expectf(t, f32(ui_test_inventory_measure(fit.text,fit.font)) <= width, "fitted %s escapes width %.0f", fit.text, width)
+			if fit.text != text && fit.text != "" {
+				testing.expect(t, strings.has_suffix(fit.text,"..."), "truncated rows need an explicit ellipsis")
+				keep := len(fit.text)-3
+				testing.expect(t, keep >= 0 && keep < len(text) && (text[keep]&0xc0) != 0x80, "ellipsis splits a UTF-8 codepoint")
+			}
+		}
+		for width in ([5]f32{16, 48, 120, 241, 275}) {
+			lines: [ar.STORY_UI_MAX_TEXT_LINES]ar.Story_UI_Text_Line
+			count := ar.story_ui_wrap_text(text, width, 12, &lines, ui_test_inventory_measure)
+			testing.expect(t, count > 0 && count < len(lines))
+			covered := 0
+			for line in lines[:count] {
+				testing.expect(t, line.start >= covered && line.end >= line.start && line.end <= len(text))
+				for byte in text[covered:line.start] do testing.expect(t, byte == ' ' || byte == '\n' || byte == '\t' || byte == '\r', "wrapping discarded non-whitespace content")
+				testing.expect(t, f32(ui_test_inventory_measure(text[line.start:line.end],12)) <= width, "wrapped line escapes its measured rail")
+				if line.end < len(text) do testing.expect(t, (text[line.end]&0xc0) != 0x80, "long-word wrapping splits UTF-8")
+				covered = line.end
+			}
+			testing.expect(t, covered == len(text), "wrapping must preserve the final content, not just clip it")
+		}
+	}
+	short := ar.ui_fit_text_line("Iron", 200, 16, 12, ui_test_inventory_measure)
+	testing.expect(t, short.text == "Iron" && short.font == 16, "short rows should not shrink")
+	testing.expect(t, ar.ui_fit_text_line("WW",5,16,12,ui_test_inventory_measure).text == "", "a rail narrower than an ellipsis must not return overflowing text")
+}
+
+@(test)
+inventory_ui_rows_reserve_stats_and_clear_native_and_compact_endcaps :: proc(t: ^testing.T) {
+	for row_width in ([3]f32{360, 300, 240}) {
+		row := rl.Rectangle{80,120,row_width,ar.ITEM_ROW_HEIGHT}
+		chrome_content, ok := ar.menu_row_content_rect(row)
+		testing.expect(t, ok)
+		testing.expect(t, chrome_content.y >= row.y+8 && chrome_content.y+chrome_content.height <= row.y+row.height-8, "item content must clear the iron rails vertically")
+		testing.expect(t, chrome_content.height >= 30, "row must fit a shop icon or an inventory name plus affixes")
+		// Equipped lines use the whole inset rail; bag rows also reserve the
+		// iron endcap, regardless of the row's selected state.
+		for content in ([2]rl.Rectangle{{row.x,row.y,row.width,38}, chrome_content}) {
+			for has_icon in ([2]bool{false,true}) {
+				for affixed in ([2]bool{false,true}) {
+					stat := "pow 2147483647"
+					layout := ar.inventory_item_line_layout(content, has_icon, affixed, f32(ui_test_inventory_measure(stat,14))+1)
+					testing.expect(t, ui_test_rect_inside(layout.name,content) && ui_test_rect_inside(layout.stat,content))
+					testing.expect(t, layout.name.x+layout.name.width+7.99 <= layout.stat.x, "name and power/defense columns overlap")
+					if has_icon do testing.expect(t, layout.name.x >= layout.icon.x+layout.icon.width+6 && ui_test_rect_inside(layout.icon,content))
+					if affixed do testing.expect(t, ui_test_rect_inside(layout.affixes,content), "affixes fall below the row")
+					name := ar.ui_fit_text_line("! Storm-touched greatsword of the forgotten moon",layout.name.width-1,16,12,ui_test_inventory_measure)
+					power := ar.ui_fit_text_line(stat,layout.stat.width-1,14,11,ui_test_inventory_measure)
+					testing.expect(t, f32(ui_test_inventory_measure(name.text,name.font)) < layout.name.width)
+					testing.expect(t, f32(ui_test_inventory_measure(power.text,power.font)) < layout.stat.width)
+					if affixed {
+						fit := ar.ui_fit_text_line("Grave-hungering, of the occult, of alacrity",layout.affixes.width-1,12,11,ui_test_inventory_measure)
+						testing.expect(t, f32(ui_test_inventory_measure(fit.text,fit.font)) < layout.affixes.width)
+					}
+				}
+			}
+			no_stat := ar.inventory_item_line_layout(content, true, false, 0)
+			testing.expect(t, no_stat.stat.width == 0 && no_stat.name.x+no_stat.name.width == content.x+content.width, "unidentified and consumable names should reclaim the stat column")
+		}
+	}
+}
+
+@(private = "file")
+ui_test_inventory_stacked_item :: proc() -> ar.Item {
+	item := ar.Item{
+		kind = .Weapon, rarity = .Rare, power = 2147483647, cursed = true,
+		name = "Storm-touched greatsword of the forgotten moon and the last watch over the ancient gates beneath the sunken bastion of the first warden and the undying sovereign of the deep",
+		affix_count = 3, affixes = {{kind=.Grave_Hungering},{kind=.Of_The_Occult},{kind=.Of_Alacrity}},
+		attack_speed = .25, cast_speed = -.15, move_speed = -.08, thorns = 2147483647, lifesteal = .12,
+		typed = true, damage_type = .Physical, proc_effect = .Ignite, proc_chance = .33, unique_effect = .Oathwall_Aegis,
+	}
+	for effect in ar.Proc_Effect do item.proc_effects[effect] = effect != .None
+	for bonus in ar.Skill_Bonus do item.skill_bonuses[bonus] = true
+	return item
+}
+
+@(private = "file")
+ui_test_inventory_detail_text :: proc(layout: ar.Inventory_Detail_Layout) -> string {
+	parts: [ar.STORY_UI_MAX_TEXT_LINES]string
+	for index in 0..<layout.line_count do parts[index] = layout.lines[index].text
+	return strings.join(parts[:layout.line_count], " ", context.temp_allocator)
+}
+
+@(test)
+inventory_ui_detail_wraps_and_grows_without_losing_proc_or_skill_lines :: proc(t: ^testing.T) {
+	item := ui_test_inventory_stacked_item()
+	for screen in ([4][2]f32{{1280,720},{640,480},{960,540},{2560,1440}}) {
+		presentation := ar.ui_presentation_for_size(screen[0],screen[1])
+		inventory := ar.inventory_panel_rect_for_width(presentation.width)
+		layout := ar.inventory_detail_layout(item,inventory,presentation.height,false,ui_test_inventory_measure)
+		testing.expectf(t, !layout.overflowed, "maximal detail must fit at %v: panel %v, %v visible lines", screen, layout.panel, layout.line_count)
+		testing.expect(t, layout.panel.height > 372, "dense details must grow beyond the old fixed plate")
+		testing.expect(t, layout.panel.x >= 8 && layout.panel.x+layout.panel.width+16 <= inventory.x+.01)
+		testing.expect(t, layout.panel.y+layout.panel.height <= presentation.height-16+.01)
+		chrome, ok := ar.ui_chrome_content_rect_from_def(ar.ui_chrome_def(.Menu_Panel_Compact),layout.panel)
+		testing.expect(t, ok && ui_test_rect_inside(layout.content,chrome), "detail content must honor the 24px/22px panel insets")
+		testing.expect(t, ui_test_rect_inside(layout.icon,layout.content))
+		previous_bottom := layout.content.y
+		names, procs := 0, 0
+		curse := false
+		for line in layout.lines[:layout.line_count] {
+			testing.expectf(t, ui_test_rect_inside(line.rect,layout.content), "%s escapes the detail content area",line.text)
+			testing.expectf(t, f32(ui_test_inventory_measure(line.text,line.font)) <= line.rect.width, "%s exceeds its measured width",line.text)
+			testing.expect(t, line.rect.y >= previous_bottom, "wrapped details overlap a following stat or curse")
+			previous_bottom = line.rect.y+line.rect.height
+			if line.font == 18 do names += 1
+			if strings.has_prefix(line.text,"Proc: ") do procs += 1
+
+			if strings.has_prefix(line.text,"Cursed bargain:") do curse = true
+		}
+		testing.expectf(t, names > 1 && procs == len(ar.Proc_Effect)-1 && curse, "detail content missing at %v: name lines %v, procs %v/%v, curse %v", screen, names, procs, len(ar.Proc_Effect)-1, curse)
+		text := ui_test_inventory_detail_text(layout)
+		skill_names: [len(ar.Skill_Bonus)]string
+		for bonus in ar.Skill_Bonus do skill_names[int(bonus)] = ar.SKILL_BONUS_NAMES[bonus]
+		expected_skills := fmt.tprintf("Skills: %s", strings.join(skill_names[:], ", ", context.temp_allocator))
+		testing.expect(t, strings.contains(text,expected_skills), "wrapping must preserve every complete skill name in order")
+		testing.expect(t, strings.contains(text,"Unique: oathwall aegis"), "the bespoke unique effect must remain visible")
+		testing.expect(t, strings.contains(text,"Cursed bargain: stronger, slower handling."), "the complete curse description must survive, not just its first line")
+		for effect in ar.Proc_Effect {
+			if effect == .None do continue
+			found := false
+			for line in layout.lines[:layout.line_count] do if line.text == fmt.tprintf("Proc: %s  33%%",ar.PROC_EFFECT_NAMES[effect]) do found = true
+			testing.expect(t, found, "a proc name or its chance disappeared")
+		}
+		plain := ar.inventory_detail_layout(ar.Item{kind=.Weapon,name="Iron sword",power=5},inventory,presentation.height,false,ui_test_inventory_measure)
+		testing.expect(t, plain.panel.width == 324 && plain.panel.height == 372, "ordinary items must retain the existing detail plate")
+		armor := item
+		armor.kind = .Armor
+		armor.defense = 2147483647
+		armor_layout := ar.inventory_detail_layout(armor,inventory,presentation.height,true,ui_test_inventory_measure)
+		testing.expect(t, !armor_layout.overflowed && strings.contains(ui_test_inventory_detail_text(armor_layout),"Defense 2147483647"), "equipped armor must retain defense and all final descriptions too")
+	}
+}
+
+@(test)
+inventory_ui_unidentified_and_empty_rows_do_not_reveal_hidden_details :: proc(t: ^testing.T) {
+	inventory := ar.inventory_panel_rect_for_width(1280)
+	for kind in ([2]ar.Item_Kind{.Weapon,.Armor}) {
+		hidden := ui_test_inventory_stacked_item()
+		hidden.kind = kind
+		hidden.unidentified = true
+		minimal := ar.Item{kind=kind,unidentified=true}
+		actual := ar.inventory_detail_layout(hidden,inventory,720,true,ui_test_inventory_measure)
+		expected := ar.inventory_detail_layout(minimal,inventory,720,true,ui_test_inventory_measure)
+		testing.expect(t, actual.line_count == expected.line_count && actual.panel == expected.panel, "hidden stats changed the detail shape")
+		for line,index in actual.lines[:actual.line_count] do testing.expect(t, line == expected.lines[index], "unidentified details reveal name, rarity, curse, affixes, or rolls")
+		testing.expect(t, actual.lines[0].text == "EQUIPPED ITEM")
+		row := ar.inventory_item_line_text(hidden,true,"")
+		testing.expect(t, row.name == ar.item_display_name(minimal) && row.stat == "" && row.affixes == "")
+		empty := ar.inventory_item_line_text(hidden,false,"weapon")
+		testing.expect(t, empty.name == "- no weapon -" && empty.stat == "" && empty.affixes == "", "an empty focused slot must not render stale item data")
+	}
+}
+
+@(test)
+inventory_ui_equipped_hitboxes_and_clipping_follow_presentation_scale :: proc(t: ^testing.T) {
+	testing.expect(t, len(ar.INVENTORY_FOOTER_LINES) <= 3, "inventory hints must stay compact instead of listing every alternate shortcut")
+	for action in ([6]string{"browse", "preview", "use/equip", "drop", "sort", "close"}) {
+		count := 0
+		for text in ar.INVENTORY_FOOTER_LINES do count += strings.count(text, action)
+		testing.expectf(t, count == 1, "footer must describe %s once, not repeat it for alternate bindings", action)
+	}
+	for screen in ([5][2]f32{{1280,720},{640,480},{960,540},{1366,768},{2560,1440}}) {
+		presentation := ar.ui_presentation_for_size(screen[0],screen[1])
+		panel := ar.inventory_panel_rect_for_width(presentation.width)
+		weapon := ar.inventory_equipped_rect_in_panel(panel,.Weapon)
+		armor := ar.inventory_equipped_rect_in_panel(panel,.Armor)
+		testing.expect(t, weapon.y+weapon.height <= armor.y && armor.y+armor.height <= panel.y+118, "equipped hitboxes overlap each other or sorting chips")
+		for focus in ([2]ar.Inventory_Focus{.Weapon,.Armor}) {
+			rect := ar.inventory_equipped_rect_in_panel(panel,focus)
+			testing.expect(t, rect.x >= panel.x+24 && rect.x+rect.width <= panel.x+panel.width-24)
+			physical := rl.Vector2{rect.x+rect.width*.5,rect.y+rect.height*.5}*presentation.scale
+			actual, found := ar.inventory_equipped_at_in_panel(panel,physical/presentation.scale)
+			testing.expect(t, found && actual == focus, "screen-to-design hit testing selects the wrong equipped slot")
+			clip := ar.ui_content_scissor_rect(rect,presentation.scale)
+			physical_rect := rl.Rectangle{rect.x*presentation.scale,rect.y*presentation.scale,rect.width*presentation.scale,rect.height*presentation.scale}
+			testing.expect(t, ui_test_rect_inside(clip,physical_rect) && clip.width > 0 && clip.height > 0, "scissors must round inward after scaling")
+			testing.expect(t, clip.x == f32(i32(clip.x)) && clip.y == f32(i32(clip.y)) && clip.width == f32(i32(clip.width)) && clip.height == f32(i32(clip.height)))
+		}
+		for point in ([5]rl.Vector2{{panel.x+23,weapon.y+5},{weapon.x+weapon.width,weapon.y+5},{weapon.x,weapon.y-1},{weapon.x,weapon.y+weapon.height},{armor.x,armor.y+armor.height}}) {
+			_, found := ar.inventory_equipped_at_in_panel(panel,point)
+			testing.expect(t, !found, "a panel margin or gap must not select an equipped item")
+		}
+		testing.expect(t, ar.inventory_equipped_rect_in_panel(panel,.Bag) == rl.Rectangle{})
+		for text,line in ar.INVENTORY_FOOTER_LINES {
+			rect := ar.inventory_footer_rect(panel,line)
+			fit := ar.ui_fit_text_line(text,rect.width-1,11,10,ui_test_inventory_measure)
+			testing.expect(t, fit.text == text && fit.font == 11, "primary hints must fit without truncation or shrinking")
+			testing.expect(t, rect.y > panel.y+544 && rect.y+rect.height <= panel.y+panel.height-22, "footer collides with bag rows or panel rails")
+		}
+		testing.expect(t, panel.y+panel.height <= presentation.height-16, "taller inventory must remain inside the viewport")
+	}
+}
+
+@(test)
+inventory_ui_focus_highlights_only_its_section_and_allows_empty_equipment :: proc(t: ^testing.T) {
+	app: ar.App
+	testing.expect(t, app.inv_focus == .Bag)
+	app.inv_index = 1
+	app.run.player.bag_count = 2
+	app.run.player.bag[1] = {kind=.Weapon,name="Bag sword"}
+	app.run.player.weapon = {kind=.Weapon,name="Equipped sword"}
+	app.run.player.armor = {kind=.Armor,name="Equipped mail"}
+	app.run.player.has_weapon = true
+	app.run.player.has_armor = true
+	for modality in ([2]ar.Mobile_Input_Modality{.Keyboard_Mouse,.Controller}) {
+		app.input_modality = modality
+		for focus in ar.Inventory_Focus {
+			app.inv_focus = focus
+			for candidate in ar.Inventory_Focus do testing.expect(t, ar.inventory_row_selected(&app,candidate,1) == (candidate == focus), "selection leaked into an unfocused section")
+			testing.expect(t, !ar.inventory_row_selected(&app,.Bag,0))
+			item, found := ar.inventory_selected_item(&app)
+			testing.expect(t, found)
+			layout := ar.inventory_detail_layout(item,ar.inventory_panel_rect_for_width(1280),720,focus != .Bag,ui_test_inventory_measure)
+			testing.expect(t, layout.lines[0].text == (focus == .Bag ? "SELECTED ITEM" : "EQUIPPED ITEM"))
+		}
+	}
+	app.run.player.has_weapon = false
+	app.run.player.has_armor = false
+	for focus in ([2]ar.Inventory_Focus{.Weapon,.Armor}) {
+		app.inv_focus = focus
+		_, found := ar.inventory_selected_item(&app)
+		testing.expect(t, !found && ar.inventory_row_selected(&app,focus), "empty equipment can hold focus but must not show a detail panel")
+	}
+	app.input_modality = .Touch
+	for focus in ar.Inventory_Focus do testing.expect(t, !ar.inventory_row_selected(&app,focus,1), "ordinary touch rows must not retain navigation highlighting")
 }
 
 @(test)

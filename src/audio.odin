@@ -267,7 +267,7 @@ audio_ready_for_playback :: proc(audio: ^Audio) -> bool {
 audio_cue_for_intent :: proc(intent: Intent) -> (Sfx_Bank, bool) {
 	if intent.back do return .Ui_Back, true
 	if intent.confirm do return .Ui_Confirm, true
-	if intent.menu_delta != 0 || intent.menu_horizontal != 0 || intent.tab {
+	if intent.menu_delta != 0 || intent.menu_scroll != 0 || intent.menu_horizontal != 0 || intent.tab {
 		return .Ui_Navigate, true
 	}
 	return {}, false

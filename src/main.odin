@@ -1658,28 +1658,25 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 	// the already-global controller release so pause/options cannot trap a charge.
 	intent.action1_released = intent.action1_released || rl.IsKeyReleased(.ONE)
 
-	// Pygame reserves plain wheel for contextual panels. The viewport changes
-	// only under Ctrl; an unmodified wheel over the visible minimap adjusts its
-	// own scale instead.
 	wheel := rl.GetMouseWheelMove()
-	if app.mode == .Playing && wheel != 0 {
-		if ctrl_down {
-			view_zoom_at_cursor(view, wheel)
-			app.options.view_zoom=view.base_zoom
-			app_mark_options_changed(app)
-		} else if app.minimap_visible && !app.inventory_open && !app.character_open && !app.shop_open &&
-			rl.CheckCollisionPointRec(mouse, minimap_rect(app)) {
-			// Preserve multi-notch wheel events; fractional touchpad deltas still
-			// advance one step in their direction.
-			intent.minimap_zoom = int(wheel)
-			if intent.minimap_zoom == 0 do intent.minimap_zoom = wheel > 0 ? 1 : -1
-		}
+	wheel_intent, wheel_zoom := desktop_wheel_intent(app, wheel, ctrl_down,
+		rl.CheckCollisionPointRec(mouse, minimap_rect(app)))
+	intent.menu_delta += wheel_intent.menu_delta
+	intent.menu_scroll += wheel_intent.menu_scroll
+	intent.minimap_zoom += wheel_intent.minimap_zoom
+	if wheel_zoom != 0 {
+		view_zoom_at_cursor(view, wheel_zoom)
+		app.options.view_zoom = view.base_zoom
+		app_mark_options_changed(app)
 	}
+	if wheel != 0 do view_clear_menu_click(view)
+	// Trackpad cursor jitter must not select the old row under a scrolling list.
+	menu_hover := mouse_moved && wheel == 0
 
 	switch app.mode {
 	case .Story_Decision:
 		if app.story_decision_phase == .Ask {
-			if mouse_moved {
+			if menu_hover {
 				if index,found:=story_decision_option_at(mouse);found {intent.menu_index=index;intent.menu_index_valid=true}
 			}
 			if rl.IsMouseButtonPressed(.LEFT) {
@@ -1699,7 +1696,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			}
 		}
 	case .Title:
-		if mouse_moved {
+		if menu_hover {
 			if index,found:=title_row_at(mouse);found {intent.menu_index=index;intent.menu_index_valid=true}
 		}
 		if rl.IsMouseButtonPressed(.LEFT) {
@@ -1756,7 +1753,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			if rl.IsKeyPressed(.ESCAPE)||rl.IsKeyPressed(.BACKSPACE) do intent.back=true
 
 			hit:=story_modal_hit_test(app,int(rl.GetScreenWidth()),int(rl.GetScreenHeight()),Vec2(mouse))
-			if hit.kind==.Choice||hit.kind==.Minigame_Cell {
+			if (menu_hover || rl.IsMouseButtonPressed(.LEFT)) && (hit.kind==.Choice || hit.kind==.Minigame_Cell) {
 				intent.menu_index=hit.index
 				intent.menu_index_valid=true
 			}
@@ -1791,7 +1788,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			if rl.IsKeyPressed(.RIGHT) do intent.menu_horizontal+=1
 			if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
 			if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
-			if mouse_moved && app.character_tab==.Disciplines {
+			if menu_hover && app.character_tab==.Disciplines {
 				if index,found:=discipline_cell_at(mouse);found {intent.menu_index=index;intent.menu_index_valid=true}
 			}
 			if rl.IsMouseButtonPressed(.LEFT)&&app.character_tab==.Disciplines {
@@ -1821,7 +1818,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			if rl.IsKeyPressed(.RIGHT) do intent.menu_horizontal+=1
 			if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
 			if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
-			if mouse_moved {if index,found:=shop_row_at(app,mouse);found {intent.menu_index=index;intent.menu_index_valid=true}}
+			if menu_hover {if index,found:=shop_row_at(app,mouse);found {intent.menu_index=index;intent.menu_index_valid=true}}
 			if rl.IsMouseButtonPressed(.LEFT) {
 				if index,found:=shop_row_at(app,mouse);found {
 					intent.menu_index=index
@@ -1835,8 +1832,11 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			return intent
 		}
 		if app.inventory_open {
-			if mouse_moved {
-				if index, found := inventory_row_at(app, mouse); found {
+			if menu_hover {
+				if focus, found := inventory_equipped_at(mouse); found {
+					intent.inv_focus = focus
+					intent.inv_focus_valid = true
+				} else if index, row_found := inventory_row_at(app, mouse); row_found {
 					intent.menu_index = index
 					intent.menu_index_valid = true
 				}
@@ -1845,6 +1845,11 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 				if sort_mode, found := inventory_sort_mode_at(mouse); found {
 					intent.inv_sort_mode = sort_mode
 					intent.inv_sort_valid = true
+					view_clear_menu_click(view)
+				} else if focus, equipped_found := inventory_equipped_at(mouse); equipped_found {
+					intent.inv_focus = focus
+					intent.inv_focus_valid = true
+					view_clear_menu_click(view)
 				} else if index, row_found := inventory_row_at(app, mouse); row_found {
 					intent.menu_index = index
 					intent.menu_index_valid = true
@@ -1869,12 +1874,18 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			if rl.IsKeyPressed(.DELETE) || rl.IsKeyPressed(.BACKSPACE) {
 				intent.inv_drop = true
 			}
-			if rl.IsKeyPressed(.TAB) do intent.inv_cycle_sort = 1
-			if rl.IsKeyPressed(.S) do intent.inv_sort = true
+			if rl.IsKeyPressed(.TAB) do intent.tab = true
+			if rl.IsKeyPressed(.LEFT) do intent.menu_horizontal -= 1
+			if rl.IsKeyPressed(.RIGHT) do intent.menu_horizontal += 1
+			shift_down := rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT)
+			if rl.IsKeyPressed(.S) {
+				if shift_down do intent.inv_cycle_sort = 1
+				else do intent.inv_sort = true
+			}
+			if intent.tab || intent.menu_delta != 0 || intent.menu_horizontal != 0 || intent.inv_focus_valid do view_clear_menu_click(view)
 			inventory_keys := [9]rl.KeyboardKey{
 				.ONE, .TWO, .THREE, .FOUR, .FIVE, .SIX, .SEVEN, .EIGHT, .NINE,
 			}
-			shift_down := rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT)
 			for key, index in inventory_keys {
 				if rl.IsKeyPressed(key) && index < app.run.player.bag_count {
 					intent.menu_index = index
@@ -1942,14 +1953,14 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			if rl.IsKeyPressed(.B) do intent.boss_floor = true
 		}
 	case .Paused:
-		if mouse_moved {if index,found:=pause_row_at(mouse);found {intent.menu_index=index;intent.menu_index_valid=true}}
+		if menu_hover {if index,found:=pause_row_at(mouse);found {intent.menu_index=index;intent.menu_index_valid=true}}
 		if rl.IsMouseButtonPressed(.LEFT) {if index,found:=pause_row_at(mouse);found {intent.menu_index=index;intent.menu_index_valid=true;intent.confirm=true;intent.pointer_confirm=true}}
 		if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
 		if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
 		if rl.IsKeyPressed(.ENTER)||rl.IsKeyPressed(.KP_ENTER) do intent.confirm=true
 		if rl.IsKeyPressed(.ESCAPE)||rl.IsKeyPressed(.BACKSPACE) do intent.back=true
 	case .Options:
-		if mouse_moved {if index,found:=options_row_at(app,mouse);found {intent.menu_index=index;intent.menu_index_valid=true}}
+		if menu_hover {if index,found:=options_row_at(app,mouse);found {intent.menu_index=index;intent.menu_index_valid=true}}
 		if rl.IsMouseButtonPressed(.LEFT) {if index,found:=options_row_at(app,mouse);found {intent.menu_index=index;intent.menu_index_valid=true;intent.confirm=true}}
 		if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
 		if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
@@ -1958,7 +1969,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 		if rl.IsKeyPressed(.ENTER)||rl.IsKeyPressed(.KP_ENTER) do intent.confirm=true
 		if rl.IsKeyPressed(.ESCAPE)||rl.IsKeyPressed(.BACKSPACE)||rl.IsKeyPressed(.O) do intent.back=true
 	case .Controls:
-		if !app.controls_capture && mouse_moved {
+		if !app.controls_capture && menu_hover {
 			if index,found:=controls_row_at(app,mouse);found {intent.menu_index=index;intent.menu_index_valid=true}
 		}
 		if !app.controls_capture && rl.IsMouseButtonPressed(.LEFT) {
@@ -1973,7 +1984,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 		}
 		if rl.IsKeyPressed(.ESCAPE)||rl.IsKeyPressed(.BACKSPACE) do intent.back=true
 	case .Chronicle:
-		if mouse_moved {
+		if menu_hover {
 			if index,found:=chronicle_card_at(app,mouse);found {intent.menu_index=index;intent.menu_index_valid=true}
 		}
 		if rl.IsMouseButtonPressed(.LEFT) {
@@ -1984,7 +1995,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 				intent.menu_index=index;intent.menu_index_valid=true;intent.confirm=true
 			}
 		}
-		if wheel!=0 {intent.menu_delta=-int(wheel);if intent.menu_delta==0 do intent.menu_delta=wheel>0?-1:1}
+
 		if rl.IsKeyPressed(.UP)||rl.IsKeyPressed(.PAGE_UP) do intent.menu_delta-=1
 		if rl.IsKeyPressed(.DOWN)||rl.IsKeyPressed(.PAGE_DOWN) do intent.menu_delta+=1
 		if rl.IsKeyPressed(.LEFT) do intent.menu_horizontal-=1
@@ -1993,14 +2004,14 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 		if rl.IsKeyPressed(.ENTER)||rl.IsKeyPressed(.KP_ENTER) do intent.confirm=true
 		if rl.IsKeyPressed(.ESCAPE)||rl.IsKeyPressed(.BACKSPACE) do intent.back=true
 	case .Abandon_Confirm:
-		if mouse_moved {if index,found:=choice_overlay_row_at(mouse,2);found {intent.menu_index=index;intent.menu_index_valid=true}}
+		if menu_hover {if index,found:=choice_overlay_row_at(mouse,2);found {intent.menu_index=index;intent.menu_index_valid=true}}
 		if rl.IsMouseButtonPressed(.LEFT) {if index,found:=choice_overlay_row_at(mouse,2);found {intent.menu_index=index;intent.menu_index_valid=true;intent.confirm=true}}
 		if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
 		if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1
 		if rl.IsKeyPressed(.ENTER)||rl.IsKeyPressed(.KP_ENTER) do intent.confirm=true
 		if rl.IsKeyPressed(.ESCAPE)||rl.IsKeyPressed(.BACKSPACE) do intent.back=true
 	case .Recovery, .Save_Error:
-		if mouse_moved {if index,found:=choice_overlay_row_at(mouse,3);found {intent.menu_index=index;intent.menu_index_valid=true}}
+		if menu_hover {if index,found:=choice_overlay_row_at(mouse,3);found {intent.menu_index=index;intent.menu_index_valid=true}}
 		if rl.IsMouseButtonPressed(.LEFT) {if index,found:=choice_overlay_row_at(mouse,3);found {intent.menu_index=index;intent.menu_index_valid=true;intent.confirm=true}}
 		if rl.IsKeyPressed(.UP) do intent.menu_delta-=1
 		if rl.IsKeyPressed(.DOWN) do intent.menu_delta+=1

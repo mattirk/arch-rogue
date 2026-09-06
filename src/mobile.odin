@@ -419,6 +419,7 @@ Mobile_Target_Kind :: enum {
 	Character_Tab,
 	Shop_Mode,
 	Inventory_Sort,
+	Inventory_Equipment,
 	Chronicle_Filter,
 	Guard_Request_Drop,
 	Guard_Request_Transaction,
@@ -593,6 +594,9 @@ mobile_activate_target :: proc(target: Mobile_Direct_Target, gameplay: bool) -> 
 	case .Inventory_Sort:
 		activation.intent.inv_sort_mode = Inventory_Sort_Mode(target.index)
 		activation.intent.inv_sort_valid = true
+	case .Inventory_Equipment:
+		activation.intent.inv_focus = Inventory_Focus(target.index)
+		activation.intent.inv_focus_valid = true
 	case .Chronicle_Filter:
 		activation.intent.chronicle_focus = Chronicle_Focus(target.index)
 		activation.intent.chronicle_focus_valid = true
@@ -708,10 +712,15 @@ mobile_intent_merge :: proc(destination: ^Intent, source: Intent) {
 	destination.toggle_minimap = destination.toggle_minimap || source.toggle_minimap
 	destination.minimap_zoom += source.minimap_zoom
 	destination.menu_delta += source.menu_delta
+	destination.menu_scroll += source.menu_scroll
 	destination.menu_horizontal += source.menu_horizontal
 	if source.menu_index_valid {
 		destination.menu_index = source.menu_index
 		destination.menu_index_valid = true
+	}
+	if source.inv_focus_valid {
+		destination.inv_focus = source.inv_focus
+		destination.inv_focus_valid = true
 	}
 	destination.inv_drop = destination.inv_drop || source.inv_drop
 	destination.inv_sort = destination.inv_sort || source.inv_sort

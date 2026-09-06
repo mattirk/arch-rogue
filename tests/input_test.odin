@@ -410,7 +410,249 @@ inventory_is_modal_clamped_and_scrolls :: proc(t: ^testing.T) {
 	testing.expect(t, app.inv_index == ar.BAG_CAPACITY - 1, "inventory selection must clamp at end")
 	testing.expect(t, app.inv_scroll == ar.BAG_CAPACITY - ar.INVENTORY_VISIBLE_ROWS, "selection must scroll into view")
 	ar.app_apply(&app, ar.Intent{menu_delta = -99})
-	testing.expect(t, app.inv_index == 0 && app.inv_scroll == 0, "inventory selection must clamp at start")
+	testing.expect(t, app.inv_focus == .Weapon && app.inv_index == 0 && app.inv_scroll == 0, "inventory traversal must clamp at the first equipped slot")
+}
+
+@(test)
+inventory_equipped_preview_navigation_is_read_only :: proc(t: ^testing.T) {
+	app: ar.App
+	ar.app_init(&app, 4410)
+	defer ar.run_destroy(&app.run)
+	ar.run_start(&app.run, app.seed, .Warden)
+	app.mode = .Playing
+	app.inventory_open = true
+	app.run.player.has_weapon = true
+	app.run.player.has_armor = true
+	app.run.player.weapon = {kind=.Weapon, name="Worn Blade", power=5, cursed=true}
+	app.run.player.armor = {kind=.Armor, name="Worn Mail", defense=3}
+	app.run.player.bag[0] = {kind=.Weapon, name="Spare Blade", power=2}
+	app.run.player.bag[1] = {kind=.Armor, name="Spare Mail", defense=1}
+	app.run.player.bag_count = 2
+	app.inv_index = 1
+	player_before := app.run.player
+	ground_before := len(app.run.ground_items)
+
+	for focus in ([3]ar.Inventory_Focus{.Weapon, .Armor, .Bag}) {
+		ar.app_apply(&app, {tab=true})
+		testing.expect(t, app.inv_focus == focus && app.inv_index == 1 && app.inv_sort_mode == .Type, "Tab must cycle preview targets, retaining the bag position and sort")
+		item, found := ar.inventory_selected_item(&app)
+		expected := focus == .Weapon ? "Worn Blade" : (focus == .Armor ? "Worn Mail" : "Spare Mail")
+		testing.expect(t, found && item.name == expected, "details must follow the focused slot")
+		if focus != .Bag {
+			ar.app_apply(&app, {confirm=true, inv_drop=true})
+			testing.expect(t, app.run.player == player_before && len(app.run.ground_items) == ground_before, "equipped previews must never equip, consume, drop or unequip an item")
+		}
+	}
+
+	ar.app_apply(&app, {menu_index=0, menu_index_valid=true})
+	mapping := ar.controller_default_mapping()
+	for expected in ([4]ar.Inventory_Focus{.Armor, .Weapon, .Weapon, .Weapon}) {
+		intent: ar.Intent
+		ar.intent_apply_command(&intent, ar.controller_button_command(&mapping, .Dpad_Up, .Menu), false)
+		ar.app_apply(&app, intent)
+		testing.expect(t, app.inv_focus == expected, "D-pad Up must reach and clamp at equipped slots")
+	}
+	for expected in ([2]ar.Inventory_Focus{.Armor, .Bag}) {
+		intent: ar.Intent
+		ar.intent_apply_command(&intent, .Down, false)
+		ar.app_apply(&app, intent)
+		testing.expect(t, app.inv_focus == expected && app.inv_index == 0, "D-pad Down must return through armor to the first bag row")
+	}
+	ar.app_apply(&app, {inv_focus=.Armor, inv_focus_valid=true})
+	testing.expect(t, app.inv_focus == .Armor, "hover/tap must preview equipment")
+	ar.app_apply(&app, {inv_focus=.Armor, inv_focus_valid=true, menu_index=0, menu_index_valid=true})
+	testing.expect(t, app.inv_focus == .Bag && app.inv_index == 0, "an explicit bag shortcut must win over a same-frame equipped hover")
+	testing.expect(t, app.run.player == player_before, "navigation must leave player state untouched")
+}
+
+@(test)
+inventory_empty_bag_still_previews_equipment_and_resets_focus :: proc(t: ^testing.T) {
+	app: ar.App
+	ar.app_init(&app, 4411)
+	defer ar.run_destroy(&app.run)
+	ar.run_start(&app.run, app.seed, .Warden)
+	app.mode = .Playing
+	app.run.player.bag_count = 0
+	app.run.player.has_weapon = true
+	ar.app_apply(&app, {toggle_inventory=true})
+	_, found := ar.inventory_selected_item(&app)
+	testing.expect(t, app.inv_focus == .Weapon && found, "empty bags must still expose equipped item details")
+	app.run.player.has_armor = false
+	ar.app_apply(&app, {tab=true, confirm=true, inv_drop=true})
+	_, found = ar.inventory_selected_item(&app)
+	testing.expect(t, app.inv_focus == .Armor && !found && app.run.player.bag_count == 0, "empty equipment slots can hold focus without showing stale data or acting on the bag")
+	ar.app_apply(&app, {tab=true})
+	testing.expect(t, app.inv_focus == .Weapon, "Tab must skip an empty bag")
+	ar.app_reset_run_ui_after_restore(&app)
+	testing.expect(t, app.inv_focus == .Bag && app.inv_index == 0 && app.inv_scroll == 0, "save restore must clear transient preview focus")
+	app.inv_focus = .Armor
+	ar.app_reset_run_ui(&app)
+	testing.expect(t, app.inv_focus == .Bag, "a new run must clear transient preview focus")
+}
+
+@(test)
+desktop_wheel_routes_to_menus_without_activation_or_zoom_leaks :: proc(t: ^testing.T) {
+	app: ar.App
+	for mode in ([9]ar.App_Mode{.Title,.Select,.Paused,.Options,.Controls,.Chronicle,.Abandon_Confirm,.Recovery,.Save_Error}) {
+		app.mode = mode
+		for wheel in ([4]f32{-3,-.2,.2,3}) {
+			intent, zoom := ar.desktop_wheel_intent(&app, wheel, false, true)
+			expected := wheel < 0 ? (wheel == -3 ? 3 : 1) : (wheel == 3 ? -3 : -1)
+			testing.expect(t, intent.menu_delta == expected && intent.menu_scroll == 0, "all list menus must accept wheel direction and magnitude")
+			testing.expect(t, !intent.confirm && !intent.back && !intent.tab && intent.menu_horizontal == 0 && intent.minimap_zoom == 0 && zoom == 0, "wheel navigation must never activate choices, change values or zoom the background")
+		}
+	}
+	app.mode = .Controls
+	app.controls_capture = true
+	intent, zoom := ar.desktop_wheel_intent(&app, -1, false, false)
+	testing.expect(t, intent == ar.Intent{} && zoom == 0, "remap capture must not scroll")
+	for mode in ([4]ar.App_Mode{.Save_Wait,.Resume_Veil,.Dead,.Victory}) {
+		app.mode = mode
+		intent, zoom = ar.desktop_wheel_intent(&app, -1, false, false)
+		testing.expect(t, intent == ar.Intent{} && zoom == 0, "wheel must not dismiss overlays")
+	}
+	app.mode = .Playing
+	app.minimap_visible = true
+	intent, zoom = ar.desktop_wheel_intent(&app, .25, true, true)
+	testing.expect(t, intent == ar.Intent{} && zoom == .25, "Ctrl+wheel must retain world zoom in gameplay")
+	intent, zoom = ar.desktop_wheel_intent(&app, .25, false, true)
+	testing.expect(t, intent.minimap_zoom == 1 && zoom == 0, "plain wheel over the minimap must retain map zoom")
+	intent, zoom = ar.desktop_wheel_intent(&app, -1, false, false)
+	testing.expect(t, intent == ar.Intent{} && zoom == 0, "plain gameplay wheel must remain inert outside the minimap")
+	app.inventory_open = true
+	intent, zoom = ar.desktop_wheel_intent(&app, -2, true, true)
+	testing.expect(t, intent.menu_scroll == 2 && intent.menu_delta == 0 && intent.minimap_zoom == 0 && zoom == 0, "inventory must own the wheel even with Ctrl and the minimap underneath")
+	app.inventory_open = false
+	app.shop_open = true
+	intent, zoom = ar.desktop_wheel_intent(&app, -2, true, true)
+	testing.expect(t, intent.menu_scroll == 2 && intent.minimap_zoom == 0 && zoom == 0, "shop must own the wheel")
+	app.shop_open = false
+	app.character_open = true
+	intent, zoom = ar.desktop_wheel_intent(&app, -1, true, true)
+	testing.expect(t, intent.menu_delta == 1 && intent.minimap_zoom == 0 && zoom == 0, "character menu must not leak zoom")
+	app.character_open = false
+	app.story_panel = {active=true,node=.Soul_Reflection}
+	intent, zoom = ar.desktop_wheel_intent(&app, -1, true, true)
+	testing.expect(t, intent.menu_delta == 1 && intent.minimap_zoom == 0 && zoom == 0, "story choices must own navigation instead of changing the world zoom")
+	app.story_panel = {}
+	app.story_minigame = {active=true,kind=.Wake_The_Moonbloom,phase=.Play,board_count=9}
+	intent, zoom = ar.desktop_wheel_intent(&app, -1, true, true)
+	testing.expect(t, intent == ar.Intent{} && zoom == 0, "a minigame board must consume the wheel without playing or zooming")
+	app.mode = .Story_Decision
+	app.story_decision_phase = .Ask
+	intent, zoom = ar.desktop_wheel_intent(&app, -1, false, false)
+	testing.expect(t, intent.menu_delta == 1 && !intent.confirm && zoom == 0)
+	app.story_decision_phase = .Depart
+	intent, zoom = ar.desktop_wheel_intent(&app, -1, false, false)
+	testing.expect(t, intent == ar.Intent{} && zoom == 0, "wheel navigation must not skip the story farewell")
+}
+
+@(test)
+inventory_and_shop_wheel_scroll_immediately_and_clamp :: proc(t: ^testing.T) {
+	app: ar.App
+	ar.app_init(&app, 4412)
+	defer ar.run_destroy(&app.run)
+	ar.run_start(&app.run, app.seed, .Warden)
+	app.mode = .Playing
+	app.run.has_shopkeeper = true
+	for i in 0..<ar.BAG_CAPACITY do app.run.player.bag[i] = {kind=.Weapon,name="Scroll Blade",power=i+1}
+	app.run.player.bag_count = ar.BAG_CAPACITY
+	player_before := app.run.player
+	for shop in ([2]bool{false,true}) {
+		app.inventory_open = !shop
+		app.shop_open = shop
+		app.shop_mode = .Sell
+		index := shop ? &app.shop_index : &app.inv_index
+		scroll := shop ? &app.shop_scroll : &app.inv_scroll
+		visible := shop ? ar.SHOP_VISIBLE_ROWS : ar.INVENTORY_VISIBLE_ROWS
+		intent, _ := ar.desktop_wheel_intent(&app, -1, false, false)
+		ar.app_apply(&app, intent)
+		testing.expect(t, scroll^ == 1 && index^ == 1, "one wheel notch must reveal a row immediately, not after traversing the whole visible list")
+		index^ = 4
+		ar.app_apply(&app, intent)
+		testing.expect(t, scroll^ == 2 && index^ == 4, "scrolling must retain a selected item that stays visible")
+		intent, _ = ar.desktop_wheel_intent(&app, -99, false, false)
+		ar.app_apply(&app, intent)
+		testing.expect(t, scroll^ == ar.BAG_CAPACITY-visible && index^ >= scroll^ && index^ < ar.BAG_CAPACITY, "large scrolls must clamp at the end")
+		ar.app_apply(&app, intent)
+		testing.expect(t, scroll^ == ar.BAG_CAPACITY-visible, "scrolling past the end must not wrap")
+		intent, _ = ar.desktop_wheel_intent(&app, 99, false, false)
+		ar.app_apply(&app, intent)
+		testing.expect(t, scroll^ == 0 && index^ < visible, "reverse scroll must restore the top viewport and a visible selection")
+		testing.expect(t, app.run.player == player_before, "scrolling must never buy, sell, equip or consume")
+	}
+	app.shop_open = false
+	app.inventory_open = true
+	app.inv_focus = .Armor
+	app.inv_index = 0
+	ar.app_apply(&app, {menu_scroll=3})
+	testing.expect(t, app.inv_focus == .Armor && app.inv_scroll == 3, "scrolling the bag must not steal an equipped preview")
+
+	index, scroll := 0, 0
+	ar.menu_scroll_list(&index, &scroll, 3, 8, 99)
+	testing.expect(t, index == 2 && scroll == 0, "short menus can navigate without scrolling outside their bounds")
+	ar.menu_scroll_list(&index, &scroll, 0, 8, -1)
+	testing.expect(t, index == 0 && scroll == 0, "empty lists must reset safely")
+}
+
+@(test)
+menu_wheel_inertia_cannot_redirect_item_actions :: proc(t: ^testing.T) {
+	app: ar.App
+	ar.app_init(&app, 4413)
+	defer ar.run_destroy(&app.run)
+	ar.run_start(&app.run, app.seed, .Warden)
+	app.mode = .Playing
+	app.inventory_open = true
+	for i in 0..<ar.BAG_CAPACITY do app.run.player.bag[i] = {kind=.Weapon,name="Numbered Blade",power=i+1}
+	app.run.player.bag_count = ar.BAG_CAPACITY
+	app.run.player.has_weapon = false
+	ar.app_apply(&app, {menu_index=0,menu_index_valid=true,menu_scroll=1,confirm=true})
+	testing.expect(t, app.run.player.has_weapon && app.run.player.weapon.power == 1, "1 plus wheel inertia must equip item 1, not the row scrolled into its place")
+	app.inv_scroll = 0
+	app.inv_index = 0
+	ground_before := len(app.run.ground_items)
+	ar.app_apply(&app, {menu_index=0,menu_index_valid=true,menu_scroll=1,inv_drop=true})
+	testing.expect(t, len(app.run.ground_items) == ground_before+1 && app.run.ground_items[ground_before].item.power == 2, "Shift+1 plus wheel inertia must drop the explicitly numbered item")
+
+	app.inventory_open = false
+	app.shop_open = true
+	app.shop_mode = .Sell
+	app.run.has_shopkeeper = true
+	for i in 0..<ar.BAG_CAPACITY do app.run.player.bag[i] = {kind=.Weapon,name="Numbered Blade",power=i+1}
+	app.run.player.bag_count = ar.BAG_CAPACITY
+	ar.app_apply(&app, {menu_index=0,menu_index_valid=true,menu_scroll=1,confirm=true})
+	testing.expect(t, app.run.player.bag_count == ar.BAG_CAPACITY-1 && app.run.player.bag[0].power == 2, "a sell click plus wheel inertia must transact on the clicked item")
+	testing.expect(t, app.shop_scroll == 1, "the same-frame wheel may move the viewport only after the transaction")
+}
+
+@(test)
+inventory_sort_navigation_survives_character_button_remaps :: proc(t: ^testing.T) {
+	app: ar.App
+	ar.app_init(&app, 4414)
+	defer ar.run_destroy(&app.run)
+	ar.run_start(&app.run, app.seed, .Warden)
+	app.mode = .Playing
+	app.inventory_open = true
+	app.run.player.bag[0] = {kind=.Weapon,name="Spare Blade"}
+	app.run.player.bag_count = 1
+	mapping := ar.controller_default_mapping()
+	testing.expect(t, ar.controller_remap_button(&mapping, .X, .Character) == .Applied)
+	intent: ar.Intent
+	ar.intent_apply_command(&intent, ar.controller_button_command(&mapping, .Right_Bumper, .Menu), false)
+	ar.app_apply(&app, intent)
+	testing.expect(t, app.inv_focus == .Weapon && app.inv_sort_mode == .Type, "RB still owns preview focus")
+	intent = {}
+	ar.intent_apply_command(&intent, ar.controller_button_command(&mapping, .Dpad_Right, .Menu), false)
+	ar.app_apply(&app, intent)
+	testing.expect(t, app.inv_focus == .Weapon && app.inv_sort_mode == .Rarity, "fixed Right must keep sorting accessible independently of gameplay remaps")
+	intent = {}
+	ar.intent_apply_command(&intent, ar.controller_button_command(&mapping, .Dpad_Left, .Menu), false)
+	ar.app_apply(&app, intent)
+	testing.expect(t, app.inv_focus == .Weapon && app.inv_sort_mode == .Type, "fixed Left must cycle sorting backwards without stealing preview focus")
+	intent = {}
+	ar.intent_apply_command(&intent, ar.controller_button_command(&mapping, .X, .Menu), false)
+	ar.app_apply(&app, intent)
+	testing.expect(t, app.character_open && !app.inventory_open, "the remapped Character button must retain its existing toggle")
 }
 
 @(test)
@@ -521,7 +763,7 @@ inventory_sort_and_drop_follow_overlay_intents :: proc(t: ^testing.T) {
 	testing.expect(t, app.run.player.bag[0].name == "Rare Mail", "drop must preserve the remaining bag order")
 
 	ar.app_apply(&app, ar.Intent{inv_cycle_sort = 1})
-	testing.expect(t, app.inv_sort_mode == .Power, "Tab must cycle rarity to power")
+	testing.expect(t, app.inv_sort_mode == .Power, "Shift+S must cycle rarity to power")
 }
 
 @(test)

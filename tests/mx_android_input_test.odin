@@ -488,6 +488,35 @@ mx_android_menu_policy_is_direct_except_preview_and_guarded_rows :: proc(t: ^tes
 }
 
 @(test)
+mx_android_equipment_preview_and_wheel_merge_preserve_bag_safety :: proc(t: ^testing.T) {
+	app: ar.App
+	ar.app_init(&app, 7110)
+	defer ar.run_destroy(&app.run)
+	ar.run_start(&app.run, app.seed, .Warden)
+	app.mode = .Playing
+	app.inventory_open = true
+	app.run.player.bag[0] = {kind=.Weapon,name="Spare Blade"}
+	app.run.player.bag_count = 1
+	preview := ar.mobile_activate_target({id=1041,kind=.Inventory_Equipment,index=int(ar.Inventory_Focus.Weapon),enabled=true}, false)
+	testing.expect(t, preview.activated && preview.intent.inv_focus_valid && preview.intent.inv_focus == .Weapon && !preview.intent.confirm && !preview.intent.menu_index_valid, "equipment taps must only request a preview")
+	intent: ar.Intent
+	ar.mobile_intent_merge(&intent, preview.intent)
+	ar.mobile_intent_merge(&intent, {menu_scroll=2})
+	testing.expect(t, intent.inv_focus_valid && intent.inv_focus == .Weapon && intent.menu_scroll == 2, "shared input merging must retain focus and wheel commands exactly once")
+	ar.app_apply(&app, intent)
+	testing.expect(t, app.inv_focus == .Weapon && app.run.player.bag_count == 1)
+	guard_intent := ar.Intent{mobile_guard_request=.Inventory_Drop}
+	ar.platform_mobile_apply_guard(&app, &guard_intent, {})
+	testing.expect(t, app.mobile_guard.kind == .None, "a touch drop request must not target the hidden bag selection while inspecting equipment")
+	selected := ar.mobile_activate_target({id=1010,kind=.Menu_Select,index=0,enabled=true}, false)
+	ar.app_apply(&app, selected.intent)
+	testing.expect(t, app.inv_focus == .Bag, "a subsequent bag tap must restore bag focus")
+	guard_intent = {mobile_guard_request=.Inventory_Drop}
+	ar.platform_mobile_apply_guard(&app, &guard_intent, {})
+	testing.expect(t, app.mobile_guard.kind == .Inventory_Drop, "bag taps must retain guarded drop behavior")
+}
+
+@(test)
 mx_android_overlapping_minimum_targets_choose_nearest_row_center :: proc(t: ^testing.T) {
 	input_context := ar.Mobile_Input_Context_Key{mode = .Options, layer = .Base, generation = 1}
 	targets: ar.Mobile_Target_Set

@@ -4,6 +4,7 @@ package archrogue
 // the deterministic app/simulation layers remain resolution- and raylib-free.
 
 import "core:fmt"
+import "core:math"
 import "core:strings"
 import rl "../vendor/raylib"
 
@@ -31,8 +32,12 @@ UI_Presentation :: struct {
 // responsive_width deliberately removes only integer high-DPI density: 640 is
 // still a compact layout, while 960 and larger use the five-position carousel.
 ui_presentation :: proc() -> UI_Presentation {
-	physical_w := f32(max(1, rl.GetScreenWidth()))
-	physical_h := f32(max(1, rl.GetScreenHeight()))
+	return ui_presentation_for_size(f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight()))
+}
+
+ui_presentation_for_size :: proc(width, height: f32) -> UI_Presentation {
+	physical_w := max(f32(1), width)
+	physical_h := max(f32(1), height)
 	scale := min(physical_w / UI_REFERENCE_WIDTH, physical_h / UI_REFERENCE_HEIGHT)
 	if scale <= 0 do scale = 1
 	density := max(1, int(scale))
@@ -66,6 +71,22 @@ ui_design_width :: proc() -> f32 {
 
 ui_design_height :: proc() -> f32 {
 	return ui_presentation().height
+}
+
+// Scissors ignore Camera2D. Round inward in physical pixels, not design pixels,
+// so fractional presentation scales cannot expose the panel's border rail.
+ui_content_scissor_rect :: proc(content: rl.Rectangle, scale: f32) -> rl.Rectangle {
+	left := math.ceil(content.x * scale)
+	top := math.ceil(content.y * scale)
+	right := math.floor((content.x + content.width) * scale)
+	bottom := math.floor((content.y + content.height) * scale)
+	return {left, top, max(f32(0), right-left), max(f32(0), bottom-top)}
+}
+
+@(private = "file")
+ui_begin_content_clip :: proc(content: rl.Rectangle) {
+	clip := ui_content_scissor_rect(content, ui_presentation().scale)
+	rl.BeginScissorMode(i32(clip.x), i32(clip.y), i32(clip.width), i32(clip.height))
 }
 
 ui_fit_insets :: proc(first, second, extent: f32) -> (f32, f32) {
@@ -159,6 +180,10 @@ draw_ui_nine_slice :: proc(asset: ^UI_Chrome_Asset, target: rl.Rectangle, tint :
 	right := f32(asset.insets[2])
 	bottom := f32(asset.insets[3])
 	if left + right > source_w || top + bottom > source_h do return false
+
+	// Forged iron frames retain their generated transparent centers. Paint
+	// their backing first so gameplay cannot show through the content area.
+	if asset.fill_color.a > 0 do rl.DrawRectangleRec(target, rl.ColorTint(asset.fill_color, tint))
 
 	inset_scale := ui_chrome_inset_scale(asset, target.width, target.height)
 	target_left, target_right := ui_fit_insets(left * inset_scale, right * inset_scale, target.width)
@@ -412,8 +437,7 @@ menu_row_content_rect :: proc(target: rl.Rectangle) -> (rl.Rectangle, bool) {
 	if !selected_ok do return plain, true
 
 	// Use one rail for both states so labels never step sideways, while reserving
-	// every endcap used by either state. In particular, selected rows have a
-	// larger right arrow than plain rows.
+	// every endcap used by either state. Forged iron states share margins.
 	left := max(plain.x, selected.x)
 	top := max(plain.y, selected.y)
 	right := min(plain.x+plain.width, selected.x+selected.width)
@@ -1590,8 +1614,7 @@ memory_token_prompt_rect :: proc() -> rl.Rectangle {
 }
 
 character_tab_rect :: proc(tab: Character_Tab) -> rl.Rectangle {
-	// Wide enough that the arrow-endcap row art leaves a usable label rail. The
-	// pair right-aligns to the panel and slightly overlaps its top edge.
+	// The pair right-aligns to the panel and slightly overlaps its top edge.
 	panel := character_panel_rect()
 	height: f32 = 34
 	return {panel.x + 365 + f32(int(tab) * 195), panel.y-height*.5+6, 180, height}
@@ -2057,10 +2080,12 @@ draw_character_panel :: proc(app: ^App, assets: ^Assets) {
 	ui_draw_text("Tab/1/2: tabs   Arrows: choose   Enter: learn   C/Esc: close",i32(panel.x+36),i32(panel.y+568),13,COLOR_TEXT_DIM)
 }
 
-shop_panel_rect :: proc() -> rl.Rectangle {return menu_panel(620,570)}
+ITEM_ROW_HEIGHT :: f32(48)
+
+shop_panel_rect :: proc() -> rl.Rectangle {return menu_panel(620,610)}
 
 shop_mode_rect :: proc(mode: Shop_Mode) -> rl.Rectangle {
-	// Wide enough that the arrow-endcap row art leaves a usable label rail.
+	// Keep both shop tabs aligned to the panel's content margin.
 	panel := shop_panel_rect()
 	return {panel.x + 24 + f32(int(mode) * 164), panel.y + 78, 150, 30}
 }
@@ -2075,7 +2100,7 @@ shop_mode_at :: proc(point: rl.Vector2) -> (Shop_Mode, bool) {
 
 shop_row_rect :: proc(index: int) -> rl.Rectangle {
 	panel:=shop_panel_rect()
-	return {panel.x+24,panel.y+116+f32(index*49),panel.width-48,42}
+	return {panel.x+24,panel.y+116+f32(index*54),panel.width-48,ITEM_ROW_HEIGHT}
 }
 
 shop_row_at :: proc(app:^App,point:rl.Vector2)->(int,bool){
@@ -2112,28 +2137,79 @@ draw_shop_panel :: proc(app:^App,assets:^Assets){
 		selected:=ui_navigation_selected(app,i==app.shop_index)
 		content:=draw_menu_row_chrome(assets,rect,selected)
 		icon_x:=content.x
-		if draw_item_icon(assets,item,{icon_x,rect.y+6,30,30},rl.WHITE) do icon_x+=36
-		ui_draw_text(fmt.ctprintf("%s",item_display_name(item)),i32(icon_x),i32(rect.y+11),16,selected?COLOR_TITLE:COLOR_TEXT)
-		cost:=fmt.ctprintf("%vg",price)
-		ui_draw_text(cost,i32(content.x+content.width-f32(ui_measure_text(cost,15))),i32(rect.y+12),15,COLOR_TITLE)
+		if draw_item_icon(assets,item,{icon_x,content.y+(content.height-30)*.5,30,30},rl.WHITE) do icon_x+=36
+		cost := fmt.ctprintf("%vg", price)
+		cost_x := content.x+content.width-f32(ui_measure_text(cost,15))-1
+		ui_begin_content_clip(content)
+		ui_draw_text_fitted_left(item_display_name(item), {icon_x,content.y+(content.height-16)*.5,max(f32(0),cost_x-icon_x-10),16}, 16, 12, selected ? COLOR_TITLE : COLOR_TEXT)
+		ui_draw_text(cost, i32(cost_x), i32(content.y+(content.height-15)*.5), 15, COLOR_TITLE)
+		rl.EndScissorMode()
 	}
 	if total==0 do ui_draw_text("No wares in this list.",i32(panel.x+28),i32(panel.y+136),16,COLOR_TEXT_DIM)
 	if total > SHOP_VISIBLE_ROWS {
 		ui_draw_text(fmt.ctprintf("showing %v-%v of %v", app.shop_scroll+1, visible_end, total),i32(panel.x+390),i32(panel.y+88),11,COLOR_TEXT_DIM)
 	}
-	ui_draw_text("Tab/Left/Right: Buy/Sell   Enter/E: trade   Esc: close",i32(panel.x+24),i32(panel.y+535),13,COLOR_TEXT_DIM)
+	ui_draw_text_fitted_left("Up/Down (D-pad)/Wheel: rows | Tab/Left/Right: Buy/Sell", {panel.x+24,panel.y+panel.height-52,panel.width-48,12}, 12, 11, COLOR_TEXT_DIM)
+	ui_draw_text_fitted_left("Enter/E: trade | Esc: close", {panel.x+24,panel.y+panel.height-35,panel.width-48,12}, 12, 11, COLOR_TEXT_DIM)
 }
 
 // --- Inventory panel -------------------------------------------------------
 
 inventory_panel_rect :: proc() -> rl.Rectangle {
-	return {ui_design_width()-424, 52, 408, 552}
+	return inventory_panel_rect_for_width(ui_design_width())
+}
+
+inventory_panel_rect_for_width :: proc(design_width: f32) -> rl.Rectangle {
+	return {design_width-424, 52, 408, 632}
+}
+
+inventory_row_selected :: proc(app: ^App, focus: Inventory_Focus, bag_index: int = 0) -> bool {
+	if app == nil do return false
+	return ui_navigation_selected(app, app.inv_focus == focus && (focus != .Bag || bag_index == app.inv_index))
+}
+
+inventory_equipped_rect_in_panel :: proc(panel: rl.Rectangle, focus: Inventory_Focus) -> rl.Rectangle {
+	switch focus {
+	case .Weapon: return {panel.x+24, panel.y+38, panel.width-48, 38}
+	case .Armor:  return {panel.x+24, panel.y+78, panel.width-48, 38}
+	case .Bag:    return {}
+	}
+	return {}
+}
+
+inventory_equipped_rect :: proc(focus: Inventory_Focus) -> rl.Rectangle {
+	return inventory_equipped_rect_in_panel(inventory_panel_rect(), focus)
+}
+
+inventory_equipped_at_in_panel :: proc(panel: rl.Rectangle, point: rl.Vector2) -> (focus: Inventory_Focus, found: bool) {
+	for candidate in ([2]Inventory_Focus{.Weapon, .Armor}) {
+		rect := inventory_equipped_rect_in_panel(panel, candidate)
+		if point.x >= rect.x && point.x < rect.x+rect.width &&
+			point.y >= rect.y && point.y < rect.y+rect.height {
+			return candidate, true
+		}
+	}
+	return .Bag, false
+}
+
+inventory_equipped_at :: proc(point: rl.Vector2) -> (focus: Inventory_Focus, found: bool) {
+	return inventory_equipped_at_in_panel(inventory_panel_rect(), ui_screen_to_design(point))
+}
+
+INVENTORY_FOOTER_LINES := [3]string{
+	"Up/Down/Wheel: browse | Tab/RB: preview",
+	"Enter: use/equip | Del: drop",
+	"Left/Right: sort | Esc: close",
+}
+
+inventory_footer_rect :: proc(panel: rl.Rectangle, line: int) -> rl.Rectangle {
+	return {panel.x+24, panel.y+panel.height-72+f32(line*13), panel.width-48, 11}
 }
 
 inventory_row_rect :: proc(visible_index: int) -> rl.Rectangle {
 	// Rows share the panel's 24px content margin so they clear the border art.
 	panel := inventory_panel_rect()
-	return {panel.x + 24, panel.y + 146 + f32(visible_index * 40), panel.width - 48, 38}
+	return {panel.x + 24, panel.y + 146 + f32(visible_index * 50), panel.width - 48, ITEM_ROW_HEIGHT}
 }
 
 inventory_row_at :: proc(app: ^App, point: rl.Vector2) -> (index: int, found: bool) {
@@ -2182,8 +2258,19 @@ draw_inventory_panel :: proc(app: ^App, assets: ^Assets) {
 	draw_menu_panel_chrome(assets,panel)
 
 	ui_draw_text("EQUIPPED", x + 24, y + 20, 18, COLOR_TITLE)
-	draw_item_line(assets,x + 24, y + 46, player.weapon, player.has_weapon, "weapon", false)
-	draw_item_line(assets,x + 24, y + 86, player.armor, player.has_armor, "armor", false)
+	for focus in ([2]Inventory_Focus{.Weapon, .Armor}) {
+		rect := inventory_equipped_rect_in_panel(panel, focus)
+		selected := inventory_row_selected(app, focus)
+		if selected {
+			rl.DrawRectangleRec(rect, COLOR_ROW_SELECTED)
+			rl.DrawRectangleLinesEx(rect, 1, COLOR_TITLE)
+		}
+		weapon := focus == .Weapon
+		draw_item_line(
+			assets, rect, weapon ? player.weapon : player.armor,
+			weapon ? player.has_weapon : player.has_armor, weapon ? "weapon" : "armor", selected,
+		)
+	}
 
 	ui_draw_text(fmt.ctprintf("BAG  %v / %v", player.bag_count, BAG_CAPACITY), x + 24, y + 124, 18, COLOR_TITLE)
 	mouse := ui_screen_to_design(rl.GetMousePosition())
@@ -2207,123 +2294,200 @@ draw_inventory_panel :: proc(app: ^App, assets: ^Assets) {
 		)
 	}
 	if player.bag_count == 0 {
-		ui_draw_text("empty - equipment you pick up lands here", x + 24, y + 152, 14, COLOR_TEXT_DIM)
+		ui_draw_text_fitted_left("empty - equipment you pick up lands here", {panel.x+24,panel.y+152,panel.width-48,14}, 14, 11, COLOR_TEXT_DIM)
 	}
 	visible_end := min(player.bag_count, app.inv_scroll + INVENTORY_VISIBLE_ROWS)
 	for i in app.inv_scroll ..< visible_end {
 		row := i - app.inv_scroll
-		// draw_item_line puts its 28px icon at row_y-5; +10 centers it in the
-		// 38px row (rect.y+146) with the label riding one pixel above center.
-		row_y := y + 156 + i32(row) * 40
-		row_rect:=inventory_row_rect(row)
-		selected:=ui_navigation_selected(app,i==app.inv_index)
-		row_content:=draw_menu_row_chrome(assets,row_rect,selected)
+		row_rect := inventory_row_rect(row)
+		selected := inventory_row_selected(app, .Bag, i)
+		row_content := draw_menu_row_chrome(assets, row_rect, selected)
 		draw_item_line(
-			assets,i32(row_content.x),row_y,player.bag[i],true,"",selected,
-			content_right=i32(row_content.x+row_content.width),
+			assets, row_content,
+			player.bag[i], true, "", selected,
 		)
 	}
-	if player.bag_count > 0 {
-		draw_item_detail_panel(assets,player.bag[app.inv_index], x, y)
+	if item, found := inventory_selected_item(app); found {
+		draw_item_detail_panel(assets, item, panel, app.inv_focus != .Bag)
 	}
 
 	if player.bag_count > INVENTORY_VISIBLE_ROWS {
 		ui_draw_text(
 			fmt.ctprintf("showing %v-%v", app.inv_scroll + 1, visible_end),
-			x + 24, y + 108, 11, COLOR_TEXT_DIM,
+			x + 24, y + i32(panel.height) - 86, 11, COLOR_TEXT_DIM,
 		)
 	}
-	ui_draw_text("Up/Down | Enter/E or 1-9: use/equip", x + 24, y + 496, 11, COLOR_TEXT_DIM)
-	ui_draw_text("Tab/S: sort | Del/Shift+1-9: drop | I/Esc", x + 24, y + 515, 11, COLOR_TEXT_DIM)
+	for text, line in INVENTORY_FOOTER_LINES {
+		ui_draw_text_fitted_left(text, inventory_footer_rect(panel, line), 11, 10, COLOR_TEXT_DIM)
+	}
+}
+
+Inventory_Detail_Line :: struct {
+	text: string, // static content or frame-temporary formatted text
+	rect: rl.Rectangle,
+	font: i32,
+	color: rl.Color,
+}
+
+Inventory_Detail_Layout :: struct {
+	panel, content, icon: rl.Rectangle,
+	lines: [STORY_UI_MAX_TEXT_LINES]Inventory_Detail_Line,
+	line_count: int,
+	overflowed: bool,
 }
 
 @(private = "file")
-draw_item_detail_panel :: proc(assets: ^Assets,item: Item, inventory_x, inventory_y: i32) {
-	w: i32 = 324
-	h: i32 = 372
-	pad: i32 = 22
-	x := max(i32(8), inventory_x-w-16)
-	y := inventory_y
-	left := x + pad
-	sub := left + 8 // indented affix/stat list entries
-	draw_menu_panel_chrome(assets,{f32(x),f32(y),f32(w),f32(h)})
-	ui_draw_text("SELECTED ITEM",left,y+26,14,COLOR_TITLE)
+inventory_detail_add_text :: proc(
+	layout: ^Inventory_Detail_Layout, text: string, y: ^f32,
+	font: i32, color: rl.Color, measure: UI_Text_Measure, indent: f32 = 0,
+) {
+	width := layout.content.width-indent-1
+	wrapped: [STORY_UI_MAX_TEXT_LINES]Story_UI_Text_Line
+	count := story_ui_wrap_text(text, width, font, &wrapped, measure)
+	for line in wrapped[:count] {
+		if layout.line_count < len(layout.lines) {
+			layout.lines[layout.line_count] = {
+				text[line.start:line.end], {layout.content.x+indent, y^, width, f32(font)}, font, color,
+			}
+			layout.line_count += 1
+		} else {
+			layout.overflowed = true
+		}
+		y^ += f32(font)+3
+	}
+	if count == len(wrapped) && wrapped[count-1].end < len(text) do layout.overflowed = true
+}
+
+@(private = "file")
+inventory_detail_at_width :: proc(item: Item, inventory: rl.Rectangle, width: f32, equipped: bool, measure: UI_Text_Measure) -> (layout: Inventory_Detail_Layout) {
+	layout.panel = {inventory.x-width-16, inventory.y, width, 372}
+	layout.content = {layout.panel.x+24, layout.panel.y+22, width-48, 328}
+	layout.icon = {layout.content.x, layout.panel.y+49, 28, 28}
+	y := layout.panel.y+26
+	inventory_detail_add_text(&layout, equipped ? "EQUIPPED ITEM" : "SELECTED ITEM", &y, 14, COLOR_TITLE, measure)
+	y += 9
 	visible_rarity := item_visible_rarity(item)
 	color := rl.Color(RARITIES[visible_rarity].color)
-	icon_offset:i32=0
-	if draw_item_icon(assets,item,{f32(left),f32(y+49),28,28},rl.WHITE) do icon_offset=34
-	ui_draw_text(fmt.ctprintf("%s%s",item.cursed && !item.unidentified ? "! " : "",item_display_name(item)),left+icon_offset,y+52,18,color)
-	kind: cstring = "item"
+	inventory_detail_add_text(&layout, fmt.tprintf("%s%s", item.cursed && !item.unidentified ? "! " : "", item_display_name(item)), &y, 18, color, measure, indent=34)
+	y = max(y, layout.icon.y+layout.icon.height)+2
+	kind := "item"
 	#partial switch item.kind {
 	case .Weapon: kind = "weapon"
 	case .Armor: kind = "armor"
 	case .Heal_Potion, .Mana_Potion: kind = "potion"
 	case .Identify_Scroll, .Remove_Curse_Scroll: kind = "scroll"
 	}
-	ui_draw_text(fmt.ctprintf("%s  %s",RARITIES[visible_rarity].name,kind),left,y+76,12,COLOR_TEXT_DIM)
+	inventory_detail_add_text(&layout, fmt.tprintf("%s  %s", RARITIES[visible_rarity].name, kind), &y, 12, COLOR_TEXT_DIM, measure)
+	y += 9
 	if item.unidentified {
-		ui_draw_text("Affixes and rolls hidden until identified.",left,y+108,12,COLOR_TEXT)
-		return
+		inventory_detail_add_text(&layout, "Affixes and rolls hidden until identified.", &y, 12, COLOR_TEXT, measure)
+	} else if item.kind == .Weapon || item.kind == .Armor {
+		if item.kind == .Weapon {
+			inventory_detail_add_text(&layout, fmt.tprintf("Power %v  |  %s damage", item_power(item), DAMAGE_TYPE_NAMES[player_weapon_type_for_item(item)]), &y, 13, COLOR_TEXT, measure)
+		} else {
+			inventory_detail_add_text(&layout, fmt.tprintf("Defense %v  |  %s ward", item_defense(item), DAMAGE_TYPE_NAMES[item.typed ? item.damage_type : .Physical]), &y, 13, COLOR_TEXT, measure)
+		}
+		y += 8
+		if item.affix_count > 0 {
+			inventory_detail_add_text(&layout, "AFFIXES", &y, 11, COLOR_TITLE, measure)
+			for i in 0 ..< item.affix_count {
+				inventory_detail_add_text(&layout, fmt.tprintf("- %s", AFFIX_DEFS[item.affixes[i].kind].name), &y, 12, COLOR_TEXT_DIM, measure, indent=8)
+			}
+		}
+		if item.attack_speed != 0 || item.cast_speed != 0 || item.move_speed != 0 || item.thorns != 0 || item.lifesteal != 0 {
+			y += 4
+			inventory_detail_add_text(&layout, "ROLLED STATS", &y, 11, COLOR_TITLE, measure)
+			if item.attack_speed != 0 {
+				inventory_detail_add_text(&layout, fmt.tprintf("%s%.0f%% attack speed", item.attack_speed > 0 ? "+" : "", item.attack_speed*100), &y, 12, COLOR_TEXT, measure, indent=8)
+			}
+			if item.cast_speed != 0 {
+				inventory_detail_add_text(&layout, fmt.tprintf("%s%.0f%% cast speed", item.cast_speed > 0 ? "+" : "", item.cast_speed*100), &y, 12, COLOR_TEXT, measure, indent=8)
+			}
+			if item.move_speed != 0 {
+				inventory_detail_add_text(&layout, fmt.tprintf("%s%.0f%% movement", item.move_speed > 0 ? "+" : "", item.move_speed*100), &y, 12, COLOR_TEXT, measure, indent=8)
+			}
+			if item.thorns != 0 {
+				inventory_detail_add_text(&layout, fmt.tprintf("%v thorns", item.thorns), &y, 12, COLOR_TEXT, measure, indent=8)
+			}
+			if item.lifesteal != 0 {
+				inventory_detail_add_text(&layout, fmt.tprintf("%.0f%% lifesteal", item.lifesteal*100), &y, 12, COLOR_TEXT, measure, indent=8)
+			}
+		}
+		for effect in Proc_Effect {
+			if effect == .None || (!item.proc_effects[effect] && item.proc_effect != effect) do continue
+			chance := ""
+			if item.proc_chance > 0 && item.proc_chance < 1 do chance = fmt.tprintf("  %.0f%%", item.proc_chance*100)
+			inventory_detail_add_text(&layout, fmt.tprintf("Proc: %s%s", PROC_EFFECT_NAMES[effect], chance), &y, 12, COLOR_TEXT, measure)
+		}
+		// A dense skill set is a wrapped list, not one mandatory row per tag.
+		// This leaves room for the final unique/curse descriptions at readable size.
+		skill_names: [len(Skill_Bonus)]string
+		skill_count := 0
+		for bonus in Skill_Bonus {
+			if !item.skill_bonuses[bonus] do continue
+			skill_names[skill_count] = SKILL_BONUS_NAMES[bonus]
+			skill_count += 1
+		}
+		if skill_count > 0 {
+			names := strings.join(skill_names[:skill_count], ", ", context.temp_allocator)
+			inventory_detail_add_text(&layout, fmt.tprintf("%s: %s", skill_count == 1 ? "Skill" : "Skills", names), &y, 12, COLOR_TEXT, measure)
+		}
+		if item.unique_effect != .None {
+			inventory_detail_add_text(&layout, fmt.tprintf("Unique: %s", UNIQUE_EFFECT_NAMES[item.unique_effect]), &y, 12, COLOR_TEXT, measure)
+		}
+		if item.cursed {
+			y += 4
+			inventory_detail_add_text(&layout, "Cursed bargain: stronger, slower handling.", &y, 12, {214,92,150,255}, measure)
+		}
 	}
-	if item.kind != .Weapon && item.kind != .Armor do return
+	layout.panel.height = max(f32(372), y-layout.panel.y+22)
+	layout.content.height = layout.panel.height-44
+	return
+}
 
-	line_y := y+102
-	if item.kind == .Weapon {
-		ui_draw_text(fmt.ctprintf("Power %v  |  %s damage",item_power(item),DAMAGE_TYPE_NAMES[player_weapon_type_for_item(item)]),left,line_y,13,COLOR_TEXT)
-	} else {
-		ui_draw_text(fmt.ctprintf("Defense %v  |  %s ward",item_defense(item),DAMAGE_TYPE_NAMES[item.typed ? item.damage_type : .Physical]),left,line_y,13,COLOR_TEXT)
+// Preserve the familiar 324x372 plate for ordinary items. Long descriptions and
+// stacked proc/skill riders first grow it downward, then widen it into the free
+// space on the left, rather than shrinking detail text or overprinting the curse.
+// All geometry and text runs can be validated without a font texture or window.
+inventory_detail_layout :: proc(item: Item, inventory: rl.Rectangle, design_height: f32, equipped: bool, measure: UI_Text_Measure) -> Inventory_Detail_Layout {
+	max_width := max(f32(96), inventory.x-24)
+	max_height := max(f32(100), design_height-inventory.y-16)
+	width := min(f32(324), max_width)
+	for {
+		layout := inventory_detail_at_width(item, inventory, width, equipped, measure)
+		if layout.panel.height <= max_height && !layout.overflowed do return layout
+		if width < max_width {
+			width = min(width+80, max_width)
+			continue
+		}
+		// Defensive only for data beyond the current bounded affix/proc/skill
+		// vocabulary: make overflow explicit, never draw over the frame or silently
+		// let the final curse overwrite a stat. Normal maximal items fit in full.
+		layout.overflowed = true
+		layout.panel.height = min(layout.panel.height, max_height)
+		layout.content.height = layout.panel.height-44
+		notice_y := layout.content.y+layout.content.height-12
+		for layout.line_count > 0 {
+			last := layout.lines[layout.line_count-1]
+			if last.rect.y+last.rect.height+3 <= notice_y && layout.line_count < len(layout.lines) do break
+			layout.line_count -= 1
+		}
+		notice := ui_fit_text_line("More detail exceeds this viewport.", layout.content.width-1, 12, 12, measure)
+		layout.lines[layout.line_count] = {notice.text, {layout.content.x,notice_y,layout.content.width-1,12}, 12, COLOR_TEXT_DIM}
+		layout.line_count += 1
+		return layout
 	}
-	line_y += 24
-	if item.affix_count > 0 {
-		ui_draw_text("AFFIXES",left,line_y,11,COLOR_TITLE)
-		line_y += 16
-		for i in 0 ..< item.affix_count {
-			ui_draw_text(fmt.ctprintf("- %s",AFFIX_DEFS[item.affixes[i].kind].name),sub,line_y,12,COLOR_TEXT_DIM)
-			line_y += 15
-		}
-	}
-	if item.attack_speed != 0 || item.cast_speed != 0 || item.move_speed != 0 || item.thorns != 0 || item.lifesteal != 0 {
-		line_y += 4
-		ui_draw_text("ROLLED STATS",left,line_y,11,COLOR_TITLE)
-		line_y += 16
-		if item.attack_speed != 0 {
-			sign: cstring = item.attack_speed > 0 ? "+" : ""
-			ui_draw_text(fmt.ctprintf("%s%.0f%% attack speed",sign,item.attack_speed*100),sub,line_y,12,COLOR_TEXT)
-			line_y += 15
-		}
-		if item.cast_speed != 0 {
-			sign: cstring = item.cast_speed > 0 ? "+" : ""
-			ui_draw_text(fmt.ctprintf("%s%.0f%% cast speed",sign,item.cast_speed*100),sub,line_y,12,COLOR_TEXT)
-			line_y += 15
-		}
-		if item.move_speed != 0 {
-			sign: cstring = item.move_speed > 0 ? "+" : ""
-			ui_draw_text(fmt.ctprintf("%s%.0f%% movement",sign,item.move_speed*100),sub,line_y,12,COLOR_TEXT)
-			line_y += 15
-		}
-		if item.thorns != 0 {
-			ui_draw_text(fmt.ctprintf("%v thorns",item.thorns),sub,line_y,12,COLOR_TEXT)
-			line_y += 15
-		}
-		if item.lifesteal != 0 {
-			ui_draw_text(fmt.ctprintf("%.0f%% lifesteal",item.lifesteal*100),sub,line_y,12,COLOR_TEXT)
-			line_y += 15
-		}
-	}
-	for effect in Proc_Effect {
-		if effect == .None || (!item.proc_effects[effect] && item.proc_effect != effect) do continue
-		chance: cstring = ""
-		if item.proc_chance > 0 && item.proc_chance < 1 do chance = fmt.ctprintf("  %.0f%%",item.proc_chance*100)
-		ui_draw_text(fmt.ctprintf("Proc: %s%s",PROC_EFFECT_NAMES[effect],chance),left,line_y,12,COLOR_TEXT)
-		line_y += 15
-	}
-	for bonus in Skill_Bonus {
-		if !item.skill_bonuses[bonus] do continue
-		ui_draw_text(fmt.ctprintf("Skill: %s",SKILL_BONUS_NAMES[bonus]),left,line_y,12,COLOR_TEXT)
-		line_y += 15
-	}
-	if item.cursed {
-		ui_draw_text("Cursed bargain: stronger, slower handling.",left,min(y+h-28,line_y+4),12,rl.Color{214,92,150,255})
+}
+
+@(private = "file")
+draw_item_detail_panel :: proc(assets: ^Assets, item: Item, inventory: rl.Rectangle, equipped: bool) {
+	layout := inventory_detail_layout(item, inventory, ui_design_height(), equipped, ui_measure_text_string)
+	draw_menu_panel_chrome(assets, layout.panel)
+	ui_begin_content_clip(layout.content)
+	defer rl.EndScissorMode()
+	draw_item_icon(assets, item, layout.icon, rl.WHITE)
+	for line in layout.lines[:layout.line_count] {
+		ui_draw_text(fmt.ctprintf("%s", line.text), i32(math.ceil(line.rect.x)), i32(line.rect.y), line.font, line.color)
 	}
 }
 
@@ -2350,69 +2514,68 @@ draw_item_icon :: proc(assets: ^Assets,item: Item,target: rl.Rectangle,tint:=rl.
 	return true
 }
 
+Inventory_Item_Line_Text :: struct {
+	name, stat, affixes: string,
+}
+
+inventory_item_line_text :: proc(item: Item, present: bool, slot_hint: string) -> (text: Inventory_Item_Line_Text) {
+	if !present do return {name = fmt.tprintf("- no %s -", slot_hint)}
+	text.name = fmt.tprintf("%s%s", item.cursed && !item.unidentified ? "! " : "", item_display_name(item))
+	if item.unidentified do return
+	#partial switch item.kind {
+	case .Weapon: text.stat = fmt.tprintf("pow %v", item_power(item))
+	case .Armor:  text.stat = fmt.tprintf("def %v", item_defense(item))
+	}
+	switch item.affix_count {
+	case 0:
+	case 1:
+		text.affixes = AFFIX_DEFS[item.affixes[0].kind].name
+	case 2:
+		text.affixes = fmt.tprintf("%s, %s", AFFIX_DEFS[item.affixes[0].kind].name, AFFIX_DEFS[item.affixes[1].kind].name)
+	case:
+		text.affixes = fmt.tprintf("%s, %s, %s", AFFIX_DEFS[item.affixes[0].kind].name, AFFIX_DEFS[item.affixes[1].kind].name, AFFIX_DEFS[item.affixes[2].kind].name)
+	}
+	return
+}
+
+Inventory_Item_Line_Layout :: struct {
+	icon, name, stat, affixes: rl.Rectangle,
+}
+
+// The power/defense column owns measured space before the name is fitted. The
+// second line can use the full rail; neither line may enter an authored endcap.
+inventory_item_line_layout :: proc(content: rl.Rectangle, has_icon, has_affixes: bool, stat_width: f32) -> Inventory_Item_Line_Layout {
+	left := min(content.x+content.width, content.x+(has_icon ? f32(34) : f32(0)))
+	right := content.x+content.width
+	available := max(f32(0), right-left)
+	reserved_stat := clamp(stat_width, f32(0), available*.45)
+	gap := reserved_stat > 0 ? min(f32(8), available-reserved_stat) : f32(0)
+	name_y := content.y+(content.height-(has_affixes ? f32(29) : f32(16)))*.5
+	return {
+		icon = {content.x, content.y+(content.height-28)*.5, 28, 28},
+		name = {left, name_y, max(f32(0), available-reserved_stat-gap), 16},
+		stat = {right-reserved_stat, name_y+1, reserved_stat, 14},
+		affixes = {left, name_y+17, available, 12},
+	}
+}
+
 @(private = "file")
-draw_item_line :: proc(
-	assets:^Assets,
-	x, y: i32,
-	item: Item,
-	present: bool,
-	slot_hint: string,
-	selected: bool,
-	content_right: i32 = 0,
-) {
-	clip_to_content := content_right > x
-	if clip_to_content {
-		presentation := ui_presentation()
-		rl.BeginScissorMode(
-			i32(f32(x)*presentation.scale),
-			i32(f32(y-5)*presentation.scale),
-			max(1,i32(f32(content_right-x)*presentation.scale)),
-			max(1,i32(f32(40)*presentation.scale)),
-		)
-	}
-	defer {
-		if clip_to_content do rl.EndScissorMode()
-	}
+draw_item_line :: proc(assets: ^Assets, content: rl.Rectangle, item: Item, present: bool, slot_hint: string, selected: bool) {
+	ui_begin_content_clip(content)
+	defer rl.EndScissorMode()
+	text := inventory_item_line_text(item, present, slot_hint)
 	if !present {
-		ui_draw_text(fmt.ctprintf("- no %s -", slot_hint), x, y + 4, 14, COLOR_TEXT_DIM)
+		ui_draw_text_fitted_left(text.name, {content.x,content.y+(content.height-14)*.5,content.width,14}, 14, 12, COLOR_TEXT_DIM)
 		return
 	}
-	visible_rarity := item_visible_rarity(item)
-	color := rl.Color(RARITIES[visible_rarity].color)
-	name := item_display_name(item)
-	text_x:=x
-	if draw_item_icon(assets,item,{f32(x),f32(y-5),28,28},rl.WHITE) do text_x+=34
-	// Affixed items carry a second line; lift the pair so both stay centered
-	// around the icon instead of the affix spilling past a bag row's bottom.
-	name_y := !item.unidentified && item.affix_count > 0 ? y - 4 : y
-	ui_draw_text(fmt.ctprintf("%s%s", item.cursed && !item.unidentified ? "! " : "", name), text_x, name_y, 16, color)
-
-	if item.unidentified do return
-	stat: cstring
-	#partial switch item.kind {
-	case .Weapon:
-		stat = fmt.ctprintf("pow %v", item_power(item))
-	case .Armor:
-		stat = fmt.ctprintf("def %v", item_defense(item))
-	}
-	if stat != "" {
-		stat_x := x+220
-		if content_right > x do stat_x = min(stat_x,content_right-ui_measure_text(stat,14))
-		ui_draw_text(stat,stat_x,name_y+1,14,COLOR_TEXT)
-	}
-
-	if item.affix_count > 0 {
-		affix_text: cstring
-		switch item.affix_count {
-		case 1:
-			affix_text = fmt.ctprintf("%s", AFFIX_DEFS[item.affixes[0].kind].name)
-		case 2:
-			affix_text = fmt.ctprintf("%s, %s", AFFIX_DEFS[item.affixes[0].kind].name, AFFIX_DEFS[item.affixes[1].kind].name)
-		case:
-			affix_text = fmt.ctprintf("%s, %s, %s", AFFIX_DEFS[item.affixes[0].kind].name, AFFIX_DEFS[item.affixes[1].kind].name, AFFIX_DEFS[item.affixes[2].kind].name)
-		}
-		ui_draw_text(affix_text, text_x, name_y + 17, 12, selected ? COLOR_TEXT : COLOR_TEXT_DIM)
-	}
+	icon := rl.Rectangle{content.x,content.y+(content.height-28)*.5,28,28}
+	has_icon := draw_item_icon(assets, item, icon, rl.WHITE)
+	stat_width := text.stat != "" ? f32(ui_measure_text_string(text.stat,14))+1 : f32(0)
+	layout := inventory_item_line_layout(content, has_icon, text.affixes != "", stat_width)
+	color := rl.Color(RARITIES[item_visible_rarity(item)].color)
+	ui_draw_text_fitted_left(text.name, layout.name, 16, 12, color)
+	if text.stat != "" do ui_draw_text_fitted_left(text.stat, layout.stat, 14, 11, COLOR_TEXT)
+	if text.affixes != "" do ui_draw_text_fitted_left(text.affixes, layout.affixes, 12, 11, selected ? COLOR_TEXT : COLOR_TEXT_DIM)
 }
 
 // --- MX-story modal ---------------------------------------------------------
@@ -3079,12 +3242,12 @@ story_ui_add_text_line :: proc(
 }
 
 @(private = "file")
-story_ui_long_word_end :: proc(text: string, start, end: int, width: f32, font: i32) -> int {
+story_ui_long_word_end :: proc(text: string, start, end: int, width: f32, font: i32, measure: UI_Text_Measure) -> int {
 	cursor := start
 	last := start
 	for cursor < end {
 		next := min(end, cursor + max(1, story_ui_utf8_width(text, cursor)))
-		measured := ui_measure_text(fmt.ctprintf("%s", text[start:next]), font)
+		measured := measure(text[start:next], font)
 		if f32(measured) > width && last > start do break
 		last = next
 		cursor = next
@@ -3093,12 +3256,14 @@ story_ui_long_word_end :: proc(text: string, start, end: int, width: f32, font: 
 	return max(start + 1, last)
 }
 
-@(private = "file")
+// Inject measurement for headless layout tests; production uses the same
+// uppercase font metrics as drawing, including the small-font tracking.
 story_ui_wrap_text :: proc(
 	text: string,
 	width: f32,
 	font: i32,
 	lines: ^[STORY_UI_MAX_TEXT_LINES]Story_UI_Text_Line,
+	measure: UI_Text_Measure = ui_measure_text_string,
 ) -> (count: int) {
 	cursor := 0
 	for cursor < len(text) && count < len(lines^) {
@@ -3129,7 +3294,7 @@ story_ui_wrap_text :: proc(
 				scan += max(1, story_ui_utf8_width(text, scan))
 			}
 			word_end := scan
-			measured := ui_measure_text(fmt.ctprintf("%s", text[line_start:word_end]), font)
+			measured := measure(text[line_start:word_end], font)
 			if f32(measured) <= width {
 				line_end = word_end
 				continue
@@ -3140,7 +3305,7 @@ story_ui_wrap_text :: proc(
 				emitted = true
 				break
 			}
-			split := story_ui_long_word_end(text, line_start, word_end, width, font)
+			split := story_ui_long_word_end(text, line_start, word_end, width, font, measure)
 			_ = story_ui_add_text_line(lines, &count, text, line_start, split)
 			cursor = split
 			emitted = true
@@ -3670,26 +3835,47 @@ ui_measure_text :: proc(text: cstring, size: i32) -> i32 {
 	return i32(rl.MeasureTextEx(ui_active_font, uppercase, ui_scaled_text_size(size), ui_text_spacing(size)).x + .5)
 }
 
-// Draw centered on center_x, shrinking from size down to min_size until the
-// line fits max_width. Panels with player-driven strings (names, ledgers,
-// notable loot) use this so text cannot escape their chrome by construction.
-ui_draw_text_fitted_centered :: proc(text: cstring, center_x, y, size, min_size, max_width: i32, color: rl.Color) {
-	fitted := size
-	for fitted > min_size && ui_measure_text(text, fitted) > max_width do fitted -= 1
-	final := text
-	if ui_measure_text(final, fitted) > max_width {
-		// Even the size floor overflows (three long notable finds can): keep
-		// the floor readable and ellipsize instead, backing up to a rune
-		// start so a split UTF-8 sequence never reaches the renderer.
-		full := string(text)
-		for keep := len(full) - 1; keep > 1; keep -= 1 {
-			for keep > 1 && (full[keep] & 0xC0) == 0x80 do keep -= 1
-			candidate := fmt.ctprintf("%s...", full[:keep])
-			if ui_measure_text(candidate, fitted) <= max_width {
-				final = candidate
-				break
-			}
-		}
+UI_Text_Measure :: proc(text: string, size: i32) -> i32
+
+@(private = "file")
+ui_measure_text_string :: proc(text: string, size: i32) -> i32 {
+	return ui_measure_text(fmt.ctprintf("%s", text), size)
+}
+
+UI_Fitted_Text :: struct {
+	text: string, // borrows input, or uses the frame's temporary allocator
+	font: i32,
+}
+
+// Pure given a measuring function. Never return the overflowing original when
+// even an ellipsis cannot fit, and never split a UTF-8 codepoint.
+ui_fit_text_line :: proc(text: string, width: f32, preferred, minimum: i32, measure: UI_Text_Measure) -> UI_Fitted_Text {
+	font := max(minimum, preferred)
+	budget := max(0, i32(width))
+	for font > minimum && measure(text, font) > budget do font -= 1
+	if measure(text, font) <= budget do return {text, font}
+	if measure("...", font) > budget do return {"", font}
+	keep := len(text)
+	for keep > 0 {
+		keep -= 1
+		for keep > 0 && (text[keep] & 0xc0) == 0x80 do keep -= 1
+		candidate := fmt.tprintf("%s...", text[:keep])
+		if measure(candidate, font) <= budget do return {candidate, font}
 	}
-	ui_draw_text(final, center_x - ui_measure_text(final, fitted) / 2, y, fitted, color)
+	return {"...", font}
+}
+
+@(private = "file")
+ui_draw_text_fitted_left :: proc(text: string, rect: rl.Rectangle, preferred, minimum: i32, color: rl.Color) {
+	// ui_measure_text rounds to the nearest pixel; keep one extra design pixel
+	// for that rounding and fractional row-content anchors.
+	fit := ui_fit_text_line(text, rect.width-1, preferred, minimum, ui_measure_text_string)
+	ui_draw_text(fmt.ctprintf("%s", fit.text), i32(math.ceil(rect.x)), i32(rect.y), fit.font, color)
+}
+
+// Draw centered on center_x, shrinking to min_size, then ellipsizing.
+ui_draw_text_fitted_centered :: proc(text: cstring, center_x, y, size, min_size, max_width: i32, color: rl.Color) {
+	fit := ui_fit_text_line(string(text), f32(max_width), size, min_size, ui_measure_text_string)
+	final := fmt.ctprintf("%s", fit.text)
+	ui_draw_text(final, center_x - ui_measure_text(final, fit.font) / 2, y, fit.font, color)
 }

@@ -92,6 +92,12 @@ Shop_Mode :: enum {
 	Sell,
 }
 
+Inventory_Focus :: enum {
+	Bag,
+	Weapon,
+	Armor,
+}
+
 Platform_Effect :: enum {
 	Apply_Window,
 	Apply_FPS,
@@ -154,6 +160,7 @@ App :: struct {
 	shop_mode:      Shop_Mode,
 	shop_index:     int,
 	shop_scroll:    int,
+	inv_focus:      Inventory_Focus,
 	inv_index:      int,
 	inv_scroll:     int,
 	inv_sort_mode:  Inventory_Sort_Mode,
@@ -273,8 +280,11 @@ Intent :: struct {
 	toggle_minimap:        bool,
 	minimap_zoom:     int,
 	menu_delta:       int,
+	menu_scroll:      int, // list viewport rows, clamped rather than keyboard-style wrapping
 	menu_index:       int,
 	menu_index_valid: bool,
+	inv_focus:        Inventory_Focus,
+	inv_focus_valid:  bool,
 	inv_drop:         bool,
 	inv_sort:         bool,
 	inv_cycle_sort:   int,
@@ -445,6 +455,7 @@ app_init :: proc(app: ^App, seed: u64) {
 }
 
 app_reset_run_ui :: proc(app: ^App) {
+	app.inv_focus = .Bag
 	app.death_pending = false
 	app.death_timer = 0
 	app.inventory_open = false
@@ -468,6 +479,7 @@ app_reset_run_ui :: proc(app: ^App) {
 // panel or minigame. Their authored text is rebuilt from semantic state.
 app_reset_run_ui_after_restore :: proc(app: ^App) {
 	if app == nil do return
+	app.inv_focus = .Bag
 	app.death_pending = false
 	app.death_timer = 0
 	app.inventory_open = false
@@ -635,11 +647,59 @@ app_clear_play_input :: proc(app: ^App) {
 	app.mouse_press_pending = false
 }
 
+inventory_selected_item :: proc(app: ^App) -> (item: Item, found: bool) {
+	if app == nil do return
+	player := &app.run.player
+	switch app.inv_focus {
+	case .Weapon: return player.weapon, player.has_weapon
+	case .Armor:  return player.armor, player.has_armor
+	case .Bag:
+		if app.inv_index >= 0 && app.inv_index < player.bag_count do return player.bag[app.inv_index], true
+	}
+	return
+}
+
+// Bag indices stay bag-relative for number shortcuts, sorting and touch targets.
+// Only directional traversal flattens the two equipment slots above the bag.
+inventory_move_selection :: proc(app: ^App, delta: int) {
+	if delta == 0 do return
+	row := app.inv_index + 2
+	if app.inv_focus == .Weapon do row = 0
+	if app.inv_focus == .Armor do row = 1
+	row = clamp(row + delta, 0, app.run.player.bag_count + 1)
+	if row < 2 {
+		if app.inv_focus == .Bag do app.inv_index = 0
+		app.inv_focus = row == 0 ? .Weapon : .Armor
+	} else {
+		app.inv_focus = .Bag
+		app.inv_index = row - 2
+	}
+}
+
+// Wheel motion moves the viewport immediately, keeping the selected item when
+// it is still visible. Unlike keyboard navigation, scrolling never wraps.
+menu_scroll_list :: proc(index, scroll: ^int, count, visible_rows, delta: int) {
+	if delta == 0 do return
+	if count <= 0 {
+		index^ = 0
+		scroll^ = 0
+		return
+	}
+	if count <= visible_rows {
+		scroll^ = 0
+		index^ = clamp(index^ + delta, 0, count - 1)
+		return
+	}
+	scroll^ = clamp(scroll^ + delta, 0, count - visible_rows)
+	index^ = clamp(index^, scroll^, scroll^ + visible_rows - 1)
+}
+
 inventory_clamp_selection :: proc(app: ^App) {
 	n := app.run.player.bag_count
 	if n <= 0 {
 		app.inv_index = 0
 		app.inv_scroll = 0
+		if app.inv_focus == .Bag do app.inv_focus = .Weapon
 		return
 	}
 	app.inv_index = clamp(app.inv_index, 0, n - 1)
@@ -1089,10 +1149,17 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 				app.inventory_open = false
 				return false
 			}
-			if n := app.run.player.bag_count; n > 0 {
-				if intent.menu_index_valid do app.inv_index = intent.menu_index
-				app.inv_index += intent.menu_delta
-				inventory_clamp_selection(app)
+			if intent.inv_focus_valid do app.inv_focus = intent.inv_focus
+			if intent.menu_index_valid {
+				app.inv_focus = .Bag
+				app.inv_index = intent.menu_index
+			}
+			if intent.tab {
+				app.inv_focus = Inventory_Focus((int(app.inv_focus) + 1) % len(Inventory_Focus))
+			}
+			inventory_move_selection(app, intent.menu_delta)
+			inventory_clamp_selection(app)
+			if app.inv_focus == .Bag && app.run.player.bag_count > 0 {
 				if intent.confirm {
 					item_kind := app.run.player.bag[app.inv_index].kind
 					equip_attempt := item_kind == .Weapon || item_kind == .Armor
@@ -1112,8 +1179,10 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 				}
 			}
 			if intent.inv_sort_valid do app.inv_sort_mode = intent.inv_sort_mode
-			inv_cycle_sort := intent.inv_cycle_sort
-			if intent.tab do inv_cycle_sort += 1
+			// Fixed D-pad Left/Right keep sorting reachable even when the player
+			// remaps Character to X, which takes precedence over menu Interact.
+			inv_cycle_sort := intent.inv_cycle_sort + intent.menu_horizontal
+			if intent.interact do inv_cycle_sort += 1
 			if inv_cycle_sort != 0 {
 				count := len(Inventory_Sort_Mode)
 				app.inv_sort_mode = Inventory_Sort_Mode(((int(app.inv_sort_mode) + inv_cycle_sort) % count + count) % count)
@@ -1122,6 +1191,9 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 				sort_bag(&app.run.player, app.inv_sort_mode)
 				inventory_clamp_selection(app)
 			}
+			// Act on the targeted item before scrolling: trackpad inertia arriving
+			// with a click/number shortcut must not redirect use or drop.
+			menu_scroll_list(&app.inv_index, &app.inv_scroll, app.run.player.bag_count, INVENTORY_VISIBLE_ROWS, intent.menu_scroll)
 			return false
 		}
 
@@ -1202,9 +1274,13 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 					}
 					shop_clamp_selection(app)
 				}
-			} else if intent.confirm {
-				app.ui_sfx_bank = .Ui_Reject
-				app.ui_sfx_override = true
+				menu_scroll_list(&app.shop_index, &app.shop_scroll, shop_entry_count(app), SHOP_VISIBLE_ROWS, intent.menu_scroll)
+			} else {
+				shop_clamp_selection(app)
+				if intent.confirm {
+					app.ui_sfx_bank = .Ui_Reject
+					app.ui_sfx_override = true
+				}
 			}
 			return false
 		}

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Replace menu and tab rows with approved Forged iron 07 Small plates normal
+  and selected art, matching the retained panel family. Restore the original
+  Forged iron normal and selected interior colors.
+
+- Give inventory and shop item rows more vertical room and center icons/text
+  inside the item frames. Keep eight visible entries with taller panels and
+  move their footer controls below the expanded lists.
+- Import the Forged iron panel family and matching base/selected menu rows.
+  Use compact corner slices for tabs and inset cards, stable row text margins,
+  and opaque dark panel backings for readability over gameplay.
+- Keep long inventory names, affixes, and item details inside their panels with
+  measured row fitting and wrapped detail text. Preview equipped weapons/armor
+  by hovering, tapping, Tab/RB, or directional navigation; previewing never
+  equips or drops a bag item. Move sort-mode cycling to Left/Right (including
+  the D-pad), Shift+S, and controller X when available.
+- Add mouse-wheel menu navigation and immediate, bounded inventory/shop list
+  scrolling. Preserve gameplay Ctrl+wheel/minimap zoom without leaking zoom
+  through an open menu or activating an item while scrolling.
 - Preserve the 4-tile fog discovery radius while extending live sight on
   explored terrain to 5 tiles in all directions and 6 tiles within a 90-degree
   facing cone. Apply this on normal and dark floors, keep wall/door occlusion

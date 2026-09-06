@@ -369,6 +369,10 @@ platform_mobile_build_targets :: proc(runtime: ^Platform_Runtime, app: ^App) -> 
 			}
 			platform_mobile_add_target(&set, layout, 980, .Guard_Request_Transaction, mobile_center_button_rect(layout))
 		} else if app.inventory_open {
+			for focus in ([2]Inventory_Focus{.Weapon, .Armor}) {
+				platform_mobile_add_target(&set, layout, 1040 + int(focus), .Inventory_Equipment,
+					platform_mobile_rect_from_design(inventory_equipped_rect(focus)), index = int(focus))
+			}
 			for mode in Inventory_Sort_Mode {
 				platform_mobile_add_target(&set, layout, 1000 + int(mode), .Inventory_Sort,
 					platform_mobile_rect_from_design(inventory_sort_chip_rect(mode)), index = int(mode))
@@ -379,10 +383,11 @@ platform_mobile_build_targets :: proc(runtime: ^Platform_Runtime, app: ^App) -> 
 					platform_mobile_rect_from_design(inventory_row_rect(row)), index = app.inv_scroll + row)
 			}
 			confirm, drop := mobile_guard_button_rects(layout)
+			bag_selected := app.inv_focus == .Bag && app.run.player.bag_count > 0
 			platform_mobile_add_target(&set, layout, 1030, .Menu_Activate, confirm, index = app.inv_index,
-				enabled = app.run.player.bag_count > 0)
+				enabled = bag_selected)
 			platform_mobile_add_target(&set, layout, 1031, .Guard_Request_Drop, drop,
-				enabled = app.run.player.bag_count > 0)
+				enabled = bag_selected)
 		} else if app_story_world_minigame_active(app) {
 			set = mobile_soul_hunt_target_set(layout,context_key,app.mobile_utility_open)
 		} else {
@@ -411,7 +416,7 @@ platform_touch_snapshot :: proc() -> Mobile_Touch_Snapshot {
 }
 
 platform_intent_has_navigation :: proc(intent: Intent) -> bool {
-	return intent.menu_delta != 0 || intent.menu_horizontal != 0 || intent.menu_index_valid ||
+	return intent.menu_delta != 0 || intent.menu_scroll != 0 || intent.menu_horizontal != 0 || intent.menu_index_valid || intent.inv_focus_valid ||
 		intent.confirm || intent.back || intent.tab
 }
 
@@ -423,7 +428,7 @@ platform_mobile_apply_guard :: proc(app: ^App, intent: ^Intent, context_key: Mob
 	}
 	switch intent.mobile_guard_request {
 	case .Inventory_Drop:
-		if app.inventory_open && app.run.player.bag_count > 0 {
+		if app.inventory_open && app.inv_focus == .Bag && app.run.player.bag_count > 0 {
 			app.mobile_guard = {.Inventory_Drop, app.inv_index, context_key}
 		}
 	case .Shop_Transaction:
