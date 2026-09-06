@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tools.windows import audit
+from tools.windows import build as windows_build
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,6 +34,31 @@ def fixture_pe(*, machine=0x8664, dll=False, dependency='KERNEL32.dll') -> bytes
 
 
 class WindowsAuditTests(unittest.TestCase):
+    def test_build_uses_git_bash_when_wsl_bash_is_first_on_path(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            wsl = root / 'Windows/System32/bash.exe'
+            wsl.parent.mkdir(parents=True)
+            wsl.touch()
+            installation = root / 'Program Files/Git'
+            git = installation / 'cmd/git.exe'
+            git.parent.mkdir(parents=True)
+            git.touch()
+            bash = installation / 'bin/bash.exe'
+            bash.parent.mkdir(parents=True)
+            bash.touch()
+            with patch.object(windows_build.shutil, 'which', side_effect=lambda name: str(git if name == 'git' else wsl)), \
+                 patch.object(windows_build, 'ROOT', root), \
+                 patch.object(windows_build, 'verify_raylib'), \
+                 patch.object(windows_build, 'pe_imports'), \
+                 patch.object(windows_build.subprocess, 'run') as run:
+                windows_build.build()
+                self.assertEqual(run.call_args_list[0].args[0], [str(bash), 'tools/verify_toolchain.sh', 'odin'])
+                self.assertEqual(run.call_args_list[1].args[0][0:3], ['odin', 'build', 'src'])
+                bash.unlink()
+                with self.assertRaisesRegex(SystemExit, 'Git for Windows Bash was not found'):
+                    windows_build.git_bash()
+
     @unittest.skipIf(os.name == 'nt', 'fake POSIX executables model Git Bash output')
     def test_wrapper_uses_native_test_extension_and_preserves_arguments(self):
         with tempfile.TemporaryDirectory() as temp:

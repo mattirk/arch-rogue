@@ -10,12 +10,28 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from audit import ROOT, audit_bundle, pe_imports, verify_raylib
+if __package__:
+    from .audit import ROOT, audit_bundle, pe_imports, verify_raylib
+else:
+    from audit import ROOT, audit_bundle, pe_imports, verify_raylib
+
+
+def git_bash() -> str:
+    # Native Python's PATH lookup for "bash" may select System32's WSL
+    # launcher even when the parent process is Git Bash. Use Git's own shell.
+    git = shutil.which('git')
+    if git:
+        for directory in Path(git).resolve().parents:
+            for relative in ('bin/bash.exe', 'usr/bin/bash.exe'):
+                candidate = directory / relative
+                if candidate.is_file():
+                    return str(candidate)
+    raise SystemExit('Git for Windows Bash was not found beside git.exe; install Git for Windows and put its git.exe on PATH')
 
 
 def build() -> None:
     verify_raylib()
-    subprocess.run(['bash', 'tools/verify_toolchain.sh', 'odin'], cwd=ROOT, check=True)
+    subprocess.run([git_bash(), 'tools/verify_toolchain.sh', 'odin'], cwd=ROOT, check=True)
     output = ROOT / 'build/windows/archrogue.exe'
     output.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(['odin', 'build', 'src', f'-out:{output}', '-target:windows_amd64', '-vet', '-o:speed'], cwd=ROOT, check=True)

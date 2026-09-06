@@ -20,6 +20,9 @@ Run from Git Bash on a Windows machine with Odin and the VS x64 tools on PATH:
 ./build.sh windows-audit --bundle build/windows/package/arch-rogue
 ```
 
+The Python build helper resolves Bash from the Git for Windows installation
+that supplies `git.exe`. It does not require a WSL distribution.
+
 `test` treats allocator errors as failures on every platform. Windows tests
 reserve an 8 MiB stack for nested persistence fixtures and log test state
 transitions so an abrupt native exit can be traced to the active tests. This
