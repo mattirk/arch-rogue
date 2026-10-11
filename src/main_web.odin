@@ -128,7 +128,13 @@ web_temp_allocator_proc :: proc(
 	switch mode {
 	case .Alloc, .Alloc_Non_Zeroed, .Resize, .Resize_Non_Zeroed:
 		if size <= 0 do return nil, nil
-		aligned := (arena.offset + alignment - 1) & ~(alignment - 1)
+		// Align the absolute address, not the offset: the buffer itself is not
+		// guaranteed to start on a 64-byte boundary, and Odin's map allocator
+		// panics on a cache-line-misaligned block (first hit 2026-10-11 by the
+		// co-op JSON parser into a temp map on the web build).
+		align := max(alignment, 1)
+		base := uintptr(raw_data(arena.buffer[:]))
+		aligned := int(((base + uintptr(arena.offset) + uintptr(align) - 1) & ~(uintptr(align) - 1)) - base)
 		if aligned + size > len(arena.buffer) do return nil, .Out_Of_Memory
 		bytes := arena.buffer[aligned:aligned+size]
 		arena.offset = aligned + size

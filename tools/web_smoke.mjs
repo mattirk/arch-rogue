@@ -11,6 +11,7 @@
 //        [--dist build/web/dist] [--entry-path /index.html] [--port 8097]
 
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
@@ -65,11 +66,11 @@ function consoleDefects(page) {
   return bad.concat(page.sessionPageErrors.map((text) => ({ type: 'pageerror', text })));
 }
 
-async function bootPage(browser) {
+async function bootPage(browser, query = '') {
   const page = await browser.openPage();
   currentPage = page;
   await page.setViewport(1280, 720);
-  await page.navigate(baseUrl);
+  await page.navigate(baseUrl + query);
   await page.waitForConsole(/ARCH_ROGUE_READY/, { timeoutMs: 180000 });
   await page.waitFor('document.getElementById("ar-loading").hidden', { label: 'loading overlay hidden' });
   return page;
@@ -274,6 +275,39 @@ try {
     defects.slice(0, 3).map((d) => `${d.type}: ${d.text.slice(0, 120)}`).join(' | ') || 'no defects');
 
   await page.screenshot(path.join(evidenceDir, 'smoke-final.png'));
+
+  // --- co-op: host a room against a local relay -----------------------------
+  // Title -> Co-op -> Host -> consent must reach the lobby with a clean
+  // console. The 2026-10-11 regression (temp-arena misalignment panicking in
+  // the JSON parser's map) only showed up on this path.
+  const relayBinary = path.join(repoRoot, 'build/archrogue_relay');
+  if (!existsSync(relayBinary)) {
+    record('coop-host-lobby', false, 'build/archrogue_relay missing; run ./build.sh relay');
+  } else {
+    const relayPort = port + 1;
+    const relay = spawn(relayBinary, ['--port', String(relayPort), '--origins', `http://127.0.0.1:${port}`], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      page = await bootPage(browser, `?relay=${encodeURIComponent(`ws://127.0.0.1:${relayPort}/mp`)}`);
+      await page.click(20, 700);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await page.waitFor('JSON.parse(UTF8ToString(Module._ar_web_smoke_probe())).mode === "Title"',
+        { timeoutMs: 10000, label: 'title before co-op' });
+      for (const key of ['ArrowDown', 'Enter', 'Enter', 'Enter']) { // Co-op row, Host, accept consent
+        await page.key(key, key, key === 'Enter' ? 13 : 40);
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      }
+      await page.waitFor('JSON.parse(UTF8ToString(Module._ar_web_smoke_probe())).mode === "Coop_Lobby"',
+        { timeoutMs: 15000, label: 'co-op lobby after hosting' });
+      const coopDefects = consoleDefects(page);
+      record('coop-host-lobby', coopDefects.length === 0,
+        coopDefects.slice(0, 3).map((d) => `${d.type}: ${d.text.slice(0, 160)}`).join(' | ') || 'hosted a room, lobby reached, no defects');
+    } finally {
+      relay.kill();
+    }
+  }
 } catch (error) {
   record('harness', false, String(error).slice(0, 300));
   if (currentPage) {
