@@ -111,11 +111,11 @@ mx7_player_tick_projects_facing_through_isometric_space :: proc(t: ^testing.T) {
 	testing.expect(t,down_shown && mx7_near(down.x,center.x) && mx7_near(down.y,center.y+ar.MINIMAP_PLAYER_TICK_REACH),"diagonal facing should point straight down in iso space")
 
 	app: ar.App
-	app.run.player.pos={12.5,12.5}
+	app.run.players[0].pos={12.5,12.5}
 	for x in 11..=13 do for y in 11..=13 do app.run.visible[x][y]=true
-	testing.expect(t,ar.effect_fallback_compact_visible(&app,app.run.player.pos),"fully visible compact cue was rejected")
+	testing.expect(t,ar.effect_fallback_compact_visible(&app,app.run.players[0].pos),"fully visible compact cue was rejected")
 	app.run.visible[11][11]=false
-	testing.expect(t,!ar.effect_fallback_compact_visible(&app,app.run.player.pos),"compact fallback accepted a footprint crossing LOS")
+	testing.expect(t,!ar.effect_fallback_compact_visible(&app,app.run.players[0].pos),"compact fallback accepted a footprint crossing LOS")
 }
 
 @(test)

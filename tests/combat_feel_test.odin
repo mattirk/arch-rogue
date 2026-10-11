@@ -20,13 +20,13 @@ feel_arena :: proc(run: ^ar.Run, seed: u64) {
 	}
 	run.dungeon.bar_furnishings = {}
 	run.hitstop_ticks = 0
-	run.player.pos = {10.5, 10.5}
-	run.player.prev_pos = run.player.pos
-	run.player.facing = {1, 0}
-	run.player.hp = 500
-	run.player.max_hp = 500
-	run.player.stamina = 200
-	run.player.max_stamina = 200
+	run.players[0].pos = {10.5, 10.5}
+	run.players[0].prev_pos = run.players[0].pos
+	run.players[0].facing = {1, 0}
+	run.players[0].hp = 500
+	run.players[0].max_hp = 500
+	run.players[0].stamina = 200
+	run.players[0].max_stamina = 200
 	clear(&run.enemies)
 	clear(&run.projectiles)
 	clear(&run.familiars)
@@ -66,13 +66,13 @@ feel_player_cannot_walk_over_wall_pinned_enemy :: proc(t: ^testing.T) {
 	// and can absorb no more separation. Before the player-side contact half
 	// was restored, four seconds of walking ended standing on top of it.
 	append(&run.enemies, feel_grunt({18.5, 11.5}))
-	run.player.pos = {16.5, 11.5}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = {16.5, 11.5}
+	run.players[0].prev_pos = run.players[0].pos
 	for _ in 0 ..< 240 do ar.sim_tick(&run, {1, 0})
 	contact := f32(ar.PLAYER_HIT_RADIUS) + ar.ENEMY_HIT_RADIUS
-	gap := feel_gap(run.player.pos, run.enemies[0].pos)
+	gap := feel_gap(run.players[0].pos, run.enemies[0].pos)
 	testing.expect(t, gap >= contact - 0.03, "the player must stop at body contact instead of walking over the pinned enemy")
-	testing.expect(t, run.player.pos.x < run.enemies[0].pos.x, "the player must stay on the near side of the pinned enemy")
+	testing.expect(t, run.players[0].pos.x < run.enemies[0].pos.x, "the player must stay on the near side of the pinned enemy")
 }
 
 @(test)
@@ -88,9 +88,9 @@ feel_player_cannot_walk_over_friendly_npcs :: proc(t: ^testing.T) {
 		run.ambient_residents = {}
 		clear(&run.story_runtime.guests)
 		run.story_runtime.soul = {}
-		run.player.pos = {10.5, 10.5}
-		run.player.prev_pos = run.player.pos
-		run.player.facing = {1, 0}
+		run.players[0].pos = {10.5, 10.5}
+		run.players[0].prev_pos = run.players[0].pos
+		run.players[0].facing = {1, 0}
 		body_pos: ^ar.Vec2
 		switch kind {
 		case 0:
@@ -124,9 +124,9 @@ feel_player_cannot_walk_over_friendly_npcs :: proc(t: ^testing.T) {
 		}
 
 		for _ in 0 ..< 180 do ar.sim_tick(&run, {1, 0})
-		gap := feel_gap(run.player.pos, body_pos^)
+		gap := feel_gap(run.players[0].pos, body_pos^)
 		testing.expectf(t, gap >= contact - 0.03, "the player walked over the %s", label)
-		testing.expectf(t, run.player.pos.x < body_pos.x, "the player crossed through the %s", label)
+		testing.expectf(t, run.players[0].pos.x < body_pos.x, "the player crossed through the %s", label)
 	}
 }
 
@@ -136,11 +136,11 @@ feel_dash_never_lands_inside_an_enemy_body :: proc(t: ^testing.T) {
 	feel_arena(&run, 9402)
 	defer ar.run_destroy(&run)
 	append(&run.enemies, feel_grunt({12.5, 10.5}))
-	start := run.player.pos
-	testing.expect(t, ar.player_dash(&run, {1, 0}), "the test dash must fire")
-	testing.expect(t, run.player.pos != start, "the dash must move the player")
+	start := run.players[0].pos
+	testing.expect(t, ar.player_dash(&run, 0, {1, 0}), "the test dash must fire")
+	testing.expect(t, run.players[0].pos != start, "the dash must move the player")
 	contact := f32(ar.PLAYER_HIT_RADIUS) + ar.ENEMY_HIT_RADIUS
-	gap := feel_gap(run.player.pos, run.enemies[0].pos)
+	gap := feel_gap(run.players[0].pos, run.enemies[0].pos)
 	testing.expect(t, gap >= contact - 0.03, "a dash may pass through a body but never terminate inside it")
 }
 
@@ -154,9 +154,9 @@ feel_dash_never_lands_inside_a_friendly_npc :: proc(t: ^testing.T) {
 	run.shopkeeper.prev_pos = run.shopkeeper.pos
 	run.shopkeeper.motion.room_index = -1
 
-	testing.expect(t, ar.player_dash(&run, {1, 0}), "the test dash must fire")
+	testing.expect(t, ar.player_dash(&run, 0, {1, 0}), "the test dash must fire")
 	contact := f32(ar.PLAYER_HIT_RADIUS) + ar.ROOM_NPC_RADIUS
-	gap := feel_gap(run.player.pos, run.shopkeeper.pos)
+	gap := feel_gap(run.players[0].pos, run.shopkeeper.pos)
 	testing.expect(t, gap >= contact - 0.03, "a dash must not terminate inside a friendly NPC")
 }
 
@@ -168,19 +168,19 @@ feel_basic_swing_plants_the_player :: proc(t: ^testing.T) {
 	// Guard the tuning invariant: the plant must expire before the fastest
 	// melee cooldown (0.20 floor) or held attacks would never walk again.
 	testing.expect(t, f32(ar.MELEE_COMMIT_SECONDS) < 0.20, "plant window must stay under the melee cooldown floor")
-	ar.player_melee(&run, {1, 0}) // a whiff commits exactly like a hit
-	testing.expect(t, run.player.melee_commit_timer > 0, "a swing must open its plant window")
-	planted := run.player.pos
+	ar.player_melee(&run, 0, {1, 0}) // a whiff commits exactly like a hit
+	testing.expect(t, run.players[0].melee_commit_timer > 0, "a swing must open its plant window")
+	planted := run.players[0].pos
 	locked_ticks := 0
-	for run.player.melee_commit_timer > 0 && locked_ticks <= 60 {
+	for run.players[0].melee_commit_timer > 0 && locked_ticks <= 60 {
 		ar.sim_tick(&run, {0, 1})
 		locked_ticks += 1
 	}
 	testing.expect(t, locked_ticks > 1 && locked_ticks <= 60, "the plant must span several ticks and expire")
-	testing.expect(t, run.player.pos == planted, "walk input during the plant window must not move the player")
-	testing.expect(t, run.player.facing == ar.Vec2{1, 0}, "the plant window must hold the swing's aim facing")
+	testing.expect(t, run.players[0].pos == planted, "walk input during the plant window must not move the player")
+	testing.expect(t, run.players[0].facing == ar.Vec2{1, 0}, "the plant window must hold the swing's aim facing")
 	ar.sim_tick(&run, {0, 1})
-	testing.expect(t, run.player.pos != planted, "movement must resume once the plant expires")
+	testing.expect(t, run.players[0].pos != planted, "movement must resume once the plant expires")
 }
 
 @(test)
@@ -189,18 +189,18 @@ feel_connected_swing_freezes_the_sim :: proc(t: ^testing.T) {
 	feel_arena(&run, 9404)
 	defer ar.run_destroy(&run)
 	append(&run.enemies, feel_grunt({11.5, 10.5}))
-	ar.player_melee(&run, {1, 0})
+	ar.player_melee(&run, 0, {1, 0})
 	testing.expect(t, run.enemies[0].hp < 200, "the swing must connect")
 	testing.expect(t, run.hitstop_ticks == ar.HITSTOP_HIT_TICKS, "a connected non-lethal swing queues the standard freeze")
-	cooldown := run.player.melee_timer
+	cooldown := run.players[0].melee_timer
 	enemy_before := run.enemies[0].pos
 	for _ in 0 ..< ar.HITSTOP_HIT_TICKS do ar.sim_tick(&run, {0, 1})
-	testing.expect(t, run.player.pos == ar.Vec2{10.5, 10.5}, "frozen ticks must not move the player")
+	testing.expect(t, run.players[0].pos == ar.Vec2{10.5, 10.5}, "frozen ticks must not move the player")
 	testing.expect(t, run.enemies[0].pos == enemy_before, "frozen ticks must not integrate enemy knockback")
-	testing.expect(t, run.player.melee_timer == cooldown, "frozen ticks must not advance combat clocks")
+	testing.expect(t, run.players[0].melee_timer == cooldown, "frozen ticks must not advance combat clocks")
 	testing.expect(t, run.hitstop_ticks == 0, "the freeze must last exactly its queued ticks")
 	ar.sim_tick(&run, {0, 1})
-	testing.expect(t, run.player.melee_timer < cooldown, "combat clocks must resume the tick after the freeze")
+	testing.expect(t, run.players[0].melee_timer < cooldown, "combat clocks must resume the tick after the freeze")
 }
 
 @(test)
@@ -212,7 +212,7 @@ feel_ordinary_knockback_does_not_pause_enemy_windup :: proc(t: ^testing.T) {
 	enemy := &run.enemies[0]
 	ar.enemy_begin_windup(enemy, ar.ENEMY_MELEE_WINDUP, ar.PENDING_BASE_ATTACK, {-1, 0})
 
-	ar.player_melee(&run, {1, 0})
+	ar.player_melee(&run, 0, {1, 0})
 	testing.expect(t, enemy.knockback_vel != {}, "an ordinary connected swing must retain its physical nudge")
 	for _ in 0 ..< ar.HITSTOP_HIT_TICKS do ar.sim_tick(&run, {})
 	windup_before := enemy.windup
@@ -230,7 +230,7 @@ feel_lethal_swing_freezes_longer :: proc(t: ^testing.T) {
 	dying := feel_grunt({11.5, 10.5})
 	dying.hp = 1
 	append(&run.enemies, dying)
-	ar.player_melee(&run, {1, 0})
+	ar.player_melee(&run, 0, {1, 0})
 	testing.expect(t, run.enemies[0].hp <= 0, "the 1 hp grunt must die to the swing")
 	testing.expect(t, run.hitstop_ticks == ar.HITSTOP_HEAVY_TICKS, "a killing swing holds the freeze a beat longer")
 }

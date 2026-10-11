@@ -49,7 +49,7 @@ all_thirteen_uniques_construct_faithfully :: proc(t: ^testing.T) {
 unique_stat_hooks_apply :: proc(t: ^testing.T) {
 	run := mx5_run(41, .Warden)
 	defer ar.run_destroy(&run)
-	player := &run.player
+	player := &run.players[0]
 
 	// Unarmed/unarmored baselines so the starter gear doesn't skew the math.
 	player.has_weapon = false
@@ -84,7 +84,7 @@ unique_stat_hooks_apply :: proc(t: ^testing.T) {
 unique_combat_hooks_fire :: proc(t: ^testing.T) {
 	run := mx5_run(43, .Rogue)
 	defer ar.run_destroy(&run)
-	player := &run.player
+	player := &run.players[0]
 	rng := ar.rng_make(9, 2)
 
 	// Emberbrand guarantees the ignite rider on non-fire hits.
@@ -96,7 +96,7 @@ unique_combat_hooks_fire :: proc(t: ^testing.T) {
 	victim.resistances = {}
 	ar.enemy_ensure_id(&run, &victim)
 	append(&run.enemies, victim)
-	_ = ar.player_damage_enemy(&run, &run.enemies[0], 10, .Physical)
+	_ = ar.player_damage_enemy(&run, 0, &run.enemies[0], 10, .Physical)
 	testing.expect(t, run.enemies[0].statuses[.Burning] > 0, "embers on hit must ignite")
 
 	// Foxstep Leathers vanish on dash.
@@ -105,7 +105,7 @@ unique_combat_hooks_fire :: proc(t: ^testing.T) {
 	player.statuses[.Smoke] = 0
 	player.stamina = f32(player.max_stamina)
 	player.dash_timer = 0
-	testing.expect(t, ar.player_dash(&run, {1, 0}), "dash must fire")
+	testing.expect(t, ar.player_dash(&run, 0, {1, 0}), "dash must fire")
 	testing.expect(t, player.statuses[.Smoke] > 0, "vanish on dash grants Smoke")
 
 	// Nightglass smoke crits: eligible rolls eventually land at x1.80.
@@ -113,7 +113,7 @@ unique_combat_hooks_fire :: proc(t: ^testing.T) {
 	player.statuses[.Smoke] = 5
 	landed := false
 	for _ in 0 ..< 64 {
-		critical, multiplier := ar.maybe_smoke_crit(&run, false, 1)
+		critical, multiplier := ar.maybe_smoke_crit(&run, 0, false, 1)
 		if critical {
 			landed = true
 			testing.expect(t, multiplier == 1.80, "smoke crit multiplier is 1.80")
@@ -122,17 +122,17 @@ unique_combat_hooks_fire :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, landed, "smoke crit must land within 64 eligible swings")
 	player.statuses[.Smoke] = 0
-	critical, _ := ar.maybe_smoke_crit(&run, false, 1)
+	critical, _ := ar.maybe_smoke_crit(&run, 0, false, 1)
 	testing.expect(t, !critical, "no smoke, no smoke crit")
 
 	// Glacial ward / pack pursuit punish melee attackers.
 	player.armor = ar.make_unique_from_def(&rng, &ar.UNIQUE_DEFS[8]) // Blizzard Mantle
 	attacker := &run.enemies[0]
 	attacker.hp = attacker.max_hp
-	_ = ar.damage_player_typed(&run, 10, .Physical, melee = true, attacker = attacker, evadable = false)
+	_ = ar.damage_player_typed(&run, 0, 10, .Physical, melee = true, attacker = attacker, evadable = false)
 	testing.expect(t, attacker.statuses[.Chilled] > 0, "glacial ward chills melee attackers")
 	player.armor = ar.make_unique_from_def(&rng, &ar.UNIQUE_DEFS[12]) // Beastlord Harness
-	_ = ar.damage_player_typed(&run, 10, .Physical, melee = true, attacker = attacker, evadable = false)
+	_ = ar.damage_player_typed(&run, 0, 10, .Physical, melee = true, attacker = attacker, evadable = false)
 	testing.expect(t, attacker.statuses[.Snared] > 0, "pack pursuit snares melee attackers")
 }
 
@@ -140,7 +140,7 @@ unique_combat_hooks_fire :: proc(t: ^testing.T) {
 unique_fan_and_class_skill_hooks :: proc(t: ^testing.T) {
 	run := mx5_run(47, .Arcanist)
 	defer ar.run_destroy(&run)
-	player := &run.player
+	player := &run.players[0]
 	rng := ar.rng_make(3, 4)
 
 	// Splinter Star: Bolt_Shard pair (±0.18) + splinter storm pair (±0.10).
@@ -150,7 +150,7 @@ unique_fan_and_class_skill_hooks :: proc(t: ^testing.T) {
 	clear(&run.projectiles)
 	player.mana = f32(player.max_mana)
 	player.bolt_timer = 0
-	testing.expect(t, ar.player_cast_bolt(&run, {1, 0}), "bolt must cast")
+	testing.expect(t, ar.player_cast_bolt(&run, 0, {1, 0}), "bolt must cast")
 	testing.expectf(t, len(run.projectiles) == 5, "splinter storm fan should fill five slots (got %v)", len(run.projectiles))
 
 	// Blizzard Mantle: both Nova queries fire (+0.25 +0.35).
@@ -164,15 +164,15 @@ unique_fan_and_class_skill_hooks :: proc(t: ^testing.T) {
 	// Bulwark of the First Gate: Dash guard cost break + Warden Aegis rider.
 	warden := mx5_run(48, .Warden)
 	defer ar.run_destroy(&warden)
-	base_cost := ar.player_dash_stamina_cost(&warden.player)
-	warden.player.armor = ar.make_unique_from_def(&rng, &ar.UNIQUE_DEFS[2])
-	warden.player.armor.unidentified = false
-	warden.player.has_armor = true
-	testing.expect(t, ar.player_dash_stamina_cost(&warden.player) == base_cost - 2, "Dash guard trims dash stamina")
-	warden.player.stamina = f32(warden.player.max_stamina)
-	warden.player.dash_timer = 0
-	testing.expect(t, ar.player_dash(&warden, {1, 0}), "warden dash must fire")
-	testing.expect(t, warden.player.statuses[.Aegis] > 0, "Dash guard hardens the Warden's dash")
+	base_cost := ar.player_dash_stamina_cost(&warden.players[0])
+	warden.players[0].armor = ar.make_unique_from_def(&rng, &ar.UNIQUE_DEFS[2])
+	warden.players[0].armor.unidentified = false
+	warden.players[0].has_armor = true
+	testing.expect(t, ar.player_dash_stamina_cost(&warden.players[0]) == base_cost - 2, "Dash guard trims dash stamina")
+	warden.players[0].stamina = f32(warden.players[0].max_stamina)
+	warden.players[0].dash_timer = 0
+	testing.expect(t, ar.player_dash(&warden, 0, {1, 0}), "warden dash must fire")
+	testing.expect(t, warden.players[0].statuses[.Aegis] > 0, "Dash guard hardens the Warden's dash")
 
 	// Beastlord Harness feeds the spirit-beast equipment bond.
 	bonded := ar.spirit_beast_stats(0, true)
@@ -186,24 +186,24 @@ traps_reveal_trigger_and_count :: proc(t: ^testing.T) {
 	defer ar.run_destroy(&run)
 	clear(&run.traps)
 	clear(&run.enemies)
-	spot := run.player.pos + {3, 0}
+	spot := run.players[0].pos + {3, 0}
 	append(&run.traps, ar.Trap{pos = spot, kind = .Spike, damage = 12, active = true})
 
 	ar.tick_traps(&run, ar.SIM_DT)
 	testing.expect(t, !run.traps[0].revealed, "distant traps stay hidden")
 
-	run.player.pos = spot + {1.2, 0}
+	run.players[0].pos = spot + {1.2, 0}
 	ar.tick_traps(&run, ar.SIM_DT)
 	testing.expect(t, run.traps[0].revealed, "closing within 1.35 reveals the plate")
 	testing.expect(t, run.traps[0].reveal_progress > 0 && run.traps[0].reveal_progress < 1, "materialize fade ramps")
 	for _ in 0 ..< 12 do ar.tick_traps(&run, ar.SIM_DT)
 	testing.expect(t, run.traps[0].reveal_progress == 1, "fade completes in about a sixth of a second")
 
-	hp_before := run.player.hp
-	run.player.pos = spot + {0.3, 0}
+	hp_before := run.players[0].hp
+	run.players[0].pos = spot + {0.3, 0}
 	ar.tick_traps(&run, ar.SIM_DT)
 	testing.expect(t, !run.traps[0].active, "stepping on the plate spends it")
-	testing.expect(t, run.player.hp < hp_before, "the trap must wound")
+	testing.expect(t, run.players[0].hp < hp_before, "the trap must wound")
 	testing.expect(t, run.traps_triggered == 1, "the run ledger counts the trigger")
 	has_cue := false
 	for cue in run.sfx do if cue.bank == .Trap_Spike {
@@ -211,16 +211,16 @@ traps_reveal_trigger_and_count :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, has_cue, "triggering emits spatial Trap_Spike at the trap")
 
-	hp_mid := run.player.hp
+	hp_mid := run.players[0].hp
 	ar.tick_traps(&run, ar.SIM_DT)
-	testing.expect(t, run.player.hp == hp_mid, "a spent trap never fires again")
+	testing.expect(t, run.players[0].hp == hp_mid, "a spent trap never fires again")
 }
 
 @(test)
 shrines_grant_their_bargains :: proc(t: ^testing.T) {
 	run := mx5_run(53, .Warden)
 	defer ar.run_destroy(&run)
-	player := &run.player
+	player := &run.players[0]
 	clear(&run.shrines)
 	clear(&run.ground_items)
 
@@ -229,27 +229,27 @@ shrines_grant_their_bargains :: proc(t: ^testing.T) {
 	player.hp = 1
 	player.mana = 0
 	append(&run.shrines, ar.Shrine{pos = player.pos, kind = .Mending})
-	testing.expect(t, ar.interact_prompt(&run) == "E: Mending Shrine - Restores health and mana.", "Mending prompt uses an ASCII-safe separator")
+	testing.expect(t, ar.interact_prompt(&run, 0) == "E: Mending Shrine - Restores health and mana.", "Mending prompt uses an ASCII-safe separator")
 	shrine := &run.shrines[0]
-	ar.activate_shrine(&run, shrine)
+	ar.activate_shrine(&run, 0, shrine)
 	testing.expect(t, player.hp == player.max_hp && player.mana == f32(player.max_mana), "Mending restores fully")
 	testing.expect(t, shrine.used, "shrines are one-use")
 	before := player.hp
-	ar.activate_shrine(&run, shrine)
+	ar.activate_shrine(&run, 0, shrine)
 	testing.expect(t, player.hp == before && run.shrines_used == 1, "a used shrine is inert")
 
 	// Insight reveals the bag.
 	player.bag[0] = ar.Item{kind = .Weapon, name = "Test Blade", rarity = .Rare, unidentified = true}
 	player.bag_count = 1
 	insight := ar.Shrine{pos = player.pos, kind = .Insight}
-	ar.activate_shrine(&run, &insight)
+	ar.activate_shrine(&run, 0, &insight)
 	testing.expect(t, !player.bag[0].unidentified, "Insight identifies carried gear")
 
 	// War grants xp and focus.
 	xp := player.xp
 	player.stamina = 0
 	war := ar.Shrine{pos = player.pos, kind = .War}
-	ar.activate_shrine(&run, &war)
+	ar.activate_shrine(&run, 0, &war)
 	testing.expect(t, player.xp == xp + 25 || player.level > 1, "War grants 25 xp")
 	testing.expect(t, player.stamina == f32(player.max_stamina), "War refills stamina")
 
@@ -257,7 +257,7 @@ shrines_grant_their_bargains :: proc(t: ^testing.T) {
 	speed_before := ar.player_speed(player)
 	for _ in 0 ..< 4 {
 		haste := ar.Shrine{pos = player.pos, kind = .Haste}
-		ar.activate_shrine(&run, &haste)
+		ar.activate_shrine(&run, 0, &haste)
 	}
 	testing.expect(t, player.shrine_move_bonus == 0.09, "stride blessing caps at 0.09")
 	testing.expect(t, ar.player_speed(player) > speed_before, "the blessing reaches locomotion")
@@ -265,7 +265,7 @@ shrines_grant_their_bargains :: proc(t: ^testing.T) {
 	// Fortune spills two offerings.
 	drops := len(run.ground_items)
 	fortune := ar.Shrine{pos = player.pos, kind = .Fortune}
-	ar.activate_shrine(&run, &fortune)
+	ar.activate_shrine(&run, 0, &fortune)
 	testing.expect(t, len(run.ground_items) == drops + 2, "Fortune spills two drops")
 
 	// Oath grants a free technique without touching the token purse.
@@ -273,7 +273,7 @@ shrines_grant_their_bargains :: proc(t: ^testing.T) {
 	acquired_before := 0
 	for id in ar.Discipline_Id do if player.acquired_disciplines[id] do acquired_before += 1
 	oath := ar.Shrine{pos = player.pos, kind = .Oath}
-	ar.activate_shrine(&run, &oath)
+	ar.activate_shrine(&run, 0, &oath)
 	acquired_after := 0
 	for id in ar.Discipline_Id do if player.acquired_disciplines[id] do acquired_after += 1
 	testing.expect(t, acquired_after == acquired_before + 1, "Oath grants one discipline")
@@ -283,7 +283,7 @@ shrines_grant_their_bargains :: proc(t: ^testing.T) {
 	player.hp = player.max_hp
 	drops = len(run.ground_items)
 	twilight := ar.Shrine{pos = player.pos, kind = .Twilight}
-	ar.activate_shrine(&run, &twilight)
+	ar.activate_shrine(&run, 0, &twilight)
 	testing.expect(t, player.hp < player.max_hp, "Twilight takes blood")
 	testing.expect(t, len(run.ground_items) == drops + 1, "Twilight drops the relic")
 	testing.expect(t, run.ground_items[len(run.ground_items)-1].item.rarity == .Unique, "the relic is a named Unique")
@@ -293,7 +293,7 @@ shrines_grant_their_bargains :: proc(t: ^testing.T) {
 secrets_reveal_and_resolve :: proc(t: ^testing.T) {
 	run := mx5_run(59, .Ranger)
 	defer ar.run_destroy(&run)
-	player := &run.player
+	player := &run.players[0]
 	clear(&run.secrets)
 	clear(&run.ground_items)
 	clear(&run.enemies)
@@ -306,7 +306,7 @@ secrets_reveal_and_resolve :: proc(t: ^testing.T) {
 	ar.tick_secrets(&run)
 	testing.expect(t, run.secrets[0].revealed, "closing within 1.55 reveals the cache")
 
-	ar.open_secret(&run, &run.secrets[0])
+	ar.open_secret(&run, 0, &run.secrets[0])
 	testing.expect(t, run.secrets[0].opened && run.secrets_opened == 1, "opening marks and counts")
 	testing.expect(t, len(run.ground_items) == 2, "the armory drops two pieces")
 	for g in run.ground_items {
@@ -317,7 +317,7 @@ secrets_reveal_and_resolve :: proc(t: ^testing.T) {
 	clear(&run.ground_items)
 	player.hp = player.max_hp
 	moonlit := ar.Secret{pos = player.pos, kind = .Moonlit_Bargain, revealed = true}
-	ar.open_secret(&run, &moonlit)
+	ar.open_secret(&run, 0, &moonlit)
 	testing.expect(t, player.hp < player.max_hp, "the bargain takes blood")
 	testing.expect(t, len(run.ground_items) == 1, "the bargain pays one piece")
 	testing.expect(t, run.ground_items[0].item.rarity == .Rare || run.ground_items[0].item.rarity == .Cursed, "the payment is Rare-class")
@@ -330,8 +330,8 @@ secrets_reveal_and_resolve :: proc(t: ^testing.T) {
 		defer ar.run_destroy(&trial)
 		clear(&trial.enemies)
 		clear(&trial.ground_items)
-		reliquary := ar.Secret{pos = trial.player.pos + {2, 0}, kind = .Cursed_Reliquary, revealed = true}
-		ar.open_secret(&trial, &reliquary)
+		reliquary := ar.Secret{pos = trial.players[0].pos + {2, 0}, kind = .Cursed_Reliquary, revealed = true}
+		ar.open_secret(&trial, 0, &reliquary)
 		if len(trial.enemies) > 0 {
 			woke = true
 			testing.expect(t, trial.enemies[0].role == .Miniboss, "the woken guardian is an Oathbound")
@@ -346,7 +346,7 @@ secrets_reveal_and_resolve :: proc(t: ^testing.T) {
 	// The stash pays double like the armory's count.
 	clear(&run.ground_items)
 	stash := ar.Secret{pos = player.pos, kind = .Cartographer_Stash, revealed = true}
-	ar.open_secret(&run, &stash)
+	ar.open_secret(&run, 0, &stash)
 	testing.expect(t, len(run.ground_items) == 2, "the stash drops two finds")
 }
 
@@ -440,18 +440,18 @@ shrines_and_caches_are_solid_room_furniture :: proc(t: ^testing.T) {
 	defer ar.run_destroy(&run)
 	clear(&run.shrines)
 	clear(&run.secrets)
-	spot := run.player.pos + {2, 0}
+	spot := run.players[0].pos + {2, 0}
 	tile := [2]int{int(spot.x), int(spot.y)}
 	ar.solid_prop_add(&run.dungeon, tile)
 	append(&run.shrines, ar.Shrine{pos = spot, kind = .Mending})
-	ar.activate_shrine(&run, &run.shrines[0])
+	ar.activate_shrine(&run, 0, &run.shrines[0])
 	testing.expect(t, ar.blocked_for_radius(&run.dungeon, spot.x, spot.y), "a spent shrine is still furniture")
 
-	cache_spot := run.player.pos + {0, 2}
+	cache_spot := run.players[0].pos + {0, 2}
 	ar.solid_prop_add(&run.dungeon, {int(cache_spot.x), int(cache_spot.y)})
 	append(&run.secrets, ar.Secret{pos = cache_spot, kind = .Hidden_Cache, revealed = true})
 	testing.expect(t, ar.blocked_for_radius(&run.dungeon, cache_spot.x, cache_spot.y), "a sealed cache blocks")
-	ar.open_secret(&run, &run.secrets[0])
+	ar.open_secret(&run, 0, &run.secrets[0])
 	testing.expect(t, !ar.solid_prop_occupies_tile(&run.dungeon, int(cache_spot.x), int(cache_spot.y)),
 		"an opened cache stops being furniture")
 }
@@ -525,8 +525,8 @@ wall_face_touch_animates_the_worn_wall :: proc(t: ^testing.T) {
 			for delta in ([4][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
 				nx, ny := x + delta.x, y + delta.y
 				if ar.dungeon_in_bounds(nx, ny) && run.dungeon.tiles[nx][ny] == .Floor {
-					run.player.pos = {f32(nx) + 0.5, f32(ny) + 0.5}
-					if ar.interact_prompt(&run)!="" do continue
+					run.players[0].pos = {f32(nx) + 0.5, f32(ny) + 0.5}
+					if ar.interact_prompt(&run, 0)!="" do continue
 					found_tile = {x, y}
 					found = true
 					break search
@@ -536,9 +536,9 @@ wall_face_touch_animates_the_worn_wall :: proc(t: ^testing.T) {
 	}
 	if !found do return // pathological floor without a reachable face tile
 	_ = found_tile
-	testing.expect(t,!ar.player_interaction_advertised(&run),"worn wall must remain absent from the HUD prompt")
-	testing.expect(t,ar.player_interaction_available(&run),"mobile A must preserve the hidden wall interaction path")
-	testing.expect(t, ar.touch_secret_face_wall(&run), "touching the worn wall must trigger")
+	testing.expect(t,!ar.player_interaction_advertised(&run, 0),"worn wall must remain absent from the HUD prompt")
+	testing.expect(t,ar.player_interaction_available(&run, 0),"mobile A must preserve the hidden wall interaction path")
+	testing.expect(t, ar.touch_secret_face_wall(&run, 0), "touching the worn wall must trigger")
 	// The touch binds to the *nearest* face wall, which may differ from the
 	// tile the search found when two face tiles flank the same floor tile.
 	testing.expect(t, ar.wall_face_tile(run.wall_face_tile.x, run.wall_face_tile.y), "the animation binds to a face-bearing wall")

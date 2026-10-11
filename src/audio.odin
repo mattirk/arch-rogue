@@ -1250,7 +1250,7 @@ audio_step_phase :: proc(anim_time, interval: f32) -> i64 {
 
 @(private = "file")
 audio_drain_footsteps :: proc(audio: ^Audio, run: ^Run) {
-	player := &run.player
+	player := &run.players[run.local_slot]
 	if player.moving && player.hp > 0 {
 		phase := audio_step_phase(player.anim_time, SFX_PLAYER_STEP_INTERVAL_SECONDS)
 		if !audio.player_step_valid || phase != audio.player_step_phase {
@@ -1285,7 +1285,7 @@ audio_drain :: proc(audio: ^Audio, run: ^Run) {
 	if run == nil do return
 	defer clear(&run.sfx)
 	if audio == nil || audio.suspended do return
-	listener := run.player.pos
+	listener := run.players[run.local_slot].pos
 	for event in run.sfx {
 		switch event.kind {
 		case .Play:

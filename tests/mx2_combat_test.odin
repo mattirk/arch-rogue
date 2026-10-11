@@ -18,11 +18,11 @@ mx2_arena :: proc(run: ^ar.Run) {
 	}
 	run.dungeon.bar_furnishings = {}
 	run.hitstop_ticks = 0 // a fresh scene never inherits an earlier swing's freeze
-	run.player.pos = {10.5, 10.5}
-	run.player.prev_pos = run.player.pos
-	run.player.facing = {1, 0}
-	run.player.hp = 500
-	run.player.max_hp = 500
+	run.players[0].pos = {10.5, 10.5}
+	run.players[0].prev_pos = run.players[0].pos
+	run.players[0].facing = {1, 0}
+	run.players[0].hp = 500
+	run.players[0].max_hp = 500
 	clear(&run.enemies)
 	clear(&run.projectiles)
 	clear(&run.familiars)
@@ -117,8 +117,8 @@ mx2_tyrant_alternates_volley_and_strike_pressure :: proc(t: ^testing.T) {
 
 	// Point-blank phase: the strike band takes over.
 	clear(&run.projectiles)
-	run.player.pos = boss.pos + {1.2, 0}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = boss.pos + {1.2, 0}
+	run.players[0].prev_pos = run.players[0].pos
 	for _ in 0 ..< 180 {
 		if boss.ai == .Windup do break
 		ar.sim_tick(&run, {})
@@ -149,7 +149,7 @@ mx2_ranged_doctrines_hold_their_bands :: proc(t: ^testing.T) {
 	cultist.ai = .Chase
 	append(&run.enemies, cultist)
 	for _ in 0 ..< 240 do ar.sim_tick(&run, {})
-	d := mx2_distance(run.enemies[0].pos, run.player.pos)
+	d := mx2_distance(run.enemies[0].pos, run.players[0].pos)
 	testing.expectf(t, d > 2.0, "caster must retreat toward its band, still at %.2f", d)
 
 	// Sentinel holds its anchor: in range means no advance at all.
@@ -160,7 +160,7 @@ mx2_ranged_doctrines_hold_their_bands :: proc(t: ^testing.T) {
 	anchor := run.enemies[0].pos
 	for _ in 0 ..< 45 do ar.sim_tick(&run, {})
 	testing.expect(t, run.enemies[0].pos == anchor, "an in-range sentinel must not leave its anchor")
-	testing.expect(t, len(run.projectiles) > 0 || run.player.hp < run.player.max_hp, "holding must not stop it firing")
+	testing.expect(t, len(run.projectiles) > 0 || run.players[0].hp < run.players[0].max_hp, "holding must not stop it firing")
 
 	// Skirmisher strafes sideways while its cooldown recovers.
 	mx2_arena(&run)
@@ -171,7 +171,7 @@ mx2_ranged_doctrines_hold_their_bands :: proc(t: ^testing.T) {
 	for _ in 0 ..< 40 do ar.sim_tick(&run, {})
 	moved := run.enemies[0].pos
 	testing.expectf(t, abs(moved.y - 10.5) > 0.15, "skirmisher must strafe laterally, y drift %.3f", abs(moved.y - 10.5))
-	band := mx2_distance(moved, run.player.pos)
+	band := mx2_distance(moved, run.players[0].pos)
 	testing.expectf(t, band > 1.9 && band < 3.4, "strafe must stay near the band, at %.2f", band)
 }
 
@@ -190,12 +190,12 @@ mx2_pack_alert_and_memory_drift :: proc(t: ^testing.T) {
 	ar.sim_tick(&run, {})
 	testing.expect(t, run.enemies[0].ai == .Chase, "the spotter engages on aggro")
 	testing.expect(t, run.enemies[1].ai == .Chase, "one-hop pack alert must wake the packmate")
-	testing.expect(t, run.enemies[1].memory == run.player.pos || mx2_distance(run.enemies[1].memory, run.player.pos) < 0.2,
+	testing.expect(t, run.enemies[1].memory == run.players[0].pos || mx2_distance(run.enemies[1].memory, run.players[0].pos) < 0.2,
 		"the alerted packmate inherits the alerter's target position")
 
 	// The player vanishes: the sleeper walks its memory, then stands down.
-	run.player.pos = {6.5, 16.4}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = {6.5, 16.4}
+	run.players[0].prev_pos = run.players[0].pos
 	start := mx2_distance(run.enemies[1].pos, run.enemies[1].memory)
 	for _ in 0 ..< 60 do ar.sim_tick(&run, {})
 	mid := mx2_distance(run.enemies[1].pos, run.enemies[1].memory)
@@ -212,8 +212,8 @@ mx2_nav_routes_walls_and_detours_furnishings :: proc(t: ^testing.T) {
 	mx2_arena(&run)
 	// Wall rib: direct west route blocked, open gap along the south edge.
 	for y in 6 ..= 13 do run.dungeon.tiles[12][y] = .Wall
-	run.player.pos = {10.5, 8.5}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = {10.5, 8.5}
+	run.players[0].prev_pos = run.players[0].pos
 	ghoul := ar.enemy_make(.Ghoul, {14.5, 8.5}, 1)
 	ghoul.ai = .Chase
 	append(&run.enemies, ghoul)
@@ -224,7 +224,7 @@ mx2_nav_routes_walls_and_detours_furnishings :: proc(t: ^testing.T) {
 	closest := f32(99)
 	for _ in 0 ..< 900 {
 		ar.sim_tick(&run, {})
-		closest = min(closest, mx2_distance(run.enemies[0].pos, run.player.pos))
+		closest = min(closest, mx2_distance(run.enemies[0].pos, run.players[0].pos))
 	}
 	testing.expectf(t, closest < 1.5, "the routed enemy must round the rib without stalling, closest %.2f", closest)
 
@@ -233,8 +233,8 @@ mx2_nav_routes_walls_and_detours_furnishings :: proc(t: ^testing.T) {
 	run.dungeon.bar_furnishings.tiles[0] = {12, 10}
 	run.dungeon.bar_furnishings.kinds[0] = .Table
 	run.dungeon.bar_furnishings.count = 1
-	run.player.pos = {10.5, 10.5}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = {10.5, 10.5}
+	run.players[0].prev_pos = run.players[0].pos
 	blocked := ar.enemy_make(.Ghoul, {15.5, 10.5}, 1)
 	blocked.ai = .Chase
 	append(&run.enemies, blocked)
@@ -245,7 +245,7 @@ mx2_nav_routes_walls_and_detours_furnishings :: proc(t: ^testing.T) {
 	for _ in 0 ..< 900 {
 		ar.sim_tick(&run, {})
 		if _, near_route := ar.enemy_nav_direction(&run, &run.enemies[0]); near_route do saw_routed = true
-		closest = min(closest, mx2_distance(run.enemies[0].pos, run.player.pos))
+		closest = min(closest, mx2_distance(run.enemies[0].pos, run.players[0].pos))
 	}
 	testing.expect(t, saw_routed, "approaching the furnishing must force field descent")
 	testing.expectf(t, closest < 1.5, "the enemy must detour the table, closest %.2f", closest)
@@ -261,7 +261,7 @@ mx2_knockback_velocity_chain_and_radii_separation :: proc(t: ^testing.T) {
 	// Ordinary melee rides the decaying velocity path at v0 = 1.6.
 	victim := ar.enemy_make(.Ghoul, {11.6, 10.5}, 1)
 	append(&run.enemies, victim)
-	ar.player_melee(&run, {1, 0})
+	ar.player_melee(&run, 0, {1, 0})
 	speed := math.hypot(run.enemies[0].knockback_vel.x, run.enemies[0].knockback_vel.y)
 	testing.expectf(t, mx2_near(speed, ar.KNOCKBACK_SPEED, 1e-4), "melee knockback v0 %.3f, want 1.6", speed)
 

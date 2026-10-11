@@ -40,14 +40,14 @@ m9_title_pause_and_nested_options_preserve_the_run :: proc(t:^testing.T) {
 	ar.app_apply(&app,ar.Intent{menu_index=int(ar.Title_Action.New_Run),menu_index_valid=true,confirm=true})
 	testing.expect(t,app.mode==.Select)
 	ar.app_apply(&app,ar.Intent{menu_index=1,menu_index_valid=true,confirm=true})
-	testing.expect(t,app.mode==.Playing&&app.run.player.archetype==.Rogue&&app.run.difficulty==.Hard,"new run must snapshot archetype and difficulty")
+	testing.expect(t,app.mode==.Playing&&app.run.players[0].archetype==.Rogue&&app.run.difficulty==.Hard,"new run must snapshot archetype and difficulty")
 	m9_commit_depth_one_omen(t,&app)
 	seed,depth:=app.run.seed,app.run.depth
-	app.run.player.bolt_timer=1
+	app.run.players[0].bolt_timer=1
 	ar.app_apply(&app,ar.Intent{back=true})
 	testing.expect(t,app.mode==.Paused,"Esc/back in play must pause")
 	ar.app_tick(&app)
-	testing.expect(t,app.run.player.bolt_timer==1,"pause must freeze simulation clocks")
+	testing.expect(t,app.run.players[0].bolt_timer==1,"pause must freeze simulation clocks")
 	ar.app_apply(&app,ar.Intent{menu_index=1,menu_index_valid=true,confirm=true})
 	testing.expect(t,app.mode==.Options&&app.options_return==.Paused,"pause Options must retain the active run origin")
 	ar.app_apply(&app,ar.Intent{back=true})
@@ -58,7 +58,7 @@ m9_title_pause_and_nested_options_preserve_the_run :: proc(t:^testing.T) {
 	ar.app_apply(&app,ar.Intent{back=true})
 	ar.app_apply(&app,ar.Intent{menu_index=0,menu_index_valid=true,confirm=true,pointer_confirm=true})
 	testing.expect(t,app.mode==.Playing&&app.mouse_input_blocked,"mouse Resume must consume its held click")
-	ar.app_apply(&app,ar.Intent{mouse_walk=true,mouse_target=app.run.player.pos+ar.Vec2{3,0}})
+	ar.app_apply(&app,ar.Intent{mouse_walk=true,mouse_target=app.run.players[0].pos+ar.Vec2{3,0}})
 	testing.expect(t,!app.mouse_walk,"held Resume click must not leak into movement")
 	ar.app_apply(&app,ar.Intent{mouse_released=true})
 	testing.expect(t,!app.mouse_input_blocked,"mouse release must restore gameplay input")
@@ -79,13 +79,13 @@ m9_character_modal_pauses_navigates_and_spends_once :: proc(t:^testing.T) {
 	defer ar.run_destroy(&app.run)
 	ar.run_start(&app.run,app.seed,.Warden)
 	app.mode=.Playing
-	app.run.player.memory_tokens=1
+	app.run.players[0].memory_tokens=1
 	app.inventory_open=true
 	ar.app_apply(&app,ar.Intent{open_character=true})
 	testing.expect(t,app.character_open&&!app.inventory_open&&!app.shop_open,"character sheet must own the modal slot")
-	app.run.player.class_skill_timer=1
+	app.run.players[0].class_skill_timer=1
 	ar.app_tick(&app)
-	testing.expect(t,app.run.player.class_skill_timer==1,"character sheet must pause fixed-step clocks")
+	testing.expect(t,app.run.players[0].class_skill_timer==1,"character sheet must pause fixed-step clocks")
 
 	ar.app_apply(&app,ar.Intent{tab=true})
 	testing.expect(t,app.character_tab==.Disciplines)
@@ -95,12 +95,12 @@ m9_character_modal_pauses_navigates_and_spends_once :: proc(t:^testing.T) {
 	ar.app_apply(&app,ar.Intent{menu_horizontal=99,menu_delta=99})
 	testing.expect(t,app.discipline_column==ar.DISCIPLINE_PATHS_PER_ARCHETYPE-1&&app.discipline_degree==ar.DISCIPLINE_DEGREES-1,"discipline navigation must clamp at grid edges")
 	ar.app_apply(&app,ar.Intent{menu_index=0,menu_index_valid=true,confirm=true})
-	testing.expect(t,app.run.player.acquired_disciplines[.Warden_Bulwark]&&app.run.player.memory_tokens==0,"confirm must spend one token on the selected root")
-	before:=app.run.player
+	testing.expect(t,app.run.players[0].acquired_disciplines[.Warden_Bulwark]&&app.run.players[0].memory_tokens==0,"confirm must spend one token on the selected root")
+	before:=app.run.players[0]
 	ar.app_apply(&app,ar.Intent{confirm=true})
-	testing.expect(t,app.run.player==before,"reconfirming a chosen node must be mutation-free")
+	testing.expect(t,app.run.players[0]==before,"reconfirming a chosen node must be mutation-free")
 	app.character_open=false
-	app.run.player.memory_tokens=1
+	app.run.players[0].memory_tokens=1
 	ar.app_apply(&app,ar.Intent{open_disciplines=true})
 	testing.expect(t,app.character_open&&app.character_tab==.Disciplines,
 		"the clickable Memory prompt must open the discipline tab directly")
@@ -143,9 +143,9 @@ m9_controller_aim_snap_prefers_visible_target_near_stick_line :: proc(t:^testing
 	ar.run_start(&run,9205,.Warden)
 	defer ar.run_destroy(&run)
 	clear(&run.enemies)
-	run.player.pos=ar.run_spawn_point(&run)
-	run.player.prev_pos=run.player.pos
-	target:=ar.enemy_make(.Ghoul,run.player.pos+ar.Vec2{1,.25},1)
+	run.players[0].pos=ar.run_spawn_point(&run)
+	run.players[0].prev_pos=run.players[0].pos
+	target:=ar.enemy_make(.Ghoul,run.players[0].pos+ar.Vec2{1,.25},1)
 	append(&run.enemies,target)
 	tx,ty:=int(target.pos.x),int(target.pos.y)
 	run.visible[tx][ty]=true
@@ -166,17 +166,17 @@ m9_inventory_consumes_gamepad_tab_and_drop_semantics :: proc(t:^testing.T) {
 	app.mode=.Playing
 	app.inventory_open=true
 	app.inv_sort_mode=.Type
-	app.run.player.bag[0]=ar.Item{kind=.Weapon,name="Spare Blade",power=2}
-	app.run.player.bag_count=1
+	app.run.players[0].bag[0]=ar.Item{kind=.Weapon,name="Spare Blade",power=2}
+	app.run.players[0].bag_count=1
 	ar.app_apply(&app,ar.Intent{tab=true})
 	testing.expect(t,app.inv_focus==.Weapon&&app.inv_sort_mode==.Type,"controller RB/Tab must preview equipment without sorting")
 	ground_before:=len(app.run.ground_items)
 	ar.app_apply(&app,ar.Intent{inv_drop=true})
-	testing.expect(t,app.run.player.bag_count==1&&len(app.run.ground_items)==ground_before,"controller Y must not drop a hidden bag row while previewing equipment")
+	testing.expect(t,app.run.players[0].bag_count==1&&len(app.run.ground_items)==ground_before,"controller Y must not drop a hidden bag row while previewing equipment")
 	ar.app_apply(&app,ar.Intent{interact=true})
 	testing.expect(t,app.inv_sort_mode==.Rarity&&app.inv_focus==.Weapon,"controller X must cycle sorting without stealing preview focus")
 	ar.app_apply(&app,ar.Intent{menu_index=0,menu_index_valid=true,inv_drop=true})
-	testing.expect(t,app.run.player.bag_count==0&&len(app.run.ground_items)==ground_before+1,"controller Y/Help must drop the selected bag row")
+	testing.expect(t,app.run.players[0].bag_count==0&&len(app.run.ground_items)==ground_before+1,"controller Y/Help must drop the selected bag row")
 }
 
 @(test)
@@ -188,37 +188,37 @@ m9_shop_modal_trades_scrolls_and_pauses :: proc(t:^testing.T) {
 	app.mode=.Playing
 	room:=app.run.dungeon.rooms_buf[1]
 	app.run.shopkeeper=ar.shopkeeper_make(app.run.seed,app.run.depth,room)
-	app.run.shopkeeper.pos=app.run.player.pos
+	app.run.shopkeeper.pos=app.run.players[0].pos
 	app.run.has_shopkeeper=true
-	app.run.player.gold=1000
-	heal_before:=app.run.player.heal_potions
-	first_price:=ar.shop_purchase_price(&app.run.shopkeeper,&app.run.player,app.run.shopkeeper.stock[0])
+	app.run.players[0].gold=1000
+	heal_before:=app.run.players[0].heal_potions
+	first_price:=ar.shop_purchase_price(&app.run.shopkeeper,&app.run.players[0],app.run.shopkeeper.stock[0])
 	ar.app_apply(&app,ar.Intent{interact=true})
 	testing.expect(t,app.shop_open&&app.shop_mode==.Buy,"interact near keeper must open Buy mode")
-	app.run.player.melee_timer=1
+	app.run.players[0].melee_timer=1
 	ar.app_tick(&app)
-	testing.expect(t,app.run.player.melee_timer==1,"shop must pause the simulation")
+	testing.expect(t,app.run.players[0].melee_timer==1,"shop must pause the simulation")
 	stock_before:=app.run.shopkeeper.stock_count
 	ar.app_apply(&app,ar.Intent{confirm=true})
-	second_price:=ar.shop_purchase_price(&app.run.shopkeeper,&app.run.player,app.run.shopkeeper.stock[0])
+	second_price:=ar.shop_purchase_price(&app.run.shopkeeper,&app.run.players[0],app.run.shopkeeper.stock[0])
 	ar.app_apply(&app,ar.Intent{confirm=true})
-	testing.expect(t,app.run.player.heal_potions==heal_before+2&&app.run.player.gold==1000-first_price-second_price&&app.run.shopkeeper.stock_count==stock_before,"permanent potion row must support repeated scaled purchases through App")
+	testing.expect(t,app.run.players[0].heal_potions==heal_before+2&&app.run.players[0].gold==1000-first_price-second_price&&app.run.shopkeeper.stock_count==stock_before,"permanent potion row must support repeated scaled purchases through App")
 
-	for i in 0..<ar.BAG_CAPACITY do app.run.player.bag[i]=ar.Item{kind=.Weapon,name="Trade Blade",power=i+1}
-	app.run.player.bag_count=ar.BAG_CAPACITY
+	for i in 0..<ar.BAG_CAPACITY do app.run.players[0].bag[i]=ar.Item{kind=.Weapon,name="Trade Blade",power=i+1}
+	app.run.players[0].bag_count=ar.BAG_CAPACITY
 	ar.app_apply(&app,ar.Intent{tab=true})
 	testing.expect(t,app.shop_mode==.Sell&&app.shop_index==0&&app.shop_scroll==0)
 	ar.app_apply(&app,ar.Intent{menu_delta=ar.BAG_CAPACITY-1})
 	testing.expect(t,app.shop_index==ar.BAG_CAPACITY-1&&app.shop_scroll==ar.BAG_CAPACITY-ar.SHOP_VISIBLE_ROWS,"shop selection must scroll late bag rows into view")
-	gold_before:=app.run.player.gold
+	gold_before:=app.run.players[0].gold
 	ar.app_apply(&app,ar.Intent{confirm=true})
-	testing.expect(t,app.run.player.bag_count==ar.BAG_CAPACITY-1&&app.run.player.gold>gold_before,"off-screen sell rows must remain usable after scrolling")
+	testing.expect(t,app.run.players[0].bag_count==ar.BAG_CAPACITY-1&&app.run.players[0].gold>gold_before,"off-screen sell rows must remain usable after scrolling")
 	ar.app_apply(&app,ar.Intent{back=true})
 	testing.expect(t,!app.shop_open,"Back must close the shop before pausing the run")
 
 	fixed_sign:=ar.shop_sign_position(&app.run.shopkeeper)
 	app.run.shopkeeper.pos=fixed_sign+ar.Vec2{3,0}
-	app.run.player.pos=fixed_sign
+	app.run.players[0].pos=fixed_sign
 	ar.app_apply(&app,ar.Intent{interact=true})
 	testing.expect(t,app.shop_open,"fixed Shop sign must remain a trade interaction when the live keeper wanders away")
 	testing.expect(t,app.run.shopkeeper.motion.holding&&!app.run.shopkeeper.motion.moving&&!app.run.shopkeeper.motion.dancing,"sign trade must hold and face the live keeper")
@@ -296,8 +296,8 @@ m9_dry_barrel_falls_through_to_loot_and_furnishings_are_solid :: proc(t:^testing
 			placed:=false
 			for candidate in neighbors {
 				if !ar.blocked_for_radius(&run.dungeon,candidate.x,candidate.y,block_stairs=true) {
-					run.player.pos=candidate
-					run.player.prev_pos=candidate
+					run.players[0].pos=candidate
+					run.players[0].prev_pos=candidate
 					placed=true
 					break
 				}
@@ -308,17 +308,17 @@ m9_dry_barrel_falls_through_to_loot_and_furnishings_are_solid :: proc(t:^testing
 				clear(&run.ground_items)
 				clear(&run.sfx)
 				run.refuge.bar_toasted=false
-				run.player.hp=max(1,run.player.max_hp-5)
-				run.player.stamina=0
-				_ = ar.player_interact(&run)
+				run.players[0].hp=max(1,run.players[0].max_hp-5)
+				run.players[0].stamina=0
+				_ = ar.player_interact(&run, 0)
 				has_drink_cue:=false
 				barrel_pos:=ar.Vec2{f32(barrel.x)+.5,f32(barrel.y)+.5}
 				for cue in run.sfx do if cue.bank==.Bar_Toast do has_drink_cue=cue.spatial&&cue.pos==barrel_pos
 				testing.expect(t,run.refuge.bar_toasted&&has_drink_cue,"first tapped-barrel interaction must toast and emit spatial Bar_Toast")
-				heal_before:=run.player.heal_potions
-				append(&run.ground_items,ar.Ground_Item{item=ar.Item{kind=.Heal_Potion,name="Test Flask"},pos=run.player.pos})
-				_ = ar.player_interact(&run)
-				testing.expect(t,run.player.heal_potions==heal_before+1&&len(run.ground_items)==0,"spent barrel must fall through so nearby loot remains interactable")
+				heal_before:=run.players[0].heal_potions
+				append(&run.ground_items,ar.Ground_Item{item=ar.Item{kind=.Heal_Potion,name="Test Flask"},pos=run.players[0].pos})
+				_ = ar.player_interact(&run, 0)
+				testing.expect(t,run.players[0].heal_potions==heal_before+1&&len(run.ground_items)==0,"spent barrel must fall through so nearby loot remains interactable")
 				dry_interaction_checked=true
 			}
 		}

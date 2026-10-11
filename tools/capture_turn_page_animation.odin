@@ -12,13 +12,13 @@ import rl "../vendor/raylib"
 // can be judged without completing or timing out the minigame. Only this tool
 // advances the staged player's clock; production rendering remains read-only.
 draw_motion_review_frame :: proc(view: ^ar.View, app: ^ar.App, assets: ^ar.Assets, age: f32) {
-	app.run.player.sim_elapsed=app.turn_page.return_player.sim_elapsed+age
+	app.run.players[0].sim_elapsed=app.turn_page.return_player.sim_elapsed+age
 	ar.view_update(view,1.0/30.0)
-	ar.view_center_on_turn_page(view,app.run.player.pos)
-	page_before:=app.turn_page;player_before:=app.run.player;minigame_before:=app.story_minigame
+	ar.view_center_on_turn_page(view,app.run.players[0].pos)
+	page_before:=app.turn_page;player_before:=app.run.players[0];minigame_before:=app.story_minigame
 	ar.view_prepare_turn_page_motion(view,app,1)
 	ar.draw_frame(view,app,assets,1)
-	if page_before!=app.turn_page||player_before!=app.run.player||minigame_before!=app.story_minigame {
+	if page_before!=app.turn_page||player_before!=app.run.players[0]||minigame_before!=app.story_minigame {
 		panic("motion renderer mutated game state")
 	}
 }
@@ -26,7 +26,7 @@ draw_motion_review_frame :: proc(view: ^ar.View, app: ^ar.App, assets: ^ar.Asset
 verify_motion_review_camera :: proc(view: ^ar.View, app: ^ar.App) {
 	posed:=view.camera;base:=view.turn_page_camera_base
 	motion:=ar.visual_turn_page_motion(ar.visual_turn_page_motion_age(app,1))
-	sample_tiles:=[5]ar.Vec2{{0,0},{10,0},{10,10},{0,10},app.run.player.pos}
+	sample_tiles:=[5]ar.Vec2{{0,0},{10,0},{10,10},{0,10},app.run.players[0].pos}
 	for tile in sample_tiles {
 		point:=ar.world_from_tile(tile)
 		expected:=rl.GetWorldToScreen2D(rl.Vector2(ar.visual_turn_page_motion_point(point,motion)),base)
@@ -76,13 +76,13 @@ capture_turn_page_motion :: proc(view: ^ar.View, app: ^ar.App, assets: ^ar.Asset
 	if wisp.variant_count!=1||wisp.variants[0].id==0 do panic("motion review ink wisp texture failed to load")
 	// Pause must hold one exact pose even if frame time and render alpha vary.
 	// Compare actual frames too: distant details must share the paused clock.
-	app.run.player.sim_elapsed=app.turn_page.return_player.sim_elapsed+9
+	app.run.players[0].sim_elapsed=app.turn_page.return_player.sim_elapsed+9
 	app.mode=.Paused
 	ar.view_update(view,ar.SIM_DT)
-	ar.view_center_on_turn_page(view,app.run.player.pos)
+	ar.view_center_on_turn_page(view,app.run.players[0].pos)
 	ar.view_prepare_turn_page_motion(view,app,1)
 	paused_camera:=view.camera
-	paused_page:=app.turn_page;paused_player:=app.run.player;paused_minigame:=app.story_minigame
+	paused_page:=app.turn_page;paused_player:=app.run.players[0];paused_minigame:=app.story_minigame
 	ar.draw_frame(view,app,assets,1)
 	paused_pixels:=rl.LoadImageFromScreen()
 	if paused_pixels.data==nil||paused_pixels.format!=.UNCOMPRESSED_R8G8B8A8 do panic("unexpected paused review framebuffer")
@@ -91,11 +91,11 @@ capture_turn_page_motion :: proc(view: ^ar.View, app: ^ar.App, assets: ^ar.Asset
 	alphas:=[3]f32{0,.25,1}
 	for alpha in alphas {
 		ar.view_update(view,.2)
-		ar.view_center_on_turn_page(view,app.run.player.pos)
+		ar.view_center_on_turn_page(view,app.run.players[0].pos)
 		ar.view_prepare_turn_page_motion(view,app,alpha)
 		if view.camera!=paused_camera do panic("paused motion pose changed")
 		ar.draw_frame(view,app,assets,alpha)
-		if app.turn_page!=paused_page||app.run.player!=paused_player||app.story_minigame!=paused_minigame {
+		if app.turn_page!=paused_page||app.run.players[0]!=paused_player||app.story_minigame!=paused_minigame {
 			panic("paused motion renderer mutated game state")
 		}
 		pixels:=rl.LoadImageFromScreen()
@@ -201,7 +201,7 @@ main :: proc() {
 		app.story_minigame.phase=.Play;app.story_minigame.step=-1
 		app.turn_page.fall_active=false
 		app.turn_page.route[app.turn_page.length-1]={20,20}
-		app.run.player.pos={20.5,20.5};app.run.player.prev_pos=app.run.player.pos
+		app.run.players[0].pos={20.5,20.5};app.run.players[0].prev_pos=app.run.players[0].pos
 		for x in 0..<ar.TURN_PAGE_SIZE do for y in 0..<ar.TURN_PAGE_SIZE {
 			app.turn_page.tiles[x][y]=x==4&&y==4?.Hidden:.Gone
 		}
@@ -220,9 +220,9 @@ main :: proc() {
 			x:=220+i32(i%3)*420;y:=170+i32(i/3)*305
 			view.camera.offset={f32(x),f32(y)}
 			rl.BeginMode2D(view.camera)
-			before:=app.turn_page;player_before:=app.run.player
+			before:=app.turn_page;player_before:=app.run.players[0]
 			ar.draw_turn_page_world(view,app,assets,1)
-			if before!=app.turn_page||player_before!=app.run.player do panic("render mutated game state")
+			if before!=app.turn_page||player_before!=app.run.players[0] do panic("render mutated game state")
 			rl.EndMode2D()
 			rl.DrawText(labels[i],x-rl.MeasureText(labels[i],22)/2,y+116,22,{170,188,199,255})
 		}
@@ -237,7 +237,7 @@ main :: proc() {
 		app.story_minigame.step=-1
 		app.turn_page.fall_active=false
 		app.turn_page.route[app.turn_page.length-1]={20,20}
-		app.run.player.pos={20.5,20.5};app.run.player.prev_pos=app.run.player.pos
+		app.run.players[0].pos={20.5,20.5};app.run.players[0].prev_pos=app.run.players[0].pos
 		for x in 0..<ar.TURN_PAGE_SIZE do for y in 0..<ar.TURN_PAGE_SIZE {
 			app.turn_page.tiles[x][y]=(x==1&&y==1)||(x>=4&&x<=6&&y>=4&&y<=6)?.Hidden:.Gone
 		}
@@ -251,9 +251,9 @@ main :: proc() {
 			assets.world[.Turn_Page_Hidden]=panel==0?assets.world[.Lossless_Soul_Floor]:manuscript
 			view.camera.offset={320+f32(panel)*640,450}
 			rl.BeginMode2D(view.camera)
-			before:=app.turn_page;player_before:=app.run.player
+			before:=app.turn_page;player_before:=app.run.players[0]
 			ar.draw_turn_page_world(view,app,assets,1)
-			if before!=app.turn_page||player_before!=app.run.player do panic("render mutated game state")
+			if before!=app.turn_page||player_before!=app.run.players[0] do panic("render mutated game state")
 			rl.EndMode2D()
 			label:=cstring(panel==0?"MIST CHAMBER":"TURN THE PAGE")
 			rl.DrawText(label,320+i32(panel)*640-rl.MeasureText(label,26)/2,32,26,{200,213,224,255})
@@ -287,17 +287,17 @@ main :: proc() {
 			if i==126 {
 				forward:=ar.turn_page_center(app.turn_page.route[1])-ar.turn_page_center(app.turn_page.route[0])
 				wrong:=ar.Vec2{forward.y,-forward.x}
-				inward:=ar.Vec2{ar.TURN_PAGE_SIZE*.5,ar.TURN_PAGE_SIZE*.5}-app.run.player.pos
+				inward:=ar.Vec2{ar.TURN_PAGE_SIZE*.5,ar.TURN_PAGE_SIZE*.5}-app.run.players[0].pos
 				if wrong.x*inward.x+wrong.y*inward.y<0 do wrong=-wrong
 				_=ar.turn_page_dash(app,wrong)
 			}
 			_=ar.turn_page_tick(app,{},ar.SIM_DT)
 		}
-		ar.view_center_on_turn_page(view,app.run.player.pos)
-		before:=app.turn_page;player_before:=app.run.player
+		ar.view_center_on_turn_page(view,app.run.players[0].pos)
+		before:=app.turn_page;player_before:=app.run.players[0]
 		ar.view_prepare_turn_page_motion(view,app,f32(i%2)*.5)
 		ar.draw_frame(view,app,assets,f32(i%2)*.5)
-		if before!=app.turn_page||player_before!=app.run.player do panic("render mutated game state")
+		if before!=app.turn_page||player_before!=app.run.players[0] do panic("render mutated game state")
 		rl.TakeScreenshot(fmt.ctprintf("build/turn-page-captures/animation/frames/%04d.png",i))
 	}
 }

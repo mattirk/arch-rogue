@@ -49,17 +49,17 @@ main :: proc() {
 	defer ar.run_destroy(&app.run)
 	ar.run_start(&app.run, TEST_SEED, .Warden, .Medium)
 	for app.run.depth < TEST_DEPTH do ar.run_descend(&app.run)
-	ar.player_gain_xp(&app.run, 250) // level 3, approximating two cleared floors
-	app.run.player.heal_potions = 3
+	ar.player_gain_xp(&app.run, 0, 250) // level 3, approximating two cleared floors
+	app.run.players[0].heal_potions = 3
 
 	position, found := pre_boss_position(&app.run)
 	if !found {
 		fmt.eprintln("failed to find the boss arena entrance")
 		os.exit(1)
 	}
-	app.run.player.pos = position
-	app.run.player.prev_pos = position
-	app.run.player.facing = {}
+	app.run.players[0].pos = position
+	app.run.players[0].prev_pos = position
+	app.run.players[0].facing = {}
 	app.run.boss_engaged = false
 	app.run.run_id = strings.clone(TEST_RUN_ID)
 	app.run.started_at_utc = strings.clone(TEST_TIMESTAMP)

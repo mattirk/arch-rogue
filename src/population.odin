@@ -524,7 +524,11 @@ make_loot :: proc(rng: ^Pcg32, pos: Vec2, curse_bonus := f32(0), run: ^Run = nil
 	// widen the 0.1% jackpot modestly, while guaranteed Tyrant rewards remain
 	// on their separate kill-reward path. Run-less callers cannot roll one.
 	if run != nil && roll > 1 - ordinary_unique_drop_chance(run) {
-		return {item = make_unique(rng, run.player.archetype, run.depth), pos = pos}
+		// Co-op draws the recipient archetype from the same stream; solo
+		// consumes nothing extra and keeps its recorded sequences.
+		owner := HOST_SLOT
+		if run_coop(run) do owner = rng_range(rng, 0, run_seat_count(run))
+		return {item = make_unique(rng, run.players[owner].archetype, run.depth), pos = pos}
 	}
 	slot: Item_Kind = roll < 0.70 ? .Weapon : .Armor
 	rarity: Rarity = rng_chance(rng, 0.34) ? .Rare : .Magic

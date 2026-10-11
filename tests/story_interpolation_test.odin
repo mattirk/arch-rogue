@@ -53,7 +53,7 @@ room_npc_interpolation_snapshots_shop_and_ambient_segments :: proc(t:^testing.T)
 	room:=run.dungeon.rooms_buf[0]
 	run.shopkeeper=ar.shopkeeper_make(run.seed,run.depth,room,0)
 	run.has_shopkeeper=true
-	run.player.pos={0,0}
+	run.players[0].pos={0,0}
 	start:=run.shopkeeper.pos
 	run.shopkeeper.motion.target=start+ar.Vec2{.5,0}
 	ar.room_npc_motion_set_moving(&run.shopkeeper.motion,true)

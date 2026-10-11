@@ -150,9 +150,9 @@ mx_android_primary_a_drawer_is_transient_and_contextual :: proc(t: ^testing.T) {
 		if found_clear_tile do break
 		for y in 1 ..< ar.MAP_H-1 {
 			if app.run.dungeon.tiles[x][y] != .Floor do continue
-			app.run.player.pos = {f32(x)+.5, f32(y)+.5}
-			app.run.player.prev_pos = app.run.player.pos
-			if !ar.player_interaction_available(&app.run) {
+			app.run.players[0].pos = {f32(x)+.5, f32(y)+.5}
+			app.run.players[0].prev_pos = app.run.players[0].pos
+			if !ar.player_interaction_available(&app.run, 0) {
 				found_clear_tile = true
 				break
 			}
@@ -178,9 +178,9 @@ mx_android_primary_a_drawer_is_transient_and_contextual :: proc(t: ^testing.T) {
 		for y in 1 ..< ar.MAP_H-1 {
 			if app.run.dungeon.tiles[x][y] != .Closed_Door do continue
 			app.run.boss_engaged = false
-			app.run.player.pos = {f32(x)+.5, f32(y)+.5}
-			app.run.player.prev_pos = app.run.player.pos
-			found_door = ar.player_interaction_available(&app.run)
+			app.run.players[0].pos = {f32(x)+.5, f32(y)+.5}
+			app.run.players[0].prev_pos = app.run.players[0].pos
+			found_door = ar.player_interaction_available(&app.run, 0)
 			if found_door do break
 		}
 	}
@@ -484,7 +484,7 @@ mx_android_menu_policy_is_direct_except_preview_and_guarded_rows :: proc(t: ^tes
 	_ = ar.app_apply(&app, preview.intent)
 	testing.expect(t, app.mode == .Select && app.select_index == 2, "preview tap must not start the run")
 	_ = ar.app_apply(&app, confirm.intent)
-	testing.expect(t, app.mode == .Playing && app.run.player.archetype == .Arcanist, "confirm must start the previewed archetype")
+	testing.expect(t, app.mode == .Playing && app.run.players[0].archetype == .Arcanist, "confirm must start the previewed archetype")
 }
 
 @(test)
@@ -495,8 +495,8 @@ mx_android_equipment_preview_and_wheel_merge_preserve_bag_safety :: proc(t: ^tes
 	ar.run_start(&app.run, app.seed, .Warden)
 	app.mode = .Playing
 	app.inventory_open = true
-	app.run.player.bag[0] = {kind=.Weapon,name="Spare Blade"}
-	app.run.player.bag_count = 1
+	app.run.players[0].bag[0] = {kind=.Weapon,name="Spare Blade"}
+	app.run.players[0].bag_count = 1
 	preview := ar.mobile_activate_target({id=1041,kind=.Inventory_Equipment,index=int(ar.Inventory_Focus.Weapon),enabled=true}, false)
 	testing.expect(t, preview.activated && preview.intent.inv_focus_valid && preview.intent.inv_focus == .Weapon && !preview.intent.confirm && !preview.intent.menu_index_valid, "equipment taps must only request a preview")
 	intent: ar.Intent
@@ -504,7 +504,7 @@ mx_android_equipment_preview_and_wheel_merge_preserve_bag_safety :: proc(t: ^tes
 	ar.mobile_intent_merge(&intent, {menu_scroll=2})
 	testing.expect(t, intent.inv_focus_valid && intent.inv_focus == .Weapon && intent.menu_scroll == 2, "shared input merging must retain focus and wheel commands exactly once")
 	ar.app_apply(&app, intent)
-	testing.expect(t, app.inv_focus == .Weapon && app.run.player.bag_count == 1)
+	testing.expect(t, app.inv_focus == .Weapon && app.run.players[0].bag_count == 1)
 	guard_intent := ar.Intent{mobile_guard_request=.Inventory_Drop}
 	ar.platform_mobile_apply_guard(&app, &guard_intent, {})
 	testing.expect(t, app.mobile_guard.kind == .None, "a touch drop request must not target the hidden bag selection while inspecting equipment")

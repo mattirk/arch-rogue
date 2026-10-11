@@ -2161,6 +2161,12 @@ load_actor_sprites :: proc(
 // Five native-resolution one-row previews remain loaded for Select; switching
 // archetypes between runs releases the previous full set before loading the new.
 assets_activate_player :: proc(assets: ^Assets, selected: Archetype_Id) {
+	assets_activate_players(assets, {selected})
+}
+
+// Keeps full clip sets resident only for the archetypes on the field: one for
+// solo, up to two in co-op (duplicates allowed).
+assets_activate_players :: proc(assets: ^Assets, selected: bit_set[Archetype_Id]) {
 	if assets == nil do return
 	for id in Archetype_Id {
 		sprites := &assets.archetypes[id]
@@ -2172,7 +2178,11 @@ assets_activate_player :: proc(assets: ^Assets, selected: Archetype_Id) {
 			clip.valid = false
 		}
 	}
+	for id in selected do assets_load_archetype_clips(assets, id)
+}
 
+@(private = "file")
+assets_load_archetype_clips :: proc(assets: ^Assets, selected: Archetype_Id) {
 	sprites := &assets.archetypes[selected]
 	name := ARCHETYPES[selected].sprite
 	clip_names := CLIP_NAMES

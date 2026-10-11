@@ -487,6 +487,8 @@ web_boot_config :: proc() -> Game_Boot_Config {
 		if parsed, ok := strconv.parse_u64(value); ok do config.seed = parsed
 	}
 	config.dev_play = web_query_param("play", buffer[:]) != ""
+	if value := web_query_param("relay", buffer[:]); value != "" do config.relay_url = strings.clone(value)
+	config.coop_enabled = web_query_param("coop", buffer[:]) == "1"
 	if archetype, ok := dev_archetype_from_env(web_query_param("archetype", buffer[:])); ok {
 		config.dev_archetype = archetype
 		config.dev_archetype_valid = true
@@ -677,7 +679,7 @@ web_pack_adoptions_tick :: proc(rt: ^Game_Runtime) {
 		assets_web_adopt_actors(
 			&rt.assets,
 			job.actors[actor_index:actor_index+1],
-			app.run.player.archetype,
+			app.run.players[app.run.local_slot].archetype,
 			active_valid,
 		)
 		job.next_actor += 1
@@ -825,11 +827,11 @@ ar_web_smoke_probe :: proc "c" () -> [^]u8 {
 			left_trigger = controller_raylib_trigger_sample(0,.Left) > CONTROLLER_TRIGGER_THRESHOLD
 			right_trigger = controller_raylib_trigger_sample(0,.Right) > CONTROLLER_TRIGGER_THRESHOLD
 		}
-		facing = web_runtime.app.run.player.facing
+		facing = web_runtime.app.run.players[web_runtime.app.run.local_slot].facing
 		aim_input = web_runtime.app.aim_input
 		aim_live = web_runtime.app.aim_live
 		keyboard_aim = web_runtime.controller.keyboard_aim
-		bolt_cooldown = web_runtime.app.run.player.bolt_timer
+		bolt_cooldown = web_runtime.app.run.players[web_runtime.app.run.local_slot].bolt_timer
 		music_mix = web_runtime.music.active_mix
 		music_phase = music_phase_ms(&web_runtime.music, &web_runtime.audio.music_library)
 		music_streams = audio_music_loaded_stream_count(&web_runtime.audio)

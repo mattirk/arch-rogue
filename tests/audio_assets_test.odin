@@ -203,13 +203,13 @@ semantic_sfx_routing_and_dispatch_gate_are_stable :: proc(t: ^testing.T) {
 	warden_run: ar.Run
 	ar.run_start(&warden_run, ar.derive_seed(90201, 0), .Warden)
 	clear(&warden_run.sfx)
-	warden_run.player.mana = f32(warden_run.player.max_mana)
-	testing.expect(t, ar.player_cast_bolt(&warden_run, {1, 0}), "Warden Guard Bolt must cast")
+	warden_run.players[0].mana = f32(warden_run.players[0].max_mana)
+	testing.expect(t, ar.player_cast_bolt(&warden_run, 0, {1, 0}), "Warden Guard Bolt must cast")
 	testing.expect(t, len(warden_run.sfx) > 0 && warden_run.sfx[len(warden_run.sfx)-1].bank == .Warden_Guard_Bolt,
 		"Warden Guard Bolt must emit its projectile-first semantic bank")
 	clear(&warden_run.sfx)
-	warden_run.player.mana = f32(warden_run.player.max_mana)
-	testing.expect(t,ar.player_cast_class_skill(&warden_run,{1,0}),"Warden Time Skip must cast")
+	warden_run.players[0].mana = f32(warden_run.players[0].max_mana)
+	testing.expect(t,ar.player_cast_class_skill(&warden_run, 0,{1,0}),"Warden Time Skip must cast")
 	testing.expect(t,len(warden_run.sfx)>0&&warden_run.sfx[len(warden_run.sfx)-1].bank==.Warden_Time_Skip&&
 		!warden_run.sfx[len(warden_run.sfx)-1].spatial,
 		"Warden Time Skip must emit its authored non-spatial bank")
@@ -218,8 +218,8 @@ semantic_sfx_routing_and_dispatch_gate_are_stable :: proc(t: ^testing.T) {
 	arcanist_run: ar.Run
 	ar.run_start(&arcanist_run, ar.derive_seed(90202, 0), .Arcanist)
 	clear(&arcanist_run.sfx)
-	arcanist_run.player.mana = f32(arcanist_run.player.max_mana)
-	testing.expect(t, ar.player_cast_bolt(&arcanist_run, {1, 0}), "Arcanist Arc Bolt must cast")
+	arcanist_run.players[0].mana = f32(arcanist_run.players[0].max_mana)
+	testing.expect(t, ar.player_cast_bolt(&arcanist_run, 0, {1, 0}), "Arcanist Arc Bolt must cast")
 	testing.expect(t, len(arcanist_run.sfx) > 0 && arcanist_run.sfx[len(arcanist_run.sfx)-1].bank == .Shadow_Cast,
 		"Arcanist Arc Bolt must emit the same semantic bank as Acolyte Spirit Bolt")
 	ar.run_destroy(&arcanist_run)

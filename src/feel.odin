@@ -161,14 +161,14 @@ mark_player_hit_flash :: proc(player: ^Player, damage: int) {
 	player.hit_flash_duration = heavy ? PLAYER_HEAVY_HIT_FLASH_SECONDS : PLAYER_HIT_FLASH_SECONDS
 }
 
-feel_emit_player_hurt :: proc(run: ^Run, damage: int) {
+feel_emit_player_hurt :: proc(run: ^Run, slot: int, damage: int) {
 	if run == nil || damage <= 0 do return
-	heavy := f32(damage) >= f32(run.player.max_hp) * .18
+	heavy := f32(damage) >= f32(run.players[slot].max_hp) * .18
 	flash_color := heavy ? [4]u8{160,35,32,255} : [4]u8{105,24,28,255}
 	flash_duration: f32 = heavy ? .30 : .18
-	feel_emit(run,.Blood,run.player.pos,{245,95,70,255},.34,.42,priority=.High)
+	feel_emit(run,.Blood,run.players[slot].pos,{245,95,70,255},.34,.42,priority=.High)
 	feel_emit(
-		run,.Screen_Flash,run.player.pos,flash_color,flash_duration,0,
+		run,.Screen_Flash,run.players[slot].pos,flash_color,flash_duration,0,
 		visibility=.Player_Local,priority=.Critical,
 	)
 }

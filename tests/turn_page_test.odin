@@ -27,14 +27,14 @@ turn_page_analog_walk_uses_actual_distance_for_animation :: proc(t: ^testing.T) 
 		app:=turn_page_test_start(5)
 		defer ar.run_destroy(&app.run)
 		turn_page_test_reveal(&app)
-		before:=app.run.player.pos;phase:=app.run.player.anim_time
+		before:=app.run.players[0].pos;phase:=app.run.players[0].anim_time
 		direction:=ar.turn_page_center(app.turn_page.route[1])-before
 		_=ar.turn_page_tick(&app,direction*magnitude,ar.SIM_DT)
-		delta:=app.run.player.pos-before
+		delta:=app.run.players[0].pos-before
 		distance:=math.hypot(delta.x,delta.y)
 		expected:=ar.walk_animation_advance(ar.SIM_DT,ar.PLAYER_MOVE_SPEED,distance,ar.PLAYER_MOVE_SPEED*ar.SIM_DT)
-		testing.expect(t,app.run.player.moving&&!app.turn_page.fall_active)
-		testing.expect(t,abs(app.run.player.anim_time-phase-expected)<.000001,"manuscript walking must use the same distance-scaled cadence as dungeon walking")
+		testing.expect(t,app.run.players[0].moving&&!app.turn_page.fall_active)
+		testing.expect(t,abs(app.run.players[0].anim_time-phase-expected)<.000001,"manuscript walking must use the same distance-scaled cadence as dungeon walking")
 	}
 }
 
@@ -46,7 +46,7 @@ turn_page_test_solve_page :: proc(app: ^ar.App, t: ^testing.T) {
 		if app.story_minigame.score!=page_number||app.story_minigame.outcome!=.None do return
 		step:=app.story_minigame.step
 		if step!=aligned_step {
-			ar.turn_page_move(app,ar.turn_page_center(app.turn_page.route[step])-app.run.player.pos,false)
+			ar.turn_page_move(app,ar.turn_page_center(app.turn_page.route[step])-app.run.players[0].pos,false)
 			aligned_step=step
 		}
 		next:=step+1
@@ -54,12 +54,12 @@ turn_page_test_solve_page :: proc(app: ^ar.App, t: ^testing.T) {
 			// Align to the current cell with actual movement, then dash. A full
 			// supported takeoff footprint must fit every generated route.
 			center:=ar.turn_page_center(app.turn_page.route[step])
-			ar.turn_page_move(app,center-app.run.player.pos,false)
-			app.run.player.dash_timer=0
-			aim:=ar.turn_page_center(app.turn_page.route[next+1])-app.run.player.pos
+			ar.turn_page_move(app,center-app.run.players[0].pos,false)
+			app.run.players[0].dash_timer=0
+			aim:=ar.turn_page_center(app.turn_page.route[next+1])-app.run.players[0].pos
 			testing.expect(t,ar.turn_page_dash(app,aim))
 		} else {
-			aim:=ar.turn_page_center(app.turn_page.route[next])-app.run.player.pos
+			aim:=ar.turn_page_center(app.turn_page.route[next])-app.run.players[0].pos
 			distance:=math.hypot(aim.x,aim.y)
 			ar.turn_page_move(app,aim*min(f32(1),.04/max(distance,f32(.001))),false)
 		}
@@ -78,7 +78,7 @@ turn_page_routes_replay_and_fit_swept_player_with_reachable_gaps :: proc(t: ^tes
 				testing.expect(t,a==b&&ar.turn_page_route_valid(&a))
 				app:ar.App
 				app.turn_page=a;app.story_minigame={active=true,kind=.Bind_The_Page,phase=.Play,seed=u64(seed),depth=depth,score=page,goal=ar.turn_page_profile(depth,0).pages,time_left=40}
-				app.run.player.pos=ar.turn_page_center(a.route[0])
+				app.run.players[0].pos=ar.turn_page_center(a.route[0])
 				turn_page_test_solve_page(&app,t)
 				testing.expect(t,app.story_minigame.score==page+1)
 				ar.run_destroy(&app.run)
@@ -91,17 +91,17 @@ turn_page_routes_replay_and_fit_swept_player_with_reachable_gaps :: proc(t: ^tes
 turn_page_preview_pause_and_menu_keep_dungeon_frozen :: proc(t: ^testing.T) {
 	app:=turn_page_test_start(9)
 	defer ar.run_destroy(&app.run)
-	pos:=app.run.player.pos;dungeon:=app.run.dungeon;explored:=app.run.explored
+	pos:=app.run.players[0].pos;dungeon:=app.run.dungeon;explored:=app.run.explored
 	rng:=app.run.combat_rng;loot_rng:=app.run.loot_rng;clock:=app.run.active_ticks
 	ar.app_apply(&app,ar.Intent{move={1,0},aim={0,1},aim_live=true,actions={false,false,false,true}})
 	ar.app_tick(&app)
-	testing.expect(t,app.run.player.pos==pos&&app.run.player.facing==ar.Vec2{0,1}&&app.run.player.dash_timer==0)
+	testing.expect(t,app.run.players[0].pos==pos&&app.run.players[0].facing==ar.Vec2{0,1}&&app.run.players[0].dash_timer==0)
 	testing.expect(t,!ar.app_play_modal_open(&app))
 	testing.expect(t,app.run.dungeon==dungeon&&app.run.explored==explored&&app.run.combat_rng==rng&&app.run.loot_rng==loot_rng&&app.run.active_ticks==clock)
 	ar.app_apply(&app,ar.Intent{back=true})
-	state:=app.story_minigame;page:=app.turn_page;player:=ar.turn_page_capture_player(&app.run.player)
+	state:=app.story_minigame;page:=app.turn_page;player:=ar.turn_page_capture_player(&app.run.players[0])
 	for _ in 0..<30 do ar.app_tick(&app)
-	testing.expect(t,app.mode==.Paused&&app.story_minigame==state&&app.turn_page==page&&ar.turn_page_capture_player(&app.run.player)==player)
+	testing.expect(t,app.mode==.Paused&&app.story_minigame==state&&app.turn_page==page&&ar.turn_page_capture_player(&app.run.players[0])==player)
 }
 
 @(test)
@@ -110,15 +110,15 @@ turn_page_walk_allows_small_lateral_drift_and_still_detects_wrong_steps :: proc(
 		app:=turn_page_test_start(5)
 		defer ar.run_destroy(&app.run)
 		turn_page_test_reveal(&app)
-		start:=app.run.player.pos
+		start:=app.run.players[0].pos
 		forward:=ar.turn_page_center(app.turn_page.route[1])-start
 		lateral:=ar.Vec2{-forward.y,forward.x}*side
 		ar.turn_page_move(&app,lateral*.30,false)
 		testing.expect(t,!app.turn_page.fall_active&&app.story_minigame.mistakes==0,"small drift within a safe tile must not fall")
-		testing.expect(t,math.hypot((app.run.player.pos-start).x,(app.run.player.pos-start).y)>.29)
+		testing.expect(t,math.hypot((app.run.players[0].pos-start).x,(app.run.players[0].pos-start).y)>.29)
 		ar.turn_page_move(&app,forward*.90,false)
 		testing.expect(t,!app.turn_page.fall_active&&app.story_minigame.step==1,"off-center walking must reach the next tile safely")
-		ar.turn_page_move(&app,start-app.run.player.pos,false)
+		ar.turn_page_move(&app,start-app.run.players[0].pos,false)
 		// Back at the start, the opposite longitudinal neighbor is always wrong.
 		ar.turn_page_move(&app,-forward*.80,false)
 		testing.expect(t,app.turn_page.fall_active&&app.story_minigame.mistakes==1,"committing to a wrong tile must still fall once")
@@ -133,15 +133,15 @@ turn_page_offcenter_dashes_brake_on_supported_landings :: proc(t:^testing.T) {
 		if gap {app.story_minigame.score=1;ar.turn_page_begin_page(&app)}
 		turn_page_test_reveal(&app)
 		takeoff:=gap?1:0;landing_step:=gap?3:1
-		ar.turn_page_move(&app,ar.turn_page_center(app.turn_page.route[takeoff])-app.run.player.pos,false)
+		ar.turn_page_move(&app,ar.turn_page_center(app.turn_page.route[takeoff])-app.run.players[0].pos,false)
 		landing:=ar.turn_page_center(app.turn_page.route[landing_step])
-		forward:=(landing-app.run.player.pos)/f32(gap?2:1)
+		forward:=(landing-app.run.players[0].pos)/f32(gap?2:1)
 		lateral:=ar.Vec2{-forward.y,forward.x}*side
 		ar.turn_page_move(&app,lateral*.25,false)
 		testing.expect(t,!app.turn_page.fall_active)
 		testing.expect(t,ar.turn_page_dash(&app,forward))
 		testing.expect(t,!app.turn_page.fall_active&&app.story_minigame.mistakes==0&&app.story_minigame.step==landing_step,"off-center dash must stop on its next supported landing")
-		delta:=app.run.player.pos-landing
+		delta:=app.run.players[0].pos-landing
 		along:=delta.x*forward.x+delta.y*forward.y
 		across:=delta.x*lateral.x+delta.y*lateral.y
 		testing.expect(t,along>=-.001&&along<=.041&&abs(across-.25)<.001,"dash must brake at the center plane while preserving lateral placement")
@@ -153,14 +153,14 @@ turn_page_wrong_step_and_dash_cannot_skip_or_double_count_fall :: proc(t: ^testi
 	app:=turn_page_test_start(8)
 	defer ar.run_destroy(&app.run)
 	turn_page_test_reveal(&app)
-	start:=app.run.player.pos
+	start:=app.run.players[0].pos
 	forward:=ar.turn_page_center(app.turn_page.route[1])-start
 	testing.expect(t,ar.turn_page_dash(&app,-forward))
 	testing.expect(t,app.turn_page.fall_active&&app.story_minigame.mistakes==1&&app.story_minigame.step==0)
 	for _ in 0..<20 {_=ar.turn_page_dash(&app,forward);_=ar.turn_page_tick(&app,forward,ar.SIM_DT)}
 	testing.expect(t,app.story_minigame.mistakes==1&&app.turn_page.fall_active)
 	for _ in 0..<90 do _=ar.turn_page_tick(&app,{},ar.SIM_DT)
-	testing.expect(t,!app.turn_page.fall_active&&app.run.player.pos==start&&app.story_minigame.step==0)
+	testing.expect(t,!app.turn_page.fall_active&&app.run.players[0].pos==start&&app.story_minigame.step==0)
 }
 
 @(test)
@@ -169,7 +169,7 @@ turn_page_fallen_tiles_block_repeated_walking_and_dashing :: proc(t:^testing.T) 
 		app:=turn_page_test_start(5,u64(seed))
 		defer ar.run_destroy(&app.run)
 		turn_page_test_reveal(&app)
-		start:=app.run.player.pos
+		start:=app.run.players[0].pos
 		forward:=ar.turn_page_center(app.turn_page.route[1])-start
 		ar.turn_page_move(&app,-forward*.8,false)
 		testing.expect(t,app.turn_page.fall_active&&app.story_minigame.mistakes==1,"an intact wrong tile must still collapse")
@@ -177,11 +177,11 @@ turn_page_fallen_tiles_block_repeated_walking_and_dashing :: proc(t:^testing.T) 
 		for _ in 0..<100 do _=ar.turn_page_tick(&app,{},ar.SIM_DT)
 		testing.expect(t,!app.turn_page.fall_active&&app.turn_page.tiles[fallen.x][fallen.y]==.Gone)
 		for _ in 0..<90 do _=ar.turn_page_tick(&app,-forward,ar.SIM_DT)
-		edge:=app.run.player.pos
-		testing.expect(t,!app.run.player.moving&&edge!=start,"held movement should approach the hole, then stop")
+		edge:=app.run.players[0].pos
+		testing.expect(t,!app.run.players[0].moving&&edge!=start,"held movement should approach the hole, then stop")
 		testing.expect(t,ar.turn_page_dash(&app,-forward))
 		ar.turn_page_move(&app,-forward*20,false)
-		testing.expect(t,app.run.player.pos==edge&&!app.turn_page.fall_active&&app.story_minigame.mistakes==1,"neither walking nor dashing may enter a fallen tile or charge another mistake")
+		testing.expect(t,app.run.players[0].pos==edge&&!app.turn_page.fall_active&&app.story_minigame.mistakes==1,"neither walking nor dashing may enter a fallen tile or charge another mistake")
 		testing.expect(t,app.turn_page.tiles[fallen.x][fallen.y]==.Gone&&!ar.turn_page_sweep_touches_cell(edge,edge,fallen),"the footprint must stay clear of the persistent hole")
 		ar.turn_page_move(&app,start-edge,false)
 		ar.turn_page_move(&app,forward,false)
@@ -194,11 +194,11 @@ turn_page_authored_gaps_block_walking_but_allow_supported_dashes :: proc(t:^test
 	app:=turn_page_test_start(8)
 	defer ar.run_destroy(&app.run)
 	app.story_minigame.score=1;ar.turn_page_begin_page(&app);turn_page_test_reveal(&app)
-	ar.turn_page_move(&app,ar.turn_page_center(app.turn_page.route[1])-app.run.player.pos,false)
-	gap:=app.turn_page.route[2];forward:=ar.turn_page_center(gap)-app.run.player.pos
+	ar.turn_page_move(&app,ar.turn_page_center(app.turn_page.route[1])-app.run.players[0].pos,false)
+	gap:=app.turn_page.route[2];forward:=ar.turn_page_center(gap)-app.run.players[0].pos
 	for _ in 0..<60 do _=ar.turn_page_tick(&app,forward,ar.SIM_DT)
 	testing.expect(t,!app.turn_page.fall_active&&app.story_minigame.mistakes==0&&app.story_minigame.step==1,"walking must stop at an authored gap")
-	testing.expect(t,!ar.turn_page_sweep_touches_cell(app.run.player.pos,app.run.player.pos,gap))
+	testing.expect(t,!ar.turn_page_sweep_touches_cell(app.run.players[0].pos,app.run.players[0].pos,gap))
 	testing.expect(t,ar.turn_page_dash(&app,forward))
 	testing.expect(t,!app.turn_page.fall_active&&app.story_minigame.step==3&&app.turn_page.tiles[gap.x][gap.y]==.Gone,"a dash from the blocked edge must still cross the marked gap")
 }
@@ -209,15 +209,15 @@ turn_page_hole_corners_block_before_committing_a_wrong_step :: proc(t:^testing.T
 		app:=turn_page_test_start(5,u64(seed))
 		defer ar.run_destroy(&app.run)
 		turn_page_test_reveal(&app)
-		start:=app.run.player.pos
+		start:=app.run.players[0].pos
 		forward:=ar.turn_page_center(app.turn_page.route[1])-start
 		lateral:=ar.Vec2{-forward.y,forward.x}
 		fallen:=app.turn_page.route[0]-[2]int{int(forward.x),int(forward.y)}
 		app.turn_page.tiles[fallen.x][fallen.y]=.Gone
 		ar.turn_page_move(&app,-forward+lateral,false)
 		testing.expect(t,!app.turn_page.fall_active&&app.story_minigame.mistakes==0,"a blocked corner must not trigger an adjacent wrong tile in the rejected segment")
-		testing.expect(t,!ar.turn_page_sweep_touches_cell(app.run.player.pos,app.run.player.pos,fallen))
-		ar.turn_page_move(&app,start-app.run.player.pos,false)
+		testing.expect(t,!ar.turn_page_sweep_touches_cell(app.run.players[0].pos,app.run.players[0].pos,fallen))
+		ar.turn_page_move(&app,start-app.run.players[0].pos,false)
 		ar.turn_page_move(&app,lateral*.8,false)
 		testing.expect(t,app.turn_page.fall_active&&app.story_minigame.mistakes==1,"a separate move onto intact wrong stone must still fall")
 	}
@@ -228,8 +228,8 @@ turn_page_obstructed_dash_cannot_leave_player_standing_over_a_gap :: proc(t:^tes
 	app:=turn_page_test_start(8)
 	defer ar.run_destroy(&app.run)
 	app.story_minigame.score=1;ar.turn_page_begin_page(&app);turn_page_test_reveal(&app)
-	ar.turn_page_move(&app,ar.turn_page_center(app.turn_page.route[1])-app.run.player.pos,false)
-	gap:=app.turn_page.route[2];forward:=ar.turn_page_center(gap)-app.run.player.pos
+	ar.turn_page_move(&app,ar.turn_page_center(app.turn_page.route[1])-app.run.players[0].pos,false)
+	gap:=app.turn_page.route[2];forward:=ar.turn_page_center(gap)-app.run.players[0].pos
 	lateral:=ar.Vec2{-forward.y,forward.x}
 	hole:=gap+[2]int{int(lateral.x),int(lateral.y)}
 	app.turn_page.tiles[hole.x][hole.y]=.Gone
@@ -247,14 +247,14 @@ turn_page_results_restore_exact_actions_clocks_and_reward_once :: proc(t: ^testi
 		app.turn_page.return_player.visual_action=.Dash;app.turn_page.return_player.action_time=.08
 		app.turn_page.return_player.action_duration=.2;app.turn_page.return_player.sim_elapsed=137
 		saved:=app.turn_page.return_player
-		hp:=app.run.player.max_hp-7;app.run.player.hp=hp
-		power:=app.run.player.discipline_melee_bonus
+		hp:=app.run.players[0].max_hp-7;app.run.players[0].hp=hp
+		power:=app.run.players[0].discipline_melee_bonus
 		if won {
 			for _ in 0..<2 do turn_page_test_solve_page(&app,t)
 		} else {turn_page_test_reveal(&app);app.story_minigame.time_left=.01;_=ar.turn_page_tick(&app,{},ar.SIM_DT)}
 		testing.expect(t,ar.app_story_finalize_minigame(&app))
-		testing.expect(t,ar.turn_page_capture_player(&app.run.player)==saved,"return must restore all borrowed player fields exactly")
-		testing.expect(t,app.run.player.hp==(won?app.run.player.max_hp:hp)&&app.run.player.discipline_melee_bonus==power+(won?1:0))
+		testing.expect(t,ar.turn_page_capture_player(&app.run.players[0])==saved,"return must restore all borrowed player fields exactly")
+		testing.expect(t,app.run.players[0].hp==(won?app.run.players[0].max_hp:hp)&&app.run.players[0].discipline_melee_bonus==power+(won?1:0))
 		testing.expect(t,app.run.story_runtime.relic_records[4].committed&&app.run.story_runtime.relic_records[4].path==.Aid)
 		testing.expect(t,!ar.app_story_finalize_minigame(&app)&&!ar.app_story_start_bind_the_page(&app,.Aid))
 		ar.run_destroy(&app.run)
@@ -268,12 +268,12 @@ turn_page_save_resume_replays_preview_traversal_fall_and_result :: proc(t: ^test
 		app.run.run_id=ar.persistence_clone_string("turn-page-test")
 		if phase>0 {
 			turn_page_test_reveal(&app)
-			if phase<4 do ar.turn_page_move(&app,ar.turn_page_center(app.turn_page.route[1])-app.run.player.pos,false)
+			if phase<4 do ar.turn_page_move(&app,ar.turn_page_center(app.turn_page.route[1])-app.run.players[0].pos,false)
 		}
 		if phase==2 {ar.turn_page_wrong(&app,{4,4});_=ar.turn_page_tick(&app,{},.25)}
 		if phase==3 {app.story_minigame.time_left=.001;_=ar.turn_page_tick(&app,{},.1)}
 		if phase==4 {
-			forward:=ar.turn_page_center(app.turn_page.route[1])-app.run.player.pos
+			forward:=ar.turn_page_center(app.turn_page.route[1])-app.run.players[0].pos
 			ar.turn_page_move(&app,-forward*.8,false)
 			for _ in 0..<100 do _=ar.turn_page_tick(&app,{},ar.SIM_DT)
 		}
@@ -285,12 +285,12 @@ turn_page_save_resume_replays_preview_traversal_fall_and_result :: proc(t: ^test
 		testing.expect(t,ar.app_install_run_document(&resumed,&document));ar.run_document_destroy(&document)
 		testing.expect(t,resumed.turn_page==app.turn_page&&resumed.story_minigame==app.story_minigame)
 		testing.expect(t,ar.visual_turn_page_motion_age(&resumed,1)==ar.visual_turn_page_motion_age(&app,1),"save/resume must keep the same manuscript pose")
-		testing.expect(t,ar.turn_page_capture_player(&resumed.run.player)==ar.turn_page_capture_player(&app.run.player))
+		testing.expect(t,ar.turn_page_capture_player(&resumed.run.players[0])==ar.turn_page_capture_player(&app.run.players[0]))
 		if phase==4 {
-			forward:=ar.turn_page_center(app.turn_page.route[1])-app.run.player.pos
+			forward:=ar.turn_page_center(app.turn_page.route[1])-app.run.players[0].pos
 			_=ar.turn_page_tick(&app,-forward,.25);_=ar.turn_page_tick(&resumed,-forward,.25)
 			testing.expect(t,!resumed.turn_page.fall_active&&resumed.story_minigame.mistakes==1,"restored holes must retain their movement blocking")
-			testing.expect(t,ar.turn_page_capture_player(&resumed.run.player)==ar.turn_page_capture_player(&app.run.player))
+			testing.expect(t,ar.turn_page_capture_player(&resumed.run.players[0])==ar.turn_page_capture_player(&app.run.players[0]))
 		}
 		for _ in 0..<10 {_=ar.turn_page_tick(&app,{},ar.SIM_DT);_=ar.turn_page_tick(&resumed,{},ar.SIM_DT)}
 		testing.expect(t,resumed.turn_page==app.turn_page&&resumed.story_minigame==app.story_minigame)
@@ -310,10 +310,10 @@ turn_page_save_resume_restores_dungeon_facing_cone :: proc(t: ^testing.T) {
 	app.turn_page.return_player.pos={20.5,20.5}
 	app.turn_page.return_player.prev_pos=app.turn_page.return_player.pos
 	app.turn_page.return_player.facing={1,0}
-	app.run.player.facing={0,1}
+	app.run.players[0].facing={0,1}
 	app.run.explored[26][20]=true
 	app.run.explored[20][26]=true
-	virtual_player:=ar.turn_page_capture_player(&app.run.player)
+	virtual_player:=ar.turn_page_capture_player(&app.run.players[0])
 	return_player:=app.turn_page.return_player
 
 	bytes,ok:=ar.persistence_encode_run(&app,1,"2026-09-06T12:00:00Z")
@@ -330,7 +330,7 @@ turn_page_save_resume_restores_dungeon_facing_cone :: proc(t: ^testing.T) {
 	testing.expect(t,installed)
 	if !installed do return
 	testing.expect(t,ar.app_story_turn_page_active(&resumed),"save must resume the active page")
-	testing.expect(t,ar.turn_page_capture_player(&resumed.run.player)==virtual_player,
+	testing.expect(t,ar.turn_page_capture_player(&resumed.run.players[0])==virtual_player,
 		"rebuilding dungeon visibility must restore the virtual player position and facing")
 
 	turn_page_test_reveal(&resumed)
@@ -338,7 +338,7 @@ turn_page_save_resume_restores_dungeon_facing_cone :: proc(t: ^testing.T) {
 	_=ar.turn_page_tick(&resumed,{},ar.SIM_DT)
 	testing.expect(t,ar.app_story_finalize_minigame(&resumed))
 	// No ordinary simulation tick may repair the cone before these assertions.
-	testing.expect(t,ar.turn_page_capture_player(&resumed.run.player)==return_player)
+	testing.expect(t,ar.turn_page_capture_player(&resumed.run.players[0])==return_player)
 	testing.expect(t,resumed.run.visible[26][20],
 		"known radius-6 target in the return heading must be live immediately on return")
 	testing.expect(t,!resumed.run.visible[20][26],
@@ -351,8 +351,8 @@ turn_page_save_resume_restores_dungeon_facing_cone :: proc(t: ^testing.T) {
 turn_page_schema_two_modal_migrates_without_coordinate_reinterpretation :: proc(t: ^testing.T) {
 	app:=turn_page_test_start(5)
 	defer ar.run_destroy(&app.run)
-	ar.turn_page_restore_player(&app.run.player,app.turn_page.return_player)
-	original:=app.run.player.pos
+	ar.turn_page_restore_player(&app.run.players[0],app.turn_page.return_player)
+	original:=app.run.players[0].pos
 	app.turn_page={};app.story_minigame.phase=.Play;app.story_minigame.board_count=6
 	app.story_minigame.sequence_count=4;app.story_minigame.sequence={2,3,1,5,0,0}
 	ar.run_ensure_persisted_entity_ids(&app.run)
@@ -416,7 +416,7 @@ turn_page_mobile_utility_menu_and_controller_aim_use_world_input :: proc(t: ^tes
 	testing.expect(t,app.mobile_utility_open)
 	ar.app_apply(&app,ar.Intent{aim={-1,0},aim_live=true})
 	ar.app_tick(&app)
-	testing.expect(t,app.run.player.facing==ar.Vec2{-1,0})
+	testing.expect(t,app.run.players[0].facing==ar.Vec2{-1,0})
 	ar.app_apply(&app,ar.Intent{back=true})
 	testing.expect(t,app.mode==.Paused)
 	layout,status:=ar.mobile_layout_build({surface_width=1280,surface_height=800,density=1,revision=1})
@@ -441,7 +441,7 @@ turn_page_confirms_tile_entry_without_requiring_a_center_hit :: proc(t: ^testing
  app:=turn_page_test_start(5)
  defer ar.run_destroy(&app.run)
  turn_page_test_reveal(&app)
- direction:=ar.turn_page_center(app.turn_page.route[1])-app.run.player.pos
+ direction:=ar.turn_page_center(app.turn_page.route[1])-app.run.players[0].pos
  ar.turn_page_move(&app,direction*.55,false)
  testing.expect(t,app.story_minigame.step==1&&!app.turn_page.fall_active)
 }

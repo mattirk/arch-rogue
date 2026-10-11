@@ -490,7 +490,7 @@ draw_title_screen :: proc(app: ^App, assets: ^Assets) {
 	sub: cstring = "a grim descent into the cursed depths"
 	ui_draw_text(sub, i32(center_x)-ui_measure_text(sub,20)/2, i32(logo.y+logo.height+16), 20, COLOR_TEXT_DIM)
 
-	labels := [len(Title_Action)]cstring{"Resume", "New Run", "Chronicle", "Options", "Quit"}
+	labels := [len(Title_Action)]cstring{"Resume", "New Run", "Co-op", "Chronicle", "Options", "Quit"}
 	for label, index in labels {
 		rect := title_row_rect_in_bounds(layout, index)
 		enabled := title_action_enabled(app, Title_Action(index))
@@ -1831,7 +1831,7 @@ character_has_known_curse :: proc(player: ^Player) -> bool {
 draw_character_panel :: proc(app: ^App, assets: ^Assets) {
 	ui_begin_presentation()
 	defer ui_end_presentation()
-	player:=&app.run.player
+	player:=&app.run.players[app.run.local_slot]
 	panel:=character_panel_rect()
 	draw_menu_panel_chrome(assets,panel)
 	ui_draw_text("CHARACTER",i32(panel.x+36),i32(panel.y+22),28,COLOR_TITLE)
@@ -2119,7 +2119,7 @@ draw_shop_panel :: proc(app:^App,assets:^Assets){
 	keeper:=&app.run.shopkeeper
 	draw_menu_panel_chrome(assets,panel)
 	ui_draw_text(fmt.ctprintf("%s",keeper.name),i32(panel.x+24),i32(panel.y+18),26,COLOR_TITLE)
-	ui_draw_text(fmt.ctprintf("%s    Your gold: %v",keeper.role,app.run.player.gold),i32(panel.x+24),i32(panel.y+51),15,COLOR_TEXT_DIM)
+	ui_draw_text(fmt.ctprintf("%s    Your gold: %v",keeper.role,app.run.players[app.run.local_slot].gold),i32(panel.x+24),i32(panel.y+51),15,COLOR_TEXT_DIM)
 	for label,mode in ([2]cstring{"BUY","SELL"}) {
 		rect := shop_mode_rect(Shop_Mode(mode))
 		selected:=int(app.shop_mode)==mode
@@ -2131,8 +2131,8 @@ draw_shop_panel :: proc(app:^App,assets:^Assets){
 	total := shop_entry_count(app)
 	visible_end := min(total, app.shop_scroll + SHOP_VISIBLE_ROWS)
 	for i in app.shop_scroll..<visible_end {
-		item:=app.shop_mode==.Buy?keeper.stock[i]:app.run.player.bag[i]
-		price:=app.shop_mode==.Buy?shop_purchase_price(keeper,&app.run.player,item):shop_buyback_value(keeper,item)
+		item:=app.shop_mode==.Buy?keeper.stock[i]:app.run.players[app.run.local_slot].bag[i]
+		price:=app.shop_mode==.Buy?shop_purchase_price(keeper,&app.run.players[app.run.local_slot],item):shop_buyback_value(keeper,item)
 		rect:=shop_row_rect(i - app.shop_scroll)
 		selected:=ui_navigation_selected(app,i==app.shop_index)
 		content:=draw_menu_row_chrome(assets,rect,selected)
@@ -2214,7 +2214,7 @@ inventory_row_rect :: proc(visible_index: int) -> rl.Rectangle {
 
 inventory_row_at :: proc(app: ^App, point: rl.Vector2) -> (index: int, found: bool) {
 	design_point := ui_screen_to_design(point)
-	visible := min(INVENTORY_VISIBLE_ROWS, max(0, app.run.player.bag_count - app.inv_scroll))
+	visible := min(INVENTORY_VISIBLE_ROWS, max(0, app.run.players[app.run.local_slot].bag_count - app.inv_scroll))
 	for row in 0 ..< visible {
 		if rl.CheckCollisionPointRec(design_point, inventory_row_rect(row)) {
 			return app.inv_scroll + row, true
@@ -2251,7 +2251,7 @@ inventory_sort_label :: proc(mode: Inventory_Sort_Mode) -> cstring {
 draw_inventory_panel :: proc(app: ^App, assets: ^Assets) {
 	ui_begin_presentation()
 	defer ui_end_presentation()
-	player := &app.run.player
+	player := &app.run.players[app.run.local_slot]
 	panel := inventory_panel_rect()
 	x := i32(panel.x)
 	y := i32(panel.y)

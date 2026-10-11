@@ -181,7 +181,7 @@ mx6_capture_reset :: proc(app:^App,direction:Vec2) -> Vec2 {
 	clear(&run.traps)
 	clear(&run.shrines)
 	clear(&run.secrets)
-	run.nav={}
+	run.navs={}
 	run.boss_engaged=false
 	// Artificial first-room bosses must not be recovered into a generated final
 	// arena by the encounter watchdog during the one-step real commit below.
@@ -201,7 +201,7 @@ mx6_capture_reset :: proc(app:^App,direction:Vec2) -> Vec2 {
 	app.story_minigame={}
 	app_clear_play_input(app)
 
-	player:=&run.player
+	player:=&run.players[run.local_slot]
 	player.pos=run_spawn_point(run)
 	player.prev_pos=player.pos
 	player.facing=mx6_capture_unit(direction)
@@ -231,14 +231,14 @@ mx6_capture_reset :: proc(app:^App,direction:Vec2) -> Vec2 {
 @(private = "file")
 mx6_capture_shift_player :: proc(run:^Run,direction:Vec2,distance:f32) {
 	if run==nil do return
-	candidate:=run.player.pos+mx6_capture_unit(direction)*distance
+	candidate:=run.players[run.local_slot].pos+mx6_capture_unit(direction)*distance
 	if blocked_for_radius(
 		&run.dungeon,candidate.x,candidate.y,ACTOR_MOVE_COLLISION_RADIUS,block_stairs=true,
 	) {
 		return
 	}
-	run.player.pos=candidate
-	run.player.prev_pos=candidate
+	run.players[run.local_slot].pos=candidate
+	run.players[run.local_slot].prev_pos=candidate
 }
 
 @(private = "file")
@@ -307,14 +307,15 @@ mx6_capture_boss :: proc(run:^Run,pos,facing:Vec2,ability:Ability_Id) {
 
 @(private = "file")
 mx6_capture_familiar :: proc(run:^Run,direction:Vec2,kind:Familiar_Kind) {
+	slot:=run.local_slot
 	spawned:=false
 	switch kind {
 	case .Wisp:
-		spawned=player_cast_spirit_call_rank(run,0)
+		spawned=player_cast_spirit_call_rank(run, slot,0)
 	case .Crow:
-		spawned=player_cast_spirit_call_rank(run,1)
+		spawned=player_cast_spirit_call_rank(run, slot,1)
 	case .Spirit_Beast:
-		spawned=player_cast_spirit_beast_rank(run,0)
+		spawned=player_cast_spirit_beast_rank(run, slot,0)
 	case .Bar_Dancer, .Soulless_Clanker, .String:
 	}
 	if !spawned || len(run.familiars)==0 do return
@@ -324,10 +325,10 @@ mx6_capture_familiar :: proc(run:^Run,direction:Vec2,kind:Familiar_Kind) {
 	clear(&run.numbers)
 	clear(&run.sfx)
 	clear_feel_events(run)
-	player_clear_visual_action(&run.player)
+	player_clear_visual_action(&run.players[run.local_slot])
 	familiar:=&run.familiars[0]
 	facing:=mx6_capture_unit(direction)
-	if pos,ok:=mx6_capture_place(run,run.player.pos,facing,.78,FAMILIAR_MOVE_COLLISION_RADIUS);ok {
+	if pos,ok:=mx6_capture_place(run,run.players[run.local_slot].pos,facing,.78,FAMILIAR_MOVE_COLLISION_RADIUS);ok {
 		familiar.pos=pos
 		familiar.prev_pos=pos
 	}
@@ -356,31 +357,32 @@ mx6_capture_familiar :: proc(run:^Run,direction:Vec2,kind:Familiar_Kind) {
 mx6_stage_capture :: proc(app:^App,view:^View,scenario:MX6_Capture_Scenario,direction:Vec2) {
 	if app==nil || view==nil || app.mode!=.Playing || scenario==.None do return
 	run:=&app.run
+	slot:=run.local_slot
 	facing:=mx6_capture_reset(app,direction)
-	player:=&run.player
+	player:=&run.players[slot]
 	if .Enemy_Base_Melee<=scenario && scenario<=.Boss_Cast {
 		mx6_capture_shift_player(run,facing,.45)
 	}
 
 	switch scenario {
 	case .Melee:
-		player_melee(run,facing)
+		player_melee(run, slot,facing)
 		player_tick_visual_action(player,.08)
 	case .Big_Hit:
-		if player_big_hit_begin(run,facing) {
-			player_big_hit_fire(run)
+		if player_big_hit_begin(run, slot,facing) {
+			player_big_hit_fire(run, slot)
 			player_tick_visual_action(player,.10)
 		}
 	case .Bolt:
-		if player_cast_bolt(run,facing) {
+		if player_cast_bolt(run, slot,facing) {
 			for _ in 0..<5 do sim_tick(run,{})
 		}
 	case .Class_Skill:
-		if player_cast_class_skill(run,facing) {
+		if player_cast_class_skill(run, slot,facing) {
 			player_tick_visual_action(player,.12)
 		}
 	case .Dash:
-		if player_dash(run,facing) do player_tick_visual_action(player,.08)
+		if player_dash(run, slot,facing) do player_tick_visual_action(player,.08)
 	case .Enemy_Base_Melee:
 		if pos,ok:=mx6_capture_place(run,player.pos,-facing,1.15,ACTOR_MOVE_COLLISION_RADIUS);ok {
 			mx6_capture_enemy(run,.Gate_Warden,pos,facing,PENDING_BASE_ATTACK)
@@ -676,10 +678,10 @@ mx7_stage_capture :: proc(app: ^App, view: ^View, scenario: MX7_Capture_Scenario
 	if blocked_for_radius(&run.dungeon,player_pos.x,player_pos.y,ACTOR_MOVE_COLLISION_RADIUS,block_stairs=true) {
 		player_pos = center
 	}
-	run.player.pos = player_pos
-	run.player.prev_pos = player_pos
-	run.player.facing = {1,0}
-	run.player.moving = false
+	run.players[run.local_slot].pos = player_pos
+	run.players[run.local_slot].prev_pos = player_pos
+	run.players[run.local_slot].facing = {1,0}
+	run.players[run.local_slot].moving = false
 	if scenario == .Boss do mx6_capture_boss(run,center,{-1,0},.Shadow_Volley)
 	mx7_stage_dressing(run,scenario,center)
 	if scenario == .Fow {
@@ -721,11 +723,11 @@ mx7_stage_perf :: proc(app: ^App, view: ^View, theme_index: int, dark_override: 
 	run.dungeon.tiles[run.dungeon.stairs.x][run.dungeon.stairs.y]=.Stairs
 	center_tile := room_center(arena)
 	center := Vec2{f32(center_tile.x)+.5,f32(center_tile.y)+.5}
-	run.player.pos = center
-	run.player.prev_pos = center
-	run.player.facing = {1,0}
-	run.player.moving = false
-	run.player.hp = run.player.max_hp
+	run.players[run.local_slot].pos = center
+	run.players[run.local_slot].prev_pos = center
+	run.players[run.local_slot].facing = {1,0}
+	run.players[run.local_slot].moving = false
+	run.players[run.local_slot].hp = run.players[run.local_slot].max_hp
 	run.arrival_timer = 0
 	if mx7_stage_crowd(run,center) != 12 do return false
 	// Fixed persistent visual load is refreshed after each simulation pass.
@@ -739,7 +741,7 @@ mx7_stage_perf :: proc(app: ^App, view: ^View, theme_index: int, dark_override: 
 
 mx7_perf_refresh_visuals :: proc(run: ^Run) {
 	if run == nil do return
-	center := run.player.pos
+	center := run.players[run.local_slot].pos
 	clear(&run.projectiles)
 	clear(&run.numbers)
 	clear_feel_events(run)
@@ -858,17 +860,17 @@ mx_story_stage_capture :: proc(app: ^App, scenario: MX_Story_Capture_Scenario) -
 			if scenario==.Turn_Page_Fall {
 				forward:=turn_page_center(app.turn_page.route[1])-turn_page_center(app.turn_page.route[0])
 				wrong:=Vec2{forward.y,-forward.x}
-				inward:=Vec2{TURN_PAGE_SIZE*.5,TURN_PAGE_SIZE*.5}-app.run.player.pos
+				inward:=Vec2{TURN_PAGE_SIZE*.5,TURN_PAGE_SIZE*.5}-app.run.players[app.run.local_slot].pos
 				if wrong.x*inward.x+wrong.y*inward.y<0 do wrong=-wrong
 				_=turn_page_dash(app,wrong);_=turn_page_tick(app,{},.25);_=turn_page_tick(app,{},.10)
 			} else {
-				turn_page_move(app,turn_page_center(app.turn_page.route[1])-app.run.player.pos,false)
-				_=turn_page_dash(app,turn_page_center(app.turn_page.route[3])-app.run.player.pos)
+				turn_page_move(app,turn_page_center(app.turn_page.route[1])-app.run.players[app.run.local_slot].pos,false)
+				_=turn_page_dash(app,turn_page_center(app.turn_page.route[3])-app.run.players[app.run.local_slot].pos)
 			}
 		}
 		// Capture the settled void at a visible roll angle; live gameplay never
 		// advances this clock without simulation. Phase/timer/fall state stay staged.
-		app.run.player.sim_elapsed=app.turn_page.return_player.sim_elapsed+9
+		app.run.players[app.run.local_slot].sim_elapsed=app.turn_page.return_player.sim_elapsed+9
 		return app_story_turn_page_active(app)&&!app.story_panel.active
 	case .Ending:
 		app.run.story.flags.gate = .Unresolved
@@ -930,7 +932,7 @@ mx_save_stage_capture :: proc(app:^App,scenario:MX_Save_Capture_Scenario)->bool 
 @(private = "file")
 mx7_stage_end_panel :: proc(app: ^App, victory: bool) {
 	run := &app.run
-	player := &run.player
+	player := &run.players[run.local_slot]
 	run.depth = 10
 	player.level = 19
 	run.kills = 9999

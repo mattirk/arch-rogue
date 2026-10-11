@@ -187,10 +187,10 @@ starter_loadouts_and_move_ratings_match_pygame :: proc(t: ^testing.T) {
 	for archetype in ar.Archetype_Id {
 		run: ar.Run
 		ar.run_start(&run, ar.derive_seed(4100+u64(archetype), 0), archetype)
-		testing.expect(t, run.player.has_weapon && run.player.has_armor, "every class needs its mundane starting equipment")
-		testing.expectf(t, run.player.weapon.power == weapon_power[archetype], "%v starter weapon power changed", archetype)
-		testing.expectf(t, run.player.armor.defense == armor_defense[archetype], "%v starter armor changed", archetype)
-		testing.expectf(t, abs(ar.player_speed(&run.player)-expected_speed[archetype]) < 1e-4, "%v speed %.3f, want %.3f", archetype, ar.player_speed(&run.player), expected_speed[archetype])
+		testing.expect(t, run.players[0].has_weapon && run.players[0].has_armor, "every class needs its mundane starting equipment")
+		testing.expectf(t, run.players[0].weapon.power == weapon_power[archetype], "%v starter weapon power changed", archetype)
+		testing.expectf(t, run.players[0].armor.defense == armor_defense[archetype], "%v starter armor changed", archetype)
+		testing.expectf(t, abs(ar.player_speed(&run.players[0])-expected_speed[archetype]) < 1e-4, "%v speed %.3f, want %.3f", archetype, ar.player_speed(&run.players[0]), expected_speed[archetype])
 		ar.run_destroy(&run)
 	}
 
@@ -213,11 +213,11 @@ player_movement_collides_and_slides :: proc(t: ^testing.T) {
 
 	// Start inside the spawn room and push straight west into its wall.
 	clear(&run.enemies)
-	run.player.pos = {f32(room.x) + 1.5, f32(room.y) + 1.5}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = {f32(room.x) + 1.5, f32(room.y) + 1.5}
+	run.players[0].prev_pos = run.players[0].pos
 	for _ in 0 ..< 240 {
 		ar.sim_tick(&run, {-1, 0})
-		p := run.player.pos
+		p := run.players[0].pos
 		testing.expectf(
 			t,
 			!ar.blocked_for_radius(&run.dungeon, p.x, p.y, block_stairs = true),
@@ -227,16 +227,16 @@ player_movement_collides_and_slides :: proc(t: ^testing.T) {
 	}
 	// Wall column sits at room.x - 1, so x should have stopped near
 	// room.x + radius (floor starts at room.x).
-	wall_stop := run.player.pos.x - f32(room.x)
-	max_gap := ar.ACTOR_MOVE_COLLISION_RADIUS + ar.player_speed(&run.player)*ar.SIM_DT
-	testing.expectf(t, wall_stop >= ar.ACTOR_MOVE_COLLISION_RADIUS && wall_stop <= max_gap+.001, "expected to stop within one fixed step of wall, got x=%v (room.x=%v)", run.player.pos.x, room.x)
+	wall_stop := run.players[0].pos.x - f32(room.x)
+	max_gap := ar.ACTOR_MOVE_COLLISION_RADIUS + ar.player_speed(&run.players[0])*ar.SIM_DT
+	testing.expectf(t, wall_stop >= ar.ACTOR_MOVE_COLLISION_RADIUS && wall_stop <= max_gap+.001, "expected to stop within one fixed step of wall, got x=%v (room.x=%v)", run.players[0].pos.x, room.x)
 
 	// Diagonal into the same wall: x stays clamped, y keeps sliding.
-	y_before := run.player.pos.y
+	y_before := run.players[0].pos.y
 	for _ in 0 ..< 30 {
 		ar.sim_tick(&run, {-1, 1})
 	}
-	testing.expect(t, run.player.pos.y > y_before + 0.5, "expected to slide along the wall")
+	testing.expect(t, run.players[0].pos.y > y_before + 0.5, "expected to slide along the wall")
 }
 
 // Find an open, LOS-clear position near the player at one of the cardinal
@@ -245,9 +245,9 @@ player_movement_collides_and_slides :: proc(t: ^testing.T) {
 open_spot_near_player :: proc(run: ^ar.Run, reach: f32) -> (pos: ar.Vec2, found: bool) {
 	offsets := [4]ar.Vec2{{reach, 0}, {0, reach}, {-reach, 0}, {0, -reach}}
 	for off in offsets {
-		c := run.player.pos + off
+		c := run.players[0].pos + off
 		if ar.blocked_for_radius(&run.dungeon, c.x, c.y) do continue
-		if !ar.line_of_sight(&run.dungeon, run.player.pos.x, run.player.pos.y, c.x, c.y) do continue
+		if !ar.line_of_sight(&run.dungeon, run.players[0].pos.x, run.players[0].pos.y, c.x, c.y) do continue
 		return c, true
 	}
 	return pos, false
@@ -287,8 +287,8 @@ melee_enemy_chases_and_strikes :: proc(t: ^testing.T) {
 	if !found do return
 	append(&run.enemies, ar.enemy_make(.Ghoul, spot, 1))
 
-	hp_before := run.player.hp
-	dist_before := abs(spot.x - run.player.pos.x) + abs(spot.y - run.player.pos.y)
+	hp_before := run.players[0].hp
+	dist_before := abs(spot.x - run.players[0].pos.x) + abs(spot.y - run.players[0].pos.y)
 	aggroed := false
 	for _ in 0 ..< 240 {
 		ar.sim_tick(&run, {})
@@ -296,9 +296,9 @@ melee_enemy_chases_and_strikes :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, aggroed, "ghoul never aggroed")
 	enemy := run.enemies[0]
-	dist_after := abs(enemy.pos.x - run.player.pos.x) + abs(enemy.pos.y - run.player.pos.y)
+	dist_after := abs(enemy.pos.x - run.players[0].pos.x) + abs(enemy.pos.y - run.players[0].pos.y)
 	testing.expect(t, dist_after < dist_before, "ghoul must close the distance")
-	testing.expectf(t, run.player.hp < hp_before, "ghoul should have landed a strike (hp %v)", run.player.hp)
+	testing.expectf(t, run.players[0].hp < hp_before, "ghoul should have landed a strike (hp %v)", run.players[0].hp)
 }
 
 @(test)
@@ -311,25 +311,25 @@ player_melee_kills_and_grants_xp :: proc(t: ^testing.T) {
 	testing.expect(t, found, "no open spot near player")
 	if !found do return
 	append(&run.enemies, ar.enemy_make(.Ghoul, spot, 1))
-	aim := spot - run.player.pos
+	aim := spot - run.players[0].pos
 
-	dmg_per_swing := ar.player_melee_damage(&run.player)
-	ar.player_melee(&run, aim)
+	dmg_per_swing := ar.player_melee_damage(&run.players[0])
+	ar.player_melee(&run, 0, aim)
 	first_hp := run.enemies[0].hp
 	first_damage := 42 - first_hp
 	testing.expectf(t, first_damage >= dmg_per_swing - 3 && first_damage <= dmg_per_swing + 4, "first swing damage %v outside pygame's -3..+4 roll", first_damage)
-	ar.player_melee(&run, aim) // still on cooldown: no-op
+	ar.player_melee(&run, 0, aim) // still on cooldown: no-op
 	testing.expect(t, run.enemies[0].hp == first_hp, "cooldown must gate swings")
 
 	for run.enemies[0].hp > 0 {
-		run.player.melee_timer = 0
-		run.player.stamina = 100
-		ar.player_melee(&run, aim)
+		run.players[0].melee_timer = 0
+		run.players[0].stamina = 100
+		ar.player_melee(&run, 0, aim)
 	}
 	run.hitstop_ticks = 0 // the sweep, not the killing swing's freeze, is under test
 	ar.sim_tick(&run, {}) // sweep the corpse
 	testing.expect(t, len(run.enemies) == 0, "dead ghoul must be removed")
-	testing.expect(t, run.player.xp == ar.ENEMY_DEFS[.Ghoul].xp, "kill must grant xp")
+	testing.expect(t, run.players[0].xp == ar.ENEMY_DEFS[.Ghoul].xp, "kill must grant xp")
 	testing.expect(t, len(run.numbers) > 0, "damage numbers must spawn")
 }
 
@@ -345,14 +345,14 @@ ranged_enemy_fires_and_hits :: proc(t: ^testing.T) {
 	append(&run.enemies, ar.enemy_make(.Bone_Imp, spot, 1))
 	run.enemies[0].ai = .Chase
 
-	hp_before := run.player.hp
+	hp_before := run.players[0].hp
 	fired := false
 	for _ in 0 ..< 180 {
 		ar.sim_tick(&run, {})
 		if len(run.projectiles) > 0 do fired = true
 	}
 	testing.expect(t, fired, "bone imp never fired")
-	testing.expectf(t, run.player.hp < hp_before, "bolt should have hit the player (hp %v)", run.player.hp)
+	testing.expectf(t, run.players[0].hp < hp_before, "bolt should have hit the player (hp %v)", run.players[0].hp)
 }
 
 @(test)
@@ -362,7 +362,7 @@ projectile_dies_on_walls :: proc(t: ^testing.T) {
 	defer ar.run_destroy(&run)
 	clear(&run.enemies)
 	append(&run.projectiles, ar.Projectile{
-		pos = run.player.pos, prev_pos = run.player.pos,
+		pos = run.players[0].pos, prev_pos = run.players[0].pos,
 		vel = {-6, 0}, damage = 5, from_player = true, ttl = 3,
 	})
 	for _ in 0 ..< 180 {
@@ -377,10 +377,10 @@ core_bolt_spawns_one_projectile :: proc(t: ^testing.T) {
 	ar.run_start(&run, ar.derive_seed(11, 0), .Rogue)
 	defer ar.run_destroy(&run)
 	clear(&run.enemies)
-	ar.player_skill(&run, {1, 0})
+	ar.player_skill(&run, 0, {1, 0})
 	testing.expectf(t, len(run.projectiles) == 1, "unupgraded core bolt must spawn one projectile, got %v", len(run.projectiles))
-	testing.expect(t, run.player.bolt_timer > 0, "bolt must go on cooldown")
-	ar.player_skill(&run, {1, 0}) // on cooldown: no-op
+	testing.expect(t, run.players[0].bolt_timer > 0, "bolt must go on cooldown")
+	ar.player_skill(&run, 0, {1, 0}) // on cooldown: no-op
 	testing.expect(t, len(run.projectiles) == 1, "cooldown must gate the bolt")
 }
 
@@ -391,9 +391,9 @@ xp_levels_up_with_growth :: proc(t: ^testing.T) {
 	defer ar.run_destroy(&run)
 	base := ar.ARCHETYPES[.Warden]
 
-	run.player.hp = 50 // level-up must fully heal the grown pool
-	ar.player_gain_xp(&run, ar.XP_BASE)
-	p := &run.player
+	run.players[0].hp = 50 // level-up must fully heal the grown pool
+	ar.player_gain_xp(&run, 0, ar.XP_BASE)
+	p := &run.players[0]
 	testing.expectf(t, p.level == 2, "level %v, want 2", p.level)
 	testing.expect(t, p.next_xp == 150, "next_xp should be 150")
 	testing.expect(t, p.xp == 0, "xp overflow should carry (none here)")
@@ -538,34 +538,34 @@ pickup_requires_interact_then_equips_and_bags :: proc(t: ^testing.T) {
 	clear(&run.ground_items)
 
 	sword := ar.Item{kind = .Weapon, name = "Iron Sword", power = 5}
-	append(&run.ground_items, ar.Ground_Item{item = sword, pos = run.player.pos})
-	starting_damage := ar.player_melee_damage(&run.player)
-	starter_power := run.player.weapon.power
-	starter_name := run.player.weapon.name
+	append(&run.ground_items, ar.Ground_Item{item = sword, pos = run.players[0].pos})
+	starting_damage := ar.player_melee_damage(&run.players[0])
+	starter_power := run.players[0].weapon.power
+	starter_name := run.players[0].weapon.name
 	ar.sim_tick(&run, {})
-	testing.expect(t, run.player.weapon.name == starter_name, "walking over loot must not pick it up")
+	testing.expect(t, run.players[0].weapon.name == starter_name, "walking over loot must not pick it up")
 	testing.expect(t, len(run.ground_items) == 1, "loot must wait on the floor for E")
-	_ = ar.player_interact(&run)
-	testing.expect(t, run.player.weapon.name == starter_name && run.player.bag_count == 1, "E must put equipment in the bag for deliberate identification/equip")
+	_ = ar.player_interact(&run, 0)
+	testing.expect(t, run.players[0].weapon.name == starter_name && run.players[0].bag_count == 1, "E must put equipment in the bag for deliberate identification/equip")
 	testing.expect(t, len(run.ground_items) == 0, "picked up item must leave the floor")
-	ar.equip_from_bag(&run.player, 0)
-	testing.expect(t, run.player.has_weapon, "using the bag row must equip the weapon")
+	ar.equip_from_bag(&run.players[0], 0)
+	testing.expect(t, run.players[0].has_weapon, "using the bag row must equip the weapon")
 	testing.expectf(
 		t,
-		ar.player_melee_damage(&run.player) == starting_damage - starter_power + 5,
+		ar.player_melee_damage(&run.players[0]) == starting_damage - starter_power + 5,
 		"weapon power must add to melee damage",
 	)
-	testing.expect(t, run.player.bag[0].name == starter_name, "starter weapon must swap into the bag")
+	testing.expect(t, run.players[0].bag[0].name == starter_name, "starter weapon must swap into the bag")
 
 	axe := ar.Item{kind = .Weapon, name = "Hunter Axe", power = 7}
-	append(&run.ground_items, ar.Ground_Item{item = axe, pos = run.player.pos})
-	_ = ar.player_interact(&run)
-	testing.expect(t, run.player.bag_count == 2, "second weapon stays in the bag")
+	append(&run.ground_items, ar.Ground_Item{item = axe, pos = run.players[0].pos})
+	_ = ar.player_interact(&run, 0)
+	testing.expect(t, run.players[0].bag_count == 2, "second weapon stays in the bag")
 
 	// Equipping from the bag swaps the pieces.
-	ar.equip_from_bag(&run.player, 1)
-	testing.expect(t, run.player.weapon.name == "Hunter Axe", "bag weapon must equip")
-	testing.expect(t, run.player.bag[1].name == "Iron Sword", "old weapon must land in the bag slot")
+	ar.equip_from_bag(&run.players[0], 1)
+	testing.expect(t, run.players[0].weapon.name == "Hunter Axe", "bag weapon must equip")
+	testing.expect(t, run.players[0].bag[1].name == "Iron Sword", "old weapon must land in the bag slot")
 }
 
 @(test)
@@ -574,17 +574,17 @@ potion_pickups_respect_per_type_capacity :: proc(t: ^testing.T) {
 	ar.run_start(&run, ar.derive_seed(12, 0), .Warden)
 	defer ar.run_destroy(&run)
 	clear(&run.ground_items)
-	run.player.heal_potions = ar.POTION_CAPACITY
-	run.player.mana_potions = ar.POTION_CAPACITY
+	run.players[0].heal_potions = ar.POTION_CAPACITY
+	run.players[0].mana_potions = ar.POTION_CAPACITY
 
-	append(&run.ground_items, ar.Ground_Item{item = ar.Item{kind = .Heal_Potion, name = "Health Flask"}, pos = run.player.pos})
-	testing.expect(t, !ar.player_interact(&run), "health potion pickup must fail at capacity")
-	testing.expect(t, run.player.heal_potions == ar.POTION_CAPACITY && len(run.ground_items) == 1, "rejected health potion must remain on the ground")
+	append(&run.ground_items, ar.Ground_Item{item = ar.Item{kind = .Heal_Potion, name = "Health Flask"}, pos = run.players[0].pos})
+	testing.expect(t, !ar.player_interact(&run, 0), "health potion pickup must fail at capacity")
+	testing.expect(t, run.players[0].heal_potions == ar.POTION_CAPACITY && len(run.ground_items) == 1, "rejected health potion must remain on the ground")
 
 	clear(&run.ground_items)
-	append(&run.ground_items, ar.Ground_Item{item = ar.Item{kind = .Mana_Potion, name = "Mana Flask"}, pos = run.player.pos})
-	testing.expect(t, !ar.player_interact(&run), "mana potion pickup must fail at capacity")
-	testing.expect(t, run.player.mana_potions == ar.POTION_CAPACITY && len(run.ground_items) == 1, "rejected mana potion must remain on the ground")
+	append(&run.ground_items, ar.Ground_Item{item = ar.Item{kind = .Mana_Potion, name = "Mana Flask"}, pos = run.players[0].pos})
+	testing.expect(t, !ar.player_interact(&run, 0), "mana potion pickup must fail at capacity")
+	testing.expect(t, run.players[0].mana_potions == ar.POTION_CAPACITY && len(run.ground_items) == 1, "rejected mana potion must remain on the ground")
 }
 
 @(test)
@@ -592,23 +592,23 @@ potions_heal_capped_and_gated :: proc(t: ^testing.T) {
 	run: ar.Run
 	ar.run_start(&run, ar.derive_seed(11, 0), .Warden)
 	defer ar.run_destroy(&run)
-	p := &run.player
+	p := &run.players[0]
 	p.heal_potions = 2
 	p.hp = p.max_hp - 10 // less damage than one flask heals
 
-	ar.player_use_potion(&run, .Heal_Potion)
+	ar.player_use_potion(&run, 0, .Heal_Potion)
 	testing.expect(t, p.hp == p.max_hp, "heal must cap at max hp")
 	testing.expect(t, p.heal_potions == 1, "flask must be consumed")
 
-	ar.player_use_potion(&run, .Heal_Potion) // full hp: refuse to waste
+	ar.player_use_potion(&run, 0, .Heal_Potion) // full hp: refuse to waste
 	testing.expect(t, p.heal_potions == 1, "full-hp quaff must not consume")
 
 	p.hp = 10
 	p.potion_timer = 0 // cooldown from the successful quaff above
-	ar.player_use_potion(&run, .Heal_Potion)
+	ar.player_use_potion(&run, 0, .Heal_Potion)
 	first := p.hp
 	testing.expect(t, first == 10 + ar.HEAL_POTION_AMOUNT, "heal amount ported (35)")
-	ar.player_use_potion(&run, .Heal_Potion) // cooldown gate
+	ar.player_use_potion(&run, 0, .Heal_Potion) // cooldown gate
 	testing.expect(t, p.hp == first, "potion cooldown must gate chugging")
 }
 
@@ -623,12 +623,12 @@ lifesteal_heals_on_melee :: proc(t: ^testing.T) {
 	if !found do return
 	append(&run.enemies, ar.enemy_make(.Ghoul, spot, 1))
 
-	run.player.weapon = ar.Item{kind = .Weapon, name = "Leech Blade", power = 2,
+	run.players[0].weapon = ar.Item{kind = .Weapon, name = "Leech Blade", power = 2,
 		lifesteal = 0.5, affixes = {{kind = .Vampiric}, {}, {}}, affix_count = 1}
-	run.player.has_weapon = true
-	run.player.hp = 50
-	ar.player_melee(&run, spot - run.player.pos)
-	testing.expectf(t, run.player.hp > 50, "lifesteal must heal on hit (hp %v)", run.player.hp)
+	run.players[0].has_weapon = true
+	run.players[0].hp = 50
+	ar.player_melee(&run, 0, spot - run.players[0].pos)
+	testing.expectf(t, run.players[0].hp > 50, "lifesteal must heal on hit (hp %v)", run.players[0].hp)
 }
 
 // run_flow.py light_depths_for_run: depths 1-4 always light, 5+ coin flip.
@@ -673,18 +673,18 @@ sim_emits_sfx_events :: proc(t: ^testing.T) {
 	clear(&run.enemies)
 	clear(&run.sfx)
 
-	ar.player_melee(&run, {1, 0})
+	ar.player_melee(&run, 0, {1, 0})
 	has_swing := false
 	for e in run.sfx {
 		if e.bank == .Melee_Swing_Warden {
-			has_swing = e.spatial && e.pos == run.player.pos
+			has_swing = e.spatial && e.pos == run.players[0].pos
 		}
 	}
 	testing.expect(t, has_swing, "Warden melee must emit a spatial Melee_Swing_Warden at the player")
 
 	clear(&run.sfx)
-	run.player.hp = 50
-	ar.player_use_potion(&run, .Heal_Potion)
+	run.players[0].hp = 50
+	ar.player_use_potion(&run, 0, .Heal_Potion)
 	has_potion := false
 	for e in run.sfx {
 		if e.bank == .Potion_Drink {
@@ -695,7 +695,7 @@ sim_emits_sfx_events :: proc(t: ^testing.T) {
 
 	clear(&run.sfx)
 	ar.run_descend(&run) // dev descend does not emit; interact path does
-	ar.damage_player(&run, 20)
+	ar.damage_player(&run, 0, 20)
 	has_hurt := false
 	for e in run.sfx {
 		if e.bank == .Player_Hurt_Light {
@@ -741,11 +741,11 @@ fog_of_war_is_ready_on_spawn_and_floor_transition :: proc(t: ^testing.T) {
 	run: ar.Run
 	ar.run_start(&run, ar.derive_seed(1011, 0), .Warden)
 	defer ar.run_destroy(&run)
-	px,py := int(run.player.pos.x),int(run.player.pos.y)
+	px,py := int(run.players[0].pos.x),int(run.players[0].pos.y)
 	testing.expect(t,run.visible[px][py]&&run.explored[px][py],"spawn frame must not render before visibility exists")
 	first_epoch := run.floor_epoch
 	ar.run_descend(&run)
-	px,py = int(run.player.pos.x),int(run.player.pos.y)
+	px,py = int(run.players[0].pos.x),int(run.players[0].pos.y)
 	testing.expect(t,run.visible[px][py]&&run.explored[px][py],"floor transition must refresh visibility before its first frame")
 	testing.expect(t,run.floor_epoch>first_epoch,"floor regeneration must invalidate presentation caches")
 	same_depth_epoch := run.floor_epoch
@@ -764,11 +764,11 @@ fog_of_war_reveals_and_remembers :: proc(t: ^testing.T) {
 	room := ar.dungeon_rooms(&run.dungeon)[0]
 
 	// Stand against the west wall of the spawn room.
-	run.player.pos = {f32(room.x) + 0.6, f32(room.y) + f32(room.h / 2) + 0.5}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = {f32(room.x) + 0.6, f32(room.y) + f32(room.h / 2) + 0.5}
+	run.players[0].prev_pos = run.players[0].pos
 	ar.sim_tick(&run, {})
 
-	px, py := int(run.player.pos.x), int(run.player.pos.y)
+	px, py := int(run.players[0].pos.x), int(run.players[0].pos.y)
 	testing.expect(t, run.visible[px][py], "player tile must be visible")
 	testing.expect(t, run.explored[px][py], "player tile must be explored")
 
@@ -783,8 +783,8 @@ fog_of_war_reveals_and_remembers :: proc(t: ^testing.T) {
 
 	// Memory persists after walking away.
 	seen_x, seen_y := px, py
-	run.player.pos = {f32(room.x) + f32(room.w) - 0.6, run.player.pos.y}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = {f32(room.x) + f32(room.w) - 0.6, run.players[0].pos.y}
+	run.players[0].prev_pos = run.players[0].pos
 	ar.sim_tick(&run, {})
 	testing.expect(t, run.explored[seen_x][seen_y], "explored memory must persist")
 }
@@ -795,8 +795,8 @@ fog_of_war_open_floor :: proc(run: ^ar.Run, dark: bool) {
 	for x in 0 ..< ar.MAP_W {
 		for y in 0 ..< ar.MAP_H do run.dungeon.tiles[x][y] = .Floor
 	}
-	run.player.pos = {20.5, 20.5}
-	run.player.facing = {1, 0}
+	run.players[0].pos = {20.5, 20.5}
+	run.players[0].facing = {1, 0}
 	run.dark_floor = dark
 }
 
@@ -921,10 +921,10 @@ fog_of_war_refresh_does_not_expand_discovery :: proc(t: ^testing.T) {
 		run.loot_rng = ar.rng_make(71)
 		run.combat_rng = ar.rng_make(93)
 		loot_before, combat_before := run.loot_rng, run.combat_rng
-		baseline := fog_of_war_legacy_reveal(&run.dungeon, run.player.pos)
+		baseline := fog_of_war_legacy_reveal(&run.dungeon, run.players[0].pos)
 		for pass in 0 ..< 3 {
 			for facing in ([6]ar.Vec2{{1, 0}, {1, 1}, {0, -1}, {-1, 0}, {}, {9, 0}}) {
-				run.player.facing = facing
+				run.players[0].facing = facing
 				ar.refresh_visibility(&run)
 				testing.expectf(t, run.explored == baseline, "stationary discovery grew: dark=%v pass=%v facing=%v", dark, pass, facing)
 				testing.expectf(t, run.visible == baseline, "fresh live footprint must match legacy reveal: dark=%v facing=%v", dark, facing)
@@ -941,19 +941,19 @@ fog_of_war_revisit_extends_live_visibility :: proc(t: ^testing.T) {
 	for dark in ([2]bool{false, true}) {
 		run: ar.Run
 		fog_of_war_open_floor(&run, dark)
-		origin := run.player.pos
+		origin := run.players[0].pos
 		ar.refresh_visibility(&run)
 		testing.expect(t, run.visible[24][20] && !run.explored[25][20] && !run.explored[26][20], "first visit must stop transparent discovery at 4")
 		for x in 21 ..= 26 {
-			run.player.pos = {f32(x) + .5, origin.y}
+			run.players[0].pos = {f32(x) + .5, origin.y}
 			ar.refresh_visibility(&run)
 		}
 		testing.expect(t, run.explored[20][20] && !run.visible[20][20], "leaving a tile retains memory, not live visibility behind the cone")
-		run.player.pos = {32.5, origin.y}
+		run.players[0].pos = {32.5, origin.y}
 		ar.refresh_visibility(&run)
 		testing.expect(t, run.explored[26][20] && !run.visible[26][20], "dark floors also remember internally without keeping distant tiles live")
 		memory := run.explored
-		run.player.pos = origin
+		run.players[0].pos = origin
 		ar.refresh_visibility(&run)
 		testing.expectf(t, run.visible[25][20] && run.visible[26][20], "revisiting the same position gains the known 5/6 ranges: dark=%v", dark)
 		testing.expect(t, !run.visible[27][20] && run.explored[27][20], "remembered floor past radius 6 stays non-live")
@@ -966,20 +966,20 @@ fog_of_war_turning_moves_explored_cone :: proc(t: ^testing.T) {
 	for dark in ([2]bool{false, true}) {
 		run: ar.Run
 		fog_of_war_open_floor(&run, dark)
-		run.player.pos = {20.25, 20.75}
+		run.players[0].pos = {20.25, 20.75}
 		for x in 0 ..< ar.MAP_W {
 			for y in 0 ..< ar.MAP_H do run.explored[x][y] = true
 		}
 		memory := run.explored
 		for facing in ([7]ar.Vec2{{1, 0}, {0, 3}, {-1, 0}, {0, -.25}, {1, 1}, {-2, 3}, {}}) {
-			run.player.facing = facing
+			run.players[0].facing = facing
 			ar.refresh_visibility(&run)
 			// Geometry is tested independently above; this checks refresh wiring,
 			// clearing the previous cone, and using tile centers without projection.
 			expected: [ar.MAP_W][ar.MAP_H]bool
 			for x in 0 ..< ar.MAP_W {
 				for y in 0 ..< ar.MAP_H {
-					offset := ar.Vec2{f32(x) + .5, f32(y) + .5} - run.player.pos
+					offset := ar.Vec2{f32(x) + .5, f32(y) + .5} - run.players[0].pos
 					expected[x][y] = ar.player_sight_in_range(offset, facing, true)
 				}
 			}
@@ -997,7 +997,7 @@ fog_of_war_sparse_explored_targets_do_not_discover_neighbors :: proc(t: ^testing
 				run: ar.Run
 				fog_of_war_open_floor(&run, dark)
 				// Radius 5 works facing away; radius 6 requires facing toward it.
-				run.player.facing = {f32(distance == 5 ? -sign : sign), 0}
+				run.players[0].facing = {f32(distance == 5 ? -sign : sign), 0}
 				tx, y := 20 + sign * distance, 20
 				face_x, behind_x := tx + sign, tx + 2 * sign
 				run.explored[tx][y] = true
@@ -1009,7 +1009,7 @@ fog_of_war_sparse_explored_targets_do_not_discover_neighbors :: proc(t: ^testing
 					run.dungeon.tiles[behind_x][fy] = kind
 					run.explored[behind_x][fy] = true
 				}
-				baseline := fog_of_war_legacy_reveal(&run.dungeon, run.player.pos)
+				baseline := fog_of_war_legacy_reveal(&run.dungeon, run.players[0].pos)
 				expected := run.explored
 				for x in 0 ..< ar.MAP_W {
 					for yy in 0 ..< ar.MAP_H do expected[x][yy] = expected[x][yy] || baseline[x][yy]
@@ -1059,15 +1059,15 @@ fog_of_war_explored_targets_respect_occlusion :: proc(t: ^testing.T) {
 			if c.corner {
 				run.dungeon.tiles[20][21] = .Wall
 				run.explored[20][21] = true
-				run.player.facing = {1, 1}
+				run.players[0].facing = {1, 1}
 				offsets = {{1, 1}, {3, 3}, {4, 4}}
 			}
 			for off in offsets do run.explored[20 + off.x][20 + off.y] = true
 			ar.refresh_visibility(&run)
 			for off in offsets {
-				target := run.player.pos + ar.Vec2{f32(off.x), f32(off.y)}
-				testing.expect(t, ar.player_sight_in_range(target - run.player.pos, run.player.facing, true), "occlusion target must be geometrically in range")
-				testing.expectf(t, !ar.line_of_sight(&run.dungeon, run.player.pos.x, run.player.pos.y, target.x, target.y), "%v fixture must block LOS to %v", c.name, off)
+				target := run.players[0].pos + ar.Vec2{f32(off.x), f32(off.y)}
+				testing.expect(t, ar.player_sight_in_range(target - run.players[0].pos, run.players[0].facing, true), "occlusion target must be geometrically in range")
+				testing.expectf(t, !ar.line_of_sight(&run.dungeon, run.players[0].pos.x, run.players[0].pos.y, target.x, target.y), "%v fixture must block LOS to %v", c.name, off)
 				testing.expectf(t, !run.visible[20 + off.x][20 + off.y] && run.explored[20 + off.x][20 + off.y], "%v blocks known target %v without erasing memory: dark=%v", c.name, off, dark)
 			}
 			testing.expect(t, run.visible[21][20], "the blocking face itself must remain visible through baseline floor support")
@@ -1088,7 +1088,7 @@ fog_of_war_map_edges_preserve_sight_and_memory :: proc(t: ^testing.T) {
 		for corner in corners {
 			run: ar.Run
 			fog_of_war_open_floor(&run, dark)
-			run.player.pos = {f32(corner.x) + .5, f32(corner.y) + .5}
+			run.players[0].pos = {f32(corner.x) + .5, f32(corner.y) + .5}
 			sx, sy := corner.x == 0 ? 1 : -1, corner.y == 0 ? 1 : -1
 			inward := ar.Vec2{f32(sx), f32(sy)}
 			for distance in 5 ..= 7 {
@@ -1099,13 +1099,13 @@ fog_of_war_map_edges_preserve_sight_and_memory :: proc(t: ^testing.T) {
 			run.dungeon.tiles[corner.x][corner.y + 7 * sy] = .Closed_Door
 			far_x, far_y := ar.MAP_W - 1 - corner.x, ar.MAP_H - 1 - corner.y
 			run.explored[far_x][far_y] = true
-			baseline := fog_of_war_legacy_reveal(&run.dungeon, run.player.pos)
+			baseline := fog_of_war_legacy_reveal(&run.dungeon, run.players[0].pos)
 			expected := run.explored
 			for x in 0 ..< ar.MAP_W {
 				for y in 0 ..< ar.MAP_H do expected[x][y] = expected[x][y] || baseline[x][y]
 			}
 			for facing, i in ([3]ar.Vec2{inward, -inward, {}}) {
-				run.player.facing = facing
+				run.players[0].facing = facing
 				run.visible[far_x][far_y] = true
 				ar.refresh_visibility(&run)
 				testing.expect(t, run.visible[corner.x][corner.y], "player at a map corner must remain visible")
@@ -1130,7 +1130,7 @@ route_to_stairs_connects :: proc(t: ^testing.T) {
 	n := ar.route_to_stairs(&run, route[:])
 	testing.expectf(t, n > 0, "route must exist on a connected floor")
 	if n > 0 {
-		testing.expect(t, int(route[0].x) == int(run.player.pos.x) && int(route[0].y) == int(run.player.pos.y), "route starts at the player")
+		testing.expect(t, int(route[0].x) == int(run.players[0].pos.x) && int(route[0].y) == int(run.players[0].pos.y), "route starts at the player")
 		testing.expect(t, int(route[n - 1].x) == run.dungeon.stairs.x && int(route[n - 1].y) == run.dungeon.stairs.y, "route ends at the stairs")
 	}
 }
@@ -1148,9 +1148,9 @@ populated_actor_ids_are_stable_and_namespaced_inputs :: proc(t:^testing.T) {
 			seen[enemy.entity_id]=true
 		}
 	}
-	run.player.mana=f32(run.player.max_mana)
-	run.player.class_skill_timer=0
-	if ar.player_cast_spirit_call(&run) {
+	run.players[0].mana=f32(run.players[0].max_mana)
+	run.players[0].class_skill_timer=0
+	if ar.player_cast_spirit_call(&run, 0) {
 		for &familiar in run.familiars do testing.expect(t,familiar.entity_id>0,"summoned familiar needs stable presentation identity")
 	}
 }
@@ -1272,8 +1272,8 @@ mx1_prepare_boss_entry_seam :: proc(run: ^ar.Run) -> (arena: ar.Room, seam: ar.V
 	}
 
 	seam = {f32(arena.x) + 0.5, f32(arena.y) + 6.0}
-	run.player.pos = seam
-	run.player.prev_pos = seam
+	run.players[0].pos = seam
+	run.players[0].prev_pos = seam
 	boss := ar.enemy_make(.Ghoul, seam, 3)
 	boss.role = .Boss
 	boss.big = true
@@ -1293,11 +1293,11 @@ boss_entry_seal_rescues_actors_and_restores_exact_exits :: proc(t: ^testing.T) {
 	ar.sim_tick(&run, {})
 	testing.expect(t, run.boss_engaged, "entry seam must engage the arena")
 	testing.expectf(t, len(run.sealed) == 4, "expected four exact openings, got %v", len(run.sealed))
-	testing.expect(t, run.player.pos != seam, "player must be rescued from the newly sealed entry")
+	testing.expect(t, run.players[0].pos != seam, "player must be rescued from the newly sealed entry")
 	testing.expect(t, run.enemies[0].pos != seam, "boss must be rescued from the newly sealed entry")
 	testing.expect(
 		t,
-		!ar.blocked_for_radius(&run.dungeon, run.player.pos.x, run.player.pos.y, block_stairs = true),
+		!ar.blocked_for_radius(&run.dungeon, run.players[0].pos.x, run.players[0].pos.y, block_stairs = true),
 		"player footprint overlaps sealed geometry after engagement",
 	)
 	testing.expect(
@@ -1305,7 +1305,7 @@ boss_entry_seal_rescues_actors_and_restores_exact_exits :: proc(t: ^testing.T) {
 		!ar.blocked_for_radius(&run.dungeon, run.enemies[0].pos.x, run.enemies[0].pos.y, ar.BOSS_MOVE_RADIUS),
 		"boss footprint overlaps sealed geometry after engagement",
 	)
-	gap := run.player.pos - run.enemies[0].pos
+	gap := run.players[0].pos - run.enemies[0].pos
 	minimum_gap := f32(0.42) + ar.BOSS_HIT_RADIUS + 0.12
 	testing.expect(
 		t,
@@ -1377,7 +1377,7 @@ boss_rescue_avoids_ordinary_arena_enemies :: proc(t: ^testing.T) {
 			boss_gap.x * boss_gap.x + boss_gap.y * boss_gap.y >= boss_minimum * boss_minimum,
 			"boss rescue must avoid every living arena enemy",
 		)
-		player_gap := run.player.pos - ordinary.pos
+		player_gap := run.players[0].pos - ordinary.pos
 		player_minimum := ar.PLAYER_HIT_RADIUS + ar.ENEMY_HIT_RADIUS + ar.BOSS_ARENA_CLEARANCE_PAD
 		testing.expect(
 			t,
@@ -1406,7 +1406,7 @@ boss_entry_seal_rolls_back_when_rescue_is_impossible :: proc(t: ^testing.T) {
 	}
 	run.dungeon.tiles[9][11] = .Floor
 	entry := ar.Vec2{10.5, 11.5}
-	run.player.pos, run.player.prev_pos = entry, entry
+	run.players[0].pos, run.players[0].prev_pos = entry, entry
 	boss := ar.enemy_make(.Ghoul, entry, 3)
 	boss.role = .Boss
 	boss.big = true
@@ -1418,7 +1418,7 @@ boss_entry_seal_rolls_back_when_rescue_is_impossible :: proc(t: ^testing.T) {
 	testing.expect(t, !run.boss_engaged, "impossible actor rescue must abort engagement")
 	testing.expect(t, len(run.sealed) == 0, "aborted engagement must not retain a partial seal")
 	testing.expect(t, run.dungeon.tiles[10][11] == .Floor, "aborted engagement must restore the entry")
-	testing.expect(t, run.player.pos == entry && run.enemies[0].pos == entry, "rollback must restore actor positions")
+	testing.expect(t, run.players[0].pos == entry && run.enemies[0].pos == entry, "rollback must restore actor positions")
 }
 
 @(test)
@@ -1436,7 +1436,7 @@ pre_engagement_boss_is_confined_to_authoritative_final_arena :: proc(t: ^testing
 	run.dungeon.room_count = 2
 
 	outside := ar.Vec2{33.5, 33.5}
-	run.player.pos, run.player.prev_pos = outside, outside
+	run.players[0].pos, run.players[0].prev_pos = outside, outside
 	run.enemies[0].pos, run.enemies[0].prev_pos = outside + ar.Vec2{1, 0}, outside + ar.Vec2{1, 0}
 	run.enemies[0].ai = .Chase
 	run.enemies[0].aggro_range = 100
@@ -1472,8 +1472,8 @@ pre_engagement_boss_is_confined_to_authoritative_final_arena :: proc(t: ^testing
 		"boss centered on an open threshold must recover its full footprint into the arena",
 	)
 
-	run.player.pos = {f32(arena.x) + 2.5, f32(arena.y) + 2.5}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = {f32(arena.x) + 2.5, f32(arena.y) + 2.5}
+	run.players[0].prev_pos = run.players[0].pos
 	ar.sim_tick(&run, {})
 	testing.expect(t, run.boss_engaged && len(run.sealed) > 0, "entering the final arena must engage and seal it")
 	for sealed in run.sealed {
@@ -1490,7 +1490,7 @@ pre_engagement_boss_is_confined_to_authoritative_final_arena :: proc(t: ^testing
 	run.enemies[0].pos, run.enemies[0].prev_pos = edge_position, edge_position
 	run.enemies[0].statuses[.Stunned] = 10
 	run.enemies[0].knockback_vel = {}
-	run.player.pos, run.player.prev_pos = ar.Vec2{f32(arena.x)+2.5, f32(arena.y)+8.5}, ar.Vec2{f32(arena.x)+2.5, f32(arena.y)+8.5}
+	run.players[0].pos, run.players[0].prev_pos = ar.Vec2{f32(arena.x)+2.5, f32(arena.y)+8.5}, ar.Vec2{f32(arena.x)+2.5, f32(arena.y)+8.5}
 	testing.expect(
 		t,
 		!ar.blocked_for_radius(&run.dungeon, edge_position.x, edge_position.y, ar.BOSS_MOVE_RADIUS),
@@ -1509,8 +1509,8 @@ boss_seal_gating_and_victory :: proc(t: ^testing.T) {
 
 	// March the player into the arena: the seal must close and lock.
 	arena := ar.dungeon_rooms(&run.dungeon)[run.dungeon.room_count - 1]
-	run.player.pos = {f32(arena.x) + 1.5, f32(arena.y) + 1.5}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = {f32(arena.x) + 1.5, f32(arena.y) + 1.5}
+	run.players[0].prev_pos = run.players[0].pos
 	boss_pos := ar.Vec2{}
 	for &enemy in run.enemies do if enemy.role == .Boss do boss_pos = enemy.pos
 	clear(&run.sfx)
@@ -1535,9 +1535,9 @@ boss_seal_gating_and_victory :: proc(t: ^testing.T) {
 
 	// Stairs refuse while the guardian lives.
 	s := run.dungeon.stairs
-	run.player.pos = {f32(s.x) + 0.5, f32(s.y) + 1.5}
+	run.players[0].pos = {f32(s.x) + 0.5, f32(s.y) + 1.5}
 	depth_before := run.depth
-	_ = ar.player_interact(&run)
+	_ = ar.player_interact(&run, 0)
 	testing.expect(t, run.depth == depth_before, "stairs must refuse while the guardian lives")
 
 	// Kill the boss: seal restores, stairs open.
@@ -1563,7 +1563,7 @@ boss_seal_gating_and_victory :: proc(t: ^testing.T) {
 	testing.expect(t,has_boss_death_cue,"boss death must emit non-spatial Boss_Defeat")
 	testing.expect(t,has_gate_open_cue,"boss death must emit spatial Boss_Gate_Open at the boss")
 	testing.expect(t, len(run.sealed) == 0, "sealed list must clear")
-	testing.expect(t, ar.player_interact(&run), "stairs must open after the kill")
+	testing.expect(t, ar.player_interact(&run, 0), "stairs must open after the kill")
 	testing.expect(t, run.depth == depth_before + 1, "descend must proceed")
 
 	// Depth 10: killing the Tyrant and taking the stairs opens the authored
@@ -1575,10 +1575,10 @@ boss_seal_gating_and_victory :: proc(t: ^testing.T) {
 	ar.sim_tick(&run, {})
 	testing.expect(t, run.tyrant_dead, "the Tyrant's death must be recorded")
 	s10 := run.dungeon.stairs
-	run.player.pos = {f32(s10.x) + 0.5, f32(s10.y) + 1.5}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = {f32(s10.x) + 0.5, f32(s10.y) + 1.5}
+	run.players[0].prev_pos = run.players[0].pos
 	clear(&run.sfx)
-	_ = ar.player_interact(&run)
+	_ = ar.player_interact(&run, 0)
 	testing.expect(t, run.story_runtime.requests.epilogue, "stairs after the Tyrant must request the epilogue")
 	testing.expect(t, !run.victory, "final stairs must not bypass the authored epilogue")
 	for cue in run.sfx do testing.expect(t, cue.bank != .Victory, "final stairs emitted Victory before the bell")
@@ -1630,12 +1630,12 @@ player_death_enters_dead_mode :: proc(t: ^testing.T) {
 	testing.expect(t, !app.story_panel.active, "death fixture must dismiss the mandatory opening omen")
 	clear(&app.run.enemies)
 	app.mobile_utility_open = true
-	app.run.player.hp = 1
-	ar.damage_player(&app.run, 50)
+	app.run.players[0].hp = 1
+	ar.damage_player(&app.run, 0, 50)
 	ar.app_tick(&app)
 	testing.expect(t, app.mode == .Playing && app.death_pending, "death must begin its authored presentation")
 	testing.expect(t,!app.mobile_utility_open,"death must dismiss the transient mobile utility drawer")
-	testing.expect(t, app.run.player.hit_flash == 0, "death presentation must clear the lethal-hit flash")
+	testing.expect(t, app.run.players[0].hit_flash == 0, "death presentation must clear the lethal-hit flash")
 	death_cues:=0
 	for cue in app.run.sfx do if cue.bank==.Player_Death {
 		death_cues+=1
@@ -1659,7 +1659,7 @@ interact_descends_on_stairs :: proc(t: ^testing.T) {
 	defer ar.run_destroy(&run)
 
 	// Standing far from the stairs, E does nothing.
-	testing.expect(t, !ar.player_interact(&run), "interact away from stairs must not descend")
+	testing.expect(t, !ar.player_interact(&run, 0), "interact away from stairs must not descend")
 	testing.expect(t, run.depth == 1, "depth changed unexpectedly")
 
 	// Park the player just outside the stair footprint and interact.
@@ -1673,15 +1673,15 @@ interact_descends_on_stairs :: proc(t: ^testing.T) {
 	placed := false
 	for c in candidates {
 		if !ar.blocked_for_radius(&run.dungeon, c.x, c.y, block_stairs = true) {
-			run.player.pos = c
+			run.players[0].pos = c
 			placed = true
 			break
 		}
 	}
 	testing.expect(t, placed, "no open tile next to the stairs")
-	testing.expect(t, ar.player_interact(&run), "interact next to stairs must descend")
+	testing.expect(t, ar.player_interact(&run, 0), "interact next to stairs must descend")
 	testing.expect(t, run.depth == 2, "depth should be 2 after descending")
-	p := run.player.pos
+	p := run.players[0].pos
 	testing.expect(
 		t,
 		!ar.blocked_for_radius(&run.dungeon, p.x, p.y, block_stairs = true),
@@ -1709,13 +1709,13 @@ interact_opens_doors :: proc(t: ^testing.T) {
 				}
 				for n in neighbors {
 					if ar.is_walkable(d, n.x, n.y) {
-						run.player.pos = n
-						run.player.prev_pos = n
+						run.players[0].pos = n
+						run.players[0].prev_pos = n
 						ar.sim_tick(&run, {})
 						testing.expect(t, run.visible[x][y], "an adjacent closed door must be visible before it opens")
 						testing.expect(t, run.explored[x][y], "a revealed closed door must persist in light-floor fog memory")
-						testing.expect(t, ar.interact_prompt(&run) == "E: open door", "door prompt expected")
-						testing.expect(t, !ar.player_interact(&run), "opening a door is not a floor change")
+						testing.expect(t, ar.interact_prompt(&run, 0) == "E: open door", "door prompt expected")
+						testing.expect(t, !ar.player_interact(&run, 0), "opening a door is not a floor change")
 						testing.expectf(t, d.tiles[x][y] == .Open_Door, "door at %v,%v did not open", x, y)
 						return
 					}

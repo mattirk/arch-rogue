@@ -34,7 +34,7 @@ Visual_Turn_Page_Motion :: struct {
 visual_turn_page_motion_age :: proc(app:^App,alpha:f32)->f32 {
 	if !app_story_turn_page_active(app) do return 0
 	render_alpha:=app.mode==.Playing?clamp(alpha,f32(0),f32(1)):f32(1)
-	return max(f32(0),app.run.player.sim_elapsed-app.turn_page.return_player.sim_elapsed-(1-render_alpha)*SIM_DT)
+	return max(f32(0),app.run.players[app.run.local_slot].sim_elapsed-app.turn_page.return_player.sim_elapsed-(1-render_alpha)*SIM_DT)
 }
 
 visual_turn_page_motion :: proc(age:f32)->Visual_Turn_Page_Motion {

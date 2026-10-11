@@ -94,15 +94,24 @@ class RepositoryLayoutTests(unittest.TestCase):
         workflow_root = ROOT / ".github" / "workflows"
         expected = (
             # steam-deploy.yml is the private-only Odin Steam publish lane
-            # (STEAM.md S5); it must never appear in the public snapshot.
-            {"actions-maintenance.yml", "ci.yml", "mirror-public.yml", "steam-deploy.yml"}
+            # (STEAM.md S5) and server-deploy.yml the private-only Odin relay
+            # deploy onto the self-hosted production runner
+            # (tools/relay/deploy/README.md); neither may appear in the public
+            # snapshot.
+            {
+                "actions-maintenance.yml",
+                "ci.yml",
+                "mirror-public.yml",
+                "steam-deploy.yml",
+                "server-deploy.yml",
+            }
             if IS_PRIVATE_MASTER
             else {"build-release.yml"}
         )
         self.assertEqual({path.name for path in workflow_root.glob("*.yml")}, expected)
         if not IS_PRIVATE_MASTER:
             self.assertFalse((workflow_root / "steam-deploy.yml").exists())
-        self.assertFalse((workflow_root / "server-deploy.yml").exists())
+            self.assertFalse((workflow_root / "server-deploy.yml").exists())
 
         archive_workflows = ROOT / "arch-rogue-python" / ".github"
         if IS_PRIVATE_MASTER:

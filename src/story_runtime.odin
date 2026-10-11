@@ -459,7 +459,7 @@ story_content_enabled :: proc(run: ^Run) -> bool {
 // their saved dungeon; future floors resume Quest/Hall and minigame planning.
 story_enable_content_for_legacy_run :: proc(run: ^Run) -> bool {
 	if run==nil||story_content_enabled(run) do return false
-	story_run_initialize(run,run.player.archetype,false)
+	story_run_initialize(run,run.players[HOST_SLOT].archetype,false)
 	if 1<=run.depth&&run.depth<=STORY_BEAT_COUNT do _=story_commit_relic_path(run,.Aid)
 	return true
 }
@@ -589,7 +589,7 @@ story_spawn_gate_witnesses :: proc(run: ^Run) {
 @(private = "file")
 story_position_available :: proc(run: ^Run, pos: Vec2, ignore_friendly := false) -> bool {
 	if run == nil || blocked_for_radius(&run.dungeon,pos.x,pos.y,STORY_NPC_RADIUS) do return false
-	if story_distance_sq(pos,run.player.pos) < .52 do return false
+	if story_distance_sq(pos,run.players[HOST_SLOT].pos) < .52 do return false
 	if !ignore_friendly {
 		for &guest in run.story_runtime.guests do if guest.depth==run.depth&&guest.alive&&story_distance_sq(pos,guest.pos)<.46 do return false
 		soul:=&run.story_runtime.soul;if soul.present&&soul.alive&&story_distance_sq(pos,soul.pos)<.46 do return false
@@ -662,7 +662,7 @@ story_relic_fallback_position :: proc(run: ^Run, path: Story_Relic_Path) -> Vec2
 		if candidate:=story_near_position(run,guest.pos);candidate!=guest.pos do return candidate
 	}
 	rooms:=dungeon_rooms(&run.dungeon)
-	if len(rooms)==0 do return run.player.pos
+	if len(rooms)==0 do return run.players[HOST_SLOT].pos
 	room_index:=len(rooms)-1
 	if path==.Aid do room_index=clamp(1,0,len(rooms)-1)
 	if path==.Bargain&&len(rooms)>3 do room_index=len(rooms)-2
@@ -700,18 +700,18 @@ story_commit_relic_path :: proc(run: ^Run, verb: Story_Choice_Verb) -> bool {
 		story_aid_relic_streak_intact(run,include_current=false))
 	if guide_to_relic do _=story_build_guidance_path(run,position)
 	story_set_guidance_wave_active(run,guide_to_relic)
-	append(&run.numbers,Damage_Number{pos=run.player.pos,kind=.Text,text=guidance?"The relic answers with a path":"The relic light goes silent"})
+	append(&run.numbers,Damage_Number{pos=run.players[HOST_SLOT].pos,kind=.Text,text=guidance?"The relic answers with a path":"The relic light goes silent"})
 	sfx_emit(run, .Story_Consequence)
 	return true
 }
 
-story_relic_nearby :: proc(run: ^Run) -> bool {
+story_relic_nearby :: proc(run: ^Run, slot: int) -> bool {
 	if run==nil||!run.story_runtime.relic.present||run.story_runtime.relic.collected do return false
-	return story_distance_sq(run.player.pos,run.story_runtime.relic.position)<=STORY_RELIC_INTERACT_RANGE*STORY_RELIC_INTERACT_RANGE
+	return story_distance_sq(run.players[slot].pos,run.story_runtime.relic.position)<=STORY_RELIC_INTERACT_RANGE*STORY_RELIC_INTERACT_RANGE
 }
 
-story_request_relic_collection :: proc(run: ^Run) -> bool {
-	if !story_relic_nearby(run) do return false
+story_request_relic_collection :: proc(run: ^Run, slot: int) -> bool {
+	if !story_relic_nearby(run, slot) do return false
 	run.story_runtime.requests.collect_relic=true
 	return true
 }
@@ -750,15 +750,15 @@ story_relic_guidance_path :: proc(run: ^Run) -> [][2]int {
 // inheriting an arbitrary amount of prior idle time.
 story_set_guidance_wave_active :: proc(run: ^Run, active: bool) {
 	if run == nil do return
-	if active && !run.player.guidance_wave_active do run.player.guidance_idle_elapsed = 0
-	if !active do run.player.guidance_idle_elapsed = 0
-	run.player.guidance_wave_active = active
+	if active && !run.players[HOST_SLOT].guidance_wave_active do run.players[HOST_SLOT].guidance_idle_elapsed = 0
+	if !active do run.players[HOST_SLOT].guidance_idle_elapsed = 0
+	run.players[HOST_SLOT].guidance_wave_active = active
 }
 
 story_build_guidance_path :: proc(run: ^Run, target: Vec2) -> bool {
 	if run==nil do return false
 	clear(&run.story_runtime.guidance_path)
-	start:=[2]int{int(run.player.pos.x),int(run.player.pos.y)}
+	start:=[2]int{int(run.players[HOST_SLOT].pos.x),int(run.players[HOST_SLOT].pos.y)}
 	goal:=[2]int{int(target.x),int(target.y)}
 	if !dungeon_in_bounds(start.x,start.y)||!dungeon_in_bounds(goal.x,goal.y) do return false
 	visited:[MAP_W][MAP_H]bool;prev:[MAP_W][MAP_H][2]int;queue:[MAP_W*MAP_H][2]int
@@ -783,13 +783,13 @@ story_refresh_relic_guidance :: proc(run: ^Run) {
 	_=story_build_guidance_path(run,target)
 }
 
-story_nearby_guest :: proc(run: ^Run) -> ^Story_Guest {
+story_nearby_guest :: proc(run: ^Run, slot: int) -> ^Story_Guest {
 	if run==nil do return nil
 	best:=-1;best_sq:=STORY_GUEST_INTERACT_RANGE*STORY_GUEST_INTERACT_RANGE
 	for &guest,i in run.story_runtime.guests {
 		if guest.depth!=run.depth||guest.resolved||guest.witness||!guest.alive do continue
-		d:=story_distance_sq(guest.pos,run.player.pos)
-		if d<=best_sq&&line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,guest.pos.x,guest.pos.y) {best=i;best_sq=d}
+		d:=story_distance_sq(guest.pos,run.players[slot].pos)
+		if d<=best_sq&&line_of_sight(&run.dungeon,run.players[slot].pos.x,run.players[slot].pos.y,guest.pos.x,guest.pos.y) {best=i;best_sq=d}
 	}
 	return best>=0?&run.story_runtime.guests[best]:nil
 }
@@ -840,20 +840,20 @@ story_resolve_guest_choice :: proc(run: ^Run, guest: ^Story_Guest, verb: Story_C
 	run.story_runtime.choices_resolved+=1
 	switch verb {
 	case .Aid:
-		run.player.hp=min(run.player.max_hp,run.player.hp+max(16,run.player.max_hp/5))
-		run.player.mana=min(f32(run.player.max_mana),run.player.mana+f32(max(10,run.player.max_mana/4)))
-		run.player.stamina=f32(run.player.max_stamina)
+		run.players[HOST_SLOT].hp=min(run.players[HOST_SLOT].max_hp,run.players[HOST_SLOT].hp+max(16,run.players[HOST_SLOT].max_hp/5))
+		run.players[HOST_SLOT].mana=min(f32(run.players[HOST_SLOT].max_mana),run.players[HOST_SLOT].mana+f32(max(10,run.players[HOST_SLOT].max_mana/4)))
+		run.players[HOST_SLOT].stamina=f32(run.players[HOST_SLOT].max_stamina)
 		if story_reveal_mercy_secrets(run,guest.pos)==0 do story_spawn_mercy_cache(run,guest.pos)
 		story_spawn_mending_shrine(run,guest.pos)
 	case .Bargain:
 		price:=story_effect_clamped(run,.Blood_Price,0,.35)
-		cost:=max(6,min(22,int(math.round(f32(run.player.max_hp)*(.08+price*.45)))))
-		run.player.hp=max(1,run.player.hp-cost)
+		cost:=max(6,min(22,int(math.round(f32(run.players[HOST_SLOT].max_hp)*(.08+price*.45)))))
+		run.players[HOST_SLOT].hp=max(1,run.players[HOST_SLOT].hp-cost)
 		slot:=rng_chance(&run.loot_rng,.5)?Item_Kind.Weapon:.Armor
 		item:=make_equipment(&run.loot_rng,slot,.Rare,run=run);_=story_empower_equipment(run,&run.loot_rng,&item,true)
 		append(&run.ground_items,Ground_Item{item=item,pos=story_near_position(run,guest.pos)})
 	case .Defy:
-		player_gain_xp(run,24+run.depth*3);story_spawn_choice_hunter(run,guest.pos)
+		player_gain_xp(run, HOST_SLOT,24+run.depth*3);story_spawn_choice_hunter(run,guest.pos)
 	}
 	append(&run.numbers,Damage_Number{pos=guest.pos,kind=.Text,text="Story changed"});sfx_emit(run, .Story_Consequence)
 	return true
@@ -867,17 +867,17 @@ story_resolve_current_unanswered :: proc(run: ^Run) -> bool {
 	return true
 }
 
-story_nearby_lossless_soul :: proc(run: ^Run) -> ^Lossless_Soul {
+story_nearby_lossless_soul :: proc(run: ^Run, slot: int) -> ^Lossless_Soul {
 	if !story_content_enabled(run) do return nil
 	index:=clamp(run.depth,1,STORY_BEAT_COUNT)-1
 	if !run.story_runtime.initialized&&run.story_runtime.soul_games[index].outcome!=.None do return nil
 	soul:=&run.story_runtime.soul
-	if !soul.present||!soul.alive||story_distance_sq(soul.pos,run.player.pos)>STORY_GUEST_INTERACT_RANGE*STORY_GUEST_INTERACT_RANGE do return nil
-	if !line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,soul.pos.x,soul.pos.y) do return nil
+	if !soul.present||!soul.alive||story_distance_sq(soul.pos,run.players[slot].pos)>STORY_GUEST_INTERACT_RANGE*STORY_GUEST_INTERACT_RANGE do return nil
+	if !line_of_sight(&run.dungeon,run.players[slot].pos.x,run.players[slot].pos.y,soul.pos.x,soul.pos.y) do return nil
 	return soul
 }
 
-story_nearby_garden_frog :: proc(run: ^Run) -> (tile: [2]int,room_index: int,found: bool) {
+story_nearby_garden_frog :: proc(run: ^Run, slot: int) -> (tile: [2]int,room_index: int,found: bool) {
 	if run==nil do return {},-1,false
 	garden_room := -1
 	if special,has:=special_room_for_kind(&run.dungeon,.Garden);has do garden_room=special.room_index
@@ -885,39 +885,39 @@ story_nearby_garden_frog :: proc(run: ^Run) -> (tile: [2]int,room_index: int,fou
 		frog:=&run.ambient_residents.items[i]
 		if !frog.active||frog.kind!=.Garden_Frog do continue
 		garden_room=frog.motion.room_index
-		if story_distance_sq(frog.pos,run.player.pos)<=STORY_GARDEN_INTERACT_RANGE*STORY_GARDEN_INTERACT_RANGE&&
-			line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,frog.pos.x,frog.pos.y) {
+		if story_distance_sq(frog.pos,run.players[slot].pos)<=STORY_GARDEN_INTERACT_RANGE*STORY_GARDEN_INTERACT_RANGE&&
+			line_of_sight(&run.dungeon,run.players[slot].pos.x,run.players[slot].pos.y,frog.pos.x,frog.pos.y) {
 			return {int(frog.pos.x),int(frog.pos.y)},garden_room,true
 		}
 	}
 	return {},garden_room,false
 }
 
-story_request_guest_dialogue :: proc(run: ^Run) -> bool {
-	guest:=story_nearby_guest(run);if guest==nil do return false
-	room_npc_motion_hold(&guest.motion,guest.pos,run.player.pos)
+story_request_guest_dialogue :: proc(run: ^Run, slot: int) -> bool {
+	guest:=story_nearby_guest(run, slot);if guest==nil do return false
+	room_npc_motion_hold(&guest.motion,guest.pos,run.players[slot].pos)
 	_=story_mark_guest_met(run,guest)
 	for &candidate,i in run.story_runtime.guests do if &candidate==guest {run.story_runtime.requests.guest=true;run.story_runtime.requests.guest_index=i;return true}
 	return false
 }
 
-story_request_lossless_soul :: proc(run: ^Run) -> bool {
-	soul:=story_nearby_lossless_soul(run);if soul==nil do return false
-	room_npc_motion_hold(&soul.motion,soul.pos,run.player.pos)
+story_request_lossless_soul :: proc(run: ^Run, slot: int) -> bool {
+	soul:=story_nearby_lossless_soul(run, slot);if soul==nil do return false
+	room_npc_motion_hold(&soul.motion,soul.pos,run.players[slot].pos)
 	run.story_runtime.requests.soul=true;return true
 }
 
-story_request_garden_moonbloom :: proc(run: ^Run) -> bool {
+story_request_garden_moonbloom :: proc(run: ^Run, slot: int) -> bool {
 	if !story_content_enabled(run) do return false
-	_,room,found:=story_nearby_garden_frog(run);if !found do return false
+	_,room,found:=story_nearby_garden_frog(run, slot);if !found do return false
 	index:=clamp(run.depth,1,STORY_BEAT_COUNT)-1
 	if run.story_runtime.garden_games[index].outcome!=.None do return false
 	for i in 0..<run.ambient_residents.count {
 		frog:=&run.ambient_residents.items[i]
 		if !frog.active||frog.kind!=.Garden_Frog||frog.motion.room_index!=room do continue
-		if story_distance_sq(frog.pos,run.player.pos)<=STORY_GARDEN_INTERACT_RANGE*STORY_GARDEN_INTERACT_RANGE&&
-			line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,frog.pos.x,frog.pos.y) {
-			room_npc_motion_hold(&frog.motion,frog.pos,run.player.pos)
+		if story_distance_sq(frog.pos,run.players[slot].pos)<=STORY_GARDEN_INTERACT_RANGE*STORY_GARDEN_INTERACT_RANGE&&
+			line_of_sight(&run.dungeon,run.players[slot].pos.x,run.players[slot].pos.y,frog.pos.x,frog.pos.y) {
+			room_npc_motion_hold(&frog.motion,frog.pos,run.players[slot].pos)
 			break
 		}
 	}
@@ -942,14 +942,14 @@ story_request_epilogue :: proc(run: ^Run) -> bool {
 	run.story_runtime.requests.epilogue=true;return true
 }
 
-story_final_stairs_requires_story :: proc(run: ^Run) -> bool {
-	return run!=nil&&run.story_runtime.initialized&&run.depth>=DUNGEON_DEPTH&&player_near_stairs(run)
+story_final_stairs_requires_story :: proc(run: ^Run, slot: int) -> bool {
+	return run!=nil&&run.story_runtime.initialized&&run.depth>=DUNGEON_DEPTH&&player_near_stairs(run, slot)
 }
 
-story_handle_final_stairs_request :: proc(run: ^Run) -> bool {
-	if !story_final_stairs_requires_story(run) do return false
+story_handle_final_stairs_request :: proc(run: ^Run, slot: int) -> bool {
+	if !story_final_stairs_requires_story(run, slot) do return false
 	if boss_alive(run) do return false
-	if !run.tyrant_dead {append(&run.numbers,Damage_Number{pos=run.player.pos,kind=.Text,text="The Gate waits for the Tyrant's end"});return true}
+	if !run.tyrant_dead {append(&run.numbers,Damage_Number{pos=run.players[slot].pos,kind=.Text,text="The Gate waits for the Tyrant's end"});return true}
 	_=story_request_epilogue(run);return true
 }
 
@@ -1093,7 +1093,7 @@ story_soul_hunt_capture_at :: proc(app: ^App, pos: Vec2) -> bool {
 
 story_soul_hunt_dash :: proc(app: ^App, aim: Vec2) -> bool {
 	if app==nil||!app_story_soul_hunt_active(app)||app.story_minigame.phase!=.Play do return false
-	player:=&app.run.player
+	player:=&app.run.players[HOST_SLOT]
 	if player.dash_timer>0 do return false
 	dash_aim:=aim;magnitude:=math.hypot(dash_aim.x,dash_aim.y)
 	if magnitude<=.001 do dash_aim=player.facing;magnitude=math.hypot(dash_aim.x,dash_aim.y)
@@ -1118,7 +1118,7 @@ story_soul_hunt_dash :: proc(app: ^App, aim: Vec2) -> bool {
 
 story_soul_hunt_tick :: proc(app: ^App, move: Vec2, dt: f32) -> bool {
 	if app==nil||!app_story_soul_hunt_active(app) do return false
-	state:=&app.story_minigame;player:=&app.run.player;step_dt:=clamp(dt,f32(0),f32(.25))
+	state:=&app.story_minigame;player:=&app.run.players[HOST_SLOT];step_dt:=clamp(dt,f32(0),f32(.25))
 	player.prev_pos=player.pos;player.moving=false;player.sim_elapsed+=step_dt
 	player_tick_visual_action(player,step_dt);player.dash_timer=max(f32(0),player.dash_timer-step_dt)
 	state.feedback_time=max(f32(0),state.feedback_time-step_dt)
@@ -1341,7 +1341,7 @@ app_story_panel_choices :: proc(app: ^App)->(result: Story_Panel_Choice_List) {
 
 app_story_art_identity :: proc(app: ^App)->(result: Story_Art_Identity) {
 	if app==nil||!app.story_panel.active do return
-	result.panel_kind=app.story_panel.kind;result.node=app.story_panel.node;result.archetype=app.run.player.archetype
+	result.panel_kind=app.story_panel.kind;result.node=app.story_panel.node;result.archetype=app.run.players[HOST_SLOT].archetype
 	beat:=story_current_beat(&app.run);if beat!=nil {result.motif=beat.motif;result.has_motif=true}
 	if app.run.story_runtime.initialized {result.relic=app.run.story.relic;result.has_relic=true}
 	if app.story_panel.kind==.Guest {i:=app.story_panel.guest_index;if 0<=i&&i<len(app.run.story_runtime.guests) {guest:=&app.run.story_runtime.guests[i];result.guest_role=guest.role;result.guest_variant=guest.variant;result.has_guest=true}}
@@ -1359,7 +1359,7 @@ app_story_start_bind_the_page :: proc(app:^App,verb:Story_Choice_Verb)->bool{ret
 app_story_start_wake_the_moonbloom :: proc(app:^App,room_index:int)->bool{return app_story_start_minigame(app,.Wake_The_Moonbloom,room_index)}
 app_story_start_mirror_the_unlost :: proc(app:^App,room_index:int)->bool {
 	if app==nil||app.run.story_runtime.hall.verdict==.Unresolved do return false
-	return_pos:=app.run.player.pos
+	return_pos:=app.run.players[HOST_SLOT].pos
 	if !app_story_start_minigame(app,.Mirror_The_Unlost,room_index) do return false
 	// Reuse the old board state's integer sequence storage for the exact f32
 	// return-coordinate bits. This keeps schema-v1/v2 JSON shapes and checksums
@@ -1367,9 +1367,9 @@ app_story_start_mirror_the_unlost :: proc(app:^App,room_index:int)->bool {
 	app.story_minigame.sequence[0]=int(transmute(u32)return_pos.x)
 	app.story_minigame.sequence[1]=int(transmute(u32)return_pos.y)
 	app.story_minigame.sequence_count=2
-	app.story_minigame.revealed[0]=int(transmute(u32)app.run.player.dash_timer)
+	app.story_minigame.revealed[0]=int(transmute(u32)app.run.players[HOST_SLOT].dash_timer)
 	app.story_minigame.revealed_count=1
-	player:=&app.run.player;player.pos=STORY_SOUL_HUNT_START;player.prev_pos=player.pos;player.moving=false
+	player:=&app.run.players[HOST_SLOT];player.pos=STORY_SOUL_HUNT_START;player.prev_pos=player.pos;player.moving=false
 	player.heading_stable={};player.heading_hold=0;player.visual_action=.None;player.action_time=0;player.action_duration=0;player.dash_timer=0
 	app_clear_play_input(app)
 	return true
@@ -1378,7 +1378,7 @@ app_story_start_mirror_the_unlost :: proc(app:^App,room_index:int)->bool {
 @(private = "file")
 app_story_grant_minigame_reward :: proc(app:^App,state:^Story_Minigame_State) {
 	if app==nil||state==nil do return
-	player:=&app.run.player
+	player:=&app.run.players[HOST_SLOT]
 	switch state.kind {
 	case .Bind_The_Page:player.hp=player.max_hp;player.discipline_melee_bonus+=1
 	case .Wake_The_Moonbloom:player.max_hp+=5;if player.hp>0 do player.hp=min(player.max_hp,player.hp+5);player.max_mana+=5;player.mana=min(f32(player.max_mana),player.mana+5)
@@ -1400,7 +1400,7 @@ story_soul_hunt_return_position :: proc(state:^Story_Minigame_State,run:^Run)->V
 		return {transmute(f32)u32(state.sequence[0]),transmute(f32)u32(state.sequence[1])}
 	}
 	if run!=nil&&run.story_runtime.soul.present do return run.story_runtime.soul.pos+Vec2{0,.8}
-	return run!=nil?run.player.pos:Vec2{}
+	return run!=nil?run.players[HOST_SLOT].pos:Vec2{}
 }
 
 story_soul_hunt_return_position_valid :: proc(run:^Run,state:^Story_Minigame_State)->bool {
@@ -1417,7 +1417,7 @@ story_soul_hunt_state_valid :: proc(run:^Run,state:^Story_Minigame_State)->bool 
 	if verdict==.Unresolved||state.depth!=run.depth||state.instance_id<=0 do return false
 	profile:=story_soul_hunt_profile(verdict)
 	if state.goal!=profile.goal||state.board_count!=STORY_SOUL_HUNT_SITE_COUNT||state.sequence_count!=2||state.revealed_count!=1 do return false
-	if !story_soul_hunt_return_position_valid(run,state)||!story_soul_hunt_inside_room(run.player.pos) do return false
+	if !story_soul_hunt_return_position_valid(run,state)||!story_soul_hunt_inside_room(run.players[HOST_SLOT].pos) do return false
 	original_dash:=transmute(f32)u32(state.revealed[0])
 	if math.is_nan(original_dash)||math.is_inf(original_dash)||original_dash<0 do return false
 	values:=[6]f32{state.elapsed,state.time_left,state.target_time,state.lock_time,state.result_time,state.feedback_time}
@@ -1463,8 +1463,8 @@ story_soul_hunt_safe_return_position :: proc(run:^Run,state:^Story_Minigame_Stat
 	// Legacy pair-board saves never left the real floor, so retain their current
 	// position when it is still a legal player footprint.
 	if run.story_runtime.hall.verdict==.Unresolved&&
-		!blocked_for_radius(&run.dungeon,run.player.pos.x,run.player.pos.y,PLAYER_HIT_RADIUS,block_stairs=true) {
-		return run.player.pos
+		!blocked_for_radius(&run.dungeon,run.players[HOST_SLOT].pos.x,run.players[HOST_SLOT].pos.y,PLAYER_HIT_RADIUS,block_stairs=true) {
+		return run.players[HOST_SLOT].pos
 	}
 	if run.story_runtime.soul.present {
 		candidate:=story_near_position(run,run.story_runtime.soul.pos,.8)
@@ -1476,16 +1476,16 @@ story_soul_hunt_safe_return_position :: proc(run:^Run,state:^Story_Minigame_Stat
 @(private = "file")
 story_soul_hunt_restore_world :: proc(run:^Run,state:^Story_Minigame_State) {
 	if run==nil do return
-	legacy_dash_timer:=run.player.dash_timer
-	run.player.pos=story_soul_hunt_safe_return_position(run,state)
-	run.player.prev_pos=run.player.pos;run.player.moving=false
+	legacy_dash_timer:=run.players[HOST_SLOT].dash_timer
+	run.players[HOST_SLOT].pos=story_soul_hunt_safe_return_position(run,state)
+	run.players[HOST_SLOT].prev_pos=run.players[HOST_SLOT].pos;run.players[HOST_SLOT].moving=false
 	// Removed pair-board saves used revealed[] for card state. Only a committed
 	// world-hunt state owns the raw cooldown bits stored there; legacy recovery
 	// preserves the player's already-persisted dungeon cooldown.
-	if run.story_runtime.hall.verdict==.Unresolved do run.player.dash_timer=legacy_dash_timer
-	else do run.player.dash_timer=story_soul_hunt_original_dash_timer(state)
-	run.player.visual_action=.None;run.player.action_time=0;run.player.action_duration=0
-	run.visible={};run.nav={}
+	if run.story_runtime.hall.verdict==.Unresolved do run.players[HOST_SLOT].dash_timer=legacy_dash_timer
+	else do run.players[HOST_SLOT].dash_timer=story_soul_hunt_original_dash_timer(state)
+	run.players[HOST_SLOT].visual_action=.None;run.players[HOST_SLOT].action_time=0;run.players[HOST_SLOT].action_duration=0
+	run.visible={};run.navs={}
 	refresh_visibility(run)
 	story_refresh_relic_guidance(run)
 }
@@ -1498,7 +1498,7 @@ app_story_finalize_minigame :: proc(app:^App)->bool {
 		story_soul_hunt_restore_world(&app.run,&state)
 	}
 	if state.kind==.Bind_The_Page && app.turn_page.version==1 {
-		turn_page_restore_player(&app.run.player,app.turn_page.return_player);app.turn_page={}
+		turn_page_restore_player(&app.run.players[HOST_SLOT],app.turn_page.return_player);app.turn_page={}
 	}
 	app.story_minigame={};app.story_minigame_cursor=0;app.story_soul_hunt_music_ready=false;app.story_soul_hunt_wait_remaining_s=0;app.story_soul_hunt_wait_total_s=0
 	if new_result&&state.outcome==.Won do app_story_grant_minigame_reward(app,&state)
@@ -1600,14 +1600,14 @@ story_tick_friendly_npc_movement :: proc(run:^Run,elapsed,dt:f32) {
 	if run==nil do return
 	for &guest in run.story_runtime.guests {
 		if guest.depth!=run.depth||!guest.alive||guest.witness||guest.ally do continue
-		hold:=!guest.resolved&&story_distance_sq(guest.pos,run.player.pos)<=STORY_NPC_HOLD_RANGE*STORY_NPC_HOLD_RANGE&&
-			line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,guest.pos.x,guest.pos.y)
+		hold:=!guest.resolved&&story_distance_sq(guest.pos,run.players[HOST_SLOT].pos)<=STORY_NPC_HOLD_RANGE*STORY_NPC_HOLD_RANGE&&
+			line_of_sight(&run.dungeon,run.players[HOST_SLOT].pos.x,run.players[HOST_SLOT].pos.y,guest.pos.x,guest.pos.y)
 		room_npc_motion_tick(run,&guest.pos,&guest.motion,hold,false,elapsed,dt)
 	}
 	soul:=&run.story_runtime.soul
 	if soul.present&&soul.alive&&!soul.armed {
-		hold:=soul.verdict==.Unresolved&&story_distance_sq(soul.pos,run.player.pos)<=STORY_NPC_HOLD_RANGE*STORY_NPC_HOLD_RANGE&&
-			line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,soul.pos.x,soul.pos.y)
+		hold:=soul.verdict==.Unresolved&&story_distance_sq(soul.pos,run.players[HOST_SLOT].pos)<=STORY_NPC_HOLD_RANGE*STORY_NPC_HOLD_RANGE&&
+			line_of_sight(&run.dungeon,run.players[HOST_SLOT].pos.x,run.players[HOST_SLOT].pos.y,soul.pos.x,soul.pos.y)
 		room_npc_motion_tick(run,&soul.pos,&soul.motion,hold,false,elapsed,dt)
 	}
 }
@@ -1622,7 +1622,7 @@ story_tick_ally :: proc(run:^Run,pos:^Vec2,motion:^Story_Npc_Motion,attack_timer
 	motion.holding=false
 	target:=story_ally_target(run,motion.home,pos^)
 	if target==nil {
-		room_npc_motion_tick_toward(run,pos,motion,motion.home,stats.speed,run.player.sim_elapsed,dt)
+		room_npc_motion_tick_toward(run,pos,motion,motion.home,stats.speed,run_clock(run),dt)
 		return
 	}
 	delta:=target.pos-pos^;distance:=math.hypot(delta.x,delta.y);if distance>.001 do motion.facing=delta/distance
@@ -1636,7 +1636,7 @@ story_tick_ally :: proc(run:^Run,pos:^Vec2,motion:^Story_Npc_Motion,attack_timer
 		return
 	}
 	room_npc_motion_wait(motion,pos^)
-	if attack_timer^<=0&&distance<=stats.attack_range&&line_of_sight(&run.dungeon,pos.x,pos.y,target.pos.x,target.pos.y) {dealt:=player_damage_enemy(run,target,stats.damage,stats.damage_type);if dealt>0 do append(&run.numbers,Damage_Number{pos=target.pos,value=dealt,kind=.Damage_Dealt});attack_timer^=stats.attack_cd}
+	if attack_timer^<=0&&distance<=stats.attack_range&&line_of_sight(&run.dungeon,pos.x,pos.y,target.pos.x,target.pos.y) {dealt:=player_damage_enemy(run, HOST_SLOT,target,stats.damage,stats.damage_type);if dealt>0 do append(&run.numbers,Damage_Number{pos=target.pos,value=dealt,kind=.Damage_Dealt});attack_timer^=stats.attack_cd}
 }
 
 story_tick_friendly_npc_combat :: proc(run:^Run,dt:f32) {

@@ -30,16 +30,16 @@ story_apply_player_damage :: proc(run: ^Run, damage: int, spell := false) -> int
 }
 
 story_apply_blood_price :: proc(run: ^Run, label := "Blood price") -> int {
-	if run == nil || run.player.hp <= 1 do return 0
+	if run == nil || run.players[HOST_SLOT].hp <= 1 do return 0
 	price := story_effect_clamped(run, .Blood_Price, 0, .35)
 	if price <= 0 do return 0
-	cost := max(1, min(10, int(math.round(f32(run.player.max_hp) * (.015 + price * .18)))))
-	actual := min(cost, run.player.hp - 1)
+	cost := max(1, min(10, int(math.round(f32(run.players[HOST_SLOT].max_hp) * (.015 + price * .18)))))
+	actual := min(cost, run.players[HOST_SLOT].hp - 1)
 	if actual <= 0 do return 0
-	run.player.hp -= actual
+	run.players[HOST_SLOT].hp -= actual
 	run.story_runtime.blood_paid += actual
-	append(&run.numbers, Damage_Number{pos = run.player.pos, value = actual, kind = .Damage_Taken})
-	append(&run.numbers, Damage_Number{pos = run.player.pos, kind = .Text, text = label})
+	append(&run.numbers, Damage_Number{pos = run.players[HOST_SLOT].pos, value = actual, kind = .Damage_Taken})
+	append(&run.numbers, Damage_Number{pos = run.players[HOST_SLOT].pos, kind = .Text, text = label})
 	return actual
 }
 
@@ -52,6 +52,7 @@ AMBUSH_BELL_DAMAGE_RADIUS :: 1.85
 
 Ambush_Bell :: struct {
 	entity_id:       u64,
+	owner_slot:      u8, // planting player; credit and live build reads
 	pos:             Vec2,
 	lifetime:        f32,
 	arm_timer:       f32,
@@ -380,19 +381,26 @@ time_skip_duration :: proc(player: ^Player) -> f32 {
 	return duration
 }
 
+// Either seat's Time Skip slows the one shared enemy simulation; when both
+// are active the stronger slow wins rather than compounding.
 enemy_sim_dt :: proc(run: ^Run) -> f32 {
-	remaining := run.player.time_skip_timer
-	if remaining <= 0 do return SIM_DT
-	factor := time_skip_factor(&run.player)
-	scale := factor
-	if remaining < SIM_DT {
-		scale = 1 - (1 - factor) * remaining / SIM_DT
+	scale: f32 = 1
+	for slot in 0 ..< run_seat_count(run) {
+		player := &run.players[slot]
+		remaining := player.time_skip_timer
+		if remaining <= 0 do continue
+		factor := time_skip_factor(player)
+		seat_scale := factor
+		if remaining < SIM_DT {
+			seat_scale = 1 - (1 - factor) * remaining / SIM_DT
+		}
+		scale = min(scale, seat_scale)
 	}
 	return SIM_DT * scale
 }
 
-tick_combat_statuses :: proc(run: ^Run) {
-	player := &run.player
+tick_player_statuses :: proc(run: ^Run, slot: int) {
+	player := &run.players[slot]
 	if player.statuses[.Poisoned] > 0 {
 		player.poison_tick -= SIM_DT
 		if player.poison_tick <= 0 {
@@ -403,19 +411,24 @@ tick_combat_statuses :: proc(run: ^Run) {
 			heavy := player.hp <= 0 || damage >= max(8, player.max_hp / 4)
 			sfx_emit(run, heavy ? Sfx_Bank.Player_Hurt_Heavy : Sfx_Bank.Player_Hurt_Light)
 			append(&run.numbers, Damage_Number{pos=player.pos, value=damage, kind=.Damage_Taken, damage_type=.Poison})
-			feel_emit_player_hurt(run,damage)
+			feel_emit_player_hurt(run, slot,damage)
 			player.poison_tick += 1
 		}
 	}
 	for status in Status_Kind do player.statuses[status] = max(0, player.statuses[status] - SIM_DT)
 	if player.statuses[.Poisoned] <= 0 do player.poison_tick = 0
+}
 
+// Enemy statuses advance once per tick regardless of seat count. Poison scales
+// with, and its kill is credited to, the last seat that hit the enemy.
+tick_enemy_statuses :: proc(run: ^Run) {
 	for &enemy in run.enemies {
 		if enemy.hp <= 0 do continue
 		if enemy.statuses[.Poisoned] > 0 {
 			enemy.poison_tick -= SIM_DT
 			if enemy.poison_tick <= 0 {
-				damage := max(1, int(2 + f32(player.level) * 0.35))
+				poisoner := &run.players[min(int(enemy.last_hit_slot), run_seat_count(run) - 1)]
+				damage := max(1, int(2 + f32(poisoner.level) * 0.35))
 				enemy.hp -= damage
 				mark_enemy_hit_flash(&enemy)
 				sfx_emit_enemy_impact(run, &enemy, damage)
@@ -431,8 +444,8 @@ tick_combat_statuses :: proc(run: ^Run) {
 
 // Beastmark: already-snared prey takes more from every mitigated player-side
 // hit, Spirit Beast bites included (statuses.py:114-117).
-beastmark_snare_amp :: proc(run: ^Run, enemy: ^Enemy, damage: int) -> int {
-	if !player_has_discipline(&run.player, .Ranger_Beastmark) || enemy.statuses[.Snared] <= 0 do return damage
+beastmark_snare_amp :: proc(run: ^Run, slot: int, enemy: ^Enemy, damage: int) -> int {
+	if !player_has_discipline(&run.players[slot], .Ranger_Beastmark) || enemy.statuses[.Snared] <= 0 do return damage
 	return int(math.round(f32(damage) * 1.22))
 }
 
@@ -455,33 +468,35 @@ sfx_emit_enemy_impact :: proc(run: ^Run, enemy: ^Enemy, damage: int, forced_heav
 	)
 }
 
-damage_enemy_typed :: proc(run: ^Run, enemy: ^Enemy, raw: int, damage_type: Damage_Type) -> int {
+damage_enemy_typed :: proc(run: ^Run, slot: int, enemy: ^Enemy, raw: int, damage_type: Damage_Type) -> int {
 	if enemy == nil || enemy.hp <= 0 do return 0
 	damage := enemy_damage_after_resistance(enemy, max(1, raw), damage_type)
-	damage = beastmark_snare_amp(run, enemy, damage)
+	damage = beastmark_snare_amp(run, slot, enemy, damage)
 	enemy.hp -= damage
+	enemy.last_hit_slot = u8(slot)
 	mark_enemy_hit_flash(enemy)
-	alert_enemy(run, enemy, run.player.pos) // damage engages and wakes the pack
+	alert_enemy(run, enemy, run.players[slot].pos) // damage engages and wakes the pack
 	sfx_emit_enemy_impact(run, enemy, damage)
 	append(&run.numbers, Damage_Number{pos=enemy.pos, value=damage, kind=.Damage_Dealt, damage_type=damage_type})
 	feel_emit_enemy_hit(run,enemy,damage_type)
 	return damage
 }
 
-damage_enemy_direct :: proc(run: ^Run, enemy: ^Enemy, raw: int, damage_type: Damage_Type) -> int {
+damage_enemy_direct :: proc(run: ^Run, slot: int, enemy: ^Enemy, raw: int, damage_type: Damage_Type) -> int {
 	if enemy == nil || enemy.hp <= 0 do return 0
 	damage := max(1, raw)
 	enemy.hp -= damage
+	enemy.last_hit_slot = u8(slot)
 	mark_enemy_hit_flash(enemy)
-	alert_enemy(run, enemy, run.player.pos) // damage engages and wakes the pack
+	alert_enemy(run, enemy, run.players[slot].pos) // damage engages and wakes the pack
 	sfx_emit_enemy_impact(run, enemy, damage)
 	append(&run.numbers, Damage_Number{pos=enemy.pos, value=damage, kind=.Damage_Dealt, damage_type=damage_type})
 	feel_emit_enemy_hit(run,enemy,damage_type)
 	return damage
 }
 
-damage_player_typed :: proc(run: ^Run, raw: int, damage_type: Damage_Type, melee := false, attacker: ^Enemy = nil, evadable := true, source_id := "") -> int {
-	player := &run.player
+damage_player_typed :: proc(run: ^Run, slot: int, raw: int, damage_type: Damage_Type, melee := false, attacker: ^Enemy = nil, evadable := true, source_id := "") -> int {
+	player := &run.players[slot]
 	if player.hp <= 0 do return 0
 	evade: f32
 	// Trap damage cannot be evaded (player.py:118 source=="trap").
@@ -516,14 +531,14 @@ damage_player_typed :: proc(run: ^Run, raw: int, damage_type: Damage_Type, melee
 	heavy := player.hp <= 0 || damage >= max(8, player.max_hp / 4)
 	sfx_emit(run, heavy ? Sfx_Bank.Player_Hurt_Heavy : Sfx_Bank.Player_Hurt_Light)
 	append(&run.numbers, Damage_Number{pos=player.pos, value=damage, kind=.Damage_Taken, damage_type=damage_type})
-	feel_emit_player_hurt(run,damage)
+	feel_emit_player_hurt(run, slot,damage)
 	// Riposte Guard: a taken melee hit answers with a holy counterattack, and
 	// with Aegis Discipline the counter also stuns (player.py:158-180).
 	if melee && attacker != nil && attacker.hp > 0 && player_has_discipline(player, .Warden_Riposte) {
 		counter := max(2, player.level + ARCHETYPES[player.archetype].armor_bonus + player.discipline_armor_bonus)
 		// Reckoner's Brand deepens the answer (player.py:166-167).
 		if player_has_unique_effect(player, .Counter_Smite) do counter += max(3, player.level / 2 + 2)
-		_ = damage_enemy_typed(run, attacker, counter, .Holy)
+		_ = damage_enemy_typed(run, slot, attacker, counter, .Holy)
 		if player_has_discipline(player, .Warden_Aegis) do enemy_apply_status(attacker, .Stunned, 0.35)
 		if dir := linalg.normalize0(attacker.pos - player.pos); dir != {} {
 			enemy_start_knockback(run, attacker, dir * KNOCKBACK_SPEED)
@@ -537,8 +552,8 @@ damage_player_typed :: proc(run: ^Run, raw: int, damage_type: Damage_Type, melee
 	return damage
 }
 
-roll_equipped_proc :: proc(run: ^Run, effect: Proc_Effect) -> bool {
-	items := [2]^Item{run.player.has_weapon ? &run.player.weapon : nil, run.player.has_armor ? &run.player.armor : nil}
+roll_equipped_proc :: proc(run: ^Run, slot: int, effect: Proc_Effect) -> bool {
+	items := [2]^Item{run.players[slot].has_weapon ? &run.players[slot].weapon : nil, run.players[slot].has_armor ? &run.players[slot].armor : nil}
 	for item in items {
 		if !item_has_proc_effect(item, effect) do continue
 		if item.proc_chance <= 0 || item.proc_chance >= 1 do return true
@@ -548,7 +563,7 @@ roll_equipped_proc :: proc(run: ^Run, effect: Proc_Effect) -> bool {
 }
 
 @(private = "file")
-try_chain_proc :: proc(run: ^Run, source: ^Enemy, damage: int) {
+try_chain_proc :: proc(run: ^Run, slot: int, source: ^Enemy, damage: int) {
 	best: ^Enemy
 	best_distance := f32(3.75)
 	for &candidate in run.enemies {
@@ -559,11 +574,11 @@ try_chain_proc :: proc(run: ^Run, source: ^Enemy, damage: int) {
 		if !line_of_sight(&run.dungeon, source.pos.x, source.pos.y, candidate.pos.x, candidate.pos.y) do continue
 		best, best_distance = &candidate, distance
 	}
-	if best != nil do _ = damage_enemy_direct(run, best, max(1, damage / 3), .Arcane)
+	if best != nil do _ = damage_enemy_direct(run, slot, best, max(1, damage / 3), .Arcane)
 }
 
 player_damage_enemy :: proc(
-	run: ^Run,
+	run: ^Run, slot: int,
 	enemy: ^Enemy,
 	raw: int,
 	damage_type: Damage_Type,
@@ -574,34 +589,36 @@ player_damage_enemy :: proc(
 ) -> int {
 	if enemy == nil || enemy.hp <= 0 do return 0
 	damage := enemy_damage_after_resistance(enemy, max(1, raw), damage_type)
-	damage = beastmark_snare_amp(run, enemy, damage)
+	damage = beastmark_snare_amp(run, slot, enemy, damage)
 	proc_damage := 0
 	// Emberbrand/Frostwake guarantee their procs (damage.py:87-99); the roll
 	// short-circuits behind the unique check.
-	if (player_has_unique_effect(&run.player, .Embers_On_Hit) || roll_equipped_proc(run, .Ignite)) && damage_type != .Fire {
-		proc_damage += max(1, run.player.level / 2 + 2)
+	if (player_has_unique_effect(&run.players[slot], .Embers_On_Hit) || roll_equipped_proc(run, slot, .Ignite)) && damage_type != .Fire {
+		proc_damage += max(1, run.players[slot].level / 2 + 2)
 		enemy_apply_status(enemy, .Burning, 1.1)
 	}
-	if player_has_unique_effect(&run.player, .Chill_On_Hit) || roll_equipped_proc(run, .Chill) || (has_status && status == .Chilled) {
+	if player_has_unique_effect(&run.players[slot], .Chill_On_Hit) || roll_equipped_proc(run, slot, .Chill) || (has_status && status == .Chilled) {
 		enemy_apply_status(enemy, .Chilled, max(status_duration, f32(1)))
 	}
-	if roll_equipped_proc(run, .Poison) || roll_equipped_proc(run, .Bleed) {
+	if roll_equipped_proc(run, slot, .Poison) || roll_equipped_proc(run, slot, .Bleed) {
 		enemy_apply_status(enemy, .Poisoned, max(status_duration, f32(1.4)))
 	}
 	if has_status && status != .Chilled do enemy_apply_status(enemy, status, status_duration)
-	if enemy.statuses[.Burning] > 0 && damage_type == .Fire do proc_damage += max(1, run.player.level / 3 + 1)
+	if enemy.statuses[.Burning] > 0 && damage_type == .Fire do proc_damage += max(1, run.players[slot].level / 3 + 1)
 	damage = max(1, damage + proc_damage)
 	enemy.hp -= damage
+	enemy.last_hit_slot = u8(slot)
 	mark_enemy_hit_flash(enemy)
-	alert_enemy(run, enemy, run.player.pos) // damage engages and wakes the pack
+	alert_enemy(run, enemy, run.players[slot].pos) // damage engages and wakes the pack
 	sfx_emit_enemy_impact(run, enemy, damage, heavy)
 	append(&run.numbers, Damage_Number{pos=enemy.pos, value=damage, kind=.Damage_Dealt, damage_type=damage_type})
 	feel_emit_enemy_hit(run,enemy,damage_type)
-	if roll_equipped_proc(run, .Chain) do try_chain_proc(run, enemy, damage)
-	if ratio := player_lifesteal(&run.player); ratio > 0 && run.player.hp < run.player.max_hp {
-		heal := min(run.player.max_hp - run.player.hp, max(1, int(f32(damage) * ratio)))
-		run.player.hp += heal
-		append(&run.numbers, Damage_Number{pos=run.player.pos, value=heal, kind=.Heal})
+	if roll_equipped_proc(run, slot, .Chain) do try_chain_proc(run, slot, enemy, damage)
+	// Credit can outlive its owner (shots, summons): never heal a fallen seat.
+	if ratio := player_lifesteal(&run.players[slot]); ratio > 0 && run.players[slot].hp > 0 && run.players[slot].hp < run.players[slot].max_hp {
+		heal := min(run.players[slot].max_hp - run.players[slot].hp, max(1, int(f32(damage) * ratio)))
+		run.players[slot].hp += heal
+		append(&run.numbers, Damage_Number{pos=run.players[slot].pos, value=heal, kind=.Heal})
 	}
 	return damage
 }
@@ -621,19 +638,19 @@ rogue_crit_poison_duration :: proc(rank: u8) -> f32 {
 	return rank >= 2 ? 2.2 : 1.2
 }
 
-roll_rogue_crit :: proc(run: ^Run, chance_scale: f32 = 1) -> (critical: bool, multiplier: f32) {
-	if run.player.archetype != .Rogue do return false, 1
-	chance, mult := rogue_crit_profile(player_precision_rank(&run.player))
+roll_rogue_crit :: proc(run: ^Run, slot: int, chance_scale: f32 = 1) -> (critical: bool, multiplier: f32) {
+	if run.players[slot].archetype != .Rogue do return false, 1
+	chance, mult := rogue_crit_profile(player_precision_rank(&run.players[slot]))
 	if chance <= 0 do return false, 1
 	return rng_chance(&run.combat_rng, min(1, chance * chance_scale)), mult
 }
 
 // Nightglass Daggers: a missed crit re-rolls at 30% for x1.80 while Smoke
 // holds (attacks.py:102-114). The roll is consumed only when eligible.
-maybe_smoke_crit :: proc(run: ^Run, critical: bool, multiplier: f32) -> (bool, f32) {
+maybe_smoke_crit :: proc(run: ^Run, slot: int, critical: bool, multiplier: f32) -> (bool, f32) {
 	if critical do return critical, multiplier
-	if !player_has_unique_effect(&run.player, .Smoke_Crits) do return critical, multiplier
-	if run.player.statuses[.Smoke] <= 0 do return critical, multiplier
+	if !player_has_unique_effect(&run.players[slot], .Smoke_Crits) do return critical, multiplier
+	if run.players[slot].statuses[.Smoke] <= 0 do return critical, multiplier
 	if !rng_chance(&run.combat_rng, 0.30) do return critical, multiplier
 	return true, 1.80
 }
@@ -660,8 +677,8 @@ bighit_committed :: proc(player: ^Player) -> bool {
 	return 1 - player.bighit_charge / BIGHIT_CHARGE_TIME >= BIGHIT_COMMIT_FRACTION
 }
 
-player_big_hit_begin :: proc(run: ^Run, aim: Vec2) -> bool {
-	player := &run.player
+player_big_hit_begin :: proc(run: ^Run, slot: int, aim: Vec2) -> bool {
+	player := &run.players[slot]
 	if bighit_charging(player) || player.bighit_timer > 0 || player.stamina < BIGHIT_STAMINA_COST do return false
 	if aim != {} do player.facing = linalg.normalize0(aim)
 	player.stamina -= BIGHIT_STAMINA_COST
@@ -683,19 +700,19 @@ player_big_hit_release :: proc(player: ^Player, run: ^Run = nil) -> bool {
 }
 
 @(private = "file")
-enemy_in_arc :: proc(run: ^Run, enemy: ^Enemy, facing: Vec2, reach: f32) -> (matches: bool, distance: f32, direction: Vec2) {
-	to := enemy.pos - run.player.pos
+enemy_in_arc :: proc(run: ^Run, slot: int, enemy: ^Enemy, facing: Vec2, reach: f32) -> (matches: bool, distance: f32, direction: Vec2) {
+	to := enemy.pos - run.players[slot].pos
 	distance = math.hypot(to.x, to.y)
 	extra := max(0, enemy_hit_radius(enemy) - ENEMY_HIT_RADIUS)
 	if distance > reach + extra do return false, distance, {}
 	direction = distance < 0.001 ? facing : to / distance
 	if linalg.dot(direction, facing) <= PLAYER_MELEE_ARC_DOT do return false, distance, direction
-	if !line_of_sight(&run.dungeon, run.player.pos.x, run.player.pos.y, enemy.pos.x, enemy.pos.y) do return false, distance, direction
+	if !line_of_sight(&run.dungeon, run.players[slot].pos.x, run.players[slot].pos.y, enemy.pos.x, enemy.pos.y) do return false, distance, direction
 	return true, distance, direction
 }
 
-player_big_hit_fire :: proc(run: ^Run) {
-	player := &run.player
+player_big_hit_fire :: proc(run: ^Run, slot: int) {
+	player := &run.players[slot]
 	sfx_stop_bank(run, .Big_Hit_Charge)
 	player.bighit_charge = 0
 	player.bighit_timer = BIGHIT_COOLDOWN
@@ -706,7 +723,7 @@ player_big_hit_fire :: proc(run: ^Run) {
 	primary_distance := max(f32)
 	for &enemy in run.enemies {
 		if enemy.hp <= 0 do continue
-		matches, distance, _ := enemy_in_arc(run, &enemy, facing, PLAYER_MELEE_RANGE)
+		matches, distance, _ := enemy_in_arc(run, slot, &enemy, facing, PLAYER_MELEE_RANGE)
 		if matches && distance < primary_distance {
 			primary, primary_distance = &enemy, distance
 		}
@@ -718,18 +735,18 @@ player_big_hit_fire :: proc(run: ^Run) {
 	total := 0
 	for &enemy in run.enemies {
 		if enemy.hp <= 0 do continue
-		matches, _, direction := enemy_in_arc(run, &enemy, facing, PLAYER_MELEE_RANGE)
+		matches, _, direction := enemy_in_arc(run, slot, &enemy, facing, PLAYER_MELEE_RANGE)
 		if !matches do continue
 		damage := int(f32(player_melee_damage(player)) * BIGHIT_DAMAGE_MULT) + rng_range(&run.combat_rng, -4, 7)
 		if player_has_skill_bonus(player, .Melee_Force) || player_has_skill_bonus(player, .Melee_Tempo) do damage += 2
 		if &enemy != primary && player.archetype != .Warden do damage = max(1, int(f32(damage) * BIGHIT_CLEAVE_FACTOR))
-		critical, multiplier := roll_rogue_crit(run, 2)
+		critical, multiplier := roll_rogue_crit(run, slot, 2)
 		if critical {
 			damage = int(f32(damage) * multiplier)
 			append(&run.numbers, Damage_Number{pos=enemy.pos, kind=.Text, text="Critical"})
 		}
 		damage = story_apply_player_damage(run, damage)
-		_ = player_damage_enemy(run, &enemy, damage, player_weapon_damage_type(player), heavy = true)
+		_ = player_damage_enemy(run, slot, &enemy, damage, player_weapon_damage_type(player), heavy = true)
 		total += damage
 		throw_tiles: f32 = player.archetype == .Ranger ? BIGHIT_THROW_TILES_RANGER : BIGHIT_THROW_TILES
 		if enemy.big do throw_tiles *= BIGHIT_BOSS_THROW_FACTOR
@@ -739,18 +756,18 @@ player_big_hit_fire :: proc(run: ^Run) {
 			if player.archetype == .Ranger && &enemy == primary do enemy_apply_status(&enemy, .Snared, 1.75)
 		}
 	}
-	if player.archetype == .Acolyte && total > 0 {
+	if player.archetype == .Acolyte && total > 0 && player.hp > 0 {
 		heal := min(player.max_hp - player.hp, max(1, total / 4))
 		player.hp += heal
 		if heal > 0 do append(&run.numbers, Damage_Number{pos=player.pos, value=heal, kind=.Heal})
 	}
 }
 
-tick_big_hit :: proc(run: ^Run) {
-	player := &run.player
+tick_big_hit :: proc(run: ^Run, slot: int) {
+	player := &run.players[slot]
 	if player.bighit_charge <= 0 do return
 	player.bighit_charge -= SIM_DT
-	if player.bighit_charge <= 0 do player_big_hit_fire(run)
+	if player.bighit_charge <= 0 do player_big_hit_fire(run, slot)
 }
 
 @(private = "file")
@@ -777,8 +794,8 @@ sfx_player_bolt_bank :: proc(player: ^Player, damage_type: Damage_Type, projecti
 	return .Arcane_Cast
 }
 
-player_cast_bolt :: proc(run: ^Run, aim: Vec2) -> bool {
-	player := &run.player
+player_cast_bolt :: proc(run: ^Run, slot: int, aim: Vec2) -> bool {
+	player := &run.players[slot]
 	if bighit_charging(player) do return false
 	cost := player_bolt_mana_cost(player)
 	if player.bolt_timer > 0 || player.mana < f32(cost) do return false
@@ -885,34 +902,40 @@ player_cast_bolt :: proc(run: ^Run, aim: Vec2) -> bool {
 			pierce=pierce, homing=homing,
 			storm_chain=storm_chain, storm_cast=run.storm_cast_counter,
 			visual=projectile_visual_for_archetype(player.archetype),
-			from_player=true, ttl=ttl, color=DAMAGE_TYPE_COLORS[type],
+			from_player=true, owner_slot=u8(slot), ttl=ttl, color=DAMAGE_TYPE_COLORS[type],
 		})
 	}
 	sfx_emit(run, sfx_player_bolt_bank(player, type, count), player.pos, spatial = true)
 	return true
 }
 
-player_dash :: proc(run: ^Run, aim: Vec2) -> bool {
-	player := &run.player
+// The relocation half of a dash, shared with co-op guest prediction.
+player_dash_displace :: proc(run: ^Run, slot: int, aim: Vec2) {
+	player := &run.players[slot]
+	if aim != {} do player.facing = linalg.normalize0(aim)
+	steps := player.archetype == .Ranger ? 11 : 8
+	if player_has_discipline(player, .Rogue_Smoke) do steps += 2
+	if player_has_skill_bonus(player, .Dash_Tempo) || player_has_skill_bonus(player, .Dash_Guard) do steps += 1
+	for _ in 0 ..< steps do slide_move(&run.dungeon, &player.pos, player.facing * 0.20, block_stairs=true)
+	// A dash may pass through actors but never land inside a solid body.
+	resolve_player_enemy_contacts(run, slot)
+	resolve_player_friendly_contacts(run, slot)
+	player.prev_pos = player.pos
+	player.melee_commit_timer = 0 // dashing cancels a swing's plant window
+}
+
+player_dash :: proc(run: ^Run, slot: int, aim: Vec2) -> bool {
+	player := &run.players[slot]
 	if bighit_charging(player) {
 		if bighit_committed(player) do return false
 		_ = player_big_hit_release(player, run)
 	}
 	cost := player_dash_stamina_cost(player)
 	if player.dash_timer > 0 || player.stamina < f32(cost) do return false
-	if aim != {} do player.facing = linalg.normalize0(aim)
 	player.stamina -= f32(cost)
 	player.dash_timer = player_dash_cooldown(player)
 	start := player.pos
-	steps := player.archetype == .Ranger ? 11 : 8
-	if player_has_discipline(player, .Rogue_Smoke) do steps += 2
-	if player_has_skill_bonus(player, .Dash_Tempo) || player_has_skill_bonus(player, .Dash_Guard) do steps += 1
-	for _ in 0 ..< steps do slide_move(&run.dungeon, &player.pos, player.facing * 0.20, block_stairs=true)
-	// A dash may pass through actors but never land inside a solid body.
-	resolve_player_enemy_contacts(run)
-	resolve_player_friendly_contacts(run)
-	player.prev_pos = player.pos
-	player.melee_commit_timer = 0 // dashing cancels a swing's plant window
+	player_dash_displace(run, slot, aim)
 	player.swing_timer = .22
 	player_start_visual_action(player,.Dash,PLAYER_DASH_ACTION_SECONDS)
 	style := feel_style_for_archetype(player.archetype)
@@ -945,8 +968,8 @@ player_dash :: proc(run: ^Run, aim: Vec2) -> bool {
 }
 
 @(private = "file")
-cast_time_skip :: proc(run: ^Run) -> bool {
-	player := &run.player
+cast_time_skip :: proc(run: ^Run, slot: int) -> bool {
+	player := &run.players[slot]
 	cost := player_class_skill_mana_cost(player)
 	if player.class_skill_timer > 0 || player.mana < cost do return false
 	player.mana -= cost
@@ -992,8 +1015,8 @@ nova_engulfs_room :: proc(player: ^Player) -> bool {
 }
 
 @(private = "file")
-cast_nova :: proc(run: ^Run) -> bool {
-	player := &run.player
+cast_nova :: proc(run: ^Run, slot: int) -> bool {
+	player := &run.players[slot]
 	cost := player_class_skill_mana_cost(player)
 	if player.class_skill_timer > 0 || player.mana < cost do return false
 	player.mana -= cost
@@ -1022,7 +1045,7 @@ cast_nova :: proc(run: ^Run) -> bool {
 			player.discipline_spell_bonus + rng_range(&run.combat_rng, 0, 5)
 		if player_has_class_skill_bonus(player) do damage += 2
 		damage = story_apply_player_damage(run, damage, spell = true)
-		_ = player_damage_enemy(run, &enemy, damage, .Frost, .Chilled, true, chill_duration)
+		_ = player_damage_enemy(run, slot, &enemy, damage, .Frost, .Chilled, true, chill_duration)
 		if distance > .001 do slide_move(&run.dungeon, &enemy.pos, delta/distance*.18)
 	}
 	append(&run.numbers, Damage_Number{pos=player.pos, kind=.Text, text="Frost Nova"})
@@ -1031,29 +1054,30 @@ cast_nova :: proc(run: ^Run) -> bool {
 }
 
 @(private = "file")
-bell_placement :: proc(run: ^Run, plant_range: f32) -> Vec2 {
-	dir := linalg.normalize0(run.player.facing)
+bell_placement :: proc(run: ^Run, slot: int, plant_range: f32) -> Vec2 {
+	dir := linalg.normalize0(run.players[slot].facing)
 	if dir == {} do dir = {1,0}
 	for step := 16; step > 0; step -= 1 {
-		candidate := run.player.pos + dir * (plant_range * f32(step)/16)
+		candidate := run.players[slot].pos + dir * (plant_range * f32(step)/16)
 		if !blocked_for_radius(&run.dungeon, candidate.x, candidate.y, .22) &&
-			line_of_sight(&run.dungeon, run.player.pos.x, run.player.pos.y, candidate.x, candidate.y) {
+			line_of_sight(&run.dungeon, run.players[slot].pos.x, run.players[slot].pos.y, candidate.x, candidate.y) {
 			return candidate
 		}
 	}
-	return run.player.pos
+	return run.players[slot].pos
 }
 
 @(private = "file")
-cast_ambush_bell :: proc(run: ^Run) -> bool {
-	player := &run.player
+cast_ambush_bell :: proc(run: ^Run, slot: int) -> bool {
+	player := &run.players[slot]
 	cost := player_class_skill_mana_cost(player)
 	if player.class_skill_timer > 0 || player.mana < cost do return false
 	player.mana -= cost
 	player.class_skill_timer = player_class_skill_cooldown(player)
 	player_start_visual_action(player,.Cast,PLAYER_BELL_ACTION_SECONDS)
 	bell, plant_range := ambush_bell_tuning(player)
-	bell.pos = bell_placement(run, plant_range)
+	bell.pos = bell_placement(run, slot, plant_range)
+	bell.owner_slot = u8(slot)
 	clear(&run.bells)
 	append(&run.bells, bell)
 	feel_emit(
@@ -1085,7 +1109,8 @@ storm_chain_tiers :: proc(player: ^Player) -> (jump_limit: int, jump_radius: f32
 }
 
 resolve_storm_chain :: proc(run: ^Run, p: ^Projectile, primary: ^Enemy) {
-	jump_limit, jump_radius, elite_priority := storm_chain_tiers(&run.player)
+	slot := int(p.owner_slot)
+	jump_limit, jump_radius, elite_priority := storm_chain_tiers(&run.players[slot])
 	if jump_limit <= 0 do return
 	chain_damage := max(1, int(f32(p.damage) * 0.55))
 	visited: [16]u32
@@ -1120,7 +1145,7 @@ resolve_storm_chain :: proc(run: ^Run, p: ^Projectile, primary: ^Enemy) {
 			best, best_elite, best_distance = &candidate, elite, distance
 		}
 		if best == nil do break
-		_ = damage_enemy_typed(run, best, chain_damage, p.damage_type)
+		_ = damage_enemy_typed(run, slot, best, chain_damage, p.damage_type)
 		if p.has_status do enemy_apply_status(best, p.status, p.status_duration * 0.7)
 		if dir := linalg.normalize0(best.pos - source.pos); dir != {} {
 			enemy_start_knockback(run, best, dir * KNOCKBACK_SPEED)
@@ -1137,17 +1162,17 @@ resolve_storm_chain :: proc(run: ^Run, p: ^Projectile, primary: ^Enemy) {
 	}
 }
 
-player_cast_class_skill :: proc(run: ^Run, aim: Vec2) -> bool {
-	player := &run.player
+player_cast_class_skill :: proc(run: ^Run, slot: int, aim: Vec2) -> bool {
+	player := &run.players[slot]
 	if bighit_charging(player) do return false
 	if aim != {} do player.facing = linalg.normalize0(aim)
 	fired := false
 	switch player.archetype {
-	case .Warden: fired = cast_time_skip(run)
-	case .Rogue: fired = cast_ambush_bell(run)
-	case .Arcanist: fired = cast_nova(run)
-	case .Acolyte: fired = player_cast_spirit_call(run)
-	case .Ranger: fired = player_cast_spirit_beast(run)
+	case .Warden: fired = cast_time_skip(run, slot)
+	case .Rogue: fired = cast_ambush_bell(run, slot)
+	case .Arcanist: fired = cast_nova(run, slot)
+	case .Acolyte: fired = player_cast_spirit_call(run, slot)
+	case .Ranger: fired = player_cast_spirit_beast(run, slot)
 	}
 	if fired do _ = story_apply_blood_price(run, "Class skill blood price")
 	return fired
@@ -1172,7 +1197,8 @@ ambush_lure_position :: proc(run: ^Run, enemy: ^Enemy) -> (pos: Vec2, found: boo
 // table with the snapshotted facing bonuses.
 @(private = "file")
 bell_primary_damage :: proc(run: ^Run, bell: ^Ambush_Bell, enemy: ^Enemy, facing: bool) -> int {
-	player := &run.player
+	slot := int(bell.owner_slot)
+	player := &run.players[slot]
 	damage := bell.primary_damage
 	if facing do damage = int(f32(damage) * bell.facing_mult) + 2
 	if player_has_discipline(player, .Rogue_Precision) do damage += 3
@@ -1200,7 +1226,8 @@ bell_primary_damage :: proc(run: ^Run, bell: ^Ambush_Bell, enemy: ^Enemy, facing
 
 @(private = "file")
 detonate_bell :: proc(run: ^Run, bell: ^Ambush_Bell, primary: ^Enemy, expired: bool) {
-	player := &run.player
+	slot := int(bell.owner_slot)
+	player := &run.players[slot]
 	player_apply_status(player, .Smoke, bell.smoke_duration)
 	radius := expired ? bell.damage_radius*.82 : bell.damage_radius
 	feel_emit(
@@ -1227,7 +1254,7 @@ detonate_bell :: proc(run: ^Run, bell: ^Ambush_Bell, primary: ^Enemy, expired: b
 			snare = bell.splash_snare
 			status_duration *= 0.75
 		}
-		_ = player_damage_enemy(run, &enemy, damage, .Physical, bell.status, bell.has_status, status_duration)
+		_ = player_damage_enemy(run, slot, &enemy, damage, .Physical, bell.status, bell.has_status, status_duration)
 		if snare > 0 do enemy_apply_status(&enemy, .Snared, snare)
 		if enemy.hp <= 0 do kills += 1
 	}

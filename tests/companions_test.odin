@@ -26,8 +26,8 @@ companion_test_prepare_arena :: proc(run: ^ar.Run) {
 	run.dungeon.hall_furnishings = {}
 	run.dungeon.solid_props = {}
 	run.dungeon.stairs = {0, 0}
-	run.player.pos = {10.5, 10.5}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = {10.5, 10.5}
+	run.players[0].prev_pos = run.players[0].pos
 	clear(&run.enemies)
 	clear(&run.projectiles)
 	clear(&run.familiars)
@@ -43,25 +43,25 @@ acolyte_spirit_call_cost_cooldown_recast_and_descent :: proc(t: ^testing.T) {
 	ar.run_start(&run, ar.derive_seed(801, 0), .Acolyte)
 	defer ar.run_destroy(&run)
 
-	mana_cost := ar.player_class_skill_mana_cost(&run.player)
-	cooldown := ar.player_class_skill_cooldown(&run.player)
-	mana_before := run.player.mana
-	ok := ar.player_cast_spirit_call(&run)
+	mana_cost := ar.player_class_skill_mana_cost(&run.players[0])
+	cooldown := ar.player_class_skill_cooldown(&run.players[0])
+	mana_before := run.players[0].mana
+	ok := ar.player_cast_spirit_call(&run, 0)
 	testing.expect(t, ok, "fresh Acolyte should cast Spirit Call")
 	testing.expectf(t, len(run.familiars) == 1, "rank-zero Spirit Call made %v familiars, want 1", len(run.familiars))
-	testing.expectf(t, abs(run.player.mana - (mana_before - mana_cost)) < COMPANION_TEST_EPS, "Spirit Call mana %.3f, want %.3f", run.player.mana, mana_before - mana_cost)
-	testing.expectf(t, abs(run.player.class_skill_timer - cooldown) < COMPANION_TEST_EPS, "Spirit Call cooldown %.3f, want %.3f", run.player.class_skill_timer, cooldown)
+	testing.expectf(t, abs(run.players[0].mana - (mana_before - mana_cost)) < COMPANION_TEST_EPS, "Spirit Call mana %.3f, want %.3f", run.players[0].mana, mana_before - mana_cost)
+	testing.expectf(t, abs(run.players[0].class_skill_timer - cooldown) < COMPANION_TEST_EPS, "Spirit Call cooldown %.3f, want %.3f", run.players[0].class_skill_timer, cooldown)
 	if len(run.familiars) == 0 do return
 	testing.expect(t, run.familiars[0].kind == .Wisp, "rank-zero Spirit Call should summon a Wisp")
 
 	// Recasting replaces the host and restores its health; it never stacks it.
 	run.familiars[0].hp = 1
-	run.player.class_skill_timer = 0
-	mana_before = run.player.mana
-	ok = ar.player_cast_spirit_call(&run)
+	run.players[0].class_skill_timer = 0
+	mana_before = run.players[0].mana
+	ok = ar.player_cast_spirit_call(&run, 0)
 	testing.expect(t, ok, "ready Acolyte should be able to recast Spirit Call")
 	testing.expectf(t, len(run.familiars) == 1, "recast stacked the host: got %v familiars", len(run.familiars))
-	testing.expectf(t, abs(run.player.mana - (mana_before - mana_cost)) < COMPANION_TEST_EPS, "recast did not pay the normal mana cost")
+	testing.expectf(t, abs(run.players[0].mana - (mana_before - mana_cost)) < COMPANION_TEST_EPS, "recast did not pay the normal mana cost")
 	if len(run.familiars) == 0 do return
 	testing.expect(t, run.familiars[0].hp == run.familiars[0].max_hp, "recast should recreate the host at full health")
 
@@ -75,30 +75,30 @@ floor_descent_resets_actions_and_restores_quarter_resources :: proc(t: ^testing.
 	ar.run_start(&run, ar.derive_seed(811, 0), .Acolyte)
 	defer ar.run_destroy(&run)
 
-	run.player.mana = 1
-	run.player.stamina = 2
-	run.player.melee_timer = 1
-	run.player.bolt_timer = 2
-	run.player.dash_timer = 3
-	run.player.class_skill_timer = 4
-	run.player.time_skip_timer = 5
-	run.player.bighit_timer = 6
-	run.player.bighit_charge = .4
-	run.player.swing_timer = .3
-	run.player.hit_flash = 1
-	run.player.potion_timer = .7
+	run.players[0].mana = 1
+	run.players[0].stamina = 2
+	run.players[0].melee_timer = 1
+	run.players[0].bolt_timer = 2
+	run.players[0].dash_timer = 3
+	run.players[0].class_skill_timer = 4
+	run.players[0].time_skip_timer = 5
+	run.players[0].bighit_timer = 6
+	run.players[0].bighit_charge = .4
+	run.players[0].swing_timer = .3
+	run.players[0].hit_flash = 1
+	run.players[0].potion_timer = .7
 
-	want_mana := min(f32(run.player.max_mana), f32(1) + f32(run.player.max_mana) * .25)
-	want_stamina := min(f32(run.player.max_stamina), f32(2) + f32(run.player.max_stamina) * .25)
+	want_mana := min(f32(run.players[0].max_mana), f32(1) + f32(run.players[0].max_mana) * .25)
+	want_stamina := min(f32(run.players[0].max_stamina), f32(2) + f32(run.players[0].max_stamina) * .25)
 	ar.run_descend(&run)
 
-	testing.expect(t, run.player.melee_timer == 0 && run.player.bolt_timer == 0, "descent must clear melee and bolt recoveries")
-	testing.expect(t, run.player.dash_timer == 0 && run.player.class_skill_timer == 0, "descent must clear dash and class recoveries")
-	testing.expect(t, run.player.time_skip_timer == 0 && run.player.bighit_timer == 0, "descent must clear Time Skip and Big Hit recoveries")
-	testing.expect(t, run.player.bighit_charge == 0 && run.player.swing_timer == 0, "descent must cancel transient action state")
-	testing.expect(t, run.player.hit_flash == 0, "descent must clear transient hit flash")
-	testing.expect(t, abs(run.player.mana - want_mana) < COMPANION_TEST_EPS && abs(run.player.stamina - want_stamina) < COMPANION_TEST_EPS, "descent must restore 25% of max mana and stamina")
-	testing.expect(t, abs(run.player.potion_timer - .7) < COMPANION_TEST_EPS, "descent must preserve the potion cooldown")
+	testing.expect(t, run.players[0].melee_timer == 0 && run.players[0].bolt_timer == 0, "descent must clear melee and bolt recoveries")
+	testing.expect(t, run.players[0].dash_timer == 0 && run.players[0].class_skill_timer == 0, "descent must clear dash and class recoveries")
+	testing.expect(t, run.players[0].time_skip_timer == 0 && run.players[0].bighit_timer == 0, "descent must clear Time Skip and Big Hit recoveries")
+	testing.expect(t, run.players[0].bighit_charge == 0 && run.players[0].swing_timer == 0, "descent must cancel transient action state")
+	testing.expect(t, run.players[0].hit_flash == 0, "descent must clear transient hit flash")
+	testing.expect(t, abs(run.players[0].mana - want_mana) < COMPANION_TEST_EPS && abs(run.players[0].stamina - want_stamina) < COMPANION_TEST_EPS, "descent must restore 25% of max mana and stamina")
+	testing.expect(t, abs(run.players[0].potion_timer - .7) < COMPANION_TEST_EPS, "descent must preserve the potion cooldown")
 }
 
 @(test)
@@ -124,7 +124,7 @@ spirit_rank_helper_ports_crow_and_host_count_steps :: proc(t: ^testing.T) {
 	run: ar.Run
 	ar.run_start(&run, ar.derive_seed(802, 0), .Acolyte)
 	defer ar.run_destroy(&run)
-	ok := ar.player_cast_spirit_call_rank(&run, 3)
+	ok := ar.player_cast_spirit_call_rank(&run, 0, 3)
 	testing.expect(t, ok, "rank-three Spirit Call should cast")
 	testing.expectf(t, len(run.familiars) == 2, "rank-three cast made %v familiars, want 2", len(run.familiars))
 	for familiar in run.familiars {
@@ -141,16 +141,16 @@ acolyte_wisp_relocates_when_authored_orbit_hits_wall :: proc(t: ^testing.T) {
 	for x in 0 ..< ar.MAP_W do for y in 0 ..< ar.MAP_H do run.dungeon.tiles[x][y] = .Wall
 	run.dungeon.tiles[10][10] = .Floor
 	run.dungeon.tiles[10][11] = .Floor
-	run.player.mana = f32(run.player.max_mana)
-	run.player.class_skill_timer = 0
+	run.players[0].mana = f32(run.players[0].max_mana)
+	run.players[0].class_skill_timer = 0
 
 	naive_angle := f32(0.7)
-	naive := run.player.pos + ar.Vec2{math.cos(naive_angle), math.sin(naive_angle)} * ar.SPIRIT_CALL_SPAWN_RADIUS
+	naive := run.players[0].pos + ar.Vec2{math.cos(naive_angle), math.sin(naive_angle)} * ar.SPIRIT_CALL_SPAWN_RADIUS
 	testing.expect(t, ar.blocked_for_radius(
 		&run.dungeon, naive.x, naive.y, ar.FAMILIAR_MOVE_COLLISION_RADIUS, block_stairs = true,
 	), "test setup must block the Wisp's authored orbit position")
 
-	ok := ar.player_cast_spirit_call_rank(&run, 0)
+	ok := ar.player_cast_spirit_call_rank(&run, 0, 0)
 	testing.expect(t, ok && len(run.familiars) == 1, "Wisp should relocate to nearby valid floor")
 	if len(run.familiars) == 0 do return
 	wisp := run.familiars[0]
@@ -169,13 +169,13 @@ acolyte_crows_all_relocate_when_authored_orbits_hit_walls :: proc(t: ^testing.T)
 	stats := ar.spirit_call_stats(5)
 	for index in 0 ..< stats.count {
 		angle := f32(index) / f32(stats.count) * (2 * math.PI) + 0.7
-		naive := run.player.pos + ar.Vec2{math.cos(angle), math.sin(angle)} * ar.SPIRIT_CALL_SPAWN_RADIUS
+		naive := run.players[0].pos + ar.Vec2{math.cos(angle), math.sin(angle)} * ar.SPIRIT_CALL_SPAWN_RADIUS
 		run.dungeon.tiles[int(naive.x)][int(naive.y)] = .Wall
 	}
-	run.player.mana = f32(run.player.max_mana)
-	run.player.class_skill_timer = 0
+	run.players[0].mana = f32(run.players[0].max_mana)
+	run.players[0].class_skill_timer = 0
 
-	ok := ar.player_cast_spirit_call_rank(&run, 5)
+	ok := ar.player_cast_spirit_call_rank(&run, 0, 5)
 	testing.expect(t, ok, "three-Crow Spirit Call should find alternate floor positions")
 	testing.expectf(t, len(run.familiars) == stats.count, "safe Crow summon made %v familiars, want %v", len(run.familiars), stats.count)
 	for familiar, index in run.familiars {
@@ -201,16 +201,16 @@ acolyte_spirit_call_safe_spawn_failure_spends_nothing :: proc(t: ^testing.T) {
 	companion_test_prepare_arena(&run)
 	for x in 0 ..< ar.MAP_W do for y in 0 ..< ar.MAP_H do run.dungeon.tiles[x][y] = .Wall
 	run.dungeon.tiles[10][10] = .Floor
-	run.player.mana = f32(run.player.max_mana)
-	run.player.class_skill_timer = 0
-	mana_before := run.player.mana
-	timer_before := run.player.class_skill_timer
+	run.players[0].mana = f32(run.players[0].max_mana)
+	run.players[0].class_skill_timer = 0
+	mana_before := run.players[0].mana
+	timer_before := run.players[0].class_skill_timer
 
-	ok := ar.player_cast_spirit_call_rank(&run, 5)
+	ok := ar.player_cast_spirit_call_rank(&run, 0, 5)
 	testing.expect(t, !ok, "Spirit Call must fail rather than spawn a Crow inside sealed geometry")
 	testing.expect(t, len(run.familiars) == 0, "failed safe spawn created a familiar")
-	testing.expect(t, run.player.mana == mana_before, "failed safe spawn spent mana")
-	testing.expect(t, run.player.class_skill_timer == timer_before, "failed safe spawn started cooldown")
+	testing.expect(t, run.players[0].mana == mana_before, "failed safe spawn spent mana")
+	testing.expect(t, run.players[0].class_skill_timer == timer_before, "failed safe spawn started cooldown")
 }
 
 @(test)
@@ -219,34 +219,34 @@ ranger_beast_uses_half_mana_and_living_beast_commands_are_free :: proc(t: ^testi
 	ar.run_start(&run, ar.derive_seed(803, 0), .Ranger)
 	defer ar.run_destroy(&run)
 
-	mana_before := run.player.mana
-	expected_cost := f32(run.player.max_mana) * ar.SPIRIT_BEAST_MANA_FRACTION
-	ok := ar.player_cast_spirit_beast(&run)
+	mana_before := run.players[0].mana
+	expected_cost := f32(run.players[0].max_mana) * ar.SPIRIT_BEAST_MANA_FRACTION
+	ok := ar.player_cast_spirit_beast(&run, 0)
 	testing.expect(t, ok, "fresh Ranger should summon a Spirit Beast")
 	testing.expectf(t, len(run.familiars) == 1, "Spirit Beast summon made %v familiars, want 1", len(run.familiars))
-	testing.expectf(t, abs(run.player.mana - (mana_before - expected_cost)) < COMPANION_TEST_EPS, "Spirit Beast should cost half maximum mana")
-	testing.expectf(t, abs(run.player.class_skill_timer - ar.SPIRIT_BEAST_REPLACE_COOLDOWN) < COMPANION_TEST_EPS, "Spirit Beast replacement cooldown should be 60 seconds")
+	testing.expectf(t, abs(run.players[0].mana - (mana_before - expected_cost)) < COMPANION_TEST_EPS, "Spirit Beast should cost half maximum mana")
+	testing.expectf(t, abs(run.players[0].class_skill_timer - ar.SPIRIT_BEAST_REPLACE_COOLDOWN) < COMPANION_TEST_EPS, "Spirit Beast replacement cooldown should be 60 seconds")
 	if len(run.familiars) == 0 do return
 	beast := &run.familiars[0]
 	testing.expect(t, beast.kind == .Spirit_Beast && beast.command == .Attack, "new Spirit Beast should begin in Attack mode")
 	testing.expect(t, beast.hp == 60 && beast.damage == 12, "rank-zero Spirit Beast should have 60 hp / 12 damage")
 
-	next, available := ar.spirit_beast_next_command(&run)
+	next, available := ar.spirit_beast_next_command(&run, 0)
 	testing.expect(t, available && next == .Follow, "Attack mode should advertise the free Return/Follow command")
 	beast.hp = 1
-	run.player.mana = 0
-	timer_before := run.player.class_skill_timer
-	ok = ar.player_cast_spirit_beast(&run)
+	run.players[0].mana = 0
+	timer_before := run.players[0].class_skill_timer
+	ok = ar.player_cast_spirit_beast(&run, 0)
 	testing.expect(t, ok, "living Spirit Beast command should ignore mana and replacement cooldown")
 	testing.expect(t, len(run.familiars) == 1 && run.familiars[0].command == .Follow, "first command should switch the beast to Follow")
 	testing.expect(t, run.familiars[0].hp == 1, "commanding a living beast must not heal it")
-	testing.expect(t, run.player.mana == 0 && run.player.class_skill_timer == timer_before, "living-beast command should spend no resource or cooldown")
+	testing.expect(t, run.players[0].mana == 0 && run.players[0].class_skill_timer == timer_before, "living-beast command should spend no resource or cooldown")
 
-	next, available = ar.spirit_beast_next_command(&run)
+	next, available = ar.spirit_beast_next_command(&run, 0)
 	testing.expect(t, available && next == .Attack, "Follow mode should advertise the free Attack command")
-	ok = ar.player_cast_spirit_beast(&run)
+	ok = ar.player_cast_spirit_beast(&run, 0)
 	testing.expect(t, ok && run.familiars[0].command == .Attack, "second command should switch the beast back to Attack")
-	testing.expect(t, run.familiars[0].hp == 1 && run.player.mana == 0, "repeated commands must remain free and must not heal")
+	testing.expect(t, run.familiars[0].hp == 1 && run.players[0].mana == 0, "repeated commands must remain free and must not heal")
 }
 
 @(test)
@@ -260,18 +260,18 @@ ranger_beast_safe_spawn_failure_spends_nothing :: proc(t: ^testing.T) {
 			run.dungeon.tiles[x][y] = .Wall
 		}
 	}
-	run.player.pos = {20.5, 20.5}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = {20.5, 20.5}
+	run.players[0].prev_pos = run.players[0].pos
 	run.dungeon.tiles[20][20] = .Floor
 	clear(&run.familiars)
-	mana_before := run.player.mana
-	timer_before := run.player.class_skill_timer
+	mana_before := run.players[0].mana
+	timer_before := run.players[0].class_skill_timer
 
-	ok := ar.player_cast_spirit_beast(&run)
+	ok := ar.player_cast_spirit_beast(&run, 0)
 	testing.expect(t, !ok, "Spirit Beast should fail when no radius-clear LOS spawn exists")
 	testing.expect(t, len(run.familiars) == 0, "failed Spirit Beast cast should not create a familiar")
-	testing.expect(t, run.player.mana == mana_before, "failed Spirit Beast cast should not spend mana")
-	testing.expect(t, run.player.class_skill_timer == timer_before, "failed Spirit Beast cast should not start cooldown")
+	testing.expect(t, run.players[0].mana == mana_before, "failed Spirit Beast cast should not spend mana")
+	testing.expect(t, run.players[0].class_skill_timer == timer_before, "failed Spirit Beast cast should not start cooldown")
 }
 
 @(test)
@@ -280,12 +280,12 @@ familiar_ai_requires_los_then_follows_attacks_and_culls :: proc(t: ^testing.T) {
 	ar.run_start(&run, ar.derive_seed(805, 0), .Acolyte)
 	defer ar.run_destroy(&run)
 	companion_test_prepare_arena(&run)
-	run.player.mana = f32(run.player.max_mana)
-	run.player.class_skill_timer = 0
-	testing.expect(t, ar.player_cast_spirit_call(&run), "arena Spirit Call should cast")
+	run.players[0].mana = f32(run.players[0].max_mana)
+	run.players[0].class_skill_timer = 0
+	testing.expect(t, ar.player_cast_spirit_call(&run, 0), "arena Spirit Call should cast")
 	if len(run.familiars) == 0 do return
-	run.familiars[0].pos = run.player.pos
-	run.familiars[0].prev_pos = run.player.pos
+	run.familiars[0].pos = run.players[0].pos
+	run.familiars[0].prev_pos = run.players[0].pos
 
 	enemy := ar.enemy_make(.Ghoul, {13.5, 10.5}, 1)
 	enemy.hp = 999
@@ -317,9 +317,9 @@ spirit_beast_follow_command_ignores_adjacent_enemies :: proc(t: ^testing.T) {
 	ar.run_start(&run, ar.derive_seed(806, 0), .Ranger)
 	defer ar.run_destroy(&run)
 	companion_test_prepare_arena(&run)
-	run.player.mana = f32(run.player.max_mana)
-	run.player.class_skill_timer = 0
-	testing.expect(t, ar.player_cast_spirit_beast(&run), "arena Spirit Beast should cast")
+	run.players[0].mana = f32(run.players[0].max_mana)
+	run.players[0].class_skill_timer = 0
+	testing.expect(t, ar.player_cast_spirit_beast(&run, 0), "arena Spirit Beast should cast")
 	if len(run.familiars) == 0 do return
 
 	beast := &run.familiars[0]
@@ -345,16 +345,16 @@ enemy_projectile_is_intercepted_by_familiar_before_player :: proc(t: ^testing.T)
 	ar.run_start(&run, ar.derive_seed(807, 0), .Acolyte)
 	defer ar.run_destroy(&run)
 	companion_test_prepare_arena(&run)
-	run.player.mana = f32(run.player.max_mana)
-	run.player.class_skill_timer = 0
-	testing.expect(t, ar.player_cast_spirit_call(&run), "arena Spirit Call should cast")
+	run.players[0].mana = f32(run.players[0].max_mana)
+	run.players[0].class_skill_timer = 0
+	testing.expect(t, ar.player_cast_spirit_call(&run, 0), "arena Spirit Call should cast")
 	if len(run.familiars) == 0 do return
 
 	familiar_pos := run.familiars[0].pos
 	testing.expect(t, ar.familiar_intercepting_projectile(&run, familiar_pos) != nil, "projectile overlap should find a living familiar")
 	testing.expect(t, ar.familiar_intercepting_projectile(&run, familiar_pos + ar.Vec2{2, 0}) == nil, "far projectile should not find a familiar")
 	familiar_hp := run.familiars[0].hp
-	player_hp := run.player.hp
+	player_hp := run.players[0].hp
 	append(&run.projectiles, ar.Projectile{
 		pos = familiar_pos,
 		prev_pos = familiar_pos,
@@ -368,7 +368,7 @@ enemy_projectile_is_intercepted_by_familiar_before_player :: proc(t: ^testing.T)
 	ar.sim_tick(&run, {})
 	testing.expect(t, len(run.projectiles) == 0, "intercepted enemy projectile should be consumed")
 	testing.expect(t, run.familiars[0].hp == familiar_hp - 5, "intercepted projectile should damage the familiar")
-	testing.expect(t, run.player.hp == player_hp, "familiar-intercepted projectile should not damage the player")
+	testing.expect(t, run.players[0].hp == player_hp, "familiar-intercepted projectile should not damage the player")
 }
 
 @(test)
@@ -377,12 +377,12 @@ familiar_attack_uses_combat_rng_without_mutating_loot_rng :: proc(t: ^testing.T)
 	ar.run_start(&run, ar.derive_seed(808, 0), .Acolyte)
 	defer ar.run_destroy(&run)
 	companion_test_prepare_arena(&run)
-	run.player.mana = f32(run.player.max_mana)
-	run.player.class_skill_timer = 0
-	testing.expect(t, ar.player_cast_spirit_call(&run), "arena Spirit Call should cast")
+	run.players[0].mana = f32(run.players[0].max_mana)
+	run.players[0].class_skill_timer = 0
+	testing.expect(t, ar.player_cast_spirit_call(&run, 0), "arena Spirit Call should cast")
 	if len(run.familiars) == 0 do return
-	run.familiars[0].pos = run.player.pos
-	run.familiars[0].prev_pos = run.player.pos
+	run.familiars[0].pos = run.players[0].pos
+	run.familiars[0].prev_pos = run.players[0].pos
 	enemy := ar.enemy_make(.Ghoul, {11.4, 10.5}, 1)
 	enemy.hp = 100
 	enemy.max_hp = 100
@@ -429,14 +429,14 @@ rogue_precision_rank_zero_is_inert_and_seeded_ranks_are_deterministic :: proc(t:
 	defer ar.run_destroy(&run_b)
 
 	before := run_a.combat_rng
-	critical, multiplier := ar.roll_rogue_crit(&run_a)
+	critical, multiplier := ar.roll_rogue_crit(&run_a, 0)
 	testing.expect(t, !critical && multiplier == 1, "rank-zero Rogue precision should never crit")
 	testing.expect(t, run_a.combat_rng == before, "inert rank-zero precision should not consume combat RNG")
 
-	run_a.player.precision_rank = 1
-	run_b.player.precision_rank = 1
-	critical_a, multiplier_a := ar.roll_rogue_crit(&run_a, 10)
-	critical_b, multiplier_b := ar.roll_rogue_crit(&run_b, 10)
+	run_a.players[0].precision_rank = 1
+	run_b.players[0].precision_rank = 1
+	critical_a, multiplier_a := ar.roll_rogue_crit(&run_a, 0, 10)
+	critical_b, multiplier_b := ar.roll_rogue_crit(&run_b, 0, 10)
 	testing.expect(t, critical_a && critical_b, "100% scaled precision roll should crit")
 	testing.expect(t, multiplier_a == f32(1.60) && multiplier_b == multiplier_a, "seeded rank-one roll should return its 1.60 multiplier")
 	testing.expect(t, run_a.combat_rng == run_b.combat_rng, "same-seed precision rolls should advance identically")

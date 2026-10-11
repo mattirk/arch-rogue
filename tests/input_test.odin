@@ -136,7 +136,7 @@ mouse_walk_caps_final_step_at_stop_radius :: proc(t: ^testing.T) {
 	app.mode = .Playing
 	clear(&app.run.enemies)
 
-	start := app.run.player.pos
+	start := app.run.players[0].pos
 	target := start + ar.Vec2{0.13, 0}
 	ar.app_apply(&app, ar.Intent{
 		aim = target - start,
@@ -145,8 +145,8 @@ mouse_walk_caps_final_step_at_stop_radius :: proc(t: ^testing.T) {
 	})
 	ar.app_tick(&app)
 	remaining := math.hypot(
-		target.x - app.run.player.pos.x,
-		target.y - app.run.player.pos.y,
+		target.x - app.run.players[0].pos.x,
+		target.y - app.run.players[0].pos.y,
 	)
 	testing.expectf(t, abs(remaining - ar.MOUSE_WALK_STOP_RADIUS) < 1e-4, "remaining %.5f, want %.2f", remaining, ar.MOUSE_WALK_STOP_RADIUS)
 }
@@ -159,12 +159,12 @@ idle_mouse_aim_updates_facing_without_attacking :: proc(t: ^testing.T) {
 	ar.run_start(&app.run, app.seed, .Warden)
 	app.mode = .Playing
 	clear(&app.run.enemies)
-	stamina := app.run.player.stamina
+	stamina := app.run.players[0].stamina
 
 	ar.app_apply(&app, ar.Intent{aim = {0, -3}, aim_live = true})
 	ar.app_tick(&app)
-	testing.expect(t, abs(app.run.player.facing.x) < 1e-5 && abs(app.run.player.facing.y + 1) < 1e-5, "idle facing must follow cursor aim")
-	testing.expect(t, app.run.player.melee_timer == 0 && app.run.player.stamina == stamina, "idle aim must not swing")
+	testing.expect(t, abs(app.run.players[0].facing.x) < 1e-5 && abs(app.run.players[0].facing.y + 1) < 1e-5, "idle facing must follow cursor aim")
+	testing.expect(t, app.run.players[0].melee_timer == 0 && app.run.players[0].stamina == stamina, "idle aim must not swing")
 }
 
 @(test)
@@ -178,18 +178,18 @@ parked_cursor_keeps_last_movement_heading :: proc(t: ^testing.T) {
 
 	ar.app_apply(&app, ar.Intent{move = {1, -1}})
 	ar.app_tick(&app)
-	heading := app.run.player.facing
+	heading := app.run.players[0].facing
 	testing.expect(t, heading.x > 0 && heading.y < 0, "movement must set the heading")
 
 	// The cursor rests somewhere without moving: aim arrives without aim_live,
 	// so stopping must keep the last keyboard/controller heading.
 	ar.app_apply(&app, ar.Intent{aim = {0, -3}})
 	ar.app_tick(&app)
-	testing.expect(t, app.run.player.facing == heading, "a parked cursor must not steal the stopped heading")
+	testing.expect(t, app.run.players[0].facing == heading, "a parked cursor must not steal the stopped heading")
 
 	ar.app_apply(&app, ar.Intent{aim = {-3, 0}, aim_live = true})
 	ar.app_tick(&app)
-	testing.expect(t, app.run.player.facing.x < -0.99, "a moved cursor must retake idle facing")
+	testing.expect(t, app.run.players[0].facing.x < -0.99, "a moved cursor must retake idle facing")
 }
 
 @(test)
@@ -204,13 +204,13 @@ diagonal_release_stagger_keeps_committed_heading :: proc(t: ^testing.T) {
 	for _ in 0 ..< 10 do ar.sim_tick(&run, {0, -2})
 	ar.sim_tick(&run, {-1, -1})
 	ar.sim_tick(&run, {})
-	testing.expect(t, abs(run.player.facing.x) < 1e-5 && abs(run.player.facing.y + 1) < 1e-5, "stop must restore the committed diagonal heading")
+	testing.expect(t, abs(run.players[0].facing.x) < 1e-5 && abs(run.players[0].facing.y + 1) < 1e-5, "stop must restore the committed diagonal heading")
 
 	// A deliberate tap with no prior committed heading must still turn.
 	for _ in 0 ..< 3 do ar.sim_tick(&run, {1, 1})
 	ar.sim_tick(&run, {})
 	south := f32(math.SQRT_TWO / 2)
-	testing.expect(t, abs(run.player.facing.x - south) < 1e-4 && abs(run.player.facing.y - south) < 1e-4, "a short tap must keep its own heading")
+	testing.expect(t, abs(run.players[0].facing.x - south) < 1e-4 && abs(run.players[0].facing.y - south) < 1e-4, "a short tap must keep its own heading")
 }
 
 @(test)
@@ -226,13 +226,13 @@ keyboard_fire_follows_retained_heading :: proc(t: ^testing.T) {
 	for _ in 0 ..< 10 do ar.app_tick(&app)
 	ar.app_apply(&app, ar.Intent{})
 	ar.app_tick(&app)
-	heading := app.run.player.facing
+	heading := app.run.players[0].facing
 
 	// Keyboard owns aim: the intent carries no cursor direction, so the bolt
 	// must fly along the retained heading and leave facing untouched.
 	ar.app_apply(&app, ar.Intent{actions = {false, true, false, false}})
 	ar.app_tick(&app)
-	testing.expect(t, app.run.player.facing == heading, "firing must not turn a keyboard-driven character")
+	testing.expect(t, app.run.players[0].facing == heading, "firing must not turn a keyboard-driven character")
 	testing.expect(t, len(app.run.projectiles) > 0, "bolt must launch")
 	if len(app.run.projectiles) > 0 {
 		vel := app.run.projectiles[0].vel
@@ -250,21 +250,21 @@ held_mouse_auto_melees_only_when_target_is_in_arc :: proc(t: ^testing.T) {
 	app.mode = .Playing
 	clear(&app.run.enemies)
 
-	start := app.run.player.pos
+	start := app.run.players[0].pos
 	target := start + ar.Vec2{1, 0}
 	ar.app_apply(&app, ar.Intent{aim = {1, 0}, mouse_walk = true, mouse_target = target})
 	ar.app_tick(&app)
-	testing.expect(t, app.run.player.melee_timer == 0, "empty click must not start melee cooldown")
-	testing.expect(t, app.run.player.stamina == f32(app.run.player.max_stamina), "empty click must not spend stamina")
+	testing.expect(t, app.run.players[0].melee_timer == 0, "empty click must not start melee cooldown")
+	testing.expect(t, app.run.players[0].stamina == f32(app.run.players[0].max_stamina), "empty click must not spend stamina")
 
-	app.run.player.pos = start
-	app.run.player.prev_pos = start
+	app.run.players[0].pos = start
+	app.run.players[0].prev_pos = start
 	enemy := ar.enemy_make(.Ghoul, start + ar.Vec2{0.9, 0}, 1)
 	enemy.aggro_range = 0
 	append(&app.run.enemies, enemy)
 	hp_before := app.run.enemies[0].hp
 	ar.app_tick(&app)
-	testing.expect(t, app.run.player.melee_timer > 0, "targeted held click must start melee cooldown")
+	testing.expect(t, app.run.players[0].melee_timer > 0, "targeted held click must start melee cooldown")
 	testing.expect(t, app.run.enemies[0].hp < hp_before, "target in arc must take auto-melee damage")
 }
 
@@ -277,7 +277,7 @@ short_lmb_click_is_not_lost_between_fixed_ticks :: proc(t: ^testing.T) {
 	app.mode = .Playing
 	clear(&app.run.enemies)
 
-	start := app.run.player.pos
+	start := app.run.players[0].pos
 	enemy := ar.enemy_make(.Ghoul, start + ar.Vec2{0.9, 0}, 1)
 	enemy.aggro_range = 0
 	append(&app.run.enemies, enemy)
@@ -317,19 +317,19 @@ held_melee_resolves_before_enemy_windup :: proc(t: ^testing.T) {
 	app.mode = .Playing
 	clear(&app.run.enemies)
 
-	start := app.run.player.pos
+	start := app.run.players[0].pos
 	enemy := ar.enemy_make(.Ghoul, start + ar.Vec2{0.8, 0}, 1)
 	enemy.hp = 1
 	enemy.ai = .Windup
 	enemy.windup = 0
 	enemy.pending_ability = -1
-	enemy.damage = app.run.player.max_hp + 10
+	enemy.damage = app.run.players[0].max_hp + 10
 	enemy.attack_range = 2
 	append(&app.run.enemies, enemy)
 	app.move_input = {1, 0}
 
 	ar.app_tick(&app)
-	testing.expect(t, app.run.player.hp > 0, "player swing must cancel a lethal enemy windup first")
+	testing.expect(t, app.run.players[0].hp > 0, "player swing must cancel a lethal enemy windup first")
 	testing.expect(t, len(app.run.enemies) == 0, "killed enemy must sweep in the same tick")
 }
 
@@ -342,12 +342,12 @@ dead_player_cannot_auto_melee_on_transition_tick :: proc(t: ^testing.T) {
 	app.mode = .Playing
 	clear(&app.run.enemies)
 
-	start := app.run.player.pos
+	start := app.run.players[0].pos
 	enemy := ar.enemy_make(.Ghoul, start + ar.Vec2{0.8, 0}, 1)
 	enemy.aggro_range = 0
 	append(&app.run.enemies, enemy)
 	hp_before := app.run.enemies[0].hp
-	app.run.player.hp = 0
+	app.run.players[0].hp = 0
 	app.move_input = {1, 0}
 
 	ar.app_tick(&app)
@@ -363,14 +363,14 @@ mouse_aim_respects_facing_dead_zone :: proc(t: ^testing.T) {
 	ar.run_start(&app.run, app.seed, .Warden)
 	app.mode = .Playing
 	clear(&app.run.enemies)
-	app.run.player.facing = {1, 0}
+	app.run.players[0].facing = {1, 0}
 
 	ar.app_apply(&app, ar.Intent{aim = {0, 0.01}, aim_live = true})
 	ar.app_tick(&app)
-	testing.expect(t, app.run.player.facing == ar.Vec2{1, 0}, "cursor jitter at the player's feet must not turn them")
+	testing.expect(t, app.run.players[0].facing == ar.Vec2{1, 0}, "cursor jitter at the player's feet must not turn them")
 	ar.app_apply(&app, ar.Intent{aim = {0, 0.06}, aim_live = true})
 	ar.app_tick(&app)
-	testing.expect(t, abs(app.run.player.facing.x) < 1e-5 && app.run.player.facing.y > 0.99, "aim outside 0.05 tiles must update facing")
+	testing.expect(t, abs(app.run.players[0].facing.x) < 1e-5 && app.run.players[0].facing.y > 0.99, "aim outside 0.05 tiles must update facing")
 }
 
 @(test)
@@ -379,10 +379,10 @@ keyboard_steering_updates_facing_during_swing :: proc(t: ^testing.T) {
 	defer ar.run_destroy(&run)
 	ar.run_start(&run, ar.derive_seed(50, 0), .Warden)
 	clear(&run.enemies)
-	run.player.facing = {1, 0}
-	run.player.swing_timer = 0.4
+	run.players[0].facing = {1, 0}
+	run.players[0].swing_timer = 0.4
 	ar.sim_tick(&run, {0, -1})
-	testing.expect(t, abs(run.player.facing.x) < 1e-5 && run.player.facing.y < -0.99, "movement must steer during an action clip")
+	testing.expect(t, abs(run.players[0].facing.x) < 1e-5 && run.players[0].facing.y < -0.99, "movement must steer during an action clip")
 }
 
 @(test)
@@ -395,16 +395,16 @@ inventory_is_modal_clamped_and_scrolls :: proc(t: ^testing.T) {
 	clear(&app.run.enemies)
 
 	for i in 0 ..< ar.BAG_CAPACITY {
-		app.run.player.bag[i] = ar.Item{kind = .Weapon, name = "Test Blade", power = i}
+		app.run.players[0].bag[i] = ar.Item{kind = .Weapon, name = "Test Blade", power = i}
 	}
-	app.run.player.bag_count = ar.BAG_CAPACITY
+	app.run.players[0].bag_count = ar.BAG_CAPACITY
 	app.inventory_open = true
-	app.run.player.melee_timer = 1
-	before := app.run.player.pos
+	app.run.players[0].melee_timer = 1
+	before := app.run.players[0].pos
 	app.move_input = {1, 0}
 	ar.app_tick(&app)
-	testing.expect(t, app.run.player.pos == before, "inventory must pause movement")
-	testing.expect(t, app.run.player.melee_timer == 1, "inventory must pause cooldown clocks")
+	testing.expect(t, app.run.players[0].pos == before, "inventory must pause movement")
+	testing.expect(t, app.run.players[0].melee_timer == 1, "inventory must pause cooldown clocks")
 
 	ar.app_apply(&app, ar.Intent{menu_delta = 99})
 	testing.expect(t, app.inv_index == ar.BAG_CAPACITY - 1, "inventory selection must clamp at end")
@@ -421,15 +421,15 @@ inventory_equipped_preview_navigation_is_read_only :: proc(t: ^testing.T) {
 	ar.run_start(&app.run, app.seed, .Warden)
 	app.mode = .Playing
 	app.inventory_open = true
-	app.run.player.has_weapon = true
-	app.run.player.has_armor = true
-	app.run.player.weapon = {kind=.Weapon, name="Worn Blade", power=5, cursed=true}
-	app.run.player.armor = {kind=.Armor, name="Worn Mail", defense=3}
-	app.run.player.bag[0] = {kind=.Weapon, name="Spare Blade", power=2}
-	app.run.player.bag[1] = {kind=.Armor, name="Spare Mail", defense=1}
-	app.run.player.bag_count = 2
+	app.run.players[0].has_weapon = true
+	app.run.players[0].has_armor = true
+	app.run.players[0].weapon = {kind=.Weapon, name="Worn Blade", power=5, cursed=true}
+	app.run.players[0].armor = {kind=.Armor, name="Worn Mail", defense=3}
+	app.run.players[0].bag[0] = {kind=.Weapon, name="Spare Blade", power=2}
+	app.run.players[0].bag[1] = {kind=.Armor, name="Spare Mail", defense=1}
+	app.run.players[0].bag_count = 2
 	app.inv_index = 1
-	player_before := app.run.player
+	player_before := app.run.players[0]
 	ground_before := len(app.run.ground_items)
 
 	for focus in ([3]ar.Inventory_Focus{.Weapon, .Armor, .Bag}) {
@@ -440,7 +440,7 @@ inventory_equipped_preview_navigation_is_read_only :: proc(t: ^testing.T) {
 		testing.expect(t, found && item.name == expected, "details must follow the focused slot")
 		if focus != .Bag {
 			ar.app_apply(&app, {confirm=true, inv_drop=true})
-			testing.expect(t, app.run.player == player_before && len(app.run.ground_items) == ground_before, "equipped previews must never equip, consume, drop or unequip an item")
+			testing.expect(t, app.run.players[0] == player_before && len(app.run.ground_items) == ground_before, "equipped previews must never equip, consume, drop or unequip an item")
 		}
 	}
 
@@ -462,7 +462,7 @@ inventory_equipped_preview_navigation_is_read_only :: proc(t: ^testing.T) {
 	testing.expect(t, app.inv_focus == .Armor, "hover/tap must preview equipment")
 	ar.app_apply(&app, {inv_focus=.Armor, inv_focus_valid=true, menu_index=0, menu_index_valid=true})
 	testing.expect(t, app.inv_focus == .Bag && app.inv_index == 0, "an explicit bag shortcut must win over a same-frame equipped hover")
-	testing.expect(t, app.run.player == player_before, "navigation must leave player state untouched")
+	testing.expect(t, app.run.players[0] == player_before, "navigation must leave player state untouched")
 }
 
 @(test)
@@ -472,15 +472,15 @@ inventory_empty_bag_still_previews_equipment_and_resets_focus :: proc(t: ^testin
 	defer ar.run_destroy(&app.run)
 	ar.run_start(&app.run, app.seed, .Warden)
 	app.mode = .Playing
-	app.run.player.bag_count = 0
-	app.run.player.has_weapon = true
+	app.run.players[0].bag_count = 0
+	app.run.players[0].has_weapon = true
 	ar.app_apply(&app, {toggle_inventory=true})
 	_, found := ar.inventory_selected_item(&app)
 	testing.expect(t, app.inv_focus == .Weapon && found, "empty bags must still expose equipped item details")
-	app.run.player.has_armor = false
+	app.run.players[0].has_armor = false
 	ar.app_apply(&app, {tab=true, confirm=true, inv_drop=true})
 	_, found = ar.inventory_selected_item(&app)
-	testing.expect(t, app.inv_focus == .Armor && !found && app.run.player.bag_count == 0, "empty equipment slots can hold focus without showing stale data or acting on the bag")
+	testing.expect(t, app.inv_focus == .Armor && !found && app.run.players[0].bag_count == 0, "empty equipment slots can hold focus without showing stale data or acting on the bag")
 	ar.app_apply(&app, {tab=true})
 	testing.expect(t, app.inv_focus == .Weapon, "Tab must skip an empty bag")
 	ar.app_reset_run_ui_after_restore(&app)
@@ -555,9 +555,9 @@ inventory_and_shop_wheel_scroll_immediately_and_clamp :: proc(t: ^testing.T) {
 	ar.run_start(&app.run, app.seed, .Warden)
 	app.mode = .Playing
 	app.run.has_shopkeeper = true
-	for i in 0..<ar.BAG_CAPACITY do app.run.player.bag[i] = {kind=.Weapon,name="Scroll Blade",power=i+1}
-	app.run.player.bag_count = ar.BAG_CAPACITY
-	player_before := app.run.player
+	for i in 0..<ar.BAG_CAPACITY do app.run.players[0].bag[i] = {kind=.Weapon,name="Scroll Blade",power=i+1}
+	app.run.players[0].bag_count = ar.BAG_CAPACITY
+	player_before := app.run.players[0]
 	for shop in ([2]bool{false,true}) {
 		app.inventory_open = !shop
 		app.shop_open = shop
@@ -579,7 +579,7 @@ inventory_and_shop_wheel_scroll_immediately_and_clamp :: proc(t: ^testing.T) {
 		intent, _ = ar.desktop_wheel_intent(&app, 99, false, false)
 		ar.app_apply(&app, intent)
 		testing.expect(t, scroll^ == 0 && index^ < visible, "reverse scroll must restore the top viewport and a visible selection")
-		testing.expect(t, app.run.player == player_before, "scrolling must never buy, sell, equip or consume")
+		testing.expect(t, app.run.players[0] == player_before, "scrolling must never buy, sell, equip or consume")
 	}
 	app.shop_open = false
 	app.inventory_open = true
@@ -603,11 +603,11 @@ menu_wheel_inertia_cannot_redirect_item_actions :: proc(t: ^testing.T) {
 	ar.run_start(&app.run, app.seed, .Warden)
 	app.mode = .Playing
 	app.inventory_open = true
-	for i in 0..<ar.BAG_CAPACITY do app.run.player.bag[i] = {kind=.Weapon,name="Numbered Blade",power=i+1}
-	app.run.player.bag_count = ar.BAG_CAPACITY
-	app.run.player.has_weapon = false
+	for i in 0..<ar.BAG_CAPACITY do app.run.players[0].bag[i] = {kind=.Weapon,name="Numbered Blade",power=i+1}
+	app.run.players[0].bag_count = ar.BAG_CAPACITY
+	app.run.players[0].has_weapon = false
 	ar.app_apply(&app, {menu_index=0,menu_index_valid=true,menu_scroll=1,confirm=true})
-	testing.expect(t, app.run.player.has_weapon && app.run.player.weapon.power == 1, "1 plus wheel inertia must equip item 1, not the row scrolled into its place")
+	testing.expect(t, app.run.players[0].has_weapon && app.run.players[0].weapon.power == 1, "1 plus wheel inertia must equip item 1, not the row scrolled into its place")
 	app.inv_scroll = 0
 	app.inv_index = 0
 	ground_before := len(app.run.ground_items)
@@ -618,10 +618,10 @@ menu_wheel_inertia_cannot_redirect_item_actions :: proc(t: ^testing.T) {
 	app.shop_open = true
 	app.shop_mode = .Sell
 	app.run.has_shopkeeper = true
-	for i in 0..<ar.BAG_CAPACITY do app.run.player.bag[i] = {kind=.Weapon,name="Numbered Blade",power=i+1}
-	app.run.player.bag_count = ar.BAG_CAPACITY
+	for i in 0..<ar.BAG_CAPACITY do app.run.players[0].bag[i] = {kind=.Weapon,name="Numbered Blade",power=i+1}
+	app.run.players[0].bag_count = ar.BAG_CAPACITY
 	ar.app_apply(&app, {menu_index=0,menu_index_valid=true,menu_scroll=1,confirm=true})
-	testing.expect(t, app.run.player.bag_count == ar.BAG_CAPACITY-1 && app.run.player.bag[0].power == 2, "a sell click plus wheel inertia must transact on the clicked item")
+	testing.expect(t, app.run.players[0].bag_count == ar.BAG_CAPACITY-1 && app.run.players[0].bag[0].power == 2, "a sell click plus wheel inertia must transact on the clicked item")
 	testing.expect(t, app.shop_scroll == 1, "the same-frame wheel may move the viewport only after the transaction")
 }
 
@@ -633,8 +633,8 @@ inventory_sort_navigation_survives_character_button_remaps :: proc(t: ^testing.T
 	ar.run_start(&app.run, app.seed, .Warden)
 	app.mode = .Playing
 	app.inventory_open = true
-	app.run.player.bag[0] = {kind=.Weapon,name="Spare Blade"}
-	app.run.player.bag_count = 1
+	app.run.players[0].bag[0] = {kind=.Weapon,name="Spare Blade"}
+	app.run.players[0].bag_count = 1
 	mapping := ar.controller_default_mapping()
 	testing.expect(t, ar.controller_remap_button(&mapping, .X, .Character) == .Applied)
 	intent: ar.Intent
@@ -662,12 +662,12 @@ inventory_does_not_swallow_big_hit_release :: proc(t: ^testing.T) {
 	defer ar.run_destroy(&app.run)
 	ar.run_start(&app.run, app.seed, .Warden)
 	app.mode = .Playing
-	testing.expect(t, ar.player_big_hit_begin(&app.run,{1,0}), "Big Hit should begin before opening inventory")
+	testing.expect(t, ar.player_big_hit_begin(&app.run, 0,{1,0}), "Big Hit should begin before opening inventory")
 	ar.app_apply(&app,ar.Intent{toggle_inventory=true})
-	testing.expect(t, app.inventory_open && ar.bighit_charging(&app.run.player), "opening inventory must pause the active charge")
+	testing.expect(t, app.inventory_open && ar.bighit_charging(&app.run.players[0]), "opening inventory must pause the active charge")
 	ar.app_apply(&app,ar.Intent{action1_released=true})
-	testing.expect(t, !ar.bighit_charging(&app.run.player), "key-up through inventory must cancel a pre-commit charge")
-	testing.expect(t, abs(app.run.player.bighit_timer-ar.BIGHIT_CANCEL_COOLDOWN)<1e-5, "modal cancellation must start the short cooldown")
+	testing.expect(t, !ar.bighit_charging(&app.run.players[0]), "key-up through inventory must cancel a pre-commit charge")
+	testing.expect(t, abs(app.run.players[0].bighit_timer-ar.BIGHIT_CANCEL_COOLDOWN)<1e-5, "modal cancellation must start the short cooldown")
 }
 
 @(test)
@@ -748,19 +748,19 @@ inventory_sort_and_drop_follow_overlay_intents :: proc(t: ^testing.T) {
 	ar.run_start(&app.run, app.seed, .Warden)
 	app.mode = .Playing
 	app.inventory_open = true
-	app.run.player.bag[0] = ar.Item{kind = .Armor, name = "Rare Mail", rarity = .Rare, defense = 2}
-	app.run.player.bag[1] = ar.Item{kind = .Weapon, name = "Iron Blade", rarity = .Common, power = 8}
-	app.run.player.bag[2] = ar.Item{kind = .Weapon, name = "Runed Blade", rarity = .Rare, power = 3}
-	app.run.player.bag_count = 3
+	app.run.players[0].bag[0] = ar.Item{kind = .Armor, name = "Rare Mail", rarity = .Rare, defense = 2}
+	app.run.players[0].bag[1] = ar.Item{kind = .Weapon, name = "Iron Blade", rarity = .Common, power = 8}
+	app.run.players[0].bag[2] = ar.Item{kind = .Weapon, name = "Runed Blade", rarity = .Rare, power = 3}
+	app.run.players[0].bag_count = 3
 
 	ar.app_apply(&app, ar.Intent{inv_sort_mode = .Rarity, inv_sort_valid = true})
 	testing.expect(t, app.inv_sort_mode == .Rarity, "mouse sort chip must choose its mode")
-	testing.expect(t, app.run.player.bag[0].name == "Runed Blade" && app.run.player.bag[1].name == "Rare Mail", "rarity sort must use category as its tie-break")
+	testing.expect(t, app.run.players[0].bag[0].name == "Runed Blade" && app.run.players[0].bag[1].name == "Rare Mail", "rarity sort must use category as its tie-break")
 
 	ground_before := len(app.run.ground_items)
 	ar.app_apply(&app, ar.Intent{menu_index = 0, menu_index_valid = true, inv_drop = true})
-	testing.expect(t, app.run.player.bag_count == 2 && len(app.run.ground_items) == ground_before + 1, "drop shortcut must move one bag item to the floor")
-	testing.expect(t, app.run.player.bag[0].name == "Rare Mail", "drop must preserve the remaining bag order")
+	testing.expect(t, app.run.players[0].bag_count == 2 && len(app.run.ground_items) == ground_before + 1, "drop shortcut must move one bag item to the floor")
+	testing.expect(t, app.run.players[0].bag[0].name == "Rare Mail", "drop must preserve the remaining bag order")
 
 	ar.app_apply(&app, ar.Intent{inv_cycle_sort = 1})
 	testing.expect(t, app.inv_sort_mode == .Power, "Shift+S must cycle rarity to power")
@@ -775,7 +775,7 @@ archetype_pointer_confirm_suppresses_mouse_until_release :: proc(t: ^testing.T) 
 	ar.app_apply(&app, ar.Intent{confirm = true, pointer_confirm = true})
 	testing.expect(t, app.mode == .Playing && app.mouse_input_blocked, "carousel click start must consume its held button")
 
-	target := app.run.player.pos + ar.Vec2{4, 0}
+	target := app.run.players[0].pos + ar.Vec2{4, 0}
 	ar.app_apply(&app, ar.Intent{
 		aim = {1, 0}, mouse_walk = true, mouse_press = true,
 		mouse_press_aim = {1, 0}, mouse_target = target,
@@ -800,9 +800,9 @@ held_movement_survives_noop_interact_without_forcing_critical_save :: proc(t: ^t
 	clear(&app.run.secrets)
 	app.run.has_shopkeeper = false
 	center := ar.room_center(app.run.dungeon.rooms_buf[0])
-	app.run.player.pos = {f32(center.x)+.5,f32(center.y)+.5}
-	app.run.player.prev_pos = app.run.player.pos
-	testing.expect(t, !ar.player_interaction_available(&app.run), "fixture must exercise an ordinary no-op interaction")
+	app.run.players[0].pos = {f32(center.x)+.5,f32(center.y)+.5}
+	app.run.players[0].prev_pos = app.run.players[0].pos
+	testing.expect(t, !ar.player_interaction_available(&app.run, 0), "fixture must exercise an ordinary no-op interaction")
 
 	app.run_dirty = false
 	app.run_critical = false

@@ -311,8 +311,8 @@ music_boss_guitar_tiers_follow_player_health_exclusively :: proc(t: ^testing.T) 
 music_boss_choir_fades_in_strictly_below_half_boss_health :: proc(t: ^testing.T) {
 	run: ar.Run
 	defer delete(run.enemies)
-	run.player.hp = 1
-	run.player.max_hp = 100
+	run.players[0].hp = 1
+	run.players[0].max_hp = 100
 	append(&run.enemies, ar.Enemy{role = .Boss, hp = 100, max_hp = 100})
 
 	testing.expect(t, ar.music_boss_choir_gain(&run) == 0, "full boss health must keep the choir muted")
@@ -335,7 +335,7 @@ music_boss_choir_fades_in_strictly_below_half_boss_health :: proc(t: ^testing.T)
 music_dungeon_miniboss_horn_uses_direct_euclidean_distance_and_smooth_gain :: proc(t: ^testing.T) {
 	run: ar.Run
 	defer delete(run.enemies)
-	run.player.pos = {}
+	run.players[0].pos = {}
 	append(&run.enemies, ar.Enemy{role = .Elite, hp = 10, max_hp = 10, pos = {4, 0}})
 
 	testing.expect(t, ar.music_dungeon_miniboss_horn_gain(&run) == 0,
@@ -384,13 +384,13 @@ music_dungeon_quest_harp_follows_room_distance_and_reaches_full_inside :: proc(t
 	run.dungeon.special_room_count = 1
 	run.dungeon.special_rooms_buf[0] = {.Quest, 1}
 
-	run.player.pos = {12, 24}
+	run.players[0].pos = {12, 24}
 	testing.expect(t, ar.music_dungeon_quest_harp_gain(&run) == 0,
 		"second harp must begin at 0% eight tiles from the Quest room")
-	run.player.pos = {16, 24}
+	run.players[0].pos = {16, 24}
 	testing.expect(t, abs(ar.music_dungeon_quest_harp_gain(&run) - 0.5) < 1e-5,
 		"second harp must reach 50% four tiles from the Quest room")
-	run.player.pos = {20.5, 24}
+	run.players[0].pos = {20.5, 24}
 	testing.expect(t, ar.music_dungeon_quest_harp_gain(&run) == 1,
 		"second harp must reach 100% inside the Quest room")
 
@@ -436,14 +436,14 @@ music_dungeon_bar_flute_stays_room_bound_while_guitar_follows_string :: proc(t: 
 
 	// Before recruitment active resident String uses the exact Bar-room envelope
 	// used by the flute and by ordinary Dungeon-layer ducking.
-	run.player.pos = {12, 24}
+	run.players[0].pos = {12, 24}
 	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 0 && ar.music_dungeon_string_guitar_gain(&run) == 0,
 		"unrecruited Bar stems must be silent eight tiles from the room")
-	run.player.pos = {16, 24}
+	run.players[0].pos = {16, 24}
 	testing.expect(t, abs(ar.music_dungeon_bar_gain(&run) - 0.5) < 1e-5 &&
 		abs(ar.music_dungeon_string_guitar_gain(&run) - 0.5) < 1e-5,
 		"unrecruited guitar and flute must share the Bar midpoint")
-	run.player.pos = {20.5, 24}
+	run.players[0].pos = {20.5, 24}
 	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 1 && ar.music_dungeon_string_guitar_gain(&run) == 1,
 		"unrecruited guitar and flute must be full inside the Bar")
 
@@ -470,7 +470,7 @@ music_dungeon_bar_flute_stays_room_bound_while_guitar_follows_string :: proc(t: 
 
 	// Once String is recruited, only the guitar uses the same 4-full/12-silent
 	// direct-proximity smoothstep curve. Room membership and LOS are irrelevant.
-	run.player.pos = {}
+	run.players[0].pos = {}
 	run.ambient_residents.items[0].active = false
 	append(&run.familiars, ar.Familiar{kind = .String, hp = 10, max_hp = 10, pos = {12, 0}})
 	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 0 && ar.music_dungeon_string_guitar_gain(&run) == 0,
@@ -502,7 +502,7 @@ music_dungeon_bar_flute_stays_room_bound_while_guitar_follows_string :: proc(t: 
 	// A dead recruited String is no longer a guitar source; the retired resident
 	// must not make the instrument teleport back to the Bar.
 	run.familiars[0].hp = 0
-	run.player.pos = {20.5, 24}
+	run.players[0].pos = {20.5, 24}
 	testing.expect(t, ar.music_dungeon_bar_gain(&run) == 1 && ar.music_dungeon_string_guitar_gain(&run) == 0,
 		"dead recruited String must stop the guitar without changing Bar flute proximity")
 	run.dungeon.special_room_count = 0
@@ -518,13 +518,13 @@ music_dungeon_garden_ducks_every_non_core_stem_by_room_distance :: proc(t: ^test
 	run.dungeon.special_room_count = 1
 	run.dungeon.special_rooms_buf[0] = {.Garden, 1}
 
-	run.player.pos = {12, 24}
+	run.players[0].pos = {12, 24}
 	testing.expect(t, ar.music_dungeon_garden_gain(&run) == 0,
 		"Garden ducking must begin from silence eight tiles from the room")
-	run.player.pos = {16, 24}
+	run.players[0].pos = {16, 24}
 	testing.expect(t, abs(ar.music_dungeon_garden_gain(&run) - 0.5) < 1e-5,
 		"Garden ducking must reach its midpoint four tiles out")
-	run.player.pos = {20.5, 24}
+	run.players[0].pos = {20.5, 24}
 	testing.expect(t, ar.music_dungeon_garden_gain(&run) == 1,
 		"Garden ducking must be full throughout the room")
 
@@ -564,7 +564,7 @@ music_dungeon_garden_ducks_every_non_core_stem_by_room_distance :: proc(t: ^test
 music_glorious_horn_runtime_gain_slews_abrupt_miniboss_targets :: proc(t: ^testing.T) {
 	app: ar.App
 	defer delete(app.run.enemies)
-	app.run.player.pos = {}
+	app.run.players[0].pos = {}
 	append(&app.run.enemies, ar.Enemy{role = .Miniboss, hp = 10, max_hp = 10, pos = {4, 0}})
 	state: ar.Music_Runtime_State
 	ar.music_runtime_state_update(&state, &app, true, false, 0.1)
@@ -586,7 +586,7 @@ music_glorious_horn_runtime_gain_slews_abrupt_miniboss_targets :: proc(t: ^testi
 music_string_guitar_runtime_gain_uses_bar_fade_duration :: proc(t: ^testing.T) {
 	app: ar.App
 	defer delete(app.run.familiars)
-	app.run.player.pos = {}
+	app.run.players[0].pos = {}
 	append(&app.run.familiars, ar.Familiar{kind = .String, hp = 10, max_hp = 10, pos = {4, 0}})
 	state: ar.Music_Runtime_State
 	ar.music_runtime_state_update(&state, &app, true, false, 0.1)
@@ -610,13 +610,13 @@ music_soul_room_proximity_keeps_grim_bass_low_beat_and_kellopeli_one :: proc(t: 
 	run.dungeon.special_room_count = 1
 	run.dungeon.special_rooms_buf[0] = {.Hall_Of_Unlost_Echoes, 1}
 
-	run.player.pos = {12, 24}
+	run.players[0].pos = {12, 24}
 	testing.expect(t, ar.music_dungeon_soul_room_gain(&run) == 0,
 		"kellopeli_one must begin at silence eight tiles from the Soul room")
-	run.player.pos = {16, 24}
+	run.players[0].pos = {16, 24}
 	testing.expect(t, abs(ar.music_dungeon_soul_room_gain(&run) - 0.5) < 1e-5,
 		"kellopeli_one must reach half gain four tiles from the Soul room")
-	run.player.pos = {20.5, 24}
+	run.players[0].pos = {20.5, 24}
 	testing.expect(t, ar.music_dungeon_soul_room_gain(&run) == 1,
 		"kellopeli_one must reach full gain inside the Soul room")
 

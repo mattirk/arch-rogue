@@ -24,9 +24,9 @@ m10_prepare_arena :: proc(run: ^ar.Run, archetype := ar.Archetype_Id.Warden) {
 	run.dungeon.special_room_count = 0
 	run.dungeon.bar_furnishings = {}
 	run.dungeon.stairs = {21, 17}
-	run.player.pos = {14.5, 12.5}
-	run.player.prev_pos = run.player.pos
-	run.player.facing = {1, 0}
+	run.players[0].pos = {14.5, 12.5}
+	run.players[0].prev_pos = run.players[0].pos
+	run.players[0].facing = {1, 0}
 	clear(&run.enemies)
 	clear(&run.projectiles)
 	clear(&run.familiars)
@@ -73,9 +73,9 @@ m10_player_phase_uses_actual_displacement_and_blocked_input_stops :: proc(t: ^te
 
 	// A free full input follows the live player speed through actual/planned
 	// displacement while retaining the fixed 2.8 authored cadence base.
-	before := run.player.pos
+	before := run.players[0].pos
 	ar.sim_tick(&run, {1, 0})
-	delta := run.player.pos - before
+	delta := run.players[0].pos - before
 	distance := math.hypot(delta.x, delta.y)
 	expected := ar.walk_animation_advance(
 		ar.SIM_DT,
@@ -83,19 +83,19 @@ m10_player_phase_uses_actual_displacement_and_blocked_input_stops :: proc(t: ^te
 		distance,
 		ar.PLAYER_MOVE_SPEED * ar.SIM_DT,
 	)
-	testing.expect(t, run.player.moving, "free player input must report real movement")
-	testing.expectf(t, m10_near(run.player.anim_time, expected), "player phase %.6f, want %.6f from actual displacement", run.player.anim_time, expected)
+	testing.expect(t, run.players[0].moving, "free player input must report real movement")
+	testing.expectf(t, m10_near(run.players[0].anim_time, expected), "player phase %.6f, want %.6f from actual displacement", run.players[0].anim_time, expected)
 
 	// Park exactly at the west-wall collision radius. Held input remains useful
 	// for facing, but cannot fake a walk pose or consume a walk frame.
-	run.player.pos = {10 + ar.ACTOR_MOVE_COLLISION_RADIUS, 12.5}
-	run.player.prev_pos = run.player.pos
-	run.player.anim_time = 7.25
-	blocked_pos := run.player.pos
+	run.players[0].pos = {10 + ar.ACTOR_MOVE_COLLISION_RADIUS, 12.5}
+	run.players[0].prev_pos = run.players[0].pos
+	run.players[0].anim_time = 7.25
+	blocked_pos := run.players[0].pos
 	ar.sim_tick(&run, {-1, 0})
-	testing.expect(t, run.player.pos == blocked_pos, "wall probe unexpectedly allowed blocked input")
-	testing.expect(t, !run.player.moving, "blocked input must not select the walk pose")
-	testing.expect(t, run.player.anim_time == 7.25, "blocked input must preserve walk phase")
+	testing.expect(t, run.players[0].pos == blocked_pos, "wall probe unexpectedly allowed blocked input")
+	testing.expect(t, !run.players[0].moving, "blocked input must not select the walk pose")
+	testing.expect(t, run.players[0].anim_time == 7.25, "blocked input must preserve walk phase")
 }
 
 @(test)
@@ -103,27 +103,27 @@ m10_player_wall_slide_and_analog_input_scale_phase :: proc(t: ^testing.T) {
 	run: ar.Run
 	m10_prepare_arena(&run)
 	defer ar.run_destroy(&run)
-	run.player.pos = {10 + ar.ACTOR_MOVE_COLLISION_RADIUS, 12.5}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = {10 + ar.ACTOR_MOVE_COLLISION_RADIUS, 12.5}
+	run.players[0].prev_pos = run.players[0].pos
 
-	before := run.player.pos
+	before := run.players[0].pos
 	ar.sim_tick(&run, {-1, 1})
-	delta := run.player.pos - before
+	delta := run.players[0].pos - before
 	distance := math.hypot(delta.x, delta.y)
 	expected := ar.walk_animation_advance(ar.SIM_DT, ar.PLAYER_MOVE_SPEED, distance, ar.PLAYER_MOVE_SPEED * ar.SIM_DT)
 	testing.expect(t, delta.x == 0 && delta.y > 0, "diagonal input must slide along the west wall")
-	testing.expectf(t, m10_near(run.player.anim_time, expected), "wall-slide cadence ignored actual displacement")
+	testing.expectf(t, m10_near(run.players[0].anim_time, expected), "wall-slide cadence ignored actual displacement")
 
 	// Half stick deflection halves ground speed and therefore walk phase.
-	run.player.pos = {14.5, 12.5}
-	run.player.prev_pos = run.player.pos
-	run.player.anim_time = 0
-	before = run.player.pos
+	run.players[0].pos = {14.5, 12.5}
+	run.players[0].prev_pos = run.players[0].pos
+	run.players[0].anim_time = 0
+	before = run.players[0].pos
 	ar.sim_tick_limited(&run, {.5, 0}, -1)
-	delta = run.player.pos - before
+	delta = run.players[0].pos - before
 	distance = math.hypot(delta.x, delta.y)
 	expected = ar.walk_animation_advance(ar.SIM_DT, ar.PLAYER_MOVE_SPEED, distance, ar.PLAYER_MOVE_SPEED * ar.SIM_DT)
-	testing.expectf(t, m10_near(run.player.anim_time, expected), "analog cadence ignored actual/planned ratio")
+	testing.expectf(t, m10_near(run.players[0].anim_time, expected), "analog cadence ignored actual/planned ratio")
 }
 
 @(test)
@@ -131,8 +131,8 @@ m10_enemy_phase_includes_status_and_time_skip_scale :: proc(t: ^testing.T) {
 	run: ar.Run
 	m10_prepare_arena(&run)
 	defer ar.run_destroy(&run)
-	run.player.pos = {11.5, 12.5}
-	run.player.time_skip_timer = ar.TIME_SKIP_DURATION
+	run.players[0].pos = {11.5, 12.5}
+	run.players[0].time_skip_timer = ar.TIME_SKIP_DURATION
 	enemy := ar.enemy_make(.Ghoul, {17.5, 12.5}, 1)
 	enemy.ai = .Chase
 	enemy.cooldown = 2
@@ -161,7 +161,7 @@ m10_enemy_windup_owns_duration_and_elapsed_clock :: proc(t: ^testing.T) {
 	run: ar.Run
 	m10_prepare_arena(&run)
 	defer ar.run_destroy(&run)
-	run.player.pos = {12.5, 12.5}
+	run.players[0].pos = {12.5, 12.5}
 	enemy := ar.enemy_make(.Ghoul, {13.5, 12.5}, 1)
 	enemy.ai = .Chase
 	append(&run.enemies, enemy)
@@ -205,18 +205,18 @@ m10_base_melee_starts_attack_clip_without_resetting_walk_phase :: proc(t: ^testi
 	run: ar.Run
 	m10_prepare_arena(&run)
 	defer ar.run_destroy(&run)
-	run.player.anim_time = 3.75
-	run.player.stamina = 100
-	run.player.melee_timer = 0
+	run.players[0].anim_time = 3.75
+	run.players[0].stamina = 100
+	run.players[0].melee_timer = 0
 
-	ar.player_melee(&run, {1, 0})
-	testing.expect(t, run.player.visual_action == .Attack && run.player.action_time == 0, "base melee did not start its explicit attack pose")
-	testing.expectf(t, m10_near(run.player.action_duration, ar.PLAYER_ATTACK_ACTION_SECONDS), "base attack duration changed")
-	testing.expect(t, run.player.anim_time == 3.75, "starting an action must not snap the locomotion phase")
+	ar.player_melee(&run, 0, {1, 0})
+	testing.expect(t, run.players[0].visual_action == .Attack && run.players[0].action_time == 0, "base melee did not start its explicit attack pose")
+	testing.expectf(t, m10_near(run.players[0].action_duration, ar.PLAYER_ATTACK_ACTION_SECONDS), "base attack duration changed")
+	testing.expect(t, run.players[0].anim_time == 3.75, "starting an action must not snap the locomotion phase")
 	testing.expect(t, len(run.feel) == 1 && run.feel[0].kind == .Slash, "base melee must emit one slash presentation event")
 
 	ar.sim_tick(&run, {})
-	testing.expectf(t, m10_near(run.player.action_time, ar.SIM_DT), "live player action did not tick with simulation time")
+	testing.expectf(t, m10_near(run.players[0].action_time, ar.SIM_DT), "live player action did not tick with simulation time")
 }
 
 @(test)
@@ -224,7 +224,7 @@ m10_big_ranged_fallback_retains_three_bolt_fan :: proc(t: ^testing.T) {
 	run: ar.Run
 	m10_prepare_arena(&run)
 	defer ar.run_destroy(&run)
-	run.player.pos = {18.5, 12.5}
+	run.players[0].pos = {18.5, 12.5}
 	enemy := ar.enemy_make(.Bone_Imp, {12.5, 12.5}, 1)
 	enemy.big = true
 	enemy.role = .Boss
@@ -247,22 +247,22 @@ m10_damage_feel_profiles_and_hit_flash_boundaries :: proc(t:^testing.T) {
 	run:ar.Run
 	m10_prepare_arena(&run)
 	defer ar.run_destroy(&run)
-	run.player.max_hp=100
+	run.players[0].max_hp=100
 
-	ar.feel_emit_player_hurt(&run,17)
+	ar.feel_emit_player_hurt(&run, 0,17)
 	testing.expect(t,len(run.feel)==2)
 	testing.expect(t,run.feel[0].kind==.Blood&&m10_near(run.feel[0].duration,.34)&&m10_near(run.feel[0].radius,.42))
 	testing.expect(t,run.feel[1].kind==.Screen_Flash&&m10_near(run.feel[1].duration,.18))
 	testing.expect(t,run.feel[1].color==[4]u8{105,24,28,255})
 	clear(&run.feel)
-	ar.feel_emit_player_hurt(&run,18)
+	ar.feel_emit_player_hurt(&run, 0,18)
 	testing.expect(t,len(run.feel)==2&&m10_near(run.feel[1].duration,.30))
 	testing.expect(t,run.feel[1].color==[4]u8{160,35,32,255})
 
-	ar.mark_player_hit_flash(&run.player,17)
-	testing.expect(t,m10_near(run.player.hit_flash_duration,.22))
-	ar.mark_player_hit_flash(&run.player,18)
-	testing.expect(t,m10_near(run.player.hit_flash_duration,.32))
+	ar.mark_player_hit_flash(&run.players[0],17)
+	testing.expect(t,m10_near(run.players[0].hit_flash_duration,.22))
+	ar.mark_player_hit_flash(&run.players[0],18)
+	testing.expect(t,m10_near(run.players[0].hit_flash_duration,.32))
 	enemy:=ar.Enemy{role=.Normal}
 	ar.mark_enemy_hit_flash(&enemy)
 	testing.expect(t,m10_near(enemy.hit_flash_duration,.22))

@@ -216,11 +216,11 @@ m9_level_boundaries_award_one_memory_token_each :: proc(t: ^testing.T) {
 	run: ar.Run
 	ar.run_start(&run, ar.derive_seed(9101, 0), .Warden)
 	defer ar.run_destroy(&run)
-	testing.expect(t, run.player.memory_tokens == 0, "fresh runs must not start with a memory token")
-	ar.player_gain_xp(&run, 250) // 100 for level 2, then 150 for level 3.
-	testing.expectf(t, run.player.level == 3, "250 XP reached level %v, want 3", run.player.level)
-	testing.expectf(t, run.player.memory_tokens == 2, "two crossed level boundaries granted %v tokens", run.player.memory_tokens)
-	testing.expect(t, run.player.xp == 0 && run.player.next_xp == 225, "XP overflow/growth changed while granting tokens")
+	testing.expect(t, run.players[0].memory_tokens == 0, "fresh runs must not start with a memory token")
+	ar.player_gain_xp(&run, 0, 250) // 100 for level 2, then 150 for level 3.
+	testing.expectf(t, run.players[0].level == 3, "250 XP reached level %v, want 3", run.players[0].level)
+	testing.expectf(t, run.players[0].memory_tokens == 2, "two crossed level boundaries granted %v tokens", run.players[0].memory_tokens)
+	testing.expect(t, run.players[0].xp == 0 && run.players[0].next_xp == 225, "XP overflow/growth changed while granting tokens")
 }
 
 @(test)
@@ -319,12 +319,12 @@ m9_precision_spirit_and_beast_use_acquired_path_rank :: proc(t: ^testing.T) {
 	acolyte_run: ar.Run
 	ar.run_start(&acolyte_run, ar.derive_seed(9102, 0), .Acolyte)
 	defer ar.run_destroy(&acolyte_run)
-	acolyte_run.player.memory_tokens = 3
+	acolyte_run.players[0].memory_tokens = 3
 	spirit_nodes := [3]ar.Discipline_Id{.Acolyte_Spirit_Call, .Acolyte_Wraith_Host, .Acolyte_Bone_Legion}
 	for id in spirit_nodes {
-		testing.expectf(t, ar.discipline_try_acquire(&acolyte_run.player, id) == .Acquired, "%v failed", id)
+		testing.expectf(t, ar.discipline_try_acquire(&acolyte_run.players[0], id) == .Acquired, "%v failed", id)
 	}
-	testing.expect(t, ar.player_cast_spirit_call(&acolyte_run), "ranked Spirit Call failed")
+	testing.expect(t, ar.player_cast_spirit_call(&acolyte_run, 0), "ranked Spirit Call failed")
 	spirit_stats := ar.spirit_call_stats(3)
 	testing.expectf(t, len(acolyte_run.familiars) == spirit_stats.count, "rank-three Spirit Call spawned %v familiars, want %v", len(acolyte_run.familiars), spirit_stats.count)
 	if len(acolyte_run.familiars) > 0 {
@@ -334,15 +334,15 @@ m9_precision_spirit_and_beast_use_acquired_path_rank :: proc(t: ^testing.T) {
 	ranger_run: ar.Run
 	ar.run_start(&ranger_run, ar.derive_seed(9103, 0), .Ranger)
 	defer ar.run_destroy(&ranger_run)
-	ranger_run.player.memory_tokens = 5
+	ranger_run.players[0].memory_tokens = 5
 	beast := [5]ar.Discipline_Id{
 		.Ranger_Beast_Bond, .Ranger_Pack_Tactics, .Ranger_Alpha,
 		.Ranger_Spirit_Companion, .Ranger_Primal_Lord,
 	}
-	for id in beast do testing.expectf(t, ar.discipline_try_acquire(&ranger_run.player, id) == .Acquired, "%v failed", id)
-	testing.expect(t, ar.player_cast_spirit_beast(&ranger_run), "ranked Spirit Beast failed")
+	for id in beast do testing.expectf(t, ar.discipline_try_acquire(&ranger_run.players[0], id) == .Acquired, "%v failed", id)
+	testing.expect(t, ar.player_cast_spirit_beast(&ranger_run, 0), "ranked Spirit Beast failed")
 	beast_stats := ar.spirit_beast_stats(5)
-	live := ar.living_spirit_beast(&ranger_run)
+	live := ar.living_spirit_beast(&ranger_run, 0)
 	testing.expect(t, live != nil, "Spirit Beast did not spawn")
 	if live != nil {
 		testing.expect(t, live.spirit_rank == 5 && live.max_hp == beast_stats.hp && live.champion, "Spirit Beast ignored acquired path rank")
@@ -354,17 +354,17 @@ m9_acquiring_beast_rank_refreshes_a_living_companion :: proc(t: ^testing.T) {
 	run: ar.Run
 	ar.run_start(&run, ar.derive_seed(9104, 0), .Ranger)
 	defer ar.run_destroy(&run)
-	testing.expect(t, ar.player_cast_spirit_beast(&run), "fresh rank-zero Spirit Beast failed")
-	beast := ar.living_spirit_beast(&run)
+	testing.expect(t, ar.player_cast_spirit_beast(&run, 0), "fresh rank-zero Spirit Beast failed")
+	beast := ar.living_spirit_beast(&run, 0)
 	testing.expect(t, beast != nil, "fresh Spirit Beast did not spawn")
 	if beast == nil do return
 	beast.hp -= 10
 	old_hp := beast.hp
 	old_max_hp := beast.max_hp
-	run.player.memory_tokens = 1
-	result := ar.run_try_acquire_discipline(&run, .Ranger_Beast_Bond)
+	run.players[0].memory_tokens = 1
+	result := ar.run_try_acquire_discipline(&run, 0, .Ranger_Beast_Bond)
 	testing.expect(t, result == .Acquired, "Beast Bond acquisition failed")
-	beast = ar.living_spirit_beast(&run)
+	beast = ar.living_spirit_beast(&run, 0)
 	want := ar.spirit_beast_stats(1)
 	testing.expect(t, beast != nil && beast.spirit_rank == 1, "living beast rank was not refreshed")
 	if beast != nil {
@@ -380,15 +380,15 @@ m9_sanguine_blood_binds_an_active_spirit_call_familiar :: proc(t: ^testing.T) {
 	ar.run_start(&run, ar.derive_seed(9105, 0), .Acolyte)
 	defer ar.run_destroy(&run)
 
-	testing.expect(t, ar.player_cast_spirit_call(&run), "fresh rank-zero Spirit Call failed")
+	testing.expect(t, ar.player_cast_spirit_call(&run, 0), "fresh rank-zero Spirit Call failed")
 	testing.expect(t, len(run.familiars) == 1, "rank-zero Spirit Call must summon one familiar")
 	if len(run.familiars) != 1 do return
 
 	familiar_id := run.familiars[0].entity_id
 	testing.expect(t, run.familiars[0].kind == .Wisp && run.familiars[0].hp > 0 && !run.familiars[0].lifesteal, "fresh living Wisp must not begin blood-bound")
 
-	run.player.memory_tokens = 1
-	result := ar.run_try_acquire_discipline(&run, .Acolyte_Sanguine)
+	run.players[0].memory_tokens = 1
+	result := ar.run_try_acquire_discipline(&run, 0, .Acolyte_Sanguine)
 	testing.expect(t, result == .Acquired, "Sanguine acquisition failed")
 	testing.expect(t, len(run.familiars) == 1, "Sanguine acquisition must not replace the active familiar")
 	if len(run.familiars) != 1 do return

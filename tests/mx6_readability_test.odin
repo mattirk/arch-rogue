@@ -32,18 +32,18 @@ mx6_prepare_arena :: proc(run: ^ar.Run, archetype: ar.Archetype_Id, seed: u64 = 
 	run.dungeon.boss_arena = false
 	run.boss_engaged = false
 	clear(&run.sealed)
-	run.nav = {}
+	run.navs = {}
 	run.floor_epoch += 1
 
-	run.player.pos = {10.5, 10.5}
-	run.player.prev_pos = run.player.pos
-	run.player.facing = {1, 0}
-	run.player.hp = 500
-	run.player.max_hp = 500
-	run.player.mana = 200
-	run.player.max_mana = 200
-	run.player.stamina = 200
-	run.player.max_stamina = 200
+	run.players[0].pos = {10.5, 10.5}
+	run.players[0].prev_pos = run.players[0].pos
+	run.players[0].facing = {1, 0}
+	run.players[0].hp = 500
+	run.players[0].max_hp = 500
+	run.players[0].mana = 200
+	run.players[0].max_mana = 200
+	run.players[0].stamina = 200
+	run.players[0].max_stamina = 200
 	clear(&run.enemies)
 	clear(&run.projectiles)
 	clear(&run.familiars)
@@ -214,15 +214,15 @@ mx6_authored_enemy_commits_emit_their_semantic_actions :: proc(t: ^testing.T) {
 	for ability, index in abilities {
 		run: ar.Run
 		mx6_prepare_arena(&run, .Warden, 9610 + u64(index))
-		run.player.has_armor = false
+		run.players[0].has_armor = false
 		enemy_pos := index == 0 || index == 3 ? ar.Vec2{12.0, 10.5} : ar.Vec2{14.5, 10.5}
 		enemy := ar.enemy_make(.Ghoul, enemy_pos, 1)
 		enemy.damage = 24
 		enemy.ability_count = 1
 		enemy.abilities[0] = ability
-		ar.enemy_begin_windup(&enemy, 0, 0, run.player.pos - enemy.pos)
+		ar.enemy_begin_windup(&enemy, 0, 0, run.players[0].pos - enemy.pos)
 		append(&run.enemies, enemy)
-		hp_before := run.player.hp
+		hp_before := run.players[0].hp
 
 		ar.sim_tick(&run, {})
 		testing.expectf(t, run.enemies[0].action_kind == kinds[index],
@@ -234,7 +234,7 @@ mx6_authored_enemy_commits_emit_their_semantic_actions :: proc(t: ^testing.T) {
 		testing.expectf(t, len(run.projectiles) == projectile_counts[index],
 			"%v left %v projectiles, want %v", ability, len(run.projectiles), projectile_counts[index])
 		if ability == .Gate_Strike || ability == .Ember_Nova {
-			testing.expectf(t, run.player.hp < hp_before, "%v must damage an in-range player", ability)
+			testing.expectf(t, run.players[0].hp < hp_before, "%v must damage an in-range player", ability)
 		}
 		for projectile in run.projectiles do testing.expect(t, projectile.visual == .Enemy_Void,
 			"authored enemy projectiles must use Enemy_Void")
@@ -247,7 +247,7 @@ mx6_committed_enemy_action_outlives_pending_then_expires_on_its_own_clock :: pro
 	run: ar.Run
 	mx6_prepare_arena(&run, .Warden, 9620)
 	defer ar.run_destroy(&run)
-	run.player.has_armor = false
+	run.players[0].has_armor = false
 	enemy := ar.enemy_make(.Ghoul, {11.45, 10.5}, 1)
 	enemy.damage = 8
 	enemy.ability_count = 1
@@ -457,7 +457,7 @@ mx6_projectile_styles_frames_trails_and_projection_are_deterministic :: proc(t: 
 
 		run: ar.Run
 		mx6_prepare_arena(&run, archetype, 9630 + u64(int(archetype)))
-		testing.expectf(t, ar.player_cast_bolt(&run, {1, .12}), "%v bolt must cast", archetype)
+		testing.expectf(t, ar.player_cast_bolt(&run, 0, {1, .12}), "%v bolt must cast", archetype)
 		testing.expect(t, len(run.projectiles) > 0, "successful bolt must create a projectile")
 		for projectile in run.projectiles do testing.expect(t, projectile.visual == visual,
 			"gameplay projectile must carry its class silhouette")
@@ -519,22 +519,22 @@ mx6_player_slashes_land_at_contact_or_forward_whiff :: proc(t: ^testing.T) {
 	mx6_prepare_arena(&run, .Warden, 9645)
 	defer ar.run_destroy(&run)
 
-	whiff := ar.player_slash_origin(&run, {1, 0})
-	testing.expect(t, mx6_near(whiff.x, run.player.pos.x + .9) && mx6_near(whiff.y, run.player.pos.y),
+	whiff := ar.player_slash_origin(&run, 0, {1, 0})
+	testing.expect(t, mx6_near(whiff.x, run.players[0].pos.x + .9) && mx6_near(whiff.y, run.players[0].pos.y),
 		"a whiffed player slash must read 0.9 tile forward")
 
 	target := mx6_dummy({11.7, 10.5})
 	append(&run.enemies, target)
-	contact := ar.player_slash_origin(&run, {1, 0})
-	want := (run.player.pos + run.enemies[0].pos) * .5
+	contact := ar.player_slash_origin(&run, 0, {1, 0})
+	want := (run.players[0].pos + run.enemies[0].pos) * .5
 	testing.expect(t, contact == want, "a targeted player slash must land at the nearest contact midpoint")
 
-	ar.player_melee(&run, {1, 0})
+	ar.player_melee(&run, 0, {1, 0})
 	slash := mx6_first_event(&run, .Slash)
 	testing.expect(t, slash != nil && slash.pos == want, "base melee must emit its slash at contact")
 	clear(&run.feel)
 	run.enemies[0].hp = run.enemies[0].max_hp
-	ar.player_big_hit_fire(&run)
+	ar.player_big_hit_fire(&run, 0)
 	slash = mx6_first_event(&run, .Slash)
 	testing.expect(t, slash != nil && slash.pos == want && slash.heavy,
 		"Big Hit must share the contact point and retain its heavy envelope")
@@ -595,17 +595,17 @@ mx6_slash_envelope_and_knockback_samples_match_authored_ratios :: proc(t: ^testi
 mx6_dash_time_skip_and_nova_emit_semantic_events :: proc(t: ^testing.T) {
 	run: ar.Run
 	mx6_prepare_arena(&run, .Warden, 9650)
-	start := run.player.pos
-	testing.expect(t, ar.player_dash(&run, {1, 0}), "Warden dash must succeed")
+	start := run.players[0].pos
+	testing.expect(t, ar.player_dash(&run, 0, {1, 0}), "Warden dash must succeed")
 	testing.expect(t, mx6_event_count(&run, .Dash) == 2 &&
 		mx6_event_phase_count(&run, .Dash, .Start) == 1 && mx6_event_phase_count(&run, .Dash, .End) == 1,
 		"dash must emit one start and one end envelope")
-	testing.expect(t, run.feel[0].pos == start && run.feel[1].pos == run.player.pos && run.feel[0].style == .Warden,
+	testing.expect(t, run.feel[0].pos == start && run.feel[1].pos == run.players[0].pos && run.feel[0].style == .Warden,
 		"dash endpoints must preserve start, arrival, and class style")
 
 	clear(&run.feel)
-	run.player.class_skill_timer = 0
-	testing.expect(t, ar.player_cast_class_skill(&run, {1, 0}), "Time Skip must cast")
+	run.players[0].class_skill_timer = 0
+	testing.expect(t, ar.player_cast_class_skill(&run, 0, {1, 0}), "Time Skip must cast")
 	time_skip := mx6_first_event(&run, .Time_Skip)
 	testing.expect(t, time_skip != nil && time_skip.style == .Warden && time_skip.priority == .High,
 		"Time Skip must emit its Warden high-priority envelope")
@@ -618,12 +618,12 @@ mx6_dash_time_skip_and_nova_emit_semantic_events :: proc(t: ^testing.T) {
 	run = {}
 	mx6_prepare_arena(&run, .Arcanist, 9651)
 	defer ar.run_destroy(&run)
-	testing.expect(t, ar.player_cast_class_skill(&run, {1, 0}), "Nova must cast")
+	testing.expect(t, ar.player_cast_class_skill(&run, 0, {1, 0}), "Nova must cast")
 	nova := mx6_first_event(&run, .Nova)
 	testing.expect(t, nova != nil && nova.style == .Arcanist && nova.priority == .High,
 		"Nova must emit its Arcanist envelope")
 	if nova != nil {
-		testing.expect(t, mx6_near(nova.duration, .48) && mx6_near(nova.radius, ar.nova_radius(&run.player)),
+		testing.expect(t, mx6_near(nova.duration, .48) && mx6_near(nova.radius, ar.nova_radius(&run.players[0])),
 			"Nova event must carry gameplay radius and authored duration")
 	}
 }
@@ -633,7 +633,7 @@ mx6_spirit_hosts_keep_attack_clocks_when_missing_clips_and_beast_commands_emit :
 	for rank in 0 ..= 1 {
 		run: ar.Run
 		mx6_prepare_arena(&run, .Acolyte, 9660 + u64(rank))
-		testing.expectf(t, ar.player_cast_spirit_call_rank(&run, rank), "Spirit Call rank %v must cast", rank)
+		testing.expectf(t, ar.player_cast_spirit_call_rank(&run, 0, rank), "Spirit Call rank %v must cast", rank)
 		expected_kind := rank == 0 ? ar.Familiar_Kind.Wisp : ar.Familiar_Kind.Crow
 		testing.expect(t, len(run.familiars) == 1 && run.familiars[0].kind == expected_kind,
 			"rank zero summons Wisp and rank one summons Crow")
@@ -663,11 +663,11 @@ mx6_spirit_hosts_keep_attack_clocks_when_missing_clips_and_beast_commands_emit :
 	run: ar.Run
 	mx6_prepare_arena(&run, .Ranger, 9665)
 	defer ar.run_destroy(&run)
-	testing.expect(t, ar.player_cast_spirit_beast_rank(&run, 0), "Spirit Beast must summon")
+	testing.expect(t, ar.player_cast_spirit_beast_rank(&run, 0, 0), "Spirit Beast must summon")
 	testing.expect(t, mx6_event_phase_count(&run, .Summon, .Origin) == 1 &&
 		mx6_event_phase_count(&run, .Summon, .Arrival) == 1,
 		"Spirit Beast summon must emit origin and arrival")
-	beast := ar.living_spirit_beast(&run)
+	beast := ar.living_spirit_beast(&run, 0)
 	testing.expect(t, beast != nil, "living Spirit Beast must be discoverable")
 	if beast == nil do return
 	target := mx6_dummy(beast.pos + ar.Vec2{.8, 0})
@@ -680,7 +680,7 @@ mx6_spirit_hosts_keep_attack_clocks_when_missing_clips_and_beast_commands_emit :
 	testing.expect(t, beast.anim_time == anim_before, "Spirit Beast bite must not advance walk phase")
 
 	clear(&run.feel)
-	testing.expect(t, ar.player_cast_spirit_beast_rank(&run, 0),
+	testing.expect(t, ar.player_cast_spirit_beast_rank(&run, 0, 0),
 		"a living beast must accept a free command despite replacement cooldown")
 	testing.expect(t, beast.command == .Follow && beast.attack_anim_timer == 0,
 		"return command must cancel only the beast attack pose")
@@ -694,7 +694,7 @@ mx6_ambush_bell_plants_arms_once_and_detonates :: proc(t: ^testing.T) {
 	run: ar.Run
 	mx6_prepare_arena(&run, .Rogue, 9670)
 	defer ar.run_destroy(&run)
-	testing.expect(t, ar.player_cast_class_skill(&run, {1, 0}), "Ambush Bell must plant")
+	testing.expect(t, ar.player_cast_class_skill(&run, 0, {1, 0}), "Ambush Bell must plant")
 	testing.expect(t, len(run.bells) == 1, "successful cast must own one bell")
 	testing.expect(t, mx6_event_count(&run, .Cast) == 1 &&
 		mx6_event_phase_count(&run, .Bell_Plant, .Origin) == 1,
@@ -935,7 +935,7 @@ mx6_feel_compaction_is_stable_and_every_operation_is_rng_free :: proc(t: ^testin
 	ar.feel_emit_enemy_cast(&run, &enemy)
 	ar.feel_emit_enemy_nova(&run, &enemy, 2.6)
 	ar.feel_emit_enemy_slash(&run, enemy.pos, {-1, 0}, enemy.color)
-	ar.feel_emit_player_hurt(&run, 20)
+	ar.feel_emit_player_hurt(&run, 0, 20)
 	ar.feel_emit_enemy_death(&run, &enemy, {220, 80, 210, 255})
 	ar.enemy_start_knockback(&run, &enemy, {4, 0})
 	ar.tick_feel_events(&run, .05)
@@ -950,7 +950,7 @@ mx6_ranged_boss_close_legacy_melee_hits_without_spawning_a_bolt :: proc(t: ^test
 	run: ar.Run
 	mx6_prepare_arena(&run, .Warden, 9700)
 	defer ar.run_destroy(&run)
-	run.player.has_armor = false
+	run.players[0].has_armor = false
 	boss := ar.enemy_make(.Bone_Imp, {11.5, 10.5}, 1)
 	boss.role = .Boss
 	boss.big = false
@@ -965,17 +965,17 @@ mx6_ranged_boss_close_legacy_melee_hits_without_spawning_a_bolt :: proc(t: ^test
 
 	choice, _ := ar.select_boss_attack(&run.enemies[0], 1.0)
 	testing.expect(t, choice == .Legacy_Melee, "close ranged boss must select legacy melee fallback")
-	hp_before := run.player.hp
+	hp_before := run.players[0].hp
 	ar.sim_tick(&run, {})
 	testing.expect(t, run.enemies[0].ai == .Windup &&
 		run.enemies[0].pending_ability == ar.PENDING_LEGACY_MELEE,
 		"boss chase must preserve the explicit legacy-melee pending classification")
-	testing.expect(t, len(run.projectiles) == 0 && run.player.hp == hp_before,
+	testing.expect(t, len(run.projectiles) == 0 && run.players[0].hp == hp_before,
 		"windup itself must neither fire nor damage")
 
 	run.enemies[0].windup = 0
 	ar.sim_tick(&run, {})
-	testing.expect(t, run.player.hp < hp_before, "committed close legacy melee must damage the player")
+	testing.expect(t, run.players[0].hp < hp_before, "committed close legacy melee must damage the player")
 	testing.expect(t, len(run.projectiles) == 0, "ranged base profile must not leak a bolt into legacy melee")
 	testing.expect(t, run.enemies[0].action_kind == .Attack &&
 		run.enemies[0].pending_ability == ar.PENDING_BASE_ATTACK,
@@ -995,10 +995,10 @@ mx6_lethal_big_hit_keeps_knockback_travel_after_corpse_sweep :: proc(t: ^testing
 	victim.xp = 0
 	append(&run.enemies, victim)
 
-	testing.expect(t, ar.player_big_hit_begin(&run, {1, 0}), "Big Hit must begin charging")
+	testing.expect(t, ar.player_big_hit_begin(&run, 0, {1, 0}), "Big Hit must begin charging")
 	// Preserve the public charge path while advancing directly to its deterministic
 	// final fixed step; the same tick fires, sweeps the corpse, and leaves feel.
-	run.player.bighit_charge = ar.SIM_DT * .5
+	run.players[0].bighit_charge = ar.SIM_DT * .5
 	ar.sim_tick(&run, {})
 	testing.expect(t, len(run.enemies) == 0, "lethal Big Hit victim must be swept this tick")
 	testing.expect(t, mx6_event_count(&run, .Death) == 1,

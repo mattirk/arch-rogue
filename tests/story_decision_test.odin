@@ -104,16 +104,16 @@ story_disabled_run_keeps_gameplay_content_and_claims_victory_at_the_gate :: proc
 		testing.expect(t,found&&room_index==quest.room_index,"story-off NPC must remain inside its Quest room")
 		testing.expect(t,guest.resolved&&!guest.ally&&guest.alive,
 			"story-off NPC must be a friendly non-interactive idler")
-		run.player.pos=guest.pos
-		run.player.prev_pos=guest.pos
+		run.players[0].pos=guest.pos
+		run.players[0].prev_pos=guest.pos
 		ar.refresh_visibility(&run)
-		testing.expect(t,ar.story_nearby_guest(&run)==nil,
+		testing.expect(t,ar.story_nearby_guest(&run, 0)==nil,
 			"story-off idler must not offer narrative dialogue")
 	}
 	testing.expect(t,run.story_runtime.relic.present&&run.story_runtime.relic.guidance,
 		"story off must place an Aid relic")
 	_,enabled:=ar.story_route_target(&run)
-	testing.expect(t,!enabled&&!run.player.guidance_wave_active&&len(run.story_runtime.guidance_path)==0,
+	testing.expect(t,!enabled&&!run.players[0].guidance_wave_active&&len(run.story_runtime.guidance_path)==0,
 		"story-off guidance must stay hidden until the first relic is recovered")
 
 	// The final stairs still claim victory directly instead of opening the epilogue.
@@ -121,8 +121,8 @@ story_disabled_run_keeps_gameplay_content_and_claims_victory_at_the_gate :: proc
 	ar.run_regenerate_floor(&run,boss_arena=true)
 	for &enemy in run.enemies do enemy.hp=0
 	stairs:=run.dungeon.stairs
-	run.player.pos={f32(stairs.x)+.5,f32(stairs.y)+.5}
-	floor_changed:=ar.player_interact(&run)
+	run.players[0].pos={f32(stairs.x)+.5,f32(stairs.y)+.5}
+	floor_changed:=ar.player_interact(&run, 0)
 	testing.expect(t,!floor_changed&&run.victory,"story-off final stairs must claim victory directly")
 	testing.expect(t,!run.story_runtime.requests.epilogue,"story off must never queue the epilogue")
 }
@@ -157,10 +157,10 @@ story_disabled_runs_keep_bar_garden_and_moonbloom :: proc(t:^testing.T) {
 	}
 	testing.expect(t,frog_found,"story-off Garden must retain its frog")
 	if !frog_found do return
-	app.run.player.pos=frog_pos
-	app.run.player.prev_pos=frog_pos
+	app.run.players[0].pos=frog_pos
+	app.run.players[0].prev_pos=frog_pos
 	ar.refresh_visibility(&app.run)
-	testing.expect(t,ar.story_request_garden_moonbloom(&app.run),"story-off frog must request Moonbloom")
+	testing.expect(t,ar.story_request_garden_moonbloom(&app.run, 0),"story-off frog must request Moonbloom")
 	testing.expect(t,ar.app_story_process_requests(&app),"story-off Moonbloom request must open its minigame")
 	testing.expect(t,app.story_minigame.active&&app.story_minigame.kind==.Wake_The_Moonbloom&&!app.story_panel.active,
 		"Moonbloom must run without a narrative panel")
@@ -201,10 +201,10 @@ story_disabled_hall_starts_and_finishes_soul_hunt_without_panels :: proc(t:^test
 	testing.expect(t,has_hall&&app.run.story_runtime.soul.present,
 		"story-off depth seven must guarantee a populated Soul room")
 	if !app.run.story_runtime.soul.present do return
-	app.run.player.pos=app.run.story_runtime.soul.pos
-	app.run.player.prev_pos=app.run.player.pos
+	app.run.players[0].pos=app.run.story_runtime.soul.pos
+	app.run.players[0].prev_pos=app.run.players[0].pos
 	ar.refresh_visibility(&app.run)
-	testing.expect(t,ar.story_request_lossless_soul(&app.run),"story-off Soul must remain interactable")
+	testing.expect(t,ar.story_request_lossless_soul(&app.run, 0),"story-off Soul must remain interactable")
 	testing.expect(t,ar.app_story_process_requests(&app),"story-off Soul request did not start its hunt")
 	testing.expect(t,app.run.story_runtime.hall.verdict==.Release&&ar.app_story_soul_hunt_active(&app)&&!app.story_panel.active,
 		"Soul interaction must enter Chase the Mistbound directly")

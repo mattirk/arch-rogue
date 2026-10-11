@@ -3,6 +3,7 @@ package archrogue
 import "base:runtime"
 import "core:fmt"
 import "core:strings"
+import "core:unicode/utf8"
 import rl "../vendor/raylib"
 
 VERSION :: "6.0.0-alpha.27"
@@ -152,7 +153,7 @@ collect_controller_intent :: proc(app:^App,state:^Controller_Runtime,intent:^Int
 		}
 	}
 	if gameplay && state.aim_mode && intent.aim == {} {
-		intent.aim=controller_scene_aim(&app.run,app.run.player.facing,!app_story_world_minigame_active(app))
+		intent.aim=controller_scene_aim(&app.run,app.run.players[app.run.local_slot].facing,!app_story_world_minigame_active(app))
 	}
 }
 
@@ -842,7 +843,7 @@ platform_rebuild_graphics :: proc(runtime:^Platform_Runtime,view:^View,assets:^A
 	view_apply_base_zoom(view,base_zoom)
 	platform_bind_view_layout(runtime,view)
 	if app.run.run_id!="" {
-		assets_activate_player(assets,app.run.player.archetype)
+		assets_activate_player(assets,app.run.players[app.run.local_slot].archetype)
 		// A continue veil intentionally freezes frame dt at zero. Rehydrate the
 		// CPU-authored masks now so the first restored lightmap is not all black.
 		visual_mask_sync(&view.visible_mask,app,false,1)
@@ -954,6 +955,8 @@ Game_Boot_Config :: struct {
 	dev_zoom_valid:            bool,
 	dev_reveal:                bool,
 	dev_controls:              bool,
+	relay_url:                 string, // optional co-op server default (env/query)
+	coop_enabled:              bool,
 	dev_mist_off:              bool,
 	dev_lighting:              int,
 	save_trace:                bool,
@@ -976,6 +979,7 @@ game_boot_config_default :: proc() -> Game_Boot_Config {
 }
 
 Game_Runtime :: struct {
+	coop_assets:          bit_set[Archetype_Id], // archetypes loaded for the co-op seats
 	config:               Game_Boot_Config,
 	assets:               Assets,
 	audio:                Audio,
@@ -1036,6 +1040,8 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 	}
 
 	app_init(&rt.app, config.seed)
+	coop_set_default_server(&rt.app, config.relay_url)
+	rt.app.coop_enabled = config.coop_enabled
 	platform_runtime_init(&rt.platform, rt.app.mode)
 	if rt.platform.mobile {
 		rt.app.input_modality = .Touch
@@ -1166,9 +1172,9 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 			rt.app.select_index = int(config.dev_archetype)
 		}
 		if app_apply(&rt.app, Intent{confirm = true}) { // Select -> Playing
-			assets_activate_player(&rt.assets, rt.app.run.player.archetype)
+			assets_activate_player(&rt.assets, rt.app.run.players[rt.app.run.local_slot].archetype)
 			when ARCH_ROGUE_WEB {
-				if config.mx_story_capture_scenario!=.None do web_packs_on_run_start(rt.app.run.player.archetype)
+				if config.mx_story_capture_scenario!=.None do web_packs_on_run_start(rt.app.run.players[rt.app.run.local_slot].archetype)
 			}
 			view_center_on(&rt.view, world_from_tile(run_spawn_point(&rt.app.run)))
 		}
@@ -1188,7 +1194,7 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 		}
 		if config.dev_bag > 0 && rt.app.run.has_shopkeeper {
 			keeper := &rt.app.run.shopkeeper
-			player := &rt.app.run.player
+			player := &rt.app.run.players[rt.app.run.local_slot]
 			for i in 0 ..< min(config.dev_bag, keeper.stock_count) {
 				if player.bag_count >= BAG_CAPACITY do break
 				player.bag[player.bag_count] = keeper.stock[i]
@@ -1222,8 +1228,8 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 			}
 			for spot in spots {
 				if !blocked_for_radius(&rt.app.run.dungeon, spot.x, spot.y, block_stairs = true) {
-					rt.app.run.player.pos = spot
-					rt.app.run.player.prev_pos = spot
+					rt.app.run.players[rt.app.run.local_slot].pos = spot
+					rt.app.run.players[rt.app.run.local_slot].prev_pos = spot
 					view_center_on(&rt.view, world_from_tile(spot))
 					break
 				}
@@ -1340,6 +1346,27 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 	if rt.fixed_capture do frame_dt = SIM_DT
 	if rt.platform.resume_gate do frame_dt = 0
 
+	// Co-op network pump: once per rendered frame, before input is applied.
+	app.net_now_ms = i64(rl.GetTime() * 1000)
+	coop_frame(app, app.net_now_ms)
+	coop_update_screens(app)
+	if coop_active(app) && (app.mode == .Playing || app.mode == .Coop_Wait) && app.run.player_count == MAX_PLAYERS {
+		wanted: bit_set[Archetype_Id]
+		for slot in 0 ..< MAX_PLAYERS do wanted += {app.run.players[slot].archetype}
+		if wanted != rt.coop_assets {
+			assets_activate_players(&rt.assets, wanted)
+			rt.coop_assets = wanted
+			when ARCH_ROGUE_WEB {
+				for id in wanted do web_packs_on_run_start(id)
+			}
+		}
+	} else if !coop_active(app) {
+		rt.coop_assets = {}
+	}
+	if app.coop.floor_changed {
+		app.coop.floor_changed = false
+		view_center_on(&rt.view, world_from_tile(app.run.players[app.run.local_slot].pos))
+	}
 	view_update(&rt.view, frame_dt)
 	view_prepare_turn_page_motion(&rt.view,app,f32(rt.fixed_step.accumulator/SIM_DT))
 	mode_was := app.mode
@@ -1351,7 +1378,7 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 	if resume_gate_was && !rt.platform.resume_gate && app.mode == .Playing do audio_resume(&rt.audio)
 	if app_apply(app, intent) {
 		if mode_was == .Select && app.mode == .Playing {
-			assets_activate_player(&rt.assets, app.run.player.archetype)
+			assets_activate_player(&rt.assets, app.run.players[app.run.local_slot].archetype)
 		}
 		view_center_on(&rt.view, world_from_tile(run_spawn_point(&app.run)))
 	}
@@ -1377,7 +1404,7 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 		// chosen archetype's full clips, social-room actors, and boss sheets
 		// stream in behind procedural fallbacks and adopt on arrival.
 		if mode_was != app.mode && app.mode == .Playing && (mode_was == .Select || mode_was == .Resume_Veil) {
-			web_packs_on_run_start(app.run.player.archetype)
+			web_packs_on_run_start(app.run.players[app.run.local_slot].archetype)
 		}
 	}
 	if card(app.platform_effects) > 0 {
@@ -1399,8 +1426,8 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 	}
 	persistence_update_scheduler(&rt.persistence, app, rl.GetTime())
 	if app.mode == .Resume_Veil && mode_was != .Resume_Veil {
-		assets_activate_player(&rt.assets, app.run.player.archetype)
-		view_center_on(&rt.view, world_from_tile(app.run.player.pos))
+		assets_activate_player(&rt.assets, app.run.players[app.run.local_slot].archetype)
+		view_center_on(&rt.view, world_from_tile(app.run.players[app.run.local_slot].pos))
 		rt.controller = {}
 		view_clear_menu_click(&rt.view)
 	}
@@ -1424,6 +1451,7 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 		app_play_modal_open(app) {
 		alpha = 1
 	}
+	coop_host_capture_sfx(app)
 	audio_drain(&rt.audio, &app.run)
 	// The Loop advances on presentation frames, never sim ticks: music keeps
 	// playing through menus and pause, starts at audio-ready (the web gesture
@@ -1480,25 +1508,23 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 	returned_from_world_minigame:=rt.world_minigame_was_active&&!world_minigame_active
 	rt.world_minigame_was_active=world_minigame_active
 	if returned_from_world_minigame {
-		view_center_on(&rt.view,world_from_tile(app.run.player.pos))
+		view_center_on(&rt.view,world_from_tile(app.run.players[app.run.local_slot].pos))
 	} else if app.mode==.Playing&&world_minigame_active {
-		player:=&app.run.player;pos:=player.prev_pos+(player.pos-player.prev_pos)*alpha
+		player:=&app.run.players[app.run.local_slot];pos:=player.prev_pos+(player.pos-player.prev_pos)*alpha
 		if app_story_turn_page_active(app) {view_center_on_turn_page(&rt.view,pos)}
 		else {view_center_on(&rt.view,world_from_tile(pos))}
 	} else if app.mode==.Playing&&app.story_panel.active&&app.story_panel.kind==.Soul&&app.story_panel.node==.Soul_Settled {
-		view_center_on(&rt.view,world_from_tile(app.run.player.pos))
+		view_center_on(&rt.view,world_from_tile(app.run.players[app.run.local_slot].pos))
 	} else if app.mode == .Playing && !app.inventory_open && !app.character_open && !app.shop_open &&
 		!app_play_modal_open(app) {
-		player := &app.run.player
-		pos := player.prev_pos + (player.pos - player.prev_pos) * alpha
-		view_follow(&rt.view, world_from_tile(pos), frame_dt)
+		view_follow(&rt.view, world_from_tile(local_player_render_pos(app, alpha)), frame_dt)
 	}
 
 	// Stage on the exact frame that will be captured, after ordinary simulation
 	// and immediately before rendering, so transient action/effect state is fresh.
 	stage_capture:=config.shot_path != "" && rt.frame_count + 1 == config.shot_frame
 	when ARCH_ROGUE_WEB {
-		actor:=&rt.assets.archetypes[app.run.player.archetype]
+		actor:=&rt.assets.archetypes[app.run.players[app.run.local_slot].archetype]
 		stage_capture=config.mx_story_capture_scenario!=.None&&!rt.capture_staged&&rt.frame_count>=120&&actor.clips[.Idle].valid&&actor.clips[.Walk].valid
 	}
 	if stage_capture {
@@ -1512,8 +1538,8 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 			return false
 		}
 		if app.mode==.Playing&&app_story_world_minigame_active(app) {
-			if app_story_turn_page_active(app) {view_center_on_turn_page(&rt.view,app.run.player.pos)}
-			else {view_center_on(&rt.view,world_from_tile(app.run.player.pos))}
+			if app_story_turn_page_active(app) {view_center_on_turn_page(&rt.view,app.run.players[app.run.local_slot].pos)}
+			else {view_center_on(&rt.view,world_from_tile(app.run.players[app.run.local_slot].pos))}
 		}
 		if config.capture_mobile {
 			layout,status:=mobile_layout_build({surface_width=int(rl.GetScreenWidth()),surface_height=int(rl.GetScreenHeight()),density=1,revision=1})
@@ -1654,6 +1680,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 		if app.mode == .Playing do intent.aim = {}
 	}
 	intent.toggle_fullscreen = rl.IsKeyPressed(.F11)
+	if coop_active(app) && rl.IsKeyPressed(.F3) do app.coop_ui.debug = !app.coop_ui.debug
 	// Pygame observes KEYUP across every modal. Keep the keyboard release beside
 	// the already-global controller release so pause/options cannot trap a charge.
 	intent.action1_released = intent.action1_released || rl.IsKeyReleased(.ONE)
@@ -1674,6 +1701,53 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 	menu_hover := mouse_moved && wheel == 0
 
 	switch app.mode {
+	case .Coop_Menu:
+		collect_coop_text(app, &intent, ctrl_down)
+		ui := &app.coop_ui
+		if ui.consent_open {
+			if menu_hover {
+				if index, found := coop_consent_row_at(mouse); found {intent.menu_index = index; intent.menu_index_valid = true}
+			}
+			if rl.IsMouseButtonPressed(.LEFT) {
+				if index, found := coop_consent_row_at(mouse); found {intent.menu_index = index; intent.menu_index_valid = true; intent.confirm = true}
+			}
+			if rl.IsKeyPressed(.LEFT) do intent.menu_horizontal -= 1
+			if rl.IsKeyPressed(.RIGHT) do intent.menu_horizontal += 1
+		} else {
+			if menu_hover && !ui.editing {
+				if index, found := coop_menu_row_at(mouse); found {intent.menu_index = index; intent.menu_index_valid = true}
+			}
+			if rl.IsMouseButtonPressed(.LEFT) {
+				if index, found := coop_menu_row_at(mouse); found {
+					intent.menu_index = index
+					intent.menu_index_valid = true
+					intent.confirm = !(ui.editing && index == ui.row)
+				}
+			}
+		}
+		if !ui.editing {
+			if rl.IsKeyPressed(.UP) do intent.menu_delta -= 1
+			if rl.IsKeyPressed(.DOWN) do intent.menu_delta += 1
+		}
+		if rl.IsKeyPressed(.ENTER) || rl.IsKeyPressed(.KP_ENTER) do intent.confirm = true
+		if rl.IsKeyPressed(.ESCAPE) do intent.back = true
+	case .Coop_Lobby:
+		rows: [len(Coop_Lobby_Row)]Coop_Lobby_Row
+		count := coop_lobby_rows(app, &rows)
+		if menu_hover {
+			if index, found := coop_lobby_row_at(mouse, count); found {intent.menu_index = index; intent.menu_index_valid = true}
+		}
+		if rl.IsMouseButtonPressed(.LEFT) {
+			if index, found := coop_lobby_row_at(mouse, count); found {intent.menu_index = index; intent.menu_index_valid = true; intent.confirm = true}
+		}
+		if rl.IsKeyPressed(.UP) do intent.menu_delta -= 1
+		if rl.IsKeyPressed(.DOWN) do intent.menu_delta += 1
+		if rl.IsKeyPressed(.LEFT) do intent.menu_horizontal -= 1
+		if rl.IsKeyPressed(.RIGHT) do intent.menu_horizontal += 1
+		if rl.IsKeyPressed(.ENTER) || rl.IsKeyPressed(.KP_ENTER) do intent.confirm = true
+		if rl.IsKeyPressed(.ESCAPE) do intent.back = true
+	case .Coop_Wait:
+		if rl.IsKeyPressed(.ESCAPE) || rl.IsKeyPressed(.BACKSPACE) do intent.back = true
 	case .Story_Decision:
 		if app.story_decision_phase == .Ask {
 			if menu_hover {
@@ -1798,7 +1872,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			if rl.IsKeyPressed(.ESCAPE) do intent.back=true
 			return intent
 		}
-		if !app.inventory_open && !app.shop_open && app.run.player.memory_tokens > 0 &&
+		if !app.inventory_open && !app.shop_open && app.run.players[app.run.local_slot].memory_tokens > 0 &&
 			rl.IsMouseButtonPressed(.LEFT) &&
 			rl.CheckCollisionPointRec(ui_screen_to_design(mouse), memory_token_prompt_rect()) {
 			intent.open_disciplines = true
@@ -1860,12 +1934,12 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			if rl.IsKeyPressed(.DOWN) do intent.menu_delta += 1
 			if rl.IsKeyPressed(.PAGE_UP) do intent.menu_delta -= 5
 			if rl.IsKeyPressed(.PAGE_DOWN) do intent.menu_delta += 5
-			if rl.IsKeyPressed(.HOME) && app.run.player.bag_count > 0 {
+			if rl.IsKeyPressed(.HOME) && app.run.players[app.run.local_slot].bag_count > 0 {
 				intent.menu_index = 0
 				intent.menu_index_valid = true
 			}
-			if rl.IsKeyPressed(.END) && app.run.player.bag_count > 0 {
-				intent.menu_index = app.run.player.bag_count - 1
+			if rl.IsKeyPressed(.END) && app.run.players[app.run.local_slot].bag_count > 0 {
+				intent.menu_index = app.run.players[app.run.local_slot].bag_count - 1
 				intent.menu_index_valid = true
 			}
 			if rl.IsKeyPressed(.ENTER) || rl.IsKeyPressed(.KP_ENTER) || rl.IsKeyPressed(.E) {
@@ -1887,7 +1961,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 				.ONE, .TWO, .THREE, .FOUR, .FIVE, .SIX, .SEVEN, .EIGHT, .NINE,
 			}
 			for key, index in inventory_keys {
-				if rl.IsKeyPressed(key) && index < app.run.player.bag_count {
+				if rl.IsKeyPressed(key) && index < app.run.players[app.run.local_slot].bag_count {
 					intent.menu_index = index
 					intent.menu_index_valid = true
 					if shift_down {
@@ -1902,7 +1976,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 		}
 
 		mouse_tile := tile_from_world(Vec2(rl.GetScreenToWorld2D(mouse, view.camera)))
-		aim := mouse_tile - app.run.player.pos
+		aim := mouse_tile - app.run.players[app.run.local_slot].pos
 		arrow_aim := desktop_move_vector(
 			rl.IsKeyDown(.LEFT), rl.IsKeyDown(.RIGHT),
 			rl.IsKeyDown(.UP), rl.IsKeyDown(.DOWN),
@@ -1926,7 +2000,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			aim = aim,
 			mouse_left = rl.IsMouseButtonDown(.LEFT),
 			mouse_left_pressed = rl.IsMouseButtonPressed(.LEFT),
-			mouse_press_aim = mouse_tile - app.run.player.pos,
+			mouse_press_aim = mouse_tile - app.run.players[app.run.local_slot].pos,
 			mouse_right = rl.IsMouseButtonDown(.RIGHT),
 			mouse_target = mouse_tile,
 			abilities = {
@@ -1940,7 +2014,7 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 			tab = rl.IsKeyPressed(.TAB),
 			back = rl.IsKeyPressed(.ESCAPE),
 		}
-		desktop_intent:=desktop_gameplay_intent(raw, app.run.player.archetype)
+		desktop_intent:=desktop_gameplay_intent(raw, app.run.players[app.run.local_slot].archetype)
 		merge_gameplay_intent(&intent,desktop_intent)
 		// Only an actively pointed device may own idle facing downstream. The
 		// controller's passive snap-aim fallback stays non-live on purpose, and
@@ -2029,4 +2103,29 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 		}
 	}
 	return intent
+}
+
+// Typed text for the co-op setup fields: printable characters this frame,
+// held-backspace repeats, and Ctrl+V paste, bounded to the intent buffer.
+collect_coop_text :: proc(app: ^App, intent: ^Intent, ctrl_down: bool) {
+	if !app.coop_ui.editing do return
+	for {
+		r := rl.GetCharPressed()
+		if r == 0 do break
+		bytes, size := utf8.encode_rune(r)
+		if intent.text_len + size > len(intent.text) do continue
+		copy(intent.text[intent.text_len:], bytes[:size])
+		intent.text_len += size
+	}
+	if rl.IsKeyPressed(.BACKSPACE) || rl.IsKeyPressedRepeat(.BACKSPACE) do intent.text_backspace += 1
+	if ctrl_down && rl.IsKeyPressed(.V) {
+		clip := string(rl.GetClipboardText())
+		for r in clip {
+			if r < 0x20 do continue
+			bytes, size := utf8.encode_rune(r)
+			if intent.text_len + size > len(intent.text) do break
+			copy(intent.text[intent.text_len:], bytes[:size])
+			intent.text_len += size
+		}
+	}
 }

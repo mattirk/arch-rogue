@@ -815,7 +815,7 @@ room_npc_waypoint :: proc(run: ^Run, motion: ^Room_Npc_Motion, current: Vec2, rn
 			if tile_is_door_front(&run.dungeon,room,{x,y}) do continue
 			if math.hypot(candidate.x-motion.home.x,candidate.y-motion.home.y) > profile.leash do continue
 			if math.hypot(candidate.x-current.x,candidate.y-current.y) < .55 do continue
-			if math.hypot(candidate.x-run.player.pos.x,candidate.y-run.player.pos.y) < .7 do continue
+			if room_npc_near_any_seat(run,candidate,.7) do continue
 			if blocked_for_radius(&run.dungeon,candidate.x,candidate.y,ROOM_NPC_RADIUS) do continue
 			if count < len(candidates) {
 				candidates[count] = candidate
@@ -899,14 +899,14 @@ room_npc_motion_tick :: proc(
 		motion.decision_delay = .25
 		if interaction_hold {
 			room_npc_set_state(motion,.Holding)
-			room_npc_face(pos^,run.player.pos,&motion.facing)
+			room_npc_face(pos^,run.players[run_nearest_seat(run,pos^)].pos,&motion.facing)
 		} else {
 			room_npc_set_state(motion,.Waiting)
 		}
 		return
 	}
 	if interaction_hold {
-		room_npc_motion_hold(motion,pos^,run.player.pos)
+		room_npc_motion_hold(motion,pos^,run.players[run_nearest_seat(run,pos^)].pos)
 		return
 	}
 	if motion.state == .Holding {
@@ -1016,20 +1016,30 @@ room_npc_snapshot_live_positions :: proc(run: ^Run) {
 	}
 }
 
+room_npc_near_any_seat :: proc(run: ^Run, pos: Vec2, radius: f32) -> bool {
+	for slot in 0 ..< run_seat_count(run) {
+		p := run.players[slot].pos
+		if math.hypot(pos.x-p.x,pos.y-p.y) < radius do return true
+	}
+	return false
+}
+
 room_npc_tick_live :: proc(run: ^Run, elapsed, dt: f32) {
 	if run == nil do return
 	if run.has_shopkeeper {
 		keeper := &run.shopkeeper
 		sign := shop_sign_position(keeper)
-		hold := math.hypot(keeper.pos.x-run.player.pos.x,keeper.pos.y-run.player.pos.y) <= ROOM_NPC_INTERACTION_HOLD_RANGE ||
-			math.hypot(sign.x-run.player.pos.x,sign.y-run.player.pos.y) < 1.35
+		viewer := run.players[run_nearest_seat(run,keeper.pos)].pos
+		hold := math.hypot(keeper.pos.x-viewer.x,keeper.pos.y-viewer.y) <= ROOM_NPC_INTERACTION_HOLD_RANGE ||
+			math.hypot(sign.x-viewer.x,sign.y-viewer.y) < 1.35
 		room_npc_motion_tick(run,&keeper.pos,&keeper.motion,hold,false,elapsed,dt)
 	}
 	for i in 0..<run.ambient_residents.count {
 		resident := &run.ambient_residents.items[i]
 		if !resident.active do continue
-		hold := math.hypot(resident.pos.x-run.player.pos.x,resident.pos.y-run.player.pos.y) <= ROOM_NPC_INTERACTION_HOLD_RANGE &&
-			line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,resident.pos.x,resident.pos.y)
+		viewer := run.players[run_nearest_seat(run,resident.pos)].pos
+		hold := math.hypot(resident.pos.x-viewer.x,resident.pos.y-viewer.y) <= ROOM_NPC_INTERACTION_HOLD_RANGE &&
+			line_of_sight(&run.dungeon,viewer.x,viewer.y,resident.pos.x,resident.pos.y)
 		// An explicit interaction gesture must finish even while the player
 		// remains in hold range; ordinary ambient gestures still yield to facing.
 		if resident.kind == .Soulless_Clanker && resident.motion.dancing do hold = false
@@ -1182,8 +1192,8 @@ bar_drink :: proc(state: ^Refuge_State, player: ^Player) -> bool {
 // MX.4 run-level toast: the per-floor Refuge_State gates one free ale per
 // bar, while the Run ledger feeds the pilgrimage and the depth-10 dancer
 // summon (interactions.py drink_from_bar_barrel).
-run_toast_bar :: proc(run: ^Run) -> bool {
-	if run == nil || !bar_drink(&run.refuge, &run.player) do return false
+run_toast_bar :: proc(run: ^Run, slot: int) -> bool {
+	if run == nil || !bar_drink(&run.refuge, &run.players[slot]) do return false
 	run.bars_toasted += 1
 	if run.depth >= DUNGEON_DEPTH do _ = maybe_summon_bar_dancer(run)
 	return true

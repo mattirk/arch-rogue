@@ -371,6 +371,167 @@ addToLibrary({
     ARWeb.shellHook('bootFailed', UTF8ToString(messagePtr, messageLen));
   },
 
+  // ---------------------------------------------------------------------
+  // Multiplayer WebSocket bridge (src/net_transport_web.odin). One logical
+  // connection at a time; every socket callback is bound to the generation
+  // that opened it, so late events from a superseded or closed attempt are
+  // ignored. Inbound text is handed to Odin as original UTF-8 bytes: wire
+  // numbers are never parsed into JavaScript Numbers here.
+  $ARNet: {
+    ws: null,
+    gen: 0,
+    state: 3, // 0 connecting, 1 open, 2 closing, 3 closed, 4 failed
+    closeCode: 0,
+    error: '',
+    queue: [],
+    queueBytes: 0,
+    maxMessage: 256 * 1024,
+    maxQueueBytes: 4 * 1024 * 1024,
+    maxQueueCount: 512,
+    maxBuffered: 2 * 1024 * 1024,
+    encoder: null,
+
+    fail: function (gen, message) {
+      if (gen !== ARNet.gen) return;
+      ARNet.state = 4;
+      if (!ARNet.error) ARNet.error = message;
+      try { if (ARNet.ws) ARNet.ws.close(1000); } catch (error) { /* already closing */ }
+    },
+  },
+
+  ar_js_ws_open__deps: ['$ARNet'],
+  ar_js_ws_open: function (urlPtr, urlLen, protoPtr, protoLen) {
+    if (ARNet.ws) {
+      var old = ARNet.ws;
+      old.onopen = old.onmessage = old.onerror = old.onclose = null;
+      try { old.close(1000); } catch (error) { /* best effort */ }
+    }
+    ARNet.gen += 1;
+    var gen = ARNet.gen;
+    ARNet.ws = null;
+    ARNet.state = 0;
+    ARNet.closeCode = 0;
+    ARNet.error = '';
+    ARNet.queue = [];
+    ARNet.queueBytes = 0;
+    if (!ARNet.encoder) ARNet.encoder = new TextEncoder();
+    var url = UTF8ToString(urlPtr, urlLen);
+    var protocol = UTF8ToString(protoPtr, protoLen);
+    var ws;
+    try {
+      ws = new WebSocket(url, protocol);
+    } catch (error) {
+      ARNet.state = 4;
+      ARNet.error = String((error && error.message) || error);
+      return gen;
+    }
+    ARNet.ws = ws;
+    ws.onopen = function () {
+      if (gen !== ARNet.gen) return;
+      if (ws.protocol !== protocol) { ARNet.fail(gen, 'server did not accept the protocol'); return; }
+      ARNet.state = 1;
+    };
+    ws.onmessage = function (event) {
+      if (gen !== ARNet.gen) return;
+      if (typeof event.data !== 'string') { ARNet.fail(gen, 'binary message refused'); return; }
+      var bytes = ARNet.encoder.encode(event.data);
+      if (bytes.length > ARNet.maxMessage) { ARNet.fail(gen, 'inbound message too large'); return; }
+      if (ARNet.queue.length >= ARNet.maxQueueCount || ARNet.queueBytes + bytes.length > ARNet.maxQueueBytes) {
+        ARNet.fail(gen, 'inbound queue overflow');
+        return;
+      }
+      ARNet.queue.push(bytes);
+      ARNet.queueBytes += bytes.length;
+    };
+    ws.onerror = function () {
+      if (gen !== ARNet.gen) return;
+      if (!ARNet.error) ARNet.error = 'connection error';
+    };
+    ws.onclose = function (event) {
+      if (gen !== ARNet.gen) return;
+      ARNet.closeCode = event.code;
+      ARNet.state = (ARNet.state === 0 || ARNet.state === 4) ? 4 : 3;
+      if (ARNet.state === 4 && !ARNet.error) ARNet.error = 'connection closed during handshake';
+    };
+    return gen;
+  },
+
+  ar_js_ws_state__deps: ['$ARNet'],
+  ar_js_ws_state: function (gen) {
+    return gen === ARNet.gen ? ARNet.state : 3;
+  },
+
+  ar_js_ws_close_code__deps: ['$ARNet'],
+  ar_js_ws_close_code: function (gen) {
+    return gen === ARNet.gen ? ARNet.closeCode : 0;
+  },
+
+  ar_js_ws_error__deps: ['$ARNet'],
+  ar_js_ws_error: function (gen, buffer, capacity) {
+    var text = gen === ARNet.gen ? ARNet.error : '';
+    if (!text) return 0;
+    var bytes = lengthBytesUTF8(text);
+    if (bytes + 1 > capacity) return 0;
+    stringToUTF8(text, buffer, capacity);
+    return bytes;
+  },
+
+  ar_js_ws_send__deps: ['$ARNet'],
+  ar_js_ws_send: function (gen, ptr, len) {
+    if (gen !== ARNet.gen || ARNet.state !== 1 || !ARNet.ws) return 0;
+    // The browser cannot bound its own send queue; refuse rather than grow it.
+    if (ARNet.ws.bufferedAmount + len > ARNet.maxBuffered) return 0;
+    try {
+      ARNet.ws.send(UTF8ToString(ptr, len));
+    } catch (error) {
+      return 0;
+    }
+    return 1;
+  },
+
+  ar_js_ws_buffered__deps: ['$ARNet'],
+  ar_js_ws_buffered: function (gen) {
+    return gen === ARNet.gen && ARNet.ws ? ARNet.ws.bufferedAmount : 0;
+  },
+
+  ar_js_ws_peek__deps: ['$ARNet'],
+  ar_js_ws_peek: function (gen) {
+    if (gen !== ARNet.gen || ARNet.queue.length === 0) return -1;
+    return ARNet.queue[0].length;
+  },
+
+  ar_js_ws_recv__deps: ['$ARNet'],
+  ar_js_ws_recv: function (gen, ptr, capacity) {
+    if (gen !== ARNet.gen || ARNet.queue.length === 0) return -1;
+    var bytes = ARNet.queue[0];
+    if (bytes.length > capacity) return -2;
+    ARNet.queue.shift();
+    ARNet.queueBytes -= bytes.length;
+    HEAPU8.set(bytes, ptr);
+    return bytes.length;
+  },
+
+  // Invalidates the logical connection immediately (no further events reach
+  // Odin) and asks the browser to close; queued sends such as bye flush first.
+  ar_js_ws_close__deps: ['$ARNet'],
+  ar_js_ws_close: function (gen) {
+    if (gen !== ARNet.gen) return;
+    var ws = ARNet.ws;
+    ARNet.gen += 1;
+    ARNet.ws = null;
+    ARNet.state = 3;
+    ARNet.queue = [];
+    ARNet.queueBytes = 0;
+    if (ws) {
+      ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
+      try { ws.close(1000); } catch (error) { /* best effort */ }
+    }
+  },
+
+  ar_js_random_bytes: function (ptr, len) {
+    crypto.getRandomValues(HEAPU8.subarray(ptr, ptr + len));
+  },
+
   ar_js_game_ended__deps: ['$ARWeb'],
   ar_js_game_ended: function () {
     ARWeb.packMaterializeStopped = true;

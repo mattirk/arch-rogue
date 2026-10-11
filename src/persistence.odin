@@ -1696,7 +1696,7 @@ run_save_payload_from_app :: proc(app: ^App) -> Run_Save_Payload {
 		terminal=run.terminal,
 		finalization=run.finalization,
 		seed=run.seed, depth=run.depth, difficulty=run.difficulty,
-		dungeon=run.dungeon, player=run.player,
+		dungeon=run.dungeon, player=run.players[HOST_SLOT],
 		enemies=run.enemies, next_enemy_id=run.next_enemy_id,
 		next_familiar_id=run.next_familiar_id, next_save_entity_id=run.next_save_entity_id,
 		storm_cast_counter=run.storm_cast_counter,
@@ -1767,9 +1767,9 @@ run_save_payload_clone_from_app :: proc(app: ^App, allocator := context.allocato
 	payload.started_at_utc = persistence_clone_string(source.started_at_utc, allocator)
 	payload.ended_at_utc = persistence_clone_string(source.ended_at_utc, allocator)
 
-	payload.player.weapon = run_snapshot_clone_item(source.player.weapon, allocator)
-	payload.player.armor = run_snapshot_clone_item(source.player.armor, allocator)
-	for i in 0 ..< BAG_CAPACITY do payload.player.bag[i] = run_snapshot_clone_item(source.player.bag[i], allocator)
+	payload.player.weapon = run_snapshot_clone_item(source.players[HOST_SLOT].weapon, allocator)
+	payload.player.armor = run_snapshot_clone_item(source.players[HOST_SLOT].armor, allocator)
+	for i in 0 ..< BAG_CAPACITY do payload.player.bag[i] = run_snapshot_clone_item(source.players[HOST_SLOT].bag[i], allocator)
 
 	payload.enemies = make([dynamic]Enemy, len(source.enemies), len(source.enemies), allocator)
 	copy(payload.enemies[:], source.enemies[:])
@@ -1912,9 +1912,9 @@ run_adopt_item_strings :: proc(run: ^Run, item: ^Item) {
 run_adopt_decoded_strings :: proc(run: ^Run, allocator := context.allocator) {
 	if run == nil do return
 	run.save_owned_strings = make([dynamic]string, 0, 128, allocator)
-	run_adopt_item_strings(run, &run.player.weapon)
-	run_adopt_item_strings(run, &run.player.armor)
-	for i in 0 ..< clamp(run.player.bag_count,0,len(run.player.bag)) do run_adopt_item_strings(run, &run.player.bag[i])
+	run_adopt_item_strings(run, &run.players[HOST_SLOT].weapon)
+	run_adopt_item_strings(run, &run.players[HOST_SLOT].armor)
+	for i in 0 ..< clamp(run.players[HOST_SLOT].bag_count,0,len(run.players[HOST_SLOT].bag)) do run_adopt_item_strings(run, &run.players[HOST_SLOT].bag[i])
 	for &enemy in run.enemies do run_adopt_string(run, enemy.name)
 	for &ground in run.ground_items do run_adopt_item_strings(run, &ground.item)
 	run_adopt_string(run, run.shopkeeper.name)
@@ -1954,7 +1954,7 @@ run_take_payload :: proc(payload: ^Run_Save_Payload, allocator := context.alloca
 		active_ticks=payload.active_ticks, started_at_utc=payload.started_at_utc,
 		ended_at_utc=payload.ended_at_utc, terminal=payload.terminal,
 		finalization=payload.finalization, seed=payload.seed, depth=payload.depth,
-		difficulty=payload.difficulty, dungeon=payload.dungeon, player=payload.player,
+		difficulty=payload.difficulty, dungeon=payload.dungeon, players={payload.player, {}}, player_count=1,
 		enemies=payload.enemies, next_enemy_id=payload.next_enemy_id,
 		next_familiar_id=payload.next_familiar_id, next_save_entity_id=payload.next_save_entity_id,
 		storm_cast_counter=payload.storm_cast_counter,
@@ -1980,8 +1980,8 @@ run_take_payload :: proc(payload: ^Run_Save_Payload, allocator := context.alloca
 		potions_used=payload.potions_used, elites_killed=payload.elites_killed,
 	}
 	// Older save documents may predate the bounded potion inventory.
-	run.player.heal_potions = clamp(run.player.heal_potions, 0, POTION_CAPACITY)
-	run.player.mana_potions = clamp(run.player.mana_potions, 0, POTION_CAPACITY)
+	run.players[HOST_SLOT].heal_potions = clamp(run.players[HOST_SLOT].heal_potions, 0, POTION_CAPACITY)
+	run.players[HOST_SLOT].mana_potions = clamp(run.players[HOST_SLOT].mana_potions, 0, POTION_CAPACITY)
 	panel = payload.story_panel
 	minigame = payload.story_minigame
 	cursor = payload.story_minigame_cursor
@@ -2113,11 +2113,11 @@ app_install_run_document :: proc(app: ^App, document: ^Run_Document) -> bool {
 	temporary.revision = document.revision
 	// Reconstruct presentation and derived gameplay queries from authoritative state.
 	if !restoring_turn_page {
-		temporary.player.prev_pos = temporary.player.pos
-		temporary.player.moving = false
-		temporary.player.anim_time = 0
-		temporary.player.hit_flash = 0
-		temporary.player.hit_flash_duration = 0
+		temporary.players[HOST_SLOT].prev_pos = temporary.players[HOST_SLOT].pos
+		temporary.players[HOST_SLOT].moving = false
+		temporary.players[HOST_SLOT].anim_time = 0
+		temporary.players[HOST_SLOT].hit_flash = 0
+		temporary.players[HOST_SLOT].hit_flash_duration = 0
 		for &enemy in temporary.enemies {
 			enemy.prev_pos = enemy.pos
 			enemy.anim_time = 0
@@ -2140,7 +2140,7 @@ app_install_run_document :: proc(app: ^App, document: ^Run_Document) -> bool {
 		temporary.story_runtime.soul.prev_pos = temporary.story_runtime.soul.pos
 	}
 	temporary.visible = {}
-	temporary.nav = {}
+	temporary.navs = {}
 	temporary.numbers = nil
 	temporary.sfx = nil
 	temporary.feel = nil
@@ -2159,12 +2159,12 @@ app_install_run_document :: proc(app: ^App, document: ^Run_Document) -> bool {
 	// Valid hunts rebuild after returning; malformed/legacy states are repaired
 	// by app_story_normalize_soul_hunt_after_restore after installation.
 	if restoring_turn_page {
-		virtual_pos,virtual_facing:=temporary.player.pos,temporary.player.facing
-		temporary.player.pos=turn_page.return_player.pos
-		temporary.player.facing=turn_page.return_player.facing
+		virtual_pos,virtual_facing:=temporary.players[HOST_SLOT].pos,temporary.players[HOST_SLOT].facing
+		temporary.players[HOST_SLOT].pos=turn_page.return_player.pos
+		temporary.players[HOST_SLOT].facing=turn_page.return_player.facing
 		refresh_visibility(&temporary)
 		story_refresh_relic_guidance(&temporary)
-		temporary.player.pos,temporary.player.facing=virtual_pos,virtual_facing
+		temporary.players[HOST_SLOT].pos,temporary.players[HOST_SLOT].facing=virtual_pos,virtual_facing
 	}
 	if !restoring_soul_hunt {
 		refresh_visibility(&temporary)
@@ -2187,10 +2187,10 @@ chronicle_record_from_run :: proc(run: ^Run, outcome: Chronicle_Outcome) -> Chro
 	record := Chronicle_Record{
 		record_schema_version=CHRONICLE_RECORD_SCHEMA_VERSION,
 		run_id=persistence_clone_string(run.run_id), outcome=outcome,
-		archetype=run.player.archetype, difficulty=run.difficulty, seed=run.seed,
+		archetype=run.players[HOST_SLOT].archetype, difficulty=run.difficulty, seed=run.seed,
 		deepest_floor=run.depth, started_at_utc=persistence_clone_string(run.started_at_utc),
 		ended_at_utc=persistence_clone_string(run.ended_at_utc), active_ticks=run.active_ticks,
-		final_level=run.player.level, kills=run.kills,
+		final_level=run.players[HOST_SLOT].level, kills=run.kills,
 		traps_triggered=run.traps_triggered, shrines_used=run.shrines_used,
 		secrets_opened=run.secrets_opened, bars_visited=run.bars_visited,
 		bars_toasted=run.bars_toasted, challenge_rooms_cleared=run.challenge_rooms_cleared,

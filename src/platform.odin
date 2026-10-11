@@ -316,6 +316,25 @@ platform_mobile_build_targets :: proc(runtime: ^Platform_Runtime, app: ^App) -> 
 			platform_mobile_add_target(&set, layout, 710 + i, .Menu_Activate,
 				platform_mobile_rect_from_design(platform_choice_row_rect(3, i)), index = i)
 		}
+	case .Coop_Menu:
+		if app.coop_ui.consent_open {
+			for i in 0 ..< 2 {
+				platform_mobile_add_target(&set, layout, 740 + i, .Menu_Activate,
+					platform_mobile_rect_from_design(coop_consent_row_rect(i)), index = i)
+			}
+		} else {
+			for i in 0 ..< len(Coop_Menu_Row) {
+				platform_mobile_add_target(&set, layout, 750 + i, .Menu_Activate,
+					platform_mobile_rect_from_design(coop_menu_row_rect(i)), index = i)
+			}
+		}
+	case .Coop_Lobby:
+		rows: [len(Coop_Lobby_Row)]Coop_Lobby_Row
+		for i in 0 ..< coop_lobby_rows(app, &rows) {
+			platform_mobile_add_target(&set, layout, 760 + i, .Menu_Activate,
+				platform_mobile_rect_from_design(coop_lobby_row_rect(i)), index = i)
+		}
+	case .Coop_Wait:
 	case .Resume_Veil, .Dead, .Victory:
 		platform_mobile_add_target(&set, layout, 720, .Menu_Activate, layout.safe_rect)
 	case .Save_Wait:
@@ -377,13 +396,13 @@ platform_mobile_build_targets :: proc(runtime: ^Platform_Runtime, app: ^App) -> 
 				platform_mobile_add_target(&set, layout, 1000 + int(mode), .Inventory_Sort,
 					platform_mobile_rect_from_design(inventory_sort_chip_rect(mode)), index = int(mode))
 			}
-			visible := min(INVENTORY_VISIBLE_ROWS, max(0, app.run.player.bag_count - app.inv_scroll))
+			visible := min(INVENTORY_VISIBLE_ROWS, max(0, app.run.players[app.run.local_slot].bag_count - app.inv_scroll))
 			for row in 0 ..< visible {
 				platform_mobile_add_target(&set, layout, 1010 + row, .Menu_Select,
 					platform_mobile_rect_from_design(inventory_row_rect(row)), index = app.inv_scroll + row)
 			}
 			confirm, drop := mobile_guard_button_rects(layout)
-			bag_selected := app.inv_focus == .Bag && app.run.player.bag_count > 0
+			bag_selected := app.inv_focus == .Bag && app.run.players[app.run.local_slot].bag_count > 0
 			platform_mobile_add_target(&set, layout, 1030, .Menu_Activate, confirm, index = app.inv_index,
 				enabled = bag_selected)
 			platform_mobile_add_target(&set, layout, 1031, .Guard_Request_Drop, drop,
@@ -394,7 +413,7 @@ platform_mobile_build_targets :: proc(runtime: ^Platform_Runtime, app: ^App) -> 
 			set = mobile_gameplay_target_set(
 				layout,
 				context_key,
-				player_interaction_available(&app.run),
+				player_interaction_available(&app.run, app.run.local_slot),
 				app.mobile_utility_open,
 			)
 		}
@@ -428,7 +447,7 @@ platform_mobile_apply_guard :: proc(app: ^App, intent: ^Intent, context_key: Mob
 	}
 	switch intent.mobile_guard_request {
 	case .Inventory_Drop:
-		if app.inventory_open && app.inv_focus == .Bag && app.run.player.bag_count > 0 {
+		if app.inventory_open && app.inv_focus == .Bag && app.run.players[app.run.local_slot].bag_count > 0 {
 			app.mobile_guard = {.Inventory_Drop, app.inv_index, context_key}
 		}
 	case .Shop_Transaction:
@@ -522,7 +541,7 @@ platform_collect_mobile_intent :: proc(
 			zoom = view.camera.zoom,
 			rotation = view.camera.rotation,
 		},
-		player_tile = app.run.player.pos,
+		player_tile = app.run.players[app.run.local_slot].pos,
 		current_view_zoom = view.base_zoom,
 		view_zoom_min = ZOOM_MIN,
 		view_zoom_max = ZOOM_MAX,

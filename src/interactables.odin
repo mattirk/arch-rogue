@@ -68,23 +68,28 @@ TRAP_REVEAL_RATE :: 6.0 // full materialize in 1/6 s
 // projectiles.py update_traps: reveal → fade → trigger, one pass, so a dash
 // onto a hidden plate still shows it the same tick it fires.
 tick_traps :: proc(run: ^Run, dt: f32) {
-	player := &run.player
 	for &trap in run.traps {
 		if !trap.active do continue
-		delta := trap.pos - player.pos
-		distance_sq := delta.x * delta.x + delta.y * delta.y
-		if player.hp > 0 && !trap.revealed &&
-			distance_sq <= TRAP_REVEAL_RADIUS * TRAP_REVEAL_RADIUS {
-			trap.revealed = true
+		// Any living seat reveals a plate; the first (lowest slot) living seat
+		// standing on it springs it.
+		slot := -1
+		for i in 0 ..< run_seat_count(run) {
+			p := &run.players[i]
+			if p.hp <= 0 do continue
+			delta := trap.pos - p.pos
+			distance_sq := delta.x * delta.x + delta.y * delta.y
+			if !trap.revealed && distance_sq <= TRAP_REVEAL_RADIUS * TRAP_REVEAL_RADIUS do trap.revealed = true
+			if slot < 0 && distance_sq <= TRAP_TRIGGER_RADIUS * TRAP_TRIGGER_RADIUS do slot = i
 		}
 		if trap.revealed && trap.reveal_progress < 1 {
 			trap.reveal_progress = min(1, trap.reveal_progress + dt * TRAP_REVEAL_RATE)
 		}
-		if player.hp <= 0 || distance_sq > TRAP_TRIGGER_RADIUS * TRAP_TRIGGER_RADIUS do continue
+		if slot < 0 do continue
+		player := &run.players[slot]
 		trap.active = false
 		def := &TRAP_DEFS[trap.kind]
 		// Trap damage cannot be evaded (player.py:118 source=="trap").
-		_ = damage_player_typed(run, trap.damage, .Physical, evadable = false, source_id = "trap")
+		_ = damage_player_typed(run, slot, trap.damage, .Physical, evadable = false, source_id = "trap")
 		run.traps_triggered += 1
 		append(&run.numbers, Damage_Number{pos = player.pos, kind = .Text, text = def.trigger_text})
 		feel_emit(run, .Burst, trap.pos, def.hint_color, 0.46, 0.58)
@@ -93,12 +98,12 @@ tick_traps :: proc(run: ^Run, dt: f32) {
 }
 
 // Revealed-only warning for the prompt line (interactions.py:796-812).
-nearby_trap_warning :: proc(run: ^Run) -> ^Trap {
+nearby_trap_warning :: proc(run: ^Run, slot: int) -> ^Trap {
 	nearest: ^Trap
 	nearest_sq := f32(TRAP_REVEAL_RADIUS * TRAP_REVEAL_RADIUS)
 	for &trap in run.traps {
 		if !trap.active || !trap.revealed do continue
-		delta := trap.pos - run.player.pos
+		delta := trap.pos - run.players[slot].pos
 		distance_sq := delta.x * delta.x + delta.y * delta.y
 		if distance_sq < nearest_sq {
 			nearest = &trap
@@ -118,7 +123,11 @@ Shrine_Kind :: enum u8 {
 	Fortune,
 	Oath,
 	Twilight,
+	Vigil, // co-op only; must stay last (solo rolls exclude it)
 }
+
+SOLO_SHRINE_KIND_COUNT :: len(Shrine_Kind) - 1
+VIGIL_SHRINE_CHANCE :: f32(0.10) // arch-rogue-python/src/arch_rogue/population.py
 
 Shrine_Def :: struct {
 	name:    string,
@@ -157,6 +166,10 @@ SHRINE_DEFS := [Shrine_Kind]Shrine_Def{
 		name = "Twilight Shrine", detail = "Trades blood for a unique relic.",
 		color = {214, 92, 150, 255}, message = "Twilight Shrine trades blood for a relic",
 	},
+	.Vigil = {
+		name = "Vigil Shrine", detail = "Grants another Raise for a fallen ally.",
+		color = {240, 228, 160, 255}, message = "Vigil Shrine grants another Raise",
+	},
 }
 
 Shrine :: struct {
@@ -174,12 +187,12 @@ SHRINE_LIGHT_INTENSITY :: 0.55
 HASTE_SHRINE_MOVE_BONUS :: 0.03
 HASTE_SHRINE_MOVE_BONUS_CAP :: 0.09
 
-nearby_shrine :: proc(run: ^Run) -> ^Shrine {
+nearby_shrine :: proc(run: ^Run, slot: int) -> ^Shrine {
 	nearest: ^Shrine
 	nearest_sq := f32(SHRINE_INTERACT_RADIUS * SHRINE_INTERACT_RADIUS)
 	for &shrine in run.shrines {
 		if shrine.used do continue
-		delta := shrine.pos - run.player.pos
+		delta := shrine.pos - run.players[slot].pos
 		distance_sq := delta.x * delta.x + delta.y * delta.y
 		if distance_sq < nearest_sq {
 			nearest = &shrine
@@ -190,9 +203,9 @@ nearby_shrine :: proc(run: ^Run) -> ^Shrine {
 }
 
 // interactions.py activate_shrine, minus the multiplayer Vigil branch.
-activate_shrine :: proc(run: ^Run, shrine: ^Shrine) {
+activate_shrine :: proc(run: ^Run, slot: int, shrine: ^Shrine) {
 	if run == nil || shrine == nil || shrine.used do return
-	player := &run.player
+	player := &run.players[slot]
 	shrine.used = true
 	run.shrines_used += 1
 	def := &SHRINE_DEFS[shrine.kind]
@@ -206,7 +219,7 @@ activate_shrine :: proc(run: ^Run, shrine: ^Shrine) {
 			item.unidentified = false
 		}
 	case .War:
-		player_gain_xp(run, 25)
+		player_gain_xp(run, slot, 25)
 		player.stamina = f32(player.max_stamina)
 	case .Haste:
 		player.stamina = f32(player.max_stamina)
@@ -219,7 +232,7 @@ activate_shrine :: proc(run: ^Run, shrine: ^Shrine) {
 		append(&run.ground_items, make_loot(&run.loot_rng, player.pos, RUN_MODIFIERS[run.modifier].curse_chance_bonus, run))
 		append(&run.ground_items, make_loot(&run.loot_rng, player.pos + {0.25, 0.25}, RUN_MODIFIERS[run.modifier].curse_chance_bonus, run))
 	case .Oath:
-		if !grant_random_discipline(run) {
+		if !grant_random_discipline(run, slot) {
 			append(&run.numbers, Damage_Number{pos = player.pos, kind = .Text, text = "Oath Shrine finds no path left"})
 			feel_emit(run, .Burst, shrine.pos, def.color, 0.58, 0.68)
 			sfx_emit(run, sfx_shrine_bank(shrine.kind), shrine.pos, spatial = true, emitter_id = shrine.entity_id)
@@ -230,6 +243,9 @@ activate_shrine :: proc(run: ^Run, shrine: ^Shrine) {
 		relic := make_unique(&run.loot_rng, player.archetype, run.depth)
 		append(&run.ground_items, Ground_Item{item = relic, pos = player.pos})
 		record_notable_loot(run, relic)
+	case .Vigil:
+		// One extra Raise for the activating seat only.
+		player.raise_charges += 1
 	}
 	append(&run.numbers, Damage_Number{pos = player.pos, kind = .Text, text = def.message})
 	feel_emit(run, .Burst, shrine.pos, def.color, 0.58, 0.68)
@@ -238,8 +254,8 @@ activate_shrine :: proc(run: ^Run, shrine: ^Shrine) {
 
 // Oath Shrine / Forgotten Skill Altar: one free eligible discipline, chosen
 // uniformly (pygame grant_discipline). Token-free by design.
-grant_random_discipline :: proc(run: ^Run) -> bool {
-	player := &run.player
+grant_random_discipline :: proc(run: ^Run, slot: int) -> bool {
+	player := &run.players[slot]
 	available: [len(Discipline_Id)]Discipline_Id
 	count := 0
 	for id in Discipline_Id {
@@ -250,7 +266,7 @@ grant_random_discipline :: proc(run: ^Run) -> bool {
 	if count == 0 do return false
 	pick := available[rng_below(&run.loot_rng, count)]
 	player.memory_tokens += 1 // free grant: lend the token the acquire path spends
-	result := run_try_acquire_discipline(run, pick)
+	result := run_try_acquire_discipline(run, slot, pick)
 	if result != .Acquired {
 		player.memory_tokens -= 1
 		return false
@@ -326,20 +342,23 @@ secret_color :: proc(run: ^Run, kind: Secret_Kind) -> [4]u8 {
 tick_secrets :: proc(run: ^Run) {
 	for &secret in run.secrets {
 		if secret.revealed || secret.opened do continue
-		delta := secret.pos - run.player.pos
-		if delta.x * delta.x + delta.y * delta.y < SECRET_REVEAL_RADIUS * SECRET_REVEAL_RADIUS {
-			secret.revealed = true
-			append(&run.numbers, Damage_Number{pos = secret.pos, kind = .Text, text = "Secret found"})
+		for slot in 0 ..< run_seat_count(run) {
+			delta := secret.pos - run.players[slot].pos
+			if delta.x * delta.x + delta.y * delta.y < SECRET_REVEAL_RADIUS * SECRET_REVEAL_RADIUS {
+				secret.revealed = true
+				append(&run.numbers, Damage_Number{pos = secret.pos, kind = .Text, text = "Secret found"})
+				break
+			}
 		}
 	}
 }
 
-nearby_secret :: proc(run: ^Run) -> ^Secret {
+nearby_secret :: proc(run: ^Run, slot: int) -> ^Secret {
 	nearest: ^Secret
 	nearest_sq := f32(SECRET_INTERACT_RADIUS * SECRET_INTERACT_RADIUS)
 	for &secret in run.secrets {
 		if !secret.revealed || secret.opened do continue
-		delta := secret.pos - run.player.pos
+		delta := secret.pos - run.players[slot].pos
 		distance_sq := delta.x * delta.x + delta.y * delta.y
 		if distance_sq < nearest_sq {
 			nearest = &secret
@@ -351,9 +370,9 @@ nearby_secret :: proc(run: ^Run) -> ^Secret {
 
 // interactions.py open_secret. The Cursed Reliquary roll is consumed only for
 // that kind (short-circuit preserved); all drops stack on the cache tile.
-open_secret :: proc(run: ^Run, secret: ^Secret) {
+open_secret :: proc(run: ^Run, slot: int, secret: ^Secret) {
 	if run == nil || secret == nil || secret.opened do return
-	player := &run.player
+	player := &run.players[slot]
 	secret.opened = true
 	// An opened cache stops being drawn, so it frees its tile first — a woken
 	// reliquary guardian must not spawn inside solid furniture.
@@ -365,7 +384,7 @@ open_secret :: proc(run: ^Run, secret: ^Secret) {
 	switch secret.kind {
 	case .Skill_Altar:
 		// Return value deliberately ignored (unlike the Oath Shrine).
-		_ = grant_random_discipline(run)
+		_ = grant_random_discipline(run, slot)
 	case .Moonlit_Bargain:
 		player.hp = max(1, player.hp - max(6, player.max_hp / 8))
 		slot: Item_Kind = rng_chance(&run.loot_rng, 0.5) ? .Weapon : .Armor
@@ -466,7 +485,10 @@ populate_interactables :: proc(run: ^Run) {
 		if room_index > 2 {
 			shrine_base := 0.18 + mod.shrine_chance_bonus + story_effect_clamped(run, .Shrine_Bonus, -.1, .28)
 			if rng_chance(&rng, difficulty_shrine_chance(shrine_base, run.difficulty)) {
-				kind := Shrine_Kind(rng_below(&rng, len(Shrine_Kind)))
+				kind := Shrine_Kind(rng_below(&rng, SOLO_SHRINE_KIND_COUNT))
+				// Co-op only: rarely a shrine keeps vigil instead. Solo draws
+				// nothing extra, so recorded floors are unchanged.
+				if run_coop(run) && rng_chance(&rng, VIGIL_SHRINE_CHANCE) do kind = .Vigil
 				// Reserve first: a drawn shrine is always a solid tile.
 				if pos, ok := solid_prop_point(run, room, &rng);
 					ok && solid_prop_add(&run.dungeon, {int(pos.x), int(pos.y)}) {
@@ -522,8 +544,8 @@ wall_face_tile :: proc(x, y: int) -> bool {
 
 // 3x3 scan for the nearest face-bearing wall within touch range. Never
 // advertised by any prompt; it sits last in the interact chain.
-nearby_secret_face_wall :: proc(run: ^Run) -> (tile: [2]int, found: bool) {
-	px, py := run.player.pos.x, run.player.pos.y
+nearby_secret_face_wall :: proc(run: ^Run, slot: int) -> (tile: [2]int, found: bool) {
+	px, py := run.players[slot].pos.x, run.players[slot].pos.y
 	cx, cy := int(px), int(py)
 	best_sq := f32(WALL_FACE_TOUCH_RADIUS * WALL_FACE_TOUCH_RADIUS)
 	for tx in cx - 1 ..= cx + 1 {
@@ -544,8 +566,8 @@ nearby_secret_face_wall :: proc(run: ^Run) -> (tile: [2]int, found: bool) {
 	return
 }
 
-touch_secret_face_wall :: proc(run: ^Run) -> bool {
-	tile, found := nearby_secret_face_wall(run)
+touch_secret_face_wall :: proc(run: ^Run, slot: int) -> bool {
+	tile, found := nearby_secret_face_wall(run, slot)
 	if !found do return false
 	run.wall_face_tile = tile
 	run.wall_face_timer = WALL_FACE_SECONDS

@@ -47,7 +47,7 @@ story_runtime_stage_soul_question :: proc(
 	app.run.story_runtime.requests={}
 	ar.story_populate_floor(&app.run)
 	if !app.run.story_runtime.soul.present do return
-	origin=app.run.player.pos
+	origin=app.run.players[0].pos
 	ok=ar.app_story_open_lossless_soul(app)
 	return
 }
@@ -74,9 +74,9 @@ story_runtime_win_soul_hunt :: proc(app:^ar.App) -> bool {
 		}
 		target,active:=ar.story_soul_hunt_target_position(&app.story_minigame)
 		if !active do return false
-		app.run.player.pos=target
-		app.run.player.prev_pos=target
-		app.run.player.dash_timer=0
+		app.run.players[0].pos=target
+		app.run.players[0].prev_pos=target
+		app.run.players[0].dash_timer=0
 		if !ar.story_soul_hunt_dash(app,ar.STORY_SOUL_HUNT_START-target) do return false
 	}
 	return app.story_minigame.phase==.Result&&app.story_minigame.outcome==.Won&&
@@ -95,10 +95,10 @@ mx_story_runtime_new_run_opens_mandatory_omen_and_pauses_sim :: proc(t:^testing.
 	testing.expect(t,ar.app_story_panel_full_narration(&app)!="","omen must own composed narration")
 	testing.expect(t,ar.app_story_panel_visible_narration(&app)=="","typewriter must begin unrevealed")
 
-	app.run.player.bolt_timer=1
+	app.run.players[0].bolt_timer=1
 	before:=app.story_panel.node_elapsed
 	ar.app_tick(&app)
-	testing.expect(t,app.run.player.bolt_timer==1&&app.story_panel.node_elapsed>before,"story modal clock must advance while gameplay clocks freeze")
+	testing.expect(t,app.run.players[0].bolt_timer==1&&app.story_panel.node_elapsed>before,"story modal clock must advance while gameplay clocks freeze")
 	_ = ar.app_apply(&app,ar.Intent{back=true})
 	testing.expect(t,app.story_panel.active,"mandatory omen must ignore Back")
 
@@ -281,24 +281,24 @@ mx_story_runtime_soul_answer_teleports_into_nonmodal_hunt_and_freezes_floor :: p
 	testing.expect(t,staged&&app.story_panel.node==.Soul_Reflection&&!app.story_minigame.active,
 		"Soul interaction must ask the verdict before starting the hunt")
 	app.run.arrival_timer=2
-	app.run.player.bolt_timer=1
+	app.run.players[0].bolt_timer=1
 	combat_rng:=app.run.combat_rng
 	story_runtime_reveal_and_confirm(&app,1)
 	testing.expect(t,app.run.story_runtime.hall.verdict==.Release&&ar.app_story_soul_hunt_active(&app),
 		"Release answer did not start the Soul hunt")
-	testing.expect(t,!app.story_panel.active&&!ar.app_play_modal_open(&app)&&app.run.player.pos==ar.STORY_SOUL_HUNT_START,
+	testing.expect(t,!app.story_panel.active&&!ar.app_play_modal_open(&app)&&app.run.players[0].pos==ar.STORY_SOUL_HUNT_START,
 		"Soul hunt must teleport into world space without retaining a modal")
-	testing.expect(t,app.story_minigame.sequence_count==2&&origin!=app.run.player.pos,
+	testing.expect(t,app.story_minigame.sequence_count==2&&origin!=app.run.players[0].pos,
 		"Soul hunt must retain a return coordinate before teleporting")
 
 	elapsed:=app.story_minigame.elapsed
-	wait_pos:=app.run.player.pos
+	wait_pos:=app.run.players[0].pos
 	_=ar.app_apply(&app,ar.Intent{move={1,0},aim={0,-3},aim_live=true})
 	ar.app_tick(&app)
 	testing.expect(t,app.story_minigame.elapsed>elapsed,"world-space hunt clock did not advance")
-	testing.expect(t,app.run.player.pos==wait_pos&&app.run.player.facing==ar.Vec2{0,-1},
+	testing.expect(t,app.run.players[0].pos==wait_pos&&app.run.players[0].facing==ar.Vec2{0,-1},
 		"Mistbound wait must accept live aim for facing while suppressing movement")
-	testing.expect(t,app.run.arrival_timer==2&&app.run.player.bolt_timer==1&&app.run.combat_rng==combat_rng,
+	testing.expect(t,app.run.arrival_timer==2&&app.run.players[0].bolt_timer==1&&app.run.combat_rng==combat_rng,
 		"ordinary floor clocks or RNG advanced behind the Soul hunt")
 
 	_=ar.app_apply(&app,ar.Intent{back=true})
@@ -320,16 +320,16 @@ mx_story_runtime_soul_hunt_walking_cannot_capture_but_dash_can :: proc(t:^testin
 	testing.expect(t,staged,"Soul question fixture failed")
 	story_runtime_reveal_and_confirm(&app,0)
 	testing.expect(t,story_runtime_advance_soul_hunt_to_play(&app),"Soul hunt did not reach Play")
-	look_pos:=app.run.player.pos
+	look_pos:=app.run.players[0].pos
 	_=ar.app_apply(&app,ar.Intent{aim={-3,0},aim_live=true})
 	ar.app_tick(&app)
-	testing.expect(t,app.run.player.pos==look_pos&&app.run.player.facing==ar.Vec2{-1,0},
+	testing.expect(t,app.run.players[0].pos==look_pos&&app.run.players[0].facing==ar.Vec2{-1,0},
 		"active Mistbound idle facing must follow live cursor aim")
 	target,active:=ar.story_soul_hunt_target_position(&app.story_minigame)
 	testing.expect(t,active,"Soul hunt did not reveal a ghost")
 	target_cell:=app.story_minigame.active_cell
-	app.run.player.pos=target-ar.Vec2{1.0,0}
-	app.run.player.prev_pos=app.run.player.pos
+	app.run.players[0].pos=target-ar.Vec2{1.0,0}
+	app.run.players[0].prev_pos=app.run.players[0].pos
 	mistakes:=app.story_minigame.mistakes
 	_=ar.story_soul_hunt_tick(&app,{1,0},.1)
 	testing.expect(t,app.story_minigame.score==0&&app.story_minigame.active_cell==-1&&
@@ -339,8 +339,8 @@ mx_story_runtime_soul_hunt_walking_cannot_capture_but_dash_can :: proc(t:^testin
 	app.story_minigame.active_cell=target_cell
 	app.story_minigame.target_time=ar.story_soul_hunt_profile(.Preserve).ghost_seconds
 	app.story_minigame.lock_time=0
-	app.run.player.pos=target-ar.Vec2{.2,0}
-	app.run.player.prev_pos=app.run.player.pos
+	app.run.players[0].pos=target-ar.Vec2{.2,0}
+	app.run.players[0].prev_pos=app.run.players[0].pos
 	dash:ar.Intent
 	dash.aim={1,0}
 	dash.aim_live=true
@@ -365,21 +365,21 @@ mx_story_runtime_soul_hunt_dash_sweeps_targets_and_blocked_dash_is_inert :: proc
 	app.story_minigame.target_time=ar.story_soul_hunt_profile(.Preserve).ghost_seconds
 	target,active:=ar.story_soul_hunt_target_position(&app.story_minigame)
 	testing.expect(t,active,"dash sweep fixture lost its target")
-	app.run.player.pos=target-ar.Vec2{1.3,0}
-	app.run.player.prev_pos=app.run.player.pos
-	app.run.player.dash_timer=0
+	app.run.players[0].pos=target-ar.Vec2{1.3,0}
+	app.run.players[0].prev_pos=app.run.players[0].pos
+	app.run.players[0].dash_timer=0
 	testing.expect(t,ar.story_soul_hunt_dash(&app,{1,0}),"crossing dash did not move")
-	testing.expect(t,app.story_minigame.score==1&&app.run.player.pos.x>target.x,
+	testing.expect(t,app.story_minigame.score==1&&app.run.players[0].pos.x>target.x,
 		"dash segment must capture a target it crosses before overshooting")
 
 	room:=ar.STORY_SOUL_HUNT_ROOM
 	boundary:=ar.Vec2{f32(room.x+room.w-1)-.58,35}
-	app.run.player.pos=boundary;app.run.player.prev_pos=boundary;app.run.player.dash_timer=0
+	app.run.players[0].pos=boundary;app.run.players[0].prev_pos=boundary;app.run.players[0].dash_timer=0
 	app.story_minigame.active_cell=9
 	app.story_minigame.target_time=1
 	score:=app.story_minigame.score
 	testing.expect(t,!ar.story_soul_hunt_dash(&app,{1,0}),"edge-blocked zero-distance dash must be rejected")
-	testing.expect(t,app.run.player.pos==boundary&&app.run.player.dash_timer==0&&app.story_minigame.score==score,
+	testing.expect(t,app.run.players[0].pos==boundary&&app.run.players[0].dash_timer==0&&app.story_minigame.score==score,
 		"rejected dash must not spend cooldown or mutate capture state")
 }
 
@@ -411,11 +411,11 @@ mx_story_runtime_soul_hunt_returns_to_soul_room_and_rewards_each_verdict_once ::
 		app:ar.App
 		origin,room_index,staged:=story_runtime_stage_soul_question(&app,ar.derive_seed(520108+u64(index),0))
 		testing.expectf(t,staged,"%v Soul question fixture failed",fixture.verdict)
-		app.run.player.max_mana=40
-		app.run.player.mana=3
-		app.run.player.discipline_spell_bonus=2
-		app.run.player.memory_tokens=4
-		app.run.player.dash_timer=.73
+		app.run.players[0].max_mana=40
+		app.run.players[0].mana=3
+		app.run.players[0].discipline_spell_bonus=2
+		app.run.players[0].memory_tokens=4
+		app.run.players[0].dash_timer=.73
 		story_runtime_reveal_and_confirm(&app,fixture.row)
 		testing.expectf(t,app.run.story_runtime.hall.verdict==fixture.verdict,"%v verdict was not committed",fixture.verdict)
 		testing.expectf(t,story_runtime_win_soul_hunt(&app),"%v Soul hunt did not reach Won",fixture.verdict)
@@ -425,26 +425,26 @@ mx_story_runtime_soul_hunt_returns_to_soul_room_and_rewards_each_verdict_once ::
 		ledger:=app.run.story_runtime.soul_games[app.run.depth-1]
 		testing.expect(t,ledger.valid&&ledger.room_index==room_index&&ledger.outcome==.Won,
 			"Soul hunt result did not commit to its per-depth ledger")
-		_,return_room,in_room:=ar.dungeon_room_at_point(&app.run.dungeon,app.run.player.pos.x,app.run.player.pos.y)
-		testing.expect(t,in_room&&return_room==room_index&&app.run.player.prev_pos==app.run.player.pos&&app.run.player.pos!=origin,
+		_,return_room,in_room:=ar.dungeon_room_at_point(&app.run.dungeon,app.run.players[0].pos.x,app.run.players[0].pos.y)
+		testing.expect(t,in_room&&return_room==room_index&&app.run.players[0].prev_pos==app.run.players[0].pos&&app.run.players[0].pos!=origin,
 			"won Soul hunt must return to the Soul room even when entered elsewhere")
-		testing.expect(t,!ar.blocked_for_radius(&app.run.dungeon,app.run.player.pos.x,app.run.player.pos.y,
+		testing.expect(t,!ar.blocked_for_radius(&app.run.dungeon,app.run.players[0].pos.x,app.run.players[0].pos.y,
 			ar.PLAYER_HIT_RADIUS,block_stairs=true),"Soul-room return must have a clear player footprint")
-		testing.expect(t,app.run.player.dash_timer==.73,
+		testing.expect(t,app.run.players[0].dash_timer==.73,
 			"Soul hunt must restore the real-floor dash cooldown instead of refreshing it")
 		testing.expect(t,app.story_panel.active&&app.story_panel.node==.Soul_Settled&&!app.story_minigame.active,
 			"Soul hunt completion must return to settled dialogue")
-		testing.expectf(t,app.run.player.max_mana==fixture.max_mana&&app.run.player.mana==f32(fixture.max_mana)&&
-			app.run.player.discipline_spell_bonus==fixture.spell_bonus&&app.run.player.memory_tokens==fixture.memory_tokens,
+		testing.expectf(t,app.run.players[0].max_mana==fixture.max_mana&&app.run.players[0].mana==f32(fixture.max_mana)&&
+			app.run.players[0].discipline_spell_bonus==fixture.spell_bonus&&app.run.players[0].memory_tokens==fixture.memory_tokens,
 			"%v Soul hunt reward changed",fixture.verdict)
 
 		app.story_minigame=completed
-		max_mana:=app.run.player.max_mana
-		spell_bonus:=app.run.player.discipline_spell_bonus
-		memory_tokens:=app.run.player.memory_tokens
+		max_mana:=app.run.players[0].max_mana
+		spell_bonus:=app.run.players[0].discipline_spell_bonus
+		memory_tokens:=app.run.players[0].memory_tokens
 		testing.expect(t,ar.app_story_finalize_minigame(&app),"duplicate Soul result fixture did not finalize")
-		testing.expect(t,app.run.player.max_mana==max_mana&&app.run.player.discipline_spell_bonus==spell_bonus&&
-			app.run.player.memory_tokens==memory_tokens,"per-depth Soul ledger must suppress duplicate rewards")
+		testing.expect(t,app.run.players[0].max_mana==max_mana&&app.run.players[0].discipline_spell_bonus==spell_bonus&&
+			app.run.players[0].memory_tokens==memory_tokens,"per-depth Soul ledger must suppress duplicate rewards")
 		ar.run_destroy(&app.run)
 	}
 }
@@ -455,19 +455,19 @@ mx_story_runtime_lost_soul_hunt_returns_without_reward :: proc(t:^testing.T) {
 	_,_,staged:=story_runtime_stage_soul_question(&app,ar.derive_seed(5201101,0))
 	defer ar.run_destroy(&app.run)
 	testing.expect(t,staged,"Soul question fixture failed")
-	app.run.player.max_mana=40;app.run.player.mana=3
-	app.run.player.discipline_spell_bonus=2;app.run.player.memory_tokens=4
+	app.run.players[0].max_mana=40;app.run.players[0].mana=3
+	app.run.players[0].discipline_spell_bonus=2;app.run.players[0].memory_tokens=4
 	spawn:=ar.run_spawn_point(&app.run)
-	app.run.player.pos=app.run.story_runtime.soul.pos
-	testing.expect(t,app.run.player.pos!=spawn,"loss fixture must enter from outside the starting room")
+	app.run.players[0].pos=app.run.story_runtime.soul.pos
+	testing.expect(t,app.run.players[0].pos!=spawn,"loss fixture must enter from outside the starting room")
 	story_runtime_reveal_and_confirm(&app,2)
 	testing.expect(t,story_runtime_advance_soul_hunt_to_play(&app),"loss fixture must reach Play")
 	app.story_minigame.time_left=.01
 	_=ar.story_soul_hunt_tick(&app,{},.02)
 	testing.expect(t,app.story_minigame.outcome==.Lost,"uncaptured ghosts at timeout must lose the hunt")
 	testing.expect(t,ar.app_story_finalize_minigame(&app),"lost Soul hunt did not finalize")
-	testing.expect(t,app.run.player.pos==spawn&&app.run.player.prev_pos==spawn&&app.run.player.max_mana==40&&app.run.player.mana==3&&
-		app.run.player.discipline_spell_bonus==2&&app.run.player.memory_tokens==4,
+	testing.expect(t,app.run.players[0].pos==spawn&&app.run.players[0].prev_pos==spawn&&app.run.players[0].max_mana==40&&app.run.players[0].mana==3&&
+		app.run.players[0].discipline_spell_bonus==2&&app.run.players[0].memory_tokens==4,
 		"lost Soul hunt must return to the floor start without granting its verdict reward")
 }
 
@@ -479,7 +479,7 @@ mx_story_runtime_legacy_and_malformed_mirror_states_normalize_safely :: proc(t:^
 	ar.app_story_close_panel(&app)
 	app.run.depth=7
 	app.run.story_runtime.hall.verdict=.Unresolved
-	app.run.player.dash_timer=.57
+	app.run.players[0].dash_timer=.57
 	app.story_minigame={active=true,kind=.Mirror_The_Unlost,phase=.Play,depth=7,board_count=6,goal=3,sequence_count=0,
 		revealed_count=1}
 	app.story_minigame.revealed[0]=4 // legacy revealed-card index, not encoded cooldown bits
@@ -487,7 +487,7 @@ mx_story_runtime_legacy_and_malformed_mirror_states_normalize_safely :: proc(t:^
 	testing.expect(t,!app.story_minigame.active&&app.story_panel.active&&app.story_panel.node==.Soul_Reflection,
 		"legacy pair board must resume at the Soul verdict instead of entering the world hunt")
 	testing.expect(t,ar.app_play_modal_open(&app),"normalized legacy save must expose the Soul question as a modal")
-	testing.expect(t,app.run.player.dash_timer==.57,
+	testing.expect(t,app.run.players[0].dash_timer==.57,
 		"legacy pair-board revealed cells must not overwrite the persisted dungeon dash cooldown")
 
 	app.story_panel={}
@@ -501,7 +501,7 @@ mx_story_runtime_legacy_and_malformed_mirror_states_normalize_safely :: proc(t:^
 	ar.app_story_normalize_soul_hunt_after_restore(&app)
 	testing.expect(t,!app.story_minigame.active&&app.story_panel.active&&app.story_panel.node==.Soul_Settled,
 		"malformed current hunt must return safely without reopening the committed verdict")
-	testing.expect(t,!ar.blocked_for_radius(&app.run.dungeon,app.run.player.pos.x,app.run.player.pos.y,
+	testing.expect(t,!ar.blocked_for_radius(&app.run.dungeon,app.run.players[0].pos.x,app.run.players[0].pos.y,
 		ar.PLAYER_HIT_RADIUS,block_stairs=true),"malformed hunt recovery left the player outside the real floor")
 }
 

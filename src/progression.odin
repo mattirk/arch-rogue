@@ -2800,12 +2800,12 @@ discipline_try_acquire :: proc(player: ^Player, id: Discipline_Id) -> Discipline
 // Sanguine blood-binds already-summoned living Spirit Call Wisps and Crows.
 // Character UI should call this wrapper; tests and save reconstruction can use
 // discipline_try_acquire directly when only Player state exists.
-run_try_acquire_discipline :: proc(run: ^Run, id: Discipline_Id) -> Discipline_Acquire_Result {
+run_try_acquire_discipline :: proc(run: ^Run, slot: int, id: Discipline_Id) -> Discipline_Acquire_Result {
 	if run == nil do return .Wrong_Archetype
-	result := discipline_try_acquire(&run.player, id)
+	result := discipline_try_acquire(&run.players[slot], id)
 	if result == .Acquired {
 		if DISCIPLINES[id].path == .Ranger_Beast {
-			refresh_active_spirit_beast(run, discipline_path_rank(&run.player, .Ranger_Beast), player_has_skill_bonus(&run.player, .Spirit_Beast_Bond))
+			refresh_active_spirit_beast(run, slot, discipline_path_rank(&run.players[slot], .Ranger_Beast), player_has_skill_bonus(&run.players[slot], .Spirit_Beast_Bond))
 		} else if id == .Acolyte_Sanguine {
 			for &familiar in run.familiars {
 				if familiar.hp > 0 && (familiar.kind == .Wisp || familiar.kind == .Crow) {

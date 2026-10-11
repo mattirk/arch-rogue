@@ -15,7 +15,7 @@ import ar "../src"
 // Give the player enough survivability to complete a full descent.
 @(private = "file")
 boost_survivability :: proc(run: ^ar.Run) {
-	player := &run.player
+	player := &run.players[0]
 	player.hp = 9999
 	player.max_hp = 9999
 	player.stamina = 999
@@ -58,7 +58,7 @@ clear_floor_enemies :: proc(run: ^ar.Run) {
 	// Tick enough frames for all death sweeps, drops, and victory flags to
 	// settle. A few frames is plenty — sweep_dead_enemies runs each tick.
 	for _ in 0 ..< 10 {
-		if run.player.hp <= 0 do break
+		if run.players[0].hp <= 0 do break
 		ar.sim_tick(run, {})
 	}
 }
@@ -85,7 +85,7 @@ drive_full_run :: proc(seed: u64, archetype: ar.Archetype_Id, difficulty := ar.D
 
 	for run.depth <= ar.DUNGEON_DEPTH {
 		clear_floor_enemies(&run)
-		if run.player.hp <= 0 do return false, run.depth
+		if run.players[0].hp <= 0 do return false, run.depth
 		if run.victory do return true, run.depth
 
 		if run.depth >= ar.DUNGEON_DEPTH {
@@ -164,8 +164,8 @@ mx8_every_boss_depth_spawns_a_boss :: proc(t: ^testing.T) {
 		}
 		if depth >= ar.DUNGEON_DEPTH do break
 		clear_floor_enemies(&run)
-		testing.expectf(t, run.player.hp > 0, "player died on depth %v", depth)
-		if run.player.hp <= 0 do return
+		testing.expectf(t, run.players[0].hp > 0, "player died on depth %v", depth)
+		if run.players[0].hp <= 0 do return
 		ar.run_descend(&run)
 		boost_survivability(&run)
 	}
@@ -245,7 +245,7 @@ mx8_interactable_families_appear_across_descent :: proc(t: ^testing.T) {
 			all_traps := true
 			for k in ar.Trap_Kind { if !trap_kinds_seen[k] { all_traps = false; break } }
 			all_shrines := true
-			for k in ar.Shrine_Kind { if !shrine_kinds_seen[k] { all_shrines = false; break } }
+			for k in ar.Shrine_Kind { if k != .Vigil && !shrine_kinds_seen[k] { all_shrines = false; break } }
 			all_secrets := true
 			for k in ar.Secret_Kind { if !secret_kinds_seen[k] { all_secrets = false; break } }
 			if all_traps && all_shrines && all_secrets && shop_seen && bar_seen && garden_seen do return
@@ -259,6 +259,7 @@ mx8_interactable_families_appear_across_descent :: proc(t: ^testing.T) {
 		testing.expectf(t, trap_kinds_seen[k], "trap kind %v never appeared in 40 seeds", k)
 	}
 	for k in ar.Shrine_Kind {
+		if k == .Vigil do continue // co-op only
 		testing.expectf(t, shrine_kinds_seen[k], "shrine kind %v never appeared in 40 seeds", k)
 	}
 	for k in ar.Secret_Kind {
@@ -321,12 +322,12 @@ mx8_shop_transaction_during_run :: proc(t: ^testing.T) {
 		testing.expect(t, run.has_shopkeeper, "shop must be present")
 		testing.expect(t, run.shopkeeper.stock_count > 0, "shopkeeper must have stock")
 
-		run.player.gold = 9999
+		run.players[0].gold = 9999
 
 		// Buy the first item.
 		bought := false
 		for i in 0 ..< run.shopkeeper.stock_count {
-			result := ar.shop_buy(&run.shopkeeper, &run.player, i)
+			result := ar.shop_buy(&run.shopkeeper, &run.players[0], i)
 			if result.result == .Success {
 				bought = true
 				break
@@ -365,7 +366,7 @@ mx8_bar_refuge_toast_during_run :: proc(t: ^testing.T) {
 		if !has_bar do continue
 
 		toasted_before := run.bars_toasted
-		testing.expect(t, ar.run_toast_bar(&run), "bar toast must succeed on first visit")
+		testing.expect(t, ar.run_toast_bar(&run, 0), "bar toast must succeed on first visit")
 		testing.expect(t, run.bars_toasted == toasted_before + 1, "toast count must increment")
 		return
 	}
@@ -373,7 +374,7 @@ mx8_bar_refuge_toast_during_run :: proc(t: ^testing.T) {
 	run: ar.Run
 	ar.run_start(&run, ar.derive_seed(7, 0), .Warden)
 	defer ar.run_destroy(&run)
-	_ = ar.run_toast_bar(&run)
+	_ = ar.run_toast_bar(&run, 0)
 	testing.expect(t, true, "bar toast API is callable")
 }
 
@@ -386,12 +387,12 @@ mx8_player_death_ends_run :: proc(t: ^testing.T) {
 	defer ar.run_destroy(&run)
 
 	// Make the player fragile.
-	run.player.hp = 1
-	run.player.max_hp = 1
+	run.players[0].hp = 1
+	run.players[0].max_hp = 1
 
 	// Place an enemy right next to the player with no cooldown so it attacks
 	// immediately.
-	enemy := ar.enemy_make(.Ghoul, run.player.pos + {1.0, 0.0}, 1)
+	enemy := ar.enemy_make(.Ghoul, run.players[0].pos + {1.0, 0.0}, 1)
 	enemy.cooldown = 0
 	enemy.aggro_range = 10.0
 	clear(&run.enemies)
@@ -399,11 +400,11 @@ mx8_player_death_ends_run :: proc(t: ^testing.T) {
 
 	// Tick until the enemy attacks and kills the player.
 	for _ in 0 ..< 300 {
-		if run.player.hp <= 0 do break
+		if run.players[0].hp <= 0 do break
 		ar.sim_tick(&run, {})
 	}
 
-	testing.expectf(t, run.player.hp <= 0, "player must die (hp=%v)", run.player.hp)
+	testing.expectf(t, run.players[0].hp <= 0, "player must die (hp=%v)", run.players[0].hp)
 }
 
 // ─── victory: Gate Tyrant death triggers victory ──────────────────────────
@@ -509,7 +510,9 @@ mx8_three_trap_kinds_defined :: proc(t: ^testing.T) {
 
 @(test)
 mx8_seven_shrine_kinds_defined :: proc(t: ^testing.T) {
-	testing.expectf(t, len(ar.Shrine_Kind) == 7, "shrine kind count is %v, want 7", len(ar.Shrine_Kind))
+	// Seven single-player kinds plus the co-op-only Vigil Shrine, kept last.
+	testing.expectf(t, ar.SOLO_SHRINE_KIND_COUNT == 7, "solo shrine kind count is %v, want 7", ar.SOLO_SHRINE_KIND_COUNT)
+	testing.expect(t, int(ar.Shrine_Kind.Vigil) == ar.SOLO_SHRINE_KIND_COUNT, "Vigil must stay the final shrine kind")
 }
 
 // ─── secrets: all six kinds defined (including Cartographer Stash) ─────────
@@ -592,7 +595,7 @@ mx8_all_ten_depths_reachable :: proc(t: ^testing.T) {
 		visited_depths += 1
 		if run.depth >= ar.DUNGEON_DEPTH do break
 		clear_floor_enemies(&run)
-		if run.player.hp <= 0 do break
+		if run.players[0].hp <= 0 do break
 		ar.run_descend(&run)
 		boost_survivability(&run)
 	}
@@ -631,11 +634,11 @@ mx8_kills_grant_xp_and_gold :: proc(t: ^testing.T) {
 	ar.run_start(&run, ar.derive_seed(11, 0), .Warden)
 	defer ar.run_destroy(&run)
 
-	xp_before := run.player.xp
-	gold_before := run.player.gold
+	xp_before := run.players[0].xp
+	gold_before := run.players[0].gold
 
 	clear_floor_enemies(&run)
 
-	testing.expectf(t, run.player.xp > xp_before, "XP must increase from kills (before=%v, after=%v)", xp_before, run.player.xp)
-	testing.expectf(t, run.player.gold > gold_before, "gold must increase from kills (before=%v, after=%v)", gold_before, run.player.gold)
+	testing.expectf(t, run.players[0].xp > xp_before, "XP must increase from kills (before=%v, after=%v)", xp_before, run.players[0].xp)
+	testing.expectf(t, run.players[0].gold > gold_before, "gold must increase from kills (before=%v, after=%v)", gold_before, run.players[0].gold)
 }

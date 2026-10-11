@@ -8,6 +8,7 @@ import "core:math"
 import "core:math/linalg"
 
 SIM_HZ :: 60
+MAX_PLAYERS :: 2
 SIM_DT :: 1.0 / SIM_HZ
 MOUSE_WALK_STOP_RADIUS :: 0.12 // combat/player.py click-to-walk dead zone
 MOUSE_AIM_DEAD_ZONE :: 0.05 // combat/aim.py ignores cursor jitter at the feet
@@ -55,6 +56,9 @@ App_Mode :: enum {
 	Resume_Veil,
 	Dead,
 	Victory,
+	Coop_Menu,  // host/join setup: name, server, code
+	Coop_Lobby, // admission, archetypes, readiness
+	Coop_Wait,  // connecting, initial sync, or reconnect hold
 }
 
 // First-boot Clanker question: the Ask phase holds the Yes/No choice; Depart
@@ -70,6 +74,7 @@ STORY_DECISION_DEPART_SECONDS :: f32(2.8)
 Title_Action :: enum u8 {
 	Resume,
 	New_Run,
+	Co_Op,
 	Chronicle,
 	Options,
 	Quit,
@@ -181,6 +186,12 @@ App :: struct {
 	run_dirty:            bool,
 	run_critical:         bool,
 	run_dirty_serial:     u64,
+	coop:                 Coop_State,
+	coop_ui:              Coop_Ui_State,
+	net_now_ms:           i64, // monotonic platform clock for the co-op reducers
+	// Online co-op is opt-in while it is under development (ARCH_ROGUE_COOP=1
+	// on desktop, ?coop=1 on web); otherwise the title row stays inert.
+	coop_enabled:         bool,
 }
 
 Run :: struct {
@@ -195,7 +206,14 @@ Run :: struct {
 	depth:        int, // 1-based dungeon level
 	difficulty:   Difficulty_Id, // snapshotted at run start; options affect the next run
 	dungeon:      Dungeon,
-	player:       Player,
+	// Fixed two-seat storage. Slot 0 is the solo player / co-op host (p1);
+	// slot 1 is the co-op joiner (p2). Shared code must choose an acting,
+	// target, owner, or local player explicitly rather than assume slot 0.
+	players:      [MAX_PLAYERS]Player,
+	player_count: int, // 1 solo, 2 co-op
+	// Presentation owner on this client: fog, camera, HUD, local input. 0 for
+	// solo and the co-op host, 1 on the joiner. Gameplay never keys off it.
+	local_slot:   int,
 	enemies:      [dynamic]Enemy,
 	next_enemy_id: u32,
 	next_familiar_id: u32,
@@ -214,7 +232,7 @@ Run :: struct {
 	shop_requested: bool,
 	loot_rng:     Pcg32, // kill-drop stream, consumed across the floor's life
 	combat_rng:   Pcg32, // independent crit/proc/familiar stream
-	nav:          Nav_Field, // player-tracking route field (MX.2.3)
+	navs:         [MAX_PLAYERS]Nav_Field, // per-seat route fields (MX.2.3)
 	sfx:          [dynamic]Sfx_Event, // transient; drained by the audio layer each frame
 	feel:         [dynamic]Feel_Event, // deterministic presentation events
 	hitstop_ticks: int, // impact-freeze ticks pending; transient, never saved
@@ -308,6 +326,11 @@ Intent :: struct {
 	chronicle_focus:       Chronicle_Focus,
 	chronicle_focus_valid: bool,
 	mobile_guard_request:  Mobile_Guard_Request,
+	// Text entry for co-op names, server addresses, and room codes: UTF-8
+	// typed (or pasted) this frame plus backspace presses.
+	text:             [64]u8,
+	text_len:         int,
+	text_backspace:   int,
 	descend:          bool, // dev: N
 	new_run:          bool, // dev: R
 	boss_floor:       bool, // dev: B
@@ -512,6 +535,8 @@ aim_outside_dead_zone :: proc(aim: Vec2) -> bool {
 
 app_tick :: proc(app: ^App) {
 	app.tick += 1
+	// Local input always drives this client's own seat.
+	slot := app.run.local_slot
 	if app.mode == .Story_Decision {
 		app.story_decision_elapsed += SIM_DT
 		if app.story_decision_phase == .Depart {
@@ -524,6 +549,10 @@ app_tick :: proc(app: ^App) {
 		app.mode == .Recovery || app.mode == .Abandon_Confirm || app.mode == .Chronicle {
 		return
 	}
+	if coop_is_joiner(app) {
+		coop_joiner_app_tick(app)
+		return
+	}
 	if app_story_turn_page_active(app)&&app.mode!=.Playing do return
 	if app.mode == .Playing {
 		if app_story_world_minigame_active(app) {
@@ -532,7 +561,7 @@ app_tick :: proc(app: ^App) {
 			if app.story_minigame.phase == .Play {
 				move = app.move_input
 				if move=={}&&app.mouse_walk {
-					to_cursor:=app.mouse_target-app.run.player.pos
+					to_cursor:=app.mouse_target-app.run.players[app.run.local_slot].pos
 					if math.hypot(to_cursor.x,to_cursor.y)>MOUSE_WALK_STOP_RADIUS do move=to_cursor
 				}
 			}
@@ -540,7 +569,7 @@ app_tick :: proc(app: ^App) {
 			// locomotion into the hunt. During Play this mirrors ordinary gameplay:
 			// idle cursor/right-stick aim turns the player, while movement owns facing.
 			if move=={}&&app.aim_live&&aim_outside_dead_zone(app.aim_input) {
-				app.run.player.facing=linalg.normalize0(app.aim_input)
+				app.run.players[app.run.local_slot].facing=linalg.normalize0(app.aim_input)
 			}
 			finished:=false
 			if app_story_turn_page_active(app) {finished=turn_page_tick(app,move,SIM_DT)} else {finished=story_soul_hunt_tick(app,move,SIM_DT);app.run.active_ticks+=1}
@@ -562,9 +591,9 @@ app_tick :: proc(app: ^App) {
 	if app.mode == .Playing {
 		if app.death_pending {
 			app.death_timer += SIM_DT
-			player_tick_visual_action(&app.run.player,SIM_DT)
-			app.run.player.prev_pos = app.run.player.pos
-			app.run.player.moving = false
+			player_tick_visual_action(&app.run.players[app.run.local_slot],SIM_DT)
+			app.run.players[app.run.local_slot].prev_pos = app.run.players[app.run.local_slot].pos
+			app.run.players[app.run.local_slot].moving = false
 			if app.death_timer >= PLAYER_DEATH_OVERLAY_DELAY {
 				app.mode = .Dead
 			}
@@ -573,6 +602,9 @@ app_tick :: proc(app: ^App) {
 		// Inventory is a modal pause in the pygame game. UI animation still uses
 		// app.tick, but no cooldown, enemy, projectile, or movement clock advances.
 		if app.inventory_open || app.character_open || app.shop_open do return
+		// Co-op: the partner's shop, a reconnect hold, or an unsynced partner
+		// also freeze the shared world (MULTIPLAYER.md pause rules).
+		if coop_is_host(app) && coop_host_sim_blocked(app) do return
 		app.run.active_ticks += 1
 
 		// An actively pointed device (moved/held mouse, touch aim, right stick)
@@ -580,7 +612,7 @@ app_tick :: proc(app: ^App) {
 		// parked cursor is not live, so stopping keeps the last heading instead
 		// of snapping toward wherever the mouse happens to rest.
 		if app.move_input == {} && app.aim_live && aim_outside_dead_zone(app.aim_input) {
-			app.run.player.facing = linalg.normalize0(app.aim_input)
+			app.run.players[app.run.local_slot].facing = linalg.normalize0(app.aim_input)
 		}
 
 		// A raylib pressed edge may begin and end between two 60 Hz sim ticks.
@@ -588,9 +620,9 @@ app_tick :: proc(app: ^App) {
 		// never lost, even while keyboard movement owns locomotion.
 		if app.mouse_press_pending {
 			attack_aim := app.mouse_press_aim
-			if !aim_outside_dead_zone(attack_aim) do attack_aim = app.run.player.facing
-			if app.run.player.hp > 0 && enemy_in_melee_arc(&app.run, attack_aim) {
-				player_melee(&app.run, attack_aim)
+			if !aim_outside_dead_zone(attack_aim) do attack_aim = app.run.players[app.run.local_slot].facing
+			if app.run.players[app.run.local_slot].hp > 0 && (coop_is_joiner(app) || enemy_in_melee_arc(&app.run, slot, attack_aim)) {
+				_ = app_act(app, .Melee, attack_aim)
 			}
 			app.mouse_press_pending = false
 		}
@@ -598,7 +630,7 @@ app_tick :: proc(app: ^App) {
 		move := app.move_input
 		max_step: f32 = -1
 		if move == {} && app.mouse_walk {
-			to_cursor := app.mouse_target - app.run.player.pos
+			to_cursor := app.mouse_target - app.run.players[app.run.local_slot].pos
 			distance := math.hypot(to_cursor.x, to_cursor.y)
 			if distance > MOUSE_WALK_STOP_RADIUS {
 				move = to_cursor
@@ -609,29 +641,42 @@ app_tick :: proc(app: ^App) {
 		}
 		// The sim resolves movement auto-melee after player movement but before
 		// enemy actions, matching update_player() ordering in the Pygame game.
-		sim_tick_limited(
-			&app.run,
-			move,
-			max_step,
-			auto_melee = app.run.player.hp > 0 && (app.move_input != {} || app.mouse_walk),
-		)
+		inputs: [MAX_PLAYERS]Player_Tick_Input
+		for &input in inputs do input.max_move_step = -1
+		inputs[app.run.local_slot] = {
+			move = move,
+			max_move_step = max_step,
+			auto_melee = app.run.players[app.run.local_slot].hp > 0 && (app.move_input != {} || app.mouse_walk),
+		}
+		if coop_is_host(app) do inputs[1] = coop_host_next_input(app)
+		sim_tick_players(&app.run, inputs)
+		if coop_is_host(app) do coop_host_mark_fallen(app)
 		critical_save:=app.run.critical_save_requested
 		app.run.critical_save_requested=false
 		app_mark_run_dirty(app,critical=critical_save)
 		if app.run.victory {
 			app.mode = .Victory
-			app_request_terminal(app, .Victory)
+			if coop_is_host(app) do coop_host_publish_result(app, .Victory)
+			else do app_request_terminal(app, .Victory)
 			app_clear_play_input(app)
-		} else if app.run.player.hp <= 0 {
+		} else if coop_is_host(app) && !run_any_player_alive(&app.run) {
+			// The run ends only when every seat has fallen.
+			app.death_pending = true
+			app.death_timer = 0
+			app.mobile_utility_open = false
+			coop_host_publish_result(app, .Death)
+			app_clear_play_input(app)
+			sfx_emit(&app.run, .Player_Death)
+		} else if !coop_is_host(app) && app.run.players[app.run.local_slot].hp <= 0 {
 			app.death_pending = true
 			app.death_timer = 0
 			app.mobile_utility_open = false
 			// Death owns the presentation from this point onward.  Combat clocks are
 			// frozen during the authored sequence, so discard the lethal-hit tint
 			// instead of leaving the die/dead clips permanently flashed red.
-			app.run.player.hit_flash = 0
-			app.run.player.hit_flash_duration = 0
-			player_start_visual_action(&app.run.player,.Die,PLAYER_DIE_SECONDS)
+			app.run.players[app.run.local_slot].hit_flash = 0
+			app.run.players[app.run.local_slot].hit_flash_duration = 0
+			player_start_visual_action(&app.run.players[app.run.local_slot],.Die,PLAYER_DIE_SECONDS)
 			app_request_terminal(app, .Death)
 			app_clear_play_input(app)
 			sfx_emit(&app.run, .Player_Death)
@@ -649,7 +694,7 @@ app_clear_play_input :: proc(app: ^App) {
 
 inventory_selected_item :: proc(app: ^App) -> (item: Item, found: bool) {
 	if app == nil do return
-	player := &app.run.player
+	player := &app.run.players[app.run.local_slot]
 	switch app.inv_focus {
 	case .Weapon: return player.weapon, player.has_weapon
 	case .Armor:  return player.armor, player.has_armor
@@ -666,7 +711,7 @@ inventory_move_selection :: proc(app: ^App, delta: int) {
 	row := app.inv_index + 2
 	if app.inv_focus == .Weapon do row = 0
 	if app.inv_focus == .Armor do row = 1
-	row = clamp(row + delta, 0, app.run.player.bag_count + 1)
+	row = clamp(row + delta, 0, app.run.players[app.run.local_slot].bag_count + 1)
 	if row < 2 {
 		if app.inv_focus == .Bag do app.inv_index = 0
 		app.inv_focus = row == 0 ? .Weapon : .Armor
@@ -695,7 +740,7 @@ menu_scroll_list :: proc(index, scroll: ^int, count, visible_rows, delta: int) {
 }
 
 inventory_clamp_selection :: proc(app: ^App) {
-	n := app.run.player.bag_count
+	n := app.run.players[app.run.local_slot].bag_count
 	if n <= 0 {
 		app.inv_index = 0
 		app.inv_scroll = 0
@@ -717,7 +762,7 @@ app_mark_options_changed :: proc(app: ^App, effects: bit_set[Platform_Effect] = 
 
 shop_entry_count :: proc(app: ^App) -> int {
 	if !app.run.has_shopkeeper do return 0
-	return app.shop_mode == .Buy ? app.run.shopkeeper.stock_count : app.run.player.bag_count
+	return app.shop_mode == .Buy ? app.run.shopkeeper.stock_count : app.run.players[app.run.local_slot].bag_count
 }
 
 shop_clamp_selection :: proc(app: ^App) {
@@ -736,7 +781,7 @@ shop_clamp_selection :: proc(app: ^App) {
 }
 
 character_selected_discipline :: proc(app: ^App) -> (Discipline_Id, bool) {
-	path, found := discipline_path_at(app.run.player.archetype, app.discipline_column)
+	path, found := discipline_path_at(app.run.players[app.run.local_slot].archetype, app.discipline_column)
 	if !found do return {}, false
 	return discipline_at(path, app.discipline_degree + 1)
 }
@@ -804,6 +849,7 @@ app_begin_new_run :: proc(app: ^App, archetype: Archetype_Id) {
 
 title_action_enabled :: proc(app: ^App, action: Title_Action) -> bool {
 	if action == .Resume do return app != nil && app.active_run_available
+	if action == .Co_Op do return app != nil && app.coop_enabled
 	return true
 }
 
@@ -836,6 +882,7 @@ app_mark_run_dirty :: proc(app: ^App, critical := false) {
 
 // Returns true when the floor changed and the camera should snap to spawn.
 app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
+	slot := app.run.local_slot // local intents act for this client's own seat
 	// UI feedback is an app-apply result, not persistent app state. Main consumes
 	// it immediately after this reducer returns.
 	app.ui_sfx_bank = {}
@@ -846,7 +893,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 	// Big Hit can never become stuck merely because its key was released there.
 	if intent.action1_released && (app.mode == .Playing || app.mode == .Paused ||
 		app.mode == .Options || app.mode == .Controls) {
-		_ = player_big_hit_release(&app.run.player, &app.run)
+		_ = app_act(app, .Big_Hit_Release)
 	}
 	if intent.toggle_fullscreen && !ARCH_ROGUE_ANDROID {
 		app.options.fullscreen = !app.options.fullscreen
@@ -918,6 +965,8 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 				} else {
 					app.mode = .Select
 				}
+			case .Co_Op:
+				if app.coop_enabled do coop_open_menu(app)
 			case .Chronicle:
 				app.mode = .Chronicle
 				app.chronicle.selected = 0
@@ -1003,7 +1052,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 				app.controls_capture = false
 				app.controls_status = ""
 			case 5:
-				_ = player_big_hit_release(&app.run.player, &app.run)
+				_ = player_big_hit_release(&app.run.players[app.run.local_slot], &app.run)
 				app.options.controller_enabled = !app.options.controller_enabled
 				app_mark_options_changed(app)
 			case 6:
@@ -1045,7 +1094,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 			}
 			if has_input {
 				if result == .Applied {
-					_ = player_big_hit_release(&app.run.player, &app.run)
+					_ = player_big_hit_release(&app.run.players[app.run.local_slot], &app.run)
 					app.controls_capture = false
 					app.controls_status = "Binding saved"
 					app_mark_options_changed(app)
@@ -1079,7 +1128,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 				app.move_input=intent.move;app.aim_input=intent.aim;app.aim_live=intent.aim_live
 				app.mouse_walk=!app.mouse_input_blocked&&intent.mouse_walk&&intent.move=={}
 				app.mouse_target=intent.mouse_target
-				action_aim:=intent.aim;if !aim_outside_dead_zone(action_aim) do action_aim=app.run.player.facing
+				action_aim:=intent.aim;if !aim_outside_dead_zone(action_aim) do action_aim=app.run.players[app.run.local_slot].facing
 				if intent.actions[3] {
 					dashed:=false
 					if app_story_turn_page_active(app) {dashed=turn_page_dash(app,action_aim)} else {dashed=story_soul_hunt_dash(app,action_aim)}
@@ -1102,7 +1151,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 			app.mobile_utility_open = false
 			return false
 		}
-		interaction_available := player_interaction_available(&app.run)
+		interaction_available := player_interaction_available(&app.run, slot)
 		if interaction_available do app.mobile_utility_open = false
 		if intent.toggle_mobile_utility && !interaction_available {
 			app.mobile_utility_open = !app.mobile_utility_open
@@ -1133,7 +1182,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 			app_clear_play_input(app)
 			return false
 		}
-		if intent.open_disciplines && app.run.player.memory_tokens > 0 {
+		if intent.open_disciplines && app.run.players[app.run.local_slot].memory_tokens > 0 {
 			app.mobile_utility_open = false
 			app.character_open = true
 			app.character_tab = .Disciplines
@@ -1159,13 +1208,13 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 			}
 			inventory_move_selection(app, intent.menu_delta)
 			inventory_clamp_selection(app)
-			if app.inv_focus == .Bag && app.run.player.bag_count > 0 {
+			if app.inv_focus == .Bag && app.run.players[app.run.local_slot].bag_count > 0 {
 				if intent.confirm {
-					item_kind := app.run.player.bag[app.inv_index].kind
+					item_kind := app.run.players[app.run.local_slot].bag[app.inv_index].kind
 					equip_attempt := item_kind == .Weapon || item_kind == .Armor
-					equip_allowed := (item_kind == .Weapon && (!app.run.player.has_weapon || !app.run.player.weapon.cursed)) ||
-						(item_kind == .Armor && (!app.run.player.has_armor || !app.run.player.armor.cursed))
-					equip_from_bag(&app.run.player, app.inv_index)
+					equip_allowed := (item_kind == .Weapon && (!app.run.players[app.run.local_slot].has_weapon || !app.run.players[app.run.local_slot].weapon.cursed)) ||
+						(item_kind == .Armor && (!app.run.players[app.run.local_slot].has_armor || !app.run.players[app.run.local_slot].armor.cursed))
+					_ = app_act(app, .Equip, index = app.inv_index)
 					if equip_attempt {
 						app.ui_sfx_bank = equip_allowed ? .Ui_Equip : .Ui_Reject
 						app.ui_sfx_override = true
@@ -1174,7 +1223,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 					inventory_clamp_selection(app)
 				}
 				if intent.inv_drop {
-					if drop_from_bag(&app.run, app.inv_index) do app_mark_run_dirty(app)
+					if app_act(app, .Drop, index = app.inv_index) do app_mark_run_dirty(app)
 					inventory_clamp_selection(app)
 				}
 			}
@@ -1188,12 +1237,12 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 				app.inv_sort_mode = Inventory_Sort_Mode(((int(app.inv_sort_mode) + inv_cycle_sort) % count + count) % count)
 			}
 			if intent.inv_sort || intent.inv_sort_valid || inv_cycle_sort != 0 {
-				sort_bag(&app.run.player, app.inv_sort_mode)
+				_ = app_act(app, .Sort, arg = int(app.inv_sort_mode))
 				inventory_clamp_selection(app)
 			}
 			// Act on the targeted item before scrolling: trackpad inertia arriving
 			// with a click/number shortcut must not redirect use or drop.
-			menu_scroll_list(&app.inv_index, &app.inv_scroll, app.run.player.bag_count, INVENTORY_VISIBLE_ROWS, intent.menu_scroll)
+			menu_scroll_list(&app.inv_index, &app.inv_scroll, app.run.players[app.run.local_slot].bag_count, INVENTORY_VISIBLE_ROWS, intent.menu_scroll)
 			return false
 		}
 
@@ -1226,7 +1275,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 				}
 				if intent.confirm {
 					if id, found := character_selected_discipline(app); found {
-						if run_try_acquire_discipline(&app.run, id)==.Acquired do app_mark_run_dirty(app,critical=true)
+						if app_act(app, .Discipline, arg = int(id)) do app_mark_run_dirty(app,critical=true)
 					}
 				}
 			}
@@ -1248,28 +1297,34 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 				if intent.menu_index_valid do app.shop_index = intent.menu_index
 				app.shop_index = ((app.shop_index + intent.menu_delta) % n + n) % n
 				shop_clamp_selection(app)
-				if intent.confirm {
+				if intent.confirm && coop_is_joiner(app) {
+					// The host validates the trade against this seat and the
+					// shared stock; the result arrives with the next snapshot.
+					_ = app_act(app, app.shop_mode == .Buy ? .Shop_Buy : .Shop_Sell, index = app.shop_index)
+					app.ui_sfx_bank = .Ui_Purchase
+					app.ui_sfx_override = true
+				} else if intent.confirm {
 					transaction: Shop_Transaction
 					if app.shop_mode == .Buy {
-						transaction = shop_buy(&app.run.shopkeeper, &app.run.player, app.shop_index)
+						transaction = shop_buy(&app.run.shopkeeper, &app.run.players[app.run.local_slot], app.shop_index)
 					} else {
-						transaction = shop_sell_bag(&app.run.shopkeeper, &app.run.player, app.shop_index)
+						transaction = shop_sell_bag(&app.run.shopkeeper, &app.run.players[app.run.local_slot], app.shop_index)
 					}
 					if transaction.result == .Success {
 						app_mark_run_dirty(app,critical=true)
 						app.ui_sfx_bank = .Ui_Purchase
 						app.ui_sfx_override = true
 						sfx_emit(&app.run, .Coin_Pickup_Light)
-						append(&app.run.numbers, Damage_Number{pos=app.run.player.pos,kind=.Text,text=app.shop_mode == .Buy ? "Bought" : "Sold"})
+						append(&app.run.numbers, Damage_Number{pos=app.run.players[app.run.local_slot].pos,kind=.Text,text=app.shop_mode == .Buy ? "Bought" : "Sold"})
 					} else {
 						app.ui_sfx_bank = .Ui_Reject
 						app.ui_sfx_override = true
 						if transaction.result == .Insufficient_Gold {
-							append(&app.run.numbers, Damage_Number{pos=app.run.player.pos,kind=.Text,text="Need more gold"})
+							append(&app.run.numbers, Damage_Number{pos=app.run.players[app.run.local_slot].pos,kind=.Text,text="Need more gold"})
 						} else if transaction.result == .Inventory_Full {
-							append(&app.run.numbers, Damage_Number{pos=app.run.player.pos,kind=.Text,text="Inventory full"})
+							append(&app.run.numbers, Damage_Number{pos=app.run.players[app.run.local_slot].pos,kind=.Text,text="Inventory full"})
 						} else if transaction.result == .Potion_Full {
-							append(&app.run.numbers, Damage_Number{pos=app.run.player.pos,kind=.Text,text="Potion limit reached"})
+							append(&app.run.numbers, Damage_Number{pos=app.run.players[app.run.local_slot].pos,kind=.Text,text="Potion limit reached"})
 						}
 					}
 					shop_clamp_selection(app)
@@ -1302,20 +1357,25 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 			app.mouse_press_aim = intent.mouse_press_aim
 		}
 		action_aim := intent.aim
-		if !aim_outside_dead_zone(action_aim) do action_aim = app.run.player.facing
-		if intent.actions[0] do _ = player_big_hit_begin(&app.run, action_aim)
-		if intent.actions[1] do _ = player_cast_bolt(&app.run, action_aim)
-		if intent.actions[2] do _ = player_cast_class_skill(&app.run, action_aim)
-		if intent.actions[3] do _ = player_dash(&app.run, action_aim)
-		if intent.use_heal {player_use_potion(&app.run, .Heal_Potion);app_mark_run_dirty(app)}
-		if intent.use_mana {player_use_potion(&app.run, .Mana_Potion);app_mark_run_dirty(app)}
+		if !aim_outside_dead_zone(action_aim) do action_aim = app.run.players[app.run.local_slot].facing
+		if intent.actions[0] do _ = app_act(app, .Big_Hit_Begin, action_aim)
+		if intent.actions[1] do _ = app_act(app, .Bolt, action_aim)
+		if intent.actions[2] do _ = app_act(app, .Class_Skill, action_aim)
+		if intent.actions[3] do _ = app_act(app, .Dash, action_aim)
+		if intent.use_heal {_ = app_act(app, .Potion_Heal);app_mark_run_dirty(app)}
+		if intent.use_mana {_ = app_act(app, .Potion_Mana);app_mark_run_dirty(app)}
+		if intent.interact && coop_is_joiner(app) {
+			app.mobile_utility_open = false
+			_ = app_act(app, .Interact)
+			return false
+		}
 		if intent.interact {
 			app.mobile_utility_open = false
-			if story_handle_final_stairs_request(&app.run) {
+			if story_handle_final_stairs_request(&app.run, slot) {
 				app_clear_play_input(app)
 				return false
 			}
-			floor_changed = player_interact(&app.run)
+			floor_changed = player_interact(&app.run, slot)
 			// Web persistence encodes synchronously into the IndexedDB mirror. Only a
 			// floor transition needs an immediate checkpoint; ordinary and no-op
 			// interactions use the existing quiet/deadline autosave debounce.
@@ -1337,6 +1397,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 		}
 			return floor_changed
 		}
+		if coop_active(app) do return false // dev floor shortcuts are solo-only
 		if intent.descend {
 			run_descend(&app.run)
 			app_mark_run_dirty(app,critical=true)
@@ -1345,7 +1406,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 		}
 		if intent.new_run {
 			app.seed = derive_seed(app.run.seed, app.tick ~ 0xC0FFEE)
-			app_begin_new_run(app, app.run.player.archetype)
+			app_begin_new_run(app, app.run.players[app.run.local_slot].archetype)
 			app_reset_run_ui(app)
 			_ = app_story_process_requests(app,include_omen=true)
 			return true
@@ -1457,9 +1518,17 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 			app_clear_play_input(app)
 		}
 	case .Dead:
-		if intent.back || intent.confirm do app.mode = .Title
+		if intent.back || intent.confirm {
+			coop_leave(app)
+			app.mode = .Title
+		}
 	case .Victory:
-		if intent.back || intent.confirm do app.mode = .Title
+		if intent.back || intent.confirm {
+			coop_leave(app)
+			app.mode = .Title
+		}
+	case .Coop_Menu, .Coop_Lobby, .Coop_Wait:
+		coop_apply(app, intent, app.net_now_ms)
 	}
 	return false
 }
@@ -1543,7 +1612,26 @@ run_start :: proc(run: ^Run, seed: u64, archetype: Archetype_Id, difficulty := D
 	// Keep floor_epoch monotonic when this Run storage is reused for New Run;
 	// renderer caches must never mistake a new floor for the previous one.
 	run_generate_floor(run)
-	run.player = player_spawn(run, archetype)
+	run.players = {}
+	run.players[HOST_SLOT] = player_spawn(run, archetype)
+	run.player_count = 1
+	run.local_slot = HOST_SLOT
+	refresh_visibility(run)
+}
+
+// Co-op starts exactly like solo for the host seat (same plan, floors, and
+// story generation), then seats the joiner beside the host. Both clients run
+// this from the agreed start so their static world matches.
+run_start_coop :: proc(run: ^Run, seed: u64, archetypes: [MAX_PLAYERS]Archetype_Id, difficulty := DEFAULT_DIFFICULTY, story_enabled := true) {
+	run_start(run, seed, archetypes[HOST_SLOT], difficulty, story_enabled)
+	run.player_count = MAX_PLAYERS
+	for slot in 1 ..< MAX_PLAYERS {
+		partner := player_spawn(run, archetypes[slot])
+		partner.pos = run_seat_spawn_point(run, slot)
+		partner.prev_pos = partner.pos
+		partner.sim_elapsed = run.players[HOST_SLOT].sim_elapsed
+		run.players[slot] = partner
+	}
 	refresh_visibility(run)
 }
 
@@ -1554,17 +1642,50 @@ run_descend :: proc(run: ^Run) {
 }
 
 run_regenerate_floor :: proc(run: ^Run, boss_arena: bool) {
-	was_charging := bighit_charging(&run.player)
+	was_charging := false
+	for slot in 0 ..< run_seat_count(run) do was_charging ||= bighit_charging(&run.players[slot])
 	run_generate_floor(run, boss_arena)
 	if was_charging do sfx_stop_bank(run, .Big_Hit_Charge)
-	run.player.pos = run_spawn_point(run)
-	run.player.prev_pos = run.player.pos
+	for slot in 0 ..< run_seat_count(run) {
+		run.players[slot].pos = run_seat_spawn_point(run, slot)
+		run.players[slot].prev_pos = run.players[slot].pos
+	}
 	story_refresh_relic_guidance(run)
+	for slot in 0 ..< run_seat_count(run) do run_seat_floor_transition(run, slot)
+	refresh_visibility(run)
+	// Arriving at the gate with every generated Bar toasted summons the
+	// immortal dancer (run_flow.py:1002-1004). After the player teleport so
+	// her spawn search runs against valid tiles.
+	if run.depth >= DUNGEON_DEPTH do _ = maybe_summon_bar_dancer(run)
+}
+
+// Arrival points: the host at the spawn-room center, other seats on the
+// nearest open neighbor tile so the pair never stacks.
+run_seat_spawn_point :: proc(run: ^Run, slot: int) -> Vec2 {
+	center := run_spawn_point(run)
+	if slot == HOST_SLOT do return center
+	offsets := [8]Vec2{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, -1}, {1, -1}, {-1, 1}}
+	for offset in offsets {
+		candidate := center + offset
+		if !blocked_for_radius(&run.dungeon, candidate.x, candidate.y, block_stairs = true) do return candidate
+	}
+	return center
+}
+
+@(private = "file")
+run_seat_floor_transition :: proc(run: ^Run, slot: int) {
 	// Pygame treats a floor transition as a clean combat boundary: action
 	// recoveries never leak downstairs, an in-flight Big Hit is cancelled, and
 	// the player receives a quarter-pool breather.  Persistent statuses and the
 	// potion cooldown intentionally survive, matching run_flow.py.
-	player := &run.player
+	player := &run.players[slot]
+	if player.hp <= 0 && run_coop(run) {
+		// Co-op: a fallen partner rises at half health on the next floor,
+		// Hell included (arch-rogue-python/src/arch_rogue/run_flow.py).
+		player.hp = max(1, player.max_hp / 2)
+		player.statuses = {}
+		player.poison_tick = 0
+	}
 	player.melee_timer = 0
 	player.bolt_timer = 0
 	player.dash_timer = 0
@@ -1578,14 +1699,9 @@ run_regenerate_floor :: proc(run: ^Run, boss_arena: bool) {
 	player_clear_visual_action(player)
 	player.hit_flash = 0
 	player.hit_flash_duration = 0
-	run.player.moving = false
-	run.player.stamina = min(f32(player.max_stamina), player.stamina + f32(player.max_stamina) * 0.25)
-	run.player.mana = min(f32(player.max_mana), player.mana + f32(player.max_mana) * 0.25)
-	refresh_visibility(run)
-	// Arriving at the gate with every generated Bar toasted summons the
-	// immortal dancer (run_flow.py:1002-1004). After the player teleport so
-	// her spawn search runs against valid tiles.
-	if run.depth >= DUNGEON_DEPTH do _ = maybe_summon_bar_dancer(run)
+	player.moving = false
+	player.stamina = min(f32(player.max_stamina), player.stamina + f32(player.max_stamina) * 0.25)
+	player.mana = min(f32(player.max_mana), player.mana + f32(player.max_mana) * 0.25)
 }
 
 // Each floor gets its own derived RNG stream, so floor N is identical for a

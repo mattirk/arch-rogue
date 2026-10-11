@@ -136,9 +136,9 @@ generate_save :: proc(scenario: Save_Scenario) -> bool {
 			continue
 		}
 
-		app.run.player.pos = position
-		app.run.player.prev_pos = position
-		app.run.player.facing = {}
+		app.run.players[0].pos = position
+		app.run.players[0].prev_pos = position
+		app.run.players[0].facing = {}
 		if scenario.relic_behind_wall {
 			app.run.story_runtime.requests={}
 			app.run.story_runtime.relic={
@@ -168,7 +168,7 @@ generate_save :: proc(scenario: Save_Scenario) -> bool {
 			ar.run_destroy(&app.run)
 			continue
 		}
-		if scenario.kind == .Bar && ar.string_nearby(&app.run) == nil {
+		if scenario.kind == .Bar && ar.string_nearby(&app.run, 0) == nil {
 			fmt.eprintln("Bar candidate did not place the player within greeting range of String")
 			ar.run_destroy(&app.run)
 			continue
@@ -206,7 +206,7 @@ generate_save :: proc(scenario: Save_Scenario) -> bool {
 		contents_valid := true
 		switch scenario.kind {
 		case .Bar:
-			contents_valid=loaded.run.dungeon.bar_furnishings.count>0&&ar.string_nearby(&loaded.run)!=nil
+			contents_valid=loaded.run.dungeon.bar_furnishings.count>0&&ar.string_nearby(&loaded.run, 0)!=nil
 		case .Garden,.Hall_Of_Unlost_Echoes:
 			contents_valid=loaded.run.ambient_residents.count>0
 		case .Quest:
@@ -223,7 +223,7 @@ generate_save :: proc(scenario: Save_Scenario) -> bool {
 		case .None,.Shop:
 		}
 		music_valid := (scenario.kind != .Bar && scenario.kind != .Garden) || decoded_gain == 1
-		position_valid := ar.special_room_kind_at_point(&loaded.run.dungeon,loaded.run.player.pos.x,loaded.run.player.pos.y) == scenario.kind
+		position_valid := ar.special_room_kind_at_point(&loaded.run.dungeon,loaded.run.players[0].pos.x,loaded.run.players[0].pos.y) == scenario.kind
 		valid := installed && decoded_found && decoded_special.room_index == special.room_index &&
 			music_valid && position_valid && contents_valid
 		ar.run_document_destroy(&document)

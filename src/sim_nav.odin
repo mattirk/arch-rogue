@@ -1,7 +1,7 @@
 package archrogue
 
 // MX.2.3: radius-limited navigation field ported from pygame combat/pathing.py.
-// One field tracks the player (the only pursuit target); it is a unit-cost
+// One field tracks each seat (enemies route on their target's field); it is a unit-cost
 // 8-connected BFS out to NAV_FIELD_RADIUS with a closed-corner rule, rebuilt
 // when the player crosses a tile boundary, the refresh window lapses, or the
 // floor regenerates. Enemies keep greedy straight-line motion whenever the
@@ -38,19 +38,21 @@ nav_probe_furnishing :: proc(d: ^Dungeon, p: Vec2) -> bool {
 }
 
 nav_field_refresh :: proc(run: ^Run, dt: f32) {
-	nav := &run.nav
-	nav.age += dt
-	tile := [2]int{int(run.player.pos.x), int(run.player.pos.y)}
-	if nav.built && nav.floor_epoch == run.floor_epoch && nav.origin == tile &&
-		nav.age <= NAV_REFRESH_SECONDS {
-		return
+	for slot in 0 ..< run_seat_count(run) {
+		nav := &run.navs[slot]
+		nav.age += dt
+		if run.players[slot].hp <= 0 do continue // nobody pursues a fallen seat
+		tile := [2]int{int(run.players[slot].pos.x), int(run.players[slot].pos.y)}
+		if nav.built && nav.floor_epoch == run.floor_epoch && nav.origin == tile &&
+			nav.age <= NAV_REFRESH_SECONDS {
+			continue
+		}
+		nav_field_build(run, nav, tile)
 	}
-	nav_field_build(run, tile)
 }
 
 @(private = "file")
-nav_field_build :: proc(run: ^Run, origin: [2]int) {
-	nav := &run.nav
+nav_field_build :: proc(run: ^Run, nav: ^Nav_Field, origin: [2]int) {
 	nav.origin = origin
 	nav.age = 0
 	nav.floor_epoch = run.floor_epoch
@@ -100,12 +102,12 @@ nav_field_build :: proc(run: ^Run, origin: [2]int) {
 // recently blocked enemy keeps descending the field.
 enemy_nav_direction :: proc(run: ^Run, enemy: ^Enemy) -> (dir: Vec2, routed: bool) {
 	if enemy.big do return {}, false
-	nav := &run.nav
+	nav := &run.navs[enemy.target_slot]
 	if !nav.built || nav.floor_epoch != run.floor_epoch do return {}, false
 	ex, ey := int(enemy.pos.x), int(enemy.pos.y)
 	if !dungeon_in_bounds(ex, ey) do return {}, false
 	d := &run.dungeon
-	target := run.player.pos
+	target := run.players[enemy.target_slot].pos
 	raw := nav.cost[ex][ey]
 	cost := int(raw)
 	if raw != NAV_UNREACHED && cost <= 0 do return {}, false

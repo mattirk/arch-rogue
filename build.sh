@@ -32,6 +32,11 @@ case "$cmd" in
     esac
     odin test tests "-out:$test_output" -vet -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true "${test_platform_flags[@]}" "$@"
     ;;
+  relay)             verify_toolchain odin; odin build tools/relay -out:build/archrogue_relay -vet -o:speed "$@" ;;
+  relay-test)        verify_toolchain odin; odin test tools/relay/core -out:build/archrogue_relay_tests -vet -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true "$@" ;;
+  net-deps)          exec bash ./tools/multiplayer/build_libwebsockets.sh "$@" ;;
+  coop-soak)         exec bash ./tools/coop_soak.sh "$@" ;;
+  coop-playtest)     exec bash ./tools/coop_playtest.sh "$@" ;;
   android-preflight) exec bash ./tools/android.sh preflight "$@" ;;
   android-debug)     exec bash ./tools/android.sh debug "$@" ;;
   android-release)   exec bash ./tools/android.sh release "$@" ;;
@@ -48,7 +53,7 @@ case "$cmd" in
   windows-audit)     exec python3 ./tools/windows/audit.py "$@" ;;
   steam-windows)     exec python3 ./tools/steam/build_steam_windows.py "$@" ;;
   *)
-    echo "usage: build.sh [toolchain|run|build|release|check|test|android-preflight|android-debug|android-release|android-install|android-audit|android-smoke|web-preflight|web-build|web-audit|web-serve|windows-release|windows-package|windows-audit|steam-linux|steam-windows] [args]" >&2
+    echo "usage: build.sh [toolchain|run|build|release|check|test|relay|relay-test|net-deps|coop-soak|coop-playtest|android-preflight|android-debug|android-release|android-install|android-audit|android-smoke|web-preflight|web-build|web-audit|web-serve|windows-release|windows-package|windows-audit|steam-linux|steam-windows] [args]" >&2
     exit 2
     ;;
 esac

@@ -99,6 +99,7 @@ Familiar_Command :: enum u8 {
 // replacing the runtime model or changing saves later.
 Familiar :: struct {
 	entity_id:         u32, // stable for presentation and future network identity
+	owner_slot:        u8,  // summoning player: commands, petting, and kill credit
 	kind:              Familiar_Kind,
 	command:           Familiar_Command,
 	spirit_rank:       int,
@@ -243,7 +244,7 @@ make_familiar :: proc(stats: Familiar_Stats, pos, facing: Vec2, spirit_rank: int
 }
 
 @(private = "file")
-spirit_call_spawn_valid :: proc(run: ^Run, pos: Vec2, chosen: []Vec2) -> bool {
+spirit_call_spawn_valid :: proc(run: ^Run, slot: int, pos: Vec2, chosen: []Vec2) -> bool {
 	if blocked_for_radius(
 		&run.dungeon,
 		pos.x,
@@ -253,7 +254,7 @@ spirit_call_spawn_valid :: proc(run: ^Run, pos: Vec2, chosen: []Vec2) -> bool {
 	) {
 		return false
 	}
-	if !line_of_sight(&run.dungeon, run.player.pos.x, run.player.pos.y, pos.x, pos.y) do return false
+	if !line_of_sight(&run.dungeon, run.players[slot].pos.x, run.players[slot].pos.y, pos.x, pos.y) do return false
 
 	minimum_gap_sq := SPIRIT_CALL_SPAWN_SEPARATION * SPIRIT_CALL_SPAWN_SEPARATION
 	for other in chosen {
@@ -270,7 +271,7 @@ spirit_call_spawn_valid :: proc(run: ^Run, pos: Vec2, chosen: []Vec2) -> bool {
 }
 
 @(private = "file")
-spirit_call_spawn_positions :: proc(run: ^Run, count: int) -> (positions: [SPIRIT_CALL_MAX_FAMILIARS]Vec2, found: bool) {
+spirit_call_spawn_positions :: proc(run: ^Run, slot: int, count: int) -> (positions: [SPIRIT_CALL_MAX_FAMILIARS]Vec2, found: bool) {
 	if run == nil || count <= 0 || count > len(positions) do return {}, false
 	angle_offsets := [8]f32{
 		0,
@@ -290,8 +291,8 @@ spirit_call_spawn_positions :: proc(run: ^Run, count: int) -> (positions: [SPIRI
 		for distance in distances {
 			for offset in angle_offsets {
 				angle := base_angle + offset
-				candidate := run.player.pos + Vec2{math.cos(angle), math.sin(angle)} * distance
-				if !spirit_call_spawn_valid(run, candidate, positions[:index]) do continue
+				candidate := run.players[slot].pos + Vec2{math.cos(angle), math.sin(angle)} * distance
+				if !spirit_call_spawn_valid(run, slot, candidate, positions[:index]) do continue
 				positions[index] = candidate
 				placed = true
 				break
@@ -302,13 +303,13 @@ spirit_call_spawn_positions :: proc(run: ^Run, count: int) -> (positions: [SPIRI
 		// Irregular rooms can block every orbit sample. Search nearby floor centers
 		// deterministically before rejecting the cast; no gameplay RNG is consumed.
 		if !placed {
-			tile_x, tile_y := int(run.player.pos.x), int(run.player.pos.y)
+			tile_x, tile_y := int(run.players[slot].pos.x), int(run.players[slot].pos.y)
 			for radius in 1 ..= 3 {
 				for offset_y in -radius ..= radius {
 					for offset_x in -radius ..= radius {
 						if max(abs(offset_x), abs(offset_y)) != radius do continue
 						candidate := Vec2{f32(tile_x + offset_x) + 0.5, f32(tile_y + offset_y) + 0.5}
-						if !spirit_call_spawn_valid(run, candidate, positions[:index]) do continue
+						if !spirit_call_spawn_valid(run, slot, candidate, positions[:index]) do continue
 						positions[index] = candidate
 						placed = true
 						break
@@ -323,20 +324,20 @@ spirit_call_spawn_positions :: proc(run: ^Run, count: int) -> (positions: [SPIRI
 	return positions, true
 }
 
-player_cast_spirit_call :: proc(run: ^Run) -> bool {
+player_cast_spirit_call :: proc(run: ^Run, slot: int) -> bool {
 	if run == nil do return false
-	return player_cast_spirit_call_rank(run, discipline_path_rank(&run.player, .Acolyte_Spirit))
+	return player_cast_spirit_call_rank(run, slot, discipline_path_rank(&run.players[slot], .Acolyte_Spirit))
 }
 
-player_cast_spirit_call_rank :: proc(run: ^Run, spirit_rank: int) -> bool {
+player_cast_spirit_call_rank :: proc(run: ^Run, slot: int, spirit_rank: int) -> bool {
 	if run == nil do return false
-	player := &run.player
+	player := &run.players[slot]
 	if player.archetype != .Acolyte do return false
 	mana_cost := player_class_skill_mana_cost(player)
 	if player.class_skill_timer > 0 || player.mana < mana_cost do return false
 
 	stats := spirit_call_stats(spirit_rank)
-	spawn_positions, found := spirit_call_spawn_positions(run, stats.count)
+	spawn_positions, found := spirit_call_spawn_positions(run, slot, stats.count)
 	if !found do return false
 	player.mana -= mana_cost
 	player.class_skill_timer = player_class_skill_cooldown(player)
@@ -345,7 +346,7 @@ player_cast_spirit_call_rank :: proc(run: ^Run, spirit_rank: int) -> bool {
 		run,.Summon,player.pos,ARCHETYPE_SKILL_COLORS[.Acolyte],.48,.82,
 		phase=.Origin,style=.Acolyte,priority=.High,
 	)
-	clear_summoned_familiars(run) // recasting recreates and fully refreshes the host
+	clear_summoned_familiars(run, slot) // recasting recreates and fully refreshes the host
 
 	for index in 0 ..< stats.count {
 		pos := spawn_positions[index]
@@ -353,6 +354,7 @@ player_cast_spirit_call_rank :: proc(run: ^Run, spirit_rank: int) -> bool {
 		// Crow Lord marks only the lead familiar as champion.
 		familiar_stats.champion = stats.champion && index == 0
 		familiar := make_familiar(familiar_stats, pos, player.facing, spirit_rank)
+		familiar.owner_slot = u8(slot)
 		run.next_familiar_id += 1
 		if run.next_familiar_id == 0 do run.next_familiar_id = 1
 		familiar.entity_id = run.next_familiar_id
@@ -368,9 +370,10 @@ player_cast_spirit_call_rank :: proc(run: ^Run, spirit_rank: int) -> bool {
 	return true
 }
 
-living_spirit_beast :: proc(run: ^Run) -> ^Familiar {
+// Each Ranger owns, commands, and pets only their own beast.
+living_spirit_beast :: proc(run: ^Run, slot: int) -> ^Familiar {
 	for &familiar in run.familiars {
-		if familiar.kind == .Spirit_Beast && familiar.hp > 0 do return &familiar
+		if familiar.kind == .Spirit_Beast && familiar.hp > 0 && int(familiar.owner_slot) == slot do return &familiar
 	}
 	return nil
 }
@@ -381,23 +384,23 @@ spirit_beast_pet_heal :: proc(player: ^Player) -> int {
 
 // Readiness (interactions.py:340-364): Ranger only, beast alive and off its
 // petting cooldown, strictly within range, LOS-connected.
-nearby_pettable_spirit_beast :: proc(run: ^Run) -> ^Familiar {
-	if run.player.archetype != .Ranger do return nil
-	beast := living_spirit_beast(run)
+nearby_pettable_spirit_beast :: proc(run: ^Run, slot: int) -> ^Familiar {
+	if run.players[slot].archetype != .Ranger do return nil
+	beast := living_spirit_beast(run, slot)
 	if beast == nil || beast.pet_cooldown > 0 do return nil
-	delta := beast.pos - run.player.pos
+	delta := beast.pos - run.players[slot].pos
 	if delta.x * delta.x + delta.y * delta.y >= SPIRIT_BEAST_PET_RANGE * SPIRIT_BEAST_PET_RANGE do return nil
-	if !line_of_sight(&run.dungeon, run.player.pos.x, run.player.pos.y, beast.pos.x, beast.pos.y) do return nil
+	if !line_of_sight(&run.dungeon, run.players[slot].pos.x, run.players[slot].pos.y, beast.pos.x, beast.pos.y) do return nil
 	return beast
 }
 
 // The petting slice (interactions.py:386-430): paired pose — the Ranger and
 // the beast face each other and both stand still for the clip — plus the
 // doubled heal, the cooldown, and the floater.
-pet_spirit_beast :: proc(run: ^Run) -> bool {
-	beast := nearby_pettable_spirit_beast(run)
+pet_spirit_beast :: proc(run: ^Run, slot: int) -> bool {
+	beast := nearby_pettable_spirit_beast(run, slot)
 	if beast == nil do return false
-	player := &run.player
+	player := &run.players[slot]
 	direction := beast.pos - player.pos
 	if n := math.hypot(direction.x, direction.y); n > 0.001 {
 		unit := direction / n
@@ -418,9 +421,9 @@ pet_spirit_beast :: proc(run: ^Run) -> bool {
 	return true
 }
 
-refresh_active_spirit_beast :: proc(run: ^Run, beast_rank: int, equipment_bonus := false) {
+refresh_active_spirit_beast :: proc(run: ^Run, slot: int, beast_rank: int, equipment_bonus := false) {
 	if run == nil do return
-	beast := living_spirit_beast(run)
+	beast := living_spirit_beast(run, slot)
 	if beast == nil do return
 	stats := spirit_beast_stats(beast_rank, equipment_bonus)
 	hp_gain := max(0, stats.hp - beast.max_hp)
@@ -433,23 +436,23 @@ refresh_active_spirit_beast :: proc(run: ^Run, beast_rank: int, equipment_bonus 
 	beast.spirit_rank = clamp(beast_rank, 0, 5)
 }
 
-spirit_beast_next_command :: proc(run: ^Run) -> (command: Familiar_Command, available: bool) {
-	beast := living_spirit_beast(run)
+spirit_beast_next_command :: proc(run: ^Run, slot: int) -> (command: Familiar_Command, available: bool) {
+	beast := living_spirit_beast(run, slot)
 	if beast == nil do return {}, false
 	return beast.command == .Follow ? .Attack : .Follow, true
 }
 
 @(private = "file")
-spirit_beast_spawn_valid :: proc(run: ^Run, pos: Vec2) -> bool {
-	delta := pos - run.player.pos
+spirit_beast_spawn_valid :: proc(run: ^Run, slot: int, pos: Vec2) -> bool {
+	delta := pos - run.players[slot].pos
 	if delta.x * delta.x + delta.y * delta.y < SPIRIT_BEAST_MIN_SPAWN_DISTANCE * SPIRIT_BEAST_MIN_SPAWN_DISTANCE {
 		return false
 	}
 	if blocked_for_radius(&run.dungeon, pos.x, pos.y, SPIRIT_BEAST_COLLISION_RADIUS) do return false
-	return line_of_sight(&run.dungeon, run.player.pos.x, run.player.pos.y, pos.x, pos.y)
+	return line_of_sight(&run.dungeon, run.players[slot].pos.x, run.players[slot].pos.y, pos.x, pos.y)
 }
 
-spirit_beast_spawn_position :: proc(run: ^Run) -> (pos: Vec2, found: bool) {
+spirit_beast_spawn_position :: proc(run: ^Run, slot: int) -> (pos: Vec2, found: bool) {
 	angle_offsets := [8]f32{
 		0,
 		math.PI / 4,
@@ -464,20 +467,20 @@ spirit_beast_spawn_position :: proc(run: ^Run) -> (pos: Vec2, found: bool) {
 	for distance in distances {
 		for offset in angle_offsets {
 			angle := 0.7 + offset
-			candidate := run.player.pos + Vec2{math.cos(angle), math.sin(angle)} * distance
-			if spirit_beast_spawn_valid(run, candidate) do return candidate, true
+			candidate := run.players[slot].pos + Vec2{math.cos(angle), math.sin(angle)} * distance
+			if spirit_beast_spawn_valid(run, slot, candidate) do return candidate, true
 		}
 	}
 
 	// Cramped/corrupt maps fall back to nearby floor centers, but resources
 	// are not committed unless one is radius-clear and LOS-connected.
-	tile_x, tile_y := int(run.player.pos.x), int(run.player.pos.y)
+	tile_x, tile_y := int(run.players[slot].pos.x), int(run.players[slot].pos.y)
 	for radius in 1 ..= 3 {
 		for offset_y in -radius ..= radius {
 			for offset_x in -radius ..= radius {
 				if max(abs(offset_x), abs(offset_y)) != radius do continue
 				candidate := Vec2{f32(tile_x + offset_x) + 0.5, f32(tile_y + offset_y) + 0.5}
-				if spirit_beast_spawn_valid(run, candidate) do return candidate, true
+				if spirit_beast_spawn_valid(run, slot, candidate) do return candidate, true
 			}
 		}
 	}
@@ -486,20 +489,20 @@ spirit_beast_spawn_position :: proc(run: ^Run) -> (pos: Vec2, found: bool) {
 
 // Fresh-game entry point. A living beast turns slot 3 into a free command,
 // regardless of its replacement timer or the Ranger's current mana.
-player_cast_spirit_beast :: proc(run: ^Run) -> bool {
+player_cast_spirit_beast :: proc(run: ^Run, slot: int) -> bool {
 	// Beastlord Harness feeds the equipment bond (familiars.py:143-145).
 	return player_cast_spirit_beast_rank(
-		run,
-		discipline_path_rank(&run.player, .Ranger_Beast),
-		player_has_skill_bonus(&run.player, .Spirit_Beast_Bond),
+		run, slot,
+		discipline_path_rank(&run.players[slot], .Ranger_Beast),
+		player_has_skill_bonus(&run.players[slot], .Spirit_Beast_Bond),
 	)
 }
 
-player_cast_spirit_beast_rank :: proc(run: ^Run, beast_rank: int, equipment_bonus := false) -> bool {
-	player := &run.player
+player_cast_spirit_beast_rank :: proc(run: ^Run, slot: int, beast_rank: int, equipment_bonus := false) -> bool {
+	player := &run.players[slot]
 	if player.archetype != .Ranger do return false
 
-	if beast := living_spirit_beast(run); beast != nil {
+	if beast := living_spirit_beast(run, slot); beast != nil {
 		beast.command = beast.command == .Follow ? .Attack : .Follow
 		if beast.command == .Follow do beast.attack_anim_timer = 0
 		text := beast.command == .Attack ? "Spirit Beast: Attack" : "Spirit Beast: Return"
@@ -515,7 +518,7 @@ player_cast_spirit_beast_rank :: proc(run: ^Run, beast_rank: int, equipment_bonu
 
 	mana_cost := player_class_skill_mana_cost(player)
 	if player.class_skill_timer > 0 || player.mana < mana_cost do return false
-	spawn, found := spirit_beast_spawn_position(run)
+	spawn, found := spirit_beast_spawn_position(run, slot)
 	if !found do return false
 
 	stats := spirit_beast_stats(beast_rank, equipment_bonus)
@@ -526,8 +529,9 @@ player_cast_spirit_beast_rank :: proc(run: ^Run, beast_rank: int, equipment_bonu
 		run,.Summon,player.pos,ARCHETYPE_SKILL_COLORS[.Ranger],.48,.82,
 		phase=.Origin,style=.Ranger,priority=.High,
 	)
-	clear_summoned_familiars(run)
+	clear_summoned_familiars(run, slot)
 	beast := make_familiar(stats, spawn, player.facing, beast_rank)
+	beast.owner_slot = u8(slot)
 	run.next_familiar_id += 1
 	if run.next_familiar_id == 0 do run.next_familiar_id = 1
 	beast.entity_id = run.next_familiar_id
@@ -579,7 +583,7 @@ move_familiar :: proc(run: ^Run, familiar: ^Familiar, delta: Vec2) -> f32 {
 
 	// Soft owner separation keeps a companion orbiting rather than occupying
 	// the player's feet. Pygame applies this after wall probes as well.
-	from_owner := familiar.pos - run.player.pos
+	from_owner := familiar.pos - run.players[familiar.owner_slot].pos
 	distance := math.hypot(from_owner.x, from_owner.y)
 	if distance > 0.001 && distance < FAMILIAR_OWNER_SEPARATION {
 		candidate := familiar.pos + from_owner / distance * (FAMILIAR_OWNER_SEPARATION - distance)
@@ -606,7 +610,7 @@ advance_familiar_locomotion :: proc(familiar: ^Familiar, distance, dt: f32) {
 
 @(private = "file")
 follow_player :: proc(run: ^Run, familiar: ^Familiar, dt: f32) {
-	delta := run.player.pos - familiar.pos
+	delta := run.players[familiar.owner_slot].pos - familiar.pos
 	distance := math.hypot(delta.x, delta.y)
 	follow_distance := FAMILIAR_FOLLOW_DISTANCE
 	if familiar.kind == .Spirit_Beast {
@@ -635,7 +639,8 @@ regenerate_familiar :: proc(familiar: ^Familiar, dt: f32) {
 @(private = "file")
 familiar_attack :: proc(run: ^Run, familiar: ^Familiar, enemy: ^Enemy) {
 	if !line_of_sight(&run.dungeon, familiar.pos.x, familiar.pos.y, enemy.pos.x, enemy.pos.y) do return
-	player := &run.player
+	slot := int(familiar.owner_slot) // kill credit and owner build riders
+	player := &run.players[slot]
 	familiar.attack_timer = familiar.attack_cooldown
 	familiar.attack_anim_timer = FAMILIAR_ATTACK_ANIMATION_TIME
 	damage := familiar.damage + rng_range(&run.combat_rng, 0, 3)
@@ -650,7 +655,7 @@ familiar_attack :: proc(run: ^Run, familiar: ^Familiar, enemy: ^Enemy) {
 			damage = int(math.round(f32(damage) * 1.35))
 		}
 		bite_type: Damage_Type = player_has_discipline(player, .Ranger_Spirit_Companion) ? .Arcane : .Physical
-		damage_enemy_typed(run, enemy, max(1, damage), bite_type)
+		damage_enemy_typed(run, slot, enemy, max(1, damage), bite_type)
 		if player_has_discipline(player, .Ranger_Alpha) && enemy.hp > 0 && familiar.facing != {} {
 			slide_move(&run.dungeon, &enemy.pos, familiar.facing * 0.22)
 		}
@@ -659,7 +664,7 @@ familiar_attack :: proc(run: ^Run, familiar: ^Familiar, enemy: ^Enemy) {
 		// class-summoned spirit hosts remain shadow damage.
 		physical := familiar.kind == .Bar_Dancer || familiar.kind == .Soulless_Clanker || familiar.kind == .String
 		strike_type: Damage_Type = physical ? .Physical : .Shadow
-		_ = damage_enemy_direct(run, enemy, max(1, damage), strike_type)
+		_ = damage_enemy_direct(run, slot, enemy, max(1, damage), strike_type)
 		if familiar.kind == .Soulless_Clanker {
 			sfx_emit(run,.Soulless_Clanker,familiar.pos,spatial=true,emitter_id=u64(familiar.entity_id))
 		}
@@ -667,7 +672,7 @@ familiar_attack :: proc(run: ^Run, familiar: ^Familiar, enemy: ^Enemy) {
 	// Blood-bound familiars siphon health to the Acolyte on every hit; the
 	// ladder reads live so later Blood purchases deepen an existing host's
 	// drain (familiars.py:711-726).
-	if familiar.lifesteal && player.hp < player.max_hp {
+	if familiar.lifesteal && player.hp > 0 && player.hp < player.max_hp {
 		if leech := acolyte_spell_leech(player); leech > 0 {
 			heal := min(player.max_hp - player.hp, leech)
 			player.hp += heal
@@ -749,11 +754,13 @@ tick_familiars_dt :: proc(run: ^Run, dt: f32) {
 
 // Recasting a class summon replaces the caster's own hosts. Recruited room
 // companions and the Bar Dancer reward are not summon slots, so they survive.
-clear_summoned_familiars :: proc(run: ^Run) {
+clear_summoned_familiars :: proc(run: ^Run, slot: int) {
 	write := 0
 	for read in 0 ..< len(run.familiars) {
 		kind := run.familiars[read].kind
-		if kind != .Bar_Dancer && kind != .Soulless_Clanker && kind != .String do continue
+		summoned := kind != .Bar_Dancer && kind != .Soulless_Clanker && kind != .String
+		// A recast refreshes only the caster's own summons.
+		if summoned && int(run.familiars[read].owner_slot) == slot do continue
 		if write != read do run.familiars[write] = run.familiars[read]
 		write += 1
 	}
@@ -770,7 +777,7 @@ living_soulless_clanker :: proc(run: ^Run) -> ^Familiar {
 	return nil
 }
 
-soulless_clanker_join :: proc(run: ^Run, resident: ^Ambient_Room_Npc) -> bool {
+soulless_clanker_join :: proc(run: ^Run, slot: int, resident: ^Ambient_Room_Npc) -> bool {
 	if run == nil || resident == nil || !resident.active || resident.kind != .Soulless_Clanker do return false
 	if living_soulless_clanker(run) != nil do return false
 	clanker := make_familiar(Familiar_Stats{
@@ -785,6 +792,7 @@ soulless_clanker_join :: proc(run: ^Run, resident: ^Ambient_Room_Npc) -> bool {
 	if run.next_familiar_id == 0 do run.next_familiar_id = 1
 	clanker.entity_id = run.next_familiar_id
 	clanker.attack_anim_timer = FAMILIAR_ATTACK_ANIMATION_TIME
+	clanker.owner_slot = u8(slot) // the greeter recruits and is credited
 	append(&run.familiars,clanker)
 	resident.active = false
 	return true
@@ -798,7 +806,7 @@ living_string :: proc(run: ^Run) -> ^Familiar {
 	return nil
 }
 
-string_join :: proc(run: ^Run, resident: ^Ambient_Room_Npc) -> bool {
+string_join :: proc(run: ^Run, slot: int, resident: ^Ambient_Room_Npc) -> bool {
 	if run == nil || resident == nil || !resident.active || resident.kind != .String do return false
 	if living_string(run) != nil do return false
 	guitarist := make_familiar(Familiar_Stats{
@@ -813,6 +821,7 @@ string_join :: proc(run: ^Run, resident: ^Ambient_Room_Npc) -> bool {
 	if run.next_familiar_id == 0 do run.next_familiar_id = 1
 	guitarist.entity_id = run.next_familiar_id
 	guitarist.attack_anim_timer = FAMILIAR_ATTACK_ANIMATION_TIME
+	guitarist.owner_slot = u8(slot)
 	append(&run.familiars,guitarist)
 	resident.active = false
 	return true
@@ -824,8 +833,10 @@ maybe_summon_bar_dancer :: proc(run: ^Run) -> bool {
 	for &familiar in run.familiars {
 		if familiar.kind == .Bar_Dancer && familiar.hp > 0 do return false
 	}
-	pos, found := spirit_beast_spawn_position(run)
-	if !found do pos = run.player.pos
+	// The party's reveler arrives beside the host seat.
+	slot := HOST_SLOT
+	pos, found := spirit_beast_spawn_position(run, slot)
+	if !found do pos = run.players[slot].pos
 	dancer := make_familiar(Familiar_Stats{
 		hp = BAR_DANCER_HP,
 		damage = BAR_DANCER_DAMAGE,
@@ -834,13 +845,13 @@ maybe_summon_bar_dancer :: proc(run: ^Run) -> bool {
 		count = 1,
 		kind = .Bar_Dancer,
 		unkillable = true,
-	}, pos, run.player.facing, 0)
+	}, pos, run.players[slot].facing, 0)
 	run.next_familiar_id += 1
 	if run.next_familiar_id == 0 do run.next_familiar_id = 1
 	dancer.entity_id = run.next_familiar_id
 	append(&run.familiars, dancer)
 	feel_emit(run, .Summon, pos, BAR_DANCER_ACCENT, 0.48, 0.72, phase=.Arrival, priority=.High)
-	append(&run.numbers, Damage_Number{pos = run.player.pos, kind = .Text, text = "The Bar Dancer joins you: every bar toasted!"})
+	append(&run.numbers, Damage_Number{pos = run.players[slot].pos, kind = .Text, text = "The Bar Dancer joins you: every bar toasted!"})
 	return true
 }
 

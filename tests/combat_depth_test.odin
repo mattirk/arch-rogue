@@ -20,9 +20,9 @@ m8_prepare_arena :: proc(run: ^ar.Run) {
 	for x in 6 ..= 18 {
 		for y in 6 ..= 16 do run.dungeon.tiles[x][y] = .Floor
 	}
-	run.player.pos = {10.5, 10.5}
-	run.player.prev_pos = run.player.pos
-	run.player.facing = {1, 0}
+	run.players[0].pos = {10.5, 10.5}
+	run.players[0].prev_pos = run.players[0].pos
+	run.players[0].facing = {1, 0}
 	clear(&run.enemies)
 	clear(&run.projectiles)
 	clear(&run.familiars)
@@ -198,9 +198,9 @@ m8_enemy_attacks_keep_committed_hits_aim_type_and_variance :: proc(t: ^testing.T
 	ar.run_start(&run, ar.derive_seed(7331, 0), .Rogue)
 	defer ar.run_destroy(&run)
 	m8_prepare_arena(&run)
-	run.player.has_armor = false
-	run.player.hp = 200
-	run.player.max_hp = 200
+	run.players[0].has_armor = false
+	run.players[0].hp = 200
+	run.players[0].max_hp = 200
 
 	// A committed base swing lands after the player leaves its reach.
 	enemy := ar.enemy_make(.Ghoul, {10.5,10.5}, 1)
@@ -212,16 +212,16 @@ m8_enemy_attacks_keep_committed_hits_aim_type_and_variance :: proc(t: ^testing.T
 	append(&run.enemies, enemy)
 	rng_copy := run.combat_rng
 	expected := enemy.damage + ar.rng_range(&rng_copy,-2,3)
-	run.player.pos = {16.5,10.5}
-	hp_before := run.player.hp
+	run.players[0].pos = {16.5,10.5}
+	hp_before := run.players[0].hp
 	ar.sim_tick(&run,{})
-	testing.expectf(t, hp_before-run.player.hp == expected, "committed base melee dealt %v, want %v", hp_before-run.player.hp, expected)
+	testing.expectf(t, hp_before-run.players[0].hp == expected, "committed base melee dealt %v, want %v", hp_before-run.players[0].hp, expected)
 
 	// Authored strikes round first, roll the same variance, inherit their
 	// owner's type, and likewise cannot be walked out of during the tell.
 	m8_prepare_arena(&run)
-	run.player.has_armor = false
-	run.player.hp = 200
+	run.players[0].has_armor = false
+	run.players[0].hp = 200
 	enemy = ar.enemy_make(.Gate_Warden,{10.5,10.5},1)
 	enemy.damage = 19
 	enemy.damage_type = .Shadow
@@ -234,16 +234,16 @@ m8_enemy_attacks_keep_committed_hits_aim_type_and_variance :: proc(t: ^testing.T
 	append(&run.enemies,enemy)
 	rng_copy = run.combat_rng
 	expected = int(math.round(f32(enemy.damage)*ar.ABILITY_DEFS[.Gate_Strike].dmg_mult)) + ar.rng_range(&rng_copy,-2,3)
-	run.player.pos = {16.5,10.5}
-	hp_before = run.player.hp
+	run.players[0].pos = {16.5,10.5}
+	hp_before = run.players[0].hp
 	ar.sim_tick(&run,{})
-	testing.expectf(t, hp_before-run.player.hp == expected, "committed authored strike dealt %v, want %v", hp_before-run.player.hp, expected)
+	testing.expectf(t, hp_before-run.players[0].hp == expected, "committed authored strike dealt %v, want %v", hp_before-run.players[0].hp, expected)
 	testing.expect(t, run.numbers[len(run.numbers)-1].damage_type == .Shadow, "authored strike must inherit the enemy's damage type")
 
 	// Bolt and fan tells snapshot aim; moving during the windup does not bend
 	// the projectile toward the player's new position.
 	m8_prepare_arena(&run)
-	run.player.pos = {10.5,14.5}
+	run.players[0].pos = {10.5,14.5}
 	enemy = ar.enemy_make(.Rune_Sentinel,{10.5,10.5},1)
 	enemy.abilities[0] = .Arcane_Lance
 	enemy.ability_count = 1
@@ -262,8 +262,8 @@ m8_enemy_attacks_keep_committed_hits_aim_type_and_variance :: proc(t: ^testing.T
 	// Novas intentionally check the live radius, but use rounded damage and
 	// their own per-victim variance once the player remains inside it.
 	m8_prepare_arena(&run)
-	run.player.has_armor = false
-	run.player.hp = 200
+	run.players[0].has_armor = false
+	run.players[0].hp = 200
 	enemy = ar.enemy_make(.Ash_Hound,{10.5,10.5},1)
 	enemy.damage = 17
 	enemy.damage_type = .Fire
@@ -276,10 +276,10 @@ m8_enemy_attacks_keep_committed_hits_aim_type_and_variance :: proc(t: ^testing.T
 	append(&run.enemies,enemy)
 	rng_copy = run.combat_rng
 	expected = int(math.round(f32(enemy.damage)*ar.ABILITY_DEFS[.Ember_Nova].dmg_mult)) + ar.rng_range(&rng_copy,-2,3)
-	run.player.pos = {11.5,10.5}
-	hp_before = run.player.hp
+	run.players[0].pos = {11.5,10.5}
+	hp_before = run.players[0].hp
 	ar.sim_tick(&run,{})
-	testing.expectf(t, hp_before-run.player.hp == expected, "nova dealt %v, want rounded+variance %v", hp_before-run.player.hp, expected)
+	testing.expectf(t, hp_before-run.players[0].hp == expected, "nova dealt %v, want rounded+variance %v", hp_before-run.players[0].hp, expected)
 }
 
 @(test)
@@ -305,12 +305,12 @@ m8_canonical_bolt_cost_cooldown_type_and_single_shot :: proc(t: ^testing.T) {
 	defer ar.run_destroy(&run)
 	clear(&run.enemies)
 	clear(&run.projectiles)
-	run.player.mana = f32(run.player.max_mana)
-	mana_before := run.player.mana
-	testing.expect(t, ar.player_cast_bolt(&run, {1, 0}), "fresh Arcanist bolt should cast")
+	run.players[0].mana = f32(run.players[0].max_mana)
+	mana_before := run.players[0].mana
+	testing.expect(t, ar.player_cast_bolt(&run, 0, {1, 0}), "fresh Arcanist bolt should cast")
 	testing.expectf(t, len(run.projectiles) == 1, "canonical bolt spawned %v projectiles, want one", len(run.projectiles))
-	testing.expect(t, near_f32(mana_before - run.player.mana, 7), "canonical Arcanist bolt must cost 7 mana")
-	testing.expect(t, near_f32(run.player.bolt_timer, .38), "canonical Arcanist bolt must start a .38s cooldown")
+	testing.expect(t, near_f32(mana_before - run.players[0].mana, 7), "canonical Arcanist bolt must cost 7 mana")
+	testing.expect(t, near_f32(run.players[0].bolt_timer, .38), "canonical Arcanist bolt must start a .38s cooldown")
 	if len(run.projectiles) == 1 {
 		bolt := run.projectiles[0]
 		testing.expect(t, bolt.from_player && bolt.damage_type == .Arcane, "canonical Arc Bolt must be an arcane player projectile")
@@ -325,34 +325,34 @@ m8_dash_cancels_only_an_uncommitted_big_hit :: proc(t: ^testing.T) {
 	defer ar.run_destroy(&run)
 	clear(&run.enemies)
 
-	run.player.stamina = f32(run.player.max_stamina)
-	stamina_before := run.player.stamina
-	testing.expect(t, ar.player_big_hit_begin(&run, {1, 0}), "fresh Big Hit should begin charging")
-	testing.expect(t, near_f32(stamina_before - run.player.stamina, ar.BIGHIT_STAMINA_COST), "Big Hit must spend its stamina on press")
-	testing.expect(t, !ar.bighit_committed(&run.player), "a fresh Big Hit must still be cancellable")
-	testing.expect(t, ar.player_dash(&run, {1, 0}), "dash should cancel an uncommitted charge and execute")
+	run.players[0].stamina = f32(run.players[0].max_stamina)
+	stamina_before := run.players[0].stamina
+	testing.expect(t, ar.player_big_hit_begin(&run, 0, {1, 0}), "fresh Big Hit should begin charging")
+	testing.expect(t, near_f32(stamina_before - run.players[0].stamina, ar.BIGHIT_STAMINA_COST), "Big Hit must spend its stamina on press")
+	testing.expect(t, !ar.bighit_committed(&run.players[0]), "a fresh Big Hit must still be cancellable")
+	testing.expect(t, ar.player_dash(&run, 0, {1, 0}), "dash should cancel an uncommitted charge and execute")
 	has_charge_stop := false
 	for event in run.sfx do if event.kind == .Stop_Bank && event.bank == .Big_Hit_Charge do has_charge_stop = true
 	testing.expect(t, has_charge_stop, "dash cancellation must stop the Big Hit charge bank")
-	testing.expect(t, !ar.bighit_charging(&run.player), "dash must clear the uncommitted charge")
-	testing.expect(t, near_f32(run.player.bighit_timer, ar.BIGHIT_CANCEL_COOLDOWN), "cancelled Big Hit must use its short cooldown")
-	testing.expect(t, near_f32(run.player.dash_timer, ar.player_dash_cooldown(&run.player)), "the cancelling dash must start its own cooldown")
+	testing.expect(t, !ar.bighit_charging(&run.players[0]), "dash must clear the uncommitted charge")
+	testing.expect(t, near_f32(run.players[0].bighit_timer, ar.BIGHIT_CANCEL_COOLDOWN), "cancelled Big Hit must use its short cooldown")
+	testing.expect(t, near_f32(run.players[0].dash_timer, ar.player_dash_cooldown(&run.players[0])), "the cancelling dash must start its own cooldown")
 
-	run.player.bighit_timer = 0
-	run.player.dash_timer = 0
-	run.player.stamina = f32(run.player.max_stamina)
+	run.players[0].bighit_timer = 0
+	run.players[0].dash_timer = 0
+	run.players[0].stamina = f32(run.players[0].max_stamina)
 	clear(&run.sfx)
-	testing.expect(t, ar.player_big_hit_begin(&run, {1, 0}), "second Big Hit should begin")
-	run.player.bighit_charge = ar.BIGHIT_CHARGE_TIME * (1 - ar.BIGHIT_COMMIT_FRACTION) - .001
-	testing.expect(t, ar.bighit_committed(&run.player), "half-charged Big Hit must commit")
-	charge_before := run.player.bighit_charge
-	testing.expect(t, !ar.player_big_hit_release(&run.player), "release must not cancel a committed Big Hit")
-	testing.expect(t, !ar.player_dash(&run, {1, 0}), "dash must be refused after Big Hit commits")
-	testing.expect(t, near_f32(run.player.bighit_charge, charge_before), "refused dash must leave committed charge intact")
-	testing.expect(t, run.player.dash_timer == 0, "refused dash must not start its timer")
+	testing.expect(t, ar.player_big_hit_begin(&run, 0, {1, 0}), "second Big Hit should begin")
+	run.players[0].bighit_charge = ar.BIGHIT_CHARGE_TIME * (1 - ar.BIGHIT_COMMIT_FRACTION) - .001
+	testing.expect(t, ar.bighit_committed(&run.players[0]), "half-charged Big Hit must commit")
+	charge_before := run.players[0].bighit_charge
+	testing.expect(t, !ar.player_big_hit_release(&run.players[0]), "release must not cancel a committed Big Hit")
+	testing.expect(t, !ar.player_dash(&run, 0, {1, 0}), "dash must be refused after Big Hit commits")
+	testing.expect(t, near_f32(run.players[0].bighit_charge, charge_before), "refused dash must leave committed charge intact")
+	testing.expect(t, run.players[0].dash_timer == 0, "refused dash must not start its timer")
 
-	run.player.bighit_charge = ar.SIM_DT * .5
-	ar.tick_big_hit(&run)
+	run.players[0].bighit_charge = ar.SIM_DT * .5
+	ar.tick_big_hit(&run, 0)
 	has_charge_stop = false
 	has_release := false
 	for event in run.sfx {
@@ -360,18 +360,18 @@ m8_dash_cancels_only_an_uncommitted_big_hit :: proc(t: ^testing.T) {
 		if event.kind == .Play && event.bank == .Big_Hit_Release do has_release = true
 	}
 	testing.expect(t, has_charge_stop && has_release, "completed Big Hit must stop charge audio before its release cue")
-	testing.expect(t, !ar.bighit_charging(&run.player), "completed charge must fire")
-	testing.expect(t, near_f32(run.player.bighit_timer, ar.BIGHIT_COOLDOWN), "completed Big Hit must pay the full cooldown")
+	testing.expect(t, !ar.bighit_charging(&run.players[0]), "completed charge must fire")
+	testing.expect(t, near_f32(run.players[0].bighit_timer, ar.BIGHIT_COOLDOWN), "completed Big Hit must pay the full cooldown")
 }
 
 @(private = "file")
 m8_spam_dash_until_exhausted :: proc(run: ^ar.Run, limit: int) -> int {
 	dashes := 0
 	for dashes < limit {
-		if !ar.player_dash(run, {1, 0}) do break
+		if !ar.player_dash(run, 0, {1, 0}) do break
 		dashes += 1
 		recovery_ticks := 0
-		for run.player.dash_timer > 0 && recovery_ticks < 120 {
+		for run.players[0].dash_timer > 0 && recovery_ticks < 120 {
 			ar.sim_tick(run, {})
 			recovery_ticks += 1
 		}
@@ -396,16 +396,16 @@ m8_archetype_stamina_recovery_makes_dash_bursts_exhaustible :: proc(t: ^testing.
 		run.dungeon.room_count = 0
 		run.dungeon.special_room_count = 0
 
-		rate := ar.player_stamina_regen_rate(&run.player)
+		rate := ar.player_stamina_regen_rate(&run.players[0])
 		testing.expectf(t, near_f32(rate, expected_rates[archetype]), "%v stamina regen %.2f, want %.2f", archetype, rate, expected_rates[archetype])
 		dashes := m8_spam_dash_until_exhausted(&run, 64)
-		cost := ar.player_dash_stamina_cost(&run.player)
+		cost := ar.player_dash_stamina_cost(&run.players[0])
 		testing.expectf(t, dashes == expected_burst_dashes[archetype], "%v sustained %v dashes, want %v", archetype, dashes, expected_burst_dashes[archetype])
-		testing.expectf(t, run.player.stamina < f32(cost), "%v should stop below its next %v-stamina dash", archetype, cost)
+		testing.expectf(t, run.players[0].stamina < f32(cost), "%v should stop below its next %v-stamina dash", archetype, cost)
 
-		stamina_before := run.player.stamina
+		stamina_before := run.players[0].stamina
 		ar.sim_tick(&run, {})
-		testing.expectf(t, near_f32(run.player.stamina, stamina_before + rate * ar.SIM_DT), "%v stamina recovery did not resume after dash cooldown", archetype)
+		testing.expectf(t, near_f32(run.players[0].stamina, stamina_before + rate * ar.SIM_DT), "%v stamina recovery did not resume after dash cooldown", archetype)
 		ar.run_destroy(&run)
 	}
 
@@ -416,12 +416,12 @@ m8_archetype_stamina_recovery_makes_dash_bursts_exhaustible :: proc(t: ^testing.
 	m8_prepare_arena(&run)
 	run.dungeon.room_count = 0
 	run.dungeon.special_room_count = 0
-	run.player.acquired_disciplines[.Ranger_Snare] = true
-	run.player.acquired_disciplines[.Ranger_Beastmark] = true
-	testing.expect(t, near_f32(ar.player_stamina_regen_rate(&run.player), 26), "Barbed Snares should add +4 stamina/s")
+	run.players[0].acquired_disciplines[.Ranger_Snare] = true
+	run.players[0].acquired_disciplines[.Ranger_Beastmark] = true
+	testing.expect(t, near_f32(ar.player_stamina_regen_rate(&run.players[0]), 26), "Barbed Snares should add +4 stamina/s")
 	dashes := m8_spam_dash_until_exhausted(&run, 64)
 	testing.expectf(t, dashes == 28, "Beast Hunt Ranger sustained %v dashes, want 28 before exhaustion", dashes)
-	testing.expect(t, run.player.stamina < f32(ar.player_dash_stamina_cost(&run.player)), "Beast Hunt Ranger must still run out of Vault stamina")
+	testing.expect(t, run.players[0].stamina < f32(ar.player_dash_stamina_cost(&run.players[0])), "Beast Hunt Ranger must still run out of Vault stamina")
 	ar.run_destroy(&run)
 }
 
@@ -437,12 +437,12 @@ m8_time_skip_slows_only_enemy_clocks :: proc(t: ^testing.T) {
 	enemy.ability_cds[0] = 1
 	append(&run.enemies, enemy)
 
-	mana_before := run.player.mana
-	testing.expect(t, ar.player_cast_class_skill(&run, {1, 0}), "fresh Warden should cast Time Skip")
-	testing.expect(t, near_f32(mana_before-run.player.mana, 18), "Time Skip must cost 18 mana")
-	testing.expect(t, near_f32(run.player.class_skill_timer, 3.2) && near_f32(run.player.time_skip_timer, 3), "Time Skip timers changed")
+	mana_before := run.players[0].mana
+	testing.expect(t, ar.player_cast_class_skill(&run, 0, {1, 0}), "fresh Warden should cast Time Skip")
+	testing.expect(t, near_f32(mana_before-run.players[0].mana, 18), "Time Skip must cost 18 mana")
+	testing.expect(t, near_f32(run.players[0].class_skill_timer, 3.2) && near_f32(run.players[0].time_skip_timer, 3), "Time Skip timers changed")
 	ar.sim_tick(&run, {})
-	testing.expect(t, near_f32(run.player.class_skill_timer, 3.2-ar.SIM_DT) && near_f32(run.player.time_skip_timer, 3-ar.SIM_DT), "player clocks must advance at full time")
+	testing.expect(t, near_f32(run.players[0].class_skill_timer, 3.2-ar.SIM_DT) && near_f32(run.players[0].time_skip_timer, 3-ar.SIM_DT), "player clocks must advance at full time")
 	testing.expect(t, near_f32(run.enemies[0].cooldown, 1-ar.SIM_DT*ar.TIME_SKIP_FACTOR), "enemy recovery must run at 40% time")
 	testing.expect(t, near_f32(run.enemies[0].ability_cds[0], 1-ar.SIM_DT*ar.TIME_SKIP_FACTOR), "enemy ability recovery must run at 40% time")
 }
@@ -458,11 +458,11 @@ m8_frost_nova_hits_only_its_los_radius :: proc(t: ^testing.T) {
 	append(&run.enemies, inside)
 	append(&run.enemies, outside)
 	rng_copy := run.combat_rng
-	expected := 10 + run.player.level*2 + ar.ARCHETYPES[.Arcanist].spell_bonus + ar.rng_range(&rng_copy, 0, 5)
-	mana_before := run.player.mana
+	expected := 10 + run.players[0].level*2 + ar.ARCHETYPES[.Arcanist].spell_bonus + ar.rng_range(&rng_copy, 0, 5)
+	mana_before := run.players[0].mana
 
-	testing.expect(t, ar.player_cast_class_skill(&run, {1, 0}), "fresh Arcanist should cast Frost Nova")
-	testing.expect(t, near_f32(mana_before-run.player.mana, 14) && near_f32(run.player.class_skill_timer, 2.65), "Frost Nova cost/cooldown changed")
+	testing.expect(t, ar.player_cast_class_skill(&run, 0, {1, 0}), "fresh Arcanist should cast Frost Nova")
+	testing.expect(t, near_f32(mana_before-run.players[0].mana, 14) && near_f32(run.players[0].class_skill_timer, 2.65), "Frost Nova cost/cooldown changed")
 	testing.expectf(t, run.enemies[0].hp == inside.max_hp-expected, "Nova dealt %v, want %v", inside.max_hp-run.enemies[0].hp, expected)
 	testing.expect(t, near_f32(run.enemies[0].statuses[.Chilled], 1.2), "Nova must chill for 1.2 seconds")
 	testing.expect(t, run.enemies[1].hp == outside.max_hp, "Nova must not hit beyond 2.45 tiles")
@@ -474,10 +474,10 @@ m8_ambush_bell_arms_lures_and_backstabs :: proc(t: ^testing.T) {
 	ar.run_start(&run, ar.derive_seed(8178, 0), .Rogue)
 	defer ar.run_destroy(&run)
 	m8_prepare_arena(&run)
-	mana_before := run.player.mana
+	mana_before := run.players[0].mana
 	clear(&run.sfx)
-	testing.expect(t, ar.player_cast_class_skill(&run, {1, 0}), "fresh Rogue should cast Ambush Bell")
-	testing.expect(t, near_f32(mana_before-run.player.mana, 18) && near_f32(run.player.class_skill_timer, 3.2), "Ambush Bell cost/cooldown changed")
+	testing.expect(t, ar.player_cast_class_skill(&run, 0, {1, 0}), "fresh Rogue should cast Ambush Bell")
+	testing.expect(t, near_f32(mana_before-run.players[0].mana, 18) && near_f32(run.players[0].class_skill_timer, 3.2), "Ambush Bell cost/cooldown changed")
 	testing.expect(t, len(run.bells) == 1, "Ambush Bell must replace the active lure")
 	bell_cues:=0
 	for cue in run.sfx do if cue.bank==.Rogue_Bell_Cast {
@@ -528,11 +528,11 @@ m8_big_hit_warden_cleave_keeps_full_damage_and_throw :: proc(t: ^testing.T) {
 	append(&run.enemies, first)
 	append(&run.enemies, second)
 	rng_copy := run.combat_rng
-	base := ar.player_melee_damage(&run.player)*3
+	base := ar.player_melee_damage(&run.players[0])*3
 	expected_first := base + ar.rng_range(&rng_copy,-4,7)
 	expected_second := base + ar.rng_range(&rng_copy,-4,7)
 
-	ar.player_big_hit_fire(&run)
+	ar.player_big_hit_fire(&run, 0)
 	testing.expect(t, 999-run.enemies[0].hp == expected_first && 999-run.enemies[1].hp == expected_second, "Warden Big Hit must cleave every target at full rolled damage")
 	testing.expect(t, near_f32(math.hypot(run.enemies[0].knockback_vel.x,run.enemies[0].knockback_vel.y),20) && near_f32(math.hypot(run.enemies[1].knockback_vel.x,run.enemies[1].knockback_vel.y),20), "Warden Big Hit must throw every target two tiles")
 }
@@ -543,32 +543,32 @@ m8_combined_proc_union_and_poison_ticks :: proc(t: ^testing.T) {
 	ar.run_start(&run, ar.derive_seed(8198, 0), .Warden)
 	defer ar.run_destroy(&run)
 	m8_prepare_arena(&run)
-	run.player.has_weapon = true
-	run.player.weapon = ar.Item{kind=.Weapon, name="Double proc", proc_chance=1}
-	run.player.weapon.proc_effects[.Poison] = true
-	run.player.weapon.proc_effects[.Chain] = true
+	run.players[0].has_weapon = true
+	run.players[0].weapon = ar.Item{kind=.Weapon, name="Double proc", proc_chance=1}
+	run.players[0].weapon.proc_effects[.Poison] = true
+	run.players[0].weapon.proc_effects[.Chain] = true
 	primary := ar.enemy_make(.Ghoul,{11.5,10.5},1)
 	secondary := ar.enemy_make(.Rune_Sentinel,{12.5,10.5},1)
 	append(&run.enemies, primary)
 	append(&run.enemies, secondary)
 	secondary_hp := run.enemies[1].hp
 
-	dealt := ar.player_damage_enemy(&run,&run.enemies[0],9,.Physical)
+	dealt := ar.player_damage_enemy(&run, 0,&run.enemies[0],9,.Physical)
 	testing.expect(t, dealt == 9 && near_f32(run.enemies[0].statuses[.Poisoned],1.4), "poison proc from the union must apply for 1.4 seconds")
 	testing.expect(t, secondary_hp-run.enemies[1].hp == 3, "chain must deal one-third direct damage without arcane mitigation")
 	run.enemies[0].poison_tick = ar.SIM_DT*.5
 	primary_hp := run.enemies[0].hp
-	ar.tick_combat_statuses(&run)
+	ar.tick_player_statuses(&run, 0); ar.tick_enemy_statuses(&run)
 	testing.expect(t, primary_hp-run.enemies[0].hp == 2, "level-one enemy poison tick must deal 2 direct damage")
 	testing.expect(t, near_f32(run.enemies[0].poison_tick,1-ar.SIM_DT*.5), "enemy poison clock must keep its one-second cadence")
 
 	run.depth = 6
-	run.player.hp = run.player.max_hp
-	ar.player_apply_status(&run.player,.Poisoned,1.2)
-	run.player.poison_tick = ar.SIM_DT*.5
-	player_hp := run.player.hp
-	ar.tick_combat_statuses(&run)
-	testing.expect(t, player_hp-run.player.hp == 3, "depth-six player poison tick must deal 3 direct damage")
+	run.players[0].hp = run.players[0].max_hp
+	ar.player_apply_status(&run.players[0],.Poisoned,1.2)
+	run.players[0].poison_tick = ar.SIM_DT*.5
+	player_hp := run.players[0].hp
+	ar.tick_player_statuses(&run, 0); ar.tick_enemy_statuses(&run)
+	testing.expect(t, player_hp-run.players[0].hp == 3, "depth-six player poison tick must deal 3 direct damage")
 }
 
 @(test)
@@ -578,19 +578,19 @@ m8_action_timers_tick_independently :: proc(t: ^testing.T) {
 	defer ar.run_destroy(&run)
 	clear(&run.enemies)
 	clear(&run.projectiles)
-	run.player.melee_timer = .7
-	run.player.bolt_timer = 1.1
-	run.player.dash_timer = 1.5
-	run.player.class_skill_timer = 1.9
-	run.player.bighit_timer = 2.3
-	run.player.time_skip_timer = 2.7
+	run.players[0].melee_timer = .7
+	run.players[0].bolt_timer = 1.1
+	run.players[0].dash_timer = 1.5
+	run.players[0].class_skill_timer = 1.9
+	run.players[0].bighit_timer = 2.3
+	run.players[0].time_skip_timer = 2.7
 	ar.sim_tick(&run, {})
-	testing.expect(t, near_f32(run.player.melee_timer, .7 - ar.SIM_DT), "melee clock did not tick independently")
-	testing.expect(t, near_f32(run.player.bolt_timer, 1.1 - ar.SIM_DT), "bolt clock did not tick independently")
-	testing.expect(t, near_f32(run.player.dash_timer, 1.5 - ar.SIM_DT), "dash clock did not tick independently")
-	testing.expect(t, near_f32(run.player.class_skill_timer, 1.9 - ar.SIM_DT), "class-skill clock did not tick independently")
-	testing.expect(t, near_f32(run.player.bighit_timer, 2.3 - ar.SIM_DT), "Big Hit clock did not tick independently")
-	testing.expect(t, near_f32(run.player.time_skip_timer, 2.7 - ar.SIM_DT), "Time Skip clock did not tick independently")
+	testing.expect(t, near_f32(run.players[0].melee_timer, .7 - ar.SIM_DT), "melee clock did not tick independently")
+	testing.expect(t, near_f32(run.players[0].bolt_timer, 1.1 - ar.SIM_DT), "bolt clock did not tick independently")
+	testing.expect(t, near_f32(run.players[0].dash_timer, 1.5 - ar.SIM_DT), "dash clock did not tick independently")
+	testing.expect(t, near_f32(run.players[0].class_skill_timer, 1.9 - ar.SIM_DT), "class-skill clock did not tick independently")
+	testing.expect(t, near_f32(run.players[0].bighit_timer, 2.3 - ar.SIM_DT), "Big Hit clock did not tick independently")
+	testing.expect(t, near_f32(run.players[0].time_skip_timer, 2.7 - ar.SIM_DT), "Time Skip clock did not tick independently")
 }
 
 @(test)
@@ -671,13 +671,13 @@ m8_combat_rng_is_deterministic_and_isolated_from_loot :: proc(t: ^testing.T) {
 	ar.run_start(&b, seed, .Rogue)
 	defer ar.run_destroy(&a)
 	defer ar.run_destroy(&b)
-	a.player.precision_rank = 5
-	b.player.precision_rank = 5
+	a.players[0].precision_rank = 5
+	b.players[0].precision_rank = 5
 
 	loot_reference := a.loot_rng
 	for _ in 0 ..< 32 {
-		crit_a, multiplier_a := ar.roll_rogue_crit(&a)
-		crit_b, multiplier_b := ar.roll_rogue_crit(&b)
+		crit_a, multiplier_a := ar.roll_rogue_crit(&a, 0)
+		crit_b, multiplier_b := ar.roll_rogue_crit(&b, 0)
 		testing.expect(t, crit_a == crit_b && multiplier_a == multiplier_b, "same-seed combat RNG must replay exactly")
 	}
 	testing.expect(t, ar.rng_next(&a.loot_rng) == ar.rng_next(&loot_reference), "combat rolls must not advance the loot stream")

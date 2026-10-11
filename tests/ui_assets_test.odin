@@ -683,12 +683,12 @@ inventory_ui_focus_highlights_only_its_section_and_allows_empty_equipment :: pro
 	app: ar.App
 	testing.expect(t, app.inv_focus == .Bag)
 	app.inv_index = 1
-	app.run.player.bag_count = 2
-	app.run.player.bag[1] = {kind=.Weapon,name="Bag sword"}
-	app.run.player.weapon = {kind=.Weapon,name="Equipped sword"}
-	app.run.player.armor = {kind=.Armor,name="Equipped mail"}
-	app.run.player.has_weapon = true
-	app.run.player.has_armor = true
+	app.run.players[0].bag_count = 2
+	app.run.players[0].bag[1] = {kind=.Weapon,name="Bag sword"}
+	app.run.players[0].weapon = {kind=.Weapon,name="Equipped sword"}
+	app.run.players[0].armor = {kind=.Armor,name="Equipped mail"}
+	app.run.players[0].has_weapon = true
+	app.run.players[0].has_armor = true
 	for modality in ([2]ar.Mobile_Input_Modality{.Keyboard_Mouse,.Controller}) {
 		app.input_modality = modality
 		for focus in ar.Inventory_Focus {
@@ -701,8 +701,8 @@ inventory_ui_focus_highlights_only_its_section_and_allows_empty_equipment :: pro
 			testing.expect(t, layout.lines[0].text == (focus == .Bag ? "SELECTED ITEM" : "EQUIPPED ITEM"))
 		}
 	}
-	app.run.player.has_weapon = false
-	app.run.player.has_armor = false
+	app.run.players[0].has_weapon = false
+	app.run.players[0].has_armor = false
 	for focus in ([2]ar.Inventory_Focus{.Weapon,.Armor}) {
 		app.inv_focus = focus
 		_, found := ar.inventory_selected_item(&app)

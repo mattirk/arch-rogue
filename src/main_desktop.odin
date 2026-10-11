@@ -416,6 +416,9 @@ game_boot_config_from_env :: proc() -> Game_Boot_Config {
 	config.dev_reveal = os.get_env("ARCH_ROGUE_REVEAL", context.temp_allocator) != ""
 	config.dev_mist_off = os.get_env("ARCH_ROGUE_MIST", context.temp_allocator) == "0"
 	config.dev_controls = os.get_env("ARCH_ROGUE_DEV", context.temp_allocator) != ""
+	// Co-op server field default (the menu still shows and confirms it).
+	config.relay_url = os.get_env("ARCH_ROGUE_RELAY_URL", context.allocator)
+	config.coop_enabled = os.get_env("ARCH_ROGUE_COOP", context.temp_allocator) == "1"
 	if value := os.get_env("ARCH_ROGUE_LIGHTING", context.temp_allocator); value != "" {
 		config.dev_lighting = value != "0" ? 1 : 0
 	}

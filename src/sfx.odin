@@ -197,6 +197,7 @@ sfx_shrine_bank :: proc(kind: Shrine_Kind) -> Sfx_Bank {
 	case .Fortune:  return .Shrine_Fortune
 	case .Oath:     return .Shrine_Oath
 	case .Twilight: return .Shrine_Twilight
+	case .Vigil:    return .Shrine_Mending
 	}
 	return .Shrine_Mending
 }

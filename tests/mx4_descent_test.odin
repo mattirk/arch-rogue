@@ -156,8 +156,8 @@ bar_ledger_survives_descent_and_summons_dancer :: proc(t: ^testing.T) {
 
 	// The run-level toast ledger: one free ale per floor's refuge state.
 	visited_before := run.bars_visited
-	testing.expect(t, ar.run_toast_bar(&run), "first toast on a floor succeeds")
-	testing.expect(t, !ar.run_toast_bar(&run), "the refuge state still gates one ale per bar")
+	testing.expect(t, ar.run_toast_bar(&run, 0), "first toast on a floor succeeds")
+	testing.expect(t, !ar.run_toast_bar(&run, 0), "the refuge state still gates one ale per bar")
 	testing.expect(t, run.bars_toasted == 1, "toasts land in the run ledger")
 
 	ar.run_descend(&run)
@@ -187,7 +187,7 @@ bar_ledger_survives_descent_and_summons_dancer :: proc(t: ^testing.T) {
 	testing.expect(t, dancer_count == 1, "exactly one dancer joins")
 
 	// Class recasts replace summon slots, never the run reward.
-	ar.clear_summoned_familiars(&run)
+	ar.clear_summoned_familiars(&run, 0)
 	testing.expect(t, len(run.familiars) == 1 && run.familiars[0].kind == .Bar_Dancer, "recasts must not dismiss the dancer")
 }
 
@@ -197,16 +197,16 @@ stairs_preview_tells_the_next_floor :: proc(t: ^testing.T) {
 	ar.run_start(&run, ar.derive_seed(31, 0), .Warden)
 	defer ar.run_destroy(&run)
 	stairs := run.dungeon.stairs
-	run.player.pos = {f32(stairs.x) + 0.5, f32(stairs.y) + 0.5}
-	preview := ar.stairs_preview(&run)
+	run.players[0].pos = {f32(stairs.x) + 0.5, f32(stairs.y) + 0.5}
+	preview := ar.stairs_preview(&run, 0)
 	next := run.plan[run.depth]
 	testing.expect(t, preview == ar.THEMES[next.theme_index].name, "usable stairs show only the next floor theme")
 	testing.expect(t, !strings.contains(preview, "Threat") && !strings.contains(preview, next.reward_hint),
 		"stairs HUD omits encounter, threat, and reward prose")
 
 	// Away from the stairs there is nothing to preview.
-	run.player.pos = ar.run_spawn_point(&run)
-	testing.expect(t, ar.stairs_preview(&run) == "" || ar.player_near_stairs(&run), "no preview away from the stairs")
+	run.players[0].pos = ar.run_spawn_point(&run)
+	testing.expect(t, ar.stairs_preview(&run, 0) == "" || ar.player_near_stairs(&run, 0), "no preview away from the stairs")
 }
 
 @(test)
@@ -214,9 +214,9 @@ descend_recovery_stays_a_quarter_pool :: proc(t: ^testing.T) {
 	run: ar.Run
 	ar.run_start(&run, ar.derive_seed(3, 0), .Warden)
 	defer ar.run_destroy(&run)
-	run.player.stamina = 0
-	run.player.mana = 0
+	run.players[0].stamina = 0
+	run.players[0].mana = 0
 	ar.run_descend(&run)
-	testing.expect(t, run.player.stamina == f32(run.player.max_stamina) * 0.25, "descent restores exactly a quarter stamina pool")
-	testing.expect(t, run.player.mana == f32(run.player.max_mana) * 0.25, "descent restores exactly a quarter mana pool")
+	testing.expect(t, run.players[0].stamina == f32(run.players[0].max_stamina) * 0.25, "descent restores exactly a quarter stamina pool")
+	testing.expect(t, run.players[0].mana == f32(run.players[0].max_mana) * 0.25, "descent restores exactly a quarter mana pool")
 }

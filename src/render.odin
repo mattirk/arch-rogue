@@ -398,7 +398,16 @@ draw_frame :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 	case .Victory:
 		draw_run_scene(view,app,assets,alpha)
 		draw_victory_overlay(app,assets)
+	case .Coop_Menu:
+		draw_coop_menu(app,assets)
+	case .Coop_Lobby:
+		draw_coop_lobby(app,assets)
+	case .Coop_Wait:
+		if app.coop.j_have_world do draw_run_scene(view,app,assets,alpha)
+		draw_coop_wait(app,assets)
 	}
+	if coop_active(app) && (app.mode == .Playing || app.mode == .Paused) do draw_coop_hud(app,assets)
+	if coop_active(app) && app.coop_ui.debug do draw_coop_debug(app)
 	draw_screen_feel(app)
 	// Story is the final HUD-like layer: combat flashes remain beneath readable
 	// narration, while the frozen live world and ordinary HUD stay visible.
@@ -561,7 +570,7 @@ draw_soul_hunt_capture_effect :: proc(feet:Vec2,feedback_time:f32) {
 
 @(private = "file")
 draw_soul_hunt_player :: proc(view:^View,app:^App,assets:^Assets,feet:Vec2,world_time:f32) {
-	player:=&app.run.player
+	player:=&app.run.players[app.run.local_slot]
 	draw_contact_shadow(view,feet,34,13,player.moving)
 	clip:=player.moving?Clip_Kind.Walk:Clip_Kind.Idle
 	clip_time:=player.moving?player.anim_time:visual_idle_clip_time(world_time)
@@ -592,7 +601,7 @@ draw_soul_hunt_ghost_fallback :: proc(feet:Vec2,alpha,world_time:f32) {
 @(private = "file")
 draw_soul_hunt_world :: proc(view:^View,app:^App,assets:^Assets,alpha:f32) {
 	state:=&app.story_minigame;room:=STORY_SOUL_HUNT_ROOM
-	world_time:=app.run.player.sim_elapsed+alpha*SIM_DT
+	world_time:=app.run.players[app.run.local_slot].sim_elapsed+alpha*SIM_DT
 	floor:=&assets.world[.Lossless_Soul_Floor]
 	// A thin exposed underside makes the unenclosed floor read as a slab hanging
 	// over the void, without introducing wall geometry or additional collision.
@@ -622,7 +631,7 @@ draw_soul_hunt_world :: proc(view:^View,app:^App,assets:^Assets,alpha:f32) {
 		ghost_alpha:=min(appeared,dissolving)
 		items[count]={kind=.Ghost,index=state.active_cell,feet=ghost,depth=ghost.x+ghost.y,alpha=ghost_alpha};count+=1
 	}
-	feet:=app.run.player.prev_pos+(app.run.player.pos-app.run.player.prev_pos)*alpha
+	feet:=app.run.players[app.run.local_slot].prev_pos+(app.run.players[app.run.local_slot].pos-app.run.players[app.run.local_slot].prev_pos)*alpha
 	items[count]={kind=.Player,feet=feet,depth=feet.x+feet.y,alpha=1};count+=1
 	for i in 1..<count {
 		item:=items[i];j:=i
@@ -634,7 +643,7 @@ draw_soul_hunt_world :: proc(view:^View,app:^App,assets:^Assets,alpha:f32) {
 		switch item.kind {
 		case .Ghost:
 			if assets.mistbound_ghost.loaded&&assets.mistbound_ghost.clips[.Idle].valid {
-				facing:=app.run.player.pos-item.feet;if facing=={} do facing={0,1}
+				facing:=app.run.players[app.run.local_slot].pos-item.feet;if facing=={} do facing={0,1}
 				draw_actor(assets,&assets.mistbound_ghost,.Idle,facing,visual_idle_clip_time(world_time,u32(item.index+1)),item.feet,rl.Fade(rl.WHITE,item.alpha),0)
 			} else do draw_soul_hunt_ghost_fallback(item.feet,item.alpha,world_time)
 		case .Player:draw_soul_hunt_player(view,app,assets,item.feet,world_time)
@@ -1069,8 +1078,7 @@ update_lightmap :: proc(view: ^View, app: ^App, alpha: f32) -> bool {
 	rl.BeginTextureMode(view.light_glow)
 	rl.ClearBackground(rl.BLACK)
 	rl.BeginBlendMode(.ADDITIVE)
-	player := &run.player
-	feet := player.prev_pos + (player.pos - player.prev_pos) * alpha
+	feet := local_player_render_pos(app, alpha)
 	radius: f32 = run.dark_floor ? LIGHT_RADIUS_DARK : LIGHT_RADIUS_LIT
 	world_time := f32(app.tick) * SIM_DT
 	lantern_strength := .92 + .08 * math.sin(world_time * 1.6)
@@ -1263,7 +1271,7 @@ Ghost_Occluder :: struct {
 // ordinary tiles outside the crest and all special-room slabs stay untouched.
 @(private = "file")
 story_guidance_frame_map :: proc(run: ^Run, peak_frame: int) -> (frames: [MAP_W][MAP_H]u8) {
-	if !story_content_enabled(run) || run.player.moving || peak_frame <= 0 do return
+	if !story_content_enabled(run) || run.players[run.local_slot].moving || peak_frame <= 0 do return
 	_, enabled := story_route_target(run)
 	if !enabled do return
 	path := story_relic_guidance_path(run)
@@ -1272,7 +1280,7 @@ story_guidance_frame_map :: proc(run: ^Run, peak_frame: int) -> (frames: [MAP_W]
 	for order in 0..<tile_count {
 		point := path[order+1]
 		if !dungeon_in_bounds(point.x,point.y) do continue
-		frame := guidance_wave_frame(order,tile_count,peak_frame,run.player.guidance_idle_elapsed,false)
+		frame := guidance_wave_frame(order,tile_count,peak_frame,run.players[run.local_slot].guidance_idle_elapsed,false)
 		if frame > 0 do frames[point.x][point.y] = u8(frame)
 	}
 	return
@@ -1359,8 +1367,7 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 		}
 	}
 
-	player := &app.run.player
-	feet := player.prev_pos + (player.pos - player.prev_pos) * alpha
+	feet := local_player_render_pos(app, alpha)
 	// Floor-level exact-aim telegraph: drawn after ground art and before every
 	// height-bearing draw item. It stays behind actors/props/foreground walls,
 	// and no octant sprite-row quantization can feed back into gameplay aim.
@@ -1381,7 +1388,15 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 		(app.dev_reveal || tile_pos_visible(app,story_relic.position)) {
 		append(&items,Draw_Item{depth=story_relic.position.x+story_relic.position.y-.01,kind=.Story_Relic,feet=story_relic.position})
 	}
-	append(&items, Draw_Item{depth = feet.x + feet.y, kind = .Player, feet = feet})
+	append(&items, Draw_Item{depth = feet.x + feet.y, kind = .Player, feet = feet, index = app.run.local_slot})
+	// Co-op partners share the depth sort; discovery is per-client, but a
+	// partner's own body is always shown so the pair can find each other.
+	for slot in 0 ..< run_seat_count(&app.run) {
+		if slot == app.run.local_slot do continue
+		partner := &app.run.players[slot]
+		pfeet := partner.prev_pos + (partner.pos - partner.prev_pos) * alpha
+		append(&items, Draw_Item{depth = pfeet.x + pfeet.y, kind = .Player, feet = pfeet, index = slot})
+	}
 
 	for &enemy, i in app.run.enemies {
 		if !app.dev_reveal && !tile_pos_visible(app, enemy.pos) do continue
@@ -1408,7 +1423,7 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 		append(&items,Draw_Item{depth=sfeet.x+sfeet.y,kind=.Lossless_Soul,feet=sfeet})
 	}
 	for &p, i in app.run.projectiles {
-		if !tile_pos_visible(app, p.pos) do continue
+		if p.hidden || !tile_pos_visible(app, p.pos) do continue
 		pfeet := p.prev_pos + (p.pos - p.prev_pos) * alpha
 		append(&items, Draw_Item{depth = pfeet.x + pfeet.y, kind = .Projectile, feet = pfeet, index = i})
 	}
@@ -1550,18 +1565,19 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 				append(&occluders,Ghost_Occluder{depth=item.depth,rect=door_rect,open_door=d.tiles[int(item.tile.x)][int(item.tile.y)]==.Open_Door,tile=item.tile})
 			}
 		case .Player:
-			draw_contact_shadow(view,item.feet,34,13,player.moving)
-			if bighit_charging(player) {
-				charge := clamp(1-player.bighit_charge/BIGHIT_CHARGE_TIME,0,1)
+			actor := &app.run.players[clamp(item.index, 0, MAX_PLAYERS - 1)]
+			draw_contact_shadow(view,item.feet,34,13,actor.moving)
+			if bighit_charging(actor) {
+				charge := clamp(1-actor.bighit_charge/BIGHIT_CHARGE_TIME,0,1)
 				w := rl.Vector2(world_from_tile(item.feet))
 				radius_h := 8+12*charge
-				color := bighit_committed(player) ? rl.Color{235,205,120,255} : rl.Color{205,190,165,255}
+				color := bighit_committed(actor) ? rl.Color{235,205,120,255} : rl.Color{205,190,165,255}
 				ring_alpha := (50+70*charge)/255
 				rl.DrawEllipseLinesV(w,radius_h,radius_h*.5,rl.Fade(color,ring_alpha))
 			}
-			clip := player.moving ? Clip_Kind.Walk : Clip_Kind.Idle
-			clip_time := player.moving ? player.anim_time : visual_idle_clip_time(world_time)
-			switch player.visual_action {
+			clip := actor.moving ? Clip_Kind.Walk : Clip_Kind.Idle
+			clip_time := actor.moving ? actor.anim_time : visual_idle_clip_time(world_time)
+			switch actor.visual_action {
 			case .Attack:
 				clip = .Attack
 			case .Cast:
@@ -1571,29 +1587,29 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 			case .Pet:
 				// Paired petting pose (MX.3); archetypes without a baked pet
 				// clip hold the cast pose instead.
-				clip = assets.archetypes[player.archetype].clips[.Pet].valid ? .Pet : .Cast
+				clip = assets.archetypes[actor.archetype].clips[.Pet].valid ? .Pet : .Cast
 			case .Die:
-				clip,clip_time = .Die,player.action_time
+				clip,clip_time = .Die,actor.action_time
 			case .Dead:
-				clip,clip_time = .Dead,player.action_time
+				clip,clip_time = .Dead,actor.action_time
 			case .None:
 			}
-			if player.visual_action == .Attack || player.visual_action == .Cast ||
-				player.visual_action == .Dash || player.visual_action == .Pet {
-				action_clip := &assets.archetypes[player.archetype].clips[clip]
+			if actor.visual_action == .Attack || actor.visual_action == .Cast ||
+				actor.visual_action == .Dash || actor.visual_action == .Pet {
+				action_clip := &assets.archetypes[actor.archetype].clips[clip]
 				clip_time = normalized_action_clip_time(
-					player_visual_action_progress(player),
+					player_visual_action_progress(actor),
 					action_clip.frames,
 					action_clip.fps,
 				)
 			}
 			tint := rl.WHITE
-			if status_color, active := actor_status_tint(&player.statuses); active do tint = status_color
-			if player.hit_flash > 0 {
-				tint = {255, u8(255 - 120 * player.hit_flash), u8(255 - 140 * player.hit_flash), 255}
+			if status_color, active := actor_status_tint(&actor.statuses); active do tint = status_color
+			if actor.hit_flash > 0 {
+				tint = {255, u8(255 - 120 * actor.hit_flash), u8(255 - 140 * actor.hit_flash), 255}
 			}
-			tex,src,dst,drawn := draw_actor(assets, &assets.archetypes[player.archetype], clip, player.facing, clip_time, item.feet, tint, 0)
-			if drawn do append(&ghost_actors,Ghost_Actor{depth=item.depth,kind=.Player,key=0x100000000,tex=tex,src=src,dst=dst,feet=item.feet,tint=tint})
+			tex,src,dst,drawn := draw_actor(assets, &assets.archetypes[actor.archetype], clip, actor.facing, clip_time, item.feet, tint, 0)
+			if drawn do append(&ghost_actors,Ghost_Actor{depth=item.depth,kind=.Player,key=0x100000000+u64(item.index),tex=tex,src=src,dst=dst,feet=item.feet,tint=tint})
 		case .Enemy:
 			enemy := &app.run.enemies[item.index]
 			sprites := enemy.role == .Boss ? &assets.bosses[enemy.boss_id] : &assets.enemies[enemy.kind]
@@ -1853,7 +1869,7 @@ draw_world :: proc(view: ^View, app: ^App, assets: ^Assets, alpha: f32) {
 	if app.options.mist_enabled {
 		// The shader clock follows simulation time so inventory, pause, and story
 		// modals freeze both the disturbance field and its drifting noise body.
-		mist_time := app.run.player.sim_elapsed
+		mist_time := app.run.players[app.run.local_slot].sim_elapsed
 		mist_live := app.mode == .Playing && !app.inventory_open && !app.character_open && !app.shop_open &&
 			!app_play_modal_open(app)
 		if mist_live do mist_time += alpha * SIM_DT
@@ -2226,7 +2242,7 @@ draw_projectiles_through_walls :: proc(app:^App,alpha:f32) {
 @(private = "file")
 draw_player_aim_tick :: proc(app: ^App, feet: Vec2) {
 	if app == nil do return
-	direction := visual_iso_direction(app.run.player.facing)
+	direction := visual_iso_direction(app.run.players[app.run.local_slot].facing)
 	if direction == {} do return
 	center := rl.Vector2(world_from_tile(feet))-rl.Vector2{0,4}
 	color := rl.Color(mix_color_u8({92,170,255,255},THEMES[app.run.theme_index].accent,.18))
@@ -2235,8 +2251,8 @@ draw_player_aim_tick :: proc(app: ^App, feet: Vec2) {
 
 @(private = "file")
 draw_player_aim_cone :: proc(app: ^App, feet: Vec2) {
-	if app == nil || app.run.player.hp <= 0 do return
-	cone := visual_aim_cone(app.run.player.facing)
+	if app == nil || app.run.players[app.run.local_slot].hp <= 0 do return
+	cone := visual_aim_cone(app.run.players[app.run.local_slot].facing)
 	if !cone.valid do return
 	center := rl.Vector2(world_from_tile(feet)) + rl.Vector2(cone.center_offset)
 	color := rl.Color(mix_color_u8({92,170,255,255}, THEMES[app.run.theme_index].accent, .18))
@@ -2579,6 +2595,7 @@ SHRINE_PROP_KEYS := [Shrine_Kind]Prop_Key{
 	.Mending = .Shrine_Mending, .Insight = .Shrine_Insight, .War = .Shrine_War,
 	.Haste = .Shrine_Haste, .Fortune = .Shrine_Fortune, .Oath = .Shrine_Oath,
 	.Twilight = .Shrine_Twilight,
+	.Vigil = .Shrine_Mending, // reuses the mending altar until dedicated art lands
 }
 
 @(rodata)
@@ -2683,7 +2700,7 @@ draw_secret :: proc(view: ^View, app: ^App, assets: ^Assets, secret: ^Secret, wo
 // Names float over drops the player is close to (rarity-colored).
 @(private = "file")
 draw_item_labels :: proc(view: ^View, app: ^App) {
-	player := &app.run.player
+	player := &app.run.players[app.run.local_slot]
 	for &g in app.run.ground_items {
 		if !app.dev_reveal && !tile_pos_visible(app, g.pos) do continue
 		d := g.pos - player.pos
@@ -3210,7 +3227,7 @@ draw_overlay :: proc(view: ^View, app: ^App, assets: ^Assets) {
 			ui_draw_text(
 				fmt.ctprintf(
 					"%s | depth %v%s | seed %x | tile %v",
-					ARCHETYPES[run.player.archetype].name, run.depth,
+					ARCHETYPES[run.players[run.local_slot].archetype].name, run.depth,
 					run.dark_floor ? " (DARK)" : "", run.seed,
 					view.hovered_valid ? fmt.tprintf("%v,%v", view.hovered.x, view.hovered.y) : "-",
 				),
@@ -3230,17 +3247,17 @@ draw_overlay :: proc(view: ^View, app: ^App, assets: ^Assets) {
 		prompt_y = i32(primary.y) - 34
 		prompt_center_x = gameplay.x + gameplay.width * .5
 	}
-	prompt := interact_prompt(run)
+	prompt := interact_prompt(run, run.local_slot)
 	if prompt != "" {
 		prompt_label := prompt
-		if view.mobile_mode && player_interaction_advertised(run) {
+		if view.mobile_mode && player_interaction_advertised(run, run.local_slot) {
 			prompt_label = fmt.tprintf("A%s", prompt[1:])
 		}
 		label := fmt.ctprintf("%s", prompt_label)
 		width := ui_measure_text(label, 22)
 		ui_draw_text(label, i32(prompt_center_x)-width/2, prompt_y, 22, COLOR_HOVER)
 	}
-	preview := stairs_preview(run)
+	preview := stairs_preview(run, run.local_slot)
 	if preview != "" {
 		// Wrapped lines grow upward from just above the prompt.
 		lines: [4]string
@@ -3261,7 +3278,7 @@ draw_overlay :: proc(view: ^View, app: ^App, assets: ^Assets) {
 		}
 		draw_minimap(app, assets, minimap_card)
 	}
-	if run.player.memory_tokens > 0 && !app.inventory_open && !app.character_open && !app.shop_open {
+	if run.players[run.local_slot].memory_tokens > 0 && !app.inventory_open && !app.character_open && !app.shop_open {
 		rect := memory_token_prompt_rect()
 		if view.mobile_mode && view.mobile_layout_valid {
 			scale := max(f32(.001), ui_presentation().scale)
@@ -3281,7 +3298,7 @@ draw_overlay :: proc(view: ^View, app: ^App, assets: ^Assets) {
 		}
 		glyph := ui_ouroboros_glyph(assets)
 		_ = draw_ui_glyph(glyph, {rect.x+10,rect.y+12,26,26})
-		ui_draw_text(fmt.ctprintf("+%v Memory",run.player.memory_tokens),i32(rect.x+43),i32(rect.y+8),16,COLOR_TITLE)
+		ui_draw_text(fmt.ctprintf("+%v Memory",run.players[run.local_slot].memory_tokens),i32(rect.x+43),i32(rect.y+8),16,COLOR_TITLE)
 		ui_draw_text("Open Disciplines",i32(rect.x+43),i32(rect.y+28),12,COLOR_TEXT)
 	}
 
@@ -3447,7 +3464,7 @@ draw_minimap :: proc(app: ^App, assets: ^Assets, card: rl.Rectangle) {
 			known := dark ? vis : run.explored[x][y]
 			if !known do continue
 			pos := minimap_project_relative(
-				Vec2{f32(x)+.5-run.player.pos.x,f32(y)+.5-run.player.pos.y},
+				Vec2{f32(x)+.5-run.players[run.local_slot].pos.x,f32(y)+.5-run.players[run.local_slot].pos.y},
 				center,
 				app.minimap_zoom,
 			)
@@ -3486,7 +3503,7 @@ draw_minimap :: proc(app: ^App, assets: ^Assets, card: rl.Rectangle) {
 	markers := minimap_markers(run)
 	for i in 0..<markers.count {
 		marker := markers.items[i]
-		projected := minimap_project_relative(marker.world_pos-run.player.pos,center,app.minimap_zoom)
+		projected := minimap_project_relative(marker.world_pos-run.players[run.local_slot].pos,center,app.minimap_zoom)
 		anchor,clamped := minimap_clamp_to_bounds(projected,center,marker_half_extents)
 		color := marker.kind == .Bar ? rl.Color(MINIMAP_BAR_COLOR) : marker.kind == .Garden ? rl.Color(MINIMAP_GARDEN_COLOR) : rl.Color(MINIMAP_STAIRS_COLOR)
 		if clamped do draw_minimap_marker_arrow(anchor,center,color)
@@ -3498,7 +3515,7 @@ draw_minimap :: proc(app: ^App, assets: ^Assets, card: rl.Rectangle) {
 	if story_content_enabled(run) {
 		target, enabled := story_route_target(run)
 		if enabled {
-			projected := minimap_project_relative(target-run.player.pos,center,app.minimap_zoom)
+			projected := minimap_project_relative(target-run.players[run.local_slot].pos,center,app.minimap_zoom)
 			anchor, clamped := minimap_clamp_to_bounds(projected,center,marker_half_extents)
 			if clamped do draw_minimap_marker_arrow(anchor,center,rl.Color(MINIMAP_GOLD_BRIGHT))
 			else do draw_minimap_marker_glyph(assets,.Relic,anchor,f32(app.tick)*SIM_DT)
@@ -3508,7 +3525,7 @@ draw_minimap :: proc(app: ^App, assets: ^Assets, card: rl.Rectangle) {
 	player_color := rl.Color(MINIMAP_PLAYER_COLOR)
 	rl.DrawCircleV(rl.Vector2(center),MINIMAP_PLAYER_RADIUS+1,rl.Color(MINIMAP_INK_COLOR))
 	rl.DrawCircleV(rl.Vector2(center),MINIMAP_PLAYER_RADIUS,player_color)
-	if tick_end,shown := minimap_player_tick_end(center,run.player.facing,app.minimap_zoom); shown {
+	if tick_end,shown := minimap_player_tick_end(center,run.players[run.local_slot].facing,app.minimap_zoom); shown {
 		rl.DrawLineEx(rl.Vector2(center),rl.Vector2(tick_end),1,rl.Fade(player_color,220.0/255.0))
 	}
 }
@@ -3535,10 +3552,10 @@ draw_player_hud :: proc(view: ^View, app: ^App, assets: ^Assets) {
 	draw_action_bar(app, assets, dock_rect)
 
 	resource_rect := rl.Rectangle{18, sh-63-18, 240, 63}
-	draw_player_resources(&app.run.player, assets, resource_rect)
+	draw_player_resources(&app.run.players[app.run.local_slot], assets, resource_rect)
 
 	right_panel := rl.Rectangle{sw-224-18, sh-120-18, 224, 120}
-	draw_player_item_panel(&app.run.player, assets, right_panel)
+	draw_player_item_panel(&app.run.players[app.run.local_slot], assets, right_panel)
 }
 
 @(private = "file")
@@ -3669,9 +3686,9 @@ draw_mobile_hud_button :: proc(
 draw_mobile_action_slot :: proc(app:^App,assets:^Assets,rect:Mobile_Rect,slot:int) {
 	if app==nil||assets==nil||slot<1||slot>ACTION_SLOT_COUNT do return
 	design:=mobile_rect_to_design(rect)
-	player:=&app.run.player
+	player:=&app.run.players[app.run.local_slot]
 	timers:=[6]f32{player.bighit_timer,player.bolt_timer,player.class_skill_timer,player.dash_timer,player.potion_timer,player.potion_timer}
-	beast:=living_spirit_beast(&app.run)
+	beast:=living_spirit_beast(&app.run, app.run.local_slot)
 	if player.archetype==.Ranger&&beast!=nil do timers[2]=0
 	frame:=action_slot_frame(assets)
 	if frame.valid {
@@ -3719,7 +3736,7 @@ draw_mobile_action_slot :: proc(app:^App,assets:^Assets,rect:Mobile_Rect,slot:in
 @(private = "file")
 draw_mobile_player_hud :: proc(view:^View,app:^App,assets:^Assets) {
 	layout:=&view.mobile_layout
-	player:=&app.run.player
+	player:=&app.run.players[app.run.local_slot]
 	bar_frame:=mobile_hud_asset(assets,.Status_Bar_Frame)
 	draw_mobile_resource(bar_frame,layout.resource_bars[0],f32(player.xp)/f32(max(player.next_xp,1)),{210,176,82,255},"XP")
 	draw_mobile_resource(bar_frame,layout.resource_bars[1],f32(max(player.hp,0))/f32(max(player.max_hp,1)),{186,54,44,255},"H")
@@ -3737,8 +3754,8 @@ draw_mobile_player_hud :: proc(view:^View,app:^App,assets:^Assets) {
 	}
 	for i in 0..<len(layout.action_slots) do draw_mobile_action_slot(app,assets,layout.action_slots[i],i+1)
 
-	interaction_available:=player_interaction_available(&app.run)
-	interaction_advertised:=player_interaction_advertised(&app.run)
+	interaction_available:=player_interaction_available(&app.run, app.run.local_slot)
+	interaction_advertised:=player_interaction_advertised(&app.run, app.run.local_slot)
 	utility_open:=app.mobile_utility_open&&!interaction_available
 	if utility_open {
 		draw_mobile_hud_button(assets,layout.inventory,"BAG",COLOR_TEXT)
@@ -3805,9 +3822,9 @@ draw_player_stat_row :: proc(content: rl.Rectangle, row: int, label, value: cstr
 
 @(private = "file")
 draw_action_bar :: proc(app: ^App, assets: ^Assets, dock_rect: rl.Rectangle) {
-	player := &app.run.player
+	player := &app.run.players[app.run.local_slot]
 	timers := [6]f32{player.bighit_timer,player.bolt_timer,player.class_skill_timer,player.dash_timer,player.potion_timer,player.potion_timer}
-	beast := living_spirit_beast(&app.run)
+	beast := living_spirit_beast(&app.run, app.run.local_slot)
 	if player.archetype == .Ranger && beast != nil do timers[2]=0
 
 	if !draw_ui_chrome(ui_chrome_asset(assets, .Hud_Dock), dock_rect) {
@@ -3920,7 +3937,7 @@ draw_victory_overlay :: proc(app: ^App,assets:^Assets) {
 	title_size: i32 = 44
 	for title_size > 28 && ui_measure_text(title,title_size) > i32(panel.width)-64 do title_size -= 2
 	ui_draw_text(title,i32(presentation.width*.5)-ui_measure_text(title,title_size)/2,i32(panel.y+42),title_size,COLOR_TITLE)
-	p:=&app.run.player
+	p:=&app.run.players[app.run.local_slot]
 	inner_width:=i32(panel.width)-64
 	summary:=fmt.ctprintf("The tyrant is dead. Depth %v conquered  -  level %v  -  %v kills  -  %v gold",app.run.depth,p.level,app.run.kills,p.gold)
 	ui_draw_text_fitted_centered(summary,i32(presentation.width*.5),i32(panel.y+126),20,14,inner_width,COLOR_TEXT)
@@ -3963,7 +3980,7 @@ draw_death_overlay :: proc(app: ^App,assets:^Assets) {
 	title:cstring="YOU HAVE FALLEN"
 	inner_width:=i32(panel.width)-64
 	ui_draw_text(title,i32(presentation.width*.5)-ui_measure_text(title,40)/2,i32(panel.y+38),40,rl.Color{200,60,50,255})
-	summary:=fmt.ctprintf("Depth %v reached  -  level %v  -  %v kills  -  %v gold",app.run.depth,app.run.player.level,app.run.kills,app.run.player.gold)
+	summary:=fmt.ctprintf("Depth %v reached  -  level %v  -  %v kills  -  %v gold",app.run.depth,app.run.players[app.run.local_slot].level,app.run.kills,app.run.players[app.run.local_slot].gold)
 	ui_draw_text_fitted_centered(summary,i32(presentation.width*.5),i32(panel.y+116),20,14,inner_width,COLOR_TEXT)
 	draw_run_ledger_lines(app,presentation.width,i32(panel.y+140),inner_width)
 	hint:cstring="R / Esc / click: choose another archetype"
@@ -4134,7 +4151,7 @@ draw_turn_page_shards :: proc(sprite:^World_Sprite,tile:Vec2,variant:int,age,rot
 
 @(private = "file")
 draw_turn_page_falling_player :: proc(view:^View,app:^App,assets:^Assets,age:f32) {
-	p:=&app.run.player;sprites:=&assets.archetypes[p.archetype]
+	p:=&app.run.players[app.run.local_slot];sprites:=&assets.archetypes[p.archetype]
 	if !sprites.loaded || age>=.82 do return
 	clip:=sprites.clips[.Walk]
 	if !clip.valid do clip=sprites.clips[.Idle]
@@ -4161,7 +4178,7 @@ draw_turn_page_world :: proc(view:^View,app:^App,assets:^Assets,alpha:f32) {
 	page:=&app.turn_page;state:=&app.story_minigame
 	render_alpha:=app.mode==.Playing?alpha:f32(1)
 	age:=max(f32(0),page.fall_elapsed-(1-render_alpha)*SIM_DT)
-	world_time:=app.run.player.sim_elapsed-(1-render_alpha)*SIM_DT
+	world_time:=app.run.players[app.run.local_slot].sim_elapsed-(1-render_alpha)*SIM_DT
 	base:=&assets.world[.Turn_Page_Hidden]
 	variants:=visual_turn_page_floor_variants(state)
 	for depth in 0..<TURN_PAGE_SIZE*2-1 {
@@ -4241,7 +4258,7 @@ draw_turn_page_world :: proc(view:^View,app:^App,assets:^Assets,alpha:f32) {
 		a:=f32(i)*math.PI*2/32;b:=f32(i+1)*math.PI*2/32
 		rl.DrawLineEx(seal+rl.Vector2{math.cos(a)*11,math.sin(a)*5.5},seal+rl.Vector2{math.cos(b)*11,math.sin(b)*5.5},.8,{211,187,130,230})
 	}
-	p:=&app.run.player;feet:=p.prev_pos+(p.pos-p.prev_pos)*render_alpha
+	p:=&app.run.players[app.run.local_slot];feet:=p.prev_pos+(p.pos-p.prev_pos)*render_alpha
 	if !page.fall_active do draw_soul_hunt_player(view,app,assets,feet,world_time)
 }
 

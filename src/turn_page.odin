@@ -97,11 +97,11 @@ turn_page_begin_page :: proc(app: ^App) {
 	app.turn_page=turn_page_generate(state.seed,state.depth,state.score)
 	app.turn_page.return_player=saved
 	state.phase=.Preview;state.elapsed=0;state.step=0;state.revision+=1
-	p:=&app.run.player;p.pos=turn_page_center(app.turn_page.route[0]);p.prev_pos=p.pos
+	p:=&app.run.players[HOST_SLOT];p.pos=turn_page_center(app.turn_page.route[0]);p.prev_pos=p.pos
 	p.moving=false;p.dash_timer=0;p.visual_action=.None;p.action_time=0;p.action_duration=0
 }
 app_story_start_turn_page :: proc(app: ^App) {
-	app.turn_page={return_player=turn_page_capture_player(&app.run.player)}
+	app.turn_page={return_player=turn_page_capture_player(&app.run.players[HOST_SLOT])}
 	app.story_panel={}
 	turn_page_begin_page(app)
 }
@@ -112,7 +112,7 @@ turn_page_wrong :: proc(app: ^App, cell: [2]int) {
 	page.fall_active=true;page.fall_elapsed=0;page.fall_cell=cell
 	if cell.x>=0&&cell.y>=0&&cell.x<TURN_PAGE_SIZE&&cell.y<TURN_PAGE_SIZE do page.tiles[cell.x][cell.y]=.Wrong
 	state.mistakes+=1;state.revision+=1;state.last_correct=false
-	app.run.player.moving=false
+	app.run.players[HOST_SLOT].moving=false
 	sfx_emit(&app.run,.Story_Consequence)
 }
 
@@ -173,7 +173,7 @@ turn_page_sweep_contact :: proc(app: ^App, start, finish: Vec2, dashing: bool) -
 }
 
 turn_page_move :: proc(app: ^App, delta: Vec2, dashing: bool) {
-	page:=&app.turn_page;state:=&app.story_minigame;p:=&app.run.player
+	page:=&app.turn_page;state:=&app.story_minigame;p:=&app.run.players[HOST_SLOT]
 	start:=p.pos;distance:=math.hypot(delta.x,delta.y)
 	steps:=max(1,int(math.ceil(distance/.04)))
 	landing_step:=min(state.step+1,page.length-1)
@@ -214,8 +214,8 @@ turn_page_move :: proc(app: ^App, delta: Vec2, dashing: bool) {
 	}
 }
 turn_page_dash :: proc(app: ^App, aim: Vec2) -> bool {
-	if !app_story_turn_page_active(app)||app.story_minigame.phase!=.Play||app.turn_page.fall_active||app.run.player.dash_timer>0 do return false
-	p:=&app.run.player;direction:=aim;length:=math.hypot(direction.x,direction.y)
+	if !app_story_turn_page_active(app)||app.story_minigame.phase!=.Play||app.turn_page.fall_active||app.run.players[HOST_SLOT].dash_timer>0 do return false
+	p:=&app.run.players[HOST_SLOT];direction:=aim;length:=math.hypot(direction.x,direction.y)
 	if length<.001 do return false
 	direction/=length;p.facing=direction;p.prev_pos=p.pos
 	p.dash_timer=TURN_PAGE_DASH_COOLDOWN
@@ -225,7 +225,7 @@ turn_page_dash :: proc(app: ^App, aim: Vec2) -> bool {
 	return true
 }
 turn_page_tick :: proc(app: ^App, move: Vec2, dt: f32) -> bool {
-	state:=&app.story_minigame;page:=&app.turn_page;p:=&app.run.player
+	state:=&app.story_minigame;page:=&app.turn_page;p:=&app.run.players[HOST_SLOT]
 	step_dt:=clamp(dt,f32(0),f32(.25))
 	p.prev_pos=p.pos;p.moving=false;p.sim_elapsed+=step_dt
 	p.dash_timer=max(f32(0),p.dash_timer-step_dt);player_tick_visual_action(p,step_dt)

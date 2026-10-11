@@ -307,7 +307,7 @@ music_dungeon_miniboss_horn_gain :: proc(run: ^Run) -> f32 {
 	nearest_distance_squared := MUSIC_DIRECT_PROXIMITY_SILENT_DISTANCE_TILES * MUSIC_DIRECT_PROXIMITY_SILENT_DISTANCE_TILES
 	for &enemy in run.enemies {
 		if enemy.hp <= 0 || enemy.role != .Miniboss do continue
-		delta := enemy.pos - run.player.pos
+		delta := enemy.pos - run.players[run.local_slot].pos
 		distance_squared := delta.x * delta.x + delta.y * delta.y
 		nearest_distance_squared = min(nearest_distance_squared, distance_squared)
 	}
@@ -347,7 +347,7 @@ music_special_room_gain :: proc(run: ^Run, kind: Special_Room_Kind, silent_dista
 	special, found := special_room_for_kind(&run.dungeon, kind)
 	if !found || special.room_index < 0 || special.room_index >= run.dungeon.room_count do return 0
 	room := run.dungeon.rooms_buf[special.room_index]
-	distance := music_point_room_distance(run.player.pos, room)
+	distance := music_point_room_distance(run.players[run.local_slot].pos, room)
 	progress := clamp(1 - max(distance, 0) / silent_distance, 0, 1)
 	return progress * progress * (3 - 2 * progress)
 }
@@ -363,7 +363,7 @@ music_dungeon_bar_gain :: proc(run: ^Run) -> f32 {
 music_dungeon_string_guitar_gain :: proc(run: ^Run) -> f32 {
 	if run == nil do return 0
 	if guitarist := living_string(run); guitarist != nil {
-		delta := guitarist.pos - run.player.pos
+		delta := guitarist.pos - run.players[run.local_slot].pos
 		return music_direct_proximity_gain_for_distance(math.hypot(delta.x, delta.y))
 	}
 	for i in 0..<run.ambient_residents.count {
@@ -419,7 +419,7 @@ music_runtime_state_for :: proc(
 	}
 	if boss_conditions_enabled do boss_choir_gain = music_boss_choir_gain(&app.run)
 	return {
-		boss_guitar_tier        = music_boss_guitar_for_health(app.run.player.hp, app.run.player.max_hp),
+		boss_guitar_tier        = music_boss_guitar_for_health(app.run.players[app.run.local_slot].hp, app.run.players[app.run.local_slot].max_hp),
 		boss_choir_gain         = boss_choir_gain,
 		dungeon_miniboss_horn_gain = miniboss_horn_gain,
 		dungeon_quest_harp_gain = quest_harp_gain,
@@ -564,6 +564,10 @@ music_mix_for :: proc(app: ^App) -> string {
 		return app.persistence_return == .Paused ? playing_mix(app) : MUSIC_MIX_MENU
 	case .Dead, .Victory:
 		return MUSIC_MIX_MENU
+	case .Coop_Menu, .Coop_Lobby:
+		return MUSIC_MIX_MENU
+	case .Coop_Wait:
+		return app.coop.j_have_world || coop_is_host(app) ? playing_mix(app) : MUSIC_MIX_MENU
 	}
 	return MUSIC_MIX_MENU
 }

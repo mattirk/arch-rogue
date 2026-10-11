@@ -1,0 +1,89 @@
+# Relay deployment — ar.rita-kasari.fi
+
+The Odin relay (`tools/relay/`) replaces the archived Python relay on the
+same host. It deploys through `.github/workflows/server-deploy.yml` in this
+private repository: a GitHub-hosted job builds and tests a fully static
+`archrogue_relay` binary, then the self-hosted runner `arch-rogue-server-1`
+(which *is* the production host) installs it as a systemd **user** unit.
+The runner must never be registered on the public mirror; if this repository
+ever goes public, delete the workflow and deregister the runner first.
+
+## Topology
+
+```
+game clients ──wss://ar.rita-kasari.fi/mp──▶ nginx (TLS, port 443)
+                                              │  plaintext ws, loopback
+                                              ▼
+                                   archrogue_relay --bind 127.0.0.1 --port $PORT
+```
+
+- The relay has no TLS listener, certificate, or key (MULTIPLAYER.md D2).
+- `GET /healthz` answers `200 ok` with no room or player data.
+- Browser clients present an `Origin`; the relay accepts only the
+  `ORIGINS` allowlist (comma-separated). Native clients send no Origin.
+
+## Triggers
+
+- Push to `master` touching `tools/relay/**`, `src/net_protocol/**`,
+  `vendor/libwebsockets/**`, or the workflow itself.
+- Manual `workflow_dispatch` with an optional `ref` to roll back to any
+  commit beyond the on-disk history.
+
+## What a deploy does
+
+1. **Build job (GitHub-hosted):** pinned Odin from `toolchain.properties`,
+   `./build.sh relay-test`, then `./build.sh relay -extra-linker-flags:-static`
+   (static: no glibc coupling to the host), smoke-starts the binary and curls
+   `/healthz`, uploads the binary plus `tools/relay/deploy/`.
+2. **Deploy job (self-hosted runner):** downloads the artifact into
+   `~/arch-rogue-relay/releases/<timestamp>-<sha>/`, writes
+   `~/arch-rogue-relay/env` from the GitHub Environment **`ar-rita-kasari-fi`**
+   variables `PORT`, `ORIGINS` (optional; default
+   `https://mattirk.github.io`) and `MAX_ROOMS` (optional; default 128),
+   installs/enables `arch-rogue-relay.service`, flips the `current` symlink,
+   restarts the unit, and probes `http://127.0.0.1:$PORT/healthz` for 10 s.
+   On failure it prints the journal tail, flips back to the previous release,
+   restarts, and fails the job. The five newest releases are kept.
+3. The first successful deploy also stops and disables the old Python unit
+   `arch-rogue-server` if it exists.
+
+## One-time host provisioning (root)
+
+1. Lingering for the runner user, so `systemctl --user` works without a login
+   session (already done for the Python relay):
+   `sudo loginctl enable-linger <runner-user>`
+2. Make sure `curl` is installed (the health probe uses it).
+3. Reverse proxy: copy `nginx-ar.rita-kasari.fi.conf` to
+   `/etc/nginx/conf.d/`, replace `RELAY_PORT` with the Environment's `PORT`,
+   check the certificate paths (the existing Let's Encrypt lineage used by
+   the old `stream` block can be reused), open 443 in the firewall, then
+   `sudo nginx -t && sudo systemctl reload nginx`.
+4. Remove the old `stream { listen 43666 ssl; ... }` block once the Odin
+   clients are the only users, and close 43666 in the firewall.
+5. On the GitHub Environment `ar-rita-kasari-fi`: keep `PORT`; add
+   `ORIGINS` if the web build is served from anywhere besides
+   `https://mattirk.github.io` (local web testing against the live relay
+   needs e.g. `http://127.0.0.1:8090` added — or run a local relay instead).
+   `SERVER` is no longer read.
+
+## Verifying
+
+```bash
+curl -i https://ar.rita-kasari.fi/healthz            # 200 ok
+# from a checkout, two bots over the real network:
+build/coop_bot --role host --url wss://ar.rita-kasari.fi/mp --code-file /tmp/code --seconds 20 &
+build/coop_bot --role join --url wss://ar.rita-kasari.fi/mp --code-file /tmp/code --seconds 20
+```
+
+Management on the host: `systemctl --user status arch-rogue-relay`,
+`journalctl --user -u arch-rogue-relay -f`. Logs are metadata only (room
+codes, connection ids, close codes, rejection reasons); never tokens, names
+in bulk, or payloads.
+
+## Manual rollback
+
+```bash
+ls ~/arch-rogue-relay/releases/
+ln -sfn ~/arch-rogue-relay/releases/<older> ~/arch-rogue-relay/current
+systemctl --user restart arch-rogue-relay
+```

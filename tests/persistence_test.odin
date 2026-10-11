@@ -429,19 +429,19 @@ mx_save_busy_run_round_trip_restores_danger_story_and_rng :: proc(t:^testing.T) 
 	source:=mx_save_start_app(0x5A7E)
 	defer mx_save_destroy_app(&source)
 	source.run.started_at_utc=strings.clone("2026-08-17T10:00:00Z")
-	source.run.player.hp=max(2,source.run.player.max_hp-7)
-	source.run.player.mana-=3
-	source.run.player.bighit_charge=.41
+	source.run.players[0].hp=max(2,source.run.players[0].max_hp-7)
+	source.run.players[0].mana-=3
+	source.run.players[0].bighit_charge=.41
 	if len(source.run.enemies)>0 {
 		enemy:=&source.run.enemies[0]
 		enemy.windup=.33;enemy.windup_duration=.6;enemy.pending_ability=ar.PENDING_BASE_ATTACK
 		enemy.windup_aim={1,0}
 	}
-	_=ar.player_cast_bolt(&source.run,{1,0})
+	_=ar.player_cast_bolt(&source.run, 0,{1,0})
 	if len(source.run.traps)>0 {source.run.traps[0].revealed=true;source.run.traps[0].reveal_progress=.72}
-	source.run.explored[int(source.run.player.pos.x)][int(source.run.player.pos.y)]=true
+	source.run.explored[int(source.run.players[0].pos.x)][int(source.run.players[0].pos.y)]=true
 	append(&source.run.familiars,ar.Familiar{
-		entity_id=9001,kind=.String,command=.Attack,pos=source.run.player.pos,prev_pos=source.run.player.pos,
+		entity_id=9001,kind=.String,command=.Attack,pos=source.run.players[0].pos,prev_pos=source.run.players[0].pos,
 		facing={1,0},hp=ar.STRING_HP,max_hp=ar.STRING_HP,damage=ar.STRING_DAMAGE,speed=ar.STRING_SPEED,
 		attack_range=ar.FAMILIAR_ATTACK_RANGE,attack_cooldown=ar.STRING_ATTACK_COOLDOWN,
 	})
@@ -460,20 +460,20 @@ mx_save_busy_run_round_trip_restores_danger_story_and_rng :: proc(t:^testing.T) 
 	defer ar.run_destroy(&restored.run)
 	testing.expect(t,ar.app_install_run_document(&restored,&document))
 	testing.expect(t,restored.run.run_id==source.run.run_id&&restored.run.seed==source.run.seed)
-	testing.expect(t,restored.run.player.hp==source.run.player.hp&&restored.run.player.bighit_charge==source.run.player.bighit_charge)
+	testing.expect(t,restored.run.players[0].hp==source.run.players[0].hp&&restored.run.players[0].bighit_charge==source.run.players[0].bighit_charge)
 	testing.expect(t,len(restored.run.enemies)==len(source.run.enemies)&&len(restored.run.projectiles)==len(source.run.projectiles))
 	restored_string:=ar.living_string(&restored.run)
 	testing.expect(t,restored_string!=nil&&restored_string.entity_id==9001&&restored_string.damage==ar.STRING_DAMAGE,
 		"recruited String familiar must survive run-document round trip")
 	testing.expect(t,restored.run.loot_rng==loot_before&&restored.run.combat_rng==combat_before)
-	testing.expect(t,restored.run.visible[int(restored.run.player.pos.x)][int(restored.run.player.pos.y)])
+	testing.expect(t,restored.run.visible[int(restored.run.players[0].pos.x)][int(restored.run.players[0].pos.y)])
 	testing.expect(t,len(restored.run.sfx)==0&&len(restored.run.numbers)==0&&len(restored.run.feel)==0,"presentation queues must be rebuilt, not restored")
 	if len(restored.run.enemies)>0 do testing.expect(t,restored.run.enemies[0].windup==source.run.enemies[0].windup,"committed enemy danger was cancelled")
 
 	source.mode=.Playing;restored.mode=.Playing
 	source.mouse_input_blocked=false;restored.mouse_input_blocked=false
 	for _ in 0..<180 {ar.app_tick(&source);ar.app_tick(&restored)}
-	testing.expect(t,restored.run.player.pos==source.run.player.pos&&restored.run.player.hp==source.run.player.hp)
+	testing.expect(t,restored.run.players[0].pos==source.run.players[0].pos&&restored.run.players[0].hp==source.run.players[0].hp)
 	testing.expect(t,restored.run.loot_rng==source.run.loot_rng&&restored.run.combat_rng==source.run.combat_rng,"restored continuation drifted in RNG")
 	testing.expect(t,len(restored.run.enemies)==len(source.run.enemies)&&len(restored.run.projectiles)==len(source.run.projectiles))
 }
@@ -486,8 +486,8 @@ mx_save_active_soul_hunt_round_trip_preserves_floor_until_exact_return :: proc(t
 	source.run.depth=7
 	source.run.story_runtime.hall={seen=true,met=true,room_index=0,verdict=.Release}
 	source.run.story_runtime.hall_ledgers[6]={valid=true,met=true,room_index=0,verdict=.Release}
-	origin:=source.run.player.pos
-	source.run.player.dash_timer=.61
+	origin:=source.run.players[0].pos
+	source.run.players[0].dash_timer=.61
 	stairs:=source.run.dungeon.stairs
 	source.run.story_runtime.relic={
 		relic=source.run.story.relic,depth=source.run.depth,
@@ -524,7 +524,7 @@ mx_save_active_soul_hunt_round_trip_preserves_floor_until_exact_return :: proc(t
 	testing.expect(t,ar.app_story_soul_hunt_active(&restored)&&
 		ar.story_soul_hunt_state_valid(&restored.run,&restored.story_minigame),
 		"installed hunt must remain active and semantically valid")
-	testing.expect(t,restored.run.player.pos==source.run.player.pos&&restored.run.explored==explored_before,
+	testing.expect(t,restored.run.players[0].pos==source.run.players[0].pos&&restored.run.explored==explored_before,
 		"restore must not reveal the real dungeon from virtual-room coordinates")
 	testing.expect(t,restored.run.dungeon==dungeon_before&&restored.run.loot_rng==loot_before&&restored.run.combat_rng==combat_before,
 		"active hunt restore changed real-floor geometry or RNG")
@@ -542,7 +542,7 @@ mx_save_active_soul_hunt_round_trip_preserves_floor_until_exact_return :: proc(t
 	restored.story_minigame.active_cell=-1
 	restored.story_minigame.result_time=0
 	testing.expect(t,ar.app_story_finalize_minigame(&restored),"restored hunt result did not finalize")
-	testing.expect(t,restored.run.player.pos==origin&&restored.run.player.prev_pos==origin&&restored.run.player.dash_timer==.61,
+	testing.expect(t,restored.run.players[0].pos==origin&&restored.run.players[0].prev_pos==origin&&restored.run.players[0].dash_timer==.61,
 		"restored hunt must return exact position and pre-hunt dash cooldown")
 	testing.expect(t,restored.run.explored==explored_before&&restored.run.visible[int(origin.x)][int(origin.y)],
 		"real-floor visibility must rebuild from the restored return position")
@@ -555,13 +555,13 @@ mx_save_active_soul_hunt_round_trip_preserves_floor_until_exact_return :: proc(t
 mx_save_failed_restore_never_partially_mutates_app :: proc(t:^testing.T) {
 	app:=mx_save_start_app(0xBAD5A7E)
 	defer mx_save_destroy_app(&app)
-	seed,depth,pos:=app.run.seed,app.run.depth,app.run.player.pos
+	seed,depth,pos:=app.run.seed,app.run.depth,app.run.players[0].pos
 	malformed:string="{\"schema_version\":1,\"run_id\":\"broken\"}"
 	document,status:=ar.persistence_decode_run(transmute([]byte)(malformed))
 	defer ar.run_document_destroy(&document)
 	testing.expect(t,status==.Corrupt)
 	testing.expect(t,!ar.app_install_run_document(&app,&document))
-	testing.expect(t,app.run.seed==seed&&app.run.depth==depth&&app.run.player.pos==pos)
+	testing.expect(t,app.run.seed==seed&&app.run.depth==depth&&app.run.players[0].pos==pos)
 }
 
 @(test)
@@ -974,7 +974,7 @@ mx_save_abandon_removes_all_run_artifacts_without_chronicle_or_backup_resurrecti
 	app.profile.hell_unlocked=true
 	testing.expect(t,mx_save_store_profile(t,coordinator.paths.profile,&app.profile,4))
 	testing.expect(t,mx_save_store_run(t,coordinator.paths.run,&app,1))
-	app.run.player.hp=max(1,app.run.player.hp-1)
+	app.run.players[0].hp=max(1,app.run.players[0].hp-1)
 	testing.expect(t,mx_save_store_run(t,coordinator.paths.run,&app,2))
 	bak:=ar.storage_artifact_path(coordinator.paths.run,"bak")
 	defer delete(bak)
@@ -1070,9 +1070,9 @@ mx_save_worker_encodes_an_owned_fixed_tick_snapshot :: proc(t:^testing.T) {
 	app:=mx_save_start_app(0xC01A5CE)
 	defer mx_save_destroy_app(&app)
 
-	app.run.player.hp=max(2,app.run.player.max_hp-9)
+	app.run.players[0].hp=max(2,app.run.players[0].max_hp-9)
 	app.run.kills=17
-	snapshotted_hp:=app.run.player.hp
+	snapshotted_hp:=app.run.players[0].hp
 	snapshotted_kills:=app.run.kills
 
 	// Queue all three document domains in one burst. Coalescing a run must never
@@ -1091,7 +1091,7 @@ mx_save_worker_encodes_an_owned_fixed_tick_snapshot :: proc(t:^testing.T) {
 
 	// This mutation happens while JSON encoding and disk I/O may still be active.
 	// The writer must see only the owned state captured at enqueue time.
-	app.run.player.hp=1
+	app.run.players[0].hp=1
 	app.run.kills=999
 	testing.expect(t,ar.persistence_drain_worker(&coordinator))
 
@@ -1125,7 +1125,7 @@ mx_save_worker_encodes_an_owned_fixed_tick_snapshot :: proc(t:^testing.T) {
 	if decoded==.Valid {
 		testing.expect(t,document.payload.player.hp==snapshotted_hp)
 		testing.expect(t,document.payload.kills==snapshotted_kills)
-		testing.expect(t,document.payload.player.hp!=app.run.player.hp&&document.payload.kills!=app.run.kills)
+		testing.expect(t,document.payload.player.hp!=app.run.players[0].hp&&document.payload.kills!=app.run.kills)
 	}
 }
 

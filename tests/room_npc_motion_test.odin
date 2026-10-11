@@ -29,8 +29,8 @@ room_npc_test_run :: proc(kind: ar.Special_Room_Kind, seed := u64(71001)) -> ar.
 	run.dungeon.special_room_count=1
 	if kind==.Bar do ar.plan_bar_furnishings(&run.dungeon)
 	if kind==.Shop do ar.plan_shop_gold(&run.dungeon)
-	run.player.pos={2.5,2.5}
-	run.player.prev_pos=run.player.pos
+	run.players[0].pos={2.5,2.5}
+	run.players[0].prev_pos=run.players[0].pos
 	run.loot_rng=ar.rng_make(ar.derive_seed(seed,1),stream=2)
 	run.combat_rng=ar.rng_make(ar.derive_seed(seed,1),stream=5)
 	if kind==.Shop {
@@ -147,7 +147,7 @@ ambient_residents_pause_for_hostiles_and_hold_to_face_interactions :: proc(t:^te
 	testing.expect(t,frog.pos==before&&!frog.motion.moving&&!frog.motion.dancing,"living room hostile must pause Garden motion and dance")
 
 	run.enemies[0].hp=0
-	run.player.pos=frog.pos+ar.Vec2{1,0}
+	run.players[0].pos=frog.pos+ar.Vec2{1,0}
 	ar.room_npc_tick_live(&run,2*ar.SIM_DT,ar.SIM_DT)
 	testing.expect(t,frog.motion.holding&&!frog.motion.moving&&!frog.motion.dancing,"nearby interaction must hold the frog in place")
 	testing.expect(t,frog.motion.facing.x>.9&&abs(frog.motion.facing.y)<.1,"held resident must face the player")
@@ -163,11 +163,11 @@ soulless_clanker_spawns_in_hall_and_clanks_on_interaction :: proc(t:^testing.T) 
 	hall:=run.dungeon.rooms_buf[0]
 	center:=ar.room_center(hall)
 	testing.expect(t,int(clanker.pos.x)!=center.x,"Clanker must not overlap the Lossless Soul center anchor")
-	run.player.pos=clanker.pos+ar.Vec2{.5,0}
-	run.player.prev_pos=run.player.pos
-	testing.expect(t,ar.interact_prompt(&run)=="E: greet the Soulless Clanker","Clanker prompt must identify the NPC")
+	run.players[0].pos=clanker.pos+ar.Vec2{.5,0}
+	run.players[0].prev_pos=run.players[0].pos
+	testing.expect(t,ar.interact_prompt(&run, 0)=="E: greet the Soulless Clanker","Clanker prompt must identify the NPC")
 	clanker_pos:=clanker.pos
-	_ = ar.player_interact(&run)
+	_ = ar.player_interact(&run, 0)
 	testing.expect(t,!clanker.active,"greeting must retire the room-resident Clanker")
 	testing.expect(t,len(run.familiars)==1&&run.familiars[0].kind==.Soulless_Clanker,"greeting must create exactly one Clanker familiar")
 	joined:=&run.familiars[0]
@@ -175,9 +175,9 @@ soulless_clanker_spawns_in_hall_and_clanks_on_interaction :: proc(t:^testing.T) 
 	testing.expect(t,joined.max_hp==ar.SOULLESS_CLANKER_HP&&joined.damage==ar.SOULLESS_CLANKER_DAMAGE,"Clanker familiar must receive its authored combat stats")
 	testing.expect(t,len(run.numbers)==1&&run.numbers[0].text=="Clank, clank, clank!","interaction must emit the exact Clanker line")
 	testing.expect(t,len(run.sfx)==1&&run.sfx[0].bank==.Soulless_Clanker&&run.sfx[0].spatial,"interaction must emit the spatial Clanker SFX")
-	testing.expect(t,ar.interact_prompt(&run)=="","joined Clanker must no longer advertise the room interaction")
+	testing.expect(t,ar.interact_prompt(&run, 0)=="","joined Clanker must no longer advertise the room interaction")
 
-	run.player.pos=clanker_pos+ar.Vec2{3,0}
+	run.players[0].pos=clanker_pos+ar.Vec2{3,0}
 	follow_start:=joined.pos
 	ar.tick_familiars_dt(&run,.5)
 	testing.expect(t,joined.pos.x>follow_start.x,"joined Clanker must follow the player")
@@ -204,12 +204,12 @@ string_plays_in_bar_and_joins_as_a_guitar_familiar :: proc(t:^testing.T) {
 		testing.expect(t,run.dungeon.bar_furnishings.tiles[i]!=bar_layout.tiles[1],"Bar furnishing overlaps String's reserved anchor")
 	}
 
-	run.player.pos=guitarist.pos+ar.Vec2{.5,0}
-	run.player.prev_pos=run.player.pos
-	testing.expect(t,ar.interact_prompt(&run)=="E: greet String","String prompt must identify the guitarist")
+	run.players[0].pos=guitarist.pos+ar.Vec2{.5,0}
+	run.players[0].prev_pos=run.players[0].pos
+	testing.expect(t,ar.interact_prompt(&run, 0)=="E: greet String","String prompt must identify the guitarist")
 	string_pos:=guitarist.pos
 	expected_response:=ar.string_join_response(&run)
-	_ = ar.player_interact(&run)
+	_ = ar.player_interact(&run, 0)
 	testing.expect(t,!guitarist.active,"greeting must retire room-resident String")
 	testing.expect(t,len(run.familiars)==1&&run.familiars[0].kind==.String,"greeting must create exactly one String familiar")
 	joined:=&run.familiars[0]
@@ -226,9 +226,9 @@ string_plays_in_bar_and_joins_as_a_guitar_familiar :: proc(t:^testing.T) {
 		ar.STRING_JOIN_RESPONSES[4]=="The next verse belongs to the dead."&&
 		ar.STRING_JOIN_RESPONSES[5]=="No applause. String follows anyway.",
 		"String join-response table changed")
-	testing.expect(t,ar.interact_prompt(&run)=="","joined String must no longer advertise the room interaction")
+	testing.expect(t,ar.interact_prompt(&run, 0)=="","joined String must no longer advertise the room interaction")
 
-	run.player.pos=string_pos+ar.Vec2{3,0}
+	run.players[0].pos=string_pos+ar.Vec2{3,0}
 	follow_start:=joined.pos
 	ar.tick_familiars_dt(&run,.5)
 	testing.expect(t,joined.pos.x>follow_start.x,"joined String must follow the player")
@@ -237,7 +237,7 @@ string_plays_in_bar_and_joins_as_a_guitar_familiar :: proc(t:^testing.T) {
 	append(&run.enemies,enemy)
 	ar.tick_familiars_dt(&run,.01)
 	testing.expect(t,run.enemies[0].hp<100&&joined.attack_anim_timer>0,"joined String must attack a nearby enemy")
-	ar.clear_summoned_familiars(&run)
+	ar.clear_summoned_familiars(&run, 0)
 	testing.expect(t,len(run.familiars)==1&&run.familiars[0].kind==.String,"class summon recasts must not dismiss String")
 }
 
@@ -246,11 +246,11 @@ completed_garden_minigame_does_not_swallow_interact :: proc(t:^testing.T) {
 	run:=room_npc_test_run(.Garden,71051)
 	defer ar.run_destroy(&run)
 	frog:=&run.ambient_residents.items[0]
-	run.player.pos=frog.pos
-	run.player.prev_pos=frog.pos
+	run.players[0].pos=frog.pos
+	run.players[0].prev_pos=frog.pos
 	run.story_runtime.garden_games[0]={valid=true,room_index=0,outcome=.Won}
-	append(&run.ground_items,ar.Ground_Item{item=ar.Item{kind=.Heal_Potion,name="Fallback Flask"},pos=run.player.pos})
-	before:=run.player.heal_potions
-	_ = ar.player_interact(&run)
-	testing.expect(t,run.player.heal_potions==before+1&&len(run.ground_items)==0,"completed Garden interaction must fall through to nearby loot")
+	append(&run.ground_items,ar.Ground_Item{item=ar.Item{kind=.Heal_Potion,name="Fallback Flask"},pos=run.players[0].pos})
+	before:=run.players[0].heal_potions
+	_ = ar.player_interact(&run, 0)
+	testing.expect(t,run.players[0].heal_potions==before+1&&len(run.ground_items)==0,"completed Garden interaction must fall through to nearby loot")
 }

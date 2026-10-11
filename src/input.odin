@@ -492,7 +492,9 @@ desktop_wheel_intent :: proc(app: ^App, wheel: f32, ctrl_down, over_minimap: boo
 		if !app.controls_capture do intent.menu_delta = -steps
 	case .Story_Decision:
 		if app.story_decision_phase == .Ask do intent.menu_delta = -steps
-	case .Save_Wait, .Resume_Veil, .Dead, .Victory:
+	case .Coop_Menu, .Coop_Lobby:
+		intent.menu_delta = -steps
+	case .Save_Wait, .Resume_Veil, .Dead, .Victory, .Coop_Wait:
 	}
 	return
 }
@@ -607,12 +609,12 @@ controller_snap_aim :: proc(run: ^Run, aim: Vec2) -> Vec2 {
 	found := false
 	for &enemy in run.enemies {
 		if enemy.hp <= 0 do continue
-		to := enemy.pos - run.player.pos
+		to := enemy.pos - run.players[run.local_slot].pos
 		distance := math.hypot(to.x, to.y)
 		if distance <= 0.001 || distance > CONTROLLER_AIM_SNAP_RANGE + enemy_hit_radius(&enemy) do continue
 		tx, ty := int(enemy.pos.x), int(enemy.pos.y)
 		if !dungeon_in_bounds(tx, ty) || !run.visible[tx][ty] do continue
-		if !line_of_sight(&run.dungeon, run.player.pos.x, run.player.pos.y, enemy.pos.x, enemy.pos.y) do continue
+		if !line_of_sight(&run.dungeon, run.players[run.local_slot].pos.x, run.players[run.local_slot].pos.y, enemy.pos.x, enemy.pos.y) do continue
 		direction := to / distance
 		dot := direction.x * facing.x + direction.y * facing.y
 		if dot < CONTROLLER_AIM_SNAP_DOT do continue

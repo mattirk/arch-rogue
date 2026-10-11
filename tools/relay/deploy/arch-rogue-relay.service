@@ -1,0 +1,36 @@
+# Arch Rogue multiplayer relay (Odin) — systemd user unit template.
+#
+# .github/workflows/server-deploy.yml installs this unit into
+# ~/.config/systemd/user/ on every deploy, writes ~/arch-rogue-relay/env from
+# the PORT and ORIGINS variables of the GitHub Environment "ar-rita-kasari-fi",
+# points ~/arch-rogue-relay/current at the newest release, and restarts it.
+# The only manual host step is `sudo loginctl enable-linger <runner-user>`.
+#
+# The relay serves private plaintext WebSocket on loopback only; public TLS
+# terminates at nginx (tools/relay/deploy/nginx-ar.rita-kasari.fi.conf).
+
+[Unit]
+Description=Arch Rogue multiplayer relay (Odin, private WS behind nginx)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+WorkingDirectory=%h/arch-rogue-relay/current
+EnvironmentFile=%h/arch-rogue-relay/env
+ExecStart=%h/arch-rogue-relay/current/archrogue_relay --bind 127.0.0.1 --port ${PORT} --origins ${ORIGINS} --max-rooms ${MAX_ROOMS}
+Restart=on-failure
+RestartSec=2
+# Rooms and tokens are in-memory only; a stop drops in-flight rooms and the
+# clients ride it out inside their 30 s reconnect grace.
+TimeoutStopSec=10
+# Hardening available to user units.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/arch-rogue-relay
+MemoryMax=512M
+
+[Install]
+WantedBy=default.target

@@ -163,6 +163,7 @@ Player :: struct {
 	swing_timer:  f32, // attack clip playback remaining
 	melee_commit_timer: f32, // basic-swing plant window remaining (rides the save like swing_timer)
 	potion_timer: f32,
+	raise_charges: int, // co-op: one per run; Vigil Shrines add more
 	hit_flash:    f32,
 	hit_flash_duration: f32,
 	level:        int,
@@ -421,6 +422,8 @@ Enemy :: struct {
 	difficulty_scaled: bool,
 	story_target_kind: Story_Combat_Target_Kind,
 	story_target_index: int,
+	target_slot:     u8, // living player this enemy pursues and attacks
+	last_hit_slot:   u8, // player credited for the kill (last player hit)
 }
 
 PENDING_BASE_ATTACK :: -1
@@ -487,8 +490,8 @@ boss_alive :: proc(run: ^Run) -> bool {
 }
 
 story_enemy_combat_target :: proc(run: ^Run, enemy: ^Enemy) -> (target: Story_Combat_Target) {
-	if run == nil || enemy == nil || run.player.hp <= 0 do return
-	player_delta := run.player.pos - enemy.pos
+	if run == nil || enemy == nil || run.players[enemy.target_slot].hp <= 0 do return
+	player_delta := run.players[enemy.target_slot].pos - enemy.pos
 	best_sq := player_delta.x * player_delta.x + player_delta.y * player_delta.y
 	guest_limit := min(len(run.story_runtime.guests), STORY_BEAT_COUNT)
 	for i in 0 ..< guest_limit {
@@ -614,6 +617,7 @@ Projectile :: struct {
 	vel:         Vec2, // tiles per second
 	visual:      Projectile_Visual,
 	visual_age:  f32, // fixed-step presentation clock; never sampled from wall time
+	hidden:      bool, // co-op replica only: the presented (delayed) timeline is before this shot's spawn or past its end
 	damage:      int,
 	damage_type: Damage_Type,
 	status:      Status_Kind,
@@ -624,6 +628,7 @@ Projectile :: struct {
 	hit_enemy_count: int,
 	from_player: bool,
 	owner_id:    u64, // 0 is the player; enemies use their stable entity id
+	owner_slot:  u8,  // shooting player slot when from_player
 	ttl:         f32,
 	color:       [4]u8,
 	// MX.3 path shaping: homing strength (projectiles.py:263-313) and the
@@ -680,6 +685,7 @@ player_spawn :: proc(run: ^Run, archetype: Archetype_Id) -> Player {
 		level = 1,
 		next_xp = XP_BASE,
 		heal_potions = 1, // one starter flask
+		raise_charges = 1, // co-op: once per run, never refreshed between floors
 	}
 	weapon := STARTER_WEAPONS[archetype]
 	player.weapon = Item{
@@ -702,17 +708,64 @@ player_spawn :: proc(run: ^Run, archetype: Archetype_Id) -> Player {
 	return player
 }
 
+HOST_SLOT :: 0 // solo player and co-op host (p1)
+
+run_seat_count :: proc(run: ^Run) -> int {
+	if run == nil do return 0
+	return clamp(run.player_count, 1, MAX_PLAYERS)
+}
+
+run_coop :: proc(run: ^Run) -> bool {
+	return run != nil && run.player_count > 1
+}
+
+// Fixed-step run clock for deterministic NPC motion. Every seat advances its
+// copy together, so the host seat's value is authoritative.
+run_clock :: proc(run: ^Run) -> f32 {
+	return run.players[HOST_SLOT].sim_elapsed
+}
+
+run_any_player_alive :: proc(run: ^Run) -> bool {
+	for slot in 0 ..< run_seat_count(run) do if run.players[slot].hp > 0 do return true
+	return false
+}
+
+// Nearest living seat to pos; found is false when every seat has fallen.
+run_nearest_living_player :: proc(run: ^Run, pos: Vec2) -> (slot: int, found: bool) {
+	best := max(f32)
+	for i in 0 ..< run_seat_count(run) {
+		p := &run.players[i]
+		if p.hp <= 0 do continue
+		d := p.pos - pos
+		distance_sq := d.x * d.x + d.y * d.y
+		if distance_sq < best {
+			best = distance_sq
+			slot = i
+			found = true
+		}
+	}
+	return
+}
+
+// The seat an ambient presence reacts to: nearest living seat, else the host.
+run_nearest_seat :: proc(run: ^Run, pos: Vec2) -> int {
+	slot, found := run_nearest_living_player(run, pos)
+	return found ? slot : HOST_SLOT
+}
+
 // models.py gain_xp: overflow carries, each level is x1.5, level-ups fully
 // restore the grown pools.
-player_gain_xp :: proc(run: ^Run, amount: int) {
-	p := &run.player
+player_gain_xp :: proc(run: ^Run, slot: int, amount: int) {
+	p := &run.players[slot]
 	p.xp += amount
 	for p.xp >= p.next_xp {
 		p.xp -= p.next_xp
 		p.level += 1
 		p.next_xp = int(f32(p.next_xp) * XP_GROWTH)
 		p.max_hp += LEVEL_HP_GAIN
-		p.hp = p.max_hp
+		// A fallen seat still banks credited XP, but a level-up never
+		// resurrects it (archived fallback-credit revival defect).
+		if p.hp > 0 do p.hp = p.max_hp
 		p.max_mana += LEVEL_MANA_GAIN
 		p.mana = f32(p.max_mana)
 		p.max_stamina += LEVEL_STAMINA_GAIN
@@ -723,9 +776,9 @@ player_gain_xp :: proc(run: ^Run, amount: int) {
 	}
 }
 
-player_use_potion :: proc(run: ^Run, kind: Item_Kind) {
-	p := &run.player
-	if p.potion_timer > 0 do return
+player_use_potion :: proc(run: ^Run, slot: int, kind: Item_Kind) {
+	p := &run.players[slot]
+	if p.hp <= 0 || p.potion_timer > 0 do return
 	#partial switch kind {
 	case .Heal_Potion:
 		if p.heal_potions <= 0 || p.hp >= p.max_hp do return
@@ -902,8 +955,8 @@ sort_bag :: proc(p: ^Player, mode: Inventory_Sort_Mode) {
 }
 
 
-drop_from_bag :: proc(run: ^Run, index: int) -> bool {
-	p := &run.player
+drop_from_bag :: proc(run: ^Run, slot: int, index: int) -> bool {
+	p := &run.players[slot]
 	if index < 0 || index >= p.bag_count do return false
 	item := p.bag[index]
 	bag_remove(p, index)
@@ -943,10 +996,29 @@ sim_tick :: proc(run: ^Run, move: Vec2) {
 	sim_tick_limited(run, move, -1)
 }
 
-// Fixed-step tick with an optional movement cap. Desktop click-to-walk uses
-// this only for its final step into the 0.12-tile cursor dead zone; keyboard
-// and every headless simulation caller pass -1 for the ordinary full step.
+// One seat's fixed-step command: movement plus the held auto-melee gate.
+// max_move_step < 0 is the ordinary full step; desktop click-to-walk caps
+// only its final step into the cursor dead zone.
+Player_Tick_Input :: struct {
+	move:          Vec2,
+	max_move_step: f32,
+	auto_melee:    bool,
+}
+
+// Solo/local entry point: drives this run's local seat; any other active seat
+// (co-op host without fresh remote input) stands still for the tick.
 sim_tick_limited :: proc(run: ^Run, move: Vec2, max_move_step: f32, auto_melee := false) {
+	inputs: [MAX_PLAYERS]Player_Tick_Input
+	for &input in inputs do input.max_move_step = -1
+	inputs[run.local_slot] = {move = move, max_move_step = max_move_step, auto_melee = auto_melee}
+	sim_tick_players(run, inputs)
+}
+
+// The shared world advances exactly once per tick and every active seat once,
+// in ascending slot order within each phase. Solo resolves to the original
+// single-player order.
+sim_tick_players :: proc(run: ^Run, inputs: [MAX_PLAYERS]Player_Tick_Input) {
+	seats := run_seat_count(run)
 	// Impact freeze: a connected basic swing swallows whole sim ticks so every
 	// combat clock pauses in step — a frozen tick is consumed, not simulated.
 	// Interpolation spans collapse to the settled pose so render-alpha resets
@@ -954,7 +1026,7 @@ sim_tick_limited :: proc(run: ^Run, move: Vec2, max_move_step: f32, auto_melee :
 	// (app_tick) and keep playing through the freeze.
 	if run.hitstop_ticks > 0 {
 		run.hitstop_ticks -= 1
-		run.player.prev_pos = run.player.pos
+		for slot in 0 ..< seats do run.players[slot].prev_pos = run.players[slot].pos
 		for &enemy in run.enemies do enemy.prev_pos = enemy.pos
 		for &p in run.projectiles do p.prev_pos = p.pos
 		for &f in run.familiars do f.prev_pos = f.pos
@@ -963,25 +1035,32 @@ sim_tick_limited :: proc(run: ^Run, move: Vec2, max_move_step: f32, auto_melee :
 		return
 	}
 	enemy_dt := enemy_sim_dt(run) // sample Time Skip before its player clock advances
-	tick_player(run, move, max_move_step)
-	if run.player.moving do run.player.guidance_idle_elapsed = 0
-	else do run.player.guidance_idle_elapsed += SIM_DT
+	for slot in 0 ..< seats {
+		player := &run.players[slot]
+		tick_player(run, slot, inputs[slot].move, inputs[slot].max_move_step)
+		if player.moving do player.guidance_idle_elapsed = 0
+		else do player.guidance_idle_elapsed += SIM_DT
+	}
 	// Player input resolves before enemies, as it does in Game.update(). Empty
 	// arcs do not spend stamina or begin a cooldown.
-	if auto_melee && run.player.hp > 0 && run.player.visual_action != .Pet &&
-		enemy_in_melee_arc(run, run.player.facing) {
-		player_melee(run, run.player.facing)
+	for slot in 0 ..< seats {
+		player := &run.players[slot]
+		if inputs[slot].auto_melee && player.hp > 0 && player.visual_action != .Pet &&
+			enemy_in_melee_arc(run, slot, player.facing) {
+			player_melee(run, slot, player.facing)
+		}
 	}
-	tick_player_clocks(run)
-	tick_refuge(run)
-	tick_big_hit(run) // source updates charge after decrementing the old cooldown
-	tick_combat_statuses(run)
-	run.player.sim_elapsed += SIM_DT
+	for slot in 0 ..< seats do tick_player_clocks(run, slot)
+	for slot in 0 ..< seats do tick_refuge(run, slot)
+	for slot in 0 ..< seats do tick_big_hit(run, slot) // source updates charge after decrementing the old cooldown
+	for slot in 0 ..< seats do tick_player_statuses(run, slot)
+	tick_enemy_statuses(run)
+	for slot in 0 ..< seats do run.players[slot].sim_elapsed += SIM_DT
 	room_npc_snapshot_live_positions(run)
 	story_snapshot_friendly_npc_positions(run)
-	room_npc_tick_live(run, run.player.sim_elapsed, SIM_DT)
-	story_tick_friendly_npc_movement(run, run.player.sim_elapsed, SIM_DT)
-	resolve_player_friendly_contacts(run)
+	room_npc_tick_live(run, run_clock(run), SIM_DT)
+	story_tick_friendly_npc_movement(run, run_clock(run), SIM_DT)
+	for slot in 0 ..< seats do resolve_player_friendly_contacts(run, slot)
 	story_refresh_guidance_if_needed(run)
 	refresh_visibility(run)
 	tick_ambush_bells(run, SIM_DT)
@@ -999,12 +1078,13 @@ sim_tick_limited :: proc(run: ^Run, move: Vec2, max_move_step: f32, auto_melee :
 }
 
 @(private = "file")
-tick_refuge :: proc(run: ^Run) {
-	kind := special_room_kind_at_point(&run.dungeon, run.player.pos.x, run.player.pos.y)
-	result := refuge_tick(kind, &run.refuge, &run.player, SIM_DT)
+tick_refuge :: proc(run: ^Run, slot: int) {
+	player := &run.players[slot]
+	kind := special_room_kind_at_point(&run.dungeon, player.pos.x, player.pos.y)
+	result := refuge_tick(kind, &run.refuge, player, SIM_DT)
 	if result.healed > 0 {
 		number_kind := kind == .Garden ? Number_Kind.Garden_Heal : Number_Kind.Bar_Heal
-		append(&run.numbers, Damage_Number{pos=run.player.pos, value=result.healed, kind=number_kind})
+		append(&run.numbers, Damage_Number{pos=player.pos, value=result.healed, kind=number_kind})
 	}
 }
 
@@ -1026,7 +1106,8 @@ player_sight_in_range :: proc(offset, facing: Vec2, explored: bool) -> bool {
 // Both floor types retain this memory; only lit floors render it outside LOS.
 refresh_visibility :: proc(run: ^Run) {
 	run.visible = {}
-	px, py := run.player.pos.x, run.player.pos.y
+	viewer := &run.players[run.local_slot] // fog and discovery are per-client
+	px, py := viewer.pos.x, viewer.pos.y
 	cx, cy := int(px), int(py)
 	reach := int(EXPLORED_FACING_SIGHT_RADIUS) + 1
 
@@ -1040,7 +1121,7 @@ refresh_visibility :: proc(run: ^Run) {
 			if tile == .Wall || tile == .Closed_Door do continue
 			tx, ty := f32(x) + 0.5, f32(y) + 0.5
 			offset := Vec2{tx - px, ty - py}
-			if !player_sight_in_range(offset, run.player.facing, run.explored[x][y]) do continue
+			if !player_sight_in_range(offset, viewer.facing, run.explored[x][y]) do continue
 			if !line_of_sight(&run.dungeon, px, py, tx, ty) do continue
 			run.visible[x][y] = true
 			run.explored[x][y] = true
@@ -1114,7 +1195,8 @@ story_refresh_guidance_if_needed :: proc(run: ^Run) {
 		if run != nil do clear(&run.story_runtime.guidance_path)
 		return
 	}
-	player_tile := [2]int{int(run.player.pos.x), int(run.player.pos.y)}
+	viewer := &run.players[run.local_slot] // floor guidance is local presentation
+	player_tile := [2]int{int(viewer.pos.x), int(viewer.pos.y)}
 	path := story_relic_guidance_path(run)
 	if len(path) == 0 || path[0] != player_tile do _ = story_build_guidance_path(run, target)
 }
@@ -1124,7 +1206,8 @@ story_refresh_guidance_if_needed :: proc(run: ^Run) {
 // runtime guidance path instead; this helper retains its legacy stairs contract.
 route_to_stairs :: proc(run: ^Run, buf: [][2]i16) -> int {
 	d := &run.dungeon
-	start := [2]i16{i16(run.player.pos.x), i16(run.player.pos.y)}
+	viewer := &run.players[run.local_slot]
+	start := [2]i16{i16(viewer.pos.x), i16(viewer.pos.y)}
 	goal := [2]i16{i16(d.stairs.x), i16(d.stairs.y)}
 	if !dungeon_in_bounds(int(start.x), int(start.y)) do return 0
 
@@ -1175,8 +1258,8 @@ route_to_stairs :: proc(run: ^Run, buf: [][2]i16) -> int {
 // Axis-separated movement (try x, then y) slides along walls, exactly like
 // the pygame move_actor. The player probe also blocks on the stair shaft.
 @(private = "file")
-tick_player :: proc(run: ^Run, move: Vec2, max_move_step: f32) {
-	player := &run.player
+tick_player :: proc(run: ^Run, slot: int, move: Vec2, max_move_step: f32) {
+	player := &run.players[slot]
 	player.prev_pos = player.pos
 	if player.hp <= 0 {
 		player.moving = false
@@ -1221,8 +1304,8 @@ tick_player :: proc(run: ^Run, move: Vec2, max_move_step: f32) {
 	slide_move(&run.dungeon, &player.pos, dir * step, block_stairs = true)
 	// Contact resolution belongs to the move itself (pygame move_actor), so the
 	// walk animation below sees the post-contact displacement.
-	resolve_player_enemy_contacts(run)
-	resolve_player_friendly_contacts(run)
+	resolve_player_enemy_contacts(run, slot)
+	resolve_player_friendly_contacts(run, slot)
 	displacement := player.pos - before
 	distance := math.hypot(displacement.x, displacement.y)
 	player.moving = distance > 0
@@ -1235,6 +1318,56 @@ tick_player :: proc(run: ^Run, move: Vec2, max_move_step: f32) {
 	// Keyboard/mouse steering always owns facing on the next update, even while
 	// an action clip is playing (combat/player.py has no swing-facing lock).
 	player.facing = dir
+}
+
+// Co-op joiner movement prediction: the same fixed-step locomotion the host
+// runs for this seat, applied to the local replica only. Contact resolution
+// moves only the player; enemies, loot, and every RNG stream stay untouched.
+// The one clock advanced here is the swing plant that gates locomotion.
+// One predicted fixed step for a co-op guest seat, in the host's per-tick
+// order: ordered action edges (dash relocation, a clicked swing's plant),
+// locomotion, the held auto-melee plant, then recovery clocks. Only this
+// seat's movement-relevant state changes: no damage, loot, RNG, effects, or
+// other actors. Returns whether a swing started (for cosmetic clips).
+Predict_Step :: struct {
+	move:          Vec2,
+	max_move_step: f32,
+	auto_melee:    bool,
+	melee:         bool,
+	melee_aim:     Vec2,
+	dash:          bool,
+	dash_aim:      Vec2,
+}
+
+sim_predict_player_step :: proc(run: ^Run, slot: int, step: Predict_Step) -> (swung: bool) {
+	player := &run.players[slot]
+	if player.hp <= 0 do return false
+	if step.dash && !bighit_charging(player) {
+		cost := player_dash_stamina_cost(player)
+		if player.dash_timer <= 0 && player.stamina >= f32(cost) {
+			player.stamina -= f32(cost)
+			player.dash_timer = player_dash_cooldown(player)
+			player_dash_displace(run, slot, step.dash_aim)
+		}
+	}
+	if step.melee && enemy_in_melee_arc(run, slot, step.melee_aim) do swung = predict_plant(player, step.melee_aim)
+	tick_player(run, slot, step.move, step.max_move_step)
+	if step.auto_melee && player.visual_action != .Pet && enemy_in_melee_arc(run, slot, player.facing) {
+		swung = predict_plant(player, player.facing) || swung
+	}
+	player_tick_recovery(player)
+	return
+
+	predict_plant :: proc(player: ^Player, aim: Vec2) -> bool {
+		if bighit_charging(player) do return false
+		cost := player_melee_stamina_cost(player)
+		if player.melee_timer > 0 || player.stamina < f32(cost) do return false
+		player.stamina -= f32(cost)
+		player.melee_timer = player_melee_cooldown(player)
+		player.melee_commit_timer = MELEE_COMMIT_SECONDS
+		if aim != {} do player.facing = linalg.normalize0(aim)
+		return true
+	}
 }
 
 player_stamina_regen_rate :: proc(player: ^Player) -> f32 {
@@ -1262,9 +1395,15 @@ player_mana_regen :: proc(player: ^Player) -> f32 {
 }
 
 @(private = "file")
-tick_player_clocks :: proc(run: ^Run) {
-	player := &run.player
+tick_player_clocks :: proc(run: ^Run, slot: int) {
+	player := &run.players[slot]
 	player_tick_visual_action(player, SIM_DT)
+	player_tick_recovery(player)
+}
+
+// Cooldown, flash, and resource recovery clocks; shared with co-op movement
+// prediction so the guest's stamina and timers follow the host's schedule.
+player_tick_recovery :: proc(player: ^Player) {
 	if player.hp <= 0 do return
 	// Pygame attempts this frame's actions before advancing recovery clocks.
 	// Keeping the same order makes held auto-melee cadence deterministic at the
@@ -1295,8 +1434,8 @@ tick_player_clocks :: proc(run: ^Run) {
 }
 
 @(private = "file")
-pick_up_nearby_item :: proc(run: ^Run) -> bool {
-	player := &run.player
+pick_up_nearby_item :: proc(run: ^Run, slot: int) -> bool {
+	player := &run.players[slot]
 	nearest := -1
 	nearest_distance := max(f32)
 	for &g, i in run.ground_items {
@@ -1352,7 +1491,6 @@ tick_enemies :: proc(run: ^Run, dt: f32) {
 	// through its doorway. The post-separation call below remains the watchdog.
 	tick_boss_encounter(run)
 	nav_field_refresh(run, dt)
-	player := &run.player
 	for &enemy in run.enemies {
 		apply_story_enemy_stats(run, &enemy)
 		enemy.prev_pos = enemy.pos
@@ -1413,6 +1551,8 @@ tick_enemies :: proc(run: ^Run, dt: f32) {
 			continue
 		}
 
+		enemy_choose_target(run, &enemy)
+		player := &run.players[enemy.target_slot]
 		story_target := story_enemy_combat_target(run, &enemy)
 		if story_target.kind != .None && tick_enemy_story_target(run, &enemy, story_target, dt) do continue
 		enemy.story_target_kind = .None
@@ -1490,6 +1630,28 @@ tick_enemies :: proc(run: ^Run, dt: f32) {
 			enemy.speed * SIM_DT,
 		)
 	}
+}
+
+ENEMY_RETARGET_MARGIN :: f32(1.5) // tiles closer another seat must be to steal aggro
+
+// Enemies pursue the nearest living seat, but stick with their current target
+// unless it falls or the other seat is clearly closer, so packs do not
+// flicker between two players standing side by side. A committed windup never
+// reaches here; its tell resolves against the seat it was aimed at.
+enemy_choose_target :: proc(run: ^Run, enemy: ^Enemy) {
+	seats := run_seat_count(run)
+	if int(enemy.target_slot) >= seats do enemy.target_slot = 0
+	if seats <= 1 do return
+	current := &run.players[enemy.target_slot]
+	best, found := run_nearest_living_player(run, enemy.pos)
+	if !found || best == int(enemy.target_slot) do return
+	if current.hp <= 0 {
+		enemy.target_slot = u8(best)
+		return
+	}
+	a := current.pos - enemy.pos
+	b := run.players[best].pos - enemy.pos
+	if math.hypot(b.x, b.y) + ENEMY_RETARGET_MARGIN < math.hypot(a.x, a.y) do enemy.target_slot = u8(best)
 }
 
 @(private = "file")
@@ -1583,7 +1745,7 @@ try_start_ability :: proc(run: ^Run, enemy: ^Enemy, dist: f32) -> bool {
 		if dist > reach || dist < ab.min_range do continue
 		if !enemy_sees_player(run, enemy) do continue
 		duration := ab.windup > 0 ? ab.windup : (ab.effect == .Strike ? ENEMY_MELEE_WINDUP : ENEMY_CAST_WINDUP)
-		enemy_begin_windup(enemy, duration, i, run.player.pos - enemy.pos)
+		enemy_begin_windup(enemy, duration, i, run.players[enemy.target_slot].pos - enemy.pos)
 		return true
 	}
 	return false
@@ -1636,8 +1798,8 @@ contact_packmate :: proc(run: ^Run, enemy: ^Enemy) -> ^Enemy {
 arm_yield_if_behind :: proc(run: ^Run, enemy: ^Enemy) {
 	blocker := contact_packmate(run, enemy)
 	if blocker == nil do return
-	b := blocker.pos - run.player.pos
-	m := enemy.pos - run.player.pos
+	b := blocker.pos - run.players[enemy.target_slot].pos
+	m := enemy.pos - run.players[enemy.target_slot].pos
 	if b.x * b.x + b.y * b.y < m.x * m.x + m.y * m.y - 1e-6 {
 		enemy.yield_timer = ENEMY_YIELD_SECONDS
 	}
@@ -1700,8 +1862,8 @@ update_stuck_probe :: proc(run: ^Run, enemy: ^Enemy, dist, dt: f32) {
 	threshold := max(f32(0.12), enemy.speed * ENEMY_STUCK_PROBE_SECONDS * 0.25)
 	if net_sq >= threshold * threshold do return
 	if blocker := contact_packmate(run, enemy); blocker != nil {
-		b := blocker.pos - run.player.pos
-		m := enemy.pos - run.player.pos
+		b := blocker.pos - run.players[enemy.target_slot].pos
+		m := enemy.pos - run.players[enemy.target_slot].pos
 		if b.x * b.x + b.y * b.y < m.x * m.x + m.y * m.y - 1e-6 {
 			enemy.yield_timer = ENEMY_YIELD_SECONDS
 			return
@@ -1753,7 +1915,7 @@ reposition_for_line_of_sight :: proc(run: ^Run, enemy: ^Enemy, n: Vec2, dt: f32)
 	for side in ([2]f32{sign, -sign}) {
 		cand := enemy.pos + perp * side
 		if blocked_for_radius(&run.dungeon, cand.x, cand.y, ACTOR_MOVE_COLLISION_RADIUS) do continue
-		if !line_of_sight(&run.dungeon, cand.x, cand.y, run.player.pos.x, run.player.pos.y) do continue
+		if !line_of_sight(&run.dungeon, cand.x, cand.y, run.players[enemy.target_slot].pos.x, run.players[enemy.target_slot].pos.y) do continue
 		step := enemy.speed * dt * enemy_status_move_factor(enemy)
 		moved := enemy_move(run, enemy, perp * (side * step))
 		if moved <= step * 0.25 do enemy.strafe_sign = -sign
@@ -1767,7 +1929,7 @@ reposition_for_line_of_sight :: proc(run: ^Run, enemy: ^Enemy, n: Vec2, dt: f32)
 @(private = "file")
 tick_melee_chase :: proc(run: ^Run, enemy: ^Enemy, dist, dt: f32) {
 	t := enemy_tactic_def(enemy)
-	n := linalg.normalize0(run.player.pos - enemy.pos)
+	n := linalg.normalize0(run.players[enemy.target_slot].pos - enemy.pos)
 	stop := melee_stop_distance(enemy)
 	if dist > stop {
 		dir, routed := enemy_nav_direction(run, enemy)
@@ -1791,7 +1953,7 @@ tick_melee_chase :: proc(run: ^Run, enemy: ^Enemy, dist, dt: f32) {
 @(private = "file")
 tick_ranged_chase :: proc(run: ^Run, enemy: ^Enemy, dist, dt: f32) {
 	t := enemy_tactic_def(enemy)
-	n := linalg.normalize0(run.player.pos - enemy.pos)
+	n := linalg.normalize0(run.players[enemy.target_slot].pos - enemy.pos)
 	attack_ready := enemy.cooldown <= 0
 	in_attack_range := dist <= enemy.attack_range
 	los_checked := attack_ready && in_attack_range
@@ -1874,7 +2036,7 @@ select_boss_attack :: proc(enemy: ^Enemy, dist: f32) -> (choice: Boss_Attack_Cho
 @(private = "file")
 tick_boss_chase :: proc(run: ^Run, enemy: ^Enemy, dist, dt: f32) {
 	choice, slot := select_boss_attack(enemy, dist)
-	aim := run.player.pos - enemy.pos
+	aim := run.players[enemy.target_slot].pos - enemy.pos
 	stop := melee_stop_distance(enemy)
 	if dist > stop {
 		dir := separation_adjusted_direction(run, enemy, linalg.normalize0(aim))
@@ -1929,8 +2091,10 @@ commit_enemy_attack :: proc(run: ^Run, enemy: ^Enemy) {
 			return
 		}
 	}
+	// The committed tell resolves against the seat it was aimed at.
+	slot := int(enemy.target_slot)
 	aim := enemy.windup_aim
-	if aim == {} do aim = linalg.normalize0(run.player.pos - enemy.pos)
+	if aim == {} do aim = linalg.normalize0(run.players[slot].pos - enemy.pos)
 	if aim == {} do aim = enemy.facing
 	pending := enemy.pending_ability
 	enemy_start_visual_action(enemy, enemy_action_kind_for_pending(enemy, pending))
@@ -1963,21 +2127,22 @@ commit_enemy_attack :: proc(run: ^Run, enemy: ^Enemy) {
 	// Once the tell starts, pygame commits the melee hit. Walking out during
 	// the short windup does not silently cancel it; defensive actions counter it.
 	sfx_emit(run, sfx_enemy_attack_bank(enemy), enemy.pos, spatial = true, emitter_id = u64(enemy.entity_id))
-	feel_emit_enemy_slash(run, (enemy.pos + run.player.pos) * .5, aim, enemy.color)
+	feel_emit_enemy_slash(run, (enemy.pos + run.players[slot].pos) * .5, aim, enemy.color)
 	raw := enemy.damage + rng_range(&run.combat_rng, -2, 3)
-	dealt := damage_player_typed(run, raw, enemy.damage_type, melee=true, attacker=enemy)
-	if dealt > 0 && enemy.damage_type == .Poison do player_apply_status(&run.player, .Poisoned, 1.4)
-	if dealt > 0 && enemy.damage_type == .Frost do player_apply_status(&run.player, .Chilled, .9)
-	thorns := player_thorns(&run.player)
+	dealt := damage_player_typed(run, slot, raw, enemy.damage_type, melee=true, attacker=enemy)
+	if dealt > 0 && enemy.damage_type == .Poison do player_apply_status(&run.players[slot], .Poisoned, 1.4)
+	if dealt > 0 && enemy.damage_type == .Frost do player_apply_status(&run.players[slot], .Chilled, .9)
+	thorns := player_thorns(&run.players[slot])
 	if dealt > 0 && thorns > 0 {
 		reflected := max(1, thorns + dealt / 8)
-		_ = damage_enemy_direct(run, enemy, reflected, .Physical)
+		_ = damage_enemy_direct(run, slot, enemy, reflected, .Physical)
 	}
 }
 
 @(private = "file")
 commit_ability :: proc(run: ^Run, enemy: ^Enemy, idx: int, aim: Vec2) {
 	ab := ABILITY_DEFS[enemy.abilities[idx]]
+	slot := int(enemy.target_slot)
 	// Boss phase pressure: below half health the rotation recycles faster.
 	// Applied at fire time only; running timers are never rewritten.
 	phase: f32 = f32(enemy.hp) < f32(enemy.max_hp) * BOSS_PHASE_HP_FRACTION ? BOSS_PHASE_COOLDOWN_FACTOR : 1
@@ -1989,12 +2154,12 @@ commit_ability :: proc(run: ^Run, enemy: ^Enemy, idx: int, aim: Vec2) {
 
 	switch ab.effect {
 	case .Strike:
-		feel_emit_enemy_slash(run, (enemy.pos + run.player.pos) * .5, aim, enemy.color)
+		feel_emit_enemy_slash(run, (enemy.pos + run.players[slot].pos) * .5, aim, enemy.color)
 		raw := dmg + rng_range(&run.combat_rng, -2, 3)
-		dealt := damage_player_typed(run, raw, enemy.damage_type, melee=true, attacker=enemy)
-		if dealt > 0 && ab.has_status do player_apply_status(&run.player, ab.status, ab.status_duration)
-		thorns := player_thorns(&run.player)
-		if dealt > 0 && thorns > 0 do _ = damage_enemy_direct(run, enemy, max(1, thorns+dealt/8), .Physical)
+		dealt := damage_player_typed(run, slot, raw, enemy.damage_type, melee=true, attacker=enemy)
+		if dealt > 0 && ab.has_status do player_apply_status(&run.players[slot], ab.status, ab.status_duration)
+		thorns := player_thorns(&run.players[slot])
+		if dealt > 0 && thorns > 0 do _ = damage_enemy_direct(run, slot, enemy, max(1, thorns+dealt/8), .Physical)
 	case .Bolt:
 		feel_emit_enemy_cast(run, enemy, .36)
 		spawn_enemy_bolt(run, enemy, aim, dmg, ab.proj_speed, 0, enemy.damage_type, ab.status, ab.has_status, ab.status_duration)
@@ -2010,12 +2175,17 @@ commit_ability :: proc(run: ^Run, enemy: ^Enemy, idx: int, aim: Vec2) {
 		}
 	case .Nova:
 		feel_emit_enemy_nova(run, enemy, reach)
-		to := run.player.pos - enemy.pos
-		d := math.hypot(to.x, to.y)
-		if d <= reach && enemy_sees_player(run, enemy) {
+		// A nova is an area: every living seat in reach and sight is hit,
+		// in ascending slot order so combat_rng consumption is stable.
+		for victim in 0 ..< run_seat_count(run) {
+			player := &run.players[victim]
+			if player.hp <= 0 do continue
+			to := player.pos - enemy.pos
+			d := math.hypot(to.x, to.y)
+			if d > reach || !line_of_sight(&run.dungeon, enemy.pos.x, enemy.pos.y, player.pos.x, player.pos.y) do continue
 			raw := dmg + rng_range(&run.combat_rng, -2, 3)
-			dealt := damage_player_typed(run, raw, enemy.damage_type)
-			if dealt > 0 && ab.has_status do player_apply_status(&run.player, ab.status, ab.status_duration)
+			dealt := damage_player_typed(run, victim, raw, enemy.damage_type)
+			if dealt > 0 && ab.has_status do player_apply_status(player, ab.status, ab.status_duration)
 		}
 		guest_limit := min(len(run.story_runtime.guests), STORY_BEAT_COUNT)
 		for i in 0 ..< guest_limit {
@@ -2093,9 +2263,11 @@ arena_rescue_candidate_clear :: proc(
 	avoid_player: bool = false,
 ) -> bool {
 	if avoid_player {
-		gap := candidate - run.player.pos
-		minimum_gap := actor_radius + PLAYER_HIT_RADIUS + BOSS_ARENA_CLEARANCE_PAD
-		if gap.x * gap.x + gap.y * gap.y < minimum_gap * minimum_gap do return false
+		for slot in 0 ..< run_seat_count(run) {
+			gap := candidate - run.players[slot].pos
+			minimum_gap := actor_radius + PLAYER_HIT_RADIUS + BOSS_ARENA_CLEARANCE_PAD
+			if gap.x * gap.x + gap.y * gap.y < minimum_gap * minimum_gap do return false
+		}
 	}
 	for &enemy in run.enemies {
 		if enemy.hp <= 0 || (ignored_enemy != nil && &enemy == ignored_enemy) do continue
@@ -2230,12 +2402,24 @@ engage_boss_room :: proc(run: ^Run, room: Room, boss: ^Enemy) -> bool {
 	sealed_count := seal_room_openings(&run.dungeon, room, &run.sealed)
 	boss_pos, boss_prev := boss.pos, boss.prev_pos
 	boss_moving, boss_knockback := boss.moving, boss.knockback_vel
-	if !ensure_boss_safe_in_arena(run, room, boss) ||
-		!ensure_player_safe_in_arena(run, room, &run.player, boss) {
+	// Entry gathers the whole party, a fallen partner included: every seat is
+	// placed inside the sealed arena or the engagement is rolled back.
+	seats := run_seat_count(run)
+	saved: [MAX_PLAYERS]struct {pos, prev: Vec2, moving: bool}
+	for slot in 0 ..< seats do saved[slot] = {run.players[slot].pos, run.players[slot].prev_pos, run.players[slot].moving}
+	placed := ensure_boss_safe_in_arena(run, room, boss)
+	for slot in 0 ..< seats {
+		if !placed do break
+		placed = ensure_player_safe_in_arena(run, room, &run.players[slot], boss)
+	}
+	if !placed {
 		restore_sealed(&run.dungeon, run.sealed[sealed_start:sealed_start + sealed_count])
 		resize(&run.sealed, sealed_start)
 		boss.pos, boss.prev_pos = boss_pos, boss_prev
 		boss.moving, boss.knockback_vel = boss_moving, boss_knockback
+		for slot in 0 ..< seats {
+			run.players[slot].pos, run.players[slot].prev_pos, run.players[slot].moving = saved[slot].pos, saved[slot].prev, saved[slot].moving
+		}
 		refresh_visibility(run)
 		return false
 	}
@@ -2290,9 +2474,16 @@ tick_boss_encounter :: proc(run: ^Run) {
 		) {
 			return
 		}
-		if room_contains_point(boss_room, run.player.pos.x, run.player.pos.y) &&
-			engage_boss_room(run, boss_room, &enemy) {
-			append(&run.numbers, Damage_Number{pos = run.player.pos, kind = .Text, text = "The gate seals behind you..."})
+		entrant := -1
+		for slot in 0 ..< run_seat_count(run) {
+			p := &run.players[slot]
+			if p.hp > 0 && room_contains_point(boss_room, p.pos.x, p.pos.y) {
+				entrant = slot
+				break
+			}
+		}
+		if entrant >= 0 && engage_boss_room(run, boss_room, &enemy) {
+			append(&run.numbers, Damage_Number{pos = run.players[entrant].pos, kind = .Text, text = "The gate seals behind you..."})
 			sfx_emit(run, .Boss_Gate_Close, enemy.pos, spatial = true, emitter_id = u64(enemy.entity_id))
 			sfx_emit(run, .Boss_Engage)
 		}
@@ -2305,7 +2496,7 @@ enemy_sees_player :: proc(run: ^Run, enemy: ^Enemy) -> bool {
 	return line_of_sight(
 		&run.dungeon,
 		enemy.pos.x, enemy.pos.y,
-		run.player.pos.x, run.player.pos.y,
+		run.players[enemy.target_slot].pos.x, run.players[enemy.target_slot].pos.y,
 	)
 }
 
@@ -2335,12 +2526,16 @@ separate_enemies :: proc(run: ^Run) {
 	}
 	for &enemy in run.enemies {
 		if enemy.hp <= 0 do continue
-		min_dist := f32(PLAYER_HIT_RADIUS) + enemy_hit_radius(&enemy)
-		delta := enemy.pos - run.player.pos
-		dist := math.hypot(delta.x, delta.y)
-		if dist >= min_dist || dist < 1e-4 do continue
-		push := linalg.normalize0(delta) * (min_dist - dist)
-		slide_move(&run.dungeon, &enemy.pos, push, radius = enemy_move_radius(&enemy))
+		for slot in 0 ..< run_seat_count(run) {
+			player := &run.players[slot]
+			if player.hp <= 0 && run_coop(run) do continue // a fallen partner is not a wall
+			min_dist := f32(PLAYER_HIT_RADIUS) + enemy_hit_radius(&enemy)
+			delta := enemy.pos - player.pos
+			dist := math.hypot(delta.x, delta.y)
+			if dist >= min_dist || dist < 1e-4 do continue
+			push := linalg.normalize0(delta) * (min_dist - dist)
+			slide_move(&run.dungeon, &enemy.pos, push, radius = enemy_move_radius(&enemy))
+		}
 	}
 }
 
@@ -2351,8 +2546,8 @@ separate_enemies :: proc(run: ^Run) {
 // neither shoves enemies nor climbs over a wall-pinned one. The enemy-as-mover
 // half is separate_enemies above; the parity gap that let the player ram and
 // stand on cornered enemies was this half missing (feedback 2026-08).
-resolve_player_body_contact :: proc(run: ^Run, body_pos: Vec2, body_radius: f32) {
-	player := &run.player
+resolve_player_body_contact :: proc(run: ^Run, slot: int, body_pos: Vec2, body_radius: f32) {
+	player := &run.players[slot]
 	min_dist := f32(PLAYER_HIT_RADIUS) + body_radius
 	delta := player.pos - body_pos
 	dist_sq := delta.x * delta.x + delta.y * delta.y
@@ -2375,25 +2570,25 @@ resolve_player_body_contact :: proc(run: ^Run, body_pos: Vec2, body_radius: f32)
 	}
 }
 
-resolve_player_enemy_contacts :: proc(run: ^Run) {
+resolve_player_enemy_contacts :: proc(run: ^Run, slot: int) {
 	for &enemy in run.enemies {
 		if enemy.hp <= 0 do continue
-		resolve_player_body_contact(run, enemy.pos, enemy_hit_radius(&enemy))
+		resolve_player_body_contact(run, slot, enemy.pos, enemy_hit_radius(&enemy))
 	}
 }
 
-resolve_player_friendly_contacts :: proc(run: ^Run) {
+resolve_player_friendly_contacts :: proc(run: ^Run, slot: int) {
 	if run == nil do return
-	if run.has_shopkeeper do resolve_player_body_contact(run, run.shopkeeper.pos, ROOM_NPC_RADIUS)
+	if run.has_shopkeeper do resolve_player_body_contact(run, slot, run.shopkeeper.pos, ROOM_NPC_RADIUS)
 	for i in 0 ..< min(run.ambient_residents.count, len(run.ambient_residents.items)) {
 		resident := &run.ambient_residents.items[i]
-		if resident.active do resolve_player_body_contact(run, resident.pos, ROOM_NPC_RADIUS)
+		if resident.active do resolve_player_body_contact(run, slot, resident.pos, ROOM_NPC_RADIUS)
 	}
 	for &guest in run.story_runtime.guests {
-		if guest.depth == run.depth && guest.alive do resolve_player_body_contact(run, guest.pos, STORY_NPC_RADIUS)
+		if guest.depth == run.depth && guest.alive do resolve_player_body_contact(run, slot, guest.pos, STORY_NPC_RADIUS)
 	}
 	soul := &run.story_runtime.soul
-	if soul.present && soul.alive do resolve_player_body_contact(run, soul.pos, STORY_NPC_RADIUS)
+	if soul.present && soul.alive do resolve_player_body_contact(run, slot, soul.pos, STORY_NPC_RADIUS)
 }
 
 // combat/enemies.py alert_enemy: engaging refreshes memory every frame; only
@@ -2468,8 +2663,10 @@ steer_homing_projectile :: proc(run: ^Run, p: ^Projectile) {
 
 @(private = "file")
 tick_projectiles :: proc(run: ^Run) {
-	player := &run.player
 	#reverse for &p, i in run.projectiles {
+		// Player shots act for their shooter: credit, leech, and live build reads.
+		slot := int(p.owner_slot)
+		player := &run.players[slot]
 		if p.from_player && p.homing > 0 do steer_homing_projectile(run, &p)
 		p.prev_pos = p.pos
 		p.pos += p.vel * SIM_DT
@@ -2490,12 +2687,12 @@ tick_projectiles :: proc(run: ^Run) {
 					d := enemy.pos - p.pos
 					hit_radius := PLAYER_PROJECTILE_HIT_RADIUS + enemy_hit_radius(&enemy) - ENEMY_HIT_RADIUS
 					if math.hypot(d.x, d.y) <= hit_radius {
-						_ = player_damage_enemy(run, &enemy, p.damage, p.damage_type, p.status, p.has_status, p.status_duration)
+						_ = player_damage_enemy(run, slot, &enemy, p.damage, p.damage_type, p.status, p.has_status, p.status_duration)
 						// MX.2.4: projectiles nudge like melee (projectiles.py:102).
 						if bolt_dir := linalg.normalize0(p.vel); bolt_dir != {} {
 							enemy_start_knockback(run, &enemy, bolt_dir * KNOCKBACK_SPEED)
 						}
-						if player.archetype == .Acolyte && player.hp < player.max_hp {
+						if player.archetype == .Acolyte && player.hp > 0 && player.hp < player.max_hp {
 							if leech := acolyte_spell_leech(player); leech > 0 {
 								heal := min(player.max_hp - player.hp, leech)
 								player.hp += heal
@@ -2533,11 +2730,16 @@ tick_projectiles :: proc(run: ^Run) {
 					_ = story_damage_combat_target(run, story_target, p.damage)
 					remove = true
 				} else {
-					d := player.pos - p.pos
-					if math.hypot(d.x, d.y) <= ENEMY_PROJECTILE_HIT_RADIUS {
-						dealt := damage_player_typed(run, p.damage, p.damage_type, source_id="enemy_projectile")
-						if dealt > 0 && p.has_status do player_apply_status(player, p.status, p.status_duration)
+					// Enemy shots strike whichever living seat they reach first.
+					for victim in 0 ..< run_seat_count(run) {
+						target := &run.players[victim]
+						if target.hp <= 0 do continue
+						d := target.pos - p.pos
+						if math.hypot(d.x, d.y) > ENEMY_PROJECTILE_HIT_RADIUS do continue
+						dealt := damage_player_typed(run, victim, p.damage, p.damage_type, source_id="enemy_projectile")
+						if dealt > 0 && p.has_status do player_apply_status(target, p.status, p.status_duration)
 						remove = true
+						break
 					}
 				}
 			}
@@ -2563,43 +2765,47 @@ sweep_dead_enemies :: proc(run: ^Run) {
 		if enemy.hp <= 0 {
 			accent := THEMES[clamp(run.theme_index, 0, len(THEMES) - 1)].accent
 			feel_emit_enemy_death(run, &enemy, accent)
+			// Rewards belong to the seat that landed the last hit.
+			slot := int(enemy.last_hit_slot)
+			if slot >= run_seat_count(run) do slot = HOST_SLOT
+			killer := &run.players[slot]
 			// Eternal Moment: kills during Time Skip refund ~40% of the slot's
 			// cooldown, recomputed live (damage.py:265-275).
-			if run.player.archetype == .Warden && run.player.time_skip_timer > 0 &&
-				run.player.class_skill_timer > 0 &&
-				player_has_discipline(&run.player, .Warden_Eternal_Wall) {
-				run.player.class_skill_timer = max(0, run.player.class_skill_timer - player_class_skill_cooldown(&run.player) * 0.4)
+			if killer.archetype == .Warden && killer.time_skip_timer > 0 &&
+				killer.class_skill_timer > 0 &&
+				player_has_discipline(killer, .Warden_Eternal_Wall) {
+				killer.class_skill_timer = max(0, killer.class_skill_timer - player_class_skill_cooldown(killer) * 0.4)
 			}
 			// Grave echo: killing a still-bound foe while wounded restores
 			// health and a sip of mana (damage.py:368-386).
-			if run.player.archetype == .Acolyte && enemy.statuses[.Bound] > 0 &&
-				player_has_discipline(&run.player, .Acolyte_Gravebind) {
-				echo := min(run.player.max_hp - run.player.hp, 4 + run.depth / 2)
+			if killer.hp > 0 && killer.archetype == .Acolyte && enemy.statuses[.Bound] > 0 &&
+				player_has_discipline(killer, .Acolyte_Gravebind) {
+				echo := min(killer.max_hp - killer.hp, 4 + run.depth / 2)
 				if echo > 0 {
-					run.player.hp += echo
-					run.player.mana = min(f32(run.player.max_mana), run.player.mana + 2)
-					append(&run.numbers, Damage_Number{pos = run.player.pos, value = echo, kind = .Heal})
+					killer.hp += echo
+					killer.mana = min(f32(killer.max_mana), killer.mana + 2)
+					append(&run.numbers, Damage_Number{pos = killer.pos, value = echo, kind = .Heal})
 					append(&run.numbers, Damage_Number{pos = enemy.pos, kind = .Text, text = "Grave echo"})
 				}
 			}
 			xp_bonus := story_effect_clamped(run, .XP_Bonus, 0, .35)
-			player_gain_xp(run, max(1, int(f32(enemy.xp) * (1 + xp_bonus))))
+			player_gain_xp(run, slot, max(1, int(f32(enemy.xp) * (1 + xp_bonus))))
 			healing_echo := story_effect_clamped(run, .Healing_Echo, 0, 1)
-			if healing_echo > 0 && run.player.hp < run.player.max_hp &&
+			if healing_echo > 0 && killer.hp > 0 && killer.hp < killer.max_hp &&
 				rng_chance(&run.loot_rng, min(f32(1), healing_echo)) {
 				healed := min(
-					run.player.max_hp - run.player.hp,
+					killer.max_hp - killer.hp,
 					max(2, int(f32(enemy.xp) * .12) + run.depth / 2),
 				)
-				run.player.hp += healed
-				run.player.mana = min(f32(run.player.max_mana), run.player.mana + f32(max(1, healed / 2)))
-				append(&run.numbers, Damage_Number{pos = run.player.pos, value = healed, kind = .Heal})
-				append(&run.numbers, Damage_Number{pos = run.player.pos, kind = .Text, text = "Story echo"})
+				killer.hp += healed
+				killer.mana = min(f32(killer.max_mana), killer.mana + f32(max(1, healed / 2)))
+				append(&run.numbers, Damage_Number{pos = killer.pos, value = healed, kind = .Heal})
+				append(&run.numbers, Damage_Number{pos = killer.pos, kind = .Text, text = "Story echo"})
 			}
 			gold := rng_range(&run.loot_rng, GOLD_MIN, GOLD_MAX + 1) + run.depth * 2
 			if enemy.role == .Elite {gold += 8;run.elites_killed += 1}
 			if enemy.role == .Miniboss || enemy.role == .Boss do gold += 18
-			run.player.gold += gold
+			killer.gold += gold
 			append(&run.numbers, Damage_Number{pos = enemy.pos, kind = .Gold, value = gold})
 			coin_bank := enemy.role == .Miniboss || enemy.role == .Boss ? Sfx_Bank.Coin_Pickup_Medium : Sfx_Bank.Coin_Pickup_Light
 			sfx_emit(run, coin_bank)
@@ -2611,7 +2817,7 @@ sweep_dead_enemies :: proc(run: ^Run) {
 				run.critical_save_requested = true
 				reward: Item
 				if enemy.final_boss {
-					reward = make_unique(&run.loot_rng, run.player.archetype, run.depth)
+					reward = make_unique(&run.loot_rng, killer.archetype, run.depth)
 				} else {
 					slot: Item_Kind = rng_chance(&run.loot_rng, 0.5) ? .Weapon : .Armor
 					reward = make_equipment(&run.loot_rng, slot, .Rare, RUN_MODIFIERS[run.modifier].curse_chance_bonus, run)
@@ -2649,17 +2855,17 @@ sweep_dead_enemies :: proc(run: ^Run) {
 
 // --- Damage ----------------------------------------------------------------
 
-damage_player :: proc(run: ^Run, raw: int) {
-	_ = damage_player_typed(run, raw, .Physical)
+damage_player :: proc(run: ^Run, slot: int, raw: int) {
+	_ = damage_player_typed(run, slot, raw, .Physical)
 }
 
-damage_enemy :: proc(run: ^Run, enemy: ^Enemy, dmg: int) {
-	_ = damage_enemy_typed(run, enemy, dmg, .Physical)
+damage_enemy :: proc(run: ^Run, slot: int, enemy: ^Enemy, dmg: int) {
+	_ = damage_enemy_typed(run, slot, enemy, dmg, .Physical)
 }
 
 // --- Player attacks --------------------------------------------------------
 
-player_slash_origin :: proc(run: ^Run, facing: Vec2, reach: f32 = PLAYER_MELEE_RANGE) -> Vec2 {
+player_slash_origin :: proc(run: ^Run, slot: int, facing: Vec2, reach: f32 = PLAYER_MELEE_RANGE) -> Vec2 {
 	if run == nil do return {}
 	face := linalg.normalize0(facing)
 	if face == {} do face = {1,0}
@@ -2667,21 +2873,21 @@ player_slash_origin :: proc(run: ^Run, facing: Vec2, reach: f32 = PLAYER_MELEE_R
 	best_distance := max(f32)
 	for &enemy in run.enemies {
 		if enemy.hp <= 0 do continue
-		to := enemy.pos-run.player.pos
+		to := enemy.pos-run.players[slot].pos
 		distance := math.hypot(to.x,to.y)
 		extra := max(0,enemy_hit_radius(&enemy)-ENEMY_HIT_RADIUS)
 		if distance > reach+extra || distance >= best_distance do continue
 		direction := distance < 1e-3 ? face : to/distance
 		if linalg.dot(direction,face) < PLAYER_MELEE_ARC_DOT do continue
-		if !line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,enemy.pos.x,enemy.pos.y) do continue
+		if !line_of_sight(&run.dungeon,run.players[slot].pos.x,run.players[slot].pos.y,enemy.pos.x,enemy.pos.y) do continue
 		best,best_distance=&enemy,distance
 	}
-	if best != nil do return (run.player.pos+best.pos)*.5
-	return run.player.pos+face*.9
+	if best != nil do return (run.players[slot].pos+best.pos)*.5
+	return run.players[slot].pos+face*.9
 }
 
-player_melee :: proc(run: ^Run, aim: Vec2) {
-	player := &run.player
+player_melee :: proc(run: ^Run, slot: int, aim: Vec2) {
+	player := &run.players[slot]
 	if bighit_charging(player) do return
 	cost := player_melee_stamina_cost(player)
 	if player.melee_timer > 0 || player.stamina < f32(cost) do return
@@ -2689,15 +2895,15 @@ player_melee :: proc(run: ^Run, aim: Vec2) {
 	player.melee_timer = player_melee_cooldown(player)
 	player.melee_commit_timer = MELEE_COMMIT_SECONDS // whiffs commit too
 	start_swing(player, aim)
-	feel_emit_slash(run,player_slash_origin(run,player.facing),player.facing)
+	feel_emit_slash(run,player_slash_origin(run, slot,player.facing),player.facing)
 	sfx_emit(run, sfx_player_melee_bank(player.archetype), player.pos, spatial = true)
 
-	strike_arc(run, player.facing, PLAYER_MELEE_RANGE, player_melee_damage(player), knockback = KNOCKBACK_SPEED)
+	strike_arc(run, slot, player.facing, PLAYER_MELEE_RANGE, player_melee_damage(player), knockback = KNOCKBACK_SPEED)
 }
 
 // Compatibility seam for pre-M8 callers: slot 2 is now the shared core bolt.
-player_skill :: proc(run: ^Run, aim: Vec2) {
-	_ = player_cast_bolt(run, aim)
+player_skill :: proc(run: ^Run, slot: int, aim: Vec2) {
+	_ = player_cast_bolt(run, slot, aim)
 }
 
 @(private = "file")
@@ -2709,18 +2915,18 @@ start_swing :: proc(player: ^Player, aim: Vec2) {
 
 // The held-input gate asks whether any living enemy is inside pygame's wide
 // facing arc; the actual base swing below selects only the nearest one.
-enemy_in_melee_arc :: proc(run: ^Run, facing: Vec2) -> bool {
+enemy_in_melee_arc :: proc(run: ^Run, slot: int, facing: Vec2) -> bool {
 	if facing == {} do return false
 	face := linalg.normalize0(facing)
 	for &enemy in run.enemies {
 		if enemy.hp <= 0 do continue
-		to := enemy.pos - run.player.pos
+		to := enemy.pos - run.players[slot].pos
 		dist := math.hypot(to.x, to.y)
 		extra := max(0, enemy_hit_radius(&enemy) - ENEMY_HIT_RADIUS)
 		if dist > PLAYER_MELEE_RANGE + extra do continue
 		dir := dist < 1e-3 ? face : to / dist
 		if linalg.dot(dir, face) < PLAYER_MELEE_ARC_DOT do continue
-		if !line_of_sight(&run.dungeon, run.player.pos.x, run.player.pos.y, enemy.pos.x, enemy.pos.y) do continue
+		if !line_of_sight(&run.dungeon, run.players[slot].pos.x, run.players[slot].pos.y, enemy.pos.x, enemy.pos.y) do continue
 		return true
 	}
 	return false
@@ -2740,8 +2946,8 @@ warden_cleave_profile :: proc(player: ^Player) -> (reach_bonus: f32, max_targets
 }
 
 @(private = "file")
-strike_arc :: proc(run: ^Run, facing: Vec2, reach: f32, dmg: int, knockback: f32) {
-	player := &run.player
+strike_arc :: proc(run: ^Run, slot: int, facing: Vec2, reach: f32, dmg: int, knockback: f32) {
+	player := &run.players[slot]
 	reach_bonus, max_targets := warden_cleave_profile(player)
 	// Nearest-first capture of up to max_targets arc matches (attacks.py:143-164).
 	targets: [4]^Enemy
@@ -2775,10 +2981,10 @@ strike_arc :: proc(run: ^Run, facing: Vec2, reach: f32, dmg: int, knockback: f32
 	if target_count == 0 do return
 	hit_damage := dmg + rng_range(&run.combat_rng,-3,5)
 	if player_has_skill_bonus(player,.Melee_Force) || player_has_skill_bonus(player,.Melee_Tempo) do hit_damage += 2
-	critical, multiplier := roll_rogue_crit(run)
+	critical, multiplier := roll_rogue_crit(run, slot)
 	smoke_crit := false
 	if !critical {
-		critical, multiplier = maybe_smoke_crit(run, critical, multiplier)
+		critical, multiplier = maybe_smoke_crit(run, slot, critical, multiplier)
 		smoke_crit = critical
 	}
 	if critical {
@@ -2808,7 +3014,7 @@ strike_arc :: proc(run: ^Run, facing: Vec2, reach: f32, dmg: int, knockback: f32
 		target, target_dir := targets[i], target_dirs[i]
 		damage := i == 0 ? hit_damage : max(1, int(f32(hit_damage) * BIGHIT_CLEAVE_FACTOR))
 		damage = story_apply_player_damage(run, damage)
-		_ = player_damage_enemy(run,target,damage,damage_type,status,has_status,status_duration)
+		_ = player_damage_enemy(run, slot,target,damage,damage_type,status,has_status,status_duration)
 		if target.hp <= 0 do killed = true
 		if melee_leech > 0 && player.hp < player.max_hp {
 			heal := min(player.max_hp - player.hp, melee_leech)
@@ -2829,10 +3035,10 @@ strike_arc :: proc(run: ^Run, facing: Vec2, reach: f32, dmg: int, knockback: f32
 
 // --- Interaction -----------------------------------------------------------
 
-player_near_stairs :: proc(run: ^Run) -> bool {
+player_near_stairs :: proc(run: ^Run, slot: int) -> bool {
 	s := run.dungeon.stairs
-	dx := run.player.pos.x - (f32(s.x) + 0.5)
-	dy := run.player.pos.y - (f32(s.y) + 0.5)
+	dx := run.players[slot].pos.x - (f32(s.x) + 0.5)
+	dy := run.players[slot].pos.y - (f32(s.y) + 0.5)
 	return math.hypot(dx, dy) <= INTERACT_STAIRS_RADIUS
 }
 
@@ -2844,59 +3050,59 @@ door_is_sealed :: proc(run: ^Run, door: [2]int) -> bool {
 	return false
 }
 
-player_near_shop :: proc(run: ^Run) -> bool {
+player_near_shop :: proc(run: ^Run, slot: int) -> bool {
 	if run == nil || !run.has_shopkeeper do return false
-	keeper_delta := run.shopkeeper.pos - run.player.pos
+	keeper_delta := run.shopkeeper.pos - run.players[slot].pos
 	if math.hypot(keeper_delta.x, keeper_delta.y) < 1.35 do return true
-	sign_delta := shop_sign_position(&run.shopkeeper) - run.player.pos
+	sign_delta := shop_sign_position(&run.shopkeeper) - run.players[slot].pos
 	return math.hypot(sign_delta.x, sign_delta.y) < 1.35
 }
 
-soulless_clanker_nearby :: proc(run: ^Run) -> ^Ambient_Room_Npc {
+soulless_clanker_nearby :: proc(run: ^Run, slot: int) -> ^Ambient_Room_Npc {
 	if run == nil do return nil
 	for i in 0..<run.ambient_residents.count {
 		resident := &run.ambient_residents.items[i]
 		if !resident.active || resident.kind != .Soulless_Clanker do continue
-		delta := resident.pos-run.player.pos
+		delta := resident.pos-run.players[slot].pos
 		if math.hypot(delta.x,delta.y) <= SOULLESS_CLANKER_INTERACT_RANGE &&
-			line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,resident.pos.x,resident.pos.y) {
+			line_of_sight(&run.dungeon,run.players[slot].pos.x,run.players[slot].pos.y,resident.pos.x,resident.pos.y) {
 			return resident
 		}
 	}
 	return nil
 }
 
-soulless_clanker_interact :: proc(run: ^Run) -> bool {
-	clanker := soulless_clanker_nearby(run)
+soulless_clanker_interact :: proc(run: ^Run, slot: int) -> bool {
+	clanker := soulless_clanker_nearby(run, slot)
 	if clanker == nil do return false
-	room_npc_face_toward(&clanker.motion,clanker.pos,run.player.pos)
+	room_npc_face_toward(&clanker.motion,clanker.pos,run.players[slot].pos)
 	pos := clanker.pos
-	if !soulless_clanker_join(run,clanker) do return false
+	if !soulless_clanker_join(run, slot,clanker) do return false
 	append(&run.numbers,Damage_Number{pos=pos,kind=.Text,text="Clank, clank, clank!"})
 	sfx_emit(run,.Soulless_Clanker,pos,spatial=true)
 	return true
 }
 
-string_nearby :: proc(run: ^Run) -> ^Ambient_Room_Npc {
+string_nearby :: proc(run: ^Run, slot: int) -> ^Ambient_Room_Npc {
 	if run == nil do return nil
 	for i in 0..<run.ambient_residents.count {
 		resident := &run.ambient_residents.items[i]
 		if !resident.active || resident.kind != .String do continue
-		delta := resident.pos-run.player.pos
+		delta := resident.pos-run.players[slot].pos
 		if math.hypot(delta.x,delta.y) <= STRING_INTERACT_RANGE &&
-			line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,resident.pos.x,resident.pos.y) {
+			line_of_sight(&run.dungeon,run.players[slot].pos.x,run.players[slot].pos.y,resident.pos.x,resident.pos.y) {
 			return resident
 		}
 	}
 	return nil
 }
 
-string_interact :: proc(run: ^Run) -> bool {
-	guitarist := string_nearby(run)
+string_interact :: proc(run: ^Run, slot: int) -> bool {
+	guitarist := string_nearby(run, slot)
 	if guitarist == nil do return false
-	room_npc_face_toward(&guitarist.motion,guitarist.pos,run.player.pos)
+	room_npc_face_toward(&guitarist.motion,guitarist.pos,run.players[slot].pos)
 	pos := guitarist.pos
-	if !string_join(run,guitarist) do return false
+	if !string_join(run, slot,guitarist) do return false
 	append(&run.numbers,Damage_Number{pos=pos,kind=.Text,text=string_join_response(run)})
 	return true
 }
@@ -2904,36 +3110,93 @@ string_interact :: proc(run: ^Run) -> bool {
 LOSSLESS_SOUL_CHIMES_INTERACT_RANGE :: f32(1.55)
 LOSSLESS_SOUL_CHIMES_HINT :: "Footsteps scatter ghosts. What skill could reach them.."
 
-lossless_soul_chimes_nearby :: proc(run:^Run) -> (Vec2,bool) {
+lossless_soul_chimes_nearby :: proc(run:^Run, slot: int) -> (Vec2,bool) {
 	if run==nil do return {},false
 	layout:=&run.dungeon.hall_furnishings
 	for i in 0..<layout.count {
 		if layout.kinds[i]!=.Chimes do continue
 		tile:=layout.tiles[i]
 		pos:=Vec2{f32(tile.x)+.5,f32(tile.y)+.5}
-		if math.hypot(pos.x-run.player.pos.x,pos.y-run.player.pos.y)>LOSSLESS_SOUL_CHIMES_INTERACT_RANGE do continue
-		if !line_of_sight(&run.dungeon,run.player.pos.x,run.player.pos.y,pos.x,pos.y) do continue
+		if math.hypot(pos.x-run.players[slot].pos.x,pos.y-run.players[slot].pos.y)>LOSSLESS_SOUL_CHIMES_INTERACT_RANGE do continue
+		if !line_of_sight(&run.dungeon,run.players[slot].pos.x,run.players[slot].pos.y,pos.x,pos.y) do continue
 		return pos,true
 	}
 	return {},false
 }
 
-lossless_soul_chimes_interact :: proc(run:^Run) -> bool {
+lossless_soul_chimes_interact :: proc(run:^Run, slot: int) -> bool {
 	if run==nil do return false
-	pos,nearby:=lossless_soul_chimes_nearby(run)
+	pos,nearby:=lossless_soul_chimes_nearby(run, slot)
 	if !nearby do return false
 	append(&run.numbers,Damage_Number{pos=pos,kind=.Text,text=LOSSLESS_SOUL_CHIMES_HINT})
 	return true
 }
 
+PARTNER_RAISE_RANGE :: f32(1.6) // arch-rogue-python/src/arch_rogue/interactions.py
+
+// The fallen co-op partner within reach, if this living seat can still Raise.
+nearby_raisable_partner :: proc(run: ^Run, slot: int) -> int {
+	if !run_coop(run) do return -1
+	raiser := &run.players[slot]
+	if raiser.hp <= 0 || raiser.raise_charges <= 0 do return -1
+	for other in 0 ..< run_seat_count(run) {
+		if other == slot || run.players[other].hp > 0 do continue
+		d := run.players[other].pos - raiser.pos
+		if math.hypot(d.x, d.y) < PARTNER_RAISE_RANGE do return other
+	}
+	return -1
+}
+
+// Revive a fallen partner to half health, spending one of the raiser's
+// charges. The raiser plays the act flourish over the body; Rangers reuse
+// their authored petting clip.
+raise_partner :: proc(run: ^Run, slot, partner: int) -> bool {
+	if partner < 0 || partner >= run_seat_count(run) || partner == slot do return false
+	raiser := &run.players[slot]
+	fallen := &run.players[partner]
+	if fallen.hp > 0 || raiser.hp <= 0 || raiser.raise_charges <= 0 do return false
+	raiser.raise_charges -= 1
+	fallen.hp = max(1, fallen.max_hp / 2)
+	fallen.statuses = {}
+	fallen.poison_tick = 0
+	player_clear_visual_action(fallen)
+	if d := fallen.pos - raiser.pos; math.hypot(d.x, d.y) > 0.001 do raiser.facing = linalg.normalize0(d)
+	raiser.moving = false
+	if raiser.archetype == .Ranger {
+		player_start_visual_action(raiser, .Pet, SPIRIT_BEAST_PET_SECONDS)
+	} else {
+		player_start_visual_action(raiser, .Cast, PLAYER_CLASS_ACTION_SECONDS)
+	}
+	append(&run.numbers, Damage_Number{pos = fallen.pos, kind = .Text, text = "Your partner rises again"})
+	feel_emit(run, .Burst, fallen.pos, {240, 228, 160, 255}, 0.58, 0.68)
+	sfx_emit(run, .Shrine_Mending, fallen.pos, spatial = true)
+	run.critical_save_requested = true
+	return true
+}
+
+// On Hell, descent is a shared decision: every living seat must stand by the
+// stairs. Elsewhere either living seat may descend alone.
+run_descent_gathered :: proc(run: ^Run) -> bool {
+	if !run_coop(run) || run.difficulty != .Hell do return true
+	for slot in 0 ..< run_seat_count(run) {
+		if run.players[slot].hp > 0 && !player_near_stairs(run, slot) do return false
+	}
+	return true
+}
+
 // Exact story-aware E priority: relic; doors; shop; stairs/final epilogue;
 // unresolved guest; Lossless Soul; recruited room NPCs; Hall chimes; Garden frog; then ordinary world actions.
-player_interact :: proc(run: ^Run) -> (floor_changed: bool) {
+player_interact :: proc(run: ^Run, slot: int) -> (floor_changed: bool) {
 	run.shop_requested = false
-	if story_request_relic_collection(run) do return false
-	if door, found := nearby_closed_door(&run.dungeon, run.player.pos.x, run.player.pos.y); found {
+	if run_coop(run) && run.players[slot].hp <= 0 do return false // a fallen seat cannot act
+	if story_request_relic_collection(run, slot) do return false
+	if partner := nearby_raisable_partner(run, slot); partner >= 0 {
+		_ = raise_partner(run, slot, partner)
+		return false
+	}
+	if door, found := nearby_closed_door(&run.dungeon, run.players[slot].pos.x, run.players[slot].pos.y); found {
 		if door_is_sealed(run, door) {
-			append(&run.numbers, Damage_Number{pos = run.player.pos, kind = .Text, text = "Sealed by the boss"})
+			append(&run.numbers, Damage_Number{pos = run.players[slot].pos, kind = .Text, text = "Sealed by the boss"})
 			sfx_emit(run, .Lock_Denied)
 			return false
 		}
@@ -2943,21 +3206,25 @@ player_interact :: proc(run: ^Run) -> (floor_changed: bool) {
 		sfx_emit(run, .Door_Open, door_pos, spatial = true)
 		return false
 	}
-	if player_near_shop(run) {
+	if player_near_shop(run, slot) {
 		run.shopkeeper.met = true
-		room_npc_motion_hold(&run.shopkeeper.motion,run.shopkeeper.pos,run.player.pos)
+		room_npc_motion_hold(&run.shopkeeper.motion,run.shopkeeper.pos,run.players[slot].pos)
 		run.shop_requested = true
 		append(&run.numbers, Damage_Number{pos=run.shopkeeper.pos,kind=.Text,text="Trade"})
 		return false
 	}
-	if player_near_stairs(run) {
+	if player_near_stairs(run, slot) {
 		if is_boss_depth(run.depth) && boss_alive(run) {
-			append(&run.numbers, Damage_Number{pos = run.player.pos, kind = .Text, text = "Defeat the guardian before descending."})
+			append(&run.numbers, Damage_Number{pos = run.players[slot].pos, kind = .Text, text = "Defeat the guardian before descending."})
+			return false
+		}
+		if !run_descent_gathered(run) {
+			append(&run.numbers, Damage_Number{pos = run.players[slot].pos, kind = .Text, text = "Both of you must reach the stairs"})
 			return false
 		}
 		if run.depth >= DUNGEON_DEPTH {
 			if run.story_runtime.initialized {
-				_ = story_handle_final_stairs_request(run)
+				_ = story_handle_final_stairs_request(run, slot)
 				return false
 			}
 			run.victory = true
@@ -2969,49 +3236,52 @@ player_interact :: proc(run: ^Run) -> (floor_changed: bool) {
 		run_descend(run)
 		return true
 	}
-	if story_request_guest_dialogue(run) do return false
-	if story_request_lossless_soul(run) do return false
-	if soulless_clanker_interact(run) do return false
-	if string_interact(run) do return false
-	if lossless_soul_chimes_interact(run) do return false
+	if story_request_guest_dialogue(run, slot) do return false
+	if story_request_lossless_soul(run, slot) do return false
+	if soulless_clanker_interact(run, slot) do return false
+	if string_interact(run, slot) do return false
+	if lossless_soul_chimes_interact(run, slot) do return false
 	// A completed Moonbloom game is no longer an interaction target; E must
 	// continue down the chain to secrets, loot, petting, and wall touches.
-	if story_request_garden_moonbloom(run) do return false
+	if story_request_garden_moonbloom(run, slot) do return false
 	// Secrets outrank shrines, both outrank the bar (interactions.py:499-682).
-	if secret := nearby_secret(run); secret != nil {
-		open_secret(run, secret)
+	if secret := nearby_secret(run, slot); secret != nil {
+		open_secret(run, slot, secret)
 		return false
 	}
-	if shrine := nearby_shrine(run); shrine != nil {
-		activate_shrine(run, shrine)
+	if shrine := nearby_shrine(run, slot); shrine != nil {
+		activate_shrine(run, slot, shrine)
 		return false
 	}
-	if barrel, found := run_barrel_tile(run); found && !run.refuge.bar_toasted && barrel_in_drink_range(run.player.pos, barrel) {
-		if run_toast_bar(run) {
-			append(&run.numbers, Damage_Number{pos=run.player.pos,kind=.Text,text="A grim toast"})
+	if barrel, found := run_barrel_tile(run); found && !run.refuge.bar_toasted && barrel_in_drink_range(run.players[slot].pos, barrel) {
+		if run_toast_bar(run, slot) {
+			append(&run.numbers, Damage_Number{pos=run.players[slot].pos,kind=.Text,text="A grim toast"})
 			bar_pos := Vec2{f32(barrel.x) + 0.5, f32(barrel.y) + 0.5}
 			sfx_emit(run, .Bar_Toast, bar_pos, spatial = true)
 		}
 		return false
 	}
-	if pick_up_nearby_item(run) do return false
+	if pick_up_nearby_item(run, slot) do return false
 	// Petting sits second-to-last in the chain, mirroring pygame's suppression
 	// list (interactions.py:366-384); the never-advertised wall-face touch is
 	// dead last so it can never shadow a real interaction.
-	if pet_spirit_beast(run) do return false
-	_ = touch_secret_face_wall(run)
+	if pet_spirit_beast(run, slot) do return false
+	_ = touch_secret_face_wall(run, slot)
 	return false
 }
 
 // Contextual prompt for the HUD; empty when nothing is in range.
-interact_prompt :: proc(run: ^Run) -> string {
-	if story_relic_nearby(run) do return "E: recover relic echo"
-	if door, found := nearby_closed_door(&run.dungeon, run.player.pos.x, run.player.pos.y); found {
+interact_prompt :: proc(run: ^Run, slot: int) -> string {
+	if story_relic_nearby(run, slot) do return "E: recover relic echo"
+	if nearby_raisable_partner(run, slot) >= 0 {
+		return fmt.tprintf("E: raise your partner (%d left)", run.players[slot].raise_charges)
+	}
+	if door, found := nearby_closed_door(&run.dungeon, run.players[slot].pos.x, run.players[slot].pos.y); found {
 		if door_is_sealed(run, door) do return "Sealed by the boss"
 		return "E: open door"
 	}
-	if player_near_shop(run) do return "E: trade"
-	if player_near_stairs(run) {
+	if player_near_shop(run, slot) do return "E: trade"
+	if player_near_stairs(run, slot) {
 		if is_boss_depth(run.depth) && boss_alive(run) {
 			return "Slay the guardian first"
 		}
@@ -3024,24 +3294,24 @@ interact_prompt :: proc(run: ^Run) -> string {
 		}
 		return "E: descend"
 	}
-	if guest := story_nearby_guest(run); guest != nil do return fmt.tprintf("E: answer %s", guest.name)
-	if soul := story_nearby_lossless_soul(run); soul != nil do return "E: speak with the Lossless Soul"
-	if soulless_clanker_nearby(run) != nil do return "E: greet the Soulless Clanker"
-	if string_nearby(run) != nil do return "E: greet String"
-	if _,chimes_nearby:=lossless_soul_chimes_nearby(run);chimes_nearby do return "E: listen to the unlost chimes"
-	if _, _, frog_nearby := story_nearby_garden_frog(run); frog_nearby && story_content_enabled(run) {
+	if guest := story_nearby_guest(run, slot); guest != nil do return fmt.tprintf("E: answer %s", guest.name)
+	if soul := story_nearby_lossless_soul(run, slot); soul != nil do return "E: speak with the Lossless Soul"
+	if soulless_clanker_nearby(run, slot) != nil do return "E: greet the Soulless Clanker"
+	if string_nearby(run, slot) != nil do return "E: greet String"
+	if _,chimes_nearby:=lossless_soul_chimes_nearby(run, slot);chimes_nearby do return "E: listen to the unlost chimes"
+	if _, _, frog_nearby := story_nearby_garden_frog(run, slot); frog_nearby && story_content_enabled(run) {
 		ledger := &run.story_runtime.garden_games[clamp(run.depth, 1, STORY_BEAT_COUNT) - 1]
 		if ledger.outcome == .None do return "E: wake the moonbloom"
 	}
-	if secret := nearby_secret(run); secret != nil {
+	if secret := nearby_secret(run, slot); secret != nil {
 		def := &SECRET_DEFS[secret.kind]
 		return fmt.tprintf("E: %s - %s", def.name, def.detail)
 	}
-	if shrine := nearby_shrine(run); shrine != nil {
+	if shrine := nearby_shrine(run, slot); shrine != nil {
 		def := &SHRINE_DEFS[shrine.kind]
 		return fmt.tprintf("E: %s - %s", def.name, def.detail)
 	}
-	if barrel, found := run_barrel_tile(run); found && !run.refuge.bar_toasted && barrel_in_drink_range(run.player.pos, barrel) {
+	if barrel, found := run_barrel_tile(run); found && !run.refuge.bar_toasted && barrel_in_drink_range(run.players[slot].pos, barrel) {
 		// One free ale per bar; the pilgrimage counter mirrors pygame's
 		// "this toast makes it n/m" hint. Temp-allocator string, per frame.
 		return fmt.tprintf("E: raise a toast (%d/%d this run)", run.bars_toasted + 1, run.bars_visited)
@@ -3049,7 +3319,7 @@ interact_prompt :: proc(run: ^Run) -> string {
 	nearest := -1
 	nearest_distance := max(f32)
 	for &g, i in run.ground_items {
-		d := g.pos - run.player.pos
+		d := g.pos - run.players[slot].pos
 		distance := math.hypot(d.x, d.y)
 		if distance < PICKUP_RADIUS && distance < nearest_distance {
 			nearest = i
@@ -3059,12 +3329,12 @@ interact_prompt :: proc(run: ^Run) -> string {
 	if nearest >= 0 {
 		return "E: pick up item"
 	}
-	if nearby_pettable_spirit_beast(run) != nil {
+	if nearby_pettable_spirit_beast(run, slot) != nil {
 		return "E: pet your beast"
 	}
 	// A revealed plate warns without ever being interactable
 	// (interactions.py:256-264 "!" hint).
-	if trap := nearby_trap_warning(run); trap != nil {
+	if trap := nearby_trap_warning(run, slot); trap != nil {
 		def := &TRAP_DEFS[trap.kind]
 		return fmt.tprintf("! %s - %s", def.name, def.detail)
 	}
@@ -3073,24 +3343,24 @@ interact_prompt :: proc(run: ^Run) -> string {
 
 // Advertised interactions are the actionable prompts shared by desktop and
 // mobile. Blocked stairs/doors and trap warnings remain informational.
-player_interaction_advertised :: proc(run: ^Run) -> bool {
-	prompt := interact_prompt(run)
+player_interaction_advertised :: proc(run: ^Run, slot: int) -> bool {
+	prompt := interact_prompt(run, slot)
 	return len(prompt) >= 2 && prompt[0] == 'E' && prompt[1] == ':'
 }
 
 // The secret wall-face touch intentionally has no prompt, but the mobile A
 // button must still reach the same final interaction fallback as desktop E.
-player_interaction_available :: proc(run: ^Run) -> bool {
-	if player_interaction_advertised(run) do return true
-	_, found := nearby_secret_face_wall(run)
+player_interaction_available :: proc(run: ^Run, slot: int) -> bool {
+	if player_interaction_advertised(run, slot) do return true
+	_, found := nearby_secret_face_wall(run, slot)
 	return found
 }
 
 // Compact next-floor label under the stairs prompt. Detailed encounter, risk,
 // and reward prose stays out of the live interaction HUD.
 // Empty away from usable stairs.
-stairs_preview :: proc(run: ^Run) -> string {
-	if run.depth >= DUNGEON_DEPTH || !player_near_stairs(run) do return ""
+stairs_preview :: proc(run: ^Run, slot: int) -> string {
+	if run.depth >= DUNGEON_DEPTH || !player_near_stairs(run, slot) do return ""
 	if run_floor_plan(run).has_boss && boss_alive(run) do return ""
 	next := &run.plan[run.depth] // depth is 1-based: this is the depth+1 entry
 	return THEMES[next.theme_index].name

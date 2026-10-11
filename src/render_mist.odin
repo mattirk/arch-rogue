@@ -407,7 +407,7 @@ mist_update :: proc(view: ^View, app: ^App, alpha: f32) {
 		}
 	}
 
-	player := &run.player
+	player := &run.players[run.local_slot]
 	feet := player.prev_pos + (player.pos - player.prev_pos) * alpha
 	mist_stamp_actor(mist, feet, (player.pos - player.prev_pos) / SIM_DT, 1, dt)
 	for &enemy in run.enemies {
@@ -451,7 +451,7 @@ mist_update_soul_hunt :: proc(view: ^View, app: ^App, alpha: f32) {
 		}
 	}
 
-	player := &app.run.player
+	player := &app.run.players[app.run.local_slot]
 	feet := player.prev_pos + (player.pos-player.prev_pos)*alpha
 	mist_stamp_actor(mist,feet,(player.pos-player.prev_pos)/SIM_DT,1.15,dt)
 	if ghost, active := story_soul_hunt_target_position(&app.story_minigame); active {

@@ -237,22 +237,22 @@ story_hall_chimes_hint_at_dash_capture :: proc(t: ^testing.T) {
 	run.dungeon.hall_furnishings.count = 1
 	run.dungeon.hall_furnishings.tiles[0] = chimes_tile
 	run.dungeon.hall_furnishings.kinds[0] = .Chimes
-	run.player.pos = {5.5, 6.5}
-	run.player.prev_pos = run.player.pos
+	run.players[0].pos = {5.5, 6.5}
+	run.players[0].prev_pos = run.players[0].pos
 
 	testing.expect(
 		t,
-		ar.interact_prompt(&run) == "E: listen to the unlost chimes",
+		ar.interact_prompt(&run, 0) == "E: listen to the unlost chimes",
 		"nearby Hall chimes must advertise their hint interaction",
 	)
-	testing.expect(t, !ar.player_interact(&run), "listening to Hall chimes must not change floors")
+	testing.expect(t, !ar.player_interact(&run, 0), "listening to Hall chimes must not change floors")
 	hint_matches := len(run.numbers) == 1
 	if hint_matches do hint_matches = run.numbers[0].text == ar.LOSSLESS_SOUL_CHIMES_HINT
 	testing.expect(t, hint_matches, "Hall chimes must reveal the authored dash-capture hint")
 
-	run.player.pos = {5.5, 7.2}
-	run.player.prev_pos = run.player.pos
-	testing.expect(t, ar.interact_prompt(&run) == "", "Hall chimes must not advertise beyond interaction range")
+	run.players[0].pos = {5.5, 7.2}
+	run.players[0].prev_pos = run.players[0].pos
+	testing.expect(t, ar.interact_prompt(&run, 0) == "", "Hall chimes must not advertise beyond interaction range")
 }
 
 @(test)
