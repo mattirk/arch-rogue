@@ -1865,8 +1865,17 @@ run_adopt_decoded_strings :: proc(run: ^Run, allocator := context.allocator) {
 }
 
 run_take_payload :: proc(payload: ^Run_Save_Payload, allocator := context.allocator) -> (run: Run, panel: Story_Panel_State, minigame: Story_Minigame_State, cursor: int) {
+	run_take_payload_into(payload, &run, &panel, &minigame, &cursor, allocator)
+	return
+}
+
+// Pointer-destination form. Callers that must not hold a `Run` local (a 60 KB
+// aggregate assigned through a pointer becomes a first-class LLVM aggregate
+// load/store that SROA scalarizes into ~10^5 instructions; see
+// coop_checkpoint_decode) write straight into their final destination here.
+run_take_payload_into :: proc(payload: ^Run_Save_Payload, run: ^Run, panel: ^Story_Panel_State, minigame: ^Story_Minigame_State, cursor: ^int, allocator := context.allocator) {
 	if payload == nil do return
-	run = Run{
+	run^ = Run{
 		active_ticks=payload.active_ticks, started_at_utc=payload.started_at_utc,
 		ended_at_utc=payload.ended_at_utc, terminal=payload.terminal,
 		finalization=payload.finalization, seed=payload.seed, depth=payload.depth,
@@ -1898,12 +1907,11 @@ run_take_payload :: proc(payload: ^Run_Save_Payload, allocator := context.alloca
 	// Older save documents may predate the bounded potion inventory.
 	run.players[HOST_SLOT].heal_potions = clamp(run.players[HOST_SLOT].heal_potions, 0, POTION_CAPACITY)
 	run.players[HOST_SLOT].mana_potions = clamp(run.players[HOST_SLOT].mana_potions, 0, POTION_CAPACITY)
-	panel = payload.story_panel
-	minigame = payload.story_minigame
-	cursor = payload.story_minigame_cursor
+	panel^ = payload.story_panel
+	minigame^ = payload.story_minigame
+	cursor^ = payload.story_minigame_cursor
 	payload^ = {}
-	run_adopt_decoded_strings(&run, allocator)
-	return
+	run_adopt_decoded_strings(run, allocator)
 }
 
 run_document_destroy :: proc(document: ^Run_Document) {

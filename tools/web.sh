@@ -173,11 +173,22 @@ build() {
     WASM_OBJ="$BUILD_ROOT/archrogue.wasm.obj"
     rm -f "$WASM_OBJ_REQUEST" "$WASM_OBJ"
 
-    log "building Odin wasm object (release, vetted)"
-    odin build "$ROOT_DIR/src" \
+    # Wall-clock budget for the optimized wasm compile. A healthy compile takes
+    # well under a minute; on 2026-10-11 a 60 KB `Run` aggregate copied through
+    # a pointer made LLVM's SROA/InstCombine run for 10+ minutes on this target
+    # and the public web lane died with only "The operation was canceled". Fail
+    # here with a diagnosis instead. Override with ARCH_ROGUE_WEB_ODIN_BUDGET_S.
+    local odin_budget="${ARCH_ROGUE_WEB_ODIN_BUDGET_S:-600}"
+    log "building Odin wasm object (release, vetted; budget ${odin_budget}s)"
+    local odin_status=0
+    timeout --signal=KILL "$odin_budget" odin build "$ROOT_DIR/src" \
         -target:freestanding_wasm32 -build-mode:obj -vet -o:speed \
         -define:RAYLIB_WASM_LIB=env.o \
-        -out:"$WASM_OBJ_REQUEST"
+        -out:"$WASM_OBJ_REQUEST" || odin_status=$?
+    if [[ $odin_status -eq 137 || $odin_status -eq 124 ]]; then
+        die "Odin wasm compile exceeded ${odin_budget}s; an LLVM optimizer blowup is likely (look for a huge struct such as Run copied by value or assigned through a pointer; see src/net_codec.odin coop_checkpoint_decode)"
+    fi
+    [[ $odin_status -eq 0 ]] || exit "$odin_status"
     [[ -s "$WASM_OBJ" ]] || die "pinned Odin $ODIN_VERSION did not produce expected object $WASM_OBJ"
 
     log "splitting payload: core staging + lazy packs"

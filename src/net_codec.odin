@@ -354,35 +354,39 @@ coop_checkpoint_verify :: proc(raw: []byte, sum: string) -> bool {
 	return true
 }
 
-// Decode and validate a checkpoint document into a playable replica Run.
-// Nothing is installed unless every check passes.
-coop_checkpoint_decode :: proc(raw: []byte) -> (run: Run, panel: Story_Panel_State, minigame: Story_Minigame_State, cursor: int, turn_page: Turn_Page_State, ok: bool) {
-	if !persistence_json_preflight(raw, COOP_CHECKPOINT_MAX_BYTES) do return
-	checkpoint: Coop_Checkpoint
-	if err := json.unmarshal(raw, &checkpoint); err != nil {
-		destroy_partial :: proc(c: ^Coop_Checkpoint) {
-			run_save_payload_destroy(&c.payload)
-		}
-		destroy_partial(&checkpoint)
-		return
+// Decode and validate a checkpoint document into a playable replica Run,
+// written straight into the caller's destinations. Nothing is written unless
+// every check passes.
+//
+// Deliberately not a by-value `Run` result: a 60 KB `Run` local that is both
+// bulk-copied and then touched field by field makes LLVM's SROA scalarize the
+// whole struct into hundreds of thousands of instructions, and InstCombine on
+// the freestanding wasm32 target never finishes (observed 2026-10-11 as the
+// public web lane timing out at the Odin -o:speed step).
+coop_checkpoint_decode :: proc(raw: []byte, run: ^Run, panel: ^Story_Panel_State, minigame: ^Story_Minigame_State, cursor: ^int, turn_page: ^Turn_Page_State) -> bool {
+	if !persistence_json_preflight(raw, COOP_CHECKPOINT_MAX_BYTES) do return false
+	checkpoint := new(Coop_Checkpoint, context.temp_allocator)
+	if err := json.unmarshal(raw, checkpoint); err != nil {
+		run_save_payload_destroy(&checkpoint.payload)
+		return false
 	}
 	if checkpoint.player_count != MAX_PLAYERS || !run_payload_validate(&checkpoint.payload) || !coop_player_valid(&checkpoint.partner) {
 		run_save_payload_destroy(&checkpoint.payload)
 		coop_player_destroy_strings(&checkpoint.partner)
-		return
+		return false
 	}
-	turn_page = checkpoint.payload.turn_page
-	run, panel, minigame, cursor = run_take_payload(&checkpoint.payload)
+	turn_page^ = checkpoint.payload.turn_page
+	run_take_payload_into(&checkpoint.payload, run, panel, minigame, cursor)
 	run.players[1] = checkpoint.partner
 	run.player_count = MAX_PLAYERS
-	run_adopt_item_strings(&run, &run.players[1].weapon)
-	run_adopt_item_strings(&run, &run.players[1].armor)
-	for i in 0 ..< BAG_CAPACITY do run_adopt_item_strings(&run, &run.players[1].bag[i])
+	run_adopt_item_strings(run, &run.players[1].weapon)
+	run_adopt_item_strings(run, &run.players[1].armor)
+	for i in 0 ..< BAG_CAPACITY do run_adopt_item_strings(run, &run.players[1].bag[i])
 	for slot in 0 ..< MAX_PLAYERS {
 		p := &run.players[slot]
 		p.prev_pos = p.pos
 	}
-	return run, panel, minigame, cursor, turn_page, true
+	return true
 }
 
 coop_player_valid :: proc(p: ^Player) -> bool {

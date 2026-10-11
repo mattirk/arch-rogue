@@ -2116,14 +2116,20 @@ collect_coop_text :: proc(app: ^App, intent: ^Intent, ctrl_down: bool) {
 		intent.text_len += size
 	}
 	if rl.IsKeyPressed(.BACKSPACE) || rl.IsKeyPressedRepeat(.BACKSPACE) do intent.text_backspace += 1
-	if ctrl_down && rl.IsKeyPressed(.V) {
-		clip := string(rl.GetClipboardText())
-		for r in clip {
-			if r < 0x20 do continue
-			bytes, size := utf8.encode_rune(r)
-			if intent.text_len + size > len(intent.text) do break
-			copy(intent.text[intent.text_len:], bytes[:size])
-			intent.text_len += size
+	// Native only: raylib's web GetClipboardText is an EM_ASYNC_JS stub that
+	// drags ASYNCIFY support into the runtime JS, which the web contract
+	// forbids (web-audit); browsers also gate clipboard reads behind an async
+	// permission prompt. Room codes are four characters, so typing suffices.
+	when !ARCH_ROGUE_WEB {
+		if ctrl_down && rl.IsKeyPressed(.V) {
+			clip := string(rl.GetClipboardText())
+			for r in clip {
+				if r < 0x20 do continue
+				bytes, size := utf8.encode_rune(r)
+				if intent.text_len + size > len(intent.text) do break
+				copy(intent.text[intent.text_len:], bytes[:size])
+				intent.text_len += size
+			}
 		}
 	}
 }

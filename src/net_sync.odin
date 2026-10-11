@@ -670,19 +670,24 @@ coop_joiner_receive_checkpoint :: proc(app: ^App, data: []byte) {
 		_ = net_session_send_raw(&c.session, coop_encode_sync_request(context.temp_allocator))
 		return
 	}
-	run, panel, minigame, cursor, turn_page, decoded := coop_checkpoint_decode(raw)
-	if !decoded {
+	// Heap-held scratch: see coop_checkpoint_decode for why no `Run` local.
+	fresh := new(Run, context.temp_allocator)
+	panel: Story_Panel_State
+	minigame: Story_Minigame_State
+	cursor: int
+	turn_page: Turn_Page_State
+	if !coop_checkpoint_decode(raw, fresh, &panel, &minigame, &cursor, &turn_page) {
 		platform_log(fmt.tprintf("[coop] checkpoint %d did not decode (%d bytes); requesting resync", id, len(raw)))
 		_ = net_session_send_raw(&c.session, coop_encode_sync_request(context.temp_allocator))
 		return
 	}
-	platform_log(fmt.tprintf("[coop] checkpoint %d adopted: epoch %d, %d bytes, %d enemies", id, epoch, len(raw), len(run.enemies)))
+	platform_log(fmt.tprintf("[coop] checkpoint %d adopted: epoch %d, %d bytes, %d enemies", id, epoch, len(raw), len(fresh.enemies)))
 	// Keep this client's own fog when the floor did not change, including a
 	// rejoin: discovery is local presentation and the host never ships it.
-	same_floor := app.run.player_count == MAX_PLAYERS && app.run.floor_epoch == run.floor_epoch && app.run.seed == run.seed
+	same_floor := app.run.player_count == MAX_PLAYERS && app.run.floor_epoch == fresh.floor_epoch && app.run.seed == fresh.seed
 	explored := app.run.explored
 	old := app.run
-	app.run = run
+	app.run = fresh^
 	run_destroy(&old)
 	if same_floor do app.run.explored = explored
 	app.run.local_slot = 1
