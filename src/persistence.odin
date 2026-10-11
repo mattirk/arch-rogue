@@ -1794,9 +1794,15 @@ run_payload_validate :: proc(payload: ^Run_Save_Payload) -> bool {
 		math.is_inf(payload.player.pos.x) || math.is_inf(payload.player.pos.y) {
 		return false
 	}
+	if !pos_on_map(payload.player.pos) do return false
+	// Counters that index fixed arrays after adoption (audit 2026-10-11, 2).
+	if payload.ambient_residents.count < 0 || payload.ambient_residents.count > MAX_AMBIENT_ROOM_RESIDENTS do return false
+	if payload.story_panel.text_len < 0 || payload.story_panel.text_len > STORY_PANEL_TEXT_CAP do return false
+	if payload.story.chapter_index < 0 || payload.story.chapter_index >= STORY_CHAPTERS_PER_ARC do return false
 	for i in 0 ..< len(payload.enemies) {
 		enemy := &payload.enemies[i]
 		if enemy.entity_id == 0 || math.is_nan(enemy.pos.x) || math.is_nan(enemy.pos.y) do return false
+		if math.is_inf(enemy.pos.x) || math.is_inf(enemy.pos.y) || !pos_on_map(enemy.pos) do return false
 		for j in i+1 ..< len(payload.enemies) {
 			if payload.enemies[j].entity_id == enemy.entity_id do return false
 		}

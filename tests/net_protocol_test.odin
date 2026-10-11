@@ -64,6 +64,21 @@ net_json_rejects_hostile_documents :: proc(t: ^testing.T) {
 	limits := np.DEFAULT_JSON_LIMITS
 	limits.max_bytes = 8
 	testing.expect_value(t, np.json_validate(transmute([]byte)string(`{"a":123456}`), limits), np.Json_Error.Too_Large)
+
+	// Per-object key cap: the duplicate-key scan is linear per key, so a
+	// flat object with thousands of keys is refused outright.
+	wide: [dynamic]byte
+	defer delete(wide)
+	append(&wide, '{')
+	for i in 0 ..< 129 {
+		if i > 0 do append(&wide, ',')
+		append(&wide, '"', 'k', byte('a' + i % 26), byte('a' + (i / 26) % 26), '"', ':', '0')
+	}
+	append(&wide, '}')
+	testing.expect_value(t, np.json_validate(wide[:]), np.Json_Error.Too_Many_Keys)
+	wide_limits := np.DEFAULT_JSON_LIMITS
+	wide_limits.max_object_keys = 129
+	testing.expect_value(t, np.json_validate(wide[:], wide_limits), np.Json_Error.None)
 }
 
 @(test)

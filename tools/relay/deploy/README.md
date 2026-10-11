@@ -51,6 +51,32 @@ game clients ──wss://ar.rita-kasari.fi/mp──▶ nginx (TLS, port 443)
 3. The first successful deploy also stops and disables the old Python unit
    `arch-rogue-server` if it exists.
 
+## Protecting the deploy path (required GitHub settings)
+
+The deploy job runs on the production host, so these settings in the private
+repository are part of the security boundary (security audit 2026-10-11,
+finding 5). They cannot be expressed in the workflow file itself:
+
+- Environment **`ar-rita-kasari-fi`** → *Deployment branches and tags*:
+  **Selected branches** = `master` only. Without it, a `workflow_dispatch`
+  from any branch with write access would run that branch's workflow file on
+  the host. (The workflow additionally refuses to deploy unless
+  `github.ref` is `master`.)
+- Environment → *Required reviewers*: at least one, so a deploy needs a
+  second click even from master.
+- Branch protection on `master`: no force-pushes, no deletions.
+- The self-hosted runner label `arch-rogue-server-1` must exist only on that
+  host, and the runner must not be registered at organization level.
+
+Remaining hardening that needs root on the host and is not yet done: run the
+relay as its own system user (a system unit with `User=archrogue-relay` and a
+root-owned release directory, the runner restricted to a narrow `sudo
+systemctl restart arch-rogue-relay`), so that a relay compromise cannot reach
+the runner's credentials. Today both share the runner's account; the user
+unit's sandbox directives (`arch-rogue-relay.service`) limit what a
+compromised relay can do with the filesystem, kernel, and network but not
+which Unix user it is.
+
 ## Log retention (privacy policy commitment)
 
 `website/privacy.html` promises that player IP addresses are not access-logged

@@ -17,6 +17,10 @@ Json_Limits :: struct {
 	max_values:       int,
 	max_string_bytes: int, // decoded-length upper bound of any one string
 	max_key_bytes:    int,
+	// Keys per object. The duplicate-key check is a linear scan over the
+	// open object's keys, so without this cap a flat object with tens of
+	// thousands of short keys costs O(k^2) per message (audit 2026-10-11, 4).
+	max_object_keys:  int,
 }
 
 DEFAULT_JSON_LIMITS :: Json_Limits{
@@ -25,6 +29,7 @@ DEFAULT_JSON_LIMITS :: Json_Limits{
 	max_values       = 32_768,
 	max_string_bytes = 200 * 1024,
 	max_key_bytes    = 32,
+	max_object_keys  = 128,
 }
 
 Json_Error :: enum u8 {
@@ -42,6 +47,7 @@ Json_Error :: enum u8 {
 	Duplicate_Key,
 	Bad_Number,
 	Trailing_Data,
+	Too_Many_Keys,
 }
 
 @(private="file")
@@ -125,6 +131,7 @@ json_validate :: proc(data: []byte, limits := DEFAULT_JSON_LIMITS) -> Json_Error
 			if v.pos >= len(v.data) || v.data[v.pos] != '"' do return fail(v, .Syntax)
 			key, ok := str(v, true)
 			if !ok do return false
+			if v.limits.max_object_keys > 0 && len(v.keys) - base >= v.limits.max_object_keys do return fail(v, .Too_Many_Keys)
 			for existing in v.keys[base:] do if existing == key do return fail(v, .Duplicate_Key)
 			append(&v.keys, key)
 			skip_ws(v)

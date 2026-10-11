@@ -8,6 +8,7 @@ package archrogue
 
 import "core:encoding/base64"
 import "core:encoding/json"
+import "core:fmt"
 import "core:math"
 import "core:strings"
 import np "net_protocol"
@@ -363,8 +364,26 @@ coop_checkpoint_verify :: proc(raw: []byte, sum: string) -> bool {
 // whole struct into hundreds of thousands of instructions, and InstCombine on
 // the freestanding wasm32 target never finishes (observed 2026-10-11 as the
 // public web lane timing out at the Odin -o:speed step).
+// The checkpoint is a host-authored document and must clear the same strict
+// validator as every control message before Odin's permissive core parser
+// sees it: that parser has no depth limit and recurses into unknown keys, so
+// a hash-correct document could otherwise overflow the joiner's stack
+// (security audit 2026-10-11, finding 2). Limits sized for a full run save.
+COOP_CHECKPOINT_JSON_LIMITS :: np.Json_Limits{
+	max_bytes        = COOP_CHECKPOINT_MAX_BYTES,
+	max_depth        = 24,
+	max_values       = 2_000_000,
+	max_string_bytes = 200 * 1024,
+	max_key_bytes    = 64,
+	max_object_keys  = 256,
+}
+
 coop_checkpoint_decode :: proc(raw: []byte, run: ^Run, panel: ^Story_Panel_State, minigame: ^Story_Minigame_State, cursor: ^int, turn_page: ^Turn_Page_State) -> bool {
 	if !persistence_json_preflight(raw, COOP_CHECKPOINT_MAX_BYTES) do return false
+	if err := np.json_validate(raw, COOP_CHECKPOINT_JSON_LIMITS); err != .None {
+		platform_log(fmt.tprintf("[coop] checkpoint rejected by the strict validator: %v", err))
+		return false
+	}
 	checkpoint := new(Coop_Checkpoint, context.temp_allocator)
 	if err := json.unmarshal(raw, checkpoint); err != nil {
 		run_save_payload_destroy(&checkpoint.payload)
@@ -392,7 +411,7 @@ coop_checkpoint_decode :: proc(raw: []byte, run: ^Run, panel: ^Story_Panel_State
 coop_player_valid :: proc(p: ^Player) -> bool {
 	if int(p.archetype) < 0 || int(p.archetype) >= len(Archetype_Id) do return false
 	if p.bag_count < 0 || p.bag_count > BAG_CAPACITY do return false
-	if !vec_finite(p.pos) || !vec_finite(p.facing) do return false
+	if !vec_finite(p.pos) || !vec_finite(p.facing) || !pos_on_map(p.pos) do return false
 	if p.max_hp <= 0 || p.max_hp > 100_000 || p.hp > p.max_hp do return false
 	return true
 }
@@ -405,6 +424,12 @@ coop_player_destroy_strings :: proc(p: ^Player) {
 	item_free(&p.weapon)
 	item_free(&p.armor)
 	for i in 0 ..< BAG_CAPACITY do item_free(&p.bag[i])
+}
+
+// Positions index tile arrays through the sim's own guards, but a host can
+// only be trusted to keep them on the map it shipped.
+pos_on_map :: proc(v: Vec2) -> bool {
+	return v.x >= -1 && v.x <= f32(MAP_W) + 1 && v.y >= -1 && v.y <= f32(MAP_H) + 1
 }
 
 vec_finite :: proc(v: Vec2) -> bool {

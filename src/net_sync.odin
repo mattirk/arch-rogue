@@ -55,6 +55,10 @@ Coop_State :: struct {
 	h_need_checkpoint: bool,
 	h_joiner_synced:   bool,
 	h_joiner_pause:    Coop_Pause,
+	h_now_ms:          i64, // frame clock, for the throttles below
+	h_checkpoint_sent_ms:    i64, // last checkpoint send attempt
+	h_last_sync_request_ms:  i64, // last honored joiner sync_request
+	h_joiner_pause_since_ms: i64, // when the joiner's shop pause began (0 = none)
 	h_sfx:             [dynamic]Sfx_Event,
 	h_events:          [dynamic]Coop_Joiner_Event,
 	h_slow_hash:       [Coop_Slow_Section]u64,
@@ -162,8 +166,23 @@ coop_host_pause :: proc(app: ^App) -> Coop_Pause {
 // already stop app_tick before the sim; this adds partner-owned reasons.
 coop_host_sim_blocked :: proc(app: ^App) -> bool {
 	c := &app.coop
-	return .Joiner_Shop in c.h_joiner_pause || !c.session.partner_connected || !c.h_joiner_synced
+	// A joiner can hold the host only for bounded spans (audit 2026-10-11,
+	// finding 3): a shop pause for COOP_JOINER_PAUSE_MAX_MS, and a checkpoint
+	// ack for COOP_CHECKPOINT_ACK_TIMEOUT_MS after the send. Past that the
+	// host plays on; a late joiner resyncs with a fresh baseline.
+	shop := .Joiner_Shop in c.h_joiner_pause && c.h_joiner_pause_since_ms != 0 &&
+		c.h_now_ms - c.h_joiner_pause_since_ms <= COOP_JOINER_PAUSE_MAX_MS
+	ack_overdue := c.h_checkpoint_id != 0 && !c.h_need_checkpoint &&
+		c.h_now_ms - c.h_checkpoint_sent_ms > COOP_CHECKPOINT_ACK_TIMEOUT_MS
+	return shop || !c.session.partner_connected || (!c.h_joiner_synced && !ack_overdue)
 }
+
+// Joiner-held pauses and resync traffic are bounded so a hostile or stuck
+// partner cannot freeze the host or make it re-serialize the run every frame.
+COOP_JOINER_PAUSE_MAX_MS       :: 120 * 1000
+COOP_CHECKPOINT_ACK_TIMEOUT_MS :: 20 * 1000
+COOP_SYNC_REQUEST_MIN_MS       :: 3 * 1000
+COOP_CHECKPOINT_RETRY_MS       :: 1000
 
 // ------------------------------------------------------------------- start --
 
@@ -209,6 +228,7 @@ coop_begin_run :: proc(app: ^App) {
 coop_frame :: proc(app: ^App, now_ms: i64) {
 	c := &app.coop
 	if c.role == .None do return
+	c.h_now_ms = now_ms
 	s := &c.session
 	net_session_update(s, now_ms)
 	for event in s.events {
@@ -243,7 +263,12 @@ coop_frame :: proc(app: ^App, now_ms: i64) {
 		delete(data)
 	}
 	if c.role == .Host && s.phase == .Active && !c.ended {
-		if c.h_need_checkpoint && s.partner_connected do coop_host_send_checkpoint(app)
+		// A send attempt that could not queue (slow partner) is retried on
+		// a timer, not every frame: each attempt re-serializes the run.
+		if c.h_need_checkpoint && s.partner_connected && now_ms - c.h_checkpoint_sent_ms >= COOP_CHECKPOINT_RETRY_MS {
+			c.h_checkpoint_sent_ms = now_ms
+			coop_host_send_checkpoint(app)
+		}
 		if now_ms - c.h_last_snapshot_ms >= COOP_SNAPSHOT_MS {
 			c.h_last_snapshot_ms = now_ms
 			coop_host_send_snapshot(app)
@@ -270,6 +295,10 @@ coop_handle_message :: proc(app: ^App, data: []byte) {
 		}
 	case .Sync_Request:
 		if c.role == .Host {
+			// At most one honored request per COOP_SYNC_REQUEST_MIN_MS, and
+			// none while a checkpoint is already pending.
+			if c.h_need_checkpoint || c.h_now_ms - c.h_last_sync_request_ms < COOP_SYNC_REQUEST_MIN_MS do return
+			c.h_last_sync_request_ms = c.h_now_ms
 			c.h_need_checkpoint = true
 			c.h_joiner_synced = false
 		}
@@ -291,7 +320,10 @@ coop_host_receive_intent :: proc(app: ^App, data: []byte) {
 	actions := make([dynamic]Coop_Action, 0, COOP_MAX_BATCH_ACTIONS, context.temp_allocator)
 	pause, ok := coop_decode_intent(data, &commands, &actions)
 	if !ok do return
-	c.h_joiner_pause = pause & {.Joiner_Shop}
+	shop := pause & {.Joiner_Shop}
+	if shop != {} && c.h_joiner_pause_since_ms == 0 do c.h_joiner_pause_since_ms = c.h_now_ms
+	if shop == {} do c.h_joiner_pause_since_ms = 0
+	c.h_joiner_pause = shop
 	if !c.h_joiner_synced do return
 	for cmd in commands {
 		if cmd.seq <= c.h_seen_seq do continue // duplicate or already resolved

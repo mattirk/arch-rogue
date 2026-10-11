@@ -5,7 +5,10 @@ import np "../../../src/net_protocol"
 
 GAME :: "6.0.0-test"
 
+// Thread-local: the runner executes tests in parallel and a shared counter
+// could hand two rooms the same fake token.
 @(private="file")
+@(thread_local)
 random_counter: u8
 
 @(private="file")
