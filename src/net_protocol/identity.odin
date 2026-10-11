@@ -1,6 +1,5 @@
 package net_protocol
 
-import "core:crypto/hash"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
@@ -76,8 +75,7 @@ room_code_from_random :: proc(random: [ROOM_CODE_LENGTH]byte) -> [ROOM_CODE_LENG
 // _mp_code_seal). Catches mistyped codes; not authentication.
 room_code_seal :: proc(code: string) -> (first, second: int) {
 	upper := strings.to_upper(strings.trim_space(code), context.temp_allocator)
-	digest: [32]byte
-	hash.hash_string_to_buffer(.SHA256, upper, digest[:])
+	digest := sha256_digest(transmute([]byte)upper)
 	return int(digest[0]) % len(SEAL_SIGILS), int(digest[1]) % len(SEAL_SIGILS)
 }
 

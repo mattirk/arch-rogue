@@ -6,7 +6,6 @@ package archrogue
 // then range-check every field before anything touches a Run. Both clients
 // are the same release (D3), so these layouts change with the game.
 
-import "core:crypto/hash"
 import "core:encoding/base64"
 import "core:encoding/json"
 import "core:math"
@@ -304,8 +303,7 @@ Coop_Checkpoint_Chunk :: struct {
 coop_encode_checkpoint_chunks :: proc(id: u64, epoch: u32, raw: []byte, out: ^[dynamic][]byte, allocator := context.allocator) -> bool {
 	if len(raw) == 0 || len(raw) > COOP_CHECKPOINT_MAX_BYTES do return false
 	encoded := base64.encode(raw, allocator = context.temp_allocator)
-	digest: [32]byte
-	hash.hash_bytes_to_buffer(.SHA256, raw, digest[:])
+	digest := np.sha256_digest(raw)
 	hex := "0123456789abcdef"
 	sum: [64]byte
 	for b, i in digest {
@@ -347,8 +345,7 @@ coop_decode_checkpoint_chunk :: proc(obj: json.Object) -> (chunk: Coop_Checkpoin
 }
 
 coop_checkpoint_verify :: proc(raw: []byte, sum: string) -> bool {
-	digest: [32]byte
-	hash.hash_bytes_to_buffer(.SHA256, raw, digest[:])
+	digest := np.sha256_digest(raw)
 	hex := "0123456789abcdef"
 	if len(sum) != 64 do return false
 	for b, i in digest {
