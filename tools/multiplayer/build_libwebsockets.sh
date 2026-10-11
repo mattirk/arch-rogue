@@ -74,6 +74,27 @@ build_flavor() {
   mkdir -p "$objdir"
   (cd "$objdir" && ar x "$root/$bdir/lib/libwebsockets.a")
   ar rcsD "$out" "$bdir/arws.o" "$objdir"/*.o
+  # glibc >= 2.38 headers rename strtol & co. to C23 entry points
+  # (__isoc23_*) that older runtimes such as Ubuntu 22.04 / glibc 2.35 lack.
+  # Rewrite them to the classic symbols, as vendor/raylib/linux/PROVENANCE.md
+  # does for raylib, and refuse to ship an archive that still imports any.
+  objcopy \
+    --redefine-sym __isoc23_strtol=strtol \
+    --redefine-sym __isoc23_strtoul=strtoul \
+    --redefine-sym __isoc23_strtoll=strtoll \
+    --redefine-sym __isoc23_strtoull=strtoull \
+    --redefine-sym __isoc23_strtoimax=strtoimax \
+    --redefine-sym __isoc23_strtoumax=strtoumax \
+    --redefine-sym __isoc23_sscanf=__isoc99_sscanf \
+    --redefine-sym __isoc23_fscanf=__isoc99_fscanf \
+    --redefine-sym __isoc23_scanf=__isoc99_scanf \
+    --redefine-sym __isoc23_vsscanf=__isoc99_vsscanf \
+    "$out"
+  if nm -u "$out" | grep -q "__isoc23_"; then
+    echo "error: $out still imports glibc C23-only symbols:" >&2
+    nm -u "$out" | grep -o "__isoc23_[a-z0-9_]*" | sort -u >&2
+    exit 1
+  fi
 }
 
 # The client keeps lws's server role compiled (it never listens): async DNS
