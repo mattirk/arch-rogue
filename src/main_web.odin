@@ -680,13 +680,12 @@ web_pack_adoptions_tick :: proc(rt: ^Game_Runtime) {
 	if job.next_actor < job.actor_count {
 		actor_index := job.next_actor
 		app := &rt.app
-		active_valid := app.run.run_id != "" || app.mode == .Playing || app.mode == .Resume_Veil
-		assets_web_adopt_actors(
-			&rt.assets,
-			job.actors[actor_index:actor_index+1],
-			app.run.players[app.run.local_slot].archetype,
-			active_valid,
-		)
+		active_valid := app.run.run_id != "" || app.mode == .Playing || app.mode == .Resume_Veil || coop_active(app)
+		active: bit_set[Archetype_Id] = {app.run.players[app.run.local_slot].archetype}
+		if coop_active(app) && app.run.player_count == MAX_PLAYERS {
+			for slot in 0 ..< MAX_PLAYERS do active += {app.run.players[slot].archetype}
+		}
+		assets_web_adopt_actors(&rt.assets, job.actors[actor_index:actor_index+1], active, active_valid)
 		job.next_actor += 1
 	}
 	if job.next_actor < job.actor_count do return

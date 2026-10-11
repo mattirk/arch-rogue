@@ -1361,6 +1361,17 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 	} else if !coop_active(app) {
 		rt.coop_assets = {}
 	}
+	when ARCH_ROGUE_WEB {
+		// Lobby prefetch: start streaming each seated archetype's pack as soon
+		// as its choice is known so both sprites are resident by the first
+		// floor instead of the partner playing as a fallback disc.
+		if coop_active(app) && app.mode == .Coop_Lobby {
+			for slot in 0 ..< MAX_PLAYERS {
+				seat := &app.coop.session.seats[slot]
+				if seat.present && seat.chosen do web_packs_on_run_start(seat.archetype)
+			}
+		}
+	}
 	if app.coop.floor_changed {
 		app.coop.floor_changed = false
 		view_center_on(&rt.view, world_from_tile(app.run.players[app.run.local_slot].pos))

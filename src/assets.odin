@@ -2297,7 +2297,7 @@ when ARCH_ROGUE_WEB {
 // Re-resolve lazily fetched actors after their pack lands in MEMFS. Pack
 // arrivals are rare, so re-parsing the small boot manifest here is cheaper
 // than retaining it for the whole session.
-assets_web_adopt_actors :: proc(assets: ^Assets, names: []string, active: Archetype_Id, active_valid: bool) {
+assets_web_adopt_actors :: proc(assets: ^Assets, names: []string, active: bit_set[Archetype_Id], active_valid: bool) {
 	if assets == nil || len(names) == 0 do return
 	data, read_ok := assets_read_owned("assets/actors/manifest.json")
 	if !read_ok do return
@@ -2315,12 +2315,17 @@ assets_web_adopt_actors :: proc(assets: ^Assets, names: []string, active: Archet
 }
 
 @(private = "file")
-assets_web_adopt_archetype :: proc(assets: ^Assets, manifest: ^Baked_Manifest, name: string, active: Archetype_Id, active_valid: bool) -> bool {
+assets_web_adopt_archetype :: proc(assets: ^Assets, manifest: ^Baked_Manifest, name: string, active: bit_set[Archetype_Id], active_valid: bool) -> bool {
 	for id in Archetype_Id {
 		if ARCHETYPES[id].sprite != name do continue
 		// Previews shipped in the core payload; the full 8-direction set only
-		// becomes GPU-resident for the archetype that is actually being played.
-		if active_valid && id == active do assets_activate_player(assets, id)
+		// becomes GPU-resident for the archetypes actually in the run: the
+		// local seat, plus the partner's seat in co-op (2026-10-11: the partner
+		// stayed a fallback disc because only the local archetype adopted).
+		if active_valid && id in active {
+			assets_activate_player(assets, id)
+			platform_log(fmt.tprintf("ARCH_ROGUE_WEB_ACTOR activated archetype=%s", name))
+		}
 		return true
 	}
 	return false

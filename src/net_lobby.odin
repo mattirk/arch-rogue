@@ -178,7 +178,13 @@ coop_apply :: proc(app: ^App, intent: Intent, now_ms: i64) {
 			case .Name, .Host, .Join, .Back:
 			}
 			coop_edit_field(ui, field, intent)
-			if intent.confirm || intent.back do ui.editing = false
+			// The confirm that ends editing is consumed here; letting it fall
+			// through re-entered editing on the same row, so Enter could never
+			// finish a typed code with the keyboard (found 2026-10-11).
+			if intent.confirm || intent.back {
+				ui.editing = false
+				return
+			}
 			// Mouse selection of another row ends editing too.
 			if intent.menu_index_valid && intent.menu_index != ui.row do ui.editing = false
 			if ui.editing do return

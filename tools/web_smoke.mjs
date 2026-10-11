@@ -12,7 +12,7 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { launchPreset } from './web_cdp.mjs';
@@ -304,6 +304,64 @@ try {
       const coopDefects = consoleDefects(page);
       record('coop-host-lobby', coopDefects.length === 0,
         coopDefects.slice(0, 3).map((d) => `${d.type}: ${d.text.slice(0, 160)}`).join(' | ') || 'hosted a room, lobby reached, no defects');
+
+      // --- co-op: join a native bot host; the partner's archetype pack must
+      // stream in and activate (2026-10-11: the partner drew as a fallback
+      // disc because only the local archetype adopted its pack) -------------
+      const botBinary = path.join(repoRoot, 'build/coop_bot');
+      if (!existsSync(botBinary)) {
+        record('coop-join-partner-sprite', false,
+          'build/coop_bot missing; run: odin build tools/coop_bot.odin -file -out:build/coop_bot -vet');
+      } else {
+        const codeFile = path.join(evidenceDir, 'coop-code');
+        await rm(codeFile, { force: true });
+        const bot = spawn(botBinary, ['--role', 'host', '--url', `ws://127.0.0.1:${relayPort}/mp`,
+          '--code-file', codeFile, '--seconds', '120', '--script', 'idle', '--archetype', 'Rogue'], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        try {
+          let code = '';
+          for (let i = 0; i < 60 && code.length !== 4; i += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 250));
+            try { code = (await readFile(codeFile, 'utf8')).trim(); } catch { code = ''; }
+          }
+          if (code.length !== 4) throw new Error('bot host published no room code');
+          page = await bootPage(browser, `?relay=${encodeURIComponent(`ws://127.0.0.1:${relayPort}/mp`)}`);
+          await page.click(20, 700);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          await page.waitFor('JSON.parse(UTF8ToString(Module._ar_web_smoke_probe())).mode === "Title"',
+            { timeoutMs: 10000, label: 'title before co-op join' });
+          const tap = async (key) => {
+            await page.key(key, key, key === 'Enter' ? 13 : 40);
+            await new Promise((resolve) => setTimeout(resolve, 300));
+          };
+          const typeChar = async (ch) => {
+            // GetCharPressed listens to keypress; synthesize the full triple.
+            await page.keyEvent('keydown', ch, `Key${ch}`, ch.charCodeAt(0));
+            await page.evaluate(`window.dispatchEvent(new KeyboardEvent('keypress', { key: ${JSON.stringify(ch)}, charCode: ${ch.charCodeAt(0)}, keyCode: ${ch.charCodeAt(0)}, which: ${ch.charCodeAt(0)}, bubbles: true, cancelable: true }))`);
+            await new Promise((resolve) => setTimeout(resolve, 70));
+            await page.keyEvent('keyup', ch, `Key${ch}`, ch.charCodeAt(0));
+            await new Promise((resolve) => setTimeout(resolve, 120));
+          };
+          await tap('ArrowDown'); await tap('Enter');   // Title -> Co-op menu (row Host)
+          await tap('ArrowDown'); await tap('Enter');   // Code row, start editing
+          for (const ch of code) await typeChar(ch);
+          await tap('Enter');                           // finish editing
+          await tap('ArrowDown'); await tap('Enter');   // Join -> consent
+          await tap('Enter');                           // accept consent -> connect
+          await page.waitFor('JSON.parse(UTF8ToString(Module._ar_web_smoke_probe())).mode === "Coop_Lobby"',
+            { timeoutMs: 20000, label: 'joiner lobby' });
+          await tap('ArrowDown'); await tap('Enter');   // Ready
+          await page.waitFor('JSON.parse(UTF8ToString(Module._ar_web_smoke_probe())).mode === "Playing"',
+            { timeoutMs: 40000, label: 'co-op run started on the joiner' });
+          await page.waitForConsole(/ARCH_ROGUE_WEB_ACTOR activated archetype=rogue/, { timeoutMs: 90000 });
+          const joinDefects = consoleDefects(page);
+          record('coop-join-partner-sprite', joinDefects.length === 0,
+            joinDefects.slice(0, 3).map((d) => `${d.type}: ${d.text.slice(0, 160)}`).join(' | ') || `joined ${code}, run started, partner Rogue pack activated`);
+        } finally {
+          bot.kill();
+        }
+      }
     } finally {
       relay.kill();
     }
