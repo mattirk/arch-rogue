@@ -218,6 +218,12 @@ UI_Chrome_Id :: enum u8 {
 UI_CHROME_COUNT :: 34
 UI_DISCIPLINE_GLYPH_COUNT :: DISCIPLINE_COUNT
 UI_STORY_SIGIL_COUNT :: len(Story_Sigil_Id)
+// Co-op verification-seal sigils beyond the story set: the archived
+// 18-name vocabulary (net_protocol.SEAL_SIGILS) is frozen for hash
+// compatibility, so its four extra glyphs follow the story sigils in the atlas
+// (arch-rogue-python/src/arch_rogue/assets/sprites/menus/glyphs/sigil_*.png).
+UI_SEAL_SIGIL_NAMES := [4]string{"hammer", "skull", "map", "claw"}
+UI_SEAL_SIGIL_COUNT :: len(UI_SEAL_SIGIL_NAMES)
 UI_LOGO_DIAMOND_ATLAS_FILE :: "assets/ui/logo/diamond_atlas.png"
 UI_LOGO_DIAMOND_FRAME_COUNT :: 16
 UI_LOGO_DIAMOND_FRAME_SIZE :: [2]int{72, 74}
@@ -620,6 +626,7 @@ UI_Glyph_Atlas :: struct {
 	size:        [2]int,
 	disciplines: [Discipline_Id]UI_Glyph_Region,
 	story_sigils: [Story_Sigil_Id]UI_Glyph_Region,
+	seal_sigils:  [UI_SEAL_SIGIL_COUNT]UI_Glyph_Region,
 	ouroboros:   UI_Glyph_Region,
 	loaded:      bool,
 }
@@ -1924,7 +1931,7 @@ load_ui_assets :: proc(assets: ^Assets) {
 		loaded = logo_tex.id != 0,
 	}
 
-	atlas_rows := (UI_DISCIPLINE_GLYPH_COUNT + UI_STORY_SIGIL_COUNT + UI_GLYPH_ATLAS_COLUMNS - 1) /
+	atlas_rows := (UI_DISCIPLINE_GLYPH_COUNT + UI_STORY_SIGIL_COUNT + UI_SEAL_SIGIL_COUNT + UI_GLYPH_ATLAS_COLUMNS - 1) /
 		UI_GLYPH_ATLAS_COLUMNS
 	cursor_tex := rl.LoadTexture(fmt.ctprintf("%s", UI_CURSOR_FILE))
 	if cursor_tex.id != 0 {
@@ -1950,6 +1957,9 @@ load_ui_assets :: proc(assets: ^Assets) {
 	for id in Story_Sigil_Id {
 		ordinal := UI_DISCIPLINE_GLYPH_COUNT + int(id)
 		assets.ui_glyph_atlas.story_sigils[id] = ui_glyph_region(ordinal)
+	}
+	for i in 0 ..< UI_SEAL_SIGIL_COUNT {
+		assets.ui_glyph_atlas.seal_sigils[i] = ui_glyph_region(UI_DISCIPLINE_GLYPH_COUNT + UI_STORY_SIGIL_COUNT + i)
 	}
 	assets.ui_glyph_atlas.ouroboros = assets.ui_glyph_atlas.story_sigils[.Ouroboros]
 	assets.ui_glyph_atlas.loaded = true
@@ -1992,6 +2002,22 @@ ui_discipline_glyph :: proc(assets: ^Assets, id: Discipline_Id) -> UI_Glyph_Asse
 		source_size = region.source_size,
 		valid = assets.ui_glyph_atlas.loaded && region.valid,
 	}
+}
+
+// Glyph for any name in the co-op seal vocabulary: a story sigil or one of
+// the seal-only extras.
+ui_seal_sigil_glyph :: proc(assets: ^Assets, name: string) -> (glyph: UI_Glyph_Asset, found: bool) {
+	for id in Story_Sigil_Id do if STORY_SIGIL_NAMES[id] == name do return ui_story_sigil_glyph(assets, id), true
+	for extra, i in UI_SEAL_SIGIL_NAMES do if extra == name {
+		region := assets.ui_glyph_atlas.seal_sigils[i]
+		return {
+			tex = assets.ui_glyph_atlas.tex,
+			source = region.source,
+			source_size = region.source_size,
+			valid = assets.ui_glyph_atlas.loaded && region.valid,
+		}, true
+	}
+	return {}, false
 }
 
 ui_story_sigil_glyph :: proc(assets: ^Assets, id: Story_Sigil_Id) -> UI_Glyph_Asset {

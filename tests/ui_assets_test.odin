@@ -11,6 +11,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import ar "../src"
+import np "../src/net_protocol"
 import rl "../vendor/raylib"
 
 @(private = "file")
@@ -714,7 +715,7 @@ inventory_ui_focus_highlights_only_its_section_and_allows_empty_equipment :: pro
 
 @(test)
 mx1_ui_registry_maps_exactly_100_discipline_ids_to_atlas_regions :: proc(t: ^testing.T) {
-	atlas_rows := (ar.DISCIPLINE_COUNT + ar.UI_STORY_SIGIL_COUNT + ar.UI_GLYPH_ATLAS_COLUMNS - 1) /
+	atlas_rows := (ar.DISCIPLINE_COUNT + ar.UI_STORY_SIGIL_COUNT + ar.UI_SEAL_SIGIL_COUNT + ar.UI_GLYPH_ATLAS_COLUMNS - 1) /
 		ar.UI_GLYPH_ATLAS_COLUMNS
 	expected_atlas_size := [2]int{
 		ar.UI_GLYPH_ATLAS_COLUMNS * ar.UI_GLYPH_ATLAS_CELL,
@@ -752,6 +753,20 @@ mx1_ui_registry_maps_exactly_100_discipline_ids_to_atlas_regions :: proc(t: ^tes
 			testing.expectf(t, ar.STORY_SIGIL_NAMES[other] != name, "%v duplicates story sigil key %v", id, key)
 			testing.expectf(t, ui_test_expected_region(ar.DISCIPLINE_COUNT+other_i) != region, "%v duplicates story sigil atlas region %v", id, region)
 		}
+	}
+
+	// Every name in the frozen co-op seal vocabulary resolves to exactly one
+	// atlas cell: a story sigil or a seal-only extra after them.
+	for extra, i in ar.UI_SEAL_SIGIL_NAMES {
+		for id in ar.Story_Sigil_Id do testing.expectf(t, ar.STORY_SIGIL_NAMES[id] != extra, "seal extra %v duplicates a story sigil", extra)
+		region := ui_test_expected_region(ar.DISCIPLINE_COUNT + ar.UI_STORY_SIGIL_COUNT + i)
+		testing.expectf(t, region[2] == ar.UI_GLYPH_ATLAS_CELL && region[3] == ar.UI_GLYPH_ATLAS_CELL, "seal sigil %v cell size changed", extra)
+	}
+	for name in np.SEAL_SIGILS {
+		known := false
+		for id in ar.Story_Sigil_Id do if ar.STORY_SIGIL_NAMES[id] == name do known = true
+		for extra in ar.UI_SEAL_SIGIL_NAMES do if extra == name do known = true
+		testing.expectf(t, known, "seal vocabulary name %v has no glyph", name)
 	}
 
 	ouroboros_ordinal := ar.DISCIPLINE_COUNT + int(ar.Story_Sigil_Id.Ouroboros)

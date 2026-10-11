@@ -488,7 +488,6 @@ web_boot_config :: proc() -> Game_Boot_Config {
 	}
 	config.dev_play = web_query_param("play", buffer[:]) != ""
 	if value := web_query_param("relay", buffer[:]); value != "" do config.relay_url = strings.clone(value)
-	config.coop_enabled = web_query_param("coop", buffer[:]) == "1"
 	if archetype, ok := dev_archetype_from_env(web_query_param("archetype", buffer[:])); ok {
 		config.dev_archetype = archetype
 		config.dev_archetype_valid = true

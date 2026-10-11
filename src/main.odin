@@ -956,7 +956,6 @@ Game_Boot_Config :: struct {
 	dev_reveal:                bool,
 	dev_controls:              bool,
 	relay_url:                 string, // optional co-op server default (env/query)
-	coop_enabled:              bool,
 	dev_mist_off:              bool,
 	dev_lighting:              int,
 	save_trace:                bool,
@@ -1041,7 +1040,6 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 
 	app_init(&rt.app, config.seed)
 	coop_set_default_server(&rt.app, config.relay_url)
-	rt.app.coop_enabled = config.coop_enabled
 	platform_runtime_init(&rt.platform, rt.app.mode)
 	if rt.platform.mobile {
 		rt.app.input_modality = .Touch

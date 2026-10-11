@@ -170,10 +170,7 @@ draw_seal :: proc(assets: ^Assets, code: string, center_x, y: f32) {
 	for name, i in names {
 		x := center_x - 70 + f32(i) * 80
 		drawn := false
-		for id in Story_Sigil_Id {
-			if STORY_SIGIL_NAMES[id] != name do continue
-			drawn = draw_ui_glyph(ui_story_sigil_glyph(assets, id), {x, y, 56, 56}, COOP_ACCENT)
-		}
+		if glyph, found := ui_seal_sigil_glyph(assets, name); found do drawn = draw_ui_glyph(glyph, {x, y, 56, 56}, COOP_ACCENT)
 		if !drawn do rl.DrawRectangleLinesEx({x, y, 56, 56}, 1, rl.Fade(COOP_ACCENT, .6))
 		label := fmt.ctprintf("%s", name)
 		ui_draw_text(label, i32(x + 28) - ui_measure_text(label, 13) / 2, i32(y + 60), 13, COLOR_TEXT_DIM)

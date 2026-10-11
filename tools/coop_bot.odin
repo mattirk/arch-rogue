@@ -261,7 +261,6 @@ run_bot :: proc(opts: Options) -> int {
 	app := new(ar.App)
 	b.app = app
 	ar.app_init(app, u64(opts.role == .Host ? 11 : 22))
-	app.coop_enabled = true
 	ar.coop_open_menu(app)
 	ar.coop_field_set(&app.coop_ui, .Server, opts.url)
 	ar.coop_field_set(&app.coop_ui, .Name, opts.role == .Host ? "HostBot" : "JoinBot")

@@ -189,9 +189,6 @@ App :: struct {
 	coop:                 Coop_State,
 	coop_ui:              Coop_Ui_State,
 	net_now_ms:           i64, // monotonic platform clock for the co-op reducers
-	// Online co-op is opt-in while it is under development (ARCH_ROGUE_COOP=1
-	// on desktop, ?coop=1 on web); otherwise the title row stays inert.
-	coop_enabled:         bool,
 }
 
 Run :: struct {
@@ -849,7 +846,6 @@ app_begin_new_run :: proc(app: ^App, archetype: Archetype_Id) {
 
 title_action_enabled :: proc(app: ^App, action: Title_Action) -> bool {
 	if action == .Resume do return app != nil && app.active_run_available
-	if action == .Co_Op do return app != nil && app.coop_enabled
 	return true
 }
 
@@ -966,7 +962,7 @@ app_apply :: proc(app: ^App, intent: Intent) -> (floor_changed: bool) {
 					app.mode = .Select
 				}
 			case .Co_Op:
-				if app.coop_enabled do coop_open_menu(app)
+				coop_open_menu(app)
 			case .Chronicle:
 				app.mode = .Chronicle
 				app.chronicle.selected = 0

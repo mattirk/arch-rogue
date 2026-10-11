@@ -34,7 +34,6 @@ sleep 0.3
 launch() {
   local role=$1
   XDG_DATA_HOME="$PWD/$STATE/$role" \
-  ARCH_ROGUE_COOP=1 \
   ARCH_ROGUE_RELAY_URL="ws://127.0.0.1:$PORT/mp" \
     build/archrogue >"$STATE/$role.log" 2>&1 &
 }
