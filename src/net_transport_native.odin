@@ -14,6 +14,12 @@ import "core:time"
 import "core:strings"
 import np "net_protocol"
 
+// Deliberately-quiet imports: every use sits inside the NET_NATIVE_LWS block,
+// so platforms without the pinned libwebsockets archive (Windows, Android)
+// would otherwise flag them unused.
+_ :: strings
+_ :: np
+
 NET_NATIVE_LWS :: ODIN_OS == .Linux && !ARCH_ROGUE_ANDROID
 
 when NET_NATIVE_LWS {
