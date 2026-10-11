@@ -28,3 +28,11 @@ The facade in `shim/arws.c` is project code (not upstream): bounded owned
 message queues, drain loops, multi-write per writeable callback, Origin/path/
 subprotocol filtering, and a `/healthz` route. It contains no WebSocket
 protocol implementation.
+
+2026-10-11: `libarws_relay.a` rebuilt after adding `arws_server_source`
+(per-source limits) to the shim. Only the relay archive changed: the shim
+addition sits inside the server-only section, which `ARWS_CLIENT_ONLY`
+compiles out, so `libarws_client.a` is unchanged. The rebuild reused the
+retained `build-relay` tree (libwebsockets objects untouched) and the same
+compile flags and post-processing as `tools/multiplayer/build_libwebsockets.sh`;
+`linux/SHA256SUMS` was regenerated.

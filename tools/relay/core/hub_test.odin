@@ -595,3 +595,109 @@ relay_reconnect_while_ready_still_starts :: proc(t: ^testing.T) {
 	_, started = find(drain(&h, 1), np.Start)
 	testing.expect(t, started)
 }
+
+
+// ------------------------------------------------------- per-source limits --
+
+@(test)
+test_per_source_connection_cap :: proc(t: ^testing.T) {
+	h: Harness
+	config := DEFAULT_CONFIG
+	config.max_conns_per_source = 3
+	harness_init(&h, config)
+	defer harness_destroy(&h)
+	for c in 1 ..= 3 {
+		hub_open(&h.hub, Conn_Id(c), h.now, "203.0.113.7")
+		testing.expect(t, !drain(&h, Conn_Id(c)).closed, "within the cap stays open")
+	}
+	hub_open(&h.hub, 4, h.now, "203.0.113.7")
+	d := drain(&h, 4)
+	testing.expect(t, d.closed && d.code == CLOSE_POLICY, "fourth socket from one source is refused")
+	// A different source is unaffected, and sockets without a source never count.
+	hub_open(&h.hub, 5, h.now, "198.51.100.2")
+	testing.expect(t, !drain(&h, 5).closed)
+	hub_open(&h.hub, 6, h.now)
+	testing.expect(t, !drain(&h, 6).closed)
+	// Closing releases the slot.
+	hub_closed(&h.hub, 4, h.now)
+	hub_closed(&h.hub, 1, h.now)
+	hub_open(&h.hub, 7, h.now, "203.0.113.7")
+	testing.expect(t, !drain(&h, 7).closed, "slot freed after close")
+	for c in ([]Conn_Id{2, 3, 5, 6, 7}) do hub_closed(&h.hub, c, h.now)
+	testing.expect_value(t, hub_source_count(&h.hub), 0)
+}
+
+@(test)
+test_per_source_room_cap :: proc(t: ^testing.T) {
+	h: Harness
+	config := DEFAULT_CONFIG
+	config.max_rooms_per_source = 2
+	config.max_conns_per_source = 0 // only the room cap under test
+	harness_init(&h, config)
+	defer harness_destroy(&h)
+	codes := []string{"AAAA", "BBBB", "CCCC"}
+	for code, i in codes {
+		c := Conn_Id(i + 1)
+		hub_open(&h.hub, c, h.now, "203.0.113.7")
+		send_msg(&h, c, np.Hello{seq = next_seq(&h, c), protocol = np.PROTOCOL_VERSION, game = GAME, name = "Host", room = code, role = .Host})
+		d := drain(&h, c)
+		if i < 2 {
+			_, ok := find(d, np.Welcome)
+			testing.expect(t, ok, "rooms within the cap open")
+		} else {
+			e, ok := find(d, np.Error)
+			testing.expect(t, ok && e.fatal && e.code == np.Error_Code.Server_Full, "third room from one source is refused")
+		}
+	}
+	testing.expect_value(t, hub_room_count(&h.hub), 2)
+	// Another source still hosts, and a closed room frees the quota.
+	hub_open(&h.hub, 9, h.now, "198.51.100.2")
+	send_msg(&h, 9, np.Hello{seq = next_seq(&h, 9), protocol = np.PROTOCOL_VERSION, game = GAME, name = "Host", room = "DDDD", role = .Host})
+	_, ok := find(drain(&h, 9), np.Welcome)
+	testing.expect(t, ok)
+	send_msg(&h, 1, np.Bye{})
+	_ = drain(&h, 1)
+	hub_closed(&h.hub, 1, h.now)
+	hub_open(&h.hub, 4, h.now, "203.0.113.7")
+	send_msg(&h, 4, np.Hello{seq = next_seq(&h, 4), protocol = np.PROTOCOL_VERSION, game = GAME, name = "Host", room = "CCCC", role = .Host})
+	_, ok = find(drain(&h, 4), np.Welcome)
+	testing.expect(t, ok, "quota returns once a room closes")
+}
+
+@(test)
+test_waiting_room_hard_lifetime :: proc(t: ^testing.T) {
+	h: Harness
+	config := DEFAULT_CONFIG
+	config.waiting_max_ms = 60_000
+	harness_init(&h, config)
+	defer harness_destroy(&h)
+	_ = open_hello(&h, 1, .Host, "ABCD")
+	// Pings keep the room "active" but cannot extend an empty room forever.
+	for _ in 0 ..< 12 {
+		h.now += 5_000
+		send_msg(&h, 1, np.Ping{seq = next_seq(&h, 1), ts = 1})
+		_ = drain(&h, 1)
+		hub_tick(&h.hub, h.now)
+	}
+	h.now += 5_000
+	hub_tick(&h.hub, h.now)
+	d := drain(&h, 1)
+	e, ok := find(d, np.Error)
+	testing.expect(t, ok && e.fatal && e.code == np.Error_Code.Timeout, "waiting room expires despite pings")
+	testing.expect_value(t, hub_room_count(&h.hub), 0)
+
+	// A room that has a partner is governed by the ordinary idle rules only.
+	h2: Harness
+	harness_init(&h2, config)
+	defer harness_destroy(&h2)
+	_, _ = setup_selecting(t, &h2)
+	for _ in 0 ..< 14 {
+		h2.now += 5_000
+		send_msg(&h2, 1, np.Ping{seq = next_seq(&h2, 1), ts = 1})
+		send_msg(&h2, 2, np.Ping{seq = next_seq(&h2, 2), ts = 1})
+		_ = drain(&h2, 1)
+		_ = drain(&h2, 2)
+		hub_tick(&h2.hub, h2.now)
+	}
+	testing.expect_value(t, hub_room_count(&h2.hub), 1)
+}

@@ -138,20 +138,27 @@ class WebsiteTests(unittest.TestCase):
         self.assertNotIn("linked !== badges.size", script)
         self.assertNotIn("innerHTML", script)
 
-    def test_privacy_copy_describes_only_current_features(self) -> None:
+    def test_privacy_copy_describes_current_features(self) -> None:
         privacy = (WEBSITE / "privacy.html").read_text(encoding="utf-8").lower()
-        self.assertIn("deferred online features", privacy)
-        self.assertIn("not included in the", privacy)
         self.assertIn("no telemetry", privacy)
         self.assertIn("indexeddb site data", privacy)
         self.assertIn("best-effort", privacy)
         self.assertIn("clearing site data", privacy)
-        self.assertNotIn("multiplayer relay", privacy)
-        self.assertNotIn("two-player co-op", privacy)
-        self.assertNotIn("achievements", privacy)
-        self.assertNotIn("cloud saves", privacy)
+        # Online co-op shipped (6.0.0-alpha.27): the relay, what it sees, the
+        # legal basis, retention, and the controller must all be stated.
+        self.assertIn("multiplayer relay", privacy)
+        self.assertIn("two-player co-op", privacy)
+        self.assertIn("ar.rita-kasari.fi", privacy)
+        self.assertIn("ip address", privacy)
+        self.assertIn("display name", privacy)
+        self.assertIn("legitimate interest", privacy)
+        self.assertIn("at most 30 days", privacy)
+        self.assertIn("data controller", privacy)
+        self.assertIn("achievements", privacy)
+        self.assertIn("steam cloud", privacy)
+        self.assertNotIn("deferred online features", privacy)
+        self.assertNotIn("does not connect to an arch rogue relay", privacy)
         self.assertNotIn("aggregate statistics", privacy)
-        self.assertNotIn("data controller", privacy)
 
     def test_ember_animation_stays_compositor_friendly(self) -> None:
         styles = (WEBSITE / "styles.css").read_text(encoding="utf-8")

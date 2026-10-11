@@ -51,6 +51,7 @@ foreign arws {
 	arws_server_send :: proc(s: rawptr, conn: u32, data: [^]u8, len: uint) -> i32 ---
 	arws_server_outbound_bytes :: proc(s: rawptr, conn: u32) -> uint ---
 	arws_server_close :: proc(s: rawptr, conn: u32, code: i32, deadline_s: i32) ---
+	arws_server_source :: proc(s: rawptr, conn: u32, out: [^]u8, cap: uint) -> i32 ---
 	arws_server_connection_count :: proc(s: rawptr) -> u32 ---
 	arws_server_destroy :: proc(s: rawptr) ---
 }
@@ -86,7 +87,7 @@ log_line :: proc(text: string) {
 }
 
 usage :: proc() {
-	fmt.eprintln("usage: archrogue_relay [--bind ADDR] [--port N] [--origins A,B] [--max-rooms N] [--max-connections N]")
+	fmt.eprintln("usage: archrogue_relay [--bind ADDR] [--port N] [--origins A,B] [--max-rooms N] [--max-connections N] [--max-conns-per-source N] [--max-rooms-per-source N] [--waiting-max-s N]")
 }
 
 main :: proc() {
@@ -95,6 +96,7 @@ main :: proc() {
 	origins := ""
 	max_rooms := np.MAX_ROOMS
 	max_connections := 512
+	hub_config := core.DEFAULT_CONFIG
 	args := os.args[1:]
 	for i := 0; i < len(args); i += 1 {
 		value :: proc(args: []string, i: ^int) -> string {
@@ -111,6 +113,9 @@ main :: proc() {
 		case "--origins": origins = value(args, &i)
 		case "--max-rooms": max_rooms = parse_int_arg(value(args, &i))
 		case "--max-connections": max_connections = parse_int_arg(value(args, &i))
+		case "--max-conns-per-source": hub_config.max_conns_per_source = parse_int_arg(value(args, &i))
+		case "--max-rooms-per-source": hub_config.max_rooms_per_source = parse_int_arg(value(args, &i))
+		case "--waiting-max-s": hub_config.waiting_max_ms = i64(parse_int_arg(value(args, &i))) * 1000
 		case "--test-latency-ms": test_latency_ms = parse_int_arg(value(args, &i))
 		case "--test-jitter-ms": test_jitter_ms = parse_int_arg(value(args, &i))
 		case "--test-stats": test_stats = true
@@ -156,12 +161,13 @@ main :: proc() {
 	posix.signal(.SIGTERM, on_signal)
 
 	hub: core.Hub
-	core.hub_init(&hub, core.DEFAULT_CONFIG, crypto_random)
-	hub.config.max_rooms = max_rooms
+	hub_config.max_rooms = max_rooms
+	core.hub_init(&hub, hub_config, crypto_random)
 	hub.log = log_line
 	defer core.hub_destroy(&hub)
 
 	log_line(fmt.tprintf("listening on ws://%s:%d%s (protocol %s)", bind, port, np.WS_PATH, np.SUBPROTOCOL))
+	log_line(fmt.tprintf("limits: %d rooms, %d connections, per source %d connections / %d rooms, waiting rooms expire after %d s", max_rooms, max_connections, hub_config.max_conns_per_source, hub_config.max_rooms_per_source, hub_config.waiting_max_ms / 1000))
 	if test_latency_ms > 0 || test_jitter_ms > 0 do log_line(fmt.tprintf("TEST IMPAIRMENT: +%d ms latency, %d ms jitter on relay->client sends", test_latency_ms, test_jitter_ms))
 	relay_start = time.tick_now()
 	last_tick: i64 = 0
@@ -178,7 +184,10 @@ main :: proc() {
 			switch kind {
 			case ARWS_EV_OPEN:
 				live_conns[conn] = true
-				core.hub_open(&hub, core.Conn_Id(conn), now)
+				source_buf: [64]u8
+				n := arws_server_source(server, conn, raw_data(source_buf[:]), len(source_buf))
+				source := n > 0 ? string(source_buf[:n]) : ""
+				core.hub_open(&hub, core.Conn_Id(conn), now, source)
 			case ARWS_EV_MESSAGE: core.hub_receive(&hub, core.Conn_Id(conn), data[:length], now)
 			case ARWS_EV_CLOSED:
 				delete_key(&live_conns, conn)

@@ -40,12 +40,38 @@ game clients ──wss://ar.rita-kasari.fi/mp──▶ nginx (TLS, port 443)
    `~/arch-rogue-relay/env` from the GitHub Environment **`ar-rita-kasari-fi`**
    variables `PORT`, `ORIGINS` (optional; default
    `https://mattirk.github.io`) and `MAX_ROOMS` (optional; default 128),
+   (per-source caps default to 8 connections and 4 open rooms per client
+   address, and an empty room expires after 30 minutes; override with
+   `--max-conns-per-source`, `--max-rooms-per-source`, `--waiting-max-s` in
+   the unit's `ExecStart` if ever needed),
    installs/enables `arch-rogue-relay.service`, flips the `current` symlink,
    restarts the unit, and probes `http://127.0.0.1:$PORT/healthz` for 10 s.
    On failure it prints the journal tail, flips back to the previous release,
    restarts, and fails the job. The five newest releases are kept.
 3. The first successful deploy also stops and disables the old Python unit
    `arch-rogue-server` if it exists.
+
+## Log retention (privacy policy commitment)
+
+`website/privacy.html` promises that player IP addresses are not access-logged
+and that anything the web server or system journal records on failures is
+deleted within 30 days. The nginx config turns `access_log off` for `/mp` and
+`/healthz`; the host must also bound the two remaining sinks (root, once):
+
+```bash
+# journald (relay unit output, sshd, etc.)
+sudo mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nMaxRetentionSec=30day\nSystemMaxUse=500M\n' | \
+  sudo tee /etc/systemd/journald.conf.d/retention.conf
+sudo systemctl restart systemd-journald
+# nginx error log: default logrotate is weekly x 4 rotations (<= 28 days);
+# verify /etc/logrotate.d/nginx says "weekly" and "rotate 4" or tighter.
+grep -E 'weekly|daily|rotate' /etc/logrotate.d/nginx
+```
+
+The relay process itself logs connection counts, close codes, and room codes
+only; it never logs addresses, names, tokens, or payloads (see
+`tools/relay/core/hub.odin` `logf` call sites).
 
 ## One-time host provisioning (root)
 

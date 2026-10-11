@@ -33,6 +33,14 @@ Config :: struct {
 	rate_bytes_per_s:   f64,
 	rate_bytes_burst:   f64,
 	max_invalid:        int,
+	// Per-source caps (source = forwarded client address, see hub_open).
+	// Without them one address can hold every room or connection slot
+	// (security audit 2026-10-11, finding 1).
+	max_conns_per_source: int,
+	max_rooms_per_source: int,
+	// A room that never left Waiting is closed after this long regardless
+	// of pings, so idle-refresh traffic cannot park a room forever.
+	waiting_max_ms:       i64,
 }
 
 DEFAULT_CONFIG :: Config{
@@ -47,6 +55,9 @@ DEFAULT_CONFIG :: Config{
 	rate_bytes_per_s   = 2 * 1024 * 1024,
 	rate_bytes_burst   = 4 * 1024 * 1024,
 	max_invalid        = 32,
+	max_conns_per_source = 8,
+	max_rooms_per_source = 4,
+	waiting_max_ms       = 30 * 60 * 1000,
 }
 
 Action_Kind :: enum u8 {
@@ -76,6 +87,13 @@ Conn :: struct {
 	msg_tokens:  f64,
 	byte_tokens: f64,
 	bucket_at:   i64,
+	source:      string, // owned; "" when the transport reports none
+}
+
+// Live counts per client source address.
+Source :: struct {
+	conns: int,
+	rooms: int,
 }
 
 Seat :: struct {
@@ -101,6 +119,8 @@ Room :: struct {
 	difficulty:    string,
 	story:         bool,
 	last_activity: i64,
+	created_at:    i64,
+	source:        string, // owned; the creating host's source address
 	// Ended-state exception: the immutable result survives host departure
 	// until the joiner acknowledges it or the delivery deadline passes.
 	result:          []byte,
@@ -113,6 +133,7 @@ Hub :: struct {
 	config:    Config,
 	rooms:     map[string]^Room,
 	conns:     map[Conn_Id]^Conn,
+	sources:   map[string]Source,
 	out:       [dynamic]Action,
 	random:    proc(buf: []byte), // cryptographic randomness, injected for tests
 	log:       proc(text: string), // optional metadata-only log sink
@@ -131,6 +152,8 @@ hub_destroy :: proc(hub: ^Hub) {
 	delete(hub.rooms)
 	for _, conn in hub.conns do conn_free(conn)
 	delete(hub.conns)
+	for key in hub.sources do delete(key)
+	delete(hub.sources)
 	hub_actions_clear(hub)
 	delete(hub.out)
 }
@@ -154,6 +177,7 @@ room_free :: proc(room: ^Room) {
 	delete(room.game)
 	delete(room.difficulty)
 	delete(room.result)
+	delete(room.source)
 	for &seat in room.seats do seat_clear(&seat)
 	free(room)
 }
@@ -169,12 +193,39 @@ seat_clear :: proc(seat: ^Seat) {
 @(private)
 conn_free :: proc(conn: ^Conn) {
 	delete(conn.room)
+	delete(conn.source)
 	free(conn)
 }
 
+// Source bookkeeping: entries exist only while something is counted.
+@(private)
+source_adjust :: proc(hub: ^Hub, source: string, conns, rooms: int) {
+	if source == "" do return
+	entry, found := hub.sources[source]
+	if !found {
+		if conns <= 0 && rooms <= 0 do return
+		key := strings.clone(source)
+		hub.sources[key] = Source{conns = max(conns, 0), rooms = max(rooms, 0)}
+		return
+	}
+	entry.conns = max(entry.conns + conns, 0)
+	entry.rooms = max(entry.rooms + rooms, 0)
+	if entry.conns == 0 && entry.rooms == 0 {
+		key, _ := delete_key(&hub.sources, source)
+		delete(key)
+		return
+	}
+	hub.sources[source] = entry
+}
+
+hub_source_count :: proc(hub: ^Hub) -> int {return len(hub.sources)}
+
 // ------------------------------------------------------------ transport in --
 
-hub_open :: proc(hub: ^Hub, id: Conn_Id, now: i64) {
+// source is the transport's view of the client address (behind the reverse
+// proxy: the forwarded client address). Empty disables per-source limits for
+// that connection, which the tests and loopback tools rely on.
+hub_open :: proc(hub: ^Hub, id: Conn_Id, now: i64, source := "") {
 	if id in hub.conns do return
 	conn := new(Conn)
 	conn.id = id
@@ -183,7 +234,17 @@ hub_open :: proc(hub: ^Hub, id: Conn_Id, now: i64) {
 	conn.bucket_at = now
 	conn.msg_tokens = hub.config.rate_msgs_burst
 	conn.byte_tokens = hub.config.rate_bytes_burst
+	conn.source = strings.clone(source)
 	hub.conns[id] = conn
+	source_adjust(hub, conn.source, 1, 0)
+	if cfg := hub.config; source != "" && cfg.max_conns_per_source > 0 {
+		if entry := hub.sources[source]; entry.conns > cfg.max_conns_per_source {
+			// Counted so the close event balances the books; refused before
+			// any hello so the slot is released within the close deadline.
+			logf(hub, "conn %d refused: %d connections from one source (limit %d)", id, entry.conns, cfg.max_conns_per_source)
+			close_conn(hub, conn, CLOSE_POLICY)
+		}
+	}
 }
 
 // The transport reports the socket is gone (peer close, error, or our own
@@ -195,6 +256,7 @@ hub_closed :: proc(hub: ^Hub, id: Conn_Id, now: i64, close_code := 0) {
 	room_code := strings.clone(conn.room, context.temp_allocator)
 	role := conn.role
 	delete_key(&hub.conns, id)
+	source_adjust(hub, conn.source, -1, 0)
 	conn_free(conn)
 	if room_code == "" do return
 	room := hub.rooms[room_code] or_else nil
@@ -350,6 +412,11 @@ hub_tick :: proc(hub: ^Hub, now: i64) {
 		if now - room.last_activity > cfg.idle_timeout_ms {
 			logf(hub, "room idle timeout")
 			close_room(hub, room, .Timeout, "room idle timeout")
+			continue
+		}
+		if room.phase == .Waiting && cfg.waiting_max_ms > 0 && now - room.created_at > cfg.waiting_max_ms {
+			logf(hub, "room waited too long for a partner")
+			close_room(hub, room, .Timeout, "no partner joined in time; host again for a fresh code")
 		}
 	}
 }
@@ -383,6 +450,12 @@ handle_hello :: proc(hub: ^Hub, conn: ^Conn, hello: np.Hello, now: i64) {
 			fatal(hub, conn, .Server_Full, "the relay is at its room limit", hello.seq)
 			return
 		}
+		if cfg := hub.config; conn.source != "" && cfg.max_rooms_per_source > 0 {
+			if entry := hub.sources[conn.source]; entry.rooms >= cfg.max_rooms_per_source {
+				fatal(hub, conn, .Server_Full, "too many open rooms from your address", hello.seq)
+				return
+			}
+		}
 		room = new(Room)
 		room.code = strings.clone(code)
 		room.game = strings.clone(hello.game)
@@ -391,7 +464,10 @@ handle_hello :: proc(hub: ^Hub, conn: ^Conn, hello: np.Hello, now: i64) {
 		room.difficulty = strings.clone(np.DIFFICULTY_KEYS[0])
 		room.story = true
 		room.last_activity = now
+		room.created_at = now
+		room.source = strings.clone(conn.source)
 		hub.rooms[room.code] = room
+		source_adjust(hub, room.source, 0, 1)
 		seat_fill(hub, &room.seats[.Host], conn, hello)
 		room.seats[.Host].admitted = true
 		bind(hub, conn, room, .Host, hello.seq, false)
@@ -786,6 +862,7 @@ close_room :: proc(hub: ^Hub, room: ^Room, code: np.Error_Code, text: string) {
 	}
 	key := room.code
 	delete_key(&hub.rooms, key)
+	source_adjust(hub, room.source, 0, -1)
 	room_free(room)
 	logf(hub, "room closed (%d rooms)", len(hub.rooms))
 }

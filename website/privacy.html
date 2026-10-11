@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080a0f">
-  <meta name="description" content="Arch Rogue privacy policy: no accounts, ads, analytics, or game telemetry in the current alpha.">
+  <meta name="description" content="Arch Rogue privacy policy: no accounts, ads, analytics, or game telemetry; what the optional co-op relay sees and keeps.">
   <title>Arch Rogue — Privacy Policy</title>
   <link rel="icon" href="assets/icon.png">
   <link rel="stylesheet" href="styles.css">
@@ -27,11 +27,13 @@
 
     <article class="legal">
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: 20 August 2026</p>
+      <p class="updated">Last updated: 11 October 2026</p>
 
-      <p>The short version: the current Arch Rogue alpha has <strong>no
-      accounts, sign-up, ads, analytics, or tracking</strong>. The game does not
-      collect or transmit personal data.</p>
+      <p>The short version: Arch Rogue has <strong>no accounts, sign-up, ads,
+      analytics, or tracking</strong>. Single-player sends nothing anywhere.
+      Online co-op connects to a relay server, which necessarily sees your
+      connection address, the display name you type, and the game state it
+      forwards for the session, and keeps none of it afterwards.</p>
 
       <h2>The game on your device</h2>
       <p>Native builds store saved runs, options, and progression as files on
@@ -45,12 +47,49 @@
       or moving to a different browser or site origin can delete or make those
       browser saves unavailable.</p>
 
-      <h2>Deferred online features</h2>
-      <p>Online multiplayer and Steam game integration are not included in the
-      current alpha. The game does not connect to an Arch Rogue relay or
-      to Steam services. The Steam card on the download page is only a public
-      store and wishlist link. This policy will be updated before an online
-      service or Steam-enabled build is released.</p>
+      <h2>Online co-op and the multiplayer relay</h2>
+      <p>Two-player co-op is optional. Nothing connects until you open the
+      co-op menu, press Host or Join, and accept the connection screen, which
+      shows the server address you are about to use. The default relay is
+      <code>ar.rita-kasari.fi</code>, operated by the developer in Finland,
+      who is the data controller for it.</p>
+      <p>While you are connected the relay receives and forwards:</p>
+      <ul>
+        <li>your <strong>IP address</strong>, as with any internet
+        connection, used only to carry the session and to limit how many
+        connections and rooms one address may hold;</li>
+        <li>the <strong>display name</strong> you type and the archetype,
+        difficulty, and story settings you pick, shown to the other player;</li>
+        <li>the <strong>room code</strong> and the <strong>game state</strong>
+        of the run (positions, actions, inventory, floor layout), which the
+        relay forwards between the two players without inspecting it, but
+        which the relay operator could technically read.</li>
+      </ul>
+      <p>The legal basis is the developer's legitimate interest in running
+      the service you asked to join and in keeping it available and safe from
+      abuse. Names, codes, and game state live only in the relay's memory for
+      the duration of the session and are never written to disk. The relay's
+      own log records connection counts, close reasons, and room codes, but
+      not names, addresses, or game content. The web server in front of it
+      does not keep an access log for the game connection; addresses can
+      still appear in its error log and the system journal when a connection
+      fails, and those are deleted after at most 30 days. Nothing is sold,
+      shared with third parties, or used for advertising or profiling.</p>
+      <p>Your co-op session is not recorded to your profile or Chronicle, and
+      the other player never sees your IP address, only the relay does. If
+      you enter a different relay address, or follow a link that pre-fills
+      one, that server has its own operator and its own privacy terms; the
+      connection screen shows the address and whether the link is encrypted
+      before you accept.</p>
+
+      <h2>Steam builds</h2>
+      <p>When a Steam build is distributed through Steam, it uses the
+      Steamworks API on your device to unlock achievements and, if enabled
+      for the app, to sync the same save files described above through
+      Steam Cloud. Valve processes that data under
+      <a href="https://store.steampowered.com/privacy_agreement/" rel="noopener">Steam's privacy policy</a>;
+      Arch Rogue receives none of it. Builds downloaded from this site or
+      from GitHub do not talk to Steam.</p>
 
       <h2>This website, browser game, and downloads</h2>
       <p>This site sets no first-party cookies. Opening the browser game uses
@@ -65,15 +104,20 @@
       to a third-party site; it is not game telemetry.</p>
 
       <h2>Your rights &amp; contact</h2>
-      <p>Since Arch Rogue holds no account or persistent personal data about
-      you, there is usually nothing for the developer to look up, correct, or
-      delete. If you have a question or request under the GDPR or another
-      privacy law, contact the developer through the
+      <p>Arch Rogue holds no account and no persistent personal data about
+      you: once a co-op session ends there is nothing left to look up,
+      correct, or delete, and the short-lived server logs cannot be tied to a
+      person by the developer. You still have the GDPR rights of access,
+      rectification, erasure, restriction, and objection, and the right to
+      complain to a supervisory authority (in Finland, the Office of the Data
+      Protection Ombudsman). For any question or request, contact the
+      developer through the
       <a href="https://github.com/mattirk/arch-rogue/issues" rel="noopener">project's issue tracker</a>.</p>
 
       <h2>Changes</h2>
-      <p>If the game begins collecting data or adds an online service, this
-      policy will be updated first and the date above will change.</p>
+      <p>If the game begins collecting more data or adds another online
+      service, this policy will be updated first and the date above will
+      change.</p>
     </article>
   </main>
 

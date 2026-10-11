@@ -445,6 +445,7 @@ typedef struct arws_conn {
 	int close_code;
 	int peer_close_code;
 	int registered;
+	char source[ARWS_SOURCE_MAX];
 } arws_conn;
 
 typedef struct arws_event {
@@ -516,7 +517,53 @@ static int origin_allowed(const arws_server *s, const char *origin)
 	return 0;
 }
 
-static int server_filter(arws_server *s, struct lws *wsi)
+static int peer_is_loopback(const char *peer)
+{
+	return !strcmp(peer, "127.0.0.1") || !strcmp(peer, "::1") ||
+	       !strcmp(peer, "::ffff:127.0.0.1") || !strncmp(peer, "127.", 4);
+}
+
+/* Fills out with the client's source address for per-source accounting.
+ * Behind the reverse proxy the TCP peer is always loopback, so the first
+ * X-Forwarded-For entry (the one nginx appended for its own peer is last;
+ * nginx sets the header from its peer when the client sent none, and the
+ * relay deployment only accepts loopback TCP peers from nginx) identifies the
+ * client. A non-loopback peer is used as-is and its forwarded header is
+ * ignored, since anyone can forge it. Never fails: unknown becomes "?". */
+static void server_source(struct lws *wsi, char *out, size_t cap)
+{
+	char peer[ARWS_SOURCE_MAX];
+	char fwd[256];
+	peer[0] = 0;
+	lws_get_peer_simple(wsi, peer, sizeof(peer));
+	if (!peer[0]) {
+		strncpy(out, "?", cap - 1);
+		out[cap - 1] = 0;
+		return;
+	}
+	if (peer_is_loopback(peer)) {
+		int n = lws_hdr_total_length(wsi, WSI_TOKEN_X_FORWARDED_FOR);
+		if (n > 0 && n < (int)sizeof(fwd) &&
+		    lws_hdr_copy(wsi, fwd, sizeof(fwd), WSI_TOKEN_X_FORWARDED_FOR) == n) {
+			char *p = fwd;
+			while (*p == ' ' || *p == '\t')
+				p++;
+			char *end = p;
+			while (*end && *end != ',' && *end != ' ' && *end != '\t')
+				end++;
+			*end = 0;
+			if (*p) {
+				strncpy(out, p, cap - 1);
+				out[cap - 1] = 0;
+				return;
+			}
+		}
+	}
+	strncpy(out, peer, cap - 1);
+	out[cap - 1] = 0;
+}
+
+static int server_filter(arws_server *s, struct lws *wsi, arws_conn *conn)
 {
 	char buf[256];
 	if (s->conn_count >= s->cfg.max_connections)
@@ -533,6 +580,9 @@ static int server_filter(arws_server *s, struct lws *wsi)
 		if (!origin_allowed(s, buf))
 			return -1;
 	}
+	/* Headers are still attached here; ESTABLISHED keeps this value. */
+	if (conn)
+		server_source(wsi, conn->source, sizeof(conn->source));
 	return 0;
 }
 
@@ -566,7 +616,7 @@ static int server_ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
 
 	switch (reason) {
 	case LWS_CALLBACK_FILTER_PROTOCOL_CONNECTION:
-		return server_filter(s, wsi);
+		return server_filter(s, wsi, conn);
 
 	case LWS_CALLBACK_ESTABLISHED: {
 		uint32_t slot = s->cfg.max_connections;
@@ -577,7 +627,12 @@ static int server_ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
 			}
 		if (slot == s->cfg.max_connections)
 			return -1;
+		char source[ARWS_SOURCE_MAX];
+		memcpy(source, conn->source, sizeof(source));
 		memset(conn, 0, sizeof(*conn));
+		if (!source[0])
+			server_source(wsi, source, sizeof(source));
+		memcpy(conn->source, source, sizeof(conn->source));
 		conn->id = ++s->next_id;
 		if (!conn->id)
 			conn->id = ++s->next_id;
@@ -826,6 +881,23 @@ void arws_server_close(arws_server *s, uint32_t id, int code, int deadline_s)
 	 * timeout forcibly tears the socket down otherwise. */
 	lws_set_timeout(conn->wsi, PENDING_TIMEOUT_USER_OK, deadline_s > 0 ? deadline_s : 1);
 	lws_callback_on_writable(conn->wsi);
+}
+
+int arws_server_source(const arws_server *s, uint32_t conn_id, char *out, size_t cap)
+{
+	if (!s || !out || cap == 0)
+		return -1;
+	arws_conn *conn = server_find((arws_server *)s, conn_id);
+	if (!conn) {
+		out[0] = 0;
+		return -1;
+	}
+	size_t n = strlen(conn->source);
+	if (n >= cap)
+		n = cap - 1;
+	memcpy(out, conn->source, n);
+	out[n] = 0;
+	return (int)n;
 }
 
 uint32_t arws_server_connection_count(const arws_server *s) { return s ? s->conn_count : 0; }

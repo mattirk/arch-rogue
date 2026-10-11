@@ -100,6 +100,12 @@ size_t arws_server_outbound_bytes(const arws_server *s, uint32_t conn);
 /* Orderly close with a status code; forced teardown after deadline_s. */
 void arws_server_close(arws_server *s, uint32_t conn, int code, int deadline_s);
 uint32_t arws_server_connection_count(const arws_server *s);
+/* Client source address for per-source limits: the first X-Forwarded-For
+ * entry when the TCP peer is loopback (the reverse proxy), otherwise the TCP
+ * peer address. Copies a NUL-terminated string into out and returns its
+ * length, or -1 when the connection is unknown. ARWS_SOURCE_MAX bounds it. */
+#define ARWS_SOURCE_MAX 64
+int arws_server_source(const arws_server *s, uint32_t conn, char *out, size_t cap);
 void arws_server_destroy(arws_server *s);
 
 #ifdef __cplusplus
