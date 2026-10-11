@@ -23,10 +23,13 @@ _ :: np
 NET_NATIVE_LWS :: ODIN_OS == .Linux && !ARCH_ROGUE_ANDROID
 
 when NET_NATIVE_LWS {
+	// Pinned static OpenSSL (vendor/openssl): the shipped binary must not
+	// depend on a libssl/libcrypto soname, which differs between distros and
+	// the Steam Linux Runtime (human decision 2026-10-09).
 	foreign import arws {
 		"../vendor/libwebsockets/linux/libarws_client.a",
-		"system:ssl",
-		"system:crypto",
+		"../vendor/openssl/linux/libssl.a",
+		"../vendor/openssl/linux/libcrypto.a",
 	}
 
 	@(private = "file")

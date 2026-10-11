@@ -55,8 +55,22 @@ the SIL Open Font License, Version 1.1. Its complete license text ships as
 `assets/ui/fonts/OFL.txt` and applies to that font file only, not to the rest
 of Arch Rogue.
 
-This native Odin distribution does not bundle Python, Pygame, SDL, OpenSSL,
-PyJNIus, or python-for-android.
+Bundled multiplayer transport (Linux)
+-------------------------------------
+
+The Linux build statically links libwebsockets 4.3.5, Copyright (C) 2010-2020
+Andy Green <andy@warmcat.com>, under the MIT license (some bundled sources
+retain similar permissive licenses as listed in that file), and OpenSSL 3.6.5,
+Copyright (c) 1998-2026 The OpenSSL Project Authors and Copyright (c) 1995-1998
+Eric A. Young and Tim J. Hudson, under the Apache License 2.0. Their complete licenses ship as `licenses/LIBWEBSOCKETS_LICENSE.txt` and
+`licenses/OPENSSL_LICENSE.txt`; pinned source and archive provenance is
+recorded in `vendor/libwebsockets/PROVENANCE.md` and
+`vendor/openssl/PROVENANCE.md`. The browser build uses the browser's own
+WebSocket and TLS stack instead; Android and Windows builds do not yet include
+the transport.
+
+This native Odin distribution does not bundle Python, Pygame, SDL, PyJNIus, or
+python-for-android.
 
 AI Provenance & Liability Notice
 --------------------------------

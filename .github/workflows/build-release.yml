@@ -127,6 +127,8 @@ jobs:
           install -m 0644 LICENSE "$package_root/licenses/ARCH_ROGUE_LICENSE.txt"
           install -m 0644 NOTICE "$package_root/licenses/ARCH_ROGUE_NOTICE.txt"
           install -m 0644 vendor/raylib/LICENSE "$package_root/licenses/RAYLIB_LICENSE.txt"
+          install -m 0644 vendor/libwebsockets/LICENSE "$package_root/licenses/LIBWEBSOCKETS_LICENSE.txt"
+          install -m 0644 vendor/openssl/LICENSE.txt "$package_root/licenses/OPENSSL_LICENSE.txt"
           cat > "$package_root/arch-rogue" <<'SH'
           #!/usr/bin/env sh
           set -eu
@@ -141,6 +143,7 @@ jobs:
             exit 1
           fi
           file "$package_root/bin/archrogue"
+          python3 tools/verify_linux_binary.py "$package_root/bin/archrogue"
           ldd "$package_root/bin/archrogue"
           if ldd "$package_root/bin/archrogue" | grep -q 'not found'; then
             echo "Linux binary has unresolved runtime libraries" >&2
